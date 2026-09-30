@@ -2,6 +2,7 @@ import { normalizeEmail } from '@owlat/shared';
 import { parseCsvFile } from '~/utils/contactsCsv';
 import { useDropZone } from '~/composables/useDropZone';
 import { useNativeFilePicker } from '~/composables/useNativeFilePicker';
+import type { BackendOperationResult } from '~/composables/useBackendOperation';
 
 export type ImportStep =
 	| 'upload'
@@ -45,6 +46,38 @@ export interface ContactListAssignment {
 	topicIds: string[];
 }
 
+/**
+ * One batch's outcome, in the operation module's envelope. The failure arm may
+ * carry the reason: the module has already toasted it, but the completion step
+ * shows it again next to the rows the failure cost.
+ */
+export type ImportBatchOutcome =
+	| BackendOperationResult<ImportResults>
+	| { ok: false; reason: string };
+
+/** The same envelope for the pre-import property registration. */
+export type PreparationOutcome = BackendOperationResult<void> | { ok: false; reason: string };
+
+export type ImportBatchFn = (
+	contacts: ContactImport[],
+	handleDuplicates: HandleDuplicates,
+	options?: {
+		topicId?: string;
+		contactListAssignments?: ContactListAssignment[];
+	}
+) => Promise<ImportBatchOutcome>;
+
+export type RegisterPropertiesFn = (keys: string[]) => Promise<PreparationOutcome>;
+
+/** A CSV data row that did not reach the backend, or reached it in a batch that failed. */
+export interface NotImportedRow {
+	/** 1-based data-row number, the numbering the preview's warnings use. */
+	row: number;
+	email: string;
+	/** `true` for the rows of the failed batch, `false` for the ones never sent. */
+	attempted: boolean;
+}
+
 export interface ValidationResult {
 	validCount: number;
 	invalidEmails: { row: number; email: string }[];
@@ -63,6 +96,15 @@ export const mappableFields: { value: MappableField; label: string }[] = [
 	{ value: 'property', label: 'shared.useCsvImport.fields.property' },
 	{ value: 'ignore', label: 'shared.useCsvImport.fields.ignore' },
 ];
+
+/** Rows per `importBatch` call, well under the backend's per-call cap. */
+const IMPORT_BATCH_SIZE = 100;
+
+interface PreparedContact {
+	/** 1-based data-row number. */
+	row: number;
+	contact: ContactImport;
+}
 
 export function useCsvImport() {
 	const { t } = useI18n();
@@ -85,7 +127,13 @@ export function useCsvImport() {
 
 	// Progress state
 	const progress = ref(0);
+	// Counters of the batches the backend COMMITTED, cumulative across retries.
 	const results = ref<ImportResults | null>(null);
+	// The retry set: the failed batch followed by every row after it, in file
+	// order. Empty once every row has been through a committed batch.
+	const pendingContacts = shallowRef<PreparedContact[]>([]);
+	// How many of `pendingContacts` were in the batch that failed, and why.
+	const failedBatch = ref<{ size: number; reason: string } | null>(null);
 
 	// Topic assignment state
 	const listAssignmentMode = ref<ListAssignmentMode>('none');
@@ -105,6 +153,16 @@ export function useCsvImport() {
 		return v.invalidEmails.length > 0 || v.duplicateEmails.length > 0 || v.missingEmails.length > 0;
 	});
 	const canImport = computed(() => validContactCount.value > 0);
+
+	const notImportedRows = computed<NotImportedRow[]>(() => {
+		const attemptedCount = failedBatch.value?.size ?? 0;
+		return pendingContacts.value.map((pending, index) => ({
+			row: pending.row,
+			email: pending.contact.email,
+			attempted: index < attemptedCount,
+		}));
+	});
+	const notImportedRowCount = computed(() => pendingContacts.value.length);
 
 	const mappedListCount = computed(() => {
 		return Object.values(listNameMapping.value).filter((v) => v !== null).length;
@@ -163,6 +221,8 @@ export function useCsvImport() {
 		validation.value = null;
 		progress.value = 0;
 		results.value = null;
+		pendingContacts.value = [];
+		failedBatch.value = null;
 		isDragging.value = false;
 		listAssignmentMode.value = 'none';
 		selectedTopicId.value = null;
@@ -423,11 +483,13 @@ export function useCsvImport() {
 		return Array.from(keys);
 	};
 
-	// Transform parsed data to contacts
-	const getContactsFromParsedData = (): ContactImport[] => {
-		const contacts: ContactImport[] = [];
+	// Transform parsed data to contacts, each tagged with the data row it came
+	// from so a failed batch can name its rows. Rows without an email are not
+	// sent at all; `startImport` counts them as skipped.
+	const getContactsFromParsedData = (): PreparedContact[] => {
+		const contacts: PreparedContact[] = [];
 
-		for (const row of parsedData.value) {
+		parsedData.value.forEach((row, rowIndex) => {
 			const contact: ContactImport = { email: '' };
 			const properties: Record<string, ContactPropertyValue> = {};
 
@@ -454,9 +516,9 @@ export function useCsvImport() {
 				if (Object.keys(properties).length > 0) {
 					contact.properties = properties;
 				}
-				contacts.push(contact);
+				contacts.push({ row: rowIndex + 1, contact });
 			}
-		}
+		});
 
 		return contacts;
 	};
@@ -508,21 +570,105 @@ export function useCsvImport() {
 		return assignments;
 	};
 
+	const listOptionsForImport = (): {
+		topicId?: string;
+		contactListAssignments?: ContactListAssignment[];
+	} => {
+		if (listAssignmentMode.value === 'global' && selectedTopicId.value) {
+			return { topicId: selectedTopicId.value };
+		}
+		if (listAssignmentMode.value === 'column') {
+			return { contactListAssignments: getContactListAssignments() };
+		}
+		return {};
+	};
+
+	// A throwing callback is folded into the same failure arm as `{ ok: false }`,
+	// so both leave the same accounting behind.
+	const settle = async <T extends { ok: boolean }>(
+		attempt: () => Promise<T>
+	): Promise<T | { ok: false; reason: string }> => {
+		try {
+			return await attempt();
+		} catch (err) {
+			return {
+				ok: false,
+				reason: err instanceof Error ? err.message : t('shared.useCsvImport.errors.importFailed'),
+			};
+		}
+	};
+
+	const failureReason = (outcome: { ok: false; reason?: string }) =>
+		outcome.reason || t('shared.useCsvImport.errors.importFailed');
+
+	/**
+	 * Send `queue` in batches, adding each committed batch to `results`.
+	 *
+	 * Stops at the first failed batch rather than carrying on: a failure is
+	 * usually the session, a rate limit or the connection, which the next batch
+	 * would hit too (one more toast, or one more login redirect, each). The
+	 * failed batch and everything after it become the retry set, so every row
+	 * ends up imported, updated, skipped, failed per row, or not imported.
+	 */
+	const runBatches = async (
+		queue: PreparedContact[],
+		importFn: ImportBatchFn,
+		committed: ImportResults
+	) => {
+		const listOptions = listOptionsForImport();
+		const aggregated: ImportResults = { ...committed, errors: [...committed.errors] };
+		pendingContacts.value = [];
+		failedBatch.value = null;
+
+		const totalBatches = Math.ceil(queue.length / IMPORT_BATCH_SIZE);
+		for (let i = 0; i < totalBatches; i++) {
+			const batch = queue
+				.slice(i * IMPORT_BATCH_SIZE, (i + 1) * IMPORT_BATCH_SIZE)
+				.map((pending) => pending.contact);
+
+			// For per-contact assignments, filter to only emails in this batch
+			let batchListOptions = { ...listOptions };
+			if (listOptions.contactListAssignments) {
+				const batchEmails = new Set(batch.map((c) => normalizeEmail(c.email)));
+				batchListOptions = {
+					...listOptions,
+					contactListAssignments: listOptions.contactListAssignments.filter((a) =>
+						batchEmails.has(a.email)
+					),
+				};
+			}
+
+			const outcome = await settle(() => importFn(batch, handleDuplicates.value, batchListOptions));
+			if (!outcome.ok) {
+				pendingContacts.value = queue.slice(i * IMPORT_BATCH_SIZE);
+				failedBatch.value = { size: batch.length, reason: failureReason(outcome) };
+				break;
+			}
+
+			const batchResults = outcome.result;
+			aggregated.imported += batchResults.imported;
+			aggregated.updated += batchResults.updated;
+			aggregated.skipped += batchResults.skipped;
+			aggregated.failed += batchResults.failed;
+			aggregated.errors.push(...batchResults.errors.slice(0, 10));
+			aggregated.addedToList = (aggregated.addedToList ?? 0) + (batchResults.addedToList ?? 0);
+
+			progress.value = Math.round(((i + 1) / totalBatches) * 100);
+		}
+
+		results.value = aggregated;
+		step.value = 'complete';
+		return aggregated;
+	};
+
 	// Start import
 	const startImport = async (
-		importFn: (
-			contacts: ContactImport[],
-			handleDuplicates: HandleDuplicates,
-			options?: {
-				topicId?: string;
-				contactListAssignments?: ContactListAssignment[];
-			}
-		) => Promise<ImportResults>,
+		importFn: ImportBatchFn,
 		// Optional pre-import hook to register the custom-property keys mapped in
 		// this import. CSV is an operator source, so the backend silently drops
 		// values for unregistered keys — registering them first is what makes
 		// mapped custom columns actually land.
-		registerProperties?: (keys: string[]) => Promise<void>
+		registerProperties?: RegisterPropertiesFn
 	) => {
 		step.value = 'importing';
 		progress.value = 0;
@@ -539,73 +685,42 @@ export function useCsvImport() {
 		if (registerProperties) {
 			const propertyKeys = getMappedPropertyKeys();
 			if (propertyKeys.length > 0) {
-				await registerProperties(propertyKeys);
-			}
-		}
-
-		// Determine list assignment options
-		const listOptions: {
-			topicId?: string;
-			contactListAssignments?: ContactListAssignment[];
-		} = {};
-
-		if (listAssignmentMode.value === 'global' && selectedTopicId.value) {
-			listOptions.topicId = selectedTopicId.value;
-		} else if (listAssignmentMode.value === 'column') {
-			listOptions.contactListAssignments = getContactListAssignments();
-		}
-
-		try {
-			// Process in batches
-			const batchSize = 100;
-			const totalBatches = Math.ceil(contacts.length / batchSize);
-			const aggregatedResults: ImportResults = {
-				imported: 0,
-				updated: 0,
-				skipped: 0,
-				failed: 0,
-				errors: [],
-				addedToList: 0,
-			};
-
-			for (let i = 0; i < totalBatches; i++) {
-				const batch = contacts.slice(i * batchSize, (i + 1) * batchSize);
-
-				// For per-contact assignments, filter to only emails in this batch
-				let batchListOptions = { ...listOptions };
-				if (listOptions.contactListAssignments) {
-					const batchEmails = new Set(batch.map((c) => normalizeEmail(c.email)));
-					batchListOptions = {
-						...listOptions,
-						contactListAssignments: listOptions.contactListAssignments.filter((a) =>
-							batchEmails.has(a.email)
-						),
-					};
+				// Nothing is written until every mapped key is registered: rows sent
+				// without their key would land with those columns silently dropped.
+				const prepared = await settle(() => registerProperties(propertyKeys));
+				if (!prepared.ok) {
+					error.value = t('shared.useCsvImport.errors.propertiesFailed', {
+						reason: failureReason(prepared),
+					});
+					step.value = 'preview';
+					return;
 				}
-
-				const batchResults = await importFn(batch, handleDuplicates.value, batchListOptions);
-
-				aggregatedResults.imported += batchResults.imported;
-				aggregatedResults.updated += batchResults.updated;
-				aggregatedResults.skipped += batchResults.skipped;
-				aggregatedResults.failed += batchResults.failed;
-				aggregatedResults.errors.push(...batchResults.errors.slice(0, 10));
-				aggregatedResults.addedToList =
-					(aggregatedResults.addedToList ?? 0) + (batchResults.addedToList ?? 0);
-
-				progress.value = Math.round(((i + 1) / totalBatches) * 100);
 			}
-
-			results.value = aggregatedResults;
-			step.value = 'complete';
-
-			return aggregatedResults;
-		} catch (err) {
-			error.value =
-				err instanceof Error ? err.message : t('shared.useCsvImport.errors.importFailed');
-			step.value = 'mapping';
-			throw err;
 		}
+
+		return runBatches(contacts, importFn, {
+			imported: 0,
+			updated: 0,
+			// Rows without an email are never sent; the preview already flagged them.
+			skipped: parsedData.value.length - contacts.length,
+			failed: 0,
+			errors: [],
+			addedToList: 0,
+		});
+	};
+
+	/**
+	 * Resend the failed batch and the rows after it — never a committed batch —
+	 * with the same mapping, duplicate handling and topic assignment. The
+	 * properties were registered before the first attempt got this far.
+	 */
+	const retryFailedRows = async (importFn: ImportBatchFn) => {
+		const queue = pendingContacts.value;
+		if (queue.length === 0 || !results.value) return;
+		step.value = 'importing';
+		progress.value = 0;
+		error.value = '';
+		return runBatches(queue, importFn, results.value);
 	};
 
 	// Watch for column mapping changes — auto-manage list assignment mode
@@ -636,6 +751,9 @@ export function useCsvImport() {
 		validation,
 		progress,
 		results,
+		failedBatch,
+		notImportedRows,
+		notImportedRowCount,
 
 		// Topic state
 		listAssignmentMode,
@@ -671,5 +789,6 @@ export function useCsvImport() {
 		getMappedValue,
 		getMappedPropertyKeys,
 		startImport,
+		retryFailedRows,
 	};
 }

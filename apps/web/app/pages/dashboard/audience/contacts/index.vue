@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { languageSelectOptions } from '~/data/languageOptions';
 import { isValidEmail } from '@owlat/shared';
+import type { ImportResults } from '~/composables/useCsvImport';
 
 const { t } = useI18n();
 
@@ -87,12 +88,9 @@ const { results: topics } = useTopicsList();
 const { run: createContact } = useBackendOperation(api.contacts.contacts.create, {
 	label: () => t('dashboard.audience.contacts.index.operations.addContact'),
 });
-const { run: importContacts } = useBackendOperation(api.contacts.contacts.importBatch, {
-	label: () => t('dashboard.audience.contacts.index.operations.importContacts'),
-});
-const { run: createProperty } = useBackendOperation(api.contacts.properties.create, {
-	label: () => t('dashboard.audience.contacts.index.operations.registerProperty'),
-});
+const csvImportOperations = useContactCsvImportOperations(() =>
+	(contactProperties.value ?? []).map((p: { key: string }) => p.key)
+);
 
 // Computed values
 const isLoading = computed(() => teamLoading.value || contactsLoading.value);
@@ -199,44 +197,32 @@ const handleAddSubmit = async () => {
 // ============================================
 // CSV Import
 // ============================================
-const handleCsvImport = async () => {
-	const results = await csvImport.startImport(
-		async (contactsBatch, handleDuplicates, options) => {
-			const result = await importContacts({
-				contacts: contactsBatch,
-				handleDuplicates,
-				topicId: options?.topicId as Id<'topics'> | undefined,
-				contactListAssignments: options?.contactListAssignments as
-					| Array<{ email: string; topicIds: Id<'topics'>[] }>
-					| undefined,
-			});
-			return result.ok
-				? result.result
-				: { imported: 0, updated: 0, skipped: 0, failed: 0, errors: [], addedToList: 0 };
-		},
-		// CSV is an operator import source: the backend drops property values for
-		// keys that are not already registered. Register any mapped custom-column
-		// keys that don't yet exist (string type — CSV cells are strings) before
-		// the contact rows are imported.
-		async (keys) => {
-			const existing = new Set((contactProperties.value ?? []).map((p: { key: string }) => p.key));
-			for (const key of keys) {
-				if (existing.has(key)) continue;
-				await createProperty({ key, label: key, type: 'string' });
-			}
-		}
+// A partial import is reported by the modal's completion step, with the rows
+// it did not get to; the success toast is only for a run that took every row.
+const toastCsvImport = (results: ImportResults | undefined) => {
+	if (!results || csvImport.notImportedRowCount.value > 0) return;
+	const totalProcessed = results.imported + results.updated;
+	if (totalProcessed === 0) return;
+	showToast(
+		t(
+			'dashboard.audience.contacts.index.toasts.imported',
+			{ count: totalProcessed },
+			totalProcessed
+		)
 	);
+};
 
-	if (results && (results.imported > 0 || results.updated > 0)) {
-		const totalProcessed = results.imported + results.updated;
-		showToast(
-			t(
-				'dashboard.audience.contacts.index.toasts.imported',
-				{ count: totalProcessed },
-				totalProcessed
-			)
-		);
-	}
+const handleCsvImport = async () => {
+	toastCsvImport(
+		await csvImport.startImport(
+			csvImportOperations.importBatch,
+			csvImportOperations.registerProperties
+		)
+	);
+};
+
+const handleCsvRetry = async () => {
+	toastCsvImport(await csvImport.retryFailedRows(csvImportOperations.importBatch));
 };
 
 // ============================================
@@ -913,6 +899,7 @@ onUnmounted(() => {
 			:csv-import="csvImport"
 			:topics="topics"
 			@import="handleCsvImport"
+			@retry="handleCsvRetry"
 		/>
 
 		<!-- Export Modal -->

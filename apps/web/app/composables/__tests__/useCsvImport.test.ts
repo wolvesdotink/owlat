@@ -8,7 +8,13 @@ vi.mock('papaparse', () => ({
 
 import Papa from 'papaparse';
 import { createTestI18n } from '~/__tests__/i18n';
-import { useCsvImport, mappableFields } from '../useCsvImport';
+import {
+	useCsvImport,
+	mappableFields,
+	type ContactImport,
+	type ImportBatchOutcome,
+	type ImportResults,
+} from '../useCsvImport';
 
 // The composable runs outside a component here, so `useI18n` is stubbed with the
 // real catalog's `t` — every message asserted below stays the English on screen.
@@ -46,6 +52,14 @@ async function simulateFileSelect(
 	const fakeFile = new File([''], 'test.csv', { type: 'text/csv' });
 	const fakeEvent = { target: { files: [fakeFile] } } as unknown as Event;
 	await csvImport.handleFileSelect(fakeEvent);
+}
+
+/** A batch the backend committed, in the operation module's envelope. */
+function committed(results: Partial<ImportResults>): ImportBatchOutcome {
+	return {
+		ok: true,
+		result: { imported: 0, updated: 0, skipped: 0, failed: 0, errors: [], ...results },
+	};
 }
 
 describe('useCsvImport', () => {
@@ -425,7 +439,7 @@ describe('useCsvImport', () => {
 			const importFn = vi.fn(async () => {
 				stepDuringImport = csvImport.step.value;
 				progressDuringImport = csvImport.progress.value;
-				return { imported: 1, updated: 0, skipped: 0, failed: 0, errors: [] };
+				return committed({ imported: 1 });
 			});
 
 			await csvImport.startImport(importFn);
@@ -443,13 +457,7 @@ describe('useCsvImport', () => {
 			csvImport.columnMapping.value = { 0: 'email', 1: 'firstName' };
 			csvImport.handleDuplicates.value = 'update';
 
-			const importFn = vi.fn(async () => ({
-				imported: 1,
-				updated: 0,
-				skipped: 0,
-				failed: 0,
-				errors: [],
-			}));
+			const importFn = vi.fn(async () => committed({ imported: 1 }));
 
 			await csvImport.startImport(importFn);
 
@@ -468,13 +476,9 @@ describe('useCsvImport', () => {
 			await simulateFileSelect(csvImport, ['Email'], rows);
 			csvImport.columnMapping.value = { 0: 'email' };
 
-			const importFn = vi.fn(async (contacts: unknown[]) => ({
-				imported: contacts.length,
-				updated: 0,
-				skipped: 0,
-				failed: 0,
-				errors: [],
-			}));
+			const importFn = vi.fn(async (contacts: unknown[]) =>
+				committed({ imported: contacts.length })
+			);
 
 			const result = await csvImport.startImport(importFn);
 
@@ -500,8 +504,7 @@ describe('useCsvImport', () => {
 			csvImport.columnMapping.value = { 0: 'email' };
 
 			const importFn = vi.fn(async () => {
-				const result = { imported: 1, updated: 0, skipped: 0, failed: 0, errors: [] };
-				return result;
+				return committed({ imported: 1 });
 			});
 
 			// We cannot capture progress mid-call since it updates after importFn returns,
@@ -517,13 +520,7 @@ describe('useCsvImport', () => {
 			await simulateFileSelect(csvImport, ['Email'], [['a@b.com'], ['c@d.com']]);
 			csvImport.columnMapping.value = { 0: 'email' };
 
-			const importFn = vi.fn(async () => ({
-				imported: 2,
-				updated: 0,
-				skipped: 0,
-				failed: 0,
-				errors: [],
-			}));
+			const importFn = vi.fn(async () => committed({ imported: 2 }));
 
 			await csvImport.startImport(importFn);
 
@@ -538,7 +535,9 @@ describe('useCsvImport', () => {
 			});
 		});
 
-		it('sets error and step=mapping on failure', async () => {
+		// A throw is folded into the same failure arm as `{ ok: false }`: the row is
+		// accounted for and kept for a retry, and the mapping is still there.
+		it('accounts a thrown batch as not imported, with the message as the reason', async () => {
 			const csvImport = useCsvImport();
 
 			await simulateFileSelect(csvImport, ['Email'], [['a@b.com']]);
@@ -548,10 +547,14 @@ describe('useCsvImport', () => {
 				throw new Error('Network error');
 			});
 
-			await expect(csvImport.startImport(importFn)).rejects.toThrow('Network error');
+			await csvImport.startImport(importFn);
 
-			expect(csvImport.error.value).toBe('Network error');
-			expect(csvImport.step.value).toBe('mapping');
+			expect(csvImport.step.value).toBe('complete');
+			expect(csvImport.failedBatch.value).toEqual({ size: 1, reason: 'Network error' });
+			expect(csvImport.notImportedRows.value).toEqual([
+				{ row: 1, email: 'a@b.com', attempted: true },
+			]);
+			expect(csvImport.columnMapping.value).toEqual({ 0: 'email' });
 		});
 
 		it('handles non-Error throws', async () => {
@@ -564,10 +567,10 @@ describe('useCsvImport', () => {
 				throw 'string error';
 			});
 
-			await expect(csvImport.startImport(importFn)).rejects.toBe('string error');
+			await csvImport.startImport(importFn);
 
-			expect(csvImport.error.value).toBe('Import failed');
-			expect(csvImport.step.value).toBe('mapping');
+			expect(csvImport.failedBatch.value?.reason).toBe('Import failed');
+			expect(csvImport.notImportedRowCount.value).toBe(1);
 		});
 
 		it('handles no valid contacts (empty emails)', async () => {
@@ -583,13 +586,7 @@ describe('useCsvImport', () => {
 			);
 			csvImport.columnMapping.value = { 0: 'email', 1: 'ignore' };
 
-			const importFn = vi.fn(async () => ({
-				imported: 0,
-				updated: 0,
-				skipped: 0,
-				failed: 0,
-				errors: [],
-			}));
+			const importFn = vi.fn(async () => committed({ imported: 0 }));
 
 			await csvImport.startImport(importFn);
 
@@ -613,13 +610,7 @@ describe('useCsvImport', () => {
 				3: 'language',
 			};
 
-			const importFn = vi.fn(async () => ({
-				imported: 1,
-				updated: 0,
-				skipped: 0,
-				failed: 0,
-				errors: [],
-			}));
+			const importFn = vi.fn(async () => committed({ imported: 1 }));
 
 			await csvImport.startImport(importFn);
 
@@ -628,6 +619,160 @@ describe('useCsvImport', () => {
 				'skip',
 				{}
 			);
+		});
+	});
+
+	/**
+	 * #897: a failed batch used to come back from the page as an all-zero
+	 * success, so 201 rows with the second batch failing ended "complete" with
+	 * 101 imported, 0 failed and nothing to retry.
+	 */
+	describe('failed batches', () => {
+		const rows201 = Array.from({ length: 201 }, (_, i) => [`user${i + 1}@example.com`]);
+
+		/** Commits every batch except the `failing` call numbers (1-based). */
+		function importFailingOn(...failing: number[]) {
+			let call = 0;
+			return vi.fn(async (contacts: ContactImport[]): Promise<ImportBatchOutcome> => {
+				call++;
+				if (failing.includes(call)) return { ok: false, reason: 'Too many requests' };
+				return committed({ imported: contacts.length });
+			});
+		}
+
+		async function prepare(rows: string[][] = rows201) {
+			const csvImport = useCsvImport();
+			await simulateFileSelect(csvImport, ['Email'], rows);
+			csvImport.columnMapping.value = { 0: 'email' };
+			return csvImport;
+		}
+
+		it('accounts for all 201 rows and names the failed 100', async () => {
+			const csvImport = await prepare();
+			const importFn = importFailingOn(2);
+
+			await csvImport.startImport(importFn);
+
+			// Stops at the failed batch: the third one is not sent.
+			expect(importFn).toHaveBeenCalledTimes(2);
+			expect(csvImport.step.value).toBe('complete');
+			const results = csvImport.results.value!;
+			expect(results.imported).toBe(100);
+			expect(csvImport.failedBatch.value).toEqual({ size: 100, reason: 'Too many requests' });
+
+			const notImported = csvImport.notImportedRows.value;
+			const failed = notImported.filter((r) => r.attempted);
+			const unsent = notImported.filter((r) => !r.attempted);
+			expect(failed.map((r) => r.row)).toEqual(Array.from({ length: 100 }, (_, i) => i + 101));
+			expect(failed[0]!.email).toBe('user101@example.com');
+			expect(unsent).toEqual([{ row: 201, email: 'user201@example.com', attempted: false }]);
+
+			const accounted =
+				results.imported +
+				results.updated +
+				results.skipped +
+				results.failed +
+				csvImport.notImportedRowCount.value;
+			expect(accounted).toBe(201);
+		});
+
+		it('never reports a clean run when a batch failed', async () => {
+			const csvImport = await prepare();
+
+			await csvImport.startImport(importFailingOn(2));
+
+			expect(csvImport.notImportedRowCount.value).toBeGreaterThan(0);
+			expect(csvImport.failedBatch.value).not.toBeNull();
+		});
+
+		it('accounts for a failed first batch too, with nothing committed', async () => {
+			const csvImport = await prepare();
+
+			await csvImport.startImport(importFailingOn(1));
+
+			expect(csvImport.results.value!.imported).toBe(0);
+			expect(csvImport.notImportedRowCount.value).toBe(201);
+		});
+
+		it('counts rows without an email as skipped, so they are accounted for', async () => {
+			const csvImport = useCsvImport();
+			await simulateFileSelect(
+				csvImport,
+				['Email', 'Name'],
+				[
+					['a@example.com', 'Ada'],
+					['', 'No address'],
+					['b@example.com', 'Bea'],
+				]
+			);
+			csvImport.columnMapping.value = { 0: 'email', 1: 'ignore' };
+			const importFn = importFailingOn();
+
+			await csvImport.startImport(importFn);
+
+			expect(importFn.mock.calls[0]![0]).toHaveLength(2);
+			expect(csvImport.results.value).toMatchObject({ imported: 2, skipped: 1 });
+			expect(csvImport.notImportedRowCount.value).toBe(0);
+		});
+
+		it('retries only the failed batch and the rows after it', async () => {
+			const csvImport = await prepare();
+			const firstRun = importFailingOn(2);
+			await csvImport.startImport(firstRun);
+
+			const retry = importFailingOn();
+			await csvImport.retryFailedRows(retry);
+
+			expect(retry).toHaveBeenCalledTimes(2);
+			const resent = retry.mock.calls.flatMap((call) => call[0].map((c) => c.email));
+			expect(resent).toHaveLength(101);
+			expect(resent[0]).toBe('user101@example.com');
+			expect(resent).not.toContain('user1@example.com');
+			expect(resent).not.toContain('user100@example.com');
+
+			// Cumulative, and clean now that every row went through.
+			expect(csvImport.results.value!.imported).toBe(201);
+			expect(csvImport.notImportedRowCount.value).toBe(0);
+			expect(csvImport.failedBatch.value).toBeNull();
+			expect(csvImport.step.value).toBe('complete');
+		});
+
+		it('keeps the retry set, duplicate handling and topic across a retry that fails again', async () => {
+			const csvImport = await prepare();
+			csvImport.handleDuplicates.value = 'update';
+			csvImport.selectGlobalTopic('topic-1');
+			await csvImport.startImport(importFailingOn(2));
+
+			const retry = importFailingOn(1);
+			await csvImport.retryFailedRows(retry);
+
+			expect(retry).toHaveBeenCalledTimes(1);
+			expect(retry.mock.calls[0]![1]).toBe('update');
+			expect(retry.mock.calls[0]![2]).toEqual({ topicId: 'topic-1' });
+			expect(csvImport.results.value!.imported).toBe(100);
+			expect(csvImport.notImportedRowCount.value).toBe(101);
+			expect(csvImport.notImportedRows.value[0]!.row).toBe(101);
+		});
+
+		it('stops before any row is written when property registration fails', async () => {
+			const csvImport = useCsvImport();
+			await simulateFileSelect(csvImport, ['Email', 'Company'], [['a@example.com', 'Acme']]);
+			csvImport.columnMapping.value = { 0: 'email', 1: 'property' };
+			csvImport.goToPreview();
+
+			const importFn = importFailingOn();
+			await csvImport.startImport(importFn, async () => ({
+				ok: false,
+				reason: 'Property limit reached',
+			}));
+
+			expect(importFn).not.toHaveBeenCalled();
+			expect(csvImport.step.value).toBe('preview');
+			expect(csvImport.error.value).toBe(
+				'The mapped custom properties could not be registered, so no contacts were imported: Property limit reached'
+			);
+			expect(csvImport.columnMapping.value).toEqual({ 0: 'email', 1: 'property' });
+			expect(csvImport.results.value).toBeNull();
 		});
 	});
 
@@ -835,13 +980,7 @@ describe('useCsvImport', () => {
 			);
 			csvImport.columnMapping.value = { 0: 'email', 1: 'property', 2: 'property' };
 
-			const importFn = vi.fn(async () => ({
-				imported: 1,
-				updated: 0,
-				skipped: 0,
-				failed: 0,
-				errors: [],
-			}));
+			const importFn = vi.fn(async () => committed({ imported: 1 }));
 
 			await csvImport.startImport(importFn);
 
@@ -858,13 +997,7 @@ describe('useCsvImport', () => {
 			await simulateFileSelect(csvImport, ['Email', 'Company'], [['a@b.com', '']]);
 			csvImport.columnMapping.value = { 0: 'email', 1: 'property' };
 
-			const importFn = vi.fn(async () => ({
-				imported: 1,
-				updated: 0,
-				skipped: 0,
-				failed: 0,
-				errors: [],
-			}));
+			const importFn = vi.fn(async () => committed({ imported: 1 }));
 
 			await csvImport.startImport(importFn);
 
@@ -899,10 +1032,11 @@ describe('useCsvImport', () => {
 			const order: string[] = [];
 			const registerProperties = vi.fn(async (keys: string[]) => {
 				order.push(`register:${keys.join(',')}`);
+				return { ok: true as const, result: undefined };
 			});
 			const importFn = vi.fn(async () => {
 				order.push('import');
-				return { imported: 1, updated: 0, skipped: 0, failed: 0, errors: [] };
+				return committed({ imported: 1 });
 			});
 
 			await csvImport.startImport(importFn, registerProperties);
@@ -916,14 +1050,8 @@ describe('useCsvImport', () => {
 			await simulateFileSelect(csvImport, ['Email'], [['a@b.com']]);
 			csvImport.columnMapping.value = { 0: 'email' };
 
-			const registerProperties = vi.fn(async () => {});
-			const importFn = vi.fn(async () => ({
-				imported: 1,
-				updated: 0,
-				skipped: 0,
-				failed: 0,
-				errors: [],
-			}));
+			const registerProperties = vi.fn(async () => ({ ok: true as const, result: undefined }));
+			const importFn = vi.fn(async () => committed({ imported: 1 }));
 
 			await csvImport.startImport(importFn, registerProperties);
 
