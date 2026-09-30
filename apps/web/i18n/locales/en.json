@@ -5984,6 +5984,14 @@
 					"conversation": "Conversation",
 					"reply": "Reply"
 				},
+				"sheet": {
+					"hint": "Drag the handle, or use the up and down arrow keys, to change how much of the screen the reply takes.",
+					"raise": "Show the reply",
+					"lower": "Lower the reply",
+					"shrink": "Make the reply smaller",
+					"peek": "Reply to {name}…",
+					"peekNoName": "Write a reply…"
+				},
 				"viewLabel": "How much of the conversation to show",
 				"viewShortcut": "Switch with T",
 				"view": {

@@ -5984,6 +5984,14 @@
 					"conversation": "Unterhaltung",
 					"reply": "Antwort"
 				},
+				"sheet": {
+					"hint": "Ziehen Sie den Griff oder nutzen Sie die Pfeiltasten nach oben und unten, um zu ändern, wie viel Platz die Antwort einnimmt.",
+					"raise": "Antwort einblenden",
+					"lower": "Antwort absenken",
+					"shrink": "Antwort verkleinern",
+					"peek": "{name} antworten…",
+					"peekNoName": "Antwort schreiben…"
+				},
 				"viewLabel": "Wie viel der Unterhaltung angezeigt wird",
 				"viewShortcut": "Mit T umschalten",
 				"view": {
