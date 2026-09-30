@@ -19,7 +19,7 @@
  */
 
 import type { Infer } from 'convex/values';
-import { formatDraftGap } from '@owlat/shared/answerMode';
+import { formatDraftGap, type AskAnswerKind } from '@owlat/shared/answerMode';
 import { pickAttachmentSuggestion, MATCH_FLOOR } from '../../inbox/attachmentMatch';
 import { isCredentialSolicitation } from '../../inbox/clarificationSlots';
 import type { FoundFile } from '../../inbox/attachmentSuggest';
@@ -274,7 +274,7 @@ export function buildFileQuestion(
 export function slotAnswerKind(
 	slotType: string,
 	options: readonly string[] | undefined
-): AskQuestion['answerKind'] {
+): AskAnswerKind {
 	if (slotType === 'date_time') return 'date';
 	if (slotType === 'price_number') return 'number';
 	return options && options.length > 0 ? 'choice' : 'text';

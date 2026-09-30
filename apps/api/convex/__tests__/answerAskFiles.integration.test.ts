@@ -15,7 +15,6 @@ import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
 import { runLlmStream } from '../lib/llm/dispatch';
-import type { FoundFile } from '../inbox/attachmentSuggest';
 import {
 	ORG,
 	seedCustomer,
@@ -25,6 +24,13 @@ import {
 	seedUpload,
 } from './helpers/answerAsk';
 
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
+import type * as LlmProviderModule from '../lib/llmProvider';
+import type * as DispatchModule from '../lib/llm/dispatch';
+import type * as AttachmentSuggestModule from '../inbox/attachmentSuggest';
+
+type FoundFile = AttachmentSuggestModule.FoundFile;
+
 const modules = import.meta.glob('../**/*.*s');
 
 const sess = vi.hoisted(() => ({
@@ -33,7 +39,7 @@ const sess = vi.hoisted(() => ({
 const llm = vi.hoisted(() => ({ files: [] as FoundFile[] }));
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../lib/sessionOrganization'
 	);
 	return {
@@ -46,11 +52,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 	};
 });
 vi.mock('../lib/llmProvider', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llmProvider')>('../lib/llmProvider');
+	const actual = await vi.importActual<typeof LlmProviderModule>('../lib/llmProvider');
 	return { ...actual, resolveLanguageModel: vi.fn(() => 'test-model') };
 });
 vi.mock('../lib/llm/dispatch', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llm/dispatch')>('../lib/llm/dispatch');
+	const actual = await vi.importActual<typeof DispatchModule>('../lib/llm/dispatch');
 	const result = { tokenUsage: undefined, modelUsed: 'test-model' };
 	return {
 		...actual,
@@ -64,7 +70,7 @@ vi.mock('../lib/llm/dispatch', async () => {
 	};
 });
 vi.mock('../inbox/attachmentSuggest', async () => {
-	const actual = await vi.importActual<typeof import('../inbox/attachmentSuggest')>(
+	const actual = await vi.importActual<typeof AttachmentSuggestModule>(
 		'../inbox/attachmentSuggest'
 	);
 	return { ...actual, searchFilesForRequest: vi.fn(async () => llm.files) };

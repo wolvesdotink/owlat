@@ -21,6 +21,7 @@ import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import type { attachmentSuggestionsValidator } from '../lib/validators/attachment';
+import type { AskFileSource } from '@owlat/shared/answerMode';
 import {
 	detectAttachmentRequest,
 	pickAttachmentSuggestion,
@@ -100,7 +101,8 @@ export async function computeAttachmentSuggestions(
  * request). `score` is the file search's own score; mail attachments have none.
  */
 export interface FoundFile {
-	source: 'semanticFile' | 'mailAttachment';
+	/** A found file already exists; only an answer can be a fresh upload. */
+	source: Exclude<AskFileSource, 'upload'>;
 	id: string;
 	filename: string;
 	title?: string | undefined;

@@ -22,8 +22,15 @@ import {
 import { normalizeQuestionKey } from '../inbox/clarificationMemoryMatch';
 import { runLlmStream } from '../lib/llm/dispatch';
 import { FILE_NOT_READY_OPTION } from '../mail/ai/composeDraftPolicy';
-import type { FoundFile } from '../inbox/attachmentSuggest';
 import { CUSTOMER, ORG, seedCustomer, seedFile, seedRequest } from './helpers/answerAsk';
+
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
+import type * as LlmProviderModule from '../lib/llmProvider';
+import type * as DispatchModule from '../lib/llm/dispatch';
+import type * as AttachmentSuggestModule from '../inbox/attachmentSuggest';
+
+type FoundFile = AttachmentSuggestModule.FoundFile;
+import type * as ContextRetrievalModule from '../agent/steps/context_retrieval';
 
 const modules = import.meta.glob('../**/*.*s');
 
@@ -43,7 +50,7 @@ const llm = vi.hoisted(() => ({
 }));
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../lib/sessionOrganization'
 	);
 	return {
@@ -56,11 +63,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 	};
 });
 vi.mock('../lib/llmProvider', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llmProvider')>('../lib/llmProvider');
+	const actual = await vi.importActual<typeof LlmProviderModule>('../lib/llmProvider');
 	return { ...actual, resolveLanguageModel: vi.fn(() => 'test-model') };
 });
 vi.mock('../lib/llm/dispatch', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llm/dispatch')>('../lib/llm/dispatch');
+	const actual = await vi.importActual<typeof DispatchModule>('../lib/llm/dispatch');
 	const result = { tokenUsage: undefined, modelUsed: 'test-model' };
 	return {
 		...actual,
@@ -77,13 +84,13 @@ vi.mock('../lib/llm/dispatch', async () => {
 	};
 });
 vi.mock('../inbox/attachmentSuggest', async () => {
-	const actual = await vi.importActual<typeof import('../inbox/attachmentSuggest')>(
+	const actual = await vi.importActual<typeof AttachmentSuggestModule>(
 		'../inbox/attachmentSuggest'
 	);
 	return { ...actual, searchFilesForRequest: vi.fn(async () => llm.files) };
 });
 vi.mock('../agent/steps/context_retrieval', async () => {
-	const actual = await vi.importActual<typeof import('../agent/steps/context_retrieval')>(
+	const actual = await vi.importActual<typeof ContextRetrievalModule>(
 		'../agent/steps/context_retrieval'
 	);
 	return {
