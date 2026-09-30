@@ -293,13 +293,32 @@ async function ingest(
 }
 
 /**
- * The stored blobs the same size as the given one. Counting every `_storage`
- * row made the staged-blob race test flaky: a delivery also schedules the agent
- * pipeline, which convex-test runs on real timers, and a blob that background
- * work stored between the two snapshots moved the count for reasons unrelated
- * to the staged blob under test. convex-test keeps only `size` and `sha256` per
- * blob, and a re-staged copy of the same raw message has the same size, so the
- * size picks out exactly the copies the test is about.
+ * Let the background work a delivery scheduled (the agent pipeline) run to
+ * completion. convex-test decides whether an action's storage call opens its own
+ * transaction by asking whether ANY transaction is open, so a `storage.delete`
+ * issued while a scheduled mutation happens to be running executes inside that
+ * mutation's transaction and can vanish with it. On a slow runner that made the
+ * staged-blob race test fail with the dropped blob still present, with no error
+ * logged. Draining first keeps the second delivery alone on the transaction.
+ */
+async function drainScheduled(t: ReturnType<typeof setupTest>): Promise<void> {
+	for (let round = 0; round < 50; round++) {
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		await t.finishInProgressScheduledFunctions();
+		const functions = await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect());
+		const busy = functions.some(
+			(fn) => fn.state.kind === 'pending' || fn.state.kind === 'inProgress'
+		);
+		if (!busy) return;
+	}
+	throw new Error('scheduled functions did not settle');
+}
+
+/**
+ * The stored blobs the same size as the given one: a re-staged copy of the same
+ * raw message has the same size, and convex-test keeps only `size` and `sha256`
+ * per blob, so this picks out exactly the copies the race test is about and
+ * ignores anything unrelated a delivery stores.
  */
 async function blobsSizedLike(t: ReturnType<typeof setupTest>, storageId: Id<'_storage'>) {
 	return await t.run(async (ctx) => {
@@ -618,6 +637,7 @@ describe('inboundIngest — idempotency', () => {
 		const raw = encode(buildEmlWithAttachment('race-1@example.com'));
 
 		await ingest(t, 'race-1@example.com', raw, NOTES_META);
+		await drainScheduled(t);
 		const [firstRow] = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
 		if (!firstRow?.rawStorageId) throw new Error('first delivery stored no raw blob');
 		const rawStorageId = firstRow.rawStorageId;
