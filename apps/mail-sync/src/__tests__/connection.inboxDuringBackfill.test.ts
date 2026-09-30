@@ -136,6 +136,7 @@ type Internals = {
 	pollFolder(remoteName: string, role: string): Promise<void>;
 	maybeRunBackfill(): Promise<void>;
 	resumeInboxIdle(): Promise<void>;
+	catchUpInbox(): Promise<void>;
 };
 
 function connection(imap: ReturnType<typeof fakeImap>) {
@@ -258,5 +259,33 @@ describe('returning to the INBOX', () => {
 		await conn.resumeInboxIdle();
 
 		expect(polls).toEqual([]);
+	});
+});
+
+// IDLE only runs while the connection has nothing else to do. A long-lived
+// worker on a busy team inbox ingested new mail only on the five-minute folder
+// tick for days; the catch-up timer bounds that whatever IDLE does.
+describe('INBOX catch-up timer', () => {
+	it('brings in mail that raised no IDLE event', async () => {
+		const imap = fakeImap(() => {});
+		const { conn, polls } = connection(imap);
+		await imap.mailboxOpen(ALL_MAIL);
+		imap.deliver(43);
+
+		await conn.catchUpInbox();
+
+		expect(polls).toEqual(['INBOX']);
+		expect(ingested()).toEqual(['INBOX:43:sync']);
+	});
+
+	it('never stacks a second poll on one still running', async () => {
+		const imap = fakeImap(() => {});
+		const { conn, polls } = connection(imap);
+		imap.deliver(43);
+
+		await Promise.all([conn.catchUpInbox(), conn.catchUpInbox()]);
+
+		expect(polls).toEqual(['INBOX']);
+		expect(ingested()).toEqual(['INBOX:43:sync']);
 	});
 });

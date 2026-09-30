@@ -27,6 +27,7 @@ describe('loadConfig', () => {
 		expect(cfg.listenAddress).toBe('0.0.0.0');
 		expect(cfg.reconcileIntervalMs).toBe(30_000);
 		expect(cfg.folderPollIntervalMs).toBe(5 * 60 * 1000);
+		expect(cfg.inboxPollIntervalMs).toBe(60_000);
 	});
 
 	it('honours overrides', () => {
@@ -35,11 +36,13 @@ describe('loadConfig', () => {
 		vi.stubEnv('MAIL_SYNC_LISTEN', '127.0.0.1');
 		vi.stubEnv('MAIL_SYNC_RECONCILE_MS', '15000');
 		vi.stubEnv('MAIL_SYNC_FOLDER_POLL_MS', '90000');
+		vi.stubEnv('MAIL_SYNC_INBOX_POLL_MS', '30000');
 		const cfg = loadConfig();
 		expect(cfg.port).toBe(4000);
 		expect(cfg.listenAddress).toBe('127.0.0.1');
 		expect(cfg.reconcileIntervalMs).toBe(15_000);
 		expect(cfg.folderPollIntervalMs).toBe(90_000);
+		expect(cfg.inboxPollIntervalMs).toBe(30_000);
 	});
 
 	it('treats a blank numeric value as unset', () => {

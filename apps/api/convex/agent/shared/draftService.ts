@@ -29,6 +29,7 @@ import { buildReplyLanguageInstruction } from './replyLanguage';
 export { buildReplyLanguageInstruction } from './replyLanguage';
 import { generateReplyOptions, MAX_REPLY_OPTIONS } from '../../mail/replyOptions';
 import { recordLlmSpend } from '../../analytics/llmUsage';
+import { logError } from '../../lib/runtimeLog';
 import { detectInjection, INJECTION_CONFIDENCE_THRESHOLD } from '../steps/security_scan/patterns';
 import type { ActionCtx } from '../../_generated/server';
 import { runSelectedDraftStrategy } from './draftStrategyRunner';
@@ -129,7 +130,15 @@ export async function runDraftSelfCheck(
 			grounded: object.grounded,
 			flags: object.flags,
 		};
-	} catch {
+	} catch (err) {
+		// Still fail-soft, but not silent: a self-check that failed on every draft
+		// (an OpenRouter client that dropped the schema, so the model guessed the
+		// keys) showed up only as every draft reading 0.4 confidence. First line
+		// only: a parse error goes on to quote the model output, which quotes mail.
+		logError(
+			'[draftSelfCheck] failed:',
+			err instanceof Error ? err.message.split('\n', 1)[0] : 'non-Error thrown'
+		);
 		return null;
 	}
 }
