@@ -1,45 +1,30 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { convexTest, type TestConvex } from 'convex-test';
-import schema from '../schema';
-import { internal } from '../_generated/api';
+import { describe, expect, it } from 'vitest';
+import type { TestConvex } from 'convex-test';
+import type schema from '../schema';
 import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { createTestContact } from './factories';
-import { modules, newHarness } from './testModules';
+import { newHarness } from './testModules';
 import { ErasureBudget, estimateDocumentBytes } from '../contacts/erasure/budget';
 import { drainEach } from '../contacts/erasure/phaseKit';
 import { advanceErasure, type ErasurePosition } from '../contacts/erasure/phases';
 import {
 	ERASURE_BYTES_PER_TRANSACTION,
 	ERASURE_ROWS_PER_TRANSACTION,
-	isTransactionLimitError,
-	startContactErasure,
 } from '../contacts/erasure/walker';
 
 /**
  * The contact-erasure byte budget: every transaction's reads are bounded
- * BEFORE they happen, measured in encoded bytes, and a range too large for a
- * deployment's limits cannot pin the walk to one checkpoint.
+ * BEFORE they happen, measured in encoded bytes, and every read is charged.
+ * The walker under enforced platform limits is in
+ * `contactErasureLimits.integration.test.ts`.
  */
 
 type Harness = TestConvex<typeof schema>;
 
 const KiB = 1024;
 const MiB = 1024 * KiB;
-const DAY = 24 * 60 * 60 * 1000;
 const utf8 = (text: string) => new TextEncoder().encode(text).length;
-
-beforeEach(() => {
-	vi.useFakeTimers();
-});
-afterEach(() => {
-	vi.useRealTimers();
-});
-
-/** A harness that enforces Convex's per-transaction limits (or tighter ones). */
-function limitedHarness(limits: true | { bytesRead: number }): Harness {
-	return convexTest({ schema, modules, transactionLimits: limits });
-}
 
 /** `ctx` whose database hands every document it returns to `onRead`. */
 function recordingCtx(ctx: MutationCtx, onRead: (doc: Record<string, unknown>) => void) {
@@ -165,7 +150,7 @@ describe('every read is charged', () => {
 		);
 	}
 
-	it('charges the send probe and fetches no send twice in one transaction', async () => {
+	it('charges every send read and pages a long history 128 at a time', async () => {
 		const t = newHarness();
 		const contactId = await seedContact(t);
 		await t.run(async (ctx) => {
@@ -175,7 +160,7 @@ describe('every read is charged', () => {
 				createdAt: Date.now(),
 				updatedAt: Date.now(),
 			});
-			for (let i = 0; i < 40; i++) {
+			for (let i = 0; i < 200; i++) {
 				await ctx.db.insert('emailSends', {
 					campaignId,
 					contactId,
@@ -188,8 +173,9 @@ describe('every read is charged', () => {
 		});
 
 		let position: ErasurePosition = { phase: 'emailSends' };
-		for (let transaction = 0; transaction < 40; transaction++) {
-			if (position.phase !== 'emailSends') break;
+		let transactions = 0;
+		while (position.phase === 'emailSends' && transactions < 100) {
+			transactions += 1;
 			position = await t.run(async (ctx) => {
 				const fetched: Record<string, unknown>[] = [];
 				const budget = new ErasureBudget(
@@ -203,21 +189,23 @@ describe('every read is charged', () => {
 					budget,
 					'walker'
 				);
+				// Only the probe's few rows are read a second time, by the page.
 				const sendIds = fetched.filter((doc) => 'contactEmail' in doc).map((doc) => doc['_id']);
-				expect(new Set(sendIds).size).toBe(sendIds.length);
+				expect(sendIds.length - new Set(sendIds).size).toBeLessThanOrEqual(4);
 				const fetchedBytes = fetched.reduce((sum, doc) => sum + estimateDocumentBytes(doc), 0);
 				expect(budget.bytes).toBeGreaterThanOrEqual(fetchedBytes);
 				return progress;
 			});
 		}
 
-		expect(position.phase).not.toBe('emailSends');
+		// A probe plus a page of 128, then the other 72.
+		expect(transactions).toBe(2);
 		await t.run(async (ctx) => {
 			const sends = await ctx.db
 				.query('emailSends')
 				.withIndex('by_contact', (q) => q.eq('contactId', contactId))
 				.collect();
-			expect(sends).toHaveLength(40);
+			expect(sends).toHaveLength(200);
 			for (const send of sends) expect(send.contactEmail).toBe('[erased]');
 		});
 	});
@@ -281,126 +269,5 @@ describe('every read is charged', () => {
 			expect(budget.bytes).toBeGreaterThanOrEqual(stepRunBytes);
 			expect(stepRunBytes).toBeLessThanOrEqual(ERASURE_BYTES_PER_TRANSACTION);
 		});
-	});
-});
-
-describe('walker under enforced platform limits', () => {
-	async function runScheduled(t: Harness): Promise<void> {
-		await t.finishAllScheduledFunctions(vi.runAllTimers);
-	}
-
-	/** A soft-deleted contact with a thread of `count` messages of `bytes` each. */
-	async function seedMessageHistory(t: Harness, count: number, bytes: number) {
-		const contactId = await t.run((ctx) =>
-			ctx.db.insert(
-				'contacts',
-				createTestContact({ email: 'heavy@example.com', deletedAt: Date.now() - 40 * DAY })
-			)
-		);
-		const threadId = await t.run((ctx) =>
-			ctx.db.insert('conversationThreads', {
-				subject: 'S',
-				normalizedSubject: 's',
-				contactId,
-				contactIdentifier: 'heavy@example.com',
-				status: 'open' as const,
-				messageCount: count,
-				lastMessageAt: Date.now(),
-				firstMessageAt: Date.now(),
-				createdAt: Date.now(),
-			})
-		);
-		// A few per transaction: seeding is subject to the write limit too.
-		for (let seeded = 0; seeded < count; seeded += 4) {
-			await t.run(async (ctx) => {
-				for (let i = seeded; i < Math.min(count, seeded + 4); i++) {
-					await ctx.db.insert('unifiedMessages', {
-						threadId,
-						contactId,
-						channel: 'email' as const,
-						direction: 'inbound' as const,
-						content: 'x'.repeat(bytes),
-						status: 'received' as const,
-						createdAt: Date.now(),
-					});
-				}
-			});
-		}
-		const jobId = await t.run(async (ctx) => {
-			await startContactErasure(ctx, contactId, 'retention');
-			const job = await ctx.db
-				.query('contactErasureJobs')
-				.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-				.first();
-			return job!._id;
-		});
-		return { contactId, jobId };
-	}
-
-	it('erases a history of near-limit messages across transactions within the ceiling', async () => {
-		const t = limitedHarness(true);
-		const { contactId, jobId } = await seedMessageHistory(t, 24, 900 * KiB);
-
-		let ticks = 0;
-		let outcome = 'more';
-		while (outcome === 'more' && ticks < 100) {
-			// Throws if the transaction crosses a platform limit.
-			outcome = await t.mutation(internal.contacts.erasure.walker.tick, { jobId });
-			ticks += 1;
-		}
-		expect(outcome).toBe('done');
-		expect(ticks).toBeGreaterThan(1);
-		await t.run(async (ctx) => {
-			expect(await ctx.db.get(contactId)).toBeNull();
-			expect(await ctx.db.query('unifiedMessages').collect()).toHaveLength(0);
-		});
-	});
-
-	it('crosses a range too large for the deployment a row at a time instead of pinning', async () => {
-		// Below the budget's own allowance: the full-size transaction fails here.
-		const t = limitedHarness({ bytesRead: 2 * MiB });
-		const { contactId, jobId } = await seedMessageHistory(t, 10, 700 * KiB);
-
-		await runScheduled(t);
-
-		await t.run(async (ctx) => {
-			expect(await ctx.db.get(contactId)).toBeNull();
-			expect(await ctx.db.get(jobId)).toBeNull();
-			expect(await ctx.db.query('unifiedMessages').collect()).toHaveLength(0);
-		});
-	});
-
-	it('blocks a job whose single row does not fit, and nothing re-arms it', async () => {
-		const t = limitedHarness({ bytesRead: 512 * KiB });
-		const { contactId, jobId } = await seedMessageHistory(t, 1, 700 * KiB);
-
-		await runScheduled(t);
-		const blocked = (await t.run((ctx) => ctx.db.get(jobId)))!;
-		expect(blocked.status).toBe('blocked');
-		expect(blocked.rowCap).toBe(1);
-		expect(isTransactionLimitError(blocked.lastError ?? '')).toBe(true);
-
-		vi.advanceTimersByTime(DAY);
-		const sweep = await t.mutation(internal.contacts.contacts.cleanupSoftDeletedContacts, {});
-		expect(sweep).toEqual({ started: 0, restarted: 0 });
-		await runScheduled(t);
-		expect((await t.run((ctx) => ctx.db.get(jobId)))?.status).toBe('blocked');
-		expect(await t.run((ctx) => ctx.db.get(contactId))).not.toBeNull();
-	});
-
-	it('tells platform limits apart from other failures', () => {
-		expect(
-			isTransactionLimitError(
-				'Too many bytes read in a single function execution (limit: 16777216 bytes).'
-			)
-		).toBe(true);
-		expect(
-			isTransactionLimitError(
-				'Read too much data in a single function execution (limit: 8388608 bytes). ' +
-					'This is a Convex limit: https://docs.convex.dev/production/state/limits'
-			)
-		).toBe(true);
-		expect(isTransactionLimitError('Your function ran for too long')).toBe(true);
-		expect(isTransactionLimitError('Invalid cursor: not-a-cursor')).toBe(false);
 	});
 });
