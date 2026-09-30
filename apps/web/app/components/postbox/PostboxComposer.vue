@@ -351,37 +351,41 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			@apply-reply-all="onApplyReplyAll"
 		/>
 
-		<!-- Sealed Mail (E5): honest seal-lock indicator, shown from the moment the
-		     state is being computed. Its unsealed control only REQUESTS the
-		     decision — the dialog below is the single source of plaintext consent. -->
-		<PostboxComposerSealLock
-			:enabled="seal.enabled"
-			:seal-state="seal.state"
-			:pending="seal.pending"
-			:blocking-recipients="seal.blockingRecipients"
-			:all-verified="seal.allVerified"
-			@request-unsealed="seal.requestUnsealed()"
-			@remove-recipient="removeSealBlocker"
-		/>
+		<!-- The status strips give way (and scroll) before the body does; the
+		     notice about a refused save or send leads, so it stays in view. -->
+		<div class="min-h-0 overflow-y-auto" data-testid="composer-status-strips">
+			<PostboxComposerDraftNotice :notice="draftNotice" @retry="retryLoad" />
+			<!-- Sealed Mail (E5): honest seal-lock indicator, shown from the moment the
+			     state is being computed. Its unsealed control only REQUESTS the
+			     decision — the dialog below is the single source of plaintext consent. -->
+			<PostboxComposerSealLock
+				:enabled="seal.enabled"
+				:seal-state="seal.state"
+				:pending="seal.pending"
+				:blocking-recipients="seal.blockingRecipients"
+				:all-verified="seal.allVerified"
+				@request-unsealed="seal.requestUnsealed()"
+				@remove-recipient="removeSealBlocker"
+			/>
 
-		<!-- Plan idea 7: keystrokes the server row never received, after a crash.
-		     Above the editor, because it offers to replace what is in it. -->
-		<PostboxDraftRestoreBar
-			:entry="draftMirror.restorable"
-			@restore="draftMirror.restore"
-			@dismiss="draftMirror.dismiss"
-		/>
-		<PostboxComposerDraftNotice :notice="draftNotice" @retry="retryLoad" />
+			<!-- Plan idea 7: keystrokes the server row never received, after a crash.
+			     Above the editor, because it offers to replace what is in it. -->
+			<PostboxDraftRestoreBar
+				:entry="draftMirror.restorable"
+				@restore="draftMirror.restore"
+				@dismiss="draftMirror.dismiss"
+			/>
 
-		<!-- A scheduled draft is read-only until it is taken back; the banner owns
-		     both the "goes out at" line and the unschedule control. -->
-		<PostboxComposerScheduledBanner
-			:is-scheduled="isScheduled"
-			:scheduled-send-at="scheduledSendAt"
-			:cancel-schedule="cancelSchedule"
-		/>
+			<!-- A scheduled draft is read-only until it is taken back; the banner owns
+			     both the "goes out at" line and the unschedule control. -->
+			<PostboxComposerScheduledBanner
+				:is-scheduled="isScheduled"
+				:scheduled-send-at="scheduledSendAt"
+				:cancel-schedule="cancelSchedule"
+			/>
+		</div>
 
-		<div class="flex-1 overflow-hidden">
+		<div class="min-h-24 flex-1 overflow-hidden" data-testid="composer-body">
 			<!-- Withheld until a reopened draft's body loads (see usePostboxCompose). -->
 			<div
 				v-if="bodyPending"
