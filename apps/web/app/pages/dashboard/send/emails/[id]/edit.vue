@@ -68,6 +68,7 @@ const {
 	isSaving,
 	hasChanges,
 	showUnsavedChangesDialog,
+	isSavingBeforeLeave,
 	confirmDiscard,
 	confirmSave,
 	cancelNavigation,
@@ -290,6 +291,7 @@ async function handlePublicationToggle() {
 		<!-- Unsaved Changes Dialog -->
 		<UnsavedChangesDialog
 			:show="showUnsavedChangesDialog"
+			:saving="isSavingBeforeLeave"
 			@close="cancelNavigation"
 			@discard="confirmDiscard"
 			@save="confirmSave"
