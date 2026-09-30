@@ -380,6 +380,22 @@ describe('Answer mode page', () => {
 		expect(useAnswerLeftDraft().left.value).toBeNull();
 	});
 
+	it("keeps another draft's offer when this reply is sent or discarded", async () => {
+		const other = {
+			draftId: 'draft_other' as never,
+			messageId: 'msg_9',
+			mailboxId: 'mbx_1',
+			kind: null,
+			recipient: 'Priya',
+		};
+		const w = await mountAt({ draft: 'draft_1' });
+		useAnswerLeftDraft().set(other);
+		w.getComponent(ComposerStub).vm.$emit('sent', { scheduled: false });
+		expect(useAnswerLeftDraft().left.value).toEqual(other);
+		w.getComponent(ComposerStub).vm.$emit('discarded');
+		expect(useAnswerLeftDraft().left.value).toEqual(other);
+	});
+
 	it('in the Answer queue, a send finishes the item and moves on instead of leaving', async () => {
 		const handleSent = vi.fn(() => true);
 		activeQueueSession = { handleSent };

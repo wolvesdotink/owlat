@@ -162,7 +162,7 @@ function draftFromPeek() {
 
 const leftDraft = useAnswerLeftDraft();
 // Resuming the draft the list offered back: the offer is taken.
-if (openedDraftId && leftDraft.left.value?.draftId === openedDraftId) leftDraft.clear();
+leftDraft.clearFor(openedDraftId);
 
 /**
  * Back to where the reply started. What was typed is saved first (the flush
@@ -201,13 +201,13 @@ const queueSession = useAnswerQueueSession();
 const queueAskVisible = ref(false);
 
 function onSent() {
-	leftDraft.clear();
+	leftDraft.clearFor(draftId.value);
 	if (queueSession?.handleSent()) return;
 	answerNav.leave();
 }
 
 function onDiscarded() {
-	leftDraft.clear();
+	leftDraft.clearFor(draftId.value);
 	answerNav.leave();
 }
 

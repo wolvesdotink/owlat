@@ -113,6 +113,14 @@ export function useAnswerLeftDraft() {
 		clear: () => {
 			left.value = null;
 		},
+		/**
+		 * Take the offer back only when it is for `draftId`: sending or
+		 * discarding one reply must not drop the offer of another draft left
+		 * earlier.
+		 */
+		clearFor: (draftId: string | null | undefined) => {
+			if (draftId && left.value?.draftId === draftId) left.value = null;
+		},
 	};
 }
 
