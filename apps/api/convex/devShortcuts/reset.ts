@@ -210,9 +210,16 @@ function ownedBlobs(table: (typeof TENANT_TABLES)[number], row: Doc<TableNames>)
 		case 'mediaAssets':
 			return [(row as Doc<'mediaAssets'>).storageId];
 		case 'inboundMessages': {
-			const raw = (row as Doc<'inboundMessages'>).rawStorageId;
-			return raw ? [raw] : [];
+			const message = row as Doc<'inboundMessages'>;
+			return [
+				...(message.rawStorageId ? [message.rawStorageId] : []),
+				...replyBlobs(message.replyAttachments),
+			];
 		}
+		case 'conversationThreads':
+			return replyBlobs((row as Doc<'conversationThreads'>).replyAttachments);
+		case 'inboxFollowUps':
+			return replyBlobs((row as Doc<'inboxFollowUps'>).attachments);
 		case 'semanticFiles': {
 			const stored = (row as Doc<'semanticFiles'>).storageId;
 			return stored ? [stored] : [];
@@ -234,6 +241,11 @@ function ownedBlobs(table: (typeof TENANT_TABLES)[number], row: Doc<TableNames>)
 		default:
 			return [];
 	}
+}
+
+/** The blobs a Team inbox reply's attachment list owns. */
+function replyBlobs(entries: Doc<'inboxFollowUps'>['attachments']): Id<'_storage'>[] {
+	return (entries ?? []).flatMap((entry) => (entry.storageId ? [entry.storageId] : []));
 }
 
 /**

@@ -8,6 +8,7 @@
 
 import type { Doc, Id } from '../../_generated/dataModel';
 import { deleteBlobQuietly } from '../../lib/storageBlobs';
+import { purgeReplyAttachments } from '../../inbox/replyAttachmentStore';
 import { detachContactJunctionLink, SEMANTIC_FILE_JUNCTION } from '../../lib/contactJunctions';
 import {
 	deleteAll,
@@ -26,12 +27,13 @@ type MessageRow = Doc<'unifiedMessages'> | Doc<'inboundMessages'> | Doc<'formSub
  * the WHOLE received message as a sealed `.eml` in `_storage`; deleting the row
  * alone would leave the person's words in storage with nothing pointing at
  * them (the retention sweep finds blobs by walking the rows). Older and swept
- * rows have no blob.
+ * rows have no blob. It may also hold the files its reply carried.
  */
 async function deleteMessageRow({ ctx }: PhaseContext, row: MessageRow): Promise<void> {
 	if ('rawStorageId' in row && row.rawStorageId) {
 		await deleteBlobQuietly(ctx.storage, row.rawStorageId, LOG_TAG, { rowId: row._id });
 	}
+	if ('replyAttachments' in row) await purgeReplyAttachments(ctx, row.replyAttachments, LOG_TAG);
 	await ctx.db.delete(row._id);
 }
 
@@ -110,10 +112,12 @@ export const eraseConversationThreads: PhaseRunner = (phase) => {
 					if (followUp.status === 'scheduled' && followUp.scheduledFnId) {
 						await ctx.scheduler.cancel(followUp.scheduledFnId);
 					}
+					await purgeReplyAttachments(ctx, followUp.attachments, LOG_TAG);
 					await ctx.db.delete(followUp._id);
 				}
 			);
 			if (!followUpsGone) return false;
+			await purgeReplyAttachments(ctx, thread.replyAttachments, LOG_TAG);
 			await ctx.db.delete(thread._id);
 			return true;
 		}

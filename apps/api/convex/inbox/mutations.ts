@@ -18,6 +18,7 @@ import { getOrThrow, throwNotFound, throwInvalidState } from '../_utils/errors';
 import { extractEmail } from '../lib/emailAddress';
 import { recordAutonomyFeedback, resolveReplyCollisionHold } from './decisionFeedback';
 import { appendDraftRevision } from './draftRevisions';
+import { assertReplyAttachmentsReady } from './replyAttachmentStore';
 
 /**
  * Approve an agent-generated draft for sending.
@@ -45,6 +46,10 @@ export const approveDraft = adminMutation({
 				heldByName: hold.heldByName,
 			};
 		}
+
+		// The composer's attachments ride the send (`replyAttachments.intakeAgentReply`
+		// takes them when it fires): never send while one is still being copied.
+		await assertReplyAttachmentsReady(ctx, message.threadId);
 
 		// Resolve the human-approve undo window from the singleton agentConfig
 		// (default 15s, clamped 0–120s; 0 = the legacy immediate send) and thread
