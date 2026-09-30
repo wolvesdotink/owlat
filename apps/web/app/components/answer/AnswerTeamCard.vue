@@ -220,7 +220,11 @@ const secondaryButton =
 		<TaskAsk
 			class="mt-3 mb-4"
 			:ask="message.subject || undefined"
-			:detail="message.textBody || t('components.agentTasks.reviewFocusFlow.noTextContent')"
+			:detail="
+				message.textBody ||
+				message.bodyExcerpt ||
+				t('components.agentTasks.reviewFocusFlow.noTextContent')
+			"
 			:why="
 				message.agentDecision?.reason
 					? t(

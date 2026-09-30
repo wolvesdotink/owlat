@@ -4,7 +4,8 @@ import { isSafeAgentLifecycleEdge, type AgentStepPlacement } from '@owlat/plugin
 import { isPlainObject } from '@owlat/shared';
 import type { Doc } from '../_generated/dataModel';
 import { encodePluginStorageValue } from '../plugins/storageJson';
-import { openInboundMessageBody } from '../lib/messageBody';
+import { openInboundMessageBody } from '../lib/messageBodyInbound';
+import type { BlobGet } from '../lib/sealedBlob';
 
 export const PLUGIN_AGENT_STEP_INPUT_LIMITS = Object.freeze({
 	fromCodePoints: 512,
@@ -22,9 +23,10 @@ interface HostedPluginStepResult {
 }
 
 export async function buildPluginAgentStepInput(
-	message: Doc<'inboundMessages'>
+	message: Doc<'inboundMessages'>,
+	storage: BlobGet
 ): Promise<PluginAgentStepInput> {
-	const body = await openInboundMessageBody(message);
+	const body = await openInboundMessageBody(message, storage);
 	return Object.freeze({
 		inboundMessageId: message._id,
 		from: truncateCodePoints(message.from, PLUGIN_AGENT_STEP_INPUT_LIMITS.fromCodePoints),

@@ -690,10 +690,9 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						     unless the viewer is permitted on both surfaces. -->
 							<InboxCrossSurfaceStrip :inbound-message-id="message._id" class="mb-3" />
 
-							<!-- Message Body -->
-							<div class="text-text-secondary text-sm whitespace-pre-wrap">
-								{{ message.textBody || t('dashboard.inbox.detail.noTextContent') }}
-							</div>
+							<!-- Message Body. A text part too large for its row is fetched
+						     from storage; the component shows its excerpt until then. -->
+							<InboxMessageBody :message="message" />
 
 							<!-- Attachments. getThread returns the row unprojected, so the
 						     list needs no extra query; the component owns the download. -->

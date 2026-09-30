@@ -33,6 +33,7 @@ import { normalizeEmail } from '@owlat/shared';
 import {
 	inboundMessageArgs,
 	inboundReceiveResultValidator,
+	receiveStoringLargeBodies,
 	type InboundReceiveResult,
 } from '../inbox/receiveInbound';
 import { openPrivateKey } from './sealing';
@@ -273,14 +274,14 @@ export const decryptAndReceive = internalAction({
 		// mutation takes, so a column added to `inboundMessageArgs` arrives here
 		// without an edit. Only the three values decryption may have replaced
 		// are named.
+		// The split into inline and stored parts is planned HERE, on the
+		// decrypted bodies the row will hold — never on the ciphertext.
 		const { armoredCiphertext: _ciphertext, recipientAddress: _recipient, ...persisted } = args;
-		return await ctx.runMutation(internal.inbox.messages.receiveMessage, {
-			...persisted,
-			subject,
-			textBody,
-			htmlBody,
-			...sealedFlags,
-		});
+		return await receiveStoringLargeBodies(
+			ctx,
+			{ ...persisted, subject, textBody, htmlBody, ...sealedFlags },
+			(receiveArgs) => ctx.runMutation(internal.inbox.messages.receiveMessage, receiveArgs)
+		);
 	},
 });
 
