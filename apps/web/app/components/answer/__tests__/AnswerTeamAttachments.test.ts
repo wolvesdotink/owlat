@@ -9,7 +9,7 @@
  *    conversation's first, and hides what is already attached.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { enableAutoUnmount, mount } from '@vue/test-utils';
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import AttachSuggestion from '~/components/inbox/AttachSuggestion.vue';
@@ -56,6 +56,7 @@ const ready = {
 
 function mountFiles(props: Record<string, unknown> = {}) {
 	return mount(AnswerTeamAttachments, {
+		attachTo: document.body,
 		props: {
 			threadId: 'ct_1',
 			contactId: 'c_1',
@@ -72,6 +73,34 @@ function mountFiles(props: Record<string, unknown> = {}) {
 		},
 	});
 }
+
+describe('AnswerTeamAttachments menu', () => {
+	it('focuses its first item on open, and closes on a click outside', async () => {
+		const wrapper = mountFiles();
+		await wrapper.get('[data-testid="answer-team-attach"]').trigger('click');
+		await flushPromises();
+		expect(document.activeElement).toBe(
+			wrapper.get('[data-testid="answer-team-upload-choose"]').element
+		);
+
+		document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		await flushPromises();
+		expect(wrapper.find('[role="menu"]').exists()).toBe(false);
+	});
+
+	it('closes on Esc, claims it (Answer mode stays) and hands focus back to Attach', async () => {
+		const wrapper = mountFiles();
+		await wrapper.get('[data-testid="answer-team-attach"]').trigger('click');
+		await flushPromises();
+		const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+		document.activeElement!.dispatchEvent(event);
+		await flushPromises();
+
+		expect(wrapper.find('[role="menu"]').exists()).toBe(false);
+		expect(event.defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(wrapper.get('[data-testid="answer-team-attach"]').element);
+	});
+});
 
 describe('AnswerTeamAttachments', () => {
 	it('mounts the agent suggestion; picking it attaches that Files row', async () => {

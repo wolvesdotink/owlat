@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ComponentPublicInstance } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { UploadChip } from '~/composables/postbox/postboxAttachmentUploads';
@@ -7,6 +8,8 @@ import type {
 	TeamReplyAttachmentView,
 } from '~/composables/useTeamReplyAttachments';
 import { formatCompactFileSize } from '~/utils/formatters';
+import { useClickOutside } from '~/composables/useClickOutside';
+import { useEscapeToClose } from '~/composables/useEscapeToClose';
 
 /**
  * The files on a Team inbox reply, under the editor in Answer mode: what is
@@ -42,6 +45,24 @@ const { t } = useI18n();
 
 // The contact's files, read only once the menu is opened.
 const menuOpen = ref(false);
+const triggerEl = ref<ComponentPublicInstance | null>(null);
+const menuEl = ref<HTMLElement | null>(null);
+// A click elsewhere or Esc (claimed, so Answer mode stays) closes the menu.
+useClickOutside([triggerEl, menuEl], () => {
+	menuOpen.value = false;
+});
+useEscapeToClose(menuOpen);
+// Opening moves focus to the first item; closing from inside hands it back to
+// the trigger, so a keyboard user is never left on an element that is gone.
+watch(menuOpen, (open) => {
+	if (open) {
+		void nextTick(() => menuEl.value?.querySelector<HTMLElement>('[role="menuitem"]')?.focus());
+		return;
+	}
+	if (menuEl.value?.contains(document.activeElement)) {
+		(triggerEl.value?.$el as HTMLElement | undefined)?.focus();
+	}
+});
 const { data: contactFiles } = useConvexQuery(api.semanticFiles.listByContact, () =>
 	menuOpen.value && props.contactId ? { contactId: props.contactId, limit: 20 } : 'skip'
 );
@@ -171,6 +192,7 @@ const menuItem =
 
 		<div class="relative">
 			<UiButton
+				ref="triggerEl"
 				variant="ghost"
 				size="sm"
 				:disabled="busy"
@@ -184,9 +206,9 @@ const menuItem =
 			</UiButton>
 			<div
 				v-if="menuOpen"
+				ref="menuEl"
 				role="menu"
 				class="absolute bottom-full left-0 z-20 mb-1 max-h-72 w-72 overflow-y-auto rounded border border-border-subtle bg-bg-elevated py-1 shadow-lg"
-				@keydown.esc.prevent.stop="menuOpen = false"
 			>
 				<button
 					type="button"
