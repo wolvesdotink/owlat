@@ -117,11 +117,16 @@ function skip() {
 	emit('skip', toAskAnswers(collectClarificationAnswers(props.questions, values, locale.value)));
 }
 
-// Keys 1 to 9: a chip of the first open question that has chips.
+// Keys 1 to 9: a chip of the first open question that has chips. Not while
+// the card is out of sight: on a phone the reply sheet stays mounted behind
+// the Conversation tab (AnswerModeFrame marks it `data-sheet-hidden`), and a
+// key must not pick a chip nobody can see.
+const rootEl = ref<HTMLElement | null>(null);
 function onKeydown(event: KeyboardEvent) {
 	if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
 	if (!/^[1-9]$/.test(event.key) || props.submitting) return;
 	if (isEditableTarget(event.target) || isDialogOpen()) return;
+	if (rootEl.value?.closest('[data-sheet-hidden]')) return;
 	const withChips = props.questions.filter(
 		(q) => kindOf(q) !== 'file' && (q.options?.length ?? 0) > 0
 	);
@@ -144,6 +149,7 @@ const titleId = useId();
 
 <template>
 	<section
+		ref="rootEl"
 		class="border-b border-border-subtle bg-bg-base/40 px-3 py-3"
 		:aria-labelledby="titleId"
 		:aria-busy="submitting"

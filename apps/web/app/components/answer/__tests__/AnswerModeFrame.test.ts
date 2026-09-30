@@ -147,8 +147,9 @@ describe('AnswerModeFrame on a phone', () => {
 		expect(sheet(w).attributes('data-sheet-state')).toBe('peek');
 		expect(conversation(w).classes()).not.toContain('hidden');
 		expect(w.get('[data-testid="answer-sheet-peek"]').text()).toBe('Reply to Brightpath Finance…');
-		// Folded, not unmounted: the draft survives.
+		// Folded, not unmounted: the draft survives. Its window-wide keys stand down.
 		expect(content(w).classes()).toContain('hidden');
+		expect(content(w).attributes('data-sheet-hidden')).toBe('');
 		expect(content(w).find('[data-testid="editor"]').exists()).toBe(true);
 	});
 

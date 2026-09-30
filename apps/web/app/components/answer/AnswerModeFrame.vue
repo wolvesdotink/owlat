@@ -145,7 +145,10 @@ const peekLabel = computed(() =>
 function startReply() {
 	sheet.set('half');
 	const content = contentEl.value;
-	if (content) content.style.display = 'flex';
+	if (content) {
+		content.style.display = 'flex';
+		content.removeAttribute('data-sheet-hidden');
+	}
 	emit('start-reply');
 	void nextTick(() => {
 		if (content) content.style.display = '';
@@ -295,10 +298,13 @@ function startReply() {
 						<slot name="peek-actions" />
 					</div>
 				</div>
+				<!-- `data-sheet-hidden`: what is in the composer stands down its
+				     window-wide keys while it is out of sight (AskCard's 1 to 9). -->
 				<div
 					ref="contentEl"
 					class="min-h-0 flex-1 flex-col"
 					:class="composerHidden ? 'hidden' : 'flex'"
+					:data-sheet-hidden="composerHidden ? '' : undefined"
 					data-testid="answer-composer-content"
 				>
 					<slot name="composer" />
