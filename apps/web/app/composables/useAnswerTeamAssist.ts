@@ -16,7 +16,6 @@
  */
 import type { Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
-import { CATCH_UP_MIN_MESSAGES } from '@owlat/shared/answerMode';
 import type { AnswerComposerApi } from '~/composables/postbox/usePostboxComposerAnswerApi';
 import { useAnswerAskSession, type AskSession } from '~/composables/useAnswerAskSession';
 import { useAnswerCatchUp } from '~/composables/useAnswerCatchUp';
@@ -30,7 +29,6 @@ export function useAnswerTeamAssist(opts: {
 	/** Attach a file the ask session found or was given. */
 	attachFile: (file: AskSession['attachedFiles'][number]) => void;
 }) {
-	const { t } = useI18n();
 	const { isEnabled } = useFeatureFlag();
 	const aiEnabled = computed(() => isEnabled('ai'));
 	const draftWithAi = computed(
@@ -43,30 +41,9 @@ export function useAnswerTeamAssist(opts: {
 			return threadId ? { kind: 'team', threadId } : null;
 		},
 		draftText: () => opts.composer()?.draftText.value ?? '',
+		view: opts.view,
+		messageCount: opts.messageCount,
 	});
-
-	const statusNote = computed(() => {
-		const total = catchUp.catchUp.value?.asks.length ?? 0;
-		if (total === 0) return undefined;
-		return t(
-			'components.answer.catchUp.covered',
-			{ covered: catchUp.covered.value.length, total },
-			total
-		);
-	});
-
-	// Summary when there is a card; a short thread without one opens in full.
-	// Decided once, so it never flips under someone who already toggled.
-	let viewDecided = false;
-	watch(
-		() => [catchUp.loading.value, catchUp.catchUp.value, opts.messageCount()] as const,
-		([loading, card, count]) => {
-			if (viewDecided || loading || count === undefined) return;
-			viewDecided = true;
-			if (!card && count < CATCH_UP_MIN_MESSAGES) opts.view.value = 'full';
-		},
-		{ immediate: true }
-	);
 
 	const ask = useAnswerAskSession({
 		target: () => {
@@ -80,5 +57,5 @@ export function useAnswerTeamAssist(opts: {
 		},
 	});
 
-	return { aiEnabled, draftWithAi, catchUp, statusNote, ask };
+	return { aiEnabled, draftWithAi, catchUp, statusNote: catchUp.statusNote, ask };
 }

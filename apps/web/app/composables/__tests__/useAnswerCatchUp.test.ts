@@ -5,10 +5,13 @@
  *   - the reactive cache wins over what `ensure` returned; a failure hides it;
  *   - coverage waits for typing to pause (1.5s), sends the draft's text, and a
  *     newer check always wins over an older one still in flight;
- *   - an empty draft covers nothing without asking the server.
+ *   - an empty draft covers nothing without asking the server, and the same
+ *     text is not checked twice (an AI draft settles and changes the text);
+ *   - the footer note waits for something written;
+ *   - a short thread without a card opens in full, decided once.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { defineComponent, h, ref, type Ref } from 'vue';
+import { defineComponent, h, nextTick, ref, type Ref } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
@@ -17,6 +20,7 @@ import {
 	useAnswerCatchUp,
 	type AnswerCatchUpTarget,
 } from '../useAnswerCatchUp';
+import type { AnswerConversationView } from '~/components/answer/AnswerConversation.vue';
 
 vi.mock('@owlat/api', () => ({
 	api: {
@@ -68,11 +72,21 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-function host(target: Ref<AnswerCatchUpTarget | null>, draftText: Ref<string>) {
+function host(
+	target: Ref<AnswerCatchUpTarget | null>,
+	draftText: Ref<string>,
+	conversation?: { view: Ref<AnswerConversationView>; count: Ref<number | undefined> }
+) {
 	let api!: ReturnType<typeof useAnswerCatchUp>;
 	const Host = defineComponent({
 		setup() {
-			api = useAnswerCatchUp({ target: () => target.value, draftText: () => draftText.value });
+			api = useAnswerCatchUp({
+				target: () => target.value,
+				draftText: () => draftText.value,
+				...(conversation
+					? { view: conversation.view, messageCount: () => conversation.count.value }
+					: {}),
+			});
 			return () => h('div');
 		},
 	});
@@ -183,5 +197,95 @@ describe('useAnswerCatchUp: coverage', () => {
 		await api().checkCoverage();
 		expect(api().covered.value).toEqual([]);
 		expect(action).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe('useAnswerCatchUp: one check per AI draft', () => {
+	it('does not check the same text again after the pause once the settle checked it', async () => {
+		vi.useFakeTimers();
+		action.mockResolvedValueOnce(CARD);
+		const text = ref('');
+		const { api } = host(ref(mail()), text);
+		await flushPromises();
+
+		// The AI draft lands: the text changes (arming the paused check) and the
+		// settle checks at once.
+		action.mockResolvedValue({ coveredAskIds: ['ask_1'] });
+		text.value = 'Attached the September invoice.';
+		await nextTick();
+		await api().checkCoverage();
+		vi.advanceTimersByTime(COVERAGE_DEBOUNCE_MS * 2);
+		await flushPromises();
+
+		expect(action.mock.calls.filter((c) => c[0] === 'mail.coverage')).toHaveLength(1);
+
+		// An edit is new text: checked again.
+		text.value = 'Attached the September invoice, PO on it.';
+		await nextTick();
+		vi.advanceTimersByTime(COVERAGE_DEBOUNCE_MS);
+		await flushPromises();
+		expect(action.mock.calls.filter((c) => c[0] === 'mail.coverage')).toHaveLength(2);
+	});
+});
+
+describe('useAnswerCatchUp: the footer note', () => {
+	it('says nothing on an untouched reply, then counts the asks covered', async () => {
+		action.mockResolvedValueOnce(CARD);
+		const text = ref('');
+		const { api } = host(ref(mail()), text);
+		await flushPromises();
+		// "0 of 2 asks covered" on a reply nobody wrote in reads like a warning.
+		expect(api().statusNote.value).toBeUndefined();
+
+		text.value = 'Hi Jonas';
+		expect(api().statusNote.value).toBe('0 of 2 asks covered');
+		action.mockResolvedValueOnce({ coveredAskIds: ['ask_2'] });
+		await api().checkCoverage();
+		expect(api().statusNote.value).toBe('1 of 2 asks covered');
+	});
+
+	it('says nothing without asks', async () => {
+		action.mockResolvedValueOnce({ ...CARD, asks: [] });
+		const { api } = host(ref(mail()), ref('Hi Jonas'));
+		await flushPromises();
+		expect(api().statusNote.value).toBeUndefined();
+	});
+});
+
+describe('useAnswerCatchUp: the opening view', () => {
+	it('opens a short thread without a card in full, once', async () => {
+		action.mockResolvedValue(null);
+		const view = ref<AnswerConversationView>('summary');
+		const count = ref<number | undefined>(undefined);
+		host(ref(mail()), ref(''), { view, count });
+		await flushPromises();
+		expect(view.value).toBe('summary');
+		count.value = 2;
+		await nextTick();
+		expect(view.value).toBe('full');
+		view.value = 'summary';
+		count.value = 1;
+		await nextTick();
+		expect(view.value).toBe('summary');
+	});
+
+	it('stays on Summary with a card, and for a long thread without one', async () => {
+		action.mockResolvedValueOnce(CARD);
+		const withCard = {
+			view: ref<AnswerConversationView>('summary'),
+			count: ref<number | undefined>(2),
+		};
+		host(ref(mail()), ref(''), withCard);
+		await flushPromises();
+		expect(withCard.view.value).toBe('summary');
+
+		action.mockResolvedValueOnce(null);
+		const long = {
+			view: ref<AnswerConversationView>('summary'),
+			count: ref<number | undefined>(5),
+		};
+		host(ref(mail('m2')), ref(''), long);
+		await flushPromises();
+		expect(long.view.value).toBe('summary');
 	});
 });

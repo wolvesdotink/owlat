@@ -17,7 +17,6 @@
 import type { Ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { CATCH_UP_MIN_MESSAGES } from '@owlat/shared/answerMode';
 import type { AnswerComposerApi } from '~/composables/postbox/usePostboxComposerAnswerApi';
 import { useAnswerAskSession } from '~/composables/useAnswerAskSession';
 import { useAnswerCatchUp } from '~/composables/useAnswerCatchUp';
@@ -45,39 +44,18 @@ export function useAnswerModeAssist(opts: {
 
 	const draftText = computed(() => opts.composer()?.draftText.value ?? '');
 
-	// ── Catch-up ─────────────────────────────────────────────────────────────
+	// Catch-up, its footer note and the opening view.
 	const catchUp = useAnswerCatchUp({
 		target: () => {
 			const message = opts.message();
 			return message ? { kind: 'mail', messageId: message._id as Id<'mailMessages'> } : null;
 		},
 		draftText: () => draftText.value,
+		view: opts.view,
+		messageCount: opts.messageCount,
 	});
 
-	const statusNote = computed(() => {
-		const total = catchUp.catchUp.value?.asks.length ?? 0;
-		if (total === 0) return undefined;
-		return t(
-			'components.answer.catchUp.covered',
-			{ covered: catchUp.covered.value.length, total },
-			total
-		);
-	});
-
-	// Summary when there is a card; a short thread without one opens in full.
-	// Decided once, so it never flips under someone who already toggled.
-	let viewDecided = false;
-	watch(
-		() => [catchUp.loading.value, catchUp.catchUp.value, opts.messageCount()] as const,
-		([loading, card, count]) => {
-			if (viewDecided || loading || count === undefined) return;
-			viewDecided = true;
-			if (!card && count < CATCH_UP_MIN_MESSAGES) opts.view.value = 'full';
-		},
-		{ immediate: true }
-	);
-
-	// ── Draft with AI ────────────────────────────────────────────────────────
+	// Draft with AI
 	const ask = useAnswerAskSession({
 		target: () => {
 			const draftId = opts.draftId();
@@ -87,7 +65,7 @@ export function useAnswerModeAssist(opts: {
 		onSettled: () => void catchUp.checkCoverage(),
 	});
 
-	// ── A draft the AI prepared earlier ──────────────────────────────────────
+	// A draft the AI prepared earlier.
 	const prepared = useAnswerPreparedDraft({
 		threadId: () => opts.message()?.threadId,
 		mailboxId: () => opts.message()?.mailboxId,
@@ -106,7 +84,7 @@ export function useAnswerModeAssist(opts: {
 		{ immediate: true }
 	);
 
-	// ── Files from the thread ────────────────────────────────────────────────
+	// Files from the thread.
 	const threadFiles = useAnswerThreadFiles({
 		mailboxId: () => opts.message()?.mailboxId as Id<'mailboxes'> | undefined,
 	});
@@ -165,7 +143,7 @@ export function useAnswerModeAssist(opts: {
 	return {
 		aiEnabled,
 		catchUp,
-		statusNote,
+		statusNote: catchUp.statusNote,
 		ask,
 		attaching,
 		attachThreadFile,

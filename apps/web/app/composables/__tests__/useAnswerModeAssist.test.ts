@@ -1,16 +1,15 @@
 // @vitest-environment happy-dom
 /**
  * Answer mode's wiring around the composer (composables/useAnswerModeAssist):
- *   - Summary when there is a card; a short thread without one opens in full,
- *     decided once;
+ *   - the catch-up gets the view and message count (it decides the opening
+ *     view and the footer note; useAnswerCatchUp.test.ts);
  *   - a reply the AI prepared earlier goes into an untouched fresh reply only;
  *   - a thread file is copied onto the draft by its index id, and uploaded from
  *     the message when the index does not hold it; a chip dropped on the
  *     composer attaches the same way;
- *   - the footer note counts the asks the draft covers.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { defineComponent, h, nextTick, ref, shallowRef } from 'vue';
+import { defineComponent, h, ref, shallowRef } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
@@ -25,9 +24,17 @@ const catchUpState = {
 	catchUp: ref<{ asks: { id: string }[] } | null>(null),
 	loading: ref(false),
 	covered: ref<string[]>([]),
+	statusNote: ref<string | undefined>(undefined),
 	checkCoverage: vi.fn(async () => {}),
 };
-vi.mock('~/composables/useAnswerCatchUp', () => ({ useAnswerCatchUp: () => catchUpState }));
+/** What the assist handed the catch-up (its view and message count). */
+let catchUpOpts: { view?: unknown; messageCount?: () => number | undefined } = {};
+vi.mock('~/composables/useAnswerCatchUp', () => ({
+	useAnswerCatchUp: (opts: typeof catchUpOpts) => {
+		catchUpOpts = opts;
+		return catchUpState;
+	},
+}));
 vi.mock('~/composables/useAnswerAskSession', () => ({ useAnswerAskSession: () => ({}) }));
 const preparedText = ref<string | null>(null);
 vi.mock('~/composables/useAnswerPreparedDraft', () => ({
@@ -50,6 +57,7 @@ beforeEach(() => {
 	catchUpState.catchUp.value = null;
 	catchUpState.loading.value = false;
 	catchUpState.covered.value = [];
+	catchUpOpts = {};
 	preparedText.value = null;
 	indexIdOf.mockReset();
 	toFile.mockReset();
@@ -115,23 +123,11 @@ const FILE: ThreadFile = {
 };
 
 describe('useAnswerModeAssist: the view', () => {
-	it('opens a short thread without a card in full, once', async () => {
-		const { view, count } = host();
-		expect(view.value).toBe('summary');
+	it('hands the catch-up the conversation view and count it decides the opening view from', () => {
+		const { view, count } = host({ count: 4 });
+		expect(catchUpOpts.view).toBe(view);
 		count.value = 2;
-		await nextTick();
-		expect(view.value).toBe('full');
-		view.value = 'summary';
-		count.value = 1;
-		await nextTick();
-		expect(view.value).toBe('summary');
-	});
-
-	it('stays on Summary with a card, and for a long thread without one', async () => {
-		catchUpState.catchUp.value = { asks: [] };
-		expect(host({ count: 2 }).view.value).toBe('summary');
-		catchUpState.catchUp.value = null;
-		expect(host({ count: 5 }).view.value).toBe('summary');
+		expect(catchUpOpts.messageCount?.()).toBe(2);
 	});
 });
 
@@ -217,11 +213,8 @@ describe('useAnswerModeAssist: thread files', () => {
 });
 
 describe('useAnswerModeAssist: the footer note', () => {
-	it('counts the asks the draft covers, and says nothing without asks', () => {
+	it("is the catch-up's own note", () => {
 		const { assist } = host();
-		expect(assist.statusNote.value).toBeUndefined();
-		catchUpState.catchUp.value = { asks: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] };
-		catchUpState.covered.value = ['b', 'c'];
-		expect(assist.statusNote.value).toBe('2 of 3 asks covered');
+		expect(assist.statusNote).toBe(catchUpState.statusNote);
 	});
 });
