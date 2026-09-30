@@ -149,7 +149,7 @@ describe('AnswerQueueBar', () => {
 		expect(session.complete).toHaveBeenCalledWith('snoozed');
 	});
 
-	it('h snoozes a team thread too; e does nothing there', async () => {
+	it('offers no archive and no snooze on a team item (a snoozed thread came straight back)', async () => {
 		current.value = {
 			id: 'team:in_1',
 			source: 'team',
@@ -157,13 +157,11 @@ describe('AnswerQueueBar', () => {
 		};
 		const wrapper = mountBar();
 		press('e');
-		await flushPromises();
-		expect(session.complete).not.toHaveBeenCalled();
 		press('h');
 		await flushPromises();
-		await wrapper.get('.snooze').trigger('click');
-		await flushPromises();
-		expect(session.complete).toHaveBeenCalledWith('snoozed');
+		expect(wrapper.find('.snooze').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="answer-queue-snooze"]').exists()).toBe(false);
+		expect(session.complete).not.toHaveBeenCalled();
 	});
 
 	it('on a page the queue no longer holds, offers the way back instead of acting', async () => {

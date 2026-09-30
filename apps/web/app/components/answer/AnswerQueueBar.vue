@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
 import { useAnswerQueueSession } from '~/composables/useAnswerQueueSession';
 import { useAnswerQueueChips } from '~/composables/useAnswerQueueChips';
 import { useAnswerMailActions } from '~/composables/useAnswerMailActions';
@@ -15,8 +13,13 @@ import { isChordPending } from '~/utils/shortcutScope';
  * queue.
  *
  * Keys, whenever no text field, dialog or chord has them: `[` / `]` previous /
- * next item, `e` archive (Postbox items), `h` snooze. Browsing finishes
+ * next item, `e` archive and `h` snooze (Postbox items). Browsing finishes
  * nothing; archive, snooze and Done do, and move on to the next item.
+ *
+ * A team item has no snooze here: snoozing its thread does not take the
+ * message off the review queue (it stays `draft_ready`), so the item came
+ * straight back on the next pass. Until the review queue honours a snoozed
+ * thread, a team item is answered, rejected or left.
  */
 const { t } = useI18n();
 const session = useAnswerQueueSession();
@@ -32,17 +35,11 @@ const visible = computed(
 const isCurrent = computed(() => visible.value && !!session?.isCurrentRoute.value);
 
 const mailRow = computed(() => (item.value?.source === 'mail' ? item.value.row : null));
-const teamThreadId = computed(() =>
-	item.value?.source === 'team' ? (item.value.entry.thread?._id ?? null) : null
-);
 
 const mail = useAnswerMailActions(
 	() => (isCurrent.value ? mailRow.value : null),
 	() => session
 );
-const teamSnoozeOp = useBackendOperation(api.inbox.snooze.snoozeThread, {
-	label: () => t('shared.useThreadDetail.snoozeThread'),
-});
 
 const busy = ref(false);
 async function run(action: () => Promise<unknown>) {
@@ -56,9 +53,7 @@ async function run(action: () => Promise<unknown>) {
 }
 
 const canArchive = computed(() => isCurrent.value && mailRow.value !== null);
-const canSnooze = computed(
-	() => isCurrent.value && (mailRow.value !== null || teamThreadId.value !== null)
-);
+const canSnooze = computed(() => isCurrent.value && mailRow.value !== null);
 const canMarkDone = computed(() => isCurrent.value && mailRow.value !== null);
 
 function archive() {
@@ -74,15 +69,8 @@ function openSnooze() {
 }
 function confirmSnooze(until: number) {
 	snoozeOpen.value = false;
-	const threadId = teamThreadId.value;
 	void run(async () => {
-		if (mailRow.value) return mail.snooze(until);
-		if (!threadId) return;
-		const result = await teamSnoozeOp.run({
-			threadId: threadId as Id<'conversationThreads'>,
-			until,
-		});
-		if (result.ok) session?.complete('snoozed');
+		if (mailRow.value) await mail.snooze(until);
 	});
 }
 
