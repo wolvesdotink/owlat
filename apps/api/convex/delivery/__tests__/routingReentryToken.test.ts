@@ -65,7 +65,7 @@ describe('callbackDigest golden vectors', () => {
 				é: 4,
 				'\ud83d\ude00': 5,
 				ｚ: 6,
-				big: 12_345_678_901_234_567_890,
+				big: 1.2345678901234567e19,
 			},
 			retryState,
 			digest: 'AjmVcjO_hri-p6MvLfQbOhWCpPVDlJP5QBhWA81R6GA',
