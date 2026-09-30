@@ -39,6 +39,7 @@ import { markOnboardingStep } from '../auth/userOnboarding';
 import { normalizeEmail } from '@owlat/shared';
 import { logError } from '../lib/runtimeLog';
 import { INDEX_CHUNK_SIZE } from './migrationBackfill';
+import { loadExtractableMail } from './knowledgeScreen';
 
 // Tunables. Pacing comes from the concurrency cap: at most this many
 // extractions (LLM calls) in flight per sweep.
@@ -65,7 +66,8 @@ export const isKnowledgeEnabled = internalQuery({
 });
 
 /**
- * Sender/subject/body of one imported message, for `extractFromMailMessage`.
+ * Sender/subject/body of one imported message, for `extractFromMailMessage`,
+ * plus the trust signals `mail/knowledgeScreen.ts` screens it on.
  * Returns the inline body and/or the storage ref (the action resolves large
  * bodies from storage itself — queries can't read blob contents).
  */
@@ -78,7 +80,12 @@ export const getMessageForExtraction = internalQuery({
 		return {
 			fromAddress: m.fromAddress,
 			fromName: m.fromName,
+			replyToAddress: m.replyToAddress,
 			subject: m.subject,
+			spamVerdict: m.spamVerdict,
+			dmarcResult: m.dmarcResult,
+			dmarcOverride: m.dmarcOverride,
+			senderHeuristics: m.senderHeuristics,
 			textInline: text,
 			textStorageId: m.textBodyStorageId,
 			htmlInline: html,
@@ -311,6 +318,10 @@ async function indexOneMessage(
 			sourceId: msg._id,
 		});
 		if (already > 0) return;
+
+		// Phishing and spoofed mail never feeds the graph (and its sender never
+		// becomes a contact). Still counted; the cursor advances.
+		if (!(await loadExtractableMail(ctx, msg._id))) return;
 
 		// Scope the knowledge to the sender (quiet find-or-create).
 		const { contactId } = await ctx.runMutation(
