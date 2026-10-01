@@ -54,7 +54,8 @@ import {
 	type DeletionJobSummary,
 	type DeletionTickOutcome,
 } from './job';
-import { isConvexLimitError, shrunkPageRows } from './quiesce';
+import { isTransactionLimitError } from '../../lib/convexLimitErrors';
+import { shrunkPageRows } from './quiesce';
 import { organizationDeletionTableValidator } from './steps/_common';
 import { ORGANIZATION_DELETION_STEPS, STEPS } from './steps/registry';
 
@@ -122,7 +123,7 @@ export const recordFailure = internalMutation({
 		// again: straight to one row after a limit error, which then fits, so its
 		// retry does not wait out the longer backoff with the fence up.
 		const isScanning = progress.phase === 'quiesce' || progress.phase === 'verify';
-		const isScanLimit = isScanning && isConvexLimitError(error);
+		const isScanLimit = isScanning && isTransactionLimitError(error);
 		await ctx.db.patch(progress._id, {
 			...(isScanning ? { scheduledPageRows: shrunkPageRows(progress, error) } : {}),
 			attempts,
