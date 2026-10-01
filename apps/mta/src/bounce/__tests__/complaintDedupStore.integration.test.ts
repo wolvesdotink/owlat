@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import Redis, { type Cluster } from 'ioredis';
+import type { Cluster, Redis } from 'ioredis';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
 	dockerRedisAvailable,

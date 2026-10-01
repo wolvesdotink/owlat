@@ -1,4 +1,4 @@
-import Redis, { type Cluster } from 'ioredis';
+import type { Cluster, Redis } from 'ioredis';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
 	dockerRedisAvailable,
