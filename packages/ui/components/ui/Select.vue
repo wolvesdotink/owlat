@@ -260,6 +260,44 @@ const handleTriggerKeyup = (event: KeyboardEvent) => {
 // Escape closes the list only, not a surrounding dialog or the page behind it.
 useEscapeLayer(isOpen, () => close(true));
 
+/**
+ * The list is teleported to <body> and fixed to the trigger's box, so a
+ * scrolling container around the select (a modal body) cannot clip it. It opens
+ * above the trigger when there is more room there, and its height is capped to
+ * the room it has.
+ */
+const LIST_GAP = 4;
+const LIST_MAX_HEIGHT = 240;
+const VIEWPORT_MARGIN = 8;
+const listStyle = ref<Record<string, string>>({});
+
+const updatePosition = () => {
+	const trigger = triggerRef.value;
+	if (!trigger) return;
+	const rect = trigger.getBoundingClientRect();
+	const viewportHeight = window.innerHeight;
+	const spaceBelow = viewportHeight - rect.bottom - LIST_GAP - VIEWPORT_MARGIN;
+	const spaceAbove = rect.top - LIST_GAP - VIEWPORT_MARGIN;
+	// Before the first render (and without layout) assume a full-height list.
+	const wanted = Math.min(menuRef.value?.scrollHeight || LIST_MAX_HEIGHT, LIST_MAX_HEIGHT);
+	const above = spaceBelow < wanted && spaceAbove > spaceBelow;
+	const room = Math.max(above ? spaceAbove : spaceBelow, 0);
+	listStyle.value = {
+		left: `${rect.left}px`,
+		width: `${rect.width}px`,
+		maxHeight: `${Math.min(room, LIST_MAX_HEIGHT)}px`,
+		...(above
+			? { bottom: `${viewportHeight - rect.top + LIST_GAP}px` }
+			: { top: `${rect.bottom + LIST_GAP}px` }),
+	};
+};
+
+// Scrolling the list itself does not move the trigger.
+const handleScroll = (event: Event) => {
+	if (menuRef.value && event.target instanceof Node && menuRef.value.contains(event.target)) return;
+	updatePosition();
+};
+
 const handleClickOutside = (event: MouseEvent) => {
 	const target = event.target as HTMLElement;
 	if (
@@ -274,14 +312,23 @@ const handleClickOutside = (event: MouseEvent) => {
 
 const removeListeners = () => {
 	document.removeEventListener('click', handleClickOutside);
+	window.removeEventListener('scroll', handleScroll, true);
+	window.removeEventListener('resize', updatePosition);
 };
 
-watch(isOpen, (isNowOpen) => {
-	if (isNowOpen) {
-		document.addEventListener('click', handleClickOutside);
-	} else {
+watch(isOpen, async (isNowOpen) => {
+	if (!isNowOpen) {
 		removeListeners();
+		return;
 	}
+	document.addEventListener('click', handleClickOutside);
+	// Capture: a scroll in any container, the modal body included, moves the trigger.
+	window.addEventListener('scroll', handleScroll, true);
+	window.addEventListener('resize', updatePosition);
+	updatePosition();
+	// Again once the list is rendered and its real height is known.
+	await nextTick();
+	if (isOpen.value) updatePosition();
 });
 
 // Keep the active option in view on open and as the keyboard walks a long list.
@@ -358,48 +405,55 @@ onUnmounted(() => {
 
 			<!-- Dropdown listbox. mousedown.prevent: clicking an option must not pull
 			     focus off the trigger. -->
-			<Transition
-				enter-active-class="duration-(--motion-moderate) ease-spring"
-				enter-from-class="opacity-0 translate-y-1"
-				enter-to-class="opacity-100 translate-y-0"
-				leave-active-class="duration-(--motion-moderate-exit) ease-exit"
-				leave-from-class="opacity-100 translate-y-0"
-				leave-to-class="opacity-0 translate-y-1"
-			>
-				<ul
-					v-if="isOpen"
-					:id="listboxId"
-					ref="menuRef"
-					role="listbox"
-					:aria-labelledby="label && !ariaLabel ? labelId : undefined"
-					:aria-label="label && !ariaLabel ? undefined : (ariaLabel ?? placeholderText)"
-					class="absolute z-50 w-full mt-1 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg py-1 max-h-60 overflow-y-auto"
-					@mousedown.prevent
+			<Teleport to="body">
+				<Transition
+					enter-active-class="duration-(--motion-moderate) ease-spring"
+					enter-from-class="opacity-0 translate-y-1"
+					enter-to-class="opacity-100 translate-y-0"
+					leave-active-class="duration-(--motion-moderate-exit) ease-exit"
+					leave-from-class="opacity-100 translate-y-0"
+					leave-to-class="opacity-0 translate-y-1"
 				>
-					<li
-						v-for="(option, index) in options"
-						:id="optionId(index)"
-						:key="String(option.value)"
-						role="option"
-						:aria-selected="index === selectedIndex"
-						class="w-full px-3 py-2 text-left text-sm flex items-center justify-between gap-2 transition-colors cursor-pointer"
-						:class="[
-							index === selectedIndex ? 'text-brand' : 'text-text-primary',
-							index === activeIndex ? 'bg-bg-surface' : index === selectedIndex ? 'bg-brand/5' : '',
-						]"
-						@mouseenter="activeIndex = index"
-						@click="selectOption(option)"
+					<ul
+						v-if="isOpen"
+						:id="listboxId"
+						ref="menuRef"
+						role="listbox"
+						:aria-labelledby="label && !ariaLabel ? labelId : undefined"
+						:aria-label="label && !ariaLabel ? undefined : (ariaLabel ?? placeholderText)"
+						class="fixed z-(--z-menu) bg-bg-elevated border border-border-subtle rounded-lg shadow-lg py-1 overflow-y-auto"
+						:style="listStyle"
+						@mousedown.prevent
 					>
-						<span class="truncate">{{ option.label }}</span>
-						<Icon
-							v-if="index === selectedIndex"
-							name="lucide:check"
-							class="w-4 h-4 text-brand shrink-0"
-							aria-hidden="true"
-						/>
-					</li>
-				</ul>
-			</Transition>
+						<li
+							v-for="(option, index) in options"
+							:id="optionId(index)"
+							:key="String(option.value)"
+							role="option"
+							:aria-selected="index === selectedIndex"
+							class="w-full px-3 py-2 text-left text-sm flex items-center justify-between gap-2 transition-colors cursor-pointer"
+							:class="[
+								index === selectedIndex ? 'text-brand' : 'text-text-primary',
+								index === activeIndex
+									? 'bg-bg-surface'
+									: index === selectedIndex
+										? 'bg-brand/5'
+										: '',
+							]"
+							@mouseenter="activeIndex = index"
+							@click="selectOption(option)"
+						>
+							<span class="truncate">{{ option.label }}</span>
+							<Icon
+								v-if="index === selectedIndex"
+								name="lucide:check"
+								class="w-4 h-4 text-brand shrink-0"
+								aria-hidden="true"
+							/>
+						</li>
+					</ul>
+				</Transition>
+			</Teleport>
 		</div>
 
 		<!-- Error message -->

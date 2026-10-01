@@ -73,7 +73,9 @@ function mountCard(
 			// The REAL select, so what this suite proves about the emitted value is
 			// a property of the shipped control and not of a stub.
 			components: { UiSelect, UiCard },
-			stubs: { Icon: true, UiSpinner: true, UiIconBox: true },
+			// The select teleports its list to <body>; render it in place so the
+			// wrapper can find the options.
+			stubs: { Icon: true, UiSpinner: true, UiIconBox: true, teleport: true },
 		},
 	});
 	return { wrapper, updates, toasts };
