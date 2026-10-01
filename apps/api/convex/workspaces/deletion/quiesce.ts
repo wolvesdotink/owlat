@@ -29,6 +29,7 @@
 
 import type { MutationCtx } from '../../_generated/server';
 import type { Doc } from '../../_generated/dataModel';
+import { isTransactionLimitError } from '../../lib/convexLimitErrors';
 
 /** Rows one scan page asks for at most. */
 export const SCHEDULER_SCAN_PAGE = 200;
@@ -94,20 +95,13 @@ export interface SchedulerScan {
 	isDone: boolean;
 }
 
-/** A Convex limit error (read, write, scan or scheduling bytes/counts). */
-export function isConvexLimitError(error: string): boolean {
-	return /This is a Convex limit|too much data|too many (documents|index ranges|functions)/i.test(
-		error
-	);
-}
-
 /**
  * The page size to retry with after a scan transaction failed: one row after a
  * limit error (a one-row page always fits, so there is no point stepping down
  * through retries while the workspace is read-only), a quarter otherwise.
  */
 export function shrunkPageRows(position: SchedulerScanPosition, error: string): number {
-	if (isConvexLimitError(error)) return 1;
+	if (isTransactionLimitError(error)) return 1;
 	return Math.max(1, Math.floor((position.scheduledPageRows ?? SCHEDULER_SCAN_PAGE) / 4));
 }
 
