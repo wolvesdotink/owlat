@@ -165,7 +165,7 @@ describe('UID window reads honour sparse ranges (#927)', () => {
 		expect(second.nextUid).toBeNull();
 	});
 
-	it('rejects ranges that are unordered, overlapping, empty or too many', async () => {
+	it('rejects ranges that are unordered, overlapping, empty, fractional or too many', async () => {
 		const t = convexTest(schema, modules);
 		const { folderId } = await seedFolderWithMessages(t, 2);
 		const read = (ranges: Array<{ low: number; high: number }>) =>
@@ -189,6 +189,8 @@ describe('UID window reads honour sparse ranges (#927)', () => {
 			])
 		).rejects.toThrow(/disjoint/);
 		await expect(read([{ low: 3, high: 2 }])).rejects.toThrow(/non-empty/);
+		await expect(read([{ low: 1.5, high: 2 }])).rejects.toThrow(/integer/);
+		await expect(read([{ low: 1, high: Number.NaN }])).rejects.toThrow(/integer/);
 		await expect(
 			read(Array.from({ length: 101 }, (_, i) => ({ low: i * 2 + 1, high: i * 2 + 1 })))
 		).rejects.toThrow(/At most 100/);

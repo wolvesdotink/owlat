@@ -65,8 +65,8 @@ function advance(nextUid: number | null, from: number, what: string): number | n
 	return nextUid;
 }
 
-function exhausted(what: string): never {
-	throw new PagingError(`${what}: exceeded ${MAX_PAGES} pages`);
+function exhausted(what: string, pages: number = MAX_PAGES): never {
+	throw new PagingError(`${what}: exceeded ${pages} pages`);
 }
 
 /**
@@ -163,7 +163,7 @@ async function* walkUidRanges<Row>(
 			cursor = next;
 		}
 	}
-	if (i < ranges.length) exhausted(what);
+	if (i < ranges.length) exhausted(what, maxPages);
 }
 
 /**

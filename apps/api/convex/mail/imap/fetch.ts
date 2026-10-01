@@ -103,8 +103,13 @@ async function readUidWindow(
 	}
 	let previousHigh = -Infinity;
 	for (const range of args.ranges) {
-		if (range.low > range.high || range.low <= previousHigh) {
-			throwInvalidInput('UID ranges must be ascending, non-empty and disjoint.');
+		if (
+			!Number.isInteger(range.low) ||
+			!Number.isInteger(range.high) ||
+			range.low > range.high ||
+			range.low <= previousHigh
+		) {
+			throwInvalidInput('UID ranges must be integer, ascending, non-empty and disjoint.');
 		}
 		previousHigh = range.high;
 	}
