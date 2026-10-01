@@ -51,6 +51,12 @@ interface UidArgs {
 export const uidModule: ImapCommandModule<UidArgs> = {
 	verbs: ['UID'],
 	capabilities: ['UIDPLUS'],
+	// Only UID FETCH may overlap; the other sub-commands write.
+	concurrent({ sub, rest }) {
+		if (sub !== 'FETCH') return false;
+		const parsed = fetchModule.parseArgs(rest);
+		return parsed.ok && (fetchModule.concurrent?.(parsed.args) ?? false);
+	},
 	parseArgs(rawArgs) {
 		const first = rawArgs[0];
 		if (first === undefined) {

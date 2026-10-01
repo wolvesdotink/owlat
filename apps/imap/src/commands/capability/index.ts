@@ -3,6 +3,7 @@ import { syncSession } from '../helpers/session.js';
 
 export const capabilityModule: ImapCommandModule<void> = {
 	verbs: ['CAPABILITY'],
+	concurrent: () => true,
 	parseArgs: () => ({ ok: true, args: undefined }),
 	start({ deps, tag, send }) {
 		send(`* ${deps.capabilityLine}`);

@@ -56,6 +56,9 @@ const CLOSE_PAREN = Buffer.from(')', 'ascii');
 export const fetchModule: ImapCommandModule<FetchArgs> = {
 	verbs: ['FETCH'],
 	requires: 'selected',
+	// A FETCH that implicitly sets \Seen writes flags, so it runs alone.
+	concurrent: ({ itemsToken }) =>
+		parseList(itemsToken).every((item) => parseBodySectionItem(item.toUpperCase())?.peek ?? true),
 	parseArgs(rawArgs) {
 		const [set, itemsToken] = rawArgs;
 		if (!set || !itemsToken) {

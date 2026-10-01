@@ -803,7 +803,9 @@ describe('ImapConnection — literal octet framing (RFC 3501 §4.3)', () => {
 			userId: 'u1',
 			organizationId: 'org1',
 		});
-		await exec(mocks.socket, 'a000 LOGIN "alice@test" "good"');
+		// Let LOGIN finish, not just answer: the pump holds the APPEND below
+		// until the LOGIN session's completion has resolved.
+		await execMulti(mocks.socket, 'a000 LOGIN "alice@test" "good"');
 		mocks.socket.written.length = 0;
 	}
 
