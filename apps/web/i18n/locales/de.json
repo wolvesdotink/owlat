@@ -4186,6 +4186,11 @@
 				"stopTrustingSender": "Wieder blockieren",
 				"trackersKeptBlocked": "{count} Trackingpixel bleibt blockiert. | {count} Trackingpixel bleiben blockiert."
 			},
+			"postboxMessageNotFound": {
+				"title": "Diese Nachricht ist nicht mehr verfügbar",
+				"body": "Vielleicht wurde sie gelöscht, von einer anderen Mail-App verschoben, oder das Postfach, in dem sie lag, ist nicht mehr mit dir geteilt.",
+				"backTo": "Zurück zu {folder}"
+			},
 			"postboxMessageDetails": {
 				"arc": "ARC",
 				"dkim": "DKIM",
@@ -6077,7 +6082,8 @@
 					"full": "Ganze Unterhaltung"
 				},
 				"more": "Mehr zu dieser Unterhaltung",
-				"openInPostbox": "In Postbox öffnen"
+				"openInPostbox": "In Postbox öffnen",
+				"skipMissing": "Weiter zum nächsten Eintrag"
 			},
 			"catchUp": {
 				"title": "Kurz zusammengefasst",

@@ -474,19 +474,14 @@ const advanceIds = computed(() =>
 							:advance-ids="advanceIds"
 							:folder-role="folderId ? String(folderId) : folderRole"
 						/>
-						<UiQueryBoundary
-							v-else-if="activeMessageId && activeRead.error.value"
-							:error="activeRead.error.value"
+						<PostboxReaderPlaceholder
+							v-else
+							:error="activeMessageId ? activeRead.error.value : null"
+							:not-found="!!activeMessageId && activeRead.notFound.value"
+							:folder-name="currentFolderName"
 							@retry="activeRead.refetch"
+							@back="backToList"
 						/>
-						<div v-else class="pbx-reader-swap h-full flex items-center justify-center">
-							<div class="text-center">
-								<Icon name="lucide:mail-open" class="w-12 h-12 mx-auto text-text-tertiary" />
-								<p class="mt-4 text-text-secondary">
-									{{ t('components.postbox.postboxLayout.selectMessage') }}
-								</p>
-							</div>
-						</div>
 					</section>
 				</div>
 			</div>
