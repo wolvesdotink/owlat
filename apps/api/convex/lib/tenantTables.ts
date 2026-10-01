@@ -280,6 +280,14 @@ export const TENANT_TABLES = [
 	// Answer mode ask sessions (owner-scoped, reference drafts and team threads).
 	'answerAskSessions',
 
+	// ── AI provider configuration (#1101) ──
+	// The chosen language, embedding and decision providers plus the encrypted
+	// API keys someone entered for this workspace. Wiped with the workspace: keys
+	// that outlived it would keep billing their owner for whoever sets the
+	// workspace up next, behind a masked preview nobody recognises. The
+	// deployment's own `LLM_*` env fallback is untouched.
+	'aiProviderConfig',
+
 	// ── Dashboard & visualizations ──
 	'visualizations',
 	'dashboardLayouts',
@@ -358,9 +366,6 @@ export const NON_TENANT_TABLES = [
 	// cursor, no message content. It follows the instance switch rather than the
 	// org, and a sweep still running during a wipe must keep its fence.
 	'mailBodySearchPurges',
-	// Per-org AI provider selection + encrypted key envelope — an admin-recreated
-	// config singleton like instanceSettings, not org business data.
-	'aiProviderConfig',
 	// Instance infrastructure / regenerable caches — not org business data.
 	'systemUpdates',
 	// Cache of the desktop releases GitHub has published, refetched by a cron —
@@ -389,12 +394,15 @@ export const NON_TENANT_TABLES = [
 	// business data. Regenerable (partners re-send daily); not personal data of
 	// this org's contacts, so it is out of the tenant wipe like warmingState.
 	'tlsReports',
-	// End-to-end encryption key material (Sealed Mail). Instance crypto
-	// infrastructure — the instance signing identity plus per-address OpenPGP
-	// keypairs whose PUBLIC halves are published for discovery. Like
-	// `aiProviderConfig`, this is admin/instance-recreatable configuration (an
-	// idempotent backfill re-mints address keys), not this org's contact
-	// business data, so it is out of the tenant wipe.
+	// End-to-end encryption key material (Sealed Mail): the instance signing
+	// identity plus per-address OpenPGP keypairs whose PUBLIC halves are published
+	// for discovery. Kept on purpose (#1101), unlike `aiProviderConfig`: nobody
+	// entered these as credentials, the instance minted them, and other instances
+	// have recorded and pinned their fingerprints. The identity row signs the
+	// manifest whose rotation feed is the only way a pinned key may change; a
+	// wiped address key re-minted for a re-created address reaches every peer that
+	// pinned the old one as a key change with no signed rotation, which each of
+	// them has to re-accept by hand.
 	'keyVault',
 	// Sealed Mail recipient-key discovery cache + TOFU trust ledger. Holds only
 	// PUBLIC keys of OTHER instances' recipients plus their pin state — a
