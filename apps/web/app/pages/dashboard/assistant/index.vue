@@ -76,8 +76,10 @@ watch(() => {
 		last?.toolCalls.map((c) => c.status).join(),
 	];
 }, onContent);
-// A conversation opens at its latest message.
+// A conversation opens at its latest message, including the one already
+// selected (and loaded) when the page mounts.
 watch(activeId, () => void jumpToLatest({ smooth: false }));
+onMounted(() => void jumpToLatest({ smooth: false }));
 
 const onJumpToLatest = () => {
 	void jumpToLatest();
