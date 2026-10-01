@@ -8750,6 +8750,17 @@
 					},
 					"pageTitle": "Automation bearbeiten — Owlat",
 					"pause": "Pausieren",
+					"reorder": {
+						"actions": "Aktionen für Schritt {number}",
+						"cancelled": "Verschieben abgebrochen. Schritt {position} von {total}.",
+						"dropped": "Schritt an Position {position} von {total} verschoben.",
+						"handle": "Schritt {number} verschieben",
+						"instructions": "Drücke die Leertaste, um den Schritt aufzunehmen, die Pfeiltasten, um ihn zu verschieben, die Leertaste, um ihn abzulegen, und Escape zum Abbrechen.",
+						"moveDown": "Nach unten",
+						"moveUp": "Nach oben",
+						"pickedUp": "Schritt {position} von {total} aufgenommen.",
+						"position": "Schritt {position} von {total}."
+					},
 					"resume": "Fortsetzen",
 					"saveDraft": "Entwurf speichern",
 					"status": {

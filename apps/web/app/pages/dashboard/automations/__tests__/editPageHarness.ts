@@ -43,6 +43,7 @@ export function stubEditPage(overrides: Partial<typeof AUTOMATION> = {}) {
 		update: okRun(),
 	};
 	const showToast = vi.fn();
+	const announce = vi.fn();
 	const push = vi.fn();
 	const canActivate = ref<{ valid: boolean; reasons: string[] }>({ valid: true, reasons: [] });
 	const selectedStepId = ref<string | null>(null);
@@ -82,6 +83,7 @@ export function stubEditPage(overrides: Partial<typeof AUTOMATION> = {}) {
 	vi.stubGlobal('useOrganizationQuery', () => queryResult([]));
 	vi.stubGlobal('useTopicsList', () => paginatedResult([]));
 	vi.stubGlobal('useToast', () => ({ showToast }));
+	vi.stubGlobal('useAnnounce', () => ({ announce }));
 	vi.stubGlobal('useBackendOperation', () => ({
 		run: runs[OPERATIONS[created++ % OPERATIONS.length]!],
 		isLoading: ref(false),
@@ -94,8 +96,20 @@ export function stubEditPage(overrides: Partial<typeof AUTOMATION> = {}) {
 		setHasChanges: vi.fn(),
 	}));
 	vi.stubGlobal('useAutomationSteps', () => steps);
-	return { data, runs, showToast, push, canActivate, steps };
+	return { data, runs, showToast, announce, push, canActivate, steps };
 }
+
+/** The step actions menu, always rendered open so its items can be clicked. */
+export const dropdownStubs = {
+	UiDropdownMenu: { template: '<div><slot name="trigger" /><slot /></div>' },
+	UiDropdownMenuItem: {
+		props: ['disabled', 'icon', 'danger'],
+		emits: ['click'],
+		template:
+			'<button role="menuitem" :disabled="disabled" @click="$emit(\'click\')"><slot /></button>',
+	},
+	UiDropdownDivider: true,
+};
 
 export async function mountEditPage(stubs: Record<string, unknown> = {}) {
 	const Page = (await import('../[id]/edit.vue')).default;
@@ -120,6 +134,7 @@ export async function mountEditPage(stubs: Record<string, unknown> = {}) {
 					emits: ['retry', 'discard', 'stay'],
 					template: '<div v-if="open" data-testid="step-save-failed" />',
 				},
+				...dropdownStubs,
 				Teleport: true,
 				...stubs,
 			},

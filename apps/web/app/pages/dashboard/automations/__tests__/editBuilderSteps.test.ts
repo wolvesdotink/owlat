@@ -13,6 +13,7 @@ import { mount } from '@vue/test-utils';
 import { computed, ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { queryResult, paginatedResult } from '~/__tests__/queryStubs';
+import { dropdownStubs } from './editPageHarness';
 
 Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
@@ -47,6 +48,7 @@ function stubPage(automation: typeof AUTOMATION) {
 	vi.stubGlobal('useOrganizationQuery', () => queryResult([]));
 	vi.stubGlobal('useTopicsList', () => paginatedResult([]));
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
+	vi.stubGlobal('useAnnounce', () => ({ announce: vi.fn() }));
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(), isLoading: ref(false) }));
 	vi.stubGlobal('useUnsavedChanges', () => ({
 		showDialog: ref(false),
@@ -92,6 +94,7 @@ async function mountBuilder() {
 				AutomationsStepEditorPanel: true,
 				AutomationsStepSaveStatus: true,
 				AutomationsStepSaveFailedDialog: true,
+				...dropdownStubs,
 				Teleport: true,
 			},
 		},

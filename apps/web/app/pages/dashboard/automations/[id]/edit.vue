@@ -8,6 +8,7 @@ import { provideConditionEditorContext } from '~/composables/conditions';
 import { stepEditorModuleFor, type StepKind } from '~/composables/automations/steps';
 import { triggerEditorModuleFor, type TriggerKind } from '~/composables/automations/triggers';
 import { useLocalized } from '~/composables/useLocalized';
+import { useKeyboardReorder } from '~/composables/automations/useKeyboardReorder';
 import type { LocalizedText } from '~/utils/localizedText';
 
 const { t } = useI18n();
@@ -97,24 +98,74 @@ const {
 // user put it while `handleDragEnd` persists the move; the next server
 // snapshot then replaces this copy.
 const orderedSteps = ref<typeof mutableSteps.value>([]);
-watch(
-	mutableSteps,
-	(steps) => {
-		orderedSteps.value = [...steps];
-	},
-	{ immediate: true }
-);
 // A failed save leaves the server order unchanged, so no new snapshot arrives
 // to replace the dropped order: put the saved order back ourselves. The open
 // step's save lands first, like every other change to the workflow's shape.
 const restoreStepOrder = () => {
 	orderedSteps.value = [...mutableSteps.value];
 };
-function onStepDragEnd(event: { oldIndex?: number | null; newIndex?: number | null }) {
+type StepMove = { oldIndex?: number | null; newIndex?: number | null };
+function persistStepMove(move: StepMove, onSaved?: () => void) {
 	return afterStepSaved(async () => {
-		if (!(await handleDragEnd(event))) restoreStepOrder();
+		if (await handleDragEnd(move)) onSaved?.();
+		else restoreStepOrder();
 	}, restoreStepOrder);
 }
+function onStepDragEnd(event: StepMove) {
+	return persistStepMove(event);
+}
+
+// Keyboard and screen-reader route to the same reorder: the step title is the
+// button that opens a step, the handle is the button that moves it.
+const { announce } = useAnnounce();
+const focusStepControl = (stepId: string, control: 'title' | 'handle') => {
+	document.querySelector<HTMLElement>(`[data-step-${control}="${stepId}"]`)?.focus();
+};
+const positionMessage =
+	(key: string) =>
+	(position: number, total: number): string =>
+		t(key, { position, total });
+const keyboardReorder = useKeyboardReorder({
+	items: orderedSteps,
+	restore: restoreStepOrder,
+	commit: persistStepMove,
+	focusHandle: (id) => focusStepControl(id, 'handle'),
+	announce,
+	messages: {
+		pickedUp: positionMessage('dashboard.automations.detail.edit.reorder.pickedUp'),
+		moved: positionMessage('dashboard.automations.detail.edit.reorder.position'),
+		dropped: positionMessage('dashboard.automations.detail.edit.reorder.dropped'),
+		cancelled: positionMessage('dashboard.automations.detail.edit.reorder.cancelled'),
+	},
+});
+const liftedStepId = keyboardReorder.liftedId;
+watch(
+	mutableSteps,
+	(steps) => {
+		orderedSteps.value = [...steps];
+		// A new server order replaces whatever the keyboard was moving.
+		keyboardReorder.reset();
+	},
+	{ immediate: true }
+);
+// Move up / Move down from the step's actions menu, for anyone who does not
+// know the handle works from the keyboard. Focus stays on the moved step.
+const moveStepBy = (stepId: string, delta: -1 | 1) => {
+	const from = orderedSteps.value.findIndex((step) => step._id === stepId);
+	const to = from + delta;
+	if (from === -1 || to < 0 || to >= orderedSteps.value.length) return;
+	const next = [...orderedSteps.value];
+	const [moved] = next.splice(from, 1);
+	next.splice(to, 0, moved!);
+	orderedSteps.value = next;
+	void nextTick(() => focusStepControl(stepId, 'title'));
+	return persistStepMove({ oldIndex: from, newIndex: to }, () =>
+		announce(
+			positionMessage('dashboard.automations.detail.edit.reorder.dropped')(to + 1, next.length)
+		)
+	);
+};
+const openStepMenuId = ref<string | null>(null);
 
 // Provide reference data to descendant Condition editor modules
 provideConditionEditorContext({ contactProperties, topics });
@@ -281,9 +332,14 @@ const requestSelectStep = (stepId: Id<'automationSteps'>) => {
 		selectedStepId.value = stepId;
 	});
 };
+// Focus goes back to the step's title, so a keyboard user carries on from the
+// step they just edited instead of from the top of the page.
 const closeInspector = () =>
-	afterStepSaved(() => {
+	afterStepSaved(async () => {
+		const stepId = selectedStepId.value;
 		selectedStepId.value = null;
+		await nextTick();
+		if (stepId) focusStepControl(stepId, 'title');
 	});
 const requestAddStep = (stepType: StepKind, insertAtIndex?: number) => {
 	closeDropdowns();
@@ -690,6 +746,9 @@ onUnmounted(() => {
 					</div>
 
 					<!-- Steps List -->
+					<p id="step-reorder-instructions" class="sr-only">
+						{{ t('dashboard.automations.detail.edit.reorder.instructions') }}
+					</p>
 					<!-- vue-draggable-plus renders only its default slot: the rows are a
 						plain v-for inside it (the old vuedraggable `#item` slot is ignored). -->
 					<VueDraggable
@@ -705,23 +764,39 @@ onUnmounted(() => {
 							class="relative"
 							data-testid="automation-step"
 						>
-							<!-- Step Card -->
+							<!-- Step Card. The title is the button that opens it; the card
+							     click is a larger target for the pointer. -->
 							<div
 								:class="[
-									'card p-4 cursor-pointer transition-all',
+									'card p-4 cursor-pointer transition-all has-[.step-title:focus-visible]:ring-2 has-[.step-title:focus-visible]:ring-brand',
 									selectedStepId === step._id
 										? 'ring-2 ring-brand border-brand'
 										: 'hover:border-border-default',
+									liftedStepId === step._id ? 'ring-2 ring-brand/60 shadow-lg' : '',
 								]"
 								@click="requestSelectStep(step._id)"
 							>
 								<div class="flex items-center gap-3">
-									<!-- Drag Handle -->
-									<div
-										class="drag-handle cursor-grab active:cursor-grabbing p-1 -ml-1 text-text-tertiary hover:text-text-secondary"
+									<!-- Drag handle: pointer drag, or Space / arrows / Space from the keyboard -->
+									<button
+										type="button"
+										class="drag-handle cursor-grab active:cursor-grabbing p-1 -ml-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+										:class="
+											liftedStepId === step._id
+												? 'text-brand'
+												: 'text-text-tertiary hover:text-text-secondary'
+										"
+										:aria-label="
+											t('dashboard.automations.detail.edit.reorder.handle', { number: index + 1 })
+										"
+										:aria-pressed="liftedStepId === step._id"
+										aria-describedby="step-reorder-instructions"
+										:data-step-handle="step._id"
+										@click.stop
+										@keydown="keyboardReorder.onKeydown($event, step._id)"
 									>
 										<Icon name="lucide:grip-vertical" class="w-4 h-4" />
-									</div>
+									</button>
 
 									<!-- Step Icon (resolved via the step editor module registry;
 											page-local accent palette via STEP_ACCENT) -->
@@ -736,16 +811,24 @@ onUnmounted(() => {
 
 									<!-- Step Content -->
 									<div class="flex-1 min-w-0">
-										<div class="flex items-center gap-2">
-											<span class="text-xs font-medium text-text-tertiary uppercase tracking-wide">
+										<button
+											type="button"
+											class="step-title block text-left focus-visible:outline-none"
+											:aria-current="selectedStepId === step._id ? 'step' : undefined"
+											:data-step-title="step._id"
+											@click.stop="requestSelectStep(step._id)"
+										>
+											<span
+												class="block text-xs font-medium text-text-tertiary uppercase tracking-wide"
+											>
 												{{
 													t('dashboard.automations.detail.edit.stepNumber', { number: index + 1 })
 												}}
 											</span>
-										</div>
-										<p class="font-medium text-text-primary">
-											{{ t(stepInfo(step.stepType).label) }}
-										</p>
+											<span class="block font-medium text-text-primary">
+												{{ t(stepInfo(step.stepType).label) }}
+											</span>
+										</button>
 										<!-- Description: plain text when no pill accent, pill chrome when defined. -->
 										<p
 											v-if="!stepAccent(step.stepType).pill"
@@ -774,14 +857,49 @@ onUnmounted(() => {
 										</div>
 									</div>
 
-									<!-- Delete Button -->
-									<button
-										class="p-2 text-text-tertiary hover:text-error transition-colors"
-										@click.stop="handleDeleteStep(step._id)"
-										:aria-label="t('common.delete')"
-									>
-										<Icon name="lucide:trash-2" class="w-4 h-4" />
-									</button>
+									<!-- Step actions -->
+									<div @click.stop>
+										<UiDropdownMenu
+											:open="openStepMenuId === step._id"
+											@update:open="openStepMenuId = $event ? step._id : null"
+										>
+											<template #trigger>
+												<button
+													type="button"
+													class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+													:aria-label="
+														t('dashboard.automations.detail.edit.reorder.actions', {
+															number: index + 1,
+														})
+													"
+												>
+													<Icon name="lucide:more-vertical" class="w-4 h-4" />
+												</button>
+											</template>
+											<UiDropdownMenuItem
+												icon="lucide:arrow-up"
+												:disabled="index === 0"
+												@click="moveStepBy(step._id, -1)"
+											>
+												{{ t('dashboard.automations.detail.edit.reorder.moveUp') }}
+											</UiDropdownMenuItem>
+											<UiDropdownMenuItem
+												icon="lucide:arrow-down"
+												:disabled="index === orderedSteps.length - 1"
+												@click="moveStepBy(step._id, 1)"
+											>
+												{{ t('dashboard.automations.detail.edit.reorder.moveDown') }}
+											</UiDropdownMenuItem>
+											<UiDropdownDivider />
+											<UiDropdownMenuItem
+												icon="lucide:trash-2"
+												danger
+												@click="handleDeleteStep(step._id)"
+											>
+												{{ t('common.delete') }}
+											</UiDropdownMenuItem>
+										</UiDropdownMenu>
+									</div>
 								</div>
 							</div>
 

@@ -8750,6 +8750,17 @@
 					},
 					"pageTitle": "Edit automation — Owlat",
 					"pause": "Pause",
+					"reorder": {
+						"actions": "Step {number} actions",
+						"cancelled": "Move cancelled. Step {position} of {total}.",
+						"dropped": "Step moved to position {position} of {total}.",
+						"handle": "Move step {number}",
+						"instructions": "Press Space to pick the step up, the arrow keys to move it, Space to drop it and Escape to cancel.",
+						"moveDown": "Move down",
+						"moveUp": "Move up",
+						"pickedUp": "Picked up step {position} of {total}.",
+						"position": "Step {position} of {total}."
+					},
 					"resume": "Resume",
 					"saveDraft": "Save draft",
 					"status": {
