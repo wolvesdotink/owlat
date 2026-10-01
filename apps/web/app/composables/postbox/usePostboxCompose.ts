@@ -22,6 +22,7 @@ import type { OperationError } from '@owlat/shared/operationError';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
+import type { MailboxComposerTarget } from '~/utils/composerTarget';
 import { postboxUndoSendDelayMsArg } from '~/utils/postboxUndoSendWindow';
 import { freshDraftGaps, isDraftGapsRefusal } from '~/utils/answerDraft';
 import {
@@ -58,12 +59,13 @@ export type SendAsIdentity = FunctionReturnType<
  * The one-time seed a composer opens with: the one declaration every host
  * writes (the popup stack's ComposerSpec, Answer mode's seed, the
  * desktop compose window) and PostboxComposer hands over whole.
+ *
+ * Where it writes is a mailbox composer target (`utils/composerTarget`): the
+ * seed carries that target's fields (`mailboxId`, and `draftId` to reopen a
+ * draft or `inReplyToMessageId` for a reply) beside what to pre-fill, and
+ * `mailboxComposerTarget(seed)` names it.
  */
-export interface ComposerSeed {
-	mailboxId: Id<'mailboxes'>;
-	/** Reopen an existing draft (continue editing / after undo-send). */
-	draftId?: Id<'mailDrafts'>;
-	inReplyToMessageId?: Id<'mailMessages'>;
+export interface ComposerSeed extends Omit<MailboxComposerTarget, 'kind'> {
 	prefillTo?: string[];
 	prefillCc?: string[];
 	prefillBcc?: string[];

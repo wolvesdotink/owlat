@@ -22,6 +22,7 @@ import type { Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { MutationSessionContext } from './sessionOrganization';
 import { getOrThrow, throwForbidden, throwInvalidInput, throwInvalidState } from '../_utils/errors';
+import { loadProfileSummary } from './userProfiles';
 
 /** The tables that hold an admin-request queue. Their columns are identical. */
 export type AdminRequestTable = 'accessRequests' | 'mailboxRequests';
@@ -61,18 +62,15 @@ export async function resolveRequesterIdentity(
 	authUserId: string,
 	identityEmail: unknown
 ): Promise<{ requesterEmail: string; requesterName: string | undefined }> {
-	const profile = await ctx.db
-		.query('userProfiles')
-		.withIndex('by_auth_user_id', (q) => q.eq('authUserId', authUserId))
-		.first();
-	let requesterEmail = profile?.email?.trim();
+	const profile = await loadProfileSummary(ctx, authUserId);
+	let requesterEmail = profile.email?.trim();
 	if (!requesterEmail) {
 		requesterEmail = typeof identityEmail === 'string' ? identityEmail.trim() : '';
 	}
 	if (!requesterEmail) {
 		throwInvalidState('Your account has no email address to share with admins');
 	}
-	return { requesterEmail, requesterName: profile?.name };
+	return { requesterEmail, requesterName: profile.name ?? undefined };
 }
 
 /**

@@ -6,6 +6,7 @@ import {
 	captureSourceValidator,
 	semanticFileSourceTypeValidator,
 } from '../lib/literalValidators';
+import { knowledgeEntryCommitmentFacets } from './knowledgeCommitmentFacets';
 
 /**
  * The knowledge entry types, as a literal tuple. Single source of truth for both
@@ -243,9 +244,16 @@ export const knowledgeTables = {
 	knowledgeEntryContacts: defineTable({
 		entryId: v.id('knowledgeEntries'),
 		contactId: v.id('contacts'),
+		...knowledgeEntryCommitmentFacets, // open-commitment index keys (#919)
 	})
 		.index('by_contact', ['contactId'])
-		.index('by_entry', ['entryId']),
+		.index('by_entry', ['entryId'])
+		.index('by_contact_open_commitment', [
+			'contactId',
+			'isOpenCommitment',
+			'commitmentDueKey',
+			'commitmentOrderKey',
+		]),
 
 	// Knowledge Relations - typed edges between knowledge entries.
 	//

@@ -2,7 +2,7 @@
  * #925 regressions: delivery-log statistics and message histories must
  * terminate, count every retained entry exactly once, and — once a day is
  * indexed — cost a constant number of Redis commands however large the day's
- * stream is.
+ * stream is, including a day the record script trimmed to its MAXLEN.
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -13,7 +13,15 @@ import {
 	MESSAGE_SCAN_PAGE_SIZE,
 	STATS_SCAN_PAGE_SIZE,
 } from '../deliveryLogger.js';
-import { compareStreamIds, nextStreamId, scanDeliveryStream } from '../deliveryLogIndex.js';
+import {
+	compareStreamIds,
+	EVICTION_BATCH,
+	nextStreamId,
+	previousStreamId,
+	scanDeliveryStream,
+	streamKeyFor,
+	type StreamEntry,
+} from '../deliveryLogIndex.js';
 
 vi.mock('../logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -41,6 +49,9 @@ describe('stream IDs', () => {
 	it('computes the exclusive successor of an ID', () => {
 		expect(nextStreamId('1700000000000-0')).toBe('1700000000000-1');
 		expect(nextStreamId('5-18446744073709551615')).toBe('6-0');
+		expect(previousStreamId('1700000000000-1')).toBe('1700000000000-0');
+		expect(previousStreamId('6-0')).toBe('5-18446744073709551615');
+		expect(previousStreamId('0-0')).toBe('0-0');
 		expect(compareStreamIds('10-0', '9-5')).toBe(1);
 		expect(compareStreamIds('9-5', '9-10')).toBe(-1);
 	});
@@ -173,7 +184,7 @@ describe('indexed delivery log reads', () => {
 		});
 	});
 
-	it('reports the retained entries of a trimmed day by scanning, and skips trimmed history', async () => {
+	it('scans a day trimmed outside the record script, and skips trimmed history', async () => {
 		const fake = new DeliveryLogRedisFake();
 		const early = fake.recordIndexed(today, {
 			messageId: 'target',
@@ -201,7 +212,7 @@ describe('indexed delivery log reads', () => {
 
 	it('stops growing the message index at the stream cap and scans histories past it', async () => {
 		const fake = new DeliveryLogRedisFake();
-		fake.messageIndexCap = 1000;
+		fake.maxLen = 1000;
 		const early = fake.recordIndexed(today, {
 			messageId: 'target',
 			orgId: 'org-1',
@@ -214,17 +225,79 @@ describe('indexed delivery log reads', () => {
 			status: 'delivered',
 		});
 
-		// Statistics still come from the counters (nothing trimmed here) and do
-		// not report the message-index counter as a status.
+		// Statistics still come from the counters (the script did the trimming)
+		// and do not report the bookkeeping fields as statuses.
 		const stats = await getDeliveryLogStats(fake.asRedis(), today);
-		expect(stats['total']).toBe(2001);
-		expect(stats).not.toHaveProperty('msgIndexed');
+		expect(stats['total']).toBe(1000);
+		expect(Object.keys(stats).some((k) => k.includes(':') || k === 'msgIndexed')).toBe(false);
 		expect(fake.entriesReturned).toBe(0);
 
 		fake.resetCounts();
 		const history = await getMessageEvents(fake.asRedis(), 'target');
-		expect(history.map((e) => e.id)).toEqual([early, late]);
-		expect(fake.entriesReturned).toBe(2001);
+		expect(history.map((e) => e.id)).toEqual([late]);
+		expect(history.map((e) => e.id)).not.toContain(early);
+		expect(fake.entriesReturned).toBe(1000);
+	});
+
+	describe.each([1000, 1001, 2000])('a day of %i events trimmed by the record script', (n) => {
+		/** What a scan of the retained stream would report. */
+		async function retained(fake: DeliveryLogRedisFake, orgId?: string) {
+			const counts: Record<string, number> = { total: 0 };
+			const entries = (await fake.xrange(streamKeyFor(today), '-', '+')) as StreamEntry[];
+			for (const [, fields] of entries) {
+				const map = Object.fromEntries(
+					Array.from({ length: fields.length / 2 }, (_, i) => [fields[2 * i], fields[2 * i + 1]])
+				);
+				if (orgId && map['orgId'] !== orgId) continue;
+				counts[map['status']!] = (counts[map['status']!] ?? 0) + 1;
+				counts['total']! += 1;
+			}
+			fake.resetCounts();
+			return counts;
+		}
+
+		it('reports exactly the retained entries from the counters', async () => {
+			const fake = new DeliveryLogRedisFake();
+			fake.maxLen = 1000;
+			seed(fake, n, (i) => ({ orgId: `org-${i % 3}`, messageId: `m-${i}` }), true);
+			expect(fake.length(today)).toBe(Math.min(n, 1000));
+
+			for (const orgId of [undefined, 'org-0', 'org-2', 'absent-org']) {
+				const expected = await retained(fake, orgId);
+				const stats = await getDeliveryLogStats(fake.asRedis(), today, orgId);
+				expect(stats).toMatchObject(expected);
+				expect(fake.calls['xrange']).toBeUndefined();
+				expect(fake.commands).toBe(5);
+			}
+		});
+
+		it('falls back to the scan once something else removed entries too', async () => {
+			const fake = new DeliveryLogRedisFake();
+			fake.maxLen = 1000;
+			seed(fake, n, (i) => ({ orgId: `org-${i % 3}`, messageId: `m-${i}` }), true);
+			fake.trim(today, 900);
+
+			const expected = await retained(fake, 'org-1');
+			expect(await getDeliveryLogStats(fake.asRedis(), today, 'org-1')).toMatchObject(expected);
+			expect(fake.entriesReturned).toBe(900);
+		});
+	});
+
+	it('shrinks a day over a lowered MAXLEN a bounded batch per write and counts every eviction', async () => {
+		const fake = new DeliveryLogRedisFake();
+		seed(fake, 500, (i) => ({ orgId: `org-${i % 2}`, messageId: `m-${i}` }), true);
+		fake.maxLen = 100;
+		seed(fake, 1, () => ({ orgId: 'org-0', messageId: 'n-0' }), true);
+		expect(fake.length(today)).toBe(501 - EVICTION_BATCH);
+		expect((await getDeliveryLogStats(fake.asRedis(), today))['total']).toBe(501 - EVICTION_BATCH);
+
+		// Each write adds one and trims at most EVICTION_BATCH, so nine more
+		// writes bring the day back to the cap.
+		seed(fake, 9, (i) => ({ orgId: 'org-0', messageId: `n-${i + 1}` }), true);
+		expect(fake.length(today)).toBe(100);
+		const stats = await getDeliveryLogStats(fake.asRedis(), today);
+		expect(stats['total']).toBe(100);
+		expect(fake.entriesReturned).toBe(0);
 	});
 
 	it('scans a day that also holds entries written without the indexes', async () => {

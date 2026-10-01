@@ -59,7 +59,6 @@ chmodSync(join(FAKE, 'bin', 'docker'), 0o755);
 
 process.env['INSTANCE_SECRET'] = 'test-instance-secret-0123456789';
 process.env['OWLAT_DIR'] = OWLAT_DIR;
-process.env['PORT'] = '0';
 process.env['FAKE_DOCKER_DIR'] = FAKE;
 process.env['PATH'] = `${join(FAKE, 'bin')}:${process.env['PATH']}`;
 

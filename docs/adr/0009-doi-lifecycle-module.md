@@ -514,3 +514,80 @@ CONTEXT.md is updated in the same pass (DOI status + DOI lifecycle
 (module) entries + Relationships paragraph). The
 **Contact resolution (module)** entry is amended to list `doiStatus`
 among its create-time writes.
+
+---
+
+## Amendment — consent episodes and the shared token (2026-10-01)
+
+Issues #994, #995 and #1017. Three changes to the contract above; the rest
+of it stands.
+
+### A confirmation belongs to one consent episode
+
+The Decision refused `confirmed → pending` as an illegal revoke and kept
+`confirmed` terminal, so a confirmation had no end. It now has one: a
+confirmation counts only for the episode it was issued in, and a global
+opt-out (`contacts.unsubscribedAt`, written by the **Topic subscription
+(module)**) ends that episode.
+
+- **A global opt-out ends the episode.** `unsubscribeAllForContact` with no
+  topic scope calls the new in-state operation
+  `withdrawConfirmationToken({ contactId, at })`, which clears
+  `doiConfirmationToken` and `doiTokenExpiresAt` and leaves `doiStatus`
+  alone. A link minted before the opt-out stops resolving, so it can never
+  lift the opt-out later.
+- **A new episode reopens a confirmed contact.** The `to: 'pending'` input
+  gains `reopen?: boolean`. It sanctions `confirmed → pending` through the
+  same `isSanctionedEdge` hook ADR-0019 uses, and only while
+  `contacts.unsubscribedAt` is set; without an opt-out the edge is still
+  refused (`terminal`). Callers decide when to ask for it (ADR-0013's consent
+  rule); the lifecycle only refuses it when there is nothing to reopen.
+- **History is kept.** The reopen leaves `doiConfirmedAt` (the last
+  completed confirmation) untouched while the new episode is pending, and
+  emits an `audit_log` effect, `doi.reconfirmation_requested`, carrying
+  `previousConfirmedAt` and `unsubscribedAt`. When the new confirmation lands
+  it overwrites `doiConfirmedAt`, clears `unsubscribedAt` exactly once (the
+  existing `reduceConfirmed` behaviour), and fires the deferred
+  `fire_topic_subscribed_triggers` for the memberships waiting on it. A
+  token confirmation also clears a stale `doiAttestedSource`; the
+  `doi.admin_attested` audit row keeps the attestation.
+
+### `pending → pending` needs a live token to be a no-op
+
+`pending → pending` stays idempotent (`recorded`, no second email) only
+while the contact holds a token that is present and unexpired. A pending
+contact without one (withdrawn by an opt-out, or lapsed after
+`DOI_TOKEN_TTL_MS`) gets a fresh token and a fresh confirmation email, so a
+new signup always carries a usable link.
+
+### Token cardinality: one token, many form submissions
+
+The Decision said the form submission's `confirmationToken` "equals the
+contact's token" and the confirm handler patched "the form submission". Both
+were written for one submission per token. In practice every signup made
+while a contact is pending reuses the live token (the `recorded` path
+above), so one token correlates **one contact with many
+`formSubmissions` rows** — across forms, topics, and forms without a topic.
+
+Confirmation therefore finalizes every pending row that carries the token
+and belongs to the confirmed contact, not the first one found:
+
+- Both confirmation routes call the **Form submission (module)**'s
+  `markConfirmedByToken({ token, contactId })` after
+  `transitionByConfirmationToken` succeeds: the form-confirm mutation
+  (`forms/endpoints.ts:confirmSubmission`) and the contact-only
+  `/confirm/doi` route (`topics/topics.ts:confirmDoi`). The lifecycle still
+  writes only the contact table; it enforces token identity and expiry
+  before either route touches a form row.
+- The fanout is paged (100 rows per mutation, continued by a scheduled
+  follow-up), reads the pending rows through the
+  `formSubmissions.by_confirmation_token_and_status` index (which replaces
+  `by_confirmation_token`), and bumps each form's
+  `successfulSubmissionCount` once per finalized row.
+- Rows of another contact, or in any other status, are left alone. A repeat
+  click finds no contact holding the spent token and is answered from the
+  finalized rows (`alreadyConfirmed: true`).
+
+Pending rows whose token was replaced (an admin resend through
+`refreshPendingToken`, or the lapsed-token refresh above) are not re-keyed
+and stay `pending_confirmation`; the contact-side state is still correct.

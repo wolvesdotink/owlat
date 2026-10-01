@@ -150,11 +150,11 @@ describe('SetupSenderPicker when the sender list fails to load (#818)', () => {
 		pickerError.value = new Error('Function execution timed out');
 		const wrapper = mountPicker();
 
-		const alert = wrapper.find('[data-testid="sender-picker-load-failed"]');
-		expect(alert.exists()).toBe(true);
-		expect(alert.attributes('action-label')).toBe('Try again');
+		expect(wrapper.find('[data-testid="sender-picker-load-failed"]').exists()).toBe(true);
+		const alert = wrapper.findComponent({ name: 'UiErrorAlert' });
+		expect(alert.props('actionLabel')).toBe('Try again');
 
-		wrapper.findComponent({ name: 'UiErrorAlert' }).vm.$emit('action');
+		alert.vm.$emit('action');
 		expect(refetchPicker).toHaveBeenCalledTimes(1);
 	});
 });

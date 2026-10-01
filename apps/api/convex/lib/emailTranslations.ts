@@ -20,6 +20,7 @@
  * the overlay (`emailHtmlTranslations.ts`), so the two share one revision.
  */
 
+import { childBlockLists } from '@owlat/shared/blockTree';
 import { throwAlreadyExists, throwInvalidInput, throwNotFound } from '../_utils/errors';
 import { nextContentRevision } from './contentRevision';
 import { renderedLanguagePatch } from './emailHtmlTranslations';
@@ -96,7 +97,8 @@ export function serializeTranslations(translations: Record<string, Translation>)
 
 // --- translatable-content extraction ---------------------------------------
 
-// Recursive helper to extract translatable content from any block-like item.
+// Extract translatable content from an item and, through the shared Block-tree
+// child contract, from every Block nested inside it.
 function extractFromItem(
 	item: { id: string; type: string; content: Record<string, unknown> },
 	translatableContent: Record<string, TranslatableBlockContent>
@@ -109,29 +111,15 @@ function extractFromItem(
 		content.buttonText = item.content['text'] as string;
 	} else if (item.type === 'image' && item.content['alt']) {
 		content.alt = item.content['alt'] as string;
-	} else if (item.type === 'columns' && Array.isArray(item.content['columns'])) {
-		// Recursively extract from column items
-		for (const column of item.content['columns'] as Array<
-			Array<{ id: string; type: string; content: Record<string, unknown> }>
-		>) {
-			for (const columnItem of column) {
-				extractFromItem(columnItem, translatableContent);
-			}
-		}
-	} else if (item.type === 'container' && Array.isArray(item.content['items'])) {
-		// Recursively extract from container items
-		for (const containerItem of item.content['items'] as Array<{
-			id: string;
-			type: string;
-			content: Record<string, unknown>;
-		}>) {
-			extractFromItem(containerItem, translatableContent);
-		}
 	}
 
 	// Only add if there's translatable content
 	if (Object.keys(content).length > 0) {
 		translatableContent[item.id] = content;
+	}
+
+	for (const list of childBlockLists(item)) {
+		for (const child of list) extractFromItem(child, translatableContent);
 	}
 }
 

@@ -7,14 +7,23 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { computed, effectScope, nextTick, ref, type ComputedRef, type Ref } from 'vue';
 import { getFunctionName } from 'convex/server';
 import { consumeResolvedPostboxMessageBody } from '../postboxBodyResolver';
-import { usePostboxActiveMessage, usePostboxOpenMessage } from '../usePostboxOpenMessage';
+import {
+	usePostboxActiveMessage,
+	usePostboxActiveMessageRead,
+	usePostboxOpenMessage,
+} from '../usePostboxOpenMessage';
 import { threadPageArgs } from '../postboxThreadPage';
 
 const THREAD = 'mail/mailbox/messages:listThreadMessages';
 const BODY = 'mail/mailbox/messages:getMessageInlineBody';
 const BY_ID = 'mail/mailbox/messages:getMessage';
 
-type Stub = { data: Ref<unknown>; isLoading: Ref<boolean>; args: ComputedRef<unknown> };
+type Stub = {
+	data: Ref<unknown>;
+	isLoading: Ref<boolean>;
+	error: Ref<Error | null>;
+	args: ComputedRef<unknown>;
+};
 let stubs: Record<string, Stub>;
 let blobUrls: ReturnType<typeof vi.fn>;
 let download: ReturnType<typeof vi.fn>;
@@ -32,9 +41,14 @@ beforeEach(() => {
 	vi.stubGlobal('fetch', download);
 	vi.stubGlobal('useConvexQuery', (query: unknown, args: () => unknown) => {
 		const name = getFunctionName(query as never);
-		const stub: Stub = { data: ref(undefined), isLoading: ref(true), args: computed(args) };
+		const stub: Stub = {
+			data: ref(undefined),
+			isLoading: ref(true),
+			error: ref(null),
+			args: computed(args),
+		};
 		stubs[name] = stub;
-		return { data: stub.data, isLoading: stub.isLoading, error: ref(null) };
+		return { data: stub.data, isLoading: stub.isLoading, error: stub.error, refetch: vi.fn() };
 	});
 });
 
@@ -137,5 +151,28 @@ describe('usePostboxActiveMessage', () => {
 		const byId = stubs[BY_ID];
 		if (byId) byId.data.value = { _id: 'old', from: 'getMessage' };
 		expect(active.value).toEqual({ _id: 'old', from: 'getMessage' });
+	});
+});
+
+describe('usePostboxActiveMessageRead (#721)', () => {
+	it('reports a failed by-id fetch: the message could not be read at all', () => {
+		const read = run(() =>
+			usePostboxActiveMessageRead({ activeMessageId: () => 'old', listRows: () => [] })
+		);
+		answerThread([{ _id: 'newer' }]);
+		const failure = new Error('[CONVEX Q(mail/mailbox/messages:getMessage)] Server Error');
+		stubs[BY_ID]!.error.value = failure;
+		expect(read.message.value).toBeUndefined();
+		expect(read.error.value).toBe(failure);
+	});
+
+	it('ignores the error a skipped fetch kept from the previous message', () => {
+		const read = run(() =>
+			usePostboxActiveMessageRead({ activeMessageId: () => 'm1', listRows: () => [] })
+		);
+		// The thread is still loading, so the by-id fetch is skipped.
+		stubs[BY_ID]!.error.value = new Error('stale');
+		expect(stubs[BY_ID]?.args.value).toBe('skip');
+		expect(read.error.value).toBeNull();
 	});
 });

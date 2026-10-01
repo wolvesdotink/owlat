@@ -72,8 +72,8 @@ export interface CommandDeps {
 	 */
 	readonly tls: boolean;
 	/**
-	 * Called by LOGOUT (and, on IDLE timeout, by the IDLE module) to tear
-	 * down the socket. The pump's implementation is `socket.end()`.
+	 * Called by LOGOUT to tear down the socket. The pump's implementation
+	 * cancels every in-flight session, then calls `socket.end()`.
 	 */
 	readonly closeConnection: () => void;
 	/**

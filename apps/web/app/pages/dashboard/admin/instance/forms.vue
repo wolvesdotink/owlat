@@ -12,6 +12,8 @@ definePageMeta({
 
 const {
 	formsData,
+	formsError,
+	refetchForms,
 	topicsData,
 	isLoading,
 	isAddModalOpen,
@@ -159,9 +161,12 @@ watch([isAddDirty, isEditDirty], ([add, edit]) => setHasChanges(add || edit), { 
 				</div>
 			</div>
 
+			<!-- A failed read is not an empty list (#721). -->
+			<UiQueryBoundary v-if="formsError" :error="formsError" @retry="refetchForms" />
+
 			<!-- Empty State -->
 			<div
-				v-if="formsData && formsData.length === 0"
+				v-else-if="formsData && formsData.length === 0"
 				class="card flex flex-col items-center justify-center py-16 text-center px-6"
 			>
 				<UiIconBox

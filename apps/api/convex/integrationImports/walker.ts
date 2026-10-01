@@ -9,12 +9,14 @@
  *   - `cancelImport` (mutation) — user-initiated cancellation.
  *   - `getImportProgress` (query) — progress polling for the UI.
  *
- * Internals (called by `processIntegrationPage` from itself):
+ * Internals:
  *   - `processIntegrationPage` (internalAction) — fetches one page from the
- *     per-provider adapter, delegates to `importBatch`, patches progress,
- *     schedules the next hop (or completes).
- *   - `updateImportProgress`, `completeImport`, `getImportById` — internal
- *     mutations/query for cursor + counter + status patches.
+ *     per-provider adapter and hands it to `commitIntegrationPage`
+ *     (`pageCommit.ts`), which writes the page's effects, its counts and the
+ *     next hop (or the terminal status) in one fenced transaction.
+ *   - `completeImport`, `getImportById` — terminal patch and hop-entry read.
+ *     `updateImportProgress` is kept only for hops of the previous release.
+ *   - `recovery.ts` re-issues a page whose hop was lost.
  *
  * The walker never branches on `provider`. Per-provider HTTP knowledge
  * lives behind the **Integration import provider adapter (module)** seam
@@ -23,7 +25,7 @@
  * Per ADR-0027.
  */
 
-import { v, type Infer } from 'convex/values';
+import { v } from 'convex/values';
 import { internalAction, internalQuery } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
@@ -34,50 +36,26 @@ import { throwInvalidInput, throwInvalidState, getOrThrow } from '../_utils/erro
 import { providerFor } from './providers';
 import {
 	addSuppressionCounts,
+	integrationProviderConfigValidator,
 	RetryableProviderError,
 	ZERO_SUPPRESSION_COUNTS,
 	suppressionCountsValidator,
 	type FetchPageResult,
+	type IntegrationProviderConfig,
 	type IntegrationProviderKind,
-	type SuppressionImportCounts,
 } from './_common';
-import { recordImportSummary } from './suppressions';
+import {
+	finishImport,
+	isCurrentPage,
+	resumableConfig,
+	schedulePage,
+	type PageIdentity,
+} from './pageCommit';
 import { sealImportCredential, openImportCredential } from './credentialSeal';
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 import { duplicateHandlingValidator, completedOrFailedValidator } from '../lib/literalValidators';
 
 const MAX_RETRIES = 2;
-
-// ─── Validators ─────────────────────────────────────────────────────────────
-
-/**
- * Discriminated union of per-provider config shapes. Each branch matches one
- * `IntegrationProviderConfig` variant in `_common.ts`. Adding a third
- * provider adds one branch here.
- */
-export const integrationProviderConfigValidator = v.union(
-	v.object({
-		provider: v.literal('mailchimp'),
-		apiKey: v.string(),
-		listId: v.string(),
-		// Opt-in suppression carry-over. Absent: non-subscribed members are skipped
-		// and nothing is suppressed.
-		importSuppressions: v.optional(v.boolean()),
-	}),
-	v.object({
-		provider: v.literal('stripe'),
-		apiKey: v.string(),
-	}),
-	// No credential field: the Mandrill rejects import reads `MANDRILL_API_KEY`
-	// from the deployment environment (send-provider credentials are env-only,
-	// and a key pasted here would be a second credential model for an account
-	// that already has one). See `providers/mandrill/index.ts`.
-	v.object({
-		provider: v.literal('mandrill'),
-	})
-);
-
-type IntegrationImportConfig = Infer<typeof integrationProviderConfigValidator>;
 
 /**
  * Seal the provider's API key (when the provider has one) BEFORE the config
@@ -86,8 +64,8 @@ type IntegrationImportConfig = Infer<typeof integrationProviderConfigValidator>;
  * Mandrill carries no key and passes through unchanged.
  */
 async function sealConfigCredential(
-	config: IntegrationImportConfig
-): Promise<IntegrationImportConfig> {
+	config: IntegrationProviderConfig
+): Promise<IntegrationProviderConfig> {
 	if ('apiKey' in config) {
 		return { ...config, apiKey: await sealImportCredential(config.apiKey) };
 	}
@@ -100,8 +78,8 @@ async function sealConfigCredential(
  * re-scheduled with the still-sealed config.
  */
 async function openConfigCredential(
-	config: IntegrationImportConfig
-): Promise<IntegrationImportConfig> {
+	config: IntegrationProviderConfig
+): Promise<IntegrationProviderConfig> {
 	if ('apiKey' in config) {
 		return { ...config, apiKey: await openImportCredential(config.apiKey) };
 	}
@@ -160,6 +138,12 @@ export const startIntegrationImport = authedMutation({
 			.first();
 		if (running) throwInvalidState('An import is already running');
 
+		// Seal the provider credential so the scheduled-function args carry
+		// ciphertext, not a live API key, for the life of the run. Validation
+		// above ran on the plaintext config, so sealing does not weaken any
+		// check.
+		const scheduledConfig = await sealConfigCredential(args.config);
+
 		const importId = await ctx.db.insert('integrationImports', {
 			provider: args.config.provider,
 			status: 'running',
@@ -172,19 +156,11 @@ export const startIntegrationImport = authedMutation({
 			handleDuplicates: args.handleDuplicates,
 			topicId: args.topicId,
 			startedAt: Date.now(),
+			pagesCommitted: 0,
+			resumeConfig: resumableConfig(scheduledConfig),
 		});
 
-		// Seal the provider credential so the scheduled-function args carry
-		// ciphertext, not a live API key, for the life of the run. Validation
-		// above ran on the plaintext config, so sealing does not weaken any
-		// check.
-		const scheduledConfig = await sealConfigCredential(args.config);
-
-		await ctx.scheduler.runAfter(0, internal.integrationImports.walker.processIntegrationPage, {
-			importId,
-			config: scheduledConfig,
-			cursor: '',
-		});
+		await schedulePage(ctx, importId, { config: scheduledConfig, cursor: '', page: 0 });
 
 		return importId;
 	},
@@ -192,9 +168,10 @@ export const startIntegrationImport = authedMutation({
 
 /**
  * User-initiated cancellation of a `'running'` import. Patches the row to
- * `'failed'` with a `Cancelled by user` error; the next scheduled
- * `processIntegrationPage` hop sees the non-`'running'` status and
- * short-circuits without another fetch.
+ * `'failed'` with a `Cancelled by user` error. A page whose fetch is in flight
+ * finds the run ended when it commits and writes nothing; a page committed
+ * before this mutation stays counted. A hop still queued sees the status at
+ * entry and does not fetch.
  */
 export const cancelImport = authedMutation({
 	args: {
@@ -208,11 +185,7 @@ export const cancelImport = authedMutation({
 			throwInvalidState('Import is not running');
 		}
 
-		await ctx.db.patch(args.importId, {
-			status: 'failed',
-			errors: [...importRecord.errors, 'Cancelled by user'],
-			completedAt: Date.now(),
-		});
+		await finishImport(ctx, importRecord, 'failed', [...importRecord.errors, 'Cancelled by user']);
 	},
 });
 
@@ -231,11 +204,11 @@ export const getImportProgress = authedQuery({
 			.withIndex('by_status', (q) => q.eq('status', 'running'))
 			.first();
 
-		if (running) return running;
-
-		const recent = await ctx.db.query('integrationImports').order('desc').first();
-
-		return recent;
+		const run = running ?? (await ctx.db.query('integrationImports').order('desc').first());
+		if (!run) return null;
+		// The sealed provider config is for the recovery sweep, not the browser.
+		const { resumeConfig: _resumeConfig, ...visible } = run;
+		return visible;
 	},
 });
 
@@ -243,32 +216,57 @@ export const getImportProgress = authedQuery({
 
 /**
  * Process one page of an in-flight **Integration import**:
- *   1. Status-check — short-circuit if cancelled.
- *   2. `adapter.fetchPage` with retry on `RetryableProviderError`.
- *   3. Delegate to **Contact import (module)** `importBatch`.
- *   4. Patch counters + cursor.
- *   5. Schedule the next page hop, or call `completeImport` on the terminal
- *      page (adapter returned `nextCursor: null`).
+ *   1. Entry check — skip a cancelled run, or a page another hop already
+ *      committed, without fetching. Only an optimisation: the commit re-checks.
+ *   2. Open the sealed credential and `adapter.fetchPage`, retrying on
+ *      `RetryableProviderError`. Any other failure ends the run as `failed`,
+ *      unless the run has moved past this page meanwhile.
+ *   3. Hand the page to `commitIntegrationPage`, which writes its contacts,
+ *      suppressions and counts and schedules the next hop (or completes) in one
+ *      fenced transaction.
+ *
+ * `page` is absent on a hop the previous release queued; it reads as 0, which
+ * is also what a row that release started holds.
  */
 export const processIntegrationPage = internalAction({
 	args: {
 		importId: v.id('integrationImports'),
 		config: integrationProviderConfigValidator,
 		cursor: v.string(),
+		page: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		// Cancellation race: every scheduled hop checks status at entry.
+		const identity: PageIdentity = { cursor: args.cursor, page: args.page ?? 0 };
 		const importRecord = await ctx.runQuery(internal.integrationImports.walker.getImportById, {
 			importId: args.importId,
 		});
-		if (!importRecord || importRecord.status !== 'running') return;
+		if (!importRecord || !isCurrentPage(importRecord, identity)) return;
+
+		const failRun = (errorMessage: string) =>
+			ctx.runMutation(internal.integrationImports.walker.completeImport, {
+				importId: args.importId,
+				status: 'failed',
+				errorMessage,
+				...identity,
+			});
 
 		const adapter = providerFor(args.config.provider);
 
 		// Unseal the provider credential in memory for this hop's outbound call
-		// only. `args.config` stays sealed and is what re-schedules the next hop
-		// below, so the plaintext key never re-enters scheduled args.
-		const liveConfig = await openConfigCredential(args.config);
+		// only. `args.config` stays sealed and is what the commit schedules the
+		// next hop with, so the plaintext key never re-enters scheduled args. A
+		// credential that no longer opens (the instance secret changed) can never
+		// succeed on a retry, so it ends the run with a reason instead of leaving
+		// it running with nothing behind it.
+		let liveConfig: IntegrationProviderConfig;
+		try {
+			liveConfig = await openConfigCredential(args.config);
+		} catch (err) {
+			await failRun(
+				`Could not open the stored provider credential: ${err instanceof Error ? err.message : 'Unknown error'}`
+			);
+			return;
+		}
 
 		// Retry loop. `RetryableProviderError` → backoff + retry up to
 		// MAX_RETRIES. Any other thrown `Error` → fail the import.
@@ -285,116 +283,38 @@ export const processIntegrationPage = internalAction({
 					await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
 					continue;
 				}
-				await ctx.runMutation(internal.integrationImports.walker.completeImport, {
-					importId: args.importId,
-					status: 'failed',
-					errorMessage: err instanceof Error ? err.message : 'Unknown error',
-				});
+				await failRun(err instanceof Error ? err.message : 'Unknown error');
 				return;
 			}
 		}
 		if (!result) return;
 
-		// Delegate to **Contact import (module)**.
-		let batchImported = 0;
-		let batchUpdated = 0;
-		let batchSkipped = 0;
-		let batchFailed = 0;
-		const batchErrors: string[] = [];
-
-		// `contactSource` is what makes a suppression-only provider expressible:
-		// an adapter that declares none (Mandrill's rejection blacklist) never
-		// reaches the Contact import module at all.
-		if (result.rows.length > 0 && adapter.contactSource) {
-			const contactSource = adapter.contactSource;
-			try {
-				const batchResults = await ctx.runMutation(internal.contacts.import.importBatch, {
-					rows: result.rows,
-					source: contactSource,
-					handleDuplicates: importRecord.handleDuplicates,
-					...(importRecord.topicId
-						? {
-								topicAssignments: {
-									kind: 'single' as const,
-									topicId: importRecord.topicId,
-								},
-							}
-						: {}),
-					...(adapter.defaultDoiAttest
-						? { doiAttest: { attestSource: adapter.defaultDoiAttest } }
-						: {}),
-				});
-				batchImported = batchResults.imported;
-				batchUpdated = batchResults.updated;
-				batchSkipped = batchResults.skipped;
-				batchFailed = batchResults.failed;
-				batchErrors.push(...batchResults.errors.slice(0, 10));
-			} catch (error) {
-				batchFailed = result.rows.length;
-				batchErrors.push(
-					`Batch at cursor "${args.cursor}" failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-				);
-			}
-		}
-
-		// Suppression carry-over. A separate hop from `importBatch`
-		// because it is a different kind of write to a different table with a
-		// different idempotency story — and because a contacts import that
-		// carries no suppressions must be able to fail without one, and the
-		// reverse. Errors are recorded, never thrown: an address we could not
-		// suppress is a fact the operator needs on the run, not a reason to
-		// abandon the rest of the list.
-		let pageSuppressions: SuppressionImportCounts | null = null;
-		const carried = result.suppressions ?? [];
-		const adapterSkipped = result.suppressionsSkipped ?? 0;
-		if (carried.length > 0 || adapterSkipped > 0) {
-			try {
-				pageSuppressions = await ctx.runMutation(
-					internal.integrationImports.suppressions.applySuppressionBatch,
-					{
-						provider: args.config.provider,
-						entries: carried,
-						skipped: adapterSkipped,
-					}
-				);
-			} catch (error) {
-				batchErrors.push(
-					`Suppression batch at cursor "${args.cursor}" failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-				);
-			}
-		}
-
-		await ctx.runMutation(internal.integrationImports.walker.updateImportProgress, {
+		await ctx.runMutation(internal.integrationImports.pageCommit.commitIntegrationPage, {
 			importId: args.importId,
-			imported: batchImported,
-			updated: batchUpdated,
-			skipped: batchSkipped,
-			failed: batchFailed,
-			errors: batchErrors,
+			...identity,
+			config: args.config,
+			rows: result.rows,
+			suppressions: result.suppressions ?? [],
+			suppressionsSkipped: result.suppressionsSkipped ?? 0,
+			nextCursor: result.nextCursor,
 			...(result.totalEstimate !== undefined ? { totalEstimate: result.totalEstimate } : {}),
-			...(pageSuppressions ? { suppressionCounts: pageSuppressions } : {}),
-			newCursor: result.nextCursor ?? args.cursor,
 		});
-
-		if (result.nextCursor !== null) {
-			await ctx.scheduler.runAfter(0, internal.integrationImports.walker.processIntegrationPage, {
-				importId: args.importId,
-				config: args.config,
-				cursor: result.nextCursor,
-			});
-		} else {
-			await ctx.runMutation(internal.integrationImports.walker.completeImport, {
-				importId: args.importId,
-				status: 'completed',
-			});
-		}
 	},
 });
 
 // ─── Internal mutations / queries ───────────────────────────────────────────
 
+// ============== v0.6.5 compatibility shim — remove after release N+1 ==============
+
 /**
- * Patch per-page counter sums and the next opaque cursor. Adapter-agnostic.
+ * Patch per-page counter sums and the next opaque cursor, for a page hop of
+ * the previous release that is still running when this one deploys (it calls
+ * this after its own contact and suppression writes, before it schedules the
+ * next hop). Nothing in this release calls it.
+ *
+ * It only touches a row that release started: a row with a page count belongs
+ * to this release's commit, and counting a legacy hop into it as well would
+ * count one page twice when the recovery sweep has already re-issued it.
  */
 export const updateImportProgress = internalMutation({
 	args: {
@@ -414,7 +334,7 @@ export const updateImportProgress = internalMutation({
 
 		// Don't advance counters/cursor on an import the user already cancelled
 		// (or that already reached a terminal state).
-		if (record.status !== 'running') return;
+		if (record.status !== 'running' || record.pagesCommitted !== undefined) return;
 
 		const mergedErrors = [...record.errors, ...args.errors].slice(0, 20);
 
@@ -425,6 +345,7 @@ export const updateImportProgress = internalMutation({
 			failed: record.failed + args.failed,
 			errors: mergedErrors,
 			cursor: args.newCursor,
+			lastPageAt: Date.now(),
 			...(args.totalEstimate !== undefined ? { totalEstimate: args.totalEstimate } : {}),
 			...(args.suppressionCounts
 				? {
@@ -438,15 +359,24 @@ export const updateImportProgress = internalMutation({
 	},
 });
 
+// ============== end of v0.6.5 compatibility shim ==============
+
 /**
  * Terminal patch — flips `status` from `'running'` to `'completed'` or
  * `'failed'`. Appends an `errorMessage` when supplied.
+ *
+ * A hop names its page (`cursor` + `page`) and then ends the run only while
+ * that page is still the current one: a duplicate hop whose page another hop
+ * already committed must not fail a run that has moved on. The previous
+ * release's hops call it without a page and get the status check alone.
  */
 export const completeImport = internalMutation({
 	args: {
 		importId: v.id('integrationImports'),
 		status: completedOrFailedValidator,
 		errorMessage: v.optional(v.string()),
+		cursor: v.optional(v.string()),
+		page: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		const record = await ctx.db.get(args.importId);
@@ -456,28 +386,24 @@ export const completeImport = internalMutation({
 		// only a still-running import may transition to completed/failed, so a
 		// late terminal hop can't clobber 'cancelled'/'failed' back to 'completed'.
 		if (record.status !== 'running') return;
+		if (
+			args.cursor !== undefined &&
+			!isCurrentPage(record, { cursor: args.cursor, page: args.page ?? 0 })
+		) {
+			return;
+		}
 
 		const errors = args.errorMessage
 			? [...record.errors, args.errorMessage].slice(0, 20)
 			: record.errors;
-
-		await ctx.db.patch(args.importId, {
-			status: args.status,
-			errors,
-			completedAt: Date.now(),
-		});
-
-		// ONE aggregated audit row per run that actually carried something over —
-		// including a run that failed halfway, because the addresses it did
-		// suppress are suppressed either way. Gated on having changed something,
-		// so an idempotent re-run adds nothing to the trail.
-		await recordImportSummary(ctx, { ...record, status: args.status, errors });
+		await finishImport(ctx, record, args.status, errors);
 	},
 });
 
 /**
  * Read the current import row. Used by `processIntegrationPage` at every
- * hop entry to detect user cancellation before issuing the next HTTP call.
+ * hop entry to skip a cancelled run or a superseded page before issuing the
+ * next HTTP call.
  */
 export const getImportById = internalQuery({
 	args: {
