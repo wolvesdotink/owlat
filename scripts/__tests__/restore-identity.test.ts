@@ -44,7 +44,7 @@ async function expectCurrentVolumesUntouched(install: Install) {
 async function expectNothingChanged(install: Install, out: string) {
 	expect(out).toContain('nothing was changed');
 	expect(out).not.toContain('Restore complete');
-	expect((await install.calls()).some((c) => / down$/.test(c))).toBe(false);
+	expect((await install.calls()).some((c) => c.endsWith(' down'))).toBe(false);
 	expect((await install.calls()).some((c) => c.startsWith('run '))).toBe(false);
 	await expectCurrentVolumesUntouched(install);
 	await expect(readFile(join(install.dir, '.env'), 'utf8')).resolves.toBe('CURRENT=1\n');
