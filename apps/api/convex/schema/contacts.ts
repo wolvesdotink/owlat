@@ -193,6 +193,11 @@ export const contactTables = {
 		// rows from the contact-properties UI. See ADR-0019.
 		autoRegistered: v.optional(v.boolean()),
 		autoRegisteredSource: v.optional(v.string()),
+		// Set when a delete was requested (#918). From then on the property is
+		// hidden from pickers and closed to value writes while its
+		// `contactPropertyDeletionJobs` row removes the value column in bounded
+		// transactions; the row itself goes with the last values.
+		deletionRequestedAt: v.optional(v.number()),
 		createdAt: v.number(),
 	}).index('by_key', ['key']),
 
@@ -207,6 +212,34 @@ export const contactTables = {
 		.index('by_contact', ['contactId'])
 		.index('by_property', ['propertyId'])
 		.index('by_contact_and_property', ['contactId', 'propertyId']),
+
+	// One per contact property being deleted (#918): the durable state of the
+	// bounded cleanup chain in `contacts/propertyDeletion.ts`. Deleted together
+	// with the property once its last value is gone.
+	contactPropertyDeletionJobs: defineTable({
+		propertyId: v.id('contactProperties'),
+		// The member who asked for the deletion (from the session, never an arg).
+		requestedBy: v.string(),
+		// running  — a transaction chain is (or should be) working on it;
+		// retrying — the last transaction failed and a retry is scheduled;
+		// failed   — retries are exhausted; the hourly sweep or a repeated
+		//            delete request re-arms it.
+		status: v.union(v.literal('running'), v.literal('retrying'), v.literal('failed')),
+		valuesDeleted: v.number(),
+		transactions: v.number(),
+		// Consecutive failed attempts; reset by the next committed batch.
+		attempts: v.number(),
+		// Values per transaction while recovering from a batch that hit a
+		// platform limit: one after the failure, doubling with every commit,
+		// absent once back at the full budget.
+		rowCap: v.optional(v.number()),
+		lastError: v.optional(v.string()),
+		lastErrorAt: v.optional(v.number()),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	})
+		.index('by_property', ['propertyId'])
+		.index('by_status_and_updated_at', ['status', 'updatedAt']),
 
 	// Contact Activities - tracks all activities and events for contacts.
 	// Used to display the activity timeline on contact detail pages.

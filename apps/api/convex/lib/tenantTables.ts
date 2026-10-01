@@ -48,6 +48,8 @@ export const TENANT_TABLES = [
 	// Per-contact erasure progress; references the contact rows below.
 	'contactErasureJobs',
 	'contacts',
+	// Property-deletion progress; references the property rows below.
+	'contactPropertyDeletionJobs',
 	'contactProperties',
 
 	// ── Automations (children first) ──
@@ -325,6 +327,9 @@ export const NON_TENANT_TABLES = [
 	// The deletion-tracking table itself — account deletion patches the request
 	// row to `completed`, so it must survive the wipe.
 	'accountDeletionRequests',
+	// Member erasure's progress rows. The erasure they drive runs across a
+	// workspace deletion (it waits for the sweep), so they must outlive it too.
+	'memberErasureJobs',
 	// Workspace deletion's own control plane (the durable job and the write
 	// fence's switch). It has to outlive the tables it empties, and its finished
 	// rows are the generation history.

@@ -99,14 +99,27 @@ export const authTables = {
 		cancellationToken: v.string(),
 		// Current status of the request
 		status: v.union(
-			v.literal('pending'), // Waiting for 30-day period
+			v.literal('pending'), // Waiting for 30-day period; the only cancellable state
 			v.literal('cancelled'), // User cancelled the deletion
-			v.literal('completed') // Account has been permanently deleted
+			// Destruction has begun (auth/erasure/walker.ts owns the progress on its
+			// `memberErasureJobs` row). No longer cancellable.
+			v.literal('erasing'),
+			// The erasure ran out of retries, or its subject could not be recovered
+			// (`lastError` says which). The daily sweep retries a job it can.
+			v.literal('failed'),
+			v.literal('completed') // Erasure finished and its end state was verified
 		),
 		// Optional reason provided by user
 		reason: v.optional(v.string()),
 		// When status changed (for cancelled/completed)
 		statusChangedAt: v.optional(v.number()),
+		// The BetterAuth user id being erased, recorded when destruction begins
+		// (the profile that carried it is deleted in that same transaction). Absent
+		// on requests from before erasure was persisted.
+		authUserId: v.optional(v.string()),
+		erasureStartedAt: v.optional(v.number()),
+		// Why the erasure is `failed`, for the operator.
+		lastError: v.optional(v.string()),
 		// Timestamps
 		createdAt: v.number(),
 	})

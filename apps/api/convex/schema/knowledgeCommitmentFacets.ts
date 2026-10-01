@@ -14,7 +14,7 @@ import { v } from 'convex/values';
  *   - `isOpenCommitment` — `true` for a `decision` / `action_item` whose status
  *     is open (absent status counts as open), `false` for every other entry.
  *     ABSENT means the row predates the projection; the reader hydrates those
- *     the old way until migration 0052 has filled them.
+ *     the old way until migration 0053 has filled them.
  *   - `commitmentDueKey` — the entry's `dueAt`, or `UNDATED_DUE_KEY` so undated
  *     commitments sort after dated ones.
  *   - `commitmentOrderKey` — `-createdAt`, so ties on the due key put the newest

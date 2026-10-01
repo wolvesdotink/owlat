@@ -869,7 +869,7 @@ migration's row in the `migrationRuns` ledger (`schema/migrationRuns.ts`),
 written through `lib/migrationLedger.ts`: `beginMigrationRun` from the `run`
 entry point, `recordMigrationPage` in each page's own transaction, and a
 generation check (`isCurrentMigrationPage`) so a resume supersedes a chain that
-is still queued. `migrations/0052_project_open_commitments.ts` is the worked
+is still queued. `migrations/0053_project_open_commitments.ts` is the worked
 example.
 
 **Bounded, resumable backfills.** A migration pages through its table

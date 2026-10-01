@@ -19,7 +19,7 @@
  *     which describe the entry, stay valid;
  *   - erasure, expiry and delete remove the rows.
  * Rows written before this change have no facets; the reader hydrates them the
- * old way until migration 0052 has projected them.
+ * old way until migration 0053 has projected them.
  */
 
 import type { MutationCtx, QueryCtx } from '../_generated/server';
@@ -159,7 +159,7 @@ function compareOpenCommitments(a: OpenCommitment, b: OpenCommitment): number {
  *      once `limit` entries survived, so entry loads scale with `limit`, not
  *      with the contact's knowledge;
  *   2. rows without facets (written before the projection, until migration
- *      0052 has run): hydrated and filtered as before. Empty once backfilled.
+ *      0053 has run): hydrated and filtered as before. Empty once backfilled.
  * Every loaded entry is re-checked against its own fields, so a row whose
  * facets drifted can drop a stale candidate but never return a wrong one.
  */
@@ -205,7 +205,7 @@ export async function readOpenCommitments(
 		.withIndex('by_contact_open_commitment', (q) =>
 			q.eq('contactId', contactId).eq('isOpenCommitment', undefined)
 		)
-		.collect(); // bounded: pre-projection rows of one contact; empty once 0052 has run
+		.collect(); // bounded: pre-projection rows of one contact; empty once 0053 has run
 	const legacy = await batchGet(
 		ctx,
 		unprojected.map((row) => row.entryId)

@@ -11,7 +11,7 @@ import { v } from 'convex/values';
  */
 export const migrationRunTables = {
 	migrationRuns: defineTable({
-		/** The module under `migrations/`, e.g. `0052_project_open_commitments`. */
+		/** The module under `migrations/`, e.g. `0053_project_open_commitments`. */
 		migration: v.string(),
 		/** The release that introduced the migration, e.g. `0.6.6`. */
 		introducedIn: v.string(),

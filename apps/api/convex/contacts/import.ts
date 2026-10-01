@@ -32,6 +32,7 @@ import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { resolveContact } from './resolution';
+import { autoRegisterProperty, loadPropertyCatalog, type PropertyCatalog } from './propertyCatalog';
 import { deduplicateContactsByEmail } from '../lib/contactHelpers';
 import { incrementContactCount } from '../lib/contactCountHelpers';
 import { isValidEmail, normalizeEmail, STRING_LIMITS } from '../lib/inputGuards';
@@ -109,14 +110,6 @@ const ERROR_CAP = 50;
 
 // ─── Internal helpers ───────────────────────────────────────────────────────
 
-type PropertyType = 'string' | 'number' | 'boolean' | 'date';
-
-function inferPropertyType(value: string | number | boolean): PropertyType {
-	if (typeof value === 'number') return 'number';
-	if (typeof value === 'boolean') return 'boolean';
-	return 'string';
-}
-
 function stringifyPropertyValue(value: string | number | boolean): string {
 	if (typeof value === 'string') return value;
 	if (typeof value === 'boolean') return value ? 'true' : 'false';
@@ -125,38 +118,6 @@ function stringifyPropertyValue(value: string | number | boolean): string {
 
 function isOperatorSource(source: ImportSource): boolean {
 	return source === 'csv' || source === 'api';
-}
-
-interface PropertyCatalog {
-	byKey: Map<string, Id<'contactProperties'>>;
-}
-
-async function loadPropertyCatalog(ctx: MutationCtx): Promise<PropertyCatalog> {
-	const rows = await ctx.db.query('contactProperties').collect(); // bounded: custom property definitions (org-scale, few)
-	const byKey = new Map<string, Id<'contactProperties'>>();
-	for (const row of rows) {
-		byKey.set(row.key, row._id);
-	}
-	return { byKey };
-}
-
-async function autoRegisterProperty(
-	ctx: MutationCtx,
-	catalog: PropertyCatalog,
-	key: string,
-	value: string | number | boolean,
-	source: ImportSource
-): Promise<Id<'contactProperties'>> {
-	const propertyId = await ctx.db.insert('contactProperties', {
-		key,
-		label: key,
-		type: inferPropertyType(value),
-		autoRegistered: true,
-		autoRegisteredSource: source,
-		createdAt: Date.now(),
-	});
-	catalog.byKey.set(key, propertyId);
-	return propertyId;
 }
 
 /**
@@ -228,7 +189,8 @@ async function applyRowProperties(
 
 		let propertyId = catalog.byKey.get(key);
 		if (propertyId === undefined) {
-			if (operatorSource) {
+			// A key whose property is being deleted is skipped, never re-registered.
+			if (operatorSource || catalog.pendingDeletion.has(key)) {
 				summary.skippedKeys.push(key);
 				continue;
 			}

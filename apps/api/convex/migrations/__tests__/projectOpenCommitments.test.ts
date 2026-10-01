@@ -1,5 +1,5 @@
 /**
- * Migration 0052 (project open-commitment facets) keeps its progress and
+ * Migration 0053 (project open-commitment facets) keeps its progress and
  * completion in the migration ledger (`migrationRuns`): one row whose cursor
  * and counts move in the same transaction as each page, marked completed by
  * the final page. A second `run` resumes from that cursor, and a run on a
@@ -16,8 +16,8 @@ import { createTestContact } from '../../__tests__/factories';
 
 type Harness = TestConvex<typeof schema>;
 
-const MIGRATION = '0052_project_open_commitments';
-const migration = internal.migrations['0052_project_open_commitments'];
+const MIGRATION = '0053_project_open_commitments';
+const migration = internal.migrations['0053_project_open_commitments'];
 /** Two full pages of 100 and a partial third. */
 const ROWS = 250;
 
@@ -69,7 +69,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-describe('migration 0052 ledger', () => {
+describe('migration 0053 ledger', () => {
 	it('records cursor and counts with each page and marks the final page complete', async () => {
 		const t = convexTest(schema, modules);
 		await seedLegacyRows(t, ROWS);
