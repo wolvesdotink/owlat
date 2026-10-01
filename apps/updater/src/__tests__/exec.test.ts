@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -41,7 +41,47 @@ function spawnsGrandchild(pidFile: string): string {
 	return `sleep 30 & echo $! > ${pidFile}; wait`;
 }
 
+/**
+ * A command whose leader exits on SIGTERM while a descendant in its process
+ * group ignores it: the shape of a `docker` CLI that goes on the signal while
+ * the compose plugin it started carries on. `holdsPipes` picks whether the
+ * descendant keeps the command's output pipes open (so `close` waits for it)
+ * or lets go of them (so `close` fires the moment the leader exits).
+ */
+function leaderWithStubbornDescendant(pidFile: string, holdsPipes: boolean): string {
+	const redirect = holdsPipes ? '' : ' >/dev/null 2>&1';
+	// The descendant writes its pid only once it ignores SIGTERM, so a test
+	// never signals it before the trap is in place.
+	const descendant = `trap "" TERM; echo $$ > ${pidFile}; exec sleep 30`;
+	return `sh -c '${descendant}'${redirect} & wait`;
+}
+
+/** Descendants a test started; killed after each test whatever it asserted. */
+const strays: number[] = [];
+
+/** Wait for a test command to write its descendant's pid, and track it. */
+async function descendantPid(pidFile: string): Promise<number> {
+	const until = Date.now() + 3_000;
+	while (Date.now() < until) {
+		const text = existsSync(pidFile) ? readFileSync(pidFile, 'utf-8').trim() : '';
+		if (text) {
+			const pid = Number(text);
+			strays.push(pid);
+			return pid;
+		}
+		await new Promise((resolve) => setTimeout(resolve, 20));
+	}
+	throw new Error(`no pid in ${pidFile}`);
+}
+
 afterEach(async () => {
+	for (const pid of strays.splice(0)) {
+		try {
+			process.kill(pid, 'SIGKILL');
+		} catch {
+			// Gone already, which is what the test wanted.
+		}
+	}
 	await stopRunningChildren(100);
 });
 
@@ -147,6 +187,32 @@ describe('exec', () => {
 			stderr: 'sh was not started: the updater is shutting down',
 		});
 	});
+
+	/**
+	 * The leader going on SIGTERM is not the group going: a descendant that
+	 * ignores it is still running, and still gets the SIGKILL.
+	 */
+	it.each([
+		['holds the output pipes', true],
+		['has let go of the output pipes', false],
+	])(
+		'kills a SIGTERM-resistant descendant after its leader exits, when it %s',
+		async (_, holdsPipes) => {
+			const pidFile = join(DIR, `stubborn-abort-${holdsPipes}.pid`);
+			const controller = new AbortController();
+			const running = exec('sh', ['-c', leaderWithStubbornDescendant(pidFile, holdsPipes)], DIR, {
+				signal: controller.signal,
+				killGraceMs: 300,
+			});
+			const pid = await descendantPid(pidFile);
+			controller.abort();
+
+			const result = await running;
+			expect(result.ok).toBe(false);
+			expect(result.stderr).toContain('was stopped because the updater is shutting down');
+			expect(alive(pid)).toBe(false);
+		}
+	);
 });
 
 describe('stopRunningChildren', () => {
@@ -164,6 +230,25 @@ describe('stopRunningChildren', () => {
 		expect(result.ok).toBe(false);
 		expect(await gone(Number(readFileSync(pidFile, 'utf-8')))).toBe(true);
 	});
+
+	it.each([
+		['holds the output pipes', true],
+		['has let go of the output pipes', false],
+	])(
+		'kills a SIGTERM-resistant descendant whose leader has exited, when it %s',
+		async (_, holdsPipes) => {
+			const pidFile = join(DIR, `stubborn-deadline-${holdsPipes}.pid`);
+			const running = exec('sh', ['-c', leaderWithStubbornDescendant(pidFile, holdsPipes)], DIR);
+			const pid = await descendantPid(pidFile);
+
+			const started = Date.now();
+			await stopRunningChildren(300);
+
+			expect(Date.now() - started).toBeLessThan(2_000);
+			expect(alive(pid)).toBe(false);
+			expect((await running).ok).toBe(false);
+		}
+	);
 
 	it('returns at once when nothing is running', async () => {
 		const started = Date.now();

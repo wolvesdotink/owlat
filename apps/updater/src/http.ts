@@ -154,13 +154,22 @@ class OutputTail {
 /** Every child `exec` has started and not yet collected. */
 const running = new Set<ChildProcess>();
 
+/** How often a stopping group is checked for members still running. */
+const GROUP_POLL_MS = 25;
+
+/** How long a group that was sent SIGKILL gets to be collected. */
+const GROUP_COLLECT_MS = 1_000;
+
 /**
  * Signal a child's whole process group. `docker` runs `compose` as a plugin in
  * a process of its own, so signalling only the CLI would leave the plugin
  * running the pull on its own.
+ *
+ * The group outlives its leader: a CLI that exits on SIGTERM can leave a
+ * plugin that ignored it, so the group is signalled whether or not the child
+ * itself is still there.
  */
 function signalGroup(child: ChildProcess, signal: NodeJS.Signals): void {
-	if (child.exitCode !== null || child.signalCode !== null) return;
 	// No pid, no group: the child never started (or is not a real process).
 	if (child.pid === undefined) {
 		child.kill(signal);
@@ -172,6 +181,45 @@ function signalGroup(child: ChildProcess, signal: NodeJS.Signals): void {
 		// The group is gone already, or never formed; try the child itself.
 		child.kill(signal);
 	}
+}
+
+/** Whether anything is left of a child's process group, leader or not. */
+function groupAlive(child: ChildProcess): boolean {
+	// No pid, no group: only the child itself can still be there.
+	if (child.pid === undefined) return child.exitCode === null && child.signalCode === null;
+	try {
+		process.kill(-child.pid, 0);
+		return true;
+	} catch (err) {
+		// ESRCH: no process is left in the group. Anything else (EPERM) means
+		// one is, even if it cannot be signalled.
+		return (err as NodeJS.ErrnoException).code !== 'ESRCH';
+	}
+}
+
+/** Poll until a child's group is empty or `ms` runs out; true if it emptied. */
+async function groupGone(child: ChildProcess, ms: number): Promise<boolean> {
+	const until = Date.now() + ms;
+	while (groupAlive(child)) {
+		const left = until - Date.now();
+		if (left <= 0) return false;
+		await new Promise((resolve) => setTimeout(resolve, Math.min(GROUP_POLL_MS, left)));
+	}
+	return true;
+}
+
+/**
+ * Stop a child's whole process group: SIGTERM, SIGKILL for whatever is left
+ * once `graceMs` runs out, then `GROUP_COLLECT_MS` for it to be collected.
+ * Waits on the group rather than the child, since the child exiting says
+ * nothing about the processes it started. Bounded, so a process that cannot
+ * be collected (stuck in the kernel) delays a shutdown but never holds it.
+ */
+async function stopGroup(child: ChildProcess, graceMs: number): Promise<void> {
+	signalGroup(child, 'SIGTERM');
+	if (await groupGone(child, graceMs)) return;
+	signalGroup(child, 'SIGKILL');
+	await groupGone(child, GROUP_COLLECT_MS);
 }
 
 /**
@@ -192,10 +240,12 @@ function signalGroup(child: ChildProcess, signal: NodeJS.Signals): void {
  * finish.
  *
  * The child runs in a process group of its own, so a timeout (or `signal`)
- * stops the plugin doing the work too: SIGTERM first, SIGKILL if it is still
- * there `EXEC_KILL_GRACE_MS` later. The promise settles once the child has
- * exited, never while it is still running. Output is bounded (`OutputTail`)
- * rather than fatal when it runs long, since a verbose pull is not a failure.
+ * stops the plugin doing the work too: SIGTERM first, SIGKILL for whatever of
+ * the group is still there `EXEC_KILL_GRACE_MS` later. The promise settles
+ * once the child has exited and, for a command that was stopped, once its
+ * group has too (or the kill's bound runs out), never while it is running.
+ * Output is bounded (`OutputTail`) rather than fatal when it runs long, since
+ * a verbose pull is not a failure.
  */
 export function exec(
 	file: string,
@@ -220,7 +270,7 @@ export function exec(
 		let stopped: string | undefined;
 		let failure: Error | undefined;
 		let settled = false;
-		let killTimer: NodeJS.Timeout | undefined;
+		let stopping: Promise<void> | undefined;
 		let reapTimer: NodeJS.Timeout | undefined;
 
 		let child: ChildProcess;
@@ -245,12 +295,13 @@ export function exec(
 		const reap = () => {
 			reapTimer ??= setTimeout(() => settle(exited?.code ?? null, exited?.killedBy ?? null), 1_000);
 		};
+		// The group is stopped even when the child has exited already: what it
+		// started can still be running, and still holding the pipes.
 		const stop = (reason: string) => {
 			if (stopped) return;
 			stopped = reason;
-			if (exited) return reap();
-			signalGroup(child, 'SIGTERM');
-			killTimer = setTimeout(() => signalGroup(child, 'SIGKILL'), killGraceMs);
+			stopping = stopGroup(child, killGraceMs);
+			if (exited) reap();
 		};
 		const onAbort = () => stop('was stopped because the updater is shutting down');
 		const timer = setTimeout(() => stop(`timed out after ${timeoutMs / 1000}s`), timeoutMs);
@@ -260,10 +311,17 @@ export function exec(
 			if (settled) return;
 			settled = true;
 			clearTimeout(timer);
-			clearTimeout(killTimer);
 			clearTimeout(reapTimer);
 			signal?.removeEventListener('abort', onAbort);
-			running.delete(child);
+			// A stopped command is collected with its group, not just its leader:
+			// it stays in `running` (for the shutdown deadline to see) until then.
+			const done = (result: ExecResult) => {
+				const collected = stopping ?? Promise.resolve();
+				void collected.then(() => {
+					running.delete(child);
+					resolve(result);
+				});
+			};
 
 			const out = stdout.toString();
 			const err = stderr.toString();
@@ -271,7 +329,7 @@ export function exec(
 			// progress to stderr on success, and real failures ('Error response
 			// from daemon') broke the old case-sensitive match.
 			if (code === 0 && !stopped && !failure) {
-				resolve({ ok: true, stdout: out, stderr: err });
+				done({ ok: true, stdout: out, stderr: err });
 				return;
 			}
 			// Say why when the child's own output does not: it was stopped, it
@@ -283,7 +341,7 @@ export function exec(
 					: err
 						? ''
 						: `${file} exited with ${killedBy ? `signal ${killedBy}` : `code ${code}`}`;
-			resolve({
+			done({
 				ok: false,
 				stdout: out,
 				stderr: why ? [err.trimEnd(), why].filter(Boolean).join('\n') : err,
@@ -306,24 +364,15 @@ export function exec(
 }
 
 /**
- * Stop every child still running and wait (bounded) for each to exit. For the
- * shutdown deadline: a process about to exit must not leave a `docker compose`
- * behind it, still acting on the stack with nobody left to report on it.
+ * Stop every child still running, with its process group, and wait (bounded)
+ * for each group to empty. For the shutdown deadline: a process about to exit
+ * must not leave a `docker compose` behind it, still acting on the stack with
+ * nobody left to report on it.
  */
 export async function stopRunningChildren(graceMs = EXEC_KILL_GRACE_MS): Promise<void> {
-	const children = [...running];
-	if (children.length === 0) return;
-	const exited = (child: ChildProcess) =>
-		child.exitCode !== null || child.signalCode !== null
-			? Promise.resolve()
-			: new Promise<void>((resolve) => child.once('exit', () => resolve()));
-	const within = (ms: number, work: Promise<unknown>) =>
-		Promise.race([work, new Promise((resolve) => setTimeout(resolve, ms))]);
-
-	for (const child of children) signalGroup(child, 'SIGTERM');
-	await within(graceMs, Promise.all(children.map(exited)));
-	for (const child of children) signalGroup(child, 'SIGKILL');
-	await within(1_000, Promise.all(children.map(exited)));
+	// By group, not by child: a child that has exited can leave the processes
+	// it started running, and those are what must not outlive the updater.
+	await Promise.all([...running].map((child) => stopGroup(child, graceMs)));
 }
 
 /**
