@@ -621,7 +621,8 @@ writes the new token and after the contact patch:
   carry's own `toToken`, which a second resend can have replaced before the
   confirmation. Both confirmation routes stamp the rows they finalize with
   the contact's `doiConfirmedAt`, so the page reads the consumed token back
-  from such a row. If no row records it, the carried rows are finalized
+  from such a row, through an index on contact, status and confirmation time
+  (ADR-0015 amendment). If no row records it, the carried rows are finalized
   without a token. Either way a replaced link never resolves to a finished
   submission.
 - A carry never leaves its consent episode. The contact's token and status

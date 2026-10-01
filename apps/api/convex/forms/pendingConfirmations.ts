@@ -20,7 +20,7 @@
  */
 
 import { v } from 'convex/values';
-import type { MutationCtx } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -98,6 +98,12 @@ function carryTarget(
  * confirmation. Undefined when no finalized row records it (the confirmed
  * token had no rows of this contact), and then the carried rows are finalized
  * without a token, so no superseded link resolves to them.
+ *
+ * One indexed read, whatever the size of the contact's history. Every row in
+ * the range was finalized by this confirmation: by `markConfirmedByToken`,
+ * whose first page runs in the confirming transaction, or by a carry page,
+ * which copies that witness's token. So the first row has the token if any
+ * row does.
  */
 async function confirmedToken(
 	ctx: MutationCtx,
@@ -105,18 +111,24 @@ async function confirmedToken(
 	confirmedAt: number | undefined
 ): Promise<string | undefined> {
 	if (confirmedAt === undefined) return undefined;
-	const row = await ctx.db
-		.query('formSubmissions')
-		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.filter((q) =>
-			q.and(
-				q.eq(q.field('status'), 'success'),
-				q.eq(q.field('confirmedAt'), confirmedAt),
-				q.neq(q.field('confirmationToken'), undefined)
-			)
-		)
-		.first(); // bounded: one contact's form submissions
+	const row = await confirmationWitnesses(ctx, contactId, confirmedAt).first();
 	return row?.confirmationToken;
+}
+
+/**
+ * The rows one confirmation of the contact finalized, as an index range.
+ * Exported so a test can read it under a byte budget.
+ */
+export function confirmationWitnesses(
+	ctx: QueryCtx,
+	contactId: Id<'contacts'>,
+	confirmedAt: number
+) {
+	return ctx.db
+		.query('formSubmissions')
+		.withIndex('by_contact_and_status_and_confirmed_at', (q) =>
+			q.eq('contactId', contactId).eq('status', 'success').eq('confirmedAt', confirmedAt)
+		);
 }
 
 const carryArgsValidator = {

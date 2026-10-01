@@ -17,6 +17,8 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { DOI_TOKEN_TTL_MS } from '../contacts/doiLifecycle';
+import { confirmationWitnesses } from '../forms/pendingConfirmations';
+import { STRING_LIMITS } from '../lib/inputGuards';
 import { resolveContact } from '../contacts/resolution';
 import { expectScheduledFailure } from './helpers/scheduledFailures';
 
@@ -722,5 +724,66 @@ describe('a carry continuation after a second resend', () => {
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
 
 		await expectAllConfirmedUnderNewestToken(t, formId, rows);
+	});
+});
+
+// ─── A contact with a long submission history ───────────────────────────────
+
+describe('a carry finalizing for a contact with a long history', () => {
+	// Convex's per-transaction read limit. convex-test does not enforce it, so
+	// the lookup's index range is read under this budget explicitly.
+	const READ_LIMIT_BYTES = 16 * 1024 * 1024;
+
+	it('finds the consumed token with one indexed read and finalizes every row', async () => {
+		vi.useFakeTimers();
+		const t = setupTest();
+		const formId = await createForm(t, { doubleOptIn: true, name: 'A' });
+		const contactId = await seedContact(t, 'history@example.com', {
+			doiStatus: 'pending',
+			doiConfirmationToken: 'first-token',
+			doiTokenExpiresAt: Date.now() + DOI_TOKEN_TTL_MS,
+		});
+		// Earlier submissions, each at the largest field value a form accepts:
+		// more than the read limit in total, ahead of every later row.
+		const bigValue = 'x'.repeat(STRING_LIMITS.FORM_FIELD_VALUE);
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 2000; i++) {
+				await ctx.db.insert('formSubmissions', {
+					formEndpointId: formId,
+					contactId,
+					data: { email: 'history@example.com', note: bigValue },
+					status: 'duplicate',
+					submittedAt: Date.now(),
+				});
+			}
+		});
+		const rows = await seedPendingRows(t, {
+			count: 150,
+			forms: [formId],
+			contactId,
+			token: 'first-token',
+		});
+
+		await resend(t, contactId, 'second-token');
+		await resend(t, contactId, 'third-token');
+		await t.mutation(api.forms.endpoints.confirmSubmission, { token: 'third-token' });
+
+		const confirmedAt = (await getContact(t, contactId))?.doiConfirmedAt;
+		expect(confirmedAt).toBeDefined();
+		const lookup = await t.run((ctx) =>
+			confirmationWitnesses(ctx, contactId, confirmedAt!).paginate({
+				numItems: 1,
+				cursor: null,
+				maximumBytesRead: READ_LIMIT_BYTES,
+			})
+		);
+		expect(lookup.page[0]?.confirmationToken).toBe('third-token');
+
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const after = await rowsById(t, rows);
+		expect(after.every((r) => r?.status === 'success')).toBe(true);
+		expect(after.every((r) => r?.confirmationToken === 'third-token')).toBe(true);
+		expect(await successCount(t, formId)).toBe(150);
 	});
 });

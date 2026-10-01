@@ -804,6 +804,14 @@ which holds what happens to rows that wait on a confirmation token:
   consumed, read back from a row that confirmation finalized (both routes
   stamp them with the contact's `doiConfirmedAt`), or without a token if no
   such row exists.
+- That read uses a new index, `formSubmissions.by_contact_and_status_and_confirmed_at`,
+  and takes the first row of the contact's `success` rows at that time: one
+  indexed read, however long the contact's submission history is. A filter
+  over `by_contact` would read the whole history first, and a long one can
+  exceed the transaction's read limit, which would abort the carry page.
+  Storing the consumed token on the contact was the alternative. It was not
+  chosen because it would add a second token field that every member-readable
+  contact read has to strip, and the finalized rows already record the token.
 
 `submission.ts` keeps `submit` and `markConfirmedByToken`; the module still
 owns every write to `formSubmissions`.
