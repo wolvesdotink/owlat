@@ -32,7 +32,12 @@ const { t } = useI18n();
 const { canManageOrganization } = usePermissions();
 const { showToast } = useToast();
 
-const { data: settings, isLoading } = useConvexQuery(api.workspaces.settings.get, {});
+const {
+	data: settings,
+	isLoading,
+	error: settingsError,
+	refetch: refetchSettings,
+} = useConvexQuery(api.workspaces.settings.get, {});
 
 const selected = computed<InboundRawRetentionDays>(
 	() => settings.value?.inboundRawRetentionDays ?? DEFAULT_INBOUND_RAW_RETENTION_DAYS
@@ -56,7 +61,7 @@ const { run: updateSettings } = useBackendOperation(api.workspaces.settings.upda
  * day-count validator rejects a string.
  */
 async function onSelect(next: InboundRawRetentionDays | null) {
-	if (!canManageOrganization.value || next === null) return;
+	if (!canManageOrganization.value || next === null || settings.value === undefined) return;
 	if (next === selected.value) return;
 	const res = await updateSettings({ inboundRawRetentionDays: next });
 	if (!res.ok) return; // failure already toasted
@@ -88,7 +93,11 @@ async function onSelect(next: InboundRawRetentionDays | null) {
 			</p>
 			<span v-else />
 			<UiSpinner v-if="isLoading" size="sm" />
-			<div v-else class="w-44 flex-shrink-0" data-testid="inbound-retention-days">
+			<div
+				v-else-if="!settingsError"
+				class="w-44 flex-shrink-0"
+				data-testid="inbound-retention-days"
+			>
 				<UiSelect
 					:model-value="selected"
 					:options="options"
@@ -99,6 +108,9 @@ async function onSelect(next: InboundRawRetentionDays | null) {
 				/>
 			</div>
 		</div>
+
+		<!-- A failed read is not the default window: show the error instead. -->
+		<UiQueryBoundary v-if="settingsError" :error="settingsError" @retry="refetchSettings" />
 
 		<!-- The other half of the feature, and the one an operator cannot infer
 		     from this card: retention decides how long files are KEPT, attachment

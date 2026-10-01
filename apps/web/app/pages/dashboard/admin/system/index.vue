@@ -21,7 +21,11 @@ const config = useRuntimeConfig();
 const currentVersion = computed(() => String(config.public.owlatVersion ?? '') || 'dev');
 
 // Cached latest-release info from Convex (read-only, reactive)
-const { data: latestRelease } = useConvexQuery(api.systemUpdates.getLatestRelease, () => ({}));
+const {
+	data: latestRelease,
+	error: latestReleaseError,
+	refetch: refetchLatestRelease,
+} = useConvexQuery(api.systemUpdates.getLatestRelease, () => ({}));
 
 // Action to force a fresh GitHub poll
 const convex = useConvex();
@@ -52,7 +56,11 @@ const updateAvailable = computed(() => {
 
 // ── Update history ───────────────────────────────────────────────────────────
 
-const { data: history } = useConvexQuery(api.systemUpdates.listUpdateHistory, () => ({
+const {
+	data: history,
+	error: historyError,
+	refetch: refetchHistory,
+} = useConvexQuery(api.systemUpdates.listUpdateHistory, () => ({
 	limit: 20,
 }));
 
@@ -123,7 +131,14 @@ function formatDuration(start?: number, end?: number) {
 						{{ t('dashboard.admin.system.index.updates.title') }}
 					</h3>
 
-					<template v-if="updateAvailable && latestRelease?.latestVersion">
+					<!-- A failed read is not "never checked": show the error. -->
+					<UiQueryBoundary
+						v-if="latestReleaseError"
+						:error="latestReleaseError"
+						@retry="refetchLatestRelease"
+					/>
+
+					<template v-else-if="updateAvailable && latestRelease?.latestVersion">
 						<div class="flex items-baseline gap-3 flex-wrap">
 							<span class="text-lg font-semibold text-brand">
 								v{{ latestRelease.latestVersion }}
@@ -347,7 +362,10 @@ function formatDuration(start?: number, end?: number) {
 				{{ t('dashboard.admin.system.index.history.title') }}
 			</h3>
 
-			<div v-if="!history || history.length === 0" class="text-caption text-text-tertiary">
+			<!-- A failed read is not an empty history: show the error. -->
+			<UiQueryBoundary v-if="historyError" :error="historyError" @retry="refetchHistory" />
+
+			<div v-else-if="!history || history.length === 0" class="text-caption text-text-tertiary">
 				{{ t('dashboard.admin.system.index.history.empty') }}
 			</div>
 

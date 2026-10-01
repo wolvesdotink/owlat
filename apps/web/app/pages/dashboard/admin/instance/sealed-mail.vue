@@ -29,7 +29,11 @@ const { showToast } = useToast();
 
 const sealedMailEnabled = computed(() => isFeatureEnabled('sealedMail'));
 
-const { data: settings } = useOrganizationQuery(api.workspaces.settings.get);
+const {
+	data: settings,
+	error: settingsError,
+	refetch: refetchSettings,
+} = useOrganizationQuery(api.workspaces.settings.get);
 
 type SealPolicy = 'auto' | 'ask' | 'off';
 
@@ -71,7 +75,7 @@ const OPTIONS = computed<Array<{ value: SealPolicy; title: string; description: 
 ]);
 
 async function choose(value: SealPolicy) {
-	if (value === policy.value) return;
+	if (settings.value === undefined || value === policy.value) return;
 	const previous = policy.value;
 	policy.value = value;
 	const result = await saveSettings({ sealPolicy: value });
@@ -170,34 +174,44 @@ async function runReSeal() {
 				</p>
 			</div>
 
-			<fieldset class="space-y-2.5">
-				<legend class="sr-only">{{ t('dashboard.admin.instance.sealedMail.policyLegend') }}</legend>
-				<label
-					v-for="opt in OPTIONS"
-					:key="opt.value"
-					class="flex items-start gap-3 rounded-(--radius-card) border p-4 cursor-pointer transition-colors"
-					:class="
-						policy === opt.value
-							? 'border-brand bg-brand/5'
-							: 'border-transparent shadow-surface-1 hover:bg-bg-elevated'
-					"
-				>
-					<input
-						type="radio"
-						name="seal-policy"
-						class="mt-1 accent-brand"
-						:value="opt.value"
-						:checked="policy === opt.value"
-						:disabled="saving"
-						:data-testid="`seal-policy-${opt.value}`"
-						@change="choose(opt.value)"
-					/>
-					<span class="min-w-0">
-						<span class="block text-sm font-medium text-text-primary">{{ opt.title }}</span>
-						<span class="mt-0.5 block text-xs text-text-secondary">{{ opt.description }}</span>
-					</span>
-				</label>
-			</fieldset>
+			<!-- Until the policy is read (or when the read failed) there is no
+			     choice to show: "Automatic" would only be the default. -->
+			<UiQueryBoundary
+				:loading="settings === undefined"
+				:error="settingsError"
+				@retry="refetchSettings"
+			>
+				<fieldset class="space-y-2.5">
+					<legend class="sr-only">
+						{{ t('dashboard.admin.instance.sealedMail.policyLegend') }}
+					</legend>
+					<label
+						v-for="opt in OPTIONS"
+						:key="opt.value"
+						class="flex items-start gap-3 rounded-(--radius-card) border p-4 cursor-pointer transition-colors"
+						:class="
+							policy === opt.value
+								? 'border-brand bg-brand/5'
+								: 'border-transparent shadow-surface-1 hover:bg-bg-elevated'
+						"
+					>
+						<input
+							type="radio"
+							name="seal-policy"
+							class="mt-1 accent-brand"
+							:value="opt.value"
+							:checked="policy === opt.value"
+							:disabled="saving"
+							:data-testid="`seal-policy-${opt.value}`"
+							@change="choose(opt.value)"
+						/>
+						<span class="min-w-0">
+							<span class="block text-sm font-medium text-text-primary">{{ opt.title }}</span>
+							<span class="mt-0.5 block text-xs text-text-secondary">{{ opt.description }}</span>
+						</span>
+					</label>
+				</fieldset>
+			</UiQueryBoundary>
 
 			<!-- Recovery kit: download the private key for an address so
 			     sealed mail can be restored later; import one to restore access. -->
