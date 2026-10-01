@@ -78,4 +78,15 @@ export function registerContactHygieneCrons(crons: Crons): void {
 		internal.contacts.propertyDeletion.resumeStalled,
 		{}
 	);
+
+	// Integration imports (Mailchimp, Stripe, Mandrill): re-issue the current
+	// page of a running import whose hop was lost, or end the run with a reason
+	// after a few tries, so a stranded run cannot block every later import.
+	// Bounded; finds nothing in steady state (integrationImports/recovery.ts).
+	crons.interval(
+		'recover stalled integration imports',
+		{ minutes: 10 },
+		internal.integrationImports.recovery.recoverStalledImports,
+		{}
+	);
 }

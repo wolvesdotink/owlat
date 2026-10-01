@@ -22,6 +22,7 @@ import { readonly, ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 import type { BackendOperationResult } from '~/composables/useBackendOperation';
 import { approveUndoWindow, isApproveAlreadyHandled } from '~/composables/useReviewApproveUndo';
+import { useLocalized } from '~/composables/useLocalized';
 import type { TeamThreadComposerTarget } from '~/utils/composerTarget';
 import {
 	GENERIC_TEAMMATE_NAME,
@@ -70,14 +71,17 @@ export function useTeamThreadComposer(
 	ops: TeamThreadComposerOps
 ) {
 	const { t } = useI18n();
+	const localized = useLocalized();
 	const { showToast } = useToast();
 	const busy = ref(false);
 
 	/** A value-shaped refusal: toast it and report "not sent". */
 	function refused(result: unknown): boolean {
 		if (isReplyCollision(result)) {
-			const message = replyCollisionToast(result.heldByName ?? t(GENERIC_TEAMMATE_NAME));
-			showToast(t(message.key, message.params ?? {}), 'error');
+			showToast(
+				localized(replyCollisionToast(result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
+				'error'
+			);
 			return true;
 		}
 		if (isApproveAlreadyHandled(result)) {

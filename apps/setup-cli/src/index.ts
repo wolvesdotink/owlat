@@ -12,6 +12,9 @@
  *   doctor   Diagnose a broken install (port checks, .env sanity, container health).
  *   push-env Push the Convex function-runtime keys from .env to the deployment
  *            (the second half of `owlat apply`).
+ *   unset-env
+ *            Clear Convex function-runtime keys from the deployment and .env
+ *            (push-env never deletes one).
  */
 
 import { existsSync } from 'node:fs';
@@ -21,6 +24,7 @@ import { runFeature } from './commands/feature';
 import { runPack } from './commands/pack';
 import { runEnv } from './commands/env';
 import { runPushEnv } from './commands/pushEnv';
+import { runUnsetEnv } from './commands/unsetEnv';
 import { runDoctor } from './commands/doctor';
 import { runQuickstart } from './commands/quickstart';
 import { runBootstrapOrg } from './commands/bootstrap-org';
@@ -28,7 +32,7 @@ import { runSeed } from './commands/seed';
 import { runSampleData } from './commands/sampleData';
 import { runReset } from './commands/reset';
 
-const VERSION = '0.6.5'; // x-release-version (kept in sync by scripts/release.ts)
+const VERSION = '0.6.6'; // x-release-version (kept in sync by scripts/release.ts)
 
 function help(): void {
 	console.log(`Owlat Setup CLI v${VERSION}
@@ -56,6 +60,9 @@ Commands:
   env --show         List the env vars the current flag state needs (secrets masked).
   push-env           Push the Convex function-runtime keys from .env to the
                      deployment (run by \`owlat apply\`; needs the Docker socket).
+  unset-env <KEY> [KEY...]
+                     Clear Convex function-runtime keys from the deployment and
+                     .env (push-env never deletes one; needs the Docker socket).
   doctor             Diagnose a broken install.
 
 Options:
@@ -140,6 +147,8 @@ async function main(): Promise<number> {
 				return await runEnv({ ...opts, positional });
 			case 'push-env':
 				return await runPushEnv(opts);
+			case 'unset-env':
+				return await runUnsetEnv({ ...opts, positional });
 			case 'doctor':
 				return await runDoctor({ ...opts, positional });
 			default:

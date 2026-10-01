@@ -59,6 +59,19 @@ wrapping. Owns the table-and-cell HTML around each Block. Replaces the
 parallel `renderBlock` / `renderColumnItem` / `renderContainerItem`
 switches in `email-renderer/src/blocks/index.ts`.
 
+**Block tree child contract**:
+The one declaration of which composite Blocks hold child Blocks and where:
+`columns` holds one list per column, `container` and `hero` hold one `items`
+list, and `accordion` holds one `items` list per section. Lives in
+`@owlat/shared/blockTree` (`childBlockLists`, `mapChildBlockLists`,
+`renewBlockTreeIds`). Every traversal outside the Walker goes through it: the
+editor's nested selection and editing, fresh ids for duplicated and
+re-inserted Blocks, the translation table's rows, and the backend's
+translation extraction and overlay merge. Every Block id in a document is
+unique at every depth, because edits and translation overlays are keyed by
+it. Which child types a composite accepts stays with **Placement**.
+_Avoid_: Adding a per-feature `columns`/`container`/`hero` switch.
+
 **Feature compatibility**:
 A Block module's declared knowledge of how its features render across
 email clients — per-client `support` level, the `fallback` description
@@ -206,7 +219,9 @@ populated — the **Contact resolution (module)** writes `'not_required'`
 on create, so `undefined` does not appear in new rows (pre-prod;
 existing rows are backfilled atomically with the module landing).
 `confirmed` is terminal — unsubscribing from a topic removes the
-`contactTopics` row but never reverts `doiStatus`. Companions
+`contactTopics` row but never reverts `doiStatus` — with one exception: a
+global opt-out ends the consent episode, and a later public signup reopens
+it (see the `reopen` edge below). Companions
 `doiConfirmationToken`, `doiTokenExpiresAt`, `doiConfirmedAt`, and
 `doiAttestedSource` are written/cleared atomically with the status
 by the DOI lifecycle reducer. `doiAttestedSource` is populated only
@@ -216,8 +231,9 @@ confirm path leaves it undefined. Legal edges:
 
 - `not_required → pending` (a DOI-required topic subscription requests
   confirmation; sends one confirmation email per pending window)
-- `pending → pending` (already pending — idempotent `recorded`, no
-  second email)
+- `pending → pending` (already pending with a live token — idempotent
+  `recorded`, no second email; a pending contact whose token was withdrawn
+  or has lapsed gets a fresh token and email instead)
 - `pending → confirmed` (token-keyed confirm)
 - `not_required → confirmed` (admin-attest path — only when the
   `TransitionInput` carries `source: 'admin_attest'`. Used by the
@@ -226,7 +242,14 @@ confirm path leaves it undefined. Legal edges:
   Refused for any other source.)
 - `confirmed → confirmed` (already confirmed — idempotent `recorded`)
 
-`confirmed → pending` (revoke) is refused as `illegal_edge`. The
+- `confirmed → pending` (`reopen` — a new consent episode, only while
+  `contacts.unsubscribedAt` is set; refused otherwise. Keeps
+  `doiConfirmedAt` until the new confirmation and records
+  `doi.reconfirmation_requested` in the audit log. See the ADR-0009
+  amendment.)
+
+A global opt-out withdraws any outstanding token
+(`withdrawConfirmationToken`), so a link minted before it cannot lift it. The
 token TTL is 7 days (`DOI_TOKEN_TTL_MS`), consolidated from the prior
 7d (topics paths) vs 48h (form path) drift.
 _Avoid_: Opt-in status (vague), DOI state (collides with the per-machine
@@ -252,10 +275,12 @@ illegal / kind-mismatched attempts. Two entry points:
   `contacts.by_doi_confirmation_token`. Symmetric to Send lifecycle's
   `transitionByProviderMessageId`. Under the unified token namespace
   (one token per pending confirmation), `formSubmissions.confirmationToken`
-  and `contacts.doiConfirmationToken` are _the same string_ — the
-  form-confirm endpoint looks up the form submission by token, calls
-  `transitionByConfirmationToken` with that same token, then patches
-  `formSubmissions.status: 'success'` separately.
+  and `contacts.doiConfirmationToken` are _the same string_. One token is
+  shared by every signup made while the contact is pending, so it
+  correlates one contact with many form submissions. Both confirmation
+  routes (form-confirm and `/confirm/doi`) call
+  `transitionByConfirmationToken`, then have the **Form submission
+  (module)** finalize every pending submission carrying that token.
 
 Effects:
 
@@ -795,14 +820,19 @@ Subscribe effects:
 
 - `insert_membership` — fires unless `already_member`. Patches the
   membership row plus the `cachedMemberCount` increment.
-- `fire_topic_subscribed_trigger` — fires when DOI is not in the way:
-  `skipDoi || !topic.requireDoubleOptIn || contact.doiStatus ===
-'confirmed'`. Routes through `automations.triggers.fireTopicSubscribedTrigger`.
-- `request_doi` — fires when DOI is required and the contact is not yet
-  `confirmed`. Calls the **DOI lifecycle (module)** `transition({ to:
-'pending', token, ttlMs, siteUrl })`. The lifecycle's own
-  `fire_topic_subscribed_triggers` effect handles the trigger fanout at
-  confirm time — the subscription module does not double-fire.
+- `fire_topic_subscribed_trigger` — fires when the consent rule
+  (`requiresFreshConfirmation`) lets the subscribe complete at once: DOI
+  does not apply (`skipDoi`, or neither the topic nor a form's `forceDoi`
+  asks for it) or the contact is `confirmed`, and the contact holds no
+  global opt-out the source may not lift. Only `form` may not lift one;
+  operator sources and the preference centre may. Routes through
+  `automations.triggers.fireTopicSubscribedTrigger`.
+- `request_doi` — fires otherwise. Calls the **DOI lifecycle (module)**
+  `transition({ to: 'pending', token, ttlMs, siteUrl, reopen? })`
+  (`reopen` for a contact still `confirmed` from an earlier episode). The
+  lifecycle's own `fire_topic_subscribed_triggers` effect handles the
+  trigger fanout at confirm time — the subscription module does not
+  double-fire. See the ADR-0013 amendment.
 
 Unsubscribe effects:
 
@@ -913,10 +943,12 @@ rows land directly in a terminal state at create time, so the legal-edges
 'spam' | 'invalid' | 'duplicate' | 'pending_confirmation' | 'success'`,
   or `{ ok: false, reason: 'form_not_found' | 'form_inactive' }` for
   pre-classification gates.
-* `markConfirmedByToken({ token })` — patches the single
-  `pending_confirmation → success` transition. Called by the form-confirm
-  HTTP handler after `doiLifecycle.transitionByConfirmationToken` commits.
-  Idempotent on re-confirm. Returns `{ ok: true, submissionId }` or
+* `markConfirmedByToken({ token, contactId })` — patches
+  `pending_confirmation → success` on every row that carries the token and
+  belongs to the confirmed contact, paged with a scheduled follow-up.
+  Called by both confirmation routes after
+  `doiLifecycle.transitionByConfirmationToken` commits. Idempotent on
+  re-confirm. Returns `{ ok: true, finalized, continued }` or
   `{ ok: false, reason: 'no_submission_for_token' | 'already_confirmed'
 | 'invalid_state' }`.
 
@@ -926,6 +958,9 @@ Classification rules inside `submit`:
   subscribe).
 - Required field missing, oversized, or email-shaped value invalid →
   `invalid` (row written, no Contact resolved).
+- No `form.topicId`, the consent rule asks the contact to confirm (the
+  form's DOI toggle on an unconfirmed contact, or any global opt-out) →
+  `pending_confirmation`, with the contact's token.
 - No `form.topicId`, Contact resolution returned `matched` → `duplicate`.
 - `form.topicId` set, subscribe returned `already_member` → `duplicate`.
 - subscribe returned DOI-pending → `pending_confirmation`, with
@@ -4030,19 +4065,26 @@ A per-verb module at `apps/imap/src/commands/<verb>/index.ts` exporting an
 `ImapCommandModule<TArgs>`: `verbs` (one or more IMAP verbs the module
 handles — `['LIST', 'LSUB']`, `['SELECT', 'EXAMINE']`, etc.),
 `capabilities?` (the CAPABILITY-line atoms the module contributes, e.g.
-`['IDLE']`, `['MOVE']`, `['UIDPLUS']`), `parseArgs(rawArgs, verb) →
-TArgs | { error }`, and `start(deps, state, args, tag, send) →
-CommandSession`. Modules are pure with respect to socket I/O — they
-receive a `send(line)` callback from the **IMAP pump** and the
-**Connection state**, and they return a session that the pump tracks
-until its `completion` resolves. One interface covers both shapes:
+`['IDLE']`, `['MOVE']`, `['UIDPLUS']`), `requires?` (`'auth'`,
+`'selected'` or `'writable'`, checked by the walker before `start`),
+`parseArgs(rawArgs) → ParseResult<TArgs>`, and
+`start({ deps, state, args, tag, verb, send }) → CommandSession`.
+Modules are pure with respect to socket I/O — they receive a `send(line)`
+callback from the **IMAP pump** and the **Connection state**, and they
+return a session that the pump tracks until its `completion` resolves.
+`completion` is a `Promise<void>` and carries no state: a module that
+changes the **Connection state** calls `deps.commit(next)` itself, before
+its tagged OK (ADR-0016, amendment of 2026-10-01). One interface covers
+both shapes:
 
-- **One-shot** — `start` writes its response lines via `send`, returns a
-  session whose `completion` is already resolved with the next state.
-  Covers the ~14 read-only and state-transitioning commands
-  (CAPABILITY, NOOP, LOGOUT, ID, NAMESPACE, ENABLE, LOGIN, LIST / LSUB,
-  SELECT / EXAMINE, UNSELECT / CLOSE, STATUS, FETCH, CHECK, STORE, COPY,
-  MOVE, EXPUNGE, UID).
+- **One-shot** — `start` writes its response lines via `send` and returns
+  either `syncSession()` (`completion` already resolved) or
+  `asyncSession(worker)` (`completion` resolves when the worker finishes;
+  `cancel()` aborts the worker's signal). Both live in
+  `commands/helpers/session.ts`. Covers the read-only and
+  state-transitioning commands (CAPABILITY, NOOP, LOGOUT, ID, NAMESPACE,
+  ENABLE, LOGIN, AUTHENTICATE, LIST / LSUB, SELECT / EXAMINE, UNSELECT /
+  CLOSE, STATUS, FETCH, CHECK, STORE, COPY, MOVE, EXPUNGE, UID).
 - **Long-running** — `start` returns a pending session that owns its own
   timers (IDLE) or declares `awaitingLiteral: { bytes: N }` so the pump
   routes the next N raw bytes to `onLiteralBytes` (APPEND). Sessions
@@ -4052,42 +4094,48 @@ until its `completion` resolves. One interface covers both shapes:
 Modules never touch the socket directly, never reach for a connection
 field via `this` (there is no `this`), and never know the rate limiter
 is shared with the next connection — all I/O and shared deps flow
-through `deps`. The verb-keyed dispatch table makes missing a
-registration a compile error. Replaces the 1106-LOC `ImapConnection`
-class with a per-verb module folder structure.
+through `deps`. A module is registered by one entry in the walker's
+`MODULES` list; an `ImapVerb` with no registered module answers BAD at
+runtime (nothing checks registry coverage at compile time). Replaces the
+1106-LOC `ImapConnection` class with a per-verb module folder structure.
 _Avoid_: IMAP handler (the current file's term for `handleX` methods —
 overloaded with the HTTP/Convex "handler" vocabulary), Command alone
 (overloaded), Verb module (the verb is the dispatch key, not the noun),
 IMAP step (collides with the automation **Step**).
 
 **Connection state**:
-The pure `{ auth, selected }` value threaded between IMAP commands —
-distinct from the **pump state** which is buffer + active-session
-bookkeeping owned by the connection shell. LOGIN transitions
-`auth: null → AuthState`. SELECT / EXAMINE transitions `selected`.
-UNSELECT / CLOSE clears `selected`. The pump owns `pendingAppend`
-absorption progress and `idleSession` timer handles — these are
-_not_ connection state because they're per-active-command lifetime,
-not per-connection lifetime. The pump tears them down when the
-session's `completion` resolves; the connection state survives across
-command boundaries.
+The immutable `{ auth, selected, clientId }` value threaded between IMAP
+commands — distinct from the **pump state** which is buffer +
+session bookkeeping owned by the connection shell. Modules receive a
+snapshot and hand the next whole value to `deps.commit`, which replaces
+the pump's copy synchronously, so the next command dispatched sees it.
+LOGIN and AUTHENTICATE transition `auth: null → AuthState`. ID records
+`clientId`. SELECT / EXAMINE transitions `selected`; UNSELECT / CLOSE
+clears it; EXPUNGE, MOVE and IDLE commit refreshed `selected` counters.
+APPEND's remaining literal octets (tracked by the pump) and IDLE's timers
+(owned by the IDLE session) are _not_ connection state because they're
+per-active-command lifetime, not per-connection lifetime. They end with
+the session; the connection state survives across command boundaries.
 _Avoid_: Connection context (vague), IMAP state alone (collides with
 pump state — IMAP has two state shapes and they're worth keeping
 distinct).
 
 **IMAP pump**:
 The component in `apps/imap/src/connection.ts` (the existing
-`ImapConnection` class, post-deepening shrunk from 1106 LOC to ~150)
-that owns the socket lifecycle, line buffering, literal absorption,
-and active-session tracking. Receives bytes from the TLS / TCP socket,
+`ImapConnection` class, shrunk from 1106 LOC by the deepening) that owns
+the socket lifecycle, line buffering, literal absorption, connection
+limits, and session tracking. Receives bytes from the TLS / TCP socket,
 parses lines through `parser.ts`, calls the **IMAP command walker** to
 dispatch one-shot commands, starts long-running sessions, routes
 subsequent client lines / literal bytes to the active session if any,
-writes session-emitted lines back to the socket, calls `session.cancel()`
-on socket close. The pump never knows what an IMAP verb means; that
-lives in modules. The buffer is utf-8 decoded today — a Buffer-mode
-rewrite for 8-bit APPEND bodies is tracked as separate correctness
-debt and not blocked on this deepening.
+writes session-emitted lines back to the socket, and calls
+`session.cancel()` on every still-pending session when the socket
+closes. Only sessions that absorb input (IDLE, APPEND) hold the
+active-session slot; an async one-shot session does not block the next
+command. The pump never knows what an IMAP verb means; that lives in
+modules (its one verb check routes APPEND's literal to the session).
+The buffer holds raw octets, so `{N}` literals are counted in bytes and
+8-bit APPEND bodies round-trip.
 _Avoid_: IMAP server (that's `server.ts` — the TLS bootstrap and
 per-IP accounting), IMAP connection alone (the class keeps that name;
 "pump" names the _role_ the post-deepening class plays).
@@ -4099,7 +4147,8 @@ parse-and-start handoff from the pump. One entry point —
 `dispatch(deps, state, parsedLine, send) → CommandSession` — looks up
 the module by `parsedLine.command`, calls `module.parseArgs` (returning
 a session that immediately emits BAD on parse error), then
-`module.start`. Sessions track themselves until `completion` resolves.
+checks the module's `requires`, then `module.start`. The pump tracks
+the returned session until `completion` resolves.
 The CAPABILITY-line string is also assembled here from the registered
 modules' `capabilities?` declarations, so adding a new capability is one
 module edit. Mirrors the **Step walker** (automations) and **Agent
@@ -5682,11 +5731,12 @@ scope)` is the only summarizer of the window; both the public auth-
   modules (IDLE, APPEND) return a pending session that the pump tracks —
   routing subsequent client lines to `session.onClientLine` (IDLE reads
   bare `DONE`) and literal bytes to `session.onLiteralBytes` (APPEND
-  absorbs its `{N+}` body). **Connection state** (`auth`, `selected`) is
-  immutable across modules — LOGIN / SELECT / EXAMINE / UNSELECT / CLOSE
-  return the next state via their session, and the pump threads it
-  forward. The walker's typed `Record<ImapVerb, ImapCommandModule>` makes
-  missing a verb a compile error; CAPABILITY-line atoms are aggregated
+  absorbs its `{N+}` body). **Connection state** (`auth`, `selected`,
+  `clientId`) is immutable across modules — LOGIN / SELECT / EXAMINE /
+  UNSELECT / CLOSE and the other state-changing modules hand the next
+  value to `deps.commit` before their tagged OK, and the pump dispatches
+  the following command against it. The walker's verb-keyed registry
+  answers BAD for a verb with no module; CAPABILITY-line atoms are aggregated
   from per-module `capabilities?` declarations so adding `MOVE` or
   `UIDPLUS` support is one module edit. The IMAP modules sit _upstream_
   of the Postbox / Inbox lifecycle modules — APPEND lands a message into
@@ -5786,7 +5836,10 @@ force?)` guard (`lib/publishableEmail.ts`, beside the shared publish,
   `{ patch, effects, applied }`, and a `TransitionOutcome` reporting
   `ok | reason`. The **Abuse status (module)** is the same skeleton plus
   an `adminOverride` second entry point. Ten instances of the shape are
-  now in the codebase by convention (no factor). Email template +
+  in the codebase. All but Abuse status share one narrow factor, the
+  dispatcher preamble in the **Lifecycle core** (ADR-0058, see below);
+  each module still owns its reducers, effects and outcome literals.
+  Email template +
   Transactional email land as the second sibling-pair on parallel
   tables (first pair: Campaign + AB test on the same row). The Send
   lifecycle's pre-deepening role as "the lifecycle that handles two
@@ -5812,7 +5865,11 @@ force?)` guard (`lib/publishableEmail.ts`, beside the shared publish,
   `ok: false` scaffolding — carries no module vocabulary at all, and
   ADR-0058 factored exactly that into the **Lifecycle core**
   (`convex/lib/lifecycle.ts`), piloted on Postbox outbound lifecycle.
-  The remaining machines migrate as they are touched.
+  ADR-0058's policy is that the other machines migrate as they are
+  touched, not in one sweep; by now all eleven machines it counted
+  classify their transitions through the core. The **Abuse status
+  (module)** was never among them: it checks a severity ordering
+  instead of an edge graph.
 
 ## Example dialogue
 
@@ -5863,8 +5920,8 @@ force?)` guard (`lib/publishableEmail.ts`, beside the shared publish,
 > **Dev:** "If I add a new IMAP command — say `XLIST` or `SETANNOTATION`
 > — what do I touch?"
 > **Domain expert:** "One folder. `apps/imap/src/commands/<verb>/index.ts`
-> with `parseArgs`, `start`, the declared `verbs` and `capabilities`. The
-> IMAP command walker dispatches automatically — no switch to edit, no
+> with `parseArgs`, `start`, the declared `verbs` and `capabilities`, plus
+> one entry in the walker's `MODULES` list. No switch to edit, no
 > CAPABILITY-line edit. If your command is long-running (timer-driven or
 > needs to absorb a literal), return a pending session and the pump will
 > route subsequent client lines / bytes to its `onClientLine` /
@@ -5874,7 +5931,8 @@ force?)` guard (`lib/publishableEmail.ts`, beside the shared publish,
 > aren't those special cases?"
 > **Domain expert:** "They share the same interface as one-shot
 > commands. `start` returns a `CommandSession` with a `completion`
-> promise. One-shot sessions return with `completion` already resolved.
+> promise. One-shot sessions resolve it immediately or when their async
+> work finishes.
 > IDLE returns with `completion` pending and owns its own poll timer;
 > the pump calls `session.onClientLine('DONE')` when it sees the bare
 > DONE on the next line. APPEND returns with `awaitingLiteral: { bytes:

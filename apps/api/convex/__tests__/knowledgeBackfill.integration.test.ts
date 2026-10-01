@@ -709,4 +709,79 @@ describe('agent/knowledgeBackfill shim', () => {
 			expect(next.map((job) => job.name)).toEqual(['knowledge/messageBackfill:runChunk']);
 		});
 	});
+
+	it('serves an old runChunk action mid-run its sibling calls by their old paths', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.agent']);
+
+		let jobId!: Id<'knowledgeBackfillJobs'>;
+		let msgId!: Id<'inboundMessages'>;
+		await t.run(async (ctx) => {
+			msgId = await ctx.db.insert('inboundMessages', msgData({ receivedAt: 1000 }));
+			await ctx.db.insert('knowledgeEntries', preExtractedEntry(msgId));
+			jobId = await ctx.db.insert('knowledgeBackfillJobs', {
+				status: 'running',
+				triggeredBy: 'test',
+				totalCount: 1,
+				scannedCount: 0,
+				extractedCount: 0,
+				skippedCount: 0,
+				errorCount: 0,
+				startedAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		// The calls a previous-release runChunk makes, in its order and shapes.
+		const old = internal.agent.knowledgeBackfill;
+		expect((await t.query(old.loadJob, { jobId }))?.status).toBe('running');
+		expect(await t.query(old.isAgentEnabled, {})).toBe(true);
+		const { messages, hasMore } = await t.query(old.nextChunk, { limit: 10 });
+		expect(messages.map((m) => m._id)).toEqual([msgId]);
+		expect(hasMore).toBe(false);
+		expect(await t.query(old.hasExtraction, { inboundMessageId: msgId })).toBe(true);
+		await t.mutation(old.patchProgress, {
+			jobId,
+			deltaScanned: 1,
+			deltaExtracted: 0,
+			deltaSkipped: 1,
+			deltaError: 0,
+			cursorReceivedAt: 1000,
+			cursorId: msgId,
+		});
+		await t.mutation(old.finalizeJob, { jobId, status: 'completed' });
+
+		await t.run(async (ctx) => {
+			const job = await ctx.db.get(jobId);
+			expect(job!.status).toBe('completed');
+			expect(job!.scannedCount).toBe(1);
+			expect(job!.skippedCount).toBe(1);
+			expect(job!.cursorId).toBe(msgId);
+		});
+	});
+
+	it('answers the previous web card on its old public paths', async () => {
+		const t = convexTest(schema, modules);
+		let jobId!: Id<'knowledgeBackfillJobs'>;
+		await t.run(async (ctx) => {
+			jobId = await ctx.db.insert('knowledgeBackfillJobs', {
+				status: 'running',
+				triggeredBy: 'test',
+				totalCount: 0,
+				scannedCount: 0,
+				extractedCount: 0,
+				skippedCount: 0,
+				errorCount: 0,
+				startedAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		const asUser = t.withIdentity(testIdentity);
+		expect((await asUser.query(api.agent.knowledgeBackfill.getStatus, {}))?._id).toBe(jobId);
+		expect(await asUser.mutation(api.agent.knowledgeBackfill.cancel, {})).toBe(true);
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(jobId))!.status).toBe('cancelled');
+		});
+	});
 });

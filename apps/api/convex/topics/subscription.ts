@@ -5,6 +5,8 @@
  *   - every write to `contactTopics` (insert + delete)
  *   - every maintenance of `topics.cachedMemberCount` (increment + decrement)
  *   - the DOI gate at subscribe time + the `request_doi` handoff to the DOI lifecycle
+ *   - the consent rule for lifting a global opt-out (`requiresFreshConfirmation`),
+ *     which the Form submission (module) also applies to signups without a topic
  *   - the `topic_subscribed` trigger fire when DOI is not in the way
  *   - the per-source effect bundle on unsubscribe (activity row, contact.updatedAt,
  *     form-confirmation clear, campaign-stats increment, topic.unsubscribed webhook)
@@ -152,6 +154,86 @@ function defaultUnsubscribeReason(source: UnsubscribeSource): string {
 	}
 }
 
+// ─── Consent rule ───────────────────────────────────────────────────────────
+//
+// A global opt-out (`contacts.unsubscribedAt`) is lifted by a completed opt-in.
+// Who may complete one on the spot depends on who is asking. A public form
+// takes any address from anyone, so on its own it never lifts an opt-out: the
+// signup waits for a fresh confirmation, and an earlier confirmation does not
+// count because the opt-out ended it. See ADR-0013's 2026-10 amendment.
+
+/**
+ * Whether a subscribe from `source` may lift a standing global opt-out on its
+ * own authority.
+ *   - `admin`, `import`, `public_api`, `automation`: an authenticated operator
+ *     (session, API key, or an automation an operator built) acting on the
+ *     record — the administrative override.
+ *   - `preferences_page`: the recipient, through the capability link in a
+ *     message sent to them.
+ *   - `form`: no. Anonymous, so it needs the recipient's fresh confirmation.
+ */
+function sourceMayLiftOptOut(source: SubscribeSource): boolean {
+	switch (source) {
+		case 'admin':
+		case 'import':
+		case 'public_api':
+		case 'automation':
+		case 'preferences_page':
+			return true;
+		case 'form':
+			return false;
+	}
+}
+
+/**
+ * The consent rule for one subscribe, and for a form signup without a topic:
+ * whether it must wait for the recipient to confirm before it counts.
+ *
+ * True when the contact holds a global opt-out this source may not lift, or
+ * when DOI applies (`doiRequired`, already net of `skipDoi`) and the contact
+ * has not confirmed. Otherwise the subscribe completes at once and lifts any
+ * opt-out.
+ */
+export function requiresFreshConfirmation(
+	contact: Pick<Doc<'contacts'>, 'doiStatus' | 'unsubscribedAt'>,
+	args: { source: SubscribeSource; doiRequired: boolean }
+): boolean {
+	if (contact.unsubscribedAt !== undefined && !sourceMayLiftOptOut(args.source)) return true;
+	return args.doiRequired && contact.doiStatus !== 'confirmed';
+}
+
+/**
+ * Hand a contact to the DOI lifecycle as `pending` and return the token its
+ * confirmation link carries. A contact already pending with a live token keeps
+ * it (no second email), so every signup in one pending window shares one
+ * token. A confirmed contact only gets here when `requiresFreshConfirmation`
+ * held for an opt-out, so the request opens a new consent episode (`reopen`).
+ */
+export async function requestConfirmation(
+	ctx: MutationCtx,
+	contact: Doc<'contacts'>,
+	args: { now: number; siteUrl: string | undefined }
+): Promise<string> {
+	const tokenCandidate = nanoid(32);
+	await ctx.runMutation(internal.contacts.doiLifecycle.transition, {
+		contactId: contact._id,
+		input: {
+			to: 'pending',
+			at: args.now,
+			token: tokenCandidate,
+			ttlMs: DOI_TOKEN_TTL_MS,
+			...(args.siteUrl ? { siteUrl: args.siteUrl } : {}),
+			...(contact.doiStatus === 'confirmed' ? { reopen: true } : {}),
+		},
+	});
+
+	// The DOI lifecycle writes the candidate token on a real transition but
+	// keeps the existing one on the idempotent `pending → pending` path.
+	// Re-read so callers receive whichever token is actually stored.
+	const updatedContact = await ctx.db.get(contact._id);
+	return updatedContact?.doiConfirmationToken ?? tokenCandidate;
+}
+
 // ─── Subscribe side ─────────────────────────────────────────────────────────
 
 interface SubscribeOneResult {
@@ -217,21 +299,21 @@ async function subscribeOne(
 		addedAt: args.now,
 	});
 
-	const requiresDoi =
+	const doiRequired =
 		(args.topic.requireDoubleOptIn === true || args.forceDoi === true) && args.skipDoi !== true;
 
-	if (!requiresDoi || contact.doiStatus === 'confirmed') {
-		// A completed opt-in (DOI not required, or the contact already
-		// confirmed) lifts the global marketing opt-out — they are actively
-		// opting back in, so they should once again be reachable by matching
-		// audiences. Clears the `contacts.unsubscribedAt` signal set by a prior
-		// global unsubscribe (see schema/contacts.ts).
+	if (!requiresFreshConfirmation(contact, { source: args.source, doiRequired })) {
+		// A completed opt-in lifts the global marketing opt-out — they are
+		// actively opting back in, so they should once again be reachable by
+		// matching audiences. Clears the `contacts.unsubscribedAt` signal set by
+		// a prior global unsubscribe (see schema/contacts.ts). The consent rule
+		// only lets a source that may lift an opt-out reach here with one set.
 		//
-		// Deliberately NOT cleared on the DOI-pending path below: a public form
-		// (unauthenticated, any email) bound to a DOI topic must not silently
-		// lift a persistent opt-out without a confirmed opt-in — that would
-		// re-open the CAN-SPAM/GDPR gap PR-09 closes. For the pending path the
-		// opt-out is lifted only at DOI-confirm time, in the lifecycle
+		// Deliberately NOT cleared on the pending path below: a public form
+		// (unauthenticated, any email) must not lift a persistent opt-out
+		// without a fresh confirmed opt-in — that would re-open the
+		// CAN-SPAM/GDPR gap PR-09 closes. For the pending path the opt-out is
+		// lifted only at DOI-confirm time, in the lifecycle
 		// (contacts/doiLifecycle.ts reduceConfirmed).
 		if (contact.unsubscribedAt !== undefined) {
 			await ctx.db.patch(args.contactId, { unsubscribedAt: undefined });
@@ -248,38 +330,25 @@ async function subscribeOne(
 		};
 	}
 
-	// DOI is required and the contact is not yet confirmed.
-	// Hand off to the DOI lifecycle — its `fire_topic_subscribed_triggers`
-	// effect at confirm time covers every DOI-required membership the
-	// Contact has at that moment, so this module does not double-fire.
+	// The subscribe waits for a confirmation (DOI applies and the contact is
+	// not confirmed, or a form met a standing opt-out). Hand off to the DOI
+	// lifecycle — its `fire_topic_subscribed_triggers` effect at confirm time
+	// covers every DOI-required membership the Contact has at that moment, so
+	// this module does not double-fire.
 	//
 	// The confirm-time fanout keys off `topic.requireDoubleOptIn`, so a
-	// membership deferred purely because the FORM forced DOI (on a topic that
-	// doesn't require it) would be missed. Flag it so the fanout still fires
-	// its trigger + activity; topic-DOI memberships are already covered and
-	// don't need the flag.
-	if (args.forceDoi === true && args.topic.requireDoubleOptIn !== true) {
+	// membership deferred for any other reason (the FORM forced DOI, or the
+	// opt-out did, on a topic that doesn't require it) would be missed. Flag it
+	// so the fanout still fires its trigger + activity; topic-DOI memberships
+	// are already covered and don't need the flag.
+	if (args.topic.requireDoubleOptIn !== true) {
 		await ctx.db.patch(membershipId, { pendingDoiConfirmation: true });
 	}
 
-	const tokenCandidate = nanoid(32);
-	await ctx.runMutation(internal.contacts.doiLifecycle.transition, {
-		contactId: args.contactId,
-		input: {
-			to: 'pending',
-			at: args.now,
-			token: tokenCandidate,
-			ttlMs: DOI_TOKEN_TTL_MS,
-			...(args.siteUrl ? { siteUrl: args.siteUrl } : {}),
-		},
+	const doiToken = await requestConfirmation(ctx, contact, {
+		now: args.now,
+		siteUrl: args.siteUrl,
 	});
-
-	// The DOI lifecycle writes the candidate token when transitioning from
-	// `not_required → pending`, but keeps the existing token on the
-	// `pending → pending` idempotent path. Re-read so callers receive
-	// whichever token is actually stored.
-	const updatedContact = await ctx.db.get(args.contactId);
-	const doiToken = updatedContact?.doiConfirmationToken ?? tokenCandidate;
 
 	return {
 		outcome: { ok: true, action: 'pending_doi', membershipId, doiToken },
@@ -790,6 +859,15 @@ export const unsubscribeAllForContact = internalMutation({
 		const isGlobalUnsubscribe = scopedTopicIds === undefined;
 		if (isGlobalUnsubscribe && contact.unsubscribedAt === undefined) {
 			await ctx.db.patch(args.contactId, { unsubscribedAt: now });
+		}
+		// The opt-out also ends the open consent episode: a confirmation link
+		// minted before it must not lift it later. The DOI lifecycle withdraws
+		// the token; a later signup gets a fresh one.
+		if (isGlobalUnsubscribe && contact.doiConfirmationToken !== undefined) {
+			await ctx.runMutation(internal.contacts.doiLifecycle.withdrawConfirmationToken, {
+				contactId: args.contactId,
+				at: now,
+			});
 		}
 
 		const flags = effectFlagsForUnsubscribeSource(args.source);

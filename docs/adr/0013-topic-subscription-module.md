@@ -1070,3 +1070,61 @@ plan needed, since pre-launch nothing needs PR-splitting. Change set:
   it skips the emails and creates 100 confirmed memberships.
 - Subscribing a soft-deleted Contact returns `{ ok: false, reason:
   'contact_soft_deleted' }` and writes no membership row.
+
+---
+
+## Amendment — who may lift a global opt-out (2026-10-01)
+
+Issues #994 and #1017; companion to the ADR-0009 amendment of the same date.
+
+### The rule
+
+Lifting a global opt-out (`contacts.unsubscribedAt`) is now an explicit
+per-source decision, made in one exported rule,
+`requiresFreshConfirmation(contact, { source, doiRequired })`, which the
+**Form submission (module)** also applies to forms without a topic:
+
+- the contact holds a global opt-out that `source` may not lift → wait for a
+  fresh confirmation;
+- otherwise, DOI applies (`doiRequired`: the topic requires it or the form
+  forces it, net of `skipDoi`) and the contact is not `confirmed` → wait;
+- otherwise the subscribe completes at once and lifts any opt-out.
+
+Which sources may lift an opt-out on their own authority:
+
+| Source                                        | Lifts on its own | Why                                                                                                       |
+| --------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------- |
+| `admin`, `import`, `public_api`, `automation` | yes              | an authenticated operator (session, API key, or an automation an operator built) overriding on the record |
+| `preferences_page`                            | yes              | the recipient, through the capability link in a message sent to them                                      |
+| `form`                                        | no               | anonymous; anyone can submit any address                                                                  |
+
+### What waiting means
+
+The pending path is the existing DOI handoff, now in the exported helper
+`requestConfirmation`. For a contact that is still `confirmed` from an
+earlier episode it asks the DOI lifecycle to `reopen`. The membership row
+is inserted at once. When the topic does not itself require DOI, the
+membership is flagged `pendingDoiConfirmation`. Before, only a form-forced
+DOI set the flag; now an opt-out does too. The flag keeps the membership out
+of campaign audiences until the confirmation, and makes the confirm-time
+fanout fire its `topic_subscribed` trigger and `topic_confirmed` activity
+exactly once, at that point. The opt-out itself is lifted only by the DOI
+lifecycle's confirm.
+
+A form subscribe for an opted-out contact therefore always asks for a
+confirmation, even on a topic and form with no DOI configured.
+
+### The global opt-out ends the consent episode
+
+`unsubscribeAllForContact` without a topic scope now also calls the DOI
+lifecycle's `withdrawConfirmationToken` when the contact holds a token, so a
+confirmation link issued before the opt-out cannot lift it afterwards. The
+scoped (per-topic) unsubscribe is unchanged.
+
+### Tests
+
+`__tests__/formConsent.integration.test.ts` covers a form signup after a
+confirmed contact's global opt-out with topic DOI, with form-forced DOI and
+with no DOI configured; the same for a form without a topic; a link minted
+before a second opt-out; the preference centre and the trusted `admin` and
+`import` overrides, which still lift the opt-out at once.

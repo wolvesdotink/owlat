@@ -12,6 +12,7 @@
  * behind: importing a file needs no external-mailbox sync, and a deployment
  * with that feature turned off can still take someone's archive.
  */
+import { useLocalized } from '~/composables/useLocalized';
 import {
 	ARCHIVE_IMPORT_ACCEPT,
 	archiveImportSummary,
@@ -19,6 +20,7 @@ import {
 } from '~/utils/postboxArchiveImport';
 
 const { t, locale } = useI18n();
+const localized = useLocalized();
 const {
 	job,
 	isRunning,
@@ -41,14 +43,16 @@ function formatCount(value: number): string {
 
 /** The summary line, with its counts localized at the render boundary. */
 function summaryOf(current: ArchiveImportJob): string {
-	const summary = archiveImportSummary(current);
-	const params = Object.fromEntries(
-		Object.entries(summary.params ?? {}).map(([key, value]) => [
-			key,
-			typeof value === 'number' ? formatCount(value) : value,
-		])
-	);
-	return t(summary.key, params);
+	const { key, params = {} } = archiveImportSummary(current);
+	return localized({
+		key,
+		params: Object.fromEntries(
+			Object.entries(params).map(([name, value]) => [
+				name,
+				typeof value === 'number' ? formatCount(value) : value,
+			])
+		),
+	});
 }
 
 async function onFileChange(event: Event) {

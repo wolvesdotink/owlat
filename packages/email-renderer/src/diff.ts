@@ -4,6 +4,8 @@
  * Useful for template versioning, A/B test verification, and regression detection.
  */
 
+import { htmlToPlainText } from '@owlat/shared/html';
+
 export interface EmailDiffChange {
 	type: 'added' | 'removed' | 'modified';
 	category: 'text' | 'style' | 'image' | 'link' | 'structure' | 'meta';
@@ -38,10 +40,11 @@ const extractElements = (html: string): Map<string, string[]> => {
 
 	// Extract text content blocks
 	const textBlocks: string[] = [];
-	const textRegex = /<(?:p|h[1-6]|td|th|div|span|a)[^>]*>([\s\S]*?)<\/(?:p|h[1-6]|td|th|div|span|a)>/gi;
+	const textRegex =
+		/<(?:p|h[1-6]|td|th|div|span|a)[^>]*>([\s\S]*?)<\/(?:p|h[1-6]|td|th|div|span|a)>/gi;
 	let match: RegExpExecArray | null;
 	while ((match = textRegex.exec(html)) !== null) {
-		const text = match[1]!.replace(/<[^>]+>/g, '').trim();
+		const text = htmlToPlainText(match[1]!, { preserveBreaks: true });
 		if (text) textBlocks.push(text);
 	}
 	elements.set('text', textBlocks);
@@ -90,7 +93,14 @@ export const diffEmails = (htmlA: string, htmlB: string): EmailDiff => {
 			identical: true,
 			changes: [],
 			sizeDelta: 0,
-			stats: { addedElements: 0, removedElements: 0, modifiedStyles: 0, textChanges: 0, linkChanges: 0, imageChanges: 0 },
+			stats: {
+				addedElements: 0,
+				removedElements: 0,
+				modifiedStyles: 0,
+				textChanges: 0,
+				linkChanges: 0,
+				imageChanges: 0,
+			},
 		};
 	}
 
@@ -105,12 +115,20 @@ export const diffEmails = (htmlA: string, htmlB: string): EmailDiff => {
 
 	for (const t of textsB) {
 		if (!textSetA.has(t)) {
-			changes.push({ type: 'added', category: 'text', description: `Added text: "${t.substring(0, 80)}${t.length > 80 ? '...' : ''}"` });
+			changes.push({
+				type: 'added',
+				category: 'text',
+				description: `Added text: "${t.substring(0, 80)}${t.length > 80 ? '...' : ''}"`,
+			});
 		}
 	}
 	for (const t of textsA) {
 		if (!textSetB.has(t)) {
-			changes.push({ type: 'removed', category: 'text', description: `Removed text: "${t.substring(0, 80)}${t.length > 80 ? '...' : ''}"` });
+			changes.push({
+				type: 'removed',
+				category: 'text',
+				description: `Removed text: "${t.substring(0, 80)}${t.length > 80 ? '...' : ''}"`,
+			});
 		}
 	}
 
@@ -164,7 +182,11 @@ export const diffEmails = (htmlA: string, htmlB: string): EmailDiff => {
 	const titleA = htmlA.match(/<title>([^<]*)<\/title>/)?.[1] || '';
 	const titleB = htmlB.match(/<title>([^<]*)<\/title>/)?.[1] || '';
 	if (titleA !== titleB) {
-		changes.push({ type: 'modified', category: 'meta', description: `Title changed: "${titleA}" → "${titleB}"` });
+		changes.push({
+			type: 'modified',
+			category: 'meta',
+			description: `Title changed: "${titleA}" → "${titleB}"`,
+		});
 	}
 
 	// Size change

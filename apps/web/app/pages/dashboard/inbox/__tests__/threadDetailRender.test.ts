@@ -32,8 +32,8 @@ describe('Team Inbox thread page rendering', () => {
 	});
 
 	it('loads into the thread-shaped skeleton seeded from the list row', () => {
-		expect(template).toContain(
-			'<InboxThreadDetailSkeleton v-if="threadLoading && !thread" :preview="threadPreview" />'
+		expect(template).toMatch(
+			/<InboxThreadDetailSkeleton\s+v-else-if="threadLoading && !thread"\s+:preview="threadPreview"\s*\/>/
 		);
 		expect(template).not.toContain('<UiSpinner');
 		expect(page).toContain('teamThreadPreview(threadId.value)');

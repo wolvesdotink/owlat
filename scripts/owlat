@@ -15,6 +15,8 @@
 #   owlat sample-data [install|remove|status] — opt-in demo content, removable
 #   owlat feature <key> on|off — toggle a single feature flag
 #   owlat env <KEY> <VALUE>   — set a single env var in .env
+#   owlat unset-env <KEY...>  — clear Convex function-runtime keys from the
+#                               deployment and .env (apply never deletes one)
 #   owlat start               — docker compose up -d
 #   owlat stop                — docker compose down
 #   owlat apply [service...]  — apply .env / feature changes: recreate changed
@@ -348,16 +350,16 @@ compose_project_name() {
 	docker compose config 2>/dev/null | sed -n 's/^name:[[:space:]]*//p' | head -1 || true
 }
 
-# Whether the pinned setup image knows `push-env`, which arrived with `owlat
-# apply`. A host `owlat` newer than the stack runs an older image, which answers
-# `push-env` with "Unknown command" and its whole help text. `--help` exits 0 on
-# every version and lists the commands, so it answers the question without
-# running anything. A probe that fails counts as yes: the real run then reports
-# its own error.
-setup_image_has_push_env() {
+# Whether the pinned setup image knows the command $1 (`push-env` arrived with
+# `owlat apply`, `unset-env` later). A host `owlat` newer than the stack runs an
+# older image, which answers an unknown command with "Unknown command" and its
+# whole help text. `--help` exits 0 on every version and lists the commands, so
+# it answers the question without running anything. A probe that fails counts
+# as yes: the real run then reports its own error.
+setup_image_has_command() {
 	local help_text
 	help_text="$(docker run --rm "$OWLAT_SETUP_IMAGE" --help 2>/dev/null)" || return 0
-	[[ "$help_text" == *push-env* ]]
+	[[ "$help_text" == *"$1"* ]]
 }
 
 # The compose profiles feature flags turn on and off, the only ones `owlat
@@ -505,7 +507,7 @@ case "$cmd" in
 esac
 
 case "$cmd" in
-	setup|quickstart|config|sample-data|feature|env|doctor|apply)
+	setup|quickstart|config|sample-data|feature|env|unset-env|doctor|apply)
 		require_supported_arch
 		;;
 esac
@@ -666,6 +668,26 @@ case "$cmd" in
 			-v "$OWLAT_DIR:/opt/owlat" \
 			"$OWLAT_SETUP_IMAGE" env "$@"
 		;;
+	unset-env)
+		# Clear Convex function-runtime keys from the deployment and from .env.
+		# `apply` only ever sets the keys .env has a value for, so blanking or
+		# deleting a line leaves the old value live; this is the explicit way to
+		# clear one. The setup CLI checks each key against the runtime-key list,
+		# then runs `convex env remove` through `docker compose run convex-deploy`
+		# on the host socket, joining THIS project like apply's push does.
+		if ! setup_image_has_command unset-env; then
+			printf '%b\n' "${YELLOW}${BOLD}[warn]${RESET} Nothing was changed: this stack's setup image (${OWLAT_SETUP_IMAGE}) predates 'owlat unset-env'." \
+				"       Upgrade the stack with 'owlat upgrade', then run 'owlat unset-env' again." >&2
+			exit 1
+		fi
+		project_name="$(compose_project_name)"
+		exec docker run --rm \
+			-v "$OWLAT_DIR:/opt/owlat" \
+			-v /var/run/docker.sock:/var/run/docker.sock \
+			-e "OWLAT_DIR=/opt/owlat" \
+			${project_name:+-e "COMPOSE_PROJECT_NAME=$project_name"} \
+			"$OWLAT_SETUP_IMAGE" unset-env "$@"
+		;;
 	start|up)
 		# Activate docker-compose profiles for enabled features.
 		export_compose_profiles
@@ -698,7 +720,7 @@ case "$cmd" in
 			exit 0
 		fi
 		stop_inactive_profile_services
-		if ! setup_image_has_push_env; then
+		if ! setup_image_has_command push-env; then
 			printf '%b\n' "${YELLOW}${BOLD}[warn]${RESET} Containers are up to date, but the Convex function-runtime keys were NOT pushed:" \
 				"       this stack's setup image (${OWLAT_SETUP_IMAGE}) predates 'owlat apply'." \
 				"       Upgrade the stack with 'owlat upgrade', then run 'owlat apply' again." >&2

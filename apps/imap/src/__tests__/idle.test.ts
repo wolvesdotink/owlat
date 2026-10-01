@@ -230,6 +230,199 @@ describe('IDLE — pushes EXISTS + FETCH FLAGS + EXPUNGE during a single IDLE (P
 	});
 });
 
+describe('IDLE — a poll never outlives its session or overlaps the next tick', () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.clearAllMocks();
+	});
+
+	type Read =
+		| 'mail/imap/session:peekFolderModseq'
+		| 'mail/imap/fetch:listFolderUidsPage'
+		| 'mail/imap/fetch:fetchChangedEnvelopes';
+
+	/**
+	 * A folder that starts as UIDs 1,2 (matching SELECTED) and, from the first
+	 * poll on, reads as "UID 1 expunged, UID 2 marked \Seen". `hold(read)`
+	 * makes the next call to that read wait for `release()`; the IDLE seed's
+	 * own UID read is never held. `uidPages` splits the post-change UID list
+	 * into that many pages.
+	 */
+	function changedFolder(uidPages = 1) {
+		const convex = mockConvex();
+		let held: { read: Read; gate: Promise<void> } | null = null;
+		let release = (): void => {};
+		let seeded = false;
+		const answer = (ref: string, qargs: Record<string, unknown>): unknown => {
+			if (ref === 'mail/imap/session:peekFolderModseq') {
+				return { highestModseq: 8, uidNext: 3, totalCount: 1, unseenCount: 0 };
+			}
+			if (ref === 'mail/imap/fetch:listFolderUidsPage') {
+				if (!seeded) {
+					seeded = true;
+					return { uids: [1, 2], nextUid: null };
+				}
+				// One UID (2) is left; extra pages are empty, each advancing.
+				const after = (qargs.afterUid as number | undefined) ?? 0;
+				const page = after === 0 ? 1 : after - 1;
+				return { uids: page === 1 ? [2] : [], nextUid: page < uidPages ? page + 2 : null };
+			}
+			if (ref === 'mail/imap/fetch:fetchChangedEnvelopes') {
+				return {
+					page: [envelope({ uid: 2, modseq: 8, flagSeen: true })],
+					isDone: true,
+					continueCursor: null,
+				};
+			}
+			return null;
+		};
+		convex.query.mockImplementation(
+			(fnRef: AnyFunctionReference, qargs: Record<string, unknown>) => {
+				const ref = getFunctionName(fnRef);
+				const value = answer(ref, qargs);
+				if (held && held.read === ref && seeded) {
+					const { gate } = held;
+					held = null;
+					return gate.then(() => value);
+				}
+				return Promise.resolve(value);
+			}
+		);
+		const calls = (ref: Read): number =>
+			convex.query.mock.calls.filter(([r]) => getFunctionName(r as AnyFunctionReference) === ref)
+				.length;
+		return {
+			convex,
+			calls,
+			hold(read: Read): void {
+				held = {
+					read,
+					gate: new Promise<void>((resolve) => {
+						release = resolve;
+					}),
+				};
+			},
+			release: () => release(),
+		};
+	}
+
+	it.each<Read>([
+		'mail/imap/session:peekFolderModseq',
+		'mail/imap/fetch:listFolderUidsPage',
+		'mail/imap/fetch:fetchChangedEnvelopes',
+	])(
+		'DONE while the poll waits on %s: nothing is written or committed afterwards',
+		async (read) => {
+			const folder = changedFolder();
+			const { deps, committed } = makeDeps(folder.convex);
+			const { start, lines } = startArgs(deps, selectedState());
+			const session = idleModule.start(start);
+			await vi.advanceTimersByTimeAsync(0); // seed the client's UID view
+
+			folder.hold(read);
+			await flushPoll();
+			expect(folder.calls(read)).toBeGreaterThanOrEqual(1);
+			expect(lines).toEqual(['+ idling']);
+
+			expect(session.onClientLine?.('DONE')).toBe('absorbed');
+			await session.completion;
+			expect(lines).toEqual(['+ idling', 'a1 OK IDLE terminated']);
+			const commits = committed.length;
+
+			folder.release();
+			await vi.advanceTimersByTimeAsync(30_000);
+
+			expect(lines).toEqual(['+ idling', 'a1 OK IDLE terminated']);
+			expect(committed).toHaveLength(commits);
+			expect(folder.calls('mail/imap/session:peekFolderModseq')).toBe(1);
+		}
+	);
+
+	it('server timeout while a poll is in flight: the late result is dropped', async () => {
+		const folder = changedFolder();
+		const { deps } = makeDeps(folder.convex);
+		const timedDeps = { ...deps, config: { ...deps.config, idleTimeoutMs: 7_000 } };
+		const { start, lines } = startArgs(timedDeps, selectedState());
+		const session = idleModule.start(start);
+		await vi.advanceTimersByTimeAsync(0);
+
+		folder.hold('mail/imap/session:peekFolderModseq');
+		await flushPoll();
+		await vi.advanceTimersByTimeAsync(2_000); // 7s: the idle timer fires
+		await session.completion;
+		const ended = [
+			'+ idling',
+			'* OK [TIMEOUT] IDLE timeout — re-issue IDLE',
+			'a1 OK IDLE terminated by server',
+		];
+		expect(lines).toEqual(ended);
+
+		folder.release();
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(lines).toEqual(ended);
+	});
+
+	it('disconnect mid page walk: the walk stops reading and nothing is written', async () => {
+		// Three UID pages: the first is held, the other two must never be read.
+		const folder = changedFolder(3);
+		const { deps, committed } = makeDeps(folder.convex);
+		const { start, lines } = startArgs(deps, selectedState());
+		const session = idleModule.start(start);
+		await vi.advanceTimersByTimeAsync(0);
+
+		folder.hold('mail/imap/fetch:listFolderUidsPage');
+		await flushPoll();
+		const uidReads = folder.calls('mail/imap/fetch:listFolderUidsPage');
+
+		session.cancel();
+		await session.completion;
+		const commits = committed.length;
+
+		folder.release();
+		await vi.advanceTimersByTimeAsync(30_000);
+
+		expect(folder.calls('mail/imap/fetch:listFolderUidsPage')).toBe(uidReads);
+		expect(folder.calls('mail/imap/fetch:fetchChangedEnvelopes')).toBe(0);
+		expect(lines).toEqual(['+ idling']);
+		expect(committed).toHaveLength(commits);
+	});
+
+	it('a poll slower than the interval is not overlapped, and its responses keep their order', async () => {
+		const folder = changedFolder();
+		const { deps, committed } = makeDeps(folder.convex);
+		const { start, lines } = startArgs(deps, selectedState());
+		const session = idleModule.start(start);
+		await vi.advanceTimersByTimeAsync(0);
+
+		folder.hold('mail/imap/session:peekFolderModseq');
+		await flushPoll();
+		// Three more intervals pass while the first poll still waits.
+		await vi.advanceTimersByTimeAsync(15_000);
+		expect(folder.calls('mail/imap/session:peekFolderModseq')).toBe(1);
+
+		folder.release();
+		await vi.advanceTimersByTimeAsync(0);
+		// EXPUNGE against the client's old view first, then FLAGS at the new seq.
+		expect(lines).toEqual([
+			'+ idling',
+			'* 1 EXPUNGE',
+			'* 1 FETCH (UID 2 MODSEQ (8) FLAGS (\\Seen))',
+		]);
+
+		// The next poll follows a full interval later and finds nothing new.
+		await flushPoll();
+		expect(folder.calls('mail/imap/session:peekFolderModseq')).toBe(2);
+		expect(lines).toHaveLength(3);
+
+		session.onClientLine?.('DONE');
+		await session.completion;
+		expect(committed.at(-1)!.selected).toMatchObject({ totalCount: 1, highestModseq: 8 });
+	});
+});
+
 describe('diffIdle — pure RFC 3501 §7.4 response computation', () => {
 	const base = {
 		prevUids: [1, 2, 3] as readonly number[],

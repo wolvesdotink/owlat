@@ -42,9 +42,7 @@ function makeColumnsBlock(id: string): EditorBlock {
 					{ id: 'col-item-1', type: 'text', content: { html: 'Col 1' } },
 					{ id: 'col-item-2', type: 'image', content: { src: '' } },
 				],
-				[
-					{ id: 'col-item-3', type: 'button', content: { text: 'Click' } },
-				],
+				[{ id: 'col-item-3', type: 'button', content: { text: 'Click' } }],
 			],
 			gap: 16,
 			paddingTop: 0,
@@ -314,6 +312,57 @@ describe('useBlockState', () => {
 			state.selectedContainerItemId.value = 'some-id';
 			state.selectedContainerContext.value = { blockId: 'text-1' };
 			expect(state.selectedContainerItem.value).toBeNull();
+		});
+	});
+
+	// Selection resolves a nested item below the composite that holds it at any
+	// depth, and always knows the root that owns it (linked state lives there).
+	describe('nested composites', () => {
+		const threeLevels = (): EditorBlock =>
+			({
+				id: 'outer',
+				type: 'container',
+				content: {
+					items: [
+						{
+							id: 'middle',
+							type: 'container',
+							content: {
+								items: [
+									{
+										id: 'cols',
+										type: 'columns',
+										content: {
+											columns: [[], [{ id: 'leaf', type: 'text', content: { html: 'Leaf' } }]],
+										},
+									},
+								],
+							},
+						},
+					],
+				},
+			}) as unknown as EditorBlock;
+
+		it('resolves a container item two levels down and its root', () => {
+			const state = setup([makeTextBlock('intro'), threeLevels()]);
+			state.handleSelectContainerItem('middle', 'cols');
+			expect(state.selectedContainerItem.value?.id).toBe('cols');
+			expect(state.selectedRootId.value).toBe('outer');
+		});
+
+		it('resolves a column item of a columns block three levels down', () => {
+			const state = setup([threeLevels()]);
+			state.handleSelectColumnItem('cols', 1, 'leaf');
+			expect(state.selectedColumnItem.value?.content).toEqual({ html: 'Leaf' });
+			expect(state.selectedRootId.value).toBe('outer');
+		});
+
+		it('names the root itself when a root is selected', () => {
+			const state = setup([threeLevels()]);
+			state.handleSelectBlock('outer');
+			expect(state.selectedRootId.value).toBe('outer');
+			state.clearSelection();
+			expect(state.selectedRootId.value).toBeNull();
 		});
 	});
 });
