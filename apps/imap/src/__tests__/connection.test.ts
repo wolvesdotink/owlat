@@ -17,7 +17,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { getFunctionName, type AnyFunctionReference } from 'convex/server';
+import { getFunctionName } from 'convex/server';
 import { EventEmitter } from 'events';
 import type { Socket } from 'net';
 import { ImapConnection } from '../connection.js';
@@ -25,6 +25,9 @@ import type { ImapConfig } from '../config.js';
 import type { ConvexClient } from '../convex.js';
 import { AuthRateLimiter } from '../rateLimit.js';
 import { assembleCapabilityLine } from '../commands/walker.js';
+
+// convex/server declares AnyFunctionReference without exporting it.
+type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
 
 const CAPABILITY_LINE = assembleCapabilityLine(true);
 

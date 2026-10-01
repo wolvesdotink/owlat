@@ -12,13 +12,16 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getFunctionName, type AnyFunctionReference } from 'convex/server';
+import { getFunctionName } from 'convex/server';
 import { EventEmitter } from 'events';
 import type { Socket } from 'net';
 import { ImapConnection } from '../connection.js';
 import type { ImapConfig } from '../config.js';
 import type { ConvexClient } from '../convex.js';
 import { AuthRateLimiter } from '../rateLimit.js';
+
+// convex/server declares AnyFunctionReference without exporting it.
+type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
 
 vi.mock('../logger.js', () => ({
 	logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -116,9 +119,9 @@ async function idleWithHeldPoll(): Promise<Fixture> {
 			case 'mail/imap/session:listFolders':
 				return Promise.resolve([INBOX, SENT]);
 			case 'mail/imap/session:selectFolder':
-				return Promise.resolve({ folder: args.folderId === 'f1' ? INBOX : SENT });
+				return Promise.resolve({ folder: args['folderId'] === 'f1' ? INBOX : SENT });
 			case 'mail/imap/fetch:listFolderUidsPage':
-				return Promise.resolve({ uids: args.folderId === 'f1' ? inboxUids : [], nextUid: null });
+				return Promise.resolve({ uids: args['folderId'] === 'f1' ? inboxUids : [], nextUid: null });
 			case 'mail/imap/fetch:fetchChangedEnvelopes':
 				return Promise.resolve({ page: [], isDone: true, continueCursor: null });
 			case 'mail/imap/session:peekFolderModseq':
