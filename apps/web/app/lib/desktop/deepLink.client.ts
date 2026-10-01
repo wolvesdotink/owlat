@@ -90,8 +90,16 @@ export async function handleDeepLink(url: string): Promise<void> {
  * nonce out of durable storage (see lib/desktop/pendingConnections.ts) rather
  * than process memory for exactly that reason. Called from the boot plugin AFTER
  * `loadWorkspaces`, so the workspace list it mutates is already hydrated.
+ *
+ * Only the main window handles deep links. The native side broadcasts every
+ * link to every webview, and the compose window boots this same plugin. A
+ * compose window that won the race for an `owlat://auth` return would complete
+ * the handshake while the main window kept its own session for the workspace
+ * live, unsuspended, and free to write the old session back over the new one;
+ * it would also replay cold-start `mailto:` and thread links.
  */
 export async function setupDeepLinks(): Promise<void> {
+	if (!(await isMainWindow())) return;
 	try {
 		const { getInitialDeepLinks, onDeepLink } = await import('@owlat/desktop/src/deeplink');
 		for (const url of await getInitialDeepLinks()) {
@@ -102,5 +110,15 @@ export async function setupDeepLinks(): Promise<void> {
 		});
 	} catch (e) {
 		console.warn('[desktop] deep-link setup skipped:', e);
+	}
+}
+
+/** Whether this webview is the main window; a plain browser has only one. */
+async function isMainWindow(): Promise<boolean> {
+	try {
+		const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+		return getCurrentWebviewWindow().label === 'main';
+	} catch {
+		return true;
 	}
 }
