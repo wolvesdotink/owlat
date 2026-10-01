@@ -1,0 +1,7 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "dev-provisioning",
+	"description": "Developer builds only (the `dev-provisioning` feature; build.rs reads this directory only then): the local-source install commands of the server wizard (src/ipc_commands.rs DEV_PROVISIONING_COMMANDS), for the main window.",
+	"windows": ["main"],
+	"permissions": ["allow-ssh-upload-dir", "allow-ssh-push-images", "allow-local-docker-build"]
+}

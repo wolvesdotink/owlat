@@ -1,12 +1,14 @@
 /**
  * Remote/local command builders for the desktop "set up a new server" flow:
  * the exact command strings the wizard drives over SSH (probe, install Docker,
- * fetch the repo, run the installer) plus the local docker invocations used by
- * the local-source modes. Split from `provisioning.ts` (timeline + transport),
- * which consumes these via {@link InstallSource}.
+ * fetch the repo, run the installer) plus the local image builds the
+ * local-source modes ask the desktop for. Split from `provisioning.ts`
+ * (timeline + transport), which consumes these via {@link InstallSource}.
  *
  * Everything here is a pure string/spec builder — unit testable without SSH.
  */
+
+import type { LocalBuild } from '@owlat/desktop/src/ssh';
 
 export interface RemoteOptions {
 	/** Install directory on the server (default /opt/owlat). */
@@ -193,58 +195,23 @@ export const DEV_IMAGES = [
 ] as const;
 
 /**
- * Local `docker compose build` invocation (push-images mode), targeting the
- * server's platform. All profiles so every buildable service is covered;
- * `INSTANCE_SECRET` only silences compose interpolation warnings.
+ * The local stack build (push-images mode), targeting the server's platform.
+ * This names only what to build; the desktop runs it as
+ * `docker compose --profile … build <services>` in the checkout, under the
+ * `dev` tag, and owns every other part of that invocation.
  */
-export function localBuildInvocation(platform: string): {
-	program: string;
-	args: string[];
-	env: Record<string, string>;
-} {
+export function localStackBuild(platform: string): LocalBuild {
 	return {
-		program: 'docker',
-		args: [
-			'compose',
-			'--profile',
-			'deploy',
-			'--profile',
-			'ai',
-			'build',
-			'web',
-			'mta',
-			'updater',
-			'convex-deploy',
-			'code-worker',
-		],
-		env: {
-			OWLAT_VERSION: LOCAL_VERSION_TAG,
-			DOCKER_DEFAULT_PLATFORM: platform,
-			INSTANCE_SECRET: 'build-only',
-		},
+		kind: 'stack',
+		platform,
+		profiles: ['deploy', 'ai'],
+		services: ['web', 'mta', 'updater', 'convex-deploy', 'code-worker'],
 	};
 }
 
-/** Local build of the setup-cli image (push-images mode). */
-export function localSetupImageInvocation(platform: string): {
-	program: string;
-	args: string[];
-	env: Record<string, string>;
-} {
-	return {
-		program: 'docker',
-		args: [
-			'build',
-			'--platform',
-			platform,
-			'-f',
-			'apps/setup-cli/Dockerfile',
-			'-t',
-			LOCAL_SETUP_IMAGE,
-			'.',
-		],
-		env: {},
-	};
+/** The local build of the setup-cli image as {@link LOCAL_SETUP_IMAGE} (push-images mode). */
+export function localSetupImageBuild(platform: string): LocalBuild {
+	return { kind: 'setupImage', platform };
 }
 
 /**
