@@ -308,4 +308,34 @@ describe('useSettingsForm', () => {
 		expect(form.timezone).toBe('Europe/Berlin');
 		expect(isDirty.value).toBe(false);
 	});
+
+	it('is not loaded, and refuses to save the defaults, until the source answers (#1097)', async () => {
+		const { source, form, loaded, handleSave, save } = setup(undefined);
+		await settle();
+		expect(loaded.value).toBe(false);
+
+		// A read that failed leaves the source undefined: an edit made on the
+		// defaults must not be written over the settings that were never read.
+		form.fromName = 'Edited on the defaults';
+		await settle();
+		expect(await handleSave()).toBe(false);
+		expect(save).not.toHaveBeenCalled();
+
+		// The read recovers: the stored row replaces the defaults.
+		source.value = { timezone: 'Europe/Berlin', fromName: 'Owlat' };
+		await settle();
+		expect(loaded.value).toBe(true);
+		expect(form).toEqual({ timezone: 'Europe/Berlin', fromName: 'Owlat' });
+
+		form.fromName = 'Owlat Team';
+		await settle();
+		expect(await handleSave()).toBe(true);
+		expect(save).toHaveBeenCalledWith({ timezone: 'Europe/Berlin', fromName: 'Owlat Team' });
+	});
+
+	it('counts no stored row as an answer', async () => {
+		const { loaded } = setup(null);
+		await settle();
+		expect(loaded.value).toBe(true);
+	});
 });

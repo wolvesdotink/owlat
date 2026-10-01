@@ -41,7 +41,11 @@ const rulesEnabled = computed(() => flags.value['ai.autonomy'] === true);
 // `ai.agent` requires both; while either is off only "Off" can be chosen here.
 const canTurnOn = computed(() => flags.value['ai'] === true && flags.value['inbox'] === true);
 
-const { data: config, isLoading } = useConvexQuery(api.agentConfigMutations.getConfig, () => ({}));
+const {
+	data: config,
+	error: configError,
+	refetch: refetchConfig,
+} = useConvexQuery(api.agentConfigMutations.getConfig, () => ({}));
 
 const settings = computed<AiReplySettings>(() => ({
 	agentEnabled: agentEnabled.value,
@@ -66,7 +70,8 @@ const { showToast } = useToast();
 const pendingMode = ref<AiReplyMode | null>(null);
 
 async function selectMode(target: AiReplyMode) {
-	if (pendingMode.value) return;
+	// The plan is drawn from the stored config; without it every step is a guess.
+	if (pendingMode.value || config.value === undefined) return;
 	const steps = planAiReplyModeChange(settings.value, target);
 	if (steps.length === 0) return;
 	pendingMode.value = target;
@@ -102,6 +107,7 @@ const DEFAULTS = {
 // same row, so it re-emits while this form is open; unsaved edits survive that.
 const {
 	form,
+	loaded,
 	isDirty: isFormDirty,
 	isSaving,
 	handleSave,
@@ -179,258 +185,274 @@ const { data: feedbackStats } = useConvexQuery(api.autonomyFeedback.getFeedbackS
 			/>
 		</div>
 
-		<div
-			v-if="isLoading"
-			class="space-y-6 max-w-3xl"
-			role="status"
-			aria-busy="true"
-			:aria-label="t('dashboard.admin.instance.aiReplies.loading')"
-		>
-			<div v-for="card in 3" :key="card" class="card space-y-4">
-				<UiSkeleton class="h-5 w-48" />
-				<UiSkeletonText :lines="2" size="sm" last-line-width="w-1/2" />
-				<UiSkeleton v-for="row in 2" :key="row" class="h-10 rounded-lg" />
-			</div>
-		</div>
-
-		<div v-else class="space-y-6 max-w-3xl">
-			<!-- The one control -->
-			<section class="card" aria-labelledby="ai-replies-mode-heading">
-				<div class="flex items-start justify-between gap-4 mb-4">
-					<div>
-						<h2 id="ai-replies-mode-heading" class="text-lg font-medium text-text-primary">
-							{{ t('dashboard.admin.instance.aiReplies.mode.title') }}
-						</h2>
-						<p class="text-sm text-text-secondary mt-1">
-							{{ t('dashboard.admin.instance.aiReplies.mode.description') }}
-						</p>
+		<!--
+			Every card below reads the config: without it the mode reads as Draft
+			and the tuning form holds the defaults, which a save would write over
+			the stored threshold and daily limit. A failed read shows the error.
+		-->
+		<UiQueryBoundary :loading="!loaded" :error="configError" @retry="refetchConfig">
+			<template #loading>
+				<div
+					class="space-y-6 max-w-3xl"
+					role="status"
+					aria-busy="true"
+					:aria-label="t('dashboard.admin.instance.aiReplies.loading')"
+				>
+					<div v-for="card in 3" :key="card" class="card space-y-4">
+						<UiSkeleton class="h-5 w-48" />
+						<UiSkeletonText :lines="2" size="sm" last-line-width="w-1/2" />
+						<UiSkeleton v-for="row in 2" :key="row" class="h-10 rounded-lg" />
 					</div>
-					<UiSpinner v-if="pendingMode" size="xs" />
 				</div>
+			</template>
 
-				<AiReplyModeControl
-					:mode="pendingMode ?? mode"
-					:busy="pendingMode !== null"
-					:can-turn-on="canTurnOn"
-					@select="selectMode"
+			<div class="space-y-6 max-w-3xl">
+				<!-- The one control -->
+				<section class="card" aria-labelledby="ai-replies-mode-heading">
+					<div class="flex items-start justify-between gap-4 mb-4">
+						<div>
+							<h2 id="ai-replies-mode-heading" class="text-lg font-medium text-text-primary">
+								{{ t('dashboard.admin.instance.aiReplies.mode.title') }}
+							</h2>
+							<p class="text-sm text-text-secondary mt-1">
+								{{ t('dashboard.admin.instance.aiReplies.mode.description') }}
+							</p>
+						</div>
+						<UiSpinner v-if="pendingMode" size="xs" />
+					</div>
+
+					<AiReplyModeControl
+						:mode="pendingMode ?? mode"
+						:busy="pendingMode !== null"
+						:can-turn-on="canTurnOn"
+						@select="selectMode"
+					/>
+
+					<p
+						v-if="!canTurnOn"
+						class="mt-4 text-sm text-text-secondary"
+						data-testid="ai-replies-needs-features"
+					>
+						{{ t('dashboard.admin.instance.aiReplies.mode.needsFeatures') }}
+						<NuxtLink :to="FEATURES_PATH" class="text-brand hover:underline font-medium">
+							{{ t('dashboard.admin.instance.aiReplies.openFeatures') }}
+						</NuxtLink>
+					</p>
+
+					<!-- The ai.autonomy flag: shown here, changed on Features -->
+					<div
+						class="mt-4 pt-4 border-t border-border-subtle flex flex-wrap items-center justify-between gap-2 text-sm"
+						data-testid="ai-replies-rules-flag"
+					>
+						<span class="text-text-secondary">
+							{{ t('dashboard.admin.instance.aiReplies.rulesFlag.label') }}
+							<span class="font-medium text-text-primary">
+								{{
+									rulesEnabled
+										? t('dashboard.admin.instance.aiReplies.rulesFlag.on')
+										: t('dashboard.admin.instance.aiReplies.rulesFlag.off')
+								}}
+							</span>
+						</span>
+						<NuxtLink :to="FEATURES_PATH" class="text-brand hover:underline font-medium">
+							{{ t('dashboard.admin.instance.aiReplies.rulesFlag.change') }}
+						</NuxtLink>
+					</div>
+				</section>
+
+				<!-- When to send: only meaningful while sending automatically -->
+				<section
+					v-if="mode === 'auto'"
+					class="card"
+					aria-labelledby="ai-replies-when-heading"
+					data-testid="ai-replies-when"
+				>
+					<h2 id="ai-replies-when-heading" class="text-lg font-medium text-text-primary mb-1">
+						{{ t('dashboard.admin.instance.aiReplies.when.title') }}
+					</h2>
+
+					<p v-if="rulesEnabled" class="text-sm text-text-secondary">
+						{{ t('dashboard.admin.instance.aiReplies.when.byRule') }}
+					</p>
+					<div v-else class="space-y-6 mt-4">
+						<div>
+							<div class="flex items-center justify-between mb-2">
+								<label for="ai-replies-threshold" class="text-text-primary font-medium">
+									{{ t('dashboard.admin.instance.aiReplies.when.thresholdLabel') }}
+								</label>
+								<span class="text-sm font-mono text-brand bg-brand-subtle px-2 py-0.5 rounded">
+									{{ confidencePercent }}%
+								</span>
+							</div>
+							<p class="text-sm text-text-tertiary mb-3">
+								{{ t('dashboard.admin.instance.aiReplies.when.thresholdHelp') }}
+							</p>
+							<input
+								id="ai-replies-threshold"
+								v-model.number="form.confidenceThreshold"
+								type="range"
+								min="0"
+								max="1"
+								step="0.05"
+								class="w-full h-2 bg-bg-surface rounded-lg appearance-none cursor-pointer accent-brand"
+							/>
+							<div class="flex justify-between text-xs text-text-tertiary mt-1">
+								<span>{{ t('dashboard.admin.instance.aiReplies.when.thresholdMin') }}</span>
+								<span>{{ t('dashboard.admin.instance.aiReplies.when.thresholdMax') }}</span>
+							</div>
+						</div>
+
+						<div>
+							<label for="ai-replies-daily" class="text-text-primary font-medium">
+								{{ t('dashboard.admin.instance.aiReplies.when.dailyLabel') }}
+							</label>
+							<p class="text-sm text-text-tertiary mt-1 mb-3">
+								{{ t('dashboard.admin.instance.aiReplies.when.dailyHelp') }}
+							</p>
+							<input
+								id="ai-replies-daily"
+								v-model.number="form.maxDailyAutoReplies"
+								type="number"
+								min="0"
+								max="10000"
+								class="input w-40"
+								placeholder="50"
+							/>
+						</div>
+
+						<div class="flex justify-end">
+							<UiButton
+								class="gap-2"
+								:disabled="!isFormDirty || isSaving || !loaded"
+								@click="handleSave"
+							>
+								<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
+								<Icon v-else name="lucide:save" class="w-4 h-4" />
+								{{ t('dashboard.admin.instance.aiReplies.saveChanges') }}
+							</UiButton>
+						</div>
+					</div>
+				</section>
+
+				<AutonomyWorkingHours
+					v-if="mode === 'auto'"
+					:enabled="config?.isWorkingHoursEnabled ?? false"
+					:timezone="config?.workingHoursTimezone ?? ''"
+					:start="config?.workingHoursStart ?? 540"
+					:end="config?.workingHoursEnd ?? 1020"
+					:days="config?.workingHoursDays ?? [1, 2, 3, 4, 5]"
+					:busy="workingHoursBusy"
+					@save="handleSaveWorkingHours"
 				/>
 
-				<p
-					v-if="!canTurnOn"
-					class="mt-4 text-sm text-text-secondary"
-					data-testid="ai-replies-needs-features"
-				>
-					{{ t('dashboard.admin.instance.aiReplies.mode.needsFeatures') }}
-					<NuxtLink :to="FEATURES_PATH" class="text-brand hover:underline font-medium">
-						{{ t('dashboard.admin.instance.aiReplies.openFeatures') }}
-					</NuxtLink>
-				</p>
+				<!-- Rules: per type of message, and in plain words -->
+				<template v-if="agentEnabled">
+					<AiReplyCategoryRules v-if="rulesEnabled" :mode="mode" />
 
-				<!-- The ai.autonomy flag: shown here, changed on Features -->
-				<div
-					class="mt-4 pt-4 border-t border-border-subtle flex flex-wrap items-center justify-between gap-2 text-sm"
-					data-testid="ai-replies-rules-flag"
-				>
-					<span class="text-text-secondary">
-						{{ t('dashboard.admin.instance.aiReplies.rulesFlag.label') }}
-						<span class="font-medium text-text-primary">
-							{{
-								rulesEnabled
-									? t('dashboard.admin.instance.aiReplies.rulesFlag.on')
-									: t('dashboard.admin.instance.aiReplies.rulesFlag.off')
-							}}
-						</span>
-					</span>
-					<NuxtLink :to="FEATURES_PATH" class="text-brand hover:underline font-medium">
-						{{ t('dashboard.admin.instance.aiReplies.rulesFlag.change') }}
-					</NuxtLink>
-				</div>
-			</section>
+					<section v-else class="card" data-testid="ai-replies-rules-off">
+						<h2 class="text-lg font-medium text-text-primary mb-1">
+							{{ t('dashboard.admin.instance.aiReplies.rules.title') }}
+						</h2>
+						<p class="text-sm text-text-secondary">
+							{{ t('dashboard.admin.instance.aiReplies.rules.offBody') }}
+							<NuxtLink :to="FEATURES_PATH" class="text-brand hover:underline font-medium">
+								{{ t('dashboard.admin.instance.aiReplies.openFeatures') }}
+							</NuxtLink>
+						</p>
+					</section>
+				</template>
 
-			<!-- When to send: only meaningful while sending automatically -->
-			<section
-				v-if="mode === 'auto'"
-				class="card"
-				aria-labelledby="ai-replies-when-heading"
-				data-testid="ai-replies-when"
-			>
-				<h2 id="ai-replies-when-heading" class="text-lg font-medium text-text-primary mb-1">
-					{{ t('dashboard.admin.instance.aiReplies.when.title') }}
-				</h2>
+				<!-- How replies read -->
+				<section class="card" aria-labelledby="ai-replies-tone-heading">
+					<h2 id="ai-replies-tone-heading" class="text-lg font-medium text-text-primary mb-1">
+						{{ t('dashboard.admin.instance.aiReplies.tone.title') }}
+					</h2>
+					<p class="text-sm text-text-secondary mb-6">
+						{{ t('dashboard.admin.instance.aiReplies.tone.description') }}
+					</p>
 
-				<p v-if="rulesEnabled" class="text-sm text-text-secondary">
-					{{ t('dashboard.admin.instance.aiReplies.when.byRule') }}
-				</p>
-				<div v-else class="space-y-6 mt-4">
-					<div>
-						<div class="flex items-center justify-between mb-2">
-							<label for="ai-replies-threshold" class="text-text-primary font-medium">
-								{{ t('dashboard.admin.instance.aiReplies.when.thresholdLabel') }}
+					<div class="space-y-6">
+						<div>
+							<label for="ai-replies-tone" class="text-text-primary font-medium">
+								{{ t('dashboard.admin.instance.aiReplies.tone.toneLabel') }}
 							</label>
-							<span class="text-sm font-mono text-brand bg-brand-subtle px-2 py-0.5 rounded">
-								{{ confidencePercent }}%
-							</span>
+							<p class="text-sm text-text-tertiary mt-1 mb-3">
+								{{ t('dashboard.admin.instance.aiReplies.tone.toneHelp') }}
+							</p>
+							<textarea
+								id="ai-replies-tone"
+								v-model="form.toneDescription"
+								rows="4"
+								class="input w-full resize-y"
+								:placeholder="t('dashboard.admin.instance.aiReplies.tone.tonePlaceholder')"
+							/>
 						</div>
-						<p class="text-sm text-text-tertiary mb-3">
-							{{ t('dashboard.admin.instance.aiReplies.when.thresholdHelp') }}
-						</p>
-						<input
-							id="ai-replies-threshold"
-							v-model.number="form.confidenceThreshold"
-							type="range"
-							min="0"
-							max="1"
-							step="0.05"
-							class="w-full h-2 bg-bg-surface rounded-lg appearance-none cursor-pointer accent-brand"
-						/>
-						<div class="flex justify-between text-xs text-text-tertiary mt-1">
-							<span>{{ t('dashboard.admin.instance.aiReplies.when.thresholdMin') }}</span>
-							<span>{{ t('dashboard.admin.instance.aiReplies.when.thresholdMax') }}</span>
+
+						<div>
+							<label for="ai-replies-signature" class="text-text-primary font-medium">
+								{{ t('dashboard.admin.instance.aiReplies.tone.signatureLabel') }}
+							</label>
+							<p class="text-sm text-text-tertiary mt-1 mb-3">
+								{{ t('dashboard.admin.instance.aiReplies.tone.signatureHelp') }}
+							</p>
+							<textarea
+								id="ai-replies-signature"
+								v-model="form.signatureTemplate"
+								rows="4"
+								class="input w-full resize-y"
+								:placeholder="t('dashboard.admin.instance.aiReplies.tone.signaturePlaceholder')"
+							/>
+						</div>
+
+						<div>
+							<label for="ai-replies-coalesce" class="text-text-primary font-medium">
+								{{ t('dashboard.admin.instance.aiReplies.tone.coalesceLabel') }}
+							</label>
+							<p class="text-sm text-text-tertiary mt-1 mb-3">
+								{{ t('dashboard.admin.instance.aiReplies.tone.coalesceHelp') }}
+							</p>
+							<div class="flex items-center gap-3">
+								<input
+									id="ai-replies-coalesce"
+									:value="form.coalesceWindowMs / 1000"
+									type="number"
+									min="0"
+									max="300"
+									class="input w-40"
+									placeholder="30"
+									@input="
+										form.coalesceWindowMs = Number(($event.target as HTMLInputElement).value) * 1000
+									"
+								/>
+								<span class="text-text-secondary text-sm">
+									{{ t('dashboard.admin.instance.aiReplies.tone.seconds') }}
+								</span>
+							</div>
 						</div>
 					</div>
 
-					<div>
-						<label for="ai-replies-daily" class="text-text-primary font-medium">
-							{{ t('dashboard.admin.instance.aiReplies.when.dailyLabel') }}
-						</label>
-						<p class="text-sm text-text-tertiary mt-1 mb-3">
-							{{ t('dashboard.admin.instance.aiReplies.when.dailyHelp') }}
-						</p>
-						<input
-							id="ai-replies-daily"
-							v-model.number="form.maxDailyAutoReplies"
-							type="number"
-							min="0"
-							max="10000"
-							class="input w-40"
-							placeholder="50"
-						/>
-					</div>
-
-					<div class="flex justify-end">
-						<UiButton class="gap-2" :disabled="!isFormDirty || isSaving" @click="handleSave">
+					<div class="flex justify-end mt-6">
+						<UiButton
+							class="gap-2"
+							:disabled="!isFormDirty || isSaving || !loaded"
+							@click="handleSave"
+						>
 							<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
 							<Icon v-else name="lucide:save" class="w-4 h-4" />
 							{{ t('dashboard.admin.instance.aiReplies.saveChanges') }}
 						</UiButton>
 					</div>
-				</div>
-			</section>
-
-			<AutonomyWorkingHours
-				v-if="mode === 'auto'"
-				:enabled="config?.isWorkingHoursEnabled ?? false"
-				:timezone="config?.workingHoursTimezone ?? ''"
-				:start="config?.workingHoursStart ?? 540"
-				:end="config?.workingHoursEnd ?? 1020"
-				:days="config?.workingHoursDays ?? [1, 2, 3, 4, 5]"
-				:busy="workingHoursBusy"
-				@save="handleSaveWorkingHours"
-			/>
-
-			<!-- Rules: per type of message, and in plain words -->
-			<template v-if="agentEnabled">
-				<AiReplyCategoryRules v-if="rulesEnabled" :mode="mode" />
-
-				<section v-else class="card" data-testid="ai-replies-rules-off">
-					<h2 class="text-lg font-medium text-text-primary mb-1">
-						{{ t('dashboard.admin.instance.aiReplies.rules.title') }}
-					</h2>
-					<p class="text-sm text-text-secondary">
-						{{ t('dashboard.admin.instance.aiReplies.rules.offBody') }}
-						<NuxtLink :to="FEATURES_PATH" class="text-brand hover:underline font-medium">
-							{{ t('dashboard.admin.instance.aiReplies.openFeatures') }}
-						</NuxtLink>
-					</p>
 				</section>
-			</template>
 
-			<!-- How replies read -->
-			<section class="card" aria-labelledby="ai-replies-tone-heading">
-				<h2 id="ai-replies-tone-heading" class="text-lg font-medium text-text-primary mb-1">
-					{{ t('dashboard.admin.instance.aiReplies.tone.title') }}
-				</h2>
-				<p class="text-sm text-text-secondary mb-6">
-					{{ t('dashboard.admin.instance.aiReplies.tone.description') }}
-				</p>
-
-				<div class="space-y-6">
-					<div>
-						<label for="ai-replies-tone" class="text-text-primary font-medium">
-							{{ t('dashboard.admin.instance.aiReplies.tone.toneLabel') }}
-						</label>
-						<p class="text-sm text-text-tertiary mt-1 mb-3">
-							{{ t('dashboard.admin.instance.aiReplies.tone.toneHelp') }}
-						</p>
-						<textarea
-							id="ai-replies-tone"
-							v-model="form.toneDescription"
-							rows="4"
-							class="input w-full resize-y"
-							:placeholder="t('dashboard.admin.instance.aiReplies.tone.tonePlaceholder')"
-						/>
-					</div>
-
-					<div>
-						<label for="ai-replies-signature" class="text-text-primary font-medium">
-							{{ t('dashboard.admin.instance.aiReplies.tone.signatureLabel') }}
-						</label>
-						<p class="text-sm text-text-tertiary mt-1 mb-3">
-							{{ t('dashboard.admin.instance.aiReplies.tone.signatureHelp') }}
-						</p>
-						<textarea
-							id="ai-replies-signature"
-							v-model="form.signatureTemplate"
-							rows="4"
-							class="input w-full resize-y"
-							:placeholder="t('dashboard.admin.instance.aiReplies.tone.signaturePlaceholder')"
-						/>
-					</div>
-
-					<div>
-						<label for="ai-replies-coalesce" class="text-text-primary font-medium">
-							{{ t('dashboard.admin.instance.aiReplies.tone.coalesceLabel') }}
-						</label>
-						<p class="text-sm text-text-tertiary mt-1 mb-3">
-							{{ t('dashboard.admin.instance.aiReplies.tone.coalesceHelp') }}
-						</p>
-						<div class="flex items-center gap-3">
-							<input
-								id="ai-replies-coalesce"
-								:value="form.coalesceWindowMs / 1000"
-								type="number"
-								min="0"
-								max="300"
-								class="input w-40"
-								placeholder="30"
-								@input="
-									form.coalesceWindowMs = Number(($event.target as HTMLInputElement).value) * 1000
-								"
-							/>
-							<span class="text-text-secondary text-sm">
-								{{ t('dashboard.admin.instance.aiReplies.tone.seconds') }}
-							</span>
-						</div>
-					</div>
-				</div>
-
-				<div class="flex justify-end mt-6">
-					<UiButton class="gap-2" :disabled="!isFormDirty || isSaving" @click="handleSave">
-						<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
-						<Icon v-else name="lucide:save" class="w-4 h-4" />
-						{{ t('dashboard.admin.instance.aiReplies.saveChanges') }}
-					</UiButton>
-				</div>
-			</section>
-
-			<template v-if="agentEnabled">
-				<AgentKnowledgeBackfillCard />
-				<AgentKnowledgeRelationBackfillCard />
-				<AutonomyAskEagernessDial />
-				<AutonomyFeedbackStatsCard :stats="feedbackStats ?? null" />
-				<AutonomyLearningControls />
-			</template>
-		</div>
+				<template v-if="agentEnabled">
+					<AgentKnowledgeBackfillCard />
+					<AgentKnowledgeRelationBackfillCard />
+					<AutonomyAskEagernessDial />
+					<AutonomyFeedbackStatsCard :stats="feedbackStats ?? null" />
+					<AutonomyLearningControls />
+				</template>
+			</div>
+		</UiQueryBoundary>
 
 		<UnsavedChangesDialog
 			:show="unsavedDialog.showDialog"

@@ -23,7 +23,16 @@ const { t } = useI18n();
 const { canManageOrganization } = usePermissions();
 const { showToast } = useToast();
 
-const { data: settings, isLoading } = useConvexQuery(api.workspaces.settings.get, {});
+const {
+	data: settings,
+	isLoading,
+	error: settingsError,
+	refetch: refetchSettings,
+} = useConvexQuery(api.workspaces.settings.get, {});
+// Only an answer is the operator's list. Before one (a pending or failed read)
+// the list below is the seeded defaults, and saving it plus one added domain
+// would write the defaults over the stored list.
+const loaded = computed(() => settings.value !== undefined);
 
 // The effective list: the operator's saved list, or the seeded defaults when
 // they have never touched it (unset). An explicit empty array is respected (the
@@ -77,7 +86,7 @@ function resetToDefaults() {
 }
 
 async function save() {
-	if (!canManageOrganization.value || !dirty.value) return;
+	if (!canManageOrganization.value || !dirty.value || !loaded.value) return;
 	const res = await updateSettings({ trustedArcForwarders: [...draft.value] });
 	if (!res.ok) return; // failure already toasted
 	showToast(
@@ -111,6 +120,8 @@ async function save() {
 					{{ t('components.delivery.trustedForwardersCard.loading') }}
 				</span>
 			</div>
+
+			<UiQueryBoundary v-else-if="settingsError" :error="settingsError" @retry="refetchSettings" />
 
 			<template v-else>
 				<p class="text-sm text-text-secondary max-w-prose">
@@ -158,7 +169,7 @@ async function save() {
 				</form>
 
 				<div v-if="canManageOrganization" class="flex items-center gap-2 pt-1">
-					<UiButton :disabled="!dirty || isSaving" :loading="isSaving" @click="save">
+					<UiButton :disabled="!dirty || isSaving || !loaded" :loading="isSaving" @click="save">
 						{{ t('common.save') }}
 					</UiButton>
 					<UiButton variant="ghost" :disabled="isSaving" @click="resetToDefaults">
