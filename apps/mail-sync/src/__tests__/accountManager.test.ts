@@ -313,3 +313,125 @@ describe('AccountManager replaces a connection that stopped for good', () => {
 		expect(instances).toHaveLength(1);
 	});
 });
+
+describe('AccountManager.stop drains before it resolves', () => {
+	/** A promise plus the handle that settles it, for holding a read or a stop open. */
+	function deferred<T>() {
+		let resolve!: (value: T) => void;
+		const promise = new Promise<T>((r) => (resolve = r));
+		return { promise, resolve };
+	}
+
+	/** Records when `p` settles, without awaiting it. */
+	function track(p: Promise<unknown>) {
+		const state = { settled: false };
+		void p.then(() => (state.settled = true));
+		return state;
+	}
+
+	it('opens nothing from an account list that arrives after stop', async () => {
+		vi.useFakeTimers();
+		const list = deferred<ConnectableAccount[]>();
+		const query = vi.fn(() => list.promise);
+		const mgr = new AccountManager({ query } as unknown as ConvexClient, CONFIG);
+
+		const started = mgr.start();
+		const stopped = mgr.stop();
+		const stopState = track(stopped);
+		await vi.advanceTimersByTimeAsync(0);
+		// The pass is still waiting on its read, so the drain is too.
+		expect(stopState.settled).toBe(false);
+
+		list.resolve([account('a')]);
+		await Promise.all([started, stopped]);
+
+		expect(instances).toHaveLength(0);
+		// start() lost the race to stop(): it must not arm the reconcile interval.
+		expect(vi.getTimerCount()).toBe(0);
+
+		// Pokes after stop stay no-ops.
+		await mgr.requestReconcile();
+		await vi.advanceTimersByTimeAsync(CONFIG.reconcileIntervalMs * 3);
+		expect(query).toHaveBeenCalledTimes(1);
+		expect(instances).toHaveLength(0);
+	});
+
+	it('does not arm the interval when stop() ran before start()', async () => {
+		vi.useFakeTimers();
+		const { client, query } = mockConvex([[account('a')]]);
+		const mgr = new AccountManager(client, CONFIG);
+
+		await mgr.stop();
+		await mgr.start();
+
+		expect(query).not.toHaveBeenCalled();
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it('waits for a connection retired mid-run to finish stopping', async () => {
+		// Tick 1 opens a; tick 2 no longer lists it, so the pass retires it.
+		const { client } = mockConvex([[account('a')], []]);
+		const mgr = new AccountManager(client, CONFIG);
+		await mgr.start();
+		const a = connFor('a')!;
+		const logout = deferred<void>();
+		a.stop.mockImplementation(() => logout.promise);
+
+		await mgr.requestReconcile();
+		expect(a.stop).toHaveBeenCalledTimes(1);
+
+		const stopState = track(mgr.stop());
+		await new Promise((r) => setTimeout(r, 0));
+		expect(stopState.settled).toBe(false);
+
+		logout.resolve();
+		await vi.waitFor(() => expect(stopState.settled).toBe(true));
+		// The drain did not stop the retired connection a second time.
+		expect(a.stop).toHaveBeenCalledTimes(1);
+	});
+
+	it('waits for a replaced connection that had stopped for good', async () => {
+		const { client } = mockConvex([[account('a')]]);
+		const mgr = new AccountManager(client, CONFIG);
+		await mgr.requestReconcile();
+		const first = instances[0]!;
+		first.isStopped = true;
+		const logout = deferred<void>();
+		first.stop.mockImplementation(() => logout.promise);
+
+		await mgr.requestReconcile();
+		const second = instances[1]!;
+
+		const stopState = track(mgr.stop());
+		await new Promise((r) => setTimeout(r, 0));
+		expect(second.stop).toHaveBeenCalledTimes(1);
+		expect(stopState.settled).toBe(false);
+
+		logout.resolve();
+		await vi.waitFor(() => expect(stopState.settled).toBe(true));
+	});
+
+	it('waits for live connections and is shared by repeated calls', async () => {
+		const { client } = mockConvex([[account('a'), account('b')]]);
+		const mgr = new AccountManager(client, CONFIG);
+		await mgr.start();
+		const a = connFor('a')!;
+		const b = connFor('b')!;
+		const logout = deferred<void>();
+		a.stop.mockImplementation(() => logout.promise);
+		b.stop.mockRejectedValue(new Error('socket already gone'));
+
+		const first = mgr.stop();
+		const second = mgr.stop();
+		expect(second).toBe(first);
+		const stopState = track(first);
+		await new Promise((r) => setTimeout(r, 0));
+		expect(stopState.settled).toBe(false);
+
+		logout.resolve();
+		// A connection whose stop fails does not fail the drain.
+		await expect(first).resolves.toBeUndefined();
+		expect(a.stop).toHaveBeenCalledTimes(1);
+		expect(b.stop).toHaveBeenCalledTimes(1);
+	});
+});

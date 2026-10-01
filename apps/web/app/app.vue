@@ -1,9 +1,19 @@
 <script setup lang="ts">
+import { defineComponent } from 'vue';
+
 // Skip auth-dependent identity tracking on public pages (share, archive, etc.)
-// to avoid unnecessary session/token requests for unauthenticated visitors.
-if (!isPublicRoute()) {
-	usePostHogIdentity();
-}
+// to avoid unnecessary session/token requests for unauthenticated visitors. It
+// starts on the first app route instead — at boot, or when a visit that began
+// on a public page moves into the app — and is mounted as a component so its
+// watchers get the setup context they need.
+const identityTracking = useLeftPublicPages();
+const PostHogIdentity = defineComponent({
+	name: 'PostHogIdentity',
+	setup() {
+		usePostHogIdentity();
+		return () => null;
+	},
+});
 
 /**
  * `<html lang>` follows the active locale.
@@ -34,6 +44,8 @@ useHead(() => ({ htmlAttrs: localeHead.value.htmlAttrs }));
 		     as a frozen or blank pane. Throttled so instant navigations don't
 		     flash it. -->
 		<NuxtLoadingIndicator color="var(--color-brand)" :height="2" />
+
+		<PostHogIdentity v-if="identityTracking" />
 
 		<NuxtLayout>
 			<NuxtPage />

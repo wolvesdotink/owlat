@@ -36,7 +36,13 @@ const { data: job } = useConvexQuery(api.mail.bodySearchBackfill.status, () =>
 	mailboxId.value ? { mailboxId: mailboxId.value } : 'skip'
 );
 const isIndexed = computed(() => job.value?.status === 'completed' && job.value?.mode === 'index');
-const isWalking = computed(() => job.value?.status === 'running');
+// A walk the server reports stalled still says `running`, but nothing will ever
+// finish it; it is shown as stopped, with the start button, like a failed one.
+const isStalled = computed(() => job.value?.isStalled === true);
+const isWalking = computed(() => job.value?.status === 'running' && !isStalled.value);
+const hasStopped = computed(
+	() => (job.value?.status === 'failed' && job.value?.mode === 'index') || isStalled.value
+);
 
 const { run: updateSettings, isLoading: isSaving } = useBackendOperation(
 	api.workspaces.settings.update,
@@ -161,6 +167,9 @@ async function stopBackfill() {
 								count: job?.indexedCount ?? 0,
 							})
 						}}
+					</span>
+					<span v-else-if="hasStopped" class="text-sm text-warning" role="status">
+						{{ t('components.settings.bodySearchIndexCard.backfillStopped') }}
 					</span>
 					<span v-else class="text-sm text-text-tertiary" role="status">
 						{{ t('components.settings.bodySearchIndexCard.backfillPending') }}
