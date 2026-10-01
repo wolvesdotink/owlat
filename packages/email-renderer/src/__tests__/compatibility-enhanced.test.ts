@@ -49,7 +49,9 @@ describe('Compatibility Data Improvements', () => {
 
 	describe('Audience Reach', () => {
 		it('full support returns 100%', () => {
-			const fullCompat = getBlockCompatibility('text').find((f) => f.feature === 'text-align: justify');
+			const fullCompat = getBlockCompatibility('text').find(
+				(f) => f.feature === 'text-align: justify'
+			);
 			expect(fullCompat).toBeDefined();
 			const reach = getAudienceReach(fullCompat!.support);
 			expect(reach).toBe(100);
@@ -143,7 +145,7 @@ describe('Compatibility Data Improvements', () => {
 			const props = getPropertyCompatibility('image', 'borderRadius');
 			expect(props[0]?.fixes).toBeDefined();
 			expect(props[0]!.fixes!.length).toBeGreaterThan(0);
-			expect(props[0]!.fixes![0].action).toBe('remove-property');
+			expect(props[0]!.fixes![0]!.action).toBe('remove-property');
 		});
 
 		it('column backgroundImage has set-fallback fix', () => {

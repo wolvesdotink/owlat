@@ -119,7 +119,6 @@ export function useEmailHtmlRendering() {
 		renderBlocksToPlainText,
 		renderContentToHtml,
 		loadLanguageContentForEmail,
-		buildHtmlTranslations,
 		buildHtmlTranslationsForEmail,
 	};
 }

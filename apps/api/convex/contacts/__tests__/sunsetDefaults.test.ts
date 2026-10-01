@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { createTestContact } from '../../__tests__/factories';
 import {
-	SUNSET_POLICY_DEFAULTS,
+	SUNSET_MIN_WINDOW_DAYS,
 	SUNSET_REENGAGE_AFTER_DAYS,
 	SUNSET_SUPPRESS_AFTER_DAYS,
-	resolveSunsetPolicy,
-} from '../sunsetPolicy';
+} from '@owlat/shared/sunsetPolicy';
+import { SUNSET_POLICY_DEFAULTS, resolveSunsetPolicy } from '../sunsetPolicy';
 import {
 	evaluateAndApplySunset,
 	loadSunsetPolicyRows,
@@ -29,6 +29,10 @@ describe('sunset defaults', () => {
 		});
 		expect(SUNSET_REENGAGE_AFTER_DAYS).toBe(180);
 		expect(SUNSET_SUPPRESS_AFTER_DAYS).toBe(270);
+	});
+
+	it('keeps the configurable window floor at 30 days', () => {
+		expect(SUNSET_MIN_WINDOW_DAYS).toBe(30);
 	});
 
 	it('freezes the default object so a caller cannot mutate the shipped policy', () => {

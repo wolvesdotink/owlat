@@ -16,6 +16,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
+import type { AuthEnv } from '../../__tests__/helpers/honoAuth.js';
 import type Redis from 'ioredis';
 import type { Queue } from 'groupmq';
 import type { MtaConfig } from '../../config.js';
@@ -152,7 +153,7 @@ afterEach(() => {
 
 async function decide(overrides: Record<string, unknown> = {}): Promise<string> {
 	const redis = { set: vi.fn().mockResolvedValue('OK'), del: vi.fn() } as unknown as Redis;
-	const app = new Hono();
+	const app = new Hono<AuthEnv>();
 	app.use('/send/decision', async (c, next) => {
 		c.set('auth', { isMasterKey: true });
 		await next();
@@ -182,7 +183,9 @@ async function decide(overrides: Record<string, unknown> = {}): Promise<string> 
 
 describe('routing decision answers', () => {
 	it('grants a lease with the frozen mta answer bytes', async () => {
-		vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue('lease-fixture-1');
+		// The frozen bytes carry this id verbatim, so it is not shaped like a UUID.
+		const leaseId = 'lease-fixture-1' as ReturnType<typeof globalThis.crypto.randomUUID>;
+		vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue(leaseId);
 		expect(await decide()).toBe(DECISION_MTA_BYTES);
 	});
 
@@ -240,7 +243,7 @@ describe('routing decision answers', () => {
 			set: vi.fn().mockRejectedValue(new Error('redis down')),
 			del: vi.fn().mockResolvedValue(1),
 		} as unknown as Redis;
-		const app = new Hono();
+		const app = new Hono<AuthEnv>();
 		app.use('/send/decision', async (c, next) => {
 			c.set('auth', { isMasterKey: true });
 			await next();
@@ -314,7 +317,7 @@ async function intake(options: {
 		eval: vi.fn().mockResolvedValue(0),
 		set: options.set ?? vi.fn().mockResolvedValue('OK'),
 	} as unknown as Redis;
-	const app = new Hono();
+	const app = new Hono<AuthEnv>();
 	app.use('/send', async (c, next) => {
 		c.set('auth', { isMasterKey: true });
 		await next();
@@ -415,7 +418,7 @@ async function postboxIntake(body: string) {
 		eval: vi.fn().mockResolvedValue(0),
 		set: vi.fn().mockResolvedValue('OK'),
 	} as unknown as Redis;
-	const app = new Hono();
+	const app = new Hono<AuthEnv>();
 	app.use('/send/postbox', async (c, next) => {
 		c.set('auth', { isMasterKey: true });
 		await next();
@@ -515,7 +518,7 @@ async function systemIntake(body: string) {
 		eval: vi.fn().mockResolvedValue(0),
 		set: vi.fn().mockResolvedValue('OK'),
 	} as unknown as Redis;
-	const app = new Hono();
+	const app = new Hono<AuthEnv>();
 	app.use('/send/system', async (c, next) => {
 		c.set('auth', { isMasterKey: true });
 		await next();
@@ -570,9 +573,12 @@ describe('system send intake', () => {
 			get: vi.fn().mockResolvedValue(null),
 			set: vi.fn().mockResolvedValue('OK'),
 		} as unknown as Redis;
-		const app = new Hono();
+		const app = new Hono<AuthEnv>();
 		app.use('/send/system', async (c, next) => {
-			c.set('auth', { isMasterKey: false, orgCredential: { organizationId: 'system' } });
+			c.set('auth', {
+				isMasterKey: false,
+				orgCredential: { organizationId: 'system', name: 'system', createdAt: 0 },
+			});
 			await next();
 		});
 		app.post(

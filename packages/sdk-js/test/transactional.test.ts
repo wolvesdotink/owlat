@@ -215,6 +215,49 @@ describe('TransactionalResource', () => {
 			});
 		});
 
+		it('rejects content outside the base64 alphabet', async () => {
+			const client = createTestClient();
+
+			await expect(
+				client.transactional.send({
+					email: 'user@example.com',
+					slug: 'welcome',
+					attachments: [{ filename: 'doc.pdf', content: 'not valid base64!' }],
+				})
+			).rejects.toMatchObject({
+				code: 'invalid_input',
+				message: 'Attachment "doc.pdf" has invalid base64 content',
+			});
+		});
+
+		it.each([
+			['\\r\\n', '\r\n'],
+			['\\n', '\n'],
+		])('names line breaks in MIME-wrapped base64 (%s)', async (_label, lineBreak) => {
+			const spy = mockFetch({
+				status: 200,
+				body: { data: sendResponse },
+				headers: TEST_RATE_LIMIT_HEADERS,
+			});
+			const client = createTestClient();
+			// MIME base64 wraps lines every 76 characters.
+			const plain = Buffer.alloc(100).toString('base64');
+			const content = `${plain.slice(0, 76)}${lineBreak}${plain.slice(76)}`;
+
+			await expect(
+				client.transactional.send({
+					email: 'user@example.com',
+					slug: 'welcome',
+					attachments: [{ filename: 'doc.pdf', content }],
+				})
+			).rejects.toMatchObject({
+				code: 'invalid_input',
+				message:
+					'Attachment "doc.pdf" has invalid base64 content: it contains line breaks; send plain base64 without line breaks',
+			});
+			expect(spy).not.toHaveBeenCalled();
+		});
+
 		it('accepts attachments that decode to exactly 10 MiB', async () => {
 			mockFetch({ status: 200, body: { data: sendResponse }, headers: TEST_RATE_LIMIT_HEADERS });
 			const client = createTestClient();

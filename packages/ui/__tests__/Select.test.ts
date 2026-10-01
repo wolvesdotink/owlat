@@ -7,7 +7,8 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
-import { h, nextTick, type Component } from 'vue';
+import { defineComponent, h, nextTick, ref, type Component } from 'vue';
+import Modal from '../components/ui/Modal.vue';
 import Select from '../components/ui/Select.vue';
 import { createUiI18n } from './i18n';
 
@@ -374,5 +375,162 @@ describe('Select values', () => {
 		await trigger(wrapper).trigger('click');
 		expect(listbox()).toBeNull();
 		expect(trigger(wrapper).attributes('aria-expanded')).toBe('false');
+	});
+});
+
+/**
+ * Inside UiModal the body is a scroll container, so an in-flow list would be
+ * cut off at its edge. The list lives on <body> instead, fixed to the trigger.
+ */
+describe('Select inside UiModal', () => {
+	const TRIGGER_BOX = { left: 120, top: 400, width: 320, height: 36 };
+
+	function mountInModal() {
+		const open = ref(true);
+		const value = ref<string | null>(null);
+		const Host = defineComponent({
+			setup: () => () =>
+				h(
+					Modal,
+					{
+						open: open.value,
+						title: 'Add contact',
+						'onUpdate:open': (next: boolean) => (open.value = next),
+					},
+					{
+						default: () => [
+							h('input', { 'aria-label': 'Email' }),
+							h(Select as Component, {
+								options: FRUIT,
+								modelValue: value.value,
+								label: 'Fruit',
+								'onUpdate:modelValue': (next: string | null) => (value.value = next),
+							}),
+						],
+					}
+				),
+		});
+		const wrapper = mount(Host, {
+			attachTo: document.body,
+			global: { plugins: [createUiI18n('en')], components: { Icon: IconStub } },
+		});
+		mounted.push(wrapper);
+		return { open, value };
+	}
+
+	const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]');
+	const combobox = () => document.querySelector<HTMLButtonElement>('[role="combobox"]')!;
+	const modalBody = () => dialog()!.querySelector<HTMLElement>('.overflow-y-auto')!;
+
+	/** happy-dom has no layout: give the trigger a box. */
+	function placeTrigger(box: Partial<typeof TRIGGER_BOX> = {}) {
+		const { left, top, width, height } = { ...TRIGGER_BOX, ...box };
+		combobox().getBoundingClientRect = () => new DOMRect(left, top, width, height);
+	}
+
+	async function key(target: Element, name: string) {
+		const event = new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true });
+		target.dispatchEvent(event);
+		await nextTick();
+		await nextTick();
+		return event;
+	}
+
+	async function openList() {
+		await nextTick();
+		placeTrigger();
+		combobox().focus();
+		await key(combobox(), 'ArrowDown');
+		return listbox()!;
+	}
+
+	it('draws the list outside the scrolling body, fixed under the trigger', async () => {
+		mountInModal();
+		const list = await openList();
+
+		expect(dialog()!.contains(list)).toBe(false);
+		expect(document.body.contains(list)).toBe(true);
+		expect(list.classList.contains('fixed')).toBe(true);
+		expect(list.style.top).toBe('440px');
+		expect(list.style.left).toBe('120px');
+		expect(list.style.width).toBe('320px');
+		expect(list.style.bottom).toBe('');
+	});
+
+	it('follows the trigger when the modal body scrolls and when the window resizes', async () => {
+		mountInModal();
+		const list = await openList();
+
+		placeTrigger({ top: 250 });
+		modalBody().dispatchEvent(new Event('scroll'));
+		await nextTick();
+		expect(list.style.top).toBe('290px');
+
+		placeTrigger({ top: 300, left: 60, width: 280 });
+		window.dispatchEvent(new Event('resize'));
+		await nextTick();
+		expect(list.style.top).toBe('340px');
+		expect(list.style.left).toBe('60px');
+		expect(list.style.width).toBe('280px');
+	});
+
+	it('opens above the trigger when there is no room below', async () => {
+		mountInModal();
+		await nextTick();
+		placeTrigger({ top: window.innerHeight - 60 });
+		combobox().focus();
+		await key(combobox(), 'ArrowDown');
+
+		const list = listbox()!;
+		expect(list.style.top).toBe('');
+		expect(list.style.bottom).toBe('64px');
+	});
+
+	it('closes only the list on Escape; the next Escape closes the dialog', async () => {
+		const { open } = mountInModal();
+		await openList();
+
+		await key(combobox(), 'Escape');
+		expect(listbox()).toBeNull();
+		expect(open.value).toBe(true);
+		expect(document.activeElement).toBe(combobox());
+
+		await key(combobox(), 'Escape');
+		expect(open.value).toBe(false);
+	});
+
+	it('keeps Tab inside the dialog and closes the list without committing', async () => {
+		const { value } = mountInModal();
+		await openList();
+		await key(combobox(), 'ArrowDown');
+
+		// The trigger is the dialog's last stop, so Tab wraps to its first.
+		const tab = await key(combobox(), 'Tab');
+
+		expect(tab.defaultPrevented).toBe(true);
+		expect(listbox()).toBeNull();
+		expect(dialog()!.contains(document.activeElement)).toBe(true);
+		expect(document.activeElement).not.toBe(combobox());
+		expect(value.value).toBeNull();
+	});
+
+	it('picks an option by click and closes on a click elsewhere in the dialog, leaving it open', async () => {
+		const { open, value } = mountInModal();
+		await openList();
+		options()[3]!.click();
+		await nextTick();
+		expect(value.value).toBe('cherry');
+		expect(listbox()).toBeNull();
+		expect(open.value).toBe(true);
+		expect(document.activeElement).toBe(combobox());
+
+		await openList();
+		const email = dialog()!.querySelector('input')!;
+		email.focus();
+		email.click();
+		await nextTick();
+		expect(listbox()).toBeNull();
+		expect(open.value).toBe(true);
+		expect(document.activeElement).toBe(email);
 	});
 });

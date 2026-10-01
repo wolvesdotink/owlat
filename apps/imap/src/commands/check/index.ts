@@ -8,6 +8,7 @@ import { reportNews } from '../noop/index.js';
  */
 export const checkModule: ImapCommandModule<void> = {
 	verbs: ['CHECK'],
+	concurrent: () => true,
 	parseArgs: () => ({ ok: true, args: undefined }),
 	start: reportNews,
 };

@@ -11,8 +11,10 @@
  *   - Non-OK with JSON body → `Error` with extracted `detail` / `title`,
  *     API key redacted.
  *   - Non-OK with non-JSON body → `Error` with status-only message.
- *   - Terminal page (response smaller than `PAGE_SIZE`) → `nextCursor:
- *     null`. Full page → `nextCursor` advances by `PAGE_SIZE`.
+ *   - A previous-release numeric cursor: terminal page (response smaller
+ *     than `PAGE_SIZE`) → `nextCursor: null`; full page → `nextCursor`
+ *     advances by `PAGE_SIZE`. Paging a changing audience with the current
+ *     cursor is covered in `mailchimp/__tests__/livePaging.test.ts`.
  *
  * Per ADR-0027.
  */

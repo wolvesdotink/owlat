@@ -1,5 +1,6 @@
 import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
+import { parseLine } from '../../parser.js';
 import type { CommandSession, ImapCommandModule, SelectedState } from '../types.js';
 import { buildSeqMap, seqForUid } from '../helpers/seqMap.js';
 import { loadChangedEnvelopes } from '../helpers/folderPaging.js';
@@ -108,15 +109,22 @@ export function diffIdle(args: {
  *
  *   1. Client sends bare `DONE` → onClientLine consumes it
  *   2. The configured idle timeout fires → emit `* OK [TIMEOUT]` + OK
- *   3. Socket closes or the client logs out (cancel) → tear down timers,
- *      resolve with the currently-tracked state so the pump's `.then`
+ *   3. Socket closes or the server shuts down (cancel) → tear down timers,
+ *      commit the currently-tracked state and resolve, so the pump's `.then`
  *      continuation releases its session reference
+ *
+ * DONE is the only line a client may send while idling (RFC 2177). Any other
+ * line is answered `BAD Expected DONE` and changes nothing: the IDLE keeps
+ * polling the folder it started on, and no command is dispatched. Once the
+ * session has ended, `onClientLine` returns `'pass'`, and the pump treats the
+ * line as the next command.
  *
  * During IDLE the poll loop diffs the folder against its last snapshot and
  * pushes unsolicited EXPUNGE / EXISTS / FETCH responses (RFC 3501 §7.4) so
  * other clients' deletes, arrivals, and flag changes are seen live, then
- * patches the locally-tracked SelectedState so the pump applies the fresh
- * counters when the session resolves.
+ * patches its tracked SelectedState. `finalize` commits that state through
+ * `deps.commit` when the session ends, so the pump's state carries the
+ * fresh counters.
  *
  * At most one poll runs at a time: the next is scheduled an interval after
  * the previous one finishes, so a slow read never overlaps a newer one and
@@ -129,6 +137,8 @@ export const idleModule: ImapCommandModule<void> = {
 	verbs: ['IDLE'],
 	capabilities: ['IDLE'],
 	requires: 'selected',
+	// Starts beside a FETCH still running; its polls wait on the sequence gate.
+	concurrent: () => true,
 	parseArgs: () => ({ ok: true, args: undefined }),
 	start({ deps, state, tag, send }) {
 		let currentSelected: SelectedState = state.selected!;
@@ -267,11 +277,16 @@ export const idleModule: ImapCommandModule<void> = {
 		const session: CommandSession = {
 			completion,
 			onClientLine(line) {
+				// Ended (DONE, timeout or cancel): the line is the next command.
+				if (signal.aborted) return 'pass';
 				if (line.trim().toUpperCase() === 'DONE') {
 					finalize([`${tag} OK IDLE terminated`]);
 					return 'absorbed';
 				}
-				return 'pass';
+				// RFC 2177: only DONE may follow IDLE. A blank line is ignored, as
+				// the pump ignores one outside IDLE.
+				if (line.trim() !== '') send(`${parseLine(line)?.tag ?? '*'} BAD Expected DONE`);
+				return 'absorbed';
 			},
 			cancel() {
 				finalize([]);

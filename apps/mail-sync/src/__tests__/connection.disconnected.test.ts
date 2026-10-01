@@ -33,10 +33,14 @@ const CONFIG: MailSyncConfig = {
 	port: 3200,
 	listenAddress: '0.0.0.0',
 	convexUrl: 'https://example.convex.cloud',
+	convexSiteUrl: 'https://example.convex.cloud/http',
 	convexAdminKey: 'admin-key',
 	apiKey: 'api-key',
 	reconcileIntervalMs: 30_000,
 	folderPollIntervalMs: 300_000,
+	inboxPollIntervalMs: 60_000,
+	backfillBatchSize: 200,
+	allowedFetchOrigins: ['https://example.convex.cloud'],
 };
 
 const ACCOUNT: ConnectableAccount = {
@@ -56,7 +60,7 @@ const ACCOUNT: ConnectableAccount = {
  */
 function mockConvex() {
 	const action = vi.fn(async () => ({ kind: 'unavailable', reason: 'disconnected' }));
-	const mutation = vi.fn(async () => undefined);
+	const mutation = vi.fn(async (_ref: unknown, _args: unknown) => undefined);
 	const query = vi.fn(async () => []);
 	return {
 		client: { action, mutation, query } as unknown as ConvexClient,

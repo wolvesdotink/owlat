@@ -21,7 +21,13 @@ import { copyModule } from '../copy/index.js';
 import { storeModule } from '../store/index.js';
 import { uidModule } from '../uid/index.js';
 import { dispatch } from '../walker.js';
-import type { CommandDeps, ConnectionState, SelectedState, StartArgs } from '../types.js';
+import type {
+	CommandDeps,
+	ConnectionState,
+	ParseResult,
+	SelectedState,
+	StartArgs,
+} from '../types.js';
 
 vi.mock('../../logger.js', () => ({
 	logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -76,9 +82,15 @@ function startArgs<T>(
 ): { start: StartArgs<T>; lines: string[] } {
 	const lines: string[] = [];
 	return {
-		start: { deps, state, args, tag: 'a1', verb, send: (l: string) => lines.push(l) },
+		start: { deps, state, args, tag: 'a1', verb, send: (l) => lines.push(l as string) },
 		lines,
 	};
+}
+
+/** The parsed args of a successful parse; a failed parse fails the test. */
+function argsOf<T>(parsed: ParseResult<T>): T {
+	if (!parsed.ok) throw new Error(`parse failed: ${parsed.error}`);
+	return parsed.args;
 }
 
 function mockConvex(): MockConvex {
@@ -93,12 +105,7 @@ describe('EXPUNGE — descending order + \\Deleted-only + modseq bump (RFC 3501 
 		const { deps } = makeDeps(convex);
 		const parsed = expungeModule.parseArgs([]);
 		expect(parsed.ok).toBe(true);
-		const { start, lines } = startArgs(
-			deps,
-			selectedState(),
-			(parsed as { args: never }).args,
-			'EXPUNGE'
-		);
+		const { start, lines } = startArgs(deps, selectedState(), argsOf(parsed), 'EXPUNGE');
 		await expungeModule.start(start).completion;
 
 		const expunges = lines.filter((l) => l.endsWith('EXPUNGE'));
@@ -111,7 +118,7 @@ describe('EXPUNGE — descending order + \\Deleted-only + modseq bump (RFC 3501 
 		convex.mutation.mockResolvedValue({ sequenceNumbers: [], modseq: 8 });
 		const { deps } = makeDeps(convex);
 		const parsed = expungeModule.parseArgs([]);
-		const { start } = startArgs(deps, selectedState(), (parsed as { args: never }).args, 'EXPUNGE');
+		const { start } = startArgs(deps, selectedState(), argsOf(parsed), 'EXPUNGE');
 		await expungeModule.start(start).completion;
 
 		// Bare EXPUNGE sends no uidSet — the convex side scans \Deleted only.
@@ -126,7 +133,7 @@ describe('EXPUNGE — descending order + \\Deleted-only + modseq bump (RFC 3501 
 		convex.mutation.mockResolvedValue({ sequenceNumbers: [1, 2], modseq: 12 });
 		const { deps, committed } = makeDeps(convex);
 		const parsed = expungeModule.parseArgs([]);
-		const { start } = startArgs(deps, selectedState(), (parsed as { args: never }).args, 'EXPUNGE');
+		const { start } = startArgs(deps, selectedState(), argsOf(parsed), 'EXPUNGE');
 		await expungeModule.start(start).completion;
 
 		expect(committed).toHaveLength(1);
@@ -150,7 +157,7 @@ describe('EXPUNGE — descending order + \\Deleted-only + modseq bump (RFC 3501 
 		const { start, lines } = startArgs(
 			deps,
 			selectedState({ totalCount: 250 }),
-			(parsed as { args: never }).args,
+			argsOf(parsed),
 			'EXPUNGE'
 		);
 
@@ -208,12 +215,7 @@ describe('UIDPLUS — COPYUID carries the folder uidValidity (RFC 4315)', () => 
 		const { deps } = makeDeps(convex);
 		const parsed = copyModule.parseArgs(['3:4', 'Archive']);
 		expect(parsed.ok).toBe(true);
-		const { start, lines } = startArgs(
-			deps,
-			selectedState(),
-			(parsed as { args: never }).args,
-			'COPY'
-		);
+		const { start, lines } = startArgs(deps, selectedState(), argsOf(parsed), 'COPY');
 		await copyModule.start(start).completion;
 
 		expect(lines.pop()).toBe('a1 OK [COPYUID 9999 3,4 17,18] COPY completed');
@@ -231,12 +233,7 @@ describe('UIDPLUS — UID EXPUNGE honors the UID set (RFC 4315 §2.1)', () => {
 
 		const parsed = uidModule.parseArgs(['EXPUNGE', '5,7:8']);
 		expect(parsed.ok).toBe(true);
-		const { start, lines } = startArgs(
-			deps,
-			selectedState(),
-			(parsed as { args: never }).args,
-			'UID'
-		);
+		const { start, lines } = startArgs(deps, selectedState(), argsOf(parsed), 'UID');
 		await uidModule.start(start).completion;
 
 		// 5,7:8 → {5,7,8}; bare EXPUNGE would send uidSet undefined.
@@ -252,7 +249,7 @@ describe('UIDPLUS — UID EXPUNGE honors the UID set (RFC 4315 §2.1)', () => {
 		convex.mutation.mockResolvedValue({ sequenceNumbers: [], modseq: 8 });
 		const { deps } = makeDeps(convex);
 		const parsed = uidModule.parseArgs(['EXPUNGE']);
-		const { start } = startArgs(deps, selectedState(), (parsed as { args: never }).args, 'UID');
+		const { start } = startArgs(deps, selectedState(), argsOf(parsed), 'UID');
 		await uidModule.start(start).completion;
 		expect(convex.mutation).toHaveBeenCalledWith(
 			expect.anything(),
@@ -277,7 +274,7 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 		expect(parsed.ok).toBe(true);
 		expect((parsed as { args: { unchangedSince?: number } }).args.unchangedSince).toBe(5);
 
-		const { start } = startArgs(deps, selectedState(), (parsed as { args: never }).args, 'STORE');
+		const { start } = startArgs(deps, selectedState(), argsOf(parsed), 'STORE');
 		await storeModule.start(start).completion;
 
 		expect(convex.mutation).toHaveBeenCalledWith(
@@ -304,12 +301,7 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 		});
 		const { deps } = makeDeps(convex);
 		const parsed = storeModule.parseArgs(['1:2', '(UNCHANGEDSINCE 8)', '+FLAGS', '(\\Flagged)']);
-		const { start, lines } = startArgs(
-			deps,
-			selectedState(),
-			(parsed as { args: never }).args,
-			'STORE'
-		);
+		const { start, lines } = startArgs(deps, selectedState(), argsOf(parsed), 'STORE');
 		await storeModule.start(start).completion;
 
 		// The updated row reports its NEW (higher) modseq, the skipped uid 2 is
@@ -332,7 +324,7 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 			unchanged: [],
 		});
 		const p1 = storeModule.parseArgs(['1', '+FLAGS', '(\\Seen)']);
-		const a1 = startArgs(deps, selectedState(), (p1 as { args: never }).args, 'STORE');
+		const a1 = startArgs(deps, selectedState(), argsOf(p1), 'STORE');
 		await storeModule.start(a1.start).completion;
 		const m1 = Number(a1.lines.find((l) => l.includes('MODSEQ'))!.match(/MODSEQ \((\d+)\)/)![1]);
 
@@ -346,7 +338,7 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 			unchanged: [],
 		});
 		const p2 = storeModule.parseArgs(['1', '+FLAGS', '(\\Flagged)']);
-		const a2 = startArgs(deps, selectedState(), (p2 as { args: never }).args, 'STORE');
+		const a2 = startArgs(deps, selectedState(), argsOf(p2), 'STORE');
 		await storeModule.start(a2.start).completion;
 		const m2 = Number(a2.lines.find((l) => l.includes('MODSEQ'))!.match(/MODSEQ \((\d+)\)/)![1]);
 
@@ -366,12 +358,7 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 		const { deps } = makeDeps(convex);
 		const parsed = storeModule.parseArgs(['1', '+FLAGS.SILENT', '(\\Seen)']);
 		expect((parsed as { args: { silent: boolean } }).args.silent).toBe(true);
-		const { start, lines } = startArgs(
-			deps,
-			selectedState(),
-			(parsed as { args: never }).args,
-			'STORE'
-		);
+		const { start, lines } = startArgs(deps, selectedState(), argsOf(parsed), 'STORE');
 		await storeModule.start(start).completion;
 
 		expect(lines.some((l) => l.includes('FETCH'))).toBe(false);
@@ -417,23 +404,13 @@ describe('CONDSTORE — [MODIFIED] addresses messages the way the command did (R
 		if (byUid) {
 			const parsed = uidModule.parseArgs(['STORE', ...rest]);
 			expect(parsed.ok).toBe(true);
-			const { start, lines } = startArgs(
-				deps,
-				selectedState(),
-				(parsed as { args: never }).args,
-				'UID'
-			);
+			const { start, lines } = startArgs(deps, selectedState(), argsOf(parsed), 'UID');
 			await uidModule.start(start).completion;
 			return lines;
 		}
 		const parsed = storeModule.parseArgs(rest);
 		expect(parsed.ok).toBe(true);
-		const { start, lines } = startArgs(
-			deps,
-			selectedState(),
-			(parsed as { args: never }).args,
-			'STORE'
-		);
+		const { start, lines } = startArgs(deps, selectedState(), argsOf(parsed), 'STORE');
 		await storeModule.start(start).completion;
 		return lines;
 	}

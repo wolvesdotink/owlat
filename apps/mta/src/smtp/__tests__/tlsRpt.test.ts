@@ -417,7 +417,9 @@ describe('tlsRpt', () => {
 
 			dnsWithRua({ 'example.com': 'https://tls-reports.example.com/ingest' });
 
-			const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }) as Response);
+			const fetchMock = vi.fn(
+				async (_url: string, _init?: RequestInit) => ({ ok: true, status: 200 }) as Response
+			);
 			vi.stubGlobal('fetch', fetchMock);
 
 			const stats = await generateAndSendReports(redis, 'Owlat MTA', 'postmaster@owlat.com');
@@ -428,7 +430,7 @@ describe('tlsRpt', () => {
 			expect(fetchMock).toHaveBeenCalledTimes(1);
 
 			// RFC 8460 §3: the HTTPS body is gzip-compressed JSON, not raw JSON.
-			const init = fetchMock.mock.calls[0]![1] as RequestInit;
+			const init = fetchMock.mock.calls[0]![1]!;
 			const body = JSON.parse(gunzipSync(init.body as Buffer).toString('utf8'));
 			expect(body.policies[0].summary['total-successful-session-count']).toBe(3);
 			expect(body.policies[0].summary['total-failure-session-count']).toBe(0);
@@ -449,14 +451,16 @@ describe('tlsRpt', () => {
 
 			dnsWithRua({ 'example.com': 'https://tls-reports.example.com/ingest' });
 
-			const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }) as Response);
+			const fetchMock = vi.fn(
+				async (_url: string, _init?: RequestInit) => ({ ok: true, status: 200 }) as Response
+			);
 			vi.stubGlobal('fetch', fetchMock);
 
 			const stats = await generateAndSendReports(redis, 'Owlat MTA', 'postmaster@owlat.com');
 			expect(stats.sent).toBe(1);
 			expect(fetchMock).toHaveBeenCalledTimes(1);
 
-			const init = fetchMock.mock.calls[0]![1] as RequestInit;
+			const init = fetchMock.mock.calls[0]![1]!;
 			// Content-Type advertises gzip…
 			expect((init.headers as Record<string, string>)['Content-Type']).toBe(
 				'application/tlsrpt+gzip'
@@ -565,7 +569,7 @@ describe('tlsRpt', () => {
 			expect(first.sent).toBe(1);
 			expect(second.sent).toBe(1);
 			expect(queue.add).toHaveBeenCalledOnce();
-			expect(queue.add.mock.calls[0]![0].jobId).toMatch(/^tlsrpt-[0-9a-f]{64}$/);
+			expect(vi.mocked(queue.add).mock.calls[0]![0].jobId).toMatch(/^tlsrpt-[0-9a-f]{64}$/);
 		});
 
 		it('skips a mailto: rua when no send queue is available', async () => {

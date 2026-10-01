@@ -16,7 +16,7 @@ import type { MtaConfig } from '../../config.js';
 const API_KEY = 'test-master-key';
 const config = { apiKey: API_KEY, outboundTlsMode: 'opportunistic' } as unknown as MtaConfig;
 
-function authedRequest(
+async function authedRequest(
 	app: ReturnType<typeof createOutboundTlsRoutes>,
 	method: string,
 	path: string,

@@ -13,6 +13,7 @@ interface StatusArgs {
 export const statusModule: ImapCommandModule<StatusArgs> = {
 	verbs: ['STATUS'],
 	requires: 'auth',
+	concurrent: () => true,
 	parseArgs(rawArgs) {
 		const [mailboxName, itemsToken] = rawArgs;
 		if (!mailboxName || !itemsToken) {

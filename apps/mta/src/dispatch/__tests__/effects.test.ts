@@ -39,7 +39,7 @@ vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { applyEffects, type DispatchEffect } from '../effects.js';
+import { applyEffects, type DispatchEffect, type DispatchEffectReplayGuard } from '../effects.js';
 import * as circuitBreaker from '../../intelligence/circuitBreaker.js';
 import * as campaignComplaintRate from '../../intelligence/campaignComplaintRate.js';
 import * as domainThrottle from '../../intelligence/domainThrottle.js';
@@ -373,7 +373,7 @@ describe('applyEffects — ordering', () => {
 		});
 
 		const effects: DispatchEffect[] = [
-			{ kind: 'domain_throttle_reject', ip: '10.0.0.1', domain: 'g.com' },
+			{ kind: 'domain_throttle_reject', ip: '10.0.0.1', throttleKey: 'gmail' },
 			{
 				kind: 'warming_record',
 				ip: '10.0.0.1',
@@ -442,7 +442,14 @@ describe('applyEffects — ordering', () => {
 
 		await expect(
 			applyEffects(
-				[{ kind: 'domain_throttle_success', ip: '10.0.0.1', domain: 'g.com' }],
+				[
+					{
+						kind: 'domain_throttle_success',
+						ip: '10.0.0.1',
+						throttleKey: 'gmail',
+						providerKey: 'gmail',
+					},
+				],
 				makeDeps()
 			)
 		).rejects.toThrow('boom');
@@ -453,13 +460,14 @@ describe('applyEffects — ordering', () => {
 			.mockRejectedValueOnce(new Error('outbox unavailable'))
 			.mockResolvedValue('outbox-1');
 		const claimed = new Set<string>();
-		const replayGuard = {
-			runSecondary: vi.fn(async (identity: string, apply: () => Promise<unknown>) => {
+		const replayGuard: DispatchEffectReplayGuard = {
+			async runSecondary(identity, apply) {
 				if (claimed.has(identity)) return undefined;
-				const result = await apply();
+				// No downstream identity, so every effect takes its plain (non-durable) path.
+				const result = await (apply as () => ReturnType<typeof apply>)();
 				claimed.add(identity);
 				return result;
-			}),
+			},
 		};
 		const effects: DispatchEffect[] = [
 			{

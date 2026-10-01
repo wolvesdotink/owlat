@@ -26,6 +26,7 @@ import {
 	createTestCampaignSender,
 } from './factories';
 import type { Id } from '../_generated/dataModel';
+import { openWorkspaceDeletionFence } from './helpers/workspaceDeletionFence';
 import { hashFraction, testFractionForSplit, variantForHash } from '../campaigns/sendVariantSplit';
 
 vi.mock('../lib/sessionOrganization', async () => {
@@ -917,6 +918,27 @@ describe('Campaign send walker — stuck-walk watchdog (redriveStuckSendJobs)', 
 				.collect();
 			expect(new Set(sends.map((s) => String(s.contactId))).size).toBe(N);
 		});
+	});
+
+	it('does NOT re-drive a stranded walk while a workspace deletion runs', async () => {
+		const t = convexTest(schema, modules);
+		const data = await setupWalker(t, 600);
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+		await makeJobStale(t, data.campaignId);
+		// The deletion cancelled the walk's next hop and holds the fence.
+		await t.run(openWorkspaceDeletionFence);
+		const scheduledBefore = await t.run(
+			async (ctx) => (await ctx.db.system.query('_scheduled_functions').collect()).length
+		);
+
+		const result = await t.mutation(internal.campaigns.sendJob.redriveStuckSendJobs, {});
+		expect(result.redriven).toBe(0);
+		expect(
+			await t.run(
+				async (ctx) => (await ctx.db.system.query('_scheduled_functions').collect()).length
+			)
+		).toBe(scheduledBefore);
 	});
 
 	it('does NOT re-drive a walk that is still making progress (fresh updatedAt)', async () => {

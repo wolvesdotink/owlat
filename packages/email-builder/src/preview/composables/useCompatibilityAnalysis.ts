@@ -5,8 +5,6 @@ import type {
 	CanIEmailFeature,
 	EmailClient,
 	SupportCode,
-	AnalyzableBlock,
-	NestingDepthResult,
 } from '../types';
 import { useCanIEmail } from './useCanIEmail';
 import { emailClients, canIEmailFamilyMap, getCanIEmailPlatformCandidates } from '../data/clients';
@@ -172,70 +170,6 @@ interface AnalysisOptions {
 	checkAllClients?: boolean;
 }
 
-/** Threshold for deep nesting warning (containers nested more than this level) */
-const DEEP_NESTING_THRESHOLD = 2;
-
-/**
- * Calculate the maximum container nesting depth in a single block
- */
-function calculateBlockNestingDepth(block: AnalyzableBlock, currentDepth = 0): number {
-	// Only containers contribute to nesting depth
-	if (block.type !== 'container') {
-		// For columns, check items inside each column
-		if (block.type === 'columns' && block.content.columns) {
-			let maxColumnDepth = currentDepth;
-			for (const column of block.content.columns) {
-				for (const item of column) {
-					if (item && typeof item === 'object' && 'type' in item && 'content' in item) {
-						const itemDepth = calculateBlockNestingDepth(item as AnalyzableBlock, currentDepth);
-						maxColumnDepth = Math.max(maxColumnDepth, itemDepth);
-					}
-				}
-			}
-			return maxColumnDepth;
-		}
-		return currentDepth;
-	}
-
-	// Container found - increment depth
-	const containerDepth = currentDepth + 1;
-	let maxChildDepth = containerDepth;
-
-	// Check container items
-	const items = block.content.items;
-	if (items && Array.isArray(items)) {
-		for (const item of items) {
-			const itemDepth = calculateBlockNestingDepth(item, containerDepth);
-			maxChildDepth = Math.max(maxChildDepth, itemDepth);
-		}
-	}
-
-	return maxChildDepth;
-}
-
-/**
- * Calculate maximum nesting depth across all blocks
- */
-export function calculateNestingDepth(blocks: AnalyzableBlock[]): NestingDepthResult {
-	let maxDepth = 0;
-
-	for (const block of blocks) {
-		const blockDepth = calculateBlockNestingDepth(block, 0);
-		maxDepth = Math.max(maxDepth, blockDepth);
-	}
-
-	const hasDeepNesting = maxDepth > DEEP_NESTING_THRESHOLD;
-	const warningMessage = hasDeepNesting
-		? `Container nesting depth of ${maxDepth} exceeds recommended maximum of ${DEEP_NESTING_THRESHOLD}. This may cause rendering issues in some email clients like Outlook.`
-		: undefined;
-
-	return {
-		maxDepth,
-		hasDeepNesting,
-		warningMessage,
-	};
-}
-
 /**
  * Composable for analyzing email HTML compatibility
  */
@@ -245,7 +179,6 @@ export function useCompatibilityAnalysis(): {
 	issues: ComputedRef<CompatibilityIssue[]>;
 	score: ComputedRef<number>;
 	analyzeHtml: (html: string, options?: AnalysisOptions) => Promise<CompatibilityReport>;
-	analyzeNestingDepth: (blocks: AnalyzableBlock[]) => NestingDepthResult;
 	getClientSupport: (feature: CanIEmailFeature, client: EmailClient) => SupportCode | null;
 	getUnsupportedClients: (feature: CanIEmailFeature, clients?: EmailClient[]) => EmailClient[];
 } {
@@ -474,20 +407,12 @@ export function useCompatibilityAnalysis(): {
 		}
 	}
 
-	/**
-	 * Analyze blocks for container nesting depth
-	 */
-	function analyzeNestingDepth(blocks: AnalyzableBlock[]): NestingDepthResult {
-		return calculateNestingDepth(blocks);
-	}
-
 	return {
 		isAnalyzing,
 		report,
 		issues,
 		score,
 		analyzeHtml,
-		analyzeNestingDepth,
 		getClientSupport,
 		getUnsupportedClients,
 	};

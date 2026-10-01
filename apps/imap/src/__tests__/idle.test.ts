@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getFunctionName, type AnyFunctionReference } from 'convex/server';
+import { getFunctionName } from 'convex/server';
 import { idleModule, diffIdle } from '../commands/idle/index.js';
 import { dispatch } from '../commands/walker.js';
 import type { FetchEnvelope } from '../commands/fetch/format.js';
@@ -27,6 +27,9 @@ import type {
 	SelectedState,
 	StartArgs,
 } from '../commands/types.js';
+
+// convex/server declares AnyFunctionReference without exporting it.
+type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
 
 vi.mock('../logger.js', () => ({
 	logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -87,7 +90,7 @@ function startArgs(
 			args: undefined,
 			tag: 'a1',
 			verb: 'IDLE',
-			send: (l: string) => lines.push(l),
+			send: (l) => lines.push(l as string),
 		},
 		lines,
 	};
@@ -149,7 +152,7 @@ describe('IDLE — pushes EXISTS + FETCH FLAGS + EXPUNGE during a single IDLE (P
 					return Promise.resolve({ uids, nextUid: null });
 				}
 				if (ref === 'mail/imap/fetch:fetchChangedEnvelopes') {
-					const since = (qargs.modseqSince as number) ?? 0;
+					const since = (qargs['modseqSince'] as number) ?? 0;
 					return Promise.resolve({
 						page: rows.filter((r) => r.modseq > since),
 						isDone: true,
@@ -272,7 +275,7 @@ describe('IDLE — a poll never outlives its session or overlaps the next tick',
 					return { uids: [1, 2], nextUid: null };
 				}
 				// One UID (2) is left; extra pages are empty, each advancing.
-				const after = (qargs.afterUid as number | undefined) ?? 0;
+				const after = (qargs['afterUid'] as number | undefined) ?? 0;
 				const page = after === 0 ? 1 : after - 1;
 				return { uids: page === 1 ? [2] : [], nextUid: page < uidPages ? page + 2 : null };
 			}

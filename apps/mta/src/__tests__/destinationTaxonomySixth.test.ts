@@ -101,7 +101,7 @@ describe('a provider added to the ONE declaration reaches every enumerating cons
 		vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
 		try {
 			for (let i = 0; i < DEFERS; i += 1) {
-				await record(redis, 'unused.test', IP, 'campaign', 'deferred', undefined, SIXTH);
+				await record(redis, 'unused.test', IP, 'campaign', 'deferred', undefined, sixth);
 			}
 			const app = createIpReputationRoutes(
 				redis,

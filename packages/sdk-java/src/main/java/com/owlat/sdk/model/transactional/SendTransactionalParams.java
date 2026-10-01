@@ -182,8 +182,15 @@ public class SendTransactionalParams {
                 // the API checks against 10 MiB.
                 if (content != null) {
                     if (!BASE64_PATTERN.matcher(content).matches()) {
+                        // Base64.getMimeEncoder() wraps lines every 76
+                        // characters; name that case, since the bare message
+                        // does not say what is wrong.
+                        String hint = content.indexOf('\n') >= 0 || content.indexOf('\r') >= 0
+                                ? ": it contains line breaks; send plain base64 without line breaks"
+                                        + " (use Base64.getEncoder(), not getMimeEncoder())"
+                                : "";
                         throw new IllegalArgumentException(
-                                "Attachment \"" + filename + "\" has invalid base64 content");
+                                "Attachment \"" + filename + "\" has invalid base64 content" + hint);
                     }
                     int padding = content.endsWith("==") ? 2 : content.endsWith("=") ? 1 : 0;
                     totalSizeBytes += (content.length() * 3L) / 4L - padding;

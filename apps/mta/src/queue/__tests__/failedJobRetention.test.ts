@@ -106,7 +106,7 @@ describe('failed-job retention', () => {
 		}
 
 		// Only the newest `keepFailed` survive, newest-last by finishedOn score.
-		expect(await redis.zrange(`${NS}:failed`, 0, -1)).toEqual(['job-5', 'job-6', 'job-7']);
+		expect(await redis.zrange(`${NS}:failed`, '0', '-1')).toEqual(['job-5', 'job-6', 'job-7']);
 		expect(await redis.zcard(`${NS}:failed`)).toBe(keepFailed);
 	});
 

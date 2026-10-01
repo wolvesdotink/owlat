@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { randomInt, randomUUID } from 'node:crypto';
 import { createServer } from 'node:net';
-import Redis from 'ioredis';
+import Redis, { type Cluster } from 'ioredis';
 
 const REDIS_IMAGE = 'redis:7-alpine';
 const CLUSTER_NODE_COUNT = 3;
@@ -10,7 +10,7 @@ const PORT_MIN = 16_000;
 const PORT_MAX = 25_000;
 
 export interface RedisClusterFixture {
-	client: Redis.Cluster;
+	client: Cluster;
 	names: string[];
 	ports: number[];
 }
@@ -120,7 +120,7 @@ export async function startRedisClusterFixture(prefix: string): Promise<RedisClu
 		const suffix = randomUUID().slice(0, 8);
 		const ports = await allocatePorts();
 		const names = ports.map((_, index) => `owlat-${prefix}-${suffix}-${index}`);
-		let client: Redis.Cluster | undefined;
+		let client: Cluster | undefined;
 
 		try {
 			for (let index = 0; index < ports.length; index++) {

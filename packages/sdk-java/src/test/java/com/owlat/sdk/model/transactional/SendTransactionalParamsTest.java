@@ -162,6 +162,41 @@ class SendTransactionalParamsTest {
     }
 
     @Test
+    void builderNamesLineBreaksInMimeWrappedBase64() {
+        // getMimeEncoder() wraps every 76 characters with "\r\n"; 100 bytes
+        // encode to 136 characters, so the output holds one line break.
+        String content = java.util.Base64.getMimeEncoder().encodeToString(new byte[100]);
+        assertTrue(content.contains("\r\n"), content);
+
+        SendTransactionalParams.Builder builder = SendTransactionalParams.builder("user@example.com")
+                .slug("welcome")
+                .attachment(TransactionalAttachment.builder("doc.pdf")
+                        .content(content)
+                        .build());
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, builder::build);
+        assertEquals(
+                "Attachment \"doc.pdf\" has invalid base64 content: it contains line breaks;"
+                        + " send plain base64 without line breaks"
+                        + " (use Base64.getEncoder(), not getMimeEncoder())",
+                ex.getMessage());
+    }
+
+    @Test
+    void builderAcceptsUnwrappedBase64FromGetEncoder() {
+        String content = java.util.Base64.getEncoder().encodeToString(new byte[100]);
+
+        SendTransactionalParams params = SendTransactionalParams.builder("user@example.com")
+                .slug("welcome")
+                .attachment(TransactionalAttachment.builder("doc.pdf")
+                        .content(content)
+                        .build())
+                .build();
+
+        assertEquals(content, params.getAttachments().get(0).getContent());
+    }
+
+    @Test
     void builderAcceptsValidBase64WithPadding() {
         SendTransactionalParams params = SendTransactionalParams.builder("user@example.com")
                 .slug("welcome")
