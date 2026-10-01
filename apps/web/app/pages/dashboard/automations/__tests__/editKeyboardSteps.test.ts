@@ -4,8 +4,8 @@
  *
  * Each step's title is a real button (with `aria-current="step"` while it is
  * open), and its drag handle is a button that lifts, moves and drops the step
- * from the keyboard. The drop goes through the same `handleDragEnd` as a
- * pointer drag, and every position change is announced.
+ * from the keyboard. The drop saves the order on screen the same way a
+ * pointer drag does, and every position change is announced.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
@@ -90,7 +90,7 @@ describe('keyboard step reordering', () => {
 
 		await press(wrapper, 'st_1', ' ');
 		// The same reorder path a pointer drag takes.
-		expect(steps.handleDragEnd).toHaveBeenCalledWith({ oldIndex: 0, newIndex: 2 });
+		expect(steps.persistStepOrder).toHaveBeenCalledWith(['st_2', 'st_3', 'st_1']);
 		expect(announce).toHaveBeenLastCalledWith('Step moved to position 3 of 3.');
 		expect(handle(wrapper, 'st_1').attributes('aria-pressed')).toBe('false');
 		wrapper.unmount();
@@ -106,14 +106,14 @@ describe('keyboard step reordering', () => {
 		await press(wrapper, 'st_2', 'Escape');
 
 		expect(order(wrapper)).toEqual(['st_1', 'st_2', 'st_3']);
-		expect(steps.handleDragEnd).not.toHaveBeenCalled();
+		expect(steps.persistStepOrder).not.toHaveBeenCalled();
 		expect(announce).toHaveBeenLastCalledWith('Move cancelled. Step 2 of 3.');
 		wrapper.unmount();
 	});
 
 	it('puts the saved order back when the reorder fails', async () => {
 		const { steps } = stubEditPage();
-		steps.handleDragEnd.mockResolvedValue(false);
+		steps.persistStepOrder.mockResolvedValue(false);
 		const wrapper = await mountEditPage();
 
 		await press(wrapper, 'st_1', ' ');
@@ -137,7 +137,7 @@ describe('keyboard step reordering', () => {
 
 		await menuItem(0, 'Move down').trigger('click');
 		await flushPromises();
-		expect(steps.handleDragEnd).toHaveBeenCalledWith({ oldIndex: 0, newIndex: 1 });
+		expect(steps.persistStepOrder).toHaveBeenCalledWith(['st_2', 'st_1', 'st_3']);
 		expect(order(wrapper)).toEqual(['st_2', 'st_1', 'st_3']);
 		expect(document.activeElement?.getAttribute('data-step-title')).toBe('st_1');
 		wrapper.unmount();

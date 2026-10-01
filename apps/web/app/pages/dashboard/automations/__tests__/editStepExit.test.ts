@@ -156,11 +156,11 @@ describe('leaving the open step', () => {
 
 		wrapper.findComponent({ name: 'VueDraggable' }).vm.$emit('end', { oldIndex: 0, newIndex: 2 });
 		await flushPromises();
-		expect(steps.handleDragEnd).not.toHaveBeenCalled();
+		expect(steps.persistStepOrder).not.toHaveBeenCalled();
 
 		dialog(wrapper).vm.$emit('stay');
 		await flushPromises();
-		expect(steps.handleDragEnd).not.toHaveBeenCalled();
+		expect(steps.persistStepOrder).not.toHaveBeenCalled();
 		const ids = wrapper
 			.findAll('[data-testid="automation-step"]')
 			.map((card) => card.text().match(/About (st_\d)/)?.[1]);

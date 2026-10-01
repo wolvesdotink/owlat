@@ -71,7 +71,7 @@ function stubPage(automation: typeof AUTOMATION) {
 		isCurrentConfigDirty: ref(false),
 		handleAddStep: vi.fn(),
 		handleDeleteStep: vi.fn(),
-		handleDragEnd: vi.fn(),
+		persistStepOrder: vi.fn(),
 		requestStepSave: vi.fn(),
 		flushStepSave: vi.fn(() => Promise.resolve(true)),
 		discardStepChanges: vi.fn(),

@@ -10,13 +10,12 @@ export interface KeyboardReorderMessages {
 export interface KeyboardReorderOptions<T extends { _id: string }> {
 	/** The order on screen. Moved in place while an item is lifted. */
 	items: Ref<T[]>;
-	/** Put the saved order back. */
-	restore: () => void;
 	/**
-	 * Persist a drop, the same way a pointer drag's `@end` does. `onSaved`
-	 * runs once the new order is stored, so the drop is announced only then.
+	 * Persist a drop, the same way a pointer drag's `@end` does: `items`
+	 * already holds the dropped order. `onSaved` runs once that order is
+	 * stored, so the drop is announced only then.
 	 */
-	commit: (move: { oldIndex: number; newIndex: number }, onSaved: () => void) => unknown;
+	commit: (onSaved: () => void) => unknown;
 	/** Focus the lifted item's handle again after the list re-renders. */
 	focusHandle: (id: string) => void;
 	announce: (message: string) => void;
@@ -29,9 +28,10 @@ export interface KeyboardReorderOptions<T extends { _id: string }> {
  * it back. Each step is announced as "position of total", so a screen-reader
  * user hears where the item is the way a pointer user sees it.
  *
- * The move happens in `items` only; the drop hands the start and end index to
- * `commit`, which is the pointer drag's own persist path, so both routes save
- * the same way.
+ * The move happens in `items` only; the drop hands over to `commit`, which is
+ * the pointer drag's own persist path, so both routes save the same way.
+ * Escape moves the item back to where it was lifted from, which is not always
+ * the saved order: an earlier move may still be on its way to the server.
  */
 export function useKeyboardReorder<T extends { _id: string }>(options: KeyboardReorderOptions<T>) {
 	const { items, messages } = options;
@@ -47,7 +47,13 @@ export function useKeyboardReorder<T extends { _id: string }>(options: KeyboardR
 		const current = lifted.value;
 		if (!current) return;
 		lifted.value = null;
-		options.restore();
+		const index = indexOf(current.id);
+		if (index !== -1 && index !== current.from) {
+			const next = [...items.value];
+			const [moved] = next.splice(index, 1);
+			next.splice(Math.min(current.from, next.length), 0, moved!);
+			items.value = next;
+		}
 		options.announce(messages.cancelled(current.from + 1, items.value.length));
 		refocus(current.id);
 	};
@@ -85,7 +91,7 @@ export function useKeyboardReorder<T extends { _id: string }>(options: KeyboardR
 			lifted.value = null;
 			const announceDrop = () => options.announce(messages.dropped(index + 1, total));
 			if (from === index) announceDrop();
-			else options.commit({ oldIndex: from, newIndex: index }, announceDrop);
+			else options.commit(announceDrop);
 			return;
 		}
 

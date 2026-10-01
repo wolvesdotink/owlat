@@ -9,6 +9,7 @@ import { stepEditorModuleFor, type StepKind } from '~/composables/automations/st
 import { triggerEditorModuleFor, type TriggerKind } from '~/composables/automations/triggers';
 import { useLocalized } from '~/composables/useLocalized';
 import { useKeyboardReorder } from '~/composables/automations/useKeyboardReorder';
+import { useStepOrderSync } from '~/composables/automations/useStepOrderSync';
 import type { LocalizedText } from '~/utils/localizedText';
 
 const { t } = useI18n();
@@ -81,7 +82,7 @@ const {
 	// Methods
 	handleAddStep,
 	handleDeleteStep,
-	handleDragEnd,
+	persistStepOrder,
 	requestStepSave,
 	flushStepSave,
 	discardStepChanges,
@@ -94,25 +95,23 @@ const {
 } = useAutomationSteps(automationId, automation, emailTemplates);
 
 // The list the drag handle reorders. VueDraggable writes the new order back
-// through v-model the moment an item is dropped, so the row stays where the
-// user put it while `handleDragEnd` persists the move; the next server
-// snapshot then replaces this copy.
-const orderedSteps = ref<typeof mutableSteps.value>([]);
-// A failed save leaves the server order unchanged, so no new snapshot arrives
-// to replace the dropped order: put the saved order back ourselves. The open
-// step's save lands first, like every other change to the workflow's shape.
-const restoreStepOrder = () => {
-	orderedSteps.value = [...mutableSteps.value];
-};
-type StepMove = { oldIndex?: number | null; newIndex?: number | null };
-function persistStepMove(move: StepMove, onSaved?: () => void) {
-	return afterStepSaved(async () => {
-		if (await handleDragEnd(move)) onSaved?.();
-		else restoreStepOrder();
-	}, restoreStepOrder);
-}
-function onStepDragEnd(event: StepMove) {
-	return persistStepMove(event);
+// through v-model the moment an item is dropped, and the keyboard and the
+// step menu move it the same way; every route then saves the order shown, so
+// what runs is what the user sees. See `useStepOrderSync` for how moves made
+// while a save is in flight are queued.
+const stepOrder = useStepOrderSync({
+	server: mutableSteps,
+	save: (ids) => persistStepOrder(ids as Id<'automationSteps'>[]),
+	// The open step's save lands first, like every other change to the
+	// workflow's shape.
+	whenReady: (proceed, cancel) => afterStepSaved(proceed, cancel),
+	// A new server order replaces whatever the keyboard was moving.
+	onReplaced: (): void => keyboardReorder.reset(),
+});
+const orderedSteps = stepOrder.items;
+const persistDisplayedOrder = (onSaved?: () => void): Promise<void> => stepOrder.persist(onSaved);
+function onStepDragEnd() {
+	return persistDisplayedOrder();
 }
 
 // Keyboard and screen-reader route to the same reorder: the step title is the
@@ -127,8 +126,7 @@ const positionMessage =
 		t(key, { position, total });
 const keyboardReorder = useKeyboardReorder({
 	items: orderedSteps,
-	restore: restoreStepOrder,
-	commit: persistStepMove,
+	commit: (onSaved) => persistDisplayedOrder(onSaved),
 	focusHandle: (id) => focusStepControl(id, 'handle'),
 	announce,
 	messages: {
@@ -139,15 +137,6 @@ const keyboardReorder = useKeyboardReorder({
 	},
 });
 const liftedStepId = keyboardReorder.liftedId;
-watch(
-	mutableSteps,
-	(steps) => {
-		orderedSteps.value = [...steps];
-		// A new server order replaces whatever the keyboard was moving.
-		keyboardReorder.reset();
-	},
-	{ immediate: true }
-);
 // Move up / Move down from the step's actions menu, for anyone who does not
 // know the handle works from the keyboard. Focus stays on the moved step.
 const moveStepBy = (stepId: string, delta: -1 | 1) => {
@@ -159,7 +148,7 @@ const moveStepBy = (stepId: string, delta: -1 | 1) => {
 	next.splice(to, 0, moved!);
 	orderedSteps.value = next;
 	void nextTick(() => focusStepControl(stepId, 'title'));
-	return persistStepMove({ oldIndex: from, newIndex: to }, () =>
+	return persistDisplayedOrder(() =>
 		announce(
 			positionMessage('dashboard.automations.detail.edit.reorder.dropped')(to + 1, next.length)
 		)

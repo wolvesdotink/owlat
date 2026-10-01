@@ -7,11 +7,11 @@ import { createTestI18n } from '~/__tests__/i18n';
 const i18n = createTestI18n();
 
 /**
- * Regression test for the drag-reorder wiring (FRONTEND_WIRING_REVIEW H3):
- * handleDragEnd must persist the order produced by the drag (from the
- * SortableJS event indices), not re-send the unchanged server order.
+ * The builder hands over the full order it shows; the composable sends that
+ * order as is. It must not re-derive one from the server snapshot, which
+ * lags behind the screen while a reorder is in flight.
  */
-describe('useAutomationSteps.handleDragEnd', () => {
+describe('useAutomationSteps.persistStepOrder', () => {
 	let runCalls: unknown[];
 	let runOk: boolean;
 
@@ -43,37 +43,17 @@ describe('useAutomationSteps.handleDragEnd', () => {
 			ref([]) as never
 		);
 
-	it('persists the reordered id list when an item is dragged down', async () => {
-		const { handleDragEnd } = makeSteps();
-		await handleDragEnd({ oldIndex: 0, newIndex: 2 });
-		expect(runCalls).toHaveLength(1);
-		expect(runCalls[0]).toEqual({ automationId: 'auto1', stepOrder: ['s2', 's3', 's1'] });
-	});
-
-	it('persists the reordered id list when an item is dragged up', async () => {
-		const { handleDragEnd } = makeSteps();
-		await handleDragEnd({ oldIndex: 2, newIndex: 0 });
-		expect(runCalls[0]).toEqual({ automationId: 'auto1', stepOrder: ['s3', 's1', 's2'] });
+	it('sends the given id order as the new step order', async () => {
+		const { persistStepOrder } = makeSteps();
+		await persistStepOrder(['s2', 's3', 's1'] as never);
+		expect(runCalls).toEqual([{ automationId: 'auto1', stepOrder: ['s2', 's3', 's1'] }]);
 	});
 
 	it('reports whether the new order was saved', async () => {
-		const { handleDragEnd } = makeSteps();
-		expect(await handleDragEnd({ oldIndex: 0, newIndex: 1 })).toBe(true);
+		const { persistStepOrder } = makeSteps();
+		expect(await persistStepOrder(['s2', 's1', 's3'] as never)).toBe(true);
 		runOk = false;
-		expect(await handleDragEnd({ oldIndex: 0, newIndex: 1 })).toBe(false);
-	});
-
-	it('does not call the mutation for a no-op drag (same index)', async () => {
-		const { handleDragEnd } = makeSteps();
-		await handleDragEnd({ oldIndex: 1, newIndex: 1 });
-		expect(runCalls).toHaveLength(0);
-	});
-
-	it('does not call the mutation when indices are missing', async () => {
-		const { handleDragEnd } = makeSteps();
-		await handleDragEnd({});
-		await handleDragEnd(undefined);
-		expect(runCalls).toHaveLength(0);
+		expect(await persistStepOrder(['s2', 's1', 's3'] as never)).toBe(false);
 	});
 });
 

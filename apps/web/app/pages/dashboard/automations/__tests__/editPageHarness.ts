@@ -68,7 +68,7 @@ export function stubEditPage(
 		hasRemoteStepChange: ref(false),
 		handleAddStep: vi.fn(),
 		handleDeleteStep: vi.fn(),
-		handleDragEnd: vi.fn((_event?: unknown) => Promise.resolve(true)),
+		persistStepOrder: vi.fn((_stepOrder: string[]) => Promise.resolve(true)),
 		requestStepSave: vi.fn(),
 		flushStepSave: vi.fn(() => Promise.resolve(true)),
 		discardStepChanges: vi.fn(),
