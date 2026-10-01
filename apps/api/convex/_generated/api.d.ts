@@ -989,6 +989,7 @@ import type * as mail_external_googleOAuthTokens from '../mail/external/googleOA
 import type * as mail_external_personalAccount from '../mail/external/personalAccount.js';
 import type * as mail_external_mirroredFolders from '../mail/external/mirroredFolders.js';
 import type * as mail_external_remoteFolderOpOrder from '../mail/external/remoteFolderOpOrder.js';
+import type * as mail_external_remoteFolderRename from '../mail/external/remoteFolderRename.js';
 import type * as mail_external_remoteOpDeferral from '../mail/external/remoteOpDeferral.js';
 import type * as mail_external_remoteOpOrder from '../mail/external/remoteOpOrder.js';
 import type * as mail_external_remoteOps from '../mail/external/remoteOps.js';
@@ -2364,6 +2365,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/external/personalAccount': typeof mail_external_personalAccount;
 	'mail/external/mirroredFolders': typeof mail_external_mirroredFolders;
 	'mail/external/remoteFolderOpOrder': typeof mail_external_remoteFolderOpOrder;
+	'mail/external/remoteFolderRename': typeof mail_external_remoteFolderRename;
 	'mail/external/remoteOpDeferral': typeof mail_external_remoteOpDeferral;
 	'mail/external/remoteOpOrder': typeof mail_external_remoteOpOrder;
 	'mail/external/remoteOps': typeof mail_external_remoteOps;

@@ -320,6 +320,14 @@ export const mailAccountsTables = {
 		nextAttemptAt: v.number(),
 		lastError: v.optional(v.string()),
 		createdAt: v.number(),
+		// 'renameFolder' only, from the worker's report of the rename on: the old
+		// name the queued ops are still being rewritten from, a transaction at a
+		// time (mail/external/remoteFolderRename.ts). Until that is done the op is
+		// never handed out again nor deleted, and the ops on its branch wait.
+		// `settledAt`: when the worker settled it, so the last rewrite deletes it.
+		renameRewrite: v.optional(
+			v.object({ from: v.string(), delimiter: v.string(), settledAt: v.optional(v.number()) })
+		),
 	})
 		.index('by_account_and_next_attempt', ['accountId', 'nextAttemptAt'])
 		// A pending write-back holds a message out of inbound reconcile.
@@ -327,5 +335,7 @@ export const mailAccountsTables = {
 		// The ops naming a remote folder, which a rename or delete of it waits
 		// for (mail/external/remoteFolderOpOrder.ts).
 		.index('by_account_kind_and_source_remote', ['accountId', 'kind', 'source.remote'])
-		.index('by_account_kind_and_target_remote', ['accountId', 'kind', 'target.remote']),
+		.index('by_account_kind_and_target_remote', ['accountId', 'kind', 'target.remote'])
+		// The renames whose queued ops are still being rewritten.
+		.index('by_account_and_rename_rewrite', ['accountId', 'renameRewrite.from']),
 };

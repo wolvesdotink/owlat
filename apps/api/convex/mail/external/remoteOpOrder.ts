@@ -18,7 +18,8 @@
  *
  * A folder rename or delete waits until no message op naming the folder is
  * queued, and runs after any older folder op on the same branch of the tree
- * (`remoteFolderOpOrder.ts`).
+ * (`remoteFolderOpOrder.ts`). Ops a reported rename has yet to rewrite to the
+ * new name wait for that rewrite.
  */
 
 import type { WithoutSystemFields } from 'convex/server';
@@ -31,7 +32,7 @@ import {
 	runDeferral,
 	type DeferralBudget,
 } from './remoteOpDeferral';
-import { folderOpOrder, type Held } from './remoteFolderOpOrder';
+import { folderOpOrder, renameRewriteHold, type Held } from './remoteFolderOpOrder';
 
 type RemoteOpRow = Doc<'externalMailRemoteOps'>;
 type FlagChanges = NonNullable<RemoteOpRow['flags']>;
@@ -166,6 +167,7 @@ export async function dueRemoteOps(
 ): Promise<RemoteOpRow[]> {
 	const byMessage = new Map<string, RemoteOpRow[]>();
 	const folderOpHeld = folderOpOrder(ctx, accountId, now);
+	const rewriteHeld = renameRewriteHold(ctx, accountId);
 	const verdicts = new Map<Id<'externalMailRemoteOps'>, Held | null>();
 
 	const messageOpHeld = async (op: RemoteOpRow, messageId: string): Promise<Held | null> => {
@@ -185,9 +187,10 @@ export async function dueRemoteOps(
 		if (!verdicts.has(op._id)) {
 			verdicts.set(
 				op._id,
-				op.rfc822MessageId === undefined
-					? await folderOpHeld(op)
-					: await messageOpHeld(op, op.rfc822MessageId)
+				(await rewriteHeld(op)) ??
+					(op.rfc822MessageId === undefined
+						? await folderOpHeld(op)
+						: await messageOpHeld(op, op.rfc822MessageId))
 			);
 		}
 		return verdicts.get(op._id) ?? null;

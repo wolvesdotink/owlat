@@ -21,6 +21,8 @@
  * the worker had to invent. The opposite direction — changes made on the
  * provider — is `remoteState.ts`. The order ops reach the provider in, and how
  * a newer flag change supersedes an older one, is `remoteOpOrder.ts`.
+ * How a folder the worker renamed at the provider is followed through the
+ * backend is `remoteFolderRename.ts`.
  */
 
 import { v, type Infer } from 'convex/values';
@@ -344,17 +346,22 @@ export const listDueRemoteOps = internalQuery({
 		const account = await ctx.db.get(args.accountId);
 		if (!account || !writesBack(account)) return [];
 		const rows = await dueRemoteOps(ctx, args.accountId, Date.now(), DUE_PAGE_SIZE);
-		return rows.map((r) => ({
-			opId: r._id,
-			kind: r.kind,
-			rfc822MessageId: r.rfc822MessageId,
-			source: r.source,
-			target: r.target,
-			flags: r.flags,
-			attempts: r.attempts,
-		}));
+		return rows.map(workerOp);
 	},
 });
+
+/** An op as the worker replays it. */
+export function workerOp(r: Doc<'externalMailRemoteOps'>) {
+	return {
+		opId: r._id,
+		kind: r.kind,
+		rfc822MessageId: r.rfc822MessageId,
+		source: r.source,
+		target: r.target,
+		flags: r.flags,
+		attempts: r.attempts,
+	};
+}
 
 /** Backoff after the `attempts`-th failure: 1, 2, 4 … minutes, capped at an hour. */
 export function remoteOpRetryDelayMs(attempts: number): number {
@@ -383,6 +390,14 @@ export const settleRemoteOps = internalMutation({
 		for (const result of args.results) {
 			const op = await ctx.db.get(result.opId);
 			if (!op) continue;
+			// A rename the worker reported, whose queued ops are still being
+			// rewritten: it stays until its last rewrite (remoteFolderRename.ts).
+			if (op.renameRewrite) {
+				if (op.renameRewrite.settledAt === undefined) {
+					await ctx.db.patch(op._id, { renameRewrite: { ...op.renameRewrite, settledAt: now } });
+				}
+				continue;
+			}
 			if (result.outcome !== 'failed') {
 				await ctx.db.delete(op._id);
 				continue;
