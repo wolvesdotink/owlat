@@ -70,5 +70,10 @@ export const formTables = {
 		.index('by_status', ['status'])
 		// One DOI token is shared by every signup made while the contact was
 		// pending, so confirmation reads the token's pending rows as a range.
-		.index('by_confirmation_token_and_status', ['confirmationToken', 'status']),
+		.index('by_confirmation_token_and_status', ['confirmationToken', 'status'])
+		// A carry page that finds the contact confirmed reads back the token
+		// that confirmation consumed from one of the rows it finalized
+		// (forms/pendingConfirmations.ts), without scanning the contact's
+		// history.
+		.index('by_contact_and_status_and_confirmed_at', ['contactId', 'status', 'confirmedAt']),
 };

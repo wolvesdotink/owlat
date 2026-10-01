@@ -40,18 +40,22 @@ Six drift signals across the submit path.
 
 ```ts
 const existingContact = await ctx.runQuery(
-  internal.contacts.organization.getByEmailForOrganizationInternal,
-  { email },
+	internal.contacts.organization.getByEmailForOrganizationInternal,
+	{ email }
 );
 
 if (existingContact) {
-  contactId = existingContact._id;
-  await ctx.runMutation(internal.forms.endpoints.recordSubmission, {
-    formEndpointId: form._id, contactId, data: submissionData,
-    status: 'duplicate' as const, ipAddress, userAgent,
-  });
+	contactId = existingContact._id;
+	await ctx.runMutation(internal.forms.endpoints.recordSubmission, {
+		formEndpointId: form._id,
+		contactId,
+		data: submissionData,
+		status: 'duplicate' as const,
+		ipAddress,
+		userAgent,
+	});
 } else {
-  // 90 lines of contact create, topic add, DOI token read, recordSubmission
+	// 90 lines of contact create, topic add, DOI token read, recordSubmission
 }
 ```
 
@@ -69,7 +73,7 @@ thereof), and its own decision of what to do with the `action`.
 `apiHttp.ts:307-318`: when `existingContact` is truthy, the path writes
 `status: 'duplicate'` and **returns** — it never calls the topic-add
 branch on `:338-345`. So a Contact already in the org who fills out a
-form to join a *new* Topic gets a `duplicate` row written and is **not**
+form to join a _new_ Topic gets a `duplicate` row written and is **not**
 added to the topic. A real bug, present in main, masked by the
 ambiguous `duplicate` literal (meaning "duplicate Contact" rather than
 "duplicate Topic membership").
@@ -78,10 +82,10 @@ ambiguous `duplicate` literal (meaning "duplicate Contact" rather than
 
 Two files write the status field:
 
-| Site | Statuses written |
-|---|---|
+| Site                                                                | Statuses written                                                  |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | `forms/apiHttp.ts:submitForm` (5 separate `recordSubmission` calls) | `spam`, `invalid`, `duplicate`, `pending_confirmation`, `success` |
-| `forms/endpoints.ts:confirmSubmission` (inline `ctx.db.patch`) | `success` (from `pending_confirmation`) |
+| `forms/endpoints.ts:confirmSubmission` (inline `ctx.db.patch`)      | `success` (from `pending_confirmation`)                           |
 
 No single owner. When the `success`-on-confirm patch grows a sibling
 field (e.g., `confirmationIp`, `confirmedSource`), two files have to
@@ -101,7 +105,7 @@ await ctx.runMutation(internal.forms.endpoints.recordSubmission, {
 });
 ```
 
-The token was just written by the **DOI lifecycle (module)** *inside*
+The token was just written by the **DOI lifecycle (module)** _inside_
 `subscribe`'s `request_doi` effect — but the chain
 `apiHttp → addContact → subscribe → doiLifecycle.transition` doesn't
 return the freshly-written token to the original caller. The form path
@@ -112,9 +116,9 @@ ignore but the form path consumes.
 #### 5. Redundant auth shell on `addContact`
 
 `apiHttp.ts:340-344` calls `api.topics.topics.addContact` — the
-*public* mutation. The form HTTP endpoint is already its own public
+_public_ mutation. The form HTTP endpoint is already its own public
 auth surface (CORS, IP-keyed rate-limit, honeypot, form `isActive`
-check). Going through the public `addContact` runs *that* mutation's
+check). Going through the public `addContact` runs _that_ mutation's
 auth shell on top: a second round of context resolution, role lookups,
 and permission checks. None of which add anything (the form endpoint is
 the front door). The deepening calls `subscribe()` directly,
@@ -162,82 +166,77 @@ in CONTEXT.md ships alongside this ADR (already landed: see the
 ```ts
 // convex/forms/submission.ts
 
-export type SubmitAction =
-  | 'spam'
-  | 'invalid'
-  | 'duplicate'
-  | 'pending_confirmation'
-  | 'success';
+export type SubmitAction = 'spam' | 'invalid' | 'duplicate' | 'pending_confirmation' | 'success';
 
 export type SubmitOutcome =
-  | {
-      ok: true;
-      submissionId: Id<'formSubmissions'>;
-      action: SubmitAction;
-      contactId?: Id<'contacts'>;
-      redirectUrl?: string;     // surfaced for the HTTP shell — see below
-      confirmationRequired?: boolean;
-    }
-  | { ok: false; reason: 'form_not_found' | 'form_inactive' };
+	| {
+			ok: true;
+			submissionId: Id<'formSubmissions'>;
+			action: SubmitAction;
+			contactId?: Id<'contacts'>;
+			redirectUrl?: string; // surfaced for the HTTP shell — see below
+			confirmationRequired?: boolean;
+	  }
+	| { ok: false; reason: 'form_not_found' | 'form_inactive' };
 
 export const submit = internalMutation({
-  args: {
-    formEndpointId: v.id('formEndpoints'),
-    submissionData: v.record(v.string(), v.string()),
-    ipAddress: v.optional(v.string()),
-    userAgent: v.optional(v.string()),
-  },
-  handler: async (ctx, args): Promise<SubmitOutcome> => {
-    // 1. Load form, check isActive
-    // 2. Honeypot → 'spam' (write row, return)
-    // 3. Field validation, extract email → 'invalid' (write row, return)
-    // 4. resolveContact({ channel: 'email', mode: 'upsert', source: 'form', contactFields })
-    // 5. If form.topicId: subscribe({ topicId, contactId, source: 'form', siteUrl })
-    // 6. Classify action from (resolveContact action, subscribe result)
-    // 7. Write row with status + confirmationToken (from subscribe's doiToken)
-    // 8. Return { ok: true, submissionId, action, contactId, redirectUrl?, confirmationRequired? }
-  },
+	args: {
+		formEndpointId: v.id('formEndpoints'),
+		submissionData: v.record(v.string(), v.string()),
+		ipAddress: v.optional(v.string()),
+		userAgent: v.optional(v.string()),
+	},
+	handler: async (ctx, args): Promise<SubmitOutcome> => {
+		// 1. Load form, check isActive
+		// 2. Honeypot → 'spam' (write row, return)
+		// 3. Field validation, extract email → 'invalid' (write row, return)
+		// 4. resolveContact({ channel: 'email', mode: 'upsert', source: 'form', contactFields })
+		// 5. If form.topicId: subscribe({ topicId, contactId, source: 'form', siteUrl })
+		// 6. Classify action from (resolveContact action, subscribe result)
+		// 7. Write row with status + confirmationToken (from subscribe's doiToken)
+		// 8. Return { ok: true, submissionId, action, contactId, redirectUrl?, confirmationRequired? }
+	},
 });
 
 export type MarkConfirmedOutcome =
-  | { ok: true; submissionId: Id<'formSubmissions'> }
-  | {
-      ok: false;
-      reason: 'no_submission_for_token' | 'already_confirmed' | 'invalid_state';
-    };
+	| { ok: true; submissionId: Id<'formSubmissions'> }
+	| {
+			ok: false;
+			reason: 'no_submission_for_token' | 'already_confirmed' | 'invalid_state';
+	  };
 
 export const markConfirmedByToken = internalMutation({
-  args: { token: v.string() },
-  handler: async (ctx, args): Promise<MarkConfirmedOutcome> => {
-    // Look up via by_confirmation_token index.
-    // already 'success' → { ok: false, reason: 'already_confirmed' } (idempotent re-confirm)
-    // not 'pending_confirmation' → { ok: false, reason: 'invalid_state' }
-    // not found → { ok: false, reason: 'no_submission_for_token' }
-    // else patch { status: 'success', confirmedAt: Date.now() }
-  },
+	args: { token: v.string() },
+	handler: async (ctx, args): Promise<MarkConfirmedOutcome> => {
+		// Look up via by_confirmation_token index.
+		// already 'success' → { ok: false, reason: 'already_confirmed' } (idempotent re-confirm)
+		// not 'pending_confirmation' → { ok: false, reason: 'invalid_state' }
+		// not found → { ok: false, reason: 'no_submission_for_token' }
+		// else patch { status: 'success', confirmedAt: Date.now() }
+	},
 });
 ```
 
 Two entry points. `submit` is the one-shot intake. `markConfirmedByToken`
 is the only true transition — called by the form-confirm HTTP handler
-*after* `doiLifecycle.transitionByConfirmationToken` commits the
+_after_ `doiLifecycle.transitionByConfirmationToken` commits the
 contact-side state, keeping each module table-pure.
 
 ### Classification rules
 
 ```ts
 function classifyAction(
-  resolveAction: 'matched' | 'created',
-  subscribeResult: { action: 'inserted' | 'already_member'; doiToken?: string } | undefined,
+	resolveAction: 'matched' | 'created',
+	subscribeResult: { action: 'inserted' | 'already_member'; doiToken?: string } | undefined
 ): SubmitAction {
-  // No topicId — classify on Contact resolution alone.
-  if (!subscribeResult) {
-    return resolveAction === 'matched' ? 'duplicate' : 'success';
-  }
-  // topicId set — subscribe was called.
-  if (subscribeResult.action === 'already_member') return 'duplicate';
-  if (subscribeResult.doiToken) return 'pending_confirmation';
-  return 'success';
+	// No topicId — classify on Contact resolution alone.
+	if (!subscribeResult) {
+		return resolveAction === 'matched' ? 'duplicate' : 'success';
+	}
+	// topicId set — subscribe was called.
+	if (subscribeResult.action === 'already_member') return 'duplicate';
+	if (subscribeResult.doiToken) return 'pending_confirmation';
+	return 'success';
 }
 ```
 
@@ -275,44 +274,47 @@ callers ignore the field; same compatibility story.
 
 ```ts
 export const submitForm = httpAction(async (ctx, request) => {
-  // CORS preflight, method check, rate-limit (unchanged)
-  // Extract formId from URL
-  // Parse body (parseFormData helper stays in this file)
+	// CORS preflight, method check, rate-limit (unchanged)
+	// Extract formId from URL
+	// Parse body (parseFormData helper stays in this file)
 
-  const outcome = await ctx.runMutation(internal.forms.submission.submit, {
-    formEndpointId: formId,
-    submissionData,
-    ipAddress,
-    userAgent,
-  });
+	const outcome = await ctx.runMutation(internal.forms.submission.submit, {
+		formEndpointId: formId,
+		submissionData,
+		ipAddress,
+		userAgent,
+	});
 
-  if (!outcome.ok) {
-    if (outcome.reason === 'form_not_found')
-      return jsonResponse({ error: { message: 'Form not found', code: 'form_not_found' } }, 404);
-    if (outcome.reason === 'form_inactive')
-      return jsonResponse({ error: { message: 'Form inactive', code: 'form_inactive' } }, 403);
-  }
+	if (!outcome.ok) {
+		if (outcome.reason === 'form_not_found')
+			return jsonResponse({ error: { message: 'Form not found', code: 'form_not_found' } }, 404);
+		if (outcome.reason === 'form_inactive')
+			return jsonResponse({ error: { message: 'Form inactive', code: 'form_inactive' } }, 403);
+	}
 
-  // Map outcome to response
-  if (outcome.action === 'invalid') {
-    return jsonResponse({ error: { message: outcome.errorMessage, code: 'validation_error' } }, 400);
-  }
-  if (outcome.redirectUrl) {
-    if (outcome.confirmationRequired) {
-      const url = new URL(outcome.redirectUrl);
-      url.searchParams.set('confirmation', 'pending');
-      return redirectResponse(url.toString());
-    }
-    return redirectResponse(outcome.redirectUrl);
-  }
-  if (outcome.confirmationRequired) {
-    return jsonResponse({
-      success: true,
-      message: 'Please check your email to confirm your subscription',
-      confirmationRequired: true,
-    });
-  }
-  return jsonResponse({ success: true, message: 'Form submitted successfully' });
+	// Map outcome to response
+	if (outcome.action === 'invalid') {
+		return jsonResponse(
+			{ error: { message: outcome.errorMessage, code: 'validation_error' } },
+			400
+		);
+	}
+	if (outcome.redirectUrl) {
+		if (outcome.confirmationRequired) {
+			const url = new URL(outcome.redirectUrl);
+			url.searchParams.set('confirmation', 'pending');
+			return redirectResponse(url.toString());
+		}
+		return redirectResponse(outcome.redirectUrl);
+	}
+	if (outcome.confirmationRequired) {
+		return jsonResponse({
+			success: true,
+			message: 'Please check your email to confirm your subscription',
+			confirmationRequired: true,
+		});
+	}
+	return jsonResponse({ success: true, message: 'Form submitted successfully' });
 });
 ```
 
@@ -323,19 +325,21 @@ no contact resolution, no topic add, no DOI bookkeeping.
 
 ```ts
 export const confirmFormSubmission = httpAction(async (ctx, request) => {
-  // Extract token from URL (unchanged)
-  const doiResult = await ctx.runMutation(internal.contacts.doiLifecycle.transitionByConfirmationToken, {
-    token,
-    input: { to: 'confirmed' },
-  });
-  if (!doiResult.ok) {
-    // Map doiResult.reason to HTTP status (unchanged)
-  }
-  const submissionResult = await ctx.runMutation(
-    internal.forms.submission.markConfirmedByToken,
-    { token },
-  );
-  // Map submissionResult to response (success page, redirect, etc.)
+	// Extract token from URL (unchanged)
+	const doiResult = await ctx.runMutation(
+		internal.contacts.doiLifecycle.transitionByConfirmationToken,
+		{
+			token,
+			input: { to: 'confirmed' },
+		}
+	);
+	if (!doiResult.ok) {
+		// Map doiResult.reason to HTTP status (unchanged)
+	}
+	const submissionResult = await ctx.runMutation(internal.forms.submission.markConfirmedByToken, {
+		token,
+	});
+	// Map submissionResult to response (success page, redirect, etc.)
 });
 ```
 
@@ -346,6 +350,7 @@ DOI does not learn about `formSubmissions`.
 
 The HTTP shell needs `form.redirectUrl` to shape the response. Two
 options:
+
 - Submit module returns `redirectUrl?: string` in the outcome (and a
   `confirmationRequired?: boolean` flag for the
   `pending_confirmation` redirect-with-query-param case).
@@ -365,7 +370,7 @@ of its own. Choice is locked at A1.
 Five existing modules in CONTEXT.md instantiate the **Outbound
 lifecycle** shape (DOI, Inbox processing, Send, Postbox outbound, Abuse
 status). All five share a feature this candidate doesn't: their rows
-are *pre-created in a known state* (`queued`, `received`,
+are _pre-created in a known state_ (`queued`, `received`,
 `not_required`), and the lifecycle owns transitions between subsequent
 states. Form submission is different — 4 of 5 rows land directly in a
 terminal state at create time (`spam`, `invalid`, `duplicate`,
@@ -377,9 +382,10 @@ transition entry) matches the actual work; the lifecycle bookkeeping
 (typed `TransitionInput`, `LEGAL_EDGES` graph including `(no row) → X`
 synthetic create kinds, reducer per kind, effects list) would be
 ceremony per state literal for what is fundamentally a one-shot decision
-+ a single 1-state-pair transition. The Contact resolution module is
-the right parallel: also one-shot intake from HTTP into the domain,
-also returns `{ contactId, action }` with `action` as the discriminator.
+
+- a single 1-state-pair transition. The Contact resolution module is
+  the right parallel: also one-shot intake from HTTP into the domain,
+  also returns `{ contactId, action }` with `action` as the discriminator.
 
 ### Scope — thin vs thick
 
@@ -413,16 +419,16 @@ literal name and with how every other module-aware path treats an
 existing Contact — `matched` doesn't drop the downstream work). The
 shape is:
 
-| Path | `subscribe` result | Submission status |
-|---|---|---|
-| No `topicId`; Contact resolution `created` | n/a | `success` |
-| No `topicId`; Contact resolution `matched` | n/a | `duplicate` |
-| `topicId` set; subscribe returns `already_member` | `{ action: 'already_member' }` | `duplicate` |
-| `topicId` set; subscribe returns `inserted` no DOI | `{ action: 'inserted' }` | `success` |
+| Path                                                    | `subscribe` result                 | Submission status      |
+| ------------------------------------------------------- | ---------------------------------- | ---------------------- |
+| No `topicId`; Contact resolution `created`              | n/a                                | `success`              |
+| No `topicId`; Contact resolution `matched`              | n/a                                | `duplicate`            |
+| `topicId` set; subscribe returns `already_member`       | `{ action: 'already_member' }`     | `duplicate`            |
+| `topicId` set; subscribe returns `inserted` no DOI      | `{ action: 'inserted' }`           | `success`              |
 | `topicId` set; subscribe returns `inserted` DOI-pending | `{ action: 'inserted', doiToken }` | `pending_confirmation` |
 
 A real (small) behavior change visible to users: an existing Contact who
-fills out a form to join a *new* Topic now gets added. The deepening
+fills out a form to join a _new_ Topic now gets added. The deepening
 ships with one new test asserting this case ends in
 `already_member` (or `inserted` if not previously subscribed) rather
 than today's silent skip.
@@ -432,8 +438,9 @@ than today's silent skip.
 **Chosen: extend `subscribe()`'s return shape.**
 
 Two options:
+
 1. Extend `subscribe()` / `subscribeMany()` to return `{ action,
-   doiToken? }` — small interface bump on **Topic subscription
+doiToken? }` — small interface bump on **Topic subscription
    (module)**; the existing callers ignore the new field; the form
    submission module consumes it.
 2. Keep the redundant `ctx.db.get(contactId)` in the form submission
@@ -487,19 +494,19 @@ bookkeeping for one true edge).
 
 ### Files that collapse / disappear
 
-| File | What happens |
-|---|---|
-| `convex/forms/apiHttp.ts` | `submitForm` shrinks 285 → ~60 lines. Open-coded find-or-create (lines 301-334), inline classification (lines 226-396), contact re-read for token (lines 354-357), and the five `recordSubmission` call sites all move into `convex/forms/submission.ts`. CORS / rate-limit / body parsing helpers stay. |
-| `convex/forms/endpoints.ts:confirmSubmission` | Inline `ctx.db.patch(submission._id, { status: 'success', confirmedAt })` removed. Replaced by `submission.markConfirmedByToken` call. The handler shrinks from ~70 lines to ~25. |
-| `convex/forms/endpoints.ts:recordSubmission` (internal mutation) | Deleted. All `formSubmissions` writes now live in `convex/forms/submission.ts`. The form-submission row write is no longer a separate mutation called from outside. |
-| `convex/forms/api.ts` (the file as a whole) | Audit pass. `generateConfirmationToken` (lines 10-15) is no longer called by the submit path (token is generated by DOI lifecycle inside `subscribe`). If unused, delete. If still called by a non-form caller, keep. `getSiteUrl` (lines 18-23) likewise — Form submission module reads `SITE_URL` itself via `getOptional`. |
+| File                                                             | What happens                                                                                                                                                                                                                                                                                                                  |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `convex/forms/apiHttp.ts`                                        | `submitForm` shrinks 285 → ~60 lines. Open-coded find-or-create (lines 301-334), inline classification (lines 226-396), contact re-read for token (lines 354-357), and the five `recordSubmission` call sites all move into `convex/forms/submission.ts`. CORS / rate-limit / body parsing helpers stay.                      |
+| `convex/forms/endpoints.ts:confirmSubmission`                    | Inline `ctx.db.patch(submission._id, { status: 'success', confirmedAt })` removed. Replaced by `submission.markConfirmedByToken` call. The handler shrinks from ~70 lines to ~25.                                                                                                                                             |
+| `convex/forms/endpoints.ts:recordSubmission` (internal mutation) | Deleted. All `formSubmissions` writes now live in `convex/forms/submission.ts`. The form-submission row write is no longer a separate mutation called from outside.                                                                                                                                                           |
+| `convex/forms/api.ts` (the file as a whole)                      | Audit pass. `generateConfirmationToken` (lines 10-15) is no longer called by the submit path (token is generated by DOI lifecycle inside `subscribe`). If unused, delete. If still called by a non-form caller, keep. `getSiteUrl` (lines 18-23) likewise — Form submission module reads `SITE_URL` itself via `getOptional`. |
 
 ### Files that grow
 
-| File | What it gains |
-|---|---|
-| `convex/forms/submission.ts` (new) | `submit` mutation, `markConfirmedByToken` mutation, the `classifyAction` pure function, private `validateFields` + `extractEmail` helpers. ~220 LOC total. |
-| `convex/topics/subscription.ts` | `subscribe()` and `subscribeMany()` return shape adds `doiToken?: string` on the `'inserted'`-action branch, populated when the `request_doi` effect fired. ~10 LOC of changes. |
+| File                               | What it gains                                                                                                                                                                   |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `convex/forms/submission.ts` (new) | `submit` mutation, `markConfirmedByToken` mutation, the `classifyAction` pure function, private `validateFields` + `extractEmail` helpers. ~220 LOC total.                      |
+| `convex/topics/subscription.ts`    | `subscribe()` and `subscribeMany()` return shape adds `doiToken?: string` on the `'inserted'`-action branch, populated when the `request_doi` effect fired. ~10 LOC of changes. |
 
 ### Migration
 
@@ -525,17 +532,17 @@ No back-compat shims. No deprecation period. Pre-prod cut.
 
 ### Test surface
 
-| Surface | Before | After |
-|---|---|---|
-| Classification logic ("matched + no topic → duplicate; created + DOI-pending → pending_confirmation; ...") | Implicit in 285-line `submitForm`. Requires HTTP test harness, rate-limiter mock, contacts seed, topics seed, DOI lifecycle integration. ~30 LOC per case. | Pure-function test: `expect(classifyAction('matched', { action: 'already_member' })).toBe('duplicate')`. ~3 LOC per case. Six cases cover the matrix. |
-| Submit happy paths (each of 5 actions) | One HTTP harness test per action; ~80 LOC each. | One mutation test per action; ~25 LOC each. No HTTP test framework, no body parsing setup — just call `submit({ formEndpointId, submissionData, ... })`. |
-| `pending_confirmation → success` transition | Integration test runs the full HTTP confirm endpoint, mocks DOI under the covers, asserts `formSubmissions.status === 'success'`. | Unit test on `markConfirmedByToken`. Four cases: success, already_confirmed, no_submission_for_token, invalid_state. |
-| HTTP layer | Mixed with classification logic — every test is end-to-end. | Isolated. HTTP-shell tests cover CORS, rate-limit, body parsing, error mapping. They mock `internal.forms.submission.submit` and verify the response is shaped correctly per outcome — no contacts or topics needed. |
-| Existing-contact-joins-new-topic | No test today (the silent drop is undetected). | New test: contact already exists, submit form with new topic ID, assert `subscribe` was called, assert `action === 'success'`. |
+| Surface                                                                                                    | Before                                                                                                                                                     | After                                                                                                                                                                                                                |
+| ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Classification logic ("matched + no topic → duplicate; created + DOI-pending → pending_confirmation; ...") | Implicit in 285-line `submitForm`. Requires HTTP test harness, rate-limiter mock, contacts seed, topics seed, DOI lifecycle integration. ~30 LOC per case. | Pure-function test: `expect(classifyAction('matched', { action: 'already_member' })).toBe('duplicate')`. ~3 LOC per case. Six cases cover the matrix.                                                                |
+| Submit happy paths (each of 5 actions)                                                                     | One HTTP harness test per action; ~80 LOC each.                                                                                                            | One mutation test per action; ~25 LOC each. No HTTP test framework, no body parsing setup — just call `submit({ formEndpointId, submissionData, ... })`.                                                             |
+| `pending_confirmation → success` transition                                                                | Integration test runs the full HTTP confirm endpoint, mocks DOI under the covers, asserts `formSubmissions.status === 'success'`.                          | Unit test on `markConfirmedByToken`. Four cases: success, already_confirmed, no_submission_for_token, invalid_state.                                                                                                 |
+| HTTP layer                                                                                                 | Mixed with classification logic — every test is end-to-end.                                                                                                | Isolated. HTTP-shell tests cover CORS, rate-limit, body parsing, error mapping. They mock `internal.forms.submission.submit` and verify the response is shaped correctly per outcome — no contacts or topics needed. |
+| Existing-contact-joins-new-topic                                                                           | No test today (the silent drop is undetected).                                                                                                             | New test: contact already exists, submit form with new topic ID, assert `subscribe` was called, assert `action === 'success'`.                                                                                       |
 
 ### Behavior
 
-Identical to today on the five existing terminal paths *except*:
+Identical to today on the five existing terminal paths _except_:
 
 - **Existing-contact-joins-new-topic now adds the membership.** Today:
   `duplicate` row written, no topic-add. After: `subscribe` called,
@@ -547,7 +554,7 @@ Identical to today on the five existing terminal paths *except*:
   form-side find-or-create stops silently diverging.
 - **Auth shell no longer runs on the topic-add path.** Today: form's
   CORS+rate-limit+honeypot, then `api.topics.topics.addContact`'s
-  auth-bearing mutation runs *again*. After: form's auth surface only;
+  auth-bearing mutation runs _again_. After: form's auth surface only;
   `subscribe()` called directly.
 
 No other observable changes. The five status literals are unchanged.
@@ -598,7 +605,7 @@ Contact resolution, Topic subscription, and DOI lifecycle.
    `convex/topics/subscription.ts:subscribe` and `:subscribeMany` to
    return `{ action, doiToken? }`. Capture the token from the
    `request_doi` effect's call path (`doiLifecycle.transition({ to:
-   'pending', token, ... })`'s `TransitionOutcome` payload). Update the
+'pending', token, ... })`'s `TransitionOutcome` payload). Update the
    inline type definitions and the JSDoc.
 2. **Create the module.** Write `convex/forms/submission.ts` with the
    `submit` internalMutation, `markConfirmedByToken` internalMutation,
@@ -662,7 +669,7 @@ rg "doiToken" apps/api/convex/topics/subscription.ts
 ### Done when
 
 - `convex/forms/submission.ts` exists with `submit` + `markConfirmedByToken`
-  + `classifyAction` + the field-validation helper.
+  - `classifyAction` + the field-validation helper.
 - `forms/apiHttp.ts:submitForm` is ≤80 lines and contains no contact
   resolution, no topic-add, no `formSubmissions.status` literal.
 - `forms/endpoints.ts:confirmSubmission` chains DOI then
@@ -772,3 +779,39 @@ These details differ from the Decision above:
 - `confirmSubmission` in `forms/endpoints.ts` is a public mutation, not an
   `httpAction`. It still confirms through the DOI lifecycle first and then
   calls `markConfirmedByToken`.
+
+---
+
+## Amendment — carrying pending rows to a replacement token (2026-10)
+
+Issue #1054; see the ADR-0009 token-replacement amendment of the same date.
+
+The module gains a second writer file, `forms/pendingConfirmations.ts`,
+which holds what happens to rows that wait on a confirmation token:
+
+- `finalizeSubmissions(ctx, rows, at)` — the patch from
+  `pending_confirmation` to `success` plus the per-form
+  `successfulSubmissionCount` bump, shared by `markConfirmedByToken` and the
+  carry below.
+- `carryPendingSubmissions({ contactId, fromToken, toToken, episode, cursor? })`
+  — an internal mutation the DOI lifecycle calls when a resend or a later
+  signup replaces the contact's token. It moves this contact's pending rows
+  from the outgoing token to the new one, paged like `markConfirmedByToken`.
+  `episode` is the contact's `doiConsentEpisode` at the replacement; a page
+  that finds the contact in a later episode stops and leaves the remaining
+  rows `pending_confirmation` on their old token. A page that finds the
+  contact confirmed finalizes the rows under the token the confirmation
+  consumed, read back from a row that confirmation finalized (both routes
+  stamp them with the contact's `doiConfirmedAt`), or without a token if no
+  such row exists.
+- That read uses a new index, `formSubmissions.by_contact_and_status_and_confirmed_at`,
+  and takes the first row of the contact's `success` rows at that time: one
+  indexed read, however long the contact's submission history is. A filter
+  over `by_contact` would read the whole history first, and a long one can
+  exceed the transaction's read limit, which would abort the carry page.
+  Storing the consumed token on the contact was the alternative. It was not
+  chosen because it would add a second token field that every member-readable
+  contact read has to strip, and the finalized rows already record the token.
+
+`submission.ts` keeps `submit` and `markConfirmedByToken`; the module still
+owns every write to `formSubmissions`.

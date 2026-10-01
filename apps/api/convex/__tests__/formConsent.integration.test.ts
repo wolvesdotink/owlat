@@ -594,6 +594,47 @@ describe('form signups after a global opt-out', () => {
 	);
 });
 
+// ─── A finished signup's history survives an unsubscribe (#1062) ───────────
+
+describe('a confirmed signup after the contact unsubscribes', () => {
+	it.each([
+		{ source: 'public_email_link' as const, global: true },
+		{ source: 'preferences_page' as const, global: false },
+	])(
+		'$source: keeps confirmedAt, so the confirm page still reads as already confirmed',
+		async ({ source, global }) => {
+			const t = setupTest();
+			const topicId = await createTopic(t, true);
+			const formId = await createForm(t, { topicId });
+			const { outcome, row } = await submit(t, formId, 'history@example.com');
+			const token = row.confirmationToken!;
+			await t.mutation(api.forms.endpoints.confirmSubmission, { token });
+			const confirmedAt = (await t.run((ctx) => ctx.db.get(outcome.submissionId)))?.confirmedAt;
+			expect(confirmedAt).toBeTypeOf('number');
+
+			await t.mutation(internal.topics.subscription.unsubscribeAllForContact, {
+				contactId: outcome.contactId!,
+				source,
+				...(global ? {} : { topicIds: [topicId] }),
+			});
+
+			expect((await t.run((ctx) => ctx.db.get(outcome.submissionId)))?.confirmedAt).toBe(
+				confirmedAt
+			);
+			// confirm.vue shows "already confirmed" for `status: 'success'` with
+			// `confirmedAt` set.
+			expect(await t.query(api.forms.endpoints.getByConfirmationToken, { token })).toMatchObject({
+				status: 'success',
+				confirmedAt,
+			});
+			expect(await t.mutation(api.forms.endpoints.confirmSubmission, { token })).toEqual({
+				success: true,
+				alreadyConfirmed: true,
+			});
+		}
+	);
+});
+
 // ─── DOI lifecycle: consent-episode edges ───────────────────────────────────
 
 describe('DOI lifecycle consent episodes', () => {
@@ -643,7 +684,7 @@ describe('DOI lifecycle consent episodes', () => {
 		expect(await confirmationEmailsFor(t, 'fresh-token')).toBe(1);
 	});
 
-	it('withdrawConfirmationToken clears the token and keeps the status', async () => {
+	it('endConsentEpisode clears the token, keeps the status and moves the episode on', async () => {
 		const t = setupTest();
 		const contactId = await seedContact(t, 'withdraw@example.com', {
 			doiStatus: 'pending',
@@ -652,7 +693,7 @@ describe('DOI lifecycle consent episodes', () => {
 		});
 
 		expect(
-			await t.mutation(internal.contacts.doiLifecycle.withdrawConfirmationToken, {
+			await t.mutation(internal.contacts.doiLifecycle.endConsentEpisode, {
 				contactId,
 				at: Date.now(),
 			})
@@ -662,5 +703,15 @@ describe('DOI lifecycle consent episodes', () => {
 		expect(contact?.doiStatus).toBe('pending');
 		expect(contact?.doiConfirmationToken).toBeUndefined();
 		expect(contact?.doiTokenExpiresAt).toBeUndefined();
+		expect(contact?.doiConsentEpisode).toBe(1);
+
+		// Without a token to withdraw, the episode still moves on.
+		expect(
+			await t.mutation(internal.contacts.doiLifecycle.endConsentEpisode, {
+				contactId,
+				at: Date.now(),
+			})
+		).toEqual({ withdrawn: false });
+		expect((await getContact(t, contactId))?.doiConsentEpisode).toBe(2);
 	});
 });

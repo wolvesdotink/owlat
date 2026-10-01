@@ -17,6 +17,7 @@ import type * as migrations_0053_project_open_commitments from '../migrations/00
 import type * as migrations_0055_repair_repeated_block_ids from '../migrations/0055_repair_repeated_block_ids.js';
 import type * as migrations_0056_retry_parked_mail_accounts from '../migrations/0056_retry_parked_mail_accounts.js';
 import type * as lib_repeatedBlockIds from '../lib/repeatedBlockIds.js';
+import type * as migrations_0057_withdraw_opted_out_confirmation_tokens from '../migrations/0057_withdraw_opted_out_confirmation_tokens.js';
 import type * as lib_migrationLedger from '../lib/migrationLedger.js';
 import type * as schema_migrationRuns from '../schema/migrationRuns.js';
 import type * as migrations_0054_backfill_folder_membership from '../migrations/0054_backfill_folder_membership.js';
@@ -593,6 +594,7 @@ import type * as eventsApi from '../eventsApi.js';
 import type * as forms__helpers from '../forms/_helpers.js';
 import type * as forms_apiHttp from '../forms/apiHttp.js';
 import type * as forms_endpoints from '../forms/endpoints.js';
+import type * as forms_pendingConfirmations from '../forms/pendingConfirmations.js';
 import type * as forms_submission from '../forms/submission.js';
 import type * as globalSearch from '../globalSearch.js';
 import type * as http from '../http.js';
@@ -1400,6 +1402,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0055_repair_repeated_block_ids': typeof migrations_0055_repair_repeated_block_ids;
 	'migrations/0056_retry_parked_mail_accounts': typeof migrations_0056_retry_parked_mail_accounts;
 	'lib/repeatedBlockIds': typeof lib_repeatedBlockIds;
+	'migrations/0057_withdraw_opted_out_confirmation_tokens': typeof migrations_0057_withdraw_opted_out_confirmation_tokens;
 	'lib/migrationLedger': typeof lib_migrationLedger;
 	'schema/migrationRuns': typeof schema_migrationRuns;
 	'migrations/0054_backfill_folder_membership': typeof migrations_0054_backfill_folder_membership;
@@ -1966,6 +1969,7 @@ declare const fullApi: ApiFromModules<{
 	'forms/_helpers': typeof forms__helpers;
 	'forms/apiHttp': typeof forms_apiHttp;
 	'forms/endpoints': typeof forms_endpoints;
+	'forms/pendingConfirmations': typeof forms_pendingConfirmations;
 	'forms/submission': typeof forms_submission;
 	globalSearch: typeof globalSearch;
 	http: typeof http;

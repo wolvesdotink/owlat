@@ -14,15 +14,15 @@ writer paths silently bypasses `requireDoubleOptIn`.
 
 ### Writer landscape
 
-| Producer | Path | Insert/Delete | DOI gate | Trigger fired | Activity row | `cachedMemberCount` |
-|---|---|---|---|---|---|---|
-| Single-add public mutation | `topics/topics.ts:addContact:280-331` | insert | ✅ checks `requireDoubleOptIn` + `contact.doiStatus` + `skipDoi` | ✅ when DOI not in the way | ❌ no row written | ✅ per-row increment |
-| Bulk-add public mutation | `topics/bulk.ts:addContacts:34-95` | insert (N) | ✅ same gate | ✅ in a second loop after all inserts | ❌ | ❌ **drift** — no count patch |
-| Batch import (internal) | `contacts/internal.ts:importBatchInternal:81-117` | insert (N) | ❌ **drift** — no gate, silently bypasses `requireDoubleOptIn` | ❌ never fires | ❌ | ✅ per-batch increment, but written differently from the public path |
-| Form-confirm safety fallback | `forms/endpoints.ts:confirmSubmission:478-490` | insert | n/a (already DOI-confirmed at this point) | ❌ relies on DOI lifecycle's own trigger fanout | ❌ | ❌ **drift** — no count patch |
-| Single-remove public mutation | `topics/topics.ts:removeContact:338-364` | delete | n/a | n/a | ❌ **drift** — no activity row | ✅ per-row decrement |
-| Bulk-remove public mutation | `topics/bulk.ts:removeContacts:103-128` | delete (N) | n/a | n/a | ❌ **drift** | ❌ **drift** — no count patch |
-| Public unsubscribe link | `delivery/unsubscribeQueries.ts:processUnsubscribe:38-168` | delete (1..N topics for one contact) | n/a | n/a | ✅ writes `topic_unsubscribed` | ❌ doesn't touch `cachedMemberCount` |
+| Producer                      | Path                                                       | Insert/Delete                        | DOI gate                                                         | Trigger fired                                   | Activity row                   | `cachedMemberCount`                                                  |
+| ----------------------------- | ---------------------------------------------------------- | ------------------------------------ | ---------------------------------------------------------------- | ----------------------------------------------- | ------------------------------ | -------------------------------------------------------------------- |
+| Single-add public mutation    | `topics/topics.ts:addContact:280-331`                      | insert                               | ✅ checks `requireDoubleOptIn` + `contact.doiStatus` + `skipDoi` | ✅ when DOI not in the way                      | ❌ no row written              | ✅ per-row increment                                                 |
+| Bulk-add public mutation      | `topics/bulk.ts:addContacts:34-95`                         | insert (N)                           | ✅ same gate                                                     | ✅ in a second loop after all inserts           | ❌                             | ❌ **drift** — no count patch                                        |
+| Batch import (internal)       | `contacts/internal.ts:importBatchInternal:81-117`          | insert (N)                           | ❌ **drift** — no gate, silently bypasses `requireDoubleOptIn`   | ❌ never fires                                  | ❌                             | ✅ per-batch increment, but written differently from the public path |
+| Form-confirm safety fallback  | `forms/endpoints.ts:confirmSubmission:478-490`             | insert                               | n/a (already DOI-confirmed at this point)                        | ❌ relies on DOI lifecycle's own trigger fanout | ❌                             | ❌ **drift** — no count patch                                        |
+| Single-remove public mutation | `topics/topics.ts:removeContact:338-364`                   | delete                               | n/a                                                              | n/a                                             | ❌ **drift** — no activity row | ✅ per-row decrement                                                 |
+| Bulk-remove public mutation   | `topics/bulk.ts:removeContacts:103-128`                    | delete (N)                           | n/a                                                              | n/a                                             | ❌ **drift**                   | ❌ **drift** — no count patch                                        |
+| Public unsubscribe link       | `delivery/unsubscribeQueries.ts:processUnsubscribe:38-168` | delete (1..N topics for one contact) | n/a                                                              | n/a                                             | ✅ writes `topic_unsubscribed` | ❌ doesn't touch `cachedMemberCount`                                 |
 
 Seven drift signals concentrate.
 
@@ -63,12 +63,14 @@ import has no such knob.
 ### 2. `skipDoi` parameter has two meanings
 
 `topics/topics.ts:addContact:247`:
+
 ```ts
 // Optional: skip DOI for this specific addition (e.g., when confirming DOI)
 skipDoi: v.optional(v.boolean()),
 ```
 
 `topics/bulk.ts:addContacts:16`:
+
 ```ts
 // Optional: skip DOI for this batch (e.g., admin import)
 skipDoi: v.optional(v.boolean()),
@@ -93,10 +95,10 @@ row. By contrast, `delivery/unsubscribeQueries.ts:91-100` writes a
 
 ```ts
 await ctx.db.insert('contactActivities', {
-  contactId: args.contactId,
-  activityType: 'topic_unsubscribed',
-  metadata: { topicId, topicName, reason: 'unsubscribe' },
-  occurredAt: now,
+	contactId: args.contactId,
+	activityType: 'topic_unsubscribed',
+	metadata: { topicId, topicName, reason: 'unsubscribe' },
+	occurredAt: now,
 });
 ```
 
@@ -109,16 +111,17 @@ public-link unsubscribe path correctly logs.
 ### 4. Bulk-remove silently drifts `cachedMemberCount`
 
 `topics/topics.ts:removeContact:356-360` patches `cachedMemberCount`:
+
 ```ts
 if (topic) {
-  await ctx.db.patch(args.topicId, {
-    cachedMemberCount: Math.max(0, (topic.cachedMemberCount ?? 1) - 1),
-    cachedCountUpdatedAt: Date.now(),
-  });
+	await ctx.db.patch(args.topicId, {
+		cachedMemberCount: Math.max(0, (topic.cachedMemberCount ?? 1) - 1),
+		cachedCountUpdatedAt: Date.now(),
+	});
 }
 ```
 
-`topics/bulk.ts:removeContacts:103-128` does *not* — it just deletes.
+`topics/bulk.ts:removeContacts:103-128` does _not_ — it just deletes.
 A bulk-remove of N contacts leaves `cachedMemberCount` overstated by
 N until the daily `topics.reconcileMemberCounts` cron runs. The
 contact counts shown on the topics list view are stale for up to 24
@@ -130,11 +133,14 @@ bulk: `bulk.ts:addContacts` doesn't patch `cachedMemberCount` either
 
 `delivery/unsubscribeQueries.ts:processUnsubscribe:38-168` runs the
 full ceremony on every unsubscribe:
+
 - Delete membership(s).
 - Write `topic_unsubscribed` activity row(s).
 - Patch `contacts.updatedAt`.
 - Clear `formSubmissions.confirmedAt` for every confirmed submission
-  the Contact has (forces re-confirmation on resubscribe).
+  the Contact has. (This ADR first read the clear as forcing
+  re-confirmation on resubscribe. Nothing reads the field for that; the
+  clear is removed by the 2026-10 `confirmedAt` amendment below.)
 - Increment `campaigns.statsUnsubscribed` on the most-recent `emailSends`.
 - Fire `topic.unsubscribed` **Webhook event** with the array of removed
   topics.
@@ -142,7 +148,7 @@ full ceremony on every unsubscribe:
 `topics.ts:removeContact` and `bulk.ts:removeContacts` run none of
 those. The product line "external systems learn about subscription
 changes via the `topic.unsubscribed` webhook" silently means "external
-systems learn about *self-service* subscription changes." Admin removes
+systems learn about _self-service_ subscription changes." Admin removes
 are invisible to integrations.
 
 There's no place to say "every unsubscribe writes an activity row" —
@@ -170,7 +176,7 @@ if (submission.contactId) {
 
 This is a safety fallback. The actual form-submission path inserts
 the `contactTopics` row at submission time (via `forms/apiHttp.ts:340`
-calling `addContact`), *before* DOI is confirmed. The DOI lifecycle's
+calling `addContact`), _before_ DOI is confirmed. The DOI lifecycle's
 `fire_topic_subscribed_triggers` effect at confirm time then sees the
 membership and fires the trigger for it. The fallback at lines 486-490
 fires only if the submission-time insert somehow didn't happen (e.g.,
@@ -226,72 +232,87 @@ import { v } from 'convex/values';
 import type { Id } from '../_generated/dataModel';
 
 export type SubscribeSource =
-  | 'admin'              // dashboard add (single or bulk)
-  | 'form'               // form-submission path via apiHttp
-  | 'import'             // CSV / integration batch import
-  | 'public_api'         // HTTP API POST /topics/:id/contacts
-  | 'automation';        // future automation step
+	| 'admin' // dashboard add (single or bulk)
+	| 'form' // form-submission path via apiHttp
+	| 'import' // CSV / integration batch import
+	| 'public_api' // HTTP API POST /topics/:id/contacts
+	| 'automation'; // future automation step
 
 export type UnsubscribeSource =
-  | 'admin'              // dashboard remove (single or bulk)
-  | 'public_email_link'  // email-footer unsubscribe link
-  | 'preferences_page'   // hosted preferences page
-  | 'public_api';        // HTTP API DELETE /topics/:id/contacts/:cid
+	| 'admin' // dashboard remove (single or bulk)
+	| 'public_email_link' // email-footer unsubscribe link
+	| 'preferences_page' // hosted preferences page
+	| 'public_api'; // HTTP API DELETE /topics/:id/contacts/:cid
 
 export type SubscribeOutcome =
-  | { ok: true; action: 'subscribed';     membershipId: Id<'contactTopics'> }
-  | { ok: true; action: 'pending_doi';    membershipId: Id<'contactTopics'> }
-  | { ok: true; action: 'already_member'; membershipId: Id<'contactTopics'> }
-  | { ok: false; reason: 'contact_not_found' | 'topic_not_found' | 'contact_soft_deleted' };
+	| { ok: true; action: 'subscribed'; membershipId: Id<'contactTopics'> }
+	| { ok: true; action: 'pending_doi'; membershipId: Id<'contactTopics'> }
+	| { ok: true; action: 'already_member'; membershipId: Id<'contactTopics'> }
+	| { ok: false; reason: 'contact_not_found' | 'topic_not_found' | 'contact_soft_deleted' };
 
 export type UnsubscribeOutcome =
-  | { ok: true; action: 'unsubscribed' }
-  | { ok: true; action: 'not_member' }
-  | { ok: false; reason: 'contact_not_found' | 'topic_not_found' };
+	| { ok: true; action: 'unsubscribed' }
+	| { ok: true; action: 'not_member' }
+	| { ok: false; reason: 'contact_not_found' | 'topic_not_found' };
 
 // ── Subscribe side ────────────────────────────────────────────────
 
-export const subscribe: (ctx, args: {
-  topicId: Id<'topics'>;
-  contactId: Id<'contacts'>;
-  source: SubscribeSource;
-  skipDoi?: boolean;     // admin-authoritative override
-  siteUrl?: string;      // forwarded to DOI lifecycle when transitioning to pending
-}) => Promise<SubscribeOutcome>;
+export const subscribe: (
+	ctx,
+	args: {
+		topicId: Id<'topics'>;
+		contactId: Id<'contacts'>;
+		source: SubscribeSource;
+		skipDoi?: boolean; // admin-authoritative override
+		siteUrl?: string; // forwarded to DOI lifecycle when transitioning to pending
+	}
+) => Promise<SubscribeOutcome>;
 
-export const subscribeMany: (ctx, args: {
-  topicId: Id<'topics'>;
-  contactIds: Id<'contacts'>[];
-  source: SubscribeSource;
-  skipDoi?: boolean;
-  siteUrl?: string;
-}) => Promise<{ outcomes: SubscribeOutcome[] }>;
+export const subscribeMany: (
+	ctx,
+	args: {
+		topicId: Id<'topics'>;
+		contactIds: Id<'contacts'>[];
+		source: SubscribeSource;
+		skipDoi?: boolean;
+		siteUrl?: string;
+	}
+) => Promise<{ outcomes: SubscribeOutcome[] }>;
 
 // ── Unsubscribe side ──────────────────────────────────────────────
 
-export const unsubscribe: (ctx, args: {
-  topicId: Id<'topics'>;
-  contactId: Id<'contacts'>;
-  source: UnsubscribeSource;
-  reason?: string;       // free-text; defaults derived from source
-}) => Promise<UnsubscribeOutcome>;
+export const unsubscribe: (
+	ctx,
+	args: {
+		topicId: Id<'topics'>;
+		contactId: Id<'contacts'>;
+		source: UnsubscribeSource;
+		reason?: string; // free-text; defaults derived from source
+	}
+) => Promise<UnsubscribeOutcome>;
 
-export const unsubscribeMany: (ctx, args: {
-  topicId: Id<'topics'>;
-  contactIds: Id<'contacts'>[];
-  source: UnsubscribeSource;
-  reason?: string;
-}) => Promise<{ outcomes: UnsubscribeOutcome[] }>;
+export const unsubscribeMany: (
+	ctx,
+	args: {
+		topicId: Id<'topics'>;
+		contactIds: Id<'contacts'>[];
+		source: UnsubscribeSource;
+		reason?: string;
+	}
+) => Promise<{ outcomes: UnsubscribeOutcome[] }>;
 
 // One contact, one-or-all topics. Per-contact effects fire ONCE;
 // per-topic effects fire N times. Emits ONE webhook with the array
 // of removed topics. Used by the public unsubscribe link.
-export const unsubscribeAllForContact: (ctx, args: {
-  contactId: Id<'contacts'>;
-  topicId?: Id<'topics'>;    // undefined = remove from all topics
-  source: UnsubscribeSource;
-  reason?: string;
-}) => Promise<{ outcomes: Array<UnsubscribeOutcome & { topicId: Id<'topics'> }> }>;
+export const unsubscribeAllForContact: (
+	ctx,
+	args: {
+		contactId: Id<'contacts'>;
+		topicId?: Id<'topics'>; // undefined = remove from all topics
+		source: UnsubscribeSource;
+		reason?: string;
+	}
+) => Promise<{ outcomes: Array<UnsubscribeOutcome & { topicId: Id<'topics'> }> }>;
 ```
 
 All entry points are `internalMutation`. The public mutations in
@@ -304,49 +325,48 @@ Per-`subscribe` (or per-array-element in `subscribeMany`):
 
 ```ts
 type SubscribeEffect =
-  | {
-      kind: 'insert_membership';
-      contactId: Id<'contacts'>;
-      topicId: Id<'topics'>;
-      addedAt: number;
-    }
-  | {
-      kind: 'fire_topic_subscribed_trigger';
-      contactId: Id<'contacts'>;
-      topicId: Id<'topics'>;
-    }
-  | {
-      kind: 'request_doi';
-      contactId: Id<'contacts'>;
-      siteUrl?: string;
-    };
+	| {
+			kind: 'insert_membership';
+			contactId: Id<'contacts'>;
+			topicId: Id<'topics'>;
+			addedAt: number;
+	  }
+	| {
+			kind: 'fire_topic_subscribed_trigger';
+			contactId: Id<'contacts'>;
+			topicId: Id<'topics'>;
+	  }
+	| {
+			kind: 'request_doi';
+			contactId: Id<'contacts'>;
+			siteUrl?: string;
+	  };
 ```
 
 Per-call coalesced (once regardless of array size):
 
 ```ts
-type SubscribeCallEffect =
-  | {
-      kind: 'patch_cached_member_count_delta';
-      topicId: Id<'topics'>;
-      delta: number;       // sum of new memberships in this call
-    };
+type SubscribeCallEffect = {
+	kind: 'patch_cached_member_count_delta';
+	topicId: Id<'topics'>;
+	delta: number; // sum of new memberships in this call
+};
 ```
 
 Decision tree inside the reducer for one (`topicId`, `contactId`)
 pair:
 
 1. If `contact.deletedAt !== undefined`: outcome `{ ok: false, reason:
-   'contact_soft_deleted' }`. No effects.
+'contact_soft_deleted' }`. No effects.
 2. If existing membership: outcome `{ ok: true, action:
-   'already_member', membershipId }`. No effects.
+'already_member', membershipId }`. No effects.
 3. Else: emit `insert_membership`. Add `+1` to the call's count delta.
    Then:
    - If `skipDoi || !topic.requireDoubleOptIn || contact.doiStatus
-     === 'confirmed'`: emit `fire_topic_subscribed_trigger`. Outcome
+=== 'confirmed'`: emit `fire_topic_subscribed_trigger`. Outcome
      `{ ok: true, action: 'subscribed' }`.
    - Else: emit `request_doi`. Outcome `{ ok: true, action:
-     'pending_doi' }`. The trigger fanout is deferred to the **DOI
+'pending_doi' }`. The trigger fanout is deferred to the **DOI
      lifecycle (module)**'s `fire_topic_subscribed_triggers` effect
      at confirm time.
 
@@ -357,47 +377,47 @@ per-topic in `unsubscribeAllForContact`):
 
 ```ts
 type UnsubscribeEffect =
-  | {
-      kind: 'delete_membership';
-      membershipId: Id<'contactTopics'>;
-    }
-  | {
-      kind: 'contact_activity_topic_unsubscribed';
-      contactId: Id<'contacts'>;
-      topicId: Id<'topics'>;
-      topicName: string;
-      reason: string;
-      at: number;
-    };
+	| {
+			kind: 'delete_membership';
+			membershipId: Id<'contactTopics'>;
+	  }
+	| {
+			kind: 'contact_activity_topic_unsubscribed';
+			contactId: Id<'contacts'>;
+			topicId: Id<'topics'>;
+			topicName: string;
+			reason: string;
+			at: number;
+	  };
 ```
 
 Per-call coalesced (once regardless of how many topics):
 
 ```ts
 type UnsubscribeCallEffect =
-  | {
-      kind: 'patch_cached_member_counts';
-      deltas: Array<{ topicId: Id<'topics'>; delta: number }>;  // typically all -1
-    }
-  | {
-      kind: 'patch_contact_updated_at';
-      contactId: Id<'contacts'>;
-      at: number;
-    }
-  | {
-      kind: 'clear_form_submission_confirmations';
-      contactId: Id<'contacts'>;
-    }
-  | {
-      kind: 'increment_campaign_unsubscribed_stats';
-      contactId: Id<'contacts'>;
-    }
-  | {
-      kind: 'fire_topic_unsubscribed_webhook';
-      contactId: Id<'contacts'>;
-      removedTopics: Array<{ topicId: Id<'topics'>; topicName: string }>;
-      at: number;
-    };
+	| {
+			kind: 'patch_cached_member_counts';
+			deltas: Array<{ topicId: Id<'topics'>; delta: number }>; // typically all -1
+	  }
+	| {
+			kind: 'patch_contact_updated_at';
+			contactId: Id<'contacts'>;
+			at: number;
+	  }
+	| {
+			kind: 'clear_form_submission_confirmations';
+			contactId: Id<'contacts'>;
+	  }
+	| {
+			kind: 'increment_campaign_unsubscribed_stats';
+			contactId: Id<'contacts'>;
+	  }
+	| {
+			kind: 'fire_topic_unsubscribed_webhook';
+			contactId: Id<'contacts'>;
+			removedTopics: Array<{ topicId: Id<'topics'>; topicName: string }>;
+			at: number;
+	  };
 ```
 
 Decision tree:
@@ -410,23 +430,23 @@ Decision tree:
 
 Per-call gating on `source`:
 
-| Effect | `admin` | `public_email_link` | `preferences_page` | `public_api` |
-|---|---|---|---|---|
-| `patch_cached_member_counts` | ✅ | ✅ | ✅ | ✅ |
-| `patch_contact_updated_at` | ✅ | ✅ | ✅ | ✅ |
-| `clear_form_submission_confirmations` | ❌ | ✅ | ✅ | ❌ |
-| `increment_campaign_unsubscribed_stats` | ❌ | ✅ | ❌ | ❌ |
-| `fire_topic_unsubscribed_webhook` | ❌ | ✅ | ✅ | ❌ |
+| Effect                                  | `admin` | `public_email_link` | `preferences_page` | `public_api` |
+| --------------------------------------- | ------- | ------------------- | ------------------ | ------------ |
+| `patch_cached_member_counts`            | ✅      | ✅                  | ✅                 | ✅           |
+| `patch_contact_updated_at`              | ✅      | ✅                  | ✅                 | ✅           |
+| `clear_form_submission_confirmations`   | ❌      | ✅                  | ✅                 | ❌           |
+| `increment_campaign_unsubscribed_stats` | ❌      | ✅                  | ❌                 | ❌           |
+| `fire_topic_unsubscribed_webhook`       | ❌      | ✅                  | ✅                 | ❌           |
 
 The webhook-firing rule is the load-bearing line. If product later
-decides admin-remove *should* fire the webhook, the change is one
+decides admin-remove _should_ fire the webhook, the change is one
 table entry. Today's behavior (no admin-side webhook) is preserved.
 
 ### Invariants
 
 - **Soft-delete refusal.** Subscribe refuses to subscribe a contact
   with `deletedAt !== undefined`. Returns `{ ok: false, reason:
-  'contact_soft_deleted' }`. Mirrors the **Contact resolution
+'contact_soft_deleted' }`. Mirrors the **Contact resolution
   (module)**'s skip-soft-deleted invariant.
 - **Idempotent already-member.** Re-subscribing an already-member is
   a no-op returning `{ ok: true, action: 'already_member' }`. Does
@@ -437,7 +457,7 @@ table entry. Today's behavior (no admin-side webhook) is preserved.
   activity row, does not patch count, does not fire webhook.
 - **DOI handoff.** When DOI is required and the contact is not
   `confirmed`, subscribe calls `doiLifecycle.transition({ to:
-  'pending' })`. The subscription module does not fire the
+'pending' })`. The subscription module does not fire the
   `topic_subscribed` automation trigger in that case — the DOI
   lifecycle's own `fire_topic_subscribed_triggers` effect fires it
   at confirm time. No double-firing.
@@ -452,78 +472,78 @@ table entry. Today's behavior (no admin-side webhook) is preserved.
 ```ts
 // topics/topics.ts:addContact (was lines 242-335)
 export const addContact = mutation({
-  args: {
-    topicId: v.id('topics'),
-    contactId: v.id('contacts'),
-    skipDoi: v.optional(v.boolean()),
-    siteUrl: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    // Auth check stays here (public mutation surface).
-    const session = await getMutationContext(ctx);
-    requirePermission(hasPermission(session.role, 'topics:manage'),
-      'Only owners and admins can add contacts to topics');
+	args: {
+		topicId: v.id('topics'),
+		contactId: v.id('contacts'),
+		skipDoi: v.optional(v.boolean()),
+		siteUrl: v.optional(v.string()),
+	},
+	handler: async (ctx, args) => {
+		// Auth check stays here (public mutation surface).
+		const session = await getMutationContext(ctx);
+		requirePermission(
+			hasPermission(session.role, 'topics:manage'),
+			'Only owners and admins can add contacts to topics'
+		);
 
-    const outcome = await ctx.runMutation(
-      internal.topics.subscription.subscribe,
-      {
-        topicId: args.topicId,
-        contactId: args.contactId,
-        source: 'admin',
-        ...(args.skipDoi ? { skipDoi: true } : {}),
-        ...(args.siteUrl ? { siteUrl: args.siteUrl } : {}),
-      },
-    );
+		const outcome = await ctx.runMutation(internal.topics.subscription.subscribe, {
+			topicId: args.topicId,
+			contactId: args.contactId,
+			source: 'admin',
+			...(args.skipDoi ? { skipDoi: true } : {}),
+			...(args.siteUrl ? { siteUrl: args.siteUrl } : {}),
+		});
 
-    if (!outcome.ok) {
-      // Map the typed outcome to the legacy throwNotFound shape.
-      if (outcome.reason === 'contact_not_found') throwNotFound('Contact');
-      if (outcome.reason === 'topic_not_found') throwNotFound('Topic');
-      throw new ConvexError(`Contact is soft-deleted`);
-    }
+		if (!outcome.ok) {
+			// Map the typed outcome to the legacy throwNotFound shape.
+			if (outcome.reason === 'contact_not_found') throwNotFound('Contact');
+			if (outcome.reason === 'topic_not_found') throwNotFound('Topic');
+			throw new ConvexError(`Contact is soft-deleted`);
+		}
 
-    // Preserve the legacy return shape — { membershipId, doiStatus }.
-    const contact = await ctx.db.get(args.contactId);
-    const doiStatus =
-      outcome.action === 'pending_doi'    ? 'pending' :
-      outcome.action === 'subscribed'     ? (contact?.doiStatus ?? 'not_required') :
-      /* already_member */                  (contact?.doiStatus ?? 'not_required');
+		// Preserve the legacy return shape — { membershipId, doiStatus }.
+		const contact = await ctx.db.get(args.contactId);
+		const doiStatus =
+			outcome.action === 'pending_doi'
+				? 'pending'
+				: outcome.action === 'subscribed'
+					? (contact?.doiStatus ?? 'not_required')
+					: /* already_member */ (contact?.doiStatus ?? 'not_required');
 
-    return { membershipId: outcome.membershipId, doiStatus };
-  },
+		return { membershipId: outcome.membershipId, doiStatus };
+	},
 });
 ```
 
 ```ts
 // topics/bulk.ts:addContacts (was lines 11-100)
 export const addContacts = mutation({
-  args: {
-    topicId: v.id('topics'),
-    contactIds: v.array(v.id('contacts')),
-    skipDoi: v.optional(v.boolean()),
-    siteUrl: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    await getUserIdFromSession(ctx);
+	args: {
+		topicId: v.id('topics'),
+		contactIds: v.array(v.id('contacts')),
+		skipDoi: v.optional(v.boolean()),
+		siteUrl: v.optional(v.string()),
+	},
+	handler: async (ctx, args) => {
+		await getUserIdFromSession(ctx);
 
-    const { outcomes } = await ctx.runMutation(
-      internal.topics.subscription.subscribeMany,
-      {
-        topicId: args.topicId,
-        contactIds: args.contactIds,
-        source: 'admin',
-        ...(args.skipDoi ? { skipDoi: true } : {}),
-        ...(args.siteUrl ? { siteUrl: args.siteUrl } : {}),
-      },
-    );
+		const { outcomes } = await ctx.runMutation(internal.topics.subscription.subscribeMany, {
+			topicId: args.topicId,
+			contactIds: args.contactIds,
+			source: 'admin',
+			...(args.skipDoi ? { skipDoi: true } : {}),
+			...(args.siteUrl ? { siteUrl: args.siteUrl } : {}),
+		});
 
-    // Preserve the legacy return shape — array of membership IDs for
-    // newly-inserted memberships only.
-    return outcomes
-      .filter((o): o is SubscribeOutcome & { action: 'subscribed' | 'pending_doi' } =>
-        o.ok && (o.action === 'subscribed' || o.action === 'pending_doi'))
-      .map((o) => o.membershipId);
-  },
+		// Preserve the legacy return shape — array of membership IDs for
+		// newly-inserted memberships only.
+		return outcomes
+			.filter(
+				(o): o is SubscribeOutcome & { action: 'subscribed' | 'pending_doi' } =>
+					o.ok && (o.action === 'subscribed' || o.action === 'pending_doi')
+			)
+			.map((o) => o.membershipId);
+	},
 });
 ```
 
@@ -531,82 +551,84 @@ export const addContacts = mutation({
 // contacts/internal.ts:importBatchInternal (was lines 81-117 — the
 // topic-handling block; lines 1-80 stay unchanged)
 if (args.topicId && importedContactIds.length > 0) {
-  await ctx.runMutation(internal.topics.subscription.subscribeMany, {
-    topicId: args.topicId,
-    contactIds: importedContactIds,
-    source: 'import',
-    skipDoi: args.skipDoi ?? false,  // new arg — see schema change
-    ...(args.siteUrl ? { siteUrl: args.siteUrl } : {}),
-  });
-  // No manual cachedMemberCount patch — the module owns it now.
+	await ctx.runMutation(internal.topics.subscription.subscribeMany, {
+		topicId: args.topicId,
+		contactIds: importedContactIds,
+		source: 'import',
+		skipDoi: args.skipDoi ?? false, // new arg — see schema change
+		...(args.siteUrl ? { siteUrl: args.siteUrl } : {}),
+	});
+	// No manual cachedMemberCount patch — the module owns it now.
 }
 ```
 
 ```ts
 // topics/topics.ts:removeContact (was lines 338-364)
 export const removeContact = mutation({
-  args: {
-    topicId: v.id('topics'),
-    contactId: v.id('contacts'),
-  },
-  handler: async (ctx, args) => {
-    const session = await getMutationContext(ctx);
-    requirePermission(hasPermission(session.role, 'topics:manage'),
-      'Only owners and admins can remove contacts from topics');
+	args: {
+		topicId: v.id('topics'),
+		contactId: v.id('contacts'),
+	},
+	handler: async (ctx, args) => {
+		const session = await getMutationContext(ctx);
+		requirePermission(
+			hasPermission(session.role, 'topics:manage'),
+			'Only owners and admins can remove contacts from topics'
+		);
 
-    await ctx.runMutation(internal.topics.subscription.unsubscribe, {
-      topicId: args.topicId,
-      contactId: args.contactId,
-      source: 'admin',
-    });
-    // Legacy shape returns void; preserved.
-  },
+		await ctx.runMutation(internal.topics.subscription.unsubscribe, {
+			topicId: args.topicId,
+			contactId: args.contactId,
+			source: 'admin',
+		});
+		// Legacy shape returns void; preserved.
+	},
 });
 ```
 
 ```ts
 // topics/bulk.ts:removeContacts (was lines 103-128)
 export const removeContacts = mutation({
-  args: {
-    topicId: v.id('topics'),
-    contactIds: v.array(v.id('contacts')),
-  },
-  handler: async (ctx, args) => {
-    await getUserIdFromSession(ctx);
-    await ctx.runMutation(internal.topics.subscription.unsubscribeMany, {
-      topicId: args.topicId,
-      contactIds: args.contactIds,
-      source: 'admin',
-    });
-  },
+	args: {
+		topicId: v.id('topics'),
+		contactIds: v.array(v.id('contacts')),
+	},
+	handler: async (ctx, args) => {
+		await getUserIdFromSession(ctx);
+		await ctx.runMutation(internal.topics.subscription.unsubscribeMany, {
+			topicId: args.topicId,
+			contactIds: args.contactIds,
+			source: 'admin',
+		});
+	},
 });
 ```
 
 ```ts
 // delivery/unsubscribeQueries.ts:processUnsubscribe (was lines 38-168)
 export const processUnsubscribe = internalMutation({
-  args: {
-    contactId: v.id('contacts'),
-    topicId: v.optional(v.id('topics')),
-  },
-  handler: async (ctx, args) => {
-    const { outcomes } = await ctx.runMutation(
-      internal.topics.subscription.unsubscribeAllForContact,
-      {
-        contactId: args.contactId,
-        ...(args.topicId ? { topicId: args.topicId } : {}),
-        source: 'public_email_link',
-        reason: 'unsubscribe',
-      },
-    );
+	args: {
+		contactId: v.id('contacts'),
+		topicId: v.optional(v.id('topics')),
+	},
+	handler: async (ctx, args) => {
+		const { outcomes } = await ctx.runMutation(
+			internal.topics.subscription.unsubscribeAllForContact,
+			{
+				contactId: args.contactId,
+				...(args.topicId ? { topicId: args.topicId } : {}),
+				source: 'public_email_link',
+				reason: 'unsubscribe',
+			}
+		);
 
-    // Map to the legacy response shape.
-    const removedCount = outcomes.filter((o) => o.ok && o.action === 'unsubscribed').length;
-    if (removedCount === 0) {
-      return { success: true, alreadyUnsubscribed: true };
-    }
-    return { success: true, alreadyUnsubscribed: false };
-  },
+		// Map to the legacy response shape.
+		const removedCount = outcomes.filter((o) => o.ok && o.action === 'unsubscribed').length;
+		if (removedCount === 0) {
+			return { success: true, alreadyUnsubscribed: true };
+		}
+		return { success: true, alreadyUnsubscribed: false };
+	},
 });
 ```
 
@@ -620,18 +642,22 @@ export const processUnsubscribe = internalMutation({
 // Replacement: a one-line safety belt that detects the inconsistency
 // for observability, without writing.
 if (submission.contactId) {
-  const form = await ctx.db.get(submission.formEndpointId);
-  if (form?.topicId) {
-    const existingMembership = await ctx.db.query('contactTopics')
-      .withIndex('by_contact_and_topic', (q) =>
-        q.eq('contactId', submission.contactId!).eq('topicId', form.topicId!))
-      .first();
-    if (!existingMembership) {
-      logError(`[Forms] confirmSubmission found no membership for ` +
-        `(${submission.contactId}, ${form.topicId}) at confirm time — ` +
-        `submission-time addContact may have failed silently`);
-    }
-  }
+	const form = await ctx.db.get(submission.formEndpointId);
+	if (form?.topicId) {
+		const existingMembership = await ctx.db
+			.query('contactTopics')
+			.withIndex('by_contact_and_topic', (q) =>
+				q.eq('contactId', submission.contactId!).eq('topicId', form.topicId!)
+			)
+			.first();
+		if (!existingMembership) {
+			logError(
+				`[Forms] confirmSubmission found no membership for ` +
+					`(${submission.contactId}, ${form.topicId}) at confirm time — ` +
+					`submission-time addContact may have failed silently`
+			);
+		}
+	}
 }
 ```
 
@@ -685,7 +711,7 @@ exists in the **ADR-0002 catalog**).
 
 ### Module scope — add only vs add+remove vs split into two modules
 
-1. **Single module owns add + remove + denormalization** *(chosen)*.
+1. **Single module owns add + remove + denormalization** _(chosen)_.
    The drift bugs concentrate symmetrically on both sides (count
    patches drift on bulk-add and bulk-remove; activity rows drift
    on admin-remove; effects drift on the public-unsubscribe vs
@@ -699,13 +725,13 @@ exists in the **ADR-0002 catalog**).
    instead of one. The argument for splitting was that the side
    effects diverge sharply (subscribe fires `topic_subscribed`
    trigger; unsubscribe fires webhook + form-clear + campaign-stats
-   + activity row, conditional on source). Rejected — the two
-   sides share the table, the cache, and the auth surface; splitting
-   doubles the boundary maintenance for negligible separation.
+   - activity row, conditional on source). Rejected — the two
+     sides share the table, the cache, and the auth surface; splitting
+     doubles the boundary maintenance for negligible separation.
 
 ### Entry-point shape — single-contact only vs accept N vs separate single/many
 
-1. **Two entry points per side: single + many** *(chosen)*. Single-
+1. **Two entry points per side: single + many** _(chosen)_. Single-
    contact callers get a clean typed return; bulk callers get the
    coalesced cache patch and the per-contact outcome array. Five
    entry points total (`subscribe`, `subscribeMany`, `unsubscribe`,
@@ -727,7 +753,7 @@ exists in the **ADR-0002 catalog**).
 ### Unsubscribe-all shape — separate entry point vs source-gated effects
 
 1. **Separate `unsubscribeAllForContact` entry point with per-
-   contact coalesced effects** *(chosen)*. The public-link
+   contact coalesced effects** _(chosen)_. The public-link
    unsubscribe path fires ONE `topic.unsubscribed` webhook with the
    array of removed topics — that wire contract is preserved by
    having a dedicated entry point that aggregates per-topic outcomes
@@ -749,8 +775,8 @@ exists in the **ADR-0002 catalog**).
 ### `skipDoi` semantics
 
 1. **`skipDoi: true` means "admin authoritative; treat as
-   subscribed without DOI."** *(chosen — matches the bulk-add
-   comment's intent, not the single-add comment's).* The flag is
+   subscribed without DOI."** _(chosen — matches the bulk-add
+   comment's intent, not the single-add comment's)._ The flag is
    a product-level override. The "we already DOI-confirmed; don't
    re-ask" use case (the single-add comment's stated intent) no
    longer exists as a separate concept — the only path that reaches
@@ -768,7 +794,7 @@ exists in the **ADR-0002 catalog**).
 ### Webhook fanout ownership — module owns vs caller owns
 
 1. **Module owns `fire_topic_unsubscribed_webhook` as a source-gated
-   effect** *(chosen)*. Direct precedent: the **Send lifecycle
+   effect** _(chosen)_. Direct precedent: the **Send lifecycle
    (module)** owns `customer_webhook` as a typed effect (per
    CONTEXT.md:295). Pushing the decision back to callers
    re-introduces the exact drift this deepening closes — admin-remove
@@ -791,14 +817,14 @@ exists in the **ADR-0002 catalog**).
 ### Soft-delete refusal — module enforces vs caller filters
 
 1. **Module refuses with `{ ok: false, reason: 'contact_soft_deleted' }`**
-   *(chosen)*. Mirrors the **Contact resolution (module)**'s
+   _(chosen)_. Mirrors the **Contact resolution (module)**'s
    skip-soft-deleted invariant — the property "live Contacts only"
    lives at the same seam that owns the membership writes.
 2. **Module subscribes regardless; caller filters.** Rejected — every
    caller would have to remember the filter. The existing public
    mutations don't filter (drift signal not in the table above, but
    verifiable via `topics/topics.ts:272-275` checking only `if
-   (!contact)` and not `deletedAt`).
+(!contact)` and not `deletedAt`).
 3. **Module silently no-ops for soft-deleted contacts.** Rejected —
    silent no-ops are a cousin of the silent DOI bypass we're closing.
    Explicit refusal lets callers log or surface the case.
@@ -806,7 +832,7 @@ exists in the **ADR-0002 catalog**).
 ### Module naming
 
 1. **`Topic subscription (module)` at `convex/topics/subscription.ts`**
-   *(chosen)*. Reads as "the subscription seam for Topics." Matches
+   _(chosen)_. Reads as "the subscription seam for Topics." Matches
    the verb the public unsubscribe link already uses
    (`subscribed: hasActiveSubscriptions` at `unsubscribeQueries.ts:30`).
 2. **`Topic membership module`.** Collides with **Topic membership**
@@ -869,7 +895,7 @@ heals the drift. (For tighter guarantees, run
 The new `importBatchInternal.skipDoi` arg is `v.optional` and
 defaults to `false`. Existing callers (none today pass it) get the
 default behavior. CSV import UI / integration import paths that
-*want* the legacy bypass behavior must explicitly pass `skipDoi:
+_want_ the legacy bypass behavior must explicitly pass `skipDoi:
 true` post-this-ADR. Pre-prod: no production callers exist; the
 default flip is safe.
 
@@ -879,6 +905,7 @@ default flip is safe.
 (new, ~24 tests):
 
 **Subscribe — single:**
+
 - `subscribed` outcome when DOI not required.
 - `subscribed` outcome when DOI required but contact already `confirmed`.
 - `pending_doi` outcome when DOI required and contact `not_required` —
@@ -894,25 +921,30 @@ default flip is safe.
   trigger immediately.
 
 **Subscribe — bulk:**
+
 - 10 contacts, mixed DOI states, asserts one coalesced
   `cachedMemberCount` patch (= +N newly-subscribed).
 - Per-contact outcomes match the single-contact expectations.
 
 **Unsubscribe — single (admin source):**
+
 - `unsubscribed` outcome — asserts activity row written, count
   decremented, contact.updatedAt patched, **no** webhook fired, **no**
   form-clear, **no** campaign-stats patch.
 - `not_member` outcome — no effects.
 
 **Unsubscribe — single (public_email_link source):**
+
 - `unsubscribed` — asserts all effects fire including the webhook
   with `lists: [{ topicId, topicName }]` (single-element array).
 
 **Unsubscribe — bulk (admin source):**
+
 - 5 contacts, asserts one coalesced count patch, N activity rows, N
   contact.updatedAt patches, **no** webhook.
 
 **Unsubscribe-all-for-contact (public_email_link source):**
+
 - Contact in 3 topics, removed from all 3 — asserts one webhook with
   3-element `lists` array, one form-clear effect, one campaign-stats
   patch.
@@ -920,6 +952,7 @@ default flip is safe.
   one webhook with 1-element `lists` array.
 
 **Audit trail symmetry:**
+
 - Bulk-remove now decrements `cachedMemberCount` — drift signal #4
   closed.
 - Admin-remove now writes `topic_unsubscribed` activity row — drift
@@ -940,8 +973,8 @@ default flip is safe.
 - **Drift signal #4 (bulk-remove `cachedMemberCount` drift) —
   closed.** The module is the single writer of the cache; one patch
   per call coalesces the deltas.
-- **Drift signal #5 (admin-remove no webhook) — *preserved by
-  design*.** The source→effects map encodes today's behavior:
+- **Drift signal #5 (admin-remove no webhook) — _preserved by
+  design_.** The source→effects map encodes today's behavior:
   admin-remove does not fire `topic.unsubscribed`. If product later
   decides otherwise, one table entry changes.
 - **Drift signal #6 (form-confirm fallback insert) — closed.**
@@ -951,13 +984,14 @@ default flip is safe.
   (module) entries; Relationships gains a paragraph.
 
 User-visible effects:
+
 - Admin removing a Contact from a Topic via the dashboard now leaves
   a `topic_unsubscribed` row in the Contact's activity timeline.
 - Bulk-remove of N contacts immediately decrements
   `cachedMemberCount` by N (today: drift until the daily cron).
 - CSV / API imports against `requireDoubleOptIn: true` Topics no
   longer subscribe contacts without confirmation unless `skipDoi:
-  true` is explicitly passed.
+true` is explicitly passed.
 
 ### Vocabulary
 
@@ -1000,14 +1034,12 @@ already exists per ADR-0003).
    `topic.unsubscribed` event is a signal worth feeding to
    `analytics/sendingReputation.ts`. Out of scope; lands when the
    reputation surface gains a per-event ingest path.
-5. **Re-subscribe ergonomics.** Today `unsubscribe(publicemail_link)`
-   clears all `formSubmissions.confirmedAt` for the Contact, forcing
-   re-confirmation on resubscribe — across all forms, not just the
-   one tied to the unsubscribed topic. That cross-topic blast
-   radius is a latent UX concern (re-subscribing to Topic A
-   requires re-confirming submissions for Topic B). Out of scope;
-   the deepening preserves the current behavior. A dedicated ADR
-   can scope-narrow the clear later.
+5. **Re-subscribe ergonomics.** `unsubscribe(public_email_link)`
+   cleared all `formSubmissions.confirmedAt` for the Contact, across
+   all forms. This note first read that as forcing re-confirmation on
+   resubscribe, with a cross-topic UX cost. It never did: no subscribe
+   or confirmation path reads `confirmedAt`. Resolved by the 2026-10
+   `confirmedAt` amendment below, which removes the clear.
 
 ## Execution
 
@@ -1062,14 +1094,15 @@ plan needed, since pre-launch nothing needs PR-splitting. Change set:
   fire the `topic.unsubscribed` webhook.
 - Removing the Contact via the email-footer unsubscribe link creates
   the same activity row, fires the webhook with the array of removed
-  topics, clears `formSubmissions.confirmedAt`, and increments
-  `campaigns.statsUnsubscribed`.
+  topics, and increments `campaigns.statsUnsubscribed`. (It also cleared
+  `formSubmissions.confirmedAt` until the 2026-10 `confirmedAt`
+  amendment below.)
 - Importing 100 contacts via CSV against a `requireDoubleOptIn: true`
   Topic with `skipDoi: false` (default) sends 100 confirmation
   emails and creates 100 pending memberships; with `skipDoi: true`
   it skips the emails and creates 100 confirmed memberships.
 - Subscribing a soft-deleted Contact returns `{ ok: false, reason:
-  'contact_soft_deleted' }` and writes no membership row.
+'contact_soft_deleted' }` and writes no membership row.
 
 ---
 
@@ -1119,7 +1152,9 @@ confirmation, even on a topic and form with no DOI configured.
 `unsubscribeAllForContact` without a topic scope now also calls the DOI
 lifecycle's `withdrawConfirmationToken` when the contact holds a token, so a
 confirmation link issued before the opt-out cannot lift it afterwards. The
-scoped (per-topic) unsubscribe is unchanged.
+scoped (per-topic) unsubscribe is unchanged. (The ADR-0009 token-replacement
+amendment renames the operation `endConsentEpisode` and calls it on every
+global opt-out, so it also moves `contacts.doiConsentEpisode` on.)
 
 ### Tests
 
@@ -1128,3 +1163,30 @@ confirmed contact's global opt-out with topic DOI, with form-forced DOI and
 with no DOI configured; the same for a form without a topic; a link minted
 before a second opt-out; the preference centre and the trusted `admin` and
 `import` overrides, which still lift the opt-out at once.
+
+---
+
+## Amendment — an unsubscribe keeps `formSubmissions.confirmedAt` (2026-10)
+
+Issue #1062.
+
+The `clear_form_submission_confirmations` effect (Unsubscribe effects table,
+`public_email_link` and `preferences_page`) is removed. This ADR, its
+follow-up note 5 and CONTEXT.md described it as the step that makes a
+returning contact confirm again. Nothing read the field for that. Whether a
+signup must wait for a fresh confirmation is decided from the contact row
+alone by `requiresFreshConfirmation` (the 2026-10-01 amendment above), and a
+global opt-out ends the consent episode by withdrawing the contact's token
+(ADR-0009 amendment). Clearing `confirmedAt` only erased history: the time
+each submission was confirmed, which the contact data export and the
+operator's submission list read.
+
+`confirmedAt` therefore stays on every submission across an unsubscribe. The
+public confirm page keeps showing "already confirmed" for a finished
+submission's link after the contact unsubscribes, instead of offering a
+confirm step that answers "already confirmed". If an "unsubscribed since"
+marker on submissions is wanted later, it gets its own field.
+
+`topicSubscription.integration.test.ts` and `formConsent.integration.test.ts`
+cover the unsubscribe leaving `confirmedAt` in place and the confirm page's
+read of a finished submission after the contact opted out.

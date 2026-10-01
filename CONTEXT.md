@@ -248,8 +248,9 @@ confirm path leaves it undefined. Legal edges:
   `doi.reconfirmation_requested` in the audit log. See the ADR-0009
   amendment.)
 
-A global opt-out withdraws any outstanding token
-(`withdrawConfirmationToken`), so a link minted before it cannot lift it. The
+A global opt-out ends the consent episode (`endConsentEpisode`): it withdraws
+any outstanding token, so a link minted before it cannot lift it, and
+increments `contacts.doiConsentEpisode`. The
 token TTL is 7 days (`DOI_TOKEN_TTL_MS`), consolidated from the prior
 7d (topics paths) vs 48h (form path) drift.
 _Avoid_: Opt-in status (vague), DOI state (collides with the per-machine
@@ -306,6 +307,17 @@ attestSource } })` — fires only on the admin-attest path
   `topic_confirmed` fan-out is a no-op in that ordering. The
   `'doi_attested'` literal records the attestation itself on the
   contact's timeline.
+- `carry_pending_submissions` — fires on `to: 'pending'` when a new token
+  replaces one the contact still held (a lapsed token; a live one is kept).
+  The **Form submission (module)** moves the contact's
+  `pending_confirmation` rows from the outgoing token to the new one, so the
+  next confirmation finalizes them. The admin resend
+  (`refreshPendingToken`) does the same. A token a global opt-out withdrew
+  is no longer on the contact, and one issued before the contact's opt-out
+  (`tokenPredatesOptOut`) belongs to the episode the opt-out ended, so
+  their rows are never carried. The effect records the contact's
+  `doiConsentEpisode`; a carry page that finds a later episode stops, and
+  the rows it had not reached stay pending on their old token.
 - `audit_log({ action: 'doi.admin_attested', contactId, details: {
 attestSource } })` — fires only on the admin-attest path. The
   audit action is new in `auditActions/catalog.ts`. The
@@ -842,10 +854,6 @@ Unsubscribe effects:
   unsubscribe regardless of source. Closes the silent drift bug where
   admin-remove paths wrote no activity row.
 - `patch_contact_updated_at` — fires on every successful unsubscribe.
-- `clear_form_submission_confirmations` — fires on `source:
-'public_email_link' | 'preferences_page'`. Clears
-  `formSubmissions.confirmedAt` for every form submission the Contact
-  has confirmed, forcing re-confirmation on next resubscribe.
 - `increment_campaign_unsubscribed_stats` — fires on `source:
 'public_email_link'`. Increments `campaigns.statsUnsubscribed` on
   the most-recent `emailSends` row for the Contact.
@@ -855,6 +863,11 @@ Unsubscribe effects:
   with the array of removed topics (`unsubscribeAllForContact` aggregates;
   `unsubscribe` / `unsubscribeMany` emit one webhook per call with the
   one-or-many topics in scope).
+
+No unsubscribe touches `formSubmissions.confirmedAt`: it records when a
+signup was confirmed and stays as history. Whether a returning Contact must
+confirm again is decided from the contact row alone by
+`requiresFreshConfirmation` (see the ADR-0013 2026-10 amendments).
 
 Invariants:
 
@@ -951,6 +964,14 @@ rows land directly in a terminal state at create time, so the legal-edges
   re-confirm. Returns `{ ok: true, finalized, continued }` or
   `{ ok: false, reason: 'no_submission_for_token' | 'already_confirmed'
 | 'invalid_state' }`.
+* `carryPendingSubmissions({ contactId, fromToken, toToken, episode })`
+  (`forms/pendingConfirmations.ts`) — moves the contact's
+  `pending_confirmation` rows from a replaced token to the new one, paged
+  with a scheduled follow-up. Called by the **DOI lifecycle (module)** in
+  the transaction that writes the new token. Every page stops once the
+  contact's `doiConsentEpisode` differs from `episode`, moves rows to the
+  token the contact holds now, or, if the contact confirmed, finalizes them
+  under the token that confirmation consumed.
 
 Classification rules inside `submit`:
 
@@ -5625,8 +5646,8 @@ confirmSubmission` fallback insert is deleted. The module's `source`
   one place where "which side effects fire for which trigger" lives
   — admin-remove now writes the `topic_unsubscribed` Contact activity
   row it was silently missing; public-link unsubscribe still owns the
-  `formSubmissions.confirmedAt` clear, the `campaigns.statsUnsubscribed`
-  increment, and the `topic.unsubscribed` **Webhook event** fanout.
+  `campaigns.statsUnsubscribed` increment and the `topic.unsubscribed`
+  **Webhook event** fanout.
   The relationship with the **DOI lifecycle (module)** is asymmetric:
   Topic subscription decides "is DOI needed?" and calls
   `doiLifecycle.transition({ to: 'pending' })` when so; the DOI
