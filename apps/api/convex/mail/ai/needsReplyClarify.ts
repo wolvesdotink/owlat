@@ -33,6 +33,7 @@ import {
 } from '../../inbox/clarificationFileAnswer';
 import { findContactByIdentifier } from '../../contacts/resolution';
 import { canSaveAnswerToFiles } from '../../lib/answerFileToFiles';
+import { consumeUpload, mailThreadUploadKey } from '../../storage/uploads';
 import { clarificationFileRefValidator } from '../../lib/validators/clarification';
 import { buildThreadTranscript, CLARIFY_DRAFT } from './transcript';
 import { withStoredInlineBodies } from '../../lib/messageBodyStore';
@@ -122,6 +123,16 @@ export const answerClarification = postboxMutation({
 						contactId: senderContactId,
 					})
 				: undefined;
+			// A bare upload is held by the thread until a draft of it takes the
+			// file over, so it does not expire with its receipt in the meantime.
+			if (resolved?.ref.source === 'upload') {
+				await consumeUpload(
+					ctx,
+					resolved.ref.id as Id<'_storage'>,
+					session,
+					mailThreadUploadKey(args.threadId)
+				);
+			}
 			const value = provided.value ?? resolved?.ref.filename;
 			if (value === undefined) throwInvalidInput('An answer needs a value or a file');
 			questions.push({

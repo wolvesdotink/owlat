@@ -11,6 +11,7 @@ import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api } from '../../_generated/api';
 import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
+import { storageUploadsStep } from '../../workspaces/deletion/steps/storageUploads';
 
 const sessionMocks = vi.hoisted(() => ({ userId: 'user-A' }));
 
@@ -174,5 +175,33 @@ describe('mail.needsReplyPrepared.getPreparedDraft', () => {
 		const threadId = await seedFlaggedThread(t, { slotDraft: 'Private draft' });
 		sessionMocks.userId = 'user-B';
 		expect(await t.query(api.mail.needsReplyPrepared.getPreparedDraft, { threadId })).toBeNull();
+	});
+
+	it('the workspace wipe deletes an upload a thread holds, and leaves other bound blobs to their resource', async () => {
+		const t = convexTest(schema, modules);
+		const threadId = await seedFlaggedThread(t, {});
+		const blobs = await t.run(async (ctx) => {
+			const held = await ctx.storage.store(new Blob(['%PDF']));
+			const draftOwned = await ctx.storage.store(new Blob(['%PDF']));
+			for (const [storageId, resourceKey] of [
+				[held, `mailThreads:${threadId}`],
+				[draftOwned, 'mailDrafts:some-draft'],
+			] as const) {
+				await ctx.db.insert('storageUploads', {
+					userId: 'user-A',
+					organizationId: 'org-1',
+					status: 'bound',
+					storageId,
+					resourceKey,
+				});
+			}
+			await storageUploadsStep.deleteBatch(ctx);
+			return {
+				isHeldGone: (await ctx.storage.get(held)) === null,
+				isDraftOwnedGone: (await ctx.storage.get(draftOwned)) === null,
+			};
+		});
+		// The draft step deletes its own attachments' blobs; the thread has none.
+		expect(blobs).toEqual({ isHeldGone: true, isDraftOwnedGone: false });
 	});
 });

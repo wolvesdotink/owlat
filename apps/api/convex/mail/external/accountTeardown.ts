@@ -38,6 +38,7 @@ import { deleteStoredAccessToken } from './accessTokenStore';
 import { listMailboxesOnAddress } from '../mailbox/addressResolution';
 import type { Doc } from '../../_generated/dataModel';
 import { deleteMailThreadCatchUps } from '../ai/catchUpStore';
+import { deleteResourceUploads, mailThreadUploadKey } from '../../storage/uploads';
 import { deleteAskSessionsForDraft } from '../ai/composeDraftStore';
 
 /** Messages deleted per purge step; the step re-schedules itself while more remain. */
@@ -211,6 +212,8 @@ export const _purgeChunk = internalMutation({
 		for (const t of threads) {
 			// Answer mode catch-up cards retell the thread's mail.
 			await deleteMailThreadCatchUps(ctx, t._id);
+			// A Reply Queue answer's upload the thread still holds.
+			await deleteResourceUploads(ctx, mailThreadUploadKey(t._id));
 			await ctx.db.delete(t._id);
 		}
 		if (threads.length === PURGE_CHUNK) {

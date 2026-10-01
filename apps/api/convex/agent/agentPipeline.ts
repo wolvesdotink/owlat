@@ -238,6 +238,8 @@ export const sendApprovedReply = internalAction({
 			logError('[Agent Pipeline] sendApprovedReply: message not found', args.inboundMessageId);
 			return;
 		}
+		// A send waiting on a file copy ends once someone pulled the message back.
+		if ((args.attachmentWaits ?? 0) > 0 && message.processingStatus !== 'approved') return;
 		if (!message.draftResponse) {
 			await fail('No draft to send');
 			return;
@@ -377,17 +379,17 @@ export const sendApprovedReply = internalAction({
 
 		if (!outcome.ok) {
 			if (outcome.reason === 'attachment_copying') {
-				// A file answered for this message is still being copied onto the reply.
+				// A file for this reply is still being copied onto it. The wait is
+				// a queued send like the undo window: the marker moves to the new
+				// job, so Undo, a landing reply or the kill switch can still stop it.
 				const waits = args.attachmentWaits ?? 0;
 				if (waits < MAX_ATTACHMENT_WAITS) {
-					await ctx.scheduler.runAfter(
-						ATTACHMENT_WAIT_MS,
-						internal.agent.agentPipeline.sendApprovedReply,
-						{
-							...args,
-							attachmentWaits: waits + 1,
-						}
-					);
+					await ctx.runMutation(internal.inbox.processingLifecycle.holdSend, {
+						inboundMessageId: args.inboundMessageId,
+						autonomous: args.autonomous === true,
+						attachmentWaits: waits + 1,
+						delayMs: ATTACHMENT_WAIT_MS,
+					});
 					return;
 				}
 				await fail('A file for this reply is still being attached. Review and send it by hand.');

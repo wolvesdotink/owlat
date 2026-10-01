@@ -505,6 +505,90 @@ describe('team reply attachments: the send paths', () => {
 		expect(await threadAttachments(t, threadId)).toEqual([]);
 	});
 
+	describe('a send waiting on a copy stays cancellable', () => {
+		/** An approved message whose send fired while a Files pick is still copying. */
+		async function heldSend(t: Harness) {
+			const { threadId, messageId } = await seedThread(t, 'approved');
+			vi.advanceTimersByTime(60_000);
+			const { fileId } = await seedFile(t);
+			await t.mutation(api.inbox.replyAttachments.attachExisting, {
+				threadId,
+				source: 'semanticFile',
+				id: fileId,
+			});
+			await t.action(internal.agent.agentPipeline.sendApprovedReply, {
+				inboundMessageId: messageId,
+				autonomous: true,
+			});
+			return { threadId, messageId };
+		}
+
+		it('points the undo marker at the waiting send, and Undo pulls it back', async () => {
+			const t = convexTest(schema, modules);
+			const { messageId } = await heldSend(t);
+			const marker = await t.run(async (ctx) => {
+				const message = (await ctx.db.get(messageId))!;
+				const job = message.pendingAutoSend
+					? await ctx.db.system.get(message.pendingAutoSend.scheduledFnId)
+					: null;
+				return { state: job?.state.kind, name: job?.name };
+			});
+			expect(marker).toEqual({ state: 'pending', name: 'agent/agentPipeline:sendApprovedReply' });
+
+			const outcome = await t.mutation(internal.inbox.processingLifecycle.cancelAutoSend, {
+				inboundMessageId: messageId,
+				reason: 'user_cancel',
+				userId: 'user-A',
+			});
+			expect(outcome).toEqual({ cancelled: true, reason: 'cancelled' });
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+			expect(enqueueActionMock).not.toHaveBeenCalled();
+			expect((await t.run((ctx) => ctx.db.get(messageId)))?.processingStatus).toBe('draft_ready');
+		});
+
+		it('the kill switch pulls a waiting send back', async () => {
+			const t = convexTest(schema, modules);
+			const { messageId } = await heldSend(t);
+			const { cancelled } = await t.mutation(
+				internal.inbox.processingLifecycle.cancelPendingAutoSendsForKillSwitch,
+				{}
+			);
+			expect(cancelled).toBe(1);
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+			expect(enqueueActionMock).not.toHaveBeenCalled();
+			expect((await t.run((ctx) => ctx.db.get(messageId)))?.processingStatus).toBe('draft_ready');
+		});
+
+		it('the wait ends without sending once the message is no longer approved', async () => {
+			const t = convexTest(schema, modules);
+			const { messageId } = await heldSend(t);
+			await t.run(async (ctx) => {
+				await ctx.db.patch(messageId, { processingStatus: 'draft_ready' });
+			});
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+			expect(enqueueActionMock).not.toHaveBeenCalled();
+		});
+	});
+
+	it("a person's approved send waits for a file attached inside the undo window", async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, messageId } = await seedThread(t, 'approved');
+		const { fileId } = await seedFile(t);
+		await t.mutation(api.inbox.replyAttachments.attachExisting, {
+			threadId,
+			source: 'semanticFile',
+			id: fileId,
+		});
+		await t.action(internal.agent.agentPipeline.sendApprovedReply, {
+			inboundMessageId: messageId,
+		});
+		expect(enqueueActionMock).not.toHaveBeenCalled();
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		expect(lastEnvelope()?.attachmentRefs).toEqual([
+			expect.objectContaining({ filename: 'prices.pdf' }),
+		]);
+	});
+
 	it('the autonomous send stops when a file attached for this message failed to copy', async () => {
 		const t = convexTest(schema, modules);
 		const { threadId, messageId } = await seedThread(t, 'approved');

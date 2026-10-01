@@ -15,6 +15,7 @@
 
 import { v } from 'convex/values';
 import { consumeUpload, deleteOwnedUpload, storedFileSize } from '../storage/uploads';
+import { claimThreadAnswerUpload } from './needsReplyPrepared';
 import { internalQuery } from '../_generated/server';
 import type { MutationCtx } from '../_generated/server';
 import { authedAction, publicQuery } from '../lib/authedFunctions';
@@ -273,7 +274,17 @@ export const addAttachment = postboxMutation({
 		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) throwForbidden('Draft not accessible');
 		assertStateIs(draft, 'draft');
-		await consumeUpload(ctx, args.storageId, session, `mailDrafts:${args.draftId}`);
+		// An upload answered on the Reply Queue is held by the thread until a
+		// draft of it takes it over; any other is the caller's fresh upload.
+		const isTakenFromThread = await claimThreadAnswerUpload(
+			ctx,
+			args.storageId,
+			draft,
+			session.activeOrganizationId
+		);
+		if (!isTakenFromThread) {
+			await consumeUpload(ctx, args.storageId, session, `mailDrafts:${args.draftId}`);
+		}
 		if (draft.attachments.length >= ATTACHMENT_COMPOSE_LIMITS.maxCount) {
 			throwInvalidInput('Too many attachments');
 		}

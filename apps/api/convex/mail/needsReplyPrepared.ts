@@ -9,10 +9,38 @@
  * `needsReply.ts`, which is at the file-size cap.
  */
 import { v } from 'convex/values';
-import type { QueryCtx } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { postboxQuery } from './_helpers';
 import { loadReadableMailbox } from './permissions';
+import { mailThreadUploadKey } from '../storage/uploads';
+
+/**
+ * Hand an upload the thread holds for a Reply Queue answer to a draft of that
+ * thread. Returns false (nothing changed) for any other receipt, which the
+ * caller then claims the usual way (`consumeUpload`).
+ */
+export async function claimThreadAnswerUpload(
+	ctx: MutationCtx,
+	storageId: Id<'_storage'>,
+	draft: Doc<'mailDrafts'>,
+	organizationId: string
+): Promise<boolean> {
+	if (!draft.threadId) return false;
+	const receipt = await ctx.db
+		.query('storageUploads')
+		.withIndex('by_storage', (q) => q.eq('storageId', storageId))
+		.unique();
+	if (
+		receipt?.status !== 'bound' ||
+		receipt.resourceKey !== mailThreadUploadKey(draft.threadId) ||
+		receipt.organizationId !== organizationId
+	) {
+		return false;
+	}
+	await ctx.db.patch(receipt._id, { resourceKey: `mailDrafts:${draft._id}` });
+	return true;
+}
 
 /** A file the owner gave as a Reply Queue answer, for the web to attach. */
 interface PreparedFile {
@@ -26,11 +54,13 @@ interface PreparedFile {
  * No draft exists when the card is answered, so the web attaches these when it
  * applies the prepared text (`drafts.attachExisting` for a Files row or a mail
  * attachment, `drafts.addAttachment` for an upload). Rows whose bytes are gone
- * are left out, and so is an upload unless it is the caller's own and its
- * receipt is still live: nothing else could bind it.
+ * are left out, and so is an upload the thread no longer holds (a draft took
+ * it). An answer from before uploads were bound to the thread counts while its
+ * receipt is the caller's and still live.
  */
 async function answeredFiles(
 	ctx: QueryCtx,
+	threadId: Id<'mailThreads'>,
 	flag: NonNullable<Doc<'mailThreads'>['needsReply']>,
 	userId: string
 ): Promise<PreparedFile[]> {
@@ -51,11 +81,13 @@ async function answeredFiles(
 						.withIndex('by_storage', (q) => q.eq('storageId', storageId))
 						.unique()
 				: null;
+			const isHeld =
+				receipt?.status === 'bound' && receipt.resourceKey === mailThreadUploadKey(threadId);
 			const isLive =
 				receipt?.status === 'uploaded' &&
 				receipt.userId === userId &&
 				(receipt.expiresAt ?? 0) > Date.now();
-			if (!isLive) continue;
+			if (!isHeld && !isLive) continue;
 		}
 		files.push({ source: file.source, id: file.id, filename: file.filename });
 	}
@@ -82,7 +114,7 @@ export const getPreparedDraft = postboxQuery({
 		return {
 			clarificationDraft: flag.clarification?.draft?.trim() || null,
 			slotDraft: flag.draftSlot?.draft.trim() || null,
-			files: await answeredFiles(ctx, flag, session.userId),
+			files: await answeredFiles(ctx, thread._id, flag, session.userId),
 		};
 	},
 });

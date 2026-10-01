@@ -51,6 +51,7 @@ import { MAX_RETRY_ATTEMPTS } from '../lib/constants';
 import {
 	cancelPendingAutoSend,
 	cancelAutoSendReasonValidator,
+	holdApprovedSend,
 	type CancelAutoSendOutcome,
 } from './processingLifecycle/autoSendCancel';
 
@@ -377,6 +378,22 @@ export const cancelAutoSend = internalMutation({
 		const message = await ctx.db.get(args.inboundMessageId);
 		if (!message) return { cancelled: false, reason: 'no_pending_send' };
 		return cancelPendingAutoSend(ctx, message, args.reason, args.userId);
+	},
+});
+
+/** Re-queue an approved send that waits on a file copy (see `holdApprovedSend`). */
+export const holdSend = internalMutation({
+	args: {
+		inboundMessageId: v.id('inboundMessages'),
+		autonomous: v.boolean(),
+		attachmentWaits: v.number(),
+		delayMs: v.number(),
+	},
+	handler: async (ctx, args): Promise<boolean> => {
+		const message = await ctx.db.get(args.inboundMessageId);
+		if (!message) return false;
+		const { inboundMessageId: _id, ...hold } = args;
+		return await holdApprovedSend(ctx, message, hold);
 	},
 });
 
