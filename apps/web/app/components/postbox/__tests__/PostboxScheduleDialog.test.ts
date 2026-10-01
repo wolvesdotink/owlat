@@ -243,6 +243,30 @@ describe('PostboxScheduleDialog — custom time', () => {
 		expect(wrapper.emitted('confirm')).toEqual([[at]]);
 	});
 
+	describe('across a DST change', () => {
+		const originalTz = process.env.TZ;
+		beforeEach(() => {
+			// London and Lagos are both UTC+1 on 1 October; London is back on UTC by November.
+			process.env.TZ = 'Europe/London';
+			vi.setSystemTime(Date.UTC(2026, 9, 1, 9, 0, 30));
+		});
+		afterEach(() => {
+			if (originalTz === undefined) delete process.env.TZ;
+			else process.env.TZ = originalTz;
+		});
+
+		it("adds the recipient's clock when the offsets only differ at the chosen instant", async () => {
+			zones.value = [{ address: 'ines@example.test', timeZone: 'Africa/Lagos' }];
+			const wrapper = mountDialog();
+			await input(wrapper).setValue('2026-11-02T09:00');
+			const line = summary(wrapper).text();
+			expect(line).toContain('your time (Europe/London)');
+			expect(line).toMatch(/10:00\sAM theirs$/);
+			await submit(wrapper).trigger('click');
+			expect(wrapper.emitted('confirm')).toEqual([[Date.UTC(2026, 10, 2, 9, 0)]]);
+		});
+	});
+
 	it("keeps one clock when the recipient's zone is the sender's own", async () => {
 		zones.value = [{ address: 'ines@example.test', timeZone: senderZone }];
 		const wrapper = mountDialog();

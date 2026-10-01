@@ -228,7 +228,9 @@ const customSummary = computed(() => {
 	const theirOffset = recipientTimeZone.value
 		? zoneOffsetMinutes(recipientTimeZone.value, at)
 		: null;
-	if (!showsBothClocks.value || theirOffset === null || theirOffset === senderOffset) {
+	// Compared at the chosen instant, not at open: two zones that share an
+	// offset today can split after a DST change before the send.
+	if (theirOffset === null || theirOffset === senderOffset) {
 		return t(`${key}.customSends`, { when, zone });
 	}
 	return t(`${key}.customSendsBoth`, {
