@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { getFunctionName, type AnyFunctionReference } from 'convex/server';
+import { getFunctionName } from 'convex/server';
 import { copyModule } from '../copy/index.js';
 import { expungeModule } from '../expunge/index.js';
 import { moveModule } from '../move/index.js';
@@ -21,6 +21,9 @@ import type {
 	ImapVerb,
 	SelectedState,
 } from '../types.js';
+
+// convex/server declares AnyFunctionReference without exporting it.
+type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
 
 vi.mock('../../logger.js', () => ({
 	logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -53,8 +56,8 @@ function harness(messages: FakeMessage[]): Harness {
 			return { uids: sorted.map((m) => m.uid), nextUid: null };
 		}
 		if (name.endsWith(':resolveMessageIdsByUid')) {
-			const low = args.uidLow ?? 0;
-			const high = args.uidHigh ?? 0;
+			const low = args['uidLow'] ?? 0;
+			const high = args['uidHigh'] ?? 0;
 			return {
 				rows: sorted
 					.filter((m) => m.uid >= low && m.uid <= high)
@@ -67,7 +70,7 @@ function harness(messages: FakeMessage[]): Harness {
 	const mutation = vi.fn(async (ref: AnyFunctionReference, args: Record<string, unknown>) => {
 		const name = getFunctionName(ref);
 		if (name.endsWith(':expungeFolder')) {
-			const filter = args.uidSet ? new Set(args.uidSet as number[]) : null;
+			const filter = args['uidSet'] ? new Set(args['uidSet'] as number[]) : null;
 			const sequenceNumbers: number[] = [];
 			for (let i = sorted.length - 1; i >= 0; i -= 1) {
 				const m = sorted[i]!;
@@ -76,7 +79,7 @@ function harness(messages: FakeMessage[]): Harness {
 			return { sequenceNumbers, modseq: 9, done: true };
 		}
 		if (name.endsWith(':copyMessages') || name.endsWith(':moveMessages')) {
-			const ids = args.messageIds as string[];
+			const ids = args['messageIds'] as string[];
 			return {
 				uidValidity: 1,
 				pairs: ids.map((id, i) => ({ sourceUid: Number(id.slice(1)), targetUid: 100 + i })),
@@ -156,14 +159,14 @@ describe('UID EXPUNGE resolves its set against the folder', () => {
 		expect(performance.now() - startedAt).toBeLessThan(1000);
 
 		const [call] = h.calls('expungeFolder');
-		expect(call?.uidSet).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+		expect(call?.['uidSet']).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 		expect(lines).toEqual(['* 7 EXPUNGE', '* 3 EXPUNGE', 'a1 OK UID EXPUNGE completed']);
 	});
 
 	it('sends only UIDs that exist in the folder', async () => {
 		const h = harness([{ uid: 5 }, { uid: 7, deleted: true }, { uid: 9 }]);
 		await run(h, selected(3), uid, 'UID', ['EXPUNGE', '1:8']);
-		expect(h.calls('expungeFolder')[0]?.uidSet).toEqual([5, 7]);
+		expect(h.calls('expungeFolder')[0]?.['uidSet']).toEqual([5, 7]);
 	});
 
 	it('answers BAD for plain EXPUNGE with a set instead of treating it as UID EXPUNGE', async () => {
@@ -188,14 +191,14 @@ describe('COPY and MOVE address sequence numbers unless prefixed with UID', () =
 	it('COPY 1 copies the first message, not UID 1', async () => {
 		const h = harness(sparse);
 		const lines = await run(h, selected(3), copy, 'COPY', ['1', 'Target']);
-		expect(h.calls('copyMessages')[0]?.messageIds).toEqual(['m5']);
+		expect(h.calls('copyMessages')[0]?.['messageIds']).toEqual(['m5']);
 		expect(lines).toEqual(['a1 OK [COPYUID 1 5 100] COPY completed']);
 	});
 
 	it('UID COPY 5 copies UID 5', async () => {
 		const h = harness(sparse);
 		const lines = await run(h, selected(3), uid, 'UID', ['COPY', '5', 'Target']);
-		expect(h.calls('copyMessages')[0]?.messageIds).toEqual(['m5']);
+		expect(h.calls('copyMessages')[0]?.['messageIds']).toEqual(['m5']);
 		expect(lines).toEqual(['a1 OK [COPYUID 1 5 100] UID COPY completed']);
 	});
 
@@ -209,7 +212,7 @@ describe('COPY and MOVE address sequence numbers unless prefixed with UID', () =
 	it('MOVE 2:* moves the second and third messages and expunges them in descending order', async () => {
 		const h = harness(sparse);
 		const lines = await run(h, selected(3), move, 'MOVE', ['2:*', 'Target']);
-		expect(h.calls('moveMessages')[0]?.messageIds).toEqual(['m7', 'm9']);
+		expect(h.calls('moveMessages')[0]?.['messageIds']).toEqual(['m7', 'm9']);
 		expect(lines).toEqual([
 			'* OK [COPYUID 1 7,9 100,101] Move',
 			'* 3 EXPUNGE',
@@ -221,7 +224,7 @@ describe('COPY and MOVE address sequence numbers unless prefixed with UID', () =
 	it('UID MOVE reports the moved message by its sequence number', async () => {
 		const h = harness(sparse);
 		const lines = await run(h, selected(3), uid, 'UID', ['MOVE', '5,9', 'Target']);
-		expect(h.calls('moveMessages')[0]?.messageIds).toEqual(['m5', 'm9']);
+		expect(h.calls('moveMessages')[0]?.['messageIds']).toEqual(['m5', 'm9']);
 		expect(lines).toEqual([
 			'* OK [COPYUID 1 5,9 100,101] Move',
 			'* 3 EXPUNGE',

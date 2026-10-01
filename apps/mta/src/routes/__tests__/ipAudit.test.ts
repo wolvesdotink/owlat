@@ -24,13 +24,21 @@ const config = createTestConfig({
 });
 
 function record(ip: string): IpAuditRecord {
+	const checkedAt = Date.now();
 	return {
 		ip,
-		checkedAt: Date.now(),
+		checkedAt,
 		verdict: 'clean',
+		headline: 'This address is clean.',
+		nextAction: 'Nothing to do.',
 		confidence: 'high',
 		findings: [],
 		zones: [],
+		neighbourhood: { sampled: 0, listed: 0 },
+		neighbourhoodStatus: 'insufficient_data',
+		port25: 'open',
+		fcrdns: { verdict: 'pass' },
+		port25Detail: { ip, status: 'open', reason: 'connected', checkedAt, targets: [] },
 	};
 }
 

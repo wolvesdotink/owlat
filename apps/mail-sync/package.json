@@ -2,15 +2,15 @@
 	"name": "@owlat/mail-sync",
 	"version": "0.6.6",
 	"private": true,
-	"license": "Apache-2.0",
-	"homepage": "https://owlat.app",
 	"description": "Owlat mail-sync worker. Connects out to users' external IMAP/SMTP accounts: syncs inbound mail in near-real-time (IMAP IDLE) and relays outbound sends.",
+	"homepage": "https://owlat.app",
+	"license": "Apache-2.0",
 	"type": "module",
 	"scripts": {
 		"dev": "tsx watch src/index.ts",
 		"build": "tsc",
 		"start": "node dist/index.js",
-		"typecheck": "tsc --noEmit",
+		"typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
 		"lint": "oxlint --config ../../oxlintrc.json src",
 		"lint:fix": "oxlint --config ../../oxlintrc.json src --fix",
 		"test": "vitest run --passWithNoTests",
@@ -18,19 +18,19 @@
 		"test:coverage": "vitest run --coverage --passWithNoTests"
 	},
 	"dependencies": {
+		"@hono/node-server": "^2.1.0",
 		"@owlat/mail-message": "workspace:*",
 		"@owlat/shared": "workspace:*",
 		"@owlat/smtp-client": "workspace:*",
 		"convex": "catalog:convex",
 		"hono": "^4.13.1",
-		"@hono/node-server": "^2.1.0",
 		"imapflow": "^2.0.5",
 		"pino": "^10.3.1"
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",
-		"typescript": "catalog:",
 		"tsx": "^4.19.0",
+		"typescript": "catalog:",
 		"vitest": "catalog:"
 	}
 }

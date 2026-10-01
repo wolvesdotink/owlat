@@ -37,7 +37,7 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-function response(body: unknown, status = 200, headers: HeadersInit = {}): Response {
+function response(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
 	return new Response(body === null ? null : JSON.stringify(body), {
 		status,
 		headers: { 'content-type': 'application/json', ...headers },
@@ -259,7 +259,9 @@ describe('Google Postmaster v2 collection', () => {
 				return response({ access_token: 'access-token', expires_in: 3600 });
 			}
 			if (url.endsWith('/v2/domains?pageSize=25')) {
-				expect((init!.headers as Record<string, string>).Authorization).toBe('Bearer access-token');
+				expect((init!.headers as Record<string, string>)['Authorization']).toBe(
+					'Bearer access-token'
+				);
 				return response({ domains: [verifiedDomain()] });
 			}
 			const compliance = inertComplianceStatus(url);
@@ -599,7 +601,7 @@ describe('Google Postmaster v2 collection', () => {
 			const url = String(input);
 			if (url.includes('/token'))
 				return response({ access_token: 'fresh-token', expires_in: 3600 });
-			if ((init!.headers as Record<string, string>).Authorization === 'Bearer stale-token') {
+			if ((init!.headers as Record<string, string>)['Authorization'] === 'Bearer stale-token') {
 				return response({ error: { code: 401 } }, 401);
 			}
 			return response({ domains: [] });

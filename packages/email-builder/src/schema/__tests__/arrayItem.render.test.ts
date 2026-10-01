@@ -3,7 +3,7 @@ import { renderEmailHtml } from '@owlat/email-renderer';
 import { getSchema } from '../index';
 import { createArrayItem } from '../arrayItem';
 import type { PropertyField } from '../types';
-import type { EditorBlock } from '../../types';
+import type { EditorBlock, TableBlockContent } from '../../types';
 
 /**
  * Regression: clicking "Add item" on a List (`items: string[]`) or a Table
@@ -60,7 +60,7 @@ describe('array editor "Add item" keeps primitive array shape', () => {
 
 		const blocks: EditorBlock[] = [
 			{ id: 'list-1', type: 'list', content: { items: listItems, listType: 'bullet' } },
-			{ id: 'table-1', type: 'table', content: { headers, rows } },
+			{ id: 'table-1', type: 'table', content: { headers, rows } as TableBlockContent },
 		];
 
 		let html = '';

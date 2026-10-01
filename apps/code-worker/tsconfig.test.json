@@ -1,0 +1,11 @@
+{
+	// Type-checks the tests together with the sources. tsconfig.json leaves
+	// src/**/__tests__ out so the build never emits tests into dist/; this config
+	// puts them back for `typecheck` only and emits nothing.
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"noEmit": true
+	},
+	"include": ["src"],
+	"exclude": ["node_modules", "dist"]
+}

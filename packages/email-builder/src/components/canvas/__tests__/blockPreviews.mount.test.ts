@@ -105,14 +105,15 @@ describe('button block canvas regression (background shorthand wipe)', () => {
 
 	it('uses backgroundImage (not the shorthand) for gradient fills', () => {
 		const block = createBlock('button', defaultTheme);
-		(block.content as Record<string, unknown>).backgroundGradient = {
-			type: 'linear',
-			angle: 90,
-			stops: [
-				{ color: '#ff0000', position: 0 },
-				{ color: '#0000ff', position: 100 },
-			],
-		};
+		Object.assign(block.content, {
+			backgroundGradient: {
+				direction: 'to bottom',
+				stops: [
+					{ color: '#ff0000', position: 0 },
+					{ color: '#0000ff', position: 100 },
+				],
+			},
+		});
 		const { host } = mountBlock(block);
 		const style = host.querySelector('span')?.getAttribute('style') ?? '';
 		expect(style).toContain('background-color');
@@ -122,7 +123,7 @@ describe('button block canvas regression (background shorthand wipe)', () => {
 
 	it('paints blockBackgroundColor on the wrapper, matching the renderer section band', () => {
 		const block = createBlock('button', defaultTheme);
-		(block.content as Record<string, unknown>).blockBackgroundColor = '#fef3c7';
+		Object.assign(block.content, { blockBackgroundColor: '#fef3c7' });
 		const { host } = mountBlock(block);
 		const wrapper = host.querySelector('span')?.parentElement;
 		expect(wrapper?.getAttribute('style') ?? '').toContain('background-color: #fef3c7');
@@ -153,7 +154,7 @@ describe('social block edit↔render honesty', () => {
 describe('text block edit↔render typography parity', () => {
 	it('renders headings bold when fontWeight is unset (matching UA rendering of the emitted <h2>)', () => {
 		const block = createBlock('text', defaultTheme);
-		Object.assign(block.content as Record<string, unknown>, { blockType: 'h2', html: 'Heading' });
+		Object.assign(block.content, { blockType: 'h2', html: 'Heading' });
 		const { host } = mountBlock(block);
 		const heading = host.querySelector('h2');
 		expect(heading).toBeTruthy();
@@ -173,7 +174,7 @@ describe('text block edit↔render typography parity', () => {
 			headingDefaults: { h2: { fontWeight: 800, textColor: '#111111' } },
 		} as Required<EmailTheme>;
 		const block = createBlock('text', themed);
-		Object.assign(block.content as Record<string, unknown>, {
+		Object.assign(block.content, {
 			blockType: 'h2',
 			html: 'Heading',
 			textColor: undefined,

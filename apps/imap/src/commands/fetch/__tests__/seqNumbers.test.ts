@@ -16,13 +16,16 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { getFunctionName, type AnyFunctionReference } from 'convex/server';
+import { getFunctionName } from 'convex/server';
 import { fetchModule, type FetchArgs } from '../index.js';
 import { storeModule, type StoreArgs } from '../../store/index.js';
 import { selectModule } from '../../select/index.js';
 import { uidModule } from '../../uid/index.js';
 import type { FetchEnvelope } from '../format.js';
 import type { CommandDeps, ConnectionState, ImapVerb, StartArgs } from '../../types.js';
+
+// convex/server declares AnyFunctionReference without exporting it.
+type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
 
 /** UID → sequence number for the fixture mailbox (5,9,14 → 1,2,3). */
 const FOLDER_UIDS = [5, 9, 14];
@@ -170,7 +173,7 @@ async function runStore(
 		args,
 		tag: 'a001',
 		verb: 'STORE' as ImapVerb,
-		send: (line: string) => lines.push(line),
+		send: (line) => lines.push(line as string),
 	});
 	await session.completion;
 	return { lines, calls, convex };

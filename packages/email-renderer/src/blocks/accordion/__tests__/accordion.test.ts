@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { accordionModule } from '../index';
 import { renderContainerItem } from '../../index';
 import type { AccordionBlockContent, ContainerItem } from '@owlat/shared';
-import type { RenderArgs, RenderContext } from '../../_module';
+import type { RenderArgs } from '../../_module';
+import type { RenderContext } from '../../../types';
 
 // Mirror what the walker would do: short-circuit on empty, then dispatch html()
 // with a real `walk` that recurses through the container path (matching the

@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { spacerModule } from '../index';
 import type { SpacerBlockContent } from '@owlat/shared';
-import type { RenderArgs, RenderContext } from '../../_module';
+import type { RenderArgs } from '../../_module';
+import type { RenderContext } from '../../../types';
 
 const ctx = {} as RenderContext;
 const args = (content: SpacerBlockContent): RenderArgs<'spacer'> => ({
@@ -36,13 +37,19 @@ describe('spacerModule.html', () => {
 
 describe('spacerModule.plaintext', () => {
 	it('returns empty string (visual block only)', () => {
-		expect(spacerModule.plaintext!({ block: {} as never, content: {} as never, walk: () => '' })).toBe('');
+		expect(
+			spacerModule.plaintext!({ block: {} as never, content: {} as never, walk: () => '' })
+		).toBe('');
 	});
 });
 
 describe('spacerModule.amp', () => {
 	it('emits a height-styled div', () => {
-		const result = spacerModule.amp!({ block: { id: 'b', type: 'spacer', content: { height: 25 } }, content: { height: 25 }, walk: () => '' });
+		const result = spacerModule.amp!({
+			block: { id: 'b', type: 'spacer', content: { height: 25 } },
+			content: { height: 25 },
+			walk: () => '',
+		});
 		expect(result).toContain('height:25px');
 	});
 });

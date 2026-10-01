@@ -13,9 +13,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getFunctionName, type AnyFunctionReference } from 'convex/server';
+import type { FetchQueryObject } from 'imapflow';
+import { getFunctionName } from 'convex/server';
 import type { ConnectableAccount, ConvexClient } from '../convex.js';
 import type { MailSyncConfig } from '../config.js';
+
+// convex/server declares AnyFunctionReference without exporting it.
+type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
 
 const ingest = vi.hoisted(() => {
 	const ingestMessage = vi.fn(async (..._args: unknown[]) => ({ messageId: 'msg_1' }));
@@ -67,8 +71,9 @@ type Box = { uidValidity: number; uidNext: number; exists: number };
  * listed — where a test lets time pass or new mail arrive.
  */
 function fakeImap(onAllMailBatch: (batch: number) => void) {
+	const inboxBox: Box = { uidValidity: 7, uidNext: 43, exists: 42 };
 	const boxes: Record<string, Box> = {
-		INBOX: { uidValidity: 7, uidNext: 43, exists: 42 },
+		INBOX: inboxBox,
 		[ALL_MAIL]: { uidValidity: 9, uidNext: 4, exists: 3 },
 	};
 	const inbox = new Map<number, Buffer>();
@@ -86,7 +91,7 @@ function fakeImap(onAllMailBatch: (batch: number) => void) {
 			open = remoteName;
 			return boxes[remoteName];
 		},
-		async *fetch(range: string, query: Record<string, unknown>) {
+		async *fetch(range: string, query: FetchQueryObject) {
 			if (open === 'INBOX') {
 				const from = Number(range.split(':')[0]);
 				for (const [uid, source] of inbox) {
@@ -113,11 +118,11 @@ function fakeImap(onAllMailBatch: (batch: number) => void) {
 		/** A new message lands in the INBOX — no 'exists' event, as with IDLE off. */
 		deliver(uid: number) {
 			inbox.set(uid, RAW);
-			boxes.INBOX!.uidNext = uid + 1;
-			boxes.INBOX!.exists += 1;
+			inboxBox.uidNext = uid + 1;
+			inboxBox.exists += 1;
 		},
 		setInboxUidValidity(uidValidity: number) {
-			boxes.INBOX!.uidValidity = uidValidity;
+			inboxBox.uidValidity = uidValidity;
 		},
 	};
 }
@@ -150,7 +155,7 @@ function connection(imap: ReturnType<typeof fakeImap>) {
 			const name = getFunctionName(fnRef);
 			// Only All Mail is walked; the INBOX folder has no sync row to import.
 			if (name.includes('initFolderBackfill')) {
-				return args.remoteName === ALL_MAIL ? { startCursor: 3 } : null;
+				return args['remoteName'] === ALL_MAIL ? { startCursor: 3 } : null;
 			}
 			if (name.includes('recordBackfillProgress')) return { stillImporting: true };
 			return {};
