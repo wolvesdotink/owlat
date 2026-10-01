@@ -341,7 +341,8 @@ export async function reconcile(
 		for (const row of checked) {
 			if (inAllMail.has(row.messageId)) {
 				observations.push({ messageId: row.messageId, remoteFolders: [deps.allMail!] });
-			} else if (!vanished.has(row.messageId)) {
+			} else if (!deps.isAligned || !vanished.has(row.messageId)) {
+				// A merge deletes nothing (nor holds a deletion back for later).
 				continue;
 			} else if (canTellGone && !unknown.has(row.messageId)) {
 				// It left a folder and is nowhere now: deleted on the provider.
@@ -374,7 +375,15 @@ export async function reconcile(
 			if (page.isDone) break;
 			cursor = page.continueCursor;
 		}
-		if (!deps.isAligned) await deps.markAligned();
+		if (!deps.isAligned) {
+			// The merge kept what it found nowhere and forgot its sightings. What
+			// was seen leaving before or during it (pending from before full sync
+			// was switched off and on, or deferred while a folder could not be read)
+			// must not delete that mail once the account is aligned. Dropped before
+			// aligning, so a failure after the backend aligned cannot carry it over.
+			vanished.clear();
+			await deps.markAligned();
+		}
 	} else {
 		for (const ids of chunks([...changed], LOOKUP_CHUNK)) {
 			if (deps.isStopped()) return { full: false, completed: false };

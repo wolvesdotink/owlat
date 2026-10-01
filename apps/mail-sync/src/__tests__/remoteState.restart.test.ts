@@ -9,8 +9,8 @@
  *   - mail never seen on the provider, and Sent, are still never called gone;
  *   - a UIDVALIDITY change between runs voids the sightings;
  *   - mail that arrives after a folder's census is not mistaken for gone;
- *   - a merge forgets the sightings of mail it finds nowhere instead of
- *     deleting it later;
+ *   - a merge forgets the sightings of mail it finds nowhere, and what it saw
+ *     leave, instead of deleting it later;
  *   - a settled mailbox writes no sightings.
  */
 
@@ -267,6 +267,48 @@ describe('provider deletions made while the worker was stopped (#1071)', () => {
 		acc.restart();
 		expect(gone(await acc.pass())).toEqual([]);
 		expect(acc.local.get('a@x')?.remoteName).toBe('INBOX');
+	});
+
+	describe('a merge that runs while a folder cannot be read', () => {
+		const refuseArchiveCensus = (path: string, q: Record<string, unknown>) =>
+			path === 'Archive' && q['all'] === true;
+
+		it('keeps the mail it preserved once the folder can be read again', async () => {
+			const acc = account({ INBOX: [], Archive: [], Trash: ['t@x'] });
+			await acc.pass();
+
+			acc.state.isAligned = false;
+			acc.imap.remove('Trash', 't@x');
+			acc.imap.refuseSearch = refuseArchiveCensus;
+			await acc.pass(); // the merge keeps t@x, forgets its sighting, aligns
+			expect(acc.state.isAligned).toBe(true);
+
+			acc.imap.refuseSearch = null;
+			expect(gone(await acc.pass())).toEqual([]);
+			expect(acc.local.has('t@x')).toBe(true);
+		});
+
+		it('drops deletions noticed before full sync was switched off and on again', async () => {
+			const acc = account({ INBOX: [], Archive: [], Trash: ['t@x'] });
+			await acc.pass();
+
+			acc.imap.remove('Trash', 't@x');
+			acc.imap.refuseSearch = refuseArchiveCensus;
+			// After a reconnect every folder takes a census, and Archive's fails.
+			for (const view of acc.deps.views.values()) view.censusDue = true;
+			expect(gone(await acc.pass())).toEqual([]); // held back: Archive unread
+			expect(acc.deps.pending?.vanished.has('t@x')).toBe(true);
+
+			// Full → incoming → full with only write-back drains in between: the
+			// backend clears alignment, the worker keeps its views and pending changes.
+			acc.state.isAligned = false;
+			await acc.pass();
+			expect(acc.state.isAligned).toBe(true);
+
+			acc.imap.refuseSearch = null;
+			expect(gone(await acc.pass())).toEqual([]);
+			expect(acc.local.has('t@x')).toBe(true);
+		});
 	});
 
 	it('writes sightings once and then only when they change', async () => {
