@@ -1,11 +1,20 @@
 import { ref, shallowRef, computed, watch, type Ref, type ShallowRef, type ComputedRef } from 'vue';
-import type { EditorBlock, ColumnsBlockContent, ColumnItem, ContainerBlockContent, ContainerItem } from '../types';
+import type { EditorBlock } from '../types';
+import { locateBlock, locateWithin } from '../utils/blockTree';
 
+/**
+ * A selected column item: the columns Block that holds it (a root, or nested
+ * inside a container or hero) and its column.
+ */
 export interface ColumnContext {
 	blockId: string;
 	columnIndex: number;
 }
 
+/**
+ * A selected container or hero item: the composite that holds it, at any
+ * depth. The item may sit further down inside that composite.
+ */
 export interface ContainerContext {
 	blockId: string;
 }
@@ -24,6 +33,11 @@ export interface UseBlockStateReturn {
 	selectedContainerItemId: Ref<string | null>;
 	selectedContainerContext: Ref<ContainerContext | null>;
 	selectedContainerItem: ComputedRef<EditorBlock | null>;
+	/**
+	 * The root Block that owns the selection: the selected root itself, or the
+	 * root a nested selection sits in. Linked-group state lives on roots.
+	 */
+	selectedRootId: ComputedRef<string | null>;
 
 	// Block element refs for positioning
 	blockElements: ShallowRef<Map<string, HTMLElement>>;
@@ -89,22 +103,13 @@ export function useBlockState(options: UseBlockStateOptions): UseBlockStateRetur
 		return blockElements.value.get(selectedBlockId.value) || null;
 	});
 
-	// Get the selected column item as an EditorBlock-like object
-	const selectedColumnItem = computed(() => {
-		if (!selectedColumnItemId.value || !selectedColumnContext.value) return null;
-		const block = canvasBlocks.value.find((b) => b.id === selectedColumnContext.value!.blockId);
-		if (!block || block.type !== 'columns') return null;
-		const content = block.content as ColumnsBlockContent;
-		const column = content.columns[selectedColumnContext.value!.columnIndex];
-		if (!column) return null;
-		const item = column.find((i: ColumnItem) => i.id === selectedColumnItemId.value);
-		if (!item) return null;
-		return {
-			id: item.id,
-			type: item.type,
-			content: item.content,
-		} as EditorBlock;
-	});
+	// A nested item, looked up below the composite that holds it at any depth.
+	const nestedItem = (scopeId: string | undefined, itemId: string | null) =>
+		scopeId && itemId ? (locateWithin(canvasBlocks.value, scopeId, itemId)?.block ?? null) : null;
+
+	const selectedColumnItem = computed(() =>
+		nestedItem(selectedColumnContext.value?.blockId, selectedColumnItemId.value)
+	);
 
 	// Selected column item element
 	const selectedColumnItemElement = computed(() => {
@@ -112,36 +117,14 @@ export function useBlockState(options: UseBlockStateOptions): UseBlockStateRetur
 		return clickedColumnItemElement.value;
 	});
 
-	// Helper function to recursively find container item
-	const findContainerItem = (
-		items: ContainerItem[],
-		itemId: string
-	): ContainerItem | null => {
-		for (const item of items) {
-			if (item.id === itemId) return item;
-			// Recursively search nested containers
-			if (item.type === 'container') {
-				const containerContent = item.content as ContainerBlockContent;
-				const found = findContainerItem(containerContent.items, itemId);
-				if (found) return found;
-			}
-		}
-		return null;
-	};
+	const selectedContainerItem = computed(() =>
+		nestedItem(selectedContainerContext.value?.blockId, selectedContainerItemId.value)
+	);
 
-	// Get the selected container item as an EditorBlock-like object
-	const selectedContainerItem = computed(() => {
-		if (!selectedContainerItemId.value || !selectedContainerContext.value) return null;
-		const block = canvasBlocks.value.find((b) => b.id === selectedContainerContext.value!.blockId);
-		if (!block || (block.type !== 'container' && block.type !== 'hero')) return null;
-		const content = block.content as ContainerBlockContent;
-		const item = findContainerItem(content.items, selectedContainerItemId.value);
-		if (!item) return null;
-		return {
-			id: item.id,
-			type: item.type,
-			content: item.content,
-		} as EditorBlock;
+	const selectedRootId = computed(() => {
+		if (selectedBlockId.value) return selectedBlockId.value;
+		const scopeId = selectedColumnContext.value?.blockId ?? selectedContainerContext.value?.blockId;
+		return scopeId ? (locateBlock(canvasBlocks.value, scopeId)?.root.id ?? null) : null;
 	});
 
 	// Selected container item element
@@ -253,6 +236,7 @@ export function useBlockState(options: UseBlockStateOptions): UseBlockStateRetur
 		selectedContainerItemId,
 		selectedContainerContext,
 		selectedContainerItem,
+		selectedRootId,
 		blockElements,
 		selectedBlockElement,
 		clickedColumnItemElement,

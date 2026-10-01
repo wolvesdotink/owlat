@@ -174,3 +174,23 @@ describe('ChatInput send acknowledgement (#945)', () => {
 		expect(chips(w)).toEqual([]);
 	});
 });
+
+describe('ChatInput IME composition (#1052)', () => {
+	it('does not send on the Enter that confirms an IME candidate', async () => {
+		const w = mountInput();
+		await type(w, 'こんにちは');
+		for (const init of [{ isComposing: true }, { keyCode: 229 }]) {
+			const event = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true, ...init });
+			w.get('textarea').element.dispatchEvent(event);
+			await flushPromises();
+			expect(event.defaultPrevented).toBe(false);
+		}
+		expect(send).not.toHaveBeenCalled();
+		expect(textarea(w).value).toBe('こんにちは');
+
+		// After the composition, Enter sends once.
+		await pressEnter(w);
+		expect(send).toHaveBeenCalledTimes(1);
+		expect(send).toHaveBeenCalledWith('こんにちは', undefined);
+	});
+});

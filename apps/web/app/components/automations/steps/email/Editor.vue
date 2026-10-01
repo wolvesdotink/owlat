@@ -6,7 +6,11 @@ const { t } = useI18n();
 
 const props = defineProps<{
 	modelValue: EmailStepConfig;
-	emailTemplates: Doc<'emailTemplates'>[] | null | undefined;
+	/**
+	 * The builder page's first page of templates, still forwarded by the step
+	 * panel. Not read here: the picker below searches and pages its own list.
+	 */
+	emailTemplates?: Doc<'emailTemplates'>[] | null | undefined;
 }>();
 
 const emit = defineEmits<{
@@ -14,11 +18,11 @@ const emit = defineEmits<{
 	save: [];
 }>();
 
-const onTemplateChange = (event: Event) => {
-	const value = (event.target as HTMLSelectElement).value;
+const onTemplateChange = (templateId: Id<'emailTemplates'>) => {
+	if (templateId === props.modelValue.emailTemplateId) return;
 	emit('update:modelValue', {
 		...props.modelValue,
-		emailTemplateId: value,
+		emailTemplateId: templateId,
 	});
 	emit('save');
 };
@@ -31,40 +35,30 @@ const onSubjectBlur = (event: Event) => {
 	emit('save');
 };
 
-const selectedTemplate = computed(() =>
-	props.emailTemplates?.find((t) => t._id === props.modelValue.emailTemplateId)
+// Read by id, not looked up in a list: the selection may be on a page the
+// picker has not loaded, or outside the current search.
+const selectedTemplateId = computed(
+	() => (props.modelValue.emailTemplateId || null) as Id<'emailTemplates'> | null
 );
+const { data: selectedTemplate } = useEmailTemplateById(selectedTemplateId);
 </script>
 
 <template>
 	<div class="space-y-6">
 		<div>
-			<label class="label flex items-center gap-2 mb-2">
+			<label for="emailStepTemplate" class="label flex items-center gap-2 mb-2">
 				<Icon name="lucide:mail" class="w-4 h-4 text-brand" />
 				{{ t('components.automations.steps.email.editor.templateLabel') }}
 			</label>
-			<select :value="modelValue.emailTemplateId" class="input" @change="onTemplateChange">
-				<option value="">
-					{{ t('components.automations.steps.email.editor.templatePlaceholder') }}
-				</option>
-				<option v-for="template in emailTemplates" :key="template._id" :value="template._id">
-					{{
-						t('components.automations.steps.email.editor.templateOption', {
-							name: template.name,
-							status: template.status,
-						})
-					}}
-				</option>
-			</select>
-			<p class="text-xs text-text-tertiary mt-1.5">
+			<p class="text-xs text-text-tertiary mb-2">
 				{{ t('components.automations.steps.email.editor.templateHint') }}
 			</p>
-
-			<div
-				v-if="!emailTemplates?.length"
-				class="mt-3 p-3 bg-warning/10 border border-warning/20 rounded-lg"
+			<EmailTemplatePicker
+				:model-value="selectedTemplateId"
+				input-id="emailStepTemplate"
+				@update:model-value="onTemplateChange"
 			>
-				<p class="text-sm text-warning">
+				<template #none>
 					<I18nT
 						keypath="components.automations.steps.email.editor.noTemplates"
 						tag="span"
@@ -76,8 +70,8 @@ const selectedTemplate = computed(() =>
 							</NuxtLink>
 						</template>
 					</I18nT>
-				</p>
-			</div>
+				</template>
+			</EmailTemplatePicker>
 
 			<div class="mt-3 p-3 bg-bg-surface border border-border-subtle rounded-lg">
 				<p class="text-sm text-text-secondary mb-2">

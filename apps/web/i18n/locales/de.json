@@ -333,7 +333,9 @@
 		"assistant": {
 			"assistantComposer": {
 				"hint": "Enter zum Senden · Umschalt+Enter für einen Zeilenumbruch · der Assistent kann deinen Workspace durchsuchen und Texte entwerfen",
+				"label": "Frage an den Assistenten",
 				"placeholder": "Frage den Assistenten alles…",
+				"sendFailed": "Senden hat nicht geklappt. Deine Frage ist noch da.",
 				"stop": "Generierung stoppen",
 				"unavailablePlaceholder": "Der Assistent ist nicht verfügbar"
 			},
@@ -500,7 +502,7 @@
 						"createCta": "Neue E-Mail erstellen",
 						"createPrompt": "Oder erstelle eine neue E-Mail-Vorlage für diese Automation:",
 						"editTemplate": "Vorlage bearbeiten →",
-						"noTemplates": "Keine Automations-Vorlagen gefunden. {link} mit dem Typ „Automation“.",
+						"noTemplates": "Noch keine Marketing-Vorlagen. {link}.",
 						"noTemplatesLink": "Erstelle zuerst eine E-Mail-Vorlage",
 						"previewLabel": "Vorschau der Vorlage",
 						"previewSubject": "Betreff: {subject}",
@@ -508,9 +510,7 @@
 						"subjectLabel": "Abweichender Betreff (optional)",
 						"subjectPlaceholder": "Leer lassen, um den Betreff der Vorlage zu verwenden",
 						"templateHint": "Wähle die E-Mail-Vorlage, die an den Kontakt gesendet wird.",
-						"templateLabel": "E-Mail-Vorlage",
-						"templateOption": "{name} ({status})",
-						"templatePlaceholder": "Vorlage auswählen..."
+						"templateLabel": "E-Mail-Vorlage"
 					}
 				}
 			},
@@ -1390,10 +1390,14 @@
 				},
 				"mapping": {
 					"addToTopic": "Zu Thema hinzufügen",
+					"fieldMovedToIgnore": "{field} kommt jetzt aus der Spalte {to}. Die Spalte {from} wird ignoriert.",
+					"fieldMovedToProperty": "{field} kommt jetzt aus der Spalte {to}. Die Spalte {from} wird als benutzerdefinierte Eigenschaft importiert.",
+					"fieldTaken": "{field} (Spalte: {column})",
 					"found": "{count} Kontakte in {filename} gefunden",
 					"globalTopicHint": "Alle importierten Kontakte werden diesem Thema hinzugefügt. Oder ordne eine CSV-Spalte \"Thema\" zu, um sie pro Kontakt zuzuweisen.",
 					"handleDuplicates": "Umgang mit Duplikaten",
 					"sample": "z. B. {value}",
+					"selectLabel": "Feld für Spalte {column}",
 					"skipDuplicates": "Duplikate überspringen",
 					"topicMappedHint": "Deaktiviert, weil eine Spalte \"Thema\" zugeordnet ist. Entferne diese Zuordnung, um ein globales Thema auszuwählen.",
 					"updateExisting": "Vorhandene aktualisieren"
@@ -1402,6 +1406,7 @@
 					"andMore": "...und {count} weitere",
 					"duplicateEmailsTitle": "Doppelte E-Mail-Adressen",
 					"duplicates": "Duplikate",
+					"emailSource": "Spalte: {column}",
 					"firstName": "Vorname",
 					"invalidEmails": "Ungültige E-Mail-Adressen",
 					"invalidEmailsTitle": "Ungültige E-Mail-Adressen",
@@ -3162,6 +3167,17 @@
 					"save": "Gespeichert",
 					"send": "Gesendet"
 				}
+			},
+			"templatePicker": {
+				"listLabel": "Vorlagen",
+				"loadMore": "Mehr laden",
+				"loading": "Vorlagen werden geladen…",
+				"loadingMore": "Weitere werden geladen…",
+				"noMatches": "Keine Vorlagen passen zu deiner Suche.",
+				"noSubject": "Kein Betreff",
+				"none": "Noch keine Vorlagen.",
+				"searchPlaceholder": "Nach Name oder Betreff suchen…",
+				"searching": "Suche läuft…"
 			}
 		},
 		"files": {
@@ -5617,6 +5633,7 @@
 				"sourceBadge": "Quelle"
 			},
 			"manager": {
+				"accordionSectionPrefix": "{prefix}Akkordeon {index}, Abschnitt {section}",
 				"addLanguage": "Sprache hinzufügen",
 				"addLanguageOperation": "Sprache hinzufügen",
 				"allTranslated": "Alle Felder sind bereits übersetzt",
@@ -5633,6 +5650,7 @@
 				"fieldColumn": "Feld",
 				"goBack": "Zurück",
 				"heading": "{name} - Übersetzungen",
+				"heroPrefix": "{prefix}Hero {index}",
 				"htmlBadge": "HTML",
 				"imageBlock": "{prefix}Bild {index} Alt-Text",
 				"infoBody": "Klicke auf eine beliebige Zelle, um die Übersetzung zu bearbeiten. Änderungen werden automatisch gespeichert. Nutze das Funkel-Symbol, um leere Felder mit KI automatisch zu übersetzen. Der Inhalt der Standardsprache ist hier schreibgeschützt - bearbeite ihn im Haupt-E-Mail-Editor.",
@@ -8210,6 +8228,9 @@
 					"performance": "Fasse die Ergebnisse unserer letzten Kampagne zusammen.",
 					"reEngagement": "Entwirf eine freundliche Reaktivierungs-E-Mail für inaktive Abonnenten."
 				},
+				"jumpToLatest": "Zur neuesten Nachricht",
+				"moreActions": "Weitere Aktionen",
+				"moreActionsFor": "Weitere Aktionen für „{title}“",
 				"newChat": "Neuer Chat",
 				"noConversations": "Noch keine Unterhaltungen.",
 				"openConversations": "Unterhaltungen",
@@ -14874,6 +14895,7 @@
 		},
 		"useCsvImport": {
 			"errors": {
+				"conflictingMapping": "{field} ist mehr als einer Spalte zugeordnet. Ordne es nur einer Spalte zu.",
 				"dropCsv": "Bitte lege eine CSV-Datei ab",
 				"emailColumnRequired": "Du musst eine Spalte auf E-Mail (erforderlich) zuordnen",
 				"importFailed": "Import fehlgeschlagen",
@@ -14891,6 +14913,12 @@
 				"lastName": "Nachname",
 				"property": "Benutzerdefinierte Eigenschaft",
 				"topic": "Thema"
+			},
+			"fieldNames": {
+				"email": "E-Mail",
+				"firstName": "Vorname",
+				"language": "Sprache",
+				"lastName": "Nachname"
 			},
 			"pickerTitle": "CSV-Datei auswählen"
 		},

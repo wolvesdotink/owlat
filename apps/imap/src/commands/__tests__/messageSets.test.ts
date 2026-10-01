@@ -48,6 +48,7 @@ function harness(messages: FakeMessage[]): Harness {
 				{ _id: 'tf', name: 'Target' },
 			];
 		}
+		if (name.endsWith(':folderMembershipPage')) return null;
 		if (name.endsWith(':listFolderUidsPage')) {
 			return { uids: sorted.map((m) => m.uid), nextUid: null };
 		}

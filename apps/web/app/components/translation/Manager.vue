@@ -2,6 +2,7 @@
 import { parseStoredBlocks } from '@owlat/email-builder';
 import { api } from '@owlat/api';
 import { languageOptions } from '~/data/languageOptions';
+import { translationBlockRows } from '~/utils/translationRows';
 import type { Id } from '@owlat/api/dataModel';
 
 type EmailType = 'marketing' | 'transactional';
@@ -41,21 +42,6 @@ interface TranslatableRow {
 	sourceText: string;
 	label: string;
 	blockId?: string;
-}
-
-interface Block {
-	id: string;
-	type: string;
-	content: {
-		html?: string;
-		text?: string;
-		alt?: string;
-		// Columns nest a grid of blocks; containers nest a flat list. Typing them
-		// as Block lets extractBlockRows recurse without re-casting each level.
-		columns?: Block[][];
-		items?: Block[];
-		[key: string]: unknown;
-	};
 }
 
 // Common languages for dropdown
@@ -264,73 +250,11 @@ const translatableRows = computed((): TranslatableRow[] => {
 		});
 	}
 
-	// Content blocks; unreadable content contributes no rows.
-	extractBlockRows(parseStoredBlocks(email.value.content) as Block[], rows);
+	// Content blocks, at every depth; unreadable content contributes no rows.
+	rows.push(...translationBlockRows(parseStoredBlocks(email.value.content), t));
 
 	return rows;
 });
-
-// Recursively extract translatable content from blocks
-const extractBlockRows = (blocks: Block[], rows: TranslatableRow[], prefix = '') => {
-	let textBlockIndex = 0;
-	let buttonBlockIndex = 0;
-	let imageBlockIndex = 0;
-	let containerBlockIndex = 0;
-
-	for (const block of blocks) {
-		if (block.type === 'text' && block.content.html) {
-			textBlockIndex++;
-			rows.push({
-				id: block.id,
-				blockId: block.id,
-				fieldType: 'html',
-				sourceText: block.content.html,
-				label: t('components.translation.manager.textBlock', { prefix, index: textBlockIndex }),
-			});
-		} else if (block.type === 'button' && block.content.text) {
-			buttonBlockIndex++;
-			rows.push({
-				id: block.id,
-				blockId: block.id,
-				fieldType: 'buttonText',
-				sourceText: block.content.text,
-				label: t('components.translation.manager.buttonBlock', {
-					prefix,
-					text: block.content.text,
-				}),
-			});
-		} else if (block.type === 'image' && block.content.alt) {
-			imageBlockIndex++;
-			rows.push({
-				id: block.id,
-				blockId: block.id,
-				fieldType: 'alt',
-				sourceText: block.content.alt,
-				label: t('components.translation.manager.imageBlock', { prefix, index: imageBlockIndex }),
-			});
-		} else if (block.type === 'columns' && block.content.columns) {
-			// Recursively extract from column items
-			block.content.columns.forEach((column, colIndex) => {
-				// The " > " chain is a structural separator, not copy, so it is joined
-				// around the translated segment rather than baked into the message
-				// (the catalog guard rejects angle brackets in a message value).
-				extractBlockRows(
-					column,
-					rows,
-					`${t('components.translation.manager.columnPrefix', { prefix, index: colIndex + 1 })} > `
-				);
-			});
-		} else if (block.type === 'container' && block.content.items) {
-			// Recursively extract from container items
-			containerBlockIndex++;
-			extractBlockRows(
-				block.content.items,
-				rows,
-				`${t('components.translation.manager.containerPrefix', { prefix, index: containerBlockIndex })} > `
-			);
-		}
-	}
-};
 
 // Get translation value for a row and language
 const getTranslationValue = (row: TranslatableRow, language: string): string => {
