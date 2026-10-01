@@ -132,7 +132,7 @@ class FakeImap implements RemoteOpsClient {
 		return { release: () => void (this.selected = null) };
 	}
 
-	async search(query: { header: Record<string, string> }) {
+	async search(query: { header: Record<string, string> }): Promise<number[] | false | undefined> {
 		const needle = query.header['message-id'] ?? '';
 		return this.box()
 			.filter((m) => m.messageId.includes(needle))
@@ -143,7 +143,7 @@ class FakeImap implements RemoteOpsClient {
 		for (const m of this.take(range)) yield { uid: m.uid, envelope: { messageId: m.messageId } };
 	}
 
-	async messageMove(range: string, destination: string) {
+	async messageMove(range: string, destination: string, _options?: { uid: true }) {
 		if (!this.capabilities.has('MOVE')) {
 			// ImapFlow's fallback: COPY, then STORE \Deleted + EXPUNGE whatever the COPY answered.
 			const copied = await this.messageCopy(range, destination);
