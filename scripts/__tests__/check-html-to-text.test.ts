@@ -3,9 +3,9 @@
  *
  * The cases run the REAL script's `--generate` half against throwaway trees and
  * pin what it reports: a hand-rolled `.replace(/<[^>]+>/g` or
- * `.replace(/<[^>]*>/g` tag strip under apps/api/convex, packages/shared/src or
- * packages/mail-message/src, outside the shared helper, tests and generated
- * code. Prose that names a spelling is not code and is not reported.
+ * `.replace(/<[^>]*>/g` tag strip under apps/api/convex, packages/shared/src,
+ * packages/mail-message/src or packages/email-renderer/src, outside the shared
+ * helper, tests and generated code. Prose that names a spelling is not code and is not reported.
  */
 
 import { execFile } from 'node:child_process';
@@ -21,7 +21,12 @@ const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const run = promisify(execFile);
 
 const GATE = 'scripts/check-html-to-text.sh';
-const SCOPES = ['apps/api/convex', 'packages/shared/src', 'packages/mail-message/src'];
+const SCOPES = [
+	'apps/api/convex',
+	'packages/shared/src',
+	'packages/mail-message/src',
+	'packages/email-renderer/src',
+];
 
 const roots: string[] = [];
 
@@ -55,9 +60,11 @@ describe('HTML-to-text ratchet', () => {
 				'apps/api/convex/mail/preview.ts': "const t = html.replace(/<[^>]+>/g, ' ');\n",
 				'packages/shared/src/visible.ts': "return s.replace(/<[^>]*>/g, '').trim();\n",
 				'packages/mail-message/src/compose/fallback.ts': "html.replace(/<[^>]+>/gi, ' ')\n",
+				'packages/email-renderer/src/helpers/text.ts': "html.replace(/<[^>]+>/g, '')\n",
 			})
 		).toEqual([
 			'apps/api/convex/mail/preview.ts:.replace(/<[^>]+>/g',
+			'packages/email-renderer/src/helpers/text.ts:.replace(/<[^>]+>/g',
 			'packages/mail-message/src/compose/fallback.ts:.replace(/<[^>]+>/g',
 			'packages/shared/src/visible.ts:.replace(/<[^>]*>/g',
 		]);
@@ -97,7 +104,7 @@ describe('HTML-to-text ratchet', () => {
 					"import { htmlToPlainText } from '@owlat/shared/html';",
 					'',
 				].join('\n'),
-				'packages/email-renderer/src/text.ts': "html.replace(/<[^>]+>/g, ' ');\n",
+				'packages/email-builder/src/text.ts': "html.replace(/<[^>]+>/g, ' ');\n",
 			})
 		).toEqual([]);
 	});
