@@ -13,11 +13,8 @@
  *
  * Purely presentational — no fetching, no mutations.
  */
-import {
-	deriveQuarantineReason,
-	type QuarantineSecurityFlags,
-	type QuarantineText,
-} from '~/utils/quarantineReason';
+import { useLocalized } from '~/composables/useLocalized';
+import { deriveQuarantineReason, type QuarantineSecurityFlags } from '~/utils/quarantineReason';
 
 const props = defineProps<{
 	/** The scan record, absent on a row held before any scan wrote one. */
@@ -29,9 +26,7 @@ const { t } = useI18n();
 const reason = computed(() => deriveQuarantineReason(props.flags));
 
 /** Resolve one derived sentence: a bare key, or a key plus its values. */
-function say(text: QuarantineText): string {
-	return typeof text === 'string' ? t(text) : t(text.key, text.params ?? {});
-}
+const say = useLocalized();
 </script>
 
 <template>

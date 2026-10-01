@@ -371,6 +371,101 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 	});
 });
 
+describe('CONDSTORE — [MODIFIED] addresses messages the way the command did (RFC 7162 §3.1.3)', () => {
+	// Sparse folder: UIDs 5, 10, 20 sit at sequence numbers 1, 2, 3, so a
+	// response that leaks UIDs into a sequence-number reply is visible.
+	const FOLDER_UIDS = [5, 10, 20];
+
+	/**
+	 * Run a conditional STORE (or UID STORE when `byUid`) over the sparse
+	 * folder. The mutation updates every UID not in `refused` and reports
+	 * the refused ones as `unchanged`.
+	 */
+	async function runConditionalStore(
+		set: string,
+		op: string,
+		refused: readonly number[],
+		byUid: boolean
+	): Promise<string[]> {
+		const convex = mockConvex();
+		convex.query
+			.mockResolvedValueOnce({ uids: FOLDER_UIDS, nextUid: null }) // listFolderUidsPage
+			.mockResolvedValueOnce({
+				rows: FOLDER_UIDS.map((uid) => ({ _id: `m${uid}`, uid, modseq: 7 })),
+				nextUid: null,
+			}); // resolveMessageIdsByUid
+		convex.mutation.mockImplementation(async (_fn, params: { messageIds: string[] }) => {
+			const uids = params.messageIds.map((id) => Number(id.slice(1)));
+			return {
+				updated: uids
+					.filter((uid) => !refused.includes(uid))
+					.map((uid) => ({ uid, modseq: 9, flags: ['\\Flagged'] })),
+				unchanged: uids.filter((uid) => refused.includes(uid)).map((uid) => ({ uid })),
+			};
+		});
+		const { deps } = makeDeps(convex);
+		const rest = [set, '(UNCHANGEDSINCE 8)', op, '(\\Flagged)'];
+		if (byUid) {
+			const parsed = uidModule.parseArgs(['STORE', ...rest]);
+			expect(parsed.ok).toBe(true);
+			const { start, lines } = startArgs(
+				deps,
+				selectedState(),
+				(parsed as { args: never }).args,
+				'UID'
+			);
+			await uidModule.start(start).completion;
+			return lines;
+		}
+		const parsed = storeModule.parseArgs(rest);
+		expect(parsed.ok).toBe(true);
+		const { start, lines } = startArgs(
+			deps,
+			selectedState(),
+			(parsed as { args: never }).args,
+			'STORE'
+		);
+		await storeModule.start(start).completion;
+		return lines;
+	}
+
+	it('STORE reports the refused message by sequence number, not UID', async () => {
+		const lines = await runConditionalStore('2', '+FLAGS', [10], false);
+		expect(lines).toEqual(['a1 OK [MODIFIED 2] STORE completed']);
+	});
+
+	it('UID STORE reports the refused message by UID', async () => {
+		const lines = await runConditionalStore('10', '+FLAGS', [10], true);
+		expect(lines).toEqual(['a1 OK [MODIFIED 10] UID STORE completed']);
+	});
+
+	it('STORE with mixed results emits FETCH rows for the updated and sequence numbers for the refused', async () => {
+		const lines = await runConditionalStore('1:3', '+FLAGS', [10, 20], false);
+		expect(lines).toEqual([
+			'* 1 FETCH (UID 5 MODSEQ (9) FLAGS (\\Flagged))',
+			'a1 OK [MODIFIED 2,3] STORE completed',
+		]);
+	});
+
+	it('UID STORE with mixed results keeps UIDs in [MODIFIED]', async () => {
+		const lines = await runConditionalStore('5:20', '+FLAGS', [5, 20], true);
+		expect(lines).toEqual([
+			'* 2 FETCH (UID 10 MODSEQ (9) FLAGS (\\Flagged))',
+			'a1 OK [MODIFIED 5,20] UID STORE completed',
+		]);
+	});
+
+	it('STORE .SILENT suppresses the FETCH rows and still reports sequence numbers', async () => {
+		const lines = await runConditionalStore('1:3', '+FLAGS.SILENT', [5, 20], false);
+		expect(lines).toEqual(['a1 OK [MODIFIED 1,3] STORE completed']);
+	});
+
+	it('UID STORE .SILENT suppresses the FETCH rows and still reports UIDs', async () => {
+		const lines = await runConditionalStore('1:*', '+FLAGS.SILENT', [10, 20], true);
+		expect(lines).toEqual(['a1 OK [MODIFIED 10,20] UID STORE completed']);
+	});
+});
+
 it('sends committed deletions when page two fails', async () => {
 	const convex = mockConvex();
 	convex.mutation

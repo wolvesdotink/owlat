@@ -20,6 +20,8 @@ type Row = Record<string, unknown>;
 const runs = new Map<string, ReturnType<typeof vi.fn>>();
 const run = (name: string) => runs.get(name)!;
 let rows: { marketing: Ref<Row | undefined>; transactional: Ref<Row | undefined> };
+// What the navigation guard was told: whether leaving asks first, and its save.
+let leaveGuard: { onSave: () => Promise<void>; hasChanges: boolean };
 
 beforeAll(() => {
 	Object.assign(globalThis, {
@@ -27,14 +29,19 @@ beforeAll(() => {
 		useRouter: () => ({ push: vi.fn() }),
 		useToast: () => ({ showToast: vi.fn() }),
 		useEmailTheme: () => ({ emailTheme: ref(undefined) }),
-		useUnsavedChanges: () => ({
-			showDialog: ref(false),
-			isSavingBeforeLeave: ref(false),
-			confirmDiscard: vi.fn(),
-			confirmSave: vi.fn(),
-			cancelNavigation: vi.fn(),
-			setHasChanges: vi.fn(),
-		}),
+		useUnsavedChanges: (options: { onSave: () => Promise<void> }) => {
+			leaveGuard = { onSave: options.onSave, hasChanges: false };
+			return {
+				showDialog: ref(false),
+				isSavingBeforeLeave: ref(false),
+				confirmDiscard: vi.fn(),
+				confirmSave: vi.fn(),
+				cancelNavigation: vi.fn(),
+				setHasChanges: (value: boolean) => {
+					leaveGuard.hasChanges = value;
+				},
+			};
+		},
 		requireConvex: () => ({ action: vi.fn() }),
 		useConvexQuery: (fn: unknown, args: () => unknown) => {
 			const name = getFunctionName(fn as never);
@@ -127,7 +134,45 @@ const SURFACES = [
 	},
 ];
 
+const REMOVE = {
+	marketing: 'emailTemplates/i18n:removeTranslation',
+	transactional: 'transactional/translations:removeTranslation',
+};
+
 describe.each(SURFACES)('$emailType translation table', (surface) => {
+	it('forgets text left open in a removed language before leaving the page', async () => {
+		const w = mountManager(surface.emailType);
+		await flush();
+		await w.get(BODY_CELL).trigger('click');
+		await nextTick();
+		await w.get('textarea').setValue('Halb getippt');
+		await flush();
+		expect(leaveGuard.hasChanges).toBe(true);
+
+		run(REMOVE[surface.emailType]).mockResolvedValue({ ok: true, result: { contentRevision: 5 } });
+		await w.get('button[title="Remove language"]').trigger('click');
+		await flush();
+		w.findComponent({ name: 'UiConfirmationDialog' }).vm.$emit('confirm');
+		await flush();
+		expect(run(REMOVE[surface.emailType])).toHaveBeenCalledOnce();
+		expect(leaveGuard.hasChanges).toBe(false);
+
+		// The row comes back without the language and its column goes away.
+		rows[surface.emailType].value = {
+			...row(5),
+			supportedLanguages: ['en'],
+			translations: '{}',
+			htmlTranslations: '{}',
+		};
+		await flush();
+		expect(w.find(BODY_CELL).exists()).toBe(false);
+		expect(leaveGuard.hasChanges).toBe(false);
+
+		// Saving on the way out has nothing to write for the removed language.
+		await expect(leaveGuard.onSave()).resolves.toBeUndefined();
+		expect(run(surface.update)).not.toHaveBeenCalled();
+	});
+
 	it('saves a cell as one write: overlay, rendered HTML and base revision together', async () => {
 		const w = mountManager(surface.emailType);
 		await flush();

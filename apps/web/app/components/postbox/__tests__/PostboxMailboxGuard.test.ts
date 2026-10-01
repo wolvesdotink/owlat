@@ -81,3 +81,29 @@ describe('PostboxMailboxGuard reserved copy', () => {
 		expect(w.text()).toContain('being set up');
 	});
 });
+
+describe('PostboxMailboxGuard failed mailbox read (#721)', () => {
+	it('shows the error with Try again instead of a no-mailbox state', async () => {
+		freshStatusRef.value = {
+			hasMailbox: false,
+			reservedAddress: null,
+			reservationAwaitingDomain: false,
+			hasOpenRequest: false,
+		};
+		const w = mount(PostboxMailboxGuard, {
+			props: {
+				mailboxId: null,
+				loading: false,
+				error: new Error('[CONVEX Q(mail/mailbox/identity:list)] Server Error'),
+			},
+			global: { plugins: [createTestI18n()], stubs: { Icon: true, NuxtLink: true } },
+		});
+
+		expect(w.text()).toContain('Failed to load');
+		expect(w.find('[data-testid="mailbox-guard-deadend"]').exists()).toBe(false);
+		expect(w.find('[data-testid="mailbox-guard-external"]').exists()).toBe(false);
+		const retry = w.findAll('button').find((button) => button.text() === 'Try again');
+		await retry!.trigger('click');
+		expect(w.emitted('retry')).toHaveLength(1);
+	});
+});

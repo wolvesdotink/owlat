@@ -26,7 +26,8 @@ import {
 	type SendingHealthIdentity,
 	type SendingHealthStats,
 } from '~/utils/postboxSendingHealth';
-import type { LocalizedText, ReadinessGateStatus } from '~/utils/readinessGate';
+import type { ReadinessGateStatus } from '~/utils/readinessGate';
+import { useLocalized } from '~/composables/useLocalized';
 
 const { t } = useI18n();
 const { currentMailbox } = usePostboxMailbox();
@@ -52,9 +53,7 @@ const identity = computed<SendingHealthIdentity | null>(() =>
 	selectedSenderIdentity(identities.value ?? [], currentMailbox.value?.address ?? '')
 );
 
-const isLoading = computed(
-	() => !mailboxId.value || identitiesLoading.value || statsLoading.value
-);
+const isLoading = computed(() => !mailboxId.value || identitiesLoading.value || statsLoading.value);
 
 const health = computed(() =>
 	deriveSendingHealth({
@@ -63,9 +62,7 @@ const health = computed(() =>
 	})
 );
 
-function localized(value: LocalizedText): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const localized = useLocalized();
 
 const GATE_ICON: Record<ReadinessGateStatus, string> = {
 	ready: 'lucide:check-circle-2',
@@ -84,7 +81,11 @@ const GATE_ICON: Record<ReadinessGateStatus, string> = {
 
 		<div v-if="isLoading" class="px-5 py-4 space-y-3" aria-busy="true">
 			<div class="h-4 w-48 rounded bg-bg-surface animate-pulse motion-reduce:animate-none" />
-			<div v-for="n in 3" :key="n" class="h-8 rounded bg-bg-surface animate-pulse motion-reduce:animate-none" />
+			<div
+				v-for="n in 3"
+				:key="n"
+				class="h-8 rounded bg-bg-surface animate-pulse motion-reduce:animate-none"
+			/>
 		</div>
 
 		<div v-else class="px-5 py-4 space-y-4">

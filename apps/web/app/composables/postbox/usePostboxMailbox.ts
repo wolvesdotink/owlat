@@ -15,7 +15,10 @@ import { derivePostboxSidebarSections } from '~/utils/postboxMailboxSections';
 import { seedPostboxMailboxId } from '~/utils/postboxMailboxSeed';
 
 export function usePostboxMailbox() {
-	const { data, isLoading, error } = useConvexQuery(api.mail.mailbox.identity.list, () => ({}));
+	const { data, isLoading, error, refetch } = useConvexQuery(
+		api.mail.mailbox.identity.list,
+		() => ({})
+	);
 	const mailboxes = computed(() => data.value ?? []);
 
 	// Shared across every consumer so a switch in the sidebar reaches the page,
@@ -93,5 +96,6 @@ export function usePostboxMailbox() {
 		switchToMailbox,
 		isLoading,
 		error,
+		refetch,
 	};
 }

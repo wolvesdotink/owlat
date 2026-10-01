@@ -11,15 +11,21 @@ export function useAssistant() {
 	const { t } = useI18n();
 	const activeId = ref<Id<'aiConversations'> | null>(null);
 
-	const { data: conversationsData, isLoading: conversationsLoading } = useConvexQuery(
-		api.assistant.conversations.listConversations,
-		{}
-	);
+	const {
+		data: conversationsData,
+		isLoading: conversationsLoading,
+		error: conversationsError,
+		refetch: refetchConversations,
+	} = useConvexQuery(api.assistant.conversations.listConversations, {});
 	const conversations = computed(() => conversationsData.value ?? []);
 
-	const { data: messagesData, isLoading: messagesLoading } = useConvexQuery(
-		api.assistant.conversations.listMessages,
-		() => (activeId.value ? { conversationId: activeId.value } : 'skip')
+	const {
+		data: messagesData,
+		isLoading: messagesLoading,
+		error: messagesError,
+		refetch: refetchMessages,
+	} = useConvexQuery(api.assistant.conversations.listMessages, () =>
+		activeId.value ? { conversationId: activeId.value } : 'skip'
 	);
 	const messages = computed(() => messagesData.value ?? []);
 
@@ -100,8 +106,12 @@ export function useAssistant() {
 		activeId,
 		conversations,
 		conversationsLoading,
+		conversationsError,
+		refetchConversations,
 		messages,
 		messagesLoading,
+		messagesError,
+		refetchMessages,
 		activeConversation,
 		streaming,
 		selectConversation,

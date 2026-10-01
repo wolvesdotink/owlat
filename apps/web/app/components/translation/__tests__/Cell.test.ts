@@ -113,6 +113,19 @@ describe('TranslationCell', () => {
 		expect(reports.at(-1)).toBeNull();
 	});
 
+	it('withdraws its open text when it is removed while editing', async () => {
+		const w = mountCell({ value: 'Hallo' });
+		await entry(w).trigger('click');
+		await nextTick();
+		await w.get('textarea').setValue('Hallo!');
+		await nextTick();
+		expect(w.emitted('edit')!.at(-1)).toEqual(['Hallo!']);
+
+		w.unmount();
+		wrapper = null;
+		expect(w.emitted('edit')!.at(-1)).toEqual([null]);
+	});
+
 	it('spells out a failed save with retry and discard, without hover', async () => {
 		const w = mountCell({ value: 'Mein Text', status: 'failed' });
 		const alert = w.get('[role="alert"]');

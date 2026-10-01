@@ -79,6 +79,7 @@ export function usePostboxCursorFeed<
 		isLoading,
 		isRefetching,
 		error,
+		refetch: refetchFirst,
 	} = useConvexQuery(query, resolveBaseArgs, {
 		keepPreviousData: options?.keepPreviousData ?? true,
 	});
@@ -98,6 +99,7 @@ export function usePostboxCursorFeed<
 		data: tailData,
 		isLoading: tailLoading,
 		error: tailError,
+		refetch: refetchTail,
 	} = useConvexQuery(query, () => {
 		const resolved = resolveBaseArgs();
 		if (resolved === 'skip' || !tailCursor.value) return 'skip';
@@ -232,6 +234,16 @@ export function usePostboxCursorFeed<
 		}),
 		isRefetching,
 		error: computed(() => error.value ?? tailError.value),
+		/**
+		 * The live first page failed. A list renders this as its error state: a
+		 * failed "Load more" leaves the rows already on screen alone.
+		 */
+		firstPageError: error,
+		/** Re-read whichever page failed: the handler behind a "Try again". */
+		refetch: () => {
+			if (error.value) refetchFirst();
+			if (tailError.value) refetchTail();
+		},
 		hasMore,
 		canLoadMore,
 		loadMore,

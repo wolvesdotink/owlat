@@ -20,26 +20,40 @@ type TabValue = 'overview' | 'review' | 'organizations' | 'admins';
 const activeTab = ref<TabValue>('overview');
 
 // ── Queries (all requirePlatformAdmin-gated; no org arg needed) ───────────────
-const { data: stats } = useConvexQuery(api.platformAdmin.queries.getPlatformStats, () => ({}));
-const { data: recentAbuse } = useConvexQuery(api.platformAdmin.queries.listRecentAbuse, () => ({}));
-const { data: reviewQueue } = useConvexQuery(
-	api.platformAdmin.queries.getContentReviewQueue,
-	() => ({})
-);
-const { data: flaggedOrgs } = useConvexQuery(
-	api.platformAdmin.queries.listFlaggedOrganizations,
-	() => ({})
-);
-const { data: allOrgs } = useConvexQuery(
-	api.platformAdmin.queries.listAllOrganizations,
-	() => ({})
-);
+const statsQuery = useConvexQuery(api.platformAdmin.queries.getPlatformStats, () => ({}));
+const abuseQuery = useConvexQuery(api.platformAdmin.queries.listRecentAbuse, () => ({}));
+const reviewQuery = useConvexQuery(api.platformAdmin.queries.getContentReviewQueue, () => ({}));
+const flaggedQuery = useConvexQuery(api.platformAdmin.queries.listFlaggedOrganizations, () => ({}));
+const orgsQuery = useConvexQuery(api.platformAdmin.queries.listAllOrganizations, () => ({}));
 const { data: orgDetail } = useConvexQuery(
 	api.platformAdmin.queries.getOrganizationDetail,
 	() => ({})
 );
-const { data: admins } = useConvexQuery(api.platformAdmin.queries.listPlatformAdmins, () => ({}));
-const { data: allUsers } = useConvexQuery(api.platformAdmin.queries.listAllUsers, () => ({}));
+const adminsQuery = useConvexQuery(api.platformAdmin.queries.listPlatformAdmins, () => ({}));
+const usersQuery = useConvexQuery(api.platformAdmin.queries.listAllUsers, () => ({}));
+const stats = statsQuery.data;
+const recentAbuse = abuseQuery.data;
+const reviewQueue = reviewQuery.data;
+const flaggedOrgs = flaggedQuery.data;
+const allOrgs = orgsQuery.data;
+const admins = adminsQuery.data;
+const allUsers = usersQuery.data;
+
+// The reads behind each tab. A failed one shows the error and Try again in
+// place of the tab, never its "nothing here" state (#721).
+const tabReads = computed(
+	() =>
+		({
+			overview: [statsQuery, abuseQuery],
+			review: [reviewQuery],
+			organizations: [flaggedQuery, orgsQuery],
+			admins: [adminsQuery, usersQuery],
+		})[activeTab.value]
+);
+const tabError = computed(() => tabReads.value.find((q) => q.error.value)?.error.value ?? null);
+function retryTab() {
+	for (const q of tabReads.value) if (q.error.value) q.refetch();
+}
 
 /** Counts written the way the reader's locale writes them ("128,400", "128.400"). */
 const formatCount = (value: number | undefined | null) => formatNumber(value, locale.value);
@@ -299,8 +313,10 @@ const anyMutationLoading = computed(
 
 		<UiTabs v-model="activeTab" :tabs="tabs" class="mb-6" />
 
+		<UiQueryBoundary v-if="tabError" :error="tabError" @retry="retryTab" />
+
 		<!-- ── OVERVIEW ── -->
-		<div v-if="activeTab === 'overview'" class="space-y-6">
+		<div v-else-if="activeTab === 'overview'" class="space-y-6">
 			<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 				<template v-if="layout.showDeliveryStats">
 					<div class="card p-5">

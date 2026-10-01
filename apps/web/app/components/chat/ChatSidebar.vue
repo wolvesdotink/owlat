@@ -17,12 +17,15 @@ interface Props {
 	dms: RoomItem[];
 	activeRoomId?: Id<'chatRooms'>;
 	isLoading: boolean;
+	/** The room lists' failed read: shown with Try again instead of "no channels". */
+	error?: Error | null;
 	/** Unread @-mention count for the Mentions inbox badge. */
 	mentionCount?: number;
 }
 
 const props = withDefaults(defineProps<Props>(), {
 	archivedChannels: () => [],
+	error: null,
 	mentionCount: 0,
 });
 
@@ -40,6 +43,7 @@ const emit = defineEmits<{
 	newDm: [];
 	browseChannels: [];
 	mentions: [];
+	retry: [];
 }>();
 
 const searchQuery = ref('');
@@ -103,6 +107,12 @@ const matchesQuery = (name: string) => {
 					</div>
 				</div>
 			</div>
+
+			<UiQueryBoundary
+				v-else-if="error && channels.length === 0 && dms.length === 0"
+				:error="error"
+				@retry="emit('retry')"
+			/>
 
 			<template v-else>
 				<!-- Channels -->

@@ -41,6 +41,8 @@ const {
 	contact,
 	followUps,
 	threadLoading,
+	threadError,
+	refetchThread,
 	handleReject,
 	handleRetry,
 	cancelFollowUp,
@@ -376,8 +378,11 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 			{{ t('dashboard.inbox.detail.backToInbox') }}
 		</NuxtLink>
 
+		<!-- A failed read is not a missing thread (#721). -->
+		<UiQueryBoundary v-if="threadError" :error="threadError" @retry="refetchThread" />
+
 		<!-- Loading: the page's own shape, headed by the list row when we have it. -->
-		<InboxThreadDetailSkeleton v-if="threadLoading && !thread" :preview="threadPreview" />
+		<InboxThreadDetailSkeleton v-else-if="threadLoading && !thread" :preview="threadPreview" />
 
 		<!-- Not Found -->
 		<div v-else-if="!thread" class="flex flex-col items-center justify-center py-16 text-center">

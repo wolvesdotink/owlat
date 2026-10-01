@@ -19,9 +19,12 @@ definePageMeta({
 const { hasActiveOrganization, isLoading: teamLoading, role } = useOrganizationContext();
 
 // Get domains with real-time updates
-const { data: domainsData, isLoading: domainsLoading } = useOrganizationQuery(
-	api.domains.domains.listByOrganization
-);
+const {
+	data: domainsData,
+	isLoading: domainsLoading,
+	error: domainsError,
+	refetch: refetchDomains,
+} = useOrganizationQuery(api.domains.domains.listByOrganization);
 const { data: sendingOverview } = useOrganizationQuery(
 	api.analytics.reputationQueries.getSendingOverview
 );
@@ -355,9 +358,10 @@ const { autoRecheckActive } = useDomainAutoRecheck({
 				:volume="outboundIpDetail.volume"
 			/>
 
-			<!-- No verified domain → offer connecting an external mailbox instead -->
+			<!-- No verified domain → offer connecting an external mailbox instead.
+			     Only once the list has answered: a failed read proves nothing. -->
 			<div
-				v-if="isEnabled('mail.external') && !hasVerifiedDomain"
+				v-if="isEnabled('mail.external') && domainsData && !hasVerifiedDomain"
 				class="card p-6 bg-bg-surface flex items-start gap-4"
 			>
 				<UiIconBox icon="lucide:mail-plus" size="sm" variant="surface" rounded="lg" />
@@ -375,9 +379,12 @@ const { autoRecheckActive } = useDomainAutoRecheck({
 				</div>
 			</div>
 
+			<!-- A failed read is not an empty list (#721). -->
+			<UiQueryBoundary v-if="domainsError" :error="domainsError" @retry="refetchDomains" />
+
 			<!-- Empty State -->
 			<UiEmptyState
-				v-if="domainsData && domainsData.length === 0"
+				v-else-if="domainsData && domainsData.length === 0"
 				icon="lucide:globe"
 				:title="t('dashboard.admin.delivery.domains.empty.title')"
 				:description="t('dashboard.admin.delivery.domains.empty.description')"

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useClickOutside } from '~/composables/useClickOutside';
+import { useLocalized } from '~/composables/useLocalized';
 import type { TrustLabel } from '~/utils/trustLabel';
 import { useEscapeToClose } from '~/composables/useEscapeToClose';
 
@@ -25,10 +26,7 @@ const { t } = useI18n();
  * fields hold i18n keys — parameterized ones as `{ key, params }` (see the
  * localization guide). Render every one of them through here.
  */
-type Translatable = string | { key: string; params?: Record<string, unknown> };
-function tv(value: Translatable): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const tv = useLocalized();
 
 const trustText = computed(() => tv(props.trust.label));
 

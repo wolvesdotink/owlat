@@ -17,6 +17,7 @@
 import { api } from '@owlat/api';
 import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import type { Id } from '@owlat/api/dataModel';
+import { useLocalized } from '~/composables/useLocalized';
 import { useNow } from '~/composables/useNow';
 import {
 	briefGreeting,
@@ -31,8 +32,7 @@ const props = defineProps<{ mailboxId: Id<'mailboxes'> }>();
 const { t } = useI18n();
 
 /** The brief copy is derived as message keys (parameterized ones as `{ key, params }`). */
-const localize = (value: string | { key: string; params?: Record<string, unknown> }): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const localize = useLocalized();
 
 // Local clock: localDay keys the cache + dismissal; re-checked each minute so
 // the card rolls over at midnight (and the greeting with the hour) without a

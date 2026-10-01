@@ -31,6 +31,7 @@
  * a unit test. When the flag is off the parent passes `enabled=false` and the
  * lock renders nothing.
  */
+import { useLocalized } from '~/composables/useLocalized';
 import { deriveComposerLock, type SealState } from '~/utils/sealComposer';
 import { SEAL_TONE_CLASSES } from '~/utils/sealTone';
 
@@ -69,8 +70,7 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 /** The lock derivation hands back message keys (parameterized ones as `{ key, params }`). */
-const localize = (value: string | { key: string; params?: Record<string, unknown> }): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const localize = useLocalized();
 
 // Nothing to say only before a draft exists (no query yet): from the moment the
 // state is being computed the lock speaks, first as `checking`.
