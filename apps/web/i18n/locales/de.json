@@ -10927,6 +10927,7 @@
 			"pageTitle": "Server einrichten — Owlat",
 			"provision": "Server bereitstellen",
 			"secrets": {
+				"leftAfterFailure": "Die Setup-Datei liegt noch auf dem Server. Sie enthält Ihr Administrator-Passwort und die Anbieterschlüssel im Klartext. Löschen Sie sie per SSH: {command}",
 				"notRemoved": "Die Setup-Datei konnte nicht automatisch entfernt werden. Sie enthält Ihr Administrator-Passwort und die Anbieterschlüssel im Klartext — löschen Sie {file} aus dem Installationsverzeichnis.",
 				"removed": "Die Setup-Datei — die Ihr Administrator-Passwort und die API-Schlüssel der Anbieter im Klartext enthielt — wurde vom Server entfernt."
 			},

@@ -56,6 +56,8 @@ export interface LocalSourceInstall {
 	readonly pushLog: (stream: 'stdout' | 'stderr', line: string) => void;
 	/** Run one exec step on the server, streaming to the log; throws on non-zero exit. */
 	readonly runExecStep: (stepId: string, command: string) => Promise<number>;
+	/** Throws once the wizard has been left, so no further step starts. */
+	readonly ensureActive: () => void;
 	readonly t: Translate;
 }
 
@@ -66,6 +68,7 @@ async function uploadLocalSource(ctx: LocalSourceInstall): Promise<void> {
 	const prep = await ssh.execStream(sessionId, prepareInstallDirCommand(remote), (e: ExecEvent) => {
 		if (e.kind !== 'exit') ctx.pushLog(e.kind, e.line);
 	});
+	ctx.ensureActive();
 	if (prep !== 0) {
 		setStepState(
 			steps,
@@ -78,13 +81,15 @@ async function uploadLocalSource(ctx: LocalSourceInstall): Promise<void> {
 		);
 	}
 	await ssh.uploadDir(sessionId, ctx.localSource, remote.installDir);
+	ctx.ensureActive();
 	setStepState(steps, 'fetch-owlat', 'ok', t('shared.useServerProvisioning.uploadedLocalSource'));
 }
 
 /**
  * Build every stack image here for the server's platform, then stream them over
  * SSH. Two local invocations (the stack, then the setup image) share one step in
- * the timeline, because to the operator it is one wait.
+ * the timeline, because to the operator it is one wait. The builds belong to
+ * the SSH session, so leaving the wizard kills them.
  */
 async function buildAndPushImages(ctx: LocalSourceInstall): Promise<void> {
 	const { ssh, sessionId, steps, t } = ctx;
@@ -93,7 +98,13 @@ async function buildAndPushImages(ctx: LocalSourceInstall): Promise<void> {
 	const onLine = (e: ExecEvent) => {
 		if (e.kind !== 'exit') ctx.pushLog(e.kind, e.line);
 	};
-	const buildCode = await ssh.localBuild(ctx.localSource, localStackBuild(platform), onLine);
+	const buildCode = await ssh.localBuild(
+		sessionId,
+		ctx.localSource,
+		localStackBuild(platform),
+		onLine
+	);
+	ctx.ensureActive();
 	if (buildCode !== 0) {
 		setStepState(
 			steps,
@@ -103,7 +114,13 @@ async function buildAndPushImages(ctx: LocalSourceInstall): Promise<void> {
 		);
 		throw new Error(t('shared.useServerProvisioning.localBuildFailed', { code: buildCode }));
 	}
-	const setupCode = await ssh.localBuild(ctx.localSource, localSetupImageBuild(platform), onLine);
+	const setupCode = await ssh.localBuild(
+		sessionId,
+		ctx.localSource,
+		localSetupImageBuild(platform),
+		onLine
+	);
+	ctx.ensureActive();
 	if (setupCode !== 0) {
 		setStepState(
 			steps,
@@ -118,6 +135,7 @@ async function buildAndPushImages(ctx: LocalSourceInstall): Promise<void> {
 	// push-images — docker save → gzip → ssh → docker load.
 	setStepState(steps, 'push-images', 'running');
 	await ssh.pushImages(sessionId, [...DEV_IMAGES], onLine);
+	ctx.ensureActive();
 	setStepState(steps, 'push-images', 'ok');
 }
 

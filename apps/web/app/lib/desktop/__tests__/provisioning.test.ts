@@ -330,6 +330,20 @@ describe('remote commands', () => {
 		for (const image of DEV_IMAGES) expect(image).toMatch(/^[a-z0-9][a-z0-9._/-]*:dev$/);
 	});
 
+	it('the installer deletes the uploaded config itself when its run ends', () => {
+		// scripts/owlat removes the plaintext config on every exit path when
+		// asked (scripts/__tests__/owlat-quickstart-config.test.ts), so a killed
+		// desktop cannot leave it behind; every install source asks.
+		for (const o of [
+			remote,
+			{ ...remote, version: '0.4.4' },
+			{ ...remote, localSource: '/x' },
+			{ ...remote, localSource: '/x', localImages: true },
+		]) {
+			expect(installerCommand(o)).toContain('OWLAT_CONSUME_CONFIG=1 ./scripts/owlat quickstart');
+		}
+	});
+
 	it('derives the install source from remote options', () => {
 		expect(installSource(remote)).toBe('git');
 		expect(installSource({ ...remote, localSource: '/x' })).toBe('local-build');

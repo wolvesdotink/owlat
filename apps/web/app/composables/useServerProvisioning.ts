@@ -20,8 +20,6 @@ import {
 	installerCommand,
 	installSource,
 	setupConfigPath,
-	canOpenWorkspaceUrl,
-	isLoopbackUrl,
 	DEFAULT_REMOTE,
 	type ProvisionTransport,
 	type ConnectInfo,
@@ -40,6 +38,12 @@ import {
 } from '~/lib/desktop/provisioningForm';
 import { installLocalSource } from '~/composables/serverProvisioningLocalSource';
 import { resolveInstallRelease } from '~/composables/serverProvisioningRelease';
+import { useProvisionedSite } from '~/composables/serverProvisioningSite';
+import {
+	ProvisioningAbandoned,
+	leaveSession,
+	removeUploadedConfig,
+} from '~/composables/serverProvisioningSession';
 
 export type ProvisionStage =
 	| 'idle'
@@ -86,11 +90,15 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 	// cause stays readable even after later output scrolls past the cap.
 	const failureTail = ref<string[]>([]);
 	// Whether the uploaded setup config (admin password + provider keys, in
-	// plaintext) was removed from the server after a successful install.
+	// plaintext) was removed from the server after the install.
 	const secretsRemoved = ref(false);
-	// Whether the provisioned site URL has been confirmed reachable from this
-	// machine (DNS resolved + TLS issued). Gates the "open workspace" success.
-	const siteReachable = ref(false);
+	// When the config's removal after a FAILED install could not be confirmed:
+	// the command that removes it by hand. Shown next to the failure, never
+	// instead of it.
+	const leftoverConfigCleanup = ref<string | null>(null);
+	// The provisioned site and whether it answers yet (the success hand-off).
+	const { siteUrl, siteReachable, canOpenWorkspace, verifySiteReachable, connectWorkspace } =
+		useProvisionedSite(summary);
 	// The server's public IP, auto-detected over the SSH session once
 	// authenticated. Only meaningful when the operator connected by hostname
 	// (an IP SSH address is already the answer); empty when detection failed,
@@ -101,6 +109,17 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 	let creds: ServerCredentials | null = null;
 	let remote: RemoteOptions = { ...DEFAULT_REMOTE };
 	let dockerPresent = false;
+	// The wizard was left (see disconnect): nothing may advance after that.
+	let left = false;
+	// An upload may have created the setup config on the server and it has not
+	// been removed since. Set BEFORE the upload, since a failed write can still
+	// have created the file.
+	let configOnServer = false;
+
+	/** Stop a run that outlived the wizard before it starts its next step. */
+	function ensureActive(): void {
+		if (left) throw new ProvisioningAbandoned();
+	}
 
 	async function getTransport(): Promise<ProvisionTransport> {
 		if (!transport) transport = await createTauriTransport();
@@ -112,7 +131,10 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 		if (logs.value.length > MAX_LOG_LINES) logs.value.splice(0, logs.value.length - MAX_LOG_LINES);
 	}
 
-	function fail(message: string): void {
+	function fail(e: unknown): void {
+		// A step that was stopped because the wizard was left has nobody to tell.
+		if (left || e instanceof ProvisioningAbandoned) return;
+		const message = messageOf(e, t('shared.useServerProvisioning.unknownError'));
 		error.value = message;
 		stage.value = 'error';
 		// Pin the failing step's stderr tail so the root cause survives the log cap.
@@ -128,6 +150,7 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 		error.value = null;
 		failureTail.value = [];
 		secretsRemoved.value = false;
+		leftoverConfigCleanup.value = null;
 		siteReachable.value = false;
 		creds = input;
 		remote = { ...DEFAULT_REMOTE, ...input.remote };
@@ -139,6 +162,12 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 		try {
 			const ssh = await getTransport();
 			const info = await ssh.connect(input.host, input.port);
+			if (left) {
+				// Left while the handshake was in flight: nobody will ever
+				// disconnect this session unless it is done here.
+				await ssh.disconnect(info.sessionId).catch(() => {});
+				throw new ProvisioningAbandoned();
+			}
 			connectInfo.value = info;
 			setStepState(steps, 'ssh-connect', 'ok', `${input.host}:${input.port}`);
 
@@ -151,7 +180,7 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 				setStepState(steps, 'host-key', 'running', info.fingerprint);
 			}
 		} catch (e) {
-			fail(messageOf(e, t('shared.useServerProvisioning.unknownError')));
+			fail(e);
 		} finally {
 			busy.value = false;
 		}
@@ -168,10 +197,11 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 		try {
 			const ssh = await getTransport();
 			await ssh.acceptHostKey(connectInfo.value.sessionId, acceptChanged);
+			ensureActive();
 			setStepState(steps, 'host-key', 'ok', t('shared.useServerProvisioning.hostKeyAccepted'));
 			await authenticate();
 		} catch (e) {
-			fail(messageOf(e, t('shared.useServerProvisioning.unknownError')));
+			fail(e);
 		} finally {
 			busy.value = false;
 		}
@@ -185,6 +215,7 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 		try {
 			const ssh = await getTransport();
 			await ssh.authenticate(connectInfo.value.sessionId, creds.username, creds.auth);
+			ensureActive();
 			setStepState(steps, 'authenticate', 'ok', creds.username);
 			stage.value = 'configure';
 			// Best-effort: pre-fill the DNS A-record target so the operator does
@@ -192,7 +223,7 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 			// hostname). Never blocks reaching the configure stage.
 			await detectPublicIp(connectInfo.value.sessionId);
 		} catch (e) {
-			fail(messageOf(e, t('shared.useServerProvisioning.unknownError')));
+			fail(e);
 		}
 	}
 
@@ -230,6 +261,7 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 			pushLog(e.kind, e.line);
 			onLine?.(e.line, e.kind);
 		});
+		ensureActive();
 		if (code !== 0) {
 			setStepState(steps, stepId, 'failed', t('shared.useServerProvisioning.exitCode', { code }));
 			throw new Error(t('shared.useServerProvisioning.stepFailed', { step: stepId, code }));
@@ -246,6 +278,7 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 		error.value = null;
 		failureTail.value = [];
 		secretsRemoved.value = false;
+		leftoverConfigCleanup.value = null;
 		stage.value = 'provisioning';
 		try {
 			const ssh = await getTransport();
@@ -295,6 +328,7 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 					serverArch,
 					pushLog,
 					runExecStep: (stepId, command) => runExecStep(sessionId, stepId, command),
+					ensureActive,
 					t,
 				});
 			} else {
@@ -302,13 +336,16 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 				await runExecStep(sessionId, 'fetch-owlat', fetchOwlatCommand(remote));
 			}
 
-			// upload-config — write the generated setup config.
+			// upload-config — write the generated setup config. Every run uploads
+			// a fresh copy (a retry too); nothing relies on an earlier one.
 			setStepState(steps, 'upload-config', 'running');
+			configOnServer = true;
 			await ssh.writeFile(
 				sessionId,
 				setupConfigPath(remote.installDir),
 				JSON.stringify(config, null, 2)
 			);
+			ensureActive();
 			setStepState(steps, 'upload-config', 'ok');
 
 			// installer — drives all server steps via NDJSON.
@@ -331,6 +368,7 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 				}
 				pushLog(e.kind, e.line);
 			});
+			ensureActive();
 
 			if (code !== 0 || !done) {
 				setStepState(steps, 'finish', 'failed');
@@ -344,7 +382,11 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 
 			stage.value = 'done';
 		} catch (e) {
-			fail(messageOf(e, t('shared.useServerProvisioning.unknownError')));
+			fail(e);
+			// The failure is recorded first, so a cleanup that also fails can
+			// only add its warning, never replace the error. A wizard that was
+			// left cleans up in disconnect instead.
+			if (configOnServer && !left) await removeSetupConfig(sessionId);
 		} finally {
 			busy.value = false;
 		}
@@ -352,17 +394,10 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 
 	/** Delete the plaintext setup config from the server (best-effort, never fatal). */
 	async function removeSetupConfig(sessionId: string): Promise<void> {
-		try {
-			const ssh = await getTransport();
-			const code = await ssh.execStream(
-				sessionId,
-				removeSetupConfigCommand(remote.installDir),
-				() => {}
-			);
-			secretsRemoved.value = code === 0;
-		} catch {
-			secretsRemoved.value = false;
-		}
+		const removed = await removeUploadedConfig(await getTransport(), sessionId, remote.installDir);
+		if (removed) configOnServer = false;
+		secretsRemoved.value = removed;
+		leftoverConfigCleanup.value = removed ? null : removeSetupConfigCommand(remote.installDir);
 	}
 
 	/**
@@ -372,51 +407,25 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 	 */
 	const serverIp = computed(() => resolveServerIp(creds?.host ?? '', publicIp.value));
 
-	/** The provisioned instance's public URL, if the installer reported one. */
-	const siteUrl = computed(() => (summary.value?.['siteUrl'] as string | undefined) ?? null);
-
 	/**
-	 * Whether the success state may offer "Open workspace" yet: a public
-	 * (non-loopback) URL that we have confirmed actually answers. The installer
-	 * finishing is NOT the same as the public URL being usable (DNS/TLS lag).
+	 * Leave the wizard (it is unmounting). Stops whatever is still running,
+	 * removes the setup config if it may be on the server, and releases the
+	 * session; a run in flight stops before its next step, and a connect still
+	 * in flight disconnects its own session when it lands. A command already
+	 * running ON the server is not killed (see ssh.rs): it loses its output
+	 * pipes, and the installer deletes the config itself when it ends.
 	 */
-	const canOpenWorkspace = computed(() => canOpenWorkspaceUrl(siteUrl.value, siteReachable.value));
-
-	/**
-	 * Probe the provisioned site for an owlat instance. Loopback URLs are never
-	 * reachable from the desktop (their `localhost` is the app's own machine), so
-	 * they short-circuit to unreachable without a network round-trip.
-	 */
-	async function verifySiteReachable(): Promise<boolean> {
-		const url = siteUrl.value;
-		if (!url || isLoopbackUrl(url)) {
-			siteReachable.value = false;
-			return false;
-		}
-		try {
-			const res = await fetch(`${url}/api/instance-info`, { credentials: 'omit' });
-			siteReachable.value = res.ok;
-		} catch {
-			siteReachable.value = false;
-		}
-		return siteReachable.value;
-	}
-
-	/** Connect the freshly-provisioned server as a workspace (reuses the handshake). */
-	async function connectWorkspace(): Promise<void> {
-		const url = siteUrl.value;
-		// Never open a URL the app can't reach: a loopback or not-yet-resolvable
-		// address opens the system browser to a dead page and fails silently.
-		if (!url || !canOpenWorkspace.value) return;
-		const { useDesktopWorkspaces } = await import('~/composables/useDesktopWorkspaces');
-		await useDesktopWorkspaces().addWorkspace(url);
-	}
-
 	async function disconnect(): Promise<void> {
-		if (!connectInfo.value) return;
+		if (left) return;
+		left = true;
+		const info = connectInfo.value;
+		if (!info) return;
 		try {
-			const ssh = await getTransport();
-			await ssh.disconnect(connectInfo.value.sessionId);
+			await leaveSession(await getTransport(), info.sessionId, {
+				running: busy.value,
+				configOnServer,
+				installDir: remote.installDir,
+			});
 		} catch {
 			// best-effort
 		}
@@ -439,6 +448,7 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 		error.value = null;
 		failureTail.value = [];
 		secretsRemoved.value = false;
+		leftoverConfigCleanup.value = null;
 		siteReachable.value = false;
 		stage.value = connectInfo.value ? 'configure' : 'idle';
 	}
@@ -459,6 +469,7 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 		error: readonly(error),
 		failureTail: readonly(failureTail),
 		secretsRemoved: readonly(secretsRemoved),
+		leftoverConfigCleanup: readonly(leftoverConfigCleanup),
 		busy: readonly(busy),
 		progress,
 		siteUrl,

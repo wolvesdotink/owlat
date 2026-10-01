@@ -39,6 +39,7 @@ pub const PROVISIONING_COMMANDS: &[&str] = &[
     "ssh_authenticate",
     "ssh_exec_stream",
     "ssh_write_file",
+    "ssh_cancel",
     "ssh_disconnect",
 ];
 

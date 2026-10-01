@@ -228,6 +228,12 @@ export function localSetupImageBuild(platform: string): LocalBuild {
  * `docker compose --build` from source (`OWLAT_BUILD_LOCAL`) or to use the
  * pre-pushed `dev` images as-is (`OWLAT_LOCAL_IMAGES`). A branch install sets
  * nothing and lets the compose default build from the checkout.
+ *
+ * `OWLAT_CONSUME_CONFIG=1` makes `scripts/owlat` delete the uploaded config
+ * (admin password, provider keys) once quickstart exits, however it exits, so
+ * the secret does not outlive the run even when this app is gone by then. An
+ * older `scripts/owlat` (a release that predates it) ignores the variable; the
+ * wizard's own cleanup covers that case.
  */
 export function installerCommand(o: RemoteOptions): string {
 	const source = installSource(o);
@@ -241,5 +247,5 @@ export function installerCommand(o: RemoteOptions): string {
 		env = `OWLAT_SETUP_IMAGE='${releaseSetupImage(o.version)}' `;
 		versionFlag = ` --owlat-version '${o.version}'`;
 	}
-	return `cd '${o.installDir}' && ${env}OWLAT_PROGRESS=json OWLAT_ASSUME_YES=1 ./scripts/owlat quickstart --terminal${versionFlag} --config '${CONTAINER_CONFIG_PATH}'`;
+	return `cd '${o.installDir}' && ${env}OWLAT_PROGRESS=json OWLAT_ASSUME_YES=1 OWLAT_CONSUME_CONFIG=1 ./scripts/owlat quickstart --terminal${versionFlag} --config '${CONTAINER_CONFIG_PATH}'`;
 }
