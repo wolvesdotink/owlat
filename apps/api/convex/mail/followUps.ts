@@ -34,6 +34,7 @@ import { requireMailboxAccess, requireMessageAccess } from './permissions';
 import { adjustFolderUnseen } from './folders';
 import { rebuildThreadAggregates } from './messageActions';
 import { recordMessageCounters } from './messageCounters';
+import { recordFolderMembership } from './folderMembership';
 
 // ─── Pure helpers ────────────────────────────────────────────────────────────
 
@@ -200,6 +201,11 @@ export const internalSweep = internalMutation({
 					updatedAt: now,
 				});
 				await recordMessageCounters(ctx, message, { ...message, folderId: inbox._id });
+				await recordFolderMembership(ctx, message, {
+					...message,
+					folderId: inbox._id,
+					uid: inbox.uidNext,
+				});
 				await ctx.db.patch(inbox._id, {
 					uidNext: inbox.uidNext + 1,
 					highestModseq: inbox.highestModseq + 1,

@@ -40,8 +40,8 @@ import {
 	answerQueueHrefFor,
 	replyQueueHeadline,
 	type ReplyQueueItem,
-	type ReplyQueueText,
 } from '~/utils/postboxReplyQueue';
+import { useLocalized } from '~/composables/useLocalized';
 
 /**
  * Client detection that is both SSR-safe (no `window` on the server) and
@@ -77,7 +77,7 @@ const folderRef = computed(() => 'inbox');
 
 // Same inbox feed the browse list reads (the Convex client dedupes the
 // subscription), so triaging here and there stays perfectly consistent.
-const { messages, isLoading, hasMore, loadMore } = usePostboxThreads({
+const { messages, isLoading, hasMore, loadMore, error, refetch } = usePostboxThreads({
 	mailboxId: computed<Id<'mailboxes'> | null>(() => props.mailboxId),
 	folderRole: folderRef,
 });
@@ -158,9 +158,7 @@ watch(
  * with params) while message-derived text (a subject, an AI ask summary)
  * arrives as itself — resolve both here, the rendering layer.
  */
-function replyQueueText(value: ReplyQueueText): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const replyQueueText = useLocalized();
 
 /** The strip's headline — the AI's ask summary, the subject, or the fallback copy. */
 function forYouHeadline(item: ReplyQueueItem): string {
@@ -349,6 +347,8 @@ function onModeSelect(mode: PostboxInboxMode) {
 						@select="openMessageId = $event"
 					/>
 				</div>
+				<!-- A failed read is not inbox zero (#721). -->
+				<UiQueryBoundary v-else-if="error" :error="error" @retry="refetch" />
 				<PostboxThreadListSkeleton v-else-if="isLoading" class="mt-2" />
 				<!-- Inbox zero: one quiet line; the Brief + past mail stay put. -->
 				<p v-else class="mt-3 text-sm text-text-tertiary">

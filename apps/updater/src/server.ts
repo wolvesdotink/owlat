@@ -3,6 +3,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { errorMessage } from '@owlat/shared';
+import { readIntEnv } from '@owlat/shared/nodeEnv';
 import { hasVersionDrift, parseConfiguredVersionFromEnv } from '@owlat/shared/containerHealth';
 import { applyEnvUpdates, isRateLimited, isValidIPv4 } from './security.js';
 import { composePsServices, exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
@@ -25,7 +26,14 @@ import {
 	type RolloutKind,
 } from './rolloutState.js';
 
-const PORT = parseInt(process.env['PORT'] || '3200', 10);
+/**
+ * The port the sidecar listens on. Through `readIntEnv`, so a blank, partial or
+ * out-of-range PORT stops the boot with the key named, instead of `parseInt`
+ * handing `listen()` a NaN.
+ */
+export function readListenPort(env: Readonly<Record<string, string | undefined>>): number {
+	return readIntEnv(env, 'PORT', { default: 3200, min: 1, max: 65535 });
+}
 
 // ── Endpoint handlers ──
 
@@ -351,7 +359,8 @@ const ROLLOUTS = new Map<string, { kind: RolloutKind; handle: RolloutHandler }>(
  */
 export function buildRequestListener() {
 	return async (req: IncomingMessage, res: ServerResponse) => {
-		const url = new URL(req.url || '/', `http://localhost:${PORT}`);
+		// Only the path and query are read; the base just makes the URL absolute.
+		const url = new URL(req.url || '/', 'http://localhost');
 
 		// The four state-changing endpoints run as critical sections: each writes
 		// host files and only then reconciles the running containers, so a
@@ -389,5 +398,3 @@ export function buildRequestListener() {
 		}
 	};
 }
-
-export { PORT };

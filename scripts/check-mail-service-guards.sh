@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 #
-# Mail-service source guards for apps/mta, apps/imap and apps/mail-sync.
+# Source guards for the long-running Node services that share the
+# `@owlat/shared` node helpers: apps/mta, apps/imap, apps/mail-sync and
+# apps/updater.
 #
 # Each rule bans a pattern the shared helpers replaced, so a copy cannot creep
 # back in. Hard-0 invariants with no baseline. Tests (__tests__) are exempt.
@@ -17,7 +19,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-roots=(apps/mta/src apps/imap/src apps/mail-sync/src)
+roots=(apps/mta/src apps/imap/src apps/mail-sync/src apps/updater/src)
 failed=0
 
 # forbid <message> <perl regex>: report every match as file:line.
@@ -48,4 +50,4 @@ forbid "handle SIGTERM/SIGINT with installShutdown from @owlat/shared/nodeShutdo
 if [ "$failed" -ne 0 ]; then
 	exit 1
 fi
-echo "ok:   mail-service source guards pass"
+echo "ok:   node service source guards pass"

@@ -17,13 +17,14 @@
  * them. The tearing window grows from one query to a few; it does not become a
  * new class of error.
  *
- * The UID list is deliberately NOT cached across commands. Another session's
- * EXPUNGE shifts every sequence number above it, so a map kept from an earlier
- * command makes `FETCH 2` address the wrong message — a correctness bug that
- * stays invisible until it hits mail. There is no per-session UID cache to
- * extend either: IDLE keeps its own `lastUids`, but that is the *client's*
- * view, kept deliberately stale so expunge diffs resolve against the sequence
- * numbers the client still holds.
+ * {@link loadFolderUids} itself caches nothing. Another session's EXPUNGE
+ * shifts every sequence number above it, so a UID list kept from an earlier
+ * command, unchecked, makes `FETCH 2` address the wrong message. Reuse lives in
+ * `membership.ts`, which keeps a list only under the folder's membership
+ * version and asks the backend whether that version still holds; this walk is
+ * its fallback for folders the backend does not maintain yet. The client's own
+ * numbering is a third thing again, the session's `SequenceView`, kept
+ * deliberately behind the folder until changes are announced to it.
  */
 
 import {
@@ -215,16 +216,20 @@ export async function loadMessageIds(
  * unsolicited `* n FETCH` lines IDLE builds from these rows used to come out in
  * sequence order, and nothing is gained by making that output depend on the
  * order flags happened to be written in.
+ *
+ * Aborts like {@link loadFolderUids}: `signal` is checked before each page.
  */
 export async function loadChangedEnvelopes(
 	convex: ConvexClient,
 	folderId: string,
 	modseqSince: number,
+	signal?: AbortSignal,
 	pageSize = 200
 ): Promise<FetchEnvelope[]> {
 	const rows: FetchEnvelope[] = [];
 	let cursor: string | null = null;
 	for (let page = 0; page < MAX_PAGES; page += 1) {
+		signal?.throwIfAborted();
 		// Annotated: `cursor` is fed back from `result`, which TypeScript cannot
 		// infer through the generic call.
 		const result: ChangedEnvelopePage = await convex.query(fn.fetchChangedEnvelopes, {

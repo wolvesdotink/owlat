@@ -78,6 +78,8 @@ export const ORGANIZATION_DELETION_STEPS = {
 	conversationThreads: conversationThreadsStep,
 	counterScopes: makeSweepStep('counterScopes'),
 	counterBuckets: makeSweepStep('counterBuckets'),
+	mailFolderMembership: makeSweepStep('mailFolderMembership'),
+	mailFolderUidBlocks: makeSweepStep('mailFolderUidBlocks'),
 	mailAliases: makeSweepStep('mailAliases'),
 	mailFolders: makeSweepStep('mailFolders'),
 	mailLabels: makeSweepStep('mailLabels'),

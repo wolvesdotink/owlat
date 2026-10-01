@@ -16,6 +16,9 @@
  * feature flag, so every caller — the primary Postbox surface and the simple
  * label / search / contacts pages alike — gets the SAME correct next-step state
  * from just `mailboxId` + `loading`. No caller can wire a wrong dead-end.
+ *
+ * A failed mailbox read (`error`, with no mailbox to fall back on) is none of
+ * those: it shows the categorized error with Try again (`retry`), #721.
  */
 import { api } from '@owlat/api';
 import { deriveMailboxGuardState } from '~/utils/freshStart';
@@ -25,7 +28,10 @@ const { t } = useI18n();
 const props = defineProps<{
 	mailboxId: string | null;
 	loading: boolean;
+	/** The mailbox list's failed read, from `usePostboxMailbox().error`. */
+	error?: Error | null;
 }>();
+const emit = defineEmits<{ retry: [] }>();
 
 // Self-fetched no-mailbox signals. Cheap self-scoped read; the reservation /
 // open-request fields only matter in the no-mailbox branches, so skip the live
@@ -74,7 +80,11 @@ const alreadyAsked = computed(() => Boolean(freshStatus.value?.hasOpenRequest) |
 </script>
 
 <template>
-	<div v-if="state === 'loading'" class="flex-1 flex items-center justify-center p-12">
+	<div v-if="error && !mailboxId" class="flex-1 flex items-center justify-center p-12">
+		<UiQueryBoundary :error="error" @retry="emit('retry')" />
+	</div>
+
+	<div v-else-if="state === 'loading'" class="flex-1 flex items-center justify-center p-12">
 		<Icon
 			name="lucide:loader-2"
 			class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary"

@@ -12,10 +12,20 @@ definePageMeta({
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
-const { currentMailbox, isLoading: mailboxesLoading } = usePostboxMailbox();
+const {
+	currentMailbox,
+	isLoading: mailboxesLoading,
+	error: mailboxesError,
+	refetch: refetchMailboxes,
+} = usePostboxMailbox();
 const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 
-const { data, isLoading } = useConvexQuery(api.mail.forwarding.list, () =>
+const {
+	data,
+	isLoading,
+	error: listError,
+	refetch: refetchList,
+} = useConvexQuery(api.mail.forwarding.list, () =>
 	mailboxId.value ? { mailboxId: mailboxId.value } : 'skip'
 );
 const rules = computed(() => data.value ?? []);
@@ -107,6 +117,8 @@ async function confirmRemove() {
 			<div v-if="isLoading" class="p-8 flex justify-center">
 				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
 			</div>
+			<!-- A failed read is not an empty list (#721). -->
+			<UiQueryBoundary v-else-if="listError" :error="listError" @retry="refetchList" />
 			<div v-else-if="rules.length === 0" class="p-8 text-center text-text-secondary">
 				{{ t('dashboard.preferences.forwarding.empty') }}
 			</div>
@@ -143,7 +155,15 @@ async function confirmRemove() {
 			</ul>
 		</section>
 
-		<div v-if="!mailboxId && !mailboxesLoading" class="card p-6 text-center text-text-secondary">
+		<UiQueryBoundary
+			v-if="!mailboxId && mailboxesError"
+			:error="mailboxesError"
+			@retry="refetchMailboxes"
+		/>
+		<div
+			v-else-if="!mailboxId && !mailboxesLoading"
+			class="card p-6 text-center text-text-secondary"
+		>
 			{{ t('dashboard.preferences.forwarding.noMailbox') }}
 		</div>
 

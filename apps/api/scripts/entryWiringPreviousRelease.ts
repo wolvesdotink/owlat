@@ -19,6 +19,7 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'webhooks/deliveryQueries.ts#markDeliveryRetrying': 'old delivery actions mid-run',
 	'webhooks/deliveryQueries.ts#markDeliveryFailed': 'old delivery actions mid-run',
 	'automations/lifecycle.ts#recordRunFailure': 'old step walker actions mid-run',
+	'integrationImports/walker.ts#updateImportProgress': 'old import page actions mid-run',
 	'automations/stepExecutorQueries.ts#advanceAutomationRun': 'old step walker actions mid-run',
 	'automations/stepExecutorQueries.ts#cancelAutomationRun': 'old step walker actions mid-run',
 	'automations/stepExecutorQueries.ts#completeAutomationRun': 'old step walker actions mid-run',
