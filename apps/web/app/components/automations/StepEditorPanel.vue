@@ -25,6 +25,22 @@ const stepKind = computed<StepKind | null>(() => props.currentConfig?.kind ?? nu
 
 const module = computed(() => (stepKind.value ? stepEditorModuleFor(stepKind.value) : null));
 
+/** True while a step is open for editing (the panel's form is showing). */
+const isEditing = computed(() => !!(props.selectedStep && props.currentConfig && module.value));
+
+// Below lg the panel stacks under the canvas, so opening a step would change
+// nothing on screen; bring the form into view instead. Desktop keeps the
+// side-by-side layout and never scrolls.
+const root = ref<HTMLElement | null>(null);
+watch(
+	() => props.selectedStep?._id,
+	async (id) => {
+		if (!id || !import.meta.client || window.matchMedia('(min-width: 1024px)').matches) return;
+		await nextTick();
+		root.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	}
+);
+
 const updateConfig = (config: StepConfigByKind[StepKind]) => {
 	if (!props.currentConfig) return;
 	emit('update:currentConfig', {
@@ -35,11 +51,17 @@ const updateConfig = (config: StepConfigByKind[StepKind]) => {
 </script>
 
 <template>
-	<!-- The column stretches to the full canvas height; the content sticks to the
-	     top of the viewport so it stays in view however far the canvas scrolls. -->
-	<div class="w-96 shrink-0 border-l border-border-subtle bg-bg-elevated">
-		<div class="sticky top-0 max-h-dvh overflow-y-auto">
-			<div v-if="selectedStep && currentConfig && module" class="p-6">
+	<!-- From lg the column stretches to the full canvas height; the content sticks
+	     to the top of the viewport so it stays in view however far the canvas
+	     scrolls. Below lg a fixed 384px column left the canvas a sliver, so the
+	     panel stacks under the canvas and only appears while a step is open. -->
+	<div
+		ref="root"
+		class="w-full lg:w-96 shrink-0 border-t lg:border-t-0 lg:border-l border-border-subtle bg-bg-elevated scroll-mt-4"
+		:class="isEditing ? '' : 'max-lg:hidden'"
+	>
+		<div class="lg:sticky lg:top-0 lg:max-h-dvh lg:overflow-y-auto">
+			<div v-if="isEditing && selectedStep && currentConfig && module" class="p-6">
 				<div class="flex items-center justify-between mb-6">
 					<h2 class="text-lg font-semibold text-text-primary">
 						{{ t('components.automations.stepEditorPanel.title') }}

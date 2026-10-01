@@ -13,15 +13,27 @@ interface Props {
 	options: SegmentOption[];
 	modelValue?: string;
 	size?: SegmentSize;
+	/**
+	 * `equal` (default) gives every segment the width of the widest one, the
+	 * right call for short labels ("Grid" / "List"). `content` sizes each segment
+	 * to its label: status tabs with counts ("Needs attention 3" beside "All 18")
+	 * otherwise pad the short ones by ~100px and overflow a tablet-width row.
+	 */
+	fit?: 'equal' | 'content';
 }
 
 const props = withDefaults(defineProps<Props>(), {
 	size: 'md',
+	fit: 'equal',
 });
 
 const emit = defineEmits<{
 	'update:modelValue': [value: string];
 }>();
+
+const gridColumns = computed(
+	() => `repeat(${props.options.length}, ${props.fit === 'content' ? 'auto' : '1fr'})`
+);
 
 const selectedIndex = computed(() => {
 	const index = props.options.findIndex((o) => o.value === props.modelValue);
@@ -144,7 +156,7 @@ const indicatorStyle = computed(() => {
 		ref="rootRef"
 		role="tablist"
 		class="segmented-control"
-		:class="`segmented-control--${size}`"
+		:class="[`segmented-control--${size}`, { 'segmented-control--fit-content': fit === 'content' }]"
 		@keydown="handleKeyDown"
 	>
 		<span class="segmented-control__indicator" :style="indicatorStyle" />
@@ -169,10 +181,17 @@ const indicatorStyle = computed(() => {
 </template>
 
 <style scoped>
+/* Content-sized segments make a content-sized track: a stretched parent (a
+   stacked toolbar) must not spread the auto columns across the row. Callers
+   wrap the strip in a sideways scroller for phones. */
+.segmented-control--fit-content {
+	width: max-content;
+}
+
 .segmented-control {
 	position: relative;
 	display: grid;
-	grid-template-columns: v-bind('`repeat(${options.length}, 1fr)`');
+	grid-template-columns: v-bind(gridColumns);
 	background: var(--surface-2);
 	/* Rule 2 — elevation is a shadow ring, never a painted border. The old rule
 	   was `1px solid var(--color-border, #e5e7eb)`, and `--color-border` has

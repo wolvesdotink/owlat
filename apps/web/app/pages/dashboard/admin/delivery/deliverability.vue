@@ -191,7 +191,15 @@ async function copyReport() {
 					</p>
 				</div>
 			</div>
-			<UiButton v-if="center" variant="ghost" size="sm" class="w-fit" @click="copyReport">
+			<!-- `shrink-0 whitespace-nowrap`: the German label ("Einrichtungsbericht
+			     kopieren") otherwise wrapped onto two lines beside the lede. -->
+			<UiButton
+				v-if="center"
+				variant="ghost"
+				size="sm"
+				class="w-fit shrink-0 whitespace-nowrap"
+				@click="copyReport"
+			>
 				<Icon
 					:name="isCopied('deliverability-report') ? 'lucide:check' : 'lucide:clipboard-copy'"
 					class="h-4 w-4"

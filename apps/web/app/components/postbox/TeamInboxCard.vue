@@ -160,34 +160,39 @@ const createdOn = computed(() =>
 				<div class="flex items-center gap-3 min-w-0 flex-1 basis-64">
 					<UiIconBox icon="lucide:mails" size="md" variant="surface" rounded="lg" />
 					<div class="min-w-0">
-						<p class="font-semibold text-text-primary truncate">
-							{{ inbox.displayName || inbox.address }}
-						</p>
+						<!-- State badges sit with the name they describe, not at the head
+						     of the action group, where "External" read as a button label
+						     and pushed the actions onto a row of their own. -->
+						<div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+							<p class="font-semibold text-text-primary truncate">
+								{{ inbox.displayName || inbox.address }}
+							</p>
+							<span
+								v-if="inbox.status === 'suspended'"
+								class="text-xs px-2 py-0.5 rounded bg-warning/10 text-warning"
+							>
+								{{ t('dashboard.admin.team.inboxes.badges.suspended') }}
+							</span>
+							<span
+								v-if="hasConnectionError"
+								class="text-xs px-2 py-0.5 rounded bg-error/10 text-error"
+								:title="inbox.externalLastError || undefined"
+							>
+								{{ t('dashboard.admin.team.inboxes.badges.needsAttention') }}
+							</span>
+							<span
+								v-if="inbox.kind === 'external'"
+								class="text-xs px-2 py-0.5 rounded bg-bg-surface text-text-tertiary"
+							>
+								{{ t('dashboard.admin.team.inboxes.badges.external') }}
+							</span>
+						</div>
 						<p class="text-sm text-text-tertiary truncate">
 							<code>{{ inbox.address }}</code>
 						</p>
 					</div>
 				</div>
 				<div class="flex flex-wrap items-center gap-2">
-					<span
-						v-if="inbox.status === 'suspended'"
-						class="text-xs px-2 py-0.5 rounded bg-warning/10 text-warning"
-					>
-						{{ t('dashboard.admin.team.inboxes.badges.suspended') }}
-					</span>
-					<span
-						v-if="hasConnectionError"
-						class="text-xs px-2 py-0.5 rounded bg-error/10 text-error"
-						:title="inbox.externalLastError || undefined"
-					>
-						{{ t('dashboard.admin.team.inboxes.badges.needsAttention') }}
-					</span>
-					<span
-						v-if="inbox.kind === 'external'"
-						class="text-xs px-2 py-0.5 rounded bg-bg-surface text-text-tertiary"
-					>
-						{{ t('dashboard.admin.team.inboxes.badges.external') }}
-					</span>
 					<UiButton
 						v-if="needsReconnect"
 						variant="secondary"
@@ -238,6 +243,7 @@ const createdOn = computed(() =>
 						variant="ghost"
 						size="sm"
 						:title="t('dashboard.admin.team.inboxes.rotateKeyTitle')"
+						:aria-label="t('dashboard.admin.team.inboxes.rotateKeyTitle')"
 						@click="emit('rotateKey')"
 					>
 						<Icon name="lucide:key-round" class="w-4 h-4" />
@@ -248,6 +254,7 @@ const createdOn = computed(() =>
 						size="sm"
 						class="text-error hover:text-error"
 						:title="t('dashboard.admin.team.inboxes.revokeKeyTitle')"
+						:aria-label="t('dashboard.admin.team.inboxes.revokeKeyTitle')"
 						@click="emit('revokeKey')"
 					>
 						<Icon name="lucide:shield-off" class="w-4 h-4" />
@@ -258,6 +265,7 @@ const createdOn = computed(() =>
 						size="sm"
 						class="text-error hover:text-error"
 						:title="t('dashboard.admin.team.inboxes.deleteInboxTitle')"
+						:aria-label="t('dashboard.admin.team.inboxes.deleteInboxTitle')"
 						@click="emit('purge')"
 					>
 						<Icon name="lucide:trash-2" class="w-4 h-4" />

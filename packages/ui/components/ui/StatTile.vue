@@ -78,7 +78,10 @@ const deltaText = computed(() =>
 		<p :class="['mt-1 font-display text-3xl tabular-nums leading-none', valueToneClass[valueTone]]">
 			{{ value }}
 		</p>
-		<p v-if="delta !== undefined" :class="['mt-1.5 text-xs tabular-nums', deltaToneClass[resolvedDeltaTone]]">
+		<p
+			v-if="delta !== undefined"
+			:class="['mt-1.5 text-xs tabular-nums', deltaToneClass[resolvedDeltaTone]]"
+		>
 			{{ deltaText }}
 		</p>
 		<p v-if="hint" class="mt-1 text-[11px] tabular-nums text-text-tertiary">{{ hint }}</p>

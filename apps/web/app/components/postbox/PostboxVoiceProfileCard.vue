@@ -67,9 +67,11 @@ async function onRemoveAdjustment(kind: string) {
 
 <template>
 	<section class="card !p-0">
-		<header class="px-5 py-3 border-b border-border-subtle flex items-center justify-between gap-3">
-			<div class="min-w-0">
-				<h2 class="font-semibold truncate">{{ address }}</h2>
+		<header
+			class="px-5 py-3 border-b border-border-subtle flex flex-wrap items-center justify-between gap-x-3 gap-y-2"
+		>
+			<div class="min-w-0 flex-[1_1_14rem]">
+				<h2 class="font-semibold wrap-anywhere">{{ address }}</h2>
 				<p class="text-xs text-text-tertiary">
 					{{ t('components.postbox.postboxVoiceProfileCard.learnedFrom') }}
 				</p>
@@ -88,7 +90,10 @@ async function onRemoveAdjustment(kind: string) {
 		</header>
 
 		<div v-if="isLoading" class="p-6 flex justify-center">
-			<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
+			<Icon
+				name="lucide:loader-2"
+				class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
+			/>
 		</div>
 
 		<div v-else class="px-5 py-4 space-y-3">

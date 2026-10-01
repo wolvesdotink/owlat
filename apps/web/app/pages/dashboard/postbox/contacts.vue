@@ -150,8 +150,10 @@ function initial(c: { displayName?: string; email: string }) {
 
 <template>
 	<div class="p-6 max-w-3xl mx-auto">
-		<header class="flex items-center justify-between gap-4 mb-4">
-			<div>
+		<!-- Wraps: on a phone the button took a line of its own instead of
+		     squeezing the title and wrapping its own label. -->
+		<header class="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+			<div class="min-w-0 flex-[1_1_16rem]">
 				<h1 class="text-xl font-semibold text-text-primary">
 					{{ t('dashboard.postbox.contacts.title') }}
 				</h1>

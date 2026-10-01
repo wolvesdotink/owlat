@@ -236,42 +236,47 @@ const HINTS: ReadonlyArray<{ keys: string[]; label: string; spamToo: boolean }> 
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
-		<!-- Header -->
-		<div class="mb-6 flex items-start justify-between gap-4">
-			<div class="flex items-start gap-4">
-				<NuxtLink
-					to="/dashboard/inbox"
-					class="mt-2 inline-flex items-center gap-2 text-text-secondary transition-colors duration-(--motion-fast) hover:text-text-primary"
-				>
-					<Icon name="lucide:arrow-left" class="h-4 w-4" />
-				</NuxtLink>
-				<div>
-					<span class="lp-eyebrow">{{ t('shared.dashboardNavigation.sections.inbox') }}</span>
-					<h1 class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ t('dashboard.inbox.updates.title') }}
-					</h1>
-					<p class="mt-1 max-w-[540px] text-text-secondary">
-						{{ t('dashboard.inbox.updates.subtitle') }}
-					</p>
-				</div>
-			</div>
-			<div
-				class="hidden items-center gap-3 rounded-full surface-1 px-3.5 py-1.5 text-2xs text-text-tertiary md:flex"
-				aria-hidden="true"
+	<div class="mx-auto w-full max-w-page p-6 lg:p-8">
+		<!-- Header: the back arrow beside the shared header, which puts the key
+		     hints under the title on narrow screens instead of squeezing both.
+		     Below md the hint pill is hidden, so the header drops its gap rather
+		     than leaving an empty action row above the tabs. -->
+		<div class="mb-6 flex items-start gap-4">
+			<NuxtLink
+				to="/dashboard/inbox"
+				class="mt-7.5 inline-flex items-center gap-2 text-text-secondary transition-colors duration-(--motion-fast) hover:text-text-primary"
+				:aria-label="t('dashboard.inbox.detail.backToInbox')"
 			>
-				<template v-for="hint in HINTS" :key="hint.label">
-					<span v-if="hint.spamToo || !isSpamView" class="inline-flex items-center gap-1">
-						<kbd
-							v-for="key in hint.keys"
-							:key="key"
-							class="rounded-md bg-bg-elevated px-1 font-mono text-text-secondary"
-							>{{ key }}</kbd
-						>
-						{{ t(hint.label) }}
-					</span>
+				<Icon name="lucide:arrow-left" class="h-4 w-4" />
+			</NuxtLink>
+			<UiPageHeader
+				class="min-w-0 flex-1 max-md:gap-0"
+				:eyebrow="t('shared.dashboardNavigation.sections.inbox')"
+				:title="t('dashboard.inbox.updates.title')"
+				:description="t('dashboard.inbox.updates.subtitle')"
+			>
+				<template #actions>
+					<div
+						class="hidden flex-wrap items-center gap-x-3 gap-y-1 rounded-full surface-1 px-3.5 py-1.5 text-2xs text-text-tertiary md:flex"
+						aria-hidden="true"
+					>
+						<template v-for="hint in HINTS" :key="hint.label">
+							<span
+								v-if="hint.spamToo || !isSpamView"
+								class="inline-flex items-center gap-1 whitespace-nowrap"
+							>
+								<kbd
+									v-for="key in hint.keys"
+									:key="key"
+									class="rounded-md bg-bg-elevated px-1 font-mono text-text-secondary"
+									>{{ key }}</kbd
+								>
+								{{ t(hint.label) }}
+							</span>
+						</template>
+					</div>
 				</template>
-			</div>
+			</UiPageHeader>
 		</div>
 
 		<!-- Tabs -->

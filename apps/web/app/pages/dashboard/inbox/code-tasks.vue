@@ -62,29 +62,29 @@ const handleCreate = async () => {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
-		<!-- Header -->
-		<div class="flex items-start justify-between gap-4 mb-8">
-			<div class="flex items-center gap-4">
-				<NuxtLink
-					to="/dashboard/inbox"
-					class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors"
-				>
-					<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				</NuxtLink>
-				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ t('dashboard.inbox.codeTasks.title') }}
-					</h1>
-					<p class="text-text-secondary mt-1">
-						{{ t('dashboard.inbox.codeTasks.subtitle') }}
-					</p>
-				</div>
-			</div>
-			<UiButton class="gap-2 shrink-0" @click="createModal.open()">
-				<Icon name="lucide:plus" class="w-4 h-4" />
-				{{ t('dashboard.inbox.codeTasks.newTask') }}
-			</UiButton>
+	<div class="mx-auto w-full max-w-page p-6 lg:p-8">
+		<!-- Header: the back arrow beside the shared header, which puts the action
+		     under the title on narrow screens instead of squeezing it. -->
+		<div class="mb-8 flex items-start gap-4">
+			<NuxtLink
+				to="/dashboard/inbox"
+				class="mt-2 inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors"
+				:aria-label="t('dashboard.inbox.detail.backToInbox')"
+			>
+				<Icon name="lucide:arrow-left" class="w-4 h-4" />
+			</NuxtLink>
+			<UiPageHeader
+				class="min-w-0 flex-1"
+				:title="t('dashboard.inbox.codeTasks.title')"
+				:description="t('dashboard.inbox.codeTasks.subtitle')"
+			>
+				<template #actions>
+					<UiButton class="gap-2" @click="createModal.open()">
+						<Icon name="lucide:plus" class="w-4 h-4" />
+						{{ t('dashboard.inbox.codeTasks.newTask') }}
+					</UiButton>
+				</template>
+			</UiPageHeader>
 		</div>
 
 		<!-- Loading / faulted / empty / list -->

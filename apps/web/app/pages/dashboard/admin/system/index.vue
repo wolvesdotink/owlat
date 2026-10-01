@@ -92,7 +92,7 @@ function formatDuration(start?: number, end?: number) {
 	<div class="space-y-6">
 		<!-- Page header -->
 		<div>
-			<h1 class="mt-2 text-2xl font-medium tracking-[-0.02em] text-text-primary">
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 				{{ t('dashboard.admin.system.index.title') }}
 			</h1>
 			<p class="mt-1 text-text-secondary text-md">

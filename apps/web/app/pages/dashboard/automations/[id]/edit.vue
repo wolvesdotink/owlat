@@ -330,9 +330,11 @@ onUnmounted(() => {
 	<div class="min-h-full bg-bg-base flex flex-col">
 		<!-- Header -->
 		<div class="bg-bg-elevated border-b border-border-subtle shrink-0">
-			<div class="max-w-7xl mx-auto px-6 py-4">
-				<div class="flex items-center justify-between">
-					<div class="flex items-center gap-4">
+			<div class="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+				<!-- Wraps on a phone: the status and Pause/Activate drop under the
+				     name instead of squeezing it into a two-word column. -->
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					<div class="flex items-center gap-2 sm:gap-4 min-w-0">
 						<button
 							class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 							@click="handleBack"
@@ -340,7 +342,7 @@ onUnmounted(() => {
 						>
 							<Icon name="lucide:arrow-left" class="w-5 h-5" />
 						</button>
-						<div v-if="automation">
+						<div v-if="automation" class="min-w-0">
 							<h1 class="text-lg font-semibold text-text-primary">{{ automation.name }}</h1>
 							<p class="text-sm text-text-secondary">
 								{{ t('dashboard.automations.detail.edit.editWorkflow') }}
@@ -353,7 +355,7 @@ onUnmounted(() => {
 					</div>
 
 					<!-- Status and Actions -->
-					<div v-if="automation" class="flex items-center gap-3">
+					<div v-if="automation" class="flex items-center gap-3 max-sm:ml-auto">
 						<!-- Status Badge -->
 						<span
 							:class="[
@@ -513,9 +515,9 @@ onUnmounted(() => {
 		<!-- Main Content - Two Panel Layout -->
 		<!-- overflow-clip, not -hidden: a scroll container here would pin the step
 		     panel's sticky content to this box instead of the viewport. -->
-		<div v-else class="flex-1 flex overflow-clip">
-			<!-- Workflow Canvas (Left Panel) -->
-			<div class="flex-1 overflow-y-auto p-6">
+		<div v-else class="flex-1 flex flex-col lg:flex-row overflow-clip">
+			<!-- Workflow Canvas (Left Panel; on top below lg) -->
+			<div class="flex-1 overflow-y-auto p-4 sm:p-6">
 				<div class="max-w-xl mx-auto">
 					<!-- Trigger Node -->
 					<div class="relative">

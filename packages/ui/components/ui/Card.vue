@@ -33,7 +33,7 @@ const paddingClasses: Record<CardPadding, string> = {
 	none: 'p-0',
 	sm: 'p-4',
 	md: 'p-6', // Default from .card class
-	lg: 'p-8',
+	lg: 'p-5 sm:p-8',
 };
 
 // Default carries elevation via the surface ladder (shadow ring); the

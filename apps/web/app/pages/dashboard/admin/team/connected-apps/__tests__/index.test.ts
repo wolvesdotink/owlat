@@ -126,6 +126,10 @@ const revealStub = {
 function mountPage() {
 	return mountDashboardPage(ConnectedAppsPage, {
 		stubs: {
+			UiPageHeader: {
+				props: ['title', 'description'],
+				template: '<div><h1>{{ title }}</h1><p>{{ description }}</p><slot name="actions" /></div>',
+			},
 			UiQueryBoundary: passthroughStub,
 			UiCard: passthroughStub,
 			UiButton: buttonStub,

@@ -247,7 +247,7 @@ const advanceIds = computed(() =>
 
 <template>
 	<div
-		class="flex w-full"
+		class="flex w-full min-w-0"
 		:data-density="density"
 		:data-reading-pane="readingPane"
 		:style="paneStyle"

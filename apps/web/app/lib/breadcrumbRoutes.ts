@@ -149,6 +149,34 @@ export const routeConfigs: Record<string, RouteConfig> = {
 		sectionHref: '/dashboard/inbox',
 	},
 
+	// The collaboration surfaces. Without entries here the slug fallback printed
+	// the URL ("Files", "Knowledge › Graph") in English whatever the locale.
+	'/dashboard/files': {
+		section: 'shared.breadcrumbRoutes.sections.files',
+		sectionHref: '/dashboard/files',
+	},
+	'/dashboard/visualizations': {
+		section: 'shared.breadcrumbRoutes.sections.visualizations',
+		sectionHref: '/dashboard/visualizations',
+	},
+	'/dashboard/chat': {
+		section: 'shared.breadcrumbRoutes.sections.chat',
+		sectionHref: '/dashboard/chat',
+	},
+	'/dashboard/assistant': {
+		section: 'shared.breadcrumbRoutes.sections.assistant',
+		sectionHref: '/dashboard/assistant',
+	},
+	'/dashboard/knowledge': {
+		section: 'shared.breadcrumbRoutes.sections.knowledge',
+		sectionHref: '/dashboard/knowledge',
+	},
+	'/dashboard/knowledge/graph': {
+		section: 'shared.breadcrumbRoutes.sections.knowledge',
+		sectionHref: '/dashboard/knowledge',
+		page: 'shared.breadcrumbRoutes.pages.knowledgeGraph',
+	},
+
 	// The mailbox's own pages. Same section crumb as its folders and messages
 	// (`breadcrumbPatterns.ts`), so the area has one name wherever you are in it
 	// instead of "Inboxes" on a folder and a URL slug ("Postbox") on search.

@@ -33,7 +33,9 @@ const emit = defineEmits<{ nodeClick: [id: string] }>();
 
 const { t } = useI18n();
 
-// Fixed coordinate space; the SVG scales to its container via viewBox.
+// Fixed coordinate space; the SVG scales to its container via viewBox and keeps
+// this aspect ratio, so a phone does not get a small drawing floating in a
+// 520px-tall box and a wide screen gets a bigger graph, not more margin.
 const WIDTH = 760;
 const HEIGHT = 520;
 
@@ -182,8 +184,8 @@ onBeforeUnmount(() => {
 		<svg
 			v-else
 			:viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
-			class="w-full"
-			:style="{ height: '520px' }"
+			class="block h-auto max-h-[75vh] w-full"
+			:style="{ aspectRatio: `${WIDTH} / ${HEIGHT}` }"
 			role="img"
 			:aria-label="t('components.knowledge.graphCanvas.ariaLabel')"
 		>
