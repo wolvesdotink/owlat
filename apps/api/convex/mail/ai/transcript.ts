@@ -39,6 +39,8 @@ export interface TranscriptBudget {
 export const THREAD_SUMMARY: TranscriptBudget = { perMessageChars: 4000, totalChars: 12000 };
 /** Draft-on-arrival (mail/ai/draftOnArrivalStore.ts). */
 export const DRAFT_ON_ARRIVAL: TranscriptBudget = { perMessageChars: 2000, totalChars: 12000 };
+/** Answer mode "Draft with AI" (mail/ai/composeDraftStore.ts). */
+export const ANSWER_DRAFT: TranscriptBudget = { perMessageChars: 2500, totalChars: 14000 };
 /** The starter draft after a clarification is answered (mail/ai/needsReplyClarify.ts). */
 export const CLARIFY_DRAFT: TranscriptBudget = { perMessageChars: 2000, totalChars: 12000 };
 /** Category refinement (mail/category.ts). */
@@ -58,6 +60,24 @@ export interface TranscriptOptions extends TranscriptBudget {
 	triggerId?: Id<'mailMessages'>;
 	/** Add a `To:` line per message. */
 	includeTo?: boolean;
+	/**
+	 * Add an `Attachments:` line naming each message's files. Answer mode needs
+	 * it to see what was already exchanged ("the invoice I sent last week");
+	 * the other callers leave it off, so their prompts are unchanged.
+	 */
+	includeAttachments?: boolean;
+}
+
+/** Most attachment names listed for one message. */
+const MAX_LISTED_ATTACHMENTS = 10;
+
+/** The `Attachments:` line of one message, or '' when it has none. */
+function attachmentLine(m: Doc<'mailMessages'>): string {
+	const names = m.attachments
+		.filter((a) => a.filename.trim().length > 0)
+		.slice(0, MAX_LISTED_ATTACHMENTS)
+		.map((a) => a.filename.trim().slice(0, 120));
+	return names.length > 0 ? `\nAttachments: ${names.join(', ')}` : '';
 }
 
 /** The prompt body of one message: text part, else stripped HTML, else snippet. */
@@ -95,8 +115,9 @@ export async function buildThreadTranscript(
 					? ' — the mailbox owner (you)'
 					: ' — the other party';
 		const to = opts.includeTo ? `\nTo: ${m.toAddresses.join(', ')}` : '';
+		const files = opts.includeAttachments ? attachmentLine(m) : '';
 		const body = (await messageBody(m)).slice(0, opts.perMessageChars);
-		return `From: ${sender}${side}${to}\nSubject: ${m.subject}\n${body}`;
+		return `From: ${sender}${side}${to}\nSubject: ${m.subject}${files}\n${body}`;
 	};
 
 	const trigger =

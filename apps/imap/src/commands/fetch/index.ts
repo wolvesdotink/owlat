@@ -2,10 +2,10 @@ import { logger } from '../../logger.js';
 import { parseList } from '../../parser.js';
 import type { ImapCommandModule } from '../types.js';
 import { asyncSession } from '../helpers/session.js';
-import { resolveSelectedSet } from '../helpers/seqMap.js';
-import { loadEnvelopes } from '../helpers/folderPaging.js';
+import { resolveSelectedSet, uidRuns } from '../helpers/seqMap.js';
+import { streamEnvelopes } from '../helpers/folderPaging.js';
 import { type FetchEnvelope, formatEnvelope, formatFlags, formatInternalDate } from './format.js';
-import { type BodySectionRequest, formatBodySection, parseBodySectionItem } from './bodySection.js';
+import { type BodySectionRequest, bodySectionParts, parseBodySectionItem } from './bodySection.js';
 import { serverFailure } from '../helpers/replies.js';
 import {
 	downloadRaw,
@@ -41,6 +41,15 @@ const CLOSE_PAREN = Buffer.from(')', 'ascii');
  * partial `<offset.length>` slices. A non-`.PEEK` body retrieval on a
  * read-write mailbox sets \Seen as a side effect (§7.4.2) and the FETCH
  * response carries the resulting FLAGS.
+ *
+ * Output is paced by the socket: after each response the module waits for
+ * `deps.waitForDrain`, and the ordered download loop only starts the next
+ * body once the response ahead of it has been taken. A slow reader therefore
+ * holds at most the output budget plus {@link RAW_DOWNLOAD_CONCURRENCY}
+ * bodies, not the whole requested mailbox. When the connection closes the
+ * session is cancelled: no further Convex pages, \Seen writes, URL mints or
+ * downloads are issued, in-flight downloads are aborted, and nothing more is
+ * sent.
  */
 export const fetchModule: ImapCommandModule<FetchArgs> = {
 	verbs: ['FETCH'],
@@ -68,55 +77,33 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 
 		const label = args.byUid ? 'UID FETCH' : 'FETCH';
 
-		return asyncSession(async () => {
+		return asyncSession(async (signal) => {
+			/**
+			 * Pace output: when the socket is over its budget, a promise that
+			 * settles once it has taken what was sent (rejecting if the
+			 * connection went meanwhile); otherwise nothing to wait for.
+			 */
+			const paced = (): Promise<void> | undefined => {
+				const wait = deps.waitForDrain?.();
+				return wait?.then(() => signal.throwIfAborted());
+			};
 			try {
 				// Build the sequence ↔ UID map for the SELECTed folder, then
 				// resolve the set against it. A non-UID set holds positions; a
 				// UID set holds UIDs. Either way `resolved` is ordered by true
 				// sequence number and carries the UID to fetch.
-				const { resolved } = await resolveSelectedSet(deps, state, args.set, args.byUid);
+				const { resolved } = await resolveSelectedSet(deps, state, args.set, args.byUid, signal);
 
 				if (resolved.length === 0) {
 					send(`${tag} OK ${label} completed`);
 					return;
 				}
 
-				// Envelopes for the requested min..max UID window only, read in
-				// bounded pages (`FETCH 1:*` on a large folder would otherwise be
-				// one read of every document in it). Rows are indexed by UID so
-				// each resolved {uid, seq} is emitted in true sequence order even
-				// across gaps. `resolved` is ascending by sequence number, and so by
-				// UID, so its ends are the window (no `Math.min(...uids)` spread,
-				// which a whole-folder set could push past the argument limit).
-				const slice = await loadEnvelopes(
-					deps.convex,
-					state.selected!.folderId,
-					resolved[0]!.uid,
-					resolved[resolved.length - 1]!.uid
-				);
-				const byUidMap = new Map<number, FetchEnvelope>();
-				for (const m of slice) byUidMap.set(m.uid, m);
-
-				let dropped = 0;
-				const rows: Array<{ seq: number; m: FetchEnvelope }> = [];
-				for (const { uid, seq } of resolved) {
-					const m = byUidMap.get(uid);
-					if (!m) {
-						// The UID list and the envelope pages are separate reads, so a
-						// concurrent EXPUNGE can retire a message between them. Dropping
-						// it is right (it no longer exists), but silently dropping it is
-						// how a paging bug would look too — say so in the log.
-						dropped += 1;
-						continue;
-					}
-					rows.push({ seq, m });
-				}
-
 				const emit = (
 					{ seq, m }: { seq: number; m: FetchEnvelope },
 					seenFlags: string | undefined,
 					raw: Buffer | null
-				): void => {
+				): Promise<void> | undefined => {
 					const fields: string[] = [];
 					if (args.byUid || items.has('UID')) fields.push(`UID ${m.uid}`);
 					if (items.has('FLAGS') || setsSeen) {
@@ -137,7 +124,10 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 					if (raw != null) {
 						// The prose prefix keeps the UTF-8 text path (an ENVELOPE
 						// subject/name may carry non-ASCII); only the appended
-						// body literal is spliced in as verbatim raw octets.
+						// body literal is spliced in as verbatim raw octets. The
+						// section octets are views into `raw`, so the one concat
+						// below is the only copy of the body; the pump writes it
+						// and the CRLF without copying again.
 						const parts: Buffer[] = [
 							Buffer.from(
 								`* ${seq} FETCH (${fields.length > 0 ? `${fields.join(' ')} ` : ''}`,
@@ -146,48 +136,98 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 						];
 						bodyRequests.forEach((req, i) => {
 							if (i > 0) parts.push(SPACE);
-							parts.push(formatBodySection(req, raw));
+							parts.push(...bodySectionParts(req, raw));
 						});
 						parts.push(CLOSE_PAREN);
 						send(Buffer.concat(parts));
-						return;
+					} else {
+						send(`* ${seq} FETCH (${fields.join(' ')})`);
 					}
-					send(`* ${seq} FETCH (${fields.join(' ')})`);
+					return paced();
 				};
 
-				if (!needsRaw) {
-					for (const row of rows) emit(row, undefined, null);
-				} else {
-					// Per chunk: one \Seen write and one URL mint, side by side,
-					// then the downloads in parallel and the responses in order.
-					// The implicit \Seen still lands before the chunk's FLAGS are
-					// emitted, so each response reflects the new flag set.
-					for (let i = 0; i < rows.length; i += RAW_URL_BATCH) {
-						const chunk = rows.slice(i, i + RAW_URL_BATCH);
-						const ids = chunk.map(({ m }) => m._id);
-						const [seen, urls] = await Promise.all([
-							setsSeen
-								? markSeenBatch(
-										deps.convex,
-										chunk.filter(({ m }) => !m.flagSeen).map(({ m }) => m._id)
-									)
-								: Promise.resolve(new Map<string, string>()),
-							mintRawUrls(deps.convex, ids),
-						]);
-						await forEachOrdered(
-							chunk,
-							RAW_DOWNLOAD_CONCURRENCY,
-							({ m }) => downloadRaw(urls.get(m._id)),
-							(row, raw) => emit(row, seen.get(row.m._id), raw)
-						);
+				type Row = { seq: number; m: FetchEnvelope };
+				// Per chunk: one \Seen write and one URL mint, side by side,
+				// then the downloads in parallel and the responses in order.
+				// The implicit \Seen still lands before the chunk's FLAGS are
+				// emitted, so each response reflects the new flag set.
+				const sendChunk = async (chunk: Row[]): Promise<void> => {
+					// A cancelled FETCH marks nothing \Seen and mints nothing
+					// past the chunk it was on.
+					signal.throwIfAborted();
+					const ids = chunk.map(({ m }) => m._id);
+					const [seen, urls] = await Promise.all([
+						setsSeen
+							? markSeenBatch(
+									deps.convex,
+									chunk.filter(({ m }) => !m.flagSeen).map(({ m }) => m._id)
+								)
+							: Promise.resolve(new Map<string, string>()),
+						mintRawUrls(deps.convex, ids),
+					]);
+					await forEachOrdered(
+						chunk,
+						RAW_DOWNLOAD_CONCURRENCY,
+						({ m }) => downloadRaw(urls.get(m._id), signal),
+						(row, raw) => emit(row, seen.get(row.m._id), raw),
+						signal
+					);
+				};
+
+				// Envelopes for exactly the requested messages: one UID range
+				// per run of consecutive sequence numbers, so a sparse set reads
+				// the rows it names rather than its min..max span. Pages are
+				// matched against `resolved` (both ascending by UID) and sent as
+				// they arrive — the first response does not wait for the last
+				// page, and the sidecar holds one page and one chunk, not the set.
+				let next = 0;
+				let dropped = 0;
+				let chunk: Row[] = [];
+				const pages = streamEnvelopes(
+					deps.convex,
+					state.selected!.folderId,
+					uidRuns(resolved),
+					resolved.length,
+					signal
+				);
+				for await (const page of pages) {
+					for (const m of page) {
+						// The UID list and the envelope pages are separate reads, so
+						// a concurrent EXPUNGE can retire a message between them.
+						// Dropping it is right (it no longer exists), but silently
+						// dropping it is how a paging bug would look too — it is
+						// counted and logged below.
+						while (next < resolved.length && resolved[next]!.uid < m.uid) {
+							dropped += 1;
+							next += 1;
+						}
+						const target = resolved[next];
+						if (target === undefined || target.uid !== m.uid) continue;
+						next += 1;
+						const row: Row = { seq: target.seq, m };
+						if (!needsRaw) {
+							signal.throwIfAborted();
+							const wait = emit(row, undefined, null);
+							if (wait) await wait;
+						} else {
+							chunk.push(row);
+							if (chunk.length === RAW_URL_BATCH) {
+								await sendChunk(chunk);
+								chunk = [];
+							}
+						}
 					}
 				}
+				if (chunk.length > 0) await sendChunk(chunk);
+				dropped += resolved.length - next;
 
 				if (dropped > 0) {
 					logger.warn({ dropped, label }, 'FETCH: resolved UIDs missing from envelope pages');
 				}
 				send(`${tag} OK ${label} completed`);
 			} catch (err) {
+				// The connection is gone: nobody is left to answer.
+				if (signal.aborted) return;
 				logger.error({ err }, 'FETCH failed');
 				send(serverFailure(tag, label));
 			}

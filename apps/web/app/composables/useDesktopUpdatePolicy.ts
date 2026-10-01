@@ -32,3 +32,10 @@ export function useDesktopUpdatePolicy() {
 
 	return { policy, releases, isLoading, error, savePolicy, isSaving, checkNow, isChecking };
 }
+
+/** The i18n key naming a cached release's line, for the page and its release table. */
+export function releaseLineKey(line: string): string {
+	return line === 'desktop'
+		? 'dashboard.admin.instance.desktopUpdates.lines.desktop'
+		: 'dashboard.admin.instance.desktopUpdates.lines.unified';
+}

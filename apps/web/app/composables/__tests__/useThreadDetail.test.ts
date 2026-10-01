@@ -20,15 +20,51 @@ describe('useThreadDetail', () => {
 	// 7 = unsnoozeThread, 8 = saveDraftRevision, 9 = sendFollowUp,
 	// 10 = cancelFollowUp.
 	let runs: Array<ReturnType<typeof vi.fn>>;
+	/** Each operation's `onError`, in the same declaration order. */
+	let onErrors: Array<((op: unknown) => boolean) | undefined>;
+	const showToast = vi.fn();
 
 	beforeEach(() => {
 		runs = [];
+		onErrors = [];
+		showToast.mockReset();
 		vi.stubGlobal('useI18n', () => ({ t, locale }));
+		vi.stubGlobal('useToast', () => ({ showToast }));
 		vi.stubGlobal('useConvexQuery', () => queryResult(undefined));
-		vi.stubGlobal('useBackendOperation', () => {
-			const run = vi.fn().mockResolvedValue({ ok: true, result: { success: true } });
-			runs.push(run);
-			return { run };
+		vi.stubGlobal(
+			'useBackendOperation',
+			(_fn: unknown, opts?: { onError?: (op: unknown) => boolean }) => {
+				const run = vi.fn().mockResolvedValue({ ok: true, result: { success: true } });
+				runs.push(run);
+				onErrors.push(opts?.onError);
+				return { run };
+			}
+		);
+	});
+
+	describe('a send refused for gaps the AI left (DRAFT_HAS_GAPS)', () => {
+		const refusal = {
+			category: 'invalid_state',
+			message: 'Fill in the highlighted gaps before sending',
+			data: { code: 'DRAFT_HAS_GAPS' },
+		};
+
+		it('says how many gaps the approved reply still has, as the composer does', async () => {
+			const detail = useThreadDetail(threadId);
+			await detail.saveEditedDraft(messageId, {
+				body: 'Attached [[the invoice]] with PO [[the PO number]].',
+				subject: '',
+			});
+			expect(onErrors[0]!(refusal)).toBe(true);
+			expect(showToast).toHaveBeenCalledWith('2 gaps left', 'error');
+		});
+
+		it('claims the refusal on a follow-up too, and leaves other failures alone', async () => {
+			const detail = useThreadDetail(threadId);
+			await detail.sendFollowUp({ body: 'Here it is: [[link]]', subject: 'Re: x' });
+			expect(onErrors[9]!(refusal)).toBe(true);
+			expect(showToast).toHaveBeenCalledWith('1 gap left', 'error');
+			expect(onErrors[9]!({ category: 'forbidden', message: 'No' })).toBe(false);
 		});
 	});
 

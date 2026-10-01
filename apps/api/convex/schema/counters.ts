@@ -23,7 +23,10 @@ export const counterKindValidator = v.union(
 	v.literal('campaignStatus'),
 	v.literal('templateType'),
 	v.literal('automationStatus'),
-	v.literal('contactCreatedDay')
+	v.literal('contactCreatedDay'),
+	// Transient: exists only while a contact-count reconcile walks the contacts
+	// table (`contacts/countReconcile.ts`), deleted when the walk finishes.
+	v.literal('contactLiveTotal')
 );
 
 export const counterTables = {

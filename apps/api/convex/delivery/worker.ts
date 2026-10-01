@@ -10,10 +10,9 @@ import {
 	getSeedProbeFooterUrls,
 } from './unsubscribe';
 import { getPreferenceUrl } from './preferences';
-import { getMtaConfig, scanAttachmentBytes } from '../mail/mtaClient';
 import { transformHtml } from './sendComposition/transform';
-import { fetchGuarded } from '../lib/ssrfGuard';
 import { composeForSend, type CampaignComposeInput, type ComposeInput } from './sendComposition';
+import { resolveAttachments } from './attachmentFetch';
 import { assertMarketingOneClickHeaders, type EmailPurpose } from './marketingCompliance';
 import { dispatchGovernedEmail } from './governedDispatch';
 import { armForTransportLabel } from './sendAssignments';
@@ -279,78 +278,6 @@ export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeIn
 	return composeInput;
 }
 
-// Fetch + validate + scan one attachment ref. ClamAV is fail-open: when the
-// MTA scan endpoint is unavailable, file-type validation alone gates the
-// send.
-async function resolveAttachments(
-	refs: { filename: string; contentType?: string; url: string }[]
-): Promise<{ filename: string; content: Uint8Array; contentType?: string }[]> {
-	return Promise.all(
-		refs.map(async (att) => {
-			// SSRF guard: the attachment URL is attacker-influenced (any API-key
-			// holder can supply it) and the fetched bytes are emailed back to an
-			// attacker-chosen recipient. Validate the destination against the
-			// private/internal blocklist and refuse redirects (https:// only —
-			// uploadAttachments already enforces the scheme up front). 15s cap.
-			const res = await fetchGuarded(att.url, {
-				protocols: ['https:'],
-				signal: AbortSignal.timeout(15_000),
-			});
-			if (!res.ok) {
-				throw new Error(
-					`Failed to fetch attachment "${att.filename}": ${res.status} ${res.statusText}`
-				);
-			}
-			const content = Buffer.from(await res.arrayBuffer());
-
-			// Security: Validate file type before sending
-			const { validateFile } = await import('@owlat/email-scanner/files');
-			const firstBytes = new Uint8Array(content.subarray(0, 32));
-			// Probe the ISO 9660 descriptor at offset 0x8001 to catch renamed ISOs.
-			const isoProbe =
-				content.length >= 0x8006 ? new Uint8Array(content.subarray(0x8001, 0x8006)) : undefined;
-			const fileValidation = validateFile(
-				att.filename,
-				firstBytes,
-				undefined,
-				content.length,
-				isoProbe
-			);
-
-			if (!fileValidation.allowed) {
-				throw new Error(`Attachment "${att.filename}" blocked: ${fileValidation.reason}`);
-			}
-
-			// Security: ClamAV malware scan via the shared MTA client. The client
-			// owns the POST + fail-open (not-configured / scanner-down / network
-			// error all resolve to 'skipped' and are surfaced via warnScanSkipped)
-			// AND the single config source — this path no longer reads
-			// MTA_INTERNAL_URL/MTA_API_KEY itself, so it can't drift from
-			// getMtaConfig() (which also accepts MTA_API_URL as a fallback). This
-			// path's POLICY: a confirmed-infected verdict throws so the send aborts.
-			const scanVerdict = await scanAttachmentBytes(getMtaConfig(), att.filename, content);
-			if (scanVerdict.kind === 'infected') {
-				throw new Error(
-					`Attachment "${att.filename}" blocked by malware scan: ${scanVerdict.reason}`
-				);
-			}
-			// The endpoint's own type gate refused it. Reachable only if its
-			// allowlist is stricter than the `validateFile` call above, and it is
-			// not malware — so it aborts the send with the type reason, not with
-			// a malware sentence.
-			if (scanVerdict.kind === 'refused') {
-				throw new Error(`Attachment "${att.filename}" blocked: ${scanVerdict.reason}`);
-			}
-
-			return {
-				filename: att.filename,
-				content,
-				contentType: att.contentType,
-			};
-		})
-	);
-}
-
 /**
  * Internal action to send a single email via configured provider.
  * Called by workpool for each queued email.
@@ -396,7 +323,7 @@ export const sendSingleEmail = internalAction({
 
 		const resolvedAttachments =
 			composed.attachmentRefs.length > 0
-				? await resolveAttachments(composed.attachmentRefs)
+				? await resolveAttachments(ctx.storage, composed.attachmentRefs)
 				: undefined;
 
 		// Merge any envelope-supplied custom headers (transactional kind only —

@@ -1,7 +1,7 @@
 /**
  * Contact-hygiene crons.
  *
- * These four schedules all do the same KIND of work — keeping the contact book
+ * These schedules all do the same KIND of work — keeping the contact book
  * honest between user actions — and they were the tail of a `crons.ts` that had
  * reached the ~500 LOC split threshold CONVENTIONS.md sets. Registration still
  * happens at module load from `crons.ts`; only the grouping moved, so the job
@@ -56,6 +56,16 @@ export function registerContactHygieneCrons(crons: Crons): void {
 		'sweep contact sunset policy',
 		{ hours: 1 },
 		internal.contacts.sunsetSweep.sweepSunsetPolicy,
+		{}
+	);
+
+	// Recover a missing cached contact count (new or restored instance). The
+	// dashboards show the count as pending instead of scanning; this starts the
+	// bounded recount that fills it in. One read while a count is cached.
+	crons.interval(
+		'recover missing contact count',
+		{ minutes: 10 },
+		internal.contacts.countReconcile.recoverMissingCount,
 		{}
 	);
 }

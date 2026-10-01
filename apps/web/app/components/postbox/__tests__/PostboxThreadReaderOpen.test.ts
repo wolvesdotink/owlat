@@ -63,7 +63,6 @@ beforeEach(() => {
 		useClickOutsideSelector: useClickOutside,
 		usePaginatedQuery: () => paginatedResult([]),
 		useOperationErrorToast: () => ({ showOperationError: vi.fn() }),
-		POSTBOX_PENDING_COMPOSE_KEY: 'postbox:pending-compose',
 		registerCommandPaletteProvider: vi.fn(),
 		unregisterCommandPaletteProvider: vi.fn(),
 		useRoute: () => ({ path: '/dashboard/postbox/inbox/m1', params: {}, query: {}, meta: {} }),
@@ -126,7 +125,6 @@ const CHROME = [
 	'PostboxAttachmentLightbox',
 	'PostboxCrossSurfaceStrip',
 	'PostboxDeliveryStrip',
-	'PostboxInlineReply',
 	'PostboxInviteCard',
 	'PostboxKeyChangeBanner',
 	'PostboxLabelPickerDialog',
@@ -134,6 +132,7 @@ const CHROME = [
 	'PostboxMessageDetails',
 	'PostboxMovePickerDialog',
 	'PostboxOverflowMenu',
+	'PostboxReaderMessageActions',
 	'PostboxReaderSkeleton',
 	'PostboxReplyGuard',
 	'PostboxSchedulingChip',
@@ -174,8 +173,8 @@ describe('PostboxThreadReader while its thread loads', () => {
 		expect(w.text()).toContain('Ines Weber');
 		// The inline body query has not answered: the body waits in place.
 		expect(w.get('[data-testid="body"]').attributes('data-pending')).toBe('true');
-		// The reply box needs the whole thread (its latest message).
-		expect(w.find('[data-testid="PostboxInlineReply"]').exists()).toBe(false);
+		// The triage offer needs the whole thread (its latest message).
+		expect(w.find('[data-testid="PostboxTriageSuggestion"]').exists()).toBe(false);
 
 		inlineBody.value = {
 			htmlInline: null,
@@ -207,6 +206,6 @@ describe('PostboxThreadReader while its thread loads', () => {
 		expect(w.findAll('[data-testid="body"]').map((b) => b.attributes('data-text'))).toContain(
 			'From the thread'
 		);
-		expect(w.find('[data-testid="PostboxInlineReply"]').exists()).toBe(true);
+		expect(w.find('[data-testid="PostboxTriageSuggestion"]').exists()).toBe(true);
 	});
 });

@@ -16,7 +16,7 @@
  */
 
 import { v } from 'convex/values';
-import { postboxQuery, postboxMutation } from './_helpers';
+import { answerModeQuery, postboxMutation } from './_helpers';
 import { internalMutation } from '../lib/writeFence';
 import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganization';
 import { tokenUsageValidator } from '../lib/convexValidators';
@@ -123,9 +123,13 @@ export const finalizeDraftStream = internalMutation({
 	},
 });
 
-/** Owner-scoped subscription target: the reactive read the client renders. */
-// all-members: a member reads only their own revise buffer (owner-scoped).
-export const getDraftStream = postboxQuery({
+/**
+ * Owner-scoped subscription target: the reactive read the client renders.
+ * Answer mode streams team-thread drafts here too, so the floor admits a
+ * team-only instance (`answerModeQuery`); a buffer is only ever its owner's.
+ */
+// all-members: a member reads only their own draft buffer (owner-scoped).
+export const getDraftStream = answerModeQuery({
 	args: { streamId: v.id('aiDraftStreams') },
 	handler: async (ctx, args) => {
 		const userId = await getUserIdFromSession(ctx);

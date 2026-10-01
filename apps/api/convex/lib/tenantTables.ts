@@ -143,6 +143,9 @@ export const TENANT_TABLES = [
 	'threadPresence',
 	'threadReads',
 	'inboxFollowUps',
+	// Answer mode catch-up cards of team and Postbox threads: derived from the
+	// mail, so they go before the threads they summarise.
+	'threadCatchUps',
 	'inboundMessages',
 	'conversationThreads',
 	'coalesceBatches',
@@ -265,6 +268,8 @@ export const TENANT_TABLES = [
 
 	// ── AI draft-revise stream buffers (ephemeral, owner-scoped) ──
 	'aiDraftStreams',
+	// Answer mode ask sessions (owner-scoped, reference drafts and team threads).
+	'answerAskSessions',
 
 	// ── Dashboard & visualizations ──
 	'visualizations',
@@ -331,6 +336,11 @@ export const NON_TENANT_TABLES = [
 	'instanceSettings',
 	'featureFlagSettings',
 	'instanceCounters',
+	// Progress of the instance-wide sweep that clears body-search excerpts when
+	// the operator turns the switch off: a generation, counts and a pagination
+	// cursor, no message content. It follows the instance switch rather than the
+	// org, and a sweep still running during a wipe must keep its fence.
+	'mailBodySearchPurges',
 	// Per-org AI provider selection + encrypted key envelope — an admin-recreated
 	// config singleton like instanceSettings, not org business data.
 	'aiProviderConfig',

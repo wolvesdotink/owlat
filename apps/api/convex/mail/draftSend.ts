@@ -20,6 +20,8 @@ import { markOnboardingStep } from '../auth/userOnboarding';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { canSendWithSealState } from './sealPolicy';
 import { mailboxHasSendTransport } from './draftQueries';
+import { openMailDraftBody } from '../lib/messageBody';
+import { assertNoAnswerGaps } from './ai/composeDraftStore';
 
 /**
  * Initiate send: mark draft as pending_send with an undo window, schedule
@@ -38,6 +40,12 @@ export async function sendHandler(
 	const draft = await getOrThrow(ctx, args.draftId, 'Draft');
 	const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 	if (!owned.ok) throwForbidden('Draft not accessible');
+
+	// Answer mode gap placeholders block the send (mail/ai/composeDraftStore.ts).
+	await assertNoAnswerGaps(ctx, { kind: 'mailDraft', draftId: args.draftId }, async () => {
+		const body = await openMailDraftBody(draft);
+		return { html: body.bodyHtml, text: body.bodyText };
+	});
 
 	let isUnsealedSendAllowed = false;
 	if (await isFeatureEnabled(ctx, 'sealedMail')) {

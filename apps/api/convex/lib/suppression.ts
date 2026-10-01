@@ -31,8 +31,10 @@
  *
  * This module owns that shared lookup + normalization:
  *   - `isSuppressed` — the point read for a single address (the per-send gate).
- *   - `loadSuppressionSet` — the bulk read for audience resolution, where a
- *     per-address point read per candidate would be O(n) round-trips.
+ *   - `loadSuppressedAmong` — indexed point reads for ONE page of candidate
+ *     addresses (the campaign send walker's per-page gate).
+ *   - `loadSuppressionSet` — the bulk read for the audience COUNT stream, which
+ *     walks the whole audience in one execution anyway.
  *
  * Both fold the address through `normalizeEmail` (trim + lowercase) so the
  * `by_email` index lookup is exact regardless of how the caller received the
@@ -70,8 +72,8 @@ export type SuppressionScope = 'marketing' | 'transactional';
  * Is `rawEmail` on the suppression list for `scope`? Normalizes the address to
  * the same lowercase+trim key the blocklist stores, then does a single
  * `by_email` point read. The point read is the right shape for the per-send gate
- * (one recipient per call); use {@link loadSuppressionSet} when checking many
- * candidates in a loop.
+ * (one recipient per call); use {@link loadSuppressedAmong} for a page of
+ * candidates.
  */
 export async function isSuppressed(
 	ctx: QueryCtx | MutationCtx,
@@ -90,17 +92,49 @@ export async function isSuppressed(
 }
 
 /**
+ * Which of `rawEmails` are on the suppression list? One `by_email` point read
+ * per DISTINCT normalized address, issued concurrently, so the cost of one page
+ * of candidates scales with the page — never with the size of the blocklist.
+ * The campaign send walker calls this on every page, which keeps the
+ * "suppression mid-run" invariant: an address blocked between two hops is read
+ * fresh on the later hop.
+ *
+ * Returns the normalized keys that are blocked. Membership tests MUST normalize
+ * the candidate the same way (`normalizeEmail`). Nothing is truncated: every
+ * address asked about is looked up, so an absent key means "no row", never
+ * "not read". Marketing scope, like {@link loadSuppressionSet}: every blocklist
+ * reason blocks.
+ */
+export async function loadSuppressedAmong(
+	ctx: QueryCtx | MutationCtx,
+	rawEmails: Iterable<string>
+): Promise<ReadonlySet<string>> {
+	const keys = new Set<string>();
+	for (const raw of rawEmails) keys.add(normalizeEmail(raw));
+	const hits = await Promise.all(
+		[...keys].map(async (email) => {
+			const row = await ctx.db
+				.query('blockedEmails')
+				.withIndex('by_email', (q) => q.eq('email', email))
+				.first();
+			return row === null ? null : email;
+		})
+	);
+	return new Set(hits.filter((email): email is string => email !== null));
+}
+
+/**
  * Load the whole suppression list into an in-memory set of normalized address
- * keys. For the audience-resolution walk, which checks every candidate contact
- * against the blocklist — a point read per candidate would be one round-trip
- * per recipient, so the bulk scan (the list is intrinsically small: one row per
- * suppressed address) is the right shape there.
+ * keys. For the audience COUNT stream, which checks every candidate of the
+ * whole audience in one execution. A walk that works in pages checks each
+ * page's addresses with {@link loadSuppressedAmong} instead, so its per-page
+ * reads do not grow with the blocklist.
  *
  * Membership tests against the returned set MUST normalize the candidate the
  * same way (`normalizeEmail`) so the comparison agrees with the stored keys.
  *
  * SCOPE-BLIND BY DESIGN — unlike {@link isSuppressed}, this loader (and
- * {@link loadSuppressionSetBounded}) carries no {@link SuppressionScope}: its
+ * {@link loadSuppressionSetBounded}, {@link loadSuppressedAmong}) carries no {@link SuppressionScope}: its
  * only callers resolve CAMPAIGN audiences, which are marketing scope, where
  * every blocklist reason blocks. A caller that needs the transactional reading
  * is doing a per-send gate and belongs on `isSuppressed`, not here.

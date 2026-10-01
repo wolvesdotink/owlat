@@ -54,6 +54,21 @@ describe('resolveBodySearchDepth', () => {
 		expect(resolveBodySearchDepth({ isIndexingEnabled: true, job: undefined })).toBe('pending');
 	});
 
+	it('does not report a stalled walk as indexing', () => {
+		expect(
+			resolveBodySearchDepth({
+				isIndexingEnabled: true,
+				job: { mode: 'index', status: 'running', isStalled: true },
+			})
+		).toBe('pending');
+		expect(
+			resolveBodySearchDepth({
+				isIndexingEnabled: true,
+				job: { mode: 'index', status: 'running', isStalled: false },
+			})
+		).toBe('indexing');
+	});
+
 	it('treats a cancelled or failed walk as never-indexed, not as deep', () => {
 		expect(
 			resolveBodySearchDepth({

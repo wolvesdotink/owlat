@@ -193,3 +193,43 @@ describe('usePostboxEditorDocument — sanitizing incoming values', () => {
 		expect(el().innerHTML).toContain('white-space:pre-wrap');
 	});
 });
+
+describe('usePostboxEditorDocument — emitting only what changed', () => {
+	// A seed the browser serializes differently from the string it was given:
+	// single-quoted attributes come back double-quoted. A reply's quote does the
+	// same in a real browser, which is how a plain blur used to look like an edit.
+	const RESERIALIZED = "<p class='lead'>Hello</p>";
+
+	it('emits nothing when the editor is blurred without an edit (no draft row for it)', () => {
+		const { el, emitted, doc } = setup(RESERIALIZED);
+		expect(el().innerHTML).not.toBe(RESERIALIZED);
+
+		// What onBlur does.
+		doc().emitContent();
+
+		expect(emitted).toEqual([]);
+	});
+
+	it('emits nothing after an external write the person never touched', async () => {
+		const { emitted, model, doc } = setup();
+		model.value = RESERIALIZED;
+		await nextTick();
+
+		doc().emitContent();
+
+		expect(emitted).toEqual([]);
+	});
+
+	it('still emits an edit, and an edit that returns to the seed', () => {
+		const { el, emitted, model, doc } = setup(RESERIALIZED);
+		const seeded = el().innerHTML;
+
+		el().innerHTML = '<p class="lead">Hello there</p>';
+		doc().emitContent();
+		el().innerHTML = seeded;
+		doc().emitContent();
+
+		expect(emitted).toEqual(['<p class="lead">Hello there</p>', seeded]);
+		expect(model.value).toBe(seeded);
+	});
+});

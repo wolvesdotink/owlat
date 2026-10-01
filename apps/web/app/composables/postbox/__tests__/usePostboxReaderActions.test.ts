@@ -378,3 +378,25 @@ describe('usePostboxReaderActions — native optimistic updates (plan 2.2)', () 
 		expect(op(`${reader}moveOperation`).optimisticUpdate).toBe(mailUpdaters.optimisticMove);
 	});
 });
+
+describe('usePostboxReaderActions — Esc closes the open conversation', () => {
+	it('goes back to the folder list in the split view, replacing the open', async () => {
+		const { actions, emitted } = await setup();
+		actions.runReaderAction('close');
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox', { replace: true });
+		expect(emitted).toEqual([]);
+	});
+
+	it('closes an overlay host in place', async () => {
+		const { actions, emitted } = await setup({ inPlace: true });
+		actions.runReaderAction('close');
+		expect(emitted).toEqual([null]);
+		expect(navigateTo).not.toHaveBeenCalled();
+	});
+
+	it('stays put in the search preview, which has no list to return to', async () => {
+		const { actions } = await setup({ folderRole: undefined });
+		actions.runReaderAction('close');
+		expect(navigateTo).not.toHaveBeenCalled();
+	});
+});

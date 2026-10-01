@@ -26,10 +26,18 @@ import { internalQuery } from '../_generated/server';
 import { campaignsQuery } from './_helpers';
 import type { QueryCtx } from '../_generated/server';
 import { audienceValidator, type StoredAudience } from './audience';
+import type { Doc } from '../_generated/dataModel';
 import { batchGet } from '../_utils/batchLoader';
 import { logWarn } from '../lib/runtimeLog';
-import { loadSuppressionSet } from '../lib/suppression';
-import { preloadConditionsLookup, parseSegmentFilters, makeSegmentPredicate } from '../conditions';
+import { loadSuppressedAmong } from '../lib/suppression';
+import { contactMarketingIneligibility } from '../lib/marketingEligibility';
+import {
+	conditionsLookupReadsPerBatch,
+	conditionsLookupReadsPerContact,
+	preloadConditionsLookupForContacts,
+	parseSegmentFilters,
+	makeSegmentPredicate,
+} from '../conditions';
 import type { ParsedSegmentFilters } from '../conditions';
 import {
 	countAudience,
@@ -49,11 +57,70 @@ export interface ResolvedPage {
 }
 
 /**
+ * What one page may cost, in the two units Convex limits per execution: index
+ * ranges opened (every `db.get` and every `db.query`; the platform cap is
+ * 4,096) and documents read (the per-execution cap the rest of this module
+ * budgets against is 16,384). Both sit well under the caps so the walker's own
+ * reads around the page never tip it over.
+ *
+ * A page costs a FIXED set-up plus a per-candidate fan-out that depends on the
+ * Audience: a topic candidate is its membership, its contact and one
+ * suppression point read; a segment candidate is its contact, one point read
+ * per distinct condition lookup and one suppression point read. A segment
+ * carrying many conditions therefore resolves fewer contacts per page — the
+ * cursor advances by what was read, so a smaller page only means more hops.
+ */
+const PAGE_QUERY_BUDGET = 3_000;
+const PAGE_DOCUMENT_BUDGET = 12_000;
+
+interface PageCost {
+	fixedQueries: number;
+	fixedDocuments: number;
+	queriesPerCandidate: number;
+	documentsPerCandidate: number;
+}
+
+/** The largest page, up to `requested`, whose worst-case cost fits the budget. */
+function budgetedPageSize(requested: number, cost: PageCost): number {
+	const byQueries = Math.floor((PAGE_QUERY_BUDGET - cost.fixedQueries) / cost.queriesPerCandidate);
+	const byDocuments = Math.floor(
+		(PAGE_DOCUMENT_BUDGET - cost.fixedDocuments) / cost.documentsPerCandidate
+	);
+	return Math.max(1, Math.min(Math.floor(requested), byQueries, byDocuments));
+}
+
+/**
+ * The page's suppression gate: point reads for exactly the addresses this page
+ * could send to, read fresh on every page so an address blocked between two
+ * hops is excluded on the later one (the "suppression mid-run" invariant).
+ * Contacts the eligibility predicate drops before suppression (no email, soft-
+ * deleted, globally unsubscribed) need no lookup.
+ */
+async function pageSuppressionGate(
+	ctx: QueryCtx,
+	contacts: Iterable<Doc<'contacts'>>
+): Promise<ReadonlySet<string>> {
+	const emails: string[] = [];
+	for (const contact of contacts) {
+		if (contact.email && contactMarketingIneligibility(contact) === null) {
+			emails.push(contact.email);
+		}
+	}
+	return await loadSuppressedAmong(ctx, emails);
+}
+
+/**
  * Resolve exactly ONE page of an Audience's candidates at `cursor`. The single
  * walk primitive shared by every entry below. `selectRecipient` (the
- * eligibility predicate) and the segment match are UNCHANGED from the
- * pre-checkpoint per-page loop — this just exposes one page instead of
- * draining them all inside one query.
+ * eligibility predicate) and the segment match are the same ones the count
+ * path uses — this just exposes one page instead of draining them all inside
+ * one query.
+ *
+ * Every supporting read is scoped to the page: condition lookups are point
+ * reads for the page's contacts (`preloadConditionsLookupForContacts`) and the
+ * suppression gate is point reads for the page's addresses. A page's cost is
+ * therefore independent of the size of the blocklist and of every column a
+ * condition references; `budgetedPageSize` bounds its fan-out.
  *
  * `cursor === ''` starts at the beginning. `nextCursor` is the opaque Convex
  * `continueCursor` when more pages remain, or `null` when the page was the
@@ -67,26 +134,30 @@ async function resolveRecipientPageImpl(
 ): Promise<ResolvedPage> {
 	const { audience, cursor, numItems } = args;
 
-	// Suppression set — one bulk read of blockedEmails (intrinsically small
-	// table) via the shared `loadSuppressionSet`, which owns the normalization
-	// so its keys match `selectRecipient`'s `normalizeEmail(contact.email)`
-	// membership test. Recomputed per page: a contact suppressed between two
-	// hops is excluded on the later page (the "suppression mid-run" invariant).
-	const blockedEmails = await loadSuppressionSet(ctx);
-
 	if (audience.kind === 'topic') {
 		const topic = await ctx.db.get(audience.topicId);
-		const gate = { requiresDoi: topic?.requireDoubleOptIn === true, blockedEmails };
+		// membership + contact + suppression per candidate; topic get + paginate.
+		const pageSize = budgetedPageSize(numItems, {
+			fixedQueries: 2,
+			fixedDocuments: 1,
+			queriesPerCandidate: 2,
+			documentsPerCandidate: 3,
+		});
 
 		const { page, isDone, continueCursor } = await ctx.db
 			.query('contactTopics')
 			.withIndex('by_topic', (q) => q.eq('topicId', audience.topicId))
-			.paginate({ cursor: cursor === '' ? null : cursor, numItems });
+			.paginate({ cursor: cursor === '' ? null : cursor, numItems: pageSize });
 
 		const contacts = await batchGet(
 			ctx,
 			page.map((membership) => membership.contactId)
 		);
+		const blockedEmails = await pageSuppressionGate(
+			ctx,
+			[...contacts.values()].filter((c): c is Doc<'contacts'> => c !== null)
+		);
+		const gate = { requiresDoi: topic?.requireDoubleOptIn === true, blockedEmails };
 		const recipients: CampaignRecipient[] = [];
 		for (const membership of page) {
 			const contact = contacts.get(membership.contactId);
@@ -101,9 +172,6 @@ async function resolveRecipientPageImpl(
 			pageCandidates: page.length,
 		};
 	}
-
-	// segment — DOI never gates (named asymmetry).
-	const gate = { requiresDoi: false, blockedEmails };
 
 	let filters: SegmentFilters | null = audience.frozenFilters ?? null;
 	if (!filters) {
@@ -125,8 +193,15 @@ async function resolveRecipientPageImpl(
 		return { recipients: [], nextCursor: null, pageCandidates: 0 };
 	}
 
-	const lookup = await preloadConditionsLookup(ctx, parsedFilters.conditions);
-	const matches = makeSegmentPredicate(parsedFilters, lookup);
+	const lookupsPerContact = conditionsLookupReadsPerContact(parsedFilters.conditions);
+	const lookupSetup = conditionsLookupReadsPerBatch(parsedFilters.conditions);
+	const pageSize = budgetedPageSize(numItems, {
+		// segment get + paginate + the lookup's per-page set-up.
+		fixedQueries: 2 + lookupSetup,
+		fixedDocuments: 1 + lookupSetup,
+		queriesPerCandidate: lookupsPerContact + 1,
+		documentsPerCandidate: 1 + lookupsPerContact + 1,
+	});
 
 	// Stream the live Contacts over the `by_deleted_at` index pinned to
 	// `deletedAt === undefined`: soft-deleted rows never enter the page (the
@@ -136,13 +211,17 @@ async function resolveRecipientPageImpl(
 	const { page, isDone, continueCursor } = await ctx.db
 		.query('contacts')
 		.withIndex('by_deleted_at', (q) => q.eq('deletedAt', undefined))
-		.paginate({ cursor: cursor === '' ? null : cursor, numItems });
+		.paginate({ cursor: cursor === '' ? null : cursor, numItems: pageSize });
 
+	// Paginate FIRST, then resolve the conditions for just this page's contacts.
+	const lookup = await preloadConditionsLookupForContacts(ctx, parsedFilters.conditions, page);
+	const matches = makeSegmentPredicate(parsedFilters, lookup);
+	const matched = page.filter((contact) => matches(contact));
+
+	// segment — DOI never gates (named asymmetry).
+	const gate = { requiresDoi: false, blockedEmails: await pageSuppressionGate(ctx, matched) };
 	const recipients: CampaignRecipient[] = [];
-	let pageCandidates = 0;
-	for (const contact of page) {
-		if (!matches(contact)) continue;
-		pageCandidates++; // raw segment-match count (live contacts; empty conditions match all)
+	for (const contact of matched) {
 		const recipient = selectRecipient(contact, gate);
 		if (recipient) recipients.push(recipient);
 	}
@@ -150,7 +229,8 @@ async function resolveRecipientPageImpl(
 	return {
 		recipients,
 		nextCursor: isDone ? null : continueCursor,
-		pageCandidates,
+		// raw segment-match count (live contacts; empty conditions match all)
+		pageCandidates: matched.length,
 	};
 }
 

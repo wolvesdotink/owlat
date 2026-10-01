@@ -75,6 +75,14 @@ export const mailDraftAttachmentValidator = v.object({
 	size: v.number(),
 	isInline: v.boolean(),
 	contentId: v.optional(v.string()),
+	// The file this blob was copied from (mail/attachExisting.ts), so attaching
+	// the same Files row or mail attachment again is a no-op, not a second copy.
+	copiedFrom: v.optional(
+		v.object({
+			source: v.union(v.literal('semanticFile'), v.literal('mailAttachment')),
+			id: v.string(),
+		})
+	),
 });
 
 /**

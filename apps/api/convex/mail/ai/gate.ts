@@ -24,7 +24,8 @@ import { computeBudgetStatus } from '../../analytics/spendBudget';
 const AI_RATE_BUCKET = v.union(
 	v.literal('postboxAiPerUser'),
 	v.literal('translateBatchPerUser'),
-	v.literal('quickQueryPerUser')
+	v.literal('quickQueryPerUser'),
+	v.literal('answerCoveragePerUser')
 );
 
 export const assertAiAllowed = internalMutation({

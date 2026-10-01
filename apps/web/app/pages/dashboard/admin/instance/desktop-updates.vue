@@ -21,8 +21,10 @@
  * lock rather than the only one.
  */
 import { UnsavedChangesDialog } from '@owlat/email-builder';
+import DesktopReleaseTable from '~/components/settings/DesktopReleaseTable.vue';
 import { useSettingsForm } from '~/composables/useSettingsForm';
 import { formatDateTime, formatRelativeTime } from '~/utils/formatters';
+import { releaseLineKey } from '~/composables/useDesktopUpdatePolicy';
 
 const { t } = useI18n();
 
@@ -138,17 +140,16 @@ watch(pinnableReleases, (offered) => {
 	}
 });
 
+/** The saved pin when the cache no longer holds it: clients are then offered nothing. */
+const missingPin = computed(() =>
+	policy.value?.pinCached === false ? (storedPolicy.value?.pinnedVersion ?? null) : null
+);
+
 const checkedAt = computed(() => policy.value?.check.checkedAt ?? null);
 const checkError = computed(() => policy.value?.check.error ?? null);
 const lastChange = computed(() => policy.value?.lastChange ?? null);
 
-function lineLabel(line: string): string {
-	return t(
-		line === 'desktop'
-			? 'dashboard.admin.instance.desktopUpdates.lines.desktop'
-			: 'dashboard.admin.instance.desktopUpdates.lines.unified'
-	);
-}
+const lineLabel = (line: string) => t(releaseLineKey(line));
 
 const deferError = computed(() =>
 	deferInvalid(form.deferHours)
@@ -300,7 +301,7 @@ async function runCheck() {
 							</option>
 							<option
 								v-for="release in pinnableReleases"
-								:key="release.version"
+								:key="release.tag"
 								:value="release.version"
 							>
 								{{ release.version }} · {{ lineLabel(release.line) }} ·
@@ -313,6 +314,15 @@ async function runCheck() {
 							data-testid="desktop-updates-pin-empty"
 						>
 							{{ t('dashboard.admin.instance.desktopUpdates.pin.noneCached') }}
+						</p>
+						<p
+							v-if="missingPin"
+							class="text-xs text-warning"
+							data-testid="desktop-updates-pin-missing"
+						>
+							{{
+								t('dashboard.admin.instance.desktopUpdates.pin.missing', { version: missingPin })
+							}}
 						</p>
 					</div>
 
@@ -407,78 +417,12 @@ async function runCheck() {
 					</div>
 				</section>
 
-				<!-- Cached releases, newest first, with the GitHub body behind a
-				     disclosure — the same shape the system page uses for its notes. -->
-				<section class="card p-5">
-					<h2 class="text-base font-semibold text-text-primary">
-						{{ t('dashboard.admin.instance.desktopUpdates.releases.title') }}
-					</h2>
-
-					<UiEmptyState
-						v-if="cachedReleases.length === 0"
-						class="mt-2"
-						icon="lucide:monitor-down"
-						:title="t('dashboard.admin.instance.desktopUpdates.empty.title')"
-						:description="t('dashboard.admin.instance.desktopUpdates.empty.description')"
-						data-testid="desktop-updates-empty"
-					>
-						<UiButton
-							variant="outline"
-							size="sm"
-							:loading="isChecking"
-							:disabled="!canManageSettings"
-							data-testid="desktop-updates-empty-check"
-							@click="runCheck"
-						>
-							{{ t('dashboard.admin.instance.desktopUpdates.checkNow') }}
-						</UiButton>
-					</UiEmptyState>
-
-					<table v-else class="mt-3 w-full text-sm" data-testid="desktop-updates-releases">
-						<thead>
-							<tr class="text-left text-xs uppercase tracking-wider text-text-tertiary">
-								<th class="py-2 font-medium">
-									{{ t('dashboard.admin.instance.desktopUpdates.releases.version') }}
-								</th>
-								<th class="py-2 font-medium">
-									{{ t('dashboard.admin.instance.desktopUpdates.releases.line') }}
-								</th>
-								<th class="py-2 font-medium">
-									{{ t('dashboard.admin.instance.desktopUpdates.releases.published') }}
-								</th>
-							</tr>
-						</thead>
-						<tbody>
-							<tr
-								v-for="release in cachedReleases"
-								:key="release.version"
-								class="border-t border-border-subtle align-top"
-								:data-testid="`desktop-updates-release-${release.version}`"
-							>
-								<td class="py-2 font-mono text-text-primary">
-									{{ release.version }}
-									<span v-if="release.isPrerelease" class="ml-1 text-xs text-text-tertiary">
-										{{ t('dashboard.admin.instance.desktopUpdates.releases.prerelease') }}
-									</span>
-								</td>
-								<td class="py-2 text-text-secondary">{{ lineLabel(release.line) }}</td>
-								<td class="py-2 text-text-secondary">
-									{{ formatDateTime(release.publishedAt) }}
-									<details v-if="release.notes" class="mt-1">
-										<summary
-											class="text-xs font-medium text-text-primary cursor-pointer hover:text-brand"
-										>
-											{{ t('dashboard.admin.instance.desktopUpdates.releases.notes') }}
-										</summary>
-										<pre
-											class="mt-2 text-xs text-text-secondary whitespace-pre-wrap font-sans leading-relaxed"
-											>{{ release.notes }}</pre>
-									</details>
-								</td>
-							</tr>
-						</tbody>
-					</table>
-				</section>
+				<DesktopReleaseTable
+					:releases="cachedReleases"
+					:checking="isChecking"
+					:can-manage="canManageSettings"
+					@check="runCheck"
+				/>
 			</div>
 		</UiQueryBoundary>
 

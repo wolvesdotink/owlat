@@ -40,6 +40,7 @@ jobs:
           bunx vitest run
           scripts/__tests__/check-security-audit.test.ts
           scripts/__tests__/image-size-patch.test.ts
+          scripts/__tests__/dependency-advisories.test.ts
 
       - name: Audit (fail on High/Critical)
         run: |

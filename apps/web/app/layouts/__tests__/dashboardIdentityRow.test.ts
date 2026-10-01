@@ -99,6 +99,7 @@ function mountLayout(pending = false): VueWrapper {
 				DashboardShellHeader: true,
 				LazyAppCommandPalette: true,
 				ShellComposerOverlay: true,
+				AnswerReviewApproveUndoToast: true,
 				LazyKeyboardShortcutsHelp: true,
 				QueryQuickQueryPanel: true,
 				AppLiveRegion: true,
