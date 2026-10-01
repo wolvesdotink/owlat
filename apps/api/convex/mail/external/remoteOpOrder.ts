@@ -43,8 +43,6 @@ const MESSAGE_OPS_LIMIT = 25;
 const DUE_SCAN_LIMIT = 250;
 /** Ops one read follows from the held ops to what they wait for. */
 const LEAD_STEPS_LIMIT = 100;
-/** Queued ops a folder rename rewrites. */
-const RENAME_SCAN_LIMIT = 1000;
 
 /** The account's queued ops for one message, oldest first. */
 async function opsForMessage(
@@ -231,30 +229,4 @@ export async function dueRemoteOps(
 		}
 	}
 	return page;
-}
-
-/**
- * Point the account's queued ops at a renamed remote folder: `rename` maps a
- * remote name to its new one, or to null for a name the rename did not touch.
- */
-export async function renameQueuedFolderRefs(
-	ctx: MutationCtx,
-	accountId: Id<'externalMailAccounts'>,
-	rename: (name: string) => string | null
-): Promise<void> {
-	const renamedRef = (ref: RemoteOpRow['source'] | undefined) => {
-		const remote = ref && 'remote' in ref ? rename(ref.remote) : null;
-		return remote === null ? undefined : { remote };
-	};
-	const rows = await ctx.db
-		.query('externalMailRemoteOps')
-		.withIndex('by_account_and_next_attempt', (q) => q.eq('accountId', accountId))
-		.take(RENAME_SCAN_LIMIT);
-	for (const row of rows) {
-		const source = renamedRef(row.source);
-		const target = renamedRef(row.target);
-		if (source || target) {
-			await ctx.db.patch(row._id, { source: source ?? row.source, target: target ?? row.target });
-		}
-	}
 }

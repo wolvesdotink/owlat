@@ -357,7 +357,7 @@ describe('a folder the worker renamed', () => {
 		if (rename?.kind !== 'renameFolder') throw new Error('expected the rename to be due');
 		// Changes the member makes while the worker is renaming still name the old folder.
 		await between();
-		await t.mutation(internal.mail.external.remoteOps.recordRemoteFolderRename, {
+		await t.mutation(internal.mail.external.remoteFolderRename.recordRemoteFolderRename, {
 			opId: rename.opId,
 			remoteName: 'Projects/Clients',
 			delimiter: '/',
@@ -440,13 +440,152 @@ describe('a folder the worker renamed', () => {
 		]);
 	});
 
+	/** Queue an op as the backend would, naming folders by remote name. */
+	async function enqueue(
+		t: TestConvex<typeof schema>,
+		accountId: Id<'externalMailAccounts'>,
+		fields: { kind: 'flags' | 'deleteFolder'; source: { remote: string }; rfc822MessageId?: string }
+	) {
+		await t.run(async (ctx) => {
+			await ctx.db.insert('externalMailRemoteOps', {
+				accountId,
+				...fields,
+				...(fields.kind === 'flags' ? { flags: { seen: true } } : {}),
+				attempts: 0,
+				nextAttemptAt: Date.now(),
+				createdAt: Date.now(),
+			});
+		});
+	}
+
+	it('records a report sent again as nothing new', async () => {
+		const { t, accountId, owlat } = await mirroredFolders();
+		await t.mutation(api.mail.folders.rename, { folderId: owlat, name: 'Clients' });
+		const [rename] = await t.query(internal.mail.external.remoteOps.listDueRemoteOps, {
+			accountId,
+		});
+		const report = {
+			opId: rename!.opId,
+			remoteName: 'Projects/Clients',
+			delimiter: '/',
+		};
+
+		await t.mutation(internal.mail.external.remoteFolderRename.recordRemoteFolderRename, report);
+		// The answer was lost, so the worker reports again.
+		await t.mutation(internal.mail.external.remoteFolderRename.recordRemoteFolderRename, report);
+
+		expect(await mappedNames(t)).toEqual([
+			'Projects',
+			'Projects/Clients',
+			'Projects/Clients/Sub',
+			'Projects/Owlat.old',
+		]);
+		expect(await queued(t)).toEqual([
+			{
+				kind: 'renameFolder',
+				source: { remote: 'Projects/Clients' },
+				target: { path: ['Clients'] },
+			},
+		]);
+	});
+
+	it('keeps a rename whose report failed queued, ahead of the ops for the old name, until a later report', async () => {
+		const { t, accountId, owlat } = await mirroredFolders();
+		await t.mutation(api.mail.folders.rename, { folderId: owlat, name: 'Clients' });
+		const [rename] = await t.query(internal.mail.external.remoteOps.listDueRemoteOps, {
+			accountId,
+		});
+		// RENAME went through at the provider, but the report did not reach the backend.
+		await t.mutation(internal.mail.external.remoteOps.settleRemoteOps, {
+			results: [{ opId: rename!.opId, outcome: 'failed', error: 'fetch failed' }],
+		});
+		// Recorded meanwhile, still by the old name.
+		await enqueue(t, accountId, { kind: 'deleteFolder', source: { remote: 'Projects/Owlat' } });
+		await enqueue(t, accountId, {
+			kind: 'flags',
+			rfc822MessageId: 'a@x.example',
+			source: { remote: 'Projects/Owlat/Sub' },
+		});
+
+		// The folder delete waits for the rename; it is not settled against a name the provider dropped.
+		const due = await t.query(internal.mail.external.remoteOps.listDueRemoteOps, { accountId });
+		expect(due.map((o) => o.kind)).not.toContain('deleteFolder');
+		// A restarted worker finds the rename still queued, and reports it.
+		const renames = await t.query(
+			internal.mail.external.remoteFolderRename.listQueuedFolderRenames,
+			{ accountId }
+		);
+		expect(renames.map((o) => [o.opId, o.source])).toEqual([
+			[rename!.opId, { remote: 'Projects/Owlat' }],
+		]);
+		await t.mutation(internal.mail.external.remoteFolderRename.recordRemoteFolderRename, {
+			opId: rename!.opId,
+			remoteName: 'Projects/Clients',
+			delimiter: '/',
+		});
+
+		expect(await queued(t)).toEqual([
+			{
+				kind: 'renameFolder',
+				source: { remote: 'Projects/Clients' },
+				target: { path: ['Clients'] },
+			},
+			{ kind: 'deleteFolder', source: { remote: 'Projects/Clients' } },
+			{
+				kind: 'flags',
+				rfc822MessageId: 'a@x.example',
+				source: { remote: 'Projects/Clients/Sub' },
+				flags: { seen: true },
+			},
+		]);
+	});
+
+	it('rewrites more queued ops than one transaction holds', async () => {
+		const { t, accountId, owlat } = await mirroredFolders();
+		await t.mutation(api.mail.folders.rename, { folderId: owlat, name: 'Clients' });
+		const [rename] = await t.query(internal.mail.external.remoteOps.listDueRemoteOps, {
+			accountId,
+		});
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 1005; i++) {
+				await ctx.db.insert('externalMailRemoteOps', {
+					accountId,
+					kind: 'flags',
+					rfc822MessageId: `m${i}@x.example`,
+					source: { remote: 'Projects/Owlat' },
+					flags: { seen: true },
+					attempts: 0,
+					nextAttemptAt: Date.now(),
+					createdAt: Date.now(),
+				});
+			}
+		});
+
+		vi.useFakeTimers({ now: Date.now() });
+		try {
+			await t.mutation(internal.mail.external.remoteFolderRename.recordRemoteFolderRename, {
+				opId: rename!.opId,
+				remoteName: 'Projects/Clients',
+				delimiter: '/',
+			});
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		} finally {
+			vi.useRealTimers();
+		}
+
+		const names = new Set(
+			(await queued(t)).map((o) => ('remote' in o.source ? o.source.remote : ''))
+		);
+		expect([...names]).toEqual(['Projects/Clients']);
+	});
+
 	it('ignores a report for an op that is not a folder rename', async () => {
 		const { t, mailboxId, accountId } = await mirroredFolders();
 		const id = await seedMessage(t, mailboxId, { rfc822MessageId: 'a@x.example' });
 		await t.mutation(api.mail.messageActions.archive, { messageIds: [id] });
 		const [op] = await t.query(internal.mail.external.remoteOps.listDueRemoteOps, { accountId });
 
-		await t.mutation(internal.mail.external.remoteOps.recordRemoteFolderRename, {
+		await t.mutation(internal.mail.external.remoteFolderRename.recordRemoteFolderRename, {
 			opId: op!.opId,
 			remoteName: 'Projects/Clients',
 			delimiter: '/',

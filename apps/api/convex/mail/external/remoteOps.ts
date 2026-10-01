@@ -21,6 +21,8 @@
  * the worker had to invent. The opposite direction — changes made on the
  * provider — is `remoteState.ts`. The order ops reach the provider in, and how
  * a newer flag change supersedes an older one, is `remoteOpOrder.ts`.
+ * How a folder the worker renamed at the provider is followed through the
+ * backend is `remoteFolderRename.ts`.
  */
 
 import { v, type Infer } from 'convex/values';
@@ -39,12 +41,7 @@ import type {
 } from '../../lib/validators/mail';
 import { findDuplicateInMailbox } from '../deliveryPipeline/insert';
 import { getMailSyncConfig, mtaFetch } from '../mtaClient';
-import {
-	deferOpsBehind,
-	dueRemoteOps,
-	insertRemoteOp,
-	renameQueuedFolderRefs,
-} from './remoteOpOrder';
+import { deferOpsBehind, dueRemoteOps, insertRemoteOp } from './remoteOpOrder';
 import {
 	deferralBudget,
 	deferralValidator,
@@ -349,17 +346,22 @@ export const listDueRemoteOps = internalQuery({
 		const account = await ctx.db.get(args.accountId);
 		if (!account || !writesBack(account)) return [];
 		const rows = await dueRemoteOps(ctx, args.accountId, Date.now(), DUE_PAGE_SIZE);
-		return rows.map((r) => ({
-			opId: r._id,
-			kind: r.kind,
-			rfc822MessageId: r.rfc822MessageId,
-			source: r.source,
-			target: r.target,
-			flags: r.flags,
-			attempts: r.attempts,
-		}));
+		return rows.map(workerOp);
 	},
 });
+
+/** An op as the worker replays it. */
+export function workerOp(r: Doc<'externalMailRemoteOps'>) {
+	return {
+		opId: r._id,
+		kind: r.kind,
+		rfc822MessageId: r.rfc822MessageId,
+		source: r.source,
+		target: r.target,
+		flags: r.flags,
+		attempts: r.attempts,
+	};
+}
 
 /** Backoff after the `attempts`-th failure: 1, 2, 4 … minutes, capped at an hour. */
 export function remoteOpRetryDelayMs(attempts: number): number {
@@ -421,53 +423,6 @@ export const continueRemoteOpDeferral = internalMutation({
 		await runDeferral(ctx, args.deferral, budget);
 		if (budget.leftover.length > 0) await scheduleLeftoverDeferrals(ctx, budget);
 		else await nudgeWorker(ctx, args.deferral.accountId);
-	},
-});
-
-/**
- * The worker renamed a mirrored folder at the provider (a `renameFolder` op)
- * to `remoteName`. Point the folder's mapping rows, and every op still naming
- * it by its old name, at the new one — and the same for the folders below it,
- * which RENAME takes along — so a change recorded before the worker's next
- * folder discovery, or replayed after a worker restart, reaches the folder.
- */
-export const recordRemoteFolderRename = internalMutation({
-	args: {
-		opId: v.id('externalMailRemoteOps'),
-		remoteName: v.string(),
-		// The provider's hierarchy delimiter: what separates a folder below from its parent.
-		delimiter: v.string(),
-	},
-	handler: async (ctx, args) => {
-		const op = await ctx.db.get(args.opId);
-		if (!op || op.kind !== 'renameFolder' || !('remote' in op.source)) return null;
-		const from = op.source.remote;
-		const to = args.remoteName;
-		if (!to || to === from) return null;
-		const below = from + args.delimiter;
-		const rename = (name: string): string | null => {
-			if (name === from) return to;
-			return args.delimiter && name.startsWith(below) ? to + name.slice(from.length) : null;
-		};
-		const rows = await ctx.db
-			.query('externalMailFolderSync')
-			.withIndex('by_account', (q) => q.eq('accountId', op.accountId))
-			.collect(); // bounded: one row per synced folder of one account
-		const renamed = rows.flatMap((row) => {
-			const remoteName = rename(row.remoteName);
-			return remoteName === null ? [] : [{ row, remoteName }];
-		});
-		for (const { row, remoteName } of renamed) {
-			// A row already holding the new name maps a folder the provider no longer has.
-			for (const stale of rows) {
-				if (stale.remoteName === remoteName && !renamed.some((r) => r.row === stale)) {
-					await ctx.db.delete(stale._id);
-				}
-			}
-			await ctx.db.patch(row._id, { remoteName });
-		}
-		await renameQueuedFolderRefs(ctx, op.accountId, rename);
-		return null;
 	},
 });
 

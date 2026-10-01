@@ -45,3 +45,37 @@ export async function drainRemoteOps(deps: DrainDeps): Promise<void> {
 		if (connectionLost || results.length < ops.length) return;
 	}
 }
+
+/** Pauses before the second and third attempt to record a folder rename. */
+const RENAME_REPORT_RETRY_MS = [500, 2_000];
+
+export interface RenameReportDeps {
+	/** Record the rename with the backend. */
+	record(): Promise<unknown>;
+	/** The backend predates the report: it has no mutation to record it in. */
+	isUnsupported(err: unknown): boolean;
+	sleep?(ms: number): Promise<void>;
+}
+
+/**
+ * Record a folder rename the provider already carried out. Until the backend
+ * has it, the backend names the folder, and every op queued for it, by the old
+ * name, so a transient failure is retried here and then thrown: the rename op
+ * fails, stays queued, and its retry reports again. False for a backend that
+ * predates the report, which settles the op as before: the ops still naming
+ * the old folder reach it through this worker's own rename map.
+ */
+export async function reportFolderRename(deps: RenameReportDeps): Promise<boolean> {
+	const sleep = deps.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+	for (let attempt = 0; ; attempt++) {
+		try {
+			await deps.record();
+			return true;
+		} catch (err) {
+			if (deps.isUnsupported(err)) return false;
+			const delay = RENAME_REPORT_RETRY_MS[attempt];
+			if (delay === undefined) throw err;
+			await sleep(delay);
+		}
+	}
+}

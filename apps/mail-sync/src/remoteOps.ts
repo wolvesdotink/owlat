@@ -23,7 +23,10 @@
  * deleting one — after moving what the provider still holds in it to the
  * inbox, which is what deleting a folder does in Owlat too. The new name of a
  * renamed folder is handed back to the backend, which rewrites the ops still
- * naming the old one.
+ * naming the old one. The rename op is done only once the backend has that
+ * name: until then it fails and its retry reports again, and a worker that
+ * restarts first reports every queued rename the provider already shows
+ * (`recoverRenames`), before any op still naming the old folder runs.
  *
  * ImapFlow resolves `false` rather than rejecting when the server refuses a
  * MOVE, COPY, STORE or EXPUNGE (imapCommandErrors.ts), so every result is read: a
@@ -101,8 +104,8 @@ export interface RemoteFolderMap {
 	/**
 	 * Folders this worker renamed, old path → new. An op queued before the
 	 * backend learned the new name still says the old one. A cache: the
-	 * backend rewrites those ops (`ReplayHooks.renamed`), so a restart that
-	 * empties it loses nothing.
+	 * backend rewrites those ops (`ReplayHooks.renamed`), and a rename it has
+	 * not recorded yet is found again after a restart (`recoverRenames`).
 	 */
 	renamed?: Map<string, string>;
 }
@@ -111,7 +114,11 @@ export interface RemoteFolderMap {
 export interface ReplayHooks {
 	/** The error ImapFlow logged for the command that just resolved `false` (imapCommandErrors.ts). */
 	takeRefusal?(): unknown;
-	/** A folder op renamed `from` to `to` at the provider, whose hierarchy delimiter is `delimiter`. Must not throw. */
+	/**
+	 * A folder op renamed `from` to `to` at the provider, whose hierarchy
+	 * delimiter is `delimiter`: record it with the backend. Throws when it could
+	 * not, which fails the op so its retry reports again.
+	 */
 	renamed?(op: RemoteOp, rename: { from: string; to: string; delimiter: string }): Promise<void>;
 	/** The op settles without the part of its change the provider cannot keep. */
 	skipped?(op: RemoteOp, reason: string): void;
@@ -154,8 +161,8 @@ export class RemoteOpReplayer {
 	) {}
 
 	async apply(op: RemoteOp): Promise<Exclude<RemoteOpOutcome, 'failed'>> {
+		if (op.kind === 'renameFolder') return await this.renameFolder(op);
 		const source = this.existingPath(op.source);
-		if (op.kind === 'renameFolder') return await this.renameFolder(op, source);
 		if (op.kind === 'deleteFolder') return await this.deleteFolder(source);
 
 		const id = canonicalMessageId(op.rfc822MessageId ?? '');
@@ -202,24 +209,76 @@ export class RemoteOpReplayer {
 		return found ? 'done' : 'not_found';
 	}
 
-	private async renameFolder(op: RemoteOp, path: string | null): Promise<'done' | 'not_found'> {
-		const name = op.target && 'path' in op.target ? op.target.path[0] : undefined;
-		if (!path || !name || this.isSystemFolder(path)) return 'not_found';
-		const delimiter = this.client.namespace?.delimiter || '/';
-		const parent = path.split(delimiter).slice(0, -1);
-		const renamed = [...parent, name].join(delimiter);
+	/**
+	 * Before the first replay after a restart: a rename this worker carried out
+	 * but could not report is still named by the old name in the backend, and
+	 * an op for that name would find no folder. Report each queued rename the
+	 * provider already shows as done — the old name gone, the new one there —
+	 * and leave the rest to their own turn in the queue. A failed report
+	 * throws, so nothing runs against the old name; false when a folder could
+	 * not be counted, for the caller to check again on its next drain.
+	 */
+	async recoverRenames(ops: RemoteOp[]): Promise<boolean> {
+		let complete = true;
+		for (const op of ops) {
+			const rename = this.renameOf(op);
+			if (!rename || rename.to === rename.path) continue;
+			let renamed: boolean;
+			try {
+				renamed =
+					(await this.messageCount(rename.path)) === null &&
+					(await this.messageCount(rename.to)) !== null;
+			} catch (err) {
+				if (!this.client.usable) throw err;
+				complete = false;
+				continue;
+			}
+			if (renamed) await this.recordRename(op, rename);
+		}
+		return complete;
+	}
+
+	private async renameFolder(op: RemoteOp): Promise<'done' | 'not_found'> {
+		const rename = this.renameOf(op);
+		if (!rename) return 'not_found';
+		const { path, to } = rename;
 		if ((await this.messageCount(path)) === null) {
 			// Gone under its old name but there under the new one: this op renamed
 			// it before a restart cut it off from settling.
-			if (renamed === path || (await this.messageCount(renamed)) === null) return 'not_found';
-		} else if (renamed !== path) {
-			await this.accepted('RENAME', () => this.client.mailboxRename(path, renamed));
+			if (to === path || (await this.messageCount(to)) === null) return 'not_found';
+		} else if (to !== path) {
+			await this.accepted('RENAME', () => this.client.mailboxRename(path, to));
 		}
-		if (renamed !== path) {
-			this.folders.renamed?.set(path, renamed);
-			await this.hooks.renamed?.(op, { from: path, to: renamed, delimiter });
-		}
+		await this.recordRename(op, rename);
 		return 'done';
+	}
+
+	/**
+	 * What a rename op does: `path` is where the folder is now (after any rename
+	 * this worker already made), `to` its new name in the same parent.
+	 */
+	private renameOf(op: RemoteOp): { path: string; to: string; delimiter: string } | null {
+		const path = op.kind === 'renameFolder' ? this.existingPath(op.source) : null;
+		const name = op.target && 'path' in op.target ? op.target.path[0] : undefined;
+		if (!path || !name || this.isSystemFolder(path)) return null;
+		const delimiter = this.client.namespace?.delimiter || '/';
+		const to = [...path.split(delimiter).slice(0, -1), name].join(delimiter);
+		return { path, to, delimiter };
+	}
+
+	/**
+	 * Remember the rename and report it to the backend, which still names the
+	 * folder as the op does. That is the old name also when this worker already
+	 * renamed the folder and `path` is the new one: a retry after a report that
+	 * failed.
+	 */
+	private async recordRename(
+		op: RemoteOp,
+		{ path, to, delimiter }: { path: string; to: string; delimiter: string }
+	): Promise<void> {
+		if (to !== path) this.folders.renamed?.set(path, to);
+		const from = 'remote' in op.source ? op.source.remote : path;
+		if (from !== to) await this.hooks.renamed?.(op, { from, to, delimiter });
 	}
 
 	private async deleteFolder(path: string | null): Promise<'done' | 'not_found'> {

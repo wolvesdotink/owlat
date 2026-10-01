@@ -15,7 +15,10 @@
  *     `false`) fails the op with the server's answer, never settles it as
  *     done, and never lets a folder be deleted with mail still in it;
  *   - a flag the folder cannot keep is skipped, not retried;
- *   - a folder rename is handed to the backend, so a restart loses nothing.
+ *   - a folder rename is handed to the backend, so a restart loses nothing:
+ *     the op is done only once the backend has the new name, a retry reports
+ *     again, and a restarted worker reports a rename it carried out before any
+ *     op for the old name runs.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -27,7 +30,8 @@ import {
 	type RemoteOpsClient,
 	type ReplayHooks,
 } from '../remoteOps.js';
-import { drainRemoteOps } from '../remoteOpsDrain.js';
+import { drainRemoteOps, reportFolderRename } from '../remoteOpsDrain.js';
+import { fn, isMissingFunction } from '../convex.js';
 import { CommandRefusals } from '../imapCommandErrors.js';
 import type { FolderRole } from '../folders.js';
 
@@ -1265,5 +1269,195 @@ describe('RemoteOpReplayer — a folder rename survives a worker restart', () =>
 		expect(settled).toEqual([[{ opId: operation.opId, outcome: 'done' }]]);
 		expect(imap.log).toEqual([]);
 		expect(renames).toEqual([{ from: 'Projects/Owlat', to: 'Projects/Clients', delimiter: '/' }]);
+	});
+});
+
+describe('RemoteOpReplayer — a rename whose report did not reach the backend', () => {
+	/**
+	 * The backend's queue: a recorded rename rewrites every queued op naming the
+	 * old folder, the rename op included. Unreachable until `up` is set.
+	 */
+	function backend(queue: RemoteOp[]) {
+		const state = { up: false, reports: [] as Array<{ from: string; to: string }> };
+		const renamed: ReplayHooks['renamed'] = async (_op, { from, to }) => {
+			await reportFolderRename({
+				record: async () => {
+					if (!state.up) throw new Error('fetch failed: 503 Service Unavailable');
+					state.reports.push({ from, to });
+					for (const o of queue) {
+						for (const ref of [o.source, o.target]) {
+							if (ref && 'remote' in ref && ref.remote === from) ref.remote = to;
+						}
+					}
+				},
+				isUnsupported: (err) => isMissingFunction(err, fn.recordRemoteFolderRename),
+				sleep: async () => {},
+			});
+		};
+		return { state, hooks: { renamed } satisfies ReplayHooks };
+	}
+
+	const renameToClients = () =>
+		op({
+			kind: 'renameFolder',
+			source: { remote: 'Projects/Owlat' },
+			target: { path: ['Clients'] },
+		});
+
+	it('fails the op after a successful RENAME, and its retry sends the report', async () => {
+		const imap = new FakeImap({ INBOX: [], 'Projects/Owlat': [] });
+		const rename = renameToClients();
+		const { state, hooks } = backend([rename]);
+		const folders = { ...folderMap({ inbox: 'INBOX' }), renamed: new Map<string, string>() };
+
+		const first = await drainOne(imap, rename, folders, hooks);
+		state.up = true;
+		const retry = await drainOne(imap, rename, folders, hooks);
+
+		expect(first).toEqual([[expect.objectContaining({ opId: rename.opId, outcome: 'failed' })]]);
+		expect(retry).toEqual([[{ opId: rename.opId, outcome: 'done' }]]);
+		expect(state.reports).toEqual([{ from: 'Projects/Owlat', to: 'Projects/Clients' }]);
+		// The retry reports what the provider already did; it does not rename again.
+		expect(imap.log.filter((line) => line.startsWith('RENAME'))).toEqual([
+			'RENAME Projects/Owlat -> Projects/Clients',
+		]);
+		expect(rename.source).toEqual({ remote: 'Projects/Clients' });
+	});
+
+	it('reports the rename on restart before the ops still naming the old folder run', async () => {
+		const imap = new FakeImap({ INBOX: [], 'Projects/Owlat': [[2, '<b@x>']] });
+		const rename = renameToClients();
+		const flags = op({
+			kind: 'flags',
+			rfc822MessageId: 'b@x',
+			source: { remote: 'Projects/Owlat' },
+			flags: { seen: true },
+		});
+		const deleteFolder = op({ kind: 'deleteFolder', source: { remote: 'Projects/Owlat' } });
+		const { state, hooks } = backend([rename, flags, deleteFolder]);
+		const before = { ...folderMap({ inbox: 'INBOX' }), renamed: new Map<string, string>() };
+		expect(await drainOne(imap, rename, before, hooks)).toEqual([
+			[expect.objectContaining({ outcome: 'failed' })],
+		]);
+
+		// A restart: nothing remembered of the rename, and the backend reachable again.
+		state.up = true;
+		const after = { ...folderMap({ inbox: 'INBOX' }), renamed: new Map<string, string>() };
+		expect(await replayerFor(imap, after, hooks).recoverRenames([rename])).toBe(true);
+		const settled = [
+			...(await drainOne(imap, flags, after, hooks)),
+			// The folder delete waits behind the rename in the backend's queue.
+			...(await drainOne(imap, rename, after, hooks)),
+			...(await drainOne(imap, deleteFolder, after, hooks)),
+		];
+
+		expect(state.reports).toEqual([{ from: 'Projects/Owlat', to: 'Projects/Clients' }]);
+		expect(settled.flat().map((r) => r.outcome)).toEqual(['done', 'done', 'done']);
+		expect(imap.log).toContain('+FLAGS Projects/Clients 2 \\Seen');
+		expect(imap.log).toContain('DELETE-FOLDER Projects/Clients');
+		expect(imap.ids('INBOX')).toEqual(['<b@x>']);
+	});
+
+	it('leaves a rename the provider has not carried out to its own turn', async () => {
+		const imap = new FakeImap({ INBOX: [], 'Projects/Owlat': [] });
+		const { state, hooks } = backend([]);
+		state.up = true;
+
+		const complete = await replayerFor(imap, folderMap({ inbox: 'INBOX' }), hooks).recoverRenames([
+			renameToClients(),
+		]);
+
+		expect(complete).toBe(true);
+		expect(state.reports).toEqual([]);
+		expect(imap.log).toEqual([]);
+	});
+
+	it('checks again on the next drain when a folder could not be counted', async () => {
+		const imap = new FakeImap({ INBOX: [], 'Projects/Clients': [] });
+		imap.status = async () => Promise.reject(refused('NO', 'UNAVAILABLE', 'Try later'));
+		const { hooks } = backend([]);
+
+		const complete = await replayerFor(imap, folderMap({ inbox: 'INBOX' }), hooks).recoverRenames([
+			renameToClients(),
+		]);
+
+		expect(complete).toBe(false);
+	});
+
+	it('throws on restart when the report still fails, so nothing runs against the old name', async () => {
+		const imap = new FakeImap({ INBOX: [], 'Projects/Clients': [] });
+		const { hooks } = backend([]);
+
+		await expect(
+			replayerFor(imap, folderMap({ inbox: 'INBOX' }), hooks).recoverRenames([renameToClients()])
+		).rejects.toThrow('503');
+	});
+});
+
+describe('reportFolderRename', () => {
+	const missing = new Error(
+		"[Request ID: 1a2b] Server Error\nCould not find public function for 'mail/external/remoteFolderRename:recordRemoteFolderRename'. Did you forget to run `npx convex dev` or `npx convex deploy`?"
+	);
+
+	it('retries a transient failure', async () => {
+		const waits: number[] = [];
+		let calls = 0;
+		const recorded = await reportFolderRename({
+			record: async () => {
+				if (++calls < 3) throw new Error('fetch failed');
+			},
+			isUnsupported: () => false,
+			sleep: async (ms) => void waits.push(ms),
+		});
+
+		expect(recorded).toBe(true);
+		expect(waits).toEqual([500, 2_000]);
+	});
+
+	it('throws once its retries are spent', async () => {
+		let calls = 0;
+		await expect(
+			reportFolderRename({
+				record: async () => {
+					calls++;
+					throw new Error('503 Service Unavailable');
+				},
+				isUnsupported: (err) => isMissingFunction(err, fn.recordRemoteFolderRename),
+				sleep: async () => {},
+			})
+		).rejects.toThrow('503');
+		expect(calls).toBe(3);
+	});
+
+	it('settles as before on a backend that has no such mutation', async () => {
+		let calls = 0;
+		const recorded = await reportFolderRename({
+			record: async () => {
+				calls++;
+				throw missing;
+			},
+			isUnsupported: (err) => isMissingFunction(err, fn.recordRemoteFolderRename),
+			sleep: async () => {},
+		});
+
+		expect(recorded).toBe(false);
+		expect(calls).toBe(1);
+	});
+
+	it('tells a missing function from every other failure', () => {
+		const ref = fn.recordRemoteFolderRename;
+		expect(isMissingFunction(missing, ref)).toBe(true);
+		expect(
+			isMissingFunction(
+				new Error(
+					"Could not find function for 'mail/external/remoteFolderRename.js:recordRemoteFolderRename'"
+				),
+				ref
+			)
+		).toBe(true);
+		expect(isMissingFunction(missing, fn.listQueuedFolderRenames)).toBe(false);
+		expect(isMissingFunction(new Error('fetch failed'), ref)).toBe(false);
+		expect(isMissingFunction(new Error('503 Service Unavailable'), ref)).toBe(false);
+		expect(isMissingFunction(undefined, ref)).toBe(false);
 	});
 });
