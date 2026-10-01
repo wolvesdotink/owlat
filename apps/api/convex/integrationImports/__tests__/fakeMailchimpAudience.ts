@@ -11,7 +11,7 @@
 
 import { vi } from 'vitest';
 
-export interface FakeMember {
+interface FakeMember {
 	email: string;
 	status: string;
 	signedUpAt: number;
