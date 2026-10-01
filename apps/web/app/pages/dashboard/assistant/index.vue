@@ -135,6 +135,8 @@ const startRename = (id: Id<'aiConversations'>, currentTitle: string) => {
 
 // Enter and Escape hand focus back to the row's More actions button, where the
 // rename started; a blur (the member clicked elsewhere) leaves focus alone.
+// The input claims its Escape keydown, so cancelling a rename does not also
+// close the phone drawer around it.
 const focusRowActions = (id: Id<'aiConversations'>) =>
 	nextTick(() => document.getElementById(`conversation-actions-${id}`)?.focus());
 
@@ -215,6 +217,7 @@ const cancelRename = () => {
 								:aria-label="t('dashboard.assistant.index.renameConversation')"
 								@blur="commitRename()"
 								@keyup.enter="commitRename({ restoreFocus: true })"
+								@keydown.escape.prevent
 								@keyup.escape="cancelRename"
 							/>
 						</div>
@@ -241,8 +244,12 @@ const cancelRename = () => {
 							<UiDropdownMenu
 								:open="actionsOpenId === c._id"
 								position="right"
-								class="flex-shrink-0 mr-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
-								:class="actionsOpenId === c._id && 'opacity-100'"
+								class="flex-shrink-0 mr-0.5 transition-opacity"
+								:class="
+									actionsOpenId === c._id
+										? 'opacity-100'
+										: 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100'
+								"
 								@update:open="(v: boolean) => (actionsOpenId = v ? c._id : null)"
 							>
 								<template #trigger>
