@@ -293,6 +293,13 @@ attestSource } })` — fires only on the admin-attest path
   `topic_confirmed` fan-out is a no-op in that ordering. The
   `'doi_attested'` literal records the attestation itself on the
   contact's timeline.
+- `carry_pending_submissions` — fires on `to: 'pending'` when a new token
+  replaces one the contact still held (a lapsed token; a live one is kept).
+  The **Form submission (module)** moves the contact's
+  `pending_confirmation` rows from the outgoing token to the new one, so the
+  next confirmation finalizes them. The admin resend
+  (`refreshPendingToken`) does the same. A token a global opt-out withdrew
+  is no longer on the contact, so its rows are never carried.
 - `audit_log({ action: 'doi.admin_attested', contactId, details: {
 attestSource } })` — fires only on the admin-attest path. The
   audit action is new in `auditActions/catalog.ts`. The
@@ -939,6 +946,11 @@ rows land directly in a terminal state at create time, so the legal-edges
   re-confirm. Returns `{ ok: true, finalized, continued }` or
   `{ ok: false, reason: 'no_submission_for_token' | 'already_confirmed'
 | 'invalid_state' }`.
+* `carryPendingSubmissions({ contactId, fromToken, toToken })`
+  (`forms/pendingConfirmations.ts`) — moves the contact's
+  `pending_confirmation` rows from a replaced token to the new one, paged
+  with a scheduled follow-up. Called by the **DOI lifecycle (module)** in
+  the transaction that writes the new token.
 
 Classification rules inside `submit`:
 

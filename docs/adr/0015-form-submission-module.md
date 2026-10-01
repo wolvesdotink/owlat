@@ -735,3 +735,24 @@ no longer decides whether their form rows are finalized.
 holds its token any more, matching what confirming it would answer.
 
 Rows still pending from before this change are not repaired.
+
+---
+
+## Amendment — carrying pending rows to a replacement token (2026-10)
+
+Issue #1054; see the ADR-0009 token-replacement amendment of the same date.
+
+The module gains a second writer file, `forms/pendingConfirmations.ts`,
+which holds what happens to rows that wait on a confirmation token:
+
+- `finalizeSubmissions(ctx, rows, at)` — the patch from
+  `pending_confirmation` to `success` plus the per-form
+  `successfulSubmissionCount` bump, shared by `markConfirmedByToken` and the
+  carry below.
+- `carryPendingSubmissions({ contactId, fromToken, toToken, cursor? })` — an
+  internal mutation the DOI lifecycle calls when a resend or a later signup
+  replaces the contact's token. It moves this contact's pending rows from
+  the outgoing token to the new one, paged like `markConfirmedByToken`.
+
+`submission.ts` keeps `submit` and `markConfirmedByToken`; the module still
+owns every write to `formSubmissions`.

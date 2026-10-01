@@ -282,10 +282,12 @@ export const getByConfirmationToken = publicQuery({
 
 		// Parity with the contact-fallback branch above: a still-pending
 		// submission whose DOI token has lapsed, or that no contact holds any
-		// more (a global opt-out withdrew it, or a resend replaced it), resolves
-		// to null — confirming it would fail. Only the pending state checks —
-		// confirmed submissions have had their token cleared from the contact,
-		// so re-checking it there would break the already-confirmed landing page.
+		// more (a global opt-out withdrew it), resolves to null — confirming it
+		// would fail. A token a resend or later signup replaced has no pending
+		// rows of its contact left: the replacement carried them to the new
+		// token. Only the pending state checks — confirmed submissions have had
+		// their token cleared from the contact, so re-checking it there would
+		// break the already-confirmed landing page.
 		if (submission.status === 'pending_confirmation') {
 			const contact = await findContactByConfirmationToken(ctx, args.token);
 			if (!contact) return null;
@@ -371,7 +373,8 @@ export const confirmSubmission = publicMutation({
 			// No contact holds the token. Either it was spent already — the rows
 			// it finalized remember it, so this is a repeat click — or it never
 			// existed, or its contact no longer holds it (a global opt-out
-			// withdrew it, or a resend replaced it).
+			// withdrew it, or a resend or later signup replaced it and carried
+			// its pending rows to the new token).
 			const confirmed = await ctx.db
 				.query('formSubmissions')
 				.withIndex('by_confirmation_token_and_status', (q) =>

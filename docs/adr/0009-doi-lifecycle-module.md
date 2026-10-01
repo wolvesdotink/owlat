@@ -589,5 +589,49 @@ and belongs to the confirmed contact, not the first one found:
   finalized rows (`alreadyConfirmed: true`).
 
 Pending rows whose token was replaced (an admin resend through
-`refreshPendingToken`, or the lapsed-token refresh above) are not re-keyed
-and stay `pending_confirmation`; the contact-side state is still correct.
+`refreshPendingToken`, or the lapsed-token refresh above) were not re-keyed
+and stayed `pending_confirmation`. The token-replacement amendment below
+carries them to the new token.
+
+---
+
+## Amendment — replacing a token carries its pending submissions (2026-10)
+
+Issue #1054; follows the consent-episode amendment above.
+
+Two operations replace a contact's token: the admin resend
+(`refreshPendingToken`) and a new signup after the token lapsed
+(`reducePending`). Each now hands the outgoing token's waiting form
+submissions to the **Form submission (module)**, in the transaction that
+writes the new token and after the contact patch:
+
+- `reducePending` emits a new effect, `carry_pending_submissions` (with
+  `contactId`, `fromToken` and `toToken`), when the contact still holds a
+  token other than the new one. `refreshPendingToken` makes the same call directly.
+- The runner calls `forms/pendingConfirmations.ts:carryPendingSubmissions`,
+  which moves this contact's `pending_confirmation` rows from `fromToken` to
+  `toToken`, 100 per mutation, with a scheduled follow-up for the rest. Rows
+  of other contacts and rows in any other status keep their token.
+- The match is on the outgoing token, the value on the contact before the
+  patch. A token a global opt-out withdrew is no longer on the contact, so
+  its rows are never carried into the next episode. A contact with no token
+  on record carries nothing.
+- A follow-up page reads the contact again. If the token was replaced once
+  more, the rest go to the token the contact holds now; if the contact
+  confirmed in between, they are finalized as that confirmation would have
+  done; if an opt-out withdrew the token, they stay where they are.
+
+The outgoing link stays dead: no contact holds it and none of its contact's
+pending rows remain, so `getByConfirmationToken` answers `null` and
+`confirmSubmission` answers `invalid_token`.
+
+Contacts who opted out before the consent-episode amendment still held the
+token they had then. Migration `0056_withdraw_opted_out_confirmation_tokens`
+withdraws a token minted at or before the contact's opt-out, with
+`withdrawConfirmationToken`'s semantics, and leaves a token minted after it
+(a later signup waiting for a fresh confirmation).
+
+`__tests__/formTokenCarry.integration.test.ts` covers both replacement paths,
+more than one page of rows, the rows that must stay put, and the follow-up
+cases; `migrations/__tests__/withdrawOptedOutTokens.test.ts` covers the
+migration.

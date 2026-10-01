@@ -587,6 +587,7 @@ import type * as eventsApi from '../eventsApi.js';
 import type * as forms__helpers from '../forms/_helpers.js';
 import type * as forms_apiHttp from '../forms/apiHttp.js';
 import type * as forms_endpoints from '../forms/endpoints.js';
+import type * as forms_pendingConfirmations from '../forms/pendingConfirmations.js';
 import type * as forms_submission from '../forms/submission.js';
 import type * as globalSearch from '../globalSearch.js';
 import type * as http from '../http.js';
@@ -1944,6 +1945,7 @@ declare const fullApi: ApiFromModules<{
 	'forms/_helpers': typeof forms__helpers;
 	'forms/apiHttp': typeof forms_apiHttp;
 	'forms/endpoints': typeof forms_endpoints;
+	'forms/pendingConfirmations': typeof forms_pendingConfirmations;
 	'forms/submission': typeof forms_submission;
 	globalSearch: typeof globalSearch;
 	http: typeof http;

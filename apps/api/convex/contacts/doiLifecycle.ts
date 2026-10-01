@@ -19,6 +19,10 @@
  *   contact_activity                 — one `topic_confirmed` row per
  *                                      DOI-required membership; routed
  *                                      through the Contact activity (module)
+ *   carry_pending_submissions        — moves the form submissions that waited
+ *                                      on a replaced token to the new one;
+ *                                      routed through the Form submission
+ *                                      (module)
  *
  * See docs/adr/0009-doi-lifecycle-module.md.
  */
@@ -168,6 +172,15 @@ type Effect =
 			topicIds: ReadonlyArray<Id<'topics'>>;
 	  }
 	| {
+			// A new token replaced one the contact still held (a lapsed one; a
+			// live token is kept). The form submissions that waited on it move to
+			// the new token, so the next confirmation finalizes them as well.
+			kind: 'carry_pending_submissions';
+			contactId: Id<'contacts'>;
+			fromToken: string;
+			toToken: string;
+	  }
+	| {
 			// Fires on the admin-attest path and when a new consent episode is
 			// opened over an earlier confirmation (`reopen`), so the confirmation
 			// it supersedes stays on the record. The plain token-keyed confirm and
@@ -230,6 +243,16 @@ function reducePending(
 					: {}),
 				...(contact.unsubscribedAt !== undefined ? { unsubscribedAt: contact.unsubscribedAt } : {}),
 			},
+		});
+	}
+	// A lapsed token is still on the contact; a withdrawn one is not, so the
+	// rows of a token a global opt-out ended are never carried.
+	if (contact.doiConfirmationToken !== undefined && contact.doiConfirmationToken !== args.token) {
+		effects.push({
+			kind: 'carry_pending_submissions',
+			contactId: contact._id,
+			fromToken: contact.doiConfirmationToken,
+			toToken: args.token,
 		});
 	}
 	// Only schedule the confirmation email when the caller provides a siteUrl
@@ -363,6 +386,22 @@ function reduceConfirmed(
 
 // ─── Runner ─────────────────────────────────────────────────────────────────
 
+/**
+ * Hand the rows that waited on a replaced token to the Form submission
+ * (module), in this transaction. Runs after the contact patch, so the contact
+ * already holds `toToken`.
+ */
+async function carryPendingSubmissions(
+	ctx: MutationCtx,
+	args: { contactId: Id<'contacts'>; fromToken: string; toToken: string }
+): Promise<void> {
+	await ctx.runMutation(internal.forms.pendingConfirmations.carryPendingSubmissions, {
+		contactId: args.contactId,
+		fromToken: args.fromToken,
+		toToken: args.toToken,
+	});
+}
+
 async function applyEffects(ctx: MutationCtx, effects: ReadonlyArray<Effect>): Promise<void> {
 	for (const effect of effects) {
 		switch (effect.kind) {
@@ -395,6 +434,10 @@ async function applyEffects(ctx: MutationCtx, effects: ReadonlyArray<Effect>): P
 					occurredAt: effect.occurredAt,
 				} as RecordContactActivityArgs;
 				await recordContactActivity(ctx, args);
+				break;
+			}
+			case 'carry_pending_submissions': {
+				await carryPendingSubmissions(ctx, effect);
 				break;
 			}
 			case 'audit_log': {
@@ -602,7 +645,8 @@ export type RefreshOutcome =
  * if the Contact is not currently in `pending`. Used by the
  * resend-confirmation user-facing flow — distinct from `transition`
  * because it deliberately keeps the status the same while replacing
- * the token.
+ * the token. The form submissions that waited on the replaced token move
+ * to the new one, so confirming the resent link finalizes them.
  */
 export const refreshPendingToken = internalMutation({
 	args: {
@@ -624,6 +668,13 @@ export const refreshPendingToken = internalMutation({
 			doiTokenExpiresAt: args.at + args.ttlMs,
 			updatedAt: args.at,
 		});
+		if (contact.doiConfirmationToken !== undefined && contact.doiConfirmationToken !== args.token) {
+			await carryPendingSubmissions(ctx, {
+				contactId: args.contactId,
+				fromToken: contact.doiConfirmationToken,
+				toToken: args.token,
+			});
+		}
 		if (contact.email) {
 			await ctx.scheduler.runAfter(0, internal.confirmationEmail.sendConfirmationEmail, {
 				email: contact.email,

@@ -4,8 +4,9 @@
  * Owns:
  *   - the classifier that picks one of five submission outcomes from a
  *     raw POST: `spam | invalid | duplicate | pending_confirmation | success`
- *   - all writes to `formSubmissions` (insert at submit + the
- *     `pending_confirmation → success` patch at confirm)
+ *   - all writes to `formSubmissions` (insert at submit, the
+ *     `pending_confirmation → success` patch at confirm, and the carry of
+ *     pending rows to a replacement token in `pendingConfirmations.ts`)
  *   - the `formEndpoints.submissionCount` denormalization
  *   - delegation into the **Contact resolution (module)** (`upsert` mode)
  *     and the **Topic subscription (module)** (`subscribe`) — the form
@@ -41,6 +42,7 @@ import { jsonPrimitiveRecord } from '../lib/convexValidators';
 import { getOptional } from '../lib/env';
 import { logWarn } from '../lib/runtimeLog';
 import { isFeatureEnabled } from '../lib/featureFlags';
+import { finalizeSubmissions } from './pendingConfirmations';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -443,21 +445,11 @@ export const markConfirmedByToken = internalMutation({
 			)
 			.paginate({ cursor: args.cursor ?? null, numItems: CONFIRM_FANOUT_BATCH });
 
-		const confirmedPerForm = new Map<Id<'formEndpoints'>, number>();
-		for (const submission of page.page) {
-			if (submission.contactId !== args.contactId) continue;
-			await ctx.db.patch(submission._id, { status: 'success', confirmedAt: at });
-			const formId = submission.formEndpointId;
-			confirmedPerForm.set(formId, (confirmedPerForm.get(formId) ?? 0) + 1);
-		}
-		for (const [formId, confirmed] of confirmedPerForm) {
-			const form = await ctx.db.get(formId);
-			if (form) {
-				await ctx.db.patch(formId, {
-					successfulSubmissionCount: (form.successfulSubmissionCount ?? 0) + confirmed,
-				});
-			}
-		}
+		const finalized = await finalizeSubmissions(
+			ctx,
+			page.page.filter((submission) => submission.contactId === args.contactId),
+			at
+		);
 
 		const continued = !page.isDone;
 		if (continued) {
@@ -469,7 +461,6 @@ export const markConfirmedByToken = internalMutation({
 			});
 		}
 
-		const finalized = [...confirmedPerForm.values()].reduce((sum, n) => sum + n, 0);
 		if (finalized > 0 || continued) return { ok: true, finalized, continued };
 
 		// Nothing waited on this token. Tell a repeat confirmation apart from a
