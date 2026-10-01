@@ -53,9 +53,9 @@ function blockIds(roots: BlockTreeNode[]): string[] {
 	const ids: string[] = [];
 	const visit = (node: BlockTreeNode): void => {
 		ids.push(node.id);
-		for (const list of childBlockLists(node)) list.forEach(visit);
+		for (const list of childBlockLists(node)) for (const child of list) visit(child);
 	};
-	roots.forEach(visit);
+	for (const root of roots) visit(root);
 	return ids;
 }
 
@@ -63,9 +63,9 @@ function sectionIds(roots: BlockTreeNode[]): string[] {
 	const ids: string[] = [];
 	const visit = (node: BlockTreeNode): void => {
 		for (const entry of ownedEntries(node)) ids.push(entry['id'] as string);
-		for (const list of childBlockLists(node)) list.forEach(visit);
+		for (const list of childBlockLists(node)) for (const child of list) visit(child);
 	};
-	roots.forEach(visit);
+	for (const root of roots) visit(root);
 	return ids;
 }
 

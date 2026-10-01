@@ -63,9 +63,9 @@ function allIds(content: string): { blocks: string[]; sections: string[] } {
 	const visit = (node: BlockTreeNode): void => {
 		blocks.push(node.id);
 		for (const entry of ownedEntries(node)) sections.push(entry['id'] as string);
-		for (const list of childBlockLists(node)) list.forEach(visit);
+		for (const list of childBlockLists(node)) for (const child of list) visit(child);
 	};
-	(JSON.parse(content) as BlockTreeNode[]).forEach(visit);
+	for (const root of JSON.parse(content) as BlockTreeNode[]) visit(root);
 	return { blocks, sections };
 }
 

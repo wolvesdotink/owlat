@@ -45,9 +45,9 @@ function idsInUse(roots: BlockTreeNode[], translations: Record<string, Translati
 	const visit = (node: BlockTreeNode): void => {
 		ids.add(node.id);
 		for (const entry of ownedEntries(node)) ids.add(entryId(entry));
-		for (const list of childBlockLists(node)) list.forEach(visit);
+		for (const list of childBlockLists(node)) for (const child of list) visit(child);
 	};
-	roots.forEach(visit);
+	for (const root of roots) visit(root);
 	for (const translation of Object.values(translations)) {
 		if (isRecord(translation?.blocks)) {
 			for (const key of Object.keys(translation.blocks)) ids.add(key);
@@ -97,9 +97,9 @@ export function repairRepeatedBlockIds(
 			seenSections.add(entryId(entry));
 		}
 
-		for (const list of childBlockLists(node)) list.forEach(visit);
+		for (const list of childBlockLists(node)) for (const child of list) visit(child);
 	};
-	roots.forEach(visit);
+	for (const root of roots) visit(root);
 	return counts;
 }
 
