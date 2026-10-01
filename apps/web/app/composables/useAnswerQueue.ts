@@ -116,7 +116,16 @@ export function useAnswerQueue(opts: { enabled?: () => boolean } = {}) {
 
 	// The first source whose read failed. A queue with nothing in it and a
 	// failed source is not "all clear" (#721); Try again re-reads the failed ones.
-	const sources = () => [inboxRead, ...mailResults.values(), review, mentions];
+	// Only the sources the list reads count: a query switched to 'skip' keeps
+	// its last error, so a team review that failed before the inbox feature
+	// went off (or the viewer lost admin) would report an error nothing can
+	// clear.
+	const sources = () => [
+		...(reading.value ? [inboxRead] : []),
+		...mailResults.values(),
+		...(teamEnabled.value ? [review] : []),
+		...(chatEnabled.value ? [mentions] : []),
+	];
 	const error = computed(() => sources().find((s) => s.error.value)?.error.value ?? null);
 	const refetch = () => {
 		for (const s of sources()) if (s.error.value) s.refetch();

@@ -123,4 +123,42 @@ describe('useAnswerQueue', () => {
 		expect(mailRefetch).toHaveBeenCalledTimes(1);
 		expect(inboxRefetch).not.toHaveBeenCalled();
 	});
+
+	it("drops a skipped source's retained error once the role or feature turns it off", () => {
+		const failure = new Error('[CONVEX Q(inbox/queries:getReviewQueue)] Server Error');
+		const reviewRefetch = vi.fn();
+		const inboxOn = ref(true);
+		vi.stubGlobal('useFeatureFlag', () => ({
+			isEnabled: (f: string) => f === 'inbox' && inboxOn.value,
+		}));
+		vi.stubGlobal('useInboxes', () => ({
+			ids: ref([]),
+			byId: ref(new Map()),
+			isLoading: ref(false),
+			error: ref(null),
+			refetch: vi.fn(),
+		}));
+		vi.stubGlobal('useConvexQueryMap', () => new Map());
+		// A subscription switched to 'skip' keeps its last error.
+		vi.stubGlobal('useConvexQuery', (fn: string) => ({
+			data: ref(undefined),
+			isLoading: ref(false),
+			error: ref(fn === 'getReviewQueue' ? failure : null),
+			refetch: fn === 'getReviewQueue' ? reviewRefetch : vi.fn(),
+		}));
+		roleLoading.value = false;
+		role.value = 'admin';
+
+		const queue = useAnswerQueue();
+		expect(queue.error.value).toBe(failure);
+
+		inboxOn.value = false;
+		expect(queue.error.value).toBeNull();
+		queue.refetch();
+		expect(reviewRefetch).not.toHaveBeenCalled();
+
+		inboxOn.value = true;
+		role.value = 'member';
+		expect(queue.error.value).toBeNull();
+	});
 });
