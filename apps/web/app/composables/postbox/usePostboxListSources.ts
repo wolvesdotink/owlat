@@ -28,6 +28,10 @@ export function usePostboxListSources(args: {
 	renderer: Ref<PostboxViewMode>;
 	/** The flat list's rows — what the bundled view folds. */
 	listMessages: Ref<PostboxThreadRowMessage[]>;
+	/** The flat feed's read, behind the flat and bundled renderers. */
+	flatRead: { error: Ref<Error | null>; refetch: () => void };
+	/** The flat list is on cached rows, which stand in for its failed read. */
+	showingCached: Ref<boolean>;
 }) {
 	const conversationsEnabled = computed(() => args.renderer.value === 'conversations');
 	const categoriesEnabled = computed(() => args.renderer.value === 'categories');
@@ -65,7 +69,24 @@ export function usePostboxListSources(args: {
 		enabled: sectionsEnabled,
 	});
 
+	// The read behind the renderer on screen, so a failure shows as the error
+	// state of the view that failed instead of its "All clear" (#721, #1099). The
+	// grouped renderers each have their own; flat and bundled read the flat feed.
+	const ownRead = computed(() => {
+		if (conversationsEnabled.value) return conversations;
+		if (categoriesEnabled.value) return categories;
+		if (sectionsEnabled.value) return sections;
+		return null;
+	});
+	const listError = computed(() => {
+		if (ownRead.value) return ownRead.value.error.value;
+		return args.showingCached.value ? null : args.flatRead.error.value;
+	});
+	const retryList = () => (ownRead.value ?? args.flatRead).refetch();
+
 	return {
+		listError,
+		retryList,
 		conversationsEnabled,
 		categoriesEnabled,
 		bundlesEnabled,

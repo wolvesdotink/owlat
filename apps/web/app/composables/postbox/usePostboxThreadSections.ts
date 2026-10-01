@@ -45,7 +45,7 @@ export function usePostboxThreadSections(args: {
 		enabled: args.enabled,
 	});
 
-	const { data, isLoading } = useConvexQuery(
+	const { data, isLoading, error, refetch } = useConvexQuery(
 		api.mail.sections.listSections,
 		() => {
 			if (!args.enabled.value || !args.mailboxId.value) return 'skip';
@@ -86,5 +86,5 @@ export function usePostboxThreadSections(args: {
 		collapsed.value = { ...collapsed.value, [key]: !collapsed.value[key] };
 	}
 
-	return { sections, isLoading, loadMore, collapsed, toggle };
+	return { sections, isLoading, error, refetch, loadMore, collapsed, toggle };
 }
