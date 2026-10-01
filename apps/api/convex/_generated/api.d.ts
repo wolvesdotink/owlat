@@ -11,7 +11,7 @@ import type * as maintenance_counterBackfill from '../maintenance/counterBackfil
 import type * as migrations_0048_backfill_counters from '../migrations/0048_backfill_counters.js';
 import type * as migrations_0049_move_message_bodies from '../migrations/0049_move_message_bodies.js';
 import type * as migrations_0050_reindex_mailbox_knowledge from '../migrations/0050_reindex_mailbox_knowledge.js';
-import type * as migrations_0051_reerase_legacy_account_deletions from '../migrations/0051_reerase_legacy_account_deletions.js';
+import type * as migrations_0052_reerase_legacy_account_deletions from '../migrations/0052_reerase_legacy_account_deletions.js';
 import type * as schema_counters from '../schema/counters.js';
 import type * as workspaces_deletion_steps_storageUploads from '../workspaces/deletion/steps/storageUploads.js';
 import type * as storage_uploadsHttp from '../storage/uploadsHttp.js';
@@ -1332,7 +1332,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0048_backfill_counters': typeof migrations_0048_backfill_counters;
 	'migrations/0049_move_message_bodies': typeof migrations_0049_move_message_bodies;
 	'migrations/0050_reindex_mailbox_knowledge': typeof migrations_0050_reindex_mailbox_knowledge;
-	'migrations/0051_reerase_legacy_account_deletions': typeof migrations_0051_reerase_legacy_account_deletions;
+	'migrations/0052_reerase_legacy_account_deletions': typeof migrations_0052_reerase_legacy_account_deletions;
 	'schema/counters': typeof schema_counters;
 	'workspaces/deletion/steps/storageUploads': typeof workspaces_deletion_steps_storageUploads;
 	'storage/uploadsHttp': typeof storage_uploadsHttp;

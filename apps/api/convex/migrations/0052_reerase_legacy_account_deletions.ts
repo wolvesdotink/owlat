@@ -8,7 +8,7 @@
  * were closed with nothing done at all: the daily run took a missing profile
  * as proof of completion. None recorded whose account it was.
  *
- * An operator runs `convex run migrations/0051_reerase_legacy_account_deletions:run`
+ * An operator runs `convex run migrations/0052_reerase_legacy_account_deletions:run`
  * once. It walks `completed` requests that carry no `authUserId`, recovers the
  * subject the same conservative way the daily run does
  * (`auth/erasure/lifecycle.ts` `recoverErasureSubject`: exactly one identity
@@ -69,7 +69,7 @@ export const run = internalAction({
 		for (;;) {
 			const page: { reopened: number; skipped: number; cursor: string; isDone: boolean } =
 				await ctx.runMutation(
-					internal.migrations['0051_reerase_legacy_account_deletions'].reopenPage,
+					internal.migrations['0052_reerase_legacy_account_deletions'].reopenPage,
 					{ cursor }
 				);
 			reopened += page.reopened;
@@ -77,7 +77,7 @@ export const run = internalAction({
 			if (page.isDone) break;
 			cursor = page.cursor;
 		}
-		logInfo('migration.0051_reerase_legacy_account_deletions', { reopened, skipped });
+		logInfo('migration.0052_reerase_legacy_account_deletions', { reopened, skipped });
 		return { reopened, skipped };
 	},
 });

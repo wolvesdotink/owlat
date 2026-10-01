@@ -278,7 +278,7 @@ describe('the address afterwards', () => {
 		});
 	});
 
-	it('the 0051 migration re-erases what a legacy completed deletion left behind', async () => {
+	it('the 0052 migration re-erases what a legacy completed deletion left behind', async () => {
 		const t = erasureHarness();
 		const email = 'legacy@example.com';
 		const { organizationId, authUserId, profileId, requestId } = await seedEditor(t, email);
@@ -302,7 +302,7 @@ describe('the address afterwards', () => {
 		} as never);
 
 		const result = await t.action(
-			internal.migrations['0051_reerase_legacy_account_deletions'].run,
+			internal.migrations['0052_reerase_legacy_account_deletions'].run,
 			{}
 		);
 		expect(result).toEqual({ reopened: 1, skipped: 0 });
@@ -318,7 +318,7 @@ describe('the address afterwards', () => {
 
 		// A second run finds nothing left to reopen.
 		expect(
-			await t.action(internal.migrations['0051_reerase_legacy_account_deletions'].run, {})
+			await t.action(internal.migrations['0052_reerase_legacy_account_deletions'].run, {})
 		).toEqual({ reopened: 0, skipped: 0 });
 	});
 });
