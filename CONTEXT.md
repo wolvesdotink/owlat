@@ -829,10 +829,6 @@ Unsubscribe effects:
   unsubscribe regardless of source. Closes the silent drift bug where
   admin-remove paths wrote no activity row.
 - `patch_contact_updated_at` — fires on every successful unsubscribe.
-- `clear_form_submission_confirmations` — fires on `source:
-'public_email_link' | 'preferences_page'`. Clears
-  `formSubmissions.confirmedAt` for every form submission the Contact
-  has confirmed, forcing re-confirmation on next resubscribe.
 - `increment_campaign_unsubscribed_stats` — fires on `source:
 'public_email_link'`. Increments `campaigns.statsUnsubscribed` on
   the most-recent `emailSends` row for the Contact.
@@ -842,6 +838,11 @@ Unsubscribe effects:
   with the array of removed topics (`unsubscribeAllForContact` aggregates;
   `unsubscribe` / `unsubscribeMany` emit one webhook per call with the
   one-or-many topics in scope).
+
+No unsubscribe touches `formSubmissions.confirmedAt`: it records when a
+signup was confirmed and stays as history. Whether a returning Contact must
+confirm again is decided from the contact row alone by
+`requiresFreshConfirmation` (see the ADR-0013 2026-10 amendments).
 
 Invariants:
 
@@ -5570,8 +5571,8 @@ confirmSubmission` fallback insert is deleted. The module's `source`
   one place where "which side effects fire for which trigger" lives
   — admin-remove now writes the `topic_unsubscribed` Contact activity
   row it was silently missing; public-link unsubscribe still owns the
-  `formSubmissions.confirmedAt` clear, the `campaigns.statsUnsubscribed`
-  increment, and the `topic.unsubscribed` **Webhook event** fanout.
+  `campaigns.statsUnsubscribed` increment and the `topic.unsubscribed`
+  **Webhook event** fanout.
   The relationship with the **DOI lifecycle (module)** is asymmetric:
   Topic subscription decides "is DOI needed?" and calls
   `doiLifecycle.transition({ to: 'pending' })` when so; the DOI

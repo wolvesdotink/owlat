@@ -134,7 +134,9 @@ full ceremony on every unsubscribe:
 - Write `topic_unsubscribed` activity row(s).
 - Patch `contacts.updatedAt`.
 - Clear `formSubmissions.confirmedAt` for every confirmed submission
-  the Contact has (forces re-confirmation on resubscribe).
+  the Contact has. (This ADR first read the clear as forcing
+  re-confirmation on resubscribe. Nothing reads the field for that; the
+  clear is removed by the 2026-10 `confirmedAt` amendment below.)
 - Increment `campaigns.statsUnsubscribed` on the most-recent `emailSends`.
 - Fire `topic.unsubscribed` **Webhook event** with the array of removed
   topics.
@@ -1000,14 +1002,12 @@ already exists per ADR-0003).
    `topic.unsubscribed` event is a signal worth feeding to
    `analytics/sendingReputation.ts`. Out of scope; lands when the
    reputation surface gains a per-event ingest path.
-5. **Re-subscribe ergonomics.** Today `unsubscribe(publicemail_link)`
-   clears all `formSubmissions.confirmedAt` for the Contact, forcing
-   re-confirmation on resubscribe — across all forms, not just the
-   one tied to the unsubscribed topic. That cross-topic blast
-   radius is a latent UX concern (re-subscribing to Topic A
-   requires re-confirming submissions for Topic B). Out of scope;
-   the deepening preserves the current behavior. A dedicated ADR
-   can scope-narrow the clear later.
+5. **Re-subscribe ergonomics.** `unsubscribe(public_email_link)`
+   cleared all `formSubmissions.confirmedAt` for the Contact, across
+   all forms. This note first read that as forcing re-confirmation on
+   resubscribe, with a cross-topic UX cost. It never did: no subscribe
+   or confirmation path reads `confirmedAt`. Resolved by the 2026-10
+   `confirmedAt` amendment below, which removes the clear.
 
 ## Execution
 
@@ -1062,8 +1062,9 @@ plan needed, since pre-launch nothing needs PR-splitting. Change set:
   fire the `topic.unsubscribed` webhook.
 - Removing the Contact via the email-footer unsubscribe link creates
   the same activity row, fires the webhook with the array of removed
-  topics, clears `formSubmissions.confirmedAt`, and increments
-  `campaigns.statsUnsubscribed`.
+  topics, and increments `campaigns.statsUnsubscribed`. (It also cleared
+  `formSubmissions.confirmedAt` until the 2026-10 `confirmedAt`
+  amendment below.)
 - Importing 100 contacts via CSV against a `requireDoubleOptIn: true`
   Topic with `skipDoi: false` (default) sends 100 confirmation
   emails and creates 100 pending memberships; with `skipDoi: true`
@@ -1128,3 +1129,30 @@ confirmed contact's global opt-out with topic DOI, with form-forced DOI and
 with no DOI configured; the same for a form without a topic; a link minted
 before a second opt-out; the preference centre and the trusted `admin` and
 `import` overrides, which still lift the opt-out at once.
+
+---
+
+## Amendment — an unsubscribe keeps `formSubmissions.confirmedAt` (2026-10)
+
+Issue #1062.
+
+The `clear_form_submission_confirmations` effect (Unsubscribe effects table,
+`public_email_link` and `preferences_page`) is removed. This ADR, its
+follow-up note 5 and CONTEXT.md described it as the step that makes a
+returning contact confirm again. Nothing read the field for that. Whether a
+signup must wait for a fresh confirmation is decided from the contact row
+alone by `requiresFreshConfirmation` (the 2026-10-01 amendment above), and a
+global opt-out ends the consent episode by withdrawing the contact's token
+(ADR-0009 amendment). Clearing `confirmedAt` only erased history: the time
+each submission was confirmed, which the contact data export and the
+operator's submission list read.
+
+`confirmedAt` therefore stays on every submission across an unsubscribe. The
+public confirm page keeps showing "already confirmed" for a finished
+submission's link after the contact unsubscribes, instead of offering a
+confirm step that answers "already confirmed". If an "unsubscribed since"
+marker on submissions is wanted later, it gets its own field.
+
+`topicSubscription.integration.test.ts` and `formConsent.integration.test.ts`
+cover the unsubscribe leaving `confirmedAt` in place and the confirm page's
+read of a finished submission after the contact opted out.

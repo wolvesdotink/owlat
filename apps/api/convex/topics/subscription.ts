@@ -9,16 +9,21 @@
  *     which the Form submission (module) also applies to signups without a topic
  *   - the `topic_subscribed` trigger fire when DOI is not in the way
  *   - the per-source effect bundle on unsubscribe (activity row, contact.updatedAt,
- *     form-confirmation clear, campaign-stats increment, topic.unsubscribed webhook)
+ *     campaign-stats increment, topic.unsubscribed webhook)
  *
  * Five entry points keyed by shape:
  *   subscribe / subscribeMany                — one topic, one-or-many contacts
  *   unsubscribe / unsubscribeMany            — one topic, one-or-many contacts
  *   unsubscribeAllForContact                 — one contact, some-or-all topics
  *
- * Per-call effects (cached count patch, contact.updatedAt patch, form-clear,
- * campaign-stats, webhook) fire ONCE per call regardless of how many memberships
- * are touched. Per-membership effects (insert, delete, activity row) fire N times.
+ * Per-call effects (cached count patch, contact.updatedAt patch, campaign-stats,
+ * webhook) fire ONCE per call regardless of how many memberships are touched.
+ * Per-membership effects (insert, delete, activity row) fire N times.
+ *
+ * An unsubscribe leaves `formSubmissions.confirmedAt` alone: it is the record of
+ * when a signup was confirmed, and no consent decision reads it. Whether a
+ * returning contact must confirm again is `requiresFreshConfirmation`'s call,
+ * from the contact row.
  *
  * See docs/adr/0013-topic-subscription-module.md.
  */
@@ -96,7 +101,6 @@ export type UnsubscribeOutcome =
 // New sources or new product decisions about which side effects fire land here.
 
 interface UnsubscribeEffectFlags {
-	clearFormSubmissionConfirmations: boolean;
 	incrementCampaignUnsubscribedStats: boolean;
 	fireTopicUnsubscribedWebhook: boolean;
 	/**
@@ -115,14 +119,12 @@ function effectFlagsForUnsubscribeSource(source: UnsubscribeSource): Unsubscribe
 	switch (source) {
 		case 'public_email_link':
 			return {
-				clearFormSubmissionConfirmations: true,
 				incrementCampaignUnsubscribedStats: true,
 				fireTopicUnsubscribedWebhook: true,
 				recordTransportUnsubscribeOutcome: true,
 			};
 		case 'preferences_page':
 			return {
-				clearFormSubmissionConfirmations: true,
 				incrementCampaignUnsubscribedStats: false,
 				fireTopicUnsubscribedWebhook: true,
 				// The preference centre is only reachable through the footer link of
@@ -133,7 +135,6 @@ function effectFlagsForUnsubscribeSource(source: UnsubscribeSource): Unsubscribe
 		case 'admin':
 		case 'public_api':
 			return {
-				clearFormSubmissionConfirmations: false,
 				incrementCampaignUnsubscribedStats: false,
 				fireTopicUnsubscribedWebhook: false,
 				recordTransportUnsubscribeOutcome: false,
@@ -429,23 +430,6 @@ async function unsubscribeOne(
 	};
 }
 
-async function clearFormSubmissionConfirmations(
-	ctx: MutationCtx,
-	contactId: Id<'contacts'>
-): Promise<void> {
-	const formSubmissions = await ctx.db
-		.query('formSubmissions')
-		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.filter((q) => q.neq(q.field('confirmedAt'), undefined))
-		.collect(); // bounded: one contact's form submissions
-
-	for (const submission of formSubmissions) {
-		await ctx.db.patch(submission._id, {
-			confirmedAt: undefined,
-		});
-	}
-}
-
 /**
  * Attribute a contact's unsubscribe to their most-recent campaign send, OFF the
  * synchronous public-unsubscribe path. Scheduled (not called inline) so the
@@ -544,10 +528,6 @@ async function applyUnsubscribeCallEffects(
 	}
 
 	const flags = effectFlagsForUnsubscribeSource(args.source);
-
-	if (flags.clearFormSubmissionConfirmations) {
-		await clearFormSubmissionConfirmations(ctx, args.contactId);
-	}
 
 	if (flags.incrementCampaignUnsubscribedStats) {
 		// Off the synchronous path — see recordCampaignUnsubscribe.
@@ -669,8 +649,8 @@ const unsubscribeArgsValidator = {
 /**
  * Unsubscribe a Contact from a Topic. Single membership op.
  *
- * Per-call effects (cached count decrement, contact.updatedAt, form-clear,
- * campaign-stats, webhook) fire ONCE for the single membership. The webhook
+ * Per-call effects (cached count decrement, contact.updatedAt, campaign-stats,
+ * webhook) fire ONCE for the single membership. The webhook
  * payload's `lists` array contains exactly one entry.
  */
 export const unsubscribe = internalMutation({
@@ -729,8 +709,8 @@ const unsubscribeManyArgsValidator = {
 
 /**
  * Unsubscribe many Contacts from one Topic. Coalesces the cachedMemberCount
- * patch. Per-contact effects (activity row, contact.updatedAt, form-clear,
- * campaign-stats, webhook) fire per contact — each contact's events are
+ * patch. Per-contact effects (activity row, contact.updatedAt, campaign-stats,
+ * webhook) fire per contact — each contact's events are
  * independent of the others.
  */
 export const unsubscribeMany = internalMutation({
@@ -819,11 +799,11 @@ const unsubscribeAllForContactArgsValidator = {
  * array is an empty scope and never a global opt-out. Two spellings of one
  * scope: given BOTH, `topicIds` wins and `topicId` is dropped.
  *
- * Per-contact effects (form-clear, campaign-stats, the transport-outcome
- * attribution, a single webhook with the array of removed topics) fire ONCE for
- * the call regardless of how many memberships are deleted. Per-membership
- * effects (delete row, activity row, per-topic cachedMemberCount decrement) fire
- * N times.
+ * Per-contact effects (campaign-stats, the transport-outcome attribution, a
+ * single webhook with the array of removed topics) fire ONCE for the call
+ * regardless of how many memberships are deleted. Per-membership effects
+ * (delete row, activity row, per-topic cachedMemberCount decrement) fire N
+ * times.
  *
  * This is the entry point used by the public unsubscribe link.
  */
@@ -959,8 +939,8 @@ export const unsubscribeAllForContact = internalMutation({
 			}
 		}
 
-		// Per-call effects: contact.updatedAt, optional form-clear, optional
-		// campaign-stats, optional single webhook with all removed topics.
+		// Per-call effects: contact.updatedAt, optional campaign-stats,
+		// optional single webhook with all removed topics.
 		if (removedContexts.length > 0) {
 			await applyUnsubscribeCallEffects(ctx, {
 				contactId: args.contactId,

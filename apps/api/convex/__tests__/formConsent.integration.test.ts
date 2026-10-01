@@ -594,6 +594,47 @@ describe('form signups after a global opt-out', () => {
 	);
 });
 
+// ─── A finished signup's history survives an unsubscribe (#1062) ───────────
+
+describe('a confirmed signup after the contact unsubscribes', () => {
+	it.each([
+		{ source: 'public_email_link' as const, global: true },
+		{ source: 'preferences_page' as const, global: false },
+	])(
+		'$source: keeps confirmedAt, so the confirm page still reads as already confirmed',
+		async ({ source, global }) => {
+			const t = setupTest();
+			const topicId = await createTopic(t, true);
+			const formId = await createForm(t, { topicId });
+			const { outcome, row } = await submit(t, formId, 'history@example.com');
+			const token = row.confirmationToken!;
+			await t.mutation(api.forms.endpoints.confirmSubmission, { token });
+			const confirmedAt = (await t.run((ctx) => ctx.db.get(outcome.submissionId)))?.confirmedAt;
+			expect(confirmedAt).toBeTypeOf('number');
+
+			await t.mutation(internal.topics.subscription.unsubscribeAllForContact, {
+				contactId: outcome.contactId!,
+				source,
+				...(global ? {} : { topicIds: [topicId] }),
+			});
+
+			expect((await t.run((ctx) => ctx.db.get(outcome.submissionId)))?.confirmedAt).toBe(
+				confirmedAt
+			);
+			// confirm.vue shows "already confirmed" for `status: 'success'` with
+			// `confirmedAt` set.
+			expect(await t.query(api.forms.endpoints.getByConfirmationToken, { token })).toMatchObject({
+				status: 'success',
+				confirmedAt,
+			});
+			expect(await t.mutation(api.forms.endpoints.confirmSubmission, { token })).toEqual({
+				success: true,
+				alreadyConfirmed: true,
+			});
+		}
+	);
+});
+
 // ─── DOI lifecycle: consent-episode edges ───────────────────────────────────
 
 describe('DOI lifecycle consent episodes', () => {
