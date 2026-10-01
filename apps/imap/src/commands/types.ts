@@ -84,6 +84,17 @@ export interface CommandDeps {
 	 * state return would add.
 	 */
 	readonly commit: (state: ConnectionState) => void;
+	/**
+	 * Output pacing for bulk writers. Returns `undefined` while the socket's
+	 * outbound queue is within the pump's output budget (the common case, so
+	 * a fast reader costs no extra await), otherwise a promise that resolves
+	 * on the next `drain` — or on close/error, so a wait never outlives the
+	 * connection (check the session's abort signal after it resolves). Never
+	 * rejects. FETCH consults it after every response so a slow reader holds
+	 * back the work that produces output instead of letting it pile up in
+	 * memory. Absent in unit-test deps, where output is unbounded by design.
+	 */
+	readonly waitForDrain?: () => Promise<void> | undefined;
 }
 
 /**

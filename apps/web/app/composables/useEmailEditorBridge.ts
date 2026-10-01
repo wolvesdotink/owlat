@@ -202,6 +202,7 @@ export interface EmailEditorBridgeReturn {
 	hasChanges: Ref<boolean>;
 	// Unsaved-changes dialog.
 	showUnsavedChangesDialog: Ref<boolean>;
+	isSavingBeforeLeave: Readonly<Ref<boolean>>;
 	confirmDiscard: () => void;
 	confirmSave: () => Promise<void>;
 	cancelNavigation: () => void;
@@ -256,6 +257,7 @@ export function useEmailEditorBridge<S>(
 	// only invoked later from the navigation guard, by which point it is defined.
 	const {
 		showDialog: showUnsavedChangesDialog,
+		isSavingBeforeLeave,
 		confirmDiscard,
 		confirmSave,
 		cancelNavigation,
@@ -463,6 +465,7 @@ export function useEmailEditorBridge<S>(
 		isSaving,
 		hasChanges,
 		showUnsavedChangesDialog,
+		isSavingBeforeLeave,
 		confirmDiscard,
 		confirmSave,
 		cancelNavigation,

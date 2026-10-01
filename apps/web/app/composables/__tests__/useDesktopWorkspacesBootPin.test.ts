@@ -25,13 +25,6 @@ vi.mock('~/lib/desktop/activeWorkspace', () => ({
 	setActiveWorkspace: (...args: unknown[]) => setActiveWorkspace(...args),
 }));
 
-vi.mock('~/lib/desktop/keychainStorage', () => ({
-	keychainStorage: {},
-	configureKeychainStorage: vi.fn(),
-	clearKeychainStorage: vi.fn(),
-	snapshotKeychain: vi.fn(() => ''),
-}));
-
 function workspace(id: string): WorkspaceConfig {
 	return {
 		id,

@@ -70,16 +70,25 @@ export const topicMembershipConditionModule: ConditionTypeModule<
 		// Point-read each (contact, topic) membership via the by_contact_and_topic
 		// index — reads scale with `contacts.length × topics`, never the whole
 		// topic membership junction. Only members of the given contacts land in the
-		// set; non-members are absent, which `evaluate` reads as "not a member".
-		for (const contact of contacts) {
-			for (const topicId of topicIds) {
-				const membership = await ctx.db
-					.query('contactTopics')
-					.withIndex('by_contact_and_topic', (q) =>
-						q.eq('contactId', contact._id).eq('topicId', topicId as Id<'topics'>)
-					)
-					.unique();
-				if (membership) lookup.membersByTopic.get(topicId)!.add(contact._id as string);
+		// set; non-members are absent, which `evaluate` reads as "not a member". The
+		// point reads are independent, so they are issued together.
+		const memberships = await Promise.all(
+			contacts.flatMap((contact) =>
+				[...topicIds].map((topicId) =>
+					ctx.db
+						.query('contactTopics')
+						.withIndex('by_contact_and_topic', (q) =>
+							q.eq('contactId', contact._id).eq('topicId', topicId as Id<'topics'>)
+						)
+						.unique()
+				)
+			)
+		);
+		for (const membership of memberships) {
+			if (membership) {
+				lookup.membersByTopic
+					.get(membership.topicId as string)
+					?.add(membership.contactId as string);
 			}
 		}
 

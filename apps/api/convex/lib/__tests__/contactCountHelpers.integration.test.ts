@@ -5,9 +5,7 @@ import type { MutationCtx } from '../../_generated/server';
 import {
 	decrementContactCount,
 	getCachedContactCount,
-	getContactCount,
 	incrementContactCount,
-	reconcileContactCount,
 } from '../contactCountHelpers';
 import { createTestContact } from '../../__tests__/factories';
 
@@ -19,71 +17,28 @@ async function seedContacts(ctx: MutationCtx, n: number, overrides: Record<strin
 	}
 }
 
-describe('reconcileContactCount — paginated count (ADR-0033)', () => {
-	it('sums every contact row across the reconcile page boundary (page size 1000)', async () => {
-		const t = convexTest(schema, modules);
-		// > 2 reconcile pages so the paginated sum must continue past isDone=false.
-		const TOTAL = 2100;
-		const result = await t.run(async (ctx) => {
-			await seedContacts(ctx, TOTAL);
-			return await reconcileContactCount(ctx);
-		});
-
-		expect(result.actual).toBe(TOTAL);
-		expect(result.previous).toBeNull(); // no instanceSettings seeded
-		expect(result.corrected).toBe(true);
-
-		// The cached count is now written and matches the streamed actual.
-		const cached = await t.run(async (ctx) => await getCachedContactCount(ctx));
-		expect(cached).toBe(TOTAL);
-	});
-
-	it('counts only live rows, excluding soft-deleted (matches the live decrement)', async () => {
-		// softDeleteContact decrements the cached count, so the reconcile must
-		// also exclude soft-deleted rows or it would re-inflate the count.
-		const t = convexTest(schema, modules);
-		const result = await t.run(async (ctx) => {
-			await seedContacts(ctx, 3);
-			await seedContacts(ctx, 2, { deletedAt: Date.now() });
-			return await reconcileContactCount(ctx);
-		});
-		expect(result.actual).toBe(3);
-	});
-
-	it('reports no correction when the cached count already matches', async () => {
-		const t = convexTest(schema, modules);
-		const result = await t.run(async (ctx) => {
-			await seedContacts(ctx, 4);
-			await ctx.db.insert('instanceSettings', { contactCount: 4, createdAt: Date.now() });
-			return await reconcileContactCount(ctx);
-		});
-		expect(result.previous).toBe(4);
-		expect(result.actual).toBe(4);
-		expect(result.corrected).toBe(false);
-	});
-});
-
-describe('getContactCount — cached count, else the live count', () => {
-	it('counts only live contacts when no count is cached', async () => {
-		// A new or restored instance before the daily reconcile has no cached
-		// count; the fallback must not include soft-deleted rows.
-		const t = convexTest(schema, modules);
-		const count = await t.run(async (ctx) => {
-			await seedContacts(ctx, 1);
-			await seedContacts(ctx, 1, { deletedAt: Date.now() });
-			return await getContactCount(ctx);
-		});
-		expect(count).toBe(1);
-	});
-
-	it('returns the cached count when one exists', async () => {
+describe('getCachedContactCount — the cached count or pending, never a scan', () => {
+	it('reads null (pending) when no count is cached, even with contacts present', async () => {
+		// A new or restored instance: the count is recovered in the background
+		// (contacts/countReconcile.ts), so readers must not count rows.
 		const t = convexTest(schema, modules);
 		const count = await t.run(async (ctx) => {
 			await seedContacts(ctx, 2);
-			await ctx.db.insert('instanceSettings', { contactCount: 7, createdAt: Date.now() });
-			return await getContactCount(ctx);
+			return await getCachedContactCount(ctx);
 		});
-		expect(count).toBe(7);
+		expect(count).toBeNull();
+	});
+
+	it('returns the cached count when one exists, including zero', async () => {
+		const t = convexTest(schema, modules);
+		const counts = await t.run(async (ctx) => {
+			await seedContacts(ctx, 2);
+			await ctx.db.insert('instanceSettings', { contactCount: 7, createdAt: Date.now() });
+			const seven = await getCachedContactCount(ctx);
+			await ctx.db.insert('instanceCounters', { key: 'contacts', contactCount: 0, updatedAt: 0 });
+			return { seven, zero: await getCachedContactCount(ctx) };
+		});
+		expect(counts).toEqual({ seven: 7, zero: 0 });
 	});
 });
 

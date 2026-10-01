@@ -357,6 +357,221 @@ describe('desktop.updates.refreshReleases', () => {
 	});
 });
 
+// ── pinned release retention ─────────────────────────────────────────────────
+
+describe('desktop.updates pinned release retention', () => {
+	interface SeedRow {
+		version: string;
+		/** Hours after PUBLISHED; higher is newer. */
+		hour: number;
+		line?: 'unified' | 'desktop';
+		isPrerelease?: boolean;
+	}
+
+	async function seedRows(t: TestHarness, rows: SeedRow[]) {
+		await t.run(async (ctx) => {
+			for (const row of rows) {
+				const line = row.line ?? 'unified';
+				await ctx.db.insert('desktopReleases', {
+					kind: 'release',
+					tag: `${line === 'desktop' ? 'desktop-' : ''}v${row.version}`,
+					version: row.version,
+					line,
+					isPrerelease: row.isPrerelease ?? false,
+					publishedAt: Date.parse(PUBLISHED) + row.hour * 3600_000,
+					manifest: manifestFor(
+						row.version,
+						`https://github.com/wolvesdotink/owlat/${line}.AppImage`
+					),
+					fetchedAt: Date.now(),
+				});
+			}
+		});
+	}
+
+	/** 0.2.0 … 0.2.<count-1>, each an hour newer than the last, all after hour 0. */
+	function rolling(count: number): SeedRow[] {
+		return Array.from({ length: count }, (_, i) => ({ version: `0.2.${i}`, hour: i + 1 }));
+	}
+
+	async function servedTo(t: TestHarness, currentVersion: string) {
+		return await t.query(api.desktop.updates.manifestForClient, {
+			target: 'linux',
+			arch: 'x86_64',
+			currentVersion,
+		});
+	}
+
+	async function refresh(t: TestHarness) {
+		stubFetch({ releases: [] });
+		await t.action(internal.desktop.updates.refreshReleases, {});
+	}
+
+	it('keeps a pinned release the rolling cache has outgrown, and keeps serving it', async () => {
+		const t = harness();
+		await seedRows(t, [{ version: '0.1.0', hour: 0 }, ...rolling(32)]);
+		await t.mutation(api.desktop.updates.updatePolicy, {
+			mode: 'pinned',
+			channel: 'stable',
+			pinnedVersion: '0.1.0',
+		});
+		expect((await servedTo(t, '0.0.9'))?.version).toBe('0.1.0');
+
+		await refresh(t);
+
+		const versions = (await cachedReleases(t)).map((row) => row.version);
+		// The newest thirty are the rolling working set, the pin rides on top.
+		expect(versions).toHaveLength(31);
+		expect(versions).toContain('0.1.0');
+		expect(versions).not.toContain('0.2.0');
+		expect(versions).not.toContain('0.2.1');
+		expect(versions).toContain('0.2.31');
+		expect(await servedTo(t, '0.0.9')).toEqual({
+			manifest: manifestFor('0.1.0', 'https://github.com/wolvesdotink/owlat/unified.AppImage'),
+			version: '0.1.0',
+		});
+		expect((await t.query(api.desktop.updates.getPolicy, {})).pinCached).toBe(true);
+		// The admin list still offers it, so the saved pin stays re-savable.
+		const listed = await t.query(api.desktop.updates.listReleases, {});
+		expect(listed.map((release) => release.version)).toContain('0.1.0');
+		await t.mutation(api.desktop.updates.updatePolicy, {
+			mode: 'pinned',
+			channel: 'stable',
+			pinnedVersion: '0.1.0',
+		});
+	});
+
+	it('lets the formerly pinned release age out once the pin moves on', async () => {
+		const t = harness();
+		await seedRows(t, [{ version: '0.1.0', hour: 0 }, ...rolling(32)]);
+		await t.mutation(api.desktop.updates.updatePolicy, {
+			mode: 'pinned',
+			channel: 'stable',
+			pinnedVersion: '0.1.0',
+		});
+		await refresh(t);
+		expect((await cachedReleases(t)).map((row) => row.version)).toContain('0.1.0');
+
+		// Re-pinned to a release inside the rolling cache: 0.1.0 is just old now.
+		await t.mutation(api.desktop.updates.updatePolicy, {
+			mode: 'pinned',
+			channel: 'stable',
+			pinnedVersion: '0.2.10',
+		});
+		await refresh(t);
+		let versions = (await cachedReleases(t)).map((row) => row.version);
+		expect(versions).toHaveLength(30);
+		expect(versions).not.toContain('0.1.0');
+
+		// Unpinned entirely: the cache is the plain newest thirty again.
+		await t.mutation(api.desktop.updates.updatePolicy, { mode: 'latest', channel: 'stable' });
+		await seedRows(t, [{ version: '0.2.40', hour: 40 }]);
+		await refresh(t);
+		versions = (await cachedReleases(t)).map((row) => row.version);
+		expect(versions).toHaveLength(30);
+		expect(versions).toContain('0.2.40');
+		expect(versions).not.toContain('0.2.2');
+		expect((await t.query(api.desktop.updates.getPolicy, {})).pinCached).toBeNull();
+	});
+
+	it('keeps both release lines of a pinned version and serves the unified one', async () => {
+		const t = harness();
+		await seedRows(t, [
+			{ version: '0.1.0', hour: 0, line: 'desktop' },
+			{ version: '0.1.0', hour: 0 },
+			...rolling(31),
+		]);
+		await t.mutation(api.desktop.updates.updatePolicy, {
+			mode: 'pinned',
+			channel: 'stable',
+			pinnedVersion: '0.1.0',
+		});
+
+		await refresh(t);
+
+		const pinned = (await cachedReleases(t)).filter((row) => row.version === '0.1.0');
+		expect(pinned.map((row) => row.line).sort()).toEqual(['desktop', 'unified']);
+		expect((await servedTo(t, '0.0.9'))?.manifest).toBe(
+			manifestFor('0.1.0', 'https://github.com/wolvesdotink/owlat/unified.AppImage')
+		);
+	});
+
+	it('keeps a pinned pre-release on the pre-release channel', async () => {
+		const t = harness();
+		await seedRows(t, [{ version: '0.1.0-rc.1', hour: 0, isPrerelease: true }, ...rolling(31)]);
+		await t.mutation(api.desktop.updates.updatePolicy, {
+			mode: 'pinned',
+			channel: 'prerelease',
+			pinnedVersion: '0.1.0-rc.1',
+		});
+
+		await refresh(t);
+
+		expect((await cachedReleases(t)).map((row) => row.version)).toContain('0.1.0-rc.1');
+		expect((await servedTo(t, '0.0.9'))?.version).toBe('0.1.0-rc.1');
+	});
+
+	it('serves the pin even when it sorts past what one bounded read covers', async () => {
+		// More rows than a single read takes (a refresh that died before its
+		// prune, say), and the pin is last in the index's version-string order.
+		const t = harness();
+		await seedRows(t, [
+			{ version: '0.9.0', hour: 0 },
+			...Array.from({ length: 70 }, (_, i) => ({ version: `0.1.${i}`, hour: i + 1 })),
+		]);
+		await t.mutation(api.desktop.updates.updatePolicy, {
+			mode: 'pinned',
+			channel: 'stable',
+			pinnedVersion: '0.9.0',
+		});
+
+		expect((await servedTo(t, '0.0.9'))?.version).toBe('0.9.0');
+		const listed = await t.query(api.desktop.updates.listReleases, {});
+		expect(listed[0]?.version).toBe('0.9.0');
+	});
+
+	it('still knows every tag it holds, so a retained pin is not re-downloaded', async () => {
+		const t = harness();
+		const seeded = [{ version: '0.1.0', hour: 0 }, ...rolling(30)];
+		await seedRows(t, seeded);
+		await t.mutation(api.desktop.updates.updatePolicy, {
+			mode: 'pinned',
+			channel: 'stable',
+			pinnedVersion: '0.1.0',
+		});
+		const calls = stubFetch({
+			releases: seeded.map((row) => githubRelease(`v${row.version}`)),
+			manifests: Object.fromEntries(
+				seeded.map((row) => [`v${row.version}`, manifestFor(row.version)])
+			),
+		});
+
+		await t.action(internal.desktop.updates.refreshReleases, {});
+
+		expect(calls.filter((url) => url.includes('latest.json'))).toHaveLength(0);
+		expect(await cachedReleases(t)).toHaveLength(31);
+	});
+
+	it('tells the admin page when the pinned release is no longer cached', async () => {
+		// A pin the cache lost before pinned rows were exempt from the prune.
+		const t = harness();
+		await seedRows(t, [{ version: '0.1.0', hour: 0 }]);
+		await t.mutation(api.desktop.updates.updatePolicy, {
+			mode: 'pinned',
+			channel: 'stable',
+			pinnedVersion: '0.1.0',
+		});
+		await t.run(async (ctx) => {
+			for (const row of await ctx.db.query('desktopReleases').collect()) {
+				await ctx.db.delete(row._id);
+			}
+		});
+
+		expect((await t.query(api.desktop.updates.getPolicy, {})).pinCached).toBe(false);
+		expect(await servedTo(t, '0.0.9')).toBeNull();
+	});
+});
+
 // ── manifestForClient ────────────────────────────────────────────────────────
 
 describe('desktop.updates.manifestForClient', () => {
@@ -598,8 +813,31 @@ describe('desktop.updates reads', () => {
 			deferHours: 0,
 			latestVersion: null,
 			latestPublishedAt: null,
+			hasCachedReleases: false,
 			checkedAt: null,
 		});
+	});
+
+	it('reports a cache that holds nothing on the stable channel as non-empty', async () => {
+		// The app goes around an instance only when it has cached nothing at all;
+		// "nothing on this channel" is the instance's answer, not a gap.
+		const t = harness();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('desktopReleases', {
+				kind: 'release',
+				tag: 'v0.5.0-rc.1',
+				version: '0.5.0-rc.1',
+				line: 'unified',
+				isPrerelease: true,
+				publishedAt: Date.parse(PUBLISHED),
+				manifest: manifestFor('0.5.0-rc.1'),
+				fetchedAt: Date.now(),
+			});
+		});
+
+		const summary = await t.query(api.desktop.updates.getPolicySummary, {});
+		expect(summary.latestVersion).toBeNull();
+		expect(summary.hasCachedReleases).toBe(true);
 	});
 
 	it('refuses the cached-release list to an editor', async () => {

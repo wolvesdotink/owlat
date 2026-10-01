@@ -15,13 +15,27 @@ vi.mock('@owlat/api', () => ({
 	},
 }));
 
+// One test runs the real leave guard; its router half is captured.
+const router = vi.hoisted(() => ({
+	guard: null as null | ((to: unknown, from: unknown, next: (v?: unknown) => void) => void),
+	push: vi.fn(),
+}));
+vi.mock('vue-router', () => ({
+	onBeforeRouteLeave: (cb: (typeof router)['guard']) => {
+		router.guard = cb;
+	},
+	useRouter: () => ({ push: router.push }),
+}));
+
 import { ref, nextTick } from 'vue';
 import {
 	createSavedBlockSaveHandler,
 	createUploadImageHandler,
 	useEmailEditorBridge,
 } from '../useEmailEditorBridge';
+import { useUnsavedChanges } from '../useUnsavedChanges';
 import { SurfacedOperationError } from '~/lib/operationError';
+import { withSetup } from '~/__tests__/withSetup';
 
 describe('createUploadImageHandler', () => {
 	let deps: {
@@ -269,6 +283,50 @@ describe('useEmailEditorBridge save', () => {
 			expect.objectContaining({ revision: 3 })
 		);
 		finish();
+	});
+
+	it('does not leave after the dialog save when the draft was edited while it ran', async () => {
+		vi.stubGlobal('useUnsavedChanges', useUnsavedChanges);
+		router.push.mockClear();
+		const { result, unmount } = withSetup(() => setup());
+		const { source, bridge, finish } = result;
+		await settle();
+		bridge.subject.value = 'Hello there';
+		await nextTick();
+		const next = vi.fn();
+		router.guard?.({ fullPath: '/dashboard/send' }, {}, next);
+		expect(next).toHaveBeenCalledWith(false);
+		expect(bridge.showUnsavedChangesDialog.value).toBe(true);
+
+		const leaving = bridge.confirmSave();
+		expect(bridge.isSavingBeforeLeave.value).toBe(true);
+		bridge.subject.value = 'Hello there, friend';
+		await nextTick();
+		source.value = { _id: 't1', name: 'Welcome', subject: 'Hello there', contentRevision: 3 };
+		await settle();
+		finish();
+		await leaving;
+
+		expect(router.push).not.toHaveBeenCalled();
+		expect(bridge.hasChanges.value).toBe(true);
+		expect(bridge.showUnsavedChangesDialog.value).toBe(true);
+		expect(bridge.subject.value).toBe('Hello there, friend');
+
+		// Saving the current draft from the same dialog leaves, once.
+		const again = bridge.confirmSave();
+		source.value = {
+			_id: 't1',
+			name: 'Welcome',
+			subject: 'Hello there, friend',
+			contentRevision: 4,
+		};
+		await settle();
+		finish();
+		await again;
+		expect(bridge.hasChanges.value).toBe(false);
+		expect(router.push).toHaveBeenCalledTimes(1);
+		expect(router.push).toHaveBeenCalledWith('/dashboard/send');
+		unmount();
 	});
 
 	it('stays dirty when the surface save throws', async () => {

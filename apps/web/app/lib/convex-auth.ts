@@ -1,5 +1,5 @@
-import { isDesktopRuntime, getActiveWorkspace } from '~/lib/desktop/activeWorkspace';
-import { authClient } from '~/lib/auth-client';
+import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
+import { desktopConvexTokenRequest } from '~/lib/auth-client';
 
 let cachedToken: string | null = null;
 let tokenExpiresAt = 0;
@@ -20,14 +20,16 @@ const REFRESH_BUFFER_MS = 60_000;
  *
  * Web: same-origin relative path + cookies (the Nitro proxy forwards them).
  * Desktop: absolute URL to the active workspace's Convex site, with no cookies —
- * the session rides in the `Better-Auth-Cookie` header that the cross-domain
- * client stores (read here via `authClient.getCookie()`).
+ * the session rides in the `Better-Auth-Cookie` header that the workspace's
+ * cross-domain client stores. Both come from the one client bound to that
+ * workspace. Null on a desktop with no workspace: there is nowhere to ask.
  */
-function buildTokenRequest(): { url: string; init: RequestInit } {
+function buildTokenRequest(): { url: string; init: RequestInit } | null {
 	if (isDesktopRuntime()) {
-		const base = (getActiveWorkspace()?.convexSiteUrl ?? '').replace(/\/+$/, '');
-		const getCookie = (authClient as unknown as { getCookie?: () => string }).getCookie;
-		const cookie = getCookie ? getCookie() : '';
+		const target = desktopConvexTokenRequest();
+		if (!target) return null;
+		const base = target.convexSiteUrl.replace(/\/+$/, '');
+		const cookie = target.cookie;
 		return {
 			url: `${base}/api/auth/convex/token`,
 			init: {
@@ -65,8 +67,12 @@ export function resetConvexAuthTokenCache() {
 
 async function fetchToken(): Promise<string | null> {
 	try {
-		const { url, init } = buildTokenRequest();
-		const response = await fetch(url, init);
+		const request = buildTokenRequest();
+		if (!request) {
+			clearCachedToken();
+			return null;
+		}
+		const response = await fetch(request.url, request.init);
 
 		if (!response.ok) {
 			clearCachedToken();

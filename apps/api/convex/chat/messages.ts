@@ -201,8 +201,14 @@ export const deleteMessage = chatMutation({
 });
 
 /**
- * Mark all messages in a room as read up to `now` (or a provided timestamp).
- * Caller must be a member.
+ * Mark all messages in a room as read up to `at` — the createdAt of the newest
+ * message the client displayed — or up to now when omitted. Caller must be a
+ * member.
+ *
+ * Idempotent: repeating a timestamp writes nothing. The read marker only moves
+ * forward, and the caller's mentions in the room up to `at` are cleared even
+ * when the marker is already past it (sending a message moves the author's
+ * marker without touching their mentions).
  */
 // authz: room membership — only a room member may mark it read (checked below).
 export const markRead = chatMutation({
@@ -212,9 +218,13 @@ export const markRead = chatMutation({
 		const membership = await getMembership(ctx, args.roomId, userId);
 		if (!membership) return; // tolerate; caller may have just left
 
-		const at = args.at ?? Date.now();
-		if (at <= membership.lastReadAt) return;
-		await ctx.db.patch(membership._id, { lastReadAt: at });
+		// Never ahead of the server clock: a read point cannot cover messages
+		// that do not exist yet.
+		const now = Date.now();
+		const at = Math.min(args.at ?? now, now);
+		if (at > membership.lastReadAt) {
+			await ctx.db.patch(membership._id, { lastReadAt: at });
+		}
 
 		// Mark any of the caller's mentions in this room read up to `at`.
 		const unreadMentions = await ctx.db

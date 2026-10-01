@@ -65,6 +65,7 @@ const {
 	name,
 	isSaving,
 	showUnsavedChangesDialog,
+	isSavingBeforeLeave,
 	confirmDiscard,
 	confirmSave,
 	cancelNavigation,
@@ -234,6 +235,7 @@ const handleSettings = () => {
 		<!-- Unsaved Changes Dialog -->
 		<UnsavedChangesDialog
 			:show="showUnsavedChangesDialog"
+			:saving="isSavingBeforeLeave"
 			@close="cancelNavigation"
 			@discard="confirmDiscard"
 			@save="confirmSave"

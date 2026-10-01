@@ -102,6 +102,10 @@ export const automationTables = {
 		.index('by_automation', ['automationId'])
 		.index('by_contact', ['contactId'])
 		.index('by_automation_and_contact', ['automationId', 'contactId'])
+		// The trigger fanout's running-instance guard (automations/triggers.ts)
+		// reads only this pair's running rows, so completed/cancelled history
+		// never enters its scan or read set.
+		.index('by_automation_contact_status', ['automationId', 'contactId', 'status'])
 		.index('by_automation_and_status', ['automationId', 'status'])
 		// The stalled-run sweep pages through every running run
 		// (automations/stalledRuns.ts).

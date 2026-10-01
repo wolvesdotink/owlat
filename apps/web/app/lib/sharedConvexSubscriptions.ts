@@ -13,6 +13,11 @@
  * transport subscription. When the last owner leaves, it stays open for
  * `SUBSCRIPTION_LINGER_MS`; whoever opens it again, while it is live or
  * lingering, gets its current value synchronously, inside `open`.
+ *
+ * An owner that lets go because it moved to a wider or narrower window over the
+ * same list (a growable `limit`) releases with `'superseded'`: nobody comes back
+ * to the old window, so it closes as soon as its last owner has left instead of
+ * lingering live next to the one that replaced it.
  */
 import { getFunctionName, type FunctionReference } from 'convex/server';
 
@@ -60,6 +65,14 @@ export type LingerClass = 'default' | 'body';
 export function lingerClassOf(query: FunctionReference<'query'>): LingerClass {
 	return BODY_BEARING_QUERIES.has(functionNameOf(query)) ? 'body' : 'default';
 }
+
+/**
+ * Why an owner lets go. `'leave'` (navigation, skip, a retry wait, new args of
+ * any other kind) keeps the query warm for its linger; `'superseded'` means the
+ * owner replaced it with another window over the same list, so it closes once
+ * no one else holds it.
+ */
+export type ReleaseReason = 'leave' | 'superseded';
 
 interface SharedListener {
 	update: (value: unknown) => void;
@@ -208,7 +221,8 @@ function fanOut(entry: SharedEntry, call: (listener: SharedListener) => void): v
  * live or lingering entry that already has a value hands it to the new owner
  * synchronously. `fresh` detaches the current entry first, so the query
  * re-executes once its remaining owners have let go of it. `lingerClass`
- * (see {@link lingerClassOf}) sets how the entry lingers once released.
+ * (see {@link lingerClassOf}) sets how the entry lingers once released. The
+ * returned release takes a {@link ReleaseReason}.
  */
 export function openShared<Args, Update>(
 	key: string,
@@ -217,7 +231,7 @@ export function openShared<Args, Update>(
 	listener: SharedListener,
 	fresh: boolean,
 	lingerClass: LingerClass = 'default'
-): () => void {
+): (reason?: ReleaseReason) => void {
 	let entry = sharedEntries.get(key);
 	if (entry && fresh) {
 		detach(entry);
@@ -265,12 +279,14 @@ export function openShared<Args, Update>(
 
 	const owned = entry;
 	let released = false;
-	return () => {
+	return (reason: ReleaseReason = 'leave') => {
 		if (released) return;
 		released = true;
 		owned.listeners.delete(listener);
+		// Another owner still reads this exact query and args: it stays live.
 		if (owned.listeners.size > 0 || owned.closed) return;
-		if (owned.registered) startLinger(owned);
+		if (owned.registered && reason === 'leave') startLinger(owned);
+		else if (owned.registered) detach(owned);
 		else closeTransport(owned);
 	};
 }

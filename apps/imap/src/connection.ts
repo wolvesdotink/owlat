@@ -21,6 +21,7 @@ import type { ConvexClient } from './convex.js';
 import { logger } from './logger.js';
 import { parseLine, parseCommandWithLiterals, matchTrailingLiteral } from './parser.js';
 import type { AuthRateLimiter } from './rateLimit.js';
+import { drainWaiter, writeLine } from './socketOutput.js';
 import { dispatch, assembleCapabilityLine } from './commands/walker.js';
 import type { CommandDeps, CommandSession, ConnectionState } from './commands/types.js';
 
@@ -62,6 +63,8 @@ export class ImapConnection {
 	private buffer: Buffer = Buffer.alloc(0);
 	private state: ConnectionState = { auth: null, selected: null, clientId: null };
 	private activeSession: CommandSession | null = null;
+	/** Every session whose completion is still pending; cancelled on close. */
+	private readonly sessions = new Set<CommandSession>();
 	private literalRemaining = 0;
 	/** Non-APPEND command being assembled across `{N}` continuations. */
 	private pendingCommand: PendingCommand | null = null;
@@ -132,6 +135,7 @@ export class ImapConnection {
 			commit: (next) => {
 				this.state = next;
 			},
+			waitForDrain: drainWaiter(socket, () => this.closed),
 		};
 
 		this.send(`* OK [${capabilityLine}] ${config.greetingHost} Owlat IMAP ready`);
@@ -139,13 +143,17 @@ export class ImapConnection {
 
 	private send(line: string | Buffer): void {
 		try {
-			// A Buffer is written as raw octets so a FETCH body literal keeps
-			// the exact 8-bit/binary bytes of the stored message; the trailing
-			// CRLF is appended as octets too. Strings take the UTF-8 text path.
-			this.socket.write(Buffer.isBuffer(line) ? Buffer.concat([line, CRLF]) : `${line}\r\n`);
+			writeLine(this.socket, line);
 		} catch (err) {
 			logger.debug({ err }, 'write failed');
 		}
+	}
+
+	/** Cancel every in-flight session once, e.g. a FETCH still downloading. */
+	private cancelSessions(): void {
+		const sessions = [...this.sessions];
+		this.sessions.clear();
+		for (const session of sessions) session.cancel();
 	}
 
 	private onClose(): void {
@@ -154,13 +162,14 @@ export class ImapConnection {
 			clearTimeout(this.preAuthTimer);
 			this.preAuthTimer = null;
 		}
-		const session = this.activeSession;
 		this.activeSession = null;
 		this.literalRemaining = 0;
 		this.pendingCommand = null;
 		this.commandLiteralRemaining = 0;
 		this.commandLiteralChunks = [];
-		session?.cancel();
+		// The active long-running session (IDLE / APPEND) is in `sessions` too,
+		// alongside any one-shot command still working, e.g. a FETCH mid-download.
+		this.cancelSessions();
 	}
 
 	/**
@@ -189,6 +198,9 @@ export class ImapConnection {
 		} catch {
 			// best-effort notice; tear down regardless
 		}
+		// Nothing more will be read or answered: stop in-flight work now rather
+		// than when the socket finally closes (a flushing shutdown can take a while).
+		this.cancelSessions();
 		const sock = this.socket as { destroy?: () => void; end: (cb?: () => void) => void };
 		if (typeof sock.destroy !== 'function') {
 			sock.end();
@@ -411,6 +423,10 @@ export class ImapConnection {
 	}
 
 	private trackSession(session: CommandSession): void {
+		if (this.closed) {
+			session.cancel();
+			return;
+		}
 		const isLongRunning = !!(session.awaitingLiteral || session.onClientLine);
 		if (isLongRunning) {
 			// Defense-in-depth literal cap at the pump: even if a command module
@@ -426,8 +442,10 @@ export class ImapConnection {
 				this.literalRemaining = session.awaitingLiteral.bytes;
 			}
 		}
+		this.sessions.add(session);
 		session.completion
 			.then(() => {
+				this.sessions.delete(session);
 				if (this.activeSession === session) {
 					this.activeSession = null;
 					this.literalRemaining = 0;

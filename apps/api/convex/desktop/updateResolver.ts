@@ -24,6 +24,21 @@ export const MAX_DEFER_HOURS = 168;
 /** How many release rows the cache keeps; older ones are pruned on refresh. */
 export const DESKTOP_RELEASE_CACHE_LIMIT = 30;
 
+/**
+ * Rows the pinned version may hold on top of that limit: one per release line,
+ * since `desktop-v0.4.7` and `v0.4.7` are cached side by side.
+ */
+export const PINNED_RELEASE_ROW_LIMIT = 2;
+
+/**
+ * Upper bound for a read of the whole cache. The index orders by version
+ * STRING, so a read has to cover every row that can exist at once: the rolling
+ * cache, a pin held outside it, and a full GitHub page of new rows that a
+ * refresh has cached but not yet pruned.
+ */
+export const DESKTOP_RELEASE_READ_LIMIT =
+	DESKTOP_RELEASE_CACHE_LIMIT * 2 + PINNED_RELEASE_ROW_LIMIT;
+
 /** What a fresh instance with no `instanceSettings.desktopUpdates` row behaves as. */
 export const DEFAULT_DESKTOP_UPDATE_POLICY: DesktopUpdatePolicy = {
 	mode: 'latest',
@@ -50,6 +65,7 @@ export interface CachedReleaseRow {
 	version?: string;
 	line?: 'unified' | 'desktop';
 	isPrerelease?: boolean;
+	publishedAt?: number;
 	fetchedAt?: number;
 }
 
@@ -94,6 +110,30 @@ export function newestRelease<R extends CachedReleaseRow>(
 					: best,
 			null
 		);
+}
+
+/** The version the policy holds the fleet to, or undefined when it is not pinned. */
+export function activePin(policy: DesktopUpdatePolicy): string | undefined {
+	return policy.mode === 'pinned' ? policy.pinnedVersion : undefined;
+}
+
+/**
+ * The cached rows a refresh deletes: everything outside the newest
+ * `DESKTOP_RELEASE_CACHE_LIMIT` by publication time, except the rows of the
+ * pinned version. The pin was validated against the cache when it was saved,
+ * and dropping its row would leave the policy pinned to a release no client can
+ * be served. The exemption ends with the pin: once the policy moves on, the
+ * same rows age out on the next refresh like any other.
+ */
+export function releasesToPrune<R extends CachedReleaseRow>(
+	rows: R[],
+	pinnedVersion: string | undefined
+): R[] {
+	if (rows.length <= DESKTOP_RELEASE_CACHE_LIMIT) return [];
+	return [...rows]
+		.sort((a, b) => (b.publishedAt ?? 0) - (a.publishedAt ?? 0))
+		.slice(DESKTOP_RELEASE_CACHE_LIMIT)
+		.filter((row) => pinnedVersion === undefined || row.version !== pinnedVersion);
 }
 
 /**

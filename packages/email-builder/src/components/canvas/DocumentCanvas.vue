@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, nextTick, inject, onMounted, onUnmounted } from 'vue';
+import { computed, ref, watch, nextTick, inject, onMounted, onUnmounted, toRaw } from 'vue';
 import type { EditorBlock, EmailTheme, Variable, SlashCommand, BlockType } from '../../types';
 import type { ParentContext } from './types';
 import DocumentBlock from './DocumentBlock.vue';
@@ -12,6 +12,12 @@ import { useDraggable } from 'vue-draggable-plus';
 import { Link } from '@lucide/vue';
 import { blockAccessibleLabel } from '../../utils/blockLabel';
 import { isEditableTarget, nextListboxIndex } from '../../utils/canvasListboxNav';
+import {
+	buildLinkedBlockIndex,
+	LINKED_BLOCK_INDEX_KEY,
+	type CanvasDisplayItem,
+	type LinkedBlockIndex,
+} from '../../composables/useLinkedBlocks';
 
 const props = defineProps<{
 	blocks: EditorBlock[];
@@ -70,41 +76,28 @@ const isDragging = ref(false);
 const canvasInnerRef = ref<HTMLElement | null>(null);
 defineExpose({ canvasInnerElement: canvasInnerRef });
 
-// Linked block state (provided by EmailBuilder)
-const isLinkedBlockFn = inject<(id: string) => boolean>('isLinkedBlock', () => false);
-const isFirstInLinkedGroup = inject<(id: string) => boolean>('isFirstInLinkedGroup', () => false);
-const isLastInLinkedGroup = inject<(id: string) => boolean>('isLastInLinkedGroup', () => false);
+// Linked block state: one index over the root Blocks (shared by EmailBuilder
+// when it indexes this same array), so the per-Block template lookups below
+// are map reads and a selection change reuses the index untouched.
+const sharedLinkedIndex = inject(LINKED_BLOCK_INDEX_KEY, null);
+const linkedIndex = computed<LinkedBlockIndex>(() => {
+	const shared = sharedLinkedIndex?.value;
+	if (shared && toRaw(shared.source) === toRaw(props.blocks)) return shared;
+	return buildLinkedBlockIndex(props.blocks);
+});
+const isLinkedBlockFn = (id: string) => !!linkedIndex.value.byId.get(id)?.groupId;
+const isFirstInLinkedGroup = (id: string) => !!linkedIndex.value.byId.get(id)?.isFirstInGroup;
+const isLastInLinkedGroup = (id: string) => !!linkedIndex.value.byId.get(id)?.isLastInGroup;
 const requestDetachLinkedBlock = inject<(id: string) => void>('requestDetachLinkedBlock', () => {});
 const setBlockElement = inject<(blockId: string, el: HTMLElement | null) => void>('setBlockElement', () => {});
 
 // Register inline editor ref with parent EmailBuilder
 const registerInlineEditor = inject<(ref: { el: HTMLElement } | null) => void>('registerInlineEditor', () => {});
 
-// Group consecutive linked blocks into single draggable units
-interface DisplayItem {
-	id: string;
-	blocks: EditorBlock[];
-}
+// Group linked blocks into single draggable units (built with the index above)
+type DisplayItem = CanvasDisplayItem;
 
-const displayItems = computed<DisplayItem[]>(() => {
-	const items: DisplayItem[] = [];
-	const seen = new Set<string>();
-
-	for (const block of props.blocks) {
-		if (block.savedBlockRef) {
-			const groupId = block.savedBlockRef.groupId;
-			if (seen.has(groupId)) continue;
-			seen.add(groupId);
-			const groupBlocks = props.blocks.filter(
-				(b) => b.savedBlockRef?.groupId === groupId,
-			);
-			items.push({ id: `group-${groupId}`, blocks: groupBlocks });
-		} else {
-			items.push({ id: block.id, blocks: [block] });
-		}
-	}
-	return items;
-});
+const displayItems = computed<DisplayItem[]>(() => linkedIndex.value.displayItems);
 
 // Direct ref for Sortable.js — no VueDraggable component overhead
 const containerRef = ref<HTMLElement | null>(null);

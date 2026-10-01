@@ -41,7 +41,8 @@ export interface ConvexQueryResult<T> {
  * Every component reading the same query with the same args shares one
  * subscription, and a query stays subscribed for a while after its last reader
  * unmounts: coming back to it (back navigation, a tab switch) renders its value
- * in the same tick, with no loading state.
+ * in the same tick, with no loading state. A query paged by a growable limit
+ * names it as `windowArg`, so "Load more" closes the window it outgrew.
  *
  * `data` is a shallow ref holding the value as delivered: treat it as read-only,
  * never mutate a row in place (copy it, or keep edits in local state). Rows that
@@ -55,7 +56,16 @@ export interface ConvexQueryResult<T> {
 export function useConvexQuery<Query extends FunctionReference<'query'>>(
 	query: Query,
 	args: ArgsOrFactory<FunctionArgs<Query>>,
-	options?: { timeout?: number; keepPreviousData?: boolean }
+	options?: {
+		timeout?: number;
+		keepPreviousData?: boolean;
+		/**
+		 * The arg a "Load more" grows (a `limit`). Growing or shrinking it closes
+		 * the previous window once no one else reads it, instead of keeping it
+		 * warm; see `windowArg` in `~/lib/convexSubscription`.
+		 */
+		windowArg?: keyof FunctionArgs<Query> & string;
+	}
 ): ConvexQueryResult<FunctionReturnType<Query>> {
 	const client = useConvex();
 	const data = shallowRef<FunctionReturnType<Query> | undefined>(undefined) as Ref<
@@ -80,6 +90,7 @@ export function useConvexQuery<Query extends FunctionReference<'query'>>(
 			data.value = undefined;
 		},
 		keepPreviousData: options?.keepPreviousData,
+		windowArg: options?.windowArg,
 		timeout: options?.timeout,
 	});
 

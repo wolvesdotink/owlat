@@ -59,6 +59,16 @@ export function registerContactHygieneCrons(crons: Crons): void {
 		{}
 	);
 
+	// Recover a missing cached contact count (new or restored instance). The
+	// dashboards show the count as pending instead of scanning; this starts the
+	// bounded recount that fills it in. One read while a count is cached.
+	crons.interval(
+		'recover missing contact count',
+		{ minutes: 10 },
+		internal.contacts.countReconcile.recoverMissingCount,
+		{}
+	);
+
 	// Contact property deletion (#918): restart cleanup chains that went quiet
 	// and re-arm failed ones. A deletion normally finishes on its own chain;
 	// this only recovers a crashed action or a lost schedule.

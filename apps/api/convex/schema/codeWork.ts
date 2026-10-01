@@ -36,6 +36,16 @@ export const codeWorkTables = {
 		attempts: v.optional(v.number()),
 		maxAttempts: v.optional(v.number()),
 		nextAttemptAt: v.optional(v.number()),
+		// Set by the user-facing `cancel`. Status alone cannot tell a cancelled
+		// run from a failed one, and every worker callback checks this so an
+		// in-flight run can never move a cancelled task on again.
+		cancelledAt: v.optional(v.number()),
+		// Publication checkpoint: the commit an attempt was about to push to
+		// `branch`, written before the push. A retry that finds the remote branch
+		// at this commit resumes publication (PR lookup/creation, acknowledgement)
+		// instead of regenerating; a remote branch at any other commit is left
+		// alone and reported.
+		publishCommitSha: v.optional(v.string()),
 		// LLM cost tracking
 		llmCost: v.optional(v.number()),
 		// Timestamps
