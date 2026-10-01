@@ -651,6 +651,7 @@ import type * as lib_contactHelpers from '../lib/contactHelpers.js';
 import type * as lib_contactJunctions from '../lib/contactJunctions.js';
 import type * as lib_contactMutations from '../lib/contactMutations.js';
 import type * as lib_contactScope from '../lib/contactScope.js';
+import type * as lib_convexLimitErrors from '../lib/convexLimitErrors.js';
 import type * as lib_convexValidators from '../lib/convexValidators.js';
 import type * as lib_cors from '../lib/cors.js';
 import type * as lib_credentialCrypto from '../lib/credentialCrypto.js';
@@ -1950,6 +1951,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/contactJunctions': typeof lib_contactJunctions;
 	'lib/contactMutations': typeof lib_contactMutations;
 	'lib/contactScope': typeof lib_contactScope;
+	'lib/convexLimitErrors': typeof lib_convexLimitErrors;
 	'lib/convexValidators': typeof lib_convexValidators;
 	'lib/cors': typeof lib_cors;
 	'lib/credentialCrypto': typeof lib_credentialCrypto;
