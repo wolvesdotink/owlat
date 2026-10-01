@@ -329,5 +329,9 @@ export const mailAccountsTables = {
 	})
 		.index('by_account_and_next_attempt', ['accountId', 'nextAttemptAt'])
 		// A pending write-back holds a message out of inbound reconcile.
-		.index('by_account_and_message', ['accountId', 'rfc822MessageId']),
+		.index('by_account_and_message', ['accountId', 'rfc822MessageId'])
+		// The ops naming a remote folder, which a rename or delete of it waits
+		// for (mail/external/remoteFolderOpOrder.ts).
+		.index('by_account_kind_and_source_remote', ['accountId', 'kind', 'source.remote'])
+		.index('by_account_kind_and_target_remote', ['accountId', 'kind', 'target.remote']),
 };
