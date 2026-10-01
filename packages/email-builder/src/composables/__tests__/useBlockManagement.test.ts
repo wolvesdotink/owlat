@@ -6,6 +6,7 @@ import { locateBlock } from '../../utils/blockTree';
 import type {
 	EditorBlock,
 	TextBlockContent,
+	ButtonBlockContent,
 	ColumnsBlockContent,
 	ContainerBlockContent,
 	EmailTheme,
@@ -27,6 +28,10 @@ const defaultTheme: Required<EmailTheme> = {
 	buttonDefaults: {},
 	headingDefaults: {},
 	blockDefaults: {},
+	darkModeBackgroundColor: '#121212',
+	darkModeTextColor: '#e4e4e7',
+	darkModeLinkColor: '#93c5fd',
+	baseWidth: 600,
 };
 
 function makeTextBlock(id: string): EditorBlock {
@@ -61,10 +66,10 @@ function makeColumnsBlock(id: string): EditorBlock {
 			ratio: 'equal',
 			mobileStacking: true,
 			columns: [
-				[{ id: 'col-item-1', type: 'text', content: { html: 'Col 1' } }],
-				[{ id: 'col-item-2', type: 'button', content: { text: 'Click' } }],
+				[{ id: 'col-item-1', type: 'text', content: { html: 'Col 1' } as TextBlockContent }],
+				[{ id: 'col-item-2', type: 'button', content: { text: 'Click' } as ButtonBlockContent }],
 			],
-			gap: 16,
+			columnGap: 16,
 			paddingTop: 0,
 			paddingRight: 0,
 			paddingBottom: 0,
@@ -74,7 +79,7 @@ function makeColumnsBlock(id: string): EditorBlock {
 			marginRight: 0,
 			marginBottom: 0,
 			marginLeft: 0,
-		} as ColumnsBlockContent,
+		},
 	};
 }
 

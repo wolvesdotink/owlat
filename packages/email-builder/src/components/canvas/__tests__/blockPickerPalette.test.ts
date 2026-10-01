@@ -44,7 +44,11 @@ const PalettePopover = defineComponent({
 			for (const block of blocks) {
 				const cat = block.slashCommand!.category;
 				if (groups[cat]) {
-					groups[cat].push({ type: block.type, label: block.label, icon: block.slashCommand!.icon });
+					groups[cat].push({
+						type: block.type,
+						label: block.label,
+						icon: block.slashCommand!.icon,
+					});
 				}
 			}
 			return [
@@ -60,10 +64,10 @@ const PalettePopover = defineComponent({
 				'div',
 				{ role: 'menu', 'aria-label': 'Insert block' },
 				categories.value.flatMap((category) =>
-					category.items.map((block) =>
-						h('button', { role: 'menuitem', 'data-block-type': block.type }, block.label),
-					),
-				),
+					category.items!.map((block) =>
+						h('button', { role: 'menuitem', 'data-block-type': block.type }, block.label)
+					)
+				)
 			);
 	},
 });
@@ -77,7 +81,7 @@ function renderPalette(blockTypes?: BlockType[]): HTMLElement {
 
 function renderedTypes(host: HTMLElement): string[] {
 	return Array.from(host.querySelectorAll('button[data-block-type]')).map(
-		(b) => (b as HTMLElement).dataset['blockType']!,
+		(b) => (b as HTMLElement).dataset['blockType']!
 	);
 }
 
@@ -105,7 +109,14 @@ describe('between-block insert popover palette', () => {
 		expect(types).toContain('columns');
 
 		// The exact blocks the issue called out must NOT appear.
-		for (const restricted of ['video', 'accordion', 'hero', 'table', 'rawHtml', 'carousel'] as const) {
+		for (const restricted of [
+			'video',
+			'accordion',
+			'hero',
+			'table',
+			'rawHtml',
+			'carousel',
+		] as const) {
 			expect(types).not.toContain(restricted);
 		}
 
