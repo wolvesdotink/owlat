@@ -46,8 +46,20 @@ const props = withDefaults(
 		attaching?: string | null;
 		/** Whether a chip can attach (the composer is there). */
 		canAttach?: boolean;
+		/**
+		 * Start folded to one line with a Show button (Answer mode on a phone),
+		 * so the message being answered fits the first screen.
+		 */
+		collapsible?: boolean;
 	}>(),
-	{ loading: false, covered: () => [], hints: () => ({}), attaching: null, canAttach: true }
+	{
+		loading: false,
+		covered: () => [],
+		hints: () => ({}),
+		attaching: null,
+		canAttach: true,
+		collapsible: false,
+	}
 );
 
 const emit = defineEmits<{
@@ -117,6 +129,23 @@ function onDragStart(event: DragEvent, file: ThreadFile) {
 }
 
 const titleId = useId();
+const bodyId = useId();
+
+// Folded: one line with the title, how much it covers and a Show button.
+const open = ref(!props.collapsible);
+// The layout settles after mount (a media query): fold or unfold with it.
+watch(
+	() => props.collapsible,
+	(collapsible) => {
+		open.value = !collapsible;
+	}
+);
+const compactMeta = computed(() => {
+	const count = asks.value.length;
+	const asksLine = t('components.answer.catchUp.asksCount', { count }, count);
+	if (asksOnly.value) return asksLine;
+	return count > 0 ? `${meta.value} · ${asksLine}` : meta.value;
+});
 </script>
 
 <template>
@@ -138,103 +167,136 @@ const titleId = useId();
 		:aria-labelledby="titleId"
 		data-testid="catch-up-card"
 	>
-		<template v-if="!asksOnly">
-			<p class="flex flex-wrap items-center gap-x-1.5 text-xs text-text-tertiary">
-				<Icon name="lucide:sparkles" class="size-3.5 text-brand" aria-hidden="true" />
-				<span :id="titleId" class="font-semibold text-text-secondary">
-					{{ t('components.answer.catchUp.title') }}
-				</span>
-				<span aria-hidden="true">·</span>
-				<span data-testid="catch-up-meta">{{ meta }}</span>
-			</p>
-			<p class="mt-2 leading-relaxed text-text-primary" data-testid="catch-up-sentences">
-				<template v-for="(sentence, si) in sentences" :key="si">
-					<span data-testid="catch-up-sentence">{{ sentence.text }}</span>
-					<button
-						v-for="marker in markersOf(sentence.sourceMessageIds)"
-						:key="marker.id"
-						type="button"
-						class="ml-1 inline-flex items-center rounded-sm bg-bg-surface px-1 align-baseline text-2xs text-text-tertiary hover:bg-(--surface-2-selected) hover:text-text-primary focus-visible:outline-2 focus-visible:outline-brand"
-						:aria-label="marker.label"
-						:title="marker.label"
-						data-testid="catch-up-marker"
-						@click="emit('reveal', marker.id)"
-					>
-						{{ marker.date }}
-					</button>
-					{{ ' ' }}
-				</template>
-			</p>
-		</template>
-
-		<div v-if="asks.length > 0" :class="asksOnly ? '' : 'mt-3'">
-			<p :id="asksOnly ? titleId : undefined" class="text-xs font-semibold text-text-secondary">
-				{{ t('components.answer.catchUp.asksTitle') }}
-			</p>
-			<ul class="mt-1.5 space-y-1" data-testid="catch-up-asks">
-				<li
-					v-for="ask in asks"
-					:key="ask.id"
-					class="flex items-start gap-2"
-					:data-covered="coveredSet.has(ask.id)"
-					data-testid="catch-up-ask"
-				>
-					<Icon
-						:name="coveredSet.has(ask.id) ? 'lucide:circle-check' : 'lucide:circle'"
-						class="mt-0.5 size-4 shrink-0"
-						:class="coveredSet.has(ask.id) ? 'text-success' : 'text-text-tertiary'"
-						aria-hidden="true"
-					/>
-					<span class="min-w-0">
-						<span class="sr-only">
-							{{
-								coveredSet.has(ask.id)
-									? t('components.answer.catchUp.askCovered')
-									: t('components.answer.catchUp.askOpen')
-							}}
-						</span>
-						<span class="text-text-primary">{{ ask.text }}</span>
-						<span
-							v-if="coveredSet.has(ask.id) && hints[ask.id]"
-							class="ml-1.5 text-xs text-text-tertiary"
-							data-testid="catch-up-ask-hint"
-							>{{ hints[ask.id] }}</span
-						>
-					</span>
-				</li>
-			</ul>
+		<div v-if="collapsible" class="flex items-center gap-1.5 text-xs text-text-tertiary">
+			<Icon name="lucide:sparkles" class="size-3.5 shrink-0 text-brand" aria-hidden="true" />
+			<span :id="titleId" class="shrink-0 font-semibold text-text-secondary">
+				{{
+					asksOnly ? t('components.answer.catchUp.asksTitle') : t('components.answer.catchUp.title')
+				}}
+			</span>
+			<span aria-hidden="true">·</span>
+			<span class="min-w-0 truncate" data-testid="catch-up-compact-meta">{{ compactMeta }}</span>
+			<button
+				type="button"
+				class="ml-auto shrink-0 font-medium text-brand hover:underline focus-visible:outline-2 focus-visible:outline-brand"
+				:aria-expanded="open"
+				:aria-controls="bodyId"
+				data-testid="catch-up-toggle"
+				@click="open = !open"
+			>
+				{{ open ? t('components.answer.catchUp.hide') : t('components.answer.catchUp.show') }}
+			</button>
 		</div>
+		<div v-show="open" :id="bodyId" :class="{ 'mt-3': collapsible }">
+			<template v-if="!asksOnly">
+				<p
+					v-if="!collapsible"
+					class="flex flex-wrap items-center gap-x-1.5 text-xs text-text-tertiary"
+				>
+					<Icon name="lucide:sparkles" class="size-3.5 text-brand" aria-hidden="true" />
+					<span :id="titleId" class="font-semibold text-text-secondary">
+						{{ t('components.answer.catchUp.title') }}
+					</span>
+					<span aria-hidden="true">·</span>
+					<span data-testid="catch-up-meta">{{ meta }}</span>
+				</p>
+				<p
+					class="leading-relaxed text-text-primary"
+					:class="{ 'mt-2': !collapsible }"
+					data-testid="catch-up-sentences"
+				>
+					<template v-for="(sentence, si) in sentences" :key="si">
+						<span data-testid="catch-up-sentence">{{ sentence.text }}</span>
+						<button
+							v-for="marker in markersOf(sentence.sourceMessageIds)"
+							:key="marker.id"
+							type="button"
+							class="ml-1 inline-flex items-center rounded-sm bg-bg-surface px-1 align-baseline text-2xs text-text-tertiary hover:bg-(--surface-2-selected) hover:text-text-primary focus-visible:outline-2 focus-visible:outline-brand"
+							:aria-label="marker.label"
+							:title="marker.label"
+							data-testid="catch-up-marker"
+							@click="emit('reveal', marker.id)"
+						>
+							{{ marker.date }}
+						</button>
+						{{ ' ' }}
+					</template>
+				</p>
+			</template>
 
-		<div v-if="files.length > 0" class="mt-3">
-			<p class="text-xs font-semibold text-text-secondary">
-				{{ t('components.answer.catchUp.filesTitle') }}
-			</p>
-			<ul class="mt-1.5 flex flex-wrap gap-1.5" data-testid="catch-up-files">
-				<li v-for="file in files" :key="file.key">
-					<button
-						type="button"
-						class="inline-flex max-w-64 items-center gap-1.5 rounded-full border border-border-subtle px-2.5 py-1 text-xs text-text-secondary hover:border-text-tertiary hover:bg-bg-surface focus-visible:outline-2 focus-visible:outline-brand disabled:opacity-60"
-						:draggable="canAttach"
-						:disabled="!canAttach || attaching === file.key"
-						:title="t('components.answer.catchUp.attachHint')"
-						:aria-label="t('components.answer.catchUp.attachFile', { file: file.filename })"
-						data-testid="catch-up-file"
-						@click="emit('attach', file)"
-						@dragstart="onDragStart($event, file)"
+			<div v-if="asks.length > 0" :class="asksOnly ? '' : 'mt-3'">
+				<p
+					v-if="!(asksOnly && collapsible)"
+					:id="asksOnly ? titleId : undefined"
+					class="text-xs font-semibold text-text-secondary"
+				>
+					{{ t('components.answer.catchUp.asksTitle') }}
+				</p>
+				<ul class="mt-1.5 space-y-1" data-testid="catch-up-asks">
+					<li
+						v-for="ask in asks"
+						:key="ask.id"
+						class="flex items-start gap-2"
+						:data-covered="coveredSet.has(ask.id)"
+						data-testid="catch-up-ask"
 					>
 						<Icon
-							:name="attaching === file.key ? 'lucide:loader-2' : 'lucide:paperclip'"
-							class="size-3.5 shrink-0"
-							:class="attaching === file.key ? 'animate-spin motion-reduce:animate-none' : ''"
+							:name="coveredSet.has(ask.id) ? 'lucide:circle-check' : 'lucide:circle'"
+							class="mt-0.5 size-4 shrink-0"
+							:class="coveredSet.has(ask.id) ? 'text-success' : 'text-text-tertiary'"
 							aria-hidden="true"
 						/>
-						<span class="truncate">{{ file.filename }}</span>
-						<span class="shrink-0 text-text-tertiary">
-							{{ formatCompactFileSize(file.size) }} · {{ dateOf(file.receivedAt) }}
+						<span class="min-w-0">
+							<span class="sr-only">
+								{{
+									coveredSet.has(ask.id)
+										? t('components.answer.catchUp.askCovered')
+										: t('components.answer.catchUp.askOpen')
+								}}
+							</span>
+							<span class="text-text-primary">{{ ask.text }}</span>
+							<span
+								v-if="coveredSet.has(ask.id) && hints[ask.id]"
+								class="ml-1.5 text-xs text-text-tertiary"
+								data-testid="catch-up-ask-hint"
+								>{{ hints[ask.id] }}</span
+							>
 						</span>
-					</button>
-				</li>
-			</ul>
+					</li>
+				</ul>
+			</div>
+
+			<div v-if="files.length > 0" class="mt-3">
+				<p class="text-xs font-semibold text-text-secondary">
+					{{ t('components.answer.catchUp.filesTitle') }}
+				</p>
+				<ul class="mt-1.5 flex flex-wrap gap-1.5" data-testid="catch-up-files">
+					<li v-for="file in files" :key="file.key">
+						<button
+							type="button"
+							class="inline-flex max-w-64 items-center gap-1.5 rounded-full border border-border-subtle px-2.5 py-1 text-xs text-text-secondary hover:border-text-tertiary hover:bg-bg-surface focus-visible:outline-2 focus-visible:outline-brand disabled:opacity-60"
+							:draggable="canAttach"
+							:disabled="!canAttach || attaching === file.key"
+							:title="t('components.answer.catchUp.attachHint')"
+							:aria-label="t('components.answer.catchUp.attachFile', { file: file.filename })"
+							data-testid="catch-up-file"
+							@click="emit('attach', file)"
+							@dragstart="onDragStart($event, file)"
+						>
+							<Icon
+								:name="attaching === file.key ? 'lucide:loader-2' : 'lucide:paperclip'"
+								class="size-3.5 shrink-0"
+								:class="attaching === file.key ? 'animate-spin motion-reduce:animate-none' : ''"
+								aria-hidden="true"
+							/>
+							<span class="truncate">{{ file.filename }}</span>
+							<span class="shrink-0 text-text-tertiary">
+								{{ formatCompactFileSize(file.size) }} · {{ dateOf(file.receivedAt) }}
+							</span>
+						</button>
+					</li>
+				</ul>
+			</div>
 		</div>
 	</section>
 </template>

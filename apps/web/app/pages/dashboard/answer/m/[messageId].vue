@@ -324,7 +324,7 @@ onBeforeUnmount(() => {
 				<AnswerPeekDraft :disabled="ask.busy.value" @draft="draftFromPeek" />
 			</template>
 
-			<template #conversation>
+			<template #conversation="{ layout }">
 				<PostboxAiStrip
 					v-if="askingThread && message"
 					class="mx-4 mt-4"
@@ -342,6 +342,7 @@ onBeforeUnmount(() => {
 					<template #catch-up="{ view: shown, messages, reveal }">
 						<CatchUpCard
 							v-if="shown === 'summary'"
+							:collapsible="layout === 'phone'"
 							:catch-up="catchUp.catchUp.value"
 							:loading="catchUp.loading.value"
 							:messages="messages"

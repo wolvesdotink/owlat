@@ -323,7 +323,7 @@ onBeforeUnmount(() => {
 				<AnswerPeekDraft :disabled="assist.ask.busy.value" @draft="draftFromPeek" />
 			</template>
 
-			<template #conversation>
+			<template #conversation="{ layout }">
 				<AnswerTeamConversation
 					v-if="thread"
 					v-model:view="view"
@@ -338,6 +338,7 @@ onBeforeUnmount(() => {
 					<template #catch-up="{ view: shown, reveal }">
 						<CatchUpCard
 							v-if="shown === 'summary'"
+							:collapsible="layout === 'phone'"
 							:catch-up="assist.catchUp.catchUp.value"
 							:loading="assist.catchUp.loading.value"
 							:messages="catchUpMessages"

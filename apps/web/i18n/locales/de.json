@@ -6037,7 +6037,10 @@
 				"attachFile": "{file} an die Antwort anhängen",
 				"attachFailed": "Die Datei konnte nicht angehängt werden.",
 				"attachOperation": "Datei anhängen",
-				"covered": "{covered} von {total} Anfrage beantwortet | {covered} von {total} Anfragen beantwortet"
+				"covered": "{covered} von {total} Anfrage beantwortet | {covered} von {total} Anfragen beantwortet",
+				"asksCount": "{count} Anfrage | {count} Anfragen",
+				"show": "Anzeigen",
+				"hide": "Ausblenden"
 			},
 			"aiBar": {
 				"label": "Was soll in der Antwort stehen?",

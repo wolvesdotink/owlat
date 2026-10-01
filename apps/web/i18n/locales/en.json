@@ -6037,7 +6037,10 @@
 				"attachFile": "Attach {file} to the reply",
 				"attachFailed": "The file could not be attached.",
 				"attachOperation": "Attach file",
-				"covered": "{covered} of {total} ask covered | {covered} of {total} asks covered"
+				"covered": "{covered} of {total} ask covered | {covered} of {total} asks covered",
+				"asksCount": "{count} ask | {count} asks",
+				"show": "Show",
+				"hide": "Hide"
 			},
 			"aiBar": {
 				"label": "What should the reply say?",
