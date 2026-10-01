@@ -299,7 +299,9 @@ attestSource } })` — fires only on the admin-attest path
   `pending_confirmation` rows from the outgoing token to the new one, so the
   next confirmation finalizes them. The admin resend
   (`refreshPendingToken`) does the same. A token a global opt-out withdrew
-  is no longer on the contact, so its rows are never carried.
+  is no longer on the contact, and one issued before the contact's opt-out
+  (`tokenPredatesOptOut`) belongs to the episode the opt-out ended, so
+  their rows are never carried.
 - `audit_log({ action: 'doi.admin_attested', contactId, details: {
 attestSource } })` — fires only on the admin-attest path. The
   audit action is new in `auditActions/catalog.ts`. The

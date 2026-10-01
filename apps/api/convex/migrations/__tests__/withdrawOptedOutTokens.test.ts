@@ -14,8 +14,7 @@ import { api, internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { modules } from '../../__tests__/testModules';
 import { createTestContact } from '../../__tests__/factories';
-import { DOI_TOKEN_TTL_MS } from '../../contacts/doiLifecycle';
-import { holdsTokenFromBeforeOptOut } from '../0056_withdraw_opted_out_confirmation_tokens';
+import { DOI_TOKEN_TTL_MS, tokenPredatesOptOut } from '../../contacts/doiLifecycle';
 
 type Harness = TestConvex<typeof schema>;
 
@@ -62,7 +61,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-describe('holdsTokenFromBeforeOptOut', () => {
+describe('tokenPredatesOptOut', () => {
 	const now = Date.UTC(2026, 9, 1);
 	it.each([
 		{ name: 'issued before the opt-out', issued: now - 2 * DAY, out: now - DAY, expected: true },
@@ -70,7 +69,7 @@ describe('holdsTokenFromBeforeOptOut', () => {
 		{ name: 'issued after the opt-out', issued: now - DAY, out: now - 2 * DAY, expected: false },
 	])('$name → $expected', ({ issued, out, expected }) => {
 		expect(
-			holdsTokenFromBeforeOptOut({
+			tokenPredatesOptOut({
 				doiConfirmationToken: 't',
 				doiTokenExpiresAt: issued + DOI_TOKEN_TTL_MS,
 				unsubscribedAt: out,
@@ -80,7 +79,7 @@ describe('holdsTokenFromBeforeOptOut', () => {
 
 	it('a token without an expiry counts as issued before', () => {
 		expect(
-			holdsTokenFromBeforeOptOut({
+			tokenPredatesOptOut({
 				doiConfirmationToken: 't',
 				doiTokenExpiresAt: undefined,
 				unsubscribedAt: now,
@@ -90,14 +89,14 @@ describe('holdsTokenFromBeforeOptOut', () => {
 
 	it('no opt-out or no token → false', () => {
 		expect(
-			holdsTokenFromBeforeOptOut({
+			tokenPredatesOptOut({
 				doiConfirmationToken: 't',
 				doiTokenExpiresAt: now,
 				unsubscribedAt: undefined,
 			})
 		).toBe(false);
 		expect(
-			holdsTokenFromBeforeOptOut({
+			tokenPredatesOptOut({
 				doiConfirmationToken: undefined,
 				doiTokenExpiresAt: undefined,
 				unsubscribedAt: now,

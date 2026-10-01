@@ -216,6 +216,36 @@ function holdsLiveToken(contact: Doc<'contacts'>, at: number): boolean {
 	return contact.doiTokenExpiresAt === undefined || contact.doiTokenExpiresAt >= at;
 }
 
+/**
+ * Whether the contact is globally opted out and its token was issued at or
+ * before that opt-out. Every token is minted with `DOI_TOKEN_TTL_MS`, so its
+ * issue time is `doiTokenExpiresAt - DOI_TOKEN_TTL_MS`; a token without an
+ * expiry predates expiries and counts as earlier. A global opt-out withdraws
+ * the token now, so only a contact that opted out before that change can
+ * still hold one (see migration 0056).
+ */
+export function tokenPredatesOptOut(
+	contact: Pick<Doc<'contacts'>, 'doiConfirmationToken' | 'doiTokenExpiresAt' | 'unsubscribedAt'>
+): boolean {
+	if (contact.doiConfirmationToken === undefined || contact.unsubscribedAt === undefined) {
+		return false;
+	}
+	if (contact.doiTokenExpiresAt === undefined) return true;
+	return contact.doiTokenExpiresAt - DOI_TOKEN_TTL_MS <= contact.unsubscribedAt;
+}
+
+/**
+ * The token whose pending form submissions a replacement by `newToken`
+ * carries over, if any. A withdrawn token is no longer on the contact, and a
+ * token that predates the contact's opt-out belongs to the episode the
+ * opt-out ended, so neither is carried.
+ */
+function outgoingTokenToCarry(contact: Doc<'contacts'>, newToken: string): string | undefined {
+	const token = contact.doiConfirmationToken;
+	if (token === undefined || token === newToken || tokenPredatesOptOut(contact)) return undefined;
+	return token;
+}
+
 function reducePending(
 	contact: Doc<'contacts'>,
 	args: Extract<TransitionInput, { to: 'pending' }>
@@ -245,13 +275,12 @@ function reducePending(
 			},
 		});
 	}
-	// A lapsed token is still on the contact; a withdrawn one is not, so the
-	// rows of a token a global opt-out ended are never carried.
-	if (contact.doiConfirmationToken !== undefined && contact.doiConfirmationToken !== args.token) {
+	const carryFrom = outgoingTokenToCarry(contact, args.token);
+	if (carryFrom !== undefined) {
 		effects.push({
 			kind: 'carry_pending_submissions',
 			contactId: contact._id,
-			fromToken: contact.doiConfirmationToken,
+			fromToken: carryFrom,
 			toToken: args.token,
 		});
 	}
@@ -668,10 +697,11 @@ export const refreshPendingToken = internalMutation({
 			doiTokenExpiresAt: args.at + args.ttlMs,
 			updatedAt: args.at,
 		});
-		if (contact.doiConfirmationToken !== undefined && contact.doiConfirmationToken !== args.token) {
+		const carryFrom = outgoingTokenToCarry(contact, args.token);
+		if (carryFrom !== undefined) {
 			await carryPendingSubmissions(ctx, {
 				contactId: args.contactId,
-				fromToken: contact.doiConfirmationToken,
+				fromToken: carryFrom,
 				toToken: args.token,
 			});
 		}

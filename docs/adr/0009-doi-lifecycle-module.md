@@ -626,10 +626,12 @@ pending rows remain, so `getByConfirmationToken` answers `null` and
 `confirmSubmission` answers `invalid_token`.
 
 Contacts who opted out before the consent-episode amendment still held the
-token they had then. Migration `0056_withdraw_opted_out_confirmation_tokens`
-withdraws a token minted at or before the contact's opt-out, with
-`withdrawConfirmationToken`'s semantics, and leaves a token minted after it
-(a later signup waiting for a fresh confirmation).
+token they had then. `tokenPredatesOptOut` recognises such a token (the
+contact is opted out and the token was issued at or before the opt-out), and
+a replacement does not carry its rows. Migration
+`0056_withdraw_opted_out_confirmation_tokens` withdraws it, with
+`withdrawConfirmationToken`'s semantics, and leaves a token issued after the
+opt-out (a later signup waiting for a fresh confirmation).
 
 `__tests__/formTokenCarry.integration.test.ts` covers both replacement paths,
 more than one page of rows, the rows that must stay put, and the follow-up

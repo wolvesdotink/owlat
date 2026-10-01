@@ -11,12 +11,11 @@
  *
  *   npx convex run migrations/0056_withdraw_opted_out_confirmation_tokens:run
  *
- * WHICH TOKENS: a contact with `unsubscribedAt` set whose token was minted at
- * or before that opt-out. Every token is minted with `DOI_TOKEN_TTL_MS`, so its
- * mint time is `doiTokenExpiresAt - DOI_TOKEN_TTL_MS`; a token without an
- * expiry predates expiries and counts as minted before. A token minted after
- * the opt-out belongs to a later signup that waits for a fresh confirmation,
- * and stays.
+ * WHICH TOKENS: a contact with `unsubscribedAt` set whose token was issued at
+ * or before that opt-out (`doiLifecycle.tokenPredatesOptOut`). A token issued
+ * after the opt-out belongs to a later signup that waits for a fresh
+ * confirmation, and stays. Until this has run, a token replacement already
+ * leaves such a token's form submissions where they are.
  *
  * DURABLE AND RESUMABLE: `run` schedules the first page; each page is its own
  * mutation that schedules the next one. Progress and completion live in the
@@ -33,9 +32,8 @@
 import { v } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
-import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
-import { DOI_TOKEN_TTL_MS, withdrawToken } from '../contacts/doiLifecycle';
+import { tokenPredatesOptOut, withdrawToken } from '../contacts/doiLifecycle';
 import { logInfo } from '../lib/runtimeLog';
 import {
 	beginMigrationRun,
@@ -60,20 +58,6 @@ type PageResult = {
 	isSuperseded?: boolean;
 };
 
-/**
- * Whether the contact still holds a token from before its global opt-out.
- * Exported for unit tests.
- */
-export function holdsTokenFromBeforeOptOut(
-	contact: Pick<Doc<'contacts'>, 'doiConfirmationToken' | 'doiTokenExpiresAt' | 'unsubscribedAt'>
-): boolean {
-	if (contact.doiConfirmationToken === undefined || contact.unsubscribedAt === undefined) {
-		return false;
-	}
-	if (contact.doiTokenExpiresAt === undefined) return true;
-	return contact.doiTokenExpiresAt - DOI_TOKEN_TTL_MS <= contact.unsubscribedAt;
-}
-
 /** Withdraw the pre-opt-out tokens among one page of token-holding contacts. */
 async function withdrawPage(
 	ctx: MutationCtx,
@@ -87,7 +71,7 @@ async function withdrawPage(
 	const now = Date.now();
 	let withdrawn = 0;
 	for (const contact of page) {
-		if (!holdsTokenFromBeforeOptOut(contact)) continue;
+		if (!tokenPredatesOptOut(contact)) continue;
 		if (await withdrawToken(ctx, contact, now)) withdrawn++;
 	}
 	return { cursor: continueCursor, isDone, scanned: page.length, withdrawn };

@@ -392,6 +392,34 @@ describe('rows that stay where they are', () => {
 		expect(await successCount(t, formId)).toBe(1);
 	});
 
+	it('a token issued before the contact opted out is not carried', async () => {
+		const t = setupTest();
+		const formId = await createForm(t, { doubleOptIn: true, name: 'A' });
+		const now = Date.now();
+		// Opted out before opt-outs withdrew tokens: the old token is still held.
+		const contactId = await seedContact(t, 'legacy@example.com', {
+			doiStatus: 'pending',
+			doiConfirmationToken: 'pre-opt-out-token',
+			doiTokenExpiresAt: now - 1,
+			unsubscribedAt: now - 1000,
+		});
+		const [row] = await seedPendingRows(t, {
+			count: 1,
+			forms: [formId],
+			contactId,
+			token: 'pre-opt-out-token',
+		});
+
+		const signup = await submit(t, formId, 'legacy@example.com');
+		await resend(t, contactId, 'resent-after-signup');
+
+		expect(signup.row.confirmationToken).not.toBe('pre-opt-out-token');
+		expect((await rowsById(t, [row!]))[0]?.confirmationToken).toBe('pre-opt-out-token');
+		expect((await rowsById(t, [signup.outcome.submissionId]))[0]?.confirmationToken).toBe(
+			'resent-after-signup'
+		);
+	});
+
 	it('a resend for a contact that holds no token carries nothing', async () => {
 		const t = setupTest();
 		const formId = await createForm(t, { name: 'A' });
