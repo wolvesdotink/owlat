@@ -22,14 +22,14 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import {
-	RemoteOpReplayer,
-	type RemoteFolderMap,
-	type RemoteOp,
-	type RemoteOpResult,
-	type RemoteOpsClient,
-	type ReplayHooks,
-} from '../remoteOps.js';
+import { RemoteOpReplayer } from '../remoteOps.js';
+import type {
+	RemoteFolderMap,
+	RemoteOp,
+	RemoteOpResult,
+	RemoteOpsClient,
+	ReplayHooks,
+} from '../remoteOpTypes.js';
 import { drainRemoteOps, reportFolderRename } from '../remoteOpsDrain.js';
 import { fn, isMissingFunction } from '../convex.js';
 import { CommandRefusals } from '../imapCommandErrors.js';

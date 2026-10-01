@@ -51,7 +51,8 @@ import {
 	type BackfillRetryState,
 } from './backfillRetry.js';
 import { CommandRefusals } from './imapCommandErrors.js';
-import { isAllMailFolder, RemoteOpReplayer, type RemoteOp } from './remoteOps.js';
+import { isAllMailFolder, RemoteOpReplayer } from './remoteOps.js';
+import type { RemoteOp } from './remoteOpTypes.js';
 import { drainRemoteOps, reportFolderRename } from './remoteOpsDrain.js';
 import {
 	LOCAL_PAGE,

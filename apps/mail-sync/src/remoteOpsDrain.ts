@@ -4,7 +4,8 @@
  */
 
 import { describeRemoteOpError } from './imapCommandErrors.js';
-import type { RemoteOp, RemoteOpReplayer, RemoteOpResult, RemoteOpsClient } from './remoteOps.js';
+import type { RemoteOpReplayer } from './remoteOps.js';
+import type { RemoteOp, RemoteOpResult, RemoteOpsClient } from './remoteOpTypes.js';
 
 export interface DrainDeps {
 	listDue(): Promise<RemoteOp[]>;

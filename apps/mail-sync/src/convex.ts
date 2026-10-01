@@ -13,7 +13,7 @@ import { getFunctionName, makeFunctionReference, type FunctionReference } from '
 import type { MailSyncConfig } from './config.js';
 import type { FolderRole } from './folders.js';
 import type { SeedProbeDeps, SeedProbeWorkPage } from './seedProbes.js';
-import type { RemoteOp, RemoteOpResult } from './remoteOps.js';
+import type { RemoteOp, RemoteOpResult } from './remoteOpTypes.js';
 import type { LocalMessageRow, RemoteObservation } from './remoteState.js';
 
 export type ConvexClient = ConvexHttpClient;
