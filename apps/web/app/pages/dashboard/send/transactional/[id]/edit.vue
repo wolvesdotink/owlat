@@ -133,6 +133,7 @@ const {
 	isSaving,
 	hasChanges,
 	showUnsavedChangesDialog,
+	isSavingBeforeLeave,
 	confirmDiscard,
 	confirmSave,
 	cancelNavigation,
@@ -430,6 +431,7 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 		<!-- Unsaved Changes Dialog -->
 		<UnsavedChangesDialog
 			:show="showUnsavedChangesDialog"
+			:saving="isSavingBeforeLeave"
 			@close="cancelNavigation"
 			@discard="confirmDiscard"
 			@save="confirmSave"
