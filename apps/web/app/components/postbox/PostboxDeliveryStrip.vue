@@ -24,7 +24,7 @@ import {
 	resendTargets,
 	type OutboundDelivery,
 } from '~/utils/postboxDeliveryStrip';
-import type { LocalizedText } from '~/utils/readinessGate';
+import { useLocalized } from '~/composables/useLocalized';
 
 const props = defineProps<{ delivery: OutboundDelivery }>();
 
@@ -36,9 +36,7 @@ const emit = defineEmits<{
 const { t, locale } = useI18n();
 
 /** Registry keys in, sentences out — this component is the render boundary. */
-function localized(value: LocalizedText): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const localized = useLocalized();
 
 const view = computed(() => deliveryStripView(props.delivery));
 const isWorthShowing = computed(() => isDeliveryStripWorthShowing(view.value));
