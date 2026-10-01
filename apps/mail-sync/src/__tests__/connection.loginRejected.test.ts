@@ -181,6 +181,37 @@ describe('a login the provider refuses', () => {
 	});
 });
 
+describe('a run of login rejections broken by another failure', () => {
+	const credentials = loginRefused('AUTHENTICATIONFAILED', 'Invalid credentials (Failure)');
+	const interruptions: Array<[string, () => Error]> = [
+		['a temporary refusal', loginRefused('UNAVAILABLE', 'Temporary System Problem.')],
+		['a dropped socket', () => Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' })],
+	];
+
+	it.each(interruptions)('starts the grace period over after %s', async (_label, interruption) => {
+		const { conn, statuses } = newConnection();
+
+		imap.connectError = credentials;
+		void conn.start();
+		await vi.advanceTimersByTimeAsync(0);
+
+		// Longer than the grace period, but none of it was a rejection.
+		imap.connectError = interruption;
+		await vi.advanceTimersByTimeAsync(AUTH_REJECTION_GRACE_MS + 5 * 60_000);
+
+		// Rejected again: the first rejection of a new run, not the end of the old one.
+		imap.connectError = credentials;
+		await vi.advanceTimersByTimeAsync(6 * 60_000);
+		expect(statuses().map((s) => s.status)).not.toContain('auth_error');
+		expect(conn.isStopped).toBe(false);
+
+		// A new run that lasts the whole grace period is still parked.
+		await vi.advanceTimersByTimeAsync(AUTH_REJECTION_GRACE_MS);
+		expect(statuses().at(-1)?.status).toBe('auth_error');
+		expect(conn.isStopped).toBe(true);
+	});
+});
+
 describe('a connect that fails', () => {
 	it('starts no second reconnect loop when the failed client closes', async () => {
 		imap.connectError = () => Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' });

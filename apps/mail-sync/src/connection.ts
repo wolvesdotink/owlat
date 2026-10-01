@@ -114,8 +114,8 @@ export class AccountConnection {
 	private backoffMs = INITIAL_BACKOFF_MS;
 	// One reconnect loop per account, ever (see connectLoop).
 	private isConnectLoopRunning = false;
-	// When the provider started rejecting our login, reset by the next one it
-	// accepts. Unset while logins succeed.
+	// When the current run of back-to-back login rejections began. Reset by a
+	// login the provider accepts and by any failure that is not a rejection.
 	private authRejectedSince: number | null = null;
 	private folderTimer: ReturnType<typeof setInterval> | null = null;
 	private inboxTimer: ReturnType<typeof setInterval> | null = null;
@@ -259,6 +259,10 @@ export class AccountConnection {
 						'login rejected; retrying before treating the credentials as wrong'
 					);
 				} else {
+					// Anything else breaks the streak: the grace period measures logins
+					// refused back to back, and a temporary refusal or a dropped socket
+					// in between says nothing about the credentials.
+					this.authRejectedSince = null;
 					logger.warn({ accountId: this.account.accountId, err }, 'connect failed; backing off');
 				}
 				await this.setStatus('error', message);
