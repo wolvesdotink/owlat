@@ -572,21 +572,21 @@ pub async fn local_docker_build(
 /// io::Write adapter that streams into an SSH channel, reporting progress
 /// (in MiB sent) every ~64 MiB so the UI can show upload movement. Fails the
 /// write once the operation is cancelled.
-struct ChannelWriter<'a> {
-    chan: &'a mut ssh2::Channel,
+struct ChannelWriter<'a, W: Write> {
+    chan: &'a mut W,
     events: &'a Channel<ExecEvent>,
     token: &'a OpToken,
     sent: u64,
     last_report: u64,
 }
 
-impl std::io::Write for ChannelWriter<'_> {
+impl<W: Write> std::io::Write for ChannelWriter<'_, W> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         if self.token.is_cancelled() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Interrupted,
-                CANCELLED,
-            ));
+            // Terminal on purpose: `write_all` (and so `io::copy` into the
+            // gzip encoder) retries `Interrupted`, which would spin on a
+            // cancelled upload forever while holding the session lock.
+            return Err(std::io::Error::other(CANCELLED));
         }
         self.chan
             .write_all(buf)
@@ -603,6 +603,15 @@ impl std::io::Write for ChannelWriter<'_> {
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
     }
+}
+
+/// The push-images upload: gzip `src` (the `docker save` stream) into `writer`.
+fn gzip_upload<R: Read, W: Write>(src: &mut R, writer: W) -> std::io::Result<()> {
+    // fast(): the bottleneck is usually the uplink, not CPU — but level-1
+    // gzip still roughly halves docker-save output.
+    let mut gz = flate2::write::GzEncoder::new(writer, flate2::Compression::fast());
+    std::io::copy(src, &mut gz)?;
+    gz.finish().map(|_| ())
 }
 
 /// Stream locally built images to the server over the live SSH session:
@@ -655,19 +664,16 @@ pub async fn ssh_push_images(
         chan.exec("gunzip | docker load")
             .map_err(|e| e.to_string())?;
 
-        let copied = {
-            let writer = ChannelWriter {
+        let copied = gzip_upload(
+            &mut tar_stream,
+            ChannelWriter {
                 chan: &mut chan,
                 events: &on_event,
                 token: &token,
                 sent: 0,
                 last_report: 0,
-            };
-            // fast(): the bottleneck is usually the uplink, not CPU — but level-1
-            // gzip still roughly halves docker-save output.
-            let mut gz = flate2::write::GzEncoder::new(writer, flate2::Compression::fast());
-            std::io::copy(&mut tar_stream, &mut gz).and_then(|_| gz.finish().map(|_| ()))
-        };
+            },
+        );
         if let Err(e) = copied {
             let _ = chan.close();
             return Err(if token.is_cancelled() {
@@ -712,18 +718,15 @@ pub async fn ssh_push_images(
 #[cfg(test)]
 mod tests {
     use super::{
-        check_local_images, checkout_root, docker_invocation, pack_dir_targz, DockerInvocation,
-        LocalBuild,
+        check_local_images, checkout_root, docker_invocation, gzip_upload, pack_dir_targz,
+        ChannelWriter, DockerInvocation, LocalBuild,
     };
     #[cfg(unix)]
     use super::{ChildGuard, Command};
-    #[cfg(unix)]
     use crate::ssh::Cancel;
     #[cfg(unix)]
     use std::io::BufRead;
-    #[cfg(unix)]
-    use std::sync::Arc;
-    #[cfg(unix)]
+    use std::sync::{Arc, Mutex};
     use std::time::{Duration, Instant};
 
     fn stack(platform: &str, profiles: &[&str], services: &[&str]) -> LocalBuild {
@@ -1077,5 +1080,81 @@ mod tests {
         let entries = pack_fixture();
         let mode = entries["scripts/owlat"];
         assert_ne!(mode & 0o111, 0, "exec bit lost: {mode:o}");
+    }
+
+    /// Endless incompressible bytes, so the gzip encoder keeps writing out.
+    struct Noise(u64);
+
+    impl std::io::Read for Noise {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            for b in buf.iter_mut() {
+                self.0 ^= self.0 << 13;
+                self.0 ^= self.0 >> 7;
+                self.0 ^= self.0 << 17;
+                *b = self.0 as u8;
+            }
+            Ok(buf.len())
+        }
+    }
+
+    /// The SSH channel: counts the writes it gets and cancels the operation
+    /// during the first one, as a user pressing Cancel mid-upload would.
+    struct CancellingChannel {
+        cancel: Arc<Cancel>,
+        writes: usize,
+    }
+
+    impl std::io::Write for CancellingChannel {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.writes += 1;
+            self.cancel.cancel_running();
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_cancelled_image_upload_ends_and_releases_the_session() {
+        let cancel = Arc::new(Cancel::default());
+        let token = cancel.token();
+        // Stands in for the SSH session mutex the upload holds.
+        let session = Arc::new(Mutex::new(CancellingChannel {
+            cancel: cancel.clone(),
+            writes: 0,
+        }));
+        let (tx, rx) = std::sync::mpsc::channel();
+        let held = session.clone();
+        std::thread::spawn(move || {
+            let events = tauri::ipc::Channel::new(|_| Ok(()));
+            let result = {
+                let mut chan = held.lock().unwrap();
+                gzip_upload(
+                    &mut Noise(0x9E37_79B9_7F4A_7C15),
+                    ChannelWriter {
+                        chan: &mut *chan,
+                        events: &events,
+                        token: &token,
+                        sent: 0,
+                        last_report: 0,
+                    },
+                )
+            };
+            let _ = tx.send(result);
+        });
+
+        let asked = Instant::now();
+        let result = rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the cancelled upload kept retrying instead of returning");
+        assert!(asked.elapsed() < Duration::from_secs(5));
+        let err = result.expect_err("a cancelled upload must fail");
+        assert_ne!(err.kind(), std::io::ErrorKind::Interrupted);
+        assert_eq!(err.to_string(), super::CANCELLED);
+        let chan = session
+            .try_lock()
+            .expect("the upload still holds the session");
+        assert_eq!(chan.writes, 1, "a cancelled write reached the channel");
     }
 }
