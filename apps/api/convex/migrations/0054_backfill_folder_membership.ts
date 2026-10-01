@@ -2,117 +2,208 @@
  * Backfill the IMAP folder membership (#927, migration 0054).
  *
  * Starts the membership walk for every folder that existed before folder
- * membership was maintained. Each walk runs in the background as a chain of
- * bounded mutations (`maintenance/folderMembershipBackfill.ts`); until a folder
+ * membership was maintained. Each folder walks in the background as its own
+ * chain of bounded mutations (`maintenance/folderMembershipBackfill.ts`), with
+ * its cursor and watermark on its `mailFolderMembership` row; until a folder
  * is ready the IMAP server keeps listing its UIDs from `mailMessages`, exactly
  * as the previous release did, so nothing waits on this.
  *
  *   npx convex run migrations/0054_backfill_folder_membership:run
  *   npx convex run migrations/0054_backfill_folder_membership:status
  *
- * Progress is stored per folder on its `mailFolderMembership` row (cursor,
- * watermark, startedAt, completedAt). Idempotent: a ready folder is left alone
- * and a folder still walking is resumed from its stored cursor, which is also
- * how a run that was interrupted is finished. `'{"rebuild": true}'` drops every
- * folder's membership first and walks again from scratch — the repair for a
- * membership found out of step.
+ * DURABLE AND RESUMABLE: progress and completion live in the migration ledger
+ * (`migrationRuns` row `0054_backfill_folder_membership`, lib/migrationLedger.ts).
+ * `run` schedules the first page of the folder pass; each page starts the
+ * walks of up to {@link PAGE_SIZE} folders and records its cursor and counts in
+ * the same transaction. After the last page, `finish` waits for every walk to
+ * be ready and then marks the ledger row `completed`, so `completed` means
+ * every folder's membership is exact. While it waits it restarts any walk that
+ * has not moved for {@link STALLED_MS} (its chain died: a failed step, a
+ * redeploy mid-chain); a walk resumes from its stored cursor.
+ *
+ * Running `run` again on an unfinished pass resumes it and supersedes any
+ * chain still queued; on a finished one it does nothing. `'{"restart": true}'`
+ * passes over every folder again (a ready folder is left alone, a walking one
+ * gets another step). `'{"rebuild": true}'` walks every folder again from
+ * scratch, the repair for a membership found out of step: each folder stops
+ * being ready, its old blocks are cleared, and its revision moves so no IMAP
+ * server keeps a map it cached from them.
  */
 
 import { v } from 'convex/values';
-import { internalAction, internalQuery } from '../_generated/server';
+import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
-import { dropFolderMembership, startFolderMembership } from '../mail/folderMembership';
 import { logInfo } from '../lib/runtimeLog';
+import {
+	beginMigrationRun,
+	isCurrentMigrationPage,
+	readMigrationRun,
+	recordMigrationPage,
+	type MigrationRun,
+} from '../lib/migrationLedger';
+import { resetFolderMembership, startFolderMembership } from '../mail/folderMembership';
 
+const MIGRATION = '0054_backfill_folder_membership';
+/** The release this migration ships in, recorded on its ledger row. */
+const INTRODUCED_IN = '0.6.6';
+
+/** Folders per page: each costs a state-row read and write and one scheduled step. */
 const PAGE_SIZE = 100;
 
-export const folderPage = internalQuery({
-	args: { cursor: v.union(v.string(), v.null()) },
-	handler: async (ctx, { cursor }) => {
-		const result = await ctx.db.query('mailFolders').paginate({ numItems: PAGE_SIZE, cursor });
-		return {
-			folderIds: result.page.map((folder) => folder._id),
-			cursor: result.continueCursor,
-			isDone: result.isDone,
-		};
-	},
-});
+/** How often `finish` checks whether every walk is ready. */
+const FINISH_POLL_MS = 60_000;
 
-/** Drop up to one batch of a folder's membership; true while there is more to drop. */
-export const dropFolder = internalMutation({
-	args: { folderId: v.id('mailFolders') },
-	handler: async (ctx, { folderId }) => dropFolderMembership(ctx, folderId),
+/** A walk whose state row has not changed for this long has lost its chain. */
+const STALLED_MS = 10 * 60_000;
+
+async function currentRun(ctx: MutationCtx, generation: number): Promise<MigrationRun | null> {
+	const run = await readMigrationRun(ctx, MIGRATION);
+	return isCurrentMigrationPage(run, generation) ? run : null;
+}
+
+/** Start (or, with `rebuild`, reset) the walks of one page of folders. */
+export const startPage = internalMutation({
+	args: {
+		cursor: v.union(v.string(), v.null()),
+		generation: v.number(),
+		rebuild: v.optional(v.boolean()),
+	},
+	handler: async (ctx, args) => {
+		const run = await currentRun(ctx, args.generation);
+		if (!run) return { isSuperseded: true };
+		const { page, continueCursor, isDone } = await ctx.db
+			.query('mailFolders')
+			.paginate({ numItems: PAGE_SIZE, cursor: args.cursor });
+		let walking = 0;
+		for (const folder of page) {
+			if (args.rebuild) {
+				await resetFolderMembership(ctx, folder._id);
+			} else if ((await startFolderMembership(ctx, folder._id)) === 'ready') {
+				continue;
+			}
+			walking += 1;
+			await ctx.scheduler.runAfter(0, internal.maintenance.folderMembershipBackfill.step, {
+				folderId: folder._id,
+			});
+		}
+		// The ledger completes in `finish`, once the walks started here are ready.
+		await recordMigrationPage(ctx, run, {
+			cursor: continueCursor,
+			isDone: false,
+			scanned: page.length,
+			changed: walking,
+		});
+		const next = isDone
+			? internal.migrations['0054_backfill_folder_membership'].finish
+			: internal.migrations['0054_backfill_folder_membership'].startPage;
+		await ctx.scheduler.runAfter(0, next, {
+			cursor: continueCursor,
+			generation: run.generation,
+			...(args.rebuild ? { rebuild: true } : {}),
+		});
+		logInfo('migration.0054_backfill_folder_membership.page', {
+			scanned: page.length,
+			walking,
+			isDone,
+			generation: run.generation,
+		});
+		return { isSuperseded: false };
+	},
 });
 
 /**
- * Start (or resume) each folder's walk. A new folder gets its state row and a
- * first step; a folder still walking gets another step, which is how a chain
- * that died is picked up again; a ready folder is left alone.
+ * Mark the ledger row completed once no folder is walking; until then check
+ * again every {@link FINISH_POLL_MS}, restarting the stalest walk if it has
+ * stalled. `cursor` and `rebuild` are accepted so `startPage` can hand its own
+ * arguments on; they are not used.
  */
-export const startFolders = internalMutation({
-	args: { folderIds: v.array(v.id('mailFolders')) },
-	handler: async (ctx, { folderIds }) => {
-		const outcomes = { started: 0, running: 0, ready: 0 };
-		for (const folderId of folderIds) {
-			// The folder may have been deleted since `folderPage` listed it; a state
-			// row started now would outlive it with nothing left to delete it.
-			if (!(await ctx.db.get(folderId))) continue;
-			const outcome = await startFolderMembership(ctx, folderId);
-			outcomes[outcome] += 1;
-			if (outcome === 'ready') continue;
+export const finish = internalMutation({
+	args: {
+		cursor: v.union(v.string(), v.null()),
+		generation: v.number(),
+		rebuild: v.optional(v.boolean()),
+	},
+	handler: async (ctx, args) => {
+		const run = await currentRun(ctx, args.generation);
+		if (!run) return { isSuperseded: true, isCompleted: false };
+		const stalest = await ctx.db
+			.query('mailFolderMembership')
+			.withIndex('by_is_ready_and_updated', (q) => q.eq('isReady', false))
+			.first();
+		if (!stalest) {
+			await recordMigrationPage(ctx, run, {
+				cursor: run.cursor ?? '',
+				isDone: true,
+				scanned: 0,
+				changed: 0,
+			});
+			logInfo('migration.0054_backfill_folder_membership.completed', {
+				generation: run.generation,
+			});
+			return { isSuperseded: false, isCompleted: true };
+		}
+		if (stalest.updatedAt < Date.now() - STALLED_MS) {
+			await ctx.db.patch(stalest._id, { updatedAt: Date.now() });
 			await ctx.scheduler.runAfter(0, internal.maintenance.folderMembershipBackfill.step, {
-				folderId,
+				folderId: stalest.folderId,
 			});
 		}
-		return outcomes;
+		await ctx.scheduler.runAfter(
+			FINISH_POLL_MS,
+			internal.migrations['0054_backfill_folder_membership'].finish,
+			{ cursor: null, generation: run.generation }
+		);
+		return { isSuperseded: false, isCompleted: false };
 	},
 });
 
-export const run = internalAction({
-	args: { rebuild: v.optional(v.boolean()) },
-	handler: async (ctx, args): Promise<{ started: number; running: number; ready: number }> => {
-		const totals = { started: 0, running: 0, ready: 0 };
-		let cursor: string | null = null;
-		for (;;) {
-			const page: { folderIds: Id<'mailFolders'>[]; cursor: string; isDone: boolean } =
-				await ctx.runQuery(internal.migrations['0054_backfill_folder_membership'].folderPage, {
-					cursor,
-				});
-			if (args.rebuild) {
-				for (const folderId of page.folderIds) {
-					let hasMore = true;
-					while (hasMore) {
-						hasMore = await ctx.runMutation(
-							internal.migrations['0054_backfill_folder_membership'].dropFolder,
-							{ folderId }
-						);
-					}
-				}
-			}
-			const outcome = await ctx.runMutation(
-				internal.migrations['0054_backfill_folder_membership'].startFolders,
-				{ folderIds: page.folderIds }
-			);
-			totals.started += outcome.started;
-			totals.running += outcome.running;
-			totals.ready += outcome.ready;
-			if (page.isDone) break;
-			cursor = page.cursor;
+/**
+ * Start the folder pass, or resume an unfinished one from its recorded cursor.
+ * A finished migration is left alone unless `restart` or `rebuild` is set.
+ */
+export const run = internalMutation({
+	args: { restart: v.optional(v.boolean()), rebuild: v.optional(v.boolean()) },
+	handler: async (
+		ctx,
+		args
+	): Promise<{ started: boolean; generation?: number; reason?: string }> => {
+		const begun = await beginMigrationRun(ctx, {
+			migration: MIGRATION,
+			introducedIn: INTRODUCED_IN,
+			restart: args.restart === true || args.rebuild === true,
+		});
+		if (!begun) {
+			return { started: false, reason: 'Already completed; pass restart to run it again' };
 		}
-		logInfo('migration.0054_backfill_folder_membership', totals);
-		return totals;
+		await ctx.scheduler.runAfter(
+			0,
+			internal.migrations['0054_backfill_folder_membership'].startPage,
+			{
+				cursor: begun.cursor ?? null,
+				generation: begun.generation,
+				...(args.rebuild ? { rebuild: true } : {}),
+			}
+		);
+		logInfo('migration.0054_backfill_folder_membership.started', {
+			generation: begun.generation,
+			isRebuild: args.rebuild === true,
+		});
+		return { started: true, generation: begun.generation };
 	},
 });
 
-/** How far the walks are: folders ready and still walking (first 5,000 folders). */
+/** The ledger row, and how many folders are ready and still walking (first 5,000). */
 export const status = internalQuery({
 	args: {},
 	handler: async (ctx) => {
+		const run = await readMigrationRun(ctx, MIGRATION);
 		const rows = await ctx.db.query('mailFolderMembership').take(5000);
 		const walking = rows.filter((row) => !row.isReady);
 		return {
+			status: run?.status ?? 'not started',
+			completedAt: run?.completedAt ?? null,
+			foldersStarted: run?.changedCount ?? 0,
 			ready: rows.length - walking.length,
 			walking: walking.length,
 			walkingFolders: walking.slice(0, 20).map((row) => row.folderId),

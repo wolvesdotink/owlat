@@ -101,10 +101,39 @@ export async function startFolderMembership(
 }
 
 /**
- * Stop maintaining a folder: the state row first, so no later write or queued
- * backfill step touches the blocks, then up to one batch of blocks. Returns
- * true while blocks remain. A folder being deleted is already empty, so its
- * blocks are gone and one call does it; a rebuild calls until false.
+ * Walk a folder again from scratch, the repair for blocks found out of step.
+ * The folder stops being ready, its cursor and watermark go back to the start
+ * (so no write touches the blocks until the walk passes it again), and the
+ * revision moves, so no IMAP server keeps a map it cached from the old blocks.
+ * The walk's first step clears the old blocks before it adds any. Starts a
+ * folder that has no state row yet.
+ */
+export async function resetFolderMembership(
+	ctx: MutationCtx,
+	folderId: Id<'mailFolders'>
+): Promise<void> {
+	const state = await loadFolderMembership(ctx.db, folderId);
+	if (!state) {
+		await startFolderMembership(ctx, folderId);
+		return;
+	}
+	const now = Date.now();
+	await ctx.db.patch(state._id, {
+		isReady: false,
+		revision: state.revision + 1,
+		cursor: null,
+		watermark: undefined,
+		startedAt: now,
+		completedAt: undefined,
+		updatedAt: now,
+	});
+}
+
+/**
+ * Stop maintaining a folder that is being deleted: the state row first, so no
+ * later write or queued backfill step touches the blocks, then up to one batch
+ * of blocks. The folder is already empty by then, so its blocks are gone and
+ * this finds none. Returns true while blocks remain.
  */
 export async function dropFolderMembership(
 	ctx: MutationCtx,
@@ -143,7 +172,9 @@ async function applyMembershipChange(
 ): Promise<void> {
 	const state = await loadFolderMembership(ctx.db, row.folderId);
 	if (!state) return;
-	await ctx.db.patch(state._id, { revision: state.revision + 1, updatedAt: Date.now() });
+	// `updatedAt` stays the walk's: 0054's `finish` reads it to find a walk that
+	// stopped moving, and mail arriving in the folder says nothing about that.
+	await ctx.db.patch(state._id, { revision: state.revision + 1 });
 	const position: CounterPosition = {
 		key: row.uid,
 		creationTime: row._creationTime ?? AFTER_EVERY_ROW,
@@ -278,6 +309,11 @@ export async function readMembershipBlocks(
  * state row, so a walk that dies resumes at the page after the last one that
  * committed. Exported with a page-size override so a test can interleave
  * writes with a walk a few rows at a time.
+ *
+ * A walk that has not added its first page yet owns no blocks: any it finds
+ * are left from before a reset (or an earlier drop that did not finish), and
+ * it deletes them a batch per step before it starts. No write adds to the
+ * blocks meanwhile, because no message is at or before an unset watermark.
  */
 export async function runFolderMembershipBackfillStep(
 	ctx: MutationCtx,
@@ -286,6 +322,14 @@ export async function runFolderMembershipBackfillStep(
 ): Promise<boolean> {
 	const state = await loadFolderMembership(ctx.db, folderId);
 	if (!state || state.isReady) return false;
+	if (state.cursor === null) {
+		const leftover = await readMembershipBlocks(ctx.db, folderId, undefined, DROP_BATCH);
+		if (leftover.length > 0) {
+			for (const block of leftover) await ctx.db.delete(block._id);
+			await ctx.db.patch(state._id, { updatedAt: Date.now() });
+			return true;
+		}
+	}
 	const page = await ctx.db
 		.query('mailMessages')
 		.withIndex('by_folder_and_uid', (q) => q.eq('folderId', folderId))

@@ -9,8 +9,9 @@
  * dies (a failed step, a redeploy mid-chain) resumes from its last page when it
  * is kicked again, and a second chain beside the first only takes turns with it.
  *
- * Started for existing folders by `migrations/0054_backfill_folder_membership`;
- * a new folder starts ready (`startFolderMembership(…, { isEmpty: true })`).
+ * Started for existing folders by `migrations/0054_backfill_folder_membership`,
+ * whose `finish` step also restarts a walk that stopped moving; a new folder
+ * starts ready (`startFolderMembership(…, { isEmpty: true })`).
  */
 
 import { v } from 'convex/values';

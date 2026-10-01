@@ -36,8 +36,13 @@ export const mailFolderMembershipTables = {
 		watermark: v.optional(v.object({ key: v.number(), creationTime: v.number() })),
 		startedAt: v.number(),
 		completedAt: v.optional(v.number()),
+		/** Last change to the walk (a step, a reset). Revision bumps leave it alone. */
 		updatedAt: v.number(),
-	}).index('by_folder', ['folderId']),
+	})
+		.index('by_folder', ['folderId'])
+		// Folders still walking, stalest first: the 0054 finish step's progress
+		// check and its sweep for a walk whose chain died.
+		.index('by_is_ready_and_updated', ['isReady', 'updatedAt']),
 
 	mailFolderUidBlocks: defineTable({
 		folderId: v.id('mailFolders'),

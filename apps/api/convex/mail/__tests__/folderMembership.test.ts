@@ -23,6 +23,7 @@ import { purgeMessageRow } from '../messagePurge';
 import {
 	MEMBERSHIP_BLOCK_SIZE,
 	dropFolderMembership,
+	resetFolderMembership,
 	loadFolderMembership,
 	readMembershipBlocks,
 	recordFolderMembership,
@@ -462,6 +463,7 @@ describe('mail/imap/fetch:folderMembershipPage', () => {
 
 describe('migration 0054 backfills, resumes and rebuilds', () => {
 	vi.useFakeTimers();
+	const migration = internal.migrations['0054_backfill_folder_membership'];
 
 	async function seeded() {
 		const w = await setup();
@@ -471,16 +473,34 @@ describe('migration 0054 backfills, resumes and rebuilds', () => {
 		return w;
 	}
 
-	it('walks every folder to ready', async () => {
-		const w = await seeded();
-		const totals = await w.t.action(internal.migrations['0054_backfill_folder_membership'].run, {});
-		expect(totals).toEqual({ started: 3, running: 0, ready: 0 });
+	async function runToEnd(w: World, args: { restart?: boolean; rebuild?: boolean } = {}) {
+		const started = await w.t.mutation(migration.run, args);
 		await w.t.finishAllScheduledFunctions(vi.runAllTimers);
-		const status = await w.t.query(
-			internal.migrations['0054_backfill_folder_membership'].status,
-			{}
+		return started;
+	}
+
+	const versionOf = (w: World, folderId: Id<'mailFolders'>) =>
+		w.t.run(async (ctx) => {
+			const state = await loadFolderMembership(ctx.db, folderId);
+			return state ? `${state._id}:${state.revision}` : null;
+		});
+
+	it('walks every folder to ready, then completes its ledger row', async () => {
+		const w = await seeded();
+		expect(await runToEnd(w)).toMatchObject({ started: true });
+		expect(await w.t.query(migration.status, {})).toMatchObject({
+			status: 'completed',
+			foldersStarted: 3,
+			ready: 3,
+			walking: 0,
+		});
+		const ledger = await w.t.run((ctx) =>
+			ctx.db
+				.query('migrationRuns')
+				.withIndex('by_migration', (q) => q.eq('migration', '0054_backfill_folder_membership'))
+				.unique()
 		);
-		expect(status).toMatchObject({ ready: 3, walking: 0 });
+		expect(ledger).toMatchObject({ status: 'completed', introducedIn: '0.6.6', scannedCount: 3 });
 		await expectMembershipExact(w, 'after 0054');
 	});
 
@@ -499,26 +519,59 @@ describe('migration 0054 backfills, resumes and rebuilds', () => {
 		});
 		await expectMembershipExact(w, 'interrupted');
 
-		const totals = await w.t.action(internal.migrations['0054_backfill_folder_membership'].run, {});
-		expect(totals).toEqual({ started: 2, running: 1, ready: 0 });
-		await w.t.finishAllScheduledFunctions(vi.runAllTimers);
+		await runToEnd(w);
 		await expectMembershipExact(w, 'resumed');
-		const state = await w.t.run((ctx) => loadFolderMembership(ctx.db, folderId));
-		expect(state?.isReady).toBe(true);
+		expect(await w.t.query(migration.status, {})).toMatchObject({ status: 'completed', ready: 3 });
 	});
 
-	it('a second run leaves ready folders alone', async () => {
+	it('finish restarts a walk whose chain died, and completes only once it is ready', async () => {
 		const w = await seeded();
-		await w.t.action(internal.migrations['0054_backfill_folder_membership'].run, {});
+		const { generation } = await w.t.mutation(migration.run, {});
+		// The folder pass has not run; one folder's walk was started long ago and
+		// its chain is gone.
+		const folderId = w.folderIds[2]!;
+		await w.t.run(async (ctx) => {
+			await startFolderMembership(ctx, folderId);
+			const state = (await loadFolderMembership(ctx.db, folderId))!;
+			await ctx.db.patch(state._id, { updatedAt: Date.now() - 11 * 60_000 });
+		});
+		const first = await w.t.mutation(migration.finish, { cursor: null, generation: generation! });
+		expect(first).toEqual({ isSuperseded: false, isCompleted: false });
+		const kicked = await w.t.run(async (ctx) => (await loadFolderMembership(ctx.db, folderId))!);
+		expect(kicked.updatedAt).toBeGreaterThan(Date.now() - 60_000);
+
 		await w.t.finishAllScheduledFunctions(vi.runAllTimers);
-		const again = await w.t.action(internal.migrations['0054_backfill_folder_membership'].run, {});
-		expect(again).toEqual({ started: 0, running: 0, ready: 3 });
+		expect(await w.t.query(migration.status, {})).toMatchObject({
+			status: 'completed',
+			walking: 0,
+		});
+		await expectMembershipExact(w, 'after the sweep');
 	});
 
-	it('rebuild repairs a membership found out of step', async () => {
+	it('a page from a superseded run does nothing', async () => {
 		const w = await seeded();
-		await w.t.action(internal.migrations['0054_backfill_folder_membership'].run, {});
-		await w.t.finishAllScheduledFunctions(vi.runAllTimers);
+		const { generation } = await w.t.mutation(migration.run, {});
+		await w.t.mutation(migration.run, { restart: true });
+		const stale = await w.t.mutation(migration.startPage, {
+			cursor: null,
+			generation: generation!,
+		});
+		expect(stale).toEqual({ isSuperseded: true });
+	});
+
+	it('a completed migration is left alone; restart passes again without touching ready folders', async () => {
+		const w = await seeded();
+		await runToEnd(w);
+		const before = await versionOf(w, w.folderIds[0]!);
+		expect(await runToEnd(w)).toMatchObject({ started: false });
+		expect(await runToEnd(w, { restart: true })).toMatchObject({ started: true });
+		expect(await versionOf(w, w.folderIds[0]!)).toBe(before);
+		expect(await w.t.query(migration.status, {})).toMatchObject({ status: 'completed' });
+	});
+
+	it('rebuild repairs a membership found out of step and moves its version', async () => {
+		const w = await seeded();
+		await runToEnd(w);
 		const folderId = w.folderIds[1]!;
 		await w.t.run(async (ctx) => {
 			const [block] = await readMembershipBlocks(ctx.db, folderId, undefined, 1);
@@ -526,26 +579,31 @@ describe('migration 0054 backfills, resumes and rebuilds', () => {
 		});
 		const broken = await w.t.run((ctx) => membershipOf(ctx, folderId));
 		expect(broken.stored).not.toEqual(broken.expected);
+		const before = await versionOf(w, folderId);
 
-		await w.t.action(internal.migrations['0054_backfill_folder_membership'].run, {
-			rebuild: true,
-		});
-		await w.t.finishAllScheduledFunctions(vi.runAllTimers);
+		await runToEnd(w, { rebuild: true });
 		await expectMembershipExact(w, 'rebuilt');
+		// An IMAP server that cached the broken blocks must not reuse them.
+		expect(await versionOf(w, folderId)).not.toBe(before);
 	});
+});
 
-	it('does not start a folder deleted after it was listed', async () => {
-		const w = await seeded();
-		const [gone] = w.folderIds;
+describe('resetFolderMembership', () => {
+	it('clears the old blocks before the walk adds any', async () => {
+		const w = await setup();
+		const folderId = w.folderIds[0]!;
+		await w.t.run((ctx) => startFolderMembership(ctx, folderId, { isEmpty: true }));
+		for (let i = 0; i < 300; i++) await w.t.run((ctx) => deliver(ctx, w, folderId));
 		await w.t.run(async (ctx) => {
-			for (const m of await messagesIn(ctx, gone!)) await ctx.db.delete(m._id);
-			await ctx.db.delete(gone!);
+			// A stray block no message backs, as a bug might leave.
+			await ctx.db.insert('mailFolderUidBlocks', { folderId, firstUid: 9_999, uids: [9_999] });
+			await resetFolderMembership(ctx, folderId);
 		});
-		const totals = await w.t.mutation(
-			internal.migrations['0054_backfill_folder_membership'].startFolders,
-			{ folderIds: w.folderIds }
-		);
-		expect(totals).toEqual({ started: 2, running: 0, ready: 0 });
+		// While walking, the folder reads as not ready: nobody uses the blocks.
+		const page = await w.t.query(internal.mail.imap.fetch.folderMembershipPage, { folderId });
+		expect(page).toMatchObject({ isReady: false });
+		await walkToReady(w.t, folderId, 50);
+		await expectMembershipExact(w, 'after reset');
 	});
 });
 
