@@ -41,36 +41,30 @@ export class TransactionalResource extends BaseResource {
 	async send(params: SendTransactionalParams): Promise<SendTransactionalResponse> {
 		// Validate that either transactionalId or slug is provided
 		if (!params.transactionalId && !params.slug) {
-			throw new ValidationError(
-				'Either transactionalId or slug is required',
-				'invalid_input'
-			);
+			throw new ValidationError('Either transactionalId or slug is required', 'invalid_input');
 		}
 
 		// Validate attachments
 		if (params.attachments) {
 			if (params.attachments.length > 10) {
-				throw new ValidationError(
-					'Maximum 10 attachments allowed',
-					'invalid_input'
-				);
+				throw new ValidationError('Maximum 10 attachments allowed', 'invalid_input');
 			}
 
 			const DANGEROUS_MIME_TYPES = new Set([
-				'application/x-msdownload', 'application/x-executable',
-				'application/x-msdos-program', 'application/x-sh',
-				'application/x-bat', 'application/x-cmd',
+				'application/x-msdownload',
+				'application/x-executable',
+				'application/x-msdos-program',
+				'application/x-sh',
+				'application/x-bat',
+				'application/x-cmd',
 			]);
 
 			let totalSizeBytes = 0;
-			const MAX_TOTAL_SIZE = 10 * 1024 * 1024; // 10 MB
+			const MAX_TOTAL_SIZE = 10 * 1024 * 1024; // 10 MiB of decoded bytes
 
 			for (const attachment of params.attachments) {
 				if (!attachment.filename) {
-					throw new ValidationError(
-						'Each attachment must have a filename',
-						'invalid_input'
-					);
+					throw new ValidationError('Each attachment must have a filename', 'invalid_input');
 				}
 				if (attachment.content && attachment.url) {
 					throw new ValidationError(
@@ -79,10 +73,7 @@ export class TransactionalResource extends BaseResource {
 					);
 				}
 				if (!attachment.content && !attachment.url) {
-					throw new ValidationError(
-						'Attachment must have either content or url',
-						'invalid_input'
-					);
+					throw new ValidationError('Attachment must have either content or url', 'invalid_input');
 				}
 
 				// Validate base64 content format
@@ -93,12 +84,21 @@ export class TransactionalResource extends BaseResource {
 							'invalid_input'
 						);
 					}
-					// Track approximate decoded size (base64 is ~4/3 of original)
-					totalSizeBytes += Math.ceil(attachment.content.length * 3 / 4);
+					// Track the exact decoded size (3 bytes per 4 characters, less
+					// the padding), the figure the API checks against 10 MiB.
+					const padding = attachment.content.endsWith('==')
+						? 2
+						: attachment.content.endsWith('=')
+							? 1
+							: 0;
+					totalSizeBytes += Math.floor((attachment.content.length * 3) / 4) - padding;
 				}
 
 				// Reject dangerous MIME types
-				if (attachment.contentType && DANGEROUS_MIME_TYPES.has(attachment.contentType.toLowerCase())) {
+				if (
+					attachment.contentType &&
+					DANGEROUS_MIME_TYPES.has(attachment.contentType.toLowerCase())
+				) {
 					throw new ValidationError(
 						`Attachment "${attachment.filename}" has a disallowed content type: ${attachment.contentType}`,
 						'invalid_input'

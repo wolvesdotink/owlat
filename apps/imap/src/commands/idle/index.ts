@@ -2,7 +2,9 @@ import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
 import type { CommandSession, ImapCommandModule, SelectedState } from '../types.js';
 import { buildSeqMap, seqForUid } from '../helpers/seqMap.js';
-import { loadChangedEnvelopes, loadFolderUids } from '../helpers/folderPaging.js';
+import { loadChangedEnvelopes } from '../helpers/folderPaging.js';
+import { loadCurrentUids } from '../helpers/membership.js';
+import { holdSequence } from '../helpers/sequenceGate.js';
 import { formatFlags, type FetchEnvelope } from '../fetch/format.js';
 
 const POLL_INTERVAL_MS = 5_000;
@@ -154,24 +156,31 @@ export const idleModule: ImapCommandModule<void> = {
 
 		let lastModseq = currentSelected.highestModseq;
 		let lastTotal = currentSelected.totalCount;
-		// The set of UIDs the client currently believes it holds — the source of
-		// truth for resolving expunged-message sequence numbers against the view
-		// the client still has. The SELECT state carries counts, not the UID
-		// list, so we snapshot it once at IDLE entry (this reflects the client's
-		// view because it has just SELECTed) and keep it in lock-step with what
-		// we have already announced thereafter, so every diff is exact.
-		let lastUids: number[] | null = null;
-		const seedUids = (async () => {
-			try {
-				const uids = await loadFolderUids(deps.convex, currentSelected.folderId, signal);
-				if (!signal.aborted) lastUids = uids;
-			} catch (err) {
-				if (!signal.aborted) logger.warn({ err }, 'IDLE seed UID list failed');
-			}
-		})();
+		// The UIDs the client currently believes it holds: the source of truth
+		// for numbering expunged messages against the view the client still has.
+		// That is the session's sequence view (SELECT started it; every
+		// announcement since kept it exact), updated below as each poll is
+		// announced. A state built by hand has none, so one is snapshotted at
+		// IDLE entry instead.
+		const view = currentSelected.view;
+		let lastUids: readonly number[] | null = view ? view.uids : null;
+		const seedUids = view
+			? Promise.resolve()
+			: (async () => {
+					try {
+						const uids = await loadCurrentUids(deps.convex, currentSelected.folderId, signal);
+						if (!signal.aborted) lastUids = uids;
+					} catch (err) {
+						if (!signal.aborted) logger.warn({ err }, 'IDLE seed UID list failed');
+					}
+				})();
 
 		const poll = async (): Promise<void> => {
+			// Each poll is a `sync` turn on the sequence gate: its EXPUNGEs wait
+			// for a sequence-number command pipelined before the IDLE.
+			const lease = holdSequence(deps, 'sync');
 			try {
+				await lease.ready;
 				await seedUids;
 				if (signal.aborted) return;
 				const peek = await deps.convex.query(fn.peekFolderModseq, {
@@ -183,7 +192,8 @@ export const idleModule: ImapCommandModule<void> = {
 					return;
 				}
 
-				const nextUids = await loadFolderUids(deps.convex, currentSelected.folderId, signal);
+				// Served from the cached map unless the folder's membership changed.
+				const nextUids = await loadCurrentUids(deps.convex, currentSelected.folderId, signal);
 				// Rows whose flags (or any field) changed since the last announced
 				// modseq, read off `by_folder_and_modseq`. The poll runs every five
 				// seconds for the whole life of an IDLE, so it must cost what
@@ -197,32 +207,43 @@ export const idleModule: ImapCommandModule<void> = {
 				// disconnect; what it saw is no longer this session's to announce.
 				if (signal.aborted) return;
 
-				const prevUids = lastUids ?? nextUids;
+				const prevUids = (view ? view.uids : lastUids) ?? nextUids;
 				const delta = diffIdle({
 					prevUids,
 					nextUids,
 					prevTotal: lastTotal,
-					nextTotal: peek.totalCount,
+					// The view's length, not the folder's counter: EXISTS must count
+					// exactly the messages the client can now address.
+					nextTotal: nextUids.length,
 					nextUidNext: peek.uidNext,
 					lastModseq,
 					changedRows,
 				});
 
+				if (delta.expunged.length > 0 || delta.exists !== undefined) {
+					await lease.exclusive();
+				}
+				// IDLE ended while this poll was reading: its news is no longer
+				// for this command (RFC 3501 §7.4.1). The next one announces it.
+				if (signal.aborted) return;
 				for (const seq of delta.expunged) send(`* ${seq} EXPUNGE`);
 				if (delta.exists !== undefined) send(`* ${delta.exists} EXISTS`);
 				for (const line of delta.fetches) send(line);
 
 				currentSelected = {
 					...currentSelected,
-					totalCount: peek.totalCount,
+					totalCount: nextUids.length,
 					uidNext: peek.uidNext,
 					highestModseq: peek.highestModseq,
 				};
 				lastTotal = peek.totalCount;
 				lastModseq = peek.highestModseq;
 				lastUids = nextUids;
+				if (view) view.uids = nextUids;
 			} catch (err) {
 				if (!signal.aborted) logger.warn({ err }, 'IDLE poll failed');
+			} finally {
+				lease.release();
 			}
 		};
 

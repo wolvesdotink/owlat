@@ -136,18 +136,6 @@ describe('restore.sh restores into the project the restored configuration starts
 		await expectStartedOnRestoredData(install, ARCHIVED_PROJECT);
 		expect((await install.volumeNames()).some((n) => n.startsWith(`${PROJECT}_`))).toBe(false);
 	});
-
-	it('works out the archived project from the files when Compose cannot read them', async () => {
-		const install = await makeInstall(
-			{},
-			{ composeFile: COMPOSE_WITHOUT_NAME, archivedOverride: 'name: from-override\n' }
-		);
-		const result = await install.run({ FAKE_DOCKER_FAIL: '^compose (\\S+ )*config$' });
-
-		expect(result.code).toBe(0);
-		expect(result.out).toContain("using 'from-override', the name docker compose up derives here");
-		await expectStartedOnRestoredData(install, 'from-override');
-	});
 });
 
 describe('restore.sh rolls back to the current project', () => {
@@ -216,17 +204,23 @@ describe('restore.sh refuses a mapping it cannot vouch for, before stopping anyt
 		await expectNothingChanged(install, result.out);
 	});
 
-	it('refuses an interpolated project name Compose could not resolve', async () => {
-		const install = await makeInstall(
-			{},
-			{ composeFile: COMPOSE_WITHOUT_NAME, archivedOverride: 'name: ${OWLAT_PROJECT}\n' }
-		);
-		const result = await install.run({ FAKE_DOCKER_FAIL: '^compose (\\S+ )*config$' });
+	it.each([
+		['a plain project name', 'name: from-override\n'],
+		['an interpolated project name', 'name: ${OWLAT_PROJECT}\n'],
+	])(
+		'refuses when Compose cannot read the restored configuration (%s)',
+		async (_label, archivedOverride) => {
+			const install = await makeInstall(
+				{},
+				{ composeFile: COMPOSE_WITHOUT_NAME, archivedOverride }
+			);
+			const result = await install.run({ FAKE_DOCKER_FAIL: '^compose (\\S+ )*config$' });
 
-		expect(result.code).not.toBe(0);
-		expect(result.out).toContain('interpolated project name');
-		await expectNothingChanged(install, result.out);
-	});
+			expect(result.code).not.toBe(0);
+			expect(result.out).toContain('cannot tell which volumes docker compose up mounts');
+			await expectNothingChanged(install, result.out);
+		}
+	);
 
 	it('refuses when two payloads map to the same volume', async () => {
 		const install = await makeInstall(

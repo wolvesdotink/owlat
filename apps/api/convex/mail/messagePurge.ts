@@ -18,6 +18,7 @@ import { isMessageSnoozed } from '../lib/mailSnooze';
 import { removeMessageAttachments } from './attachmentIndex';
 import { applyMailboxUsageDelta } from './mailboxUsage';
 import { recordMessageCounters } from './messageCounters';
+import { recordFolderMembership } from './folderMembership';
 import { deleteMessageBody } from '../lib/messageBodyStore';
 import { deleteMessagePartsForRaw } from './messageParts';
 
@@ -112,6 +113,7 @@ export async function deleteMessageRowAndBlobs(
 	await ctx.db.delete(message._id);
 	await deleteMessageBody(ctx.db, message._id);
 	await recordMessageCounters(ctx, message, null);
+	await recordFolderMembership(ctx, message, null);
 
 	const blobs: ReadonlyArray<readonly [SharedBlobColumn, Id<'_storage'> | undefined]> = [
 		['rawStorageId', message.rawStorageId],

@@ -128,6 +128,33 @@ describe('backup.sh → restore.sh with an explicitly named volume', () => {
 		expect(existsSync(install.volumeDir('target_database'))).toBe(false);
 	});
 
+	it.each([
+		['an archive from before VOLUMES.txt', true],
+		['an archive with VOLUMES.txt', false],
+	])(
+		'refuses %s before stopping anything when the planning read of the restored configuration fails',
+		async (_label, legacy) => {
+			const archive = await backupWithExplicitName();
+			const install = await makeInstall(
+				{},
+				{ currentEnv: TARGET_ENV, archive: legacy ? await withoutVolumeList(archive) : archive }
+			);
+			// Only the read with the archived files handed over (-f) fails, once;
+			// every later Compose call, including the final check, would work.
+			const result = await install.run(
+				{ FAKE_DOCKER_FAIL: '^compose .* -f .*config$', FAKE_DOCKER_FAIL_ONCE: '1' },
+				['--keep-env']
+			);
+
+			expect(result.code).not.toBe(0);
+			expect(result.out).toContain('cannot tell which volumes docker compose up mounts');
+			await expectNothingChanged(install, result.out);
+			expect(await install.ups()).toEqual([]);
+			expect(existsSync(install.volumeDir('target_database'))).toBe(false);
+			expect(existsSync(install.volumeDir(`${PROJECT}_database`))).toBe(false);
+		}
+	);
+
 	it('refuses to back up two volumes that would share a payload name', async () => {
 		const source = await makeHost();
 		await writeFile(join(source.dir, '.env'), 'SOURCE=1\n');
