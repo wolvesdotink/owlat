@@ -68,5 +68,7 @@ export const formTables = {
 		.index('by_form_endpoint', ['formEndpointId'])
 		.index('by_contact', ['contactId'])
 		.index('by_status', ['status'])
-		.index('by_confirmation_token', ['confirmationToken']),
+		// One DOI token is shared by every signup made while the contact was
+		// pending, so confirmation reads the token's pending rows as a range.
+		.index('by_confirmation_token_and_status', ['confirmationToken', 'status']),
 };

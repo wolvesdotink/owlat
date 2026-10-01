@@ -248,12 +248,27 @@ describe('CHANGEDSINCE reads go through the modseq index', () => {
 			}),
 		};
 
-		const rows = await loadChangedEnvelopes(convex as never, 'f1', 7, 2);
+		const rows = await loadChangedEnvelopes(convex as never, 'f1', 7, undefined, 2);
 
 		expect(rows.map((r) => r.uid)).toEqual([1, 2, 3]);
 		expect(seen).toHaveLength(2);
 		expect(seen[0]).toMatchObject({ modseqSince: 7 });
 		expect(seen[1]!.paginationOpts).toMatchObject({ cursor: 'c1' });
+	});
+
+	it('loadChangedEnvelopes reads no further page once its signal aborts', async () => {
+		const controller = new AbortController();
+		const convex = {
+			query: vi.fn(async () => {
+				controller.abort(new Error('session ended'));
+				return { page: [envelope(1)], isDone: false, continueCursor: 'c1' };
+			}),
+		};
+
+		await expect(loadChangedEnvelopes(convex as never, 'f1', 7, controller.signal)).rejects.toThrow(
+			'session ended'
+		);
+		expect(convex.query).toHaveBeenCalledTimes(1);
 	});
 
 	it('hands the changed rows back in UID order, not the index\u2019s write order', async () => {

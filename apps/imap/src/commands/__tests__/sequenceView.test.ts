@@ -672,16 +672,20 @@ describe('pipelined commands: no announcement while a sequence-number command is
 	});
 
 	it('an IDLE poll holds its EXPUNGE until a pipelined FETCH before it is done', async () => {
-		vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
 		const b = backend([10, 20, 30]);
 		const c = connection(b);
 		await c.open();
 		const fetch = c.hold(':fetchEnvelopes');
 		c.send('f FETCH 3 (UID)');
 		await fetch.reached;
+		// IDLE schedules each poll with setTimeout, which settle() also uses: fake
+		// it only while the first poll is started, then hand back real timers.
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 		c.send('i IDLE');
+		await vi.advanceTimersByTimeAsync(0);
 		b.expunge(20);
-		vi.advanceTimersByTime(5_000);
+		await vi.advanceTimersByTimeAsync(5_000);
+		vi.useRealTimers();
 		await c.settle();
 		fetch.release();
 		await c.until('f');

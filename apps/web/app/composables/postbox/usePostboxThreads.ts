@@ -42,30 +42,39 @@ export function usePostboxThreads(args: {
 	// account A must never render under account B, however briefly.
 	const hardResetKey = computed(() => args.mailboxId.value);
 
-	const { rows, isLoading, isLoadingMore, isRefetching, hasMore, canLoadMore, loadMore } =
-		usePostboxCursorFeed(
-			api.mail.mailbox.queries.listMessages,
-			() => {
-				if (!args.mailboxId.value) return 'skip';
-				// The default order is sent as nothing at all, so a user who never
-				// touches the control keeps the exact query shape (and cursors) the
-				// list had before it existed.
-				const order = postboxSortOrderArg(sortOrder.value);
-				const sort = order ? { sortOrder: order } : {};
-				return folderId.value
-					? { mailboxId: args.mailboxId.value, folderId: folderId.value, limit: 50, ...sort }
-					: {
-							mailboxId: args.mailboxId.value,
-							folderRole: args.folderRole.value,
-							limit: 50,
-							...sort,
-						};
-			},
-			resetKey,
-			// Keep the prior folder's rows visible while the next folder loads, so
-			// switching folders never flashes a blank full-pane spinner.
-			{ keepPreviousData: true, hardResetKey }
-		);
+	const {
+		rows,
+		isLoading,
+		isLoadingMore,
+		isRefetching,
+		hasMore,
+		canLoadMore,
+		loadMore,
+		firstPageError,
+		refetch,
+	} = usePostboxCursorFeed(
+		api.mail.mailbox.queries.listMessages,
+		() => {
+			if (!args.mailboxId.value) return 'skip';
+			// The default order is sent as nothing at all, so a user who never
+			// touches the control keeps the exact query shape (and cursors) the
+			// list had before it existed.
+			const order = postboxSortOrderArg(sortOrder.value);
+			const sort = order ? { sortOrder: order } : {};
+			return folderId.value
+				? { mailboxId: args.mailboxId.value, folderId: folderId.value, limit: 50, ...sort }
+				: {
+						mailboxId: args.mailboxId.value,
+						folderRole: args.folderRole.value,
+						limit: 50,
+						...sort,
+					};
+		},
+		resetKey,
+		// Keep the prior folder's rows visible while the next folder loads, so
+		// switching folders never flashes a blank full-pane spinner.
+		{ keepPreviousData: true, hardResetKey }
+	);
 
 	return {
 		messages: rows,
@@ -75,5 +84,8 @@ export function usePostboxThreads(args: {
 		hasMore,
 		canLoadMore,
 		loadMore,
+		/** The folder's first page failed: a failed read, not an empty folder. */
+		error: firstPageError,
+		refetch,
 	};
 }

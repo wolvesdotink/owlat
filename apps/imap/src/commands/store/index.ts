@@ -105,9 +105,15 @@ export const storeModule: ImapCommandModule<StoreArgs> = {
 					}
 				}
 
-				if (result.unchanged.length > 0) {
-					const modified = result.unchanged.map((u) => u.uid).join(',');
-					send(`${tag} OK [MODIFIED ${modified}] ${label} completed`);
+				// RFC 7162 §3.1.3: MODIFIED carries a UID set for UID STORE and a
+				// message (sequence) set for plain STORE, the same addressing the
+				// client used in the command.
+				const modified = result.unchanged.flatMap((u) => {
+					const id = args.byUid ? u.uid : seqForUid(seqMap, u.uid);
+					return id === undefined ? [] : [id];
+				});
+				if (modified.length > 0) {
+					send(`${tag} OK [MODIFIED ${modified.join(',')}] ${label} completed`);
 					return;
 				}
 				send(`${tag} OK ${label} completed`);

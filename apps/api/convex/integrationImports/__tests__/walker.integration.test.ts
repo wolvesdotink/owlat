@@ -338,6 +338,7 @@ describe('processIntegrationPage — multi-page sequence', () => {
 			importId,
 			config: VALID_MAILCHIMP_CONFIG,
 			cursor: '100',
+			page: 1,
 		});
 
 		await t.run(async (ctx) => {

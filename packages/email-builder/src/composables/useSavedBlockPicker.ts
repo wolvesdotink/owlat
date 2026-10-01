@@ -1,6 +1,6 @@
 import { ref, type Ref } from 'vue';
 import type { EditorBlock, SavedBlock } from '../types';
-import { generateId, parseStoredBlocks, regenerateNestedBlockIds } from '../utils';
+import { cloneWithFreshIds, generateId, parseStoredBlocks } from '../utils';
 import { useEmailBuilderHandlers } from './useEmailBuilderHandlers';
 
 export interface SavedBlockPickerState {
@@ -75,19 +75,13 @@ export function useSavedBlockPicker(
 				blockName: block.name,
 			};
 
-			// Deep-clone a stored block, assign a fresh id + savedBlockRef, and
-			// regenerate any nested container/column IDs.
-			const rehydrateSavedBlock = (b: EditorBlock): EditorBlock => {
-				const newBlock: EditorBlock = {
-					id: generateId(),
-					type: b.type,
-					content: JSON.parse(JSON.stringify(b.content)),
-					savedBlockRef,
-				};
-				// Regenerate nested IDs for containers and columns
-				regenerateNestedBlockIds(newBlock);
-				return newBlock;
-			};
+			// Deep-clone a stored block with fresh ids for it and everything nested
+			// inside it (the same saved block can be inserted more than once), and
+			// link it to this insertion.
+			const rehydrateSavedBlock = (b: EditorBlock): EditorBlock => ({
+				...cloneWithFreshIds({ id: b.id, type: b.type, content: b.content } as EditorBlock),
+				savedBlockRef,
+			});
 
 			// One reader for every stored shape: the { blocks } envelope, a bare
 			// array and the legacy single block.

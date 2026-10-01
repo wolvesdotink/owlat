@@ -73,6 +73,7 @@ type ShellProps = Omit<typeof baseProps, 'viewMode' | 'empty'> & {
 const baseProps = {
 	title: 'Marketing templates',
 	loading: false,
+	error: null as Error | null,
 	errorTitle: 'Could not load',
 	loadingLabel: 'Loading',
 	hasOrganization: true,

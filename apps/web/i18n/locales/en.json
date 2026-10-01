@@ -5602,6 +5602,7 @@
 				"sourceBadge": "source"
 			},
 			"manager": {
+				"accordionSectionPrefix": "{prefix}Accordion {index}, section {section}",
 				"addLanguage": "Add language",
 				"addLanguageOperation": "Add language",
 				"allTranslated": "All fields are already translated",
@@ -5618,6 +5619,7 @@
 				"fieldColumn": "Field",
 				"goBack": "Go back",
 				"heading": "{name} - Translations",
+				"heroPrefix": "{prefix}Hero {index}",
 				"htmlBadge": "HTML",
 				"imageBlock": "{prefix}image {index} alt text",
 				"infoBody": "Click any cell to edit the translation. Changes are saved automatically. Use the sparkle icon to auto-translate empty fields using AI. The default language content is read-only here - edit it in the main email editor.",

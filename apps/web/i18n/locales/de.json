@@ -5602,6 +5602,7 @@
 				"sourceBadge": "Quelle"
 			},
 			"manager": {
+				"accordionSectionPrefix": "{prefix}Akkordeon {index}, Abschnitt {section}",
 				"addLanguage": "Sprache hinzufügen",
 				"addLanguageOperation": "Sprache hinzufügen",
 				"allTranslated": "Alle Felder sind bereits übersetzt",
@@ -5618,6 +5619,7 @@
 				"fieldColumn": "Feld",
 				"goBack": "Zurück",
 				"heading": "{name} - Übersetzungen",
+				"heroPrefix": "{prefix}Hero {index}",
 				"htmlBadge": "HTML",
 				"imageBlock": "{prefix}Bild {index} Alt-Text",
 				"infoBody": "Klicke auf eine beliebige Zelle, um die Übersetzung zu bearbeiten. Änderungen werden automatisch gespeichert. Nutze das Funkel-Symbol, um leere Felder mit KI automatisch zu übersetzen. Der Inhalt der Standardsprache ist hier schreibgeschützt - bearbeite ihn im Haupt-E-Mail-Editor.",
