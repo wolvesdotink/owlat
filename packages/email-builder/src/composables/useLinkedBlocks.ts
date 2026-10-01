@@ -1,4 +1,4 @@
-import { type Ref } from 'vue';
+import { computed, ref, type ComputedRef, type InjectionKey, type Ref } from 'vue';
 import type { EditorBlock } from '../types';
 
 export interface UseLinkedBlocksOptions {
@@ -14,7 +14,90 @@ export interface LinkedBlockGroup {
 	blockIndices: number[];
 }
 
+/** One draggable unit on the canvas: a whole linked group, or a single unlinked Block. */
+export interface CanvasDisplayItem {
+	id: string;
+	blocks: EditorBlock[];
+}
+
+export interface LinkedBlockEntry {
+	index: number;
+	/** Saved-block group this Block belongs to, or null when it is not linked. */
+	groupId: string | null;
+	isFirstInGroup: boolean;
+	isLastInGroup: boolean;
+}
+
+/** Everything the canvas asks about linked Blocks, built in one pass over the root array. */
+export interface LinkedBlockIndex {
+	/** The array this index was built from. */
+	source: readonly EditorBlock[];
+	byId: Map<string, LinkedBlockEntry>;
+	/** Groups in first-appearance order. */
+	groups: Map<string, LinkedBlockGroup>;
+	/** Canvas draggable units: each group sits where its first Block appears. */
+	displayItems: CanvasDisplayItem[];
+}
+
+/** Shared index provided by EmailBuilder; DocumentCanvas falls back to its own. */
+export const LINKED_BLOCK_INDEX_KEY: InjectionKey<ComputedRef<LinkedBlockIndex>> =
+	Symbol('linkedBlockIndex');
+
+/**
+ * Index the root Blocks by id and saved-block group in a single pass. Reads
+ * `id` and `savedBlockRef` of every Block, so inside a `computed` it is
+ * invalidated by reorders, inserts, removals, swapped Blocks and an in-place
+ * `delete block.savedBlockRef`, and by nothing else (selection included).
+ */
+export function buildLinkedBlockIndex(blocks: readonly EditorBlock[]): LinkedBlockIndex {
+	const byId = new Map<string, LinkedBlockEntry>();
+	const groups = new Map<string, LinkedBlockGroup>();
+	const groupItems = new Map<string, CanvasDisplayItem>();
+	const lastEntry = new Map<string, LinkedBlockEntry>();
+	const displayItems: CanvasDisplayItem[] = [];
+
+	for (let index = 0; index < blocks.length; index++) {
+		const block = blocks[index]!;
+		const ref = block.savedBlockRef;
+		if (!ref) {
+			if (!byId.has(block.id)) {
+				byId.set(block.id, { index, groupId: null, isFirstInGroup: false, isLastInGroup: false });
+			}
+			displayItems.push({ id: block.id, blocks: [block] });
+			continue;
+		}
+		const { groupId } = ref;
+		const group = groups.get(groupId);
+		const entry: LinkedBlockEntry = { index, groupId, isFirstInGroup: !group, isLastInGroup: true };
+		if (group) {
+			group.blockIndices.push(index);
+			// The group's metadata follows its last Block, as the old scan did.
+			group.blockId = ref.blockId;
+			group.blockName = ref.blockName;
+			lastEntry.get(groupId)!.isLastInGroup = false;
+			groupItems.get(groupId)!.blocks.push(block);
+		} else {
+			groups.set(groupId, {
+				groupId,
+				blockId: ref.blockId,
+				blockName: ref.blockName,
+				blockIndices: [index],
+			});
+			const item = { id: `group-${groupId}`, blocks: [block] };
+			groupItems.set(groupId, item);
+			displayItems.push(item);
+		}
+		lastEntry.set(groupId, entry);
+		// A duplicate id resolves to its first occurrence, like the old `Array.find`.
+		if (!byId.has(block.id)) byId.set(block.id, entry);
+	}
+
+	return { source: blocks, byId, groups, displayItems };
+}
+
 export interface UseLinkedBlocksReturn {
+	/** The shared index; recomputed only when order or linked-group membership changes. */
+	index: ComputedRef<LinkedBlockIndex>;
 	isLinkedBlock: (blockId: string) => boolean;
 	getLinkedGroup: (groupId: string) => LinkedBlockGroup | null;
 	getLinkedGroupByBlockId: (blockId: string) => LinkedBlockGroup | null;
@@ -25,106 +108,68 @@ export interface UseLinkedBlocksReturn {
 	isLastInGroup: (blockId: string) => boolean;
 }
 
+const copyGroup = (group: LinkedBlockGroup): LinkedBlockGroup => ({
+	...group,
+	blockIndices: [...group.blockIndices],
+});
+
 /**
  * Composable for managing linked block state and operations
  */
 export function useLinkedBlocks(options: UseLinkedBlocksOptions): UseLinkedBlocksReturn {
 	const { canvasBlocks, onTreeMutated } = options;
 
-	const isLinkedBlock = (blockId: string): boolean => {
-		const block = canvasBlocks.value.find((b) => b.id === blockId);
-		return !!block?.savedBlockRef;
-	};
+	// Detach deletes `savedBlockRef` in place. A deep ref already reports that to
+	// the index, but a shallow or plain one would not, so detach also bumps this.
+	const detachTick = ref(0);
+	const index = computed(() => {
+		void detachTick.value;
+		return buildLinkedBlockIndex(canvasBlocks.value);
+	});
+
+	const isLinkedBlock = (blockId: string): boolean => !!index.value.byId.get(blockId)?.groupId;
 
 	const getLinkedGroup = (groupId: string): LinkedBlockGroup | null => {
-		const indices: number[] = [];
-		let blockId = '';
-		let blockName = '';
-
-		canvasBlocks.value.forEach((block, index) => {
-			if (block.savedBlockRef?.groupId === groupId) {
-				indices.push(index);
-				blockId = block.savedBlockRef.blockId;
-				blockName = block.savedBlockRef.blockName;
-			}
-		});
-
-		if (indices.length === 0) return null;
-
-		return { groupId, blockId, blockName, blockIndices: indices };
+		const group = index.value.groups.get(groupId);
+		return group ? copyGroup(group) : null;
 	};
 
 	const getLinkedGroupByBlockId = (blockId: string): LinkedBlockGroup | null => {
-		const block = canvasBlocks.value.find((b) => b.id === blockId);
-		if (!block?.savedBlockRef) return null;
-		return getLinkedGroup(block.savedBlockRef.groupId);
+		const groupId = index.value.byId.get(blockId)?.groupId;
+		return groupId ? getLinkedGroup(groupId) : null;
 	};
 
 	const detachLinkedGroup = (groupId: string): void => {
+		// A user action, not a render path: scan the live array rather than trust the index.
 		let detached = false;
-		canvasBlocks.value.forEach((block) => {
+		for (const block of canvasBlocks.value) {
 			if (block.savedBlockRef?.groupId === groupId) {
 				delete block.savedBlockRef;
 				detached = true;
 			}
-		});
-		if (detached) onTreeMutated?.();
+		}
+		if (!detached) return;
+		detachTick.value++;
+		onTreeMutated?.();
 	};
 
 	const detachBlock = (blockId: string): void => {
-		const block = canvasBlocks.value.find((b) => b.id === blockId);
-		if (block?.savedBlockRef) {
-			// Detach the entire group, not just one block
-			detachLinkedGroup(block.savedBlockRef.groupId);
-		}
+		const groupId = index.value.byId.get(blockId)?.groupId;
+		// Detach the entire group, not just one block
+		if (groupId) detachLinkedGroup(groupId);
 	};
 
-	const getLinkedBlockGroups = (): LinkedBlockGroup[] => {
-		const groups = new Map<string, LinkedBlockGroup>();
+	const getLinkedBlockGroups = (): LinkedBlockGroup[] =>
+		Array.from(index.value.groups.values(), copyGroup);
 
-		canvasBlocks.value.forEach((block, index) => {
-			if (block.savedBlockRef) {
-				const { groupId, blockId, blockName } = block.savedBlockRef;
-				const existing = groups.get(groupId);
-				if (existing) {
-					existing.blockIndices.push(index);
-				} else {
-					groups.set(groupId, {
-						groupId,
-						blockId,
-						blockName,
-						blockIndices: [index],
-					});
-				}
-			}
-		});
+	const isFirstInGroup = (blockId: string): boolean =>
+		!!index.value.byId.get(blockId)?.isFirstInGroup;
 
-		return Array.from(groups.values());
-	};
-
-	const isFirstInGroup = (blockId: string): boolean => {
-		const block = canvasBlocks.value.find((b) => b.id === blockId);
-		if (!block?.savedBlockRef) return false;
-
-		const group = getLinkedGroup(block.savedBlockRef.groupId);
-		if (!group) return false;
-
-		const blockIndex = canvasBlocks.value.findIndex((b) => b.id === blockId);
-		return group.blockIndices[0] === blockIndex;
-	};
-
-	const isLastInGroup = (blockId: string): boolean => {
-		const block = canvasBlocks.value.find((b) => b.id === blockId);
-		if (!block?.savedBlockRef) return false;
-
-		const group = getLinkedGroup(block.savedBlockRef.groupId);
-		if (!group) return false;
-
-		const blockIndex = canvasBlocks.value.findIndex((b) => b.id === blockId);
-		return group.blockIndices[group.blockIndices.length - 1] === blockIndex;
-	};
+	const isLastInGroup = (blockId: string): boolean =>
+		!!index.value.byId.get(blockId)?.isLastInGroup;
 
 	return {
+		index,
 		isLinkedBlock,
 		getLinkedGroup,
 		getLinkedGroupByBlockId,

@@ -38,7 +38,7 @@ import { useBlockTreeVersion } from '../composables/useBlockTreeVersion';
 import { useRecentColors } from '../composables/useRecentColors';
 import { useHistory, type HistoryState } from '../composables/useHistory';
 import { useInlineTextEdit } from '../composables/useInlineTextEdit';
-import { useLinkedBlocks } from '../composables/useLinkedBlocks';
+import { LINKED_BLOCK_INDEX_KEY, useLinkedBlocks } from '../composables/useLinkedBlocks';
 import { useSavedBlockPicker } from '../composables/useSavedBlockPicker';
 import { useSaveBlockModal } from '../composables/useSaveBlockModal';
 import { useSlashCommands } from '../composables/useSlashCommands';
@@ -257,13 +257,15 @@ const allowedBlockTypes = computed<BlockType[] | undefined>(() => props.config?.
 const handlers = useEmailBuilderHandlers();
 
 // Linked blocks
-const { isLinkedBlock, detachBlock, getLinkedGroupByBlockId, isFirstInGroup, isLastInGroup } =
-	useLinkedBlocks({ canvasBlocks, onTreeMutated: bumpBlocks });
+const {
+	index: linkedBlockIndex,
+	isLinkedBlock,
+	detachBlock,
+	getLinkedGroupByBlockId,
+} = useLinkedBlocks({ canvasBlocks, onTreeMutated: bumpBlocks });
 
-// Provide linked block helpers so CanvasBlock can access them without prop drilling
-provide('isLinkedBlock', isLinkedBlock);
-provide('isFirstInLinkedGroup', isFirstInGroup);
-provide('isLastInLinkedGroup', isLastInGroup);
+// Share the linked-block index with the canvas so both read one pass over the Blocks
+provide(LINKED_BLOCK_INDEX_KEY, linkedBlockIndex);
 provide('requestDetachLinkedBlock', requestDetachBlock);
 
 // Block selection
