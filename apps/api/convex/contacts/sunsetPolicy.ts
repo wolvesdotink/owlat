@@ -49,15 +49,17 @@
  * `__tests__/sunset*.test.ts` are fully deterministic.
  */
 
+import {
+	SUNSET_MIN_WINDOW_DAYS,
+	SUNSET_REENGAGE_AFTER_DAYS,
+	SUNSET_SUPPRESS_AFTER_DAYS,
+} from '@owlat/shared/sunsetPolicy';
 import { DAY_MS } from '../lib/constants';
 
 // ─── Defaults ───────────────────────────────────────────────────────────────
 
-/** Quiet days before a contact moves onto the re-engagement track. */
-export const SUNSET_REENGAGE_AFTER_DAYS = 180;
-
-/** Quiet days before a contact is auto-suppressed. */
-export const SUNSET_SUPPRESS_AFTER_DAYS = 270;
+// The window lengths and their floor live in `@owlat/shared/sunsetPolicy`, so
+// the settings form offers exactly the bounds `setSunsetPolicy` enforces.
 
 /**
  * The deployment-wide default, used whenever no `sunsetPolicies` row exists.
@@ -68,9 +70,6 @@ export const SUNSET_POLICY_DEFAULTS: Readonly<SunsetPolicy> = Object.freeze({
 	reengageAfterDays: SUNSET_REENGAGE_AFTER_DAYS,
 	suppressAfterDays: SUNSET_SUPPRESS_AFTER_DAYS,
 });
-
-/** Lower bound on a configured window. Below this the policy is treated as invalid. */
-export const SUNSET_MIN_WINDOW_DAYS = 30;
 
 /**
  * How far `now` may run ahead of an INDEPENDENTLY OBSERVED instant before the
