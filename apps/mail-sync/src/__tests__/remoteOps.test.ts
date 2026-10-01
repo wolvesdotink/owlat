@@ -89,7 +89,7 @@ class FakeImap implements RemoteOpsClient {
 		return { release: () => void (this.selected = null) };
 	}
 
-	async search(query: { header: Record<string, string> }) {
+	async search(query: { header: Record<string, string> }): Promise<number[] | false | undefined> {
 		const needle = query.header['message-id'] ?? '';
 		return this.box()
 			.filter((m) => m.messageId.includes(needle))
