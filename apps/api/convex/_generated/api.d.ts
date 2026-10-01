@@ -458,6 +458,7 @@ import type * as delivery_workerEnvelope from '../delivery/workerEnvelope.js';
 import type * as delivery_workerOutcome from '../delivery/workerOutcome.js';
 import type * as delivery_workpool from '../delivery/workpool.js';
 import type * as desktop_releaseManifest from '../desktop/releaseManifest.js';
+import type * as desktop_updateReads from '../desktop/updateReads.js';
 import type * as desktop_updateResolver from '../desktop/updateResolver.js';
 import type * as desktop_updates from '../desktop/updates.js';
 import type * as devShortcuts__guard from '../devShortcuts/_guard.js';
@@ -1756,6 +1757,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/workerOutcome': typeof delivery_workerOutcome;
 	'delivery/workpool': typeof delivery_workpool;
 	'desktop/releaseManifest': typeof desktop_releaseManifest;
+	'desktop/updateReads': typeof desktop_updateReads;
 	'desktop/updateResolver': typeof desktop_updateResolver;
 	'desktop/updates': typeof desktop_updates;
 	'devShortcuts/_guard': typeof devShortcuts__guard;
