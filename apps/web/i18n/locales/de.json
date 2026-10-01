@@ -6798,6 +6798,7 @@
 					"pageTitle": "Desktop-App-Updates — Owlat",
 					"pin": {
 						"label": "Version, auf die festgelegt wird",
+						"missing": "Festgelegt auf {version}, aber diese Version ist nicht mehr zwischengespeichert. Verbundene Apps erhalten kein Update, bis Sie eine zwischengespeicherte Version festlegen oder einen anderen Modus wählen.",
 						"noneCached": "In diesem Kanal ist keine Version zwischengespeichert. Prüfen Sie zuerst.",
 						"placeholder": "Zwischengespeicherte Version wählen"
 					},
