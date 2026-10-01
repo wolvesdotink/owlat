@@ -333,7 +333,9 @@
 		"assistant": {
 			"assistantComposer": {
 				"hint": "Enter to send · Shift+Enter for newline · the assistant can search your workspace and draft copy",
+				"label": "Question for the assistant",
 				"placeholder": "Ask the assistant anything…",
+				"sendFailed": "Couldn't send. Your question is still here.",
 				"stop": "Stop generating",
 				"unavailablePlaceholder": "Assistant is unavailable"
 			},
@@ -485,7 +487,7 @@
 						"createCta": "Create new email",
 						"createPrompt": "Or create a new email template for this automation:",
 						"editTemplate": "Edit template →",
-						"noTemplates": "No automation templates found. {link} with type \"Automation\" first.",
+						"noTemplates": "No marketing templates yet. {link} first.",
 						"noTemplatesLink": "Create an email template",
 						"previewLabel": "Template preview",
 						"previewSubject": "Subject: {subject}",
@@ -493,9 +495,7 @@
 						"subjectLabel": "Subject line override (optional)",
 						"subjectPlaceholder": "Leave blank to use template subject",
 						"templateHint": "Choose the email template to send to the contact.",
-						"templateLabel": "Email template",
-						"templateOption": "{name} ({status})",
-						"templatePlaceholder": "Select a template..."
+						"templateLabel": "Email template"
 					}
 				}
 			},
@@ -1375,10 +1375,14 @@
 				},
 				"mapping": {
 					"addToTopic": "Add to topic",
+					"fieldMovedToIgnore": "{field} now comes from column {to}. Column {from} is ignored.",
+					"fieldMovedToProperty": "{field} now comes from column {to}. Column {from} is imported as a custom property.",
+					"fieldTaken": "{field} (column: {column})",
 					"found": "Found {count} contacts in {filename}",
 					"globalTopicHint": "All imported contacts will be added to this topic. Or map a CSV column to \"Topic\" for per-contact assignment.",
 					"handleDuplicates": "Handle duplicates",
 					"sample": "e.g., {value}",
+					"selectLabel": "Field for column {column}",
 					"skipDuplicates": "Skip duplicates",
 					"topicMappedHint": "Disabled because a column is mapped to \"Topic\". Remove that mapping to select a global topic.",
 					"updateExisting": "Update existing"
@@ -1387,6 +1391,7 @@
 					"andMore": "...and {count} more",
 					"duplicateEmailsTitle": "Duplicate emails",
 					"duplicates": "Duplicates",
+					"emailSource": "Column: {column}",
 					"firstName": "First name",
 					"invalidEmails": "Invalid emails",
 					"invalidEmailsTitle": "Invalid emails",
@@ -3147,6 +3152,17 @@
 					"save": "Saved",
 					"send": "Sent"
 				}
+			},
+			"templatePicker": {
+				"listLabel": "Templates",
+				"loadMore": "Load more",
+				"loading": "Loading templates…",
+				"loadingMore": "Loading more…",
+				"noMatches": "No templates match your search.",
+				"noSubject": "No subject",
+				"none": "No templates yet.",
+				"searchPlaceholder": "Search by name or subject…",
+				"searching": "Searching…"
 			}
 		},
 		"files": {
@@ -8201,6 +8217,9 @@
 					"performance": "Summarize the performance of our most recent campaign.",
 					"reEngagement": "Draft a friendly re-engagement email for inactive subscribers."
 				},
+				"jumpToLatest": "Jump to latest",
+				"moreActions": "More actions",
+				"moreActionsFor": "More actions for {title}",
 				"newChat": "New chat",
 				"noConversations": "No conversations yet.",
 				"openConversations": "Conversations",
@@ -14852,6 +14871,7 @@
 		},
 		"useCsvImport": {
 			"errors": {
+				"conflictingMapping": "{field} is mapped to more than one column. Map it to one column only.",
 				"dropCsv": "Please drop a CSV file",
 				"emailColumnRequired": "You must map a column to Email (required)",
 				"importFailed": "Import failed",
@@ -14869,6 +14889,12 @@
 				"lastName": "Last name",
 				"property": "Custom property",
 				"topic": "Topic"
+			},
+			"fieldNames": {
+				"email": "Email",
+				"firstName": "First name",
+				"language": "Language",
+				"lastName": "Last name"
 			},
 			"pickerTitle": "Choose a CSV file"
 		},

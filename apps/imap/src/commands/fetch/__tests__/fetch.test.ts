@@ -78,6 +78,7 @@ function run(
 			// Seven messages exist; the fixture message sits at sequence 7
 			// (UID 7), so the harness's `set: '7'` resolves to it whether the
 			// command is UID-based or not.
+			if (ref.endsWith(':folderMembershipPage')) return null;
 			if (ref.endsWith(':listFolderUidsPage')) {
 				return { uids: [1, 2, 3, 4, 5, 6, 7], nextUid: null };
 			}

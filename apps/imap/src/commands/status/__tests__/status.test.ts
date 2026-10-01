@@ -45,6 +45,9 @@ function stubConvex(): ConvexClient {
 					},
 				};
 			}
+			// SELECT seeds its sequence view: no membership rows, then an empty listing.
+			if (ref === fn.folderMembershipPage) return null;
+			if (ref === fn.listFolderUidsPage) return { uids: [], nextUid: null };
 			throw new Error(`unexpected query ref: ${String(ref)}`);
 		},
 	} as unknown as ConvexClient;

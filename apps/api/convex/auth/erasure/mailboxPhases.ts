@@ -25,6 +25,7 @@ import { removeMessageAttachments } from '../../mail/attachmentIndex';
 import { deleteMessageRowAndBlobs } from '../../mail/messagePurge';
 import { deleteMailboxUsage } from '../../mail/mailboxUsage';
 import { deleteFolderCounters, deleteMailboxCounters } from '../../mail/messageCounters';
+import { dropFolderMembership } from '../../mail/folderMembership';
 import { isOrgInfrastructureAccount } from '../../mail/external/personalAccount';
 import { deleteStoredAccessToken } from '../../mail/external/accessTokenStore';
 import {
@@ -447,6 +448,7 @@ export const eraseMailboxRows: MemberPhaseRunner = (phase) =>
 					.take(n),
 			async (folder) => {
 				await deleteFolderCounters(ctx, folder._id);
+				await dropFolderMembership(ctx, folder._id);
 				await ctx.db.delete(folder._id);
 			}
 		);

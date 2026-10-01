@@ -34,6 +34,7 @@ import {
 } from './flagWrites';
 import { recordTriageVerb } from './triageTally';
 import { recordMessageCounters } from './messageCounters';
+import { recordFolderMembership } from './folderMembership';
 import { recordRemoteChanges, type RemoteChange } from './external/remoteOps';
 
 // Re-exported so the modules that reach the rebuild through this one keep
@@ -207,6 +208,7 @@ export async function moveMessagesToFolder(
 			updatedAt: Date.now(),
 		});
 		await recordMessageCounters(ctx, message, { ...message, folderId: args.targetFolderId });
+		await recordFolderMembership(ctx, message, { ...message, folderId: args.targetFolderId, uid });
 		moved.push({ messageId: id, sourceFolderId: sourceFolder._id });
 		remote.push({
 			kind: 'move',
