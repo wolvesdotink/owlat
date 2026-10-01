@@ -71,18 +71,39 @@ export function usePostboxActiveMessage<Row extends { _id: string }>(source: {
 	activeMessageId: () => string | null | undefined;
 	listRows: () => readonly Row[];
 }) {
+	return usePostboxActiveMessageRead(source).message;
+}
+
+/**
+ * `usePostboxActiveMessage` plus the read's failure, for a surface whose main
+ * content is the message (Answer mode, the reader pane): the by-id fetch is the
+ * last source, so its `error` means the message could not be read at all
+ * (#721). It only counts while that fetch is the one in use: a skipped query
+ * keeps its last error, which belongs to the previous message.
+ */
+export function usePostboxActiveMessageRead<Row extends { _id: string }>(source: {
+	activeMessageId: () => string | null | undefined;
+	listRows: () => readonly Row[];
+}) {
 	const listActive = computed(() => {
 		const id = source.activeMessageId();
 		return id ? source.listRows().find((m) => m._id === id) : undefined;
 	});
 	const { threadMessage, threadSettled } = usePostboxOpenMessage(() => source.activeMessageId());
-	const { data: fetchedActive } = useConvexQuery(api.mail.mailbox.messages.getMessage, () => {
+	const fetchArgs = computed(() => {
 		const id = source.activeMessageId();
 		return id && !listActive.value && !threadMessage.value && threadSettled.value
 			? { messageId: id as Id<'mailMessages'> }
 			: 'skip';
 	});
-	return computed(
+	const {
+		data: fetchedActive,
+		error: fetchError,
+		refetch,
+	} = useConvexQuery(api.mail.mailbox.messages.getMessage, () => fetchArgs.value);
+	const message = computed(
 		() => listActive.value ?? threadMessage.value ?? fetchedActive.value ?? undefined
 	);
+	const error = computed(() => (fetchArgs.value === 'skip' ? null : fetchError.value));
+	return { message, error, refetch };
 }

@@ -61,21 +61,25 @@ interface Block {
 // Common languages for dropdown
 
 // Fetch email data based on type
-const { data: marketingEmail, isLoading: marketingLoading } = useConvexQuery(
-	api.emailTemplates.emails.get,
-	() => {
-		if (props.emailType !== 'marketing') return 'skip';
-		return { templateId: props.emailId as Id<'emailTemplates'> };
-	}
-);
+const {
+	data: marketingEmail,
+	isLoading: marketingLoading,
+	error: marketingError,
+	refetch: refetchMarketing,
+} = useConvexQuery(api.emailTemplates.emails.get, () => {
+	if (props.emailType !== 'marketing') return 'skip';
+	return { templateId: props.emailId as Id<'emailTemplates'> };
+});
 
-const { data: transactionalEmail, isLoading: transactionalLoading } = useConvexQuery(
-	api.transactional.emails.get,
-	() => {
-		if (props.emailType !== 'transactional') return 'skip';
-		return { id: props.emailId as Id<'transactionalEmails'> };
-	}
-);
+const {
+	data: transactionalEmail,
+	isLoading: transactionalLoading,
+	error: transactionalError,
+	refetch: refetchTransactional,
+} = useConvexQuery(api.transactional.emails.get, () => {
+	if (props.emailType !== 'transactional') return 'skip';
+	return { id: props.emailId as Id<'transactionalEmails'> };
+});
 
 // Unified email object
 const email = computed(() => {
@@ -87,6 +91,13 @@ const isLoading = computed(() => {
 	if (props.emailType === 'marketing') return marketingLoading.value;
 	return transactionalLoading.value;
 });
+
+// A failed read is not a missing email (#721).
+const emailError = computed(() =>
+	props.emailType === 'marketing' ? marketingError.value : transactionalError.value
+);
+const refetchEmail = () =>
+	props.emailType === 'marketing' ? refetchMarketing() : refetchTransactional();
 
 // Mutations
 const { run: updateMarketingTemplate } = useBackendOperation(api.emailTemplates.emails.update, {
@@ -571,8 +582,12 @@ const isCellSaving = (rowId: string, language: string) => {
 			</div>
 		</div>
 
+		<div v-if="emailError" class="flex-1 flex items-center justify-center">
+			<UiQueryBoundary :error="emailError" @retry="refetchEmail" />
+		</div>
+
 		<!-- Loading State -->
-		<div v-if="isLoading" class="flex-1 flex items-center justify-center">
+		<div v-else-if="isLoading" class="flex-1 flex items-center justify-center">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
 				<p class="text-text-secondary text-sm">

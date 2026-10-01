@@ -21,7 +21,7 @@ const router = useRouter();
 const routeRoomId = useRouteId<'chatRooms'>('roomId');
 const activeRoomId = computed(() => routeRoomId.value || undefined);
 
-const { channels, archivedChannels, dms, isLoading } = useChatRooms();
+const { channels, archivedChannels, dms, isLoading, error, refetch } = useChatRooms();
 // Count only here; the Mentions dialog opens the 50-row feed lazily on demand.
 const { count: mentionCount } = useChatMentions();
 
@@ -83,6 +83,7 @@ provideChatShell({
 				:archived-channels="archivedChannels"
 				:dms="dms"
 				:is-loading="isLoading"
+				:error="error"
 				:active-room-id="activeRoomId"
 				:mention-count="mentionCount"
 				@select="handleSelectRoom"
@@ -90,6 +91,7 @@ provideChatShell({
 				@new-dm="showNewDm = true"
 				@browse-channels="showBrowseChannels = true"
 				@mentions="showMentions = true"
+				@retry="refetch"
 			/>
 		</UiRailDrawer>
 

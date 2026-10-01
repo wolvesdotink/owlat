@@ -82,4 +82,45 @@ describe('useAnswerQueue', () => {
 		const queue = useAnswerQueue({ enabled: () => false });
 		expect(queue.isLoading.value).toBe(false);
 	});
+
+	it('reports a failed source and re-reads only that one (#721)', () => {
+		const inboxRefetch = vi.fn();
+		const mailRefetch = vi.fn();
+		const failure = new Error('[CONVEX Q(mail/needsReply:listQueue)] Server Error');
+		vi.stubGlobal('useInboxes', () => ({
+			ids: ref(['mbx_1']),
+			byId: ref(new Map()),
+			isLoading: ref(false),
+			error: ref(null),
+			refetch: inboxRefetch,
+		}));
+		vi.stubGlobal(
+			'useConvexQueryMap',
+			() =>
+				new Map([
+					[
+						'mbx_1',
+						{
+							data: ref(undefined),
+							isLoading: ref(false),
+							error: ref(failure),
+							refetch: mailRefetch,
+						},
+					],
+				])
+		);
+		vi.stubGlobal('useConvexQuery', () => ({
+			data: ref(undefined),
+			isLoading: ref(false),
+			error: ref(null),
+			refetch: vi.fn(),
+		}));
+
+		const queue = useAnswerQueue();
+		expect(queue.items.value).toEqual([]);
+		expect(queue.error.value).toBe(failure);
+		queue.refetch();
+		expect(mailRefetch).toHaveBeenCalledTimes(1);
+		expect(inboxRefetch).not.toHaveBeenCalled();
+	});
 });

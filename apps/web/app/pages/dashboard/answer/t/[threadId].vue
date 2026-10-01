@@ -55,7 +55,7 @@ const route = useRoute();
 
 const threadId = useRouteId<'conversationThreads'>('threadId');
 const detail = useThreadDetail(threadId);
-const { thread, messages, contact, followUps, threadLoading, cancelFollowUp } = detail;
+const { thread, messages, contact, followUps, threadLoading, threadError, cancelFollowUp } = detail;
 
 useHead({ title: () => thread.value?.subject || t('dashboard.answer.mode.pageTitle') });
 
@@ -350,6 +350,12 @@ onBeforeUnmount(() => {
 						/>
 					</template>
 				</AnswerTeamConversation>
+				<!-- A failed read is not a missing thread (#721). -->
+				<UiQueryBoundary
+					v-else-if="threadError"
+					:error="threadError"
+					@retry="detail.refetchThread"
+				/>
 				<div v-else-if="threadLoading" class="space-y-3 p-6" aria-hidden="true">
 					<UiSkeleton class="h-4 w-1/3" />
 					<UiSkeleton class="h-40 w-full rounded-(--radius-card)" />

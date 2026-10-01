@@ -22,7 +22,12 @@ const { isAdmin } = usePermissions();
 const fileId = useRouteId<'semanticFiles'>();
 
 // File data
-const { data: file, isLoading } = useConvexQuery(api.semanticFiles.get, () => ({
+const {
+	data: file,
+	isLoading,
+	error: fileError,
+	refetch: refetchFile,
+} = useConvexQuery(api.semanticFiles.get, () => ({
 	fileId: fileId.value,
 }));
 
@@ -218,9 +223,12 @@ const sourceLabel = computed(() => {
 			{{ t('dashboard.files.detail.backToFiles') }}
 		</NuxtLink>
 
+		<!-- A failed read is not a missing file (#721). -->
+		<UiQueryBoundary v-if="fileError" :error="fileError" @retry="refetchFile" />
+
 		<!-- Loading -->
 		<DashboardDetailSkeleton
-			v-if="isLoading"
+			v-else-if="isLoading"
 			:label="t('dashboard.files.detail.loading')"
 			lead="tile-lg"
 			meta

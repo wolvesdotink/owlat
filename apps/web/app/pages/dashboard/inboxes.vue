@@ -20,7 +20,14 @@ const route = useRoute();
 const router = useRouter();
 const { isEnabled } = useFeatureFlag();
 const { isAdmin } = usePermissions();
-const { inboxes, ids, byId, isLoading: inboxesLoading } = useInboxes();
+const {
+	inboxes,
+	ids,
+	byId,
+	isLoading: inboxesLoading,
+	error: inboxesError,
+	refetch: refetchInboxes,
+} = useInboxes();
 
 const PER_INBOX = 40;
 const threadResults = useConvexQueryMap(api.mail.mailbox.queries.listThreads, ids, (mailboxId) => ({
@@ -29,7 +36,11 @@ const threadResults = useConvexQueryMap(api.mail.mailbox.queries.listThreads, id
 	limit: PER_INBOX,
 }));
 const teamOn = computed(() => isAdmin.value && isEnabled('inbox'));
-const { data: teamData } = useConvexQuery(api.inbox.queries.listThreads, () =>
+const {
+	data: teamData,
+	error: teamError,
+	refetch: refetchTeam,
+} = useConvexQuery(api.inbox.queries.listThreads, () =>
 	teamOn.value ? { filter: 'open' as const, sort: 'newest' as const, limit: 30 } : 'skip'
 );
 
@@ -116,6 +127,19 @@ const isLoading = computed(() => {
 	for (const r of threadResults.values()) if (r.isLoading.value && !r.data.value) return true;
 	return false;
 });
+
+// The first failed read among the list's sources. With nothing to show it
+// stands in for the empty state: a failed read is not an empty inbox (#721).
+const loadError = computed(() => {
+	if (inboxesError.value) return inboxesError.value;
+	for (const r of threadResults.values()) if (r.error.value) return r.error.value;
+	return teamError.value;
+});
+function retryLoad() {
+	if (inboxesError.value) refetchInboxes();
+	for (const r of threadResults.values()) if (r.error.value) r.refetch();
+	if (teamError.value) refetchTeam();
+}
 
 function inboxOf(id: string) {
 	return id === 'team' ? null : (byId.value.get(id as Id<'mailboxes'>) ?? null);
@@ -227,6 +251,11 @@ const SHOW_OPTIONS = [
 		<div v-if="isLoading && rows.length === 0" class="mt-4 space-y-2">
 			<UiSkeleton v-for="i in 6" :key="i" class="h-14 w-full rounded-lg" />
 		</div>
+		<UiQueryBoundary
+			v-else-if="loadError && rows.length === 0"
+			:error="loadError"
+			@retry="retryLoad"
+		/>
 		<div v-else-if="rows.length === 0" class="mt-10 text-center text-sm text-text-secondary">
 			{{ t('dashboard.inboxes.empty') }}
 		</div>

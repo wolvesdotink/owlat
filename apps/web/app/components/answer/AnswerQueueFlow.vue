@@ -91,6 +91,13 @@ const { chips, showChips, activeChipLabel } = useAnswerQueueChips(session);
 			<UiSkeleton class="h-40 w-full rounded-2xl" />
 		</div>
 
+		<!-- Nothing to show because a read failed is not "all clear" (#721). -->
+		<UiQueryBoundary
+			v-else-if="queue.error.value && !flow.active.value && source.length === 0"
+			:error="queue.error.value"
+			@retry="queue.refetch"
+		/>
+
 		<!-- Nothing waiting is good news: the "all clear" tone, not "nothing yet". -->
 		<UiEmptyState
 			v-else-if="!flow.active.value && source.length === 0"

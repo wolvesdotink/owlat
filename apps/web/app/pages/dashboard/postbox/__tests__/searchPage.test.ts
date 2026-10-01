@@ -41,6 +41,8 @@ const isWalking = ref(false);
 const searchOlder = vi.fn(() => {
 	isWalking.value = true;
 });
+const searchError = ref<Error | null>(null);
+const refetchSearch = vi.fn();
 
 beforeAll(() => {
 	Object.assign(globalThis, {
@@ -67,6 +69,8 @@ beforeAll(() => {
 			loadMore: vi.fn(),
 			isWalking,
 			searchOlder,
+			error: searchError,
+			refetch: refetchSearch,
 		}),
 		// Settings row for the admin notice; the backfill status is not needed
 		// for the "disabled" state, so every other query resolves empty.
@@ -105,6 +109,8 @@ beforeEach(() => {
 	isWalking.value = false;
 	openPalette.mockClear();
 	searchOlder.mockClear();
+	searchError.value = null;
+	refetchSearch.mockClear();
 });
 
 const passthrough = (name: string) =>
@@ -204,5 +210,16 @@ describe('mail search page', () => {
 		expect(searchOlder).toHaveBeenCalledTimes(1);
 		expect(page.get('[data-testid="search-older"]').text()).toContain('Searching older mail…');
 		expect(page.get('[data-testid="search-older"]').find('button').exists()).toBe(false);
+	});
+
+	it('shows a failed search with Try again, not "no results" (#721)', async () => {
+		searchError.value = new Error('[CONVEX Q(mail/mailbox/search:search)] Server Error');
+		const page = mountPage();
+
+		expect(page.find('postbox-empty-state-stub').exists()).toBe(false);
+		expect(page.text()).toContain('Failed to load');
+		const retry = page.findAll('button').find((button) => button.text() === 'Try again');
+		await retry!.trigger('click');
+		expect(refetchSearch).toHaveBeenCalledTimes(1);
 	});
 });
