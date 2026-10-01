@@ -9,8 +9,9 @@
 # `<[^>]+>` retried from every `<` does not.
 #
 # The generator prints `path:<spelling>` for every hand-rolled tag strip under
-# apps/api/convex, packages/shared/src and packages/mail-message/src, outside
-# the helper itself, tests and generated code:
+# apps/api/convex, packages/shared/src, packages/mail-message/src and
+# packages/email-renderer/src, outside the helper itself, tests and generated
+# code:
 #   .replace(/<[^>]+>/g …    → htmlToPlainText(html)
 #   .replace(/<[^>]*>/g …    → htmlToPlainText(html)
 #
@@ -26,7 +27,7 @@ set -uo pipefail
 self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 cd "$(dirname "$0")/.."
 
-SCOPES=(apps/api/convex packages/shared/src packages/mail-message/src)
+SCOPES=(apps/api/convex packages/shared/src packages/mail-message/src packages/email-renderer/src)
 HELPER=packages/mail-message/src/text/htmlToPlainText.ts
 
 generate() {
