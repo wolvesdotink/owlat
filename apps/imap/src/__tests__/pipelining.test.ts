@@ -17,13 +17,16 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getFunctionName, type AnyFunctionReference } from 'convex/server';
+import { getFunctionName } from 'convex/server';
 import { EventEmitter } from 'events';
 import type { Socket } from 'net';
 import { ImapConnection } from '../connection.js';
 import type { ImapConfig } from '../config.js';
 import type { ConvexClient } from '../convex.js';
 import { AuthRateLimiter } from '../rateLimit.js';
+
+// convex/server declares this type but does not export it.
+type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
 
 vi.mock('../logger.js', () => ({
 	logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -134,7 +137,7 @@ function makeBackend() {
 		unseenCount: 0,
 	});
 	const inWindow = (m: Message, args: Record<string, unknown>): boolean =>
-		m.uid >= (args.uidLow as number) && m.uid <= (args.uidHigh as number);
+		m.uid >= (args['uidLow'] as number) && m.uid <= (args['uidHigh'] as number);
 	const envelope = (m: Message) => ({
 		_id: `m${m.uid}`,
 		uid: m.uid,
@@ -168,25 +171,25 @@ function makeBackend() {
 				case 'mail/imap/session:listFolders':
 					return folders.map(counters);
 				case 'mail/imap/session:selectFolder':
-					return { folder: counters(byId(args.folderId)) };
+					return { folder: counters(byId(args['folderId'])) };
 				case 'mail/imap/session:peekFolderModseq':
-					return counters(byId(args.folderId));
+					return counters(byId(args['folderId']));
 				case 'mail/imap/fetch:listFolderUidsPage':
 					return {
-						uids: byId(args.folderId)
+						uids: byId(args['folderId'])
 							.messages.map((m) => m.uid)
-							.filter((uid) => uid > ((args.afterUid as number | undefined) ?? 0)),
+							.filter((uid) => uid > ((args['afterUid'] as number | undefined) ?? 0)),
 						nextUid: null,
 					};
 				case 'mail/imap/fetch:fetchEnvelopes':
 					return {
-						rows: byId(args.folderId)
+						rows: byId(args['folderId'])
 							.messages.filter((m) => inWindow(m, args))
 							.map(envelope),
 						nextUid: null,
 					};
 				case 'mail/imap/fetch:resolveMessageIdsByUid': {
-					const folder = byId(args.folderId);
+					const folder = byId(args['folderId']);
 					return {
 						rows: folder.messages
 							.filter((m) => inWindow(m, args))
@@ -204,13 +207,13 @@ function makeBackend() {
 		answer(() => {
 			switch (getFunctionName(ref)) {
 				case 'mail/imap/flags:storeFlags': {
-					const ids = args.messageIds as string[];
+					const ids = args['messageIds'] as string[];
 					const updated = [];
 					for (const folder of folders) {
 						for (const m of folder.messages) {
 							if (!ids.includes(messageId(folder, m.uid))) continue;
-							if ((args.flags as string[]).includes('\\Deleted'))
-								m.deleted = args.mode !== 'remove';
+							if ((args['flags'] as string[]).includes('\\Deleted'))
+								m.deleted = args['mode'] !== 'remove';
 							folder.modseq += 1;
 							m.modseq = folder.modseq;
 							updated.push({
@@ -224,7 +227,7 @@ function makeBackend() {
 					return { updated, unchanged: [] };
 				}
 				case 'mail/imap/move:expungeFolder': {
-					const folder = byId(args.folderId);
+					const folder = byId(args['folderId']);
 					const sequenceNumbers: number[] = [];
 					for (const [i, m] of folder.messages.entries()) {
 						if (m.deleted) sequenceNumbers.push(i + 1);
@@ -347,7 +350,7 @@ describe('pipelined commands run in order (RFC 3501 §5.5)', () => {
 		const [inbox, archive] = folders;
 		expect(inbox!.messages.map((m) => m.uid)).toEqual([1, 2]);
 		expect(archive!.messages).toEqual([]);
-		expect(calls('mail/imap/move:expungeFolder').map((a) => a.folderId)).toEqual(['f-archive']);
+		expect(calls('mail/imap/move:expungeFolder').map((a) => a['folderId'])).toEqual(['f-archive']);
 		expect(socket.lines().slice(-4)).toEqual([
 			'* 3 EXPUNGE',
 			'* 2 EXPUNGE',
@@ -485,7 +488,7 @@ describe('IDLE accepts only DONE (RFC 2177)', () => {
 		await vi.advanceTimersByTimeAsync(5_000);
 		const peeks = calls('mail/imap/session:peekFolderModseq');
 		expect(peeks.length).toBeGreaterThan(0);
-		expect(peeks.every((a) => a.folderId === 'f-inbox')).toBe(true);
+		expect(peeks.every((a) => a['folderId'] === 'f-inbox')).toBe(true);
 
 		// DONE ends it, and the connection is still on INBOX.
 		await sendSegment(socket, 'DONE');
