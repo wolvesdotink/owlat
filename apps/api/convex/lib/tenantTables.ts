@@ -48,6 +48,8 @@ export const TENANT_TABLES = [
 	// Per-contact erasure progress; references the contact rows below.
 	'contactErasureJobs',
 	'contacts',
+	// Property-deletion progress; references the property rows below.
+	'contactPropertyDeletionJobs',
 	'contactProperties',
 
 	// ── Automations (children first) ──

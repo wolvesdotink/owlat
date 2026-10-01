@@ -7359,6 +7359,12 @@
 						"question": "Are you sure you want to delete the property {name}?",
 						"title": "Delete property"
 					},
+					"deletion": {
+						"deleting": "Deleting",
+						"failed": "Deletion stopped after repeated errors",
+						"progress": "{count} value removed so far | {count} values removed so far",
+						"retry": "Retry deletion"
+					},
 					"editModal": {
 						"immutable": "Key and type cannot be changed after creation.",
 						"save": "Save changes",
@@ -7398,6 +7404,7 @@
 					"toasts": {
 						"created": "Property \"{label}\" created",
 						"deleted": "Property \"{label}\" deleted",
+						"deletionStarted": "Deleting \"{label}\" and its values in the background",
 						"updated": "Property updated"
 					},
 					"types": {

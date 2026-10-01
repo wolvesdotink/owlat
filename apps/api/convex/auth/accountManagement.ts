@@ -33,8 +33,9 @@ export const exportContactsForOrganization = authedQuery({
 			.withIndex('by_deleted_at_and_created_at', (q) => q.eq('deletedAt', undefined))
 			.collect(); // bounded: csv-export
 
-		// Get all contact properties
-		const properties = await ctx.db.query('contactProperties').collect(); // bounded: csv-export
+		// Get all contact properties, minus any being deleted (#918)
+		const properties = (await ctx.db.query('contactProperties').collect()) // bounded: csv-export
+			.filter((property) => property.deletionRequestedAt === undefined);
 
 		// Get all property values for all contacts
 		const contactIds = contacts.map((c) => c._id);
