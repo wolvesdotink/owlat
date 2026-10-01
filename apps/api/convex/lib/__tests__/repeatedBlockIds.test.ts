@@ -130,17 +130,17 @@ describe('repairRepeatedBlockIds', () => {
 
 		const renewed = blockIds([roots[1]!])[1]!;
 		expect(renewed).not.toBe('t1');
-		expect(overlays.de!.blocks).toEqual({
+		expect(overlays['de']!.blocks).toEqual({
 			t1: { html: '<p>Hallo</p>' },
 			t2: { html: '<p>Zwei</p>' },
 			[renewed]: { html: '<p>Hallo</p>' },
 		});
-		expect(overlays.fr!.blocks).toEqual({
+		expect(overlays['fr']!.blocks).toEqual({
 			t1: { html: '<p>Bonjour</p>' },
 			[renewed]: { html: '<p>Bonjour</p>' },
 		});
 		// A copy, not a shared object: editing one entry leaves the other.
-		expect(overlays.de!.blocks[renewed]).not.toBe(overlays.de!.blocks['t1']);
+		expect(overlays['de']!.blocks[renewed]).not.toBe(overlays['de']!.blocks['t1']);
 	});
 
 	it('never hands out an id already used by a Block, a section or an overlay key', () => {
@@ -231,7 +231,7 @@ describe('repaired rows render correctly', () => {
 		};
 		const germanOf = (r: typeof row): string => {
 			const rendered = rerenderRow(r, 'personalization', undefined).htmlTranslations;
-			return (JSON.parse(rendered!) as Record<string, { htmlContent: string }>).de!.htmlContent;
+			return (JSON.parse(rendered!) as Record<string, { htmlContent: string }>)['de']!.htmlContent;
 		};
 		const count = (html: string, needle: string) => html.split(needle).length - 1;
 		expect(count(germanOf(row), 'Hallo Welt')).toBe(2);
@@ -249,7 +249,7 @@ describe('repaired rows render correctly', () => {
 			{
 				language: 'de',
 				blocks: JSON.stringify({
-					...overlays.de!.blocks,
+					...overlays['de']!.blocks,
 					[copyChildId]: { html: '<p>Servus</p>' },
 				}),
 			},
