@@ -4052,9 +4052,12 @@ until its `completion` resolves. One interface covers both shapes:
 Modules never touch the socket directly, never reach for a connection
 field via `this` (there is no `this`), and never know the rate limiter
 is shared with the next connection — all I/O and shared deps flow
-through `deps`. The verb-keyed dispatch table makes missing a
-registration a compile error. Replaces the 1106-LOC `ImapConnection`
-class with a per-verb module folder structure.
+through `deps`. The verb-keyed registry is built from the walker's
+`MODULES` list at load time, so a missing registration is not a compile
+error: `commands/__tests__/walker.test.ts` fails instead, for any verb in
+`IMAP_VERBS` (the tuple `ImapVerb` is derived from) without a module.
+Replaces the 1106-LOC `ImapConnection` class with a per-verb module
+folder structure.
 _Avoid_: IMAP handler (the current file's term for `handleX` methods —
 overloaded with the HTTP/Convex "handler" vocabulary), Command alone
 (overloaded), Verb module (the verb is the dispatch key, not the noun),
@@ -5691,8 +5694,8 @@ scope)` is the only summarizer of the window; both the public auth-
   absorbs its `{N+}` body). **Connection state** (`auth`, `selected`) is
   immutable across modules — LOGIN / SELECT / EXAMINE / UNSELECT / CLOSE
   return the next state via their session, and the pump threads it
-  forward. The walker's typed `Record<ImapVerb, ImapCommandModule>` makes
-  missing a verb a compile error; CAPABILITY-line atoms are aggregated
+  forward. A walker test checks that every `ImapVerb` has a registered
+  module; CAPABILITY-line atoms are aggregated
   from per-module `capabilities?` declarations so adding `MOVE` or
   `UIDPLUS` support is one module edit. The IMAP modules sit _upstream_
   of the Postbox / Inbox lifecycle modules — APPEND lands a message into

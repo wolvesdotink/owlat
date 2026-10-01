@@ -130,6 +130,15 @@ for (const m of MODULES) {
 }
 
 /**
+ * Whether `verb` has a registered module. The registry is built at runtime,
+ * so the compiler cannot see a verb that lost its `MODULES` entry;
+ * `__tests__/walker.test.ts` checks every `IMAP_VERBS` entry through this.
+ */
+export function hasModule(verb: ImapVerb): boolean {
+	return REGISTRY[verb] !== undefined;
+}
+
+/**
  * Atoms every IMAP4rev1 server announces regardless of which modules
  * are registered. Module-contributed atoms (IDLE, LITERAL+, MOVE, …)
  * fold in below. `AUTH=PLAIN` / `LOGINDISABLED` are *not* listed here —

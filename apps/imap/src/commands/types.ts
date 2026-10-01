@@ -152,32 +152,40 @@ export interface CommandSession {
 	cancel(): void;
 }
 
-/** The closed verb namespace dispatched by the walker. */
-export type ImapVerb =
-	| 'CAPABILITY'
-	| 'NOOP'
-	| 'LOGOUT'
-	| 'ID'
-	| 'NAMESPACE'
-	| 'ENABLE'
-	| 'LOGIN'
-	| 'AUTHENTICATE'
-	| 'LIST'
-	| 'LSUB'
-	| 'SELECT'
-	| 'EXAMINE'
-	| 'UNSELECT'
-	| 'CLOSE'
-	| 'STATUS'
-	| 'FETCH'
-	| 'UID'
-	| 'IDLE'
-	| 'CHECK'
-	| 'STORE'
-	| 'COPY'
-	| 'MOVE'
-	| 'EXPUNGE'
-	| 'APPEND';
+/**
+ * The closed verb namespace dispatched by the walker. `ImapVerb` is derived
+ * from this list, so a verb cannot be added to the type without being added
+ * here, and `commands/__tests__/walker.test.ts` checks that every entry has
+ * a registered module.
+ */
+export const IMAP_VERBS = [
+	'CAPABILITY',
+	'NOOP',
+	'LOGOUT',
+	'ID',
+	'NAMESPACE',
+	'ENABLE',
+	'LOGIN',
+	'AUTHENTICATE',
+	'LIST',
+	'LSUB',
+	'SELECT',
+	'EXAMINE',
+	'UNSELECT',
+	'CLOSE',
+	'STATUS',
+	'FETCH',
+	'UID',
+	'IDLE',
+	'CHECK',
+	'STORE',
+	'COPY',
+	'MOVE',
+	'EXPUNGE',
+	'APPEND',
+] as const;
+
+export type ImapVerb = (typeof IMAP_VERBS)[number];
 
 /**
  * The connection state a command needs before it may run, from weakest

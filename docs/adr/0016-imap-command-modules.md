@@ -393,9 +393,15 @@ After:
   Convex client mock pattern already used in `apps/api/convex`
   integration tests, call `start`, assert on the `send` callback
   history and the resolved `completion.state`. No socket required.
-- `commands/__tests__/walker.test.ts`. Type-level test that the
-  dispatch table is exhaustive over `ImapVerb`. Runtime test that
-  unknown verbs produce a BAD response without crashing.
+- `commands/__tests__/walker.test.ts`. Registry coverage over
+  `ImapVerb`: the type is derived from the `IMAP_VERBS` tuple in
+  `commands/types.ts`, and the test asserts that every entry has a
+  registered module (`hasModule` in `walker.ts`), so a verb added
+  without a module, or a module dropped from `MODULES`, fails it.
+  Runtime test that unknown verbs produce a BAD response without
+  crashing. (Planned as a type-level test; the registry is built at
+  load time from the `MODULES` list, which the compiler cannot check
+  for coverage, so the check runs as a test over the tuple instead.)
 - `commands/idle/__tests__/idle.test.ts`. Fake timers (Vitest
   `vi.useFakeTimers()`). Assert that the IDLE session pushes
   `* N EXISTS` on poll, that `onClientLine('DONE')` resolves
