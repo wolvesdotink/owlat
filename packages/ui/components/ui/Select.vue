@@ -1,4 +1,5 @@
 <script setup lang="ts" generic="T extends string | number">
+import { useEscapeLayer } from '../../composables/useEscapeLayer';
 import { useUiI18n } from '../../composables/useUiI18n';
 
 type SelectSize = 'sm' | 'md';
@@ -256,16 +257,8 @@ const handleTriggerKeyup = (event: KeyboardEvent) => {
 	if (event.key === ' ') event.preventDefault();
 };
 
-/**
- * Escape is taken in the window's capture phase: a surrounding modal listens on
- * the document in capture, and closing the list must not close the dialog too.
- */
-const handleEscape = (event: KeyboardEvent) => {
-	if (event.key !== 'Escape' || !isOpen.value) return;
-	event.preventDefault();
-	event.stopPropagation();
-	close(true);
-};
+// Escape closes the list only, not a surrounding dialog or the page behind it.
+useEscapeLayer(isOpen, () => close(true));
 
 const handleClickOutside = (event: MouseEvent) => {
 	const target = event.target as HTMLElement;
@@ -281,13 +274,11 @@ const handleClickOutside = (event: MouseEvent) => {
 
 const removeListeners = () => {
 	document.removeEventListener('click', handleClickOutside);
-	window.removeEventListener('keydown', handleEscape, true);
 };
 
 watch(isOpen, (isNowOpen) => {
 	if (isNowOpen) {
 		document.addEventListener('click', handleClickOutside);
-		window.addEventListener('keydown', handleEscape, true);
 	} else {
 		removeListeners();
 	}
