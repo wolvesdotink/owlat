@@ -159,8 +159,13 @@ export const saveConfig = authedAction({
 		// environment is not re-entered here and must not make the save fail.
 		const decisionKind = args.decisionProviderKind;
 		const decisionBaseUrl = args.decisionBaseUrl?.trim() || undefined;
-		if (decisionKind !== undefined && args.decisionApiKey) {
-			decisionProviderFor(decisionKind).validateCredentials({
+		const decisionAdapter =
+			decisionKind !== undefined ? decisionProviderFor(decisionKind) : undefined;
+		if (decisionAdapter?.isLocal) {
+			// Keyless, so the origin is the one thing there is to check.
+			decisionAdapter.validateCredentials({ baseUrl: decisionBaseUrl });
+		} else if (decisionAdapter && args.decisionApiKey) {
+			decisionAdapter.validateCredentials({
 				apiKey: args.decisionApiKey,
 				baseUrl: decisionBaseUrl,
 			});
@@ -183,6 +188,7 @@ export const saveConfig = authedAction({
 			isDecisionFallbackEnabled: args.isDecisionFallbackEnabled,
 			isDecisionKeyless:
 				decisionKind !== undefined ? !decisionKindNeedsKey(decisionKind) : undefined,
+			isDecisionLocal: decisionAdapter?.isLocal,
 			hasDecisionEnvKey:
 				decisionKind !== undefined ? decisionEnvApiKey(decisionKind) !== undefined : undefined,
 			decisionEnvelope: args.decisionApiKey ? envelopeFor(args.decisionApiKey) : undefined,

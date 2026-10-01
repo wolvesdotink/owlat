@@ -851,6 +851,46 @@ services:
       - dev
     restart: 'no'
 
+  # ── Local decision engine (optional — GLiNER on your own hardware) ──
+  # Answers the decision plane's yes/no, category and score questions with a
+  # GLiNER2.5 Decide checkpoint (default fastino/GLiNER2.5-multi-Decide), so no
+  # message text leaves the server for these judgements. Pick "Local GLiNER
+  # model" under AI provider → Decision provider, or set the Convex function env
+  # var DECISION_PROVIDER=local. CPU only; the checkpoint (~1.1 GB) downloads
+  # into the volume on first start and is read from disk afterwards.
+  #
+  # Its own profile rather than `ai`: an install that never chooses it should
+  # not pull a PyTorch image. Add `decision-local` to COMPOSE_PROFILES (the
+  # setup wizard does this when you choose it). No published port — the Convex
+  # backend reaches it as decision-local:8080 on the internal network.
+  decision-local:
+    logging: *default-logging
+    image: ghcr.io/wolvesdotink/decision-local:${OWLAT_VERSION:-dev}
+    build:
+      context: apps/decision-local
+      dockerfile: Dockerfile
+    environment:
+      # Another Decide checkpoint (fastino/GLiNER2.5-Decide is English-only and
+      # scores highest there; fastino/GLiNER2.5-Decide-1B is the largest). Pick
+      # the same id on the AI provider page after changing it.
+      DECISION_LOCAL_MODEL: ${DECISION_LOCAL_MODEL:-}
+      DECISION_LOCAL_MODEL_REVISION: ${DECISION_LOCAL_MODEL_REVISION:-}
+      DECISION_LOCAL_THREADS: ${DECISION_LOCAL_THREADS:-}
+    volumes:
+      - decision-local-models:/models
+    read_only: true
+    tmpfs:
+      - /tmp
+    # The default checkpoint needs ~2 GB resident; the 1B one about twice that.
+    mem_limit: ${DECISION_LOCAL_MEM_LIMIT:-4g}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - decision-local
+    restart: unless-stopped
+
   # ── Mail TLS bootstrap (self-signed default cert for IMAPS + inbound SMTP) ──
   # The MTA's inbound listener (port 25) reads the same pair to offer STARTTLS;
   # without it the default-on "Require TLS for incoming mail" floor rejects every
@@ -1070,3 +1110,5 @@ volumes:
   caddy-data:
   caddy-config:
   ollama-data:
+  # GLiNER checkpoints for the local decision engine.
+  decision-local-models:

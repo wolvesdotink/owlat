@@ -30,18 +30,23 @@ import type { DecisionEndpointProvenance } from '../decisionProviders/types';
 import type { LanguageEndpointProvenance } from '../llmProviders/types';
 import {
 	DECISION_MODEL_PRICE_PREFIX,
+	LOCAL_DECISION_MODEL_PRICE_PREFIX,
 	estimateCost,
 	estimateKnownCostMicrousd,
 	type CostEstimate,
 } from '../llm/pricing';
 
 /**
- * True when a recorded model id is priced by the decision plane's rows. Derived
- * from the same prefix the price row and the admission aliases are written from,
- * so a new pinned version is priced, labelled and classified by one change.
+ * True when a recorded model id is priced by the decision plane's rows — the
+ * hosted `jev-` family or the local engine's GLiNER checkpoints. Derived from
+ * the same prefixes the price rows are written from, so a new version is
+ * priced, labelled and classified by one change.
  */
 export function isDecisionPlaneModel(modelUsed: string | undefined): boolean {
-	return (modelUsed ?? '').toLowerCase().startsWith(DECISION_MODEL_PRICE_PREFIX);
+	const id = (modelUsed ?? '').toLowerCase();
+	return (
+		id.startsWith(DECISION_MODEL_PRICE_PREFIX) || id.includes(LOCAL_DECISION_MODEL_PRICE_PREFIX)
+	);
 }
 
 /**
@@ -61,7 +66,7 @@ export function estimateDecisionCost(
  * Hard-budget admission for a decision, in integer micro-USD, or `undefined` for
  * "not admissible" — the caller must then refuse rather than charge a guess.
  *
- * The three provenances are three different answers:
+ * The four provenances are four different answers:
  *
  *   • `typesafe-native` — the vendor's own endpoint. Priced from the trusted
  *     catalog, which names the pinned version and both aliases.
@@ -71,6 +76,8 @@ export function estimateDecisionCost(
  *     plane; pass it as `languageProvenance`. Omitting it is not a bug we can
  *     paper over (we would be guessing which vendor was billed), so it fails
  *     closed like anything else unnamed.
+ *   • `local` — an engine on the operator's own hardware. There is no bill to
+ *     guess at, so it is admitted at zero whatever model it loaded.
  *   • `custom` — an operator-pointed base URL or proxy. List price says nothing
  *     about what a third party charges, so admission says nothing either.
  *
@@ -91,6 +98,8 @@ export function estimateKnownDecisionCostMicrousd(
 			return languageProvenance === undefined
 				? undefined
 				: estimateKnownCostMicrousd(languageProvenance, modelUsed, usage);
+		case 'local':
+			return 0;
 		case 'custom':
 			return undefined;
 	}

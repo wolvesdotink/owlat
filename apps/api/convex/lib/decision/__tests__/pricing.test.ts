@@ -18,6 +18,7 @@ import {
 	isDecisionPlaneModel,
 } from '../pricing';
 import { JEV_MODEL_ALIASES, PINNED_DECISION_MODEL } from '../../decisionProviders/typesafe';
+import { DEFAULT_LOCAL_DECISION_MODEL, LOCAL_DECISION_MODELS } from '../../decisionProviders/local';
 
 const oneMillionEach = {
 	promptTokens: 1_000_000,
@@ -73,6 +74,18 @@ describe('decision-plane list price', () => {
 		expect(providerLabelForModel(PINNED_DECISION_MODEL)).toBe('TypeSafe');
 	});
 
+	it('prices the local engine at an explicit zero and files it under Local', () => {
+		for (const id of LOCAL_DECISION_MODELS) {
+			expect(estimateDecisionCost(id, oneMillionEach), id).toEqual({
+				costUsd: 0,
+				estimated: false,
+			});
+			// Org-prefixed like an OpenRouter id, but it never left the server.
+			expect(providerLabelForModel(id), id).toBe('Local');
+			expect(isDecisionPlaneModel(id), id).toBe(true);
+		}
+	});
+
 	it('classifies plane membership from the id, case-insensitively', () => {
 		expect(isDecisionPlaneModel(PINNED_DECISION_MODEL)).toBe(true);
 		expect(isDecisionPlaneModel('JEV-latest')).toBe(true);
@@ -117,6 +130,15 @@ describe('decision-plane admission', () => {
 		expect(
 			estimateKnownDecisionCostMicrousd('typesafe-native', undefined, oneMillionEach)
 		).toBeUndefined();
+	});
+
+	it('admits a local engine at zero, whatever checkpoint it loaded', () => {
+		expect(
+			estimateKnownDecisionCostMicrousd('local', DEFAULT_LOCAL_DECISION_MODEL, oneMillionEach)
+		).toBe(0);
+		expect(
+			estimateKnownDecisionCostMicrousd('local', 'someone/custom-finetune', oneMillionEach)
+		).toBe(0);
 	});
 
 	it('refuses an operator-pointed endpoint: list price says nothing about a proxy', () => {

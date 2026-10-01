@@ -315,6 +315,8 @@ export const _persistConfig = internalMutation({
 		isDecisionKeyless: v.optional(v.boolean()),
 		/** The deployment supplies the key through its environment ⇒ none required here. */
 		hasDecisionEnvKey: v.optional(v.boolean()),
+		/** The chosen adapter runs on this server ⇒ its origin may be an internal http host. */
+		isDecisionLocal: v.optional(v.boolean()),
 		decisionEnvelope: v.optional(envelopeValidator),
 	},
 	handler: async (ctx, args): Promise<Id<'aiProviderConfig'>> => {
@@ -335,11 +337,15 @@ export const _persistConfig = internalMutation({
 			}
 		}
 
-		// Same gate for the DECISION base URL, and unconditionally `requirePublic`:
-		// this plane has no local keyless endpoint, so every configured origin is one
-		// a decrypted key will be sent to.
+		// Same gate for the DECISION base URL. A hosted adapter's origin is one a
+		// decrypted key will be sent to, so it must be public https; the local
+		// engine carries no key and lives on the internal network by design. Both
+		// flags must agree before the gate relaxes, so a save can never store a
+		// key next to a private origin.
 		if (args.decisionBaseUrl !== undefined) {
-			const check = validateOutboundUrl(args.decisionBaseUrl, { requirePublic: true });
+			const check = validateOutboundUrl(args.decisionBaseUrl, {
+				requirePublic: !(args.isDecisionLocal === true && args.isDecisionKeyless === true),
+			});
 			if (!check.ok) {
 				throwInvalidInput(`Decision provider base URL ${check.error}.`);
 			}
