@@ -11598,6 +11598,7 @@
 			"continueToSignIn": "Continue to sign in",
 			"emailProvider": "Email provider",
 			"errorUnknown": "Setup failed for an unknown reason.",
+			"errorWriteFailed": "Setup could not write {file}: {cause}. Your admin account and runtime settings are already in place, so nothing is lost. Fix the file on the server, then launch again. Retrying is safe.",
 			"eyebrow": "Owlat setup",
 			"finishing": "Finishing…",
 			"fromIdentity": "From identity",

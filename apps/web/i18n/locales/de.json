@@ -11598,6 +11598,7 @@
 			"continueToSignIn": "Weiter zur Anmeldung",
 			"emailProvider": "E-Mail-Anbieter",
 			"errorUnknown": "Die Einrichtung ist aus unbekanntem Grund fehlgeschlagen.",
+			"errorWriteFailed": "Die Einrichtung konnte {file} nicht schreiben: {cause}. Dein Administratorkonto und die Laufzeiteinstellungen sind bereits angelegt, es geht also nichts verloren. Behebe das Problem mit der Datei auf dem Server und starte Owlat dann erneut. Ein erneuter Versuch ist sicher.",
 			"eyebrow": "Owlat-Einrichtung",
 			"finishing": "Wird abgeschlossen…",
 			"fromIdentity": "Absenderidentität",
