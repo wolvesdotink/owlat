@@ -21,6 +21,10 @@ import { enableFeatures } from '../../__tests__/factories';
 import { api, internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { expectScheduledFailure } from '../../__tests__/helpers/scheduledFailures';
+import {
+	abortWorkspaceDeletion,
+	openWorkspaceDeletionFence,
+} from '../../__tests__/helpers/workspaceDeletionFence';
 import { isSealedImportCredential, sealImportCredential } from '../credentialSeal';
 import { MAX_PAGE_RECOVERIES, UNLEASED_RUN_GRACE_MS } from '../recovery';
 
@@ -395,6 +399,29 @@ describe('integration import page continuation (#999)', () => {
 		expect(run.errors.join(' ')).toMatch(/Could not open the stored provider credential/);
 		expect(run.errors.join(' ')).not.toContain(API_KEY);
 		expect(await sweep(t)).toEqual({ live: 0, resumed: 0, failed: 0 });
+	});
+
+	it('stands down while a workspace deletion runs, then recovers the run once it ends', async () => {
+		global.fetch = audienceFetch();
+		const { t, importId } = await newRun();
+		// The deletion's quiesce phase cancels the queued hop and opens the fence;
+		// the sweep reaches `integrationImports` only near the end of its walk.
+		const jobId = await t.run(async (ctx) => {
+			await ctx.scheduler.cancel((await ctx.db.get(importId))!.pageJobId!);
+			return await openWorkspaceDeletionFence(ctx);
+		});
+		const before = await readRun(t, importId);
+
+		expect(await sweep(t)).toEqual({ live: 0, resumed: 0, failed: 0 });
+		expect(await readRun(t, importId)).toEqual(before);
+		expect(await pendingHops(t)).toHaveLength(0);
+
+		// An aborted deletion lifts the fence and leaves the run in place: the
+		// next sweep picks it up as usual.
+		await t.run(async (ctx) => abortWorkspaceDeletion(ctx, jobId));
+		expect(await sweep(t)).toEqual({ live: 0, resumed: 1, failed: 0 });
+		await drain(t);
+		expectExactTotals(await readRun(t, importId));
 	});
 
 	it('a failing hop cannot append to or reopen a cancelled run', async () => {

@@ -20,7 +20,7 @@
 
 import type { MutationCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
-import { internalMutation } from '../lib/writeFence';
+import { internalMutation, readActiveWorkspaceDeletion } from '../lib/writeFence';
 import { logWarn } from '../lib/runtimeLog';
 import { finishImport, schedulePage } from './pageCommit';
 
@@ -99,17 +99,26 @@ async function recoverRun(
 /**
  * The recovery sweep, run by the `recover stalled integration imports` cron
  * (`contacts/crons.ts`).
+ *
+ * It stands down while a workspace deletion runs. The deletion cancels every
+ * queued hop and sweeps `integrationImports` late in its walk, so each running
+ * row looks lost until then, and the fence refuses the write that would
+ * re-issue or end it: the cron would fail every ten minutes for the length of
+ * the walk. The deletion removes the row anyway; an aborted one leaves it to
+ * the next sweep after the fence lifts.
  */
 export const recoverStalledImports = internalMutation({
 	args: {},
 	handler: async (ctx): Promise<Record<Recovery, number>> => {
+		const counts: Record<Recovery, number> = { live: 0, resumed: 0, failed: 0 };
+		if (await readActiveWorkspaceDeletion(ctx.db)) return counts;
+
 		const now = Date.now();
 		const running = await ctx.db
 			.query('integrationImports')
 			.withIndex('by_status', (q) => q.eq('status', 'running'))
 			.take(SWEEP_LIMIT);
 
-		const counts: Record<Recovery, number> = { live: 0, resumed: 0, failed: 0 };
 		for (const record of running) counts[await recoverRun(ctx, record, now)]++;
 		return counts;
 	},
