@@ -7,10 +7,12 @@
  * first sight of a folder (or a UIDVALIDITY change) we record the current
  * high-water UID and skip historical backfill.
  *
- * Reconnect uses exponential backoff with jitter. An authentication failure is
- * terminal: we mark the account `auth_error` and stop until the user re-enters
- * credentials (the reconcile loop then restarts us). So is the backend refusing
- * to mint credentials because the OAuth grant was revoked — there it has already
+ * Reconnect uses exponential backoff with jitter. A login the provider keeps
+ * rejecting for AUTH_REJECTION_GRACE_MS is terminal: we mark the account
+ * `auth_error` and stop until the user re-enters credentials (the reconcile
+ * loop then restarts us). A single rejection is not — providers refuse logins
+ * for passing reasons too (loginFailure.ts). So is the backend refusing to mint
+ * credentials because the OAuth grant was revoked — there it has already
  * written `auth_error` and the reconnect instruction, so we stop and leave the
  * message alone.
  */
@@ -28,6 +30,7 @@ import type { MailSyncConfig } from './config.js';
 import { isVirtualView, mapFolderRole, mirroredFolderPath, type FolderRole } from './folders.js';
 import { imapAuth } from './auth.js';
 import { imapTlsOptions } from './tls.js';
+import { AUTH_REJECTION_GRACE_MS, describeConnectError, isAuthError } from './loginFailure.js';
 import {
 	commitIngest,
 	discardStagedIngest,
@@ -113,39 +116,15 @@ const SOURCE_FETCH_CHUNK = 50;
  */
 const BACKFILL_INBOX_POLL_MIN_MS = 10_000;
 
-/**
- * Terminal "the credentials are wrong" — as opposed to a transient drop worth
- * backing off and retrying.
- *
- * ImapFlow sets `authenticationFailed` on the error it throws from
- * `connect()`, but the message it carries is whatever the server said, and the
- * XOAUTH2 path says different things to the password path: Gmail answers a dead
- * or unauthorized token with `[AUTHENTICATIONFAILED] Invalid credentials
- * (Failure)` and a revoked grant with `invalid_grant`. Matching those too keeps
- * an expired Google authorization from looping on exponential backoff forever
- * instead of surfacing the "Reconnect with Google" prompt the user must act on.
- */
-export function isAuthError(err: unknown): boolean {
-	const e = err as { authenticationFailed?: boolean; responseStatus?: string } | null;
-	if (e?.authenticationFailed) return true;
-	const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
-	return (
-		msg.includes('authentication failed') ||
-		msg.includes('authenticationfailed') ||
-		msg.includes('invalid credentials') ||
-		msg.includes('login failed') ||
-		msg.includes('[alert] invalid') ||
-		// XOAUTH2: the SASL exchange failed, or the grant behind the token is gone.
-		msg.includes('invalid_grant') ||
-		msg.includes('invalid status code for xoauth2') ||
-		msg.includes('xoauth2 authentication failed')
-	);
-}
-
 export class AccountConnection {
 	private client: ImapFlow | null = null;
 	private stopped = false;
 	private backoffMs = INITIAL_BACKOFF_MS;
+	// One reconnect loop per account, ever (see connectLoop).
+	private isConnectLoopRunning = false;
+	// When the current run of back-to-back login rejections began. Reset by a
+	// login the provider accepts and by any failure that is not a rejection.
+	private authRejectedSince: number | null = null;
 	private folderTimer: ReturnType<typeof setInterval> | null = null;
 	private inboxTimer: ReturnType<typeof setInterval> | null = null;
 	// Set while the INBOX catch-up poll runs, so a slow one is never stacked.
@@ -232,13 +211,30 @@ export class AccountConnection {
 		}
 	}
 
+	/**
+	 * Connect, backing off between failures, until connected or stopped. Never
+	 * runs twice at once: a second loop would double every connect attempt and
+	 * status write, and each of its failures could start yet another — the
+	 * reconnect storm that once took Convex down with thousands of attempts a
+	 * minute.
+	 */
 	private async connectLoop(): Promise<void> {
+		if (this.isConnectLoopRunning) return;
+		this.isConnectLoopRunning = true;
+		try {
+			await this.connectUntilConnected();
+		} finally {
+			this.isConnectLoopRunning = false;
+		}
+	}
+
+	private async connectUntilConnected(): Promise<void> {
 		while (!this.stopped) {
 			try {
 				await this.connectOnce();
 				return; // connected; event-driven + timer from here
 			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err);
+				const message = describeConnectError(err);
 				// The backend refused to hand over credentials and only the user can
 				// change that: the Google grant behind them was revoked, or the member
 				// disconnected the account and the password was dropped with it. Either
@@ -256,15 +252,31 @@ export class AccountConnection {
 					return;
 				}
 				if (isAuthError(err)) {
+					const now = Date.now();
+					this.authRejectedSince ??= now;
+					if (now - this.authRejectedSince >= AUTH_REJECTION_GRACE_MS) {
+						logger.warn(
+							{ accountId: this.account.accountId, err },
+							'login still rejected — pausing until credentials are updated'
+						);
+						await this.setStatus('auth_error', message);
+						this.stopped = true;
+						return;
+					}
+					// Retried on the ordinary backoff below. The status is `error`,
+					// which keeps the account connectable and already shows the
+					// member the reconnect form should the rejection persist.
 					logger.warn(
-						{ accountId: this.account.accountId },
-						'auth error — pausing until credentials are updated'
+						{ accountId: this.account.accountId, err },
+						'login rejected; retrying before treating the credentials as wrong'
 					);
-					await this.setStatus('auth_error', message);
-					this.stopped = true;
-					return;
+				} else {
+					// Anything else breaks the streak: the grace period measures logins
+					// refused back to back, and a temporary refusal or a dropped socket
+					// in between says nothing about the credentials.
+					this.authRejectedSince = null;
+					logger.warn({ accountId: this.account.accountId, err }, 'connect failed; backing off');
 				}
-				logger.warn({ accountId: this.account.accountId, err }, 'connect failed; backing off');
 				await this.setStatus('error', message);
 				await sleep(this.backoffMs + Math.floor(Math.random() * 1000));
 				this.backoffMs = Math.min(this.backoffMs * 2, MAX_BACKOFF_MS);
@@ -309,13 +321,29 @@ export class AccountConnection {
 			logger.warn({ accountId: this.account.accountId, err }, 'imap client error');
 		});
 		client.on('close', () => {
-			if (!this.stopped) {
-				logger.info({ accountId: this.account.accountId }, 'imap connection closed; reconnecting');
-				this.scheduleReconnect();
-			}
+			// Only the live connection reconnects. A client that never finished
+			// connecting is closed by the loop that is already backing off, and
+			// letting its close start another loop is how one failure became two.
+			if (this.stopped || this.client !== client) return;
+			logger.info({ accountId: this.account.accountId }, 'imap connection closed; reconnecting');
+			this.scheduleReconnect();
 		});
 
+		try {
+			await this.openSession(client);
+		} catch (err) {
+			// ImapFlow leaves the socket open when LOGIN is refused; a provider
+			// that caps simultaneous connections counts every one left behind.
+			if (this.client === client) this.client = null;
+			client.close();
+			throw err;
+		}
+	}
+
+	/** Log in on a fresh client and bring it to IDLE on INBOX with the timers armed. */
+	private async openSession(client: ImapFlow): Promise<void> {
 		await client.connect();
+		this.authRejectedSince = null;
 		this.client = client;
 		this.backoffMs = INITIAL_BACKOFF_MS;
 		// Whatever left a folder while the connection was down was never reported
@@ -347,6 +375,10 @@ export class AccountConnection {
 		await this.setStatus('connected');
 
 		await this.pollAll();
+		// A close during setup found the reconnect loop still busy with this
+		// attempt and started nothing; failing it is what retries. Nothing below
+		// awaits, so a later close finds the loop free.
+		if (this.client !== client) throw new Error('IMAP connection closed during setup');
 		// Changes made on either side while the connection was down, then a
 		// migration's historical backfill if one is queued — in the background, so
 		// it never blocks IDLE / forward polling.

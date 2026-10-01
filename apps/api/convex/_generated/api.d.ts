@@ -15,6 +15,7 @@ import type * as migrations_0051_clear_residual_search_bodies from '../migration
 import type * as migrations_0052_reerase_legacy_account_deletions from '../migrations/0052_reerase_legacy_account_deletions.js';
 import type * as migrations_0053_project_open_commitments from '../migrations/0053_project_open_commitments.js';
 import type * as migrations_0055_repair_repeated_block_ids from '../migrations/0055_repair_repeated_block_ids.js';
+import type * as migrations_0056_retry_parked_mail_accounts from '../migrations/0056_retry_parked_mail_accounts.js';
 import type * as lib_repeatedBlockIds from '../lib/repeatedBlockIds.js';
 import type * as lib_migrationLedger from '../lib/migrationLedger.js';
 import type * as schema_migrationRuns from '../schema/migrationRuns.js';
@@ -1397,6 +1398,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0052_reerase_legacy_account_deletions': typeof migrations_0052_reerase_legacy_account_deletions;
 	'migrations/0053_project_open_commitments': typeof migrations_0053_project_open_commitments;
 	'migrations/0055_repair_repeated_block_ids': typeof migrations_0055_repair_repeated_block_ids;
+	'migrations/0056_retry_parked_mail_accounts': typeof migrations_0056_retry_parked_mail_accounts;
 	'lib/repeatedBlockIds': typeof lib_repeatedBlockIds;
 	'lib/migrationLedger': typeof lib_migrationLedger;
 	'schema/migrationRuns': typeof schema_migrationRuns;
