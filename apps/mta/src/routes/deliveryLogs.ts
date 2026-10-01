@@ -8,6 +8,7 @@ import { Hono } from 'hono';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import {
+	DeliveryLogQueryError,
 	queryDeliveryLogs,
 	getDeliveryLogStats,
 	getMessageEvents,
@@ -22,7 +23,7 @@ export function createDeliveryLogRoutes(redis: Redis, config: MtaConfig) {
 	// All delivery-log routes require the master key (constant-time compare)
 	app.use('*', masterKeyAuth(config));
 
-	// GET / — query delivery logs
+	// GET / — query delivery logs; page with `nextCursor` until it is absent
 	app.get('/', async (c) => {
 		try {
 			const result = await queryDeliveryLogs(redis, {
@@ -37,12 +38,13 @@ export function createDeliveryLogRoutes(redis: Redis, config: MtaConfig) {
 			});
 			return c.json(result);
 		} catch (err) {
+			if (err instanceof DeliveryLogQueryError) return c.json({ error: err.message }, 400);
 			logger.error({ err }, 'Failed to query delivery logs');
 			return c.json({ error: 'Failed to query delivery logs' }, 500);
 		}
 	});
 
-	// GET /stats — aggregated counts
+	// GET /stats — status counts of one day's retained entries, optionally per org
 	app.get('/stats', async (c) => {
 		const date = c.req.query('date') ?? new Date().toISOString().split('T')[0]!;
 		const orgId = c.req.query('orgId');

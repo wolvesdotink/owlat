@@ -8,6 +8,7 @@ import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 import TaskContext from '~/components/agent-tasks/TaskContext.vue';
 import type { ClarificationAnswer } from '~/utils/clarificationAnswers';
 import { useAnswerMailActions } from '~/composables/useAnswerMailActions';
+import { useLocalized } from '~/composables/useLocalized';
 import { isBuiltInTaskFlowKind } from '~/utils/taskCardRegistry';
 import { resolveReplyFocusKey } from '~/utils/taskFlowKeyboard';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
@@ -17,7 +18,6 @@ import {
 	formatReplyQueueDueHint,
 	replyQueueSection,
 	type ReplyQueueItem,
-	type ReplyQueueText,
 } from '~/utils/postboxReplyQueue';
 
 /**
@@ -43,9 +43,7 @@ const props = defineProps<{
 
 const { t, locale } = useI18n();
 
-function replyQueueText(value: ReplyQueueText): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const replyQueueText = useLocalized();
 const headline = computed(() => replyQueueText(replyQueueHeadline(props.row)));
 const dueLabel = computed(() => {
 	const due = formatReplyQueueDueHint(props.row.dueHint, locale.value);

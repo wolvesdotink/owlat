@@ -21,6 +21,7 @@ import { useModalFocus } from '@owlat/ui/composables/useModalFocus';
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { useLocalized } from '~/composables/useLocalized';
 import { extractEmailAddress } from '~/utils/emailAddress';
 import { formatDateTime } from '~/utils/formatters';
 import {
@@ -44,6 +45,7 @@ const dialogEl = ref<HTMLElement | null>(null);
 useModalFocus(dialogEl, () => props.open, close);
 
 const { t } = useI18n();
+const localized = useLocalized();
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 
 const email = computed(() => extractEmailAddress(props.fromAddress));
@@ -141,10 +143,10 @@ function close() {
 									'text-text-tertiary': authTone === 'muted',
 								}"
 							>
-								{{ authLine.key ? t(authLine.key, authLine.params ?? {}) : '' }}
+								{{ authLine.key ? localized(authLine) : '' }}
 							</span>
 							<span v-if="countLine.key" class="text-text-tertiary">
-								{{ t(countLine.key, countLine.params ?? {}) }}
+								{{ localized(countLine) }}
 							</span>
 						</p>
 					</div>

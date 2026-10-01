@@ -76,7 +76,7 @@ export function buildRfc822(
 	// text/html) is preserved here until the `buildRfc822` call sites cut over to
 	// `composeMessage`; the shared assembler carries the parameterised difference.
 	const content = assembleBody({
-		text: input.bodyText ?? stripHtml(input.bodyHtml ?? ''),
+		text: input.bodyText ?? htmlToPlainText(input.bodyHtml ?? ''),
 		html: input.bodyHtml ?? '',
 		amp: input.bodyAmp,
 		useMultipartAlt: (!!input.bodyText && !!input.bodyHtml) || !!input.bodyAmp,
@@ -111,7 +111,7 @@ export interface ComposeMessageInput {
 	bcc?: string[];
 	subject: string;
 	html?: string;
-	/** Explicit text part. When absent and `html` is present, derived via `stripHtml`. */
+	/** Explicit text part. When absent and `html` is present, derived via `htmlToPlainText`. */
 	text?: string;
 	/**
 	 * Rendered AMP4Email body. Emitted as a `text/x-amp-html` alternative ordered
@@ -344,7 +344,7 @@ function deriveEnvelope(input: ComposeMessageInput): { from: string; to: string[
  * Compose a full RFC 5322 / RFC 2045 message from the neutral
  * `ComposeMessageInput`, returning the wire bytes, the Message-ID used, and the
  * SMTP envelope. This is the nodemailer-composer replacement: it covers
- * from/replyTo/to/cc/bcc, subject, html + text (with `stripHtml` fallback), an
+ * from/replyTo/to/cc/bcc, subject, html + text (with `htmlToPlainText` fallback), an
  * AMP alternative ordered before HTML, Buffer/inline-CID attachments, arbitrary
  * injection-stripped extra headers, and an explicit-or-generated Message-ID.
  *
@@ -446,7 +446,7 @@ export function composeMessage(input: ComposeMessageInput): ComposedMessage {
 function buildContentEntity(input: ComposeMessageInput, nextBoundary: () => string): MimeEntity {
 	const attachments = input.attachments ?? [];
 	return assembleBody({
-		text: input.text ?? stripHtml(input.html ?? ''),
+		text: input.text ?? htmlToPlainText(input.html ?? ''),
 		html: input.html ?? '',
 		amp: input.amp,
 		useMultipartAlt: (!!input.text && !!input.html) || !!input.amp,
@@ -456,13 +456,4 @@ function buildContentEntity(input: ComposeMessageInput, nextBoundary: () => stri
 		legacyRelatedNesting: false,
 		singlePartContentType: input.html ? 'text/html' : 'text/plain',
 	});
-}
-
-/**
- * The single-line text fallback for an html-only message: the shared
- * {@link htmlToPlainText} in its default (collapsed) layout, so the MTA and the
- * API derive the same words from the same body.
- */
-export function stripHtml(html: string): string {
-	return htmlToPlainText(html);
 }

@@ -40,8 +40,8 @@ import {
 	answerQueueHrefFor,
 	replyQueueHeadline,
 	type ReplyQueueItem,
-	type ReplyQueueText,
 } from '~/utils/postboxReplyQueue';
+import { useLocalized } from '~/composables/useLocalized';
 
 /**
  * Client detection that is both SSR-safe (no `window` on the server) and
@@ -158,9 +158,7 @@ watch(
  * with params) while message-derived text (a subject, an AI ask summary)
  * arrives as itself — resolve both here, the rendering layer.
  */
-function replyQueueText(value: ReplyQueueText): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const replyQueueText = useLocalized();
 
 /** The strip's headline — the AI's ask summary, the subject, or the fallback copy. */
 function forYouHeadline(item: ReplyQueueItem): string {
