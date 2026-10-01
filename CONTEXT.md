@@ -4084,10 +4084,16 @@ parses lines through `parser.ts`, calls the **IMAP command walker** to
 dispatch one-shot commands, starts long-running sessions, routes
 subsequent client lines / literal bytes to the active session if any,
 writes session-emitted lines back to the socket, calls `session.cancel()`
-on socket close. The pump never knows what an IMAP verb means; that
-lives in modules. The buffer is utf-8 decoded today — a Buffer-mode
-rewrite for 8-bit APPEND bodies is tracked as separate correctness
-debt and not blocked on this deepening.
+on socket close. Commands run one at a time, in the order the client sent
+them (RFC 3501 §5.5): a line that arrives while a command is still running
+waits in the buffer, with the socket paused, until that command's
+`completion` resolves, so a pipelined FETCH reads the folder the SELECT
+before it opened. Only the active session's own input is read meanwhile
+(IDLE's `DONE`, AUTHENTICATE's SASL response, APPEND's literal); IDLE
+answers any other line BAD. Nothing is dispatched after LOGOUT. The pump
+never knows what an IMAP verb means; that lives in modules. The buffer is
+utf-8 decoded today — a Buffer-mode rewrite for 8-bit APPEND bodies is
+tracked as separate correctness debt and not blocked on this deepening.
 _Avoid_: IMAP server (that's `server.ts` — the TLS bootstrap and
 per-IP accounting), IMAP connection alone (the class keeps that name;
 "pump" names the _role_ the post-deepening class plays).

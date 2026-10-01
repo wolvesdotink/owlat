@@ -8,7 +8,8 @@
  * The same poll outliving LOGOUT or a closed socket is work nobody receives.
  *
  * idle.test.ts covers the same fence at the module level (timeout, paging,
- * overlapping ticks); this file covers the three ways the pump ends IDLE.
+ * overlapping ticks); this file covers it through the pump: DONE followed by
+ * another command, DONE followed by LOGOUT, and the socket closing.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -205,14 +206,19 @@ describe('IDLE — a poll in flight when the pump ends the session writes nothin
 		expect(fixture.peekCalls()).toBe(1);
 	});
 
-	it('LOGOUT while IDLE stops the poll before the socket finishes closing', async () => {
+	it('DONE + LOGOUT: the poll stays silent before the socket finishes closing', async () => {
 		const fixture = await idleWithHeldPoll();
 		const { socket } = fixture;
 
+		// RFC 2177: LOGOUT without DONE is refused, and the IDLE goes on.
 		await send(socket, 'a3 LOGOUT');
-		expect(socket.lines().slice(-2)).toEqual([
+		expect(socket.lines().at(-1)).toBe('a3 BAD Expected DONE');
+
+		await send(socket, 'DONE\r\na4 LOGOUT');
+		expect(socket.lines().slice(-3)).toEqual([
+			'a2 OK IDLE terminated',
 			'* BYE Owlat IMAP signing off',
-			'a3 OK LOGOUT completed',
+			'a4 OK LOGOUT completed',
 		]);
 		const afterLogout = socket.lines().length;
 		const readsAtLogout = fixture.query.mock.calls.length;

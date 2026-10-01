@@ -73,6 +73,7 @@ export interface CommandDeps {
 	readonly tls: boolean;
 	/**
 	 * Called by LOGOUT to tear down the socket. The pump's implementation
+	 * stops dispatching (anything the client sent after LOGOUT is dropped),
 	 * cancels every in-flight session, then calls `socket.end()`.
 	 */
 	readonly closeConnection: () => void;
@@ -105,19 +106,21 @@ export type ParseResult<T> = { ok: true; args: T } | { ok: false; error: string 
 
 /**
  * The handle a module returns from `start`. One-shot commands return a
- * session with neither `onClientLine` nor `awaitingLiteral` — the pump
- * treats them as fire-and-forget and just awaits `completion` for the
- * next state. Long-running commands (IDLE, APPEND) set one or both, and
- * the pump tracks them in the active-session slot until `completion`
- * resolves.
+ * session with neither `onClientLine` nor `awaitingLiteral`. Long-running
+ * commands (IDLE, APPEND, AUTHENTICATE awaiting its response) set one or
+ * both, and the pump tracks them in the active-session slot until
+ * `completion` resolves. Either way the pump dispatches no further command
+ * until `completion` resolves (RFC 3501 §5.5), so the next command sees the
+ * state this one committed.
  */
 export interface CommandSession {
 	/**
 	 * Resolves when the command terminates. State transitions are applied
 	 * via `deps.commit` *before* completion resolves so the next command
 	 * dispatched off the pump's state field sees the new value. Failures
-	 * must still resolve — modules emit their own NO/BAD responses;
-	 * throwing here would crash the pump.
+	 * must still resolve — modules emit their own NO/BAD responses; a
+	 * completion that never resolves stalls every later command on the
+	 * connection.
 	 */
 	readonly completion: Promise<void>;
 	/**
@@ -129,9 +132,11 @@ export interface CommandSession {
 	/**
 	 * Called by the pump for each line that arrives while this session is
 	 * the active long-running session. Return 'absorbed' to consume the
-	 * line (IDLE swallows bare `DONE`); return 'pass' to let the pump
-	 * dispatch the line as a fresh command (no IMAP verb currently does
-	 * this, but it keeps the door open).
+	 * line: IDLE takes bare `DONE` and answers any other line BAD (RFC
+	 * 2177), AUTHENTICATE takes its SASL response. Return 'pass' once the
+	 * session reads no more input (IDLE after it has ended, AUTHENTICATE
+	 * after its one response): the pump keeps the line and dispatches it as
+	 * the next command when `completion` resolves.
 	 */
 	onClientLine?(line: string): 'absorbed' | 'pass';
 	/**
