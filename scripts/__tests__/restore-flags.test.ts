@@ -40,6 +40,8 @@ const SOURCE_FLAGS: FeatureFlagState = {
 };
 const SOURCE_PROFILES = getActiveProfiles(SOURCE_FLAGS);
 const mirrorText = (flags: FeatureFlagState) => JSON.stringify(flags, null, 2);
+/** The summary line a restore without the mirror ends with. */
+const SYNC_STEP = "Rebuild the CLI's copy of the feature flags:  owlat feature --sync";
 
 /** The profiles an override records under `x-owlat-profiles`. */
 function overrideProfiles(text: string): string[] {
@@ -134,6 +136,7 @@ describe('restore.sh over an existing install', () => {
 		await expect(readFile(join(install.dir, MIRROR), 'utf8')).resolves.toBe(
 			mirrorText(SOURCE_FLAGS)
 		);
+		expect(result.out).not.toContain(SYNC_STEP);
 		const kept = (await readdir(install.dir)).filter((n) =>
 			n.startsWith(`${MIRROR}.before-restore-`)
 		);
@@ -176,6 +179,9 @@ describe('restore.sh over an existing install', () => {
 		expect(result.code).toBe(0);
 		expect(result.out).toContain(`The archive has no ${MIRROR}`);
 		expect(result.out).toContain('assume the default feature flags');
+		// The warning and the summary name the step that rebuilds the file.
+		expect(result.out).toContain("run 'owlat feature --sync'");
+		expect(result.out).toContain(SYNC_STEP);
 		const names = await readdir(install.dir);
 		expect(names).not.toContain(MIRROR);
 		const kept = names.filter((n) => n.startsWith(`${MIRROR}.before-restore-`));
@@ -188,6 +194,7 @@ describe('restore.sh over an existing install', () => {
 
 		expect(result.code).toBe(0);
 		expect(result.out).toContain(`The archive has no ${MIRROR}`);
+		expect(result.out).toContain(SYNC_STEP);
 		expect(await readdir(install.dir)).not.toContain(MIRROR);
 	});
 });

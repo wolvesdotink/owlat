@@ -14,6 +14,8 @@
 #   owlat config              — re-open the wizard for an existing install
 #   owlat sample-data [install|remove|status] — opt-in demo content, removable
 #   owlat feature <key> on|off — toggle a single feature flag
+#   owlat feature --sync      — rewrite .owlat-flags.json from the flags the
+#                               running backend holds (after a restore)
 #   owlat env <KEY> <VALUE>   — set a single env var in .env
 #   owlat unset-env <KEY...>  — clear Convex function-runtime keys from the
 #                               deployment and .env (apply never deletes one)
@@ -411,6 +413,39 @@ stop_inactive_profile_services() {
 	done
 }
 
+# ── Flag mirror ───────────────────────────────────────────────────────────────
+# `owlat feature --sync` rewrites .owlat-flags.json, the CLI's copy of the
+# instance feature flags, from the flags the running backend holds. The setup
+# CLI, the web wizard and the updater's Apply write that file as a side effect
+# of a change; this rebuilds it with no change, which a restore from an archive
+# made before backups carried it needs. scripts/read-feature-flags.mjs does the
+# read through node in the web container: it is on the compose network with
+# the backend and has node on every release, so the step works whatever version
+# the restored stack runs, which a command in the version-pinned setup image
+# would not. Only the file is written: the override, COMPOSE_PROFILES and the
+# running containers stay as they are.
+sync_flag_mirror() {
+	if [[ $# -ne 0 ]]; then
+		echo "Usage: owlat feature --sync" >&2
+		return 2
+	fi
+	local mirror="$OWLAT_DIR/.owlat-flags.json" flags tmp
+	if ! flags="$(docker compose exec -T web node --input-type=module - \
+		<"$(dirname "$OWLAT_CLI_SOURCE")/read-feature-flags.mjs")"; then
+		echo "Error: could not read the feature flags from the backend; $mirror was not changed." >&2
+		echo "The stack must be running with Convex healthy ('owlat status'). Then run 'owlat feature --sync' again." >&2
+		return 1
+	fi
+	# mktemp creates the file owner-only, as every other writer leaves it.
+	tmp="$(mktemp "$mirror.XXXXXX")" || return 1
+	if ! { printf '%s' "$flags" >"$tmp" && mv -f "$tmp" "$mirror"; }; then
+		rm -f "$tmp"
+		echo "Error: could not write $mirror." >&2
+		return 1
+	fi
+	printf '%b\n' "${GREEN}${BOLD}[ ok ]${RESET} Wrote $mirror from the backend's feature flags."
+}
+
 # ── Subcommands ───────────────────────────────────────────────────────────────
 cmd="${1:-help}"
 shift || true
@@ -659,6 +694,11 @@ case "$cmd" in
 			"$OWLAT_SETUP_IMAGE" sample-data "$@"
 		;;
 	feature)
+		if [[ "${1:-}" == --sync ]]; then
+			shift
+			sync_flag_mirror "$@"
+			exit $?
+		fi
 		exec docker run --rm \
 			-v "$OWLAT_DIR:/opt/owlat" \
 			"$OWLAT_SETUP_IMAGE" feature "$@"
