@@ -37,6 +37,8 @@ export interface DesktopUpdatePolicySummary {
 	deferHours: number;
 	latestVersion: string | null;
 	latestPublishedAt: number | null;
+	/** Whether anything is cached on any channel. Absent from instances older than the field. */
+	hasCachedReleases?: boolean;
 	checkedAt: number | null;
 }
 

@@ -1,11 +1,11 @@
 /**
  * Synchronously-readable active-workspace singleton.
  *
- * `auth-client.ts` and `convex-auth.ts` construct/branch at module-load time and
+ * `auth-client.ts` and `convex.client.ts` build their clients synchronously and
  * cannot await anything, so they read the active workspace from here. The async
- * boot plugin (`plugins/0.desktop-workspace.client.ts`) populates it before the
- * Convex/auth singletons are first imported, and a workspace switch reloads the
- * whole webview — so this value is stable for the lifetime of a page load.
+ * boot plugin (`plugins/0.desktop-workspace.client.ts`) populates it before
+ * either client is built, and a workspace switch reloads the whole webview — so
+ * this value is stable for the lifetime of a page load.
  */
 import type { WorkspaceConfig } from './workspaceTypes';
 

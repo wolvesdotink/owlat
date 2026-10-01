@@ -6,6 +6,7 @@ import { isDesktopRuntime, getActiveWorkspace } from '~/lib/desktop/activeWorksp
 import { logWarn } from '~/lib/runtimeLog';
 import { clearCachedFeatureFlags } from '~/lib/featureFlagCache';
 import { resetSharedConvexSubscriptions } from '~/lib/sharedConvexSubscriptions';
+import { isPublicPath } from '~/utils/publicRoutes';
 
 let authListenerRegistered = false;
 
@@ -48,12 +49,17 @@ export default defineNuxtPlugin(() => {
 	}
 
 	const client = new ConvexClient(convexUrl);
+	const router = useRouter();
 
-	// On public pages (share, archive, etc.), skip auth entirely — these pages
-	// use direct fetch() to Convex HTTP endpoints, not the Convex client.
-	// This avoids unnecessary /api/auth/convex/token requests for unauthenticated visitors.
-	if (!isPublicRoute()) {
-		const router = useRouter();
+	/**
+	 * Install the token fetcher and the session listener on this client. Runs
+	 * once per client: at boot on an app route, or on the first navigation from
+	 * a public page into the app (see below).
+	 */
+	let authActivated = false;
+	const activateAuth = () => {
+		if (authActivated) return;
+		authActivated = true;
 		const authCallback = async ({ forceRefreshToken }: { forceRefreshToken: boolean }) => {
 			return getConvexAuthToken(forceRefreshToken);
 		};
@@ -145,6 +151,25 @@ export default defineNuxtPlugin(() => {
 				client.setAuth(authCallback, onAuthChange);
 			});
 		}
+	};
+
+	// On public pages (share, archive, etc.), skip auth — these pages use direct
+	// fetch() to Convex HTTP endpoints, not the Convex client, and a visitor who
+	// only opens one must not cause /api/auth/convex/token or session requests.
+	// Auth is installed instead the first time a navigation leaves the public
+	// pages (a link from /terms into the app, the sign-in page), ahead of the
+	// named route middleware that may query Convex. Plugins run once, so a
+	// check made only here would leave that client anonymous until a reload.
+	if (!isPublicRoute()) {
+		activateAuth();
+	} else {
+		addRouteMiddleware(
+			'convex-auth-activation',
+			(to) => {
+				if (!isPublicPath(to.path)) activateAuth();
+			},
+			{ global: true }
+		);
 	}
 
 	return {

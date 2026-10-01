@@ -154,8 +154,12 @@ watch(
  * Blocks equal to the canvas are left alone, so a host may push every server
  * copy through here: its own save echoing back does not replace the block
  * objects under an open inline editor or add an undo step.
+ *
+ * An edit still inside the history debounce is committed first, so it stays
+ * its own undo step instead of merging into the loaded state.
  */
 function loadState(state: HistoryState) {
+	commitPendingHistory();
 	if (JSON.stringify(state.blocks) !== JSON.stringify(canvasBlocks.value)) {
 		canvasBlocks.value = [...state.blocks];
 	}
@@ -358,7 +362,13 @@ const {
 });
 
 // History
-const { canUndo, canRedo, undo, redo } = useHistory(canvasBlocks, formName, formSubject, {
+const {
+	canUndo,
+	canRedo,
+	undo,
+	redo,
+	commitPending: commitPendingHistory,
+} = useHistory(canvasBlocks, formName, formSubject, {
 	blocksVersion,
 });
 

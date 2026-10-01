@@ -268,6 +268,7 @@ const isEditDirty = computed(() => editOpen.value && draftFingerprint() !== edit
 
 const {
 	showDialog: showUnsavedDialog,
+	isSavingBeforeLeave,
 	confirmDiscard,
 	confirmSave,
 	cancelNavigation,
@@ -488,6 +489,7 @@ watch(isEditDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 		<!-- Unsaved Changes Dialog -->
 		<UnsavedChangesDialog
 			:show="showUnsavedDialog"
+			:saving="isSavingBeforeLeave"
 			@close="cancelNavigation"
 			@discard="confirmDiscard"
 			@save="confirmSave"

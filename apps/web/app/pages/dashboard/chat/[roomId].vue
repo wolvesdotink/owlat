@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import type { Id } from '@owlat/api/dataModel';
-
 // The rail, its drawer and the new-channel / new-DM / browse / mentions
 // dialogs live in the parent route (pages/dashboard/chat.vue); this page is
 // the room's main column and its room-only dialogs.
@@ -66,10 +64,6 @@ useHead({
 			: t('dashboard.chat.detail.pageTitle');
 	},
 });
-
-const handleSend = async (text: string, attachmentIds?: Id<'mediaAssets'>[]) => {
-	await sendMessage(text, attachmentIds);
-};
 
 const handleLeave = async () => {
 	await leaveRoom();
@@ -166,7 +160,7 @@ const handleLeave = async () => {
 						@delete="(id) => deleteMessage(id)"
 					/>
 					<ChatRoomSkeleton v-else :header="false" />
-					<ChatInput v-if="room.isMember" @send="handleSend" />
+					<ChatInput v-if="room.isMember" :send="sendMessage" />
 				</div>
 
 				<!-- Member panel (right column) -->

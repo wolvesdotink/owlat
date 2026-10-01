@@ -94,7 +94,7 @@ describe('formatSnapshotSize', () => {
 	});
 });
 
-// Real timers with a tiny debounce, matching useHistory.test.ts's harness.
+// Real timers with a tiny debounce drive the history commit.
 const DEBOUNCE = 2;
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
