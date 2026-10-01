@@ -18,6 +18,8 @@
 export interface BodySearchBackfillJob {
 	mode: 'index' | 'purge';
 	status: 'running' | 'completed' | 'cancelled' | 'failed';
+	/** Still `running`, but its next batch will never run (the server's lease check). */
+	isStalled?: boolean;
 }
 
 export type PostboxBodySearchDepth =
@@ -36,7 +38,11 @@ export function resolveBodySearchDepth(input: {
 }): PostboxBodySearchDepth {
 	if (!input.isIndexingEnabled) return 'disabled';
 	const job = input.job;
-	if (job?.status === 'running' && job.mode === 'index') return 'indexing';
+	// A stalled walk is not "being indexed": nothing will finish it until an
+	// owner runs it again, which is the `pending` remedy.
+	if (job?.status === 'running' && job.mode === 'index' && job.isStalled !== true) {
+		return 'indexing';
+	}
 	// A completed PURGE is not a completed index — it is the opt-out's sweep,
 	// and treating it as readiness would promise depth over erased excerpts.
 	if (job?.status === 'completed' && job.mode === 'index') return 'deep';

@@ -5262,6 +5262,7 @@
 				"backfillPending": "Vorhandene E-Mails sind noch nicht indexiert.",
 				"backfillRunning": "Indexierung läuft … {count} Nachrichten gelesen",
 				"backfillStart": "Vorhandene E-Mails indexieren",
+				"backfillStopped": "Die Indexierung wurde vor dem Abschluss unterbrochen. Starten Sie sie erneut, um den Rest zu erfassen.",
 				"cancelOperation": "Indexierung stoppen",
 				"confirmDisableAction": "Deaktivieren und Auszüge löschen",
 				"confirmDisableDescription": "Die Suche erfasst wieder nur die ersten 200 Zeichen jeder Nachricht, und alle bereits gespeicherten Textauszüge werden gelöscht. Sie können die Option später wieder aktivieren, vorhandene E-Mails müssen dann aber neu indexiert werden.",

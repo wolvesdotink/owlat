@@ -55,13 +55,20 @@ that never visits the setting is byte-identical to the pre-idea-32 product: same
 row shape, same index read, same results. The switch is admin-gated through the
 one writer of the settings columns (`workspaces/settings.update`).
 
-**3. The opt-OUT removes, it does not merely stop.** A true→false transition
-schedules `mail/bodySearchBackfill.purgeSearchBodies`, a cursor-paginated sweep
-that clears every excerpt already written and retires each mailbox's completed
-index job. An operator who turns this off is asking for the plaintext to be
+**3. The opt-OUT removes, it does not merely stop.** Writing the switch off
+calls `mail/_bodySearchLifecycle.beginSearchBodyPurge` in the same transaction:
+it retires every mailbox's index walk and starts a cursor-paginated sweep
+(`mail/bodySearchBackfill.purgeSearchBodies`) that clears every excerpt already
+written. An operator who turns this off is asking for the plaintext to be
 gone; a switch that only governed future mail would be a promise about the wrong
 tense. The sweep re-reads the switch every page, so flipping it back on
-mid-sweep stops the erasure rather than racing it.
+mid-sweep stops the erasure rather than racing it, and turning it off again
+starts over from the first row. Every background write of an excerpt re-reads
+the switch in the transaction that writes it, so work already in flight cannot
+put plaintext back. The sweep's generation, cursor, counts and lease live on the
+`mailBodySearchPurges` singleton; an explicit off on an instance that is already
+off (or `migrations/0051_clear_residual_search_bodies:run`) starts it again
+unless one is still live.
 
 **4. A SECOND search index, not a repointed one.** `search_messages` (on
 `snippet`) stays exactly as it is; `search_message_bodies` (on `searchBody`) is
@@ -85,7 +92,11 @@ and blob contents are unreadable from a query or a mutation: an internal query
 reads and unseals the page's inline parts, the action resolves the blobs through
 `readMailMessageText` (the single sanctioned blob reader), and an internal
 mutation writes the excerpts and advances the cursor. Owner-grade, re-entrant,
-idempotent, cancellable between pages.
+idempotent, cancellable between pages. Each start bumps the job row's
+`generation`; a commit is accepted only for the generation and cursor its page
+was loaded from, and it schedules the next page itself and records it as the
+job's lease. A walk whose lease is dead is reported as stalled and `start` runs
+it again; a page whose bodies cannot be read ends the walk as `failed`.
 
 **7. The UI states which depth it is actually at.** The search box carries a
 quiet line — not a banner — whenever search is shallower than the feature's best:

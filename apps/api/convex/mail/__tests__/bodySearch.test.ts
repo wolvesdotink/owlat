@@ -353,7 +353,7 @@ describe('turning the switch off', () => {
 		expect(result.messages.map((m) => m.subject)).toEqual(['Renewal terms']);
 	});
 
-	it('does not sweep when the setting was already off', async () => {
+	it('does not sweep on a save of other settings, but an explicit off clears leftovers', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedMailbox(t);
 		await seedFolder(t, mailboxId);
@@ -361,9 +361,14 @@ describe('turning the switch off', () => {
 			subject: 'kept',
 			searchBody: 'an excerpt an earlier run left behind',
 		});
-		// A save that merely re-states `false` is not a true→false transition.
-		await setIndexing(t, false);
+		await t.mutation(api.workspaces.settings.update, { timezone: 'Europe/Berlin' });
 		await drainScheduler(t);
 		expect(await excerptOf(t, messageId)).toBe('an excerpt an earlier run left behind');
+
+		// Re-stating `false` on an instance that is already off is the repair
+		// path for excerpts an unfinished sweep left behind.
+		await setIndexing(t, false);
+		await drainScheduler(t);
+		expect(await excerptOf(t, messageId)).toBeUndefined();
 	});
 });
