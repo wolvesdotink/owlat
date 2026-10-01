@@ -5,6 +5,7 @@ import {
 	type BlockLikeItem,
 	type TranslatableBlockContent,
 } from '@owlat/api/translationMerge';
+import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
 import { useEmailHtmlRendering, type RenderOptions } from './useEmailHtmlRendering';
 
 /**
@@ -122,6 +123,8 @@ export interface TranslationUpdatePayload {
 	/** JSON of the language's whole per-block overlay. */
 	blocks: string;
 	htmlContent: string;
+	/** The renderer version that produced `htmlContent`. */
+	rendererVersion: number;
 	expectedContentRevision: number;
 }
 
@@ -142,6 +145,7 @@ export function buildTranslationUpdate(
 		...(overlay.previewText !== undefined ? { previewText: overlay.previewText } : {}),
 		blocks: JSON.stringify(overlay.blocks),
 		htmlContent: renderLanguageHtml(base.content, overlay.blocks, renderOptions),
+		rendererVersion: EMAIL_RENDERER_VERSION,
 		expectedContentRevision: base.revision,
 	};
 }
@@ -153,9 +157,10 @@ export function buildTranslationUpdate(
 export function buildLanguageAdd(
 	base: TranslationBase,
 	renderOptions: RenderOptions
-): { htmlContent: string; expectedContentRevision: number } {
+): { htmlContent: string; rendererVersion: number; expectedContentRevision: number } {
 	return {
 		htmlContent: renderLanguageHtml(base.content, {}, renderOptions),
+		rendererVersion: EMAIL_RENDERER_VERSION,
 		expectedContentRevision: base.revision,
 	};
 }

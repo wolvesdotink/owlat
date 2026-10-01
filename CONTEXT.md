@@ -1946,7 +1946,7 @@ defaultLanguage?, linkedBlockIds? })` — validates input, inserts the
   fires `update_block_usage_counts` if `linkedBlockIds` is set,
   `audit_log`.
 - `transition({ templateId, input })` — `input` is `{ to: 'published',
-htmlContent, htmlTranslations? } | { to: 'draft' }`. Idempotent on
+htmlContent, htmlTranslations?, rendererVersion? } | { to: 'draft' }`. Idempotent on
   same-state transitions (`already_in_state` outcome, no re-patch).
 - `duplicate({ sourceTemplateId })` — clones source row fields with
   `name → "<source.name> (Copy)"`, `status: 'draft'`, fresh timestamps.

@@ -18,6 +18,7 @@ import {
 	publishedHtml,
 } from '../lib/publishableEmail';
 import { assertContentRevision } from '../lib/contentRevision';
+import { rendererVersionArg } from '../lib/rendererVersion';
 import { recordAuditLog } from '../lib/auditLog';
 
 // Data variable type for schema definition
@@ -167,6 +168,9 @@ export const update = transactionalMutation({
 		supportedLanguages: v.optional(v.array(v.string())),
 		translations: v.optional(v.string()),
 		htmlTranslations: v.optional(v.string()),
+		// The renderer version that produced `htmlContent` / `htmlTranslations`
+		// (lib/rendererVersion.ts); older clients omit it.
+		rendererVersion: rendererVersionArg,
 		// IDs of saved blocks linked in this email
 		linkedBlockIds: v.optional(v.array(v.string())),
 		// File attachments as JSON string
@@ -251,6 +255,9 @@ export const publish = transactionalMutation({
 		htmlContent: v.optional(v.string()),
 		// Pre-rendered HTML for each translation language, with the same rule.
 		htmlTranslations: v.optional(v.string()),
+		// The renderer version that produced the HTML above, recorded when it is
+		// used (lib/rendererVersion.ts).
+		rendererVersion: rendererVersionArg,
 		// The `contentRevision` the HTML was rendered from. When given, a row
 		// that has moved on is refused with `conflict` instead of going live
 		// with HTML that no longer matches its content.

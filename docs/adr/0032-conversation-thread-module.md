@@ -1,6 +1,11 @@
 # Conversation thread module — single writer of `conversationThreads`, unifying channel/email reopen semantics and closing the audit gap
 
-**Status:** proposed
+**Status:** accepted (`apps/api/convex/inbox/threads/module.ts` has been
+in the tree since the initial commit, 2026-06-30); **amended 2026-10-01**.
+The `0032` migration was retired, and the module owns the thread
+dimensions named here but not every write to the table: snooze, reply
+attachments and outbound thread creation write it directly. See
+[the implementation-check amendment](#amendment-implementation-check-2026-10-01) at the end of this document.
 
 ## Context
 
@@ -451,3 +456,36 @@ for SMS/WhatsApp conversation segmentation, the change is visible as
 for channels would be a per-kind branch there. No risk to email intake
 (behaviour-identical), to reads (untouched), or to the agent pipeline (the
 draft-status effect produces the same `latestDraftStatus` writes).
+
+---
+
+## Amendment: implementation check (2026-10-01)
+
+Issue #1066 compared this ADR with the code on main.
+`inbox/threads/module.ts` has the three entry points, the four transition
+kinds without a legal-edges graph, the `inbound_activity` reopen and the
+five audit actions. Email and channel intake, `assignThread`,
+`updateThreadStatus` and the Inbox processing lifecycle's
+`set_thread_draft_status` effect all call it. These details differ from
+the Decision above:
+
+- There is no `migrations/0032_thread_contact_identifier.ts` on main. The
+  rename and its backfill shipped in the initial commit, and the one-shot
+  migration was deleted with the other retired migrations 0005 to 0034 in
+  #597 on 2026-09-10. `contactEmail` is gone. The `by_contact_identifier`
+  index was dropped on 2026-09-20 because nothing queried it.
+- The module is the only writer of the dimensions this ADR names (status,
+  assignment, message count, last message time, draft status and inbound
+  find-or-create), but not of the whole table. Later features write their
+  own columns directly: `inbox/snooze.ts` (`snoozedUntil`, audited as
+  `thread.snoozed` and `thread.unsnoozed`) and `inbox/replyAttachments.ts`
+  with `inbox/replyAttachmentStore.ts` (`replyAttachments`).
+- `unifiedMessages.ts:resolveOutboundThread` inserts a
+  `conversationThreads` row itself when an outbound channel message has no
+  earlier thread for that contact and channel. It sets `status: 'open'`
+  and `messageCount: 0` and updates the open-thread counter on its own.
+  This is the one find-or-create that bypasses the module.
+- The module's entry points are plain `MutationCtx` helpers, not
+  `internalMutation`s, so a thread write stays in the caller's
+  transaction. `inbound_activity` also takes an optional `preview`, which
+  the module seals into `lastPreview`.
