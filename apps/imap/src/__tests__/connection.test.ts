@@ -120,11 +120,13 @@ async function exec(socket: MockSocket, line: string): Promise<void> {
 /**
  * Like `exec`, but flushes enough microtasks for commands that chain
  * several sequential Convex calls (SELECT does listFolders → selectFolder;
- * STORE does resolveMessageIdsByUid → storeFlags).
+ * STORE does resolveMessageIdsByUid → storeFlags). The UID-range walks are
+ * async generators, which spend a few more microtasks per page than a plain
+ * await chain, hence the headroom.
  */
 async function execMulti(socket: MockSocket, line: string): Promise<void> {
 	socket.receive(`${line}\r\n`);
-	for (let i = 0; i < 8; i += 1) await Promise.resolve();
+	for (let i = 0; i < 32; i += 1) await Promise.resolve();
 }
 
 describe('ImapConnection — greeting', () => {
