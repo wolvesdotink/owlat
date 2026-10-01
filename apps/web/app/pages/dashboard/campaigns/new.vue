@@ -4,6 +4,13 @@ import type { Audience } from '@owlat/shared';
 import { api } from '@owlat/api';
 import { isTransientQueryError } from '~/lib/queryRetry';
 import { isLowerBoundCount, useRecipientCount } from '~/composables/useRecipientCount';
+import {
+	campaignReviewPath,
+	emailEditorPath,
+	readReviewSchedule,
+	templateHasBody,
+	type ReviewSchedule,
+} from '~/lib/campaignCompose';
 
 const { t } = useI18n();
 
@@ -120,11 +127,15 @@ const {
 );
 
 // A step is reachable once the one before it has been persisted: Setup ends by
-// creating the campaign row, Content ends by attaching the email. That is what a
-// pasted or stale `?step=` is measured against.
+// creating the campaign row, Content ends by attaching an email WITH a body (an
+// attached but empty template is not content yet). That is what a pasted or
+// stale `?step=` is measured against.
 const isStepComplete = (step: Step) => {
 	if (step === 'setup') return campaignId.value !== null;
-	if (step === 'content') return Boolean(campaignDetails.value?.emailTemplateId);
+	if (step === 'content') {
+		const details = campaignDetails.value;
+		return Boolean(details?.emailTemplateId) && templateHasBody(details?.emailTemplate);
+	}
 	return false;
 };
 
@@ -142,6 +153,16 @@ const handleSetupSubmit = async (newCampaignId: Id<'campaigns'>) => {
 	// Awaited so the id is in the query before the step push copies it forward.
 	await rememberCampaign(newCampaignId);
 	goToNext();
+};
+
+// The indicator ticks off every step behind the current one; Content keeps its
+// number instead while the attached email has no body, so Review never shows an
+// empty email as finished content.
+const stepStatus = (step: string) => {
+	const status = getStepStatus(step as Step);
+	const emptyContent =
+		step === 'content' && campaignDetails.value != null && !isStepComplete('content');
+	return status === 'completed' && emptyContent ? 'upcoming' : status;
 };
 
 const handleContentSubmit = () => {
@@ -184,6 +205,23 @@ const hasWizardProgress = computed(
 );
 
 watch(hasWizardProgress, (value) => setHasChanges(value), { immediate: true });
+
+// The email editor round trip (#1048). Everything the wizard shows is already
+// persisted except Review's schedule choice, which rides in the return link, so
+// the leave guard has nothing to protect on the way out. It re-arms if the
+// navigation does not happen.
+const initialReviewSchedule = readReviewSchedule(route.query);
+
+const openEmailEditor = async (
+	templateId: Id<'emailTemplates'> | undefined,
+	schedule: ReviewSchedule | null = null
+) => {
+	const id = campaignId.value;
+	if (!id || !templateId) return;
+	setHasChanges(false);
+	const failure = await router.push(emailEditorPath(templateId, campaignReviewPath(id, schedule)));
+	if (failure) setHasChanges(hasWizardProgress.value);
+};
 
 const handleComplete = () => {
 	// Campaign sent/scheduled successfully, will redirect via ReviewStep — the
@@ -228,6 +266,14 @@ const reviewData = computed(() => {
 		audienceCountAtLeast: isLowerBoundCount(shownCount),
 		campaignSubject: content?.campaignSubject ?? c?.subject ?? '',
 		selectedTemplate: content?.selectedTemplate ?? persistedTemplate.value,
+		// Read off the persisted row: it is what the send will use, and it updates
+		// live when the editor saves.
+		emailBodyHtml:
+			c === undefined
+				? undefined
+				: templateHasBody(persistedTemplate.value)
+					? persistedTemplate.value!.htmlContent!
+					: null,
 		abTestEnabled: setup?.abTestEnabled ?? !!cfg,
 		abTestType: setup?.abTestType ?? cfg?.testType ?? 'subject',
 		abVariantBSubject: setup?.abVariantBSubject ?? cfg?.variantBSubject ?? '',
@@ -274,9 +320,7 @@ const reviewData = computed(() => {
 			<div class="max-w-4xl mx-auto px-6 py-4">
 				<UiStepIndicator
 					:steps="displaySteps"
-					:get-step-status="
-						getStepStatus as (stepId: string) => 'completed' | 'current' | 'upcoming'
-					"
+					:get-step-status="stepStatus"
 					:is-connector-highlighted="isConnectorHighlighted"
 				/>
 			</div>
@@ -298,16 +342,19 @@ const reviewData = computed(() => {
 					ref="contentStepRef"
 					:campaign-id="campaignId"
 					@submit="handleContentSubmit"
+					@compose="openEmailEditor"
 					@back="goToPrevious"
 				/>
 
 				<CampaignsStepsReviewStep
 					v-else-if="currentStep === 'review' && campaignId"
 					:data="reviewData"
+					:initial-schedule="initialReviewSchedule"
 					@back="goToPrevious"
 					@edit-step="handleEditStep"
 					@complete="handleComplete"
 					@retry-templates="refetchEmailTemplates"
+					@edit-email="(schedule) => openEmailEditor(campaignDetails?.emailTemplateId, schedule)"
 				/>
 			</KeepAlive>
 		</div>
