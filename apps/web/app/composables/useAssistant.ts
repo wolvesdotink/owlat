@@ -11,15 +11,21 @@ export function useAssistant() {
 	const { t } = useI18n();
 	const activeId = ref<Id<'aiConversations'> | null>(null);
 
-	const { data: conversationsData, isLoading: conversationsLoading } = useConvexQuery(
-		api.assistant.conversations.listConversations,
-		{}
-	);
+	const {
+		data: conversationsData,
+		isLoading: conversationsLoading,
+		error: conversationsError,
+		refetch: refetchConversations,
+	} = useConvexQuery(api.assistant.conversations.listConversations, {});
 	const conversations = computed(() => conversationsData.value ?? []);
 
-	const { data: messagesData, isLoading: messagesLoading } = useConvexQuery(
-		api.assistant.conversations.listMessages,
-		() => (activeId.value ? { conversationId: activeId.value } : 'skip')
+	const {
+		data: messagesData,
+		isLoading: messagesLoading,
+		error: messagesError,
+		refetch: refetchMessages,
+	} = useConvexQuery(api.assistant.conversations.listMessages, () =>
+		activeId.value ? { conversationId: activeId.value } : 'skip'
 	);
 	const messages = computed(() => messagesData.value ?? []);
 
@@ -59,16 +65,24 @@ export function useAssistant() {
 		return created.result;
 	};
 
-	const send = async (text: string) => {
+	/**
+	 * Send a question to the open conversation, creating one first when none is
+	 * open. Resolves `ok` only once the message is accepted, so the composer can
+	 * keep the question until then. A conversation created here becomes the
+	 * active one before the message goes out: if the message then fails, the
+	 * retry finds it open and sends into it instead of creating a second, empty
+	 * conversation.
+	 */
+	const send = async (text: string): Promise<{ ok: boolean }> => {
 		let id = activeId.value;
 		if (!id) {
 			const created = await createRun({});
-			if (!created.ok) return;
+			if (!created.ok) return { ok: false };
 			id = created.result;
 			activeId.value = id;
 		}
-		if (!id) return;
-		await sendRun({ conversationId: id, text });
+		const sent = await sendRun({ conversationId: id, text });
+		return { ok: sent.ok };
 	};
 
 	const stop = async () => {
@@ -100,8 +114,12 @@ export function useAssistant() {
 		activeId,
 		conversations,
 		conversationsLoading,
+		conversationsError,
+		refetchConversations,
 		messages,
 		messagesLoading,
+		messagesError,
+		refetchMessages,
 		activeConversation,
 		streaming,
 		selectConversation,

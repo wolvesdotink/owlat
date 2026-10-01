@@ -70,4 +70,20 @@ describe('useEscapeToClose', () => {
 		expect(seen.every((s) => !s.prevented)).toBe(true);
 		wrapper.unmount();
 	});
+
+	it('leaves the Esc an IME uses to cancel its composition alone, Safari included (#1052)', async () => {
+		const { open, wrapper } = setup();
+		open.value = true;
+		await nextTick();
+
+		for (const init of [{ isComposing: true }, { keyCode: 229 }]) {
+			document.body.dispatchEvent(
+				new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true, ...init })
+			);
+		}
+
+		expect(open.value).toBe(true);
+		expect(seen.every((s) => !s.prevented)).toBe(true);
+		wrapper.unmount();
+	});
 });

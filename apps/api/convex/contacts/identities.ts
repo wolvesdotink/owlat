@@ -342,7 +342,7 @@ export const autoMergeDuplicates = internalMutation({
 				.withIndex('by_identifier', (q) => q.eq('channel', channel))
 				.collect(); // bounded: identities for one identifier (≈1 row)
 			for (const row of rows) {
-				const key = `${row.channel} ${row.identifier}`;
+				const key = `${row.channel}\0${row.identifier}`;
 				const bucket = seen.get(key);
 				if (bucket) bucket.push(row);
 				else seen.set(key, [row]);

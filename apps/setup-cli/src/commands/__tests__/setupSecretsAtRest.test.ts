@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { selectRuntimeEnvVars } from '@owlat/shared/convexRuntimeEnv';
@@ -157,6 +157,19 @@ describe('owlat-setup env — SMTP relay password at rest', () => {
 			'rotated-relay-secret'
 		);
 	});
+
+	it.skipIf(process.platform === 'win32')(
+		'makes a pre-existing world-readable .env owner-only before setting the value',
+		async () => {
+			const envPath = join(dir, '.env');
+			writeFileSync(envPath, `INSTANCE_SECRET=${INSTANCE_SECRET}\n`);
+			chmodSync(envPath, 0o644);
+
+			await setVar('LLM_API_KEY', 'sk-test-key');
+
+			expect(statSync(envPath).mode & 0o777).toBe(0o600);
+		}
+	);
 
 	it('leaves a non-secret transport key plaintext (only the password is sealed)', async () => {
 		await seedEnv({ INSTANCE_SECRET });

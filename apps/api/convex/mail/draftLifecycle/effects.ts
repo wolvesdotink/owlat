@@ -28,6 +28,7 @@ import { mergeThreadParticipants } from '../threadAggregates';
 import { normalizeSubject } from '../../lib/emailAddress';
 import { insertMessageBody } from '../../lib/messageBodyStore';
 import { indexMessageAttachments } from '../attachmentIndex';
+import { recordFolderMembership } from '../folderMembership';
 import { applyMailboxUsageDelta } from '../mailboxUsage';
 import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 import { buildSnippet } from '../deliveryPipeline/insert';
@@ -171,6 +172,7 @@ async function runSentEffects(
 		createdAt: now,
 		updatedAt: now,
 	});
+	await recordFolderMembership(ctx, null, { folderId: sentFolder._id, uid });
 
 	await insertMessageBody(ctx.db, messageId, {
 		text: context.bodyText && context.bodyText.length <= 64 * 1024 ? context.bodyText : undefined,

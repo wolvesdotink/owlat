@@ -74,7 +74,8 @@ export type ImportOutcome = {
 // ─── Validators ─────────────────────────────────────────────────────────────
 
 const importSourceValidator = literalUnion(IMPORT_SOURCE_LITERALS);
-const importRowValidator = v.object({
+/** One row's shape; also the integration walker's page-commit argument. */
+export const importRowValidator = v.object({
 	email: v.string(),
 	firstName: v.optional(v.string()),
 	lastName: v.optional(v.string()),

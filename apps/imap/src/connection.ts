@@ -23,6 +23,7 @@ import { parseLine, parseCommandWithLiterals, matchTrailingLiteral } from './par
 import type { AuthRateLimiter } from './rateLimit.js';
 import { drainWaiter, writeLine } from './socketOutput.js';
 import { dispatch, assembleCapabilityLine } from './commands/walker.js';
+import { SequenceGate } from './commands/helpers/sequenceGate.js';
 import type { CommandDeps, CommandSession, ConnectionState } from './commands/types.js';
 
 const DEFAULT_MAX_LINE_BYTES = 64 * 1024;
@@ -131,11 +132,18 @@ export class ImapConnection {
 			remoteIp,
 			capabilityLine,
 			tls,
-			closeConnection: () => this.socket.end(),
+			// LOGOUT: `end()` only half-closes, and `close` (which cancels the
+			// sessions) can come much later. Stop in-flight work now, so an IDLE
+			// poll cannot answer after the BYE.
+			closeConnection: () => {
+				this.cancelSessions();
+				this.socket.end();
+			},
 			commit: (next) => {
 				this.state = next;
 			},
 			waitForDrain: drainWaiter(socket, () => this.closed),
+			sequenceGate: new SequenceGate(),
 		};
 
 		this.send(`* OK [${capabilityLine}] ${config.greetingHost} Owlat IMAP ready`);

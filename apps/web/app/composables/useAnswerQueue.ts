@@ -35,7 +35,8 @@ export type AnswerItem =
 export function useAnswerQueue(opts: { enabled?: () => boolean } = {}) {
 	const { isEnabled } = useFeatureFlag();
 	const { isAdmin, isRoleLoading } = usePermissions();
-	const { ids, byId, isLoading: inboxesLoading } = useInboxes();
+	const inboxRead = useInboxes();
+	const { ids, byId, isLoading: inboxesLoading } = inboxRead;
 	// A host that mounts on every Answer mode route (the queue's parent page)
 	// reads nothing until the queue is actually in use.
 	const reading = computed(() => opts.enabled?.() ?? true);
@@ -46,16 +47,16 @@ export function useAnswerQueue(opts: { enabled?: () => boolean } = {}) {
 	}));
 
 	const teamEnabled = computed(() => reading.value && isAdmin.value && isEnabled('inbox'));
-	const { data: reviewData, isLoading: reviewLoading } = useConvexQuery(
-		api.inbox.queries.getReviewQueue,
-		() => (teamEnabled.value ? { limit: ANSWER_REVIEW_LIMIT } : 'skip')
+	const review = useConvexQuery(api.inbox.queries.getReviewQueue, () =>
+		teamEnabled.value ? { limit: ANSWER_REVIEW_LIMIT } : 'skip'
 	);
 
 	const chatEnabled = computed(() => reading.value && isAdmin.value && isEnabled('chat'));
-	const { data: mentionData, isLoading: mentionLoading } = useConvexQuery(
-		api.chat.mentions.listMyUnreadMentions,
-		() => (chatEnabled.value ? { limit: ANSWER_MENTION_LIMIT } : 'skip')
+	const mentions = useConvexQuery(api.chat.mentions.listMyUnreadMentions, () =>
+		chatEnabled.value ? { limit: ANSWER_MENTION_LIMIT } : 'skip'
 	);
+	const { data: reviewData, isLoading: reviewLoading } = review;
+	const { data: mentionData, isLoading: mentionLoading } = mentions;
 
 	const items = computed<AnswerItem[]>(() => {
 		const out: AnswerItem[] = [];
@@ -113,11 +114,30 @@ export function useAnswerQueue(opts: { enabled?: () => boolean } = {}) {
 
 	const counts = computed(() => answerCounts(items.value));
 
+	// The first source whose read failed. A queue with nothing in it and a
+	// failed source is not "all clear" (#721); Try again re-reads the failed ones.
+	// Only the sources the list reads count: a query switched to 'skip' keeps
+	// its last error, so a team review that failed before the inbox feature
+	// went off (or the viewer lost admin) would report an error nothing can
+	// clear.
+	const sources = () => [
+		...(reading.value ? [inboxRead] : []),
+		...mailResults.values(),
+		...(teamEnabled.value ? [review] : []),
+		...(chatEnabled.value ? [mentions] : []),
+	];
+	const error = computed(() => sources().find((s) => s.error.value)?.error.value ?? null);
+	const refetch = () => {
+		for (const s of sources()) if (s.error.value) s.refetch();
+	};
+
 	return {
 		items,
 		count: computed(() => items.value.length),
 		counts,
 		isLoading,
+		error,
+		refetch,
 		teamEnabled,
 		chatEnabled,
 	};

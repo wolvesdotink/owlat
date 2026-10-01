@@ -15,8 +15,9 @@ export function useInboxes() {
 	const { isEnabled } = useFeatureFlag();
 	const hasPersonalMail = computed(() => isEnabled('postbox') || isEnabled('mail.external'));
 
-	const { data, isLoading } = useConvexQuery(api.mail.mailbox.queries.accessible, () =>
-		hasPersonalMail.value ? {} : 'skip'
+	const { data, isLoading, error, refetch } = useConvexQuery(
+		api.mail.mailbox.queries.accessible,
+		() => (hasPersonalMail.value ? {} : 'skip')
 	);
 
 	const inboxes = computed<InboxIdentity<Id<'mailboxes'>>[]>(() =>
@@ -31,5 +32,9 @@ export function useInboxes() {
 		ids,
 		hasPersonalMail,
 		isLoading: computed(() => hasPersonalMail.value && isLoading.value),
+		// A skipped query keeps its last error; without personal mail there is
+		// no read to have failed.
+		error: computed(() => (hasPersonalMail.value ? error.value : null)),
+		refetch,
 	};
 }

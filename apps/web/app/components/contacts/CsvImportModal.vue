@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { mappableFields, type ImportStep } from '~/composables/useCsvImport';
+import { mappableFields, type ImportStep, type MappableField } from '~/composables/useCsvImport';
+import { isScalarField } from '~/utils/csvImportMapping';
 import { buildImportErrorsCsv, downloadCsv } from '~/utils/contactsCsv';
 
 const props = defineProps<{
@@ -95,13 +96,43 @@ const showValidationDetails = ref(false);
 // non-null before any field is touched.
 const validationResult = computed(() => props.csvImport.validation.value);
 
-const getRowValidationStatus = (rowNum: number): 'valid' | 'warning' | 'error' => {
-	const v = validationResult.value;
-	if (!v) return 'valid';
-	if (v.missingEmails.includes(rowNum)) return 'error';
-	if (v.invalidEmails.some((e) => e.row === rowNum)) return 'warning';
-	if (v.duplicateEmails.some((e) => e.row === rowNum)) return 'warning';
-	return 'valid';
+// ── Mapping step: one column per scalar field ───────────────────────────────
+
+/**
+ * An option's label in one column's select. A scalar field another column owns
+ * names that column, so picking it reads as the move it is.
+ */
+const fieldOptionLabel = (field: { value: MappableField; label: string }, column: number) => {
+	if (!isScalarField(field.value)) return t(field.label);
+	const owner = props.csvImport.scalarOwners.value[field.value];
+	if (owner === undefined || owner === column) return t(field.label);
+	return t('components.contacts.csvImportModal.mapping.fieldTaken', {
+		field: t(`shared.useCsvImport.fieldNames.${field.value}`),
+		column: props.csvImport.csvHeaders.value[owner] ?? '',
+	});
+};
+
+/** Read out when a pick moves a field off another column, which changes that select too. */
+const mappingAnnouncement = ref('');
+
+const onMappingChange = (column: number, event: Event) => {
+	const field = (event.target as HTMLSelectElement).value as MappableField;
+	const displaced = props.csvImport.mapColumn(column, field);
+	const headers = props.csvImport.csvHeaders.value;
+	mappingAnnouncement.value = displaced
+		.map((index) =>
+			t(
+				props.csvImport.columnMapping.value[index] === 'property'
+					? 'components.contacts.csvImportModal.mapping.fieldMovedToProperty'
+					: 'components.contacts.csvImportModal.mapping.fieldMovedToIgnore',
+				{
+					field: t(`shared.useCsvImport.fieldNames.${field}`),
+					from: headers[index]?.trim() || t('components.contacts.csvImportModal.emptyCell'),
+					to: headers[column] ?? '',
+				}
+			)
+		)
+		.join(' ');
 };
 
 const availableLists = computed(() => props.topics ?? []);
@@ -242,17 +273,12 @@ const addToTopicId = ref('');
  * job, not a topic assignment's.
  */
 const importedEmails = computed(() => {
-	const emailColumn = Object.entries(props.csvImport.columnMapping.value).find(
-		([, field]) => field === 'email'
-	)?.[0];
-	if (emailColumn === undefined) return [];
-	const index = parseInt(emailColumn, 10);
 	const notImported = new Set(props.csvImport.notImportedRows.value.map((r) => r.row));
 	const seen = new Set<string>();
 	const emails: string[] = [];
-	for (const [rowIndex, row] of props.csvImport.parsedData.value.entries()) {
-		if (notImported.has(rowIndex + 1)) continue;
-		const email = row[index]?.trim();
+	for (const { row, contact } of props.csvImport.preparedRows.value) {
+		if (notImported.has(row)) continue;
+		const email = contact.email;
 		if (!email || seen.has(email.toLowerCase())) continue;
 		seen.add(email.toLowerCase());
 		emails.push(email);
@@ -473,12 +499,16 @@ watch(
 						</p>
 					</div>
 					<select
-						v-model="csvImport.columnMapping.value[index]"
+						:value="csvImport.columnMapping.value[index]"
 						class="input w-48 shrink-0"
+						:aria-label="
+							t('components.contacts.csvImportModal.mapping.selectLabel', { column: header })
+						"
 						:disabled="
 							csvImport.listAssignmentMode.value === 'global' &&
 							csvImport.columnMapping.value[index] === 'topic'
 						"
+						@change="onMappingChange(index, $event)"
 					>
 						<option
 							v-for="field in mappableFields"
@@ -486,11 +516,12 @@ watch(
 							:value="field.value"
 							:disabled="field.value === 'topic' && csvImport.listAssignmentMode.value === 'global'"
 						>
-							{{ t(field.label) }}
+							{{ fieldOptionLabel(field, index) }}
 						</option>
 					</select>
 				</div>
 			</div>
+			<p class="sr-only" role="status" aria-live="polite">{{ mappingAnnouncement }}</p>
 
 			<!-- Handle Duplicates -->
 			<div class="p-4 rounded-lg bg-bg-surface">
@@ -719,6 +750,16 @@ watch(
 							</th>
 							<th class="text-left px-4 py-2 font-medium text-text-secondary">
 								{{ t('common.email') }}
+								<span
+									v-if="csvImport.emailSourceColumn.value"
+									class="block text-xs font-normal text-text-tertiary"
+								>
+									{{
+										t('components.contacts.csvImportModal.preview.emailSource', {
+											column: csvImport.emailSourceColumn.value,
+										})
+									}}
+								</span>
 							</th>
 							<th class="text-left px-4 py-2 font-medium text-text-secondary">
 								{{ t('components.contacts.csvImportModal.preview.firstName') }}
@@ -730,31 +771,31 @@ watch(
 					</thead>
 					<tbody>
 						<tr
-							v-for="(row, index) in csvImport.previewRows.value"
-							:key="index"
+							v-for="prepared in csvImport.previewRows.value"
+							:key="prepared.row"
 							class="border-b border-border-subtle last:border-b-0"
 						>
 							<td class="px-4 py-2">
 								<Icon
-									v-if="getRowValidationStatus(index + 1) === 'valid'"
+									v-if="prepared.status === 'valid'"
 									name="lucide:check-circle"
 									class="w-4 h-4 text-success"
 								/>
 								<Icon
-									v-else-if="getRowValidationStatus(index + 1) === 'warning'"
-									name="lucide:alert-triangle"
-									class="w-4 h-4 text-warning"
+									v-else-if="prepared.status === 'missing'"
+									name="lucide:x-circle"
+									class="w-4 h-4 text-error"
 								/>
-								<Icon v-else name="lucide:x-circle" class="w-4 h-4 text-error" />
+								<Icon v-else name="lucide:alert-triangle" class="w-4 h-4 text-warning" />
 							</td>
 							<td class="px-4 py-2 text-text-primary">
-								{{ csvImport.getMappedValue(row, 'email') }}
+								{{ prepared.contact.email || '—' }}
 							</td>
 							<td class="px-4 py-2 text-text-secondary">
-								{{ csvImport.getMappedValue(row, 'firstName') }}
+								{{ prepared.contact.firstName || '—' }}
 							</td>
 							<td class="px-4 py-2 text-text-secondary">
-								{{ csvImport.getMappedValue(row, 'lastName') }}
+								{{ prepared.contact.lastName || '—' }}
 							</td>
 						</tr>
 					</tbody>
@@ -1129,9 +1170,11 @@ watch(
 				<UiButton variant="secondary" @click="csvImport.step.value = 'upload'">{{
 					t('common.back')
 				}}</UiButton>
-				<UiButton :disabled="!csvImport.isEmailMapped.value" @click="csvImport.goToPreview()">{{
-					t('common.continue')
-				}}</UiButton>
+				<UiButton
+					:disabled="!csvImport.isEmailMapped.value || csvImport.mappingConflict.value !== null"
+					@click="csvImport.goToPreview()"
+					>{{ t('common.continue') }}</UiButton
+				>
 			</template>
 			<template v-else-if="csvImport.step.value === 'listMapping'">
 				<UiButton variant="secondary" @click="csvImport.goBackToMappingFromListMapping()">{{

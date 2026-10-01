@@ -9,7 +9,11 @@
  *   - a backed-off message holds back only itself, across page boundaries and
  *     across a drain cut short by a lost connection;
  *   - a folder rename or delete waits for the message ops that name the folder
- *     by its current remote name, and for older folder ops on its branch.
+ *     by its current remote name, and for older folder ops on its branch;
+ *   - a queue longer than one read covers still drains: held ops at the front
+ *     hand out what they wait for, and ops waiting for a failed op are pushed
+ *     back with it, however many there are (the rest of the push-back carries
+ *     on in a scheduled continuation).
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -365,5 +369,194 @@ describe('folder renames and deletes', () => {
 
 		await settle(t, [{ opId: first!.opId, outcome: 'done' }]);
 		expect((await listDue(t, accountId)).map((op) => op.kind)).toEqual(['deleteFolder']);
+	});
+});
+
+// Hundreds of rows polled to empty: seconds on its own, far more in a loaded full run.
+describe('a long queue keeps draining', { timeout: 120_000 }, () => {
+	type Row = Omit<Doc<'externalMailRemoteOps'>, '_id' | '_creationTime' | 'accountId'>;
+	const row = (op: QueuedOp, nextAttemptAt: number): Row => ({
+		...op,
+		attempts: 0,
+		nextAttemptAt,
+		createdAt: nextAttemptAt,
+	});
+	const renameRow = (remote: string, at: number) =>
+		row({ kind: 'renameFolder', source: { remote }, target: { path: [`${remote} (old)`] } }, at);
+
+	async function insertRows(t: T, accountId: Id<'externalMailAccounts'>, rows: Row[]) {
+		await t.run(async (ctx) => {
+			for (const r of rows) await ctx.db.insert('externalMailRemoteOps', { ...r, accountId });
+		});
+	}
+
+	/**
+	 * Poll and settle like the worker until nothing is due, checking each page:
+	 * a folder op is only handed out once no message op naming its folder is queued.
+	 */
+	async function drain(
+		t: T,
+		accountId: Id<'externalMailAccounts'>,
+		outcome: (op: { kind: string }) => 'done' | 'failed' = () => 'done'
+	) {
+		const handedOut: string[] = [];
+		for (let poll = 0; poll < 100; poll++) {
+			const ops = await listDue(t, accountId);
+			if (ops.length === 0) return handedOut;
+			const queued = await queuedRows(t);
+			for (const op of ops) {
+				handedOut.push(op.kind);
+				if (op.kind !== 'renameFolder' || !('remote' in op.source)) continue;
+				const folder = op.source.remote;
+				const naming = queued.filter(
+					(r) =>
+						r.rfc822MessageId !== undefined &&
+						[r.source, r.target].some((ref) => ref && 'remote' in ref && ref.remote === folder)
+				);
+				expect(naming).toEqual([]);
+			}
+			await settle(
+				t,
+				ops.map((op) => ({ opId: op.opId, outcome: outcome(op) }))
+			);
+		}
+		throw new Error('the queue did not drain');
+	}
+
+	it('runs folder ops and unrelated message ops past the read limits', async () => {
+		const { t, accountId } = await externalMailbox();
+		await insertRows(t, accountId, [
+			...Array.from({ length: 520 }, (_, i) => renameRow(`Folder ${i}`, 1)),
+			...Array.from({ length: 251 }, (_, i) => row(flagsOp(`m${i}@x.example`, { seen: true }), 2)),
+		]);
+
+		expect(await listDue(t, accountId)).toHaveLength(50);
+		const handedOut = await drain(t, accountId);
+
+		expect(handedOut.filter((kind) => kind === 'renameFolder')).toHaveLength(520);
+		expect(handedOut.filter((kind) => kind === 'flags')).toHaveLength(251);
+		expect(await queuedRows(t)).toEqual([]);
+	});
+
+	it('hands out the message ops that held folder ops at the front wait for', async () => {
+		const { t, accountId } = await externalMailbox();
+		// Every rename waits for a move into its folder, queued behind all the renames.
+		await insertRows(t, accountId, [
+			...Array.from({ length: 260 }, (_, i) => renameRow(`Folder ${i}`, 1)),
+			...Array.from({ length: 260 }, (_, i) =>
+				row(moveOp(`a${i}@x.example`, { role: 'inbox' }, { remote: `Folder ${i}/Sub` }), 2)
+			),
+			...Array.from({ length: 60 }, (_, i) => row(flagsOp(`m${i}@x.example`, { seen: true }), 3)),
+		]);
+
+		expect((await listDue(t, accountId)).map((op) => op.kind)).toEqual(Array(50).fill('move'));
+		const handedOut = await drain(t, accountId);
+
+		expect(handedOut.filter((kind) => kind === 'move')).toHaveLength(260);
+		expect(handedOut.filter((kind) => kind === 'renameFolder')).toHaveLength(260);
+		expect(handedOut.filter((kind) => kind === 'flags')).toHaveLength(60);
+	});
+
+	it('pushes the folder ops waiting for a failed message op back with it', async () => {
+		const { t, accountId } = await externalMailbox();
+		await insertRows(t, accountId, [
+			...Array.from({ length: 260 }, (_, i) => renameRow(`Folder ${i}`, 1)),
+			...Array.from({ length: 260 }, (_, i) =>
+				row(moveOp(`a${i}@x.example`, { role: 'inbox' }, { remote: `Folder ${i}` }), 2)
+			),
+			row(flagsOp('b@x.example', { seen: true }), 3),
+		]);
+
+		// Every move fails and is backed off; the renames waiting for them go back too.
+		let failed = 0;
+		while (failed < 260) {
+			const moves = (await listDue(t, accountId)).filter((op) => op.kind === 'move');
+			expect(moves).not.toEqual([]);
+			await settle(
+				t,
+				moves.map((op) => ({ opId: op.opId, outcome: 'failed' as const }))
+			);
+			failed += moves.length;
+		}
+
+		expect((await listDue(t, accountId)).map((op) => op.rfc822MessageId)).toEqual(['b@x.example']);
+		const renames = (await queuedRows(t)).filter((r) => r.kind === 'renameFolder');
+		expect(renames.every((r) => r.nextAttemptAt > Date.now())).toBe(true);
+	});
+
+	it('pushes every later op of a failed message back, however many are queued', async () => {
+		const { t, accountId } = await externalMailbox();
+		const folders = ['archive', 'inbox'] as const;
+		await insertRows(t, accountId, [
+			...Array.from({ length: 300 }, (_, i) =>
+				row(moveOp('a@x.example', { role: folders[i % 2]! }, { role: folders[(i + 1) % 2]! }), 1)
+			),
+			row(flagsOp('b@x.example', { seen: true }), 2),
+		]);
+		const [first, ...rest] = await listDue(t, accountId);
+		expect(first!.rfc822MessageId).toBe('a@x.example');
+		expect(rest.map((op) => op.rfc822MessageId)).toEqual([]);
+
+		await settle(t, [{ opId: first!.opId, outcome: 'failed' }]);
+
+		expect((await listDue(t, accountId)).map((op) => op.rfc822MessageId)).toEqual(['b@x.example']);
+	});
+
+	/** Settle `results`, then run the deferral continuations that settle scheduled. */
+	async function settleAndFinish(
+		t: T,
+		results: Array<{ opId: Id<'externalMailRemoteOps'>; outcome: 'done' | 'failed' }>
+	) {
+		vi.useFakeTimers({ now: Date.now() });
+		try {
+			await settle(t, results);
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		} finally {
+			vi.useRealTimers();
+		}
+	}
+
+	it('keeps an unrelated op runnable behind more held ops than one deferral pass covers', async () => {
+		const { t, accountId } = await externalMailbox();
+		const folders = ['inbox', 'archive'] as const;
+		await insertRows(t, accountId, [
+			...Array.from({ length: 2500 }, (_, i) =>
+				row(moveOp('a@x.example', { role: folders[i % 2]! }, { role: folders[(i + 1) % 2]! }), 1)
+			),
+			row(flagsOp('unrelated@x.example', { seen: true }), 2),
+		]);
+		const [oldest] = await listDue(t, accountId);
+		expect(oldest!.rfc822MessageId).toBe('a@x.example');
+
+		await settleAndFinish(t, [{ opId: oldest!.opId, outcome: 'failed' }]);
+
+		expect((await listDue(t, accountId)).map((op) => op.rfc822MessageId)).toEqual([
+			'unrelated@x.example',
+		]);
+		const moves = (await queuedRows(t)).filter((r) => r.rfc822MessageId === 'a@x.example');
+		expect(moves.filter((r) => r.nextAttemptAt <= Date.now())).toEqual([]);
+	});
+
+	it('keeps an unrelated op runnable behind more held folder ops than one deferral pass covers', async () => {
+		const { t, accountId } = await externalMailbox();
+		await insertRows(t, accountId, [
+			row(moveOp('a@x.example', { role: 'inbox' }, { remote: 'Clients/Acme' }), 1),
+			renameRow('Clients', 1),
+			...Array.from({ length: 1400 }, (_, i) =>
+				row({ kind: 'deleteFolder', source: { remote: `Clients/${i}` } }, 1)
+			),
+			row(flagsOp('unrelated@x.example', { seen: true }), 2),
+		]);
+		const due = await listDue(t, accountId);
+		expect(due.map((op) => op.rfc822MessageId)).toEqual(['a@x.example']);
+
+		await settleAndFinish(t, [{ opId: due[0]!.opId, outcome: 'failed' }]);
+
+		expect((await listDue(t, accountId)).map((op) => op.rfc822MessageId)).toEqual([
+			'unrelated@x.example',
+		]);
+		const folderOps = (await queuedRows(t)).filter((r) => r.rfc822MessageId === undefined);
+		expect(folderOps).toHaveLength(1401);
+		expect(folderOps.filter((r) => r.nextAttemptAt <= Date.now())).toEqual([]);
 	});
 });

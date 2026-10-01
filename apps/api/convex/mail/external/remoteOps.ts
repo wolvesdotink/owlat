@@ -45,6 +45,12 @@ import {
 	insertRemoteOp,
 	renameQueuedFolderRefs,
 } from './remoteOpOrder';
+import {
+	deferralBudget,
+	deferralValidator,
+	runDeferral,
+	type DeferralBudget,
+} from './remoteOpDeferral';
 
 export type RemoteFolderRef = Infer<typeof remoteFolderRefValidator>;
 export type RemoteFlagChanges = Infer<typeof remoteFlagChangesValidator>;
@@ -110,6 +116,7 @@ export async function recordRemoteChanges(
 	const mappings = new Map<Id<'externalMailAccounts'>, Map<Id<'mailFolders'>, string>>();
 	const refs = new Map<Id<'mailFolders'>, RemoteFolderRef | null>();
 	const nudge = new Set<Id<'externalMailAccounts'>>();
+	const budget = deferralBudget();
 	const now = Date.now();
 
 	const accountFor = async (mailboxId: Id<'mailboxes'>) => {
@@ -150,7 +157,7 @@ export async function recordRemoteChanges(
 			if (Object.keys(change.flags).length === 0) continue;
 			const source = await refFor(message.folderId);
 			if (!source) continue;
-			await insertRemoteOp(ctx, { ...base, kind: 'flags', source, flags: change.flags });
+			await insertRemoteOp(ctx, { ...base, kind: 'flags', source, flags: change.flags }, budget);
 		} else {
 			let sourceFolderId = message.folderId;
 			let targetFolderId: Id<'mailFolders'> | null = null;
@@ -171,17 +178,30 @@ export async function recordRemoteChanges(
 			const source = await refFor(sourceFolderId);
 			if (!source) continue;
 			if (targetFolderId === null) {
-				await insertRemoteOp(ctx, { ...base, kind: 'delete', source });
+				await insertRemoteOp(ctx, { ...base, kind: 'delete', source }, budget);
 			} else {
 				const target = await refFor(targetFolderId);
 				if (!target || sameRef(source, target)) continue;
-				await insertRemoteOp(ctx, { ...base, kind: 'move', source, target });
+				await insertRemoteOp(ctx, { ...base, kind: 'move', source, target }, budget);
 			}
 		}
 		nudge.add(accountId);
 	}
 
+	await scheduleLeftoverDeferrals(ctx, budget);
 	for (const id of nudge) await nudgeWorker(ctx, id);
+}
+
+/**
+ * Hand the deferrals one transaction had no room left for to a continuation
+ * (`remoteOpDeferral.ts`).
+ */
+async function scheduleLeftoverDeferrals(ctx: MutationCtx, budget: DeferralBudget): Promise<void> {
+	for (const deferral of budget.leftover) {
+		await ctx.scheduler.runAfter(0, internal.mail.external.remoteOps.continueRemoteOpDeferral, {
+			deferral,
+		});
+	}
 }
 
 /** Wake the worker for an account (best-effort; it also drains on every poll). */
@@ -248,13 +268,13 @@ export async function enqueueRemoteOp(
 	}
 ): Promise<void> {
 	const now = Date.now();
-	await insertRemoteOp(ctx, {
-		...op,
-		accountId,
-		attempts: 0,
-		nextAttemptAt: now,
-		createdAt: now,
-	});
+	const budget = deferralBudget();
+	await insertRemoteOp(
+		ctx,
+		{ ...op, accountId, attempts: 0, nextAttemptAt: now, createdAt: now },
+		budget
+	);
+	await scheduleLeftoverDeferrals(ctx, budget);
 }
 
 /** The remote name each mapped local folder of an account syncs with. */
@@ -364,6 +384,7 @@ export const settleRemoteOps = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		const now = Date.now();
+		const budget = deferralBudget();
 		for (const result of args.results) {
 			const op = await ctx.db.get(result.opId);
 			if (!op) continue;
@@ -382,8 +403,24 @@ export const settleRemoteOps = internalMutation({
 			}
 			const nextAttemptAt = now + remoteOpRetryDelayMs(attempts);
 			await ctx.db.patch(op._id, { attempts, lastError, nextAttemptAt });
-			await deferOpsBehind(ctx, op, nextAttemptAt);
+			await deferOpsBehind(ctx, op, nextAttemptAt, budget);
 		}
+		await scheduleLeftoverDeferrals(ctx, budget);
+	},
+});
+
+/**
+ * Carry on a deferral the transaction that started it had no room left for,
+ * then nudge the worker: until it is done, the ops still to push back can fill
+ * the front of the queue.
+ */
+export const continueRemoteOpDeferral = internalMutation({
+	args: { deferral: deferralValidator },
+	handler: async (ctx, args) => {
+		const budget = deferralBudget();
+		await runDeferral(ctx, args.deferral, budget);
+		if (budget.leftover.length > 0) await scheduleLeftoverDeferrals(ctx, budget);
+		else await nudgeWorker(ctx, args.deferral.accountId);
 	},
 });
 

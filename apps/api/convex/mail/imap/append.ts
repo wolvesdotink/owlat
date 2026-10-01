@@ -23,6 +23,7 @@ import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 import { buildSnippet } from '../deliveryPipeline/insert';
 import { applyMailboxUsageDelta } from '../mailboxUsage';
 import { recordMessageCounters } from '../messageCounters';
+import { recordFolderMembership } from '../folderMembership';
 
 /**
  * Error string used by APPEND to signal a from-address violation. The
@@ -201,6 +202,7 @@ export const appendMessage = internalMutation({
 			labelIds: [],
 			receivedAt: internalDate,
 		});
+		await recordFolderMembership(ctx, null, { folderId: folder._id, uid });
 
 		if (existingThreadId) {
 			// Counters, participants, folder roles and the latest pointers all move

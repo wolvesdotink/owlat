@@ -22,7 +22,12 @@ export type ChatMessageRow = FunctionReturnType<
 export function useChatRoom(roomId: Ref<Id<'chatRooms'> | undefined>) {
 	const { t } = useI18n();
 
-	const { data: room, isLoading: roomLoading } = useConvexQuery(api.chat.rooms.getRoom, () =>
+	const {
+		data: room,
+		isLoading: roomLoading,
+		error: roomError,
+		refetch: refetchRoom,
+	} = useConvexQuery(api.chat.rooms.getRoom, () =>
 		roomId.value ? { roomId: roomId.value } : 'skip'
 	);
 
@@ -34,7 +39,12 @@ export function useChatRoom(roomId: Ref<Id<'chatRooms'> | undefined>) {
 		loadMore: loadMoreMessages,
 		atMax: atMaxMessages,
 	} = useGrowableLimit(roomId, { page: 100, max: 500 });
-	const { data: messagesData, isLoading: messagesLoading } = useConvexQuery(
+	const {
+		data: messagesData,
+		isLoading: messagesLoading,
+		error: messagesError,
+		refetch: refetchMessages,
+	} = useConvexQuery(
 		api.chat.messages.listMessages,
 		() => (roomId.value ? { roomId: roomId.value, limit: messageLimit.value } : 'skip'),
 		// Each "Load earlier messages" closes the window it grew out of, so only
@@ -165,8 +175,12 @@ export function useChatRoom(roomId: Ref<Id<'chatRooms'> | undefined>) {
 	return {
 		room,
 		roomLoading,
+		roomError,
+		refetchRoom,
 		messages,
 		messagesLoading,
+		messagesError,
+		refetchMessages,
 		hasMoreMessages,
 		loadMoreMessages,
 		atMaxMessages,

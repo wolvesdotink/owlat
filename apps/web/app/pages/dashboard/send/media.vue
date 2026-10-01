@@ -214,6 +214,7 @@ const copyUrl = async (url: string) => {
 				v-model="selectedTag"
 				:options="tagFilterOptions"
 				:placeholder="t('dashboard.send.media.allTags')"
+				:aria-label="t('dashboard.send.media.tags')"
 			/>
 		</div>
 

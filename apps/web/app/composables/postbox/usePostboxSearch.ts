@@ -35,22 +35,31 @@ export function usePostboxSearch(mailboxId: Ref<Id<'mailboxes'> | null>, query: 
 	// Keyset-paginated: "Load more" walks past the first page via the backend's
 	// opaque cursor instead of silently stopping at the old 200-row cap. Any
 	// change to the parsed query restarts from a fresh first page.
-	const { rows, isLoading, isLoadingMore, error, hasMore, canLoadMore, loadMore } =
-		usePostboxCursorFeed(
-			api.mail.mailbox.search.search,
-			() => {
-				if (!mailboxId.value) return 'skip';
-				const trimmed = debouncedQuery.value.trim();
-				if (!trimmed) return 'skip';
-				return {
-					mailboxId: mailboxId.value,
-					...parsed.value,
-					limit: 50,
-				};
-			},
-			computed(() => JSON.stringify(parsed.value)),
-			{ keepPreviousData: true }
-		);
+	const {
+		rows,
+		isLoading,
+		isLoadingMore,
+		error,
+		firstPageError,
+		refetch,
+		hasMore,
+		canLoadMore,
+		loadMore,
+	} = usePostboxCursorFeed(
+		api.mail.mailbox.search.search,
+		() => {
+			if (!mailboxId.value) return 'skip';
+			const trimmed = debouncedQuery.value.trim();
+			if (!trimmed) return 'skip';
+			return {
+				mailboxId: mailboxId.value,
+				...parsed.value,
+				limit: 50,
+			};
+		},
+		computed(() => JSON.stringify(parsed.value)),
+		{ keepPreviousData: true }
+	);
 
 	// While the box is ahead of the subscription the on-screen rows belong to
 	// the previous query, so the page has to read as loading rather than as a
@@ -100,5 +109,8 @@ export function usePostboxSearch(mailboxId: Ref<Id<'mailboxes'> | null>, query: 
 		loadMore,
 		isWalking: readonly(isWalking),
 		searchOlder,
+		/** The search itself failed: not "no results". */
+		error: firstPageError,
+		refetch,
 	};
 }

@@ -17,6 +17,7 @@ import {
 	renderComposeOverrideYaml,
 } from '@owlat/shared/composeOverride';
 import { errorMessage } from '@owlat/shared';
+import { writeOwnerOnlyFile } from '@owlat/shared/ownerOnlyFile';
 import { applyEnvUpdates, isRateLimited, validateFlagSnapshot } from './security.js';
 import { composePsServices, exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
 import { composeArgv, recoverStackAfterFailedUp, servicesToRecreate } from './rollout.js';
@@ -85,7 +86,7 @@ export async function handleApplyProfiles(req: IncomingMessage, res: ServerRespo
 		return json(res, 500, { error: rewrite.reason });
 	}
 	try {
-		await writeFile(envFile, rewrite.content, 'utf-8');
+		await writeOwnerOnlyFile(envFile, rewrite.content);
 		steps.push({ step: 'write-env', stdout: `COMPOSE_PROFILES=${profiles.join(',')}`, stderr: '' });
 	} catch (err) {
 		return json(res, 500, { error: `Cannot write .env: ${errorMessage(err)}`, steps });

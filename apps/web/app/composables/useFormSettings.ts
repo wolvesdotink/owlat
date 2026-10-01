@@ -45,9 +45,12 @@ export function useFormSettings() {
 	const { isLoading: organizationLoading } = useOrganizationContext();
 
 	// DATA: Convex queries
-	const { data: formsData, isLoading: formsLoading } = useOrganizationQuery(
-		api.forms.endpoints.listByTeam
-	);
+	const {
+		data: formsData,
+		isLoading: formsLoading,
+		error: formsError,
+		refetch: refetchForms,
+	} = useOrganizationQuery(api.forms.endpoints.listByTeam);
 
 	const { results: topicsData } = useTopicsList();
 
@@ -358,6 +361,8 @@ ${fieldHtml}${honeypotHtml}
 	return {
 		// Data
 		formsData,
+		formsError,
+		refetchForms,
 		topicsData,
 		isLoading,
 

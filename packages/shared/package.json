@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/shared",
-	"version": "0.6.5",
+	"version": "0.6.6",
 	"private": true,
 	"homepage": "https://owlat.app",
 	"license": "Apache-2.0",
@@ -25,6 +25,10 @@
 		"./unicode": {
 			"types": "./src/unicode.ts",
 			"import": "./src/unicode.ts"
+		},
+		"./blockTree": {
+			"types": "./src/blockTree.ts",
+			"import": "./src/blockTree.ts"
 		},
 		"./answerMode": {
 			"types": "./src/answerMode.ts",
@@ -113,6 +117,10 @@
 		"./setupEnv": {
 			"types": "./src/setupEnv.ts",
 			"import": "./src/setupEnv.ts"
+		},
+		"./ownerOnlyFile": {
+			"types": "./src/ownerOnlyFile.ts",
+			"import": "./src/ownerOnlyFile.ts"
 		},
 		"./containerHealth": {
 			"types": "./src/containerHealth.ts",

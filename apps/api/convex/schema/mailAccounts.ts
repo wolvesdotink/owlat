@@ -5,6 +5,7 @@ import {
 	externalSyncModeValidator,
 	remoteFlagChangesValidator,
 	remoteFolderRefValidator,
+	remoteOpKindValidator,
 } from '../lib/validators/mail';
 
 /**
@@ -304,14 +305,7 @@ export const mailAccountsTables = {
 	// message turns out not to be on the server, or when its retries run out.
 	externalMailRemoteOps: defineTable({
 		accountId: v.id('externalMailAccounts'),
-		kind: v.union(
-			v.literal('move'),
-			v.literal('flags'),
-			v.literal('delete'),
-			// A mirrored folder renamed or deleted in Owlat.
-			v.literal('renameFolder'),
-			v.literal('deleteFolder')
-		),
+		kind: remoteOpKindValidator,
 		// Canonical Message-ID (no angle brackets): how the worker finds the
 		// message. Absent on the two folder kinds.
 		rfc822MessageId: v.optional(v.string()),
@@ -329,5 +323,9 @@ export const mailAccountsTables = {
 	})
 		.index('by_account_and_next_attempt', ['accountId', 'nextAttemptAt'])
 		// A pending write-back holds a message out of inbound reconcile.
-		.index('by_account_and_message', ['accountId', 'rfc822MessageId']),
+		.index('by_account_and_message', ['accountId', 'rfc822MessageId'])
+		// The ops naming a remote folder, which a rename or delete of it waits
+		// for (mail/external/remoteFolderOpOrder.ts).
+		.index('by_account_kind_and_source_remote', ['accountId', 'kind', 'source.remote'])
+		.index('by_account_kind_and_target_remote', ['accountId', 'kind', 'target.remote']),
 };

@@ -8,7 +8,7 @@ import type { SnippetVariable } from '~/utils/postboxSnippetVariables';
 
 export function usePostboxSnippets(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	const { t } = useI18n();
-	const { data, isLoading } = useConvexQuery(api.mail.snippets.list, () =>
+	const { data, isLoading, error, refetch } = useConvexQuery(api.mail.snippets.list, () =>
 		mailboxId.value ? { mailboxId: mailboxId.value } : 'skip'
 	);
 	const snippets = computed(() => data.value ?? []);
@@ -50,5 +50,5 @@ export function usePostboxSnippets(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		await removeMutation.run({ snippetId });
 	}
 
-	return { snippets, isLoading, create, update, remove };
+	return { snippets, isLoading, error, refetch, create, update, remove };
 }

@@ -247,3 +247,85 @@ export async function setConvexEnvVars(
 		);
 	}
 }
+
+/**
+ * The loop `removeConvexEnvVars` runs in the `convex-deploy` container: one
+ * `convex env remove` per name passed as a positional argument (names are
+ * not secret, and the caller checks each one is a plain identifier).
+ * `convex env remove` succeeds for a variable that is not set, so a retry
+ * after a partial failure is safe. The `env removed` marker is printed only
+ * after a removal succeeded; the host parses it to know which names are gone
+ * when a later one fails.
+ */
+const ENV_REMOVE_SCRIPT = [
+	'for k in "$@"; do',
+	'  convex env remove -- "$k" < /dev/null || exit 1',
+	'  echo "env removed $k"',
+	'done',
+].join('\n');
+
+/**
+ * Thrown by {@link removeConvexEnvVars}. `removed` lists the names the
+ * deployment confirmed before the failure; every other requested name is
+ * still set there.
+ */
+export class ConvexEnvRemoveError extends Error {
+	constructor(
+		message: string,
+		readonly removed: string[]
+	) {
+		super(message);
+		this.name = 'ConvexEnvRemoveError';
+	}
+}
+
+/**
+ * Remove function-runtime env vars from the backend's env store with `convex
+ * env remove`, through the same `convex-deploy` container as
+ * {@link setConvexEnvVars}. Stops at the first failure and throws a
+ * {@link ConvexEnvRemoveError} naming the vars that were already removed.
+ */
+export async function removeConvexEnvVars(
+	owlatDir: string,
+	keys: string[],
+	onLine?: (line: string) => void
+): Promise<void> {
+	if (keys.length === 0) return;
+	for (const key of keys) {
+		if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+			throw new ConvexEnvRemoveError(
+				`Refusing to remove Convex env var with an invalid name: ${JSON.stringify(key)}`,
+				[]
+			);
+		}
+	}
+	const { code, stdout, stderr } = await run(
+		'docker',
+		[
+			'compose',
+			'--profile',
+			'deploy',
+			'run',
+			'--rm',
+			'-T',
+			'convex-deploy',
+			'sh',
+			'-c',
+			ENV_REMOVE_SCRIPT,
+			'sh',
+			...keys,
+		],
+		{ cwd: owlatDir, onLine }
+	);
+	if (code !== 0) {
+		const removed = keys.filter((key) =>
+			stdout.split('\n').some((line) => line.trim() === `env removed ${key}`)
+		);
+		throw new ConvexEnvRemoveError(
+			`Failed to remove Convex function-runtime env vars (exit ${code}).\n${
+				stderr.trim() || stdout.trim()
+			}`,
+			removed
+		);
+	}
+}

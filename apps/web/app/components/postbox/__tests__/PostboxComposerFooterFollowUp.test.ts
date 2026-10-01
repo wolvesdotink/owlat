@@ -18,9 +18,16 @@ import { defineComponent, h, ref, Teleport } from 'vue';
 import { useClickOutside } from '~/composables/useClickOutside';
 import { formatDateTime } from '~/utils/formatters';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { composerTargetCapabilities } from '~/utils/composerTarget';
 import PostboxComposerFooter from '../PostboxComposerFooter.vue';
 import PostboxComposerFollowUp from '../PostboxComposerFollowUp.vue';
 import PostboxOverflowMenu from '../PostboxOverflowMenu.vue';
+
+// The footer as the mailbox composer mounts it: every control its target allows.
+const mailboxCapabilities = composerTargetCapabilities({
+	kind: 'mailbox',
+	mailboxId: 'mbx_1' as never,
+});
 
 // Nuxt auto-imports these; the footer/menu/toggle need the real behavior.
 beforeAll(() => {
@@ -61,6 +68,7 @@ function mountFooter() {
 	wrapper = mount(PostboxComposerFooter, {
 		attachTo: document.body,
 		props: {
+			capabilities: mailboxCapabilities,
 			canSend: true,
 			sending: false,
 			isUploading: false,

@@ -42,6 +42,7 @@ import { isChannelMessage } from '~/utils/teamThreadReply';
 import { isDialogOpen } from '~/utils/dialogOpen';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { isChordPending } from '~/utils/shortcutScope';
+import { isImeComposing } from '~/utils/imeComposition';
 
 definePageMeta({
 	layout: 'dashboard',
@@ -55,7 +56,7 @@ const route = useRoute();
 
 const threadId = useRouteId<'conversationThreads'>('threadId');
 const detail = useThreadDetail(threadId);
-const { thread, messages, contact, followUps, threadLoading, cancelFollowUp } = detail;
+const { thread, messages, contact, followUps, threadLoading, threadError, cancelFollowUp } = detail;
 
 useHead({ title: () => thread.value?.subject || t('dashboard.answer.mode.pageTitle') });
 
@@ -231,7 +232,7 @@ async function undoFollowUp(followUpId: Parameters<typeof cancelFollowUp>[0]) {
 }
 
 function onKeydown(event: KeyboardEvent) {
-	if (event.defaultPrevented || event.isComposing) return;
+	if (event.defaultPrevented || isImeComposing(event)) return;
 	if (event.key === 'Escape') {
 		if (isDialogOpen()) return;
 		event.preventDefault();
@@ -350,6 +351,12 @@ onBeforeUnmount(() => {
 						/>
 					</template>
 				</AnswerTeamConversation>
+				<!-- A failed read is not a missing thread (#721). -->
+				<UiQueryBoundary
+					v-else-if="threadError"
+					:error="threadError"
+					@retry="detail.refetchThread"
+				/>
 				<div v-else-if="threadLoading" class="space-y-3 p-6" aria-hidden="true">
 					<UiSkeleton class="h-4 w-1/3" />
 					<UiSkeleton class="h-40 w-full rounded-(--radius-card)" />

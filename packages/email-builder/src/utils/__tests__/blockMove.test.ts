@@ -140,3 +140,44 @@ describe('moveBlock — container items', () => {
 		expect(moved[1]).toBe(original[1]);
 	});
 });
+
+describe('moveBlock — nested composites', () => {
+	// root container → inner container → [x, y]; and → columns → [[p, q]]
+	const blocks = () => [
+		block('before'),
+		container('outer', [
+			container('inner', [textItem('x'), textItem('y')] as unknown as ContainerItem[]),
+			columns('cols', [[textItem('p'), textItem('q')]]),
+		] as unknown as ContainerItem[]),
+	];
+	const childIds = (blocks: readonly EditorBlock[], path: number[]) => {
+		let items = (blocks[1]!.content as ContainerBlockContent).items as unknown as EditorBlock[];
+		for (const i of path)
+			items = (items[i]!.content as ContainerBlockContent).items as unknown as EditorBlock[];
+		return items.map((i) => i.id);
+	};
+
+	it('moves an item two levels down, inside its own list', () => {
+		const moved = moveBlock(blocks(), { itemId: 'y', container: { blockId: 'inner' } }, 'up')!;
+		expect(childIds(moved, [0])).toEqual(['y', 'x']);
+		expect(childIds(moved, [])).toEqual(['inner', 'cols']);
+	});
+
+	it('moves a column item of a columns block nested in a container', () => {
+		const moved = moveBlock(
+			blocks(),
+			{ itemId: 'p', column: { blockId: 'cols', columnIndex: 0 } },
+			'down'
+		)!;
+		const cols = (moved[1]!.content as ContainerBlockContent).items[1]!;
+		expect((cols.content as ColumnsBlockContent).columns[0]!.map((i) => i.id)).toEqual(['q', 'p']);
+	});
+
+	it('replaces the root and the path, and leaves the input untouched', () => {
+		const original = blocks();
+		const moved = moveBlock(original, { itemId: 'y', container: { blockId: 'outer' } }, 'up')!;
+		expect(childIds(original, [0])).toEqual(['x', 'y']);
+		expect(moved[1]).not.toBe(original[1]);
+		expect(moved[0]).toBe(original[0]);
+	});
+});

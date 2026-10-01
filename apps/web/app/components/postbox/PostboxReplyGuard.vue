@@ -26,7 +26,8 @@
  * one passes straight through the other. Cancelling emits `cancel`, so a host
  * that has nothing to show without the reply (Answer mode) can step back.
  */
-import type { ReplyRisk, SenderAuthText } from '~/utils/senderAuth';
+import { useLocalized } from '~/composables/useLocalized';
+import type { ReplyRisk } from '~/utils/senderAuth';
 
 const { t } = useI18n();
 
@@ -44,9 +45,7 @@ const destination = ref('');
 let pending: (() => void) | null = null;
 
 /** The risk lines are catalog keys (module-scope registry), resolved here. */
-function line(text: SenderAuthText): string {
-	return typeof text === 'string' ? t(text) : t(text.key, text.params ?? {});
-}
+const line = useLocalized();
 
 function guard(
 	threadId: string,

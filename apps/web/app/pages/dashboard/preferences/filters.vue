@@ -28,11 +28,25 @@ definePageMeta({
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
-const { currentMailbox, isLoading: mailboxesLoading } = usePostboxMailbox();
+const {
+	currentMailbox,
+	isLoading: mailboxesLoading,
+	error: mailboxesError,
+	refetch: refetchMailboxes,
+} = usePostboxMailbox();
 const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 
-const { filters, isLoading, create, update, setEnabled, remove, reorder } =
-	usePostboxFilters(mailboxId);
+const {
+	filters,
+	isLoading,
+	error: listError,
+	refetch: refetchList,
+	create,
+	update,
+	setEnabled,
+	remove,
+	reorder,
+} = usePostboxFilters(mailboxId);
 
 interface DraftFilter {
 	id: Id<'mailFilters'> | null;
@@ -236,6 +250,8 @@ async function confirmRemove() {
 					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
 				/>
 			</div>
+			<!-- A failed read is not an empty list (#721). -->
+			<UiQueryBoundary v-else-if="listError" :error="listError" @retry="refetchList" />
 			<div v-else-if="filters.length === 0" class="p-8 text-center text-text-secondary">
 				{{ t('dashboard.preferences.filters.empty') }}
 			</div>
@@ -328,7 +344,15 @@ async function confirmRemove() {
 			</ul>
 		</section>
 
-		<div v-if="!mailboxId && !mailboxesLoading" class="card p-6 text-center text-text-secondary">
+		<UiQueryBoundary
+			v-if="!mailboxId && mailboxesError"
+			:error="mailboxesError"
+			@retry="refetchMailboxes"
+		/>
+		<div
+			v-else-if="!mailboxId && !mailboxesLoading"
+			class="card p-6 text-center text-text-secondary"
+		>
 			{{ t('dashboard.preferences.filters.noMailbox') }}
 		</div>
 
