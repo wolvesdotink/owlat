@@ -19,7 +19,6 @@
 		"core:window:allow-set-effects",
 		"core:event:default",
 		"notification:default",
-		"dialog:allow-open",
 		"deep-link:default",
 		"updater:default",
 		"shell:allow-open",

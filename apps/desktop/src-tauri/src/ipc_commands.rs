@@ -37,6 +37,7 @@ pub const WINDOW_COMMANDS: &[&str] = &[
 pub const PROVISIONING_COMMANDS: &[&str] = &[
     "ssh_connect",
     "ssh_accept_host_key",
+    "ssh_pick_key_file",
     "ssh_authenticate",
     "ssh_exec_stream",
     "ssh_write_file",

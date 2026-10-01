@@ -66,6 +66,7 @@ fn main() {
         )
         // Hold live SSH sessions for the "set up a new server" flow.
         .manage(ssh::SshState::default())
+        .manage(ssh::PickedKeyFile::default())
         // The one update slot: found by `updater_check`, downloaded and verified
         // by `updater_install`, installed by `updater_restart` (an `Update`
         // cannot cross the IPC boundary, and the install must act on the entry
@@ -101,6 +102,7 @@ fn main() {
             zoom::zoom_level,
             ssh::ssh_connect,
             ssh::ssh_accept_host_key,
+            ssh::ssh_pick_key_file,
             ssh::ssh_authenticate,
             ssh::ssh_exec_stream,
             ssh::ssh_write_file,
