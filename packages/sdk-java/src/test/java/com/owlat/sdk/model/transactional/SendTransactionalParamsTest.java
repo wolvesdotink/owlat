@@ -215,6 +215,34 @@ class SendTransactionalParamsTest {
     }
 
     @Test
+    void builderAcceptsTotalSizeOfExactly10MiB() {
+        // 10 MiB is not a multiple of 3, so its base64 ends in "==": the size
+        // check must subtract the padding to accept the API's own boundary.
+        byte[] bytes = new byte[10 * 1024 * 1024];
+        String content = java.util.Base64.getEncoder().encodeToString(bytes);
+
+        SendTransactionalParams params = SendTransactionalParams.builder("user@example.com")
+                .slug("welcome")
+                .attachment(TransactionalAttachment.builder("boundary.bin").content(content).build())
+                .build();
+
+        assertEquals(1, params.getAttachments().size());
+    }
+
+    @Test
+    void builderRejectsTotalSizeOneByteOver10MiB() {
+        byte[] bytes = new byte[10 * 1024 * 1024 + 1];
+        String content = java.util.Base64.getEncoder().encodeToString(bytes);
+
+        SendTransactionalParams.Builder builder = SendTransactionalParams.builder("user@example.com")
+                .slug("welcome")
+                .attachment(TransactionalAttachment.builder("over.bin").content(content).build());
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, builder::build);
+        assertTrue(ex.getMessage().contains("exceeds 10MB limit"), ex.getMessage());
+    }
+
+    @Test
     void builderAcceptsTotalSizeUnder10Mb() {
         char[] payload = new char[1024 * 1024]; // ~768KB decoded
         java.util.Arrays.fill(payload, 'A');
