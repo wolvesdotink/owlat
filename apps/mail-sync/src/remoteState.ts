@@ -220,10 +220,9 @@ export async function reconcile(
 		deps.views.set(name, view);
 		const census =
 			deps.forceFull || !deps.isAligned || now - view.lastCensusAt >= CENSUS_INTERVAL_MS;
-		const result = await refreshFolder(deps.client, name, view, { census, now });
-		for (const id of result.changed) changed.add(id);
-		for (const id of result.vanished) vanished.add(id);
-		pending.rebuilt ||= result.rebuilt;
+		// Recorded into `pending` as the view changes, so a refresh that throws
+		// part-way still hands the next pass what it removed from the view.
+		await refreshFolder(deps.client, name, view, { census, now, into: pending });
 	}
 	if (deps.allMail) {
 		const read = await readChangedFlags(deps.client, deps.allMail, deps.allMailCursor);

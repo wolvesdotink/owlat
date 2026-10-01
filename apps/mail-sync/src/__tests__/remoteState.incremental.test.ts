@@ -212,6 +212,32 @@ describe('incremental reconcile (#928)', () => {
 
 		expect((await acc.pass()).applied).toEqual([{ messageId: 'm9@x', isGone: true }]);
 	});
+
+	it('hands a deletion to the next pass when a fetch throws after the census', async () => {
+		const acc = account(STABLE);
+		await warm(acc);
+		acc.imap.remove('INBOX', 'm9@x');
+		// The count check sends INBOX to a census, which drops m9@x from the view;
+		// then the connection is lost on the flag fetch that follows it.
+		const realFetch = acc.imap.fetch.bind(acc.imap);
+		let armed = true;
+		acc.imap.fetch = (range, query, options) => {
+			if (armed && options.changedSince !== undefined) {
+				armed = false;
+				const cut = realFetch(range, query, options);
+				return (async function* () {
+					await Promise.reject(new Error('connection lost'));
+					yield* cut;
+				})();
+			}
+			return realFetch(range, query, options);
+		};
+
+		await expect(acc.pass()).rejects.toThrow('connection lost');
+		acc.advance(10_000);
+
+		expect((await acc.pass()).applied).toEqual([{ messageId: 'm9@x', isGone: true }]);
+	});
 });
 
 describe('FolderView', () => {

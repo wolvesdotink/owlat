@@ -103,12 +103,26 @@ export interface RefreshOptions {
 	census?: boolean;
 	/** The reconcile's clock, recorded as the view's last census time. */
 	now?: number;
+	/**
+	 * Where to record what was noticed, as the view changes. A refresh that
+	 * throws part-way (a lost connection) has already moved the view on, so
+	 * what it saw up to then must already be in the caller's carried sets.
+	 */
+	into?: RefreshSink;
+}
+
+/** The carried sets a refresh records into (the reconcile's pending changes). */
+export interface RefreshSink {
+	changed: Set<string>;
+	vanished: Set<string>;
+	rebuilt: boolean;
 }
 
 /**
  * Bring one folder's view up to date. Without `census` it looks only above the
  * highest known UID, and takes the census anyway when the message count shows
- * that something left.
+ * that something left. With `into`, the returned `changed`/`vanished` are the
+ * sink's own sets.
  */
 export async function refreshFolder(
 	client: RemoteStateClient,
@@ -117,8 +131,8 @@ export async function refreshFolder(
 	options: RefreshOptions = { census: true }
 ): Promise<RefreshResult> {
 	const result: RefreshResult = {
-		changed: new Set(),
-		vanished: new Set(),
+		changed: options.into?.changed ?? new Set(),
+		vanished: options.into?.vanished ?? new Set(),
 		rebuilt: false,
 		census: false,
 	};
@@ -131,6 +145,7 @@ export async function refreshFolder(
 			view.clear();
 			view.uidValidity = uidValidity;
 			result.rebuilt = true;
+			if (options.into) options.into.rebuilt = true;
 		}
 
 		let census = options.census === true || result.rebuilt || view.censusDue;
