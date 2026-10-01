@@ -302,7 +302,7 @@ async function nextCursorAfter(
 	if (typeof position === 'number') {
 		return isPassOver ? null : String(offset + PAGE_SIZE);
 	}
-	const lastMember = page.at(-1);
+	const lastMember = page[page.length - 1];
 	if (!isPassOver && lastMember !== undefined) {
 		const next: MailchimpCursor = {
 			pass: position.pass,

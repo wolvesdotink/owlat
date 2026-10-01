@@ -94,7 +94,7 @@ describe('mailchimp paging — adapter', () => {
 			expect(second).toMatchObject({ offset: String(100 - PAGE_OVERLAP) });
 			expect(closing).toMatchObject({ sort_field: 'last_changed', sort_dir: 'ASC', offset: '0' });
 			// Five minutes before the first request, in Mailchimp's own format.
-			expect(closing!.since_last_changed).toBe(
+			expect(closing!['since_last_changed']).toBe(
 				new Date(Date.now() - 5 * 60 * 1000).toISOString().replace(/\.\d{3}Z$/, '+00:00')
 			);
 			expect(audience.requests).toHaveLength(4);
