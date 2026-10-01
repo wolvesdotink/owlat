@@ -4,7 +4,9 @@ import {
 	buildCloneArgs,
 	buildPullArgs,
 	buildCheckoutArgs,
-	buildDiffStatArgs,
+	buildStagedChangesArgs,
+	buildHeadShaArgs,
+	buildRemoteBranchArgs,
 	buildAddArgs,
 	buildCommitArgs,
 	buildPushArgs,
@@ -110,10 +112,25 @@ describe('code-worker command construction (shell-injection hardening)', () => {
 			]);
 		});
 
-		it('buildPullArgs / buildDiffStatArgs / buildAddArgs / buildPushArgs are fixed argv shapes', () => {
+		it('pull / add / staged-changes / rev-parse / ls-remote / push builders are fixed argv shapes', () => {
 			expect(buildPullArgs('/w', 'main')).toEqual(['-C', '/w', 'pull', 'origin', 'main']);
-			expect(buildDiffStatArgs('/w')).toEqual(['-C', '/w', 'diff', '--stat']);
 			expect(buildAddArgs('/w')).toEqual(['-C', '/w', 'add', '-A']);
+			expect(buildStagedChangesArgs('/w')).toEqual([
+				'-C',
+				'/w',
+				'diff',
+				'--cached',
+				'--name-only',
+				'-z',
+			]);
+			expect(buildHeadShaArgs('/w')).toEqual(['-C', '/w', 'rev-parse', 'HEAD']);
+			expect(buildRemoteBranchArgs('https://x/y.git', 'code-worker/t1')).toEqual([
+				'ls-remote',
+				'--heads',
+				'https://x/y.git',
+				'refs/heads/code-worker/t1',
+			]);
+			// A plain push: never --force, so a diverged remote branch is rejected.
 			expect(buildPushArgs('/w', 'feat')).toEqual(['-C', '/w', 'push', 'origin', 'feat']);
 		});
 
@@ -136,7 +153,7 @@ describe('code-worker command construction (shell-injection hardening)', () => {
 				buildCloneArgs(payload, payload, payload),
 				buildPullArgs(payload, payload),
 				buildCheckoutArgs(payload, branch),
-				buildDiffStatArgs(payload),
+				buildStagedChangesArgs(payload),
 				buildAddArgs(payload),
 				buildCommitArgs(payload, message),
 				buildPushArgs(payload, branch),
@@ -227,19 +244,19 @@ describe('child process environments', () => {
 		GIT_REPO_URL: 'https://x-access-token:ghp_secret@github.com/o/r.git',
 	};
 
-	it('agent env carries only PATH, workspace HOME, and LLM credentials', () => {
-		const env = buildAgentEnv('/workspace/task1', parentEnv);
+	it('agent env carries only PATH, the scratch HOME, and LLM credentials', () => {
+		const env = buildAgentEnv('/workspace/task1.home', parentEnv);
 		expect(env).toEqual({
 			PATH: '/usr/bin',
-			HOME: '/workspace/task1',
+			HOME: '/workspace/task1.home',
 			LLM_BASE_URL: 'https://llm.example.com',
 			LLM_API_KEY: 'llm-secret',
 		});
 	});
 
 	it('test env carries no credentials at all', () => {
-		const env = buildTestEnv('/workspace/task1', parentEnv);
-		expect(env).toEqual({ PATH: '/usr/bin', HOME: '/workspace/task1', CI: 'true' });
+		const env = buildTestEnv('/workspace/task1.home', parentEnv);
+		expect(env).toEqual({ PATH: '/usr/bin', HOME: '/workspace/task1.home', CI: 'true' });
 	});
 
 	it.each([

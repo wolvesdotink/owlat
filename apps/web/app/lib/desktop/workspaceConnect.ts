@@ -11,17 +11,9 @@
  * own failure surface (a redeem that fails, a nonce that expired, a session that
  * never materialized) and it is what the deep-link handler calls directly.
  */
-import { createAuthClient } from 'better-auth/vue';
-import { convexClient, crossDomainClient } from '@convex-dev/better-auth/client/plugins';
-import { organizationClient } from 'better-auth/client/plugins';
 import { ref } from 'vue';
-import {
-	keychainStorage,
-	configureKeychainStorage,
-	currentKeychainAccount,
-	resetKeychainStorage,
-	snapshotKeychain,
-} from '~/lib/desktop/keychainStorage';
+import { createDesktopAuthClient } from '~/lib/auth-client';
+import { createKeychainStorage, getActiveKeychainStorage } from '~/lib/desktop/keychainStorage';
 import {
 	clearPendingConnections,
 	takePendingConnection,
@@ -38,7 +30,6 @@ import {
 	WorkspaceConnectionError,
 	activeId,
 	keychain,
-	makePersister,
 	normalizeSiteUrl,
 	persistStore,
 	workspaces,
@@ -159,6 +150,20 @@ interface FetchEnvelope {
 }
 
 /**
+ * Connection completions run one at a time. Two deep links can arrive together
+ * (a retried handshake, a cold start delivering a queued link); run side by
+ * side they would both write the workspace list and the keychain.
+ */
+let completionQueue: Promise<void> = Promise.resolve();
+
+/**
+ * Set once a completion has committed and started the reload into the new
+ * workspace. A completion queued behind it has nothing left to do: the
+ * committed one retired every other handshake.
+ */
+let committed = false;
+
+/**
  * Redeem the one-time token returned via the deep link, persist the session to
  * the new workspace's keychain entry, record the workspace, and reload into it.
  *
@@ -167,7 +172,13 @@ interface FetchEnvelope {
  * (with an empty `userId`), which the router then bounced straight back to
  * /desktop/welcome: the server looked "added" while being unusable.
  */
-export async function completeConnection(params: { ott: string; state: string }): Promise<void> {
+export function completeConnection(params: { ott: string; state: string }): Promise<void> {
+	const run = completionQueue.then(() => (committed ? undefined : connect(params)));
+	completionQueue = run.catch(() => {});
+	return run;
+}
+
+async function connect(params: { ott: string; state: string }): Promise<void> {
 	const entry = takePendingConnection(pendingStorage(), params.state, Date.now());
 	if (!entry)
 		throw new WorkspaceConnectionError('shared.useDesktopWorkspaces.errors.stateMismatch');
@@ -175,61 +186,59 @@ export async function completeConnection(params: { ott: string; state: string })
 	const { id, info } = entry;
 	const tokenRef = workspaceTokenRef(id);
 
-	// Re-pointing the (single, global) keychain cache at the new workspace's
-	// entry is destructive: remember where it pointed so a failed handshake can
-	// put it back, instead of leaving the ACTIVE workspace writing its session
-	// into the abandoned workspace's keychain entry.
-	const previousAccount = currentKeychainAccount();
-	const previousBlob = snapshotKeychain();
+	// The new session gets its own storage and its own client, and stays in
+	// memory until it is confirmed. The workspace this window is signed in to
+	// keeps its storage and client untouched while the handshake runs, so a
+	// failed handshake has nothing to undo.
+	const pending = createKeychainStorage(tokenRef, null, null);
+	const tempClient = createDesktopAuthClient(info.convexSiteUrl, pending);
 
-	// Point the (single, global) keychain cache at the new workspace's entry so
-	// the cross-domain client persists the redeemed session there.
-	configureKeychainStorage(tokenRef, null, makePersister());
+	const redeemed = (await (
+		tempClient as unknown as {
+			$fetch: (path: string, opts: Record<string, unknown>) => Promise<unknown>;
+		}
+	).$fetch('/cross-domain/one-time-token/verify', {
+		method: 'POST',
+		body: { token: params.ott },
+	})) as FetchEnvelope | null;
 
-	// A throwaway client for the new instance: redeeming through it lets the
-	// cross-domain client capture the Set-Better-Auth-Cookie into keychainStorage.
-	const tempClient = createAuthClient({
-		baseURL: info.convexSiteUrl,
-		plugins: [
-			convexClient(),
-			organizationClient(),
-			crossDomainClient({ storage: keychainStorage }),
-		],
-	});
+	if (redeemed?.error) {
+		// A 404 here is not a bad token: it means the instance does not serve
+		// /cross-domain/one-time-token/verify at all, which is what an Owlat
+		// server older than v0.4.14 looks like (its `oneTimeToken` plugin
+		// shadowed the cross-domain route). Say so, because "sign-in failed"
+		// sends the user hunting for the wrong problem.
+		throw new WorkspaceConnectionError(
+			redeemed.error.status === 404
+				? 'shared.useDesktopWorkspaces.errors.verifyRouteMissing'
+				: 'shared.useDesktopWorkspaces.errors.verifyFailed',
+			{ siteUrl: info.siteUrl, status: redeemed.error.status ?? 0 }
+		);
+	}
 
+	const session = (await tempClient.getSession()) as { data?: { user?: { id?: string } } };
+	const userId = session?.data?.user?.id ?? '';
+	if (!userId) {
+		throw new WorkspaceConnectionError('shared.useDesktopWorkspaces.errors.noSession');
+	}
+
+	// Hand the keychain over. Re-authenticating the workspace this window is
+	// signed in to means two writers for one entry: stop the current one (and
+	// wait for its writes) before the new session is written, so an older
+	// session cannot land on top of it. Any other workspace's storage keeps
+	// its own entry, and is flushed so the reload does not drop a change it
+	// still holds.
+	const current = getActiveKeychainStorage();
+	const resumeCurrent = current?.accountKey === tokenRef ? await current.suspend() : null;
+	const previousList = workspaces.value;
+	const previousActiveId = activeId.value;
+	const isNewWorkspace = !previousList.some((w) => w.id === id);
+	let written = false;
 	try {
-		const redeemed = (await (
-			tempClient as unknown as {
-				$fetch: (path: string, opts: Record<string, unknown>) => Promise<unknown>;
-			}
-		).$fetch('/cross-domain/one-time-token/verify', {
-			method: 'POST',
-			body: { token: params.ott },
-		})) as FetchEnvelope | null;
-
-		if (redeemed?.error) {
-			// A 404 here is not a bad token: it means the instance does not serve
-			// /cross-domain/one-time-token/verify at all, which is what an Owlat
-			// server older than v0.4.14 looks like (its `oneTimeToken` plugin
-			// shadowed the cross-domain route). Say so, because "sign-in failed"
-			// sends the user hunting for the wrong problem.
-			throw new WorkspaceConnectionError(
-				redeemed.error.status === 404
-					? 'shared.useDesktopWorkspaces.errors.verifyRouteMissing'
-					: 'shared.useDesktopWorkspaces.errors.verifyFailed',
-				{ siteUrl: info.siteUrl, status: redeemed.error.status ?? 0 }
-			);
-		}
-
-		const session = (await tempClient.getSession()) as { data?: { user?: { id?: string } } };
-		const userId = session?.data?.user?.id ?? '';
-		if (!userId) {
-			throw new WorkspaceConnectionError('shared.useDesktopWorkspaces.errors.noSession');
-		}
-
-		// Force-persist the session blob before reload (beat the debounced flush).
+		await current?.flush();
 		const { secretSet } = await keychain();
-		await secretSet(tokenRef, snapshotKeychain());
+		await secretSet(tokenRef, pending.snapshot());
+		written = true;
 
 		const now = Date.now();
 		const existing = workspaces.value.find((w) => w.id === id);
@@ -253,35 +262,24 @@ export async function completeConnection(params: { ott: string; state: string })
 		activeId.value = id;
 		await persistStore();
 	} catch (e) {
-		// Undo every side effect. The cross-domain client writes through a
-		// DEBOUNCED flush, and a handshake takes far longer than the debounce, so
-		// by now it has very likely persisted something under the abandoned
-		// workspace — or, when the cache was re-pointed at an account that was
-		// already in use, over the previously-active workspace's own entry.
-		const { secretSet, secretDelete } = await keychain();
-		if (previousAccount) {
-			configureKeychainStorage(previousAccount, previousBlob, makePersister());
-			// Put the previously-active workspace's blob back on disk, not just in
-			// the cache: a failed attempt to connect a SECOND server must not sign
-			// the user out of the one they are already using.
-			await secretSet(previousAccount, previousBlob);
-		} else {
-			resetKeychainStorage();
+		// The workspace list did not get saved: put it back as it is on disk, and
+		// drop the entry written for a workspace that is not in it. A re-auth
+		// keeps its entry, which now holds the newer session; the current writer
+		// goes back to it only when the new session never got there.
+		workspaces.value = previousList;
+		activeId.value = previousActiveId;
+		if (written && isNewWorkspace) {
+			const { secretDelete } = await keychain();
+			await secretDelete(tokenRef).catch(() => {});
 		}
-		// Drop the entry minted for the workspace we are abandoning. Skipped when
-		// it belongs to a workspace that is still in the list (a re-auth of an
-		// already-connected server): that entry is the workspace's own, and the
-		// failed re-auth leaves it as it was — stale, which is what the user is
-		// retrying to fix.
-		if (tokenRef !== previousAccount && !workspaces.value.some((w) => w.id === id)) {
-			await secretDelete(tokenRef);
-		}
+		if (!written) resumeCurrent?.();
 		throw e;
 	}
 
 	// A successful connect retires every other in-flight handshake too: retries
 	// leave abandoned nonces behind, and a later deep link for one of them would
 	// otherwise re-run the flow against a workspace the user has already got.
+	committed = true;
 	clearPendingConnections(pendingStorage());
 	connectError.value = null;
 	window.location.assign('/dashboard');

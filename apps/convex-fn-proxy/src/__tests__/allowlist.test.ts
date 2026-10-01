@@ -9,13 +9,15 @@ import {
 } from '../allowlist.js';
 
 describe('function allowlist', () => {
-	it('permits exactly the thirteen worker-queue functions across both namespaces', () => {
+	it('permits exactly the fifteen worker-queue functions across both namespaces', () => {
 		expect([...ALLOWED_FUNCTION_PATHS].sort()).toEqual(
 			[
 				'codeWorkTasks:getNextQueued',
 				'codeWorkTasks:claim',
+				'codeWorkTasks:checkAttempt',
 				'codeWorkTasks:updateBranch',
 				'codeWorkTasks:markTesting',
+				'codeWorkTasks:recordPublication',
 				'codeWorkTasks:completeWithPR',
 				'codeWorkTasks:markFailed',
 				'codeWorkTasks:reclaimStale',
@@ -27,7 +29,7 @@ describe('function allowlist', () => {
 				'plugins/workerTasks:reclaimStale',
 			].sort()
 		);
-		expect(ALLOWED_FUNCTION_PATHS.size).toBe(13);
+		expect(ALLOWED_FUNCTION_PATHS.size).toBe(15);
 	});
 
 	it('accepts every allowlisted path', () => {

@@ -2,9 +2,9 @@
 	"name": "@owlat/convex-fn-proxy",
 	"version": "0.6.5",
 	"private": true,
+	"description": "Owlat Convex function-allowlist proxy. Holds the deployment admin key and forwards only the code-worker's fifteen allowlisted codeWorkTasks/workerTasks calls, so the untrusted worker never holds admin.",
 	"homepage": "https://owlat.app",
 	"license": "Apache-2.0",
-	"description": "Owlat Convex function-allowlist proxy. Holds the deployment admin key and forwards only the code-worker's thirteen allowlisted codeWorkTasks/workerTasks calls, so the untrusted worker never holds admin.",
 	"type": "module",
 	"scripts": {
 		"dev": "tsx watch src/index.ts",

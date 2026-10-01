@@ -5,6 +5,11 @@ import UiModal from '@owlat/ui/components/ui/Modal.vue';
 
 defineProps<{
 	show: boolean;
+	/**
+	 * A Save is in flight. Save shows its progress and Discard waits for it;
+	 * Cancel stays available and only dismisses the prompt.
+	 */
+	saving?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -26,15 +31,11 @@ const emit = defineEmits<{
 		</div>
 
 		<template #footer>
-			<UiButton variant="danger-outline" @click="emit('discard')">
+			<UiButton variant="danger-outline" :disabled="saving" @click="emit('discard')">
 				Discard
 			</UiButton>
-			<UiButton variant="secondary" @click="emit('close')">
-				Cancel
-			</UiButton>
-			<UiButton variant="primary" @click="emit('save')">
-				Save
-			</UiButton>
+			<UiButton variant="secondary" @click="emit('close')"> Cancel </UiButton>
+			<UiButton variant="primary" :loading="saving" @click="emit('save')"> Save </UiButton>
 		</template>
 	</UiModal>
 </template>

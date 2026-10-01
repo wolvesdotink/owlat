@@ -434,6 +434,7 @@ const { data: feedbackStats } = useConvexQuery(api.autonomyFeedback.getFeedbackS
 
 		<UnsavedChangesDialog
 			:show="unsavedDialog.showDialog"
+			:saving="unsavedDialog.isSavingBeforeLeave"
 			@close="unsavedDialog.cancelNavigation"
 			@discard="unsavedDialog.confirmDiscard"
 			@save="unsavedDialog.confirmSave"

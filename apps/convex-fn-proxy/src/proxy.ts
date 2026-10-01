@@ -14,7 +14,7 @@
  *      to the real deployment and relay its response back.
  *
  * The worker container therefore never holds the deployment admin key: it holds
- * only the proxy token, which is useless for anything but these thirteen calls.
+ * only the proxy token, which is useless for anything but these fifteen calls.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
