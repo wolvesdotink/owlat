@@ -3,7 +3,10 @@ import { convexClient, crossDomainClient } from '@convex-dev/better-auth/client/
 import { organizationClient, twoFactorClient } from 'better-auth/client/plugins';
 import { isDesktopRuntime, getActiveWorkspace } from '~/lib/desktop/activeWorkspace';
 import {
+	activeSessionStorage,
 	getActiveKeychainStorage,
+	getSessionGeneration,
+	onSessionRebound,
 	type KeychainSessionStorage,
 } from '~/lib/desktop/keychainStorage';
 
@@ -41,8 +44,10 @@ type FetchImpl = (input: RequestInfo | URL, init?: RequestInit) => Promise<Respo
 export function createDesktopAuthClient(
 	convexSiteUrl: string,
 	storage: Pick<KeychainSessionStorage, 'getItem' | 'setItem'>,
-	fetchImpl?: FetchImpl
+	fetchImpl?: FetchImpl,
+	sessionGeneration?: () => number
 ): AuthClient {
+	const crossDomain = crossDomainClient({ storage });
 	return createAuthClient({
 		baseURL: convexSiteUrl,
 		...(fetchImpl ? { fetchOptions: { customFetchImpl: fetchImpl } } : {}),
@@ -54,9 +59,67 @@ export function createDesktopAuthClient(
 			// a redirect here would navigate away mid-submit and strand the
 			// desktop app, which has no such route to navigate to.
 			twoFactorClient(),
-			crossDomainClient({ storage }),
+			sessionGeneration ? fenceCrossDomainWrites(crossDomain, sessionGeneration) : crossDomain,
 		],
 	}) as unknown as AuthClient;
+}
+
+/** Where an auth request records the session generation it went out under. */
+const SENT_AT_GENERATION = 'owlatSessionGeneration';
+
+type CrossDomainPlugin = ReturnType<typeof crossDomainClient>;
+type FetchOptions = Record<string, unknown>;
+/** The parts of a better-fetch plugin the fence wraps. */
+interface FencedFetchPlugin {
+	init?: (url: string, options?: FetchOptions) => Promise<{ url: string; options?: FetchOptions }>;
+	hooks?: { onSuccess?: (context: { request: unknown }) => unknown } & Record<string, unknown>;
+}
+
+/**
+ * The cross-domain plugin writes what a response says about the session (its
+ * cookie, the session data) into the storage in its `onSuccess` hook. Another
+ * window can sign in to the workspace again while a request this window sent
+ * with the older session is in flight; the page then binds a new session
+ * storage (`rebindActiveSession`), and the client, built on
+ * `activeSessionStorage`, would write the old answer into it. So each request
+ * records the session generation it went out under, and its `onSuccess` runs
+ * only if that is still the generation bound. The hook's writes are
+ * synchronous, so no rebind can land between that check and them.
+ */
+function fenceCrossDomainWrites(
+	plugin: CrossDomainPlugin,
+	sessionGeneration: () => number
+): CrossDomainPlugin {
+	return {
+		...plugin,
+		fetchPlugins: ((plugin.fetchPlugins ?? []) as FencedFetchPlugin[]).map((fetchPlugin) => {
+			const init = fetchPlugin.init;
+			const onSuccess = fetchPlugin.hooks?.onSuccess;
+			const fencedInit: NonNullable<FencedFetchPlugin['init']> = async (url, options) => {
+				// Read before the plugin reads the cookie it sends. Set on the options
+				// object itself, as the plugin sets its headers: better-fetch hands
+				// every plugin the same options and keeps the last one's result.
+				const sentAt = sessionGeneration();
+				const result = init ? await init(url, options) : { url, options };
+				const stamped = result.options ?? options ?? {};
+				stamped[SENT_AT_GENERATION] = sentAt;
+				if (options && options !== stamped) options[SENT_AT_GENERATION] = sentAt;
+				return { ...result, options: stamped };
+			};
+			const fencedSuccess: NonNullable<
+				NonNullable<FencedFetchPlugin['hooks']>['onSuccess']
+			> = async (context) => {
+				const sentAt = (context.request as FetchOptions)[SENT_AT_GENERATION];
+				if (sentAt !== sessionGeneration()) return;
+				await onSuccess?.(context);
+			};
+			return {
+				...fetchPlugin,
+				init: fencedInit,
+				hooks: { ...fetchPlugin.hooks, onSuccess: fencedSuccess },
+			};
+		}),
+	} as unknown as CrossDomainPlugin;
 }
 
 /**
@@ -74,26 +137,22 @@ export class StaleSessionResponseError extends Error {
 const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
 
 /**
- * The fetch for a workspace's auth client. Another window can sign in to the
- * workspace again while a request this window sent with the older session is
- * in flight. The window then retires the storage that session lives in and
- * binds a new one (`rebindActiveSession`), so the old client's writes can no
- * longer reach the keychain. This keeps the old answer from reaching the old
- * client as well: the whole body is read here, and the response is handed on
- * only if `storage` is still the page's session storage once it has arrived.
- * Otherwise a signed-out answer to the old session would still read as
- * "signed out" in this window.
+ * The fetch for a workspace's auth client. Besides the write fence above, an
+ * answer to a request sent with a session that has since been replaced must
+ * not reach the client's own session state either, where a signed-out answer
+ * would read as "signed out" in this window. The whole body is read here, and
+ * the response is handed on only if the session generation it went out under
+ * is still the one bound.
  */
 export function sessionFencedFetch(
-	storage: KeychainSessionStorage,
-	fetchImpl: FetchImpl = (input, init) => fetch(input, init),
-	isCurrent: () => boolean = () => getActiveKeychainStorage() === storage
+	sessionGeneration: () => number,
+	fetchImpl: FetchImpl = (input, init) => fetch(input, init)
 ): FetchImpl {
 	return async (input, init) => {
-		if (!isCurrent()) throw new StaleSessionResponseError();
+		const sentAt = sessionGeneration();
 		const response = await fetchImpl(input, init);
 		const body = NULL_BODY_STATUSES.has(response.status) ? null : await response.arrayBuffer();
-		if (!isCurrent()) throw new StaleSessionResponseError();
+		if (sessionGeneration() !== sentAt) throw new StaleSessionResponseError();
 		return new Response(body, {
 			status: response.status,
 			statusText: response.statusText,
@@ -119,8 +178,6 @@ interface DesktopBinding {
 	client: AuthClient;
 	/** The workspace's Convex site URL, or null for the disconnected client. */
 	convexSiteUrl: string | null;
-	/** The session storage the client was built on (null when disconnected). */
-	storage: KeychainSessionStorage | null;
 }
 
 let webClient: AuthClient | null = null;
@@ -135,19 +192,19 @@ let disconnectedBinding: DesktopBinding | null = null;
  * store read. Plugin files are imported (and this module evaluated) before any
  * plugin runs, so nothing may be constructed at import time: the client is
  * built on the first auth call, which the boot order places after hydration.
- * Switching workspace reloads the webview. Within a page the binding is rebuilt
- * only when another window replaced the session and the page bound a new
- * session storage (`rebindActiveSession`).
+ * Switching workspace reloads the webview, so the binding holds for the page.
+ * When another window replaces the session, the page binds a new session
+ * storage under the same client (`activeSessionStorage`), so everything
+ * subscribed to the client stays attached, and is told through
+ * `$sessionSignal`.
  * With no workspace connected (or a call before hydration) the answer is a
  * disconnected client that sends nothing; it is kept apart from the workspace
  * binding, so it cannot pin the page to "no workspace".
  */
 function desktopClient(): DesktopBinding {
-	const storage = getActiveKeychainStorage();
-	// Rebuilt when the session was replaced from another window: the old client
-	// keeps the retired storage, the page moves on to the new one.
-	if (desktopBinding && desktopBinding.storage === storage) return desktopBinding;
+	if (desktopBinding) return desktopBinding;
 	const workspace = getActiveWorkspace();
+	const storage = getActiveKeychainStorage();
 	if (!workspace || !storage || storage.accountKey !== workspace.tokenRef) {
 		disconnectedBinding ??= {
 			client: createDesktopAuthClient(
@@ -156,15 +213,19 @@ function desktopClient(): DesktopBinding {
 				disconnectedFetch
 			),
 			convexSiteUrl: null,
-			storage: null,
 		};
 		return disconnectedBinding;
 	}
-	desktopBinding = {
-		client: createDesktopAuthClient(workspace.convexSiteUrl, storage, sessionFencedFetch(storage)),
-		convexSiteUrl: workspace.convexSiteUrl,
-		storage,
-	};
+	const client = createDesktopAuthClient(
+		workspace.convexSiteUrl,
+		activeSessionStorage,
+		sessionFencedFetch(getSessionGeneration),
+		getSessionGeneration
+	);
+	// The session under the client was replaced: useSession refetches, and the
+	// Convex token and the Postbox body cache follow, as on any session change.
+	onSessionRebound(() => client.$store.notify('$sessionSignal'));
+	desktopBinding = { client, convexSiteUrl: workspace.convexSiteUrl };
 	return desktopBinding;
 }
 

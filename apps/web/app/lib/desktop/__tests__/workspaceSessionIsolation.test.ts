@@ -169,6 +169,9 @@ const fakeFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => 
 		}
 		return json(aSession);
 	}
+	if (url.startsWith('https://site.a.example.com/api/auth/sign-out')) {
+		return json({ success: true });
+	}
 	if (url.startsWith('https://site.a.example.com/api/auth/convex/token')) {
 		return json({ token: null });
 	}
@@ -185,8 +188,9 @@ async function bootWithA() {
 	const convexAuth = await import('~/lib/convex-auth');
 	const connect = await import('~/lib/desktop/workspaceConnect');
 	const storage = await import('~/lib/desktop/keychainStorage');
+	const auth = await import('~/composables/useAuth');
 	await workspaces.loadWorkspaces();
-	return { ...workspaces, ...authClientModule, ...convexAuth, ...connect, ...storage };
+	return { ...workspaces, ...authClientModule, ...convexAuth, ...connect, ...storage, ...auth };
 }
 
 /** Start connecting B the way the connect screen does; returns the handshake state. */
@@ -451,6 +455,39 @@ describe('desktop session replacement across windows', () => {
 			expect(compose.getActiveKeychainStorage()?.getItem('better-auth_cookie')).toContain(
 				'A-new-session'
 			);
+		});
+	});
+
+	// What compose subscribed to before main signed in again (the app's session
+	// view, the session signal the Convex plugin and the body cache listen to)
+	// must keep following the session after the replacement.
+	describe('subscribers from before the new session', () => {
+		it('useAuth keeps following the session: a later sign-out reads as signed out', async () => {
+			let auth!: ReturnType<Modules['useAuth']>;
+			const { compose } = await reauthenticateAInMain(async (c) => {
+				auth = c.useAuth();
+				await vi.waitFor(() => expect(auth.isAuthenticated.value).toBe(true));
+			});
+
+			// Signed out in compose, after the replacement.
+			aSession = null;
+			await compose.authClient.signOut();
+			await auth.refetch({ force: true, expected: 'unauthenticated' });
+
+			await vi.waitFor(() => expect(auth.isAuthenticated.value).toBe(false));
+		});
+
+		it('a session-signal listener keeps hearing, and hears the replacement', async () => {
+			const heard = vi.fn();
+			const { compose } = await reauthenticateAInMain((c) => {
+				c.authClient.$store.listen('$sessionSignal', heard);
+			});
+			await compose.getActiveKeychainStorage()?.flush();
+			await vi.waitFor(() => expect(heard).toHaveBeenCalled());
+
+			const before = heard.mock.calls.length;
+			compose.authClient.$store.notify('$sessionSignal');
+			await vi.waitFor(() => expect(heard.mock.calls.length).toBeGreaterThan(before));
 		});
 	});
 });

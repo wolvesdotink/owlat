@@ -36,7 +36,6 @@ vi.mock('~/lib/desktop/activeWorkspace', () => ({
 	setActiveWorkspace: (...args: unknown[]) => setActiveWorkspace(...args),
 }));
 
-
 vi.mock('~/lib/desktop/workspaceAccent', () => ({
 	applyWorkspaceAccent: vi.fn(),
 }));

@@ -21,10 +21,10 @@
  * A storage is created at the session revision it read and writes only
  * against it (see the desktop `secrets.rs`). Once another window has signed in
  * again or removed the workspace, the storage is retired for good and the
- * window binds a new storage, and a new auth client, to the current session
- * (`rebindActiveSession`). A retired storage never writes again, so a response
- * the old client is still processing can only change the retired storage,
- * never the session that replaced it.
+ * window binds a new storage to the current session (`rebindActiveSession`).
+ * The auth client sits on `activeSessionStorage`, which follows the bound
+ * storage, and drops what a response to a request sent before the rebind
+ * would write (see `auth-client.ts`).
  */
 import type { SessionEntry, SessionWriteOutcome } from '@owlat/desktop/src/keychain';
 
@@ -208,13 +208,45 @@ export function createKeychainStorage(
  * The storage of the workspace this webview is signed in to, set by the boot
  * hydration (`loadWorkspaces`). A workspace switch reloads the webview; within
  * a page it changes only when the session is replaced from another window
- * (`rebindActiveSession`), and the auth client is rebuilt on the new one.
+ * (`rebindActiveSession`).
  */
 let activeStorage: KeychainSessionStorage | null = null;
 let activePersistence: SessionPersistence | null = null;
+/**
+ * Moves each time a storage is bound. An auth request records it when it goes
+ * out, so what its response would write can be told apart from the session
+ * bound since (see `auth-client.ts`).
+ */
+let sessionGeneration = 0;
+const reboundListeners = new Set<() => void>();
 
 export function setActiveKeychainStorage(storage: KeychainSessionStorage | null): void {
 	activeStorage = storage;
+}
+
+export function getActiveKeychainStorage(): KeychainSessionStorage | null {
+	return activeStorage;
+}
+
+/** The generation of the storage bound now. */
+export function getSessionGeneration(): number {
+	return sessionGeneration;
+}
+
+/**
+ * The page's session storage, whichever is bound: what the workspace's auth
+ * client is built on, so the client (and everything subscribed to it) stays
+ * the same when the session under it is replaced.
+ */
+export const activeSessionStorage: Pick<KeychainSessionStorage, 'getItem' | 'setItem'> = {
+	getItem: (key) => activeStorage?.getItem(key) ?? null,
+	setItem: (key, value) => activeStorage?.setItem(key, value),
+};
+
+/** Called after a replaced session was bound in this page. Returns the unsubscribe. */
+export function onSessionRebound(listener: () => void): () => void {
+	reboundListeners.add(listener);
+	return () => void reboundListeners.delete(listener);
 }
 
 /**
@@ -230,15 +262,16 @@ export function bindActiveSession(
 	activeStorage = createKeychainStorage(accountKey, entry, persistence, {
 		onStale: () => rebindActiveSession(accountKey),
 	});
+	sessionGeneration += 1;
 	return activeStorage;
 }
 
 /**
  * The session of `accountKey` was replaced elsewhere (at `revision`, when
  * known): retire the storage this webview holds and bind a new one to the
- * session as it is now. The retired storage stays with whatever auth client
- * still has it, and writes nothing. When the current session cannot be read,
- * the retired storage stays bound, holding the old session in memory only.
+ * session as it is now, then tell the listeners. The retired storage writes
+ * nothing from then on. When the current session cannot be read, the retired
+ * storage stays bound, holding the old session in memory only.
  */
 export async function rebindActiveSession(accountKey: string, revision?: number): Promise<void> {
 	const current = activeStorage;
@@ -250,8 +283,5 @@ export async function rebindActiveSession(accountKey: string, revision?: number)
 	// A rebind that started later has already bound a newer storage.
 	if (activeStorage !== current || !entry) return;
 	bindActiveSession(accountKey, entry, persistence);
-}
-
-export function getActiveKeychainStorage(): KeychainSessionStorage | null {
-	return activeStorage;
+	for (const listener of reboundListeners) listener();
 }
