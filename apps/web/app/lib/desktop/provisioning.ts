@@ -18,6 +18,7 @@ import type { SetupConfig } from '@owlat/shared/setupConfigTypes';
 
 // Split to stay under the file-size cap; consumers keep importing from here.
 export * from './provisioningCommands';
+export * from './provisioningImages';
 export * from './provisioningTimeline';
 
 // ---- transport (implemented by the native bridge, faked in tests) ----------

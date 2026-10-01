@@ -109,7 +109,11 @@ Release builds neither compile nor register them, and an optimized build with
 the feature refuses to compile. Even in development the inputs are narrow: the
 folder must be an Owlat checkout, a local build is a typed choice (the Compose
 stack by service and profile name, or the setup image) for `linux/amd64` or
-`linux/arm64`, and only local `:dev` images are pushed.
+`linux/arm64`, and only local `:dev` images are pushed. The push mode builds
+every service `docker-compose.yml` can build (the table in
+`@owlat/shared/composeBuildServices`, pinned to Compose by
+`scripts/__tests__/desktop-local-push-images.test.ts`), checks that each image
+arrived, and runs quickstart with `--no-build` so the server never builds.
 
 **Remote reachability.** For the desktop to connect to the box *after* the
 install, give it a **public domain** in the wizard. That sets

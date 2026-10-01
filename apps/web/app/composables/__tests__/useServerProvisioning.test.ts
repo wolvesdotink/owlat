@@ -1,13 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
+import { COMPOSE_BUILD_SERVICES } from '@owlat/shared/composeBuildServices';
 import { PROGRESS_SENTINEL, SetupStep } from '@owlat/shared/setupProgress';
 import { createTestI18n } from '~/__tests__/i18n';
 import { useServerProvisioning, type ServerCredentials } from '../useServerProvisioning';
-import type {
-	ProvisionTransport,
-	ConnectInfo,
-	ExecEvent,
-	LocalBuild,
-	SetupConfigInput,
+import {
+	DEV_IMAGES,
+	type ProvisionTransport,
+	type ConnectInfo,
+	type ExecEvent,
+	type LocalBuild,
+	type SetupConfigInput,
 } from '~/lib/desktop/provisioning';
 
 // The wizard is driven outside a component here, so `useI18n` is stubbed with
@@ -35,6 +37,8 @@ interface FakeOpts {
 	// like a hung server that never sends EOF.
 	installerHangs?: boolean;
 	localBuildHangs?: boolean;
+	// Images the post-push check reports as missing on the server.
+	missingImages?: string[];
 	// stdout emitted by the public-IP probe; undefined = no output (detection fails).
 	publicIpLine?: string;
 	// stdout emitted by the latest-release lookup; null = no output (lookup fails).
@@ -103,6 +107,10 @@ class FakeTransport implements ProvisionTransport {
 		}
 		if (command.startsWith('rm -f')) {
 			return this.opts.cleanupExit ?? 0;
+		}
+		if (command.includes('docker image inspect')) {
+			for (const image of this.opts.missingImages ?? []) out(`missing=${image}`);
+			return 0;
 		}
 		if (command.includes('get.docker.com')) {
 			out('installing docker');
@@ -503,28 +511,26 @@ describe('useServerProvisioning — local source + push-images mode', () => {
 		// local builds: the stack, then the setup image, in the source dir,
 		// pinned to the server's platform (fake reports x86_64). The wizard names
 		// what to build; the desktop owns the docker invocation itself.
-		expect(t.localBuilds).toEqual([
-			{
-				sessionId: 's1',
-				localDir: '/Users/dev/owlat',
-				build: {
-					kind: 'stack',
-					platform: 'linux/amd64',
-					profiles: ['deploy', 'ai'],
-					services: ['web', 'mta', 'updater', 'convex-deploy', 'code-worker'],
-				},
-			},
-			{
-				sessionId: 's1',
-				localDir: '/Users/dev/owlat',
-				build: { kind: 'setupImage', platform: 'linux/amd64' },
-			},
-		]);
+		expect(t.localBuilds).toHaveLength(2);
+		expect(t.localBuilds[0]).toMatchObject({
+			sessionId: 's1',
+			localDir: '/Users/dev/owlat',
+			build: { kind: 'stack', platform: 'linux/amd64' },
+		});
+		expect(t.localBuilds[1]).toEqual({
+			sessionId: 's1',
+			localDir: '/Users/dev/owlat',
+			build: { kind: 'setupImage', platform: 'linux/amd64' },
+		});
 
-		// images streamed once, including the setup image.
-		expect(t.pushedImages).toHaveLength(1);
+		// images streamed once, including the setup image, then checked on the
+		// server before anything else runs there.
+		expect(t.pushedImages).toEqual([[...DEV_IMAGES]]);
 		expect(t.pushedImages[0]).toContain('ghcr.io/wolvesdotink/setup:dev');
 		expect(t.pushedImages[0]).toContain('ghcr.io/wolvesdotink/web:dev');
+		const verifyIdx = t.commands.findIndex((c) => c.includes('docker image inspect'));
+		expect(verifyIdx).toBeGreaterThan(-1);
+		expect(verifyIdx).toBeLessThan(t.commands.findIndex((c) => c.includes('quickstart')));
 
 		// nothing builds on the server; installer uses preloaded images.
 		expect(t.commands.some((c) => c.includes('docker build'))).toBe(false);
@@ -598,6 +604,64 @@ describe('useServerProvisioning — log cap, failure tail, secrets cleanup', () 
 		});
 		expect(p.stage.value).toBe('done');
 		expect(p.secretsRemoved.value).toBe(false);
+	});
+});
+
+// ---- #956: local-push builds and pushes every first-party image -----------
+
+describe('useServerProvisioning — local-push images come from the Compose services', () => {
+	const pushCreds: ServerCredentials = {
+		...creds,
+		remote: { localSource: '/Users/dev/owlat', localImages: true },
+	};
+
+	it('builds every buildable service and pushes their images, the MTA resolver included', async () => {
+		const t = new FakeTransport({
+			knownHostStatus: 'match',
+			installerLines: happyInstallerLines({ siteUrl: 'http://x:3000' }),
+		});
+		const p = useServerProvisioning(t);
+		await p.connect(pushCreds);
+		await p.provision(config);
+		expect(p.stage.value).toBe('done');
+
+		const stack = t.localBuilds[0]?.build;
+		expect(stack?.kind === 'stack' && stack.services).toEqual(
+			COMPOSE_BUILD_SERVICES.map((s) => s.service)
+		);
+		const pushed = t.pushedImages[0] ?? [];
+		// The services the old hand-written list missed: the MTA's DNS
+		// resolver, ClamAV, IMAP, mail-sync and the code-task auxiliaries.
+		for (const image of [
+			'ghcr.io/wolvesdotink/unbound:dev',
+			'ghcr.io/wolvesdotink/clamav:dev',
+			'ghcr.io/wolvesdotink/imap:dev',
+			'ghcr.io/wolvesdotink/mail-sync:dev',
+			'ghcr.io/wolvesdotink/tinyproxy:dev',
+			'owlat-convex-fn-proxy:dev',
+		]) {
+			expect(pushed).toContain(image);
+		}
+	});
+
+	it('stops before the installer when a pushed image is missing on the server', async () => {
+		const t = new FakeTransport({
+			knownHostStatus: 'match',
+			missingImages: ['ghcr.io/wolvesdotink/unbound:dev'],
+			installerLines: happyInstallerLines({ siteUrl: 'http://x:3000' }),
+		});
+		const p = useServerProvisioning(t);
+		await p.connect(pushCreds);
+		await p.provision(config);
+
+		expect(p.stage.value).toBe('error');
+		expect(p.error.value).toBe(
+			'These images did not arrive on the server: ghcr.io/wolvesdotink/unbound:dev'
+		);
+		expect(p.steps.find((s) => s.id === 'push-images')?.state).toBe('failed');
+		// Neither the secrets nor the installer reached the server.
+		expect(t.writes).toEqual([]);
+		expect(t.commands.some((c) => c.includes('quickstart'))).toBe(false);
 	});
 });
 

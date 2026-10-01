@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { COMPOSE_BUILD_SERVICES } from '@owlat/shared/composeBuildServices';
 import { MIN_PASSWORD_LENGTH } from '@owlat/shared/passwordPolicy';
 import { SetupStep } from '@owlat/shared/setupProgress';
 import {
@@ -24,6 +25,8 @@ import {
 	DEFAULT_REMOTE,
 	DEV_IMAGES,
 	LOCAL_SETUP_IMAGE,
+	parseMissingImages,
+	verifyImagesCommand,
 	localSetupImageBuild,
 	localStackBuild,
 	installRef,
@@ -313,8 +316,17 @@ describe('remote commands', () => {
 		expect(stack).toEqual({
 			kind: 'stack',
 			platform: 'linux/arm64',
-			profiles: ['deploy', 'ai'],
-			services: ['web', 'mta', 'updater', 'convex-deploy', 'code-worker'],
+			profiles: [
+				'clamav',
+				'deploy',
+				'dev',
+				'external-mail',
+				'inbox-codetasks',
+				'mta',
+				'personal-mail',
+				'plugin-tasks',
+			],
+			services: COMPOSE_BUILD_SERVICES.map((s) => s.service),
 		});
 		if (stack.kind === 'stack') {
 			for (const name of [...stack.profiles, ...stack.services]) {
@@ -325,9 +337,21 @@ describe('remote commands', () => {
 			kind: 'setupImage',
 			platform: 'linux/amd64',
 		});
-		// The images pushed are the local `dev` builds the desktop accepts.
+		// The images pushed are the local `dev` builds the desktop accepts: one
+		// per buildable service plus the setup image.
 		expect(DEV_IMAGES).toContain(LOCAL_SETUP_IMAGE);
+		expect(DEV_IMAGES).toHaveLength(COMPOSE_BUILD_SERVICES.length + 1);
 		for (const image of DEV_IMAGES) expect(image).toMatch(/^[a-z0-9][a-z0-9._/-]*:dev$/);
+	});
+
+	it('checks every pushed image on the server and reports only the missing ones', () => {
+		const cmd = verifyImagesCommand(['ghcr.io/wolvesdotink/web:dev', 'owlat-code-worker:dev']);
+		expect(cmd).toBe(
+			`for i in 'ghcr.io/wolvesdotink/web:dev' 'owlat-code-worker:dev'; do docker image inspect "$i" >/dev/null 2>&1 || echo "missing=$i"; done`
+		);
+		expect(
+			parseMissingImages(['missing=ghcr.io/wolvesdotink/unbound:dev', 'noise', ' missing= ', ''])
+		).toEqual(['ghcr.io/wolvesdotink/unbound:dev']);
 	});
 
 	it('the installer deletes the uploaded config itself when its run ends', () => {

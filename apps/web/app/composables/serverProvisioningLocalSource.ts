@@ -29,8 +29,10 @@ import {
 	dockerPlatform,
 	localSetupImageBuild,
 	localStackBuild,
+	parseMissingImages,
 	prepareInstallDirCommand,
 	setStepState,
+	verifyImagesCommand,
 	DEV_IMAGES,
 } from '~/lib/desktop/provisioning';
 
@@ -132,10 +134,24 @@ async function buildAndPushImages(ctx: LocalSourceInstall): Promise<void> {
 	}
 	setStepState(steps, 'build-images-local', 'ok', platform);
 
-	// push-images — docker save → gzip → ssh → docker load.
+	// push-images — docker save → gzip → ssh → docker load, then check that
+	// every image landed: a `dev` image missing on the server is not on any
+	// registry either, so finding out now beats the installer failing to pull.
 	setStepState(steps, 'push-images', 'running');
 	await ssh.pushImages(sessionId, [...DEV_IMAGES], onLine);
 	ctx.ensureActive();
+	const verifyLines: string[] = [];
+	await ssh.execStream(sessionId, verifyImagesCommand(DEV_IMAGES), (e: ExecEvent) => {
+		if (e.kind === 'stdout') verifyLines.push(e.line);
+	});
+	ctx.ensureActive();
+	const missing = parseMissingImages(verifyLines);
+	if (missing.length > 0) {
+		setStepState(steps, 'push-images', 'failed');
+		throw new Error(
+			t('shared.useServerProvisioning.imagesMissing', { images: missing.join(', ') })
+		);
+	}
 	setStepState(steps, 'push-images', 'ok');
 }
 

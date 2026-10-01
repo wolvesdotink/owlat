@@ -14900,6 +14900,7 @@
 			"didNotComplete": "Die Einrichtung wurde nicht abgeschlossen (Exit {code}).",
 			"exitCode": "Exit {code}",
 			"hostKeyAccepted": "akzeptiert",
+			"imagesMissing": "Diese Images sind nicht auf dem Server angekommen: {images}",
 			"knownHost": "bekannter Host",
 			"localBuildFailed": "Der lokale Image-Build ist fehlgeschlagen (Exit {code}). Läuft Docker auf diesem Rechner?",
 			"localSetupImageFailed": "Der lokale Setup-Image-Build ist fehlgeschlagen (Exit {code}).",

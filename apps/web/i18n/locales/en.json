@@ -14900,6 +14900,7 @@
 			"didNotComplete": "Provisioning did not complete (exit {code}).",
 			"exitCode": "exit {code}",
 			"hostKeyAccepted": "accepted",
+			"imagesMissing": "These images did not arrive on the server: {images}",
 			"knownHost": "known host",
 			"localBuildFailed": "Local image build failed (exit {code}). Is Docker running here?",
 			"localSetupImageFailed": "Local setup-image build failed (exit {code}).",
