@@ -153,6 +153,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 
 	// Campaign machinery before the campaign parents
 	'campaignSendJobs',
+	'audienceCountJobs',
 	'campaignStatShards',
 	'campaignSenders',
 	'sendDailyStats',
