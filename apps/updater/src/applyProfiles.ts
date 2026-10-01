@@ -121,15 +121,15 @@ export async function handleApplyProfiles(req: IncomingMessage, res: ServerRespo
 	// Step 4: apply — compose reads COMPOSE_PROFILES from the .env just written.
 	// Named services, so a profile change can never recreate the updater or the
 	// socket proxy out from under the command applying it.
-	const plan = servicesToRecreate();
+	const plan = await servicesToRecreate();
 	if (plan.error) {
 		steps.push({ step: 'up', ok: false, stdout: '', stderr: plan.error });
 		return json(res, 500, { error: `docker compose up failed: ${plan.error}`, profiles, steps });
 	}
 
-	const up = exec(
+	const up = await exec(
 		'docker',
-		[...composeArgv(), 'up', '-d', '--remove-orphans', ...plan.services],
+		[...(await composeArgv()), 'up', '-d', '--remove-orphans', ...plan.services],
 		OWLAT_DIR
 	);
 	steps.push({ step: 'up', ...up });
@@ -151,7 +151,7 @@ export async function handleApplyProfiles(req: IncomingMessage, res: ServerRespo
 	}
 
 	// Report per-service state so the caller can render health for each service.
-	const { containers, raw } = composePsServices();
+	const { containers, raw } = await composePsServices();
 	json(res, 200, {
 		success: true,
 		profiles,

@@ -19,7 +19,7 @@ import { errorMessage } from '@owlat/shared';
 import { isRateLimited } from './security.js';
 import { composePsServices, json, OWLAT_DIR, requireAuth } from './http.js';
 
-export function handleProfileState(req: IncomingMessage, res: ServerResponse) {
+export async function handleProfileState(req: IncomingMessage, res: ServerResponse) {
 	if (!requireAuth(req, res)) return;
 
 	// Read-only and cheap (one file read + one `compose ps`), so it gets
@@ -35,7 +35,7 @@ export function handleProfileState(req: IncomingMessage, res: ServerResponse) {
 		return json(res, 500, { error: `Cannot read .env: ${errorMessage(err)}` });
 	}
 
-	const { containers, raw } = composePsServices();
+	const { containers, raw } = await composePsServices();
 
 	json(res, 200, {
 		profiles: parseComposeProfilesFromEnv(envContent),

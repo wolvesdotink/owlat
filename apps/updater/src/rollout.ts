@@ -10,11 +10,13 @@
  * stops with itself in it.
  */
 import { hostname } from 'node:os';
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { errorMessage } from '@owlat/shared';
 import { COMPOSE_SHADOWED_VARS, exec, OWLAT_DIR } from './http.js';
 import { verifyReadiness } from './readiness.js';
+import { shutdownSignal } from './lifecycle.js';
 
 interface RolloutStep {
 	step: string;
@@ -86,13 +88,14 @@ const STACK_DOWN_REMEDIATION =
  */
 async function recoverStack(services: string[]): Promise<RolloutStep> {
 	const step = 'up-recovery';
-	const retry = exec('docker', [...composeArgv(), 'up', '-d', ...services], OWLAT_DIR);
+	const compose = await composeArgv();
+	const retry = await exec('docker', [...compose, 'up', '-d', ...services], OWLAT_DIR);
 	// Not "is every container `running`": a service can be running and failing
 	// its healthcheck, or running for the second it takes to crash. Readiness is
 	// the same contract a successful rollout has to meet, on a shorter bound: the
 	// answer carries the host-side command that restarts the stack, and it has
 	// to reach the caller before the caller gives up on the request.
-	const readiness = await verifyReadiness(services, composeArgv(), { recovery: true });
+	const readiness = await verifyReadiness(services, compose, { recovery: true });
 
 	if (retry.ok && readiness.ready) {
 		return {
@@ -141,7 +144,7 @@ export async function recoverStackAfterFailedUp(services: string[]): Promise<Rol
  * convex-deploy step, five minutes and one staged compose file in, reported to
  * the operator as the uninformative "convex-deploy failed".
  */
-export function dockerApiPreflight(): RolloutStep {
+export async function dockerApiPreflight(signal?: AbortSignal): Promise<RolloutStep> {
 	const probes = [
 		{ endpoint: '/networks', args: ['network', 'ls', '--format', '{{.Name}}'] },
 		{ endpoint: '/volumes', args: ['volume', 'ls', '--format', '{{.Name}}'] },
@@ -149,7 +152,7 @@ export function dockerApiPreflight(): RolloutStep {
 
 	const denied: string[] = [];
 	for (const probe of probes) {
-		const result = exec('docker', probe.args, OWLAT_DIR);
+		const result = await exec('docker', probe.args, OWLAT_DIR, { signal });
 		if (!result.ok) denied.push(`${probe.endpoint}: ${oneLine(result.stderr) || 'command failed'}`);
 	}
 
@@ -182,8 +185,8 @@ export function dockerApiPreflight(): RolloutStep {
  * container's install dir at OWLAT_DIR is the one thing that knows the real
  * path, so read it back off ourselves.
  */
-function hostInstallDir(): string | null {
-	const self = inspectSelf();
+async function hostInstallDir(): Promise<string | null> {
+	const self = await inspectSelf();
 	const bind = self?.binds.find((mount) => mount.split(':')[1] === OWLAT_DIR);
 	return bind?.split(':')[0] ?? null;
 }
@@ -213,14 +216,14 @@ function defaultComposeFiles(): string[] {
  * The same invocation as `composeCommand`, as an argv for `exec`.
  *
  * This is the form every caller in this process wants: `exec` runs
- * execFileSync with no shell, so a path holding a space is one argument rather
+ * an argv with no shell, so a path holding a space is one argument rather
  * than two, and nothing here has to be quoted. `composeCommand` survives for
  * the single case that genuinely needs a command LINE — the `sh -c` payload
  * handed to the helper container below, which is interpreted by that
  * container's shell and not by this one.
  */
-export function composeArgv(files: string[] = []): string[] {
-	const hostDir = hostInstallDir();
+export async function composeArgv(files: string[] = []): Promise<string[]> {
+	const hostDir = await hostInstallDir();
 	const envFile = join(OWLAT_DIR, '.env');
 	if (!hostDir || hostDir === OWLAT_DIR) {
 		return ['compose', ...files.flatMap((file) => ['-f', file])];
@@ -236,8 +239,8 @@ export function composeArgv(files: string[] = []): string[] {
 	];
 }
 
-export function composeCommand(files: string[] = []): string {
-	const hostDir = hostInstallDir();
+export async function composeCommand(files: string[] = []): Promise<string> {
+	const hostDir = await hostInstallDir();
 	const envFile = join(OWLAT_DIR, '.env');
 	if (!hostDir || hostDir === OWLAT_DIR) {
 		return ['docker compose', ...files.map((file) => `-f ${file}`)].join(' ');
@@ -262,8 +265,12 @@ export function composeCommand(files: string[] = []): string {
  * this never starts a profile-gated service (`convex-deploy`, `code-worker`)
  * that a plain `up` would have left alone.
  */
-export function servicesToRecreate(): { services: string[]; error?: string } {
-	const listed = exec('docker', [...composeArgv(), 'config', '--services'], OWLAT_DIR);
+export async function servicesToRecreate(): Promise<{ services: string[]; error?: string }> {
+	const listed = await exec(
+		'docker',
+		[...(await composeArgv()), 'config', '--services'],
+		OWLAT_DIR
+	);
 	if (!listed.ok) {
 		return { services: [], error: `cannot read the service list: ${oneLine(listed.stderr)}` };
 	}
@@ -298,10 +305,10 @@ interface SelfContainer {
 }
 
 /** What this very container was created with — the plumbing a helper must clone. */
-function inspectSelf(): SelfContainer | null {
+async function inspectSelf(): Promise<SelfContainer | null> {
 	const format =
 		'{{.Config.Image}}{{"\\n"}}{{range .Mounts}}{{if eq .Type "bind"}}{{.Source}}:{{.Destination}}:{{if .RW}}rw{{else}}ro{{end}} {{end}}{{end}}{{"\\n"}}{{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}';
-	const result = exec('docker', ['inspect', hostname(), '--format', format], OWLAT_DIR);
+	const result = await exec('docker', ['inspect', hostname(), '--format', format], OWLAT_DIR);
 	if (!result.ok) return null;
 
 	const [image = '', mounts = '', networks = ''] = result.stdout.split('\n');
@@ -317,9 +324,26 @@ function inspectSelf(): SelfContainer | null {
 }
 
 /**
- * Start a short-lived helper container that recreates the `updater` service a
- * few seconds from now — after this request has been answered and this process
- * is free to be stopped.
+ * The file the helper below waits for before it replaces this container,
+ * relative to the install directory (the helper's working directory, and this
+ * process's OWLAT_DIR).
+ */
+const REPLACEMENT_RELEASE_FILE = '.owlat-updater-release';
+
+/**
+ * How long the helper waits for the release before it goes ahead anyway. The
+ * release normally comes within milliseconds of the helper starting; waiting
+ * out the cap means this process died before it could say so, and replacing
+ * it is then exactly what is wanted.
+ */
+const REPLACEMENT_WAIT_SECONDS = 60;
+
+/** Set while a helper is waiting for `releaseUpdaterReplacement`. */
+let replacementPending = false;
+
+/**
+ * Start a short-lived helper container that recreates the `updater` service
+ * once this request has been answered and this process is free to be stopped.
  *
  * The helper is a clone of the updater's own plumbing: the image it is already
  * running (so nothing is pulled, and the bytes are the ones already verified),
@@ -328,13 +352,19 @@ function inspectSelf(): SelfContainer | null {
  * it reaches Docker exactly the way the updater does — through the proxy, never
  * the raw socket. `--rm` collects it when the compose command returns.
  *
+ * It does not act on a timer. Recreating the updater stops this process, so a
+ * helper that fired on a fixed delay could stop it while the rollout that
+ * started the helper was still writing its answer. It waits for this process to
+ * write REPLACEMENT_RELEASE_FILE instead, which the request listener does once
+ * the rollout's answer is out (`releaseUpdaterReplacement`).
+ *
  * Failing here is not fatal to the update: every other service is already on
  * the new release, and the updater simply stays on the old image until the next
  * host-side `docker compose up -d`.
  */
-function scheduleUpdaterRecreate(delaySeconds = 10): RolloutStep {
+async function scheduleUpdaterRecreate(): Promise<RolloutStep> {
 	const step = 'self-update';
-	const self = inspectSelf();
+	const self = await inspectSelf();
 	if (!self) {
 		return {
 			step,
@@ -350,6 +380,9 @@ function scheduleUpdaterRecreate(delaySeconds = 10): RolloutStep {
 	if (dockerHost && !SAFE_ARG.test(dockerHost)) {
 		return { step, ok: false, stdout: '', stderr: 'Refusing to pass on an unsafe DOCKER_HOST' };
 	}
+
+	// A release left over from an earlier helper would let this one go at once.
+	await rm(join(OWLAT_DIR, REPLACEMENT_RELEASE_FILE), { force: true });
 
 	const [firstNetwork, ...restNetworks] = self.networks;
 	const args = [
@@ -376,10 +409,13 @@ function scheduleUpdaterRecreate(delaySeconds = 10): RolloutStep {
 		// replaced — and compose would let that shadow the `.env` this rollout
 		// just pinned, so the updater's replacement would come up reporting the
 		// version it was supposed to leave behind.
-		`unset ${COMPOSE_SHADOWED_VARS.join(' ')}; sleep ${Math.max(1, Math.trunc(delaySeconds))}; ${composeCommand()} up -d --no-deps updater`,
+		`unset ${COMPOSE_SHADOWED_VARS.join(' ')}; ` +
+			`i=0; while [ ! -e ${REPLACEMENT_RELEASE_FILE} ] && [ $i -lt ${REPLACEMENT_WAIT_SECONDS} ]; do sleep 1; i=$((i+1)); done; ` +
+			`rm -f ${REPLACEMENT_RELEASE_FILE}; ` +
+			`${await composeCommand()} up -d --no-deps updater`,
 	];
 
-	const started = exec('docker', args, OWLAT_DIR);
+	const started = await exec('docker', args, OWLAT_DIR);
 	if (!started.ok) {
 		return {
 			step,
@@ -390,6 +426,7 @@ function scheduleUpdaterRecreate(delaySeconds = 10): RolloutStep {
 				'Run `docker compose up -d updater` on the host to finish.',
 		};
 	}
+	replacementPending = true;
 
 	// A helper on one network cannot see the others; the updater is on two
 	// (`default` for the web app, `docker-proxy` for the Docker API) and its
@@ -397,7 +434,7 @@ function scheduleUpdaterRecreate(delaySeconds = 10): RolloutStep {
 	const helperId = started.stdout.trim().split('\n').pop()?.trim() ?? '';
 	const connectErrors: string[] = [];
 	for (const network of restNetworks) {
-		const connected = exec('docker', ['network', 'connect', network, helperId], OWLAT_DIR);
+		const connected = await exec('docker', ['network', 'connect', network, helperId], OWLAT_DIR);
 		if (!connected.ok) connectErrors.push(`${network}: ${oneLine(connected.stderr)}`);
 	}
 
@@ -405,17 +442,54 @@ function scheduleUpdaterRecreate(delaySeconds = 10): RolloutStep {
 		step,
 		ok: true,
 		stdout:
-			`Updater replacement handed to helper ${helperId.slice(0, 12)} (in ${delaySeconds}s). ` +
+			`Updater replacement handed to helper ${helperId.slice(0, 12)} (once this answer is sent). ` +
 			'docker-socket-proxy is left to the host — recreate it there if its config changed.',
 		stderr: connectErrors.join(' | '),
 	};
 }
 
-/** Never let a plumbing failure take down a rollout that already succeeded. */
-export function scheduleUpdaterRecreateSafely(delaySeconds?: number): RolloutStep {
+/**
+ * Never let a plumbing failure take down a rollout that already succeeded.
+ *
+ * And no helper while this process is being stopped: whatever is stopping it
+ * decides what runs next, and a helper that recreated the updater in the middle
+ * of a `docker compose down` would bring back a service the operator is taking
+ * down, on a network compose is trying to remove.
+ */
+export async function scheduleUpdaterRecreateSafely(): Promise<RolloutStep> {
+	if (shutdownSignal().aborted) {
+		return {
+			step: 'self-update',
+			ok: false,
+			stdout: '',
+			stderr:
+				'The updater is shutting down, so it did not schedule its own replacement. ' +
+				'Run `docker compose up -d updater` on the host to finish.',
+		};
+	}
 	try {
-		return scheduleUpdaterRecreate(delaySeconds);
+		return await scheduleUpdaterRecreate();
 	} catch (err) {
 		return { step: 'self-update', ok: false, stdout: '', stderr: errorMessage(err) };
+	}
+}
+
+/**
+ * Let a waiting helper replace this container. Called by the request listener
+ * once the rollout that scheduled it has written its answer; a no-op when none
+ * did. Best-effort: a release that cannot be written costs the helper its
+ * wait cap, not the replacement.
+ *
+ * Synchronous on purpose: it runs while the rollout lock is still held, and a
+ * caller that has its answer may send the next request at once. An await here
+ * would let that request in while the lock is still taken, and answer it 409.
+ */
+export function releaseUpdaterReplacement(): void {
+	if (!replacementPending) return;
+	replacementPending = false;
+	try {
+		writeFileSync(join(OWLAT_DIR, REPLACEMENT_RELEASE_FILE), '', { mode: 0o600 });
+	} catch (err) {
+		console.error('[update] could not release the updater replacement:', err);
 	}
 }
