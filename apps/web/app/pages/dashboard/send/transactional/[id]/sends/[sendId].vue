@@ -13,16 +13,24 @@ definePageMeta({
 const emailId = useRouteId<'transactionalEmails'>();
 const sendId = useRouteId<'transactionalSends'>('sendId');
 
-const { data: send, isLoading } = useConvexQuery(api.transactional.sends.get, () => ({
+const {
+	data: send,
+	isLoading,
+	error,
+	refetch,
+} = useConvexQuery(api.transactional.sends.get, () => ({
 	id: sendId.value,
 }));
 </script>
 
 <template>
 	<div class="p-6 lg:p-8">
+		<!-- A failed read is not a missing send (#721). -->
+		<UiQueryBoundary v-if="error" :error="error" @retry="refetch" />
+
 		<!-- Loading State -->
 		<DashboardDetailSkeleton
-			v-if="isLoading && !send"
+			v-else-if="isLoading && !send"
 			:label="t('dashboard.send.transactional.detail.sends.detail.loading')"
 			back="link"
 			meta

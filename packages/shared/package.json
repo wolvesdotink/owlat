@@ -26,6 +26,10 @@
 			"types": "./src/unicode.ts",
 			"import": "./src/unicode.ts"
 		},
+		"./blockTree": {
+			"types": "./src/blockTree.ts",
+			"import": "./src/blockTree.ts"
+		},
 		"./answerMode": {
 			"types": "./src/answerMode.ts",
 			"import": "./src/answerMode.ts"

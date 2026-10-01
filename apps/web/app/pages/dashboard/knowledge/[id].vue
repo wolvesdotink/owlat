@@ -32,7 +32,12 @@ const {
 } = useKnowledgeGraph();
 
 // Fetch entry with relations
-const { data: entryData, isLoading } = useOrganizationQuery(api.knowledge.graph.getEntry, () => ({
+const {
+	data: entryData,
+	isLoading,
+	error: entryError,
+	refetch: refetchEntry,
+} = useOrganizationQuery(api.knowledge.graph.getEntry, () => ({
 	entryId: entryId.value,
 }));
 
@@ -237,8 +242,11 @@ const handleRemoveRelation = async (relationId: string) => {
 			{{ t('dashboard.knowledge.detail.backToGraph') }}
 		</NuxtLink>
 
+		<!-- A failed read is not a deleted entry (#721). -->
+		<UiQueryBoundary v-if="entryError" :error="entryError" @retry="refetchEntry" />
+
 		<!-- Loading -->
-		<DashboardDetailSkeleton v-if="isLoading" lead="tile-lg" meta :actions="2" />
+		<DashboardDetailSkeleton v-else-if="isLoading" lead="tile-lg" meta :actions="2" />
 
 		<!-- Not Found -->
 		<div v-else-if="!entry" class="flex flex-col items-center justify-center py-20 text-center">
@@ -484,6 +492,7 @@ const handleRemoveRelation = async (relationId: string) => {
 						</h3>
 						<UiSelect
 							v-model="commitmentStatus"
+							:aria-label="t('dashboard.knowledge.detail.commitmentStatus')"
 							:options="[
 								{ value: 'open', label: t('dashboard.knowledge.detail.commitmentStatuses.open') },
 								{

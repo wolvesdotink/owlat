@@ -7,15 +7,15 @@
  * findings are computed in `utils/postboxPreflight` and arrive as catalog keys,
  * which this render boundary resolves.
  */
+import { useLocalized } from '~/composables/useLocalized';
 import type { PreflightFinding } from '~/utils/postboxPreflight';
 
 const props = defineProps<{ findings: PreflightFinding[] }>();
 
 const { t } = useI18n();
 
-const details = computed(() =>
-	props.findings.map((finding) => t(finding.key, finding.params ?? {})).join(' · ')
-);
+const localized = useLocalized();
+const details = computed(() => props.findings.map((finding) => localized(finding)).join(' · '));
 
 const summary = computed(() =>
 	t(

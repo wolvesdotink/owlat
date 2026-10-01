@@ -8,7 +8,7 @@ import type { Id } from '@owlat/api/dataModel';
 
 export function usePostboxContacts(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	const { t } = useI18n();
-	const { data, isLoading } = useConvexQuery(api.mail.contacts.list, () =>
+	const { data, isLoading, error, refetch } = useConvexQuery(api.mail.contacts.list, () =>
 		mailboxId.value ? { mailboxId: mailboxId.value, limit: 500 } : 'skip'
 	);
 	const contacts = computed(() => data.value ?? []);
@@ -34,5 +34,5 @@ export function usePostboxContacts(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		return removeOp.run({ contactId });
 	}
 
-	return { contacts, isLoading, save, remove };
+	return { contacts, isLoading, error, refetch, save, remove };
 }

@@ -8,6 +8,7 @@ import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 import TaskContext from '~/components/agent-tasks/TaskContext.vue';
 import { resolveReviewFocusKey } from '~/utils/taskFlowKeyboard';
 import { useOrganization } from '~/composables/useOrganization';
+import { useLocalized } from '~/composables/useLocalized';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import {
 	GENERIC_TEAMMATE_NAME,
@@ -42,10 +43,7 @@ const categoryLabel = computed(() => {
 	return capitalize(te(key) ? t(key) : category);
 });
 
-type CollisionMessage = string | { key: string; params?: Record<string, unknown> };
-function collisionText(message: CollisionMessage): string {
-	return typeof message === 'string' ? t(message) : t(message.key, message.params ?? {});
-}
+const collisionText = useLocalized();
 
 const { needsReply, onApprove, approveOption, onReject, undoApprove, composeAndSend } =
 	useReviewQueue();

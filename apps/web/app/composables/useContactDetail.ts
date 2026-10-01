@@ -70,12 +70,14 @@ export function useContactDetail(contactId: ComputedRef<Id<'contacts'>>) {
 	const { t } = useI18n();
 
 	// DATA: Convex queries
-	const { data: contact, isLoading: contactLoading } = useConvexQuery(
-		api.contacts.contacts.get,
-		() => ({
-			contactId: contactId.value,
-		})
-	);
+	const {
+		data: contact,
+		isLoading: contactLoading,
+		error: contactError,
+		refetch: refetchContact,
+	} = useConvexQuery(api.contacts.contacts.get, () => ({
+		contactId: contactId.value,
+	}));
 
 	const { data: properties } = useOrganizationQuery(api.contacts.properties.listByOrganization);
 
@@ -310,6 +312,8 @@ export function useContactDetail(contactId: ComputedRef<Id<'contacts'>>) {
 		// Data
 		contact,
 		contactLoading,
+		contactError,
+		refetchContact,
 		properties,
 		propertyValues,
 

@@ -48,8 +48,9 @@ afterAll(async () => {
 //   ps … --format …            → $STUB_RUNNING (services with a container)
 //   ps -aq … service=<name>    → a fake container id
 //   run … --help               → $STUB_SETUP_HELP (default: a help text listing
-//                                push-env), exit $STUB_HELP_EXIT
+//                                push-env and unset-env), exit $STUB_HELP_EXIT
 //   run … push-env             → exit $STUB_PUSH_EXIT
+//   run … unset-env …          → exit $STUB_UNSET_EXIT
 const STUB_DOCKER = `#!/bin/sh
 printf '%s | profiles=%s project=%s\\n' "$*" "\${COMPOSE_PROFILES-<unset>}" "\${COMPOSE_PROJECT_NAME-<unset>}" >> "$STUB_LOG"
 case "$*" in
@@ -59,9 +60,11 @@ case "$*" in
 	ps\\ --filter*--format*) printf '%s\\n' $STUB_RUNNING ;;
 	ps\\ -aq*) printf 'id-%s\\n' "\${*##*service=}" ;;
 	run\\ *--help)
-		printf '%s\\n' "\${STUB_SETUP_HELP-  push-env           Push the Convex function-runtime keys}"
+		printf '%s\\n' "\${STUB_SETUP_HELP-  push-env           Push the Convex function-runtime keys
+  unset-env <KEY> [KEY...]}"
 		exit "\${STUB_HELP_EXIT:-0}" ;;
 	run\\ *push-env) exit "\${STUB_PUSH_EXIT:-0}" ;;
+	run\\ *unset-env*) exit "\${STUB_UNSET_EXIT:-0}" ;;
 esac
 exit 0
 `;
@@ -298,6 +301,45 @@ describe('owlat apply', () => {
 		const calls = await install.calls();
 		expect(calls).toEqual(['compose up -d mta | profiles=mta project=<unset>']);
 		expect(result.stdout).toContain("run 'owlat apply' without a service name");
+	});
+});
+
+describe('owlat unset-env', () => {
+	it('runs unset-env through the setup image, with the socket, in this project', async () => {
+		const install = await makeInstall({ env: 'COMPOSE_PROFILES=mta\n' });
+
+		const result = await install.invoke(['unset-env', 'LLM_BASE_URL', 'DECISION_MODEL']);
+
+		expect(result.code).toBe(0);
+		const calls = await install.calls();
+		const unset = calls.find((line) => line.startsWith('run ') && line.includes('unset-env'));
+		expect(unset).toContain('-v /var/run/docker.sock:/var/run/docker.sock');
+		expect(unset).toContain('-e COMPOSE_PROJECT_NAME=owlat-test');
+		expect(unset).toContain('setup-image:test unset-env LLM_BASE_URL DECISION_MODEL');
+		// Clearing a key neither recreates containers nor pushes the rest.
+		expect(calls.some((line) => line.startsWith('compose up'))).toBe(false);
+		expect(calls.some((line) => line.includes('push-env'))).toBe(false);
+	});
+
+	it("passes the setup CLI's failure through", async () => {
+		const install = await makeInstall({ env: 'COMPOSE_PROFILES=mta\n' });
+
+		const result = await install.invoke(['unset-env', 'LLM_BASE_URL'], { STUB_UNSET_EXIT: '1' });
+
+		expect(result.code).toBe(1);
+	});
+
+	it('says to upgrade, instead of running unset-env, when the setup image predates it', async () => {
+		const install = await makeInstall({ env: 'COMPOSE_PROFILES=mta\n' });
+
+		const result = await install.invoke(['unset-env', 'LLM_BASE_URL'], {
+			STUB_SETUP_HELP: '  push-env           Push the Convex function-runtime keys',
+		});
+
+		expect(result.code).toBe(1);
+		expect((await install.calls()).some((line) => line.includes('unset-env'))).toBe(false);
+		expect(result.stderr).toContain('Nothing was changed');
+		expect(result.stderr).toContain("predates 'owlat unset-env'");
 	});
 });
 

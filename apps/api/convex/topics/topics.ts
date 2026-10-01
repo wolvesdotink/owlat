@@ -357,6 +357,13 @@ export const confirmDoi = internalMutation({
 			return { success: false, error: 'Invalid or expired confirmation token' };
 		}
 
+		// The same token may also carry form signups made while the contact was
+		// pending; this route confirms them too, as the form-confirm one does.
+		await ctx.runMutation(internal.forms.submission.markConfirmedByToken, {
+			token: args.token,
+			contactId: outcome.contactId,
+		});
+
 		return {
 			success: true,
 			alreadyConfirmed: outcome.applied === 'recorded',

@@ -21,10 +21,12 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 	};
 
 	// Fetch thread with messages
-	const { data: threadData, isLoading: threadLoading } = useConvexQuery(
-		api.inbox.queries.getThread,
-		() => ({ threadId: threadId.value })
-	);
+	const {
+		data: threadData,
+		isLoading: threadLoading,
+		error: threadError,
+		refetch: refetchThread,
+	} = useConvexQuery(api.inbox.queries.getThread, () => ({ threadId: threadId.value }));
 
 	const thread = computed(() => threadData.value?.thread ?? null);
 	const messages = computed(() => threadData.value?.messages ?? []);
@@ -163,6 +165,8 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 		takeOver,
 		followUps,
 		threadLoading,
+		threadError,
+		refetchThread,
 		// Actions
 		handleApprove,
 		handleReject,

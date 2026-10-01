@@ -130,13 +130,24 @@ export function buildImportErrorsCsv(errors: ReadonlyArray<string>): string {
  * mapping Papa's first error to a message). Resolves with the non-blank rows;
  * rejects with an `Error` whose message is the (mapped) parse error so callers
  * can surface it however they like.
+ *
+ * The delimiter is guessed. `skipEmptyLines: 'greedy'` keeps blank lines (a
+ * trailing newline in particular) out of that guess: papaparse only accepts a
+ * delimiter when the sampled lines average two or more fields, and one empty
+ * line was enough to sink a short `,`/`;`/tab file. A file whose every line
+ * has one field still gets no delimiter; papaparse then reads it with `,` and
+ * reports `UndetectableDelimiter`, which is the right reading of a
+ * one-address-per-line list, so that warning is not fatal. Any other error
+ * (an unterminated quote, say) still rejects.
  */
 export function parseCsvFile(file: File): Promise<string[][]> {
 	return new Promise((resolve, reject) => {
 		Papa.parse<string[]>(file, {
+			skipEmptyLines: 'greedy',
 			complete: (results) => {
-				if (results.errors.length > 0) {
-					reject(new Error(results.errors[0]?.message ?? 'Unknown parsing error'));
+				const fatal = results.errors.find((e) => e.code !== 'UndetectableDelimiter');
+				if (fatal) {
+					reject(new Error(fatal.message || 'Unknown parsing error'));
 					return;
 				}
 				const rows = results.data.filter((row) => row.some((cell) => cell.trim() !== ''));

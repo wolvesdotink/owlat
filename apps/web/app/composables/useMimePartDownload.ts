@@ -2,6 +2,38 @@ import { extractAttachmentAt } from '@owlat/shared/mailMime';
 import type { AttachmentMeta } from '~/utils/attachmentMeta';
 
 /**
+ * One part's bytes: the part delivery stored on its own when `loadPart` has it,
+ * else the raw `.eml` with the part cut out client-side. `null` when neither
+ * produced it. Plain function (no toast, no spinner) so the message body can
+ * load inline images through the same two paths a download takes.
+ */
+export async function extractMimePartBlob(
+	messageId: string,
+	att: AttachmentMeta,
+	loaders: {
+		loadRaw: (messageId: string) => Promise<string | null>;
+		loadPart?: (messageId: string, att: AttachmentMeta) => Promise<Blob | null>;
+	}
+): Promise<Blob | null> {
+	if (loaders.loadPart) {
+		try {
+			const part = await loaders.loadPart(messageId, att);
+			if (part) return part;
+		} catch {
+			// The raw path below answers for real: a dropped connection fails
+			// there too and is reported from there.
+		}
+	}
+	const bin = await loaders.loadRaw(messageId);
+	if (!bin) return null;
+	const extracted = extractAttachmentAt(bin, att.partIndex ?? '0', att.filename);
+	if (!extracted) return null;
+	return new Blob([extracted.bytes as BlobPart], {
+		type: extracted.contentType || att.contentType,
+	});
+}
+
+/**
  * Download one attachment out of a message's raw `.eml`, client-side.
  *
  * The bytes are never on the message row — both readers store metadata and
@@ -33,23 +65,8 @@ export function useMimePartDownload(options: {
 	const downloadingAttachment = ref<string | null>(null);
 
 	/** The stored part if there is one, else the raw `.eml` with the part cut out client-side. */
-	async function extractPartBlob(messageId: string, att: AttachmentMeta): Promise<Blob | null> {
-		if (options.loadPart) {
-			try {
-				const part = await options.loadPart(messageId, att);
-				if (part) return part;
-			} catch {
-				// The raw path below answers for real: a dropped connection fails
-				// there too and is reported from there.
-			}
-		}
-		const bin = await options.loadRaw(messageId);
-		if (!bin) return null;
-		const extracted = extractAttachmentAt(bin, att.partIndex ?? '0', att.filename);
-		if (!extracted) return null;
-		return new Blob([extracted.bytes as BlobPart], {
-			type: extracted.contentType || att.contentType,
-		});
+	function extractPartBlob(messageId: string, att: AttachmentMeta): Promise<Blob | null> {
+		return extractMimePartBlob(messageId, att, options);
 	}
 
 	/** Extract the part, then trigger a browser download. */
