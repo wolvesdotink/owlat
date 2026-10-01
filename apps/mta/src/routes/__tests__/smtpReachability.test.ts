@@ -32,8 +32,8 @@ describe('probeSmtpReachability', () => {
 	});
 
 	it('degrades the aggregate and classifies a blocked source-IP path', async () => {
-		const connect = vi.fn(async ({ localAddress }: { localAddress: string }) => {
-			if (localAddress.endsWith('.11')) {
+		const connect = vi.fn(async ({ localAddress }: { localAddress?: string }) => {
+			if (localAddress?.endsWith('.11')) {
 				const err = new Error('timed out') as Error & { code?: string };
 				err.code = 'ETIMEDOUT';
 				throw err;

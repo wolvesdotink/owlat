@@ -18,7 +18,7 @@ import type { MtaConfig } from '../../config.js';
 const API_KEY = 'test-master-key';
 const config = { apiKey: API_KEY } as unknown as MtaConfig;
 
-function authedRequest(
+async function authedRequest(
 	app: ReturnType<typeof createCredentialRoutes>,
 	method: string,
 	path: string,

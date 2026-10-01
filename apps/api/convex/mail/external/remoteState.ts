@@ -37,6 +37,7 @@ import { remoteSightingValidator } from '../../lib/validators/mail';
 import { moveMessagesToFolder } from '../messageActions';
 import { applyFlagDelta } from '../flagWrites';
 import { purgeMessageRow } from '../messagePurge';
+import { dropFolderMembership } from '../folderMembership';
 import { rebuildThreadAggregates } from '../threadAggregates';
 import {
 	enqueueRemoteOp,
@@ -407,7 +408,9 @@ export const forgetRemoteFolders = internalMutation({
 			const folder = folders.find((f) => f._id === row.folderId);
 			if (!folder || folder.role) continue;
 			if (folders.some((f) => f.parentId === folder._id)) continue;
-			if (!(await holdsMail(folder._id))) await ctx.db.delete(folder._id);
+			if (await holdsMail(folder._id)) continue;
+			await dropFolderMembership(ctx, folder._id);
+			await ctx.db.delete(folder._id);
 		}
 		return { forgotten };
 	},

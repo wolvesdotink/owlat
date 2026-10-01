@@ -9,6 +9,7 @@ import { formatTaskFlowEstimate } from '~/utils/taskFlow';
 import { replyQueueHeadline } from '~/utils/postboxReplyQueue';
 import { opensInAnswerMode } from '~/utils/answerQueue';
 import { useAnswerQueueChips } from '~/composables/useAnswerQueueChips';
+import { useLocalized } from '~/composables/useLocalized';
 
 /**
  * The Answer queue page's body — over everything waiting on the viewer's
@@ -22,6 +23,7 @@ import { useAnswerQueueChips } from '~/composables/useAnswerQueueChips';
  * that stay cards (chat mentions, follow-up reminders).
  */
 const { t } = useI18n();
+const localized = useLocalized();
 const session = useAnswerQueueSession() ?? createAnswerQueueSession();
 const { queue, flow, filter, source } = session;
 
@@ -36,8 +38,7 @@ const leavingForAnswerMode = computed(
 
 function headline(item: AnswerItem): string {
 	if (item.source === 'mail') {
-		const h = replyQueueHeadline(item.row);
-		return typeof h === 'string' ? t(h) : t(h.key, h.params ?? {});
+		return localized(replyQueueHeadline(item.row));
 	}
 	if (item.source === 'team') return item.entry.message.subject;
 	return `#${item.mention.roomName}: ${item.mention.messagePreview}`;
@@ -90,6 +91,13 @@ const { chips, showChips, activeChipLabel } = useAnswerQueueChips(session);
 			<UiSkeleton class="h-4 w-40" />
 			<UiSkeleton class="h-40 w-full rounded-2xl" />
 		</div>
+
+		<!-- Nothing to show because a read failed is not "all clear" (#721). -->
+		<UiQueryBoundary
+			v-else-if="queue.error.value && !flow.active.value && source.length === 0"
+			:error="queue.error.value"
+			@retry="queue.refetch"
+		/>
 
 		<!-- Nothing waiting is good news: the "all clear" tone, not "nothing yet". -->
 		<UiEmptyState

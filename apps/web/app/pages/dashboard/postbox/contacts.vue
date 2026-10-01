@@ -21,9 +21,21 @@ definePageMeta({
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
-const { currentMailbox, isLoading: mailboxesLoading } = usePostboxMailbox();
+const {
+	currentMailbox,
+	isLoading: mailboxesLoading,
+	error: mailboxesError,
+	refetch: refetchMailboxes,
+} = usePostboxMailbox();
 const mailboxId = computed(() => currentMailbox.value?._id ?? null);
-const { contacts, isLoading, save, remove } = usePostboxContacts(mailboxId);
+const {
+	contacts,
+	isLoading,
+	error: listError,
+	refetch: refetchList,
+	save,
+	remove,
+} = usePostboxContacts(mailboxId);
 type MailContact = (typeof contacts.value)[number];
 const stack = usePostboxComposerStack();
 const { showToast } = useToast();
@@ -164,13 +176,20 @@ function initial(c: { displayName?: string; email: string }) {
 			/>
 		</div>
 
-		<PostboxMailboxGuard :mailbox-id="mailboxId" :loading="mailboxesLoading">
+		<PostboxMailboxGuard
+			:mailbox-id="mailboxId"
+			:loading="mailboxesLoading"
+			:error="mailboxesError"
+			@retry="refetchMailboxes"
+		>
 			<div v-if="isLoading" class="flex justify-center py-12">
 				<Icon
 					name="lucide:loader-2"
 					class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary"
 				/>
 			</div>
+			<!-- A failed read is not an empty address book (#721). -->
+			<UiQueryBoundary v-else-if="listError" :error="listError" @retry="refetchList" />
 			<div v-else-if="filtered.length === 0" class="text-center py-12">
 				<Icon name="lucide:users" class="w-10 h-10 mx-auto text-text-tertiary" />
 				<p class="text-sm text-text-secondary mt-3">

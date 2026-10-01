@@ -12,13 +12,16 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { getFunctionName, type AnyFunctionReference } from 'convex/server';
+import { getFunctionName } from 'convex/server';
 import { fetchModule, type FetchArgs } from '../index.js';
 import { storeModule, type StoreArgs } from '../../store/index.js';
 import { MAX_RANGES_PER_READ } from '../../helpers/folderPaging.js';
 import { resolveSet, buildSeqMap, uidRuns } from '../../helpers/seqMap.js';
 import type { FetchEnvelope } from '../format.js';
 import type { CommandDeps, ConnectionState, ImapVerb, StartArgs } from '../../types.js';
+
+// convex/server declares AnyFunctionReference without exporting it.
+type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
 
 vi.mock('../../../logger.js', () => ({
 	logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -78,9 +81,9 @@ function makeFolder(initialUids: readonly number[]) {
 		callsBeforeFirstResponse: null,
 	};
 	const window = (p: Record<string, unknown>): number[] => {
-		const low = p.uidLow as number;
-		const high = p.uidHigh as number;
-		const ranges = (p.ranges as Range[] | undefined) ?? [{ low, high }];
+		const low = p['uidLow'] as number;
+		const high = p['uidHigh'] as number;
+		const ranges = (p['ranges'] as Range[] | undefined) ?? [{ low, high }];
 		expect(ranges.length).toBeLessThanOrEqual(MAX_RANGES_PER_READ);
 		for (const [i, r] of ranges.entries()) {
 			expect(r.low).toBeLessThanOrEqual(r.high);
@@ -101,9 +104,10 @@ function makeFolder(initialUids: readonly number[]) {
 	const convex = {
 		query: vi.fn(async (fnRef: AnyFunctionReference, p: Record<string, unknown>) => {
 			const ref = getFunctionName(fnRef);
+			if (ref.endsWith(':folderMembershipPage')) return null;
 			if (ref.endsWith(':listFolderUidsPage')) {
 				c.uidPages += 1;
-				const after = (p.afterUid as number | undefined) ?? 0;
+				const after = (p['afterUid'] as number | undefined) ?? 0;
 				const page = uids.filter((u) => u >= after).slice(0, UID_PAGE);
 				return { uids: page, nextUid: next(page, UID_PAGE) };
 			}

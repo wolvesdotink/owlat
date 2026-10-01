@@ -321,10 +321,9 @@ describe('mirroredFolderPath', () => {
 			delimiter: '/',
 			flags: new Set(['\\HasNoChildren', '\\Important']),
 		};
+		const archive = { path: 'Erledigt', delimiter: '/', flags: new Set(['\\HasNoChildren']) };
 		expect(isVirtualView(important)).toBe(true);
 		expect(mirroredFolderPath(important, '')).toBeNull();
-		expect(
-			isVirtualView({ path: 'Erledigt', delimiter: '/', flags: new Set(['\\HasNoChildren']) })
-		).toBe(false);
+		expect(isVirtualView(archive)).toBe(false);
 	});
 });

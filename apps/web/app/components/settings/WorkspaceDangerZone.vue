@@ -7,7 +7,9 @@ import { api } from '@owlat/api';
  * It used to sit at the bottom of the Team page, one scroll below changing a
  * member's role. Owner only; the modal arms its button only once DELETE has
  * been typed. On success the backend deletion walker is scheduled and the owner
- * is signed out, because the tenant they are signed in to is going away.
+ * is signed out, because the workspace they are signed in to is being emptied.
+ * Accounts and memberships live in BetterAuth and survive the sweep, so the copy
+ * promises only the workspace data (#906).
  */
 const { t } = useI18n();
 const { canDeleteOrganization } = usePermissions();

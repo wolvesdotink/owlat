@@ -12,6 +12,12 @@
  * §4.3) counts bytes, not decoded characters, so 8-bit/binary MIME bodies
  * and `{N}` octet declarations frame correctly. Command text is decoded
  * as UTF-8 only once a full CRLF-terminated line has been sliced off.
+ *
+ * RFC 3501 §5.5: only `concurrent` commands (FETCH, NOOP, LIST, ...) overlap.
+ * Any other line waits in the buffer, socket paused, until every running
+ * command has completed, and nothing starts while it runs, so SELECT + FETCH
+ * reads the folder SELECT opened. Only the active session's own input (IDLE's
+ * DONE, AUTHENTICATE's response, APPEND's literal) is read meanwhile.
  */
 
 import type { Socket } from 'net';
@@ -22,7 +28,8 @@ import { logger } from './logger.js';
 import { parseLine, parseCommandWithLiterals, matchTrailingLiteral } from './parser.js';
 import type { AuthRateLimiter } from './rateLimit.js';
 import { drainWaiter, writeLine } from './socketOutput.js';
-import { dispatch, assembleCapabilityLine } from './commands/walker.js';
+import { dispatch, assembleCapabilityLine, runsConcurrently } from './commands/walker.js';
+import { SequenceGate } from './commands/helpers/sequenceGate.js';
 import type { CommandDeps, CommandSession, ConnectionState } from './commands/types.js';
 
 const DEFAULT_MAX_LINE_BYTES = 64 * 1024;
@@ -65,6 +72,8 @@ export class ImapConnection {
 	private activeSession: CommandSession | null = null;
 	/** Every session whose completion is still pending; cancelled on close. */
 	private readonly sessions = new Set<CommandSession>();
+	/** The pending sessions that must run alone (not `concurrent`). */
+	private readonly exclusive = new Set<CommandSession>();
 	private literalRemaining = 0;
 	/** Non-APPEND command being assembled across `{N}` continuations. */
 	private pendingCommand: PendingCommand | null = null;
@@ -77,6 +86,10 @@ export class ImapConnection {
 	private readonly maxLiteralBytes: number;
 	private preAuthTimer: ReturnType<typeof setTimeout> | null = null;
 	private closed = false;
+	/** Set by LOGOUT: nothing the client sends afterwards is dispatched. */
+	private loggedOut = false;
+	/** The socket is paused: a line waits behind a running command. */
+	private inputHeld = false;
 
 	constructor(
 		private socket: Socket | TLSSocket,
@@ -131,11 +144,19 @@ export class ImapConnection {
 			remoteIp,
 			capabilityLine,
 			tls,
-			closeConnection: () => this.socket.end(),
+			// LOGOUT: `end()` only half-closes and `close` can come much later, so
+			// stop in-flight work and drop the input now: nothing runs after the BYE.
+			closeConnection: () => {
+				this.loggedOut = true;
+				this.buffer = Buffer.alloc(0);
+				this.cancelSessions();
+				this.socket.end();
+			},
 			commit: (next) => {
 				this.state = next;
 			},
 			waitForDrain: drainWaiter(socket, () => this.closed),
+			sequenceGate: new SequenceGate(),
 		};
 
 		this.send(`* OK [${capabilityLine}] ${config.greetingHost} Owlat IMAP ready`);
@@ -168,7 +189,7 @@ export class ImapConnection {
 		this.commandLiteralRemaining = 0;
 		this.commandLiteralChunks = [];
 		// The active long-running session (IDLE / APPEND) is in `sessions` too,
-		// alongside any one-shot command still working, e.g. a FETCH mid-download.
+		// as is a one-shot command still working, e.g. a FETCH mid-download.
 		this.cancelSessions();
 	}
 
@@ -216,10 +237,24 @@ export class ImapConnection {
 	}
 
 	private onData(chunk: Buffer | string): void {
-		if (this.closed) return;
+		if (this.closed || this.loggedOut) return;
 		const incoming = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, 'utf-8');
 		this.buffer = this.buffer.length === 0 ? incoming : Buffer.concat([this.buffer, incoming]);
+		this.drain();
+	}
 
+	/** Drain; pause the socket while a line is held, so the buffer cannot grow. */
+	private drain(): void {
+		// After LOGOUT the socket flows again (`onData` drops it) so it can end.
+		const held = this.drainBuffer() === 'held' && !this.loggedOut;
+		if (this.closed || held === this.inputHeld) return;
+		this.inputHeld = held;
+		if (held) this.socket.pause?.();
+		else this.socket.resume?.();
+	}
+
+	/** `'held'`: the next line waits for a running command and stays buffered. */
+	private drainBuffer(): 'drained' | 'held' {
 		// Drain the buffer iteratively. Each pass runs the literal-absorption
 		// phases (1/1b) then drains whole command lines (Phase 2); when a line
 		// arms a new literal whose body is already buffered, we loop back to the
@@ -228,7 +263,7 @@ export class ImapConnection {
 		// literals in a single TCP segment, and self-recursion (one frame per
 		// literal) would overflow the V8 stack and crash the shared process.
 		while (true) {
-			if (this.closed) return;
+			if (this.closed || this.loggedOut) return 'drained';
 
 			// Phase 1 — absorb session literal bytes routed to the active session
 			// (APPEND streams its body here). Byte-accurate: counts octets.
@@ -242,7 +277,7 @@ export class ImapConnection {
 				}
 				if (this.literalRemaining > 0) {
 					// Still waiting for more bytes — leave the buffer for the next chunk.
-					return;
+					return 'drained';
 				}
 				// Literal satisfied — clients optionally trail a CRLF after the body.
 				this.stripLeadingNewline();
@@ -259,7 +294,7 @@ export class ImapConnection {
 				}
 				if (this.commandLiteralRemaining > 0) {
 					// Still waiting for more literal octets.
-					return;
+					return 'drained';
 				}
 				// Literal complete — record its value and resume draining the rest of
 				// the command line that follows the literal octets.
@@ -279,7 +314,7 @@ export class ImapConnection {
 				this.buffer.indexOf(CRLF) < 0
 			) {
 				this.destroyConnection('Command line too long');
-				return;
+				return 'drained';
 			}
 
 			// Phase 2 — drain whole lines. `restartPump` is set when a line arms a
@@ -290,20 +325,26 @@ export class ImapConnection {
 			let newlineIdx: number;
 			while ((newlineIdx = this.buffer.indexOf(CRLF)) >= 0) {
 				const line = this.buffer.subarray(0, newlineIdx).toString('utf-8');
-				this.buffer = this.buffer.subarray(newlineIdx + 2);
 
-				// 2a — active long-running session can absorb the line (IDLE → DONE).
-				// A command being assembled across literal continuations is never
-				// also an active session, so this only fires for IDLE/DONE.
+				// 2a — the active session reads its own input (IDLE: DONE, else BAD;
+				// AUTHENTICATE: its SASL response). A command being assembled across
+				// literal continuations is never also an active session.
 				if (
 					this.pendingCommand === null &&
 					this.activeSession?.onClientLine &&
 					this.activeSession.onClientLine(line) === 'absorbed'
 				) {
+					this.buffer = this.buffer.subarray(newlineIdx + 2);
 					continue;
 				}
 
-				// 2b — does this line/segment end in a `{N}` / `{N+}` literal that we
+				// 2b — RFC 3501 §5.5: held (`trackSession` drains again) unless the
+				// line and every running command are `concurrent`.
+				if (this.sessions.size > 0 && (this.exclusive.size > 0 || !runsConcurrently(line)))
+					return 'held';
+				this.buffer = this.buffer.subarray(newlineIdx + 2);
+
+				// 2c — does this line/segment end in a `{N}` / `{N+}` literal that we
 				// must absorb before the command is complete?
 				if (this.startCommandLiteralIfPresent(line)) {
 					// Octet absorption begins next; loop back so Phase 1b consumes any
@@ -312,7 +353,7 @@ export class ImapConnection {
 					break;
 				}
 
-				// 2c — a fresh command, or the final segment of a literal command.
+				// 2d — a fresh command, or the final segment of a literal command.
 				this.dispatchAssembled(line);
 
 				// If that command armed a session literal (APPEND), the remaining
@@ -325,7 +366,7 @@ export class ImapConnection {
 			}
 
 			if (restartPump && !this.closed) continue;
-			return;
+			return 'drained';
 		}
 	}
 
@@ -352,7 +393,7 @@ export class ImapConnection {
 
 		// APPEND owns its own byte-streaming literal path — let it dispatch
 		// normally so its module sets `awaitingLiteral` and handles `+ Ready`.
-		if (this.pendingCommand === null && this.peekVerb(line) === 'APPEND') {
+		if (this.pendingCommand === null && parseLine(line)?.command === 'APPEND') {
 			return false;
 		}
 
@@ -395,12 +436,6 @@ export class ImapConnection {
 		return m ? m[0].length : 0;
 	}
 
-	/** Best-effort peek at the command verb (second token) of a raw line. */
-	private peekVerb(line: string): string | null {
-		const parsed = parseLine(line);
-		return parsed ? parsed.command : null;
-	}
-
 	/**
 	 * Dispatch a fully-assembled command. When a `pendingCommand` is in
 	 * flight, `line` is its final segment (no trailing literal): splice the
@@ -409,6 +444,7 @@ export class ImapConnection {
 	 */
 	private dispatchAssembled(line: string): void {
 		let parsed;
+		const concurrent = this.pendingCommand === null && runsConcurrently(line);
 		if (this.pendingCommand) {
 			this.pendingCommand.segments.push(line);
 			parsed = parseCommandWithLiterals(this.pendingCommand.segments, this.pendingCommand.literals);
@@ -419,11 +455,11 @@ export class ImapConnection {
 		if (!parsed) return;
 
 		const session = dispatch(this.deps, this.state, parsed, (l) => this.send(l));
-		this.trackSession(session);
+		this.trackSession(session, concurrent);
 	}
 
-	private trackSession(session: CommandSession): void {
-		if (this.closed) {
+	private trackSession(session: CommandSession, concurrent: boolean): void {
+		if (this.closed || this.loggedOut) {
 			session.cancel();
 			return;
 		}
@@ -443,13 +479,17 @@ export class ImapConnection {
 			}
 		}
 		this.sessions.add(session);
+		if (!concurrent) this.exclusive.add(session);
 		session.completion
 			.then(() => {
 				this.sessions.delete(session);
+				this.exclusive.delete(session);
 				if (this.activeSession === session) {
 					this.activeSession = null;
 					this.literalRemaining = 0;
 				}
+				// Dispatch the lines held behind it, if any can start now.
+				this.drain();
 			})
 			.catch((err) => {
 				logger.error({ err }, 'session completion crashed');

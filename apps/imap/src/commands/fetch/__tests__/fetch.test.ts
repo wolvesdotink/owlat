@@ -10,11 +10,14 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getFunctionName, type AnyFunctionReference } from 'convex/server';
+import { getFunctionName } from 'convex/server';
 import { fetchModule, type FetchArgs } from '../index.js';
 import { formatBodySection, parseBodySectionItem, splitHeaderText } from '../bodySection.js';
 import type { FetchEnvelope } from '../format.js';
 import type { CommandDeps, ConnectionState, StartArgs } from '../../types.js';
+
+// convex/server declares AnyFunctionReference without exporting it.
+type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
 
 const RAW = 'Subject: Hi\r\n\r\nHello world';
 
@@ -78,6 +81,7 @@ function run(
 			// Seven messages exist; the fixture message sits at sequence 7
 			// (UID 7), so the harness's `set: '7'` resolves to it whether the
 			// command is UID-based or not.
+			if (ref.endsWith(':folderMembershipPage')) return null;
 			if (ref.endsWith(':listFolderUidsPage')) {
 				return { uids: [1, 2, 3, 4, 5, 6, 7], nextUid: null };
 			}

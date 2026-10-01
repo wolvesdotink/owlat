@@ -27,6 +27,7 @@ import { insertMessageBody } from '../../lib/messageBodyStore';
 import { redirectMutedDelivery } from '../mute';
 import { indexMessageAttachments } from '../attachmentIndex';
 import { recordMessageCounters } from '../messageCounters';
+import { recordFolderMembership } from '../folderMembership';
 import { conversationRootId, resolveDeliveryThread } from './threading';
 import { mergeThreadParticipants } from '../threadAggregates';
 import { applyMailboxUsageDelta } from '../mailboxUsage';
@@ -363,6 +364,7 @@ export async function insertDeliveredMessage(
 		receivedAt: params.receivedAt,
 		pinnedSection: params.pinnedSection,
 	});
+	await recordFolderMembership(ctx, null, { folderId: folder._id, uid });
 
 	// Attachment index (idea 37): the indexable mirror of the array we just
 	// wrote, so `filename:` narrows on an index and the Files view can browse

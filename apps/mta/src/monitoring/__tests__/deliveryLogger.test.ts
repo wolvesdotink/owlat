@@ -129,9 +129,9 @@ describe.skipIf(!STREAMS_SUPPORTED)('deliveryLogger', () => {
 			await logDeliveryEvent(redis, createEvent({ status: 'bounced' }), config);
 
 			const stats = await getDeliveryLogStats(redis, today);
-			expect(stats.total).toBeGreaterThanOrEqual(2);
-			expect(stats.delivered).toBeGreaterThanOrEqual(1);
-			expect(stats.bounced).toBeGreaterThanOrEqual(1);
+			expect(stats['total']).toBeGreaterThanOrEqual(2);
+			expect(stats['delivered']).toBeGreaterThanOrEqual(1);
+			expect(stats['bounced']).toBeGreaterThanOrEqual(1);
 		});
 	});
 

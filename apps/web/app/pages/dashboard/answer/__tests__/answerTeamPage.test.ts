@@ -95,6 +95,8 @@ const runs = new Map<string, ReturnType<typeof vi.fn>>();
 
 beforeAll(() => {
 	Object.assign(globalThis, {
+		useInboxes: () => ({ byId: ref(new Map()) }),
+		useNativeFilePicker: () => ({ isDesktop: ref(false), pickNativeFiles: vi.fn() }),
 		useI18n: i18nStubs.useI18n,
 		useId,
 		useHead: () => {},
@@ -190,6 +192,11 @@ async function mountPage() {
 				AnswerTeamRejectModal,
 				PostboxOverflowMenu: passThrough('PostboxOverflowMenu'),
 				PostboxComposerPreflightChip: inert('PostboxComposerPreflightChip'),
+				// The shared footer's mailbox-only controls, never shown on a team reply.
+				PostboxComposerFollowUp: inert('PostboxComposerFollowUp'),
+				PostboxComposerModeControls: inert('PostboxComposerModeControls'),
+				PostboxFollowUpDialog: inert('PostboxFollowUpDialog'),
+				PostboxPreviewAsSent: inert('PostboxPreviewAsSent'),
 				UiAvatar: inert('UiAvatar'),
 				UiSkeleton: inert('UiSkeleton'),
 				UiModal: passThrough('UiModal'),
@@ -214,7 +221,7 @@ describe('Answer mode for a Team inbox thread', () => {
 		const wrapper = await mountPage();
 		const body = wrapper.get<HTMLTextAreaElement>('[data-testid="thread-composer-body"]');
 		expect(body.element.value).toBe('Hi Ana, here it is.');
-		await wrapper.get('[data-testid="thread-composer-send"]').trigger('click');
+		await wrapper.get('[data-testid="composer-send"]').trigger('click');
 		await flushPromises();
 		expect(handleApprove).toHaveBeenCalledWith('in_1');
 		// Not in a queue: a send goes back where the reply started; opened with
@@ -288,7 +295,7 @@ describe('Answer mode for a Team inbox thread', () => {
 	it('arms the Approved · Undo countdown for a held approve, and its Undo cancels the send', async () => {
 		handleApprove.mockResolvedValueOnce({ ok: true, result: { undo: { sendAt: 5_000 } } });
 		const wrapper = await mountPage();
-		await wrapper.get('[data-testid="thread-composer-send"]').trigger('click');
+		await wrapper.get('[data-testid="composer-send"]').trigger('click');
 		await flushPromises();
 		const armed = state.get('review:approve-undo')?.value as {
 			visible: boolean;
@@ -307,7 +314,7 @@ describe('Answer mode for a Team inbox thread', () => {
 		const handleSent = vi.fn(() => true);
 		activeQueueSession = { handleSent };
 		const wrapper = await mountPage();
-		await wrapper.get('[data-testid="thread-composer-send"]').trigger('click');
+		await wrapper.get('[data-testid="composer-send"]').trigger('click');
 		await flushPromises();
 		expect(handleSent).toHaveBeenCalledWith('sent');
 		expect(navigateTo).not.toHaveBeenCalled();
@@ -317,7 +324,7 @@ describe('Answer mode for a Team inbox thread', () => {
 		presence.value = [{ userId: 'u_priya', mode: 'replying' }];
 		const wrapper = await mountPage();
 		expect(wrapper.get('[data-testid="answer-team-presence"]').text()).toBe('Priya is replying');
-		const send = wrapper.get('[data-testid="thread-composer-send"]');
+		const send = wrapper.get('[data-testid="composer-send"]');
 		expect(send.text()).toBe('Priya is replying');
 		expect(send.attributes('disabled')).toBeDefined();
 	});
@@ -326,18 +333,14 @@ describe('Answer mode for a Team inbox thread', () => {
 		presence.value = [{ userId: 'u_priya', mode: 'viewing' }];
 		const wrapper = await mountPage();
 		expect(wrapper.get('[data-testid="answer-team-presence"]').text()).toBe('Priya is viewing');
-		expect(
-			wrapper.get('[data-testid="thread-composer-send"]').attributes('disabled')
-		).toBeUndefined();
+		expect(wrapper.get('[data-testid="composer-send"]').attributes('disabled')).toBeUndefined();
 	});
 
 	it('offers Draft with AI above the editor when it is on, with the asks covered beside Send', async () => {
 		draftWithAi.value = true;
 		const wrapper = await mountPage();
 		expect(wrapper.find('[data-testid="answer-ai-bar"]').exists()).toBe(true);
-		expect(wrapper.get('[data-testid="thread-composer-status"]').text()).toBe(
-			'1 of 2 asks covered'
-		);
+		expect(wrapper.get('[data-testid="composer-save-state"]').text()).toBe('1 of 2 asks covered');
 		draftWithAi.value = false;
 	});
 
@@ -434,9 +437,7 @@ describe('Answer mode for a Team inbox thread', () => {
 		const wrapper = await mountPage();
 		expect(wrapper.get('[data-testid="answer-team-attachment"]').text()).toContain('po.pdf');
 		expect(wrapper.find('[data-testid="attach-suggestion"]').exists()).toBe(true);
-		expect(
-			wrapper.get('[data-testid="thread-composer-send"]').attributes('disabled')
-		).toBeDefined();
+		expect(wrapper.get('[data-testid="composer-send"]').attributes('disabled')).toBeDefined();
 		expect(wrapper.get('[data-testid="thread-composer-send-hold"]').text()).toBe(
 			'Send waits until the file is copied.'
 		);

@@ -78,7 +78,7 @@ describe('notifyConvex', () => {
 
 		await notifyConvex(createEvent(), createConfig());
 
-		const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+		const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0]!;
 		const options = fetchCall[1] as RequestInit;
 		const headers = options.headers as Record<string, string>;
 

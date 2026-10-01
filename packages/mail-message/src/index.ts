@@ -76,7 +76,6 @@ export { buildMessageId } from './compose/messageId';
 export {
 	buildRfc822,
 	composeMessage,
-	stripHtml,
 	type ComposeInput,
 	type ComposeAttachment,
 	type ComposeMessageInput,

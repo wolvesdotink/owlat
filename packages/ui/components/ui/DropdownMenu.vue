@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useEscapeLayer } from '../../composables/useEscapeLayer';
+
 type DropdownPosition = 'left' | 'right';
 
 interface Props {
@@ -73,21 +75,21 @@ const handleClickOutside = (event: MouseEvent) => {
 const MENU_ITEM_SELECTOR =
 	'[role="menuitem"]:not([disabled]), [role="menuitemcheckbox"]:not([disabled])';
 
+/**
+ * Escape closes the menu and nothing else: not a surrounding dialog, and not
+ * the page's own Escape action (e.g. leave Browse in Mail, which unmounts its
+ * folder navigation).
+ */
+useEscapeLayer(isOpen, () => {
+	isOpen.value = false;
+	// Restore focus to trigger
+	const trigger = triggerRef.value?.querySelector('button, [tabindex]') as HTMLElement | null;
+	(trigger ?? triggerRef.value)?.focus();
+});
+
 // Handle keyboard navigation within the dropdown
 const handleKeydown = (event: KeyboardEvent) => {
 	if (!isOpen.value) return;
-
-	if (event.key === 'Escape') {
-		// Closing a menu must not also run the page's Escape action (e.g. leave
-		// Browse in Mail, which unmounts its folder navigation).
-		event.preventDefault();
-		event.stopPropagation();
-		isOpen.value = false;
-		// Restore focus to trigger
-		const trigger = triggerRef.value?.querySelector('button, [tabindex]') as HTMLElement | null;
-		(trigger ?? triggerRef.value)?.focus();
-		return;
-	}
 
 	if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
 		event.preventDefault();

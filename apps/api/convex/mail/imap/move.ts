@@ -16,6 +16,7 @@ import { indexMessageAttachments, removeMessageAttachments } from '../attachment
 import { deleteMessageRowAndBlobs } from '../messagePurge';
 import { applyMailboxUsageDelta } from '../mailboxUsage';
 import { recordMessageCounters } from '../messageCounters';
+import { recordFolderMembership } from '../folderMembership';
 import { copyMessageBody } from '../../lib/messageBodyStore';
 import { recordRemoteChanges, type RemoteChange } from '../external/remoteOps';
 
@@ -85,6 +86,7 @@ export const copyMessages = internalMutation({
 			});
 			await copyMessageBody(ctx.db, m._id, copyId);
 			await recordMessageCounters(ctx, null, { ...rest, folderId: target._id });
+			await recordFolderMembership(ctx, null, { folderId: target._id, uid: newUid });
 			// The copy is its own message row, so it gets its own junction rows —
 			// otherwise a COPY into a folder would silently drop the copy's files
 			// out of the Files view and out of `filename:`.
@@ -176,6 +178,7 @@ export const moveMessages = internalMutation({
 				updatedAt: now,
 			});
 			await recordMessageCounters(ctx, m, { ...m, folderId: target._id });
+			await recordFolderMembership(ctx, m, { ...m, folderId: target._id, uid: newUid });
 			pairs.push({ sourceUid: m.uid, targetUid: newUid });
 			remote.push({
 				kind: 'move',
@@ -246,6 +249,7 @@ export const expungeFolder = internalMutation({
 
 		const uidFilter = args.uidSet ? new Set(args.uidSet) : null;
 		const expungedSequences: number[] = [];
+		const expungedUids: number[] = [];
 		const touchedThreads = new Set<Id<'mailThreads'>>();
 		const remote: RemoteChange[] = [];
 		let totalRemoved = 0;
@@ -258,6 +262,7 @@ export const expungeFolder = internalMutation({
 			if (uidFilter && !uidFilter.has(m.uid)) continue;
 
 			expungedSequences.push(currentSequence);
+			expungedUids.push(m.uid);
 			totalRemoved += 1;
 			if (!m.flagSeen) unseenRemoved += 1;
 			bytesRemoved += m.rawSize;
@@ -297,6 +302,10 @@ export const expungeFolder = internalMutation({
 			// This page was walked in descending UID/sequence order. The IMAP bridge
 			// aggregates pages in that same order and can emit the values directly.
 			sequenceNumbers: expungedSequences,
+			// The same messages by UID, in the same order. The IMAP server numbers
+			// them against the sequence view its client holds, which can differ from
+			// the folder's current order (another session's unannounced EXPUNGE).
+			uids: expungedUids,
 			modseq: newModseq,
 			done,
 			beforeUid: done ? undefined : page[page.length - 1]!.uid,

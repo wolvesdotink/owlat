@@ -40,12 +40,15 @@ let applyCalls: number;
 let probeStatus: number;
 /** The parsed error body behind that status — h3 puts `statusMessage` in it. */
 let probeBody: Record<string, unknown>;
+/** What `/api/setup/apply` answers with on the next launch. */
+let applyResponse: Record<string, unknown>;
 
 beforeEach(() => {
 	states = new Map();
 	applyCalls = 0;
 	probeStatus = 403;
 	probeBody = { statusCode: 403, statusMessage: 'Forbidden' };
+	applyResponse = { ok: true, message: 'Setup applied.', redirectTo: REDIRECT_TO };
 	installNuxtStubs({
 		...i18nStubs,
 		useSetupWizard,
@@ -74,7 +77,7 @@ beforeEach(() => {
 		$fetch: Object.assign(
 			vi.fn(async () => {
 				applyCalls += 1;
-				return { ok: true, message: 'Setup applied.', redirectTo: REDIRECT_TO };
+				return applyResponse;
 			}),
 			{ raw: vi.fn(async () => ({ status: probeStatus, _data: probeBody })) }
 		),
@@ -107,6 +110,10 @@ async function launch(wrapper: VueWrapper): Promise<void> {
 	expect(launchButton, 'the launch button should be on the review step').toBeDefined();
 	await launchButton!.trigger('click');
 	await settle();
+}
+
+function launchButtonOf(wrapper: VueWrapper) {
+	return wrapper.findAll('button').find((b) => b.text().includes('Launch'))!;
 }
 
 describe('the first-run finale', () => {
@@ -186,5 +193,38 @@ describe('the first-run finale', () => {
 				expect(wrapper.text()).toContain('Setup applied');
 			},
 		});
+	});
+});
+
+describe('a file write that fails after provisioning', () => {
+	it('names the file and the cause, and lets the operator launch again', async () => {
+		applyResponse = {
+			ok: false,
+			message: 'Could not write /opt/owlat/.env: EROFS: read-only file system. …',
+			writeFailure: { file: '/opt/owlat/.env', cause: 'EROFS: read-only file system' },
+		};
+		const violations = await auditA11y(SetupReviewPage, {
+			global: { plugins: [createTestI18n()] },
+			prepare: async (wrapper) => {
+				await launch(wrapper);
+
+				expect(applyCalls).toBe(1);
+				expect(wrapper.text()).toContain(
+					'Setup could not write /opt/owlat/.env: EROFS: read-only file system.'
+				);
+				expect(wrapper.text()).toContain('Retrying is safe.');
+				expect(wrapper.text()).not.toContain('Setup complete');
+				expect(launchButtonOf(wrapper).attributes('disabled')).toBeUndefined();
+
+				// The operator fixed the file; the retry takes the existing-admin path.
+				applyResponse = { ok: true, message: 'An admin account already exists.' };
+				await launchButtonOf(wrapper).trigger('click');
+				await settle();
+
+				expect(applyCalls).toBe(2);
+				expect(wrapper.text()).toContain('Setup complete');
+			},
+		});
+		expect(violations).toEqual([]);
 	});
 });

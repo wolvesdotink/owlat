@@ -17,6 +17,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { PaletteItem } from '~/lib/commandPalette';
 import { SEARCH_MIN_QUERY } from '~/lib/commandPaletteCore';
+import { useLocalized } from '~/composables/useLocalized';
 import { parseSearchQuery } from '@owlat/shared/mailSearch';
 import {
 	activeSearchToken,
@@ -51,6 +52,7 @@ export interface CommandPaletteMailScopeOptions {
 
 export function useCommandPaletteMailScope(options: CommandPaletteMailScopeOptions) {
 	const { t } = useI18n();
+	const localized = useLocalized();
 	const { activeMailboxId, setActiveMailboxId } = usePostboxActiveMailbox();
 
 	// ── The token under the caret, and the operand it opens ────────────────────
@@ -120,9 +122,7 @@ export function useCommandPaletteMailScope(options: CommandPaletteMailScopeOptio
 		}).map((suggestion) => ({
 			id: `mail-suggest:${suggestion.id}`,
 			label: suggestion.label,
-			subtitle: suggestion.hint
-				? t(suggestion.hint.key, suggestion.hint.params ?? {})
-				: suggestion.detail,
+			subtitle: suggestion.hint ? localized(suggestion.hint) : suggestion.detail,
 			icon: suggestion.icon,
 			// A completion refines the query — it never leaves the overlay.
 			keepOpen: true,

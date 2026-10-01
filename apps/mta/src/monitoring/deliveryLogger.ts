@@ -10,12 +10,15 @@ import type { MtaConfig } from '../config.js';
 import { logger } from './logger.js';
 import {
 	RECORD_DELIVERY_EVENT_SCRIPT,
-	MESSAGE_INDEXED_FIELD,
 	indexMatchesRetainedStream,
 	messageIndexCoversAllWrites,
 	messageIndexKeyFor,
 	orgStatsKeyFor,
+	compareStreamIds,
+	nextStreamId,
+	previousStreamId,
 	readDayIndex,
+	retainedCounts,
 	scanDeliveryStream,
 	statsKeyFor,
 	streamKeyFor,
@@ -97,8 +100,8 @@ export async function logDeliveryEvent(
 		if (event.provider) fields.push('provider', event.provider);
 		if (event.annotation) fields.push('annotation', event.annotation);
 
-		// XADD with approximate maxlen trimming, the stream TTL (set once, when
-		// the day's stream is created) and the index updates, atomically.
+		// XADD, the stream TTL (set once, when the day's stream is created), the
+		// index updates and the exact MAXLEN trim with its counts, atomically.
 		await redis.eval(
 			RECORD_DELIVERY_EVENT_SCRIPT,
 			4,
@@ -126,8 +129,9 @@ export interface DeliveryLogQuery {
 	status?: DeliveryStatus;
 	domain?: string;
 	messageId?: string;
-	limit?: number; // default 100
-	cursor?: string; // Redis Stream ID for pagination
+	limit?: number; // default 100, at most 1000
+	/** `nextCursor` of the previous page. A bare stream ID from an older MTA is still accepted. */
+	cursor?: string;
 }
 
 export interface DeliveryLogEntry {
@@ -152,63 +156,149 @@ export interface DeliveryLogEntry {
 	annotation?: string;
 }
 
+/** A malformed `GET /delivery-logs` query; the route answers 400. */
+export class DeliveryLogQueryError extends Error {}
+
 /**
- * Query delivery logs from Redis Streams
+ * Largest XRANGE a filtered query makes. Its reads start at one page and
+ * double up to this, so a selective filter reads few entries it then leaves
+ * for the next page.
+ */
+export const QUERY_SCAN_PAGE_SIZE = 1000;
+/** Most stream entries one query examines before it returns a cursor. */
+export const QUERY_SCAN_BUDGET = 10_000;
+/** Most XRANGE calls one query makes (bounds long ranges of empty days). */
+export const QUERY_MAX_READS = 64;
+
+/** Where a query resumes: strictly after stream ID `after` in `date`'s stream. */
+interface QueryPosition {
+	date: string;
+	after: string;
+}
+
+/** Before every real stream ID (XADD refuses 0-0), so `<date>:0-0` is "the start of that day". */
+const DAY_START = '0-0';
+const DAY_MS = 86_400_000;
+const CURSOR_PATTERN = /^(\d{4}-\d{2}-\d{2}):(\d{1,20}-\d{1,20})$/;
+const LEGACY_CURSOR_PATTERN = /^\d{1,20}(-\d{1,20})?$/;
+
+const encodeCursor = (position: QueryPosition): string => `${position.date}:${position.after}`;
+
+/**
+ * `<date>:<id>` is the last entry the previous page examined, matched or not.
+ * A bare stream ID is a cursor from an MTA before this format: the first entry
+ * that page did not return, applied to every date as an inclusive lower bound,
+ * as those MTAs did.
+ */
+function decodeCursor(cursor: string): QueryPosition | { legacyFrom: string } {
+	const position = CURSOR_PATTERN.exec(cursor);
+	if (position) {
+		const date = position[1]!;
+		const parsed = new Date(date);
+		if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+			throw new DeliveryLogQueryError('Invalid cursor');
+		}
+		return { date, after: position[2]! };
+	}
+	if (LEGACY_CURSOR_PATTERN.test(cursor)) return { legacyFrom: cursor };
+	throw new DeliveryLogQueryError('Invalid cursor');
+}
+
+/** The dates a query covers, oldest first, starting no earlier than `from`. */
+function* queryDates(query: DeliveryLogQuery, from: string | undefined): Generator<string> {
+	if (query.date) {
+		if (from === undefined || query.date >= from) yield query.date;
+		return;
+	}
+	if (!query.startDate || !query.endDate) {
+		const today = new Date().toISOString().split('T')[0]!;
+		if (from === undefined || today >= from) yield today;
+		return;
+	}
+	const end = Date.parse(query.endDate);
+	let day = Date.parse(query.startDate);
+	if (from !== undefined) day = Math.max(day, Date.parse(from));
+	// UTC days are all 24 h long, so stepping milliseconds never skips or repeats one.
+	for (; day <= end; day += DAY_MS) yield new Date(day).toISOString().split('T')[0]!;
+}
+
+/**
+ * Query delivery logs from Redis Streams, oldest first, one day after another.
+ *
+ * `nextCursor` is present while anything may be left, and names the last entry
+ * examined, so the next page starts strictly after it: no entry is returned
+ * twice or skipped, whatever the filters drop. One request examines at most
+ * `QUERY_SCAN_BUDGET` entries in at most `QUERY_MAX_READS` reads, so a page can
+ * hold fewer than `limit` entries, or none, and still carry a cursor.
  */
 export async function queryDeliveryLogs(
 	redis: Redis,
 	query: DeliveryLogQuery
 ): Promise<{ entries: DeliveryLogEntry[]; nextCursor?: string }> {
-	const limit = Math.min(query.limit ?? 100, 1000);
-
-	// Determine which date streams to read
-	const dates: string[] = [];
-	if (query.date) {
-		dates.push(query.date);
-	} else if (query.startDate && query.endDate) {
-		const start = new Date(query.startDate);
-		const end = new Date(query.endDate);
-		for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-			dates.push(d.toISOString().split('T')[0]!);
-		}
-	} else {
-		dates.push(new Date().toISOString().split('T')[0]!);
-	}
+	const limit = Number.isFinite(query.limit)
+		? Math.min(Math.max(Math.trunc(query.limit!), 1), 1000)
+		: 100;
+	const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
+	const resume = cursor && 'date' in cursor ? cursor : undefined;
+	const legacyAfter =
+		cursor && 'legacyFrom' in cursor ? previousStreamId(cursor.legacyFrom) : undefined;
+	const filtered = Boolean(query.orgId || query.status || query.domain || query.messageId);
 
 	const entries: DeliveryLogEntry[] = [];
-	let nextCursor: string | undefined;
-
-	for (const date of dates) {
-		if (entries.length >= limit) break;
-
-		const streamKey = streamKeyFor(date);
-		const startId = query.cursor ?? '-';
-		const remaining = limit - entries.length;
-
-		const results = await redis.xrange(streamKey, startId, '+', 'COUNT', remaining + 1);
-
-		for (const [id, fields] of results) {
-			if (entries.length >= limit) {
-				nextCursor = id;
-				break;
+	let examined = 0;
+	let reads = 0;
+	let filteredReadSize = Math.min(limit + 1, QUERY_SCAN_PAGE_SIZE);
+	const dates = queryDates(query, resume?.date);
+	let next = dates.next();
+	while (!next.done) {
+		const date = next.value;
+		const position: QueryPosition = {
+			date,
+			after: resume?.date === date ? resume.after : (legacyAfter ?? DAY_START),
+		};
+		for (;;) {
+			if (reads >= QUERY_MAX_READS || examined >= QUERY_SCAN_BUDGET) {
+				return { entries, nextCursor: encodeCursor(position) };
 			}
-
-			// Skip the cursor entry itself (it was already returned in previous page)
-			if (id === query.cursor) continue;
-
-			const data = parseStreamFields(fields);
-
-			// Apply filters
-			if (query.orgId && data.orgId !== query.orgId) continue;
-			if (query.status && data.status !== query.status) continue;
-			if (query.domain && data.domain !== query.domain) continue;
-			if (query.messageId && data.messageId !== query.messageId) continue;
-
-			entries.push({ id, ...data });
+			// Unfiltered, one entry past the page says whether the day holds more.
+			const count = Math.min(
+				filtered ? filteredReadSize : limit - entries.length + 1,
+				QUERY_SCAN_BUDGET - examined
+			);
+			filteredReadSize = Math.min(filteredReadSize * 2, QUERY_SCAN_PAGE_SIZE);
+			const page = (await redis.xrange(
+				streamKeyFor(date),
+				position.after === DAY_START ? '-' : nextStreamId(position.after),
+				'+',
+				'COUNT',
+				count
+			)) as StreamEntry[];
+			reads += 1;
+			for (const [id, fields] of page) {
+				if (entries.length >= limit) return { entries, nextCursor: encodeCursor(position) };
+				if (compareStreamIds(id, position.after) <= 0) {
+					throw new Error(`Delivery log query made no progress at ${id} on ${date}`);
+				}
+				position.after = id;
+				examined += 1;
+				const data = parseStreamFields(fields);
+				if (query.orgId && data.orgId !== query.orgId) continue;
+				if (query.status && data.status !== query.status) continue;
+				if (query.domain && data.domain !== query.domain) continue;
+				if (query.messageId && data.messageId !== query.messageId) continue;
+				entries.push({ id, ...data });
+			}
+			if (page.length < count) break; // the day is exhausted
+			if (entries.length >= limit) return { entries, nextCursor: encodeCursor(position) };
+		}
+		next = dates.next();
+		if (entries.length >= limit) {
+			return next.done
+				? { entries }
+				: { entries, nextCursor: encodeCursor({ date: next.value, after: DAY_START }) };
 		}
 	}
-
-	return { entries, nextCursor };
+	return { entries };
 }
 
 /** Stream entries read per XRANGE page when a day has to be scanned. */
@@ -220,7 +310,8 @@ export const MESSAGE_SCAN_PAGE_SIZE = 500;
  * optionally for one organization.
  *
  * Reads the day's counters when they provably describe the retained stream
- * (every entry indexed, nothing trimmed); otherwise scans the stream once.
+ * (every entry indexed, every trimmed entry counted out); otherwise scans the
+ * stream once.
  */
 export async function getDeliveryLogStats(
 	redis: Redis,
@@ -242,11 +333,7 @@ export async function getDeliveryLogStats(
 		: await readDayIndex(redis, date, 'stats');
 	if (coverage.kind === 'absent') return stats;
 	if (indexMatchesRetainedStream(coverage)) {
-		const counts = (value ?? {}) as Record<string, string>;
-		for (const [field, count] of Object.entries(counts)) {
-			if (field !== MESSAGE_INDEXED_FIELD) stats[field] = Number(count);
-		}
-		return stats;
+		return retainedCounts((value ?? {}) as Record<string, string>, stats);
 	}
 
 	await scanDeliveryStream(redis, streamKeyFor(date), STATS_SCAN_PAGE_SIZE, (_id, fields) => {

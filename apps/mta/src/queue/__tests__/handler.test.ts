@@ -82,7 +82,7 @@ vi.mock('../../monitoring/logger.js', () => ({
 import { handleEmailJob } from '../handler.js';
 import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
-import type { CtxWithIp } from '../../dispatch/types.js';
+import type { CtxWithProviderPressure } from '../../dispatch/types.js';
 import { createOwlatHostConfig } from '../../__tests__/helpers/fixtures.js';
 import { deferBudgetKey, MAX_DEFER_SUCCESSORS_PER_MESSAGE } from '../deferBudget.js';
 import { MAX_GREYLIST_DELAY_MS } from '../../intelligence/smtpClassifier.js';
@@ -129,7 +129,7 @@ function createGovernedJob(overrides: Partial<EmailJob> = {}): EmailJob {
 	});
 }
 
-function createAttempt(job = createJob()): CtxWithIp {
+function createAttempt(job = createJob()): CtxWithProviderPressure {
 	return {
 		job,
 		domain: 'example.com',
@@ -149,6 +149,8 @@ function createAttempt(job = createJob()): CtxWithIp {
 		dedicatedIp: undefined,
 		ip: '10.0.0.1',
 		eligibilityGeneration: 1,
+		providerVolumePressure: 0,
+		utcDate: '2026-07-22',
 	};
 }
 
@@ -727,8 +729,8 @@ describe('handleEmailJob', () => {
 			'routing-reentry:work-attempt-1:reentry-token'
 		);
 		expect(releaseHalfOpenProbe).toHaveBeenCalledTimes(4);
-		expect(releaseHalfOpenProbe.mock.invocationCallOrder[0]).toBeLessThan(
-			queueConvexWebhook.mock.invocationCallOrder[0]
+		expect(vi.mocked(releaseHalfOpenProbe).mock.invocationCallOrder[0]).toBeLessThan(
+			vi.mocked(queueConvexWebhook).mock.invocationCallOrder[0]!
 		);
 	});
 
@@ -762,11 +764,7 @@ describe('handleEmailJob', () => {
 			utcDate: '2026-07-21',
 			expiresAt: Date.now() - 1,
 		};
-		vi.mocked(ensureWarmingReservation).mockResolvedValue({
-			allowed: false,
-			sentToday: 50,
-			dailyCap: 50,
-		});
+		vi.mocked(ensureWarmingReservation).mockResolvedValue({ allowed: false });
 
 		await run(
 			createGovernedJob({
@@ -1321,7 +1319,12 @@ describe('handleEmailJob', () => {
 
 	it('PR-04 (b): circuit breaker open re-enqueues with the cooldown delay, no throw', async () => {
 		const { canSend } = await import('../../intelligence/circuitBreaker.js');
-		vi.mocked(canSend).mockResolvedValue({ allowed: false, state: 'open', retryAfter: 60000 });
+		vi.mocked(canSend).mockResolvedValue({
+			allowed: false,
+			state: 'open',
+			retryAfter: 60000,
+			generation: 0,
+		});
 
 		await expect(run(createJob())).resolves.toBeUndefined();
 

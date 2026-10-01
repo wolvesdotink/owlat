@@ -494,6 +494,8 @@ export function dashboardShellStubs(): Record<string, unknown> {
 			ids: ref([]),
 			hasPersonalMail: ref(true),
 			isLoading: ref(false),
+			error: ref(null),
+			refetch: vi.fn(),
 		}),
 		useAnswerQueueCount: () => ({ count: ref(0) }),
 		useAnswerQueue: () => ({
@@ -501,6 +503,8 @@ export function dashboardShellStubs(): Record<string, unknown> {
 			count: ref(0),
 			counts: ref({ mail: 0, team: 0, mention: 0, drafts: 0 }),
 			isLoading: ref(false),
+			error: ref(null),
+			refetch: vi.fn(),
 			teamEnabled: ref(false),
 			chatEnabled: ref(false),
 		}),

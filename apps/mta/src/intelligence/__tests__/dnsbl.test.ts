@@ -422,7 +422,7 @@ describe('DNSBL checking', () => {
 
 			const result = await getDnsblStatus(redis, '10.0.0.1');
 			expect(result).not.toBeNull();
-			expect(result!.overallStatus).toBe('clean');
+			expect(result!['overallStatus']).toBe('clean');
 		});
 	});
 

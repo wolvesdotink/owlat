@@ -22,15 +22,17 @@
  * receives the reply as `composer`), `attachments` (the
  * files under the editor), `blocked-action` (what a blocked state offers).
  *
- * The composer answers a `teamThread` composer target (`utils/composerTarget`),
- * so the checks the Postbox composer runs before a send apply here too, as far
- * as that target allows: the same advisory preflight chip beside Send.
+ * It answers a `teamThread` composer target (`utils/composerTarget`) inside the
+ * Postbox composer's frame and footer, which read the target's capabilities:
+ * plain text to the sender, the same pre-send checks, no paperclip, schedule,
+ * reminder, signatures or send-as (files come through `attachments`).
  *
  * Presentation only: the page owns the mutations (`useTeamThreadComposer`) and
  * receives `send` (with whether the text differs from the agent draft, and the
  * subject), `save` and `reject`.
  */
-import PostboxComposerPreflightChip from '~/components/postbox/PostboxComposerPreflightChip.vue';
+import PostboxComposerFooter from '~/components/postbox/PostboxComposerFooter.vue';
+import PostboxComposerShell from '~/components/postbox/PostboxComposerShell.vue';
 import { composerPreflight, type TeamThreadComposerTarget } from '~/utils/composerTarget';
 import { useTeamComposerAnswerApi } from '~/composables/useTeamComposerAnswerApi';
 import { useTeamComposerGaps } from '~/composables/useTeamComposerGaps';
@@ -271,57 +273,63 @@ const menuItem =
 			</div>
 		</div>
 
-		<template v-else>
-			<!-- The envelope, folded to one line; the subject opens on a click. -->
-			<div
-				class="flex items-center gap-2 border-b border-border-subtle px-4 py-2 text-xs text-text-tertiary"
-			>
-				<button
-					type="button"
-					class="flex min-w-0 flex-1 items-center gap-1.5 truncate text-left hover:text-text-primary"
-					:aria-expanded="subjectOpen"
-					data-testid="thread-composer-envelope"
-					@click="subjectOpen = !subjectOpen"
-				>
-					<span class="truncate">
-						{{ t('components.answer.team.to', { name: senderLabel }) }}
-						<template v-if="subject"> <span aria-hidden="true"> · </span>{{ subject }} </template>
+		<PostboxComposerShell v-else :target="target" class="min-h-0 flex-1">
+			<!-- The envelope, folded to one line like the Postbox composer's; the
+			     recipient is fixed, so only the subject opens on a click. -->
+			<template #envelope>
+				<div class="flex items-center gap-2 border-b border-border-subtle px-4 py-2 text-sm">
+					<button
+						type="button"
+						class="flex min-w-0 flex-1 items-center gap-1.5 text-left hover:text-text-primary"
+						:aria-expanded="subjectOpen"
+						data-testid="thread-composer-envelope"
+						@click="subjectOpen = !subjectOpen"
+					>
+						<span class="min-w-0 truncate">
+							<span class="font-medium text-text-primary">{{
+								t('components.answer.team.to', { name: senderLabel })
+							}}</span>
+							<template v-if="subject">
+								<span class="mx-1.5 text-text-tertiary" aria-hidden="true">·</span>
+								<span class="text-text-secondary">{{ subject }}</span>
+							</template>
+						</span>
+						<Icon
+							name="lucide:chevron-down"
+							class="size-3 shrink-0 text-text-tertiary"
+							:class="{ 'rotate-180': subjectOpen }"
+							aria-hidden="true"
+						/>
+					</button>
+					<span
+						v-if="hasDraft"
+						class="inline-flex shrink-0 items-center gap-1 rounded-full bg-brand-subtle px-2 py-0.5 text-2xs font-medium text-brand"
+						data-testid="thread-composer-draft-hint"
+					>
+						<Icon name="lucide:sparkles" class="size-3" aria-hidden="true" />
+						{{
+							edited
+								? t('dashboard.inbox.detail.composer.editedDraft')
+								: t('dashboard.inbox.detail.composer.agentDraft')
+						}}
 					</span>
-					<Icon
-						name="lucide:chevron-down"
-						class="size-3 shrink-0"
-						:class="{ 'rotate-180': subjectOpen }"
-						aria-hidden="true"
+				</div>
+
+				<div v-if="subjectOpen" class="border-b border-border-subtle px-4 py-2">
+					<input
+						:value="subject"
+						type="text"
+						class="input w-full text-sm"
+						:aria-label="t('dashboard.inbox.detail.composer.subjectLabel')"
+						:placeholder="t('dashboard.inbox.detail.composer.subjectLabel')"
+						data-testid="thread-composer-subject"
+						@input="onSubjectInput"
+						@keydown="onKeydown"
 					/>
-				</button>
-				<span
-					v-if="hasDraft"
-					class="inline-flex shrink-0 items-center gap-1 rounded-full bg-brand-subtle px-2 py-0.5 text-2xs font-medium text-brand"
-					data-testid="thread-composer-draft-hint"
-				>
-					<Icon name="lucide:sparkles" class="size-3" aria-hidden="true" />
-					{{
-						edited
-							? t('dashboard.inbox.detail.composer.editedDraft')
-							: t('dashboard.inbox.detail.composer.agentDraft')
-					}}
-				</span>
-			</div>
+				</div>
+			</template>
 
-			<div v-if="subjectOpen" class="border-b border-border-subtle px-4 py-2">
-				<input
-					:value="subject"
-					type="text"
-					class="input w-full text-sm"
-					:aria-label="t('dashboard.inbox.detail.composer.subjectLabel')"
-					:placeholder="t('dashboard.inbox.detail.composer.subjectLabel')"
-					data-testid="thread-composer-subject"
-					@input="onSubjectInput"
-					@keydown="onKeydown"
-				/>
-			</div>
-
-			<div class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-3">
+			<div class="flex flex-1 flex-col gap-3 px-4 py-3">
 				<p
 					v-if="notice"
 					class="flex items-start gap-1.5 text-xs text-text-secondary"
@@ -333,6 +341,7 @@ const menuItem =
 
 				<slot name="above-editor" :composer="answer" />
 
+				<!-- Plain text: the reply is escaped into HTML on the way out. -->
 				<textarea
 					ref="textarea"
 					:value="body"
@@ -363,137 +372,128 @@ const menuItem =
 				<slot name="attachments" />
 			</div>
 
-			<footer class="flex flex-col gap-1.5 border-t border-border-subtle px-4 py-3">
-				<PostboxComposerPreflightChip :findings="preflight" />
-				<div class="flex items-center gap-2">
-					<UiButton
-						size="sm"
-						:disabled="!canSend"
-						:loading="busy"
-						:aria-disabled="held ? 'true' : undefined"
-						data-testid="thread-composer-send"
-						@click="send"
-					>
-						<Icon
-							:name="held ? 'lucide:pencil-line' : 'lucide:send'"
-							class="size-3.5"
+			<template #footer="{ capabilities }">
+				<PostboxComposerFooter
+					:capabilities="capabilities"
+					frame="answer"
+					:can-send="canSend"
+					:sending="busy"
+					:send-label="sendLabel"
+					:send-icon="held ? 'lucide:pencil-line' : undefined"
+					:menu-label="t('components.answer.team.more')"
+					:preflight="preflight"
+					:last-saved-label="gaps.note.value ?? ''"
+					@send="send"
+				>
+					<template #send-hint>
+						<kbd
+							class="hidden font-mono text-2xs text-text-tertiary sm:inline"
 							aria-hidden="true"
-						/>
-						{{ sendLabel }}
-					</UiButton>
-					<kbd class="hidden font-mono text-2xs text-text-tertiary sm:inline" aria-hidden="true">{{
-						sendKeys.join(' ')
-					}}</kbd>
-					<span
-						v-if="gaps.note.value"
-						class="ml-auto text-xs text-text-tertiary"
-						data-testid="thread-composer-status"
-						>{{ gaps.note.value }}</span
-					>
-					<!-- Always the row's last item, so the panel opens leftwards inside it. -->
-					<PostboxOverflowMenu
-						:label="t('components.answer.team.more')"
-						:class="{ 'ml-auto': !gaps.note.value }"
-						align="right"
-						direction="up"
-					>
-						<template #default="{ close }">
-							<button
-								v-if="hasChanges"
-								type="button"
-								role="menuitem"
-								:class="menuItem"
-								data-testid="thread-composer-show-changes"
-								@click="(close(), (diffOpen = !diffOpen))"
-							>
-								<Icon name="lucide:git-compare" class="size-4 text-text-tertiary" />
-								{{
-									diffOpen
-										? t('components.answer.team.hideChanges')
-										: t('components.answer.team.showChanges')
-								}}
-							</button>
-							<button
-								v-if="edited"
-								type="button"
-								role="menuitem"
-								:class="menuItem"
-								:disabled="busy || !body.trim()"
-								data-testid="thread-composer-save"
-								@click="(close(), emit('save', body, subject))"
-							>
-								<Icon name="lucide:save" class="size-4 text-text-tertiary" />
-								{{ t('dashboard.inbox.detail.composer.saveDraft') }}
-							</button>
-							<button
-								v-if="edited"
-								type="button"
-								role="menuitem"
-								:class="menuItem"
-								:disabled="busy"
-								data-testid="thread-composer-restore"
-								@click="(close(), restoreDraft())"
-							>
-								<Icon name="lucide:undo-2" class="size-4 text-text-tertiary" />
-								{{ t('dashboard.inbox.detail.composer.restoreDraft') }}
-							</button>
-							<button
-								v-if="hasDraft"
-								type="button"
-								role="menuitem"
-								:class="menuItem"
-								:disabled="busy"
-								data-testid="thread-composer-write-own"
-								@click="(close(), writeOwn())"
-							>
-								<Icon name="lucide:pencil" class="size-4 text-text-tertiary" />
-								{{ t('dashboard.inbox.detail.composer.writeOwn') }}
-							</button>
-							<button
-								v-if="hasDraft"
-								type="button"
-								role="menuitem"
-								:class="[menuItem, 'text-error']"
-								:disabled="busy"
-								data-testid="thread-composer-skip"
-								@click="(close(), emit('reject'))"
-							>
-								<Icon name="lucide:trash-2" class="size-4" />
-								{{ t('components.answer.team.discardDraft') }}
-							</button>
-							<button
-								v-else
-								type="button"
-								role="menuitem"
-								:class="menuItem"
-								:disabled="busy || !body"
-								data-testid="thread-composer-clear"
-								@click="(close(), writeOwn())"
-							>
-								<Icon name="lucide:eraser" class="size-4 text-text-tertiary" />
-								{{ t('components.answer.team.clear') }}
-							</button>
-						</template>
-					</PostboxOverflowMenu>
-				</div>
-				<p
-					v-if="held && heldReason"
-					class="inline-flex items-center gap-1.5 text-[11px] text-text-tertiary"
-					data-testid="thread-composer-held"
-					role="status"
-				>
-					<Icon name="lucide:pencil-line" class="size-3 shrink-0 text-warning" aria-hidden="true" />
-					<span>{{ heldReason }}</span>
-				</p>
-				<p
-					v-else-if="sendHold"
-					class="text-[11px] text-text-tertiary"
-					data-testid="thread-composer-send-hold"
-					role="status"
-				>
-					{{ sendHold }}
-				</p>
-			</footer>
-		</template>
+							>{{ sendKeys.join(' ') }}</kbd
+						>
+					</template>
+					<template #menu="{ close }">
+						<button
+							v-if="hasChanges"
+							type="button"
+							role="menuitem"
+							:class="menuItem"
+							data-testid="thread-composer-show-changes"
+							@click="(close(), (diffOpen = !diffOpen))"
+						>
+							<Icon name="lucide:git-compare" class="size-4 text-text-tertiary" />
+							{{
+								diffOpen
+									? t('components.answer.team.hideChanges')
+									: t('components.answer.team.showChanges')
+							}}
+						</button>
+						<button
+							v-if="edited"
+							type="button"
+							role="menuitem"
+							:class="menuItem"
+							:disabled="busy || !body.trim()"
+							data-testid="thread-composer-save"
+							@click="(close(), emit('save', body, subject))"
+						>
+							<Icon name="lucide:save" class="size-4 text-text-tertiary" />
+							{{ t('dashboard.inbox.detail.composer.saveDraft') }}
+						</button>
+						<button
+							v-if="edited"
+							type="button"
+							role="menuitem"
+							:class="menuItem"
+							:disabled="busy"
+							data-testid="thread-composer-restore"
+							@click="(close(), restoreDraft())"
+						>
+							<Icon name="lucide:undo-2" class="size-4 text-text-tertiary" />
+							{{ t('dashboard.inbox.detail.composer.restoreDraft') }}
+						</button>
+						<button
+							v-if="hasDraft"
+							type="button"
+							role="menuitem"
+							:class="menuItem"
+							:disabled="busy"
+							data-testid="thread-composer-write-own"
+							@click="(close(), writeOwn())"
+						>
+							<Icon name="lucide:pencil" class="size-4 text-text-tertiary" />
+							{{ t('dashboard.inbox.detail.composer.writeOwn') }}
+						</button>
+						<button
+							v-if="hasDraft"
+							type="button"
+							role="menuitem"
+							:class="[menuItem, 'text-error']"
+							:disabled="busy"
+							data-testid="thread-composer-skip"
+							@click="(close(), emit('reject'))"
+						>
+							<Icon name="lucide:trash-2" class="size-4" />
+							{{ t('components.answer.team.discardDraft') }}
+						</button>
+						<button
+							v-else
+							type="button"
+							role="menuitem"
+							:class="menuItem"
+							:disabled="busy || !body"
+							data-testid="thread-composer-clear"
+							@click="(close(), writeOwn())"
+						>
+							<Icon name="lucide:eraser" class="size-4 text-text-tertiary" />
+							{{ t('components.answer.team.clear') }}
+						</button>
+					</template>
+					<template #notes>
+						<p
+							v-if="held && heldReason"
+							class="inline-flex items-center gap-1.5 text-[11px] text-text-tertiary"
+							data-testid="thread-composer-held"
+							role="status"
+						>
+							<Icon
+								name="lucide:pencil-line"
+								class="size-3 shrink-0 text-warning"
+								aria-hidden="true"
+							/>
+							<span>{{ heldReason }}</span>
+						</p>
+						<p
+							v-else-if="sendHold"
+							class="text-[11px] text-text-tertiary"
+							data-testid="thread-composer-send-hold"
+							role="status"
+						>
+							{{ sendHold }}
+						</p>
+					</template>
+				</PostboxComposerFooter>
+			</template>
+		</PostboxComposerShell>
 	</section>
 </template>

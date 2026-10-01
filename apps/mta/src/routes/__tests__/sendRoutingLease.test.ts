@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
+import type { AuthEnv } from '../../__tests__/helpers/honoAuth.js';
 import type Redis from 'ioredis';
 import type { Queue } from 'groupmq';
 import type { EmailJob } from '../../types.js';
+import type { AuthContext } from '../../server.js';
 
 vi.mock('../../scaling/degradation.js', () => ({
 	checkSystemHealth: vi
@@ -70,10 +72,7 @@ async function request(options: {
 	state?: (key: string) => object;
 	bodyOverrides?: Record<string, unknown>;
 	mode?: 'governed' | 'postbox' | 'system';
-	auth?: {
-		isMasterKey: boolean;
-		orgCredential?: { organizationId: string };
-	};
+	auth?: AuthContext;
 }) {
 	const queue = { add: vi.fn().mockResolvedValue({ id: 'message-1' }) };
 	const redis = {
@@ -84,7 +83,7 @@ async function request(options: {
 		eval: vi.fn().mockResolvedValue(options.evalResult ?? 1),
 		set: vi.fn().mockResolvedValue('OK'),
 	} as unknown as Redis;
-	const app = new Hono();
+	const app = new Hono<AuthEnv>();
 	app.use('/send', async (c, next) => {
 		c.set('auth', options.auth ?? { isMasterKey: true });
 		await next();
@@ -141,7 +140,10 @@ describe('POST /send routing lease revalidation', () => {
 	])('keeps $label intake master-only and fixed to its route scope', async (scope) => {
 		const unprivileged = await request({
 			mode: scope.mode,
-			auth: { isMasterKey: false, orgCredential: { organizationId: scope.organizationId } },
+			auth: {
+				isMasterKey: false,
+				orgCredential: { organizationId: scope.organizationId, name: scope.label, createdAt: 0 },
+			},
 			bodyOverrides: {
 				organizationId: scope.organizationId,
 				messageType: undefined,

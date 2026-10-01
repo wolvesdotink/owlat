@@ -19,6 +19,7 @@ export const listModule: ImapCommandModule<ListArgs> = {
 	verbs: ['LIST', 'LSUB'],
 	capabilities: ['LIST-EXTENDED', 'LIST-STATUS', 'SPECIAL-USE'],
 	requires: 'auth',
+	concurrent: () => true,
 	parseArgs(rawArgs) {
 		return {
 			ok: true,

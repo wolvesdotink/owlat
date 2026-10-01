@@ -6,6 +6,7 @@ import { asyncSession } from '../helpers/session.js';
 import { collectMessageIds } from '../helpers/uidSet.js';
 import { resolveSelectedSet, seqForUid } from '../helpers/seqMap.js';
 import { serverFailure } from '../helpers/replies.js';
+import { holdSequence } from '../helpers/sequenceGate.js';
 
 export interface StoreArgs {
 	readonly set: string;
@@ -63,11 +64,22 @@ export const storeModule: ImapCommandModule<StoreArgs> = {
 		const flagList = parseList(args.flagsToken);
 
 		return asyncSession(async () => {
+			// Like FETCH: the reply's numbers must stay valid until the OK.
+			const lease = holdSequence(deps, args.byUid ? 'sync' : 'shared');
 			try {
+				await lease.ready;
 				// Resolve the set against the folder's sequence ↔ UID map: a
 				// non-UID set holds positions, a UID set holds UIDs. The map is
 				// reused below to emit each updated row's true sequence number.
-				const { seqMap, resolved } = await resolveSelectedSet(deps, state, args.set, args.byUid);
+				const { seqMap, resolved } = await resolveSelectedSet(
+					deps,
+					state,
+					args.set,
+					args.byUid,
+					send,
+					lease
+				);
+				lease.downgrade();
 				if (resolved.length === 0) {
 					send(`${tag} OK ${label} completed`);
 					return;
@@ -93,15 +105,23 @@ export const storeModule: ImapCommandModule<StoreArgs> = {
 					}
 				}
 
-				if (result.unchanged.length > 0) {
-					const modified = result.unchanged.map((u) => u.uid).join(',');
-					send(`${tag} OK [MODIFIED ${modified}] ${label} completed`);
+				// RFC 7162 §3.1.3: MODIFIED carries a UID set for UID STORE and a
+				// message (sequence) set for plain STORE, the same addressing the
+				// client used in the command.
+				const modified = result.unchanged.flatMap((u) => {
+					const id = args.byUid ? u.uid : seqForUid(seqMap, u.uid);
+					return id === undefined ? [] : [id];
+				});
+				if (modified.length > 0) {
+					send(`${tag} OK [MODIFIED ${modified.join(',')}] ${label} completed`);
 					return;
 				}
 				send(`${tag} OK ${label} completed`);
 			} catch (err) {
 				logger.error({ err }, 'STORE failed');
 				send(serverFailure(tag, label));
+			} finally {
+				lease.release();
 			}
 		});
 	},

@@ -1,4 +1,18 @@
 <script setup lang="ts">
+import { useAttrs, type InputHTMLAttributes } from 'vue';
+
+/*
+ * Attribute contract: `class` and `style` go on the root container, so callers
+ * can still place and size the field (margins, widths, flex). Every other
+ * attribute and listener the caller passes (min, max, step, name, pattern,
+ * maxlength, inputmode, aria-*, data-*, @keydown, @focus, …) goes on the
+ * native <input>. The input's value and classes stay owned by this component.
+ * The ARIA state it derives from `error`/`required` wins when set, and falls
+ * back to the caller's own aria-invalid/aria-required otherwise; a caller's
+ * aria-describedby is joined with the error/help text ids.
+ */
+defineOptions({ inheritAttrs: false });
+
 type InputType = 'text' | 'email' | 'password' | 'number' | 'date';
 type InputSize = 'sm' | 'md';
 
@@ -74,13 +88,32 @@ const inputClasses = computed(() => {
 	return classes.join(' ');
 });
 
+// `useAttrs()` is not reactive, so the readers below run during render
+// rather than inside a computed that would cache the first attrs it saw.
+const attrs = useAttrs();
+
+const containerAttrs = () => ({ class: attrs.class, style: attrs.style });
+
+const nativeAttrs = () => {
+	const { class: _class, style: _style, ...native } = attrs;
+	return native;
+};
+
+const ariaInvalid = () =>
+	(props.error ? true : attrs['aria-invalid']) as InputHTMLAttributes['aria-invalid'];
+
+const ariaRequired = () =>
+	(props.required ? true : attrs['aria-required']) as InputHTMLAttributes['aria-required'];
+
 // Error/help text is announced with the field, not just rendered near it.
-const describedBy = computed(() => {
+const describedBy = () => {
 	const ids: string[] = [];
+	const callerIds = attrs['aria-describedby'];
+	if (typeof callerIds === 'string' && callerIds.trim()) ids.push(callerIds.trim());
 	if (props.error) ids.push(`${inputId.value}-error`);
 	if (props.helpText) ids.push(`${inputId.value}-help`);
 	return ids.length ? ids.join(' ') : undefined;
-});
+};
 
 const handleInput = (event: Event) => {
 	const target = event.target as HTMLInputElement;
@@ -90,7 +123,7 @@ const handleInput = (event: Event) => {
 </script>
 
 <template>
-	<div>
+	<div v-bind="containerAttrs()">
 		<!-- Label -->
 		<label v-if="label" :for="inputId" class="block text-sm font-medium text-text-secondary mb-2">
 			{{ label }}
@@ -110,6 +143,7 @@ const handleInput = (event: Event) => {
 
 			<!-- Input element -->
 			<input
+				v-bind="nativeAttrs()"
 				:id="inputId"
 				ref="inputRef"
 				:type="type"
@@ -119,9 +153,9 @@ const handleInput = (event: Event) => {
 				:autocomplete="autocomplete"
 				:class="inputClasses"
 				:required="required"
-				:aria-required="required || undefined"
-				:aria-invalid="error ? true : undefined"
-				:aria-describedby="describedBy"
+				:aria-required="ariaRequired()"
+				:aria-invalid="ariaInvalid()"
+				:aria-describedby="describedBy()"
 				@input="handleInput"
 				@blur="emit('blur', $event)"
 			/>

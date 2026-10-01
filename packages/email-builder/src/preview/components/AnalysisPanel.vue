@@ -3,7 +3,6 @@ import { ref, computed } from 'vue';
 import { ChevronDown, BarChart3, Loader2 } from '@lucide/vue';
 import type {
 	CompatibilityReport,
-	NestingDepthResult,
 	PreviewEmailAnalysis,
 	PreviewHealthScore,
 	PreviewValidationIssue,
@@ -18,7 +17,6 @@ const props = defineProps<{
 	healthScore: PreviewHealthScore | null;
 	validationIssues: PreviewValidationIssue[];
 	compatibilityReport: CompatibilityReport | null;
-	nestingDepthWarning?: NestingDepthResult | null;
 	isAnalyzing?: boolean;
 	expanded?: boolean;
 }>();
@@ -105,11 +103,7 @@ const headerSummary = computed(() => {
 						v-else-if="activeTab === 'validation'"
 						:validation-issues="validationIssues"
 					/>
-					<CompatibilityTab
-						v-else
-						:compatibility-report="compatibilityReport"
-						:nesting-depth-warning="nestingDepthWarning"
-					/>
+					<CompatibilityTab v-else :compatibility-report="compatibilityReport" />
 				</div>
 			</div>
 		</div>

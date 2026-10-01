@@ -45,6 +45,9 @@ function stubConvex(): ConvexClient {
 					},
 				};
 			}
+			// SELECT seeds its sequence view: no membership rows, then an empty listing.
+			if (ref === fn.folderMembershipPage) return null;
+			if (ref === fn.listFolderUidsPage) return { uids: [], nextUid: null };
 			throw new Error(`unexpected query ref: ${String(ref)}`);
 		},
 	} as unknown as ConvexClient;
@@ -68,6 +71,7 @@ function makeDeps(convex: ConvexClient): CommandDeps {
 		rateLimiter: {} as CommandDeps['rateLimiter'],
 		remoteIp: '127.0.0.1',
 		capabilityLine: 'CAPABILITY IMAP4rev1',
+		tls: true,
 		closeConnection: () => {},
 		commit: () => {},
 	};

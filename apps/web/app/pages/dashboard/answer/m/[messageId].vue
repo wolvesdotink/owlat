@@ -43,6 +43,7 @@ import AnswerAiBar from '~/components/answer/AnswerAiBar.vue';
 import AskCard from '~/components/answer/AskCard.vue';
 import type { FileCopyPolicy } from '~/components/answer/FileAsk.vue';
 import AnswerMailMenu from '~/components/answer/AnswerMailMenu.vue';
+import { isImeComposing } from '~/utils/imeComposition';
 
 definePageMeta({
 	layout: 'dashboard',
@@ -61,10 +62,12 @@ const messageId = computed(() => singleQueryValue(route.params['messageId']) ?? 
 const openedDraftId = singleQueryValue(route.query['draft']);
 const openedKind = parseAnswerKind(route.query['kind']);
 
-const message = usePostboxActiveMessage<PostboxReaderMessage>({
+const messageRead = usePostboxActiveMessageRead<PostboxReaderMessage>({
 	activeMessageId: () => messageId.value,
 	listRows: () => [],
-}) as ComputedRef<PostboxReaderMessage | undefined>;
+});
+const message = messageRead.message as ComputedRef<PostboxReaderMessage | undefined>;
+const messageError = messageRead.error;
 
 useHead({ title: () => message.value?.subject || t('dashboard.answer.mode.pageTitle') });
 
@@ -240,7 +243,7 @@ function onComposerEsc() {
 const aiFocus = useAnswerAiFocus();
 
 function onKeydown(event: KeyboardEvent) {
-	if (event.defaultPrevented || event.isComposing) return;
+	if (event.defaultPrevented || isImeComposing(event)) return;
 	const plain = !event.metaKey && !event.ctrlKey && !event.altKey;
 	if (event.key === 'Escape') {
 		if (isDialogOpen()) return;
@@ -354,6 +357,12 @@ onBeforeUnmount(() => {
 						/>
 					</template>
 				</AnswerConversation>
+				<!-- A failed read is not a message still loading (#721). -->
+				<UiQueryBoundary
+					v-else-if="messageError"
+					:error="messageError"
+					@retry="messageRead.refetch"
+				/>
 				<PostboxReaderSkeleton v-else />
 			</template>
 

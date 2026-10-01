@@ -1,9 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ref } from 'vue';
+import { childBlockLists } from '@owlat/shared/blockTree';
 import { useBlockManagement } from '../useBlockManagement';
+import { locateBlock } from '../../utils/blockTree';
 import type {
 	EditorBlock,
 	TextBlockContent,
+	ButtonBlockContent,
 	ColumnsBlockContent,
 	ContainerBlockContent,
 	EmailTheme,
@@ -25,6 +28,10 @@ const defaultTheme: Required<EmailTheme> = {
 	buttonDefaults: {},
 	headingDefaults: {},
 	blockDefaults: {},
+	darkModeBackgroundColor: '#121212',
+	darkModeTextColor: '#e4e4e7',
+	darkModeLinkColor: '#93c5fd',
+	baseWidth: 600,
 };
 
 function makeTextBlock(id: string): EditorBlock {
@@ -59,10 +66,10 @@ function makeColumnsBlock(id: string): EditorBlock {
 			ratio: 'equal',
 			mobileStacking: true,
 			columns: [
-				[{ id: 'col-item-1', type: 'text', content: { html: 'Col 1' } }],
-				[{ id: 'col-item-2', type: 'button', content: { text: 'Click' } }],
+				[{ id: 'col-item-1', type: 'text', content: { html: 'Col 1' } as TextBlockContent }],
+				[{ id: 'col-item-2', type: 'button', content: { text: 'Click' } as ButtonBlockContent }],
 			],
-			gap: 16,
+			columnGap: 16,
 			paddingTop: 0,
 			paddingRight: 0,
 			paddingBottom: 0,
@@ -72,7 +79,7 @@ function makeColumnsBlock(id: string): EditorBlock {
 			marginRight: 0,
 			marginBottom: 0,
 			marginLeft: 0,
-		} as ColumnsBlockContent,
+		},
 	};
 }
 
@@ -87,20 +94,30 @@ function makeContainerBlock(id: string): EditorBlock {
 					id: 'citem-2',
 					type: 'container',
 					content: {
-						items: [
-							{ id: 'nested-1', type: 'text', content: { html: 'Nested' } },
-						],
+						items: [{ id: 'nested-1', type: 'text', content: { html: 'Nested' } }],
 						backgroundColor: '#fff',
-						paddingTop: 16, paddingRight: 16, paddingBottom: 16, paddingLeft: 16,
+						paddingTop: 16,
+						paddingRight: 16,
+						paddingBottom: 16,
+						paddingLeft: 16,
 						paddingLinked: true,
-						marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0,
+						marginTop: 0,
+						marginRight: 0,
+						marginBottom: 0,
+						marginLeft: 0,
 					} as ContainerBlockContent,
 				},
 			],
 			backgroundColor: '#f0f0f0',
-			paddingTop: 16, paddingRight: 16, paddingBottom: 16, paddingLeft: 16,
+			paddingTop: 16,
+			paddingRight: 16,
+			paddingBottom: 16,
+			paddingLeft: 16,
 			paddingLinked: true,
-			marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0,
+			marginTop: 0,
+			marginRight: 0,
+			marginBottom: 0,
+			marginLeft: 0,
 		} as ContainerBlockContent,
 	};
 }
@@ -320,33 +337,33 @@ describe('useBlockManagement', () => {
 		});
 	});
 
-	describe('handleDeleteColumnItem', () => {
+	describe('handleDeleteNestedItem — column items', () => {
 		it('removes an item from a column', () => {
 			const ctx = setup([makeColumnsBlock('cols-1')]);
-			ctx.handleDeleteColumnItem('cols-1', 0, 'col-item-1');
+			ctx.handleDeleteNestedItem('cols-1', 'col-item-1');
 			const content = ctx.canvasBlocks.value[0]!.content as ColumnsBlockContent;
 			expect(content.columns[0]).toHaveLength(0);
 		});
 
 		it('calls onColumnItemDeleted callback', () => {
 			const ctx = setup([makeColumnsBlock('cols-1')]);
-			ctx.handleDeleteColumnItem('cols-1', 0, 'col-item-1');
+			ctx.handleDeleteNestedItem('cols-1', 'col-item-1');
 			expect(ctx.onColumnItemDeleted).toHaveBeenCalledWith('col-item-1');
 		});
 
 		it('does nothing for nonexistent item', () => {
 			const ctx = setup([makeColumnsBlock('cols-1')]);
-			ctx.handleDeleteColumnItem('cols-1', 0, 'nonexistent');
+			ctx.handleDeleteNestedItem('cols-1', 'nonexistent');
 			const content = ctx.canvasBlocks.value[0]!.content as ColumnsBlockContent;
 			expect(content.columns[0]).toHaveLength(1);
 			expect(ctx.onColumnItemDeleted).not.toHaveBeenCalled();
 		});
 	});
 
-	describe('handleDuplicateColumnItem', () => {
+	describe('handleDuplicateNestedItem — column items', () => {
 		it('duplicates a column item after the original', () => {
 			const ctx = setup([makeColumnsBlock('cols-1')]);
-			const newItem = ctx.handleDuplicateColumnItem('cols-1', 0, 'col-item-1');
+			const newItem = ctx.handleDuplicateNestedItem('cols-1', 'col-item-1');
 			expect(newItem).not.toBeNull();
 			const content = ctx.canvasBlocks.value[0]!.content as ColumnsBlockContent;
 			expect(content.columns[0]).toHaveLength(2);
@@ -355,13 +372,13 @@ describe('useBlockManagement', () => {
 
 		it('returns null for nonexistent item', () => {
 			const ctx = setup([makeColumnsBlock('cols-1')]);
-			const result = ctx.handleDuplicateColumnItem('cols-1', 0, 'nonexistent');
+			const result = ctx.handleDuplicateNestedItem('cols-1', 'nonexistent');
 			expect(result).toBeNull();
 		});
 
 		it('generates a new ID for the duplicate', () => {
 			const ctx = setup([makeColumnsBlock('cols-1')]);
-			const newItem = ctx.handleDuplicateColumnItem('cols-1', 0, 'col-item-1');
+			const newItem = ctx.handleDuplicateNestedItem('cols-1', 'col-item-1');
 			expect(newItem!.id).not.toBe('col-item-1');
 		});
 	});
@@ -403,10 +420,10 @@ describe('useBlockManagement', () => {
 		});
 	});
 
-	describe('handleDeleteContainerItem', () => {
+	describe('handleDeleteNestedItem — container items', () => {
 		it('deletes a top-level container item', () => {
 			const ctx = setup([makeContainerBlock('c1')]);
-			ctx.handleDeleteContainerItem('c1', 'citem-1');
+			ctx.handleDeleteNestedItem('c1', 'citem-1');
 			const content = ctx.canvasBlocks.value[0]!.content as ContainerBlockContent;
 			expect(content.items).toHaveLength(1);
 			expect(content.items[0]!.id).toBe('citem-2');
@@ -414,7 +431,7 @@ describe('useBlockManagement', () => {
 
 		it('deletes a nested container item recursively', () => {
 			const ctx = setup([makeContainerBlock('c1')]);
-			ctx.handleDeleteContainerItem('c1', 'nested-1');
+			ctx.handleDeleteNestedItem('c1', 'nested-1');
 			const content = ctx.canvasBlocks.value[0]!.content as ContainerBlockContent;
 			const nestedContainer = content.items[1]!.content as ContainerBlockContent;
 			expect(nestedContainer.items).toHaveLength(0);
@@ -422,29 +439,29 @@ describe('useBlockManagement', () => {
 
 		it('calls onContainerItemDeleted callback', () => {
 			const ctx = setup([makeContainerBlock('c1')]);
-			ctx.handleDeleteContainerItem('c1', 'citem-1');
+			ctx.handleDeleteNestedItem('c1', 'citem-1');
 			expect(ctx.onContainerItemDeleted).toHaveBeenCalledWith('citem-1');
 		});
 
 		it('does nothing for nonexistent item', () => {
 			const ctx = setup([makeContainerBlock('c1')]);
-			ctx.handleDeleteContainerItem('c1', 'nonexistent');
+			ctx.handleDeleteNestedItem('c1', 'nonexistent');
 			const content = ctx.canvasBlocks.value[0]!.content as ContainerBlockContent;
 			expect(content.items).toHaveLength(2);
 		});
 
 		it('does nothing for non-container block type', () => {
 			const ctx = setup([makeTextBlock('b1')]);
-			ctx.handleDeleteContainerItem('b1', 'some-id');
+			ctx.handleDeleteNestedItem('b1', 'some-id');
 			// Should not throw
 			expect(ctx.canvasBlocks.value).toHaveLength(1);
 		});
 	});
 
-	describe('handleDuplicateContainerItem', () => {
+	describe('handleDuplicateNestedItem — container items', () => {
 		it('duplicates a container item after the original', () => {
 			const ctx = setup([makeContainerBlock('c1')]);
-			const newItem = ctx.handleDuplicateContainerItem('c1', 'citem-1');
+			const newItem = ctx.handleDuplicateNestedItem('c1', 'citem-1');
 			expect(newItem).not.toBeNull();
 			const content = ctx.canvasBlocks.value[0]!.content as ContainerBlockContent;
 			expect(content.items).toHaveLength(3);
@@ -453,7 +470,7 @@ describe('useBlockManagement', () => {
 
 		it('duplicates a nested container item', () => {
 			const ctx = setup([makeContainerBlock('c1')]);
-			const newItem = ctx.handleDuplicateContainerItem('c1', 'nested-1');
+			const newItem = ctx.handleDuplicateNestedItem('c1', 'nested-1');
 			expect(newItem).not.toBeNull();
 			const content = ctx.canvasBlocks.value[0]!.content as ContainerBlockContent;
 			const nestedContainer = content.items[1]!.content as ContainerBlockContent;
@@ -462,20 +479,202 @@ describe('useBlockManagement', () => {
 
 		it('generates new IDs for duplicated items', () => {
 			const ctx = setup([makeContainerBlock('c1')]);
-			const newItem = ctx.handleDuplicateContainerItem('c1', 'citem-1');
+			const newItem = ctx.handleDuplicateNestedItem('c1', 'citem-1');
 			expect(newItem!.id).not.toBe('citem-1');
 		});
 
 		it('returns null for nonexistent item', () => {
 			const ctx = setup([makeContainerBlock('c1')]);
-			const result = ctx.handleDuplicateContainerItem('c1', 'nonexistent');
+			const result = ctx.handleDuplicateNestedItem('c1', 'nonexistent');
 			expect(result).toBeNull();
 		});
 
 		it('returns null for non-container block', () => {
 			const ctx = setup([makeTextBlock('b1')]);
-			const result = ctx.handleDuplicateContainerItem('b1', 'some-id');
+			const result = ctx.handleDuplicateNestedItem('b1', 'some-id');
 			expect(result).toBeNull();
+		});
+	});
+
+	// Duplicating a composite must give every descendant a fresh id, or an edit
+	// or translation overlay keyed by a child id reaches both copies.
+	describe('descendant ids on duplication', () => {
+		const ids = (blocks: readonly EditorBlock[]): string[] =>
+			blocks.flatMap((b) => [b.id, ...ids(childBlockLists(b).flat())]);
+		const expectUnique = (blocks: readonly EditorBlock[]) => {
+			const all = ids(blocks);
+			expect(new Set(all).size).toBe(all.length);
+		};
+		const hero = (id: string): EditorBlock =>
+			({
+				id,
+				type: 'hero',
+				content: {
+					items: [
+						{ id: `${id}-text`, type: 'text', content: { html: 'Welcome' } },
+						{
+							id: `${id}-box`,
+							type: 'container',
+							content: { items: [{ id: `${id}-deep`, type: 'button', content: { text: 'Go' } }] },
+						},
+					],
+				},
+			}) as unknown as EditorBlock;
+		const containerWithColumns = (id: string): EditorBlock =>
+			({
+				id,
+				type: 'container',
+				content: { items: [{ ...makeColumnsBlock(`${id}-cols`) }] },
+			}) as unknown as EditorBlock;
+
+		for (const [name, make] of [
+			['columns', makeColumnsBlock],
+			['container', makeContainerBlock],
+			['nested container and columns', containerWithColumns],
+			['hero', hero],
+		] as const) {
+			it(`renews every id when a ${name} root is duplicated`, () => {
+				const ctx = setup([make('root')]);
+				ctx.handleDuplicateBlock('root');
+				expect(ctx.canvasBlocks.value).toHaveLength(2);
+				expectUnique(ctx.canvasBlocks.value);
+				expect(ids([ctx.canvasBlocks.value[1]!])).toHaveLength(ids([make('root')]).length);
+			});
+		}
+
+		it('leaves the original alone when a child of the copy changes', () => {
+			const ctx = setup([makeColumnsBlock('cols')]);
+			ctx.handleDuplicateBlock('cols');
+			const copyChild = childBlockLists(ctx.canvasBlocks.value[1]!)[0]![0]!;
+			(locateBlock(ctx.canvasBlocks.value, copyChild.id)!.block.content as TextBlockContent).html =
+				'Changed';
+			const original = locateBlock(ctx.canvasBlocks.value, 'col-item-1')!;
+			expect(original.root.id).toBe('cols');
+			expect((original.block.content as TextBlockContent).html).toBe('Col 1');
+		});
+
+		it('renews the column items of a columns item duplicated inside a container', () => {
+			const ctx = setup([containerWithColumns('box')]);
+			const copy = ctx.handleDuplicateNestedItem('box', 'box-cols');
+			expect(copy).not.toBeNull();
+			expectUnique(ctx.canvasBlocks.value);
+		});
+
+		it('does not link the copy of a linked block', () => {
+			const ctx = setup([
+				{ ...makeTextBlock('b1'), savedBlockRef: { blockId: 's', groupId: 'g', blockName: 'S' } },
+			]);
+			ctx.handleDuplicateBlock('b1');
+			expect(ctx.canvasBlocks.value[1]!.savedBlockRef).toBeUndefined();
+		});
+	});
+
+	// Container nesting is offered by the registry, so every item operation
+	// resolves its target at any depth.
+	describe('nested composites', () => {
+		const threeLevels = (): EditorBlock =>
+			({
+				id: 'outer',
+				type: 'container',
+				content: {
+					items: [
+						{
+							id: 'middle',
+							type: 'container',
+							content: {
+								items: [
+									{
+										id: 'inner-cols',
+										type: 'columns',
+										content: {
+											columnCount: 2,
+											columns: [[{ id: 'leaf', type: 'text', content: { html: 'Leaf' } }], []],
+										},
+									},
+								],
+							},
+						},
+					],
+				},
+			}) as unknown as EditorBlock;
+
+		it('adds to, duplicates in and deletes from a columns block three levels down', () => {
+			const ctx = setup([threeLevels()]);
+			const added = ctx.handleAddItemToColumn('inner-cols', 1, 'button');
+			expect(added).not.toBeNull();
+			expect(locateBlock(ctx.canvasBlocks.value, added!.id)!.listIndex).toBe(1);
+
+			const copy = ctx.handleDuplicateNestedItem('middle', 'leaf');
+			expect(locateBlock(ctx.canvasBlocks.value, copy!.id)!.index).toBe(1);
+
+			ctx.handleDeleteNestedItem('outer', 'leaf');
+			expect(locateBlock(ctx.canvasBlocks.value, 'leaf')).toBeNull();
+			expect(ctx.onColumnItemDeleted).toHaveBeenCalledWith('leaf');
+		});
+
+		it('changes the column count of a nested columns block', () => {
+			const ctx = setup([threeLevels()]);
+			ctx.handleColumnCountChange('inner-cols', 3);
+			const cols = locateBlock(ctx.canvasBlocks.value, 'inner-cols')!.block;
+			expect((cols.content as ColumnsBlockContent).columns).toHaveLength(3);
+		});
+	});
+
+	describe('handleInsertBlockAtSlot', () => {
+		it('inserts into a nested column at the slot, with the column defaults', () => {
+			const ctx = setup([makeContainerBlock('box'), makeColumnsBlock('cols')]);
+			const inserted = ctx.handleInsertBlockAtSlot('text', {
+				parentId: 'cols',
+				listIndex: 1,
+				index: 0,
+				rootId: 'cols',
+			});
+			expect(inserted!.parentId).toBe('cols');
+			const location = locateBlock(ctx.canvasBlocks.value, inserted!.block.id)!;
+			expect(location.listIndex).toBe(1);
+			expect(location.list.map((b) => b.id)).toEqual([inserted!.block.id, 'col-item-2']);
+			expect((inserted!.block.content as TextBlockContent).fontSize).toBe(14);
+			// A nested insertion leaves the root selection to the caller.
+			expect(ctx.selectedBlockId.value).toBeNull();
+		});
+
+		it('applies the content callback to the placement defaults', () => {
+			const ctx = setup([makeContainerBlock('box')]);
+			const inserted = ctx.handleInsertBlockAtSlot(
+				'text',
+				{ parentId: 'citem-2', listIndex: 0, index: 1, rootId: 'box' },
+				(defaults) => ({ ...defaults, html: '' })
+			);
+			const list = locateBlock(ctx.canvasBlocks.value, 'nested-1')!.list;
+			expect(list.map((b) => b.id)).toEqual(['nested-1', inserted!.block.id]);
+			expect((inserted!.block.content as TextBlockContent).html).toBe('');
+		});
+
+		it('passes a type the composite does not accept up to the nearest list that does', () => {
+			const ctx = setup([makeContainerBlock('box'), makeTextBlock('after')]);
+			// A list Block is placed at root only.
+			const inserted = ctx.handleInsertBlockAtSlot('list', {
+				parentId: 'citem-2',
+				listIndex: 0,
+				index: 1,
+				rootId: 'box',
+			});
+			expect(inserted!.parentId).toBeNull();
+			expect(ctx.canvasBlocks.value.map((b) => b.id)).toEqual(['box', inserted!.block.id, 'after']);
+			expect(ctx.selectedBlockId.value).toBe(inserted!.block.id);
+		});
+
+		it('returns null when the slot is gone', () => {
+			const ctx = setup([makeTextBlock('b1')]);
+			expect(
+				ctx.handleInsertBlockAtSlot('text', {
+					parentId: 'missing',
+					listIndex: 0,
+					index: 0,
+					rootId: 'b1',
+				})
+			).toBeNull();
+			expect(ctx.canvasBlocks.value).toHaveLength(1);
 		});
 	});
 });

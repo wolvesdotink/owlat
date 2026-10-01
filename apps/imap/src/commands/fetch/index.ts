@@ -4,6 +4,7 @@ import type { ImapCommandModule } from '../types.js';
 import { asyncSession } from '../helpers/session.js';
 import { resolveSelectedSet, uidRuns } from '../helpers/seqMap.js';
 import { streamEnvelopes } from '../helpers/folderPaging.js';
+import { holdSequence } from '../helpers/sequenceGate.js';
 import { type FetchEnvelope, formatEnvelope, formatFlags, formatInternalDate } from './format.js';
 import { type BodySectionRequest, bodySectionParts, parseBodySectionItem } from './bodySection.js';
 import { serverFailure } from '../helpers/replies.js';
@@ -30,11 +31,12 @@ const CLOSE_PAREN = Buffer.from(')', 'ascii');
  * FETCH and UID FETCH share this module. The UID dispatcher constructs
  * args with `byUid: true`; direct FETCH defaults to false.
  *
- * The message set is resolved against a freshly-built sequence ↔ UID map
- * (the folder's UIDs ascending; position i is sequence number i+1, RFC
- * 3501 §2.3.1). A non-UID set holds *sequence numbers* (positions), a UID
- * set holds UIDs; either way each matched row carries its true sequence
- * number in the `* {seq} FETCH` reply — never a fabricated 1..N counter.
+ * The message set is resolved against a sequence ↔ UID map (UIDs ascending;
+ * position i is sequence number i+1, RFC 3501 §2.3.1): the client's sequence
+ * view for a non-UID set, which holds *sequence numbers* (positions), and the
+ * folder as it is for a UID set. Either way each matched row carries the
+ * sequence number the client knows in the `* {seq} FETCH` reply — never a
+ * fabricated 1..N counter. See `helpers/seqMap.ts#resolveSelectedSet`.
  *
  * Body retrieval (RFC 3501 §6.4.5) supports the whole message, the
  * HEADER / TEXT sections, single-part bodies, the RFC822* aliases, and
@@ -54,6 +56,9 @@ const CLOSE_PAREN = Buffer.from(')', 'ascii');
 export const fetchModule: ImapCommandModule<FetchArgs> = {
 	verbs: ['FETCH'],
 	requires: 'selected',
+	// A FETCH that implicitly sets \Seen writes flags, so it runs alone.
+	concurrent: ({ itemsToken }) =>
+		parseList(itemsToken).every((item) => parseBodySectionItem(item.toUpperCase())?.peek ?? true),
 	parseArgs(rawArgs) {
 		const [set, itemsToken] = rawArgs;
 		if (!set || !itemsToken) {
@@ -78,6 +83,10 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 		const label = args.byUid ? 'UID FETCH' : 'FETCH';
 
 		return asyncSession(async (signal) => {
+			// A sequence set answers in the numbering it was given, so nothing may
+			// renumber the client's messages until it completes; a UID set may
+			// first announce changes, then streams beside other FETCHes.
+			const lease = holdSequence(deps, args.byUid ? 'sync' : 'shared');
 			/**
 			 * Pace output: when the socket is over its budget, a promise that
 			 * settles once it has taken what was sent (rejecting if the
@@ -88,11 +97,21 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 				return wait?.then(() => signal.throwIfAborted());
 			};
 			try {
-				// Build the sequence ↔ UID map for the SELECTed folder, then
-				// resolve the set against it. A non-UID set holds positions; a
-				// UID set holds UIDs. Either way `resolved` is ordered by true
-				// sequence number and carries the UID to fetch.
-				const { resolved } = await resolveSelectedSet(deps, state, args.set, args.byUid, signal);
+				await lease.ready;
+				// Resolve the set: a non-UID set holds positions in the client's
+				// sequence view, a UID set holds UIDs (and first brings the view up
+				// to date). Either way `resolved` is ordered by the sequence number
+				// the client knows and carries the UID to fetch.
+				const { resolved } = await resolveSelectedSet(
+					deps,
+					state,
+					args.set,
+					args.byUid,
+					send,
+					lease,
+					signal
+				);
+				lease.downgrade();
 
 				if (resolved.length === 0) {
 					send(`${tag} OK ${label} completed`);
@@ -230,6 +249,8 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 				if (signal.aborted) return;
 				logger.error({ err }, 'FETCH failed');
 				send(serverFailure(tag, label));
+			} finally {
+				lease.release();
 			}
 		});
 	},

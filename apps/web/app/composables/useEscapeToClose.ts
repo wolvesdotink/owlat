@@ -1,4 +1,5 @@
 import type { Ref } from 'vue';
+import { isImeComposing } from '~/utils/imeComposition';
 
 /**
  * Esc closes an open popover, and that press ends there.
@@ -16,7 +17,7 @@ import type { Ref } from 'vue';
  */
 export function useEscapeToClose(open: Ref<boolean>): void {
 	const onKeydown = (event: KeyboardEvent) => {
-		if (event.key !== 'Escape' || event.isComposing) return;
+		if (event.key !== 'Escape' || isImeComposing(event)) return;
 		event.preventDefault();
 		open.value = false;
 	};

@@ -48,6 +48,37 @@ export type IntegrationProviderConfig =
 	| { provider: 'stripe'; apiKey: string }
 	| { provider: 'mandrill' };
 
+/**
+ * Discriminated union of per-provider config shapes. Each branch matches one
+ * `IntegrationProviderConfig` variant above. Adding a third provider adds one
+ * branch here.
+ *
+ * Lives in this seam file rather than in the walker because
+ * `schema/integrations.ts` persists the sealed copy a run resumes from, and a
+ * schema module must not import a module that reaches `_generated/server`.
+ */
+export const integrationProviderConfigValidator = v.union(
+	v.object({
+		provider: v.literal('mailchimp'),
+		apiKey: v.string(),
+		listId: v.string(),
+		// Opt-in suppression carry-over. Absent: non-subscribed members are skipped
+		// and nothing is suppressed.
+		importSuppressions: v.optional(v.boolean()),
+	}),
+	v.object({
+		provider: v.literal('stripe'),
+		apiKey: v.string(),
+	}),
+	// No credential field: the Mandrill rejects import reads `MANDRILL_API_KEY`
+	// from the deployment environment (send-provider credentials are env-only,
+	// and a key pasted here would be a second credential model for an account
+	// that already has one). See `providers/mandrill/index.ts`.
+	v.object({
+		provider: v.literal('mandrill'),
+	})
+);
+
 // ─── DOI attest source ──────────────────────────────────────────────────────
 
 /**

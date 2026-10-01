@@ -5,6 +5,7 @@ import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { createTestContact } from './factories';
 import { modules } from './testModules';
+import { openWorkspaceDeletionFence } from './helpers/workspaceDeletionFence';
 import { PROPERTY_VALUES_PER_TRANSACTION } from '../contacts/propertyDeletion';
 
 vi.mock('../lib/sessionOrganization', async () => {
@@ -288,14 +289,11 @@ describe('contacts.properties.remove', () => {
 		expect(await jobFor(t, propertyId)).toBeNull();
 	});
 
-	it('restarts a job whose chain was lost', async () => {
-		const t = batchLimitedHarness();
-		const propertyId = await seedProperty(t, 'orphaned');
-		await seedValues(t, propertyId, 1200);
-		// The state a crashed chain leaves behind: marked, job running, nothing queued.
-		await t.run(async (ctx) => {
+	/** The state a crashed chain leaves behind: marked, job running, nothing queued. */
+	async function seedOrphanedJob(t: Harness, propertyId: Id<'contactProperties'>) {
+		return await t.run(async (ctx) => {
 			await ctx.db.patch(propertyId, { deletionRequestedAt: Date.now() });
-			await ctx.db.insert('contactPropertyDeletionJobs', {
+			return await ctx.db.insert('contactPropertyDeletionJobs', {
 				propertyId,
 				requestedBy: 'test-user',
 				status: 'running',
@@ -306,6 +304,13 @@ describe('contacts.properties.remove', () => {
 				updatedAt: Date.now(),
 			});
 		});
+	}
+
+	it('restarts a job whose chain was lost', async () => {
+		const t = batchLimitedHarness();
+		const propertyId = await seedProperty(t, 'orphaned');
+		await seedValues(t, propertyId, 1200);
+		await seedOrphanedJob(t, propertyId);
 
 		expect(await t.mutation(internal.contacts.propertyDeletion.resumeStalled, {})).toEqual({
 			restarted: 0,
@@ -319,5 +324,22 @@ describe('contacts.properties.remove', () => {
 			expect(await ctx.db.get(propertyId)).toBeNull();
 			expect(await ctx.db.query('contactPropertyValues').collect()).toHaveLength(0);
 		});
+	});
+
+	it('leaves a stalled job alone while a workspace deletion runs', async () => {
+		const t = batchLimitedHarness();
+		const propertyId = await seedProperty(t, 'orphaned');
+		await seedValues(t, propertyId, 10);
+		const jobId = await seedOrphanedJob(t, propertyId);
+		// The deletion cancelled the chain and holds the fence over the job table.
+		await t.run(openWorkspaceDeletionFence);
+		vi.advanceTimersByTime(31 * MINUTE);
+		const before = await t.run(async (ctx) => ctx.db.get(jobId));
+
+		expect(await t.mutation(internal.contacts.propertyDeletion.resumeStalled, {})).toEqual({
+			restarted: 0,
+		});
+		expect(await t.run(async (ctx) => ctx.db.get(jobId))).toEqual(before);
+		expect(await valueCount(t, propertyId)).toBe(10);
 	});
 });

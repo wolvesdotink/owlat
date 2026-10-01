@@ -8,11 +8,13 @@
  * counters, and the shared validator named for the table was left behind.
  */
 
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { APP_LOCALES } from '@owlat/shared/appLocales';
 import { deliveryTables } from '../../schema/delivery';
 import { authTables } from '../../schema/auth';
 import { appLocaleValidator } from '../appLocales';
+import * as literalValidators from '../literalValidators';
 import {
 	BLOCK_REASONS,
 	blockedEmailReasonValidator,
@@ -47,5 +49,16 @@ describe('interface locales', () => {
 		const locale = authTables.userProfiles.validator.fields.locale;
 		expect(locale.isOptional).toBe('optional');
 		expect(membersOf(locale as unknown as typeof appLocaleValidator)).toEqual([...APP_LOCALES]);
+	});
+});
+
+describe('CONVENTIONS.md', () => {
+	it('names only validators lib/literalValidators.ts actually exports', () => {
+		const conventions = readFileSync(new URL('../../CONVENTIONS.md', import.meta.url), 'utf8');
+		const bullet = conventions.match(/- `lib\/literalValidators\.ts`:[^]*?\.\.\.\)/)?.[0];
+		expect(bullet).toBeDefined();
+		const named = [...bullet!.matchAll(/`(\w+Validator)`/g)].map((match) => match[1]);
+		expect(named.length).toBeGreaterThan(0);
+		for (const name of named) expect(literalValidators).toHaveProperty(name as string);
 	});
 });

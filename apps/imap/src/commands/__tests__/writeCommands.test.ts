@@ -21,7 +21,13 @@ import { copyModule } from '../copy/index.js';
 import { storeModule } from '../store/index.js';
 import { uidModule } from '../uid/index.js';
 import { dispatch } from '../walker.js';
-import type { CommandDeps, ConnectionState, SelectedState, StartArgs } from '../types.js';
+import type {
+	CommandDeps,
+	ConnectionState,
+	ParseResult,
+	SelectedState,
+	StartArgs,
+} from '../types.js';
 
 vi.mock('../../logger.js', () => ({
 	logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -76,9 +82,15 @@ function startArgs<T>(
 ): { start: StartArgs<T>; lines: string[] } {
 	const lines: string[] = [];
 	return {
-		start: { deps, state, args, tag: 'a1', verb, send: (l: string) => lines.push(l) },
+		start: { deps, state, args, tag: 'a1', verb, send: (l) => lines.push(l as string) },
 		lines,
 	};
+}
+
+/** The parsed args of a successful parse; a failed parse fails the test. */
+function argsOf<T>(parsed: ParseResult<T>): T {
+	if (!parsed.ok) throw new Error(`parse failed: ${parsed.error}`);
+	return parsed.args;
 }
 
 function mockConvex(): MockConvex {
@@ -93,12 +105,7 @@ describe('EXPUNGE — descending order + \\Deleted-only + modseq bump (RFC 3501 
 		const { deps } = makeDeps(convex);
 		const parsed = expungeModule.parseArgs([]);
 		expect(parsed.ok).toBe(true);
-		const { start, lines } = startArgs(
-			deps,
-			selectedState(),
-			(parsed as { args: never }).args,
-			'EXPUNGE'
-		);
+		const { start, lines } = startArgs(deps, selectedState(), argsOf(parsed), 'EXPUNGE');
 		await expungeModule.start(start).completion;
 
 		const expunges = lines.filter((l) => l.endsWith('EXPUNGE'));
@@ -111,7 +118,7 @@ describe('EXPUNGE — descending order + \\Deleted-only + modseq bump (RFC 3501 
 		convex.mutation.mockResolvedValue({ sequenceNumbers: [], modseq: 8 });
 		const { deps } = makeDeps(convex);
 		const parsed = expungeModule.parseArgs([]);
-		const { start } = startArgs(deps, selectedState(), (parsed as { args: never }).args, 'EXPUNGE');
+		const { start } = startArgs(deps, selectedState(), argsOf(parsed), 'EXPUNGE');
 		await expungeModule.start(start).completion;
 
 		// Bare EXPUNGE sends no uidSet — the convex side scans \Deleted only.
@@ -126,7 +133,7 @@ describe('EXPUNGE — descending order + \\Deleted-only + modseq bump (RFC 3501 
 		convex.mutation.mockResolvedValue({ sequenceNumbers: [1, 2], modseq: 12 });
 		const { deps, committed } = makeDeps(convex);
 		const parsed = expungeModule.parseArgs([]);
-		const { start } = startArgs(deps, selectedState(), (parsed as { args: never }).args, 'EXPUNGE');
+		const { start } = startArgs(deps, selectedState(), argsOf(parsed), 'EXPUNGE');
 		await expungeModule.start(start).completion;
 
 		expect(committed).toHaveLength(1);
@@ -150,7 +157,7 @@ describe('EXPUNGE — descending order + \\Deleted-only + modseq bump (RFC 3501 
 		const { start, lines } = startArgs(
 			deps,
 			selectedState({ totalCount: 250 }),
-			(parsed as { args: never }).args,
+			argsOf(parsed),
 			'EXPUNGE'
 		);
 
@@ -189,6 +196,7 @@ describe('UIDPLUS — COPYUID carries the folder uidValidity (RFC 4315)', () => 
 		const convex = mockConvex();
 		convex.query
 			.mockResolvedValueOnce([{ _id: 'tf', name: 'Archive', role: 'archive' }]) // resolveFolderByName
+			.mockResolvedValueOnce(null) // folderMembershipPage: not maintained
 			.mockResolvedValueOnce({ uids: [1, 2, 3, 4, 5], nextUid: null }) // listFolderUidsPage
 			.mockResolvedValueOnce({
 				rows: [
@@ -207,12 +215,7 @@ describe('UIDPLUS — COPYUID carries the folder uidValidity (RFC 4315)', () => 
 		const { deps } = makeDeps(convex);
 		const parsed = copyModule.parseArgs(['3:4', 'Archive']);
 		expect(parsed.ok).toBe(true);
-		const { start, lines } = startArgs(
-			deps,
-			selectedState(),
-			(parsed as { args: never }).args,
-			'COPY'
-		);
+		const { start, lines } = startArgs(deps, selectedState(), argsOf(parsed), 'COPY');
 		await copyModule.start(start).completion;
 
 		expect(lines.pop()).toBe('a1 OK [COPYUID 9999 3,4 17,18] COPY completed');
@@ -222,18 +225,15 @@ describe('UIDPLUS — COPYUID carries the folder uidValidity (RFC 4315)', () => 
 describe('UIDPLUS — UID EXPUNGE honors the UID set (RFC 4315 §2.1)', () => {
 	it('threads the parsed UID set into the expunge mutation', async () => {
 		const convex = mockConvex();
-		convex.query.mockResolvedValueOnce({ uids: [5, 6, 7, 8, 9], nextUid: null }); // listFolderUidsPage
+		convex.query
+			.mockResolvedValueOnce(null) // folderMembershipPage: not maintained
+			.mockResolvedValueOnce({ uids: [5, 6, 7, 8, 9], nextUid: null }); // listFolderUidsPage
 		convex.mutation.mockResolvedValue({ sequenceNumbers: [3], modseq: 13 });
 		const { deps } = makeDeps(convex);
 
 		const parsed = uidModule.parseArgs(['EXPUNGE', '5,7:8']);
 		expect(parsed.ok).toBe(true);
-		const { start, lines } = startArgs(
-			deps,
-			selectedState(),
-			(parsed as { args: never }).args,
-			'UID'
-		);
+		const { start, lines } = startArgs(deps, selectedState(), argsOf(parsed), 'UID');
 		await uidModule.start(start).completion;
 
 		// 5,7:8 → {5,7,8}; bare EXPUNGE would send uidSet undefined.
@@ -249,7 +249,7 @@ describe('UIDPLUS — UID EXPUNGE honors the UID set (RFC 4315 §2.1)', () => {
 		convex.mutation.mockResolvedValue({ sequenceNumbers: [], modseq: 8 });
 		const { deps } = makeDeps(convex);
 		const parsed = uidModule.parseArgs(['EXPUNGE']);
-		const { start } = startArgs(deps, selectedState(), (parsed as { args: never }).args, 'UID');
+		const { start } = startArgs(deps, selectedState(), argsOf(parsed), 'UID');
 		await uidModule.start(start).completion;
 		expect(convex.mutation).toHaveBeenCalledWith(
 			expect.anything(),
@@ -262,6 +262,7 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 	it('passes UNCHANGEDSINCE through to storeFlags as unchangedSinceModseq', async () => {
 		const convex = mockConvex();
 		convex.query
+			.mockResolvedValueOnce(null) // folderMembershipPage: not maintained
 			.mockResolvedValueOnce({ uids: [1], nextUid: null }) // listFolderUidsPage
 			.mockResolvedValueOnce({ rows: [{ _id: 'm1', uid: 1, modseq: 7 }], nextUid: null }); // resolveMessageIdsByUid
 		convex.mutation.mockResolvedValue({
@@ -273,7 +274,7 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 		expect(parsed.ok).toBe(true);
 		expect((parsed as { args: { unchangedSince?: number } }).args.unchangedSince).toBe(5);
 
-		const { start } = startArgs(deps, selectedState(), (parsed as { args: never }).args, 'STORE');
+		const { start } = startArgs(deps, selectedState(), argsOf(parsed), 'STORE');
 		await storeModule.start(start).completion;
 
 		expect(convex.mutation).toHaveBeenCalledWith(
@@ -285,6 +286,7 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 	it('reports [MODIFIED <uids>] for messages the UNCHANGEDSINCE guard skipped', async () => {
 		const convex = mockConvex();
 		convex.query
+			.mockResolvedValueOnce(null) // folderMembershipPage: not maintained
 			.mockResolvedValueOnce({ uids: [1, 2], nextUid: null }) // listFolderUidsPage
 			.mockResolvedValueOnce({
 				rows: [
@@ -299,12 +301,7 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 		});
 		const { deps } = makeDeps(convex);
 		const parsed = storeModule.parseArgs(['1:2', '(UNCHANGEDSINCE 8)', '+FLAGS', '(\\Flagged)']);
-		const { start, lines } = startArgs(
-			deps,
-			selectedState(),
-			(parsed as { args: never }).args,
-			'STORE'
-		);
+		const { start, lines } = startArgs(deps, selectedState(), argsOf(parsed), 'STORE');
 		await storeModule.start(start).completion;
 
 		// The updated row reports its NEW (higher) modseq, the skipped uid 2 is
@@ -319,6 +316,7 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 
 		// First store → modseq 8.
 		convex.query
+			.mockResolvedValueOnce(null) // folderMembershipPage: not maintained
 			.mockResolvedValueOnce({ uids: [1], nextUid: null }) // listFolderUidsPage
 			.mockResolvedValueOnce({ rows: [{ _id: 'm1', uid: 1, modseq: 7 }], nextUid: null }); // resolveMessageIdsByUid
 		convex.mutation.mockResolvedValueOnce({
@@ -326,12 +324,13 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 			unchanged: [],
 		});
 		const p1 = storeModule.parseArgs(['1', '+FLAGS', '(\\Seen)']);
-		const a1 = startArgs(deps, selectedState(), (p1 as { args: never }).args, 'STORE');
+		const a1 = startArgs(deps, selectedState(), argsOf(p1), 'STORE');
 		await storeModule.start(a1.start).completion;
 		const m1 = Number(a1.lines.find((l) => l.includes('MODSEQ'))!.match(/MODSEQ \((\d+)\)/)![1]);
 
 		// Second store → modseq 9 (strictly greater).
 		convex.query
+			.mockResolvedValueOnce(null) // folderMembershipPage: not maintained
 			.mockResolvedValueOnce({ uids: [1], nextUid: null }) // listFolderUidsPage
 			.mockResolvedValueOnce({ rows: [{ _id: 'm1', uid: 1, modseq: 7 }], nextUid: null }); // resolveMessageIdsByUid
 		convex.mutation.mockResolvedValueOnce({
@@ -339,7 +338,7 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 			unchanged: [],
 		});
 		const p2 = storeModule.parseArgs(['1', '+FLAGS', '(\\Flagged)']);
-		const a2 = startArgs(deps, selectedState(), (p2 as { args: never }).args, 'STORE');
+		const a2 = startArgs(deps, selectedState(), argsOf(p2), 'STORE');
 		await storeModule.start(a2.start).completion;
 		const m2 = Number(a2.lines.find((l) => l.includes('MODSEQ'))!.match(/MODSEQ \((\d+)\)/)![1]);
 
@@ -349,6 +348,7 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 	it('omits the per-row FETCH on .SILENT but still answers OK', async () => {
 		const convex = mockConvex();
 		convex.query
+			.mockResolvedValueOnce(null) // folderMembershipPage: not maintained
 			.mockResolvedValueOnce({ uids: [1], nextUid: null }) // listFolderUidsPage
 			.mockResolvedValueOnce({ rows: [{ _id: 'm1', uid: 1, modseq: 7 }], nextUid: null }); // resolveMessageIdsByUid
 		convex.mutation.mockResolvedValue({
@@ -358,16 +358,97 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 		const { deps } = makeDeps(convex);
 		const parsed = storeModule.parseArgs(['1', '+FLAGS.SILENT', '(\\Seen)']);
 		expect((parsed as { args: { silent: boolean } }).args.silent).toBe(true);
-		const { start, lines } = startArgs(
-			deps,
-			selectedState(),
-			(parsed as { args: never }).args,
-			'STORE'
-		);
+		const { start, lines } = startArgs(deps, selectedState(), argsOf(parsed), 'STORE');
 		await storeModule.start(start).completion;
 
 		expect(lines.some((l) => l.includes('FETCH'))).toBe(false);
 		expect(lines.pop()).toBe('a1 OK STORE completed');
+	});
+});
+
+describe('CONDSTORE — [MODIFIED] addresses messages the way the command did (RFC 7162 §3.1.3)', () => {
+	// Sparse folder: UIDs 5, 10, 20 sit at sequence numbers 1, 2, 3, so a
+	// response that leaks UIDs into a sequence-number reply is visible.
+	const FOLDER_UIDS = [5, 10, 20];
+
+	/**
+	 * Run a conditional STORE (or UID STORE when `byUid`) over the sparse
+	 * folder. The mutation updates every UID not in `refused` and reports
+	 * the refused ones as `unchanged`.
+	 */
+	async function runConditionalStore(
+		set: string,
+		op: string,
+		refused: readonly number[],
+		byUid: boolean
+	): Promise<string[]> {
+		const convex = mockConvex();
+		convex.query
+			.mockResolvedValueOnce(null) // folderMembershipPage: not maintained
+			.mockResolvedValueOnce({ uids: FOLDER_UIDS, nextUid: null }) // listFolderUidsPage
+			.mockResolvedValueOnce({
+				rows: FOLDER_UIDS.map((uid) => ({ _id: `m${uid}`, uid, modseq: 7 })),
+				nextUid: null,
+			}); // resolveMessageIdsByUid
+		convex.mutation.mockImplementation(async (_fn, params: { messageIds: string[] }) => {
+			const uids = params.messageIds.map((id) => Number(id.slice(1)));
+			return {
+				updated: uids
+					.filter((uid) => !refused.includes(uid))
+					.map((uid) => ({ uid, modseq: 9, flags: ['\\Flagged'] })),
+				unchanged: uids.filter((uid) => refused.includes(uid)).map((uid) => ({ uid })),
+			};
+		});
+		const { deps } = makeDeps(convex);
+		const rest = [set, '(UNCHANGEDSINCE 8)', op, '(\\Flagged)'];
+		if (byUid) {
+			const parsed = uidModule.parseArgs(['STORE', ...rest]);
+			expect(parsed.ok).toBe(true);
+			const { start, lines } = startArgs(deps, selectedState(), argsOf(parsed), 'UID');
+			await uidModule.start(start).completion;
+			return lines;
+		}
+		const parsed = storeModule.parseArgs(rest);
+		expect(parsed.ok).toBe(true);
+		const { start, lines } = startArgs(deps, selectedState(), argsOf(parsed), 'STORE');
+		await storeModule.start(start).completion;
+		return lines;
+	}
+
+	it('STORE reports the refused message by sequence number, not UID', async () => {
+		const lines = await runConditionalStore('2', '+FLAGS', [10], false);
+		expect(lines).toEqual(['a1 OK [MODIFIED 2] STORE completed']);
+	});
+
+	it('UID STORE reports the refused message by UID', async () => {
+		const lines = await runConditionalStore('10', '+FLAGS', [10], true);
+		expect(lines).toEqual(['a1 OK [MODIFIED 10] UID STORE completed']);
+	});
+
+	it('STORE with mixed results emits FETCH rows for the updated and sequence numbers for the refused', async () => {
+		const lines = await runConditionalStore('1:3', '+FLAGS', [10, 20], false);
+		expect(lines).toEqual([
+			'* 1 FETCH (UID 5 MODSEQ (9) FLAGS (\\Flagged))',
+			'a1 OK [MODIFIED 2,3] STORE completed',
+		]);
+	});
+
+	it('UID STORE with mixed results keeps UIDs in [MODIFIED]', async () => {
+		const lines = await runConditionalStore('5:20', '+FLAGS', [5, 20], true);
+		expect(lines).toEqual([
+			'* 2 FETCH (UID 10 MODSEQ (9) FLAGS (\\Flagged))',
+			'a1 OK [MODIFIED 5,20] UID STORE completed',
+		]);
+	});
+
+	it('STORE .SILENT suppresses the FETCH rows and still reports sequence numbers', async () => {
+		const lines = await runConditionalStore('1:3', '+FLAGS.SILENT', [5, 20], false);
+		expect(lines).toEqual(['a1 OK [MODIFIED 1,3] STORE completed']);
+	});
+
+	it('UID STORE .SILENT suppresses the FETCH rows and still reports UIDs', async () => {
+		const lines = await runConditionalStore('1:*', '+FLAGS.SILENT', [10, 20], true);
+		expect(lines).toEqual(['a1 OK [MODIFIED 10,20] UID STORE completed']);
 	});
 });
 

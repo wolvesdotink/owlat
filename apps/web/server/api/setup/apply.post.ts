@@ -46,10 +46,53 @@ interface ApplyBody {
 	isMigrationMode?: boolean;
 }
 
+/**
+ * A file write after provisioning that failed: which file, and why. The wizard
+ * words it in the operator's language; `message` carries the English text.
+ */
+interface WriteFailure {
+	file: string;
+	cause: string;
+}
+
 const OWLAT_DIR = process.env['OWLAT_DIR'] || '/opt/owlat';
 
+/**
+ * Run one of the file writes that follow provisioning. By then the admin
+ * account exists and the runtime env has been pushed, so a failure here (a
+ * read-only or full install directory, a `.env` owned by another user, a `.env`
+ * that cannot be made owner-only) is answered as a wizard error naming the file
+ * and the cause, never a 500. Launching again after fixing the file is safe:
+ * the seed answers 409 for the existing admin and every write is repeated.
+ */
+async function writeAfterProvisioning(
+	file: string,
+	write: () => Promise<void>
+): Promise<{ ok: false; message: string; writeFailure: WriteFailure } | undefined> {
+	try {
+		await write();
+		return undefined;
+	} catch (err) {
+		console.error(`[setup/apply] could not write ${file} after provisioning`, err);
+		// The message goes into a sentence that adds its own full stop.
+		const cause = (err instanceof Error ? err.message : String(err)).replace(/\.\s*$/, '');
+		return {
+			ok: false,
+			message: `Could not write ${file}: ${cause}. The admin account and runtime settings are already in place, so fix the file on the host and launch again; retrying is safe.`,
+			writeFailure: { file, cause },
+		};
+	}
+}
+
 export default defineEventHandler(
-	async (event): Promise<{ ok: boolean; message?: string; redirectTo?: string }> => {
+	async (
+		event
+	): Promise<{
+		ok: boolean;
+		message?: string;
+		redirectTo?: string;
+		writeFailure?: WriteFailure;
+	}> => {
 		if (process.env['OWLAT_SETUP_MODE'] !== 'true') {
 			throw createError({ statusCode: 403, message: 'Setup mode is not active.' });
 		}
@@ -305,16 +348,25 @@ export default defineEventHandler(
 		// `selectRuntimeEnvVars` unseals this backup before any later re-push), so
 		// the send path is untouched. INSTANCE_SECRET is guaranteed present here —
 		// the seed call above hard-fails without it.
-		await writeEnvFile(envPath, sealRelayPasswordForBackup(merged));
+		const envWriteFailure = await writeAfterProvisioning(envPath, () =>
+			writeEnvFile(envPath, sealRelayPasswordForBackup(merged))
+		);
+		if (envWriteFailure) return envWriteFailure;
 
 		const overridePath = resolve(OWLAT_DIR, 'docker-compose.override.yml');
-		await writeFile(overridePath, renderComposeOverrideYaml(profiles));
+		const overrideWriteFailure = await writeAfterProvisioning(overridePath, () =>
+			writeFile(overridePath, renderComposeOverrideYaml(profiles))
+		);
+		if (overrideWriteFailure) return overrideWriteFailure;
 
 		// Mirror the resolved flags to .owlat-flags.json — the canonical CLI-side flag
 		// store that `owlat doctor` / `feature` / `pack` read. Without it they
 		// recompute from defaults and silently drop the wizard's selections.
 		const flagStatePath = resolve(OWLAT_DIR, '.owlat-flags.json');
-		await writeFile(flagStatePath, JSON.stringify(resolved, null, 2), { mode: 0o600 });
+		const flagWriteFailure = await writeAfterProvisioning(flagStatePath, () =>
+			writeFile(flagStatePath, JSON.stringify(resolved, null, 2), { mode: 0o600 })
+		);
+		if (flagWriteFailure) return flagWriteFailure;
 
 		// A 409 means an admin already existed (a prior attempt seeded one). The
 		// just-entered email may differ from that admin's, so don't prefill it into

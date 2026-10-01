@@ -1,9 +1,6 @@
 import type {
 	BlockType,
 	BlockContent,
-	ColumnsBlockContent,
-	ContainerBlockContent,
-	ContainerItem,
 	ColumnItem,
 	EditorBlock,
 	UniversalPadding,
@@ -208,45 +205,3 @@ export const updateBlockBorderRadius = (block: EditorBlock, value: number): void
 // Column-width math now lives in @owlat/shared so the editor preview and the
 // renderer agree. Re-exported here to keep existing builder call sites working.
 export { getColumnWidths } from '@owlat/shared';
-
-/**
- * Regenerate IDs for container items (recursive)
- * Used when duplicating or inserting saved container blocks
- */
-export const regenerateContainerItemIds = (items: ContainerItem[]): void => {
-	for (const item of items) {
-		item.id = generateId();
-		if (item.type === 'container') {
-			const containerContent = item.content as ContainerBlockContent;
-			regenerateContainerItemIds(containerContent.items);
-		} else if (item.type === 'columns') {
-			const columnsContent = item.content as ColumnsBlockContent;
-			regenerateColumnItemIds(columnsContent.columns);
-		}
-	}
-};
-
-/**
- * Regenerate IDs for column items (for all columns)
- */
-export const regenerateColumnItemIds = (columns: ColumnItem[][]): void => {
-	for (const column of columns) {
-		for (const item of column) {
-			item.id = generateId();
-		}
-	}
-};
-
-/**
- * Regenerate all nested IDs in a block's content
- * Call this when inserting a saved block to ensure unique IDs
- */
-export const regenerateNestedBlockIds = (block: EditorBlock): void => {
-	if (block.type === 'container') {
-		const content = block.content as ContainerBlockContent;
-		regenerateContainerItemIds(content.items);
-	} else if (block.type === 'columns') {
-		const content = block.content as ColumnsBlockContent;
-		regenerateColumnItemIds(content.columns);
-	}
-};

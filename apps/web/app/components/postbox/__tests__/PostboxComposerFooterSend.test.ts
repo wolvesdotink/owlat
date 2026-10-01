@@ -9,7 +9,14 @@ import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { composerTargetCapabilities } from '~/utils/composerTarget';
 import PostboxComposerFooter from '../PostboxComposerFooter.vue';
+
+// The footer as the mailbox composer mounts it: every control its target allows.
+const mailboxCapabilities = composerTargetCapabilities({
+	kind: 'mailbox',
+	mailboxId: 'mbx_1' as never,
+});
 
 beforeAll(() => {
 	Object.assign(globalThis, {
@@ -22,6 +29,7 @@ beforeAll(() => {
 function mountFooter(overrides: Record<string, unknown> = {}) {
 	return mount(PostboxComposerFooter, {
 		props: {
+			capabilities: mailboxCapabilities,
 			canSend: true,
 			sending: false,
 			isUploading: false,

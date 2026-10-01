@@ -1,28 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { AlertCircle, AlertTriangle, Info } from '@lucide/vue';
-import type { CompatibilityReport, NestingDepthResult } from '../../types';
+import type { CompatibilityReport } from '../../types';
 import { scoreColor } from '../../scoreBands';
 import AnalysisEmpty from './AnalysisEmpty.vue';
 
 const props = defineProps<{
 	compatibilityReport: CompatibilityReport | null;
-	nestingDepthWarning?: NestingDepthResult | null;
 }>();
 
 const compatibilityIssues = computed(() => {
 	if (!props.compatibilityReport) return { errors: [], warnings: [], info: [] };
-	const issues = [...props.compatibilityReport.issues];
-	if (props.nestingDepthWarning?.hasDeepNesting) {
-		issues.unshift({
-			severity: 'warning',
-			feature: 'container-nesting',
-			message:
-				props.nestingDepthWarning.warningMessage ||
-				'Deep container nesting may cause rendering issues',
-			clients: ['Outlook (Windows)', 'Outlook (Mac)', 'Windows Mail'],
-		});
-	}
+	const issues = props.compatibilityReport.issues;
 	return {
 		errors: issues.filter((i) => i.severity === 'error'),
 		warnings: issues.filter((i) => i.severity === 'warning'),

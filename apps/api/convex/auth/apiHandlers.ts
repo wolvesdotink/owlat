@@ -22,8 +22,12 @@ import { authenticateApiRequest, type AuthContext } from './apiKeyAuth';
  * token-endpoint shell's cap (`lib/publicTokenEndpoint.ts`) so a key-authed
  * caller can't stream an unbounded body into an action (memory-DoS) — the authed
  * shell previously capped nothing.
+ *
+ * Every endpoint gets this unless it declares its own bounded ceiling through
+ * {@link AuthenticatedHandlerOptions.maxBodyBytes}; only the transactional send
+ * route does, for base64 attachment content (`transactional/api.ts`).
  */
-const MAX_BODY_BYTES = 100_000;
+export const MAX_BODY_BYTES = 100_000;
 
 /** Methods that never carry a request body — the cap simply passes them through. */
 const BODYLESS_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -34,18 +38,20 @@ const BODYLESS_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
  * methods pass through untouched. On success the buffered bytes are re-wrapped in
  * a fresh `Request` (same method/url/headers) so the handler's own
  * `request.json()` still works. Returns the (possibly re-wrapped) request, or a
- * 400 Response when the body exceeds {@link MAX_BODY_BYTES}.
+ * 400 Response when the body exceeds `maxBytes` ({@link MAX_BODY_BYTES} unless
+ * the route declares its own). The read stops at the first byte past the cap.
  */
 export async function enforceBodyCap(
 	request: Request,
-	requestOrigin: string | null
+	requestOrigin: string | null,
+	maxBytes: number = MAX_BODY_BYTES
 ): Promise<{ ok: true; request: Request } | { ok: false; response: Response }> {
 	if (BODYLESS_METHODS.has(request.method.toUpperCase())) {
 		return { ok: true, request };
 	}
 	let raw: ArrayBuffer;
 	try {
-		raw = await readBodyBytes(request, MAX_BODY_BYTES);
+		raw = await readBodyBytes(request, maxBytes);
 	} catch (error) {
 		if (!(error instanceof BodyTooLargeError)) throw error;
 		return {
@@ -91,6 +97,15 @@ export function requireScope(
 	});
 }
 
+export interface AuthenticatedHandlerOptions {
+	/**
+	 * A route-specific body ceiling in bytes, replacing {@link MAX_BODY_BYTES}.
+	 * It must stay bounded and under what the HTTP action can buffer: Convex
+	 * accepts at most 20 MiB of request body and gives an action a 64 MiB heap.
+	 */
+	maxBodyBytes?: number;
+}
+
 /**
  * Create an authenticated HTTP action wrapper
  * This is a factory function that wraps an HTTP action with authentication.
@@ -98,7 +113,8 @@ export function requireScope(
  * `ctx.runMutation` check their arguments and infer their return types.
  */
 export function createAuthenticatedHandler(
-	handler: (ctx: ActionCtx, request: Request, auth: AuthenticatedContext) => Promise<Response>
+	handler: (ctx: ActionCtx, request: Request, auth: AuthenticatedContext) => Promise<Response>,
+	options: AuthenticatedHandlerOptions = {}
 ) {
 	return httpAction(async (ctx, request) => {
 		const origin = request.headers.get('Origin');
@@ -128,7 +144,7 @@ export function createAuthenticatedHandler(
 
 		// Cap the request body (authenticated callers only — auth reads headers,
 		// not the body, so an unauthenticated flood never reaches this buffer).
-		const capped = await enforceBodyCap(request, origin);
+		const capped = await enforceBodyCap(request, origin, options.maxBodyBytes);
 		if (!capped.ok) return capped.response;
 
 		// Call the handler with authenticated context

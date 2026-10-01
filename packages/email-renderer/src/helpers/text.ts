@@ -3,39 +3,19 @@
  * convert HTML fragments into the multipart text/plain body.
  */
 
-/** Guard against out-of-range references — those stay verbatim rather than throw. */
-const codePointOr = (fallback: string, code: number): string =>
-	Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : fallback;
-
-/** Decode `&#8217;` / `&#x2019;` numeric character references. */
-const decodeNumericEntities = (text: string): string =>
-	text
-		.replace(/&#(\d+);/g, (match, digits: string) => codePointOr(match, Number(digits)))
-		.replace(/&#x([0-9a-f]+);/gi, (match, hex: string) => codePointOr(match, parseInt(hex, 16)));
+import { htmlToPlainText } from '@owlat/shared/html';
 
 /**
- * Strip HTML tags, decode common entities, and collapse whitespace.
+ * Text of an HTML fragment for the multipart text/plain body: the shared
+ * {@link htmlToPlainText} pass with block breaks kept (it drops script and style,
+ * decodes every entity once and stays linear on hostile input). Two plain-text
+ * mail conventions sit on top of it: a list item reads as `  - item`, and a
+ * line carries no trailing blanks.
  */
 export const stripHtml = (html: string): string =>
-	decodeNumericEntities(
-		html
-			.replace(/<br\s*\/?>/gi, '\n')
-			.replace(/<\/p>/gi, '\n\n')
-			.replace(/<\/div>/gi, '\n')
-			.replace(/<\/h[1-6]>/gi, '\n\n')
-			.replace(/<li>/gi, '  - ')
-			.replace(/<\/li>/gi, '\n')
-			.replace(/<[^>]+>/g, '')
-			.replace(/&nbsp;/gi, ' ')
-			.replace(/&amp;/gi, '&')
-			.replace(/&lt;/gi, '<')
-			.replace(/&gt;/gi, '>')
-			.replace(/&quot;/gi, '"')
-			.replace(/&#39;/gi, "'")
-	)
+	htmlToPlainText(html.replace(/<li>/gi, '  - '), { preserveBreaks: true })
 		.replace(/[ \t]+\n/g, '\n')
-		.replace(/\n{3,}/g, '\n\n')
-		.trim();
+		.replace(/\n{3,}/g, '\n\n');
 
 /**
  * Anchor with a double-quoted, single-quoted, or unquoted href. The label is

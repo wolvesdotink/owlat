@@ -12,23 +12,26 @@
  *   doctor   Diagnose a broken install (port checks, .env sanity, container health).
  *   push-env Push the Convex function-runtime keys from .env to the deployment
  *            (the second half of `owlat apply`).
+ *   unset-env
+ *            Clear Convex function-runtime keys from the deployment and .env
+ *            (push-env never deletes one).
  */
 
-import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
 import { runSetup } from './commands/setup';
 import { runFeature } from './commands/feature';
 import { runPack } from './commands/pack';
 import { runEnv } from './commands/env';
 import { runPushEnv } from './commands/pushEnv';
+import { runUnsetEnv } from './commands/unsetEnv';
 import { runDoctor } from './commands/doctor';
 import { runQuickstart } from './commands/quickstart';
 import { runBootstrapOrg } from './commands/bootstrap-org';
 import { runSeed } from './commands/seed';
 import { runSampleData } from './commands/sampleData';
 import { runReset } from './commands/reset';
+import { cliOptionsFromArgv } from './lib/argv';
 
-const VERSION = '0.6.5'; // x-release-version (kept in sync by scripts/release.ts)
+const VERSION = '0.6.6'; // x-release-version (kept in sync by scripts/release.ts)
 
 function help(): void {
 	console.log(`Owlat Setup CLI v${VERSION}
@@ -56,6 +59,9 @@ Commands:
   env --show         List the env vars the current flag state needs (secrets masked).
   push-env           Push the Convex function-runtime keys from .env to the
                      deployment (run by \`owlat apply\`; needs the Docker socket).
+  unset-env <KEY> [KEY...]
+                     Clear Convex function-runtime keys from the deployment and
+                     .env (push-env never deletes one; needs the Docker socket).
   doctor             Diagnose a broken install.
 
 Options:
@@ -74,6 +80,8 @@ Options:
   --restart          Ignore saved quickstart checkpoints and run every stage.
   --help, -h         Show this help.
   --version          Show version.
+
+An option that takes a value also accepts the --option=value form.
 `);
 }
 
@@ -91,57 +99,35 @@ async function main(): Promise<number> {
 
 	const [command, ...rest] = args.length === 0 ? ['setup'] : args;
 
-	const flagSet = new Set(rest.filter((a) => a.startsWith('--')));
-	// `positional` strips `--*` flags — preserves behavior for the pre-existing
-	// `feature/pack/env` commands whose argument shape is `<key> <value>`.
-	// `args` carries the full argv tail so new commands (`quickstart`,
-	// `bootstrap-org`, `seed`, `reset`) can locate flags like `--email`,
-	// `--mode`, `--reset` by scanning the raw list.
-	const positional = rest.filter((a) => !a.startsWith('--'));
-	const opts = {
-		web: flagSet.has('--web'),
-		terminal: flagSet.has('--terminal'),
-		assumeYes: flagSet.has('--assume-yes') || flagSet.has('-y'),
-		// Local-source installs (the desktop dev flow forwards these through
-		// scripts/owlat): compose builds images from this tree (buildLocal) or
-		// uses pre-pushed dev images as-is (localImages).
-		buildLocal: flagSet.has('--build-local') || process.env['OWLAT_BUILD_LOCAL'] === '1',
-		localImages: flagSet.has('--local-images') || process.env['OWLAT_LOCAL_IMAGES'] === '1',
-		// Release version resolved by install.sh (the `curl | bash` PULL path), so
-		// quickstart can pin `OWLAT_VERSION=<semver>` into .env and compose pulls
-		// the signed release images. Passed as a flag (not an env var) so it never
-		// leaks into the containerized compose interpolation and overrides .env.
-		owlatVersion: extractValue(rest, '--owlat-version'),
-		owlatDir: extractValue(rest, '--owlat-dir') ?? process.env['OWLAT_DIR'] ?? defaultOwlatDir(),
-		configFile: extractValue(rest, '--config'),
-		args: rest,
-	};
+	const opts = cliOptionsFromArgv(rest);
 
 	try {
 		switch (command) {
 			case 'quickstart':
-				return await runQuickstart({ ...opts, positional });
+				return await runQuickstart(opts);
 			case 'setup':
 			case 'config':
-				return await runSetup({ ...opts, positional });
+				return await runSetup(opts);
 			case 'bootstrap-org':
-				return await runBootstrapOrg({ ...opts, positional });
+				return await runBootstrapOrg(opts);
 			case 'seed':
-				return await runSeed({ ...opts, positional });
+				return await runSeed(opts);
 			case 'sample-data':
-				return await runSampleData({ ...opts, positional });
+				return await runSampleData(opts);
 			case 'reset':
-				return await runReset({ ...opts, positional });
+				return await runReset(opts);
 			case 'feature':
-				return await runFeature({ ...opts, positional });
+				return await runFeature(opts);
 			case 'pack':
-				return await runPack({ ...opts, positional });
+				return await runPack(opts);
 			case 'env':
-				return await runEnv({ ...opts, positional });
+				return await runEnv(opts);
 			case 'push-env':
 				return await runPushEnv(opts);
+			case 'unset-env':
+				return await runUnsetEnv(opts);
 			case 'doctor':
-				return await runDoctor({ ...opts, positional });
+				return await runDoctor(opts);
 			default:
 				console.error(`Unknown command: ${command}`);
 				help();
@@ -152,28 +138,6 @@ async function main(): Promise<number> {
 		if (process.env['OWLAT_DEBUG']) console.error((e as Error).stack);
 		return 1;
 	}
-}
-
-function extractValue(args: string[], flag: string): string | undefined {
-	const idx = args.indexOf(flag);
-	if (idx === -1) return undefined;
-	return args[idx + 1];
-}
-
-/**
- * Default owlat directory: walk up from the current working directory looking
- * for a `turbo.json` (monorepo root). Falls back to `/opt/owlat` for the
- * legacy VPS install layout.
- */
-function defaultOwlatDir(): string {
-	let dir = process.cwd();
-	for (let i = 0; i < 12; i++) {
-		if (existsSync(join(dir, 'turbo.json'))) return dir;
-		const parent = dirname(dir);
-		if (parent === dir) break;
-		dir = parent;
-	}
-	return '/opt/owlat';
 }
 
 main().then((code) => process.exit(code));

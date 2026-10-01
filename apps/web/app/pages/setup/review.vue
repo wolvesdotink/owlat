@@ -164,16 +164,22 @@ async function apply() {
 	phase.value = 'applying';
 	error.value = '';
 	try {
-		const res = await apiFetch<{ ok: boolean; message?: string; redirectTo?: string }>(
-			'/api/setup/apply',
-			{
-				method: 'POST',
-				headers: { 'X-Setup-Token': trimmedToken.value },
-				body: buildApplyBody(flags.value, env.value, admin.value, isMigrationMode.value),
-			}
-		);
+		const res = await apiFetch<{
+			ok: boolean;
+			message?: string;
+			redirectTo?: string;
+			writeFailure?: { file: string; cause: string };
+		}>('/api/setup/apply', {
+			method: 'POST',
+			headers: { 'X-Setup-Token': trimmedToken.value },
+			body: buildApplyBody(flags.value, env.value, admin.value, isMigrationMode.value),
+		});
 		if (!res.ok) {
-			error.value = res.message ?? t('setup.review.errorUnknown');
+			// A file write that failed after the admin was created gets its own
+			// message: which file, why, and that launching again is safe.
+			error.value = res.writeFailure
+				? t('setup.review.errorWriteFailed', res.writeFailure)
+				: (res.message ?? t('setup.review.errorUnknown'));
 			phase.value = 'idle';
 			return;
 		}

@@ -7,6 +7,7 @@
 
 import { v } from 'convex/values';
 import { paginationOptsValidator } from 'convex/server';
+import { SUNSET_MIN_WINDOW_DAYS } from '@owlat/shared/sunsetPolicy';
 import type { Id } from '../_generated/dataModel';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
@@ -14,11 +15,7 @@ import { recordAuditLog } from '../lib/auditLog';
 import { throwInvalidInput } from '../_utils/errors';
 import { globalSunsetPolicyRow, loadSunsetPolicyRows, toSunsetOverride } from './sunsetEngine';
 import { restoreSunsetSuppression, setSunsetExemption } from './sunsetRestore';
-import {
-	SUNSET_MIN_WINDOW_DAYS,
-	SUNSET_POLICY_DEFAULTS,
-	resolveSunsetPolicy,
-} from './sunsetPolicy';
+import { SUNSET_POLICY_DEFAULTS, resolveSunsetPolicy } from './sunsetPolicy';
 
 const policyShape = v.object({
 	isEnabled: v.boolean(),

@@ -142,6 +142,59 @@ describe('publishableEmailSave', () => {
 		expect(de[0].content.columns[1][0].content.html).toBe('Rechts');
 	});
 
+	it('overlays text inside a hero, including a container nested in it', async () => {
+		const blocks = [
+			{
+				id: 'hero',
+				type: 'hero',
+				content: {
+					backgroundImage: 'https://example.com/bg.png',
+					items: [
+						text('h1', 'Welcome'),
+						{
+							id: 'btn',
+							type: 'button',
+							content: { text: 'Shop now', url: 'https://example.com' },
+						},
+						{
+							id: 'img',
+							type: 'image',
+							content: { src: 'https://example.com/a.png', alt: 'Logo' },
+						},
+						{ id: 'box', type: 'container', content: { items: [text('h2', 'Inner')] } },
+					],
+				},
+			},
+		] as unknown as EditorBlock[];
+		renderBlocksToHtml.mockImplementation((rendered: EditorBlock[]) => JSON.stringify(rendered));
+		const translations = JSON.stringify({
+			de: {
+				subject: 'Hallo',
+				blocks: {
+					h1: { html: 'Willkommen' },
+					btn: { buttonText: 'Jetzt kaufen' },
+					img: { alt: 'Firmenlogo' },
+					h2: { html: 'Innen' },
+				},
+			},
+		});
+
+		const payload = await saveAndCapture(
+			draft({ blocks }),
+			base({ supportedLanguages: ['en', 'de'], translations })
+		);
+
+		const [hero] = JSON.parse(JSON.parse(payload.htmlTranslations).de.htmlContent);
+		expect(hero.content.backgroundImage).toBe('https://example.com/bg.png');
+		const [h1, btn, img, box] = hero.content.items;
+		expect(h1.content.html).toBe('Willkommen');
+		expect(btn.content).toEqual({ text: 'Jetzt kaufen', url: 'https://example.com' });
+		expect(img.content).toEqual({ src: 'https://example.com/a.png', alt: 'Firmenlogo' });
+		expect(box.content.items[0].content.html).toBe('Innen');
+		// The default-language document keeps its own text.
+		expect(JSON.parse(payload.htmlContent)[0].content.items[0].content.html).toBe('Welcome');
+	});
+
 	it('writes exactly once, so a failed commit leaves nothing half-written', async () => {
 		// The old save wrote twice (new blocks + stale translations, then fixed
 		// translations); a failure of the second write left them mismatched.

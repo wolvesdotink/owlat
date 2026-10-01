@@ -40,7 +40,7 @@ const API_KEY = 'test-master-key';
 const config = { apiKey: API_KEY } as MtaConfig;
 const redis = {} as Redis;
 
-function request(method: string, path: string): Promise<Response> {
+async function request(method: string, path: string): Promise<Response> {
 	return createDlqRoutes(redis, config).request(path, {
 		method,
 		headers: { Authorization: `Bearer ${API_KEY}` },

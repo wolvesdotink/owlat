@@ -13,6 +13,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { FetchQueryObject } from 'imapflow';
 import type { ConnectableAccount, ConvexClient } from '../convex.js';
 import type { MailSyncConfig } from '../config.js';
 import type { BackfillFolderDeps } from '../backfill.js';
@@ -71,7 +72,7 @@ function fakeClient(messages: FakeMessage[]) {
 	return {
 		calls,
 		getMailboxLock: async () => ({ release: () => {} }),
-		async *fetch(range: string, query: Record<string, unknown>) {
+		async *fetch(range: string, query: FetchQueryObject) {
 			calls.push({
 				range,
 				wantsEnvelope: query.envelope === true,

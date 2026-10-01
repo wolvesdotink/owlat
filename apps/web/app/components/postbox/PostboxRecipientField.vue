@@ -11,6 +11,8 @@ import {
 	type RecipientSealView,
 } from '~/utils/sealRecipients';
 import { SEAL_TONE_CLASSES } from '~/utils/sealTone';
+import { useLocalized } from '~/composables/useLocalized';
+import { isImeComposing } from '~/utils/imeComposition';
 
 interface ContactSuggestion {
 	email: string;
@@ -64,6 +66,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const localized = useLocalized();
 
 const ownDomainLabel = computed(() => props.ownDomains[0] ?? '');
 function isExternal(addr: string): boolean {
@@ -96,9 +99,7 @@ const sealGlyphs = computed<Map<string, RecipientSealGlyph>>(() => {
 
 /** Resolve a glyph's `{ key, params }` title through the active locale. */
 function sealGlyphTitle(glyph: RecipientSealGlyph): string {
-	return typeof glyph.title === 'string'
-		? t(glyph.title)
-		: t(glyph.title.key, glyph.title.params ?? {});
+	return localized(glyph.title);
 }
 
 // ─── Did you mean … ? (plan idea 4) ──────────────────────────────────────────
@@ -221,6 +222,10 @@ function editLastChip() {
 }
 
 function onKeydown(event: KeyboardEvent) {
+	// While an IME composes (a CJK name, say) its keys are its own: Enter
+	// confirms a candidate rather than committing a half-typed chip, and the
+	// input's model has not caught up yet, so Backspace must not pop one (#1052).
+	if (isImeComposing(event)) return;
 	if (event.key === 'Enter' || event.key === ',' || event.key === ';') {
 		event.preventDefault();
 		if (showSuggestions.value && suggestions.value.length > 0) {

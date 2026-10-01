@@ -13,12 +13,15 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { getFunctionName, type AnyFunctionReference } from 'convex/server';
+import { getFunctionName } from 'convex/server';
 import { fetchModule, type FetchArgs } from '../index.js';
 import { idleModule } from '../../idle/index.js';
 import { loadChangedEnvelopes } from '../../helpers/folderPaging.js';
 import type { FetchEnvelope } from '../format.js';
 import type { CommandDeps, ConnectionState, ImapVerb, StartArgs } from '../../types.js';
+
+// convex/server declares AnyFunctionReference without exporting it.
+type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
 
 vi.mock('../../../logger.js', () => ({
 	logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -64,8 +67,9 @@ function makePagingConvex(uids: readonly number[], calls: QueryCall[]) {
 		query: vi.fn(async (fnRef: AnyFunctionReference, params: Record<string, unknown>) => {
 			const ref = getFunctionName(fnRef);
 			calls.push({ ref, params });
+			if (ref.endsWith(':folderMembershipPage')) return null;
 			if (ref.endsWith(':listFolderUidsPage')) {
-				const after = (params.afterUid as number | undefined) ?? 0;
+				const after = (params['afterUid'] as number | undefined) ?? 0;
 				const page = uids.filter((u) => u >= after).slice(0, PAGE);
 				return {
 					uids: page,
@@ -73,8 +77,8 @@ function makePagingConvex(uids: readonly number[], calls: QueryCall[]) {
 				};
 			}
 			if (ref.endsWith(':fetchEnvelopes')) {
-				const low = params.uidLow as number;
-				const high = params.uidHigh as number;
+				const low = params['uidLow'] as number;
+				const high = params['uidHigh'] as number;
 				const page = rows.filter((r) => r.uid >= low && r.uid <= high).slice(0, PAGE);
 				return {
 					rows: page,
@@ -135,13 +139,13 @@ describe('FETCH over a folder deeper than one page', () => {
 		// The UID list took three pages, each resuming past the previous one —
 		// no single read asked for the folder.
 		const uidPages = calls.filter((c) => c.ref.endsWith(':listFolderUidsPage'));
-		expect(uidPages.map((c) => c.params.afterUid)).toEqual([undefined, 7, 13]);
+		expect(uidPages.map((c) => c.params['afterUid'])).toEqual([undefined, 7, 13]);
 		// Envelope reads stay inside the requested 2..14 window.
 		const envelopePages = calls.filter((c) => c.ref.endsWith(':fetchEnvelopes'));
 		expect(envelopePages.length).toBeGreaterThan(1);
 		for (const call of envelopePages) {
-			expect(call.params.uidHigh).toBe(14);
-			expect(call.params.uidLow as number).toBeGreaterThanOrEqual(2);
+			expect(call.params['uidHigh']).toBe(14);
+			expect(call.params['uidLow'] as number).toBeGreaterThanOrEqual(2);
 		}
 	});
 
@@ -176,8 +180,9 @@ describe('a walk that never terminates fails the command', () => {
 		const convex = {
 			query: vi.fn(async (fnRef: AnyFunctionReference, params: Record<string, unknown>) => {
 				const ref = getFunctionName(fnRef);
+				if (ref.endsWith(':folderMembershipPage')) return null;
 				if (ref.endsWith(':listFolderUidsPage')) {
-					const after = (params.afterUid as number | undefined) ?? 1;
+					const after = (params['afterUid'] as number | undefined) ?? 1;
 					return { uids: [after, after + 1, after + 2], nextUid: after + 3 };
 				}
 				return null;
@@ -204,6 +209,7 @@ describe('a walk that never terminates fails the command', () => {
 		const convex = {
 			query: vi.fn(async (fnRef: AnyFunctionReference) => {
 				const ref = getFunctionName(fnRef);
+				if (ref.endsWith(':folderMembershipPage')) return null;
 				if (ref.endsWith(':listFolderUidsPage')) return { uids: [1, 2, 3], nextUid: 1 };
 				return null;
 			}),
@@ -223,8 +229,9 @@ describe('a walk that never terminates fails the command', () => {
 		await session.completion;
 
 		expect(lines).toEqual(['a005 NO [UNAVAILABLE] FETCH failed']);
-		// Two reads: the first page, then the one whose resume point repeated it.
-		expect(convex.query).toHaveBeenCalledTimes(2);
+		// The membership read (not maintained), then two listing reads: the first
+		// page, then the one whose resume point repeated it.
+		expect(convex.query).toHaveBeenCalledTimes(3);
 	});
 });
 
@@ -244,12 +251,27 @@ describe('CHANGEDSINCE reads go through the modseq index', () => {
 			}),
 		};
 
-		const rows = await loadChangedEnvelopes(convex as never, 'f1', 7, 2);
+		const rows = await loadChangedEnvelopes(convex as never, 'f1', 7, undefined, 2);
 
 		expect(rows.map((r) => r.uid)).toEqual([1, 2, 3]);
 		expect(seen).toHaveLength(2);
 		expect(seen[0]).toMatchObject({ modseqSince: 7 });
-		expect(seen[1]!.paginationOpts).toMatchObject({ cursor: 'c1' });
+		expect(seen[1]!['paginationOpts']).toMatchObject({ cursor: 'c1' });
+	});
+
+	it('loadChangedEnvelopes reads no further page once its signal aborts', async () => {
+		const controller = new AbortController();
+		const convex = {
+			query: vi.fn(async () => {
+				controller.abort(new Error('session ended'));
+				return { page: [envelope(1)], isDone: false, continueCursor: 'c1' };
+			}),
+		};
+
+		await expect(loadChangedEnvelopes(convex as never, 'f1', 7, controller.signal)).rejects.toThrow(
+			'session ended'
+		);
+		expect(convex.query).toHaveBeenCalledTimes(1);
 	});
 
 	it('hands the changed rows back in UID order, not the index\u2019s write order', async () => {
@@ -278,6 +300,7 @@ describe('CHANGEDSINCE reads go through the modseq index', () => {
 					if (ref.endsWith(':peekFolderModseq')) {
 						return { highestModseq: 9, uidNext: 4, totalCount: 3, unseenCount: 1 };
 					}
+					if (ref.endsWith(':folderMembershipPage')) return null;
 					if (ref.endsWith(':listFolderUidsPage')) return { uids: [1, 2, 3], nextUid: null };
 					if (ref.endsWith(':fetchChangedEnvelopes')) {
 						return { page: [envelope(1)], isDone: true, continueCursor: null };
