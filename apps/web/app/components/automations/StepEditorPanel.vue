@@ -16,6 +16,8 @@ const emit = defineEmits<{
 	close: [];
 	save: [];
 	retry: [];
+	'use-theirs': [];
+	'keep-mine': [];
 	delete: [stepId: Id<'automationSteps'>];
 	'update:currentConfig': [value: StepCurrentConfig];
 }>();
@@ -52,6 +54,28 @@ const updateConfig = (config: StepConfigByKind[StepKind]) => {
 					>
 						<Icon name="lucide:x" class="w-5 h-5" />
 					</button>
+				</div>
+
+				<!-- The server copy changed under unsaved edits: never overwrite either
+				     silently, and hold autosave until the member picks one. -->
+				<div
+					v-if="saveStatus === 'conflict'"
+					role="alert"
+					class="mb-6 p-3 rounded-lg bg-warning/10 border border-warning/20"
+					data-testid="step-conflict"
+				>
+					<p class="flex items-start gap-2 text-sm text-text-primary">
+						<Icon name="lucide:alert-triangle" class="w-4 h-4 text-warning shrink-0 mt-0.5" />
+						{{ t('components.automations.stepEditorPanel.conflict.body') }}
+					</p>
+					<div class="flex gap-2 mt-3 pl-6">
+						<UiButton size="sm" variant="secondary" @click="emit('use-theirs')">
+							{{ t('components.automations.stepEditorPanel.conflict.useTheirs') }}
+						</UiButton>
+						<UiButton size="sm" variant="secondary" @click="emit('keep-mine')">
+							{{ t('components.automations.stepEditorPanel.conflict.keepMine') }}
+						</UiButton>
+					</div>
 				</div>
 
 				<!-- Per-kind editor (delegated to the step editor module) -->

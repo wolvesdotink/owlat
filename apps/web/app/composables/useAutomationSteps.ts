@@ -241,6 +241,7 @@ export function useAutomationSteps(
 
 		currentConfig: stepConfig.currentConfig,
 		isCurrentConfigDirty: stepConfig.isCurrentConfigDirty,
+		hasRemoteStepChange: stepConfig.hasRemoteChange,
 
 		handleAddStep,
 		handleDeleteStep,
@@ -248,6 +249,8 @@ export function useAutomationSteps(
 		requestStepSave: stepConfig.requestSave,
 		flushStepSave: stepConfig.flush,
 		discardStepChanges: stepConfig.discardChanges,
+		takeRemoteStepConfig: stepConfig.takeRemoteConfig,
+		keepLocalStepConfig: stepConfig.keepLocalConfig,
 		closeDropdowns,
 
 		parseStepConfig: stepConfig.parseStepConfig,

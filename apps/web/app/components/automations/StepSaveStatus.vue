@@ -43,6 +43,10 @@ const { t } = useI18n();
 				{{ t('components.automations.stepSaveStatus.retry') }}
 			</button>
 		</template>
+		<template v-else-if="status === 'conflict'">
+			<Icon name="lucide:alert-triangle" class="w-4 h-4 shrink-0 text-warning" />
+			<span>{{ t('components.automations.stepSaveStatus.conflict') }}</span>
+		</template>
 		<template v-else>
 			<Icon name="lucide:check" class="w-4 h-4" />
 			<span>{{ t('components.automations.stepSaveStatus.saved') }}</span>

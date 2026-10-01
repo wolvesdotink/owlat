@@ -75,6 +75,7 @@ const {
 	canActivate,
 	currentConfig,
 	isCurrentConfigDirty,
+	hasRemoteStepChange,
 
 	// Methods
 	handleAddStep,
@@ -82,6 +83,9 @@ const {
 	handleDragEnd,
 	requestStepSave,
 	flushStepSave,
+	discardStepChanges,
+	takeRemoteStepConfig,
+	keepLocalStepConfig,
 	closeDropdowns,
 
 	// Description helper
@@ -101,10 +105,15 @@ watch(
 	{ immediate: true }
 );
 // A failed save leaves the server order unchanged, so no new snapshot arrives
-// to replace the dropped order: put the saved order back ourselves.
-async function onStepDragEnd(event: { oldIndex?: number | null; newIndex?: number | null }) {
-	const saved = await handleDragEnd(event);
-	if (!saved) orderedSteps.value = [...mutableSteps.value];
+// to replace the dropped order: put the saved order back ourselves. The open
+// step's save lands first, like every other change to the workflow's shape.
+const restoreStepOrder = () => {
+	orderedSteps.value = [...mutableSteps.value];
+};
+function onStepDragEnd(event: { oldIndex?: number | null; newIndex?: number | null }) {
+	return afterStepSaved(async () => {
+		if (!(await handleDragEnd(event))) restoreStepOrder();
+	}, restoreStepOrder);
 }
 
 // Provide reference data to descendant Condition editor modules
@@ -220,42 +229,65 @@ const {
 	onSave: async () => {
 		// A failed step-config save keeps the panel dirty; throw so the guard
 		// stays put instead of clearing the flag and navigating away — mirrors
-		// the sibling saveStepSwitch and the campaign/settings surfaces.
+		// the step-exit guard and the campaign/settings surfaces.
 		if (!(await flushStepSave())) throw new Error('Save failed');
 	},
 });
 watch(isCurrentConfigDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 
-// Guarded step selection: switching steps re-derives currentConfig from the
-// persisted step, which would silently drop unsaved panel edits. Prompt first.
-const pendingStepId = ref<Id<'automationSteps'> | null>(null);
-const showStepSwitchDialog = ref(false);
-const requestSelectStep = (stepId: Id<'automationSteps'>) => {
-	if (stepId === selectedStepId.value) return;
-	if (isCurrentConfigDirty.value) {
-		pendingStepId.value = stepId;
-		showStepSwitchDialog.value = true;
+// Leaving the open step (Close, Add step, another step, a reorder) waits for
+// its save and then goes ahead. Only when the save fails, or the step changed
+// elsewhere under unsaved edits, does the member get asked: Retry, Discard or
+// Stay. Stay keeps the selection and every value as they were.
+type StepExit = { proceed: () => unknown; stay?: () => void };
+const pendingStepExit = ref<StepExit | null>(null);
+const isRetryingStepExit = ref(false);
+async function afterStepSaved(proceed: () => unknown, stay?: () => void) {
+	if (await flushStepSave()) {
+		await proceed();
 		return;
 	}
-	selectedStepId.value = stepId;
+	pendingStepExit.value = { proceed, stay };
+}
+const continueStepExit = async () => {
+	const exit = pendingStepExit.value;
+	pendingStepExit.value = null;
+	await exit?.proceed();
 };
-const applyPendingStep = () => {
-	selectedStepId.value = pendingStepId.value;
-	pendingStepId.value = null;
-	showStepSwitchDialog.value = false;
+const retryStepExit = async () => {
+	isRetryingStepExit.value = true;
+	let saved: boolean;
+	try {
+		saved = hasRemoteStepChange.value ? await keepLocalStepConfig() : await flushStepSave();
+	} finally {
+		isRetryingStepExit.value = false;
+	}
+	if (saved) await continueStepExit();
 };
-const discardStepSwitch = () => {
-	applyPendingStep();
+const discardStepExit = async () => {
+	if (hasRemoteStepChange.value) takeRemoteStepConfig();
+	else discardStepChanges();
+	await continueStepExit();
 };
-const saveStepSwitch = async () => {
-	// A failed save keeps the panel dirty — stay on the current step so edits
-	// aren't lost, leaving the dialog up.
-	if (!(await flushStepSave())) return;
-	applyPendingStep();
+const stayOnStep = () => {
+	const exit = pendingStepExit.value;
+	pendingStepExit.value = null;
+	exit?.stay?.();
 };
-const cancelStepSwitch = () => {
-	pendingStepId.value = null;
-	showStepSwitchDialog.value = false;
+
+const requestSelectStep = (stepId: Id<'automationSteps'>) => {
+	if (stepId === selectedStepId.value) return;
+	return afterStepSaved(() => {
+		selectedStepId.value = stepId;
+	});
+};
+const closeInspector = () =>
+	afterStepSaved(() => {
+		selectedStepId.value = null;
+	});
+const requestAddStep = (stepType: StepKind, insertAtIndex?: number) => {
+	closeDropdowns();
+	return afterStepSaved(() => handleAddStep(stepType, insertAtIndex));
 };
 
 // Handle save draft: the automation's name and description. Step edits save
@@ -625,7 +657,7 @@ onUnmounted(() => {
 											v-for="type in stepTypes"
 											:key="type.id"
 											class="flex items-center gap-3 w-full p-2 rounded-lg text-left transition-colors hover:bg-bg-surface"
-											@click="handleAddStep(type.id, 0)"
+											@click="requestAddStep(type.id, 0)"
 										>
 											<div
 												:class="[
@@ -782,7 +814,7 @@ onUnmounted(() => {
 												v-for="type in stepTypes"
 												:key="type.id"
 												class="flex items-center gap-3 w-full p-2 rounded-lg text-left transition-colors hover:bg-bg-surface"
-												@click="handleAddStep(type.id, index + 1)"
+												@click="requestAddStep(type.id, index + 1)"
 											>
 												<div
 													:class="[
@@ -829,11 +861,11 @@ onUnmounted(() => {
 							{{ t('dashboard.automations.detail.edit.empty.body') }}
 						</p>
 						<div class="flex justify-center gap-3">
-							<UiButton class="gap-2" @click="handleAddStep('email')">
+							<UiButton class="gap-2" @click="requestAddStep('email')">
 								<Icon name="lucide:mail" class="w-4 h-4" />
 								{{ t('dashboard.automations.detail.edit.empty.addEmail') }}
 							</UiButton>
-							<UiButton variant="secondary" class="gap-2" @click="handleAddStep('delay')">
+							<UiButton variant="secondary" class="gap-2" @click="requestAddStep('delay')">
 								<Icon name="lucide:clock" class="w-4 h-4" />
 								{{ t('dashboard.automations.detail.edit.empty.addDelay') }}
 							</UiButton>
@@ -885,9 +917,11 @@ onUnmounted(() => {
 				:email-templates="emailTemplates"
 				:current-config="currentConfig"
 				:mutable-steps="mutableSteps"
-				@close="selectedStepId = null"
+				@close="closeInspector"
 				@save="requestStepSave"
 				@retry="requestStepSave"
+				@use-theirs="takeRemoteStepConfig"
+				@keep-mine="keepLocalStepConfig"
 				@delete="handleDeleteStep"
 				@update:current-config="currentConfig = $event"
 			/>
@@ -1021,12 +1055,14 @@ onUnmounted(() => {
 			@save="confirmLeaveSave"
 		/>
 
-		<!-- Unsaved Changes Dialog — switching steps with unsaved step edits -->
-		<UnsavedChangesDialog
-			:show="showStepSwitchDialog"
-			@close="cancelStepSwitch"
-			@discard="discardStepSwitch"
-			@save="saveStepSwitch"
+		<!-- Leaving a step whose save failed, or that changed elsewhere -->
+		<AutomationsStepSaveFailedDialog
+			:open="pendingStepExit !== null"
+			:conflict="hasRemoteStepChange"
+			:retrying="isRetryingStepExit"
+			@retry="retryStepExit"
+			@discard="discardStepExit"
+			@stay="stayOnStep"
 		/>
 	</div>
 </template>

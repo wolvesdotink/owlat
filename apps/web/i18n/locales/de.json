@@ -427,12 +427,24 @@
 		},
 		"automations": {
 			"stepEditorPanel": {
+				"conflict": {
+					"body": "Dieser Schritt wurde an anderer Stelle geändert.",
+					"keepMine": "Meine behalten",
+					"useTheirs": "Deren Version nehmen"
+				},
 				"delete": "Schritt löschen",
 				"emptyBody": "Wähle einen Schritt im Workflow aus, um seine Einstellungen zu ändern.",
 				"emptyTitle": "Kein Schritt ausgewählt",
 				"title": "Schritteinstellungen"
 			},
+			"stepSaveFailedDialog": {
+				"body": "Deine Änderungen sind noch da. Speichere erneut, verwirf sie oder bleib bei diesem Schritt.",
+				"discard": "Verwerfen",
+				"stay": "Bleiben",
+				"title": "Dieser Schritt konnte nicht gespeichert werden"
+			},
 			"stepSaveStatus": {
+				"conflict": "Anderswo geändert",
 				"error": "Konnte nicht gespeichert werden.",
 				"retry": "Erneut versuchen",
 				"saved": "Gespeichert",

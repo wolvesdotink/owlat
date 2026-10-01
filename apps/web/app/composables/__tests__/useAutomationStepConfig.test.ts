@@ -179,4 +179,110 @@ describe('useAutomationStepConfig autosave', () => {
 		expect(currentConfig.value?.config).toEqual({ duration: 1, unit: 'days' });
 		expect(saveStatus.value).toBe('saved');
 	});
+
+	const withServerConfig = (
+		automation: ReturnType<typeof setup>['automation'],
+		id: string,
+		config: { duration: number; unit: string }
+	) => {
+		automation.value = {
+			steps: automation.value.steps.map((step) => (step._id === id ? { ...step, config } : step)),
+		};
+	};
+
+	it('leaves a dirty draft alone when another step changes', async () => {
+		const { automation, edit, currentConfig, isCurrentConfigDirty } = setup();
+		edit(5);
+		withServerConfig(automation, 's2', { duration: 9, unit: 'days' });
+		await nextTick();
+
+		expect(currentConfig.value?.config).toEqual({ duration: 5, unit: 'days' });
+		expect(isCurrentConfigDirty.value).toBe(true);
+	});
+
+	it('leaves a dirty draft alone when the steps are reordered', async () => {
+		const { automation, edit, currentConfig } = setup();
+		edit(5);
+		automation.value = { steps: [...automation.value.steps].reverse() };
+		await nextTick();
+
+		expect(currentConfig.value?.config).toEqual({ duration: 5, unit: 'days' });
+	});
+
+	it('adopts a change made elsewhere while the draft is clean', async () => {
+		const { automation, currentConfig, saveStatus } = setup();
+		withServerConfig(automation, 's1', { duration: 4, unit: 'hours' });
+		await nextTick();
+
+		expect(currentConfig.value?.config).toEqual({ duration: 4, unit: 'hours' });
+		expect(saveStatus.value).toBe('saved');
+	});
+
+	it('holds a same-step change made elsewhere as a conflict while dirty', async () => {
+		const { automation, edit, currentConfig, saveStatus, hasRemoteChange, requestSave } = setup();
+		edit(5);
+		void requestSave();
+		await settle(0, failed);
+		withServerConfig(automation, 's1', { duration: 4, unit: 'hours' });
+		await nextTick();
+
+		expect(currentConfig.value?.config).toEqual({ duration: 5, unit: 'days' });
+		expect(hasRemoteChange.value).toBe(true);
+		expect(saveStatus.value).toBe('conflict');
+		// Autosave does not write over the other copy until the member chooses.
+		expect(await requestSave()).toBe(false);
+		expect(calls).toHaveLength(1);
+	});
+
+	it('Use theirs takes the copy saved elsewhere', async () => {
+		const { automation, edit, currentConfig, takeRemoteConfig, isCurrentConfigDirty } = setup();
+		edit(5);
+		withServerConfig(automation, 's1', { duration: 4, unit: 'hours' });
+		await nextTick();
+		takeRemoteConfig();
+
+		expect(currentConfig.value?.config).toEqual({ duration: 4, unit: 'hours' });
+		expect(isCurrentConfigDirty.value).toBe(false);
+	});
+
+	it('Keep mine saves the draft over the copy saved elsewhere', async () => {
+		const { automation, edit, keepLocalConfig, hasRemoteChange, saveStatus } = setup();
+		edit(5);
+		withServerConfig(automation, 's1', { duration: 4, unit: 'hours' });
+		await nextTick();
+		const kept = keepLocalConfig();
+
+		expect(hasRemoteChange.value).toBe(false);
+		expect(calls[0]!.args.config).toEqual({ duration: 5, unit: 'days' });
+		await settle(0, ok);
+		expect(await kept).toBe(true);
+		expect(saveStatus.value).toBe('saved');
+	});
+
+	it('re-seeds from the server when the selection changes', async () => {
+		const { selectedStepId, edit, currentConfig, isCurrentConfigDirty } = setup();
+		edit(5);
+		selectedStepId.value = 's2';
+		await nextTick();
+
+		expect(currentConfig.value?.config).toEqual({ duration: 2, unit: 'days' });
+		expect(isCurrentConfigDirty.value).toBe(false);
+	});
+
+	it('treats a server copy with the same values in another key order as unchanged', async () => {
+		const { automation, edit, requestSave, currentConfig, hasRemoteChange } = setup();
+		edit(5);
+		void requestSave();
+		edit(6);
+		automation.value = {
+			steps: [
+				{ _id: 's1', stepType: 'delay', config: { unit: 'days', duration: 5 } as never },
+				automation.value.steps[1]!,
+			],
+		};
+		await nextTick();
+
+		expect(hasRemoteChange.value).toBe(false);
+		expect(currentConfig.value?.config).toEqual({ duration: 6, unit: 'days' });
+	});
 });

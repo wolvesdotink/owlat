@@ -91,6 +91,7 @@ async function mountBuilder() {
 				UnsavedChangesDialog: true,
 				AutomationsStepEditorPanel: true,
 				AutomationsStepSaveStatus: true,
+				AutomationsStepSaveFailedDialog: true,
 				Teleport: true,
 			},
 		},

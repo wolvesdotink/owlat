@@ -15,9 +15,10 @@ export type StepCurrentConfig =
 
 /**
  * Where the open step's edits stand. `saved` means the inspector shows exactly
- * what the server holds.
+ * what the server holds; `conflict` means the server copy changed under an
+ * unsaved local edit and the member has to pick one.
  */
-export type StepSaveStatus = 'saved' | 'saving' | 'error';
+export type StepSaveStatus = 'saved' | 'saving' | 'error' | 'conflict';
 
 function parseStepConfigRaw(step: Doc<'automationSteps'>): unknown {
 	if (typeof step.config === 'object' && step.config !== null) return step.config;
@@ -86,9 +87,15 @@ export function useAutomationStepConfig(
 	// this is what "unsaved step edits" means.
 	const persistedConfigJson = ref<string | null>(null);
 
+	// The snapshot of the request in flight, so its own echo through the live
+	// query is recognised as ours rather than as a change made elsewhere.
+	let inFlightJson: string | null = null;
 	let inFlight: Promise<boolean> | null = null;
 	const isSaving = ref(false);
 	const saveFailed = ref(false);
+
+	// The server copy that arrived while the open draft held unsaved edits.
+	const remoteConfig = ref<NonNullable<StepCurrentConfig> | null>(null);
 
 	const currentJson = () => (currentConfig.value ? stableJson(currentConfig.value.config) : null);
 
@@ -100,6 +107,7 @@ export function useAutomationStepConfig(
 	const seed = (parsed: NonNullable<StepCurrentConfig> | null) => {
 		currentConfig.value = parsed;
 		persistedConfigJson.value = parsed ? stableJson(parsed.config) : null;
+		remoteConfig.value = null;
 		saveFailed.value = false;
 	};
 
@@ -109,29 +117,70 @@ export function useAutomationStepConfig(
 		return automation.value?.steps?.find((s) => s._id === id) ?? null;
 	});
 
+	// Re-seed only when the selection changes. Live updates to OTHER steps (a
+	// reorder, a colleague editing step 4) never touch the open draft.
 	watch(
-		[selectedStepId, () => automation.value?.steps],
-		([id], [previousId]) => {
-			// A live update for the open step must not replace edits that are
-			// still on their way to the server, or that failed to get there.
-			if (id === previousId && (isSaving.value || isCurrentConfigDirty.value)) return;
+		selectedStepId,
+		() => {
 			const step = selectedServerStep.value;
 			seed(step ? parseStep(step) : null);
 		},
 		{ immediate: true }
 	);
 
+	// The selected step's own server copy. Adopted while the draft is clean;
+	// held as a conflict while it is dirty, so a local edit is never
+	// overwritten silently.
+	const selectedServerJson = computed(() => {
+		const step = selectedServerStep.value;
+		return step ? stableJson(parseStep(step).config) : null;
+	});
+	watch(selectedServerJson, (serverJson) => {
+		const step = selectedServerStep.value;
+		if (!step || serverJson === null) {
+			// The selected step was deleted elsewhere.
+			if (selectedStepId.value) seed(null);
+			return;
+		}
+		if (currentConfig.value === null) {
+			// The step was selected before the automation loaded.
+			seed(parseStep(step));
+			return;
+		}
+		// The server holds what we last saved, or what we are saving now (our
+		// own request, reflected back before its promise settled). Any other
+		// copy seen in between has been overwritten by ours.
+		if (serverJson === persistedConfigJson.value || serverJson === inFlightJson) {
+			persistedConfigJson.value = serverJson;
+			remoteConfig.value = null;
+			return;
+		}
+		if (!isCurrentConfigDirty.value) {
+			seed(parseStep(step));
+			return;
+		}
+		if (serverJson === currentJson()) {
+			// Someone else saved exactly what is on screen.
+			persistedConfigJson.value = serverJson;
+			remoteConfig.value = null;
+			return;
+		}
+		remoteConfig.value = parseStep(step);
+	});
+
 	const runSaves = async (): Promise<boolean> => {
 		isSaving.value = true;
 		try {
-			while (isCurrentConfigDirty.value) {
+			while (isCurrentConfigDirty.value && remoteConfig.value === null) {
 				const stepId = selectedStepId.value;
 				const snapshot = currentJson();
 				if (!stepId || snapshot === null) return true;
+				inFlightJson = snapshot;
 				const result = await updateStepMutation({
 					stepId,
 					config: JSON.parse(snapshot) as never,
 				});
+				inFlightJson = null;
 				// The selection moved while the request ran: nothing of this
 				// request's result belongs to the step now on screen.
 				if (selectedStepId.value !== stepId) return result.ok;
@@ -142,8 +191,11 @@ export function useAutomationStepConfig(
 				saveFailed.value = false;
 				persistedConfigJson.value = snapshot;
 			}
-			return true;
+			// A conflict stops the queue: nothing is saved over the other copy
+			// until the member chooses.
+			return remoteConfig.value === null;
 		} finally {
+			inFlightJson = null;
 			isSaving.value = false;
 		}
 	};
@@ -156,7 +208,8 @@ export function useAutomationStepConfig(
 	 */
 	const requestSave = (): Promise<boolean> => {
 		if (inFlight) return inFlight;
-		if (!isCurrentConfigDirty.value) return Promise.resolve(true);
+		if (!isCurrentConfigDirty.value) return Promise.resolve(remoteConfig.value === null);
+		if (remoteConfig.value !== null) return Promise.resolve(false);
 		inFlight = runSaves().finally(() => {
 			inFlight = null;
 		});
@@ -165,8 +218,8 @@ export function useAutomationStepConfig(
 
 	/**
 	 * Wait for the open step to be fully saved before something that depends
-	 * on it (activation, resuming). Resolves `false` when it could not be
-	 * saved; the edits stay on screen.
+	 * on it (closing the inspector, activation). Resolves `false` when it
+	 * could not be saved; the edits stay on screen.
 	 */
 	const flush = async (): Promise<boolean> => {
 		// A request already running is the attempt; its failure is the answer.
@@ -180,7 +233,22 @@ export function useAutomationStepConfig(
 		seed(step ? parseStep(step) : null);
 	};
 
+	/** Conflict: take the copy that was saved elsewhere. */
+	const takeRemoteConfig = () => {
+		if (remoteConfig.value) seed(remoteConfig.value);
+	};
+
+	/** Conflict: keep the local draft and save it over the other copy. */
+	const keepLocalConfig = (): Promise<boolean> => {
+		const remote = remoteConfig.value;
+		if (!remote) return requestSave();
+		persistedConfigJson.value = stableJson(remote.config);
+		remoteConfig.value = null;
+		return requestSave();
+	};
+
 	const saveStatus = computed<StepSaveStatus>(() => {
+		if (remoteConfig.value) return 'conflict';
 		if (isSaving.value) return 'saving';
 		if (saveFailed.value && isCurrentConfigDirty.value) return 'error';
 		return 'saved';
@@ -191,9 +259,12 @@ export function useAutomationStepConfig(
 		saveStatus,
 		currentConfig,
 		isCurrentConfigDirty,
+		hasRemoteChange: computed(() => remoteConfig.value !== null),
 		parseStepConfig: parseStepConfigRaw,
 		requestSave,
 		flush,
 		discardChanges,
+		takeRemoteConfig,
+		keepLocalConfig,
 	};
 }

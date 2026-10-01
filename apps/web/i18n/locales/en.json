@@ -427,12 +427,24 @@
 		},
 		"automations": {
 			"stepEditorPanel": {
+				"conflict": {
+					"body": "This step was changed elsewhere.",
+					"keepMine": "Keep mine",
+					"useTheirs": "Use theirs"
+				},
 				"delete": "Delete step",
 				"emptyBody": "Pick a step in the workflow to change its settings.",
 				"emptyTitle": "No step selected",
 				"title": "Step settings"
 			},
+			"stepSaveFailedDialog": {
+				"body": "Your changes are still here. Retry the save, discard them, or stay on this step.",
+				"discard": "Discard",
+				"stay": "Stay",
+				"title": "This step couldn't be saved"
+			},
 			"stepSaveStatus": {
+				"conflict": "Changed elsewhere",
 				"error": "Couldn't save.",
 				"retry": "Retry",
 				"saved": "Saved",
