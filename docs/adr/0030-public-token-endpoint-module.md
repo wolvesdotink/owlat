@@ -1,6 +1,11 @@
 # Public token endpoint module — one shell for every public, token-keyed httpAction
 
-**Status:** proposed
+**Status:** accepted (`apps/api/convex/lib/publicTokenEndpoint.ts` has
+been in the tree since the initial commit, 2026-06-30); **amended
+2026-10-01**. The shell emits ADR-0036's
+`{ error: { category, message, data? } }` envelope, not the
+`{ error: { message, code } }` envelope locked below. See
+[the implementation-check amendment](#amendment-implementation-check-2026-10-01) at the end of this document.
 
 **Path note:** `publicRateLimit.ts` has since moved to `convex/lib/`, so the
 mutation is now `internal.lib.publicRateLimit.checkPublicRateLimit` and the
@@ -591,3 +596,33 @@ endpoint appears), the webhook ingestion shell (if HMAC-signed
 inbound webhooks consolidate to a third factory), and lifting
 multipart body parsing into the shell (if a second multipart caller
 appears). None of those is pre-committed by this ADR.
+
+---
+
+## Amendment: implementation check (2026-10-01)
+
+Issue #1066 compared this ADR with the code on main.
+`lib/publicTokenEndpoint.ts` and `lib/httpResponse.ts` exist, and every
+endpoint in the "Replaces" table is a `publicTokenEndpoint` declaration.
+The tracking pixel and click redirect stay open-coded, as decided. These
+details differ from the Decision above:
+
+- The error envelope is ADR-0036's `{ error: { category, message, data? } }`,
+  not `{ error: { message, code } }`. In action mode the handler's `reason`
+  goes into `data.reason`, and the shell turns the handler's `status` into
+  an Operation error category, which sets the HTTP status.
+  `errorResponse` takes `(category, message, data?, corsHeaders?)`.
+- The factory has no type parameters. `HandlerArgs.body` and the result
+  `data` are `unknown`, because threading the generics through caused a
+  circular type reference in the generated Convex API.
+- Action-mode results can also be `{ ok: true, raw: Response }`, which the
+  form submit uses for its `302` redirect, and can carry `headers`
+  (`Cache-Control` on share-link and archive reads) and a `message`.
+- `EndpointConfig` has a `rateLimitKeyMode: 'ip' | 'ip+token'` option.
+  Every current declaration uses `'ip+token'`, so each link or form gets
+  its own bucket when all callers share the `'unknown'` IP.
+- The form submit uses `path: '/forms/:token'` and `body: 'formData'`. The
+  shell's form-data parser handles JSON, urlencoded and multipart bodies,
+  so there is no local `parseFormData` left.
+- There are ten declarations. The tenth is
+  `delivery/unsubscribeHttp.ts:handleSeedProbeUnsubscribe`.
