@@ -6,6 +6,7 @@ import { serverFailure } from '../helpers/replies.js';
 import { resolveSelectedSet } from '../helpers/seqMap.js';
 import { expungeFromView, syncSequenceView } from '../helpers/sequenceView.js';
 import { loadCurrentUids } from '../helpers/membership.js';
+import { holdSequence } from '../helpers/sequenceGate.js';
 
 interface ExpungeArgs {
 	/** The UID set of a UID EXPUNGE; absent for a whole-folder sweep. */
@@ -50,18 +51,23 @@ export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 		}
 
 		return asyncSession(async () => {
+			const lease = holdSequence(deps, 'sync');
 			try {
+				await lease.ready;
 				let uidSet: number[] | undefined;
 				if (uidSpec) {
-					const { resolved } = await resolveSelectedSet(deps, state, uidSpec, true, send);
+					const { resolved } = await resolveSelectedSet(deps, state, uidSpec, true, send, lease);
 					if (resolved.length === 0) {
 						send(`${tag} OK ${label} completed`);
 						return;
 					}
 					uidSet = resolved.map((r) => r.uid);
 				} else if (state.selected!.view) {
-					await syncSequenceView(deps, state, send);
+					await syncSequenceView(deps, state, send, lease);
 				}
+				// Every EXPUNGE below renumbers the view: commands sent before this
+				// one finish with the numbering they started with.
+				await lease.exclusive();
 				const view = state.selected!.view;
 				let viewNeedsReload = false;
 
@@ -105,6 +111,8 @@ export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 			} catch (err) {
 				logger.error({ err }, 'EXPUNGE failed');
 				send(serverFailure(tag, label));
+			} finally {
+				lease.release();
 			}
 		});
 	},

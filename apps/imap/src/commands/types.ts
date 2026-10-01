@@ -13,6 +13,7 @@
 import type { ImapConfig } from '../config.js';
 import type { ConvexClient } from '../convex.js';
 import type { AuthRateLimiter } from '../rateLimit.js';
+import type { SequenceGate } from './helpers/sequenceGate.js';
 
 /** Per-connection auth — populated by LOGIN, cleared on LOGOUT. */
 export interface AuthState {
@@ -120,6 +121,13 @@ export interface CommandDeps {
 	 * memory. Absent in unit-test deps, where output is unbounded by design.
 	 */
 	readonly waitForDrain?: () => Promise<void> | undefined;
+	/**
+	 * Orders the commands that use or change the client's sequence view, so no
+	 * EXPUNGE is announced while a sequence-number command is in progress
+	 * (`helpers/sequenceGate.ts`). One per connection. Absent in unit-test deps,
+	 * where every lease is granted at once.
+	 */
+	readonly sequenceGate?: SequenceGate;
 }
 
 /**

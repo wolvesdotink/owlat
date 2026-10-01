@@ -4,6 +4,7 @@ import type { CommandSession, ImapCommandModule, SelectedState } from '../types.
 import { buildSeqMap, seqForUid } from '../helpers/seqMap.js';
 import { loadChangedEnvelopes } from '../helpers/folderPaging.js';
 import { loadCurrentUids } from '../helpers/membership.js';
+import { holdSequence } from '../helpers/sequenceGate.js';
 import { formatFlags, type FetchEnvelope } from '../fetch/format.js';
 
 const POLL_INTERVAL_MS = 5_000;
@@ -163,7 +164,11 @@ export const idleModule: ImapCommandModule<void> = {
 				})();
 
 		const pollTimer = setInterval(async () => {
+			// Each poll is a `sync` turn on the sequence gate: its EXPUNGEs wait
+			// for a sequence-number command pipelined before the IDLE.
+			const lease = holdSequence(deps, 'sync');
 			try {
+				await lease.ready;
 				await seedUids;
 				const peek = await deps.convex.query(fn.peekFolderModseq, {
 					folderId: currentSelected.folderId,
@@ -199,6 +204,12 @@ export const idleModule: ImapCommandModule<void> = {
 					changedRows,
 				});
 
+				if (delta.expunged.length > 0 || delta.exists !== undefined) {
+					await lease.exclusive();
+				}
+				// IDLE ended while this poll was reading: its news is no longer
+				// for this command (RFC 3501 §7.4.1). The next one announces it.
+				if (resolved) return;
 				for (const seq of delta.expunged) send(`* ${seq} EXPUNGE`);
 				if (delta.exists !== undefined) send(`* ${delta.exists} EXISTS`);
 				for (const line of delta.fetches) send(line);
@@ -215,6 +226,8 @@ export const idleModule: ImapCommandModule<void> = {
 				if (view) view.uids = nextUids;
 			} catch (err) {
 				logger.warn({ err }, 'IDLE poll failed');
+			} finally {
+				lease.release();
 			}
 		}, POLL_INTERVAL_MS);
 

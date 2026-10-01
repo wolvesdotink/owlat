@@ -12,10 +12,16 @@
  *   - SELECT starts the view; NOOP, CHECK, IDLE, EXPUNGE and every UID command
  *     first announce what changed (`* n EXPUNGE` for each message gone, highest
  *     first, then `* n EXISTS` if any arrived) and adopt the folder as it is.
+ *
+ * Pipelined commands run side by side, so "in progress" is enforced by the
+ * connection's sequence gate (`./sequenceGate.ts`): an announcement waits until
+ * every sequence-number command sent before it has completed, and one sent
+ * after it waits for the announcement.
  */
 
 import type { CommandDeps, ConnectionState, SequenceView } from '../types.js';
 import { loadCurrentUids } from './membership.js';
+import type { SequenceLease } from './sequenceGate.js';
 
 /**
  * What changed between two ascending UID lists: the positions in `prev` of the
@@ -47,11 +53,15 @@ export function membershipDelta(
  * Announce to the client every change since its view, adopt the folder's
  * current UIDs as the view, and return them. Without a view (a state built by
  * hand) it only returns the current UIDs.
+ *
+ * `lease` is the caller's granted `sync` lease. When there is something to
+ * announce, this waits on it until no sequence-number command is in progress.
  */
 export async function syncSequenceView(
 	deps: CommandDeps,
 	state: ConnectionState,
 	send: (line: string) => void,
+	lease: SequenceLease,
 	signal?: AbortSignal
 ): Promise<readonly number[]> {
 	const selected = state.selected!;
@@ -59,6 +69,10 @@ export async function syncSequenceView(
 	const view = selected.view;
 	if (!view || view.uids === current) return current;
 	const { expunged, hasArrivals } = membershipDelta(view.uids, current);
+	if (expunged.length > 0 || hasArrivals) {
+		await lease.exclusive();
+		signal?.throwIfAborted();
+	}
 	for (const seq of expunged) send(`* ${seq} EXPUNGE`);
 	if (hasArrivals) send(`* ${current.length} EXISTS`);
 	view.uids = current;

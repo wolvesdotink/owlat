@@ -6,6 +6,7 @@ import { asyncSession } from '../helpers/session.js';
 import { collectMessageIds } from '../helpers/uidSet.js';
 import { resolveSelectedSet, seqForUid } from '../helpers/seqMap.js';
 import { serverFailure } from '../helpers/replies.js';
+import { holdSequence } from '../helpers/sequenceGate.js';
 
 export interface StoreArgs {
 	readonly set: string;
@@ -63,7 +64,10 @@ export const storeModule: ImapCommandModule<StoreArgs> = {
 		const flagList = parseList(args.flagsToken);
 
 		return asyncSession(async () => {
+			// Like FETCH: the reply's numbers must stay valid until the OK.
+			const lease = holdSequence(deps, args.byUid ? 'sync' : 'shared');
 			try {
+				await lease.ready;
 				// Resolve the set against the folder's sequence ↔ UID map: a
 				// non-UID set holds positions, a UID set holds UIDs. The map is
 				// reused below to emit each updated row's true sequence number.
@@ -72,8 +76,10 @@ export const storeModule: ImapCommandModule<StoreArgs> = {
 					state,
 					args.set,
 					args.byUid,
-					send
+					send,
+					lease
 				);
+				lease.downgrade();
 				if (resolved.length === 0) {
 					send(`${tag} OK ${label} completed`);
 					return;
@@ -108,6 +114,8 @@ export const storeModule: ImapCommandModule<StoreArgs> = {
 			} catch (err) {
 				logger.error({ err }, 'STORE failed');
 				send(serverFailure(tag, label));
+			} finally {
+				lease.release();
 			}
 		});
 	},

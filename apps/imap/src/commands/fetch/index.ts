@@ -4,6 +4,7 @@ import type { ImapCommandModule } from '../types.js';
 import { asyncSession } from '../helpers/session.js';
 import { resolveSelectedSet, uidRuns } from '../helpers/seqMap.js';
 import { streamEnvelopes } from '../helpers/folderPaging.js';
+import { holdSequence } from '../helpers/sequenceGate.js';
 import { type FetchEnvelope, formatEnvelope, formatFlags, formatInternalDate } from './format.js';
 import { type BodySectionRequest, bodySectionParts, parseBodySectionItem } from './bodySection.js';
 import { serverFailure } from '../helpers/replies.js';
@@ -79,6 +80,10 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 		const label = args.byUid ? 'UID FETCH' : 'FETCH';
 
 		return asyncSession(async (signal) => {
+			// A sequence set answers in the numbering it was given, so nothing may
+			// renumber the client's messages until it completes; a UID set may
+			// first announce changes, then streams beside other FETCHes.
+			const lease = holdSequence(deps, args.byUid ? 'sync' : 'shared');
 			/**
 			 * Pace output: when the socket is over its budget, a promise that
 			 * settles once it has taken what was sent (rejecting if the
@@ -89,6 +94,7 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 				return wait?.then(() => signal.throwIfAborted());
 			};
 			try {
+				await lease.ready;
 				// Resolve the set: a non-UID set holds positions in the client's
 				// sequence view, a UID set holds UIDs (and first brings the view up
 				// to date). Either way `resolved` is ordered by the sequence number
@@ -99,8 +105,10 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 					args.set,
 					args.byUid,
 					send,
+					lease,
 					signal
 				);
+				lease.downgrade();
 
 				if (resolved.length === 0) {
 					send(`${tag} OK ${label} completed`);
@@ -238,6 +246,8 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 				if (signal.aborted) return;
 				logger.error({ err }, 'FETCH failed');
 				send(serverFailure(tag, label));
+			} finally {
+				lease.release();
 			}
 		});
 	},

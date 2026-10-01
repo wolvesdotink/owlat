@@ -15,12 +15,18 @@
  * still numbered the folder 1,2,3, because nobody had told it otherwise.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { EventEmitter } from 'node:events';
+import type { Socket } from 'node:net';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getFunctionName, type AnyFunctionReference } from 'convex/server';
 import { dispatch } from '../walker.js';
 import { parseLine } from '../../parser.js';
 import { forgetCachedMemberships } from '../helpers/membership.js';
 import type { CommandDeps, ConnectionState } from '../types.js';
+import { ImapConnection } from '../../connection.js';
+import type { ImapConfig } from '../../config.js';
+import type { ConvexClient } from '../../convex.js';
+import { AuthRateLimiter } from '../../rateLimit.js';
 
 vi.mock('../../logger.js', () => ({
 	logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -139,6 +145,14 @@ function backend(initialUids: number[], mode: Mode = 'ready') {
 			const { rows, nextUid } = window(id, args);
 			counts.envelopeDocs += rows.length;
 			return { rows: rows.map(envelope), nextUid };
+		}
+		if (name.endsWith(':peekFolderModseq')) {
+			return {
+				highestModseq: 1,
+				uidNext: uidNext.get(id),
+				totalCount: folders.get(id)!.length,
+				unseenCount: 0,
+			};
 		}
 		if (name.endsWith(':resolveMessageIdsByUid')) {
 			const { rows, nextUid } = window(id, args);
@@ -433,5 +447,282 @@ describe('repeated commands on an unchanged folder do not re-read it (#927)', ()
 		await a.run('a3 UID FETCH 1 (FLAGS)');
 		// Three full pages and the empty one that ends each walk, three times.
 		expect(b.counts).toMatchObject({ membership: 3, listing: 12, listedDocs: 9_000 });
+	});
+});
+
+/**
+ * The same backend behind the real `ImapConnection` pump, which starts
+ * pipelined commands without waiting for the ones before them. `hold` pauses
+ * the first call of one backend function until released, so a command can be
+ * caught half-way, the way a slow read or a slow client would leave it.
+ */
+function connection(b: ReturnType<typeof backend>) {
+	const config: ImapConfig = {
+		port: 0,
+		listenAddress: '127.0.0.1',
+		tls: null,
+		greetingHost: 'imap.test',
+		convexUrl: 'https://example.convex.cloud',
+		convexAdminKey: 'k',
+		redisUrl: null,
+		maxConnectionsPerIp: 20,
+		maxClients: 500,
+		idleTimeoutMs: 60_000,
+		authRateLimit: { failuresPerWindow: 5, windowMs: 60_000, tarpitMs: 900_000 },
+	};
+	const written: string[] = [];
+	const socket = Object.assign(new EventEmitter(), {
+		write(data: string | Buffer) {
+			written.push(String(data));
+			return true;
+		},
+		end() {
+			socket.emit('close');
+		},
+	});
+	b.convex.action.mockResolvedValue({
+		mailboxId: 'mb1',
+		appPasswordId: 'ap1',
+		userId: 'u1',
+		organizationId: 'org1',
+	});
+	const imap = new ImapConnection(
+		socket as unknown as Socket,
+		config,
+		b.convex as unknown as ConvexClient,
+		new AuthRateLimiter(null, config.authRateLimit),
+		'127.0.0.1',
+		true
+	);
+	const lines = () => written.join('').split('\r\n').filter(Boolean);
+	const settle = async () => {
+		for (let i = 0; i < 20; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+	};
+	return {
+		imap,
+		send(line: string) {
+			socket.emit('data', Buffer.from(`${line}\r\n`));
+		},
+		settle,
+		/** Wait for the tagged completion of every tag given. */
+		async until(...tags: string[]) {
+			for (let i = 0; i < 200; i++) {
+				const done = lines();
+				if (tags.every((tag) => done.some((l) => l.startsWith(`${tag} `)))) return;
+				await new Promise((resolve) => setTimeout(resolve, 0));
+			}
+			throw new Error(`no completion for ${tags.join(', ')}: ${lines().join(' | ')}`);
+		},
+		/** Lines written since the last `clear`. */
+		lines,
+		clear() {
+			written.length = 0;
+		},
+		async open() {
+			this.send('a0 LOGIN "a@owlat.test" "pw"');
+			await this.until('a0');
+			this.send('a1 SELECT INBOX');
+			await this.until('a1');
+			expect(lines()).toContain('* 3 EXISTS');
+			this.clear();
+		},
+		hold(suffix: string, kind: 'query' | 'mutation' = 'query') {
+			const fnMock = kind === 'query' ? b.convex.query : b.mutation;
+			const real = fnMock.getMockImplementation()!;
+			let release!: () => void;
+			const gate = new Promise<void>((resolve) => {
+				release = resolve;
+			});
+			let entered!: () => void;
+			const reached = new Promise<void>((resolve) => {
+				entered = resolve;
+			});
+			let armed = true;
+			fnMock.mockImplementation(
+				async (ref: AnyFunctionReference, args: Record<string, unknown>) => {
+					if (armed && getFunctionName(ref).endsWith(suffix)) {
+						armed = false;
+						entered();
+						await gate;
+					}
+					return real(ref, args);
+				}
+			);
+			return { reached, release };
+		},
+	};
+}
+
+describe('pipelined commands: no announcement while a sequence-number command is in progress (#927)', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	// RFC 3501 §5.5 and §7.4.1: the server must not send EXPUNGE while a FETCH,
+	// STORE or SEARCH is in progress. Before the fix the pump ran NOOP beside
+	// the paused FETCH, so `* 2 EXPUNGE` went out first and the FETCH then
+	// answered `* 3 FETCH (UID 30)` to a client that now held two messages.
+	it.each(['NOOP', 'CHECK'])(
+		'FETCH, then a pipelined %s: the FETCH answers first',
+		async (verb) => {
+			const b = backend([10, 20, 30]);
+			const c = connection(b);
+			await c.open();
+			const fetch = c.hold(':fetchEnvelopes');
+			c.send('f FETCH 3 (UID)');
+			await fetch.reached;
+			b.expunge(20);
+			c.send(`n ${verb}`);
+			await c.settle();
+			fetch.release();
+			await c.until('f', 'n');
+
+			expect(c.lines()).toEqual([
+				'* 3 FETCH (UID 30)',
+				'f OK FETCH completed',
+				'* 2 EXPUNGE',
+				`n OK ${verb} completed`,
+			]);
+		}
+	);
+
+	it('FETCH, then a pipelined UID FETCH: the UID command announces after the FETCH', async () => {
+		const b = backend([10, 20, 30]);
+		const c = connection(b);
+		await c.open();
+		const fetch = c.hold(':fetchEnvelopes');
+		c.send('f FETCH 3 (UID)');
+		await fetch.reached;
+		b.expunge(20);
+		c.send('u UID FETCH 30 (FLAGS)');
+		await c.settle();
+		fetch.release();
+		await c.until('f', 'u');
+
+		expect(c.lines()).toEqual([
+			'* 3 FETCH (UID 30)',
+			'f OK FETCH completed',
+			'* 2 EXPUNGE',
+			'* 2 FETCH (UID 30 FLAGS (\\Seen))',
+			'u OK UID FETCH completed',
+		]);
+	});
+
+	it('STORE, then a pipelined NOOP: the STORE answers with the numbers it was given', async () => {
+		const b = backend([10, 20, 30]);
+		const c = connection(b);
+		await c.open();
+		const store = c.hold(':storeFlags', 'mutation');
+		c.send('s STORE 3 +FLAGS (\\Flagged)');
+		await store.reached;
+		b.expunge(20);
+		c.send('n NOOP');
+		await c.settle();
+		store.release();
+		await c.until('s', 'n');
+
+		expect(c.lines()).toEqual([
+			'* 3 FETCH (UID 30 MODSEQ (2) FLAGS (\\Flagged))',
+			's OK STORE completed',
+			'* 2 EXPUNGE',
+			'n OK NOOP completed',
+		]);
+	});
+
+	it("FETCH, then a pipelined MOVE: the MOVE's EXPUNGE waits for the FETCH", async () => {
+		const b = backend([10, 20, 30]);
+		const c = connection(b);
+		await c.open();
+		const fetch = c.hold(':fetchEnvelopes');
+		c.send('f FETCH 3 (UID)');
+		await fetch.reached;
+		c.send('m MOVE 1 Archive');
+		await c.settle();
+		fetch.release();
+		await c.until('f', 'm');
+
+		expect(c.lines()).toEqual([
+			'* 3 FETCH (UID 30)',
+			'f OK FETCH completed',
+			'* OK [COPYUID 1 10 1] Move',
+			'* 1 EXPUNGE',
+			'm OK MOVE completed',
+		]);
+	});
+
+	it('NOOP, then a pipelined FETCH: the FETCH uses the numbering the NOOP announced', async () => {
+		const b = backend([10, 20, 30]);
+		const c = connection(b);
+		await c.open();
+		b.expunge(20);
+		const look = c.hold(':folderMembershipPage');
+		c.send('n NOOP');
+		await look.reached;
+		c.send('f FETCH 2 (UID)');
+		await c.settle();
+		look.release();
+		await c.until('n', 'f');
+
+		expect(c.lines()).toEqual([
+			'* 2 EXPUNGE',
+			'n OK NOOP completed',
+			'* 2 FETCH (UID 30)',
+			'f OK FETCH completed',
+		]);
+	});
+
+	it('an IDLE poll holds its EXPUNGE until a pipelined FETCH before it is done', async () => {
+		vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+		const b = backend([10, 20, 30]);
+		const c = connection(b);
+		await c.open();
+		const fetch = c.hold(':fetchEnvelopes');
+		c.send('f FETCH 3 (UID)');
+		await fetch.reached;
+		c.send('i IDLE');
+		b.expunge(20);
+		vi.advanceTimersByTime(5_000);
+		await c.settle();
+		fetch.release();
+		await c.until('f');
+		await c.settle();
+		c.send('DONE');
+		await c.until('i');
+
+		expect(c.lines()).toEqual([
+			'+ idling',
+			'* 3 FETCH (UID 30)',
+			'f OK FETCH completed',
+			'* 2 EXPUNGE',
+			'i OK IDLE terminated',
+		]);
+	});
+
+	it('pipelined commands that announce nothing still run side by side', async () => {
+		const b = backend([10, 20, 30]);
+		const c = connection(b);
+		await c.open();
+		const fetch = c.hold(':fetchEnvelopes');
+		c.send('f FETCH 3 (UID)');
+		await fetch.reached;
+		c.send('g FETCH 1 (UID)');
+		c.send('u UID FETCH 20 (UID)');
+		c.send('n NOOP');
+		await c.until('g', 'u', 'n');
+
+		// All three completed while the first FETCH is still paused.
+		expect(c.lines()).toHaveLength(5);
+		expect(c.lines()).toEqual(
+			expect.arrayContaining([
+				'* 1 FETCH (UID 10)',
+				'g OK FETCH completed',
+				'* 2 FETCH (UID 20)',
+				'u OK UID FETCH completed',
+				'n OK NOOP completed',
+			])
+		);
+		fetch.release();
+		await c.until('f');
+		expect(c.lines().slice(-2)).toEqual(['* 3 FETCH (UID 30)', 'f OK FETCH completed']);
 	});
 });

@@ -4085,6 +4085,10 @@ another session's EXPUNGE cannot renumber messages under the client
 what changed and bring it up to date. Distinct from the folder's
 **membership**, its current UIDs, which the backend keeps in
 `mailFolderUidBlocks` under a version the IMAP server caches by.
+Pipelined commands run side by side, so the connection's sequence gate
+(`apps/imap/src/commands/helpers/sequenceGate.ts`) orders them: an
+announcement waits for every sequence-number command sent before it, and
+one sent after it waits for the announcement.
 _Avoid_: Seq map (the per-command lookup structure built from either),
 UID cache (the view is deliberately behind the folder, not a copy of it).
 

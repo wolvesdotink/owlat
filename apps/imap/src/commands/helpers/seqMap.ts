@@ -22,6 +22,7 @@ import { parseUidSet } from '../../parser.js';
 import type { CommandDeps, ConnectionState } from '../types.js';
 import type { UidRange } from './folderPaging.js';
 import { syncSequenceView } from './sequenceView.js';
+import type { SequenceLease } from './sequenceGate.js';
 
 export interface SeqMap {
 	/** UIDs in ascending order; position i (0-based) is sequence number i+1. */
@@ -194,8 +195,9 @@ export function uidRuns(resolved: readonly ResolvedMessage[]): UidRange[] {
  *
  * Either way a set can only address messages the view or folder holds, and
  * resolving it costs time linear in the folder size plus the number of set
- * parts (see {@link resolveSet}). `signal` stops the reads once the connection
- * has gone.
+ * parts (see {@link resolveSet}). `lease` is the caller's granted lease on the
+ * sequence gate (`sync` for a UID set). `signal` stops the reads once the
+ * connection has gone.
  */
 export async function resolveSelectedSet(
 	deps: CommandDeps,
@@ -203,10 +205,12 @@ export async function resolveSelectedSet(
 	set: string,
 	byUid: boolean,
 	send: (line: string) => void,
+	lease: SequenceLease,
 	signal?: AbortSignal
 ): Promise<{ seqMap: SeqMap; resolved: ResolvedMessage[] }> {
 	const view = state.selected!.view;
-	const uids = !byUid && view ? view.uids : await syncSequenceView(deps, state, send, signal);
+	const uids =
+		!byUid && view ? view.uids : await syncSequenceView(deps, state, send, lease, signal);
 	// Ascending already: the view, the membership blocks and the UID listing all are.
 	const seqMap: SeqMap = { uids };
 	return { seqMap, resolved: resolveSet(seqMap, set, byUid) };
