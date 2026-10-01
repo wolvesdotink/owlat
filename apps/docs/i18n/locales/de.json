@@ -12,11 +12,11 @@
 		"readTheGuide": "Zum Guide",
 		"notFound": {
 			"title": "Diese Seite gibt es nicht.",
-			"body": "Der Link ist womöglich veraltet oder die Seite wurde verschoben. Über den Guide und die Suche finden Sie zurück."
+			"body": "Der Link ist womöglich veraltet oder die Seite wurde verschoben. Über den Guide und die Suche findest du zurück."
 		},
 		"generic": {
 			"title": "Da ist etwas schiefgegangen.",
-			"body": "Die Dokumentation konnte nicht geladen werden. Versuchen Sie es erneut oder kehren Sie zur Doku-Startseite zurück."
+			"body": "Die Dokumentation konnte nicht geladen werden. Versuche es erneut oder kehre zur Doku-Startseite zurück."
 		}
 	},
 	"footer": {
@@ -26,14 +26,14 @@
 	"home": {
 		"seo": {
 			"title": "Owlat Docs — E-Mail-Infrastruktur für Produktteams",
-			"description": "Produkt-Guides, API-Referenz und Entwicklerdokumentation für Owlat. Erstellen, versenden und optimieren Sie E-Mails — mit Drag-and-drop-Vorlagen, transaktionalen APIs und Werkzeugen für die Zustellbarkeit.",
+			"description": "Produkt-Guides, API-Referenz und Entwicklerdokumentation für Owlat. Erstelle, versende und optimiere E-Mails — mit Drag-and-drop-Vorlagen, transaktionalen APIs und Werkzeugen für die Zustellbarkeit.",
 			"ogDescription": "E-Mail-Infrastruktur für Produktteams"
 		},
 		"hero": {
 			"eyebrow": "Dokumentation",
 			"title": "E-Mail-Infrastruktur, {accent}",
 			"titleAccent": "von Anfang bis Ende.",
-			"tagline": "Alles, was Sie brauchen, um E-Mails zu erstellen, zu versenden und zu optimieren — von Drag-and-drop-Vorlagen über transaktionale APIs bis zu Werkzeugen für die Zustellbarkeit.",
+			"tagline": "Alles, was du brauchst, um E-Mails zu erstellen, zu versenden und zu optimieren — von Drag-and-drop-Vorlagen über transaktionale APIs bis zu Werkzeugen für die Zustellbarkeit.",
 			"startGuide": "Mit dem Guide starten",
 			"exploreApi": "Die API entdecken"
 		},
@@ -88,7 +88,7 @@
 			},
 			"contacts": {
 				"title": "Kontakte",
-				"description": "Ihre Zielgruppe und Kontakte verwalten"
+				"description": "Deine Zielgruppe und Kontakte verwalten"
 			},
 			"deliverability": {
 				"title": "Zustellbarkeit",
@@ -97,13 +97,13 @@
 		},
 		"quickstart": {
 			"eyebrow": "Schnellstart",
-			"title": "Versenden Sie Ihre erste E-Mail in {accent}",
+			"title": "Versende deine erste E-Mail in {accent}",
 			"titleAccent": "Sekunden."
 		},
 		"oss": {
 			"label": "Open {accent}",
 			"labelAccent": "Source.",
-			"description": "Owlat ist Open Source und wird von der Community getragen. Sehen Sie sich den Quellcode an, melden Sie Fehler oder tragen Sie auf GitHub bei.",
+			"description": "Owlat ist Open Source und wird von der Community getragen. Sieh dir den Quellcode an, melde Fehler oder trage auf GitHub bei.",
 			"cta": "Auf GitHub ansehen"
 		}
 	},
@@ -130,7 +130,7 @@
 		"placeholder": "Dokumentation durchsuchen …",
 		"escapeKey": "ESC",
 		"noResults": "Keine Ergebnisse für „{query}“",
-		"prompt": "Tippen Sie, um die Dokumentation zu durchsuchen",
+		"prompt": "Tippe, um die Dokumentation zu durchsuchen",
 		"navigate": "Navigieren",
 		"select": "Auswählen",
 		"sectionFallback": "Doku"
@@ -150,7 +150,7 @@
 		"groups": {
 			"guide-getting-started": "Erste Schritte",
 			"guide-building-emails": "E-Mails gestalten",
-			"guide-your-audience": "Ihre Zielgruppe",
+			"guide-your-audience": "Deine Zielgruppe",
 			"guide-campaigns": "Kampagnen",
 			"guide-transactional-automations": "Transaktional & Automationen",
 			"guide-personal-email-postbox": "Persönliche E-Mail (Postbox)",
@@ -205,7 +205,7 @@
 			"guide-sealed-mail-recovery-kit": "Sealed-Mail-Wiederherstellungskit",
 			"guide-migrate-from-google": "Von Google migrieren",
 			"guide-postbox-connect-an-external-mailbox": "Externes Postfach verbinden",
-			"guide-connect-your-ai": "Ihre KI verbinden",
+			"guide-connect-your-ai": "Deine KI verbinden",
 			"guide-team-inbox": "Team-Postfach",
 			"guide-ai-agent": "KI-Agent & Autonomie",
 			"guide-ai-agent-visualization-agent-adaptive-dashboards": "KI-Dashboards",

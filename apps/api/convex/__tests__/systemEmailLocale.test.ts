@@ -90,7 +90,7 @@ describe('generateDeletionEmailHtml', () => {
 		// Including the CTA and the copy-the-link fallback, which used to be
 		// English constants inside the shared button helper.
 		expect(html).toContain('Kontolöschung abbrechen');
-		expect(html).toContain('Oder kopieren Sie diesen Link in Ihren Browser:');
+		expect(html).toContain('Oder kopiere diesen Link in deinen Browser:');
 		expect(html).not.toContain('Cancel Account Deletion');
 	});
 
