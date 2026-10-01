@@ -7,7 +7,9 @@
  * and the page wires it through. Each row's email is a link to `rowTo(row)`, so
  * the table has a keyboard route; a click anywhere else on a desktop row goes
  * to the same place. Per-row controls (a topic's "remove") come in through the
- * `#row-actions` slot, whose scope says which layout is rendering.
+ * `#row-actions` slot, whose scope says which layout is rendering. A failed
+ * member read (`error`) shows the categorized error with Try again (`retry`),
+ * never "no contacts match".
  */
 import type { MemberRow } from '~/composables/useMemberTable';
 import { formatDate } from '~/utils/formatters';
@@ -37,6 +39,8 @@ const props = defineProps<{
 	searchPlaceholder: string;
 	/** The first page is still in flight. */
 	loading: boolean;
+	/** The member query's `error`: a failed read is not an empty segment or topic. */
+	error: Error | null;
 	empty: EmptyCopy;
 	isSortable: (field: string) => boolean;
 	getSortIcon: (field: string) => string | null;
@@ -51,6 +55,7 @@ const emit = defineEmits<{
 	sort: [field: string];
 	page: [page: number];
 	'clear-search': [];
+	retry: [];
 }>();
 
 const slots = defineSlots<{
@@ -112,8 +117,10 @@ const pagerButtonClass =
 		</div>
 
 		<UiCard padding="none" overflow="hidden">
+			<UiQueryBoundary v-if="error" :error="error" @retry="emit('retry')" />
+
 			<UiEmptyState
-				v-if="isEmpty && !activeSearch"
+				v-else-if="isEmpty && !activeSearch"
 				:icon="empty.icon"
 				:title="empty.title"
 				:description="empty.description"

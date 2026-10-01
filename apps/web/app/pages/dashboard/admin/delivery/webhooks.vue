@@ -15,10 +15,12 @@ definePageMeta({
 const { hasActiveOrganization, isLoading: organizationLoading } = useOrganizationContext();
 
 // Fetch webhooks with real-time updates
-const { data: webhooks, isLoading: webhooksLoading } = useOrganizationQuery(
-	api.webhooks.endpoints.listByOrganization,
-	{ includeInactive: true }
-);
+const {
+	data: webhooks,
+	isLoading: webhooksLoading,
+	error: webhooksError,
+	refetch: refetchWebhooks,
+} = useOrganizationQuery(api.webhooks.endpoints.listByOrganization, { includeInactive: true });
 
 const isLoading = computed(() => organizationLoading.value || webhooksLoading.value);
 
@@ -229,6 +231,9 @@ async function handleGuardSave() {
 				:title="t('dashboard.admin.delivery.webhooks.noWorkspace.title')"
 				:description="t('dashboard.admin.delivery.webhooks.noWorkspace.description')"
 			/>
+
+			<!-- A failed read is not an empty list (#721). -->
+			<UiQueryBoundary v-else-if="webhooksError" :error="webhooksError" @retry="refetchWebhooks" />
 
 			<!-- Empty State (no webhooks) -->
 			<UiEmptyState

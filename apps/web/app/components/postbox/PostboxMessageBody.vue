@@ -19,7 +19,8 @@
  *      every URL attribute). Replaces a regex-based stripper that left several
  *      privacy/exfiltration holes (style-tag CSS exfil, meta refresh, srcset
  *      bypass) under a sandboxed-but-not-script-free iframe.
- *   4. External images are gated behind a "Show images" button
+ *   4. External images are gated behind a "Show images" button; inline
+ *      `cid:` images are resolved from the message's own parts to `data:` URLs
  *   5. All <a> rewritten to target=_blank rel=noreferrer noopener
  *   6. Link transparency: real-destination-host tooltips, inline markers on
  *      text-vs-href host mismatches, tracking query params stripped
@@ -47,6 +48,8 @@ import {
 } from '~/utils/postboxBodyPlaceholder';
 import { usePostboxBodySource } from '~/composables/postbox/usePostboxBodySource';
 import { usePostboxFrameAutosize } from '~/composables/postbox/usePostboxFrameAutosize';
+import { usePostboxCidImages } from '~/composables/postbox/usePostboxCidImages';
+import { resolveCidImages, type CidAttachment } from '~/utils/postboxCidImages';
 import { notePostboxBodyRendered } from '~/composables/postbox/usePostboxPerfMarks';
 import {
 	postboxSenderKey,
@@ -70,6 +73,8 @@ const props = defineProps<{
 		bodyPending?: boolean;
 		/** From header — keys the per-sender remote-image allowlist. */
 		fromAddress?: string;
+		/** Parts with a `contentId` back the body's inline `cid:` images. */
+		attachments?: readonly CidAttachment[];
 	};
 	/** Per-message escape hatch: force light rendering even in dark mode. */
 	forceLight?: boolean;
@@ -164,6 +169,15 @@ const { waiting, contentFinal, effectiveHtml, effectiveText } = usePostboxBodySo
 	() => props.message
 );
 
+// Inline `cid:` images, loaded from the message's own parts. Until they are in,
+// the render is not final: it is neither cached nor saved for offline reading.
+const { urls: cidImageUrls, pending: cidImagesPending } = usePostboxCidImages(() => ({
+	messageId: props.message._id,
+	html: effectiveHtml.value,
+	attachments: props.message.attachments,
+}));
+const renderFinal = computed(() => contentFinal.value && !cidImagesPending.value);
+
 // The saved copy shown in place of a live body that is not here (yet).
 const placeholder = computed(() =>
 	postboxBodyPlaceholder(cachedSrcdoc.value, { blockRemote: !isOffline.value })
@@ -241,7 +255,7 @@ function buildRender(): Omit<PostboxRenderEntry, 'height'> {
 	if (showImages.value && !loadEverything.value && detection.pixelCount > 0) {
 		html = stripTrackerPixels(html);
 	}
-	const gated = gateImages(html, showImages.value);
+	const gated = resolveCidImages(gateImages(html, showImages.value), cidImageUrls.value);
 	// Link transparency (real-host tooltips, phish-mismatch markers, tracking
 	// param stripping) runs on sanitized output only and fails soft to a no-op.
 	const linked = rewriteLinks(applyLinkTransparency(gated));
@@ -268,7 +282,7 @@ const renderKey = computed(() =>
 const render = computed<Omit<PostboxRenderEntry, 'height'>>(() => {
 	const key = renderKey.value;
 	const cache = getPostboxRenderCache();
-	if (key && contentFinal.value) {
+	if (key && renderFinal.value) {
 		const hit = cache.get(key);
 		if (hit) return hit;
 		const built = buildRender();
@@ -293,9 +307,9 @@ const displaySrcdoc = computed(() => shownPlaceholder.value?.srcdoc ?? srcdoc.va
 // Persist the rendered srcdoc once the body is final and non-empty. Best-effort
 // (LRU-capped, quota-safe); keeps the 50 most-recently-read bodies offline.
 watch(
-	[srcdoc, contentFinal, hasLiveContent],
+	[srcdoc, renderFinal, hasLiveContent],
 	() => {
-		if (contentFinal.value && hasLiveContent.value && props.message._id) {
+		if (renderFinal.value && hasLiveContent.value && props.message._id) {
 			void persistBody(props.message._id, srcdoc.value);
 		}
 	},

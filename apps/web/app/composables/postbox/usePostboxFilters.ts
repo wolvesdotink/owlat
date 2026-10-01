@@ -78,7 +78,7 @@ export interface FilterAction {
 
 export function usePostboxFilters(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	const { t } = useI18n();
-	const { data, isLoading } = useConvexQuery(api.mail.filters.list, () =>
+	const { data, isLoading, error, refetch } = useConvexQuery(api.mail.filters.list, () =>
 		mailboxId.value ? { mailboxId: mailboxId.value } : 'skip'
 	);
 	const filters = computed(() => data.value ?? []);
@@ -142,5 +142,5 @@ export function usePostboxFilters(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		await removeMutation.run({ filterId });
 	}
 
-	return { filters, isLoading, create, update, setEnabled, remove, reorder };
+	return { filters, isLoading, error, refetch, create, update, setEnabled, remove, reorder };
 }

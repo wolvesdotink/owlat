@@ -7,7 +7,7 @@ import type { Id } from '@owlat/api/dataModel';
 
 export function usePostboxSignatures(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	const { t } = useI18n();
-	const { data, isLoading } = useConvexQuery(api.mail.signatures.list, () =>
+	const { data, isLoading, error, refetch } = useConvexQuery(api.mail.signatures.list, () =>
 		mailboxId.value ? { mailboxId: mailboxId.value } : 'skip'
 	);
 	const signatures = computed(() => data.value ?? []);
@@ -43,5 +43,5 @@ export function usePostboxSignatures(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		await removeMutation.run({ signatureId });
 	}
 
-	return { signatures, defaultSignature, isLoading, create, update, remove };
+	return { signatures, defaultSignature, isLoading, error, refetch, create, update, remove };
 }

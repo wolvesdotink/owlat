@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import { isMentionHandlePrefix } from '@owlat/shared/chatMentions';
+import { useAcknowledgedDraft } from '~/composables/useAcknowledgedDraft';
+import { isImeComposing } from '~/utils/imeComposition';
 
 const props = defineProps<{
 	/**
@@ -29,9 +31,9 @@ const { candidates: mentionCandidates } = useChatMentionSearch(
 	() => mentionQuery.value
 );
 
-// True while a send is waiting for the backend; blocks a second send of the
-// same draft.
-const isSending = ref(false);
+// `isSending` is true while a send is waiting for the backend; it blocks a
+// second send of the same draft.
+const { isSending, submit } = useAcknowledgedDraft(text);
 
 const canSend = computed(
 	() =>
@@ -87,6 +89,8 @@ const handleInput = () => {
 };
 
 const handleKeydown = (event: KeyboardEvent) => {
+	// An IME's confirming Enter finishes the word, it does not send (#1052).
+	if (isImeComposing(event)) return;
 	if (event.key === 'Enter' && !event.shiftKey && mentionQuery.value === null) {
 		event.preventDefault();
 		void handleSend();
@@ -160,31 +164,16 @@ const removeAttachment = (id: Id<'mediaAssets'>) => {
 
 const handleSend = async () => {
 	if (!canSend.value) return;
-	// Freeze what is being sent. The draft stays on screen, and editable, until
-	// the backend accepts it; then only this snapshot is taken away.
-	const submittedText = text.value;
+	// The text snapshot is the composable's; the attachment selection is frozen
+	// here the same way, and only these ids go once the send is accepted.
 	const submittedIds = pendingAttachments.value.map((a) => a.id);
 	mentionQuery.value = null;
 	mentionStart.value = -1;
-	isSending.value = true;
-	let outcome: { ok: boolean };
-	try {
-		outcome = await props.send(
-			submittedText.trim(),
-			submittedIds.length > 0 ? submittedIds : undefined
-		);
-	} finally {
-		isSending.value = false;
-	}
+	const outcome = await submit((snapshot) =>
+		props.send(snapshot.trim(), submittedIds.length > 0 ? submittedIds : undefined)
+	);
 	// Refused or failed: the operation has toasted it, the draft is kept.
-	if (!outcome.ok) return;
-
-	// Text typed after pressing Send follows the sent text, so the sent prefix
-	// goes and the rest stays. A draft edited inside the sent part no longer
-	// starts with it and is left alone: it is not what was sent.
-	if (text.value.startsWith(submittedText)) {
-		text.value = text.value.slice(submittedText.length);
-	}
+	if (!outcome?.ok) return;
 	pendingAttachments.value = pendingAttachments.value.filter((a) => !submittedIds.includes(a.id));
 	nextTick(fitTextarea);
 };

@@ -24,13 +24,15 @@ const topicId = useRouteId<'topics'>();
 const contactId = useRouteId<'contacts'>('contactId');
 
 // Fetch contact in topic details
-const { data: details, isLoading } = useConvexQuery(
-	api.topics.topics.getContactInTopicDetails,
-	() => ({
-		topicId: topicId.value,
-		contactId: contactId.value,
-	})
-);
+const {
+	data: details,
+	isLoading,
+	error: detailsError,
+	refetch: refetchDetails,
+} = useConvexQuery(api.topics.topics.getContactInTopicDetails, () => ({
+	topicId: topicId.value,
+	contactId: contactId.value,
+}));
 
 // Update breadcrumbs when data is loaded
 watch(
@@ -173,9 +175,12 @@ const contactInitials = computed(() => {
 
 <template>
 	<div class="p-6 lg:p-8">
+		<!-- A failed read is not a missing contact (#721). -->
+		<UiQueryBoundary v-if="detailsError" :error="detailsError" @retry="refetchDetails" />
+
 		<!-- Loading State -->
 		<DashboardDetailSkeleton
-			v-if="isLoading && !details"
+			v-else-if="isLoading && !details"
 			:label="t('dashboard.audience.topics.detail.contacts.detail.loading')"
 			back="link"
 			:header="false"

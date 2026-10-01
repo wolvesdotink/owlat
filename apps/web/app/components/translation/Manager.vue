@@ -2,6 +2,7 @@
 import { parseStoredBlocks } from '@owlat/email-builder';
 import { api } from '@owlat/api';
 import { languageOptions } from '~/data/languageOptions';
+import { translationBlockRows } from '~/utils/translationRows';
 import type { Id } from '@owlat/api/dataModel';
 
 type EmailType = 'marketing' | 'transactional';
@@ -43,39 +44,28 @@ interface TranslatableRow {
 	blockId?: string;
 }
 
-interface Block {
-	id: string;
-	type: string;
-	content: {
-		html?: string;
-		text?: string;
-		alt?: string;
-		// Columns nest a grid of blocks; containers nest a flat list. Typing them
-		// as Block lets extractBlockRows recurse without re-casting each level.
-		columns?: Block[][];
-		items?: Block[];
-		[key: string]: unknown;
-	};
-}
-
 // Common languages for dropdown
 
 // Fetch email data based on type
-const { data: marketingEmail, isLoading: marketingLoading } = useConvexQuery(
-	api.emailTemplates.emails.get,
-	() => {
-		if (props.emailType !== 'marketing') return 'skip';
-		return { templateId: props.emailId as Id<'emailTemplates'> };
-	}
-);
+const {
+	data: marketingEmail,
+	isLoading: marketingLoading,
+	error: marketingError,
+	refetch: refetchMarketing,
+} = useConvexQuery(api.emailTemplates.emails.get, () => {
+	if (props.emailType !== 'marketing') return 'skip';
+	return { templateId: props.emailId as Id<'emailTemplates'> };
+});
 
-const { data: transactionalEmail, isLoading: transactionalLoading } = useConvexQuery(
-	api.transactional.emails.get,
-	() => {
-		if (props.emailType !== 'transactional') return 'skip';
-		return { id: props.emailId as Id<'transactionalEmails'> };
-	}
-);
+const {
+	data: transactionalEmail,
+	isLoading: transactionalLoading,
+	error: transactionalError,
+	refetch: refetchTransactional,
+} = useConvexQuery(api.transactional.emails.get, () => {
+	if (props.emailType !== 'transactional') return 'skip';
+	return { id: props.emailId as Id<'transactionalEmails'> };
+});
 
 // Unified email object
 const email = computed(() => {
@@ -87,6 +77,13 @@ const isLoading = computed(() => {
 	if (props.emailType === 'marketing') return marketingLoading.value;
 	return transactionalLoading.value;
 });
+
+// A failed read is not a missing email (#721).
+const emailError = computed(() =>
+	props.emailType === 'marketing' ? marketingError.value : transactionalError.value
+);
+const refetchEmail = () =>
+	props.emailType === 'marketing' ? refetchMarketing() : refetchTransactional();
 
 // Mutations
 const { run: updateMarketingTemplate } = useBackendOperation(api.emailTemplates.emails.update, {
@@ -253,73 +250,11 @@ const translatableRows = computed((): TranslatableRow[] => {
 		});
 	}
 
-	// Content blocks; unreadable content contributes no rows.
-	extractBlockRows(parseStoredBlocks(email.value.content) as Block[], rows);
+	// Content blocks, at every depth; unreadable content contributes no rows.
+	rows.push(...translationBlockRows(parseStoredBlocks(email.value.content), t));
 
 	return rows;
 });
-
-// Recursively extract translatable content from blocks
-const extractBlockRows = (blocks: Block[], rows: TranslatableRow[], prefix = '') => {
-	let textBlockIndex = 0;
-	let buttonBlockIndex = 0;
-	let imageBlockIndex = 0;
-	let containerBlockIndex = 0;
-
-	for (const block of blocks) {
-		if (block.type === 'text' && block.content.html) {
-			textBlockIndex++;
-			rows.push({
-				id: block.id,
-				blockId: block.id,
-				fieldType: 'html',
-				sourceText: block.content.html,
-				label: t('components.translation.manager.textBlock', { prefix, index: textBlockIndex }),
-			});
-		} else if (block.type === 'button' && block.content.text) {
-			buttonBlockIndex++;
-			rows.push({
-				id: block.id,
-				blockId: block.id,
-				fieldType: 'buttonText',
-				sourceText: block.content.text,
-				label: t('components.translation.manager.buttonBlock', {
-					prefix,
-					text: block.content.text,
-				}),
-			});
-		} else if (block.type === 'image' && block.content.alt) {
-			imageBlockIndex++;
-			rows.push({
-				id: block.id,
-				blockId: block.id,
-				fieldType: 'alt',
-				sourceText: block.content.alt,
-				label: t('components.translation.manager.imageBlock', { prefix, index: imageBlockIndex }),
-			});
-		} else if (block.type === 'columns' && block.content.columns) {
-			// Recursively extract from column items
-			block.content.columns.forEach((column, colIndex) => {
-				// The " > " chain is a structural separator, not copy, so it is joined
-				// around the translated segment rather than baked into the message
-				// (the catalog guard rejects angle brackets in a message value).
-				extractBlockRows(
-					column,
-					rows,
-					`${t('components.translation.manager.columnPrefix', { prefix, index: colIndex + 1 })} > `
-				);
-			});
-		} else if (block.type === 'container' && block.content.items) {
-			// Recursively extract from container items
-			containerBlockIndex++;
-			extractBlockRows(
-				block.content.items,
-				rows,
-				`${t('components.translation.manager.containerPrefix', { prefix, index: containerBlockIndex })} > `
-			);
-		}
-	}
-};
 
 // Get translation value for a row and language
 const getTranslationValue = (row: TranslatableRow, language: string): string => {
@@ -571,8 +506,12 @@ const isCellSaving = (rowId: string, language: string) => {
 			</div>
 		</div>
 
+		<div v-if="emailError" class="flex-1 flex items-center justify-center">
+			<UiQueryBoundary :error="emailError" @retry="refetchEmail" />
+		</div>
+
 		<!-- Loading State -->
-		<div v-if="isLoading" class="flex-1 flex items-center justify-center">
+		<div v-else-if="isLoading" class="flex-1 flex items-center justify-center">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
 				<p class="text-text-secondary text-sm">

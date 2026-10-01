@@ -2,7 +2,9 @@ import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
 import type { CommandSession, ImapCommandModule, SelectedState } from '../types.js';
 import { buildSeqMap, seqForUid } from '../helpers/seqMap.js';
-import { loadChangedEnvelopes, loadFolderUids } from '../helpers/folderPaging.js';
+import { loadChangedEnvelopes } from '../helpers/folderPaging.js';
+import { loadCurrentUids } from '../helpers/membership.js';
+import { holdSequence } from '../helpers/sequenceGate.js';
 import { formatFlags, type FetchEnvelope } from '../fetch/format.js';
 
 const POLL_INTERVAL_MS = 5_000;
@@ -106,15 +108,22 @@ export function diffIdle(args: {
  *
  *   1. Client sends bare `DONE` → onClientLine consumes it
  *   2. The configured idle timeout fires → emit `* OK [TIMEOUT]` + OK
- *   3. Socket closes (cancel) → tear down timers, resolve with the
- *      currently-tracked state so the pump's `.then` continuation
- *      releases its session reference
+ *   3. Socket closes or the client logs out (cancel) → tear down timers,
+ *      resolve with the currently-tracked state so the pump's `.then`
+ *      continuation releases its session reference
  *
  * During IDLE the poll loop diffs the folder against its last snapshot and
  * pushes unsolicited EXPUNGE / EXISTS / FETCH responses (RFC 3501 §7.4) so
  * other clients' deletes, arrivals, and flag changes are seen live, then
  * patches the locally-tracked SelectedState so the pump applies the fresh
  * counters when the session resolves.
+ *
+ * At most one poll runs at a time: the next is scheduled an interval after
+ * the previous one finishes, so a slow read never overlaps a newer one and
+ * applies its observation out of order. A poll that is still waiting on
+ * Convex when the session ends writes nothing and changes no state: the
+ * tagged OK has gone out, and the client may already have SELECTed another
+ * mailbox, where a late `* n EXPUNGE` would hit the wrong sequence numbers.
  */
 export const idleModule: ImapCommandModule<void> = {
 	verbs: ['IDLE'],
@@ -123,16 +132,20 @@ export const idleModule: ImapCommandModule<void> = {
 	parseArgs: () => ({ ok: true, args: undefined }),
 	start({ deps, state, tag, send }) {
 		let currentSelected: SelectedState = state.selected!;
-		let resolved = false;
+		// Aborted the moment the session resolves. Convex's HTTP client cannot
+		// cancel a request already sent, so the poll checks this after every
+		// read, and the page walks stop before their next page.
+		const ended = new AbortController();
+		const { signal } = ended;
 		let resolveCompletion!: () => void;
 		const completion = new Promise<void>((r) => {
 			resolveCompletion = r;
 		});
 
 		const finalize = (lines: readonly string[]): void => {
-			if (resolved) return;
-			resolved = true;
-			clearInterval(pollTimer);
+			if (signal.aborted) return;
+			ended.abort();
+			clearTimeout(pollTimer);
 			clearTimeout(idleTimer);
 			deps.commit({ ...state, selected: currentSelected });
 			for (const l of lines) send(l);
@@ -143,34 +156,44 @@ export const idleModule: ImapCommandModule<void> = {
 
 		let lastModseq = currentSelected.highestModseq;
 		let lastTotal = currentSelected.totalCount;
-		// The set of UIDs the client currently believes it holds — the source of
-		// truth for resolving expunged-message sequence numbers against the view
-		// the client still has. The SELECT state carries counts, not the UID
-		// list, so we snapshot it once at IDLE entry (this reflects the client's
-		// view because it has just SELECTed) and keep it in lock-step with what
-		// we have already announced thereafter, so every diff is exact.
-		let lastUids: number[] | null = null;
-		const seedUids = (async () => {
-			try {
-				lastUids = await loadFolderUids(deps.convex, currentSelected.folderId);
-			} catch (err) {
-				logger.warn({ err }, 'IDLE seed UID list failed');
-			}
-		})();
+		// The UIDs the client currently believes it holds: the source of truth
+		// for numbering expunged messages against the view the client still has.
+		// That is the session's sequence view (SELECT started it; every
+		// announcement since kept it exact), updated below as each poll is
+		// announced. A state built by hand has none, so one is snapshotted at
+		// IDLE entry instead.
+		const view = currentSelected.view;
+		let lastUids: readonly number[] | null = view ? view.uids : null;
+		const seedUids = view
+			? Promise.resolve()
+			: (async () => {
+					try {
+						const uids = await loadCurrentUids(deps.convex, currentSelected.folderId, signal);
+						if (!signal.aborted) lastUids = uids;
+					} catch (err) {
+						if (!signal.aborted) logger.warn({ err }, 'IDLE seed UID list failed');
+					}
+				})();
 
-		const pollTimer = setInterval(async () => {
+		const poll = async (): Promise<void> => {
+			// Each poll is a `sync` turn on the sequence gate: its EXPUNGEs wait
+			// for a sequence-number command pipelined before the IDLE.
+			const lease = holdSequence(deps, 'sync');
 			try {
+				await lease.ready;
 				await seedUids;
+				if (signal.aborted) return;
 				const peek = await deps.convex.query(fn.peekFolderModseq, {
 					folderId: currentSelected.folderId,
 				});
-				if (!peek) return;
+				if (signal.aborted || !peek) return;
 				// Nothing observable changed → cheap path, no UID list fetch.
 				if (peek.totalCount === lastTotal && peek.highestModseq === lastModseq) {
 					return;
 				}
 
-				const nextUids = await loadFolderUids(deps.convex, currentSelected.folderId);
+				// Served from the cached map unless the folder's membership changed.
+				const nextUids = await loadCurrentUids(deps.convex, currentSelected.folderId, signal);
 				// Rows whose flags (or any field) changed since the last announced
 				// modseq, read off `by_folder_and_modseq`. The poll runs every five
 				// seconds for the whole life of an IDLE, so it must cost what
@@ -178,37 +201,61 @@ export const idleModule: ImapCommandModule<void> = {
 				// window and dropping the unchanged rows afterwards cost.
 				const changedRows =
 					peek.highestModseq !== lastModseq
-						? await loadChangedEnvelopes(deps.convex, currentSelected.folderId, lastModseq)
+						? await loadChangedEnvelopes(deps.convex, currentSelected.folderId, lastModseq, signal)
 						: [];
+				// The last read may have finished after DONE, the timeout or a
+				// disconnect; what it saw is no longer this session's to announce.
+				if (signal.aborted) return;
 
-				const prevUids = lastUids ?? nextUids;
+				const prevUids = (view ? view.uids : lastUids) ?? nextUids;
 				const delta = diffIdle({
 					prevUids,
 					nextUids,
 					prevTotal: lastTotal,
-					nextTotal: peek.totalCount,
+					// The view's length, not the folder's counter: EXISTS must count
+					// exactly the messages the client can now address.
+					nextTotal: nextUids.length,
 					nextUidNext: peek.uidNext,
 					lastModseq,
 					changedRows,
 				});
 
+				if (delta.expunged.length > 0 || delta.exists !== undefined) {
+					await lease.exclusive();
+				}
+				// IDLE ended while this poll was reading: its news is no longer
+				// for this command (RFC 3501 §7.4.1). The next one announces it.
+				if (signal.aborted) return;
 				for (const seq of delta.expunged) send(`* ${seq} EXPUNGE`);
 				if (delta.exists !== undefined) send(`* ${delta.exists} EXISTS`);
 				for (const line of delta.fetches) send(line);
 
 				currentSelected = {
 					...currentSelected,
-					totalCount: peek.totalCount,
+					totalCount: nextUids.length,
 					uidNext: peek.uidNext,
 					highestModseq: peek.highestModseq,
 				};
 				lastTotal = peek.totalCount;
 				lastModseq = peek.highestModseq;
 				lastUids = nextUids;
+				if (view) view.uids = nextUids;
 			} catch (err) {
-				logger.warn({ err }, 'IDLE poll failed');
+				if (!signal.aborted) logger.warn({ err }, 'IDLE poll failed');
+			} finally {
+				lease.release();
 			}
-		}, POLL_INTERVAL_MS);
+		};
+
+		let pollTimer: ReturnType<typeof setTimeout> | undefined;
+		const schedulePoll = (): void => {
+			pollTimer = setTimeout(() => {
+				void poll().then(() => {
+					if (!signal.aborted) schedulePoll();
+				});
+			}, POLL_INTERVAL_MS);
+		};
+		schedulePoll();
 
 		const idleTimer = setTimeout(() => {
 			finalize([
@@ -227,12 +274,7 @@ export const idleModule: ImapCommandModule<void> = {
 				return 'pass';
 			},
 			cancel() {
-				if (resolved) return;
-				clearInterval(pollTimer);
-				clearTimeout(idleTimer);
-				resolved = true;
-				deps.commit({ ...state, selected: currentSelected });
-				resolveCompletion();
+				finalize([]);
 			},
 		};
 		return session;

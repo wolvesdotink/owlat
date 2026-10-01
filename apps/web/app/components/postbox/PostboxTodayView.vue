@@ -77,7 +77,7 @@ const folderRef = computed(() => 'inbox');
 
 // Same inbox feed the browse list reads (the Convex client dedupes the
 // subscription), so triaging here and there stays perfectly consistent.
-const { messages, isLoading, hasMore, loadMore } = usePostboxThreads({
+const { messages, isLoading, hasMore, loadMore, error, refetch } = usePostboxThreads({
 	mailboxId: computed<Id<'mailboxes'> | null>(() => props.mailboxId),
 	folderRole: folderRef,
 });
@@ -347,6 +347,8 @@ function onModeSelect(mode: PostboxInboxMode) {
 						@select="openMessageId = $event"
 					/>
 				</div>
+				<!-- A failed read is not inbox zero (#721). -->
+				<UiQueryBoundary v-else-if="error" :error="error" @retry="refetch" />
 				<PostboxThreadListSkeleton v-else-if="isLoading" class="mt-2" />
 				<!-- Inbox zero: one quiet line; the Brief + past mail stay put. -->
 				<p v-else class="mt-3 text-sm text-text-tertiary">

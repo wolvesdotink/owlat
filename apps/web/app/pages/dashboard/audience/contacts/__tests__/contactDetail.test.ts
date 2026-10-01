@@ -8,6 +8,7 @@
  *   and a date read `2026-11-09`.
  * - "Activity" and "Timeline" were two tabs for what sounds like one thing; the
  *   activity log now sits under the messages in a single Timeline tab.
+ * - A contact that failed to load is not a deleted one (#721).
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -18,6 +19,8 @@ import { installNuxtStubs, queryResult } from '~/__tests__/a11y';
 
 const isAdmin = ref(true);
 const activityTimelineGate = vi.fn();
+const contactError = ref<Error | null>(null);
+const refetchContact = vi.fn();
 
 const CONTACT = {
 	_id: 'ct_1',
@@ -43,6 +46,8 @@ const VALUES: Record<string, string> = {
 beforeEach(() => {
 	isAdmin.value = true;
 	activityTimelineGate.mockReset();
+	contactError.value = null;
+	refetchContact.mockReset();
 	installNuxtStubs({
 		...i18nStubs,
 		useRouteId: () => ref('ct_1'),
@@ -72,8 +77,10 @@ beforeEach(() => {
 			};
 		},
 		useContactDetail: () => ({
-			contact: ref(CONTACT),
+			contact: ref(contactError.value ? undefined : CONTACT),
 			contactLoading: ref(false),
+			contactError,
+			refetchContact,
 			properties: ref(PROPERTIES),
 			isEditing: ref(false),
 			isSaving: ref(false),
@@ -196,6 +203,18 @@ describe('contact page', () => {
 		const wrapper = mountPage();
 
 		expect(tabLabels(wrapper)).toEqual(['Profile', 'Timeline']);
+		wrapper.unmount();
+	});
+
+	it('shows a failed read with Try again, not "Contact not found" (#721)', async () => {
+		contactError.value = new Error('[CONVEX Q(contacts/contacts:get)] Server Error');
+		const wrapper = mountPage();
+
+		expect(wrapper.text()).not.toContain('Contact not found');
+		expect(wrapper.text()).toContain('Failed to load');
+		const retry = wrapper.findAll('button').find((button) => button.text() === 'Try again');
+		await retry!.trigger('click');
+		expect(refetchContact).toHaveBeenCalledTimes(1);
 		wrapper.unmount();
 	});
 });
