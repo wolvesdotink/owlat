@@ -24,7 +24,7 @@
  * window binds a new storage to the current session (`rebindActiveSession`).
  * The auth client sits on `activeSessionStorage`, which follows the bound
  * storage, and writes what each answer says into the storage its request went
- * out with (see `auth-client.ts`), so an answer to the older session can only
+ * out with (see `desktopAuthClient.ts`), so an answer to the older session can only
  * reach the retired storage.
  */
 import type { SessionEntry, SessionWriteOutcome } from '@owlat/desktop/src/keychain';

@@ -12,7 +12,6 @@
  * never materialized) and it is what the deep-link handler calls directly.
  */
 import { ref } from 'vue';
-import { createDesktopAuthClient } from '~/lib/auth-client';
 import { createKeychainStorage, getActiveKeychainStorage } from '~/lib/desktop/keychainStorage';
 import {
 	clearPendingConnections,
@@ -191,6 +190,7 @@ async function connect(params: { ott: string; state: string }): Promise<void> {
 	// keeps its storage and client untouched while the handshake runs, so a
 	// failed handshake has nothing to undo.
 	const pending = createKeychainStorage(tokenRef, null, null);
+	const { createDesktopAuthClient } = await import('~/lib/desktop/desktopAuthClient');
 	const tempClient = createDesktopAuthClient(info.convexSiteUrl, pending);
 
 	const redeemed = (await (

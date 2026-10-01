@@ -20,6 +20,7 @@ import {
 	getActiveKeychainStorage,
 	rebindActiveSession,
 } from '~/lib/desktop/keychainStorage';
+import { setDesktopAuthClientFactory } from '~/lib/desktop/desktopAuthClientFactory';
 import {
 	type WorkspaceAccent,
 	type WorkspaceStoreShape,
@@ -195,6 +196,10 @@ export async function loadWorkspaces(options?: {
 		const { sessionRead, onSessionReplaced } = await keychain();
 		const entry = await sessionRead(active.tokenRef);
 		bindActiveSession(active.tokenRef, entry, makeSessionPersistence());
+		// The workspace's auth client is desktop-only code; load it now, before
+		// the first auth call, and leave it out of the web app's entry bundle.
+		const { createActiveDesktopAuthClient } = await import('~/lib/desktop/desktopAuthClient');
+		setDesktopAuthClientFactory(createActiveDesktopAuthClient);
 		// Another window signed in to this workspace again or removed it: retire
 		// the session this window holds and bind the one it left.
 		void onSessionReplaced((account, revision) => {
