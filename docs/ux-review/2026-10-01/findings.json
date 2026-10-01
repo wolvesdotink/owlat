@@ -1,0 +1,560 @@
+[
+  {
+    "slug": "csv-identity-mapping",
+    "title": "[P1] CSV import: resolve conflicting identity mappings before preview and submission",
+    "priority": "P1",
+    "problem": "The importer can preview and validate one email address but import a different address from the same row. Auto-detection maps every header containing 'email' to the identity field; preview and validation take the first matching column, while serialization overwrites the address with the last nonempty matching column. This compromises trust in a migration and can associate profile data with the wrong contact.",
+    "evidence": [
+      {
+        "path": "apps/web/app/composables/useCsvImport.ts",
+        "line": 182,
+        "detail": "Any header containing email is mapped to email, without excluding an already mapped identity column."
+      },
+      {
+        "path": "apps/web/app/composables/useCsvImport.ts",
+        "line": 323,
+        "detail": "Validation finds the first email-mapped column."
+      },
+      {
+        "path": "apps/web/app/composables/useCsvImport.ts",
+        "line": 463,
+        "detail": "Preview getMappedValue returns the first matching mapped column."
+      },
+      {
+        "path": "apps/web/app/composables/useCsvImport.ts",
+        "line": 496,
+        "detail": "Serialization loops over every mapping and overwrites contact.email at line 501."
+      },
+      {
+        "path": "apps/web/app/components/contacts/CsvImportModal.vue",
+        "line": 475,
+        "detail": "Mapping selects permit multiple columns targeting the same scalar field."
+      }
+    ],
+    "reproduce": [
+      "Upload a CSV with headers email,secondary_email and at least ten rows such as contact0@owlat.example,billing0@owlat.example (the small-file parser problem is separately tracked in #910).",
+      "Keep the automatically detected mappings and advance to Preview.",
+      "Preview shows contact0@owlat.example. Submit to an intercepted/mock importBatch transport: its first contact is billing0@owlat.example."
+    ],
+    "proposal": [
+      "Make Email address explicitly identify the primary contact identity and allow exactly one mapped source column.",
+      "Show an inline conflict card on a second Email mapping: 'Email address is already mapped to email' with 'Use this column instead' and 'Ignore this column'.",
+      "Generate normalized prepared rows once and use them for validation, preview, and import; apply deterministic rules to other scalar destinations."
+    ],
+    "acceptance": [
+      "Two email headers cannot produce competing identity mappings.",
+      "Next is blocked until conflicting scalar mappings are resolved.",
+      "The previewed address equals the submitted address for every row, including blank secondary cells.",
+      "Add a regression case with distinct email and secondary_email values."
+    ],
+    "validation": "Browser-confirmed in real Vue components with a ten-row fixture: the preview showed contact0@owlat.example while the intercepted import payload contained billing0@owlat.example. Both columns were automatically mapped to Email. All writes were intercepted by the dev-only harness; no live contacts were imported. Existing tests cover single identity mappings but not this conflict.",
+    "related": [
+      "https://github.com/wolvesdotink/owlat/issues/910"
+    ],
+    "current_images": [
+      "csv-mapping",
+      "csv-preview"
+    ]
+  },
+  {
+    "slug": "automation-save-activation",
+    "title": "[P1] Automations: make save status and activation reflect the persisted configuration",
+    "priority": "P1",
+    "problem": "Automatic saving has no dependable visible state, and activation can use a previously saved configuration while the inspector shows newer or failed edits. Save Draft continues after a failed step save and can report success. The save baseline is taken from live currentConfig after awaiting the mutation, so an edit made during a request can be incorrectly marked clean. Users need confidence about which configuration is active.",
+    "evidence": [
+      {
+        "path": "apps/web/app/composables/useAutomationStepConfig.ts",
+        "line": 95,
+        "detail": "Mutation sends the current config, but line 102 takes the clean baseline from live currentConfig after the await."
+      },
+      {
+        "path": "apps/web/app/pages/dashboard/automations/[id]/edit.vue",
+        "line": 260,
+        "detail": "Save Draft awaits step save without verifying success, then updates metadata and displays draftSaved at line 269."
+      },
+      {
+        "path": "apps/web/app/pages/dashboard/automations/[id]/edit.vue",
+        "line": 169,
+        "detail": "Activate and Resume call status mutations without waiting for or checking current step saves."
+      },
+      {
+        "path": "apps/web/app/composables/useAutomationSteps.ts",
+        "line": 203,
+        "detail": "Activation validation reads persisted steps, rather than current inspector edits."
+      }
+    ],
+    "reproduce": [
+      "Open an automation step and change its configuration while a save is delayed or fails.",
+      "Click Save Draft after the step save fails; metadata can still save and produce the success toast.",
+      "Activate or resume while the panel has pending or failed edits; the status flow does not gate on their persistence."
+    ],
+    "proposal": [
+      "Show a persistent header status: Saving\u2026, All changes saved, or Changes couldn't be saved with Retry.",
+      "Capture the submitted step ID and configuration per save and retain later edits as dirty; serialize or coalesce overlapping saves.",
+      "Use Save and activate when edits remain; present readiness and the configuration that will actually become active."
+    ],
+    "acceptance": [
+      "Changes made while a request is pending remain dirty unless a later request persists them.",
+      "Step-save failure retains inputs and prevents misleading Draft saved messages.",
+      "Activation and Resume wait for required saves and abort on failure.",
+      "Retry visibly recovers without losing the user's configuration."
+    ],
+    "validation": "Source-confirmed save and activation control-flow findings. Editors automatically save on change/blur, so reproduce pending/failed writes rather than assuming all edits require manual Save. Reviewed useAutomationSteps tests: simple immediate successful saves clear dirty state, but pending edits, failed Save Draft, and activation persistence are not covered. Page rendering tests mock the steps composable.",
+    "related": [],
+    "current_images": [
+      "automation-desktop"
+    ]
+  },
+  {
+    "slug": "automation-draft-preservation",
+    "title": "[P2] Automations: preserve pending or failed step edits across inspector and structure changes",
+    "priority": "P2",
+    "problem": "The page protects ordinary step-to-step navigation, but inspector Close and Add step bypass that protection. The config watcher also replaces the local draft whenever the server's steps array updates. After an automatic-save failure or during a pending write, closing the inspector, adding a step, reordering, or receiving an unrelated live update can silently erase recoverable work.",
+    "evidence": [
+      {
+        "path": "apps/web/app/pages/dashboard/automations/[id]/edit.vue",
+        "line": 835,
+        "detail": "Inspector Close directly sets selectedStepId to null."
+      },
+      {
+        "path": "apps/web/app/composables/useAutomationSteps.ts",
+        "line": 123,
+        "detail": "Adding a step directly selects the new ID without the dirty selection guard."
+      },
+      {
+        "path": "apps/web/app/composables/useAutomationStepConfig.ts",
+        "line": 54,
+        "detail": "Watcher responds to selection and every automation.steps update; lines 75-76 replace config and baseline."
+      }
+    ],
+    "reproduce": [
+      "Change a selected step and make its automatic save fail.",
+      "Close the inspector or add another step and return to the original step.",
+      "Alternatively, change another step remotely or reorder the workflow while the first draft is pending; a steps update reinitializes the inspector."
+    ],
+    "proposal": [
+      "Route every selection exit through the existing Save / Discard / Cancel dialog.",
+      "Retain per-step local drafts during unrelated server updates, with explicit resolution when the same step changed remotely.",
+      "Show an inspector footer with Unsaved changes and Retry save; restore the previous draft when reopening its inspector."
+    ],
+    "acceptance": [
+      "Close and Add step cannot silently discard a failed or pending draft.",
+      "Cancel keeps selection and every entered value intact.",
+      "Updates to other steps preserve the current dirty configuration.",
+      "Same-step remote edits produce an explicit choice instead of overwriting local inputs."
+    ],
+    "validation": "Source-confirmed direct selection-reset and unconditional watcher behavior; no browser failure injection performed. Existing useAutomationSteps tests cover initial selection and an immediate successful save, while page tests stub the composable; pending/failed draft preservation and unrelated live updates are not exercised.",
+    "related": [],
+    "current_images": [
+      "automation-desktop"
+    ]
+  },
+  {
+    "slug": "automation-keyboard",
+    "title": "[P2] Automation builder: support keyboard step selection and reordering",
+    "priority": "P2",
+    "problem": "Existing workflow steps are selected by clicking a plain div, while ordering relies on a nonfocusable drag handle. Keyboard users can reach some add/delete controls but cannot complete the central task of opening an existing step's settings or changing workflow order.",
+    "evidence": [
+      {
+        "path": "apps/web/app/pages/dashboard/automations/[id]/edit.vue",
+        "line": 624,
+        "detail": "Step card is a plain div with click selection at line 631 and no keyboard semantics."
+      },
+      {
+        "path": "apps/web/app/pages/dashboard/automations/[id]/edit.vue",
+        "line": 635,
+        "detail": "Drag handle is a plain div with no focus or keyboard operation."
+      },
+      {
+        "path": "apps/web/app/pages/dashboard/automations/[id]/edit.vue",
+        "line": 610,
+        "detail": "VueDraggable is the only ordering interaction."
+      }
+    ],
+    "reproduce": [
+      "Open an automation with multiple existing steps.",
+      "Navigate using Tab and try to open a step inspector without a mouse.",
+      "Try to move a step before or after another using only keyboard controls."
+    ],
+    "proposal": [
+      "Provide a focusable step title/button with selected state and a card-level focus ring.",
+      "Add a Move step menu with Move up, Move down, and Move to position actions alongside drag interaction.",
+      "Keep focus on the moved step and announce its new position."
+    ],
+    "acceptance": [
+      "Tab reaches every existing step and Enter/Space opens its inspector.",
+      "Reordering is possible without dragging and preserves the same backend behavior.",
+      "Focus returns appropriately after inspector close and remains on moved steps.",
+      "A screen reader receives step name, selected state, and reorder result."
+    ],
+    "validation": "Source-confirmed missing keyboard selection/reordering controls. Reviewed useAutomationSteps tests: drag indices and backend reorder outcomes are covered, and page tests render the real draggable, but keyboard operation is not asserted.",
+    "related": [],
+    "current_images": [
+      "automation-desktop"
+    ]
+  },
+  {
+    "slug": "automation-responsive",
+    "title": "[P2] Automation builder: replace the fixed inspector with a responsive sheet on narrow screens",
+    "priority": "P2",
+    "problem": "The editor always reserves 384px for its inspector, even when no step is selected, in an unresponsive side-by-side flex container with clipping. Phone widths and high browser zoom leave the workflow canvas with little usable room and can make configuration controls unreachable.",
+    "evidence": [
+      {
+        "path": "apps/web/app/components/automations/StepEditorPanel.vue",
+        "line": 40,
+        "detail": "Inspector is always w-96 shrink-0, including its empty state."
+      },
+      {
+        "path": "apps/web/app/pages/dashboard/automations/[id]/edit.vue",
+        "line": 507,
+        "detail": "Canvas and inspector share an unresponsive flex overflow-clip container."
+      },
+      {
+        "path": "apps/web/app/pages/dashboard/automations/[id]/edit.vue",
+        "line": 829,
+        "detail": "Inspector is always rendered with no narrow-screen condition."
+      }
+    ],
+    "reproduce": [
+      "Open an automation editor at 390px width.",
+      "Compare the space available for workflow cards with the permanently rendered inspector.",
+      "Repeat at 320px and desktop 200% zoom; try selecting, configuring, saving, and returning to a step."
+    ],
+    "proposal": [
+      "Show the workflow full width on narrow screens.",
+      "Open a full-height inspector sheet on step selection, with Back, step title, settings, and a sticky save/retry footer.",
+      "Collapse the empty inspector on medium screens and preserve dirty-draft protection when dismissing the sheet."
+    ],
+    "acceptance": [
+      "Complete add/select/configure/reorder operations at 320px, 390px, 768px, and 200% zoom.",
+      "No clipped controls or page-wide sideways navigation.",
+      "Sheet closure restores focus to its step and respects pending/failed edits.",
+      "Desktop retains a useful inspector without wasting space when it is empty."
+    ],
+    "validation": "Browser-confirmed at 390\u00d7844 using the real populated eight-step editor. The empty inspector measured x=48, width=384, right=432; the clipped workflow remained as a thin strip behind it. See current mobile screenshot. Desktop screenshot is 1280\u00d7800. Further 320px and 200% zoom verification belongs in implementation acceptance.",
+    "related": [],
+    "current_images": [
+      "automation-mobile",
+      "automation-desktop"
+    ]
+  },
+  {
+    "slug": "template-picker-pagination",
+    "title": "[P2] Campaign and automation template pickers: search and select templates beyond the first page",
+    "priority": "P2",
+    "problem": "Both pickers request 100 templates but consume only the results array and never request another page. Campaign search filters that loaded slice, making older templates inaccessible and reporting No matches even when a suitable template exists. Larger organizations cannot reliably reuse their content.",
+    "evidence": [
+      {
+        "path": "apps/web/app/components/campaigns/steps/ContentStep.vue",
+        "line": 47,
+        "detail": "Paginated query requests 100 initial items but destructures only results."
+      },
+      {
+        "path": "apps/web/app/components/campaigns/steps/ContentStep.vue",
+        "line": 80,
+        "detail": "Search filters only locally loaded emailTemplates."
+      },
+      {
+        "path": "apps/web/app/pages/dashboard/automations/[id]/edit.vue",
+        "line": 33,
+        "detail": "Automation picker likewise requests 100 items and ignores status/loadMore."
+      },
+      {
+        "path": "apps/web/app/composables/usePaginatedQuery.ts",
+        "line": 125,
+        "detail": "Additional pages load only when the consumer explicitly calls loadMore."
+      }
+    ],
+    "reproduce": [
+      "Use an organization with more than 100 marketing templates.",
+      "Search in campaign Content for a template outside the loaded first page.",
+      "Try selecting the same template for an automation email step."
+    ],
+    "proposal": [
+      "Use a searchable picker with template thumbnail, name, subject, and status.",
+      "Use bounded server-side search or page loading with visible progress and a Load more fallback.",
+      "Resolve selected templates independently so an existing selection stays visible beyond the first page; distinguish loading from empty results."
+    ],
+    "acceptance": [
+      "A template beyond item 100 is discoverable and selectable on both surfaces.",
+      "Search covers the full searchable set instead of the first page.",
+      "Selected template details remain visible when outside the current results.",
+      "No matching templates is shown only after the search result is known; query failure has Retry."
+    ],
+    "validation": "Source-confirmed pagination gap; no browser fixture with 101+ templates created. Reviewed usePaginatedQuery and useOrganizationPaginatedQuery: neither automatically drains pages. Existing automation and wizard tests stub template data and do not exercise second-page discovery.",
+    "related": [
+      "https://github.com/wolvesdotink/owlat/issues/721"
+    ],
+    "current_images": []
+  },
+  {
+    "slug": "campaign-compose-continuity",
+    "title": "[P2] Campaign creation: compose new email content before advancing to review",
+    "priority": "P2",
+    "problem": "Choosing a new template creates only metadata and advances directly to Review. The Content stage is considered complete as soon as a template ID exists, while Review shows its name and says it can be edited later without offering body composition or a rendered preview. The user reaches the send decision with an empty email, which the send backend ultimately refuses.",
+    "evidence": [
+      {
+        "path": "apps/web/app/components/campaigns/steps/ContentStep.vue",
+        "line": 157,
+        "detail": "New template creation supplies name, type, and subject, without body content."
+      },
+      {
+        "path": "apps/web/app/components/campaigns/steps/ContentStep.vue",
+        "line": 183,
+        "detail": "After attachment, submit advances the wizard without opening the builder."
+      },
+      {
+        "path": "apps/web/app/pages/dashboard/campaigns/new.vue",
+        "line": 127,
+        "detail": "Content completion checks template ID alone."
+      },
+      {
+        "path": "apps/web/app/pages/dashboard/campaigns/new.vue",
+        "line": 147,
+        "detail": "Content submit immediately calls goToNext."
+      },
+      {
+        "path": "apps/web/app/components/campaigns/steps/ReviewStep.vue",
+        "line": 415,
+        "detail": "Content summary displays editLater text without a body preview or composition action."
+      },
+      {
+        "path": "apps/api/convex/campaigns/send.ts",
+        "line": 221,
+        "detail": "Send flow throws when the template has no HTML content."
+      }
+    ],
+    "reproduce": [
+      "Create a campaign and choose a new email template in Content.",
+      "Enter its name and subject, then continue.",
+      "Observe Review despite there being no composed body and no direct body editing action."
+    ],
+    "proposal": [
+      "Make Content a continuous Choose \u2192 Compose \u2192 Review flow; label the new-template action Create and design email.",
+      "Preserve the campaign draft URL/state through the builder and provide Return to campaign.",
+      "Show desktop/mobile body previews, Edit email, and an explicit Email body is empty readiness item in Review."
+    ],
+    "acceptance": [
+      "New-template creation opens the builder and returns to the correct campaign draft.",
+      "An empty body cannot appear as completed content or a send-ready review.",
+      "Review displays the rendered recipient experience and a direct editing action.",
+      "Editing retains sender, audience, subject, and scheduling selections."
+    ],
+    "validation": "Source-confirmed wizard flow and missing-body backend refusal; the proposed compose and preview interaction is a design improvement. Reviewed newWizardUrlState tests: they stub Content and verify URL reachability, not composition or body readiness.",
+    "related": [],
+    "current_images": []
+  },
+  {
+    "slug": "assistant-draft-recovery",
+    "title": "[P1] Assistant: retain questions until send succeeds and offer inline retry",
+    "priority": "P1",
+    "problem": "The Assistant clears a written question immediately after emitting send. Creating the conversation or sending the message can then fail, leaving only a toast and no recoverable question. Unlike ChatInput, the Assistant has no awaited send result or submission state. Repeated submissions before streaming starts can also overlap.",
+    "evidence": [
+      {
+        "path": "apps/web/app/components/assistant/AssistantComposer.vue",
+        "line": 19,
+        "detail": "submit emits send and immediately clears text at line 22; no send result is awaited."
+      },
+      {
+        "path": "apps/web/app/composables/useAssistant.ts",
+        "line": 65,
+        "detail": "send may return after createRun fails and does not return the sendRun outcome to its caller."
+      },
+      {
+        "path": "apps/web/app/components/chat/ChatInput.vue",
+        "line": 165,
+        "detail": "Existing chat submission snapshots text and clears it only after an acknowledged successful send."
+      }
+    ],
+    "reproduce": [
+      "Write a detailed question in Assistant.",
+      "Make createConversation or sendMessage fail (offline/network refusal).",
+      "Press Send: the textarea is cleared even though the question was not accepted."
+    ],
+    "proposal": [
+      "Use an awaited submission contract, capture the text and conversation ID, and clear only the accepted snapshot.",
+      "Show Sending\u2026 while submitting and an inline Could not send. Your question is still here. status with Retry.",
+      "Keep later edits intact and avoid overlapping submissions; optionally retain per-conversation drafts for navigation recovery."
+    ],
+    "acceptance": [
+      "Creation and send failures preserve the exact question, including newlines.",
+      "A pending submission cannot start a second identical request.",
+      "Typing while a request is pending does not get cleared by its completion.",
+      "Retry sends once to the intended conversation, with clear success/failure feedback."
+    ],
+    "validation": "Browser-confirmed: after injecting a rejected mocked mutation (network failure), Send emptied the textarea; only a toast remained. This was exercised in the real Assistant page with populated fixture conversations. No live questions were sent.",
+    "related": [],
+    "current_images": [
+      "assistant-failed-send"
+    ]
+  },
+  {
+    "slug": "assistant-reading-position",
+    "title": "[P2] Assistant: preserve reading position while responses stream",
+    "priority": "P2",
+    "problem": "Every change to the last message text or status schedules an unconditional scroll to the bottom. When users scroll up to reread earlier information while a response arrives, the next update pulls them away. This makes lengthy answers and tool-assisted conversations frustrating to read.",
+    "evidence": [
+      {
+        "path": "apps/web/app/pages/dashboard/assistant/index.vue",
+        "line": 45,
+        "detail": "scrollToBottom assigns scrollTop = scrollHeight with no near-bottom or reader-intent check."
+      },
+      {
+        "path": "apps/web/app/pages/dashboard/assistant/index.vue",
+        "line": 52,
+        "detail": "Watcher invokes this on message count, last message text length and status changes."
+      }
+    ],
+    "reproduce": [
+      "Ask for a long answer and let it stream.",
+      "Scroll upward to inspect an earlier paragraph or message.",
+      "Observe that the next text/status update moves the view to the bottom."
+    ],
+    "proposal": [
+      "Follow streaming only while the reader is already near the bottom.",
+      "When the reader scrolls away, show a quiet New response \u2193 / Jump to latest control above the composer.",
+      "Restore the reading position when switching back to a conversation; distinguish following the current stream from opening another conversation."
+    ],
+    "acceptance": [
+      "Scrolling upward during streaming is respected across text and tool/status updates.",
+      "The jump control appears only when new content exists below the current view.",
+      "Clicking Jump to latest resumes following until the user scrolls away again.",
+      "Reduced motion and keyboard focus remain usable."
+    ],
+    "validation": "Source-confirmed interaction; live backend streaming was not exercised. Treat saved browser screenshots as fixture-based visual context.",
+    "related": [],
+    "current_images": [
+      "assistant-desktop"
+    ]
+  },
+  {
+    "slug": "assistant-keyboard-access",
+    "title": "[P2] Assistant: make conversation selection and the question field accessible",
+    "priority": "P2",
+    "problem": "Conversation rows are clickable divs with no keyboard semantics or tab stop. Their Rename/Delete buttons are keyboard reachable, but the main action of opening the conversation is not. The composer textarea also relies on a disappearing placeholder without a persistent label. On touch devices the tiny hover-revealed row actions are hard to discover.",
+    "evidence": [
+      {
+        "path": "apps/web/app/pages/dashboard/assistant/index.vue",
+        "line": 140,
+        "detail": "Conversation selection is attached to a div at line 148, with no role, tabindex or keyboard handler."
+      },
+      {
+        "path": "apps/web/app/pages/dashboard/assistant/index.vue",
+        "line": 168,
+        "detail": "Rename/Delete are hover-revealed 14px glyph buttons; selection needs a separate semantic control."
+      },
+      {
+        "path": "apps/web/app/components/assistant/AssistantComposer.vue",
+        "line": 39,
+        "detail": "Textarea has placeholder but no associated label, aria-label or aria-describedby for the shortcut hint."
+      }
+    ],
+    "reproduce": [
+      "Use Tab from New chat through the conversation list.",
+      "Try to select an existing conversation with Enter/Space.",
+      "Type a question and inspect the textarea accessible name after the placeholder disappears."
+    ],
+    "proposal": [
+      "Give each row a real selection button or link with selected/current state; place actions in a separate labelled menu rather than nesting controls.",
+      "Provide a persistent Question label and connect the shortcut/help text with aria-describedby.",
+      "Reveal a generous More actions target on touch, retain visible focus rings, and restore focus after drawer closure."
+    ],
+    "acceptance": [
+      "Every conversation opens with keyboard and is identified by its full title to assistive technology.",
+      "Selection, Rename and Delete are distinct semantic controls without nested interactive elements.",
+      "The question field keeps a meaningful accessible name when filled.",
+      "At 390px, conversation selection and actions can be operated without hover."
+    ],
+    "validation": "Source-confirmed; shared-browser DOM inspection verified that populated conversation rows have role=null and tabindex=null and the textarea has no aria-label.",
+    "related": [],
+    "current_images": [
+      "assistant-desktop"
+    ]
+  },
+  {
+    "slug": "composer-ime-enter",
+    "title": "[P1] Chat and Assistant: do not send messages while Enter confirms IME composition",
+    "priority": "P1",
+    "problem": "Both composers treat every unmodified Enter as Send without checking composition state. Users writing Japanese, Chinese or Korean often press Enter to confirm a candidate. That keystroke can submit incomplete text; Assistant additionally clears it immediately. This undermines basic writing reliability for multilingual users.",
+    "evidence": [
+      {
+        "path": "apps/web/app/components/assistant/AssistantComposer.vue",
+        "line": 28,
+        "detail": "Enter handler does not guard event.isComposing or composition lifecycle."
+      },
+      {
+        "path": "apps/web/app/components/chat/ChatInput.vue",
+        "line": 89,
+        "detail": "Chat Enter handler checks Shift and mentionQuery but not IME composition."
+      }
+    ],
+    "reproduce": [
+      "Enable a Japanese/Chinese/Korean IME and type a message into Chat or Assistant.",
+      "Press Enter to confirm a candidate while composition is active.",
+      "The composer invokes its send handler rather than letting the input method complete normally."
+    ],
+    "proposal": [
+      "Treat active composition as text entry; do not preventDefault or submit on composition-confirmation Enter.",
+      "Apply one shared composition-safe Enter behavior to both composers, with a deliberate Enter to send after composition finishes.",
+      "Keep the hint simple and retain a clearly labelled Send button."
+    ],
+    "acceptance": [
+      "Enter during composition does not invoke send or clear the draft in either composer.",
+      "After composition finishes, ordinary Enter sends once and Shift+Enter inserts a newline.",
+      "Verify with real IMEs on at least Chromium and WebKit, in addition to a composed-event regression case.",
+      "Mention selection still takes precedence where applicable."
+    ],
+    "validation": "Browser-confirmed for Assistant using a synthetic keydown with key=Enter and isComposing=true: the textarea emptied and submission ran. Chat shares the unguarded Enter pattern by source inspection. Native Japanese/Chinese/Korean IMEs and WebKit still need verification during implementation.",
+    "related": [],
+    "current_images": [
+      "assistant-desktop"
+    ]
+  },
+  {
+    "slug": "schedule-validation",
+    "title": "[P2] Schedule send: explain invalid custom times and show the scheduling timezone",
+    "priority": "P2",
+    "problem": "A past custom date enables Schedule but its click silently returns, so users cannot tell why the action did nothing. The label is not associated with the native input. When recipients do not share a different timezone, the dialog supplies no explicit sender timezone, leaving custom-time interpretation unclear.",
+    "evidence": [
+      {
+        "path": "apps/web/app/components/postbox/PostboxScheduleDialog.vue",
+        "line": 136,
+        "detail": "pickCustom silently returns for invalid/past dates instead of updating inline validation."
+      },
+      {
+        "path": "apps/web/app/components/postbox/PostboxScheduleDialog.vue",
+        "line": 179,
+        "detail": "Custom-date label has no for/input id association."
+      },
+      {
+        "path": "apps/web/app/components/postbox/PostboxScheduleDialog.vue",
+        "line": 183,
+        "detail": "Input has no min or inline error; Schedule disables only on an empty string."
+      },
+      {
+        "path": "apps/web/app/components/postbox/PostboxScheduleDialog.vue",
+        "line": 158,
+        "detail": "Timezone header is shown only for the both-clocks recipient case."
+      }
+    ],
+    "reproduce": [
+      "Open Schedule send and enter a past local date/time.",
+      "Observe an enabled Schedule action and click it.",
+      "Nothing is scheduled and no error appears; the custom clock is also not explicitly attributed."
+    ],
+    "proposal": [
+      "Label the date/time input and always show Your timezone using an IANA zone and understandable local example.",
+      "Validate as the user edits and show Choose a future date and time beside the field; revalidate on submission.",
+      "Show a human-readable confirmation of the absolute send time; retain recipient-clock information when known without guessing."
+    ],
+    "acceptance": [
+      "Past/invalid dates have an inline, accessible explanation and cannot silently fail.",
+      "The date/time field has an associated label and error description.",
+      "The dialog always makes the sender timezone explicit and the emitted timestamp matches the displayed confirmation.",
+      "Validate boundary conditions when the selected minute elapses while the dialog remains open; native picker min alone is insufficient."
+    ],
+    "validation": "Source-confirmed custom-time validation and missing label/timezone context. No real outbound scheduling performed.",
+    "related": [],
+    "current_images": []
+  }
+]
