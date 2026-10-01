@@ -3,7 +3,13 @@ import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { getConvexClient, fn, type CodeWorkTask } from './convexClient.js';
 import { createPullRequest } from './github.js';
-import { runUntrusted, runGit, handOffWorkspaceToSandbox, isGitDirRootOwned } from './sandbox.js';
+import {
+	combinedOutputTail,
+	runUntrusted,
+	runGit,
+	handOffWorkspaceToSandbox,
+	isGitDirRootOwned,
+} from './sandbox.js';
 import { log } from './log.js';
 
 // Re-export the sandbox-execution seam so existing importers (and the uid /
@@ -276,17 +282,16 @@ export async function runCodingAgent(
 			spawnFn
 		);
 		if (result.timedOut) {
+			const header = 'OpenCode timed out after 10m; sandbox processes killed.\n';
 			return {
 				success: false,
-				output: `OpenCode timed out after 10m; sandbox processes killed.\n${(result.stdout + result.stderr).slice(-2000)}`,
+				output: header + combinedOutputTail(result, 2000 - header.length),
 			};
 		}
 		if (result.code !== 0) {
 			return {
 				success: false,
-				output:
-					(result.stdout + result.stderr).slice(-2000) ||
-					`OpenCode exited with code ${result.code}`,
+				output: combinedOutputTail(result, 2000) || `OpenCode exited with code ${result.code}`,
 			};
 		}
 		return { success: true, output: result.stdout };
@@ -321,16 +326,17 @@ export async function runTests(
 			spawnFn
 		);
 		if (result.timedOut) {
+			// Header and tail together fit the 2000 characters the task record keeps.
+			const header = 'Tests timed out after 5m; sandbox processes killed.\n';
 			return {
 				passed: false,
-				output: `Tests timed out after 5m; sandbox processes killed.\n${(result.stdout + result.stderr).slice(-2000)}`,
+				output: header + combinedOutputTail(result, 2000 - header.length),
 			};
 		}
 		// vitest exits non-zero iff any test failed, so `passed` is derived purely
 		// from exit status; `output` is captured for the PR body only and is never
 		// parsed for the verdict.
-		const combined = (result.stdout + result.stderr).trim();
-		return { passed: result.code === 0, output: combined.slice(-2000) }; // Last 2000 chars
+		return { passed: result.code === 0, output: combinedOutputTail(result, 2000) };
 	} catch (error) {
 		// spawn itself failed (e.g. npx missing) — treat as a test failure.
 		const errMsg = error instanceof Error ? error.message : String(error);

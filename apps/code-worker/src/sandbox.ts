@@ -1,6 +1,7 @@
 import { execFileSync, spawn, type ExecFileSyncOptions } from 'node:child_process';
 import { chmodSync, chownSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 
 /**
  * Sandbox-execution seam for the code-worker.
@@ -102,6 +103,126 @@ export interface DetachedRunResult {
 	timedOut: boolean;
 	/** True when an external cancellation (AbortSignal) reaped the sandbox processes. */
 	killed: boolean;
+	/** True when either stream outgrew its capture budget and its middle was dropped. */
+	outputTruncated: boolean;
+}
+
+/**
+ * How much of each output stream the orchestrator keeps while a sandboxed child
+ * runs. Untrusted children can write without limit for their whole time budget,
+ * so bytes past the budget are counted and discarded as they arrive instead of
+ * accumulating in the trusted process. Each stream keeps its first `headBytes`
+ * (a plugin job returns its result on stdout) and its last `tailBytes` (failures
+ * are diagnosed from the end). Both streams together therefore retain at most
+ * `2 * (headBytes + tailBytes)`.
+ */
+export interface SandboxOutputLimits {
+	headBytes: number;
+	tailBytes: number;
+}
+
+export const SANDBOX_OUTPUT_LIMITS: SandboxOutputLimits = {
+	headBytes: 64 * 1024,
+	tailBytes: 64 * 1024,
+};
+
+/** Marker placed where a stream's dropped middle was, and on output summaries built from it. */
+export const SANDBOX_OUTPUT_TRUNCATED = 'sandbox output truncated';
+
+/** Bounded capture of one output stream; see `SandboxOutputLimits`. */
+export interface OutputCapture {
+	push(chunk: Buffer): void;
+	/** Bytes held in memory right now; never more than `headBytes + tailBytes`. */
+	readonly retainedBytes: number;
+	readonly totalBytes: number;
+	readonly truncated: boolean;
+	/** Decode what was kept. A dropped middle is replaced by a visible marker. */
+	text(): string;
+}
+
+/**
+ * Create a bounded capture. Raw bytes are kept and decoded once at the end, so a
+ * UTF-8 sequence split across chunks survives; at a dropped middle, a partial
+ * sequence on either side is discarded rather than decoded into garbage. Both
+ * regions are fixed buffers allocated on first use, so a flood of tiny chunks
+ * cannot grow per-chunk bookkeeping either.
+ */
+export function createOutputCapture(
+	limits: SandboxOutputLimits = SANDBOX_OUTPUT_LIMITS
+): OutputCapture {
+	const headCap = Math.max(0, Math.floor(limits.headBytes));
+	const tailCap = Math.max(0, Math.floor(limits.tailBytes));
+	let head: Buffer | undefined;
+	let headLen = 0;
+	// Ring buffer holding the newest `tailCap` bytes after the head is full.
+	let ring: Buffer | undefined;
+	let ringLen = 0;
+	let ringPos = 0;
+	let total = 0;
+
+	const tailBytes = (): Buffer => {
+		if (!ring || ringLen === 0) return Buffer.alloc(0);
+		if (ringLen < tailCap) return ring.subarray(0, ringLen);
+		return Buffer.concat([ring.subarray(ringPos), ring.subarray(0, ringPos)]);
+	};
+
+	return {
+		push(chunk: Buffer) {
+			total += chunk.length;
+			let rest = chunk;
+			if (headLen < headCap && rest.length > 0) {
+				head ??= Buffer.allocUnsafe(headCap);
+				const taken = rest.copy(head, headLen, 0, Math.min(rest.length, headCap - headLen));
+				headLen += taken;
+				rest = rest.subarray(taken);
+			}
+			if (rest.length === 0 || tailCap === 0) return;
+			ring ??= Buffer.allocUnsafe(tailCap);
+			if (rest.length >= tailCap) {
+				rest.copy(ring, 0, rest.length - tailCap);
+				ringLen = tailCap;
+				ringPos = 0;
+				return;
+			}
+			const first = rest.copy(ring, ringPos, 0, Math.min(rest.length, tailCap - ringPos));
+			if (first < rest.length) rest.copy(ring, 0, first);
+			ringPos = (ringPos + rest.length) % tailCap;
+			ringLen = Math.min(tailCap, ringLen + rest.length);
+		},
+		get retainedBytes() {
+			return headLen + ringLen;
+		},
+		get totalBytes() {
+			return total;
+		},
+		get truncated() {
+			return total > headLen + ringLen;
+		},
+		text() {
+			const headPart = head ? head.subarray(0, headLen) : Buffer.alloc(0);
+			const tail = tailBytes();
+			const omitted = total - headLen - ringLen;
+			if (omitted === 0) return Buffer.concat([headPart, tail]).toString('utf8');
+			// StringDecoder.write holds back an incomplete trailing sequence.
+			const headText = new StringDecoder('utf8').write(headPart);
+			let start = 0;
+			while (start < 3 && start < tail.length && (tail[start]! & 0xc0) === 0x80) start++;
+			const marker = `[${SANDBOX_OUTPUT_TRUNCATED}: ${omitted} bytes omitted]`;
+			return `${headText}${headText ? '\n' : ''}${marker}\n${tail.subarray(start).toString('utf8')}`;
+		},
+	};
+}
+
+/**
+ * The last `maxChars` of a run's combined output. When the sandbox dropped bytes
+ * the summary starts with a note saying so, and the note counts toward
+ * `maxChars`, so a caller's own length clamp keeps it.
+ */
+export function combinedOutputTail(result: DetachedRunResult, maxChars: number): string {
+	const combined = (result.stdout + result.stderr).trim();
+	if (!result.outputTruncated) return combined.slice(-maxChars);
+	const note = `[${SANDBOX_OUTPUT_TRUNCATED}; showing the end]\n`;
+	return note + combined.slice(-Math.max(0, maxChars - note.length));
 }
 
 /** Options shared by every sandboxed run. */
@@ -116,6 +237,8 @@ export interface SandboxRunOptions {
 	signal?: AbortSignal;
 	/** Injectable cleanup for tests; production reaps the dedicated sandbox uid. */
 	reap?: () => void | Promise<void>;
+	/** Per-stream capture budget; defaults to `SANDBOX_OUTPUT_LIMITS`. */
+	outputLimits?: SandboxOutputLimits;
 }
 
 /** Run untrusted code and reap sandbox processes before reporting its result. */
@@ -139,20 +262,19 @@ function runDetached(
 			...(opts.gid !== undefined ? { gid: opts.gid } : {}),
 		});
 
-		let stdout = '';
-		let stderr = '';
+		const stdout = createOutputCapture(opts.outputLimits);
+		const stderr = createOutputCapture(opts.outputLimits);
 		let timedOut = false;
 		let killed = false;
 		let reaping: Promise<void> | undefined;
 		const reap = () =>
 			(reaping ??= Promise.resolve().then(() => (opts.reap ?? reapSandboxProcesses)()));
 
-		child.stdout?.on('data', (chunk: Buffer) => {
-			stdout += chunk.toString();
-		});
-		child.stderr?.on('data', (chunk: Buffer) => {
-			stderr += chunk.toString();
-		});
+		// Keep both pipes flowing for the whole run, even once a budget is spent:
+		// excess bytes are discarded, never left to fill the pipe and block the
+		// child, which would hold `close` back until the deadline.
+		child.stdout?.on('data', (chunk: Buffer) => stdout.push(chunk));
+		child.stderr?.on('data', (chunk: Buffer) => stderr.push(chunk));
 
 		const timer = setTimeout(() => {
 			timedOut = true;
@@ -186,7 +308,18 @@ function runDetached(
 		});
 		child.once('close', (code) => {
 			cleanup();
-			void reap().then(() => resolve({ code, stdout, stderr, timedOut, killed }), reject);
+			void reap().then(
+				() =>
+					resolve({
+						code,
+						stdout: stdout.text(),
+						stderr: stderr.text(),
+						timedOut,
+						killed,
+						outputTruncated: stdout.truncated || stderr.truncated,
+					}),
+				reject
+			);
 		});
 	});
 }
