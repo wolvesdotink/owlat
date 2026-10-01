@@ -5595,10 +5595,20 @@
 		"translation": {
 			"cell": {
 				"cancelTitle": "Cancel (Esc)",
+				"conflict": "Changed elsewhere since you edited it",
+				"discard": "Discard",
+				"discardLabel": "Discard your edit of {field}",
+				"editHint": "Press Ctrl+Enter or Cmd+Enter to save, Escape to cancel.",
+				"editLabel": "Edit {field}",
+				"fieldName": "{field} ({language})",
 				"htmlBadge": "HTML",
 				"noContent": "No content",
 				"placeholder": "Click to translate",
+				"retry": "Save again",
+				"retryLabel": "Save {field} again",
+				"saveFailed": "Not saved",
 				"saveTitle": "Save (Cmd+Enter)",
+				"saving": "Saving…",
 				"sourceBadge": "source"
 			},
 			"manager": {
@@ -5636,7 +5646,7 @@
 				"removeLanguageOperation": "Remove language",
 				"removeLanguageTitle": "Remove language",
 				"saveTranslationOperation": "Save translation",
-				"saveTranslationsOperation": "Save translations",
+				"savingChanges": "Saving…",
 				"subjectLine": "Subject line",
 				"textBlock": "{prefix}text block {index}",
 				"unsavedChanges": "Unsaved changes"

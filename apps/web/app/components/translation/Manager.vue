@@ -1,8 +1,21 @@
 <script setup lang="ts">
-import { parseStoredBlocks } from '@owlat/email-builder';
+import { parseStoredBlocks, UnsavedChangesDialog } from '@owlat/email-builder';
 import { api } from '@owlat/api';
 import { languageOptions } from '~/data/languageOptions';
 import type { Id } from '@owlat/api/dataModel';
+import {
+	buildLanguageAdd,
+	buildTranslationUpdate,
+	translationBaseOf,
+	type TranslationBase,
+	type TranslationField,
+	type TranslationFieldEdit,
+} from '~/composables/translationSave';
+import {
+	useTranslationDrafts,
+	type TranslationCell,
+	type TranslationCommitResult,
+} from '~/composables/useTranslationDrafts';
 
 type EmailType = 'marketing' | 'transactional';
 
@@ -20,21 +33,8 @@ const { t } = useI18n();
 const router = useRouter();
 const { showToast } = useToast();
 const { emailTheme } = useEmailTheme();
-const { renderContentToHtml, loadLanguageContentForEmail } = useEmailHtmlRendering();
 
 // Type definitions
-interface TranslatableBlockContent {
-	html?: string;
-	buttonText?: string;
-	alt?: string;
-}
-
-interface Translation {
-	subject: string;
-	previewText?: string;
-	blocks: Record<string, TranslatableBlockContent>;
-}
-
 interface TranslatableRow {
 	id: string;
 	fieldType: 'subject' | 'previewText' | 'html' | 'buttonText' | 'alt';
@@ -89,9 +89,6 @@ const isLoading = computed(() => {
 });
 
 // Mutations
-const { run: updateMarketingTemplate } = useBackendOperation(api.emailTemplates.emails.update, {
-	label: () => t('components.translation.manager.saveTranslationsOperation'),
-});
 const { run: addMarketingTranslation } = useBackendOperation(
 	api.emailTemplates.i18n.addTranslation,
 	{ label: () => t('components.translation.manager.addLanguageOperation') }
@@ -105,9 +102,6 @@ const { run: removeMarketingTranslation } = useBackendOperation(
 	{ label: () => t('components.translation.manager.removeLanguageOperation') }
 );
 
-const { run: updateTransactionalEmail } = useBackendOperation(api.transactional.emails.update, {
-	label: () => t('components.translation.manager.saveTranslationsOperation'),
-});
 const { run: addTransactionalTranslation } = useBackendOperation(
 	api.transactional.translations.addTranslation,
 	{ label: () => t('components.translation.manager.addLanguageOperation') }
@@ -123,59 +117,79 @@ const { run: removeTransactionalTranslation } = useBackendOperation(
 
 // State
 const isSaving = ref(false);
-const hasChanges = ref(false);
-const savingCells = ref<Set<string>>(new Set());
 const isTranslating = ref<string | null>(null); // Language code being translated
 
-// Local translations state (synced from email)
-const translations = ref<Record<string, Translation>>({});
-const htmlTranslations = ref<Record<string, { htmlContent: string; subject: string }>>({});
-const defaultLanguage = ref('en');
-const supportedLanguages = ref<string[]>([]);
-// emailTheme is provided by useEmailTheme() (declared above).
-const emailIdentifier = computed(() =>
-	props.emailType === 'marketing'
-		? {
-				emailType: 'marketing' as const,
-				emailId: props.emailId as Id<'emailTemplates'>,
-			}
-		: {
-				emailType: 'transactional' as const,
-				emailId: props.emailId as Id<'transactionalEmails'>,
-			}
+const defaultLanguage = computed(() => email.value?.defaultLanguage || 'en');
+const supportedLanguages = computed(
+	() => email.value?.supportedLanguages || [defaultLanguage.value]
 );
 
-// Parse email data when it loads
-watch(
-	email,
-	(e) => {
-		if (e) {
-			defaultLanguage.value = e.defaultLanguage || 'en';
-			supportedLanguages.value = [...(e.supportedLanguages || [defaultLanguage.value])];
+// The server row every write is built on. Clean cells always show it; edited
+// cells show their own draft until their write lands (useTranslationDrafts).
+const translationBase = computed<TranslationBase | null>(() =>
+	email.value ? translationBaseOf(email.value) : null
+);
 
-			if (e.translations) {
-				try {
-					translations.value = JSON.parse(e.translations);
-				} catch {
-					translations.value = {};
-				}
-			} else {
-				translations.value = {};
-			}
-			if (e.htmlTranslations) {
-				try {
-					htmlTranslations.value = JSON.parse(e.htmlTranslations);
-				} catch {
-					htmlTranslations.value = {};
-				}
-			} else {
-				htmlTranslations.value = {};
-			}
-			hasChanges.value = false;
-		}
+const renderOptions = () => ({
+	theme: emailTheme.value,
+	variableType: props.emailType === 'marketing' ? ('personalization' as const) : ('data' as const),
+});
+
+// One write per save: the language's overlay and the HTML rendered from it,
+// named by the revision of the row they were built on.
+const commitTranslation = async (
+	base: TranslationBase,
+	language: string,
+	edits: readonly TranslationFieldEdit[]
+): Promise<TranslationCommitResult> => {
+	const payload = buildTranslationUpdate(base, language, edits, renderOptions());
+	const saved =
+		props.emailType === 'marketing'
+			? await updateMarketingTranslation({
+					templateId: props.emailId as Id<'emailTemplates'>,
+					...payload,
+				})
+			: await updateTransactionalTranslation({
+					id: props.emailId as Id<'transactionalEmails'>,
+					language: payload.language,
+					subject: payload.subject,
+					blocks: payload.blocks,
+					htmlContent: payload.htmlContent,
+					expectedContentRevision: payload.expectedContentRevision,
+				});
+	return saved.ok ? { ok: true, revision: saved.result.contentRevision } : { ok: false };
+};
+
+const {
+	valueOf,
+	statusOf,
+	saveCell,
+	save: saveCells,
+	retry: retryCell,
+	discard: discardCell,
+	forgetLanguage,
+	setOpenEdit,
+	runWrite,
+	saveAll,
+	failedCount,
+	isSaving: isSavingCells,
+	hasUnsavedWork,
+} = useTranslationDrafts({ base: translationBase, commit: commitTranslation });
+
+// Leaving with a cell still being typed in, saving or not saved asks first.
+const {
+	showDialog: showUnsavedDialog,
+	isSavingBeforeLeave,
+	confirmDiscard,
+	confirmSave,
+	cancelNavigation,
+	setHasChanges,
+} = useUnsavedChanges({
+	onSave: async () => {
+		if (!(await saveAll())) throw new Error('Translations not saved');
 	},
-	{ immediate: true }
-);
+});
+watch(hasUnsavedWork, setHasChanges, { immediate: true });
 
 // Computed: non-default languages (columns to show)
 const translationLanguages = computed(() => {
@@ -199,35 +213,6 @@ const getLanguageInfo = (code: string) => {
 // same in every locale, so an unknown one falls through as its own text.
 const languageLabel = (code: string) => t(getLanguageInfo(code).label);
 const languageNativeLabel = (code: string) => t(getLanguageInfo(code).nativeLabel);
-
-const persistHtmlTranslations = async () => {
-	const payload = JSON.stringify(htmlTranslations.value);
-	if (props.emailType === 'marketing') {
-		return await updateMarketingTemplate({
-			templateId: props.emailId as Id<'emailTemplates'>,
-			htmlTranslations: payload,
-		});
-	}
-	return await updateTransactionalEmail({
-		id: props.emailId as Id<'transactionalEmails'>,
-		htmlTranslations: payload,
-	});
-};
-
-const regenerateRenderedLanguage = async (language: string) => {
-	const languageContent = await loadLanguageContentForEmail(emailIdentifier.value, language);
-	if (!languageContent) return;
-
-	const renderedHtml = await renderContentToHtml(languageContent.content, {
-		theme: emailTheme.value,
-		variableType: props.emailType === 'marketing' ? 'personalization' : 'data',
-	});
-	htmlTranslations.value[language] = {
-		htmlContent: renderedHtml,
-		subject: languageContent.subject,
-	};
-	await persistHtmlTranslations();
-};
 
 // Extract translatable rows from email content
 const translatableRows = computed((): TranslatableRow[] => {
@@ -321,116 +306,47 @@ const extractBlockRows = (blocks: Block[], rows: TranslatableRow[], prefix = '')
 	}
 };
 
+// The overlay value a row edits.
+const fieldOf = (row: TranslatableRow): TranslationField => {
+	if (row.fieldType === 'subject') return { kind: 'subject' };
+	if (row.fieldType === 'previewText') return { kind: 'previewText' };
+	return { kind: 'block', blockId: row.blockId ?? row.id, property: row.fieldType };
+};
+
+const cellOf = (row: TranslatableRow, language: string): TranslationCell => ({
+	language,
+	rowId: row.id,
+	field: fieldOf(row),
+});
+
 // Get translation value for a row and language
 const getTranslationValue = (row: TranslatableRow, language: string): string => {
 	if (language === defaultLanguage.value) {
 		return row.sourceText;
 	}
-
-	const translation = translations.value[language];
-	if (!translation) return '';
-
-	if (row.id === '_subject') {
-		return translation.subject || '';
-	}
-	if (row.id === '_previewText') {
-		return translation.previewText || '';
-	}
-
-	// Block content — the fieldType name matches the block-content property.
-	const blockTranslation = translation.blocks?.[row.id];
-	if (!blockTranslation) return '';
-
-	if (row.fieldType === 'html' || row.fieldType === 'buttonText' || row.fieldType === 'alt') {
-		return blockTranslation[row.fieldType] ?? '';
-	}
-	return '';
-};
-
-// Update translation value
-const updateTranslationValue = async (row: TranslatableRow, language: string, value: string) => {
-	const cellKey = `${row.id}:${language}`;
-	savingCells.value.add(cellKey);
-	// Mark dirty BEFORE persisting: cells auto-save, so the only state the
-	// 'Unsaved changes' badge can honestly represent is a local edit whose
-	// save has not (yet) succeeded — it clears on success and sticks on failure.
-	hasChanges.value = true;
-
-	try {
-		// Update local state immediately for UI feedback
-		if (!translations.value[language]) {
-			translations.value[language] = { subject: '', blocks: {} };
-		}
-
-		if (row.id === '_subject') {
-			translations.value[language].subject = value;
-		} else if (row.id === '_previewText') {
-			translations.value[language].previewText = value;
-		} else if (row.blockId) {
-			const trans = translations.value[language];
-			if (!trans.blocks) {
-				trans.blocks = {};
-			}
-			if (!trans.blocks[row.blockId]) {
-				trans.blocks[row.blockId] = {};
-			}
-
-			const blockTrans = trans.blocks[row.blockId]!;
-			// The fieldType name matches the block-content property to write.
-			if (row.fieldType === 'html' || row.fieldType === 'buttonText' || row.fieldType === 'alt') {
-				blockTrans[row.fieldType] = value;
-			}
-		}
-
-		// Persist to database
-		const saved = await saveTranslation(language);
-		if (!saved.ok) return;
-		await regenerateRenderedLanguage(language);
-		hasChanges.value = false;
-	} finally {
-		savingCells.value.delete(cellKey);
-	}
-};
-
-// Save translation to backend. Resolves `ok: false` when the save failed (the
-// operation module has already surfaced the categorized error).
-const saveTranslation = async (language: string) => {
-	const translation = translations.value[language];
-	if (!translation) return { ok: false } as const;
-
-	if (props.emailType === 'marketing') {
-		return await updateMarketingTranslation({
-			templateId: props.emailId as Id<'emailTemplates'>,
-			language,
-			subject: translation.subject,
-			previewText: translation.previewText,
-			blocks: JSON.stringify(translation.blocks || {}),
-		});
-	}
-	return await updateTransactionalTranslation({
-		id: props.emailId as Id<'transactionalEmails'>,
-		language,
-		subject: translation.subject,
-		blocks: JSON.stringify(translation.blocks || {}),
-	});
+	return valueOf(cellOf(row, language));
 };
 
 // Add a new language
 const addLanguage = async (langCode: string) => {
 	isSaving.value = true;
 	try {
-		const added =
-			props.emailType === 'marketing'
-				? await addMarketingTranslation({
-						templateId: props.emailId as Id<'emailTemplates'>,
-						language: langCode,
-					})
-				: await addTransactionalTranslation({
-						id: props.emailId as Id<'transactionalEmails'>,
-						language: langCode,
-					});
+		// The overlay the backend seeds and its HTML land in the same write.
+		const added = await runWrite(async (base) => {
+			const write = { language: langCode, ...buildLanguageAdd(base, renderOptions()) };
+			const result =
+				props.emailType === 'marketing'
+					? await addMarketingTranslation({
+							templateId: props.emailId as Id<'emailTemplates'>,
+							...write,
+						})
+					: await addTransactionalTranslation({
+							id: props.emailId as Id<'transactionalEmails'>,
+							...write,
+						});
+			return result.ok ? { ok: true, revision: result.result.contentRevision } : { ok: false };
+		});
 		if (!added.ok) return;
-		await regenerateRenderedLanguage(langCode);
 		showToast(
 			t('components.translation.manager.languageAdded', { language: languageLabel(langCode) })
 		);
@@ -452,19 +368,23 @@ const confirmRemoveLanguage = async () => {
 
 	isSaving.value = true;
 	try {
-		const removed =
-			props.emailType === 'marketing'
-				? await removeMarketingTranslation({
-						templateId: props.emailId as Id<'emailTemplates'>,
-						language: langCode,
-					})
-				: await removeTransactionalTranslation({
-						id: props.emailId as Id<'transactionalEmails'>,
-						language: langCode,
-					});
+		// The backend drops the language's HTML with its overlay.
+		const removed = await runWrite(async (base) => {
+			const write = { language: langCode, expectedContentRevision: base.revision };
+			const result =
+				props.emailType === 'marketing'
+					? await removeMarketingTranslation({
+							templateId: props.emailId as Id<'emailTemplates'>,
+							...write,
+						})
+					: await removeTransactionalTranslation({
+							id: props.emailId as Id<'transactionalEmails'>,
+							...write,
+						});
+			return result.ok ? { ok: true, revision: result.result.contentRevision } : { ok: false };
+		});
 		if (!removed.ok) return;
-		delete htmlTranslations.value[langCode];
-		await persistHtmlTranslations();
+		forgetLanguage(langCode);
 		showToast(
 			t('components.translation.manager.languageRemoved', { language: languageLabel(langCode) })
 		);
@@ -500,13 +420,13 @@ const autoTranslateColumn = async (targetLanguage: string) => {
 			targetLanguage: languageLabel(targetLanguage),
 		});
 
-		// Apply translations
-		for (const item of result.translations) {
+		// Apply the translations as one write. A failed write keeps every
+		// generated value as a draft in its cell, to retry or discard.
+		const entries = result.translations.flatMap((item) => {
 			const row = translatableRows.value.find((r) => r.id === item.id);
-			if (row) {
-				await updateTranslationValue(row, targetLanguage, item.translatedText);
-			}
-		}
+			return row ? [{ cell: cellOf(row, targetLanguage), value: item.translatedText }] : [];
+		});
+		if (!(await saveCells(targetLanguage, entries))) return;
 
 		showToast(
 			t('components.translation.manager.autoTranslated', {
@@ -528,11 +448,6 @@ const handleBack = () => {
 	} else {
 		router.push(`/dashboard/send/transactional/${props.emailId}/edit`);
 	}
-};
-
-// Check if a cell is currently saving
-const isCellSaving = (rowId: string, language: string) => {
-	return savingCells.value.has(`${rowId}:${language}`);
 };
 </script>
 
@@ -564,9 +479,16 @@ const isCellSaving = (rowId: string, language: string) => {
 			</div>
 
 			<div class="flex items-center gap-3">
-				<span v-if="hasChanges" class="text-sm text-warning flex items-center gap-1.5">
+				<span v-if="failedCount > 0" class="text-sm text-warning flex items-center gap-1.5">
 					<Icon name="lucide:alert-circle" class="w-4 h-4" />
 					{{ t('components.translation.manager.unsavedChanges') }}
+				</span>
+				<span
+					v-else-if="isSavingCells"
+					class="text-sm text-text-secondary flex items-center gap-1.5"
+				>
+					<UiSpinner size="xs" />
+					{{ t('components.translation.manager.savingChanges') }}
 				</span>
 			</div>
 		</div>
@@ -732,8 +654,13 @@ const isCellSaving = (rowId: string, language: string) => {
 										<TranslationCell
 											:value="getTranslationValue(row, lang)"
 											:is-html="row.fieldType === 'html'"
-											:is-saving="isCellSaving(row.id, lang)"
-											@save="(value: string) => updateTranslationValue(row, lang, value)"
+											:status="statusOf(cellOf(row, lang))"
+											:field-label="row.label"
+											:language-label="languageNativeLabel(lang)"
+											@save="(value: string) => saveCell(cellOf(row, lang), value)"
+											@retry="retryCell(cellOf(row, lang))"
+											@discard="discardCell(cellOf(row, lang))"
+											@edit="(text: string | null) => setOpenEdit(cellOf(row, lang), text)"
 										/>
 									</td>
 
@@ -777,5 +704,13 @@ const isCellSaving = (rowId: string, language: string) => {
 				@confirm="confirmRemoveLanguage"
 			/>
 		</div>
+
+		<UnsavedChangesDialog
+			:show="showUnsavedDialog"
+			:saving="isSavingBeforeLeave"
+			@close="cancelNavigation"
+			@discard="confirmDiscard"
+			@save="confirmSave"
+		/>
 	</div>
 </template>
