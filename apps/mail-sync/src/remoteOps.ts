@@ -136,7 +136,8 @@ export class RemoteOpReplayer {
 	 * provider already shows as done — the old name gone, the new one there —
 	 * and leave the rest to their own turn in the queue. A failed report
 	 * throws, so nothing runs against the old name; false when a folder could
-	 * not be counted, for the caller to check again on its next drain.
+	 * not be counted, and the caller then replays nothing until a later drain
+	 * has checked every queued rename.
 	 */
 	async recoverRenames(ops: RemoteOp[]): Promise<boolean> {
 		let complete = true;

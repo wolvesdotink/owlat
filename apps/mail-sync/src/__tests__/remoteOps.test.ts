@@ -22,6 +22,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { getFunctionName } from 'convex/server';
 import { RemoteOpReplayer } from '../remoteOps.js';
 import type {
 	RemoteFolderMap,
@@ -1382,6 +1383,106 @@ describe('RemoteOpReplayer — a rename whose report did not reach the backend',
 		]);
 
 		expect(complete).toBe(false);
+	});
+
+	/**
+	 * The backend as connection.ts calls it: a recorded rename rewrites the ops
+	 * naming the old folder or one below it; a backed-off rename is not due.
+	 */
+	function convexBackend(queue: RemoteOp[]) {
+		const settled: RemoteOpResult[] = [];
+		const open = () => queue.filter((o) => !settled.some((r) => r.opId === o.opId));
+		const named = (ref: unknown) => getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
+		const convex = {
+			query: async (ref: unknown) => {
+				if (named(ref) === getFunctionName(fn.listQueuedFolderRenames)) {
+					return open().filter((o) => o.kind === 'renameFolder');
+				}
+				if (named(ref) === getFunctionName(fn.listDueRemoteOps)) {
+					return open().filter((o) => o.kind !== 'renameFolder');
+				}
+				throw new Error(`unexpected query ${named(ref)}`);
+			},
+			mutation: async (ref: unknown, args: Record<string, unknown>) => {
+				if (named(ref) === getFunctionName(fn.settleRemoteOps)) {
+					settled.push(...(args['results'] as RemoteOpResult[]));
+					return null;
+				}
+				if (named(ref) === getFunctionName(fn.recordRemoteFolderRename)) {
+					const rename = queue.find((o) => o.opId === args['opId']);
+					if (!rename || !('remote' in rename.source)) return null;
+					const from = rename.source.remote;
+					const to = args['remoteName'] as string;
+					for (const o of queue) {
+						for (const ref of [o.source, o.target]) {
+							if (
+								ref &&
+								'remote' in ref &&
+								(ref.remote === from || ref.remote.startsWith(`${from}/`))
+							) {
+								ref.remote = to + ref.remote.slice(from.length);
+							}
+						}
+					}
+					return null;
+				}
+				throw new Error(`unexpected mutation ${named(ref)}`);
+			},
+		};
+		return { convex, settled };
+	}
+
+	it('drains nothing after a restart until every queued rename could be checked', async () => {
+		const imap = new FakeImap({ INBOX: [], 'Projects/Owlat': [[2, '<b@x>']] });
+		const rename = renameToClients();
+		const deletion = op({
+			kind: 'delete',
+			rfc822MessageId: 'b@x',
+			source: { remote: 'Projects/Owlat' },
+		});
+		// RENAME goes through, its report does not reach the backend, and the op backs off.
+		const { hooks } = backend([]);
+		const before = { ...folderMap({ inbox: 'INBOX' }), renamed: new Map<string, string>() };
+		expect(await drainOne(imap, rename, before, hooks)).toEqual([
+			[expect.objectContaining({ outcome: 'failed' })],
+		]);
+
+		// A restart, with the delete still queued by the old name. STATUS answers
+		// for the old name (gone) but not for the new one.
+		const { AccountConnection } = await import('../connection.js');
+		const { convex, settled } = convexBackend([rename, deletion]);
+		const connection = new AccountConnection(
+			{
+				accountId: 'acct_1',
+				mailboxId: 'mbx_1',
+				imapHost: 'imap.example.com',
+				imapPort: 993,
+				isImapSecure: true,
+				imapUsername: 'me@example.com',
+				status: 'connected',
+			},
+			convex as unknown as ConstructorParameters<typeof AccountConnection>[1],
+			{} as ConstructorParameters<typeof AccountConnection>[2]
+		);
+		const internals = connection as unknown as {
+			client: unknown;
+			drainQueue(client: unknown): Promise<void>;
+		};
+		internals.client = imap;
+		const status = imap.status.bind(imap);
+		imap.status = async (path) => (path === 'Projects/Clients' ? false : await status(path));
+
+		await internals.drainQueue(imap);
+
+		expect(settled).toEqual([]);
+		expect(imap.ids('Projects/Clients')).toEqual(['<b@x>']);
+
+		// STATUS answers again: the rename is reported first, and the delete reaches the renamed folder.
+		imap.status = status;
+		await internals.drainQueue(imap);
+
+		expect(settled).toEqual([{ opId: deletion.opId, outcome: 'done' }]);
+		expect(imap.ids('Projects/Clients')).toEqual([]);
 	});
 
 	it('throws on restart when the report still fails, so nothing runs against the old name', async () => {
