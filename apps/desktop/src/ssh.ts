@@ -50,7 +50,7 @@ export function sshAuthenticate(sessionId: string, username: string, auth: SshAu
 export function sshExecStream(
 	sessionId: string,
 	command: string,
-	onEvent: (event: ExecEvent) => void,
+	onEvent: (event: ExecEvent) => void
 ): Promise<number> {
 	const channel = new Channel<ExecEvent>();
 	channel.onmessage = onEvent;
@@ -62,29 +62,48 @@ export function sshWriteFile(
 	sessionId: string,
 	path: string,
 	content: string,
-	mode?: string,
+	mode?: string
 ): Promise<void> {
 	return invoke('ssh_write_file', { sessionId, path, content, mode });
 }
 
 /**
+ * A local image build for the push-images dev install path: the Compose stack
+ * (named services and profiles of the checkout's docker-compose.yml) or the
+ * setup-cli image, for the server's Docker platform (`linux/amd64` or
+ * `linux/arm64`). The native side owns the rest of the `docker` invocation.
+ */
+export type LocalBuild =
+	| { kind: 'stack'; platform: string; profiles: string[]; services: string[] }
+	| { kind: 'setupImage'; platform: string };
+
+// The three commands below are the local-source ("development") install paths.
+// They exist only in developer builds of the app (the `dev-provisioning` Cargo
+// feature, on for `tauri dev`); a release build rejects them as unknown.
+
+/**
  * Upload a local directory tree into `remoteDir` as a streamed tar.gz
  * (.gitignore honoured, `.git` skipped). Used by the "local source" dev
- * install path instead of git-cloning the published repo.
+ * install path instead of git-cloning the published repo. `localDir` must be
+ * the absolute path of an Owlat checkout.
  */
-export function sshUploadDir(sessionId: string, localDir: string, remoteDir: string): Promise<void> {
+export function sshUploadDir(
+	sessionId: string,
+	localDir: string,
+	remoteDir: string
+): Promise<void> {
 	return invoke('ssh_upload_dir', { sessionId, localDir, remoteDir });
 }
 
 /**
  * Stream locally built images to the server over the live SSH session
  * (`docker save` → gzip → remote `docker load`). Progress and the load
- * output arrive as stdout events.
+ * output arrive as stdout events. Only local `:dev` images are accepted.
  */
 export function sshPushImages(
 	sessionId: string,
 	images: string[],
-	onEvent: (event: ExecEvent) => void,
+	onEvent: (event: ExecEvent) => void
 ): Promise<void> {
 	const channel = new Channel<ExecEvent>();
 	channel.onmessage = onEvent;
@@ -92,19 +111,18 @@ export function sshPushImages(
 }
 
 /**
- * Run a LOCAL process (e.g. `docker compose build` on this machine for the
- * push-images dev install path), streaming output like sshExecStream.
+ * Build images on THIS machine in the Owlat checkout at `localDir` (the
+ * push-images dev install path), streaming output like sshExecStream;
+ * resolves with docker's exit code.
  */
-export function localExecStream(
-	program: string,
-	args: string[],
-	cwd: string,
-	env: Record<string, string>,
-	onEvent: (event: ExecEvent) => void,
+export function localDockerBuild(
+	localDir: string,
+	build: LocalBuild,
+	onEvent: (event: ExecEvent) => void
 ): Promise<number> {
 	const channel = new Channel<ExecEvent>();
 	channel.onmessage = onEvent;
-	return invoke<number>('local_exec_stream', { program, args, cwd, env, onEvent: channel });
+	return invoke<number>('local_docker_build', { localDir, build, onEvent: channel });
 }
 
 /** Drop the session (closes the connection). */

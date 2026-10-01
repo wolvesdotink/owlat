@@ -27,8 +27,8 @@ import type {
 import {
 	buildSetupImageCommand,
 	dockerPlatform,
-	localBuildInvocation,
-	localSetupImageInvocation,
+	localSetupImageBuild,
+	localStackBuild,
 	prepareInstallDirCommand,
 	setStepState,
 	DEV_IMAGES,
@@ -93,14 +93,7 @@ async function buildAndPushImages(ctx: LocalSourceInstall): Promise<void> {
 	const onLine = (e: ExecEvent) => {
 		if (e.kind !== 'exit') ctx.pushLog(e.kind, e.line);
 	};
-	const stack = localBuildInvocation(platform);
-	const buildCode = await ssh.localExec(
-		stack.program,
-		stack.args,
-		ctx.localSource,
-		stack.env,
-		onLine
-	);
+	const buildCode = await ssh.localBuild(ctx.localSource, localStackBuild(platform), onLine);
 	if (buildCode !== 0) {
 		setStepState(
 			steps,
@@ -110,14 +103,7 @@ async function buildAndPushImages(ctx: LocalSourceInstall): Promise<void> {
 		);
 		throw new Error(t('shared.useServerProvisioning.localBuildFailed', { code: buildCode }));
 	}
-	const setup = localSetupImageInvocation(platform);
-	const setupCode = await ssh.localExec(
-		setup.program,
-		setup.args,
-		ctx.localSource,
-		setup.env,
-		onLine
-	);
+	const setupCode = await ssh.localBuild(ctx.localSource, localSetupImageBuild(platform), onLine);
 	if (setupCode !== 0) {
 		setStepState(
 			steps,
