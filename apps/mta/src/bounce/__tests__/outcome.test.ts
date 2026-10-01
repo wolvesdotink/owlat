@@ -291,6 +291,11 @@ describe('reduce(mailbox)', () => {
 			bccAddrs: [],
 			references: undefined,
 			dkimResult: 'pass',
+			dmarcResult: undefined,
+			dmarcPolicy: undefined,
+			arcCv: undefined,
+			arcSealerDomain: undefined,
+			arcAttestsOriginalPass: undefined,
 		};
 		const { effects } = reduce(attempt, makeCtx({ rcptTo: 'me@org.example' }));
 		expect(effects.map((e) => e.kind)).toEqual(['notify_convex', 'mailbox_quota_bump']);
@@ -321,7 +326,6 @@ describe('reduce(mailbox)', () => {
 					from: {
 						text: 'Bob Example <bob@isp.example>',
 						value: [{ address: 'bob@isp.example', name: 'Bob Example' }],
-						html: '',
 					},
 				}),
 			})
@@ -341,6 +345,12 @@ describe('reduce(mailbox)', () => {
 			ccAddrs: [],
 			bccAddrs: [],
 			references: undefined,
+			dkimResult: undefined,
+			dmarcResult: undefined,
+			dmarcPolicy: undefined,
+			arcCv: undefined,
+			arcSealerDomain: undefined,
+			arcAttestsOriginalPass: undefined,
 		};
 	}
 
@@ -444,7 +454,6 @@ describe('reduce(inbound_accept)', () => {
 				from: {
 					text: 'Bob Example <bob@isp.example>',
 					value: [{ address: 'bob@isp.example', name: 'Bob Example' }],
-					html: '',
 				},
 			}),
 		});

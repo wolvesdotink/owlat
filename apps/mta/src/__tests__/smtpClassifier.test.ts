@@ -16,7 +16,7 @@ describe('Enhanced SMTP response classifier', () => {
 				'microsoft_resource_throttle',
 				1_200_000,
 			],
-		])(
+		] as const)(
 			'classifies %s with a tuned delay and dashboard annotation',
 			(provider, response, enhanced, category, delay) => {
 				const result = classifySmtpResponse(421, response, enhanced, provider);

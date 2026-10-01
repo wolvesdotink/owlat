@@ -13,6 +13,9 @@ import { withScriptCacheRecovery } from '../redisScriptCache.js';
 const NOSCRIPT = 'NOSCRIPT No matching script. Please use EVAL.';
 const SOURCE = "return redis.call('GET', KEYS[1])";
 const sha1 = (source: string) => createHash('sha1').update(source).digest('hex');
+/** `SCRIPT load` in lower case, as GroupMQ sends it; ioredis only types `'LOAD'`. */
+const loadScript = (redis: Redis, source: string) =>
+	redis.script('load' as 'LOAD', source) as Promise<string>;
 
 /**
  * A Redis whose script cache can be emptied under the client, as a restart
@@ -59,7 +62,7 @@ describe('redis script cache recovery', () => {
 		const fake = createFakeRedis();
 		const redis = withScriptCacheRecovery(fake.redis);
 
-		const sha = (await redis.script('load', SOURCE)) as string;
+		const sha = await loadScript(redis, SOURCE);
 		expect(await redis.evalsha(sha, 1, 'key')).toBe('result');
 
 		fake.restart();
@@ -78,7 +81,7 @@ describe('redis script cache recovery', () => {
 	it('shares one reload between the commands a restart fails together', async () => {
 		const fake = createFakeRedis();
 		const redis = withScriptCacheRecovery(fake.redis);
-		const sha = (await redis.script('load', SOURCE)) as string;
+		const sha = await loadScript(redis, SOURCE);
 		fake.restart();
 
 		const results = await Promise.all([
@@ -94,7 +97,7 @@ describe('redis script cache recovery', () => {
 	it('leaves every other failure alone', async () => {
 		const fake = createFakeRedis();
 		const redis = withScriptCacheRecovery(fake.redis);
-		const sha = (await redis.script('load', SOURCE)) as string;
+		const sha = await loadScript(redis, SOURCE);
 		fake.failNext(new Error('WRONGTYPE Operation against a key'));
 
 		await expect(redis.evalsha(sha, 1, 'key')).rejects.toThrow('WRONGTYPE');
@@ -112,7 +115,7 @@ describe('redis script cache recovery', () => {
 		const redis = withScriptCacheRecovery(fake.redis);
 
 		const copy = redis.duplicate();
-		const sha = (await copy.script('load', SOURCE)) as string;
+		const sha = await loadScript(copy, SOURCE);
 		fake.restart(); // the duplicate talks to the same server
 
 		expect(await copy.evalsha(sha, 1, 'key')).toBe('result');

@@ -11,7 +11,11 @@ import {
 import { recordResponse, getDomainHealth, shouldDefer } from '../../intelligence/smtpResponse.js';
 import { recordBounce, recordDeferral, recordSend } from '../../intelligence/warming.js';
 import { recordDomainFailure, shouldBackoffDomain } from '../../scaling/degradation.js';
-import { applyEffects as applyBounceEffects, fblStatsKey } from '../../bounce/effects.js';
+import {
+	applyEffects as applyBounceEffects,
+	fblStatsKey,
+	type BounceEffectReplayGuard,
+} from '../../bounce/effects.js';
 import type { MtaConfig } from '../../config.js';
 
 vi.mock('../../monitoring/logger.js', () => ({
@@ -147,9 +151,8 @@ describe('replay-sensitive dispatch controls', () => {
 	it('does not count the guarded FBL daily control twice after response loss', async () => {
 		const identity = durableEffectIdentity('fbl:test', '4:fbl_stats_record');
 		loseFirstEvalResponse(redis, "redis.call('HINCRBY', KEYS[1], 'total', 1)");
-		const replayGuard = {
-			runSecondary: (_effectIdentity: string, apply: (id: typeof identity) => Promise<unknown>) =>
-				apply(identity),
+		const replayGuard: BounceEffectReplayGuard = {
+			runSecondary: (_effectIdentity, apply) => apply(identity),
 		};
 
 		await expect(

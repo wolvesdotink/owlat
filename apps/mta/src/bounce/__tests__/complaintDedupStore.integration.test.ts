@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import Redis from 'ioredis';
+import Redis, { type Cluster } from 'ioredis';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
 	dockerRedisAvailable,
@@ -80,7 +80,7 @@ describe.runIf(dockerRedisAvailable())('complaint deduplication on standalone Re
 describe.runIf(dockerRedisAvailable())('complaint deduplication on Redis Cluster', () => {
 	const suffix = randomUUID().slice(0, 8);
 	let fixture: RedisClusterFixture;
-	let cluster: Redis.Cluster;
+	let cluster: Cluster;
 
 	beforeAll(async () => {
 		fixture = await startRedisClusterFixture('fbl');
