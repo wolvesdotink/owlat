@@ -27,7 +27,7 @@ import {
 	type CounterPosition,
 } from '../lib/counters';
 import { listingCounterBuckets } from '../lib/listingCounters';
-import { contactGrowthBuckets } from '../contacts/growthCounters';
+import { contactGrowthBuckets, contactLiveBuckets } from '../contacts/growthCounters';
 import {
 	arrivalBuckets,
 	labelUnreadBuckets,
@@ -101,6 +101,12 @@ async function walkCounterScope(
 		case 'contactCreatedDay': {
 			const result = await ctx.db.query('contacts').paginate(page(ROW_PAGE));
 			return toPage(result, creationPosition, contactGrowthBuckets);
+		}
+		case 'contactLiveTotal': {
+			// Driven by `contacts/countReconcile.ts`, which also finalizes it; this
+			// case only keeps a generic step on the scope counting correctly.
+			const result = await ctx.db.query('contacts').paginate(page(ROW_PAGE));
+			return toPage(result, creationPosition, contactLiveBuckets);
 		}
 	}
 }

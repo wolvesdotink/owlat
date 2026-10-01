@@ -1559,7 +1559,13 @@ route through it so a count can never disagree with a send:
 - `resolveRecipientPage({ audience, cursor }) → ResolvedPage` —
   internalQuery; one bounded hop of the **Campaign send orchestrator
   (module)**'s checkpointed audience walk. (`frozenFilters` rides
-  _inside_ the `audience` segment case, not as a sibling arg.)
+  _inside_ the `audience` segment case, not as a sibling arg.) Every
+  supporting read is scoped to the page: segment conditions are
+  resolved for the page's Contacts only, and suppression is a fresh
+  `by_email` point read per page address, so one page's cost does not
+  grow with the blocklist or with any column a condition references.
+  The page shrinks below the requested size when a segment's condition
+  fan-out would exceed the per-page query/document budget.
 - `countRecipients({ audience }) → { total, eligible, completeness }` —
   public query; the wizard's audience-size readout. `completeness` is
   the **discriminant that says what the two numbers license**, and it

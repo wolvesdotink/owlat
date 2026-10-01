@@ -3677,11 +3677,11 @@
 				"dropHint": "Zum Anhängen ablegen · in den Text ziehen zum Einbetten",
 				"minimize": "Minimieren",
 				"newMessage": "Neue Nachricht",
-				"openInPopup": "In Popup öffnen",
 				"savedAt": "Gespeichert {time}",
 				"scheduledFor": "Geplant für {datetime}",
 				"unschedule": "Planung aufheben zum Bearbeiten",
-				"uploadingToast": "Warten, bis die Anhänge vollständig hochgeladen sind…"
+				"uploadingToast": "Warten, bis die Anhänge vollständig hochgeladen sind…",
+				"openInAnswerMode": "Im Antwortmodus öffnen"
 			},
 			"postboxComposerAttachments": {
 				"cancel": "{filename} abbrechen",
@@ -3726,7 +3726,13 @@
 				"signature": "Signatur",
 				"uploadingTitle": "Warten, bis die Anhänge vollständig hochgeladen sind…",
 				"previewAsSent": "Vorschau wie gesendet",
-				"sendAs": "als {name}"
+				"sendAs": "als {name}",
+				"showCoach": "Coach und Überarbeiten",
+				"hideCoach": "Coach und Überarbeiten ausblenden",
+				"discardDraft": "Entwurf verwerfen",
+				"showQuote": "Zitierten Text anzeigen",
+				"hideQuote": "Zitierten Text ausblenden",
+				"gapsLeft": "1 Lücke offen | {count} Lücken offen"
 			},
 			"postboxComposerGuards": {
 				"alignment": {
@@ -3937,18 +3943,6 @@
 				"label": "Posteingangsansicht",
 				"priority": "Priorität",
 				"title": "Wichtige E-Mails oder alle E-Mails (B)"
-			},
-			"postboxInlineReply": {
-				"dialogLabel": "Inline-Antwort",
-				"draftAReply": "Eine Antwort entwerfen",
-				"draftReply": "Antwort entwerfen",
-				"forward": "Weiterleiten",
-				"noSuggestions": "Derzeit keine Vorschläge. Versuchen Sie es gleich noch einmal.",
-				"replyAll": "Allen antworten",
-				"replyTo": "An {sender} antworten…",
-				"suggestOperation": "Antworten vorschlagen",
-				"suggestedReplies": "Antwortvorschläge",
-				"working": "Wird bearbeitet…"
 			},
 			"postboxInviteCard": {
 				"accept": "Annehmen",
@@ -5114,6 +5108,22 @@
 				"label": "Änderungen mit Ihrem Anbieter synchronisieren",
 				"toastOff": "Ab jetzt kommt nur noch neue Post herein.",
 				"toastOn": "Die Synchronisierung in beide Richtungen ist an. Beide Seiten werden beim nächsten Abgleich angeglichen."
+			},
+			"postboxReaderMessage": {
+				"showDetails": "Empfänger und Details anzeigen"
+			},
+			"postboxComposerEnvelopeLine": {
+				"label": "Empfänger, Absender und Betreff. Zum Bearbeiten öffnen",
+				"copies": "+{count} in Kopie",
+				"replyAll": "Allen antworten",
+				"edit": "Bearbeiten",
+				"to": "An {names}",
+				"from": "Von {address}"
+			},
+			"postboxAnswerDraftBar": {
+				"saved": "Entwurf an {name} gespeichert",
+				"resume": "Fortsetzen",
+				"dismiss": "Diesen Hinweis ausblenden"
 			}
 		},
 		"preferences": {
@@ -5908,7 +5918,8 @@
 				"gone": "Diese E-Mail ist hier nicht mehr verfügbar. Vielleicht wurde sie verschoben oder gelöscht.",
 				"done": "Erledigt",
 				"openThread": "Unterhaltung öffnen",
-				"markReadOperation": "Als gelesen markieren"
+				"markReadOperation": "Als gelesen markieren",
+				"reply": "Antworten"
 			},
 			"inboxPicker": {
 				"label": "Postfächer für die Werkbank auswählen",
@@ -5981,6 +5992,145 @@
 			},
 			"mail": {
 				"writeOwn": "Selbst schreiben"
+			},
+			"mode": {
+				"back": "Zurück zu {page}",
+				"backTo": {
+					"inbox": "Posteingang",
+					"queue": "Antwortliste",
+					"workbench": "Werkbank",
+					"previous": "Vorherige Seite",
+					"teamInbox": "Team-Postfach"
+				},
+				"messageCount": "{count} Nachricht | {count} Nachrichten",
+				"tabsLabel": "Unterhaltung oder Antwort",
+				"tabs": {
+					"conversation": "Unterhaltung",
+					"reply": "Antwort"
+				},
+				"sheet": {
+					"hint": "Ziehen Sie den Griff oder nutzen Sie die Pfeiltasten nach oben und unten, um zu ändern, wie viel Platz die Antwort einnimmt.",
+					"raise": "Antwort einblenden",
+					"lower": "Antwort absenken",
+					"shrink": "Antwort verkleinern",
+					"peek": "{name} antworten…",
+					"peekNoName": "Antwort schreiben…"
+				},
+				"viewLabel": "Wie viel der Unterhaltung angezeigt wird",
+				"viewShortcut": "Mit T umschalten",
+				"view": {
+					"summary": "Zusammenfassung",
+					"full": "Ganze Unterhaltung"
+				},
+				"more": "Mehr zu dieser Unterhaltung",
+				"openInPostbox": "In Postbox öffnen"
+			},
+			"catchUp": {
+				"title": "Kurz zusammengefasst",
+				"meta": "{count} Nachricht seit {date} | {count} Nachrichten seit {date}",
+				"marker": "Nachricht von {sender} vom {date} anzeigen",
+				"loading": "Die Unterhaltung wird zusammengefasst",
+				"asksTitle": "Angefragt wird",
+				"askCovered": "Im Entwurf beantwortet:",
+				"askOpen": "Noch offen:",
+				"filesTitle": "Dateien in dieser Unterhaltung",
+				"attachHint": "Klicken, um sie an die Antwort anzuhängen, oder in die Antwort ziehen",
+				"attachFile": "{file} an die Antwort anhängen",
+				"attachFailed": "Die Datei konnte nicht angehängt werden.",
+				"attachOperation": "Datei anhängen",
+				"covered": "{covered} von {total} Anfrage beantwortet | {covered} von {total} Anfragen beantwortet",
+				"asksCount": "{count} Anfrage | {count} Anfragen",
+				"show": "Anzeigen",
+				"hide": "Ausblenden"
+			},
+			"aiBar": {
+				"label": "Was soll in der Antwort stehen?",
+				"placeholder": "Was soll in der Antwort stehen? Optional, z. B. „schick es, entschuldige die Verspätung“",
+				"draft": "Mit KI entwerfen",
+				"shortcut": "Mit Cmd+J oder Strg+J hierher springen",
+				"checking": "Es wird geprüft, was die Antwort braucht …",
+				"drafting": "Der Entwurf wird geschrieben …",
+				"failed": "Der Entwurf konnte nicht geschrieben werden. Versuchen Sie es noch einmal.",
+				"aiDraft": "KI-Entwurf",
+				"discard": "Verwerfen",
+				"injectionFlagged": "Die E-Mail enthält womöglich Anweisungen an die KI. Lesen Sie den Entwurf, bevor Sie ihn senden.",
+				"operation": "Mit KI entwerfen",
+				"peekDraft": "Entwerfen",
+				"readyKept": "Der KI-Entwurf ist fertig. Ihr Text bleibt stehen, bis Sie den Entwurf übernehmen.",
+				"useDraft": "Entwurf übernehmen",
+				"preparedFileFailed": "{filename} aus der vorbereiteten Antwort konnte nicht angehängt werden. Hängen Sie die Datei erneut an, falls die Antwort sie braucht."
+			},
+			"askCard": {
+				"title": "Eine Frage, bevor ich schreibe | {count} Fragen, bevor ich schreibe",
+				"round": "Runde {round} von {total}",
+				"subline": "Beantworten Sie, was Sie können. Was Sie auslassen, wird im Entwurf als markierte Lücke eingefügt.",
+				"placeholder": {
+					"choice": "Etwas anderes …",
+					"text": "Geben Sie Ihre Antwort ein …",
+					"number": "Eine Zahl oder ein Betrag …",
+					"date": "Oder geben Sie ein Datum ein …"
+				},
+				"pickDate": "Datum wählen",
+				"answerAndDraft": "Antworten und entwerfen",
+				"skip": "Überspringen, mit Lücken entwerfen",
+				"operation": "Fragen beantworten"
+			},
+			"fileAsk": {
+				"dropHere": "Legen Sie die Datei hier ab oder",
+				"choose": "wählen Sie eine Datei aus",
+				"uploading": "Wird hochgeladen … {percent} %",
+				"attachedAndSaved": "Wird an diese Antwort angehängt und in den Dateien des Kontakts gespeichert",
+				"attachedAndSavedIfContact": "Wird an diese Antwort angehängt und in den Dateien gespeichert, falls der Absender einer Ihrer Kontakte ist",
+				"attachedOnly": "Wird nur an diese Antwort angehängt",
+				"dontKeep": "Keine Kopie in den Dateien behalten",
+				"nearMisses": "Ähnlich, aber vielleicht nicht die richtige:",
+				"candidates": "Welche davon?",
+				"pickFromFiles": "Aus den Dateien wählen",
+				"remove": "{file} entfernen",
+				"tooLarge": "{filename} ist größer als {mb} MB.",
+				"uploadFailed": "{filename} konnte nicht hochgeladen werden.",
+				"unsupported": "{filename} hat einen Dateityp, der hier nicht angehängt werden kann."
+			},
+			"filePicker": {
+				"title": "Aus den Dateien wählen",
+				"search": "Nach Namen suchen",
+				"files": "Dateien",
+				"mail": "E-Mail-Anhänge",
+				"empty": "Keine Dateien gefunden."
+			},
+			"queueBar": {
+				"position": "{position} von {total}",
+				"previous": "Vorherige in der Antwortliste",
+				"next": "Nächste in der Antwortliste",
+				"menu": "Antwortliste",
+				"inQueue": "in der Antwortliste",
+				"markDone": "Als erledigt markieren",
+				"backToQueue": "Zurück zur Antwortliste"
+			},
+			"team": {
+				"to": "An {name}",
+				"more": "Mehr zu dieser Antwort",
+				"showChanges": "Änderungen am Entwurf des Agenten zeigen",
+				"hideChanges": "Änderungen ausblenden",
+				"discardDraft": "Entwurf verwerfen",
+				"clear": "Leeren",
+				"attachments": {
+					"attach": "Anhängen",
+					"upload": "Datei hochladen",
+					"fromThread": "Aus dieser Unterhaltung",
+					"fromContact": "Weitere Dateien für {name}",
+					"copying": "Wird kopiert…",
+					"failed": "Kopieren fehlgeschlagen",
+					"failedWithReason": "Kopieren fehlgeschlagen: {reason}",
+					"remove": "{file} entfernen",
+					"retry": "Erneut versuchen",
+					"cancelUpload": "Upload von {file} abbrechen",
+					"hold": {
+						"uploading": "Senden wartet, bis der Upload fertig ist.",
+						"copying": "Senden wartet, bis die Datei kopiert ist.",
+						"failed": "Entfernen Sie die Datei, die nicht kopiert werden konnte, und senden Sie dann."
+					}
+				}
 			}
 		}
 	},
@@ -9164,11 +9314,7 @@
 			},
 			"detail": {
 				"agentNeedsInput": "Der Agent braucht Ihre Eingabe",
-				"agentNeedsInputEyebrow": "Wartet auf Sie",
-				"answerAndResume": "Antworten und Entwurf fortsetzen",
 				"answerClarificationOperation": "Rückfrage beantworten",
-				"answerPlaceholder": "Antwort eingeben",
-				"answerRemaining": "Noch {count} Antwort bis zum Fortsetzen | Noch {count} Antworten bis zum Fortsetzen",
 				"assign": "Zuweisen",
 				"assignThreadAria": "Konversation zuweisen",
 				"assignToMe": "Mir zuweisen",
@@ -9190,8 +9336,6 @@
 				},
 				"changeStatusAria": "Status: {status}. Status der Konversation ändern",
 				"channelLinkFailedToast": "Kanal erstellt, aber die Verknüpfung ist fehlgeschlagen",
-				"clarificationLead": "Antworten Sie unten, dann stellt der Agent den Entwurf mit Ihren Angaben als bestätigten Fakten fertig.",
-				"clarificationProgress": "{answered} von {total} beantwortet",
 				"clarificationSavedToast": "Antworten gespeichert — Entwurf wird fortgesetzt",
 				"composer": {
 					"agentDraft": "Vom Agenten entworfen",
@@ -9313,7 +9457,8 @@
 				"waitingDraft": {
 					"notice": "Auch für diese Nachricht wartet ein Antwortentwurf.",
 					"answer": "Diese Nachricht beantworten"
-				}
+				},
+				"answerInReply": "In der Antwort beantworten"
 			},
 			"failed": {
 				"emptyBody": "Jede eingehende Nachricht wurde erfolgreich verarbeitet.",
@@ -10683,7 +10828,10 @@
 			}
 		},
 		"answer": {
-			"pageTitle": "Antwortliste"
+			"pageTitle": "Antwortliste",
+			"mode": {
+				"pageTitle": "Antwortmodus"
+			}
 		},
 		"inboxes": {
 			"pageTitle": "Alle Postfächer",
@@ -13137,7 +13285,9 @@
 				"emptySubject": "kein Betreff",
 				"linkMismatch": "ein Link zeigt {text}, führt aber zu {host}",
 				"placeholder": "„{token}“ steht noch in der Nachricht",
-				"unfilledVariable": "{name} wurde nie ausgefüllt"
+				"unfilledVariable": "{name} wurde nie ausgefüllt",
+				"draftGap": "„{label}“ muss noch ausgefüllt werden",
+				"draftGaps": "{count} Lücken müssen noch ausgefüllt werden, zuerst „{label}“"
 			},
 			"useDraftRevise": {
 				"failed": "Überarbeitung fehlgeschlagen — Ihr Entwurf bleibt unverändert."
@@ -13972,7 +14122,8 @@
 				"organize": "Organisieren",
 				"triage": "Triage",
 				"workspace": "Workspaces",
-				"review": "Updates-Liste"
+				"review": "Updates-Liste",
+				"answer": "Antwortmodus"
 			},
 			"labels": {
 				"addLabel": "Label hinzufügen",
@@ -13981,7 +14132,6 @@
 				"closeConversation": "Geöffnete Unterhaltung schließen / zurück zu Priorität",
 				"compose": "Verfassen",
 				"extendSelection": "Auswahl erweitern",
-				"focusComposer": "Editor fokussieren",
 				"focusSearch": "Suche fokussieren",
 				"forward": "Weiterleiten",
 				"goToAdmin": "Zur Administration",
@@ -14026,7 +14176,13 @@
 				"goToMarketing": "Zu Marketing",
 				"next": "Weiter",
 				"previous": "Zurück",
-				"openThread": "Unterhaltung öffnen"
+				"openThread": "Unterhaltung öffnen",
+				"leaveAnswerMode": "Antwortmodus verlassen (im Editor verlässt das erste Esc nur den Editor)",
+				"toggleAnswerView": "Zwischen Zusammenfassung und ganzer Unterhaltung wechseln",
+				"draftWithAi": "Mit KI entwerfen (statt den Assistenten zu öffnen)",
+				"pickAskOption": "Eine Antwort auf der Fragekarte der KI wählen",
+				"previousQueueItem": "Vorheriger Eintrag in der Antwortliste",
+				"nextQueueItem": "Nächster Eintrag in der Antwortliste"
 			}
 		},
 		"signatureBadge": {

@@ -34,12 +34,14 @@ import { codeWorkTables } from './schema/codeWork';
 import { chatTables } from './schema/chat';
 import { assistantTables } from './schema/assistant';
 import { draftStreamTables } from './schema/draftStream';
+import { answerAskTables } from './schema/answerAsk';
 import { e2eeTables } from './schema/e2ee';
 import { pluginTables } from './schema/plugins';
 import { postmasterTables } from './schema/postmaster';
 import { sndsTables } from './schema/snds';
 import { todayTables } from './schema/today';
 import { counterTables } from './schema/counters';
+import { answerCatchUpTables } from './schema/answerCatchUp';
 import { migrationRunTables } from './schema/migrationRuns';
 
 // Note: Team invites are now handled by BetterAuth organization plugin's invitation table
@@ -80,11 +82,13 @@ export default defineSchema({
 	...chatTables,
 	...assistantTables,
 	...draftStreamTables,
+	...answerAskTables,
 	...e2eeTables,
 	...pluginTables,
 	...postmasterTables,
 	...sndsTables,
 	...todayTables,
 	...counterTables,
+	...answerCatchUpTables,
 	...migrationRunTables,
 });

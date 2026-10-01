@@ -117,6 +117,7 @@ const EXPECTED_BUILDERS: readonly string[] = [
 	'action',
 	'adminMutation',
 	'adminQuery',
+	'answerModeQuery',
 	'assistantMutation',
 	'assistantQuery',
 	'authedAction',

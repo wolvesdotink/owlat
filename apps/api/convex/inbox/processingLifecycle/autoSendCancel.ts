@@ -26,6 +26,7 @@
 import { v } from 'convex/values';
 import type { MutationCtx } from '../../_generated/server';
 import type { Doc } from '../../_generated/dataModel';
+import { internal } from '../../_generated/api';
 import { recordAuditLog } from '../../lib/auditLog';
 import { dispatch } from './effects';
 
@@ -108,4 +109,35 @@ export async function cancelPendingAutoSend(
 	await dispatch(ctx, message, { to: 'draft_ready', at: Date.now() });
 
 	return { cancelled: true, reason: 'cancelled' };
+}
+
+/**
+ * Put an approved send back in the queue for `delayMs` and point the
+ * `pendingAutoSend` marker at the new job, so Undo, a landing reply and the
+ * kill switch can still pull it back while it waits (a file attached for this
+ * reply still being copied, `agentPipeline.sendApprovedReply`). Without the
+ * repoint the marker would name the job that already ran and every cancel
+ * would answer `already_sent`. Returns false, scheduling nothing, once the
+ * message is no longer `approved`: someone pulled it back, and the wait ends.
+ */
+export async function holdApprovedSend(
+	ctx: MutationCtx,
+	message: Doc<'inboundMessages'>,
+	args: { autonomous: boolean; attachmentWaits: number; delayMs: number }
+): Promise<boolean> {
+	if (message.processingStatus !== 'approved') return false;
+	const now = Date.now();
+	const scheduledFnId = await ctx.scheduler.runAfter(
+		args.delayMs,
+		internal.agent.agentPipeline.sendApprovedReply,
+		{
+			inboundMessageId: message._id,
+			autonomous: args.autonomous,
+			attachmentWaits: args.attachmentWaits,
+		}
+	);
+	await ctx.db.patch(message._id, {
+		pendingAutoSend: { scheduledFnId, sendAt: now + args.delayMs, scheduledAt: now },
+	});
+	return true;
 }

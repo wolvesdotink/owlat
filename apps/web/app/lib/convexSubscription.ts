@@ -24,6 +24,7 @@ import {
 	openShared,
 	sharedSubscriptionKey,
 	type OpenSubscription,
+	type ReleaseReason,
 } from '~/lib/sharedConvexSubscriptions';
 import type { Ref } from 'vue';
 
@@ -85,6 +86,16 @@ export function argsIdentity(args: unknown): string {
 	}
 }
 
+/**
+ * Identity of the args with the window arg left out: two args values with the
+ * same frame read the same list, only more or less of it.
+ */
+function frameIdentity(args: unknown, windowArg: string): string {
+	if (args === 'skip' || args === null || typeof args !== 'object') return argsIdentity(args);
+	const { [windowArg]: _window, ...frame } = args as Record<string, unknown>;
+	return argsIdentity(frame);
+}
+
 /** Anything a transport rejects with, as an `Error`. */
 export function toError(value: unknown): Error {
 	return value instanceof Error ? value : new Error(String(value));
@@ -118,6 +129,17 @@ export interface ConvexSubscriptionOptions<Args, Update> {
 	 * subscription (a paginated `loadMore`) now points at a dead closure.
 	 */
 	onRelease?: () => void;
+	/**
+	 * The arg that only sizes a window over one list: a growable `limit` that
+	 * "Load more" raises. When the args change in this arg alone, the previous
+	 * window is superseded rather than left: it closes as soon as no other owner
+	 * holds it, instead of lingering live (and re-running on every change) next
+	 * to the window that replaced it. Any other args change lingers as usual, and
+	 * so does the first window opened for a frame, which is where a return to
+	 * that frame starts. A shrink with an unchanged frame (a limit reset whose
+	 * key is not part of the args) supersedes the larger window the same way.
+	 */
+	windowArg?: string;
 	/** Keep showing the previous value while new args load, flagged `isRefetching`. */
 	keepPreviousData?: boolean;
 	timeout?: number;
@@ -162,7 +184,18 @@ export function createConvexSubscription<Args, Update>(
 
 	const timeoutMs = options.timeout ?? DEFAULT_SUBSCRIPTION_TIMEOUT;
 	const retry = createTransientRetry();
-	let unsubscribe: (() => void) | null = null;
+	let unsubscribe: ((reason?: ReleaseReason) => void) | null = null;
+	/** Frame and full identity of the args the live subscription was opened with. */
+	let subscribedFrame: string | null = null;
+	let subscribedKey: string | null = null;
+	/**
+	 * The first window opened for the current frame, and that frame. A growable
+	 * limit starts every visit to a frame (a remount, a return to the room) at
+	 * this window, so it is the one a quick return reads: it is never
+	 * superseded, only left, and lingers like any other query.
+	 */
+	let baseFrame: string | null = null;
+	let baseKey: string | null = null;
 	let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
 	const resolvedArgs = computed<Args | 'skip'>(() =>
@@ -191,12 +224,26 @@ export function createConvexSubscription<Args, Update>(
 	// Leaving it set meant a valid → skip → valid args sequence (typing through
 	// an invalid email, say) called the dead unsubscribe again, the throw aborted
 	// the re-subscribe, and the UI kept the PREVIOUS args' data forever.
-	const releaseSubscription = () => {
+	const releaseSubscription = (reason?: ReleaseReason) => {
 		if (!unsubscribe) return;
 		const release = unsubscribe;
 		unsubscribe = null;
-		release();
+		subscribedFrame = null;
+		subscribedKey = null;
+		release(reason);
 		options.onRelease?.();
+	};
+
+	// The live window is superseded when the next args differ from it only in
+	// `windowArg`. Same args (a reset) or a different frame (another room, another
+	// folder) is an ordinary leave, and the old query lingers. So is the frame's
+	// first window: a return to the frame starts there again and should find it
+	// warm. Only the intermediate windows ("Load more" steps) close at once.
+	const releaseReasonFor = (args: Args | 'skip'): ReleaseReason => {
+		const windowArg = options.windowArg;
+		if (!windowArg || args === 'skip' || subscribedFrame === null) return 'leave';
+		if (argsKey.value === subscribedKey || subscribedKey === baseKey) return 'leave';
+		return frameIdentity(args, windowArg) === subscribedFrame ? 'superseded' : 'leave';
 	};
 
 	const subscribe = (opts?: { background?: boolean; isRetry?: boolean; fresh?: boolean }) => {
@@ -204,10 +251,10 @@ export function createConvexSubscription<Args, Update>(
 		// starts it over.
 		retry.cancel();
 		if (!opts?.isRetry) retry.reset();
-		releaseSubscription();
+		const args = resolvedArgs.value;
+		releaseSubscription(releaseReasonFor(args));
 		clearSubscriptionTimeout();
 
-		const args = resolvedArgs.value;
 		// There is no pending request, so only stay in the loading state if
 		// nothing was ever delivered (initial skip, waiting for real args). Once a
 		// value has loaded, a transition to skip is idle: never leave
@@ -273,17 +320,28 @@ export function createConvexSubscription<Args, Update>(
 		}, timeoutMs);
 
 		const shareKey = sharedKeyFor();
-		unsubscribe =
-			shareKey === null
-				? options.open(args, onUpdate, onError)
-				: openShared(
-						shareKey,
-						args,
-						options.open,
-						{ update: (v) => onUpdate(v as Update), fail: onError },
-						opts?.fresh === true,
-						lingerClassOf(options.query)
-					);
+		if (options.windowArg) {
+			subscribedFrame = frameIdentity(args, options.windowArg);
+			subscribedKey = argsKey.value;
+			if (subscribedFrame !== baseFrame) {
+				baseFrame = subscribedFrame;
+				baseKey = subscribedKey;
+			}
+		}
+		if (shareKey === null) {
+			// An unshared transport has nothing to linger: it closes either way.
+			const close = options.open(args, onUpdate, onError);
+			unsubscribe = () => close();
+			return;
+		}
+		unsubscribe = openShared(
+			shareKey,
+			args,
+			options.open,
+			{ update: (v) => onUpdate(v as Update), fail: onError },
+			opts?.fresh === true,
+			lingerClassOf(options.query)
+		);
 	};
 
 	// Re-subscribe only when the args' VALUE changes. See `argsIdentity`.

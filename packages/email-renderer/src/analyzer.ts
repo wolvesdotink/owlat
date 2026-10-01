@@ -3,7 +3,12 @@
  * Provides metrics and warnings for rendered email HTML.
  */
 
-import type { EditorBlock, ClientSupport, CommonBlockProperties } from '@owlat/shared';
+import type {
+	EditorBlock,
+	ClientSupport,
+	CommonBlockProperties,
+	ValidationIssue,
+} from '@owlat/shared';
 import {
 	GMAIL_CLIP_BYTES,
 	GMAIL_CSS_LIMIT_BYTES,
@@ -459,23 +464,46 @@ const GMAIL_CSS_WARNING_THRESHOLD = GMAIL_CSS_WARNING_BYTES;
 // Email Health Score
 // ============================================================
 
+/**
+ * Work a caller already did for the same blocks + html, handed to
+ * {@link getEmailHealthScore} so it is not repeated. Each field is recomputed
+ * when absent.
+ */
+interface EmailHealthScoreInputs {
+	/** `analyzeEmail(html)` (no options) for the exact html being scored. */
+	analysis?: EmailAnalysis;
+	/**
+	 * Issues from `validateBlocks(blocks, { accessibilityAudit: true })` at any
+	 * level except 'skip'. The level only decides `valid` (and whether 'strict'
+	 * throws); no validator reads it, so the issue list is the same one this
+	 * function would collect with `level: 'soft'`.
+	 */
+	validationIssues?: ValidationIssue[];
+}
+
 /** Calculate a comprehensive email health score across multiple dimensions */
 export const getEmailHealthScore = (
 	blocks: EditorBlock[],
 	html: string,
-	_options?: RenderOptions
+	_options?: RenderOptions,
+	inputs?: EmailHealthScoreInputs
 ): EmailHealthScore => {
 	const recommendations: EmailHealthRecommendation[] = [];
+
+	// Each Block's compatibility is scored once and shared by the compatibility
+	// and Outlook dimensions below.
+	const blockScores = blocks.map((block) =>
+		scoreBlockCompatibility(
+			block.type,
+			block.content as CommonBlockProperties as unknown as Record<string, unknown>
+		)
+	);
 
 	// --- 1. Compatibility score ---
 	let compatTotal = 0;
 	let compatCount = 0;
-	for (const block of blocks) {
-		const content = block.content as CommonBlockProperties;
-		const score = scoreBlockCompatibility(
-			block.type,
-			content as unknown as Record<string, unknown>
-		);
+	for (const [i, block] of blocks.entries()) {
+		const score = blockScores[i]!;
 		compatTotal += score.score;
 		compatCount++;
 		if (score.criticalIssues.length > 0) {
@@ -489,10 +517,12 @@ export const getEmailHealthScore = (
 	const compatibility = compatCount > 0 ? Math.round(compatTotal / compatCount) : 100;
 
 	// --- 2. Accessibility score ---
-	const a11yResult = validateBlocks(blocks, { accessibilityAudit: true, level: 'soft' });
+	const validationIssues =
+		inputs?.validationIssues ??
+		validateBlocks(blocks, { accessibilityAudit: true, level: 'soft' }).issues;
 	// IMAGE_NO_ALT predates the A11Y_ code prefix but is an accessibility defect,
 	// so it counts here too — and clears once the image is marked decorative.
-	const a11yIssues = a11yResult.issues.filter(
+	const a11yIssues = validationIssues.filter(
 		(i) => i.code.startsWith('A11Y_') || i.code === 'IMAGE_NO_ALT'
 	);
 	const a11yErrors = a11yIssues.filter((i) => i.severity === 'error').length;
@@ -514,7 +544,7 @@ export const getEmailHealthScore = (
 	}
 
 	// --- 3. Deliverability score ---
-	const analysis = analyzeEmail(html);
+	const analysis = inputs?.analysis ?? analyzeEmail(html);
 	let deliverability = 100;
 	if (analysis.exceedsGmailClip) {
 		deliverability -= 30;
@@ -570,13 +600,7 @@ export const getEmailHealthScore = (
 	];
 	let outlookTotal = 0;
 	let outlookCount = 0;
-	for (const block of blocks) {
-		const content = block.content as CommonBlockProperties;
-		const score = scoreBlockCompatibility(
-			block.type,
-			content as unknown as Record<string, unknown>
-		);
-
+	for (const score of blockScores) {
 		// Count Outlook clients in full/partial support
 		for (const client of outlookClients) {
 			outlookCount++;

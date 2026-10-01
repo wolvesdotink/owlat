@@ -13,8 +13,8 @@
 import type { OrganizationDeletionStepModule, OrganizationDeletionTable } from './_common';
 
 // Distinct steps with per-row side effects the generic sweep can't express:
-// storage-blob purges (mediaAssets / semanticFiles / mailMessages /
-// inboundMessages / mailDrafts / transactionalSends) and delegated cascades (contacts →
+// storage-blob purges (mediaAssets / semanticFiles / mailMessages / inboundMessages /
+// mailDrafts / transactionalSends / the team reply tables) and delegated cascades (contacts →
 // permanentlyDeleteContactWithRelations, domains → sendingDomainLifecycle.remove).
 // Every other table is a pure `take + delete` sweep, expressed inline below via
 // makeSweepStep — no per-table file needed.
@@ -24,6 +24,7 @@ import { semanticFilesStep } from './semanticFiles';
 import { mailMessagesStep } from './mailMessages';
 import { mailMessagePartsStep } from './mailMessageParts';
 import { inboundMessagesStep } from './inboundMessages';
+import { conversationThreadsStep, inboxFollowUpsStep } from './teamReplies';
 import { mailDraftsStep } from './mailDrafts';
 import { mailAttachmentSharesStep } from './mailAttachmentShares';
 import { mailArchiveImportsStep } from './mailArchiveImports';
@@ -100,6 +101,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'threadPresence', // ephemeral viewer/replier signals — clear before their threads
 	'threadReads', // per-user read markers — clear before their threads
 	'inboxFollowUps', // team follow-up bodies — clear before their threads
+	'threadCatchUps', // Answer mode catch-up cards (team and Postbox) — before both thread tables
 	'inboxAssignmentNotices', // per-assignee notice denormalized subjects/assigner names
 	'inboundMessages',
 	'conversationThreads',
@@ -256,12 +258,11 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'chatRoomMembers',
 	'chatRooms',
 
-	// AI assistant (children before parent)
+	// AI assistant (children first), draft stream buffers, Answer mode ask sessions
 	'aiMessages',
 	'aiConversations',
-
-	// AI draft-revise stream buffers (ephemeral, owner-scoped)
 	'aiDraftStreams',
+	'answerAskSessions',
 
 	// Independent feature state
 	'coalesceBatches',
@@ -329,7 +330,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	agentActions: makeSweepStep('agentActions'),
 	contentScanResults: makeSweepStep('contentScanResults'),
 	inboundMessages: inboundMessagesStep,
-	conversationThreads: makeSweepStep('conversationThreads'),
+	conversationThreads: conversationThreadsStep,
 	counterScopes: makeSweepStep('counterScopes'),
 	counterBuckets: makeSweepStep('counterBuckets'),
 	mailAliases: makeSweepStep('mailAliases'),
@@ -411,7 +412,8 @@ export const ORGANIZATION_DELETION_STEPS = {
 	instanceSettings: instanceSettingsStep,
 	threadPresence: makeSweepStep('threadPresence'),
 	threadReads: makeSweepStep('threadReads'),
-	inboxFollowUps: makeSweepStep('inboxFollowUps'),
+	inboxFollowUps: inboxFollowUpsStep,
+	threadCatchUps: makeSweepStep('threadCatchUps'),
 	inboxAssignmentNotices: makeSweepStep('inboxAssignmentNotices'),
 	unifiedMessages: makeSweepStep('unifiedMessages'),
 	channelConfigs: makeSweepStep('channelConfigs'),
@@ -479,6 +481,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	aiMessages: makeSweepStep('aiMessages'),
 	aiConversations: makeSweepStep('aiConversations'),
 	aiDraftStreams: makeSweepStep('aiDraftStreams'),
+	answerAskSessions: makeSweepStep('answerAskSessions'),
 	coalesceBatches: makeSweepStep('coalesceBatches'),
 	visualizations: makeSweepStep('visualizations'),
 	dashboardLayouts: makeSweepStep('dashboardLayouts'),

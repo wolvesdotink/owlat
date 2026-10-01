@@ -4,7 +4,7 @@
  *   - the trigger is an aria-labeled button that reports its expanded state
  *   - the menu panel is hidden until the trigger is clicked, then exposes the
  *     slotted items with role="menu" (keyboard/touch reachable)
- *   - Escape closes the panel
+ *   - Escape closes the panel, wherever focus is, and claims the key
  *   - an outside click (via useClickOutside) closes the panel
  *   - the slot `close` helper dismisses the menu after an item runs
  */
@@ -27,8 +27,9 @@ beforeAll(() => {
 
 const iconStub = { props: ['name'], template: '<span />' };
 
-function mountMenu() {
+function mountMenu(opts: { attachTo?: HTMLElement } = {}) {
 	return mount(PostboxOverflowMenu, {
+		...opts,
 		props: { label: 'More message actions' },
 		slots: {
 			default: `<template #default="{ close }">
@@ -60,13 +61,25 @@ describe('PostboxOverflowMenu', () => {
 		expect(wrapper.get('button[aria-haspopup="menu"]').attributes('aria-expanded')).toBe('true');
 	});
 
-	it('closes on Escape', async () => {
-		const wrapper = mountMenu();
-		await wrapper.get('button[aria-haspopup="menu"]').trigger('click');
-		expect(wrapper.find('[role="menu"]').exists()).toBe(true);
+	it('closes on Escape, from inside the panel or from the trigger, and claims the key', async () => {
+		for (const from of ['[role="menu"]', 'button[aria-haspopup="menu"]']) {
+			const wrapper = mountMenu({ attachTo: document.body });
+			await wrapper.get('button[aria-haspopup="menu"]').trigger('click');
+			expect(wrapper.find('[role="menu"]').exists()).toBe(true);
 
-		await wrapper.get('[role="menu"]').trigger('keydown', { key: 'Escape' });
-		expect(wrapper.find('[role="menu"]').exists()).toBe(false);
+			const event = new KeyboardEvent('keydown', {
+				key: 'Escape',
+				bubbles: true,
+				cancelable: true,
+			});
+			wrapper.get(from).element.dispatchEvent(event);
+			await wrapper.vm.$nextTick();
+
+			expect(wrapper.find('[role="menu"]').exists()).toBe(false);
+			// Answer mode and the reader leave on an unclaimed Esc.
+			expect(event.defaultPrevented).toBe(true);
+			wrapper.unmount();
+		}
 	});
 
 	it('closes on an outside click', async () => {

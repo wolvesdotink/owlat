@@ -46,7 +46,13 @@ import {
 	type BackfillRetryState,
 } from './backfillRetry.js';
 import { drainRemoteOps, isAllMailFolder, RemoteOpReplayer } from './remoteOps.js';
-import { LOCAL_PAGE, reconcile, type FolderView, type ModseqCursor } from './remoteState.js';
+import {
+	LOCAL_PAGE,
+	noPendingChanges,
+	reconcile,
+	type FolderView,
+	type ModseqCursor,
+} from './remoteState.js';
 import { logger } from './logger.js';
 
 interface Cursor {
@@ -155,6 +161,8 @@ export class AccountConnection {
 	// Per-folder views of the provider (remoteState.ts). Kept across reconnects,
 	// so a change made while the connection was down still shows up as a change.
 	private readonly views = new Map<string, FolderView>();
+	// What a reconcile cut short had noticed but not yet settled (remoteState.ts).
+	private pendingRemote = noPendingChanges();
 	private readonly allMailCursor: ModseqCursor = { uidValidity: null, highestModseq: null };
 	private cursors = new Map<string, Cursor>();
 	private polling = false;
@@ -297,6 +305,9 @@ export class AccountConnection {
 		await client.connect();
 		this.client = client;
 		this.backoffMs = INITIAL_BACKOFF_MS;
+		// Whatever left a folder while the connection was down was never reported
+		// to us: every folder's first refresh compares its whole UID list.
+		for (const view of this.views.values()) view.censusDue = true;
 
 		await this.loadCursors();
 		await this.discoverFolders(client, (await this.syncMode())?.mode ?? 'incoming');
@@ -311,7 +322,14 @@ export class AccountConnection {
 		});
 		// Read, starred or removed on the provider while INBOX is open.
 		client.on('flags', () => this.scheduleEventCycle());
-		client.on('expunge', () => this.scheduleEventCycle());
+		client.on('expunge', (event: { path?: string } | undefined) => {
+			// Something left that folder (INBOX, or one a cycle has open): its next
+			// refresh takes a census. The other folders stay on the cheap path
+			// unless their message counts disagree with their views.
+			const view = event?.path ? this.views.get(event.path) : undefined;
+			if (view) view.censusDue = true;
+			this.scheduleEventCycle();
+		});
 
 		await this.setStatus('connected');
 
@@ -427,6 +445,7 @@ export class AccountConnection {
 		await this.pollAll();
 		if (settings.mode !== 'full') {
 			this.views.clear();
+			this.pendingRemote = noPendingChanges();
 			return;
 		}
 		const accountId = this.account.accountId;
@@ -443,6 +462,7 @@ export class AccountConnection {
 			allMailCursor: this.allMailCursor,
 			isAligned: settings.isAligned,
 			forceFull: Date.now() - this.lastFullReconcileAt > FULL_RECONCILE_INTERVAL_MS,
+			pending: this.pendingRemote,
 			listLocal: (cursor) =>
 				this.convex.query(fn.listLocalMessages, {
 					accountId,

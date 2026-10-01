@@ -11,7 +11,9 @@
  *   • ADVISORY. This module never blocks a send. The composer renders the
  *     findings as a quiet chip next to Send; the replay-confirm dialog is
  *     reserved for the irreversible mistakes (a send that will fail DMARC, a
- *     missing attachment).
+ *     missing attachment). The one exception is an AI draft's `[[...]]` gap:
+ *     the composer disables Send while one the AI wrote is left, and this chip
+ *     says why. Brackets the person typed stay advice.
  *   • QUIET WHEN UNSURE. Every check only fires on evidence, and only on the
  *     FRESH half of the body — a `[TODO]` inside the quoted original belongs to
  *     its author. A check that misfires trains people to ignore all of them.
@@ -19,9 +21,15 @@
  *     at the render boundary, never here.
  */
 
+import { findDraftGaps } from '@owlat/shared/answerMode';
 import { clipForDisplay, draftPlainText, draftTextParts } from '~/utils/postboxDraftText';
 
-export type PreflightCheckId = 'emptySubject' | 'placeholder' | 'unfilledVariable' | 'linkMismatch';
+export type PreflightCheckId =
+	| 'draftGap'
+	| 'emptySubject'
+	| 'placeholder'
+	| 'unfilledVariable'
+	| 'linkMismatch';
 
 export interface PreflightFinding {
 	id: PreflightCheckId;
@@ -121,6 +129,17 @@ function findLinkMismatch(freshHtml: string): PreflightFinding | null {
 export function preflightDraft(input: PreflightInput): PreflightFinding[] {
 	const findings: PreflightFinding[] = [];
 	const body = draftTextParts(input.bodyHtml);
+
+	// An AI draft's `[[...]]` gap (Answer mode): the one finding that also
+	// holds Send back, so it says why first.
+	const gaps = findDraftGaps(body.fresh);
+	if (gaps.length > 0) {
+		findings.push({
+			id: 'draftGap',
+			key: `${KEY_PREFIX}.${gaps.length === 1 ? 'draftGap' : 'draftGaps'}`,
+			params: { label: clipForDisplay(gaps[0]!.label), count: String(gaps.length) },
+		});
+	}
 
 	if (input.subject.trim().length === 0) {
 		findings.push({ id: 'emptySubject', key: `${KEY_PREFIX}.emptySubject` });

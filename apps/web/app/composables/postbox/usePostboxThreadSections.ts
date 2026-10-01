@@ -56,7 +56,8 @@ export function usePostboxThreadSections(args: {
 				limits: postboxSectionLimitArgs(limits.value),
 			};
 		},
-		{ keepPreviousData: true }
+		// Growing a section closes the window it grew out of instead of keeping it live.
+		{ keepPreviousData: true, windowArg: 'limits' }
 	);
 
 	const sections = computed<PostboxInboxSection[]>(() =>

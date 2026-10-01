@@ -132,3 +132,35 @@ export function recipientLabel(raw: string): string {
 	const at = address.indexOf('@');
 	return at > 0 ? address.slice(0, at) : address;
 }
+
+/**
+ * `recipientLabel`, with a name the thread already knows for a bare address
+ * (`names`, by canonical address). A reply is seeded with the sender's bare
+ * address, so without it Jonas Berg <finance@…> reads as "finance".
+ */
+export function knownRecipientLabel(raw: string, names: Readonly<Record<string, string>>): string {
+	const parsed = parseAddress(raw);
+	const known = parsed?.name ? undefined : names[parsed?.address ?? normalizeEmail(raw)];
+	return known || recipientLabel(raw);
+}
+
+/**
+ * The display names a message carries for its people, by canonical address:
+ * the sender's `fromName`, and any `"Name" <addr>` on its To and Cc lines.
+ */
+export function messageRecipientNames(message: {
+	fromAddress: string;
+	fromName?: string | null;
+	toAddresses?: readonly string[];
+	ccAddresses?: readonly string[];
+}): Record<string, string> {
+	const names: Record<string, string> = {};
+	for (const raw of [...(message.toAddresses ?? []), ...(message.ccAddresses ?? [])]) {
+		const parsed = parseAddress(raw);
+		if (parsed?.name) names[parsed.address] = parsed.name;
+	}
+	const from = parseAddress(message.fromAddress);
+	const fromName = message.fromName?.trim() || from?.name;
+	if (fromName) names[from?.address ?? normalizeEmail(message.fromAddress)] = fromName;
+	return names;
+}

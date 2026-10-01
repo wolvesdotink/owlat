@@ -79,8 +79,12 @@ watch(
 const removePageFinishHook = useNuxtApp().hooks.hook('page:finish', revealCurrentSection);
 onBeforeUnmount(() => removePageFinishHook?.());
 
-// Focus mode state for distraction-free editing
-const { isFocusMode } = useFocusMode();
+// Focus mode state for distraction-free editing. Answer mode (a reply being
+// written, `definePageMeta({ answerMode: true })`) takes the whole screen the
+// same way, so both hide the sidebar and the shell header through one flag.
+const { isFocusMode: isEditorFocusMode } = useFocusMode();
+const isAnswerMode = computed(() => route.meta.answerMode === true);
+const isFocusMode = computed(() => isEditorFocusMode.value || isAnswerMode.value);
 
 // Desktop runtime — gates the workspace switcher rail + native chrome.
 const { isDesktop, isMac, isWindows } = useDesktopContext();
@@ -251,7 +255,9 @@ onMounted(() => {
 			!e.shiftKey &&
 			!e.altKey &&
 			e.key.toLowerCase() === 'j' &&
-			isFeatureEnabled('ai.assistant')
+			isFeatureEnabled('ai.assistant') &&
+			// Inside Answer mode the chord belongs to the draft ("Draft with AI").
+			!isAnswerMode.value
 		) {
 			e.preventDefault();
 			void navigateTo('/dashboard/assistant');
@@ -452,7 +458,7 @@ const sidebarDesktopClass = computed(() => {
 				isSidebarOpen ? 'translate-x-0' : '-translate-x-full',
 				isFocusMode ? 'lg:-translate-x-full duration-(--motion-moderate)' : sidebarDesktopClass,
 			]"
-			:inert="effectiveHidden && !isPeeking ? true : undefined"
+			:inert="(effectiveHidden && !isPeeking) || isFocusMode ? true : undefined"
 			@mouseenter="onPeekPointerEnter"
 			@mouseleave="onPeekPointerLeave"
 			@focusout="onPeekFocusOut"
@@ -618,6 +624,9 @@ const sidebarDesktopClass = computed(() => {
 		     campaign send): one bottom-left column, so two live windows stack
 		     instead of covering each other's Undo button. -->
 		<div :id="UNDO_TOAST_REGION_ID" class="fixed bottom-4 left-4 z-50 flex flex-col gap-2" />
+		<!-- A team draft's approve countdown: armed in Answer mode, it outlives
+		     the page the reply leaves from. -->
+		<AnswerReviewApproveUndoToast />
 
 		<!-- Keyboard shortcuts help modal -->
 		<LazyKeyboardShortcutsHelp v-if="helpRequested" />

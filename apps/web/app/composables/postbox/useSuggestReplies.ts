@@ -1,7 +1,6 @@
 /**
- * Streamed suggested replies, shared by the three surfaces that ask for them:
- * the reader's inline reply box, the scheduling chip, and the Answer queue's
- * "Draft reply".
+ * Streamed suggested replies, shared by the surfaces that ask for them: the
+ * scheduling chip and the Answer queue's "Draft reply".
  *
  * `mail.ai.assist.suggestReplies` runs on the fast tier and, given a `suggest`
  * buffer (`aiDraftStreams`), writes the options into it as they form. This

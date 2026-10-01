@@ -185,6 +185,17 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 30,
 	},
 
+	// Answer mode's ask-coverage check (`mail.ai.catchUp.coverage` and the team
+	// twin). The composer calls it, debounced, while the user types, so it gets
+	// its own bucket rather than eating the one the summary and suggested replies
+	// share. One cheap-tier call each.
+	answerCoveragePerUser: {
+		kind: 'token bucket',
+		rate: 30,
+		period: MINUTE,
+		capacity: 40,
+	},
+
 	// Admin "Test connection" probes on the AI-providers settings page. Each hit
 	// decrypts the stored key and (for local providers) makes an outbound
 	// reachability request, so cap per-user to stop a tight loop from turning the
