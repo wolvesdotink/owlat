@@ -47,11 +47,17 @@ export function useAiProviderForm() {
 		api.aiProviderConfigActions.listModels,
 		{ label: () => t('shared.useAiProviderForm.listModelsOperation'), type: 'action' }
 	);
+	const { run: runRemove, isLoading: isRemoving } = useBackendOperation(
+		api.aiProviderConfig.removeConfig,
+		{ label: () => t('shared.useAiProviderForm.removeOperation') }
+	);
 
 	const providerOptions = languageProviderOptions();
 	const embeddingOptions = embeddingProviderOptions();
 
-	const form = reactive({
+	// A function, so removing the stored config can put back exactly what a
+	// brand-new install starts from.
+	const initialForm = () => ({
 		languageProviderKind: 'openai' as LanguageProviderKind,
 		languageBaseUrl: '',
 		apiKey: '',
@@ -64,6 +70,7 @@ export function useAiProviderForm() {
 		embeddingModelCustom: '',
 		embeddingApiKey: '',
 	});
+	const form = reactive(initialForm());
 
 	const languageError = ref<string | null>(null);
 	const embeddingError = ref<string | null>(null);
@@ -332,6 +339,31 @@ export function useAiProviderForm() {
 		}
 	}
 
+	/**
+	 * Delete the stored config and its keys, then show the form a brand-new
+	 * install sees. `hydrate` ignores `{ configured: false }`, so the reset is
+	 * explicit rather than left to the config subscription. Resolves `true` once
+	 * the row is gone, so the page knows to close its confirmation dialog.
+	 */
+	async function handleRemove(): Promise<boolean> {
+		const result = await runRemove({});
+		if (!result.ok) return false;
+		hydrating.value = true;
+		Object.assign(form, initialForm());
+		hydrating.value = false;
+		languageError.value = null;
+		embeddingError.value = null;
+		showLanguageBaseUrl.value = false;
+		showHostedEmbedder.value = false;
+		testState.value = { status: 'idle' };
+		liveModels.value = [];
+		liveModelsError.value = null;
+		decision.resetDecision();
+		isDirty.value = false;
+		showToast(t('shared.useAiProviderForm.removed'));
+		return true;
+	}
+
 	async function handleTest() {
 		testState.value = testConnectionReducer(testState.value, { type: 'start' });
 		const result = await runTest({});
@@ -358,6 +390,7 @@ export function useAiProviderForm() {
 		isSaving,
 		isTesting,
 		isLoadingModels,
+		isRemoving,
 		providerOptions,
 		embeddingOptions,
 		form,
@@ -386,6 +419,7 @@ export function useAiProviderForm() {
 		handleSave,
 		handleTest,
 		handleLoadModels,
+		handleRemove,
 		// The decision card's whole surface, spread so the page destructures one
 		// flat set of bindings the way it already does for the other two planes.
 		...decision,
