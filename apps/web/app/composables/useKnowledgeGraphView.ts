@@ -30,7 +30,7 @@ export function statsQueryArgs(enabled: boolean): 'skip' | Record<string, never>
 export function subgraphQueryArgs(
 	enabled: boolean,
 	rootEntryId: Id<'knowledgeEntries'> | null,
-	depth: number,
+	depth: number
 ): 'skip' | { entryId: Id<'knowledgeEntries'>; depth: number } {
 	if (!enabled || !rootEntryId) return 'skip';
 	return { entryId: rootEntryId, depth };
@@ -52,9 +52,13 @@ export function useKnowledgeGraphView() {
 
 	// Graph shape snapshot (god nodes, confidence histogram, communities, redacted
 	// surprising connections). Skipped entirely until the flag is on.
-	const { data: statsData, isLoading: statsLoading } = useConvexQuery(
-		api.knowledge.graphAnalytics.getGraphStats,
-		() => statsQueryArgs(analyticsEnabled.value),
+	const {
+		data: statsData,
+		isLoading: statsLoading,
+		error: statsError,
+		refetch: refetchStats,
+	} = useConvexQuery(api.knowledge.graphAnalytics.getGraphStats, () =>
+		statsQueryArgs(analyticsEnabled.value)
 	);
 	const stats = computed(() => statsData.value ?? null);
 
@@ -76,12 +80,16 @@ export function useKnowledgeGraphView() {
 				rootEntryId.value = list[0]!.entryId as Id<'knowledgeEntries'>;
 			}
 		},
-		{ immediate: true },
+		{ immediate: true }
 	);
 
-	const { data: subgraphData, isLoading: subgraphLoading } = useConvexQuery(
-		api.knowledge.graphAnalytics.getSubgraph,
-		() => subgraphQueryArgs(analyticsEnabled.value, rootEntryId.value, depth.value),
+	const {
+		data: subgraphData,
+		isLoading: subgraphLoading,
+		error: subgraphError,
+		refetch: refetchSubgraph,
+	} = useConvexQuery(api.knowledge.graphAnalytics.getSubgraph, () =>
+		subgraphQueryArgs(analyticsEnabled.value, rootEntryId.value, depth.value)
 	);
 
 	const graph = computed<{ nodes: GraphNodeModel[]; edges: GraphEdgeModel[] }>(() => {
@@ -110,7 +118,7 @@ export function useKnowledgeGraphView() {
 	// exactly like the entry detail page. Skipped until a node is selected.
 	const { data: selectedEntryData, isLoading: selectedLoading } = useConvexQuery(
 		api.knowledge.graph.getEntry,
-		() => (selectedNodeId.value ? { entryId: selectedNodeId.value } : 'skip'),
+		() => (selectedNodeId.value ? { entryId: selectedNodeId.value } : 'skip')
 	);
 	const selectedEntry = computed(() => selectedEntryData.value?.entry ?? null);
 	const selectedOutgoing = computed(() => selectedEntryData.value?.outgoing ?? []);
@@ -137,6 +145,12 @@ export function useKnowledgeGraphView() {
 	}
 
 	const isLoading = computed(() => statsLoading.value || subgraphLoading.value);
+	// A failed read is not an empty graph (#721).
+	const error = computed(() => subgraphError.value ?? statsError.value);
+	function refetch() {
+		if (subgraphError.value) refetchSubgraph();
+		if (statsError.value) refetchStats();
+	}
 
 	return {
 		// gate
@@ -151,6 +165,8 @@ export function useKnowledgeGraphView() {
 		depth,
 		entryTypeFilter,
 		isLoading,
+		error,
+		refetch,
 		// selection / side panel
 		selectedNodeId,
 		selectedEntry,

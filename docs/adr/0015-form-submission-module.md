@@ -676,3 +676,62 @@ rg "doiToken" apps/api/convex/topics/subscription.ts
   (module)** Invariants update, and the Relationships bullet match this
   ADR.
 - The grep verification matches above all hold.
+
+---
+
+## Amendment — form-only DOI and the shared confirmation token (2026-10-01)
+
+Issues #994 and #995; see also the ADR-0009 and ADR-0013 amendments of the
+same date.
+
+### Classification: forms without a topic honour double opt-in
+
+The classifier above only consulted DOI through `subscribe`, so a form with
+**Enable Double Opt-In** and no topic accepted every new address as
+`success` and never sent a confirmation. `submit` now applies the
+**Topic subscription (module)**'s consent rule (`requiresFreshConfirmation`
+with `source: 'form'` and `doiRequired: form.doubleOptIn`) on the no-topic
+path too, and asks the DOI lifecycle for a confirmation through the same
+`requestConfirmation` helper `subscribe` uses. `classifyAction` takes a
+fourth argument, `confirmationRequested`, for that path.
+
+No-topic outcomes:
+
+| Contact                  | Form DOI off           | Form DOI on                                                                    |
+| ------------------------ | ---------------------- | ------------------------------------------------------------------------------ |
+| new                      | `success`              | `pending_confirmation`, new token, email                                       |
+| existing, `confirmed`    | `duplicate`            | `duplicate` (nothing left to confirm)                                          |
+| existing, `pending`      | `duplicate`            | `pending_confirmation`, shares the live token, no second email                 |
+| existing, `not_required` | `duplicate`            | `pending_confirmation`, new token, email (as when it joins a DOI form's topic) |
+| holds a global opt-out   | `pending_confirmation` | `pending_confirmation` (a fresh confirmation in both cases, per ADR-0013)      |
+
+The row stores the token in `confirmationToken` and the HTTP response
+carries `confirmationRequired: true`, exactly as on the topic path.
+
+### Confirmation: every row that waited on the token
+
+`markConfirmedByToken` was written for one row per token. A contact who
+signs up through two forms before confirming gets the same token on both
+rows (ADR-0009 amendment), and confirming finalized only the first row it
+found. The other row stayed `pending_confirmation` and its form's success
+count never moved.
+
+The entry point is now `markConfirmedByToken({ token, contactId, cursor?,
+at? })`, returning `{ ok: true, finalized, continued }` or
+`{ ok: false, reason: 'no_submission_for_token' | 'already_confirmed' |
+'invalid_state' }`. It pages through the token's `pending_confirmation`
+rows on `by_confirmation_token_and_status`, finalizes the ones belonging to
+`contactId`, adds the per-form total to `successfulSubmissionCount`, and
+schedules itself for the next page when there is one.
+
+`confirmSubmission` no longer peeks at the first row. It confirms the
+contact through the DOI lifecycle first, then calls `markConfirmedByToken`.
+When no contact holds the token, it answers a repeat click from the
+finalized rows (`alreadyConfirmed: true`) and anything else as
+`invalid_token`. The contact-only `/confirm/doi` route calls
+`markConfirmedByToken` the same way, so the route a recipient happens to use
+no longer decides whether their form rows are finalized.
+`getByConfirmationToken` resolves a pending row to `null` when no contact
+holds its token any more, matching what confirming it would answer.
+
+Rows still pending from before this change are not repaired.

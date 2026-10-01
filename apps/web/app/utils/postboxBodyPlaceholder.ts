@@ -8,7 +8,13 @@ import type { EmailHtmlKind, PostboxRenderScheme } from '~/utils/postboxDarkMode
 
 /** Opening of every srcdoc PostboxMessageBody builds, CSP meta included. */
 export const POSTBOX_SRCDOC_HEAD = '<!doctype html><html><head>';
-export const POSTBOX_BODY_META_CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; font-src https: data:;">`;
+/**
+ * `upgrade-insecure-requests` fetches an `http:` image over https instead of
+ * letting `img-src https:` refuse it: plenty of senders still write `http://`
+ * into their markup, and those images stayed broken even for a trusted sender.
+ * Nothing is ever fetched in cleartext.
+ */
+export const POSTBOX_BODY_META_CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; font-src https: data:; upgrade-insecure-requests;">`;
 
 /** Same policy with no network at all: remote images and fonts stay blocked. */
 const PLACEHOLDER_META_CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:;">`;

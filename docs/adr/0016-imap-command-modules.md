@@ -1,6 +1,13 @@
 # IMAP command modules — per-verb deepening of the connection state machine
 
-**Status:** proposed
+**Status:** accepted and implemented (`apps/imap/src/commands/` has been
+in the tree since the initial commit, 2026-06-30); **amended 2026-10-01**.
+The module structure shipped as proposed, but the `CommandSession` and
+state-threading contract did not: sessions complete with `Promise<void>`
+and modules apply state through `deps.commit`. The proposal below is kept
+as written for its rationale; the contract that shipped is described in
+[Amendment: the implemented session contract](#amendment-the-implemented-session-contract-2026-10-01)
+at the end of this document.
 
 ## Context
 
@@ -73,6 +80,10 @@ ManageSieve adapter, or a JMAP shim) would re-implement the same pump
 + dispatch pattern from scratch.
 
 ## Decision
+
+_The interfaces and pump sketch in this section are the original
+proposal. Where they differ from the code, the amendment at the end
+describes what shipped._
 
 A per-verb module folder plus a thin pump. Mirrors the **Block module**
 (ADR-0001), **Step module** + **Step walker** (ADR-0004), and **Agent
@@ -500,3 +511,142 @@ Example dialogue gains two entries: "adding a new IMAP command" and
 
 See `docs/adr/0016-execution-plan.md` (to be drafted alongside this
 ADR's acceptance).
+
+---
+
+## Amendment: the implemented session contract (2026-10-01)
+
+The module structure this ADR proposed is the one in the tree: a folder
+per verb under `apps/imap/src/commands/`, multi-verb modules, a `UID`
+module that dispatches to sub-verb modules, CAPABILITY atoms aggregated
+from module declarations, and one `CommandSession` shape for one-shot
+and long-running commands with the optional `awaitingLiteral`,
+`onClientLine` and `onLiteralBytes` hooks. The contract between modules
+and the pump differs from the Decision above. The current contract lives
+in `commands/types.ts`, `commands/helpers/session.ts`,
+`commands/walker.ts` and `connection.ts`; those files win when this
+document and the code disagree. The proposal text above is unchanged.
+
+The execution plan the Execution section promised was never drafted.
+The modules were already in place in the initial commit.
+
+### State is committed, not returned
+
+The proposal threaded state through the session:
+`completion: Promise<{ state: ConnectionState }>`, with the pump
+assigning the resolved state when the session ended. What shipped:
+
+```ts
+interface CommandSession {
+  readonly completion: Promise<void>;
+  // awaitingLiteral?, onClientLine?, onLiteralBytes?, cancel() as proposed
+}
+
+interface CommandDeps {
+  // …
+  readonly commit: (state: ConnectionState) => void;
+}
+```
+
+A module that changes the **Connection state** builds the next whole
+value from its snapshot and calls `deps.commit(next)` itself. The pump's
+`commit` replaces its state field synchronously. Modules call it before
+they write their tagged OK, and so before `completion` resolves. The
+committers are LOGIN and AUTHENTICATE (through the shared
+`authenticateAppPassword` in `helpers/auth.ts`), ID, SELECT / EXAMINE,
+UNSELECT / CLOSE, EXPUNGE and MOVE (both adjust `selected` after
+expunging), and IDLE (once, when it ends, with the counters its poll
+loop refreshed).
+
+The reason was timing. `onData` dispatches every complete line of a chunk
+in one synchronous loop, and a client may send several commands in one
+TCP segment. A state returned through a promise is applied a microtask
+later at the earliest, after that loop has dispatched the rest of the
+chunk against the old state. With `commit`, a synchronous transition
+(UNSELECT, ID) is visible to the very next line, and an asynchronous
+one (LOGIN, SELECT) is visible from the moment the worker commits, which
+is before the client can read the tagged OK.
+
+What this keeps from option 2 of "State threading": modules still
+receive an immutable snapshot and never mutate it, and a transition is
+one whole value. Tests capture the committed values through a stub
+`commit` (`commands/__tests__/writeCommands.test.ts`) rather than read
+`completion.state`. It does not add the per-field setters that option 3
+rejected.
+
+The pump does not serialize dispatch behind a one-shot session that is
+still working. Each command is dispatched against the state current at
+that moment, so a command pipelined in the same chunk behind an
+asynchronous state change (SELECT, then FETCH) is dispatched before
+that change is committed.
+
+### Session construction helpers
+
+`helpers/session.ts` builds the two one-shot shapes:
+
+- `syncSession()`: `completion` already resolved, `cancel` a no-op. Used
+  by commands that finish inside `start`.
+- `asyncSession(worker)`: `completion` resolves when the worker's
+  promise settles, with rejections swallowed so the pump always sees it
+  resolve. `cancel()` aborts the `AbortSignal` handed to the worker.
+  FETCH checks it to stop reading and downloading once the client is
+  gone.
+
+IDLE and APPEND still build their sessions by hand, as proposed.
+
+### Session tracking in the pump
+
+The pump keeps every session whose `completion` is pending in a set and
+cancels all of them on socket close or server shutdown, not only the one
+in the active slot. Only a session that sets `awaitingLiteral` or
+`onClientLine` (APPEND, IDLE) occupies the active-session slot. An
+asynchronous one-shot session does not.
+
+### Module signature
+
+- `parseArgs(rawArgs)` takes no verb and returns
+  `ParseResult<TArgs>` (`{ ok: true, args } | { ok: false, error }`).
+- `start` takes one `StartArgs` object, `{ deps, state, args, tag, verb,
+  send }`, instead of six positional parameters.
+- `send` accepts `string | Buffer`, so FETCH can write a body literal as
+  raw octets.
+- `requires?: 'auth' | 'selected' | 'writable'` declares the command's
+  precondition. The walker (and the UID dispatcher for sub-commands)
+  checks it after `parseArgs` and before `start`. Modules no longer call
+  `requireAuth` / `requireSelect` themselves; both are private to
+  `checkRequires` in `helpers/auth.ts`.
+
+### Deps and state
+
+`CommandDeps` also carries `capabilityLine`, `tls`, `closeConnection`,
+`commit` and an optional `waitForDrain` (output pacing for FETCH).
+`ConnectionState` gained `clientId`, the client name from an RFC 2971 ID
+command, which LOGIN records as the app password's last-used client.
+
+### Registry and capabilities
+
+The walker builds its registry at load time from a `MODULES` list into
+a `Partial<Record<ImapVerb, …>>`. An `ImapVerb` without a module answers
+BAD "not supported" at runtime. The compile-time exhaustiveness the
+Decision describes, and the type-level walker test listed under "Test
+surface", were not built. Adding a verb means a folder, an `ImapVerb`
+member and one `MODULES` entry.
+
+`assembleCapabilityLine(tls)` depends on the connection's TLS state:
+over plaintext (the development fallback) it advertises `LOGINDISABLED`
+and drops `AUTH=PLAIN`. An `AUTHENTICATE` module for SASL PLAIN exists,
+which "What this does _not_ cover" had left for later.
+
+### The pump
+
+Follow-up 1 is done: the pump buffers raw octets, counts `{N}` literals
+in bytes, and decodes command text only per complete line. The pump
+also assembles `{N}` literals for non-APPEND commands (LOGIN credentials)
+itself, enforces line-length, literal-size and pre-authentication limits,
+and sends `* BYE` on shutdown. That puts `connection.ts` at roughly 460
+lines rather than ~150. It knows one verb name: it peeks for `APPEND` so
+APPEND's literal reaches the session instead of the command-literal path.
+
+Tests live in `apps/imap/src/__tests__/` and `commands/__tests__/`, with
+module-local `__tests__/` folders for APPEND, FETCH and STATUS, rather
+than one test file per verb.

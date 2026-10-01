@@ -56,6 +56,8 @@ async function handleResendDoi() {
 const {
 	contact,
 	contactLoading,
+	contactError,
+	refetchContact,
 	properties,
 	isEditing,
 	isSaving,
@@ -249,9 +251,12 @@ async function handleRemoveSuppression() {
 			{{ t('dashboard.audience.contacts.detail.backToCustomers') }}
 		</NuxtLink>
 
+		<!-- A failed read is not a missing contact (#721). -->
+		<UiQueryBoundary v-if="contactError" :error="contactError" @retry="refetchContact" />
+
 		<!-- Loading State -->
 		<DashboardDetailSkeleton
-			v-if="contactLoading && !contact"
+			v-else-if="contactLoading && !contact"
 			:label="t('dashboard.audience.contacts.detail.loading')"
 			lead="avatar"
 			meta

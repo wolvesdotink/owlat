@@ -1,3 +1,5 @@
+import type { ComponentPublicInstance } from 'vue';
+
 /** File drop and clipboard-paste wiring for the Postbox composer surface. */
 export function usePostboxComposerDropZone(addFiles: (files: File[] | FileList) => Promise<void>) {
 	const rootEl = ref<HTMLElement | null>(null);
@@ -20,5 +22,13 @@ export function usePostboxComposerDropZone(addFiles: (files: File[] | FileList) 
 		void addFiles(files);
 	}
 
-	return { rootEl, dragActive, onDragOver, onDragLeave, onDrop, onPaste };
+	/**
+	 * A function ref for the composer's frame (`PostboxComposerShell`): its root
+	 * element is the composer's root, where drops, keys and gap clicks land.
+	 */
+	function bindRoot(frame: Element | ComponentPublicInstance | null) {
+		rootEl.value = frame && '$el' in frame ? (frame.$el as HTMLElement) : null;
+	}
+
+	return { rootEl, bindRoot, dragActive, onDragOver, onDragLeave, onDrop, onPaste };
 }

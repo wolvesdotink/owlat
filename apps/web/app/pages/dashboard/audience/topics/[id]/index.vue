@@ -25,7 +25,12 @@ const { can } = usePermissions();
 const canManage = computed(() => can('topics:manage'));
 
 // Fetch topic details
-const { data: topic, isLoading: topicLoading } = useConvexQuery(api.topics.topics.get, () => ({
+const {
+	data: topic,
+	isLoading: topicLoading,
+	error: topicError,
+	refetch: refetchTopic,
+} = useConvexQuery(api.topics.topics.get, () => ({
 	topicId: topicId.value,
 }));
 
@@ -36,6 +41,7 @@ const contactsPage = usePaginatedQuery(
 	{ initialNumItems: 50 }
 );
 const contactsLoading = contactsPage.isLoading;
+const contactsError = contactsPage.error;
 
 const isLoading = computed(
 	() => organizationLoading.value || topicLoading.value || contactsLoading.value
@@ -139,9 +145,12 @@ const { showToast } = useToast();
 
 <template>
 	<div class="p-6 lg:p-8">
+		<!-- A failed read is not a missing topic (#721). -->
+		<UiQueryBoundary v-if="topicError" :error="topicError" @retry="refetchTopic" />
+
 		<!-- Loading State -->
 		<DashboardDetailSkeleton
-			v-if="isLoading && !topic"
+			v-else-if="isLoading && !topic"
 			:label="t('dashboard.audience.topics.detail.index.loading')"
 			back="button"
 			lead="tile"
@@ -220,6 +229,7 @@ const { showToast } = useToast();
 				:active-search="contacts.debouncedSearch"
 				:search-placeholder="t('dashboard.audience.topics.detail.index.searchPlaceholder')"
 				:loading="contactsLoading"
+				:error="contactsError"
 				:empty="{
 					icon: 'lucide:users',
 					title: t('dashboard.audience.topics.detail.index.empty.title'),
@@ -234,6 +244,7 @@ const { showToast } = useToast();
 				@sort="contacts.toggleSort"
 				@page="contacts.goToPage"
 				@clear-search="contacts.clearSearch"
+				@retry="contactsPage.refetch"
 			>
 				<template #empty-action>
 					<UiButton to="/dashboard/audience/contacts">

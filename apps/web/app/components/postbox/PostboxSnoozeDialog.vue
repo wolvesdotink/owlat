@@ -10,6 +10,7 @@ import {
 	type PostboxSnoozeScope,
 } from '~/utils/postboxSnoozeScope';
 import type { PresetTimeOption, PresetTimeAction } from './PostboxPresetTimeDialog.vue';
+import { useLocalized } from '~/composables/useLocalized';
 
 const props = withDefaults(
 	defineProps<{
@@ -42,6 +43,7 @@ const emit = defineEmits<{
 }>();
 
 const { t, locale } = useI18n();
+const localized = useLocalized();
 
 /** Fallback cap for "until they reply" — resurface after a week if no reply. */
 const UNTIL_REPLY_CAP_MS = 7 * 24 * 60 * 60 * 1000;
@@ -74,7 +76,7 @@ const PRESETS = computed<PresetTimeOption[]>(() => {
 	return computeSnoozePresets({ now, tzOffsetMinutes, suggested, locale: locale.value }).map(
 		(p) => ({
 			label: t(p.label),
-			sub: t(p.sub.key, p.sub.params ?? {}),
+			sub: localized(p.sub),
 			when: () => p.at,
 			...(p.suggested ? { suggested: true } : {}),
 		})

@@ -25,7 +25,7 @@ import { sealedBlobUrl } from '../../lib/sealedBlob';
 import { getMailSyncConfig } from '../mtaClient';
 import { FETCH_TIMEOUTS, fetchWithTimeout } from '../../lib/fetchWithTimeout';
 import { mapWithConcurrency } from '../../lib/mapWithConcurrency';
-import { stripHtml, type DraftRow } from '../rfc822';
+import type { DraftRow } from '../rfc822';
 import type { MtaSendRequest } from '@owlat/mta-protocol/send';
 import type { SealedMime } from '../../e2ee/seal';
 
@@ -212,7 +212,7 @@ export async function dispatchViaMta(
 			}
 		: {
 				subject: draft.subject || '(no subject)',
-				html: draft.bodyHtml || stripHtml(draft.bodyHtml ?? '') || ' ',
+				html: draft.bodyHtml || ' ',
 				text: draft.bodyText,
 				...(draft.bodyAmp ? { amp: draft.bodyAmp } : {}),
 			};

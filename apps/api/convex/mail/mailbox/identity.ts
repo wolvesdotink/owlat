@@ -41,6 +41,7 @@ import { findAddressClaim } from './addressResolution';
 import { stopExternalAccountSync } from '../external/accountTeardown';
 import { readMailboxUsage, withMailboxUsage } from '../mailboxUsage';
 import { startEmptyMailboxCounters } from '../messageCounters';
+import { startFolderMembership } from '../folderMembership';
 
 /**
  * The caller-visible personal mailbox for a member: their single `active`
@@ -184,6 +185,7 @@ export async function provisionMailbox(
 		});
 		// A new mailbox holds no mail: its counters (plan 3.1) start out exact.
 		if (role === 'inbox') await startEmptyMailboxCounters(ctx, mailboxId, folderId);
+		await startFolderMembership(ctx, folderId, { isEmpty: true });
 	}
 
 	// External mailboxes are NOT authoritative on the local MTA — mail for an

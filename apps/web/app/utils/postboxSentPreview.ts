@@ -63,7 +63,7 @@ export function buildSentPreview(draft: DraftBodySource): SentPreview {
  */
 const META_CSP =
 	`<meta http-equiv="Content-Security-Policy" ` +
-	`content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; font-src https: data:;">`;
+	`content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; font-src https: data:; upgrade-insecure-requests;">`;
 
 /**
  * Inject the CSP meta into a rendered document's `<head>`. Falls back to

@@ -24,6 +24,12 @@ export const migrationRunTables = {
 		generation: v.number(),
 		/** Pagination cursor after the last committed page; absent before the first. */
 		cursor: v.optional(v.string()),
+		/**
+		 * Which kind of pass this is, for a migration with more than one (0054's
+		 * `rebuild`); absent for the ordinary pass. Set when a pass starts and
+		 * kept by a resume, so resuming never turns a pass into another kind.
+		 */
+		mode: v.optional(v.string()),
 		pageCount: v.number(),
 		/** Rows the pass has read, and rows it changed. */
 		scannedCount: v.number(),

@@ -1,6 +1,7 @@
 /**
  * #925 on real Redis: the record script, the XINFO coverage gate, trimming,
- * TTL expiry, days written without the indexes, and Redis Cluster slotting.
+ * TTL expiry, days written without the indexes, query pagination, and Redis
+ * Cluster slotting.
  */
 
 import type Redis from 'ioredis';
@@ -21,10 +22,13 @@ import {
 	getDeliveryLogStats,
 	getMessageEvents,
 	logDeliveryEvent,
+	queryDeliveryLogs,
 	type DeliveryEvent,
+	type DeliveryLogQuery,
 } from '../deliveryLogger.js';
 import {
 	messageIndexKeyFor,
+	orgStatsKeyFor,
 	readDayIndex,
 	statsKeyFor,
 	streamKeyFor,
@@ -47,6 +51,32 @@ function event(i: number, overrides: Partial<DeliveryEvent> = {}): DeliveryEvent
 		domain: 'example.com',
 		...overrides,
 	};
+}
+
+/** Status counts of the retained stream, the way a scan computes them. */
+async function retainedCounts(redis: Redis, orgId?: string): Promise<Record<string, number>> {
+	const counts: Record<string, number> = { total: 0 };
+	for (const [, fields] of await redis.xrange(streamKeyFor(today), '-', '+')) {
+		const map: Record<string, string> = {};
+		for (let i = 0; i < fields.length; i += 2) map[fields[i]!] = fields[i + 1]!;
+		if (orgId && map['orgId'] !== orgId) continue;
+		counts[map['status']!] = (counts[map['status']!] ?? 0) + 1;
+		counts['total']! += 1;
+	}
+	return counts;
+}
+
+/** Follow `nextCursor` until it is absent and return every entry ID. */
+async function walkQuery(redis: Redis, query: DeliveryLogQuery): Promise<string[]> {
+	const ids: string[] = [];
+	let cursor: string | undefined;
+	for (let i = 0; i < 1_000; i++) {
+		const page = await queryDeliveryLogs(redis, { ...query, cursor });
+		ids.push(...page.entries.map((e) => e.id));
+		if (!page.nextCursor) return ids;
+		cursor = page.nextCursor;
+	}
+	throw new Error('pagination did not end');
 }
 
 /** Count XRANGE commands the client sends while `run` executes. */
@@ -102,17 +132,72 @@ describe.runIf(dockerRedisAvailable())('delivery log indexes on standalone Redis
 		expect((await getDeliveryLogStats(redis, today))['total']).toBe(1001);
 	});
 
-	it('falls back to the retained entries once MAXLEN trimmed the day', async () => {
+	it('trims the day to MAXLEN exactly and answers its statistics from the counters', async () => {
 		const small = { ...config, deliveryLogMaxLen: 100 } as MtaConfig;
 		await logDeliveryEvent(redis, event(0, { messageId: 'target' }), small);
 		for (let i = 1; i < 1000; i++) await logDeliveryEvent(redis, event(i), small);
 		await logDeliveryEvent(redis, event(1000, { messageId: 'target' }), small);
 
-		const retained = await redis.xlen(streamKeyFor(today));
-		expect(retained).toBeLessThan(1001);
-		expect((await getDeliveryLogStats(redis, today))['total']).toBe(retained);
+		expect(await redis.xlen(streamKeyFor(today))).toBe(100);
+		const { coverage } = await readDayIndex(redis, today, 'stats');
+		expect(coverage).toMatchObject({
+			kind: 'known',
+			length: 100,
+			entriesAdded: 1001,
+			evicted: 901,
+		});
+		for (const orgId of [undefined, 'org-0', 'org-1', 'org-2']) {
+			const expected = await retainedCounts(redis, orgId);
+			let stats: Record<string, number> = {};
+			const scans = await countXrange(redis, async () => {
+				stats = await getDeliveryLogStats(redis, today, orgId);
+			});
+			expect(stats).toMatchObject(expected);
+			expect(scans).toBe(0);
+		}
+		// Org hashes an eviction touches keep the stream's expiry.
+		for (const orgId of ['org-0', 'org-1', 'org-2']) {
+			expect(await redis.pttl(orgStatsKeyFor(today, orgId))).toBeGreaterThan(0);
+		}
 		const history = await getMessageEvents(redis, 'target');
 		expect(history).toHaveLength(1);
+	});
+
+	it('scans a day an older MTA trimmed with MAXLEN ~', async () => {
+		const small = { ...config, deliveryLogMaxLen: 100 } as MtaConfig;
+		for (let i = 0; i < 300; i++) await logDeliveryEvent(redis, event(i), small);
+		for (let i = 300; i < 600; i++) {
+			await redis.xadd(
+				streamKeyFor(today),
+				'MAXLEN',
+				'~',
+				'50',
+				'*',
+				'messageId',
+				`m-${i}`,
+				'orgId',
+				'org-1',
+				'status',
+				'bounced'
+			);
+		}
+
+		const expected = await retainedCounts(redis, 'org-1');
+		expect(await getDeliveryLogStats(redis, today, 'org-1')).toMatchObject(expected);
+	});
+
+	it('pages a filtered day of 2,000 events with no duplicates or gaps', async () => {
+		for (let i = 0; i < 2000; i++) await logDeliveryEvent(redis, event(i), config);
+		const all = await redis.xrange(streamKeyFor(today), '-', '+');
+		const expected = all
+			.filter(([, fields]) => fields[fields.indexOf('orgId') + 1] === 'org-2')
+			.map(([id]) => id);
+
+		for (const limit of [7, 100, 1000]) {
+			const ids = await walkQuery(redis, { date: today, orgId: 'org-2', limit });
+			expect(ids).toEqual(expected);
+		}
+		expect(await walkQuery(redis, { date: today, limit: 333 })).toEqual(all.map(([id]) => id));
 	});
 
 	it('caps the message index at MAXLEN entries and scans histories past the cap', async () => {
@@ -197,5 +282,26 @@ describe.runIf(dockerRedisAvailable())('delivery log indexes on Redis Cluster', 
 		expect(coverage).toMatchObject({ kind: 'known', entriesAdded: 4, indexedTotal: 4, length: 4 });
 		expect((await getDeliveryLogStats(redis, today))['total']).toBe(4);
 		expect(await getMessageEvents(redis, 'target')).toHaveLength(4);
+	});
+
+	it('trims and counts evictions of other organizations inside the same slot', async () => {
+		const redis = fixture.client as unknown as Redis;
+		await redis.del(
+			streamKeyFor(today),
+			statsKeyFor(today),
+			messageIndexKeyFor(today),
+			...[0, 1, 2].map((org) => orgStatsKeyFor(today, `org-${org}`))
+		);
+		const small = { ...config, deliveryLogMaxLen: 10 } as MtaConfig;
+		for (let i = 0; i < 30; i++) await logDeliveryEvent(redis, event(i), small);
+
+		expect(await redis.xlen(streamKeyFor(today))).toBe(10);
+		const { coverage } = await readDayIndex(redis, today, 'stats');
+		expect(coverage).toMatchObject({ kind: 'known', length: 10, entriesAdded: 30, evicted: 20 });
+		for (const orgId of [undefined, 'org-0', 'org-2']) {
+			expect(await getDeliveryLogStats(redis, today, orgId)).toMatchObject(
+				await retainedCounts(redis, orgId)
+			);
+		}
 	});
 });

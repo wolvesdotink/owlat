@@ -17,6 +17,7 @@ import { resolveFolderByName } from './folders.js';
 import { resolveSelectedSet, type SeqMap } from './seqMap.js';
 import { collectMessageIds } from './uidSet.js';
 import { serverFailure } from './replies.js';
+import { holdSequence } from './sequenceGate.js';
 
 export interface RunCopyOrMoveParams {
 	readonly deps: CommandDeps;
@@ -39,14 +40,22 @@ export interface RunCopyOrMoveParams {
 
 export async function runCopyOrMove(params: RunCopyOrMoveParams): Promise<void> {
 	const { deps, state, set, byUid, target, tag, label, verb, mutation, send, emit } = params;
+	// MOVE announces EXPUNGEs, and a UID set may announce changes first; a COPY
+	// by sequence number only needs its numbers to keep their meaning.
+	const lease = holdSequence(deps, verb === 'MOVE' || byUid ? 'sync' : 'shared');
 	try {
+		await lease.ready;
 		const targetFolder = await resolveFolderByName(deps.convex, state.auth!.mailboxId, target);
 		if (!targetFolder) {
 			send(`${tag} NO [TRYCREATE] Mailbox not found`);
 			return;
 		}
 
-		const { seqMap, resolved } = await resolveSelectedSet(deps, state, set, byUid);
+		const { seqMap, resolved } = await resolveSelectedSet(deps, state, set, byUid, send, lease);
+		// MOVE takes the messages out of the client's view: commands sent before
+		// it finish with the numbering they started with.
+		if (verb === 'MOVE') await lease.exclusive();
+		else lease.downgrade();
 		const messageIds = await collectMessageIds(deps.convex, state.selected!.folderId, resolved);
 		if (messageIds.length === 0) {
 			send(`${tag} OK ${label} completed`);
@@ -63,5 +72,7 @@ export async function runCopyOrMove(params: RunCopyOrMoveParams): Promise<void> 
 	} catch (err) {
 		logger.error({ err }, `${verb} failed`);
 		send(serverFailure(tag, label));
+	} finally {
+		lease.release();
 	}
 }
