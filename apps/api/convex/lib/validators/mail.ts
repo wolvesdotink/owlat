@@ -67,6 +67,16 @@ export type ExternalSyncMode = (typeof EXTERNAL_SYNC_MODES)[number];
 export const externalSyncModeValidator = literalUnion(EXTERNAL_SYNC_MODES);
 
 /** The flags a remote write-back sets (`true`) or clears (`false`); absent ⇒ untouched. */
+/** What one queued write-back (`externalMailRemoteOps`) does. */
+export const remoteOpKindValidator = v.union(
+	v.literal('move'),
+	v.literal('flags'),
+	v.literal('delete'),
+	// A mirrored folder renamed or deleted in Owlat.
+	v.literal('renameFolder'),
+	v.literal('deleteFolder')
+);
+
 export const remoteFlagChangesValidator = v.object({
 	seen: v.optional(v.boolean()),
 	flagged: v.optional(v.boolean()),
