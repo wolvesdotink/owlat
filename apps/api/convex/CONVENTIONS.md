@@ -716,7 +716,7 @@ A validator that a table shares with the functions reading or writing it has
 one home, picked by its shape, not by which file has room:
 
 - `lib/literalValidators.ts`: closed literal unions (`bounceTypeValidator`,
-  `blockReasonValidator`, ...).
+  `blockedEmailReasonValidator`, ...).
 - `lib/convexValidators.ts`: the cross-domain composites (objects, records)
   and the unions derived from a shared catalog with `literalUnion`.
 - `lib/validators/<domain>.ts`: everything owned by one domain

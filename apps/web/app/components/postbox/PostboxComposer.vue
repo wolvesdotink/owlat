@@ -7,6 +7,8 @@ import { usePostboxComposerAnswerApi } from '~/composables/postbox/usePostboxCom
 import { usePostboxComposerGaps } from '~/composables/postbox/usePostboxComposerGaps';
 import { usePostboxComposerHandoff } from '~/composables/postbox/usePostboxComposerHandoff';
 import { convertReplyToReplyAll } from '~/utils/postboxReplyDefault';
+import { mailboxComposerTarget } from '~/utils/composerTarget';
+import PostboxComposerShell from './PostboxComposerShell.vue';
 
 const EmailBuilder = defineAsyncComponent(() =>
 	import('@owlat/email-builder').then((m) => m.EmailBuilder)
@@ -54,6 +56,8 @@ const emit = defineEmits<{
 
 const { t, locale } = useI18n();
 const { showOperationError } = useOperationErrorToast();
+// The seed names the target; the shell and footer read its capabilities.
+const target = mailboxComposerTarget(props.seed);
 
 const {
 	draftId: activeDraftId,
@@ -231,7 +235,7 @@ const { maximising, handleMaximise, handleDiscard, snapshot } = usePostboxCompos
 });
 
 // Scoped OS-level file drops and clipboard attachment pastes.
-const { rootEl, dragActive, onDragOver, onDragLeave, onDrop, onPaste } =
+const { rootEl, bindRoot, dragActive, onDragOver, onDragLeave, onDrop, onPaste } =
 	usePostboxComposerDropZone(addFiles);
 
 // An AI draft's `[[...]]` gaps hold Send back until they are filled.
@@ -275,224 +279,221 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 </script>
 
 <template>
-	<div
-		ref="rootEl"
-		class="relative flex flex-col h-full bg-bg-elevated"
+	<PostboxComposerShell
+		:ref="bindRoot"
+		:target="target"
+		:drag-active="dragActive"
 		@dragover="onDragOver"
 		@dragleave="onDragLeave"
 		@drop="onDrop"
 		@paste="onPaste"
 		@keydown.capture="onComposerKeydown"
 	>
-		<div
-			v-if="dragActive"
-			class="absolute inset-0 z-10 flex items-center justify-center bg-brand/10 border-2 border-dashed border-brand rounded pointer-events-none"
-		>
-			<span class="text-sm font-medium text-brand">
-				{{ t('components.postbox.postboxComposer.dropHint') }}
-			</span>
-		</div>
-		<PostboxComposerHeader
-			v-if="!answerFrame"
-			:subject="subject"
-			:can-maximise="!!seed.inReplyToMessageId"
-			:maximising="maximising"
-			@maximise="handleMaximise"
-			@minimize="emit('minimize')"
-			@discard="handleDiscard"
-		/>
-
-		<PostboxComposerEnvelopeLine
-			v-if="!frameView.envelopeOpen.value"
-			:to-addresses="toAddresses"
-			:cc-addresses="ccAddresses"
-			:bcc-addresses="bccAddresses"
-			:from="fromAddress || availableIdentities[0]?.address || ''"
-			:identities="availableIdentities"
-			:recipient-names="recipientNames"
-			:subject="subject"
-			:can-reply-all="(replyAllRecipients?.length ?? 0) > 0"
-			@expand="frameView.openEnvelope()"
-			@reply-all="onLineReplyAll"
-		/>
-		<!-- Folded, not unmounted: its guard dialogs must stay live. -->
-		<PostboxComposerEnvelope
-			v-show="frameView.envelopeOpen.value"
-			ref="envelopeRef"
-			v-model:to-addresses="toAddresses"
-			v-model:cc-addresses="ccAddresses"
-			v-model:bcc-addresses="bccAddresses"
-			v-model:subject="subject"
-			:mailbox-id="seed.mailboxId"
-			:from-address="fromAddress"
-			:available-identities="availableIdentities"
-			:reply-all-recipients="replyAllRecipients"
-			:guards="guards"
-			:seal-states="chipSealStates"
-			@from-change="onFromChange"
-			@apply-reply-all="onApplyReplyAll"
-			@attention="frameView.envelopeAttention.value = $event"
-		/>
-
-		<!-- Everything between the envelope and the footer scrolls as one: the strips
-		     keep their height (the draft notice leads), the body keeps at least 6rem. -->
-		<div class="flex min-h-0 flex-1 flex-col overflow-y-auto" data-testid="composer-scroll">
-			<PostboxComposerDraftNotice :notice="draftNotice" @retry="retryLoad" />
-			<!-- Sealed Mail (E5): honest seal-lock indicator, shown from the moment the
-			     state is being computed. Its unsealed control only REQUESTS the
-			     decision — the dialog below is the single source of plaintext consent. -->
-			<PostboxComposerSealLock
-				:enabled="seal.enabled"
-				:seal-state="seal.state"
-				:pending="seal.pending"
-				:blocking-recipients="seal.blockingRecipients"
-				:all-verified="seal.allVerified"
-				@request-unsealed="seal.requestUnsealed()"
-				@remove-recipient="removeSealBlocker"
+		<template v-if="!answerFrame" #header>
+			<PostboxComposerHeader
+				:subject="subject"
+				:can-maximise="!!seed.inReplyToMessageId"
+				:maximising="maximising"
+				@maximise="handleMaximise"
+				@minimize="emit('minimize')"
+				@discard="handleDiscard"
 			/>
+		</template>
 
-			<!-- Plan idea 7: keystrokes the server row never received, after a crash.
-			     Above the editor, because it offers to replace what is in it. -->
-			<PostboxDraftRestoreBar
-				:entry="draftMirror.restorable"
-				@restore="draftMirror.restore"
-				@dismiss="draftMirror.dismiss"
+		<template #envelope>
+			<PostboxComposerEnvelopeLine
+				v-if="!frameView.envelopeOpen.value"
+				:to-addresses="toAddresses"
+				:cc-addresses="ccAddresses"
+				:bcc-addresses="bccAddresses"
+				:from="fromAddress || availableIdentities[0]?.address || ''"
+				:identities="availableIdentities"
+				:recipient-names="recipientNames"
+				:subject="subject"
+				:can-reply-all="(replyAllRecipients?.length ?? 0) > 0"
+				@expand="frameView.openEnvelope()"
+				@reply-all="onLineReplyAll"
 			/>
-
-			<!-- A scheduled draft is read-only until it is taken back; the banner owns
-			     both the "goes out at" line and the unschedule control. -->
-			<PostboxComposerScheduledBanner
-				:is-scheduled="isScheduled"
-				:scheduled-send-at="scheduledSendAt"
-				:cancel-schedule="cancelSchedule"
-			/>
-
-			<!-- Answer mode's AI bar / ask card (filled by the page). -->
-			<slot name="above-editor" :composer="answerApi" />
-
-			<div
-				class="min-h-24 flex-1 overflow-hidden"
-				:class="{ 'pbx-quote-folded': frameView.quoteFolded.value && frameView.hasQuote.value }"
-				data-testid="composer-body"
-			>
-				<!-- Withheld until a reopened draft's body loads (see usePostboxCompose). -->
-				<div
-					v-if="bodyPending"
-					class="h-full"
-					role="group"
-					aria-busy="true"
-					:aria-label="t('components.postbox.postboxComposer.bodyLoading')"
-				/>
-				<PostboxBasicEditor
-					v-else-if="composerMode === 'simple'"
-					ref="basicEditor"
-					v-model="bodyHtml"
-					:placeholder="t('components.postbox.postboxComposer.bodyPlaceholder')"
-					:suggestions-enabled="ghostSuggestionsEnabled"
-					:ghost-thread-context="subject"
-					:rewrite-enabled="aiRewriteEnabled"
-					:rewrite-mailbox-id="seed.mailboxId"
-					:persistent-toolbar="persistentToolbar"
-					:emoji-shortcodes-enabled="true"
-					:inline-images-enabled="true"
-					:embed-image="addInlineImage"
-					:on-remove-embedded-image="removeInlineImage"
-					:snippets="editorSnippets"
-					:snippet-variable-context="snippetVariableContext"
-				/>
-				<EmailBuilder
-					v-else
-					:blocks="bodyBlocks"
-					:subject="subject"
-					:name="composerName"
-					:background-color="backgroundColor"
-					:variables="[]"
-					:config="builderConfig"
-					class="h-full"
-					@update:blocks="bodyBlocks = $event"
-					@update:subject="subject = $event"
-					@update:name="composerName = $event"
-					@update:background-color="backgroundColor = $event"
-				/>
-			</div>
-
-			<PostboxComposerAttachments
-				:attachments="attachments"
-				:uploads="uploads"
-				:meter="attachmentSizeMeter"
-				:thumb-url-for="thumbUrlFor"
-				:is-sharing="isSharing"
-				:share-disabled="bodyPending"
-				@remove="removeAttachment"
-				@share="shareAsLink"
-				@cancel="cancelUpload"
-				@retry="retryUpload"
-			/>
-
-			<!-- Advisory AI cluster: "Coach my draft" self-check + freeform whole-draft
-			     revise. Advisory only — never sends; hidden when AI is off / draft empty. -->
-			<PostboxComposerAdvisory
-				v-if="frameView.advisoryOpen.value"
-				v-model:body-html="bodyHtml"
-				:ai-enabled="aiRewriteEnabled"
+			<!-- Folded, not unmounted: its guard dialogs must stay live. -->
+			<PostboxComposerEnvelope
+				v-show="frameView.envelopeOpen.value"
+				ref="envelopeRef"
+				v-model:to-addresses="toAddresses"
+				v-model:cc-addresses="ccAddresses"
+				v-model:bcc-addresses="bccAddresses"
+				v-model:subject="subject"
 				:mailbox-id="seed.mailboxId"
-				:in-reply-to-message-id="seed.inReplyToMessageId"
+				:from-address="fromAddress"
+				:available-identities="availableIdentities"
+				:reply-all-recipients="replyAllRecipients"
+				:guards="guards"
+				:seal-states="chipSealStates"
+				@from-change="onFromChange"
+				@apply-reply-all="onApplyReplyAll"
+				@attention="frameView.envelopeAttention.value = $event"
+			/>
+		</template>
+
+		<!-- The shell's scroll region: the strips keep their height (the draft
+		     notice leads), the body keeps at least 6rem. -->
+		<PostboxComposerDraftNotice :notice="draftNotice" @retry="retryLoad" />
+		<!-- Sealed Mail (E5): honest seal-lock indicator, shown from the moment the
+		     state is being computed. Its unsealed control only REQUESTS the
+		     decision — the dialog below is the single source of plaintext consent. -->
+		<PostboxComposerSealLock
+			:enabled="seal.enabled"
+			:seal-state="seal.state"
+			:pending="seal.pending"
+			:blocking-recipients="seal.blockingRecipients"
+			:all-verified="seal.allVerified"
+			@request-unsealed="seal.requestUnsealed()"
+			@remove-recipient="removeSealBlocker"
+		/>
+
+		<!-- Plan idea 7: keystrokes the server row never received, after a crash.
+		     Above the editor, because it offers to replace what is in it. -->
+		<PostboxDraftRestoreBar
+			:entry="draftMirror.restorable"
+			@restore="draftMirror.restore"
+			@dismiss="draftMirror.dismiss"
+		/>
+
+		<!-- A scheduled draft is read-only until it is taken back; the banner owns
+		     both the "goes out at" line and the unschedule control. -->
+		<PostboxComposerScheduledBanner
+			:is-scheduled="isScheduled"
+			:scheduled-send-at="scheduledSendAt"
+			:cancel-schedule="cancelSchedule"
+		/>
+
+		<!-- Answer mode's AI bar / ask card (filled by the page). -->
+		<slot name="above-editor" :composer="answerApi" />
+
+		<div
+			class="min-h-24 flex-1 overflow-hidden"
+			:class="{ 'pbx-quote-folded': frameView.quoteFolded.value && frameView.hasQuote.value }"
+			data-testid="composer-body"
+		>
+			<!-- Withheld until a reopened draft's body loads (see usePostboxCompose). -->
+			<div
+				v-if="bodyPending"
+				class="h-full"
+				role="group"
+				aria-busy="true"
+				:aria-label="t('components.postbox.postboxComposer.bodyLoading')"
+			/>
+			<PostboxBasicEditor
+				v-else-if="composerMode === 'simple'"
+				ref="basicEditor"
+				v-model="bodyHtml"
+				:placeholder="t('components.postbox.postboxComposer.bodyPlaceholder')"
+				:suggestions-enabled="ghostSuggestionsEnabled"
+				:ghost-thread-context="subject"
+				:rewrite-enabled="aiRewriteEnabled"
+				:rewrite-mailbox-id="seed.mailboxId"
+				:persistent-toolbar="persistentToolbar"
+				:emoji-shortcodes-enabled="true"
+				:inline-images-enabled="true"
+				:embed-image="addInlineImage"
+				:on-remove-embedded-image="removeInlineImage"
+				:snippets="editorSnippets"
+				:snippet-variable-context="snippetVariableContext"
+			/>
+			<EmailBuilder
+				v-else
+				:blocks="bodyBlocks"
+				:subject="subject"
+				:name="composerName"
+				:background-color="backgroundColor"
+				:variables="[]"
+				:config="builderConfig"
+				class="h-full"
+				@update:blocks="bodyBlocks = $event"
+				@update:subject="subject = $event"
+				@update:name="composerName = $event"
+				@update:background-color="backgroundColor = $event"
 			/>
 		</div>
 
-		<PostboxComposerFooter
-			v-model:follow-up-remind-at="followUpRemindAt"
-			:send-as="
-				availableIdentities.find((i) => i.address === fromAddress) ?? availableIdentities[0]
-			"
-			:can-send="sendable"
-			:sending="sending"
-			:is-uploading="isUploading"
-			:is-scheduled="isScheduled"
-			:send-shortcut-hint="sendShortcutHint"
-			:schedule-shortcut-hint="scheduleShortcutHint"
-			:show-signature-picker="signatures.length > 0"
-			:signatures="signatures"
-			:active-signature-id="activeSignatureId"
-			:composer-mode="composerMode"
-			:body-pending="bodyPending"
-			:subject="subject"
-			:body-html="bodyHtml"
-			:body-blocks="bodyBlocks"
-			:persistent-toolbar="persistentToolbar"
-			:preflight="guards.preflight"
-			:last-saved-label="footerStatus"
-			:frame="frame"
-			:has-quote="frameView.hasQuote.value"
-			:quote-folded="frameView.quoteFolded.value"
-			:advisory-available="aiRewriteEnabled"
-			:advisory-open="frameView.advisoryOpen.value"
-			@send="handleSend()"
-			@toggle-quote="frameView.toggleQuote()"
-			@toggle-advisory="frameView.toggleAdvisory()"
-			@discard="handleDiscard"
-			@schedule="scheduleOpen = true"
-			@add-files="addFiles"
-			@signature-change="onSignatureChange"
-			@toggle-toolbar="toggleToolbar"
-			@switch-mode="switchMode"
+		<PostboxComposerAttachments
+			:attachments="attachments"
+			:uploads="uploads"
+			:meter="attachmentSizeMeter"
+			:thumb-url-for="thumbUrlFor"
+			:is-sharing="isSharing"
+			:share-disabled="bodyPending"
+			@remove="removeAttachment"
+			@share="shareAsLink"
+			@cancel="cancelUpload"
+			@retry="retryUpload"
 		/>
-		<!-- Every dialog that PARKS a send until the sender answers: the schedule
-		     picker, the unsealed-send decision, the stale-reply warning. Grouped
-		     in one component because they share the contract — each confirm
-		     replays the very send it interrupted, options and all. -->
-		<PostboxComposerDialogs
-			v-model:schedule-open="scheduleOpen"
-			v-model:stale-open="stale.confirmOpen"
+
+		<!-- Advisory AI cluster: "Coach my draft" self-check + freeform whole-draft
+		     revise. Advisory only — never sends; hidden when AI is off / draft empty. -->
+		<PostboxComposerAdvisory
+			v-if="frameView.advisoryOpen.value"
+			v-model:body-html="bodyHtml"
+			:ai-enabled="aiRewriteEnabled"
 			:mailbox-id="seed.mailboxId"
-			:recipients="[...toAddresses, ...ccAddresses, ...bccAddresses]"
-			:seal-confirm-open="seal.confirmOpen"
-			:seal-state="seal.state"
-			:stale-reply-by-name="stale.byName"
-			@schedule="(ts: number) => handleSend({ scheduledSendAt: ts })"
-			@update:seal-confirm-open="seal.setConfirmOpen"
-			@confirm-unsealed="seal.confirmUnsealed"
-			@confirm-stale="stale.confirm"
+			:in-reply-to-message-id="seed.inReplyToMessageId"
 		/>
-	</div>
+
+		<template #footer="{ capabilities }">
+			<PostboxComposerFooter
+				v-model:follow-up-remind-at="followUpRemindAt"
+				:capabilities="capabilities"
+				:send-as="
+					availableIdentities.find((i) => i.address === fromAddress) ?? availableIdentities[0]
+				"
+				:can-send="sendable"
+				:sending="sending"
+				:is-uploading="isUploading"
+				:is-scheduled="isScheduled"
+				:send-shortcut-hint="sendShortcutHint"
+				:schedule-shortcut-hint="scheduleShortcutHint"
+				:show-signature-picker="signatures.length > 0"
+				:signatures="signatures"
+				:active-signature-id="activeSignatureId"
+				:composer-mode="composerMode"
+				:body-pending="bodyPending"
+				:subject="subject"
+				:body-html="bodyHtml"
+				:body-blocks="bodyBlocks"
+				:persistent-toolbar="persistentToolbar"
+				:preflight="guards.preflight"
+				:last-saved-label="footerStatus"
+				:frame="frame"
+				:has-quote="frameView.hasQuote.value"
+				:quote-folded="frameView.quoteFolded.value"
+				:advisory-available="aiRewriteEnabled"
+				:advisory-open="frameView.advisoryOpen.value"
+				@send="handleSend()"
+				@toggle-quote="frameView.toggleQuote()"
+				@toggle-advisory="frameView.toggleAdvisory()"
+				@discard="handleDiscard"
+				@schedule="scheduleOpen = true"
+				@add-files="addFiles"
+				@signature-change="onSignatureChange"
+				@toggle-toolbar="toggleToolbar"
+				@switch-mode="switchMode"
+			/>
+			<!-- Every dialog that PARKS a send until the sender answers: the schedule
+			     picker, the unsealed-send decision, the stale-reply warning. Grouped
+			     in one component because they share the contract — each confirm
+			     replays the very send it interrupted, options and all. -->
+			<PostboxComposerDialogs
+				v-model:schedule-open="scheduleOpen"
+				v-model:stale-open="stale.confirmOpen"
+				:mailbox-id="seed.mailboxId"
+				:recipients="[...toAddresses, ...ccAddresses, ...bccAddresses]"
+				:seal-confirm-open="seal.confirmOpen"
+				:seal-state="seal.state"
+				:stale-reply-by-name="stale.byName"
+				@schedule="(ts: number) => handleSend({ scheduledSendAt: ts })"
+				@update:seal-confirm-open="seal.setConfirmOpen"
+				@confirm-unsealed="seal.confirmUnsealed"
+				@confirm-stale="stale.confirm"
+			/>
+		</template>
+	</PostboxComposerShell>
 </template>

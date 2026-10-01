@@ -1,11 +1,14 @@
 /**
  * `htmlToPlainText` — the one HTML→text pass behind snippets, previews, search
- * excerpts, prompts, scans, the outbound text/plain part and `stripHtml`.
+ * excerpts, prompts, scans, the outbound text/plain part and the MTA's text
+ * fallback.
  */
 
 import { describe, it, expect } from 'vitest';
 import { htmlToPlainText } from '../src/text/htmlToPlainText';
-import { htmlToPlainText as fromRoot, stripHtml } from '../src/index';
+import * as mailMessage from '../src/index';
+
+const fromRoot = mailMessage.htmlToPlainText;
 
 /**
  * Verbatim copy of the retired `apps/api/convex/delivery/sendComposition/
@@ -73,8 +76,8 @@ describe('htmlToPlainText — default (collapsed) layout', () => {
 		expect(fromRoot).toBe(htmlToPlainText);
 	});
 
-	it('backs stripHtml, so the MTA fallback drops scripts and decodes entities', () => {
-		expect(stripHtml('<script>track()</script><p>Tom &amp; Jerry</p>')).toBe('Tom & Jerry');
+	it('has no second name: the stripHtml alias is gone from the package root', () => {
+		expect('stripHtml' in mailMessage).toBe(false);
 	});
 });
 

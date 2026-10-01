@@ -30,7 +30,6 @@ vi.mock('../security.js', async (importOriginal) => {
 const OWLAT_DIR = mkdtempSync(join(tmpdir(), 'owlat-apply-profiles-test-'));
 process.env['INSTANCE_SECRET'] = 'test-instance-secret-0123456789';
 process.env['OWLAT_DIR'] = OWLAT_DIR;
-process.env['PORT'] = '0';
 
 // Dynamic import AFTER env is staged — server.ts reads env at module load.
 const { buildRequestListener } = await import('../server.js');

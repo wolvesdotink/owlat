@@ -235,8 +235,6 @@
 	"[\"apps/mta/src/lib/__tests__/leaderElection.test.ts\",\"typescript(consistent-type-imports)\",\"`import()` type annotations are forbidden.\",\"import('../leaderElection.js').isLeader\"]": 1,
 	"[\"apps/mta/src/lib/__tests__/leaderElection.test.ts\",\"typescript(consistent-type-imports)\",\"`import()` type annotations are forbidden.\",\"import('../leaderElection.js').startLeaderElection\"]": 1,
 	"[\"apps/mta/src/lib/__tests__/leaderElection.test.ts\",\"typescript(consistent-type-imports)\",\"`import()` type annotations are forbidden.\",\"import('../leaderElection.js').stopLeaderElection\"]": 1,
-	"[\"apps/mta/src/monitoring/deliveryLogger.ts\",\"eslint(no-unmodified-loop-condition)\",\"'d' is not modified in this loop.\",\"d\"]": 1,
-	"[\"apps/mta/src/monitoring/deliveryLogger.ts\",\"eslint(no-unmodified-loop-condition)\",\"'end' is not modified in this loop.\",\"end\"]": 1,
 	"[\"apps/mta/src/queue/__tests__/workerHeartbeat.test.ts\",\"typescript(consistent-type-imports)\",\"`import()` type annotations are forbidden.\",\"import('ioredis').default\"]": 1,
 	"[\"apps/mta/src/routes/__tests__/routingDecision.test.ts\",\"typescript(consistent-type-imports)\",\"`import()` type annotations are forbidden.\",\"import('../../intelligence/circuitBreaker.js')\"]": 1,
 	"[\"apps/mta/src/routes/__tests__/routingDecision.test.ts\",\"typescript(consistent-type-imports)\",\"`import()` type annotations are forbidden.\",\"import('../routingDecision.js').RoutingLeaseRecord\"]": 1,
