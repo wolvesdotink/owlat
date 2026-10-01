@@ -248,5 +248,10 @@ describe('EmailBuilder duplication', () => {
 		expect(colorOf(redone, copyChildId)).toBe('#ab1234');
 		expect(colorOf(redone, 'child')).not.toBe('#ab1234');
 		expect(new Set(allIds(redone)).size).toBe(allIds(redone).length);
+
+		// Saved and reloaded, the copies keep their own ids.
+		const reloaded = parseStoredBlocks(JSON.stringify(redone));
+		expect(allIds(reloaded)).toEqual(allIds(redone));
+		expect(colorOf(reloaded, 'child')).not.toBe('#ab1234');
 	});
 });
