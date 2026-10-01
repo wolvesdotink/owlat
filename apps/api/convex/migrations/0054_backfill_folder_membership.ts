@@ -28,6 +28,13 @@
  * scratch, the repair for a membership found out of step: each folder stops
  * being ready, its old blocks are cleared, and its revision moves so no IMAP
  * server keeps a map it cached from them.
+ *
+ * A rebuild is recorded as the ledger row's `mode`, and every page reads it
+ * from there. A plain `run` that resumes an interrupted rebuild therefore goes
+ * on rebuilding; it cannot turn the remaining pages into an ordinary pass that
+ * skips ready folders and then marks the repair completed. `restart` is refused
+ * while a rebuild is unfinished, for the same reason: pass `rebuild` to start
+ * the repair over.
  */
 
 import { v } from 'convex/values';
@@ -57,27 +64,30 @@ const FINISH_POLL_MS = 60_000;
 /** A walk whose state row has not changed for this long has lost its chain. */
 const STALLED_MS = 10 * 60_000;
 
+/** The ledger `mode` of a rebuild pass. */
+const REBUILD = 'rebuild';
+
 async function currentRun(ctx: MutationCtx, generation: number): Promise<MigrationRun | null> {
 	const run = await readMigrationRun(ctx, MIGRATION);
 	return isCurrentMigrationPage(run, generation) ? run : null;
 }
 
-/** Start (or, with `rebuild`, reset) the walks of one page of folders. */
+/** Start (or, in a rebuild, reset) the walks of one page of folders. */
 export const startPage = internalMutation({
 	args: {
 		cursor: v.union(v.string(), v.null()),
 		generation: v.number(),
-		rebuild: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		const run = await currentRun(ctx, args.generation);
 		if (!run) return { isSuperseded: true };
+		const rebuild = run.mode === REBUILD;
 		const { page, continueCursor, isDone } = await ctx.db
 			.query('mailFolders')
 			.paginate({ numItems: PAGE_SIZE, cursor: args.cursor });
 		let walking = 0;
 		for (const folder of page) {
-			if (args.rebuild) {
+			if (rebuild) {
 				await resetFolderMembership(ctx, folder._id);
 			} else if ((await startFolderMembership(ctx, folder._id)) === 'ready') {
 				continue;
@@ -100,7 +110,6 @@ export const startPage = internalMutation({
 		await ctx.scheduler.runAfter(0, next, {
 			cursor: continueCursor,
 			generation: run.generation,
-			...(args.rebuild ? { rebuild: true } : {}),
 		});
 		logInfo('migration.0054_backfill_folder_membership.page', {
 			scanned: page.length,
@@ -115,14 +124,13 @@ export const startPage = internalMutation({
 /**
  * Mark the ledger row completed once no folder is walking; until then check
  * again every {@link FINISH_POLL_MS}, restarting the stalest walk if it has
- * stalled. `cursor` and `rebuild` are accepted so `startPage` can hand its own
- * arguments on; they are not used.
+ * stalled. `cursor` is accepted so `startPage` can hand its own arguments on;
+ * it is not used.
  */
 export const finish = internalMutation({
 	args: {
 		cursor: v.union(v.string(), v.null()),
 		generation: v.number(),
-		rebuild: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		const run = await currentRun(ctx, args.generation);
@@ -159,8 +167,9 @@ export const finish = internalMutation({
 });
 
 /**
- * Start the folder pass, or resume an unfinished one from its recorded cursor.
- * A finished migration is left alone unless `restart` or `rebuild` is set.
+ * Start the folder pass, or resume an unfinished one, in its recorded mode,
+ * from its recorded cursor. A finished migration is left alone unless `restart`
+ * or `rebuild` is set; an unfinished rebuild is not replaced by a `restart`.
  */
 export const run = internalMutation({
 	args: { restart: v.optional(v.boolean()), rebuild: v.optional(v.boolean()) },
@@ -168,10 +177,22 @@ export const run = internalMutation({
 		ctx,
 		args
 	): Promise<{ started: boolean; generation?: number; reason?: string }> => {
+		const rebuild = args.rebuild === true;
+		if (args.restart === true && !rebuild) {
+			const existing = await readMigrationRun(ctx, MIGRATION);
+			if (existing?.status === 'running' && existing.mode === REBUILD) {
+				return {
+					started: false,
+					reason:
+						'A rebuild is unfinished; run without arguments to resume it, or pass rebuild to start it over',
+				};
+			}
+		}
 		const begun = await beginMigrationRun(ctx, {
 			migration: MIGRATION,
 			introducedIn: INTRODUCED_IN,
-			restart: args.restart === true || args.rebuild === true,
+			restart: args.restart === true || rebuild,
+			...(rebuild ? { mode: REBUILD } : {}),
 		});
 		if (!begun) {
 			return { started: false, reason: 'Already completed; pass restart to run it again' };
@@ -179,15 +200,11 @@ export const run = internalMutation({
 		await ctx.scheduler.runAfter(
 			0,
 			internal.migrations['0054_backfill_folder_membership'].startPage,
-			{
-				cursor: begun.cursor ?? null,
-				generation: begun.generation,
-				...(args.rebuild ? { rebuild: true } : {}),
-			}
+			{ cursor: begun.cursor ?? null, generation: begun.generation }
 		);
 		logInfo('migration.0054_backfill_folder_membership.started', {
 			generation: begun.generation,
-			isRebuild: args.rebuild === true,
+			isRebuild: begun.mode === REBUILD,
 		});
 		return { started: true, generation: begun.generation };
 	},
@@ -202,6 +219,7 @@ export const status = internalQuery({
 		const walking = rows.filter((row) => !row.isReady);
 		return {
 			status: run?.status ?? 'not started',
+			isRebuild: run?.mode === REBUILD,
 			completedAt: run?.completedAt ?? null,
 			foldersStarted: run?.changedCount ?? 0,
 			ready: rows.length - walking.length,

@@ -586,6 +586,73 @@ describe('migration 0054 backfills, resumes and rebuilds', () => {
 		// An IMAP server that cached the broken blocks must not reuse them.
 		expect(await versionOf(w, folderId)).not.toBe(before);
 	});
+
+	describe('an interrupted rebuild', () => {
+		/**
+		 * 101 ready, empty folders, so the folder pass takes two pages; the last
+		 * folder, on the second page, holds a stray block no message backs. The
+		 * rebuild's first page commits, then its chain dies.
+		 */
+		async function interruptedRebuild() {
+			const w = await setup();
+			while (w.folderIds.length < 101) {
+				w.folderIds.push(await seedFolder(w.t, w.mailboxId, 'archive'));
+			}
+			const stray = w.folderIds[100]!;
+			await w.t.run(async (ctx) => {
+				for (const folderId of w.folderIds) {
+					await startFolderMembership(ctx, folderId, { isEmpty: true });
+				}
+				await ctx.db.insert('mailFolderUidBlocks', {
+					folderId: stray,
+					firstUid: 999,
+					uids: [999],
+				});
+			});
+			const before = await versionOf(w, stray);
+			expect(await w.t.mutation(migration.run, { rebuild: true })).toMatchObject({
+				started: true,
+			});
+			// Exactly the first page: it resets 100 folders and queues the second.
+			vi.advanceTimersToNextTimer();
+			await w.t.finishInProgressScheduledFunctions();
+			expect(await w.t.query(migration.status, {})).toMatchObject({
+				status: 'running',
+				foldersStarted: 100,
+			});
+			return { w, stray, before };
+		}
+
+		const strayUids = (w: World, folderId: Id<'mailFolders'>) =>
+			w.t.run(async (ctx) =>
+				(await readMembershipBlocks(ctx.db, folderId, undefined, 100)).flatMap((b) => b.uids)
+			);
+
+		it('resumed with no arguments, it goes on rebuilding the folders it had not reached', async () => {
+			const { w, stray, before } = await interruptedRebuild();
+			// The documented resume supersedes the dead chain.
+			expect(await runToEnd(w)).toMatchObject({ started: true });
+
+			expect(await w.t.query(migration.status, {})).toMatchObject({
+				status: 'completed',
+				foldersStarted: 101,
+				walking: 0,
+			});
+			expect(await strayUids(w, stray)).toEqual([]);
+			expect(await versionOf(w, stray)).not.toBe(before);
+		});
+
+		it('a restart without rebuild is refused while the rebuild is unfinished', async () => {
+			const { w, stray } = await interruptedRebuild();
+			expect(await w.t.mutation(migration.run, { restart: true })).toMatchObject({
+				started: false,
+			});
+			// The rebuild's own chain is untouched and still finishes the repair.
+			await w.t.finishAllScheduledFunctions(vi.runAllTimers);
+			expect(await w.t.query(migration.status, {})).toMatchObject({ status: 'completed' });
+			expect(await strayUids(w, stray)).toEqual([]);
+		});
+	});
 });
 
 describe('resetFolderMembership', () => {
