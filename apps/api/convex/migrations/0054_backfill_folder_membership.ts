@@ -46,7 +46,7 @@ import { resetFolderMembership, startFolderMembership } from '../mail/folderMemb
 
 const MIGRATION = '0054_backfill_folder_membership';
 /** The release this migration ships in, recorded on its ledger row. */
-const INTRODUCED_IN = '0.6.6';
+const INTRODUCED_IN = '0.6.7';
 
 /** Folders per page: each costs a state-row read and write and one scheduled step. */
 const PAGE_SIZE = 100;

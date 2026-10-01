@@ -500,7 +500,7 @@ describe('migration 0054 backfills, resumes and rebuilds', () => {
 				.withIndex('by_migration', (q) => q.eq('migration', '0054_backfill_folder_membership'))
 				.unique()
 		);
-		expect(ledger).toMatchObject({ status: 'completed', introducedIn: '0.6.6', scannedCount: 3 });
+		expect(ledger).toMatchObject({ status: 'completed', introducedIn: '0.6.7', scannedCount: 3 });
 		await expectMembershipExact(w, 'after 0054');
 	});
 
