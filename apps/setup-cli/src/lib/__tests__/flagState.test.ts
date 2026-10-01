@@ -15,7 +15,6 @@ beforeEach(() => {
 					.catch(() => false),
 			text: async () => readFile(path, 'utf8'),
 		}),
-		write: (path: string, contents: string) => writeFile(path, contents),
 	});
 });
 
@@ -51,6 +50,26 @@ describe('setup CLI flag persistence', () => {
 		const result = await applyPackAndPersist(root, 'emailClient', true);
 
 		expect(result.state['plugin.policy-pack']).toBe(true);
+	});
+});
+
+describe.skipIf(process.platform === 'win32')('setup CLI flag file mode', () => {
+	// The web setup wizard and the updater create the file owner-only; `owlat
+	// feature` and `owlat pack` must agree with them.
+	it('creates .owlat-flags.json owner-only on a flag toggle', async () => {
+		const root = await temporaryOwlatDirectory();
+
+		await applyAndPersist(root, 'ai', false);
+
+		expect((await stat(join(root, '.owlat-flags.json'))).mode & 0o777).toBe(0o600);
+	});
+
+	it('creates .owlat-flags.json owner-only on a pack toggle', async () => {
+		const root = await temporaryOwlatDirectory();
+
+		await applyPackAndPersist(root, 'emailClient', true);
+
+		expect((await stat(join(root, '.owlat-flags.json'))).mode & 0o777).toBe(0o600);
 	});
 });
 

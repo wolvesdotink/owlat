@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { chmod, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -21,21 +21,9 @@ let dir: string;
 
 beforeEach(async () => {
 	dir = await mkdtemp(join(tmpdir(), 'owlat-persist-'));
-	// saveFlagState writes through the Bun runtime, which vitest/node lacks.
-	vi.stubGlobal('Bun', {
-		file: (path: string) => ({
-			exists: async () =>
-				stat(path)
-					.then(() => true)
-					.catch(() => false),
-			text: async () => readFile(path, 'utf8'),
-		}),
-		write: (path: string, contents: string) => writeFile(path, contents),
-	});
 });
 
 afterEach(async () => {
-	vi.unstubAllGlobals();
 	await rm(dir, { recursive: true, force: true });
 });
 
@@ -100,4 +88,13 @@ describe('persistResolvedSetup', () => {
 
 		expect(flagFile).toEqual(flags);
 	});
+
+	it.skipIf(process.platform === 'win32')(
+		'creates .owlat-flags.json owner-only, like the web wizard and the updater',
+		async () => {
+			await persist({ INSTANCE_SECRET });
+
+			expect((await stat(join(dir, '.owlat-flags.json'))).mode & 0o777).toBe(0o600);
+		}
+	);
 });

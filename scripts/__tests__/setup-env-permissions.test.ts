@@ -5,8 +5,12 @@
  * readable by other local users, and the wizard must stop before writing when
  * it cannot make it so.
  *
+ * The same holds for the later write that saves the Convex admin key into
+ * `.env` (`persist_admin_key`), on its own and not only after
+ * `write_selfhost_env` has secured the file.
+ *
  * The script runs its whole interactive flow when executed, so these cases
- * lift the two functions under test out of it and run them in bash against a
+ * lift the functions under test out of it and run them in bash against a
  * temp directory, with the wizard's output helpers stubbed.
  */
 
@@ -40,6 +44,22 @@ async function writeSelfhostEnv(cwd: string, prelude = ''): Promise<void> {
 		await extractFunction('secure_env_file'),
 		await extractFunction('write_selfhost_env'),
 		'write_selfhost_env',
+	].join('\n');
+	await run('bash', ['-c', script], { cwd });
+}
+
+async function persistAdminKey(cwd: string, prelude = ''): Promise<void> {
+	const script = [
+		'set -euo pipefail',
+		'SELFHOST_CONVEX_ADMIN_KEY=convex-self-hosted-admin-key',
+		'success() { :; }; info() { :; }; warn() { :; }',
+		'error() { echo "$1" >&2; }',
+		// The re-apply step talks to the running stack; nothing to start here.
+		'docker() { :; }',
+		prelude,
+		await extractFunction('secure_env_file'),
+		await extractFunction('persist_admin_key'),
+		'persist_admin_key',
 	].join('\n');
 	await run('bash', ['-c', script], { cwd });
 }
@@ -95,5 +115,41 @@ describe.skipIf(process.platform === 'win32')('setup.sh write_selfhost_env', () 
 		});
 		expect(await readFile(join(dir, '.env'), 'utf-8')).toBe(original);
 		expect((await readdir(dir)).filter((name) => name.startsWith('.env.backup.'))).toEqual([]);
+	});
+});
+
+describe.skipIf(process.platform === 'win32')('setup.sh persist_admin_key', () => {
+	let dir: string;
+	const original = 'INSTANCE_SECRET=test-instance-secret\nCONVEX_ADMIN_KEY=\n';
+
+	beforeEach(async () => {
+		dir = await mkdtemp(join(tmpdir(), 'owlat-setup-sh-'));
+	});
+
+	afterEach(async () => {
+		await rm(dir, { recursive: true, force: true });
+	});
+
+	it('makes a world-readable .env owner-only before saving the admin key into it', async () => {
+		await writeFile(join(dir, '.env'), original);
+		await chmod(join(dir, '.env'), 0o644);
+
+		await persistAdminKey(dir);
+
+		expect(await modeOf(join(dir, '.env'))).toBe(0o600);
+		expect(await readFile(join(dir, '.env'), 'utf-8')).toBe(
+			'INSTANCE_SECRET=test-instance-secret\nCONVEX_ADMIN_KEY=convex-self-hosted-admin-key\n'
+		);
+		expect(await readdir(dir)).toEqual(['.env']);
+	});
+
+	it('stops without saving the admin key when .env cannot be made owner-only', async () => {
+		await writeFile(join(dir, '.env'), original);
+		await chmod(join(dir, '.env'), 0o644);
+
+		await expect(persistAdminKey(dir, 'chmod() { return 1; }')).rejects.toMatchObject({
+			stderr: expect.stringContaining('Could not make .env owner-only'),
+		});
+		expect(await readFile(join(dir, '.env'), 'utf-8')).toBe(original);
 	});
 });
