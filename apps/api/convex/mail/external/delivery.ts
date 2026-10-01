@@ -155,6 +155,13 @@ export const ingestExternalMessage = internalMutation({
 			flagSeen: args.flagSeen,
 			flagFlagged: args.flagFlagged,
 			unsubscribe: args.unsubscribe,
+			// The provider holds it here: the evidence a later reconcile needs to
+			// call it deleted there, even one after a worker restart.
+			remoteSighting: {
+				remoteName: args.remoteName,
+				uidValidity: args.remoteUidValidity,
+				uid: args.remoteUid,
+			},
 			// Remote provider already filtered spam/virus; no verdict fields.
 			countUsedBytes: true,
 			inboundOrigin: origin,

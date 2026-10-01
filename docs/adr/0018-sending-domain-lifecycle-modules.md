@@ -1,6 +1,12 @@
 # Sending domain lifecycle module + per-provider Sending domain provider adapter modules
 
-**Status:** proposed
+**Status:** accepted (`apps/api/convex/domains/lifecycle.ts` and
+`domains/providers/` have been in the tree since the initial commit,
+2026-06-30); **amended 2026-10-01**. There is no `requestVerification`
+entry point, the lifecycle is split across sibling files with feature
+editors writing through `patchDomainRecords`, and providers after SES
+share one relay-identity table instead of a sibling table each. See
+[the implementation-check amendment](#amendment-implementation-check-2026-10-01) at the end of this document.
 
 ## Context
 
@@ -1139,3 +1145,42 @@ Avoid:
 - ADR-0017 (Campaign lifecycle modules) — most recent lifecycle
   deepening; uses `audit_log` effect on every transition and the
   `source` discriminator pattern this ADR adopts.
+
+---
+
+## Amendment: implementation check (2026-10-01)
+
+Issue #1066 compared this ADR with the code on main. The status machine,
+the effects, the provider registry and the `domains` reshape shipped as
+decided: the five provider-specific columns are gone, `lastRegistrationError`
+replaced the two error columns, and every `domains` insert, delete and
+status write goes through `domains/lifecycle.ts`. The data backfill ran as
+`migrations/0018_sending_domain_identity_sibling.ts`. That file was a
+one-shot and was deleted with the other retired migrations 0005 to 0034 in
+#597 on 2026-09-10. These details differ from the Decision above:
+
+- There is no `requestVerification` entry point. The web app calls the DNS
+  verifier `domains/dnsVerification.ts:verifyDomain` directly so the user
+  gets the result at once, and the verifier lands it through
+  `recordVerification`. The header of `lifecycle.ts` records this.
+- The lifecycle is split over several files that share one write path.
+  `lifecycleReducer.ts` holds the types, validators, verification verdict,
+  legal-edges graph and reducer. `lifecycleEffects.ts` runs the effects.
+  `lifecycle.ts` holds the entry points and `patchDomainRecords`.
+- Four feature editors were added later: `lifecycleDmarc.ts`,
+  `lifecycleReceiving.ts`, `lifecycleReturnPath.ts` and `lifecycleDkim.ts`.
+  They do not go through the reducer. Each regenerates the DNS record it
+  owns and writes it with `patchDomainRecords` under its own audit action.
+  `setReceivingMode` and `setReturnPathHost` can move a verified domain back
+  to `pending` that way. `domains/__tests__/domainsSingleWriter.test.ts`
+  holds the single-writer rule.
+- "One new sibling table per provider" stopped at two. The MTA and SES
+  tables shipped as designed and are now frozen. Every provider after SES
+  (Mandrill and plugin transports) stores its identity in the shared
+  `sendingDomainRelayIdentities` table (`schema/relayIdentities.ts`), keyed
+  by a `providerKind` string. ADR-0055 describes that design. The adapter
+  interface in `providers/types.ts` grew relay-identity and proving
+  variants to match.
+- "The reducer never branches on `providerType`" holds for the status
+  machine. The return-path editor does branch on it, and keeps those
+  branches in `domains/returnPathProviders.ts`.

@@ -23,6 +23,7 @@
 import { throwAlreadyExists, throwInvalidInput, throwNotFound } from '../_utils/errors';
 import { nextContentRevision } from './contentRevision';
 import { renderedLanguagePatch } from './emailHtmlTranslations';
+import { languageRendererVersion, rendererVersionAfterWrite } from './rendererVersion';
 import {
 	sanitizeOverlayBlocks,
 	sanitizeOverlayBlocksJson,
@@ -71,7 +72,9 @@ export interface TranslatableEntity {
 	defaultLanguage?: string;
 	supportedLanguages?: string[];
 	contentRevision?: number;
+	htmlContent?: string;
 	htmlTranslations?: string;
+	rendererVersion?: number;
 }
 
 /** Describes which translatable fields an entity carries. */
@@ -271,6 +274,7 @@ export interface TranslationPatch {
 	htmlContent?: string;
 	plainTextContent?: string;
 	htmlTranslations?: string;
+	rendererVersion?: number;
 	contentRevision: number;
 	updatedAt: number;
 }
@@ -283,19 +287,25 @@ function revisionStamp(
 
 /**
  * Patch for adding a language overlay (see `addLanguage`). `htmlContent` is the
- * new language's delivery HTML; the seeded overlay is the default text, so it
- * is rendered from the row's content as it stands.
+ * new language's delivery HTML (rendered by renderer `rendererVersion`); the
+ * seeded overlay is the default text, so it is the row's content as it stands.
  */
 export function addTranslationPatch(
 	row: TranslatableEntity,
 	language: string,
 	fields: TranslatableFields,
-	htmlContent?: string
+	htmlContent?: string,
+	rendererVersion?: number
 ): TranslationPatch {
 	return {
 		...addLanguage(row, language, fields),
-		...(htmlContent !== undefined &&
-			renderedLanguagePatch(row.htmlTranslations, language, { htmlContent, subject: row.subject })),
+		...(htmlContent !== undefined && {
+			...renderedLanguagePatch(row.htmlTranslations, language, {
+				htmlContent,
+				subject: row.subject,
+			}),
+			rendererVersion: languageRendererVersion(row, rendererVersion),
+		}),
 		...revisionStamp(row),
 	};
 }
@@ -328,6 +338,8 @@ export interface TranslationUpdate {
 	 * language, whose HTML only the editor save writes.
 	 */
 	htmlContent?: string;
+	/** The renderer version that produced `htmlContent`. */
+	rendererVersion?: number;
 }
 
 /**
@@ -377,11 +389,13 @@ export function updateTranslationPatch(
 
 	return {
 		translations: serializeTranslations(translations),
-		...(update.htmlContent !== undefined &&
-			renderedLanguagePatch(row.htmlTranslations, update.language, {
+		...(update.htmlContent !== undefined && {
+			...renderedLanguagePatch(row.htmlTranslations, update.language, {
 				htmlContent: update.htmlContent,
 				subject: translation.subject,
-			})),
+			}),
+			rendererVersion: languageRendererVersion(row, update.rendererVersion),
+		}),
 		...revisionStamp(row),
 	};
 }
@@ -396,6 +410,8 @@ export interface SwappedDelivery {
 	htmlContent?: string;
 	plainTextContent?: string;
 	htmlTranslations?: string;
+	/** The renderer version that produced the HTML. */
+	rendererVersion?: number;
 }
 
 /**
@@ -472,6 +488,12 @@ export function setDefaultLanguagePatch(
 		}),
 		...(delivery.htmlTranslations !== undefined && {
 			htmlTranslations: delivery.htmlTranslations,
+		}),
+		...((delivery.htmlContent !== undefined || delivery.htmlTranslations !== undefined) && {
+			rendererVersion: rendererVersionAfterWrite(row, delivery.rendererVersion, {
+				htmlContent: delivery.htmlContent !== undefined,
+				htmlTranslations: delivery.htmlTranslations !== undefined,
+			}),
 		}),
 		...revisionStamp(row),
 	};

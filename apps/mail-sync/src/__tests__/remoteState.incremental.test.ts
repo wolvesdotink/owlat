@@ -73,6 +73,8 @@ function account(sizes: Record<string, number>, options: FakeImapOptions = {}) {
 				if (o.isGone) local.delete(o.messageId);
 				if (o.remoteFolders) row.remoteName = o.remoteFolders[0]!;
 				if (o.flags) row.flags = o.flags;
+				const here = o.sightings?.find((s) => s.remoteName === row.remoteName);
+				if (here) row.sighting = here;
 			}
 		},
 		markAligned: async () => undefined,
@@ -313,7 +315,11 @@ describe('incremental reconcile converges with a full census every cycle', () =>
 					acc.advance(60_000);
 					await acc.pass();
 				}
-				expect([...incremental.local.values()]).toEqual([...reference.local.values()]);
+				// Sightings may lag a pulled move until the next full pass; they are
+				// evidence for the next restart, not part of the mirrored state.
+				const mirrored = (acc: typeof incremental) =>
+					[...acc.local.values()].map(({ sighting: _, ...row }) => row);
+				expect(mirrored(incremental)).toEqual(mirrored(reference));
 			}
 		});
 	}

@@ -7,6 +7,7 @@ import {
 	type Variable,
 } from '@owlat/email-builder';
 import { api } from '@owlat/api';
+import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
 import type { StoredAttachment } from '~/components/AttachmentPanel.vue';
 
 const { t } = useI18n();
@@ -242,6 +243,7 @@ const handleTogglePublish = async () => {
 				id: emailId.value,
 				htmlContent,
 				htmlTranslations,
+				rendererVersion: EMAIL_RENDERER_VERSION,
 				expectedContentRevision,
 			});
 		}

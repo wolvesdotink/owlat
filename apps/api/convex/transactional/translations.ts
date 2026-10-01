@@ -4,6 +4,7 @@ import { requireOrgPermission } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
 import { assertEditableForPublishableChange } from '../lib/publishableEmail';
 import { assertContentRevision } from '../lib/contentRevision';
+import { rendererVersionArg } from '../lib/rendererVersion';
 import {
 	addTranslationPatch,
 	removeTranslationPatch,
@@ -45,6 +46,8 @@ export const addTranslation = transactionalMutation({
 		// The new language's delivery HTML, rendered from the row's content (the
 		// seeded overlay is the default text). Written with the overlay.
 		htmlContent: v.optional(v.string()),
+		// The renderer version that produced `htmlContent` (lib/rendererVersion.ts).
+		rendererVersion: rendererVersionArg,
 		forceWhilePublished: v.optional(v.boolean()),
 		// The `contentRevision` the caller built this write on. When given, the
 		// write is refused with `conflict` if the row has moved on since.
@@ -64,7 +67,8 @@ export const addTranslation = transactionalMutation({
 			email,
 			args.language,
 			TRANSACTIONAL_TRANSLATABLE_FIELDS,
-			args.htmlContent
+			args.htmlContent,
+			args.rendererVersion
 		);
 		await ctx.db.patch(args.id, patch);
 		// The revision this write stored; the next write builds on it.
@@ -85,6 +89,8 @@ export const updateTranslation = transactionalMutation({
 		// The language's delivery HTML, rendered from this overlay on the row's
 		// content. Written with the overlay, so the two cannot disagree.
 		htmlContent: v.optional(v.string()),
+		// The renderer version that produced `htmlContent` (lib/rendererVersion.ts).
+		rendererVersion: rendererVersionArg,
 		forceWhilePublished: v.optional(v.boolean()),
 		// The `contentRevision` the caller built this write on. When given, the
 		// write is refused with `conflict` if the row has moved on since.

@@ -925,7 +925,14 @@ either: its seeded leg carries over Redis and ClamAV volumes, not Convex data.
   a one-shot migration when a version is retired.
 - `*.rendererVersion` tracks the renderer engine. Bump when re-rendering
   the same blocks produces materially different HTML — needed when reading
-  a `shareLinks` snapshot or rehydrating cached output.
+  a `shareLinks` snapshot or rehydrating cached output. The version is
+  `EMAIL_RENDERER_VERSION` in `packages/email-renderer/src/version.ts`
+  (history there; `CURRENT_RENDERER_VERSION` re-exports it). Every write that
+  stores rendered HTML stamps the version that rendered it: the browser sends
+  `rendererVersion` with the HTML, the Node rerender passes its own, and
+  `lib/rendererVersion.ts` decides what the row records (a write that leaves
+  older HTML in the row keeps the older version; unreported means 1). Copies
+  (duplicates, share links) carry the source's version.
 
 ### Boolean naming
 

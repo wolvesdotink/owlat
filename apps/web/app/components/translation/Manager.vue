@@ -152,6 +152,7 @@ const commitTranslation = async (
 					subject: payload.subject,
 					blocks: payload.blocks,
 					htmlContent: payload.htmlContent,
+					rendererVersion: payload.rendererVersion,
 					expectedContentRevision: payload.expectedContentRevision,
 				});
 	return saved.ok ? { ok: true, revision: saved.result.contentRevision } : { ok: false };

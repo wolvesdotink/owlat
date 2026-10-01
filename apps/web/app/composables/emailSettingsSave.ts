@@ -22,6 +22,7 @@
  * right after a Settings save delivers the subject and body of one language.
  */
 
+import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
 import type { RenderOptions } from './useEmailHtmlRendering';
 import {
 	parseSettingsOverlays,
@@ -52,6 +53,8 @@ export interface EmailSettingsBase {
 /** The `update` write: the form's fields and the HTML rendered from them. */
 export interface EmailSettingsUpdateWrite extends EmailSettingsUpdatePayload {
 	htmlTranslations: string;
+	/** The renderer version that produced `htmlTranslations`. */
+	rendererVersion: number;
 	expectedContentRevision: number;
 }
 
@@ -166,6 +169,7 @@ export async function emailSettingsSave(
 				languageStateOf(args.base, payload, payload.defaultLanguage),
 				args.renderOptions
 			),
+			rendererVersion: EMAIL_RENDERER_VERSION,
 			expectedContentRevision: args.base.revision,
 		}));
 

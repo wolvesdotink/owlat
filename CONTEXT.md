@@ -1925,7 +1925,7 @@ defaultLanguage?, linkedBlockIds? })` — validates input, inserts the
   fires `update_block_usage_counts` if `linkedBlockIds` is set,
   `audit_log`.
 - `transition({ templateId, input })` — `input` is `{ to: 'published',
-htmlContent, htmlTranslations? } | { to: 'draft' }`. Idempotent on
+htmlContent, htmlTranslations?, rendererVersion? } | { to: 'draft' }`. Idempotent on
   same-state transitions (`already_in_state` outcome, no re-patch).
 - `duplicate({ sourceTemplateId })` — clones source row fields with
   `name → "<source.name> (Copy)"`, `status: 'draft'`, fresh timestamps.
@@ -2117,7 +2117,7 @@ Per-call order of operations:
     consolidating into the module closes the drift seam where any
     future non-HTTP shell would miss it.
 11. Enqueue through `enqueueGovernedSend(ctx, { kind: 'transactional',
-    id: sendId }, { envelopeInput })` (`delivery/governedEnqueue.ts`), which
+id: sendId }, { envelopeInput })` (`delivery/governedEnqueue.ts`), which
     picks the transactional pool and wires `onComplete: completeSend` with
     the `sendRef` context.
 
