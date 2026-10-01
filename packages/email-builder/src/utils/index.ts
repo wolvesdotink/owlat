@@ -13,10 +13,14 @@ export {
 	getBlockBorderRadius,
 	updateBlockBorderRadius,
 	getColumnWidths,
-	regenerateContainerItemIds,
-	regenerateColumnItemIds,
-	regenerateNestedBlockIds,
 } from './blocks';
+export {
+	type BlockLocation,
+	locateBlock,
+	locateWithin,
+	replaceBlockInTree,
+	cloneWithFreshIds,
+} from './blockTree';
 export {
 	type HistoryCheckpoint,
 	type HistoryDelta,

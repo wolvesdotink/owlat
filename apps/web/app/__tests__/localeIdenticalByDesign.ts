@@ -155,6 +155,7 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'components.translation.cell.htmlBadge',
 	'components.translation.manager.buttonBlock',
 	'components.translation.manager.containerPrefix',
+	'components.translation.manager.heroPrefix',
 	'components.translation.manager.htmlBadge',
 	'components.translation.manager.languageOption',
 	'components.webhooks.webhookDeliveryLogsPanel.events.test',

@@ -1,6 +1,6 @@
 {
-	"release": "v0.6.5",
-	"commit": "0f9f54f1c0d09ac11d18c9311f9fd80d7263e3d0",
+	"release": "v0.6.6",
+	"commit": "37bf0f8f333ad127d9895f64c2484a8ff98fc215",
 	"tables": {
 		"accessRequests": {"type": "object", "value": {
 			"authUserId": {"fieldType":{"type":"string"},"optional":false},
@@ -14,13 +14,16 @@
 			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"open"},{"type":"literal","value":"resolved"}]},"optional":false}
 		}},
 		"accountDeletionRequests": {"type": "object", "value": {
+			"authUserId": {"fieldType":{"type":"string"},"optional":true},
 			"cancellationToken": {"fieldType":{"type":"string"},"optional":false},
 			"createdAt": {"fieldType":{"type":"number"},"optional":false},
 			"email": {"fieldType":{"type":"string"},"optional":false},
+			"erasureStartedAt": {"fieldType":{"type":"number"},"optional":true},
+			"lastError": {"fieldType":{"type":"string"},"optional":true},
 			"reason": {"fieldType":{"type":"string"},"optional":true},
 			"requestedAt": {"fieldType":{"type":"number"},"optional":false},
 			"scheduledForDeletion": {"fieldType":{"type":"number"},"optional":false},
-			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"pending"},{"type":"literal","value":"cancelled"},{"type":"literal","value":"completed"}]},"optional":false},
+			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"pending"},{"type":"literal","value":"cancelled"},{"type":"literal","value":"erasing"},{"type":"literal","value":"failed"},{"type":"literal","value":"completed"}]},"optional":false},
 			"statusChangedAt": {"fieldType":{"type":"number"},"optional":true},
 			"userProfileId": {"fieldType":{"type":"id","tableName":"userProfiles"},"optional":false}
 		}},
@@ -138,7 +141,7 @@
 			"model": {"fieldType":{"type":"string"},"optional":true},
 			"ownerId": {"fieldType":{"type":"string"},"optional":false},
 			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"streaming"},{"type":"literal","value":"complete"},{"type":"literal","value":"error"}]},"optional":false},
-			"surface": {"fieldType":{"type":"union","value":[{"type":"literal","value":"compose"},{"type":"literal","value":"review"},{"type":"literal","value":"suggest"}]},"optional":false},
+			"surface": {"fieldType":{"type":"union","value":[{"type":"literal","value":"compose"},{"type":"literal","value":"review"},{"type":"literal","value":"suggest"},{"type":"literal","value":"answer"}]},"optional":false},
 			"text": {"fieldType":{"type":"string"},"optional":false},
 			"tokenUsage": {"fieldType":{"type":"object","value":{"promptTokens":{"fieldType":{"type":"number"},"optional":false},"completionTokens":{"fieldType":{"type":"number"},"optional":false},"totalTokens":{"fieldType":{"type":"number"},"optional":false}}},"optional":true},
 			"updatedAt": {"fieldType":{"type":"number"},"optional":false}
@@ -184,6 +187,28 @@
 			"secretIv": {"fieldType":{"type":"string"},"optional":true},
 			"updatedAt": {"fieldType":{"type":"number"},"optional":false}
 		}},
+		"answerAskSessions": {"type": "object", "value": {
+			"attachedFiles": {"fieldType":{"type":"array","value":{"type":"object","value":{"source":{"fieldType":{"type":"union","value":[{"type":"literal","value":"upload"},{"type":"literal","value":"semanticFile"},{"type":"literal","value":"mailAttachment"}]},"optional":false},"id":{"fieldType":{"type":"string"},"optional":false},"filename":{"fieldType":{"type":"string"},"optional":false}}}},"optional":false},
+			"contactId": {"fieldType":{"type":"id","tableName":"contacts"},"optional":true},
+			"counterpartAddress": {"fieldType":{"type":"string"},"optional":true},
+			"createdAt": {"fieldType":{"type":"number"},"optional":false},
+			"draftContext": {"fieldType":{"type":"object","value":{"context":{"fieldType":{"type":"string"},"optional":false},"audience":{"fieldType":{"type":"string"},"optional":false},"styleReference":{"fieldType":{"type":"string"},"optional":false},"toneInstruction":{"fieldType":{"type":"string"},"optional":false},"signatureInstruction":{"fieldType":{"type":"string"},"optional":false},"voiceSection":{"fieldType":{"type":"string"},"optional":false},"language":{"fieldType":{"type":"string"},"optional":true}}},"optional":true},
+			"errorMessage": {"fieldType":{"type":"string"},"optional":true},
+			"fileRequest": {"fieldType":{"type":"object","value":{"questionId":{"fieldType":{"type":"string"},"optional":false},"label":{"fieldType":{"type":"string"},"optional":false}}},"optional":true},
+			"followUpAt": {"fieldType":{"type":"number"},"optional":true},
+			"instruction": {"fieldType":{"type":"string"},"optional":true},
+			"locale": {"fieldType":{"type":"string"},"optional":false},
+			"organizationId": {"fieldType":{"type":"string"},"optional":false},
+			"ownerId": {"fieldType":{"type":"string"},"optional":false},
+			"questions": {"fieldType":{"type":"array","value":{"type":"object","value":{"id":{"fieldType":{"type":"string"},"optional":false},"slotType":{"fieldType":{"type":"string"},"optional":false},"text":{"fieldType":{"type":"string"},"optional":false},"attribution":{"fieldType":{"type":"string"},"optional":false},"options":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":true},"translations":{"fieldType":{"type":"array","value":{"type":"object","value":{"locale":{"fieldType":{"type":"string"},"optional":false},"text":{"fieldType":{"type":"string"},"optional":false},"options":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":true}}}},"optional":true},"answerKind":{"fieldType":{"type":"union","value":[{"type":"literal","value":"choice"},{"type":"literal","value":"text"},{"type":"literal","value":"date"},{"type":"literal","value":"number"},{"type":"literal","value":"file"}]},"optional":true},"fileCandidates":{"fieldType":{"type":"array","value":{"type":"object","value":{"source":{"fieldType":{"type":"union","value":[{"type":"literal","value":"semanticFile"},{"type":"literal","value":"mailAttachment"}]},"optional":false},"id":{"fieldType":{"type":"string"},"optional":false},"filename":{"fieldType":{"type":"string"},"optional":false},"title":{"fieldType":{"type":"string"},"optional":true},"mimeType":{"fieldType":{"type":"string"},"optional":false},"size":{"fieldType":{"type":"number"},"optional":false},"score":{"fieldType":{"type":"number"},"optional":false},"note":{"fieldType":{"type":"string"},"optional":true}}}},"optional":true},"answer":{"fieldType":{"type":"object","value":{"value":{"fieldType":{"type":"string"},"optional":false},"at":{"fieldType":{"type":"number"},"optional":false},"source":{"fieldType":{"type":"union","value":[{"type":"literal","value":"user"},{"type":"literal","value":"memory"}]},"optional":true},"file":{"fieldType":{"type":"object","value":{"source":{"fieldType":{"type":"union","value":[{"type":"literal","value":"upload"},{"type":"literal","value":"semanticFile"},{"type":"literal","value":"mailAttachment"}]},"optional":false},"id":{"fieldType":{"type":"string"},"optional":false},"filename":{"fieldType":{"type":"string"},"optional":false}}},"optional":true}}},"optional":true}}}},"optional":false},
+			"round": {"fieldType":{"type":"number"},"optional":false},
+			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"asking"},{"type":"literal","value":"drafting"},{"type":"literal","value":"ready"},{"type":"literal","value":"error"}]},"optional":false},
+			"streamId": {"fieldType":{"type":"id","tableName":"aiDraftStreams"},"optional":true},
+			"target": {"fieldType":{"type":"union","value":[{"type":"object","value":{"kind":{"fieldType":{"type":"literal","value":"mailDraft"},"optional":false},"draftId":{"fieldType":{"type":"id","tableName":"mailDrafts"},"optional":false}}},{"type":"object","value":{"kind":{"fieldType":{"type":"literal","value":"teamThread"},"optional":false},"threadId":{"fieldType":{"type":"id","tableName":"conversationThreads"},"optional":false}}}]},"optional":false},
+			"targetKey": {"fieldType":{"type":"string"},"optional":false},
+			"timeZone": {"fieldType":{"type":"string"},"optional":true},
+			"updatedAt": {"fieldType":{"type":"number"},"optional":false}
+		}},
 		"apiKeys": {"type": "object", "value": {
 			"createdAt": {"fieldType":{"type":"number"},"optional":false},
 			"expiresAt": {"fieldType":{"type":"number"},"optional":true},
@@ -201,8 +226,26 @@
 			"mode": {"fieldType":{"type":"string"},"optional":false},
 			"updatedAt": {"fieldType":{"type":"number"},"optional":false}
 		}},
+		"audienceCountJobs": {"type": "object", "value": {
+			"audience": {"fieldType":{"type":"union","value":[{"type":"object","value":{"kind":{"fieldType":{"type":"literal","value":"topic"},"optional":false},"topicId":{"fieldType":{"type":"id","tableName":"topics"},"optional":false}}},{"type":"object","value":{"kind":{"fieldType":{"type":"literal","value":"segment"},"optional":false},"segmentId":{"fieldType":{"type":"id","tableName":"segments"},"optional":false},"frozenFilters":{"fieldType":{"type":"object","value":{"logic":{"fieldType":{"type":"union","value":[{"type":"literal","value":"AND"},{"type":"literal","value":"OR"}]},"optional":false},"conditions":{"fieldType":{"type":"array","value":{"type":"union","value":[{"type":"object","value":{"kind":{"fieldType":{"type":"literal","value":"contact_property"},"optional":false},"field":{"fieldType":{"type":"string"},"optional":false},"operator":{"fieldType":{"type":"union","value":[{"type":"literal","value":"equals"},{"type":"literal","value":"not_equals"},{"type":"literal","value":"contains"},{"type":"literal","value":"not_contains"},{"type":"literal","value":"gt"},{"type":"literal","value":"lt"},{"type":"literal","value":"gte"},{"type":"literal","value":"lte"},{"type":"literal","value":"is_empty"},{"type":"literal","value":"not_empty"},{"type":"literal","value":"is_true"},{"type":"literal","value":"is_false"}]},"optional":false},"value":{"fieldType":{"type":"union","value":[{"type":"string"},{"type":"number"},{"type":"boolean"}]},"optional":true}}},{"type":"object","value":{"kind":{"fieldType":{"type":"literal","value":"email_activity"},"optional":false},"field":{"fieldType":{"type":"union","value":[{"type":"literal","value":"opened"},{"type":"literal","value":"clicked"}]},"optional":false},"operator":{"fieldType":{"type":"union","value":[{"type":"literal","value":"is_true"},{"type":"literal","value":"is_false"}]},"optional":false}}},{"type":"object","value":{"kind":{"fieldType":{"type":"literal","value":"topic_membership"},"optional":false},"topicId":{"fieldType":{"type":"string"},"optional":false},"operator":{"fieldType":{"type":"union","value":[{"type":"literal","value":"equals"},{"type":"literal","value":"not_equals"}]},"optional":false}}}]}},"optional":false}}},"optional":true}}}]},"optional":false},
+			"audienceKey": {"fieldType":{"type":"string"},"optional":false},
+			"audienceRef": {"fieldType":{"type":"string"},"optional":false},
+			"completedAt": {"fieldType":{"type":"number"},"optional":true},
+			"cursor": {"fieldType":{"type":"string"},"optional":false},
+			"eligible": {"fieldType":{"type":"number"},"optional":false},
+			"generation": {"fieldType":{"type":"number"},"optional":false},
+			"lastCountedAt": {"fieldType":{"type":"number"},"optional":true},
+			"lastEligible": {"fieldType":{"type":"number"},"optional":true},
+			"lastTotal": {"fieldType":{"type":"number"},"optional":true},
+			"pages": {"fieldType":{"type":"number"},"optional":false},
+			"resolvedAudience": {"fieldType":{"type":"union","value":[{"type":"object","value":{"kind":{"fieldType":{"type":"literal","value":"topic"},"optional":false},"topicId":{"fieldType":{"type":"id","tableName":"topics"},"optional":false}}},{"type":"object","value":{"kind":{"fieldType":{"type":"literal","value":"segment"},"optional":false},"segmentId":{"fieldType":{"type":"id","tableName":"segments"},"optional":false},"frozenFilters":{"fieldType":{"type":"object","value":{"logic":{"fieldType":{"type":"union","value":[{"type":"literal","value":"AND"},{"type":"literal","value":"OR"}]},"optional":false},"conditions":{"fieldType":{"type":"array","value":{"type":"union","value":[{"type":"object","value":{"kind":{"fieldType":{"type":"literal","value":"contact_property"},"optional":false},"field":{"fieldType":{"type":"string"},"optional":false},"operator":{"fieldType":{"type":"union","value":[{"type":"literal","value":"equals"},{"type":"literal","value":"not_equals"},{"type":"literal","value":"contains"},{"type":"literal","value":"not_contains"},{"type":"literal","value":"gt"},{"type":"literal","value":"lt"},{"type":"literal","value":"gte"},{"type":"literal","value":"lte"},{"type":"literal","value":"is_empty"},{"type":"literal","value":"not_empty"},{"type":"literal","value":"is_true"},{"type":"literal","value":"is_false"}]},"optional":false},"value":{"fieldType":{"type":"union","value":[{"type":"string"},{"type":"number"},{"type":"boolean"}]},"optional":true}}},{"type":"object","value":{"kind":{"fieldType":{"type":"literal","value":"email_activity"},"optional":false},"field":{"fieldType":{"type":"union","value":[{"type":"literal","value":"opened"},{"type":"literal","value":"clicked"}]},"optional":false},"operator":{"fieldType":{"type":"union","value":[{"type":"literal","value":"is_true"},{"type":"literal","value":"is_false"}]},"optional":false}}},{"type":"object","value":{"kind":{"fieldType":{"type":"literal","value":"topic_membership"},"optional":false},"topicId":{"fieldType":{"type":"string"},"optional":false},"operator":{"fieldType":{"type":"union","value":[{"type":"literal","value":"equals"},{"type":"literal","value":"not_equals"}]},"optional":false}}}]}},"optional":false}}},"optional":true}}}]},"optional":false},
+			"startedAt": {"fieldType":{"type":"number"},"optional":false},
+			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"counting"},{"type":"literal","value":"complete"},{"type":"literal","value":"abandoned"}]},"optional":false},
+			"total": {"fieldType":{"type":"number"},"optional":false},
+			"updatedAt": {"fieldType":{"type":"number"},"optional":false}
+		}},
 		"auditLogs": {"type": "object", "value": {
-			"action": {"fieldType":{"type":"union","value":[{"type":"literal","value":"campaign.created"},{"type":"literal","value":"campaign.updated"},{"type":"literal","value":"campaign.deleted"},{"type":"literal","value":"campaign.sent"},{"type":"literal","value":"campaign.scheduled"},{"type":"literal","value":"campaign.unscheduled"},{"type":"literal","value":"campaign.cancelled"},{"type":"literal","value":"campaign.send_started"},{"type":"literal","value":"campaign.content_blocked"},{"type":"literal","value":"campaign.flagged_for_review"},{"type":"literal","value":"campaign.review_approved"},{"type":"literal","value":"campaign.review_rejected"},{"type":"literal","value":"ab_test.enabled"},{"type":"literal","value":"ab_test.testing_started"},{"type":"literal","value":"ab_test.winner_declared"},{"type":"literal","value":"ab_test.disabled"},{"type":"literal","value":"contact.created"},{"type":"literal","value":"contact.updated"},{"type":"literal","value":"contact.deleted"},{"type":"literal","value":"contact.imported"},{"type":"literal","value":"contact.merged"},{"type":"literal","value":"contact.sunset_reengagement"},{"type":"literal","value":"contact.sunset_suppressed"},{"type":"literal","value":"contact.sunset_resumed"},{"type":"literal","value":"contact.sunset_restored"},{"type":"literal","value":"contact.sunset_exemption_changed"},{"type":"literal","value":"contact.sunset_policy_updated"},{"type":"literal","value":"contact.sunset_sweep_summary"},{"type":"literal","value":"contact.sunset_clock_confirmed"},{"type":"literal","value":"doi.admin_attested"},{"type":"literal","value":"topic.created"},{"type":"literal","value":"topic.updated"},{"type":"literal","value":"topic.deleted"},{"type":"literal","value":"email_template.created"},{"type":"literal","value":"email_template.updated"},{"type":"literal","value":"email_template.deleted"},{"type":"literal","value":"email_template.published"},{"type":"literal","value":"email_template.unpublished"},{"type":"literal","value":"email_template.duplicated"},{"type":"literal","value":"transactional_email.created"},{"type":"literal","value":"transactional_email.updated"},{"type":"literal","value":"transactional_email.published"},{"type":"literal","value":"transactional_email.unpublished"},{"type":"literal","value":"transactional_email.flagged_for_review"},{"type":"literal","value":"transactional_email.approved"},{"type":"literal","value":"transactional_email.rejected"},{"type":"literal","value":"transactional_email.duplicated"},{"type":"literal","value":"transactional_email.deleted"},{"type":"literal","value":"email_block.created"},{"type":"literal","value":"email_block.updated"},{"type":"literal","value":"email_block.duplicated"},{"type":"literal","value":"email_block.deleted"},{"type":"literal","value":"email_block.rerender_failed"},{"type":"literal","value":"automation.created"},{"type":"literal","value":"automation.updated"},{"type":"literal","value":"automation.deleted"},{"type":"literal","value":"automation.activated"},{"type":"literal","value":"automation.paused"},{"type":"literal","value":"automation.resumed"},{"type":"literal","value":"automation.reverted_to_draft"},{"type":"literal","value":"settings.updated"},{"type":"literal","value":"ai_provider_config.updated"},{"type":"literal","value":"team_member.invited"},{"type":"literal","value":"team_member.removed"},{"type":"literal","value":"team_member.role_changed"},{"type":"literal","value":"team_member.email_verified"},{"type":"literal","value":"team_member.verification_resent"},{"type":"literal","value":"api_key.created"},{"type":"literal","value":"api_key.revoked"},{"type":"literal","value":"webhook.created"},{"type":"literal","value":"webhook.updated"},{"type":"literal","value":"webhook.secret_rotated"},{"type":"literal","value":"webhook.deleted"},{"type":"literal","value":"sending_domain.created"},{"type":"literal","value":"sending_domain.registered"},{"type":"literal","value":"sending_domain.registration_failed"},{"type":"literal","value":"sending_domain.verified"},{"type":"literal","value":"sending_domain.verification_failed"},{"type":"literal","value":"sending_domain.regenerated"},{"type":"literal","value":"sending_domain.dmarc_policy_changed"},{"type":"literal","value":"sending_domain.receiving_mode_changed"},{"type":"literal","value":"sending_domain.return_path_changed"},{"type":"literal","value":"sending_domain.dkim_rotated"},{"type":"literal","value":"sending_domain.deleted"},{"type":"literal","value":"seed_mailbox.rotation_reminder"},{"type":"literal","value":"seed_mailbox.rotation_acknowledged"},{"type":"literal","value":"seed_mailbox.disconnected"},{"type":"literal","value":"sending_domain.yahoo_cfl_changed"},{"type":"literal","value":"blocklist.added"},{"type":"literal","value":"blocklist.removed"},{"type":"literal","value":"blocklist.provider_suppressed"},{"type":"literal","value":"blocklist.provider_import_summary"},{"type":"literal","value":"segment.created"},{"type":"literal","value":"segment.updated"},{"type":"literal","value":"segment.deleted"},{"type":"literal","value":"abuse_status_changed"},{"type":"literal","value":"deliverability_ramp.decision_applied"},{"type":"literal","value":"deliverability_ramp.cell_evaluation_failed"},{"type":"literal","value":"deliverability_ramp.cell_paused"},{"type":"literal","value":"deliverability_ramp.cell_resumed"},{"type":"literal","value":"deliverability_ramp.cell_pinned"},{"type":"literal","value":"deliverability_ramp.cell_unpinned"},{"type":"literal","value":"deliverability_ramp.force_advanced"},{"type":"literal","value":"deliverability_ramp.phase_reset"},{"type":"literal","value":"deliverability_ramp.preset_changed"},{"type":"literal","value":"deliverability_ramp.cell_enrolled"},{"type":"literal","value":"deliverability_ramp.phase_promoted"},{"type":"literal","value":"postbox_outbound_transition"},{"type":"literal","value":"postbox_draft.send_initiated"},{"type":"literal","value":"postbox_draft.sent"},{"type":"literal","value":"postbox_draft.cancelled"},{"type":"literal","value":"postbox_draft.from_revoked"},{"type":"literal","value":"postbox_draft.scan_blocked"},{"type":"literal","value":"postbox_draft.seal_consent_required"},{"type":"literal","value":"platform_admin.org_status_changed"},{"type":"literal","value":"platform_admin.tier_override"},{"type":"literal","value":"platform_admin.content_approved"},{"type":"literal","value":"platform_admin.content_rejected"},{"type":"literal","value":"platform_admin.waitlist_approved"},{"type":"literal","value":"platform_admin.waitlist_rejected"},{"type":"literal","value":"platform_admin.admin_added"},{"type":"literal","value":"platform_admin.admin_removed"},{"type":"literal","value":"platform_admin.bootstrap_granted"},{"type":"literal","value":"thread.reopened_by_inbound"},{"type":"literal","value":"thread.status_changed"},{"type":"literal","value":"thread.assigned"},{"type":"literal","value":"thread.unassigned"},{"type":"literal","value":"thread.draft_status_changed"},{"type":"literal","value":"thread.snoozed"},{"type":"literal","value":"thread.unsnoozed"},{"type":"literal","value":"inbound.received"},{"type":"literal","value":"inbound.quarantined"},{"type":"literal","value":"inbound.released"},{"type":"literal","value":"inbound.retried"},{"type":"literal","value":"inbound.draft_approved"},{"type":"literal","value":"inbound.draft_rejected"},{"type":"literal","value":"inbound.draft_edited"},{"type":"literal","value":"inbound.draft_saved"},{"type":"literal","value":"inbound.reply_sent"},{"type":"literal","value":"inbound.auto_send_cancelled"},{"type":"literal","value":"inbound.clarification_answered"},{"type":"literal","value":"inbound.update_dismissed"},{"type":"literal","value":"inbound.reply_requested"},{"type":"literal","value":"inbound.reply_taken_over"},{"type":"literal","value":"inbound.follow_up_sent"},{"type":"literal","value":"inbound.follow_up_cancelled"},{"type":"literal","value":"inbound.sender_blocked"},{"type":"literal","value":"agent.config_updated"},{"type":"literal","value":"agent.backfill_started"},{"type":"literal","value":"agent.backfill_cancelled"},{"type":"literal","value":"agent.kill_switch"},{"type":"literal","value":"agent.demotion_acknowledged"},{"type":"literal","value":"knowledge.edge_backfill_started"},{"type":"literal","value":"knowledge.edge_backfill_cancelled"},{"type":"literal","value":"plugin.action_completed"},{"type":"literal","value":"plugin.action_failed"},{"type":"literal","value":"plugin.action_denied"},{"type":"literal","value":"connected_app.registered"},{"type":"literal","value":"connected_app.enabled"},{"type":"literal","value":"connected_app.disabled"},{"type":"literal","value":"connected_app.revoked"},{"type":"literal","value":"connected_app.deleted"},{"type":"literal","value":"connected_app.secret_rotated"}]},"optional":false},
+			"action": {"fieldType":{"type":"union","value":[{"type":"literal","value":"campaign.created"},{"type":"literal","value":"campaign.updated"},{"type":"literal","value":"campaign.deleted"},{"type":"literal","value":"campaign.sent"},{"type":"literal","value":"campaign.scheduled"},{"type":"literal","value":"campaign.unscheduled"},{"type":"literal","value":"campaign.cancelled"},{"type":"literal","value":"campaign.send_started"},{"type":"literal","value":"campaign.content_blocked"},{"type":"literal","value":"campaign.flagged_for_review"},{"type":"literal","value":"campaign.review_approved"},{"type":"literal","value":"campaign.review_rejected"},{"type":"literal","value":"ab_test.enabled"},{"type":"literal","value":"ab_test.testing_started"},{"type":"literal","value":"ab_test.winner_declared"},{"type":"literal","value":"ab_test.disabled"},{"type":"literal","value":"contact.created"},{"type":"literal","value":"contact.updated"},{"type":"literal","value":"contact.deleted"},{"type":"literal","value":"contact.imported"},{"type":"literal","value":"contact.merged"},{"type":"literal","value":"contact.sunset_reengagement"},{"type":"literal","value":"contact.sunset_suppressed"},{"type":"literal","value":"contact.sunset_resumed"},{"type":"literal","value":"contact.sunset_restored"},{"type":"literal","value":"contact.sunset_exemption_changed"},{"type":"literal","value":"contact.sunset_policy_updated"},{"type":"literal","value":"contact.sunset_sweep_summary"},{"type":"literal","value":"contact.sunset_clock_confirmed"},{"type":"literal","value":"doi.admin_attested"},{"type":"literal","value":"topic.created"},{"type":"literal","value":"topic.updated"},{"type":"literal","value":"topic.deleted"},{"type":"literal","value":"email_template.created"},{"type":"literal","value":"email_template.updated"},{"type":"literal","value":"email_template.deleted"},{"type":"literal","value":"email_template.published"},{"type":"literal","value":"email_template.unpublished"},{"type":"literal","value":"email_template.duplicated"},{"type":"literal","value":"transactional_email.created"},{"type":"literal","value":"transactional_email.updated"},{"type":"literal","value":"transactional_email.published"},{"type":"literal","value":"transactional_email.unpublished"},{"type":"literal","value":"transactional_email.flagged_for_review"},{"type":"literal","value":"transactional_email.approved"},{"type":"literal","value":"transactional_email.rejected"},{"type":"literal","value":"transactional_email.duplicated"},{"type":"literal","value":"transactional_email.deleted"},{"type":"literal","value":"email_block.created"},{"type":"literal","value":"email_block.updated"},{"type":"literal","value":"email_block.duplicated"},{"type":"literal","value":"email_block.deleted"},{"type":"literal","value":"email_block.rerender_failed"},{"type":"literal","value":"automation.created"},{"type":"literal","value":"automation.updated"},{"type":"literal","value":"automation.deleted"},{"type":"literal","value":"automation.activated"},{"type":"literal","value":"automation.paused"},{"type":"literal","value":"automation.resumed"},{"type":"literal","value":"automation.reverted_to_draft"},{"type":"literal","value":"settings.updated"},{"type":"literal","value":"settings.workspace_deletion_aborted"},{"type":"literal","value":"ai_provider_config.updated"},{"type":"literal","value":"team_member.invited"},{"type":"literal","value":"team_member.removed"},{"type":"literal","value":"team_member.role_changed"},{"type":"literal","value":"team_member.email_verified"},{"type":"literal","value":"team_member.verification_resent"},{"type":"literal","value":"api_key.created"},{"type":"literal","value":"api_key.revoked"},{"type":"literal","value":"webhook.created"},{"type":"literal","value":"webhook.updated"},{"type":"literal","value":"webhook.secret_rotated"},{"type":"literal","value":"webhook.deleted"},{"type":"literal","value":"sending_domain.created"},{"type":"literal","value":"sending_domain.registered"},{"type":"literal","value":"sending_domain.registration_failed"},{"type":"literal","value":"sending_domain.verified"},{"type":"literal","value":"sending_domain.verification_failed"},{"type":"literal","value":"sending_domain.regenerated"},{"type":"literal","value":"sending_domain.dmarc_policy_changed"},{"type":"literal","value":"sending_domain.receiving_mode_changed"},{"type":"literal","value":"sending_domain.return_path_changed"},{"type":"literal","value":"sending_domain.dkim_rotated"},{"type":"literal","value":"sending_domain.deleted"},{"type":"literal","value":"seed_mailbox.rotation_reminder"},{"type":"literal","value":"seed_mailbox.rotation_acknowledged"},{"type":"literal","value":"seed_mailbox.disconnected"},{"type":"literal","value":"sending_domain.yahoo_cfl_changed"},{"type":"literal","value":"blocklist.added"},{"type":"literal","value":"blocklist.removed"},{"type":"literal","value":"blocklist.provider_suppressed"},{"type":"literal","value":"blocklist.provider_import_summary"},{"type":"literal","value":"segment.created"},{"type":"literal","value":"segment.updated"},{"type":"literal","value":"segment.deleted"},{"type":"literal","value":"abuse_status_changed"},{"type":"literal","value":"deliverability_ramp.decision_applied"},{"type":"literal","value":"deliverability_ramp.cell_evaluation_failed"},{"type":"literal","value":"deliverability_ramp.cell_paused"},{"type":"literal","value":"deliverability_ramp.cell_resumed"},{"type":"literal","value":"deliverability_ramp.cell_pinned"},{"type":"literal","value":"deliverability_ramp.cell_unpinned"},{"type":"literal","value":"deliverability_ramp.force_advanced"},{"type":"literal","value":"deliverability_ramp.phase_reset"},{"type":"literal","value":"deliverability_ramp.preset_changed"},{"type":"literal","value":"deliverability_ramp.cell_enrolled"},{"type":"literal","value":"deliverability_ramp.phase_promoted"},{"type":"literal","value":"postbox_outbound_transition"},{"type":"literal","value":"postbox_draft.send_initiated"},{"type":"literal","value":"postbox_draft.sent"},{"type":"literal","value":"postbox_draft.cancelled"},{"type":"literal","value":"postbox_draft.from_revoked"},{"type":"literal","value":"postbox_draft.scan_blocked"},{"type":"literal","value":"postbox_draft.seal_consent_required"},{"type":"literal","value":"platform_admin.org_status_changed"},{"type":"literal","value":"platform_admin.tier_override"},{"type":"literal","value":"platform_admin.content_approved"},{"type":"literal","value":"platform_admin.content_rejected"},{"type":"literal","value":"platform_admin.waitlist_approved"},{"type":"literal","value":"platform_admin.waitlist_rejected"},{"type":"literal","value":"platform_admin.admin_added"},{"type":"literal","value":"platform_admin.admin_removed"},{"type":"literal","value":"platform_admin.bootstrap_granted"},{"type":"literal","value":"thread.reopened_by_inbound"},{"type":"literal","value":"thread.status_changed"},{"type":"literal","value":"thread.assigned"},{"type":"literal","value":"thread.unassigned"},{"type":"literal","value":"thread.draft_status_changed"},{"type":"literal","value":"thread.snoozed"},{"type":"literal","value":"thread.unsnoozed"},{"type":"literal","value":"inbound.received"},{"type":"literal","value":"inbound.quarantined"},{"type":"literal","value":"inbound.released"},{"type":"literal","value":"inbound.retried"},{"type":"literal","value":"inbound.draft_approved"},{"type":"literal","value":"inbound.draft_rejected"},{"type":"literal","value":"inbound.draft_edited"},{"type":"literal","value":"inbound.draft_saved"},{"type":"literal","value":"inbound.reply_sent"},{"type":"literal","value":"inbound.auto_send_cancelled"},{"type":"literal","value":"inbound.clarification_answered"},{"type":"literal","value":"inbound.update_dismissed"},{"type":"literal","value":"inbound.reply_requested"},{"type":"literal","value":"inbound.reply_taken_over"},{"type":"literal","value":"inbound.follow_up_sent"},{"type":"literal","value":"inbound.follow_up_cancelled"},{"type":"literal","value":"inbound.sender_blocked"},{"type":"literal","value":"agent.config_updated"},{"type":"literal","value":"agent.backfill_started"},{"type":"literal","value":"agent.backfill_cancelled"},{"type":"literal","value":"agent.kill_switch"},{"type":"literal","value":"agent.demotion_acknowledged"},{"type":"literal","value":"knowledge.edge_backfill_started"},{"type":"literal","value":"knowledge.edge_backfill_cancelled"},{"type":"literal","value":"plugin.action_completed"},{"type":"literal","value":"plugin.action_failed"},{"type":"literal","value":"plugin.action_denied"},{"type":"literal","value":"connected_app.registered"},{"type":"literal","value":"connected_app.enabled"},{"type":"literal","value":"connected_app.disabled"},{"type":"literal","value":"connected_app.revoked"},{"type":"literal","value":"connected_app.deleted"},{"type":"literal","value":"connected_app.secret_rotated"}]},"optional":false},
 			"createdAt": {"fieldType":{"type":"number"},"optional":false},
 			"details": {"fieldType":{"type":"record","keys":{"type":"string"},"values":{"fieldType":{"type":"union","value":[{"type":"string"},{"type":"number"},{"type":"boolean"},{"type":"null"}]},"optional":false}},"optional":true},
 			"detailsBlob": {"fieldType":{"type":"string"},"optional":true},
@@ -516,6 +559,7 @@
 		"codeWorkTasks": {"type": "object", "value": {
 			"attempts": {"fieldType":{"type":"number"},"optional":true},
 			"branch": {"fieldType":{"type":"string"},"optional":true},
+			"cancelledAt": {"fieldType":{"type":"number"},"optional":true},
 			"createdAt": {"fieldType":{"type":"number"},"optional":false},
 			"description": {"fieldType":{"type":"string"},"optional":false},
 			"errorMessage": {"fieldType":{"type":"string"},"optional":true},
@@ -524,6 +568,7 @@
 			"maxAttempts": {"fieldType":{"type":"number"},"optional":true},
 			"nextAttemptAt": {"fieldType":{"type":"number"},"optional":true},
 			"prUrl": {"fieldType":{"type":"string"},"optional":true},
+			"publishCommitSha": {"fieldType":{"type":"string"},"optional":true},
 			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"queued"},{"type":"literal","value":"running"},{"type":"literal","value":"testing"},{"type":"literal","value":"review"},{"type":"literal","value":"merged"},{"type":"literal","value":"failed"}]},"optional":false},
 			"testResults": {"fieldType":{"type":"string"},"optional":true},
 			"updatedAt": {"fieldType":{"type":"number"},"optional":false}
@@ -558,8 +603,9 @@
 			"cursor": {"fieldType":{"type":"string"},"optional":true},
 			"lastError": {"fieldType":{"type":"string"},"optional":true},
 			"lastErrorAt": {"fieldType":{"type":"number"},"optional":true},
-			"phase": {"fieldType":{"type":"union","value":[{"type":"literal","value":"clarificationMemory"},{"type":"literal","value":"contactTopics"},{"type":"literal","value":"contactPropertyValues"},{"type":"literal","value":"contactActivities"},{"type":"literal","value":"contactIdentities"},{"type":"literal","value":"relationshipsFrom"},{"type":"literal","value":"relationshipsTo"},{"type":"literal","value":"automationRuns"},{"type":"literal","value":"emailSends"},{"type":"literal","value":"transactionalSends"},{"type":"literal","value":"conversationThreads"},{"type":"literal","value":"unifiedMessages"},{"type":"literal","value":"inboundMessages"},{"type":"literal","value":"formSubmissions"},{"type":"literal","value":"knowledge"},{"type":"literal","value":"semanticFiles"}]},"optional":false},
+			"phase": {"fieldType":{"type":"union","value":[{"type":"literal","value":"clarificationMemory"},{"type":"literal","value":"contactTopics"},{"type":"literal","value":"contactPropertyValues"},{"type":"literal","value":"contactActivities"},{"type":"literal","value":"contactIdentities"},{"type":"literal","value":"relationshipsFrom"},{"type":"literal","value":"relationshipsTo"},{"type":"literal","value":"automationRuns"},{"type":"literal","value":"emailSends"},{"type":"literal","value":"transactionalSends"},{"type":"literal","value":"conversationThreads"},{"type":"literal","value":"unifiedMessages"},{"type":"literal","value":"inboundMessages"},{"type":"literal","value":"formSubmissions"},{"type":"literal","value":"knowledge"},{"type":"literal","value":"semanticFiles"},{"type":"literal","value":"answerAskSessions"}]},"optional":false},
 			"reason": {"fieldType":{"type":"union","value":[{"type":"literal","value":"retention"},{"type":"literal","value":"api_delete"}]},"optional":false},
+			"rowCap": {"fieldType":{"type":"number"},"optional":true},
 			"rowsProcessed": {"fieldType":{"type":"number"},"optional":false},
 			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"running"},{"type":"literal","value":"retrying"},{"type":"literal","value":"failed"}]},"optional":false},
 			"transactions": {"fieldType":{"type":"number"},"optional":false},
@@ -578,9 +624,23 @@
 			"autoRegistered": {"fieldType":{"type":"boolean"},"optional":true},
 			"autoRegisteredSource": {"fieldType":{"type":"string"},"optional":true},
 			"createdAt": {"fieldType":{"type":"number"},"optional":false},
+			"deletionRequestedAt": {"fieldType":{"type":"number"},"optional":true},
 			"key": {"fieldType":{"type":"string"},"optional":false},
 			"label": {"fieldType":{"type":"string"},"optional":false},
 			"type": {"fieldType":{"type":"union","value":[{"type":"literal","value":"string"},{"type":"literal","value":"number"},{"type":"literal","value":"boolean"},{"type":"literal","value":"date"}]},"optional":false}
+		}},
+		"contactPropertyDeletionJobs": {"type": "object", "value": {
+			"attempts": {"fieldType":{"type":"number"},"optional":false},
+			"createdAt": {"fieldType":{"type":"number"},"optional":false},
+			"lastError": {"fieldType":{"type":"string"},"optional":true},
+			"lastErrorAt": {"fieldType":{"type":"number"},"optional":true},
+			"propertyId": {"fieldType":{"type":"id","tableName":"contactProperties"},"optional":false},
+			"requestedBy": {"fieldType":{"type":"string"},"optional":false},
+			"rowCap": {"fieldType":{"type":"number"},"optional":true},
+			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"running"},{"type":"literal","value":"retrying"},{"type":"literal","value":"failed"}]},"optional":false},
+			"transactions": {"fieldType":{"type":"number"},"optional":false},
+			"updatedAt": {"fieldType":{"type":"number"},"optional":false},
+			"valuesDeleted": {"fieldType":{"type":"number"},"optional":false}
 		}},
 		"contactPropertyValues": {"type": "object", "value": {
 			"contactId": {"fieldType":{"type":"id","tableName":"contacts"},"optional":false},
@@ -655,6 +715,7 @@
 			"latestDraftStatus": {"fieldType":{"type":"union","value":[{"type":"literal","value":"pending"},{"type":"literal","value":"approved"},{"type":"literal","value":"rejected"},{"type":"literal","value":"sent"}]},"optional":true},
 			"messageCount": {"fieldType":{"type":"number"},"optional":false},
 			"normalizedSubject": {"fieldType":{"type":"string"},"optional":false},
+			"replyAttachments": {"fieldType":{"type":"array","value":{"type":"object","value":{"id":{"fieldType":{"type":"string"},"optional":false},"storageId":{"fieldType":{"type":"id","tableName":"_storage"},"optional":true},"filename":{"fieldType":{"type":"string"},"optional":false},"contentType":{"fieldType":{"type":"string"},"optional":false},"size":{"fieldType":{"type":"number"},"optional":false},"origin":{"fieldType":{"type":"union","value":[{"type":"literal","value":"upload"},{"type":"literal","value":"semanticFile"},{"type":"literal","value":"mailAttachment"}]},"optional":false},"sourceId":{"fieldType":{"type":"string"},"optional":true},"copyError":{"fieldType":{"type":"string"},"optional":true},"addedBy":{"fieldType":{"type":"string"},"optional":false},"addedAt":{"fieldType":{"type":"number"},"optional":false}}}},"optional":true},
 			"snoozeReturnedAt": {"fieldType":{"type":"number"},"optional":true},
 			"snoozedUntil": {"fieldType":{"type":"number"},"optional":true},
 			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"open"},{"type":"literal","value":"waiting"},{"type":"literal","value":"resolved"},{"type":"literal","value":"closed"}]},"optional":false},
@@ -670,7 +731,7 @@
 			"completedAt": {"fieldType":{"type":"number"},"optional":true},
 			"cursor": {"fieldType":{"type":"union","value":[{"type":"string"},{"type":"null"}]},"optional":false},
 			"isReady": {"fieldType":{"type":"boolean"},"optional":false},
-			"kind": {"fieldType":{"type":"union","value":[{"type":"literal","value":"mailLabelUnread"},{"type":"literal","value":"mailSectionUnread"},{"type":"literal","value":"mailFolderArrivals"},{"type":"literal","value":"campaignStatus"},{"type":"literal","value":"templateType"},{"type":"literal","value":"automationStatus"},{"type":"literal","value":"contactCreatedDay"}]},"optional":false},
+			"kind": {"fieldType":{"type":"union","value":[{"type":"literal","value":"mailLabelUnread"},{"type":"literal","value":"mailSectionUnread"},{"type":"literal","value":"mailFolderArrivals"},{"type":"literal","value":"campaignStatus"},{"type":"literal","value":"templateType"},{"type":"literal","value":"automationStatus"},{"type":"literal","value":"contactCreatedDay"},{"type":"literal","value":"contactLiveTotal"}]},"optional":false},
 			"ownerId": {"fieldType":{"type":"string"},"optional":true},
 			"scope": {"fieldType":{"type":"string"},"optional":false},
 			"startedAt": {"fieldType":{"type":"number"},"optional":false},
@@ -1133,6 +1194,7 @@
 			"attachmentMeta": {"fieldType":{"type":"string"},"optional":true},
 			"attachmentMetaVersion": {"fieldType":{"type":"number"},"optional":true},
 			"attachmentSuggestions": {"fieldType":{"type":"object","value":{"query":{"fieldType":{"type":"string"},"optional":false},"ambiguous":{"fieldType":{"type":"boolean"},"optional":false},"candidates":{"fieldType":{"type":"array","value":{"type":"object","value":{"fileId":{"fieldType":{"type":"id","tableName":"semanticFiles"},"optional":false},"storageId":{"fieldType":{"type":"id","tableName":"_storage"},"optional":false},"filename":{"fieldType":{"type":"string"},"optional":false},"title":{"fieldType":{"type":"string"},"optional":true},"mimeType":{"fieldType":{"type":"string"},"optional":false},"fileSize":{"fieldType":{"type":"number"},"optional":false},"score":{"fieldType":{"type":"number"},"optional":false}}}},"optional":false}}},"optional":true},
+			"bodyExcerpt": {"fieldType":{"type":"string"},"optional":true},
 			"classification": {"fieldType":{"type":"object","value":{"category":{"fieldType":{"type":"string"},"optional":false},"priority":{"fieldType":{"type":"string"},"optional":false},"sentiment":{"fieldType":{"type":"string"},"optional":false},"intent":{"fieldType":{"type":"string"},"optional":false},"confidence":{"fieldType":{"type":"number"},"optional":false},"needsResponse":{"fieldType":{"type":"boolean"},"optional":true},"kind":{"fieldType":{"type":"string"},"optional":true},"language":{"fieldType":{"type":"string"},"optional":true},"importance":{"fieldType":{"type":"number"},"optional":true},"summary":{"fieldType":{"type":"record","keys":{"type":"string"},"values":{"fieldType":{"type":"string"},"optional":false}},"optional":true}}},"optional":true},
 			"confidenceScore": {"fieldType":{"type":"number"},"optional":true},
 			"contactId": {"fieldType":{"type":"id","tableName":"contacts"},"optional":true},
@@ -1152,6 +1214,7 @@
 			"groundingSources": {"fieldType":{"type":"array","value":{"type":"object","value":{"type":{"fieldType":{"type":"union","value":[{"type":"literal","value":"thread"},{"type":"literal","value":"knowledge"}]},"optional":false},"id":{"fieldType":{"type":"string"},"optional":false},"title":{"fieldType":{"type":"string"},"optional":false}}}},"optional":true},
 			"headers": {"fieldType":{"type":"string"},"optional":true},
 			"htmlBody": {"fieldType":{"type":"string"},"optional":true},
+			"htmlBodyStorageId": {"fieldType":{"type":"id","tableName":"_storage"},"optional":true},
 			"inReplyTo": {"fieldType":{"type":"string"},"optional":true},
 			"inboundSignerFingerprint": {"fieldType":{"type":"string"},"optional":true},
 			"isAutoSendBlocked": {"fieldType":{"type":"boolean"},"optional":true},
@@ -1163,7 +1226,7 @@
 			"manualTakeoverAt": {"fieldType":{"type":"number"},"optional":true},
 			"messageId": {"fieldType":{"type":"string"},"optional":false},
 			"pendingAutoSend": {"fieldType":{"type":"object","value":{"scheduledFnId":{"fieldType":{"type":"id","tableName":"_scheduled_functions"},"optional":false},"sendAt":{"fieldType":{"type":"number"},"optional":false},"scheduledAt":{"fieldType":{"type":"number"},"optional":false}}},"optional":true},
-			"pendingClarification": {"fieldType":{"type":"object","value":{"questions":{"fieldType":{"type":"array","value":{"type":"object","value":{"id":{"fieldType":{"type":"string"},"optional":false},"slotType":{"fieldType":{"type":"string"},"optional":false},"text":{"fieldType":{"type":"string"},"optional":false},"options":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":true},"translations":{"fieldType":{"type":"array","value":{"type":"object","value":{"locale":{"fieldType":{"type":"string"},"optional":false},"text":{"fieldType":{"type":"string"},"optional":false},"options":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":true}}}},"optional":true},"answer":{"fieldType":{"type":"object","value":{"value":{"fieldType":{"type":"string"},"optional":false},"source":{"fieldType":{"type":"union","value":[{"type":"literal","value":"user"},{"type":"literal","value":"memory"}]},"optional":false},"at":{"fieldType":{"type":"number"},"optional":false}}},"optional":true}}}},"optional":false},"askedAt":{"fieldType":{"type":"number"},"optional":false},"answeredAt":{"fieldType":{"type":"number"},"optional":true}}},"optional":true},
+			"pendingClarification": {"fieldType":{"type":"object","value":{"questions":{"fieldType":{"type":"array","value":{"type":"object","value":{"id":{"fieldType":{"type":"string"},"optional":false},"slotType":{"fieldType":{"type":"string"},"optional":false},"text":{"fieldType":{"type":"string"},"optional":false},"options":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":true},"translations":{"fieldType":{"type":"array","value":{"type":"object","value":{"locale":{"fieldType":{"type":"string"},"optional":false},"text":{"fieldType":{"type":"string"},"optional":false},"options":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":true}}}},"optional":true},"answerKind":{"fieldType":{"type":"union","value":[{"type":"literal","value":"choice"},{"type":"literal","value":"text"},{"type":"literal","value":"date"},{"type":"literal","value":"number"},{"type":"literal","value":"file"}]},"optional":true},"fileCandidates":{"fieldType":{"type":"array","value":{"type":"object","value":{"source":{"fieldType":{"type":"union","value":[{"type":"literal","value":"semanticFile"},{"type":"literal","value":"mailAttachment"}]},"optional":false},"id":{"fieldType":{"type":"string"},"optional":false},"filename":{"fieldType":{"type":"string"},"optional":false},"title":{"fieldType":{"type":"string"},"optional":true},"mimeType":{"fieldType":{"type":"string"},"optional":false},"size":{"fieldType":{"type":"number"},"optional":false},"score":{"fieldType":{"type":"number"},"optional":false},"note":{"fieldType":{"type":"string"},"optional":true}}}},"optional":true},"answer":{"fieldType":{"type":"object","value":{"value":{"fieldType":{"type":"string"},"optional":false},"source":{"fieldType":{"type":"union","value":[{"type":"literal","value":"user"},{"type":"literal","value":"memory"}]},"optional":false},"at":{"fieldType":{"type":"number"},"optional":false},"file":{"fieldType":{"type":"object","value":{"source":{"fieldType":{"type":"union","value":[{"type":"literal","value":"upload"},{"type":"literal","value":"semanticFile"},{"type":"literal","value":"mailAttachment"}]},"optional":false},"id":{"fieldType":{"type":"string"},"optional":false},"filename":{"fieldType":{"type":"string"},"optional":false}}},"optional":true}}},"optional":true}}}},"optional":false},"askedAt":{"fieldType":{"type":"number"},"optional":false},"answeredAt":{"fieldType":{"type":"number"},"optional":true}}},"optional":true},
 			"processedAt": {"fieldType":{"type":"number"},"optional":true},
 			"processingStatus": {"fieldType":{"type":"union","value":[{"type":"literal","value":"received"},{"type":"literal","value":"security_check"},{"type":"literal","value":"quarantined"},{"type":"literal","value":"classifying"},{"type":"literal","value":"drafting"},{"type":"literal","value":"draft_ready"},{"type":"literal","value":"awaiting_clarification"},{"type":"literal","value":"informational"},{"type":"literal","value":"approved"},{"type":"literal","value":"sent"},{"type":"literal","value":"rejected"},{"type":"literal","value":"archived"},{"type":"literal","value":"failed"}]},"optional":false},
 			"rawReleasedAt": {"fieldType":{"type":"number"},"optional":true},
@@ -1171,12 +1234,14 @@
 			"rawStorageId": {"fieldType":{"type":"id","tableName":"_storage"},"optional":true},
 			"receivedAt": {"fieldType":{"type":"number"},"optional":false},
 			"references": {"fieldType":{"type":"string"},"optional":true},
+			"replyAttachments": {"fieldType":{"type":"array","value":{"type":"object","value":{"id":{"fieldType":{"type":"string"},"optional":false},"storageId":{"fieldType":{"type":"id","tableName":"_storage"},"optional":true},"filename":{"fieldType":{"type":"string"},"optional":false},"contentType":{"fieldType":{"type":"string"},"optional":false},"size":{"fieldType":{"type":"number"},"optional":false},"origin":{"fieldType":{"type":"union","value":[{"type":"literal","value":"upload"},{"type":"literal","value":"semanticFile"},{"type":"literal","value":"mailAttachment"}]},"optional":false},"sourceId":{"fieldType":{"type":"string"},"optional":true},"copyError":{"fieldType":{"type":"string"},"optional":true},"addedBy":{"fieldType":{"type":"string"},"optional":false},"addedAt":{"fieldType":{"type":"number"},"optional":false}}}},"optional":true},
 			"securityFlags": {"fieldType":{"type":"object","value":{"injectionDetected":{"fieldType":{"type":"boolean"},"optional":false},"injectionType":{"fieldType":{"type":"string"},"optional":true},"confidence":{"fieldType":{"type":"number"},"optional":false},"flaggedContent":{"fieldType":{"type":"string"},"optional":true},"spamScore":{"fieldType":{"type":"number"},"optional":true},"phishingDetected":{"fieldType":{"type":"boolean"},"optional":true},"guardUnavailable":{"fieldType":{"type":"boolean"},"optional":true},"scanTimestamp":{"fieldType":{"type":"number"},"optional":false}}},"optional":true},
 			"signerFingerprint": {"fieldType":{"type":"string"},"optional":true},
 			"signerInstance": {"fieldType":{"type":"string"},"optional":true},
 			"spfResult": {"fieldType":{"type":"string"},"optional":true},
 			"subject": {"fieldType":{"type":"string"},"optional":false},
 			"textBody": {"fieldType":{"type":"string"},"optional":true},
+			"textBodyStorageId": {"fieldType":{"type":"id","tableName":"_storage"},"optional":true},
 			"threadId": {"fieldType":{"type":"id","tableName":"conversationThreads"},"optional":true},
 			"to": {"fieldType":{"type":"string"},"optional":false},
 			"virusVerdict": {"fieldType":{"type":"union","value":[{"type":"literal","value":"clean"},{"type":"literal","value":"infected"},{"type":"literal","value":"skipped"}]},"optional":true}
@@ -1191,6 +1256,7 @@
 			"userId": {"fieldType":{"type":"string"},"optional":false}
 		}},
 		"inboxFollowUps": {"type": "object", "value": {
+			"attachments": {"fieldType":{"type":"array","value":{"type":"object","value":{"id":{"fieldType":{"type":"string"},"optional":false},"storageId":{"fieldType":{"type":"id","tableName":"_storage"},"optional":true},"filename":{"fieldType":{"type":"string"},"optional":false},"contentType":{"fieldType":{"type":"string"},"optional":false},"size":{"fieldType":{"type":"number"},"optional":false},"origin":{"fieldType":{"type":"union","value":[{"type":"literal","value":"upload"},{"type":"literal","value":"semanticFile"},{"type":"literal","value":"mailAttachment"}]},"optional":false},"sourceId":{"fieldType":{"type":"string"},"optional":true},"copyError":{"fieldType":{"type":"string"},"optional":true},"addedBy":{"fieldType":{"type":"string"},"optional":false},"addedAt":{"fieldType":{"type":"number"},"optional":false}}}},"optional":true},
 			"body": {"fieldType":{"type":"string"},"optional":false},
 			"createdAt": {"fieldType":{"type":"number"},"optional":false},
 			"createdBy": {"fieldType":{"type":"string"},"optional":false},
@@ -1351,8 +1417,12 @@
 			"updatedAt": {"fieldType":{"type":"number"},"optional":false}
 		}},
 		"knowledgeEntryContacts": {"type": "object", "value": {
+			"commitmentDueKey": {"fieldType":{"type":"number"},"optional":true},
+			"commitmentOrderKey": {"fieldType":{"type":"number"},"optional":true},
 			"contactId": {"fieldType":{"type":"id","tableName":"contacts"},"optional":false},
-			"entryId": {"fieldType":{"type":"id","tableName":"knowledgeEntries"},"optional":false}
+			"entryExpiresAt": {"fieldType":{"type":"number"},"optional":true},
+			"entryId": {"fieldType":{"type":"id","tableName":"knowledgeEntries"},"optional":false},
+			"isOpenCommitment": {"fieldType":{"type":"boolean"},"optional":true}
 		}},
 		"knowledgeGraphStats": {"type": "object", "value": {
 			"belowReviewThreshold": {"fieldType":{"type":"number"},"optional":false},
@@ -1493,12 +1563,26 @@
 			"scope": {"fieldType":{"type":"union","value":[{"type":"literal","value":"imap"},{"type":"literal","value":"smtp"},{"type":"literal","value":"recovery-kit"}]},"optional":false}
 		}},
 		"mailBodySearchBackfillJobs": {"type": "object", "value": {
+			"batchFunctionId": {"fieldType":{"type":"id","tableName":"_scheduled_functions"},"optional":true},
 			"cursor": {"fieldType":{"type":"string"},"optional":true},
 			"errorMessage": {"fieldType":{"type":"string"},"optional":true},
 			"finishedAt": {"fieldType":{"type":"number"},"optional":true},
+			"generation": {"fieldType":{"type":"number"},"optional":true},
 			"indexedCount": {"fieldType":{"type":"number"},"optional":false},
 			"mailboxId": {"fieldType":{"type":"id","tableName":"mailboxes"},"optional":false},
 			"mode": {"fieldType":{"type":"union","value":[{"type":"literal","value":"index"},{"type":"literal","value":"purge"}]},"optional":false},
+			"scannedCount": {"fieldType":{"type":"number"},"optional":false},
+			"startedAt": {"fieldType":{"type":"number"},"optional":false},
+			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"running"},{"type":"literal","value":"completed"},{"type":"literal","value":"cancelled"},{"type":"literal","value":"failed"}]},"optional":false},
+			"updatedAt": {"fieldType":{"type":"number"},"optional":false}
+		}},
+		"mailBodySearchPurges": {"type": "object", "value": {
+			"batchFunctionId": {"fieldType":{"type":"id","tableName":"_scheduled_functions"},"optional":true},
+			"clearedCount": {"fieldType":{"type":"number"},"optional":false},
+			"cursor": {"fieldType":{"type":"string"},"optional":true},
+			"errorMessage": {"fieldType":{"type":"string"},"optional":true},
+			"finishedAt": {"fieldType":{"type":"number"},"optional":true},
+			"generation": {"fieldType":{"type":"number"},"optional":false},
 			"scannedCount": {"fieldType":{"type":"number"},"optional":false},
 			"startedAt": {"fieldType":{"type":"number"},"optional":false},
 			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"running"},{"type":"literal","value":"completed"},{"type":"literal","value":"cancelled"},{"type":"literal","value":"failed"}]},"optional":false},
@@ -1557,7 +1641,7 @@
 		}},
 		"mailDrafts": {"type": "object", "value": {
 			"aiDraftBaseline": {"fieldType":{"type":"object","value":{"text":{"fieldType":{"type":"string"},"optional":false},"capturedAt":{"fieldType":{"type":"number"},"optional":false}}},"optional":true},
-			"attachments": {"fieldType":{"type":"array","value":{"type":"object","value":{"storageId":{"fieldType":{"type":"id","tableName":"_storage"},"optional":false},"filename":{"fieldType":{"type":"string"},"optional":false},"contentType":{"fieldType":{"type":"string"},"optional":false},"size":{"fieldType":{"type":"number"},"optional":false},"isInline":{"fieldType":{"type":"boolean"},"optional":false},"contentId":{"fieldType":{"type":"string"},"optional":true}}}},"optional":false},
+			"attachments": {"fieldType":{"type":"array","value":{"type":"object","value":{"storageId":{"fieldType":{"type":"id","tableName":"_storage"},"optional":false},"filename":{"fieldType":{"type":"string"},"optional":false},"contentType":{"fieldType":{"type":"string"},"optional":false},"size":{"fieldType":{"type":"number"},"optional":false},"isInline":{"fieldType":{"type":"boolean"},"optional":false},"contentId":{"fieldType":{"type":"string"},"optional":true},"copiedFrom":{"fieldType":{"type":"object","value":{"source":{"fieldType":{"type":"union","value":[{"type":"literal","value":"semanticFile"},{"type":"literal","value":"mailAttachment"}]},"optional":false},"id":{"fieldType":{"type":"string"},"optional":false}}},"optional":true}}}},"optional":false},
 			"bccAddresses": {"fieldType":{"type":"array","value":{"type":"string"}},"optional":false},
 			"bodyBlocks": {"fieldType":{"type":"string"},"optional":true},
 			"bodyBlocksVersion": {"fieldType":{"type":"number"},"optional":true},
@@ -1778,7 +1862,7 @@
 			"mailboxId": {"fieldType":{"type":"id","tableName":"mailboxes"},"optional":false},
 			"messageCount": {"fieldType":{"type":"number"},"optional":false},
 			"mutedAt": {"fieldType":{"type":"number"},"optional":true},
-			"needsReply": {"fieldType":{"type":"object","value":{"messageId":{"fieldType":{"type":"id","tableName":"mailMessages"},"optional":false},"source":{"fieldType":{"type":"union","value":[{"type":"literal","value":"heuristic"},{"type":"literal","value":"llm"}]},"optional":false},"urgency":{"fieldType":{"type":"union","value":[{"type":"literal","value":"high"},{"type":"literal","value":"normal"},{"type":"literal","value":"low"}]},"optional":false},"priorityScore":{"fieldType":{"type":"number"},"optional":true},"askSummary":{"fieldType":{"type":"string"},"optional":true},"dueHint":{"fieldType":{"type":"string"},"optional":true},"meetingIntent":{"fieldType":{"type":"object","value":{"isScheduling":{"fieldType":{"type":"boolean"},"optional":false},"proposedTimes":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":false},"topic":{"fieldType":{"type":"string"},"optional":true}}},"optional":true},"clarification":{"fieldType":{"type":"object","value":{"isNeeded":{"fieldType":{"type":"boolean"},"optional":false},"questions":{"fieldType":{"type":"array","value":{"type":"object","value":{"id":{"fieldType":{"type":"string"},"optional":false},"slotType":{"fieldType":{"type":"string"},"optional":false},"text":{"fieldType":{"type":"string"},"optional":false},"attribution":{"fieldType":{"type":"string"},"optional":false},"options":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":true},"translations":{"fieldType":{"type":"array","value":{"type":"object","value":{"locale":{"fieldType":{"type":"string"},"optional":false},"text":{"fieldType":{"type":"string"},"optional":false},"options":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":true}}}},"optional":true},"answer":{"fieldType":{"type":"object","value":{"value":{"fieldType":{"type":"string"},"optional":false},"at":{"fieldType":{"type":"number"},"optional":false}}},"optional":true}}}},"optional":false},"askedAt":{"fieldType":{"type":"number"},"optional":false},"answeredAt":{"fieldType":{"type":"number"},"optional":true},"draft":{"fieldType":{"type":"string"},"optional":true}}},"optional":true},"detectedAt":{"fieldType":{"type":"number"},"optional":false},"draftSlot":{"fieldType":{"type":"object","value":{"draft":{"fieldType":{"type":"string"},"optional":false},"draftSubject":{"fieldType":{"type":"string"},"optional":true},"confidence":{"fieldType":{"type":"number"},"optional":false},"quality":{"fieldType":{"type":"object","value":{"score":{"fieldType":{"type":"number"},"optional":false},"complete":{"fieldType":{"type":"boolean"},"optional":false},"grounded":{"fieldType":{"type":"boolean"},"optional":false},"flags":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":false}}},"optional":true},"options":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":true},"generatedAt":{"fieldType":{"type":"number"},"optional":false}}},"optional":true},"trigger":{"fieldType":{"type":"object","value":{"fromAddress":{"fieldType":{"type":"string"},"optional":false},"fromName":{"fieldType":{"type":"string"},"optional":true},"subject":{"fieldType":{"type":"string"},"optional":false},"receivedAt":{"fieldType":{"type":"number"},"optional":false}}},"optional":true}}},"optional":true},
+			"needsReply": {"fieldType":{"type":"object","value":{"messageId":{"fieldType":{"type":"id","tableName":"mailMessages"},"optional":false},"source":{"fieldType":{"type":"union","value":[{"type":"literal","value":"heuristic"},{"type":"literal","value":"llm"}]},"optional":false},"urgency":{"fieldType":{"type":"union","value":[{"type":"literal","value":"high"},{"type":"literal","value":"normal"},{"type":"literal","value":"low"}]},"optional":false},"priorityScore":{"fieldType":{"type":"number"},"optional":true},"askSummary":{"fieldType":{"type":"string"},"optional":true},"dueHint":{"fieldType":{"type":"string"},"optional":true},"meetingIntent":{"fieldType":{"type":"object","value":{"isScheduling":{"fieldType":{"type":"boolean"},"optional":false},"proposedTimes":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":false},"topic":{"fieldType":{"type":"string"},"optional":true}}},"optional":true},"clarification":{"fieldType":{"type":"object","value":{"isNeeded":{"fieldType":{"type":"boolean"},"optional":false},"questions":{"fieldType":{"type":"array","value":{"type":"object","value":{"id":{"fieldType":{"type":"string"},"optional":false},"slotType":{"fieldType":{"type":"string"},"optional":false},"text":{"fieldType":{"type":"string"},"optional":false},"attribution":{"fieldType":{"type":"string"},"optional":false},"options":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":true},"translations":{"fieldType":{"type":"array","value":{"type":"object","value":{"locale":{"fieldType":{"type":"string"},"optional":false},"text":{"fieldType":{"type":"string"},"optional":false},"options":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":true}}}},"optional":true},"answerKind":{"fieldType":{"type":"union","value":[{"type":"literal","value":"choice"},{"type":"literal","value":"text"},{"type":"literal","value":"date"},{"type":"literal","value":"number"},{"type":"literal","value":"file"}]},"optional":true},"fileCandidates":{"fieldType":{"type":"array","value":{"type":"object","value":{"source":{"fieldType":{"type":"union","value":[{"type":"literal","value":"semanticFile"},{"type":"literal","value":"mailAttachment"}]},"optional":false},"id":{"fieldType":{"type":"string"},"optional":false},"filename":{"fieldType":{"type":"string"},"optional":false},"title":{"fieldType":{"type":"string"},"optional":true},"mimeType":{"fieldType":{"type":"string"},"optional":false},"size":{"fieldType":{"type":"number"},"optional":false},"score":{"fieldType":{"type":"number"},"optional":false},"note":{"fieldType":{"type":"string"},"optional":true}}}},"optional":true},"answer":{"fieldType":{"type":"object","value":{"value":{"fieldType":{"type":"string"},"optional":false},"at":{"fieldType":{"type":"number"},"optional":false},"source":{"fieldType":{"type":"union","value":[{"type":"literal","value":"user"},{"type":"literal","value":"memory"}]},"optional":true},"file":{"fieldType":{"type":"object","value":{"source":{"fieldType":{"type":"union","value":[{"type":"literal","value":"upload"},{"type":"literal","value":"semanticFile"},{"type":"literal","value":"mailAttachment"}]},"optional":false},"id":{"fieldType":{"type":"string"},"optional":false},"filename":{"fieldType":{"type":"string"},"optional":false}}},"optional":true}}},"optional":true}}}},"optional":false},"askedAt":{"fieldType":{"type":"number"},"optional":false},"answeredAt":{"fieldType":{"type":"number"},"optional":true},"draft":{"fieldType":{"type":"string"},"optional":true}}},"optional":true},"detectedAt":{"fieldType":{"type":"number"},"optional":false},"draftSlot":{"fieldType":{"type":"object","value":{"draft":{"fieldType":{"type":"string"},"optional":false},"draftSubject":{"fieldType":{"type":"string"},"optional":true},"confidence":{"fieldType":{"type":"number"},"optional":false},"quality":{"fieldType":{"type":"object","value":{"score":{"fieldType":{"type":"number"},"optional":false},"complete":{"fieldType":{"type":"boolean"},"optional":false},"grounded":{"fieldType":{"type":"boolean"},"optional":false},"flags":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":false}}},"optional":true},"options":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":true},"generatedAt":{"fieldType":{"type":"number"},"optional":false}}},"optional":true},"trigger":{"fieldType":{"type":"object","value":{"fromAddress":{"fieldType":{"type":"string"},"optional":false},"fromName":{"fieldType":{"type":"string"},"optional":true},"subject":{"fieldType":{"type":"string"},"optional":false},"receivedAt":{"fieldType":{"type":"number"},"optional":false}}},"optional":true}}},"optional":true},
 			"needsReplyPendingAt": {"fieldType":{"type":"number"},"optional":true},
 			"normalizedSubject": {"fieldType":{"type":"string"},"optional":false},
 			"notifyOnReplyAt": {"fieldType":{"type":"number"},"optional":true},
@@ -1962,6 +2046,38 @@
 			"uploadedBy": {"fieldType":{"type":"string"},"optional":false},
 			"url": {"fieldType":{"type":"string"},"optional":false},
 			"width": {"fieldType":{"type":"number"},"optional":true}
+		}},
+		"memberErasureJobs": {"type": "object", "value": {
+			"attempts": {"fieldType":{"type":"number"},"optional":false},
+			"authUserId": {"fieldType":{"type":"string"},"optional":false},
+			"createdAt": {"fieldType":{"type":"number"},"optional":false},
+			"cursor": {"fieldType":{"type":"string"},"optional":true},
+			"email": {"fieldType":{"type":"string"},"optional":false},
+			"isWaitingForWorkspaceDeletion": {"fieldType":{"type":"boolean"},"optional":true},
+			"lastError": {"fieldType":{"type":"string"},"optional":true},
+			"lastErrorAt": {"fieldType":{"type":"number"},"optional":true},
+			"lease": {"fieldType":{"type":"string"},"optional":true},
+			"phase": {"fieldType":{"type":"union","value":[{"type":"literal","value":"authSessions"},{"type":"literal","value":"authCredentials"},{"type":"literal","value":"authOAuthGrants"},{"type":"literal","value":"authVerifications"},{"type":"literal","value":"authInvitations"},{"type":"literal","value":"instanceRows"},{"type":"literal","value":"externalAccounts"},{"type":"literal","value":"mailboxQuiesce"},{"type":"literal","value":"mailboxMessages"},{"type":"literal","value":"mailboxThreads"},{"type":"literal","value":"mailboxDrafts"},{"type":"literal","value":"mailboxShares"},{"type":"literal","value":"mailboxRecords"},{"type":"literal","value":"mailboxRows"},{"type":"literal","value":"memberRecords"},{"type":"literal","value":"sharedMemberships"},{"type":"literal","value":"assistant"},{"type":"literal","value":"answerAsk"},{"type":"literal","value":"accountExports"},{"type":"literal","value":"alertRecipients"},{"type":"literal","value":"alertReceipts"},{"type":"literal","value":"chatAuthorship"},{"type":"literal","value":"chatMemberships"},{"type":"literal","value":"chatMentions"}]},"optional":false},
+			"requestId": {"fieldType":{"type":"id","tableName":"accountDeletionRequests"},"optional":false},
+			"rowCap": {"fieldType":{"type":"number"},"optional":true},
+			"rowsProcessed": {"fieldType":{"type":"number"},"optional":false},
+			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"running"},{"type":"literal","value":"retrying"},{"type":"literal","value":"failed"}]},"optional":false},
+			"transactions": {"fieldType":{"type":"number"},"optional":false},
+			"updatedAt": {"fieldType":{"type":"number"},"optional":false},
+			"verificationPasses": {"fieldType":{"type":"number"},"optional":true}
+		}},
+		"migrationRuns": {"type": "object", "value": {
+			"changedCount": {"fieldType":{"type":"number"},"optional":false},
+			"completedAt": {"fieldType":{"type":"number"},"optional":true},
+			"cursor": {"fieldType":{"type":"string"},"optional":true},
+			"generation": {"fieldType":{"type":"number"},"optional":false},
+			"introducedIn": {"fieldType":{"type":"string"},"optional":false},
+			"migration": {"fieldType":{"type":"string"},"optional":false},
+			"pageCount": {"fieldType":{"type":"number"},"optional":false},
+			"scannedCount": {"fieldType":{"type":"number"},"optional":false},
+			"startedAt": {"fieldType":{"type":"number"},"optional":false},
+			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"running"},{"type":"literal","value":"completed"}]},"optional":false},
+			"updatedAt": {"fieldType":{"type":"number"},"optional":false}
 		}},
 		"mixDecisions": {"type": "object", "value": {
 			"adminNotice": {"fieldType":{"type":"string"},"optional":true},
@@ -2151,6 +2267,7 @@
 			"outcome": {"fieldType":{"type":"union","value":[{"type":"literal","value":"trusted"},{"type":"literal","value":"keyChanged"},{"type":"literal","value":"notFound"}]},"optional":false},
 			"pinnedFingerprint": {"fieldType":{"type":"string"},"optional":true},
 			"pinnedPublicKeyArmored": {"fieldType":{"type":"string"},"optional":true},
+			"revision": {"fieldType":{"type":"number"},"optional":true},
 			"source": {"fieldType":{"type":"union","value":[{"type":"literal","value":"wkd"},{"type":"literal","value":"manifest"}]},"optional":true},
 			"updatedAt": {"fieldType":{"type":"number"},"optional":false},
 			"verifiedAt": {"fieldType":{"type":"number"},"optional":true},
@@ -2378,6 +2495,16 @@
 			"steps": {"fieldType":{"type":"array","value":{"type":"object","value":{"step":{"fieldType":{"type":"string"},"optional":false},"ok":{"fieldType":{"type":"boolean"},"optional":true},"stdout":{"fieldType":{"type":"string"},"optional":false},"stderr":{"fieldType":{"type":"string"},"optional":false}}}},"optional":true},
 			"versionFrom": {"fieldType":{"type":"string"},"optional":true},
 			"versionTo": {"fieldType":{"type":"string"},"optional":true}
+		}},
+		"threadCatchUps": {"type": "object", "value": {
+			"asks": {"fieldType":{"type":"array","value":{"type":"object","value":{"id":{"fieldType":{"type":"string"},"optional":false},"text":{"fieldType":{"type":"string"},"optional":false},"sourceMessageId":{"fieldType":{"type":"string"},"optional":false}}}},"optional":false},
+			"conversationThreadId": {"fieldType":{"type":"id","tableName":"conversationThreads"},"optional":true},
+			"generatedAt": {"fieldType":{"type":"number"},"optional":false},
+			"locale": {"fieldType":{"type":"string"},"optional":false},
+			"mailThreadId": {"fieldType":{"type":"id","tableName":"mailThreads"},"optional":true},
+			"messageCount": {"fieldType":{"type":"number"},"optional":false},
+			"mode": {"fieldType":{"type":"union","value":[{"type":"literal","value":"full"},{"type":"literal","value":"asksOnly"}]},"optional":false},
+			"sentences": {"fieldType":{"type":"array","value":{"type":"object","value":{"text":{"fieldType":{"type":"string"},"optional":false},"sourceMessageIds":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":false}}}},"optional":false}
 		}},
 		"threadPresence": {"type": "object", "value": {
 			"heartbeatAt": {"fieldType":{"type":"number"},"optional":false},
@@ -2636,6 +2763,38 @@
 			"seedTag": {"fieldType":{"type":"string"},"optional":true},
 			"updatedAt": {"fieldType":{"type":"number"},"optional":false},
 			"url": {"fieldType":{"type":"string"},"optional":false}
+		}},
+		"workspaceDeletionJobs": {"type": "object", "value": {
+			"abortReason": {"fieldType":{"type":"string"},"optional":true},
+			"abortedBy": {"fieldType":{"type":"string"},"optional":true},
+			"endedAt": {"fieldType":{"type":"number"},"optional":true},
+			"generation": {"fieldType":{"type":"number"},"optional":false},
+			"isActive": {"fieldType":{"type":"boolean"},"optional":false},
+			"outcome": {"fieldType":{"type":"union","value":[{"type":"literal","value":"completed"},{"type":"literal","value":"aborted"}]},"optional":true},
+			"requestedBy": {"fieldType":{"type":"string"},"optional":true},
+			"source": {"fieldType":{"type":"union","value":[{"type":"literal","value":"workspace_settings"},{"type":"literal","value":"account_deletion"},{"type":"literal","value":"previous_release"}]},"optional":false},
+			"startedAt": {"fieldType":{"type":"number"},"optional":false}
+		}},
+		"workspaceDeletionProgress": {"type": "object", "value": {
+			"attempts": {"fieldType":{"type":"number"},"optional":false},
+			"jobId": {"fieldType":{"type":"id","tableName":"workspaceDeletionJobs"},"optional":false},
+			"joinedRequests": {"fieldType":{"type":"number"},"optional":false},
+			"lastError": {"fieldType":{"type":"string"},"optional":true},
+			"lastErrorAt": {"fieldType":{"type":"number"},"optional":true},
+			"lastErrorStep": {"fieldType":{"type":"string"},"optional":true},
+			"phase": {"fieldType":{"type":"union","value":[{"type":"literal","value":"quiesce"},{"type":"literal","value":"sweep"},{"type":"literal","value":"verify"}]},"optional":false},
+			"rearms": {"fieldType":{"type":"number"},"optional":false},
+			"rowsDeleted": {"fieldType":{"type":"number"},"optional":false},
+			"scheduledAfter": {"fieldType":{"type":"number"},"optional":true},
+			"scheduledCancelled": {"fieldType":{"type":"number"},"optional":false},
+			"scheduledCursor": {"fieldType":{"type":"string"},"optional":true},
+			"scheduledNewest": {"fieldType":{"type":"number"},"optional":true},
+			"scheduledPageRows": {"fieldType":{"type":"number"},"optional":true},
+			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"running"},{"type":"literal","value":"retrying"},{"type":"literal","value":"failed"},{"type":"literal","value":"completed"},{"type":"literal","value":"aborted"}]},"optional":false},
+			"step": {"fieldType":{"type":"string"},"optional":false},
+			"transactions": {"fieldType":{"type":"number"},"optional":false},
+			"updatedAt": {"fieldType":{"type":"number"},"optional":false},
+			"verifyPasses": {"fieldType":{"type":"number"},"optional":false}
 		}},
 		"yahooCflEnrollments": {"type": "object", "value": {
 			"createdAt": {"fieldType":{"type":"number"},"optional":false},

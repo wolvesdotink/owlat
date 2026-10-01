@@ -79,7 +79,7 @@ export function composeForSend(input: ComposeInput): ComposeOutput {
 	//  2. a strip of the UNTRACKED html the composer returns (the tracking pixel
 	//     + link rewriting happen later, in the Node `transformHtml` half), so
 	//     the text part carries no pixel/redirect URL either way. This is why the
-	//     text part is built here and not by the MTA's `stripHtml` fallback,
+	//     text part is built here and not by the MTA's `htmlToPlainText` fallback,
 	//     which only ever sees the tracked html. `preserveBreaks` keeps the
 	//     paragraph layout a reader expects from an RFC 2046 alternative.
 	const stored = input.template.plainTextContent?.trim();

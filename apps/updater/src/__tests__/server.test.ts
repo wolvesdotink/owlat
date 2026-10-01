@@ -28,10 +28,9 @@ vi.mock('../security.js', async (importOriginal) => {
 const OWLAT_DIR = mkdtempSync(join(tmpdir(), 'owlat-updater-test-'));
 process.env['INSTANCE_SECRET'] = 'test-instance-secret-0123456789';
 process.env['OWLAT_DIR'] = OWLAT_DIR;
-process.env['PORT'] = '0';
 
 // Dynamic import AFTER env is staged — server.ts reads env at module load.
-const { buildRequestListener } = await import('../server.js');
+const { buildRequestListener, readListenPort } = await import('../server.js');
 const { fastReadiness } = await import('./readinessStubs.js');
 
 let server: Server;
@@ -174,6 +173,25 @@ function post(path: string, body?: unknown, headers: Record<string, string> = AU
 		body: body === undefined ? undefined : JSON.stringify(body),
 	});
 }
+
+describe('readListenPort', () => {
+	it('defaults an unset or blank PORT to 3200', () => {
+		expect(readListenPort({})).toBe(3200);
+		expect(readListenPort({ PORT: '' })).toBe(3200);
+		expect(readListenPort({ PORT: '  ' })).toBe(3200);
+	});
+
+	it('reads a valid port', () => {
+		expect(readListenPort({ PORT: '4100' })).toBe(4100);
+	});
+
+	it.each(['abc', '32oo', '1e3', '0', '65536', '-1'])(
+		'stops the boot on PORT=%j instead of listening on NaN or a nonsense port',
+		(value) => {
+			expect(() => readListenPort({ PORT: value })).toThrow(/PORT must be an integer/);
+		}
+	);
+});
 
 describe('auth + routing', () => {
 	it('rejects a missing instance secret with 401', async () => {

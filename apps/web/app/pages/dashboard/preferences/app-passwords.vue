@@ -9,10 +9,23 @@ definePageMeta({
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
-const { mailboxes, currentMailbox, isLoading: mailboxesLoading } = usePostboxMailbox();
+const {
+	mailboxes,
+	currentMailbox,
+	isLoading: mailboxesLoading,
+	error: mailboxesError,
+	refetch: refetchMailboxes,
+} = usePostboxMailbox();
 const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 
-const { passwords, isLoading, generate, revoke } = usePostboxAppPasswords(mailboxId);
+const {
+	passwords,
+	isLoading,
+	error: listError,
+	refetch: refetchList,
+	generate,
+	revoke,
+} = usePostboxAppPasswords(mailboxId);
 
 const showCreate = ref(false);
 const newLabel = ref('');
@@ -119,6 +132,8 @@ const smtpHost = computed(() => imapHost.value);
 			<div v-if="isLoading" class="p-8 flex justify-center">
 				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
 			</div>
+			<!-- A failed read is not an empty list (#721). -->
+			<UiQueryBoundary v-else-if="listError" :error="listError" @retry="refetchList" />
 			<div v-else-if="passwords.length === 0" class="p-8 text-center text-text-secondary">
 				{{ t('dashboard.preferences.appPasswords.empty') }}
 			</div>
@@ -168,7 +183,15 @@ const smtpHost = computed(() => imapHost.value);
 			</ul>
 		</section>
 
-		<div v-if="!mailboxId && !mailboxesLoading" class="card p-6 text-center text-text-secondary">
+		<UiQueryBoundary
+			v-if="!mailboxId && mailboxesError"
+			:error="mailboxesError"
+			@retry="refetchMailboxes"
+		/>
+		<div
+			v-else-if="!mailboxId && !mailboxesLoading"
+			class="card p-6 text-center text-text-secondary"
+		>
 			{{ t('dashboard.preferences.appPasswords.noMailbox') }}
 		</div>
 

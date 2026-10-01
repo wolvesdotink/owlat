@@ -30,6 +30,7 @@ import {
 	DEDUP_SIMILARITY_THRESHOLD,
 } from '../lib/knowledgeDedup';
 import { repointEdge } from './edges';
+import { commitmentFacetsOf } from './commitmentFacets';
 import { failStaleRunningJobs, STALE_RUNNING_JOB_MS } from './backfillJobs';
 
 /** Decay rates per knowledge type (percentage per day) */
@@ -206,11 +207,14 @@ async function mergeEntryInto(
 		.query('knowledgeEntryContacts')
 		.withIndex('by_entry', (q) => q.eq('entryId', loser._id))
 		.collect(); // bounded: junction rows for one entry (knowledge linked to a person)
+	// A re-parented row takes the survivor's open-commitment facets: it now
+	// answers for the survivor in the open-commitments index.
+	const survivorFacets = commitmentFacetsOf(survivor);
 	for (const link of loserLinks) {
 		if (survivorContacts.has(link.contactId as string)) {
 			await ctx.db.delete(link._id);
 		} else {
-			await ctx.db.patch(link._id, { entryId: survivor._id });
+			await ctx.db.patch(link._id, { entryId: survivor._id, ...survivorFacets });
 			survivorContacts.add(link.contactId as string);
 		}
 	}
