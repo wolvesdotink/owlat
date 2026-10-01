@@ -13,6 +13,9 @@ import type * as migrations_0049_move_message_bodies from '../migrations/0049_mo
 import type * as migrations_0050_reindex_mailbox_knowledge from '../migrations/0050_reindex_mailbox_knowledge.js';
 import type * as migrations_0051_clear_residual_search_bodies from '../migrations/0051_clear_residual_search_bodies.js';
 import type * as migrations_0052_reerase_legacy_account_deletions from '../migrations/0052_reerase_legacy_account_deletions.js';
+import type * as migrations_0053_project_open_commitments from '../migrations/0053_project_open_commitments.js';
+import type * as lib_migrationLedger from '../lib/migrationLedger.js';
+import type * as schema_migrationRuns from '../schema/migrationRuns.js';
 import type * as schema_counters from '../schema/counters.js';
 import type * as workspaces_deletion_steps_storageUploads from '../workspaces/deletion/steps/storageUploads.js';
 import type * as storage_uploadsHttp from '../storage/uploadsHttp.js';
@@ -641,6 +644,7 @@ import type * as integrationImports_suppressions from '../integrationImports/sup
 import type * as integrationImports_walker from '../integrationImports/walker.js';
 import type * as knowledge_attachmentIngestBudget from '../knowledge/attachmentIngestBudget.js';
 import type * as knowledge_backfillJobs from '../knowledge/backfillJobs.js';
+import type * as knowledge_commitmentFacets from '../knowledge/commitmentFacets.js';
 import type * as knowledge_edgeBackfill from '../knowledge/edgeBackfill.js';
 import type * as knowledge_edgeInference from '../knowledge/edgeInference.js';
 import type * as knowledge_edges from '../knowledge/edges.js';
@@ -1191,6 +1195,7 @@ import type * as schema_instance from '../schema/instance.js';
 import type * as schema_instanceHotRows from '../schema/instanceHotRows.js';
 import type * as schema_integrations from '../schema/integrations.js';
 import type * as schema_knowledge from '../schema/knowledge.js';
+import type * as schema_knowledgeCommitmentFacets from '../schema/knowledgeCommitmentFacets.js';
 import type * as schema_mail from '../schema/mail.js';
 import type * as schema_mailAccounts from '../schema/mailAccounts.js';
 import type * as schema_mailAi from '../schema/mailAi.js';
@@ -1375,6 +1380,9 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0050_reindex_mailbox_knowledge': typeof migrations_0050_reindex_mailbox_knowledge;
 	'migrations/0051_clear_residual_search_bodies': typeof migrations_0051_clear_residual_search_bodies;
 	'migrations/0052_reerase_legacy_account_deletions': typeof migrations_0052_reerase_legacy_account_deletions;
+	'migrations/0053_project_open_commitments': typeof migrations_0053_project_open_commitments;
+	'lib/migrationLedger': typeof lib_migrationLedger;
+	'schema/migrationRuns': typeof schema_migrationRuns;
 	'schema/counters': typeof schema_counters;
 	'workspaces/deletion/steps/storageUploads': typeof workspaces_deletion_steps_storageUploads;
 	'storage/uploadsHttp': typeof storage_uploadsHttp;
@@ -1993,6 +2001,7 @@ declare const fullApi: ApiFromModules<{
 	'integrationImports/walker': typeof integrationImports_walker;
 	'knowledge/attachmentIngestBudget': typeof knowledge_attachmentIngestBudget;
 	'knowledge/backfillJobs': typeof knowledge_backfillJobs;
+	'knowledge/commitmentFacets': typeof knowledge_commitmentFacets;
 	'knowledge/edgeBackfill': typeof knowledge_edgeBackfill;
 	'knowledge/edgeInference': typeof knowledge_edgeInference;
 	'knowledge/edges': typeof knowledge_edges;
@@ -2543,6 +2552,7 @@ declare const fullApi: ApiFromModules<{
 	'schema/instanceHotRows': typeof schema_instanceHotRows;
 	'schema/integrations': typeof schema_integrations;
 	'schema/knowledge': typeof schema_knowledge;
+	'schema/knowledgeCommitmentFacets': typeof schema_knowledgeCommitmentFacets;
 	'schema/mail': typeof schema_mail;
 	'schema/mailAccounts': typeof schema_mailAccounts;
 	'schema/mailAi': typeof schema_mailAi;
