@@ -333,7 +333,9 @@
 		"assistant": {
 			"assistantComposer": {
 				"hint": "Enter to send · Shift+Enter for newline · the assistant can search your workspace and draft copy",
+				"label": "Question for the assistant",
 				"placeholder": "Ask the assistant anything…",
+				"sendFailed": "Couldn't send. Your question is still here.",
 				"stop": "Stop generating",
 				"unavailablePlaceholder": "Assistant is unavailable"
 			},
@@ -8206,6 +8208,9 @@
 					"performance": "Summarize the performance of our most recent campaign.",
 					"reEngagement": "Draft a friendly re-engagement email for inactive subscribers."
 				},
+				"jumpToLatest": "Jump to latest",
+				"moreActions": "More actions",
+				"moreActionsFor": "More actions for {title}",
 				"newChat": "New chat",
 				"noConversations": "No conversations yet.",
 				"openConversations": "Conversations",

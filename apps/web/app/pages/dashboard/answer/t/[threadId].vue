@@ -42,6 +42,7 @@ import { isChannelMessage } from '~/utils/teamThreadReply';
 import { isDialogOpen } from '~/utils/dialogOpen';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { isChordPending } from '~/utils/shortcutScope';
+import { isImeComposing } from '~/utils/imeComposition';
 
 definePageMeta({
 	layout: 'dashboard',
@@ -231,7 +232,7 @@ async function undoFollowUp(followUpId: Parameters<typeof cancelFollowUp>[0]) {
 }
 
 function onKeydown(event: KeyboardEvent) {
-	if (event.defaultPrevented || event.isComposing) return;
+	if (event.defaultPrevented || isImeComposing(event)) return;
 	if (event.key === 'Escape') {
 		if (isDialogOpen()) return;
 		event.preventDefault();

@@ -333,7 +333,9 @@
 		"assistant": {
 			"assistantComposer": {
 				"hint": "Enter zum Senden · Umschalt+Enter für einen Zeilenumbruch · der Assistent kann deinen Workspace durchsuchen und Texte entwerfen",
+				"label": "Frage an den Assistenten",
 				"placeholder": "Frage den Assistenten alles…",
+				"sendFailed": "Senden hat nicht geklappt. Deine Frage ist noch da.",
 				"stop": "Generierung stoppen",
 				"unavailablePlaceholder": "Der Assistent ist nicht verfügbar"
 			},
@@ -8206,6 +8208,9 @@
 					"performance": "Fasse die Ergebnisse unserer letzten Kampagne zusammen.",
 					"reEngagement": "Entwirf eine freundliche Reaktivierungs-E-Mail für inaktive Abonnenten."
 				},
+				"jumpToLatest": "Zur neuesten Nachricht",
+				"moreActions": "Weitere Aktionen",
+				"moreActionsFor": "Weitere Aktionen für „{title}“",
 				"newChat": "Neuer Chat",
 				"noConversations": "Noch keine Unterhaltungen.",
 				"openConversations": "Unterhaltungen",

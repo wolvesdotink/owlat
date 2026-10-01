@@ -207,3 +207,35 @@ describe('PostboxRecipientField — per-recipient seal state (plan idea 11)', ()
 		expect(chips[1]?.text()).toContain('just-typed@acme-corp.io');
 	});
 });
+
+describe('PostboxRecipientField — IME composition (#1052)', () => {
+	it('does not commit a chip on the Enter that confirms an IME candidate', async () => {
+		const wrapper = mountField({ modelValue: ['anna@example.com'] });
+		const input = wrapper.get('input');
+		// A complete-looking address, so only the guard stands between this
+		// Enter and a committed chip.
+		await input.setValue('yamada@example.com');
+
+		for (const init of [{ isComposing: true }, { keyCode: 229 }]) {
+			const event = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true, ...init });
+			input.element.dispatchEvent(event);
+			await wrapper.vm.$nextTick();
+			expect(event.defaultPrevented).toBe(false);
+		}
+		expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+		expect((input.element as HTMLInputElement).value).toBe('yamada@example.com');
+
+		// Once the composition is over, Enter commits as usual.
+		await input.trigger('keydown', { key: 'Enter' });
+		expect(wrapper.emitted('update:modelValue')?.[0]?.[0]).toEqual([
+			'anna@example.com',
+			'yamada@example.com',
+		]);
+	});
+
+	it('does not pop the last chip on a Backspace the IME is handling', async () => {
+		const wrapper = mountField({ modelValue: ['anna@example.com'] });
+		await wrapper.get('input').trigger('keydown', { key: 'Backspace', isComposing: true });
+		expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+	});
+});

@@ -311,6 +311,28 @@ describe('AppCommandPalette — route-aware scope', () => {
 		});
 	});
 
+	it('leaves the Enter that confirms an IME candidate to the IME (#1052)', async () => {
+		installStubs('/dashboard/postbox/inbox');
+		await openPalette();
+		await type('請求書');
+		const input = document.body.querySelector('input')!;
+		for (const init of [{ isComposing: true }, { keyCode: 229 }]) {
+			const event = new KeyboardEvent('keydown', {
+				key: 'Enter',
+				bubbles: true,
+				cancelable: true,
+				...init,
+			});
+			input.dispatchEvent(event);
+			await nextTick();
+			expect(event.defaultPrevented).toBe(false);
+		}
+		expect(navigateTo).not.toHaveBeenCalled();
+
+		await press('Enter');
+		expect(navigateTo).toHaveBeenCalledTimes(1);
+	});
+
 	it('opens with the query it is handed, so the search page can refine in place (#777)', async () => {
 		installStubs('/dashboard/postbox/search');
 		await openPalette();
