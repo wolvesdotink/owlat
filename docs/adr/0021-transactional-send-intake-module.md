@@ -1136,6 +1136,13 @@ ownership of each blob is now recorded instead of assumed:
    `sweep expired transactional uploads` cron deletes their blobs once the
    rows expire. The expiry is longer than any request can run, and the
    claim check in step 3 keeps it safe even if one did.
+6. **End a row only when its blob is gone.** Release and the sweep delete
+   a row only after the blob is deleted or confirmed already absent. A
+   storage error keeps the row, marks it unclaimable and moves its expiry
+   out (15 minutes, doubling per failure), so the sweep retries it later
+   and the rest of the batch still runs. After 8 failed attempts (about
+   32 hours) the row is dropped and the blob is logged as orphaned, so a
+   blob that never deletes is not retried for ever.
 
 The one window left is between `ctx.storage.store` returning and the
 `register` mutation committing; an action killed in exactly that gap

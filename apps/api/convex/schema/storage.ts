@@ -32,6 +32,10 @@ export const storageTables = {
 	transactionalPendingUploads: defineTable({
 		storageId: v.id('_storage'),
 		expiresAt: v.number(),
+		// Failed blob deletions so far. A row only loses its blob once the
+		// deletion is confirmed, so a failure keeps it here, unclaimable, and
+		// pushes `expiresAt` out for the sweep to retry.
+		deleteAttempts: v.optional(v.number()),
 	})
 		.index('by_storage', ['storageId'])
 		.index('by_expiry', ['expiresAt']),

@@ -22,7 +22,15 @@ import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import type * as GovernedEnqueue from '../delivery/governedEnqueue';
-import { claimPendingUploads, PENDING_UPLOAD_TTL_MS } from '../transactional/pendingUploads';
+import type { MutationCtx } from '../_generated/server';
+import {
+	claimPendingUploads,
+	DELETE_RETRY_BASE_MS,
+	MAX_DELETE_ATTEMPTS,
+	PENDING_UPLOAD_TTL_MS,
+	release,
+	sweepExpired,
+} from '../transactional/pendingUploads';
 import { TRANSACTIONAL_MAX_BODY_BYTES } from '../transactional/api';
 import {
 	createTestDomain,
@@ -351,6 +359,122 @@ describe('transactional pending uploads — release, claim and expiry', () => {
 
 		expect(await storedBlobs(t)).toEqual([fresh]);
 		expect((await pendingRows(t)).map((row) => row.storageId)).toEqual([fresh]);
+	});
+});
+
+describe('transactional pending uploads — a failed blob deletion keeps its owner', () => {
+	type Handler = (ctx: MutationCtx, args: unknown) => Promise<unknown>;
+
+	/**
+	 * Run a registered mutation's handler in a convex-test transaction whose
+	 * `storage.delete` rejects for the given blobs, the way a temporary storage
+	 * outage would. Every other storage call goes through.
+	 */
+	async function runWithFailingDeletes(
+		t: TestConvex<typeof schema>,
+		registered: unknown,
+		args: unknown,
+		failing: readonly Id<'_storage'>[]
+	): Promise<unknown> {
+		const handler = (registered as { _handler: Handler })._handler;
+		return await t.run(async (ctx) => {
+			const storage = {
+				...ctx.storage,
+				delete: async (storageId: Id<'_storage'>) => {
+					if (failing.includes(storageId)) throw new Error('storage temporarily unavailable');
+					await ctx.storage.delete(storageId);
+				},
+			};
+			return await handler({ ...ctx, storage } as unknown as MutationCtx, args);
+		});
+	}
+
+	async function registerBlob(t: TestConvex<typeof schema>): Promise<Id<'_storage'>> {
+		const storageId = await t.run(async (ctx) => await ctx.storage.store(new Blob(['bytes'])));
+		await t.mutation(internal.transactional.pendingUploads.register, { storageId });
+		return storageId;
+	}
+
+	it('a release whose deletion fails keeps the row, so the sweep can still free the blob', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		const t = setupTest();
+		const stuck = await registerBlob(t);
+		const freed = await registerBlob(t);
+
+		const released = await runWithFailingDeletes(t, release, { storageIds: [stuck, freed] }, [
+			stuck,
+		]);
+
+		expect(released).toBe(1);
+		expect(await storedBlobs(t)).toEqual([stuck]);
+		const [row] = await pendingRows(t);
+		expect(row?.storageId).toBe(stuck);
+		expect(row?.deleteAttempts).toBe(1);
+
+		// The upload is no longer claimable while its deletion is outstanding.
+		await expect(t.run(async (ctx) => await claimPendingUploads(ctx, [stuck]))).rejects.toThrow(
+			/no longer pending/
+		);
+
+		// Storage recovers; the next sweep after the backoff frees the blob.
+		vi.setSystemTime(Date.now() + DELETE_RETRY_BASE_MS + 1);
+		await t.mutation(internal.transactional.pendingUploads.sweepExpired, {});
+		expect(await storedBlobs(t)).toEqual([]);
+		expect(await pendingRows(t)).toEqual([]);
+	});
+
+	it('an expiry sweep whose deletion fails keeps that row and still frees the rest of the batch', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		const t = setupTest();
+		await registerBlob(t);
+		const stuck = await registerBlob(t);
+		await registerBlob(t);
+		vi.setSystemTime(Date.now() + PENDING_UPLOAD_TTL_MS + 1);
+
+		await runWithFailingDeletes(t, sweepExpired, {}, [stuck]);
+
+		expect(await storedBlobs(t)).toEqual([stuck]);
+		const rows = await pendingRows(t);
+		expect(rows.map((row) => row.storageId)).toEqual([stuck]);
+		expect(rows[0]?.deleteAttempts).toBe(1);
+		// Out of the current window, so an immediate rerun leaves it alone.
+		expect(rows[0]?.expiresAt).toBeGreaterThan(Date.now());
+
+		vi.setSystemTime(Date.now() + DELETE_RETRY_BASE_MS + 1);
+		await t.mutation(internal.transactional.pendingUploads.sweepExpired, {});
+		expect(await storedBlobs(t)).toEqual([]);
+		expect(await pendingRows(t)).toEqual([]);
+	});
+
+	it('a deletion already done before the failure counts as freed', async () => {
+		const t = setupTest();
+		const gone = await registerBlob(t);
+		await t.run(async (ctx) => await ctx.storage.delete(gone));
+
+		const released = await runWithFailingDeletes(t, release, { storageIds: [gone] }, [gone]);
+
+		expect(released).toBe(1);
+		expect(await pendingRows(t)).toEqual([]);
+	});
+
+	it('gives up on a blob that never deletes after a bounded number of attempts', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		const t = setupTest();
+		const stuck = await registerBlob(t);
+		vi.setSystemTime(Date.now() + PENDING_UPLOAD_TTL_MS + 1);
+
+		for (let attempt = 1; attempt <= MAX_DELETE_ATTEMPTS; attempt++) {
+			await runWithFailingDeletes(t, sweepExpired, {}, [stuck]);
+			const rows = await pendingRows(t);
+			if (attempt < MAX_DELETE_ATTEMPTS) {
+				expect(rows.map((row) => row.deleteAttempts)).toEqual([attempt]);
+				vi.setSystemTime((rows[0]?.expiresAt ?? 0) + 1);
+			} else {
+				expect(rows).toEqual([]);
+			}
+		}
+		// The blob is left orphaned (and logged), not retried for ever.
+		expect(await storedBlobs(t)).toEqual([stuck]);
 	});
 });
 
