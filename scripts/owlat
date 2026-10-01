@@ -510,6 +510,25 @@ case "$cmd" in
 		;;
 esac
 
+# ── Consume-once setup config ─────────────────────────────────────────────────
+# A setup config holds the admin password and provider keys in plaintext. With
+# OWLAT_CONSUME_CONFIG=1 (the desktop wizard sets it) quickstart's config file
+# is deleted as soon as the run ends: success, failure, or a signal. That
+# includes the wizard's SSH session dropping mid-run, which ends the docker
+# client on its next write. The container reads the bind-mounted copy while it
+# runs; a retry uploads a fresh config. Without the variable the file is left
+# alone (install.sh and hand-run installs manage their own).
+run_quickstart_container() {
+	if [[ "${OWLAT_CONSUME_CONFIG:-0}" != "1" || -z "$OWLAT_CONFIG_FILE" ]]; then
+		exec "$@"
+	fi
+	trap 'rm -f -- "$OWLAT_CONFIG_FILE"' EXIT
+	trap 'exit 129' HUP
+	trap 'exit 130' INT
+	trap 'exit 143' TERM
+	"$@"
+}
+
 # Provisioning subcommands double as the repair path: an install that never got
 # the symlink (desktop SSH flow, hand-clone) gains it here, and one that already
 # has it pays a single readlink. Best-effort — a wizard must never abort because
@@ -576,7 +595,7 @@ case "$cmd" in
 			quickstart_docker_desktop=1
 		fi
 		if [[ "$quickstart_docker_desktop" == "1" ]]; then
-			exec docker run --rm $([ -t 1 ] && echo "-it") \
+			run_quickstart_container docker run --rm $([ -t 1 ] && echo "-it") \
 				--add-host=host.docker.internal:host-gateway \
 				-v "$OWLAT_DIR:/opt/owlat" \
 				-v /var/run/docker.sock:/var/run/docker.sock \
@@ -588,8 +607,9 @@ case "$cmd" in
 				-e "OWLAT_BUILD_LOCAL=${OWLAT_BUILD_LOCAL:-0}" \
 				-e "OWLAT_LOCAL_IMAGES=${OWLAT_LOCAL_IMAGES:-0}" \
 				"$OWLAT_SETUP_IMAGE" quickstart "$@"
+			exit $?
 		fi
-		exec docker run --rm $([ -t 1 ] && echo "-it") \
+		run_quickstart_container docker run --rm $([ -t 1 ] && echo "-it") \
 			--network host \
 			-v "$OWLAT_DIR:/opt/owlat" \
 			-v /var/run/docker.sock:/var/run/docker.sock \
@@ -600,6 +620,7 @@ case "$cmd" in
 			-e "OWLAT_BUILD_LOCAL=${OWLAT_BUILD_LOCAL:-0}" \
 			-e "OWLAT_LOCAL_IMAGES=${OWLAT_LOCAL_IMAGES:-0}" \
 			"$OWLAT_SETUP_IMAGE" quickstart "$@"
+		exit $?
 		;;
 	config)
 		exec docker run --rm $([ -t 1 ] && echo "-it") \

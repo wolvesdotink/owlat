@@ -20,8 +20,11 @@ import { join } from 'node:path';
  * interpolation IS the image tag, so the rollout points it at the old release.
  */
 
-const { execFileSyncMock } = vi.hoisted(() => ({ execFileSyncMock: vi.fn() }));
-vi.mock('node:child_process', () => ({ execFileSync: execFileSyncMock }));
+const { commandMock } = vi.hoisted(() => ({ commandMock: vi.fn() }));
+vi.mock('node:child_process', async () => {
+	const { spawnFrom } = await import('./fakeSpawn.js');
+	return { spawn: spawnFrom(commandMock) };
+});
 
 const OWLAT_DIR = mkdtempSync(join(tmpdir(), 'owlat-compose-env-test-'));
 process.env['OWLAT_DIR'] = OWLAT_DIR;
@@ -35,7 +38,7 @@ const { scheduleUpdaterRecreateSafely } = await import('../rollout.js');
 const SELF_INSPECT = `ghcr.io/wolvesdotink/updater:0.5.2\n/opt/owlat:${OWLAT_DIR}:rw \ndefault docker-proxy \n`;
 
 beforeEach(() => {
-	execFileSyncMock.mockReset().mockImplementation((_file: string, args: string[]) => {
+	commandMock.mockReset().mockImplementation((_file: string, args: string[]) => {
 		if (args[0] === 'inspect' && args[1] === hostname()) return SELF_INSPECT;
 		return 'helper-container-id\n';
 	});
@@ -47,25 +50,25 @@ beforeEach(() => {
 });
 
 describe('exec', () => {
-	it('hands compose an environment with nothing that can shadow --env-file', () => {
-		exec('docker', ['compose', 'up', '-d'], OWLAT_DIR);
+	it('hands compose an environment with nothing that can shadow --env-file', async () => {
+		await exec('docker', ['compose', 'up', '-d'], OWLAT_DIR);
 
-		const options = execFileSyncMock.mock.calls[0]?.[2] as { env: NodeJS.ProcessEnv };
+		const options = commandMock.mock.calls[0]?.[2] as { env: NodeJS.ProcessEnv };
 		for (const name of COMPOSE_SHADOWED_VARS) {
 			expect(options.env[name], `${name} must not reach compose`).toBeUndefined();
 		}
 	});
 
-	it('leaves the rest of the environment alone — Docker is reached through it', () => {
-		exec('docker', ['compose', 'up', '-d'], OWLAT_DIR);
+	it('leaves the rest of the environment alone — Docker is reached through it', async () => {
+		await exec('docker', ['compose', 'up', '-d'], OWLAT_DIR);
 
-		const options = execFileSyncMock.mock.calls[0]?.[2] as { env: NodeJS.ProcessEnv };
+		const options = commandMock.mock.calls[0]?.[2] as { env: NodeJS.ProcessEnv };
 		expect(options.env['DOCKER_HOST']).toBe('tcp://docker-socket-proxy:2375');
 		expect(options.env['OWLAT_DIR']).toBe(OWLAT_DIR);
 	});
 
-	it('does not disturb the updater’s own environment', () => {
-		exec('docker', ['compose', 'up', '-d'], OWLAT_DIR);
+	it('does not disturb the updater’s own environment', async () => {
+		await exec('docker', ['compose', 'up', '-d'], OWLAT_DIR);
 
 		expect(process.env['OWLAT_VERSION']).toBe('0.5.2');
 	});
@@ -78,11 +81,11 @@ describe('scheduleUpdaterRecreateSafely', () => {
 	 * `exec`'s scrubbing cannot reach it, and without the `unset` the updater's
 	 * replacement comes up reporting the release it was meant to leave behind.
 	 */
-	it('unsets the shadowing variables inside the helper container', () => {
-		const step = scheduleUpdaterRecreateSafely(1);
+	it('unsets the shadowing variables inside the helper container', async () => {
+		const step = await scheduleUpdaterRecreateSafely();
 		expect(step.ok).toBe(true);
 
-		const runArgs = execFileSyncMock.mock.calls
+		const runArgs = commandMock.mock.calls
 			.map((call) => call[1] as string[])
 			.find((args) => args[0] === 'run');
 		const command = runArgs?.[runArgs.length - 1] ?? '';

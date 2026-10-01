@@ -173,6 +173,52 @@ describe('installShutdown', () => {
 		expect(exit).toHaveBeenCalledWith(0);
 	});
 
+	it('tells onShutdown about the signal before it waits on the sections in flight', async () => {
+		const exit = vi.fn();
+		const order: string[] = [];
+		let release!: () => void;
+		const handle = install({
+			exit,
+			// A section that can back out stops early once it hears about it.
+			onShutdown: (signal) => {
+				order.push(`onShutdown:${signal}`);
+				release();
+			},
+		});
+
+		const section = handle.critical(
+			() =>
+				new Promise<void>((resolve) => {
+					release = () => {
+						order.push('section backed out');
+						resolve();
+					};
+				})
+		);
+		await handle.shutdown('SIGTERM');
+		await section;
+
+		expect(order).toEqual(['onShutdown:SIGTERM', 'section backed out']);
+		expect(exit).toHaveBeenCalledWith(0);
+	});
+
+	it('logs a throwing onShutdown and still drains', async () => {
+		const exit = vi.fn();
+		const log = vi.fn();
+		const handle = install({
+			exit,
+			log,
+			onShutdown: () => {
+				throw new Error('hook broke');
+			},
+		});
+
+		await handle.shutdown('SIGTERM');
+
+		expect(log).toHaveBeenCalledWith('shutdown hook failed', expect.any(Error));
+		expect(exit).toHaveBeenCalledWith(0);
+	});
+
 	it('a rejecting critical section does not stall or break the drain', async () => {
 		const exit = vi.fn();
 		const handle = install({ exit });

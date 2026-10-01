@@ -53,7 +53,7 @@ function scriptedProbe(
 ) {
 	let call = 0;
 	const probe: ReadinessProbe = {
-		list: vi.fn(() => {
+		list: vi.fn(async () => {
 			const rows = script[Math.min(call++, script.length - 1)] ?? null;
 			return rows === null ? null : rows.map(row);
 		}),
@@ -223,5 +223,30 @@ describe('waitForReadiness', () => {
 
 		expect(result.ready).toBe(false);
 		expect(result.summary).toContain('could not be read back');
+	});
+
+	/**
+	 * A shutdown does not wait out a readiness bound: the containers are
+	 * started either way, and the verdict says the check was cut short.
+	 */
+	it('stops waiting when its signal aborts, and says so rather than guessing', async () => {
+		const clock = virtualClock();
+		const controller = new AbortController();
+		const probe = scriptedProbe([[{ service: 'web' }, { service: 'convex', health: 'starting' }]]);
+		(probe.list as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+			controller.abort();
+			return [row({ service: 'web' }), row({ service: 'convex', health: 'starting' })];
+		});
+
+		const result = await waitForReadiness(SERVICES, probe, clock.timing, {
+			signal: controller.signal,
+		});
+
+		expect(result.ready).toBe(false);
+		expect(result.interrupted).toBe(true);
+		expect(result.summary).toContain('because the updater is shutting down');
+		expect(result.summary).toContain('still starting: convex');
+		expect(probe.list).toHaveBeenCalledTimes(1);
+		expect(clock.elapsed()).toBe(0);
 	});
 });

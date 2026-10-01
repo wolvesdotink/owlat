@@ -382,6 +382,10 @@
 			"types": "./src/composeOverride.ts",
 			"import": "./src/composeOverride.ts"
 		},
+		"./composeBuildServices": {
+			"types": "./src/composeBuildServices.ts",
+			"import": "./src/composeBuildServices.ts"
+		},
 		"./nodeShutdown": {
 			"types": "./src/nodeShutdown.ts",
 			"import": "./src/nodeShutdown.ts"

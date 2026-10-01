@@ -64,6 +64,7 @@ const {
 	error,
 	failureTail,
 	secretsRemoved,
+	leftoverConfigCleanup,
 	busy,
 	progress,
 	siteUrl,
@@ -1286,6 +1287,21 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 								>{{ failureTail.join('\n') }}</pre>
 						</div>
 						<p class="mt-2 text-xs text-text-secondary">{{ t('desktop.setup.failure.hint') }}</p>
+						<!-- The uploaded config (admin password, provider keys) could not be
+						     removed after the failure: say so, with the exact command. -->
+						<div v-if="leftoverConfigCleanup" class="mt-3 flex items-start gap-2 text-xs">
+							<Icon name="lucide:shield-alert" class="mt-0.5 size-3.5 shrink-0 text-warning" />
+							<I18nT
+								keypath="desktop.setup.secrets.leftAfterFailure"
+								tag="span"
+								class="text-warning"
+								scope="global"
+							>
+								<template #command>
+									<code class="mt-1 block select-all font-mono">{{ leftoverConfigCleanup }}</code>
+								</template>
+							</I18nT>
+						</div>
 						<UiButton variant="outline" size="sm" class="mt-3" @click="retry">
 							{{ t('desktop.setup.failure.retry') }}
 						</UiButton>

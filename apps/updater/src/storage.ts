@@ -67,8 +67,8 @@ const FREE_SPACE_REMEDIATION =
  * container. Deriving it rather than hard-coding it keeps a fork's updater
  * pruning the fork's images, and a dev build (no label) pruning nothing.
  */
-function ownImageSource(): string | null {
-	const result = exec(
+async function ownImageSource(): Promise<string | null> {
+	const result = await exec(
 		'docker',
 		['inspect', hostname(), '--format', `{{index .Config.Labels "${SOURCE_LABEL}"}}`],
 		OWLAT_DIR
@@ -99,8 +99,8 @@ const reclaimedSpace = (stdout: string) =>
  * fatal: a prune that fails leaves the disk as it was, and the free-space check
  * that follows is what decides whether the rollout can go on.
  */
-export function reclaimUnusedImages(): StorageStep {
-	const results = [reclaimReleaseImages(), reclaimThirdPartyImages()];
+export async function reclaimUnusedImages(signal?: AbortSignal): Promise<StorageStep> {
+	const results = [await reclaimReleaseImages(signal), await reclaimThirdPartyImages(signal)];
 	return {
 		step: 'reclaim-images',
 		ok: results.every((r) => r.ok),
@@ -116,8 +116,8 @@ export function reclaimUnusedImages(): StorageStep {
 }
 
 /** Every unused image carrying this updater's own source label. */
-function reclaimReleaseImages(): Omit<StorageStep, 'step'> {
-	const source = ownImageSource();
+async function reclaimReleaseImages(signal?: AbortSignal): Promise<Omit<StorageStep, 'step'>> {
+	const source = await ownImageSource();
 	if (!source) {
 		return {
 			ok: true,
@@ -127,10 +127,11 @@ function reclaimReleaseImages(): Omit<StorageStep, 'step'> {
 		};
 	}
 
-	const pruned = exec(
+	const pruned = await exec(
 		'docker',
 		['image', 'prune', '--all', '--force', '--filter', `label=${SOURCE_LABEL}=${source}`],
-		OWLAT_DIR
+		OWLAT_DIR,
+		{ signal }
 	);
 	return {
 		ok: pruned.ok,
@@ -159,19 +160,26 @@ function reclaimReleaseImages(): Omit<StorageStep, 'step'> {
  * container still uses, so a refusal here is the expected answer for every
  * image the stack is running, not a failure.
  */
-function reclaimThirdPartyImages(): Omit<StorageStep, 'step'> {
-	const dangling = exec('docker', ['image', 'prune', '--force'], OWLAT_DIR);
+async function reclaimThirdPartyImages(signal?: AbortSignal): Promise<Omit<StorageStep, 'step'>> {
+	const dangling = await exec('docker', ['image', 'prune', '--force'], OWLAT_DIR, { signal });
 
-	const listed = exec('docker', ['image', 'ls', '--format', '{{.Repository}}:{{.Tag}}'], OWLAT_DIR);
-	const removed = (listed.ok ? listed.stdout.split('\n') : [])
+	const listed = await exec(
+		'docker',
+		['image', 'ls', '--format', '{{.Repository}}:{{.Tag}}'],
+		OWLAT_DIR
+	);
+	const candidates = (listed.ok ? listed.stdout.split('\n') : [])
 		.map((ref) => ref.trim())
 		.filter(
 			(ref) =>
 				ref &&
 				!ref.endsWith(':<none>') &&
 				THIRD_PARTY_IMAGE_PREFIXES.some((prefix) => ref.startsWith(prefix))
-		)
-		.filter((ref) => exec('docker', ['image', 'rm', ref], OWLAT_DIR).ok);
+		);
+	const removed: string[] = [];
+	for (const ref of candidates) {
+		if ((await exec('docker', ['image', 'rm', ref], OWLAT_DIR, { signal })).ok) removed.push(ref);
+	}
 
 	const stdout = [
 		dangling.ok ? `Removed superseded images (reclaimed ${reclaimedSpace(dangling.stdout)})` : '',

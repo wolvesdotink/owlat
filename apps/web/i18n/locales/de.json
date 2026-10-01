@@ -11084,6 +11084,7 @@
 			"pageTitle": "Server einrichten — Owlat",
 			"provision": "Server bereitstellen",
 			"secrets": {
+				"leftAfterFailure": "Die Setup-Datei liegt noch auf dem Server. Sie enthält dein Administrator-Passwort und die Anbieterschlüssel im Klartext. Lösche sie per SSH: {command}",
 				"notRemoved": "Die Setup-Datei konnte nicht automatisch entfernt werden. Sie enthält dein Administrator-Passwort und die Anbieterschlüssel im Klartext — lösche {file} aus dem Installationsverzeichnis.",
 				"removed": "Die Setup-Datei — die dein Administrator-Passwort und die API-Schlüssel der Anbieter im Klartext enthielt — wurde vom Server entfernt."
 			},
@@ -14878,6 +14879,12 @@
 			"quietSummary": {
 				"body": "1 Nachricht ist während der Ruhezeiten eingegangen | {count} Nachrichten sind während der Ruhezeiten eingegangen",
 				"title": "Während du weg warst"
+			},
+			"replyNotCarried": "Deine Antwort wurde nicht gesendet, weil sie nicht an {workspace} übergeben werden konnte. Kopiere sie und wechsle dann zu {workspace}, um sie zu senden.",
+			"workspaceGone": {
+				"action": "Diese Benachrichtigung stammt aus einem Workspace, der nicht mehr verbunden ist. Es wurde nichts geändert.",
+				"copyReply": "Antwort kopieren",
+				"reply": "Deine Antwort wurde nicht gesendet, weil ihr Workspace nicht mehr verbunden ist. Kopiere sie, um deinen Text zu behalten."
 			}
 		},
 		"useDesktopUpdatePolicy": {
@@ -15064,6 +15071,7 @@
 			"didNotComplete": "Die Einrichtung wurde nicht abgeschlossen (Exit {code}).",
 			"exitCode": "Exit {code}",
 			"hostKeyAccepted": "akzeptiert",
+			"imagesMissing": "Diese Images sind nicht auf dem Server angekommen: {images}",
 			"knownHost": "bekannter Host",
 			"localBuildFailed": "Der lokale Image-Build ist fehlgeschlagen (Exit {code}). Läuft Docker auf diesem Rechner?",
 			"localSetupImageFailed": "Der lokale Setup-Image-Build ist fehlgeschlagen (Exit {code}).",

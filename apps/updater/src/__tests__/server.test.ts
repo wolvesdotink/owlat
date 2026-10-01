@@ -5,12 +5,15 @@ import type * as NodeFs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const { execFileSyncMock, rateLimitedMock, freeBytesMock } = vi.hoisted(() => ({
-	execFileSyncMock: vi.fn(),
+const { commandMock, rateLimitedMock, freeBytesMock } = vi.hoisted(() => ({
+	commandMock: vi.fn(),
 	rateLimitedMock: vi.fn(() => false),
 	freeBytesMock: vi.fn((): number => 50 * 1024 ** 3),
 }));
-vi.mock('node:child_process', () => ({ execFileSync: execFileSyncMock }));
+vi.mock('node:child_process', async () => {
+	const { spawnFrom } = await import('./fakeSpawn.js');
+	return { spawn: spawnFrom(commandMock) };
+});
 // Only statfs is faked: the tests stage real files in a temp OWLAT_DIR, but the
 // free space of the disk they run on is not something a test may depend on.
 vi.mock('node:fs', async (importOriginal) => {
@@ -52,7 +55,7 @@ beforeEach(() => {
 	readiness.webStatus(200);
 	rateLimitedMock.mockReturnValue(false);
 	freeBytesMock.mockReset().mockReturnValue(50 * 1024 ** 3);
-	execFileSyncMock.mockReset().mockImplementation(dockerFixture);
+	commandMock.mockReset().mockImplementation(dockerFixture);
 	writeFileSync(
 		join(OWLAT_DIR, '.env'),
 		'FOO=bar\nIP_POOLS_CAMPAIGN=1.1.1.1\nINSTANCE_SECRET=old\n'
@@ -147,11 +150,11 @@ const RUNNING = [
 
 /**
  * The argv of each child process, rendered as one line for assertions. `exec`
- * runs execFileSync — there is no shell command string to inspect, so the
+ * runs an argv with no shell — there is no shell command string to inspect, so the
  * arguments are joined here rather than in production code.
  */
 function commandLines(): string[] {
-	return execFileSyncMock.mock.calls.map((c) => [String(c[0]), ...(c[1] as string[])].join(' '));
+	return commandMock.mock.calls.map((c) => [String(c[0]), ...(c[1] as string[])].join(' '));
 }
 
 /**
@@ -212,7 +215,7 @@ describe('POST /update', () => {
 	 */
 	it('refuses — before touching anything — when the Docker API denies what the rollout needs', async () => {
 		writeFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'services: {} # original\n');
-		execFileSyncMock.mockImplementation(
+		commandMock.mockImplementation(
 			dockerFailing(
 				(cmd) => cmd.startsWith('docker network ls'),
 				'Error response from daemon: <html><body><h1>403 Forbidden</h1>\n</body></html>'
@@ -274,8 +277,35 @@ describe('POST /update', () => {
 		expect(json.steps.at(-1)).toMatchObject({ step: 'self-update', ok: true });
 	});
 
+	/**
+	 * Recreating the updater stops this process. The helper used to do it ten
+	 * seconds after it started, answered or not; it now waits for the release
+	 * the listener writes once the rollout's answer is out.
+	 */
+	it('lets the helper replace the updater only once the answer is written', async () => {
+		const release = join(OWLAT_DIR, '.owlat-updater-release');
+		// A release left by an earlier helper must not let this one go early.
+		writeFileSync(release, '');
+		let releasedBeforeHelper: boolean | undefined;
+		commandMock.mockImplementation((file: unknown, args: unknown) => {
+			if ((args as string[])[0] === 'run') releasedBeforeHelper = existsSync(release);
+			return dockerFixture(file, args);
+		});
+
+		const res = await post('/update');
+		expect(res.status).toBe(200);
+
+		expect(releasedBeforeHelper).toBe(false);
+		expect(existsSync(release)).toBe(true);
+		const run = commandLines().find((cmd) => cmd.startsWith('docker run')) ?? '';
+		expect(run).not.toMatch(/sleep \d+; docker compose/);
+		expect(run).toContain('while [ ! -e .owlat-updater-release ]');
+		expect(run.indexOf('.owlat-updater-release')).toBeLessThan(run.indexOf(`${COMPOSE} up`));
+		rmSync(release);
+	});
+
 	it('reports a failed hand-off without failing an update that already landed', async () => {
-		execFileSyncMock.mockImplementation(
+		commandMock.mockImplementation(
 			dockerFailing((cmd) => cmd.startsWith('docker run'), 'no such image')
 		);
 		const res = await post('/update');
@@ -288,6 +318,8 @@ describe('POST /update', () => {
 		const selfUpdate = json.steps.find((s) => s.step === 'self-update');
 		expect(selfUpdate?.ok).toBe(false);
 		expect(selfUpdate?.stderr).toContain('docker compose up -d updater');
+		// No helper is waiting, so nothing is released.
+		expect(existsSync(join(OWLAT_DIR, '.owlat-updater-release'))).toBe(false);
 	});
 
 	it('rejects a compose template with a disallowed image, before any docker call', async () => {
@@ -295,7 +327,7 @@ describe('POST /update', () => {
 			composeTemplate: 'services:\n  evil:\n    image: attacker.example/pwn:latest\n',
 		});
 		expect(res.status).toBe(400);
-		expect(execFileSyncMock).not.toHaveBeenCalled();
+		expect(commandMock).not.toHaveBeenCalled();
 	});
 
 	it('rejects a compose template mounting a dangerous host path', async () => {
@@ -304,7 +336,7 @@ describe('POST /update', () => {
 				'services:\n  web:\n    image: ghcr.io/wolvesdotink/web:1.0.0\n    volumes:\n      - /etc/shadow:/x\n',
 		});
 		expect(res.status).toBe(400);
-		expect(execFileSyncMock).not.toHaveBeenCalled();
+		expect(commandMock).not.toHaveBeenCalled();
 	});
 
 	it('stages the template, promotes it only after pull + deploy succeed', async () => {
@@ -351,7 +383,7 @@ describe('POST /update', () => {
 		].join('\n');
 
 		const envAtUp: string[] = [];
-		execFileSyncMock.mockImplementation((file: string, args: string[]) => {
+		commandMock.mockImplementation((file: string, args: string[]) => {
 			if ([file, ...args].join(' ').includes(' up -d --remove-orphans')) {
 				envAtUp.push(readFileSync(join(OWLAT_DIR, '.env'), 'utf-8'));
 			}
@@ -413,7 +445,7 @@ describe('POST /update', () => {
 
 	it('leaves the live compose file untouched when the pull fails', async () => {
 		writeFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'services: {} # original\n');
-		execFileSyncMock.mockImplementation(
+		commandMock.mockImplementation(
 			dockerFailing((cmd) => cmd.includes('pull'), 'Error response from daemon: manifest unknown')
 		);
 		const template = ['services:', '  web:', '    image: ghcr.io/wolvesdotink/web:9.9.9', ''].join(
@@ -475,7 +507,7 @@ describe('POST /update', () => {
 		});
 
 		it('prunes no release images when its own image carries no source label (a dev build)', async () => {
-			execFileSyncMock.mockImplementation((file: unknown, args: unknown) => {
+			commandMock.mockImplementation((file: unknown, args: unknown) => {
 				const cmd = [String(file), ...((args as string[]) ?? [])].join(' ');
 				if (cmd.includes('org.opencontainers.image.source')) return '\n';
 				return dockerFixture(file, args);
@@ -486,7 +518,7 @@ describe('POST /update', () => {
 		});
 
 		it('still updates when the prune fails — the free-space check decides', async () => {
-			execFileSyncMock.mockImplementation(
+			commandMock.mockImplementation(
 				dockerFailing((cmd) => cmd.startsWith('docker image prune'), 'permission denied')
 			);
 			const res = await post('/update');
@@ -515,7 +547,7 @@ describe('POST /update', () => {
 		});
 
 		it('names a full disk when the pull itself runs out of space', async () => {
-			execFileSyncMock.mockImplementation(
+			commandMock.mockImplementation(
 				dockerFailing(
 					(cmd) => cmd.endsWith(' pull'),
 					' Image ghcr.io/wolvesdotink/web:0.5.5 Pulling \n 4c7692787e55 Pull complete 0B\n' +
@@ -529,7 +561,7 @@ describe('POST /update', () => {
 		});
 
 		it("puts the pull's own last error line in the message, not its layer progress", async () => {
-			execFileSyncMock.mockImplementation(
+			commandMock.mockImplementation(
 				dockerFailing(
 					(cmd) => cmd.endsWith(' pull'),
 					' 4c7692787e55 Pulling fs layer 0B\nError response from daemon: manifest unknown\n'
@@ -545,7 +577,7 @@ describe('POST /update', () => {
 	});
 
 	it('stops before docker compose up when convex-deploy fails', async () => {
-		execFileSyncMock.mockImplementation(
+		commandMock.mockImplementation(
 			dockerFailing((cmd) => cmd.includes('convex-deploy'), 'Error: schema validation failed')
 		);
 		const res = await post('/update');
@@ -571,7 +603,7 @@ describe('POST /update', () => {
 	});
 
 	it('falls back to a bare compose command when the host path cannot be read', async () => {
-		execFileSyncMock.mockImplementation(
+		commandMock.mockImplementation(
 			dockerFailing((cmd) => cmd.startsWith('docker inspect'), 'permission denied')
 		);
 		const res = await post('/update');
@@ -588,7 +620,7 @@ describe('POST /update', () => {
 	 * failed" — the operator's next signal was a site that no longer loaded.
 	 */
 	it('restarts the stack when the recreate fails, and says the instance is serving', async () => {
-		execFileSyncMock.mockImplementation((file: string, args: string[]) => {
+		commandMock.mockImplementation((file: string, args: string[]) => {
 			const cmd = [file, ...args].join(' ');
 			if (cmd.includes(' up -d --remove-orphans')) {
 				const err = new Error('boom') as Error & { stdout: string; stderr: string };
@@ -621,7 +653,7 @@ describe('POST /update', () => {
 	});
 
 	it('names the services still down, and the host command that starts them', async () => {
-		execFileSyncMock.mockImplementation((file: string, args: string[]) => {
+		commandMock.mockImplementation((file: string, args: string[]) => {
 			const cmd = [file, ...args].join(' ');
 			if (cmd.includes(' up -d')) {
 				const err = new Error('boom') as Error & { stdout: string; stderr: string };
@@ -660,7 +692,7 @@ describe('POST /update', () => {
 	 */
 	it('reports an unreadable container list as unknown, not as a dead stack', async () => {
 		const failing = dockerFailing((cmd) => cmd.includes(' up -d'), 'error during connect: EOF');
-		execFileSyncMock.mockImplementation((file: unknown, args: unknown) =>
+		commandMock.mockImplementation((file: unknown, args: unknown) =>
 			[String(file), ...((args as string[]) ?? [])].join(' ').includes(' ps ')
 				? ''
 				: failing(file, args)
@@ -703,7 +735,7 @@ describe('POST /update — readiness after the recreate', () => {
 	 */
 	function psSequence(script: string[], before = composePs(RUNNING)) {
 		let call = -1;
-		execFileSyncMock.mockImplementation((file: string, args: string[]) => {
+		commandMock.mockImplementation((file: string, args: string[]) => {
 			if ([file, ...args].join(' ').includes(' ps --all --format json')) {
 				call++;
 				return call === 0 ? before : script[Math.min(call - 1, script.length - 1)];
@@ -787,7 +819,7 @@ describe('POST /update — readiness after the recreate', () => {
 	});
 
 	it('reports a failed recreate as partially applied, and never as a rollback', async () => {
-		execFileSyncMock.mockImplementation((file: string, args: string[]) => {
+		commandMock.mockImplementation((file: string, args: string[]) => {
 			if ([file, ...args].join(' ').includes(' up -d --remove-orphans')) {
 				throw Object.assign(new Error('boom'), { stdout: '', stderr: 'error during connect: EOF' });
 			}
@@ -803,7 +835,7 @@ describe('POST /update — readiness after the recreate', () => {
 	});
 
 	it('does not call a recovered stack serving while a service in it is unhealthy', async () => {
-		execFileSyncMock.mockImplementation((file: string, args: string[]) => {
+		commandMock.mockImplementation((file: string, args: string[]) => {
 			const cmd = [file, ...args].join(' ');
 			if (cmd.includes(' up -d --remove-orphans')) {
 				throw Object.assign(new Error('boom'), { stdout: '', stderr: 'error during connect: EOF' });
@@ -836,7 +868,7 @@ describe('POST /update — failures that were there before', () => {
 	]);
 
 	it('reports a service already unhealthy before the update as a warning, not a failure', async () => {
-		execFileSyncMock.mockImplementation((file: string, args: string[]) =>
+		commandMock.mockImplementation((file: string, args: string[]) =>
 			[file, ...args].join(' ').includes(' ps --all --format json')
 				? convexUnhealthy
 				: dockerFixture(file, args)
@@ -853,7 +885,7 @@ describe('POST /update — failures that were there before', () => {
 
 	it('still fails a service the update broke', async () => {
 		let calls = 0;
-		execFileSyncMock.mockImplementation((file: string, args: string[]) =>
+		commandMock.mockImplementation((file: string, args: string[]) =>
 			[file, ...args].join(' ').includes(' ps --all --format json')
 				? calls++ === 0
 					? composePs(RUNNING)
@@ -887,7 +919,7 @@ describe('the last rollout, on /health', () => {
 	it('is written while the update waits for readiness, then carries the verdict', async () => {
 		const phases: string[] = [];
 		let calls = 0;
-		execFileSyncMock.mockImplementation((file: string, args: string[]) => {
+		commandMock.mockImplementation((file: string, args: string[]) => {
 			if ([file, ...args].join(' ').includes(' ps --all --format json') && calls++ > 0) {
 				phases.push(JSON.parse(readFileSync(RECORD, 'utf-8')).phase);
 			}
@@ -932,7 +964,7 @@ describe('the last rollout, on /health', () => {
 	});
 
 	it('records an update that stopped before the recreate as failed', async () => {
-		execFileSyncMock.mockImplementation(dockerFailing((c) => c.includes(' pull'), 'pull denied'));
+		commandMock.mockImplementation(dockerFailing((c) => c.includes(' pull'), 'pull denied'));
 
 		await post('/update', { composeTemplate: TEMPLATE });
 
@@ -991,22 +1023,22 @@ describe('one rollout at a time', () => {
 		'answers 409 to %s while an update is in flight, and runs nothing',
 		async (path) => {
 			const inFlight = await updateInFlight();
-			execFileSyncMock.mockClear();
+			commandMock.mockClear();
 
 			const res = await post(path, {});
 
 			expect(res.status).toBe(409);
 			expect(((await res.json()) as { error: string }).error).toContain('still applying an update');
-			expect(execFileSyncMock).not.toHaveBeenCalled();
+			expect(commandMock).not.toHaveBeenCalled();
 			expect(await inFlight.release()).toBe(200);
 		}
 	);
 
 	it('releases the lock once the rollout answered, even when it failed', async () => {
-		execFileSyncMock.mockImplementation(dockerFailing((c) => c.includes(' pull'), 'pull denied'));
+		commandMock.mockImplementation(dockerFailing((c) => c.includes(' pull'), 'pull denied'));
 		expect((await post('/update')).status).toBe(500);
 
-		execFileSyncMock.mockImplementation(dockerFixture);
+		commandMock.mockImplementation(dockerFixture);
 		expect((await post('/update')).status).toBe(200);
 	});
 
@@ -1032,7 +1064,7 @@ describe('one rollout at a time', () => {
 		// configure-ip rewrites `.env` and runs `up -d mta`; an /update landing
 		// meanwhile would race that recreate and could lose the pool edit.
 		const inFlight = await rolloutInFlight('/configure-ip', '{"ip":"2.2.2.2",', '"action":"add"}');
-		execFileSyncMock.mockClear();
+		commandMock.mockClear();
 
 		const res = await post('/update', {});
 
@@ -1040,7 +1072,7 @@ describe('one rollout at a time', () => {
 		const body = (await res.json()) as { error: string; inProgress: string };
 		expect(body.error).toContain('still applying an IP pool change');
 		expect(body.inProgress).toBe('configure-ip');
-		expect(execFileSyncMock).not.toHaveBeenCalled();
+		expect(commandMock).not.toHaveBeenCalled();
 		expect(await inFlight.release()).toBe(200);
 		expect(readFileSync(join(OWLAT_DIR, '.env'), 'utf-8')).toContain(
 			'IP_POOLS_CAMPAIGN=1.1.1.1,2.2.2.2'
@@ -1057,7 +1089,7 @@ describe('POST /configure-ip', () => {
 	it('rejects a shell-metacharacter payload via strict validation', async () => {
 		const res = await post('/configure-ip', { ip: '1.1.1.1; rm -rf /', action: 'add' });
 		expect(res.status).toBe(400);
-		expect(execFileSyncMock).not.toHaveBeenCalled();
+		expect(commandMock).not.toHaveBeenCalled();
 	});
 
 	it('adds the IP to IP_POOLS_CAMPAIGN and recreates the MTA on the new pool', async () => {
@@ -1070,7 +1102,7 @@ describe('POST /configure-ip', () => {
 		// through a shell, so the next value interpolated into one of these
 		// would have been. Pin the argv: the address is ONE argument, and
 		// nothing here is a command line.
-		expect(execFileSyncMock.mock.calls).toContainEqual([
+		expect(commandMock.mock.calls).toContainEqual([
 			'ip',
 			['addr', 'add', '2.2.2.2/32', 'dev', 'eth0'],
 			expect.objectContaining({ cwd: '/' }),
@@ -1090,7 +1122,7 @@ describe('POST /configure-ip', () => {
 	});
 
 	it('reports a failed MTA recreate instead of success', async () => {
-		execFileSyncMock.mockImplementation(
+		commandMock.mockImplementation(
 			dockerFailing((c) => c.endsWith(' up -d mta'), 'Cannot connect to the Docker daemon')
 		);
 
@@ -1150,7 +1182,7 @@ describe('POST /rotate-env', () => {
 	 * kept serving on the old secret while `.env` said otherwise.
 	 */
 	it('fails a recreate that exits non-zero, even when stderr never says "error"', async () => {
-		execFileSyncMock.mockImplementation((file: string, args: string[]) => {
+		commandMock.mockImplementation((file: string, args: string[]) => {
 			const cmd = [file, ...args].join(' ');
 			if (cmd.includes(' up -d --force-recreate')) {
 				const err = new Error('boom') as Error & { stdout: string; stderr: string };
@@ -1179,7 +1211,7 @@ describe('GET /health', () => {
 	});
 
 	it('reports parsed container rows with image tags', async () => {
-		execFileSyncMock.mockReturnValue(
+		commandMock.mockReturnValue(
 			'{"Service":"web","State":"running","Status":"Up 2 hours","Image":"ghcr.io/wolvesdotink/web:1.2.3","Health":"healthy"}\n'
 		);
 		const res = await fetch(`${base}/health`, { headers: AUTH });
@@ -1208,7 +1240,7 @@ describe('GET /health', () => {
 		it('reports drift when .env was advanced but containers were never recreated', async () => {
 			// The observed production case: .env says 0.4.13, every container 0.4.12.
 			writeFileSync(join(OWLAT_DIR, '.env'), 'OWLAT_VERSION=0.4.13\nFOO=bar\n');
-			execFileSyncMock.mockReturnValue(
+			commandMock.mockReturnValue(
 				['web', 'mta', 'imap']
 					.map(
 						(name) =>
@@ -1223,7 +1255,7 @@ describe('GET /health', () => {
 
 		it('reports no drift when every container runs the configured version', async () => {
 			writeFileSync(join(OWLAT_DIR, '.env'), 'OWLAT_VERSION=0.4.13\n');
-			execFileSyncMock.mockReturnValue(
+			commandMock.mockReturnValue(
 				'{"Service":"web","State":"running","Status":"Up 2 hours","Image":"ghcr.io/wolvesdotink/web:0.4.13","Health":"healthy"}\n'
 			);
 			const json = await health();
@@ -1233,7 +1265,7 @@ describe('GET /health', () => {
 
 		it('ignores third-party images pinned to their own versions', async () => {
 			writeFileSync(join(OWLAT_DIR, '.env'), 'OWLAT_VERSION=0.4.13\n');
-			execFileSyncMock.mockReturnValue(
+			commandMock.mockReturnValue(
 				[
 					'{"Service":"web","State":"running","Status":"Up","Image":"ghcr.io/wolvesdotink/web:0.4.13","Health":"healthy"}',
 					'{"Service":"redis","State":"running","Status":"Up","Image":"redis:7.4-alpine","Health":"healthy"}',
@@ -1245,7 +1277,7 @@ describe('GET /health', () => {
 
 		it('answers null — never a false verdict — when .env carries no OWLAT_VERSION', async () => {
 			writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\n');
-			execFileSyncMock.mockReturnValue(
+			commandMock.mockReturnValue(
 				'{"Service":"web","State":"running","Status":"Up","Image":"ghcr.io/wolvesdotink/web:0.4.12","Health":"healthy"}\n'
 			);
 			const json = await health();
@@ -1255,7 +1287,7 @@ describe('GET /health', () => {
 
 		it('still reports container facts when .env cannot be read', async () => {
 			rmSync(join(OWLAT_DIR, '.env'));
-			execFileSyncMock.mockReturnValue(
+			commandMock.mockReturnValue(
 				'{"Service":"web","State":"running","Status":"Up","Image":"ghcr.io/wolvesdotink/web:0.4.12","Health":"healthy"}\n'
 			);
 			const res = await fetch(`${base}/health`, { headers: AUTH });

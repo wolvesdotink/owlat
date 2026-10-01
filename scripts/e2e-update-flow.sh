@@ -178,8 +178,8 @@ pass ".env pins OWLAT_VERSION=$TO"
 
 [[ ! -e docker-compose.next.yml ]] || fail "the staged template was left behind"
 
-# Waits out the updater's self-replacement too: the helper recreates it ~10s
-# after the response.
+# Waits out the updater's self-replacement too: the helper recreates it once
+# the response has been sent.
 check_on_release() {
 	local service="$1" container="owlat-$1-1"
 	for _ in $(seq 1 45); do

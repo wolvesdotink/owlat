@@ -103,6 +103,7 @@ fn main() {
             ssh::ssh_authenticate,
             ssh::ssh_exec_stream,
             ssh::ssh_write_file,
+            ssh::ssh_cancel,
             ssh::ssh_disconnect,
             #[cfg(feature = "dev-provisioning")]
             ssh::dev::ssh_upload_dir,
