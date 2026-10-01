@@ -4,6 +4,7 @@ import { syncSession } from '../helpers/session.js';
 export const namespaceModule: ImapCommandModule<void> = {
 	verbs: ['NAMESPACE'],
 	capabilities: ['NAMESPACE'],
+	concurrent: () => true,
 	parseArgs: () => ({ ok: true, args: undefined }),
 	start({ tag, send }) {
 		send('* NAMESPACE (("" "/")) NIL NIL');

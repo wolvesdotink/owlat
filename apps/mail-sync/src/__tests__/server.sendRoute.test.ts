@@ -32,7 +32,7 @@ vi.mock('@owlat/smtp-client', () => ({
 }));
 
 vi.mock('imapflow', () => ({
-	ImapFlow: vi.fn(function (this: Record<string, unknown>) {
+	ImapFlow: vi.fn(function (this: Record<'connect' | 'list' | 'append' | 'logout', unknown>) {
 		this.connect = imapConnect;
 		this.list = imapList;
 		this.append = imapAppend;

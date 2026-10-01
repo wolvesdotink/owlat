@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
+import type { Doc, Id } from '@owlat/api/dataModel';
 
 type EmailSelectionType = 'existing' | 'new';
 
@@ -25,7 +25,6 @@ const emit = defineEmits<{
 const campaignSubject = ref(props.initialData.campaignSubject);
 const selectionType = ref<EmailSelectionType>('existing');
 const selectedTemplateId = ref<Id<'emailTemplates'> | null>(null);
-const templateSearchQuery = ref('');
 const newTemplateName = ref('');
 
 const subjectError = ref('');
@@ -44,11 +43,9 @@ const { data: campaignWithRelations } = useConvexQuery(
 	})
 );
 
-const { results: emailTemplates } = useOrganizationPaginatedQuery(
-	api.emailTemplates.emails.list,
-	{ type: 'marketing' as const },
-	{ initialNumItems: 100 }
-);
+// Read on its own: the picker pages and searches, so the selection is often
+// not among the rows it shows.
+const { data: selectedTemplateById } = useEmailTemplateById(selectedTemplateId);
 
 watch(
 	campaignWithRelations,
@@ -73,23 +70,12 @@ watch(
 	{ immediate: true }
 );
 
-const filteredTemplates = computed(() => {
-	if (!emailTemplates.value) return [];
-	if (!templateSearchQuery.value.trim()) return emailTemplates.value;
-
-	const search = templateSearchQuery.value.toLowerCase().trim();
-	return emailTemplates.value.filter((template) => {
-		const name = template.name.toLowerCase();
-		const subject = template.subject.toLowerCase();
-		return name.includes(search) || subject.includes(search);
-	});
-});
-
 const selectedTemplate = computed(() => {
 	if (!selectedTemplateId.value) return null;
 
-	const fromList = emailTemplates.value?.find((t) => t._id === selectedTemplateId.value) ?? null;
-	if (fromList) return fromList;
+	if (selectedTemplateById.value?._id === selectedTemplateId.value) {
+		return selectedTemplateById.value;
+	}
 
 	if (campaignWithRelations.value?.emailTemplate?._id === selectedTemplateId.value) {
 		return campaignWithRelations.value.emailTemplate;
@@ -102,16 +88,13 @@ const selectedTemplate = computed(() => {
 	return null;
 });
 
-const handleTemplateSelect = (templateId: Id<'emailTemplates'>) => {
-	selectedTemplateId.value = templateId;
+const handleTemplateSelect = (template: Doc<'emailTemplates'>) => {
+	selectedTemplateId.value = template._id;
 	selectionType.value = 'existing';
 	contentError.value = '';
 
-	if (!campaignSubject.value.trim()) {
-		const template = emailTemplates.value?.find((t) => t._id === templateId);
-		if (template?.subject) {
-			campaignSubject.value = template.subject;
-		}
+	if (!campaignSubject.value.trim() && template.subject) {
+		campaignSubject.value = template.subject;
 	}
 };
 
@@ -189,7 +172,6 @@ const handleSubmit = async () => {
 defineExpose({
 	selectedTemplate,
 	campaignSubject,
-	filteredTemplates,
 });
 </script>
 
@@ -265,56 +247,12 @@ defineExpose({
 					<label for="templateSearch" class="label text-sm">{{
 						t('components.campaigns.steps.contentStep.existingTemplatesLabel')
 					}}</label>
-					<div class="relative mt-1.5">
-						<Icon
-							name="lucide:search"
-							class="w-4 h-4 text-text-tertiary absolute left-3 top-1/2 -translate-y-1/2"
-						/>
-						<input
-							id="templateSearch"
-							v-model="templateSearchQuery"
-							type="text"
-							:placeholder="t('components.campaigns.steps.contentStep.searchPlaceholder')"
-							class="input pl-10"
-						/>
-					</div>
-
-					<div
-						v-if="filteredTemplates.length > 0"
-						class="mt-3 max-h-80 overflow-y-auto border border-border-subtle rounded-lg divide-y divide-border-subtle"
-					>
-						<button
-							v-for="template in filteredTemplates"
-							:key="template._id"
-							type="button"
-							class="w-full flex items-center justify-between gap-4 p-3 text-left hover:bg-bg-surface transition-colors"
-							@click="handleTemplateSelect(template._id)"
-						>
-							<div class="min-w-0">
-								<p class="font-medium text-text-primary truncate">{{ template.name }}</p>
-								<p class="text-sm text-text-secondary truncate">
-									{{ template.subject || t('components.campaigns.steps.contentStep.noSubject') }}
-								</p>
-							</div>
-							<div
-								:class="[
-									'w-5 h-5 rounded-full border flex items-center justify-center shrink-0',
-									selectedTemplateId === template._id
-										? 'border-text-primary bg-text-primary text-text-inverse'
-										: 'border-border-default text-transparent',
-								]"
-							>
-								<Icon name="lucide:check" class="w-3 h-3" />
-							</div>
-						</button>
-					</div>
-
-					<div
-						v-else
-						class="mt-3 p-4 bg-bg-surface border border-border-subtle rounded-lg text-sm text-text-secondary"
-					>
-						{{ t('components.campaigns.steps.contentStep.noMatches') }}
-					</div>
+					<EmailTemplatePicker
+						:model-value="selectedTemplateId"
+						input-id="templateSearch"
+						class="mt-1.5"
+						@select="handleTemplateSelect"
+					/>
 				</div>
 
 				<div v-else>

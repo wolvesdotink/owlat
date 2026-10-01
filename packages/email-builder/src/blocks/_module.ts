@@ -18,12 +18,7 @@
  */
 
 import type { Component } from 'vue';
-import type {
-	BlockType,
-	BlockTypeContentMap,
-	EditorBlock,
-	EmailTheme,
-} from '../types';
+import type { BlockType, BlockTypeContentMap, EditorBlock, EmailTheme } from '../types';
 import type { BlockAttributeSchema } from '../schema/types';
 
 /** Narrow `EditorBlock` to the variant matching one type discriminant. */
@@ -109,6 +104,14 @@ export interface EditorModule<T extends BlockType> {
 	 * presentation only.
 	 */
 	childrenView?: (block: BlockOf<T>) => NestedChild[];
+
+	/**
+	 * `false` when the entries `childrenView` lists are not Blocks (accordion
+	 * sections). Selecting and removing a child address a Block by id, so the
+	 * panel then lists the entries without Edit and Remove controls; the
+	 * block's own fields edit them instead.
+	 */
+	childrenAreBlocks?: boolean;
 
 	/**
 	 * For composite blocks: which block types can be inserted as children.

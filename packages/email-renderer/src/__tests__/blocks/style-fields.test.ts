@@ -300,6 +300,7 @@ describe('string style fields are escaped before interpolation', () => {
 		content['borderWidth'] = 1;
 		content['buttonBorderWidth'] = 1;
 		content['borderRadius'] = 4;
+		const original: Record<string, unknown> = { ...block.content };
 		for (const key of [
 			'items',
 			'links',
@@ -310,7 +311,7 @@ describe('string style fields are escaped before interpolation', () => {
 			'headers',
 			'rows',
 		]) {
-			if (key in block.content) content[key] = (block.content as Record<string, unknown>)[key];
+			if (key in original) content[key] = original[key];
 		}
 		if (type === 'container' || type === 'hero')
 			content['backgroundImage'] = 'https://example.com/bg.png';

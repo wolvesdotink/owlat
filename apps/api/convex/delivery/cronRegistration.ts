@@ -79,6 +79,15 @@ export function registerDeliveryCrons(crons: Crons): void {
 		internal.delivery.complianceTelemetry.cleanupComplianceTelemetry,
 		{}
 	);
+	// Attachment bytes a transactional API request stored and then lost track
+	// of (the request died before it could release them): freed once their
+	// pending row expires. Nothing is due on a quiet instance.
+	crons.interval(
+		'sweep expired transactional uploads',
+		{ minutes: 15 },
+		internal.transactional.pendingUploads.sweepExpired,
+		{}
+	);
 	// Send assignments are one row per recipient per send (the experiment
 	// record), so their retention sweep is not optional. 90 days, deleted in
 	// bounded indexed batches that resume via self-scheduling while a tick

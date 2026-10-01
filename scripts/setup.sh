@@ -1275,6 +1275,20 @@ write_env_file() {
 
 # ── Write Self-Hosted .env ──────────────────────────────────────────────────
 
+# Make a file that holds deployment secrets owner-only (0600), creating it when
+# missing, and fail unless the mode took. `>` and `cp` keep an existing file's
+# mode, so without this a .env copied in under a default umask stays readable
+# by other local users after the wizard writes secrets into it.
+secure_env_file() {
+  local file="$1" mode
+  if [[ ! -e "$file" ]]; then
+    ( umask 077 && : > "$file" ) || return 1
+  fi
+  chmod 600 "$file" || return 1
+  mode=$(ls -ld "$file" | cut -c1-10)
+  [[ "${mode:4:6}" == "------" ]]
+}
+
 write_selfhost_env() {
   section "Writing Configuration"
 
@@ -1300,8 +1314,18 @@ write_selfhost_env() {
     fi
   fi
 
+  # Secure the file before it is copied or written: the backup inherits its
+  # mode, and the write below keeps it.
+  local had_env=false
+  [[ -f "$env_file" ]] && had_env=true
+  if ! secure_env_file "$env_file"; then
+    error "Could not make ${env_file} owner-only (chmod 600). It holds every deployment secret."
+    info "Run setup as the owner of ${env_file}, or fix its ownership, then re-run setup."
+    return 1
+  fi
+
   # Backup existing
-  if [[ -f "$env_file" ]]; then
+  if [[ "$had_env" == true ]]; then
     local backup="${env_file}.backup.$(date +%Y%m%d_%H%M%S)"
     cp "$env_file" "$backup"
     success "Backed up existing ${env_file} → ${BOLD}${backup}${RESET}"
@@ -1395,8 +1419,17 @@ write_selfhost_env() {
 # Both ways the key can arrive — auto-generated, or pasted by hand when
 # generate_admin_key.sh fails — land here, so neither can leave the stack
 # crash-looping.
+#
+# The key is a secret, so .env is made owner-only here too rather than relying
+# on write_selfhost_env having done it earlier: `sed -i` keeps whatever mode
+# the file has.
 persist_admin_key() {
   [[ -n "$SELFHOST_CONVEX_ADMIN_KEY" ]] || return 0
+  if ! secure_env_file .env; then
+    error "Could not make .env owner-only (chmod 600), so the admin key was not saved to it."
+    info "Fix the ownership of .env, then set CONVEX_ADMIN_KEY in it (docker compose exec convex ./generate_admin_key.sh prints a key)."
+    return 1
+  fi
   sed -i.bak "s/^CONVEX_ADMIN_KEY=.*/CONVEX_ADMIN_KEY=${SELFHOST_CONVEX_ADMIN_KEY}/" .env
   rm -f .env.bak
   success "Admin key saved to .env"

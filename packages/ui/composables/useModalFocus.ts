@@ -1,4 +1,5 @@
 import { nextTick, onScopeDispose, watch, type Ref } from 'vue';
+import { useEscapeLayer } from './useEscapeLayer';
 
 const FOCUSABLE_SELECTOR =
 	'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])';
@@ -24,14 +25,12 @@ export function useModalFocus(
 				(el.tabIndex >= 0 || el.getAttribute('contenteditable') === 'true')
 		);
 
+	// Escape goes to the innermost open layer, which may be a menu or listbox
+	// opened inside this dialog rather than the dialog itself.
+	useEscapeLayer(active, onEscape);
+
 	function handleKeydown(event: KeyboardEvent) {
 		if (!isTop() || event.defaultPrevented) return;
-		if (event.key === 'Escape' && onEscape) {
-			event.preventDefault();
-			event.stopImmediatePropagation();
-			onEscape();
-			return;
-		}
 		if (event.key !== 'Tab' || !container.value) return;
 		const nodes = focusable();
 		const first = nodes[0];

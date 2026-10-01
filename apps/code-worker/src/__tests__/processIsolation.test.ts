@@ -8,7 +8,7 @@ import { reapSandboxProcesses, removeWorkspace, pruneStaleWorkspaces } from '../
 describe('sandbox cleanup helper', () => {
 	it('uses the sandbox uid and a credential-free environment to reap all its processes', async () => {
 		const child = new EventEmitter();
-		const spawn = vi.fn(() => child);
+		const spawn = vi.fn((..._args: unknown[]) => child);
 		const done = reapSandboxProcesses(spawn as never);
 		child.emit('exit', 0);
 		await done;

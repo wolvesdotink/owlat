@@ -9,6 +9,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { Hono } from 'hono';
+import type { AuthEnv } from '../../__tests__/helpers/honoAuth.js';
 import type { Queue } from 'groupmq';
 import type Redis from 'ioredis';
 
@@ -52,8 +53,8 @@ function fakeRedis() {
 	} as unknown as Redis;
 }
 
-function buildApp(queue: FakeQueue, redis: Redis): Hono {
-	const app = new Hono();
+function buildApp(queue: FakeQueue, redis: Redis): Hono<AuthEnv> {
+	const app = new Hono<AuthEnv>();
 	app.use('/send', async (c, next) => {
 		// Mock auth middleware sets master-key context
 		c.set('auth', { isMasterKey: true });

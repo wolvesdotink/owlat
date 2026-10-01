@@ -63,6 +63,9 @@ export const TENANT_TABLES = [
 	'automations',
 
 	// ── Transactional ──
+	// Attachment bytes a transactional API request stored but no Send claimed
+	// yet; the step frees each blob with its row.
+	'transactionalPendingUploads',
 	'transactionalSends',
 	'transactionalEmails',
 

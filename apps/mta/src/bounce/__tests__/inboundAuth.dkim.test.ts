@@ -17,7 +17,7 @@
 
 import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { generateKeyPairSync } from 'crypto';
-import { dkimSign } from 'mailauth/lib/dkim/sign.js';
+import { mailauthDkimSign } from '../../__tests__/helpers/mailauthDkimSign.js';
 import { verifyDkim, type DkimDnsResolver } from './helpers/inboundDkimOracle.js';
 import type { ParsedMessage } from '@owlat/mail-message';
 
@@ -61,7 +61,7 @@ beforeAll(async () => {
 
 	// mailauth's signer reads the key set off `signatureData` (the flat
 	// top-level fields in its type defs are not honored at runtime).
-	const signResult = await dkimSign(Buffer.from(RAW_MESSAGE), {
+	const signResult = await mailauthDkimSign(Buffer.from(RAW_MESSAGE), {
 		canonicalization: 'relaxed/relaxed',
 		algorithm: 'rsa-sha256',
 		signatureData: [
@@ -159,6 +159,11 @@ describe('integration: onData threads dkimResult into mailboxPayload', () => {
 				bccAddrs: [],
 				references: undefined,
 				dkimResult: dkim.result,
+				dmarcResult: undefined,
+				dmarcPolicy: undefined,
+				arcCv: undefined,
+				arcSealerDomain: undefined,
+				arcAttestsOriginalPass: undefined,
 			},
 			// The reducer consumes the in-house `ParsedMessage`; this test parses via
 			// the mailparser oracle (I1) and casts at the ctx boundary.

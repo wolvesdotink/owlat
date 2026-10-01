@@ -28,15 +28,15 @@ describe('createDefaultColumnItemContent — uses the block registry', () => {
 	});
 
 	it('throws a clear error for unknown block types', () => {
-		expect(() =>
-			createDefaultColumnItemContent('not-a-block' as unknown as BlockType),
-		).toThrowError(/Unknown column item type/);
+		expect(() => createDefaultColumnItemContent('not-a-block' as never)).toThrowError(
+			/Unknown column item type/
+		);
 	});
 
 	it('throws when a block exists but is not column-eligible', () => {
 		// 'columns' and 'social' are not allowed inside a column
 		expect(() => createDefaultColumnItemContent('columns' as never)).toThrowError(
-			/cannot be used inside a column/,
+			/cannot be used inside a column/
 		);
 	});
 });
@@ -127,15 +127,18 @@ describe('createDefaultColumnItemContent — parity with legacy column defaults'
 
 	it('image and divider: omit padding/margin spread (matches legacy column shape)', () => {
 		const img = createDefaultColumnItemContent('image' as never) as ImageBlockContent;
-		expect((img as unknown as Record<string, unknown>).paddingTop).toBeUndefined();
+		expect((img as unknown as Record<string, unknown>)['paddingTop']).toBeUndefined();
 		const div = createDefaultColumnItemContent('divider' as never) as DividerBlockContent;
-		expect((div as unknown as Record<string, unknown>).paddingTop).toBeUndefined();
+		expect((div as unknown as Record<string, unknown>)['paddingTop']).toBeUndefined();
 	});
 
 	it('button: respects an override theme primary color', () => {
-		const btn = createDefaultColumnItemContent('button' as never, {
-			primaryColor: '#ff0000',
-		} as EmailTheme) as ButtonBlockContent;
+		const btn = createDefaultColumnItemContent(
+			'button' as never,
+			{
+				primaryColor: '#ff0000',
+			} as EmailTheme
+		) as ButtonBlockContent;
 		expect(btn.backgroundColor).toBe('#ff0000');
 	});
 
@@ -164,8 +167,8 @@ describe('createDefaultColumnItemContent — third-party blocks extend the facto
 		registerBlock({
 			type: 'custom-column-block' as BlockType,
 			label: 'Custom column block',
-			createDefault: () => ({ html: 'top-level' } as unknown as BlockContent),
-			createDefaultColumnItem: () => ({ html: 'column-context' } as unknown as BlockContent),
+			createDefault: () => ({ html: 'top-level' }) as unknown as BlockContent,
+			createDefaultColumnItem: () => ({ html: 'column-context' }) as unknown as BlockContent,
 			slashCommand: null,
 			canBeInColumn: true,
 			canBeInContainer: true,
@@ -174,9 +177,9 @@ describe('createDefaultColumnItemContent — third-party blocks extend the facto
 		});
 		installedTypes.push('custom-column-block' as BlockType);
 
-		const content = createDefaultColumnItemContent(
-			'custom-column-block' as never,
-		) as unknown as { html: string };
+		const content = createDefaultColumnItemContent('custom-column-block' as never) as unknown as {
+			html: string;
+		};
 		expect(content.html).toBe('column-context');
 	});
 
@@ -184,7 +187,7 @@ describe('createDefaultColumnItemContent — third-party blocks extend the facto
 		registerBlock({
 			type: 'fallback-block' as BlockType,
 			label: 'Fallback block',
-			createDefault: () => ({ html: 'top-level-only' } as unknown as BlockContent),
+			createDefault: () => ({ html: 'top-level-only' }) as unknown as BlockContent,
 			slashCommand: null,
 			canBeInColumn: true,
 			canBeInContainer: true,
@@ -193,9 +196,9 @@ describe('createDefaultColumnItemContent — third-party blocks extend the facto
 		});
 		installedTypes.push('fallback-block' as BlockType);
 
-		const content = createDefaultColumnItemContent(
-			'fallback-block' as never,
-		) as unknown as { html: string };
+		const content = createDefaultColumnItemContent('fallback-block' as never) as unknown as {
+			html: string;
+		};
 		expect(content.html).toBe('top-level-only');
 	});
 
@@ -203,7 +206,7 @@ describe('createDefaultColumnItemContent — third-party blocks extend the facto
 		registerBlock({
 			type: 'top-level-only-block' as BlockType,
 			label: 'Top-level only',
-			createDefault: () => ({} as BlockContent),
+			createDefault: () => ({}) as BlockContent,
 			slashCommand: null,
 			canBeInColumn: false,
 			canBeInContainer: false,
@@ -212,9 +215,9 @@ describe('createDefaultColumnItemContent — third-party blocks extend the facto
 		});
 		installedTypes.push('top-level-only-block' as BlockType);
 
-		expect(() =>
-			createDefaultColumnItemContent('top-level-only-block' as never),
-		).toThrowError(/cannot be used inside a column/);
+		expect(() => createDefaultColumnItemContent('top-level-only-block' as never)).toThrowError(
+			/cannot be used inside a column/
+		);
 	});
 });
 

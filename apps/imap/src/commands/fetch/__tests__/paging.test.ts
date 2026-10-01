@@ -13,12 +13,15 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { getFunctionName, type AnyFunctionReference } from 'convex/server';
+import { getFunctionName } from 'convex/server';
 import { fetchModule, type FetchArgs } from '../index.js';
 import { idleModule } from '../../idle/index.js';
 import { loadChangedEnvelopes } from '../../helpers/folderPaging.js';
 import type { FetchEnvelope } from '../format.js';
 import type { CommandDeps, ConnectionState, ImapVerb, StartArgs } from '../../types.js';
+
+// convex/server declares AnyFunctionReference without exporting it.
+type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
 
 vi.mock('../../../logger.js', () => ({
 	logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -66,7 +69,7 @@ function makePagingConvex(uids: readonly number[], calls: QueryCall[]) {
 			calls.push({ ref, params });
 			if (ref.endsWith(':folderMembershipPage')) return null;
 			if (ref.endsWith(':listFolderUidsPage')) {
-				const after = (params.afterUid as number | undefined) ?? 0;
+				const after = (params['afterUid'] as number | undefined) ?? 0;
 				const page = uids.filter((u) => u >= after).slice(0, PAGE);
 				return {
 					uids: page,
@@ -74,8 +77,8 @@ function makePagingConvex(uids: readonly number[], calls: QueryCall[]) {
 				};
 			}
 			if (ref.endsWith(':fetchEnvelopes')) {
-				const low = params.uidLow as number;
-				const high = params.uidHigh as number;
+				const low = params['uidLow'] as number;
+				const high = params['uidHigh'] as number;
 				const page = rows.filter((r) => r.uid >= low && r.uid <= high).slice(0, PAGE);
 				return {
 					rows: page,
@@ -136,13 +139,13 @@ describe('FETCH over a folder deeper than one page', () => {
 		// The UID list took three pages, each resuming past the previous one —
 		// no single read asked for the folder.
 		const uidPages = calls.filter((c) => c.ref.endsWith(':listFolderUidsPage'));
-		expect(uidPages.map((c) => c.params.afterUid)).toEqual([undefined, 7, 13]);
+		expect(uidPages.map((c) => c.params['afterUid'])).toEqual([undefined, 7, 13]);
 		// Envelope reads stay inside the requested 2..14 window.
 		const envelopePages = calls.filter((c) => c.ref.endsWith(':fetchEnvelopes'));
 		expect(envelopePages.length).toBeGreaterThan(1);
 		for (const call of envelopePages) {
-			expect(call.params.uidHigh).toBe(14);
-			expect(call.params.uidLow as number).toBeGreaterThanOrEqual(2);
+			expect(call.params['uidHigh']).toBe(14);
+			expect(call.params['uidLow'] as number).toBeGreaterThanOrEqual(2);
 		}
 	});
 
@@ -179,7 +182,7 @@ describe('a walk that never terminates fails the command', () => {
 				const ref = getFunctionName(fnRef);
 				if (ref.endsWith(':folderMembershipPage')) return null;
 				if (ref.endsWith(':listFolderUidsPage')) {
-					const after = (params.afterUid as number | undefined) ?? 1;
+					const after = (params['afterUid'] as number | undefined) ?? 1;
 					return { uids: [after, after + 1, after + 2], nextUid: after + 3 };
 				}
 				return null;
@@ -253,7 +256,7 @@ describe('CHANGEDSINCE reads go through the modseq index', () => {
 		expect(rows.map((r) => r.uid)).toEqual([1, 2, 3]);
 		expect(seen).toHaveLength(2);
 		expect(seen[0]).toMatchObject({ modseqSince: 7 });
-		expect(seen[1]!.paginationOpts).toMatchObject({ cursor: 'c1' });
+		expect(seen[1]!['paginationOpts']).toMatchObject({ cursor: 'c1' });
 	});
 
 	it('loadChangedEnvelopes reads no further page once its signal aborts', async () => {

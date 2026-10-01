@@ -29,7 +29,7 @@ import { conversationThreadsStep, inboxFollowUpsStep } from './teamReplies';
 import { mailDraftsStep } from './mailDrafts';
 import { mailAttachmentSharesStep } from './mailAttachmentShares';
 import { mailArchiveImportsStep } from './mailArchiveImports';
-import { transactionalSendsStep } from './transactionalSends';
+import { transactionalPendingUploadsStep, transactionalSendsStep } from './transactionalSends';
 import { contactsStep } from './contacts';
 import { domainsStep } from './domains';
 import { makeSweepStep } from './sweep';
@@ -70,6 +70,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailMessages: mailMessagesStep,
 	mailMessageParts: mailMessagePartsStep,
 	mailDrafts: mailDraftsStep,
+	transactionalPendingUploads: transactionalPendingUploadsStep,
 	transactionalSends: transactionalSendsStep,
 	emailSends: makeSweepStep('emailSends'),
 	agentActions: makeSweepStep('agentActions'),

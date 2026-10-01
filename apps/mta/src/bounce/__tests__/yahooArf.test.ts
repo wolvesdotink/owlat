@@ -297,10 +297,9 @@ describe('a Yahoo CFL report through the shipped ARF processor', () => {
 		});
 		const arf = tryParseARF(parsed, parts);
 		if (!arf) throw new Error('expected an ARF classification');
-		const { effects } = reduce(
-			{ kind: 'fbl', arf: { ...arf, sourceIsp: 'unlisted-operator' } },
-			makeCtx()
-		);
+		// Off the token union on purpose: the reducer must drop what it cannot map.
+		const unlisted = 'unlisted-operator' as FblSourceIspToken;
+		const { effects } = reduce({ kind: 'fbl', arf: { ...arf, sourceIsp: unlisted } }, makeCtx());
 		const notify = effects.find((e) => e.kind === 'notify_convex');
 		if (notify?.kind !== 'notify_convex') throw new Error('expected a notify_convex effect');
 		expect(notify.event.sourceIsp).toBeUndefined();

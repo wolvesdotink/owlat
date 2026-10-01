@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -70,6 +70,27 @@ describe('writeEnvFile', () => {
 			'SPECIAL="a\\\\b\\"c\\$d"',
 		]);
 	});
+
+	it.skipIf(process.platform === 'win32')('creates a new file owner-only', async () => {
+		await writeEnvFile(path, { INSTANCE_SECRET: 'abc' });
+		expect((await stat(path)).mode & 0o777).toBe(0o600);
+	});
+
+	it.skipIf(process.platform === 'win32').each([
+		['0644', 0o644],
+		['0666', 0o666],
+	])(
+		'makes an existing %s file owner-only before writing secrets into it',
+		async (_label, initial) => {
+			await writeFile(path, 'EMAIL_PROVIDER=mta\n');
+			await chmod(path, initial);
+
+			await writeEnvFile(path, { EMAIL_PROVIDER: 'mta', INSTANCE_SECRET: 'abc' });
+
+			expect((await stat(path)).mode & 0o777).toBe(0o600);
+			expect(await readEnvFile(path)).toEqual({ EMAIL_PROVIDER: 'mta', INSTANCE_SECRET: 'abc' });
+		}
+	);
 });
 
 // Every expectation below was checked against `docker compose config` (compose

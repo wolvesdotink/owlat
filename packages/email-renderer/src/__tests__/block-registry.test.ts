@@ -64,19 +64,20 @@ describe('Custom Block Registry', () => {
 	});
 
 	it('custom block receives render context', () => {
-		let receivedCtx: RenderContext | null = null;
+		// Assigned inside the renderer callback, which TS cannot see from here.
+		let receivedCtx = null as RenderContext | null;
 		registerBlock('ctxBlock', (_content, ctx) => {
 			receivedCtx = ctx;
 			return '<div>Custom</div>';
 		});
 
-		renderEmailHtml(
-			[{ id: '1', type: 'ctxBlock', content: {} }] as unknown as EditorBlock[],
-			{ baseWidth: 700, darkMode: true },
-		);
+		renderEmailHtml([{ id: '1', type: 'ctxBlock', content: {} }] as unknown as EditorBlock[], {
+			baseWidth: 700,
+			darkMode: true,
+		});
 
 		expect(receivedCtx).not.toBeNull();
-		expect(receivedCtx.baseWidth).toBe(700);
-		expect(receivedCtx.darkMode).toBe(true);
+		expect(receivedCtx!.baseWidth).toBe(700);
+		expect(receivedCtx!.darkMode).toBe(true);
 	});
 });

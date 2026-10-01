@@ -88,7 +88,7 @@ describe('Carousel Block', () => {
 		// Extract the style block content
 		const styleMatch = html.match(/<style>([\s\S]*?)<\/style>/);
 		expect(styleMatch).toBeTruthy();
-		const styleContent = styleMatch![1];
+		const styleContent = styleMatch![1]!;
 
 		// Find the carousel CSS (hide-all rule)
 		const hideAllIndex = styleContent.indexOf('div[class^="owlat-car-');

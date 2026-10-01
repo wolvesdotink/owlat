@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { ConvexError } from 'convex/values';
+import { extractTranslatableContent } from '../../emailTemplates/translationMerge';
 import {
 	addLanguage,
-	extractTranslatableContent,
 	mergeTranslationWithContent,
 	parseTranslations,
 	removeLanguage,

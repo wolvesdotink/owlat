@@ -44,6 +44,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { errorMessage } from '@owlat/shared';
+import { writeOwnerOnlyFile } from '@owlat/shared/ownerOnlyFile';
 import {
 	applyEnvUpdates,
 	isRateLimited,
@@ -149,7 +150,7 @@ async function pinConfiguredVersion(
 		if (!rewrite.ok) {
 			return { ok: false, stdout: '', stderr: rewrite.reason };
 		}
-		await writeFile(envFile, rewrite.content, 'utf-8');
+		await writeOwnerOnlyFile(envFile, rewrite.content);
 		return { ok: true, stdout: `OWLAT_VERSION pinned to ${version}`, stderr: '' };
 	} catch (err) {
 		return { ok: false, stdout: '', stderr: `Cannot update .env: ${errorMessage(err)}` };

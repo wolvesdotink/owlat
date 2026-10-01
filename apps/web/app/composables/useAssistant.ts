@@ -65,16 +65,24 @@ export function useAssistant() {
 		return created.result;
 	};
 
-	const send = async (text: string) => {
+	/**
+	 * Send a question to the open conversation, creating one first when none is
+	 * open. Resolves `ok` only once the message is accepted, so the composer can
+	 * keep the question until then. A conversation created here becomes the
+	 * active one before the message goes out: if the message then fails, the
+	 * retry finds it open and sends into it instead of creating a second, empty
+	 * conversation.
+	 */
+	const send = async (text: string): Promise<{ ok: boolean }> => {
 		let id = activeId.value;
 		if (!id) {
 			const created = await createRun({});
-			if (!created.ok) return;
+			if (!created.ok) return { ok: false };
 			id = created.result;
 			activeId.value = id;
 		}
-		if (!id) return;
-		await sendRun({ conversationId: id, text });
+		const sent = await sendRun({ conversationId: id, text });
+		return { ok: sent.ok };
 	};
 
 	const stop = async () => {

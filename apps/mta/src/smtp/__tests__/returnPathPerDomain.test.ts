@@ -124,7 +124,7 @@ function createJob(overrides: Partial<EmailJob> = {}): EmailJob {
 	};
 }
 
-function authedRegister(
+async function authedRegister(
 	app: ReturnType<typeof createDkimRoutes>,
 	domain: string,
 	body?: unknown

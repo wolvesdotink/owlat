@@ -14,7 +14,8 @@ import type {
 	TextBlockContent,
 	VideoBlockContent,
 } from '@owlat/shared';
-import type { RenderArgs, RenderContext } from '../../blocks/_module';
+import type { RenderArgs } from '../../blocks/_module';
+import type { RenderContext } from '../../types';
 
 const listCtx = {} as RenderContext;
 const renderListContent = (content: ListBlockContent): string => {
@@ -88,8 +89,7 @@ describe('XSS: button block', () => {
 			...baseButton,
 			text: XSS_TEXT,
 			backgroundGradient: {
-				type: 'linear',
-				angle: 180,
+				direction: 'to bottom',
 				stops: [
 					{ color: '#ff0000', position: 0 },
 					{ color: '#00ff00', position: 100 },
@@ -140,6 +140,7 @@ describe('XSS: video block', () => {
 	const baseVideo: VideoBlockContent = {
 		thumbnailUrl: 'https://example.com/thumb.jpg',
 		videoUrl: 'https://example.com/v',
+		alt: 'Video',
 		width: 600,
 		align: 'center',
 	};
@@ -217,9 +218,7 @@ describe('XSS: carousel block', () => {
 			[
 				makeCarouselBlock({
 					thumbnailWidth: 60,
-					images: [
-						{ src: 'https://example.com/a.jpg', alt: 'a', thumbnailSrc: XSS_PROTOCOL },
-					],
+					images: [{ src: 'https://example.com/a.jpg', alt: 'a', thumbnailSrc: XSS_PROTOCOL }],
 				}),
 			],
 			{ inlineCss: false }
@@ -243,8 +242,7 @@ const noAttributeBreakout = (html: string): void => {
 	expect(html).not.toContain('" onerror="');
 };
 
-const renderBlock = (block: EditorBlock): string =>
-	renderEmailHtml([block], { inlineCss: false });
+const renderBlock = (block: EditorBlock): string => renderEmailHtml([block], { inlineCss: false });
 
 describe('XSS: style / VML colour & font fields', () => {
 	it('escapes a breakout colour in the button VML fillcolor + inline style', () => {
@@ -283,8 +281,7 @@ describe('XSS: style / VML colour & font fields', () => {
 			paddingX: 24,
 			paddingY: 12,
 			backgroundGradient: {
-				type: 'linear',
-				angle: 180,
+				direction: 'to bottom',
 				stops: [
 					{ color: XSS_STYLE, position: 0 },
 					{ color: '#00ff00', position: 100 },
@@ -373,7 +370,7 @@ describe('XSS: style / VML colour & font fields', () => {
 					fontSize: 16,
 					// textColor / fontFamily intentionally omitted
 				} as unknown as TextBlockContent,
-			}),
+			})
 		).not.toThrow();
 	});
 
