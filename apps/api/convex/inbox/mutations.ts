@@ -54,7 +54,7 @@ export const approveDraft = adminMutation({
 		// Nor with an Answer mode gap placeholder left in the text.
 		if (message.threadId) {
 			const target = { kind: 'teamThread' as const, threadId: message.threadId };
-			await assertNoAnswerGaps(ctx, target, message.draftResponse);
+			await assertNoAnswerGaps(ctx, target, { text: message.draftResponse });
 		}
 
 		// Resolve the human-approve undo window from the singleton agentConfig

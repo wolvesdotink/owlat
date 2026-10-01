@@ -144,7 +144,7 @@ export const sendFollowUp = adminMutation({
 			};
 		}
 
-		await assertNoAnswerGaps(ctx, { kind: 'teamThread', threadId: args.threadId }, body);
+		await assertNoAnswerGaps(ctx, { kind: 'teamThread', threadId: args.threadId }, { text: body });
 		// The composer's attachments leave with this follow-up, so the composer is
 		// free for the next one while this one waits out its undo window.
 		await assertReplyAttachmentsReady(ctx, args.threadId);

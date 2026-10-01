@@ -603,6 +603,38 @@ describe('sending a draft with gaps', () => {
 		expect(sent.undoToken).toEqual(expect.any(String));
 	});
 
+	it('checks only what was written, not the quoted original', async () => {
+		const t = await makeT();
+		const { target, draftId } = await replyDraft(t);
+		await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+		const quote = '<div class="gmail_quote">See [[wiki link]] for details.</div>';
+		await t.mutation(api.mail.drafts.update, {
+			draftId,
+			bodyHtml: `<p>Thanks, I will check.</p>${quote}`,
+			bodyText: 'Thanks, I will check.\n\nSee [[wiki link]] for details.',
+		});
+		const sent = await t.mutation(api.mail.drafts.send, { draftId });
+		expect(sent.undoToken).toEqual(expect.any(String));
+		// The quote is still on the saved body.
+		expect((await draftRow(t, draftId)).bodyHtml ?? '').toContain('gmail_quote');
+	});
+
+	it('still refuses a gap in the written part above a quote', async () => {
+		const t = await makeT();
+		const { target, draftId } = await replyDraft(t);
+		await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+		await t.mutation(api.mail.drafts.update, {
+			draftId,
+			bodyHtml:
+				'<p>Hi Jonas, [[attach invoice for september]]</p>' +
+				'<div class="gmail_quote">See [[wiki link]] for details.</div>',
+			bodyText: 'Hi Jonas, [[attach invoice for september]]\n\nSee [[wiki link]] for details.',
+		});
+		await expect(t.mutation(api.mail.drafts.send, { draftId })).rejects.toMatchObject({
+			data: { category: 'invalid_state', data: { code: 'DRAFT_HAS_GAPS' } },
+		});
+	});
+
 	it('leaves hand-written double brackets alone on a draft without an ask session', async () => {
 		const t = await makeT();
 		const { draftId } = await replyDraft(t);
