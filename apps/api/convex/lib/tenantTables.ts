@@ -34,6 +34,9 @@ export const TENANT_TABLES = [
 	// so the rest of the wipe does not keep moving buckets on its way out.
 	'counterScopes',
 	'counterBuckets',
+	// IMAP folder membership (#927): derived from mailMessages the same way.
+	'mailFolderMembership',
+	'mailFolderUidBlocks',
 
 	// ── Contacts subtree (children first) ──
 	'contactPropertyValues',
@@ -60,6 +63,9 @@ export const TENANT_TABLES = [
 	'automations',
 
 	// ── Transactional ──
+	// Attachment bytes a transactional API request stored but no Send claimed
+	// yet; the step frees each blob with its row.
+	'transactionalPendingUploads',
 	'transactionalSends',
 	'transactionalEmails',
 

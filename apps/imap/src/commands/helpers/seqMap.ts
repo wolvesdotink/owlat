@@ -20,7 +20,9 @@
 
 import { parseUidSet } from '../../parser.js';
 import type { CommandDeps, ConnectionState } from '../types.js';
-import { loadFolderUids, type UidRange } from './folderPaging.js';
+import type { UidRange } from './folderPaging.js';
+import { syncSequenceView } from './sequenceView.js';
+import type { SequenceLease } from './sequenceGate.js';
 
 export interface SeqMap {
 	/** UIDs in ascending order; position i (0-based) is sequence number i+1. */
@@ -179,22 +181,37 @@ export function uidRuns(resolved: readonly ResolvedMessage[]): UidRange[] {
 }
 
 /**
- * Resolve a message set against the SELECTed folder: load its UIDs, build the
- * seq map and run {@link resolveSet}. Every command that takes a message set
- * (FETCH, STORE, COPY, MOVE, UID EXPUNGE) goes through here, so a set can only
- * ever address messages that exist in the folder, and resolving it costs time
- * linear in the folder size plus the number of set parts (see
- * {@link resolveSet}). `signal` stops the UID paging once the connection
- * has gone.
+ * Resolve a message set against the SELECTed folder. Every command that takes
+ * a message set (FETCH, STORE, COPY, MOVE, UID EXPUNGE) goes through here.
+ *
+ * A sequence-number set is resolved against the client's sequence view
+ * (`SequenceView` in `../types.ts`), with no read at all: the numbers mean what
+ * the server last told the client, even after another session's EXPUNGE. A UID
+ * set first brings the view up to date, announcing what changed through `send`
+ * (RFC 3501 §7.4.1 allows that during UID commands, and the reply's sequence
+ * numbers must be ones the client knows), then resolves against the folder as
+ * it is. The folder's UIDs come from `loadCurrentUids`, which reuses a cached
+ * list for as long as the folder's membership version is unchanged.
+ *
+ * Either way a set can only address messages the view or folder holds, and
+ * resolving it costs time linear in the folder size plus the number of set
+ * parts (see {@link resolveSet}). `lease` is the caller's granted lease on the
+ * sequence gate (`sync` for a UID set). `signal` stops the reads once the
+ * connection has gone.
  */
 export async function resolveSelectedSet(
 	deps: CommandDeps,
 	state: ConnectionState,
 	set: string,
 	byUid: boolean,
+	send: (line: string) => void,
+	lease: SequenceLease,
 	signal?: AbortSignal
 ): Promise<{ seqMap: SeqMap; resolved: ResolvedMessage[] }> {
-	const folderUids = await loadFolderUids(deps.convex, state.selected!.folderId, signal);
-	const seqMap = buildSeqMap(folderUids);
+	const view = state.selected!.view;
+	const uids =
+		!byUid && view ? view.uids : await syncSequenceView(deps, state, send, lease, signal);
+	// Ascending already: the view, the membership blocks and the UID listing all are.
+	const seqMap: SeqMap = { uids };
 	return { seqMap, resolved: resolveSet(seqMap, set, byUid) };
 }

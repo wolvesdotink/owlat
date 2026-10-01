@@ -241,6 +241,8 @@ function ownedBlobs(table: (typeof TENANT_TABLES)[number], row: Doc<TableNames>)
 			return (row as Doc<'mailDrafts'>).attachments.map((att) => att.storageId);
 		case 'transactionalSends':
 			return ((row as Doc<'transactionalSends'>).attachmentStorageIds ?? []) as Id<'_storage'>[];
+		case 'transactionalPendingUploads':
+			return [(row as Doc<'transactionalPendingUploads'>).storageId];
 		default:
 			return [];
 	}

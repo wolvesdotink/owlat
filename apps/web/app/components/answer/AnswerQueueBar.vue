@@ -5,6 +5,7 @@ import { useAnswerMailActions } from '~/composables/useAnswerMailActions';
 import { isDialogOpen } from '~/utils/dialogOpen';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { isChordPending } from '~/utils/shortcutScope';
+import { isImeComposing } from '~/utils/imeComposition';
 
 /**
  * The Answer queue in Answer mode's top bar (the frame's `#queue` slot):
@@ -78,7 +79,7 @@ const { chips } = useAnswerQueueChips(session);
 
 function onKeydown(event: KeyboardEvent) {
 	if (!visible.value || !session) return;
-	if (event.defaultPrevented || event.isComposing) return;
+	if (event.defaultPrevented || isImeComposing(event)) return;
 	if (event.metaKey || event.ctrlKey || event.altKey) return;
 	if (isEditableTarget(event.target) || isDialogOpen() || isChordPending()) return;
 	const key = event.key;

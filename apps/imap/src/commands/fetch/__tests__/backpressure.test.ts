@@ -67,6 +67,7 @@ function backend(count: number, bodySize: number) {
 			const ref = getFunctionName(fnRef);
 			if (ref.endsWith(':listFolders')) return [FOLDER(count)];
 			if (ref.endsWith(':selectFolder')) return { folder: FOLDER(count) };
+			if (ref.endsWith(':folderMembershipPage')) return null;
 			if (ref.endsWith(':listFolderUidsPage')) {
 				return { uids: Array.from({ length: count }, (_, i) => i + 1), nextUid: null };
 			}

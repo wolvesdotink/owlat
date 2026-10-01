@@ -61,6 +61,7 @@ function harness(envelopes: FetchEnvelope[], opts: { mintFails?: boolean } = {})
 	const convex = {
 		query: vi.fn(async (fnRef: AnyFunctionReference) => {
 			const ref = getFunctionName(fnRef);
+			if (ref.endsWith(':folderMembershipPage')) return null;
 			if (ref.endsWith(':listFolderUidsPage')) {
 				return { uids: envelopes.map((m) => m.uid), nextUid: null };
 			}
