@@ -31,17 +31,20 @@ export const MAX_AUTO_EXPANDED_UNREAD = 3;
  * The default expanded set for a freshly opened thread. `startsThread` is false
  * when `messages` is only the newest page of a longer thread (plan 3.3): its
  * oldest message is not the thread's first, so it stays collapsed.
+ * `expandFirst` false leaves the first message collapsed too: Answer mode shows
+ * the newest and the unread messages in full and everything older as rows.
  */
 export function initialExpandedIds(
 	messages: readonly ReaderExpansionMessage[],
 	activeId: string,
-	startsThread = true
+	startsThread = true,
+	expandFirst = true
 ): Set<string> {
 	const next = new Set<string>();
 	const last = messages[messages.length - 1];
 	if (last) next.add(last._id);
 	const first = messages[0];
-	if (startsThread && messages.length > 2 && first) next.add(first._id);
+	if (expandFirst && startsThread && messages.length > 2 && first) next.add(first._id);
 	let unread = 0;
 	for (let i = messages.length - 1; i >= 0 && unread < MAX_AUTO_EXPANDED_UNREAD; i--) {
 		const m = messages[i];
@@ -67,6 +70,8 @@ export interface PostboxReaderExpansionSource {
 	messages: () => readonly ReaderExpansionMessage[] | undefined;
 	/** The messages reach back to the thread's first one. Absent: they do. */
 	startsThread?: () => boolean;
+	/** Open the thread's first message by default (the reader does). Absent: yes. */
+	expandFirst?: boolean;
 }
 
 export function usePostboxReaderExpansion(source: PostboxReaderExpansionSource): {
@@ -107,7 +112,12 @@ export function usePostboxReaderExpansion(source: PostboxReaderExpansionSource):
 			if (!messages) return;
 			if (!known) {
 				known = new Set(messages.map((m) => m._id));
-				expanded.value = initialExpandedIds(messages, active, source.startsThread?.() ?? true);
+				expanded.value = initialExpandedIds(
+					messages,
+					active,
+					source.startsThread?.() ?? true,
+					source.expandFirst ?? true
+				);
 				return;
 			}
 			const arrived: string[] = [];

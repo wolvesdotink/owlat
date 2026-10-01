@@ -142,9 +142,6 @@ function postboxStubs(rows: PostboxThreadRowMessage[]): Record<string, unknown> 
 		useLocalStorage,
 		useRichText,
 		usePaginatedQuery: () => paginatedResult([]),
-		// The list parks the pending-compose intent in `useState` under this
-		// auto-imported key constant.
-		POSTBOX_PENDING_COMPOSE_KEY: 'postbox:pending-compose',
 		useOperationErrorToast: () => ({ showOperationError: vi.fn() }),
 		useNativeFilePicker: () => ({ isDesktop: ref(false), pickNativeFiles: vi.fn() }),
 		// Postbox registers itself as the command palette's current surface on

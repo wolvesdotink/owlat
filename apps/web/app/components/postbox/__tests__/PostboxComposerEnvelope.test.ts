@@ -258,3 +258,36 @@ describe('PostboxComposerEnvelope — From picker authenticity (disable-with-rea
 		);
 	});
 });
+
+describe('PostboxComposerEnvelope — attention (Answer mode opens its folded envelope)', () => {
+	it('says nothing needs attention for a clean identity', () => {
+		const wrapper = mount(PostboxComposerEnvelope, {
+			...mountOpts,
+			props: { ...baseProps, availableIdentities: [identity({ address: 'ada@acme.com' })] },
+		});
+		expect(wrapper.emitted('attention')?.at(-1)).toEqual([false]);
+	});
+
+	it('asks for attention when the From identity will fail authentication', () => {
+		const wrapper = mount(PostboxComposerEnvelope, {
+			...mountOpts,
+			props: {
+				...baseProps,
+				availableIdentities: [identity({ address: 'ceo@acme.com', domainVerified: false })],
+			},
+		});
+		expect(wrapper.emitted('attention')?.at(-1)).toEqual([true]);
+	});
+
+	it('asks for attention while a first-time recipient waits for a confirm', async () => {
+		const guards = { ...quietGuards, firstTime: { open: false } } as unknown as ComposerGuards;
+		const wrapper = mount(PostboxComposerEnvelope, {
+			...mountOpts,
+			props: { ...baseProps, guards, availableIdentities: [identity({ address: 'ada@acme.com' })] },
+		});
+		await wrapper.setProps({
+			guards: { ...quietGuards, firstTime: { open: true } } as unknown as ComposerGuards,
+		});
+		expect(wrapper.emitted('attention')?.at(-1)).toEqual([true]);
+	});
+});

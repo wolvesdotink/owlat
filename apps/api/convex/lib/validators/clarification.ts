@@ -19,6 +19,8 @@
  */
 
 import { v } from 'convex/values';
+import { ASK_ANSWER_KINDS, ASK_FILE_SOURCES } from '@owlat/shared/answerMode';
+import { literalUnion } from '../literalUnion';
 
 /**
  * One translation of a question (text + option chips) into an interface
@@ -29,6 +31,43 @@ export const clarificationTranslationValidator = v.object({
 	locale: v.string(),
 	text: v.string(),
 	options: v.optional(v.array(v.string())),
+});
+
+/**
+ * How a question is answered (`@owlat/shared/answerMode` ASK_ANSWER_KINDS).
+ * Absent on rows written before Answer mode, which read as `choice` when they
+ * carry options and `text` otherwise.
+ */
+export const clarificationAnswerKindValidator = literalUnion(ASK_ANSWER_KINDS);
+
+/** Where a file answer's bytes live: a fresh upload, a Files row, or a mail attachment. */
+export const clarificationFileSourceValidator = literalUnion(ASK_FILE_SOURCES);
+
+/**
+ * A file the person picked or uploaded to answer a `file` question. `id` is the
+ * storage id for an upload, the `semanticFiles` id or the `mailAttachments` id
+ * otherwise; the owning module re-checks access before attaching it.
+ */
+export const clarificationFileRefValidator = v.object({
+	source: clarificationFileSourceValidator,
+	id: v.string(),
+	filename: v.string(),
+});
+
+/**
+ * A near match offered with a `file` question ("Close, but maybe not it").
+ * Read access was checked when the candidate was computed; attaching re-checks.
+ */
+export const clarificationFileCandidateValidator = v.object({
+	source: v.union(v.literal('semanticFile'), v.literal('mailAttachment')),
+	id: v.string(),
+	filename: v.string(),
+	title: v.optional(v.string()),
+	mimeType: v.string(),
+	size: v.number(),
+	score: v.number(),
+	// Why it may not be the one, e.g. "August" for a September request.
+	note: v.optional(v.string()),
 });
 
 export const clarificationQuestionValidator = v.object({
@@ -44,12 +83,18 @@ export const clarificationQuestionValidator = v.object({
 	// Per-locale renderings of `text` + `options`; see
 	// clarificationTranslationValidator. Absent when localization failed.
 	translations: v.optional(v.array(clarificationTranslationValidator)),
-	// The resolved answer — absent until answered.
+	// How the question is answered; see clarificationAnswerKindValidator.
+	answerKind: v.optional(clarificationAnswerKindValidator),
+	// Near matches offered with a `file` question.
+	fileCandidates: v.optional(v.array(clarificationFileCandidateValidator)),
+	// The resolved answer — absent until answered. For a `file` answer, `value`
+	// is the filename and `file` points at the bytes.
 	answer: v.optional(
 		v.object({
 			value: v.string(),
 			source: v.union(v.literal('user'), v.literal('memory')),
 			at: v.number(),
+			file: v.optional(clarificationFileRefValidator),
 		})
 	),
 });
@@ -86,11 +131,18 @@ export const needsReplyClarificationQuestionValidator = v.object({
 	// clarificationTranslationValidator). Absent when localization
 	// failed; the card then shows the canonical English copy.
 	translations: v.optional(v.array(clarificationTranslationValidator)),
-	// The owner's answer — absent until answered.
+	// How the question is answered; see clarificationAnswerKindValidator.
+	answerKind: v.optional(clarificationAnswerKindValidator),
+	// Near matches offered with a `file` question.
+	fileCandidates: v.optional(v.array(clarificationFileCandidateValidator)),
+	// The owner's answer — absent until answered. `source` is absent on rows
+	// written before memory answers were shown in the Postbox (read as 'user').
 	answer: v.optional(
 		v.object({
 			value: v.string(),
 			at: v.number(),
+			source: v.optional(v.union(v.literal('user'), v.literal('memory'))),
+			file: v.optional(clarificationFileRefValidator),
 		})
 	),
 });

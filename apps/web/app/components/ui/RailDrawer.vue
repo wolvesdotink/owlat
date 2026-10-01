@@ -21,6 +21,10 @@ const props = defineProps<{ open: boolean; navigationTitle?: string }>();
 const emit = defineEmits<{ 'update:open': [value: boolean] }>();
 
 const close = () => emit('update:open', false);
+// A menu inside the drawer that closed on this Esc has claimed it.
+const onEscape = (event: KeyboardEvent) => {
+	if (!event.defaultPrevented) close();
+};
 
 // Off-canvas is a transform, not an unmount, so without `inert` a phone user
 // tabs through every conversation in a pane they cannot see.
@@ -63,7 +67,7 @@ onUnmounted(() => {
 					: '-translate-x-full duration-(--motion-moderate-exit)'
 			"
 			:inert="isOffCanvas ? true : undefined"
-			@keydown.esc="close"
+			@keydown.esc="onEscape"
 		>
 			<slot />
 		</div>

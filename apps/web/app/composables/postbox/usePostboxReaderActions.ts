@@ -235,6 +235,21 @@ export function usePostboxReaderActions(opts: {
 		void navigateTo(`/dashboard/postbox/${folderRole}/${id}`, { replace: true });
 	}
 
+	/**
+	 * Esc (`postbox.close`): put the open conversation away. The overlay host
+	 * closes in place; the folder view goes back to its list, replacing the
+	 * entry the open pushed (the same move as the drill-in back button). The
+	 * search preview has no list to return to and stays put.
+	 */
+	function closeConversation() {
+		if (advance.inPlace() === true) {
+			advance.emit(null);
+			return;
+		}
+		const folderRole = advance.folderRole();
+		if (folderRole) void navigateTo(`/dashboard/postbox/${folderRole}`, { replace: true });
+	}
+
 	// Live flags of the open message (the prop can be a stale list row).
 	const openMessageFlags = computed(() => {
 		const message = getMessage();
@@ -357,6 +372,9 @@ export function usePostboxReaderActions(opts: {
 	 */
 	function runReaderAction(action: string) {
 		switch (action) {
+			case 'close':
+				closeConversation();
+				break;
 			case 'archive':
 				void runAndAdvance(async (id) => {
 					const result = await archiveOp.run({ messageIds: [id] });

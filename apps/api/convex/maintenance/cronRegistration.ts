@@ -37,6 +37,14 @@ export function registerRetentionCrons(crons: ReturnType<typeof cronJobs>): void
 		internal.maintenance.retention.scrubFormSubmissionMeta,
 		{}
 	);
+	// Answer mode ask sessions (mail/ai/composeDraftStore.ts): question text
+	// quoted from mail, the owner's answers and the draft stream, 30 days.
+	crons.interval(
+		'retention: answer mode ask sessions',
+		{ hours: 24 },
+		internal.mail.ai.composeDraftStore.sweepStaleSessions,
+		{}
+	);
 	// Inbound mail FILES (see maintenance/retention.ts): the sealed raw `.eml` and
 	// the team-inbox attachment blobs captured out of it are released past the
 	// horizon set in Settings (`DEFAULT_INBOUND_RAW_RETENTION_DAYS` when unset).

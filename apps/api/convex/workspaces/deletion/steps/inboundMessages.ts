@@ -1,6 +1,7 @@
 import { defineStep, DEFAULT_BATCH_SIZE } from './_common';
 import { deleteBlobQuietly } from '../../../lib/storageBlobs';
 import { deleteInboundBodyBlobs } from '../../../lib/messageBodyInbound';
+import { purgeReplyAttachments } from '../../../inbox/replyAttachmentStore';
 
 /**
  * Storage-bearing step: a team-inbox row carries the sealed raw `.eml` the
@@ -32,6 +33,12 @@ export const inboundMessagesStep = defineStep({
 			}
 			// So are the bodies too large to keep inline, same policy.
 			await deleteInboundBodyBlobs(ctx.storage, row, '[workspace deletion] inbound');
+			// The files its reply carried (`replyAttachments`), owned by the reply.
+			await purgeReplyAttachments(
+				ctx,
+				row.replyAttachments,
+				'[workspace deletion] reply attachment'
+			);
 			await ctx.db.delete(row._id);
 		}
 		return { deletedCount: rows.length, hasMore: rows.length === DEFAULT_BATCH_SIZE };

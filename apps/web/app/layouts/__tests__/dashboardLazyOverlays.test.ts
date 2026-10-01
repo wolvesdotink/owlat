@@ -113,6 +113,7 @@ function mountLayout(): VueWrapper {
 				DesktopTitlebar: true,
 				DashboardShellHeader: true,
 				ShellComposerOverlay: true,
+				AnswerReviewApproveUndoToast: true,
 				LazyKeyboardShortcutsHelp: { template: '<div data-testid="help" />' },
 				AppLiveRegion: true,
 				AppCommandPaletteFooter: true,

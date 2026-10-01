@@ -11,8 +11,8 @@
  *
  * The stack is the whole composer (editor, attachments, preview-as-sent and
  * the email renderer behind it), so it is loaded and mounted only once a
- * composer opens, or an undo-send window does (an inline reply sent from the
- * Today reader arms the toast without ever opening a popup). After that it
+ * composer opens, or an undo-send window does (a reply sent from Answer mode
+ * arms the toast without ever opening a popup). After that it
  * stays mounted, so closing the last composer keeps its toast and transitions.
  */
 import { pageHostsComposerStack } from '~/lib/composeContext';

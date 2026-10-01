@@ -39,3 +39,12 @@ export const POSTBOX_FEATURE_FLAGS = ['postbox', 'mail.external'] as const;
 
 export const postboxQuery = featureGatedAny(authedQuery, POSTBOX_FEATURE_FLAGS);
 export const postboxMutation = featureGatedAny(authedMutation, POSTBOX_FEATURE_FLAGS);
+
+/**
+ * Reads Answer mode's drafting serves on both composers: a Postbox draft and a
+ * team-inbox thread. The floor is any of the three flags; the handler then
+ * checks the flag of the target it was asked about (a Postbox draft needs the
+ * Postbox, a team thread the `inbox` flag), so a team-only instance still gets
+ * "Draft with AI" on its threads.
+ */
+export const answerModeQuery = featureGatedAny(authedQuery, [...POSTBOX_FEATURE_FLAGS, 'inbox']);
