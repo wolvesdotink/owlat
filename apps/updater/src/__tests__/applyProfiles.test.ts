@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import { createServer, type Server } from 'node:http';
-import { mkdtempSync, writeFileSync, readFileSync, statSync } from 'node:fs';
+import { chmodSync, mkdtempSync, writeFileSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getActiveProfiles, type FeatureFlagState } from '@owlat/shared/featureFlags';
@@ -244,6 +244,15 @@ describe('.env rewrite', () => {
 			'EMAIL_PROVIDER=resend\nCOMPOSE_PROFILES=clamav\n'
 		);
 	});
+
+	it.skipIf(process.platform === 'win32')(
+		'makes a world-readable .env owner-only when it rewrites it',
+		async () => {
+			chmodSync(ENV_FILE, 0o644);
+			await post({ flags: { 'mail.external': true } });
+			expect(statSync(ENV_FILE).mode & 0o777).toBe(0o600);
+		}
+	);
 
 	it('is idempotent — applying the same snapshot twice leaves .env byte-identical', async () => {
 		writeFileSync(ENV_FILE, 'EMAIL_PROVIDER=resend\n');

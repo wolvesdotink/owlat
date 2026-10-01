@@ -3,6 +3,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { errorMessage } from '@owlat/shared';
+import { writeOwnerOnlyFile } from '@owlat/shared/ownerOnlyFile';
 import { hasVersionDrift, parseConfiguredVersionFromEnv } from '@owlat/shared/containerHealth';
 import { applyEnvUpdates, isRateLimited, isValidIPv4 } from './security.js';
 import { composePsServices, exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
@@ -144,7 +145,7 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 				}
 				return line;
 			});
-			await writeFile(envFile, updated, 'utf-8');
+			await writeOwnerOnlyFile(envFile, updated);
 			steps.push({ step: 'update-env', stdout: `Added ${ip} to IP_POOLS_CAMPAIGN`, stderr: '' });
 		} catch (err) {
 			steps.push({ step: 'update-env', stdout: '', stderr: errorMessage(err) });
@@ -174,7 +175,7 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 				}
 				return line;
 			});
-			await writeFile(envFile, updated, 'utf-8');
+			await writeOwnerOnlyFile(envFile, updated);
 			steps.push({
 				step: 'update-env',
 				stdout: `Removed ${ip} from IP_POOLS_CAMPAIGN`,
@@ -287,7 +288,7 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 	}
 
 	try {
-		await writeFile(envFile, rewrite.content, 'utf-8');
+		await writeOwnerOnlyFile(envFile, rewrite.content);
 	} catch (err) {
 		return json(res, 500, { error: `Cannot write .env: ${errorMessage(err)}` });
 	}
