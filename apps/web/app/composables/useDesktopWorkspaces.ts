@@ -38,7 +38,7 @@ import {
 import {
 	activeId,
 	keychain,
-	makePersister,
+	makeSessionPersistence,
 	persistStore,
 	store,
 	workspaces,
@@ -192,9 +192,15 @@ export async function loadWorkspaces(options?: {
 	setActiveWorkspace(active);
 
 	if (active) {
-		const { secretGet } = await keychain();
-		const blob = await secretGet(active.tokenRef);
-		setActiveKeychainStorage(createKeychainStorage(active.tokenRef, blob, makePersister()));
+		const { sessionRead, onSessionReplaced } = await keychain();
+		const entry = await sessionRead(active.tokenRef);
+		const storage = createKeychainStorage(active.tokenRef, entry, makeSessionPersistence());
+		setActiveKeychainStorage(storage);
+		// Another window signed in to this workspace again or removed it: drop
+		// the session this window holds and read the one it left.
+		void onSessionReplaced((account, revision) => {
+			if (account === storage.accountKey) void storage.refresh(revision);
+		}).catch(() => {});
 	}
 }
 
@@ -275,8 +281,12 @@ async function removeWorkspace(id: string): Promise<void> {
 	const { wipePostboxOfflineReadCache } =
 		await import('~/composables/postbox/usePostboxOfflineCache');
 	await wipePostboxOfflineReadCache();
-	const { secretDelete } = await keychain();
-	await secretDelete(workspaceTokenRef(id));
+	// Through the session ledger, so no window still holding the session can
+	// write it back after the entry is gone.
+	const { sessionReplace } = await keychain();
+	await sessionReplace(workspaceTokenRef(id), null).catch((e: unknown) => {
+		console.warn('[desktop] removing the workspace session failed:', e);
+	});
 
 	workspaces.value = workspaces.value.filter((w) => w.id !== id);
 	if (wasActive) activeId.value = workspaces.value[0]?.id ?? null;

@@ -16,8 +16,22 @@
  * session. The whole cache is serialized as one JSON blob per workspace, so we
  * never need to know `crossDomainClient`'s internal key names (cookie vs
  * local-cache).
+ *
+ * Every open window (main, compose) has its own storage for the same entry.
+ * A storage remembers the session revision it read and writes only against it
+ * (see the desktop `secrets.rs`): once another window has signed in again or
+ * removed the workspace, a write of the older session is refused, and the
+ * storage reads the current session instead of keeping the one it held.
  */
-type Persister = (accountKey: string, blob: string) => void | Promise<void>;
+import type { SessionEntry, SessionWriteOutcome } from '@owlat/desktop/src/keychain';
+
+/** How a storage reaches its keychain entry. */
+export interface SessionPersistence {
+	/** Write `blob` if the entry is still at `revision`. */
+	write(accountKey: string, blob: string, revision: number): Promise<SessionWriteOutcome>;
+	/** The entry as it is now; null when the keychain cannot be read. */
+	read(accountKey: string): Promise<SessionEntry | null>;
+}
 
 export interface KeychainSessionStorage {
 	/** The keychain entry this storage reads from and writes to. Fixed. */
@@ -44,6 +58,12 @@ export interface KeychainSessionStorage {
 	 * emptied cache: the workspace is being removed and its entry deleted.
 	 */
 	discard(): Promise<void>;
+	/**
+	 * The session was replaced elsewhere (at `revision`): drop what this
+	 * storage holds and read the current session. A storage already at that
+	 * revision has nothing to do.
+	 */
+	refresh(revision?: number): Promise<void>;
 }
 
 const FLUSH_DEBOUNCE_MS = 150;
@@ -60,21 +80,25 @@ function parseBlob(blob: string | null): Record<string, string> {
 }
 
 /**
- * A storage for one keychain entry. `initialBlob` is the previously persisted
- * blob (null for a fresh entry). With no `persist`, the storage is memory-only
- * until its owner writes `snapshot()` itself — the connect handshake keeps a
- * session it has not confirmed off the keychain that way.
+ * A storage for one keychain entry. `initial` is the entry as read (null for a
+ * fresh entry). With no `persistence`, the storage is memory-only until its
+ * owner stores `snapshot()` itself — the connect handshake keeps a session it
+ * has not confirmed off the keychain that way.
  */
 export function createKeychainStorage(
 	accountKey: string,
-	initialBlob: string | null,
-	persist: Persister | null
+	initial: SessionEntry | null,
+	persistence: SessionPersistence | null
 ): KeychainSessionStorage {
-	let cache = parseBlob(initialBlob);
+	let cache = parseBlob(initial?.value ?? null);
+	let revision = initial?.revision ?? 0;
 	let flushTimer: ReturnType<typeof setTimeout> | null = null;
 	let dirty = false;
 	let suspended = false;
 	let discarded = false;
+	// Set when a replaced session could not be read back: this storage no
+	// longer knows the current revision, so it stops writing.
+	let retired = false;
 	// Writes are chained so two flushes can never land out of order.
 	let writes: Promise<void> = Promise.resolve();
 
@@ -85,18 +109,44 @@ export function createKeychainStorage(
 		}
 	}
 
+	function canWrite(): boolean {
+		return !!persistence && !suspended && !discarded && !retired;
+	}
+
+	/** Take the entry as it is now, replacing whatever this storage held. */
+	async function adoptCurrent(): Promise<void> {
+		const current = await persistence!.read(accountKey);
+		if (discarded) return;
+		cancelTimer();
+		dirty = false;
+		if (!current) {
+			retired = true;
+			return;
+		}
+		cache = parseBlob(current.value);
+		revision = current.revision;
+	}
+
 	function writeNow(): Promise<void> {
 		cancelTimer();
-		if (!persist || !dirty || suspended || discarded) return writes;
+		if (!dirty || !canWrite()) return writes;
 		dirty = false;
 		const blob = JSON.stringify(cache);
-		writes = writes.then(() => persist(accountKey, blob)).catch(() => {});
+		const at = revision;
+		writes = writes
+			.then(async () => {
+				const outcome = await persistence!.write(accountKey, blob, at);
+				// The session was replaced since this storage read it: what it
+				// holds is the older session, so read the current one instead.
+				if (outcome === 'stale') await adoptCurrent();
+			})
+			.catch(() => {});
 		return writes;
 	}
 
 	function changed(): void {
 		dirty = true;
-		if (!persist || suspended || discarded) return;
+		if (!canWrite()) return;
 		cancelTimer();
 		flushTimer = setTimeout(() => {
 			flushTimer = null;
@@ -139,6 +189,16 @@ export function createKeychainStorage(
 			cache = {};
 			dirty = false;
 			await writes;
+		},
+		refresh(at) {
+			if (!persistence || discarded) return writes;
+			writes = writes
+				.then(async () => {
+					if (at !== undefined && at === revision) return;
+					await adoptCurrent();
+				})
+				.catch(() => {});
+			return writes;
 		},
 	};
 }

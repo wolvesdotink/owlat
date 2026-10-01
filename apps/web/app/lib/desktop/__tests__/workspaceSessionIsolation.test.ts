@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { WorkspaceConfig, WorkspaceStoreShape } from '~/lib/desktop/workspaceTypes';
+import { createFakeSessionKeychain } from './fakeSessionKeychain';
 
 // Each desktop workspace client owns its session storage and keychain entry.
 // Driven with the REAL better-auth client and cross-domain plugin, the real
@@ -8,15 +9,9 @@ import type { WorkspaceConfig, WorkspaceStoreShape } from '~/lib/desktop/workspa
 // signed in to keeps working (session checks, Convex token refreshes) while a
 // second workspace is being connected.
 
-const keychainEntries = new Map<string, string>();
-const secretSet = vi.fn(async (key: string, blob: string) => {
-	keychainEntries.set(key, blob);
-});
-vi.mock('@owlat/desktop/src/keychain', () => ({
-	secretGet: async (key: string) => keychainEntries.get(key) ?? null,
-	secretSet: (key: string, blob: string) => secretSet(key, blob),
-	secretDelete: async (key: string) => void keychainEntries.delete(key),
-}));
+const keychain = createFakeSessionKeychain();
+const keychainEntries = keychain.entries;
+vi.mock('@owlat/desktop/src/keychain', () => keychain.bridge);
 
 let savedStore: WorkspaceStoreShape = { workspaces: [], activeWorkspaceId: null };
 vi.mock('@owlat/desktop/src/workspace', () => ({
@@ -40,6 +35,13 @@ const A: WorkspaceConfig = {
 	addedAt: 1,
 	lastActiveAt: 1,
 	accentColor: '#8c5a7a',
+};
+const A_INFO = {
+	name: 'A',
+	siteUrl: A.siteUrl,
+	convexUrl: A.convexUrl,
+	convexSiteUrl: A.convexSiteUrl,
+	deploymentMode: 'selfhost',
 };
 const B_INFO = {
 	name: 'B',
@@ -81,7 +83,16 @@ const fakeFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => 
 	const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : {}));
 	seen.push({ url, cookie: headers.get('Better-Auth-Cookie') ?? '' });
 
+	if (url === 'https://a.example.com/api/instance-info') return json(A_INFO);
 	if (url === 'https://b.example.com/api/instance-info') return json(B_INFO);
+	if (url.startsWith('https://site.a.example.com/api/auth/cross-domain/one-time-token/verify')) {
+		return json(
+			{ token: 'A-new-session' },
+			{
+				'set-better-auth-cookie': 'better-auth.session_token=A-new-session; Max-Age=3600; Path=/',
+			}
+		);
+	}
 	if (url.startsWith('https://site.b.example.com/api/auth/cross-domain/one-time-token/verify')) {
 		await duringRedeem();
 		return json(
@@ -109,8 +120,9 @@ async function bootWithA() {
 	const authClientModule = await import('~/lib/auth-client');
 	const convexAuth = await import('~/lib/convex-auth');
 	const connect = await import('~/lib/desktop/workspaceConnect');
+	const storage = await import('~/lib/desktop/keychainStorage');
 	await workspaces.loadWorkspaces();
-	return { ...workspaces, ...authClientModule, ...convexAuth, ...connect };
+	return { ...workspaces, ...authClientModule, ...convexAuth, ...connect, ...storage };
 }
 
 /** Start connecting B the way the connect screen does; returns the handshake state. */
@@ -129,14 +141,13 @@ let assign: ReturnType<typeof vi.fn>;
 beforeEach(() => {
 	(window as unknown as Record<string, unknown>)['__TAURI_INTERNALS__'] = {};
 	window.localStorage.clear();
-	keychainEntries.clear();
+	keychain.reset();
 	keychainEntries.set(A.tokenRef, A_BLOB);
 	savedStore = { workspaces: [A], activeWorkspaceId: A.id };
 	seen.length = 0;
 	aSession = { user: { id: 'user-a' }, session: { id: 's-a' } };
 	duringRedeem = async () => {};
 	duringSessionCheck = async () => {};
-	secretSet.mockClear();
 	vi.stubGlobal('fetch', fakeFetch);
 	assign = vi.fn();
 	Object.defineProperty(window.location, 'assign', {
@@ -195,7 +206,7 @@ describe('desktop workspace session isolation', () => {
 		expect(bEntry?.[1]).toContain('B-session');
 		expect(bEntry?.[1]).not.toContain('A-session');
 		// A's own entry was cleared by A's own answer, and holds nothing of B.
-		for (const [key, blob] of secretSet.mock.calls) {
+		for (const [key, blob] of keychain.sessionWrite.mock.calls) {
 			if (key === A.tokenRef) expect(blob).not.toContain('B-session');
 		}
 		expect(savedStore.activeWorkspaceId).toBe(bEntry?.[0].replace('owlat-ws:', ''));
@@ -213,5 +224,69 @@ describe('desktop workspace session isolation', () => {
 		expect(keychainEntries.get(A.tokenRef)).toBe(A_BLOB);
 		expect([...keychainEntries.keys()]).toEqual([A.tokenRef]);
 		expect(savedStore).toEqual({ workspaces: [A], activeWorkspaceId: A.id });
+	});
+});
+
+/**
+ * Signing in to the active workspace again from the main window while a
+ * compose window is open on it. Compose is a second webview: its own module
+ * graph, auth client and storage for the same keychain entry, and the same
+ * native keychain.
+ */
+describe('desktop session replacement across windows', () => {
+	async function reauthenticateAInMain() {
+		const compose = await bootWithA();
+		const main = await bootWithA();
+		await main.addWorkspace(A.siteUrl);
+		const { openExternal } = await import('@owlat/desktop/src/shell');
+		const opened = new URL(vi.mocked(openExternal).mock.calls.at(-1)?.[0] as string);
+		await main.completeConnection({
+			ott: 'one-time',
+			state: opened.searchParams.get('state') as string,
+		});
+		expect(keychainEntries.get(A.tokenRef)).toContain('A-new-session');
+		return { compose, main };
+	}
+
+	async function composeSessionCheck(compose: Modules) {
+		await compose.authClient.getSession({ query: { disableCookieCache: true } });
+		await compose.getActiveKeychainStorage()?.flush();
+	}
+
+	it('an open compose window moves to the new session', async () => {
+		const { compose } = await reauthenticateAInMain();
+
+		await composeSessionCheck(compose);
+
+		expect(keychainEntries.get(A.tokenRef)).toContain('A-new-session');
+		expect(keychainEntries.get(A.tokenRef)).not.toContain('"A-session"');
+		expect(cookiesSentTo('https://site.a.example.com/api/auth/get-session').at(-1)).toContain(
+			'A-new-session'
+		);
+	});
+
+	it('a compose window that missed the change cannot write the older session back', async () => {
+		keychain.setDeliverEvents(false);
+		const { compose } = await reauthenticateAInMain();
+
+		await composeSessionCheck(compose);
+
+		expect(keychainEntries.get(A.tokenRef)).toContain('A-new-session');
+		expect(keychainEntries.get(A.tokenRef)).not.toContain('"A-session"');
+		// Its refused write made it read the new session, which it uses from then on.
+		await compose.authClient.getSession({ query: { disableCookieCache: true } });
+		expect(cookiesSentTo('https://site.a.example.com/api/auth/get-session').at(-1)).toContain(
+			'A-new-session'
+		);
+	});
+
+	it("a signed-out answer to compose's older session does not clear the new one", async () => {
+		keychain.setDeliverEvents(false);
+		const { compose } = await reauthenticateAInMain();
+		aSession = null;
+
+		await composeSessionCheck(compose);
+
+		expect(keychainEntries.get(A.tokenRef)).toContain('A-new-session');
 	});
 });

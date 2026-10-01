@@ -22,11 +22,13 @@ vi.mock('@owlat/desktop/src/workspace', () => ({
 	loadWorkspaceStore: () => loadWorkspaceStore(),
 }));
 
-const secretGet = vi.fn(async () => 'session-blob');
+const sessionRead = vi.fn(async () => ({ value: 'session-blob', revision: 0 }));
 vi.mock('@owlat/desktop/src/keychain', () => ({
-	secretGet: (...args: unknown[]) => secretGet(...(args as [])),
-	secretSet: vi.fn(async () => {}),
-	secretDelete: vi.fn(async () => {}),
+	secretGet: vi.fn(async () => 'session-blob'),
+	sessionRead: (...args: unknown[]) => sessionRead(...(args as [])),
+	sessionWrite: vi.fn(async () => 'written'),
+	sessionReplace: vi.fn(async () => 1),
+	onSessionReplaced: vi.fn(async () => () => {}),
 }));
 
 const setActiveWorkspace = vi.fn();
@@ -140,7 +142,7 @@ describe('loadWorkspaces seedLocalDev — dev auto-connect to the local instance
 		expect(setActiveKeychainStorage).toHaveBeenCalledWith(
 			expect.objectContaining({ accountKey: `owlat-ws:${LOCAL_DEV_WORKSPACE_ID}` })
 		);
-		expect(secretGet).toHaveBeenCalledWith(`owlat-ws:${LOCAL_DEV_WORKSPACE_ID}`);
+		expect(sessionRead).toHaveBeenCalledWith(`owlat-ws:${LOCAL_DEV_WORKSPACE_ID}`);
 	});
 
 	it('reuses a manually-connected workspace on the same origin and refreshes its endpoints', async () => {
