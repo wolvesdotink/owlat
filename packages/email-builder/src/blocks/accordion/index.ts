@@ -42,6 +42,10 @@ export const accordionEditor: EditorModule<'accordion'> = {
 		}));
 	},
 
+	// Sections are entries of `content.sections`, not Blocks; the Sections
+	// list field renames, reorders and removes them.
+	childrenAreBlocks: false,
+
 	// Accordion children are sections, not arbitrary blocks — no block insertion.
 	allowedChildTypes() {
 		return [];

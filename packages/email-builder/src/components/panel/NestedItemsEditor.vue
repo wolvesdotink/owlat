@@ -29,6 +29,12 @@ const children = computed<Array<{ id: string; type: string; label: string; icon:
 	return mod?.childrenView?.(props.block as never) ?? [];
 });
 
+// Selecting and removing a child address a Block by id. Entries that are not
+// Blocks (accordion sections) are edited through the block's own fields.
+const childrenAreBlocks = computed(
+	() => editorModuleFor(blockType.value)?.childrenAreBlocks !== false
+);
+
 const validChildTypes = computed<{ value: string; label: string; icon: Component | null }[]>(() => {
 	const mod = editorModuleFor(blockType.value);
 	const allowed = mod?.allowedChildTypes?.() ?? [];
@@ -58,14 +64,21 @@ const validChildTypes = computed<{ value: string; label: string; icon: Component
 				Remove button, and a button makes all of its descendants
 				presentational, which stripped that control out of the a11y tree
 				entirely. The row's own "edit this child" action is a real <button>
-				spanning the label, so the two controls are siblings.
+				spanning the label, so the two controls are siblings. Rows for entries
+				that are not Blocks carry the label only.
 			-->
 			<div
 				v-for="child in children"
 				:key="child.id"
-				class="group/item flex items-center gap-1.5 py-[7px] px-2 border border-border-subtle rounded-lg transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:border-border-subtle"
+				class="flex items-center gap-1.5 py-[7px] px-2 border border-border-subtle rounded-lg"
+				:class="
+					childrenAreBlocks &&
+					'group/item transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:border-border-subtle'
+				"
 			>
+				<span v-if="!childrenAreBlocks" class="flex-1 text-xs text-text-primary whitespace-nowrap overflow-hidden text-ellipsis">{{ child.label }}</span>
 				<button
+					v-else
 					class="flex flex-1 items-center gap-1.5 min-w-0 border-none bg-transparent p-0 text-left cursor-pointer"
 					type="button"
 					:aria-label="`Edit ${child.label}`"
@@ -81,6 +94,7 @@ const validChildTypes = computed<{ value: string; label: string; icon: Component
 					<ChevronRight :size="12" class="text-text-tertiary shrink-0 opacity-0 group-hover/item:opacity-100 transition-opacity duration-(--motion-fast)" />
 				</button>
 				<button
+					v-if="childrenAreBlocks"
 					class="flex items-center justify-center w-[22px] h-[22px] border-none rounded bg-none text-text-tertiary cursor-pointer shrink-0 opacity-0 group-hover/item:opacity-100 transition-[opacity,color,background-color] duration-(--motion-fast) hover:text-error hover:bg-error-subtle"
 					type="button"
 					:title="`Remove ${child.label}`"
