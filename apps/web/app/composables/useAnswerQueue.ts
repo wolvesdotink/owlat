@@ -34,7 +34,7 @@ export type AnswerItem =
  */
 export function useAnswerQueue(opts: { enabled?: () => boolean } = {}) {
 	const { isEnabled } = useFeatureFlag();
-	const { isAdmin } = usePermissions();
+	const { isAdmin, isRoleLoading } = usePermissions();
 	const { ids, byId, isLoading: inboxesLoading } = useInboxes();
 	// A host that mounts on every Answer mode route (the queue's parent page)
 	// reads nothing until the queue is actually in use.
@@ -101,6 +101,10 @@ export function useAnswerQueue(opts: { enabled?: () => boolean } = {}) {
 
 	const isLoading = computed(() => {
 		if (inboxesLoading.value) return true;
+		// The team drafts and mentions are gated on the role: until it resolves,
+		// the list is not whole. A queue that started on the mail rows alone took
+		// a team draft in later only at its end, out of its rank.
+		if (reading.value && isRoleLoading?.value) return true;
 		for (const result of mailResults.values()) if (result.isLoading.value) return true;
 		return (
 			(teamEnabled.value && reviewLoading.value) || (chatEnabled.value && mentionLoading.value)

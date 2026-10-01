@@ -321,21 +321,10 @@ onBeforeUnmount(() => {
 			</template>
 
 			<template v-if="assist.aiEnabled.value && seed" #peek-actions>
-				<UiButton
-					type="button"
-					size="sm"
-					variant="ghost"
-					class="shrink-0"
-					:disabled="ask.busy.value"
-					data-testid="answer-peek-draft"
-					@click="draftFromPeek"
-				>
-					<Icon name="lucide:sparkles" class="mr-1 size-3.5 text-brand" aria-hidden="true" />
-					{{ t('components.answer.aiBar.peekDraft') }}
-				</UiButton>
+				<AnswerPeekDraft :disabled="ask.busy.value" @draft="draftFromPeek" />
 			</template>
 
-			<template #conversation>
+			<template #conversation="{ layout }">
 				<PostboxAiStrip
 					v-if="askingThread && message"
 					class="mx-4 mt-4"
@@ -353,6 +342,7 @@ onBeforeUnmount(() => {
 					<template #catch-up="{ view: shown, messages, reveal }">
 						<CatchUpCard
 							v-if="shown === 'summary'"
+							:collapsible="layout === 'phone'"
 							:catch-up="catchUp.catchUp.value"
 							:loading="catchUp.loading.value"
 							:messages="messages"

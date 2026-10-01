@@ -95,6 +95,22 @@ describe('CatchUpCard', () => {
 		expect(w.emitted('reveal')).toEqual([['c']]);
 	});
 
+	it('folds to one line on a phone, and unfolds on Show', async () => {
+		const w = mountCard({ collapsible: true });
+		expect(w.get('[data-testid="catch-up-compact-meta"]').text()).toBe(
+			'4 messages since Sep 1 · 2 asks'
+		);
+		const toggle = w.get('[data-testid="catch-up-toggle"]');
+		const body = () => w.get(`#${toggle.attributes('aria-controls')}`).element as HTMLElement;
+		expect(toggle.attributes('aria-expanded')).toBe('false');
+		expect(body().style.display).toBe('none');
+		await toggle.trigger('click');
+		expect(toggle.attributes('aria-expanded')).toBe('true');
+		expect(body().style.display).toBe('');
+		expect(body().textContent).toContain('Renewed 40 seats.');
+		expectFullyLocalized(w);
+	});
+
 	it('ticks the asks the draft covers, with a reason only when given', () => {
 		const w = mountCard({ covered: ['ask_2'], hints: { ask_2: '"PO BP-2231 is on it"' } });
 		const asks = w.findAll('[data-testid="catch-up-ask"]');

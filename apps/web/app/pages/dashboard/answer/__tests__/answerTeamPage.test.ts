@@ -18,6 +18,8 @@ import { computed, defineComponent, h, reactive, ref, useId } from 'vue';
 
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import AnswerModeFrame from '~/components/answer/AnswerModeFrame.vue';
+import AnswerPeekDraft from '~/components/answer/AnswerPeekDraft.vue';
+import AnswerTeamRejectModal from '~/components/answer/AnswerTeamRejectModal.vue';
 import AnswerTeamAttachments from '~/components/answer/AnswerTeamAttachments.vue';
 import AnswerTeamPresence from '~/components/answer/AnswerTeamPresence.vue';
 import AttachSuggestion from '~/components/inbox/AttachSuggestion.vue';
@@ -120,6 +122,7 @@ beforeAll(() => {
 			cancelFollowUp: vi.fn(),
 		}),
 		usePermissions: () => ({ isAdmin: ref(true), canManageOrganization: ref(true) }),
+		useDesktopContext: () => ({ platform: ref('linux') }),
 		useFeatureFlag: () => ({ isEnabled: () => true }),
 		useAuth: () => ({ user: ref({ id: 'u_me' }) }),
 		useToast: () => ({ showToast: vi.fn() }),
@@ -183,6 +186,8 @@ async function mountPage() {
 				AnswerTeamConversation: inert('AnswerTeamConversation'),
 				AnswerTeamReusedAnswers: inert('AnswerTeamReusedAnswers'),
 				AnswerQueueBar: inert('AnswerQueueBar'),
+				AnswerPeekDraft,
+				AnswerTeamRejectModal,
 				PostboxOverflowMenu: passThrough('PostboxOverflowMenu'),
 				PostboxComposerPreflightChip: inert('PostboxComposerPreflightChip'),
 				UiAvatar: inert('UiAvatar'),
@@ -229,6 +234,28 @@ describe('Answer mode for a Team inbox thread', () => {
 		expect(wrapper.get('[data-testid="answer-back"]').attributes('aria-label')).toBe(
 			'Back to Team inbox'
 		);
+	});
+
+	it('offers "✦ Draft" beside the resting phone sheet, as the Postbox route does', async () => {
+		const realMatchMedia = window.matchMedia;
+		window.matchMedia = ((query: string) => ({
+			matches: /max-width/.test(query),
+			media: query,
+			addEventListener: () => {},
+			removeEventListener: () => {},
+		})) as unknown as typeof window.matchMedia;
+		draftWithAi.value = true;
+		try {
+			const wrapper = await mountPage();
+			expect(wrapper.get('[data-testid="answer-mode"]').attributes('data-layout')).toBe('phone');
+			await wrapper.get('[data-testid="answer-peek-draft"]').trigger('click');
+			expect(
+				wrapper.get('[data-testid="answer-composer-column"]').attributes('data-sheet-state')
+			).toBe('full');
+		} finally {
+			window.matchMedia = realMatchMedia;
+			draftWithAi.value = false;
+		}
 	});
 
 	it('arms the Approved · Undo countdown for a held approve, and its Undo cancels the send', async () => {

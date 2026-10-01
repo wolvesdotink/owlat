@@ -250,6 +250,7 @@ onBeforeUnmount(() => clearTimeout(highlightTimer));
 			:key="msg._id"
 			reduced
 			:data-answer-message="msg._id"
+			:data-answer-anchor="msg._id === message._id ? '' : undefined"
 			class="scroll-mt-4 rounded-md transition-shadow duration-(--motion-fast)"
 			:class="highlightedId === msg._id ? 'ring-2 ring-brand/60' : ''"
 			:message="msg"

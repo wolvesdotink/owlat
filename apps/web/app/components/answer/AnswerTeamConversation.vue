@@ -150,6 +150,7 @@ const showViewToggle = computed(() => props.messages.length > 1);
 				class="rounded-(--radius-card) border border-border-subtle bg-bg-elevated transition-shadow"
 				:class="{ 'ring-2 ring-brand/50': flashed === entry.message._id }"
 				:data-message-id="entry.message._id"
+				:data-answer-anchor="entry.message._id === answeringId ? '' : undefined"
 				data-testid="answer-team-message"
 			>
 				<button

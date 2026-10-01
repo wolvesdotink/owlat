@@ -28,6 +28,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { BackendOperationResult } from '~/composables/useBackendOperation';
 import type { ComposerAttachment } from './usePostboxComposeAttachments';
 import { freshDraftText, replaceAnswerText, splitAnswerBody } from '~/utils/answerDraft';
+import { formatTime } from '~/utils/formatters';
 
 export interface AnswerComposerApi {
 	/** What was written, as plain text (no quote, no signature). */
@@ -137,8 +138,9 @@ export function usePostboxComposerAnswerApi(opts: {
 		const note = opts.statusNote();
 		if (note) return note;
 		if (!opts.lastSavedAt.value) return '';
+		// Hours and minutes, in the locale's own 12/24-hour clock ("Saved 09:31").
 		return t('components.postbox.postboxComposer.savedAt', {
-			time: new Date(opts.lastSavedAt.value).toLocaleTimeString(locale.value),
+			time: formatTime(opts.lastSavedAt.value, locale.value),
 		});
 	});
 

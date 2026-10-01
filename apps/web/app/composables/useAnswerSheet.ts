@@ -79,6 +79,8 @@ export function useAnswerSheet(options: {
 	let lastTime = 0;
 	let velocity = 0;
 	let pointerId: number | null = null;
+	/** The handle row the pointer went down on; captured once a drag starts. */
+	let captureTarget: HTMLElement | null = null;
 	/** Set when a drag ends; the click that follows it is not a tap. */
 	let swallowClick = false;
 
@@ -94,13 +96,17 @@ export function useAnswerSheet(options: {
 		startHeight = sheet.getBoundingClientRect().height;
 		containerHeight = body.getBoundingClientRect().height;
 		peekHeight = options.handle.value?.getBoundingClientRect().height ?? 0;
-		(event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId);
+		// Not captured yet: a captured pointer's click is sent to the capturing
+		// row instead of the button under it, so a mouse click on "Reply to …"
+		// never reached the button. Capture starts with the drag (below).
+		captureTarget = event.currentTarget as HTMLElement | null;
 	}
 
 	function onPointerMove(event: PointerEvent) {
 		if (pointerId !== event.pointerId) return;
 		const moved = startY - event.clientY;
 		if (dragHeight.value === null && Math.abs(moved) < DRAG_SLOP) return;
+		if (dragHeight.value === null) captureTarget?.setPointerCapture?.(event.pointerId);
 		const elapsed = event.timeStamp - lastTime;
 		if (elapsed > 0) velocity = (lastY - event.clientY) / elapsed;
 		lastY = event.clientY;
@@ -111,7 +117,10 @@ export function useAnswerSheet(options: {
 	function onPointerUp(event: PointerEvent) {
 		if (pointerId !== event.pointerId) return;
 		pointerId = null;
-		(event.currentTarget as HTMLElement | null)?.releasePointerCapture?.(event.pointerId);
+		if (captureTarget?.hasPointerCapture?.(event.pointerId)) {
+			captureTarget.releasePointerCapture(event.pointerId);
+		}
+		captureTarget = null;
 		if (dragHeight.value === null) return;
 		swallowClick = true;
 		// The click, if the browser sends one, comes before any timer runs.
@@ -133,6 +142,7 @@ export function useAnswerSheet(options: {
 	function onPointerCancel(event: PointerEvent) {
 		if (pointerId !== event.pointerId) return;
 		pointerId = null;
+		captureTarget = null;
 		dragHeight.value = null;
 	}
 

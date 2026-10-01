@@ -27,6 +27,7 @@
  * the shell unmounts its chrome, tab bar included, while one is open.
  */
 import { useAnswerLayout, useAnswerSheet } from '~/composables/useAnswerSheet';
+import { useAnswerAnchor } from '~/composables/useAnswerAnchor';
 import { useKeyboardInset } from '~/composables/useKeyboardInset';
 import type { AnswerSheetState, AnswerTab } from '~/utils/answerModeLayout';
 import { pushShortcutScope } from '~/utils/shortcutScope';
@@ -84,6 +85,9 @@ const replyPanelId = useId();
 const sheetHintId = useId();
 
 const layout = useAnswerLayout();
+// On a phone or tablet, open with the message being answered in view.
+const conversationEl = ref<HTMLElement | null>(null);
+useAnswerAnchor({ column: conversationEl, active: () => layout.value !== 'split' });
 const keyboard = useKeyboardInset();
 const bodyEl = ref<HTMLElement | null>(null);
 const sheetEl = ref<HTMLElement | null>(null);
@@ -252,6 +256,7 @@ function startReply() {
 		>
 			<section
 				:id="conversationPanelId"
+				ref="conversationEl"
 				class="min-h-0 flex-1 overflow-y-auto"
 				:class="[
 					{ hidden: conversationHidden },
@@ -260,7 +265,7 @@ function startReply() {
 				:aria-label="t('components.answer.mode.tabs.conversation')"
 				data-testid="answer-conversation-column"
 			>
-				<slot name="conversation" />
+				<slot name="conversation" :layout="layout" />
 			</section>
 			<section
 				:id="replyPanelId"

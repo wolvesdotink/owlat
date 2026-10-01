@@ -176,6 +176,31 @@ describe('the Answer queue opens Answer mode', () => {
 		expect(session.flow.current.value?.id).toBe('mention:c');
 	});
 
+	it('takes in a team item that arrives after the queue started, without moving the current one', async () => {
+		// The admin role (and with it the team review query) resolves after the
+		// mail rows: the flow has already started on them.
+		items.value = [mail('a'), mail('b'), mail('c')];
+		const session = mountSession();
+		await nextTick();
+		expect(session.flow.total.value).toBe(3);
+		expect(route.path).toBe('/dashboard/answer/m/msg_a');
+
+		items.value = [mail('a'), team('late'), mail('b'), mail('c')];
+		await nextTick();
+
+		expect(session.flow.total.value).toBe(4);
+		expect(session.flow.position.value).toBe(1);
+		expect(session.flow.current.value?.id).toBe('mail:thr_a');
+		expect(route.path).toBe('/dashboard/answer/m/msg_a');
+		// It is reachable: browsing on gets there.
+		const seen: string[] = [];
+		while (session.flow.canGoNext.value) {
+			session.next();
+			seen.push(session.flow.current.value!.id);
+		}
+		expect(seen).toContain('team:in_late');
+	});
+
 	it('browsing moves between items without finishing any', async () => {
 		items.value = [mail('a'), mail('b')];
 		const session = mountSession();
