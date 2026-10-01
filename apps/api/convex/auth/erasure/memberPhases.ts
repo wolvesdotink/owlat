@@ -1,8 +1,9 @@
 /**
  * The member's rows outside their personal mailboxes: instance-level rows,
  * everything keyed by their user id in the workspace, memberships on other
- * people's shared mailboxes, the private assistant, staged exports, and the
- * organization's records that name them (anonymized, not deleted).
+ * people's shared mailboxes, the private assistant and Answer mode ask
+ * sessions, staged exports, and the organization's records that name them
+ * (anonymized, not deleted).
  *
  * Each phase drains an index range that its own writes empty (a delete, or a
  * patch of the indexed field), so it resumes by reading the range again.
@@ -20,6 +21,7 @@ import { deleteMemberInstanceRows } from '../memberInstanceRows';
 import { deleteRanges } from './mailboxPhases';
 import {
 	DELETED_ACCOUNT_ID,
+	deleteAskSession,
 	deleteBlobAndReceipt,
 	type MemberPhaseOutcome,
 	type MemberPhaseRunner,
@@ -207,6 +209,26 @@ export const eraseAssistant: MemberPhaseRunner = async (phase) => {
 		}
 	);
 };
+
+/**
+ * The member's Answer mode ask sessions on any target: their instruction and
+ * answers, and thread text quoted for the drafter. A session is private to its
+ * owner whatever it drafts for, so the member's go from team threads and
+ * shared mailboxes too (those on a personal draft already went with it);
+ * another member's session on the same target stays. Each goes with the draft
+ * stream it opened.
+ */
+export const eraseAnswerAsk: MemberPhaseRunner = async (phase) => ({
+	isDone: await drainEach(
+		phase.budget,
+		(n) =>
+			phase.ctx.db
+				.query('answerAskSessions')
+				.withIndex('by_owner', (q) => q.eq('ownerId', phase.authUserId))
+				.take(n),
+		(session) => deleteAskSession(phase, session)
+	),
+});
 
 /** Staged account-export sessions: their download leases, then artifacts and their files. */
 export const eraseAccountExports: MemberPhaseRunner = async (phase) => {

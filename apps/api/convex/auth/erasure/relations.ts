@@ -191,6 +191,12 @@ export const MEMBER_RELATIONS: readonly MemberRelation[] = [
 		'Leftover draft-revise buffers holding the member’s draft text.'
 	),
 	rel(
+		'answerAskSessions',
+		'ownerId',
+		'delete',
+		'Answer mode ask sessions: the member’s instruction and answers, and thread text quoted for the drafter. Private to their owner whatever the target, so the member’s go from team threads and shared mailboxes too; other members’ sessions stay.'
+	),
+	rel(
 		'chatMessages',
 		'authorId',
 		'anonymize',
@@ -227,7 +233,7 @@ export const MEMBER_RELATIONS: readonly MemberRelation[] = [
 		'storageUploads',
 		'userId',
 		'retain',
-		'Upload receipts. Those of files the erasure deletes go with the file; the rest are deletion authority for the organization’s resources, and unclaimed tickets expire.'
+		'Upload receipts. Those of files the erasure deletes go with the file, including Reply Queue answer uploads bound to a personal thread (resource key `mailThreads:<id>`); the rest are deletion authority for the organization’s resources, and unclaimed tickets expire.'
 	),
 	rel(
 		'counterScopes',
@@ -263,6 +269,9 @@ export const MEMBER_RELATIONS: readonly MemberRelation[] = [
 		'Organization correspondence with a contact; the member is only the internal sender.'
 	),
 	rel('inboxFollowUps', 'createdBy', 'retain', ORG_ATTRIBUTION),
+	rel('conversationThreads', 'replyAttachments[].addedBy', 'retain', ORG_ATTRIBUTION),
+	rel('inboundMessages', 'replyAttachments[].addedBy', 'retain', ORG_ATTRIBUTION),
+	rel('inboxFollowUps', 'attachments[].addedBy', 'retain', ORG_ATTRIBUTION),
 	rel('shareLinks', 'createdBy', 'retain', ORG_ATTRIBUTION),
 	rel('visualizations', 'createdBy', 'retain', ORG_ATTRIBUTION),
 	rel('campaignSenders', 'createdBy', 'retain', ORG_ATTRIBUTION),

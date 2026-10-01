@@ -87,3 +87,22 @@ export async function deleteBlobAndReceipt(
 	}
 	await deleteBlobQuietly(phase.ctx.storage, storageId, '[member erasure]', context);
 }
+
+/**
+ * Delete an Answer mode ask session with the draft stream it opened, the way
+ * `mail/ai/composeDraftStore.ts` drops one: the stream goes only when the
+ * session's owner also owns it.
+ */
+export async function deleteAskSession(
+	phase: MemberPhaseContext,
+	session: Doc<'answerAskSessions'>
+): Promise<void> {
+	if (session.streamId) {
+		const stream = await phase.ctx.db.get(session.streamId);
+		if (stream) {
+			phase.budget.chargeRead(stream);
+			if (stream.ownerId === session.ownerId) await phase.ctx.db.delete(stream._id);
+		}
+	}
+	await phase.ctx.db.delete(session._id);
+}

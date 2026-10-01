@@ -38,6 +38,7 @@ import {
 	eraseAccountExports,
 	eraseAlertReceipts,
 	eraseAlertRecipients,
+	eraseAnswerAsk,
 	eraseAssistant,
 	eraseChatAuthorship,
 	eraseChatMemberships,
@@ -66,6 +67,7 @@ const PHASE_RUNNERS: Record<MemberErasurePhase, MemberPhaseRunner> = {
 	memberRecords: eraseMemberRecords,
 	sharedMemberships: eraseSharedMemberships,
 	assistant: eraseAssistant,
+	answerAsk: eraseAnswerAsk,
 	accountExports: eraseAccountExports,
 	alertRecipients: eraseAlertRecipients,
 	alertReceipts: eraseAlertReceipts,
@@ -159,6 +161,14 @@ export async function remainingMemberData(
 				ctx.db
 					.query('aiConversations')
 					.withIndex('by_owner_and_last_message', (q) => q.eq('ownerId', authUserId))
+					.first(),
+		],
+		[
+			'answerAskSessions',
+			() =>
+				ctx.db
+					.query('answerAskSessions')
+					.withIndex('by_owner', (q) => q.eq('ownerId', authUserId))
 					.first(),
 		],
 		[

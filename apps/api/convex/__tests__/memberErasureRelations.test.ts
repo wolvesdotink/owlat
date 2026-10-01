@@ -142,6 +142,16 @@ describe('member erasure relation registry', () => {
 		expect(actionOf('mailArchiveImports', 'mailboxId')).toBe('delete');
 	});
 
+	it('covers Answer mode: ask sessions everywhere, a personal thread’s catch-up cards', () => {
+		const actionOf = (table: string, field: string) =>
+			[...MEMBER_RELATIONS, ...DESCENDANT_RELATIONS].find(
+				(r) => r.table === table && r.field === field
+			)?.action;
+		expect(actionOf('answerAskSessions', 'ownerId')).toBe('delete');
+		expect(actionOf('answerAskSessions', 'target.draftId')).toBe('delete');
+		expect(actionOf('threadCatchUps', 'mailThreadId')).toBe('delete');
+	});
+
 	it('has a phase that reads every table it declares deleted', () => {
 		for (const table of tablesErasureDeletesFrom()) {
 			if (DELETED_BY_HELPER.has(table)) continue;

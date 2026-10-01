@@ -30,6 +30,7 @@ export const MEMBER_ERASURE_PHASES = [
 	'memberRecords',
 	'sharedMemberships',
 	'assistant',
+	'answerAsk',
 	'accountExports',
 	'alertRecipients',
 	'alertReceipts',

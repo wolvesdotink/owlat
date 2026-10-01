@@ -216,6 +216,13 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	),
 	desc(
 		'mailThreads',
+		'threadCatchUps',
+		'mailThreadId',
+		'delete',
+		'Answer mode catch-up cards retell the thread; deleted before it. A team thread’s cards (`conversationThreadId`) and a shared mailbox’s are the organization’s and stay.'
+	),
+	desc(
+		'mailThreads',
 		'clarificationAskLog',
 		'threadId',
 		'retain',
@@ -239,6 +246,13 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	desc('mailLabels', 'mailLabels', 'parentId', 'delete', SAME_MAILBOX),
 	desc('mailLabels', 'mailFilters', 'actions[].labelId', 'delete', SAME_MAILBOX),
 	desc('mailDrafts', 'mailAttachmentShares', 'sourceDraftId', 'delete', SAME_MAILBOX),
+	desc(
+		'mailDrafts',
+		'answerAskSessions',
+		'target.draftId',
+		'delete',
+		'Ask sessions on a personal draft go before the draft, whoever started them.'
+	),
 	desc('mailFilters', 'mailFilterRunJobs', 'filterId', 'delete', SAME_MAILBOX),
 	desc('mailFilters', 'mailTriageTallies', 'actedFilterId', 'delete', SAME_MAILBOX),
 	desc(
@@ -279,6 +293,13 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 		'conversationId',
 		'delete',
 		'Turns go before their conversation.'
+	),
+	desc(
+		'aiDraftStreams',
+		'answerAskSessions',
+		'streamId',
+		'delete',
+		'A session’s stream is its owner’s; the member’s sessions and streams both go.'
 	),
 	desc(
 		'accountExportSessions',

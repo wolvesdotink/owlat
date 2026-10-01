@@ -9,14 +9,18 @@
  *
  * Order within the mailboxes: writers are stopped first (credentials, archive
  * imports, background jobs, and the mailbox is marked `deleted` so nothing
- * delivers into it), then mail, threads, drafts and share links drain, then
+ * delivers into it), then mail, threads (with their catch-up cards and answer
+ * uploads), drafts (with their ask sessions) and share links drain, then
  * the mailbox's small per-mailbox records, and last the folders, labels,
  * counters and the mailbox row itself. Every phase re-reads its range from the
  * start, so any of them resumes after a failed transaction.
  */
 
-import type { Id, TableNames } from '../../_generated/dataModel';
-import { drainEach } from '../../contacts/erasure/phaseKit';
+import type { Doc, Id, TableNames } from '../../_generated/dataModel';
+import { drainEach, drainParents } from '../../contacts/erasure/phaseKit';
+import { deleteBlobQuietly } from '../../lib/storageBlobs';
+import { answerAskTargetKey } from '../../lib/validators/answerAsk';
+import { mailThreadUploadKey } from '../../storage/uploads';
 import { removeMessageAttachments } from '../../mail/attachmentIndex';
 import { deleteMessageRowAndBlobs } from '../../mail/messagePurge';
 import { deleteMailboxUsage } from '../../mail/mailboxUsage';
@@ -24,6 +28,7 @@ import { deleteFolderCounters, deleteMailboxCounters } from '../../mail/messageC
 import { isOrgInfrastructureAccount } from '../../mail/external/personalAccount';
 import { deleteStoredAccessToken } from '../../mail/external/accessTokenStore';
 import {
+	deleteAskSession,
 	deleteBlobAndReceipt,
 	forEachPersonalMailbox,
 	type MemberPhaseContext,
@@ -192,54 +197,101 @@ export const eraseMessages: MemberPhaseRunner = (phase) =>
 	});
 
 /**
- * Conversation rows, each after its cached Today summaries (one-sentence
- * digests of the thread's content). A mailbox that kept its threads after its
- * messages drained can hold far more than one transaction may read; they go a
- * chunk at a time within the budget. A thread whose summaries outlast the
- * budget stays for the next transaction, which starts with it.
+ * Conversation rows, each after what hangs off it: the cached Today summaries
+ * and Answer mode catch-up cards (both retell the thread's content), and the
+ * Reply Queue answer uploads bound to the thread (`mailThreadUploadKey`). A
+ * mailbox that kept its threads after its messages drained can hold far more
+ * than one transaction may read; they go one at a time within the budget. A
+ * thread whose children outlast the budget stays, and the phase is not done
+ * until the next transaction, which starts with it.
  */
 export const eraseThreads: MemberPhaseRunner = (phase) =>
-	forEachPersonalMailbox(phase, (mailbox) => {
+	forEachPersonalMailbox(phase, async (mailbox) => {
 		const { ctx, budget } = phase;
-		return drainEach(
+		const outcome = await drainParents(
 			budget,
-			(n) =>
+			() =>
 				ctx.db
 					.query('mailThreads')
 					.withIndex('by_mailbox_and_last_message', (q) => q.eq('mailboxId', mailbox._id))
-					.take(n),
-			async (thread) => {
+					.first(),
+			async (thread: Doc<'mailThreads'>) => {
 				const isEmpty = await deleteRanges(phase, [
 					(n) =>
 						ctx.db
 							.query('todayThreadSummaries')
 							.withIndex('by_thread_locale_counts', (q) => q.eq('threadId', thread._id))
 							.take(n),
+					(n) =>
+						ctx.db
+							.query('threadCatchUps')
+							.withIndex('by_mail_thread_and_locale', (q) => q.eq('mailThreadId', thread._id))
+							.take(n),
 				]);
-				if (isEmpty) await ctx.db.delete(thread._id);
+				if (!isEmpty) return false;
+				const resourceKey = mailThreadUploadKey(thread._id);
+				const isUploadsEmpty = await drainEach(
+					budget,
+					(n) =>
+						ctx.db
+							.query('storageUploads')
+							.withIndex('by_resource', (q) => q.eq('resourceKey', resourceKey))
+							.take(n),
+					async (receipt) => {
+						// As `storage/uploads.deleteResourceUploads`: only a bound
+						// receipt is deletion authority for its blob.
+						if (receipt.storageId && receipt.status === 'bound') {
+							await deleteBlobQuietly(ctx.storage, receipt.storageId, '[member erasure]', {
+								threadId: thread._id,
+							});
+						}
+						await ctx.db.delete(receipt._id);
+					}
+				);
+				if (!isUploadsEmpty) return false;
+				await ctx.db.delete(thread._id);
+				return true;
 			}
 		);
+		return outcome.isDone;
 	});
 
-/** Drafts, with the attachment files they hold. */
+/**
+ * Drafts, each after the Answer mode ask sessions started on it (whoever
+ * started them, with their draft streams), then with the attachment files it
+ * holds.
+ */
 export const eraseDrafts: MemberPhaseRunner = (phase) =>
-	forEachPersonalMailbox(phase, (mailbox) => {
+	forEachPersonalMailbox(phase, async (mailbox) => {
 		const { ctx, budget } = phase;
-		return drainEach(
+		const outcome = await drainParents(
 			budget,
-			(n) =>
+			() =>
 				ctx.db
 					.query('mailDrafts')
 					.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailbox._id))
-					.take(n),
-			async (draft) => {
+					.first(),
+			async (draft: Doc<'mailDrafts'>) => {
+				const targetKey = answerAskTargetKey({ kind: 'mailDraft', draftId: draft._id });
+				const isSessionsEmpty = await drainEach(
+					budget,
+					(n) =>
+						ctx.db
+							.query('answerAskSessions')
+							.withIndex('by_target_owner', (q) => q.eq('targetKey', targetKey))
+							.take(n),
+					(session) => deleteAskSession(phase, session)
+				);
+				if (!isSessionsEmpty) return false;
 				for (const attachment of draft.attachments) {
 					await deleteBlobAndReceipt(phase, attachment.storageId, { draftId: draft._id });
 					budget.chargeRows(1);
 				}
 				await ctx.db.delete(draft._id);
+				return true;
 			}
 		);
+		return outcome.isDone;
 	});
 
 /** Attachment share links out of the mailbox, with the file each one serves. */

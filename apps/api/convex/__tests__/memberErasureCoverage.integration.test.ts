@@ -20,6 +20,8 @@ import {
  * Issue #942: a completed member erasure leaves no personal data behind —
  * private assistant transcripts and uploaded mail archives included — while
  * other members' data and the organization's shared and seed mailboxes stay.
+ * Answer mode's private rows (ask sessions, a personal thread's catch-up cards
+ * and answer uploads) go too; a team inbox's stay.
  * Also the volume half of #940: a mailbox larger than one transaction may read
  * drains over bounded transactions under enforced limits.
  */
@@ -102,6 +104,61 @@ async function seedArchiveImport(t: Harness, authUserId: string, mailboxId: Id<'
 	});
 }
 
+/** An Answer mode ask session on a Postbox draft, with the draft stream it opened. */
+async function seedAskSession(t: Harness, ownerId: string, draftId: Id<'mailDrafts'>) {
+	return await t.run(async (ctx) => {
+		const now = Date.now();
+		const streamId = await ctx.db.insert('aiDraftStreams', {
+			ownerId,
+			surface: 'compose',
+			status: 'complete',
+			text: 'Dear Jonas, the invoice is attached.',
+			createdAt: now,
+			updatedAt: now,
+		});
+		const sessionId = await ctx.db.insert('answerAskSessions', {
+			ownerId,
+			organizationId: 'org-x',
+			target: { kind: 'mailDraft', draftId },
+			targetKey: `mailDraft:${draftId}`,
+			instruction: 'say yes, but only after the holidays',
+			locale: 'en',
+			round: 1,
+			status: 'ready',
+			questions: [],
+			streamId,
+			attachedFiles: [],
+			createdAt: now,
+			updatedAt: now,
+		});
+		return { sessionId, streamId };
+	});
+}
+
+/** A catch-up card and a bound Reply Queue answer upload on a Postbox thread. */
+async function seedThreadExtras(t: Harness, uploaderId: string, threadId: Id<'mailThreads'>) {
+	return await t.run(async (ctx) => {
+		const catchUpId = await ctx.db.insert('threadCatchUps', {
+			mailThreadId: threadId,
+			mode: 'full',
+			sentences: [{ text: 'Jonas asked for the September invoice.', sourceMessageIds: [] }],
+			asks: [],
+			messageCount: 1,
+			locale: 'en',
+			generatedAt: Date.now(),
+		});
+		const storageId = await ctx.storage.store(new Blob(['%PDF invoice']));
+		const receiptId = await ctx.db.insert('storageUploads', {
+			userId: uploaderId,
+			organizationId: 'org-x',
+			status: 'bound',
+			storageId,
+			resourceKey: `mailThreads:${threadId}`,
+		});
+		return { catchUpId, storageId, receiptId };
+	});
+}
+
 describe('personal data coverage', () => {
 	it('erases assistant transcripts and uploaded archives, and keeps everyone else’s', async () => {
 		const t = erasureHarness();
@@ -165,6 +222,103 @@ describe('personal data coverage', () => {
 			}
 			expect(await ctx.db.get(colleagueAssistant.conversationId)).not.toBeNull();
 			expect(await ctx.db.get(colleagueAssistant.promptId)).not.toBeNull();
+		});
+	});
+
+	it('erases Answer mode sessions, catch-up cards and thread uploads, and keeps the team’s', async () => {
+		const t = erasureHarness();
+		const { organizationId, authUserId, requestId } = await seedEditor(t);
+		const personal = await seedPersonalMailbox(t, authUserId);
+		const personalDraftId = await t.run((ctx) =>
+			ctx.db.insert('mailDrafts', draftRow(personal.mailboxId, Date.now()))
+		);
+		const personalSession = await seedAskSession(t, authUserId, personalDraftId);
+		const personalExtras = await seedThreadExtras(t, authUserId, personal.threadId);
+
+		// The team inbox the member connected: its threads' cards and uploads are
+		// the organization's. The member's own ask session on a team draft is
+		// still private to them; a colleague's on the same draft is not theirs.
+		const colleagueId = await seedIdentity(t, 'colleague@example.com');
+		await seedMembership(t, organizationId, colleagueId, 'editor');
+		const team = await seedPersonalMailbox(t, authUserId, {
+			scope: 'shared',
+			address: 'team@example.com',
+		});
+		const teamDraftId = await t.run((ctx) =>
+			ctx.db.insert('mailDrafts', draftRow(team.mailboxId, Date.now()))
+		);
+		const ownTeamSession = await seedAskSession(t, authUserId, teamDraftId);
+		const colleagueSession = await seedAskSession(t, colleagueId, teamDraftId);
+		const teamExtras = await seedThreadExtras(t, colleagueId, team.threadId);
+
+		await runDeletionCron(t);
+		await drainScheduled(t);
+		expect((await requestOf(t, requestId))?.status).toBe('completed');
+
+		await t.run(async (ctx) => {
+			for (const id of [
+				personalDraftId,
+				personalSession.sessionId,
+				personalSession.streamId,
+				ownTeamSession.sessionId,
+				ownTeamSession.streamId,
+				personalExtras.catchUpId,
+				personalExtras.receiptId,
+				personal.threadId,
+			]) {
+				expect(await ctx.db.get(id as never), String(id)).toBeNull();
+			}
+			expect(await ctx.storage.get(personalExtras.storageId)).toBeNull();
+			expect(
+				await ctx.db
+					.query('answerAskSessions')
+					.withIndex('by_owner', (q) => q.eq('ownerId', authUserId))
+					.first()
+			).toBeNull();
+
+			for (const id of [
+				teamDraftId,
+				colleagueSession.sessionId,
+				colleagueSession.streamId,
+				teamExtras.catchUpId,
+				teamExtras.receiptId,
+				team.threadId,
+			]) {
+				expect(await ctx.db.get(id as never), String(id)).not.toBeNull();
+			}
+			expect(await ctx.storage.get(teamExtras.storageId)).not.toBeNull();
+		});
+	});
+
+	it('does not finish the thread phase while a thread’s children outlast the budget', async () => {
+		const t = erasureHarness();
+		const { authUserId, requestId } = await seedEditor(t);
+		const { mailboxId, threadId } = await seedPersonalMailbox(t, authUserId);
+		// More cards than one transaction's row budget, then a second thread. A
+		// phase that called itself done here would leave both threads (and the
+		// cards) behind once the mailbox row went.
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			await ctx.db.insert('mailThreads', threadRow(mailboxId, now + 1));
+			for (let i = 0; i < 450; i++) {
+				await ctx.db.insert('threadCatchUps', {
+					mailThreadId: threadId,
+					mode: 'asksOnly',
+					sentences: [],
+					asks: [],
+					messageCount: 1,
+					locale: `l${i}`,
+					generatedAt: now,
+				});
+			}
+		});
+
+		await runDeletionCron(t);
+		await drainScheduled(t);
+		expect((await requestOf(t, requestId))?.status).toBe('completed');
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('threadCatchUps').first()).toBeNull();
+			expect(await ctx.db.query('mailThreads').first()).toBeNull();
 		});
 	});
 
