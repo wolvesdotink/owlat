@@ -11,7 +11,7 @@
  * not just the calls made.
  */
 
-import { chmod, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { chmod, link, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -22,8 +22,10 @@ import {
 	expectStartedOnRestoredData,
 	isExtraction,
 	isWipe,
+	FIXED_STAMP,
 	makeInstall,
 	run,
+	stubDate,
 	tarOf,
 	type Install,
 } from './restore.testlib';
@@ -379,6 +381,31 @@ describe('restore.sh keeps deployment secrets owner-only', () => {
 		const copy = join(install.dir, copies[0]!);
 		await expect(readFile(copy, 'utf8')).resolves.toBe('CURRENT=1\n');
 		expect((await stat(copy)).mode & 0o777).toBe(0o600);
+	});
+});
+
+describe('restore.sh never writes secrets into a file that is already there', () => {
+	// A file already at the copy's name keeps its own mode while it is written
+	// to. The copy has to be a new file, owner-only before the secrets go in.
+	it('replaces a world-readable file at the pre-restore copy name instead of writing into it', async () => {
+		const install = await makeInstall({}, { currentEnv: 'CURRENT_SECRET=1\n' });
+		await stubDate(install);
+		const copy = join(install.dir, `.env.before-restore-${FIXED_STAMP}`);
+		await writeFile(copy, 'placeholder\n', { mode: 0o644 });
+		await chmod(copy, 0o644);
+		// Holds on to the file that was there, to see what was written into it.
+		const earlier = join(install.root, 'earlier-copy');
+		await link(copy, earlier);
+
+		const result = await install.run();
+
+		expect(result.code, result.out).toBe(0);
+		await expect(readFile(earlier, 'utf8')).resolves.toBe('placeholder\n');
+		await expect(readFile(copy, 'utf8')).resolves.toBe('CURRENT_SECRET=1\n');
+		expect((await stat(copy)).mode & 0o777).toBe(0o600);
+		// No temporary file is left next to it.
+		const copies = (await readdir(install.dir)).filter((f) => f.startsWith('.env.before-restore-'));
+		expect(copies).toEqual([`.env.before-restore-${FIXED_STAMP}`]);
 	});
 });
 

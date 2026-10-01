@@ -8,7 +8,7 @@
  * existing install kept that install's unrelated copy. The round trip here
  * runs the real backup.sh, the real restore.sh and the real setup CLI toggle.
  */
-import { readFile, readdir, stat, writeFile, mkdir } from 'node:fs/promises';
+import { chmod, link, readFile, readdir, stat, writeFile, mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
@@ -19,7 +19,17 @@ import {
 	type FeatureFlagState,
 } from '@owlat/shared/featureFlags';
 import { renderComposeOverrideYaml } from '@owlat/shared/composeOverride';
-import { BACKUP, PROJECT, cleanupRoots, makeHost, makeInstall, run } from './restore.testlib';
+import {
+	BACKUP,
+	FIXED_STAMP,
+	PROJECT,
+	cleanupRoots,
+	makeHost,
+	makeInstall,
+	run,
+	stubDate,
+	type Host,
+} from './restore.testlib';
 
 afterAll(cleanupRoots);
 
@@ -52,8 +62,13 @@ function overrideProfiles(text: string): string[] {
 		.map((line) => line.replace(/^ {2}- /, ''));
 }
 
-/** Runs the real backup.sh on an install configured with SOURCE_FLAGS. */
-async function backupOfSourceInstall(): Promise<string> {
+/**
+ * Runs the real backup.sh on an install configured with SOURCE_FLAGS.
+ * `prepare` runs just before it, with the install and its backup directory.
+ */
+async function backupOfSourceInstall(
+	prepare: (source: Host, backups: string) => Promise<void> = async () => {}
+): Promise<string> {
 	const source = await makeHost();
 	await writeFile(
 		join(source.dir, '.env'),
@@ -69,6 +84,7 @@ async function backupOfSourceInstall(): Promise<string> {
 		await writeFile(join(source.volumeDir(`${PROJECT}_${suffix}`), 'data'), `${suffix}\n`);
 	}
 	const backups = join(source.root, 'backups');
+	await prepare(source, backups);
 	const result = await source.script(BACKUP, [backups], { FAKE_DOCKER_SERVICES: 'convex redis' });
 	expect(result.code, result.out).toBe(0);
 	expect(result.out).toContain('Captured .owlat-flags.json');
@@ -223,5 +239,30 @@ describe('every writer of the mirror writes the file backup.sh captures', () => 
 		}
 		expect(SOURCE_PROFILES).toContain('mta');
 		expect(SOURCE_PROFILES).not.toContain('clamav');
+	});
+});
+
+describe('backup.sh never writes the archive into a file that is already there', () => {
+	// A file already at the archive's name keeps its own mode while tar writes
+	// to it, so the whole .env would sit in a world-readable file until a chmod.
+	it('replaces a world-readable file at the archive name with a new owner-only archive', async () => {
+		let earlier = '';
+		const archive = await backupOfSourceInstall(async (source, backups) => {
+			await stubDate(source);
+			await mkdir(backups, { recursive: true });
+			const target = join(backups, `owlat-${FIXED_STAMP}.tar.gz`);
+			await writeFile(target, 'placeholder\n');
+			await chmod(target, 0o644);
+			earlier = join(source.root, 'earlier-archive');
+			await link(target, earlier);
+		});
+
+		expect(archive.endsWith(`owlat-${FIXED_STAMP}.tar.gz`)).toBe(true);
+		await expect(readFile(earlier, 'utf8')).resolves.toBe('placeholder\n');
+		expect((await stat(archive)).mode & 0o777).toBe(0o600);
+		const listing = await run('tar', ['-tzf', archive]);
+		expect(listing.stdout).toContain('./env');
+		const left = await readdir(join(archive, '..'));
+		expect(left.filter((name) => name.startsWith('.'))).toEqual([]);
 	});
 });
