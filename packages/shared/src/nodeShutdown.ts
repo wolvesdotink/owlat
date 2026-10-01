@@ -66,6 +66,14 @@ export interface ShutdownOptions {
 	/** Runs after in-flight critical sections settle: close clients, flush. */
 	drain?: () => Promise<void>;
 	/**
+	 * Runs synchronously the moment a shutdown begins, before the drain waits on
+	 * critical sections. For work that is safe to abandon: a critical section
+	 * that is still in a phase it can back out of hears about the signal here
+	 * and stops early, instead of holding the deadline open for work that is
+	 * about to be thrown away. A throw is logged and does not stop the drain.
+	 */
+	onShutdown?: (signal: string) => void;
+	/**
 	 * Hard-exit deadline for the whole drain. Keep it comfortably under the
 	 * service's compose `stop_grace_period` so the watchdog, not Docker, is what
 	 * ends a wedged shutdown.
@@ -94,7 +102,7 @@ export interface ShutdownHandle {
 }
 
 export function installShutdown(options: ShutdownOptions): ShutdownHandle {
-	const { server, drain, timeoutMs, log } = options;
+	const { server, drain, onShutdown, timeoutMs, log } = options;
 	const exit = options.exit ?? ((code: number) => process.exit(code));
 	const signals = options.signals ?? (['SIGTERM', 'SIGINT'] as NodeJS.Signals[]);
 
@@ -156,6 +164,14 @@ export function installShutdown(options: ShutdownOptions): ShutdownHandle {
 				}
 			});
 			server.closeIdleConnections?.();
+		}
+
+		if (onShutdown) {
+			try {
+				onShutdown(signal);
+			} catch (err) {
+				log('shutdown hook failed', err);
+			}
 		}
 
 		// A critical section may start another one (the updater's apply sequence

@@ -14,12 +14,16 @@
 
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::process::{Child, Command, ExitStatus};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use serde::Deserialize;
 use tauri::ipc::Channel;
 use tauri::{command, State};
 
-use super::{get_conn, ExecEvent, SshState};
+use super::{get_conn, ExecEvent, OpToken, SshState, CANCELLED};
 
 /// The tag the local builds carry: docker-compose.yml's "local build, never
 /// pushed" sentinel (`LOCAL_VERSION_TAG` in the web app's provisioningCommands.ts).
@@ -113,6 +117,108 @@ fn check_local_images(images: &[String]) -> Result<(), String> {
         Some(bad) => Err(format!("Not a local {LOCAL_VERSION_TAG} image: {bad}")),
         None => Ok(()),
     }
+}
+
+/// A local process owned by one operation. It is killed, with everything it
+/// started, and reaped when the operation is cancelled and whenever the guard
+/// is dropped before the process exited (an early error return, a panic), so
+/// no `docker` keeps running after the wizard gave up on it.
+struct ChildGuard {
+    child: Arc<Mutex<Child>>,
+    /// Tells the cancellation watcher to stop.
+    done: Arc<AtomicBool>,
+}
+
+/// How often a guarded process is checked for exit and cancellation.
+const CHILD_POLL: Duration = Duration::from_millis(50);
+
+impl ChildGuard {
+    /// Spawn `cmd` in its own process group (so the Docker CLI's plugin
+    /// processes go down with it) and kill it as soon as `token` is cancelled.
+    /// Take the child's pipes with [`ChildGuard::take_stdout`] and friends.
+    fn spawn(cmd: &mut Command, token: OpToken) -> std::io::Result<Self> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            cmd.process_group(0);
+        }
+        let child = Arc::new(Mutex::new(cmd.spawn()?));
+        let done = Arc::new(AtomicBool::new(false));
+        let (watched, watching) = (child.clone(), done.clone());
+        std::thread::spawn(move || {
+            while !watching.load(Ordering::SeqCst) {
+                if token.is_cancelled() {
+                    if let Ok(mut child) = watched.lock() {
+                        kill_tree(&mut child);
+                    }
+                    return;
+                }
+                std::thread::sleep(CHILD_POLL);
+            }
+        });
+        Ok(Self { child, done })
+    }
+
+    fn take_stdout(&self) -> Option<std::process::ChildStdout> {
+        self.child.lock().ok()?.stdout.take()
+    }
+
+    fn take_stderr(&self) -> Option<std::process::ChildStderr> {
+        self.child.lock().ok()?.stderr.take()
+    }
+
+    /// Wait for the process to exit (or to be killed by a cancellation).
+    fn wait(&self) -> Result<ExitStatus, String> {
+        loop {
+            {
+                let mut child = self
+                    .child
+                    .lock()
+                    .map_err(|_| "child poisoned".to_string())?;
+                if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
+                    return Ok(status);
+                }
+            }
+            std::thread::sleep(CHILD_POLL);
+        }
+    }
+}
+
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        self.done.store(true, Ordering::SeqCst);
+        if let Ok(mut child) = self.child.lock() {
+            if matches!(child.try_wait(), Ok(None)) {
+                kill_tree(&mut child);
+            }
+            let _ = child.wait();
+        }
+    }
+}
+
+/// Kill a guarded process and the processes it started. `docker compose` and
+/// `docker buildx` run as plugin processes of the `docker` CLI, so killing the
+/// CLI alone would leave the build running (and holding its output pipes).
+fn kill_tree(child: &mut Child) {
+    #[cfg(unix)]
+    {
+        // The guard spawned the child as the leader of its own process group.
+        if let Ok(pgid) = i32::try_from(child.id()) {
+            // SAFETY: killpg only sends a signal; the group id is our child's pid.
+            unsafe {
+                libc::killpg(pgid, libc::SIGKILL);
+            }
+        }
+    }
+    #[cfg(windows)]
+    {
+        let _ = Command::new("taskkill")
+            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+    let _ = child.kill();
 }
 
 /// Git's view of the working tree: tracked files PLUS untracked-but-not-ignored
@@ -283,6 +389,7 @@ pub async fn ssh_upload_dir(
     // keeps this from uploading an arbitrary folder.
     let root = checkout_root(&local_dir)?;
     let conn = get_conn(&state, &session_id)?;
+    let token = conn.begin()?;
     tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
         let tarball = pack_dir_targz(&root)?;
 
@@ -294,7 +401,14 @@ pub async fn ssh_upload_dir(
         let mut chan = sess.channel_session().map_err(|e| e.to_string())?;
         let cmd = format!("tar -xzf - -C '{remote_dir}'");
         chan.exec(&cmd).map_err(|e| e.to_string())?;
-        chan.write_all(&tarball).map_err(|e| e.to_string())?;
+        // In slices, so a cancellation lands between them.
+        for slice in tarball.chunks(256 * 1024) {
+            if token.is_cancelled() {
+                let _ = chan.close();
+                return Err(CANCELLED.to_string());
+            }
+            chan.write_all(slice).map_err(|e| e.to_string())?;
+        }
         // Full close handshake: signal our EOF, wait for the remote's (tar may
         // still be extracting), then close. Calling wait_close before the
         // remote EOF arrives is a libssh2 error (-34).
@@ -390,28 +504,35 @@ fn docker_invocation(build: &LocalBuild) -> Result<DockerInvocation, String> {
 
 /// Build images on THIS machine for the push-images dev install path, in the
 /// Owlat checkout at `local_dir`, streaming stdout/stderr line-by-line like
-/// `ssh_exec_stream`. Returns docker's exit code.
+/// `ssh_exec_stream`. Returns docker's exit code. The build belongs to the SSH
+/// session `session_id` (the server it is for): cancelling or disconnecting
+/// that session kills it.
 #[command]
 pub async fn local_docker_build(
+    state: State<'_, SshState>,
+    session_id: String,
     local_dir: String,
     build: LocalBuild,
     on_event: Channel<ExecEvent>,
 ) -> Result<i32, String> {
     let root = checkout_root(&local_dir)?;
     let invocation = docker_invocation(&build)?;
+    let token = get_conn(&state, &session_id)?.begin()?;
     tauri::async_runtime::spawn_blocking(move || -> Result<i32, String> {
-        let mut child = std::process::Command::new("docker")
-            .args(&invocation.args)
-            .current_dir(&root)
-            .envs(invocation.env.iter().map(|(k, v)| (*k, v.as_str())))
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("Could not start docker: {e}"))?;
+        let child = ChildGuard::spawn(
+            Command::new("docker")
+                .args(&invocation.args)
+                .current_dir(&root)
+                .envs(invocation.env.iter().map(|(k, v)| (*k, v.as_str())))
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped()),
+            token.clone(),
+        )
+        .map_err(|e| format!("Could not start docker: {e}"))?;
 
-        let stdout = child.stdout.take().ok_or("no stdout")?;
-        let stderr = child.stderr.take().ok_or("no stderr")?;
+        let stdout = child.take_stdout().ok_or("no stdout")?;
+        let stderr = child.take_stderr().ok_or("no stderr")?;
         let out_ch = on_event.clone();
         let err_ch = on_event.clone();
         let t_out = std::thread::spawn(move || {
@@ -432,7 +553,12 @@ pub async fn local_docker_build(
                 let _ = err_ch.send(ExecEvent::Stderr { line });
             }
         });
-        let status = child.wait().map_err(|e| e.to_string())?;
+        let status = child.wait()?;
+        if token.is_cancelled() {
+            // Not joined: a grandchild that escaped the kill could still hold
+            // the pipes open, and the readers end on their own when it exits.
+            return Err(CANCELLED.to_string());
+        }
         let _ = t_out.join();
         let _ = t_err.join();
         let code = status.code().unwrap_or(-1);
@@ -444,16 +570,24 @@ pub async fn local_docker_build(
 }
 
 /// io::Write adapter that streams into an SSH channel, reporting progress
-/// (in MiB sent) every ~64 MiB so the UI can show upload movement.
-struct ChannelWriter<'a> {
-    chan: &'a mut ssh2::Channel,
+/// (in MiB sent) every ~64 MiB so the UI can show upload movement. Fails the
+/// write once the operation is cancelled.
+struct ChannelWriter<'a, W: Write> {
+    chan: &'a mut W,
     events: &'a Channel<ExecEvent>,
+    token: &'a OpToken,
     sent: u64,
     last_report: u64,
 }
 
-impl std::io::Write for ChannelWriter<'_> {
+impl<W: Write> std::io::Write for ChannelWriter<'_, W> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if self.token.is_cancelled() {
+            // Terminal on purpose: `write_all` (and so `io::copy` into the
+            // gzip encoder) retries `Interrupted`, which would spin on a
+            // cancelled upload forever while holding the session lock.
+            return Err(std::io::Error::other(CANCELLED));
+        }
         self.chan
             .write_all(buf)
             .map_err(|e| std::io::Error::other(e.to_string()))?;
@@ -471,6 +605,15 @@ impl std::io::Write for ChannelWriter<'_> {
     }
 }
 
+/// The push-images upload: gzip `src` (the `docker save` stream) into `writer`.
+fn gzip_upload<R: Read, W: Write>(src: &mut R, writer: W) -> std::io::Result<()> {
+    // fast(): the bottleneck is usually the uplink, not CPU — but level-1
+    // gzip still roughly halves docker-save output.
+    let mut gz = flate2::write::GzEncoder::new(writer, flate2::Compression::fast());
+    std::io::copy(src, &mut gz)?;
+    gz.finish().map(|_| ())
+}
+
 /// Stream locally built images to the server over the live SSH session:
 /// `docker save <images>` on this machine, gzip'd in transit, `docker load`
 /// remotely. No registry involved; re-pushes reuse nothing (docker save is
@@ -485,22 +628,27 @@ pub async fn ssh_push_images(
 ) -> Result<(), String> {
     check_local_images(&images)?;
     let conn = get_conn(&state, &session_id)?;
+    let token = conn.begin()?;
     tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
-        let mut child = std::process::Command::new("docker")
-            .arg("save")
-            .args(&images)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("Could not start docker save: {e}"))?;
-        let mut tar_stream = child.stdout.take().ok_or("no stdout")?;
+        // Guarded: every early return below (a failed upload, a cancellation)
+        // kills and reaps `docker save` instead of leaving it running.
+        let child = ChildGuard::spawn(
+            Command::new("docker")
+                .arg("save")
+                .args(&images)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped()),
+            token.clone(),
+        )
+        .map_err(|e| format!("Could not start docker save: {e}"))?;
+        let mut tar_stream = child.take_stdout().ok_or("no stdout")?;
         // Drain stderr on its own thread so a chatty `docker save` (progress /
         // warnings on a large multi-image save) can't fill the OS pipe buffer and
         // deadlock the stdout copy below — which carries the whole multi-GB
         // transfer over a potentially slow uplink. local_docker_build already
         // drains both streams concurrently; this path previously did not.
-        let mut stderr_pipe = child.stderr.take().ok_or("no stderr")?;
+        let mut stderr_pipe = child.take_stderr().ok_or("no stderr")?;
         let stderr_handle = std::thread::spawn(move || {
             let mut buf = String::new();
             let _ = stderr_pipe.read_to_string(&mut buf);
@@ -516,21 +664,30 @@ pub async fn ssh_push_images(
         chan.exec("gunzip | docker load")
             .map_err(|e| e.to_string())?;
 
-        {
-            let writer = ChannelWriter {
+        let copied = gzip_upload(
+            &mut tar_stream,
+            ChannelWriter {
                 chan: &mut chan,
                 events: &on_event,
+                token: &token,
                 sent: 0,
                 last_report: 0,
-            };
-            // fast(): the bottleneck is usually the uplink, not CPU — but level-1
-            // gzip still roughly halves docker-save output.
-            let mut gz = flate2::write::GzEncoder::new(writer, flate2::Compression::fast());
-            std::io::copy(&mut tar_stream, &mut gz).map_err(|e| e.to_string())?;
-            gz.finish().map_err(|e| e.to_string())?;
+            },
+        );
+        if let Err(e) = copied {
+            let _ = chan.close();
+            return Err(if token.is_cancelled() {
+                CANCELLED.to_string()
+            } else {
+                e.to_string()
+            });
         }
 
-        let status = child.wait().map_err(|e| e.to_string())?;
+        let status = child.wait()?;
+        if token.is_cancelled() {
+            let _ = chan.close();
+            return Err(CANCELLED.to_string());
+        }
         let stderr_output = stderr_handle.join().unwrap_or_default();
         if !status.success() {
             return Err(format!("docker save failed: {}", stderr_output.trim()));
@@ -561,9 +718,16 @@ pub async fn ssh_push_images(
 #[cfg(test)]
 mod tests {
     use super::{
-        check_local_images, checkout_root, docker_invocation, pack_dir_targz, DockerInvocation,
-        LocalBuild,
+        check_local_images, checkout_root, docker_invocation, gzip_upload, pack_dir_targz,
+        ChannelWriter, DockerInvocation, LocalBuild,
     };
+    #[cfg(unix)]
+    use super::{ChildGuard, Command};
+    use crate::ssh::Cancel;
+    #[cfg(unix)]
+    use std::io::BufRead;
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
 
     fn stack(platform: &str, profiles: &[&str], services: &[&str]) -> LocalBuild {
         LocalBuild::Stack {
@@ -700,6 +864,69 @@ mod tests {
         ] {
             assert!(check_local_images(&images(&[bad])).is_err(), "{bad}");
         }
+    }
+
+    /// Whether a process id still names a live (or unreaped) process.
+    #[cfg(unix)]
+    fn alive(pid: u32) -> bool {
+        // SAFETY: signal 0 only checks that the process exists.
+        unsafe { libc::kill(pid as i32, 0) == 0 }
+    }
+
+    #[cfg(unix)]
+    fn gone_within(pid: u32, limit: Duration) -> bool {
+        let start = Instant::now();
+        while start.elapsed() < limit {
+            if !alive(pid) {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        false
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cancelling_kills_a_local_build_and_what_it_started() {
+        // A shell standing in for the docker CLI, with a grandchild standing in
+        // for its compose/buildx plugin: both must go, and the shell is reaped.
+        let cancel = Arc::new(Cancel::default());
+        let child = ChildGuard::spawn(
+            Command::new("sh")
+                .args(["-c", "sleep 60 & echo $!; wait"])
+                .stdout(std::process::Stdio::piped()),
+            cancel.token(),
+        )
+        .unwrap();
+        let mut line = String::new();
+        std::io::BufReader::new(child.take_stdout().unwrap())
+            .read_line(&mut line)
+            .unwrap();
+        let grandchild: u32 = line.trim().parse().unwrap();
+        assert!(alive(grandchild));
+
+        let asked = Instant::now();
+        cancel.cancel_running();
+        let status = child.wait().unwrap();
+        assert!(asked.elapsed() < Duration::from_secs(5));
+        assert!(!status.success());
+        assert!(
+            gone_within(grandchild, Duration::from_secs(5)),
+            "plugin outlived the build"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_early_return_kills_and_reaps_the_child() {
+        let cancel = Arc::new(Cancel::default());
+        let child = ChildGuard::spawn(Command::new("sleep").arg("60"), cancel.token()).unwrap();
+        let pid = child.child.lock().unwrap().id();
+        assert!(alive(pid));
+        // e.g. the image upload failed and `?` returned before `wait()`.
+        drop(child);
+        // Reaped by the guard itself, so the pid is gone at once (no zombie).
+        assert!(!alive(pid));
     }
 
     #[test]
@@ -853,5 +1080,81 @@ mod tests {
         let entries = pack_fixture();
         let mode = entries["scripts/owlat"];
         assert_ne!(mode & 0o111, 0, "exec bit lost: {mode:o}");
+    }
+
+    /// Endless incompressible bytes, so the gzip encoder keeps writing out.
+    struct Noise(u64);
+
+    impl std::io::Read for Noise {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            for b in buf.iter_mut() {
+                self.0 ^= self.0 << 13;
+                self.0 ^= self.0 >> 7;
+                self.0 ^= self.0 << 17;
+                *b = self.0 as u8;
+            }
+            Ok(buf.len())
+        }
+    }
+
+    /// The SSH channel: counts the writes it gets and cancels the operation
+    /// during the first one, as a user pressing Cancel mid-upload would.
+    struct CancellingChannel {
+        cancel: Arc<Cancel>,
+        writes: usize,
+    }
+
+    impl std::io::Write for CancellingChannel {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.writes += 1;
+            self.cancel.cancel_running();
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_cancelled_image_upload_ends_and_releases_the_session() {
+        let cancel = Arc::new(Cancel::default());
+        let token = cancel.token();
+        // Stands in for the SSH session mutex the upload holds.
+        let session = Arc::new(Mutex::new(CancellingChannel {
+            cancel: cancel.clone(),
+            writes: 0,
+        }));
+        let (tx, rx) = std::sync::mpsc::channel();
+        let held = session.clone();
+        std::thread::spawn(move || {
+            let events = tauri::ipc::Channel::new(|_| Ok(()));
+            let result = {
+                let mut chan = held.lock().unwrap();
+                gzip_upload(
+                    &mut Noise(0x9E37_79B9_7F4A_7C15),
+                    ChannelWriter {
+                        chan: &mut *chan,
+                        events: &events,
+                        token: &token,
+                        sent: 0,
+                        last_report: 0,
+                    },
+                )
+            };
+            let _ = tx.send(result);
+        });
+
+        let asked = Instant::now();
+        let result = rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the cancelled upload kept retrying instead of returning");
+        assert!(asked.elapsed() < Duration::from_secs(5));
+        let err = result.expect_err("a cancelled upload must fail");
+        assert_ne!(err.kind(), std::io::ErrorKind::Interrupted);
+        assert_eq!(err.to_string(), super::CANCELLED);
+        let chan = session
+            .try_lock()
+            .expect("the upload still holds the session");
+        assert_eq!(chan.writes, 1, "a cancelled write reached the channel");
     }
 }

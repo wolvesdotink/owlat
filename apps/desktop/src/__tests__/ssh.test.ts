@@ -20,6 +20,7 @@ import {
 	sshExecStream,
 	sshWriteFile,
 	sshDisconnect,
+	sshCancel,
 	sshUploadDir,
 	sshPushImages,
 	localDockerBuild,
@@ -137,6 +138,12 @@ describe('ssh bridge', () => {
 		expect(invokeMock).toHaveBeenCalledWith('ssh_disconnect', { sessionId: 's1' });
 	});
 
+	it('sshCancel invokes ssh_cancel for the session', async () => {
+		invokeMock.mockResolvedValue(undefined);
+		await sshCancel('s1');
+		expect(invokeMock).toHaveBeenCalledWith('ssh_cancel', { sessionId: 's1' });
+	});
+
 	it('sshUploadDir invokes ssh_upload_dir with the checkout and target dir', async () => {
 		invokeMock.mockResolvedValue(undefined);
 		await sshUploadDir('s1', '/home/dev/owlat', '/opt/owlat');
@@ -168,11 +175,13 @@ describe('ssh bridge', () => {
 			services: ['web'],
 		};
 
-		const code = await localDockerBuild('/home/dev/owlat', build, () => {});
+		const code = await localDockerBuild('s1', '/home/dev/owlat', build, () => {});
 
 		const [cmd, args] = invokeMock.mock.calls[0]!;
 		expect(cmd).toBe('local_docker_build');
-		expect(Object.keys(args).sort()).toEqual(['build', 'localDir', 'onEvent']);
+		expect(Object.keys(args).sort()).toEqual(['build', 'localDir', 'onEvent', 'sessionId']);
+		// The session owns the build, so cancelling it stops the build too.
+		expect(args.sessionId).toBe('s1');
 		expect(args.localDir).toBe('/home/dev/owlat');
 		expect(args.build).toEqual(build);
 		expect(code).toBe(0);

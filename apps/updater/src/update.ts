@@ -26,6 +26,15 @@
  * also written to the install directory for /health (rolloutState.ts), since
  * the web container that asked is normally recreated before the answer.
  *
+ * A SIGTERM splits the handler at the same line. Before the promote, the
+ * rollout backs out: the Docker command in flight is stopped, the staged file
+ * removed, and the verdict is `interrupted` with the running stack unchanged.
+ * From the promote on it finishes `up` (the shutdown waits for it, see
+ * lifecycle.ts), stops waiting for readiness, and says the release was started
+ * but not confirmed. A process killed anyway leaves a record that is still in
+ * flight, which the next start turns into an `interrupted` verdict
+ * (`reconcileInterruptedUpdate`).
+ *
  * Split out of server.ts, which also owns /health, /configure-ip and
  * /rotate-env (CONVENTIONS.md ~500 LOC rule). The rollout's own plumbing — the
  * preflight, the service list, the self-replacement hand-off — lives in
@@ -42,6 +51,7 @@ import {
 	validateComposeTemplate,
 } from './security.js';
 import { exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
+import { shutdownSignal } from './lifecycle.js';
 import {
 	composeArgv,
 	dockerApiPreflight,
@@ -52,7 +62,9 @@ import {
 import { diskSpacePreflight, pullFailureMessage, reclaimUnusedImages } from './storage.js';
 import { failingBeforeRollout, verifyReadiness } from './readiness.js';
 import {
+	interruptedVerdict,
 	isAttemptId,
+	readRecord,
 	writeLastRollout,
 	type LastRollout,
 	type RolloutOutcome,
@@ -65,6 +77,41 @@ interface UpdateAnswer {
 }
 
 const COMPOSE_FILE = join(OWLAT_DIR, 'docker-compose.yml');
+
+/**
+ * Where a caller's template waits until pull and convex-deploy have succeeded.
+ * The live docker-compose.yml is only replaced after both — it used to be
+ * overwritten first, so a failed update left a half-applied breaking template
+ * behind that the next manual `docker compose up` would silently complete.
+ */
+const STAGED_FILE = join(OWLAT_DIR, 'docker-compose.next.yml');
+
+/** The answer to a rollout that backed out because the updater is stopping. */
+const BACKED_OUT =
+	'The updater is shutting down, so the update stopped before the release was applied. ' +
+	'The running stack was not changed; run the update again once the updater is back.';
+
+/**
+ * Settle an update the previous process never finished. Run once at startup,
+ * before anything is served: nothing in this process can be running one yet.
+ *
+ * A record still in flight becomes an `interrupted` verdict on disk (it was
+ * only ever reported as one), and the log says what it means for the stack;
+ * a template the update had staged but not promoted is removed, so nothing
+ * mistakes it for a release waiting to be applied.
+ */
+export async function reconcileInterruptedUpdate(): Promise<LastRollout | null> {
+	await rm(STAGED_FILE, { force: true }).catch(() => {});
+	const record = readRecord();
+	if (!record || record.phase === 'done') return null;
+
+	const verdict = { ...interruptedVerdict(record), finishedAt: Date.now() };
+	writeLastRollout(verdict);
+	console.error(
+		`[update] the previous updater stopped during an update to ${record.targetVersion ?? 'the current release'}: ${verdict.summary}`
+	);
+	return verdict;
+}
 
 /**
  * Move `.env`'s `OWLAT_VERSION` pin to the release we are applying.
@@ -111,6 +158,11 @@ async function pinConfiguredVersion(
 
 export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	if (!requireAuth(req, res)) return;
+
+	const stopping = shutdownSignal();
+	if (stopping.aborted) {
+		return json(res, 503, { error: 'The updater is shutting down. Try again once it is back.' });
+	}
 
 	// Rate limit: max 2 updates per minute
 	if (isRateLimited('update', 2, 60_000)) {
@@ -173,13 +225,29 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		json(res, status, body);
 	};
 
+	const discardStaged = async () => {
+		if (!composeTemplate) return;
+		try {
+			await rm(STAGED_FILE, { force: true });
+		} catch {
+			// best-effort cleanup
+		}
+	};
+	// Every step up to the promote backs out on a SIGTERM (see the header).
+	const backOut = async () => {
+		await discardStaged();
+		console.error('[update] stopped before the release was applied: the updater is shutting down');
+		return answer(503, { error: BACKED_OUT, rollout: 'interrupted', steps });
+	};
+
 	// Step 2: Prove the Docker API will let this rollout finish before anything
 	// is staged, pulled or deployed. The endpoints the socket proxy grants are
 	// the one precondition an update cannot recover from halfway through, and
 	// the failure it produced instead — a 403 surfacing as "convex-deploy
 	// failed" — pointed the operator at the schema deploy, not at the sidecar.
-	const preflight = dockerApiPreflight();
+	const preflight = await dockerApiPreflight(stopping);
 	steps.push(preflight);
+	if (stopping.aborted) return backOut();
 	if (!preflight.ok) {
 		// Also in this sidecar's own log: a refusal the operator can only read
 		// by re-triggering the update is not much of an explanation.
@@ -193,7 +261,8 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	// device` on every retry after. Reclaiming first lets exactly that instance
 	// update itself out of the hole; the check after it turns a disk that is
 	// full for some other reason into a sentence instead of a failed pull.
-	steps.push(reclaimUnusedImages());
+	steps.push(await reclaimUnusedImages(stopping));
+	if (stopping.aborted) return backOut();
 	const disk = diskSpacePreflight();
 	steps.push(disk);
 	if (!disk.ok) {
@@ -201,12 +270,7 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		return answer(507, { error: disk.stderr, steps });
 	}
 
-	// Step 3: STAGE the validated template. The live docker-compose.yml is only
-	// replaced after pull + convex-deploy succeed — previously it was
-	// overwritten first, so a failed update left a half-applied breaking
-	// template behind that the next manual `docker compose up` would silently
-	// complete.
-	const STAGED_FILE = join(OWLAT_DIR, 'docker-compose.next.yml');
+	// Step 3: STAGE the validated template (see STAGED_FILE).
 	let composeFileForUpdate = COMPOSE_FILE;
 	if (composeTemplate) {
 		try {
@@ -224,20 +288,14 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	// Every compose call names the project directory as the HOST sees it, so a
 	// relative bind in the template resolves to the real file and not to a path
 	// that only exists inside this container.
-	const composeArgs = composeArgv([composeFileForUpdate]);
-	const discardStaged = async () => {
-		if (!composeTemplate) return;
-		try {
-			await rm(STAGED_FILE, { force: true });
-		} catch {
-			// best-effort cleanup
-		}
-	};
+	const composeArgs = await composeArgv([composeFileForUpdate]);
+	if (stopping.aborted) return backOut();
 
 	// Step 4: Pull latest images (against the staged template, so a pull
 	// failure leaves the running stack and its compose file untouched).
-	const pull = exec('docker', [...composeArgs, 'pull'], OWLAT_DIR);
+	const pull = await exec('docker', [...composeArgs, 'pull'], OWLAT_DIR, { signal: stopping });
 	steps.push({ step: 'pull', ...pull });
+	if (stopping.aborted) return backOut();
 
 	if (!pull.ok) {
 		await discardStaged();
@@ -254,12 +312,17 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	//
 	// This requires the existing convex container to still be running at
 	// its previous version, so the one-shot deployer can reach it.
-	const deploy = exec(
+	//
+	// Stopping it on a SIGTERM is no worse than letting it finish: either way
+	// the old containers keep serving, and the next update deploys again.
+	const deploy = await exec(
 		'docker',
 		[...composeArgs, '--profile', 'deploy', 'run', '--rm', 'convex-deploy'],
-		OWLAT_DIR
+		OWLAT_DIR,
+		{ signal: stopping }
 	);
 	steps.push({ step: 'convex-deploy', ...deploy });
+	if (stopping.aborted) return backOut();
 
 	if (!deploy.ok) {
 		await discardStaged();
@@ -268,6 +331,13 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 			steps,
 		});
 	}
+
+	// The line a SIGTERM no longer backs out across: from here the rollout
+	// changes what the host is configured to run, and finishing `up` is what
+	// keeps the containers in line with it. Recorded first, so a process that
+	// is killed anyway leaves a record saying which side of the line it was on.
+	record.committed = true;
+	writeLastRollout(record);
 
 	// Step 6: Promote the staged template now that pull + deploy succeeded.
 	if (composeTemplate) {
@@ -300,7 +370,7 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	// naming every service EXCEPT the two the rollout itself runs through: an
 	// unqualified `up` recreates the updater and the Docker socket proxy too,
 	// and stopping either one kills the compose command issuing the rollout.
-	const plan = servicesToRecreate();
+	const plan = await servicesToRecreate();
 	if (plan.error) {
 		steps.push({ step: 'up', ok: false, stdout: '', stderr: plan.error });
 		return answer(500, { error: `docker compose up failed: ${plan.error}`, steps });
@@ -308,11 +378,13 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 
 	// What was already broken before the release touched it, so the verdict
 	// can tell the rollout's failures from the stack's.
-	const preExisting = failingBeforeRollout(plan.services, composeArgv());
+	const compose = await composeArgv();
+	const preExisting = await failingBeforeRollout(plan.services, compose);
 
-	const up = exec(
+	// No signal: a recreate cut short is what leaves services stopped.
+	const up = await exec(
 		'docker',
-		[...composeArgv(), 'up', '-d', '--remove-orphans', ...plan.services],
+		[...compose, 'up', '-d', '--remove-orphans', ...plan.services],
 		OWLAT_DIR
 	);
 	steps.push({ step: 'up', ...up });
@@ -347,7 +419,7 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	// Step 9: `up` has started the release; wait (bounded, per the cadence each
 	// service declares) until it is serving.
 	writeLastRollout({ ...record, phase: 'verifying' });
-	const readiness = await verifyReadiness(plan.services, composeArgv(), { preExisting });
+	const readiness = await verifyReadiness(plan.services, compose, { preExisting });
 	steps.push({
 		step: 'readiness',
 		ok: readiness.ready,
@@ -361,7 +433,23 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	// fatal. It runs whether or not the readiness check passed: the new release
 	// is promoted and running either way, and an updater left on the old image
 	// is one more thing out of step with it.
-	steps.push(scheduleUpdaterRecreateSafely());
+	steps.push(await scheduleUpdaterRecreateSafely());
+
+	if (readiness.interrupted) {
+		return answer(
+			503,
+			{
+				error:
+					'The release was applied and its containers started, but the updater is shutting ' +
+					`down and stopped checking whether they are serving. ${readiness.summary} Check ` +
+					'`docker compose ps` on the host.',
+				rollout: 'started' satisfies RolloutOutcome,
+				warnings: readiness.warnings,
+				steps,
+			},
+			{ warnings: readiness.warnings }
+		);
+	}
 
 	if (!readiness.ready) {
 		return answer(

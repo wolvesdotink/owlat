@@ -70,23 +70,39 @@ export interface NotificationActionPayload {
 	folderRole: string;
 	/** Text typed into the macOS inline reply field (absent for other actions). */
 	reply?: string;
+	/**
+	 * The desktop workspace the notification was sent from. A notification
+	 * outlives a workspace switch, and message ids only mean something on the
+	 * instance that issued them, so the action must run against this workspace.
+	 */
+	workspaceId?: string;
+	/** Process-unique id of the native notification, for de-duplicating deliveries. */
+	notificationId?: number;
 }
 
 /**
  * Send a per-message notification with inline actions. On macOS it renders an
  * inline Reply field plus an Archive button; on Linux it renders Open / Archive
  * / Mark read. Interacting (or clicking the notification) emits the
- * `notification-action` event handled via {@link onNotificationAction}; on
- * other targets this degrades to a plain notification.
+ * `notification-action` event handled via {@link onNotificationAction}, carrying
+ * `workspaceId` back unchanged; on other targets this degrades to a plain
+ * notification.
  */
 export async function sendActionableNotification(
 	title: string,
 	body: string,
 	messageId: string,
-	folderRole: string
+	folderRole: string,
+	workspaceId?: string | null
 ): Promise<void> {
 	try {
-		await invoke('send_actionable_notification', { title, body, messageId, folderRole });
+		await invoke('send_actionable_notification', {
+			title,
+			body,
+			messageId,
+			folderRole,
+			workspaceId: workspaceId ?? null,
+		});
 	} catch (e) {
 		console.warn('[desktop] Failed to send actionable notification:', e);
 	}

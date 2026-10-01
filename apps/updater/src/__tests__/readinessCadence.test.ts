@@ -49,10 +49,10 @@ const SERVICES = ['web', 'convex', 'redis', 'clamav'];
 function stackProbe(
 	clock: { now: () => number },
 	clamav: (now: number) => Row,
-	cadence: ReadinessProbe['cadence'] = () => new Map([['clamav', CLAMAV]])
+	cadence: ReadinessProbe['cadence'] = async () => new Map([['clamav', CLAMAV]])
 ): ReadinessProbe {
 	return {
-		list: () =>
+		list: async () =>
 			[
 				{ service: 'web' },
 				{ service: 'convex', health: 'healthy' },
@@ -139,7 +139,7 @@ describe('waitForReadiness honours the declared cadence', () => {
 		const probe = stackProbe(
 			clock,
 			() => ({ service: 'clamav', health: 'starting' }),
-			() => new Map([['clamav', { intervalMs: 60_000, startPeriodMs: 1_800_000 }]])
+			async () => new Map([['clamav', { intervalMs: 60_000, startPeriodMs: 1_800_000 }]])
 		);
 
 		const result = await waitForReadiness(SERVICES, probe, clock.timing);
@@ -156,9 +156,9 @@ describe('waitForReadiness honours the declared cadence', () => {
 		const probe = stackProbe(
 			clock,
 			() => ({ service: 'clamav', health: 'healthy' }),
-			() => new Map([['clamav', CLAMAV]])
+			async () => new Map([['clamav', CLAMAV]])
 		);
-		probe.list = () =>
+		probe.list = async () =>
 			[
 				{ service: 'web', state: 'restarting' },
 				{ service: 'convex', health: 'healthy' },
@@ -221,7 +221,7 @@ describe('failures that were there before the rollout', () => {
 		expect(result.summary).toContain('not healthy: clamav');
 	});
 
-	it('snapshots which services are failing before the rollout', () => {
+	it('snapshots which services are failing before the rollout', async () => {
 		execMock.mockImplementation((_file: string, args: string[]) => ({
 			ok: true,
 			stderr: '',
@@ -236,7 +236,7 @@ describe('failures that were there before the rollout', () => {
 				: '',
 		}));
 
-		const failing = failingBeforeRollout(['web', 'clamav', 'mta', 'convex'], ['compose']);
+		const failing = await failingBeforeRollout(['web', 'clamav', 'mta', 'convex'], ['compose']);
 
 		expect(Object.fromEntries(failing)).toEqual({
 			clamav: 'failing its healthcheck',

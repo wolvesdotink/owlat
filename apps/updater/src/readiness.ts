@@ -30,6 +30,7 @@
  */
 import { parseComposePs, type ComposeService } from '@owlat/shared/containerHealth';
 import { exec, OWLAT_DIR } from './http.js';
+import { shutdownSignal } from './lifecycle.js';
 import { parseHealthCadence, type HealthCadence } from './healthCadence.js';
 
 /** Where a service stands against the contract above. */
@@ -48,11 +49,11 @@ interface SmokeResult {
 
 export interface ReadinessProbe {
 	/** Every container of the project, or null when Docker would not say. */
-	list(): ComposeService[] | null;
+	list(): Promise<ComposeService[] | null>;
 	/** An HTTP request against the stack; null when there is nothing to ask. */
 	smoke(): Promise<SmokeResult | null>;
 	/** The healthcheck cadence each service declares; none when unknown. */
-	cadence?(): Map<string, HealthCadence>;
+	cadence?(): Promise<Map<string, HealthCadence>>;
 }
 
 export interface ReadinessTiming {
@@ -73,6 +74,8 @@ export interface ReadinessResult {
 	summary: string;
 	/** Services that were already failing before the rollout, still failing. */
 	warnings: string[];
+	/** The wait was cut short because the updater is shutting down. */
+	interrupted?: boolean;
 }
 
 /**
@@ -220,6 +223,12 @@ function problems(verdicts: ServiceVerdict[]): string {
 export interface ReadinessContext {
 	/** Services already failing before the rollout, with what was wrong then. */
 	preExisting?: ReadonlyMap<string, string>;
+	/**
+	 * Stop waiting when this aborts. A readiness verdict is never worth holding
+	 * a shutdown open for: the containers are started either way, and the
+	 * answer then says the check did not finish rather than guessing.
+	 */
+	signal?: AbortSignal;
 }
 
 /**
@@ -241,7 +250,7 @@ export async function waitForReadiness(
 	context: ReadinessContext = {}
 ): Promise<ReadinessResult> {
 	const preExisting = context.preExisting ?? new Map<string, string>();
-	const cadence = probe.cadence?.() ?? new Map<string, HealthCadence>();
+	const cadence = (await probe.cadence?.()) ?? new Map<string, HealthCadence>();
 	const started = clock.now();
 	let deadline = started + clock.timeoutMs;
 	let delay = clock.firstPollMs;
@@ -251,7 +260,18 @@ export async function waitForReadiness(
 	let webLingers: string | null = null;
 
 	for (;;) {
-		const rows = probe.list();
+		if (context.signal?.aborted) {
+			const seconds = Math.round((clock.now() - started) / 1000);
+			return {
+				ready: false,
+				interrupted: true,
+				summary:
+					`Stopped checking after ${seconds}s because the updater is shutting down; ` +
+					`last seen: ${lastProblem}.`,
+				warnings: lingering(lastVerdicts, preExisting, webLingers),
+			};
+		}
+		const rows = await probe.list();
 		if (rows === null) {
 			settled = false;
 			lastProblem =
@@ -302,7 +322,7 @@ export async function waitForReadiness(
 
 		const wait = settled ? clock.settleMs : delay;
 		if (clock.now() + wait > deadline) break;
-		await clock.sleep(wait);
+		await sleepUnlessAborted(clock, wait, context.signal);
 		if (!settled) delay = Math.min(delay * 2, clock.maxPollMs);
 	}
 
@@ -313,6 +333,24 @@ export async function waitForReadiness(
 		summary: `Not ready after ${seconds}s: ${lastProblem}.${warningNote(warnings)}`,
 		warnings,
 	};
+}
+
+/** `clock.sleep`, cut short when `signal` aborts. */
+function sleepUnlessAborted(
+	clock: ReadinessTiming,
+	ms: number,
+	signal: AbortSignal | undefined
+): Promise<void> {
+	if (!signal) return clock.sleep(ms);
+	if (signal.aborted) return Promise.resolve();
+	let onAbort!: () => void;
+	const aborted = new Promise<void>((resolve) => {
+		onAbort = resolve;
+		signal.addEventListener('abort', onAbort, { once: true });
+	});
+	return Promise.race([clock.sleep(ms), aborted]).finally(() =>
+		signal.removeEventListener('abort', onAbort)
+	);
 }
 
 /** Pre-existing failures that the rollout did not fix. */
@@ -365,14 +403,22 @@ async function smokeWeb(): Promise<SmokeResult> {
  */
 function stackProbe(services: string[], composeArgs: string[]): ReadinessProbe {
 	return {
-		list() {
-			const listed = exec('docker', [...composeArgs, 'ps', '--all', '--format', 'json'], OWLAT_DIR);
+		async list() {
+			const listed = await exec(
+				'docker',
+				[...composeArgs, 'ps', '--all', '--format', 'json'],
+				OWLAT_DIR
+			);
 			if (!listed.ok || !listed.stdout.trim()) return null;
 			return parseComposePs(listed.stdout);
 		},
 		smoke: () => (services.includes('web') ? smokeWeb() : Promise.resolve(null)),
-		cadence() {
-			const config = exec('docker', [...composeArgs, 'config', '--format', 'json'], OWLAT_DIR);
+		async cadence() {
+			const config = await exec(
+				'docker',
+				[...composeArgs, 'config', '--format', 'json'],
+				OWLAT_DIR
+			);
 			return config.ok ? parseHealthCadence(config.stdout) : new Map();
 		},
 	};
@@ -383,13 +429,13 @@ function stackProbe(services: string[], composeArgs: string[]): ReadinessProbe {
  * what is wrong. An unreadable container list yields none: the rollout is then
  * judged on its own, as it would have been without this.
  */
-export function failingBeforeRollout(
+export async function failingBeforeRollout(
 	services: string[],
 	composeArgs: string[]
-): Map<string, string> {
+): Promise<Map<string, string>> {
 	const failing = new Map<string, string>();
 	try {
-		const rows = stackProbe(services, composeArgs).list();
+		const rows = await stackProbe(services, composeArgs).list();
 		if (!rows) return failing;
 		for (const service of services) {
 			const verdict = judgeService(service, rows);
@@ -406,7 +452,10 @@ interface VerifyOptions extends ReadinessContext {
 	recovery?: boolean;
 }
 
-/** Wait for `services` to meet the readiness contract. Never throws. */
+/**
+ * Wait for `services` to meet the readiness contract. Never throws, and stops
+ * waiting as soon as the updater starts shutting down.
+ */
 export async function verifyReadiness(
 	services: string[],
 	composeArgs: string[],
@@ -423,7 +472,10 @@ export async function verifyReadiness(
 			}
 		: timing;
 	try {
-		return await waitForReadiness(services, stackProbe(services, composeArgs), clock, options);
+		return await waitForReadiness(services, stackProbe(services, composeArgs), clock, {
+			signal: shutdownSignal(),
+			...options,
+		});
 	} catch (err) {
 		const reason = err instanceof Error ? err.message : String(err);
 		return { ready: false, summary: `Readiness could not be checked: ${reason}.`, warnings: [] };

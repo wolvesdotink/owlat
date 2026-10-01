@@ -36,8 +36,8 @@
 x-default-logging: &default-logging
   driver: json-file
   options:
-    max-size: "10m"
-    max-file: "5"
+    max-size: '10m'
+    max-file: '5'
 
 services:
   # ── Convex Backend (database + serverless functions) ──────────────────
@@ -49,8 +49,8 @@ services:
     # Exposing 3210/3211 raw on a public interface is NOT recommended; if you
     # must, set CONVEX_BIND=0.0.0.0 and firewall it yourself.
     ports:
-      - "${CONVEX_BIND:-127.0.0.1}:${CONVEX_PORT:-3210}:3210"
-      - "${CONVEX_BIND:-127.0.0.1}:${CONVEX_SITE_PORT:-3211}:3211"
+      - '${CONVEX_BIND:-127.0.0.1}:${CONVEX_PORT:-3210}:3210'
+      - '${CONVEX_BIND:-127.0.0.1}:${CONVEX_SITE_PORT:-3211}:3211'
     volumes:
       - convex-data:/convex/data
     environment:
@@ -60,7 +60,7 @@ services:
       CONVEX_CLOUD_ORIGIN: ${NUXT_PUBLIC_CONVEX_URL:-http://localhost:3210}
       CONVEX_SITE_ORIGIN: ${NUXT_PUBLIC_CONVEX_SITE_URL:-http://localhost:3211}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3210/version"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:3210/version']
       interval: 15s
       timeout: 5s
       retries: 5
@@ -86,7 +86,7 @@ services:
     logging: *default-logging
     image: ghcr.io/get-convex/convex-dashboard:${CONVEX_DASHBOARD_VERSION:-latest}
     ports:
-      - "127.0.0.1:${DASHBOARD_PORT:-6791}:6791"
+      - '127.0.0.1:${DASHBOARD_PORT:-6791}:6791'
     environment:
       CONVEX_URL: http://convex:3210
     depends_on:
@@ -111,7 +111,7 @@ services:
         OWLAT_GIT_SHA: ${OWLAT_GIT_SHA:-unknown}
         OWLAT_BUILD_DATE: ${OWLAT_BUILD_DATE:-unknown}
     ports:
-      - "${WEB_PORT:-3000}:3000"
+      - '${WEB_PORT:-3000}:3000'
     environment:
       HOST: 0.0.0.0
       PORT: 3000
@@ -188,8 +188,8 @@ services:
     ports:
       # Internal HTTP API (MTA_API_KEY-protected) — Convex reaches it via the
       # docker network; never expose it publicly.
-      - "127.0.0.1:${MTA_HTTP_PORT:-3100}:3100"
-      - "${MTA_SMTP_PORT:-25}:25"
+      - '127.0.0.1:${MTA_HTTP_PORT:-3100}:3100'
+      - '${MTA_SMTP_PORT:-25}:25'
     environment:
       PORT: 3100
       BOUNCE_PORT: 25
@@ -285,7 +285,7 @@ services:
       dockerfile: unbound.Dockerfile
     read_only: true
     healthcheck:
-      test: ["CMD", "unbound-control", "status"]
+      test: ['CMD', 'unbound-control', 'status']
       interval: 30s
       timeout: 5s
       retries: 3
@@ -313,7 +313,7 @@ services:
     # traverse an appendonlydir created (and owned as 999) by a previous run —
     # startup fails on preserved volumes (#551). As non-root the entrypoint
     # skips its chown/su-exec path entirely and works for fresh volumes too.
-    user: "999:1000"
+    user: '999:1000'
     volumes:
       - redis-data:/data
     # Two independent ceilings, because an unbounded Redis is a whole-host
@@ -344,7 +344,15 @@ services:
       --maxmemory ${REDIS_MAXMEMORY:-512mb}
       --maxmemory-policy noeviction
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env first (owlat-setup generates it; manual installs use openssl rand -base64 32)}", "--no-auth-warning", "ping"]
+      test:
+        [
+          'CMD',
+          'redis-cli',
+          '-a',
+          '${REDIS_PASSWORD:?set REDIS_PASSWORD in .env first (owlat-setup generates it; manual installs use openssl rand -base64 32)}',
+          '--no-auth-warning',
+          'ping',
+        ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -376,7 +384,7 @@ services:
       # `clamdcheck` alias is gone from upstream `stable` as of 1.5.4); older
       # images only have the bare name. Probe both so a base-image bump can
       # move in either direction without going unhealthy.
-      test: ["CMD-SHELL", "clamdcheck.sh || clamdcheck"]
+      test: ['CMD-SHELL', 'clamdcheck.sh || clamdcheck']
       interval: 60s
       timeout: 10s
       retries: 5
@@ -384,7 +392,7 @@ services:
       # RAM before clamd answers — easily several minutes on a small VPS.
       start_period: 600s
     environment:
-      CLAMAV_NO_FRESHCLAMD: "false"
+      CLAMAV_NO_FRESHCLAMD: 'false'
     cap_drop:
       - ALL
     # ClamAV's entrypoint runs as root to prepare /run/clamav and chown the
@@ -508,6 +516,12 @@ services:
       - default
       - docker-proxy
     # No ports: reached only via the internal network as http://updater:3200
+    # A rollout that has promoted its release finishes recreating the stack
+    # before the updater exits (apps/updater/src/lifecycle.ts holds the budget
+    # to this value); the default 10s would SIGKILL it halfway. `init` reaps the
+    # docker CLI processes a stopped command leaves behind.
+    init: true
+    stop_grace_period: 120s
     restart: unless-stopped
 
   # ── Caddy reverse proxy (optional, --profile tls) ─────────────────────
@@ -518,8 +532,8 @@ services:
     logging: *default-logging
     image: caddy:${CADDY_VERSION:-2.8-alpine}
     ports:
-      - "80:80"
-      - "443:443"
+      - '80:80'
+      - '443:443'
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
@@ -623,7 +637,7 @@ services:
       https_proxy: http://code-worker-egress:8888
       NO_PROXY: localhost,127.0.0.1,convex-fn-proxy
       no_proxy: localhost,127.0.0.1,convex-fn-proxy
-      NODE_USE_ENV_PROXY: "1"
+      NODE_USE_ENV_PROXY: '1'
       LLM_PROVIDER: ${LLM_PROVIDER:-openai}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
@@ -811,7 +825,7 @@ services:
   ollama-models:
     logging: *default-logging
     image: ollama/ollama:${OLLAMA_VERSION:-0.34.4}
-    entrypoint: ["/bin/sh", "-c"]
+    entrypoint: ['/bin/sh', '-c']
     command:
       - |
         i=0
@@ -835,7 +849,7 @@ services:
     profiles:
       - ai
       - dev
-    restart: "no"
+    restart: 'no'
 
   # ── Mail TLS bootstrap (self-signed default cert for IMAPS + inbound SMTP) ──
   # The MTA's inbound listener (port 25) reads the same pair to offer STARTTLS;
@@ -906,7 +920,7 @@ services:
     profiles:
       - personal-mail
       - mta
-    restart: "no"
+    restart: 'no'
 
   # ── IMAP server (Postbox personal mailboxes — port 993) ──────────────
   # Activated by feature-flag profile "personal-mail" (postbox flag).
@@ -917,9 +931,9 @@ services:
       context: .
       dockerfile: apps/imap/Dockerfile
     ports:
-      - "${IMAP_PORT:-993}:993"
+      - '${IMAP_PORT:-993}:993'
     environment:
-      IMAP_PORT: "993"
+      IMAP_PORT: '993'
       IMAP_GREETING_HOST: ${EHLO_HOSTNAME:-mail.localhost}
       CONVEX_URL: http://convex:3210
       # Written with no `:-` fallback as DOCUMENTATION, not as a guard: compose
@@ -992,7 +1006,7 @@ services:
       context: .
       dockerfile: apps/mail-sync/Dockerfile
     environment:
-      MAIL_SYNC_PORT: "3200"
+      MAIL_SYNC_PORT: '3200'
       CONVEX_URL: http://convex:3210
       # No `:-` fallback, and not the `:?` form either — see the imap service
       # for why compose cannot guard this and what stops the crash-loop

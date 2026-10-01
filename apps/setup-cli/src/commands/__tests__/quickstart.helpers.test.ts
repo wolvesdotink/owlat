@@ -7,6 +7,8 @@ import {
 	dnsInstructions,
 	formatSummary,
 	resolveComposeVersionPin,
+	composeImageSource,
+	composeUpArgs,
 } from '../quickstart.js';
 import { mergeEnv, readEnv, writeEnv } from '../../lib/env.js';
 import type { SetupConfig } from '../../lib/setupConfig.js';
@@ -53,6 +55,25 @@ describe('resolveComposeVersionPin', () => {
 
 		// and the literal `:dev` sentinel never lands in the file
 		expect(await readFile(envPath, 'utf-8')).not.toMatch(/OWLAT_VERSION=dev/);
+	});
+});
+
+describe('compose bring-up image source', () => {
+	it('never builds on the host when the desktop preloaded the images (local-push)', () => {
+		const source = composeImageSource({ localImages: true });
+		expect(source).toBe('preloaded');
+		expect(composeUpArgs(source)).toEqual(['compose', 'up', '-d', '--no-build']);
+	});
+
+	it('builds from source for a local-build install, and leaves the default alone otherwise', () => {
+		expect(composeUpArgs(composeImageSource({ buildLocal: true }))).toEqual([
+			'compose',
+			'up',
+			'-d',
+			'--build',
+		]);
+		expect(composeImageSource({ buildLocal: true, localImages: true })).toBe('build');
+		expect(composeUpArgs(composeImageSource({}))).toEqual(['compose', 'up', '-d']);
 	});
 });
 

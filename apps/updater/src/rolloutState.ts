@@ -64,8 +64,11 @@ export async function exclusively(
 	}
 }
 
-/** How an update ended, from the recreate on (see update.ts) or before it. */
-export type RolloutOutcome = 'healthy' | 'started' | 'partially-applied' | 'failed';
+/**
+ * How an update ended, from the recreate on (see update.ts) or before it.
+ * `interrupted`: the updater stopped before the update reached a verdict.
+ */
+export type RolloutOutcome = 'healthy' | 'started' | 'partially-applied' | 'failed' | 'interrupted';
 
 export interface LastRollout {
 	/** The caller's id for this update, when it sent one. */
@@ -75,8 +78,14 @@ export interface LastRollout {
 	startedAt: number;
 	/** `verifying` is the readiness wait after `up`. */
 	phase: 'applying' | 'verifying' | 'done';
-	/** `interrupted`: the updater stopped before the update reached a verdict. */
-	outcome?: RolloutOutcome | 'interrupted';
+	/**
+	 * Set once the update started changing what the host runs: the compose file
+	 * is promoted (or, without a template, `up` is about to run). Before it, an
+	 * interrupted update left the running stack as it was; after it, the
+	 * configuration names the new release and the containers may lag behind.
+	 */
+	committed?: boolean;
+	outcome?: RolloutOutcome;
 	summary?: string;
 	warnings?: string[];
 	finishedAt?: number;
@@ -116,27 +125,42 @@ function isLastRollout(value: unknown): value is LastRollout {
 }
 
 /**
+ * What an update that never reached a verdict left behind, in words the
+ * operator can act on. Whether it had committed is the whole difference.
+ */
+export function interruptedVerdict(record: LastRollout): LastRollout {
+	return {
+		...record,
+		phase: 'done',
+		outcome: 'interrupted',
+		summary: record.committed
+			? 'The updater stopped after the release was promoted, before it confirmed the ' +
+				'containers were recreated. Run the update again, or `docker compose up -d` in the ' +
+				'install directory on the host, to finish it.'
+			: 'The updater stopped before the release was applied. The running stack was not ' +
+				'changed; run the update again.',
+	};
+}
+
+/**
  * The last update's record, as /health reports it. A record still in flight
  * while no update runs in this process belongs to an updater that stopped
  * mid-rollout, so it is reported as interrupted rather than as still going.
  */
 export function readLastRollout(): LastRollout | null {
+	const record = readRecord();
+	if (!record) return null;
+	if (record.phase !== 'done' && inFlight?.kind !== 'update') return interruptedVerdict(record);
+	return record;
+}
+
+/** The record as it is on disk, or null when there is none worth reading. */
+export function readRecord(): LastRollout | null {
 	let record: unknown;
 	try {
 		record = JSON.parse(readFileSync(RECORD_FILE, 'utf-8'));
 	} catch {
 		return null;
 	}
-	if (!isLastRollout(record)) return null;
-	if (record.phase !== 'done' && inFlight?.kind !== 'update') {
-		return {
-			...record,
-			phase: 'done',
-			outcome: 'interrupted',
-			summary:
-				'The updater stopped before the update reached a verdict. ' +
-				'Check `docker compose ps` on the host.',
-		};
-	}
-	return record;
+	return isLastRollout(record) ? record : null;
 }
