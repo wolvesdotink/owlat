@@ -210,6 +210,8 @@ export async function insertDeliveredMessage(
 		 * claimed this message for. Absent ⇒ the message renders in the trailing
 		 * "Everything else" section, which is exactly today's flat inbox. */
 		pinnedSection?: string;
+		/** IMAP sync: where the provider holds the message (`mailMessages.remoteSighting`). */
+		remoteSighting?: Doc<'mailMessages'>['remoteSighting'];
 		/** Add rawSize to the mailbox's used bytes (local cache accounting). */
 		countUsedBytes?: boolean;
 		/** Set by the inbound callers that run `runPostInsertInboundEffects`
@@ -344,6 +346,7 @@ export async function insertDeliveredMessage(
 		inboundSignatureInfo: params.inboundSignatureInfo,
 		unsubscribe: params.unsubscribe,
 		pinnedSection: params.pinnedSection,
+		remoteSighting: params.remoteSighting,
 		createdAt: now,
 		updatedAt: now,
 	});

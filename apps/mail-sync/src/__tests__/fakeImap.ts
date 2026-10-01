@@ -51,6 +51,8 @@ export class FakeImap implements RemoteStateClient {
 		const highest = box.messages.reduce((m, msg) => (msg.modseq > m ? msg.modseq : m), 1n);
 		return {
 			uidValidity: box.uidValidity,
+			// Above every UID handed out so far, as a real UIDNEXT is.
+			uidNext: this.nextUid,
 			...(this.condstore ? { highestModseq: highest } : {}),
 			...(this.reportsCount ? { exists: box.messages.length } : {}),
 		};
@@ -73,6 +75,10 @@ export class FakeImap implements RemoteStateClient {
 			flags: new Set(flags),
 			modseq: ++this.modseq,
 		});
+	}
+
+	uidOf(path: string, messageId: string): number | undefined {
+		return this.boxes.get(path)!.messages.find((m) => m.messageId === messageId)?.uid;
 	}
 
 	remove(path: string, messageId: string): void {

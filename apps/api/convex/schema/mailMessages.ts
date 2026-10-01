@@ -9,7 +9,7 @@ import {
 	mailUnsubscribeValidator,
 } from '../lib/validators/mailContent';
 import { senderHeuristicsValidator } from '../lib/validators/senderHeuristics';
-import { folderRoleValidator } from '../lib/validators/mail';
+import { folderRoleValidator, remoteSightingValidator } from '../lib/validators/mail';
 import { mailEncryptionInfoValidator } from '../mail/sealPolicy';
 
 /**
@@ -114,6 +114,11 @@ export const mailMessagesTables = {
 		// as "old", so turning the setting on can never destroy mail whose age in
 		// the bin is unknown.
 		trashedAt: v.optional(v.number()),
+		// External mailboxes only: where the provider was last seen holding this
+		// message (remote folder, UIDVALIDITY, UID). Recorded at ingest and kept
+		// current by the worker's reconcile; absent on mail the provider was never
+		// seen with, which is therefore never reported deleted there.
+		remoteSighting: v.optional(remoteSightingValidator),
 		// Snooze (P8): hides the message from the inbox until the timestamp
 		// passes; a 1-min cron sweep returns it (and bumps the thread
 		// `lastMessageAt` so the inbox sort floats it back to the top).

@@ -9,7 +9,12 @@ import type { FlagState, FolderView } from './folderView.js';
 /** `exists` is kept current by the client between SELECTs (EXISTS / EXPUNGE responses). */
 type Mailbox =
 	| false
-	| { uidValidity: bigint | number; highestModseq?: bigint | number; exists?: number };
+	| {
+			uidValidity: bigint | number;
+			uidNext?: number;
+			highestModseq?: bigint | number;
+			exists?: number;
+	  };
 
 interface FetchedMessage {
 	uid: number;
@@ -178,6 +183,9 @@ export async function refreshFolder(
 			await addArrivals(client, view, result, arrived);
 			view.lastCensusAt = options.now ?? Date.now();
 			view.censusDue = false;
+			// UIDNEXT as of the SELECT: every UID below it was handed out before the
+			// search ran, so one the search did not list had left by then.
+			view.censusUidNext = mailbox.uidNext ?? 0;
 			result.census = true;
 		}
 

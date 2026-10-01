@@ -48,6 +48,19 @@ export const remoteFolderRefValidator = v.union(
 	v.object({ remote: v.string() })
 );
 
+/**
+ * Where the mail-sync worker last saw the provider of a connected external
+ * account hold a message: the remote folder, its UIDVALIDITY and the UID. It
+ * is the evidence that the provider once had the message, so a message that
+ * has since left that folder and is nowhere else counts as deleted there, even
+ * when the worker was not running at the time (`mail/external/remoteState.ts`).
+ */
+export const remoteSightingValidator = v.object({
+	remoteName: v.string(),
+	uidValidity: v.number(),
+	uid: v.number(),
+});
+
 /** 'full' — two-way sync; 'incoming' — only new mail comes in. */
 export const EXTERNAL_SYNC_MODES = ['full', 'incoming'] as const;
 export type ExternalSyncMode = (typeof EXTERNAL_SYNC_MODES)[number];

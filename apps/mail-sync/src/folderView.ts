@@ -31,6 +31,11 @@ export class FolderView {
 	 * reconnect after which nothing seen before the gap can be trusted as-is.
 	 */
 	censusDue = false;
+	/**
+	 * The folder's UIDNEXT when the last census began. Every UID below it had
+	 * been handed out by then, so one the view lacks has left the folder.
+	 */
+	censusUidNext = 0;
 	private readonly byUid = new Map<number, CachedMessage>();
 	/** Message-ID → its UID, or UIDs when the folder holds copies. */
 	private readonly byMessageId = new Map<string, number | number[]>();
@@ -97,6 +102,7 @@ export class FolderView {
 		this.highestUid = 0;
 		this.highestModseq = null;
 		this.lastCensusAt = 0;
+		this.censusUidNext = 0;
 	}
 
 	/** The flags of this folder's copy of `messageId` (the first, if it holds several). */
@@ -104,6 +110,21 @@ export class FolderView {
 		const uids = this.byMessageId.get(messageId);
 		if (uids === undefined) return undefined;
 		return this.byUid.get(typeof uids === 'number' ? uids : uids[0]!)?.flags;
+	}
+
+	/** This folder's UID for `messageId` (the lowest, if it holds several copies). */
+	uidOf(messageId: string): number | undefined {
+		const uids = this.byMessageId.get(messageId);
+		return typeof uids === 'number' ? uids : uids && Math.min(...uids);
+	}
+
+	/**
+	 * Whether `uid` was in this folder once and the view knows it is not now: the
+	 * UID had been handed out by the time the view last looked, and the view
+	 * lacks it. Only meaningful under the view's own UIDVALIDITY.
+	 */
+	hasLeft(uid: number): boolean {
+		return !this.byUid.has(uid) && (uid <= this.highestUid || uid < this.censusUidNext);
 	}
 
 	/** Up to `count` of the highest cached UIDs, highest first. */

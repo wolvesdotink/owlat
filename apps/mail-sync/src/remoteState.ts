@@ -22,6 +22,14 @@
  * are empty, so nothing is known to have changed), after a UIDVALIDITY reset,
  * while the account is not yet aligned, and every few hours as a safety net.
  *
+ * The views die with the process, so after a restart nothing has been seen
+ * leaving a folder. What survives is each local message's sighting: the folder,
+ * UIDVALIDITY and UID it was last seen under on the provider, recorded at
+ * ingest and refreshed here when it no longer matches. A message whose sighting
+ * names a folder whose view, under the same UIDVALIDITY, has looked past that
+ * UID and lacks it, has left that folder, even if no view saw it go. That is
+ * how a deletion made while the worker was down is still mirrored.
+ *
  * Gmail's All Mail holds every message and is not kept as a view: it is too
  * large, and a message in it alone is simply archived. Where a local message
  * seems to have vanished, All Mail is searched for it before anything is
@@ -62,6 +70,13 @@ export const LOCAL_PAGE = 500;
 const LOOKUP_CHUNK = 200;
 const APPLY_CHUNK = 100;
 
+/** Where the provider was seen holding a message: the evidence that it once had it. */
+export interface RemoteSighting {
+	remoteName: string;
+	uidValidity: number;
+	uid: number;
+}
+
 /** One local message as `listLocalMessages` / `lookupLocalMessages` return it. */
 export interface LocalMessageRow {
 	messageId: string;
@@ -69,6 +84,8 @@ export interface LocalMessageRow {
 	remoteName: string | null;
 	role: FolderRole | null;
 	flags: FlagState;
+	/** Where the provider was last seen holding it; absent if it never was (or not yet). */
+	sighting?: RemoteSighting | null;
 }
 
 /** What `applyRemoteObservations` takes. */
@@ -77,6 +94,10 @@ export interface RemoteObservation {
 	remoteFolders?: string[];
 	isGone?: boolean;
 	flags?: FlagState;
+	/** Where the tracked folders hold it now; each local copy records its own folder's. */
+	sightings?: RemoteSighting[];
+	/** Drop the recorded sightings: a merge found the message in no synced folder. */
+	forgetSightings?: boolean;
 }
 
 /** Per Message-ID, the tracked folders holding it (with their flags). */
@@ -84,11 +105,21 @@ export interface RemoteIndex {
 	get(messageId: string): ReadonlyArray<{ remoteName: string; flags: FlagState }> | undefined;
 }
 
+/** Sightings read off the views. */
+export interface SightingIndex {
+	/** Where `remoteName`'s view holds `messageId` now. */
+	locate(remoteName: string, messageId: string): RemoteSighting | undefined;
+	/** The sighted folder's view, under the same UIDVALIDITY, knows the message has left it. */
+	hasLeft(sighting: RemoteSighting): boolean;
+}
+
 /**
  * The views as a RemoteIndex, answered per question from each view's own
  * Message-ID index — nothing account-wide is rebuilt per reconcile.
  */
-export function indexViews(views: ReadonlyMap<string, FolderView>): RemoteIndex {
+export function indexViews(views: ReadonlyMap<string, FolderView>): RemoteIndex & SightingIndex {
+	const uidValidityOf = (view: FolderView | undefined) =>
+		view?.uidValidity == null ? null : Number(view.uidValidity);
 	return {
 		get(messageId) {
 			const held: Array<{ remoteName: string; flags: FlagState }> = [];
@@ -98,7 +129,27 @@ export function indexViews(views: ReadonlyMap<string, FolderView>): RemoteIndex 
 			}
 			return held.length > 0 ? held : undefined;
 		},
+		locate(remoteName, messageId) {
+			const view = views.get(remoteName);
+			const uidValidity = uidValidityOf(view);
+			const uid = view?.uidOf(messageId);
+			return uidValidity === null || uid === undefined
+				? undefined
+				: { remoteName, uidValidity, uid };
+		},
+		hasLeft(sighting) {
+			const view = views.get(sighting.remoteName);
+			return (
+				view !== undefined &&
+				uidValidityOf(view) === sighting.uidValidity &&
+				view.hasLeft(sighting.uid)
+			);
+		},
 	};
+}
+
+function sameSighting(a: RemoteSighting | undefined, b: RemoteSighting | null | undefined) {
+	return a?.remoteName === b?.remoteName && a?.uidValidity === b?.uidValidity && a?.uid === b?.uid;
 }
 
 export interface DecideInput {
@@ -109,6 +160,8 @@ export interface DecideInput {
 	untracked: ReadonlySet<string>;
 	/** Flag changes read from the untracked folders this cycle. */
 	untrackedFlags: ReadonlyMap<string, FlagState>;
+	/** Without it, no sightings are reported. */
+	sightings?: SightingIndex;
 }
 
 export interface Decision {
@@ -127,16 +180,19 @@ export function decide(rows: ReadonlyArray<LocalMessageRow>, input: DecideInput)
 		const held = input.order.filter((name) => locations.some((l) => l.remoteName === name));
 		const observation: RemoteObservation = { messageId: row.messageId };
 
+		// Sent and Drafts hold mail Owlat wrote itself, which the provider may
+		// never have had; an absence there proves nothing.
+		const isOwnMail = row.role === 'sent' || row.role === 'drafts';
 		if (!held.includes(row.remoteName)) {
 			if (held.length > 0) observation.remoteFolders = held;
-			// Sent and Drafts hold mail Owlat wrote itself, which the provider may
-			// never have had; an absence there proves nothing.
-			else if (
-				!input.untracked.has(row.remoteName) &&
-				row.role !== 'sent' &&
-				row.role !== 'drafts'
-			) {
-				unplaced.push(row);
+			else if (!input.untracked.has(row.remoteName) && !isOwnMail) unplaced.push(row);
+		} else if (input.sightings && !isOwnMail) {
+			// Written only when it moved on, so a settled mailbox costs no writes.
+			const here = input.sightings.locate(row.remoteName, row.messageId);
+			if (here && !sameSighting(here, row.sighting)) {
+				const sightings = observations.get(row.messageId)?.sightings ?? [];
+				if (!sightings.some((s) => s.remoteName === here.remoteName)) sightings.push(here);
+				observation.sightings = sightings;
 			}
 		}
 
@@ -145,7 +201,7 @@ export function decide(rows: ReadonlyArray<LocalMessageRow>, input: DecideInput)
 			: (locations.find((l) => l.remoteName === row.remoteName) ?? locations[0])?.flags;
 		if (remoteFlags && !sameFlags(remoteFlags, row.flags)) observation.flags = remoteFlags;
 
-		if (observation.remoteFolders || observation.flags) {
+		if (observation.remoteFolders || observation.flags || observation.sightings) {
 			observations.set(row.messageId, { ...observations.get(row.messageId), ...observation });
 		}
 	}
@@ -239,11 +295,13 @@ export async function reconcile(
 		}
 	}
 
+	const index = indexViews(deps.views);
 	const input: DecideInput = {
-		index: indexViews(deps.views),
+		index,
 		order: deps.tracked,
 		untracked: new Set(deps.allMail ? [deps.allMail] : []),
 		untrackedFlags,
+		sightings: index,
 	};
 	let confirmsLeft = MAX_CONFIRMS_PER_CYCLE;
 	// Candidates past the look-up budget. The views no longer hold them, so they
@@ -252,6 +310,13 @@ export async function reconcile(
 	const deferred: string[] = [];
 	const settle = async (rows: LocalMessageRow[]) => {
 		const { observations, unplaced } = decide(rows, input);
+		if (deps.isAligned) {
+			// Seen in a folder whose view now knows it is gone from there: it left,
+			// even if it went while no view was watching (the worker was down).
+			for (const row of unplaced) {
+				if (row.sighting && index.hasLeft(row.sighting)) vanished.add(row.messageId);
+			}
+		}
 		let checked = unplaced;
 		if (deps.allMail) {
 			// What left a folder is checked before what merely sits in none, so a
@@ -272,8 +337,17 @@ export async function reconcile(
 			if (inAllMail.has(row.messageId)) {
 				observations.push({ messageId: row.messageId, remoteFolders: [deps.allMail!] });
 			} else if (vanished.has(row.messageId)) {
-				// It left a folder this cycle and is nowhere now: deleted on the provider.
+				// It left a folder and is nowhere now: deleted on the provider.
 				observations.push({ messageId: row.messageId, isGone: true });
+			}
+		}
+		if (!deps.isAligned) {
+			// A merge deletes nothing, so a sighting from before it must not delete
+			// the message once the account is aligned either.
+			for (const row of unplaced) {
+				if (row.sighting && !inAllMail.has(row.messageId)) {
+					observations.push({ messageId: row.messageId, forgetSightings: true });
+				}
 			}
 		}
 		for (const chunk of chunks(observations, APPLY_CHUNK)) await deps.apply(chunk);
