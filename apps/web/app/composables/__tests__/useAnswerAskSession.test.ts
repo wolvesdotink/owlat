@@ -65,9 +65,22 @@ beforeEach(() => {
 	Object.assign(globalThis, {
 		useI18n: i18nStubs.useI18n,
 		useConvexQuery: (fn: string) => ({ data: data[fn] }),
+		// The real Operation's order: `isLoading` clears in its `finally`, before
+		// the caller sees the result.
 		useBackendOperation: (fn: string, opts?: { onError?: (op: unknown) => boolean }) => {
 			onErrors[fn] = opts?.onError;
-			return { run: runs[fn], isLoading: ref(false) };
+			const isLoading = ref(false);
+			return {
+				run: async (args: unknown) => {
+					isLoading.value = true;
+					try {
+						return await runs[fn]!(args);
+					} finally {
+						isLoading.value = false;
+					}
+				},
+				isLoading,
+			};
 		},
 		requireConvex: () => ({ query }),
 	});
@@ -287,5 +300,188 @@ describe('useAnswerAskSession', () => {
 		);
 		await nextTick();
 		expect(onAttachedFiles).not.toHaveBeenCalled();
+	});
+});
+
+/** A start whose action resolves only when the test says so. */
+function deferredStart() {
+	let resolve!: (value: unknown) => void;
+	runs['start'] = vi.fn(
+		() =>
+			new Promise((r) => {
+				resolve = r;
+			})
+	);
+	return (value: unknown) => resolve(value);
+}
+
+const TEAM = { kind: 'teamThread' as const, threadId: 'ct_1' };
+const FILE = { source: 'semanticFile' as const, id: 'sf_1', filename: 'invoice.pdf' };
+
+function teamHost(composer = composerMock()) {
+	const onAttachedFiles = vi.fn();
+	let api!: ReturnType<typeof useAnswerAskSession>;
+	mount(
+		defineComponent({
+			setup() {
+				api = useAnswerAskSession({
+					target: () => ({ kind: 'teamThread', threadId: 'ct_1' as never }),
+					composer: () => composer,
+					onAttachedFiles,
+				});
+				return () => h('div');
+			},
+		}),
+		{ global: { plugins: [createTestI18n()] } }
+	);
+	return { api: () => api, onAttachedFiles, composer };
+}
+
+describe('useAnswerAskSession: the action and the subscriptions in either order', () => {
+	it('hands back a matched file when the subscription shows the new session before start returns', async () => {
+		data['getSession']!.value = null; // loaded: no session yet
+		const { api, onAttachedFiles } = teamHost();
+		const finish = deferredStart();
+		const starting = api().start('');
+		await flushPromises();
+
+		const view = session({
+			sessionId: 's2',
+			target: TEAM,
+			status: 'drafting',
+			attachedFiles: [FILE],
+		});
+		data['getSession']!.value = view;
+		await flushPromises();
+		expect(onAttachedFiles).toHaveBeenCalledWith([FILE]);
+
+		finish({ ok: true, result: view });
+		await starting;
+		await flushPromises();
+		expect(onAttachedFiles).toHaveBeenCalledTimes(1);
+	});
+
+	it('hands it back once when start returns first and the subscription follows', async () => {
+		data['getSession']!.value = null;
+		const { api, onAttachedFiles } = teamHost();
+		const view = session({
+			sessionId: 's2',
+			target: TEAM,
+			status: 'drafting',
+			attachedFiles: [FILE],
+		});
+		runs['start'] = vi.fn(async () => ({ ok: true, result: view }));
+		await api().start('');
+		await flushPromises();
+		expect(onAttachedFiles).toHaveBeenCalledWith([FILE]);
+
+		data['getSession']!.value = { ...view, updatedAt: 9 };
+		await flushPromises();
+		expect(onAttachedFiles).toHaveBeenCalledTimes(1);
+	});
+
+	it('decides a session first seen before the subscription ever answered by what start returns', async () => {
+		// Not loaded when the run begins: the first sighting could be an old session.
+		const { api, onAttachedFiles } = teamHost();
+		const finish = deferredStart();
+		const starting = api().start('');
+		await flushPromises();
+		const view = session({ sessionId: 's2', target: TEAM, attachedFiles: [FILE] });
+		data['getSession']!.value = view;
+		await flushPromises();
+		expect(onAttachedFiles).not.toHaveBeenCalled();
+
+		finish({ ok: true, result: view });
+		await starting;
+		await flushPromises();
+		expect(onAttachedFiles).toHaveBeenCalledTimes(1);
+		expect(onAttachedFiles).toHaveBeenCalledWith([FILE]);
+	});
+
+	it('on a reload, attaches nothing the session already had, and only what an answer adds', async () => {
+		data['getSession']!.value = session({
+			sessionId: 's1',
+			target: TEAM,
+			status: 'asking',
+			attachedFiles: [FILE],
+		});
+		const { api, onAttachedFiles } = teamHost();
+		await flushPromises();
+		expect(onAttachedFiles).not.toHaveBeenCalled();
+
+		const added = { source: 'upload' as const, id: 'st_9', filename: 'scan.pdf' };
+		runs['answer'] = vi.fn(async () => ({
+			ok: true,
+			result: session({
+				sessionId: 's1',
+				target: TEAM,
+				attachedFiles: [FILE, added],
+				updatedAt: 3,
+			}),
+		}));
+		await api().answer([{ questionId: 'q1', value: 'Yes' }]);
+		await flushPromises();
+		expect(onAttachedFiles).toHaveBeenCalledTimes(1);
+		expect(onAttachedFiles).toHaveBeenCalledWith([added]);
+	});
+
+	it('applies a draft whose action returned before its stream showed up complete, once', async () => {
+		data['getSession']!.value = null;
+		const composer = composerMock();
+		const { api } = host(composer);
+		// The start drafted at once; its result arrives first, the subscriptions later.
+		runs['start'] = vi.fn(async () => ({
+			ok: true,
+			result: session({ sessionId: 's2', status: 'drafting', streamId: 'ds9' }),
+		}));
+		await api.start('');
+		await flushPromises();
+		expect(composer.applyAiDraft).not.toHaveBeenCalled();
+
+		data['getDraftStream']!.value = {
+			_id: 'ds9',
+			status: 'complete',
+			text: 'Hi Jonas, here it is.',
+			injectionFlagged: false,
+		};
+		await flushPromises();
+		expect(api.phase.value).toBe('ready');
+		expect(composer.applyAiDraft).toHaveBeenCalledTimes(1);
+		expect(composer.applyAiDraft).toHaveBeenCalledWith('Hi Jonas, here it is.');
+
+		// The session subscription catching up applies nothing again.
+		data['getSession']!.value = session({
+			sessionId: 's2',
+			status: 'drafting',
+			streamId: 'ds9',
+			updatedAt: 9,
+		});
+		await flushPromises();
+		expect(composer.applyAiDraft).toHaveBeenCalledTimes(1);
+	});
+
+	it('applies a draft whose stream completed before the action returned, once', async () => {
+		data['getSession']!.value = null;
+		const composer = composerMock();
+		const { api } = host(composer);
+		const finish = deferredStart();
+		const starting = api.start('');
+		await flushPromises();
+
+		const view = session({ sessionId: 's2', status: 'drafting', streamId: 'ds9' });
+		data['getSession']!.value = view;
+		data['getDraftStream']!.value = {
+			_id: 'ds9',
+			status: 'complete',
+			text: 'Hi Jonas.',
+			injectionFlagged: false,
+		};
+		await flushPromises();
+		expect(composer.applyAiDraft).toHaveBeenCalledTimes(1);
+
+		finish({ ok: true, result: view });
+		await starting;
+		await flushPromises();
+		expect(composer.applyAiDraft).toHaveBeenCalledTimes(1);
 	});
 });

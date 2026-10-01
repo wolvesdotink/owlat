@@ -13,9 +13,11 @@
  *
  *  - the streamed text goes into the editor as it arrives, and once the
  *    stream is complete it is settled as the editor's content (and recorded as
- *    the draft's AI baseline). Only streams seen running in this page are
- *    applied: a finished draft found on a reload is already in the saved body,
- *    and applying it again would throw away the edits made since;
+ *    the draft's AI baseline), exactly once. Only this page's own streams are
+ *    applied: one it saw running, or one its own start/answer returned
+ *    (the action's result and the subscriptions arrive in either order). A
+ *    finished draft found on a reload is already in the saved body, and
+ *    applying it again would throw away the edits made since;
  *  - files the server attached (a found file, an answered file question) are
  *    read back into the composer's attachment list;
  *  - a promised date ("It isn't ready yet" → "When can you send it?") arms the
@@ -118,6 +120,47 @@ export function useAnswerAskSession(opts: {
 		return timeZone ? { timeZone } : {};
 	}
 
+	// Which sessions are this page's own. A start replaces the session (a new
+	// id); the action's result and the `getSession` subscription arrive in
+	// either order, so ownership is decided from both:
+	//  - a session first seen while no run of ours is going existed before this
+	//    page (a reload): `foreign`, its files and finished stream are history;
+	//  - a new id seen while our start is running, when the subscription had
+	//    already answered before the run began, is the run's: `own`;
+	//  - a new id seen while our start is running but before the subscription
+	//    ever answered could be either: `undecided` until the run returns, and
+	//    the id the run returns is `own`, any other `foreign`;
+	//  - the session an answer is sent on becomes `own` at call time.
+	type Ownership = 'own' | 'foreign' | 'undecided';
+	const ownership = new Map<string, Ownership>();
+	let runsPending = 0;
+	/** The session id the subscription showed when the running start began; undefined: not loaded. */
+	let idAtRunStart: string | null | undefined;
+
+	function decideFirstSighting(id: string): Ownership {
+		if (runsPending === 0) return 'foreign';
+		if (idAtRunStart === undefined) return 'undecided';
+		return id === idAtRunStart ? 'foreign' : 'own';
+	}
+
+	/** Run a start or an answer as this page's own, and take what it returns. */
+	async function ownRun(run: () => Promise<{ ok: boolean; result?: AskSession }>) {
+		runsPending += 1;
+		let view: AskSession | null = null;
+		try {
+			const result = await run();
+			view = result.ok && result.result ? result.result : null;
+		} finally {
+			runsPending -= 1;
+		}
+		for (const [id, state] of ownership) {
+			if (state === 'undecided' && id !== view?.sessionId) markForeign(id);
+		}
+		if (!view) return;
+		returned.value = view;
+		claim(view);
+	}
+
 	async function start(instruction: string) {
 		const composer = opts.composer();
 		if (!composer || busy.value) return;
@@ -128,30 +171,48 @@ export function useAnswerAskSession(opts: {
 			known?.kind === 'teamThread' ? known : draftId ? { kind: 'mailDraft', draftId } : null;
 		if (!target) return;
 		const trimmed = instruction.trim();
-		const result = await startOp.run({
-			target,
-			...(trimmed ? { instruction: trimmed } : {}),
-			locale: locale.value,
-			...timeZoneArg(),
-		});
-		if (result.ok) returned.value = result.result;
+		idAtRunStart =
+			sessionQuery.data.value === undefined
+				? undefined
+				: (sessionQuery.data.value?.sessionId ?? null);
+		await ownRun(() =>
+			startOp.run({
+				target,
+				...(trimmed ? { instruction: trimmed } : {}),
+				locale: locale.value,
+				...timeZoneArg(),
+			})
+		);
 	}
 
 	async function answer(answers: AskAnswer[], skip = false) {
 		const current = session.value;
 		if (!current || current.status !== 'asking' || answerOp.isLoading.value) return;
-		const result = await answerOp.run({
-			sessionId: current.sessionId,
-			answers,
-			...(skip ? { skip: true } : {}),
-			...timeZoneArg(),
-		});
-		if (result.ok) returned.value = result.result;
+		// What this answer brings (a file, the draft) is this page's from now on.
+		claim(current);
+		await ownRun(() =>
+			answerOp.run({
+				sessionId: current.sessionId,
+				answers,
+				...(skip ? { skip: true } : {}),
+				...timeZoneArg(),
+			})
+		);
 	}
 
-	/** Streams seen running here: only these are applied when they finish. */
+	/** This page's streams (seen running here, or returned by its own run). */
 	const liveStreams = new Set<string>();
 	const settledStreams = new Set<string>();
+
+	/** Settle the current stream once it is complete, if it is ours. */
+	function reconcileStream() {
+		const current = stream.value;
+		const composer = opts.composer();
+		if (!current || !composer || current.status !== 'complete') return;
+		if (!liveStreams.has(current._id) || settledStreams.has(current._id)) return;
+		settledStreams.add(current._id);
+		void settle(composer, current.text);
+	}
 
 	watch(
 		() => [stream.value?._id, stream.value?.status, stream.value?.text] as const,
@@ -163,28 +224,9 @@ export function useAnswerAskSession(opts: {
 				if (text) composer.streamAiDraft(text);
 				return;
 			}
-			if (status !== 'complete' || !liveStreams.has(id) || settledStreams.has(id)) return;
-			settledStreams.add(id);
-			void settle(composer, text ?? '');
+			reconcileStream();
 		},
 		{ immediate: true }
-	);
-	// A start that drafted at once: its stream may have finished before the
-	// subscription ever saw it running.
-	watch(
-		() => startOp.isLoading.value || answerOp.isLoading.value,
-		(running, wasRunning) => {
-			if (running || !wasRunning) return;
-			const id = streamId.value;
-			if (id && !settledStreams.has(id)) liveStreams.add(id);
-			const current = stream.value;
-			if (id && current?.status === 'complete' && !settledStreams.has(id)) {
-				const composer = opts.composer();
-				if (!composer) return;
-				settledStreams.add(id);
-				void settle(composer, current.text);
-			}
-		}
 	);
 
 	async function settle(composer: AnswerComposerApi, text: string) {
@@ -217,21 +259,50 @@ export function useAnswerAskSession(opts: {
 			if (composer && count > (previous ?? 0)) void refreshAttachments(composer);
 		}
 	);
-	// Files for a host that attaches them itself: only those this page's own
-	// start or answer produced, each once (a reload does not attach them again).
-	let reportedSession: string | null = null;
-	let reported = 0;
+	// Files for a host that attaches them itself (a team thread): only those of
+	// this page's own sessions, each once, by identity.
+	const reportedFiles = new Set<string>();
+	const fileKey = (file: AskSession['attachedFiles'][number]) => `${file.source}:${file.id}`;
+
+	function reportFiles(view: AskSession) {
+		if (!opts.onAttachedFiles) return;
+		const fresh = view.attachedFiles.filter((file) => !reportedFiles.has(fileKey(file)));
+		if (fresh.length === 0) return;
+		for (const file of fresh) reportedFiles.add(fileKey(file));
+		opts.onAttachedFiles(fresh);
+	}
+
+	/** A session from before this page: its files and its finished stream are history. */
+	function markForeign(id: string) {
+		ownership.set(id, 'foreign');
+		const view = session.value?.sessionId === id ? session.value : null;
+		for (const file of view?.attachedFiles ?? []) reportedFiles.add(fileKey(file));
+	}
+
+	/** This page's own session: its stream is applied, its files reported. */
+	function claim(view: AskSession) {
+		ownership.set(view.sessionId, 'own');
+		if (view.streamId) liveStreams.add(view.streamId);
+		reportFiles(view);
+		reconcileStream();
+	}
+
 	watch(
-		() => [session.value?.sessionId ?? null, session.value?.attachedFiles.length ?? 0] as const,
-		([id, count]) => {
-			if (!opts.onAttachedFiles || !id) return;
-			if (reportedSession !== id) {
-				reportedSession = id;
-				reported = returned.value?.sessionId === id ? 0 : count;
+		() =>
+			[
+				session.value?.sessionId ?? null,
+				session.value?.streamId ?? null,
+				(session.value?.attachedFiles ?? []).map(fileKey).join('|'),
+			] as const,
+		([id]) => {
+			const view = session.value;
+			if (!id || !view) return;
+			if (!ownership.has(id)) {
+				const state = decideFirstSighting(id);
+				if (state === 'foreign') markForeign(id);
+				else ownership.set(id, state);
 			}
-			if (count <= reported) return;
-			opts.onAttachedFiles(session.value?.attachedFiles.slice(reported) ?? []);
-			reported = count;
+			if (ownership.get(id) === 'own') claim(view);
 		},
 		{ immediate: true }
 	);
