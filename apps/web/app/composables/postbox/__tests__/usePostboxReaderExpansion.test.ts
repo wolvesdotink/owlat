@@ -34,6 +34,16 @@ describe('initialExpandedIds', () => {
 		expect([...set].sort()).toEqual(['a', 'b', 'c', 'e']);
 	});
 
+	it('leaves the first message collapsed when asked to (Answer mode: newest and unread only)', () => {
+		const set = initialExpandedIds(
+			[msg('a'), msg('b'), msg('c', false), msg('d'), msg('e')],
+			'e',
+			true,
+			false
+		);
+		expect([...set].sort()).toEqual(['c', 'e']);
+	});
+
 	it('leaves the first message collapsed in a two-message thread', () => {
 		expect([...initialExpandedIds([msg('a'), msg('b')], 'b')]).toEqual(['b']);
 	});

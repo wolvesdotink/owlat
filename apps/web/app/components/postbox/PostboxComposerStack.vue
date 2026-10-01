@@ -1,12 +1,18 @@
 <script setup lang="ts">
-import { layoutComposerStack } from '~/utils/postboxComposerLayout';
+import { useMediaQuery } from '~/composables/useMediaQuery';
+import {
+	COMPOSER_SHEET_QUERY,
+	layoutComposerStack,
+	SMALL_SCREEN_MAX_POPUPS,
+} from '~/utils/postboxComposerLayout';
 
-const { state, focusedId } = usePostboxComposerStack();
+const { state } = usePostboxComposerStack();
 
-// Pass focusedId so the promoted composer is always kept floating — it can
-// never be pushed into the dock (which would strand the focus surface with an
-// empty mount while its scrim is up).
-const placement = computed(() => layoutComposerStack(state.value, undefined, focusedId.value));
+// A phone has room for one composer, as a full-width sheet; the others dock.
+const isSmallScreen = useMediaQuery(COMPOSER_SHEET_QUERY);
+const placement = computed(() =>
+	layoutComposerStack(state.value, isSmallScreen.value ? SMALL_SCREEN_MAX_POPUPS : undefined)
+);
 
 // Floating popups, each with its right-to-left slot; the docked composers roll
 // up into the bottom dock so nothing marches offscreen once 3+ are open.
@@ -20,17 +26,18 @@ const popups = computed(() =>
 );
 
 const dockComposers = computed(() =>
-	placement.value.dock
-		.map((d) => state.value.find((c) => c.id === d.id))
-		.filter((c): c is (typeof state.value)[number] => c !== undefined)
+	// Under a phone's sheet the dock's chips would sit on its footer, over
+	// Send; they come back once the sheet is minimised.
+	isSmallScreen.value && popups.value.length > 0
+		? []
+		: placement.value.dock
+				.map((d) => state.value.find((c) => c.id === d.id))
+				.filter((c): c is (typeof state.value)[number] => c !== undefined)
 );
 </script>
 
 <template>
 	<Teleport to="body">
-		<!-- Focus surface first so its teleport target (#pbx-focus-mount) exists
-		     before any popup promotes into it. -->
-		<PostboxComposerFocusSurface />
 		<PostboxComposerPopup
 			v-for="{ spec, slot } in popups"
 			:key="spec.id"

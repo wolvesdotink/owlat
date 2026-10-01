@@ -47,6 +47,9 @@ import { deleteFolderCounters, deleteMailboxCounters } from '../mail/messageCoun
 import { isOrgInfrastructureAccount } from '../mail/external/personalAccount';
 import { deleteStoredAccessToken } from '../mail/external/accessTokenStore';
 import { isPersonalMailbox } from '../mail/permissions';
+import { deleteAskSessionsForDraft, deleteAskSessionsOfOwner } from '../mail/ai/composeDraftStore';
+import { deleteMailThreadCatchUps } from '../mail/ai/catchUpStore';
+import { deleteResourceUploads, mailThreadUploadKey } from '../storage/uploads';
 
 const MESSAGE_BATCH = 100;
 const CHAT_PAGE = 200;
@@ -200,6 +203,7 @@ export const eraseMemberData = internalMutation({
 				for (const att of draft.attachments) {
 					await ctx.storage.delete(att.storageId);
 				}
+				await deleteAskSessionsForDraft(ctx, draft._id);
 				await ctx.db.delete(draft._id);
 			}
 
@@ -207,7 +211,12 @@ export const eraseMemberData = internalMutation({
 				.query('mailThreads')
 				.withIndex('by_mailbox_and_last_message', (q) => q.eq('mailboxId', mailbox._id))
 				.collect(); // bounded: threads of one (already message-drained) mailbox
-			for (const thread of threads) await ctx.db.delete(thread._id);
+			for (const thread of threads) {
+				// Answer mode catch-up cards retell the thread: they go with it.
+				await deleteMailThreadCatchUps(ctx, thread._id);
+				await deleteResourceUploads(ctx, mailThreadUploadKey(thread._id));
+				await ctx.db.delete(thread._id);
+			}
 
 			for (const row of await ctx.db
 				.query('mailboxMembers')
@@ -267,6 +276,8 @@ export const eraseMemberData = internalMutation({
 			.withIndex('by_user', (q) => q.eq('userId', args.authUserId))
 			.collect(); // bounded: a user's own app passwords
 		for (const pw of userPasswords) await ctx.db.delete(pw._id);
+		// Answer mode ask sessions quote their mail and hold the member's answers.
+		if (await deleteAskSessionsOfOwner(ctx, args.authUserId)) return reschedule();
 
 		// Onboarding checklist, send-ready notices and the platform-admin grant:
 		// keyed by user id and outside the workspace deletion's sweep.

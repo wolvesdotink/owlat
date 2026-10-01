@@ -72,7 +72,6 @@ beforeAll(() => {
 	}));
 	vi.stubGlobal('usePostboxRowTriage', usePostboxRowTriage);
 	vi.stubGlobal('useState', (_key: string, init?: () => unknown) => ref(init ? init() : null));
-	vi.stubGlobal('POSTBOX_PENDING_COMPOSE_KEY', 'postbox:pending-compose');
 	vi.stubGlobal('usePostboxLabels', () => ({ labels: ref([]), setOnMessage: vi.fn() }));
 	vi.stubGlobal('usePostboxFolders', () => ({ folders: ref([]) }));
 	vi.stubGlobal('usePostboxRowPickers', usePostboxRowPickers);

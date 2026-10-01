@@ -94,7 +94,35 @@ describe('PostboxClarificationCard', () => {
 		await wrapper.find('[data-testid="clarification-submit"]').trigger('click');
 		const emitted = wrapper.emitted('answer');
 		expect(emitted).toBeTruthy();
-		expect(emitted![0]![0]).toEqual([{ questionId: 'clarify_0', value: 'Yes' }]);
+		expect(emitted![0]![0]).toEqual([{ questionId: 'clarify_0', value: 'Yes', source: 'user' }]);
+	});
+
+	it('pre-picks a remembered answer with its "last time" tag and sends it back as memory', async () => {
+		const item = makeItem();
+		item.clarification!.questions[0]!.answer = { value: 'No', at: 1, source: 'memory' };
+		const wrapper = mountCard(item);
+		const remembered = wrapper.find('[data-testid="task-option-remembered"]');
+		expect(remembered.exists()).toBe(true);
+		expect(remembered.element.closest('button')?.textContent).toContain('No');
+
+		await wrapper.find('[data-testid="clarification-submit"]').trigger('click');
+		expect(wrapper.emitted('answer')![0]![0]).toEqual([
+			{ questionId: 'clarify_0', value: 'No', source: 'memory' },
+		]);
+	});
+
+	it("sends a changed remembered answer as the owner's own", async () => {
+		const item = makeItem();
+		item.clarification!.questions[0]!.answer = { value: 'No', at: 1, source: 'memory' };
+		const wrapper = mountCard(item);
+		const yes = wrapper
+			.findAll('[data-testid="clarification-chip"]')
+			.find((chip) => chip.text().includes('Yes'))!;
+		await yes.trigger('click');
+		await wrapper.find('[data-testid="clarification-submit"]').trigger('click');
+		expect(wrapper.emitted('answer')![0]![0]).toEqual([
+			{ questionId: 'clarify_0', value: 'Yes', source: 'user' },
+		]);
 	});
 
 	it('emits a free-typed answer', async () => {
@@ -102,7 +130,7 @@ describe('PostboxClarificationCard', () => {
 		await wrapper.find('[data-testid="clarification-input"]').setValue('Refund half');
 		await wrapper.find('[data-testid="clarification-submit"]').trigger('click');
 		expect(wrapper.emitted('answer')![0]![0]).toEqual([
-			{ questionId: 'clarify_0', value: 'Refund half' },
+			{ questionId: 'clarify_0', value: 'Refund half', source: 'user' },
 		]);
 	});
 
@@ -115,7 +143,7 @@ describe('PostboxClarificationCard', () => {
 		expect(chip.attributes('aria-pressed')).toBe('false');
 		await wrapper.find('[data-testid="clarification-submit"]').trigger('click');
 		expect(wrapper.emitted('answer')![0]![0]).toEqual([
-			{ questionId: 'clarify_0', value: 'Refund half' },
+			{ questionId: 'clarify_0', value: 'Refund half', source: 'user' },
 		]);
 	});
 
@@ -126,7 +154,9 @@ describe('PostboxClarificationCard', () => {
 			wrapper.findAll('[data-testid="clarification-chip"]')[0]!.attributes('aria-pressed')
 		).toBe('true');
 		await wrapper.trigger('keydown', { key: 'Enter' });
-		expect(wrapper.emitted('answer')![0]![0]).toEqual([{ questionId: 'clarify_0', value: 'Yes' }]);
+		expect(wrapper.emitted('answer')![0]![0]).toEqual([
+			{ questionId: 'clarify_0', value: 'Yes', source: 'user' },
+		]);
 	});
 
 	it('keyboard: s emits the non-destructive defer; keys are inert while typing', async () => {

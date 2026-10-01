@@ -143,6 +143,9 @@ export const TENANT_TABLES = [
 	'threadPresence',
 	'threadReads',
 	'inboxFollowUps',
+	// Answer mode catch-up cards of team and Postbox threads: derived from the
+	// mail, so they go before the threads they summarise.
+	'threadCatchUps',
 	'inboundMessages',
 	'conversationThreads',
 	'coalesceBatches',
@@ -265,6 +268,8 @@ export const TENANT_TABLES = [
 
 	// ── AI draft-revise stream buffers (ephemeral, owner-scoped) ──
 	'aiDraftStreams',
+	// Answer mode ask sessions (owner-scoped, reference drafts and team threads).
+	'answerAskSessions',
 
 	// ── Dashboard & visualizations ──
 	'visualizations',

@@ -35,6 +35,11 @@ import {
 } from './steps/catalog';
 import { contextRetrievalStep } from './steps/context_retrieval';
 import { buildConfirmedContext } from './steps/draft';
+import {
+	buildFileAnswerNotes,
+	joinConfirmedBlocks,
+	ownerAttachmentFromAnswers,
+} from '../inbox/clarificationAnswers';
 import type {
 	AgentRoute,
 	AgentRunContext,
@@ -303,8 +308,16 @@ export const resumeDraft = internalAction({
 		}
 
 		// Fold the owner-confirmed answers into a trusted block (empty for the
-		// abandoned-question fallback path — an unanswered best-guess).
-		const confirmedContext = buildConfirmedContext(message.pendingClarification);
+		// abandoned-question fallback path — an unanswered best-guess). A file
+		// the owner attached gets its own line so the reply mentions it.
+		const questions = message.pendingClarification?.questions ?? [];
+		const confirmedContext = joinConfirmedBlocks(
+			buildConfirmedContext(message.pendingClarification),
+			buildFileAnswerNotes(questions)
+		);
+		// The owner's answer to a file question replaces the draft step's own
+		// file search (undefined when none was answered).
+		const ownerAttachment = ownerAttachmentFromAnswers(questions, message.attachmentSuggestions);
 
 		// The message went through `classify` to reach `awaiting_clarification`, so
 		// its classification is normally present; fall back to a neutral one so the
@@ -324,6 +337,7 @@ export const resumeDraft = internalAction({
 				context,
 				classification,
 				confirmedContext,
+				...(ownerAttachment !== undefined ? { ownerAttachment } : {}),
 			},
 		});
 	},

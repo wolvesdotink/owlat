@@ -34,5 +34,3 @@ app/components/postbox/PostboxTrustChip.vue:params ?? {})
 app/components/today/TodayAnswerCard.vue:params ?? {})
 app/composables/useCommandPaletteMailScope.ts:params ?? {})
 app/composables/useTeamThreadComposer.ts:params ?? {})
-app/pages/dashboard/inbox/[threadId].vue:params ?? {})
-app/pages/dashboard/inbox/[threadId].vue:string | { key, params } union

@@ -116,7 +116,10 @@ describe('replyFromNotification', () => {
 		const openComposer = vi.fn(async () => {});
 		const convex = { query, mutation } as unknown as ConvexClient;
 
-		await replyFromNotification(convex, 'm1', 'Sounds good', { openComposer });
+		await replyFromNotification(convex, 'm1', 'Sounds good', {
+			openComposer,
+			openAnswer: vi.fn(async () => {}),
+		});
 
 		// create → update → send == three mutations, all through the existing path.
 		expect(mutation).toHaveBeenCalledTimes(3);
@@ -136,7 +139,10 @@ describe('replyFromNotification', () => {
 		const openComposer = vi.fn(async () => {});
 		const convex = { query, mutation } as unknown as ConvexClient;
 
-		await replyFromNotification(convex, 'm1', 'My reply words', { openComposer });
+		await replyFromNotification(convex, 'm1', 'My reply words', {
+			openComposer,
+			openAnswer: vi.fn(async () => {}),
+		});
 
 		expect(openComposer).toHaveBeenCalledTimes(1);
 		const path = openComposer.mock.calls[0]?.[0] as string;
@@ -145,6 +151,29 @@ describe('replyFromNotification', () => {
 		expect(url.searchParams.get('body')).toBe('My reply words');
 		expect(url.searchParams.get('to')).toBe('sender@example.com');
 		expect(url.searchParams.get('subject')).toBe('Re: Hello');
+	});
+
+	it('opens the saved draft in Answer mode when only the send step fails', async () => {
+		const query = vi.fn(async () => ({
+			mailboxId: 'mb1',
+			fromAddress: 'sender@example.com',
+			subject: 'Hello',
+		}));
+		// create and update land (the draft holds the words); send throws.
+		let calls = 0;
+		const mutation = vi.fn(async () => {
+			calls++;
+			if (calls === 3) throw new Error('send refused');
+			return { draftId: 'd1' };
+		});
+		const openComposer = vi.fn(async () => {});
+		const openAnswer = vi.fn(async () => {});
+		const convex = { query, mutation } as unknown as ConvexClient;
+
+		await replyFromNotification(convex, 'm1', 'My reply words', { openComposer, openAnswer });
+
+		expect(openComposer).not.toHaveBeenCalled();
+		expect(openAnswer).toHaveBeenCalledWith('/dashboard/answer/m/m1?kind=reply&draft=d1');
 	});
 
 	it('still preserves the typed text when the original message cannot be re-read', async () => {
@@ -157,7 +186,10 @@ describe('replyFromNotification', () => {
 		const openComposer = vi.fn(async () => {});
 		const convex = { query, mutation } as unknown as ConvexClient;
 
-		await replyFromNotification(convex, 'm1', 'Do not lose me', { openComposer });
+		await replyFromNotification(convex, 'm1', 'Do not lose me', {
+			openComposer,
+			openAnswer: vi.fn(async () => {}),
+		});
 
 		expect(openComposer).toHaveBeenCalledTimes(1);
 		const path = openComposer.mock.calls[0]?.[0] as string;

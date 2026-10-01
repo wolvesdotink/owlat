@@ -7,11 +7,13 @@
  * three-high stack of advisory strips above the first message. They are now
  * ordered and shown one at a time:
  *
- *   offline > sealed > reply queue
+ *   offline > answer draft > sealed > reply queue
  *
  * Connectivity first because it changes what the rest of the UI can promise;
- * the sealed nudge next because it is one-time and its dismissal is a server
- * write; the reply-queue strip last because it is the only one with a permanent
+ * the draft just left in Answer mode next, because it is about what the person
+ * was doing a second ago (and it is gone once resumed or dismissed); the sealed
+ * nudge then, because it is one-time and its dismissal is a server write; the
+ * reply-queue strip last because it is the only one with a permanent
  * second home — the folder rail carries its live count regardless, so nothing
  * is hidden when its banner yields.
  *
@@ -26,8 +28,9 @@
 
 import type { Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
+import { useAnswerLeftDraft } from '~/composables/useAnswerMode';
 
-export type PostboxBannerKind = 'offline' | 'sealed' | 'replyQueue';
+export type PostboxBannerKind = 'offline' | 'answerDraft' | 'sealed' | 'replyQueue';
 
 /**
  * The one-time "your mail is sealed" nudge. `hasSeenSealedMailNudge` is a
@@ -57,7 +60,7 @@ export function usePostboxReplyQueueBanner(
 	return { visible, count, dismissed };
 }
 
-/** Which of the three strips owns the slot right now, if any. */
+/** Which of the strips owns the slot right now, if any. */
 export function usePostboxBannerSlot(args: {
 	isOffline: Ref<boolean>;
 	/** Sends the reconnect drain could not deliver — the online half of the strip. */
@@ -70,9 +73,15 @@ export function usePostboxBannerSlot(args: {
 	// PostboxOfflineBanners renders exactly one of its two strips, and nothing at
 	// all when the device is online with an empty failed queue.
 	const offlineVisible = computed(() => args.isOffline.value || args.failedCount.value > 0);
+	// A reply left in Answer mode, offered back on its own mailbox's list.
+	const { left } = useAnswerLeftDraft();
+	const answerDraftVisible = computed(
+		() => !!left.value && left.value.mailboxId === String(args.mailboxId.value)
+	);
 
 	const active = computed<PostboxBannerKind | null>(() => {
 		if (offlineVisible.value) return 'offline';
+		if (answerDraftVisible.value) return 'answerDraft';
 		if (sealed.visible.value) return 'sealed';
 		if (replyQueue.visible.value) return 'replyQueue';
 		return null;

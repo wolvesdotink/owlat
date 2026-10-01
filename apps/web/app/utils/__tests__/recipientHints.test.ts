@@ -8,7 +8,9 @@ import {
 	isExternalRecipient,
 	ownDomainsFromIdentities,
 	deriveReplyAllExtras,
+	knownRecipientLabel,
 	mergeRecipients,
+	messageRecipientNames,
 	recipientLabel,
 } from '../recipientHints';
 
@@ -92,5 +94,35 @@ describe('recipientLabel', () => {
 	it('prefers the display name, falling back to the local part', () => {
 		expect(recipientLabel('Anna Smith <anna@acme.io>')).toBe('Anna Smith');
 		expect(recipientLabel('ben@acme.io')).toBe('ben');
+	});
+
+	it('names a bare address the thread knows, by its canonical form', () => {
+		const names = { 'finance@brightpath.example': 'Jonas Berg' };
+		expect(knownRecipientLabel('finance@brightpath.example', names)).toBe('Jonas Berg');
+		expect(knownRecipientLabel('Finance@Brightpath.example', names)).toBe('Jonas Berg');
+		// A name on the address itself still wins; strangers keep the local part.
+		expect(knownRecipientLabel('Accounts <finance@brightpath.example>', names)).toBe('Accounts');
+		expect(knownRecipientLabel('ben@acme.io', names)).toBe('ben');
+	});
+});
+
+describe('messageRecipientNames', () => {
+	it("maps the sender's name and the named To/Cc people by address", () => {
+		expect(
+			messageRecipientNames({
+				fromAddress: 'finance@brightpath.example',
+				fromName: 'Jonas Berg',
+				toAddresses: ['Ada Lovelace <ada@northwind.example>', 'ops@northwind.example'],
+				ccAddresses: ['"Priya N." <priya@brightpath.example>'],
+			})
+		).toEqual({
+			'finance@brightpath.example': 'Jonas Berg',
+			'ada@northwind.example': 'Ada Lovelace',
+			'priya@brightpath.example': 'Priya N.',
+		});
+	});
+
+	it('has nothing for a sender without a name', () => {
+		expect(messageRecipientNames({ fromAddress: 'finance@brightpath.example' })).toEqual({});
 	});
 });

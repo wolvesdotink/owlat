@@ -54,6 +54,12 @@ const props = defineProps<{
 const emit = defineEmits<{
 	(e: 'from-change', address: string): void;
 	(e: 'apply-reply-all'): void;
+	/**
+	 * Something here needs to be seen (Answer mode opens its folded envelope):
+	 * a first-time recipient, a From leaving the team inbox, an identity that
+	 * will fail authentication.
+	 */
+	(e: 'attention', needsAttention: boolean): void;
 }>();
 
 const { t } = useI18n();
@@ -168,6 +174,17 @@ function switchToReplyAll() {
 	convertedToReplyAll.value = true;
 	emit('apply-reply-all');
 }
+
+defineExpose({ switchToReplyAll });
+
+watch(
+	() =>
+		isLeavingTeamInbox.value ||
+		(selectedAuth.value !== null && selectedAuth.value.tone !== 'success') ||
+		props.guards.firstTime?.open === true,
+	(needsAttention) => emit('attention', needsAttention),
+	{ immediate: true }
+);
 
 // ─── Drag a chip between To / Cc / Bcc ───────────────────────────────────────
 const fieldModels: Record<RecipientField, { value: string[] }> = {

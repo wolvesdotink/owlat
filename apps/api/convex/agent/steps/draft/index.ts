@@ -21,6 +21,7 @@ import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
 import { buildRecallKnowledgeTool, MAX_RECALL_CALLS } from './recall';
 import { draftAttachmentPatch } from './attachment';
+import type { AttachmentSuggestions } from '../../../inbox/attachmentSuggest';
 import {
 	ALLOWED_CATEGORIES,
 	ALLOWED_INTENTS,
@@ -69,6 +70,12 @@ export type DraftInput = {
 	// authoritative instruction rather than data. Absent on the normal draft
 	// path (no clarification was needed). See buildConfirmedContext.
 	confirmedContext?: string;
+	// The owner's answer to the attachment question, threaded by
+	// `walker.resumeDraft`: the file they picked (recorded as a confident
+	// suggestion) or null when they answered without a file ("It isn't ready
+	// yet"). Absent when no attachment question was answered; the step then
+	// searches Files itself. See ./attachment.ts.
+	ownerAttachment?: AttachmentSuggestions | null;
 };
 
 type DraftOutput = {
@@ -230,7 +237,12 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 			confidenceScore: input.classification.confidence,
 			...(draftQuality ? { draftQuality } : {}),
 			...(draftOptions.length > 0 ? { draftOptions } : {}),
-			...(await draftAttachmentPatch(ctx, input.context, message?.contactId)),
+			...(await draftAttachmentPatch(
+				ctx,
+				input.context,
+				message?.contactId,
+				input.ownerAttachment
+			)),
 		});
 
 		return {

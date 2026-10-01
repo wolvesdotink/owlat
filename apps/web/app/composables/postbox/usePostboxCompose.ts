@@ -18,10 +18,12 @@
  */
 
 import type { FunctionReturnType } from 'convex/server';
+import type { OperationError } from '@owlat/shared/operationError';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
 import { postboxUndoSendDelayMsArg } from '~/utils/postboxUndoSendWindow';
+import { freshDraftGaps, isDraftGapsRefusal } from '~/utils/answerDraft';
 import {
 	usePostboxComposeAttachments,
 	type ComposerAttachment,
@@ -54,7 +56,7 @@ export type SendAsIdentity = FunctionReturnType<
 
 /**
  * The one-time seed a composer opens with: the one declaration every host
- * writes (the popup stack's ComposerSpec, the reader's InlineComposeSpec, the
+ * writes (the popup stack's ComposerSpec, Answer mode's seed, the
  * desktop compose window) and PostboxComposer hands over whole.
  */
 export interface ComposerSeed {
@@ -131,7 +133,11 @@ export function usePostboxCompose(seed: ComposerSeed) {
 	// completes, so every host gets the toast and the send sound.
 	const undoWindow = usePostboxUndoSend();
 	function armUndo(sent: { undoToken: string; sendAt: number }) {
-		undoWindow.arm({ ...sent, mailboxId: seed.mailboxId });
+		undoWindow.arm({
+			...sent,
+			mailboxId: seed.mailboxId,
+			replyToMessageId: seed.inReplyToMessageId,
+		});
 		return sent;
 	}
 	// During a send, a TRANSPORT failure becomes an offline enqueue.
@@ -151,9 +157,18 @@ export function usePostboxCompose(seed: ComposerSeed) {
 	const discardDraft = useBackendOperation(api.mail.drafts.discard, {
 		label: () => t('shared.postbox.usePostboxCompose.discardOperation'),
 	});
+	// An AI draft with a `[[...]]` gap left: Send is disabled for that already,
+	// so this is a race (a gap typed in the last moment); say it the same way.
+	const { showToast } = useToast();
+	const claimGapRefusal = (op: OperationError): boolean => {
+		if (!isDraftGapsRefusal(op)) return false;
+		const count = Math.max(1, freshDraftGaps(bodyHtml.value).length);
+		showToast(t('components.postbox.postboxComposerFooter.gapsLeft', { count }, count), 'error');
+		return true;
+	};
 	const sendDraft = useBackendOperation(api.mail.drafts.send, {
 		label: () => t('shared.postbox.usePostboxCompose.sendOperation'),
-		onError: sendNetwork.claim,
+		onError: (op) => sendNetwork.claim(op) || claimGapRefusal(op),
 	});
 	const cancelPending = useBackendOperation(api.mail.drafts.cancelPendingSend, {
 		label: () => t('shared.postbox.usePostboxCompose.undoSendOperation'),
