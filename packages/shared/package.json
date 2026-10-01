@@ -114,6 +114,10 @@
 			"types": "./src/setupEnv.ts",
 			"import": "./src/setupEnv.ts"
 		},
+		"./ownerOnlyFile": {
+			"types": "./src/ownerOnlyFile.ts",
+			"import": "./src/ownerOnlyFile.ts"
+		},
 		"./containerHealth": {
 			"types": "./src/containerHealth.ts",
 			"import": "./src/containerHealth.ts"

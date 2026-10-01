@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -85,6 +85,19 @@ describe('setup CLI flag toggles keep .env COMPOSE_PROFILES in step with the ove
 			`SITE_URL=https://owlat.example.com\nCOMPOSE_PROFILES=${result.profiles.join(',')}\n`
 		);
 	});
+
+	it.skipIf(process.platform === 'win32')(
+		'makes a world-readable .env owner-only when it rewrites it',
+		async () => {
+			const root = await temporaryOwlatDirectory();
+			await writeFile(join(root, '.env'), 'INSTANCE_SECRET=abc\nCOMPOSE_PROFILES=clamav\n');
+			await chmod(join(root, '.env'), 0o644);
+
+			await applyAndPersist(root, 'scan.files', false);
+
+			expect((await stat(join(root, '.env'))).mode & 0o777).toBe(0o600);
+		}
+	);
 
 	it('does not create a .env for a directory that has none', async () => {
 		const root = await temporaryOwlatDirectory();
