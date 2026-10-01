@@ -7,7 +7,9 @@
  * a single write, so the history watcher sees exactly one change and Alt+Arrow
  * lands as one undoable step — the same shape a drag reorder produces.
  */
-import type { EditorBlock, ColumnsBlockContent, ContainerBlockContent } from '../types';
+import { mapChildBlockLists } from '@owlat/shared/blockTree';
+import type { EditorBlock } from '../types';
+import { locateWithin, replaceBlockInTree } from './blockTree';
 
 export type MoveDirection = 'up' | 'down';
 
@@ -15,9 +17,9 @@ export type MoveDirection = 'up' | 'down';
 export interface MoveTarget {
 	/** Id of the block, column item or container item being moved. */
 	itemId: string;
-	/** Set when the item is a column item: its columns block and column index. */
+	/** Set when the item is a column item: its columns block (at any depth) and column index. */
 	column?: { blockId: string; columnIndex: number } | null;
-	/** Set when the item is a container/hero item: its parent block. */
+	/** Set when the item is a nested item: a composite it sits below, at any depth. */
 	container?: { blockId: string } | null;
 }
 
@@ -52,47 +54,37 @@ export function moveBlock(
 	target: MoveTarget,
 	direction: MoveDirection
 ): EditorBlock[] | null {
-	if (target.column) {
-		const parentIndex = blocks.findIndex((b) => b.id === target.column!.blockId);
-		const parent = blocks[parentIndex];
-		if (!parent || parent.type !== 'columns') return null;
-		const content = parent.content as ColumnsBlockContent;
-		const column = content.columns[target.column.columnIndex];
-		if (!column) return null;
-		const moved = swap(
-			column,
-			column.findIndex((item) => item.id === target.itemId),
+	const scope = target.column ?? target.container;
+	if (!scope) {
+		return swap(
+			blocks,
+			blocks.findIndex((b) => b.id === target.itemId),
 			direction
 		);
-		if (!moved) return null;
-		const columns = [...content.columns];
-		columns[target.column.columnIndex] = moved;
-		return replaceAt(blocks, parentIndex, {
-			...parent,
-			content: { ...content, columns },
-		} as EditorBlock);
 	}
 
-	if (target.container) {
-		const parentIndex = blocks.findIndex((b) => b.id === target.container!.blockId);
-		const parent = blocks[parentIndex];
-		if (!parent) return null;
-		const content = parent.content as ContainerBlockContent;
-		const items = swap(
-			content.items ?? [],
-			(content.items ?? []).findIndex((item) => item.id === target.itemId),
-			direction
-		);
-		if (!items) return null;
-		return replaceAt(blocks, parentIndex, {
-			...parent,
-			content: { ...content, items },
-		} as EditorBlock);
+	// A nested item moves within the child list that holds it. A column item
+	// must still be in the column the selection named.
+	const location = locateWithin(blocks, scope.blockId, target.itemId);
+	if (!location?.parent) return null;
+	if (
+		target.column &&
+		(location.parent.id !== target.column.blockId ||
+			location.listIndex !== target.column.columnIndex)
+	) {
+		return null;
 	}
+	const moved = swap(location.list, location.index, direction);
+	if (!moved) return null;
 
-	return swap(
+	const replaced = replaceBlockInTree(
 		blocks,
-		blocks.findIndex((b) => b.id === target.itemId),
-		direction
+		location.parent.id,
+		(parent) =>
+			mapChildBlockLists(parent, (list, listIndex) =>
+				listIndex === location.listIndex ? moved : list
+			),
+		location.root.id
 	);
+	return replaced ? replaceAt(blocks, replaced.rootIndex, replaced.root) : null;
 }

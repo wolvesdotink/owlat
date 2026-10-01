@@ -4,9 +4,6 @@ import type {
 	BlockType,
 	ColumnsBlockContent,
 	ColumnItem,
-	ContainerBlockContent,
-	ContainerItem,
-	HeroBlockContent,
 	TextBlockContent,
 	EmailTheme,
 } from '../types';
@@ -14,7 +11,9 @@ import {
 	generateId,
 	createDefaultContent,
 	createDefaultColumnItemContent,
-	regenerateContainerItemIds,
+	cloneWithFreshIds,
+	locateBlock,
+	locateWithin,
 } from '../utils';
 import { defaultPadding, defaultMargin } from '../defaults';
 
@@ -47,19 +46,14 @@ export interface UseBlockManagementReturn {
 		columnIndex: number,
 		itemType: ColumnItem['type']
 	) => ColumnItem | null;
-	handleDeleteColumnItem: (blockId: string, columnIndex: number, itemId: string) => void;
-	handleDuplicateColumnItem: (
-		blockId: string,
-		columnIndex: number,
-		itemId: string
-	) => ColumnItem | null;
 
 	// Column management
 	handleColumnCountChange: (blockId: string, newCount: 1 | 2 | 3) => void;
 
-	// Container item operations
-	handleDeleteContainerItem: (blockId: string, itemId: string) => void;
-	handleDuplicateContainerItem: (blockId: string, itemId: string) => ContainerItem | null;
+	// Nested item operations, for an item at any depth below `blockId` (a
+	// columns, container or hero Block, itself a root or nested)
+	handleDeleteNestedItem: (blockId: string, itemId: string) => void;
+	handleDuplicateNestedItem: (blockId: string, itemId: string) => EditorBlock | null;
 }
 
 /**
@@ -148,21 +142,29 @@ export function useBlockManagement(options: UseBlockManagementOptions): UseBlock
 		}
 	};
 
-	// Duplicate a block
+	// Duplicate a block. Every nested item gets a fresh id too, so an edit or a
+	// translation overlay keyed by a child id reaches one copy only. The copy is
+	// not linked: it carries no savedBlockRef.
 	const handleDuplicateBlock = (blockId: string) => {
-		const block = canvasBlocks.value.find((b) => b.id === blockId);
+		const index = canvasBlocks.value.findIndex((b) => b.id === blockId);
+		const block = canvasBlocks.value[index];
 		if (!block) return;
 
-		const index = canvasBlocks.value.findIndex((b) => b.id === blockId);
-		const newBlock: EditorBlock = {
-			id: generateId(),
+		const newBlock = cloneWithFreshIds({
+			id: block.id,
 			type: block.type,
-			content: JSON.parse(JSON.stringify(block.content)),
-		};
+			content: block.content,
+		} as EditorBlock);
 
 		// Insert after the current block
 		canvasBlocks.value.splice(index + 1, 0, newBlock);
 		selectedBlockId.value = newBlock.id;
+	};
+
+	// A columns Block at any depth (a root, or nested in a container or hero).
+	const findColumnsBlock = (blockId: string): ColumnsBlockContent | null => {
+		const block = locateBlock(canvasBlocks.value, blockId)?.block;
+		return block?.type === 'columns' ? (block.content as ColumnsBlockContent) : null;
 	};
 
 	// Add an item to a column
@@ -171,11 +173,8 @@ export function useBlockManagement(options: UseBlockManagementOptions): UseBlock
 		columnIndex: number,
 		itemType: ColumnItem['type']
 	): ColumnItem | null => {
-		const block = canvasBlocks.value.find((b) => b.id === blockId);
-		if (!block || block.type !== 'columns') return null;
-
-		const content = block.content as ColumnsBlockContent;
-		const column = content.columns[columnIndex];
+		const content = findColumnsBlock(blockId);
+		const column = content?.columns[columnIndex];
 		if (!column) return null;
 
 		const newItem: ColumnItem = {
@@ -189,60 +188,11 @@ export function useBlockManagement(options: UseBlockManagementOptions): UseBlock
 		return newItem;
 	};
 
-	// Delete a column item
-	const handleDeleteColumnItem = (blockId: string, columnIndex: number, itemId: string) => {
-		const block = canvasBlocks.value.find((b) => b.id === blockId);
-		if (!block || block.type !== 'columns') return;
-
-		const content = block.content as ColumnsBlockContent;
-		const column = content.columns[columnIndex];
-		if (!column) return;
-
-		const itemIndex = column.findIndex((item: ColumnItem) => item.id === itemId);
-		if (itemIndex !== -1) {
-			column.splice(itemIndex, 1);
-			onColumnItemDeleted?.(itemId);
-			onTreeMutated?.();
-		}
-	};
-
-	// Duplicate a column item
-	const handleDuplicateColumnItem = (
-		blockId: string,
-		columnIndex: number,
-		itemId: string
-	): ColumnItem | null => {
-		const block = canvasBlocks.value.find((b) => b.id === blockId);
-		if (!block || block.type !== 'columns') return null;
-
-		const content = block.content as ColumnsBlockContent;
-		const column = content.columns[columnIndex];
-		if (!column) return null;
-
-		const itemIndex = column.findIndex((item: ColumnItem) => item.id === itemId);
-		if (itemIndex === -1) return null;
-
-		const item = column[itemIndex];
-		if (!item) return null;
-
-		const newItem: ColumnItem = {
-			id: generateId(),
-			type: item.type,
-			content: JSON.parse(JSON.stringify(item.content)),
-		};
-
-		// Insert after the current item
-		column.splice(itemIndex + 1, 0, newItem);
-		onTreeMutated?.();
-		return newItem;
-	};
-
 	// Change column count
 	const handleColumnCountChange = (blockId: string, newCount: 1 | 2 | 3) => {
-		const block = canvasBlocks.value.find((b) => b.id === blockId);
-		if (!block || block.type !== 'columns') return;
+		const content = findColumnsBlock(blockId);
+		if (!content) return;
 
-		const content = block.content as ColumnsBlockContent;
 		const currentCount = content.columnCount;
 
 		if (newCount === currentCount) return;
@@ -276,97 +226,26 @@ export function useBlockManagement(options: UseBlockManagementOptions): UseBlock
 		onTreeMutated?.();
 	};
 
-	// Helper to recursively find and delete container item
-	const findAndDeleteContainerItem = (items: ContainerItem[], itemId: string): boolean => {
-		const itemIndex = items.findIndex((item) => item.id === itemId);
-		if (itemIndex !== -1) {
-			items.splice(itemIndex, 1);
-			onContainerItemDeleted?.(itemId);
-			return true;
-		}
-		// Recursively search nested containers
-		for (const item of items) {
-			if (item.type === 'container') {
-				const containerContent = item.content as ContainerBlockContent;
-				if (findAndDeleteContainerItem(containerContent.items, itemId)) {
-					return true;
-				}
-			}
-		}
-		return false;
+	// Delete a nested item anywhere below `blockId`: a column of a columns
+	// Block, the items of a container or hero, or any composite nested in them.
+	const handleDeleteNestedItem = (blockId: string, itemId: string) => {
+		const location = locateWithin(canvasBlocks.value, blockId, itemId);
+		if (!location) return;
+		location.list.splice(location.index, 1);
+		if (location.parent?.type === 'columns') onColumnItemDeleted?.(itemId);
+		else onContainerItemDeleted?.(itemId);
+		onTreeMutated?.();
 	};
 
-	// Delete a container item (supports both container and hero blocks)
-	const handleDeleteContainerItem = (blockId: string, itemId: string) => {
-		const block = canvasBlocks.value.find((b) => b.id === blockId);
-		if (!block) return;
-
-		let items: ContainerItem[];
-		if (block.type === 'container') {
-			items = (block.content as ContainerBlockContent).items;
-		} else if (block.type === 'hero') {
-			items = (block.content as HeroBlockContent).items;
-		} else {
-			return;
-		}
-
-		if (findAndDeleteContainerItem(items, itemId)) onTreeMutated?.();
-	};
-
-	// Helper to recursively find and duplicate container item
-	const findAndDuplicateContainerItem = (
-		items: ContainerItem[],
-		itemId: string
-	): ContainerItem | null => {
-		const itemIndex = items.findIndex((item) => item.id === itemId);
-		if (itemIndex !== -1) {
-			const item = items[itemIndex];
-			if (!item) return null;
-
-			const newItem: ContainerItem = {
-				id: generateId(),
-				type: item.type,
-				content: JSON.parse(JSON.stringify(item.content)),
-			};
-
-			// Regenerate IDs for nested containers if any
-			if (newItem.type === 'container') {
-				const containerContent = newItem.content as ContainerBlockContent;
-				regenerateContainerItemIds(containerContent.items);
-			}
-
-			// Insert after the current item
-			items.splice(itemIndex + 1, 0, newItem);
-			return newItem;
-		}
-		// Recursively search nested containers
-		for (const item of items) {
-			if (item.type === 'container') {
-				const containerContent = item.content as ContainerBlockContent;
-				const result = findAndDuplicateContainerItem(containerContent.items, itemId);
-				if (result) return result;
-			}
-		}
-		return null;
-	};
-
-	// Duplicate a container item (supports both container and hero blocks)
-	const handleDuplicateContainerItem = (blockId: string, itemId: string): ContainerItem | null => {
-		const block = canvasBlocks.value.find((b) => b.id === blockId);
-		if (!block) return null;
-
-		let items: ContainerItem[];
-		if (block.type === 'container') {
-			items = (block.content as ContainerBlockContent).items;
-		} else if (block.type === 'hero') {
-			items = (block.content as HeroBlockContent).items;
-		} else {
-			return null;
-		}
-
-		const duplicated = findAndDuplicateContainerItem(items, itemId);
-		if (duplicated) onTreeMutated?.();
-		return duplicated;
+	// Duplicate a nested item anywhere below `blockId`, right after the original.
+	// The copy and everything inside it get fresh ids.
+	const handleDuplicateNestedItem = (blockId: string, itemId: string): EditorBlock | null => {
+		const location = locateWithin(canvasBlocks.value, blockId, itemId);
+		if (!location) return null;
+		const newItem = cloneWithFreshIds(location.block);
+		location.list.splice(location.index + 1, 0, newItem);
+		onTreeMutated?.();
+		return newItem;
 	};
 
 	return {
@@ -375,10 +254,8 @@ export function useBlockManagement(options: UseBlockManagementOptions): UseBlock
 		handleDeleteBlock,
 		handleDuplicateBlock,
 		handleAddItemToColumn,
-		handleDeleteColumnItem,
-		handleDuplicateColumnItem,
 		handleColumnCountChange,
-		handleDeleteContainerItem,
-		handleDuplicateContainerItem,
+		handleDeleteNestedItem,
+		handleDuplicateNestedItem,
 	};
 }
