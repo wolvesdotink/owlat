@@ -433,8 +433,6 @@
 					"useTheirs": "Use theirs"
 				},
 				"delete": "Delete step",
-				"emptyBody": "Pick a step in the workflow to change its settings.",
-				"emptyTitle": "No step selected",
 				"title": "Step settings"
 			},
 			"stepSaveFailedDialog": {

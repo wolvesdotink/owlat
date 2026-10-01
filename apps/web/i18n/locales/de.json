@@ -433,8 +433,6 @@
 					"useTheirs": "Deren Version nehmen"
 				},
 				"delete": "Schritt löschen",
-				"emptyBody": "Wähle einen Schritt im Workflow aus, um seine Einstellungen zu ändern.",
-				"emptyTitle": "Kein Schritt ausgewählt",
 				"title": "Schritteinstellungen"
 			},
 			"stepSaveFailedDialog": {

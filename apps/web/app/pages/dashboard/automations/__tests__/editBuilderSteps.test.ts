@@ -49,6 +49,7 @@ function stubPage(automation: typeof AUTOMATION) {
 	vi.stubGlobal('useTopicsList', () => paginatedResult([]));
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
 	vi.stubGlobal('useAnnounce', () => ({ announce: vi.fn() }));
+	vi.stubGlobal('useMediaQuery', () => ref(true));
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(), isLoading: ref(false) }));
 	vi.stubGlobal('useUnsavedChanges', () => ({
 		showDialog: ref(false),
@@ -128,29 +129,6 @@ describe('automation builder', () => {
 		await wrapper.vm.$nextTick();
 
 		expect(wrapper.findAll('[data-testid="automation-step"]')).toHaveLength(3);
-		wrapper.unmount();
-	});
-});
-
-describe('step settings panel with nothing selected', () => {
-	it('explains what to do in words, not translation keys', async () => {
-		const Panel = (await import('~/components/automations/StepEditorPanel.vue')).default;
-		const wrapper = mount(Panel as never, {
-			props: {
-				selectedStep: null,
-				saveStatus: 'saved',
-				emailTemplates: [],
-				currentConfig: null,
-				mutableSteps: [],
-			},
-			global: {
-				plugins: [createTestI18n()],
-				stubs: { Icon: true, UiButton: true, AutomationsStepSaveStatus: true },
-			},
-		});
-
-		expect(wrapper.text()).toContain('No step selected');
-		expect(wrapper.text()).not.toContain('stepEditorPanel');
 		wrapper.unmount();
 	});
 });

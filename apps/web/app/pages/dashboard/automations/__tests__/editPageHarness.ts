@@ -33,7 +33,10 @@ type Operation = (typeof OPERATIONS)[number];
 
 const okRun = () => vi.fn((_args?: unknown) => Promise.resolve({ ok: true, result: null }));
 
-export function stubEditPage(overrides: Partial<typeof AUTOMATION> = {}) {
+export function stubEditPage(
+	overrides: Partial<typeof AUTOMATION> = {},
+	{ wide = true }: { wide?: boolean } = {}
+) {
 	const data = ref({ ...AUTOMATION, ...overrides });
 	let created = 0;
 	const runs: Record<Operation, ReturnType<typeof okRun>> = {
@@ -84,6 +87,8 @@ export function stubEditPage(overrides: Partial<typeof AUTOMATION> = {}) {
 	vi.stubGlobal('useTopicsList', () => paginatedResult([]));
 	vi.stubGlobal('useToast', () => ({ showToast }));
 	vi.stubGlobal('useAnnounce', () => ({ announce }));
+	// `lg` and up unless a suite asks for the phone/tablet sheet.
+	vi.stubGlobal('useMediaQuery', () => ref(wide));
 	vi.stubGlobal('useBackendOperation', () => ({
 		run: runs[OPERATIONS[created++ % OPERATIONS.length]!],
 		isLoading: ref(false),

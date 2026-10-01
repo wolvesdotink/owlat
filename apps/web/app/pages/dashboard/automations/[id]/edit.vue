@@ -167,6 +167,11 @@ const moveStepBy = (stepId: string, delta: -1 | 1) => {
 };
 const openStepMenuId = ref<string | null>(null);
 
+// Below `lg` the inspector is a sheet over the page, so what it covers leaves
+// the tab order until it closes.
+const isWideViewport = useMediaQuery('(min-width: 1024px)');
+const isInspectorOverlay = computed(() => selectedStep.value !== null && !isWideViewport.value);
+
 // Provide reference data to descendant Condition editor modules
 provideConditionEditorContext({ contactProperties, topics });
 
@@ -454,10 +459,15 @@ onUnmounted(() => {
 <template>
 	<div class="min-h-full bg-bg-base flex flex-col">
 		<!-- Header -->
-		<div class="bg-bg-elevated border-b border-border-subtle shrink-0">
-			<div class="max-w-7xl mx-auto px-6 py-4">
-				<div class="flex items-center justify-between">
-					<div class="flex items-center gap-4">
+		<div
+			class="bg-bg-elevated border-b border-border-subtle shrink-0"
+			:inert="isInspectorOverlay || undefined"
+		>
+			<div class="max-w-7xl mx-auto px-4 py-4 sm:px-6">
+				<!-- Wraps on a phone, so the actions drop below the name instead of
+				     running off the edge. -->
+				<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+					<div class="flex items-center gap-4 min-w-0">
 						<button
 							class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 							@click="handleBack"
@@ -465,7 +475,7 @@ onUnmounted(() => {
 						>
 							<Icon name="lucide:arrow-left" class="w-5 h-5" />
 						</button>
-						<div v-if="automation">
+						<div v-if="automation" class="min-w-0">
 							<h1 class="text-lg font-semibold text-text-primary">{{ automation.name }}</h1>
 							<p class="text-sm text-text-secondary">
 								{{ t('dashboard.automations.detail.edit.editWorkflow') }}
@@ -478,7 +488,7 @@ onUnmounted(() => {
 					</div>
 
 					<!-- Status and Actions -->
-					<div v-if="automation" class="flex items-center gap-3">
+					<div v-if="automation" class="flex flex-wrap items-center gap-3">
 						<!-- Mirrors the inspector's save line, which may be scrolled away. -->
 						<AutomationsStepSaveStatus
 							class="hidden md:flex"
@@ -588,8 +598,11 @@ onUnmounted(() => {
 		</div>
 
 		<!-- Progress Indicator -->
-		<div class="bg-bg-elevated border-b border-border-subtle shrink-0">
-			<div class="max-w-7xl mx-auto px-6 py-4">
+		<div
+			class="bg-bg-elevated border-b border-border-subtle shrink-0"
+			:inert="isInspectorOverlay || undefined"
+		>
+			<div class="max-w-7xl mx-auto px-4 py-4 sm:px-6">
 				<div class="flex items-center gap-3">
 					<div class="flex items-center gap-2">
 						<div
@@ -642,12 +655,15 @@ onUnmounted(() => {
 			</div>
 		</div>
 
-		<!-- Main Content - Two Panel Layout -->
+		<!-- Main Content: the canvas, plus the step inspector while a step is open -->
 		<!-- overflow-clip, not -hidden: a scroll container here would pin the step
 		     panel's sticky content to this box instead of the viewport. -->
 		<div v-else class="flex-1 flex overflow-clip">
-			<!-- Workflow Canvas (Left Panel) -->
-			<div class="flex-1 overflow-y-auto p-6">
+			<!-- Workflow Canvas -->
+			<div
+				class="flex-1 min-w-0 overflow-y-auto p-4 sm:p-6"
+				:inert="isInspectorOverlay || undefined"
+			>
 				<div class="max-w-xl mx-auto">
 					<!-- Trigger Node -->
 					<div class="relative">
@@ -1028,8 +1044,9 @@ onUnmounted(() => {
 				</div>
 			</div>
 
-			<!-- Settings Panel (Right Panel) -->
+			<!-- Step inspector: a column at lg, a sheet below it -->
 			<AutomationsStepEditorPanel
+				v-if="selectedStep"
 				:selected-step="selectedStep"
 				:save-status="stepSaveStatus"
 				:email-templates="emailTemplates"
