@@ -122,7 +122,7 @@ describe('useAutomationSteps step-config dirty tracking', () => {
 	});
 
 	it('flips dirty on a real edit and clears again after the step is saved', async () => {
-		const { selectedStepId, currentConfig, isCurrentConfigDirty, handleUpdateStepConfig } =
+		const { selectedStepId, currentConfig, isCurrentConfigDirty, requestStepSave } =
 			makeDelayEditor();
 		selectedStepId.value = 's1' as never;
 		await nextTick();
@@ -131,7 +131,7 @@ describe('useAutomationSteps step-config dirty tracking', () => {
 		currentConfig.value = { kind: 'delay', config: { duration: 5, unit: 'days' } };
 		expect(isCurrentConfigDirty.value).toBe(true);
 
-		await handleUpdateStepConfig();
+		await requestStepSave();
 		expect(updateArgs).toHaveLength(1);
 		// Persisting adopts the edited config as the clean baseline.
 		expect(isCurrentConfigDirty.value).toBe(false);

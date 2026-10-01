@@ -65,7 +65,7 @@ const { results: topics } = useTopicsList();
 // Use automation steps composable
 const {
 	// State
-	isSaving,
+	stepSaveStatus,
 	isAddStepDropdownOpen,
 	addStepDropdownIndex,
 	selectedStepId,
@@ -80,7 +80,8 @@ const {
 	handleAddStep,
 	handleDeleteStep,
 	handleDragEnd,
-	handleUpdateStepConfig,
+	requestStepSave,
+	flushStepSave,
 	closeDropdowns,
 
 	// Description helper
@@ -116,6 +117,9 @@ const { showToast } = useToast();
 const isSavingDraft = ref(false);
 const isActivating = ref(false);
 const showActivateConfirmModal = ref(false);
+// The open step's edits could not be saved when activation asked for them, so
+// the modal explains why it did not activate instead of closing.
+const activationSaveFailed = ref(false);
 
 // Trigger display — resolved through the trigger editor module registry.
 const getTriggerInfo = (triggerType: string) => {
@@ -169,7 +173,7 @@ const STEP_ACCENT: Readonly<Record<StepKind, StepAccent>> = {
 
 const stepAccent = (stepType: string): StepAccent => STEP_ACCENT[stepType as StepKind];
 
-// Handle automation activation/pause
+// Pause or resume. A draft activates through the confirm modal below.
 const handleToggleStatus = async () => {
 	if (!automation.value) return;
 
@@ -180,21 +184,24 @@ const handleToggleStatus = async () => {
 			if (!(await pauseAutomation({ automationId: automationId.value })).ok) return;
 			showToast(t('dashboard.automations.detail.edit.toasts.paused'));
 		} else if (automation.value.status === 'paused') {
+			// Resuming runs what is saved, so what is on screen has to be saved first.
+			if (!(await flushStepSave())) {
+				showToast(t('dashboard.automations.detail.edit.toasts.resumeBlocked'), 'error');
+				return;
+			}
 			if (!(await resumeAutomation({ automationId: automationId.value })).ok) return;
 			showToast(t('dashboard.automations.detail.edit.toasts.resumed'));
-		} else {
-			// Draft - activate
-			if (!(await activateAutomation({ automationId: automationId.value })).ok) return;
-			showToast(t('dashboard.automations.detail.edit.toasts.activated'));
 		}
 	} finally {
 		isActivating.value = false;
 	}
 };
 
-// Navigate back. `router.push` triggers the unsaved-changes route guard below
-// when the open step panel has edits, so Back prompts instead of dropping them.
-const handleBack = () => {
+// Navigate back once the open step's save has landed. If it could not be saved,
+// `router.push` hits the unsaved-changes route guard below, which prompts
+// instead of dropping the edits.
+const handleBack = async () => {
+	await flushStepSave();
 	router.push('/dashboard/automations');
 };
 
@@ -211,11 +218,10 @@ const {
 	setHasChanges,
 } = useUnsavedChanges({
 	onSave: async () => {
-		await handleUpdateStepConfig();
 		// A failed step-config save keeps the panel dirty; throw so the guard
 		// stays put instead of clearing the flag and navigating away — mirrors
 		// the sibling saveStepSwitch and the campaign/settings surfaces.
-		if (isCurrentConfigDirty.value) throw new Error('Save failed');
+		if (!(await flushStepSave())) throw new Error('Save failed');
 	},
 });
 watch(isCurrentConfigDirty, (dirty) => setHasChanges(dirty), { immediate: true });
@@ -242,10 +248,9 @@ const discardStepSwitch = () => {
 	applyPendingStep();
 };
 const saveStepSwitch = async () => {
-	await handleUpdateStepConfig();
 	// A failed save keeps the panel dirty — stay on the current step so edits
 	// aren't lost, leaving the dialog up.
-	if (isCurrentConfigDirty.value) return;
+	if (!(await flushStepSave())) return;
 	applyPendingStep();
 };
 const cancelStepSwitch = () => {
@@ -253,16 +258,18 @@ const cancelStepSwitch = () => {
 	showStepSwitchDialog.value = false;
 };
 
-// Handle save draft (save automation name/description + the open step config)
+// Handle save draft: the automation's name and description. Step edits save
+// themselves; Save draft only waits for them, and says so when they did not
+// land rather than reporting a draft that is not what the inspector shows.
 const handleSaveDraft = async () => {
 	if (!automation.value) return;
 
 	isSavingDraft.value = true;
 
 	try {
-		// Persist the open step's edits too, so Save Draft doesn't drop panel work.
-		if (selectedStepId.value && isCurrentConfigDirty.value) {
-			await handleUpdateStepConfig({ silent: true });
+		if (!(await flushStepSave())) {
+			showToast(t('dashboard.automations.detail.edit.toasts.stepSaveFailed'), 'error');
+			return;
 		}
 		const result = await updateAutomation({
 			automationId: automationId.value,
@@ -276,13 +283,26 @@ const handleSaveDraft = async () => {
 	}
 };
 
-// Show activate confirmation modal
-const handleShowActivateConfirm = () => {
-	if (!canActivate.value.valid) {
-		showToast(
-			canActivate.value.reasons[0] || t('dashboard.automations.detail.edit.cannotActivate'),
-			'error'
-		);
+const toastCannotActivate = () => {
+	showToast(
+		canActivate.value.reasons[0] || t('dashboard.automations.detail.edit.cannotActivate'),
+		'error'
+	);
+};
+
+// Activation always means "what you see": the open step's edits are saved
+// first, and the readiness check runs on the steps as saved.
+const handleShowActivateConfirm = async () => {
+	isActivating.value = true;
+	let saved: boolean;
+	try {
+		saved = await flushStepSave();
+	} finally {
+		isActivating.value = false;
+	}
+	activationSaveFailed.value = !saved;
+	if (saved && !canActivate.value.valid) {
+		toastCannotActivate();
 		return;
 	}
 	showActivateConfirmModal.value = true;
@@ -290,8 +310,25 @@ const handleShowActivateConfirm = () => {
 
 // Confirm activation
 const handleConfirmActivate = async () => {
-	showActivateConfirmModal.value = false;
-	await handleToggleStatus();
+	if (!automation.value) return;
+	isActivating.value = true;
+	try {
+		// Edits made since the modal opened, or a save that failed before it.
+		if (!(await flushStepSave())) {
+			activationSaveFailed.value = true;
+			return;
+		}
+		activationSaveFailed.value = false;
+		showActivateConfirmModal.value = false;
+		if (!canActivate.value.valid) {
+			toastCannotActivate();
+			return;
+		}
+		if (!(await activateAutomation({ automationId: automationId.value })).ok) return;
+		showToast(t('dashboard.automations.detail.edit.toasts.activated'));
+	} finally {
+		isActivating.value = false;
+	}
 };
 
 // Get icon color class
@@ -354,6 +391,13 @@ onUnmounted(() => {
 
 					<!-- Status and Actions -->
 					<div v-if="automation" class="flex items-center gap-3">
+						<!-- Mirrors the inspector's save line, which may be scrolled away. -->
+						<AutomationsStepSaveStatus
+							class="hidden md:flex"
+							:status="stepSaveStatus"
+							@retry="requestStepSave"
+						/>
+
 						<!-- Status Badge -->
 						<span
 							:class="[
@@ -837,12 +881,13 @@ onUnmounted(() => {
 			<!-- Settings Panel (Right Panel) -->
 			<AutomationsStepEditorPanel
 				:selected-step="selectedStep"
-				:is-saving="isSaving"
+				:save-status="stepSaveStatus"
 				:email-templates="emailTemplates"
 				:current-config="currentConfig"
 				:mutable-steps="mutableSteps"
 				@close="selectedStepId = null"
-				@save="handleUpdateStepConfig"
+				@save="requestStepSave"
+				@retry="requestStepSave"
 				@delete="handleDeleteStep"
 				@update:current-config="currentConfig = $event"
 			/>
@@ -889,6 +934,15 @@ onUnmounted(() => {
 							<p class="text-text-secondary text-center mb-6">
 								{{ t('dashboard.automations.detail.edit.activateDialog.body') }}
 							</p>
+
+							<div
+								v-if="activationSaveFailed"
+								role="alert"
+								class="flex items-start gap-2 p-3 mb-6 rounded-lg bg-error/10 border border-error/20 text-sm text-error"
+							>
+								<Icon name="lucide:alert-circle" class="w-4 h-4 shrink-0 mt-0.5" />
+								<span>{{ t('dashboard.automations.detail.edit.activateDialog.saveFailed') }}</span>
+							</div>
 
 							<!-- Summary -->
 							<div

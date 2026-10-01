@@ -2,11 +2,11 @@
 import type { Id, Doc } from '@owlat/api/dataModel';
 import { stepEditorModuleFor } from '~/composables/automations/steps';
 import type { StepConfigByKind, StepKind } from '~/composables/automations/steps';
-import type { StepCurrentConfig } from '~/composables/useAutomationStepConfig';
+import type { StepCurrentConfig, StepSaveStatus } from '~/composables/useAutomationStepConfig';
 
 const props = defineProps<{
 	selectedStep: (Doc<'automationSteps'> & { emailTemplate?: Doc<'emailTemplates'> | null }) | null;
-	isSaving: boolean;
+	saveStatus: StepSaveStatus;
 	emailTemplates: Doc<'emailTemplates'>[] | null | undefined;
 	currentConfig: StepCurrentConfig;
 	mutableSteps: Doc<'automationSteps'>[];
@@ -15,6 +15,7 @@ const props = defineProps<{
 const emit = defineEmits<{
 	close: [];
 	save: [];
+	retry: [];
 	delete: [stepId: Id<'automationSteps'>];
 	'update:currentConfig': [value: StepCurrentConfig];
 }>();
@@ -64,16 +65,9 @@ const updateConfig = (config: StepConfigByKind[StepKind]) => {
 					@save="emit('save')"
 				/>
 
+				<!-- Editors save on change; this line says whether that landed. -->
 				<div class="mt-8 pt-6 border-t border-border-subtle">
-					<UiButton full-width class="gap-2" :disabled="isSaving" @click="emit('save')">
-						<Icon
-							v-if="isSaving"
-							name="lucide:loader-2"
-							class="w-4 h-4 animate-spin motion-reduce:animate-none"
-						/>
-						<Icon v-else name="lucide:save" class="w-4 h-4" />
-						{{ isSaving ? t('common.saving') : t('components.automations.stepEditorPanel.save') }}
-					</UiButton>
+					<AutomationsStepSaveStatus live :status="saveStatus" @retry="emit('retry')" />
 				</div>
 
 				<div class="mt-4">

@@ -430,8 +430,13 @@
 				"delete": "Schritt löschen",
 				"emptyBody": "Wähle einen Schritt im Workflow aus, um seine Einstellungen zu ändern.",
 				"emptyTitle": "Kein Schritt ausgewählt",
-				"save": "Änderungen speichern",
 				"title": "Schritteinstellungen"
+			},
+			"stepSaveStatus": {
+				"error": "Konnte nicht gespeichert werden.",
+				"retry": "Erneut versuchen",
+				"saved": "Gespeichert",
+				"saving": "Wird gespeichert…"
 			},
 			"steps": {
 				"condition": {
@@ -8702,6 +8707,7 @@
 					"activateDialog": {
 						"automation": "Automation",
 						"body": "Nach dem Aktivieren läuft diese Automation und wird für neue Kontakte ausgelöst, die den Auslöserkriterien entsprechen.",
+						"saveFailed": "Deine letzten Schrittänderungen konnten nicht gespeichert werden, deshalb wurde nichts aktiviert. Speichere den Schritt erneut und aktiviere dann noch einmal.",
 						"stepCount": "{count} Schritt | {count} Schritte",
 						"steps": "Schritte",
 						"title": "Automation aktivieren?"
@@ -8747,7 +8753,9 @@
 						"activated": "Automation aktiviert",
 						"draftSaved": "Entwurf gespeichert",
 						"paused": "Automation pausiert",
-						"resumed": "Automation fortgesetzt"
+						"resumeBlocked": "Deine Schrittänderungen konnten nicht gespeichert werden, deshalb wurde die Automation nicht fortgesetzt.",
+						"resumed": "Automation fortgesetzt",
+						"stepSaveFailed": "Deine Schrittänderungen konnten nicht gespeichert werden."
 					},
 					"trigger": "Auslöser",
 					"validation": {
@@ -14677,7 +14685,6 @@
 			}
 		},
 		"useAutomationStepConfig": {
-			"stepUpdated": "Schritt aktualisiert",
 			"updateStepOperation": "Automationsschritt aktualisieren"
 		},
 		"useAutomationSteps": {

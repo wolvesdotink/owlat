@@ -430,8 +430,13 @@
 				"delete": "Delete step",
 				"emptyBody": "Pick a step in the workflow to change its settings.",
 				"emptyTitle": "No step selected",
-				"save": "Save changes",
 				"title": "Step settings"
+			},
+			"stepSaveStatus": {
+				"error": "Couldn't save.",
+				"retry": "Retry",
+				"saved": "Saved",
+				"saving": "Saving…"
 			},
 			"steps": {
 				"condition": {
@@ -8702,6 +8707,7 @@
 					"activateDialog": {
 						"automation": "Automation",
 						"body": "Once activated, this automation will start running and will trigger for new contacts that match the trigger criteria.",
+						"saveFailed": "Your latest step changes couldn't be saved, so nothing was activated. Retry the save on the step, then activate again.",
 						"stepCount": "{count} step | {count} steps",
 						"steps": "Steps",
 						"title": "Activate automation?"
@@ -8747,7 +8753,9 @@
 						"activated": "Automation activated",
 						"draftSaved": "Draft saved",
 						"paused": "Automation paused",
-						"resumed": "Automation resumed"
+						"resumeBlocked": "Your step changes couldn't be saved, so the automation wasn't resumed.",
+						"resumed": "Automation resumed",
+						"stepSaveFailed": "Your step changes couldn't be saved."
 					},
 					"trigger": "Trigger",
 					"validation": {
@@ -14677,7 +14685,6 @@
 			}
 		},
 		"useAutomationStepConfig": {
-			"stepUpdated": "Step updated",
 			"updateStepOperation": "Update automation step"
 		},
 		"useAutomationSteps": {

@@ -56,7 +56,7 @@ function stubPage(automation: typeof AUTOMATION) {
 		setHasChanges: vi.fn(),
 	}));
 	vi.stubGlobal('useAutomationSteps', () => ({
-		isSaving: ref(false),
+		stepSaveStatus: ref('saved'),
 		isAddStepDropdownOpen: ref(false),
 		addStepDropdownIndex: ref<number | null>(null),
 		selectedStepId: ref(null),
@@ -69,7 +69,9 @@ function stubPage(automation: typeof AUTOMATION) {
 		handleAddStep: vi.fn(),
 		handleDeleteStep: vi.fn(),
 		handleDragEnd: vi.fn(),
-		handleUpdateStepConfig: vi.fn(),
+		requestStepSave: vi.fn(),
+		flushStepSave: vi.fn(() => Promise.resolve(true)),
+		discardStepChanges: vi.fn(),
 		closeDropdowns: vi.fn(),
 		getStepDescription: (step: Step) => DESCRIPTIONS[step._id] ?? '',
 	}));
@@ -88,6 +90,7 @@ async function mountBuilder() {
 				UiButton: { template: '<button><slot /></button>' },
 				UnsavedChangesDialog: true,
 				AutomationsStepEditorPanel: true,
+				AutomationsStepSaveStatus: true,
 				Teleport: true,
 			},
 		},
@@ -131,12 +134,15 @@ describe('step settings panel with nothing selected', () => {
 		const wrapper = mount(Panel as never, {
 			props: {
 				selectedStep: null,
-				isSaving: false,
+				saveStatus: 'saved',
 				emailTemplates: [],
 				currentConfig: null,
 				mutableSteps: [],
 			},
-			global: { plugins: [createTestI18n()], stubs: { Icon: true, UiButton: true } },
+			global: {
+				plugins: [createTestI18n()],
+				stubs: { Icon: true, UiButton: true, AutomationsStepSaveStatus: true },
+			},
 		});
 
 		expect(wrapper.text()).toContain('No step selected');

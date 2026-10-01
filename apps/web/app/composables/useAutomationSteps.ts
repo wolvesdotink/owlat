@@ -79,7 +79,7 @@ export function useAutomationSteps(
 		return automation.value.steps.find((s) => s._id === selectedStepId.value) || null;
 	});
 
-	const stepConfig = useAutomationStepConfig(selectedStepId, automation, showToast);
+	const stepConfig = useAutomationStepConfig(selectedStepId, automation);
 
 	// ─── Description Helpers (delegated to per-kind editor modules) ────
 
@@ -229,6 +229,7 @@ export function useAutomationSteps(
 
 	return {
 		isSaving: stepConfig.isSaving,
+		stepSaveStatus: stepConfig.saveStatus,
 		isAddStepDropdownOpen,
 		addStepDropdownIndex,
 		selectedStepId,
@@ -244,7 +245,9 @@ export function useAutomationSteps(
 		handleAddStep,
 		handleDeleteStep,
 		handleDragEnd,
-		handleUpdateStepConfig: stepConfig.handleUpdateStepConfig,
+		requestStepSave: stepConfig.requestSave,
+		flushStepSave: stepConfig.flush,
+		discardStepChanges: stepConfig.discardChanges,
 		closeDropdowns,
 
 		parseStepConfig: stepConfig.parseStepConfig,
