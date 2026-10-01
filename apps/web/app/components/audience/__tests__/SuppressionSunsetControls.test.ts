@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref, useSlots, type Component } from 'vue';
 import { SUNSET_MIN_WINDOW_DAYS } from '@owlat/shared/sunsetPolicy';
+import type * as SunsetPolicy from '@owlat/shared/sunsetPolicy';
 import UiInput from '@owlat/ui/components/ui/Input.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { queryResult } from '~/__tests__/queryStubs';
@@ -62,7 +63,7 @@ describe('SuppressionSunsetControls day minimums', () => {
 		// form keeps offering the old value and this assertion catches it.
 		vi.resetModules();
 		vi.doMock('@owlat/shared/sunsetPolicy', async (importOriginal) => ({
-			...(await importOriginal<typeof import('@owlat/shared/sunsetPolicy')>()),
+			...(await importOriginal<typeof SunsetPolicy>()),
 			SUNSET_MIN_WINDOW_DAYS: 45,
 		}));
 		try {
