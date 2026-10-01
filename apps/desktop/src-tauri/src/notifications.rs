@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::{command, AppHandle, Manager};
 
 /// Tauri command: reflect the unread count on the app icon's badge — the macOS
@@ -83,7 +84,40 @@ pub fn send_native_notification(app: AppHandle, title: String, body: String) -> 
 // Tauri event the webview routes. Windows (and any other target) falls back to
 // a plain notification — clicking it still focuses the app via the OS default.
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+/// What an actionable notification is about, echoed back verbatim in every
+/// `notification-action` event it produces. Targets without action support
+/// show a plain notification and never read it back.
+#[cfg_attr(
+    not(any(target_os = "macos", target_os = "linux", test)),
+    allow(dead_code)
+)]
+struct ActionTarget {
+    message_id: String,
+    folder_role: String,
+    /// The desktop workspace that sent the notification. A notification outlives
+    /// a workspace switch and message ids are instance-scoped, so the webview
+    /// resolves the action against this workspace, not the one active now.
+    workspace_id: Option<String>,
+    /// Process-unique id of this notification. Each notification emits at most
+    /// one action, so the webview can drop a duplicate delivery of the same one.
+    notification_id: u64,
+}
+
+/// Source of [`ActionTarget::notification_id`].
+static NEXT_NOTIFICATION_ID: AtomicU64 = AtomicU64::new(1);
+
+impl ActionTarget {
+    fn new(message_id: String, folder_role: String, workspace_id: Option<String>) -> Self {
+        Self {
+            message_id,
+            folder_role,
+            workspace_id: workspace_id.filter(|id| !id.is_empty()),
+            notification_id: NEXT_NOTIFICATION_ID.fetch_add(1, Ordering::Relaxed),
+        }
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux", test))]
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct NotificationActionEvent {
@@ -97,36 +131,41 @@ struct NotificationActionEvent {
     /// second round trip.
     #[serde(skip_serializing_if = "Option::is_none")]
     reply: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    workspace_id: Option<String>,
+    notification_id: u64,
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux", test))]
+impl NotificationActionEvent {
+    fn new(action: &str, target: &ActionTarget, reply: Option<String>) -> Self {
+        Self {
+            action: action.to_string(),
+            message_id: target.message_id.clone(),
+            folder_role: target.folder_role.clone(),
+            reply,
+            workspace_id: target.workspace_id.clone(),
+            notification_id: target.notification_id,
+        }
+    }
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 fn emit_notification_action(
     app: &AppHandle,
     action: &str,
-    message_id: &str,
-    folder_role: &str,
+    target: &ActionTarget,
     reply: Option<String>,
 ) {
     use tauri::Emitter;
     let _ = app.emit(
         "notification-action",
-        NotificationActionEvent {
-            action: action.to_string(),
-            message_id: message_id.to_string(),
-            folder_role: folder_role.to_string(),
-            reply,
-        },
+        NotificationActionEvent::new(action, target, reply),
     );
 }
 
 #[cfg(target_os = "macos")]
-fn notify_with_actions(
-    app: &AppHandle,
-    title: String,
-    body: String,
-    message_id: String,
-    folder_role: String,
-) {
+fn notify_with_actions(app: &AppHandle, title: String, body: String, target: ActionTarget) {
     use mac_notification_sys::{
         send_notification, set_application, MainButton, Notification, NotificationResponse,
     };
@@ -145,10 +184,10 @@ fn notify_with_actions(
         options.close_button("Archive");
         match send_notification(&title, None, &body, Some(&options)) {
             Ok(NotificationResponse::Reply(text)) => {
-                emit_notification_action(&app, "reply", &message_id, &folder_role, Some(text))
+                emit_notification_action(&app, "reply", &target, Some(text))
             }
             Ok(NotificationResponse::CloseButton(_)) => {
-                emit_notification_action(&app, "archive", &message_id, &folder_role, None)
+                emit_notification_action(&app, "archive", &target, None)
             }
             // Defensive: an explicit action button (should not occur without a
             // dropdown) still maps to a sensible triage effect.
@@ -158,10 +197,10 @@ fn notify_with_actions(
                 } else {
                     "archive"
                 };
-                emit_notification_action(&app, action, &message_id, &folder_role, None)
+                emit_notification_action(&app, action, &target, None)
             }
             Ok(NotificationResponse::Click) => {
-                emit_notification_action(&app, "open", &message_id, &folder_role, None)
+                emit_notification_action(&app, "open", &target, None)
             }
             _ => {}
         }
@@ -169,13 +208,7 @@ fn notify_with_actions(
 }
 
 #[cfg(target_os = "linux")]
-fn notify_with_actions(
-    app: &AppHandle,
-    title: String,
-    body: String,
-    message_id: String,
-    folder_role: String,
-) {
+fn notify_with_actions(app: &AppHandle, title: String, body: String, target: ActionTarget) {
     let app = app.clone();
     std::thread::spawn(move || {
         let handle = notify_rust::Notification::new()
@@ -195,20 +228,14 @@ fn notify_with_actions(
                 };
                 // Linux (notify-rust/zbus) has no inline text-input capability,
                 // so reply is macOS-only; these actions never carry reply text.
-                emit_notification_action(&app, mapped, &message_id, &folder_role, None);
+                emit_notification_action(&app, mapped, &target, None);
             });
         }
     });
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-fn notify_with_actions(
-    app: &AppHandle,
-    title: String,
-    body: String,
-    _message_id: String,
-    _folder_role: String,
-) {
+fn notify_with_actions(app: &AppHandle, title: String, body: String, _target: ActionTarget) {
     // No action support on this target — show a plain notification.
     use tauri_plugin_notification::NotificationExt;
     let _ = app
@@ -223,7 +250,7 @@ fn notify_with_actions(
 /// (macOS/Linux). macOS offers an inline **Reply** field (→ "reply" + text)
 /// plus an Archive alternate button (→ "archive"); Linux offers Open / Archive
 /// / Mark read. A click → "open". All are delivered to the webview via the
-/// `notification-action` event.
+/// `notification-action` event, which carries `workspace_id` back unchanged.
 #[command]
 pub fn send_actionable_notification(
     app: AppHandle,
@@ -231,14 +258,16 @@ pub fn send_actionable_notification(
     body: String,
     message_id: String,
     folder_role: String,
+    workspace_id: Option<String>,
 ) -> Result<(), String> {
-    notify_with_actions(&app, title, body, message_id, folder_role);
+    let target = ActionTarget::new(message_id, folder_role, workspace_id);
+    notify_with_actions(&app, title, body, target);
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::badge_dot_rgba;
+    use super::{badge_dot_rgba, ActionTarget, NotificationActionEvent};
 
     fn pixel(rgba: &[u8], size: u32, x: u32, y: u32) -> [u8; 4] {
         let i = ((y * size + x) * 4) as usize;
@@ -257,5 +286,29 @@ mod tests {
         // Corners: fully transparent.
         assert_eq!(pixel(&rgba, size, 0, 0)[3], 0);
         assert_eq!(pixel(&rgba, size, 31, 31)[3], 0);
+    }
+
+    #[test]
+    fn action_events_carry_the_sending_workspace_and_a_unique_notification_id() {
+        let a = ActionTarget::new("m1".into(), "inbox".into(), Some("ws-a".into()));
+        let b = ActionTarget::new("m1".into(), "inbox".into(), None);
+        assert_ne!(a.notification_id, b.notification_id);
+
+        let event = serde_json::to_value(NotificationActionEvent::new(
+            "reply",
+            &a,
+            Some("thanks".into()),
+        ))
+        .unwrap();
+        assert_eq!(event["workspaceId"], "ws-a");
+        assert_eq!(event["messageId"], "m1");
+        assert_eq!(event["reply"], "thanks");
+        assert_eq!(event["notificationId"], a.notification_id);
+
+        // No workspace (and an empty one) is omitted, never sent as "".
+        let event = serde_json::to_value(NotificationActionEvent::new("open", &b, None)).unwrap();
+        assert!(event.get("workspaceId").is_none());
+        let empty = ActionTarget::new("m1".into(), "inbox".into(), Some(String::new()));
+        assert!(empty.workspace_id.is_none());
     }
 }

@@ -14878,6 +14878,12 @@
 			"quietSummary": {
 				"body": "1 Nachricht ist während der Ruhezeiten eingegangen | {count} Nachrichten sind während der Ruhezeiten eingegangen",
 				"title": "Während du weg warst"
+			},
+			"replyNotCarried": "Deine Antwort wurde nicht gesendet, weil sie nicht an {workspace} übergeben werden konnte. Kopiere sie und wechsle dann zu {workspace}, um sie zu senden.",
+			"workspaceGone": {
+				"action": "Diese Benachrichtigung stammt aus einem Workspace, der nicht mehr verbunden ist. Es wurde nichts geändert.",
+				"copyReply": "Antwort kopieren",
+				"reply": "Deine Antwort wurde nicht gesendet, weil ihr Workspace nicht mehr verbunden ist. Kopiere sie, um deinen Text zu behalten."
 			}
 		},
 		"useDesktopUpdatePolicy": {

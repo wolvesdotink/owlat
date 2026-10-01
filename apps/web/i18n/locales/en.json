@@ -14878,6 +14878,12 @@
 			"quietSummary": {
 				"body": "1 message arrived during quiet hours | {count} messages arrived during quiet hours",
 				"title": "While you were away"
+			},
+			"replyNotCarried": "Your reply was not sent because it could not be passed to {workspace}. Copy it, then switch to {workspace} to send it.",
+			"workspaceGone": {
+				"action": "That notification came from a workspace that is no longer connected, so nothing was changed.",
+				"copyReply": "Copy reply",
+				"reply": "Your reply was not sent because its workspace is no longer connected. Copy it to keep your text."
 			}
 		},
 		"useDesktopUpdatePolicy": {
