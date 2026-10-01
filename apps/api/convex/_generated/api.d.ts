@@ -700,6 +700,7 @@ import type * as lib_deliverabilityRouteState from '../lib/deliverabilityRouteSt
 import type * as lib_emailAddress from '../lib/emailAddress.js';
 import type * as lib_emailContentSanitize from '../lib/emailContentSanitize.js';
 import type * as lib_emailHelpers from '../lib/emailHelpers.js';
+import type * as lib_emailHtmlTranslations from '../lib/emailHtmlTranslations.js';
 import type * as lib_emailProviders_domainVerification from '../lib/emailProviders/domainVerification.js';
 import type * as lib_emailProviders_mtaIdentity from '../lib/emailProviders/mtaIdentity.js';
 import type * as lib_emailProviders_sesIdentity from '../lib/emailProviders/sesIdentity.js';
@@ -2052,6 +2053,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/emailAddress': typeof lib_emailAddress;
 	'lib/emailContentSanitize': typeof lib_emailContentSanitize;
 	'lib/emailHelpers': typeof lib_emailHelpers;
+	'lib/emailHtmlTranslations': typeof lib_emailHtmlTranslations;
 	'lib/emailProviders/domainVerification': typeof lib_emailProviders_domainVerification;
 	'lib/emailProviders/mtaIdentity': typeof lib_emailProviders_mtaIdentity;
 	'lib/emailProviders/sesIdentity': typeof lib_emailProviders_sesIdentity;
