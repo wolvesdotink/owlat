@@ -16,8 +16,10 @@
 #
 # The volumes are restored into the Compose project the RESTORED configuration
 # starts (its .env, or the current one with --keep-env, plus its override),
-# which can differ from the project running here now. The restore stops when
-# that cannot be worked out before any volume is touched.
+# which can differ from the project running here now. Each payload goes into
+# the volume that configuration mounts for the compose key the archive's
+# VOLUMES.txt records. The restore stops when that cannot be worked out
+# before any volume is touched.
 #
 # Usage:
 #   bash scripts/restore.sh path/to/owlat-20260101-123456.tar.gz
@@ -47,7 +49,7 @@ while [[ $# -gt 0 ]]; do
 			shift
 			;;
 		--help|-h)
-			sed -n '4,31p' "$0" | sed 's/^# \{0,1\}//'
+			sed -n '4,33p' "$0" | sed 's/^# \{0,1\}//'
 			exit 0
 			;;
 		-*)
@@ -146,6 +148,20 @@ for dir in "${VOLUME_DIRS[@]}"; do
 done
 ok "All ${#VOLUME_DIRS[@]} volume payloads verified"
 
+# VOLUMES.txt ("<payload> <compose key> <volume>" per payload) says which
+# volume each payload was dumped from. Archives made before backup.sh wrote it
+# carry only the payload names; volume_targets reconstructs those below.
+VOLUME_LIST="$STAGING/VOLUMES.txt"
+if [[ -f "$VOLUME_LIST" ]]; then
+	for dir in "${VOLUME_DIRS[@]}"; do
+		suffix=$(basename "$dir")
+		[[ "$(awk -v p="$suffix" '$1 == p' "$VOLUME_LIST" | wc -l)" -eq 1 ]] \
+			|| die "VOLUMES.txt does not record the volume of payload ${suffix} exactly once — refusing to touch the running stack."
+	done
+	awk 'NF != 3 || $2 !~ /^([A-Za-z0-9][A-Za-z0-9_.-]*|-)$/ || $3 !~ /^[A-Za-z0-9][A-Za-z0-9_.-]*$/ { bad = 1 } END { exit bad }' "$VOLUME_LIST" \
+		|| die "VOLUMES.txt in the archive is malformed — refusing to touch the running stack."
+fi
+
 echo ""
 sed 's/^/  /' "$STAGING/MANIFEST.txt"
 echo ""
@@ -240,26 +256,59 @@ compose_derived_project() {
 }
 # `docker compose config` prints the resolved project as `name:` and every
 # top-level volume an active service mounts with the name Docker knows it by,
-# explicit `name:` or not. A payload whose volume no active service mounts
-# keeps Compose's default "<project>_<key>" name.
+# explicit `name:` or not.
 config_project() { sed -n 's/^name: //p' | head -1; }
 config_volumes() {
 	awk '/^[^ ]/ { in_volumes = ($0 == "volumes:"); next }
 		in_volumes && /^  [^ ]/ { key = $1; sub(/:$/, "", key); gsub(/["\047]/, "", key); next }
 		in_volumes && /^    name: / { name = $2; gsub(/["\047]/, "", name); print key, name }'
 }
-# The live volume each archived payload goes into, "<compose key> <name>" per
-# line in VOLUME_DIRS order. $1 is the project, $2 the config_volumes output.
-# backup.sh names a payload after the volume minus the "<project>_" prefix, so
-# an explicitly named volume's payload carries its full name.
+# The live volume each archived payload goes into: "<compose key> <name> <how>"
+# per line, in VOLUME_DIRS order. $1 is the project, $2 the config_volumes
+# output. <how> is
+#   mounted    the restored stack mounts <name> under <compose key>
+#   unmounted  no active service mounts the payload's volume, so it goes
+#              where Compose would create it: "<project>_<key>", or the
+#              explicit name it was dumped from
+#   unmatched  an archive without VOLUMES.txt whose payload matches no
+#              mounted volume; <name> is the default "<project>_<payload>"
+#   ambiguous  an archive without VOLUMES.txt whose payload matches several
+#              mounted volumes; <name> lists them
 volume_targets() {
-	local project="$1" volumes="$2" dir suffix match
+	local project="$1" volumes="$2" dir payload key source match names
 	for dir in "${VOLUME_DIRS[@]}"; do
-		suffix=$(basename "$dir")
-		match=$(awk -v s="$suffix" '$1 == s { print; exit }' <<<"$volumes")
-		[[ -n "$match" ]] || match=$(awk -v s="$suffix" '$2 == s { print; exit }' <<<"$volumes")
-		[[ -n "$match" ]] || match="$suffix ${project}_${suffix}"
-		printf '%s\n' "$match"
+		payload=$(basename "$dir")
+		key="-" source=""
+		if [[ -f "$VOLUME_LIST" ]]; then
+			read -r key source < <(awk -v p="$payload" '$1 == p { print $2, $3; exit }' "$VOLUME_LIST") || true
+			[[ -n "$key" ]] || key="-"
+		fi
+		if [[ "$key" != "-" ]]; then
+			match=$(awk -v k="$key" '$1 == k { print; exit }' <<<"$volumes")
+			if [[ -n "$match" ]]; then
+				printf '%s mounted\n' "$match"
+			elif [[ "$source" == "${MANIFEST_PROJECT}_${key}" ]]; then
+				printf '%s %s_%s unmounted\n' "$key" "$project" "$key"
+			else
+				printf '%s %s unmounted\n' "$key" "$source"
+			fi
+			continue
+		fi
+		# No recorded key: the payload is the volume name minus the source
+		# project's "<project>_" prefix, which an explicit name loses as well.
+		# Accept every reading of it (a compose key match first) and refuse
+		# when they name different volumes.
+		match=$(awk -v p="$payload" -v full="${MANIFEST_PROJECT:+${MANIFEST_PROJECT}_}$payload" \
+			'$1 == p || $2 == p || $2 == full { print ($1 == p ? 0 : 1), $0 }' <<<"$volumes" \
+			| sort | cut -d' ' -f2-)
+		names=$(cut -d' ' -f2 <<<"$match" | sort -u | paste -sd, -)
+		if [[ -z "$match" ]]; then
+			printf '%s %s_%s unmatched\n' "$payload" "$project" "$payload"
+		elif [[ "$names" != *,* ]]; then
+			printf '%s mounted\n' "$(head -1 <<<"$match")"
+		else
+			printf '%s %s ambiguous\n' "$payload" "$names"
+		fi
 	done
 }
 
@@ -304,12 +353,42 @@ info "Project name: ${PROJECT}"
 
 TARGETS=()        # live volume names, in restore order
 TARGET_KEYS=()    # parallel to TARGETS: the volume's key in the compose file
-while read -r key name; do
+TARGET_HOW=()     # parallel to TARGETS: how volume_targets matched it
+while read -r key name how; do
 	TARGET_KEYS+=("$key")
 	TARGETS+=("$name")
+	TARGET_HOW+=("$how")
 done < <(volume_targets "$PROJECT" "$RESTORED_VOLUMES")
 [[ ${#TARGETS[@]} -eq ${#VOLUME_DIRS[@]} ]] \
 	|| die "Could not map every volume payload to a volume of project '$PROJECT' — nothing was changed."
+MOUNTED_NAMES=$(cut -d' ' -f2 <<<"$RESTORED_VOLUMES")
+TARGET_NAMES=$(printf '%s\n' "${TARGETS[@]}")
+UNFILLED=""       # volumes the restored stack mounts that no payload goes into
+while read -r key name; do
+	[[ -z "$name" ]] || grep -qxF -- "$name" <<<"$TARGET_NAMES" \
+		|| UNFILLED="${UNFILLED:+$UNFILLED, }$name"
+done <<<"$RESTORED_VOLUMES"
+for i in "${!TARGETS[@]}"; do
+	payload=$(basename "${VOLUME_DIRS[$i]}")
+	case "${TARGET_HOW[$i]}" in
+		ambiguous)
+			die "This archive predates VOLUMES.txt, and payload ${payload} could belong to any of ${TARGETS[$i]} in the restored configuration — nothing was changed. Rename the payload directory in the archive to the compose key of its volume and run the restore again."
+			;;
+		unmatched)
+			[[ -z "$UNFILLED" ]] \
+				|| die "This archive predates VOLUMES.txt, and payload ${payload} matches no volume the restored configuration mounts, while ${UNFILLED} would get no payload. The payload is probably one of those under another name — nothing was changed. Rename the payload directory in the archive to the compose key of its volume and run the restore again."
+			[[ $RESOLVED_BY_COMPOSE -eq 0 ]] \
+				|| warn "Payload ${payload} matches no volume the restored configuration mounts; restoring it into ${TARGETS[$i]}, which the started stack does not use."
+			;;
+		unmounted)
+			[[ $RESOLVED_BY_COMPOSE -eq 0 ]] \
+				|| warn "No service the restored configuration starts mounts the volume of payload ${payload}; restoring it into ${TARGETS[$i]}."
+			;;
+	esac
+	if [[ "${TARGET_HOW[$i]}" != mounted ]] && grep -qxF -- "${TARGETS[$i]}" <<<"$MOUNTED_NAMES"; then
+		die "Payload ${payload} would go into ${TARGETS[$i]}, which the restored configuration mounts as another volume — nothing was changed."
+	fi
+done
 CLASHES=$(printf '%s\n' "${TARGETS[@]}" | sort | uniq -d)
 [[ -z "$CLASHES" ]] \
 	|| die "Several payloads in the archive map to the same volume (${CLASHES//$'\n'/, }) in the restored configuration — nothing was changed."
@@ -570,9 +649,18 @@ if [[ $RESOLVED_BY_COMPOSE -eq 1 ]]; then
 	CONFIG=$(compose config 2>"$COMPOSE_ERR") \
 		|| config_die "docker compose config fails with the restored config files: $(head -1 "$COMPOSE_ERR")."
 	FINAL_PROJECT=$(config_project <<<"$CONFIG")
-	if [[ "$FINAL_PROJECT" != "$PROJECT" ]] \
-		|| [[ "$(volume_targets "$FINAL_PROJECT" "$(config_volumes <<<"$CONFIG")")" != "$(volume_targets "$PROJECT" "$RESTORED_VOLUMES")" ]]; then
-		config_die "The restored config files start project '${FINAL_PROJECT}', which does not mount the restored volumes (${TARGETS[*]})."
+	FINAL_VOLUMES=$(config_volumes <<<"$CONFIG")
+	# What Compose mounts now must be what the restore was planned against, and
+	# every payload meant for a mounted volume must be in that volume.
+	VERIFIED=1
+	[[ "$FINAL_PROJECT" == "$PROJECT" ]] || VERIFIED=0
+	[[ "$(sort <<<"$FINAL_VOLUMES")" == "$(sort <<<"$RESTORED_VOLUMES")" ]] || VERIFIED=0
+	for i in "${!TARGETS[@]}"; do
+		[[ "${TARGET_HOW[$i]}" != mounted ]] \
+			|| grep -qxF -- "${TARGET_KEYS[$i]} ${TARGETS[$i]}" <<<"$FINAL_VOLUMES" || VERIFIED=0
+	done
+	if [[ $VERIFIED -eq 0 ]]; then
+		config_die "The restored config files start project '${FINAL_PROJECT}' with the volumes $(cut -d' ' -f2 <<<"$FINAL_VOLUMES" | paste -sd' ' -), which does not mount the restored volumes (${TARGETS[*]})."
 	fi
 fi
 

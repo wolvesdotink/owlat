@@ -59,6 +59,11 @@ export const COMPOSE_WITHOUT_NAME = COMPOSE_FILE.replace('name: owlat\n', '');
  * FAKE_COMPOSE_DISCOVERED_NAME  project name Compose resolves whenever it finds
  *                         the files itself (no -f): a resolution the restore
  *                         could not foresee
+ * FAKE_COMPOSE_DISCOVERED_VOLUME  "<key>=<name>": the name Compose resolves for
+ *                         the volume <key> whenever it finds the files itself
+ *
+ * A volume's labels live in "$FAKE_DOCKER_ROOT/labels/<name>". A volume
+ * without that file is a Compose default-named "<project>_<key>" volume.
  *
  * Like the real Compose, which cannot interpolate the file's required
  * `${VAR:?}` secrets without them, every `compose` call fails when there is no
@@ -120,11 +125,16 @@ case "$1" in
 			project="$FAKE_COMPOSE_DISCOVERED_NAME"
 		fi
 		project=$(printf '%s' "$project" | tr '[:upper:]' '[:lower:]')
-		volumes=$(awk -v p="$project" '
+		rename=""
+		[[ $discovered == 1 ]] && rename="\${FAKE_COMPOSE_DISCOVERED_VOLUME:-}"
+		volumes=$(awk -v p="$project" -v rename="$rename" '
 			/^[^ ]/ { in_v = ($0 == "volumes:"); next }
 			in_v && /^  [^ ]/ { key = $1; sub(/:$/, "", key); if (!(key in name)) { order[++n] = key; name[key] = p "_" key }; next }
 			in_v && /^    name: / { name[key] = $2 }
-			END { for (i = 1; i <= n; i++) print order[i], name[order[i]] }' "\${files[@]}")
+			END {
+				if (split(rename, r, "=") == 2) name[r[1]] = r[2]
+				for (i = 1; i <= n; i++) print order[i], name[order[i]]
+			}' "\${files[@]}")
 		case "$1" in
 			config)
 				echo "name: $project"
@@ -148,14 +158,39 @@ case "$1" in
 		;;
 	volume)
 		name="\${@: -1}"
+		labels="$FAKE_DOCKER_ROOT/labels"
 		case "$2" in
-			inspect) [[ -d "$vols/$name" ]] || { echo "no such volume: $name" >&2; exit 1; } ;;
-			create) mkdir -p "$vols/$name" ;;
-			rm) rm -rf "\${vols:?}/$name" ;;
+			inspect)
+				[[ -d "$vols/$name" ]] || { echo "no such volume: $name" >&2; exit 1; }
+				if [[ "$3" == --format ]]; then
+					key=""
+					if [[ -f "$labels/$name" ]]; then
+						key=$(sed -n 's/^com.docker.compose.volume=//p' "$labels/$name")
+					elif [[ "$name" == *_* ]]; then
+						key="\${name#*_}"
+					fi
+					echo "\${key:-<no value>}"
+				fi
+				;;
+			create)
+				mkdir -p "$vols/$name" "$labels"
+				: > "$labels/$name"
+				while [[ $# -gt 1 ]]; do
+					[[ "$1" == --label ]] && printf '%s\\n' "$2" >> "$labels/$name"
+					shift
+				done
+				;;
+			rm) rm -rf "\${vols:?}/$name" "$labels/$name" ;;
 			ls)
-				prefix="\${name#label=com.docker.compose.project=}_"
-				for d in "$vols"/"$prefix"*; do
-					[[ -d "$d" && "$d" != *-pre-restore-* ]] && basename "$d"
+				project="\${name#label=com.docker.compose.project=}"
+				for d in "$vols"/*; do
+					[[ -d "$d" && "$d" != *-pre-restore-* ]] || continue
+					v=$(basename "$d")
+					if [[ -f "$labels/$v" ]]; then
+						grep -qxF "com.docker.compose.project=$project" "$labels/$v" && echo "$v"
+					elif [[ "$v" == "$project"_* ]]; then
+						echo "$v"
+					fi
 				done
 				;;
 		esac
@@ -204,6 +239,8 @@ export interface Host {
 	readonly dir: string;
 	/** The directory holding the volume called `name`. */
 	readonly volumeDir: (name: string) => string;
+	/** Creates the volume `name` with the labels Compose gives `key` of `project`. */
+	readonly composeVolume: (name: string, key: string, project: string) => Promise<string>;
 	readonly volumeNames: () => Promise<string[]>;
 	readonly env: (extra?: Record<string, string>) => NodeJS.ProcessEnv;
 	readonly calls: () => Promise<string[]>;
@@ -245,6 +282,15 @@ export async function makeHost(composeFile = COMPOSE_FILE): Promise<Host> {
 		root,
 		dir,
 		volumeDir: (name) => join(vols, name),
+		async composeVolume(name, key, project) {
+			await mkdir(join(vols, name), { recursive: true });
+			await mkdir(join(root, 'labels'), { recursive: true });
+			await writeFile(
+				join(root, 'labels', name),
+				`com.docker.compose.project=${project}\ncom.docker.compose.volume=${key}\n`
+			);
+			return join(vols, name);
+		},
 		volumeNames: async () => (await readdir(vols)).sort(),
 		env,
 		calls,
@@ -302,6 +348,8 @@ export interface InstallOptions {
 	readonly archivedFlags?: string;
 	/** Restore this archive (from backup.sh) instead of building one. */
 	readonly archive?: string;
+	/** The archive's VOLUMES.txt; omitted, the archive predates it. */
+	readonly volumeList?: string;
 }
 
 /**
@@ -398,6 +446,9 @@ async function buildArchive(
 	}
 	if (options.archivedFlags !== undefined) {
 		await writeFile(join(staging, 'owlat-flags.json'), options.archivedFlags);
+	}
+	if (options.volumeList !== undefined) {
+		await writeFile(join(staging, 'VOLUMES.txt'), options.volumeList);
 	}
 	await writeFile(
 		join(staging, 'MANIFEST.txt'),

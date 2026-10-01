@@ -250,7 +250,7 @@ describe('restore.sh checks the installed config files before starting', () => {
 
 		expect(result.code).not.toBe(0);
 		expect(result.out).toContain(
-			"The restored config files start project 'elsewhere', which does not mount the restored volumes"
+			"The restored config files start project 'elsewhere' with the volumes elsewhere_convex-data elsewhere_redis-data elsewhere_mail-certs, which does not mount the restored volumes"
 		);
 		expect(result.out).toContain('the stack is stopped');
 		expect(result.out).not.toContain('Restore complete');
