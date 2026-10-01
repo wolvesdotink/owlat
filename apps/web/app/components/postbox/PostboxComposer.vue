@@ -251,8 +251,6 @@ const { answerApi, footerStatus, gapsHoldSend } = usePostboxComposerAnswerApi({
 	isSaving,
 	lastSavedAt,
 	gapCount,
-	// A reopened draft keeps the guard: its in-memory AI draft is gone, but the
-	// row remembers that the AI wrote gaps into it.
 	askSession: () => props.askSession === true || isGapGuarded.value,
 	statusNote: () => props.statusNote,
 });
