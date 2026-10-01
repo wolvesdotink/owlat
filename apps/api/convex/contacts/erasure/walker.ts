@@ -32,6 +32,7 @@ import { internalAction, type MutationCtx } from '../../_generated/server';
 import { internalMutation } from '../../lib/writeFence';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
+import { isTransactionLimitError } from '../../lib/convexLimitErrors';
 import { logError } from '../../lib/runtimeLog';
 import { ErasureBudget } from './budget';
 import { advanceErasure, finishErasure, FIRST_ERASURE_PHASE } from './phases';
@@ -54,19 +55,6 @@ const MAX_ERROR_CHARS = 500;
 
 type ErasureReason = Doc<'contactErasureJobs'>['reason'];
 type TickOutcome = 'done' | 'more' | 'stopped';
-
-/**
- * Whether a failed transaction ran into a per-transaction platform limit (data
- * or documents read or written). Convex reports those as plain errors worded
- * "... in a single function execution (limit: ...)", some with a link to its
- * limits page, so this reads the message. Timeouts and other errors are left
- * out: a retry at the same size may clear them.
- */
-export function isTransactionLimitError(message: string): boolean {
-	return /in a single function execution|docs\.convex\.dev\/production\/state\/limits/i.test(
-		message
-	);
-}
 
 /** The row cap after a transaction under `rowCap` commits: doubled, until full. */
 function widenedRowCap(rowCap: number | undefined): number | undefined {
