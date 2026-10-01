@@ -39,6 +39,13 @@ export class FolderView {
 	/** A census has listed the whole folder since the view was last cleared. */
 	isCensused = false;
 	/**
+	 * The latest look at the folder failed (a census SEARCH, the search for new
+	 * mail, or the SELECT). What the view holds dates from an earlier look, so
+	 * mail that reached the folder since may be missing from it. Cleared only by
+	 * a census that succeeds.
+	 */
+	isStale = false;
+	/**
 	 * UIDs the provider listed that the view could not read yet: their FETCH
 	 * left them out or broke off. They are in the folder, just unidentified, so
 	 * the view cannot vouch that any message is absent from it until they are read.
@@ -66,12 +73,13 @@ export class FolderView {
 	}
 
 	/**
-	 * The view holds every message the folder held at its last look: a census
-	 * listed the folder and every UID listed since has been read. Only then does
-	 * a message's absence from the view say anything about the provider.
+	 * The view holds every message the folder holds as of this look: a census
+	 * listed the folder, no look since has failed, and every UID listed has been
+	 * read. Only then does a message's absence from the view say anything about
+	 * the provider.
 	 */
 	get isComplete(): boolean {
-		return this.isCensused && this.unread.size === 0;
+		return this.isCensused && !this.isStale && this.unread.size === 0;
 	}
 
 	/** Listed by the provider, about to be read; stays unread until `set`. */
@@ -132,6 +140,7 @@ export class FolderView {
 		this.lastCensusAt = 0;
 		this.censusUidNext = 0;
 		this.isCensused = false;
+		this.isStale = false;
 		this.unread.clear();
 	}
 

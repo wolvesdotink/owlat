@@ -380,6 +380,79 @@ describe('an incomplete look at a folder is never taken for a deletion', () => {
 		expect(acc.local.get('a@x')?.remoteName).toBe('Archive');
 	});
 
+	/**
+	 * A view an earlier census completed, whose census this pass fails: it
+	 * dates from before mail moved into it, so it cannot vouch for an absence.
+	 */
+	const movedOutOfTrash = async () => {
+		const acc = account({ INBOX: [], Archive: [], Trash: ['t@x'] });
+		await acc.pass();
+		acc.imap.move('Trash', 'Archive', 't@x');
+		acc.imap.refuseSearch = refuseCensus('Archive');
+		return acc;
+	};
+
+	it('does not purge Trash mail moved to a folder whose census fails after a reconnect', async () => {
+		const acc = await movedOutOfTrash();
+		// What a reconnect does: every folder's next refresh takes a census.
+		for (const view of acc.deps.views.values()) view.censusDue = true;
+
+		expect(gone(await acc.pass())).toEqual([]);
+		expect(acc.local.get('t@x')?.remoteName).toBe('Trash');
+		expect(acc.deps.views.get('Archive')?.isComplete).toBe(false);
+
+		acc.imap.refuseSearch = null;
+		const applied = await acc.pass();
+		expect(gone(applied)).toEqual([]);
+		expect(acc.local.get('t@x')?.remoteName).toBe('Archive');
+	});
+
+	it('does not purge Trash mail moved to a folder whose census fails on a full reconcile', async () => {
+		const acc = await movedOutOfTrash();
+		acc.deps.forceFull = true;
+
+		expect(gone(await acc.pass())).toEqual([]);
+		expect(acc.local.get('t@x')?.remoteName).toBe('Trash');
+
+		// Still incomplete on the next, ordinary pass while the census keeps failing.
+		acc.deps.forceFull = false;
+		expect(gone(await acc.pass())).toEqual([]);
+		expect(acc.local.get('t@x')?.remoteName).toBe('Trash');
+
+		acc.imap.refuseSearch = null;
+		expect(gone(await acc.pass())).toEqual([]);
+		expect(acc.local.get('t@x')?.remoteName).toBe('Archive');
+	});
+
+	it('mirrors a real deletion once the failed census of another folder succeeds', async () => {
+		const acc = account({ INBOX: ['a@x'], Archive: [], Trash: ['t@x'] });
+		await acc.pass();
+		acc.imap.remove('Trash', 't@x');
+		acc.imap.refuseSearch = refuseCensus('Archive');
+		for (const view of acc.deps.views.values()) view.censusDue = true;
+
+		expect(gone(await acc.pass())).toEqual([]);
+		expect(acc.local.has('t@x')).toBe(true);
+
+		acc.imap.refuseSearch = null;
+		expect(gone(await acc.pass())).toEqual(['t@x']);
+		expect(acc.local.has('t@x')).toBe(false);
+		expect(acc.local.get('a@x')?.remoteName).toBe('INBOX');
+	});
+
+	it('takes a census when the search for new mail fails, whatever the message count says', async () => {
+		const acc = account({ INBOX: [], Archive: ['old@x'], Trash: ['t@x'] });
+		await acc.pass();
+		// Archive's count is unchanged: one message left it, one arrived.
+		acc.imap.move('Trash', 'Archive', 't@x');
+		acc.imap.remove('Archive', 'old@x');
+		acc.imap.refuseSearch = (path, q) => path === 'Archive' && typeof q['uid'] === 'string';
+
+		const applied = await acc.pass();
+		expect(gone(applied)).toEqual(['old@x']);
+		expect(acc.local.get('t@x')?.remoteName).toBe('Archive');
+	});
+
 	it.each([
 		[
 			'refuses the SEARCH',

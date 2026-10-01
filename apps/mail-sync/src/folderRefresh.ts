@@ -144,7 +144,11 @@ export async function refreshFolder(
 	const lock = await client.getMailboxLock(path);
 	try {
 		const mailbox = client.mailbox;
-		if (!mailbox) return result;
+		if (!mailbox) {
+			// Not selected, so not looked at: the view is as old as its last look.
+			view.isStale = true;
+			return result;
+		}
 		const uidValidity = BigInt(mailbox.uidValidity);
 		if (view.uidValidity !== uidValidity) {
 			view.clear();
@@ -158,24 +162,33 @@ export async function refreshFolder(
 		let census = options.census === true || result.rebuilt || view.censusDue || !view.isComplete;
 		if (!census) {
 			const floor = view.maxUid;
-			const hits = (await client.search({ uid: `${floor + 1}:*` }, UID)) || [];
-			// `n:*` names the highest UID even when it is below n.
-			await addArrivals(
-				client,
-				view,
-				result,
-				hits.filter((uid) => uid > floor)
-			);
-			// Read after the search, so it counts at least what the search saw.
-			const now = client.mailbox;
-			census = !now || typeof now.exists !== 'number' || now.exists !== view.size;
+			const hits = await client.search({ uid: `${floor + 1}:*` }, UID);
+			if (Array.isArray(hits)) {
+				// `n:*` names the highest UID even when it is below n.
+				await addArrivals(
+					client,
+					view,
+					result,
+					hits.filter((uid) => uid > floor)
+				);
+				// Read after the search, so it counts at least what the search saw.
+				const now = client.mailbox;
+				census = !now || typeof now.exists !== 'number' || now.exists !== view.size;
+			} else {
+				// Arrivals unknown: an equal message count no longer means nothing left.
+				census = true;
+			}
 		}
 		const listed = census ? await client.search({ all: true }, UID) : undefined;
 		if (census && !Array.isArray(listed)) {
 			// The server refused or failed the SEARCH (ImapFlow answers `false`).
 			// That lists nothing, so this pass learns nothing about what left: no
-			// removals, and the census stays due.
+			// removals, and the census stays due. Nor does it see what arrived, so
+			// until a census succeeds the view cannot vouch for an absence, even if
+			// an earlier census completed it. What other folders saw leave stays
+			// pending for that later pass.
 			view.censusDue = true;
+			view.isStale = true;
 		} else if (Array.isArray(listed)) {
 			const present = new Set(listed);
 			if (!view.isCensused && !result.rebuilt) {
@@ -199,6 +212,7 @@ export async function refreshFolder(
 			view.lastCensusAt = options.now ?? Date.now();
 			view.censusDue = false;
 			view.isCensused = true;
+			view.isStale = false;
 			// UIDNEXT as of the SELECT: every UID below it was handed out before the
 			// search ran, so one the search did not list had left by then. One it
 			// listed but could not read stays unread, not absent (FolderView.hasLeft).
