@@ -104,17 +104,18 @@ export function sectionBytes(req: BodySectionRequest, raw: Buffer): Buffer {
 }
 
 /**
- * Build the response key + body literal for a BODY section request as raw
- * octets, ready to splice into the FETCH response, e.g. the octets for
- * `BODY[HEADER] {17}\r\n...` or `BODY[]<0> {5}\r\nHello`.
+ * The response key + literal header and the literal octets for a BODY
+ * section request, as two Buffers: e.g. `BODY[HEADER] {17}\r\n` and the 17
+ * header octets. The octets are a view into `raw` (no copy), so a caller
+ * assembling a whole FETCH response copies the body exactly once.
  *
  * The declared `{N}` is the EXACT byte length of the sliced section (RFC
  * 3501 §4.3) — for any 8-bit/UTF-8/emoji body a UTF-16 code-unit count
  * would under-declare the octets and desync the client's literal framing,
  * corrupting every following response. The literal header is pure ASCII;
- * the body octets are appended verbatim.
+ * the body octets are passed through verbatim.
  */
-export function formatBodySection(req: BodySectionRequest, raw: Buffer): Buffer {
+export function bodySectionParts(req: BodySectionRequest, raw: Buffer): [Buffer, Buffer] {
 	let bytes = sectionBytes(req, raw);
 	let originOctet: number | undefined;
 	if (req.partial) {
@@ -123,10 +124,14 @@ export function formatBodySection(req: BodySectionRequest, raw: Buffer): Buffer 
 	}
 
 	const responsePrefix =
-		req.rfc822Alias ??
-		`BODY[${req.section}]${originOctet !== undefined ? `<${originOctet}>` : ''}`;
-	return Buffer.concat([
-		Buffer.from(`${responsePrefix} {${bytes.length}}\r\n`, 'ascii'),
-		bytes,
-	]);
+		req.rfc822Alias ?? `BODY[${req.section}]${originOctet !== undefined ? `<${originOctet}>` : ''}`;
+	return [Buffer.from(`${responsePrefix} {${bytes.length}}\r\n`, 'ascii'), bytes];
+}
+
+/**
+ * {@link bodySectionParts} joined into one Buffer, e.g. the octets for
+ * `BODY[HEADER] {17}\r\n...` or `BODY[]<0> {5}\r\nHello`.
+ */
+export function formatBodySection(req: BodySectionRequest, raw: Buffer): Buffer {
+	return Buffer.concat(bodySectionParts(req, raw));
 }

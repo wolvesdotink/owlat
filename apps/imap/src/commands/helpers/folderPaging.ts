@@ -68,11 +68,22 @@ function exhausted(what: string): never {
 	throw new PagingError(`${what}: exceeded ${MAX_PAGES} pages`);
 }
 
-/** Every UID in a folder, ascending — the sequence ↔ UID map's input. */
-export async function loadFolderUids(convex: ConvexClient, folderId: string): Promise<number[]> {
+/**
+ * Every UID in a folder, ascending — the sequence ↔ UID map's input.
+ *
+ * `signal` (optional) is checked before each page: once the command's
+ * connection has gone, the walk throws the abort reason instead of reading
+ * pages nobody will receive.
+ */
+export async function loadFolderUids(
+	convex: ConvexClient,
+	folderId: string,
+	signal?: AbortSignal
+): Promise<number[]> {
 	const uids: number[] = [];
 	let afterUid: number | undefined;
 	for (let page = 0; page < MAX_PAGES; page += 1) {
+		signal?.throwIfAborted();
 		const result = await convex.query(fn.listFolderUidsPage, {
 			folderId,
 			...(afterUid === undefined ? {} : { afterUid }),
@@ -85,16 +96,18 @@ export async function loadFolderUids(convex: ConvexClient, folderId: string): Pr
 	exhausted('listFolderUidsPage');
 }
 
-/** Every envelope in a UID window, ascending by UID. */
+/** Every envelope in a UID window, ascending by UID. Aborts like {@link loadFolderUids}. */
 export async function loadEnvelopes(
 	convex: ConvexClient,
 	folderId: string,
 	uidLow: number,
-	uidHigh: number
+	uidHigh: number,
+	signal?: AbortSignal
 ): Promise<FetchEnvelope[]> {
 	const rows: FetchEnvelope[] = [];
 	let low = uidLow;
 	for (let page = 0; page < MAX_PAGES; page += 1) {
+		signal?.throwIfAborted();
 		const result = await convex.query(fn.fetchEnvelopes, { folderId, uidLow: low, uidHigh });
 		rows.push(...result.rows);
 		const next = advance(result.nextUid, low, 'fetchEnvelopes');
