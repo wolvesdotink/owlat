@@ -25,7 +25,6 @@ export {
 	quotedPrintableEncode,
 	encodeTextBody,
 	buildMessageId,
-	stripHtml,
 } from '@owlat/mail-message';
 
 /**
