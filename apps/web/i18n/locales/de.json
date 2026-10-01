@@ -485,7 +485,7 @@
 						"createCta": "Neue E-Mail erstellen",
 						"createPrompt": "Oder erstelle eine neue E-Mail-Vorlage für diese Automation:",
 						"editTemplate": "Vorlage bearbeiten →",
-						"noTemplates": "Keine Automations-Vorlagen gefunden. {link} mit dem Typ „Automation“.",
+						"noTemplates": "Noch keine Marketing-Vorlagen. {link}.",
 						"noTemplatesLink": "Erstelle zuerst eine E-Mail-Vorlage",
 						"previewLabel": "Vorschau der Vorlage",
 						"previewSubject": "Betreff: {subject}",
@@ -493,9 +493,7 @@
 						"subjectLabel": "Abweichender Betreff (optional)",
 						"subjectPlaceholder": "Leer lassen, um den Betreff der Vorlage zu verwenden",
 						"templateHint": "Wähle die E-Mail-Vorlage, die an den Kontakt gesendet wird.",
-						"templateLabel": "E-Mail-Vorlage",
-						"templateOption": "{name} ({status})",
-						"templatePlaceholder": "Vorlage auswählen..."
+						"templateLabel": "E-Mail-Vorlage"
 					}
 				}
 			},
@@ -3147,6 +3145,17 @@
 					"save": "Gespeichert",
 					"send": "Gesendet"
 				}
+			},
+			"templatePicker": {
+				"listLabel": "Vorlagen",
+				"loadMore": "Mehr laden",
+				"loading": "Vorlagen werden geladen…",
+				"loadingMore": "Weitere werden geladen…",
+				"noMatches": "Keine Vorlagen passen zu deiner Suche.",
+				"noSubject": "Kein Betreff",
+				"none": "Noch keine Vorlagen.",
+				"searchPlaceholder": "Nach Name oder Betreff suchen…",
+				"searching": "Suche läuft…"
 			}
 		},
 		"files": {

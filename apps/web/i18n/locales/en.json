@@ -485,7 +485,7 @@
 						"createCta": "Create new email",
 						"createPrompt": "Or create a new email template for this automation:",
 						"editTemplate": "Edit template →",
-						"noTemplates": "No automation templates found. {link} with type \"Automation\" first.",
+						"noTemplates": "No marketing templates yet. {link} first.",
 						"noTemplatesLink": "Create an email template",
 						"previewLabel": "Template preview",
 						"previewSubject": "Subject: {subject}",
@@ -493,9 +493,7 @@
 						"subjectLabel": "Subject line override (optional)",
 						"subjectPlaceholder": "Leave blank to use template subject",
 						"templateHint": "Choose the email template to send to the contact.",
-						"templateLabel": "Email template",
-						"templateOption": "{name} ({status})",
-						"templatePlaceholder": "Select a template..."
+						"templateLabel": "Email template"
 					}
 				}
 			},
@@ -3147,6 +3145,17 @@
 					"save": "Saved",
 					"send": "Sent"
 				}
+			},
+			"templatePicker": {
+				"listLabel": "Templates",
+				"loadMore": "Load more",
+				"loading": "Loading templates…",
+				"loadingMore": "Loading more…",
+				"noMatches": "No templates match your search.",
+				"noSubject": "No subject",
+				"none": "No templates yet.",
+				"searchPlaceholder": "Search by name or subject…",
+				"searching": "Searching…"
 			}
 		},
 		"files": {
