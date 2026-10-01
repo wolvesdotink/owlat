@@ -1,16 +1,13 @@
 /**
- * The part of a member's erasure that the workspace deletion's sweep does not
- * cover: rows keyed by the member's user id in tables outside the workspace
- * (the onboarding checklist, its send-ready notices, the platform-admin grant),
- * plus closing the account-deletion request.
+ * The part of a member's erasure that no workspace deletion sweeps: rows keyed
+ * by the member's user id in tables outside the workspace (the onboarding
+ * checklist, its send-ready notices, the platform-admin grant).
  *
- * Split out of `memberErasure.ts` because that job runs it in two situations:
- * as one step of the full member erasure, and on its own when the member's
- * erasure runs during a workspace deletion, whose sweep erases the rest.
+ * One step of the persisted member erasure (`auth/erasure/memberPhases.ts`),
+ * which runs it even while a workspace deletion is sweeping everything else.
  */
 
 import type { MutationCtx } from '../_generated/server';
-import type { Id } from '../_generated/dataModel';
 
 export async function deleteMemberInstanceRows(
 	ctx: MutationCtx,
@@ -42,14 +39,4 @@ export async function deleteMemberInstanceRows(
 		.withIndex('by_auth_user_id', (q) => q.eq('authUserId', authUserId))
 		.collect(); // bounded: at most one row per user
 	for (const row of platformAdminRows) await ctx.db.delete(row._id);
-}
-
-export async function completeDeletionRequest(
-	ctx: MutationCtx,
-	requestId: Id<'accountDeletionRequests'>
-): Promise<void> {
-	const request = await ctx.db.get(requestId);
-	if (request && request.status !== 'completed') {
-		await ctx.db.patch(requestId, { status: 'completed', statusChangedAt: Date.now() });
-	}
 }

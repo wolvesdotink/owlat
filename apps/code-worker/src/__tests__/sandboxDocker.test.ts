@@ -141,4 +141,25 @@ describe.skipIf(!enabled)('sandbox Linux security boundaries', () => {
 		},
 		20_000
 	);
+
+	it('bounds the output a flooding sandbox child leaves in the orchestrator', () => {
+		const output = runContainer(`
+			import assert from 'node:assert/strict';
+			import { runUntrusted } from '/audit/sandbox.ts';
+			const script = \`
+				const block = 'z'.repeat(64 * 1024);
+				setInterval(() => { process.stdout.write(block); process.stderr.write(block); }, 1);
+			\`;
+			const result = await runUntrusted(process.execPath, ['-e', script], {
+				cwd: '/tmp', env: {}, timeoutMs: 1000,
+			});
+			assert.equal(result.timedOut, true);
+			assert.equal(result.outputTruncated, true);
+			assert.ok(Buffer.byteLength(result.stdout) < 140 * 1024, String(result.stdout.length));
+			assert.ok(Buffer.byteLength(result.stderr) < 140 * 1024, String(result.stderr.length));
+			assert.match(result.stdout, /sandbox output truncated: [0-9]+ bytes omitted/);
+			console.log('output bound passed');
+		`);
+		expect(output).toContain('output bound passed');
+	}, 20_000);
 });

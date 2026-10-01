@@ -7,6 +7,11 @@
  * Every contact insert, soft delete and hard delete calls
  * {@link recordContactGrowth} in the same mutation. The backfill walks the
  * table in creation order, so a contact's position is its `_creationTime`.
+ *
+ * The same call also moves the live-contact tally of a running contact-count
+ * reconcile (`contacts/countReconcile.ts`), which walks the table the same way.
+ * Outside a reconcile that scope has no state row, so the move is one indexed
+ * read that finds nothing.
  */
 
 import type { DatabaseReader, MutationCtx } from '../_generated/server';
@@ -23,6 +28,14 @@ type CountedContact = { _creationTime?: number; createdAt: number; deletedAt?: n
 /** The growth scope has no owner, so its key is its kind (`counterScopeKey`). */
 const CONTACT_GROWTH_SCOPE = 'contactCreatedDay' satisfies CounterKind;
 
+/** The reconcile's scope: one `live` bucket counting live contacts behind its watermark. */
+export const CONTACT_LIVE_TOTAL_SCOPE = 'contactLiveTotal' satisfies CounterKind;
+export const CONTACT_LIVE_BUCKET = 'live';
+
+export function contactLiveBuckets(contact: { deletedAt?: number }): readonly string[] {
+	return contact.deletedAt === undefined ? [CONTACT_LIVE_BUCKET] : [];
+}
+
 export function contactGrowthBuckets(contact: CountedContact): readonly string[] {
 	return contact.deletedAt === undefined ? [utcDayKey(contact.createdAt)] : [];
 }
@@ -35,12 +48,20 @@ export async function recordContactGrowth(
 ): Promise<void> {
 	const row = before ?? after;
 	if (!row) return;
+	const position = creationPosition(row);
 	await applyCounterChange(
 		ctx,
 		CONTACT_GROWTH_SCOPE,
-		creationPosition(row),
+		position,
 		before ? contactGrowthBuckets(before) : [],
 		after ? contactGrowthBuckets(after) : []
+	);
+	await applyCounterChange(
+		ctx,
+		CONTACT_LIVE_TOTAL_SCOPE,
+		position,
+		before ? contactLiveBuckets(before) : [],
+		after ? contactLiveBuckets(after) : []
 	);
 }
 

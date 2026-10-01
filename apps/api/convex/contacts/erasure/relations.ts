@@ -140,6 +140,12 @@ export const CONTACT_RELATIONS: readonly ErasureRelation[] = [
 		why: 'Submitted form data is the person’s own data.',
 	},
 	{
+		table: 'answerAskSessions',
+		field: 'contactId',
+		action: 'delete',
+		why: 'An Answer mode ask session quotes the person’s mail and holds the owner’s answers about them; its draft stream goes with it.',
+	},
+	{
 		table: 'clarificationMemory',
 		field: 'contactId',
 		action: 'delete',
@@ -219,6 +225,13 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	},
 	{
 		parent: 'conversationThreads',
+		table: 'answerAskSessions',
+		field: 'target.threadId',
+		action: 'retain',
+		why: 'Governed by the session’s own contactId (deleted above), which is the thread’s contact when one is linked; a session without a contact carries no contact data beyond the thread it names.',
+	},
+	{
+		parent: 'conversationThreads',
 		table: 'coalesceBatches',
 		field: 'threadId',
 		action: 'retain',
@@ -251,6 +264,13 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 		field: 'threadId',
 		action: 'delete',
 		why: 'A follow-up is the team writing to the person on their thread; it goes with the thread like the replies in it. A pending one has its dispatch cancelled.',
+	},
+	{
+		parent: 'conversationThreads',
+		table: 'threadCatchUps',
+		field: 'conversationThreadId',
+		action: 'delete',
+		why: 'Answer mode’s catch-up card retells the thread and lists what the person asked for; it goes with the thread it summarises.',
 	},
 	{
 		parent: 'conversationThreads',

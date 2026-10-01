@@ -25,6 +25,7 @@ import type { SenderAuthInput, SenderHeuristics } from '~/utils/senderAuth';
 import type { InboundEncryptionInfo } from '~/utils/sealedMessage';
 import type { InboundSignatureInfo } from '~/utils/signatureBadge';
 import { deriveTrustChip, TRUST_CHIP_TONE_CLASSES } from '~/utils/postboxTrustChip';
+import { useEscapeToClose } from '~/composables/useEscapeToClose';
 
 const props = defineProps<{
 	mailboxId: string;
@@ -52,6 +53,11 @@ const props = defineProps<{
 	 * recovery controls in the message flow, and one rendering is the rule.
 	 */
 	showSecurityDetail: boolean;
+	/**
+	 * Answer mode: verified is the quiet default, so the chip renders only when
+	 * there is something to say (plan §09).
+	 */
+	hideWhenOk?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -96,24 +102,21 @@ const showKeyPanel = computed(
 const open = ref(false);
 const rootRef = ref<HTMLElement | null>(null);
 
-// Outside click (the shared composable owns the listener lifecycle) and Escape
-// both dismiss — Escape at the document level, so it works while focus is still
-// on the chip trigger rather than inside the panel.
+// Outside click and Escape both dismiss. Escape is claimed, so the same press
+// does not also close the reader's conversation or leave Answer mode.
 useClickOutside(rootRef, () => {
 	if (open.value) open.value = false;
 });
-const handleEscape = (event: KeyboardEvent) => {
-	if (event.key === 'Escape') open.value = false;
-};
-watch(open, (isOpen) => {
-	if (isOpen) document.addEventListener('keydown', handleEscape);
-	else document.removeEventListener('keydown', handleEscape);
-});
-onUnmounted(() => document.removeEventListener('keydown', handleEscape));
+useEscapeToClose(open);
 </script>
 
 <template>
-	<span ref="rootRef" class="relative inline-flex" data-testid="trust-chip">
+	<span
+		v-if="!(hideWhenOk && chip.tone === 'ok')"
+		ref="rootRef"
+		class="relative inline-flex"
+		data-testid="trust-chip"
+	>
 		<button
 			type="button"
 			class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
@@ -133,11 +136,10 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 
 		<div
 			v-if="open"
-			class="absolute right-0 top-full mt-1 z-20 w-80 max-h-[26rem] overflow-y-auto rounded border border-border-subtle bg-bg-elevated shadow-lg p-3 text-left"
+			class="absolute right-0 top-full mt-1 z-20 w-80 max-w-[calc(100vw-2rem)] max-h-[26rem] overflow-y-auto rounded border border-border-subtle bg-bg-elevated shadow-lg p-3 text-left"
 			role="region"
 			:aria-label="t('components.postbox.postboxTrustChip.panelLabel')"
 			data-testid="trust-chip-panel"
-			@keydown.esc.prevent.stop="open = false"
 		>
 			<!-- Sender authentication (flag `senderAuthBadges`): renders nothing on a
 			     legacy row with no verdicts, which is the honest answer. -->

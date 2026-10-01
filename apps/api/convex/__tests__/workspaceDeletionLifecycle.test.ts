@@ -25,7 +25,7 @@ import {
 import { fenceWorkspaceWrites, isWorkspaceDeletionRefusal } from '../lib/writeFence';
 import { InboundBatchDispatchError } from '../webhooks/inboundHttp';
 import { createTestContact } from './factories';
-import { modules, newHarness } from './testModules';
+import { modules, newBetterAuthHarness, newHarness } from './testModules';
 import {
 	SCHEDULER_RESCAN_MARGIN_MS,
 	SURVIVING_SCHEDULED_FUNCTIONS,
@@ -278,8 +278,10 @@ describe('workspace deletion — the write fence', () => {
 		expect(await t.run(async (ctx) => ctx.db.get(contactId))).toBeNull();
 	});
 
-	it("closes a non-owner's account deletion that runs during the deletion", async () => {
-		const t = newHarness();
+	it("erases a non-owner's rows outside the sweep during the deletion, then waits for it", async () => {
+		// The erasure removes the login identity, which lives in the component.
+		const t = newBetterAuthHarness();
+		rateLimiterTest.register(t);
 		const { requestId, adminId } = await t.run(async (ctx) => {
 			const now = Date.now();
 			const userProfileId = await ctx.db.insert('userProfiles', {
@@ -317,12 +319,28 @@ describe('workspace deletion — the write fence', () => {
 			authUserId: 'member-2',
 			requestId,
 		});
+		const job = await t.run((ctx) =>
+			ctx.db
+				.query('memberErasureJobs')
+				.withIndex('by_request', (q) => q.eq('requestId', requestId))
+				.first()
+		);
+		for (let i = 0; i < 20; i++) {
+			const outcome = await t.mutation(internal.auth.erasure.walker.tick, { jobId: job!._id });
+			if (outcome !== 'more') break;
+		}
 
 		await t.run(async (ctx) => {
-			expect((await ctx.db.get(requestId))?.status).toBe('completed');
-			// The rows outside the sweep go now; the sweep takes the rest.
+			// The rows outside the sweep go now. The rest waits for the sweep (and
+			// is erased by the job itself should the deletion be aborted), so the
+			// request is not completed yet.
 			expect(await ctx.db.get(adminId)).toBeNull();
 			expect(await ctx.db.query('userOnboarding').collect()).toHaveLength(0);
+			expect((await ctx.db.get(requestId))?.status).toBe('erasing');
+			expect(await ctx.db.get(job!._id)).toMatchObject({
+				phase: 'externalAccounts',
+				isWaitingForWorkspaceDeletion: true,
+			});
 		});
 	});
 });

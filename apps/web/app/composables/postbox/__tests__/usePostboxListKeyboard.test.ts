@@ -87,6 +87,25 @@ describe('usePostboxListKeyboard', () => {
 		expect(actions).toEqual([['e', 'a']]);
 	});
 
+	it('leaves a key something inside the list already claimed (a popover closing on Esc)', () => {
+		const items = ref([{ _id: 'a' }]);
+		const actions: string[] = [];
+		const { onKeydown } = usePostboxListKeyboard({
+			items,
+			resetKey: ref('inbox'),
+			rowDomId: (m) => `row-${m._id}`,
+			onActivate: () => {},
+			onAction: (k) => actions.push(k),
+		});
+		onKeydown(key('j')); // focus 'a'
+		const claimed = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+		claimed.preventDefault();
+		onKeydown(claimed);
+		expect(actions).toEqual([]);
+		onKeydown(key('Escape'));
+		expect(actions).toEqual(['Escape']);
+	});
+
 	it('delegates the extended vocabulary keys, including Shift+U as "U"', () => {
 		const items = ref([{ _id: 'a' }]);
 		const actions: string[] = [];

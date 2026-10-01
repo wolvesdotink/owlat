@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import type { PostboxComposeMode, PostboxPendingCompose } from '~/utils/postboxShortcuts';
+import type { AnswerModeKind } from '~/utils/answerMode';
+import { rememberListPlace, takeListPlace, useAnswerModeNav } from '~/composables/useAnswerMode';
 import type { PostboxSwipeAction } from '~/utils/postboxSwipe';
 import { POSTBOX_ROW_HEIGHT } from '~/utils/postboxDensity';
 import type { PostboxThreadRowMessage } from './PostboxThreadRow.vue';
@@ -60,7 +61,9 @@ const trustMarkers = computed(() => isFlagEnabled('senderAuthBadges'));
 
 const mailboxIdRef = computed(() => props.mailboxId);
 // Which folder the rows belong to. The page stays mounted across folder
-// switches, so focus and scroll reset on this key instead of on a remount.
+// switches, so focus and scroll reset on this key instead of on a remount. It
+// is also the folder's route segment (a role, or a custom folder's id: its
+// role is empty), so every link into or out of a message is built from it.
 const folderKey = computed(() => props.folderId ?? props.folderRole);
 const bulk = usePostboxBulkActions(mailboxIdRef);
 
@@ -107,18 +110,12 @@ const {
 	clearFlags: clearRowFlags,
 });
 
-// Pending compose intent for r/a/f from the list: opening the composer needs the
-// reader's quoting/recipient logic, so we open the message first and let
-// PostboxThreadReader consume the intent once it renders.
-const pendingCompose = useState<PostboxPendingCompose | null>(
-	POSTBOX_PENDING_COMPOSE_KEY,
-	() => null
-);
-
-function openMessageWithCompose(id: string, mode: PostboxComposeMode) {
-	pendingCompose.value = { messageId: id, mode };
-	if (props.selectable) emit('select', id);
-	else void navigateTo(`/dashboard/postbox/${props.folderRole}/${id}`);
+// r/a/f on a row open Answer mode on that message. No kind for `r`: Answer mode
+// resolves the person's default reply mode; it also runs the reply guard, since
+// this path never passes through the reader.
+const answerNav = useAnswerModeNav();
+function openAnswer(id: string, kind: AnswerModeKind | null) {
+	void answerNav.open(id, { kind });
 }
 
 // h/l/v open a picker for the focused row; the target id is captured on open so
@@ -230,7 +227,7 @@ const {
 	onActivate: (m) =>
 		props.selectable
 			? emit('select', m._id)
-			: void navigateTo(`/dashboard/postbox/${props.folderRole}/${m._id}`),
+			: void navigateTo(`/dashboard/postbox/${folderKey.value}/${m._id}`),
 	// Shift+J / Shift+K drag the selection along with the focus, extending from
 	// the anchor the last plain toggle set.
 	onExtendSelection: (to, from) => bulk.extendTo(visibleIds.value, to._id, from?._id),
@@ -255,13 +252,19 @@ const {
 				bulk.toggle(m._id);
 				break;
 			case 'reply':
-				openMessageWithCompose(m._id, 'reply');
+				openAnswer(m._id, null);
 				break;
 			case 'replyAll':
-				openMessageWithCompose(m._id, 'replyAll');
+				openAnswer(m._id, 'replyAll');
 				break;
 			case 'forward':
-				openMessageWithCompose(m._id, 'forward');
+				openAnswer(m._id, 'forward');
+				break;
+			case 'close':
+				// Esc from the list closes the conversation open beside it.
+				if (props.activeMessageId && !props.selectable && !props.emptyContext) {
+					void navigateTo(`/dashboard/postbox/${folderKey.value}`, { replace: true });
+				}
 				break;
 			case 'snooze':
 				openSnooze(m._id, m.threadId ?? null);
@@ -335,6 +338,29 @@ const {
 	blocked: () => props.loading || props.loadingMore === true,
 	loadMore: () => emit('load-more'),
 });
+
+// Back from Answer mode: the j/k row comes back with the list (the scroll offset
+// has its own per-folder memory). Filed on every unmount, taken only on the
+// mount that is the way back.
+onBeforeUnmount(() => {
+	rememberListPlace(folderKey.value, {
+		focusedId: visibleMessages.value[focusedIndex.value]?._id ?? null,
+	});
+});
+const returnPlace = takeListPlace(folderKey.value);
+if (returnPlace?.focusedId) {
+	const focusedId = returnPlace.focusedId;
+	const stop = watch(
+		visibleMessages,
+		(rows) => {
+			const index = rows.findIndex((m) => m._id === focusedId);
+			if (index < 0) return;
+			focusedIndex.value = index;
+			void nextTick(() => stop());
+		},
+		{ immediate: true }
+	);
+}
 </script>
 
 <template>
@@ -402,7 +428,7 @@ const {
 					:trust-markers="trustMarkers"
 					:swipe-left="swipeLeftAction"
 					:swipe-right="swipeRightAction"
-					:folder-role="props.folderRole"
+					:folder-role="folderKey"
 					:virtualize="virtualize"
 					:selected="bulk.isSelected(msg._id)"
 					:focused="focusedIndex === windowStart + localI"

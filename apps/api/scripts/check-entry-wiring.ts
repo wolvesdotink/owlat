@@ -117,6 +117,7 @@ const EXPECTED_BUILDERS: readonly string[] = [
 	'action',
 	'adminMutation',
 	'adminQuery',
+	'answerModeQuery',
 	'assistantMutation',
 	'assistantQuery',
 	'authedAction',
@@ -186,6 +187,10 @@ const HAND_RUN_PREFIXES: readonly string[] = ['migrations/'];
 const HAND_RUN_ENTRIES: Readonly<Record<string, string>> = {
 	'workspaces/deletion/walker.ts#abort':
 		'the operator exit for a workspace deletion that cannot finish (`convex run`)',
+	'auth/erasure/lifecycle.ts#status':
+		'the operator view of an account erasure’s progress and last error (`convex run`)',
+	'auth/erasure/lifecycle.ts#retry':
+		'the operator retry of a failed account erasure, ahead of the daily re-arm (`convex run`)',
 };
 const isHandRun = (module: string): boolean =>
 	HAND_RUN_PREFIXES.some((prefix) => module.startsWith(prefix));

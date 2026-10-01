@@ -28,7 +28,8 @@ export function usePostboxThreadGroups(args: {
 						limit: limit.value,
 					}
 				: 'skip',
-		{ keepPreviousData: true }
+		// "Load more" closes the window it grew out of instead of keeping it live.
+		{ keepPreviousData: true, windowArg: 'limit' }
 	);
 
 	const threads = computed(() => data.value?.threads ?? []);

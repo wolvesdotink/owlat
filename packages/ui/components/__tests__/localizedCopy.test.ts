@@ -71,7 +71,7 @@ describe('localized layer copy', () => {
 			'Select an option'
 		);
 		expect(mount(Select, { options: [], modelValue: null }, 'de').textContent).toContain(
-			'Bitte wählen Sie eine Option'
+			'Bitte wähle eine Option'
 		);
 	});
 
@@ -117,7 +117,7 @@ describe('localized layer copy', () => {
 
 		const german = mount(ThemeToggle, {}, 'de').querySelector('button');
 		expect(german?.getAttribute('aria-label')).toBe(
-			'Design: Systemeinstellung. Klicken Sie, um zu wechseln.'
+			'Design: Systemeinstellung. Klicke, um zu wechseln.'
 		);
 	});
 });

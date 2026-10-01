@@ -29,7 +29,7 @@
  * See docs/adr/0008-contact-resolution-module.md.
  */
 
-import type { MutationCtx } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { throwAlreadyExists } from '../_utils/errors';
 import { buildSearchableText } from '../lib/queryHelpers';
@@ -83,10 +83,12 @@ export interface ResolveResult {
  * Find a live Contact (and its identity row) by `(channel, identifier)`.
  * Returns null if no row matches or the matched Contact is soft-deleted.
  *
- * Exported for `addIdentity` and tests; internal callers use `resolveContact`.
+ * Exported for `addIdentity`, read-only lookups (Answer mode resolves the
+ * contact a reply goes to inside a query) and tests; internal callers use
+ * `resolveContact`.
  */
 export async function findContactByIdentifier(
-	ctx: MutationCtx,
+	ctx: Pick<QueryCtx, 'db'>,
 	channel: ChannelKind,
 	identifier: string
 ): Promise<{ contact: Doc<'contacts'>; identity: Doc<'contactIdentities'> } | null> {

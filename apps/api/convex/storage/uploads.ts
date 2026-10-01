@@ -109,6 +109,40 @@ export async function consumeUpload(
 	return receipt._id;
 }
 
+/**
+ * The resource key under which a mail thread holds a Reply Queue answer's bare
+ * upload. No draft exists when the card is answered, so the upload is bound to
+ * the thread at once (`mail/ai/needsReplyClarify.ts`) instead of expiring with
+ * its receipt; a draft of the thread takes it over
+ * (`mail/needsReplyPrepared.ts claimThreadAnswerUpload`), and every path that
+ * deletes the thread deletes it ({@link deleteResourceUploads}; the workspace
+ * wipe in `workspaces/deletion/steps/storageUploads.ts`).
+ */
+export function mailThreadUploadKey(threadId: Id<'mailThreads'>): string {
+	return `mailThreads:${threadId}`;
+}
+
+/**
+ * Delete up to `limit` blobs bound to `resourceKey`, with their receipts, when
+ * the resource goes. Returns how many were deleted.
+ */
+export async function deleteResourceUploads(
+	ctx: MutationCtx,
+	resourceKey: string,
+	limit = 50
+): Promise<number> {
+	const receipts = await ctx.db
+		.query('storageUploads')
+		.withIndex('by_resource', (q) => q.eq('resourceKey', resourceKey))
+		.take(limit);
+	for (const receipt of receipts) {
+		if (receipt.storageId && receipt.status === 'bound')
+			await ctx.storage.delete(receipt.storageId);
+		await ctx.db.delete(receipt._id);
+	}
+	return receipts.length;
+}
+
 /** Legacy/inherited references remain readable but cannot authorize blob deletion. */
 export async function deleteOwnedUpload(
 	ctx: MutationCtx,

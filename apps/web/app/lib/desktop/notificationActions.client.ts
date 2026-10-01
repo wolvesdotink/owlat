@@ -8,8 +8,9 @@
  *
  * The `reply` effect (macOS inline reply field) builds a reply spec through the
  * EXISTING draft pipeline — create → set body → send — with NO new send path.
- * If any step fails, the composer opens prefilled with the typed text so the
- * user's words are never lost.
+ * If any step fails, the typed text is never lost: once the draft row holds it,
+ * the main window opens it in Answer mode (where every reply is written);
+ * before that, the compose window opens prefilled with it.
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
@@ -17,6 +18,7 @@ import { escapeHtmlWithBreaks } from '@owlat/shared/html';
 import type { ConvexClient } from 'convex/browser';
 import type { FunctionReturnType } from 'convex/server';
 import { optimisticArchive, optimisticMarkRead } from '~/lib/mailOptimistic/mailUpdaters';
+import { answerModeHref } from '~/utils/answerMode';
 
 type NotifMessage = FunctionReturnType<typeof api.mail.mailbox.messages.getMessage>;
 
@@ -68,6 +70,8 @@ async function focusMainWindow(): Promise<void> {
 export interface ReplyDeps {
 	/** Open the desktop composer window at the given app-relative path. */
 	openComposer: (path: string) => Promise<void>;
+	/** Bring up the main window on an app-relative path (Answer mode on a saved draft). */
+	openAnswer: (path: string) => Promise<void>;
 }
 
 /** Pure: build the `/compose?to=…&subject=…&body=…` fallback path from an
@@ -107,6 +111,9 @@ export async function replyFromNotification(
 		console.warn('[desktop] notification reply: could not read original', e);
 	}
 	if (message) {
+		// Set once the draft row holds the typed text: from then on the fallback
+		// is that draft, in Answer mode, rather than a second copy in a window.
+		let savedDraftId: string | null = null;
 		try {
 			const { draftId } = await convex.mutation(api.mail.drafts.create, {
 				mailboxId: message.mailboxId,
@@ -117,10 +124,15 @@ export async function replyFromNotification(
 				bodyHtml: escapeHtmlWithBreaks(text),
 				bodyText: text,
 			});
+			savedDraftId = draftId;
 			await convex.mutation(api.mail.drafts.send, { draftId });
 			return;
 		} catch (e) {
-			console.warn('[desktop] notification reply failed; opening composer', e);
+			console.warn('[desktop] notification reply failed; opening the draft', e);
+		}
+		if (savedDraftId) {
+			await deps.openAnswer(answerModeHref(messageId, { kind: 'reply', draftId: savedDraftId }));
+			return;
 		}
 	}
 	await deps.openComposer(composePathForReply(message, text));
@@ -175,6 +187,10 @@ export async function runEffect(
 			openComposer: async (path) => {
 				const { openCompose } = await import('@owlat/desktop/src/compose');
 				await openCompose(path);
+			},
+			openAnswer: async (path) => {
+				await focusMainWindow();
+				navigate(path);
 			},
 		});
 		return;

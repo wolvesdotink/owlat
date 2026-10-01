@@ -10,6 +10,8 @@ import type { Id } from '@owlat/api/dataModel';
 defineProps<{
 	open: boolean;
 	labels: Array<{ _id: Id<'mailLabels'>; name: string; color?: string }>;
+	/** Labels already on the message: marked, and picking one takes it off. */
+	selectedIds?: readonly string[];
 }>();
 
 const emit = defineEmits<{
@@ -32,13 +34,20 @@ const { t } = useI18n();
 				<button
 					type="button"
 					class="w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-bg-surface text-left text-sm"
+					:aria-pressed="selectedIds ? selectedIds.includes(label._id) : undefined"
 					@click="emit('pick', label._id)"
 				>
 					<span
 						class="w-2.5 h-2.5 rounded-full flex-shrink-0"
 						:style="{ backgroundColor: label.color || '#6b7280' }"
 					/>
-					{{ label.name }}
+					<span class="flex-1">{{ label.name }}</span>
+					<Icon
+						v-if="selectedIds?.includes(label._id)"
+						name="lucide:check"
+						class="size-4 text-brand"
+						aria-hidden="true"
+					/>
 				</button>
 			</li>
 		</ul>

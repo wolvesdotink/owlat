@@ -24,9 +24,22 @@ const props = defineProps<{
 	persistentToolbar: boolean;
 	/** Deterministic pre-send findings (plan idea 6); empty means nothing to say. */
 	preflight?: PreflightFinding[];
+	/** The save state, or what stands in its place (gaps left, asks covered). */
 	lastSavedLabel: string;
 	/** The identity Send goes out as — named beside the button ("Send · as Support"). */
 	sendAs?: { mailboxId: string; label: string } | null;
+	/**
+	 * Answer mode's footer (plan §04): Send, attach, schedule, the follow-up
+	 * chip, ⋯ and the save state on one row; Coach/Revise and Discard live in ⋯,
+	 * and "Show quoted text" unfolds the quote the editor keeps out of the way.
+	 */
+	frame?: 'popup' | 'answer';
+	/** The body carries a quoted original (answer frame: offer to show it). */
+	hasQuote?: boolean;
+	quoteFolded?: boolean;
+	/** Coach and Revise are available (AI on) — answer frame lists them in ⋯. */
+	advisoryAvailable?: boolean;
+	advisoryOpen?: boolean;
 }>();
 
 const followUpRemindAt = defineModel<number | null>('followUpRemindAt', {
@@ -40,9 +53,14 @@ const emit = defineEmits<{
 	(e: 'signature-change', event: Event): void;
 	(e: 'toggle-toolbar'): void;
 	(e: 'switch-mode', mode: ComposerMode): void;
+	(e: 'toggle-quote'): void;
+	(e: 'toggle-advisory'): void;
+	(e: 'discard'): void;
 }>();
 
 const { t } = useI18n();
+
+const answerFrame = computed(() => props.frame === 'answer');
 
 // Name the inbox beside the Send button, so it is never a guess whose name a
 // reply goes out under. The short inbox name (the chip's) when known, else the
@@ -100,7 +118,15 @@ function onPickFiles(event: Event) {
 
 <template>
 	<footer class="px-3 py-2 border-t border-border-subtle flex flex-col gap-1.5">
-		<div class="flex items-center justify-between gap-2 min-w-0">
+		<!-- Answer mode's row carries schedule and the follow-up chip too, and
+		     does not fit a phone (or the narrowest split column) beside "Show
+		     quoted text" and the status: the status group wraps to its own line,
+		     right-aligned, instead of the buttons painting over it. -->
+		<div
+			class="flex items-center justify-between gap-x-2 gap-y-1 min-w-0"
+			:class="{ 'flex-wrap': answerFrame }"
+			data-testid="composer-footer-row"
+		>
 			<div class="flex items-center gap-2 min-w-0">
 				<UiButton
 					type="button"
@@ -146,6 +172,27 @@ function onPickFiles(event: Event) {
 					tabindex="-1"
 					@change="onPickFiles"
 				/>
+				<!-- Answer mode has the room: schedule and the follow-up chip sit on
+				     the row itself instead of behind ⋯. -->
+				<template v-if="answerFrame">
+					<UiButton
+						variant="ghost"
+						type="button"
+						class="shrink-0"
+						:title="scheduleShortcutHint"
+						:aria-label="t('components.postbox.postboxComposerFooter.scheduleSend')"
+						:disabled="!canSend || sending || isScheduled"
+						data-testid="composer-schedule"
+						@click="emit('schedule')"
+					>
+						<Icon name="lucide:clock" class="w-4 h-4" />
+					</UiButton>
+					<PostboxComposerFollowUp
+						v-model:remind-at="followUpRemindAt"
+						v-model:picker-open="followUpPickerOpen"
+						:disabled="isScheduled"
+					/>
+				</template>
 				<!-- Secondary controls collapse behind ⋯ to keep the footer
 			     lean; the schedule shortcut (Cmd/Ctrl+Shift+Enter) still works. -->
 				<PostboxOverflowMenu
@@ -154,7 +201,7 @@ function onPickFiles(event: Event) {
 					direction="up"
 				>
 					<template #default="{ close }">
-						<div class="px-3 py-1.5">
+						<div v-if="!answerFrame" class="px-3 py-1.5">
 							<PostboxComposerFollowUp
 								v-model:remind-at="followUpRemindAt"
 								v-model:picker-open="followUpPickerOpen"
@@ -195,21 +242,59 @@ function onPickFiles(event: Event) {
 							<Icon name="lucide:scan-eye" class="w-4 h-4 text-text-tertiary" />
 							{{ t('components.postbox.postboxComposerFooter.previewAsSent') }}
 						</button>
-						<div class="border-t border-border-subtle my-1" />
-						<button
-							type="button"
-							role="menuitem"
-							class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface disabled:opacity-50"
-							:title="scheduleShortcutHint"
-							:disabled="!canSend || sending || isScheduled"
-							@click="
-								emit('schedule');
-								close();
-							"
-						>
-							<Icon name="lucide:clock" class="w-4 h-4 text-text-tertiary" />
-							{{ t('components.postbox.postboxComposerFooter.scheduleSend') }}
-						</button>
+						<template v-if="!answerFrame">
+							<div class="border-t border-border-subtle my-1" />
+							<button
+								type="button"
+								role="menuitem"
+								class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface disabled:opacity-50"
+								:title="scheduleShortcutHint"
+								:disabled="!canSend || sending || isScheduled"
+								@click="
+									emit('schedule');
+									close();
+								"
+							>
+								<Icon name="lucide:clock" class="w-4 h-4 text-text-tertiary" />
+								{{ t('components.postbox.postboxComposerFooter.scheduleSend') }}
+							</button>
+						</template>
+						<!-- Answer mode: Coach and Revise leave the editor's way and wait
+						     here; Discard has no title bar to live in. -->
+						<template v-if="answerFrame">
+							<button
+								v-if="advisoryAvailable"
+								type="button"
+								role="menuitem"
+								class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
+								:aria-pressed="advisoryOpen"
+								data-testid="composer-toggle-advisory"
+								@click="
+									emit('toggle-advisory');
+									close();
+								"
+							>
+								<Icon name="lucide:sparkles" class="w-4 h-4 text-text-tertiary" />
+								{{
+									advisoryOpen
+										? t('components.postbox.postboxComposerFooter.hideCoach')
+										: t('components.postbox.postboxComposerFooter.showCoach')
+								}}
+							</button>
+							<button
+								type="button"
+								role="menuitem"
+								class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
+								data-testid="composer-discard"
+								@click="
+									emit('discard');
+									close();
+								"
+							>
+								<Icon name="lucide:trash-2" class="w-4 h-4 text-text-tertiary" />
+								{{ t('components.postbox.postboxComposerFooter.discardDraft') }}
+							</button>
+						</template>
 						<div class="border-t border-border-subtle my-1" />
 						<div class="px-3 py-1.5">
 							<PostboxComposerModeControls
@@ -239,11 +324,27 @@ function onPickFiles(event: Event) {
 					@confirm="(ts) => (followUpRemindAt = ts)"
 				/>
 			</div>
-			<span class="shrink-0 text-xs text-text-tertiary">{{ lastSavedLabel }}</span>
+			<div class="ml-auto flex shrink-0 items-center gap-3 text-xs text-text-tertiary">
+				<button
+					v-if="answerFrame && hasQuote"
+					type="button"
+					class="hover:text-text-primary hover:underline"
+					:aria-pressed="!quoteFolded"
+					data-testid="composer-toggle-quote"
+					@click="emit('toggle-quote')"
+				>
+					{{
+						quoteFolded
+							? t('components.postbox.postboxComposerFooter.showQuote')
+							: t('components.postbox.postboxComposerFooter.hideQuote')
+					}}
+				</button>
+				<span data-testid="composer-save-state">{{ lastSavedLabel }}</span>
+			</div>
 		</div>
 		<!-- Plan idea 6: the always-on checks, on their own line under Send so a
 		     long list wraps instead of being cut off. Advisory — Send stays
-		     enabled. -->
+		     enabled, except for an AI draft's gap, which this line explains. -->
 		<PostboxComposerPreflightChip :findings="preflight ?? []" />
 	</footer>
 </template>

@@ -1,10 +1,12 @@
 import { type Infer, v } from 'convex/values';
 import { jsonPrimitiveValue } from '../lib/convexValidators';
 
-const attachmentRefValidator = v.object({
+export const attachmentRefValidator = v.object({
 	filename: v.string(),
 	contentType: v.optional(v.string()),
 	url: v.string(),
+	// Own-storage blob: read directly, never fetched (see `AttachmentRef`).
+	storageId: v.optional(v.id('_storage')),
 });
 
 /** Strict durable work payload. This is also the re-entry snapshot boundary. */

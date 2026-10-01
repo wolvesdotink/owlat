@@ -74,15 +74,15 @@ const DELETION_EMAIL: Record<AppLocale, DeletionEmailCopy> = {
 		footer: 'This is an automated email from Owlat',
 	},
 	de: {
-		subject: 'Ihre Anfrage zur Löschung Ihres Owlat-Kontos',
+		subject: 'Deine Anfrage zur Löschung deines Owlat-Kontos',
 		title: 'Löschung des Kontos bestätigt',
 		heading: 'Kontolöschung geplant',
-		scheduledFor: (date) => `Ihr Konto wird am <strong>${date}</strong> endgültig gelöscht`,
+		scheduledFor: (date) => `Dein Konto wird am <strong>${date}</strong> endgültig gelöscht`,
 		greeting: 'Hallo,',
 		received: (email) =>
-			`Wir haben eine Anfrage erhalten, Ihr Owlat-Konto mit der Adresse <strong style="color: #f5f2ef;">${email}</strong> zu löschen.`,
+			`Wir haben eine Anfrage erhalten, dein Owlat-Konto mit der Adresse <strong style="color: #f5f2ef;">${email}</strong> zu löschen.`,
 		graceNote:
-			'Ihr Konto und alle zugehörigen Daten werden nach einer Frist von 30 Tagen endgültig gelöscht. Dazu gehören:',
+			'Dein Konto und alle zugehörigen Daten werden nach einer Frist von 30 Tagen endgültig gelöscht. Dazu gehören:',
 		deletedItems: [
 			'Alle Kontakte und ihre Daten',
 			'E-Mail-Vorlagen und Kampagnen',
@@ -92,11 +92,11 @@ const DELETION_EMAIL: Record<AppLocale, DeletionEmailCopy> = {
 			'Team-Einstellungen und Konfigurationen',
 		],
 		changedYourMind:
-			'Falls Sie diese Löschung nicht angefordert haben oder es sich anders überlegt haben, können Sie die Anfrage jederzeit vor dem Löschdatum abbrechen.',
+			'Falls du diese Löschung nicht angefordert hast oder es dir anders überlegt hast, kannst du die Anfrage jederzeit vor dem Löschdatum abbrechen.',
 		cta: 'Kontolöschung abbrechen',
-		linkFallback: 'Oder kopieren Sie diesen Link in Ihren Browser:',
+		linkFallback: 'Oder kopiere diesen Link in deinen Browser:',
 		noActionNeeded:
-			'Falls Sie die Löschung angefordert haben, ist nichts weiter zu tun. Ihr Konto wird am geplanten Datum automatisch gelöscht.',
+			'Falls du die Löschung angefordert hast, ist nichts weiter zu tun. Dein Konto wird am geplanten Datum automatisch gelöscht.',
 		irreversible:
 			'Aus Sicherheitsgründen kann dieser Vorgang nach Ablauf der 30 Tage nicht rückgängig gemacht werden.',
 		footer: 'Dies ist eine automatische E-Mail von Owlat.',
@@ -131,14 +131,14 @@ const DAILY_BRIEF_EMAIL: Record<AppLocale, DailyBriefEmailCopy> = {
 	de: {
 		subject: (count) =>
 			count === 1
-				? 'Ihr Tagesüberblick — 1 Sache braucht Sie'
-				: `Ihr Tagesüberblick — ${count} Sachen brauchen Sie`,
-		heading: 'Was heute Ihre Aufmerksamkeit braucht',
-		emptyLine: 'Heute braucht Sie nichts.',
+				? 'Dein Tagesüberblick — 1 Sache braucht dich'
+				: `Dein Tagesüberblick — ${count} Sachen brauchen dich`,
+		heading: 'Was heute deine Aufmerksamkeit braucht',
+		emptyLine: 'Heute braucht dich nichts.',
 		bundledLine: (total) =>
 			total === 1
-				? '1 Nachricht mit geringer Relevanz wurde gebündelt und wartet in Ihrem Posteingang.'
-				: `${total} Nachrichten mit geringer Relevanz wurden gebündelt und warten in Ihrem Posteingang.`,
+				? '1 Nachricht mit geringer Relevanz wurde gebündelt und wartet in deinem Posteingang.'
+				: `${total} Nachrichten mit geringer Relevanz wurden gebündelt und warten in deinem Posteingang.`,
 	},
 };
 

@@ -36,7 +36,10 @@ export function useChatRoom(roomId: Ref<Id<'chatRooms'> | undefined>) {
 	} = useGrowableLimit(roomId, { page: 100, max: 500 });
 	const { data: messagesData, isLoading: messagesLoading } = useConvexQuery(
 		api.chat.messages.listMessages,
-		() => (roomId.value ? { roomId: roomId.value, limit: messageLimit.value } : 'skip')
+		() => (roomId.value ? { roomId: roomId.value, limit: messageLimit.value } : 'skip'),
+		// Each "Load earlier messages" closes the window it grew out of, so only
+		// the visible window stays live, not every size it passed through.
+		{ windowArg: 'limit' }
 	);
 
 	const { data: membersData, isLoading: membersLoading } = useConvexQuery(
