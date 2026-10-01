@@ -484,6 +484,7 @@ const handleRemoveRelation = async (relationId: string) => {
 						</h3>
 						<UiSelect
 							v-model="commitmentStatus"
+							:aria-label="t('dashboard.knowledge.detail.commitmentStatus')"
 							:options="[
 								{ value: 'open', label: t('dashboard.knowledge.detail.commitmentStatuses.open') },
 								{
