@@ -580,37 +580,47 @@ describe('submission.submit', () => {
 // ─── markConfirmedByToken ──────────────────────────────────────────────────
 
 describe('submission.markConfirmedByToken', () => {
-	it('patches a pending_confirmation row to success', async () => {
-		const t = convexTest(schema, modules);
+	async function submitPending(t: TestConvex<typeof schema>, email: string) {
 		const topicId = await createTopic(t, true);
 		const formEndpointId = await createForm(t, { topicId });
-
-		// Submit to land a pending_confirmation row + the contact's DOI token.
 		const submitOutcome = await t.mutation(internal.forms.submission.submit, {
 			formEndpointId,
-			submissionData: { email: 'confirm@example.com' },
+			submissionData: { email },
 		});
 		if (!submitOutcome.ok) throw new Error('submit failed: ' + submitOutcome.reason);
 		const submission = await getSubmission(t, submitOutcome.submissionId);
 		const token = submission?.confirmationToken;
-		if (!token) throw new Error('expected confirmationToken on row');
+		if (!token || !submitOutcome.contactId) throw new Error('expected a pending row');
+		return { submissionId: submitOutcome.submissionId, token, contactId: submitOutcome.contactId };
+	}
 
-		const outcome = await t.mutation(internal.forms.submission.markConfirmedByToken, { token });
+	it('patches a pending_confirmation row to success', async () => {
+		const t = convexTest(schema, modules);
+		const { submissionId, token, contactId } = await submitPending(t, 'confirm@example.com');
 
-		expect(outcome.ok).toBe(true);
-		if (outcome.ok) {
-			expect(outcome.submissionId).toBe(submitOutcome.submissionId);
-		}
-		const after = await getSubmission(t, submitOutcome.submissionId);
+		const outcome = await t.mutation(internal.forms.submission.markConfirmedByToken, {
+			token,
+			contactId,
+		});
+
+		expect(outcome).toEqual({ ok: true, finalized: 1, continued: false });
+		const after = await getSubmission(t, submissionId);
 		expect(after?.status).toBe('success');
 		expect(after?.confirmedAt).toBeDefined();
 	});
 
 	it("returns 'no_submission_for_token' for an unknown token", async () => {
 		const t = convexTest(schema, modules);
+		const { contactId } = await resolveThroughModule(t, {
+			channel: 'email',
+			identifier: 'nobody@example.com',
+			source: 'api',
+			mode: 'upsert',
+		});
 
 		const outcome = await t.mutation(internal.forms.submission.markConfirmedByToken, {
 			token: 'no-such-token',
+			contactId,
 		});
 
 		expect(outcome.ok).toBe(false);
@@ -621,24 +631,20 @@ describe('submission.markConfirmedByToken', () => {
 
 	it("returns 'already_confirmed' for an already-success row (idempotent)", async () => {
 		const t = convexTest(schema, modules);
-		const topicId = await createTopic(t, true);
-		const formEndpointId = await createForm(t, { topicId });
-
-		const submitOutcome = await t.mutation(internal.forms.submission.submit, {
-			formEndpointId,
-			submissionData: { email: 'idem@example.com' },
-		});
-		if (!submitOutcome.ok) throw new Error('submit failed: ' + submitOutcome.reason);
-		const submission = await getSubmission(t, submitOutcome.submissionId);
-		const token = submission?.confirmationToken;
-		if (!token) throw new Error('expected confirmationToken on row');
+		const { token, contactId } = await submitPending(t, 'idem@example.com');
 
 		// First confirm.
-		const first = await t.mutation(internal.forms.submission.markConfirmedByToken, { token });
+		const first = await t.mutation(internal.forms.submission.markConfirmedByToken, {
+			token,
+			contactId,
+		});
 		expect(first.ok).toBe(true);
 
 		// Second confirm — idempotent.
-		const second = await t.mutation(internal.forms.submission.markConfirmedByToken, { token });
+		const second = await t.mutation(internal.forms.submission.markConfirmedByToken, {
+			token,
+			contactId,
+		});
 		expect(second.ok).toBe(false);
 		if (!second.ok) {
 			expect(second.reason).toBe('already_confirmed');
@@ -650,11 +656,18 @@ describe('submission.markConfirmedByToken', () => {
 		const formEndpointId = await createForm(t, {
 			honeypotFieldName: 'website',
 		});
+		const { contactId } = await resolveThroughModule(t, {
+			channel: 'email',
+			identifier: 'spam@example.com',
+			source: 'api',
+			mode: 'upsert',
+		});
 
 		// Plant a spam row that somehow has a confirmationToken — schema permits it.
 		const submissionId = await t.run(async (ctx) => {
 			return await ctx.db.insert('formSubmissions', {
 				formEndpointId,
+				contactId,
 				data: { email: 'spam@example.com' },
 				status: 'spam' as const,
 				confirmationToken: 'planted-token',
@@ -664,12 +677,32 @@ describe('submission.markConfirmedByToken', () => {
 
 		const outcome = await t.mutation(internal.forms.submission.markConfirmedByToken, {
 			token: 'planted-token',
+			contactId,
 		});
 
 		expect(outcome.ok).toBe(false);
 		if (!outcome.ok) {
 			expect(outcome.reason).toBe('invalid_state');
 		}
-		expect(submissionId).toBeDefined();
+		expect((await getSubmission(t, submissionId))?.status).toBe('spam');
+	});
+
+	it('leaves a pending row that belongs to another contact untouched', async () => {
+		const t = convexTest(schema, modules);
+		const { submissionId, token } = await submitPending(t, 'owner@example.com');
+		const { contactId: otherContactId } = await resolveThroughModule(t, {
+			channel: 'email',
+			identifier: 'other@example.com',
+			source: 'api',
+			mode: 'upsert',
+		});
+
+		const outcome = await t.mutation(internal.forms.submission.markConfirmedByToken, {
+			token,
+			contactId: otherContactId,
+		});
+
+		expect(outcome.ok).toBe(false);
+		expect((await getSubmission(t, submissionId))?.status).toBe('pending_confirmation');
 	});
 });
