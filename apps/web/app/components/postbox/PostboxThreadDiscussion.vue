@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { formatCompactRelativeTime } from '~/utils/formatters';
+import { isImeComposing } from '~/utils/imeComposition';
 
 /**
  * The reader's "Team discussion": an internal chat thread bound to this email
@@ -61,7 +62,7 @@ async function send() {
 }
 
 function onKeydown(event: KeyboardEvent) {
-	if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+	if (event.key !== 'Enter' || event.shiftKey || isImeComposing(event)) return;
 	event.preventDefault();
 	void send();
 }

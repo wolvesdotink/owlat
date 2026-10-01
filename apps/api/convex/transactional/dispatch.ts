@@ -35,6 +35,7 @@ import { jsonPrimitiveValue } from '../lib/convexValidators';
 import { getOptional } from '../lib/env';
 import { logWarn } from '../lib/runtimeLog';
 import { featureDisabledMessage, resolveStoredFeatureFlags } from '../lib/featureFlags';
+import { claimPendingUploads } from './pendingUploads';
 import type { FeatureFlagState } from '@owlat/shared/featureFlags';
 import {
 	validateDataVariables,
@@ -111,6 +112,12 @@ export const dispatch = internalMutation({
 		dataVariables: v.optional(v.record(v.string(), jsonPrimitiveValue)),
 		language: v.optional(v.string()),
 		attachmentRefs: v.optional(v.array(attachmentRefValidator)),
+		// The shell registered every `storageId` above as a pending upload, and
+		// this transaction must claim them (`transactional/pendingUploads.ts`).
+		// Optional for a shell of the previous release still running across the
+		// deploy, which registers nothing: remove after the next release and
+		// claim unconditionally.
+		uploadsPending: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args): Promise<DispatchOutcome> => {
 		// 1. The shared pre-row gate sequence: abuse → provider-ready →
@@ -300,6 +307,12 @@ export const dispatch = internalMutation({
 		const attachmentStorageIds = args.attachmentRefs
 			?.filter((a) => a.storageId)
 			.map((a) => a.storageId!);
+		// Ownership of the request's uploaded bytes moves to the row inserted
+		// below, in this transaction. A claim that fails throws, so no Send ever
+		// names a blob the shell released or the expiry sweep freed.
+		if (args.uploadsPending && attachmentStorageIds) {
+			await claimPendingUploads(ctx, attachmentStorageIds);
+		}
 
 		// 9. Insert `transactionalSends` row in `queued`. Writes the resolved
 		//     language onto the row — pre-deepening this lived on the API

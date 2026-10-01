@@ -6,7 +6,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { enforceBodyCap } from '../apiHandlers';
+import { enforceBodyCap, MAX_BODY_BYTES } from '../apiHandlers';
+import { TRANSACTIONAL_MAX_BODY_BYTES } from '../../transactional/api';
 
 // enforceBodyCap builds a CORS-aware error Response via the shared helpers; the
 // loopback origin default keeps that off the production fail-closed path.
@@ -60,5 +61,62 @@ describe('enforceBodyCap', () => {
 		const result = await enforceBodyCap(request, null);
 		expect(result.ok).toBe(false);
 		if (!result.ok) expect(result.response.status).toBe(400);
+	});
+
+	it('stops reading a chunked body with no Content-Length at the first chunk past the cap', async () => {
+		let pulled = 0;
+		const chunk = new Uint8Array(64 * 1024);
+		const body = new ReadableStream<Uint8Array>({
+			pull(controller) {
+				pulled++;
+				controller.enqueue(chunk);
+			},
+		});
+		const request = new Request(URL_, { method: 'POST', body, duplex: 'half' } as RequestInit);
+
+		const result = await enforceBodyCap(request, null);
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.response.status).toBe(400);
+		// 100,000 bytes fit in two 64 KiB chunks: the never-ending stream is
+		// abandoned right after, not drained.
+		expect(pulled).toBeLessThanOrEqual(3);
+	});
+
+	it('honours a route-specific ceiling above the shared cap', async () => {
+		const payload = 'x'.repeat(MAX_BODY_BYTES + 1);
+		const request = new Request(URL_, { method: 'POST', body: payload });
+
+		const result = await enforceBodyCap(request, null, MAX_BODY_BYTES * 2);
+
+		expect(result.ok).toBe(true);
+		if (result.ok) await expect(result.request.text()).resolves.toHaveLength(payload.length);
+	});
+
+	it('rejects a streamed body one byte over a route-specific ceiling', async () => {
+		const ceiling = 300_000;
+		const body = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(new Uint8Array(ceiling));
+				controller.enqueue(new Uint8Array(1));
+				controller.close();
+			},
+		});
+		const request = new Request(URL_, { method: 'POST', body, duplex: 'half' } as RequestInit);
+
+		const result = await enforceBodyCap(request, null, ceiling);
+
+		expect(result.ok).toBe(false);
+	});
+});
+
+describe('TRANSACTIONAL_MAX_BODY_BYTES', () => {
+	it('fits the 10 MiB attachment budget as base64 plus the shared envelope', () => {
+		const base64Budget = Math.ceil((10 * 1024 * 1024) / 3) * 4;
+		expect(TRANSACTIONAL_MAX_BODY_BYTES).toBeGreaterThanOrEqual(base64Budget + MAX_BODY_BYTES);
+	});
+
+	it('stays under the 20 MiB request body Convex accepts for an HTTP action', () => {
+		expect(TRANSACTIONAL_MAX_BODY_BYTES).toBeLessThan(20 * 1024 * 1024);
 	});
 });

@@ -36,6 +36,7 @@ export type OrganizationDeletionTable =
 	| 'mailMessages'
 	| 'mailMessageParts'
 	| 'mailDrafts'
+	| 'transactionalPendingUploads'
 	| 'transactionalSends'
 	| 'emailSends'
 	| 'agentActions'
@@ -58,6 +59,8 @@ export type OrganizationDeletionTable =
 	| 'conversationThreads'
 	| 'counterScopes'
 	| 'counterBuckets'
+	| 'mailFolderMembership'
+	| 'mailFolderUidBlocks'
 	| 'mailAliases'
 	| 'mailFolders'
 	| 'mailLabels'
@@ -240,6 +243,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailMessages'),
 	v.literal('mailMessageParts'),
 	v.literal('mailDrafts'),
+	v.literal('transactionalPendingUploads'),
 	v.literal('transactionalSends'),
 	v.literal('emailSends'),
 	v.literal('agentActions'),
@@ -262,6 +266,8 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('conversationThreads'),
 	v.literal('counterScopes'),
 	v.literal('counterBuckets'),
+	v.literal('mailFolderMembership'),
+	v.literal('mailFolderUidBlocks'),
 	v.literal('mailAliases'),
 	v.literal('mailFolders'),
 	v.literal('mailLabels'),

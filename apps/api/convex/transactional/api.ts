@@ -5,9 +5,12 @@
  *   - Auth (via `createAuthenticatedHandler`).
  *   - CORS / OPTIONS preflight (registered separately in `http.ts`).
  *   - JSON body parsing.
+ *   - This route's own request-body ceiling ({@link TRANSACTIONAL_MAX_BODY_BYTES}).
  *   - JSON-shape validation (required fields, types, email format, language
- *     format, attachment count + size limits, https-only URL check).
- *   - Attachment storage upload (base64 decode → `ctx.storage.store`).
+ *     format, envelope size, attachment count + size limits, https-only URL
+ *     check), all of it before any attachment byte is stored.
+ *   - Attachment validation, storage upload and the pending-upload handoff to
+ *     dispatch, in `transactional/attachmentIntake.ts`.
  *   - Response shaping.
  *
  * The intake orchestration (abuse gate, blocklist, template lookup, domain
@@ -23,6 +26,7 @@ import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import {
 	createAuthenticatedHandler,
+	MAX_BODY_BYTES,
 	requireScope,
 	type AuthenticatedContext,
 } from '../auth/apiHandlers';
@@ -33,22 +37,16 @@ import {
 	normalizeEmail,
 	type JsonPrimitiveValue,
 } from '../lib/inputGuards';
-import { validateOutboundUrl } from '../lib/outboundUrlValidation';
 import { featureDisabledMessage } from '../lib/featureFlags';
+import { utf8Bytes } from '../lib/bytes';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import type { OperationErrorCategory } from '@owlat/shared/operationError';
-import type { AttachmentRef, DispatchRejectionReason } from './dispatch';
+import type { DispatchRejectionReason } from './dispatch';
+import { prepareAttachments, uploadAndDispatch, type AttachmentInput } from './attachmentIntake';
 
 // ============================================================
 // HTTP request / response types
 // ============================================================
-
-interface AttachmentInput {
-	filename: string;
-	content?: string; // Base64-encoded (mutually exclusive with url)
-	url?: string; // HTTPS URL (mutually exclusive with content)
-	contentType?: string;
-}
 
 interface SendTransactionalBody {
 	transactionalId?: string;
@@ -77,12 +75,53 @@ const MAX_ATTACHMENTS = ATTACHMENT_COMPOSE_LIMITS.maxCount;
 const MAX_TOTAL_SIZE = ATTACHMENT_COMPOSE_LIMITS.maxTotalBytes;
 
 /**
+ * Everything in a request except attachment `content` keeps the 100,000-byte
+ * budget every other v1 endpoint has for its whole body.
+ */
+const MAX_ENVELOPE_BYTES = MAX_BODY_BYTES;
+
+/**
+ * This route's request-body ceiling: the attachment budget as base64 (4 bytes
+ * per 3, plus the padding each of up to {@link MAX_ATTACHMENTS} parts can add)
+ * and the envelope above. With the 10 MiB budget that is 14,081,056 bytes.
+ *
+ * Sized against the HTTP action's real limits rather than raised blindly:
+ * Convex accepts at most 20 MiB of request body, and an action has a 64 MiB V8
+ * heap and a separate 64 MiB ArrayBuffer pool. Counting a copy at every step,
+ * the pool holds the buffered body and its re-wrapped copy (~27 MiB) plus the
+ * decoded attachments and one blob copy (20 MiB); the heap holds the body text
+ * and the parsed strings (~27 MiB). Both stay well inside 64 MiB. The body is
+ * still read through the authenticated shell's streaming cap, after the key
+ * check, so an oversized one is cut off at the first byte past this number.
+ */
+export const TRANSACTIONAL_MAX_BODY_BYTES =
+	Math.ceil(MAX_TOTAL_SIZE / 3) * 4 + 4 * MAX_ATTACHMENTS + MAX_ENVELOPE_BYTES;
+
+/**
+ * UTF-8 size of the request with every attachment's base64 `content` left out:
+ * the part of the body that is not covered by the decoded-size budget.
+ */
+function envelopeBytes(body: SendTransactionalBody): number {
+	const attachments = Array.isArray(body.attachments)
+		? body.attachments.map((att) =>
+				att && typeof att === 'object' && typeof att.content === 'string'
+					? { ...att, content: undefined }
+					: att
+			)
+		: body.attachments;
+	return utf8Bytes(JSON.stringify({ ...body, attachments })).byteLength;
+}
+
+/**
  * Validate the request body shape — required fields, types, email format,
  * language format, attachment count + size limits, https-only URL check.
  * Returns a Response on failure, or null when the body passes every gate.
  * No DB access — this is the boundary check the module trusts has run.
  */
 function validateRequestShape(body: SendTransactionalBody): Response | null {
+	if (!body || typeof body !== 'object' || Array.isArray(body)) {
+		return errorResponse('invalid_input', 'Request body must be a JSON object');
+	}
 	if (!body.email) {
 		return errorResponse('invalid_input', 'email is required');
 	}
@@ -119,151 +158,14 @@ function validateRequestShape(body: SendTransactionalBody): Response | null {
 			return errorResponse('invalid_input', `Maximum ${MAX_ATTACHMENTS} attachments allowed`);
 		}
 	}
+	if (envelopeBytes(body) > MAX_ENVELOPE_BYTES) {
+		return errorResponse(
+			'invalid_input',
+			`Request fields other than attachment content exceed ${MAX_ENVELOPE_BYTES} bytes`
+		);
+	}
 
 	return null;
-}
-
-// ============================================================
-// Attachment storage upload
-// ============================================================
-
-type AttachmentUploadResult =
-	| { ok: true; refs: AttachmentRef[] | undefined }
-	| { ok: false; response: Response };
-
-/**
- * Decode and store base64 attachments to Convex storage; pass HTTPS URL
- * attachments through verbatim. Returns the prepared `AttachmentRef[]` the
- * dispatch module consumes (or undefined when there were no attachments).
- *
- * Requires action context (`ctx.storage.store` is action-only) — this is
- * why the HTTP shell handles attachments rather than the mutation-shaped
- * dispatch module.
- */
-async function uploadAttachments(
-	ctx: Pick<ActionCtx, 'storage'>,
-	attachments: AttachmentInput[] | undefined
-): Promise<AttachmentUploadResult> {
-	if (!attachments || attachments.length === 0) {
-		return { ok: true, refs: undefined };
-	}
-
-	let totalDecodedSize = 0;
-	const refs: AttachmentRef[] = [];
-
-	for (let i = 0; i < attachments.length; i++) {
-		const att = attachments[i] as AttachmentInput;
-
-		if (!att.filename || typeof att.filename !== 'string') {
-			return {
-				ok: false,
-				response: errorResponse(
-					'invalid_input',
-					`attachments[${i}].filename is required and must be a string`
-				),
-			};
-		}
-		if (att.filename.includes('/') || att.filename.includes('\\')) {
-			return {
-				ok: false,
-				response: errorResponse(
-					'invalid_input',
-					`attachments[${i}].filename must not contain path separators`
-				),
-			};
-		}
-
-		const hasContent = att.content !== undefined;
-		const hasUrl = att.url !== undefined;
-		if (hasContent === hasUrl) {
-			return {
-				ok: false,
-				response: errorResponse(
-					'invalid_input',
-					`attachments[${i}] must have exactly one of "content" (base64) or "url"`
-				),
-			};
-		}
-
-		if (hasUrl) {
-			// This URL is fetched server-side later, so a `startsWith('https://')`
-			// check is not enough: parse it and reject non-https, embedded
-			// credentials, and hosts that are literal private/internal addresses
-			// (SSRF). DNS-time range enforcement is applied again at the fetch site.
-			if (typeof att.url !== 'string') {
-				return {
-					ok: false,
-					response: errorResponse('invalid_input', `attachments[${i}].url must be an HTTPS URL`),
-				};
-			}
-			const urlCheck = validateOutboundUrl(att.url, { requirePublic: true });
-			if (!urlCheck.ok) {
-				return {
-					ok: false,
-					response: errorResponse('invalid_input', `attachments[${i}].url ${urlCheck.error}`),
-				};
-			}
-			refs.push({
-				filename: att.filename,
-				contentType: att.contentType,
-				url: att.url,
-			});
-			continue;
-		}
-
-		// Base64 content path: decode, count bytes against budget, upload.
-		if (typeof att.content !== 'string') {
-			return {
-				ok: false,
-				response: errorResponse(
-					'invalid_input',
-					`attachments[${i}].content must be a base64-encoded string`
-				),
-			};
-		}
-
-		let decoded: Uint8Array;
-		try {
-			decoded = Uint8Array.from(atob(att.content), (c) => c.charCodeAt(0));
-		} catch {
-			return {
-				ok: false,
-				response: errorResponse('invalid_input', `attachments[${i}].content is not valid base64`),
-			};
-		}
-
-		totalDecodedSize += decoded.byteLength;
-		if (totalDecodedSize > MAX_TOTAL_SIZE) {
-			return {
-				ok: false,
-				response: errorResponse(
-					'invalid_input',
-					`Total attachment size exceeds ${MAX_TOTAL_SIZE / (1024 * 1024)}MB limit`
-				),
-			};
-		}
-
-		const contentType = att.contentType || 'application/octet-stream';
-		const blob = new Blob([decoded as BlobPart], { type: contentType });
-		const storageId = await ctx.storage.store(blob);
-		const storageUrl = await ctx.storage.getUrl(storageId);
-
-		if (!storageUrl) {
-			return {
-				ok: false,
-				response: errorResponse('internal', 'Failed to store attachment'),
-			};
-		}
-
-		refs.push({
-			filename: att.filename,
-			contentType: att.contentType,
-			url: storageUrl,
-			storageId,
-		});
-	}
-
-	return { ok: true, refs: refs.length > 0 ? refs : undefined };
 }
 
 // ============================================================
@@ -348,10 +250,9 @@ export const sendTransactional = createAuthenticatedHandler(
 		const shapeError = validateRequestShape(body);
 		if (shapeError) return shapeError;
 
-		// Attachment storage upload (action-only — has to happen here, not in
-		// the mutation-shaped dispatch module).
-		const uploadResult = await uploadAttachments(ctx, body.attachments);
-		if (!uploadResult.ok) return uploadResult.response;
+		// Every attachment is checked and decoded before any byte is stored.
+		const preparedAttachments = prepareAttachments(body.attachments);
+		if (!preparedAttachments.ok) return preparedAttachments.response;
 
 		// Build the templateLookup discriminator.
 		const templateLookup = body.transactionalId
@@ -361,15 +262,14 @@ export const sendTransactional = createAuthenticatedHandler(
 				}
 			: { kind: 'slug' as const, slug: body.slug! };
 
-		// Dispatch.
-		const outcome = await ctx.runMutation(internal.transactional.dispatch.dispatch, {
+		const intake = await uploadAndDispatch(ctx, preparedAttachments.prepared, {
 			templateLookup,
 			email: normalizeEmail(body.email),
 			dataVariables: body.dataVariables,
 			language: body.language,
-			attachmentRefs: uploadResult.refs,
 		});
-
+		if (!intake.ok) return intake.response;
+		const outcome = intake.outcome;
 		if (!outcome.ok) {
 			const map = REJECTION_RESPONSE_MAP[outcome.reason];
 			return errorResponse(map.category, outcome.detail || map.defaultMessage, {
@@ -387,5 +287,6 @@ export const sendTransactional = createAuthenticatedHandler(
 			language: outcome.language,
 		};
 		return jsonResponse({ data: response }, 202);
-	}
+	},
+	{ maxBodyBytes: TRANSACTIONAL_MAX_BODY_BYTES }
 );

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
@@ -82,6 +82,18 @@ describe('persistResolvedSetup', () => {
 		expect(parseYaml(override)['x-owlat-profiles']).toEqual(profiles);
 		expect(env['COMPOSE_PROFILES']).toBe(profiles.join(','));
 	});
+
+	it.skipIf(process.platform === 'win32')(
+		'makes a pre-existing world-readable .env owner-only',
+		async () => {
+			await writeFile(join(dir, '.env'), 'SITE_URL=https://owlat.example.com\n');
+			await chmod(join(dir, '.env'), 0o644);
+
+			await persist({ INSTANCE_SECRET, EMAIL_PROVIDER: 'mta' });
+
+			expect((await stat(join(dir, '.env'))).mode & 0o777).toBe(0o600);
+		}
+	);
 
 	it('mirrors the resolved flags to .owlat-flags.json', async () => {
 		const { flags, flagFile } = await persist({ INSTANCE_SECRET });

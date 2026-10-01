@@ -22,6 +22,7 @@ import {
 	type SearchResults,
 	buildCorePaletteProviders,
 } from '~/lib/commandPaletteCore';
+import { isImeComposing } from '~/utils/imeComposition';
 
 /**
  * The app's ONE search overlay, mounted by the dashboard layout the first time
@@ -330,6 +331,8 @@ function onEnter() {
 }
 
 function onInputKeydown(event: KeyboardEvent) {
+	// Mid-composition, Enter and the arrows belong to the IME (#1052).
+	if (isImeComposing(event)) return;
 	if (event.key === 'Escape') {
 		event.preventDefault();
 		// Escape unwinds one level at a time: out of the argument step first.

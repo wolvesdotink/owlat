@@ -35,9 +35,11 @@ export function readMigrationRun(
  * Start a pass, resume an unfinished one, or restart a finished one.
  *
  * - No row, or `restart`: a fresh pass from `cursor` (default: the first row),
- *   with zeroed counts and a new `startedAt`.
+ *   with zeroed counts, a new `startedAt`, and `mode` as given.
  * - A running row: resumes it from `cursor` when given, otherwise from the
- *   stored cursor, keeping its counts and start time.
+ *   stored cursor, keeping its counts, start time and mode. `mode` is ignored:
+ *   a resume continues the pass that was started; read the returned row's
+ *   `mode` to know which one that is.
  * - A completed row without `restart`: nothing changes; returns null.
  *
  * Returns the row as written, whose `generation` the first page must carry.
@@ -49,6 +51,8 @@ export async function beginMigrationRun(
 		introducedIn: string;
 		cursor?: string | null;
 		restart?: boolean;
+		/** The kind of pass a fresh start records (`MigrationRun.mode`). */
+		mode?: string;
 	}
 ): Promise<MigrationRun | null> {
 	const { migration, introducedIn, restart } = options;
@@ -72,6 +76,7 @@ export async function beginMigrationRun(
 		status: 'running' as const,
 		generation: (existing?.generation ?? 0) + 1,
 		cursor: options.cursor ?? undefined,
+		mode: options.mode,
 		pageCount: 0,
 		scannedCount: 0,
 		changedCount: 0,

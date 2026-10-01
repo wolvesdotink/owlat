@@ -32,6 +32,7 @@ import { removeMessageAttachments } from '../attachmentIndex';
 import { deleteMessageRowAndBlobs } from '../messagePurge';
 import { deleteMailboxUsage } from '../mailboxUsage';
 import { deleteFolderCounters, deleteMailboxCounters } from '../messageCounters';
+import { dropFolderMembership } from '../folderMembership';
 import { isFeatureEnabled } from '../../lib/featureFlags';
 import { cancelActiveMigrationForAccount } from './accountShared';
 import { deleteStoredAccessToken } from './accessTokenStore';
@@ -198,6 +199,7 @@ export const _purgeChunk = internalMutation({
 			.collect(); // bounded: per-mailbox folder set
 		for (const f of folders) {
 			await deleteFolderCounters(ctx, f._id);
+			await dropFolderMembership(ctx, f._id);
 			await ctx.db.delete(f._id);
 		}
 

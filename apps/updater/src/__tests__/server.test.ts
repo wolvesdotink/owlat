@@ -1,7 +1,16 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import { createServer, type Server } from 'node:http';
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import {
+	chmodSync,
+	mkdtempSync,
+	writeFileSync,
+	readFileSync,
+	existsSync,
+	rmSync,
+	statSync,
+} from 'node:fs';
 import type * as NodeFs from 'node:fs';
+import type * as OwnerOnlyFile from '@owlat/shared/ownerOnlyFile';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -23,6 +32,13 @@ vi.mock('node:fs', async (importOriginal) => {
 vi.mock('../security.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../security.js')>();
 	return { ...actual, isRateLimited: rateLimitedMock };
+});
+// The real owner-only writer, behind a spy so a case can make it refuse.
+const { writeOwnerOnlyFileSpy } = vi.hoisted(() => ({ writeOwnerOnlyFileSpy: vi.fn() }));
+vi.mock('@owlat/shared/ownerOnlyFile', async (importOriginal) => {
+	const actual = await importOriginal<typeof OwnerOnlyFile>();
+	writeOwnerOnlyFileSpy.mockImplementation(actual.writeOwnerOnlyFile);
+	return { writeOwnerOnlyFile: writeOwnerOnlyFileSpy };
 });
 
 const OWLAT_DIR = mkdtempSync(join(tmpdir(), 'owlat-updater-test-'));
@@ -62,6 +78,15 @@ beforeEach(() => {
 });
 
 const AUTH = { 'x-instance-secret': 'test-instance-secret-0123456789' };
+
+/** Leave `.env` readable by other local users, as a hand-copied file might be. */
+function makeEnvWorldReadable(): void {
+	chmodSync(join(OWLAT_DIR, '.env'), 0o644);
+}
+
+function envMode(): number {
+	return statSync(join(OWLAT_DIR, '.env')).mode & 0o777;
+}
 
 /**
  * What a healthy Docker answers. The update path now reads the daemon before it
@@ -445,6 +470,25 @@ describe('POST /update', () => {
 		expect(res.status).toBe(200);
 		expect(readFileSync(join(OWLAT_DIR, '.env'), 'utf-8')).toContain('OWLAT_VERSION=1.2.3');
 	});
+
+	it.skipIf(process.platform === 'win32')(
+		'makes a world-readable .env owner-only when it pins the version',
+		async () => {
+			writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\nOWLAT_VERSION=0.4.16\n');
+			makeEnvWorldReadable();
+			const template = [
+				'services:',
+				'  web:',
+				'    image: ghcr.io/wolvesdotink/web:1.2.3',
+				'',
+			].join('\n');
+
+			const res = await post('/update', { composeTemplate: template });
+
+			expect(res.status).toBe(200);
+			expect(envMode()).toBe(0o600);
+		}
+	);
 
 	it('leaves .env alone for a template that pins no concrete version', async () => {
 		writeFileSync(join(OWLAT_DIR, '.env'), 'OWLAT_VERSION=0.4.16\n');
@@ -1131,6 +1175,16 @@ describe('POST /configure-ip', () => {
 		expect(commandLines().some((c) => c.includes(' restart'))).toBe(false);
 	});
 
+	it.skipIf(process.platform === 'win32')(
+		'makes a world-readable .env owner-only when it rewrites the pool',
+		async () => {
+			makeEnvWorldReadable();
+			const res = await post('/configure-ip', { ip: '2.2.2.2', action: 'add' });
+			expect(res.status).toBe(200);
+			expect(envMode()).toBe(0o600);
+		}
+	);
+
 	it('removes the IP from IP_POOLS_CAMPAIGN and recreates the MTA', async () => {
 		const res = await post('/configure-ip', { ip: '1.1.1.1', action: 'remove' });
 		expect(res.status).toBe(200);
@@ -1189,6 +1243,32 @@ describe('POST /rotate-env', () => {
 		// process partway down the list, leaving the rest on the old secret.
 		expect(composeCommands()).toContain(`${COMPOSE} up -d --force-recreate web convex mta`);
 		expect(commandLines().some((c) => c.startsWith('docker run'))).toBe(true);
+	});
+
+	it.skipIf(process.platform === 'win32')(
+		'makes a world-readable .env owner-only before writing the new secrets',
+		async () => {
+			makeEnvWorldReadable();
+			const res = await post('/rotate-env', valid);
+			expect(res.status).toBe(200);
+			expect(envMode()).toBe(0o600);
+			expect(readFileSync(join(OWLAT_DIR, '.env'), 'utf-8')).toContain(
+				`INSTANCE_SECRET=${valid.instanceSecret}`
+			);
+		}
+	);
+
+	it('writes no secret and recreates nothing when .env cannot be made owner-only', async () => {
+		writeOwnerOnlyFileSpy.mockRejectedValueOnce(
+			new Error('Refusing to write .env: could not make it owner-only (chmod 600)')
+		);
+
+		const res = await post('/rotate-env', valid);
+
+		expect(res.status).toBe(500);
+		expect(((await res.json()) as { error: string }).error).toContain('owner-only');
+		expect(readFileSync(join(OWLAT_DIR, '.env'), 'utf-8')).toContain('INSTANCE_SECRET=old');
+		expect(composeCommands().some((c) => c.includes('--force-recreate'))).toBe(false);
 	});
 
 	/**

@@ -15,11 +15,15 @@
  * here, passing a descriptor of which translatable fields the entity carries.
  * The `*Patch` helpers at the bottom return the complete row patch for each
  * translation mutation, content revision and timestamp included.
+ *
+ * A mutation handed a language's delivery HTML writes it in the same patch as
+ * the overlay (`emailHtmlTranslations.ts`), so the two share one revision.
  */
 
 import { childBlockLists } from '@owlat/shared/blockTree';
 import { throwAlreadyExists, throwInvalidInput, throwNotFound } from '../_utils/errors';
 import { nextContentRevision } from './contentRevision';
+import { renderedLanguagePatch } from './emailHtmlTranslations';
 import {
 	sanitizeOverlayBlocks,
 	sanitizeOverlayBlocksJson,
@@ -67,6 +71,7 @@ export interface TranslatableEntity {
 	defaultLanguage?: string;
 	supportedLanguages?: string[];
 	contentRevision?: number;
+	htmlTranslations?: string;
 }
 
 /** Describes which translatable fields an entity carries. */
@@ -306,6 +311,7 @@ export interface TranslationPatch {
 	defaultLanguage?: string;
 	translations?: string;
 	supportedLanguages?: string[];
+	htmlTranslations?: string;
 	contentRevision: number;
 	updatedAt: number;
 }
@@ -316,21 +322,39 @@ function revisionStamp(
 	return { contentRevision: nextContentRevision(row), updatedAt: Date.now() };
 }
 
-/** Patch for adding a language overlay (see `addLanguage`). */
+/**
+ * Patch for adding a language overlay (see `addLanguage`). `htmlContent` is the
+ * new language's delivery HTML; the seeded overlay is the default text, so it
+ * is rendered from the row's content as it stands.
+ */
 export function addTranslationPatch(
 	row: TranslatableEntity,
 	language: string,
-	fields: TranslatableFields
+	fields: TranslatableFields,
+	htmlContent?: string
 ): TranslationPatch {
-	return { ...addLanguage(row, language, fields), ...revisionStamp(row) };
+	return {
+		...addLanguage(row, language, fields),
+		...(htmlContent !== undefined &&
+			renderedLanguagePatch(row.htmlTranslations, language, { htmlContent, subject: row.subject })),
+		...revisionStamp(row),
+	};
 }
 
-/** Patch for removing a language overlay (see `removeLanguage`). */
+/**
+ * Patch for removing a language overlay (see `removeLanguage`), together with
+ * the language's delivery HTML.
+ */
 export function removeTranslationPatch(
 	row: TranslatableEntity,
 	language: string
 ): TranslationPatch {
-	return { ...removeLanguage(row, language), ...revisionStamp(row) };
+	return {
+		...removeLanguage(row, language),
+		...(row.htmlTranslations !== undefined &&
+			renderedLanguagePatch(row.htmlTranslations, language, null)),
+		...revisionStamp(row),
+	};
 }
 
 export interface TranslationUpdate {
@@ -339,6 +363,12 @@ export interface TranslationUpdate {
 	previewText?: string;
 	/** JSON string of `Record<blockId, TranslatableBlockContent>`. */
 	blocks?: string;
+	/**
+	 * The language's delivery HTML, rendered from the updated overlay on the
+	 * row's content. Stored with the overlay's subject. Ignored for the default
+	 * language, whose HTML only the editor save writes.
+	 */
+	htmlContent?: string;
 }
 
 /**
@@ -386,7 +416,15 @@ export function updateTranslationPatch(
 	}
 	translations[update.language] = translation;
 
-	return { translations: serializeTranslations(translations), ...revisionStamp(row) };
+	return {
+		translations: serializeTranslations(translations),
+		...(update.htmlContent !== undefined &&
+			renderedLanguagePatch(row.htmlTranslations, update.language, {
+				htmlContent: update.htmlContent,
+				subject: translation.subject,
+			})),
+		...revisionStamp(row),
+	};
 }
 
 /**

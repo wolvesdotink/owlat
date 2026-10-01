@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import { formatDate } from '~/utils/formatters';
+import { useFollowLatest } from '~/composables/useFollowLatest';
 
 const { t } = useI18n();
 
@@ -31,6 +32,14 @@ const {
 	remove,
 } = useAssistant();
 
+// The composer owns the question until the backend accepts it, so example
+// prompts go through it too (a failed one stays there with Retry), and it is
+// where focus lands after the pill or the conversation drawer.
+const composerRef = ref<{
+	sendText: (text: string) => Promise<void>;
+	focus: () => void;
+} | null>(null);
+
 // Below md the conversation rail is an off-canvas drawer (see UiRailDrawer). It
 // used to be `hidden md:flex`, which on a phone removed the conversation list
 // and — since it lives in the rail's header — the only "New chat" button.
@@ -46,18 +55,43 @@ const openConversation = (id: Id<'aiConversations'>) => {
 	selectConversation(id);
 };
 
+// Closing the phone drawer (a pick, New chat, the scrim, Escape) hands focus to
+// the question field rather than dropping it on the page.
+watch(railOpen, (open, wasOpen) => {
+	if (wasOpen && !open) nextTick(() => composerRef.value?.focus());
+});
+
+// Follow the stream only while the reader is at the end (#1050): scrolling up
+// to reread something is respected, and new content below raises the "Jump to
+// latest" pill instead of pulling the view down.
 const scrollRef = ref<HTMLElement | null>(null);
-const scrollToBottom = () => {
-	nextTick(() => {
-		if (scrollRef.value) scrollRef.value.scrollTop = scrollRef.value.scrollHeight;
-	});
+const { following, hasNewBelow, onScroll, onContent, jumpToLatest } = useFollowLatest(scrollRef);
+watch(() => {
+	const last = messages.value.at(-1);
+	return [
+		messages.value.length,
+		last?.text.length,
+		last?.status,
+		last?.toolCalls.length,
+		last?.toolCalls.map((c) => c.status).join(),
+	];
+}, onContent);
+// A conversation opens at its latest message, including the one already
+// selected (and loaded) when the page mounts.
+watch(activeId, () => void jumpToLatest({ smooth: false }));
+onMounted(() => void jumpToLatest({ smooth: false }));
+
+const onJumpToLatest = () => {
+	void jumpToLatest();
+	composerRef.value?.focus();
 };
-// Follow the stream: re-scroll as the last turn grows or a turn is added.
-watch(
-	() => [messages.value.length, messages.value.at(-1)?.text.length, messages.value.at(-1)?.status],
-	scrollToBottom
-);
-watch(activeId, scrollToBottom);
+
+// The member just asked for this answer, so their own send always goes to the
+// end and follows it, wherever they had scrolled to.
+const sendQuestion = (text: string) => {
+	void jumpToLatest();
+	return send(text);
+};
 
 const examplePrompts = computed(() => [
 	t('dashboard.assistant.index.examplePrompts.performance'),
@@ -66,7 +100,7 @@ const examplePrompts = computed(() => [
 ]);
 
 const onExample = (prompt: string) => {
-	void send(prompt);
+	void composerRef.value?.sendText(prompt);
 };
 
 // Deleting a chat is irreversible, so confirm before removing it.
@@ -84,6 +118,9 @@ const confirmDelete = async () => {
 	}
 };
 
+// Which conversation's More actions menu is open, if any.
+const actionsOpenId = ref<Id<'aiConversations'> | null>(null);
+
 // Inline rename of a conversation title in the list.
 const editingId = ref<Id<'aiConversations'> | null>(null);
 const editingTitle = ref('');
@@ -98,17 +135,27 @@ const startRename = (id: Id<'aiConversations'>, currentTitle: string) => {
 	});
 };
 
-const commitRename = async () => {
+// Enter and Escape hand focus back to the row's More actions button, where the
+// rename started; a blur (the member clicked elsewhere) leaves focus alone.
+// The input claims its Escape keydown, so cancelling a rename does not also
+// close the phone drawer around it.
+const focusRowActions = (id: Id<'aiConversations'>) =>
+	nextTick(() => document.getElementById(`conversation-actions-${id}`)?.focus());
+
+const commitRename = async (options: { restoreFocus?: boolean } = {}) => {
 	const id = editingId.value;
 	if (!id) return;
 	const title = editingTitle.value.trim();
 	const current = conversations.value.find((c) => c._id === id);
 	editingId.value = null;
+	if (options.restoreFocus) void focusRowActions(id);
 	if (title && current && title !== current.title) await rename(id, title);
 };
 
 const cancelRename = () => {
+	const id = editingId.value;
 	editingId.value = null;
+	if (id) void focusRowActions(id);
 };
 </script>
 
@@ -145,51 +192,91 @@ const cancelRename = () => {
 					<p v-else-if="conversations.length === 0" class="px-3 py-2 text-sm text-text-tertiary">
 						{{ t('dashboard.assistant.index.noConversations') }}
 					</p>
+					<!-- Selection and the row's actions are siblings, not nested (#1051):
+					     the row is a real button the keyboard can reach, and Rename /
+					     Delete sit behind one More actions button beside it. -->
 					<div
 						v-for="c in conversations"
 						:key="c._id"
-						class="group w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer"
+						class="group flex items-center rounded-lg text-sm transition-colors"
 						:class="
 							c._id === activeId
 								? 'bg-bg-surface text-text-primary'
 								: 'text-text-secondary hover:bg-bg-surface/60'
 						"
-						@click="openConversation(c._id)"
 					>
-						<Icon name="lucide:message-square" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
-						<input
+						<div
 							v-if="editingId === c._id"
-							:id="`conversation-rename-${c._id}`"
-							v-model="editingTitle"
-							type="text"
-							maxlength="120"
-							class="input input-sm flex-1 min-w-0"
-							@click.stop
-							@blur="commitRename"
-							@keyup.enter="commitRename"
-							@keyup.escape="cancelRename"
-						/>
-						<template v-else>
-							<span class="flex-1 truncate">{{ c.title }}</span>
-							<span class="text-2xs text-text-tertiary flex-shrink-0">{{
-								formatDate(c.lastMessageAt, 'short')
-							}}</span>
-							<button
-								class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 rounded text-text-tertiary hover:text-text-primary transition-opacity flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-								:title="t('dashboard.assistant.index.renameConversation')"
+							class="flex flex-1 min-w-0 items-center gap-2 px-3 py-1.5"
+						>
+							<Icon name="lucide:message-square" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+							<input
+								:id="`conversation-rename-${c._id}`"
+								v-model="editingTitle"
+								type="text"
+								maxlength="120"
+								class="input input-sm flex-1 min-w-0"
 								:aria-label="t('dashboard.assistant.index.renameConversation')"
-								@click.stop="startRename(c._id, c.title)"
-							>
-								<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
-							</button>
+								@blur="commitRename()"
+								@keyup.enter="commitRename({ restoreFocus: true })"
+								@keydown.escape.prevent
+								@keyup.escape="cancelRename"
+							/>
+						</div>
+						<template v-else>
 							<button
-								class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 rounded text-text-tertiary hover:text-error transition-opacity flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-								:title="t('dashboard.assistant.index.deleteConversation')"
-								:aria-label="t('dashboard.assistant.index.deleteConversation')"
-								@click.stop="pendingDelete = { _id: c._id, title: c.title }"
+								type="button"
+								class="flex flex-1 min-w-0 items-center gap-2 pl-3 pr-1 py-2 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+								:aria-current="c._id === activeId ? 'page' : undefined"
+								:title="c.title"
+								data-testid="assistant-conversation"
+								@click="openConversation(c._id)"
 							>
-								<Icon name="lucide:trash-2" class="w-3.5 h-3.5" />
+								<Icon
+									name="lucide:message-square"
+									class="w-4 h-4 flex-shrink-0 text-text-tertiary"
+								/>
+								<span class="flex-1 truncate">{{ c.title }}</span>
+								<span class="text-2xs text-text-tertiary flex-shrink-0">{{
+									formatDate(c.lastMessageAt, 'short')
+								}}</span>
 							</button>
+							<!-- Hidden until hover or focus on a pointer device; always shown
+							     where there is no hover (touch), and while its menu is open. -->
+							<UiDropdownMenu
+								:open="actionsOpenId === c._id"
+								position="right"
+								class="flex-shrink-0 mr-0.5 transition-opacity"
+								:class="
+									actionsOpenId === c._id
+										? 'opacity-100'
+										: 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100'
+								"
+								@update:open="(v: boolean) => (actionsOpenId = v ? c._id : null)"
+							>
+								<template #trigger>
+									<button
+										:id="`conversation-actions-${c._id}`"
+										type="button"
+										class="w-8 h-8 flex items-center justify-center rounded-md text-text-tertiary hover:text-text-primary hover:bg-bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+										:title="t('dashboard.assistant.index.moreActions')"
+										:aria-label="t('dashboard.assistant.index.moreActionsFor', { title: c.title })"
+										data-testid="assistant-conversation-actions"
+									>
+										<Icon name="lucide:ellipsis" class="w-4 h-4" />
+									</button>
+								</template>
+								<UiDropdownMenuItem icon="lucide:pencil" @click="startRename(c._id, c.title)">
+									{{ t('dashboard.assistant.index.renameConversation') }}
+								</UiDropdownMenuItem>
+								<UiDropdownMenuItem
+									icon="lucide:trash-2"
+									danger
+									@click="pendingDelete = { _id: c._id, title: c.title }"
+								>
+									{{ t('dashboard.assistant.index.deleteConversation') }}
+								</UiDropdownMenuItem>
+							</UiDropdownMenu>
 						</template>
 					</div>
 				</div>
@@ -235,48 +322,72 @@ const cancelRename = () => {
 				</h1>
 			</header>
 
-			<div ref="scrollRef" class="flex-1 overflow-y-auto px-4 py-4">
-				<!-- A conversation that failed to load is not a new one (#721). -->
-				<UiQueryBoundary
-					v-if="activeId && messagesError"
-					:error="messagesError"
-					@retry="refetchMessages"
-				/>
-				<!-- Welcome / empty state -->
-				<div
-					v-else-if="!activeId || messages.length === 0"
-					class="h-full flex flex-col items-center justify-center text-center px-6"
-				>
+			<div class="relative flex-1 min-h-0 flex flex-col">
+				<div ref="scrollRef" class="flex-1 overflow-y-auto px-4 py-4" @scroll.passive="onScroll">
+					<!-- A conversation that failed to load is not a new one (#721). -->
+					<UiQueryBoundary
+						v-if="activeId && messagesError"
+						:error="messagesError"
+						@retry="refetchMessages"
+					/>
+					<!-- Welcome / empty state -->
 					<div
-						class="w-16 h-16 rounded-full bg-brand-subtle text-brand flex items-center justify-center mb-4"
+						v-else-if="!activeId || messages.length === 0"
+						class="h-full flex flex-col items-center justify-center text-center px-6"
 					>
-						<Icon name="lucide:sparkles" class="w-8 h-8" />
-					</div>
-					<h2 class="text-lg font-medium text-text-primary">
-						{{ t('dashboard.assistant.index.welcomeTitle') }}
-					</h2>
-					<p class="text-sm text-text-secondary mt-1 max-w-md">
-						{{ t('dashboard.assistant.index.welcomeBody') }}
-					</p>
-					<div class="mt-6 flex flex-col gap-2 w-full max-w-md">
-						<button
-							v-for="prompt in examplePrompts"
-							:key="prompt"
-							class="text-left text-sm px-4 py-2.5 rounded-xl bg-surface-1 shadow-surface-1 text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-							@click="onExample(prompt)"
+						<div
+							class="w-16 h-16 rounded-full bg-brand-subtle text-brand flex items-center justify-center mb-4"
 						>
-							{{ prompt }}
-						</button>
+							<Icon name="lucide:sparkles" class="w-8 h-8" />
+						</div>
+						<h2 class="text-lg font-medium text-text-primary">
+							{{ t('dashboard.assistant.index.welcomeTitle') }}
+						</h2>
+						<p class="text-sm text-text-secondary mt-1 max-w-md">
+							{{ t('dashboard.assistant.index.welcomeBody') }}
+						</p>
+						<div class="mt-6 flex flex-col gap-2 w-full max-w-md">
+							<button
+								v-for="prompt in examplePrompts"
+								:key="prompt"
+								class="text-left text-sm px-4 py-2.5 rounded-xl bg-surface-1 shadow-surface-1 text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+								@click="onExample(prompt)"
+							>
+								{{ prompt }}
+							</button>
+						</div>
+					</div>
+
+					<!-- Conversation -->
+					<div v-else class="max-w-3xl mx-auto space-y-5">
+						<AssistantMessage v-for="m in messages" :key="m._id" :message="m" />
 					</div>
 				</div>
 
-				<!-- Conversation -->
-				<div v-else class="max-w-3xl mx-auto space-y-5">
-					<AssistantMessage v-for="m in messages" :key="m._id" :message="m" />
+				<!-- New content arrived below a reader who scrolled up to reread. -->
+				<div
+					v-if="hasNewBelow && !following"
+					class="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center"
+				>
+					<UiButton
+						variant="secondary"
+						size="sm"
+						class="pointer-events-auto gap-1.5 rounded-full shadow-md"
+						data-testid="assistant-jump-latest"
+						@click="onJumpToLatest"
+					>
+						{{ t('dashboard.assistant.index.jumpToLatest') }}
+						<Icon name="lucide:arrow-down" class="w-3.5 h-3.5" />
+					</UiButton>
 				</div>
 			</div>
 
-			<AssistantComposer :streaming="streaming" @send="send" @stop="stop" />
+			<AssistantComposer
+				ref="composerRef"
+				:send="sendQuestion"
+				:streaming="streaming"
+				@stop="stop"
+			/>
 		</section>
 
 		<!-- Delete confirmation — a removed chat and its messages cannot be recovered -->

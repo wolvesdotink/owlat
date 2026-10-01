@@ -27,6 +27,8 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// to keep in step.
 	'counterScopes',
 	'counterBuckets',
+	'mailFolderMembership',
+	'mailFolderUidBlocks',
 	// Storage-bearing leaves: storage hooks fire before row delete
 	'mediaAssets',
 	'semanticFileContacts', // junction mirror — clear before its parent files
@@ -47,6 +49,8 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// Share links own the blobs the drafts above no longer reference, so they
 	// have to purge their own storage rather than ride a generic sweep.
 	'mailAttachmentShares',
+	// Unclaimed transactional attachment uploads own their blobs outright.
+	'transactionalPendingUploads',
 	'transactionalSends',
 
 	// Send + dispatch leaves

@@ -11,6 +11,7 @@
 
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
+import { startFolderMembership } from '../folderMembership';
 
 /** Numbered variants tried for a name another folder already holds. */
 const MAX_NAME_VARIANTS = 50;
@@ -52,7 +53,7 @@ async function findOrCreateChild(
 			.first();
 		if (!existing) {
 			const now = Date.now();
-			return await ctx.db.insert('mailFolders', {
+			const folderId = await ctx.db.insert('mailFolders', {
 				mailboxId,
 				name: candidate,
 				parentId,
@@ -65,6 +66,8 @@ async function findOrCreateChild(
 				createdAt: now,
 				updatedAt: now,
 			});
+			await startFolderMembership(ctx, folderId, { isEmpty: true });
+			return folderId;
 		}
 		if (!existing.role && existing.parentId === parentId) return existing._id;
 	}

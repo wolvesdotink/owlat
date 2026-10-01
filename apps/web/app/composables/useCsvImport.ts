@@ -3,6 +3,24 @@ import { parseCsvFile } from '~/utils/contactsCsv';
 import { useDropZone } from '~/composables/useDropZone';
 import { useNativeFilePicker } from '~/composables/useNativeFilePicker';
 import type { BackendOperationResult } from '~/composables/useBackendOperation';
+import {
+	assignColumnField,
+	conflictingScalarField,
+	detectColumnMapping,
+	prepareCsvRows,
+	scalarFieldOwners,
+	type ColumnMapping,
+	type ContactImport,
+	type MappableField,
+	type PreparedRow,
+} from '~/utils/csvImportMapping';
+
+export type {
+	ContactImport,
+	ContactPropertyValue,
+	MappableField,
+	PreparedRow,
+} from '~/utils/csvImportMapping';
 
 export type ImportStep =
 	| 'upload'
@@ -11,16 +29,6 @@ export type ImportStep =
 	| 'preview'
 	| 'importing'
 	| 'complete';
-export type MappableField =
-	| 'email'
-	| 'firstName'
-	| 'lastName'
-	| 'language'
-	| 'topic'
-	| 'property'
-	| 'ignore';
-
-export type ContactPropertyValue = string | number | boolean | null;
 export type HandleDuplicates = 'skip' | 'update';
 export type ListAssignmentMode = 'none' | 'global' | 'column';
 
@@ -31,14 +39,6 @@ export interface ImportResults {
 	failed: number;
 	errors: string[];
 	addedToList?: number;
-}
-
-export interface ContactImport {
-	email: string;
-	firstName?: string;
-	lastName?: string;
-	language?: string;
-	properties?: Record<string, ContactPropertyValue>;
 }
 
 export interface ContactListAssignment {
@@ -119,7 +119,7 @@ export function useCsvImport() {
 	const csvHeaders = ref<string[]>([]);
 
 	// Mapping state
-	const columnMapping = ref<Record<number, MappableField>>({});
+	const columnMapping = ref<ColumnMapping>({});
 	const handleDuplicates = ref<HandleDuplicates>('skip');
 
 	// Validation state
@@ -144,7 +144,22 @@ export function useCsvImport() {
 	// Computed
 	const isEmailMapped = computed(() => Object.values(columnMapping.value).includes('email'));
 	const isTopicMapped = computed(() => Object.values(columnMapping.value).includes('topic'));
-	const previewRows = computed(() => parsedData.value.slice(0, 5));
+	/** The column feeding each scalar field (Email, First name, Last name, Language). */
+	const scalarOwners = computed(() => scalarFieldOwners(columnMapping.value));
+	const mappingConflict = computed(() => conflictingScalarField(columnMapping.value));
+	/**
+	 * Every data row as the import will send it. Validation, the preview and the
+	 * payload all read this, so what the preview shows is what gets imported.
+	 */
+	const preparedRows = computed<PreparedRow[]>(() =>
+		prepareCsvRows(parsedData.value, csvHeaders.value, columnMapping.value)
+	);
+	const previewRows = computed(() => preparedRows.value.slice(0, 5));
+	/** Header of the column the email comes from, for the preview. */
+	const emailSourceColumn = computed(() => {
+		const owner = scalarOwners.value.email;
+		return owner === undefined ? null : (csvHeaders.value[owner] ?? null);
+	});
 	const totalRowCount = computed(() => parsedData.value.length);
 	const validContactCount = computed(() => validation.value?.validCount ?? 0);
 	const hasValidationWarnings = computed(() => {
@@ -174,39 +189,23 @@ export function useCsvImport() {
 
 	// Auto-detect column mapping based on header names
 	const autoDetectMapping = () => {
-		const mapping: Record<number, MappableField> = {};
+		columnMapping.value = detectColumnMapping(csvHeaders.value);
+	};
 
-		csvHeaders.value.forEach((header, index) => {
-			const headerLower = header.toLowerCase().trim();
-
-			if (headerLower === 'email' || headerLower === 'e-mail' || headerLower.includes('email')) {
-				mapping[index] = 'email';
-			} else if (['first name', 'firstname', 'first_name', 'given name'].includes(headerLower)) {
-				mapping[index] = 'firstName';
-			} else if (
-				['last name', 'lastname', 'last_name', 'family name', 'surname'].includes(headerLower)
-			) {
-				mapping[index] = 'lastName';
-			} else if (['language', 'lang', 'locale', 'preferred_language'].includes(headerLower)) {
-				mapping[index] = 'language';
-			} else if (
-				[
-					'list',
-					'topic',
-					'topics',
-					'mailing list',
-					'mailing_list',
-					'mailinglist',
-					'lists',
-				].includes(headerLower)
-			) {
-				mapping[index] = 'topic';
-			} else {
-				mapping[index] = 'ignore';
-			}
-		});
-
+	/**
+	 * Map one column. A scalar field another column owns moves here, and that
+	 * column falls back to Custom property (Skip for a blank header). Returns the
+	 * displaced columns.
+	 */
+	const mapColumn = (column: number, field: MappableField): number[] => {
+		const { mapping, displaced } = assignColumnField(
+			columnMapping.value,
+			csvHeaders.value,
+			column,
+			field
+		);
 		columnMapping.value = mapping;
+		return displaced;
 	};
 
 	// Reset state
@@ -318,13 +317,8 @@ export function useCsvImport() {
 	const handleDragLeave = dropZone.handleDragLeave;
 	const handleDrop = dropZone.handleDrop;
 
-	// Validate contacts against the current mapping
+	// Validate contacts against the current mapping, from the prepared rows
 	const validateContacts = (): ValidationResult => {
-		const emailColumnIndex = Object.entries(columnMapping.value).find(
-			([, field]) => field === 'email'
-		)?.[0];
-		const emailIdx = emailColumnIndex !== undefined ? parseInt(emailColumnIndex, 10) : -1;
-
 		const result: ValidationResult = {
 			validCount: 0,
 			invalidEmails: [],
@@ -332,42 +326,12 @@ export function useCsvImport() {
 			missingEmails: [],
 			totalRows: parsedData.value.length,
 		};
-
-		const seenEmails = new Set<string>();
-
-		for (let i = 0; i < parsedData.value.length; i++) {
-			const row = parsedData.value[i]!;
-			const rawEmail = emailIdx >= 0 ? row[emailIdx] : undefined;
-			const email = rawEmail?.trim() ?? '';
-			const rowNum = i + 1; // 1-based for display
-
-			if (!email) {
-				result.missingEmails.push(rowNum);
-				continue;
-			}
-
-			// Basic email validation: must have @ with something before and a . after @
-			const atIndex = email.indexOf('@');
-			const isValid =
-				atIndex > 0 &&
-				email.indexOf('.', atIndex) > atIndex + 1 &&
-				email.indexOf('.', atIndex) < email.length - 1;
-
-			if (!isValid) {
-				result.invalidEmails.push({ row: rowNum, email });
-				continue;
-			}
-
-			const normalizedEmail = email.toLowerCase();
-			if (seenEmails.has(normalizedEmail)) {
-				result.duplicateEmails.push({ row: rowNum, email });
-				continue;
-			}
-
-			seenEmails.add(normalizedEmail);
-			result.validCount++;
+		for (const { row, contact, status } of preparedRows.value) {
+			if (status === 'missing') result.missingEmails.push(row);
+			else if (status === 'invalid') result.invalidEmails.push({ row, email: contact.email });
+			else if (status === 'duplicate') result.duplicateEmails.push({ row, email: contact.email });
+			else result.validCount++;
 		}
-
 		return result;
 	};
 
@@ -402,6 +366,12 @@ export function useCsvImport() {
 	const goToPreview = () => {
 		if (!isEmailMapped.value) {
 			error.value = t('shared.useCsvImport.errors.emailColumnRequired');
+			return;
+		}
+		if (mappingConflict.value) {
+			error.value = t('shared.useCsvImport.errors.conflictingMapping', {
+				field: t(`shared.useCsvImport.fieldNames.${mappingConflict.value}`),
+			});
 			return;
 		}
 		error.value = '';
@@ -459,16 +429,6 @@ export function useCsvImport() {
 		}
 	};
 
-	// Get mapped value from row
-	const getMappedValue = (row: string[], field: MappableField): string => {
-		for (const [indexStr, mappedField] of Object.entries(columnMapping.value)) {
-			if (mappedField === field) {
-				return row[parseInt(indexStr, 10)] || '—';
-			}
-		}
-		return '—';
-	};
-
 	// Distinct property keys for every column mapped to 'property'. The CSV
 	// header text is the property key (and label). Used to pre-register the
 	// keys before import — CSV is an "operator" import source, so the backend
@@ -483,45 +443,13 @@ export function useCsvImport() {
 		return Array.from(keys);
 	};
 
-	// Transform parsed data to contacts, each tagged with the data row it came
-	// from so a failed batch can name its rows. Rows without an email are not
-	// sent at all; `startImport` counts them as skipped.
-	const getContactsFromParsedData = (): PreparedContact[] => {
-		const contacts: PreparedContact[] = [];
-
-		for (const [rowIndex, row] of parsedData.value.entries()) {
-			const contact: ContactImport = { email: '' };
-			const properties: Record<string, ContactPropertyValue> = {};
-
-			for (const [indexStr, field] of Object.entries(columnMapping.value)) {
-				const index = parseInt(indexStr, 10);
-				const value = row[index]?.trim();
-
-				if (field === 'email' && value) {
-					contact.email = value;
-				} else if (field === 'firstName' && value) {
-					contact.firstName = value;
-				} else if (field === 'lastName' && value) {
-					contact.lastName = value;
-				} else if (field === 'language' && value) {
-					contact.language = value;
-				} else if (field === 'property' && value) {
-					// CSV header is the property key; CSV cells are always strings.
-					const key = csvHeaders.value[index]?.trim();
-					if (key) properties[key] = value;
-				}
-			}
-
-			if (contact.email) {
-				if (Object.keys(properties).length > 0) {
-					contact.properties = properties;
-				}
-				contacts.push({ row: rowIndex + 1, contact });
-			}
-		}
-
-		return contacts;
-	};
+	// The prepared rows that carry an email, each tagged with the data row it
+	// came from so a failed batch can name its rows. Rows without an email are
+	// not sent at all; `startImport` counts them as skipped.
+	const getContactsFromParsedData = (): PreparedContact[] =>
+		preparedRows.value
+			.filter((prepared) => prepared.contact.email)
+			.map(({ row, contact }) => ({ row, contact }));
 
 	// Build per-contact list assignments from CSV data + listNameMapping
 	const getContactListAssignments = (): ContactListAssignment[] => {
@@ -533,20 +461,13 @@ export function useCsvImport() {
 		if (listColumnIndex === undefined) return [];
 
 		const listIdx = parseInt(listColumnIndex, 10);
-		const emailColumnIndex = Object.entries(columnMapping.value).find(
-			([, field]) => field === 'email'
-		)?.[0];
-		if (emailColumnIndex === undefined) return [];
-
-		const emailIdx = parseInt(emailColumnIndex, 10);
 		const assignments: ContactListAssignment[] = [];
 
-		for (const row of parsedData.value) {
-			const rawEmail = row[emailIdx];
-			const email = rawEmail ? normalizeEmail(rawEmail) : undefined;
-			if (!email) continue;
+		for (const { row, contact } of preparedRows.value) {
+			if (!contact.email) continue;
+			const email = normalizeEmail(contact.email);
 
-			const cellValue = row[listIdx]?.trim();
+			const cellValue = parsedData.value[row - 1]?.[listIdx]?.trim();
 			if (!cellValue) continue;
 
 			const names = cellValue
@@ -750,6 +671,7 @@ export function useCsvImport() {
 		isDragging,
 		columnMapping,
 		handleDuplicates,
+		preparedRows,
 		validation,
 		progress,
 		results,
@@ -766,7 +688,10 @@ export function useCsvImport() {
 		// Computed
 		isEmailMapped,
 		isTopicMapped,
+		scalarOwners,
+		mappingConflict,
 		previewRows,
+		emailSourceColumn,
 		totalRowCount,
 		validContactCount,
 		hasValidationWarnings,
@@ -788,7 +713,7 @@ export function useCsvImport() {
 		goBackToMapping,
 		goBackToMappingFromListMapping,
 		selectGlobalTopic,
-		getMappedValue,
+		mapColumn,
 		getMappedPropertyKeys,
 		startImport,
 		retryFailedRows,

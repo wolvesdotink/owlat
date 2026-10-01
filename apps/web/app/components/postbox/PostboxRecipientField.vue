@@ -12,6 +12,7 @@ import {
 } from '~/utils/sealRecipients';
 import { SEAL_TONE_CLASSES } from '~/utils/sealTone';
 import { useLocalized } from '~/composables/useLocalized';
+import { isImeComposing } from '~/utils/imeComposition';
 
 interface ContactSuggestion {
 	email: string;
@@ -221,6 +222,10 @@ function editLastChip() {
 }
 
 function onKeydown(event: KeyboardEvent) {
+	// While an IME composes (a CJK name, say) its keys are its own: Enter
+	// confirms a candidate rather than committing a half-typed chip, and the
+	// input's model has not caught up yet, so Backspace must not pop one (#1052).
+	if (isImeComposing(event)) return;
 	if (event.key === 'Enter' || event.key === ',' || event.key === ';') {
 		event.preventDefault();
 		if (showSuggestions.value && suggestions.value.length > 0) {
