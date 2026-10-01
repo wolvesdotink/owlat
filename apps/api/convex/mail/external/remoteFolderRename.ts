@@ -6,19 +6,27 @@
  *
  * Until the worker has reported the rename, the backend names the folder by
  * its old name, so the worker keeps the rename op queued until the report is
- * recorded, and reports again on every retry. Recording is idempotent: it also
- * rewrites the rename op itself, so a repeated report finds nothing to do.
- * After a restart the worker first reports every queued rename the provider
- * already shows as done (`listQueuedFolderRenames`), before any op for the old
- * name runs.
+ * recorded, and reports again on every retry. After a restart the worker
+ * first reports every queued rename the provider already shows as done
+ * (`listQueuedFolderRenames`), before any op for the old name runs.
+ *
+ * Recording names the rename op by the new name and marks it with the old one
+ * (`renameRewrite`) until every queued op is rewritten, which can take more
+ * than one transaction. Until then the op is neither handed out again nor
+ * deleted by the worker's settle, and no op naming the old folder, and no
+ * other folder op on its branch, is due (`renameRewriteHold`,
+ * `remoteFolderOpOrder.ts`): a restarted worker would look for the old folder,
+ * and a later rename must see every op already rewritten. A repeated report
+ * only carries the rewrite on.
  */
 
 import { v, type Infer } from 'convex/values';
 import { internalQuery, type MutationCtx } from '../../_generated/server';
+import type { Doc } from '../../_generated/dataModel';
 import { internalMutation } from '../../lib/writeFence';
 import { internal } from '../../_generated/api';
 import { FOLDER_KINDS, MESSAGE_KINDS } from './remoteFolderOpOrder';
-import { workerOp, writesBack } from './remoteOps';
+import { nudgeWorker, workerOp, writesBack } from './remoteOps';
 
 /** Queued ops one transaction rewrites before it hands the rest to a continuation. */
 const RENAME_ROWS_PER_RUN = 1000;
@@ -111,15 +119,35 @@ async function renameQueuedOps(ctx: MutationCtx, rename: FolderRename): Promise<
 	return false;
 }
 
-/** Rewrite one transaction's worth and hand what is left to a continuation. */
-async function applyRename(ctx: MutationCtx, rename: FolderRename): Promise<void> {
+type RenameOp = Doc<'externalMailRemoteOps'> & {
+	renameRewrite: NonNullable<Doc<'externalMailRemoteOps'>['renameRewrite']>;
+};
+
+/**
+ * Rewrite one transaction's worth and hand what is left to a continuation.
+ * Once nothing is left the rename op is done: deleted if the worker already
+ * settled it, otherwise left for the worker's settle like any other op.
+ */
+async function applyRename(ctx: MutationCtx, op: RenameOp): Promise<void> {
+	if (!('remote' in op.source)) return;
+	const rename: FolderRename = {
+		accountId: op.accountId,
+		from: op.renameRewrite.from,
+		to: op.source.remote,
+		delimiter: op.renameRewrite.delimiter,
+	};
 	if (await renameQueuedOps(ctx, rename)) {
 		await ctx.scheduler.runAfter(
 			0,
 			internal.mail.external.remoteFolderRename.continueFolderRename,
-			{ rename }
+			{ opId: op._id }
 		);
+		return;
 	}
+	if (op.renameRewrite.settledAt !== undefined) await ctx.db.delete(op._id);
+	else await ctx.db.patch(op._id, { renameRewrite: undefined });
+	// The ops that waited for the rewrite can run now.
+	await nudgeWorker(ctx, op.accountId);
 }
 
 /**
@@ -137,27 +165,36 @@ export const recordRemoteFolderRename = internalMutation({
 	handler: async (ctx, args) => {
 		const op = await ctx.db.get(args.opId);
 		if (!op || op.kind !== 'renameFolder' || !('remote' in op.source)) return null;
+		// Reported before: carry on its rewrite, in case its continuation was lost.
+		if (op.renameRewrite) {
+			await applyRename(ctx, { ...op, renameRewrite: op.renameRewrite });
+			return null;
+		}
 		const rename: FolderRename = {
 			accountId: op.accountId,
 			from: op.source.remote,
 			to: args.remoteName,
 			delimiter: args.delimiter,
 		};
-		// Already recorded: the rename op itself was rewritten to the new name.
+		// Already recorded and rewritten: the rename op itself names the new folder.
 		if (!rename.to || rename.to === rename.from) return null;
 		await renameMappings(ctx, rename);
-		// The rename op first, so a report repeated before the rest is done finds it recorded.
-		await ctx.db.patch(op._id, { source: { remote: rename.to } });
-		await applyRename(ctx, rename);
+		// The rename op keeps the old name until every queued op is rewritten.
+		const renameRewrite = { from: rename.from, delimiter: rename.delimiter };
+		await ctx.db.patch(op._id, { source: { remote: rename.to }, renameRewrite });
+		await applyRename(ctx, { ...op, source: { remote: rename.to }, renameRewrite });
 		return null;
 	},
 });
 
 /** Carry on rewriting the ops a rename's transaction had no room left for. */
 export const continueFolderRename = internalMutation({
-	args: { rename: folderRenameValidator },
+	args: { opId: v.id('externalMailRemoteOps') },
 	handler: async (ctx, args) => {
-		await applyRename(ctx, args.rename);
+		const op = await ctx.db.get(args.opId);
+		// Gone with its account, or finished by a repeated report.
+		if (!op?.renameRewrite) return;
+		await applyRename(ctx, { ...op, renameRewrite: op.renameRewrite });
 	},
 });
 
@@ -177,6 +214,10 @@ export const listQueuedFolderRenames = internalQuery({
 				q.eq('accountId', args.accountId).eq('kind', 'renameFolder')
 			)
 			.take(QUEUED_RENAMES_LIMIT);
-		return rows.sort((a, b) => a._creationTime - b._creationTime).map(workerOp);
+		// One already recorded is not reported again.
+		return rows
+			.filter((r) => !r.renameRewrite)
+			.sort((a, b) => a._creationTime - b._creationTime)
+			.map(workerOp);
 	},
 });

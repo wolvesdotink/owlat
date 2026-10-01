@@ -593,4 +593,185 @@ describe('a folder the worker renamed', () => {
 
 		expect(await mappedNames(t)).toContain('Projects/Owlat');
 	});
+
+	/** Queue `count` message ops naming the folder by its old name, as recorded while the worker renames it. */
+	async function queueForOldName(
+		t: TestConvex<typeof schema>,
+		accountId: Id<'externalMailAccounts'>,
+		kind: 'delete' | 'flags',
+		count: number
+	) {
+		await t.run(async (ctx) => {
+			for (let i = 0; i < count; i++) {
+				await ctx.db.insert('externalMailRemoteOps', {
+					accountId,
+					kind,
+					rfc822MessageId: `${kind}-${i}@x.example`,
+					source: { remote: 'Projects/Owlat' },
+					...(kind === 'flags' ? { flags: { seen: true } } : {}),
+					attempts: 0,
+					nextAttemptAt: Date.now(),
+					createdAt: Date.now(),
+				});
+			}
+		});
+	}
+
+	/**
+	 * The worker's side after a restart: it has forgotten the renames it made,
+	 * so it addresses each op by the name the backend hands it. An op for a
+	 * folder the provider does not have is not found, as the replayer settles
+	 * it (apps/mail-sync/src/remoteOps.ts); a rename moves the folder and the
+	 * folders below it, and is reported before it is settled.
+	 */
+	async function drainQueue(
+		t: TestConvex<typeof schema>,
+		accountId: Id<'externalMailAccounts'>,
+		provider: Set<string>
+	) {
+		const replayed: Array<{ kind: string; source: string; outcome: 'done' | 'not_found' }> = [];
+		for (;;) {
+			const due = await t.query(internal.mail.external.remoteOps.listDueRemoteOps, { accountId });
+			if (due.length === 0) return replayed;
+			const results: Array<{ opId: Id<'externalMailRemoteOps'>; outcome: 'done' | 'not_found' }> =
+				[];
+			for (const op of due) {
+				const source = 'remote' in op.source ? op.source.remote : '';
+				const outcome = provider.has(source) ? 'done' : 'not_found';
+				const name = op.target && 'path' in op.target ? op.target.path[0] : undefined;
+				if (op.kind === 'renameFolder' && outcome === 'done' && name) {
+					const to = [...source.split('/').slice(0, -1), name].join('/');
+					for (const folder of Array.from(provider)) {
+						if (folder !== source && !folder.startsWith(`${source}/`)) continue;
+						provider.delete(folder);
+						provider.add(to + folder.slice(source.length));
+					}
+					await t.mutation(internal.mail.external.remoteFolderRename.recordRemoteFolderRename, {
+						opId: op.opId,
+						remoteName: to,
+						delimiter: '/',
+					});
+				}
+				replayed.push({ kind: op.kind, source, outcome });
+				results.push({ opId: op.opId, outcome });
+			}
+			await t.mutation(internal.mail.external.remoteOps.settleRemoteOps, { results });
+		}
+	}
+
+	it('keeps the ops a rename has yet to rewrite from a restarted worker until the rewrite is done', async () => {
+		const { t, accountId, owlat } = await mirroredFolders();
+		await t.mutation(api.mail.folders.rename, { folderId: owlat, name: 'Clients' });
+		const [rename] = await t.query(internal.mail.external.remoteOps.listDueRemoteOps, {
+			accountId,
+		});
+		// Recorded while the worker renames: five deletes, then more flag changes
+		// than one rewrite transaction reaches, so the deletes are left for its continuation.
+		await queueForOldName(t, accountId, 'delete', 5);
+		await queueForOldName(t, accountId, 'flags', 1000);
+		// A folder off the renamed branch, whose name only starts with the old one.
+		await enqueue(t, accountId, {
+			kind: 'flags',
+			rfc822MessageId: 'sibling@x.example',
+			source: { remote: 'Projects/Owlat.old' },
+		});
+		const provider = new Set([
+			'Projects',
+			'Projects/Clients',
+			'Projects/Clients/Sub',
+			'Projects/Owlat.old',
+		]);
+
+		vi.useFakeTimers({ now: Date.now() });
+		try {
+			await t.mutation(internal.mail.external.remoteFolderRename.recordRemoteFolderRename, {
+				opId: rename!.opId,
+				remoteName: 'Projects/Clients',
+				delimiter: '/',
+			});
+			await t.mutation(internal.mail.external.remoteOps.settleRemoteOps, {
+				results: [{ opId: rename!.opId, outcome: 'done' }],
+			});
+			// The worker restarts before the continuation runs. The rename is
+			// recorded, so there is nothing for it to report again.
+			expect(
+				await t.query(internal.mail.external.remoteFolderRename.listQueuedFolderRenames, {
+					accountId,
+				})
+			).toEqual([]);
+			const beforeRewrite = await drainQueue(t, accountId, provider);
+			expect(beforeRewrite.filter((op) => op.kind === 'delete')).toEqual([]);
+			expect(beforeRewrite.filter((op) => op.outcome !== 'done')).toEqual([]);
+			// Only the ops the rewrite has yet to reach wait.
+			expect(beforeRewrite.map((op) => op.source)).toContain('Projects/Owlat.old');
+
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		} finally {
+			vi.useRealTimers();
+		}
+
+		expect(await drainQueue(t, accountId, provider)).toEqual(
+			Array.from({ length: 5 }, () => ({
+				kind: 'delete',
+				source: 'Projects/Clients',
+				outcome: 'done',
+			}))
+		);
+		expect(await queued(t)).toEqual([]);
+	});
+
+	it('runs a second rename of the folder only once the first one has rewritten every op', async () => {
+		const { t, accountId, owlat } = await mirroredFolders();
+		await t.mutation(api.mail.folders.rename, { folderId: owlat, name: 'Clients' });
+		const [rename] = await t.query(internal.mail.external.remoteOps.listDueRemoteOps, {
+			accountId,
+		});
+		// While the worker renames it, the member renames the folder again, and
+		// changes are still recorded by the old name.
+		await t.mutation(api.mail.folders.rename, { folderId: owlat, name: 'Partners' });
+		await queueForOldName(t, accountId, 'delete', 5);
+		await queueForOldName(t, accountId, 'flags', 1000);
+		const provider = new Set([
+			'Projects',
+			'Projects/Clients',
+			'Projects/Clients/Sub',
+			'Projects/Owlat.old',
+		]);
+
+		vi.useFakeTimers({ now: Date.now() });
+		try {
+			await t.mutation(internal.mail.external.remoteFolderRename.recordRemoteFolderRename, {
+				opId: rename!.opId,
+				remoteName: 'Projects/Clients',
+				delimiter: '/',
+			});
+			await t.mutation(internal.mail.external.remoteOps.settleRemoteOps, {
+				results: [{ opId: rename!.opId, outcome: 'done' }],
+			});
+			const beforeRewrite = await drainQueue(t, accountId, provider);
+			expect(beforeRewrite.map((op) => op.kind)).not.toContain('renameFolder');
+			expect(provider).toContain('Projects/Clients');
+
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		} finally {
+			vi.useRealTimers();
+		}
+
+		const afterRewrite = await drainQueue(t, accountId, provider);
+		expect(afterRewrite.filter((op) => op.outcome !== 'done')).toEqual([]);
+		expect(afterRewrite.filter((op) => op.kind === 'delete')).toHaveLength(5);
+		expect(afterRewrite[afterRewrite.length - 1]).toEqual({
+			kind: 'renameFolder',
+			source: 'Projects/Clients',
+			outcome: 'done',
+		});
+		expect([...provider].sort()).toEqual([
+			'Projects',
+			'Projects/Owlat.old',
+			'Projects/Partners',
+			'Projects/Partners/Sub',
+		]);
+		expect(await mappedNames(t)).toEqual([...provider].sort());
+		expect(await queued(t)).toEqual([]);
+	});
 });

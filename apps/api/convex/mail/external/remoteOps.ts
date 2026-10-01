@@ -390,6 +390,14 @@ export const settleRemoteOps = internalMutation({
 		for (const result of args.results) {
 			const op = await ctx.db.get(result.opId);
 			if (!op) continue;
+			// A rename the worker reported, whose queued ops are still being
+			// rewritten: it stays until its last rewrite (remoteFolderRename.ts).
+			if (op.renameRewrite) {
+				if (op.renameRewrite.settledAt === undefined) {
+					await ctx.db.patch(op._id, { renameRewrite: { ...op.renameRewrite, settledAt: now } });
+				}
+				continue;
+			}
 			if (result.outcome !== 'failed') {
 				await ctx.db.delete(op._id);
 				continue;
