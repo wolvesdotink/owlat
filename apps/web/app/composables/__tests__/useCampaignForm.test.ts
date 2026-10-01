@@ -47,6 +47,7 @@ beforeEach(() => {
 	vi.stubGlobal('useTopicsList', () => paginated([{ _id: 'tp_1', name: 'Newsletter' }]));
 	vi.stubGlobal('useOrganizationPaginatedQuery', () => paginated());
 	vi.stubGlobal('useOrganizationQuery', () => ({ data: ref(undefined) }));
+	vi.stubGlobal('useConvex', () => null);
 	vi.stubGlobal('useUnsavedChanges', () => ({
 		showDialog: ref(false),
 		hasUnsavedChanges: guardDirty,

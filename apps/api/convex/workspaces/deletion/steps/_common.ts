@@ -173,6 +173,7 @@ export type OrganizationDeletionTable =
 	| 'webhookPayloads'
 	| 'automationStatShards'
 	| 'campaignSendJobs'
+	| 'audienceCountJobs'
 	| 'campaignStatShards'
 	| 'campaignSenders'
 	| 'sendDailyStats'
@@ -376,6 +377,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('webhookPayloads'),
 	v.literal('automationStatShards'),
 	v.literal('campaignSendJobs'),
+	v.literal('audienceCountJobs'),
 	v.literal('campaignStatShards'),
 	v.literal('campaignSenders'),
 	v.literal('sendDailyStats'),

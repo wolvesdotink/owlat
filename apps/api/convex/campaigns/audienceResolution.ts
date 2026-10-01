@@ -8,13 +8,15 @@
  * sibling `audienceCandidates.ts`. This file owns the PAGINATED walk and the
  * Convex entry points:
  *   - `resolveRecipientPage` — internalQuery, ONE page (the walker's hop).
- *   - `countRecipients`      — public query, accumulates integers by streaming,
- *                              capped at COUNT_CEILING.
+ *   - `countRecipients`      — public query, the wizard's readout: ONE budgeted
+ *                              page inline, else the resumable count job's
+ *                              state (`audienceCountJob.ts`, #916).
  *
  * The checkpointed send walker takes ONE page per scheduled hop via
- * `resolveRecipientPageImpl` (one `.paginate()` per execution); the count path
- * streams candidates because Convex allows a single `.paginate()` per function
- * execution. Both paths apply the identical eligibility predicate.
+ * `resolveRecipientPageImpl` (one `.paginate()` per execution), and so does
+ * the wizard count: its subscribed query reads the first page, and an audience
+ * that does not fit in it is counted by a job that walks the same pages. Both
+ * paths apply the identical eligibility predicate.
  *
  * The binding capacity pre-flight (`campaigns/capacityPreflight.ts`) calls
  * `countAudience` from `audienceCandidates.ts` directly, with its own ceiling
@@ -40,13 +42,19 @@ import {
 } from '../conditions';
 import type { ParsedSegmentFilters } from '../conditions';
 import {
-	countAudience,
 	selectRecipient,
 	SEND_PAGE_SIZE,
 	type AudienceCount,
 	type CampaignRecipient,
 	type SegmentFilters,
 } from './audienceCandidates';
+import {
+	audienceCountTarget,
+	findAudienceCountJob,
+	AUDIENCE_COUNT_MAX_AGE_MS,
+	AUDIENCE_COUNT_STALL_MS,
+	type AudienceCountBackground,
+} from './audienceCountState';
 
 /** One resolved page: the eligible recipients, the next cursor, the raw
  *  candidate count examined on this page. `nextCursor === null` ⇒ exhausted. */
@@ -128,7 +136,7 @@ async function pageSuppressionGate(
  * (topic memberships / segment matches), so summing it across pages preserves
  * the prior `total` semantics (`total - eligible` = honest excluded gap).
  */
-async function resolveRecipientPageImpl(
+export async function resolveRecipientPageImpl(
 	ctx: QueryCtx,
 	args: { audience: StoredAudience; cursor: string; numItems: number }
 ): Promise<ResolvedPage> {
@@ -253,15 +261,107 @@ export const resolveRecipientPage = internalQuery({
 	},
 });
 
-// ── Entry 1: accumulate integers. The wizard's audience-size readout. Runs
-// the IDENTICAL predicate (via the same candidate core) as resolveRecipientPage,
-// so `eligible` equals the delivered count; `total - eligible` is the honest
-// excluded gap. Capped at COUNT_CEILING — past the cap it stops streaming and
-// reports `completeness: 'candidate_capped'` so the wizard renders `25,000+`. ──
+/**
+ * Candidates the wizard readout resolves per execution, inline in the
+ * subscribed query and per step of the count job alike. One page of the send
+ * resolver, which also shrinks it to the per-page query/document budget.
+ */
+export const COUNT_PAGE_SIZE = 1_000;
+
+/** The wizard readout: the counts plus where the exact count stands. */
+export type RecipientCountReadout = AudienceCount & { background: AudienceCountBackground };
+
+/**
+ * The body of `countRecipients`, exported for the cost probe and tests.
+ *
+ * Every execution is bounded: at most one indexed job lookup plus ONE budgeted
+ * recipient page (`COUNT_PAGE_SIZE`, the page resolver's query and document
+ * budgets). It never streams the audience, so a 50,000-member topic or a
+ * zero-match segment over 100,000 contacts costs the same as a small one.
+ *
+ *  1. A job for this exact definition is complete → its exact totals.
+ *  2. A job is recounting → the previous complete result, still exact as of
+ *     its `countedAt`; a first count → its running totals, a lower bound.
+ *  3. Otherwise the first page inline: `exact` when it reached the end,
+ *     else a lower bound (`read_budget_exhausted`) and `unavailable`, which
+ *     tells the client to request a job.
+ *
+ * While a job exists the query does not read the page at all, so the reruns
+ * each committed step triggers cost a few documents, not a page.
+ */
+export async function countRecipientsForAudience(
+	ctx: QueryCtx,
+	audience: StoredAudience
+): Promise<RecipientCountReadout> {
+	const target = await audienceCountTarget(ctx, audience);
+	if (target === null) {
+		return { total: 0, eligible: 0, completeness: 'exact', background: { status: 'not_needed' } };
+	}
+	const job = await findAudienceCountJob(ctx, target);
+	if (job?.status === 'complete') {
+		const countedAt = job.completedAt ?? job.updatedAt;
+		return {
+			total: job.total,
+			eligible: job.eligible,
+			completeness: 'exact',
+			background: {
+				status: 'complete',
+				countedAt,
+				retryAfter: countedAt + AUDIENCE_COUNT_MAX_AGE_MS,
+			},
+		};
+	}
+	if (job?.status === 'counting' && job.lastCountedAt !== undefined) {
+		// A recount: keep serving the previous complete result (exact as of when
+		// it was taken) rather than running totals that start again from zero.
+		return {
+			total: job.lastTotal ?? 0,
+			eligible: job.lastEligible ?? 0,
+			completeness: 'exact',
+			background: {
+				status: 'complete',
+				countedAt: job.lastCountedAt,
+				retryAfter: job.updatedAt + AUDIENCE_COUNT_STALL_MS,
+				recounting: true,
+			},
+		};
+	}
+	if (job?.status === 'counting') {
+		return {
+			total: job.total,
+			eligible: job.eligible,
+			completeness: 'read_budget_exhausted',
+			background: {
+				status: 'counting',
+				startedAt: job.startedAt,
+				retryAfter: job.updatedAt + AUDIENCE_COUNT_STALL_MS,
+			},
+		};
+	}
+	const page = await resolveRecipientPageImpl(ctx, {
+		audience: target.audience,
+		cursor: '',
+		numItems: COUNT_PAGE_SIZE,
+	});
+	const reachedEnd = page.nextCursor === null;
+	return {
+		total: page.pageCandidates,
+		eligible: page.recipients.length,
+		completeness: reachedEnd ? 'exact' : 'read_budget_exhausted',
+		background: reachedEnd ? { status: 'not_needed' } : { status: 'unavailable' },
+	};
+}
+
+// ── Entry 1: the wizard's audience-size readout. Runs the IDENTICAL predicate
+// (the same page resolver) as the send walk, so `eligible` equals the delivered
+// count; `total - eligible` is the honest excluded gap. Bounded per execution;
+// an audience past one page is counted by `audienceCountJob.ts` (#916). ──
 export const countRecipients = campaignsQuery({
 	args: { audience: v.optional(audienceValidator) },
-	handler: async (ctx, { audience }): Promise<AudienceCount> => {
-		if (!audience) return { total: 0, eligible: 0, completeness: 'exact' };
-		return await countAudience(ctx, audience);
+	handler: async (ctx, { audience }): Promise<RecipientCountReadout> => {
+		if (!audience) {
+			return { total: 0, eligible: 0, completeness: 'exact', background: { status: 'not_needed' } };
+		}
+		return await countRecipientsForAudience(ctx, audience);
 	},
 });
