@@ -311,7 +311,7 @@ describe('which mailbox a purge deletes', () => {
 });
 
 describe('what a purge takes with the mailbox', () => {
-	it("deletes the threads' catch-up cards and the drafts' ask sessions", async () => {
+	it("deletes the threads' catch-up cards and held uploads, and the drafts' ask sessions", async () => {
 		const t = convexTest(schema, modules);
 		await enableExternal(t);
 		setSession('user-A', 'owner');
@@ -381,7 +381,16 @@ describe('what a purge takes with the mailbox', () => {
 				createdAt: now,
 				updatedAt: now,
 			});
-			return { catchUpId, sessionId, streamId };
+			// A Reply Queue answer's upload the thread holds (storage/uploads.ts).
+			const heldBlob = await ctx.storage.store(new Blob(['%PDF']));
+			const heldReceipt = await ctx.db.insert('storageUploads', {
+				userId: 'user-A',
+				organizationId: 'org-1',
+				status: 'bound',
+				storageId: heldBlob,
+				resourceKey: `mailThreads:${threadId}`,
+			});
+			return { catchUpId, sessionId, streamId, heldBlob, heldReceipt };
 		});
 		await t.mutation(api.mail.external.accounts.disconnect, {});
 
@@ -391,8 +400,16 @@ describe('what a purge takes with the mailbox', () => {
 			catchUp: await ctx.db.get(seeded.catchUpId),
 			session: await ctx.db.get(seeded.sessionId),
 			stream: await ctx.db.get(seeded.streamId),
+			heldReceipt: await ctx.db.get(seeded.heldReceipt),
+			heldBlob: await ctx.storage.get(seeded.heldBlob),
 		}));
-		expect(left).toEqual({ catchUp: null, session: null, stream: null });
+		expect(left).toEqual({
+			catchUp: null,
+			session: null,
+			stream: null,
+			heldReceipt: null,
+			heldBlob: null,
+		});
 	});
 });
 

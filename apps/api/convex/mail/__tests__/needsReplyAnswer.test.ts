@@ -499,7 +499,7 @@ describe('mail.needsReplyClarify.answerClarification — Answer mode', () => {
 			return draftId;
 		}
 
-		it("a member's upload stays unclaimed until the draft binds it", async () => {
+		it("a member's upload is held by the thread until the draft takes it over", async () => {
 			const t = convexTest(schema, modules);
 			await enableFeatures(t, ['mail.external']);
 			const threadId = await seedThreadWithClarification(t, 'user-A', [fileQuestion]);
@@ -514,7 +514,29 @@ describe('mail.needsReplyClarify.answerClarification — Answer mode', () => {
 				],
 			});
 
-			const prepared = await t.query(api.mail.needsReplyPrepared.getPreparedDraft, { threadId });
+			// Held by the thread, so it outlives its upload receipt's hour.
+			const held = await t.run(async (ctx) =>
+				ctx.db
+					.query('storageUploads')
+					.withIndex('by_storage', (q) => q.eq('storageId', storageId))
+					.unique()
+			);
+			expect(held).toMatchObject({ status: 'bound', resourceKey: `mailThreads:${threadId}` });
+			const draftContext = await t.query(
+				internal.mail.ai.needsReplyClarify.getClarificationContext,
+				{
+					threadId,
+				}
+			);
+			expect(draftContext?.fileNotes).toContain('"inv.pdf" will be attached');
+			vi.useFakeTimers({ toFake: ['Date'] });
+			vi.setSystemTime(Date.now() + 2 * 60 * 60 * 1000);
+			let prepared;
+			try {
+				prepared = await t.query(api.mail.needsReplyPrepared.getPreparedDraft, { threadId });
+			} finally {
+				vi.useRealTimers();
+			}
 			expect(prepared?.files).toEqual([{ source: 'upload', id: storageId, filename: 'inv.pdf' }]);
 
 			const draftId = await replyDraftFor(t, threadId);
@@ -528,6 +550,13 @@ describe('mail.needsReplyClarify.answerClarification — Answer mode', () => {
 			});
 			const draft = await t.run(async (ctx) => (await ctx.db.get(draftId))!);
 			expect(draft.attachments.map((a) => a.storageId)).toEqual([storageId]);
+			const moved = await t.run(async (ctx) =>
+				ctx.db
+					.query('storageUploads')
+					.withIndex('by_storage', (q) => q.eq('storageId', storageId))
+					.unique()
+			);
+			expect(moved?.resourceKey).toBe(`mailDrafts:${draftId}`);
 			// Bound now, so the prepared reply stops offering it.
 			const after = await t.query(api.mail.needsReplyPrepared.getPreparedDraft, { threadId });
 			expect(after?.files).toEqual([]);

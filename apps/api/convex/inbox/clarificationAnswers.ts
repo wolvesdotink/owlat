@@ -106,8 +106,9 @@ const MAX_NOTE_FILENAME_CHARS = 120;
  * `attached` (the team inbox, where the answer puts the file on the reply in
  * the same transaction) says the file is attached. `pending` (the Postbox
  * Reply Queue, where no draft exists yet and the web attaches the file when it
- * applies the prepared reply) says it will be, and leaves out a bare upload:
- * nothing keeps an upload alive until then, so the reply must not promise it.
+ * applies the prepared reply, `needsReplyPrepared.getPreparedDraft` `files`)
+ * says it will be. A bare upload is held by the thread meanwhile, so the note
+ * and `files` name the same files.
  */
 export function buildFileAnswerNotes(
 	questions: ReadonlyArray<{
@@ -118,7 +119,7 @@ export function buildFileAnswerNotes(
 	const lines: string[] = [];
 	for (const q of questions) {
 		const file = q.answer?.file;
-		if (!file || (mode === 'pending' && file.source === 'upload')) continue;
+		if (!file) continue;
 		const filename = file.filename
 			.replace(/[\r\n"]+/g, ' ')
 			.trim()

@@ -19,5 +19,8 @@ export const storageTables = {
 	})
 		.index('by_token', ['token'])
 		.index('by_storage', ['storageId'])
-		.index('by_expiry', ['expiresAt']),
+		.index('by_expiry', ['expiresAt'])
+		// Blobs bound to a resource that is about to go (a mail thread's Reply
+		// Queue answer uploads), found by key when the resource is deleted.
+		.index('by_resource', ['resourceKey']),
 };

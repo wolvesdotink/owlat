@@ -49,6 +49,7 @@ import { deleteStoredAccessToken } from '../mail/external/accessTokenStore';
 import { isPersonalMailbox } from '../mail/permissions';
 import { deleteAskSessionsForDraft, deleteAskSessionsOfOwner } from '../mail/ai/composeDraftStore';
 import { deleteMailThreadCatchUps } from '../mail/ai/catchUpStore';
+import { deleteResourceUploads, mailThreadUploadKey } from '../storage/uploads';
 
 const MESSAGE_BATCH = 100;
 const CHAT_PAGE = 200;
@@ -213,6 +214,7 @@ export const eraseMemberData = internalMutation({
 			for (const thread of threads) {
 				// Answer mode catch-up cards retell the thread: they go with it.
 				await deleteMailThreadCatchUps(ctx, thread._id);
+				await deleteResourceUploads(ctx, mailThreadUploadKey(thread._id));
 				await ctx.db.delete(thread._id);
 			}
 
