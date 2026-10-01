@@ -42,6 +42,7 @@ const {
 	data: controls,
 	isLoading,
 	error,
+	refetch,
 } = useOrganizationQuery(api.delivery.rampControlQueries.getRampControls);
 /**
  * The evidence read, WITH its own states. "No measurements have been recorded
@@ -132,6 +133,7 @@ function select(cellKey: string): void {
 		<UiQueryBoundary
 			:loading="isLoading"
 			:error="error"
+			@retry="refetch"
 			:error-title="t('dashboard.admin.delivery.advanced.cells.errorTitle')"
 			:error-message="t('dashboard.admin.delivery.advanced.cells.errorMessage')"
 		>

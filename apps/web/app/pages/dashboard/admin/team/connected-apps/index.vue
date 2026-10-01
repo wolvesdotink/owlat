@@ -22,6 +22,7 @@ const {
 	data: apps,
 	isLoading,
 	error,
+	refetch,
 } = useConvexQuery(api.connectedApps.queries.listByTeam, () => (isAdmin.value ? {} : 'skip'));
 
 // The plugins a new app can bind to, derived from the build-time composition.
@@ -218,7 +219,7 @@ function testIcon(outcome: TestResult['outcome']): string {
 			</p>
 		</UiCard>
 
-		<UiQueryBoundary v-else :loading="isLoading && !apps" :error="error">
+		<UiQueryBoundary v-else :loading="isLoading && !apps" :error="error" @retry="refetch">
 			<!-- Empty -->
 			<UiCard v-if="!apps || apps.length === 0">
 				<UiEmptyState
@@ -282,7 +283,10 @@ function testIcon(outcome: TestResult['outcome']): string {
 							]"
 						>
 							<template v-if="testingId === app._id">
-								<Icon name="lucide:loader-2" class="w-4 h-4 shrink-0 mt-0.5 animate-spin motion-reduce:animate-none" />
+								<Icon
+									name="lucide:loader-2"
+									class="w-4 h-4 shrink-0 mt-0.5 animate-spin motion-reduce:animate-none"
+								/>
 								<span>{{ t('dashboard.admin.team.connectedApps.index.testing') }}</span>
 							</template>
 							<template v-else-if="testResults[app._id]">

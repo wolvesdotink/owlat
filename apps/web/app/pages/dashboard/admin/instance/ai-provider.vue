@@ -18,6 +18,7 @@ const {
 	config,
 	isLoading,
 	error,
+	refetch,
 	isSaving,
 	isTesting,
 	isLoadingModels,
@@ -151,7 +152,7 @@ watch(isDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 			</div>
 		</div>
 
-		<UiQueryBoundary :loading="isLoading && !config" :error="error">
+		<UiQueryBoundary :loading="isLoading && !config" :error="error" @retry="refetch">
 			<!--
 				First load: a content-shaped placeholder at the geometry of the
 				provider cards below, rather than a centred spinner that blanks

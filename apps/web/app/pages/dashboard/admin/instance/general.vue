@@ -37,6 +37,7 @@ const {
 	data: organizationSettings,
 	isLoading: organizationSettingsLoading,
 	error: organizationSettingsError,
+	refetch: refetchOrganizationSettings,
 } = useOrganizationQuery(api.workspaces.settings.get);
 
 // Verified sending domains — used to warn when the Default From Email's domain
@@ -216,6 +217,7 @@ const timezones = computed(() => instanceTimezoneSelectOptions(t));
 		<UiQueryBoundary
 			:loading="isLoading && !organizationSettings"
 			:error="organizationSettingsError"
+			@retry="refetchOrganizationSettings"
 		>
 			<template #loading>
 				<DashboardDetailSkeleton

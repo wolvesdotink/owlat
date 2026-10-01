@@ -63,6 +63,7 @@ const {
 	data: auditLogsData,
 	isLoading: auditLogsLoading,
 	error: auditLogsError,
+	refetch: refetchAuditLogs,
 } = useOrganizationQuery(api.auditLogs.list, () => ({
 	action: selectedAction.value || undefined,
 	resource: selectedResource.value || undefined,
@@ -176,7 +177,9 @@ const dateRangeOptions = computed(() => [
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
 			<UiIconBox icon="lucide:lock" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.audit.adminGate.title') }}</p>
+			<p class="text-text-secondary font-medium">
+				{{ t('dashboard.admin.team.audit.adminGate.title') }}
+			</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 				{{ t('dashboard.admin.team.audit.adminGate.description') }}
 			</p>
@@ -186,6 +189,7 @@ const dateRangeOptions = computed(() => [
 			v-else
 			:loading="isLoading && accumulatedLogs.length === 0"
 			:error="auditLogsError"
+			@retry="refetchAuditLogs"
 			:error-title="t('dashboard.admin.team.audit.errorTitle')"
 		>
 			<!-- First-load skeleton (shaped like the audit-log table). Gated on the
@@ -212,7 +216,9 @@ const dateRangeOptions = computed(() => [
 					rounded="full"
 					class="mb-4"
 				/>
-				<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.audit.noWorkspace.title') }}</p>
+				<p class="text-text-secondary font-medium">
+					{{ t('dashboard.admin.team.audit.noWorkspace.title') }}
+				</p>
 				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 					{{ t('dashboard.admin.team.audit.noWorkspace.description') }}
 				</p>
@@ -223,13 +229,19 @@ const dateRangeOptions = computed(() => [
 				<!-- Stats Cards -->
 				<div v-if="statsData" class="grid grid-cols-2 md:grid-cols-4 gap-4">
 					<div class="card p-4">
-						<p class="text-sm text-text-secondary">{{ t('dashboard.admin.team.audit.stats.totalActions') }}</p>
-						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">{{ statsData.total }}</p>
+						<p class="text-sm text-text-secondary">
+							{{ t('dashboard.admin.team.audit.stats.totalActions') }}
+						</p>
+						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">
+							{{ statsData.total }}
+						</p>
 					</div>
 					<div class="card p-4">
 						<div class="flex items-center gap-2">
 							<Icon name="lucide:send" class="w-4 h-4 text-brand" />
-							<p class="text-sm text-text-secondary">{{ t('dashboard.admin.team.audit.stats.campaigns') }}</p>
+							<p class="text-sm text-text-secondary">
+								{{ t('dashboard.admin.team.audit.stats.campaigns') }}
+							</p>
 						</div>
 						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">
 							{{ statsData.byResource['campaign'] ?? 0 }}
@@ -238,7 +250,9 @@ const dateRangeOptions = computed(() => [
 					<div class="card p-4">
 						<div class="flex items-center gap-2">
 							<Icon name="lucide:users" class="w-4 h-4 text-brand" />
-							<p class="text-sm text-text-secondary">{{ t('dashboard.admin.team.audit.stats.contacts') }}</p>
+							<p class="text-sm text-text-secondary">
+								{{ t('dashboard.admin.team.audit.stats.contacts') }}
+							</p>
 						</div>
 						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">
 							{{ statsData.byResource['contact'] ?? 0 }}
@@ -366,7 +380,9 @@ const dateRangeOptions = computed(() => [
 						rounded="full"
 						class="mb-4"
 					/>
-					<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.audit.empty.title') }}</p>
+					<p class="text-text-secondary font-medium">
+						{{ t('dashboard.admin.team.audit.empty.title') }}
+					</p>
 					<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 						{{ t('dashboard.admin.team.audit.empty.description') }}
 					</p>
@@ -378,7 +394,9 @@ const dateRangeOptions = computed(() => [
 					class="card flex flex-col items-center justify-center py-16 text-center px-6"
 				>
 					<UiIconBox icon="lucide:search" size="xl" variant="surface" rounded="full" class="mb-4" />
-					<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.audit.noResults.title') }}</p>
+					<p class="text-text-secondary font-medium">
+						{{ t('dashboard.admin.team.audit.noResults.title') }}
+					</p>
 					<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 						{{ t('dashboard.admin.team.audit.noResults.description', { query: searchQuery }) }}
 					</p>

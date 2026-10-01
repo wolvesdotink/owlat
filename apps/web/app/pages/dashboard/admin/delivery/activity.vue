@@ -25,6 +25,7 @@ const {
 	timeline,
 	isLoading,
 	error,
+	refetch,
 	channelFilter,
 	channels,
 	channelIcon,
@@ -162,6 +163,7 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 		<UiQueryBoundary
 			:loading="isLoading && !timeline.length"
 			:error="error"
+			@retry="refetch"
 			:empty="timeline.length === 0"
 			:error-title="t('dashboard.inbox.activity.errorTitle')"
 			:loading-label="t('dashboard.inbox.activity.loadingLabel')"

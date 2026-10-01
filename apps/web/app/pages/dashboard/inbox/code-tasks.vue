@@ -16,6 +16,7 @@ const {
 	data: tasks,
 	isLoading,
 	error,
+	refetch,
 } = useConvexQuery(api.codeWorkTasks.listRecent, () => ({ limit: 50 }));
 
 // Manual code-task creation. The backend mutation (api.codeWorkTasks.create) is
@@ -91,6 +92,7 @@ const handleCreate = async () => {
 		<UiQueryBoundary
 			:loading="isLoading"
 			:error="error"
+			@retry="refetch"
 			:empty="!tasks || tasks.length === 0"
 			:error-title="t('dashboard.inbox.codeTasks.errorTitle')"
 			:error-message="t('dashboard.inbox.codeTasks.errorMessage')"

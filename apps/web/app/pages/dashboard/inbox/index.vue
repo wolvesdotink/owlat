@@ -50,6 +50,7 @@ const {
 	threads,
 	threadsLoading,
 	threadsError,
+	retryThreads,
 	hasMoreThreads,
 	stats,
 	loadMoreThreads,
@@ -318,6 +319,7 @@ const showOldestFirst = () => setSort('oldest-waiting');
 			<UiQueryBoundary
 				:loading="threadsLoading && threads.length === 0"
 				:error="threadsError"
+				@retry="retryThreads"
 				:empty="visibleThreads.length === 0"
 				:error-title="t('dashboard.inbox.index.errorTitle')"
 			>
