@@ -42,4 +42,132 @@ These are illustrative wireframes, **not implemented after screenshots**. Every 
 | P1 | Chat and Assistant: do not send messages while Enter confirms IME composition | [PNG](proposals/composer-ime-enter.png) · [SVG](proposals/composer-ime-enter.svg) |
 | P2 | Schedule send: explain invalid custom times and show the scheduling timezone | [PNG](proposals/schedule-validation.png) · [SVG](proposals/schedule-validation.svg) |
 
-The issue register will be added after the individual tickets are published.
+## Issues
+
+| Priority | Issue |
+| --- | --- |
+| P1 | [#1042 — CSV import: resolve conflicting identity mappings before preview and submission](https://github.com/wolvesdotink/owlat/issues/1042) |
+| P1 | [#1043 — Automations: make save status and activation reflect the persisted configuration](https://github.com/wolvesdotink/owlat/issues/1043) |
+| P2 | [#1044 — Automations: preserve pending or failed step edits across inspector and structure changes](https://github.com/wolvesdotink/owlat/issues/1044) |
+| P2 | [#1045 — Automation builder: support keyboard step selection and reordering](https://github.com/wolvesdotink/owlat/issues/1045) |
+| P2 | [#1046 — Automation builder: replace the fixed inspector with a responsive sheet on narrow screens](https://github.com/wolvesdotink/owlat/issues/1046) |
+| P2 | [#1047 — Campaign and automation template pickers: search and select templates beyond the first page](https://github.com/wolvesdotink/owlat/issues/1047) |
+| P2 | [#1048 — Campaign creation: compose new email content before advancing to review](https://github.com/wolvesdotink/owlat/issues/1048) |
+| P1 | [#1049 — Assistant: retain questions until send succeeds and offer inline retry](https://github.com/wolvesdotink/owlat/issues/1049) |
+| P2 | [#1050 — Assistant: preserve reading position while responses stream](https://github.com/wolvesdotink/owlat/issues/1050) |
+| P2 | [#1051 — Assistant: make conversation selection and the question field accessible](https://github.com/wolvesdotink/owlat/issues/1051) |
+| P1 | [#1052 — Chat and Assistant: do not send messages while Enter confirms IME composition](https://github.com/wolvesdotink/owlat/issues/1052) |
+| P2 | [#1053 — Schedule send: explain invalid custom times and show the scheduling timezone](https://github.com/wolvesdotink/owlat/issues/1053) |
+
+[Open the visual gallery](gallery.html) (download and open locally for the interactive filters).
+
+## Gallery
+
+<details>
+<summary>#1042 · CSV import: resolve conflicting identity mappings before preview and submission</summary>
+
+![csv identity mapping](proposals/csv-identity-mapping.png)
+
+[Issue](https://github.com/wolvesdotink/owlat/issues/1042) · [Editable SVG](proposals/csv-identity-mapping.svg)
+
+</details>
+
+<details>
+<summary>#1043 · Automations: make save status and activation reflect the persisted configuration</summary>
+
+![automation save activation](proposals/automation-save-activation.png)
+
+[Issue](https://github.com/wolvesdotink/owlat/issues/1043) · [Editable SVG](proposals/automation-save-activation.svg)
+
+</details>
+
+<details>
+<summary>#1044 · Automations: preserve pending or failed step edits across inspector and structure changes</summary>
+
+![automation draft preservation](proposals/automation-draft-preservation.png)
+
+[Issue](https://github.com/wolvesdotink/owlat/issues/1044) · [Editable SVG](proposals/automation-draft-preservation.svg)
+
+</details>
+
+<details>
+<summary>#1045 · Automation builder: support keyboard step selection and reordering</summary>
+
+![automation keyboard](proposals/automation-keyboard.png)
+
+[Issue](https://github.com/wolvesdotink/owlat/issues/1045) · [Editable SVG](proposals/automation-keyboard.svg)
+
+</details>
+
+<details>
+<summary>#1046 · Automation builder: replace the fixed inspector with a responsive sheet on narrow screens</summary>
+
+![automation responsive](proposals/automation-responsive.png)
+
+[Issue](https://github.com/wolvesdotink/owlat/issues/1046) · [Editable SVG](proposals/automation-responsive.svg)
+
+</details>
+
+<details>
+<summary>#1047 · Campaign and automation template pickers: search and select templates beyond the first page</summary>
+
+![template picker pagination](proposals/template-picker-pagination.png)
+
+[Issue](https://github.com/wolvesdotink/owlat/issues/1047) · [Editable SVG](proposals/template-picker-pagination.svg)
+
+</details>
+
+<details>
+<summary>#1048 · Campaign creation: compose new email content before advancing to review</summary>
+
+![campaign compose continuity](proposals/campaign-compose-continuity.png)
+
+[Issue](https://github.com/wolvesdotink/owlat/issues/1048) · [Editable SVG](proposals/campaign-compose-continuity.svg)
+
+</details>
+
+<details>
+<summary>#1049 · Assistant: retain questions until send succeeds and offer inline retry</summary>
+
+![assistant draft recovery](proposals/assistant-draft-recovery.png)
+
+[Issue](https://github.com/wolvesdotink/owlat/issues/1049) · [Editable SVG](proposals/assistant-draft-recovery.svg)
+
+</details>
+
+<details>
+<summary>#1050 · Assistant: preserve reading position while responses stream</summary>
+
+![assistant reading position](proposals/assistant-reading-position.png)
+
+[Issue](https://github.com/wolvesdotink/owlat/issues/1050) · [Editable SVG](proposals/assistant-reading-position.svg)
+
+</details>
+
+<details>
+<summary>#1051 · Assistant: make conversation selection and the question field accessible</summary>
+
+![assistant keyboard access](proposals/assistant-keyboard-access.png)
+
+[Issue](https://github.com/wolvesdotink/owlat/issues/1051) · [Editable SVG](proposals/assistant-keyboard-access.svg)
+
+</details>
+
+<details>
+<summary>#1052 · Chat and Assistant: do not send messages while Enter confirms IME composition</summary>
+
+![composer ime enter](proposals/composer-ime-enter.png)
+
+[Issue](https://github.com/wolvesdotink/owlat/issues/1052) · [Editable SVG](proposals/composer-ime-enter.svg)
+
+</details>
+
+<details>
+<summary>#1053 · Schedule send: explain invalid custom times and show the scheduling timezone</summary>
+
+![schedule validation](proposals/schedule-validation.png)
+
+[Issue](https://github.com/wolvesdotink/owlat/issues/1053) · [Editable SVG](proposals/schedule-validation.svg)
+
+</details>
+

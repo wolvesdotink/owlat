@@ -1,0 +1,86 @@
+[
+  {
+    "slug": "csv-identity-mapping",
+    "title": "[P1] CSV import: resolve conflicting identity mappings before preview and submission",
+    "priority": "P1",
+    "url": "https://github.com/wolvesdotink/owlat/issues/1042",
+    "number": 1042
+  },
+  {
+    "slug": "automation-save-activation",
+    "title": "[P1] Automations: make save status and activation reflect the persisted configuration",
+    "priority": "P1",
+    "url": "https://github.com/wolvesdotink/owlat/issues/1043",
+    "number": 1043
+  },
+  {
+    "slug": "automation-draft-preservation",
+    "title": "[P2] Automations: preserve pending or failed step edits across inspector and structure changes",
+    "priority": "P2",
+    "url": "https://github.com/wolvesdotink/owlat/issues/1044",
+    "number": 1044
+  },
+  {
+    "slug": "automation-keyboard",
+    "title": "[P2] Automation builder: support keyboard step selection and reordering",
+    "priority": "P2",
+    "url": "https://github.com/wolvesdotink/owlat/issues/1045",
+    "number": 1045
+  },
+  {
+    "slug": "automation-responsive",
+    "title": "[P2] Automation builder: replace the fixed inspector with a responsive sheet on narrow screens",
+    "priority": "P2",
+    "url": "https://github.com/wolvesdotink/owlat/issues/1046",
+    "number": 1046
+  },
+  {
+    "slug": "template-picker-pagination",
+    "title": "[P2] Campaign and automation template pickers: search and select templates beyond the first page",
+    "priority": "P2",
+    "url": "https://github.com/wolvesdotink/owlat/issues/1047",
+    "number": 1047
+  },
+  {
+    "slug": "campaign-compose-continuity",
+    "title": "[P2] Campaign creation: compose new email content before advancing to review",
+    "priority": "P2",
+    "url": "https://github.com/wolvesdotink/owlat/issues/1048",
+    "number": 1048
+  },
+  {
+    "slug": "assistant-draft-recovery",
+    "title": "[P1] Assistant: retain questions until send succeeds and offer inline retry",
+    "priority": "P1",
+    "url": "https://github.com/wolvesdotink/owlat/issues/1049",
+    "number": 1049
+  },
+  {
+    "slug": "assistant-reading-position",
+    "title": "[P2] Assistant: preserve reading position while responses stream",
+    "priority": "P2",
+    "url": "https://github.com/wolvesdotink/owlat/issues/1050",
+    "number": 1050
+  },
+  {
+    "slug": "assistant-keyboard-access",
+    "title": "[P2] Assistant: make conversation selection and the question field accessible",
+    "priority": "P2",
+    "url": "https://github.com/wolvesdotink/owlat/issues/1051",
+    "number": 1051
+  },
+  {
+    "slug": "composer-ime-enter",
+    "title": "[P1] Chat and Assistant: do not send messages while Enter confirms IME composition",
+    "priority": "P1",
+    "url": "https://github.com/wolvesdotink/owlat/issues/1052",
+    "number": 1052
+  },
+  {
+    "slug": "schedule-validation",
+    "title": "[P2] Schedule send: explain invalid custom times and show the scheduling timezone",
+    "priority": "P2",
+    "url": "https://github.com/wolvesdotink/owlat/issues/1053",
+    "number": 1053
+  }
+]

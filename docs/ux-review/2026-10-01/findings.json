@@ -54,7 +54,9 @@
     "current_images": [
       "csv-mapping",
       "csv-preview"
-    ]
+    ],
+    "issue_url": "https://github.com/wolvesdotink/owlat/issues/1042",
+    "issue_number": 1042
   },
   {
     "slug": "automation-save-activation",
@@ -103,7 +105,9 @@
     "related": [],
     "current_images": [
       "automation-desktop"
-    ]
+    ],
+    "issue_url": "https://github.com/wolvesdotink/owlat/issues/1043",
+    "issue_number": 1043
   },
   {
     "slug": "automation-draft-preservation",
@@ -147,7 +151,9 @@
     "related": [],
     "current_images": [
       "automation-desktop"
-    ]
+    ],
+    "issue_url": "https://github.com/wolvesdotink/owlat/issues/1044",
+    "issue_number": 1044
   },
   {
     "slug": "automation-keyboard",
@@ -191,7 +197,9 @@
     "related": [],
     "current_images": [
       "automation-desktop"
-    ]
+    ],
+    "issue_url": "https://github.com/wolvesdotink/owlat/issues/1045",
+    "issue_number": 1045
   },
   {
     "slug": "automation-responsive",
@@ -236,7 +244,9 @@
     "current_images": [
       "automation-mobile",
       "automation-desktop"
-    ]
+    ],
+    "issue_url": "https://github.com/wolvesdotink/owlat/issues/1046",
+    "issue_number": 1046
   },
   {
     "slug": "template-picker-pagination",
@@ -285,7 +295,9 @@
     "related": [
       "https://github.com/wolvesdotink/owlat/issues/721"
     ],
-    "current_images": []
+    "current_images": [],
+    "issue_url": "https://github.com/wolvesdotink/owlat/issues/1047",
+    "issue_number": 1047
   },
   {
     "slug": "campaign-compose-continuity",
@@ -342,7 +354,9 @@
     ],
     "validation": "Source-confirmed wizard flow and missing-body backend refusal; the proposed compose and preview interaction is a design improvement. Reviewed newWizardUrlState tests: they stub Content and verify URL reachability, not composition or body readiness.",
     "related": [],
-    "current_images": []
+    "current_images": [],
+    "issue_url": "https://github.com/wolvesdotink/owlat/issues/1048",
+    "issue_number": 1048
   },
   {
     "slug": "assistant-draft-recovery",
@@ -386,7 +400,9 @@
     "related": [],
     "current_images": [
       "assistant-failed-send"
-    ]
+    ],
+    "issue_url": "https://github.com/wolvesdotink/owlat/issues/1049",
+    "issue_number": 1049
   },
   {
     "slug": "assistant-reading-position",
@@ -425,7 +441,9 @@
     "related": [],
     "current_images": [
       "assistant-desktop"
-    ]
+    ],
+    "issue_url": "https://github.com/wolvesdotink/owlat/issues/1050",
+    "issue_number": 1050
   },
   {
     "slug": "assistant-keyboard-access",
@@ -469,7 +487,9 @@
     "related": [],
     "current_images": [
       "assistant-desktop"
-    ]
+    ],
+    "issue_url": "https://github.com/wolvesdotink/owlat/issues/1051",
+    "issue_number": 1051
   },
   {
     "slug": "composer-ime-enter",
@@ -508,7 +528,9 @@
     "related": [],
     "current_images": [
       "assistant-desktop"
-    ]
+    ],
+    "issue_url": "https://github.com/wolvesdotink/owlat/issues/1052",
+    "issue_number": 1052
   },
   {
     "slug": "schedule-validation",
@@ -555,6 +577,8 @@
     ],
     "validation": "Source-confirmed custom-time validation and missing label/timezone context. No real outbound scheduling performed.",
     "related": [],
-    "current_images": []
+    "current_images": [],
+    "issue_url": "https://github.com/wolvesdotink/owlat/issues/1053",
+    "issue_number": 1053
   }
 ]
