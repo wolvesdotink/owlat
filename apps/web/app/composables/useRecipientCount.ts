@@ -58,7 +58,8 @@ const MAX_RECHECK_MS = 60 * 60_000;
  * audience bigger than that it returns a lower bound and says no exact count
  * exists (`background.status === 'unavailable'`); this composable then asks the
  * backend to count it in bounded background steps, once per audience and
- * state. The job is keyed by the audience definition on the server, so two
+ * state (an audience that drops back to "unavailable" after any other reading,
+ * because its definition changed or its job was abandoned, is asked again). The job is keyed by the audience definition on the server, so two
  * open wizards share one count, and the query switches to the job's running
  * and then exact totals on its own.
  *
@@ -91,6 +92,15 @@ export function useRecipientCount(audience: () => CountAudience | null | undefin
 			// A server one release behind returns no `background`: no job to ask for.
 			const background = count.background as RecipientCount['background'] | undefined;
 			if (!background) return;
+			// An "unavailable" reading is asked about once. Any other reading means
+			// the server has (or no longer needs) a count for that state, so a later
+			// "unavailable" is new: the definition was edited, or the job row was
+			// abandoned or cleaned up. Forget the old ask so it is requested again.
+			if (background.status !== 'unavailable') {
+				for (const token of asked) {
+					if (JSON.parse(token)[1] === 'unavailable') asked.delete(token);
+				}
+			}
 			const now = Date.now();
 			if (!wantsExactCount(count, now)) {
 				if ('retryAfter' in background) {

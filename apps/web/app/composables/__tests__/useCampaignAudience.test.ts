@@ -144,6 +144,51 @@ describe('useCampaignAudience', () => {
 	});
 });
 
+describe('useRecipientCount — a definition edit under an open page (#916)', () => {
+	it('asks again when an audience drops back to unavailable after a finished count', async () => {
+		const state = useCampaignAudience();
+		state.audienceType.value = 'segment';
+		state.selectedSegmentId.value = segmentId;
+		await nextTick();
+		// 1. A big live segment, no job yet.
+		countData.value = {
+			total: 1_000,
+			eligible: 900,
+			completeness: 'read_budget_exhausted',
+			background: { status: 'unavailable' },
+		};
+		await nextTick();
+		expect(requestCount).toHaveBeenCalledOnce();
+
+		// 2. The job completes.
+		const now = Date.now();
+		countData.value = {
+			total: 5_000,
+			eligible: 4_000,
+			completeness: 'exact',
+			background: { status: 'complete', countedAt: now, retryAfter: now + 900_000 },
+		};
+		await nextTick();
+		expect(requestCount).toHaveBeenCalledOnce();
+
+		// 3. A teammate edits the segment's filters: new definition key, no job row.
+		countData.value = {
+			total: 1_000,
+			eligible: 800,
+			completeness: 'read_budget_exhausted',
+			background: { status: 'unavailable' },
+		};
+		await nextTick();
+		expect(requestCount).toHaveBeenCalledTimes(2);
+		expect(requestCount.mock.calls[1]?.[1]).toEqual({ audience: { kind: 'segment', segmentId } });
+
+		// A rerun of that same reading still asks only once.
+		countData.value = { ...(countData.value as object) };
+		await nextTick();
+		expect(requestCount).toHaveBeenCalledTimes(2);
+	});
+});
+
 describe('useRecipientCount — a stalled count is re-requested without new data (#916)', () => {
 	it('re-checks at retryAfter even when the readout never changes', async () => {
 		vi.useFakeTimers();
