@@ -14,10 +14,11 @@ vi.mock('@owlat/desktop/src/workspace', () => ({
 	loadWorkspaceStore: () => loadWorkspaceStore(),
 }));
 
-const secretSet = vi.fn(async () => {});
-const secretDelete = vi.fn(async () => {});
+const secretGet = vi.fn(async (..._a: unknown[]): Promise<string | null> => null);
+const secretSet = vi.fn(async (..._a: unknown[]) => {});
+const secretDelete = vi.fn(async (..._a: unknown[]) => {});
 vi.mock('@owlat/desktop/src/keychain', () => ({
-	secretGet: vi.fn(async () => null),
+	secretGet: (...a: unknown[]) => secretGet(...a),
 	secretSet: (...a: unknown[]) => secretSet(...(a as [])),
 	secretDelete: (...a: unknown[]) => secretDelete(...(a as [])),
 }));
@@ -30,17 +31,6 @@ vi.mock('@owlat/desktop/src/shell', () => ({
 vi.mock('~/lib/desktop/activeWorkspace', () => ({
 	isDesktopRuntime: () => true,
 	setActiveWorkspace: vi.fn(),
-}));
-
-const configureKeychainStorage = vi.fn();
-const resetKeychainStorage = vi.fn();
-vi.mock('~/lib/desktop/keychainStorage', () => ({
-	keychainStorage: {},
-	configureKeychainStorage: (...a: unknown[]) => configureKeychainStorage(...a),
-	clearKeychainStorage: vi.fn(),
-	currentKeychainAccount: () => 'owlat-ws:already-active',
-	resetKeychainStorage: (...a: unknown[]) => resetKeychainStorage(...a),
-	snapshotKeychain: vi.fn(() => '{"prev":"blob"}'),
 }));
 
 vi.mock('~/lib/desktop/workspaceAccent', () => ({ applyWorkspaceAccent: vi.fn() }));
@@ -66,7 +56,10 @@ vi.mock('@convex-dev/better-auth/client/plugins', () => ({
 	convexClient: () => ({}),
 	crossDomainClient: () => ({}),
 }));
-vi.mock('better-auth/client/plugins', () => ({ organizationClient: () => ({}) }));
+vi.mock('better-auth/client/plugins', () => ({
+	organizationClient: () => ({}),
+	twoFactorClient: () => ({}),
+}));
 
 const INSTANCE = {
 	name: 'acme',
@@ -76,6 +69,21 @@ const INSTANCE = {
 	deploymentMode: 'selfhost',
 };
 
+function workspaceConfig(id: string, siteUrl: string): WorkspaceConfig {
+	return {
+		id,
+		label: id,
+		siteUrl,
+		convexUrl: `${siteUrl}/convex`,
+		convexSiteUrl: `${siteUrl}/site`,
+		userId: 'user-1',
+		tokenRef: `owlat-ws:${id}`,
+		addedAt: 1,
+		lastActiveAt: 1,
+		accentColor: '#8c5a7a',
+	};
+}
+
 /**
  * A fresh copy of the modules under test. The workspace list is module-level
  * singleton state (lib/desktop/workspaceState.ts), so cases would otherwise leak
@@ -84,11 +92,12 @@ const INSTANCE = {
  */
 async function freshModule() {
 	vi.resetModules();
-	const [composable, connect] = await Promise.all([
+	const [composable, connect, storage] = await Promise.all([
 		import('../useDesktopWorkspaces'),
 		import('~/lib/desktop/workspaceConnect'),
+		import('~/lib/desktop/keychainStorage'),
 	]);
-	return { ...composable, ...connect };
+	return { ...composable, ...connect, ...storage };
 }
 
 /** Run the browser half of the handshake and return the state nonce it minted. */
@@ -115,6 +124,9 @@ beforeEach(() => {
 		writable: true,
 	});
 	loadWorkspaceStore.mockResolvedValue({ workspaces: [], activeWorkspaceId: null });
+	saveWorkspaceStore.mockResolvedValue(undefined);
+	secretGet.mockResolvedValue(null);
+	secretSet.mockResolvedValue(undefined);
 	getSession.mockResolvedValue({ data: { user: { id: 'user-1' } } });
 	authFetch.mockResolvedValue({ data: {}, error: null });
 });
@@ -176,31 +188,27 @@ describe('completeConnection — a failed handshake leaves nothing behind', () =
 		expect(saveWorkspaceStore).not.toHaveBeenCalled();
 	});
 
-	// Re-pointing the single global keychain cache is destructive. A failed
-	// handshake must put it back, or the ACTIVE workspace's session writes land
-	// in the abandoned workspace's keychain entry.
-	it('restores the previous keychain binding and drops the abandoned entry', async () => {
+	// The workspace this window is signed in to keeps its own storage while a
+	// handshake runs: a failed handshake has nothing of it to put back, and
+	// nothing of its own on disk to clean up.
+	it("leaves the active workspace's session and every keychain entry untouched", async () => {
+		loadWorkspaceStore.mockResolvedValue({
+			workspaces: [workspaceConfig('ws-active', 'https://active.test')],
+			activeWorkspaceId: 'ws-active',
+		});
+		secretGet.mockResolvedValue('{"better-auth_cookie":"active"}');
 		const mod = await freshModule();
 		await mod.loadWorkspaces();
+		const active = mod.getActiveKeychainStorage();
 		const state = await beginConnect(mod);
-		configureKeychainStorage.mockClear();
 		authFetch.mockResolvedValue({ data: null, error: { status: 404 } });
 
 		await expect(mod.completeConnection({ ott: 'tok', state })).rejects.toThrow();
 
-		// Last configure puts the cache back on the previously-bound account.
-		expect(configureKeychainStorage.mock.calls.at(-1)?.slice(0, 2)).toEqual([
-			'owlat-ws:already-active',
-			'{"prev":"blob"}',
-		]);
-		// ...and on disk too. A handshake runs far longer than the write-through
-		// debounce, so the flush has very likely already overwritten the
-		// previously-active workspace's entry with the failed attempt's cache.
-		expect(secretSet).toHaveBeenCalledWith('owlat-ws:already-active', '{"prev":"blob"}');
-		// And the entry minted for the abandoned workspace is removed.
-		expect(secretDelete).toHaveBeenCalledTimes(1);
-		expect(String(secretDelete.mock.calls[0]?.[0])).toMatch(/^owlat-ws:/);
-		expect(secretDelete).not.toHaveBeenCalledWith('owlat-ws:already-active');
+		expect(mod.getActiveKeychainStorage()).toBe(active);
+		expect(active?.getItem('better-auth_cookie')).toBe('active');
+		expect(secretSet).not.toHaveBeenCalled();
+		expect(secretDelete).not.toHaveBeenCalled();
 	});
 
 	// A re-auth of an already-connected server reuses its id, so its keychain
@@ -283,6 +291,124 @@ describe('completeConnection — the happy path', () => {
 		await expect(mod.completeConnection({ ott: 'tok', state: 'never-issued' })).rejects.toThrow(
 			'shared.useDesktopWorkspaces.errors.stateMismatch'
 		);
+	});
+});
+
+describe('completeConnection — the keychain handover', () => {
+	// Re-authenticating the workspace this window is signed in to gives one
+	// keychain entry two writers. The current one is stopped, and its started
+	// writes finished, before the new session is written — so an older session
+	// cannot land on top of the new one.
+	it('stops the current writer of the same entry before writing the new session', async () => {
+		loadWorkspaceStore.mockResolvedValue({
+			workspaces: [workspaceConfig('ws-existing', 'https://acme.test')],
+			activeWorkspaceId: 'ws-existing',
+		});
+		const mod = await freshModule();
+		await mod.loadWorkspaces();
+		const state = await beginConnect(mod);
+		// The current client refreshed its (older) session; the debounce holds it.
+		mod.getActiveKeychainStorage()?.setItem('better-auth_cookie', 'older');
+		getSession.mockImplementation(async () => {
+			return { data: { user: { id: 'user-1' } } };
+		});
+
+		await mod.completeConnection({ ott: 'tok', state });
+		await new Promise((resolve) => setTimeout(resolve, 300));
+
+		const writes = secretSet.mock.calls.filter(([key]) => key === 'owlat-ws:ws-existing');
+		expect(writes).toHaveLength(1);
+		expect(writes[0]?.[1]).not.toContain('older');
+		expect(assign).toHaveBeenCalledWith('/dashboard');
+	});
+
+	// Connecting ANOTHER workspace leaves the current one's entry to it, but the
+	// reload into the new workspace ends this page: a change the current
+	// storage still holds is written first, to its own entry.
+	it("writes the current workspace's pending change to its own entry before the reload", async () => {
+		loadWorkspaceStore.mockResolvedValue({
+			workspaces: [workspaceConfig('ws-other', 'https://other.test')],
+			activeWorkspaceId: 'ws-other',
+		});
+		const mod = await freshModule();
+		await mod.loadWorkspaces();
+		const state = await beginConnect(mod);
+		mod.getActiveKeychainStorage()?.setItem('better-auth_cookie', 'refreshed');
+		assign.mockImplementation(() => {
+			expect(secretSet).toHaveBeenCalledWith(
+				'owlat-ws:ws-other',
+				JSON.stringify({ 'better-auth_cookie': 'refreshed' })
+			);
+		});
+
+		await mod.completeConnection({ ott: 'tok', state });
+
+		const newEntry = secretSet.mock.calls.find(([key]) => key !== 'owlat-ws:ws-other');
+		expect(newEntry?.[1]).not.toContain('refreshed');
+		expect(assign).toHaveBeenCalledTimes(1);
+	});
+
+	// Saving the workspace list failed after the session was written: the list
+	// goes back to what is on disk and the new entry is not left behind.
+	it('restores the list and drops the new entry when the list cannot be saved', async () => {
+		const mod = await freshModule();
+		await mod.loadWorkspaces();
+		const state = await beginConnect(mod);
+		saveWorkspaceStore.mockRejectedValueOnce(new Error('disk full'));
+
+		await expect(mod.completeConnection({ ott: 'tok', state })).rejects.toThrow('disk full');
+
+		expect(mod.useDesktopWorkspaces().workspaces.value).toEqual([]);
+		expect(mod.useDesktopWorkspaces().activeId.value).toBeNull();
+		const written = secretSet.mock.calls[0]?.[0];
+		expect(written).toMatch(/^owlat-ws:/);
+		expect(secretDelete).toHaveBeenCalledWith(written);
+		expect(assign).not.toHaveBeenCalled();
+	});
+});
+
+describe('completeConnection — two deep links at once', () => {
+	it('completes them one at a time', async () => {
+		const mod = await freshModule();
+		await mod.loadWorkspaces();
+		const first = await beginConnect(mod);
+		const second = await beginConnect(mod);
+		let inFlight = 0;
+		let overlapped = false;
+		authFetch.mockImplementation(async () => {
+			inFlight++;
+			overlapped ||= inFlight > 1;
+			await new Promise((resolve) => setTimeout(resolve, 5));
+			inFlight--;
+			return { data: { data: null, error: { status: 500 } }, error: { status: 500 } };
+		});
+
+		const results = await Promise.allSettled([
+			mod.completeConnection({ ott: 'a', state: first }),
+			mod.completeConnection({ ott: 'b', state: second }),
+		]);
+
+		expect(overlapped).toBe(false);
+		expect(authFetch).toHaveBeenCalledTimes(2);
+		expect(results.map((r) => r.status)).toEqual(['rejected', 'rejected']);
+	});
+
+	// A committed connection reloads into its workspace and retires every other
+	// handshake; one queued behind it has nothing left to do and must not fail
+	// onto the connect screen or run a second handshake.
+	it('lets a completion queued behind a committed one end quietly', async () => {
+		const mod = await freshModule();
+		await mod.loadWorkspaces();
+		const first = await beginConnect(mod);
+		const second = await beginConnect(mod);
+
+		await Promise.all([
+			mod.completeConnection({ ott: 'a', state: first }),
+			mod.completeConnection({ ott: 'b', state: second }),
+		]);
+
+		expect(authFetch).toHaveBeenCalledTimes(1);
+		expect(assign).toHaveBeenCalledTimes(1);
 	});
 });
 

@@ -28,13 +28,6 @@ vi.mock('~/lib/desktop/activeWorkspace', () => ({
 	setActiveWorkspace: vi.fn(),
 }));
 
-vi.mock('~/lib/desktop/keychainStorage', () => ({
-	keychainStorage: {},
-	configureKeychainStorage: vi.fn(),
-	clearKeychainStorage: vi.fn(),
-	snapshotKeychain: vi.fn(() => ''),
-}));
-
 vi.mock('~/lib/desktop/workspaceAccent', () => ({ applyWorkspaceAccent: vi.fn() }));
 
 vi.mock('~/lib/auth-client', () => ({ authClient: { signOut: vi.fn(async () => ({})) } }));

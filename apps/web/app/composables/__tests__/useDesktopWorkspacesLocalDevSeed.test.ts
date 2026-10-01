@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { WorkspaceConfig, WorkspaceStoreShape } from '~/lib/desktop/workspaceTypes';
+import type * as KeychainStorageModule from '~/lib/desktop/keychainStorage';
 import { createTestI18n } from '~/__tests__/i18n';
 
 // `useDesktopWorkspaces` runs outside a component here, so `useI18n` is stubbed
@@ -34,12 +35,10 @@ vi.mock('~/lib/desktop/activeWorkspace', () => ({
 	setActiveWorkspace: (...args: unknown[]) => setActiveWorkspace(...args),
 }));
 
-const configureKeychainStorage = vi.fn();
-vi.mock('~/lib/desktop/keychainStorage', () => ({
-	keychainStorage: {},
-	configureKeychainStorage: (...args: unknown[]) => configureKeychainStorage(...args),
-	clearKeychainStorage: vi.fn(),
-	snapshotKeychain: vi.fn(() => ''),
+const setActiveKeychainStorage = vi.fn();
+vi.mock('~/lib/desktop/keychainStorage', async (importOriginal) => ({
+	...(await importOriginal<typeof KeychainStorageModule>()),
+	setActiveKeychainStorage: (...args: unknown[]) => setActiveKeychainStorage(...args),
 }));
 
 vi.mock('~/lib/desktop/workspaceAccent', () => ({
@@ -101,7 +100,7 @@ describe('loadWorkspaces seedLocalDev — dev auto-connect to the local instance
 	beforeEach(() => {
 		saveWorkspaceStore.mockClear();
 		setActiveWorkspace.mockClear();
-		configureKeychainStorage.mockClear();
+		setActiveKeychainStorage.mockClear();
 		vi.stubGlobal('useI18n', () => ({ t }));
 		fetchMock.mockReset();
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -138,11 +137,10 @@ describe('loadWorkspaces seedLocalDev — dev auto-connect to the local instance
 		expect(setActiveWorkspace).toHaveBeenCalledWith(
 			expect.objectContaining({ id: LOCAL_DEV_WORKSPACE_ID })
 		);
-		expect(configureKeychainStorage).toHaveBeenCalledWith(
-			`owlat-ws:${LOCAL_DEV_WORKSPACE_ID}`,
-			'session-blob',
-			expect.any(Function)
+		expect(setActiveKeychainStorage).toHaveBeenCalledWith(
+			expect.objectContaining({ accountKey: `owlat-ws:${LOCAL_DEV_WORKSPACE_ID}` })
 		);
+		expect(secretGet).toHaveBeenCalledWith(`owlat-ws:${LOCAL_DEV_WORKSPACE_ID}`);
 	});
 
 	it('reuses a manually-connected workspace on the same origin and refreshes its endpoints', async () => {
