@@ -12,7 +12,8 @@
  *     by its current remote name, and for older folder ops on its branch;
  *   - a queue longer than one read covers still drains: held ops at the front
  *     hand out what they wait for, and ops waiting for a failed op are pushed
- *     back with it.
+ *     back with it, however many there are (the rest of the push-back carries
+ *     on in a scheduled continuation).
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -372,7 +373,7 @@ describe('folder renames and deletes', () => {
 });
 
 // Hundreds of rows polled to empty: seconds on its own, far more in a loaded full run.
-describe('a long queue keeps draining', { timeout: 60_000 }, () => {
+describe('a long queue keeps draining', { timeout: 120_000 }, () => {
 	type Row = Omit<Doc<'externalMailRemoteOps'>, '_id' | '_creationTime' | 'accountId'>;
 	const row = (op: QueuedOp, nextAttemptAt: number): Row => ({
 		...op,
@@ -499,5 +500,63 @@ describe('a long queue keeps draining', { timeout: 60_000 }, () => {
 		await settle(t, [{ opId: first!.opId, outcome: 'failed' }]);
 
 		expect((await listDue(t, accountId)).map((op) => op.rfc822MessageId)).toEqual(['b@x.example']);
+	});
+
+	/** Settle `results`, then run the deferral continuations that settle scheduled. */
+	async function settleAndFinish(
+		t: T,
+		results: Array<{ opId: Id<'externalMailRemoteOps'>; outcome: 'done' | 'failed' }>
+	) {
+		vi.useFakeTimers({ now: Date.now() });
+		try {
+			await settle(t, results);
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		} finally {
+			vi.useRealTimers();
+		}
+	}
+
+	it('keeps an unrelated op runnable behind more held ops than one deferral pass covers', async () => {
+		const { t, accountId } = await externalMailbox();
+		const folders = ['inbox', 'archive'] as const;
+		await insertRows(t, accountId, [
+			...Array.from({ length: 2500 }, (_, i) =>
+				row(moveOp('a@x.example', { role: folders[i % 2]! }, { role: folders[(i + 1) % 2]! }), 1)
+			),
+			row(flagsOp('unrelated@x.example', { seen: true }), 2),
+		]);
+		const [oldest] = await listDue(t, accountId);
+		expect(oldest!.rfc822MessageId).toBe('a@x.example');
+
+		await settleAndFinish(t, [{ opId: oldest!.opId, outcome: 'failed' }]);
+
+		expect((await listDue(t, accountId)).map((op) => op.rfc822MessageId)).toEqual([
+			'unrelated@x.example',
+		]);
+		const moves = (await queuedRows(t)).filter((r) => r.rfc822MessageId === 'a@x.example');
+		expect(moves.filter((r) => r.nextAttemptAt <= Date.now())).toEqual([]);
+	});
+
+	it('keeps an unrelated op runnable behind more held folder ops than one deferral pass covers', async () => {
+		const { t, accountId } = await externalMailbox();
+		await insertRows(t, accountId, [
+			row(moveOp('a@x.example', { role: 'inbox' }, { remote: 'Clients/Acme' }), 1),
+			renameRow('Clients', 1),
+			...Array.from({ length: 1400 }, (_, i) =>
+				row({ kind: 'deleteFolder', source: { remote: `Clients/${i}` } }, 1)
+			),
+			row(flagsOp('unrelated@x.example', { seen: true }), 2),
+		]);
+		const due = await listDue(t, accountId);
+		expect(due.map((op) => op.rfc822MessageId)).toEqual(['a@x.example']);
+
+		await settleAndFinish(t, [{ opId: due[0]!.opId, outcome: 'failed' }]);
+
+		expect((await listDue(t, accountId)).map((op) => op.rfc822MessageId)).toEqual([
+			'unrelated@x.example',
+		]);
+		const folderOps = (await queuedRows(t)).filter((r) => r.rfc822MessageId === undefined);
+		expect(folderOps).toHaveLength(1401);
+		expect(folderOps.filter((r) => r.nextAttemptAt <= Date.now())).toEqual([]);
 	});
 });

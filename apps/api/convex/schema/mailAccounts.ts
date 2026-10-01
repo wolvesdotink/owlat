@@ -5,6 +5,7 @@ import {
 	externalSyncModeValidator,
 	remoteFlagChangesValidator,
 	remoteFolderRefValidator,
+	remoteOpKindValidator,
 } from '../lib/validators/mail';
 
 /**
@@ -304,14 +305,7 @@ export const mailAccountsTables = {
 	// message turns out not to be on the server, or when its retries run out.
 	externalMailRemoteOps: defineTable({
 		accountId: v.id('externalMailAccounts'),
-		kind: v.union(
-			v.literal('move'),
-			v.literal('flags'),
-			v.literal('delete'),
-			// A mirrored folder renamed or deleted in Owlat.
-			v.literal('renameFolder'),
-			v.literal('deleteFolder')
-		),
+		kind: remoteOpKindValidator,
 		// Canonical Message-ID (no angle brackets): how the worker finds the
 		// message. Absent on the two folder kinds.
 		rfc822MessageId: v.optional(v.string()),

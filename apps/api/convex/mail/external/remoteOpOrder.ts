@@ -24,7 +24,14 @@
 import type { WithoutSystemFields } from 'convex/server';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
-import { deferFolderOpsBehind, folderOpOrder, type Held } from './remoteFolderOpOrder';
+import {
+	pushBehind,
+	pushFolderOpsBehind,
+	raiseFolderOp,
+	runDeferral,
+	type DeferralBudget,
+} from './remoteOpDeferral';
+import { folderOpOrder, type Held } from './remoteFolderOpOrder';
 
 type RemoteOpRow = Doc<'externalMailRemoteOps'>;
 type FlagChanges = NonNullable<RemoteOpRow['flags']>;
@@ -36,8 +43,6 @@ const MESSAGE_OPS_LIMIT = 25;
 const DUE_SCAN_LIMIT = 250;
 /** Ops one read follows from the held ops to what they wait for. */
 const LEAD_STEPS_LIMIT = 100;
-/** Later ops of a message one failed op looks at to push back with it. */
-const DEFER_LIMIT = 500;
 
 /** The account's queued ops for one message, oldest first. */
 async function opsForMessage(
@@ -81,16 +86,19 @@ function withoutFlags(flags: FlagChanges, newer: FlagChanges): FlagChanges | nul
  * change takes its flags out of the older ops on the same copy of the message
  * (deleting one left with none), and an op that has to wait behind an older
  * one is not due before it, so a backed-off message does not fill the front of
- * the due index with ops that every read would only step over. The folder ops
- * that wait for it are pushed back the same way.
+ * the due index with ops that every read would only step over. The same holds
+ * for the folder ops that wait for it, and for a folder op behind the ops it
+ * waits for (`remoteOpDeferral.ts`).
  */
 export async function insertRemoteOp(
 	ctx: MutationCtx,
-	op: WithoutSystemFields<RemoteOpRow>
+	op: WithoutSystemFields<RemoteOpRow>,
+	budget: DeferralBudget
 ): Promise<void> {
 	let nextAttemptAt = op.nextAttemptAt;
 	if (op.rfc822MessageId !== undefined) {
-		for (const older of await opsForMessage(ctx, op.accountId, op.rfc822MessageId)) {
+		const queued = await opsForMessage(ctx, op.accountId, op.rfc822MessageId);
+		for (const older of queued) {
 			let flags = older.flags;
 			const sameCopy = JSON.stringify(older.source) === JSON.stringify(op.source);
 			if (older.kind === 'flags' && op.kind === 'flags' && sameCopy && flags && op.flags) {
@@ -108,44 +116,34 @@ export async function insertRemoteOp(
 				nextAttemptAt = Math.max(nextAttemptAt, older.nextAttemptAt);
 			}
 		}
+		// Queued further back than the ops its order is read from: it cannot run
+		// before one of those has.
+		if (queued.length >= MESSAGE_OPS_LIMIT) {
+			nextAttemptAt = Math.max(nextAttemptAt, Math.min(...queued.map((o) => o.nextAttemptAt)));
+		}
 	}
 	const id = await ctx.db.insert('externalMailRemoteOps', { ...op, nextAttemptAt });
-	if (nextAttemptAt > op.nextAttemptAt) {
-		// Queued behind a pushed-back op: so are the folder ops that wait for this one.
-		const row = await ctx.db.get(id);
-		if (row) await deferFolderOpsBehind(ctx, [row], nextAttemptAt);
+	const row = await ctx.db.get(id);
+	if (!row) return;
+	if (row.rfc822MessageId === undefined) {
+		const raise = raiseFolderOp(row);
+		if (raise) await runDeferral(ctx, raise, budget);
+	} else if (nextAttemptAt > op.nextAttemptAt) {
+		await runDeferral(ctx, pushFolderOpsBehind(row, nextAttemptAt), budget);
 	}
 }
 
 /**
- * A failed op was pushed back to `until`: push the later ops of its message
- * that wait behind it (or behind one of those) along with it, and the folder
- * ops that wait for any of them (see `insertRemoteOp`).
+ * A failed op was pushed back to `until`: push back with it every op that
+ * waits for it (`remoteOpDeferral.ts`).
  */
 export async function deferOpsBehind(
 	ctx: MutationCtx,
 	op: RemoteOpRow,
-	until: number
+	until: number,
+	budget: DeferralBudget
 ): Promise<void> {
-	const held = [op];
-	if (op.rfc822MessageId !== undefined) {
-		const later = ctx.db
-			.query('externalMailRemoteOps')
-			.withIndex('by_account_and_message', (q) =>
-				q
-					.eq('accountId', op.accountId)
-					.eq('rfc822MessageId', op.rfc822MessageId)
-					.gt('_creationTime', op._creationTime)
-			);
-		let read = 0;
-		for await (const newer of later) {
-			if (++read > DEFER_LIMIT) break;
-			if (!held.some((older) => mustPrecede(older, newer))) continue;
-			held.push(newer);
-			if (newer.nextAttemptAt < until) await ctx.db.patch(newer._id, { nextAttemptAt: until });
-		}
-	}
-	await deferFolderOpsBehind(ctx, held, until);
+	await runDeferral(ctx, pushBehind(op, until), budget);
 }
 
 /**
@@ -158,7 +156,7 @@ export async function deferOpsBehind(
  * (behind older ops of a message, behind message ops for a folder, behind older
  * folder ops), so the front of the queue always leads to an op that can run
  * now or to one that was pushed back, and the ops waiting for a pushed-back op
- * are pushed back with it (`deferOpsBehind`), out of the way of the rest.
+ * are pushed back with it (`remoteOpDeferral.ts`), out of the way of the rest.
  */
 export async function dueRemoteOps(
 	ctx: QueryCtx,
@@ -167,7 +165,7 @@ export async function dueRemoteOps(
 	pageSize: number
 ): Promise<RemoteOpRow[]> {
 	const byMessage = new Map<string, RemoteOpRow[]>();
-	const folderOpHeld = folderOpOrder(ctx, accountId);
+	const folderOpHeld = folderOpOrder(ctx, accountId, now);
 	const verdicts = new Map<Id<'externalMailRemoteOps'>, Held | null>();
 
 	const messageOpHeld = async (op: RemoteOpRow, messageId: string): Promise<Held | null> => {
@@ -181,7 +179,7 @@ export async function dueRemoteOps(
 			if (mustPrecede(older, op)) return { lead: older };
 		}
 		// Further back than the ops read for its message: it waits its turn.
-		return { lead: ops[0] };
+		return { lead: ops.find((older) => older.nextAttemptAt <= now) };
 	};
 	const held = async (op: RemoteOpRow): Promise<Held | null> => {
 		if (!verdicts.has(op._id)) {
