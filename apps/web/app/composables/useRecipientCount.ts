@@ -51,6 +51,20 @@ export function wantsExactCount(count: RecipientCount, now: number): boolean {
 /** Longest single wait for a `retryAfter` re-check (setTimeout's own ceiling is ~24.8 days). */
 const MAX_RECHECK_MS = 60 * 60_000;
 
+/** First wait after a rejected count request; doubles per consecutive failure. */
+const RETRY_BASE_MS = 5_000;
+/** Ceiling of that backoff: a request that keeps failing is tried about 12 times an hour. */
+const RETRY_MAX_MS = 5 * 60_000;
+
+/**
+ * The wait before retry number `failures` (1-based): 5 s, 10 s, 20 s, ... capped
+ * at 5 min, spread by ±20% so wizards that failed together do not retry together.
+ */
+export function countRequestRetryDelay(failures: number, random: () => number = Math.random) {
+	const base = Math.min(RETRY_BASE_MS * 2 ** Math.max(0, failures - 1), RETRY_MAX_MS);
+	return Math.round(base * (0.8 + 0.4 * random()));
+}
+
 /**
  * The campaign recipient readout for one audience (#916).
  *
@@ -62,6 +76,15 @@ const MAX_RECHECK_MS = 60 * 60_000;
  * because its definition changed or its job was abandoned, is asked again). The job is keyed by the audience definition on the server, so two
  * open wizards share one count, and the query switches to the job's running
  * and then exact totals on its own.
+ *
+ * A rejected request (network, deploy, transient server error) is retried
+ * without waiting for new data, after a capped exponential backoff
+ * (`countRequestRetryDelay`: 5 s doubling to 5 min, jittered). Retries do not
+ * run out: the readout keeps saying it is counting, and the client keeps asking
+ * at most every ~5 min, so a fault that clears is recovered without reopening
+ * the page. A rerun of the same reading waits out the backoff; a different
+ * reading (definition edit, new job state) starts fresh, and a successful
+ * request resets the backoff. Scope disposal cancels a pending retry.
  *
  * A reading with a future `retryAfter` is checked again at that instant even
  * if the data never changes, so a count that stalled (no more steps, so no
@@ -76,12 +99,29 @@ export function useRecipientCount(audience: () => CountAudience | null | undefin
 	const asked = new Set<string>();
 	const recheck = ref(0);
 	let timer: ReturnType<typeof setTimeout> | null = null;
+	let disposed = false;
+	// Backoff state of the last rejected request; only its own token honours it.
+	let failedToken: string | null = null;
+	let failures = 0;
+	let retryAt = 0;
 
 	const clearTimer = () => {
 		if (timer !== null) clearTimeout(timer);
 		timer = null;
 	};
-	if (getCurrentScope()) onScopeDispose(clearTimer);
+	const scheduleRecheck = (wait: number) => {
+		clearTimer();
+		timer = setTimeout(() => {
+			timer = null;
+			recheck.value += 1;
+		}, wait);
+	};
+	if (getCurrentScope()) {
+		onScopeDispose(() => {
+			disposed = true;
+			clearTimer();
+		});
+	}
 
 	watch(
 		[data, recheck],
@@ -104,11 +144,7 @@ export function useRecipientCount(audience: () => CountAudience | null | undefin
 			const now = Date.now();
 			if (!wantsExactCount(count, now)) {
 				if ('retryAfter' in background) {
-					const wait = Math.min(background.retryAfter - now + 1_000, MAX_RECHECK_MS);
-					timer = setTimeout(() => {
-						timer = null;
-						recheck.value += 1;
-					}, wait);
+					scheduleRecheck(Math.min(background.retryAfter - now + 1_000, MAX_RECHECK_MS));
 				}
 				return;
 			}
@@ -118,11 +154,28 @@ export function useRecipientCount(audience: () => CountAudience | null | undefin
 				'retryAfter' in background ? background.retryAfter : null,
 			]);
 			if (asked.has(token)) return;
+			if (token === failedToken && now < retryAt) {
+				// This reading's last request failed: wait out the backoff, not the data.
+				scheduleRecheck(retryAt - now);
+				return;
+			}
 			asked.add(token);
-			// Idempotent on the server; a failed request may be asked again.
-			convex
-				.mutation(api.campaigns.audienceCountJob.request, { audience: current })
-				.catch(() => asked.delete(token));
+			// Idempotent on the server; a failed request is asked again after a backoff.
+			convex.mutation(api.campaigns.audienceCountJob.request, { audience: current }).then(
+				() => {
+					failedToken = null;
+					failures = 0;
+				},
+				() => {
+					asked.delete(token);
+					if (disposed) return;
+					failures = token === failedToken ? failures + 1 : 1;
+					failedToken = token;
+					const wait = countRequestRetryDelay(failures);
+					retryAt = Date.now() + wait;
+					scheduleRecheck(wait);
+				}
+			);
 		},
 		{ immediate: true }
 	);

@@ -6,7 +6,7 @@
  * like a workspace with no topics.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { nextTick, ref, type Ref } from 'vue';
+import { effectScope, nextTick, ref, type Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 
 interface ListHandle {
@@ -210,6 +210,109 @@ describe('useRecipientCount — a stalled count is re-requested without new data
 			await vi.advanceTimersByTimeAsync(121_000);
 			expect(requestCount).toHaveBeenCalledOnce();
 			expect(requestCount.mock.calls[0]?.[1]).toEqual({ audience: { kind: 'topic', topicId } });
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
+describe('useRecipientCount — a rejected count request is retried (#916)', () => {
+	it('retries a rejected first request after a backoff, without new data', async () => {
+		vi.useFakeTimers();
+		try {
+			requestCount.mockRejectedValueOnce(new Error('network'));
+			const state = useCampaignAudience();
+			state.selectedTopicId.value = topicId;
+			await nextTick();
+			countData.value = {
+				total: 1_000,
+				eligible: 724,
+				completeness: 'read_budget_exhausted',
+				background: { status: 'unavailable' },
+			};
+			await nextTick();
+			expect(requestCount).toHaveBeenCalledOnce();
+
+			// The readout never changes; only the backoff timer can ask again.
+			await vi.advanceTimersByTimeAsync(60 * 60_000);
+			expect(requestCount).toHaveBeenCalledTimes(2);
+			expect(requestCount.mock.calls[1]?.[1]).toEqual({ audience: { kind: 'topic', topicId } });
+			// The retry succeeded: nothing else is pending.
+			expect(vi.getTimerCount()).toBe(0);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('retries a rejected restart of a stalled count', async () => {
+		vi.useFakeTimers();
+		try {
+			const now = Date.now();
+			requestCount.mockRejectedValueOnce(new Error('network'));
+			const state = useCampaignAudience();
+			state.selectedTopicId.value = topicId;
+			await nextTick();
+			countData.value = {
+				total: 0,
+				eligible: 0,
+				completeness: 'read_budget_exhausted',
+				background: { status: 'counting', startedAt: now, retryAfter: now + 120_000 },
+			};
+			await nextTick();
+
+			await vi.advanceTimersByTimeAsync(121_000);
+			expect(requestCount).toHaveBeenCalledOnce();
+
+			await vi.advanceTimersByTimeAsync(60 * 60_000);
+			expect(requestCount).toHaveBeenCalledTimes(2);
+			expect(vi.getTimerCount()).toBe(0);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('doubles the retry wait from 5 s up to a 5 min ceiling, jittered by ±20%', async () => {
+		const { countRequestRetryDelay } = await import('../useRecipientCount');
+		const mid = () => 0.5;
+		expect([1, 2, 3, 4, 5, 6, 7, 20].map((n) => countRequestRetryDelay(n, mid))).toEqual([
+			5_000, 10_000, 20_000, 40_000, 80_000, 160_000, 300_000, 300_000,
+		]);
+		expect(countRequestRetryDelay(1, () => 0)).toBe(4_000);
+		expect(countRequestRetryDelay(20, () => 1)).toBe(360_000);
+	});
+
+	it('backs off between failures and stops when the scope is disposed', async () => {
+		vi.useFakeTimers();
+		try {
+			requestCount.mockRejectedValue(new Error('down'));
+			const scope = effectScope();
+			const state = scope.run(() => useCampaignAudience())!;
+			state.selectedTopicId.value = topicId;
+			await nextTick();
+			countData.value = {
+				total: 1_000,
+				eligible: 724,
+				completeness: 'read_budget_exhausted',
+				background: { status: 'unavailable' },
+			};
+			await nextTick();
+			expect(requestCount).toHaveBeenCalledOnce();
+
+			// A rerun of the same reading does not jump the backoff.
+			countData.value = { ...(countData.value as object) };
+			await nextTick();
+			expect(requestCount).toHaveBeenCalledOnce();
+
+			// Capped exponential backoff: a handful of tries an hour, not a storm.
+			await vi.advanceTimersByTimeAsync(60 * 60_000);
+			const hourly = requestCount.mock.calls.length;
+			expect(hourly).toBeGreaterThan(2);
+			expect(hourly).toBeLessThanOrEqual(20);
+
+			scope.stop();
+			expect(vi.getTimerCount()).toBe(0);
+			await vi.advanceTimersByTimeAsync(60 * 60_000);
+			expect(requestCount).toHaveBeenCalledTimes(hourly);
 		} finally {
 			vi.useRealTimers();
 		}
