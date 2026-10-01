@@ -42,7 +42,7 @@ import { generateAndSendReports as sendTlsReports } from './smtp/tlsRpt.js';
 import { notifyConvex } from './webhooks/convexNotifier.js';
 import { sweepWebhookDlq } from './webhooks/dlqSweeper.js';
 import { logger } from './monitoring/logger.js';
-import { closeListenerSafely } from './lib/closeListenerSafely.js';
+import { stopIntake } from './lib/stopIntake.js';
 import { fireAndForget } from './lib/fireAndForget.js';
 import { installCrashHandlers, installShutdown, pinoShutdownLog } from '@owlat/shared/nodeShutdown';
 import { pathToFileURL } from 'node:url';
@@ -371,39 +371,35 @@ export async function main() {
 	// Redis) ends in exit 1 at the deadline rather than in Docker's SIGKILL,
 	// which would skip the cleanup already done. 40s drain for the 45s
 	// stop_grace_period in the compose templates.
+	//
+	// The intake stops run at the signal (onShutdown): `drain` only starts once
+	// every HTTP connection has ended, and the crons, the heartbeat and the SMTP
+	// listeners must not keep going until then.
 	installShutdown({
 		server,
+		onShutdown: () =>
+			stopIntake({
+				intervals: [
+					dnsblInterval,
+					ipAuditInterval,
+					fcrdnsInterval,
+					warmingInterval,
+					postmasterInterval,
+					tlsRptInterval,
+					dkimRotationInterval,
+					webhookDlqInterval,
+					suppressionSweepInterval,
+				],
+				// Stop claiming liveness the moment we start draining.
+				stops: [() => bounceTlsReload.stop(), stopHeartbeat],
+				listeners: [
+					[bounceServer, 'Bounce server close failed'],
+					[submissionServer, 'Submission server close failed'],
+					[implicitTlsSubmissionServer, 'Implicit-TLS submission server close failed'],
+				],
+				log: logger,
+			}),
 		drain: async () => {
-			// Stop accepting new work
-			for (const interval of [
-				dnsblInterval,
-				ipAuditInterval,
-				fcrdnsInterval,
-				warmingInterval,
-				postmasterInterval,
-				tlsRptInterval,
-				dkimRotationInterval,
-				webhookDlqInterval,
-				suppressionSweepInterval,
-			]) {
-				clearInterval(interval);
-			}
-			bounceTlsReload.stop();
-			// Stop claiming liveness the moment we start draining.
-			stopHeartbeat();
-
-			// SmtpListener.close() REJECTS with ERR_SERVER_NOT_RUNNING when a listener
-			// never bound, which boot tolerates (port 25 / 587 / 465 may need root).
-			// closeListenerSafely voids and logs each rejection.
-			const listeners = [
-				[bounceServer, 'Bounce server close failed'],
-				[submissionServer, 'Submission server close failed'],
-				[implicitTlsSubmissionServer, 'Implicit-TLS submission server close failed'],
-			] as const;
-			for (const [listener, message] of listeners) {
-				if (listener) closeListenerSafely(() => listener.close(), message, logger);
-			}
-
 			// Drain worker (wait for in-flight jobs)
 			try {
 				await worker.close();

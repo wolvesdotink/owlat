@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	composerPreflight,
 	composerTargetCapabilities,
+	mailboxComposerTarget,
 	type ComposerTarget,
 } from '../composerTarget';
 
@@ -27,8 +28,9 @@ describe('composerTargetCapabilities', () => {
 			envelope: true,
 			sendAs: true,
 			signatures: true,
-			attachments: true,
+			attachments: 'draft',
 			schedule: true,
+			replyReminder: true,
 			seal: true,
 			recipientGuards: true,
 			preflight: true,
@@ -44,13 +46,34 @@ describe('composerTargetCapabilities', () => {
 			envelope: false,
 			sendAs: false,
 			signatures: false,
-			attachments: false,
+			// Files live on the thread (`inbox.replyAttachments`), through the
+			// host's panel; the composer uploads none of its own.
+			attachments: 'thread',
 			schedule: false,
+			replyReminder: false,
 			seal: false,
 			recipientGuards: false,
 			preflight: true,
 			subjectFallback: true,
 			agentDraft: true,
+		});
+	});
+});
+
+describe('mailboxComposerTarget', () => {
+	it('names the mailbox target a composer seed opens on, and nothing else of the seed', () => {
+		expect(
+			mailboxComposerTarget({
+				mailboxId: 'mb_1' as never,
+				draftId: 'dr_1' as never,
+				inReplyToMessageId: 'mm_1' as never,
+				prefillSubject: 'Re: Invoice',
+			} as never)
+		).toEqual({
+			kind: 'mailbox',
+			mailboxId: 'mb_1',
+			draftId: 'dr_1',
+			inReplyToMessageId: 'mm_1',
 		});
 	});
 });

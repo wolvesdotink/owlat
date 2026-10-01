@@ -19,6 +19,7 @@ import { internal } from '../../_generated/api';
 import { internalAction, internalQuery, type QueryCtx } from '../../_generated/server';
 import { sealedBlobUrl } from '../../lib/sealedBlob';
 import { throwInvalidInput } from '../../_utils/errors';
+import { loadFolderMembership, membershipVersion, readMembershipBlocks } from '../folderMembership';
 
 /**
  * Rows per page.
@@ -240,6 +241,58 @@ export const listFolderUidsPage = internalQuery({
 			)
 			.take(limit);
 		return { uids: rows.map((m) => m.uid), nextUid: nextUid(rows, limit) };
+	},
+});
+
+/**
+ * Blocks per {@link folderMembershipPage}: about 130k UIDs at
+ * `MEMBERSHIP_BLOCK_SIZE` 256, so a 100k-message folder is one call.
+ */
+const MEMBERSHIP_BLOCKS_PER_PAGE = 512;
+
+/**
+ * The folder's UIDs from its membership blocks (`mail/folderMembership.ts`),
+ * which the IMAP server reads instead of {@link listFolderUidsPage} once the
+ * folder is ready: a few hundred small rows rather than every message document.
+ *
+ * `version` names the membership the answer belongs to; it changes with every
+ * insert, move and delete in the folder. The server caches a folder's UID list
+ * under it and passes it back as `knownVersion`: while the folder is unchanged
+ * the answer is `unchanged: true` and nothing else is read. Each page carries
+ * `version` too, so a walk across pages can tell that it saw one membership.
+ *
+ * `null` means the folder is not maintained (no state row: the 0054 backfill
+ * has not reached it), and `isReady: false` that its walk is still under way.
+ * Either way the caller lists `mailMessages` as before.
+ */
+export const folderMembershipPage = internalQuery({
+	args: {
+		folderId: v.id('mailFolders'),
+		knownVersion: v.optional(v.string()),
+		afterFirstUid: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		const state = await loadFolderMembership(ctx.db, args.folderId);
+		if (!state) return null;
+		const version = membershipVersion(state);
+		if (args.knownVersion === version) {
+			return { version, isReady: state.isReady, unchanged: true as const };
+		}
+		if (!state.isReady) return { version, isReady: false };
+		const rows = await readMembershipBlocks(
+			ctx.db,
+			args.folderId,
+			args.afterFirstUid,
+			MEMBERSHIP_BLOCKS_PER_PAGE + 1
+		);
+		const page = rows.slice(0, MEMBERSHIP_BLOCKS_PER_PAGE);
+		return {
+			version,
+			isReady: true,
+			blocks: page.map((block) => block.uids),
+			nextFirstUid:
+				rows.length > MEMBERSHIP_BLOCKS_PER_PAGE ? page[page.length - 1]!.firstUid : null,
+		};
 	},
 });
 

@@ -13,6 +13,7 @@
 import type { ImapConfig } from '../config.js';
 import type { ConvexClient } from '../convex.js';
 import type { AuthRateLimiter } from '../rateLimit.js';
+import type { SequenceGate } from './helpers/sequenceGate.js';
 
 /** Per-connection auth — populated by LOGIN, cleared on LOGOUT. */
 export interface AuthState {
@@ -20,6 +21,26 @@ export interface AuthState {
 	readonly appPasswordId: string;
 	readonly address: string;
 	readonly userId: string;
+}
+
+/**
+ * The message sequence the client holds for the SELECTed folder: UIDs
+ * ascending, position i being sequence number i+1 (RFC 3501 §2.3.1.2).
+ *
+ * It is the folder as the server last DESCRIBED it to the client (SELECT, then
+ * every `* n EXPUNGE` / `* n EXISTS` sent since), not the folder as it is now.
+ * Another session's EXPUNGE does not renumber the client's messages until this
+ * session announces it, so a sequence-number command is resolved here: `FETCH
+ * 2` still means the message the client knows as 2, and if that message is gone
+ * it is simply absent from the reply instead of being swapped for its neighbour.
+ *
+ * Deliberately mutable and shared by reference: every copy of the selection's
+ * state (each command spreads it) sees one view, and an announcement must be
+ * applied to it exactly once, in the order it was sent. Only
+ * `helpers/sequenceView.ts` and the commands that announce EXPUNGE write it.
+ */
+export interface SequenceView {
+	uids: readonly number[];
 }
 
 /** The currently-SELECTed folder. Cleared by UNSELECT / CLOSE. */
@@ -32,6 +53,11 @@ export interface SelectedState {
 	readonly highestModseq: number;
 	readonly totalCount: number;
 	readonly readOnly: boolean;
+	/**
+	 * Set by SELECT / EXAMINE. Absent only in states built by hand (tests),
+	 * which then resolve sequence numbers against the folder as it is now.
+	 */
+	readonly view?: SequenceView;
 }
 
 /**
@@ -72,8 +98,8 @@ export interface CommandDeps {
 	 */
 	readonly tls: boolean;
 	/**
-	 * Called by LOGOUT (and, on IDLE timeout, by the IDLE module) to tear
-	 * down the socket. The pump's implementation is `socket.end()`.
+	 * Called by LOGOUT to tear down the socket. The pump's implementation
+	 * cancels every in-flight session, then calls `socket.end()`.
 	 */
 	readonly closeConnection: () => void;
 	/**
@@ -95,6 +121,13 @@ export interface CommandDeps {
 	 * memory. Absent in unit-test deps, where output is unbounded by design.
 	 */
 	readonly waitForDrain?: () => Promise<void> | undefined;
+	/**
+	 * Orders the commands that use or change the client's sequence view, so no
+	 * EXPUNGE is announced while a sequence-number command is in progress
+	 * (`helpers/sequenceGate.ts`). One per connection. Absent in unit-test deps,
+	 * where every lease is granted at once.
+	 */
+	readonly sequenceGate?: SequenceGate;
 }
 
 /**

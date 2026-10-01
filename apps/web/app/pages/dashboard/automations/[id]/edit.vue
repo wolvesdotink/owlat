@@ -24,10 +24,14 @@ const router = useRouter();
 const automationId = useRouteId<'automations'>();
 
 // Fetch automation with steps
-const { data: automation, isLoading: isLoadingAutomation } = useConvexQuery(
-	api.automations.automations.getWithRelations,
-	() => ({ automationId: automationId.value })
-);
+const {
+	data: automation,
+	isLoading: isLoadingAutomation,
+	error: automationError,
+	refetch: refetchAutomation,
+} = useConvexQuery(api.automations.automations.getWithRelations, () => ({
+	automationId: automationId.value,
+}));
 
 // Fetch email templates for email step selection (marketing templates can be used in automations)
 const { results: emailTemplates } = usePaginatedQuery(
@@ -480,8 +484,13 @@ onUnmounted(() => {
 			</div>
 		</div>
 
+		<!-- A failed read is not a missing automation (#721). -->
+		<div v-if="automationError" class="flex-1 flex items-center justify-center">
+			<UiQueryBoundary :error="automationError" @retry="refetchAutomation" />
+		</div>
+
 		<!-- Loading State -->
-		<div v-if="isLoadingAutomation" class="flex-1 flex items-center justify-center">
+		<div v-else-if="isLoadingAutomation" class="flex-1 flex items-center justify-center">
 			<UiSpinner delay />
 		</div>
 

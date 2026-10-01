@@ -24,7 +24,12 @@ const { isFocusMode } = useFocusMode();
 const builderFits = useEmailBuilderViewport();
 
 // Fetch block data
-const { data: block, isLoading: blockLoading } = useConvexQuery(api.emailBlocks.blocks.get, () => ({
+const {
+	data: block,
+	isLoading: blockLoading,
+	error: blockError,
+	refetch: refetchBlock,
+} = useConvexQuery(api.emailBlocks.blocks.get, () => ({
 	blockId: blockId.value,
 }));
 
@@ -140,8 +145,13 @@ const handleSettings = () => {
 				: 'h-[calc(100dvh-var(--titlebar-h,0px)-64px)]'
 		"
 	>
+		<!-- A failed read is not a missing block (#721). -->
+		<div v-if="blockError" class="h-full flex items-center justify-center bg-bg-deep">
+			<UiQueryBoundary :error="blockError" @retry="refetchBlock" />
+		</div>
+
 		<!-- Loading State -->
-		<div v-if="blockLoading" class="h-full flex items-center justify-center bg-bg-deep">
+		<div v-else-if="blockLoading" class="h-full flex items-center justify-center bg-bg-deep">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
 				<p class="text-text-secondary text-sm">

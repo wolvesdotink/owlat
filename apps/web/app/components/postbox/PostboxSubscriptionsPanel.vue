@@ -29,7 +29,7 @@ const props = defineProps<{ mailboxId: Id<'mailboxes'> }>();
 
 const { t } = useI18n();
 
-const { data, isLoading } = useConvexQuery(api.mail.subscriptions.list, () => ({
+const { data, isLoading, error, refetch } = useConvexQuery(api.mail.subscriptions.list, () => ({
 	mailboxId: props.mailboxId,
 }));
 
@@ -146,6 +146,8 @@ function lastReadLabel(sender: PostboxSubscriptionSender): string {
 		<div v-if="isLoading" class="p-8 flex justify-center">
 			<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
 		</div>
+		<!-- A failed read is not "no subscriptions" (#721). -->
+		<UiQueryBoundary v-else-if="error" :error="error" @retry="refetch" />
 		<div v-else-if="senders.length === 0" class="p-8 text-center">
 			<p class="text-text-secondary">
 				{{ t('components.postbox.postboxSubscriptionsPanel.empty') }}

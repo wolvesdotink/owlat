@@ -5,7 +5,8 @@
  *   - "For you" strips come from the Reply Queue feed and route there
  *   - auto-filed roll-up line summarises categorized Today mail, read off
  *     each row's own `category` (no second thread subscription)
- *   - inbox-zero shows the quiet "All clear" line
+ *   - inbox-zero shows the quiet "All clear" line; a failed inbox read does not
+ *     (#721), it shows the error with Try again
  *   - Browse button emits `browse`; "Show past mails (n)" expands inline.
  *
  * The component leans on Nuxt auto-imports; each composable is stubbed as a
@@ -43,6 +44,8 @@ const feed = {
 	isLoading: ref(false),
 	hasMore: ref(false),
 	loadMore: vi.fn(),
+	error: ref<Error | null>(null),
+	refetch: vi.fn(),
 };
 // `items` is hoisted out of the object literal so `count` can read it without
 // referencing `queue` inside its own initializer (which types as `any`).
@@ -149,6 +152,7 @@ const mountedWrappers: VueWrapper[] = [];
 afterEach(() => {
 	for (const w of mountedWrappers) w.unmount();
 	mountedWrappers.length = 0;
+	feed.error.value = null;
 });
 
 function mountView(extraProps: Record<string, unknown> = {}) {
@@ -235,6 +239,20 @@ describe('PostboxTodayView', () => {
 		expect(w.text()).toContain('All clear');
 		expect(w.text()).not.toContain('For you');
 		expect(w.text()).not.toContain('Show past mails');
+	});
+
+	it('shows a failed inbox read with Try again, not All clear (#721)', async () => {
+		feed.messages.value = [];
+		queue.items.value = [];
+		feed.error.value = new Error('[CONVEX Q(mail/mailbox/queries:listMessages)] Server Error');
+		feed.refetch.mockClear();
+		const w = mountView();
+
+		expect(w.text()).not.toContain('All clear');
+		expect(w.text()).toContain('Failed to load');
+		const retry = w.findAll('button').find((b) => b.text() === 'Try again');
+		await retry!.trigger('click');
+		expect(feed.refetch).toHaveBeenCalledTimes(1);
 	});
 
 	it('emits browse from the header switch and expands past mail inline', async () => {

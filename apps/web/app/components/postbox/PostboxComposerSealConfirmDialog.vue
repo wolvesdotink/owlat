@@ -11,6 +11,7 @@
  * prompt — willSeal, keyChanged, or a draft with no recipients yet — is not the
  * sender's to override, and the dialog stays shut.
  */
+import { useLocalized } from '~/composables/useLocalized';
 import { deriveUnsealedPrompt, type SealState } from '~/utils/sealComposer';
 
 const props = defineProps<{
@@ -24,13 +25,10 @@ const emit = defineEmits<{
 	confirm: [];
 }>();
 
-const { t } = useI18n();
-
 const prompt = computed(() => deriveUnsealedPrompt(props.sealState));
 
 /** The derivation hands back message keys (parameterized ones as `{ key, params }`). */
-const localize = (value: string | { key: string; params?: Record<string, unknown> }): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const localize = useLocalized();
 </script>
 
 <template>
