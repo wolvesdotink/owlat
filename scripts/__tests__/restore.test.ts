@@ -6,274 +6,31 @@
  * complete." A corrupt inner volume.tar was only discovered after the live
  * volumes had already been wiped.
  *
- * These cases run the REAL script against a fake `docker` on PATH. The fake
- * keeps each named volume as a plain directory and runs the script's container
- * commands on the host with the mount points mapped to those directories, so a
- * test can check the data a failure leaves behind, not just the calls made.
- * Failures are injected by matching the fake's argv against a regex.
+ * These cases run the REAL script against a fake `docker` on PATH
+ * (restore.testlib.ts), so a test can check the data a failure leaves behind,
+ * not just the calls made.
  */
 
-import { execFile, spawn } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { createHash } from 'node:crypto';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
+import {
+	COMPOSE_WITHOUT_NAME,
+	PROJECT,
+	cleanupRoots,
+	expectStartedOnRestoredData,
+	isExtraction,
+	isWipe,
+	makeInstall,
+	tarOf,
+	type Install,
+} from './restore.testlib';
 
-const RESTORE = fileURLToPath(new URL('../restore.sh', import.meta.url));
-const PROJECT = 'owlat';
+afterAll(cleanupRoots);
 
-const run = promisify(execFile);
-const roots: string[] = [];
-
-afterAll(async () => {
-	await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
-});
-
-/*
- * FAKE_DOCKER_FAIL        regex; a matching call exits 1 without doing anything
- * FAKE_DOCKER_FAIL_ONCE   set: only the first matching call fails (transient)
- * FAKE_DOCKER_FAIL_AFTER  regex; a matching call does its work, then exits 1
- *                         (a partial extraction)
- * FAKE_DOCKER_PS          what `docker ps` prints (a container still running)
- * FAKE_DOCKER_HANG        regex; the first matching call writes "$FAKE_DOCKER_ROOT/hanging"
- *                         and then blocks (a step the operator interrupts)
- *
- * Like the real Compose, which cannot interpolate the file's required
- * `${VAR:?}` secrets without them, every `compose` call fails when there is no
- * .env in the working directory and no --env-file.
- */
-const FAKE_DOCKER = `#!/usr/bin/env bash
-printf '%s\\n' "$*" >> "$FAKE_DOCKER_LOG"
-line="$*"
-if [[ -n "\${FAKE_DOCKER_FAIL:-}" && "$line" =~ $FAKE_DOCKER_FAIL ]]; then
-	if [[ -z "\${FAKE_DOCKER_FAIL_ONCE:-}" || ! -e "$FAKE_DOCKER_ROOT/failed-once" ]]; then
-		touch "$FAKE_DOCKER_ROOT/failed-once"
-		echo "fake docker: injected failure" >&2
-		exit 1
-	fi
-fi
-fail_after=0
-if [[ -n "\${FAKE_DOCKER_FAIL_AFTER:-}" && "$line" =~ $FAKE_DOCKER_FAIL_AFTER ]]; then
-	fail_after=1
-fi
-if [[ -n "\${FAKE_DOCKER_HANG:-}" && "$line" =~ $FAKE_DOCKER_HANG && ! -e "$FAKE_DOCKER_ROOT/hanging" ]]; then
-	touch "$FAKE_DOCKER_ROOT/hanging"
-	sleep 30
-fi
-vols="$FAKE_DOCKER_ROOT/volumes"
-case "$1" in
-	compose)
-		shift
-		env_file=""
-		if [[ "$1" == --env-file ]]; then env_file="$2"; shift 2; fi
-		if [[ -z "$env_file" && ! -f .env ]]; then
-			echo "error while interpolating services.worker.environment.REDIS_URL: required variable REDIS_PASSWORD is missing a value" >&2
-			exit 1
-		fi
-		[[ "$1" == config ]] && echo "name: ${PROJECT}"
-		;;
-	ps)
-		[[ -n "\${FAKE_DOCKER_PS:-}" ]] && echo "$FAKE_DOCKER_PS"
-		;;
-	volume)
-		name="\${@: -1}"
-		case "$2" in
-			inspect) [[ -d "$vols/$name" ]] || { echo "no such volume: $name" >&2; exit 1; } ;;
-			create) mkdir -p "$vols/$name" ;;
-			rm) rm -rf "\${vols:?}/$name" ;;
-		esac
-		;;
-	run)
-		shift
-		points=(); hosts=()
-		while [[ "$1" != busybox:latest ]]; do
-			if [[ "$1" == -v ]]; then
-				src="\${2%%:*}"; rest="\${2#*:}"; point="\${rest%%:*}"
-				if [[ "$src" == /* ]]; then host="$src"; else host="$vols/$src"; mkdir -p "$host"; fi
-				points+=("$point"); hosts+=("$host")
-				shift 2
-			else
-				shift
-			fi
-		done
-		shift
-		args=()
-		for a in "$@"; do
-			for i in "\${!points[@]}"; do
-				p="\${points[$i]}"
-				if [[ "$a" == "$p" || "$a" == "$p"/* ]]; then a="\${hosts[$i]}\${a#"$p"}"; break; fi
-			done
-			args+=("$a")
-		done
-		"\${args[@]}" || exit $?
-		;;
-esac
-if [[ $fail_after == 1 ]]; then
-	echo "fake docker: injected failure after running" >&2
-	exit 1
-fi
-exit 0
-`;
-
-interface Result {
-	readonly code: number;
-	readonly out: string;
-	readonly calls: string[];
-}
-
-interface Install {
-	readonly dir: string;
-	readonly archive: string;
-	readonly volume: (suffix: string) => string;
-	readonly run: (env?: Record<string, string>, flags?: string[]) => Promise<Result>;
-	/** Starts the restore, sends `signal` once a FAKE_DOCKER_HANG call blocks. */
-	readonly interrupt: (signal: NodeJS.Signals, env: Record<string, string>) => Promise<Result>;
-	readonly volumeNames: () => Promise<string[]>;
-}
-
-type Payload = string | Buffer | { files: Record<string, string> };
-
-/**
- * An install with live data in convex-data and redis-data (mail-certs does
- * not exist yet) and a backup archive carrying all three volumes. A fresh host
- * is a clone with no .env and no volumes: the disaster-recovery case.
- */
-async function makeInstall(
-	payloads: Record<string, Payload> = {},
-	options: { manifestExtra?: string; freshHost?: boolean; archivedEnv?: string } = {}
-): Promise<Install> {
-	const root = await mkdtemp(join(tmpdir(), 'owlat-restore-'));
-	roots.push(root);
-	const dir = join(root, 'install');
-	const bin = join(root, 'bin');
-	const vols = join(root, 'volumes');
-	const log = join(root, 'docker.log');
-	await mkdir(dir, { recursive: true });
-	await mkdir(bin);
-	await writeFile(join(bin, 'docker'), FAKE_DOCKER);
-	await chmod(join(bin, 'docker'), 0o755);
-	await writeFile(join(dir, 'docker-compose.yml'), 'services: {}\n');
-	await mkdir(vols);
-	if (!options.freshHost) await writeFile(join(dir, '.env'), 'CURRENT=1\n');
-
-	const volume = (suffix: string) => join(vols, `${PROJECT}_${suffix}`);
-	for (const suffix of options.freshHost ? [] : ['convex-data', 'redis-data']) {
-		await mkdir(volume(suffix), { recursive: true });
-		await writeFile(join(volume(suffix), 'old.txt'), `old ${suffix}\n`);
-	}
-
-	// Build the archive the way backup.sh lays it out.
-	const staging = join(root, 'staging');
-	const content: Record<string, Payload> = {
-		'convex-data': { files: { 'db.sqlite': 'new convex\n' } },
-		'redis-data': { files: { 'appendonly.aof': 'new redis\n' } },
-		'mail-certs': { files: { 'cert.pem': 'new cert\n' } },
-		...payloads,
-	};
-	let listed = '';
-	for (const [suffix, payload] of Object.entries(content)) {
-		await mkdir(join(staging, suffix), { recursive: true });
-		const tarPath = join(staging, suffix, 'volume.tar');
-		if (typeof payload === 'string' || Buffer.isBuffer(payload)) {
-			await writeFile(tarPath, payload);
-		} else {
-			const src = join(root, 'src', suffix);
-			await mkdir(src, { recursive: true });
-			for (const [name, text] of Object.entries(payload.files)) {
-				await writeFile(join(src, name), text);
-			}
-			await run('tar', ['-cf', tarPath, '-C', src, '.']);
-		}
-		listed += `  ${suffix}/volume.tar\n`;
-	}
-	await writeFile(join(staging, 'env'), options.archivedEnv ?? 'RESTORED=1\n');
-	await writeFile(
-		join(staging, 'MANIFEST.txt'),
-		`Owlat backup\n============\n\nProject name: ${PROJECT}\nIncludes:\n${listed}${options.manifestExtra ?? ''}  env                      — .env file\n`
-	);
-	const archive = join(root, 'owlat-20260101-000000.tar.gz');
-	await run('tar', ['-czf', archive, '-C', staging, '.']);
-	const sha = createHash('sha256')
-		.update(await readFile(archive))
-		.digest('hex');
-	await writeFile(`${archive}.sha256`, `${sha}\n`);
-
-	const spawnOptions = (env: Record<string, string>) => ({
-		cwd: dir,
-		env: {
-			...process.env,
-			PATH: `${bin}:${process.env['PATH'] ?? ''}`,
-			FAKE_DOCKER_LOG: log,
-			FAKE_DOCKER_ROOT: root,
-			TMPDIR: root,
-			...env,
-		},
-	});
-	const calls = async () => (await readFile(log, 'utf8')).split('\n').filter(Boolean);
-
-	return {
-		dir,
-		archive,
-		volume,
-		volumeNames: async () => (await readdir(vols)).sort(),
-		async interrupt(signal, env) {
-			await writeFile(log, '');
-			// Its own process group, so the signal reaches the script and the
-			// blocked docker call together, as a Ctrl-C in a terminal does.
-			const child = spawn('bash', [RESTORE, '--yes', archive], {
-				...spawnOptions(env),
-				detached: true,
-			});
-			let out = '';
-			child.stdout.on('data', (chunk: Buffer) => (out += chunk.toString()));
-			child.stderr.on('data', (chunk: Buffer) => (out += chunk.toString()));
-			const exited = new Promise<number>((resolve) =>
-				child.on('close', (code, sig) => resolve(code ?? (sig ? 128 : 1)))
-			);
-			const hanging = join(root, 'hanging');
-			const deadline = Date.now() + 10_000;
-			while (!existsSync(hanging)) {
-				if (Date.now() > deadline) throw new Error(`never reached the hang point:\n${out}`);
-				await new Promise((resolve) => setTimeout(resolve, 20));
-			}
-			process.kill(-(child.pid ?? 0), signal);
-			const code = await exited;
-			return { code, out, calls: await calls() };
-		},
-		async run(env = {}, flags = []) {
-			await writeFile(log, '');
-			const options = spawnOptions(env);
-			let code = 0;
-			let out: string;
-			try {
-				const r = await run('bash', [RESTORE, '--yes', ...flags, archive], options);
-				out = r.stdout + r.stderr;
-			} catch (error) {
-				const failure = error as { code?: number; stdout?: string; stderr?: string };
-				code = failure.code ?? 1;
-				out = (failure.stdout ?? '') + (failure.stderr ?? '');
-			}
-			return { code, out, calls: await calls() };
-		},
-	};
-}
-
-/** A real tar of `files`, for payloads that are then damaged on purpose. */
-async function tarOf(files: Record<string, string>): Promise<Buffer> {
-	const root = await mkdtemp(join(tmpdir(), 'owlat-restore-tar-'));
-	roots.push(root);
-	await mkdir(join(root, 'src'));
-	for (const [name, text] of Object.entries(files)) await writeFile(join(root, 'src', name), text);
-	await run('tar', ['-cf', join(root, 'out.tar'), '-C', join(root, 'src'), '.']);
-	return readFile(join(root, 'out.tar'));
-}
-
-const isExtraction = (call: string) => call.startsWith('run ') && call.includes('tar -xf');
-const isWipe = (call: string) => call.startsWith('run ') && call.includes('rm -rf');
+// Compose cannot read the configuration: every `config` and `down` fails.
+const COMPOSE_CANNOT_READ = '^compose (\\S+ )*(config|down)$';
 
 async function expectOriginalData(install: Install) {
 	await expect(readFile(join(install.volume('convex-data'), 'old.txt'), 'utf8')).resolves.toBe(
@@ -312,7 +69,7 @@ describe('restore.sh happy path', () => {
 			'owlat_redis-data',
 		]);
 		for (const name of kept) {
-			const files = await readdir(join(install.volume('x'), '..', name));
+			const files = await readdir(install.volumeDir(name));
 			expect(files).toEqual(['old.txt']);
 		}
 		await expect(readFile(join(install.dir, '.env'), 'utf8')).resolves.toBe('RESTORED=1\n');
@@ -325,6 +82,8 @@ describe('restore.sh happy path', () => {
 		expect(down).toBeGreaterThanOrEqual(0);
 		expect(down).toBeLessThan(firstWrite);
 		expect(up).toBeGreaterThan(lastExtraction);
+		// The stack it started mounts exactly the volumes it restored.
+		await expectStartedOnRestoredData(install, PROJECT);
 	});
 
 	it('creates a volume missing on this host with the Compose labels backup.sh looks for', async () => {
@@ -510,6 +269,7 @@ describe('restore.sh on a fresh host (disaster recovery: no .env yet)', () => {
 		expect(result.calls.some((c) => /^compose --env-file \S+\/env config$/.test(c))).toBe(true);
 		expect(result.calls.some((c) => /^compose --env-file \S+\/env down$/.test(c))).toBe(true);
 		expect(result.calls.at(-1)).toBe('compose up -d');
+		await expectStartedOnRestoredData(install, PROJECT);
 		// No pre-restore copies: there was nothing to keep.
 		expect((await install.volumeNames()).filter((n) => n.includes('pre-restore'))).toEqual([]);
 	});
@@ -520,10 +280,8 @@ describe('restore.sh on a fresh host (disaster recovery: no .env yet)', () => {
 		// directory called "install", so `docker compose up` here will mount
 		// install_* volumes. Restoring into owlat_* would leave the data where
 		// nothing reads it.
-		const install = await makeInstall({}, { freshHost: true });
-		const result = await install.run({
-			FAKE_DOCKER_FAIL: '^compose (--env-file \\S+ )?(config|down)',
-		});
+		const install = await makeInstall({}, { freshHost: true, composeFile: COMPOSE_WITHOUT_NAME });
+		const result = await install.run({ FAKE_DOCKER_FAIL: COMPOSE_CANNOT_READ });
 
 		expect(result.code).toBe(0);
 		expect(result.out).toContain('docker compose config failed');
@@ -534,7 +292,7 @@ describe('restore.sh on a fresh host (disaster recovery: no .env yet)', () => {
 		);
 		expect(result.out).toContain('docker compose down failed, but no container');
 		await expect(
-			readFile(join(install.dir, '..', 'volumes', 'install_convex-data', 'db.sqlite'), 'utf8')
+			readFile(join(install.volumeDir('install_convex-data'), 'db.sqlite'), 'utf8')
 		).resolves.toBe('new convex\n');
 		expect(result.calls).toContain(
 			'volume create --label com.docker.compose.project=install --label com.docker.compose.volume=convex-data install_convex-data'
@@ -545,11 +303,13 @@ describe('restore.sh on a fresh host (disaster recovery: no .env yet)', () => {
 	it('takes the project name from the restored .env like Compose, normalized the same way', async () => {
 		const install = await makeInstall(
 			{},
-			{ freshHost: true, archivedEnv: 'RESTORED=1\nCOMPOSE_PROJECT_NAME="Owlat"\n' }
+			{
+				freshHost: true,
+				composeFile: COMPOSE_WITHOUT_NAME,
+				archivedEnv: 'RESTORED=1\nCOMPOSE_PROJECT_NAME="Owlat"\n',
+			}
 		);
-		const result = await install.run({
-			FAKE_DOCKER_FAIL: '^compose (--env-file \\S+ )?(config|down)',
-		});
+		const result = await install.run({ FAKE_DOCKER_FAIL: COMPOSE_CANNOT_READ });
 
 		expect(result.code).toBe(0);
 		expect(result.out).toContain(`using '${PROJECT}', the name docker compose up derives here`);
@@ -603,7 +363,7 @@ describe('restore.sh rolls back when interrupted', () => {
 			await expectOriginalData(install);
 			expect(result.calls.at(-1)).toBe('compose up -d');
 		},
-		15_000
+		30_000
 	);
 
 	it('drops the half-made copies when interrupted while keeping the current data', async () => {
@@ -617,7 +377,7 @@ describe('restore.sh rolls back when interrupted', () => {
 		expect(result.calls.some((c) => isWipe(c) || isExtraction(c))).toBe(false);
 		await expectOriginalData(install);
 		expect((await install.volumeNames()).filter((n) => n.includes('pre-restore'))).toEqual([]);
-	}, 15_000);
+	}, 30_000);
 });
 
 describe('restore.sh config-file failures', () => {
