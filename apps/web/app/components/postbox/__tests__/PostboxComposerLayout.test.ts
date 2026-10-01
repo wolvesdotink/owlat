@@ -104,3 +104,13 @@ describe('PostboxComposer in the shell', () => {
 		expect(content.some((c) => byTag(c, 'PostboxComposerFooter'))).toBe(false);
 	});
 });
+
+describe('the Team inbox reply in the same shell (#812)', () => {
+	const shell = byTag(templateOf('../../inbox/ThreadComposer.vue'), 'PostboxComposerShell')!;
+
+	it('renders its editor in the region and Send in the shared footer', () => {
+		expect(byTestId(shell, 'thread-composer-body')).not.toBeNull();
+		expect(byTag(slotTemplate(shell, 'footer')!, 'PostboxComposerFooter')).not.toBeNull();
+		expect(defaultSlot(shell).some((c) => byTag(c, 'PostboxComposerFooter'))).toBe(false);
+	});
+});
