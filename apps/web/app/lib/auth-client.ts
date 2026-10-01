@@ -70,24 +70,35 @@ export class StaleSessionResponseError extends Error {
 	}
 }
 
+/** Statuses whose responses carry no body (the Fetch spec's null-body statuses). */
+const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
+
 /**
  * The fetch for a workspace's auth client. Another window can sign in to the
  * workspace again while a request this window sent with the older session is
- * in flight; once this window has taken the new session, that request's
- * response must not reach the storage, where the cross-domain plugin would
- * write its cookie (or, on a signed-out answer, clear the cookie) under the new
- * revision. So a response is handed to the client only when the storage still
- * holds the revision the request was sent with.
+ * in flight. The window then retires the storage that session lives in and
+ * binds a new one (`rebindActiveSession`), so the old client's writes can no
+ * longer reach the keychain. This keeps the old answer from reaching the old
+ * client as well: the whole body is read here, and the response is handed on
+ * only if `storage` is still the page's session storage once it has arrived.
+ * Otherwise a signed-out answer to the old session would still read as
+ * "signed out" in this window.
  */
 export function sessionFencedFetch(
-	storage: Pick<KeychainSessionStorage, 'revision'>,
-	fetchImpl: FetchImpl = (input, init) => fetch(input, init)
+	storage: KeychainSessionStorage,
+	fetchImpl: FetchImpl = (input, init) => fetch(input, init),
+	isCurrent: () => boolean = () => getActiveKeychainStorage() === storage
 ): FetchImpl {
 	return async (input, init) => {
-		const sentAt = storage.revision;
+		if (!isCurrent()) throw new StaleSessionResponseError();
 		const response = await fetchImpl(input, init);
-		if (storage.revision !== sentAt) throw new StaleSessionResponseError();
-		return response;
+		const body = NULL_BODY_STATUSES.has(response.status) ? null : await response.arrayBuffer();
+		if (!isCurrent()) throw new StaleSessionResponseError();
+		return new Response(body, {
+			status: response.status,
+			statusText: response.statusText,
+			headers: response.headers,
+		});
 	};
 }
 
@@ -108,6 +119,8 @@ interface DesktopBinding {
 	client: AuthClient;
 	/** The workspace's Convex site URL, or null for the disconnected client. */
 	convexSiteUrl: string | null;
+	/** The session storage the client was built on (null when disconnected). */
+	storage: KeychainSessionStorage | null;
 }
 
 let webClient: AuthClient | null = null;
@@ -122,15 +135,19 @@ let disconnectedBinding: DesktopBinding | null = null;
  * store read. Plugin files are imported (and this module evaluated) before any
  * plugin runs, so nothing may be constructed at import time: the client is
  * built on the first auth call, which the boot order places after hydration.
- * Switching workspace reloads the webview, so the binding holds for the page.
+ * Switching workspace reloads the webview. Within a page the binding is rebuilt
+ * only when another window replaced the session and the page bound a new
+ * session storage (`rebindActiveSession`).
  * With no workspace connected (or a call before hydration) the answer is a
  * disconnected client that sends nothing; it is kept apart from the workspace
  * binding, so it cannot pin the page to "no workspace".
  */
 function desktopClient(): DesktopBinding {
-	if (desktopBinding) return desktopBinding;
-	const workspace = getActiveWorkspace();
 	const storage = getActiveKeychainStorage();
+	// Rebuilt when the session was replaced from another window: the old client
+	// keeps the retired storage, the page moves on to the new one.
+	if (desktopBinding && desktopBinding.storage === storage) return desktopBinding;
+	const workspace = getActiveWorkspace();
 	if (!workspace || !storage || storage.accountKey !== workspace.tokenRef) {
 		disconnectedBinding ??= {
 			client: createDesktopAuthClient(
@@ -139,16 +156,14 @@ function desktopClient(): DesktopBinding {
 				disconnectedFetch
 			),
 			convexSiteUrl: null,
+			storage: null,
 		};
 		return disconnectedBinding;
 	}
 	desktopBinding = {
-		client: createDesktopAuthClient(
-			workspace.convexSiteUrl,
-			storage,
-			sessionFencedFetch(storage)
-		),
+		client: createDesktopAuthClient(workspace.convexSiteUrl, storage, sessionFencedFetch(storage)),
 		convexSiteUrl: workspace.convexSiteUrl,
+		storage,
 	};
 	return desktopBinding;
 }

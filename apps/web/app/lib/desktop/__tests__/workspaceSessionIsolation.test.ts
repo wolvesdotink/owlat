@@ -79,17 +79,50 @@ let heldACheck: {
 	markSent: () => void;
 	release: (body: unknown, setCookie?: string) => void;
 	answer: Promise<{ body: unknown; setCookie?: string }>;
+	/** Streamed: the headers (with this cookie, if any) go out at once, the body on release. */
+	streamed?: { setCookie?: string; bodyRead: Promise<void>; markBodyRead: () => void };
 } | null = null;
 
-function holdNextACheck() {
+function holdNextACheck(streamed?: { setCookie?: string }) {
 	let markSent!: () => void;
 	let release!: (body: unknown, setCookie?: string) => void;
+	let markBodyRead!: () => void;
 	const sent = new Promise<void>((resolve) => (markSent = resolve));
+	const bodyRead = new Promise<void>((resolve) => (markBodyRead = resolve));
 	const answer = new Promise<{ body: unknown; setCookie?: string }>(
 		(resolve) => (release = (body, setCookie) => resolve({ body, setCookie }))
 	);
-	heldACheck = { sent, markSent, release, answer };
+	heldACheck = {
+		sent,
+		markSent,
+		release,
+		answer,
+		...(streamed ? { streamed: { ...streamed, bodyRead, markBodyRead } } : {}),
+	};
 	return heldACheck;
+}
+
+/** A response whose headers are there now and whose body arrives on `answer`. */
+function streamedResponse(held: NonNullable<typeof heldACheck>): Response {
+	const streamed = held.streamed!;
+	let sent = false;
+	const body = new ReadableStream<Uint8Array>({
+		async pull(controller) {
+			if (sent) return;
+			sent = true;
+			streamed.markBodyRead();
+			const { body: answer } = await held.answer;
+			controller.enqueue(new TextEncoder().encode(JSON.stringify(answer)));
+			controller.close();
+		},
+	});
+	return new Response(body, {
+		status: 200,
+		headers: {
+			'content-type': 'application/json',
+			...(streamed.setCookie ? { 'set-better-auth-cookie': streamed.setCookie } : {}),
+		},
+	});
 }
 
 function json(body: unknown, headers: Record<string, string> = {}): Response {
@@ -130,6 +163,7 @@ const fakeFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => 
 		if (held) {
 			heldACheck = null;
 			held.markSent();
+			if (held.streamed) return streamedResponse(held);
 			const { body, setCookie } = await held.answer;
 			return json(body, setCookie ? { 'set-better-auth-cookie': setCookie } : {});
 		}
@@ -265,10 +299,12 @@ describe('desktop workspace session isolation', () => {
  * native keychain.
  */
 describe('desktop session replacement across windows', () => {
-	async function reauthenticateAInMain(beforeReauth: (compose: Modules) => void = () => {}) {
+	async function reauthenticateAInMain(
+		beforeReauth: (compose: Modules) => void | Promise<void> = () => {}
+	) {
 		const compose = await bootWithA();
 		const main = await bootWithA();
-		beforeReauth(compose);
+		await beforeReauth(compose);
 		await main.addWorkspace(A.siteUrl);
 		const { openExternal } = await import('@owlat/desktop/src/shell');
 		const opened = new URL(vi.mocked(openExternal).mock.calls.at(-1)?.[0] as string);
@@ -365,6 +401,56 @@ describe('desktop session replacement across windows', () => {
 			expect(keychainEntries.get(A.tokenRef)).toContain('A-new-session');
 			expect(keychainEntries.get(A.tokenRef)).not.toContain('"A-session"');
 			expect(storage?.getItem('better-auth_cookie')).toContain('A-new-session');
+		});
+	});
+
+	// The headers of compose's older-session check arrive before main signs in
+	// again; the body finishes only after compose has bound the new session.
+	describe('a compose answer whose body finishes after the new session', () => {
+		async function run(streamed: { setCookie?: string }, body: unknown) {
+			const held = holdNextACheck(streamed);
+			let pending: Promise<unknown> = Promise.resolve();
+			const { compose } = await reauthenticateAInMain(async (c) => {
+				pending = c.authClient
+					.getSession({ query: { disableCookieCache: true } })
+					.catch((e: unknown) => e);
+				// The headers are in and the client is reading the body.
+				await held.streamed!.bodyRead;
+			});
+			expect(cookiesSentTo('https://site.a.example.com/api/auth/get-session')[0]).toContain(
+				'A-session'
+			);
+			const storage = compose.getActiveKeychainStorage();
+			await storage?.flush();
+			expect(keychainEntries.get(A.tokenRef)).toContain('A-new-session');
+
+			held.release(body);
+			const outcome = await pending;
+			await compose.getActiveKeychainStorage()?.flush();
+			return { compose, outcome };
+		}
+
+		it('a signed-out body does not clear the new session', async () => {
+			const { compose, outcome } = await run({}, null);
+
+			expect(outcome).toBeInstanceOf(Error);
+			expect(keychainEntries.get(A.tokenRef)).toContain('A-new-session');
+			expect(compose.getActiveKeychainStorage()?.getItem('better-auth_cookie')).toContain(
+				'A-new-session'
+			);
+		});
+
+		it('a body under the older session cookie does not bring it back', async () => {
+			const { compose } = await run(
+				{ setCookie: 'better-auth.session_token=A-session; Max-Age=3600; Path=/' },
+				{ user: { id: 'user-a' }, session: { id: 's-a' } }
+			);
+
+			expect(keychainEntries.get(A.tokenRef)).toContain('A-new-session');
+			expect(keychainEntries.get(A.tokenRef)).not.toContain('"A-session"');
+			expect(compose.getActiveKeychainStorage()?.getItem('better-auth_cookie')).toContain(
+				'A-new-session'
+			);
 		});
 	});
 });

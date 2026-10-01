@@ -18,10 +18,13 @@
  * local-cache).
  *
  * Every open window (main, compose) has its own storage for the same entry.
- * A storage remembers the session revision it read and writes only against it
- * (see the desktop `secrets.rs`): once another window has signed in again or
- * removed the workspace, a write of the older session is refused, and the
- * storage reads the current session instead of keeping the one it held.
+ * A storage is created at the session revision it read and writes only
+ * against it (see the desktop `secrets.rs`). Once another window has signed in
+ * again or removed the workspace, the storage is retired for good and the
+ * window binds a new storage, and a new auth client, to the current session
+ * (`rebindActiveSession`). A retired storage never writes again, so a response
+ * the old client is still processing can only change the retired storage,
+ * never the session that replaced it.
  */
 import type { SessionEntry, SessionWriteOutcome } from '@owlat/desktop/src/keychain';
 
@@ -36,11 +39,7 @@ export interface SessionPersistence {
 export interface KeychainSessionStorage {
 	/** The keychain entry this storage reads from and writes to. Fixed. */
 	readonly accountKey: string;
-	/**
-	 * The session revision this storage holds. It moves when the storage takes
-	 * a session replaced elsewhere, so an auth response to a request sent
-	 * before that can be told apart (see `sessionFencedFetch`).
-	 */
+	/** The session revision this storage was created at. Fixed. */
 	readonly revision: number;
 	getItem(key: string): string | null;
 	setItem(key: string, value: string): void;
@@ -65,11 +64,20 @@ export interface KeychainSessionStorage {
 	 */
 	discard(): Promise<void>;
 	/**
-	 * The session was replaced elsewhere (at `revision`): drop what this
-	 * storage holds and read the current session. A storage already at that
-	 * revision has nothing to do.
+	 * The session this storage holds was replaced elsewhere: stop writing for
+	 * good. Reads and in-memory changes still work, so a client still using it
+	 * finishes what it was doing without touching the keychain.
 	 */
-	refresh(revision?: number): Promise<void>;
+	retire(): void;
+}
+
+/** Options for {@link createKeychainStorage}. */
+export interface KeychainStorageOptions {
+	/**
+	 * Called once when a write is refused because the session was replaced.
+	 * Awaited in the write chain, so a `flush` returns after it.
+	 */
+	onStale?: () => void | Promise<void>;
 }
 
 const FLUSH_DEBOUNCE_MS = 150;
@@ -94,16 +102,16 @@ function parseBlob(blob: string | null): Record<string, string> {
 export function createKeychainStorage(
 	accountKey: string,
 	initial: SessionEntry | null,
-	persistence: SessionPersistence | null
+	persistence: SessionPersistence | null,
+	options: KeychainStorageOptions = {}
 ): KeychainSessionStorage {
 	let cache = parseBlob(initial?.value ?? null);
-	let revision = initial?.revision ?? 0;
+	const revision = initial?.revision ?? 0;
 	let flushTimer: ReturnType<typeof setTimeout> | null = null;
 	let dirty = false;
 	let suspended = false;
 	let discarded = false;
-	// Set when a replaced session could not be read back: this storage no
-	// longer knows the current revision, so it stops writing.
+	// Set once the session this storage holds has been replaced elsewhere.
 	let retired = false;
 	// Writes are chained so two flushes can never land out of order.
 	let writes: Promise<void> = Promise.resolve();
@@ -119,18 +127,10 @@ export function createKeychainStorage(
 		return !!persistence && !suspended && !discarded && !retired;
 	}
 
-	/** Take the entry as it is now, replacing whatever this storage held. */
-	async function adoptCurrent(): Promise<void> {
-		const current = await persistence!.read(accountKey);
-		if (discarded) return;
+	function retire(): void {
 		cancelTimer();
+		retired = true;
 		dirty = false;
-		if (!current) {
-			retired = true;
-			return;
-		}
-		cache = parseBlob(current.value);
-		revision = current.revision;
 	}
 
 	function writeNow(): Promise<void> {
@@ -138,13 +138,16 @@ export function createKeychainStorage(
 		if (!dirty || !canWrite()) return writes;
 		dirty = false;
 		const blob = JSON.stringify(cache);
-		const at = revision;
 		writes = writes
 			.then(async () => {
-				const outcome = await persistence!.write(accountKey, blob, at);
+				const outcome = await persistence!.write(accountKey, blob, revision);
 				// The session was replaced since this storage read it: what it
-				// holds is the older session, so read the current one instead.
-				if (outcome === 'stale') await adoptCurrent();
+				// holds is the older session. Stop, and let the owner bind the
+				// current one.
+				if (outcome === 'stale' && !retired) {
+					retire();
+					await options.onStale?.();
+				}
 			})
 			.catch(() => {});
 		return writes;
@@ -162,9 +165,7 @@ export function createKeychainStorage(
 
 	return {
 		accountKey,
-		get revision() {
-			return revision;
-		},
+		revision,
 		getItem(key) {
 			return key in cache ? cache[key]! : null;
 		},
@@ -199,28 +200,56 @@ export function createKeychainStorage(
 			dirty = false;
 			await writes;
 		},
-		refresh(at) {
-			if (!persistence || discarded) return writes;
-			writes = writes
-				.then(async () => {
-					if (at !== undefined && at === revision) return;
-					await adoptCurrent();
-				})
-				.catch(() => {});
-			return writes;
-		},
+		retire,
 	};
 }
 
 /**
  * The storage of the workspace this webview is signed in to, set by the boot
- * hydration (`loadWorkspaces`). A workspace switch reloads the webview, so this
- * is set at most once per page load.
+ * hydration (`loadWorkspaces`). A workspace switch reloads the webview; within
+ * a page it changes only when the session is replaced from another window
+ * (`rebindActiveSession`), and the auth client is rebuilt on the new one.
  */
 let activeStorage: KeychainSessionStorage | null = null;
+let activePersistence: SessionPersistence | null = null;
 
 export function setActiveKeychainStorage(storage: KeychainSessionStorage | null): void {
 	activeStorage = storage;
+}
+
+/**
+ * Bind this webview to `accountKey`'s session as read (`entry`): the storage
+ * every auth call of the page goes through until the session is replaced.
+ */
+export function bindActiveSession(
+	accountKey: string,
+	entry: SessionEntry | null,
+	persistence: SessionPersistence
+): KeychainSessionStorage {
+	activePersistence = persistence;
+	activeStorage = createKeychainStorage(accountKey, entry, persistence, {
+		onStale: () => rebindActiveSession(accountKey),
+	});
+	return activeStorage;
+}
+
+/**
+ * The session of `accountKey` was replaced elsewhere (at `revision`, when
+ * known): retire the storage this webview holds and bind a new one to the
+ * session as it is now. The retired storage stays with whatever auth client
+ * still has it, and writes nothing. When the current session cannot be read,
+ * the retired storage stays bound, holding the old session in memory only.
+ */
+export async function rebindActiveSession(accountKey: string, revision?: number): Promise<void> {
+	const current = activeStorage;
+	const persistence = activePersistence;
+	if (!current || !persistence || current.accountKey !== accountKey) return;
+	if (revision !== undefined && revision === current.revision) return;
+	current.retire();
+	const entry = await persistence.read(accountKey);
+	// A rebind that started later has already bound a newer storage.
+	if (activeStorage !== current || !entry) return;
+	bindActiveSession(accountKey, entry, persistence);
 }
 
 export function getActiveKeychainStorage(): KeychainSessionStorage | null {

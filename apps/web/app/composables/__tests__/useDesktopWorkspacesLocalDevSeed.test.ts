@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { WorkspaceConfig, WorkspaceStoreShape } from '~/lib/desktop/workspaceTypes';
-import type * as KeychainStorageModule from '~/lib/desktop/keychainStorage';
 import { createTestI18n } from '~/__tests__/i18n';
 
 // `useDesktopWorkspaces` runs outside a component here, so `useI18n` is stubbed
@@ -37,11 +36,6 @@ vi.mock('~/lib/desktop/activeWorkspace', () => ({
 	setActiveWorkspace: (...args: unknown[]) => setActiveWorkspace(...args),
 }));
 
-const setActiveKeychainStorage = vi.fn();
-vi.mock('~/lib/desktop/keychainStorage', async (importOriginal) => ({
-	...(await importOriginal<typeof KeychainStorageModule>()),
-	setActiveKeychainStorage: (...args: unknown[]) => setActiveKeychainStorage(...args),
-}));
 
 vi.mock('~/lib/desktop/workspaceAccent', () => ({
 	applyWorkspaceAccent: vi.fn(),
@@ -102,7 +96,6 @@ describe('loadWorkspaces seedLocalDev — dev auto-connect to the local instance
 	beforeEach(() => {
 		saveWorkspaceStore.mockClear();
 		setActiveWorkspace.mockClear();
-		setActiveKeychainStorage.mockClear();
 		vi.stubGlobal('useI18n', () => ({ t }));
 		fetchMock.mockReset();
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -139,9 +132,8 @@ describe('loadWorkspaces seedLocalDev — dev auto-connect to the local instance
 		expect(setActiveWorkspace).toHaveBeenCalledWith(
 			expect.objectContaining({ id: LOCAL_DEV_WORKSPACE_ID })
 		);
-		expect(setActiveKeychainStorage).toHaveBeenCalledWith(
-			expect.objectContaining({ accountKey: `owlat-ws:${LOCAL_DEV_WORKSPACE_ID}` })
-		);
+		const { getActiveKeychainStorage } = await import('~/lib/desktop/keychainStorage');
+		expect(getActiveKeychainStorage()?.accountKey).toBe(`owlat-ws:${LOCAL_DEV_WORKSPACE_ID}`);
 		expect(sessionRead).toHaveBeenCalledWith(`owlat-ws:${LOCAL_DEV_WORKSPACE_ID}`);
 	});
 

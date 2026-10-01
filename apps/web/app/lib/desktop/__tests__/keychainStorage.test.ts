@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { SessionEntry } from '@owlat/desktop/src/keychain';
 import {
+	bindActiveSession,
 	createKeychainStorage,
 	getActiveKeychainStorage,
+	rebindActiveSession,
 	setActiveKeychainStorage,
 	type SessionPersistence,
 } from '../keychainStorage';
@@ -203,63 +205,99 @@ describe('keychainStorage — one storage per keychain entry', () => {
 	});
 
 	// Another window signed in again: this one holds the older session. Its
-	// write is refused, and from then on it holds the new session, not the old.
-	it('takes the current session when its write is refused as stale', async () => {
-		let entry: SessionEntry = { value: '{"session":"old"}', revision: 0 };
-		const persist = vi.fn((_key: string, blob: string, revision: number) => {
-			if (revision !== entry.revision) return 'stale';
-			entry = { value: blob, revision };
-			return 'written';
-		});
-		const storage = createKeychainStorage(
-			'owlat-ws:a',
-			entry,
-			persistence(persist, () => entry)
-		);
-		entry = { value: '{"session":"new"}', revision: 1 };
-
-		storage.setItem('session', 'old, refreshed');
-		await storage.flush();
-
-		expect(entry).toEqual({ value: '{"session":"new"}', revision: 1 });
-		expect(storage.getItem('session')).toBe('new');
-		storage.setItem('session', 'new, refreshed');
-		await storage.flush();
-		expect(entry).toEqual({ value: JSON.stringify({ session: 'new, refreshed' }), revision: 1 });
-	});
-
-	it('refresh reads a session replaced elsewhere, and skips one it already has', async () => {
-		let entry: SessionEntry = { value: '{"session":"old"}', revision: 0 };
-		const current = vi.fn(() => entry);
-		const persist = vi.fn();
-		const storage = createKeychainStorage('owlat-ws:a', entry, persistence(persist, current));
-		storage.setItem('session', 'old, unsaved');
-
-		entry = { value: '{"session":"new"}', revision: 1 };
-		await storage.refresh(1);
-		expect(storage.getItem('session')).toBe('new');
-		// The change it held belonged to the older session and is not written.
-		vi.runAllTimers();
-		await storage.flush();
-		expect(persist).not.toHaveBeenCalled();
-
-		await storage.refresh(1);
-		expect(current).toHaveBeenCalledTimes(1);
-	});
-
-	it('stops writing when a replaced session cannot be read back', async () => {
+	// write is refused, and it never writes again.
+	it('retires itself and reports it when its write is refused as stale', async () => {
 		const persist = vi.fn(() => 'stale');
+		const onStale = vi.fn();
 		const storage = createKeychainStorage(
 			'owlat-ws:a',
 			read('{"session":"old"}'),
-			persistence(persist, () => null)
+			persistence(persist),
+			{ onStale }
 		);
-		storage.setItem('session', 'one');
+		storage.setItem('session', 'old, refreshed');
 		await storage.flush();
-		storage.setItem('session', 'two');
+		expect(onStale).toHaveBeenCalledTimes(1);
+
+		storage.setItem('session', 'old, again');
 		vi.runAllTimers();
 		await storage.flush();
 		expect(persist).toHaveBeenCalledTimes(1);
+		expect(onStale).toHaveBeenCalledTimes(1);
+	});
+
+	it('a retired storage keeps working in memory and writes nothing', async () => {
+		const persist = vi.fn();
+		const storage = createKeychainStorage('owlat-ws:a', read(null), persistence(persist));
+		storage.setItem('session', 'pending');
+		storage.retire();
+		storage.setItem('session', 'late answer');
+		vi.runAllTimers();
+		await storage.flush();
+		expect(storage.getItem('session')).toBe('late answer');
+		expect(persist).not.toHaveBeenCalled();
+	});
+
+	describe('rebindActiveSession', () => {
+		it('retires the bound storage and binds a new one to the current session', async () => {
+			let entry: SessionEntry = { value: '{"session":"old"}', revision: 0 };
+			const persist = vi.fn();
+			const p = persistence(persist, () => entry);
+			const old = bindActiveSession('owlat-ws:a', entry, p);
+			old.setItem('session', 'old, unsaved');
+
+			entry = { value: '{"session":"new"}', revision: 1 };
+			await rebindActiveSession('owlat-ws:a', 1);
+
+			const bound = getActiveKeychainStorage();
+			expect(bound).not.toBe(old);
+			expect(bound?.revision).toBe(1);
+			expect(bound?.getItem('session')).toBe('new');
+			// The older session's change, and anything the old client still writes,
+			// stays in the retired storage.
+			old.setItem('session', 'late answer');
+			vi.runAllTimers();
+			await old.flush();
+			expect(persist).not.toHaveBeenCalled();
+			expect(bound?.getItem('session')).toBe('new');
+		});
+
+		it('leaves a storage alone that already holds that revision, or another account', async () => {
+			const p = persistence(undefined, () => ({ value: '{}', revision: 2 }));
+			const bound = bindActiveSession('owlat-ws:a', { value: '{}', revision: 2 }, p);
+			await rebindActiveSession('owlat-ws:a', 2);
+			await rebindActiveSession('owlat-ws:b', 3);
+			expect(getActiveKeychainStorage()).toBe(bound);
+		});
+
+		it('rebinds after a write refused as stale', async () => {
+			let entry: SessionEntry = { value: '{"session":"old"}', revision: 0 };
+			const p = persistence(
+				(_key, _blob, revision) => (revision === entry.revision ? 'written' : 'stale'),
+				() => entry
+			);
+			const old = bindActiveSession('owlat-ws:a', entry, p);
+			entry = { value: '{"session":"new"}', revision: 1 };
+			old.setItem('session', 'old, refreshed');
+			await old.flush();
+			await vi.waitFor(() => expect(getActiveKeychainStorage()).not.toBe(old));
+			expect(getActiveKeychainStorage()?.getItem('session')).toBe('new');
+		});
+
+		it('keeps the retired storage bound when the session cannot be read', async () => {
+			const persist = vi.fn();
+			const old = bindActiveSession(
+				'owlat-ws:a',
+				read('{"session":"old"}'),
+				persistence(persist, () => null)
+			);
+			await rebindActiveSession('owlat-ws:a', 1);
+			expect(getActiveKeychainStorage()).toBe(old);
+			old.setItem('session', 'changed');
+			vi.runAllTimers();
+			await old.flush();
+			expect(persist).not.toHaveBeenCalled();
+		});
 	});
 
 	it('records the active workspace storage', () => {

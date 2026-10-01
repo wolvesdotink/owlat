@@ -16,9 +16,9 @@
 import { authClient } from '~/lib/auth-client';
 import { isDesktopRuntime, setActiveWorkspace } from '~/lib/desktop/activeWorkspace';
 import {
-	createKeychainStorage,
+	bindActiveSession,
 	getActiveKeychainStorage,
-	setActiveKeychainStorage,
+	rebindActiveSession,
 } from '~/lib/desktop/keychainStorage';
 import {
 	type WorkspaceAccent,
@@ -194,12 +194,11 @@ export async function loadWorkspaces(options?: {
 	if (active) {
 		const { sessionRead, onSessionReplaced } = await keychain();
 		const entry = await sessionRead(active.tokenRef);
-		const storage = createKeychainStorage(active.tokenRef, entry, makeSessionPersistence());
-		setActiveKeychainStorage(storage);
-		// Another window signed in to this workspace again or removed it: drop
-		// the session this window holds and read the one it left.
+		bindActiveSession(active.tokenRef, entry, makeSessionPersistence());
+		// Another window signed in to this workspace again or removed it: retire
+		// the session this window holds and bind the one it left.
 		void onSessionReplaced((account, revision) => {
-			if (account === storage.accountKey) void storage.refresh(revision);
+			void rebindActiveSession(account, revision);
 		}).catch(() => {});
 	}
 }
