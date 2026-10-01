@@ -13,7 +13,7 @@
  * scripted / pre-boot flows can flip flags without a running stack.
  */
 
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
 	applyToggle,
@@ -23,6 +23,7 @@ import {
 	type FeatureFlagKey,
 	type FeaturePackKey,
 } from '@owlat/shared/featureFlags';
+import { writeOwnerOnlyFile } from '@owlat/shared/ownerOnlyFile';
 import { writeComposeOverride } from './override';
 
 const STATE_FILE = '.owlat-flags.json';
@@ -109,7 +110,8 @@ async function persistProfiles(owlatDir: string, flags: FeatureFlagState): Promi
 /**
  * Set COMPOSE_PROFILES in an existing `.env`, editing that one line (or
  * appending it) and leaving every other line and comment as it was. No `.env`
- * yet means no install to converge, so nothing is created.
+ * yet means no install to converge, so nothing is created. The file holds
+ * deployment secrets, so a rewrite also makes it owner-only.
  */
 export async function writeEnvComposeProfiles(envPath: string, profiles: string[]): Promise<void> {
 	let text: string;
@@ -122,7 +124,7 @@ export async function writeEnvComposeProfiles(envPath: string, profiles: string[
 	const next = /^[ \t]*COMPOSE_PROFILES[ \t]*=/m.test(text)
 		? text.replace(/^[ \t]*COMPOSE_PROFILES[ \t]*=.*$/gm, line)
 		: `${text}${text === '' || text.endsWith('\n') ? '' : '\n'}${line}\n`;
-	if (next !== text) await writeFile(envPath, next, 'utf-8');
+	if (next !== text) await writeOwnerOnlyFile(envPath, next);
 }
 
 /**
