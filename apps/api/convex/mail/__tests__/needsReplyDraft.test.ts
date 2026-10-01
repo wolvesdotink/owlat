@@ -139,6 +139,25 @@ describe('draftClarificationReply', () => {
 		);
 	});
 
+	it('keeps the placeholder within the stored limit when the model writes a long reply', async () => {
+		const gap = '[[Provide the invoices]]';
+		mocks.runSharedDraft.mockResolvedValueOnce({
+			draftBody: 'A'.repeat(4000),
+			draftQuality: undefined,
+			draftOptions: [],
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
+		const { ctx, mutations } = makeCtx({ context: context({ fileNotes: '', fileGaps: [gap] }) });
+		await draftClarificationReply(ctx, { threadId });
+
+		const draft = mutations.find((m) => m.name.includes('persistClarificationDraft'))?.args[
+			'draft'
+		] as string;
+		expect(draft.length).toBeLessThanOrEqual(4000);
+		expect(draft.endsWith(gap)).toBe(true);
+	});
+
 	it('recalls org-general knowledge only when the sender has no contact', async () => {
 		const { ctx } = makeCtx({ context: context({ contactId: undefined }) });
 		await draftClarificationReply(ctx, { threadId });

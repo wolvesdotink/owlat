@@ -28,6 +28,7 @@ import { NEEDS_REPLY_CONTEXT_MESSAGES } from '../needsReply';
 import { captureStandingAnswers } from '../../inbox/clarificationMemory';
 import { MAX_FILES_PER_ANSWER } from '@owlat/shared/answerMode';
 import {
+	MAX_CLARIFICATION_DRAFT_CHARS,
 	buildFileAnswerNotes,
 	isFileQuestion,
 	openFileGaps,
@@ -315,7 +316,10 @@ export const persistClarificationDraft = internalMutation({
 		await ctx.db.patch(args.threadId, {
 			needsReply: {
 				...flag,
-				clarification: { ...clarification, draft: args.draft.slice(0, 4000) },
+				clarification: {
+					...clarification,
+					draft: args.draft.slice(0, MAX_CLARIFICATION_DRAFT_CHARS),
+				},
 			},
 			updatedAt: Date.now(),
 		});

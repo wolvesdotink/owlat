@@ -29,8 +29,12 @@ import {
 	runSharedDraft,
 } from '../../agent/shared/draftService';
 import { buildRecallKnowledgeTool, MAX_RECALL_CALLS } from '../../agent/steps/draft/recall';
-import { buildOpenFileNote, joinConfirmedBlocks } from '../../inbox/clarificationAnswers';
-import { ensureGapPlaceholders } from './composeDraftPolicy';
+import {
+	MAX_CLARIFICATION_DRAFT_CHARS,
+	buildOpenFileNote,
+	joinConfirmedBlocks,
+} from '../../inbox/clarificationAnswers';
+import { fitGapPlaceholders } from './composeDraftPolicy';
 import {
 	measureDraftDelta,
 	predictedAskValue,
@@ -117,7 +121,8 @@ export async function draftClarificationReply(
 
 		const body = result.draftBody.trim();
 		if (body.length === 0) return;
-		const draft = ensureGapPlaceholders(body, context.fileGaps);
+		// Fitted to the card's limit here, so the stored cut never drops a placeholder.
+		const draft = fitGapPlaceholders(body, context.fileGaps, MAX_CLARIFICATION_DRAFT_CHARS);
 
 		await ctx.runMutation(internal.mail.ai.needsReplyClarify.persistClarificationDraft, {
 			threadId: args.threadId,

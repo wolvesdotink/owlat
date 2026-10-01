@@ -23,6 +23,9 @@ import {
 	enableFeatures,
 } from '../../__tests__/factories';
 import { expectScheduledFailure } from '../../__tests__/helpers/scheduledFailures';
+import { findDraftGaps } from '@owlat/shared/answerMode';
+import { fitGapPlaceholders } from '../ai/composeDraftPolicy';
+import { MAX_CLARIFICATION_DRAFT_CHARS } from '../../inbox/clarificationAnswers';
 
 const sessionMocks = vi.hoisted(() => ({
 	userId: 'user-A',
@@ -480,6 +483,24 @@ describe('mail.needsReplyClarify.answerClarification — Answer mode', () => {
 			threadId,
 		});
 		expect(draftContext?.fileGaps).toEqual(['[[Which invoice should I attach]]']);
+	});
+
+	it('stores a long starter reply with its file placeholder whole', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const threadId = await seedThreadWithClarification(t, 'user-A', [fileQuestion]);
+		const gap = '[[Provide the invoices]]';
+
+		await t.mutation(internal.mail.ai.needsReplyClarify.persistClarificationDraft, {
+			threadId,
+			draft: fitGapPlaceholders('A'.repeat(4000), [gap], MAX_CLARIFICATION_DRAFT_CHARS),
+		});
+
+		const stored = await t.run(
+			async (ctx) => (await ctx.db.get(threadId))!.needsReply!.clarification!.draft!
+		);
+		expect(stored.length).toBeLessThanOrEqual(MAX_CLARIFICATION_DRAFT_CHARS);
+		expect(findDraftGaps(stored).map((g) => g.label)).toEqual(['Provide the invoices']);
 	});
 
 	it("refuses another person's mail attachment and a file on a non-file question", async () => {

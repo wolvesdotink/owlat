@@ -98,6 +98,7 @@ const {
 	scheduledSendAt,
 	cancelSchedule,
 	followUpRemindAt,
+	isGapGuarded,
 	flush,
 	send,
 	discard,
@@ -250,7 +251,9 @@ const { answerApi, footerStatus, gapsHoldSend } = usePostboxComposerAnswerApi({
 	isSaving,
 	lastSavedAt,
 	gapCount,
-	askSession: () => props.askSession === true,
+	// A reopened draft keeps the guard: its in-memory AI draft is gone, but the
+	// row remembers that the AI wrote gaps into it.
+	askSession: () => props.askSession === true || isGapGuarded.value,
 	statusNote: () => props.statusNote,
 });
 const sendable = computed(() => canSend.value && !gapsHoldSend.value);

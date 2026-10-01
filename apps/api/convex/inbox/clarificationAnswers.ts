@@ -150,6 +150,9 @@ export function buildFileAnswerNotes(
 	return lines.join('\n');
 }
 
+/** Longest starter reply a Reply Queue clarification card stores. */
+export const MAX_CLARIFICATION_DRAFT_CHARS = 4000;
+
 const MAX_GAP_LABEL_CHARS = 80;
 
 /**
