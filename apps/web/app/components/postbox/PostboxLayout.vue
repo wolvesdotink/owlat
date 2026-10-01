@@ -70,13 +70,13 @@ usePostboxPerfMarks({ activeMessageId: () => props.activeMessageId, listPane: li
 // resetKey carries the direction, so no cursor outlives the change).
 const { sortOrder, selectSortOrder } = usePostboxSortOrder({ savedSortOrder, setSortOrder });
 
-const { messages, isLoading, isLoadingMore, isRefetching, hasMore, canLoadMore, loadMore } =
-	usePostboxThreads({
-		mailboxId: mailboxIdRef,
-		folderRole: folderRef,
-		folderId: folderIdRef,
-		sortOrder,
-	});
+const feed = usePostboxThreads({
+	mailboxId: mailboxIdRef,
+	folderRole: folderRef,
+	folderId: folderIdRef,
+	sortOrder,
+});
+const { messages, isLoading, isLoadingMore, isRefetching, hasMore, canLoadMore, loadMore } = feed;
 
 // The virtual Snoozed folder is take()-bounded server-side: more matches can
 // exist with no cursor to reach them. Say so plainly instead of offering a
@@ -142,13 +142,7 @@ const {
 // composer + reader chunks so pressing `c` or Enter never waits on a chunk
 // download. Idempotent + fail-soft; the Designer-mode EmailBuilder stays lazy.
 const chunkWarmup = usePostboxChunkWarmup();
-watch(
-	isLoading,
-	(loading) => {
-		if (!loading) chunkWarmup.warm();
-	},
-	{ immediate: true }
-);
+watch(isLoading, (loading) => !loading && chunkWarmup.warm(), { immediate: true });
 
 // Cmd/Ctrl+Z walks back the undo stack (newest first) while entries are
 // pending. The listener is installed app-wide by usePostboxTriageUndo itself
@@ -229,10 +223,11 @@ const {
 // The reader's message: the list row, else its row from the thread the page
 // already subscribed from the route (plan 2.5), else a fetch by id for an old
 // message reached via bookmark / notification / search.
-const activeMessage = usePostboxActiveMessage({
+const activeRead = usePostboxActiveMessageRead({
 	activeMessageId: () => props.activeMessageId,
 	listRows: () => messages.value,
 });
+const activeMessage = activeRead.message;
 
 // Auto-advance context for the reader: the flat list's visual row order
 // (optimistic-hide filtered, via the template ref below). In every grouped
@@ -363,8 +358,14 @@ const advanceIds = computed(() =>
 										:key="`${String(folderId ?? folderRole ?? 'all')}:${activeListRenderer}`"
 										class="h-full"
 									>
+										<!-- A failed read is not an empty folder (#721); cached rows win. -->
+										<UiQueryBoundary
+											v-if="feed.error.value && !showingCached"
+											:error="feed.error.value"
+											@retry="feed.refetch"
+										/>
 										<PostboxThreadCategoryList
-											v-if="categoriesEnabled"
+											v-else-if="categoriesEnabled"
 											:sections="categories.sections.value"
 											:collapsed="categories.collapsed.value"
 											:loading="categories.isLoading.value"
@@ -473,6 +474,11 @@ const advanceIds = computed(() =>
 							:message="activeMessage"
 							:advance-ids="advanceIds"
 							:folder-role="folderId ? String(folderId) : folderRole"
+						/>
+						<UiQueryBoundary
+							v-else-if="activeMessageId && activeRead.error.value"
+							:error="activeRead.error.value"
+							@retry="activeRead.refetch"
 						/>
 						<div v-else class="pbx-reader-swap h-full flex items-center justify-center">
 							<div class="text-center">

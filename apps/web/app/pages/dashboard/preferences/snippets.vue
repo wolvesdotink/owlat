@@ -12,13 +12,26 @@ definePageMeta({
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
-const { currentMailbox, isLoading: mailboxesLoading } = usePostboxMailbox();
+const {
+	currentMailbox,
+	isLoading: mailboxesLoading,
+	error: mailboxesError,
+	refetch: refetchMailboxes,
+} = usePostboxMailbox();
 const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 
 // literal token shown in copy; kept out of the template to avoid a `}}` mustache clash
 const firstNamePlaceholder = '{{firstName}}';
 
-const { snippets, isLoading, create, update, remove } = usePostboxSnippets(mailboxId);
+const {
+	snippets,
+	isLoading,
+	error: listError,
+	refetch: refetchList,
+	create,
+	update,
+	remove,
+} = usePostboxSnippets(mailboxId);
 
 // Sanitized once per list change. In the template it ran for every snippet on
 // every render, and the editor below re-renders the page on each keystroke.
@@ -145,6 +158,8 @@ async function confirmRemove() {
 					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
 				/>
 			</div>
+			<!-- A failed read is not an empty list (#721). -->
+			<UiQueryBoundary v-else-if="listError" :error="listError" @retry="refetchList" />
 			<div v-else-if="snippets.length === 0" class="p-8 text-center text-text-secondary">
 				{{ t('dashboard.preferences.snippets.empty') }}
 			</div>
@@ -184,7 +199,15 @@ async function confirmRemove() {
 			</ul>
 		</section>
 
-		<div v-if="!mailboxId && !mailboxesLoading" class="card p-6 text-center text-text-secondary">
+		<UiQueryBoundary
+			v-if="!mailboxId && mailboxesError"
+			:error="mailboxesError"
+			@retry="refetchMailboxes"
+		/>
+		<div
+			v-else-if="!mailboxId && !mailboxesLoading"
+			class="card p-6 text-center text-text-secondary"
+		>
 			{{ t('dashboard.preferences.snippets.noMailbox') }}
 		</div>
 

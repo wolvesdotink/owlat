@@ -7,16 +7,23 @@ import { api } from '@owlat/api';
  * unread metadata so the sidebar component stays purely presentational.
  */
 export function useChatRooms() {
-	const { data: channelsData, isLoading: channelsLoading } = useConvexQuery(
+	const {
+		data: channelsData,
+		isLoading: channelsLoading,
+		error: channelsError,
+		refetch: refetchChannels,
+	} = useConvexQuery(
 		api.chat.rooms.listMyChannels,
 		// Include archived so admins can reach an archived channel (and its
 		// unarchive action); archived rows are split into their own group below.
 		() => ({ includeArchived: true })
 	);
-	const { data: dmsData, isLoading: dmsLoading } = useConvexQuery(
-		api.chat.dms.listMyDms,
-		() => ({})
-	);
+	const {
+		data: dmsData,
+		isLoading: dmsLoading,
+		error: dmsError,
+		refetch: refetchDms,
+	} = useConvexQuery(api.chat.dms.listMyDms, () => ({}));
 	const { data: unreadData } = useConvexQuery(api.chat.messages.myUnreadCounts, () => ({}));
 
 	const decoratedChannels = computed(() => {
@@ -59,6 +66,12 @@ export function useChatRooms() {
 	});
 
 	const isLoading = computed(() => channelsLoading.value || dmsLoading.value);
+	// A failed read is not an empty room list (#721).
+	const error = computed(() => channelsError.value ?? dmsError.value);
+	function refetch() {
+		if (channelsError.value) refetchChannels();
+		if (dmsError.value) refetchDms();
+	}
 
-	return { channels, archivedChannels, dms, isLoading };
+	return { channels, archivedChannels, dms, isLoading, error, refetch };
 }

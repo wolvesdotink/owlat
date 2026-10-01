@@ -16,7 +16,11 @@ const {
 	activeId,
 	conversations,
 	conversationsLoading,
+	conversationsError,
+	refetchConversations,
 	messages,
+	messagesError,
+	refetchMessages,
 	activeConversation,
 	streaming,
 	selectConversation,
@@ -133,6 +137,11 @@ const cancelRename = () => {
 					<div v-if="conversationsLoading" class="px-3 py-2 text-sm text-text-tertiary">
 						{{ t('common.loading') }}
 					</div>
+					<UiQueryBoundary
+						v-else-if="conversationsError"
+						:error="conversationsError"
+						@retry="refetchConversations"
+					/>
 					<p v-else-if="conversations.length === 0" class="px-3 py-2 text-sm text-text-tertiary">
 						{{ t('dashboard.assistant.index.noConversations') }}
 					</p>
@@ -227,9 +236,15 @@ const cancelRename = () => {
 			</header>
 
 			<div ref="scrollRef" class="flex-1 overflow-y-auto px-4 py-4">
+				<!-- A conversation that failed to load is not a new one (#721). -->
+				<UiQueryBoundary
+					v-if="activeId && messagesError"
+					:error="messagesError"
+					@retry="refetchMessages"
+				/>
 				<!-- Welcome / empty state -->
 				<div
-					v-if="!activeId || messages.length === 0"
+					v-else-if="!activeId || messages.length === 0"
 					class="h-full flex flex-col items-center justify-center text-center px-6"
 				>
 					<div

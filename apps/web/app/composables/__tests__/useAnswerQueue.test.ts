@@ -82,4 +82,83 @@ describe('useAnswerQueue', () => {
 		const queue = useAnswerQueue({ enabled: () => false });
 		expect(queue.isLoading.value).toBe(false);
 	});
+
+	it('reports a failed source and re-reads only that one (#721)', () => {
+		const inboxRefetch = vi.fn();
+		const mailRefetch = vi.fn();
+		const failure = new Error('[CONVEX Q(mail/needsReply:listQueue)] Server Error');
+		vi.stubGlobal('useInboxes', () => ({
+			ids: ref(['mbx_1']),
+			byId: ref(new Map()),
+			isLoading: ref(false),
+			error: ref(null),
+			refetch: inboxRefetch,
+		}));
+		vi.stubGlobal(
+			'useConvexQueryMap',
+			() =>
+				new Map([
+					[
+						'mbx_1',
+						{
+							data: ref(undefined),
+							isLoading: ref(false),
+							error: ref(failure),
+							refetch: mailRefetch,
+						},
+					],
+				])
+		);
+		vi.stubGlobal('useConvexQuery', () => ({
+			data: ref(undefined),
+			isLoading: ref(false),
+			error: ref(null),
+			refetch: vi.fn(),
+		}));
+
+		const queue = useAnswerQueue();
+		expect(queue.items.value).toEqual([]);
+		expect(queue.error.value).toBe(failure);
+		queue.refetch();
+		expect(mailRefetch).toHaveBeenCalledTimes(1);
+		expect(inboxRefetch).not.toHaveBeenCalled();
+	});
+
+	it("drops a skipped source's retained error once the role or feature turns it off", () => {
+		const failure = new Error('[CONVEX Q(inbox/queries:getReviewQueue)] Server Error');
+		const reviewRefetch = vi.fn();
+		const inboxOn = ref(true);
+		vi.stubGlobal('useFeatureFlag', () => ({
+			isEnabled: (f: string) => f === 'inbox' && inboxOn.value,
+		}));
+		vi.stubGlobal('useInboxes', () => ({
+			ids: ref([]),
+			byId: ref(new Map()),
+			isLoading: ref(false),
+			error: ref(null),
+			refetch: vi.fn(),
+		}));
+		vi.stubGlobal('useConvexQueryMap', () => new Map());
+		// A subscription switched to 'skip' keeps its last error.
+		vi.stubGlobal('useConvexQuery', (fn: string) => ({
+			data: ref(undefined),
+			isLoading: ref(false),
+			error: ref(fn === 'getReviewQueue' ? failure : null),
+			refetch: fn === 'getReviewQueue' ? reviewRefetch : vi.fn(),
+		}));
+		roleLoading.value = false;
+		role.value = 'admin';
+
+		const queue = useAnswerQueue();
+		expect(queue.error.value).toBe(failure);
+
+		inboxOn.value = false;
+		expect(queue.error.value).toBeNull();
+		queue.refetch();
+		expect(reviewRefetch).not.toHaveBeenCalled();
+
+		inboxOn.value = true;
+		role.value = 'member';
+		expect(queue.error.value).toBeNull();
+	});
 });

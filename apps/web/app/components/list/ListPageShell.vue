@@ -51,7 +51,11 @@ const props = withDefaults(
 		description?: string;
 		/** First load in flight: the query boundary shows its spinner. */
 		loading: boolean;
-		error?: Error | null;
+		/**
+		 * The list query's `error`. Required: a list that drops it renders a failed
+		 * read as an empty list (#721).
+		 */
+		error: Error | null;
 		errorTitle: string;
 		/** Label under the default spinner; unused when the page passes `#loading`. */
 		loadingLabel?: string;
@@ -88,7 +92,6 @@ const props = withDefaults(
 	}>(),
 	{
 		description: undefined,
-		error: null,
 		loadingLabel: undefined,
 		sortOptions: undefined,
 		sort: undefined,

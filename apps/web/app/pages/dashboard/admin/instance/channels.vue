@@ -23,7 +23,12 @@ const localized = useLocalized();
 
 useHead({ title: () => t('dashboard.admin.instance.channels.pageTitle') });
 
-const { data: channels, isLoading } = useOrganizationQuery(api.unifiedMessages.getChannelConfigs);
+const {
+	data: channels,
+	isLoading,
+	error: channelsError,
+	refetch: refetchChannels,
+} = useOrganizationQuery(api.unifiedMessages.getChannelConfigs);
 
 // Adding a channel requires `organization:manage` (owner/admin). The backend
 // re-checks via `requireOrgPermission`; the client-side gate is here so editors
@@ -148,6 +153,9 @@ const handleChannelError = (message: string) => {
 		<div v-if="isLoading && !channels" class="card overflow-hidden">
 			<DashboardListSkeleton variant="card" leading :rows="3" />
 		</div>
+
+		<!-- A failed read is not an empty channel list (#721). -->
+		<UiQueryBoundary v-else-if="channelsError" :error="channelsError" @retry="refetchChannels" />
 
 		<template v-else>
 			<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
