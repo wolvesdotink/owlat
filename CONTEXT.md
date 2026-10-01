@@ -206,7 +206,9 @@ populated — the **Contact resolution (module)** writes `'not_required'`
 on create, so `undefined` does not appear in new rows (pre-prod;
 existing rows are backfilled atomically with the module landing).
 `confirmed` is terminal — unsubscribing from a topic removes the
-`contactTopics` row but never reverts `doiStatus`. Companions
+`contactTopics` row but never reverts `doiStatus` — with one exception: a
+global opt-out ends the consent episode, and a later public signup reopens
+it (see the `reopen` edge below). Companions
 `doiConfirmationToken`, `doiTokenExpiresAt`, `doiConfirmedAt`, and
 `doiAttestedSource` are written/cleared atomically with the status
 by the DOI lifecycle reducer. `doiAttestedSource` is populated only
@@ -216,8 +218,9 @@ confirm path leaves it undefined. Legal edges:
 
 - `not_required → pending` (a DOI-required topic subscription requests
   confirmation; sends one confirmation email per pending window)
-- `pending → pending` (already pending — idempotent `recorded`, no
-  second email)
+- `pending → pending` (already pending with a live token — idempotent
+  `recorded`, no second email; a pending contact whose token was withdrawn
+  or has lapsed gets a fresh token and email instead)
 - `pending → confirmed` (token-keyed confirm)
 - `not_required → confirmed` (admin-attest path — only when the
   `TransitionInput` carries `source: 'admin_attest'`. Used by the
@@ -226,7 +229,14 @@ confirm path leaves it undefined. Legal edges:
   Refused for any other source.)
 - `confirmed → confirmed` (already confirmed — idempotent `recorded`)
 
-`confirmed → pending` (revoke) is refused as `illegal_edge`. The
+- `confirmed → pending` (`reopen` — a new consent episode, only while
+  `contacts.unsubscribedAt` is set; refused otherwise. Keeps
+  `doiConfirmedAt` until the new confirmation and records
+  `doi.reconfirmation_requested` in the audit log. See the ADR-0009
+  amendment.)
+
+A global opt-out withdraws any outstanding token
+(`withdrawConfirmationToken`), so a link minted before it cannot lift it. The
 token TTL is 7 days (`DOI_TOKEN_TTL_MS`), consolidated from the prior
 7d (topics paths) vs 48h (form path) drift.
 _Avoid_: Opt-in status (vague), DOI state (collides with the per-machine
@@ -252,10 +262,12 @@ illegal / kind-mismatched attempts. Two entry points:
   `contacts.by_doi_confirmation_token`. Symmetric to Send lifecycle's
   `transitionByProviderMessageId`. Under the unified token namespace
   (one token per pending confirmation), `formSubmissions.confirmationToken`
-  and `contacts.doiConfirmationToken` are _the same string_ — the
-  form-confirm endpoint looks up the form submission by token, calls
-  `transitionByConfirmationToken` with that same token, then patches
-  `formSubmissions.status: 'success'` separately.
+  and `contacts.doiConfirmationToken` are _the same string_. One token is
+  shared by every signup made while the contact is pending, so it
+  correlates one contact with many form submissions. Both confirmation
+  routes (form-confirm and `/confirm/doi`) call
+  `transitionByConfirmationToken`, then have the **Form submission
+  (module)** finalize every pending submission carrying that token.
 
 Effects:
 
@@ -795,14 +807,19 @@ Subscribe effects:
 
 - `insert_membership` — fires unless `already_member`. Patches the
   membership row plus the `cachedMemberCount` increment.
-- `fire_topic_subscribed_trigger` — fires when DOI is not in the way:
-  `skipDoi || !topic.requireDoubleOptIn || contact.doiStatus ===
-'confirmed'`. Routes through `automations.triggers.fireTopicSubscribedTrigger`.
-- `request_doi` — fires when DOI is required and the contact is not yet
-  `confirmed`. Calls the **DOI lifecycle (module)** `transition({ to:
-'pending', token, ttlMs, siteUrl })`. The lifecycle's own
-  `fire_topic_subscribed_triggers` effect handles the trigger fanout at
-  confirm time — the subscription module does not double-fire.
+- `fire_topic_subscribed_trigger` — fires when the consent rule
+  (`requiresFreshConfirmation`) lets the subscribe complete at once: DOI
+  does not apply (`skipDoi`, or neither the topic nor a form's `forceDoi`
+  asks for it) or the contact is `confirmed`, and the contact holds no
+  global opt-out the source may not lift. Only `form` may not lift one;
+  operator sources and the preference centre may. Routes through
+  `automations.triggers.fireTopicSubscribedTrigger`.
+- `request_doi` — fires otherwise. Calls the **DOI lifecycle (module)**
+  `transition({ to: 'pending', token, ttlMs, siteUrl, reopen? })`
+  (`reopen` for a contact still `confirmed` from an earlier episode). The
+  lifecycle's own `fire_topic_subscribed_triggers` effect handles the
+  trigger fanout at confirm time — the subscription module does not
+  double-fire. See the ADR-0013 amendment.
 
 Unsubscribe effects:
 
@@ -913,10 +930,12 @@ rows land directly in a terminal state at create time, so the legal-edges
 'spam' | 'invalid' | 'duplicate' | 'pending_confirmation' | 'success'`,
   or `{ ok: false, reason: 'form_not_found' | 'form_inactive' }` for
   pre-classification gates.
-* `markConfirmedByToken({ token })` — patches the single
-  `pending_confirmation → success` transition. Called by the form-confirm
-  HTTP handler after `doiLifecycle.transitionByConfirmationToken` commits.
-  Idempotent on re-confirm. Returns `{ ok: true, submissionId }` or
+* `markConfirmedByToken({ token, contactId })` — patches
+  `pending_confirmation → success` on every row that carries the token and
+  belongs to the confirmed contact, paged with a scheduled follow-up.
+  Called by both confirmation routes after
+  `doiLifecycle.transitionByConfirmationToken` commits. Idempotent on
+  re-confirm. Returns `{ ok: true, finalized, continued }` or
   `{ ok: false, reason: 'no_submission_for_token' | 'already_confirmed'
 | 'invalid_state' }`.
 
@@ -926,6 +945,9 @@ Classification rules inside `submit`:
   subscribe).
 - Required field missing, oversized, or email-shaped value invalid →
   `invalid` (row written, no Contact resolved).
+- No `form.topicId`, the consent rule asks the contact to confirm (the
+  form's DOI toggle on an unconfirmed contact, or any global opt-out) →
+  `pending_confirmation`, with the contact's token.
 - No `form.topicId`, Contact resolution returned `matched` → `duplicate`.
 - `form.topicId` set, subscribe returned `already_member` → `duplicate`.
 - subscribe returned DOI-pending → `pending_confirmation`, with
