@@ -295,6 +295,7 @@ export const MEMBER_RELATIONS: readonly MemberRelation[] = [
 	),
 	rel('knowledgeBackfillJobs', 'triggeredBy', 'retain', ORG_ATTRIBUTION),
 	rel('knowledgeEdgeBackfillJobs', 'triggeredBy', 'retain', ORG_ATTRIBUTION),
+	rel('contactPropertyDeletionJobs', 'requestedBy', 'retain', ORG_ATTRIBUTION),
 	rel('contacts', 'deletedBy', 'retain', ORG_ATTRIBUTION),
 	rel('emailSends', 'deletedBy', 'retain', ORG_ATTRIBUTION),
 	rel('transactionalSends', 'deletedBy', 'retain', ORG_ATTRIBUTION),

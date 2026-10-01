@@ -231,6 +231,30 @@ describe('ReviewStep send confirmation threshold', () => {
 		expect(wrapper.find('.confirm-dialog').exists()).toBe(true);
 	});
 
+	it('confirms a lower-bound count however small, and names it as "at least" (#916)', async () => {
+		// A first background count still running: 24 is what it has seen so far,
+		// not the audience size.
+		const wrapper = mountStep({ audienceCount: 24, audienceCountAtLeast: true });
+		// The capacity note plans against the size, so it gets no number at all.
+		const note = wrapper.find('campaigns-send-readiness-note-stub');
+		expect(note.exists()).toBe(true);
+		expect(note.attributes('audience-size')).toBeUndefined();
+
+		await clickSend(wrapper);
+
+		expect(scheduleRuns).toEqual([]);
+		const dialog = wrapper.find('.confirm-dialog');
+		expect(dialog.exists()).toBe(true);
+		expect(dialog.find('.confirm-title').text()).toBe('Send to 24+ recipients?');
+	});
+
+	it('hands an exact count to the capacity note', () => {
+		const wrapper = mountStep({ audienceCount: 12408 });
+		expect(wrapper.find('campaigns-send-readiness-note-stub').attributes('audience-size')).toBe(
+			'12408'
+		);
+	});
+
 	it('does not interrupt a scheduled send — a date is its own undo', async () => {
 		const wrapper = mountStep({ audienceCount: 12408 });
 

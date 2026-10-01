@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { useRecipientCount } from './useRecipientCount';
 
 export type CampaignAudienceType = 'topic' | 'segment';
 
@@ -54,10 +55,7 @@ export function useCampaignAudience() {
 		if (segmentsError.value) refetchSegments();
 	}
 
-	const { data: audienceCount } = useOrganizationQuery(
-		api.campaigns.audienceResolution.countRecipients,
-		() => ({ audience: audience.value ?? undefined })
-	);
+	const audienceCount = useRecipientCount(() => audience.value);
 
 	const selectedTopicName = computed(() => {
 		if (!selectedTopicId.value || !topics.value) return null;

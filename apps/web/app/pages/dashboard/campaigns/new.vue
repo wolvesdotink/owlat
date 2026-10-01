@@ -3,6 +3,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { Audience } from '@owlat/shared';
 import { api } from '@owlat/api';
 import { isTransientQueryError } from '~/lib/queryRetry';
+import { isLowerBoundCount, useRecipientCount } from '~/composables/useRecipientCount';
 
 const { t } = useI18n();
 
@@ -62,7 +63,7 @@ type SetupStepExpose = {
 		replyTo?: string;
 	};
 	audience?: Audience | null;
-	audienceCount?: { eligible: number; total: number } | null;
+	audienceCount?: { eligible: number; total: number; completeness?: string } | null;
 	selectedTopicName?: string | null;
 	selectedSegment?: { name: string } | null;
 	abTestEnabled?: boolean;
@@ -104,10 +105,7 @@ const { data: campaignDetails, error: campaignError } = useConvexQuery(
 watch(campaignError, (error) => {
 	if (error && !isTransientQueryError(error)) void rememberCampaign(null);
 });
-const { data: recipientCount } = useConvexQuery(
-	api.campaigns.audienceResolution.countRecipients,
-	() => (campaignDetails.value?.audience ? { audience: campaignDetails.value.audience } : 'skip')
-);
+const recipientCount = useRecipientCount(() => campaignDetails.value?.audience);
 const persistedTemplate = computed(() => campaignDetails.value?.emailTemplate ?? null);
 
 // Templates power the review step's A/B variant-B name lookup.
@@ -200,6 +198,7 @@ const handleComplete = () => {
 const reviewData = computed(() => {
 	const setup = setupStepRef.value;
 	const content = contentStepRef.value;
+	const shownCount = setup?.audienceCount ?? recipientCount.value;
 	const c = campaignDetails.value;
 	const cfg = c?.abTestConfig;
 
@@ -225,7 +224,8 @@ const reviewData = computed(() => {
 		fromEmail: setup?.form?.fromEmail ?? c?.fromEmail ?? '',
 		replyTo: setup?.form?.replyTo ?? c?.replyTo ?? '',
 		audienceDisplayText,
-		audienceCount: setup?.audienceCount?.eligible ?? recipientCount.value?.eligible ?? 0,
+		audienceCount: shownCount?.eligible ?? 0,
+		audienceCountAtLeast: isLowerBoundCount(shownCount),
 		campaignSubject: content?.campaignSubject ?? c?.subject ?? '',
 		selectedTemplate: content?.selectedTemplate ?? persistedTemplate.value,
 		abTestEnabled: setup?.abTestEnabled ?? !!cfg,
