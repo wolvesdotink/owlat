@@ -27,6 +27,13 @@ import { installNuxtStubs, paginatedResult, queryResult } from '~/__tests__/a11y
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useUnsavedChanges } from '~/composables/useUnsavedChanges';
 import { useWizard } from '~/composables/useWizard';
+import { getFunctionName, type FunctionReference } from 'convex/server';
+import { useFormValidation } from '~/composables/useFormValidation';
+import { useModal } from '~/composables/useModal';
+import { useCampaignABTest } from '~/composables/useCampaignABTest';
+import SetupStep from '~/components/campaigns/steps/SetupStep.vue';
+import SetupSenderPicker from '~/components/campaigns/steps/SetupSenderPicker.vue';
+import SetupAudiencePicker from '~/components/campaigns/steps/SetupAudiencePicker.vue';
 import CampaignsNew from '../new.vue';
 
 type Campaign =
@@ -35,6 +42,8 @@ type Campaign =
 			name?: string;
 			fromName?: string;
 			fromEmail?: string;
+			replyTo?: string;
+			audience?: { kind: 'topic'; topicId: string };
 			emailTemplateId?: string;
 			emailTemplate?: { _id: string; name: string; subject: string; htmlContent?: string } | null;
 	  }
@@ -85,11 +94,9 @@ const stepStubs = {
 	Icon: Blank,
 };
 
-beforeEach(() => {
-	campaign.value = undefined;
-	// A fresh ref per test: an earlier test's wizard must not see this one's failure.
-	campaignError = ref<Error | null>(null);
-	installNuxtStubs({
+/** The page's collaborators; a test that mounts a real step adds that step's on top. */
+function wizardStubs(): Record<string, unknown> {
+	return {
 		...i18nStubs,
 		// The page's own router, not a spy: the assertions are about the URL.
 		useRoute: routerUseRoute,
@@ -107,7 +114,14 @@ beforeEach(() => {
 		},
 		useOrganizationQuery: () => queryResult(undefined),
 		usePaginatedQuery: () => paginatedResult([]),
-	});
+	};
+}
+
+beforeEach(() => {
+	campaign.value = undefined;
+	// A fresh ref per test: an earlier test's wizard must not see this one's failure.
+	campaignError = ref<Error | null>(null);
+	installNuxtStubs(wizardStubs());
 });
 
 /**
@@ -115,7 +129,10 @@ beforeEach(() => {
  * an `onBeforeRouteLeave`, which vue-router only registers for a component the
  * router itself rendered.
  */
-async function mountWizard(url: string) {
+async function mountWizard(
+	url: string,
+	options: { stubs?: Record<string, unknown>; components?: Record<string, unknown> } = {}
+) {
 	const router = createRouter({
 		history: createMemoryHistory(),
 		routes: [
@@ -130,7 +147,11 @@ async function mountWizard(url: string) {
 
 	const Host = defineComponent({ render: () => h(RouterView) });
 	const wrapper = mount(Host, {
-		global: { plugins: [router, createTestI18n()], stubs: stepStubs },
+		global: {
+			plugins: [router, createTestI18n()],
+			stubs: options.stubs ?? stepStubs,
+			components: options.components,
+		},
 	});
 	await flushPromises();
 
@@ -217,6 +238,78 @@ describe('campaign wizard URL state', () => {
 				emailBodyHtml: '<p>Hi</p>',
 			});
 			expect(initialSchedule).toBeNull();
+		});
+
+		it('reopens the real Setup step filled in after the editor round trip', async () => {
+			// The real Setup step and its pickers, against the persisted draft: the
+			// editor navigation dropped the KeepAlive cache, so Setup mounts fresh.
+			const sender = {
+				_id: 'sender_1',
+				email: 'ada@example.com',
+				displayName: 'Ada',
+				isDefault: false,
+				domainVerified: true,
+				alignment: 'aligned' as const,
+				alignmentReason: null,
+			};
+			installNuxtStubs({
+				...wizardStubs(),
+				useFormValidation,
+				useModal,
+				useCampaignABTest,
+				useOrganizationQuery: (reference: FunctionReference<'query'>) =>
+					getFunctionName(reference) === 'campaigns/senders:listForPicker'
+						? queryResult({ senders: [sender], isCustomAllowed: false, canManage: true })
+						: queryResult(undefined),
+				useTopicsList: () => paginatedResult([{ _id: 'topic_1', name: 'Newsletter' }]),
+				useOrganization: () => ({ members: ref([]), fetchMembers: async () => {} }),
+			});
+			const { CampaignsStepsSetupStep: _real, ...stubs } = stepStubs;
+			const saved = {
+				...draft,
+				replyTo: 'replies@example.com',
+				audience: { kind: 'topic' as const, topicId: 'topic_1' },
+			};
+
+			campaign.value = { ...saved, emailTemplate: template };
+			const { wrapper, router } = await mountWizard(
+				'/dashboard/campaigns/new?id=cmp1&step=content',
+				{
+					stubs: {
+						...stubs,
+						UiErrorAlert: true,
+						UiSelect: true,
+						CampaignsSenderAuthChip: true,
+						CampaignsStepsSetupAddSenderInline: true,
+						CampaignsABTestConfig: true,
+						I18nT: true,
+					},
+					components: {
+						CampaignsStepsSetupStep: SetupStep,
+						CampaignsStepsSetupSenderPicker: SetupSenderPicker,
+						CampaignsStepsSetupAudiencePicker: SetupAudiencePicker,
+					},
+				}
+			);
+			await wrapper.findComponent(stepStubs.CampaignsStepsContentStep).vm.$emit('compose', 'tpl1');
+			await flushPromises();
+			campaign.value = { ...saved, emailTemplate: { ...template, htmlContent: '<p>Hi</p>' } };
+			await router.push(router.currentRoute.value.query['returnTo'] as string);
+			await flushPromises();
+
+			await wrapper.findComponent(stepStubs.CampaignsStepsReviewStep).vm.$emit('editStep', 'setup');
+			await flushPromises();
+
+			const setup = wrapper.findComponent(SetupStep);
+			const value = (selector: string) => (setup.find(selector).element as HTMLInputElement).value;
+			expect(value('#campaignName')).toBe('Weekly digest');
+			expect(value('#replyTo')).toBe('replies@example.com');
+			expect(value('[data-testid="audience-picker"]')).toBe('topic:topic_1');
+			expect((setup.vm as unknown as { form: Record<string, string> }).form).toMatchObject({
+				fromName: 'Ada',
+				fromEmail: 'ada@example.com',
+			});
+			expect(setup.find('button[type="submit"]').attributes('disabled')).toBeUndefined();
 		});
 
 		it('lets an existing but empty email reach Review only as a blocked send', async () => {

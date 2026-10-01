@@ -95,11 +95,9 @@ const contentStepRef = ref<ContentStepExpose | null>(null);
 // step's template ref is still nulled, so the review summary falls back to the
 // canonical campaign persisted on each step's Next.
 //
-// The step now lives in the URL, but that fallback chain STAYS: SetupStep does
-// not rehydrate its own form fields from the persisted campaign (only the
-// sender preselect and the A/B expander read it back), so dropping KeepAlive
-// would blank the name and reply-to on the way back from Content. Hydrating
-// SetupStep from `campaignDetails` is the prerequisite, not this page.
+// KeepAlive only keeps unsaved typing across step changes inside the page.
+// A step that mounts fresh (a refresh, or the return from the email editor)
+// fills itself from the persisted campaign, so it never depends on the cache.
 const { data: campaignDetails, error: campaignError } = useConvexQuery(
 	api.campaigns.campaigns.getWithRelations,
 	() => (campaignId.value ? { campaignId: campaignId.value } : 'skip')
