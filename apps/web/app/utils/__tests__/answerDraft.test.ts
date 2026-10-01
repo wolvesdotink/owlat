@@ -8,6 +8,7 @@ import {
 	aiTextToHtml,
 	freshDraftGaps,
 	freshDraftText,
+	hasOwnWriting,
 	isDraftGapsRefusal,
 	replaceAnswerText,
 	splitAnswerBody,
@@ -78,5 +79,15 @@ describe('isDraftGapsRefusal', () => {
 			})
 		).toBe(true);
 		expect(isDraftGapsRefusal({ category: 'invalid_state', message: 'other' })).toBe(false);
+	});
+});
+
+describe('hasOwnWriting', () => {
+	it('counts only words that are not the AI draft as it went in', () => {
+		expect(hasOwnWriting('', null)).toBe(false);
+		expect(hasOwnWriting('  ', 'Hi')).toBe(false);
+		expect(hasOwnWriting('Hi Jana,\n\nhere they are.', 'Hi Jana,\nhere they are.')).toBe(false);
+		expect(hasOwnWriting('Hi Jana, here they are. Best', 'Hi Jana, here they are.')).toBe(true);
+		expect(hasOwnWriting('My own words', null)).toBe(true);
 	});
 });

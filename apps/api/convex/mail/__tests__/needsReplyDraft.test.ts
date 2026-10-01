@@ -47,6 +47,7 @@ function context(overrides: Record<string, unknown> = {}) {
 		transcript: 'Them: could you send us the September invoice?',
 		answers: [{ question: 'Is the PO number on it?', answer: 'Yes, it is on it' }],
 		fileNotes: '- The file "invoice-09.pdf" is attached to this reply; mention it naturally.',
+		fileGaps: [],
 		answeredSlotTypes: ['factual_lookup'],
 		...overrides,
 	};
@@ -122,6 +123,20 @@ describe('draftClarificationReply', () => {
 			expectedLatestMessageId: 'msg_1',
 			draft: 'Hi, here is the September invoice, PO included.',
 		});
+	});
+
+	it('leaves a placeholder for a file question still open, even when the model drops it', async () => {
+		const gap = '[[Please provide the invoice PDFs]]';
+		const { ctx, mutations } = makeCtx({ context: context({ fileNotes: '', fileGaps: [gap] }) });
+		await draftClarificationReply(ctx, { threadId });
+
+		const params = mocks.runSharedDraft.mock.calls[0]![1];
+		expect(params.confirmedContext).toContain('not attached yet');
+		expect(params.confirmedContext).toContain(gap);
+		const persisted = mutations.find((m) => m.name.includes('persistClarificationDraft'));
+		expect(persisted?.args['draft']).toBe(
+			`Hi, here is the September invoice, PO included.\n\n${gap}`
+		);
 	});
 
 	it('recalls org-general knowledge only when the sender has no contact', async () => {

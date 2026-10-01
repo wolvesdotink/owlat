@@ -62,6 +62,7 @@ function makeLoaded(over: Record<string, unknown> = {}) {
 		urgency: 'normal',
 		isBulk: false,
 		clarificationQuestions: undefined,
+		fileGaps: [],
 		...over,
 	};
 }

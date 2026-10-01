@@ -222,6 +222,7 @@ async function runSentEffects(
 		// needs-reply flag and any in-flight classification marker.
 		needsReply: undefined,
 		needsReplyPendingAt: undefined,
+		needsReplyRetryCount: undefined,
 		updatedAt: now,
 	} as const;
 

@@ -157,6 +157,49 @@ describe('useAnswerModeAssist: a prepared draft', () => {
 	});
 });
 
+describe('useAnswerModeAssist: the starter reply of the queue', () => {
+	beforeEach(() => {
+		preparedAttach.mockClear();
+	});
+
+	// Issue #1131: the arrival draft opened the page; the person then gave the
+	// invoices, and the reply written from them must arrive with them.
+	it('replaces the arrival draft and attaches the answered files', async () => {
+		const composer = composerMock();
+		const { assist } = host({ composer });
+		preparedText.value = 'Here are your invoices [[invoices]]';
+		await flushPromises();
+		preparedAttach.mockClear();
+
+		preparedText.value = 'Here are your invoices, attached.';
+		await assist.applyQueueDraft(composer, 'Here are your invoices, attached.');
+		expect(composer.applyAiDraft).toHaveBeenLastCalledWith('Here are your invoices, attached.');
+		expect(preparedAttach).toHaveBeenCalledOnce();
+	});
+
+	it('attaches once when the prepared-draft watcher took the same reply first', async () => {
+		const composer = composerMock();
+		const { assist } = host({ composer });
+		preparedText.value = 'Here they are.';
+		await flushPromises();
+		expect(preparedAttach).toHaveBeenCalledOnce();
+
+		await assist.applyQueueDraft(composer, 'Here they are.');
+		expect(composer.applyAiDraft).toHaveBeenCalledOnce();
+		expect(preparedAttach).toHaveBeenCalledOnce();
+	});
+
+	it('keeps the watcher from applying a reply the queue already put in', async () => {
+		const composer = composerMock();
+		const { assist } = host({ composer });
+		await assist.applyQueueDraft(composer, 'Here they are.');
+		preparedText.value = 'Here they are.';
+		await flushPromises();
+		expect(composer.applyAiDraft).toHaveBeenCalledOnce();
+		expect(preparedAttach).toHaveBeenCalledOnce();
+	});
+});
+
 describe('useAnswerModeAssist: thread files', () => {
 	it('copies an indexed file onto the draft', async () => {
 		const composer = composerMock();

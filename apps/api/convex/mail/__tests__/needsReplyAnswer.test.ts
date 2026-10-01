@@ -411,6 +411,77 @@ describe('mail.needsReplyClarify.answerClarification — Answer mode', () => {
 		expect(draftContext?.fileNotes).toContain('"invoice-2026-08.pdf" will be attached');
 	});
 
+	// "Send us the invoices for our four bookings": one question, several files.
+	it('stores several files on one answer and tells the draft about each', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const threadId = await seedThreadWithClarification(t, 'user-A', [fileQuestion]);
+		const { mailboxId, messageId } = await threadRefs(t, threadId);
+		const first = await insertAttachment(t, mailboxId, messageId);
+		const second = await t.run(async (ctx) =>
+			ctx.db.insert('mailAttachments', {
+				mailboxId,
+				messageId,
+				filename: 'invoice-2026-09.pdf',
+				contentType: 'application/pdf',
+				size: 91_000,
+				receivedAt: Date.now(),
+				fromAddress: 'ann@acme.com',
+				partIndex: '3',
+			})
+		);
+
+		await t.mutation(api.mail.ai.needsReplyClarify.answerClarification, {
+			threadId,
+			answers: [
+				{
+					questionId: 'clarify_1',
+					files: [
+						{ source: 'mailAttachment', id: first, filename: 'a.pdf' },
+						{ source: 'mailAttachment', id: second, filename: 'b.pdf' },
+					],
+				},
+			],
+		});
+
+		await t.run(async (ctx) => {
+			const answer = (await ctx.db.get(threadId))!.needsReply!.clarification!.questions[0]!.answer;
+			expect(answer).toMatchObject({
+				value: 'invoice-2026-08.pdf, invoice-2026-09.pdf',
+				file: { source: 'mailAttachment', id: first, filename: 'invoice-2026-08.pdf' },
+				files: [
+					{ source: 'mailAttachment', id: first, filename: 'invoice-2026-08.pdf' },
+					{ source: 'mailAttachment', id: second, filename: 'invoice-2026-09.pdf' },
+				],
+			});
+		});
+		const draftContext = await t.query(internal.mail.ai.needsReplyClarify.getClarificationContext, {
+			threadId,
+		});
+		expect(draftContext?.fileNotes).toContain('"invoice-2026-08.pdf" will be attached');
+		expect(draftContext?.fileNotes).toContain('"invoice-2026-09.pdf" will be attached');
+		expect(draftContext?.fileGaps).toEqual([]);
+	});
+
+	it('leaves a placeholder for a file question answered around', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const threadId = await seedThreadWithClarification(t, 'user-A', [
+			fileQuestion,
+			{ id: 'clarify_2', slotType: 'decision', text: 'Invoice monthly?', attribution: ATTRIBUTION },
+		]);
+
+		await t.mutation(api.mail.ai.needsReplyClarify.answerClarification, {
+			threadId,
+			answers: [{ questionId: 'clarify_2', value: 'Yes' }],
+		});
+
+		const draftContext = await t.query(internal.mail.ai.needsReplyClarify.getClarificationContext, {
+			threadId,
+		});
+		expect(draftContext?.fileGaps).toEqual(['[[Which invoice should I attach]]']);
+	});
+
 	it("refuses another person's mail attachment and a file on a non-file question", async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['mail.external']);
