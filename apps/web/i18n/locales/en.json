@@ -8196,6 +8196,7 @@
 					"performance": "Summarize the performance of our most recent campaign.",
 					"reEngagement": "Draft a friendly re-engagement email for inactive subscribers."
 				},
+				"jumpToLatest": "Jump to latest",
 				"newChat": "New chat",
 				"noConversations": "No conversations yet.",
 				"openConversations": "Conversations",

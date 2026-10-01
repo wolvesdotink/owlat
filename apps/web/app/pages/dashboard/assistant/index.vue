@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import { formatDate } from '~/utils/formatters';
+import { useFollowLatest } from '~/composables/useFollowLatest';
 
 const { t } = useI18n();
 
@@ -46,31 +47,49 @@ const openConversation = (id: Id<'aiConversations'>) => {
 	selectConversation(id);
 };
 
+// The composer owns the question until the backend accepts it, so example
+// prompts go through it too (a failed one stays there with Retry), and it is
+// where focus lands after the pill or the conversation drawer.
+const composerRef = ref<{
+	sendText: (text: string) => Promise<void>;
+	focus: () => void;
+} | null>(null);
+
+// Follow the stream only while the reader is at the end (#1050): scrolling up
+// to reread something is respected, and new content below raises the "Jump to
+// latest" pill instead of pulling the view down.
 const scrollRef = ref<HTMLElement | null>(null);
-const scrollToBottom = () => {
-	nextTick(() => {
-		if (scrollRef.value) scrollRef.value.scrollTop = scrollRef.value.scrollHeight;
-	});
+const { following, hasNewBelow, onScroll, onContent, jumpToLatest } = useFollowLatest(scrollRef);
+watch(() => {
+	const last = messages.value.at(-1);
+	return [
+		messages.value.length,
+		last?.text.length,
+		last?.status,
+		last?.toolCalls.length,
+		last?.toolCalls.map((c) => c.status).join(),
+	];
+}, onContent);
+// A conversation opens at its latest message.
+watch(activeId, () => void jumpToLatest({ smooth: false }));
+
+const onJumpToLatest = () => {
+	void jumpToLatest();
+	composerRef.value?.focus();
 };
-// Follow the stream: re-scroll as the last turn grows or a turn is added.
-watch(
-	() => [messages.value.length, messages.value.at(-1)?.text.length, messages.value.at(-1)?.status],
-	scrollToBottom
-);
-watch(activeId, scrollToBottom);
+
+// The member just asked for this answer, so their own send always goes to the
+// end and follows it, wherever they had scrolled to.
+const sendQuestion = (text: string) => {
+	void jumpToLatest();
+	return send(text);
+};
 
 const examplePrompts = computed(() => [
 	t('dashboard.assistant.index.examplePrompts.performance'),
 	t('dashboard.assistant.index.examplePrompts.engagedContacts'),
 	t('dashboard.assistant.index.examplePrompts.reEngagement'),
 ]);
-
-// The composer owns the question until the backend accepts it, so an example
-// prompt goes through it too: a failed one stays there with Retry.
-const composerRef = ref<{
-	sendText: (text: string) => Promise<void>;
-	focus: () => void;
-} | null>(null);
 
 const onExample = (prompt: string) => {
 	void composerRef.value?.sendText(prompt);
@@ -242,48 +261,72 @@ const cancelRename = () => {
 				</h1>
 			</header>
 
-			<div ref="scrollRef" class="flex-1 overflow-y-auto px-4 py-4">
-				<!-- A conversation that failed to load is not a new one (#721). -->
-				<UiQueryBoundary
-					v-if="activeId && messagesError"
-					:error="messagesError"
-					@retry="refetchMessages"
-				/>
-				<!-- Welcome / empty state -->
-				<div
-					v-else-if="!activeId || messages.length === 0"
-					class="h-full flex flex-col items-center justify-center text-center px-6"
-				>
+			<div class="relative flex-1 min-h-0 flex flex-col">
+				<div ref="scrollRef" class="flex-1 overflow-y-auto px-4 py-4" @scroll.passive="onScroll">
+					<!-- A conversation that failed to load is not a new one (#721). -->
+					<UiQueryBoundary
+						v-if="activeId && messagesError"
+						:error="messagesError"
+						@retry="refetchMessages"
+					/>
+					<!-- Welcome / empty state -->
 					<div
-						class="w-16 h-16 rounded-full bg-brand-subtle text-brand flex items-center justify-center mb-4"
+						v-else-if="!activeId || messages.length === 0"
+						class="h-full flex flex-col items-center justify-center text-center px-6"
 					>
-						<Icon name="lucide:sparkles" class="w-8 h-8" />
-					</div>
-					<h2 class="text-lg font-medium text-text-primary">
-						{{ t('dashboard.assistant.index.welcomeTitle') }}
-					</h2>
-					<p class="text-sm text-text-secondary mt-1 max-w-md">
-						{{ t('dashboard.assistant.index.welcomeBody') }}
-					</p>
-					<div class="mt-6 flex flex-col gap-2 w-full max-w-md">
-						<button
-							v-for="prompt in examplePrompts"
-							:key="prompt"
-							class="text-left text-sm px-4 py-2.5 rounded-xl bg-surface-1 shadow-surface-1 text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-							@click="onExample(prompt)"
+						<div
+							class="w-16 h-16 rounded-full bg-brand-subtle text-brand flex items-center justify-center mb-4"
 						>
-							{{ prompt }}
-						</button>
+							<Icon name="lucide:sparkles" class="w-8 h-8" />
+						</div>
+						<h2 class="text-lg font-medium text-text-primary">
+							{{ t('dashboard.assistant.index.welcomeTitle') }}
+						</h2>
+						<p class="text-sm text-text-secondary mt-1 max-w-md">
+							{{ t('dashboard.assistant.index.welcomeBody') }}
+						</p>
+						<div class="mt-6 flex flex-col gap-2 w-full max-w-md">
+							<button
+								v-for="prompt in examplePrompts"
+								:key="prompt"
+								class="text-left text-sm px-4 py-2.5 rounded-xl bg-surface-1 shadow-surface-1 text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+								@click="onExample(prompt)"
+							>
+								{{ prompt }}
+							</button>
+						</div>
+					</div>
+
+					<!-- Conversation -->
+					<div v-else class="max-w-3xl mx-auto space-y-5">
+						<AssistantMessage v-for="m in messages" :key="m._id" :message="m" />
 					</div>
 				</div>
 
-				<!-- Conversation -->
-				<div v-else class="max-w-3xl mx-auto space-y-5">
-					<AssistantMessage v-for="m in messages" :key="m._id" :message="m" />
+				<!-- New content arrived below a reader who scrolled up to reread. -->
+				<div
+					v-if="hasNewBelow && !following"
+					class="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center"
+				>
+					<UiButton
+						variant="secondary"
+						size="sm"
+						class="pointer-events-auto gap-1.5 rounded-full shadow-md"
+						data-testid="assistant-jump-latest"
+						@click="onJumpToLatest"
+					>
+						{{ t('dashboard.assistant.index.jumpToLatest') }}
+						<Icon name="lucide:arrow-down" class="w-3.5 h-3.5" />
+					</UiButton>
 				</div>
 			</div>
 
-			<AssistantComposer ref="composerRef" :send="send" :streaming="streaming" @stop="stop" />
+			<AssistantComposer
+				ref="composerRef"
+				:send="sendQuestion"
+				:streaming="streaming"
+				@stop="stop"
+			/>
 		</section>
 
 		<!-- Delete confirmation — a removed chat and its messages cannot be recovered -->
