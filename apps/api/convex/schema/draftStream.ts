@@ -41,5 +41,8 @@ export const draftStreamTables = {
 		errorMessage: v.optional(v.string()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
-	}),
+	})
+		// Member erasure finds a departing owner's leftover buffers (a client that
+		// died before deleting its row) through this.
+		.index('by_owner', ['ownerId']),
 };
