@@ -11,7 +11,10 @@
  *     disconnected accounts, messages without a real Message-ID;
  *   - an IMAP client's COPY + EXPUNGE reaches the provider as a move, never as a
  *     delete of mail the member still has;
- *   - the worker's settle retires or backs off each op.
+ *   - the worker's settle retires or backs off each op;
+ *   - a folder the worker renamed is known by its new name from then on: its
+ *     mapping and the ops still naming the old name follow it, so a worker
+ *     restart forgets nothing.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -304,5 +307,151 @@ describe('the worker surface', () => {
 		});
 
 		expect(await queued(t)).toEqual([]);
+	});
+});
+
+describe('a folder the worker renamed', () => {
+	async function mirroredFolders() {
+		const fixture = await externalMailbox();
+		const { t, mailboxId, accountId } = fixture;
+		const projects = await userFolder(t, mailboxId, 'Projects');
+		const owlat = await userFolder(t, mailboxId, 'Owlat', projects);
+		const sub = await userFolder(t, mailboxId, 'Sub', owlat);
+		const other = await userFolder(t, mailboxId, 'Owlat.old', projects);
+		await t.run(async (ctx) => {
+			for (const [folderId, remoteName] of [
+				[projects, 'Projects'],
+				[owlat, 'Projects/Owlat'],
+				[sub, 'Projects/Owlat/Sub'],
+				// '/' is this provider's delimiter: a sibling that only starts with the name.
+				[other, 'Projects/Owlat.old'],
+			] as const) {
+				await ctx.db.insert('externalMailFolderSync', {
+					accountId,
+					mailboxId,
+					folderId,
+					remoteName,
+					remoteUidValidity: 1,
+					lastSeenUid: 0,
+					lastSyncedAt: Date.now(),
+				});
+			}
+		});
+		return { ...fixture, owlat, sub };
+	}
+
+	async function mappedNames(t: TestConvex<typeof schema>) {
+		const rows = await t.run(async (ctx) => ctx.db.query('externalMailFolderSync').collect());
+		return rows.map((r) => r.remoteName).sort();
+	}
+
+	/** The worker's side: list the rename, run it, report the new name, settle. */
+	async function renameAtProvider(
+		t: TestConvex<typeof schema>,
+		accountId: Id<'externalMailAccounts'>,
+		between: () => Promise<void> = async () => {}
+	) {
+		const [rename] = await t.query(internal.mail.external.remoteOps.listDueRemoteOps, {
+			accountId,
+		});
+		if (rename?.kind !== 'renameFolder') throw new Error('expected the rename to be due');
+		// Changes the member makes while the worker is renaming still name the old folder.
+		await between();
+		await t.mutation(internal.mail.external.remoteOps.recordRemoteFolderRename, {
+			opId: rename.opId,
+			remoteName: 'Projects/Clients',
+			delimiter: '/',
+		});
+		await t.mutation(internal.mail.external.remoteOps.settleRemoteOps, {
+			results: [{ opId: rename.opId, outcome: 'done' }],
+		});
+	}
+
+	it('points the mapping of the folder, and of the folders below it, at the new name', async () => {
+		const { t, accountId, owlat } = await mirroredFolders();
+		await t.mutation(api.mail.folders.rename, { folderId: owlat, name: 'Clients' });
+
+		await renameAtProvider(t, accountId);
+
+		expect(await mappedNames(t)).toEqual([
+			'Projects',
+			'Projects/Clients',
+			'Projects/Clients/Sub',
+			'Projects/Owlat.old',
+		]);
+	});
+
+	it('rewrites the ops queued meanwhile, and names the folder by its new name from then on', async () => {
+		const { t, mailboxId, accountId, owlat, sub } = await mirroredFolders();
+		const a = await seedMessage(t, mailboxId, { rfc822MessageId: 'a@x.example' });
+		const b = await seedMessage(t, mailboxId, { rfc822MessageId: 'b@x.example' });
+		await t.mutation(api.mail.folders.rename, { folderId: owlat, name: 'Clients' });
+
+		await renameAtProvider(t, accountId, async () => {
+			await t.mutation(api.mail.messageActions.move, { messageIds: [a], targetFolderId: owlat });
+			await t.mutation(api.mail.messageActions.move, { messageIds: [b], targetFolderId: sub });
+		});
+		// Recorded after the backend learned the new name.
+		await t.mutation(api.mail.messageActions.setFlags, { messageIds: [a], seen: true });
+
+		expect(await queued(t)).toEqual([
+			{
+				kind: 'move',
+				rfc822MessageId: 'a@x.example',
+				source: { role: 'inbox' },
+				target: { remote: 'Projects/Clients' },
+			},
+			{
+				kind: 'move',
+				rfc822MessageId: 'b@x.example',
+				source: { role: 'inbox' },
+				target: { remote: 'Projects/Clients/Sub' },
+			},
+			{
+				kind: 'flags',
+				rfc822MessageId: 'a@x.example',
+				source: { remote: 'Projects/Clients' },
+				flags: { seen: true },
+			},
+		]);
+	});
+
+	it('drops a stale mapping that already held the new name', async () => {
+		const { t, mailboxId, accountId, owlat } = await mirroredFolders();
+		const gone = await userFolder(t, mailboxId, 'Gone');
+		await t.run(async (ctx) => {
+			await ctx.db.insert('externalMailFolderSync', {
+				accountId,
+				mailboxId,
+				folderId: gone,
+				remoteName: 'Projects/Clients',
+				remoteUidValidity: 1,
+				lastSeenUid: 0,
+				lastSyncedAt: Date.now(),
+			});
+		});
+		await t.mutation(api.mail.folders.rename, { folderId: owlat, name: 'Clients' });
+
+		await renameAtProvider(t, accountId);
+
+		const rows = await t.run(async (ctx) => ctx.db.query('externalMailFolderSync').collect());
+		expect(rows.filter((r) => r.remoteName === 'Projects/Clients').map((r) => r.folderId)).toEqual([
+			owlat,
+		]);
+	});
+
+	it('ignores a report for an op that is not a folder rename', async () => {
+		const { t, mailboxId, accountId } = await mirroredFolders();
+		const id = await seedMessage(t, mailboxId, { rfc822MessageId: 'a@x.example' });
+		await t.mutation(api.mail.messageActions.archive, { messageIds: [id] });
+		const [op] = await t.query(internal.mail.external.remoteOps.listDueRemoteOps, { accountId });
+
+		await t.mutation(internal.mail.external.remoteOps.recordRemoteFolderRename, {
+			opId: op!.opId,
+			remoteName: 'Projects/Clients',
+			delimiter: '/',
+		});
+
+		expect(await mappedNames(t)).toContain('Projects/Owlat');
 	});
 });

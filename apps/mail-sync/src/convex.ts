@@ -352,6 +352,12 @@ export const fn = {
 	settleRemoteOps: makeFunctionReference<'mutation', { results: RemoteOpResult[] }, null>(
 		'mail/external/remoteOps:settleRemoteOps'
 	),
+	// A folder the worker renamed: the backend rewrites its mapping and the ops still naming the old name.
+	recordRemoteFolderRename: makeFunctionReference<
+		'mutation',
+		{ opId: string; remoteName: string; delimiter: string },
+		null
+	>('mail/external/remoteOps:recordRemoteFolderRename'),
 
 	// ── Remote → local change sync (moves, flags, deletes made on the provider) ──
 	getSyncSettings: makeFunctionReference<

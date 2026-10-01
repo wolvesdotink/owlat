@@ -19,7 +19,9 @@
  * A folder rename or delete changes the remote name that message ops address
  * the folder (and every folder below it) by. It waits until no message op
  * naming the folder is queued, and runs after any older folder op on the same
- * branch of the tree.
+ * branch of the tree. Once the worker has renamed the folder, the ops queued
+ * since that still name it by its old name are rewritten to the new one
+ * (`renameQueuedFolderRefs`).
  */
 
 import type { WithoutSystemFields } from 'convex/server';
@@ -36,6 +38,11 @@ const MESSAGE_OPS_LIMIT = 25;
 const DUE_SCAN_LIMIT = 250;
 /** Queued ops a folder op is checked against; while more are queued it waits. */
 const FOLDER_SCAN_LIMIT = 500;
+/**
+ * Queued ops a folder rename rewrites. The rename only ran because no more
+ * than FOLDER_SCAN_LIMIT were queued when it was handed out.
+ */
+const RENAME_SCAN_LIMIT = 2 * FOLDER_SCAN_LIMIT;
 /** Hierarchy delimiters a remote name may use. Matching on both only ever makes a folder op wait longer. */
 const DELIMITERS = ['/', '.'];
 
@@ -212,4 +219,30 @@ export async function dueRemoteOps(
 		if (page.length >= pageSize) break;
 	}
 	return page;
+}
+
+/**
+ * Point the account's queued ops at a renamed remote folder: `rename` maps a
+ * remote name to its new one, or to null for a name the rename did not touch.
+ */
+export async function renameQueuedFolderRefs(
+	ctx: MutationCtx,
+	accountId: Id<'externalMailAccounts'>,
+	rename: (name: string) => string | null
+): Promise<void> {
+	const renamedRef = (ref: RemoteOpRow['source'] | undefined) => {
+		const remote = ref && 'remote' in ref ? rename(ref.remote) : null;
+		return remote === null ? undefined : { remote };
+	};
+	const rows = await ctx.db
+		.query('externalMailRemoteOps')
+		.withIndex('by_account_and_next_attempt', (q) => q.eq('accountId', accountId))
+		.take(RENAME_SCAN_LIMIT);
+	for (const row of rows) {
+		const source = renamedRef(row.source);
+		const target = renamedRef(row.target);
+		if (source || target) {
+			await ctx.db.patch(row._id, { source: source ?? row.source, target: target ?? row.target });
+		}
+	}
 }

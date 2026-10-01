@@ -10,18 +10,25 @@
  *   - user folders are created once, under the server's namespace;
  *   - only a folder the server confirms is missing counts as absent: a refused
  *     SELECT, STATUS or SEARCH fails the op so it is retried, and a lost
- *     connection leaves it uncharged.
+ *     connection leaves it uncharged;
+ *   - a MOVE, COPY, STORE or EXPUNGE the server refuses (ImapFlow resolves
+ *     `false`) fails the op with the server's answer, never settles it as
+ *     done, and never lets a folder be deleted with mail still in it;
+ *   - a flag the folder cannot keep is skipped, not retried;
+ *   - a folder rename is handed to the backend, so a restart loses nothing.
  */
 
 import { describe, expect, it } from 'vitest';
 import {
-	drainRemoteOps,
 	RemoteOpReplayer,
 	type RemoteFolderMap,
 	type RemoteOp,
 	type RemoteOpResult,
 	type RemoteOpsClient,
+	type ReplayHooks,
 } from '../remoteOps.js';
+import { drainRemoteOps } from '../remoteOpsDrain.js';
+import { CommandRefusals } from '../imapCommandErrors.js';
 import type { FolderRole } from '../folders.js';
 
 /** An error shaped like the one ImapFlow rejects a refused command with. */
@@ -45,9 +52,26 @@ interface FakeMessage {
 	flags: Set<string>;
 }
 
+/** The commands a FakeImap can be told to refuse, by the name its log uses. */
+type Refusable = 'MOVE' | 'COPY' | '+FLAGS' | '-FLAGS' | 'EXPUNGE';
+
+/**
+ * An IMAP server behind ImapFlow: an action command the server refuses is
+ * logged through the client's logger and resolves `false`, as ImapFlow does.
+ */
 class FakeImap implements RemoteOpsClient {
 	usable = true;
 	namespace: { prefix: string; delimiter: string } = { prefix: '', delimiter: '/' };
+	capabilities = new Map<string, boolean | number>([
+		['MOVE', true],
+		['UIDPLUS', true],
+	]);
+	enabled = new Set<string>();
+	/** PERMANENTFLAGS of every folder; undefined when the server sends none. */
+	permanentFlags: Set<string> | undefined;
+	readonly refusals = new CommandRefusals();
+	/** Commands the server refuses, with the error ImapFlow logs for each. */
+	readonly refuse = new Map<Refusable, Error>();
 	readonly boxes = new Map<string, FakeMessage[]>();
 	readonly log: string[] = [];
 	private selected: string | null = null;
@@ -75,9 +99,24 @@ class FakeImap implements RemoteOpsClient {
 	}
 
 	private put(path: string, messages: FakeMessage[]): void {
-		const target = this.boxes.get(path);
-		if (!target) throw new Error(`NO [TRYCREATE] ${path}`);
+		const target = this.boxes.get(path)!;
 		for (const m of messages) target.push({ ...m, uid: this.nextUid++, flags: new Set(m.flags) });
+	}
+
+	/** Log a refusal the way ImapFlow does, and answer `false`; null when the command goes through. */
+	private refused(command: Refusable, destination?: string): false | null {
+		let err = this.refuse.get(command);
+		if (!err && destination !== undefined && !this.boxes.has(destination)) {
+			err = refused('NO', 'TRYCREATE', 'Mailbox does not exist');
+		}
+		if (!err) return null;
+		this.log.push(`${command} refused`);
+		this.refusals.logger.warn({ err, cid: 'fake' });
+		return false;
+	}
+
+	get mailbox() {
+		return this.selected === null ? (false as const) : { permanentFlags: this.permanentFlags };
 	}
 
 	async getMailboxLock(path: string) {
@@ -101,32 +140,61 @@ class FakeImap implements RemoteOpsClient {
 	}
 
 	async messageMove(range: string, destination: string) {
+		if (!this.capabilities.has('MOVE')) {
+			// ImapFlow's fallback: COPY, then STORE \Deleted + EXPUNGE whatever the COPY answered.
+			const copied = await this.messageCopy(range, destination);
+			await this.messageDelete(range);
+			return copied;
+		}
+		const refusal = this.refused('MOVE', destination);
+		if (refusal !== null) return refusal;
 		this.log.push(`MOVE ${this.selected} ${range} -> ${destination}`);
 		const moving = this.take(range);
 		this.put(destination, moving);
 		const box = this.box();
 		for (const m of moving) box.splice(box.indexOf(m), 1);
+		return { path: this.selected!, destination };
 	}
 
 	async messageCopy(range: string, destination: string) {
+		const refusal = this.refused('COPY', destination);
+		if (refusal !== null) return refusal;
 		this.log.push(`COPY ${this.selected} ${range} -> ${destination}`);
 		this.put(destination, this.take(range));
+		return { path: this.selected!, destination };
 	}
 
-	async messageFlagsAdd(range: string, flags: string[]) {
-		this.log.push(`+FLAGS ${this.selected} ${range} ${flags.join(' ')}`);
-		for (const m of this.take(range)) for (const f of flags) m.flags.add(f);
+	async messageFlagsAdd(range: string, flags: string[], _options?: unknown, quiet = false) {
+		// ImapFlow drops, unsent, a flag the folder's PERMANENTFLAGS do not list.
+		const p = this.permanentFlags;
+		const kept = flags.filter((f) => !p || p.has('\\*') || p.has(f));
+		if (kept.length === 0) return false;
+		const refusal = this.refused('+FLAGS');
+		if (refusal !== null) return refusal;
+		if (!quiet) this.log.push(`+FLAGS ${this.selected} ${range} ${kept.join(' ')}`);
+		for (const m of this.take(range)) for (const f of kept) m.flags.add(f);
+		return true;
 	}
 
 	async messageFlagsRemove(range: string, flags: string[]) {
+		const refusal = this.refused('-FLAGS');
+		if (refusal !== null) return refusal;
 		this.log.push(`-FLAGS ${this.selected} ${range} ${flags.join(' ')}`);
 		for (const m of this.take(range)) for (const f of flags) m.flags.delete(f);
+		return true;
 	}
 
 	async messageDelete(range: string) {
-		this.log.push(`DELETE ${this.selected} ${range}`);
+		// ImapFlow stores \Deleted first and ignores what that STORE answered.
+		await this.messageFlagsAdd(range, ['\\Deleted'], undefined, true);
+		const refusal = this.refused('EXPUNGE');
+		if (refusal !== null) return refusal;
+		this.log.push(`EXPUNGE ${this.selected} ${range}`);
 		const box = this.box();
-		for (const m of this.take(range)) box.splice(box.indexOf(m), 1);
+		for (const m of this.take(range)) {
+			if (m.flags.has('\\Deleted')) box.splice(box.indexOf(m), 1);
+		}
+		return true;
 	}
 
 	async mailboxCreate(segments: string[]) {
@@ -144,11 +212,13 @@ class FakeImap implements RemoteOpsClient {
 		this.log.push(`RENAME ${path} -> ${newPath}`);
 		this.boxes.delete(path);
 		this.boxes.set(newPath, box);
+		return { path, newPath };
 	}
 
 	async mailboxDelete(path: string) {
 		this.log.push(`DELETE-FOLDER ${path}`);
 		this.boxes.delete(path);
+		return { path };
 	}
 
 	async status(path: string): Promise<{ messages?: number } | false> {
@@ -171,6 +241,11 @@ function folderMap(byRole: Partial<Record<FolderRole, string>>, allMail: string[
 	} satisfies RemoteFolderMap;
 }
 
+/** A replayer wired to the fake's refusal log, as connection.ts wires it to ImapFlow's. */
+function replayerFor(imap: FakeImap, folders: RemoteFolderMap, hooks: ReplayHooks = {}) {
+	return new RemoteOpReplayer(imap, folders, { takeRefusal: () => imap.refusals.take(), ...hooks });
+}
+
 let opSeq = 0;
 function op(fields: Omit<RemoteOp, 'opId' | 'attempts'>): RemoteOp {
 	opSeq += 1;
@@ -182,7 +257,7 @@ const STANDARD = { inbox: 'INBOX', archive: 'Archive', trash: 'Trash', sent: 'Se
 describe('RemoteOpReplayer', () => {
 	it('moves the message out of the folder the op names', async () => {
 		const imap = new FakeImap({ INBOX: [[1, '<a@x>']], Archive: [], Trash: [], Sent: [] });
-		const replayer = new RemoteOpReplayer(imap, folderMap(STANDARD));
+		const replayer = replayerFor(imap, folderMap(STANDARD));
 
 		const outcome = await replayer.apply(
 			op({
@@ -205,7 +280,7 @@ describe('RemoteOpReplayer', () => {
 			Trash: [],
 			Sent: [],
 		});
-		const replayer = new RemoteOpReplayer(imap, folderMap(STANDARD));
+		const replayer = replayerFor(imap, folderMap(STANDARD));
 
 		const outcome = await replayer.apply(
 			op({
@@ -224,7 +299,7 @@ describe('RemoteOpReplayer', () => {
 	it('finds a message filed elsewhere in the other synced folders', async () => {
 		// Archived on the provider before the queue existed; Owlat still has it in the inbox.
 		const imap = new FakeImap({ INBOX: [], Archive: [[4, '<b@x>']], Trash: [], Sent: [] });
-		const replayer = new RemoteOpReplayer(imap, folderMap(STANDARD));
+		const replayer = replayerFor(imap, folderMap(STANDARD));
 
 		const outcome = await replayer.apply(
 			op({
@@ -241,7 +316,7 @@ describe('RemoteOpReplayer', () => {
 
 	it('never pulls a message out of Sent unless the op names Sent', async () => {
 		const imap = new FakeImap({ INBOX: [], Archive: [], Trash: [], Sent: [[2, '<s@x>']] });
-		const replayer = new RemoteOpReplayer(imap, folderMap(STANDARD));
+		const replayer = replayerFor(imap, folderMap(STANDARD));
 
 		const outcome = await replayer.apply(
 			op({
@@ -262,7 +337,7 @@ describe('RemoteOpReplayer', () => {
 			'[Gmail]/All Mail': [[9, '<g@x>']],
 			'[Gmail]/Trash': [],
 		});
-		const replayer = new RemoteOpReplayer(
+		const replayer = replayerFor(
 			gmail,
 			folderMap({ inbox: 'INBOX', archive: '[Gmail]/All Mail', trash: '[Gmail]/Trash' }, [
 				'[Gmail]/All Mail',
@@ -285,7 +360,7 @@ describe('RemoteOpReplayer', () => {
 
 	it('archives into Gmail All Mail with a move out of the inbox', async () => {
 		const gmail = new FakeImap({ INBOX: [[3, '<g@x>']], '[Gmail]/All Mail': [[9, '<g@x>']] });
-		const replayer = new RemoteOpReplayer(
+		const replayer = replayerFor(
 			gmail,
 			folderMap({ inbox: 'INBOX', archive: '[Gmail]/All Mail' }, ['[Gmail]/All Mail'])
 		);
@@ -311,7 +386,7 @@ describe('RemoteOpReplayer', () => {
 		});
 		imap.namespace = { prefix: 'INBOX.', delimiter: '.' };
 		const folders = folderMap({ inbox: 'INBOX' });
-		const replayer = new RemoteOpReplayer(imap, folders);
+		const replayer = replayerFor(imap, folders);
 		const target = { path: ['Projects', 'Owlat'] };
 
 		await replayer.apply(
@@ -325,7 +400,7 @@ describe('RemoteOpReplayer', () => {
 		expect(imap.ids('INBOX.Projects.Owlat')).toEqual(['<a@x>', '<b@x>']);
 
 		// A later connection has no memory of the CREATE and resolves the name itself.
-		const fresh = new RemoteOpReplayer(imap, folders);
+		const fresh = replayerFor(imap, folders);
 		const outcome = await fresh.apply(
 			op({ kind: 'flags', rfc822MessageId: 'a@x', source: target, flags: { seen: true } })
 		);
@@ -336,7 +411,7 @@ describe('RemoteOpReplayer', () => {
 	it('creates a missing system folder under its conventional name', async () => {
 		const imap = new FakeImap({ INBOX: [[1, '<a@x>']] });
 		const folders = folderMap({ inbox: 'INBOX' });
-		const replayer = new RemoteOpReplayer(imap, folders);
+		const replayer = replayerFor(imap, folders);
 
 		await replayer.apply(
 			op({
@@ -353,7 +428,7 @@ describe('RemoteOpReplayer', () => {
 
 	it('sets and clears flags in one op', async () => {
 		const imap = new FakeImap({ INBOX: [[1, '<a@x>']] });
-		const replayer = new RemoteOpReplayer(imap, folderMap({ inbox: 'INBOX' }));
+		const replayer = replayerFor(imap, folderMap({ inbox: 'INBOX' }));
 
 		await replayer.apply(
 			op({
@@ -369,7 +444,7 @@ describe('RemoteOpReplayer', () => {
 
 	it('deletes only from the folder the op names', async () => {
 		const imap = new FakeImap({ INBOX: [[1, '<a@x>']], Trash: [] });
-		const replayer = new RemoteOpReplayer(imap, folderMap({ inbox: 'INBOX', trash: 'Trash' }));
+		const replayer = replayerFor(imap, folderMap({ inbox: 'INBOX', trash: 'Trash' }));
 
 		const outcome = await replayer.apply(
 			op({ kind: 'delete', rfc822MessageId: 'a@x', source: { role: 'trash' } })
@@ -381,7 +456,7 @@ describe('RemoteOpReplayer', () => {
 
 	it('never deletes from Gmail All Mail', async () => {
 		const gmail = new FakeImap({ '[Gmail]/All Mail': [[9, '<g@x>']] });
-		const replayer = new RemoteOpReplayer(
+		const replayer = replayerFor(
 			gmail,
 			folderMap({ archive: '[Gmail]/All Mail' }, ['[Gmail]/All Mail'])
 		);
@@ -398,7 +473,7 @@ describe('RemoteOpReplayer — folders', () => {
 	it('renames a mirrored folder in place and sends later ops after it', async () => {
 		const imap = new FakeImap({ INBOX: [[1, '<a@x>']], 'Projects/Owlat': [] });
 		const folders = { ...folderMap({ inbox: 'INBOX' }), renamed: new Map<string, string>() };
-		const replayer = new RemoteOpReplayer(imap, folders);
+		const replayer = replayerFor(imap, folders);
 
 		const outcome = await replayer.apply(
 			op({
@@ -424,7 +499,7 @@ describe('RemoteOpReplayer — folders', () => {
 
 	it('moves what the provider still holds to the inbox before deleting a folder', async () => {
 		const imap = new FakeImap({ INBOX: [], Receipts: [[5, '<r@x>']] });
-		const replayer = new RemoteOpReplayer(imap, folderMap({ inbox: 'INBOX' }));
+		const replayer = replayerFor(imap, folderMap({ inbox: 'INBOX' }));
 
 		const outcome = await replayer.apply(
 			op({ kind: 'deleteFolder', source: { remote: 'Receipts' } })
@@ -437,7 +512,7 @@ describe('RemoteOpReplayer — folders', () => {
 
 	it('never renames or deletes a system folder, and skips one the provider lacks', async () => {
 		const imap = new FakeImap({ INBOX: [], Archive: [] });
-		const replayer = new RemoteOpReplayer(imap, folderMap({ inbox: 'INBOX', archive: 'Archive' }));
+		const replayer = replayerFor(imap, folderMap({ inbox: 'INBOX', archive: 'Archive' }));
 
 		expect(await replayer.apply(op({ kind: 'deleteFolder', source: { remote: 'Archive' } }))).toBe(
 			'not_found'
@@ -465,7 +540,7 @@ describe('drainRemoteOps', () => {
 			deps: {
 				listDue: async () => queue.shift() ?? [],
 				settle: async (results: RemoteOpResult[]) => void settled.push(results),
-				replayer: new RemoteOpReplayer(imap, folderMap(STANDARD)),
+				replayer: replayerFor(imap, folderMap(STANDARD)),
 				client: imap,
 				isStopped: () => false,
 				onError: (o: RemoteOp) => void errors.push(o.opId),
@@ -598,7 +673,7 @@ describe('RemoteOpReplayer — a refused SELECT or STATUS is not a missing folde
 						return async () => (served ? [] : ((served = true), [operation]));
 					})(),
 					settle: async (results) => void settled.push(results),
-					replayer: new RemoteOpReplayer(imap, folderMap(STANDARD)),
+					replayer: replayerFor(imap, folderMap(STANDARD)),
 					client: imap,
 					isStopped: () => false,
 					onError: () => {},
@@ -702,7 +777,7 @@ describe('RemoteOpReplayer — a refused SELECT or STATUS is not a missing folde
 
 	it('retires a folder op whose folder STATUS confirms is gone', async () => {
 		const imap = new FakeImap({ INBOX: [] });
-		const replayer = new RemoteOpReplayer(imap, folderMap({ inbox: 'INBOX' }));
+		const replayer = replayerFor(imap, folderMap({ inbox: 'INBOX' }));
 
 		expect(await replayer.apply(op({ kind: 'deleteFolder', source: { remote: 'Receipts' } }))).toBe(
 			'not_found'
@@ -781,5 +856,414 @@ describe('RemoteOpReplayer — a refused SELECT or STATUS is not a missing folde
 		await h.run();
 
 		expect(h.settled).toEqual([]);
+	});
+});
+
+/** Drain one op through the replay, as connection.ts does, and return what was settled. */
+async function drainOne(
+	imap: FakeImap,
+	operation: RemoteOp,
+	folders: RemoteFolderMap = folderMap(STANDARD),
+	hooks: ReplayHooks = {}
+): Promise<RemoteOpResult[][]> {
+	const settled: RemoteOpResult[][] = [];
+	let served = false;
+	await drainRemoteOps({
+		listDue: async () => (served ? [] : ((served = true), [operation])),
+		settle: async (results) => void settled.push(results),
+		replayer: replayerFor(imap, folders, hooks),
+		client: imap,
+		isStopped: () => false,
+		onError: () => {},
+	});
+	return settled;
+}
+
+describe('RemoteOpReplayer — a refused MOVE, COPY, STORE or EXPUNGE is not done', () => {
+	const overQuota = () => refused('NO', 'OVERQUOTA', 'Quota exceeded');
+	const archive = () =>
+		op({
+			kind: 'move',
+			rfc822MessageId: 'a@x',
+			source: { role: 'inbox' },
+			target: { role: 'archive' },
+		});
+
+	function mailbox() {
+		return new FakeImap({ INBOX: [[1, '<a@x>']], Archive: [], Trash: [[2, '<t@x>']], Sent: [] });
+	}
+
+	it('fails a move the server refuses, with its answer, and leaves the message where it was', async () => {
+		const imap = mailbox();
+		imap.refuse.set('MOVE', overQuota());
+		const operation = archive();
+
+		const settled = await drainOne(imap, operation);
+
+		expect(settled).toEqual([
+			[
+				{
+					opId: operation.opId,
+					outcome: 'failed',
+					error: 'MOVE failed: NO [OVERQUOTA] Quota exceeded',
+				},
+			],
+		]);
+		expect(imap.ids('INBOX')).toEqual(['<a@x>']);
+		expect(imap.ids('Archive')).toEqual([]);
+	});
+
+	it('fails a move into a folder the provider no longer has instead of calling it done', async () => {
+		// An op still naming a folder renamed away: the server answers TRYCREATE.
+		const imap = mailbox();
+		const operation = op({
+			kind: 'move',
+			rfc822MessageId: 'a@x',
+			source: { role: 'inbox' },
+			target: { remote: 'Projects/Owlat' },
+		});
+
+		const settled = await drainOne(imap, operation);
+
+		expect(settled[0]).toEqual([
+			expect.objectContaining({ outcome: 'failed', error: expect.stringContaining('[TRYCREATE]') }),
+		]);
+		expect(imap.ids('INBOX')).toEqual(['<a@x>']);
+	});
+
+	it('fails a copy out of Gmail All Mail the server refuses', async () => {
+		const gmail = new FakeImap({ INBOX: [], '[Gmail]/All Mail': [[9, '<g@x>']] });
+		gmail.refuse.set('COPY', overQuota());
+		const operation = op({
+			kind: 'move',
+			rfc822MessageId: 'g@x',
+			source: { role: 'archive' },
+			target: { role: 'inbox' },
+		});
+
+		const settled = await drainOne(
+			gmail,
+			operation,
+			folderMap({ inbox: 'INBOX', archive: '[Gmail]/All Mail' }, ['[Gmail]/All Mail'])
+		);
+
+		expect(settled[0]).toEqual([
+			expect.objectContaining({
+				outcome: 'failed',
+				error: 'COPY failed: NO [OVERQUOTA] Quota exceeded',
+			}),
+		]);
+		expect(gmail.ids('INBOX')).toEqual([]);
+	});
+
+	it.each([
+		['setting', '+FLAGS', { seen: true }],
+		['clearing', '-FLAGS', { seen: false }],
+	] as const)('fails %s a flag the server refuses', async (_name, command, flags) => {
+		const imap = mailbox();
+		imap.refuse.set(command, refused('NO', undefined, 'STORE not permitted'));
+		const operation = op({
+			kind: 'flags',
+			rfc822MessageId: 'a@x',
+			source: { role: 'inbox' },
+			flags,
+		});
+
+		const settled = await drainOne(imap, operation);
+
+		expect(settled).toEqual([
+			[{ opId: operation.opId, outcome: 'failed', error: 'STORE failed: NO STORE not permitted' }],
+		]);
+	});
+
+	it('fails a delete whose EXPUNGE the server refuses', async () => {
+		const imap = mailbox();
+		imap.refuse.set('EXPUNGE', refused('NO', 'EXPUNGEISSUED', 'Expunge failed'));
+		const operation = op({ kind: 'delete', rfc822MessageId: 't@x', source: { role: 'trash' } });
+
+		const settled = await drainOne(imap, operation);
+
+		expect(settled[0]).toEqual([
+			expect.objectContaining({
+				outcome: 'failed',
+				error: 'EXPUNGE failed: NO [EXPUNGEISSUED] Expunge failed',
+			}),
+		]);
+		expect(imap.ids('Trash')).toEqual(['<t@x>']);
+	});
+
+	it('fails a delete whose STORE \\Deleted is refused, without expunging', async () => {
+		// ImapFlow's messageDelete would report the EXPUNGE alone, which removes nothing.
+		const imap = mailbox();
+		imap.refuse.set('+FLAGS', refused('NO', undefined, 'Permission denied'));
+		const operation = op({ kind: 'delete', rfc822MessageId: 't@x', source: { role: 'trash' } });
+
+		const settled = await drainOne(imap, operation);
+
+		expect(settled[0]).toEqual([
+			expect.objectContaining({ outcome: 'failed', error: 'STORE failed: NO Permission denied' }),
+		]);
+		expect(imap.log.some((line) => line.startsWith('EXPUNGE'))).toBe(false);
+		expect(imap.ids('Trash')).toEqual(['<t@x>']);
+	});
+
+	it('leaves the op uncharged when the connection drops under a MOVE', async () => {
+		const imap = mailbox();
+		imap.messageMove = async () => {
+			imap.usable = false;
+			return false; // ImapFlow swallows the dropped command into `false` too
+		};
+
+		expect(await drainOne(imap, archive())).toEqual([]);
+	});
+
+	describe('on a server without MOVE', () => {
+		function withoutMove() {
+			const imap = mailbox();
+			imap.capabilities.delete('MOVE');
+			return imap;
+		}
+
+		it('moves with COPY, then expunges the original', async () => {
+			const imap = withoutMove();
+
+			const settled = await drainOne(imap, archive());
+
+			expect(settled[0]).toEqual([expect.objectContaining({ outcome: 'done' })]);
+			expect(imap.log).toEqual([
+				'COPY INBOX 1 -> Archive',
+				'+FLAGS INBOX 1 \\Deleted',
+				'EXPUNGE INBOX 1',
+			]);
+			expect(imap.ids('INBOX')).toEqual([]);
+			expect(imap.ids('Archive')).toEqual(['<a@x>']);
+		});
+
+		it('never expunges the original when the COPY is refused', async () => {
+			const imap = withoutMove();
+			imap.refuse.set('COPY', overQuota());
+
+			const settled = await drainOne(imap, archive());
+
+			expect(settled[0]).toEqual([
+				expect.objectContaining({
+					outcome: 'failed',
+					error: 'COPY failed: NO [OVERQUOTA] Quota exceeded',
+				}),
+			]);
+			expect(imap.ids('INBOX')).toEqual(['<a@x>']);
+			expect(imap.log).toEqual(['COPY refused']);
+		});
+
+		it('uses MOVE where IMAP4rev2 includes it', async () => {
+			const imap = withoutMove();
+			// RFC 9051 folds MOVE into IMAP4rev2; ImapFlow then sends MOVE without listing it.
+			imap.enabled.add('IMAP4REV2');
+			const moves: string[] = [];
+			imap.messageMove = async (range, destination) => {
+				moves.push(`${range} -> ${destination}`);
+				return { path: 'INBOX', destination };
+			};
+
+			await drainOne(imap, archive());
+
+			expect(moves).toEqual(['1 -> Archive']);
+		});
+	});
+});
+
+describe('RemoteOpReplayer — a flag the folder cannot keep', () => {
+	it('stores the flags the folder keeps and reports the rest as skipped, without retrying', async () => {
+		const imap = new FakeImap({ INBOX: [[1, '<a@x>']] });
+		imap.permanentFlags = new Set(['\\Seen', '\\Deleted']);
+		const skipped: string[] = [];
+		const operation = op({
+			kind: 'flags',
+			rfc822MessageId: 'a@x',
+			source: { role: 'inbox' },
+			flags: { seen: true, flagged: true },
+		});
+
+		const settled = await drainOne(imap, operation, folderMap({ inbox: 'INBOX' }), {
+			skipped: (_op, reason) => void skipped.push(reason),
+		});
+
+		expect(settled).toEqual([[{ opId: operation.opId, outcome: 'done' }]]);
+		expect(imap.log).toEqual(['+FLAGS INBOX 1 \\Seen']);
+		expect(skipped).toEqual(["the folder's PERMANENTFLAGS do not allow \\Flagged"]);
+	});
+
+	it('settles an op whose only flag the folder cannot keep, sending nothing', async () => {
+		const imap = new FakeImap({ INBOX: [[1, '<a@x>']] });
+		imap.permanentFlags = new Set(['\\Seen']);
+		const operation = op({
+			kind: 'flags',
+			rfc822MessageId: 'a@x',
+			source: { role: 'inbox' },
+			flags: { flagged: true },
+		});
+
+		const settled = await drainOne(imap, operation, folderMap({ inbox: 'INBOX' }));
+
+		expect(settled).toEqual([[{ opId: operation.opId, outcome: 'done' }]]);
+		expect(imap.log).toEqual([]);
+	});
+
+	it('stores any flag in a folder whose PERMANENTFLAGS include \\*', async () => {
+		const imap = new FakeImap({ INBOX: [[1, '<a@x>']] });
+		imap.permanentFlags = new Set(['\\*']);
+
+		await drainOne(
+			imap,
+			op({
+				kind: 'flags',
+				rfc822MessageId: 'a@x',
+				source: { role: 'inbox' },
+				flags: { flagged: true },
+			}),
+			folderMap({ inbox: 'INBOX' })
+		);
+
+		expect(imap.log).toEqual(['+FLAGS INBOX 1 \\Flagged']);
+	});
+});
+
+describe('RemoteOpReplayer — deleting a folder whose mail could not be moved out', () => {
+	const deleteReceipts = () => op({ kind: 'deleteFolder', source: { remote: 'Receipts' } });
+
+	it('keeps the folder, and its mail, when the server refuses the move', async () => {
+		const imap = new FakeImap({ INBOX: [], Receipts: [[5, '<r@x>']] });
+		imap.refuse.set('MOVE', refused('NO', 'OVERQUOTA', 'Quota exceeded'));
+		const operation = deleteReceipts();
+
+		const settled = await drainOne(imap, operation, folderMap({ inbox: 'INBOX' }));
+
+		expect(settled).toEqual([
+			[
+				{
+					opId: operation.opId,
+					outcome: 'failed',
+					error: 'MOVE failed: NO [OVERQUOTA] Quota exceeded',
+				},
+			],
+		]);
+		expect(imap.log).not.toContain('DELETE-FOLDER Receipts');
+		expect(imap.ids('Receipts')).toEqual(['<r@x>']);
+	});
+
+	it('keeps the folder on a server without MOVE when the COPY is refused', async () => {
+		const imap = new FakeImap({ INBOX: [], Receipts: [[5, '<r@x>']] });
+		imap.capabilities.delete('MOVE');
+		imap.refuse.set('COPY', refused('NO', 'OVERQUOTA', 'Quota exceeded'));
+
+		const settled = await drainOne(imap, deleteReceipts(), folderMap({ inbox: 'INBOX' }));
+
+		expect(settled[0]).toEqual([expect.objectContaining({ outcome: 'failed' })]);
+		expect(imap.boxes.has('Receipts')).toBe(true);
+		expect(imap.ids('Receipts')).toEqual(['<r@x>']);
+		expect(imap.ids('INBOX')).toEqual([]);
+	});
+
+	it('keeps the folder when mail is still in it after the move', async () => {
+		const imap = new FakeImap({ INBOX: [], Receipts: [[5, '<r@x>']] });
+		const move = imap.messageMove.bind(imap);
+		imap.messageMove = async (range, destination, options) => {
+			const result = await move(range, destination, options);
+			imap.boxes.get('Receipts')!.push({ uid: 6, messageId: '<new@x>', flags: new Set() });
+			return result;
+		};
+
+		const settled = await drainOne(imap, deleteReceipts(), folderMap({ inbox: 'INBOX' }));
+
+		expect(settled[0]).toEqual([
+			expect.objectContaining({
+				outcome: 'failed',
+				error: 'DELETE withheld: the folder still holds 1 messages',
+			}),
+		]);
+		expect(imap.ids('Receipts')).toEqual(['<new@x>']);
+	});
+});
+
+describe('RemoteOpReplayer — a folder rename survives a worker restart', () => {
+	const renameToClients = () =>
+		op({
+			kind: 'renameFolder',
+			source: { remote: 'Projects/Owlat' },
+			target: { path: ['Clients'] },
+		});
+
+	it('hands the new remote name and the delimiter to the backend', async () => {
+		const imap = new FakeImap({ INBOX: [], 'Projects/Owlat': [] });
+		const renames: unknown[] = [];
+		const operation = renameToClients();
+
+		await drainOne(imap, operation, folderMap({ inbox: 'INBOX' }), {
+			renamed: async (o, rename) => void renames.push([o.opId, rename]),
+		});
+
+		expect(renames).toEqual([
+			[operation.opId, { from: 'Projects/Owlat', to: 'Projects/Clients', delimiter: '/' }],
+		]);
+	});
+
+	it('reaches the renamed folder after a restart once the backend has rewritten the op', async () => {
+		const imap = new FakeImap({ INBOX: [[1, '<a@x>']], 'Projects/Owlat': [[2, '<b@x>']] });
+		// The backend's side of the rename: queued ops naming the old folder now name the new one.
+		const queued = [
+			op({
+				kind: 'flags',
+				rfc822MessageId: 'b@x',
+				source: { remote: 'Projects/Owlat' },
+				flags: { seen: true },
+			}),
+			op({
+				kind: 'move',
+				rfc822MessageId: 'a@x',
+				source: { role: 'inbox' },
+				target: { remote: 'Projects/Owlat' },
+			}),
+		];
+		const rewrite = async (_op: RemoteOp, { from, to }: { from: string; to: string }) => {
+			for (const o of queued) {
+				for (const ref of [o.source, o.target]) {
+					if (ref && 'remote' in ref && ref.remote === from) ref.remote = to;
+				}
+			}
+		};
+		await drainOne(
+			imap,
+			renameToClients(),
+			{ ...folderMap({ inbox: 'INBOX' }), renamed: new Map() },
+			{
+				renamed: rewrite,
+			}
+		);
+
+		// A restart: a new connection, with nothing remembered of the rename.
+		const restarted = { ...folderMap({ inbox: 'INBOX' }), renamed: new Map<string, string>() };
+		const settled = [
+			...(await drainOne(imap, queued[0]!, restarted)),
+			...(await drainOne(imap, queued[1]!, restarted)),
+		];
+
+		expect(settled.flat().map((r) => r.outcome)).toEqual(['done', 'done']);
+		expect(imap.ids('Projects/Clients')).toEqual(['<b@x>', '<a@x>']);
+		expect(imap.log).toContain('+FLAGS Projects/Clients 2 \\Seen');
+	});
+
+	it('settles a rename a restart cut off after RENAME, and still hands it to the backend', async () => {
+		// RENAME went through, but the worker stopped before the op settled.
+		const imap = new FakeImap({ INBOX: [], 'Projects/Clients': [] });
+		const renames: unknown[] = [];
+		const operation = renameToClients();
+
+		const settled = await drainOne(imap, operation, folderMap({ inbox: 'INBOX' }), {
+			renamed: async (_o, rename) => void renames.push(rename),
+		});
+
+		expect(settled).toEqual([[{ opId: operation.opId, outcome: 'done' }]]);
+		expect(imap.log).toEqual([]);
+		expect(renames).toEqual([{ from: 'Projects/Owlat', to: 'Projects/Clients', delimiter: '/' }]);
 	});
 });

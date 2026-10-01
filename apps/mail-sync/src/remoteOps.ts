@@ -21,10 +21,17 @@
  * Two ops act on a folder rather than a message: renaming a mirrored folder
  * (its own name only, so it stays where it sits in the provider's tree) and
  * deleting one — after moving what the provider still holds in it to the
- * inbox, which is what deleting a folder does in Owlat too.
+ * inbox, which is what deleting a folder does in Owlat too. The new name of a
+ * renamed folder is handed back to the backend, which rewrites the ops still
+ * naming the old one.
+ *
+ * ImapFlow resolves `false` rather than rejecting when the server refuses a
+ * MOVE, COPY, STORE or EXPUNGE (imapCommandErrors.ts), so every result is read: a
+ * refusal fails the op, which is retried, and never counts as done.
  */
 
 import type { FolderRole } from './folders.js';
+import { isMissingMailbox, refusedCommand } from './imapCommandErrors.js';
 
 /** A system folder by role, an Owlat folder by its path of names, or a mapped folder by remote name. */
 export type RemoteFolderRef = { role: FolderRole } | { path: string[] } | { remote: string };
@@ -49,11 +56,19 @@ export interface RemoteOpResult {
 	error?: string;
 }
 
+/** What MOVE and COPY resolve: the COPYUID map, or `false` / nothing when refused or never sent. */
+type Copied = object | false | undefined;
+
 /** The slice of ImapFlow the replay uses, narrowed so tests can fake it. */
 export interface RemoteOpsClient {
 	readonly usable: boolean;
 	/** The personal namespace (NAMESPACE), which user-folder paths live under. */
 	readonly namespace?: { prefix?: string | null; delimiter?: string | null };
+	readonly capabilities: ReadonlyMap<string, unknown>;
+	/** Extensions turned on with ENABLE. */
+	readonly enabled: ReadonlySet<string>;
+	/** The selected folder; its PERMANENTFLAGS are the flags it keeps (`\*`: any). */
+	readonly mailbox: { permanentFlags?: ReadonlySet<string> | undefined } | false;
 	getMailboxLock(path: string): Promise<{ release(): void }>;
 	search(
 		query: { header: Record<string, string> },
@@ -64,14 +79,15 @@ export interface RemoteOpsClient {
 		query: { uid: true; envelope: true },
 		options: { uid: true }
 	): AsyncIterable<{ uid: number; envelope?: { messageId?: string } }>;
-	messageMove(range: string, destination: string, options: { uid: true }): Promise<unknown>;
-	messageCopy(range: string, destination: string, options: { uid: true }): Promise<unknown>;
-	messageFlagsAdd(range: string, flags: string[], options: { uid: true }): Promise<unknown>;
-	messageFlagsRemove(range: string, flags: string[], options: { uid: true }): Promise<unknown>;
-	messageDelete(range: string, options: { uid: true }): Promise<unknown>;
+	messageMove(range: string, destination: string, options: { uid: true }): Promise<Copied>;
+	messageCopy(range: string, destination: string, options: { uid: true }): Promise<Copied>;
+	messageFlagsAdd(range: string, flags: string[], options: { uid: true }): Promise<boolean>;
+	messageFlagsRemove(range: string, flags: string[], options: { uid: true }): Promise<boolean>;
+	/** STORE \Deleted, whose result ImapFlow ignores, then EXPUNGE. */
+	messageDelete(range: string, options: { uid: true }): Promise<boolean | undefined>;
 	mailboxCreate(path: string[]): Promise<{ path: string }>;
-	mailboxRename(path: string, newPath: string): Promise<unknown>;
-	mailboxDelete(path: string): Promise<unknown>;
+	mailboxRename(path: string, newPath: string): Promise<object | undefined>;
+	mailboxDelete(path: string): Promise<object | undefined>;
 	/** ImapFlow resolves `false`, not a rejection, when the server refuses a STATUS of a folder it lists. */
 	status(path: string, query: { messages: true }): Promise<{ messages?: number } | false>;
 }
@@ -84,9 +100,21 @@ export interface RemoteFolderMap {
 	allMail: Set<string>;
 	/**
 	 * Folders this worker renamed, old path → new. An op queued before the
-	 * backend learned the new name still says the old one.
+	 * backend learned the new name still says the old one. A cache: the
+	 * backend rewrites those ops (`ReplayHooks.renamed`), so a restart that
+	 * empties it loses nothing.
 	 */
 	renamed?: Map<string, string>;
+}
+
+/** What the replay reports back to the connection running it. */
+export interface ReplayHooks {
+	/** The error ImapFlow logged for the command that just resolved `false` (imapCommandErrors.ts). */
+	takeRefusal?(): unknown;
+	/** A folder op renamed `from` to `to` at the provider, whose hierarchy delimiter is `delimiter`. Must not throw. */
+	renamed?(op: RemoteOp, rename: { from: string; to: string; delimiter: string }): Promise<void>;
+	/** The op settles without the part of its change the provider cannot keep. */
+	skipped?(op: RemoteOp, reason: string): void;
 }
 
 /** Remote folders are created under these names when a server has no such role. */
@@ -108,46 +136,6 @@ export function isAllMailFolder(specialUse: string | undefined, path: string): b
 	return p === '[gmail]/all mail' || p === '[google mail]/all mail';
 }
 
-/**
- * The server said the mailbox does not exist: ImapFlow's LIST check after a
- * refused SELECT (`mailboxMissing`) or STATUS (`NotFound`), or the server's own
- * NONEXISTENT response code. Anything else — UNAVAILABLE, throttling, a
- * permission refusal — says nothing about whether the folder is there.
- */
-export function isMissingMailbox(err: unknown): boolean {
-	if (!err || typeof err !== 'object') return false;
-	const e = err as { mailboxMissing?: unknown; code?: unknown; serverResponseCode?: unknown };
-	return (
-		e.mailboxMissing === true ||
-		e.code === 'NotFound' ||
-		(typeof e.serverResponseCode === 'string' &&
-			e.serverResponseCode.toUpperCase() === 'NONEXISTENT')
-	);
-}
-
-/**
- * What to record as a failed op's error. ImapFlow's message for a refused
- * command is only "Command failed"; the server's status, response code and
- * text carry the reason.
- */
-export function describeRemoteOpError(err: unknown): string {
-	if (!(err instanceof Error)) return String(err);
-	const e = err as Error & {
-		code?: unknown;
-		responseStatus?: unknown;
-		serverResponseCode?: unknown;
-		responseText?: unknown;
-	};
-	const detail = [
-		e.responseStatus,
-		typeof e.serverResponseCode === 'string' ? `[${e.serverResponseCode}]` : undefined,
-		e.responseText,
-	].filter((part): part is string => typeof part === 'string' && part.length > 0);
-	let text = err.message;
-	if (typeof e.code === 'string' && !text.includes(e.code)) text += ` (${e.code})`;
-	return detail.length > 0 ? `${text}: ${detail.join(' ')}` : text;
-}
-
 function canonicalMessageId(raw: string): string {
 	return raw.replace(/[<>]/g, '').trim();
 }
@@ -161,12 +149,13 @@ export class RemoteOpReplayer {
 
 	constructor(
 		private readonly client: RemoteOpsClient,
-		private readonly folders: RemoteFolderMap
+		private readonly folders: RemoteFolderMap,
+		private readonly hooks: ReplayHooks = {}
 	) {}
 
 	async apply(op: RemoteOp): Promise<Exclude<RemoteOpOutcome, 'failed'>> {
 		const source = this.existingPath(op.source);
-		if (op.kind === 'renameFolder') return await this.renameFolder(source, op.target);
+		if (op.kind === 'renameFolder') return await this.renameFolder(op, source);
 		if (op.kind === 'deleteFolder') return await this.deleteFolder(source);
 
 		const id = canonicalMessageId(op.rfc822MessageId ?? '');
@@ -174,7 +163,7 @@ export class RemoteOpReplayer {
 
 		if (op.kind === 'delete') {
 			if (!source || this.folders.allMail.has(source)) return 'not_found';
-			return (await this.withMessage(source, id, (uids) => this.client.messageDelete(uids, UID)))
+			return (await this.withMessage(source, id, (uids) => this.expunge(uids)))
 				? 'done'
 				: 'not_found';
 		}
@@ -184,8 +173,18 @@ export class RemoteOpReplayer {
 			const remove = flagNames(op.flags, false);
 			if (add.length === 0 && remove.length === 0) return 'done';
 			const found = await this.inAnyFolder(source, null, id, async (uids) => {
-				if (add.length > 0) await this.client.messageFlagsAdd(uids, add, UID);
-				if (remove.length > 0) await this.client.messageFlagsRemove(uids, remove, UID);
+				// A flag the folder does not keep is never sent: retrying cannot change that.
+				const kept = add.filter((flag) => this.keepsFlag(flag));
+				if (kept.length < add.length) {
+					const lost = add.filter((flag) => !kept.includes(flag)).join(' ');
+					this.hooks.skipped?.(op, `the folder's PERMANENTFLAGS do not allow ${lost}`);
+				}
+				if (kept.length > 0) {
+					await this.accepted('STORE', () => this.client.messageFlagsAdd(uids, kept, UID));
+				}
+				if (remove.length > 0) {
+					await this.accepted('STORE', () => this.client.messageFlagsRemove(uids, remove, UID));
+				}
 			});
 			return found ? 'done' : 'not_found';
 		}
@@ -194,25 +193,31 @@ export class RemoteOpReplayer {
 		const target = await this.targetPath(op.target);
 		const found = await this.inAnyFolder(source, target, id, async (uids, path) => {
 			if (path === target) return;
-			if (this.folders.allMail.has(path)) await this.client.messageCopy(uids, target, UID);
-			else await this.client.messageMove(uids, target, UID);
+			if (this.folders.allMail.has(path)) {
+				await this.accepted('COPY', () => this.client.messageCopy(uids, target, UID));
+			} else {
+				await this.move(uids, target);
+			}
 		});
 		return found ? 'done' : 'not_found';
 	}
 
-	private async renameFolder(
-		path: string | null,
-		target: RemoteFolderRef | undefined
-	): Promise<'done' | 'not_found'> {
-		const name = target && 'path' in target ? target.path[0] : undefined;
+	private async renameFolder(op: RemoteOp, path: string | null): Promise<'done' | 'not_found'> {
+		const name = op.target && 'path' in op.target ? op.target.path[0] : undefined;
 		if (!path || !name || this.isSystemFolder(path)) return 'not_found';
-		if ((await this.messageCount(path)) === null) return 'not_found';
 		const delimiter = this.client.namespace?.delimiter || '/';
 		const parent = path.split(delimiter).slice(0, -1);
 		const renamed = [...parent, name].join(delimiter);
+		if ((await this.messageCount(path)) === null) {
+			// Gone under its old name but there under the new one: this op renamed
+			// it before a restart cut it off from settling.
+			if (renamed === path || (await this.messageCount(renamed)) === null) return 'not_found';
+		} else if (renamed !== path) {
+			await this.accepted('RENAME', () => this.client.mailboxRename(path, renamed));
+		}
 		if (renamed !== path) {
-			await this.client.mailboxRename(path, renamed);
 			this.folders.renamed?.set(path, renamed);
+			await this.hooks.renamed?.(op, { from: path, to: renamed, delimiter });
 		}
 		return 'done';
 	}
@@ -225,13 +230,65 @@ export class RemoteOpReplayer {
 			const inbox = this.folders.byRole.get('inbox') ?? 'INBOX';
 			const lock = await this.client.getMailboxLock(path);
 			try {
-				await this.client.messageMove('1:*', inbox, UID);
+				await this.move('1:*', inbox);
 			} finally {
 				lock.release();
 			}
+			// Mail that arrived since, or a move the server carried out only in
+			// part, would go with the folder: delete it only once it is empty.
+			const left = await this.messageCount(path);
+			if (left === null) return 'done';
+			if (left > 0) throw new Error(`DELETE withheld: the folder still holds ${left} messages`);
 		}
-		await this.client.mailboxDelete(path);
+		await this.accepted('DELETE', () => this.client.mailboxDelete(path));
 		return 'done';
+	}
+
+	/**
+	 * Run one action command and fail on a refusal: ImapFlow resolves `false`
+	 * for a command the server refused and nothing for one it could not send.
+	 */
+	private async accepted(command: string, run: () => Promise<unknown>): Promise<void> {
+		this.hooks.takeRefusal?.(); // a warning logged before this command is not its refusal
+		const result = await run();
+		if (result === false || result === undefined) {
+			throw refusedCommand(command, this.hooks.takeRefusal?.());
+		}
+	}
+
+	/**
+	 * MOVE. A server without it gets a COPY, and the originals are expunged only
+	 * once the COPY succeeded; ImapFlow's own fallback expunges them either way.
+	 */
+	private async move(uids: string, target: string): Promise<void> {
+		const c = this.client;
+		const rev2 =
+			c.enabled.has('IMAP4REV2') ||
+			(c.capabilities.has('IMAP4rev2') && !c.capabilities.has('IMAP4rev1'));
+		if (c.capabilities.has('MOVE') || rev2) {
+			await this.accepted('MOVE', () => c.messageMove(uids, target, UID));
+			return;
+		}
+		await this.accepted('COPY', () => c.messageCopy(uids, target, UID));
+		await this.expunge(uids);
+	}
+
+	/**
+	 * STORE \Deleted, then EXPUNGE. ImapFlow's messageDelete ignores a refused
+	 * STORE and reports the EXPUNGE alone, which then removes nothing.
+	 */
+	private async expunge(uids: string): Promise<void> {
+		if (!this.keepsFlag('\\Deleted')) {
+			throw new Error("STORE failed: the folder's PERMANENTFLAGS do not allow \\Deleted");
+		}
+		await this.accepted('STORE', () => this.client.messageFlagsAdd(uids, ['\\Deleted'], UID));
+		await this.accepted('EXPUNGE', () => this.client.messageDelete(uids, UID));
+	}
+
+	/** Whether the selected folder keeps `flag`: ImapFlow drops one it does not, unsent. */
+	private keepsFlag(flag: string): boolean {
+		const permanent = this.client.mailbox ? this.client.mailbox.permanentFlags : undefined;
+		return !permanent || permanent.has('\\*') || permanent.has(flag);
 	}
 
 	/** A remote name after any renames this worker made to it. */
@@ -414,44 +471,4 @@ function flagNames(flags: RemoteOp['flags'], value: boolean): string[] {
 	return (Object.keys(FLAG_NAMES) as Array<keyof typeof FLAG_NAMES>)
 		.filter((key) => flags[key] === value)
 		.map((key) => FLAG_NAMES[key]);
-}
-
-export interface DrainDeps {
-	listDue(): Promise<RemoteOp[]>;
-	settle(results: RemoteOpResult[]): Promise<void>;
-	replayer: RemoteOpReplayer;
-	client: Pick<RemoteOpsClient, 'usable'>;
-	isStopped(): boolean;
-	onError(op: RemoteOp, err: unknown): void;
-}
-
-/**
- * Apply every due op, a page at a time, until none is left. A failed op is
- * settled as `failed` (the backend backs it off, so it is not listed again in
- * this drain); a lost connection ends the drain after settling what was done.
- */
-export async function drainRemoteOps(deps: DrainDeps): Promise<void> {
-	for (;;) {
-		if (deps.isStopped()) return;
-		const ops = await deps.listDue();
-		if (ops.length === 0) return;
-		const results: RemoteOpResult[] = [];
-		let connectionLost = false;
-		for (const op of ops) {
-			if (deps.isStopped() || connectionLost) break;
-			try {
-				results.push({ opId: op.opId, outcome: await deps.replayer.apply(op) });
-			} catch (err) {
-				deps.onError(op, err);
-				if (!deps.client.usable) {
-					// Not the op's fault — leave it untouched for the reconnect.
-					connectionLost = true;
-					break;
-				}
-				results.push({ opId: op.opId, outcome: 'failed', error: describeRemoteOpError(err) });
-			}
-		}
-		if (results.length > 0) await deps.settle(results);
-		if (connectionLost || results.length < ops.length) return;
-	}
 }

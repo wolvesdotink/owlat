@@ -45,7 +45,9 @@ import {
 	nextBackfillRetryState,
 	type BackfillRetryState,
 } from './backfillRetry.js';
-import { drainRemoteOps, isAllMailFolder, RemoteOpReplayer } from './remoteOps.js';
+import { CommandRefusals } from './imapCommandErrors.js';
+import { isAllMailFolder, RemoteOpReplayer } from './remoteOps.js';
+import { drainRemoteOps } from './remoteOpsDrain.js';
 import {
 	LOCAL_PAGE,
 	noPendingChanges,
@@ -151,6 +153,8 @@ export class AccountConnection {
 	private virtualPaths: string[] = [];
 	// Folders the write-back renamed (remoteOps.ts), kept across drains.
 	private readonly renamedFolders = new Map<string, string>();
+	// The error behind a command ImapFlow reports refused only by resolving `false`.
+	private readonly refusals = new CommandRefusals();
 	// Gmail-style "All Mail" paths: the write-back copies out of them instead of moving.
 	private allMailPaths = new Set<string>();
 	// ── Sync cycles (write-back + remote change sync) — one at a time ──
@@ -289,7 +293,8 @@ export class AccountConnection {
 				pass: creds.imapPassword,
 				accessToken: creds.imapAccessToken,
 			}),
-			logger: false,
+			// Logs nothing; keeps the error of a refused MOVE, COPY, STORE or EXPUNGE.
+			logger: this.refusals.logger,
 			emitLogs: false,
 		});
 		client.on('error', (err) => {
@@ -770,11 +775,31 @@ export class AccountConnection {
 				settle: async (results) => {
 					await this.convex.mutation(fn.settleRemoteOps, { results });
 				},
-				replayer: new RemoteOpReplayer(client, {
-					byRole,
-					allMail: this.allMailPaths,
-					renamed: this.renamedFolders,
-				}),
+				replayer: new RemoteOpReplayer(
+					client,
+					{ byRole, allMail: this.allMailPaths, renamed: this.renamedFolders },
+					{
+						takeRefusal: () => this.refusals.take(),
+						renamed: async (op, { to, delimiter }) => {
+							try {
+								await this.convex.mutation(fn.recordRemoteFolderRename, {
+									opId: op.opId,
+									remoteName: to,
+									delimiter,
+								});
+							} catch (err) {
+								// An older backend has no such mutation; the ops still naming the old
+								// name reach the folder through `renamedFolders` until this worker restarts.
+								logger.warn({ accountId, opId: op.opId, err }, 'recording a folder rename failed');
+							}
+						},
+						skipped: (op, reason) =>
+							logger.warn(
+								{ accountId, opId: op.opId, kind: op.kind, reason },
+								'remote write-back skipped'
+							),
+					}
+				),
 				client,
 				isStopped: () => this.stopped || this.client !== client,
 				onError: (op, err) =>
