@@ -16,18 +16,21 @@ import { join } from 'node:path';
  * /apply-profiles wrote.
  */
 
-const { execFileSyncMock, rateLimitedMock } = vi.hoisted(() => ({
-	execFileSyncMock: vi.fn(),
+const { commandMock, rateLimitedMock } = vi.hoisted(() => ({
+	commandMock: vi.fn(),
 	rateLimitedMock: vi.fn((_endpoint: string) => false),
 }));
-vi.mock('node:child_process', () => ({ execFileSync: execFileSyncMock }));
+vi.mock('node:child_process', async () => {
+	const { spawnFrom } = await import('./fakeSpawn.js');
+	return { spawn: spawnFrom(commandMock) };
+});
 /**
  * The argv of each child process, rendered as one line for assertions. `exec`
- * runs execFileSync — there is no shell command string to inspect, so the
+ * runs an argv with no shell — there is no shell command string to inspect, so the
  * arguments are joined here rather than in production code.
  */
 function commandLines(): string[] {
-	return execFileSyncMock.mock.calls.map((c) => [c[0], ...(c[1] as string[])].join(' '));
+	return commandMock.mock.calls.map((c) => [c[0], ...(c[1] as string[])].join(' '));
 }
 
 vi.mock('../security.js', async (importOriginal) => {
@@ -61,7 +64,7 @@ const INITIAL_ENV =
 
 beforeEach(() => {
 	rateLimitedMock.mockReturnValue(false);
-	execFileSyncMock.mockReset().mockReturnValue('');
+	commandMock.mockReset().mockReturnValue('');
 	writeFileSync(ENV_FILE, INITIAL_ENV);
 });
 
@@ -81,20 +84,20 @@ describe('auth + rate limit', () => {
 	it('rejects a missing instance secret with 401', async () => {
 		const res = await get({});
 		expect(res.status).toBe(401);
-		expect(execFileSyncMock).not.toHaveBeenCalled();
+		expect(commandMock).not.toHaveBeenCalled();
 	});
 
 	it('rejects a wrong instance secret with 401', async () => {
 		const res = await get({ 'x-instance-secret': 'wrong-but-long-enough-000000' });
 		expect(res.status).toBe(401);
-		expect(execFileSyncMock).not.toHaveBeenCalled();
+		expect(commandMock).not.toHaveBeenCalled();
 	});
 
 	it('returns 429 when rate limited, before running docker', async () => {
 		rateLimitedMock.mockImplementation((endpoint: string) => endpoint === 'profile-state');
 		const res = await get();
 		expect(res.status).toBe(429);
-		expect(execFileSyncMock).not.toHaveBeenCalled();
+		expect(commandMock).not.toHaveBeenCalled();
 	});
 
 	it('does not share a rate-limit bucket with the write endpoints', async () => {
@@ -125,7 +128,7 @@ describe('.env parsing', () => {
 	});
 
 	it('round-trips what /apply-profiles writes', async () => {
-		execFileSyncMock.mockReturnValue('');
+		commandMock.mockReturnValue('');
 		const applied = await fetch(`${base}/apply-profiles`, {
 			method: 'POST',
 			headers: AUTH,
@@ -148,7 +151,7 @@ describe('.env parsing', () => {
 
 describe('compose ps mapping', () => {
 	it('maps each service row through the shared parser', async () => {
-		execFileSyncMock.mockReturnValue(
+		commandMock.mockReturnValue(
 			'{"Service":"mail-sync","State":"running","Status":"Up 5 seconds","Image":"ghcr.io/wolvesdotink/mail-sync:0.4.3","Health":"healthy"}\n' +
 				'{"Service":"mta","State":"exited","Status":"Exited (0)","Image":"ghcr.io/wolvesdotink/mta:0.4.3","Health":""}\n'
 		);
@@ -174,7 +177,7 @@ describe('compose ps mapping', () => {
 	});
 
 	it('falls back to raw stdout when compose ps is not JSON', async () => {
-		execFileSyncMock.mockReturnValue('NAME   STATE\nweb    running\n');
+		commandMock.mockReturnValue('NAME   STATE\nweb    running\n');
 		const body = (await (await get()).json()) as ProfileState;
 		expect(body.services).toBe('NAME   STATE\nweb    running\n');
 	});
@@ -186,7 +189,7 @@ describe('compose ps mapping', () => {
 	});
 
 	it('still answers when the docker daemon is down', async () => {
-		execFileSyncMock.mockImplementation(() => {
+		commandMock.mockImplementation(() => {
 			throw Object.assign(new Error('boom'), { stderr: 'daemon down' });
 		});
 		const res = await get();

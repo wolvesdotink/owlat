@@ -9,6 +9,7 @@ import { composePsServices, exec, json, OWLAT_DIR, readBody, requireAuth } from 
 import {
 	composeArgv,
 	recoverStackAfterFailedUp,
+	releaseUpdaterReplacement,
 	scheduleUpdaterRecreateSafely,
 	servicesToRecreate,
 } from './rollout.js';
@@ -35,7 +36,7 @@ function rewriteEnvLines(content: string, transform: (line: string) => string): 
 	return content.split('\n').map(transform).join('\n');
 }
 
-function handleHealth(req: IncomingMessage, res: ServerResponse) {
+async function handleHealth(req: IncomingMessage, res: ServerResponse) {
 	// Require authentication on health endpoint to prevent container enumeration
 	if (!requireAuth(req, res)) return;
 
@@ -45,7 +46,7 @@ function handleHealth(req: IncomingMessage, res: ServerResponse) {
 	}
 
 	// Get running container info
-	const { containers, raw } = composePsServices();
+	const { containers, raw } = await composePsServices();
 
 	// `version` below is this container's baked-in OWLAT_VERSION: compose
 	// interpolated it when the updater container was CREATED, so it reports what
@@ -115,7 +116,7 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 
 	if (action === 'add') {
 		// Step 1: Attach IP to network interface
-		const addIp = exec('ip', ['addr', 'add', `${ip}/32`, 'dev', 'eth0'], '/');
+		const addIp = await exec('ip', ['addr', 'add', `${ip}/32`, 'dev', 'eth0'], '/');
 		steps.push({ step: 'ip-addr-add', ...addIp });
 
 		// Step 2: Write persistent network config (survives reboots)
@@ -151,7 +152,7 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 	} else {
 		// Remove action
 		// Step 1: Remove IP from network interface
-		const delIp = exec('ip', ['addr', 'del', `${ip}/32`, 'dev', 'eth0'], '/');
+		const delIp = await exec('ip', ['addr', 'del', `${ip}/32`, 'dev', 'eth0'], '/');
 		steps.push({ step: 'ip-addr-del', ...delIp });
 
 		// Step 2: Remove persistent config
@@ -189,7 +190,7 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 	// `docker compose restart` keeps a container's old env — the pool change
 	// was silently dropped (#839). `up -d` recreates it because its resolved
 	// config changed. Judged by `.ok`, never by stderr, like the other applies.
-	const apply = exec('docker', [...composeArgv(), 'up', '-d', 'mta'], OWLAT_DIR);
+	const apply = await exec('docker', [...(await composeArgv()), 'up', '-d', 'mta'], OWLAT_DIR);
 	steps.push({ step: 'apply-mta', ...apply });
 	if (!apply.ok) {
 		const recovery = await recoverStackAfterFailedUp(['mta']);
@@ -296,14 +297,14 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 	// the services excludes the updater and the socket proxy: a force-recreate
 	// of THOSE stops this very process (and its Docker transport) partway down
 	// the list, leaving the rest of the stack on the old secret.
-	const plan = servicesToRecreate();
+	const plan = await servicesToRecreate();
 	if (plan.error) {
 		return json(res, 500, { error: 'Container recreate failed', stderr: plan.error });
 	}
 
-	const recreate = exec(
+	const recreate = await exec(
 		'docker',
-		[...composeArgv(), 'up', '-d', '--force-recreate', ...plan.services],
+		[...(await composeArgv()), 'up', '-d', '--force-recreate', ...plan.services],
 		OWLAT_DIR
 	);
 
@@ -330,7 +331,7 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 
 	// The updater must come back on the rotated secret too — through a helper,
 	// for the same reason it is excluded above.
-	const selfUpdate = scheduleUpdaterRecreateSafely();
+	const selfUpdate = await scheduleUpdaterRecreateSafely();
 
 	json(res, 200, { success: true, step: 'rotate-env', selfUpdate });
 }
@@ -364,13 +365,25 @@ export function buildRequestListener() {
 			// Authenticated before the lock, so a 409 tells nobody anonymous
 			// that a rollout is in flight.
 			if (!requireAuth(req, res)) return;
-			await critical(() => exclusively(rollout.kind, res, () => rollout.handle(req, res)));
+			//
+			// A rollout that handed the updater's own replacement to a helper
+			// releases it only once its answer is written: the helper stops this
+			// process, and until now it did so on a timer, answer or no answer.
+			await critical(() =>
+				exclusively(rollout.kind, res, async () => {
+					try {
+						await rollout.handle(req, res);
+					} finally {
+						releaseUpdaterReplacement();
+					}
+				})
+			);
 		} else if (req.method === 'POST' && url.pathname === '/port-checks') {
 			await handlePortChecks(req, res);
 		} else if (req.method === 'GET' && url.pathname === '/profile-state') {
-			handleProfileState(req, res);
+			await handleProfileState(req, res);
 		} else if (req.method === 'GET' && url.pathname === '/health') {
-			handleHealth(req, res);
+			await handleHealth(req, res);
 		} else {
 			json(res, 404, { error: 'Not found' });
 		}
