@@ -15,7 +15,11 @@ import { internal } from '../../_generated/api';
 import type { ActionCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
 import { logError } from '../../lib/runtimeLog';
-import type { AnswerAskTarget, AnswerDraftContext } from '../../lib/validators/answerAsk';
+import type {
+	AnswerAskTarget,
+	AnswerDraftContext,
+	MailboxAttachmentScope,
+} from '../../lib/validators/answerAsk';
 import { assembleInboundBriefing } from '../../agent/steps/context_retrieval';
 import type { EagernessMode } from '../../inbox/askEagerness';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
@@ -28,6 +32,8 @@ interface AnswerContext extends AnswerDraftContext {
 	contactId?: Id<'contacts'> | undefined;
 	language?: string | undefined;
 	mailboxId?: Id<'mailboxes'> | undefined;
+	/** Where the automatic file search may look in the mailbox (Postbox only). */
+	mailboxScope?: MailboxAttachmentScope | undefined;
 	eagerness?: EagernessMode | undefined;
 }
 
@@ -72,6 +78,7 @@ export async function loadAnswerContext(
 			contactId: contact?.contactId,
 			language: contact?.language,
 			mailboxId: loaded.mailboxId,
+			mailboxScope: loaded.mailboxScope,
 			eagerness: loaded.eagerness,
 			audience: `the mailbox owner (${loaded.ownerAddress}), answering the last message in the thread, which the other party sent`,
 			styleReference: "the owner's",

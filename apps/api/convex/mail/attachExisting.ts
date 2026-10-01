@@ -36,6 +36,8 @@ import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/a
 import { requireMailboxAccess } from './permissions';
 import { assertStateIs } from './draftLifecycle/reducers';
 import { storedFileSize } from '../storage/uploads';
+import { extractEmail } from '../lib/emailAddress';
+import { mailboxAttachmentScopeValidator } from '../lib/validators/answerAsk';
 import { getMutationContext, requireOrgMember } from '../lib/sessionOrganization';
 import {
 	existingAttachmentSourceValidator,
@@ -112,25 +114,55 @@ export const resolveReadableFile = internalQuery({
 	},
 });
 
+/** Rows the filename search reads before the scope filter keeps the counterpart's. */
+const MAILBOX_SEARCH_WINDOW = 50;
+
+function bareAddress(value: string): string {
+	return extractEmail(value).toLowerCase();
+}
+
 /**
- * Attachment rows of one mailbox whose filename matches, for the Answer mode
- * file search (inbox/attachmentSuggest.ts searchFilesForRequest). Empty when
- * the caller cannot read the mailbox.
+ * Attachment rows whose filename matches, for the Answer mode file search
+ * (inbox/attachmentSuggest.ts searchFilesForRequest), limited to the scope:
+ * attachments of messages in the reply's thread, or of messages from or to the
+ * counterpart. A file another customer sent or was sent never comes back, not
+ * even as a candidate, since its name alone would disclose it. This search runs
+ * without a person choosing anything, and its single best hit is attached
+ * without a question. Empty when the caller cannot read the mailbox.
  */
 export const searchMailboxAttachments = internalQuery({
-	args: { mailboxId: v.id('mailboxes'), queryText: v.string(), limit: v.number() },
+	args: {
+		scope: mailboxAttachmentScopeValidator,
+		queryText: v.string(),
+		limit: v.number(),
+	},
 	handler: async (
 		ctx,
 		args
 	): Promise<Array<{ id: string; filename: string; contentType: string; size: number }>> => {
-		const readable = await requireMailboxAccess(ctx, args.mailboxId);
+		const { mailboxId, threadId } = args.scope;
+		const counterparts = new Set(args.scope.counterparts.map(bareAddress).filter(Boolean));
+		if (!threadId && counterparts.size === 0) return [];
+		const readable = await requireMailboxAccess(ctx, mailboxId);
 		if (!readable.ok) return [];
-		const rows = await ctx.db
+		const hits = await ctx.db
 			.query('mailAttachments')
 			.withSearchIndex('search_filenames', (q) =>
-				q.search('filename', args.queryText).eq('mailboxId', args.mailboxId)
+				q.search('filename', args.queryText).eq('mailboxId', mailboxId)
 			)
-			.take(Math.min(Math.max(args.limit, 1), 20));
+			.take(MAILBOX_SEARCH_WINDOW);
+		const limit = Math.min(Math.max(args.limit, 1), 20);
+		const rows = [];
+		for (const row of hits) {
+			if (rows.length >= limit) break;
+			const message = await ctx.db.get(row.messageId);
+			if (!message || message.mailboxId !== mailboxId) continue;
+			const people = [message.fromAddress, ...message.toAddresses, ...message.ccAddresses];
+			const inScope =
+				(threadId !== undefined && message.threadId === threadId) ||
+				people.some((address) => counterparts.has(bareAddress(address)));
+			if (inScope) rows.push(row);
+		}
 		return rows.map((row) => ({
 			id: row._id,
 			filename: row.filename,

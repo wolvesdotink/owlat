@@ -8,14 +8,17 @@
  */
 
 import { convexTest } from 'convex-test';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
 import { runLlmStream } from '../lib/llm/dispatch';
+import { searchFilesForRequest } from '../inbox/attachmentSuggest';
+import { seedMessage } from '../mail/__tests__/helpers.testlib';
 import {
+	CUSTOMER,
 	ORG,
 	seedCustomer,
 	seedFile,
@@ -489,11 +492,92 @@ describe('mail.drafts.attachExisting', () => {
 		const t = await makeT();
 		const { mailboxId } = await replyDraft(t);
 		await seedMailAttachment(t, mailboxId, 'invoice-2026-09.pdf');
-		const args = { mailboxId, queryText: 'invoice', limit: 5 };
+		const args = {
+			scope: { mailboxId, counterparts: ['me@example.com'] },
+			queryText: 'invoice',
+			limit: 5,
+		};
 		const own = await t.query(internal.mail.attachExisting.searchMailboxAttachments, args);
 		expect(own.map((r) => r.filename)).toEqual(['invoice-2026-09.pdf']);
 		sess.user = { userId: 'user-b', role: 'member', activeOrganizationId: ORG };
 		expect(await t.query(internal.mail.attachExisting.searchMailboxAttachments, args)).toEqual([]);
+	});
+});
+
+describe('the automatic mailbox search stays with the counterpart', () => {
+	/** A file in the mailbox, on its own message (and so its own thread). */
+	async function mailFile(
+		t: Tx,
+		mailboxId: Id<'mailboxes'>,
+		fromAddress: string,
+		filename: string
+	): Promise<Id<'mailAttachments'>> {
+		const messageId = await seedMessage(t, mailboxId, {
+			subject: `From ${fromAddress}`,
+			fromAddress,
+			attachments: [{ filename, contentType: 'application/pdf', size: 20, partIndex: '0' }],
+		});
+		return await t.run(async (ctx) => {
+			const message = (await ctx.db.get(messageId))!;
+			const partId = await ctx.storage.store(new Blob([`%PDF ${fromAddress}`]));
+			await ctx.db.insert('mailMessageParts', {
+				rawStorageId: message.rawStorageId,
+				status: 'stored',
+				parts: [{ filename, contentType: 'application/pdf', size: 20, storageId: partId }],
+				createdAt: Date.now(),
+			});
+			return await ctx.db.insert('mailAttachments', {
+				mailboxId,
+				messageId,
+				filename,
+				contentType: 'application/pdf',
+				size: 20,
+				receivedAt: message.receivedAt,
+				fromAddress,
+				partIndex: '0',
+			});
+		});
+	}
+
+	beforeEach(async () => {
+		// The real search, not the canned hits the rest of this suite uses.
+		const actual = await vi.importActual<typeof AttachmentSuggestModule>(
+			'../inbox/attachmentSuggest'
+		);
+		vi.mocked(searchFilesForRequest).mockImplementation(actual.searchFilesForRequest);
+	});
+	afterEach(() => {
+		vi.mocked(searchFilesForRequest).mockImplementation(async () => llm.files);
+	});
+
+	it("never attaches, or offers, another customer's file with the same name", async () => {
+		const t = await makeT();
+		const { mailboxId, target, draftId } = await replyDraft(t);
+		const theirs = await mailFile(t, mailboxId, 'other@example.net', 'invoice-2026-09.pdf');
+
+		const res = await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+
+		expect(res.attachedFiles).toEqual([]);
+		expect((await draftRow(t, draftId)).attachments).toEqual([]);
+		const offered = res.questions.flatMap((q) => q.fileCandidates ?? []).map((c) => c.id);
+		expect(offered).not.toContain(theirs);
+		expect(JSON.stringify(res.questions)).not.toContain('invoice-2026-09.pdf');
+	});
+
+	it("still attaches the counterpart's own matching file", async () => {
+		const t = await makeT();
+		const { mailboxId, target, draftId } = await replyDraft(t);
+		await mailFile(t, mailboxId, 'other@example.net', 'invoice-2026-09.pdf');
+		const own = await mailFile(t, mailboxId, CUSTOMER, 'invoice-2026-09.pdf');
+
+		const res = await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+
+		expect(res.attachedFiles).toEqual([
+			{ source: 'mailAttachment', id: own, filename: 'invoice-2026-09.pdf' },
+		]);
+		expect(await blobText(t, (await draftRow(t, draftId)).attachments[0]!.storageId)).toBe(
+			`%PDF ${CUSTOMER}`
+		);
 	});
 });
 
