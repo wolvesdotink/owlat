@@ -10,7 +10,13 @@ export interface StepOrderSyncOptions<T extends { _id: string }> {
 	 * landed), or `cancel` when the user backs out instead.
 	 */
 	whenReady: (proceed: () => Promise<void>, cancel: () => void) => unknown;
-	/** The server's order replaced what was on screen. */
+	/**
+	 * True while `items` holds a move the user has not committed yet (a lifted
+	 * keyboard step). A server snapshot then refreshes the data but keeps the
+	 * preview's order.
+	 */
+	isPreviewing: () => boolean;
+	/** A failed save replaced the list, preview included. */
 	onReplaced?: () => void;
 }
 
@@ -21,11 +27,15 @@ const sameOrder = (a: readonly string[], b: readonly string[]) =>
 /**
  * The step order on screen and the one saved for it, kept as one.
  *
- * Every reorder route (pointer drag, keyboard drop, Move up/down) moves
- * `items` first and then calls `persist`, which saves the full id list the
- * user sees. Saves never overlap: a move made while one is in flight marks the
- * order dirty, and when the save returns the newest order on screen is sent
- * next, so the last saved order is always the displayed one. While saves are
+ * `items` is what the list renders. Every reorder route (pointer drag,
+ * keyboard drop, Move up/down) moves it and then calls `persist`, which
+ * snapshots that order as the committed one. Only committed orders are saved,
+ * so a keyboard move that is still lifted never reaches the server, and
+ * `showCommitted` puts the list back when such a move is cancelled.
+ *
+ * Saves never overlap: a commit made while one is in flight replaces the
+ * queued order, and when the save returns the newest committed order is sent,
+ * so the last saved order is the last one the user committed. While saves are
  * pending a server snapshot only refreshes the steps' data, in the order on
  * screen, so an echo of an earlier save cannot snap the list back. A failed
  * save drops anything queued and shows the server's order again (the failed
@@ -34,17 +44,17 @@ const sameOrder = (a: readonly string[], b: readonly string[]) =>
 export function useStepOrderSync<T extends { _id: string }>(options: StepOrderSyncOptions<T>) {
 	const items = ref([...options.server.value]) as Ref<T[]>;
 	const isSaving = ref(false);
-	let dirty = false;
+	// The order the user last committed, or the server's when nothing is queued.
+	let committed = idsOf(options.server.value);
+	let queued = false;
 	let onSaved: (() => void) | null = null;
 	let running: Promise<void> | null = null;
 
-	// Fresh server data in the order on screen. Steps the server no longer has
-	// drop out; steps it gained go in at their server position.
-	const overlay = (server: readonly T[]): T[] => {
+	// Server data in the given id order. Steps the server no longer has drop
+	// out; steps it gained go in at their server position.
+	const arrange = (server: readonly T[], ids: readonly string[]): T[] => {
 		const byId = new Map(server.map((step) => [step._id, step]));
-		const next = items.value
-			.map((step) => byId.get(step._id))
-			.filter((step): step is T => step !== undefined);
+		const next = ids.map((id) => byId.get(id)).filter((step): step is T => step !== undefined);
 		const shown = new Set(idsOf(next));
 		for (const [index, step] of server.entries()) {
 			if (!shown.has(step._id)) next.splice(Math.min(index, next.length), 0, step);
@@ -52,28 +62,33 @@ export function useStepOrderSync<T extends { _id: string }>(options: StepOrderSy
 		return next;
 	};
 
-	const showServerOrder = () => {
+	watch(options.server, (steps) => {
+		// While saves are queued the committed order stays the user's, minus
+		// steps the server dropped and plus ones it gained.
+		committed = isSaving.value ? idsOf(arrange(steps, committed)) : idsOf(steps);
+		const shownOrder = options.isPreviewing() ? idsOf(items.value) : committed;
+		items.value = arrange(steps, shownOrder);
+	});
+
+	/** Show the committed order again, e.g. when a keyboard lift is cancelled. */
+	const showCommitted = () => {
+		items.value = arrange(options.server.value, committed);
+	};
+
+	const revert = () => {
+		queued = false;
+		onSaved = null;
+		isSaving.value = false;
+		committed = idsOf(options.server.value);
 		items.value = [...options.server.value];
 		options.onReplaced?.();
 	};
 
-	watch(options.server, (steps) => {
-		if (isSaving.value) items.value = overlay(steps);
-		else showServerOrder();
-	});
-
-	const revert = () => {
-		dirty = false;
-		onSaved = null;
-		isSaving.value = false;
-		showServerOrder();
-	};
-
 	const drain = async () => {
 		let sent = idsOf(options.server.value);
-		while (dirty) {
-			dirty = false;
-			const ids = idsOf(items.value);
+		while (queued) {
+			queued = false;
+			const ids = committed;
 			if (sameOrder(ids, sent)) continue;
 			sent = ids;
 			if (!(await options.save(ids))) {
@@ -88,12 +103,13 @@ export function useStepOrderSync<T extends { _id: string }>(options: StepOrderSy
 	};
 
 	/**
-	 * Save the order on screen. `saved` runs once it is stored; when moves
-	 * pile up only the newest one's callback runs, after the last save.
+	 * Commit and save the order on screen. `saved` runs once it is stored; when
+	 * commits pile up only the newest one's callback runs, after the last save.
 	 */
 	const persist = (saved?: () => void): Promise<void> => {
+		committed = idsOf(items.value);
 		onSaved = saved ?? null;
-		dirty = true;
+		queued = true;
 		if (isSaving.value && running) return running;
 		isSaving.value = true;
 		running = Promise.resolve(options.whenReady(drain, revert)).then(() => {
@@ -102,5 +118,5 @@ export function useStepOrderSync<T extends { _id: string }>(options: StepOrderSy
 		return running;
 	};
 
-	return { items, isSaving, persist };
+	return { items, isSaving, persist, showCommitted };
 }

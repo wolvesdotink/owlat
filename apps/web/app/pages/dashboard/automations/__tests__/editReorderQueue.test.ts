@@ -230,3 +230,169 @@ describe('reordering while a reorder is being saved', () => {
 		wrapper.unmount();
 	});
 });
+
+/**
+ * A lifted keyboard step is a preview. Only a drop commits it, so a save
+ * queued earlier must never carry it, and anything that ends the lift without
+ * a drop puts the committed order back.
+ */
+describe('keyboard previews and the reorder queue', () => {
+	beforeEach(() => {
+		vi.resetModules();
+	});
+
+	const lifted = (wrapper: EditPageWrapper, id: string) =>
+		wrapper.get(`[data-step-handle="${id}"]`).attributes('aria-pressed') === 'true';
+
+	// Marcel's sequence: two queued menu moves, then an undropped keyboard move
+	// while the first save is still out.
+	const queueThenPreview = async () => {
+		const harness = stubHeldReorder();
+		const wrapper = await mountEditPage();
+		await moveDown(wrapper, 'st_1');
+		await moveDown(wrapper, 'st_1');
+		expect(order(wrapper)).toEqual(['st_2', 'st_3', 'st_1']);
+		await press(wrapper, 'st_2', ' ');
+		await press(wrapper, 'st_2', 'ArrowDown');
+		expect(order(wrapper)).toEqual(['st_3', 'st_2', 'st_1']);
+		return { ...harness, wrapper };
+	};
+
+	for (const key of ['Escape', 'Tab']) {
+		it(`a queued save leaves out an undropped move cancelled with ${key}`, async () => {
+			const { wrapper, saves, settle } = await queueThenPreview();
+
+			await settle();
+			// The queued save is the committed order, not the preview.
+			expect(saves.map((save) => save.stepOrder)).toEqual([
+				['st_2', 'st_1', 'st_3'],
+				['st_2', 'st_3', 'st_1'],
+			]);
+			// The first save's echo and completion leave the preview alone.
+			expect(order(wrapper)).toEqual(['st_3', 'st_2', 'st_1']);
+			expect(lifted(wrapper, 'st_2')).toBe(true);
+
+			await press(wrapper, 'st_2', key);
+			expect(order(wrapper)).toEqual(['st_2', 'st_3', 'st_1']);
+			await settle();
+			expect(saves).toHaveLength(2);
+			expect(order(wrapper)).toEqual(['st_2', 'st_3', 'st_1']);
+			wrapper.unmount();
+		});
+	}
+
+	it('a drop after a queued move saves the dropped order', async () => {
+		const { wrapper, saves, settle } = await queueThenPreview();
+
+		await settle();
+		await press(wrapper, 'st_2', ' ');
+		expect(order(wrapper)).toEqual(['st_3', 'st_2', 'st_1']);
+		await settle();
+		await settle();
+		expect(saves.map((save) => save.stepOrder)).toEqual([
+			['st_2', 'st_1', 'st_3'],
+			['st_2', 'st_3', 'st_1'],
+			['st_3', 'st_2', 'st_1'],
+		]);
+		expect(order(wrapper)).toEqual(['st_3', 'st_2', 'st_1']);
+		wrapper.unmount();
+	});
+
+	it('a server snapshot during a lift keeps the preview', async () => {
+		const { echo, saves } = stubHeldReorder();
+		const wrapper = await mountEditPage();
+
+		await press(wrapper, 'st_1', ' ');
+		await press(wrapper, 'st_1', 'ArrowDown');
+		echo(['st_1', 'st_2', 'st_3']);
+		await flushPromises();
+		expect(order(wrapper)).toEqual(['st_2', 'st_1', 'st_3']);
+		expect(lifted(wrapper, 'st_1')).toBe(true);
+
+		await press(wrapper, 'st_1', 'Escape');
+		expect(order(wrapper)).toEqual(['st_1', 'st_2', 'st_3']);
+		expect(saves).toHaveLength(0);
+		wrapper.unmount();
+	});
+
+	it('a server reorder during a lift becomes the order Escape returns to', async () => {
+		const { echo } = stubHeldReorder();
+		const wrapper = await mountEditPage();
+
+		await press(wrapper, 'st_1', ' ');
+		await press(wrapper, 'st_1', 'ArrowDown');
+		echo(['st_3', 'st_1', 'st_2']);
+		await flushPromises();
+		await press(wrapper, 'st_1', 'Escape');
+		expect(order(wrapper)).toEqual(['st_3', 'st_1', 'st_2']);
+		wrapper.unmount();
+	});
+
+	it('deleting the lifted step ends the lift without saving', async () => {
+		const { echo, saves } = stubHeldReorder();
+		const wrapper = await mountEditPage();
+
+		await press(wrapper, 'st_2', ' ');
+		await press(wrapper, 'st_2', 'ArrowDown');
+		echo(['st_1', 'st_3']);
+		await flushPromises();
+		expect(order(wrapper)).toEqual(['st_1', 'st_3']);
+		expect(wrapper.find('[aria-pressed="true"]').exists()).toBe(false);
+
+		// The list follows the server again.
+		echo(['st_3', 'st_1']);
+		await flushPromises();
+		expect(order(wrapper)).toEqual(['st_3', 'st_1']);
+		expect(saves).toHaveLength(0);
+		wrapper.unmount();
+	});
+
+	it('opening a step in the inspector cancels the lift', async () => {
+		const { saves } = stubHeldReorder();
+		const wrapper = await mountEditPage();
+
+		await press(wrapper, 'st_1', ' ');
+		await press(wrapper, 'st_1', 'ArrowDown');
+		await wrapper.get('[data-step-title="st_3"]').trigger('click');
+		await flushPromises();
+		expect(order(wrapper)).toEqual(['st_1', 'st_2', 'st_3']);
+		expect(lifted(wrapper, 'st_1')).toBe(false);
+		expect(saves).toHaveLength(0);
+		wrapper.unmount();
+	});
+
+	it('pressing anywhere else cancels the lift', async () => {
+		const { saves } = stubHeldReorder();
+		const wrapper = await mountEditPage();
+
+		await press(wrapper, 'st_1', ' ');
+		await press(wrapper, 'st_1', 'ArrowDown');
+		document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+		await flushPromises();
+		expect(order(wrapper)).toEqual(['st_1', 'st_2', 'st_3']);
+		expect(lifted(wrapper, 'st_1')).toBe(false);
+		expect(saves).toHaveLength(0);
+		wrapper.unmount();
+	});
+
+	it('a pointer drag started during a lift drops the preview first', async () => {
+		const { saves, settle } = stubHeldReorder();
+		const wrapper = await mountEditPage();
+		const draggable = wrapper.findComponent({ name: 'VueDraggable' });
+
+		await press(wrapper, 'st_1', ' ');
+		await press(wrapper, 'st_1', 'ArrowDown');
+		draggable.vm.$emit('start', { oldIndex: 2 });
+		await flushPromises();
+		expect(order(wrapper)).toEqual(['st_1', 'st_2', 'st_3']);
+		expect(lifted(wrapper, 'st_1')).toBe(false);
+
+		const [first, second, third] = draggable.props('modelValue') as HarnessStep[];
+		draggable.vm.$emit('update:modelValue', [third, first, second]);
+		draggable.vm.$emit('end', { oldIndex: 2, newIndex: 0 });
+		await flushPromises();
+		await settle();
+		expect(saves.map((save) => save.stepOrder)).toEqual([['st_3', 'st_1', 'st_2']]);
+		wrapper.unmount();
+	});
+});

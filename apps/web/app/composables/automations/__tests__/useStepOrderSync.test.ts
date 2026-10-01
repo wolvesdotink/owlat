@@ -11,6 +11,7 @@ function setup() {
 	const server = ref<Step[]>(steps('a', 'b', 'c'));
 	const pending: ((ok: boolean) => void)[] = [];
 	const saved: string[][] = [];
+	const previewing = ref(false);
 	const sync = useStepOrderSync<Step>({
 		server,
 		save: (ids) => {
@@ -18,8 +19,9 @@ function setup() {
 			return new Promise((resolve) => pending.push(resolve));
 		},
 		whenReady: (proceed) => proceed(),
+		isPreviewing: () => previewing.value,
 	});
-	return { server, pending, saved, sync };
+	return { server, pending, saved, previewing, sync };
 }
 
 describe('useStepOrderSync', () => {
@@ -66,5 +68,25 @@ describe('useStepOrderSync', () => {
 		server.value = steps('c', 'b', 'a');
 		await nextTick();
 		expect(idsOf(sync.items.value)).toEqual(['c', 'b', 'a']);
+	});
+
+	it('saves the order committed last, not a preview shown after it', async () => {
+		const { pending, saved, previewing, sync } = setup();
+		sync.items.value = steps('b', 'a', 'c');
+		void sync.persist();
+		sync.items.value = steps('b', 'c', 'a');
+		void sync.persist();
+		// A preview on top of the second commit.
+		previewing.value = true;
+		sync.items.value = steps('c', 'b', 'a');
+
+		pending[0]!(true);
+		await flushPromises();
+		expect(saved).toEqual([
+			['b', 'a', 'c'],
+			['b', 'c', 'a'],
+		]);
+		sync.showCommitted();
+		expect(idsOf(sync.items.value)).toEqual(['b', 'c', 'a']);
 	});
 });

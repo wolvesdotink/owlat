@@ -96,8 +96,9 @@ const {
 
 // The list the drag handle reorders. VueDraggable writes the new order back
 // through v-model the moment an item is dropped, and the keyboard and the
-// step menu move it the same way; every route then saves the order shown, so
-// what runs is what the user sees. See `useStepOrderSync` for how moves made
+// step menu move it the same way; every route then commits the order shown,
+// so what runs is what the user sees. A lifted keyboard step is only a
+// preview until it is dropped. See `useStepOrderSync` for how commits made
 // while a save is in flight are queued.
 const stepOrder = useStepOrderSync({
 	server: mutableSteps,
@@ -105,11 +106,16 @@ const stepOrder = useStepOrderSync({
 	// The open step's save lands first, like every other change to the
 	// workflow's shape.
 	whenReady: (proceed, cancel) => afterStepSaved(proceed, cancel),
-	// A new server order replaces whatever the keyboard was moving.
+	isPreviewing: (): boolean => keyboardReorder.liftedId.value !== null,
+	// A failed save shows the server's order, so a lift on top of it is gone.
 	onReplaced: (): void => keyboardReorder.reset(),
 });
 const orderedSteps = stepOrder.items;
 const persistDisplayedOrder = (onSaved?: () => void): Promise<void> => stepOrder.persist(onSaved);
+// A pointer drag starts from the committed order, not from a keyboard lift.
+function onStepDragStart(): void {
+	keyboardReorder.cancel({ refocusHandle: false });
+}
 function onStepDragEnd() {
 	return persistDisplayedOrder();
 }
@@ -117,8 +123,10 @@ function onStepDragEnd() {
 // Keyboard and screen-reader route to the same reorder: the step title is the
 // button that opens a step, the handle is the button that moves it.
 const { announce } = useAnnounce();
+const stepControl = (stepId: string, control: 'title' | 'handle') =>
+	document.querySelector<HTMLElement>(`[data-step-${control}="${stepId}"]`);
 const focusStepControl = (stepId: string, control: 'title' | 'handle') => {
-	document.querySelector<HTMLElement>(`[data-step-${control}="${stepId}"]`)?.focus();
+	stepControl(stepId, control)?.focus();
 };
 const positionMessage =
 	(key: string) =>
@@ -126,7 +134,9 @@ const positionMessage =
 		t(key, { position, total });
 const keyboardReorder = useKeyboardReorder({
 	items: orderedSteps,
+	restore: () => stepOrder.showCommitted(),
 	commit: (onSaved) => persistDisplayedOrder(onSaved),
+	handleElement: (id) => stepControl(id, 'handle'),
 	focusHandle: (id) => focusStepControl(id, 'handle'),
 	announce,
 	messages: {
@@ -136,10 +146,13 @@ const keyboardReorder = useKeyboardReorder({
 		cancelled: positionMessage('dashboard.automations.detail.edit.reorder.cancelled'),
 	},
 });
+// Opening a step in the inspector (or closing it) ends a lift.
+watch(selectedStepId, () => keyboardReorder.cancel({ refocusHandle: false }));
 const liftedStepId = keyboardReorder.liftedId;
 // Move up / Move down from the step's actions menu, for anyone who does not
 // know the handle works from the keyboard. Focus stays on the moved step.
 const moveStepBy = (stepId: string, delta: -1 | 1) => {
+	keyboardReorder.cancel({ refocusHandle: false });
 	const from = orderedSteps.value.findIndex((step) => step._id === stepId);
 	const to = from + delta;
 	if (from === -1 || to < 0 || to >= orderedSteps.value.length) return;
@@ -761,6 +774,7 @@ onUnmounted(() => {
 						v-model="orderedSteps"
 						handle=".drag-handle"
 						ghost-class="opacity-50"
+						@start="onStepDragStart"
 						@end="onStepDragEnd"
 					>
 						<div

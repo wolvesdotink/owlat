@@ -1,4 +1,4 @@
-import { ref, computed, nextTick, type Ref } from 'vue';
+import { ref, computed, nextTick, watch, onScopeDispose, type Ref } from 'vue';
 
 export interface KeyboardReorderMessages {
 	pickedUp: (position: number, total: number) => string;
@@ -10,12 +10,16 @@ export interface KeyboardReorderMessages {
 export interface KeyboardReorderOptions<T extends { _id: string }> {
 	/** The order on screen. Moved in place while an item is lifted. */
 	items: Ref<T[]>;
+	/** Put the committed order back: the lifted moves were never saved. */
+	restore: () => void;
 	/**
 	 * Persist a drop, the same way a pointer drag's `@end` does: `items`
 	 * already holds the dropped order. `onSaved` runs once that order is
 	 * stored, so the drop is announced only then.
 	 */
 	commit: (onSaved: () => void) => unknown;
+	/** The lifted item's handle, so a press on it does not end the lift. */
+	handleElement?: (id: string) => HTMLElement | null;
 	/** Focus the lifted item's handle again after the list re-renders. */
 	focusHandle: (id: string) => void;
 	announce: (message: string) => void;
@@ -30,8 +34,9 @@ export interface KeyboardReorderOptions<T extends { _id: string }> {
  *
  * The move happens in `items` only; the drop hands over to `commit`, which is
  * the pointer drag's own persist path, so both routes save the same way.
- * Escape moves the item back to where it was lifted from, which is not always
- * the saved order: an earlier move may still be on its way to the server.
+ * Until the drop the moves are a preview: Escape, Tab, a press anywhere else
+ * or the item disappearing from the list ends the lift and `restore` puts
+ * the committed order back.
  */
 export function useKeyboardReorder<T extends { _id: string }>(options: KeyboardReorderOptions<T>) {
 	const { items, messages } = options;
@@ -43,20 +48,44 @@ export function useKeyboardReorder<T extends { _id: string }>(options: KeyboardR
 		void nextTick(() => options.focusHandle(id));
 	};
 
-	const cancel = () => {
+	const stopWatchingPointer = () =>
+		document.removeEventListener('pointerdown', onPointerDown, true);
+	const end = () => {
+		lifted.value = null;
+		stopWatchingPointer();
+	};
+
+	/**
+	 * End a lift without dropping. `refocusHandle` is false when focus is
+	 * already on its way somewhere else (Tab, a press on another control).
+	 */
+	const cancel = ({ refocusHandle = true }: { refocusHandle?: boolean } = {}) => {
 		const current = lifted.value;
 		if (!current) return;
-		lifted.value = null;
+		end();
+		options.restore();
 		const index = indexOf(current.id);
-		if (index !== -1 && index !== current.from) {
-			const next = [...items.value];
-			const [moved] = next.splice(index, 1);
-			next.splice(Math.min(current.from, next.length), 0, moved!);
-			items.value = next;
-		}
-		options.announce(messages.cancelled(current.from + 1, items.value.length));
-		refocus(current.id);
+		if (index === -1) return;
+		options.announce(messages.cancelled(index + 1, items.value.length));
+		if (refocusHandle) refocus(current.id);
 	};
+
+	// A press anywhere but the lifted handle (another step, the inspector, a
+	// pointer drag) ends the lift before that press does anything else.
+	function onPointerDown(event: Event) {
+		const handle = lifted.value && options.handleElement?.(lifted.value.id);
+		if (handle && event.target instanceof Node && handle.contains(event.target)) return;
+		cancel({ refocusHandle: false });
+	}
+
+	// The lifted item left the list (deleted, or the list was replaced).
+	watch(items, () => {
+		if (lifted.value && indexOf(lifted.value.id) === -1) {
+			end();
+			options.restore();
+		}
+	});
+	onScopeDispose(stopWatchingPointer);
 
 	const onKeydown = (event: KeyboardEvent, id: string) => {
 		const index = indexOf(id);
@@ -67,7 +96,10 @@ export function useKeyboardReorder<T extends { _id: string }>(options: KeyboardR
 		if (!lifted.value || lifted.value.id !== id) {
 			if (!isToggle) return;
 			event.preventDefault();
+			// One lift at a time: a lift elsewhere is put back first.
+			if (lifted.value) cancel({ refocusHandle: false });
 			lifted.value = { id, from: index };
+			document.addEventListener('pointerdown', onPointerDown, true);
 			options.announce(messages.pickedUp(index + 1, total));
 			return;
 		}
@@ -88,7 +120,7 @@ export function useKeyboardReorder<T extends { _id: string }>(options: KeyboardR
 		if (isToggle) {
 			event.preventDefault();
 			const { from } = lifted.value;
-			lifted.value = null;
+			end();
 			const announceDrop = () => options.announce(messages.dropped(index + 1, total));
 			if (from === index) announceDrop();
 			else options.commit(announceDrop);
@@ -104,7 +136,7 @@ export function useKeyboardReorder<T extends { _id: string }>(options: KeyboardR
 		}
 
 		// Tabbing away puts the item back rather than leaving it lifted.
-		if (event.key === 'Tab') cancel();
+		if (event.key === 'Tab') cancel({ refocusHandle: false });
 	};
 
 	return {
@@ -114,8 +146,6 @@ export function useKeyboardReorder<T extends { _id: string }>(options: KeyboardR
 		/** Abandon a lift, e.g. because the saved order changed underneath it. */
 		cancel,
 		/** Forget a lift without restoring: the list was replaced anyway. */
-		reset: () => {
-			lifted.value = null;
-		},
+		reset: end,
 	};
 }
