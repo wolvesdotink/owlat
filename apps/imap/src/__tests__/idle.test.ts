@@ -144,6 +144,7 @@ describe('IDLE — pushes EXISTS + FETCH FLAGS + EXPUNGE during a single IDLE (P
 			(fnRef: AnyFunctionReference, qargs: Record<string, unknown>) => {
 				const ref = getFunctionName(fnRef);
 				if (ref === 'mail/imap/session:peekFolderModseq') return Promise.resolve(peek);
+				if (ref === 'mail/imap/fetch:folderMembershipPage') return Promise.resolve(null);
 				if (ref === 'mail/imap/fetch:listFolderUidsPage') {
 					return Promise.resolve({ uids, nextUid: null });
 				}
@@ -165,7 +166,9 @@ describe('IDLE — pushes EXISTS + FETCH FLAGS + EXPUNGE during a single IDLE (P
 		let rows: FetchEnvelope[] = [];
 
 		const { deps, committed } = makeDeps(convex);
-		const { start, lines } = startArgs(deps, selectedState());
+		// The client's sequence view, as SELECT left it.
+		const view = { uids: [1, 2] as readonly number[] };
+		const { start, lines } = startArgs(deps, selectedState({ view }));
 		const session: CommandSession = idleModule.start(start);
 
 		expect(lines[0]).toBe('+ idling');
@@ -206,6 +209,9 @@ describe('IDLE — pushes EXISTS + FETCH FLAGS + EXPUNGE during a single IDLE (P
 		expect(committed.at(-1)!.selected!.totalCount).toBe(2);
 		expect(committed.at(-1)!.selected!.highestModseq).toBe(10);
 		expect(committed.at(-1)!.selected!.uidNext).toBe(4);
+		// …and the view holds what the client was told: UID 3 arrived, UID 2 went.
+		expect(view.uids).toEqual([1, 3]);
+		expect(committed.at(-1)!.selected!.view).toBe(view);
 	});
 
 	it('refuses IDLE without a SELECTed mailbox', async () => {

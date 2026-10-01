@@ -22,6 +22,26 @@ export interface AuthState {
 	readonly userId: string;
 }
 
+/**
+ * The message sequence the client holds for the SELECTed folder: UIDs
+ * ascending, position i being sequence number i+1 (RFC 3501 §2.3.1.2).
+ *
+ * It is the folder as the server last DESCRIBED it to the client (SELECT, then
+ * every `* n EXPUNGE` / `* n EXISTS` sent since), not the folder as it is now.
+ * Another session's EXPUNGE does not renumber the client's messages until this
+ * session announces it, so a sequence-number command is resolved here: `FETCH
+ * 2` still means the message the client knows as 2, and if that message is gone
+ * it is simply absent from the reply instead of being swapped for its neighbour.
+ *
+ * Deliberately mutable and shared by reference: every copy of the selection's
+ * state (each command spreads it) sees one view, and an announcement must be
+ * applied to it exactly once, in the order it was sent. Only
+ * `helpers/sequenceView.ts` and the commands that announce EXPUNGE write it.
+ */
+export interface SequenceView {
+	uids: readonly number[];
+}
+
 /** The currently-SELECTed folder. Cleared by UNSELECT / CLOSE. */
 export interface SelectedState {
 	readonly folderId: string;
@@ -32,6 +52,11 @@ export interface SelectedState {
 	readonly highestModseq: number;
 	readonly totalCount: number;
 	readonly readOnly: boolean;
+	/**
+	 * Set by SELECT / EXAMINE. Absent only in states built by hand (tests),
+	 * which then resolve sequence numbers against the folder as it is now.
+	 */
+	readonly view?: SequenceView;
 }
 
 /**

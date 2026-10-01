@@ -76,6 +76,20 @@ export interface UidPage {
 	readonly nextUid: number | null;
 }
 
+/**
+ * A folder's membership read (`mail/imap/fetch:folderMembershipPage`): `null`
+ * when the folder is not maintained, `isReady: false` while its backfill runs,
+ * `unchanged` when `knownVersion` is still current, otherwise one page of UID
+ * blocks (each ascending, the blocks in order) and the bound to resume after.
+ */
+export type MembershipPage = {
+	readonly version: string;
+	readonly isReady: boolean;
+	readonly unchanged?: true;
+	readonly blocks?: number[][];
+	readonly nextFirstUid?: number | null;
+} | null;
+
 /** One page of envelopes inside a UID window. */
 export interface EnvelopePage {
 	readonly rows: FetchEnvelope[];
@@ -115,6 +129,8 @@ export interface CopyMoveResult {
 /** One committed EXPUNGE page, plus the cursor to the next one. */
 export interface ExpungeResult {
 	readonly sequenceNumbers: number[];
+	/** The same messages by UID, same order. Absent from a backend older than #927's. */
+	readonly uids?: number[];
 	readonly modseq: number;
 	readonly done?: boolean;
 	readonly beforeUid?: number;
@@ -197,9 +213,11 @@ export const fn = {
 	listFolders: makeFunctionReference<'query', { mailboxId: string }, FolderRow[]>(
 		'mail/imap/session:listFolders'
 	),
-	selectFolder: makeFunctionReference<'query', { folderId: string }, SelectFolderResult | null>(
-		'mail/imap/session:selectFolder'
-	),
+	selectFolder: makeFunctionReference<
+		'query',
+		{ folderId: string; skipFirstUnseenSeq?: boolean },
+		SelectFolderResult | null
+	>('mail/imap/session:selectFolder'),
 	fetchEnvelopes: makeFunctionReference<'query', UidWindowArgs, EnvelopePage>(
 		'mail/imap/fetch:fetchEnvelopes'
 	),
@@ -217,6 +235,11 @@ export const fn = {
 		{ folderId: string; afterUid?: number; limit?: number },
 		UidPage
 	>('mail/imap/fetch:listFolderUidsPage'),
+	folderMembershipPage: makeFunctionReference<
+		'query',
+		{ folderId: string; knownVersion?: string; afterFirstUid?: number },
+		MembershipPage
+	>('mail/imap/fetch:folderMembershipPage'),
 	peekFolderModseq: makeFunctionReference<'query', { folderId: string }, PeekResult | null>(
 		'mail/imap/session:peekFolderModseq'
 	),

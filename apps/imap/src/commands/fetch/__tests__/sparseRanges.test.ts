@@ -101,6 +101,7 @@ function makeFolder(initialUids: readonly number[]) {
 	const convex = {
 		query: vi.fn(async (fnRef: AnyFunctionReference, p: Record<string, unknown>) => {
 			const ref = getFunctionName(fnRef);
+			if (ref.endsWith(':folderMembershipPage')) return null;
 			if (ref.endsWith(':listFolderUidsPage')) {
 				c.uidPages += 1;
 				const after = (p.afterUid as number | undefined) ?? 0;

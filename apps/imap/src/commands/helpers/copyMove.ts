@@ -46,7 +46,7 @@ export async function runCopyOrMove(params: RunCopyOrMoveParams): Promise<void> 
 			return;
 		}
 
-		const { seqMap, resolved } = await resolveSelectedSet(deps, state, set, byUid);
+		const { seqMap, resolved } = await resolveSelectedSet(deps, state, set, byUid, send);
 		const messageIds = await collectMessageIds(deps.convex, state.selected!.folderId, resolved);
 		if (messageIds.length === 0) {
 			send(`${tag} OK ${label} completed`);

@@ -4061,6 +4061,19 @@ _Avoid_: Connection context (vague), IMAP state alone (collides with
 pump state — IMAP has two state shapes and they're worth keeping
 distinct).
 
+**Sequence view**:
+The message numbering the client holds for the SELECTed folder: the
+folder's UIDs as the server last described them (SELECT, then every
+`* n EXPUNGE` / `* n EXISTS` sent since), kept on `selected.view`. A
+sequence-number FETCH / STORE / COPY / MOVE resolves against it, so
+another session's EXPUNGE cannot renumber messages under the client
+(RFC 3501 §7.4.1); NOOP, CHECK, IDLE, EXPUNGE and UID commands announce
+what changed and bring it up to date. Distinct from the folder's
+**membership**, its current UIDs, which the backend keeps in
+`mailFolderUidBlocks` under a version the IMAP server caches by.
+_Avoid_: Seq map (the per-command lookup structure built from either),
+UID cache (the view is deliberately behind the folder, not a copy of it).
+
 **IMAP pump**:
 The component in `apps/imap/src/connection.ts` (the existing
 `ImapConnection` class, post-deepening shrunk from 1106 LOC to ~150)

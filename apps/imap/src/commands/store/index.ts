@@ -67,7 +67,13 @@ export const storeModule: ImapCommandModule<StoreArgs> = {
 				// Resolve the set against the folder's sequence ↔ UID map: a
 				// non-UID set holds positions, a UID set holds UIDs. The map is
 				// reused below to emit each updated row's true sequence number.
-				const { seqMap, resolved } = await resolveSelectedSet(deps, state, args.set, args.byUid);
+				const { seqMap, resolved } = await resolveSelectedSet(
+					deps,
+					state,
+					args.set,
+					args.byUid,
+					send
+				);
 				if (resolved.length === 0) {
 					send(`${tag} OK ${label} completed`);
 					return;

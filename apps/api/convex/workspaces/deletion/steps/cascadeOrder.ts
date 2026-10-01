@@ -27,6 +27,8 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// to keep in step.
 	'counterScopes',
 	'counterBuckets',
+	'mailFolderMembership',
+	'mailFolderUidBlocks',
 	// Storage-bearing leaves: storage hooks fire before row delete
 	'mediaAssets',
 	'semanticFileContacts', // junction mirror — clear before its parent files

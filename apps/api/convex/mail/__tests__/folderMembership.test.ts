@@ -1,0 +1,613 @@
+/**
+ * IMAP folder membership (#927): the UID blocks behind the IMAP server's
+ * sequence map stay exactly the folder's UIDs through every write path, a
+ * backfill that races those writes, an interrupted backfill, and a rebuild.
+ *
+ * The invariant checked after every step: a ready folder's blocks, read in
+ * order, are its `mailMessages` UIDs ascending; a folder still walking holds
+ * exactly the rows at or before its watermark. And the revision moves on every
+ * write that changes which UIDs a folder holds, and on nothing else, because
+ * the IMAP server reuses a cached map for as long as it has not moved.
+ */
+
+import { convexTest, type TestConvex } from 'convex-test';
+import { describe, expect, it, vi } from 'vitest';
+import schema from '../../schema';
+import type { Doc, Id } from '../../_generated/dataModel';
+import type { MutationCtx } from '../../_generated/server';
+import { internal } from '../../_generated/api';
+import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
+import { insertDeliveredMessage } from '../deliveryPipeline/insert';
+import { moveMessagesToFolder } from '../messageActions';
+import { purgeMessageRow } from '../messagePurge';
+import {
+	MEMBERSHIP_BLOCK_SIZE,
+	dropFolderMembership,
+	loadFolderMembership,
+	readMembershipBlocks,
+	recordFolderMembership,
+	runFolderMembershipBackfillStep,
+	startFolderMembership,
+} from '../folderMembership';
+import { isCountedPosition } from '../../lib/counters';
+
+type Test = TestConvex<typeof schema>;
+type RunCtx = Parameters<Parameters<Test['run']>[0]>[0];
+
+/** Deterministic PRNG (mulberry32), so a failing seed replays exactly. */
+function rng(seed: number) {
+	let a = seed >>> 0;
+	const next = () => {
+		a = (a + 0x6d2b79f5) >>> 0;
+		let t = a;
+		t = Math.imul(t ^ (t >>> 15), t | 1);
+		t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+	};
+	return {
+		int: (n: number) => Math.floor(next() * n),
+		pick: <T>(items: readonly T[]): T => items[Math.floor(next() * items.length)]!,
+		chance: (p: number) => next() < p,
+	};
+}
+type Rng = ReturnType<typeof rng>;
+
+interface World {
+	t: Test;
+	mailboxId: Id<'mailboxes'>;
+	folderIds: Id<'mailFolders'>[];
+}
+
+async function setup(): Promise<World> {
+	const t = convexTest(schema, modules);
+	const mailboxId = await seedMailbox(t);
+	const folderIds = [
+		await seedFolder(t, mailboxId, 'inbox'),
+		await seedFolder(t, mailboxId, 'archive'),
+		await seedFolder(t, mailboxId, 'trash'),
+	];
+	return { t, mailboxId, folderIds };
+}
+
+async function deliver(ctx: RunCtx, w: World, folderId: Id<'mailFolders'>): Promise<void> {
+	const mailbox = (await ctx.db.get(w.mailboxId))!;
+	const folder = (await ctx.db.get(folderId))!;
+	const rawStorageId = await ctx.storage.store(new Blob(['raw']));
+	await insertDeliveredMessage(ctx, {
+		mailbox,
+		folder,
+		rawStorageId,
+		rawSize: 3,
+		from: 'sender@example.com',
+		to: ['a@owlat.test'],
+		cc: [],
+		bcc: [],
+		subject: 'hello',
+		textBodyInline: 'body',
+		messageId: `<m${Math.random()}@example.com>`,
+		receivedAt: Date.now(),
+		attachments: [],
+	});
+}
+
+async function messagesIn(
+	ctx: MutationCtx,
+	folderId: Id<'mailFolders'>
+): Promise<Doc<'mailMessages'>[]> {
+	return ctx.db
+		.query('mailMessages')
+		.withIndex('by_folder_and_uid', (q) => q.eq('folderId', folderId))
+		.collect();
+}
+
+/** What a folder's blocks hold, and what they should hold. */
+async function membershipOf(ctx: MutationCtx, folderId: Id<'mailFolders'>) {
+	const state = await loadFolderMembership(ctx.db, folderId);
+	const blocks = await readMembershipBlocks(ctx.db, folderId, undefined, 10_000);
+	const rows = await messagesIn(ctx, folderId);
+	const counted = !state
+		? []
+		: state.isReady
+			? rows
+			: rows.filter((m) =>
+					isCountedPosition({ key: m.uid, creationTime: m._creationTime }, state.watermark)
+				);
+	return {
+		state,
+		blocks,
+		stored: blocks.flatMap((b) => b.uids),
+		expected: counted.map((m) => m.uid),
+		all: rows.map((m) => m.uid),
+	};
+}
+
+/** Run a folder's backfill to the end, `pageSize` rows per transaction. */
+async function walkToReady(t: Test, folderId: Id<'mailFolders'>, pageSize?: number) {
+	let hasMore = true;
+	while (hasMore) {
+		hasMore = await t.run((ctx) => runFolderMembershipBackfillStep(ctx, folderId, pageSize));
+	}
+}
+
+async function expectMembershipExact(w: World, label: string): Promise<void> {
+	for (const folderId of w.folderIds) {
+		const m = await w.t.run((ctx) => membershipOf(ctx, folderId));
+		if (!m.state) {
+			expect(m.blocks, label).toEqual([]);
+			continue;
+		}
+		expect(m.stored, label).toEqual(m.expected);
+		// Structure: bounds ascending, every UID inside its block's bound and below
+		// the next one, no empty and no oversized block.
+		for (const [i, block] of m.blocks.entries()) {
+			expect(block.uids.length, label).toBeGreaterThan(0);
+			expect(block.uids.length, label).toBeLessThanOrEqual(MEMBERSHIP_BLOCK_SIZE);
+			expect(block.uids[0]!, label).toBeGreaterThanOrEqual(block.firstUid);
+			const next = m.blocks[i + 1];
+			if (next) expect(block.uids[block.uids.length - 1]!, label).toBeLessThan(next.firstUid);
+		}
+	}
+}
+
+async function revisions(w: World): Promise<Array<number | null>> {
+	return w.t.run(async (ctx) =>
+		Promise.all(
+			w.folderIds.map(async (id) => (await loadFolderMembership(ctx.db, id))?.revision ?? null)
+		)
+	);
+}
+
+async function uidsByFolder(w: World): Promise<string> {
+	return w.t.run(async (ctx) =>
+		JSON.stringify(
+			await Promise.all(
+				w.folderIds.map(async (id) => (await messagesIn(ctx, id)).map((m) => m.uid))
+			)
+		)
+	);
+}
+
+/** One random write through a real write path. */
+async function randomOp(w: World, r: Rng): Promise<void> {
+	const { t } = w;
+	const all = await t.run(async (ctx) =>
+		(await Promise.all(w.folderIds.map((id) => messagesIn(ctx, id)))).flat()
+	);
+	const roll = r.int(9);
+	if (all.length === 0 || roll === 0) {
+		await t.run((ctx) => deliver(ctx, w, r.pick(w.folderIds)));
+		return;
+	}
+	const m = r.pick(all);
+	const other = r.pick(w.folderIds.filter((id) => id !== m.folderId));
+	switch (roll) {
+		case 1:
+			await t.run((ctx) =>
+				moveMessagesToFolder(ctx, { messageIds: [m._id], targetFolderId: other })
+			);
+			return;
+		case 2:
+			await t.run(async (ctx) => {
+				await purgeMessageRow(ctx, m);
+			});
+			return;
+		case 3:
+			await t.mutation(internal.mail.imap.move.copyMessages, {
+				sourceFolderId: m.folderId,
+				targetFolderId: other,
+				messageIds: [m._id],
+			});
+			return;
+		case 4:
+			await t.mutation(internal.mail.imap.move.moveMessages, {
+				sourceFolderId: m.folderId,
+				targetFolderId: other,
+				messageIds: [m._id],
+			});
+			return;
+		case 5:
+			await t.mutation(internal.mail.imap.flags.storeFlags, {
+				messageIds: [m._id],
+				flags: ['\\Deleted'],
+				mode: 'add',
+			});
+			await t.mutation(internal.mail.imap.move.expungeFolder, { folderId: m.folderId });
+			return;
+		case 6:
+			// A flag write changes no membership: the revision must not move.
+			await t.mutation(internal.mail.imap.flags.storeFlags, {
+				messageIds: [m._id],
+				flags: ['\\Seen'],
+				mode: r.chance(0.5) ? 'add' : 'remove',
+			});
+			return;
+		case 7: {
+			const rawStorageId = await t.run((ctx) => ctx.storage.store(new Blob(['raw'])));
+			await t.mutation(internal.mail.imap.append.appendMessage, {
+				folderId: r.pick(w.folderIds),
+				rawStorageId,
+				rawSize: 3,
+				rfc822MessageId: `<a${r.int(1e9)}@owlat.test>`,
+				fromAddress: 'a@owlat.test',
+				toAddresses: ['b@example.com'],
+				ccAddresses: [],
+				bccAddresses: [],
+				subject: 'appended',
+			});
+			return;
+		}
+		default:
+			await t.run((ctx) => deliver(ctx, w, r.pick(w.folderIds)));
+	}
+}
+
+/** Run one random op and check the blocks and the revision contract after it. */
+async function checkedOp(w: World, r: Rng, label: string): Promise<void> {
+	const beforeUids = await uidsByFolder(w);
+	const beforeRevisions = await revisions(w);
+	await randomOp(w, r);
+	await expectMembershipExact(w, label);
+	const afterUids = JSON.parse(await uidsByFolder(w)) as number[][];
+	const afterRevisions = await revisions(w);
+	const before = JSON.parse(beforeUids) as number[][];
+	for (const [i, revision] of afterRevisions.entries()) {
+		const previous = beforeRevisions[i];
+		if (revision === null || previous === null || previous === undefined) continue;
+		const changed = JSON.stringify(before[i]) !== JSON.stringify(afterUids[i]);
+		if (changed) expect(revision, `${label}: folder ${i} changed`).toBeGreaterThan(previous);
+		else expect(revision, `${label}: folder ${i} unchanged`).toBe(previous);
+	}
+}
+
+describe('folder membership equals the folder (#927)', () => {
+	for (const seed of [3, 11, 58, 927]) {
+		it(`stays exact through random writes and a racing backfill (seed ${seed})`, async () => {
+			const r = rng(seed);
+			const w = await setup();
+
+			// Mail that predates the membership: nothing is maintained yet.
+			for (let i = 0; i < 25; i++) await randomOp(w, r);
+			await expectMembershipExact(w, 'before any state row');
+
+			await w.t.run(async (ctx) => {
+				for (const id of w.folderIds) await startFolderMembership(ctx, id);
+			});
+
+			// The walk advances three rows at a time while writes keep landing.
+			let step = 0;
+			let walking = true;
+			while (walking) {
+				step += 1;
+				await checkedOp(w, r, `walk step ${step}`);
+				walking = false;
+				for (const id of w.folderIds) {
+					if (await w.t.run((ctx) => runFolderMembershipBackfillStep(ctx, id, 3))) walking = true;
+				}
+				await expectMembershipExact(w, `walk step ${step} (page)`);
+				expect(step).toBeLessThan(200);
+			}
+			const states = await w.t.run(async (ctx) =>
+				Promise.all(w.folderIds.map((id) => loadFolderMembership(ctx.db, id)))
+			);
+			expect(states.map((s) => s?.isReady)).toEqual([true, true, true]);
+
+			for (let i = 0; i < 40; i++) await checkedOp(w, r, `after ready, op ${i}`);
+		});
+	}
+
+	it('a folder that starts empty is ready at once and kept exact from its first message', async () => {
+		const w = await setup();
+		await w.t.run(async (ctx) => {
+			for (const id of w.folderIds) await startFolderMembership(ctx, id, { isEmpty: true });
+		});
+		const r = rng(5);
+		for (let i = 0; i < 40; i++) await checkedOp(w, r, `op ${i}`);
+	});
+
+	it('the backfill does not move the revision', async () => {
+		const w = await setup();
+		for (let i = 0; i < 10; i++) await w.t.run((ctx) => deliver(ctx, w, w.folderIds[0]!));
+		await w.t.run((ctx) => startFolderMembership(ctx, w.folderIds[0]!));
+		await walkToReady(w.t, w.folderIds[0]!, 4);
+		const state = await w.t.run((ctx) => loadFolderMembership(ctx.db, w.folderIds[0]!));
+		expect(state).toMatchObject({ isReady: true, revision: 0, cursor: null });
+		await expectMembershipExact(w, 'ready');
+	});
+});
+
+describe('membership blocks', () => {
+	async function folderWith(t: Test) {
+		const mailboxId = await seedMailbox(t);
+		const folderId = await seedFolder(t, mailboxId, 'inbox');
+		await t.run((ctx) => startFolderMembership(ctx, folderId, { isEmpty: true }));
+		return folderId;
+	}
+	const add = (folderId: Id<'mailFolders'>, uid: number) => (ctx: MutationCtx) =>
+		recordFolderMembership(ctx, null, { folderId, uid });
+	const remove = (folderId: Id<'mailFolders'>, uid: number) => (ctx: MutationCtx) =>
+		recordFolderMembership(ctx, { folderId, uid }, null);
+	const sizes = (t: Test, folderId: Id<'mailFolders'>) =>
+		t.run(async (ctx) =>
+			(await readMembershipBlocks(ctx.db, folderId, undefined, 100)).map((b) => b.uids.length)
+		);
+
+	it('appends fill a block and start the next one', async () => {
+		const t = convexTest(schema, modules);
+		const folderId = await folderWith(t);
+		await t.run(async (ctx) => {
+			for (let uid = 1; uid <= 600; uid++) await add(folderId, uid)(ctx);
+		});
+		expect(await sizes(t, folderId)).toEqual([256, 256, 88]);
+	});
+
+	it('an insert into a full block splits it in half and keeps the order', async () => {
+		const t = convexTest(schema, modules);
+		const folderId = await folderWith(t);
+		await t.run(async (ctx) => {
+			for (let uid = 2; uid <= 512; uid += 2) await add(folderId, uid)(ctx);
+			await add(folderId, 101)(ctx);
+		});
+		expect(await sizes(t, folderId)).toEqual([128, 129]);
+		const uids = await t.run(async (ctx) =>
+			(await readMembershipBlocks(ctx.db, folderId, undefined, 100)).flatMap((b) => b.uids)
+		);
+		expect(uids).toEqual([...uids].sort((a, b) => a - b));
+		expect(uids).toContain(101);
+	});
+
+	it('a UID below every block lowers the first bound', async () => {
+		const t = convexTest(schema, modules);
+		const folderId = await folderWith(t);
+		await t.run(async (ctx) => {
+			await add(folderId, 50)(ctx);
+			await add(folderId, 7)(ctx);
+		});
+		const blocks = await t.run((ctx) => readMembershipBlocks(ctx.db, folderId, undefined, 10));
+		expect(blocks.map((b) => [b.firstUid, b.uids])).toEqual([[7, [7, 50]]]);
+	});
+
+	it('scattered removals merge small blocks and delete empty ones', async () => {
+		const t = convexTest(schema, modules);
+		const folderId = await folderWith(t);
+		await t.run(async (ctx) => {
+			for (let uid = 1; uid <= 768; uid++) await add(folderId, uid)(ctx);
+		});
+		expect(await sizes(t, folderId)).toEqual([256, 256, 256]);
+		await t.run(async (ctx) => {
+			// Thin the last block to 40, then the middle one: when it drops below a
+			// quarter (63) it absorbs the last block (63 + 40 fit in one).
+			for (let uid = 513; uid <= 728; uid++) await remove(folderId, uid)(ctx);
+			for (let uid = 257; uid <= 456; uid++) await remove(folderId, uid)(ctx);
+		});
+		expect(await sizes(t, folderId)).toEqual([256, 103 - 7]);
+		await t.run(async (ctx) => {
+			for (let uid = 1; uid <= 256; uid++) await remove(folderId, uid)(ctx);
+		});
+		// An emptied block is deleted outright.
+		expect(await sizes(t, folderId)).toEqual([96]);
+	});
+
+	it('a UID two messages share (legacy data) is held twice and removed once', async () => {
+		const t = convexTest(schema, modules);
+		const folderId = await folderWith(t);
+		await t.run(async (ctx) => {
+			await add(folderId, 4)(ctx);
+			await add(folderId, 4)(ctx);
+			await remove(folderId, 4)(ctx);
+		});
+		const uids = await t.run(async (ctx) =>
+			(await readMembershipBlocks(ctx.db, folderId, undefined, 10)).flatMap((b) => b.uids)
+		);
+		expect(uids).toEqual([4]);
+	});
+
+	it('a folder without a state row is not maintained', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t);
+		const folderId = await seedFolder(t, mailboxId, 'inbox');
+		await t.run(add(folderId, 1));
+		expect(await sizes(t, folderId)).toEqual([]);
+	});
+});
+
+describe('mail/imap/fetch:folderMembershipPage', () => {
+	it('answers null, then not-ready, then blocks, then unchanged for the known version', async () => {
+		const w = await setup();
+		const folderId = w.folderIds[0]!;
+		for (let i = 0; i < 5; i++) await w.t.run((ctx) => deliver(ctx, w, folderId));
+		const page = (knownVersion?: string) =>
+			w.t.query(internal.mail.imap.fetch.folderMembershipPage, {
+				folderId,
+				...(knownVersion === undefined ? {} : { knownVersion }),
+			});
+
+		expect(await page()).toBeNull();
+		await w.t.run((ctx) => startFolderMembership(ctx, folderId));
+		const walking = await page();
+		expect(walking).toMatchObject({ isReady: false });
+		expect(walking).not.toHaveProperty('blocks');
+
+		await walkToReady(w.t, folderId);
+		const ready = await page();
+		expect(ready).toMatchObject({ isReady: true, blocks: [[1, 2, 3, 4, 5]], nextFirstUid: null });
+		// Ready did not change the membership, so the version is the walking one.
+		expect(ready!.version).toBe(walking!.version);
+		expect(await page(ready!.version)).toEqual({
+			version: ready!.version,
+			isReady: true,
+			unchanged: true,
+		});
+
+		await w.t.run((ctx) => deliver(ctx, w, folderId));
+		const moved = await page(ready!.version);
+		expect(moved!.version).not.toBe(ready!.version);
+		expect(moved).toMatchObject({ blocks: [[1, 2, 3, 4, 5, 6]] });
+	});
+
+	it('a dropped and rebuilt membership never repeats an old version', async () => {
+		const w = await setup();
+		const folderId = w.folderIds[0]!;
+		await w.t.run((ctx) => startFolderMembership(ctx, folderId, { isEmpty: true }));
+		const first = await w.t.query(internal.mail.imap.fetch.folderMembershipPage, { folderId });
+		await w.t.run((ctx) => dropFolderMembership(ctx, folderId));
+		await w.t.run((ctx) => startFolderMembership(ctx, folderId, { isEmpty: true }));
+		const again = await w.t.query(internal.mail.imap.fetch.folderMembershipPage, {
+			folderId,
+			knownVersion: first!.version,
+		});
+		expect(again).not.toHaveProperty('unchanged');
+		expect(again!.version).not.toBe(first!.version);
+	});
+});
+
+describe('migration 0054 backfills, resumes and rebuilds', () => {
+	vi.useFakeTimers();
+
+	async function seeded() {
+		const w = await setup();
+		for (const folderId of w.folderIds) {
+			for (let i = 0; i < 7; i++) await w.t.run((ctx) => deliver(ctx, w, folderId));
+		}
+		return w;
+	}
+
+	it('walks every folder to ready', async () => {
+		const w = await seeded();
+		const totals = await w.t.action(internal.migrations['0054_backfill_folder_membership'].run, {});
+		expect(totals).toEqual({ started: 3, running: 0, ready: 0 });
+		await w.t.finishAllScheduledFunctions(vi.runAllTimers);
+		const status = await w.t.query(
+			internal.migrations['0054_backfill_folder_membership'].status,
+			{}
+		);
+		expect(status).toMatchObject({ ready: 3, walking: 0 });
+		await expectMembershipExact(w, 'after 0054');
+	});
+
+	it('an interrupted walk resumes from its stored cursor without adding a UID twice', async () => {
+		const w = await seeded();
+		const folderId = w.folderIds[0]!;
+		// A walk that got two pages in, then died (no step left queued).
+		await w.t.run((ctx) => startFolderMembership(ctx, folderId));
+		await w.t.run((ctx) => runFolderMembershipBackfillStep(ctx, folderId, 2));
+		await w.t.run((ctx) => runFolderMembershipBackfillStep(ctx, folderId, 2));
+		// Writes keep landing on both sides of the watermark meanwhile.
+		await w.t.run((ctx) => deliver(ctx, w, folderId));
+		const [first] = await w.t.run((ctx) => messagesIn(ctx, folderId));
+		await w.t.run(async (ctx) => {
+			await purgeMessageRow(ctx, first!);
+		});
+		await expectMembershipExact(w, 'interrupted');
+
+		const totals = await w.t.action(internal.migrations['0054_backfill_folder_membership'].run, {});
+		expect(totals).toEqual({ started: 2, running: 1, ready: 0 });
+		await w.t.finishAllScheduledFunctions(vi.runAllTimers);
+		await expectMembershipExact(w, 'resumed');
+		const state = await w.t.run((ctx) => loadFolderMembership(ctx.db, folderId));
+		expect(state?.isReady).toBe(true);
+	});
+
+	it('a second run leaves ready folders alone', async () => {
+		const w = await seeded();
+		await w.t.action(internal.migrations['0054_backfill_folder_membership'].run, {});
+		await w.t.finishAllScheduledFunctions(vi.runAllTimers);
+		const again = await w.t.action(internal.migrations['0054_backfill_folder_membership'].run, {});
+		expect(again).toEqual({ started: 0, running: 0, ready: 3 });
+	});
+
+	it('rebuild repairs a membership found out of step', async () => {
+		const w = await seeded();
+		await w.t.action(internal.migrations['0054_backfill_folder_membership'].run, {});
+		await w.t.finishAllScheduledFunctions(vi.runAllTimers);
+		const folderId = w.folderIds[1]!;
+		await w.t.run(async (ctx) => {
+			const [block] = await readMembershipBlocks(ctx.db, folderId, undefined, 1);
+			await ctx.db.patch(block!._id, { uids: block!.uids.slice(1) });
+		});
+		const broken = await w.t.run((ctx) => membershipOf(ctx, folderId));
+		expect(broken.stored).not.toEqual(broken.expected);
+
+		await w.t.action(internal.migrations['0054_backfill_folder_membership'].run, {
+			rebuild: true,
+		});
+		await w.t.finishAllScheduledFunctions(vi.runAllTimers);
+		await expectMembershipExact(w, 'rebuilt');
+	});
+
+	it('does not start a folder deleted after it was listed', async () => {
+		const w = await seeded();
+		const [gone] = w.folderIds;
+		await w.t.run(async (ctx) => {
+			for (const m of await messagesIn(ctx, gone!)) await ctx.db.delete(m._id);
+			await ctx.db.delete(gone!);
+		});
+		const totals = await w.t.mutation(
+			internal.migrations['0054_backfill_folder_membership'].startFolders,
+			{ folderIds: w.folderIds }
+		);
+		expect(totals).toEqual({ started: 2, running: 0, ready: 0 });
+	});
+});
+
+describe('membership follows folders and IMAP results', () => {
+	it('expungeFolder reports the expunged UIDs beside their sequence numbers', async () => {
+		const w = await setup();
+		const folderId = w.folderIds[0]!;
+		for (let i = 0; i < 4; i++) await w.t.run((ctx) => deliver(ctx, w, folderId));
+		const ids = (await w.t.run((ctx) => messagesIn(ctx, folderId))).map((m) => m._id);
+		await w.t.mutation(internal.mail.imap.flags.storeFlags, {
+			messageIds: [ids[1]!, ids[3]!],
+			flags: ['\\Deleted'],
+			mode: 'add',
+		});
+		const result = await w.t.mutation(internal.mail.imap.move.expungeFolder, { folderId });
+		expect(result.uids).toEqual([4, 2]);
+		expect(result.sequenceNumbers).toEqual([4, 2]);
+	});
+
+	it('deleting a folder drops its membership', async () => {
+		const w = await setup();
+		const folderId = await w.t.run(async (ctx) => {
+			const now = Date.now();
+			const id = await ctx.db.insert('mailFolders', {
+				mailboxId: w.mailboxId,
+				name: 'Receipts',
+				uidValidity: now,
+				uidNext: 1,
+				highestModseq: 1,
+				totalCount: 0,
+				unseenCount: 0,
+				subscribed: true,
+				createdAt: now,
+				updatedAt: now,
+			});
+			await startFolderMembership(ctx, id, { isEmpty: true });
+			return id;
+		});
+		await w.t.run((ctx) => deliver(ctx, w, folderId));
+		await w.t.mutation(internal.mail.folders.relocateAndDeleteFolder, {
+			folderId,
+			inboxId: w.folderIds[0]!,
+		});
+		const left = await w.t.run(async (ctx) => ({
+			state: await loadFolderMembership(ctx.db, folderId),
+			blocks: await readMembershipBlocks(ctx.db, folderId, undefined, 10),
+		}));
+		expect(left).toEqual({ state: null, blocks: [] });
+	});
+
+	it('selectFolder leaves the first-unseen count out when asked to', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t);
+		const folderId = await seedFolder(t, mailboxId, 'inbox');
+		await seedMessage(t, mailboxId, { subject: 'one' });
+		const counted = await t.query(internal.mail.imap.session.selectFolder, { folderId });
+		expect(counted?.firstUnseenSeq).toBe(1);
+		const skipped = await t.query(internal.mail.imap.session.selectFolder, {
+			folderId,
+			skipFirstUnseenSeq: true,
+		});
+		expect(skipped?.firstUnseenUid).toBe(1);
+		expect(skipped?.firstUnseenSeq).toBeUndefined();
+	});
+});
