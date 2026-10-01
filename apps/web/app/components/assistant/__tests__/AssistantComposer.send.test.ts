@@ -137,3 +137,27 @@ describe('AssistantComposer send acknowledgement (#1049)', () => {
 		expect(textarea(w).value).toBe('My own question\nSummarize the last campaign.');
 	});
 });
+
+describe('AssistantComposer IME composition (#1052)', () => {
+	it('does not send or clear on the Enter that confirms an IME candidate', async () => {
+		const w = mountComposer();
+		await w.get('textarea').setValue('你好');
+		for (const init of [{ isComposing: true }, { keyCode: 229 }]) {
+			const event = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true, ...init });
+			w.get('textarea').element.dispatchEvent(event);
+			await flushPromises();
+			expect(event.defaultPrevented).toBe(false);
+		}
+		expect(send).not.toHaveBeenCalled();
+		expect(textarea(w).value).toBe('你好');
+
+		// Shift+Enter is still a newline, not a send.
+		await w.get('textarea').trigger('keydown', { key: 'Enter', shiftKey: true });
+		expect(send).not.toHaveBeenCalled();
+
+		// After the composition, Enter sends once.
+		await pressEnter(w);
+		expect(send).toHaveBeenCalledTimes(1);
+		expect(send).toHaveBeenCalledWith('你好');
+	});
+});

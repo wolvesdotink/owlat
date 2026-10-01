@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useAcknowledgedDraft } from '~/composables/useAcknowledgedDraft';
+import { isImeComposing } from '~/utils/imeComposition';
 
 const props = defineProps<{
 	/**
@@ -70,6 +71,8 @@ const focus = () => textareaRef.value?.focus();
 defineExpose({ sendText, focus });
 
 const handleKeydown = (event: KeyboardEvent) => {
+	// An IME's confirming Enter finishes the word, it does not send (#1052).
+	if (isImeComposing(event)) return;
 	if (event.key === 'Enter' && !event.shiftKey) {
 		event.preventDefault();
 		void send();

@@ -9,6 +9,7 @@
 
 import type { Ref } from 'vue';
 import { resolveComposerKeyAction } from '~/utils/postboxComposerKeys';
+import { isImeComposing } from '~/utils/imeComposition';
 
 export function usePostboxComposerKeys(options: {
 	/** The composer root element the keydown listener is bound to. */
@@ -56,7 +57,7 @@ export function usePostboxComposerKeys(options: {
 	}
 
 	function onComposerKeydown(event: KeyboardEvent) {
-		if (event.isComposing) return;
+		if (isImeComposing(event)) return;
 		const action = resolveComposerKeyAction(event, {
 			canSend: options.canSend.value && !options.sending.value && !options.isScheduled.value,
 			overlayOpen: hasOpenInnerOverlay(event),
