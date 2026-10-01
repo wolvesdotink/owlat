@@ -70,6 +70,14 @@ describe('useAnswerAnchor', () => {
 		expect(scrolled).not.toHaveBeenCalled();
 	});
 
+	it('stops on a plain click, which is all a phone screen reader sends', async () => {
+		const { column, scrolled, addAnchor } = setup({ anchorTop: 900 });
+		column.value!.dispatchEvent(new Event('click'));
+		addAnchor();
+		await flushFrames();
+		expect(scrolled).not.toHaveBeenCalled();
+	});
+
 	it('does nothing side by side, where both columns have the room', async () => {
 		const { scrolled, addAnchor } = setup({ anchorTop: 900, active: false });
 		addAnchor();

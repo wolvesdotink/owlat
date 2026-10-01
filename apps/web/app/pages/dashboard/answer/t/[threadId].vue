@@ -317,7 +317,9 @@ onBeforeUnmount(() => {
 			</template>
 
 			<template
-				v-if="assist.draftWithAi.value && isAdmin && reply.composerTarget.value"
+				v-if="
+					assist.draftWithAi.value && isAdmin && reply.composerTarget.value && !showClarification
+				"
 				#peek-actions
 			>
 				<AnswerPeekDraft :disabled="assist.ask.busy.value" @draft="draftFromPeek" />

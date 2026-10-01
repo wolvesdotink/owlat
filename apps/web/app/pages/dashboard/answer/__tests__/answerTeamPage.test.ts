@@ -258,6 +258,33 @@ describe('Answer mode for a Team inbox thread', () => {
 		}
 	});
 
+	it('hides "✦ Draft" on the phone while the agent\'s own questions are open', async () => {
+		const realMatchMedia = window.matchMedia;
+		window.matchMedia = ((query: string) => ({
+			matches: /max-width/.test(query),
+			media: query,
+			addEventListener: () => {},
+			removeEventListener: () => {},
+		})) as unknown as typeof window.matchMedia;
+		draftWithAi.value = true;
+		messages.value = [
+			inbound('in_1', {
+				processingStatus: 'awaiting_clarification',
+				draftResponse: undefined,
+				pendingClarification: {
+					questions: [{ id: 'q1', text: 'Is the PO on the invoice?', options: ['Yes', 'No'] }],
+				},
+			}),
+		];
+		try {
+			const wrapper = await mountPage();
+			expect(wrapper.find('[data-testid="answer-peek-draft"]').exists()).toBe(false);
+		} finally {
+			window.matchMedia = realMatchMedia;
+			draftWithAi.value = false;
+		}
+	});
+
 	it('arms the Approved · Undo countdown for a held approve, and its Undo cancels the send', async () => {
 		handleApprove.mockResolvedValueOnce({ ok: true, result: { undo: { sendAt: 5_000 } } });
 		const wrapper = await mountPage();

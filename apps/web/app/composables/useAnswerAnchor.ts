@@ -65,4 +65,5 @@ export function useAnswerAnchor(opts: {
 	return { check };
 }
 
-const USER_EVENTS = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const;
+// `click` too: screen readers on phones activate with a click and no pointer events.
+const USER_EVENTS = ['wheel', 'touchstart', 'pointerdown', 'keydown', 'click'] as const;
