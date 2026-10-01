@@ -23,4 +23,16 @@ export const storageTables = {
 		// Blobs bound to a resource that is about to go (a mail thread's Reply
 		// Queue answer uploads), found by key when the resource is deleted.
 		.index('by_resource', ['resourceKey']),
+
+	// Attachment bytes the transactional API stored before its intake decided.
+	// A row is deletion authority for one blob until the dispatch mutation claims
+	// it (deleting the row in the transaction that inserts the Send, which owns
+	// the blob from then on). Rejections release it; an interrupted request leaves
+	// it to the expiry sweep (`transactional/pendingUploads.ts`, ADR-0021).
+	transactionalPendingUploads: defineTable({
+		storageId: v.id('_storage'),
+		expiresAt: v.number(),
+	})
+		.index('by_storage', ['storageId'])
+		.index('by_expiry', ['expiresAt']),
 };

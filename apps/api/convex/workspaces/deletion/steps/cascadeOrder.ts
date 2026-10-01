@@ -47,6 +47,8 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// Share links own the blobs the drafts above no longer reference, so they
 	// have to purge their own storage rather than ride a generic sweep.
 	'mailAttachmentShares',
+	// Unclaimed transactional attachment uploads own their blobs outright.
+	'transactionalPendingUploads',
 	'transactionalSends',
 
 	// Send + dispatch leaves
