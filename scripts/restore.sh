@@ -8,7 +8,9 @@
 # current contents of each volume are copied to <volume>-pre-restore-<time>,
 # and the volumes are repopulated. If any step fails, or the restore is
 # interrupted (Ctrl-C), the old data is put back and the previous stack
-# restarted. .env is restored from the backup unless --keep-env is specified.
+# restarted. .env is restored from the backup unless --keep-env is specified;
+# the override, Caddyfile and .owlat-flags.json (the CLI's copy of the feature
+# flags) belong to the restored database and are restored either way.
 # On a fresh host with no .env yet, Compose reads the archive's .env until the
 # restored one is in place.
 #
@@ -25,8 +27,8 @@
 #
 # This is DESTRUCTIVE. Existing volume data is replaced; the pre-restore
 # copies need as much free disk as the volumes they copy and are kept until
-# you remove them. The current .env, docker-compose.override.yml and
-# Caddyfile are preserved as <file>.before-restore-YYYYMMDD-HHMMSS.
+# you remove them. The current .env, docker-compose.override.yml, Caddyfile
+# and .owlat-flags.json are preserved as <file>.before-restore-YYYYMMDD-HHMMSS.
 # ═══════════════════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -45,7 +47,7 @@ while [[ $# -gt 0 ]]; do
 			shift
 			;;
 		--help|-h)
-			sed -n '4,29p' "$0" | sed 's/^# \{0,1\}//'
+			sed -n '4,31p' "$0" | sed 's/^# \{0,1\}//'
 			exit 0
 			;;
 		-*)
@@ -536,6 +538,30 @@ if [[ -f "$STAGING/Caddyfile" ]]; then
 	preserve Caddyfile
 	cp "$STAGING/Caddyfile" Caddyfile || config_die "Could not restore Caddyfile from the archive."
 	ok "Restored Caddyfile"
+fi
+
+# .owlat-flags.json is the CLI's copy of the feature flags the restored
+# database holds; `owlat doctor`, `feature` and `pack` read it, and a toggle
+# rewrites the override from it. It belongs to the restored database and
+# override, so it is restored even with --keep-env (which keeps only .env).
+# Owner-only, like the setup wizard and the updater write it.
+FLAG_MIRROR=.owlat-flags.json
+if [[ -f "$STAGING/owlat-flags.json" ]]; then
+	preserve "$FLAG_MIRROR"
+	cp "$STAGING/owlat-flags.json" "$FLAG_MIRROR" \
+		|| config_die "Could not restore $FLAG_MIRROR from the archive."
+	chmod 600 "$FLAG_MIRROR" || warn "Could not make $FLAG_MIRROR owner-only (chmod 600 $FLAG_MIRROR)."
+	ok "Restored $FLAG_MIRROR (CLI feature flags)"
+else
+	# An archive from before backups carried the file. The current copy
+	# describes the install being replaced, not the restored database: keep it
+	# aside rather than let a later toggle rewrite the restored profiles from it.
+	if [[ -f "$FLAG_MIRROR" ]]; then
+		mv "$FLAG_MIRROR" "$FLAG_MIRROR.before-restore-${STAMP}" \
+			|| config_die "Could not move the current $FLAG_MIRROR aside; it describes the install being replaced."
+		ok "Moved current $FLAG_MIRROR → $FLAG_MIRROR.before-restore-${STAMP}"
+	fi
+	warn "The archive has no $FLAG_MIRROR (backups made before it was included). Until it is written again, owlat doctor, feature and pack assume the default feature flags, not the ones the restored database holds. Check the features in the web app (/dashboard/admin/instance/features) before running owlat feature or owlat pack; the next Apply & restart on that page writes the file again."
 fi
 
 # The files now in place must start exactly the project whose volumes were

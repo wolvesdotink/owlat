@@ -7,7 +7,8 @@
 #   • every Docker volume of the compose project (convex-data, redis-data,
 #     mail-certs, …) — discovered dynamically, so newly added volumes are
 #     never silently missed
-#   • .env, docker-compose.override.yml, Caddyfile (when present)
+#   • .env, docker-compose.override.yml, Caddyfile and .owlat-flags.json (the
+#     CLI's copy of the feature flags), when present
 #
 # Usage:
 #   bash scripts/backup.sh                  # creates ./backups/owlat-YYYYMMDD-HHMMSS.tar.gz
@@ -130,7 +131,7 @@ dump_volume() {
 		-v "$volume":/src:ro \
 		-v "$dest":/dst \
 		busybox:latest \
-		sh -c "cd /src && tar -cf /dst/volume.tar ."
+		sh -c 'cd "$1" && tar -cf "$2/volume.tar" .' sh /src /dst
 	ok   "  → $(du -sh "$dest/volume.tar" | cut -f1)"
 }
 
@@ -161,6 +162,13 @@ if [[ -f Caddyfile ]]; then
 	cp Caddyfile "$STAGING/Caddyfile"
 	ok "Captured Caddyfile"
 fi
+# The CLI's copy of the feature flags, written by `owlat feature`/`pack`, the
+# web setup wizard and the updater's Apply. Without it a restored install's
+# doctor, feature and pack fall back to the default flags.
+if [[ -f .owlat-flags.json ]]; then
+	cp .owlat-flags.json "$STAGING/owlat-flags.json"
+	ok "Captured .owlat-flags.json (CLI feature flags)"
+fi
 
 # ── Manifest ──────────────────────────────────────────────────────────────────
 cat > "$STAGING/MANIFEST.txt" <<EOF
@@ -175,6 +183,7 @@ Includes:
 ${captured_list}  env                      — .env file
 $([[ -f "$STAGING/docker-compose.override.yml" ]] && echo "  docker-compose.override.yml — feature-profile selection")
 $([[ -f "$STAGING/Caddyfile" ]] && echo "  Caddyfile                — reverse-proxy config")
+$([[ -f "$STAGING/owlat-flags.json" ]] && echo "  owlat-flags.json         — .owlat-flags.json, CLI feature flags")
 
 To restore (fresh VPS: clone the repo, install Docker, then):
   bash scripts/restore.sh ${NAME}.tar.gz
