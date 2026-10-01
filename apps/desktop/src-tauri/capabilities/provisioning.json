@@ -9,6 +9,7 @@
 		"allow-ssh-authenticate",
 		"allow-ssh-exec-stream",
 		"allow-ssh-write-file",
+		"allow-ssh-cancel",
 		"allow-ssh-disconnect"
 	]
 }

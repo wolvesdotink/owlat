@@ -11084,6 +11084,7 @@
 			"pageTitle": "Set up a server — Owlat",
 			"provision": "Provision server",
 			"secrets": {
+				"leftAfterFailure": "The setup file is still on the server. It holds your admin password and provider keys in plaintext, so delete it over SSH: {command}",
 				"notRemoved": "Couldn't auto-remove the setup file. It holds your admin password and provider keys in plaintext — delete {file} from the install directory.",
 				"removed": "The setup file — which held your admin password and provider API keys in plaintext — was removed from the server."
 			},
@@ -15070,6 +15071,7 @@
 			"didNotComplete": "Provisioning did not complete (exit {code}).",
 			"exitCode": "exit {code}",
 			"hostKeyAccepted": "accepted",
+			"imagesMissing": "These images did not arrive on the server: {images}",
 			"knownHost": "known host",
 			"localBuildFailed": "Local image build failed (exit {code}). Is Docker running here?",
 			"localSetupImageFailed": "Local setup-image build failed (exit {code}).",

@@ -113,19 +113,31 @@ export function sshPushImages(
 /**
  * Build images on THIS machine in the Owlat checkout at `localDir` (the
  * push-images dev install path), streaming output like sshExecStream;
- * resolves with docker's exit code.
+ * resolves with docker's exit code. The build belongs to the session for the
+ * server it targets: cancelling or disconnecting that session kills it.
  */
 export function localDockerBuild(
+	sessionId: string,
 	localDir: string,
 	build: LocalBuild,
 	onEvent: (event: ExecEvent) => void
 ): Promise<number> {
 	const channel = new Channel<ExecEvent>();
 	channel.onmessage = onEvent;
-	return invoke<number>('local_docker_build', { localDir, build, onEvent: channel });
+	return invoke<number>('local_docker_build', { sessionId, localDir, build, onEvent: channel });
 }
 
-/** Drop the session (closes the connection). */
+/**
+ * Stop whatever is running on the session (an exec, an upload, a local build)
+ * and keep the session for the commands that follow. The stopped call rejects
+ * with "Cancelled.". A command already running on the server is not killed:
+ * its pipes close, so it fails on its next write.
+ */
+export function sshCancel(sessionId: string): Promise<void> {
+	return invoke('ssh_cancel', { sessionId });
+}
+
+/** Drop the session: stop what runs on it and close the connection. */
 export function sshDisconnect(sessionId: string): Promise<void> {
 	return invoke('ssh_disconnect', { sessionId });
 }

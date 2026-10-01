@@ -153,7 +153,7 @@ export function installDockerCommand(): string {
  * `image:` interpolation resolves to the locally built images instead of
  * pulling `:latest` from GHCR.
  */
-const LOCAL_VERSION_TAG = 'dev';
+export const LOCAL_VERSION_TAG = 'dev';
 export const LOCAL_SETUP_IMAGE = `ghcr.io/wolvesdotink/setup:${LOCAL_VERSION_TAG}`;
 
 /** Create the install dir (root-owned path like /opt) and hand it to the SSH user. */
@@ -184,31 +184,6 @@ export function buildSetupImageCommand(o: RemoteOptions): string {
 	return `cd '${o.installDir}' && docker build -f apps/setup-cli/Dockerfile -t '${LOCAL_SETUP_IMAGE}' .`;
 }
 
-/** Every image the stack needs under the `dev` tag (push-images mode). */
-export const DEV_IMAGES = [
-	`ghcr.io/wolvesdotink/web:${LOCAL_VERSION_TAG}`,
-	`ghcr.io/wolvesdotink/mta:${LOCAL_VERSION_TAG}`,
-	`ghcr.io/wolvesdotink/updater:${LOCAL_VERSION_TAG}`,
-	`ghcr.io/wolvesdotink/convex-deploy:${LOCAL_VERSION_TAG}`,
-	`owlat-code-worker:${LOCAL_VERSION_TAG}`,
-	LOCAL_SETUP_IMAGE,
-] as const;
-
-/**
- * The local stack build (push-images mode), targeting the server's platform.
- * This names only what to build; the desktop runs it as
- * `docker compose --profile … build <services>` in the checkout, under the
- * `dev` tag, and owns every other part of that invocation.
- */
-export function localStackBuild(platform: string): LocalBuild {
-	return {
-		kind: 'stack',
-		platform,
-		profiles: ['deploy', 'ai'],
-		services: ['web', 'mta', 'updater', 'convex-deploy', 'code-worker'],
-	};
-}
-
 /** The local build of the setup-cli image as {@link LOCAL_SETUP_IMAGE} (push-images mode). */
 export function localSetupImageBuild(platform: string): LocalBuild {
 	return { kind: 'setupImage', platform };
@@ -228,6 +203,12 @@ export function localSetupImageBuild(platform: string): LocalBuild {
  * `docker compose --build` from source (`OWLAT_BUILD_LOCAL`) or to use the
  * pre-pushed `dev` images as-is (`OWLAT_LOCAL_IMAGES`). A branch install sets
  * nothing and lets the compose default build from the checkout.
+ *
+ * `OWLAT_CONSUME_CONFIG=1` makes `scripts/owlat` delete the uploaded config
+ * (admin password, provider keys) once quickstart exits, however it exits, so
+ * the secret does not outlive the run even when this app is gone by then. An
+ * older `scripts/owlat` (a release that predates it) ignores the variable; the
+ * wizard's own cleanup covers that case.
  */
 export function installerCommand(o: RemoteOptions): string {
 	const source = installSource(o);
@@ -241,5 +222,5 @@ export function installerCommand(o: RemoteOptions): string {
 		env = `OWLAT_SETUP_IMAGE='${releaseSetupImage(o.version)}' `;
 		versionFlag = ` --owlat-version '${o.version}'`;
 	}
-	return `cd '${o.installDir}' && ${env}OWLAT_PROGRESS=json OWLAT_ASSUME_YES=1 ./scripts/owlat quickstart --terminal${versionFlag} --config '${CONTAINER_CONFIG_PATH}'`;
+	return `cd '${o.installDir}' && ${env}OWLAT_PROGRESS=json OWLAT_ASSUME_YES=1 OWLAT_CONSUME_CONFIG=1 ./scripts/owlat quickstart --terminal${versionFlag} --config '${CONTAINER_CONFIG_PATH}'`;
 }
