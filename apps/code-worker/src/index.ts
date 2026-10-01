@@ -1,5 +1,6 @@
 import { getConvexClient, fn, pluginFn } from './convexClient.js';
-import { processTask, pruneStaleWorkspaces } from './taskRunner.js';
+import { pruneStaleWorkspaces } from './taskRunner.js';
+import { createCodeTaskPoller } from './taskProcess.js';
 import { pollForPluginTask } from './pluginTaskRunner.js';
 import { log } from './log.js';
 
@@ -57,16 +58,9 @@ function sleepUntilNextPoll(): Promise<void> {
 	});
 }
 
-async function pollForTasks(): Promise<void> {
-	const client = getConvexClient();
-
+async function pollForTasks(pollCodeTasks: () => Promise<void>): Promise<void> {
 	try {
-		const task = await client.query(fn.getNextQueued, {});
-
-		if (task) {
-			log(`Found queued task: ${task._id} — "${task.description.slice(0, 80)}"`);
-			await processTask(task);
-		}
+		await pollCodeTasks();
 	} catch (error) {
 		const errMsg = error instanceof Error ? error.message : String(error);
 		log(`Poll error: ${errMsg}`);
@@ -97,6 +91,10 @@ async function main(): Promise<void> {
 		log(`Failed to initialize Convex client: ${error}`);
 		process.exit(1);
 	}
+
+	// Reads the repository settings; a malformed credential URL fails here, before
+	// the worker touches the queue.
+	const pollCodeTasks = createCodeTaskPoller();
 
 	// Reclaim any task workspaces left behind by a previous run (crash, restart)
 	// so per-task clones do not accumulate on the workspace volume forever.
@@ -139,8 +137,10 @@ async function main(): Promise<void> {
 
 	// Poll loop — one worker drains BOTH queues (code-work tasks and the
 	// generalized Tier-3 plugin-task queue) through the shared sandbox seam.
+	// The code-task poller also repeats the code-task reclaim above, between
+	// tasks, after a run whose final report never reached the backend.
 	while (!stopping) {
-		await pollForTasks();
+		await pollForTasks(pollCodeTasks);
 		if (stopping) break;
 		await pollForPluginTasks();
 		if (stopping) break;

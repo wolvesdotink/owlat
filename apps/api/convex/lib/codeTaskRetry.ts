@@ -27,6 +27,35 @@ export function codeTaskRetryDelayMs(attempts: number): number {
 	return CODE_TASK_RETRY_DELAYS_MS[index]!;
 }
 
+/**
+ * Claims a task gets past its ceiling once an attempt has recorded a
+ * publication checkpoint. That attempt may have pushed its branch or opened its
+ * PR before the worker lost the backend; the extra claim only reconciles what
+ * was published (find the PR, acknowledge it) and never runs the agent again,
+ * so a lost acknowledgement on the last attempt does not orphan a finished PR.
+ */
+export const CODE_TASK_PUBLICATION_GRACE_ATTEMPTS = 1;
+
+type CodeTaskAttemptFields = {
+	attempts?: number;
+	maxAttempts?: number;
+	publishCommitSha?: string;
+};
+
+/** Most claims the task may receive, reconcile-only grace included. */
+function codeTaskAttemptCeiling(task: CodeTaskAttemptFields): number {
+	const maxAttempts = task.maxAttempts ?? CODE_TASK_MAX_ATTEMPTS;
+	return task.publishCommitSha ? maxAttempts + CODE_TASK_PUBLICATION_GRACE_ATTEMPTS : maxAttempts;
+}
+
+/**
+ * May the claim numbered `attempt` run the coding agent? Only claims within
+ * `maxAttempts` generate; a grace claim past it may only reconcile.
+ */
+export function codeTaskMayRunAgent(task: CodeTaskAttemptFields, attempt: number): boolean {
+	return attempt <= (task.maxAttempts ?? CODE_TASK_MAX_ATTEMPTS);
+}
+
 type CodeTaskRetryDecision =
 	| { retry: true; attempts: number; nextAttemptAt: number }
 	| { retry: false; attempts: number };
@@ -35,15 +64,15 @@ type CodeTaskRetryDecision =
  * Decide what happens to a task that just failed: requeue it behind a backoff
  * window, or give up. `attempts` is the number of claims made so far (the
  * failing one included), so the ceiling is reached once it equals the row's
- * `maxAttempts`.
+ * `maxAttempts`, plus the reconcile-only grace when a publication checkpoint
+ * exists.
  */
 export function codeTaskRetryDecision(
-	task: { attempts?: number; maxAttempts?: number },
+	task: CodeTaskAttemptFields,
 	now: number
 ): CodeTaskRetryDecision {
 	const attempts = task.attempts ?? 0;
-	const maxAttempts = task.maxAttempts ?? CODE_TASK_MAX_ATTEMPTS;
-	if (attempts >= maxAttempts) {
+	if (attempts >= codeTaskAttemptCeiling(task)) {
 		return { retry: false, attempts };
 	}
 	return { retry: true, attempts, nextAttemptAt: now + codeTaskRetryDelayMs(attempts) };
