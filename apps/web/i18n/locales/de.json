@@ -14713,6 +14713,11 @@
 			"quietSummary": {
 				"body": "1 Nachricht ist während der Ruhezeiten eingegangen | {count} Nachrichten sind während der Ruhezeiten eingegangen",
 				"title": "Während Sie weg waren"
+			},
+			"workspaceGone": {
+				"action": "Diese Benachrichtigung stammt aus einem Workspace, der nicht mehr verbunden ist. Es wurde nichts geändert.",
+				"copyReply": "Antwort kopieren",
+				"reply": "Ihre Antwort wurde nicht gesendet, weil ihr Workspace nicht mehr verbunden ist. Kopieren Sie sie, um Ihren Text zu behalten."
 			}
 		},
 		"useDesktopUpdatePolicy": {

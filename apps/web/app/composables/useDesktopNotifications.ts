@@ -1,5 +1,11 @@
 import { api } from '@owlat/api';
-import { setupNotificationActionRouting } from '~/lib/desktop/notificationActions.client';
+import { getActiveWorkspace } from '~/lib/desktop/activeWorkspace';
+import { whenConvexAuthSettled } from '~/lib/convexAuthReady';
+import {
+	setupNotificationActionRouting,
+	type NotifEffect,
+	type NotificationRouting,
+} from '~/lib/desktop/notificationActions.client';
 import {
 	assignmentGroupNotificationParts,
 	assignmentGroupToastMessage,
@@ -87,20 +93,62 @@ export function useDesktopNotifications() {
 	// unread-badge toggle, and a per-workspace mute — all layered on top of the
 	// server-side "Notify me about" scope handled in the rules above.
 	const { settings: appSettings, workspaceLocal } = useDesktopAppSettings();
-	const { activeId } = useDesktopWorkspaces();
+	const { activeId, workspaces, switchTo } = useDesktopWorkspaces();
 	const toastsAllowed = computed(
 		() =>
 			appSettings.value.global.notificationsEnabled &&
 			!(activeId.value ? workspaceLocal(activeId.value).muteNotifications : false)
 	);
 
-	// Route notification clicks / Archive / Mark read actions → focus + triage,
+	/**
+	 * A notification from a workspace that has since been removed: nothing runs,
+	 * and an inline reply's words stay one click from the clipboard.
+	 */
+	const { copy } = useCopyToClipboard();
+	function notifyWorkspaceGone(effect: NonNullable<NotifEffect>): void {
+		if (effect.type !== 'reply') {
+			showToast(t('shared.useDesktopNotifications.workspaceGone.action'), 'warning');
+			return;
+		}
+		const text = effect.text;
+		showToast(t('shared.useDesktopNotifications.workspaceGone.reply'), 'warning', {
+			durationMs: 0,
+			action: {
+				label: t('shared.useDesktopNotifications.workspaceGone.copyReply'),
+				onAction: () => void copy(text),
+			},
+		});
+	}
+
+	// Route notification clicks / Archive / Mark read / Reply → focus + triage,
 	// and settle the OS permission before the first toast would need it (the app
-	// used to call .show() from Rust without ever asking).
+	// used to call .show() from Rust without ever asking). The subscription lives
+	// exactly as long as this owner: leaving the dashboard and coming back must
+	// not leave a second listener behind (one Reply would send twice).
+	let routing: NotificationRouting | null = null;
 	onMounted(() => {
 		if (!isDesktop.value) return;
-		void setupNotificationActionRouting(convex);
+		routing = setupNotificationActionRouting({
+			convex,
+			// `navigateTo` is captured here (Nuxt context is live at setup time) and
+			// used by the deferred callback — the same global singleton the rest of
+			// the app navigates through.
+			navigate: (path) => void navigateTo(path),
+			workspaces: {
+				// The workspace this page load's Convex client was built for.
+				activeId: () => getActiveWorkspace()?.id ?? null,
+				exists: (id) => workspaces.value.some((w) => w.id === id),
+				switchTo: (id, destination) => switchTo(id, { destination }),
+				onUnavailable: notifyWorkspaceGone,
+			},
+			storage: sessionStorage,
+			authReady: () => whenConvexAuthSettled(),
+		});
 		void requestNotificationPermission();
+	});
+	onUnmounted(() => {
+		routing?.dispose();
+		routing = null;
 	});
 
 	// Ids we've already accounted for (seeded silently on first load so we never
@@ -138,15 +186,22 @@ export function useDesktopNotifications() {
 
 	/**
 	 * Send one planned notification. Mail-addressed ones stay actionable (so
-	 * Archive / Mark read / click work off the message); the quiet-hours summary
-	 * is about no single message and goes out plain.
+	 * Archive / Mark read / click work off the message) and name the workspace
+	 * they came from, so an action taken after a switch still lands there; the
+	 * quiet-hours summary is about no single message and goes out plain.
 	 */
 	async function fireOne(notif: DesktopNotif, n: PlannedNotification): Promise<void> {
 		const parts = notificationParts(n, hidePreview.value);
 		const title = localizeNotification(parts.title);
 		const body = localizeNotification(parts.body);
 		if (parts.messageId) {
-			await notif.sendActionableNotification(title, body, parts.messageId, 'inbox');
+			await notif.sendActionableNotification(
+				title,
+				body,
+				parts.messageId,
+				'inbox',
+				getActiveWorkspace()?.id
+			);
 		} else {
 			await notif.sendDesktopNotification(title, body);
 		}

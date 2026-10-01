@@ -10,6 +10,18 @@
  * EXISTING draft pipeline — create → set body → send — with NO new send path.
  * If any step fails, the composer opens prefilled with the typed text so the
  * user's words are never lost.
+ *
+ * Two lifetime rules keep an action from running twice or in the wrong place:
+ *
+ *   - One subscription per main window. The dashboard layout owns the routing
+ *     and disposes it on unmount (a registration still in flight is disposed
+ *     the moment it lands); a newer owner replaces an older one. Every webview
+ *     hears the event, so secondary windows (compose) never subscribe.
+ *   - Actions run in the workspace that sent the notification. The payload
+ *     carries its `workspaceId`; a notification from another workspace switches
+ *     there first (the switch reloads the webview) and carries the action across
+ *     the reload in sessionStorage. A workspace that is gone gets a notice, never
+ *     a call to the workspace that happens to be active.
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
@@ -17,6 +29,12 @@ import { escapeHtmlWithBreaks } from '@owlat/shared/html';
 import type { ConvexClient } from 'convex/browser';
 import type { FunctionReturnType } from 'convex/server';
 import { optimisticArchive, optimisticMarkRead } from '~/lib/mailOptimistic/mailUpdaters';
+import {
+	PENDING_NOTIFICATION_ACTION_KEY,
+	resolveNotificationWorkspace,
+	takePendingAction,
+	writePendingAction,
+} from '~/lib/desktop/notificationWorkspace';
 
 type NotifMessage = FunctionReturnType<typeof api.mail.mailbox.messages.getMessage>;
 
@@ -25,6 +43,10 @@ export interface NotificationActionPayload {
 	messageId?: unknown;
 	folderRole?: unknown;
 	reply?: unknown;
+	/** The desktop workspace the notification was sent from. */
+	workspaceId?: unknown;
+	/** Process-unique id of the native notification (see notifications.rs). */
+	notificationId?: unknown;
 }
 
 export type NotifEffect =
@@ -86,27 +108,36 @@ function composePathForReply(message: NotifMessage, text: string): string {
 	return qs ? `/compose?${qs}` : '/compose';
 }
 
+async function readOriginal(convex: ConvexClient, id: Id<'mailMessages'>): Promise<NotifMessage> {
+	try {
+		return await convex.query(api.mail.mailbox.messages.getMessage, { messageId: id });
+	} catch (e) {
+		console.warn('[desktop] notification reply: could not read original', e);
+		return null;
+	}
+}
+
 /**
  * Send an inline reply through the existing draft pipeline (create → set body →
  * send). On ANY failure, open the composer prefilled with the typed text so the
  * user's words survive. Exported for unit testing the fallback path.
+ *
+ * `send: false` skips straight to the prefilled composer: a reply carried
+ * across a workspace switch that waited too long (a sign-in in between) is put
+ * in front of the user rather than sent unattended.
  */
 export async function replyFromNotification(
 	convex: ConvexClient,
 	messageId: string,
 	text: string,
-	deps: ReplyDeps
+	deps: ReplyDeps,
+	options: { send?: boolean } = {}
 ): Promise<void> {
 	const id = messageId as Id<'mailMessages'>;
 	// One fetch of the original — reused for both the send and the fallback path
 	// so an unreadable original never triggers a second doomed round trip.
-	let message: NotifMessage = null;
-	try {
-		message = await convex.query(api.mail.mailbox.messages.getMessage, { messageId: id });
-	} catch (e) {
-		console.warn('[desktop] notification reply: could not read original', e);
-	}
-	if (message) {
+	const message = await readOriginal(convex, id);
+	if (message && options.send !== false) {
 		try {
 			const { draftId } = await convex.mutation(api.mail.drafts.create, {
 				mailboxId: message.mailboxId,
@@ -134,10 +165,20 @@ export async function replyFromNotification(
  */
 export type NavigateFn = (path: string) => void;
 
+async function openDesktopComposer(path: string): Promise<void> {
+	const { openCompose } = await import('@owlat/desktop/src/compose');
+	await openCompose(path);
+}
+
+function threadPath(effect: { folderRole: string; messageId: string }): string {
+	return `/dashboard/postbox/${effect.folderRole}/${effect.messageId}`;
+}
+
 export async function runEffect(
 	effect: NonNullable<NotifEffect>,
 	convex: ConvexClient,
-	navigate: NavigateFn
+	navigate: NavigateFn,
+	openComposer: ReplyDeps['openComposer'] = openDesktopComposer
 ): Promise<void> {
 	// The Archive / Mark-read actions triage in place WITHOUT navigating away —
 	// they should not steal the user's current view. Only an explicit open
@@ -171,32 +212,200 @@ export async function runEffect(
 	if (effect.type === 'reply') {
 		// Reply-and-send stays in the background (no focus steal); only the
 		// fallback opens a window, which focuses itself.
-		await replyFromNotification(convex, effect.messageId, effect.text, {
-			openComposer: async (path) => {
-				const { openCompose } = await import('@owlat/desktop/src/compose');
-				await openCompose(path);
-			},
-		});
+		await replyFromNotification(convex, effect.messageId, effect.text, { openComposer });
 		return;
 	}
 	// Clicking the notification body focuses the window and deep-links to the
 	// thread through the SPA router (no full document reload).
 	await focusMainWindow();
-	navigate(`/dashboard/postbox/${effect.folderRole}/${effect.messageId}`);
+	navigate(threadPath(effect));
 }
 
-/** Subscribe to notification action events + route them. Call once (desktop). */
-export async function setupNotificationActionRouting(convex: ConvexClient): Promise<void> {
-	try {
-		const { onNotificationAction } = await import('@owlat/desktop/src/notifications');
-		await onNotificationAction((payload) => {
-			const effect = resolveNotificationEffect(payload);
-			// `navigateTo` is captured here (Nuxt context is live at setup time) and
-			// used by the deferred callback — the same global singleton the rest of
-			// the app navigates through.
-			if (effect) void runEffect(effect, convex, (path) => void navigateTo(path));
-		});
-	} catch {
-		// Not running under Tauri.
+// ── Workspace provenance ────────────────────────────────────────────────────
+
+/** The desktop workspace list, as the routing needs it. Injected for tests. */
+export interface NotificationWorkspaces {
+	/** The workspace this page load (and its Convex client) is bound to. */
+	activeId: () => string | null;
+	exists: (id: string) => boolean;
+	/** Make `id` active; reloads the webview and lands on `destination`. */
+	switchTo: (id: string, destination: string) => Promise<void>;
+	/**
+	 * The notification's workspace was removed. Tell the user; a reply's text
+	 * must stay recoverable.
+	 */
+	onUnavailable: (effect: NonNullable<NotifEffect>) => void;
+}
+
+export interface NotificationRoutingContext {
+	/** The Convex client of {@link NotificationWorkspaces.activeId}. */
+	convex: ConvexClient;
+	navigate: NavigateFn;
+	workspaces: NotificationWorkspaces;
+	/** Carries an action across the switch reload (sessionStorage). */
+	storage: Storage | null;
+	/** Resolves true once the client's auth is confirmed (see convexAuthReady). */
+	authReady: () => Promise<boolean>;
+	openComposer?: ReplyDeps['openComposer'];
+	now?: () => number;
+}
+
+/**
+ * Route one notification action. Runs it here when the notification came from
+ * the active workspace; otherwise switches to its workspace (carrying the action
+ * across the reload), or reports a workspace that no longer exists. Never
+ * calls the active workspace's backend for another workspace's message.
+ */
+export async function handleNotificationAction(
+	payload: NotificationActionPayload,
+	ctx: NotificationRoutingContext
+): Promise<void> {
+	const effect = resolveNotificationEffect(payload);
+	if (!effect) return;
+	const { workspaces } = ctx;
+	const route = resolveNotificationWorkspace(
+		payload.workspaceId,
+		workspaces.activeId(),
+		workspaces.exists
+	);
+	if (route.kind === 'here') {
+		await runEffect(effect, ctx.convex, ctx.navigate, ctx.openComposer);
+		return;
 	}
+	await focusMainWindow();
+	if (route.kind === 'gone') {
+		workspaces.onUnavailable(effect);
+		return;
+	}
+	// An open needs nothing but the destination. Anything else rides the reload
+	// in sessionStorage; if that cannot be written, land on the thread instead so
+	// the user can act there.
+	const carried =
+		effect.type !== 'open' &&
+		!!ctx.storage &&
+		writePendingAction(
+			ctx.storage,
+			route.workspaceId,
+			{
+				action: effect.type,
+				messageId: effect.messageId,
+				...(effect.type === 'reply' ? { reply: effect.text } : {}),
+			},
+			(ctx.now ?? Date.now)()
+		);
+	const destination =
+		effect.type === 'open'
+			? threadPath(effect)
+			: carried
+				? '/dashboard'
+				: threadPath({ folderRole: 'inbox', messageId: effect.messageId });
+	await workspaces.switchTo(route.workspaceId, destination);
+}
+
+/**
+ * Run the action a workspace switch carried here, once this workspace's auth is
+ * confirmed. Without auth (an expired session) it stays stored for after the
+ * sign-in; by then it is stale, so a reply opens prefilled instead of sending.
+ */
+export async function runPendingAction(ctx: NotificationRoutingContext): Promise<void> {
+	if (!ctx.storage) return;
+	const activeId = ctx.workspaces.activeId();
+	if (!activeId || !ctx.storage.getItem(PENDING_NOTIFICATION_ACTION_KEY)) return;
+	if (!(await ctx.authReady())) return;
+	const pending = takePendingAction(ctx.storage, activeId, (ctx.now ?? Date.now)());
+	// Re-derived through the same resolver as a live event, so a corrupted entry
+	// resolves to nothing rather than to a malformed mutation.
+	const effect = pending && resolveNotificationEffect(pending.payload);
+	if (!pending || !effect) return;
+	const { fresh } = pending;
+	const openComposer = ctx.openComposer ?? openDesktopComposer;
+	if (fresh) {
+		await runEffect(effect, ctx.convex, ctx.navigate, openComposer);
+	} else if (effect.type === 'reply') {
+		await replyFromNotification(
+			ctx.convex,
+			effect.messageId,
+			effect.text,
+			{ openComposer },
+			{ send: false }
+		);
+	}
+}
+
+// ── Subscription lifetime ───────────────────────────────────────────────────
+
+/**
+ * Notification ids already routed in this document. Each native notification
+ * emits at most one action, so a repeat is a duplicate delivery. Bounded.
+ */
+const routedNotificationIds = new Set<number>();
+
+function firstDelivery(payload: NotificationActionPayload): boolean {
+	const id = payload.notificationId;
+	if (typeof id !== 'number') return true;
+	if (routedNotificationIds.has(id)) return false;
+	if (routedNotificationIds.size >= 200) routedNotificationIds.clear();
+	routedNotificationIds.add(id);
+	return true;
+}
+
+/** Whether this webview is the main window (no window API: the only window). */
+async function isMainWindow(): Promise<boolean> {
+	try {
+		const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+		return getCurrentWebviewWindow().label === 'main';
+	} catch {
+		return true;
+	}
+}
+
+/** Disposer of the registration currently owning the subscription. */
+let activeRouting: (() => void) | null = null;
+
+export interface NotificationRouting {
+	/** Unsubscribe. Safe to call while registration is still in flight. */
+	dispose: () => void;
+	/** Settles once registration (and any carried action) has finished. */
+	ready: Promise<void>;
+}
+
+/**
+ * Subscribe to notification action events and route them (desktop main window
+ * only). The caller owns the result and must dispose it; a newer registration
+ * disposes the previous one, so at most one subscription is ever live.
+ */
+export function setupNotificationActionRouting(
+	ctx: NotificationRoutingContext
+): NotificationRouting {
+	activeRouting?.();
+	let disposed = false;
+	let unlisten: (() => void) | null = null;
+	const dispose = () => {
+		if (disposed) return;
+		disposed = true;
+		unlisten?.();
+		unlisten = null;
+		if (activeRouting === dispose) activeRouting = null;
+	};
+	activeRouting = dispose;
+
+	const ready = (async () => {
+		try {
+			if (!(await isMainWindow()) || disposed) return;
+			const { onNotificationAction } = await import('@owlat/desktop/src/notifications');
+			const off = await onNotificationAction((payload) => {
+				if (!disposed && firstDelivery(payload)) void handleNotificationAction(payload, ctx);
+			});
+			// The owner went away while we were registering: drop the late listener.
+			if (disposed) {
+				off?.();
+				return;
+			}
+			unlisten = off;
+			await runPendingAction(ctx);
+		} catch {
+			// Not running under Tauri.
+		}
+	})();
+	return { dispose, ready };
 }
