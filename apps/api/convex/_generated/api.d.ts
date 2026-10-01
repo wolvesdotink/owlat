@@ -787,6 +787,7 @@ import type * as lib_randomToken from '../lib/randomToken.js';
 import type * as lib_rateLimiter from '../lib/rateLimiter.js';
 import type * as lib_receivedAtCursor from '../lib/receivedAtCursor.js';
 import type * as lib_redactSecret from '../lib/redactSecret.js';
+import type * as lib_rendererVersion from '../lib/rendererVersion.js';
 import type * as lib_retentionSweep from '../lib/retentionSweep.js';
 import type * as lib_rrf from '../lib/rrf.js';
 import type * as lib_runtimeLog from '../lib/runtimeLog.js';
@@ -2160,6 +2161,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/rateLimiter': typeof lib_rateLimiter;
 	'lib/receivedAtCursor': typeof lib_receivedAtCursor;
 	'lib/redactSecret': typeof lib_redactSecret;
+	'lib/rendererVersion': typeof lib_rendererVersion;
 	'lib/retentionSweep': typeof lib_retentionSweep;
 	'lib/rrf': typeof lib_rrf;
 	'lib/runtimeLog': typeof lib_runtimeLog;

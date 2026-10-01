@@ -35,6 +35,10 @@ export class FakeImap implements RemoteStateClient {
 	private readonly reportsCount: boolean;
 	/** What the worker asked for since the last `resetTally()`. */
 	tally = { searchAll: [] as string[], searches: 0, fetches: 0, uidsReturned: 0 };
+	/** When it says so, SEARCH answers `false`, as ImapFlow does for a refused or failed one. */
+	refuseSearch: ((path: string, query: Record<string, unknown>) => boolean) | null = null;
+	/** UIDs FETCH leaves out of its answer. */
+	readonly unreadable = new Set<number>();
 	constructor(boxes: Record<string, string[]>, options: boolean | FakeImapOptions = {}) {
 		const opts = typeof options === 'boolean' ? { condstore: options } : options;
 		this.condstore = opts.condstore ?? true;
@@ -51,6 +55,8 @@ export class FakeImap implements RemoteStateClient {
 		const highest = box.messages.reduce((m, msg) => (msg.modseq > m ? msg.modseq : m), 1n);
 		return {
 			uidValidity: box.uidValidity,
+			// Above every UID handed out so far, as a real UIDNEXT is.
+			uidNext: this.nextUid,
 			...(this.condstore ? { highestModseq: highest } : {}),
 			...(this.reportsCount ? { exists: box.messages.length } : {}),
 		};
@@ -73,6 +79,10 @@ export class FakeImap implements RemoteStateClient {
 			flags: new Set(flags),
 			modseq: ++this.modseq,
 		});
+	}
+
+	uidOf(path: string, messageId: string): number | undefined {
+		return this.boxes.get(path)!.messages.find((m) => m.messageId === messageId)?.uid;
 	}
 
 	remove(path: string, messageId: string): void {
@@ -98,9 +108,10 @@ export class FakeImap implements RemoteStateClient {
 		return { release: () => undefined };
 	}
 
-	async search(query: object) {
+	async search(query: object): Promise<number[] | false> {
 		this.tally.searches++;
 		if ((query as { all?: boolean }).all) this.tally.searchAll.push(this.selected ?? '');
+		if (this.refuseSearch?.(this.selected ?? '', query as Record<string, unknown>)) return false;
 		const matches = (q: Record<string, unknown>, m: FakeMessage): boolean => {
 			if (q['all']) return true;
 			if (typeof q['uid'] === 'string') {
@@ -128,7 +139,7 @@ export class FakeImap implements RemoteStateClient {
 		this.tally.fetches++;
 		const uids = range === '1:*' ? null : new Set(range.split(',').map(Number));
 		for (const m of this.box().messages) {
-			if (uids && !uids.has(m.uid)) continue;
+			if ((uids && !uids.has(m.uid)) || this.unreadable.has(m.uid)) continue;
 			if (options.changedSince !== undefined && m.modseq <= options.changedSince) continue;
 			this.tally.uidsReturned++;
 			yield {

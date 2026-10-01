@@ -6,6 +6,7 @@ import {
 	type BlockLikeItem,
 	type TranslatableBlockContent,
 } from '@owlat/api/translationMerge';
+import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
 import { useEmailHtmlRendering, type RenderOptions } from './useEmailHtmlRendering';
 
 /**
@@ -39,6 +40,8 @@ export interface SwappedDelivery {
 	htmlContent: string;
 	plainTextContent: string;
 	htmlTranslations: string;
+	/** The renderer version that produced the HTML. */
+	rendererVersion: number;
 }
 
 export function parseSettingsOverlays(blob: string | undefined): Record<string, SettingsOverlay> {
@@ -129,5 +132,6 @@ export function renderSwappedDelivery(
 		htmlContent: renderBlocksToHtml(blocks, renderOptions),
 		plainTextContent: renderBlocksToPlainText(blocks, plainTextOverride),
 		htmlTranslations: renderHtmlTranslations(swapped, renderOptions),
+		rendererVersion: EMAIL_RENDERER_VERSION,
 	};
 }

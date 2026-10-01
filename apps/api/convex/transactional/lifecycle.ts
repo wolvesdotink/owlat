@@ -58,6 +58,8 @@ type TransactionalEmailTransitionInput =
 			at: number;
 			htmlContent: string;
 			htmlTranslations?: string;
+			/** Set when the publish stores the caller's HTML (`publishedHtml`). */
+			rendererVersion?: number;
 	  }
 	| { to: 'draft'; at: number }
 	| { to: 'approved'; at: number }
@@ -99,6 +101,7 @@ const transitionInputValidator = v.union(
 		at: v.number(),
 		htmlContent: v.string(),
 		htmlTranslations: v.optional(v.string()),
+		rendererVersion: v.optional(v.number()),
 	}),
 	v.object({ to: v.literal('draft'), at: v.number() }),
 	v.object({ to: v.literal('approved'), at: v.number() }),
@@ -224,6 +227,7 @@ function reduce(
 				status: 'pending_review',
 				htmlContent: input.htmlContent,
 				htmlTranslations: input.htmlTranslations,
+				...(input.rendererVersion !== undefined && { rendererVersion: input.rendererVersion }),
 				updatedAt: input.at,
 			};
 			// Idempotent: pending_review → pending_review is still applied
@@ -326,6 +330,7 @@ function buildPatch(
 				status: 'published',
 				htmlContent: input.htmlContent,
 				htmlTranslations: input.htmlTranslations,
+				...(input.rendererVersion !== undefined && { rendererVersion: input.rendererVersion }),
 				publishedAt: input.at,
 				updatedAt: input.at,
 			};

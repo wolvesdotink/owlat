@@ -17,6 +17,7 @@ import {
 } from '../lib/publishableEmail';
 import { captureTemplateVersion } from './versions';
 import { assertContentRevision } from '../lib/contentRevision';
+import { rendererVersionArg } from '../lib/rendererVersion';
 
 // Query to get a single email template by ID
 export const get = authedQuery({
@@ -50,6 +51,9 @@ export const update = authedMutation({
 		translations: v.optional(v.string()),
 		// Pre-rendered HTML for translations
 		htmlTranslations: v.optional(v.string()),
+		// The renderer version that produced `htmlContent` / `htmlTranslations`
+		// (lib/rendererVersion.ts); older clients omit it.
+		rendererVersion: rendererVersionArg,
 		// IDs of saved blocks linked in this template
 		linkedBlockIds: v.optional(v.array(v.string())),
 		// Allow editing publishable content on a `published` row; default `false`.
@@ -119,6 +123,9 @@ export const publish = authedMutation({
 		// Pre-rendered HTML for each translation language, with the same rule.
 		// Structure: { "de": { "htmlContent": "...", "subject": "..." }, ... }
 		htmlTranslations: v.optional(v.string()),
+		// The renderer version that produced the HTML above, recorded when it is
+		// used (lib/rendererVersion.ts).
+		rendererVersion: rendererVersionArg,
 		// The `contentRevision` the caller last saw. When given, a row that has
 		// moved on is refused with `conflict`, so what goes live is the version
 		// the caller was looking at.

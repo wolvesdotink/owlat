@@ -10,6 +10,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { nextTick, ref, type Ref } from 'vue';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { getFunctionName } from 'convex/server';
+import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
 import Manager from '../Manager.vue';
 import TranslationCell from '../Cell.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
@@ -186,6 +187,7 @@ describe.each(SURFACES)('$emailType translation table', (surface) => {
 			...surface.idArg,
 			language: 'de',
 			subject: 'Hallo',
+			rendererVersion: EMAIL_RENDERER_VERSION,
 			expectedContentRevision: 4,
 		});
 		expect(JSON.parse(args['blocks'] as string)).toEqual({ b1: { html: 'Guten Tag' } });

@@ -17,7 +17,7 @@
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { api, internal } from '../../_generated/api';
@@ -38,6 +38,17 @@ vi.mock('../../lib/sessionOrganization', async () => {
 
 type T = TestConvex<typeof schema>;
 type QueuedOp = Parameters<typeof enqueueRemoteOp>[2];
+
+// The clock stands still for the whole test, for the functions under test and
+// for the assertions alike. A backed-off op is due again a minute after it
+// failed; on a loaded machine a test can take longer than that between the
+// settle and the check that the op is still held, and read the backoff as over.
+beforeEach(() => {
+	vi.setSystemTime(Date.now());
+});
+afterEach(() => {
+	vi.useRealTimers();
+});
 
 async function externalMailbox() {
 	const t = convexTest(schema, modules);
@@ -502,17 +513,23 @@ describe('a long queue keeps draining', { timeout: 120_000 }, () => {
 		expect((await listDue(t, accountId)).map((op) => op.rfc822MessageId)).toEqual(['b@x.example']);
 	});
 
-	/** Settle `results`, then run the deferral continuations that settle scheduled. */
+	/**
+	 * Settle `results`, then run the deferral continuations that settle scheduled.
+	 * The clock is back at the settle time afterwards, however long the
+	 * continuations took to run.
+	 */
 	async function settleAndFinish(
 		t: T,
 		results: Array<{ opId: Id<'externalMailRemoteOps'>; outcome: 'done' | 'failed' }>
 	) {
-		vi.useFakeTimers({ now: Date.now() });
+		const settledAt = Date.now();
+		vi.useFakeTimers({ now: settledAt });
 		try {
 			await settle(t, results);
 			await t.finishAllScheduledFunctions(vi.runAllTimers);
 		} finally {
 			vi.useRealTimers();
+			vi.setSystemTime(settledAt);
 		}
 	}
 
