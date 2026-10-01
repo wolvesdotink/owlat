@@ -32,9 +32,7 @@ export function useInboxes() {
 		ids,
 		hasPersonalMail,
 		isLoading: computed(() => hasPersonalMail.value && isLoading.value),
-		// A skipped query keeps its last error; without personal mail there is
-		// no read to have failed.
-		error: computed(() => (hasPersonalMail.value ? error.value : null)),
+		error,
 		refetch,
 	};
 }

@@ -274,6 +274,21 @@ describe('usePaginatedQuery', () => {
 			loadMore(10);
 			expect(staleLoadMore).not.toHaveBeenCalled();
 		});
+
+		it('reports no error while skipped, even after the previous args failed', async () => {
+			const shouldSkip = ref(false);
+			const { error } = usePaginatedQuery(
+				fakeQuery,
+				() => (shouldSkip.value ? ('skip' as const) : { teamId: '123' }),
+				{ initialNumItems: 20 }
+			);
+			mockErrorCallback!(new ConvexError('Something went wrong'));
+			expect(error.value).not.toBeNull();
+
+			shouldSkip.value = true;
+			await nextTick();
+			expect(error.value).toBeNull();
+		});
 	});
 
 	describe('error handling', () => {

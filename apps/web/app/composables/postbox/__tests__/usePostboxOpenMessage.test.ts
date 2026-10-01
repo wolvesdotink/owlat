@@ -165,14 +165,4 @@ describe('usePostboxActiveMessageRead (#721)', () => {
 		expect(read.message.value).toBeUndefined();
 		expect(read.error.value).toBe(failure);
 	});
-
-	it('ignores the error a skipped fetch kept from the previous message', () => {
-		const read = run(() =>
-			usePostboxActiveMessageRead({ activeMessageId: () => 'm1', listRows: () => [] })
-		);
-		// The thread is still loading, so the by-id fetch is skipped.
-		stubs[BY_ID]!.error.value = new Error('stale');
-		expect(stubs[BY_ID]?.args.value).toBe('skip');
-		expect(read.error.value).toBeNull();
-	});
 });
