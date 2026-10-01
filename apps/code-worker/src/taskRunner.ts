@@ -1,9 +1,14 @@
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
-import { getConvexClient, fn, type CodeWorkTask } from './convexClient.js';
-import { createPullRequest } from './github.js';
-import { runUntrusted, runGit, handOffWorkspaceToSandbox, isGitDirRootOwned } from './sandbox.js';
+import {
+	combinedOutputTail,
+	runUntrusted,
+	runGit,
+	handOffWorkspaceToSandbox,
+	chownDirToSandbox,
+	isGitDirRootOwned,
+} from './sandbox.js';
 import { log } from './log.js';
 
 // Re-export the sandbox-execution seam so existing importers (and the uid /
@@ -18,13 +23,34 @@ export {
 } from './sandbox.js';
 
 const WORKSPACE_ROOT = process.env['WORKSPACE_ROOT'] ?? '/workspace';
-const GIT_REPO_URL = process.env['GIT_REPO_URL'] ?? '';
-// Tokenless clone URL + authentication environment. The credential in GIT_REPO_URL is
-// NEVER written into the workspace .git/config (see parseRepoUrl).
-const { cleanUrl: GIT_CLEAN_URL, authEnv: GIT_AUTH_ENV } = parseRepoUrl(GIT_REPO_URL);
-const GIT_BASE_BRANCH = process.env['GIT_BASE_BRANCH'] ?? 'main';
-const GITHUB_OWNER = process.env['GITHUB_OWNER'] ?? '';
-const GITHUB_REPO = process.env['GITHUB_REPO'] ?? '';
+
+/** Where a task's repository lives and where it is published. */
+export interface TaskRunnerConfig {
+	workspaceRoot: string;
+	/** Tokenless clone URL; the credential travels in `gitAuthEnv` only. */
+	repoUrl: string;
+	gitAuthEnv: NodeJS.ProcessEnv;
+	baseBranch: string;
+	githubOwner: string;
+	githubRepo: string;
+}
+
+/**
+ * Read the task configuration from the environment. The credential in
+ * GIT_REPO_URL is NEVER written into the workspace .git/config (see
+ * parseRepoUrl), and a malformed credential URL throws here.
+ */
+export function taskRunnerConfigFromEnv(env: NodeJS.ProcessEnv = process.env): TaskRunnerConfig {
+	const { cleanUrl, authEnv } = parseRepoUrl(env['GIT_REPO_URL'] ?? '');
+	return {
+		workspaceRoot: env['WORKSPACE_ROOT'] ?? '/workspace',
+		repoUrl: cleanUrl,
+		gitAuthEnv: authEnv,
+		baseBranch: env['GIT_BASE_BRANCH'] ?? 'main',
+		githubOwner: env['GITHUB_OWNER'] ?? '',
+		githubRepo: env['GITHUB_REPO'] ?? '',
+	};
+}
 
 /**
  * Pure argv-array builders for every external command this worker runs.
@@ -82,12 +108,29 @@ export function buildCheckoutArgs(workDir: string, branchName: string): string[]
 	return ['-C', workDir, 'checkout', '-b', branchName];
 }
 
-export function buildDiffStatArgs(workDir: string): string[] {
-	return ['-C', workDir, 'diff', '--stat'];
-}
-
 export function buildAddArgs(workDir: string): string[] {
 	return ['-C', workDir, 'add', '-A'];
+}
+
+/**
+ * The change predicate: paths whose staged content differs from HEAD, NUL
+ * separated, run right after `git add -A`. Staging first is what makes it see
+ * new files, already-staged edits, deletions and renames, and what keeps
+ * ignored files out: `add -A` honours .gitignore, so dependency and build
+ * output never count as a change. The agent cannot commit (the repository
+ * metadata is root-owned), so HEAD is still the base commit.
+ */
+export function buildStagedChangesArgs(workDir: string): string[] {
+	return ['-C', workDir, 'diff', '--cached', '--name-only', '-z'];
+}
+
+export function buildHeadShaArgs(workDir: string): string[] {
+	return ['-C', workDir, 'rev-parse', 'HEAD'];
+}
+
+/** Look up one branch on the remote without a workspace: `<sha>\trefs/heads/<branch>`. */
+export function buildRemoteBranchArgs(repoUrl: string, branchName: string): string[] {
+	return ['ls-remote', '--heads', repoUrl, `refs/heads/${branchName}`];
 }
 
 export function buildCommitArgs(workDir: string, message: string): string[] {
@@ -129,6 +172,8 @@ export function buildCommitMessage(description: string): string {
 
 /**
  * Minimal environments for child processes that execute UNTRUSTED code.
+ * `homeDir` is the task's scratch home beside the repository (see
+ * `setupWorkspace`), never the repository itself.
  *
  * The OpenCode agent writes arbitrary files from an attacker-controlled
  * prompt, and `npx vitest run` then executes whatever it wrote (vitest
@@ -150,24 +195,24 @@ export function buildCommitMessage(description: string): string {
  * no-secret invariant can be unit-tested.
  */
 export function buildAgentEnv(
-	workDir: string,
+	homeDir: string,
 	parentEnv: NodeJS.ProcessEnv = process.env
 ): NodeJS.ProcessEnv {
 	return {
 		PATH: parentEnv['PATH'],
-		HOME: workDir,
+		HOME: homeDir,
 		LLM_BASE_URL: parentEnv['LLM_BASE_URL'],
 		LLM_API_KEY: parentEnv['LLM_API_KEY'],
 	};
 }
 
 export function buildTestEnv(
-	workDir: string,
+	homeDir: string,
 	parentEnv: NodeJS.ProcessEnv = process.env
 ): NodeJS.ProcessEnv {
 	return {
 		PATH: parentEnv['PATH'],
-		HOME: workDir,
+		HOME: homeDir,
 		CI: 'true',
 	};
 }
@@ -197,6 +242,38 @@ export function pruneStaleWorkspaces(root: string = WORKSPACE_ROOT): void {
 	}
 }
 
+/** A task's directories: the repository clone and the children's scratch home. */
+interface TaskWorkspace {
+	workDir: string;
+	homeDir: string;
+	branchName: string;
+}
+
+export function taskWorkspacePaths(workspaceRoot: string, taskId: string) {
+	return {
+		workDir: path.join(workspaceRoot, taskId),
+		homeDir: path.join(workspaceRoot, `${taskId}.home`),
+	};
+}
+
+/** Filesystem steps of `setupWorkspace`, injectable so tests need no root. */
+export interface WorkspaceOps {
+	git: (args: string[], opts?: Parameters<typeof runGit>[1]) => string | Buffer;
+	/** Hand the working tree to the sandbox uid, keeping .git root-owned. */
+	handOffTree: (workDir: string) => void;
+	/** Create the sandbox-writable scratch home. */
+	prepareHome: (homeDir: string) => void;
+}
+
+export const defaultWorkspaceOps: WorkspaceOps = {
+	git: (args, opts) => runGit(args, opts),
+	handOffTree: handOffWorkspaceToSandbox,
+	prepareHome: (homeDir) => {
+		mkdirSync(homeDir, { recursive: true });
+		chownDirToSandbox(homeDir);
+	},
+};
+
 /**
  * Set up a git workspace for a task.
  *
@@ -205,9 +282,18 @@ export function pruneStaleWorkspaces(root: string = WORKSPACE_ROOT): void {
  * keeping .git root-owned — so the untrusted agent can write files but the
  * token-bearing git internals stay behind the uid boundary. All git commands
  * here are TRUSTED and run as root via runGit.
+ *
+ * The children get a HOME outside the repository. Tool state the agent writes
+ * there (caches, session logs, config) would otherwise be untracked files in
+ * the tree, which the change check and `git add -A` would count as the agent's
+ * work.
  */
-function setupWorkspace(taskId: string): string {
-	const workDir = path.join(WORKSPACE_ROOT, taskId);
+export function setupWorkspace(
+	taskId: string,
+	config: TaskRunnerConfig,
+	ops: WorkspaceOps = defaultWorkspaceOps
+): TaskWorkspace {
+	const { workDir, homeDir } = taskWorkspacePaths(config.workspaceRoot, taskId);
 
 	// #133 removes the workDir in `finally` + prunes on boot, so reuse is rare;
 	// guard it anyway. If an existing workDir's .git is not root-owned (a prior
@@ -223,28 +309,39 @@ function setupWorkspace(taskId: string): string {
 		log(`Cloning repo into ${workDir}`);
 		// Clone the tokenless URL; authenticate via the out-of-band header so no
 		// credential is persisted into workDir/.git/config for the untrusted agent.
-		runGit(buildCloneArgs(GIT_CLEAN_URL, GIT_BASE_BRANCH, workDir), {
+		ops.git(buildCloneArgs(config.repoUrl, config.baseBranch, workDir), {
 			stdio: 'inherit',
-			env: { ...process.env, ...GIT_AUTH_ENV },
+			env: { ...process.env, ...config.gitAuthEnv },
 		});
 	} else {
 		// Scrub any credential a prior (older) run may have left in origin, then pull.
-		runGit(buildSetOriginUrlArgs(workDir, GIT_CLEAN_URL), { stdio: 'inherit' });
+		ops.git(buildSetOriginUrlArgs(workDir, config.repoUrl), { stdio: 'inherit' });
 		log(`Pulling latest into ${workDir}`);
-		runGit(buildPullArgs(workDir, GIT_BASE_BRANCH), {
+		ops.git(buildPullArgs(workDir, config.baseBranch), {
 			stdio: 'inherit',
-			env: { ...process.env, ...GIT_AUTH_ENV },
+			env: { ...process.env, ...config.gitAuthEnv },
 		});
 	}
 
 	const branchName = buildBranchName(taskId);
-	runGit(buildCheckoutArgs(workDir, branchName), { stdio: 'inherit' });
+	ops.git(buildCheckoutArgs(workDir, branchName), { stdio: 'inherit' });
 
 	// Hand the working tree to the sandbox uid (keeping .git root-owned) BEFORE
 	// the untrusted agent runs, so it can write files it cannot otherwise reach.
-	handOffWorkspaceToSandbox(workDir);
+	ops.handOffTree(workDir);
+	ops.prepareHome(homeDir);
 
-	return branchName;
+	return { workDir, homeDir, branchName };
+}
+
+/**
+ * Per-run sandbox options: the scratch HOME, and the task's cancellation signal,
+ * which reaps every sandbox process (detached grandchildren included) the
+ * moment the task is cancelled or superseded.
+ */
+export interface SandboxTaskOptions {
+	homeDir?: string;
+	signal?: AbortSignal;
 }
 
 /**
@@ -255,7 +352,8 @@ export async function runCodingAgent(
 	workDir: string,
 	description: string,
 	spawnFn: typeof spawn = spawn,
-	reap?: () => void | Promise<void>
+	reap?: () => void | Promise<void>,
+	sandbox: SandboxTaskOptions = {}
 ): Promise<{ success: boolean; output: string }> {
 	const opencodeBin = process.env['OPENCODE_BIN'] ?? 'opencode';
 
@@ -270,23 +368,23 @@ export async function runCodingAgent(
 			{
 				cwd: workDir,
 				timeoutMs: 600_000, // 10 minute timeout
-				env: buildAgentEnv(workDir),
+				env: buildAgentEnv(sandbox.homeDir ?? workDir),
+				signal: sandbox.signal,
 				reap,
 			},
 			spawnFn
 		);
 		if (result.timedOut) {
+			const header = 'OpenCode timed out after 10m; sandbox processes killed.\n';
 			return {
 				success: false,
-				output: `OpenCode timed out after 10m; sandbox processes killed.\n${(result.stdout + result.stderr).slice(-2000)}`,
+				output: header + combinedOutputTail(result, 2000 - header.length),
 			};
 		}
 		if (result.code !== 0) {
 			return {
 				success: false,
-				output:
-					(result.stdout + result.stderr).slice(-2000) ||
-					`OpenCode exited with code ${result.code}`,
+				output: combinedOutputTail(result, 2000) || `OpenCode exited with code ${result.code}`,
 			};
 		}
 		return { success: true, output: result.stdout };
@@ -303,7 +401,8 @@ export async function runCodingAgent(
 export async function runTests(
 	workDir: string,
 	spawnFn: typeof spawn = spawn,
-	reap?: () => void | Promise<void>
+	reap?: () => void | Promise<void>,
+	sandbox: SandboxTaskOptions = {}
 ): Promise<{ passed: boolean; output: string }> {
 	try {
 		// UNTRUSTED: vitest configs + test files run arbitrary Node at collection
@@ -315,174 +414,27 @@ export async function runTests(
 			{
 				cwd: workDir,
 				timeoutMs: 300_000, // 5 minute timeout
-				env: buildTestEnv(workDir),
+				env: buildTestEnv(sandbox.homeDir ?? workDir),
+				signal: sandbox.signal,
 				reap,
 			},
 			spawnFn
 		);
 		if (result.timedOut) {
+			// Header and tail together fit the 2000 characters the task record keeps.
+			const header = 'Tests timed out after 5m; sandbox processes killed.\n';
 			return {
 				passed: false,
-				output: `Tests timed out after 5m; sandbox processes killed.\n${(result.stdout + result.stderr).slice(-2000)}`,
+				output: header + combinedOutputTail(result, 2000 - header.length),
 			};
 		}
 		// vitest exits non-zero iff any test failed, so `passed` is derived purely
 		// from exit status; `output` is captured for the PR body only and is never
 		// parsed for the verdict.
-		const combined = (result.stdout + result.stderr).trim();
-		return { passed: result.code === 0, output: combined.slice(-2000) }; // Last 2000 chars
+		return { passed: result.code === 0, output: combinedOutputTail(result, 2000) };
 	} catch (error) {
 		// spawn itself failed (e.g. npx missing) — treat as a test failure.
 		const errMsg = error instanceof Error ? error.message : String(error);
 		return { passed: false, output: errMsg.slice(-2000) };
-	}
-}
-
-/**
- * Report a failed run to the backend and log what it decided.
- *
- * The retry ceiling and the backoff schedule live in the backend
- * (`codeWorkTasks.markFailed`), which either requeues the task behind a delay
- * or makes the failure terminal; the worker just picks the task up again on a
- * later poll once the window has elapsed. `terminal` is the worker's statement
- * that a retry cannot change the outcome — it is the only side that knows, and
- * an attempt costs a whole clone/agent/test cycle. The client is injectable so
- * the reporting can be unit-tested without a deployment.
- */
-export async function reportTaskFailure(
-	taskId: string,
-	errorMessage: string,
-	client: ReturnType<typeof getConvexClient> = getConvexClient(),
-	options: { terminal?: boolean } = {}
-): Promise<void> {
-	const outcome = await client.mutation(fn.markFailed, {
-		taskId,
-		errorMessage,
-		...(options.terminal ? { terminal: true } : {}),
-	});
-	if (outcome?.retried) {
-		const waitSeconds = Math.max(0, Math.round(((outcome.nextAttemptAt ?? 0) - Date.now()) / 1000));
-		log(`Task ${taskId} failed on attempt ${outcome.attempts}; retrying in ~${waitSeconds}s`);
-		return;
-	}
-	log(`Task ${taskId} failed permanently after ${outcome?.attempts ?? 0} attempt(s)`);
-}
-
-/**
- * Process a single code work task end-to-end.
- */
-export async function processTask(task: CodeWorkTask): Promise<void> {
-	const client = getConvexClient();
-	const taskId = task._id;
-	const workDir = path.join(WORKSPACE_ROOT, taskId);
-
-	try {
-		// 1. Claim the task
-		log(`Claiming task ${taskId}`);
-		const claimResult = await client.mutation(fn.claim, { taskId });
-		if (!claimResult?.claimed) {
-			log(`Task ${taskId} already claimed, skipping`);
-			return;
-		}
-
-		// 2. Set up workspace & branch
-		log(`Setting up workspace for ${taskId}`);
-		const branchName = setupWorkspace(taskId);
-		await client.mutation(fn.updateBranch, { taskId, branch: branchName });
-
-		// 3. Run coding agent
-		log(`Running coding agent for task: ${task.description}`);
-		const agentResult = await runCodingAgent(workDir, task.description);
-
-		if (!agentResult.success) {
-			await reportTaskFailure(
-				taskId,
-				`Coding agent failed: ${agentResult.output.slice(0, 500)}`,
-				client
-			);
-			return;
-		}
-
-		// 4. Check if any files changed. Root git reads the sandbox-owned working
-		// tree (world-readable) and writes only the root-owned .git.
-		const diffOutput = runGit(buildDiffStatArgs(workDir), { encoding: 'utf-8' }) as string;
-		if (!diffOutput.trim()) {
-			// Deterministic: the agent finished and decided nothing needed changing,
-			// so a retry reaches the same answer. Terminal, not requeued.
-			const noChanges = 'Coding agent produced no changes';
-			await reportTaskFailure(taskId, noChanges, client, { terminal: true });
-			return;
-		}
-
-		// 5. Commit changes. The commit message is built from the untrusted task
-		// description and passed as a single `-m` argv element (shell:false).
-		runGit(buildAddArgs(workDir), { stdio: 'inherit' });
-		runGit(buildCommitArgs(workDir, buildCommitMessage(task.description)), {
-			stdio: 'inherit',
-		});
-
-		// 6. Run tests
-		log(`Running tests for ${taskId}`);
-		await client.mutation(fn.markTesting, { taskId });
-		const testResult = await runTests(workDir);
-
-		// 7. Push and create PR. Auth is supplied through Git's environment; the
-		// untrusted agent + tests have already finished, and the token was never
-		// written to workDir/.git/config.
-		log(`Pushing branch ${branchName}`);
-		runGit(buildPushArgs(workDir, branchName), {
-			stdio: 'inherit',
-			env: { ...process.env, ...GIT_AUTH_ENV },
-		});
-
-		let prUrl = '';
-		if (GITHUB_OWNER && GITHUB_REPO) {
-			log(`Creating PR for ${taskId}`);
-			prUrl = await createPullRequest({
-				owner: GITHUB_OWNER,
-				repo: GITHUB_REPO,
-				title: `[code-worker] ${task.description.slice(0, 60)}`,
-				body: [
-					'## Summary',
-					'',
-					task.description,
-					'',
-					'## Test Results',
-					'',
-					testResult.passed ? 'All tests passed.' : 'Some tests failed (see details below).',
-					'',
-					'```',
-					testResult.output.slice(-1000),
-					'```',
-					'',
-					'---',
-					'Generated by Owlat code-worker',
-				].join('\n'),
-				head: branchName,
-				base: GIT_BASE_BRANCH,
-			});
-		}
-
-		// 8. Complete
-		await client.mutation(fn.completeWithPR, {
-			taskId,
-			prUrl,
-			testResults: testResult.output.slice(-2000),
-		});
-
-		log(`Task ${taskId} completed successfully${prUrl ? `: ${prUrl}` : ''}`);
-	} catch (error) {
-		const errMsg = error instanceof Error ? error.message : String(error);
-		log(`Task ${taskId} failed: ${errMsg}`);
-
-		try {
-			await reportTaskFailure(taskId, errMsg.slice(0, 500), client);
-		} catch {
-			log(`Failed to mark task ${taskId} as failed`);
-		}
-	} finally {
-		// Always reclaim the workspace. The per-task clone is large and must never
-		// leak — regardless of success, failure, or any early return above.
-		removeWorkspace(workDir);
 	}
 }

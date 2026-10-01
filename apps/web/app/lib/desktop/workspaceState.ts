@@ -42,9 +42,12 @@ export async function store(): Promise<WorkspaceBridge> {
 	return import('@owlat/desktop/src/workspace');
 }
 
+/** Writes a workspace's session blob to its keychain entry; awaitable, so a
+ * storage flush can wait for the write to land. */
 export function makePersister() {
-	return (account: string, blob: string) => {
-		void keychain().then((k) => k.secretSet(account, blob));
+	return async (account: string, blob: string): Promise<void> => {
+		const { secretSet } = await keychain();
+		await secretSet(account, blob);
 	};
 }
 

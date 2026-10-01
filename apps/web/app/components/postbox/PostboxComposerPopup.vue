@@ -1,5 +1,10 @@
 <script setup lang="ts">
+import type { Id } from '@owlat/api/dataModel';
 import type { ComposerSpec } from '~/composables/postbox/usePostboxComposerStack';
+import { useAnswerModeNav } from '~/composables/useAnswerMode';
+import { useKeyboardInset } from '~/composables/useKeyboardInset';
+import { useMediaQuery } from '~/composables/useMediaQuery';
+import { COMPOSER_SHEET_QUERY, popupComposerGeometry } from '~/utils/postboxComposerLayout';
 
 const props = defineProps<{
 	composer: ComposerSpec;
@@ -12,23 +17,43 @@ const { t } = useI18n();
 const stack = usePostboxComposerStack();
 const { size, setSize } = usePostboxComposerSize();
 
-const isFocused = computed(() => stack.focusedId.value === props.composer.id);
+// Floating popup geometry: on a wide screen the persisted size, anchored
+// bottom-right and offset left by its slot; on a phone a full-width bottom
+// sheet over the keyboard. Docked/minimized composers are rendered by the
+// dock, so this component only ever handles a floating popup.
+const isSmallScreen = useMediaQuery(COMPOSER_SHEET_QUERY);
+const keyboard = useKeyboardInset();
+const geometry = computed(() =>
+	popupComposerGeometry({
+		size: size.value,
+		slotIndex: props.slotIndex,
+		sheet: isSmallScreen.value,
+		keyboardInset: keyboard.value,
+	})
+);
 
-// Floating popup box geometry: persisted size, anchored bottom-right and offset
-// left by its slot. Docked/minimized composers are rendered by the dock, so this
-// component only ever handles a floating popup.
-const popupStyle = computed(() => ({
-	width: `${size.value.width}px`,
-	height: `${size.value.height}px`,
-	right: `${24 + props.slotIndex * (size.value.width + 16)}px`,
-	bottom: 'var(--pbx-composer-inset-bottom, 0px)',
-}));
-
-// Esc / header Minimize: while focused, demote back to the popup (state intact);
-// otherwise dock the composer as usual.
+// Esc / header Minimize: dock the composer.
 function onMinimize() {
-	if (isFocused.value) stack.unfocus();
-	else stack.minimize(props.composer.id);
+	stack.minimize(props.composer.id);
+}
+
+// Esc anywhere in the popup docks it, unless a popover inside (the footer's ⋯,
+// a trust chip) already closed on this press and claimed it.
+function onEscape(event: KeyboardEvent) {
+	if (event.defaultPrevented) return;
+	event.preventDefault();
+	event.stopPropagation();
+	onMinimize();
+}
+
+// A reply's maximise continues the SAME draft (saved by the composer first) in
+// Answer mode; the popup steps aside.
+const answerNav = useAnswerModeNav();
+function onMaximise(draftId: Id<'mailDrafts'>) {
+	const messageId = props.composer.inReplyToMessageId;
+	if (!messageId) return;
+	stack.close(props.composer.id);
+	void answerNav.open(messageId, { draftId });
 }
 
 // --- Drag-to-resize (top-left grip, since the box is anchored bottom-right).
@@ -69,43 +94,37 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-	<!-- Floating composers are nonmodal. Promotion adds modal semantics while
-	     teleporting the same draft into the shared focus surface. -->
-	<Teleport to="#pbx-focus-mount" :disabled="!isFocused">
-		<Transition name="pbx-popup" appear>
+	<!-- Floating composers are nonmodal. -->
+	<Transition name="pbx-popup" appear>
+		<div
+			role="region"
+			data-shortcut-boundary
+			@keydown.esc="onEscape"
+			:aria-label="t('components.postbox.postboxComposerPopup.dialogLabel')"
+			class="fixed flex flex-col z-40 bg-bg-elevated border-border-subtle overflow-hidden shadow-lg"
+			:class="geometry.mode === 'sheet' ? 'rounded-t-xl border-t' : 'rounded-t-md border'"
+			:style="geometry.style"
+			:data-geometry="geometry.mode"
+		>
+			<!-- Resize grip (top-left corner). Keyboard users resize via the
+			     OS-standard drag; the grip is a pointer affordance layered over the
+			     header. A sheet already spans the screen: nothing to resize. -->
 			<div
-				:role="isFocused ? 'dialog' : 'region'"
-				:aria-modal="isFocused || undefined"
-				data-shortcut-boundary
-				@keydown.esc.prevent.stop="onMinimize"
-				:aria-label="t('components.postbox.postboxComposerPopup.dialogLabel')"
-				class="flex flex-col z-40 bg-bg-elevated border border-border-subtle overflow-hidden"
-				:class="
-					isFocused
-						? 'relative w-full max-w-2xl rounded-md shadow-lg max-h-[85vh]'
-						: 'fixed rounded-t-md shadow-lg'
-				"
-				:style="isFocused ? undefined : popupStyle"
-			>
-				<!-- Resize grip (top-left corner) — hidden on the focus surface,
-				     which sizes itself. Keyboard users resize via the OS-standard
-				     drag; the grip is a pointer affordance layered over the header. -->
-				<div
-					v-if="!isFocused"
-					class="absolute top-0 left-0 w-4 h-4 z-50 cursor-nwse-resize touch-none"
-					aria-hidden="true"
-					:title="t('components.postbox.postboxComposerPopup.resizeHandle')"
-					@pointerdown="onResizeDown"
-				/>
-				<!-- The composer arms the undo window itself; a sent popup only closes. -->
-				<PostboxComposer
-					:seed="composer"
-					:reply-all-recipients="composer.replyAllRecipients"
-					@sent="stack.close(composer.id)"
-					@discarded="stack.close(composer.id)"
-					@minimize="onMinimize"
-				/>
-			</div>
-		</Transition>
-	</Teleport>
+				v-if="geometry.mode === 'box'"
+				class="absolute top-0 left-0 w-4 h-4 z-50 cursor-nwse-resize touch-none"
+				aria-hidden="true"
+				:title="t('components.postbox.postboxComposerPopup.resizeHandle')"
+				@pointerdown="onResizeDown"
+			/>
+			<!-- The composer arms the undo window itself; a sent popup only closes. -->
+			<PostboxComposer
+				:seed="composer"
+				:reply-all-recipients="composer.replyAllRecipients"
+				@sent="stack.close(composer.id)"
+				@discarded="stack.close(composer.id)"
+				@minimize="onMinimize"
+				@maximise="onMaximise"
+			/>
+		</div>
+	</Transition>
 </template>

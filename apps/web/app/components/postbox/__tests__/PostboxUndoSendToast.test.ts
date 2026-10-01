@@ -23,6 +23,7 @@ const cancelRuns: unknown[] = [];
 const opened: unknown[] = [];
 const unqueued: string[] = [];
 let releaseCancel: () => void = () => {};
+const navigateTo = vi.fn();
 
 beforeEach(() => {
 	stateBuckets.clear();
@@ -48,6 +49,11 @@ beforeEach(() => {
 			return null;
 		},
 	}));
+	navigateTo.mockClear();
+	vi.stubGlobal('navigateTo', navigateTo);
+	vi.stubGlobal('useRouter', () => ({
+		currentRoute: ref({ path: '/dashboard/postbox/inbox', fullPath: '/dashboard/postbox/inbox' }),
+	}));
 	vi.stubGlobal('useBackendOperation', () => ({
 		run: (args: unknown) => {
 			cancelRuns.push(args);
@@ -58,8 +64,13 @@ beforeEach(() => {
 	}));
 });
 
-async function mountArmed(undoToken: string) {
-	usePostboxUndoSend().arm({ undoToken, sendAt: Date.now() + 10_000, mailboxId: MAILBOX_ID });
+async function mountArmed(undoToken: string, replyToMessageId?: string) {
+	usePostboxUndoSend().arm({
+		undoToken,
+		sendAt: Date.now() + 10_000,
+		mailboxId: MAILBOX_ID,
+		...(replyToMessageId ? { replyToMessageId: replyToMessageId as never } : {}),
+	});
 	const wrapper = mount(PostboxUndoSendToast, {
 		global: { plugins: [createTestI18n()], stubs: { Icon: true, teleport: true } },
 	});
@@ -91,6 +102,15 @@ describe('PostboxUndoSendToast', () => {
 		// `undone` follows the reopen, so a host can adopt the reopened draft.
 		expect(wrapper.emitted('undone')).toHaveLength(1);
 		expect(wrapper.emitted('expired')).toBeUndefined();
+	});
+
+	it('reopens an undone reply in Answer mode, on the recovered draft', async () => {
+		const wrapper = await mountArmed('tok_1', 'msg_7');
+		await wrapper.find('button').trigger('click');
+		releaseCancel();
+		await flushPromises();
+		expect(opened).toEqual([]);
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/answer/m/msg_7?draft=draft_1');
 	});
 
 	it('un-queues an offline send on device instead of asking the server', async () => {

@@ -73,11 +73,7 @@ export const storeModule: ImapCommandModule<StoreArgs> = {
 					return;
 				}
 
-				const messageIds = await collectMessageIds(
-					deps.convex,
-					state.selected!.folderId,
-					resolved.map((r) => r.uid)
-				);
+				const messageIds = await collectMessageIds(deps.convex, state.selected!.folderId, resolved);
 				if (messageIds.length === 0) {
 					send(`${tag} OK ${label} completed`);
 					return;

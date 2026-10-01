@@ -10,13 +10,17 @@
  *   - no active workspace, or a workspace whose `siteUrl` is not https (`tauri
  *     dev` against localhost) → GitHub, exactly as before;
  *   - the policy probe answers 404 → GitHub (an instance older than the route);
- *   - the probe answers 200 but the instance has no release cached yet (a
- *     server upgraded minutes ago, or GitHub rate-limiting a fresh self-host)
- *     → GitHub, since the instance has nothing to offer and that is what the
- *     app did before; a paused policy is still respected;
- *   - the probe answers 200 with a release → that instance's manifest route;
- *   - anything else (offline, 500, timeout) → skip this check and try again at
- *     the next trigger. Unreachable means "not now", never "go around it".
+ *   - the probe answers 200 with the default policy and nothing cached at all
+ *     (a server upgraded minutes ago, or GitHub rate-limiting a fresh
+ *     self-host) → GitHub, since the instance would offer GitHub's newest
+ *     stable release anyway and that is what the app did before;
+ *   - the probe answers 200 with anything else → that instance's manifest
+ *     route, even when it has nothing to offer: a pin, a defer window or the
+ *     pre-release channel is a constraint GitHub's endpoint cannot apply, and a
+ *     paused policy is a decision in its own right;
+ *   - anything else (offline, 500, timeout, a body that is not a policy) → skip
+ *     this check and try again at the next trigger. Unreachable means "not
+ *     now", never "go around it".
  *
  * Only the main window runs any of this. The compose window boots the same SPA
  * but shares the one native update slot, so a second webview checking and
@@ -59,6 +63,68 @@ export type UpdateSource =
 
 const GITHUB: UpdateSource = { kind: 'github', endpoint: null };
 
+const MODES: readonly unknown[] = ['latest', 'pinned', 'paused'];
+const CHANNELS: readonly unknown[] = ['stable', 'prerelease'];
+
+function isStringOrNull(value: unknown): value is string | null {
+	return value === null || typeof value === 'string';
+}
+
+function isNumberOrNull(value: unknown): value is number | null {
+	return value === null || (typeof value === 'number' && Number.isFinite(value));
+}
+
+/**
+ * The probe body, checked field by field before anything is decided from it. A
+ * 200 that is not a policy (a proxy's error page, a half-deployed route) says
+ * nothing about what the operator allows, so it is treated as unreachable.
+ */
+export function parsePolicySummary(body: unknown): DesktopUpdatePolicySummary | null {
+	if (typeof body !== 'object' || body === null) return null;
+	const raw = body as Partial<Record<keyof DesktopUpdatePolicySummary, unknown>>;
+	const { mode, channel, deferHours, hasCachedReleases } = raw;
+	const { pinnedVersion, requiredVersion, latestVersion, latestPublishedAt, checkedAt } = raw;
+	if (!MODES.includes(mode) || !CHANNELS.includes(channel)) return null;
+	if (typeof deferHours !== 'number' || !Number.isFinite(deferHours)) return null;
+	if (!isStringOrNull(pinnedVersion) || !isStringOrNull(requiredVersion)) return null;
+	if (!isStringOrNull(latestVersion)) return null;
+	if (!isNumberOrNull(latestPublishedAt) || !isNumberOrNull(checkedAt)) return null;
+	if (hasCachedReleases !== undefined && typeof hasCachedReleases !== 'boolean') return null;
+	return {
+		mode: mode as DesktopUpdatePolicySummary['mode'],
+		channel: channel as DesktopUpdatePolicySummary['channel'],
+		pinnedVersion,
+		requiredVersion,
+		deferHours,
+		latestVersion,
+		latestPublishedAt,
+		...(hasCachedReleases === undefined ? {} : { hasCachedReleases }),
+		checkedAt,
+	};
+}
+
+/**
+ * Whether an instance that has nothing to offer may be gone around. Only when
+ * it has cached nothing at all and runs the default policy: newest release,
+ * stable channel, no pin, no defer window. GitHub's latest release is then what
+ * the instance itself would offer after its first refresh. Every other policy
+ * is a choice GitHub's endpoint cannot carry out, so the instance answers, and
+ * an instance that has releases but none eligible has already answered.
+ * (`requiredVersion` is a floor, not a hold, so it does not count.) An instance
+ * older than `hasCachedReleases` cannot tell the two empties apart; for the
+ * default policy it keeps the old fallback.
+ */
+export function mayBypassInstance(policy: DesktopUpdatePolicySummary): boolean {
+	return (
+		policy.latestVersion === null &&
+		policy.hasCachedReleases !== true &&
+		policy.mode === 'latest' &&
+		policy.channel === 'stable' &&
+		policy.pinnedVersion === null &&
+		policy.deferHours === 0
+	);
+}
+
 /**
  * Decide which endpoint this check should use. Exported for its own test: the
  * fallback rules are the whole compatibility story between a new app and an
@@ -90,12 +156,9 @@ export async function resolveUpdateSource(): Promise<UpdateSource> {
 		// No such route: an instance from before server-managed updates.
 		if (res.status === 404) return GITHUB;
 		if (!res.ok) return { kind: 'skip', host };
-		const policy = (await res.json()) as DesktopUpdatePolicySummary;
-		// An instance that manages updates but has nothing cached would answer
-		// 204 to everyone and the app would call itself up to date. The instance
-		// cannot offer anything, so GitHub decides — unless the operator paused
-		// updates, which is a decision in its own right.
-		if (policy.latestVersion === null && policy.mode !== 'paused') return GITHUB;
+		const policy = parsePolicySummary(await res.json());
+		if (!policy) return { kind: 'skip', host };
+		if (mayBypassInstance(policy)) return GITHUB;
 		const { buildUpdateEndpoint } = await import('@owlat/desktop/src/updater');
 		return { kind: 'server', endpoint: buildUpdateEndpoint(origin), host, policy };
 	} catch {

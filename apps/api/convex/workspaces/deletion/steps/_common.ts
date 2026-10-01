@@ -52,6 +52,7 @@ export type OrganizationDeletionTable =
 	| 'threadPresence'
 	| 'threadReads'
 	| 'inboxFollowUps'
+	| 'threadCatchUps'
 	| 'inboxAssignmentNotices'
 	| 'inboundMessages'
 	| 'conversationThreads'
@@ -191,6 +192,7 @@ export type OrganizationDeletionTable =
 	| 'aiMessages'
 	| 'aiConversations'
 	| 'aiDraftStreams'
+	| 'answerAskSessions'
 	| 'coalesceBatches'
 	| 'visualizations'
 	| 'dashboardLayouts'
@@ -252,6 +254,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('threadPresence'),
 	v.literal('threadReads'),
 	v.literal('inboxFollowUps'),
+	v.literal('threadCatchUps'),
 	v.literal('inboxAssignmentNotices'),
 	v.literal('inboundMessages'),
 	v.literal('conversationThreads'),
@@ -391,6 +394,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('aiMessages'),
 	v.literal('aiConversations'),
 	v.literal('aiDraftStreams'),
+	v.literal('answerAskSessions'),
 	v.literal('coalesceBatches'),
 	v.literal('visualizations'),
 	v.literal('dashboardLayouts'),

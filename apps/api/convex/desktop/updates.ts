@@ -29,13 +29,12 @@ import {
 import { parseVersion, semverCompare } from '@owlat/shared/semver';
 import { internalAction, internalQuery } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
-import type { Doc, Id } from '../_generated/dataModel';
-import type { QueryCtx } from '../_generated/server';
+import type { Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { authedMutation, authedQuery, authedAction, publicQuery } from '../lib/authedFunctions';
 import { getOptional } from '../lib/env';
 import { recordAuditLog } from '../lib/auditLog';
-import { getInstanceSettings, upsertInstanceSettings } from '../lib/instanceSettings';
+import { upsertInstanceSettings } from '../lib/instanceSettings';
 import { hasPermission, requireOrgPermission, requirePermission } from '../lib/sessionOrganization';
 import { throwInvalidInput } from '../_utils/errors';
 import {
@@ -44,15 +43,23 @@ import {
 } from '../lib/literalValidators';
 import { isValidManifest, parseDesktopReleaseTag, type GithubRelease } from './releaseManifest';
 import {
-	DEFAULT_DESKTOP_UPDATE_POLICY,
+	activePin,
 	DESKTOP_RELEASE_CACHE_LIMIT,
+	DESKTOP_RELEASE_READ_LIMIT,
 	MAX_DEFER_HOURS,
 	newestRelease,
 	oneRowPerVersion,
 	preferCachedRelease,
+	releasesToPrune,
 	resolveDesktopUpdate,
-	type DesktopUpdatePolicy,
 } from './updateResolver';
+import {
+	readCheckState,
+	readLastChange,
+	readPolicy,
+	readReleases,
+	readVersionRows,
+} from './updateReads';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -60,59 +67,6 @@ const GITHUB_RELEASES_URL = `https://api.github.com/repos/${GITHUB_REPO_SLUG}/re
 
 /** Release bodies are shown on the admin page; clamp what we store. */
 const NOTES_MAX_CHARS = 8000;
-
-// ── Reads shared by the public queries ───────────────────────────────────────
-
-async function readPolicy(ctx: QueryCtx): Promise<DesktopUpdatePolicy> {
-	const settings = await getInstanceSettings(ctx.db);
-	const stored = settings?.desktopUpdates;
-	if (!stored) return DEFAULT_DESKTOP_UPDATE_POLICY;
-	return {
-		mode: stored.mode,
-		channel: stored.channel,
-		pinnedVersion: stored.pinnedVersion,
-		requiredVersion: stored.requiredVersion,
-		deferHours: stored.deferHours,
-	};
-}
-
-/**
- * Every cached release. The refresh prunes to `DESKTOP_RELEASE_CACHE_LIMIT`, so
- * the double is headroom for the moment mid-refresh when new rows are in and the
- * prune has not run yet — the index orders by version STRING, so a short read
- * could otherwise miss exactly the newest release.
- */
-async function readReleases(ctx: QueryCtx): Promise<Doc<'desktopReleases'>[]> {
-	const rows = await ctx.db
-		.query('desktopReleases')
-		.withIndex('by_kind_and_version', (q) => q.eq('kind', 'release'))
-		.take(DESKTOP_RELEASE_CACHE_LIMIT * 2);
-	return rows.filter((row) => typeof row.version === 'string' && typeof row.manifest === 'string');
-}
-
-/**
- * Who last wrote the policy and when, resolved to a name for the audit line on
- * the admin page. Null before anyone has touched it — a fresh instance runs on
- * the default policy, which nobody chose.
- */
-async function readLastChange(ctx: QueryCtx): Promise<{ at: number; by: string | null } | null> {
-	const settings = await getInstanceSettings(ctx.db);
-	const stored = settings?.desktopUpdates;
-	if (!stored) return null;
-	const profile = await ctx.db
-		.query('userProfiles')
-		.withIndex('by_auth_user_id', (q) => q.eq('authUserId', stored.updatedBy))
-		.first();
-	return { at: stored.updatedAt, by: profile?.name || profile?.email || null };
-}
-
-async function readCheckState(ctx: QueryCtx): Promise<Doc<'desktopReleases'> | null> {
-	return await ctx.db
-		.query('desktopReleases')
-		.withIndex('by_kind_and_checkedAt', (q) => q.eq('kind', 'latestCheck'))
-		.order('desc')
-		.first();
-}
 
 // ── Internal cache plumbing ──────────────────────────────────────────────────
 
@@ -122,7 +76,7 @@ export const listCachedTagsInternal = internalQuery({
 		const rows = await ctx.db
 			.query('desktopReleases')
 			.withIndex('by_kind_and_version', (q) => q.eq('kind', 'release'))
-			.take(DESKTOP_RELEASE_CACHE_LIMIT);
+			.take(DESKTOP_RELEASE_READ_LIMIT);
 		return rows.map((row) => row.tag ?? '').filter((tag) => tag.length > 0);
 	},
 });
@@ -174,19 +128,22 @@ export const recordCheck = internalMutation({
 	},
 });
 
-/** Keep the newest `DESKTOP_RELEASE_CACHE_LIMIT` releases; drop the rest. */
+/**
+ * Keep the newest `DESKTOP_RELEASE_CACHE_LIMIT` releases plus the pinned one;
+ * drop the rest. The policy is read in the same transaction, so a pin saved
+ * concurrently either lands first and is kept, or conflicts and retries.
+ */
 export const pruneReleases = internalMutation({
 	args: {},
 	handler: async (ctx) => {
-		const rows = await ctx.db
-			.query('desktopReleases')
-			.withIndex('by_kind_and_version', (q) => q.eq('kind', 'release'))
-			.take(DESKTOP_RELEASE_CACHE_LIMIT * 4);
-		if (rows.length <= DESKTOP_RELEASE_CACHE_LIMIT) return;
-		const doomed = rows
-			.sort((a, b) => (b.publishedAt ?? 0) - (a.publishedAt ?? 0))
-			.slice(DESKTOP_RELEASE_CACHE_LIMIT);
-		for (const row of doomed) {
+		const [policy, rows] = await Promise.all([
+			readPolicy(ctx),
+			ctx.db
+				.query('desktopReleases')
+				.withIndex('by_kind_and_version', (q) => q.eq('kind', 'release'))
+				.take(DESKTOP_RELEASE_CACHE_LIMIT * 4),
+		]);
+		for (const row of releasesToPrune(rows, activePin(policy))) {
 			await ctx.db.delete(row._id);
 		}
 	},
@@ -314,7 +271,8 @@ export const manifestForClient = publicQuery({
 		currentVersion: v.string(),
 	},
 	handler: async (ctx, args): Promise<{ manifest: string; version: string } | null> => {
-		const [policy, releases] = await Promise.all([readPolicy(ctx), readReleases(ctx)]);
+		const policy = await readPolicy(ctx);
+		const releases = await readReleases(ctx, activePin(policy));
 		const decision = resolveDesktopUpdate({
 			policy,
 			releases: oneRowPerVersion(releases).map((release) => ({
@@ -338,11 +296,8 @@ export const manifestForClient = publicQuery({
 export const getPolicySummary = publicQuery({
 	args: {},
 	handler: async (ctx) => {
-		const [policy, releases, check] = await Promise.all([
-			readPolicy(ctx),
-			readReleases(ctx),
-			readCheckState(ctx),
-		]);
+		const [policy, check] = await Promise.all([readPolicy(ctx), readCheckState(ctx)]);
+		const releases = await readReleases(ctx, activePin(policy));
 		const latest = newestRelease(oneRowPerVersion(releases), policy.channel);
 		return {
 			mode: policy.mode,
@@ -352,6 +307,10 @@ export const getPolicySummary = publicQuery({
 			deferHours: policy.deferHours ?? 0,
 			latestVersion: latest?.version ?? null,
 			latestPublishedAt: latest?.publishedAt ?? null,
+			// Whether anything is cached at all, on any channel. A null
+			// `latestVersion` alone cannot tell "never refreshed" from "nothing on
+			// this channel", and the app only goes around an instance for the first.
+			hasCachedReleases: releases.length > 0,
 			checkedAt: check?.checkedAt ?? null,
 		};
 	},
@@ -367,10 +326,15 @@ export const getPolicy = authedQuery({
 			readCheckState(ctx),
 			readLastChange(ctx),
 		]);
+		const pin = activePin(policy);
 		return {
 			policy,
 			check: { checkedAt: check?.checkedAt ?? null, error: check?.error ?? null },
 			lastChange,
+			// False when the policy is pinned to a version the cache no longer
+			// holds (a pin saved before pinned rows were exempt from the prune):
+			// clients are offered nothing, and the admin page says so.
+			pinCached: pin === undefined ? null : (await readVersionRows(ctx, pin)).length > 0,
 		};
 	},
 });
@@ -382,7 +346,7 @@ export const listReleases = authedQuery({
 			hasPermission(session.role, 'settings:manage'),
 			'Only owners and admins can view cached desktop releases'
 		);
-		const releases = await readReleases(ctx);
+		const releases = await readReleases(ctx, activePin(await readPolicy(ctx)));
 		return releases
 			.sort(
 				(a, b) =>
@@ -438,8 +402,9 @@ export const updatePolicy = authedMutation({
 			if (!pinnedVersion) {
 				throwInvalidInput('Pinning needs a version to pin to');
 			}
-			const releases = await readReleases(ctx);
-			const pinned = releases.find((release) => release.version === pinnedVersion);
+			// Read by key rather than out of the bounded list: a pin the prune kept
+			// outside the rolling cache must stay re-savable.
+			const [pinned] = oneRowPerVersion(await readVersionRows(ctx, pinnedVersion));
 			if (!pinned) {
 				// The UI can only offer cached versions; this is what stops a hand-
 				// crafted call from pinning the fleet to a release nobody has.

@@ -6,13 +6,8 @@ import TaskAsk from '~/components/agent-tasks/TaskAsk.vue';
 import TaskCardRenderer from '~/components/agent-tasks/TaskCardRenderer.vue';
 import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 import TaskContext from '~/components/agent-tasks/TaskContext.vue';
-import type { ReplyQuoteTarget } from '~/composables/postbox/usePostboxQuotedText';
-import { useSuggestReplies } from '~/composables/postbox/useSuggestReplies';
-import {
-	optimisticArchive,
-	optimisticMove,
-	optimisticSnooze,
-} from '~/lib/mailOptimistic/mailUpdaters';
+import type { ClarificationAnswer } from '~/utils/clarificationAnswers';
+import { useAnswerMailActions } from '~/composables/useAnswerMailActions';
 import { isBuiltInTaskFlowKind } from '~/utils/taskCardRegistry';
 import { resolveReplyFocusKey } from '~/utils/taskFlowKeyboard';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
@@ -26,10 +21,16 @@ import {
 } from '~/utils/postboxReplyQueue';
 
 /**
- * One Postbox thread that needs a reply, as an Answer-queue card. All the
- * Reply Queue's actions survive — answer a clarification, review & send a
- * prepared draft, draft a reply, Done, Snooze, Archive, Open — and the reply
- * is always written from the inbox the mail came in to (`mailboxId`).
+ * One Postbox thread that needs a reply, as an Answer-queue card. The queue
+ * opens most of these in Answer mode directly; the card is what shows for a
+ * follow-up reminder, and wherever else the queue page keeps an item as a card.
+ * Its verbs: answer a clarification, review a prepared draft or write the
+ * reply (all in Answer mode), Done, Snooze, Archive, Open. The reply is always
+ * written from the inbox the mail came in to (`mailboxId`).
+ *
+ * Replying never finishes the card by itself: Answer mode finishes the item
+ * when the reply is sent. (The card used to complete as the composer opened,
+ * so closing the popup without sending dropped the email from the queue.)
  *
  * Keyboard on the focused card: Enter = reply (or Done for a follow-up),
  * e = archive, ←/→ browse, s = skip. Inert while typing.
@@ -62,112 +63,50 @@ const { data: draftSlot } = useConvexQuery(api.mail.needsReply.getDraftSlot, () 
 
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const aiEnabled = computed(() => isFeatureEnabled('ai'));
-const stack = usePostboxComposerStack();
 
-const clearOp = useBackendOperation(api.mail.needsReply.clear, {
-	label: () => t('components.postbox.postboxReplyFlow.operations.markDone'),
-});
-const cancelFollowUpOp = useBackendOperation(api.mail.followUps.cancel, {
-	label: () => t('components.postbox.postboxReplyFlow.operations.dismissReminder'),
-});
-// Archive, its undo and snooze patch the cached Postbox views and counts
-// before the server answers (plan 2.2), like the same verbs in the Postbox.
-const archiveOp = useBackendOperation(api.mail.messageActions.archive, {
-	label: () => t('components.postbox.postboxReplyFlow.operations.archive'),
-	optimisticUpdate: optimisticArchive,
-});
-const moveOp = useBackendOperation(api.mail.messageActions.move, {
-	label: () => t('components.postbox.postboxReplyFlow.operations.move'),
-	optimisticUpdate: optimisticMove,
-});
-const snoozeOp = useBackendOperation(api.mail.snooze.snooze, {
-	label: () => t('components.postbox.postboxReplyFlow.operations.snooze'),
-	optimisticUpdate: optimisticSnooze,
-});
-// Only the first option is used, so the composer opens as soon as it is final.
-const suggest = useSuggestReplies({
-	label: () => t('components.postbox.postboxReplyFlow.operations.draftReply'),
-});
+const mail = useAnswerMailActions(
+	() => props.row,
+	() => props.controls
+);
 const answerOp = useBackendOperation(api.mail.ai.needsReplyClarify.answerClarification, {
 	label: () => t('components.postbox.postboxReplyFlow.operations.answer'),
 });
 
 const busy = ref(false);
 
-async function submitClarification(answers: { questionId: string; value: string }[]) {
+async function submitClarification(answers: ClarificationAnswer[]) {
 	if (busy.value) return;
 	busy.value = true;
 	try {
-		await answerOp.run({ threadId: props.row.threadId as Id<'mailThreads'>, answers });
-		props.controls.complete('answered');
-	} finally {
-		busy.value = false;
-	}
-}
-
-/** Open the composer prefilled with a draft, replying from the card's inbox. */
-async function openReplyComposer(bodyText: string) {
-	const messageId = props.row.messageId as Id<'mailMessages'>;
-	let target: ReplyQuoteTarget = { ...props.row, _id: props.row.messageId };
-	try {
-		const message = await requireConvex().query(api.mail.mailbox.messages.getMessage, {
-			messageId,
+		await answerOp.run({
+			threadId: props.row.threadId as Id<'mailThreads'>,
+			answers: answers.map(({ questionId, value, source }) => ({ questionId, value, source })),
 		});
-		if (message) target = message;
-		target = await resolveBodyFields(target);
-	} catch {
-		// Fall through with the queue row's fields — the composer still opens.
-	}
-	stack.open(buildReplySpec(props.mailboxId, target, bodyText));
-}
-
-async function openClarificationDraft(draft: string) {
-	await openReplyComposer(draft);
-	props.controls.complete('answered');
-}
-async function reviewSlot(draft: string) {
-	await openReplyComposer(draft);
-	props.controls.complete('replied');
-}
-async function draftReply() {
-	if (busy.value) return;
-	busy.value = true;
-	try {
-		const suggestion = aiEnabled.value
-			? await suggest.first({ messageId: props.row.messageId as Id<'mailMessages'> })
-			: '';
-		await openReplyComposer(suggestion);
-		props.controls.complete('replied');
+		// Answering is not replying: the card stays, flips to the starter reply,
+		// and that opens in Answer mode.
 	} finally {
 		busy.value = false;
 	}
 }
-async function markDone() {
-	const threadId = props.row.threadId as Id<'mailThreads'>;
-	const result =
-		props.row.kind === 'followup'
-			? await cancelFollowUpOp.run({ threadId })
-			: await clearOp.run({ threadId });
-	if (result.ok) props.controls.complete('cleared');
+
+/**
+ * Write the reply in Answer mode: a prepared draft or a clarification's
+ * starter reply opens there in the editor. The queue keeps the item until the
+ * reply is sent.
+ */
+function answerInAnswerMode() {
+	props.controls.openAnswer();
 }
-async function archiveRow() {
-	const result = await archiveOp.run({ messageIds: [props.row.messageId as Id<'mailMessages'>] });
-	if (!result.ok || result.result == null || !('moved' in result.result)) return;
-	const moved = result.result.moved;
-	props.controls.complete('archived', async () => {
-		for (const m of moved) {
-			await moveOp.run({ messageIds: [m.messageId], targetFolderId: m.sourceFolderId });
-		}
-	});
+function markDone() {
+	void mail.markDone();
+}
+function archiveRow() {
+	void mail.archive();
 }
 
 const snoozeOpen = ref(false);
-async function confirmSnooze(until: number) {
-	const result = await snoozeOp.run({
-		messageId: props.row.messageId as Id<'mailMessages'>,
-		until,
-	});
-	if (result.ok) props.controls.complete('snoozed');
+function confirmSnooze(until: number) {
+	void mail.snooze(until);
 }
 
 function openRow() {
@@ -183,9 +122,9 @@ function onKeydown(event: KeyboardEvent) {
 	});
 	if (!action) return;
 	event.preventDefault();
-	if (action === 'markDone') void markDone();
-	else if (action === 'draftReply') void draftReply();
-	else if (action === 'archive') void archiveRow();
+	if (action === 'markDone') markDone();
+	else if (action === 'draftReply') answerInAnswerMode();
+	else if (action === 'archive') archiveRow();
 	else if (action === 'browseBack') props.controls.back();
 	else if (action === 'browseNext') props.controls.next();
 	else props.controls.skip();
@@ -212,7 +151,7 @@ const secondaryButton =
 		:item="row"
 		:submitting="busy"
 		@answer="submitClarification"
-		@open-draft="openClarificationDraft"
+		@open-draft="answerInAnswerMode"
 		@open="openRow"
 		@done="markDone"
 		@defer="controls.skip()"
@@ -253,7 +192,7 @@ const secondaryButton =
 			v-if="row.kind !== 'followup' && draftSlot"
 			class="mb-4"
 			:draft-slot="draftSlot"
-			@review="reviewSlot"
+			@review="answerInAnswerMode"
 			@dismiss="markDone"
 		/>
 
@@ -272,7 +211,7 @@ const secondaryButton =
 			:primary-loading="busy"
 			:skip-label="t('common.done')"
 			:hints="[{ keys: ['Enter'], label: t('components.postbox.postboxReplyFlow.reply') }]"
-			@primary="draftReply"
+			@primary="answerInAnswerMode"
 			@skip="markDone"
 		>
 			<button type="button" :class="secondaryButton" @click="snoozeOpen = true">
@@ -297,6 +236,15 @@ const secondaryButton =
 			:primary-disabled="busy"
 			@primary="markDone"
 		>
+			<button
+				type="button"
+				:class="secondaryButton"
+				data-testid="answer-mail-nudge"
+				@click="answerInAnswerMode"
+			>
+				<Icon name="lucide:reply" class="w-3.5 h-3.5" />
+				{{ t('components.postbox.postboxReplyFlow.reply') }}
+			</button>
 			<button type="button" :class="secondaryButton" @click="openRow">
 				<Icon name="lucide:external-link" class="w-3.5 h-3.5" />
 				{{ t('common.open') }}

@@ -9,34 +9,26 @@
 
 import type { ConvexClient } from '../../convex.js';
 import { loadMessageIds } from './folderPaging.js';
+import { type ResolvedMessage, uidRuns } from './seqMap.js';
 
 /**
- * Message ids for `uids`, in the order given. One paged walk of the
- * min..max UID span serves the whole set, so a contiguous set such as
- * `STORE 1:1000` costs a walk of that span rather than one query per
- * message, mirroring the FETCH path's envelope read. Only the requested
- * UIDs are picked out of the span; UIDs that vanished in between (a
- * concurrent EXPUNGE) are dropped.
+ * Message ids for `resolved`, in its (ascending sequence) order. The reads
+ * cover only the runs of consecutive messages the set names ({@link uidRuns}),
+ * so a contiguous set such as `STORE 1:1000` is one paged window while a
+ * sparse `UID STORE 1,100000` reads two rows, not the span between them.
+ * UIDs that vanished in between (a concurrent EXPUNGE) are dropped.
  */
 export async function collectMessageIds(
 	convex: ConvexClient,
 	folderId: string,
-	uids: ReadonlyArray<number>
+	resolved: readonly ResolvedMessage[]
 ): Promise<string[]> {
-	if (uids.length === 0) return [];
-	// A loop, not `Math.min(...uids)`: spreading a whole-folder set can exceed
-	// the engine's argument limit.
-	let low = Infinity;
-	let high = -Infinity;
-	for (const uid of uids) {
-		if (uid < low) low = uid;
-		if (uid > high) high = uid;
-	}
-	const slice = await loadMessageIds(convex, folderId, low, high);
+	if (resolved.length === 0) return [];
+	const rows = await loadMessageIds(convex, folderId, uidRuns(resolved), resolved.length);
 	const byUid = new Map<number, string>();
-	for (const row of slice) byUid.set(row.uid, row._id);
+	for (const row of rows) byUid.set(row.uid, row._id);
 	const ids: string[] = [];
-	for (const uid of uids) {
+	for (const { uid } of resolved) {
 		const id = byUid.get(uid);
 		if (id !== undefined) ids.push(id);
 	}

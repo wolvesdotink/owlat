@@ -185,6 +185,40 @@ describe('runPluginJob — sandbox wiring', () => {
 		expect(result.length).toBeGreaterThan(0);
 	});
 
+	it('bounds a job that floods both streams and still returns the head of stdout as its result', async () => {
+		// 5 MiB on each stream. The capture keeps a bounded head and tail while the
+		// job runs; the result stays the head of stdout, clamped to the host ceiling.
+		const child = openChild();
+		const spawnSpy = vi.fn(() => {
+			setImmediate(() => {
+				for (let i = 0; i < 20; i++) {
+					const out = Buffer.alloc(256 * 1024, 'r');
+					if (i === 0) out.write('{"result":');
+					child.stdout.emit('data', out);
+					child.stderr.emit('data', Buffer.alloc(256 * 1024, 'w'));
+				}
+				child.emit('close', 0);
+			});
+			return child;
+		}) as unknown as typeof spawn;
+		const client = fakeClient();
+
+		await runPluginJob(task, {
+			client: client as never,
+			reap: vi.fn(),
+			spawnFn: spawnSpy,
+			prepareDir: () => {},
+			cleanupDir: () => {},
+			heartbeatIntervalMs: 10_000,
+		});
+
+		const completeCall = client.calls.find((c) => c.name === 'complete');
+		const result = (completeCall!.args as { result: string }).result;
+		expect(Buffer.byteLength(result)).toBe(PLUGIN_WORKER_RESULT_MAX_BYTES);
+		expect(result.startsWith('{"result":')).toBe(true);
+		expect(result.slice('{"result":'.length)).toMatch(/^r+$/);
+	});
+
 	it('fails an unknown job kind closed — nothing is ever spawned', async () => {
 		const spawnSpy = vi.fn(() => closingChild(0)) as unknown as typeof spawn;
 		const client = fakeClient();

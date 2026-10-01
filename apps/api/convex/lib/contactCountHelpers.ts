@@ -1,6 +1,4 @@
 import type { DatabaseReader, MutationCtx, QueryCtx } from '../_generated/server';
-import type { Value } from 'convex/values';
-import { countIndexRange } from './pagination';
 import { readInstanceCounter, writeInstanceCounter } from './instanceCounters';
 import { getInstanceSettings } from './instanceSettings';
 
@@ -27,11 +25,12 @@ export async function decrementContactCount(ctx: MutationCtx, delta: number = 1)
 }
 
 /**
- * Get the cached contact count for the instance, or `null` when no count is
- * cached yet. Works in both queries and mutations.
+ * The cached contact count for the instance, or `null` when no count is cached
+ * yet (a new or restored instance). Works in both queries and mutations.
  *
- * Most callers want `getContactCount`, which falls back to counting live rows.
- * Use this one only when an absent cache has to be told apart from a real count.
+ * There is deliberately no counting fallback: a missing cache reads as `null`
+ * ("pending") and `contacts/countReconcile.ts` recovers it in bounded
+ * transactions, so no reader ever scans the contacts table (#917).
  */
 export async function getCachedContactCount(ctx: QueryCtx | MutationCtx): Promise<number | null> {
 	return await readCachedContactCount(ctx.db);
@@ -40,57 +39,4 @@ export async function getCachedContactCount(ctx: QueryCtx | MutationCtx): Promis
 /** `getCachedContactCount` for callers holding only a database reader. */
 export async function readCachedContactCount(db: DatabaseReader): Promise<number | null> {
 	return (await readInstanceCounter(db, 'contacts')).contactCount ?? null;
-}
-
-/**
- * Count the LIVE contacts (`deletedAt === undefined`), the number the cached
- * `contactCount` stands for.
- *
- * Counts via a paginated stream (summing page lengths) instead of one full-table
- * collect, so it stays under the Convex per-query document-read limit on large
- * deployments. Soft-deleted rows are excluded to match the live
- * increment/decrement semantics: softDeleteContact decrements the cached count.
- */
-export async function countLiveContacts(db: DatabaseReader): Promise<number> {
-	return await countIndexRange(
-		db,
-		'contacts',
-		'by_deleted_at_and_created_at',
-		// `deletedAt === undefined` selects live rows. The generic index-range
-		// builder types values as `Value` (no `undefined`), so assert through it
-		// — Convex resolves an absent optional field to `undefined` at runtime.
-		(q) => q.eq('deletedAt', undefined as unknown as Value)
-	);
-}
-
-/**
- * The instance's contact count: the cached value, or a live count when no
- * cache exists yet (a new or restored instance before the daily reconcile).
- */
-export async function getContactCount(ctx: QueryCtx | MutationCtx): Promise<number> {
-	return (await getCachedContactCount(ctx)) ?? (await countLiveContacts(ctx.db));
-}
-
-/**
- * Reconcile the cached contact count by doing a real count.
- * Corrects drift caused by partial failures or missed updates.
- *
- * Called by the daily `reconcileAllContactCounts` cron. The count is
- * `countLiveContacts`, so a reconcile never re-inflates the cached count with
- * soft-deleted rows. The cached count is only a hint.
- */
-export async function reconcileContactCount(
-	ctx: MutationCtx
-): Promise<{ previous: number | null; actual: number; corrected: boolean }> {
-	const actual = await countLiveContacts(ctx.db);
-
-	const previous = await readCachedContactCount(ctx.db);
-	const corrected = previous !== actual;
-
-	// No row reads as `previous === null`, so it always counts as corrected.
-	if (corrected) {
-		await writeInstanceCounter(ctx, 'contacts', { contactCount: actual });
-	}
-
-	return { previous, actual, corrected };
 }

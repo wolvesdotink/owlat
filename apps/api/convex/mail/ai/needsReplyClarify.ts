@@ -17,6 +17,7 @@
  */
 
 import { v } from 'convex/values';
+import { normalizeEmail } from '@owlat/shared';
 import { internalQuery } from '../../_generated/server';
 import { internalMutation } from '../../lib/writeFence';
 import { postboxMutation } from '../_helpers';
@@ -25,8 +26,18 @@ import { getOrThrow, throwForbidden, throwInvalidInput, throwNotFound } from '..
 import { requireMailboxAccess } from '../permissions';
 import { NEEDS_REPLY_CONTEXT_MESSAGES } from '../needsReply';
 import { captureStandingAnswers } from '../../inbox/clarificationMemory';
+import { buildFileAnswerNotes, isFileQuestion } from '../../inbox/clarificationAnswers';
+import {
+	resolveClarificationFile,
+	type ClarificationFileRef,
+} from '../../inbox/clarificationFileAnswer';
+import { findContactByIdentifier } from '../../contacts/resolution';
+import { canSaveAnswerToFiles } from '../../lib/answerFileToFiles';
+import { consumeUpload, mailThreadUploadKey } from '../../storage/uploads';
+import { clarificationFileRefValidator } from '../../lib/validators/clarification';
 import { buildThreadTranscript, CLARIFY_DRAFT } from './transcript';
 import { withStoredInlineBodies } from '../../lib/messageBodyStore';
+import type { Id } from '../../_generated/dataModel';
 
 /**
  * Answer the clarification questions on a Reply Queue thread and kick off the
@@ -41,13 +52,26 @@ import { withStoredInlineBodies } from '../../lib/messageBodyStore';
  * answer is still recorded and the plain "Draft reply" button keeps working.
  */
 // authz: thread → mailbox access via requireMailboxAccess; org membership via
-// authedMutation.
+// authedMutation. File answers re-check the file (resolveClarificationFile).
 export const answerClarification = postboxMutation({
 	args: {
 		threadId: v.id('mailThreads'),
-		answers: v.array(v.object({ questionId: v.string(), value: v.string() })),
+		answers: v.array(
+			v.object({
+				questionId: v.string(),
+				// Required unless `file` is given (then it defaults to the filename).
+				value: v.optional(v.string()),
+				// 'memory' when the owner kept a remembered ("last time") answer.
+				source: v.optional(v.union(v.literal('user'), v.literal('memory'))),
+				file: v.optional(clarificationFileRefValidator),
+				// Uploads only: false keeps the upload out of Files; the browser's
+				// MIME type for the upload.
+				keepCopy: v.optional(v.boolean()),
+				mimeType: v.optional(v.string()),
+			})
+		),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
 		const owned = await requireMailboxAccess(ctx, thread.mailboxId);
 		if (!owned.ok) throwForbidden('Thread not accessible');
@@ -57,23 +81,70 @@ export const answerClarification = postboxMutation({
 		if (!flag || !clarification) throwNotFound('Clarification');
 
 		const now = Date.now();
-		const answerByQuestion = new Map(args.answers.map((a) => [a.questionId, a.value] as const));
+		const answerByQuestion = new Map(args.answers.map((a) => [a.questionId, a] as const));
 		// Guard: at least one submitted answer must map to a real question before
 		// we stamp the clarification answered + schedule the draft. A payload that
 		// matches nothing would otherwise mark it answered with zero recorded
 		// answers, so draftWithAnswers produces no draft and the card strands in
-		// 'drafting' forever. Reject instead of silently answering nothing.
+		// 'drafting' forever. Reject instead of silently answering nothing. A card
+		// whose every question memory pre-picked may be confirmed as it stands.
 		let matched = 0;
+		let prePicked = 0;
 		for (const q of clarification.questions) {
 			if (answerByQuestion.has(q.id)) matched += 1;
+			else if (q.answer) prePicked += 1;
 		}
-		if (matched === 0) throwInvalidInput('No answer matches an open question');
+		if (matched === 0 && prePicked === 0) throwInvalidInput('No answer matches an open question');
 
-		const questions = clarification.questions.map((q) => {
-			const value = answerByQuestion.get(q.id);
-			if (value === undefined) return q;
-			return { ...q, answer: { value: value.slice(0, 2000), at: now } };
-		});
+		const senderMessage = await ctx.db.get(flag.messageId);
+		const fromAddress = senderMessage?.fromAddress;
+		// Uploaded answers are kept in Files for the sender's contact, by the
+		// shared rules (lib/answerFileToFiles.ts: admins only, like the Files page).
+		let senderContactId: Id<'contacts'> | undefined;
+		if (fromAddress && canSaveAnswerToFiles(session)) {
+			const identifier = normalizeEmail(fromAddress);
+			const found = identifier ? await findContactByIdentifier(ctx, 'email', identifier) : null;
+			senderContactId = found?.contact._id;
+		}
+
+		const questions = [];
+		for (const q of clarification.questions) {
+			const provided = answerByQuestion.get(q.id);
+			if (!provided) {
+				questions.push(q);
+				continue;
+			}
+			const fileRef: ClarificationFileRef | undefined = provided.file;
+			if (fileRef && !isFileQuestion(q)) throwInvalidInput('This question does not take a file');
+			const resolved = fileRef
+				? await resolveClarificationFile(ctx, session, fileRef, {
+						keepCopy: provided.keepCopy,
+						mimeType: provided.mimeType,
+						contactId: senderContactId,
+					})
+				: undefined;
+			// A bare upload is held by the thread until a draft of it takes the
+			// file over, so it does not expire with its receipt in the meantime.
+			if (resolved?.ref.source === 'upload') {
+				await consumeUpload(
+					ctx,
+					resolved.ref.id as Id<'_storage'>,
+					session,
+					mailThreadUploadKey(args.threadId)
+				);
+			}
+			const value = provided.value ?? resolved?.ref.filename;
+			if (value === undefined) throwInvalidInput('An answer needs a value or a file');
+			questions.push({
+				...q,
+				answer: {
+					value: value.slice(0, 2000),
+					at: now,
+					source: provided.source ?? ('user' as const),
+					...(resolved ? { file: resolved.ref } : {}),
+				},
+			});
+		}
 
 		await ctx.db.patch(args.threadId, {
 			needsReply: {
@@ -84,18 +155,19 @@ export const answerClarification = postboxMutation({
 		});
 
 		// ANSWER-MEMORY: promote the owner's answers to durable standing facts,
-		// scoped to the thread's sender contact, so a later matching thread fills
-		// the slot silently instead of re-asking. Fail-soft: a memory-write failure
-		// never blocks the starter draft below.
+		// scoped to the thread's sender contact, so a later matching thread
+		// pre-picks them. Remembered answers the owner merely kept are not
+		// re-captured, and neither are file answers (true for this request only).
+		// Fail-soft: a memory-write failure never blocks the starter draft below.
 		try {
-			const senderMessage = await ctx.db.get(flag.messageId);
-			const fromAddress = senderMessage?.fromAddress;
 			if (fromAddress) {
 				const capture = [] as { slotType: string; questionText: string; value: string }[];
 				for (const q of questions) {
-					const value = answerByQuestion.get(q.id);
-					if (value === undefined) continue;
-					capture.push({ slotType: q.slotType, questionText: q.text, value });
+					const provided = answerByQuestion.get(q.id);
+					if (!provided || !q.answer) continue;
+					if ((provided.source ?? 'user') !== 'user') continue;
+					if (isFileQuestion(q)) continue;
+					capture.push({ slotType: q.slotType, questionText: q.text, value: q.answer.value });
 				}
 				if (capture.length > 0) {
 					await captureStandingAnswers(ctx, {
@@ -120,8 +192,10 @@ export const answerClarification = postboxMutation({
 
 /**
  * Bounded context for the `draftWithAnswers` action: the mailbox id, a short
- * transcript of the newest messages, and the owner's confirmed answers folded
- * into `question: answer` lines. Null when the clarification is gone / stale.
+ * transcript of the newest messages, the owner's confirmed answers (typed and
+ * remembered) folded into `question: answer` lines, a note for each file they
+ * attached, and the sender's contact (the knowledge recall scope). Null when
+ * the clarification is gone / stale.
  */
 export const getClarificationContext = internalQuery({
 	args: { threadId: v.id('mailThreads') },
@@ -162,11 +236,28 @@ export const getClarificationContext = internalQuery({
 			}
 		}
 
+		// The sender's contact scopes the draft's knowledge recall; no contact →
+		// org-general knowledge only. Same identity index the answer memory uses.
+		const trigger =
+			newest.find((m) => m._id === flag.messageId) ?? (await ctx.db.get(flag.messageId));
+		const identifier = trigger?.fromAddress ? normalizeEmail(trigger.fromAddress) : '';
+		const identity = identifier
+			? await ctx.db
+					.query('contactIdentities')
+					.withIndex('by_identifier', (q) => q.eq('channel', 'email').eq('identifier', identifier))
+					.first()
+			: null;
+
 		return {
 			mailboxId: thread.mailboxId,
 			latestMessageId: thread.latestMessageId,
+			ownerAddress: mailbox.address,
+			contactId: identity?.contactId,
 			transcript,
 			answers,
+			// No draft exists yet: the web attaches the files when it applies the
+			// prepared reply (needsReplyPrepared.getPreparedDraft), so say "will be".
+			fileNotes: buildFileAnswerNotes(clarification.questions, 'pending'),
 			answeredSlotTypes,
 		};
 	},

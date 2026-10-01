@@ -100,6 +100,7 @@ const isProfileDirty = computed(
 
 const {
 	showDialog: showUnsavedDialog,
+	isSavingBeforeLeave,
 	confirmDiscard,
 	confirmSave,
 	cancelNavigation,
@@ -888,6 +889,7 @@ const daysRemaining = computed(() => {
 		<!-- Unsaved Changes Dialog -->
 		<UnsavedChangesDialog
 			:show="showUnsavedDialog"
+			:saving="isSavingBeforeLeave"
 			@close="cancelNavigation"
 			@discard="confirmDiscard"
 			@save="confirmSave"

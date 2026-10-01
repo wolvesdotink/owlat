@@ -80,6 +80,7 @@ function mountLayout(): VueWrapper {
 				DashboardShellHeader: true,
 				LazyAppCommandPalette: true,
 				ShellComposerOverlay: true,
+				AnswerReviewApproveUndoToast: true,
 				LazyKeyboardShortcutsHelp: true,
 				Icon: true,
 				UiBadge: true,

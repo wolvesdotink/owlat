@@ -158,6 +158,77 @@ describe('useSettingsForm', () => {
 		expect(form.fromName).toBe('Owlat Team');
 	});
 
+	it('leaves only once the dialog save lands with nothing newer unsaved', async () => {
+		let land: (ok: boolean) => void = () => {};
+		const save = vi.fn(
+			() =>
+				new Promise<boolean>((resolve) => {
+					land = resolve;
+				})
+		);
+		const { form, isDirty, unsavedDialog } = setup({ timezone: 'UTC', fromName: 'Owlat' }, save);
+		await settle();
+
+		form.fromName = 'Owlat Team';
+		await settle();
+		h.guard?.({ fullPath: '/elsewhere' }, {}, vi.fn());
+
+		// Save, then an edit while the write is in flight.
+		const saving = unsavedDialog.confirmSave();
+		expect(unsavedDialog.isSavingBeforeLeave).toBe(true);
+		form.timezone = 'Europe/Berlin';
+		await settle();
+		land(true);
+		await saving;
+		await settle();
+
+		// The submitted draft landed, the newer edit did not: stay and ask again.
+		expect(isDirty.value).toBe(true);
+		expect(h.push).not.toHaveBeenCalled();
+		expect(unsavedDialog.showDialog).toBe(true);
+
+		// Saving the current draft leaves, once.
+		const again = unsavedDialog.confirmSave();
+		land(true);
+		await again;
+		expect(save).toHaveBeenLastCalledWith({ timezone: 'Europe/Berlin', fromName: 'Owlat Team' });
+		expect(isDirty.value).toBe(false);
+		expect(h.push).toHaveBeenCalledTimes(1);
+		expect(h.push).toHaveBeenCalledWith('/elsewhere');
+	});
+
+	it('stays on the page when the operator cancels while the dialog save runs', async () => {
+		let land: (ok: boolean) => void = () => {};
+		const save = vi.fn(
+			() =>
+				new Promise<boolean>((resolve) => {
+					land = resolve;
+				})
+		);
+		const { form, isDirty, unsavedDialog } = setup({ timezone: 'UTC', fromName: 'Owlat' }, save);
+		await settle();
+
+		form.fromName = 'Owlat Team';
+		await settle();
+		h.guard?.({ fullPath: '/elsewhere' }, {}, vi.fn());
+
+		const saving = unsavedDialog.confirmSave();
+		unsavedDialog.cancelNavigation();
+		form.timezone = 'Europe/Berlin';
+		await settle();
+		land(true);
+		await saving;
+		await settle();
+
+		expect(h.push).not.toHaveBeenCalled();
+		expect(unsavedDialog.showDialog).toBe(false);
+		expect(isDirty.value).toBe(true);
+		// The newer edit still blocks leaving.
+		const next = vi.fn();
+		h.guard?.({ fullPath: '/elsewhere' }, {}, next);
+		expect(next).toHaveBeenCalledWith(false);
+	});
+
 	it('refuses to save when validation fails', async () => {
 		const source = ref<Row | null | undefined>({ timezone: 'UTC' });
 		const save = vi.fn(async () => true);

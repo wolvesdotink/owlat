@@ -10,7 +10,8 @@ import type { EditorBlock, VariableType } from '../../types';
  * wiring was exercised. EmailBuilder now owns a `renderOptions` ref and consumes
  * this composable, so these tests pin the contract the editor relies on:
  *
- *  - entering preview generates HTML, plain text, AMP and analysis together,
+ *  - entering preview generates HTML, plain text and analysis together, and
+ *    AMP as soon as a view asks for it,
  *  - the render options (custom CSS, base width, …) actually flow into the
  *    regenerated output while a preview is open (the core gap that was broken),
  *  - leaving and re-entering preview keeps everything consistent.
@@ -46,7 +47,7 @@ describe('usePreview', () => {
 		expect(preview.emailAnalysis.value).toBeNull();
 	});
 
-	it('generates html, plain text, AMP and analysis when entering preview', () => {
+	it('generates html, plain text and analysis on entry, and AMP on request', () => {
 		const { preview } = setup();
 		preview.togglePreviewMode();
 
@@ -54,7 +55,8 @@ describe('usePreview', () => {
 		expect(preview.generatedHtml.value).toContain('Hello preview world');
 		// Plain-text view is no longer permanently empty.
 		expect(preview.plainText.value).toContain('Hello preview world');
-		// AMP tab now has content to render.
+		// AMP is rendered once the AMP view (or export menu) asks for it.
+		preview.ampRequested.value = true;
 		expect(preview.ampHtml.value).toContain('⚡4email');
 		// HTML-compatibility analysis populates (drives the Size sub-tab).
 		expect(preview.emailAnalysis.value).not.toBeNull();

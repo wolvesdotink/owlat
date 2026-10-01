@@ -36,8 +36,12 @@ export interface ReplyQueueClarificationQuestion {
 	options?: string[];
 	/** Per-locale renderings of text + options (see utils/clarificationLocale). */
 	translations?: { locale: string; text: string; options?: string[] }[];
-	/** The owner's answer — present once answered. */
-	answer?: { value: string; at: number };
+	/**
+	 * The owner's answer, present once answered. Answer-memory writes one with
+	 * `source: 'memory'` before the owner sees the card: the card pre-picks it
+	 * with a "last time" tag, and the owner can change it.
+	 */
+	answer?: { value: string; at: number; source?: 'user' | 'memory' };
 }
 
 /** The clarification payload on a needs-reply thread (server shape). */

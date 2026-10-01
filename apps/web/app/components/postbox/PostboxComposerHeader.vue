@@ -1,29 +1,26 @@
 <script setup lang="ts">
 /**
- * Composer title bar — the draft's subject (or "New message" until one is
- * typed) plus the two window controls every composer surface carries.
- *
- * The left control is variant-dependent and the reason this is a component
- * rather than inline markup: the popup composer minimizes to the dock, while
- * the reader's INLINE reply box has nowhere to minimize to and instead offers
- * "open in popup", which the parent answers by promoting the live draft. Both
- * are requests — the parent owns the dock and the composer stack — so this
- * header only emits.
+ * Popup composer title bar: the draft's subject (or "New message" until one is
+ * typed) and the window controls. A reply also offers "Open in Answer mode",
+ * which the parent answers by saving the draft and moving it there (plan §02:
+ * the popup's maximise button opens a reply in Answer mode). Compose-new stays
+ * a popup, so it has no such control. The parent owns the dock and the route,
+ * so this header only emits.
  */
 
 defineProps<{
 	/** Draft subject; empty until the author types one. */
 	subject: string;
-	/** Compact in-place variant (the reader's inline reply box). */
-	inline?: boolean;
-	/** A promote is in flight (the debounced autosave is being flushed). */
-	promoting?: boolean;
+	/** A reply: offer "Open in Answer mode". */
+	canMaximise?: boolean;
+	/** The move to Answer mode is in flight (the autosave is being flushed). */
+	maximising?: boolean;
 }>();
 
 const emit = defineEmits<{
-	/** Inline variant only: expand this draft into a popup composer. */
-	promote: [];
-	/** Popup variant only: collapse to the composer dock. */
+	/** Reply only: continue this draft in Answer mode. */
+	maximise: [];
+	/** Collapse to the composer dock. */
 	minimize: [];
 	/** Throw the draft away. */
 	discard: [];
@@ -41,18 +38,18 @@ const { t } = useI18n();
 		</span>
 		<div class="flex items-center gap-1">
 			<button
-				v-if="inline"
+				v-if="canMaximise"
 				type="button"
 				class="p-1 hover:bg-bg-elevated rounded"
-				:title="t('components.postbox.postboxComposer.openInPopup')"
-				:aria-label="t('components.postbox.postboxComposer.openInPopup')"
-				:disabled="promoting"
-				@click="emit('promote')"
+				:title="t('components.postbox.postboxComposer.openInAnswerMode')"
+				:aria-label="t('components.postbox.postboxComposer.openInAnswerMode')"
+				:disabled="maximising"
+				data-testid="composer-maximise"
+				@click="emit('maximise')"
 			>
 				<Icon name="lucide:maximize-2" class="w-4 h-4" />
 			</button>
 			<button
-				v-else
 				type="button"
 				class="p-1 hover:bg-bg-elevated rounded"
 				:title="t('components.postbox.postboxComposer.minimize')"

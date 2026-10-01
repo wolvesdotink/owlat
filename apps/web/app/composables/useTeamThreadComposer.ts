@@ -21,7 +21,7 @@
 import { readonly, ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 import type { BackendOperationResult } from '~/composables/useBackendOperation';
-import { isApproveAlreadyHandled } from '~/composables/useReviewApproveUndo';
+import { approveUndoWindow, isApproveAlreadyHandled } from '~/composables/useReviewApproveUndo';
 import type { TeamThreadComposerTarget } from '~/utils/composerTarget';
 import {
 	GENERIC_TEAMMATE_NAME,
@@ -45,6 +45,12 @@ interface TeamThreadComposerOps {
 	) => Promise<OperationResult>;
 	sendFollowUp: (reply: TeamThreadReply) => Promise<OperationResult>;
 	takeOver: (messageId: Id<'inboundMessages'>) => Promise<OperationResult>;
+	/**
+	 * An approve the server holds for its undo window (`undo.sendAt`): the page
+	 * arms the "Approved · Undo" countdown, which then stands in for the
+	 * "Reply sent" toast. Without it the toast is the plain one.
+	 */
+	armApproveUndo?: (messageId: Id<'inboundMessages'>, sendAt: number) => void;
 }
 
 interface TeamThreadComposerSources {
@@ -101,7 +107,9 @@ export function useTeamThreadComposer(
 			? await ops.approve(messageId)
 			: await ops.saveAndApprove(messageId, reply);
 		if (!result.ok || refused(result.result)) return null;
-		showToast(t('dashboard.inbox.detail.replySentToast'));
+		const undo = approveUndoWindow(result.result);
+		if (undo && ops.armApproveUndo) ops.armApproveUndo(messageId, undo.sendAt);
+		else showToast(t('dashboard.inbox.detail.replySentToast'));
 		return 'reply';
 	}
 

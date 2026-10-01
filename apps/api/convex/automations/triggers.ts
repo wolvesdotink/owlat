@@ -109,12 +109,17 @@ async function fanoutTrigger(
 		if (!erased.matches(input, config)) continue;
 
 		// Skip if contact is already in a running instance of this automation.
+		// All three fields are index equalities, so the check reads at most one
+		// row however much completed/cancelled history the pair has, and the
+		// read set still covers any concurrent insert of a running row.
 		const existingRun = await ctx.db
 			.query('automationRuns')
-			.withIndex('by_automation_and_contact', (q) =>
-				q.eq('automationId', automation._id).eq('contactId', input.contactId)
+			.withIndex('by_automation_contact_status', (q) =>
+				q
+					.eq('automationId', automation._id)
+					.eq('contactId', input.contactId)
+					.eq('status', 'running')
 			)
-			.filter((q) => q.eq(q.field('status'), 'running'))
 			.first();
 		if (existingRun) continue;
 

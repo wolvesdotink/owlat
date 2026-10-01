@@ -200,6 +200,7 @@ const handleBack = () => {
 // persists the open step config before navigating.
 const {
 	showDialog: showLeaveDialog,
+	isSavingBeforeLeave,
 	confirmDiscard: confirmLeaveDiscard,
 	confirmSave: confirmLeaveSave,
 	cancelNavigation: cancelLeave,
@@ -951,6 +952,7 @@ onUnmounted(() => {
 		<!-- Unsaved Changes Dialog — leaving the page with unsaved step edits -->
 		<UnsavedChangesDialog
 			:show="showLeaveDialog"
+			:saving="isSavingBeforeLeave"
 			@close="cancelLeave"
 			@discard="confirmLeaveDiscard"
 			@save="confirmLeaveSave"

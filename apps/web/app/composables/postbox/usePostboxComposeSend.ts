@@ -1,5 +1,5 @@
 /**
- * Send (and promotion's flush) for the composer, split out of
+ * Send (and the flush before Answer mode) for the composer, split out of
  * `usePostboxCompose` for the file-size ratchet. What lives here is the
  * persistence contract those two stand on:
  *
@@ -43,7 +43,7 @@ export type ComposeDraftNotice =
 	| 'missing'
 	/** The latest changes did not save, so Send stopped. */
 	| 'not_sent'
-	/** The latest changes did not save (promotion, the seal re-check). */
+	/** The latest changes did not save (the move to Answer mode, the seal re-check). */
 	| 'not_saved'
 	/** Every save landed, but the fields kept changing under them. */
 	| 'still_changing';
@@ -191,8 +191,9 @@ export function usePostboxComposeSend(o: ComposeSendOptions) {
 	}
 
 	/**
-	 * Save the current snapshot and hand back the row id, for promoting an
-	 * inline reply (the popup reopens the SAME row) and the seal re-check.
+	 * Save the current snapshot and hand back the row id, for a popup reply
+	 * moving to Answer mode (which reopens the SAME row), Answer mode's own
+	 * saves, and the seal re-check.
 	 * `ok: false` means nothing may be assumed saved; the reason is on screen.
 	 */
 	async function flush(): Promise<BackendOperationResult<Id<'mailDrafts'> | null>> {

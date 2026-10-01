@@ -60,6 +60,7 @@ const {
 
 	// Unsaved-changes guard
 	showUnsavedChangesDialog,
+	isSavingBeforeLeave,
 	hasUnsavedChanges,
 	confirmDiscard,
 	confirmSave,
@@ -957,6 +958,7 @@ const shownCapacityPlan = computed(() => {
 		<!-- Unsaved Changes Dialog — leaving the page (Back / any navigation) -->
 		<UnsavedChangesDialog
 			:show="showUnsavedChangesDialog"
+			:saving="isSavingBeforeLeave"
 			@close="cancelNavigation"
 			@discard="confirmDiscard"
 			@save="confirmSave"

@@ -75,3 +75,80 @@ export function answerItemMatches(
 	if (filter === 'chat') return item.source === 'mention';
 	return item.source === 'mail' && item.mailboxId === filter;
 }
+
+// The queue on Answer mode (plan §07)
+// Opening the queue opens Answer mode on its first item; the queue steps from
+// item to item by replacing the route. An Answer mode route the queue drives
+// carries `?queue=<filter>` (the same values as `?in=`), so a reload lands back
+// in the queue on the same item.
+
+/** Where an item is answered: a Postbox message or a Team inbox thread. */
+export type AnswerModeTarget =
+	| { kind: 'mail'; messageId: string }
+	| { kind: 'team'; threadId: string; messageId: string };
+
+/** The slice of an Answer queue item the routing reads. */
+export type AnswerRoutable =
+	| { source: 'mail'; row: { kind?: string; messageId: string } }
+	| { source: 'team'; entry: { message: { _id: string }; thread: { _id: string } | null } }
+	| { source: 'mention' };
+
+/**
+ * Where Answer mode answers `item`: a Postbox row's message, a team draft's
+ * thread. Null for a chat mention and a team draft whose thread is gone.
+ */
+export function answerModeTarget(item: AnswerRoutable): AnswerModeTarget | null {
+	if (item.source === 'mail') return { kind: 'mail', messageId: item.row.messageId };
+	if (item.source === 'team') {
+		const thread = item.entry.thread;
+		return thread
+			? { kind: 'team', threadId: thread._id, messageId: item.entry.message._id }
+			: null;
+	}
+	return null;
+}
+
+/**
+ * Does the queue open `item` in Answer mode, or show it as a card on the queue
+ * page? A follow-up reminder stays a card: we are waiting on them, and its one
+ * verb is Done (writing a nudge opens Answer mode from the card).
+ */
+export function opensInAnswerMode(item: AnswerRoutable): boolean {
+	if (item.source === 'mail' && item.row.kind === 'followup') return false;
+	return answerModeTarget(item) !== null;
+}
+
+/** The Answer mode route of `target` while the queue (filtered to `filter`) drives it. */
+export function answerQueueItemHref(target: AnswerModeTarget, filter: string): string {
+	const queue = `queue=${encodeURIComponent(filter)}`;
+	if (target.kind === 'mail') {
+		return `/dashboard/answer/m/${encodeURIComponent(target.messageId)}?${queue}`;
+	}
+	return `/dashboard/answer/t/${encodeURIComponent(target.threadId)}?message=${encodeURIComponent(
+		target.messageId
+	)}&${queue}`;
+}
+
+/** The queue page itself, filtered to `filter`. */
+export function answerQueueIndexHref(filter: string): string {
+	return filter === 'all'
+		? '/dashboard/answer'
+		: `/dashboard/answer?in=${encodeURIComponent(filter)}`;
+}
+
+/**
+ * Does `target` name the Answer mode page at `path` (with its `message`
+ * query)? A Postbox route names the message; a team route names the thread,
+ * and the message too when the URL picked one.
+ */
+export function answerTargetMatchesRoute(
+	target: AnswerModeTarget,
+	route: { path: string; query: Record<string, unknown> }
+): boolean {
+	if (target.kind === 'mail') {
+		return route.path === `/dashboard/answer/m/${encodeURIComponent(target.messageId)}`;
+	}
+	if (route.path !== `/dashboard/answer/t/${encodeURIComponent(target.threadId)}`) return false;
+	const message = route.query['message'];
+	return typeof message !== 'string' || message === target.messageId;
+}

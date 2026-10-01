@@ -4,7 +4,6 @@
  * Each entry holds a one-time seed for usePostboxCompose (ComposerSeed).
  */
 
-import type { Id } from '@owlat/api/dataModel';
 import type { ComposerSeed } from './usePostboxCompose';
 
 /**
@@ -23,44 +22,13 @@ export type ComposerSpec = ComposerSeed &
 		minimized: boolean;
 	};
 
-export type InlineComposeKind = 'reply' | 'replyAll' | 'forward';
-
-/**
- * Seed for the reader's inline reply box (PostboxInlineReply) — the same
- * one-time compose seed as a popup, minus the stack bookkeeping. `key` changes
- * whenever the seed changes so the inline composer remounts and re-seeds.
- */
-export type InlineComposeSpec = ComposerSeed &
-	ReplyAllHint & {
-		key: string;
-		kind: InlineComposeKind;
-	};
-
-/**
- * Live field values handed up when an inline composer is promoted to a popup.
- * The popup reopens the SAME draft (autosave was flushed first), and the live
- * values seed it so nothing typed in the last debounce window flashes stale.
- */
-export interface ComposerPromotePayload {
-	draftId: Id<'mailDrafts'> | null;
-	toAddresses: string[];
-	ccAddresses: string[];
-	bccAddresses: string[];
-	subject: string;
-	bodyHtml: string;
-}
-
 const MAX_COMPOSERS = 3;
 
 export function usePostboxComposerStack() {
 	const state = useState<ComposerSpec[]>('postbox:composer-stack', () => []);
-	// Id of the composer currently promoted to the centered focus surface, or
-	// null when every composer is in its normal popup/dock frame. Only one
-	// composer can hold focus at a time.
-	const focusedId = useState<string | null>('postbox:composer-focused', () => null);
 
-	// The composer a "focus compose" chord acts on: the newest still-open
-	// (non-minimized) composer, or null when none is expanded.
+	// The newest still-open (non-minimized) composer, or null when none is
+	// expanded (the mobile tab bar hides while one is).
 	const activeComposerId = computed<string | null>(() => {
 		for (let i = state.value.length - 1; i >= 0; i--) {
 			const c = state.value[i]!;
@@ -85,13 +53,10 @@ export function usePostboxComposerStack() {
 	}
 
 	function close(id: string) {
-		if (focusedId.value === id) focusedId.value = null;
 		state.value = state.value.filter((c) => c.id !== id);
 	}
 
 	function minimize(id: string) {
-		// Minimizing docks the composer, so it can no longer hold the focus surface.
-		if (focusedId.value === id) focusedId.value = null;
 		state.value = state.value.map((c) => (c.id === id ? { ...c, minimized: true } : c));
 	}
 
@@ -107,40 +72,12 @@ export function usePostboxComposerStack() {
 		state.value = [...state.value.filter((c) => c.id !== id), { ...spec, minimized: false }];
 	}
 
-	/** Promote a composer to the centered distraction-free surface. */
-	function focus(id: string) {
-		const spec = state.value.find((c) => c.id === id);
-		if (!spec || spec.minimized) return;
-		focusedId.value = id;
-	}
-
-	/** Demote the focused composer back to its popup frame. */
-	function unfocus() {
-		focusedId.value = null;
-	}
-
-	/**
-	 * Toggle the focus surface for the active composer (the Cmd-Shift-F chord).
-	 * Focusing an already-focused composer demotes it; otherwise the newest open
-	 * composer is promoted. No-op when nothing is open.
-	 */
-	function toggleFocusActive() {
-		const id = activeComposerId.value;
-		if (!id) return;
-		if (focusedId.value === id) unfocus();
-		else focus(id);
-	}
-
 	return {
 		state,
-		focusedId,
 		activeComposerId,
 		open,
 		close,
 		minimize,
 		bringToFront,
-		focus,
-		unfocus,
-		toggleFocusActive,
 	};
 }

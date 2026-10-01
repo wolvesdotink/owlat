@@ -697,6 +697,264 @@ describe('codeWorkTasks.reclaimStale', () => {
 	});
 });
 
+// ============ cancellation + attempt fencing (#934) ============
+
+/** Insert a queued task and claim it, returning the id and the claimed attempt. */
+async function seedClaimed(
+	t: ReturnType<typeof convexTest>,
+	overrides: Record<string, unknown> = {}
+): Promise<{ taskId: Id<'codeWorkTasks'>; attempt: number }> {
+	let taskId!: Id<'codeWorkTasks'>;
+	await t.run(async (ctx) => {
+		taskId = await ctx.db.insert(
+			'codeWorkTasks',
+			createTestCodeWorkTask({ status: 'queued', attempts: 0, maxAttempts: 3, ...overrides })
+		);
+	});
+	const claimed = await t.mutation(internal.codeWorkTasks.claim, { taskId });
+	expect(claimed).toMatchObject({ claimed: true, mayRunAgent: true });
+	return { taskId, attempt: (claimed as { attempt: number }).attempt };
+}
+
+async function readTask(t: ReturnType<typeof convexTest>, taskId: Id<'codeWorkTasks'>) {
+	const task = await t.run(async (ctx) => await ctx.db.get(taskId));
+	return task!;
+}
+
+describe('codeWorkTasks cancellation is terminal for the worker', () => {
+	it('keeps a task cancelled during the agent run from moving to testing', async () => {
+		const t = convexTest(schema, modules);
+		const { taskId, attempt } = await seedClaimed(t);
+
+		await t.mutation(api.codeWorkTasks.cancel, { taskId });
+		const verdict = await t.mutation(internal.codeWorkTasks.markTesting, { taskId, attempt });
+
+		expect(verdict).toEqual({ ok: false, reason: 'cancelled' });
+		const task = await readTask(t, taskId);
+		expect(task.status).toBe('failed');
+		expect(task.errorMessage).toBe('Cancelled by user');
+		expect(task.cancelledAt).toBeTypeOf('number');
+	});
+
+	it('refuses the pre-push checkpoint once the task is cancelled during tests', async () => {
+		const t = convexTest(schema, modules);
+		const { taskId, attempt } = await seedClaimed(t);
+		await t.mutation(internal.codeWorkTasks.markTesting, { taskId, attempt });
+
+		await t.mutation(api.codeWorkTasks.cancel, { taskId });
+		expect(await t.query(internal.codeWorkTasks.checkAttempt, { taskId, attempt })).toEqual({
+			ok: false,
+			reason: 'cancelled',
+		});
+		const verdict = await t.mutation(internal.codeWorkTasks.recordPublication, {
+			taskId,
+			attempt,
+			branch: 'code-worker/x',
+			commitSha: 'abc123',
+		});
+
+		expect(verdict).toEqual({ ok: false, reason: 'cancelled' });
+		const task = await readTask(t, taskId);
+		expect(task.status).toBe('failed');
+		expect(task.publishCommitSha).toBeUndefined();
+	});
+
+	it('keeps the cancelled outcome but records a PR published across the cancel', async () => {
+		const t = convexTest(schema, modules);
+		const { taskId, attempt } = await seedClaimed(t);
+		await t.mutation(internal.codeWorkTasks.markTesting, { taskId, attempt });
+
+		await t.mutation(api.codeWorkTasks.cancel, { taskId });
+		const verdict = await t.mutation(internal.codeWorkTasks.completeWithPR, {
+			taskId,
+			attempt,
+			prUrl: 'https://github.com/org/repo/pull/7',
+			testResults: 'ok',
+		});
+
+		expect(verdict).toEqual({ ok: false, reason: 'cancelled' });
+		const task = await readTask(t, taskId);
+		expect(task.status).toBe('failed');
+		expect(task.errorMessage).toBe('Cancelled by user');
+		expect(task.prUrl).toBe('https://github.com/org/repo/pull/7');
+	});
+
+	it('never starts a task cancelled while queued', async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		let taskId!: Id<'codeWorkTasks'>;
+		await t.run(async (ctx) => {
+			taskId = await ctx.db.insert('codeWorkTasks', createTestCodeWorkTask({ status: 'queued' }));
+		});
+
+		await t.mutation(api.codeWorkTasks.cancel, { taskId });
+
+		expect(await t.query(internal.codeWorkTasks.getNextQueued, { now })).toBeNull();
+		expect(await t.mutation(internal.codeWorkTasks.claim, { taskId, now })).toEqual({
+			claimed: false,
+		});
+		expect((await readTask(t, taskId)).status).toBe('failed');
+	});
+
+	it('holds a previous-release worker that sends no attempt to the cancellation', async () => {
+		const t = convexTest(schema, modules);
+		const { taskId } = await seedClaimed(t);
+
+		await t.mutation(api.codeWorkTasks.cancel, { taskId });
+		await t.mutation(internal.codeWorkTasks.updateBranch, { taskId, branch: 'code-worker/x' });
+		await t.mutation(internal.codeWorkTasks.markTesting, { taskId });
+		await t.mutation(internal.codeWorkTasks.completeWithPR, {
+			taskId,
+			prUrl: 'https://github.com/org/repo/pull/8',
+		});
+		const failed = await t.mutation(internal.codeWorkTasks.markFailed, {
+			taskId,
+			errorMessage: 'late failure',
+		});
+
+		expect(failed).toMatchObject({ retried: false, ignored: 'cancelled' });
+		const task = await readTask(t, taskId);
+		expect(task.status).toBe('failed');
+		expect(task.errorMessage).toBe('Cancelled by user');
+		expect(task.branch).toBeUndefined();
+	});
+
+	it('does not let an old attempt move or fail the attempt that superseded it', async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		const { taskId, attempt: first } = await seedClaimed(t);
+
+		// Attempt 1 is presumed dead: a reclaim requeues it and attempt 2 takes over.
+		await t.mutation(internal.codeWorkTasks.reclaimStale, { now });
+		const second = await t.mutation(internal.codeWorkTasks.claim, {
+			taskId,
+			now: now + CODE_TASK_RETRY_DELAYS_MS[0],
+		});
+		expect(second).toMatchObject({ claimed: true, attempt: first + 1 });
+
+		// Attempt 1 wakes up and reports every step it would have taken.
+		const late = { taskId, attempt: first };
+		expect(await t.mutation(internal.codeWorkTasks.markTesting, late)).toEqual({
+			ok: false,
+			reason: 'stale',
+		});
+		expect(
+			await t.mutation(internal.codeWorkTasks.recordPublication, {
+				...late,
+				branch: 'code-worker/x',
+				commitSha: 'old',
+			})
+		).toEqual({ ok: false, reason: 'stale' });
+		expect(
+			await t.mutation(internal.codeWorkTasks.completeWithPR, {
+				...late,
+				prUrl: 'https://github.com/org/repo/pull/9',
+			})
+		).toEqual({ ok: false, reason: 'stale' });
+		expect(
+			await t.mutation(internal.codeWorkTasks.markFailed, { ...late, errorMessage: 'old run' })
+		).toMatchObject({ retried: false, ignored: 'stale' });
+
+		const task = await readTask(t, taskId);
+		expect(task.status).toBe('running');
+		expect(task.attempts).toBe(first + 1);
+		expect(task.prUrl).toBeUndefined();
+		expect(task.publishCommitSha).toBeUndefined();
+	});
+});
+
+// ============ publication checkpoint + resumable acknowledgement (#936) ============
+
+describe('codeWorkTasks publication checkpoint', () => {
+	it('records the branch, commit and test output before the push', async () => {
+		const t = convexTest(schema, modules);
+		const { taskId, attempt } = await seedClaimed(t);
+
+		const verdict = await t.mutation(internal.codeWorkTasks.recordPublication, {
+			taskId,
+			attempt,
+			branch: 'code-worker/x',
+			commitSha: 'abc123',
+			testResults: 'All tests passed',
+		});
+
+		expect(verdict).toEqual({ ok: true });
+		const task = await readTask(t, taskId);
+		expect(task).toMatchObject({
+			status: 'running',
+			branch: 'code-worker/x',
+			publishCommitSha: 'abc123',
+			testResults: 'All tests passed',
+		});
+	});
+
+	it('accepts a repeated acknowledgement of the same PR and nothing else', async () => {
+		const t = convexTest(schema, modules);
+		const { taskId, attempt } = await seedClaimed(t);
+		const prUrl = 'https://github.com/org/repo/pull/10';
+
+		expect(
+			await t.mutation(internal.codeWorkTasks.completeWithPR, { taskId, attempt, prUrl })
+		).toEqual({ ok: true });
+		// The first response was lost; the worker repeats the acknowledgement.
+		expect(
+			await t.mutation(internal.codeWorkTasks.completeWithPR, { taskId, attempt, prUrl })
+		).toEqual({ ok: true });
+		expect(
+			await t.mutation(internal.codeWorkTasks.completeWithPR, {
+				taskId,
+				attempt,
+				prUrl: 'https://github.com/org/repo/pull/11',
+			})
+		).toEqual({ ok: false, reason: 'finished' });
+
+		const task = await readTask(t, taskId);
+		expect(task.status).toBe('review');
+		expect(task.prUrl).toBe(prUrl);
+	});
+
+	it('gives a published last attempt one reconcile-only claim instead of failing it', async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		const { taskId, attempt } = await seedClaimed(t, { attempts: 2 });
+		expect(attempt).toBe(3);
+		await t.mutation(internal.codeWorkTasks.recordPublication, {
+			taskId,
+			attempt,
+			branch: 'code-worker/x',
+			commitSha: 'abc123',
+		});
+
+		// The worker lost the backend after pushing; the reclaim requeues the row.
+		await t.mutation(internal.codeWorkTasks.reclaimStale, { now });
+		expect((await readTask(t, taskId)).status).toBe('queued');
+
+		const grace = await t.mutation(internal.codeWorkTasks.claim, {
+			taskId,
+			now: now + CODE_TASK_RETRY_DELAYS_MS[1],
+		});
+		expect(grace).toEqual({ claimed: true, attempt: 4, mayRunAgent: false });
+
+		// If that claim cannot confirm the publication either, the task ends.
+		const outcome = await t.mutation(internal.codeWorkTasks.markFailed, {
+			taskId,
+			attempt: 4,
+			errorMessage: 'publication not found',
+		});
+		expect(outcome).toMatchObject({ status: 'failed', retried: false, attempts: 4 });
+	});
+
+	it('still fails an exhausted task that never reached publication', async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		const { taskId } = await seedClaimed(t, { attempts: 2 });
+
+		await t.mutation(internal.codeWorkTasks.reclaimStale, { now });
+
+		expect((await readTask(t, taskId)).status).toBe('failed');
+	});
+});
+
 // ============ createFromInbound (trust gate + code-agent guard) ============
 
 describe('codeWorkTasks.createFromInbound', () => {

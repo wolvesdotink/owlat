@@ -46,6 +46,7 @@ export interface UseSettingsFormOptions<Row, F extends SettingsFormShape> {
 /** The leave guard, ready to bind to `UnsavedChangesDialog`. */
 export interface SettingsUnsavedDialog {
 	showDialog: boolean;
+	isSavingBeforeLeave: boolean;
 	cancelNavigation: () => void;
 	confirmDiscard: () => void;
 	confirmSave: () => Promise<void>;
@@ -147,6 +148,7 @@ export function useSettingsForm<Row, F extends SettingsFormShape>(
 
 	const unsavedDialog = reactive({
 		showDialog: guard.showDialog,
+		isSavingBeforeLeave: guard.isSavingBeforeLeave,
 		cancelNavigation: guard.cancelNavigation,
 		confirmDiscard: guard.confirmDiscard,
 		confirmSave: guard.confirmSave,

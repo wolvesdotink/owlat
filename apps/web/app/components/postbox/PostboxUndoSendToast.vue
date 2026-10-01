@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import UiUndoCountdownToast from '~/components/ui/UndoCountdownToast.vue';
+import { useAnswerModeNav } from '~/composables/useAnswerMode';
 
 const emit = defineEmits<{
 	/** The window ran out without an undo: the message is on its way. */
@@ -14,6 +15,7 @@ const { t } = useI18n();
 
 const { state, dismiss, runUndo } = usePostboxUndoSend();
 const stack = usePostboxComposerStack();
+const answerNav = useAnswerModeNav();
 // Offline-queued sends arm this toast with a synthetic `outbox:` token;
 // undo for those un-queues on-device instead of asking the server to
 // cancel.
@@ -38,7 +40,7 @@ function message(seconds: number): string {
  * The reversal, run by `runUndo` after it has already closed the window, so a
  * second click cannot cancel the send (and reopen the draft) twice.
  */
-async function undoSend({ undoToken, mailboxId }: typeof state.value) {
+async function undoSend({ undoToken, mailboxId, replyToMessageId }: typeof state.value) {
 	if (!undoToken) return;
 	if (isQueuedSendToken(undoToken)) {
 		// Offline queue: undo = un-queue. Reopen the composer seeded from the
@@ -64,9 +66,12 @@ async function undoSend({ undoToken, mailboxId }: typeof state.value) {
 		return;
 	}
 	const result = await cancelPending.run({ undoToken });
-	// Reopen the recovered draft so the user lands back in the editor.
+	// Reopen the recovered draft so the user lands back in the editor: a reply
+	// in Answer mode, where replies are written; anything else in a popup.
 	if (result.ok && result.result.ok && mailboxId) {
-		stack.open({ mailboxId, draftId: result.result.draftId as Id<'mailDrafts'> });
+		const draftId = result.result.draftId as Id<'mailDrafts'>;
+		if (replyToMessageId) void answerNav.open(replyToMessageId, { draftId });
+		else stack.open({ mailboxId, draftId });
 	}
 }
 
