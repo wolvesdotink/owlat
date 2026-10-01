@@ -122,7 +122,7 @@ function handleCreated(templateId: Id<'emailTemplates'>) {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<div class="mx-auto w-full max-w-page p-6 lg:p-8">
 		<UiPageHeader
 			:title="t('dashboard.send.index.title')"
 			:description="t('dashboard.send.index.subtitle')"
@@ -156,6 +156,7 @@ function handleCreated(templateId: Id<'emailTemplates'>) {
 				:model-value="typeFilter"
 				:options="filterOptions"
 				:aria-label="t('dashboard.send.index.typeFilterLabel')"
+				fit="content"
 				class="w-max"
 				@update:model-value="typeFilter = parseTemplateTypeFilter($event)"
 			>

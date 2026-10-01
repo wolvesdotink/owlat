@@ -18,6 +18,10 @@ const SIDE_PANEL_QUERY = '(min-width: 1280px)';
  * viewport, because the same reader also renders in narrower hosts (the Today
  * overlay, the search preview) where a side column would crush the email —
  * there, and in a narrow pane, the panel simply sits below the conversation.
+ * The grid also waits for the panel itself (`:has(> .pbx-thread-discussion)`):
+ * "open" is decided before the discussion query answers, and a two-column grid
+ * with nothing pinned to column 2 auto-placed the whole conversation into the
+ * 20rem side column (on every load, and for good when the query answers null).
  */
 export function usePostboxThreadDiscussionPanel() {
 	const { isEnabled } = useFeatureFlag();
@@ -28,7 +32,7 @@ export function usePostboxThreadDiscussionPanel() {
 	const isOpen = computed(() => isAvailable.value && (choice.value ?? isWide.value));
 	const articleClass = computed(() =>
 		isOpen.value
-			? '@min-[52rem]:max-w-7xl @min-[52rem]:grid @min-[52rem]:grid-cols-[minmax(0,1fr)_20rem] @min-[52rem]:gap-x-6 @min-[52rem]:items-start'
+			? '@min-[52rem]:has-[>.pbx-thread-discussion]:max-w-7xl @min-[52rem]:has-[>.pbx-thread-discussion]:grid @min-[52rem]:grid-cols-[minmax(0,1fr)_20rem] @min-[52rem]:gap-x-6 @min-[52rem]:items-start'
 			: ''
 	);
 

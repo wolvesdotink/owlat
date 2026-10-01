@@ -154,6 +154,30 @@ function isActive(to: string, exact: boolean): boolean {
 		</template>
 
 		<template v-else>
+			<!-- Knowledge is a fixed destination: it sits with the pinned rows, above
+			     the inbox tree, which grows with mail and used to push it below the
+			     fold on a laptop screen. -->
+			<NuxtLink
+				v-if="showKnowledge"
+				:to="KNOWLEDGE_HREF"
+				:aria-current="isActive(KNOWLEDGE_HREF, false) ? 'page' : undefined"
+				class="flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+				:class="
+					isActive(KNOWLEDGE_HREF, false)
+						? 'bg-(--surface-2-selected) text-text-primary'
+						: 'text-text-secondary hover:bg-(--surface-2-hover) hover:text-text-primary'
+				"
+				data-testid="shell-nav-knowledge"
+			>
+				<Icon
+					name="lucide:brain"
+					class="size-4.5 shrink-0"
+					:class="isActive(KNOWLEDGE_HREF, false) ? 'text-brand' : 'text-text-tertiary'"
+				/>
+				<span class="flex-1 truncate">{{
+					t('shared.dashboardNavigation.sections.knowledge')
+				}}</span>
+			</NuxtLink>
 			<div
 				v-if="inboxes.length > 0 || showTeamInbox"
 				class="mt-3 flex items-center justify-between pl-2 pr-1"
@@ -193,27 +217,6 @@ function isActive(to: string, exact: boolean): boolean {
 				<UiSkeleton class="h-4 w-full" />
 				<UiSkeleton class="h-4 w-3/4" />
 			</div>
-			<NuxtLink
-				v-if="showKnowledge"
-				:to="KNOWLEDGE_HREF"
-				:aria-current="isActive(KNOWLEDGE_HREF, false) ? 'page' : undefined"
-				class="mt-3 flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
-				:class="
-					isActive(KNOWLEDGE_HREF, false)
-						? 'bg-(--surface-2-selected) text-text-primary'
-						: 'text-text-secondary hover:bg-(--surface-2-hover) hover:text-text-primary'
-				"
-				data-testid="shell-nav-knowledge"
-			>
-				<Icon
-					name="lucide:brain"
-					class="size-4.5 shrink-0"
-					:class="isActive(KNOWLEDGE_HREF, false) ? 'text-brand' : 'text-text-tertiary'"
-				/>
-				<span class="flex-1 truncate">{{
-					t('shared.dashboardNavigation.sections.knowledge')
-				}}</span>
-			</NuxtLink>
 			<template v-if="extraItems.length > 0">
 				<div class="mt-3 px-2 text-2xs font-medium uppercase tracking-wider text-text-tertiary">
 					{{ t('components.shell.nav.more') }}

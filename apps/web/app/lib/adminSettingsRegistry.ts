@@ -101,8 +101,9 @@ export interface AdminEntry {
 	 */
 	readonly tabs?: boolean;
 	/**
-	 * Tables that need room (domains, cells) opt out of the settings shell's
-	 * reading width.
+	 * Tables and side-by-side layouts that need room (domains, cells, the
+	 * channel list with its overview, the email theme beside its preview) opt
+	 * out of the settings shell's reading width.
 	 */
 	readonly wide?: boolean;
 	/** Badge this entry with a live count when it is non-zero. */
@@ -211,7 +212,6 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 		titleKey: label('deliverability'),
 		icon: 'lucide:shield-check',
 		area: 'delivery',
-		wide: true,
 	},
 	{
 		id: 'webhooks',
@@ -374,6 +374,7 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 		titleKey: label('channels'),
 		icon: 'lucide:radio',
 		area: 'features',
+		wide: true,
 	},
 	{
 		id: 'forms',
@@ -395,6 +396,7 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 		titleKey: label('emailTheme'),
 		icon: 'lucide:palette',
 		area: 'features',
+		wide: true,
 	},
 	{
 		id: 'sealedMail',

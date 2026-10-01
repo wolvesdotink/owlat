@@ -91,6 +91,11 @@ describe('PostboxReaderMessage sender row', () => {
 		}
 	});
 
+	it('also wraps when the reader pane itself is narrow (a container query, not the viewport)', () => {
+		const row = mountCard(false).get('[data-testid="reader-message-sender-row"]');
+		expect(row.classes()).toContain('@max-lg:flex-wrap');
+	});
+
 	it('stays one line from sm up, as the desktop reader always was', () => {
 		const row = mountCard(false).get('[data-testid="reader-message-sender-row"]');
 		// An unconditional wrap made every expanded header a line taller at 1440px.

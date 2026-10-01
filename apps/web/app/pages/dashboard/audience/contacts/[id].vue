@@ -241,7 +241,7 @@ async function handleRemoveSuppression() {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<div class="mx-auto w-full max-w-page p-6 lg:p-8">
 		<!-- Back Navigation -->
 		<NuxtLink
 			to="/dashboard/audience/contacts"
@@ -404,7 +404,9 @@ async function handleRemoveSuppression() {
 							{{ t('dashboard.audience.contacts.detail.contactDetails') }}
 						</h2>
 
-						<div class="space-y-4">
+						<!-- Two columns once the main column is wide, so a label and its
+						     value stay close instead of floating in a 1000px card. -->
+						<div class="grid gap-4 2xl:grid-cols-2 2xl:gap-x-8">
 							<!-- Email -->
 							<div>
 								<label class="label">{{
@@ -524,7 +526,7 @@ async function handleRemoveSuppression() {
 						</h2>
 
 						<!-- Edit mode: one input per property -->
-						<div v-if="isEditing" class="space-y-4">
+						<div v-if="isEditing" class="grid gap-4 2xl:grid-cols-2 2xl:gap-x-8">
 							<div v-for="property in properties" :key="property._id">
 								<label class="label">{{ property.label }}</label>
 								<select
@@ -552,12 +554,13 @@ async function handleRemoveSuppression() {
 							</div>
 						</div>
 
-						<!-- Read mode -->
-						<div v-else class="space-y-4">
+						<!-- Read mode: label and value share a row; two columns on wide
+						     screens keep them within reading distance. -->
+						<div v-else class="grid gap-x-8 gap-y-4 2xl:grid-cols-2">
 							<div
 								v-for="property in properties"
 								:key="property._id"
-								class="flex items-center justify-between py-2 border-b border-border-subtle last:border-b-0"
+								class="flex items-center justify-between gap-4 py-2 border-b border-border-subtle last:border-b-0 2xl:[&:nth-last-child(2):nth-child(odd)]:border-b-0"
 							>
 								<span class="text-text-secondary">{{ property.label }}</span>
 								<span
@@ -583,9 +586,13 @@ async function handleRemoveSuppression() {
 									{{ t('dashboard.audience.contacts.detail.teamNote.subtitle') }}
 								</p>
 							</div>
-							<UiButton size="sm" :loading="isSavingNotes" @click="saveNotes">{{
-								t('dashboard.audience.contacts.detail.teamNote.save')
-							}}</UiButton>
+							<UiButton
+								size="sm"
+								class="shrink-0 whitespace-nowrap"
+								:loading="isSavingNotes"
+								@click="saveNotes"
+								>{{ t('dashboard.audience.contacts.detail.teamNote.save') }}</UiButton
+							>
 						</div>
 						<UiTextarea
 							v-model="notesDraft"

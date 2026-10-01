@@ -10171,7 +10171,7 @@
 				"activeAliases": "Aktive Aliasse",
 				"addAlias": "Alias hinzufügen",
 				"addAliasOperation": "Alias hinzufügen",
-				"aliasPlaceholder": "marcel+sales{'@'}hl.camp",
+				"aliasPlaceholder": "you+sales{'@'}example.com",
 				"empty": "Noch keine Aliasse.",
 				"noMailbox": "Kein Postfach konfiguriert.",
 				"pageTitle": "Aliasse — Owlat",
@@ -12014,7 +12014,8 @@
 				"templates": "Vorlagen",
 				"topics": "Themen",
 				"transactional": "Transaktional",
-				"webhooks": "Webhooks"
+				"webhooks": "Webhooks",
+				"knowledgeGraph": "Graph-Explorer"
 			},
 			"sections": {
 				"audience": "Zielgruppe",
@@ -12024,7 +12025,12 @@
 				"workspace": "Workspace",
 				"answer": "Antwortliste",
 				"inboxes": "Alle Postfächer",
-				"teamInbox": "Team-Postfach"
+				"teamInbox": "Team-Postfach",
+				"files": "Dateien",
+				"visualizations": "Visualisierungen",
+				"chat": "Chat",
+				"assistant": "Assistent",
+				"knowledge": "Wissen"
 			}
 		},
 		"campaignAttention": {

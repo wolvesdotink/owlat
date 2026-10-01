@@ -535,10 +535,10 @@ const shownCapacityPlan = computed(() => {
 									v-if="selectedTemplate"
 									class="mt-2 p-4 bg-bg-surface shadow-surface-1 rounded-lg"
 								>
-									<div class="flex items-center justify-between">
-										<div class="flex items-center gap-3">
+									<div class="flex flex-wrap items-center justify-between gap-3">
+										<div class="flex min-w-0 flex-1 basis-56 items-center gap-3">
 											<div
-												class="w-10 h-10 rounded-lg bg-brand/20 flex items-center justify-center text-brand"
+												class="w-10 h-10 shrink-0 rounded-lg bg-brand/20 flex items-center justify-center text-brand"
 											>
 												<Icon name="lucide:mail" class="w-5 h-5" />
 											</div>
@@ -556,7 +556,7 @@ const shownCapacityPlan = computed(() => {
 										</div>
 										<NuxtLink
 											:to="`/dashboard/send/emails/${selectedTemplate._id}/edit`"
-											class="text-brand hover:text-brand-hover flex items-center gap-1 text-sm"
+											class="text-brand hover:text-brand-hover flex shrink-0 items-center gap-1 text-sm whitespace-nowrap"
 											target="_blank"
 											@click="
 												onEditEmailClick(
@@ -625,8 +625,8 @@ const shownCapacityPlan = computed(() => {
 
 					<!-- Archive Settings Card -->
 					<div class="card p-6">
-						<div class="flex items-center justify-between">
-							<div>
+						<div class="flex items-center justify-between gap-4">
+							<div class="min-w-0">
 								<h3 class="text-lg font-semibold text-text-primary">
 									{{ t('dashboard.campaigns.detail.edit.archive.title') }}
 								</h3>
@@ -636,6 +636,7 @@ const shownCapacityPlan = computed(() => {
 							</div>
 							<UiSwitch
 								v-model="archiveEnabled"
+								class="shrink-0"
 								:disabled="isScheduled"
 								:label="t('dashboard.campaigns.detail.edit.archive.switchLabel')"
 							/>
@@ -741,8 +742,8 @@ const shownCapacityPlan = computed(() => {
 
 					<!-- Test Email Card -->
 					<div class="card p-6">
-						<div class="flex items-center justify-between">
-							<div>
+						<div class="flex flex-wrap items-center justify-between gap-4">
+							<div class="min-w-0">
 								<h3 class="text-lg font-semibold text-text-primary">
 									{{ t('dashboard.campaigns.detail.edit.test.title') }}
 								</h3>
@@ -750,7 +751,11 @@ const shownCapacityPlan = computed(() => {
 									{{ t('dashboard.campaigns.detail.edit.test.description') }}
 								</p>
 							</div>
-							<UiButton variant="secondary" class="gap-2" @click="isTestEmailModalOpen = true">
+							<UiButton
+								variant="secondary"
+								class="gap-2 shrink-0"
+								@click="isTestEmailModalOpen = true"
+							>
 								<Icon name="lucide:send-horizonal" class="w-4 h-4" />
 								{{ t('dashboard.campaigns.detail.edit.test.button') }}
 							</UiButton>
@@ -887,12 +892,14 @@ const shownCapacityPlan = computed(() => {
 						:audience-size="exactAudienceSize"
 					/>
 
-					<!-- Actions -->
-					<div class="flex items-center justify-between pt-4">
+					<!-- Actions. On a phone the three send actions take their own line
+					     (wrapping, right-aligned) instead of squeezing every label onto
+					     two lines and pushing Send now past the edge. -->
+					<div class="flex flex-wrap items-center justify-between gap-3 pt-4">
 						<UiButton variant="secondary" type="button" @click="handleBack">
 							{{ t('common.cancel') }}
 						</UiButton>
-						<div class="flex items-center gap-3">
+						<div class="flex flex-wrap items-center justify-end gap-3 ml-auto">
 							<!-- Save button for draft campaigns -->
 							<UiButton
 								variant="secondary"

@@ -6,6 +6,12 @@
  * All apps import this via index.css.
  */
 @theme {
+	/* === LAYOUT ===
+	 * The widest a work surface (a list, a table, a settings frame) grows before
+	 * it centres. Past ~1600px, rows stretch until their actions sit a screen
+	 * away from their titles. Use as `max-w-page`. */
+	--container-page: 100rem;
+
 	/* === BACKGROUNDS (neutral surface ladder — see dark.css/light.css) === */
 	--color-bg-deep: #f2f2f2;
 	--color-bg-base: var(--surface-1);

@@ -309,7 +309,7 @@ const loadPrevClicked = () => {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<div class="mx-auto w-full max-w-page p-6 lg:p-8">
 		<UiQueryBoundary
 			:loading="isLoading && !campaign"
 			:error="campaignError"

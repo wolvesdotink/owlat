@@ -86,7 +86,10 @@ const { t } = useI18n();
 		<template #iconLeft>
 			<Icon name="lucide:languages" class="w-4 h-4" />
 		</template>
-		{{ t('dashboard.send.transactional.detail.edit.translations') }}
+		<!-- Icon-only below 2xl, where the builder toolbar is short of room. -->
+		<span class="max-2xl:sr-only">{{
+			t('dashboard.send.transactional.detail.edit.translations')
+		}}</span>
 	</UiButton>
 	<!-- Awaiting review — no author-side action moves this forward, so the
 	     primary action is a disabled, honest state rather than "Publish". -->

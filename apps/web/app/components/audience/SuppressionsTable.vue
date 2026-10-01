@@ -52,12 +52,12 @@ const presentation = (reason: BlockReason) => suppressionReasonPresentation(reas
 		<thead>
 			<tr class="border-b border-border-subtle bg-bg-surface/50">
 				<th
-					class="text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-6 py-3"
+					class="text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-4 sm:px-6 py-3"
 				>
 					{{ t('dashboard.audience.suppressions.table.email') }}
 				</th>
 				<th
-					class="text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-6 py-3"
+					class="text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-6 py-3 hidden sm:table-cell"
 				>
 					{{ t('dashboard.audience.suppressions.table.reason') }}
 				</th>
@@ -72,9 +72,9 @@ const presentation = (reason: BlockReason) => suppressionReasonPresentation(reas
 					{{ t('dashboard.audience.suppressions.table.dateAdded') }}
 				</th>
 				<th
-					class="text-right text-xs font-medium text-text-tertiary uppercase tracking-wider px-6 py-3"
+					class="text-right text-xs font-medium text-text-tertiary uppercase tracking-wider px-4 sm:px-6 py-3"
 				>
-					{{ t('common.actions') }}
+					<span class="max-sm:sr-only">{{ t('common.actions') }}</span>
 				</th>
 			</tr>
 		</thead>
@@ -84,23 +84,35 @@ const presentation = (reason: BlockReason) => suppressionReasonPresentation(reas
 				:key="blockedEmail._id"
 				class="hover:bg-bg-surface/30 transition-colors"
 			>
-				<td class="px-6 py-4">
+				<td class="px-4 sm:px-6 py-4">
 					<div class="flex items-center gap-3">
-						<div class="p-2 rounded-lg bg-bg-surface flex items-center justify-center">
+						<div class="p-2 rounded-lg bg-bg-surface flex items-center justify-center shrink-0">
 							<Icon
 								:name="presentation(blockedEmail.reason).icon"
 								class="w-4 h-4 text-text-secondary"
 							/>
 						</div>
-						<span class="text-sm font-medium text-text-primary">
-							{{ blockedEmail.email }}
-						</span>
+						<div class="min-w-0">
+							<span class="block text-sm font-medium text-text-primary break-all sm:break-normal">
+								{{ blockedEmail.email }}
+							</span>
+							<!-- Below sm the Reason column is hidden (the email and the remove
+							     button need the width), so the badge rides under the address. -->
+							<span
+								:class="[
+									'sm:hidden mt-1 inline-flex items-center gap-1 whitespace-nowrap px-2 py-0.5 rounded-full text-xs font-medium border',
+									presentation(blockedEmail.reason).badge,
+								]"
+							>
+								{{ t(presentation(blockedEmail.reason).label) }}
+							</span>
+						</div>
 					</div>
 				</td>
-				<td class="px-6 py-4">
+				<td class="px-6 py-4 hidden sm:table-cell">
 					<span
 						:class="[
-							'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border',
+							'inline-flex items-center gap-1 whitespace-nowrap px-2 py-0.5 rounded-full text-xs font-medium border',
 							presentation(blockedEmail.reason).badge,
 						]"
 					>
@@ -110,7 +122,8 @@ const presentation = (reason: BlockReason) => suppressionReasonPresentation(reas
 				<td class="px-6 py-4 hidden md:table-cell">
 					<span
 						v-if="blockedEmail.notes"
-						class="text-sm text-text-secondary truncate max-w-[200px] block"
+						class="text-sm text-text-secondary truncate max-w-[200px] 2xl:max-w-sm block"
+						:title="blockedEmail.notes"
 					>
 						{{ blockedEmail.notes }}
 					</span>
@@ -128,11 +141,12 @@ const presentation = (reason: BlockReason) => suppressionReasonPresentation(reas
 						{{ formatDateTime(blockedEmail.createdAt) }}
 					</span>
 				</td>
-				<td class="px-6 py-4 text-right">
+				<td class="px-4 sm:px-6 py-4 text-right">
 					<UiButton
 						variant="ghost"
 						class="p-2 text-error hover:bg-error/10"
 						:title="t('dashboard.audience.suppressions.removeSuppression')"
+						:aria-label="t('dashboard.audience.suppressions.removeSuppression')"
 						@click="emit('remove', blockedEmail)"
 					>
 						<Icon name="lucide:trash-2" class="w-4 h-4" />

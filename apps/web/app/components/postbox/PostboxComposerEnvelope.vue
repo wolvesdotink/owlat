@@ -288,8 +288,11 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 			/>
 		</div>
 		<div class="flex items-start gap-2">
+			<!-- flex-1: without it the field is only as wide as its chips, and
+			     Cc/Bcc floated mid-row instead of sitting at the right edge. -->
 			<PostboxRecipientField
 				v-model="toAddresses"
+				class="flex-1 min-w-0"
 				:mailbox-id="mailboxId"
 				:label="t('components.postbox.postboxComposerEnvelope.to')"
 				field="to"
@@ -299,7 +302,7 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 				:seal-states="sealStates"
 				@move="moveRecipient($event, 'to')"
 			/>
-			<div class="flex items-center gap-2 text-xs pt-0.5">
+			<div class="flex flex-shrink-0 items-center gap-2 text-xs pt-0.5">
 				<button
 					v-if="!showCc"
 					type="button"
