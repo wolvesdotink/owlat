@@ -334,6 +334,7 @@
 			"assistantComposer": {
 				"hint": "Enter zum Senden · Umschalt+Enter für einen Zeilenumbruch · der Assistent kann deinen Workspace durchsuchen und Texte entwerfen",
 				"placeholder": "Frage den Assistenten alles…",
+				"sendFailed": "Senden hat nicht geklappt. Deine Frage ist noch da.",
 				"stop": "Generierung stoppen",
 				"unavailablePlaceholder": "Der Assistent ist nicht verfügbar"
 			},

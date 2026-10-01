@@ -334,6 +334,7 @@
 			"assistantComposer": {
 				"hint": "Enter to send · Shift+Enter for newline · the assistant can search your workspace and draft copy",
 				"placeholder": "Ask the assistant anything…",
+				"sendFailed": "Couldn't send. Your question is still here.",
 				"stop": "Stop generating",
 				"unavailablePlaceholder": "Assistant is unavailable"
 			},

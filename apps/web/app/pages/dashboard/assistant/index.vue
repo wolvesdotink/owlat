@@ -65,8 +65,15 @@ const examplePrompts = computed(() => [
 	t('dashboard.assistant.index.examplePrompts.reEngagement'),
 ]);
 
+// The composer owns the question until the backend accepts it, so an example
+// prompt goes through it too: a failed one stays there with Retry.
+const composerRef = ref<{
+	sendText: (text: string) => Promise<void>;
+	focus: () => void;
+} | null>(null);
+
 const onExample = (prompt: string) => {
-	void send(prompt);
+	void composerRef.value?.sendText(prompt);
 };
 
 // Deleting a chat is irreversible, so confirm before removing it.
@@ -276,7 +283,7 @@ const cancelRename = () => {
 				</div>
 			</div>
 
-			<AssistantComposer :streaming="streaming" @send="send" @stop="stop" />
+			<AssistantComposer ref="composerRef" :send="send" :streaming="streaming" @stop="stop" />
 		</section>
 
 		<!-- Delete confirmation — a removed chat and its messages cannot be recovered -->

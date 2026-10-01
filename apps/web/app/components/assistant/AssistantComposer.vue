@@ -1,13 +1,29 @@
 <script setup lang="ts">
-const props = defineProps<{ streaming?: boolean; disabled?: boolean }>();
-const emit = defineEmits<{ send: [text: string]; stop: [] }>();
+import { useAcknowledgedDraft } from '~/composables/useAcknowledgedDraft';
+
+const props = defineProps<{
+	/**
+	 * Delivers the question. An awaited callback rather than an event, because
+	 * the composer needs the answer: the question stays put until this resolves
+	 * `ok`, so a failed send is still there to retry (same contract as ChatInput).
+	 */
+	send: (text: string) => Promise<{ ok: boolean }>;
+	streaming?: boolean;
+	disabled?: boolean;
+}>();
+const emit = defineEmits<{ stop: [] }>();
 
 const { t } = useI18n();
 
 const text = ref('');
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
-const canSend = computed(() => text.value.trim().length > 0 && !props.disabled);
+const { isSending, submit } = useAcknowledgedDraft(text);
+// The last send was refused or failed. The operation has toasted it; this
+// keeps the way back (Retry) next to the question it is about.
+const failed = ref(false);
+
+const canSend = computed(() => text.value.trim().length > 0 && !props.disabled && !isSending.value);
 
 const grow = () => {
 	const ta = textareaRef.value;
@@ -16,19 +32,43 @@ const grow = () => {
 	ta.style.height = Math.min(ta.scrollHeight, 220) + 'px';
 };
 
-const submit = () => {
+const send = async () => {
 	if (!canSend.value) return;
-	emit('send', text.value.trim());
-	text.value = '';
-	nextTick(() => {
-		if (textareaRef.value) textareaRef.value.style.height = 'auto';
-	});
+	failed.value = false;
+	const outcome = await submit((snapshot) => props.send(snapshot.trim()));
+	if (!outcome) return;
+	failed.value = !outcome.ok;
+	nextTick(grow);
 };
+
+/**
+ * Send a ready-made question (an example prompt) through the same path as a
+ * typed one, so a failure leaves it here with Retry. A draft the member has
+ * already started is never replaced: the prompt is added below it instead, and
+ * nothing is sent until they press Send.
+ */
+const sendText = async (value: string) => {
+	if (isSending.value) return;
+	if (text.value.trim()) {
+		text.value = `${text.value.replace(/\s+$/, '')}\n${value}`;
+		nextTick(() => {
+			grow();
+			textareaRef.value?.focus();
+		});
+		return;
+	}
+	text.value = value;
+	await send();
+};
+
+const focus = () => textareaRef.value?.focus();
+
+defineExpose({ sendText, focus });
 
 const handleKeydown = (event: KeyboardEvent) => {
 	if (event.key === 'Enter' && !event.shiftKey) {
 		event.preventDefault();
-		submit();
+		void send();
 	}
 };
 </script>
@@ -73,10 +113,34 @@ const handleKeydown = (event: KeyboardEvent) => {
 				class="flex-shrink-0 w-10 h-10 p-0 rounded-xl"
 				:title="t('common.send')"
 				:aria-label="t('common.send')"
-				@click="submit"
+				:aria-busy="isSending || undefined"
+				data-testid="assistant-send"
+				@click="send"
 			>
-				<Icon name="lucide:send" class="w-4 h-4" />
+				<Icon
+					v-if="isSending"
+					name="lucide:loader-2"
+					class="w-4 h-4 animate-spin motion-reduce:animate-none"
+				/>
+				<Icon v-else name="lucide:send" class="w-4 h-4" />
 			</UiButton>
+		</div>
+		<div aria-live="polite">
+			<p
+				v-if="failed"
+				class="text-xs text-error mt-1.5 px-1 flex flex-wrap items-center gap-x-1.5"
+				data-testid="assistant-send-failed"
+			>
+				<span>{{ t('components.assistant.assistantComposer.sendFailed') }}</span>
+				<button
+					type="button"
+					class="font-medium underline underline-offset-2 rounded hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-60"
+					:disabled="!canSend"
+					@click="send"
+				>
+					{{ t('common.retry') }}
+				</button>
+			</p>
 		</div>
 		<p class="text-[11px] text-text-tertiary mt-1.5 px-1">
 			{{ t('components.assistant.assistantComposer.hint') }}
