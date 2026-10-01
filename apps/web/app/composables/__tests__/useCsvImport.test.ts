@@ -266,6 +266,13 @@ describe('useCsvImport', () => {
 			['Email', 'email'],
 			['e-mail', 'email'],
 			['User Email Address', 'email'],
+		])('maps a lone %j header to %j', async (header, field) => {
+			const csvImport = useCsvImport();
+			await simulateFileSelect(csvImport, ['Company', header], [['Acme', 'a@b.com']]);
+			expect(csvImport.columnMapping.value[1]).toBe(field);
+		});
+
+		it.each([
 			['First Name', 'firstName'],
 			['firstname', 'firstName'],
 			['first_name', 'firstName'],
@@ -343,37 +350,6 @@ describe('useCsvImport', () => {
 		});
 	});
 
-	describe('getMappedValue', () => {
-		it('returns value from correct column based on mapping', () => {
-			const csvImport = useCsvImport();
-			csvImport.columnMapping.value = { 0: 'email', 1: 'firstName', 2: 'lastName' };
-
-			const row = ['a@b.com', 'Alice', 'Smith'];
-
-			expect(csvImport.getMappedValue(row, 'email')).toBe('a@b.com');
-			expect(csvImport.getMappedValue(row, 'firstName')).toBe('Alice');
-			expect(csvImport.getMappedValue(row, 'lastName')).toBe('Smith');
-		});
-
-		it("returns '\u2014' when field not mapped", () => {
-			const csvImport = useCsvImport();
-			csvImport.columnMapping.value = { 0: 'email' };
-
-			const row = ['a@b.com'];
-
-			expect(csvImport.getMappedValue(row, 'firstName')).toBe('\u2014');
-		});
-
-		it("returns '\u2014' when cell is empty", () => {
-			const csvImport = useCsvImport();
-			csvImport.columnMapping.value = { 0: 'email', 1: 'firstName' };
-
-			const row = ['a@b.com', ''];
-
-			expect(csvImport.getMappedValue(row, 'firstName')).toBe('\u2014');
-		});
-	});
-
 	describe('computed properties', () => {
 		it('isEmailMapped reflects columnMapping', () => {
 			const csvImport = useCsvImport();
@@ -400,13 +376,7 @@ describe('useCsvImport', () => {
 				['row7'],
 			];
 
-			expect(csvImport.previewRows.value).toEqual([
-				['row1'],
-				['row2'],
-				['row3'],
-				['row4'],
-				['row5'],
-			]);
+			expect(csvImport.previewRows.value.map((r) => r.row)).toEqual([1, 2, 3, 4, 5]);
 		});
 
 		it('previewRows returns all rows when fewer than 5', () => {
@@ -414,7 +384,26 @@ describe('useCsvImport', () => {
 
 			csvImport.parsedData.value = [['row1'], ['row2']];
 
-			expect(csvImport.previewRows.value).toEqual([['row1'], ['row2']]);
+			expect(csvImport.previewRows.value.map((r) => r.row)).toEqual([1, 2]);
+		});
+
+		it('previewRows reads the prepared contact, with a missing email flagged', () => {
+			const csvImport = useCsvImport();
+			csvImport.csvHeaders.value = ['email', 'first', 'last'];
+			csvImport.columnMapping.value = { 0: 'email', 1: 'firstName', 2: 'lastName' };
+			csvImport.parsedData.value = [
+				['a@b.com', 'Alice', 'Smith'],
+				['', 'Bob', ''],
+			];
+
+			expect(csvImport.previewRows.value).toEqual([
+				{
+					row: 1,
+					contact: { email: 'a@b.com', firstName: 'Alice', lastName: 'Smith' },
+					status: 'valid',
+				},
+				{ row: 2, contact: { email: '', firstName: 'Bob' }, status: 'missing' },
+			]);
 		});
 
 		it('totalRowCount returns total row count', () => {
@@ -1069,6 +1058,120 @@ describe('useCsvImport', () => {
 			await csvImport.startImport(importFn, registerProperties);
 
 			expect(registerProperties).not.toHaveBeenCalled();
+		});
+	});
+
+	/**
+	 * #1042: `email` and `secondary_email` were both auto-mapped to Email. The
+	 * preview and validation read the first column, serialization let the last
+	 * nonempty one win, so the preview showed contact0@ and the import wrote
+	 * billing0@.
+	 */
+	describe('one column per identity field', () => {
+		// Ten rows with distinct addresses; rows 2, 5 and 8 have a blank secondary cell and
+		// row 10 has no primary address at all.
+		const rows = Array.from({ length: 10 }, (_, i) => [
+			i === 9 ? '' : `contact${i}@owlat.example`,
+			i % 3 === 1 ? '' : `billing${i}@owlat.example`,
+		]);
+
+		async function previewAndImport(csvImport: ReturnType<typeof useCsvImport>) {
+			csvImport.goToPreview();
+			expect(csvImport.step.value).toBe('preview');
+			const previewed = csvImport.preparedRows.value.map((r) => r.contact.email);
+			const importFn = vi.fn(async (contacts: ContactImport[]) =>
+				committed({ imported: contacts.length })
+			);
+			await csvImport.startImport(importFn);
+			const submitted = importFn.mock.calls.flatMap(([contacts]) => contacts);
+			return { previewed, submitted };
+		}
+
+		it('auto-maps only the email column to Email and keeps secondary_email as a property', async () => {
+			const csvImport = useCsvImport();
+			await simulateFileSelect(csvImport, ['email', 'secondary_email'], rows);
+
+			expect(csvImport.columnMapping.value).toEqual({ 0: 'email', 1: 'property' });
+			expect(csvImport.emailSourceColumn.value).toBe('email');
+		});
+
+		it('previews and submits the same address for every row, blank secondary cells included', async () => {
+			const csvImport = useCsvImport();
+			await simulateFileSelect(csvImport, ['email', 'secondary_email'], rows);
+
+			const { previewed, submitted } = await previewAndImport(csvImport);
+
+			// The preview table is the first five prepared rows.
+			expect(csvImport.previewRows.value.map((r) => r.contact.email)).toEqual(
+				previewed.slice(0, 5)
+			);
+			// Every row with an address is sent with exactly the previewed address.
+			expect(submitted.map((c) => c.email)).toEqual(previewed.filter(Boolean));
+			expect(submitted.map((c) => c.email)).toEqual(
+				Array.from({ length: 9 }, (_, i) => `contact${i}@owlat.example`)
+			);
+			expect(submitted[0]!.properties).toEqual({ secondary_email: 'billing0@owlat.example' });
+			expect(submitted[1]!.properties).toBeUndefined();
+			// Row 10 has only a secondary address: it is missing, not imported as billing9@.
+			expect(csvImport.validation.value?.missingEmails).toEqual([10]);
+			expect(csvImport.validation.value?.validCount).toBe(9);
+		});
+
+		it('moves Email to the picked column and drops the old one to Custom property', async () => {
+			const csvImport = useCsvImport();
+			await simulateFileSelect(csvImport, ['email', 'secondary_email'], rows);
+
+			expect(csvImport.mapColumn(1, 'email')).toEqual([0]);
+
+			expect(csvImport.columnMapping.value).toEqual({ 0: 'property', 1: 'email' });
+			expect(csvImport.emailSourceColumn.value).toBe('secondary_email');
+			const { previewed, submitted } = await previewAndImport(csvImport);
+			expect(submitted.map((c) => c.email)).toEqual(previewed.filter(Boolean));
+			expect(submitted[0]).toEqual({
+				email: 'billing0@owlat.example',
+				properties: { email: 'contact0@owlat.example' },
+			});
+			// Rows with a blank secondary cell now have no address, so they are not sent.
+			expect(csvImport.validation.value?.missingEmails).toEqual([2, 5, 8]);
+		});
+
+		it.each([
+			['firstName', ['first_name', 'given_name'], ['Ada', 'Augusta']],
+			['lastName', ['last_name', 'family_name'], ['Lovelace', 'King']],
+			['language', ['language', 'locale'], ['en', 'de']],
+		] as const)('keeps %s on one column when it is moved', async (field, headers, values) => {
+			const csvImport = useCsvImport();
+			await simulateFileSelect(
+				csvImport,
+				['email', ...headers],
+				[['ada@owlat.example', ...values]]
+			);
+			csvImport.mapColumn(1, field);
+
+			csvImport.mapColumn(2, field);
+
+			expect(csvImport.columnMapping.value).toEqual({ 0: 'email', 1: 'property', 2: field });
+			const { submitted } = await previewAndImport(csvImport);
+			expect(submitted[0]).toEqual({
+				email: 'ada@owlat.example',
+				[field]: values[1],
+				properties: { [headers[0]]: values[0] },
+			});
+		});
+
+		it('blocks Next while a scalar field is mapped from two columns', () => {
+			const csvImport = useCsvImport();
+			csvImport.step.value = 'mapping';
+			csvImport.csvHeaders.value = ['email', 'secondary_email'];
+			csvImport.parsedData.value = rows;
+			csvImport.columnMapping.value = { 0: 'email', 1: 'email' };
+
+			csvImport.goToPreview();
+
+			expect(csvImport.step.value).toBe('mapping');
+			expect(csvImport.error.value).toBe(
+				'Email is mapped to more than one column. Map it to one column only.'
+			);
 		});
 	});
 });
