@@ -1,5 +1,5 @@
 /**
- * Send and promotion stand on an acknowledged save of the CURRENT snapshot
+ * Send and the move to Answer mode stand on an acknowledged save of the CURRENT snapshot
  * (#895).
  *
  * `drafts.send` takes only a draft id and reads the stored row, so a save that
@@ -441,29 +441,50 @@ describe('usePostboxCompose — flush() reports whether it saved (#895)', () => 
 		expect(lastUpdate()).toMatchObject({ toAddresses: ['new@example.com'] });
 	});
 
-	it('keeps an inline reply inline when its flush did not save', async () => {
-		const { usePostboxComposerInline } = await import('../usePostboxComposerInline');
-		const emitPromote = vi.fn();
+	it('keeps a popup reply in its popup when the flush before Answer mode did not save', async () => {
+		const { usePostboxComposerHandoff } = await import('../usePostboxComposerHandoff');
+		const emitMaximise = vi.fn();
 		const flush = vi.fn(async () => ({ ok: false as const }));
-		const inline = effectScope().run(() =>
-			usePostboxComposerInline({
-				inline: false,
+		const handoff = effectScope().run(() =>
+			usePostboxComposerHandoff({
+				draftId: ref(null),
+				toAddresses: ref([]),
+				bodyHtml: ref(''),
+				attachmentCount: () => 0,
 				flush,
-				snapshot: () => ({
-					toAddresses: [],
-					ccAddresses: [],
-					bccAddresses: [],
-					subject: '',
-					bodyHtml: '',
-				}),
-				emitPromote,
+				discard: async () => {},
+				emitDiscarded: () => {},
+				emitDraftId: () => {},
+				emitMaximise,
 			})
 		)!;
 
-		await inline.handlePromote();
+		await handoff.handleMaximise();
 
 		expect(flush).toHaveBeenCalledOnce();
-		expect(emitPromote).not.toHaveBeenCalled();
-		expect((inline.promoting as Ref<boolean>).value).toBe(false);
+		expect(emitMaximise).not.toHaveBeenCalled();
+		expect((handoff.maximising as Ref<boolean>).value).toBe(false);
+	});
+
+	it('moves a popup reply to Answer mode on the saved row', async () => {
+		const { usePostboxComposerHandoff } = await import('../usePostboxComposerHandoff');
+		const emitMaximise = vi.fn();
+		const handoff = effectScope().run(() =>
+			usePostboxComposerHandoff({
+				draftId: ref(null),
+				toAddresses: ref([]),
+				bodyHtml: ref(''),
+				attachmentCount: () => 0,
+				flush: async () => ({ ok: true as const, result: 'draft-1' as never }),
+				discard: async () => {},
+				emitDiscarded: () => {},
+				emitDraftId: () => {},
+				emitMaximise,
+			})
+		)!;
+
+		await handoff.handleMaximise();
+
+		expect(emitMaximise).toHaveBeenCalledWith('draft-1');
 	});
 });

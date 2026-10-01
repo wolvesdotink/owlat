@@ -1,20 +1,26 @@
 <script setup lang="ts">
 /**
- * The reply box at the bottom of every Team inbox thread.
+ * The Team inbox reply, in Answer mode's composer column (plan §07).
  *
- * The thread used to offer only the agent's draft card (Approve & Send / Edit /
- * Reject), so with AI off, a skipped or failed message, or a draft too wrong to
- * edit, a teammate had nowhere to type. This is one composer for all of it:
+ * One composer for every state a team message can be in:
  *
- *  - An agent draft opens the composer pre-filled with it. "Review & send" is
- *    still the one-click fast path; editing shows what changed against the
- *    agent's original, "Write my own" clears it, "Reject draft" declines it.
- *  - No draft: a collapsed "Reply to …" line that expands into an empty box.
- *  - The agent is still drafting, or the message was already answered: the box
- *    opens as usual and a notice says where the text goes (over the agent's
- *    unfinished draft, or out as a follow-up).
+ *  - An agent draft opens in the editor, tagged as the agent's. Send sends it
+ *    (unchanged, that is the one-click approve), "Discard draft" rejects it,
+ *    "Write my own" clears the editor. What the person changed against the
+ *    agent's original is under ⋯ ("Show changes").
+ *  - No draft: an empty editor.
+ *  - The agent is still drafting, or the message was already answered: the
+ *    editor opens as usual and a notice says where the text goes (over the
+ *    agent's unfinished draft, or out as a follow-up).
  *  - The message is in a state no reply can go to (still being read, filed as
- *    an update, the reply on its way): the box stays collapsed and says why.
+ *    an update, the reply on its way): no editor, a plain reason instead.
+ *  - A teammate is replying: Send is held, and its label says who ("Priya is
+ *    replying"). Saving is not held.
+ *
+ * The envelope folds to one line ("To Ana · Re: Invoice"); the subject opens on
+ * a click. Slots: `above-editor` (the agent's questions, Draft with AI; it
+ * receives the reply as `composer`), `attachments` (the
+ * files under the editor), `blocked-action` (what a blocked state offers).
  *
  * The composer answers a `teamThread` composer target (`utils/composerTarget`),
  * so the checks the Postbox composer runs before a send apply here too, as far
@@ -23,11 +29,12 @@
  * Presentation only: the page owns the mutations (`useTeamThreadComposer`) and
  * receives `send` (with whether the text differs from the agent draft, and the
  * subject), `save` and `reject`.
- * The send colour and label match the Answer queue (TaskActions' primary).
  */
-import TaskActions from '~/components/agent-tasks/TaskActions.vue';
 import PostboxComposerPreflightChip from '~/components/postbox/PostboxComposerPreflightChip.vue';
 import { composerPreflight, type TeamThreadComposerTarget } from '~/utils/composerTarget';
+import { useTeamComposerAnswerApi } from '~/composables/useTeamComposerAnswerApi';
+import { useTeamComposerGaps } from '~/composables/useTeamComposerGaps';
+import { useChordKeys } from '~/composables/useChordKeys';
 import {
 	REPLY_BLOCKER_KEYS,
 	REPLY_NOTICE_KEYS,
@@ -39,7 +46,7 @@ const props = withDefaults(
 	defineProps<{
 		/** The message the reply answers. */
 		target: TeamThreadComposerTarget;
-		/** Who a reply goes to, for the collapsed line ("Reply to Ana…"). */
+		/** Who a reply goes to ("To Ana Ruiz"). */
 		senderLabel: string;
 		/** Why nothing can be sent right now; `null` = the composer can send. */
 		blocker?: ReplyBlocker | null;
@@ -51,12 +58,19 @@ const props = withDefaults(
 		originalDraft?: string | null;
 		/** The reply's subject to pre-fill (the draft's, or "Re: …"). */
 		subject?: string | null;
-		/** Expanded? Two-way, so the page's Reply button and `r` can open it. */
-		open?: boolean;
 		busy?: boolean;
 		/** A teammate is replying right now: sending is held, saving is not. */
 		held?: boolean;
+		/** Who is replying, for the held Send label. */
+		heldBy?: string | null;
+		/** The longer hold reason under the footer. */
 		heldReason?: string;
+		/** Something else holds Send (an attachment still copying), with the reason. */
+		sendHold?: string | null;
+		/** A quiet note beside Send ("2 of 3 asks covered"). */
+		statusNote?: string;
+		/** Draft with AI has a session on this thread: its `[[...]]` gaps hold Send. */
+		askSession?: boolean;
 	}>(),
 	{
 		blocker: null,
@@ -64,15 +78,17 @@ const props = withDefaults(
 		draft: null,
 		originalDraft: null,
 		subject: null,
-		open: false,
 		busy: false,
 		held: false,
+		heldBy: null,
 		heldReason: undefined,
+		sendHold: null,
+		statusNote: undefined,
+		askSession: false,
 	}
 );
 
 const emit = defineEmits<{
-	(e: 'update:open', value: boolean): void;
 	/** Send `body` under `subject`. `fromDraft` = unchanged agent draft (plain approve). */
 	(e: 'send', body: string, fromDraft: boolean, subject: string): void;
 	/** Keep the edit as the working draft without sending. */
@@ -88,10 +104,8 @@ const hasDraft = computed(() => !!props.draft?.trim());
 const body = ref(props.draft ?? '');
 const subject = ref(props.subject ?? '');
 const textarea = ref<HTMLTextAreaElement | null>(null);
-const trigger = ref<HTMLButtonElement | null>(null);
-const section = ref<HTMLElement | null>(null);
-
-const isOpen = computed(() => props.blocker === null && (props.open || hasDraft.value));
+const subjectOpen = ref(false);
+const diffOpen = ref(false);
 
 // A new draft arriving (the agent finished, a teammate saved) re-seeds the box
 // unless the person has already started changing it.
@@ -109,28 +123,14 @@ watch(
 	}
 );
 
-// Collapsing swaps the focused textarea for the one-line trigger. Hand focus to
-// the trigger so a keyboard or screen-reader user keeps their place instead of
-// landing back on <body> — whether Escape/Cancel closed it or the page did
-// after a send.
-watch(isOpen, (open, wasOpen) => {
-	if (open || !wasOpen) return;
-	const active = import.meta.client ? document.activeElement : null;
-	const focusWasHere =
-		!active || active === document.body || (section.value?.contains(active) ?? false);
-	if (!focusWasHere) return;
-	void nextTick(() => trigger.value?.focus());
-});
-
 const subjectEdited = computed(() => subject.value.trim() !== (props.subject ?? '').trim());
 const edited = computed(
 	() => hasDraft.value && (body.value.trim() !== (props.draft ?? '').trim() || subjectEdited.value)
 );
 const diffBase = computed(() => props.originalDraft ?? props.draft ?? '');
-const showDiff = computed(
+const hasChanges = computed(
 	() => hasDraft.value && body.value.trim() !== '' && body.value.trim() !== diffBase.value.trim()
 );
-const canSend = computed(() => body.value.trim().length > 0 && !props.busy);
 // A `[TODO]` or `{{name}}` the agent (or the person) left in the reply.
 const preflight = computed(() =>
 	body.value.trim()
@@ -138,10 +138,16 @@ const preflight = computed(() =>
 		: []
 );
 
+const sendLabel = computed(() =>
+	props.held && props.heldBy
+		? t('components.inbox.inboxThreadPresence.titleReplying', { name: props.heldBy })
+		: t('dashboard.inbox.detail.composer.send')
+);
+
 watch(
-	[isOpen, edited, () => body.value.trim().length > 0],
-	([open, isEdited, hasText]) => {
-		emit('typing', open && (isEdited || (!hasDraft.value && hasText)));
+	[() => props.blocker, edited, () => body.value.trim().length > 0],
+	([blocker, isEdited, hasText]) => {
+		emit('typing', blocker === null && (isEdited || (!hasDraft.value && hasText)));
 	},
 	{ immediate: true }
 );
@@ -156,16 +162,15 @@ function onSubjectInput(event: Event) {
 	subject.value = (event.target as HTMLInputElement).value;
 }
 
+// Now (iOS raises the keyboard only for a focus inside the tap), and again
+// after the render for callers that have just made the textarea appear.
 function focus() {
-	emit('update:open', true);
-	void nextTick(() => {
-		textarea.value?.focus();
-		textarea.value?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
-	});
+	textarea.value?.focus();
+	void nextTick(() => textarea.value?.focus());
 }
 
 function send() {
-	if (!canSend.value || props.held) return;
+	if (!canSend.value) return;
 	emit('send', body.value, hasDraft.value && !edited.value, subject.value);
 }
 
@@ -181,18 +186,10 @@ function restoreDraft() {
 	subject.value = props.subject ?? '';
 }
 
-function cancel() {
-	restoreDraft();
-	emit('update:open', false);
-}
-
 function onKeydown(event: KeyboardEvent) {
 	if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
 		event.preventDefault();
 		send();
-	} else if (event.key === 'Escape' && !hasDraft.value) {
-		event.preventDefault();
-		cancel();
 	}
 }
 
@@ -201,6 +198,7 @@ function reset() {
 	touched.value = false;
 	body.value = '';
 	subject.value = props.subject ?? '';
+	diffOpen.value = false;
 }
 
 /** Reopen with text handed back to the person (an undone follow-up). */
@@ -211,22 +209,57 @@ function fill(text: string, nextSubject: string) {
 	focus();
 }
 
-defineExpose({ focus, reset, fill });
+/** Put text into the editor, as a draft the person then edits (a file answer's note). */
+function insert(text: string) {
+	touched.value = true;
+	body.value = body.value.trim() ? `${body.value.trimEnd()}\n\n${text}` : text;
+	focus();
+}
 
-const secondaryButton =
-	'inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast) disabled:opacity-50';
+onMounted(() => {
+	if (props.blocker === null) focus();
+});
+
+// What "Draft with AI" and the catch-up card work with (the slot's `composer`).
+const answer = useTeamComposerAnswerApi({
+	body,
+	touch: () => {
+		touched.value = true;
+	},
+	focus,
+});
+// An AI draft's `[[...]]` gaps hold Send and replace the note beside it.
+const gaps = useTeamComposerGaps(body, answer, props);
+const sendKeys = useChordKeys('mod+Enter');
+const canSend = computed(
+	() =>
+		body.value.trim().length > 0 &&
+		!props.busy &&
+		!props.held &&
+		!props.sendHold &&
+		!gaps.hold.value
+);
+
+/** What the person typed, for keeping it when they leave without sending. */
+function snapshot() {
+	return { body: body.value, subject: subject.value, touched: touched.value };
+}
+
+defineExpose({ focus, reset, fill, insert, snapshot, answer });
+
+const menuItem =
+	'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-bg-surface disabled:opacity-50';
 </script>
 
 <template>
 	<section
-		ref="section"
-		class="card"
+		class="flex min-h-0 flex-1 flex-col"
 		data-testid="thread-composer"
 		:aria-label="t('dashboard.inbox.detail.composer.label')"
 	>
 		<!-- Blocked: say why, never offer a box that would fail on submit. -->
-		<div v-if="blocker" class="flex items-start gap-3" data-testid="thread-composer-blocked">
-			<Icon name="lucide:reply" class="mt-0.5 w-4 h-4 shrink-0 text-text-tertiary" />
+		<div v-if="blocker" class="flex items-start gap-3 p-4" data-testid="thread-composer-blocked">
+			<Icon name="lucide:reply" class="mt-0.5 size-4 shrink-0 text-text-tertiary" />
 			<div class="min-w-0">
 				<p class="text-sm text-text-secondary">
 					{{ t('dashboard.inbox.detail.composer.replyTo', { name: senderLabel }) }}
@@ -238,47 +271,35 @@ const secondaryButton =
 			</div>
 		</div>
 
-		<!-- Collapsed: one line that opens the box. -->
-		<button
-			v-else-if="!isOpen"
-			ref="trigger"
-			type="button"
-			class="flex w-full items-center gap-3 rounded-lg text-left text-sm text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast)"
-			data-testid="thread-composer-open"
-			@click="focus"
-		>
-			<Icon name="lucide:reply" class="w-4 h-4 shrink-0" />
-			<span class="flex-1 min-w-0">
-				<span class="block truncate">
-					{{ t('dashboard.inbox.detail.composer.replyTo', { name: senderLabel }) }}
-				</span>
-				<span
-					v-if="notice"
-					class="mt-0.5 block truncate text-xs text-text-tertiary"
-					data-testid="thread-composer-notice"
-				>
-					{{ t(REPLY_NOTICE_KEYS[notice]) }}
-				</span>
-			</span>
-			<kbd
-				class="hidden sm:inline px-1 py-px rounded border border-border-subtle bg-bg-surface font-mono text-[10px] text-text-secondary"
-				aria-hidden="true"
-				>R</kbd
+		<template v-else>
+			<!-- The envelope, folded to one line; the subject opens on a click. -->
+			<div
+				class="flex items-center gap-2 border-b border-border-subtle px-4 py-2 text-xs text-text-tertiary"
 			>
-		</button>
-
-		<!-- Open -->
-		<div v-else class="space-y-3">
-			<div class="flex items-center justify-between gap-3">
-				<p class="text-sm font-medium text-text-primary truncate">
-					{{ t('dashboard.inbox.detail.composer.replyTo', { name: senderLabel }) }}
-				</p>
+				<button
+					type="button"
+					class="flex min-w-0 flex-1 items-center gap-1.5 truncate text-left hover:text-text-primary"
+					:aria-expanded="subjectOpen"
+					data-testid="thread-composer-envelope"
+					@click="subjectOpen = !subjectOpen"
+				>
+					<span class="truncate">
+						{{ t('components.answer.team.to', { name: senderLabel }) }}
+						<template v-if="subject"> <span aria-hidden="true"> · </span>{{ subject }} </template>
+					</span>
+					<Icon
+						name="lucide:chevron-down"
+						class="size-3 shrink-0"
+						:class="{ 'rotate-180': subjectOpen }"
+						aria-hidden="true"
+					/>
+				</button>
 				<span
 					v-if="hasDraft"
-					class="inline-flex shrink-0 items-center gap-1 text-xs text-brand"
+					class="inline-flex shrink-0 items-center gap-1 rounded-full bg-brand-subtle px-2 py-0.5 text-2xs font-medium text-brand"
 					data-testid="thread-composer-draft-hint"
 				>
-					<Icon name="lucide:sparkles" class="w-3.5 h-3.5" aria-hidden="true" />
+					<Icon name="lucide:sparkles" class="size-3" aria-hidden="true" />
 					{{
 						edited
 							? t('dashboard.inbox.detail.composer.editedDraft')
@@ -287,112 +308,192 @@ const secondaryButton =
 				</span>
 			</div>
 
-			<p
-				v-if="notice"
-				class="flex items-start gap-1.5 text-xs text-text-secondary"
-				data-testid="thread-composer-notice"
-			>
-				<Icon name="lucide:info" class="mt-px w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-				{{ t(REPLY_NOTICE_KEYS[notice]) }}
-			</p>
-
-			<input
-				:value="subject"
-				type="text"
-				class="input w-full text-sm"
-				:aria-label="t('dashboard.inbox.detail.composer.subjectLabel')"
-				:placeholder="t('dashboard.inbox.detail.composer.subjectLabel')"
-				data-testid="thread-composer-subject"
-				@input="onSubjectInput"
-				@keydown="onKeydown"
-			/>
-
-			<textarea
-				ref="textarea"
-				:value="body"
-				rows="8"
-				class="input w-full text-sm resize-y"
-				:aria-label="t('dashboard.inbox.detail.composer.bodyLabel')"
-				:placeholder="t('dashboard.inbox.detail.composer.placeholder')"
-				data-testid="thread-composer-body"
-				@input="onInput"
-				@keydown="onKeydown"
-			/>
-
-			<!-- What changed against the agent's original, once it differs. -->
-			<div
-				v-if="showDiff"
-				class="rounded-lg border border-border-subtle bg-bg-elevated p-3"
-				data-testid="thread-composer-diff"
-			>
-				<p class="mb-1 text-[11px] font-medium text-text-tertiary">
-					{{ t('dashboard.inbox.detail.composer.originalDraft') }}
-				</p>
-				<p
-					class="max-h-32 overflow-auto whitespace-pre-wrap text-xs text-text-tertiary line-through decoration-1"
-				>
-					{{ diffBase }}
-				</p>
+			<div v-if="subjectOpen" class="border-b border-border-subtle px-4 py-2">
+				<input
+					:value="subject"
+					type="text"
+					class="input w-full text-sm"
+					:aria-label="t('dashboard.inbox.detail.composer.subjectLabel')"
+					:placeholder="t('dashboard.inbox.detail.composer.subjectLabel')"
+					data-testid="thread-composer-subject"
+					@input="onSubjectInput"
+					@keydown="onKeydown"
+				/>
 			</div>
 
-			<PostboxComposerPreflightChip :findings="preflight" />
+			<div class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-3">
+				<p
+					v-if="notice"
+					class="flex items-start gap-1.5 text-xs text-text-secondary"
+					data-testid="thread-composer-notice"
+				>
+					<Icon name="lucide:info" class="mt-px size-3.5 shrink-0" aria-hidden="true" />
+					{{ t(REPLY_NOTICE_KEYS[notice]) }}
+				</p>
 
-			<TaskActions
-				:primary-label="
-					hasDraft
-						? t('dashboard.inbox.detail.composer.reviewAndSend')
-						: t('dashboard.inbox.detail.composer.send')
-				"
-				primary-icon="lucide:send"
-				primary-test-id="thread-composer-send"
-				:primary-disabled="!canSend"
-				:primary-loading="busy"
-				:held="held"
-				:held-reason="heldReason"
-				:skip-label="
-					hasDraft ? t('dashboard.inbox.detail.composer.rejectDraft') : t('common.cancel')
-				"
-				:skip-destructive="hasDraft"
-				:skip-disabled="busy"
-				skip-test-id="thread-composer-skip"
-				:hints="[{ keys: ['⌘', 'Enter'], label: t('dashboard.inbox.detail.composer.sendHint') }]"
-				@primary="send"
-				@skip="hasDraft ? emit('reject') : cancel()"
-			>
-				<button
-					v-if="edited"
-					type="button"
-					:class="secondaryButton"
-					:disabled="busy || !body.trim()"
-					data-testid="thread-composer-save"
-					@click="emit('save', body, subject)"
+				<slot name="above-editor" :composer="answer" />
+
+				<textarea
+					ref="textarea"
+					:value="body"
+					class="min-h-48 w-full flex-1 resize-none bg-transparent text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-tertiary"
+					:aria-label="t('dashboard.inbox.detail.composer.bodyLabel')"
+					:placeholder="t('dashboard.inbox.detail.composer.placeholder')"
+					data-testid="thread-composer-body"
+					@input="onInput"
+					@keydown="onKeydown"
+				/>
+
+				<!-- What changed against the agent's original, opened from ⋯. -->
+				<div
+					v-if="diffOpen && hasChanges"
+					class="rounded-lg border border-border-subtle bg-bg-surface p-3"
+					data-testid="thread-composer-diff"
 				>
-					<Icon name="lucide:save" class="w-3.5 h-3.5" />
-					{{ t('dashboard.inbox.detail.composer.saveDraft') }}
-				</button>
-				<button
-					v-if="edited"
-					type="button"
-					:class="secondaryButton"
-					:disabled="busy"
-					data-testid="thread-composer-restore"
-					@click="restoreDraft"
+					<p class="mb-1 text-[11px] font-medium text-text-tertiary">
+						{{ t('dashboard.inbox.detail.composer.originalDraft') }}
+					</p>
+					<p
+						class="max-h-32 overflow-auto whitespace-pre-wrap text-xs text-text-tertiary line-through decoration-1"
+					>
+						{{ diffBase }}
+					</p>
+				</div>
+
+				<slot name="attachments" />
+			</div>
+
+			<footer class="flex flex-col gap-1.5 border-t border-border-subtle px-4 py-3">
+				<PostboxComposerPreflightChip :findings="preflight" />
+				<div class="flex items-center gap-2">
+					<UiButton
+						size="sm"
+						:disabled="!canSend"
+						:loading="busy"
+						:aria-disabled="held ? 'true' : undefined"
+						data-testid="thread-composer-send"
+						@click="send"
+					>
+						<Icon
+							:name="held ? 'lucide:pencil-line' : 'lucide:send'"
+							class="size-3.5"
+							aria-hidden="true"
+						/>
+						{{ sendLabel }}
+					</UiButton>
+					<kbd class="hidden font-mono text-2xs text-text-tertiary sm:inline" aria-hidden="true">{{
+						sendKeys.join(' ')
+					}}</kbd>
+					<span
+						v-if="gaps.note.value"
+						class="ml-auto text-xs text-text-tertiary"
+						data-testid="thread-composer-status"
+						>{{ gaps.note.value }}</span
+					>
+					<!-- Always the row's last item, so the panel opens leftwards inside it. -->
+					<PostboxOverflowMenu
+						:label="t('components.answer.team.more')"
+						:class="{ 'ml-auto': !gaps.note.value }"
+						align="right"
+						direction="up"
+					>
+						<template #default="{ close }">
+							<button
+								v-if="hasChanges"
+								type="button"
+								role="menuitem"
+								:class="menuItem"
+								data-testid="thread-composer-show-changes"
+								@click="(close(), (diffOpen = !diffOpen))"
+							>
+								<Icon name="lucide:git-compare" class="size-4 text-text-tertiary" />
+								{{
+									diffOpen
+										? t('components.answer.team.hideChanges')
+										: t('components.answer.team.showChanges')
+								}}
+							</button>
+							<button
+								v-if="edited"
+								type="button"
+								role="menuitem"
+								:class="menuItem"
+								:disabled="busy || !body.trim()"
+								data-testid="thread-composer-save"
+								@click="(close(), emit('save', body, subject))"
+							>
+								<Icon name="lucide:save" class="size-4 text-text-tertiary" />
+								{{ t('dashboard.inbox.detail.composer.saveDraft') }}
+							</button>
+							<button
+								v-if="edited"
+								type="button"
+								role="menuitem"
+								:class="menuItem"
+								:disabled="busy"
+								data-testid="thread-composer-restore"
+								@click="(close(), restoreDraft())"
+							>
+								<Icon name="lucide:undo-2" class="size-4 text-text-tertiary" />
+								{{ t('dashboard.inbox.detail.composer.restoreDraft') }}
+							</button>
+							<button
+								v-if="hasDraft"
+								type="button"
+								role="menuitem"
+								:class="menuItem"
+								:disabled="busy"
+								data-testid="thread-composer-write-own"
+								@click="(close(), writeOwn())"
+							>
+								<Icon name="lucide:pencil" class="size-4 text-text-tertiary" />
+								{{ t('dashboard.inbox.detail.composer.writeOwn') }}
+							</button>
+							<button
+								v-if="hasDraft"
+								type="button"
+								role="menuitem"
+								:class="[menuItem, 'text-error']"
+								:disabled="busy"
+								data-testid="thread-composer-skip"
+								@click="(close(), emit('reject'))"
+							>
+								<Icon name="lucide:trash-2" class="size-4" />
+								{{ t('components.answer.team.discardDraft') }}
+							</button>
+							<button
+								v-else
+								type="button"
+								role="menuitem"
+								:class="menuItem"
+								:disabled="busy || !body"
+								data-testid="thread-composer-clear"
+								@click="(close(), writeOwn())"
+							>
+								<Icon name="lucide:eraser" class="size-4 text-text-tertiary" />
+								{{ t('components.answer.team.clear') }}
+							</button>
+						</template>
+					</PostboxOverflowMenu>
+				</div>
+				<p
+					v-if="held && heldReason"
+					class="inline-flex items-center gap-1.5 text-[11px] text-text-tertiary"
+					data-testid="thread-composer-held"
+					role="status"
 				>
-					<Icon name="lucide:undo-2" class="w-3.5 h-3.5" />
-					{{ t('dashboard.inbox.detail.composer.restoreDraft') }}
-				</button>
-				<button
-					v-else-if="hasDraft"
-					type="button"
-					:class="secondaryButton"
-					:disabled="busy"
-					data-testid="thread-composer-write-own"
-					@click="writeOwn"
+					<Icon name="lucide:pencil-line" class="size-3 shrink-0 text-warning" aria-hidden="true" />
+					<span>{{ heldReason }}</span>
+				</p>
+				<p
+					v-else-if="sendHold"
+					class="text-[11px] text-text-tertiary"
+					data-testid="thread-composer-send-hold"
+					role="status"
 				>
-					<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
-					{{ t('dashboard.inbox.detail.composer.writeOwn') }}
-				</button>
-			</TaskActions>
-		</div>
+					{{ sendHold }}
+				</p>
+			</footer>
+		</template>
 	</section>
 </template>

@@ -43,6 +43,17 @@ export function usePostboxEditorDocument(opts: {
 	 */
 	let lastEmitted: string | null = null;
 
+	/**
+	 * The editor's own serialization of the value the parent holds: what the DOM
+	 * read right after the last emit or the last write of `modelValue` into it.
+	 * The browser re-serializes whatever it is given (a seeded quote comes back
+	 * with different attribute quoting and whitespace), so comparing the DOM
+	 * with `modelValue` itself would call an untouched editor changed. A blur of
+	 * a reply nobody typed in must not emit: the autosave would create a draft
+	 * row for it.
+	 */
+	let lastSynced: string | null = null;
+
 	function syncActiveMarks() {
 		activeMarks.value = opts.readActiveMarks();
 	}
@@ -69,8 +80,11 @@ export function usePostboxEditorDocument(opts: {
 		const el = opts.editorRef.value;
 		if (!el) return;
 		const html = el.innerHTML;
-		lastEmitted = html;
-		opts.emit(html);
+		if (html !== lastSynced) {
+			lastEmitted = html;
+			lastSynced = html;
+			opts.emit(html);
+		}
 		syncEmptyState();
 		syncActiveMarks();
 	}
@@ -100,6 +114,7 @@ export function usePostboxEditorDocument(opts: {
 			} else {
 				ensureScaffold();
 			}
+			lastSynced = el.innerHTML;
 		}
 		syncEmptyState();
 		syncActiveMarks();
@@ -108,7 +123,10 @@ export function usePostboxEditorDocument(opts: {
 	watch(opts.modelValue, (value) => {
 		const el = opts.editorRef.value;
 		if (!el) return;
-		if (el.innerHTML === value) return;
+		if (el.innerHTML === value) {
+			lastSynced = value;
+			return;
+		}
 		// Our own emit coming back around — the DOM is already this value (or has
 		// moved past it), so writing it back would only cost the caret.
 		if (value === lastEmitted) return;
@@ -117,6 +135,7 @@ export function usePostboxEditorDocument(opts: {
 		const wasFocused = document.activeElement === el;
 		el.innerHTML = value ? sanitizePostboxComposerHtml(value) : '';
 		ensureScaffold();
+		lastSynced = el.innerHTML;
 		if (wasFocused) placeCaretAtEnd(el);
 		syncEmptyState();
 	});

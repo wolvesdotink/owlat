@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ComponentPublicInstance } from 'vue';
+import { useEscapeToClose } from '~/composables/useEscapeToClose';
 
 /**
  * Compact "⋯" overflow menu used by the progressive-disclosure surfaces (the
@@ -66,8 +67,11 @@ function toggle() {
 	open.value = !open.value;
 }
 
-// Close on any click outside both the trigger and the panel.
+// Close on any click outside both the trigger and the panel, and on Esc
+// wherever focus is (the trigger keeps it after a click). The Esc is claimed,
+// so the same press does not also leave Answer mode or close the reader.
 useClickOutside([triggerEl, menuEl], close);
+useEscapeToClose(open);
 </script>
 
 <template>
@@ -97,7 +101,6 @@ useClickOutside([triggerEl, menuEl], close);
 				props.align === 'right' ? 'right-0' : 'left-0',
 				props.direction === 'up' ? 'bottom-full mb-1' : 'top-full mt-1',
 			]"
-			@keydown.esc.prevent.stop="close"
 		>
 			<slot :close="close" />
 		</div>

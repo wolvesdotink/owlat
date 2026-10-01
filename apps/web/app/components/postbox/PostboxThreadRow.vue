@@ -69,6 +69,7 @@ const { t } = useI18n();
 const props = defineProps<{
 	msg: PostboxThreadRowMessage;
 	selectable?: boolean;
+	/** The folder's route segment: its role, or a custom folder's id. */
 	folderRole: string;
 	virtualize: boolean;
 	selected: boolean;

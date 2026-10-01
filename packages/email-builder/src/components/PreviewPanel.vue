@@ -19,6 +19,8 @@ const props = defineProps<{
 	plainTextOverride?: string;
 	allowPlainTextOverride?: boolean;
 	ampHtml?: string;
+	/** AMP is rendered on request; see EmailPreviewer's `ampAvailable`. */
+	ampAvailable?: boolean;
 	renderWarnings?: string[];
 	emailAnalysis?: PreviewEmailAnalysis | null;
 	healthScore?: PreviewHealthScore | null;
@@ -33,6 +35,7 @@ const emit = defineEmits<{
 	(e: 'update:render-options', options: Partial<PreviewRenderOptions>): void;
 	(e: 'update:dark-mode', value: boolean): void;
 	(e: 'update:plain-text-override', value: string): void;
+	(e: 'update:amp-requested', value: boolean): void;
 }>();
 </script>
 
@@ -55,6 +58,7 @@ const emit = defineEmits<{
 			:plain-text-override="props.plainTextOverride"
 			:allow-plain-text-override="props.allowPlainTextOverride"
 			:amp-html="props.ampHtml"
+			:amp-available="props.ampAvailable"
 			:render-warnings="props.renderWarnings"
 			:email-analysis="props.emailAnalysis"
 			:health-score="props.healthScore"
@@ -73,6 +77,7 @@ const emit = defineEmits<{
 			@update:render-options="emit('update:render-options', $event)"
 			@update:dark-mode="emit('update:dark-mode', $event)"
 			@update:plain-text-override="emit('update:plain-text-override', $event)"
+			@update:amp-requested="emit('update:amp-requested', $event)"
 		/>
 	</div>
 </template>

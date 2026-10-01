@@ -45,6 +45,7 @@ beforeEach(() => {
 
 const stubs = {
 	PostboxOfflineBanners: { props: ['isOffline'], template: '<div class="offline" />' },
+	PostboxAnswerDraftBar: { template: '<div class="draft" />' },
 	PostboxSealedMailNudge: { template: '<div class="sealed" />' },
 	PostboxReplyQueueStrip: { props: ['mailboxId', 'folderRole'], template: '<div class="queue" />' },
 };
@@ -64,7 +65,21 @@ function mountSlot(props: Record<string, unknown> = {}) {
 }
 
 const shown = (w: ReturnType<typeof mountSlot>) =>
-	['offline', 'sealed', 'queue'].filter((cls) => w.find(`.${cls}`).exists());
+	['offline', 'draft', 'sealed', 'queue'].filter((cls) => w.find(`.${cls}`).exists());
+
+/** A reply left in Answer mode, as the page files it on the way out. */
+function leaveDraft(mailboxId = 'mbx') {
+	stateBuckets.set(
+		'answer:left-draft',
+		ref({
+			draftId: 'draft-1',
+			messageId: 'msg-1',
+			mailboxId,
+			kind: null,
+			recipient: 'Jonas',
+		})
+	);
+}
 
 describe('PostboxBannerSlot', () => {
 	it('shows connectivity above everything else, and only it', () => {
@@ -96,5 +111,19 @@ describe('PostboxBannerSlot', () => {
 		hasSeenSealedNudge.value = true;
 		replyQueueCount.value = 2;
 		expect(shown(mountSlot({ folderRole: 'archive' }))).toEqual([]);
+	});
+
+	it('offers a draft left in Answer mode right below connectivity, above the nudges', () => {
+		replyQueueCount.value = 2;
+		leaveDraft();
+		expect(shown(mountSlot())).toEqual(['draft']);
+		leaveDraft();
+		expect(shown(mountSlot({ isOffline: true }))).toEqual(['offline']);
+	});
+
+	it('offers the draft only on its own mailbox', () => {
+		sealedFlagOn.value = false;
+		leaveDraft('another-mailbox');
+		expect(shown(mountSlot())).toEqual([]);
 	});
 });

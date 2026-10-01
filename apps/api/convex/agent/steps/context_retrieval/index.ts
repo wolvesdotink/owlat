@@ -8,6 +8,7 @@
 
 import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
+import type { ActionCtx } from '../../../_generated/server';
 import type { AgentStepModule } from '../types';
 import { openInboundMessageBody } from '../../../lib/messageBodyInbound';
 import {
@@ -81,6 +82,366 @@ interface ContextRetrievalOutput {
 	groundingSources: GroundingSource[];
 }
 
+/**
+ * Assemble the briefing for one inbound message without recording anything.
+ * The step below records the tier and coverage on the message; Answer mode
+ * (mail/ai/composeDraft.ts) drafts a team-thread reply from the same briefing
+ * and must not rewrite what the pipeline stored.
+ */
+export async function assembleInboundBriefing(
+	ctx: ActionCtx,
+	inboundMessageId: Id<'inboundMessages'>
+): Promise<ContextRetrievalOutput> {
+	const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
+		inboundMessageId,
+	});
+	if (!message) throw new Error('Inbound message not found');
+
+	const contextParts: string[] = [];
+
+	// Emergency-tier grounding carriers. On the emergency tier the full
+	// briefing is discarded and re-assembled from just these compact pieces
+	// (plus a truncated current message), so the longest threads keep their
+	// grounding instead of collapsing to contact-only.
+	let contactSection: string | undefined;
+	let recentActivitySection: string | undefined;
+	const emergencyCommitmentLines: string[] = [];
+	const emergencyKnowledgeLines: string[] = [];
+
+	// Coverage tracking — which briefing legs actually produced content.
+	// Cheap booleans/counts derived inline; no extra LLM call.
+	let hasContact = false;
+	let hasThread = false;
+	let hasKnowledge = false;
+	let hasFiles = false;
+	let knowledgeHitCount = 0;
+	let topScore: number | undefined;
+
+	// Provenance — the exact prior emails + knowledge entries fed into the
+	// briefing below. Only sources that were actually appended are recorded,
+	// so this list can never name a source the draft wasn't grounded in, and
+	// (because retrieval is contact-scoped) never a cross-contact source.
+	const groundingSources: GroundingSource[] = [];
+
+	// 1. Contact profile
+	if (message.contactId) {
+		const contact = await ctx.runQuery(internal.agent.agentPipeline.getContact, {
+			contactId: message.contactId,
+		});
+		if (contact) {
+			hasContact = true;
+			contactSection =
+				`[CONTACT] ${contact.email}` +
+				(contact.firstName
+					? ` | Name: ${contact.firstName}${contact.lastName ? ' ' + contact.lastName : ''}`
+					: '') +
+				(contact.language ? ` | Language: ${contact.language}` : '') +
+				(contact.timezone ? ` | Timezone: ${contact.timezone}` : '');
+			contextParts.push(contactSection);
+		}
+
+		// 2. Recent contact activities
+		const activities = await ctx.runQuery(internal.agent.agentPipeline.getRecentActivities, {
+			contactId: message.contactId,
+			limit: 5,
+		});
+		if (activities.length > 0) {
+			recentActivitySection =
+				'[RECENT ACTIVITY]\n' +
+				activities
+					.map((a) => {
+						const when = new Date(a.occurredAt).toISOString();
+						const snippet = activityContentSnippet(a);
+						return `- ${a.activityType} at ${when}${snippet ? ` — ${snippet}` : ''}`;
+					})
+					.join('\n');
+			contextParts.push(recentActivitySection);
+		}
+
+		// 2b. OPEN COMMITMENTS — durable promises we owe THIS contact (an
+		// action_item or a communicated decision), pulled by contact scope
+		// INDEPENDENT of semantic similarity. The vector/FTS legs only surface a
+		// promise when the new inbound restates it, which is exactly when it's
+		// least needed; this ensures "we said we'd ship X by Friday" is in the
+		// briefing even for an unrelated inbound. First-class briefing section.
+		const openCommitments = await ctx.runQuery(
+			internal.knowledge.graph.getOpenCommitmentsByContact,
+			{ contactId: message.contactId }
+		);
+		if (openCommitments.length > 0) {
+			hasKnowledge = true;
+			for (const c of openCommitments) {
+				groundingSources.push({
+					type: 'knowledge',
+					id: c._id as string,
+					title: c.title,
+				});
+			}
+			// Compact carriers for the emergency tier — the top few commitments,
+			// each truncated to one line, so a still-owed promise survives even
+			// when the full briefing is discarded.
+			for (const c of openCommitments.slice(0, EMERGENCY_BUDGET.commitmentLimit)) {
+				emergencyCommitmentLines.push(
+					`- ${c.title}: ${truncateOneLine(c.content, EMERGENCY_BUDGET.factChars)}`
+				);
+			}
+			contextParts.push(
+				'[OPEN COMMITMENTS — still owed to this contact; honour these]\n' +
+					openCommitments
+						.map((c) => {
+							const due = c.dueAt !== undefined ? ` | due ${new Date(c.dueAt).toISOString()}` : '';
+							return `- (${c.entryType}${due}) ${c.title}: ${c.content}`;
+						})
+						.join('\n')
+			);
+		}
+	}
+
+	// 3. Thread history (previous messages in this conversation)
+	if (message.threadId) {
+		const threadMessages = await ctx.runQuery(internal.agent.agentPipeline.getThreadMessages, {
+			threadId: message.threadId,
+			limit: CONTEXT_BUDGET.recentMessagesCount,
+			excludeMessageId: inboundMessageId,
+		});
+		if (threadMessages.length > 0) {
+			hasThread = true;
+			for (const m of threadMessages) {
+				groundingSources.push({
+					type: 'thread',
+					id: m._id as string,
+					title: m.subject || '(no subject)',
+				});
+			}
+			// History is read without storage: the briefing is cut to a few
+			// thousand tokens below, so a prior message whose text is held in
+			// storage contributes its excerpt instead of megabytes nobody keeps.
+			const historyLines = await Promise.all(
+				threadMessages.map(async (m) => {
+					const { text, excerpt } = await openInboundMessageBody(m, null);
+					return `From: ${m.from}\nDate: ${new Date(m.receivedAt).toISOString()}\nSubject: ${m.subject}\n${text ?? excerpt ?? '(no text body)'}\n---`;
+				})
+			);
+			contextParts.push('[CONVERSATION HISTORY]\n' + historyLines.join('\n'));
+		}
+	}
+
+	// The inbound body the model reads, with remote images / tracking pixels
+	// neutralized (privacy: the agent reads every inbound automatically).
+	const inboundBody = await inboundBodyForContext(message, ctx.storage);
+
+	// Query text for semantic retrieval: the inbound subject + body.
+	const queryText = `${message.subject ?? ''}\n${inboundBody ?? ''}`.slice(0, 2000);
+
+	if (queryText.trim().length > 10) {
+		// Contact-scope retrieval so a draft for this contact can only draw on
+		// org-general knowledge/files OR knowledge/files linked to this same
+		// contact — never another contact's confidential data. When the inbound
+		// has no resolved contact we fail closed to org-general only.
+		const scopeToContact: Id<'contacts'> | 'org-general-only' =
+			message.contactId ?? 'org-general-only';
+
+		// 3b. Knowledge graph — semantically relevant typed entries (the
+		// "intelligence flows back up" path: prior facts/decisions/etc.).
+		// Graph-augmented (seed-then-expand) when `ai.knowledge.graphRetrieval`
+		// is on — the KILL SWITCH: off ⇒ flat retrieval, no _via/_stale/_caveat.
+		// scopeToContact stays contact-or-org-general (NEVER org-wide on this
+		// drafting path); the per-hop gate in graphTraversal.ts re-enforces it.
+		const graphRetrieval = await ctx.runQuery(
+			internal.knowledge.graphTraversal.isGraphRetrievalEnabled,
+			{}
+		);
+		const knowledge = await ctx.runAction(internal.knowledge.retrieval.semanticSearch, {
+			queryText,
+			limit: CONTEXT_BUDGET.knowledgeEntryLimit,
+			scopeToContact,
+			expandGraph: graphRetrieval,
+		});
+		if (knowledge.length > 0) {
+			hasKnowledge = true;
+			knowledgeHitCount = knowledge.length;
+			for (const k of knowledge) {
+				groundingSources.push({
+					type: 'knowledge',
+					id: k._id as string,
+					title: k.title,
+				});
+			}
+			// Top vector-similarity score (0 for FTS-only hits); undefined
+			// only when every hit lacks a score.
+			for (const k of knowledge) {
+				if (typeof k._score === 'number') {
+					topScore = topScore === undefined ? k._score : Math.max(topScore, k._score);
+				}
+			}
+			const renderEntry = (k: (typeof knowledge)[number]): string => {
+				// A superseded fact is kept for context but flagged so the
+				// model won't ground a reply on it; a contradicts endpoint
+				// is framed as a caveat.
+				const prefix = k._stale
+					? '[SUPERSEDED — do not rely on this] '
+					: k._caveat
+						? 'CAVEAT: '
+						: '';
+				return `- ${prefix}(${k.entryType}, confidence ${k.confidence.toFixed(2)}) ${k.title}: ${k.content}`;
+			};
+
+			// Curated canonical answers (policy / faq authored as authoritative)
+			// get their OWN first-class section so a maintained answer isn't buried
+			// among scraped facts. A curated entry SUPERSEDED by a newer scraped
+			// fact (`_stale`) is demoted back into [KNOWLEDGE] with the superseded
+			// flag, so the fresher fact still wins.
+			const policyEntries: typeof knowledge = [];
+			const otherEntries: typeof knowledge = [];
+			for (const k of knowledge) {
+				if (k.isAuthoritative === true && !k._stale) {
+					policyEntries.push(k);
+				} else {
+					otherEntries.push(k);
+				}
+			}
+			if (policyEntries.length > 0) {
+				contextParts.push(
+					'[POLICY / CANONICAL ANSWERS — curated; authoritative over scraped facts]\n' +
+						policyEntries.map(renderEntry).join('\n')
+				);
+			}
+			if (otherEntries.length > 0) {
+				contextParts.push('[KNOWLEDGE]\n' + otherEntries.map(renderEntry).join('\n'));
+			}
+
+			// Compact carriers for the emergency tier — the top few facts in
+			// precedence order (curated policy ahead of scraped facts), each
+			// truncated to one line, so the hardest threads keep real grounding
+			// rather than collapsing to contact-only.
+			for (const k of [...policyEntries, ...otherEntries].slice(
+				0,
+				EMERGENCY_BUDGET.knowledgeLimit
+			)) {
+				const stalePrefix = k._stale ? '[SUPERSEDED] ' : '';
+				emergencyKnowledgeLines.push(
+					`- ${stalePrefix}(${k.entryType}) ${k.title}: ${truncateOneLine(k.content, EMERGENCY_BUDGET.factChars)}`
+				);
+			}
+
+			// [KNOWLEDGE RELATIONSHIPS] — the typed edges among the entries above,
+			// one line per edge (outgoing direction), e.g. "A" SUPERSEDES "B".
+			// Sits before [CURRENT MESSAGE]; titles are untrusted retrieved data.
+			const relationLines: string[] = [];
+			for (const k of knowledge) {
+				for (const via of k._via ?? []) {
+					if (via.direction !== 'outgoing') continue;
+					const verb = via.relation.toUpperCase().replace(/_/g, ' ');
+					relationLines.push(`- "${k.title}" ${verb} "${via.otherTitle}"`);
+				}
+			}
+			if (relationLines.length > 0) {
+				contextParts.push('[KNOWLEDGE RELATIONSHIPS]\n' + relationLines.join('\n'));
+			}
+		}
+
+		// 3c. Relevant source documents (the actual contract/invoice/etc.,
+		// not a summary of it).
+		const files = await ctx.runAction(internal.semanticFileProcessing.semanticSearch, {
+			queryText,
+			limit: CONTEXT_BUDGET.fileLimit,
+			scopeToContact,
+		});
+		if (files.length > 0) {
+			hasFiles = true;
+			contextParts.push(
+				'[RELEVANT FILES]\n' +
+					files
+						.map(
+							(f) =>
+								`- ${f.filename}${f.title ? ` ("${f.title}")` : ''}${f.summary ? `: ${f.summary}` : ''}`
+						)
+						.join('\n')
+			);
+		}
+	}
+
+	// 4. Current message — the sender's body rendered as a QUARANTINED
+	// STRUCTURED extraction (facts + the sender's actual questions) rather than
+	// raw prose (see ./currentMessage). FAIL-SOFT to the hidden-stripped raw
+	// body; never blocks retrieval.
+	const currentMessageSection = await buildCurrentMessageSection(ctx, message, inboundBody);
+	contextParts.push(currentMessageSection);
+
+	// ── Compile and compact ──
+	const fullContext = contextParts.join('\n\n');
+	const estimatedTokens = estimateTokens(fullContext);
+
+	let tier: ContextRetrievalOutput['tier'];
+	let finalContext: string;
+
+	if (estimatedTokens <= CONTEXT_BUDGET.maxTokens) {
+		tier = 'normal';
+		finalContext = fullContext;
+	} else if (estimatedTokens <= CONTEXT_BUDGET.maxTokens * 3) {
+		tier = 'compacted';
+		const maxChars = CONTEXT_BUDGET.maxTokens * CONTEXT_BUDGET.charsPerToken;
+		finalContext = fullContext.slice(-maxChars);
+	} else {
+		// EMERGENCY: the full briefing is too large to keep, but this tier fires
+		// on the longest/hardest threads — the ones that most need grounding. So
+		// rather than collapse to contact + current-message only (dropping every
+		// fact, commitment, and file), re-assemble a COMPACT grounding set from
+		// the top knowledge facts + open commitments captured above, plus a
+		// budget-bounded slice of the current message (see ./emergency).
+		tier = 'emergency';
+		finalContext = assembleEmergencyContext({
+			contactSection,
+			commitmentLines: emergencyCommitmentLines,
+			knowledgeLines: emergencyKnowledgeLines,
+			recentActivitySection,
+			currentMessageSection,
+			maxChars: CONTEXT_BUDGET.maxTokens * CONTEXT_BUDGET.charsPerToken,
+		});
+	}
+
+	// Trim provenance to what SURVIVED compaction so the review UI's
+	// "Grounded in:" list never over-claims sources the model didn't actually
+	// see. `normal` keeps everything (finalContext === fullContext). Both
+	// `compacted` (tail-slice) and `emergency` (compact grounding block) keep a
+	// source iff its identifying title text is still present in the final
+	// briefing — the emergency tier now preserves the top facts/commitments, so
+	// those survive here too rather than being dropped wholesale.
+	let survivingSources: GroundingSource[];
+	if (tier === 'normal') {
+		survivingSources = groundingSources;
+	} else {
+		survivingSources = [];
+		for (const src of groundingSources) {
+			if (src.title && finalContext.includes(src.title)) {
+				survivingSources.push(src);
+			}
+		}
+	}
+
+	// Derive the advisory coverage signal. `lowCoverage` = no substantive
+	// grounding (no knowledge, files, or thread history) — the model would
+	// be replying essentially blind. Contact identity alone does NOT count
+	// as grounding for the reply content.
+	const coverage: ContextCoverage = {
+		contact: hasContact,
+		thread: hasThread,
+		knowledge: hasKnowledge,
+		files: hasFiles,
+		knowledgeHitCount,
+		...(topScore === undefined ? {} : { topScore }),
+		lowCoverage: !hasKnowledge && !hasFiles && !hasThread,
+	};
+
+	return {
+		context: finalContext,
+		tier,
+		estimatedTokens,
+		coverage,
+		groundingSources: survivingSources,
+	};
+}
+
 export const contextRetrievalStep: AgentStepModule<
 	'context_retrieval',
 	ContextRetrievalInput,
@@ -89,367 +450,19 @@ export const contextRetrievalStep: AgentStepModule<
 	kind: 'context_retrieval',
 
 	async execute(ctx, input) {
-		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
-			inboundMessageId: input.inboundMessageId,
-		});
-		if (!message) throw new Error('Inbound message not found');
-
-		const contextParts: string[] = [];
-
-		// Emergency-tier grounding carriers. On the emergency tier the full
-		// briefing is discarded and re-assembled from just these compact pieces
-		// (plus a truncated current message), so the longest threads keep their
-		// grounding instead of collapsing to contact-only.
-		let contactSection: string | undefined;
-		let recentActivitySection: string | undefined;
-		const emergencyCommitmentLines: string[] = [];
-		const emergencyKnowledgeLines: string[] = [];
-
-		// Coverage tracking — which briefing legs actually produced content.
-		// Cheap booleans/counts derived inline; no extra LLM call.
-		let hasContact = false;
-		let hasThread = false;
-		let hasKnowledge = false;
-		let hasFiles = false;
-		let knowledgeHitCount = 0;
-		let topScore: number | undefined;
-
-		// Provenance — the exact prior emails + knowledge entries fed into the
-		// briefing below. Only sources that were actually appended are recorded,
-		// so this list can never name a source the draft wasn't grounded in, and
-		// (because retrieval is contact-scoped) never a cross-contact source.
-		const groundingSources: GroundingSource[] = [];
-
-		// 1. Contact profile
-		if (message.contactId) {
-			const contact = await ctx.runQuery(internal.agent.agentPipeline.getContact, {
-				contactId: message.contactId,
-			});
-			if (contact) {
-				hasContact = true;
-				contactSection =
-					`[CONTACT] ${contact.email}` +
-					(contact.firstName
-						? ` | Name: ${contact.firstName}${contact.lastName ? ' ' + contact.lastName : ''}`
-						: '') +
-					(contact.language ? ` | Language: ${contact.language}` : '') +
-					(contact.timezone ? ` | Timezone: ${contact.timezone}` : '');
-				contextParts.push(contactSection);
-			}
-
-			// 2. Recent contact activities
-			const activities = await ctx.runQuery(internal.agent.agentPipeline.getRecentActivities, {
-				contactId: message.contactId,
-				limit: 5,
-			});
-			if (activities.length > 0) {
-				recentActivitySection =
-					'[RECENT ACTIVITY]\n' +
-					activities
-						.map((a) => {
-							const when = new Date(a.occurredAt).toISOString();
-							const snippet = activityContentSnippet(a);
-							return `- ${a.activityType} at ${when}${snippet ? ` — ${snippet}` : ''}`;
-						})
-						.join('\n');
-				contextParts.push(recentActivitySection);
-			}
-
-			// 2b. OPEN COMMITMENTS — durable promises we owe THIS contact (an
-			// action_item or a communicated decision), pulled by contact scope
-			// INDEPENDENT of semantic similarity. The vector/FTS legs only surface a
-			// promise when the new inbound restates it, which is exactly when it's
-			// least needed; this ensures "we said we'd ship X by Friday" is in the
-			// briefing even for an unrelated inbound. First-class briefing section.
-			const openCommitments = await ctx.runQuery(
-				internal.knowledge.graph.getOpenCommitmentsByContact,
-				{ contactId: message.contactId }
-			);
-			if (openCommitments.length > 0) {
-				hasKnowledge = true;
-				for (const c of openCommitments) {
-					groundingSources.push({
-						type: 'knowledge',
-						id: c._id as string,
-						title: c.title,
-					});
-				}
-				// Compact carriers for the emergency tier — the top few commitments,
-				// each truncated to one line, so a still-owed promise survives even
-				// when the full briefing is discarded.
-				for (const c of openCommitments.slice(0, EMERGENCY_BUDGET.commitmentLimit)) {
-					emergencyCommitmentLines.push(
-						`- ${c.title}: ${truncateOneLine(c.content, EMERGENCY_BUDGET.factChars)}`
-					);
-				}
-				contextParts.push(
-					'[OPEN COMMITMENTS — still owed to this contact; honour these]\n' +
-						openCommitments
-							.map((c) => {
-								const due =
-									c.dueAt !== undefined ? ` | due ${new Date(c.dueAt).toISOString()}` : '';
-								return `- (${c.entryType}${due}) ${c.title}: ${c.content}`;
-							})
-							.join('\n')
-				);
-			}
-		}
-
-		// 3. Thread history (previous messages in this conversation)
-		if (message.threadId) {
-			const threadMessages = await ctx.runQuery(internal.agent.agentPipeline.getThreadMessages, {
-				threadId: message.threadId,
-				limit: CONTEXT_BUDGET.recentMessagesCount,
-				excludeMessageId: input.inboundMessageId,
-			});
-			if (threadMessages.length > 0) {
-				hasThread = true;
-				for (const m of threadMessages) {
-					groundingSources.push({
-						type: 'thread',
-						id: m._id as string,
-						title: m.subject || '(no subject)',
-					});
-				}
-				// History is read without storage: the briefing is cut to a few
-				// thousand tokens below, so a prior message whose text is held in
-				// storage contributes its excerpt instead of megabytes nobody keeps.
-				const historyLines = await Promise.all(
-					threadMessages.map(async (m) => {
-						const { text, excerpt } = await openInboundMessageBody(m, null);
-						return `From: ${m.from}\nDate: ${new Date(m.receivedAt).toISOString()}\nSubject: ${m.subject}\n${text ?? excerpt ?? '(no text body)'}\n---`;
-					})
-				);
-				contextParts.push('[CONVERSATION HISTORY]\n' + historyLines.join('\n'));
-			}
-		}
-
-		// The inbound body the model reads, with remote images / tracking pixels
-		// neutralized (privacy: the agent reads every inbound automatically).
-		const inboundBody = await inboundBodyForContext(message, ctx.storage);
-
-		// Query text for semantic retrieval: the inbound subject + body.
-		const queryText = `${message.subject ?? ''}\n${inboundBody ?? ''}`.slice(0, 2000);
-
-		if (queryText.trim().length > 10) {
-			// Contact-scope retrieval so a draft for this contact can only draw on
-			// org-general knowledge/files OR knowledge/files linked to this same
-			// contact — never another contact's confidential data. When the inbound
-			// has no resolved contact we fail closed to org-general only.
-			const scopeToContact: Id<'contacts'> | 'org-general-only' =
-				message.contactId ?? 'org-general-only';
-
-			// 3b. Knowledge graph — semantically relevant typed entries (the
-			// "intelligence flows back up" path: prior facts/decisions/etc.).
-			// Graph-augmented (seed-then-expand) when `ai.knowledge.graphRetrieval`
-			// is on — the KILL SWITCH: off ⇒ flat retrieval, no _via/_stale/_caveat.
-			// scopeToContact stays contact-or-org-general (NEVER org-wide on this
-			// drafting path); the per-hop gate in graphTraversal.ts re-enforces it.
-			const graphRetrieval = await ctx.runQuery(
-				internal.knowledge.graphTraversal.isGraphRetrievalEnabled,
-				{}
-			);
-			const knowledge = await ctx.runAction(internal.knowledge.retrieval.semanticSearch, {
-				queryText,
-				limit: CONTEXT_BUDGET.knowledgeEntryLimit,
-				scopeToContact,
-				expandGraph: graphRetrieval,
-			});
-			if (knowledge.length > 0) {
-				hasKnowledge = true;
-				knowledgeHitCount = knowledge.length;
-				for (const k of knowledge) {
-					groundingSources.push({
-						type: 'knowledge',
-						id: k._id as string,
-						title: k.title,
-					});
-				}
-				// Top vector-similarity score (0 for FTS-only hits); undefined
-				// only when every hit lacks a score.
-				for (const k of knowledge) {
-					if (typeof k._score === 'number') {
-						topScore = topScore === undefined ? k._score : Math.max(topScore, k._score);
-					}
-				}
-				const renderEntry = (k: (typeof knowledge)[number]): string => {
-					// A superseded fact is kept for context but flagged so the
-					// model won't ground a reply on it; a contradicts endpoint
-					// is framed as a caveat.
-					const prefix = k._stale
-						? '[SUPERSEDED — do not rely on this] '
-						: k._caveat
-							? 'CAVEAT: '
-							: '';
-					return `- ${prefix}(${k.entryType}, confidence ${k.confidence.toFixed(2)}) ${k.title}: ${k.content}`;
-				};
-
-				// Curated canonical answers (policy / faq authored as authoritative)
-				// get their OWN first-class section so a maintained answer isn't buried
-				// among scraped facts. A curated entry SUPERSEDED by a newer scraped
-				// fact (`_stale`) is demoted back into [KNOWLEDGE] with the superseded
-				// flag, so the fresher fact still wins.
-				const policyEntries: typeof knowledge = [];
-				const otherEntries: typeof knowledge = [];
-				for (const k of knowledge) {
-					if (k.isAuthoritative === true && !k._stale) {
-						policyEntries.push(k);
-					} else {
-						otherEntries.push(k);
-					}
-				}
-				if (policyEntries.length > 0) {
-					contextParts.push(
-						'[POLICY / CANONICAL ANSWERS — curated; authoritative over scraped facts]\n' +
-							policyEntries.map(renderEntry).join('\n')
-					);
-				}
-				if (otherEntries.length > 0) {
-					contextParts.push('[KNOWLEDGE]\n' + otherEntries.map(renderEntry).join('\n'));
-				}
-
-				// Compact carriers for the emergency tier — the top few facts in
-				// precedence order (curated policy ahead of scraped facts), each
-				// truncated to one line, so the hardest threads keep real grounding
-				// rather than collapsing to contact-only.
-				for (const k of [...policyEntries, ...otherEntries].slice(
-					0,
-					EMERGENCY_BUDGET.knowledgeLimit
-				)) {
-					const stalePrefix = k._stale ? '[SUPERSEDED] ' : '';
-					emergencyKnowledgeLines.push(
-						`- ${stalePrefix}(${k.entryType}) ${k.title}: ${truncateOneLine(k.content, EMERGENCY_BUDGET.factChars)}`
-					);
-				}
-
-				// [KNOWLEDGE RELATIONSHIPS] — the typed edges among the entries above,
-				// one line per edge (outgoing direction), e.g. "A" SUPERSEDES "B".
-				// Sits before [CURRENT MESSAGE]; titles are untrusted retrieved data.
-				const relationLines: string[] = [];
-				for (const k of knowledge) {
-					for (const via of k._via ?? []) {
-						if (via.direction !== 'outgoing') continue;
-						const verb = via.relation.toUpperCase().replace(/_/g, ' ');
-						relationLines.push(`- "${k.title}" ${verb} "${via.otherTitle}"`);
-					}
-				}
-				if (relationLines.length > 0) {
-					contextParts.push('[KNOWLEDGE RELATIONSHIPS]\n' + relationLines.join('\n'));
-				}
-			}
-
-			// 3c. Relevant source documents (the actual contract/invoice/etc.,
-			// not a summary of it).
-			const files = await ctx.runAction(internal.semanticFileProcessing.semanticSearch, {
-				queryText,
-				limit: CONTEXT_BUDGET.fileLimit,
-				scopeToContact,
-			});
-			if (files.length > 0) {
-				hasFiles = true;
-				contextParts.push(
-					'[RELEVANT FILES]\n' +
-						files
-							.map(
-								(f) =>
-									`- ${f.filename}${f.title ? ` ("${f.title}")` : ''}${f.summary ? `: ${f.summary}` : ''}`
-							)
-							.join('\n')
-				);
-			}
-		}
-
-		// 4. Current message — the sender's body rendered as a QUARANTINED
-		// STRUCTURED extraction (facts + the sender's actual questions) rather than
-		// raw prose (see ./currentMessage). FAIL-SOFT to the hidden-stripped raw
-		// body; never blocks retrieval.
-		const currentMessageSection = await buildCurrentMessageSection(ctx, message, inboundBody);
-		contextParts.push(currentMessageSection);
-
-		// ── Compile and compact ──
-		const fullContext = contextParts.join('\n\n');
-		const estimatedTokens = estimateTokens(fullContext);
-
-		let tier: ContextRetrievalOutput['tier'];
-		let finalContext: string;
-
-		if (estimatedTokens <= CONTEXT_BUDGET.maxTokens) {
-			tier = 'normal';
-			finalContext = fullContext;
-		} else if (estimatedTokens <= CONTEXT_BUDGET.maxTokens * 3) {
-			tier = 'compacted';
-			const maxChars = CONTEXT_BUDGET.maxTokens * CONTEXT_BUDGET.charsPerToken;
-			finalContext = fullContext.slice(-maxChars);
-		} else {
-			// EMERGENCY: the full briefing is too large to keep, but this tier fires
-			// on the longest/hardest threads — the ones that most need grounding. So
-			// rather than collapse to contact + current-message only (dropping every
-			// fact, commitment, and file), re-assemble a COMPACT grounding set from
-			// the top knowledge facts + open commitments captured above, plus a
-			// budget-bounded slice of the current message (see ./emergency).
-			tier = 'emergency';
-			finalContext = assembleEmergencyContext({
-				contactSection,
-				commitmentLines: emergencyCommitmentLines,
-				knowledgeLines: emergencyKnowledgeLines,
-				recentActivitySection,
-				currentMessageSection,
-				maxChars: CONTEXT_BUDGET.maxTokens * CONTEXT_BUDGET.charsPerToken,
-			});
-		}
-
-		// Trim provenance to what SURVIVED compaction so the review UI's
-		// "Grounded in:" list never over-claims sources the model didn't actually
-		// see. `normal` keeps everything (finalContext === fullContext). Both
-		// `compacted` (tail-slice) and `emergency` (compact grounding block) keep a
-		// source iff its identifying title text is still present in the final
-		// briefing — the emergency tier now preserves the top facts/commitments, so
-		// those survive here too rather than being dropped wholesale.
-		let survivingSources: GroundingSource[];
-		if (tier === 'normal') {
-			survivingSources = groundingSources;
-		} else {
-			survivingSources = [];
-			for (const src of groundingSources) {
-				if (src.title && finalContext.includes(src.title)) {
-					survivingSources.push(src);
-				}
-			}
-		}
-
-		// Derive the advisory coverage signal. `lowCoverage` = no substantive
-		// grounding (no knowledge, files, or thread history) — the model would
-		// be replying essentially blind. Contact identity alone does NOT count
-		// as grounding for the reply content.
-		const coverage: ContextCoverage = {
-			contact: hasContact,
-			thread: hasThread,
-			knowledge: hasKnowledge,
-			files: hasFiles,
-			knowledgeHitCount,
-			...(topScore === undefined ? {} : { topScore }),
-			lowCoverage: !hasKnowledge && !hasFiles && !hasThread,
-		};
+		const output = await assembleInboundBriefing(ctx, input.inboundMessageId);
 
 		// Record the contextTier + coverage on the inboundMessage (in-state
 		// side effect — see ADR-0010 for why `contextTier` has its own helper
 		// rather than rolling into a transition).
 		await ctx.runMutation(internal.inbox.stepOutputs.recordContextTier, {
 			inboundMessageId: input.inboundMessageId,
-			contextTier: tier,
-			contextCoverage: coverage,
-			...(survivingSources.length > 0 ? { groundingSources: survivingSources } : {}),
+			contextTier: output.tier,
+			contextCoverage: output.coverage,
+			...(output.groundingSources.length > 0 ? { groundingSources: output.groundingSources } : {}),
 		});
 
-		return {
-			output: {
-				context: finalContext,
-				tier,
-				estimatedTokens,
-				coverage,
-				groundingSources: survivingSources,
-			},
-		};
+		return { output };
 	},
 
 	route(output, _input, runCtx) {

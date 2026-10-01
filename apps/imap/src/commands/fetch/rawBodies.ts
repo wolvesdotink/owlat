@@ -71,41 +71,72 @@ export async function mintRawUrls(
  * Read as an `ArrayBuffer`, never `res.text()`: the stored RFC822 blob is
  * arbitrary 8-bit/binary MIME, and a UTF-8 decode would replace invalid bytes
  * with U+FFFD and change the octet count, breaking the FETCH literal framing.
+ *
+ * `signal` aborts the request (and its body read) when the FETCH is cancelled;
+ * an aborted download also resolves to null, quietly. The request gets its own
+ * short-lived signal, linked to the session's for the duration of the call:
+ * handing the long-lived session signal to `fetch` directly would leave one
+ * abort listener on it per download for as long as the FETCH runs.
  */
-export async function downloadRaw(url: string | undefined): Promise<Buffer | null> {
-	if (!url) return null;
+export async function downloadRaw(
+	url: string | undefined,
+	signal?: AbortSignal
+): Promise<Buffer | null> {
+	if (!url || signal?.aborted) return null;
+	const request = new AbortController();
+	const onAbort = (): void => request.abort(signal?.reason);
+	signal?.addEventListener('abort', onAbort, { once: true });
 	try {
-		const res = await fetch(url);
+		const res = await fetch(url, { signal: request.signal });
 		if (!res.ok) return null;
 		return Buffer.from(await res.arrayBuffer());
 	} catch (err) {
-		logger.warn({ err }, 'FETCH: raw body download failed');
+		if (!signal?.aborted) logger.warn({ err }, 'FETCH: raw body download failed');
 		return null;
+	} finally {
+		signal?.removeEventListener('abort', onAbort);
 	}
 }
 
 /**
  * Run `work` over `items` with at most `concurrency` in flight, handing each
  * result to `emit` in input order. An item's work starts only once the item
- * `concurrency` places ahead of it has been emitted, so no more than that many
- * results are ever held. `work` must not reject.
+ * `concurrency` places ahead of it has been emitted — and, when `emit`
+ * returns a promise (FETCH waits for the socket to drain), once that promise
+ * has settled — so no more than that many results are ever held and a slow
+ * consumer slows the producer down. `work` must not reject.
+ *
+ * Once `signal` aborts no further work is started and nothing more is
+ * emitted; work already in flight is awaited (it is expected to abort too)
+ * so nothing outlives the call, and then the abort reason is thrown.
  */
 export async function forEachOrdered<T, R>(
 	items: readonly T[],
 	concurrency: number,
 	work: (item: T) => Promise<R>,
-	emit: (item: T, result: R) => void
+	emit: (item: T, result: R) => void | Promise<void>,
+	signal?: AbortSignal
 ): Promise<void> {
 	const width = Math.max(1, Math.floor(concurrency));
-	const pending: Array<Promise<R>> = [];
+	const pending = new Map<number, Promise<R>>();
 	let started = 0;
-	for (let emitted = 0; emitted < items.length; emitted++) {
-		while (started < items.length && started < emitted + width) {
-			pending[started] = work(items[started]!);
-			started++;
+	try {
+		for (let emitted = 0; emitted < items.length; emitted++) {
+			if (signal?.aborted) break;
+			while (started < items.length && started < emitted + width) {
+				pending.set(started, work(items[started]!));
+				started++;
+			}
+			const result = await pending.get(emitted)!;
+			pending.delete(emitted);
+			if (signal?.aborted) break;
+			// Only a returned promise is awaited: a synchronous emit keeps the
+			// loop free of extra microtask hops.
+			const wait = emit(items[emitted]!, result);
+			if (wait) await wait;
 		}
-		const result = await pending[emitted]!;
-		delete pending[emitted];
-		emit(items[emitted]!, result);
+	} finally {
+		if (pending.size > 0) await Promise.allSettled(pending.values());
 	}
+	signal?.throwIfAborted();
 }

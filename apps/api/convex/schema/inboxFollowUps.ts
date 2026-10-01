@@ -1,5 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { teamReplyAttachmentsValidator } from '../lib/validators/teamReplyAttachment';
 
 /**
  * Team inbox FOLLOW-UPS — a person writing to the customer again on a thread
@@ -33,6 +34,9 @@ export const inboxFollowUpTables = {
 		inReplyToMessageId: v.id('inboundMessages'),
 		subject: v.string(),
 		body: v.string(),
+		// The composer's attachments, taken off the thread when it was scheduled
+		// and handed back on Undo. Absent when nothing was attached.
+		attachments: v.optional(teamReplyAttachmentsValidator),
 		status: v.union(
 			v.literal('scheduled'),
 			v.literal('sending'),

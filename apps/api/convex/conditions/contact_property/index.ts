@@ -157,17 +157,23 @@ export const contactPropertyConditionModule: ConditionTypeModule<
 		// Point-read each (contact, property) value via the by_contact_and_property
 		// index — reads scale with `contacts.length × customFields`, never the whole
 		// property-value column. Built-in fields are read off the contact row in
-		// `evaluate`, so they need no preload here.
-		for (const contact of contacts) {
-			for (const [, propertyId] of lookup.propertyIds) {
-				const row = await ctx.db
-					.query('contactPropertyValues')
-					.withIndex('by_contact_and_property', (q) =>
-						q.eq('contactId', contact._id).eq('propertyId', propertyId)
-					)
-					.unique();
-				if (row) lookup.values.set(`${contact._id}:${propertyId}`, row.value);
-			}
+		// `evaluate`, so they need no preload here. The point reads are independent,
+		// so they are issued together rather than one round-trip after another.
+		const propertyIds = [...lookup.propertyIds.values()];
+		const rows = await Promise.all(
+			contacts.flatMap((contact) =>
+				propertyIds.map((propertyId) =>
+					ctx.db
+						.query('contactPropertyValues')
+						.withIndex('by_contact_and_property', (q) =>
+							q.eq('contactId', contact._id).eq('propertyId', propertyId)
+						)
+						.unique()
+				)
+			)
+		);
+		for (const row of rows) {
+			if (row) lookup.values.set(`${row.contactId}:${row.propertyId}`, row.value);
 		}
 
 		return lookup;

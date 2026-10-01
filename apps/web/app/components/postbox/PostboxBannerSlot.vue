@@ -5,9 +5,9 @@
  * The connectivity strip, the one-time sealed-mail nudge and the "waiting on
  * your reply" strip used to mount independently and stack, so a bad day put
  * three advisory rows between the folder title and the first message. Exactly
- * one renders now, by the priority in usePostboxBannerSlot (offline > sealed >
- * reply queue); the others take the slot the moment the one above them is
- * dismissed or resolves.
+ * one renders now, by the priority in usePostboxBannerSlot (offline > the
+ * draft left in Answer mode > sealed > reply queue); the others take the slot
+ * the moment the one above them is dismissed or resolves.
  */
 import type { Id } from '@owlat/api/dataModel';
 import { usePostboxBannerSlot } from '~/composables/postbox/usePostboxBanners';
@@ -46,6 +46,7 @@ const { active } = usePostboxBannerSlot({
 		:cached-at="cachedAt"
 		@retry="emit('retry')"
 	/>
+	<PostboxAnswerDraftBar v-else-if="active === 'answerDraft'" />
 	<PostboxSealedMailNudge v-else-if="active === 'sealed'" />
 	<PostboxReplyQueueStrip
 		v-else-if="active === 'replyQueue'"

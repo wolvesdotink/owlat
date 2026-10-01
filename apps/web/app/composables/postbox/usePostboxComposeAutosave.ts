@@ -11,8 +11,8 @@
  * write and each wants something different, so each gets a verb instead of the
  * handle:
  *
- *  - `flush()`        — write now, then tell me the id (promoting an inline
- *                       reply to a popup: the popup must reopen the SAME row).
+ *  - `flush()`        — write now, then tell me the id (a popup reply moving
+ *                       to Answer mode must reopen the SAME row).
  *  - `settlePendingSave()` — send: a debounced write must land BEFORE the send
  *                       mutation reads the row, or the message goes out a
  *                       keystroke stale.
@@ -38,6 +38,7 @@ import type { EditorBlock } from '@owlat/email-builder';
 import type { Ref } from 'vue';
 import type { BackendOperation, BackendOperationResult } from '~/composables/useBackendOperation';
 import { composeDraftFields } from '~/utils/postboxDraftFields';
+import { answerDraftHasContent } from '~/utils/answerMode';
 import type { ComposerMode } from './usePostboxCompose';
 import type { InitialHydrationState } from './usePostboxComposeHydration';
 
@@ -234,9 +235,11 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 
 	/**
 	 * Save now and return the draft id (creating the row if it doesn't exist
-	 * yet). Used when promoting an inline reply to a popup so the popup reopens
-	 * the SAME draft with nothing lost — which is only true when the save landed,
-	 * so a failure is `ok: false` and the caller stays put.
+	 * yet). Used when a popup reply moves to Answer mode (which reopens the SAME
+	 * draft with nothing lost), when Answer mode is left with something typed in
+	 * the last debounce window, and when an ask session needs the row. Nothing
+	 * is lost only when the save landed, so a failure is `ok: false` and the
+	 * caller stays put.
 	 */
 	async function flush(): Promise<SettleOutcome<Id<'mailDrafts'> | null>> {
 		// Scheduled/pending rows are read-only (drafts.update rejects them) —
@@ -269,6 +272,35 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 	// The row has loaded and any early edits are merged over it: save them.
 	watch(initialHydration, (state) => {
 		if (state === 'ready') schedulePersist();
+	});
+
+	// A composer that goes away with a debounced write still armed (a popup
+	// docked, Answer mode left by the browser's Back within 1.5 s) saves it now:
+	// the edit exists nowhere else (the crash mirror is keyed by the row). The
+	// one timer that is dropped is a row-less composer's that holds nothing the
+	// person wrote (a signature or a hydration re-arm, say): saving it would
+	// leave an empty draft nobody asked for. The editor itself emits nothing on
+	// a blur without an edit, so an untouched reply never arms the timer.
+	const seededEnvelope = envelopeKey();
+	function envelopeKey(): string {
+		return JSON.stringify([
+			toAddresses.value,
+			ccAddresses.value,
+			bccAddresses.value,
+			subject.value,
+		]);
+	}
+	function holdsAnEdit(): boolean {
+		return (
+			answerDraftHasContent(bodyHtml.value, 0) ||
+			bodyBlocks.value.length > 0 ||
+			envelopeKey() !== seededEnvelope
+		);
+	}
+	onScopeDispose(() => {
+		if (!saveTimer) return;
+		clearTimer();
+		if (draftId.value || holdsAnEdit()) pendingSave = persist();
 	});
 
 	/** Drop a debounced write on the floor — the row is going away or is stale. */
