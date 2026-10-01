@@ -660,6 +660,54 @@ describe('link transform', () => {
 	});
 });
 
+describe('single-open accordions', () => {
+	const accordion = (id: string, sectionPrefix: string): EditorBlock => ({
+		id,
+		type: 'accordion',
+		content: {
+			allowMultiple: false,
+			sections: [1, 2].map((n) => ({
+				id: `${sectionPrefix}-${n}`,
+				title: `Section ${n}`,
+				items: [
+					{
+						id: `${sectionPrefix}-t${n}`,
+						type: 'text',
+						content: {
+							html: `<p>Body ${n}</p>`,
+							blockType: 'paragraph',
+							fontSize: 14,
+							textColor: '#000',
+						},
+					},
+				],
+			})),
+		},
+	});
+
+	it('gives each accordion in one email its own radio group', () => {
+		const html = renderEmailHtml([accordion('acc-a', 'a'), accordion('acc-b', 'b')]);
+		const radios = [...html.matchAll(/<input type="radio" name="([^"]*)" id="([^"]*)"/g)].map(
+			(m) => ({
+				name: m[1],
+				id: m[2],
+			})
+		);
+		expect(radios).toEqual([
+			{ name: 'owlat-accordion-acc-a', id: 'owlat-acc-a-1' },
+			{ name: 'owlat-accordion-acc-a', id: 'owlat-acc-a-2' },
+			{ name: 'owlat-accordion-acc-b', id: 'owlat-acc-b-1' },
+			{ name: 'owlat-accordion-acc-b', id: 'owlat-acc-b-2' },
+		]);
+	});
+
+	it('escapes the Block id inside the group name', () => {
+		const html = renderEmailHtml([accordion('acc"x', 'a')]);
+		expect(html).toContain('name="owlat-accordion-acc&quot;x"');
+		expect(html).not.toContain('name="owlat-accordion-acc"x"');
+	});
+});
+
 describe('render warnings', () => {
 	it('collects accordion warning via onWarning callback', () => {
 		const warnings: string[] = [];
