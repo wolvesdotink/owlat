@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { renderEmailHtml, renderBlockFragment } from '../renderer';
-import type { EditorBlock } from '@owlat/shared';
+import type { ButtonBlockContent, EditorBlock } from '@owlat/shared';
 
 const textBlock: EditorBlock = {
 	id: '1',
@@ -196,10 +196,9 @@ describe('button section wrapper', () => {
 		const gradientButton: EditorBlock = {
 			...buttonBlock,
 			content: {
-				...(buttonBlock.content as object),
+				...(buttonBlock.content as ButtonBlockContent),
 				backgroundGradient: {
-					type: 'linear',
-					angle: 90,
+					direction: 'to bottom',
 					stops: [
 						{ color: '#ff0000', position: 0 },
 						{ color: '#0000ff', position: 100 },
@@ -458,6 +457,7 @@ describe('mobileFontSize', () => {
 				html: '<p>Responsive text</p>',
 				blockType: 'paragraph',
 				fontSize: 16,
+				textColor: '#333',
 				mobileFontSize: 14,
 			},
 		};

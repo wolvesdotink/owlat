@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { accordionModule } from '../index';
 import { renderContainerItem } from '../../index';
 import type { AccordionBlockContent, ContainerItem } from '@owlat/shared';
-import type { RenderArgs, RenderContext } from '../../_module';
+import type { RenderArgs } from '../../_module';
+import type { RenderContext } from '../../../types';
 
 // Mirror what the walker would do: short-circuit on empty, then dispatch html()
 // with a real `walk` that recurses through the container path (matching the
@@ -46,14 +47,32 @@ const makeContent = (overrides?: Partial<AccordionBlockContent>): AccordionBlock
 			id: 'sec1',
 			title: 'Section One',
 			items: [
-				{ id: 't1', type: 'text', content: { html: '<p>Content A</p>', blockType: 'paragraph', fontSize: 14, textColor: '#000' } },
+				{
+					id: 't1',
+					type: 'text',
+					content: {
+						html: '<p>Content A</p>',
+						blockType: 'paragraph',
+						fontSize: 14,
+						textColor: '#000',
+					},
+				},
 			],
 		},
 		{
 			id: 'sec2',
 			title: 'Section Two',
 			items: [
-				{ id: 't2', type: 'text', content: { html: '<p>Content B</p>', blockType: 'paragraph', fontSize: 14, textColor: '#000' } },
+				{
+					id: 't2',
+					type: 'text',
+					content: {
+						html: '<p>Content B</p>',
+						blockType: 'paragraph',
+						fontSize: 14,
+						textColor: '#000',
+					},
+				},
 			],
 		},
 	],
@@ -107,8 +126,12 @@ describe('renderAccordionContent', () => {
 
 	it('applies custom header and content colors', () => {
 		const html = renderAccordionContent(
-			makeContent({ headerBackgroundColor: '#ff0000', headerTextColor: '#00ff00', contentBackgroundColor: '#0000ff' }),
-			createCtx(),
+			makeContent({
+				headerBackgroundColor: '#ff0000',
+				headerTextColor: '#00ff00',
+				contentBackgroundColor: '#0000ff',
+			}),
+			createCtx()
 		);
 		expect(html).toContain('background-color:#ff0000');
 		expect(html).toContain('color:#00ff00');

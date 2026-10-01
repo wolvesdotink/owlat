@@ -27,6 +27,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { generateKeyPairSync, type KeyObject } from 'crypto';
+import type { DKIMSignOptions } from 'mailauth';
 import { dkimSign } from 'mailauth/lib/dkim/sign.js';
 import { dkimVerify } from 'mailauth/lib/dkim/verify.js';
 import { verifyDkim } from '../verify.js';
@@ -156,8 +157,20 @@ const ed = generateKeyPairSync('ed25519');
 const edPrivatePem = ed.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
 const edTxt = `v=DKIM1; k=ed25519; p=${ed25519RawBase64(ed.publicKey)}`;
 
+/**
+ * mailauth's type definitions require flat top-level `signingDomain` /
+ * `selector` / `privateKey`, but its signer ignores those and signs once per
+ * `signatureData` entry, so the oracle is called with that shape alone.
+ */
+function signWithSignatureData(
+	message: Buffer,
+	options: { canonicalization: string; algorithm: string; signatureData: DKIMSignOptions[] }
+) {
+	return dkimSign(message, options as unknown as DKIMSignOptions);
+}
+
 async function signRsa(canon: string, message = RAW_MESSAGE): Promise<Buffer> {
-	const res = await dkimSign(Buffer.from(message), {
+	const res = await signWithSignatureData(Buffer.from(message), {
 		canonicalization: canon,
 		algorithm: 'rsa-sha256',
 		signatureData: [{ signingDomain: DOMAIN, selector: SELECTOR, privateKey: rsa.privateKey }],
@@ -166,7 +179,7 @@ async function signRsa(canon: string, message = RAW_MESSAGE): Promise<Buffer> {
 }
 
 async function signEd25519(message = RAW_MESSAGE): Promise<Buffer> {
-	const res = await dkimSign(Buffer.from(message), {
+	const res = await signWithSignatureData(Buffer.from(message), {
 		canonicalization: 'relaxed/relaxed',
 		algorithm: 'ed25519-sha256',
 		signatureData: [{ signingDomain: DOMAIN, selector: SELECTOR, privateKey: edPrivatePem }],

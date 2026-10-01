@@ -15,8 +15,8 @@ import {
 beforeEach(() => {
 	clearUrlReputationProviderCache();
 	clearAntivirusProviderCache();
-	delete (process.env as Record<string, string | undefined>).URL_REPUTATION_PROVIDER;
-	delete (process.env as Record<string, string | undefined>).ANTIVIRUS_PROVIDER;
+	delete (process.env as Record<string, string | undefined>)['URL_REPUTATION_PROVIDER'];
+	delete (process.env as Record<string, string | undefined>)['ANTIVIRUS_PROVIDER'];
 });
 
 // =============================================================================
@@ -28,7 +28,7 @@ describe('UrlReputationProvider — factory lifecycle (Bucket 1)', () => {
 	});
 
 	it('switches to noop when env=noop', () => {
-		(process.env as Record<string, string | undefined>).URL_REPUTATION_PROVIDER = 'noop';
+		(process.env as Record<string, string | undefined>)['URL_REPUTATION_PROVIDER'] = 'noop';
 		expect(getUrlReputationProvider().getProviderName()).toBe('noop');
 	});
 
@@ -39,7 +39,7 @@ describe('UrlReputationProvider — factory lifecycle (Bucket 1)', () => {
 	});
 
 	it('throws on unknown provider name', () => {
-		(process.env as Record<string, string | undefined>).URL_REPUTATION_PROVIDER = 'mystery';
+		(process.env as Record<string, string | undefined>)['URL_REPUTATION_PROVIDER'] = 'mystery';
 		expect(() => getUrlReputationProvider()).toThrow(/Unknown URL reputation provider/);
 	});
 });
@@ -95,17 +95,17 @@ describe('UrlReputationProvider — failure modes (Bucket 5)', () => {
 // =============================================================================
 describe('AntivirusProvider — factory lifecycle (Bucket 1)', () => {
 	it('switches to noop when env=noop', () => {
-		(process.env as Record<string, string | undefined>).ANTIVIRUS_PROVIDER = 'noop';
+		(process.env as Record<string, string | undefined>)['ANTIVIRUS_PROVIDER'] = 'noop';
 		expect(getAntivirusProvider().getProviderName()).toBe('noop');
 	});
 
 	it('throws on unknown provider name', () => {
-		(process.env as Record<string, string | undefined>).ANTIVIRUS_PROVIDER = 'mystery';
+		(process.env as Record<string, string | undefined>)['ANTIVIRUS_PROVIDER'] = 'mystery';
 		expect(() => getAntivirusProvider()).toThrow(/Unknown antivirus provider/);
 	});
 
 	it('clearAntivirusProviderCache forces a fresh instance', () => {
-		(process.env as Record<string, string | undefined>).ANTIVIRUS_PROVIDER = 'noop';
+		(process.env as Record<string, string | undefined>)['ANTIVIRUS_PROVIDER'] = 'noop';
 		const a = getAntivirusProvider();
 		clearAntivirusProviderCache();
 		const b = getAntivirusProvider();
