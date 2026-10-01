@@ -44,6 +44,9 @@ function parseTable(stdout: string): Map<string, Builder> {
 	const table = new Map<string, Builder>();
 	for (const line of stdout.split('\n').filter((row) => row.length > 0)) {
 		const [name, kind, floor] = line.split('\t');
+		if (name === undefined || kind === undefined || floor === undefined) {
+			throw new Error(`malformed builder row: ${JSON.stringify(line)}`);
+		}
 		table.set(name, { kind, floor });
 	}
 	return table;
@@ -79,7 +82,10 @@ describe('convex builder derivation against the real tree', () => {
 		const source = await readFile(join(API_ROOT, AUTHED_FUNCTIONS), 'utf8');
 		const exported = [...source.matchAll(/^export (?:const|function) ([A-Za-z0-9_]+)/gm)]
 			.map((match) => match[1])
-			.filter((name) => name !== 'featureGated' && name !== 'featureGatedAny');
+			.filter(
+				(name): name is string =>
+					name !== undefined && name !== 'featureGated' && name !== 'featureGatedAny'
+			);
 
 		expect(exported.length).toBeGreaterThan(0);
 		for (const name of exported) {
@@ -107,6 +113,9 @@ describe('convex builder derivation against the real tree', () => {
 					`${path}:${index + 1} composes a builder the helper cannot parse`
 				).not.toBeNull();
 				const [, name, base] = match as RegExpExecArray;
+				if (name === undefined || base === undefined) {
+					throw new Error(`${path}:${index + 1} composition without a name or base`);
+				}
 				expect(table.get(name), `${path}:${index + 1} ${name}`).toEqual(table.get(base));
 				seen.push(name);
 			}

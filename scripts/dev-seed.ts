@@ -115,8 +115,8 @@ async function main(): Promise<void> {
 
 	const apiEnv = parseEnvFile(join(API_DIR, '.env.local'));
 	const siteUrl = (
-		process.env.CONVEX_SITE_URL ??
-		apiEnv.CONVEX_SITE_URL ??
+		process.env['CONVEX_SITE_URL'] ??
+		apiEnv['CONVEX_SITE_URL'] ??
 		'http://127.0.0.1:3211'
 	).replace(/\/$/, '');
 
@@ -149,7 +149,7 @@ async function main(): Promise<void> {
 		if (wiped.status !== 200) {
 			fail(`/dev/reset failed (${wiped.status}): ${JSON.stringify(wiped.body)}`);
 		}
-		summarize('wiped', wiped.body.deleted);
+		summarize('wiped', wiped.body['deleted']);
 	}
 
 	// 3. Owner account (one-shot; 409 = someone already bootstrapped this instance).
@@ -174,9 +174,9 @@ async function main(): Promise<void> {
 	if (demoResult.status !== 200) {
 		fail(`/seed/demo failed (${demoResult.status}): ${JSON.stringify(demoResult.body)}`);
 	}
-	summarize('deleted', demoResult.body.deleted);
-	summarize('inserted', demoResult.body.inserted);
-	summarize('skipped (already present)', demoResult.body.skipped);
+	summarize('deleted', demoResult.body['deleted']);
+	summarize('inserted', demoResult.body['inserted']);
+	summarize('skipped (already present)', demoResult.body['skipped']);
 
 	const appUrl = getDeploymentEnv('SITE_URL') ?? 'http://localhost:3000';
 	console.log(`\n✓ Done. Sign in at ${appUrl}`);

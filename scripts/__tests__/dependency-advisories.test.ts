@@ -97,7 +97,7 @@ function fakeSocks5(boundAddress: number[]): Promise<{ server: Server; request: 
 	const server = createServer((socket: Socket) => {
 		let buffered = Buffer.alloc(0);
 		let greeted = false;
-		socket.on('data', (chunk) => {
+		socket.on('data', (chunk: Buffer) => {
 			buffered = Buffer.concat([buffered, chunk]);
 			if (!greeted) {
 				if (buffered.length < 2 || buffered.length < 2 + buffered[1]!) return;

@@ -56,7 +56,7 @@ describe('restore.sh happy path', () => {
 			['convex-data', 'db.sqlite', 'new convex\n'],
 			['redis-data', 'appendonly.aof', 'new redis\n'],
 			['mail-certs', 'cert.pem', 'new cert\n'],
-		]) {
+		] as const) {
 			await expect(readFile(join(install.volume(suffix), file), 'utf8')).resolves.toBe(text);
 		}
 		expect(existsSync(join(install.volume('convex-data'), 'old.txt'))).toBe(false);
@@ -254,7 +254,7 @@ describe('restore.sh on a fresh host (disaster recovery: no .env yet)', () => {
 			['convex-data', 'db.sqlite', 'new convex\n'],
 			['redis-data', 'appendonly.aof', 'new redis\n'],
 			['mail-certs', 'cert.pem', 'new cert\n'],
-		]) {
+		] as const) {
 			await expect(readFile(join(install.volume(suffix), file), 'utf8')).resolves.toBe(text);
 		}
 		// Volumes that are new on this host still carry the labels backup.sh finds them by.
