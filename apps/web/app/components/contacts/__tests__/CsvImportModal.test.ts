@@ -510,3 +510,58 @@ describe('CsvImportModal — a failed batch', () => {
 		expect(sent.map((c) => c.email)).not.toContain('user101@example.com');
 	});
 });
+
+/** #1042: one column per identity field, and a preview that names its source. */
+describe('CsvImportModal — identity mapping', () => {
+	const headers = ['email', 'secondary_email'];
+	const rows = [
+		['contact0@owlat.example', 'billing0@owlat.example'],
+		['contact1@owlat.example', ''],
+	];
+
+	async function mountMapping() {
+		const mounted = mountModal({ step: 'mapping', headers, rows });
+		mounted.csvImport.columnMapping.value = { 0: 'email', 1: 'property' };
+		await flushPromises();
+		return mounted;
+	}
+
+	it('labels a taken field with the column that owns it', async () => {
+		const { wrapper } = await mountMapping();
+		const [ownerSelect, otherSelect] = wrapper.findAll('select');
+
+		const optionText = (select: typeof ownerSelect) =>
+			select!
+				.findAll('option')
+				.find((o) => o.attributes('value') === 'email')!
+				.text();
+		expect(optionText(ownerSelect)).toBe('Email (required)');
+		expect(optionText(otherSelect)).toBe('Email (column: email)');
+		expect(otherSelect!.attributes('aria-label')).toBe('Field for column secondary_email');
+	});
+
+	it('moves Email when another column picks it, and announces the move', async () => {
+		const { wrapper, csvImport } = await mountMapping();
+		const otherSelect = wrapper.findAll('select')[1]!;
+
+		await otherSelect.setValue('email');
+
+		expect(csvImport.columnMapping.value).toEqual({ 0: 'property', 1: 'email' });
+		expect((wrapper.findAll('select')[0]!.element as HTMLSelectElement).value).toBe('property');
+		expect(wrapper.find('[role="status"]').text()).toBe(
+			'Email now comes from column secondary_email. Column email is imported as a custom property.'
+		);
+	});
+
+	it('shows the source column and the addresses the import will send', async () => {
+		const { wrapper, csvImport } = await mountMapping();
+		await wrapper.findAll('select')[1]!.setValue('email');
+		csvImport.goToPreview();
+		await flushPromises();
+
+		const header = wrapper.find('thead').text();
+		expect(header).toContain('Column: secondary_email');
+		const emailCells = wrapper.findAll('tbody tr').map((tr) => tr.findAll('td')[1]!.text());
+		expect(emailCells).toEqual(['billing0@owlat.example', '—']);
+	});
+});

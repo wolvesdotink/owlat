@@ -43,6 +43,7 @@ import AnswerAiBar from '~/components/answer/AnswerAiBar.vue';
 import AskCard from '~/components/answer/AskCard.vue';
 import type { FileCopyPolicy } from '~/components/answer/FileAsk.vue';
 import AnswerMailMenu from '~/components/answer/AnswerMailMenu.vue';
+import { isImeComposing } from '~/utils/imeComposition';
 
 definePageMeta({
 	layout: 'dashboard',
@@ -242,7 +243,7 @@ function onComposerEsc() {
 const aiFocus = useAnswerAiFocus();
 
 function onKeydown(event: KeyboardEvent) {
-	if (event.defaultPrevented || event.isComposing) return;
+	if (event.defaultPrevented || isImeComposing(event)) return;
 	const plain = !event.metaKey && !event.ctrlKey && !event.altKey;
 	if (event.key === 'Escape') {
 		if (isDialogOpen()) return;
