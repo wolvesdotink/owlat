@@ -13,13 +13,11 @@
  * and `{N}` octet declarations frame correctly. Command text is decoded
  * as UTF-8 only once a full CRLF-terminated line has been sliced off.
  *
- * Commands run one at a time, in the order the client sent them (RFC 3501
- * §5.5). A client may pipeline several in one segment, but each command reads
- * the connection state the one before it leaves (SELECT then FETCH, STORE
- * then EXPUNGE, LOGIN then SELECT), so a line that arrives while a command is
- * still running stays in the buffer, and the socket stops reading, until that
- * command's `completion` resolves. Only an input-absorbing session (IDLE's
- * DONE, AUTHENTICATE's SASL response, APPEND's literal) reads input meanwhile.
+ * Commands run one at a time, in order (RFC 3501 §5.5): a line that arrives
+ * while a command is still running waits in the buffer, socket paused, until
+ * its `completion` resolves, so SELECT + FETCH reads the folder SELECT opened.
+ * Only the active session's own input (IDLE's DONE, AUTHENTICATE's response,
+ * APPEND's literal) is read meanwhile.
  */
 
 import type { Socket } from 'net';
@@ -87,7 +85,7 @@ export class ImapConnection {
 	private closed = false;
 	/** Set by LOGOUT: nothing the client sends afterwards is dispatched. */
 	private loggedOut = false;
-	/** The socket is paused because a line is waiting behind a running command. */
+	/** The socket is paused: a line waits behind a running command. */
 	private inputHeld = false;
 
 	constructor(
@@ -143,10 +141,9 @@ export class ImapConnection {
 			remoteIp,
 			capabilityLine,
 			tls,
-			// LOGOUT: `end()` only half-closes, and `close` (which cancels the
-			// sessions) can come much later. Stop in-flight work now, so an IDLE
-			// poll cannot answer after the BYE, and drop whatever the client sent
-			// after LOGOUT instead of dispatching it.
+			// LOGOUT: `end()` only half-closes, and `close` can come much later.
+			// Stop in-flight work and drop the rest of the input now, so nothing
+			// (no IDLE poll, no pipelined command) runs after the BYE.
 			closeConnection: () => {
 				this.loggedOut = true;
 				this.buffer = Buffer.alloc(0);
@@ -244,29 +241,19 @@ export class ImapConnection {
 	}
 
 	/**
-	 * Run {@link drainBuffer}, then pause the socket if it stopped at a line
-	 * that must wait for the running command, or resume it otherwise (it may
-	 * need more octets of a literal). Pausing is the backpressure that keeps a
-	 * client pipelining behind a slow command from growing `this.buffer`:
-	 * the kernel stops reading and TCP flow control holds the rest.
-	 * `pause`/`resume` are absent on some test mock sockets, so guard the calls.
+	 * Drain the buffer, then pause the socket while a line waits behind a
+	 * running command (backpressure: the buffer cannot grow meanwhile) and
+	 * resume it otherwise. Test mock sockets may lack `pause`/`resume`.
 	 */
 	private drain(): void {
 		const held = this.drainBuffer() === 'held';
 		if (this.closed || this.loggedOut || held === this.inputHeld) return;
 		this.inputHeld = held;
-		if (held) {
-			if (typeof this.socket.pause === 'function') this.socket.pause();
-		} else if (typeof this.socket.resume === 'function') {
-			this.socket.resume();
-		}
+		if (held) this.socket.pause?.();
+		else this.socket.resume?.();
 	}
 
-	/**
-	 * Absorb literals and dispatch complete command lines until the buffer
-	 * runs out (`'drained'`) or the next line must wait for a command that is
-	 * still running (`'held'`; the line stays in the buffer).
-	 */
+	/** `'held'`: the next line waits for a running command and stays buffered. */
 	private drainBuffer(): 'drained' | 'held' {
 		// Drain the buffer iteratively. Each pass runs the literal-absorption
 		// phases (1/1b) then drains whole command lines (Phase 2); when a line
@@ -339,10 +326,9 @@ export class ImapConnection {
 			while ((newlineIdx = this.buffer.indexOf(CRLF)) >= 0) {
 				const line = this.buffer.subarray(0, newlineIdx).toString('utf-8');
 
-				// 2a — the active session reads its own input: IDLE takes DONE and
-				// answers anything else BAD, AUTHENTICATE takes its SASL response.
-				// A command being assembled across literal continuations is never
-				// also an active session.
+				// 2a — the active session reads its own input (IDLE: DONE, else BAD;
+				// AUTHENTICATE: its SASL response). A command being assembled across
+				// literal continuations is never also an active session.
 				if (
 					this.pendingCommand === null &&
 					this.activeSession?.onClientLine &&
@@ -352,9 +338,8 @@ export class ImapConnection {
 					continue;
 				}
 
-				// 2b — a command is still running: the line waits in the buffer
-				// until its `completion` resolves (see `trackSession`), so it is
-				// dispatched against the state that command leaves (RFC 3501 §5.5).
+				// 2b — a command is still running: the line waits until its
+				// `completion` resolves (`trackSession` drains again), RFC 3501 §5.5.
 				if (this.sessions.size > 0) return 'held';
 				this.buffer = this.buffer.subarray(newlineIdx + 2);
 
