@@ -82,6 +82,7 @@ export const TENANT_TABLES = [
 
 	// ── Campaigns (children first) ──
 	'campaignSendJobs',
+	'audienceCountJobs',
 	'campaignStatShards',
 	'campaignSenders',
 	'campaigns',
@@ -335,6 +336,11 @@ export const NON_TENANT_TABLES = [
 	// rows are the generation history.
 	'workspaceDeletionJobs',
 	'workspaceDeletionProgress',
+	// The migration ledger: which data migrations ran on this deployment, how far
+	// they got and when they finished. Deployment state, not org data: a contract
+	// step reads it after any wipe, and a wipe must not make a finished migration
+	// look as if it never ran.
+	'migrationRuns',
 	// Instance configuration singleton — recreated by setup; reset clears it in a
 	// dedicated step. The flag singleton and counter rows split off it (plan 2.4)
 	// go with it, in the same reset step and the walker's terminal steps.

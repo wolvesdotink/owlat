@@ -10,6 +10,7 @@
  * flag is off, or there are no verdicts to reason about (a legacy row), it
  * renders nothing.
  */
+import { useLocalized } from '~/composables/useLocalized';
 import {
 	deriveSenderAuth,
 	deriveSenderHeuristicLines,
@@ -30,16 +31,12 @@ const props = defineProps<{
 	heuristics?: SenderHeuristics;
 }>();
 
-const { t } = useI18n();
-
 /**
  * Every string this badge shows is derived by the module-scope `senderAuth`
  * registry, so it arrives as a message key (or a `{ key, params }` pair for the
  * parameterized lines) and is resolved here at render time.
  */
-type Message = string | { key: string; params?: Record<string, unknown> };
-const message = (value: Message) =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const message = useLocalized();
 
 const result = computed(() => (props.enabled ? deriveSenderAuth(props.auth) : null));
 

@@ -5,12 +5,16 @@
  * errors the way EXEC does. Every command is counted, so tests can bound the
  * work a read does rather than only its result.
  *
- * Writes go through `recordIndexed` (what the record script does, step by step)
- * or `recordUnindexed` (what an MTA without the indexes did: XADD only).
+ * Writes go through `recordIndexed` (what the record script does, step by step,
+ * including its exact MAXLEN trim) or `recordUnindexed` (what an MTA without
+ * the indexes did: XADD only). `trim` models a removal outside the script.
  */
 
 import type Redis from 'ioredis';
 import {
+	EVICTED_FIELD_PREFIX,
+	EVICTED_TOTAL_FIELD,
+	EVICTION_BATCH,
 	INDEXED_TOTAL_FIELD,
 	MESSAGE_INDEXED_FIELD,
 	compareStreamIds,
@@ -37,8 +41,11 @@ export class DeliveryLogRedisFake {
 	private readonly hashes = new Map<string, Map<string, string>>();
 	private clock = 1_700_000_000_000;
 	private sequence = 0;
-	/** The record script's maxLen argument: the message index stops at this many day entries. */
-	messageIndexCap = Infinity;
+	/**
+	 * The record script's maxLen argument: the message index stops at this many
+	 * day entries, and the stream is trimmed to it.
+	 */
+	maxLen = Infinity;
 
 	/** @param supportsXinfo false models a client/server without XINFO `entries-added` (Redis < 7). */
 	constructor(private readonly supportsXinfo = true) {}
@@ -59,6 +66,11 @@ export class DeliveryLogRedisFake {
 	resetCounts(): void {
 		for (const key of Object.keys(this.calls)) delete this.calls[key];
 		this.entriesReturned = 0;
+	}
+
+	/** Entries currently in a day's stream. */
+	length(date: string): number {
+		return this.streams.get(streamKeyFor(date))?.length ?? 0;
 	}
 
 	private append(date: string, event: FakeEvent): string {
@@ -106,7 +118,7 @@ export class DeliveryLogRedisFake {
 	recordIndexed(date: string, event: FakeEvent, stopBeforeTotal = false): string {
 		const id = this.append(date, event);
 		const indexed = Number(this.hash(statsKeyFor(date)).get(INDEXED_TOTAL_FIELD) ?? 0);
-		if (indexed < this.messageIndexCap) {
+		if (indexed < this.maxLen) {
 			const msg = this.hash(messageIndexKeyFor(date));
 			const previous = msg.get(event.messageId);
 			msg.set(event.messageId, previous ? `${previous} ${id}` : id);
@@ -115,6 +127,19 @@ export class DeliveryLogRedisFake {
 		this.hincr(orgStatsKeyFor(date, event.orgId), event.status);
 		this.hincr(orgStatsKeyFor(date, event.orgId), INDEXED_TOTAL_FIELD);
 		this.hincr(statsKeyFor(date), event.status);
+		const stream = this.streams.get(streamKeyFor(date))!;
+		const excess = Math.min(stream.length - this.maxLen, EVICTION_BATCH);
+		for (const [, fields] of excess > 0 ? stream.splice(0, excess) : []) {
+			const field = (name: string) => {
+				for (let i = 0; i + 1 < fields.length; i += 2) if (fields[i] === name) return fields[i + 1];
+				return undefined;
+			};
+			const status = `${EVICTED_FIELD_PREFIX}${field('status') ?? 'failed'}`;
+			for (const key of [orgStatsKeyFor(date, field('orgId') ?? ''), statsKeyFor(date)]) {
+				this.hincr(key, status);
+				this.hincr(key, EVICTED_TOTAL_FIELD);
+			}
+		}
 		if (!stopBeforeTotal) this.hincr(statsKeyFor(date), INDEXED_TOTAL_FIELD);
 		return id;
 	}

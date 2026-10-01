@@ -26,6 +26,7 @@ import type { InboundEncryptionInfo } from '~/utils/sealedMessage';
 import type { InboundSignatureInfo } from '~/utils/signatureBadge';
 import { deriveTrustChip, TRUST_CHIP_TONE_CLASSES } from '~/utils/postboxTrustChip';
 import { useEscapeToClose } from '~/composables/useEscapeToClose';
+import { useLocalized } from '~/composables/useLocalized';
 
 const props = defineProps<{
 	mailboxId: string;
@@ -84,10 +85,8 @@ const chip = computed(() =>
 const toneClasses = computed(() => TRUST_CHIP_TONE_CLASSES[chip.value.tone]);
 
 /** Registry keys in, sentences out — this component is the render boundary. */
-const label = computed(() => {
-	const summary = chip.value.summary;
-	return typeof summary === 'string' ? t(summary) : t(summary.key, summary.params ?? {});
-});
+const localized = useLocalized();
+const label = computed(() => localized(chip.value.summary));
 
 const showSecurityBadge = computed(
 	() =>

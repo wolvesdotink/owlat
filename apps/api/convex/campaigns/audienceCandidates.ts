@@ -115,10 +115,10 @@ export function selectRecipient(
 }
 
 /**
- * Ceiling for `countRecipients`. The wizard readout streams until it has either
- * exhausted the audience or accumulated this many CANDIDATES (topic memberships,
- * or segment MATCHES), then stops and returns `completeness: 'candidate_capped'` (the UI
- * renders `25,000+`).
+ * Ceiling for `countAudience` (the capacity pre-flight and the send plan; the
+ * wizard's `countRecipients` no longer streams, see `audienceResolution.ts`).
+ * The stream stops once it has exhausted the audience or accumulated this many
+ * CANDIDATES (topic memberships, or segment MATCHES): `candidate_capped`.
  *
  * NOTE — this caps candidates, NOT documents read. For a topic it also bounds the
  * scan (memberships ARE the population). For a SEGMENT it does not: a narrow

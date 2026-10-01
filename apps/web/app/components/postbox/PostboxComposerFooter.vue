@@ -1,27 +1,47 @@
 <script setup lang="ts">
+/**
+ * The composer's footer: Send, then what the composer target allows beside it
+ * (`capabilities`, from `utils/composerTarget`). A mailbox draft gets the
+ * paperclip, scheduling, the reply reminder, the signature picker, "Preview as
+ * sent" and the editor modes; a Team inbox reply gets Send, the pre-send checks
+ * and its own ⋯ items (the `menu` slot). Props only a mailbox draft uses are
+ * optional.
+ *
+ * Slots: `send-hint` (beside Send), `menu` (first in ⋯, receives `close`),
+ * `notes` (under the pre-send checks).
+ */
 import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
 import type { ComposerMode } from '~/composables/postbox/usePostboxCompose';
+import type { ComposerTargetCapabilities } from '~/utils/composerTarget';
 import type { PreflightFinding } from '~/utils/postboxPreflight';
 
 const props = defineProps<{
+	/** What the composer's target allows; hides the controls it cannot use. */
+	capabilities: ComposerTargetCapabilities;
 	canSend: boolean;
 	sending: boolean;
-	isUploading: boolean;
-	isScheduled: boolean;
-	sendShortcutHint: string;
-	scheduleShortcutHint: string;
-	showSignaturePicker: boolean;
-	signatures: { _id: Id<'mailSignatures'>; name: string }[];
-	activeSignatureId: Id<'mailSignatures'> | null;
-	composerMode: ComposerMode;
+	/** Send's own label (who holds it, a target's wording); spins while `sending`. */
+	sendLabel?: string;
+	/** Send's icon when not sending. Default `lucide:send`. */
+	sendIcon?: string;
+	/** The ⋯ menu's accessible name, when the target words it ("More for this reply"). */
+	menuLabel?: string;
+	isUploading?: boolean;
+	isScheduled?: boolean;
+	sendShortcutHint?: string;
+	scheduleShortcutHint?: string;
+	showSignaturePicker?: boolean;
+	signatures?: { _id: Id<'mailSignatures'>; name: string }[];
+	activeSignatureId?: Id<'mailSignatures'> | null;
+	composerMode?: ComposerMode;
 	/** A reopened draft's body has not loaded: mode and signature wait for it. */
 	bodyPending?: boolean;
 	/** Live subject + body, for the read-only "Preview as sent" dialog below. */
-	subject: string;
-	bodyHtml: string;
-	bodyBlocks: EditorBlock[];
-	persistentToolbar: boolean;
+	subject?: string;
+	bodyHtml?: string;
+	bodyBlocks?: EditorBlock[];
+	persistentToolbar?: boolean;
 	/** Deterministic pre-send findings (plan idea 6); empty means nothing to say. */
 	preflight?: PreflightFinding[];
 	/** The save state, or what stands in its place (gaps left, asks covered). */
@@ -61,6 +81,10 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 const answerFrame = computed(() => props.frame === 'answer');
+// The rich body's tools (Preview as sent, editor mode, toolbar) and the draft
+// row's own Discard only exist where the target writes an HTML draft row.
+const richBody = computed(() => props.capabilities.body === 'html');
+const draftRow = computed(() => props.capabilities.persistence === 'autosave');
 
 // Name the inbox beside the Send button, so it is never a guess whose name a
 // reply goes out under. The short inbox name (the chip's) when known, else the
@@ -69,7 +93,7 @@ const answerFrame = computed(() => props.frame === 'answer');
 const { byId: inboxById } = useInboxes();
 const sendAsName = computed(() => {
 	const identity = props.sendAs;
-	if (!identity) return null;
+	if (!identity || !props.capabilities.sendAs) return null;
 	return inboxById.value.get(identity.mailboxId as Id<'mailboxes'>)?.name ?? identity.label ?? null;
 });
 
@@ -133,6 +157,7 @@ function onPickFiles(event: Event) {
 					class="shrink-0 whitespace-nowrap"
 					:title="sendTitle"
 					:disabled="!canSend || sending || isScheduled"
+					data-testid="composer-send"
 					@click="emit('send')"
 				>
 					<Icon
@@ -140,9 +165,13 @@ function onPickFiles(event: Event) {
 						name="lucide:loader-2"
 						class="w-4 h-4 mr-1.5 animate-spin motion-reduce:animate-none"
 					/>
-					<Icon v-else name="lucide:send" class="w-4 h-4 mr-1.5" />
-					{{ sending ? t('components.postbox.postboxComposerFooter.sending') : t('common.send') }}
+					<Icon v-else :name="sendIcon ?? 'lucide:send'" class="w-4 h-4 mr-1.5" />
+					{{
+						sendLabel ??
+						(sending ? t('components.postbox.postboxComposerFooter.sending') : t('common.send'))
+					}}
 				</UiButton>
+				<slot name="send-hint" />
 				<span
 					v-if="sendAsName"
 					class="min-w-0 truncate text-xs text-text-tertiary"
@@ -150,32 +179,37 @@ function onPickFiles(event: Event) {
 					data-testid="postbox-send-as"
 					>{{ t('components.postbox.postboxComposerFooter.sendAs', { name: sendAsName }) }}</span
 				>
-				<UiButton
-					variant="ghost"
-					type="button"
-					class="shrink-0"
-					:title="t('components.postbox.postboxComposerFooter.attachFiles')"
-					@click="onAttachClick"
-				>
-					<Icon name="lucide:paperclip" class="w-4 h-4" />
-				</UiButton>
-				<!-- A proxy for the paperclip button above, opened by `.click()` and
-			     never seen or tabbed to. Out of the accessibility tree explicitly:
-			     `class="hidden"` is a stylesheet away from being an unlabelled,
-			     focusable file field a screen reader would announce. -->
-				<input
-					ref="fileInput"
-					type="file"
-					multiple
-					class="hidden"
-					aria-hidden="true"
-					tabindex="-1"
-					@change="onPickFiles"
-				/>
+				<!-- The composer uploads its own files only onto a draft row; a team
+				     reply's files go through the host's panel under the editor. -->
+				<template v-if="capabilities.attachments === 'draft'">
+					<UiButton
+						variant="ghost"
+						type="button"
+						class="shrink-0"
+						:title="t('components.postbox.postboxComposerFooter.attachFiles')"
+						@click="onAttachClick"
+					>
+						<Icon name="lucide:paperclip" class="w-4 h-4" />
+					</UiButton>
+					<!-- A proxy for the paperclip button above, opened by `.click()` and
+				     never seen or tabbed to. Out of the accessibility tree explicitly:
+				     `class="hidden"` is a stylesheet away from being an unlabelled,
+				     focusable file field a screen reader would announce. -->
+					<input
+						ref="fileInput"
+						type="file"
+						multiple
+						class="hidden"
+						aria-hidden="true"
+						tabindex="-1"
+						@change="onPickFiles"
+					/>
+				</template>
 				<!-- Answer mode has the room: schedule and the follow-up chip sit on
 				     the row itself instead of behind ⋯. -->
 				<template v-if="answerFrame">
 					<UiButton
+						v-if="capabilities.schedule"
 						variant="ghost"
 						type="button"
 						class="shrink-0"
@@ -188,6 +222,7 @@ function onPickFiles(event: Event) {
 						<Icon name="lucide:clock" class="w-4 h-4" />
 					</UiButton>
 					<PostboxComposerFollowUp
+						v-if="capabilities.replyReminder"
 						v-model:remind-at="followUpRemindAt"
 						v-model:picker-open="followUpPickerOpen"
 						:disabled="isScheduled"
@@ -196,12 +231,13 @@ function onPickFiles(event: Event) {
 				<!-- Secondary controls collapse behind ⋯ to keep the footer
 			     lean; the schedule shortcut (Cmd/Ctrl+Shift+Enter) still works. -->
 				<PostboxOverflowMenu
-					:label="t('components.postbox.postboxComposerFooter.moreOptions')"
+					:label="menuLabel ?? t('components.postbox.postboxComposerFooter.moreOptions')"
 					align="left"
 					direction="up"
 				>
 					<template #default="{ close }">
-						<div v-if="!answerFrame" class="px-3 py-1.5">
+						<slot name="menu" :close="close" />
+						<div v-if="!answerFrame && capabilities.replyReminder" class="px-3 py-1.5">
 							<PostboxComposerFollowUp
 								v-model:remind-at="followUpRemindAt"
 								v-model:picker-open="followUpPickerOpen"
@@ -209,7 +245,7 @@ function onPickFiles(event: Event) {
 							/>
 						</div>
 						<label
-							v-if="showSignaturePicker"
+							v-if="showSignaturePicker && capabilities.signatures"
 							class="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary"
 						>
 							<Icon name="lucide:pen-line" class="w-4 h-4 text-text-tertiary" />
@@ -222,27 +258,29 @@ function onPickFiles(event: Event) {
 								@change="emit('signature-change', $event)"
 							>
 								<option value="">{{ t('common.none') }}</option>
-								<option v-for="sig in signatures" :key="sig._id" :value="sig._id">
+								<option v-for="sig in signatures ?? []" :key="sig._id" :value="sig._id">
 									{{ sig.name }}
 								</option>
 							</select>
 						</label>
-						<div class="border-t border-border-subtle my-1" />
-						<!-- Plan idea 14: the HTML, the REAL text/plain alternative and a
-					     dark rendering, from the same builder the send path uses. -->
-						<button
-							type="button"
-							role="menuitem"
-							class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
-							@click="
-								previewOpen = true;
-								close();
-							"
-						>
-							<Icon name="lucide:scan-eye" class="w-4 h-4 text-text-tertiary" />
-							{{ t('components.postbox.postboxComposerFooter.previewAsSent') }}
-						</button>
-						<template v-if="!answerFrame">
+						<template v-if="richBody">
+							<div class="border-t border-border-subtle my-1" />
+							<!-- Plan idea 14: the HTML, the REAL text/plain alternative and a
+						     dark rendering, from the same builder the send path uses. -->
+							<button
+								type="button"
+								role="menuitem"
+								class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
+								@click="
+									previewOpen = true;
+									close();
+								"
+							>
+								<Icon name="lucide:scan-eye" class="w-4 h-4 text-text-tertiary" />
+								{{ t('components.postbox.postboxComposerFooter.previewAsSent') }}
+							</button>
+						</template>
+						<template v-if="!answerFrame && capabilities.schedule">
 							<div class="border-t border-border-subtle my-1" />
 							<button
 								type="button"
@@ -282,6 +320,7 @@ function onPickFiles(event: Event) {
 								}}
 							</button>
 							<button
+								v-if="draftRow"
 								type="button"
 								role="menuitem"
 								class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
@@ -295,30 +334,34 @@ function onPickFiles(event: Event) {
 								{{ t('components.postbox.postboxComposerFooter.discardDraft') }}
 							</button>
 						</template>
-						<div class="border-t border-border-subtle my-1" />
-						<div class="px-3 py-1.5">
-							<PostboxComposerModeControls
-								:mode="composerMode"
-								:persistent-toolbar="persistentToolbar"
-								:switch-disabled="bodyPending"
-								@toggle-toolbar="emit('toggle-toolbar')"
-								@switch-mode="emit('switch-mode', $event)"
-							/>
-						</div>
+						<template v-if="richBody">
+							<div class="border-t border-border-subtle my-1" />
+							<div class="px-3 py-1.5">
+								<PostboxComposerModeControls
+									:mode="composerMode ?? 'simple'"
+									:persistent-toolbar="persistentToolbar"
+									:switch-disabled="bodyPending"
+									@toggle-toolbar="emit('toggle-toolbar')"
+									@switch-mode="emit('switch-mode', $event)"
+								/>
+							</div>
+						</template>
 					</template>
 				</PostboxOverflowMenu>
 				<!-- Deliberately a sibling of the ⋯ menu, not slot content: the dialog
 			     must survive the panel closing (see followUpPickerOpen above). -->
 				<!-- Plan idea 14: read-only, derived from the send path's own builder. -->
 				<PostboxPreviewAsSent
+					v-if="richBody"
 					:open="previewOpen"
-					:subject="subject"
-					:body-html="bodyHtml"
-					:body-blocks="bodyBlocks"
-					:composer-mode="composerMode"
+					:subject="subject ?? ''"
+					:body-html="bodyHtml ?? ''"
+					:body-blocks="bodyBlocks ?? []"
+					:composer-mode="composerMode ?? 'simple'"
 					@update:open="previewOpen = $event"
 				/>
 				<PostboxFollowUpDialog
+					v-if="capabilities.replyReminder"
 					:open="followUpPickerOpen"
 					@update:open="followUpPickerOpen = $event"
 					@confirm="(ts) => (followUpRemindAt = ts)"
@@ -346,5 +389,6 @@ function onPickFiles(event: Event) {
 		     long list wraps instead of being cut off. Advisory — Send stays
 		     enabled, except for an AI draft's gap, which this line explains. -->
 		<PostboxComposerPreflightChip :findings="preflight ?? []" />
+		<slot name="notes" />
 	</footer>
 </template>

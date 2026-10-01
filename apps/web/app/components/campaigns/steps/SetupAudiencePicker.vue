@@ -128,16 +128,44 @@ const formattedEligibleRecipients = computed(() => {
 	// A capped or budget-stopped enumeration is an "at least" reading, so it earns
 	// the `+`. `suppression_truncated` is an OVER-count, not a lower bound — never
 	// render it as "at least" (it cannot reach this screen today: the wizard's
-	// `countRecipients` runs unbudgeted, and only a budgeted scan can truncate
-	// suppression. Handled anyway so the mapping stays honest if that changes).
+	// `countRecipients` resolves suppression per page and never truncates it.
+	// Handled anyway so the mapping stays honest if that changes).
 	const completeness = props.audienceCount?.completeness;
 	const suffix =
 		completeness === 'candidate_capped' || completeness === 'read_budget_exhausted' ? '+' : '';
 	return `${eligible.toLocaleString(locale.value)}${suffix}`;
 });
 
+/**
+ * Where the exact count stands (#916). A big audience is first shown as the
+ * one page the readout reads inline ("at least"), then as the background
+ * count's running total, then as its exact result with the time it was taken.
+ * Absent on a server one release behind.
+ */
+const countStatus = computed<{ kind: 'counting' } | { kind: 'counted'; time: string } | null>(
+	() => {
+		const background = props.audienceCount?.background as
+			| NonNullable<RecipientCount>['background']
+			| undefined;
+		if (!background) return null;
+		if (background.status === 'unavailable' || background.status === 'counting') {
+			return { kind: 'counting' };
+		}
+		if (background.status === 'complete') {
+			const time = new Date(background.countedAt).toLocaleTimeString(locale.value, {
+				hour: 'numeric',
+				minute: '2-digit',
+			});
+			return { kind: 'counted', time };
+		}
+		return null;
+	}
+);
+
 const nonEligibleRecipients = computed(() => {
-	if (!props.audienceCount) return 0;
+	// Only an exact count has a meaningful gap: two lower bounds say nothing
+	// about how many of the rest are excluded.
+	if (!props.audienceCount || props.audienceCount.completeness !== 'exact') return 0;
 	return Math.max(0, props.audienceCount.total - props.audienceCount.eligible);
 });
 </script>
@@ -225,6 +253,26 @@ const nonEligibleRecipients = computed(() => {
 			</div>
 			<p v-if="!hasSelection" class="mt-1 text-sm text-text-tertiary">
 				{{ t(`${prefix}.noSelection`) }}
+			</p>
+			<p
+				v-else-if="countStatus?.kind === 'counting'"
+				class="mt-1 flex items-center gap-1.5 text-sm text-text-tertiary"
+				data-testid="audience-count-status"
+				role="status"
+			>
+				<Icon
+					name="lucide:loader-2"
+					class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none"
+					aria-hidden="true"
+				/>
+				{{ t(`${prefix}.countCounting`) }}
+			</p>
+			<p
+				v-else-if="countStatus?.kind === 'counted'"
+				class="mt-1 text-sm text-text-tertiary"
+				data-testid="audience-count-status"
+			>
+				{{ t(`${prefix}.countCountedAt`, { time: countStatus.time }) }}
 			</p>
 
 			<div

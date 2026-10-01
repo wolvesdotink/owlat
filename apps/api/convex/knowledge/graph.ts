@@ -29,12 +29,17 @@ import {
 	sourceTypeValidator,
 	relationTypeValidator,
 	commitmentStatusValidator,
-	COMMITMENT_ENTRY_TYPES,
 	POLICY_ENTRY_TYPES,
-	isCommitmentOpen,
 	knowledgeEntriesFields,
 } from '../schema/knowledge';
 import { optionalFields, pick } from '../lib/validators/fields';
+import {
+	commitmentFacetsOf,
+	readOpenCommitments,
+	syncCommitmentFacets,
+	type CommitmentFacets,
+	type OpenCommitment,
+} from './commitmentFacets';
 
 // ============================================================
 // Contact junction helpers
@@ -43,20 +48,22 @@ import { optionalFields, pick } from '../lib/validators/fields';
 /**
  * Write the `knowledgeEntryContacts` junction rows that mirror an entry's
  * `contactIds`. The array lives on the entry for the reads that still want it
- * inline; the junction is the index-able copy `getByContact` queries. Call this
- * right after inserting an entry — the entry is brand-new, so there are no stale
- * junction rows to reconcile. For an in-place edit or teardown use
+ * inline; the junction is the index-able copy `getByContact` queries. Each row
+ * carries the entry's open-commitment facets (knowledge/commitmentFacets.ts).
+ * Call this right after inserting an entry — the entry is brand-new, so there
+ * are no stale junction rows to reconcile. For an in-place edit or teardown use
  * `syncEntryContacts` (delete-then-reinsert) instead.
  */
 async function insertEntryContacts(
 	ctx: MutationCtx,
 	entryId: Id<'knowledgeEntries'>,
-	contactIds: Id<'contacts'>[] | undefined
+	contactIds: Id<'contacts'>[] | undefined,
+	facets: CommitmentFacets
 ): Promise<void> {
 	if (!contactIds) return;
 	// De-dup the input so a contactId repeated in the array yields one row.
 	for (const contactId of new Set(contactIds)) {
-		await ctx.db.insert('knowledgeEntryContacts', { entryId, contactId });
+		await ctx.db.insert('knowledgeEntryContacts', { entryId, contactId, ...facets });
 	}
 }
 
@@ -70,7 +77,8 @@ async function insertEntryContacts(
 async function syncEntryContacts(
 	ctx: MutationCtx,
 	entryId: Id<'knowledgeEntries'>,
-	contactIds: Id<'contacts'>[] | undefined
+	contactIds: Id<'contacts'>[] | undefined,
+	facets?: CommitmentFacets
 ): Promise<void> {
 	const existing = await ctx.db
 		.query('knowledgeEntryContacts')
@@ -79,7 +87,7 @@ async function syncEntryContacts(
 	for (const row of existing) await ctx.db.delete(row._id);
 	// De-dup so a contactId repeated in the array yields one row.
 	for (const contactId of new Set(contactIds ?? [])) {
-		await ctx.db.insert('knowledgeEntryContacts', { entryId, contactId });
+		await ctx.db.insert('knowledgeEntryContacts', { entryId, contactId, ...facets });
 	}
 }
 
@@ -287,7 +295,7 @@ export const createEntry = authedMutation({
 
 		const now = Date.now();
 
-		const entryId = await ctx.db.insert('knowledgeEntries', {
+		const entry = {
 			entryType: args.entryType,
 			title: args.title,
 			content: args.content,
@@ -303,10 +311,11 @@ export const createEntry = authedMutation({
 			searchableText: `${args.title} ${args.content}`,
 			createdAt: now,
 			updatedAt: now,
-		});
+		};
+		const entryId = await ctx.db.insert('knowledgeEntries', entry);
 
 		// Mirror contactIds into the index-able junction (powers getByContact).
-		await insertEntryContacts(ctx, entryId, args.contactIds);
+		await insertEntryContacts(ctx, entryId, args.contactIds, commitmentFacetsOf(entry));
 
 		return entryId;
 	},
@@ -368,9 +377,13 @@ export const updateEntry = authedMutation({
 
 		await ctx.db.patch(args.entryId, patch);
 
-		// Reconcile the index-able junction when contactIds is edited in place.
+		// Reconcile the index-able junction when contactIds is edited in place;
+		// otherwise re-project its open-commitment facets (type / expiry edits).
+		const next = { ...entry, ...patch };
 		if (args.contactIds !== undefined) {
-			await syncEntryContacts(ctx, args.entryId, args.contactIds);
+			await syncEntryContacts(ctx, args.entryId, args.contactIds, commitmentFacetsOf(next));
+		} else {
+			await syncCommitmentFacets(ctx, args.entryId, next);
 		}
 
 		// Return the edited id (a non-undefined success sentinel) so the web
@@ -503,16 +516,17 @@ export const saveEntry = internalMutation({
 			const dup = byHash.find((e) => sameContactScope(e.contactIds, args.contactIds));
 			if (dup) return dup._id;
 		}
-		const entryId = await ctx.db.insert('knowledgeEntries', {
+		const entry = {
 			...args,
 			searchableText: `${args.title} ${args.content}`,
 			lastValidatedAt: now,
 			createdAt: now,
 			updatedAt: now,
-		});
+		};
+		const entryId = await ctx.db.insert('knowledgeEntries', entry);
 
 		// Mirror contactIds into the index-able junction (powers getByContact).
-		await insertEntryContacts(ctx, entryId, args.contactIds);
+		await insertEntryContacts(ctx, entryId, args.contactIds, commitmentFacetsOf(entry));
 
 		return entryId;
 	},
@@ -653,6 +667,13 @@ export const createPolicyEntry = adminMutation({
 				lastValidatedAt: now,
 				updatedAt: now,
 			});
+			// A policy / faq is never a commitment: drop the entry's junction rows
+			// out of the open-commitments index if it was one.
+			await syncCommitmentFacets(ctx, args.entryId, {
+				...existing,
+				entryType,
+				expiresAt: args.expiresAt,
+			});
 			return args.entryId;
 		}
 
@@ -736,6 +757,8 @@ export const setCommitmentStatus = authedMutation({
 		};
 		if (args.dueAt !== undefined) patch.dueAt = args.dueAt;
 		await ctx.db.patch(args.entryId, patch);
+		// Same transaction: the open-commitments index never disagrees with the status.
+		await syncCommitmentFacets(ctx, args.entryId, { ...entry, ...patch });
 		return args.entryId;
 	},
 });
@@ -801,49 +824,19 @@ export const getByIds = internalQuery({
  * (`isCommitmentOpen`; a `fulfilled` / `cancelled` commitment drops out). Ordered
  * soonest-due first (undated last), then newest, so the most pressing promise
  * leads. Internal: the caller (context_retrieval) has already resolved + scoped
- * the contact, so no feature/membership gate here.
+ * the contact, so no feature/membership gate here. Returns the entries without
+ * their embeddings (`OpenCommitment`): the caller only reads title, content and
+ * commitment metadata.
  */
 export const getOpenCommitmentsByContact = internalQuery({
 	args: {
 		contactId: v.id('contacts'),
 		limit: v.optional(v.number()),
 	},
-	handler: async (ctx, args): Promise<Doc<'knowledgeEntries'>[]> => {
-		const limit = args.limit ?? 10;
-		const now = Date.now();
-
-		const links = await ctx.db
-			.query('knowledgeEntryContacts')
-			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-			.collect(); // bounded: junction rows for one contact (knowledge per person)
-
-		const entryMap = await batchGet(
-			ctx,
-			links.map((link) => link.entryId)
-		);
-
-		const commitmentTypes = new Set<string>(COMMITMENT_ENTRY_TYPES);
-		const open: Doc<'knowledgeEntries'>[] = [];
-		for (const entry of entryMap.values()) {
-			if (entry === null) continue;
-			// Honour TTL at read time (the indexes hold expired rows until the decay
-			// cron reaps them).
-			if (entry.expiresAt !== undefined && entry.expiresAt < now) continue;
-			if (!commitmentTypes.has(entry.entryType)) continue;
-			if (!isCommitmentOpen(entry.commitmentStatus)) continue;
-			open.push(entry);
-		}
-
-		open.sort((a, b) => {
-			// Soonest promised-by first; undated commitments sort after dated ones.
-			const aDue = a.dueAt ?? Number.POSITIVE_INFINITY;
-			const bDue = b.dueAt ?? Number.POSITIVE_INFINITY;
-			if (aDue !== bDue) return aDue - bDue;
-			return b.createdAt - a.createdAt;
-		});
-
-		return open.slice(0, limit);
-	},
+	handler: async (ctx, args): Promise<OpenCommitment[]> =>
+		// Walks the contact's open-commitment junction rows in due order and loads
+		// only the entries it returns (knowledge/commitmentFacets.ts, issue #919).
+		await readOpenCommitments(ctx, args.contactId, args.limit ?? 10, Date.now()),
 });
 
 /**

@@ -207,6 +207,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	webhookPayloads: makeSweepStep('webhookPayloads'),
 	automationStatShards: makeSweepStep('automationStatShards'),
 	campaignSendJobs: makeSweepStep('campaignSendJobs'),
+	audienceCountJobs: makeSweepStep('audienceCountJobs'),
 	campaignStatShards: makeSweepStep('campaignStatShards'),
 	campaignSenders: makeSweepStep('campaignSenders'),
 	sendDailyStats: makeSweepStep('sendDailyStats'),
