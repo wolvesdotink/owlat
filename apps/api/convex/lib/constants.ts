@@ -73,8 +73,14 @@ export const BULK_QUERY_LIMIT = 1000;
 /** EditorBlock[] shape (emailTemplates.content, transactionalEmails.content, mailDrafts.bodyBlocks). */
 export const CURRENT_CONTENT_BLOCK_VERSION = 1;
 
-/** Renderer engine output shape (htmlContent on templates, shareLinks.htmlContent). */
-export const CURRENT_RENDERER_VERSION = 1;
+/**
+ * Renderer engine output shape (htmlContent / htmlTranslations on templates,
+ * shareLinks.htmlContent). Owned by `@owlat/email-renderer` (src/version.ts
+ * keeps the history) so the browser editor and the Node rerender stamp the
+ * version of the renderer they ran; see lib/rendererVersion.ts.
+ * 2: single-open accordion radio groups scoped to their Block (#1085, #1111).
+ */
+export { EMAIL_RENDERER_VERSION as CURRENT_RENDERER_VERSION } from '@owlat/email-renderer/version';
 
 /** webhookDeliveryLogs.payload contract version — bumping is a breaking change for external receivers. */
 export const CURRENT_WEBHOOK_PAYLOAD_VERSION = 1;

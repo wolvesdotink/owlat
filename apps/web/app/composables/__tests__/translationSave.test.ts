@@ -6,6 +6,7 @@ import {
 	type TranslationBase,
 } from '../translationSave';
 import type { RenderOptions } from '../useEmailHtmlRendering';
+import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
 
 /**
  * The translation table's write (issue #1000): the overlay text and the HTML
@@ -45,6 +46,7 @@ describe('buildTranslationUpdate', () => {
 		);
 
 		expect(payload.expectedContentRevision).toBe(7);
+		expect(payload.rendererVersion).toBe(EMAIL_RENDERER_VERSION);
 		expect(payload.language).toBe('de');
 		expect(payload.subject).toBe('Deutscher Betreff');
 		expect(payload.previewText).toBe('Vorschau');
@@ -110,6 +112,7 @@ describe('buildLanguageAdd', () => {
 		const write = buildLanguageAdd(base({ revision: 3 }), renderOptions);
 
 		expect(write.expectedContentRevision).toBe(3);
+		expect(write.rendererVersion).toBe(EMAIL_RENDERER_VERSION);
 		expect(write.htmlContent).toContain('Hello world');
 		expect(write.htmlContent).toContain('Click me');
 	});
