@@ -23,8 +23,9 @@
  * again or removed the workspace, the storage is retired for good and the
  * window binds a new storage to the current session (`rebindActiveSession`).
  * The auth client sits on `activeSessionStorage`, which follows the bound
- * storage, and drops what a response to a request sent before the rebind
- * would write (see `auth-client.ts`).
+ * storage, and writes what each answer says into the storage its request went
+ * out with (see `auth-client.ts`), so an answer to the older session can only
+ * reach the retired storage.
  */
 import type { SessionEntry, SessionWriteOutcome } from '@owlat/desktop/src/keychain';
 
@@ -214,8 +215,8 @@ let activeStorage: KeychainSessionStorage | null = null;
 let activePersistence: SessionPersistence | null = null;
 /**
  * Moves each time a storage is bound. An auth request records it when it goes
- * out, so what its response would write can be told apart from the session
- * bound since (see `auth-client.ts`).
+ * out, so an answer to a request sent with an older session can be dropped
+ * before it reaches the client (see `sessionFencedFetch`).
  */
 let sessionGeneration = 0;
 const reboundListeners = new Set<() => void>();

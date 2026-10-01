@@ -189,8 +189,17 @@ async function bootWithA() {
 	const connect = await import('~/lib/desktop/workspaceConnect');
 	const storage = await import('~/lib/desktop/keychainStorage');
 	const auth = await import('~/composables/useAuth');
+	const state = await import('~/lib/desktop/workspaceState');
 	await workspaces.loadWorkspaces();
-	return { ...workspaces, ...authClientModule, ...convexAuth, ...connect, ...storage, ...auth };
+	return {
+		...workspaces,
+		...authClientModule,
+		...convexAuth,
+		...connect,
+		...storage,
+		...auth,
+		makeSessionPersistence: state.makeSessionPersistence,
+	};
 }
 
 /** Start connecting B the way the connect screen does; returns the handshake state. */
@@ -489,5 +498,52 @@ describe('desktop session replacement across windows', () => {
 			compose.authClient.$store.notify('$sessionSignal');
 			await vi.waitFor(() => expect(heard.mock.calls.length).toBeGreaterThan(before));
 		});
+	});
+
+	// The cross-domain hook writes the answer's cookie, awaits, then writes the
+	// session data (and, for a signed-out answer, clears the cookie). Compose
+	// takes the new session exactly between those writes.
+	it('a rebind landing inside the answer hook leaves the rest of its writes out of the new session', async () => {
+		keychain.setDeliverEvents(false);
+		const held = holdNextACheck();
+		let pending: Promise<unknown> = Promise.resolve();
+		const { compose } = await reauthenticateAInMain(async (c) => {
+			pending = c.authClient
+				.getSession({ query: { disableCookieCache: true } })
+				.catch((e: unknown) => e);
+			await held.sent;
+		});
+		// Compose missed the event and still holds the older session.
+		const old = compose.getActiveKeychainStorage()!;
+		expect(old.getItem('better-auth_cookie')).toContain('"A-session"');
+		const entry = await keychain.bridge.sessionRead(A.tokenRef);
+		expect(entry.value).toContain('A-new-session');
+
+		// The hook's first write is the cookie; bind the new session right then.
+		const write = old.setItem.bind(old);
+		let rebound = false;
+		old.setItem = (key, value) => {
+			write(key, value);
+			if (!rebound && key === 'better-auth_cookie') {
+				rebound = true;
+				compose.bindActiveSession(A.tokenRef, entry, compose.makeSessionPersistence());
+			}
+		};
+
+		held.release(null, 'better-auth.session_token=; Max-Age=0; Path=/');
+		await pending;
+		expect(rebound).toBe(true);
+		const bound = compose.getActiveKeychainStorage();
+		await bound?.flush();
+		await old.flush();
+
+		expect(bound).not.toBe(old);
+		// The new storage, and the keychain, hold what main stored; the old
+		// answer's cookie and its `null` session stayed in the retired storage.
+		expect(bound?.getItem('better-auth_session_data')).not.toBe('null');
+		expect(bound?.getItem('better-auth_cookie')).toContain('A-new-session');
+		await bound?.flush();
+		expect(keychainEntries.get(A.tokenRef)).toBe(entry.value);
+		expect(old.getItem('better-auth_session_data')).toBe('null');
 	});
 });

@@ -45,7 +45,7 @@ export function createDesktopAuthClient(
 	convexSiteUrl: string,
 	storage: Pick<KeychainSessionStorage, 'getItem' | 'setItem'>,
 	fetchImpl?: FetchImpl,
-	sessionGeneration?: () => number
+	boundStorage?: () => SessionStorageLike | null
 ): AuthClient {
 	const crossDomain = crossDomainClient({ storage });
 	return createAuthClient({
@@ -59,65 +59,94 @@ export function createDesktopAuthClient(
 			// a redirect here would navigate away mid-submit and strand the
 			// desktop app, which has no such route to navigate to.
 			twoFactorClient(),
-			sessionGeneration ? fenceCrossDomainWrites(crossDomain, sessionGeneration) : crossDomain,
+			boundStorage ? bindCrossDomainToRequest(crossDomain, boundStorage) : crossDomain,
 		],
 	}) as unknown as AuthClient;
 }
 
-/** Where an auth request records the session generation it went out under. */
-const SENT_AT_GENERATION = 'owlatSessionGeneration';
+type SessionStorageLike = Pick<KeychainSessionStorage, 'getItem' | 'setItem'>;
+
+/** Where an auth request keeps the session storage it went out with. */
+const SENT_WITH_STORAGE = 'owlatSessionStorage';
 
 type CrossDomainPlugin = ReturnType<typeof crossDomainClient>;
 type FetchOptions = Record<string, unknown>;
-/** The parts of a better-fetch plugin the fence wraps. */
-interface FencedFetchPlugin {
+/** The parts of a better-fetch plugin the binding wraps. */
+interface BoundFetchPlugin {
 	init?: (url: string, options?: FetchOptions) => Promise<{ url: string; options?: FetchOptions }>;
 	hooks?: { onSuccess?: (context: { request: unknown }) => unknown } & Record<string, unknown>;
 }
 
 /**
- * The cross-domain plugin writes what a response says about the session (its
- * cookie, the session data) into the storage in its `onSuccess` hook. Another
- * window can sign in to the workspace again while a request this window sent
- * with the older session is in flight; the page then binds a new session
- * storage (`rebindActiveSession`), and the client, built on
- * `activeSessionStorage`, would write the old answer into it. So each request
- * records the session generation it went out under, and its `onSuccess` runs
- * only if that is still the generation bound. The hook's writes are
- * synchronous, so no rebind can land between that check and them.
+ * The cross-domain plugin reads the cookie a request sends from the storage
+ * in its `init`, and writes what the answer says about the session (cookie,
+ * session data, a cleared cookie on a signed-out answer) into the storage in
+ * its `onSuccess`, across several awaits. Another window can sign in to the
+ * workspace again while a request is in flight; the page then retires the
+ * storage that request went out with and binds a new one
+ * (`rebindActiveSession`). Writing through `activeSessionStorage` would let
+ * whatever part of the hook runs after that land in the new session.
+ *
+ * So each request is bound to the storage it went out with, for its whole
+ * life: `init` records the page's bound storage on the request, and both hooks
+ * run on a plugin built for that storage alone. Every write of the answer goes
+ * to the storage the request was sent with; if that has been retired since,
+ * it is never written to the keychain, whenever in the hook the rebind lands.
+ * The plugin's actions (`getCookie`, `getSessionData`) and its store stay on
+ * the facade, so the client keeps one session state.
  */
-function fenceCrossDomainWrites(
-	plugin: CrossDomainPlugin,
-	sessionGeneration: () => number
+function bindCrossDomainToRequest(
+	facade: CrossDomainPlugin,
+	boundStorage: () => SessionStorageLike | null
 ): CrossDomainPlugin {
+	const facadeFetchPlugins = (facade.fetchPlugins ?? []) as BoundFetchPlugin[];
+	// The client's store, handed to each per-storage plugin so its session
+	// signal and sign-out reach the same atoms as the facade's.
+	let clientStore: unknown;
+	const perStorage = new WeakMap<object, BoundFetchPlugin[]>();
+	const fetchPluginsFor = (target: SessionStorageLike | undefined): BoundFetchPlugin[] => {
+		if (!target) return facadeFetchPlugins;
+		let plugins = perStorage.get(target);
+		if (!plugins) {
+			const plugin = crossDomainClient({ storage: target });
+			(plugin.getActions as ((...args: unknown[]) => unknown) | undefined)?.(
+				undefined,
+				clientStore
+			);
+			plugins = (plugin.fetchPlugins ?? []) as BoundFetchPlugin[];
+			perStorage.set(target, plugins);
+		}
+		return plugins;
+	};
+
 	return {
-		...plugin,
-		fetchPlugins: ((plugin.fetchPlugins ?? []) as FencedFetchPlugin[]).map((fetchPlugin) => {
-			const init = fetchPlugin.init;
-			const onSuccess = fetchPlugin.hooks?.onSuccess;
-			const fencedInit: NonNullable<FencedFetchPlugin['init']> = async (url, options) => {
-				// Read before the plugin reads the cookie it sends. Set on the options
-				// object itself, as the plugin sets its headers: better-fetch hands
-				// every plugin the same options and keeps the last one's result.
-				const sentAt = sessionGeneration();
-				const result = init ? await init(url, options) : { url, options };
+		...facade,
+		getActions: (...args: unknown[]) => {
+			clientStore = args[1];
+			return (facade.getActions as (...a: unknown[]) => unknown)(...args);
+		},
+		fetchPlugins: facadeFetchPlugins.map((fetchPlugin, index) => {
+			const init: NonNullable<BoundFetchPlugin['init']> = async (url, options) => {
+				const target = boundStorage() ?? undefined;
+				const own = fetchPluginsFor(target)[index];
+				const result = own?.init ? await own.init(url, options) : { url, options };
+				// On the options object itself, as the plugin sets its headers:
+				// better-fetch hands every plugin the same options and keeps the
+				// last one's result.
 				const stamped = result.options ?? options ?? {};
-				stamped[SENT_AT_GENERATION] = sentAt;
-				if (options && options !== stamped) options[SENT_AT_GENERATION] = sentAt;
+				stamped[SENT_WITH_STORAGE] = target;
+				if (options && options !== stamped) options[SENT_WITH_STORAGE] = target;
 				return { ...result, options: stamped };
 			};
-			const fencedSuccess: NonNullable<
-				NonNullable<FencedFetchPlugin['hooks']>['onSuccess']
-			> = async (context) => {
-				const sentAt = (context.request as FetchOptions)[SENT_AT_GENERATION];
-				if (sentAt !== sessionGeneration()) return;
-				await onSuccess?.(context);
+			const onSuccess: NonNullable<NonNullable<BoundFetchPlugin['hooks']>['onSuccess']> = async (
+				context
+			) => {
+				const target = (context.request as FetchOptions)[SENT_WITH_STORAGE] as
+					| SessionStorageLike
+					| undefined;
+				await fetchPluginsFor(target)[index]?.hooks?.onSuccess?.(context);
 			};
-			return {
-				...fetchPlugin,
-				init: fencedInit,
-				hooks: { ...fetchPlugin.hooks, onSuccess: fencedSuccess },
-			};
+			return { ...fetchPlugin, init, hooks: { ...fetchPlugin.hooks, onSuccess } };
 		}),
 	} as unknown as CrossDomainPlugin;
 }
@@ -137,7 +166,7 @@ export class StaleSessionResponseError extends Error {
 const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
 
 /**
- * The fetch for a workspace's auth client. Besides the write fence above, an
+ * The fetch for a workspace's auth client. Besides the binding above, an
  * answer to a request sent with a session that has since been replaced must
  * not reach the client's own session state either, where a signed-out answer
  * would read as "signed out" in this window. The whole body is read here, and
@@ -220,7 +249,7 @@ function desktopClient(): DesktopBinding {
 		workspace.convexSiteUrl,
 		activeSessionStorage,
 		sessionFencedFetch(getSessionGeneration),
-		getSessionGeneration
+		getActiveKeychainStorage
 	);
 	// The session under the client was replaced: useSession refetches, and the
 	// Convex token and the Postbox body cache follow, as on any session change.
