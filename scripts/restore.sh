@@ -234,8 +234,8 @@ for file in compose.yaml compose.yml; do
 		|| die "$file is present, and Compose reads it instead of docker-compose.yml. Move it away and run the restore again — nothing was changed."
 done
 
-# For when Compose cannot read a configuration (an archived .env that predates
-# a variable the compose file now requires): Compose's precedence without -p
+# For when Compose cannot read the CURRENT configuration (it only decides what
+# `down` stops and a rollback restarts): Compose's precedence without -p
 # is COMPOSE_PROJECT_NAME from the environment, then from the env file, then a
 # top-level `name:` in the override, then in docker-compose.yml, then this
 # directory's name. $1 is the env file, $2 the override ("" for none).
@@ -326,23 +326,20 @@ if [[ -z "$CURRENT_PROJECT" ]]; then
 		|| die "Could not determine the current Compose project name — nothing was changed. Set COMPOSE_PROJECT_NAME and run the restore again."
 fi
 
-PROJECT=""
-RESTORED_VOLUMES=""
-RESOLVED_BY_COMPOSE=0
-if CONFIG=$(restored_compose config 2>"$COMPOSE_ERR"); then
-	PROJECT=$(config_project <<<"$CONFIG")
-	RESTORED_VOLUMES=$(config_volumes <<<"$CONFIG")
-	RESOLVED_BY_COMPOSE=1
-else
+# Only Compose knows which volumes `up` mounts (explicit names, profiles,
+# interpolation). Without its answer every target would be a guess, so the
+# restore stops here rather than replace volumes the started stack may not use.
+if ! CONFIG=$(restored_compose config 2>"$COMPOSE_ERR"); then
 	warn "docker compose config failed for the configuration being restored:"
 	sed 's/^/    /' "$COMPOSE_ERR" >&2
+	if [[ $KEEP_ENV -eq 1 || ! -f "$STAGING/env" ]]; then
+		die "Without that answer the restore cannot tell which volumes docker compose up mounts — nothing was changed. Fix the error above in .env or the override, then run the restore again."
+	fi
+	die "Without that answer the restore cannot tell which volumes docker compose up mounts — nothing was changed. A .env from an older release can lack a variable the compose file now requires: write the archive's copy to .env (tar -xzOf $ARCHIVE ./env > .env && chmod 600 .env), fix what the error above names, and run the restore again with --keep-env."
 fi
-if [[ -z "$PROJECT" ]]; then
-	PROJECT=$(compose_derived_project "$RESTORED_ENV" "$RESTORED_OVERRIDE") \
-		|| die "The restored configuration sets an interpolated project name that Compose could not resolve — nothing was changed. Set COMPOSE_PROJECT_NAME and run the restore again."
-	warn "Could not resolve the project name from Compose; using '$PROJECT', the name docker compose up derives here."
-fi
-[[ -n "$PROJECT" ]] || die "Could not determine the Compose project name. Set COMPOSE_PROJECT_NAME and run the restore again."
+PROJECT=$(config_project <<<"$CONFIG")
+RESTORED_VOLUMES=$(config_volumes <<<"$CONFIG")
+[[ -n "$PROJECT" ]] || die "docker compose config printed no project name for the configuration being restored — nothing was changed."
 if [[ -n "$MANIFEST_PROJECT" && "$MANIFEST_PROJECT" != "$PROJECT" ]]; then
 	warn "The backup was taken from project '$MANIFEST_PROJECT'; this checkout is project '$PROJECT'. Restoring into ${PROJECT}_* volumes, which is what docker compose up uses here."
 fi
@@ -377,12 +374,10 @@ for i in "${!TARGETS[@]}"; do
 		unmatched)
 			[[ -z "$UNFILLED" ]] \
 				|| die "This archive predates VOLUMES.txt, and payload ${payload} matches no volume the restored configuration mounts, while ${UNFILLED} would get no payload. The payload is probably one of those under another name — nothing was changed. Rename the payload directory in the archive to the compose key of its volume and run the restore again."
-			[[ $RESOLVED_BY_COMPOSE -eq 0 ]] \
-				|| warn "Payload ${payload} matches no volume the restored configuration mounts; restoring it into ${TARGETS[$i]}, which the started stack does not use."
+			warn "Payload ${payload} matches no volume the restored configuration mounts; restoring it into ${TARGETS[$i]}, which the started stack does not use."
 			;;
 		unmounted)
-			[[ $RESOLVED_BY_COMPOSE -eq 0 ]] \
-				|| warn "No service the restored configuration starts mounts the volume of payload ${payload}; restoring it into ${TARGETS[$i]}."
+			warn "No service the restored configuration starts mounts the volume of payload ${payload}; restoring it into ${TARGETS[$i]}."
 			;;
 	esac
 	if [[ "${TARGET_HOW[$i]}" != mounted ]] && grep -qxF -- "${TARGETS[$i]}" <<<"$MOUNTED_NAMES"; then
@@ -644,24 +639,22 @@ else
 fi
 
 # The files now in place must start exactly the project whose volumes were
-# just restored. Compare before `up`, while the stack is still down.
-if [[ $RESOLVED_BY_COMPOSE -eq 1 ]]; then
-	CONFIG=$(compose config 2>"$COMPOSE_ERR") \
-		|| config_die "docker compose config fails with the restored config files: $(head -1 "$COMPOSE_ERR")."
-	FINAL_PROJECT=$(config_project <<<"$CONFIG")
-	FINAL_VOLUMES=$(config_volumes <<<"$CONFIG")
-	# What Compose mounts now must be what the restore was planned against, and
-	# every payload meant for a mounted volume must be in that volume.
-	VERIFIED=1
-	[[ "$FINAL_PROJECT" == "$PROJECT" ]] || VERIFIED=0
-	[[ "$(sort <<<"$FINAL_VOLUMES")" == "$(sort <<<"$RESTORED_VOLUMES")" ]] || VERIFIED=0
-	for i in "${!TARGETS[@]}"; do
-		[[ "${TARGET_HOW[$i]}" != mounted ]] \
-			|| grep -qxF -- "${TARGET_KEYS[$i]} ${TARGETS[$i]}" <<<"$FINAL_VOLUMES" || VERIFIED=0
-	done
-	if [[ $VERIFIED -eq 0 ]]; then
-		config_die "The restored config files start project '${FINAL_PROJECT}' with the volumes $(cut -d' ' -f2 <<<"$FINAL_VOLUMES" | paste -sd' ' -), which does not mount the restored volumes (${TARGETS[*]})."
-	fi
+# just restored. Compare before `up`, while the stack is still down. What
+# Compose mounts now must be the set the restore was planned against, and every
+# payload meant for a mounted volume must be in that volume.
+CONFIG=$(compose config 2>"$COMPOSE_ERR") \
+	|| config_die "docker compose config fails with the restored config files: $(head -1 "$COMPOSE_ERR")."
+FINAL_PROJECT=$(config_project <<<"$CONFIG")
+FINAL_VOLUMES=$(config_volumes <<<"$CONFIG")
+VERIFIED=1
+[[ "$FINAL_PROJECT" == "$PROJECT" ]] || VERIFIED=0
+[[ "$(sort <<<"$FINAL_VOLUMES")" == "$(sort <<<"$RESTORED_VOLUMES")" ]] || VERIFIED=0
+for i in "${!TARGETS[@]}"; do
+	[[ "${TARGET_HOW[$i]}" != mounted ]] \
+		|| grep -qxF -- "${TARGET_KEYS[$i]} ${TARGETS[$i]}" <<<"$FINAL_VOLUMES" || VERIFIED=0
+done
+if [[ $VERIFIED -eq 0 ]]; then
+	config_die "The restored config files start project '${FINAL_PROJECT}' with the volumes $(cut -d' ' -f2 <<<"$FINAL_VOLUMES" | paste -sd' ' -), which does not mount the restored volumes (${TARGETS[*]})."
 fi
 
 # ── Bring stack back up ───────────────────────────────────────────────────────

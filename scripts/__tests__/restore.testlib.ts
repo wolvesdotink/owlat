@@ -59,6 +59,8 @@ export const COMPOSE_WITHOUT_NAME = COMPOSE_FILE.replace('name: owlat\n', '');
  * FAKE_COMPOSE_DISCOVERED_NAME  project name Compose resolves whenever it finds
  *                         the files itself (no -f): a resolution the restore
  *                         could not foresee
+ * FAKE_COMPOSE_REQUIRES   a variable every `compose` call needs in its env file
+ *                         (an archived .env from before it was required)
  * FAKE_COMPOSE_DISCOVERED_VOLUME  "<key>=<name>": the name Compose resolves for
  *                         the volume <key> whenever it finds the files itself
  *
@@ -99,6 +101,10 @@ case "$1" in
 		[[ -z "$env_file" && -f .env ]] && env_file=.env
 		if [[ -z "$env_file" ]]; then
 			echo "error while interpolating services.worker.environment.REDIS_URL: required variable REDIS_PASSWORD is missing a value" >&2
+			exit 1
+		fi
+		if [[ -n "\${FAKE_COMPOSE_REQUIRES:-}" ]] && ! grep -q "^$FAKE_COMPOSE_REQUIRES=" "$env_file"; then
+			echo "error while interpolating services.worker.environment: required variable $FAKE_COMPOSE_REQUIRES is missing a value" >&2
 			exit 1
 		fi
 		if [[ "$1" != config && "$1" != up && "$1" != down ]]; then

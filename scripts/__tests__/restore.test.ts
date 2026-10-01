@@ -23,14 +23,12 @@ import {
 	isExtraction,
 	isWipe,
 	makeInstall,
+	run,
 	tarOf,
 	type Install,
 } from './restore.testlib';
 
 afterAll(cleanupRoots);
-
-// Compose cannot read the configuration: every `config` and `down` fails.
-const COMPOSE_CANNOT_READ = '^compose (\\S+ )*(config|down)$';
 
 async function expectOriginalData(install: Install) {
 	await expect(readFile(join(install.volume('convex-data'), 'old.txt'), 'utf8')).resolves.toBe(
@@ -274,50 +272,37 @@ describe('restore.sh on a fresh host (disaster recovery: no .env yet)', () => {
 		expect((await install.volumeNames()).filter((n) => n.includes('pre-restore'))).toEqual([]);
 	});
 
-	it('restores into the volumes docker compose up will mount when Compose cannot read the archived env', async () => {
+	it('refuses, before touching anything, when Compose cannot read the archived env', async () => {
 		// An older backup whose .env lacks a variable the compose file now
-		// requires. The backup came from project "owlat"; this clone lives in a
-		// directory called "install", so `docker compose up` here will mount
-		// install_* volumes. Restoring into owlat_* would leave the data where
-		// nothing reads it.
+		// requires. Without Compose's answer the volumes `up` mounts are a
+		// guess, so nothing may be replaced.
 		const install = await makeInstall({}, { freshHost: true, composeFile: COMPOSE_WITHOUT_NAME });
-		const result = await install.run({ FAKE_DOCKER_FAIL: COMPOSE_CANNOT_READ });
+		const result = await install.run({ FAKE_COMPOSE_REQUIRES: 'NEW_SECRET' });
 
-		expect(result.code).toBe(0);
-		expect(result.out).toContain('docker compose config failed');
-		expect(result.out).toContain('fake docker: injected failure');
-		expect(result.out).toContain("using 'install', the name docker compose up derives here");
-		expect(result.out).toContain(
-			`The backup was taken from project '${PROJECT}'; this checkout is project 'install'`
-		);
-		expect(result.out).toContain('docker compose down failed, but no container');
-		await expect(
-			readFile(join(install.volumeDir('install_convex-data'), 'db.sqlite'), 'utf8')
-		).resolves.toBe('new convex\n');
-		expect(result.calls).toContain(
-			'volume create --label com.docker.compose.project=install --label com.docker.compose.volume=convex-data install_convex-data'
-		);
-		expect((await install.volumeNames()).some((n) => n.startsWith(`${PROJECT}_`))).toBe(false);
+		expect(result.code).not.toBe(0);
+		expect(result.out).toContain('required variable NEW_SECRET is missing a value');
+		expect(result.out).toContain('nothing was changed');
+		expect(result.out).toContain(`tar -xzOf ${install.archive} ./env > .env`);
+		expect(result.out).toContain('with --keep-env');
+		expect(result.calls.some((c) => c.endsWith(' down') || c.startsWith('run '))).toBe(false);
+		expect(await install.volumeNames()).toEqual([]);
+		expect(existsSync(join(install.dir, '.env'))).toBe(false);
 	});
 
-	it('takes the project name from the restored .env like Compose, normalized the same way', async () => {
-		const install = await makeInstall(
-			{},
-			{
-				freshHost: true,
-				composeFile: COMPOSE_WITHOUT_NAME,
-				archivedEnv: 'RESTORED=1\nCOMPOSE_PROJECT_NAME="Owlat"\n',
-			}
-		);
-		const result = await install.run({ FAKE_DOCKER_FAIL: COMPOSE_CANNOT_READ });
+	it('restores once the archived env is completed and kept, as the refusal says', async () => {
+		const install = await makeInstall({}, { freshHost: true, composeFile: COMPOSE_WITHOUT_NAME });
+		const env = { FAKE_COMPOSE_REQUIRES: 'NEW_SECRET' };
+		expect((await install.run(env)).code).not.toBe(0);
 
+		const { stdout: archivedEnv } = await run('tar', ['-xzOf', install.archive, './env']);
+		await writeFile(join(install.dir, '.env'), `${archivedEnv}NEW_SECRET=1\n`, { mode: 0o600 });
+		const result = await install.run(env, ['--keep-env']);
+
+		expect(result.out).toContain('Restore complete.');
 		expect(result.code).toBe(0);
-		expect(result.out).toContain(`using '${PROJECT}', the name docker compose up derives here`);
-		expect(result.out).not.toContain('The backup was taken from project');
-		await expect(readFile(join(install.volume('convex-data'), 'db.sqlite'), 'utf8')).resolves.toBe(
-			'new convex\n'
-		);
-		expect((await install.volumeNames()).some((n) => n.startsWith('install_'))).toBe(false);
+		// This clone lives in a directory called "install": that is the project.
+		await expectStartedOnRestoredData(install, 'install');
+		expect((await install.volumeNames()).some((n) => n.startsWith(`${PROJECT}_`))).toBe(false);
 	});
 
 	it('does not start a stack of its own when a fresh-host restore fails', async () => {
