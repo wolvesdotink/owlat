@@ -7,10 +7,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getFunctionName, type AnyFunctionReference } from 'convex/server';
+import { getFunctionName } from 'convex/server';
 import type { ConnectableAccount, ConvexClient } from '../convex.js';
 import type { MailSyncConfig } from '../config.js';
 import { MAX_BACKFILL_STRIKES, THROTTLE_PAUSE_MS } from '../backfillRetry.js';
+
+// convex/server declares AnyFunctionReference without exporting it.
+type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
 
 vi.mock('../ingest.js', () => ({
 	ingestMessage: vi.fn(async () => ({ messageId: 'msg_1' })),

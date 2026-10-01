@@ -20,6 +20,8 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
 	submit: [];
 	back: [];
+	/** A new email was created and attached; the page opens it in the editor. */
+	compose: [templateId: Id<'emailTemplates'>];
 }>();
 
 const campaignSubject = ref(props.initialData.campaignSubject);
@@ -137,7 +139,8 @@ const handleSubmit = async () => {
 	try {
 		let templateId = selectedTemplateId.value;
 
-		if (selectionType.value === 'new') {
+		const isNewTemplate = selectionType.value === 'new';
+		if (isNewTemplate) {
 			const newId = await createTemplate({
 				name: newTemplateName.value.trim(),
 				type: 'marketing',
@@ -163,7 +166,10 @@ const handleSubmit = async () => {
 		});
 		if (!result.ok) return;
 
-		emit('submit');
+		// A new template has no body yet, so it goes to the editor rather than
+		// on to a Review that could only say the email is empty.
+		if (isNewTemplate) emit('compose', templateId!);
+		else emit('submit');
 	} finally {
 		setLoading(false);
 	}
@@ -316,7 +322,13 @@ defineExpose({
 					{{ t('common.back') }}
 				</UiButton>
 				<UiButton type="submit" :loading="isLoading" :disabled="isLoading">
-					{{ isLoading ? t('common.saving') : t('common.next') }}
+					{{
+						isLoading
+							? t('common.saving')
+							: selectionType === 'new'
+								? t('components.campaigns.steps.contentStep.openEditor')
+								: t('common.next')
+					}}
 					<template v-if="!isLoading" #iconRight
 						><Icon name="lucide:arrow-right" class="w-4 h-4"
 					/></template>

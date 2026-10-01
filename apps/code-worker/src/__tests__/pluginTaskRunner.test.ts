@@ -242,7 +242,10 @@ describe('runPluginJob — sandbox wiring', () => {
 		try {
 			const child = openChild(777);
 			const spawnSpy = vi.fn(() => child) as unknown as typeof spawn;
-			const reap = vi.fn(() => child.emit('close', null)); // emulate SIGKILL closing it
+			// Emulate SIGKILL closing it.
+			const reap = vi.fn(() => {
+				child.emit('close', null);
+			});
 			const client = fakeClient();
 
 			const done = runPluginJob(
@@ -273,7 +276,9 @@ describe('runPluginJob — sandbox wiring', () => {
 		try {
 			const child = openChild(888);
 			const spawnSpy = vi.fn(() => child) as unknown as typeof spawn;
-			const reap = vi.fn(() => child.emit('close', null));
+			const reap = vi.fn(() => {
+				child.emit('close', null);
+			});
 			// The heartbeat mutation reports a cancel request on the first beat.
 			const client = fakeClient({ heartbeat: () => ({ alive: true, cancelRequested: true }) });
 

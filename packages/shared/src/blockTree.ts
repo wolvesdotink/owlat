@@ -27,8 +27,8 @@ interface ChildSlot {
 	lists(content: Content): unknown[][];
 	/** A shallow copy of `content` holding `lists` in place of its current child lists. */
 	withLists(content: Content, lists: unknown[][]): Content;
-	/** Give fresh ids to the non-Block entries the content owns (accordion sections). */
-	renewEntryIds?(content: Content, newId: () => string): void;
+	/** The non-Block entries the content owns that carry their own id (accordion sections). */
+	entries?(content: Content): Content[];
 }
 
 const isRecord = (value: unknown): value is Content =>
@@ -69,11 +69,7 @@ const CHILD_SLOTS: Readonly<Record<string, ChildSlot>> = {
 				),
 			};
 		},
-		renewEntryIds: (content, newId) => {
-			for (const section of sectionsOf(content)) {
-				if (isRecord(section)) section['id'] = newId();
-			}
-		},
+		entries: (content) => sectionsOf(content).filter(isRecord),
 	},
 };
 
@@ -116,6 +112,18 @@ export function mapChildBlockLists<N extends BlockTreeNode>(
 }
 
 /**
+ * The entries `node` owns that are not Blocks but carry their own id
+ * (accordion sections), in document order; empty for every other type. These
+ * are the stored objects, so writing an entry's `id` edits the tree in place.
+ * Their ids end up in the rendered email (an accordion section's toggle), so
+ * they have to be unique across the document like Block ids.
+ */
+export function ownedEntries(node: BlockTreeNode): Array<Record<string, unknown>> {
+	const found = slotOf(node);
+	return found?.slot.entries?.(found.content) ?? [];
+}
+
+/**
  * Give `node` and every descendant a fresh id, in place. Call it on a deep
  * copy: a duplicated or re-inserted Block must not share any id with the
  * original, or edits and translation overlays keyed by a child id would reach
@@ -125,7 +133,7 @@ export function renewBlockTreeIds(node: BlockTreeNode, newId: () => string): voi
 	node.id = newId();
 	const found = slotOf(node);
 	if (!found) return;
-	found.slot.renewEntryIds?.(found.content, newId);
+	for (const entry of found.slot.entries?.(found.content) ?? []) entry['id'] = newId();
 	for (const list of childBlockLists(node)) {
 		for (const child of list) renewBlockTreeIds(child, newId);
 	}

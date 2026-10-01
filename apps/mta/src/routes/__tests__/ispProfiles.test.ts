@@ -7,7 +7,7 @@ import { DESTINATION_PROVIDER_PROFILES, type MtaConfig } from '../../config.js';
 const API_KEY = 'test-master-key';
 const config = { apiKey: API_KEY } as MtaConfig;
 
-function request(
+async function request(
 	app: ReturnType<typeof createIspProfileRoutes>,
 	method: string,
 	path: string,

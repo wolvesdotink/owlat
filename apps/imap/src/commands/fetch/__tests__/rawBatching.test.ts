@@ -6,11 +6,14 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getFunctionName, type AnyFunctionReference } from 'convex/server';
+import { getFunctionName } from 'convex/server';
 import { fetchModule, type FetchArgs } from '../index.js';
 import type { FetchEnvelope } from '../format.js';
 import type { CommandDeps, ConnectionState, StartArgs } from '../../types.js';
 import { forEachOrdered, RAW_DOWNLOAD_CONCURRENCY, RAW_URL_BATCH } from '../rawBodies.js';
+
+// convex/server declares AnyFunctionReference without exporting it.
+type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
 
 function envelope(uid: number, overrides: Partial<FetchEnvelope> = {}): FetchEnvelope {
 	return {
@@ -204,7 +207,9 @@ describe('forEachOrdered', () => {
 				running--;
 				return n * 10;
 			},
-			(n, result) => emitted.push(result + n)
+			(n, result) => {
+				emitted.push(result + n);
+			}
 		);
 		expect(emitted).toEqual([55, 11, 44, 22, 33]);
 		expect(peak).toBe(2);

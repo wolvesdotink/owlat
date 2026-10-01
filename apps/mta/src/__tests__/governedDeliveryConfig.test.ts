@@ -110,14 +110,15 @@ describe('loadGovernedDeliveryConfig', () => {
 		});
 	});
 
-	it.each([{}, { FBL_DEDUP_PROTOCOL: 'legacy-shadow' }, { FBL_DEDUP_PROTOCOL: 'magic-v3' }])(
-		'rejects an absent or unsupported FBL protocol at boot',
-		(values) => {
-			expect(() => loadGovernedDeliveryConfig(optionalEnv(values))).toThrow(
-				'FBL_DEDUP_PROTOCOL must be explicitly set to owned-v2'
-			);
-		}
-	);
+	it.each<Record<string, string>>([
+		{},
+		{ FBL_DEDUP_PROTOCOL: 'legacy-shadow' },
+		{ FBL_DEDUP_PROTOCOL: 'magic-v3' },
+	])('rejects an absent or unsupported FBL protocol at boot', (values) => {
+		expect(() => loadGovernedDeliveryConfig(optionalEnv(values))).toThrow(
+			'FBL_DEDUP_PROTOCOL must be explicitly set to owned-v2'
+		);
+	});
 
 	it.each(['', 'yes', 'quiesced'])('rejects an absent or vague cutover acknowledgement', (ack) => {
 		expect(() =>

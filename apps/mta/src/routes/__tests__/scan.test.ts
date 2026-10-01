@@ -18,7 +18,16 @@ import type { MtaConfig } from '../../config.js';
 
 const config = { apiKey: 'master-key' } as MtaConfig;
 
-function post(body: BodyInit | null, headers: Record<string, string> = {}) {
+/** The fields the scan and health responses carry. */
+interface ScanBody {
+	clean?: boolean;
+	stage?: string;
+	virus?: string;
+	skipped?: boolean;
+	clamav?: unknown;
+}
+
+function post(body: RequestInit['body'], headers: Record<string, string> = {}) {
 	const app = createScanRoutes(config);
 	return app.request('/attachment', {
 		method: 'POST',
@@ -73,7 +82,7 @@ describe('POST /scan/attachment', () => {
 			'X-Filename': 'invoice.pdf.exe',
 		});
 		expect(res.status).toBe(200);
-		const json = await res.json();
+		const json = (await res.json()) as ScanBody;
 		expect(json.clean).toBe(false);
 		expect(json.stage).toBe('file_type_validation');
 		expect(scanMock).not.toHaveBeenCalled();
@@ -89,7 +98,7 @@ describe('POST /scan/attachment', () => {
 			Buffer.from(' a Word 97 document'),
 		]);
 		const res = await post(ole2, { 'X-Filename': 'report.doc' });
-		const json = await res.json();
+		const json = (await res.json()) as ScanBody;
 		expect(json).toEqual({ clean: true });
 		expect(scanMock).toHaveBeenCalled();
 	});
@@ -102,7 +111,7 @@ describe('POST /scan/attachment', () => {
 		const res = await post(pdfBytes, {
 			'X-Filename': '%D1%80%D0%B0%D1%85%D1%83%D0%BD%D0%BE%D0%BA.pdf',
 		});
-		const json = await res.json();
+		const json = (await res.json()) as ScanBody;
 		expect(json).toEqual({ clean: true });
 		expect(scanMock).toHaveBeenCalled();
 	});
@@ -111,7 +120,7 @@ describe('POST /scan/attachment', () => {
 		const res = await post(Buffer.from('MZ\x90\x00executable'), {
 			'X-Filename': 'invoice.pdf%00.exe',
 		});
-		const json = await res.json();
+		const json = (await res.json()) as ScanBody;
 		expect(json.clean).toBe(false);
 		expect(json.stage).toBe('file_type_validation');
 		expect(scanMock).not.toHaveBeenCalled();
@@ -122,7 +131,7 @@ describe('POST /scan/attachment', () => {
 		// the request would send the caller down its fail-open path and leave the
 		// bytes unscanned — the outcome the encoding exists to prevent.
 		const res = await post(pdfBytes, { 'X-Filename': '100%.pdf' });
-		const json = await res.json();
+		const json = (await res.json()) as ScanBody;
 		expect(json).toEqual({ clean: true });
 		expect(scanMock).toHaveBeenCalled();
 	});
@@ -133,7 +142,7 @@ describe('POST /scan/attachment', () => {
 			Buffer.from(' an installer'),
 		]);
 		const res = await post(ole2, { 'X-Filename': 'setup.msi' });
-		const json = await res.json();
+		const json = (await res.json()) as ScanBody;
 		expect(json.clean).toBe(false);
 		expect(json.stage).toBe('file_type_validation');
 		expect(scanMock).not.toHaveBeenCalled();
@@ -142,20 +151,20 @@ describe('POST /scan/attachment', () => {
 	it('reports malware found by ClamAV', async () => {
 		scanMock.mockResolvedValue({ clean: false, virus: 'Eicar-Signature' });
 		const res = await post(pdfBytes);
-		const json = await res.json();
+		const json = (await res.json()) as ScanBody;
 		expect(json).toMatchObject({ clean: false, virus: 'Eicar-Signature', stage: 'clamav' });
 	});
 
 	it('fails open (clean+skipped) when ClamAV is unavailable', async () => {
 		scanMock.mockResolvedValue({ clean: true, skipped: true, error: 'connect refused' });
 		const res = await post(pdfBytes);
-		const json = await res.json();
+		const json = (await res.json()) as ScanBody;
 		expect(json).toMatchObject({ clean: true, skipped: true });
 	});
 
 	it('returns clean for a clean scan', async () => {
 		const res = await post(pdfBytes);
-		const json = await res.json();
+		const json = (await res.json()) as ScanBody;
 		expect(json).toEqual({ clean: true });
 	});
 });
@@ -170,7 +179,7 @@ describe('GET /scan/health', () => {
 			headers: { Authorization: 'Bearer master-key' },
 		});
 		expect(res.status).toBe(200);
-		const json = await res.json();
+		const json = (await res.json()) as ScanBody;
 		expect(json.clamav).toMatchObject({ healthy: true, pingOk: true });
 	});
 });

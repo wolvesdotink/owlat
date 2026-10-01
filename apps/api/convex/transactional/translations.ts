@@ -3,6 +3,7 @@ import { transactionalMutation, transactionalQuery } from './_helpers';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
 import { assertEditableForPublishableChange } from '../lib/publishableEmail';
+import { assertContentRevision } from '../lib/contentRevision';
 import {
 	addTranslationPatch,
 	removeTranslationPatch,
@@ -41,7 +42,13 @@ export const addTranslation = transactionalMutation({
 	args: {
 		id: v.id('transactionalEmails'),
 		language: v.string(),
+		// The new language's delivery HTML, rendered from the row's content (the
+		// seeded overlay is the default text). Written with the overlay.
+		htmlContent: v.optional(v.string()),
 		forceWhilePublished: v.optional(v.boolean()),
+		// The `contentRevision` the caller built this write on. When given, the
+		// write is refused with `conflict` if the row has moved on since.
+		expectedContentRevision: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		await requireOrgPermission(
@@ -51,12 +58,17 @@ export const addTranslation = transactionalMutation({
 		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 		assertEditableForPublishableChange(email, 'Transactional email', args.forceWhilePublished);
+		assertContentRevision(email, args.expectedContentRevision);
 
-		await ctx.db.patch(
-			args.id,
-			addTranslationPatch(email, args.language, TRANSACTIONAL_TRANSLATABLE_FIELDS)
+		const patch = addTranslationPatch(
+			email,
+			args.language,
+			TRANSACTIONAL_TRANSLATABLE_FIELDS,
+			args.htmlContent
 		);
-		return args.id;
+		await ctx.db.patch(args.id, patch);
+		// The revision this write stored; the next write builds on it.
+		return { id: args.id, contentRevision: patch.contentRevision };
 	},
 });
 
@@ -70,7 +82,13 @@ export const updateTranslation = transactionalMutation({
 		language: v.string(),
 		subject: v.optional(v.string()),
 		blocks: v.optional(v.string()), // JSON string of Record<blockId, TranslatableBlockContent>
+		// The language's delivery HTML, rendered from this overlay on the row's
+		// content. Written with the overlay, so the two cannot disagree.
+		htmlContent: v.optional(v.string()),
 		forceWhilePublished: v.optional(v.boolean()),
+		// The `contentRevision` the caller built this write on. When given, the
+		// write is refused with `conflict` if the row has moved on since.
+		expectedContentRevision: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		await requireOrgPermission(
@@ -80,12 +98,12 @@ export const updateTranslation = transactionalMutation({
 		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 		assertEditableForPublishableChange(email, 'Transactional email', args.forceWhilePublished);
+		assertContentRevision(email, args.expectedContentRevision);
 
-		await ctx.db.patch(
-			args.id,
-			updateTranslationPatch(email, args, TRANSACTIONAL_TRANSLATABLE_FIELDS)
-		);
-		return args.id;
+		const patch = updateTranslationPatch(email, args, TRANSACTIONAL_TRANSLATABLE_FIELDS);
+		await ctx.db.patch(args.id, patch);
+		// The revision this write stored; the next write builds on it.
+		return { id: args.id, contentRevision: patch.contentRevision };
 	},
 });
 
@@ -97,6 +115,9 @@ export const removeTranslation = transactionalMutation({
 		id: v.id('transactionalEmails'),
 		language: v.string(),
 		forceWhilePublished: v.optional(v.boolean()),
+		// The `contentRevision` the caller built this write on. When given, the
+		// write is refused with `conflict` if the row has moved on since.
+		expectedContentRevision: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		await requireOrgPermission(
@@ -106,8 +127,11 @@ export const removeTranslation = transactionalMutation({
 		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 		assertEditableForPublishableChange(email, 'Transactional email', args.forceWhilePublished);
+		assertContentRevision(email, args.expectedContentRevision);
 
-		await ctx.db.patch(args.id, removeTranslationPatch(email, args.language));
-		return args.id;
+		const patch = removeTranslationPatch(email, args.language);
+		await ctx.db.patch(args.id, patch);
+		// The revision this write stored; the next write builds on it.
+		return { id: args.id, contentRevision: patch.contentRevision };
 	},
 });

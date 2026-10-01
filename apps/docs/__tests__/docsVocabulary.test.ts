@@ -50,6 +50,7 @@ const EXTERNAL_NAMES: Readonly<Record<string, string>> = {
 	EnvVarNameForbidden: 'Convex CLI error code',
 	GetIdentityDkimAttributes: 'Amazon SES API action',
 	GetIdentityVerificationAttributes: 'Amazon SES API action',
+	IllegalArgumentException: 'Java standard library exception',
 	MailFromDomainNotVerified: 'Amazon SES error code',
 	MediaUrl0: 'Twilio webhook form field',
 	MessageRejected: 'Amazon SES error code',

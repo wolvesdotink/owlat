@@ -70,6 +70,9 @@ describe('integration: a spoofed p=quarantine message is recorded dmarcResult=fa
 				dkimResult: 'none',
 				dmarcResult: dmarc.result,
 				dmarcPolicy: dmarc.policy,
+				arcCv: undefined,
+				arcSealerDomain: undefined,
+				arcAttestsOriginalPass: undefined,
 			},
 			{
 				// The bounce reducer consumes the in-house `ParsedMessage`; this

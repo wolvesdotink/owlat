@@ -18,7 +18,7 @@
 import { EventEmitter } from 'node:events';
 import type { Socket } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getFunctionName, type AnyFunctionReference } from 'convex/server';
+import { getFunctionName } from 'convex/server';
 import { dispatch } from '../walker.js';
 import { parseLine } from '../../parser.js';
 import { forgetCachedMemberships } from '../helpers/membership.js';
@@ -27,6 +27,9 @@ import { ImapConnection } from '../../connection.js';
 import type { ImapConfig } from '../../config.js';
 import type { ConvexClient } from '../../convex.js';
 import { AuthRateLimiter } from '../../rateLimit.js';
+
+// convex/server declares AnyFunctionReference without exporting it.
+type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
 
 vi.mock('../../logger.js', () => ({
 	logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -56,9 +59,9 @@ function backend(initialUids: number[], mode: Mode = 'ready') {
 	const counts = { membership: 0, blockDocs: 0, listing: 0, listedDocs: 0, envelopeDocs: 0 };
 	const sorted = (id: string) => folders.get(id)!.sort((a, b) => a.uid - b.uid);
 	const window = (id: string, args: Record<string, unknown>) => {
-		const low = args.uidLow as number;
-		const high = args.uidHigh as number;
-		const ranges = (args.ranges as Array<{ low: number; high: number }> | undefined) ?? [
+		const low = args['uidLow'] as number;
+		const high = args['uidHigh'] as number;
+		const ranges = (args['ranges'] as Array<{ low: number; high: number }> | undefined) ?? [
 			{ low, high },
 		];
 		const rows: Message[] = [];
@@ -98,129 +101,133 @@ function backend(initialUids: number[], mode: Mode = 'ready') {
 		return null;
 	};
 
-	const query = vi.fn(async (ref: AnyFunctionReference, args: Record<string, unknown>) => {
-		const name = getFunctionName(ref);
-		const id = args.folderId as string;
-		if (name.endsWith(':listFolders')) {
-			return [
-				{ _id: 'f1', name: 'INBOX', role: 'inbox' },
-				{ _id: 'f2', name: 'Archive', role: 'archive' },
-			];
-		}
-		if (name.endsWith(':selectFolder')) {
-			return {
-				folder: {
-					_id: id,
-					name: id === 'f1' ? 'INBOX' : 'Archive',
-					uidValidity: 1,
-					uidNext: uidNext.get(id),
+	const query = vi.fn(
+		async (ref: AnyFunctionReference, args: Record<string, unknown>): Promise<unknown> => {
+			const name = getFunctionName(ref);
+			const id = args['folderId'] as string;
+			if (name.endsWith(':listFolders')) {
+				return [
+					{ _id: 'f1', name: 'INBOX', role: 'inbox' },
+					{ _id: 'f2', name: 'Archive', role: 'archive' },
+				];
+			}
+			if (name.endsWith(':selectFolder')) {
+				return {
+					folder: {
+						_id: id,
+						name: id === 'f1' ? 'INBOX' : 'Archive',
+						uidValidity: 1,
+						uidNext: uidNext.get(id),
+						highestModseq: 1,
+						totalCount: folders.get(id)!.length,
+						unseenCount: 0,
+					},
+				};
+			}
+			if (name.endsWith(':folderMembershipPage')) {
+				counts.membership += 1;
+				if (mode === 'none') return null;
+				const version = `s:${revision}`;
+				if (args['knownVersion'] === version) return { version, isReady: true, unchanged: true };
+				const uids = sorted(id).map((m) => m.uid);
+				const blocks: number[][] = [];
+				for (let i = 0; i < uids.length; i += BLOCK) blocks.push(uids.slice(i, i + BLOCK));
+				counts.blockDocs += blocks.length;
+				return { version, isReady: true, blocks, nextFirstUid: null };
+			}
+			if (name.endsWith(':listFolderUidsPage')) {
+				counts.listing += 1;
+				const after = (args['afterUid'] as number | undefined) ?? 0;
+				const page = sorted(id)
+					.filter((m) => m.uid >= after)
+					.slice(0, 1000)
+					.map((m) => m.uid);
+				counts.listedDocs += page.length;
+				return { uids: page, nextUid: page.length < 1000 ? null : page[page.length - 1]! + 1 };
+			}
+			if (name.endsWith(':fetchEnvelopes')) {
+				const { rows, nextUid } = window(id, args);
+				counts.envelopeDocs += rows.length;
+				return { rows: rows.map(envelope), nextUid };
+			}
+			if (name.endsWith(':peekFolderModseq')) {
+				return {
 					highestModseq: 1,
+					uidNext: uidNext.get(id),
 					totalCount: folders.get(id)!.length,
 					unseenCount: 0,
-				},
-			};
+				};
+			}
+			if (name.endsWith(':resolveMessageIdsByUid')) {
+				const { rows, nextUid } = window(id, args);
+				return { rows: rows.map((m) => ({ _id: `m-${m.uid}`, uid: m.uid, modseq: 1 })), nextUid };
+			}
+			throw new Error(`unexpected query ${name}`);
 		}
-		if (name.endsWith(':folderMembershipPage')) {
-			counts.membership += 1;
-			if (mode === 'none') return null;
-			const version = `s:${revision}`;
-			if (args.knownVersion === version) return { version, isReady: true, unchanged: true };
-			const uids = sorted(id).map((m) => m.uid);
-			const blocks: number[][] = [];
-			for (let i = 0; i < uids.length; i += BLOCK) blocks.push(uids.slice(i, i + BLOCK));
-			counts.blockDocs += blocks.length;
-			return { version, isReady: true, blocks, nextFirstUid: null };
-		}
-		if (name.endsWith(':listFolderUidsPage')) {
-			counts.listing += 1;
-			const after = (args.afterUid as number | undefined) ?? 0;
-			const page = sorted(id)
-				.filter((m) => m.uid >= after)
-				.slice(0, 1000)
-				.map((m) => m.uid);
-			counts.listedDocs += page.length;
-			return { uids: page, nextUid: page.length < 1000 ? null : page[page.length - 1]! + 1 };
-		}
-		if (name.endsWith(':fetchEnvelopes')) {
-			const { rows, nextUid } = window(id, args);
-			counts.envelopeDocs += rows.length;
-			return { rows: rows.map(envelope), nextUid };
-		}
-		if (name.endsWith(':peekFolderModseq')) {
-			return {
-				highestModseq: 1,
-				uidNext: uidNext.get(id),
-				totalCount: folders.get(id)!.length,
-				unseenCount: 0,
-			};
-		}
-		if (name.endsWith(':resolveMessageIdsByUid')) {
-			const { rows, nextUid } = window(id, args);
-			return { rows: rows.map((m) => ({ _id: `m-${m.uid}`, uid: m.uid, modseq: 1 })), nextUid };
-		}
-		throw new Error(`unexpected query ${name}`);
-	});
+	);
 
-	const mutation = vi.fn(async (ref: AnyFunctionReference, args: Record<string, unknown>) => {
-		const name = getFunctionName(ref);
-		if (name.endsWith(':storeFlags')) {
-			const updated = [];
-			for (const messageId of args.messageIds as string[]) {
-				const found = byId(messageId);
-				if (!found) continue;
-				for (const flag of args.flags as string[]) {
-					if (flag === '\\Deleted') found.m.deleted = true;
-					if (flag === '\\Flagged') found.m.flagged = true;
+	const mutation = vi.fn(
+		async (ref: AnyFunctionReference, args: Record<string, unknown>): Promise<unknown> => {
+			const name = getFunctionName(ref);
+			if (name.endsWith(':storeFlags')) {
+				const updated = [];
+				for (const messageId of args['messageIds'] as string[]) {
+					const found = byId(messageId);
+					if (!found) continue;
+					for (const flag of args['flags'] as string[]) {
+						if (flag === '\\Deleted') found.m.deleted = true;
+						if (flag === '\\Flagged') found.m.flagged = true;
+					}
+					const flags = [
+						...(found.m.flagged ? ['\\Flagged'] : []),
+						...(found.m.deleted ? ['\\Deleted'] : []),
+					];
+					updated.push({ messageId, uid: found.m.uid, modseq: 2, flags });
 				}
-				const flags = [
-					...(found.m.flagged ? ['\\Flagged'] : []),
-					...(found.m.deleted ? ['\\Deleted'] : []),
-				];
-				updated.push({ messageId, uid: found.m.uid, modseq: 2, flags });
+				return { updated, unchanged: [] };
 			}
-			return { updated, unchanged: [] };
-		}
-		if (name.endsWith(':expungeFolder')) {
-			const id = args.folderId as string;
-			const uidSet = args.uidSet as number[] | undefined;
-			const before = sorted(id).map((m) => m.uid);
-			const gone = sorted(id)
-				.filter((m) => m.deleted && (!uidSet || uidSet.includes(m.uid)))
-				.map((m) => m.uid)
-				.reverse();
-			folders.set(
-				id,
-				folders.get(id)!.filter((m) => !gone.includes(m.uid))
-			);
-			if (gone.length > 0) revision += 1;
-			return {
-				// The folder's own numbering, which the server must not trust blindly.
-				sequenceNumbers: gone.map((uid) => before.indexOf(uid) + 1),
-				uids: gone,
-				modseq: 3,
-				done: true,
-			};
-		}
-		if (name.endsWith(':moveMessages')) {
-			const pairs = [];
-			for (const messageId of args.messageIds as string[]) {
-				const found = byId(messageId);
-				if (!found || found.folderId !== args.sourceFolderId) continue;
-				const target = args.targetFolderId as string;
-				const targetUid = uidNext.get(target)!;
-				uidNext.set(target, targetUid + 1);
+			if (name.endsWith(':expungeFolder')) {
+				const id = args['folderId'] as string;
+				const uidSet = args['uidSet'] as number[] | undefined;
+				const before = sorted(id).map((m) => m.uid);
+				const gone = sorted(id)
+					.filter((m) => m.deleted && (!uidSet || uidSet.includes(m.uid)))
+					.map((m) => m.uid)
+					.reverse();
 				folders.set(
-					found.folderId,
-					folders.get(found.folderId)!.filter((m) => m !== found.m)
+					id,
+					folders.get(id)!.filter((m) => !gone.includes(m.uid))
 				);
-				folders.get(target)!.push({ ...found.m, uid: targetUid });
-				pairs.push({ sourceUid: found.m.uid, targetUid });
+				if (gone.length > 0) revision += 1;
+				return {
+					// The folder's own numbering, which the server must not trust blindly.
+					sequenceNumbers: gone.map((uid) => before.indexOf(uid) + 1),
+					uids: gone,
+					modseq: 3,
+					done: true,
+				};
 			}
-			if (pairs.length > 0) revision += 1;
-			return { uidValidity: 1, pairs };
+			if (name.endsWith(':moveMessages')) {
+				const pairs = [];
+				for (const messageId of args['messageIds'] as string[]) {
+					const found = byId(messageId);
+					if (!found || found.folderId !== args['sourceFolderId']) continue;
+					const target = args['targetFolderId'] as string;
+					const targetUid = uidNext.get(target)!;
+					uidNext.set(target, targetUid + 1);
+					folders.set(
+						found.folderId,
+						folders.get(found.folderId)!.filter((m) => m !== found.m)
+					);
+					folders.get(target)!.push({ ...found.m, uid: targetUid });
+					pairs.push({ sourceUid: found.m.uid, targetUid });
+				}
+				if (pairs.length > 0) revision += 1;
+				return { uidValidity: 1, pairs };
+			}
+			throw new Error(`unexpected mutation ${name}`);
 		}
-		throw new Error(`unexpected mutation ${name}`);
-	});
+	);
 
 	return {
 		convex: { query, mutation, action: vi.fn() },
@@ -394,7 +401,7 @@ describe('cross-session EXPUNGE cannot retarget a sequence number (#927)', () =>
 		b.mutation.mockImplementation(
 			async (ref: AnyFunctionReference, args: Record<string, unknown>) => {
 				const out = (await real(ref, args)) as Record<string, unknown>;
-				delete out.uids;
+				delete out['uids'];
 				return out;
 			}
 		);

@@ -29,6 +29,7 @@ vi.mock('../../lib/env', async (importOriginal) => {
 
 import { ConvexEnvRemoveError } from '../../lib/convexDeploy';
 import { derivedRuntimeKeys, runUnsetEnv, unsetEnvRefusal } from '../unsetEnv';
+import { cliOptionsFromArgv } from '../../lib/argv';
 
 const ADMIN_KEY = 'convex-self-hosted|0123456789abcdef0123456789abcdef';
 const roots: string[] = [];
@@ -80,6 +81,23 @@ describe('owlat-setup unset-env', () => {
 		expect(logSpy.mock.calls.flat().join('\n')).toContain(
 			'Unset LLM_BASE_URL in the Convex deployment and .env'
 		);
+	});
+
+	// The argv tail as the dispatcher parses it: the --owlat-dir value must
+	// not be taken for a key to clear.
+	it.each([
+		['after the keys', (dir: string) => ['LLM_BASE_URL', '--owlat-dir', dir]],
+		['before the keys', (dir: string) => ['--owlat-dir', dir, 'LLM_BASE_URL']],
+	])('clears the key in the --owlat-dir install with the option %s', async (_label, argv) => {
+		const root = await installWithEnv(
+			`CONVEX_ADMIN_KEY=${ADMIN_KEY}\nLLM_BASE_URL=https://old-provider.example/v1\n`
+		);
+
+		await expect(runUnsetEnv(cliOptionsFromArgv(argv(root), {}))).resolves.toBe(0);
+
+		expect(errors()).toBe('');
+		expect(removeConvexEnvVars.mock.calls[0]!.slice(0, 2)).toEqual([root, ['LLM_BASE_URL']]);
+		expect(await readDotEnv(root)).not.toContain('LLM_BASE_URL');
 	});
 
 	it('clears a key that .env only holds blank, which apply would skip', async () => {

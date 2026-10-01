@@ -1,4 +1,5 @@
 import type { Id } from '../../../_generated/dataModel';
+import { deleteBlobQuietly } from '../../../lib/storageBlobs';
 import { defineStep, DEFAULT_BATCH_SIZE } from './_common';
 
 /**
@@ -21,6 +22,22 @@ export const transactionalSendsStep = defineStep({
 					await ctx.storage.delete(sid as Id<'_storage'>);
 				}
 			}
+			await ctx.db.delete(row._id);
+		}
+		return { deletedCount: rows.length, hasMore: rows.length === DEFAULT_BATCH_SIZE };
+	},
+});
+
+/**
+ * Unclaimed transactional attachment uploads (`transactional/pendingUploads.ts`):
+ * no Send names these blobs, so the row is the only thing that does.
+ */
+export const transactionalPendingUploadsStep = defineStep({
+	table: 'transactionalPendingUploads',
+	async deleteBatch(ctx) {
+		const rows = await ctx.db.query('transactionalPendingUploads').take(DEFAULT_BATCH_SIZE);
+		for (const row of rows) {
+			await deleteBlobQuietly(ctx.storage, row.storageId, '[workspace deletion] pending upload');
 			await ctx.db.delete(row._id);
 		}
 		return { deletedCount: rows.length, hasMore: rows.length === DEFAULT_BATCH_SIZE };

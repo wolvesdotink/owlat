@@ -140,11 +140,11 @@ describe('blockRegistry', () => {
 
 		it('has human-readable labels', () => {
 			const labels = getBlockLabels();
-			expect(labels.text).toBe('Text');
-			expect(labels.image).toBe('Image');
-			expect(labels.button).toBe('Button');
-			expect(labels.rawHtml).toBe('HTML');
-			expect(labels.progressBar).toBe('Progress');
+			expect(labels['text']).toBe('Text');
+			expect(labels['image']).toBe('Image');
+			expect(labels['button']).toBe('Button');
+			expect(labels['rawHtml']).toBe('HTML');
+			expect(labels['progressBar']).toBe('Progress');
 		});
 	});
 

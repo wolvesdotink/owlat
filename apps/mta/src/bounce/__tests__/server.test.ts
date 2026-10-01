@@ -52,6 +52,7 @@ import { checkSpf } from '@owlat/mail-auth';
 import { findMailboxRoute } from '../../inbound/mailboxResolver.js';
 import { isInboundTlsRequired } from '../../inbound/inboundTlsPolicy.js';
 import type { MtaConfig } from '../../config.js';
+import type { InboundAuthResolvers } from '../inboundAuthResolver.js';
 import { createDeliverabilityProbeToken } from '@owlat/shared/deliverabilityProbeToken';
 
 /** Minimal MtaConfig — only the fields the hooks read. */
@@ -70,7 +71,12 @@ function makeConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 }
 
 const fakeRedis = { get: async () => null } as unknown as Redis;
-const authResolvers = { spf: {}, dkim: {}, dmarcTxt: {}, arc: {} } as never;
+const authResolvers = {
+	spf: {},
+	dkim: {},
+	dmarcTxt: {},
+	arc: {},
+} as unknown as InboundAuthResolvers;
 
 /** A minimal listener session carrying the fields the hooks consult. */
 function makeSession(secure = true): SmtpSession<unknown, { spfResult?: string }> {

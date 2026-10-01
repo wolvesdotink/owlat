@@ -111,7 +111,8 @@ describe('dnsbl-access routes', () => {
 
 		const res = await request(app, 'PUT', { spamhausDqsKey: null });
 		expect(res.status).toBe(200);
-		expect((await res.json()).access.spamhaus.access).toBe('public');
+		const body = (await res.json()) as { access: { spamhaus: { access: string } } };
+		expect(body.access.spamhaus.access).toBe('public');
 		expect(await readSpamhausDqsKey(redis)).toBeUndefined();
 		expect(runDnsblCheck).toHaveBeenCalledTimes(2);
 	});

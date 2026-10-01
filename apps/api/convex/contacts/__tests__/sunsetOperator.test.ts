@@ -24,7 +24,7 @@ import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { createTestContact } from '../../__tests__/factories';
 import { requireOrgPermission } from '../../lib/sessionOrganization';
-import { SUNSET_MIN_WINDOW_DAYS } from '../sunsetPolicy';
+import { SUNSET_MIN_WINDOW_DAYS } from '@owlat/shared/sunsetPolicy';
 import { daysAgo, harness, type Harness } from './sunsetFixtures';
 
 vi.mock('../../lib/sessionOrganization', async () => {
@@ -105,6 +105,20 @@ describe('setSunsetPolicy — validation', () => {
 
 		const rows = await readPolicyRows(t);
 		expect(rows[0]?.suppressAfterDays).toBeUndefined();
+	});
+
+	it('accepts both windows at exactly the floor the settings form offers', async () => {
+		const t = harness();
+		await t.withIdentity(identity).mutation(api.contacts.sunset.setSunsetPolicy, {
+			reengageAfterDays: SUNSET_MIN_WINDOW_DAYS,
+			suppressAfterDays: SUNSET_MIN_WINDOW_DAYS,
+		});
+
+		const rows = await readPolicyRows(t);
+		expect(rows[0]).toMatchObject({
+			reengageAfterDays: SUNSET_MIN_WINDOW_DAYS,
+			suppressAfterDays: SUNSET_MIN_WINDOW_DAYS,
+		});
 	});
 });
 

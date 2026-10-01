@@ -219,7 +219,7 @@ describe('P2-7 (d) — hostile CFBL reports', () => {
 			expect(attempt.kind).toBe('fbl');
 			// The shipped reservation is only durable once the effect completes.
 			if (attempt.kind === 'fbl') {
-				await completeComplaint(redis, attempt.dedupReservation);
+				await completeComplaint(redis, attempt.dedupReservation!);
 			}
 
 			const replay = await parseFblOrDsnPhase.run(deps, ctxFor(raw, cfblAddress));
@@ -233,13 +233,13 @@ describe('P2-7 (d) — hostile CFBL reports', () => {
 				await parseFblOrDsnPhase.run(deps, ctxFor(arfReport(BASE_FIELDS), cfblAddress))
 			);
 			if (attempt.kind !== 'fbl') throw new Error('expected an fbl attempt');
-			await completeComplaint(redis, attempt.dedupReservation);
+			await completeComplaint(redis, attempt.dedupReservation!);
 
 			// The gap between the two lifetimes is the whole replay window: if the
 			// record expired first, a captured report replayed inside the remaining
 			// token validity would be counted a SECOND time and would move the cell's
 			// complaint rate by pure repetition.
-			const ttl = await redis.ttl(attempt.dedupReservation.key);
+			const ttl = await redis.ttl(attempt.dedupReservation!.key);
 			expect(ttl).toBeGreaterThan(MAX_FEEDBACK_TOKEN_ACCEPTANCE_SECONDS);
 		});
 
@@ -249,7 +249,7 @@ describe('P2-7 (d) — hostile CFBL reports', () => {
 
 			const attempt = attemptOf(await parseFblOrDsnPhase.run(deps, ctxFor(raw, cfblAddress)));
 			if (attempt.kind !== 'fbl') throw new Error('expected an fbl attempt');
-			await completeComplaint(redis, attempt.dedupReservation);
+			await completeComplaint(redis, attempt.dedupReservation!);
 
 			// Day 10: past the seven-day retention this store used to keep, still
 			// well inside the 14-day token acceptance horizon. Only `Date` is faked —
@@ -284,7 +284,7 @@ describe('P2-7 (d) — hostile CFBL reports', () => {
 			const first = attemptOf(
 				await parseFblOrDsnPhase.run(deps, ctxFor(arfReport(BASE_FIELDS), cfblAddress))
 			);
-			if (first.kind === 'fbl') await completeComplaint(redis, first.dedupReservation);
+			if (first.kind === 'fbl') await completeComplaint(redis, first.dedupReservation!);
 
 			// Same signed address, different human text / ISP branding.
 			const mutated = arfReport(`${BASE_FIELDS}User-Agent: Yahoo-FBL/9.9\r\n`);

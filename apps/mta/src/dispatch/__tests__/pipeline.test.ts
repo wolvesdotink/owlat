@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { compose, runPipeline, type Phase } from '../pipeline.js';
 import type { BasePhaseCtx, PhaseDeps } from '../types.js';
 import type { EmailJob } from '../../types.js';
+import { makeDestination } from '../../__tests__/helpers/dispatchCtx.js';
 
 interface CtxWithPool extends BasePhaseCtx {
 	readonly pool: 'transactional' | 'campaign';
@@ -21,7 +22,7 @@ function makeBaseCtx(): BasePhaseCtx {
 		organizationId: 'org-1',
 		dkimDomain: 'owlat.com',
 	};
-	return { job, domain: 'example.com', isp: 'other', fromDomain: 'owlat.com' };
+	return { job, domain: 'example.com', destination: makeDestination(), fromDomain: 'owlat.com' };
 }
 
 function makeDeps(): PhaseDeps {
@@ -38,7 +39,7 @@ const passthrough = (name: string): Phase<BasePhaseCtx, BasePhaseCtx> => ({
 const deferring = (
 	name: string,
 	delayMs: number,
-	reason: string,
+	reason: string
 ): Phase<BasePhaseCtx, BasePhaseCtx> => ({
 	name,
 	async run() {
@@ -49,7 +50,7 @@ const deferring = (
 const dropping = (
 	name: string,
 	status: 'screened' | 'suppressed',
-	reason: string,
+	reason: string
 ): Phase<BasePhaseCtx, BasePhaseCtx> => ({
 	name,
 	async run() {

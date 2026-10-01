@@ -25,6 +25,7 @@ import { enableFeatures } from '../../../../__tests__/factories';
 import { internal } from '../../../../_generated/api';
 import type { Doc, Id } from '../../../../_generated/dataModel';
 import { mailchimpProvider } from '../index';
+import { fakeMailchimpAudience } from '../../../__tests__/fakeMailchimpAudience';
 
 vi.mock('../../../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../../../lib/sessionOrganization');
@@ -111,26 +112,28 @@ describe('mailchimp suppression carry-over — adapter', () => {
 	});
 
 	it('carries suppressions on every page of a paged audience, with no extra request', async () => {
-		const page = Array.from({ length: 100 }, (_, i) => ({
-			email: `u${i}@example.com`,
-			status: i % 2 === 0 ? 'subscribed' : 'unsubscribed',
-		}));
-		const fetchSpy = vi.fn().mockImplementation(() => membersResponse(page, 250));
-		global.fetch = fetchSpy;
+		const audience = fakeMailchimpAudience(
+			Array.from({ length: 250 }, (_, i) => ({
+				email: `u${i}@example.com`,
+				status: i % 2 === 0 ? 'subscribed' : 'unsubscribed',
+			}))
+		);
+		global.fetch = audience.fetch;
 
 		const first = await mailchimpProvider.fetchPage({ config: CONFIG, cursor: '' });
-		expect(first.nextCursor).toBe('100');
+		expect(first.nextCursor).not.toBeNull();
 		expect(first.rows).toHaveLength(50);
 		expect(first.suppressions).toHaveLength(50);
 
-		const second = await mailchimpProvider.fetchPage({ config: CONFIG, cursor: '100' });
+		const second = await mailchimpProvider.fetchPage({ config: CONFIG, cursor: first.nextCursor! });
+		expect(second.rows).toHaveLength(50);
 		expect(second.suppressions).toHaveLength(50);
 
 		// One request per page — the suppressions ride the SAME response the
 		// contacts do. A second status-filtered fetch would show up here.
-		expect(fetchSpy).toHaveBeenCalledTimes(2);
-		expect(fetchSpy.mock.calls[0]![0]).toContain('offset=0');
-		expect(fetchSpy.mock.calls[1]![0]).toContain('offset=100');
+		expect(audience.fetch).toHaveBeenCalledTimes(2);
+		expect(audience.requests[0]!.searchParams.get('offset')).toBe('0');
+		expect(audience.requests[1]!.searchParams.get('status')).toBeNull();
 	});
 
 	it('carries nothing when the toggle is off (pre-P4.1 behavior, unchanged)', async () => {

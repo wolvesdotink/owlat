@@ -829,14 +829,13 @@
 					"existingDescription": "Wähle aus deinen gespeicherten Marketing-Vorlagen.",
 					"existingTemplatesLabel": "Vorhandene Vorlagen",
 					"existingTitle": "Vorhandene Marketing-E-Mail verwenden",
-					"newDescription": "Eine neue Vorlage wird erst erstellt, wenn du fortfährst.",
+					"newDescription": "Öffnet den E-Mail-Editor, sobald du fortfährst, und bringt dich danach zum Prüfen und Senden zurück.",
 					"newTemplateNameHint": "Damit wird eine neue Marketing-Vorlage als Entwurf erstellt und mit dieser Kampagne verknüpft.",
 					"newTemplateNameLabel": "Name der neuen Vorlage",
 					"newTemplateNamePlaceholder": "z. B. E-Mail zum Sommer-Launch",
-					"newTitle": "Neue Marketing-E-Mail-Vorlage erstellen",
-					"noMatches": "Keine Vorlagen passen zu deiner Suche.",
+					"newTitle": "E-Mail erstellen und gestalten",
 					"noSubject": "Kein Betreff",
-					"searchPlaceholder": "Nach Name oder Betreff suchen ...",
+					"openEditor": "Erstellen und Editor öffnen",
 					"selectedTemplate": "Ausgewählte Vorlage",
 					"subjectLabel": "E-Mail-Betreff",
 					"subjectPlaceholder": "z. B. Dein wöchentlicher Newsletter ist da!",
@@ -850,12 +849,14 @@
 					"audience": "Zielgruppe",
 					"blocked": {
 						"domainMissing": "Der Versand ist deaktiviert, weil \"{domain}\" nicht registriert ist. Füge die Domain unter Einstellungen → Domains hinzu und verifiziere sie.",
-						"domainUnverified": "Der Versand ist deaktiviert, weil \"{domain}\" nicht verifiziert ist. Schließe die DNS-Verifizierung unter Einstellungen → Domains ab."
+						"domainUnverified": "Der Versand ist deaktiviert, weil \"{domain}\" nicht verifiziert ist. Schließe die DNS-Verifizierung unter Einstellungen → Domains ab.",
+						"emptyBody": "Der E-Mail-Inhalt ist leer. Gestalte die E-Mail, bevor du sie sendest."
 					},
 					"campaignName": "Kampagnenname",
 					"dateLabel": "Datum",
-					"editLater": "Du kannst diese E-Mail nach dem Anlegen der Kampagne bearbeiten.",
+					"editEmail": "E-Mail bearbeiten",
 					"emailContent": "E-Mail-Inhalt",
+					"emptyBody": "Der E-Mail-Inhalt ist leer.",
 					"errors": {
 						"dateRequired": "Bitte wähle ein Datum für die Planung",
 						"timeInPast": "Die geplante Zeit muss in der Zukunft liegen",
@@ -864,6 +865,7 @@
 					"estimatedRecipients": "{count} geschätzte Empfänger",
 					"from": "Von",
 					"previewExample": "Zum Beispiel: {time} ET, {time} PT, {time} GMT usw.",
+					"previewFrameTitle": "E-Mail-Vorschau",
 					"previewHeading": "Deine Kampagne wird gesendet:",
 					"previewHeadingAt": "Deine Kampagne wird gesendet um:",
 					"previewPerTimezone": "{time} in der Zeitzone des jeweiligen Empfängers",
@@ -4420,6 +4422,10 @@
 			},
 			"postboxScheduleDialog": {
 				"custom": "Benutzerdefiniert",
+				"customPast": "Wähle einen Zeitpunkt in der Zukunft",
+				"customSends": "Versand am {when} ({zone})",
+				"customSendsBoth": "Versand am {when} bei dir ({zone}), {theirs} bei ihnen",
+				"customZone": "Zeiten gelten in deiner Zeitzone, {zone}",
 				"nextWeekdayMorning": "{weekday}morgen",
 				"recipientMorning": "Morgen früh, in ihrer Zeitzone",
 				"recipientZone": "Die Zeiten unten beziehen sich auf {zone}, die hinterlegte Zeitzone deiner Empfänger.",
@@ -5626,10 +5632,20 @@
 		"translation": {
 			"cell": {
 				"cancelTitle": "Abbrechen (Esc)",
+				"conflict": "Inzwischen woanders geändert",
+				"discard": "Verwerfen",
+				"discardLabel": "Deine Änderung an {field} verwerfen",
+				"editHint": "Strg+Enter oder Cmd+Enter speichert, Escape bricht ab.",
+				"editLabel": "{field} bearbeiten",
+				"fieldName": "{field} ({language})",
 				"htmlBadge": "HTML",
 				"noContent": "Kein Inhalt",
 				"placeholder": "Zum Übersetzen klicken",
+				"retry": "Erneut speichern",
+				"retryLabel": "{field} erneut speichern",
+				"saveFailed": "Nicht gespeichert",
 				"saveTitle": "Speichern (Cmd+Enter)",
+				"saving": "Wird gespeichert…",
 				"sourceBadge": "Quelle"
 			},
 			"manager": {
@@ -5669,7 +5685,7 @@
 				"removeLanguageOperation": "Sprache entfernen",
 				"removeLanguageTitle": "Sprache entfernen",
 				"saveTranslationOperation": "Übersetzung speichern",
-				"saveTranslationsOperation": "Übersetzungen speichern",
+				"savingChanges": "Wird gespeichert…",
 				"subjectLine": "Betreffzeile",
 				"textBlock": "{prefix}Textblock {index}",
 				"unsavedChanges": "Nicht gespeicherte Änderungen"
@@ -10522,8 +10538,10 @@
 			"emails": {
 				"detail": {
 					"edit": {
+						"backToCampaign": "Zurück zur Kampagne",
 						"backToEmails": "Zurück zu den E-Mails",
 						"builderError": "Im E-Mail-Editor ist ein unerwarteter Fehler aufgetreten. Bitte lade die Seite neu — deine zuletzt gespeicherte Version ist sicher.",
+						"campaignReturnHint": "Speichere deine Änderungen und geh dann zurück, um die Kampagne zu prüfen und zu senden.",
 						"loadError": "Diese Vorlage konnte nicht geladen werden",
 						"loading": "Vorlage wird geladen...",
 						"manageTranslations": "Übersetzungen verwalten",
@@ -11646,6 +11664,7 @@
 			"continueToSignIn": "Weiter zur Anmeldung",
 			"emailProvider": "E-Mail-Anbieter",
 			"errorUnknown": "Die Einrichtung ist aus unbekanntem Grund fehlgeschlagen.",
+			"errorWriteFailed": "Die Einrichtung konnte {file} nicht schreiben: {cause}. Dein Administratorkonto und die Laufzeiteinstellungen sind bereits angelegt, es geht also nichts verloren. Behebe das Problem mit der Datei auf dem Server und starte Owlat dann erneut. Ein erneuter Versuch ist sicher.",
 			"eyebrow": "Owlat-Einrichtung",
 			"finishing": "Wird abgeschlossen…",
 			"fromIdentity": "Absenderidentität",

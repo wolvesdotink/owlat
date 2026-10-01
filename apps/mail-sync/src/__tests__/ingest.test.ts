@@ -6,6 +6,7 @@ import {
 	RAW_UPLOAD_TIMEOUT_MS,
 	syntheticMessageId,
 	type RawUploadConfig,
+	type StagedIngest,
 } from '../ingest.js';
 import type { ConvexClient } from '../convex.js';
 
@@ -15,7 +16,7 @@ function mockConvex() {
 	return {
 		client: { action } as unknown as ConvexClient,
 		action,
-		lastPayload: () => action.mock.calls[0]?.[1] as Record<string, unknown>,
+		lastPayload: () => action.mock.calls[0]?.[1] as StagedIngest['args'],
 	};
 }
 
@@ -171,12 +172,10 @@ describe('ingestMessage', () => {
 		expect(payload.textBodyInline).toContain('This is the body text.');
 		// The raw `.eml` goes out of band; the call carries only its storage id,
 		// its size, and the 64 KiB header block the action reads headers from.
-		expect(payload.rawBytesBase64).toBeUndefined();
+		expect(payload).not.toHaveProperty('rawBytesBase64');
 		expect(payload.rawStorageId).toBe('kg_raw_1');
 		expect(payload.rawSize).toBe(1234);
-		expect(Buffer.from(payload.headerBlockBase64 as string, 'base64').toString()).toContain(
-			'Hello there'
-		);
+		expect(Buffer.from(payload.headerBlockBase64, 'base64').toString()).toContain('Hello there');
 	});
 
 	it('uploads the raw bytes out of band, authenticated, before referencing them', async () => {
@@ -408,7 +407,7 @@ describe('ingestMessage', () => {
 			origin: 'sync',
 		});
 
-		const attachments = lastPayload().attachments as Array<Record<string, unknown>>;
+		const attachments = lastPayload().attachments;
 		expect(attachments).toHaveLength(1);
 		expect(attachments[0]?.filename).toBe('pic.png');
 		expect(attachments[0]?.contentType).toBe('image/png');
@@ -461,7 +460,7 @@ describe('ingestMessage', () => {
 			origin: 'sync',
 		});
 
-		const attachments = lastPayload().attachments as Array<Record<string, unknown>>;
+		const attachments = lastPayload().attachments;
 		expect(attachments).toHaveLength(1);
 		// Delta (1): parse-layer default, not `attachment-1`.
 		expect(attachments[0]?.filename).toBe('attachment');

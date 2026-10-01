@@ -15,6 +15,9 @@ import {
 	locateBlock,
 	locateWithin,
 } from '../utils';
+import type { BlockSlot } from '../utils/blockTree';
+import { childBlockLists } from '@owlat/shared/blockTree';
+import { editorModuleFor } from '../registry';
 import { defaultPadding, defaultMargin } from '../defaults';
 
 export interface UseBlockManagementOptions {
@@ -37,6 +40,11 @@ export interface UseBlockManagementReturn {
 	// Block operations
 	handleAddBlock: (type: BlockType, afterBlockId?: string) => EditorBlock;
 	handleAddHeadingBlock: (level: 1 | 2 | 3, afterBlockId?: string) => EditorBlock;
+	handleInsertBlockAtSlot: (
+		type: BlockType,
+		slot: BlockSlot,
+		content?: (defaults: EditorBlock['content']) => EditorBlock['content']
+	) => { block: EditorBlock; parentId: string | null } | null;
 	handleDeleteBlock: (blockId: string) => void;
 	handleDuplicateBlock: (blockId: string) => void;
 
@@ -54,6 +62,19 @@ export interface UseBlockManagementReturn {
 	// columns, container or hero Block, itself a root or nested)
 	handleDeleteNestedItem: (blockId: string, itemId: string) => void;
 	handleDuplicateNestedItem: (blockId: string, itemId: string) => EditorBlock | null;
+}
+
+/** The content a slash-menu heading command inserts, at any placement. */
+export function headingContent(level: 1 | 2 | 3): TextBlockContent {
+	return {
+		html: level === 1 ? 'Heading 1' : level === 2 ? 'Heading 2' : 'Heading 3',
+		blockType: `h${level}`,
+		fontSize: level === 1 ? 32 : level === 2 ? 24 : 20,
+		textColor: '#374151',
+		lineHeight: 1.3,
+		...defaultPadding,
+		...defaultMargin,
+	} as TextBlockContent;
 }
 
 /**
@@ -97,23 +118,66 @@ export function useBlockManagement(options: UseBlockManagementOptions): UseBlock
 
 	// Add a heading block
 	const handleAddHeadingBlock = (level: 1 | 2 | 3, afterBlockId?: string): EditorBlock => {
-		const headingText = level === 1 ? 'Heading 1' : level === 2 ? 'Heading 2' : 'Heading 3';
-		const blockType = `h${level}` as 'h1' | 'h2' | 'h3';
 		const newBlock: EditorBlock = {
 			id: generateId(),
 			type: 'text',
-			content: {
-				html: headingText,
-				blockType,
-				fontSize: level === 1 ? 32 : level === 2 ? 24 : 20,
-				textColor: '#374151',
-				lineHeight: 1.3,
-				...defaultPadding,
-				...defaultMargin,
-			} as TextBlockContent,
+			content: headingContent(level),
 		};
 		insertBlock(newBlock, afterBlockId);
 		return newBlock;
+	};
+
+	// Whether the composite `parent` takes a child of `type` (its registry placement).
+	const acceptsChild = (parent: EditorBlock, type: BlockType) =>
+		editorModuleFor(parent.type)?.allowedChildTypes?.().includes(type) ?? false;
+
+	// Insert a new Block of `type` at `slot`, a root position or one inside a
+	// composite at any depth, with the defaults of that placement: column items
+	// take the compact column defaults. A composite that does not accept `type`
+	// passes it up: the Block goes right after the nearest ancestor whose list
+	// does, and the root list takes any type. `content` adjusts the defaults.
+	// Returns the Block and the composite that holds it (null for a root), or
+	// null when the slot is gone.
+	const handleInsertBlockAtSlot = (
+		type: BlockType,
+		slot: BlockSlot,
+		content?: (defaults: EditorBlock['content']) => EditorBlock['content']
+	): { block: EditorBlock; parentId: string | null } | null => {
+		let target = slot;
+		let parent: EditorBlock | null = null;
+		while (target.parentId !== null) {
+			const location = locateBlock(canvasBlocks.value, target.parentId, target.rootId);
+			if (!location) return null;
+			if (acceptsChild(location.block, type)) {
+				parent = location.block;
+				break;
+			}
+			target = {
+				parentId: location.parent?.id ?? null,
+				listIndex: location.listIndex,
+				index: location.index + 1,
+				rootId: target.rootId,
+			};
+		}
+
+		const list = parent ? childBlockLists(parent)[target.listIndex] : canvasBlocks.value;
+		if (!list) return null;
+		const defaults =
+			parent?.type === 'columns'
+				? (createDefaultColumnItemContent(
+						type as ColumnItem['type'],
+						theme.value
+					) as EditorBlock['content'])
+				: createDefaultContent(type, theme.value);
+		const newBlock = {
+			id: generateId(),
+			type,
+			content: content ? content(defaults) : defaults,
+		} as EditorBlock;
+		list.splice(Math.min(target.index, list.length), 0, newBlock);
+		if (parent) onTreeMutated?.();
+		else selectedBlockId.value = newBlock.id;
+		return { block: newBlock, parentId: parent?.id ?? null };
 	};
 
 	// Delete a block
@@ -251,6 +315,7 @@ export function useBlockManagement(options: UseBlockManagementOptions): UseBlock
 	return {
 		handleAddBlock,
 		handleAddHeadingBlock,
+		handleInsertBlockAtSlot,
 		handleDeleteBlock,
 		handleDuplicateBlock,
 		handleAddItemToColumn,

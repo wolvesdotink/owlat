@@ -276,7 +276,7 @@ export async function insertExternalAccountRow(
  * next reconcile tick. A seed row is excluded from the worker's list, which
  * makes the poke a harmless no-op for it.
  */
-async function scheduleWorkerReconcile(ctx: MutationCtx): Promise<void> {
+export async function scheduleWorkerReconcile(ctx: MutationCtx): Promise<void> {
 	await ctx.scheduler.runAfter(0, internal.mail.external.accountsActions.pokeWorkerReconcile, {});
 }
 

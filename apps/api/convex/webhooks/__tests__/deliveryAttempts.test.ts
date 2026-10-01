@@ -29,6 +29,7 @@ import {
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { createTestWebhook } from '../../__tests__/factories';
+import { openWorkspaceDeletionFence } from '../../__tests__/helpers/workspaceDeletionFence';
 
 vi.mock('../../lib/ssrfGuard', async (importOriginal) => ({
 	...(await importOriginal<typeof SsrfGuard>()),
@@ -269,6 +270,21 @@ describe('reconcileOverdueDeliveries', () => {
 			attemptNumber: 2,
 			attemptSeq: 3,
 		});
+	});
+
+	it('stands down while a workspace deletion runs', async () => {
+		const { t, webhookId } = await setup();
+		const logId = await enqueue(t, webhookId);
+		const before = await row(t, logId);
+		// The deletion cancels the queued attempt and holds the fence over the logs.
+		await t.run(async (ctx) => {
+			await ctx.scheduler.cancel(before.scheduledFunctionId!);
+			await openWorkspaceDeletionFence(ctx);
+		});
+
+		vi.setSystemTime(before.recoverAfter! + 1);
+		expect(await reconcile(t)).toEqual({ waiting: 0, rescheduled: 0, failed: 0 });
+		expect(await row(t, logId)).toEqual(before);
 	});
 
 	it('leaves an overdue attempt alone while its job is still queued', async () => {

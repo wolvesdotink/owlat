@@ -2,16 +2,18 @@
  * Per-connection ordering of the commands that use or change the client's
  * sequence view (`SequenceView` in `../types.ts`).
  *
- * The pump starts a pipelined command without waiting for the ones before it
- * (`connection.ts`), which is what keeps a client's pipelined FETCHes fast. But
+ * The pump starts a pipelined `concurrent` command (a FETCH that sets no \Seen,
+ * UID FETCH, NOOP, CHECK, IDLE) without waiting for the ones before it
+ * (`connection.ts`), which is what keeps a client's pipelined FETCHes fast;
+ * STORE, COPY, MOVE and EXPUNGE still wait for every running command. But
  * a sequence-number command resolves its numbers against the view when it
  * starts and answers with them until it completes, and RFC 3501 §5.5 and
  * §7.4.1 forbid an EXPUNGE while a FETCH, STORE or SEARCH is in progress: it
  * would renumber the messages under it. So every command that touches the view
  * takes a lease here, at dispatch, in the order the client sent it:
  *
- *   - `shared`: sequence-number FETCH, STORE and COPY. Any number of them run
- *     side by side.
+ *   - `shared`: sequence-number FETCH, STORE and COPY. Any number of them may
+ *     hold it at once (the pump only overlaps FETCHes).
  *   - `sync`: the commands that may announce changes and move the view: NOOP,
  *     CHECK, an IDLE poll, EXPUNGE, MOVE and every UID command. One at a time,
  *     and no command sent after it starts until it releases or downgrades. It

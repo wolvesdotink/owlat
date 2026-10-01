@@ -33,7 +33,7 @@ vi.mock('@owlat/smtp-client', () => ({ sendMessage, verify }));
 // ImapFlow is a named export used with `new`; the mock must be constructible,
 // so use a `function` (not an arrow) and assign the shared spies onto `this`.
 vi.mock('imapflow', () => ({
-	ImapFlow: vi.fn(function (this: Record<string, unknown>) {
+	ImapFlow: vi.fn(function (this: Record<'connect' | 'list' | 'append' | 'logout', unknown>) {
 		this.connect = imapConnect;
 		this.list = imapList;
 		this.append = imapAppend;
@@ -110,7 +110,7 @@ describe('sendViaExternal', () => {
 		});
 
 		expect(clientSendMessage).toHaveBeenCalledTimes(1);
-		const arg = sendMessage.mock.calls[0][0];
+		const arg = sendMessage.mock.calls[0]![0];
 		// Implicit TLS (secure=true) to a remote host, pinned at the 1.2 floor, with
 		// requireTls fail-closed. ehloName is the machine hostname.
 		expect(arg.connect).toMatchObject({
@@ -144,7 +144,7 @@ describe('sendViaExternal', () => {
 			raw: withBcc,
 		});
 
-		const arg = sendMessage.mock.calls[0][0];
+		const arg = sendMessage.mock.calls[0]![0];
 		// RCPT set == params.recipients, verbatim and independent of the headers.
 		expect(arg.envelope.to).toEqual(['visible@example.com', headerlessBcc]);
 		expect(arg.envelope.data).toBe(withBcc);
@@ -347,7 +347,7 @@ describe('testConnection', () => {
 		await testConnection(input);
 
 		expect(clientVerify).toHaveBeenCalledTimes(1);
-		const arg = verify.mock.calls[0][0];
+		const arg = verify.mock.calls[0]![0];
 		// STARTTLS (secure=false) to a remote host, forced + pinned at the 1.2 floor.
 		expect(arg.connect).toMatchObject({
 			host: 'smtp.example.com',
@@ -378,7 +378,7 @@ describe('XOAUTH2 access-token plumbing', () => {
 			});
 
 			// The bearer token replaces the password entirely — no `password` field.
-			expect(sendMessage.mock.calls[0][0].auth).toEqual({
+			expect(sendMessage.mock.calls[0]![0].auth).toEqual({
 				credentials: { username: 'smtp-user', accessToken: 'ya29.TOKEN' },
 			});
 		});
@@ -391,7 +391,7 @@ describe('XOAUTH2 access-token plumbing', () => {
 				raw: RAW,
 			});
 
-			expect(sendMessage.mock.calls[0][0].auth).toEqual({
+			expect(sendMessage.mock.calls[0]![0].auth).toEqual({
 				credentials: { username: 'smtp-user', password: 'smtp-pass' },
 			});
 		});
@@ -406,7 +406,7 @@ describe('XOAUTH2 access-token plumbing', () => {
 			});
 
 			// An empty string is a token-less placeholder, not a bearer token.
-			expect(sendMessage.mock.calls[0][0].auth).toEqual({
+			expect(sendMessage.mock.calls[0]![0].auth).toEqual({
 				credentials: { username: 'smtp-user', password: 'smtp-pass' },
 			});
 		});
@@ -423,11 +423,11 @@ describe('XOAUTH2 access-token plumbing', () => {
 
 			await fileSentCopy(oauthCreds, RAW);
 
-			const options = (ImapFlow as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+			const options = vi.mocked(ImapFlow).mock.calls[0]![0];
 			// No `pass` at all — an empty password beside a token is how an OAuth
 			// account arrives, and sending LOGIN with it would look like a wrong
 			// password rather than a token problem.
-			expect(options.auth).toEqual({ user: 'imap-user', accessToken: 'ya29.IMAP' });
+			expect(options?.auth).toEqual({ user: 'imap-user', accessToken: 'ya29.IMAP' });
 		});
 
 		it('opens the Sent append with the password when there is no token', async () => {
@@ -435,8 +435,8 @@ describe('XOAUTH2 access-token plumbing', () => {
 
 			await fileSentCopy(CREDS, RAW);
 
-			const options = (ImapFlow as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
-			expect(options.auth).toEqual({ user: 'imap-user', pass: 'imap-pass' });
+			const options = vi.mocked(ImapFlow).mock.calls[0]![0];
+			expect(options?.auth).toEqual({ user: 'imap-user', pass: 'imap-pass' });
 		});
 	});
 
@@ -464,8 +464,8 @@ describe('XOAUTH2 access-token plumbing', () => {
 				imap: { ...baseInput.imap, password: '', accessToken: 'ya29.IMAP' },
 			});
 
-			const options = (ImapFlow as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
-			expect(options.auth).toEqual({ user: 'imap-user', accessToken: 'ya29.IMAP' });
+			const options = vi.mocked(ImapFlow).mock.calls[0]![0];
+			expect(options?.auth).toEqual({ user: 'imap-user', accessToken: 'ya29.IMAP' });
 		});
 
 		it('verifies with OAuth credentials when the SMTP probe carries an access token', async () => {
@@ -474,7 +474,7 @@ describe('XOAUTH2 access-token plumbing', () => {
 				smtp: { ...baseInput.smtp, accessToken: 'ya29.TOKEN' },
 			});
 
-			expect(verify.mock.calls[0][0].auth).toEqual({
+			expect(verify.mock.calls[0]![0].auth).toEqual({
 				credentials: { username: 'smtp-user', accessToken: 'ya29.TOKEN' },
 			});
 		});
@@ -482,7 +482,7 @@ describe('XOAUTH2 access-token plumbing', () => {
 		it('verifies with password credentials when no access token is present', async () => {
 			await testConnection(baseInput);
 
-			expect(verify.mock.calls[0][0].auth).toEqual({
+			expect(verify.mock.calls[0]![0].auth).toEqual({
 				credentials: { username: 'smtp-user', password: 'smtp-pass' },
 			});
 		});
@@ -493,7 +493,7 @@ describe('XOAUTH2 access-token plumbing', () => {
 				smtp: { ...baseInput.smtp, accessToken: '' },
 			});
 
-			expect(verify.mock.calls[0][0].auth).toEqual({
+			expect(verify.mock.calls[0]![0].auth).toEqual({
 				credentials: { username: 'smtp-user', password: 'smtp-pass' },
 			});
 		});
@@ -543,10 +543,10 @@ describe('outbound TLS posture is locked (no rejectUnauthorized:false anywhere)'
 		await fileSentCopy(REMOTE, RAW);
 		// Construction 1: the smtp-client connect options (the actual send).
 		expect(clientSendMessage).toHaveBeenCalledTimes(1);
-		assertNoVerifyDisable(sendMessage.mock.calls[0][0].connect);
+		assertNoVerifyDisable(sendMessage.mock.calls[0]![0].connect);
 		// Construction 2: ImapFlow for the best-effort Sent append.
 		expect(ImapFlow).toHaveBeenCalledTimes(1);
-		assertNoVerifyDisable((ImapFlow as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0]);
+		assertNoVerifyDisable(vi.mocked(ImapFlow).mock.calls[0]![0]);
 	});
 
 	it('testConnection: testImap ImapFlow + testSmtp connect keep verification on', async () => {
@@ -568,10 +568,10 @@ describe('outbound TLS posture is locked (no rejectUnauthorized:false anywhere)'
 		});
 		// Construction 3: ImapFlow (testImap).
 		expect(ImapFlow).toHaveBeenCalledTimes(1);
-		assertNoVerifyDisable((ImapFlow as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0]);
+		assertNoVerifyDisable(vi.mocked(ImapFlow).mock.calls[0]![0]);
 		// Construction 4: the smtp-client verify connect options (testSmtp).
 		expect(clientVerify).toHaveBeenCalledTimes(1);
-		assertNoVerifyDisable(verify.mock.calls[0][0].connect);
+		assertNoVerifyDisable(verify.mock.calls[0]![0].connect);
 	});
 
 	it('test path passes byte-identical TLS options to the live path (PR-75 §6)', async () => {
@@ -584,8 +584,8 @@ describe('outbound TLS posture is locked (no rejectUnauthorized:false anywhere)'
 			raw: RAW,
 		});
 		await fileSentCopy(REMOTE, RAW);
-		const liveSmtp = sendMessage.mock.calls[0][0].connect;
-		const liveImap = (ImapFlow as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+		const liveSmtp = sendMessage.mock.calls[0]![0].connect;
+		const liveImap = vi.mocked(ImapFlow).mock.calls[0]![0]!;
 
 		vi.clearAllMocks();
 		imapConnect.mockResolvedValue(undefined);
@@ -609,8 +609,8 @@ describe('outbound TLS posture is locked (no rejectUnauthorized:false anywhere)'
 				password: REMOTE.smtpPassword,
 			},
 		});
-		const testSmtp = verify.mock.calls[0][0].connect;
-		const testImap = (ImapFlow as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+		const testSmtp = verify.mock.calls[0]![0].connect;
+		const testImap = vi.mocked(ImapFlow).mock.calls[0]![0]!;
 
 		// Only auth differs by design (creds vs ProtocolCreds) — the TLS-bearing
 		// fields (tlsMode / requireTls / tls) must be identical.

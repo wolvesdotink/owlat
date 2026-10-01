@@ -5,10 +5,13 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getFunctionName, type AnyFunctionReference } from 'convex/server';
+import { getFunctionName } from 'convex/server';
 import type { ConvexClient } from '../../../convex.js';
 import { forgetCachedMemberships, loadCurrentUids } from '../membership.js';
 import { membershipDelta } from '../sequenceView.js';
+
+// convex/server declares AnyFunctionReference without exporting it.
+type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
 
 type Mode = 'none' | 'walking' | 'ready';
 
@@ -35,12 +38,12 @@ function folder(initial: number[], mode: Mode, blockSize = 256, blocksPerPage = 
 		if (name.endsWith(':folderMembershipPage')) {
 			counts.membership += 1;
 			if (mode === 'none') return null;
-			if (args.knownVersion === version()) {
+			if (args['knownVersion'] === version()) {
 				return { version: version(), isReady: mode === 'ready', unchanged: true };
 			}
 			if (mode === 'walking') return { version: version(), isReady: false };
 			const all = blocks();
-			const after = args.afterFirstUid as number | undefined;
+			const after = args['afterFirstUid'] as number | undefined;
 			const start = after === undefined ? 0 : all.findIndex((b) => b[0]! > after);
 			const page = start < 0 ? [] : all.slice(start, start + blocksPerPage);
 			counts.blocks += page.length;
@@ -54,7 +57,7 @@ function folder(initial: number[], mode: Mode, blockSize = 256, blocksPerPage = 
 		}
 		if (name.endsWith(':listFolderUidsPage')) {
 			counts.listing += 1;
-			const after = (args.afterUid as number | undefined) ?? 0;
+			const after = (args['afterUid'] as number | undefined) ?? 0;
 			const page = uids.filter((u) => u >= after).slice(0, 1000);
 			counts.listed += page.length;
 			return { uids: page, nextUid: page.length < 1000 ? null : page[page.length - 1]! + 1 };

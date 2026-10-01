@@ -27,9 +27,27 @@ import { installNuxtStubs, paginatedResult, queryResult } from '~/__tests__/a11y
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useUnsavedChanges } from '~/composables/useUnsavedChanges';
 import { useWizard } from '~/composables/useWizard';
+import { getFunctionName, type FunctionReference } from 'convex/server';
+import { useFormValidation } from '~/composables/useFormValidation';
+import { useModal } from '~/composables/useModal';
+import { useCampaignABTest } from '~/composables/useCampaignABTest';
+import SetupStep from '~/components/campaigns/steps/SetupStep.vue';
+import SetupSenderPicker from '~/components/campaigns/steps/SetupSenderPicker.vue';
+import SetupAudiencePicker from '~/components/campaigns/steps/SetupAudiencePicker.vue';
 import CampaignsNew from '../new.vue';
 
-type Campaign = { _id: string; name?: string; emailTemplateId?: string } | undefined;
+type Campaign =
+	| {
+			_id: string;
+			name?: string;
+			fromName?: string;
+			fromEmail?: string;
+			replyTo?: string;
+			audience?: { kind: 'topic'; topicId: string };
+			emailTemplateId?: string;
+			emailTemplate?: { _id: string; name: string; subject: string; htmlContent?: string } | null;
+	  }
+	| undefined;
 
 /** The persisted draft `?id=` resolves to; `undefined` stands for "still loading". */
 const campaign = ref<Campaign>(undefined);
@@ -38,6 +56,15 @@ let campaignError = ref<Error | null>(null);
 
 const Blank = defineComponent({ render: () => h('div') });
 
+const template = { _id: 'tpl1', name: 'Weekly digest email', subject: 'This week' };
+const draft = {
+	_id: 'cmp1',
+	name: 'Weekly digest',
+	fromName: 'Ada',
+	fromEmail: 'ada@example.com',
+	emailTemplateId: 'tpl1',
+};
+
 /** Visible stand-ins for the step components, so "which step is live" is assertable. */
 const stepStubs = {
 	CampaignsStepsSetupStep: defineComponent({
@@ -45,14 +72,18 @@ const stepStubs = {
 		render: () => h('div', { class: 'step-setup' }),
 	}),
 	CampaignsStepsContentStep: defineComponent({
-		emits: ['submit', 'back'],
+		emits: ['submit', 'back', 'compose'],
 		render: () => h('div', { class: 'step-content' }),
 	}),
 	CampaignsStepsReviewStep: defineComponent({
-		emits: ['back', 'editStep', 'complete'],
+		props: { data: Object, initialSchedule: Object },
+		emits: ['back', 'editStep', 'complete', 'editEmail'],
 		render: () => h('div', { class: 'step-review' }),
 	}),
-	UiStepIndicator: Blank,
+	UiStepIndicator: defineComponent({
+		props: { getStepStatus: Function },
+		render: () => h('div'),
+	}),
 	UiConfirmationDialog: defineComponent({
 		props: { open: Boolean },
 		emits: ['confirm', 'update:open'],
@@ -63,11 +94,9 @@ const stepStubs = {
 	Icon: Blank,
 };
 
-beforeEach(() => {
-	campaign.value = undefined;
-	// A fresh ref per test: an earlier test's wizard must not see this one's failure.
-	campaignError = ref<Error | null>(null);
-	installNuxtStubs({
+/** The page's collaborators; a test that mounts a real step adds that step's on top. */
+function wizardStubs(): Record<string, unknown> {
+	return {
 		...i18nStubs,
 		// The page's own router, not a spy: the assertions are about the URL.
 		useRoute: routerUseRoute,
@@ -85,7 +114,14 @@ beforeEach(() => {
 		},
 		useOrganizationQuery: () => queryResult(undefined),
 		usePaginatedQuery: () => paginatedResult([]),
-	});
+	};
+}
+
+beforeEach(() => {
+	campaign.value = undefined;
+	// A fresh ref per test: an earlier test's wizard must not see this one's failure.
+	campaignError = ref<Error | null>(null);
+	installNuxtStubs(wizardStubs());
 });
 
 /**
@@ -93,12 +129,16 @@ beforeEach(() => {
  * an `onBeforeRouteLeave`, which vue-router only registers for a component the
  * router itself rendered.
  */
-async function mountWizard(url: string) {
+async function mountWizard(
+	url: string,
+	options: { stubs?: Record<string, unknown>; components?: Record<string, unknown> } = {}
+) {
 	const router = createRouter({
 		history: createMemoryHistory(),
 		routes: [
 			{ path: '/dashboard/campaigns', component: Blank },
 			{ path: '/dashboard/campaigns/new', component: CampaignsNew },
+			{ path: '/dashboard/send/emails/:id/edit', component: Blank },
 		],
 	});
 	await router.push('/dashboard/campaigns');
@@ -107,7 +147,11 @@ async function mountWizard(url: string) {
 
 	const Host = defineComponent({ render: () => h(RouterView) });
 	const wrapper = mount(Host, {
-		global: { plugins: [router, createTestI18n()], stubs: stepStubs },
+		global: {
+			plugins: [router, createTestI18n()],
+			stubs: options.stubs ?? stepStubs,
+			components: options.components,
+		},
 	});
 	await flushPromises();
 
@@ -140,11 +184,177 @@ describe('campaign wizard URL state', () => {
 	});
 
 	it('honours Review once the campaign carries its email', async () => {
-		campaign.value = { _id: 'cmp1', name: 'Weekly digest', emailTemplateId: 'tpl1' };
+		campaign.value = { ...draft, emailTemplate: { ...template, htmlContent: '<p>Hi</p>' } };
 		const { wrapper, router } = await mountWizard('/dashboard/campaigns/new?id=cmp1&step=review');
 
 		expect(router.currentRoute.value.query['step']).toBe('review');
 		expect(wrapper.find('.step-review').exists()).toBe(true);
+	});
+
+	it('does not count an attached but empty email as finished content (#1048)', async () => {
+		campaign.value = { ...draft, emailTemplate: template };
+		const { wrapper, router } = await mountWizard('/dashboard/campaigns/new?id=cmp1&step=review');
+
+		expect(router.currentRoute.value.query['step']).toBe('content');
+		expect(wrapper.find('.step-content').exists()).toBe(true);
+	});
+
+	describe('the email editor round trip (#1048)', () => {
+		const reviewProps = (wrapper: Awaited<ReturnType<typeof mountWizard>>['wrapper']) =>
+			wrapper.findComponent(stepStubs.CampaignsStepsReviewStep).props() as {
+				data: Record<string, unknown>;
+				initialSchedule: unknown;
+			};
+
+		it('opens a newly created email in the editor and comes back to Review intact', async () => {
+			campaign.value = { _id: 'cmp1', name: 'Weekly digest', fromName: 'Ada' };
+			const { wrapper, router } = await mountWizard(
+				'/dashboard/campaigns/new?id=cmp1&step=content'
+			);
+
+			// ContentStep created and attached tpl1.
+			campaign.value = { ...draft, emailTemplate: template };
+			await wrapper.findComponent(stepStubs.CampaignsStepsContentStep).vm.$emit('compose', 'tpl1');
+			await flushPromises();
+
+			// Straight into the editor: the draft is persisted, so nothing asks first.
+			expect(wrapper.find('.leave-dialog').exists()).toBe(false);
+			const editor = router.currentRoute.value;
+			expect(editor.path).toBe('/dashboard/send/emails/tpl1/edit');
+			expect(editor.query['returnTo']).toBe('/dashboard/campaigns/new?id=cmp1&step=review');
+
+			// The author designs and saves the body, then follows "Back to campaign".
+			campaign.value = { ...draft, emailTemplate: { ...template, htmlContent: '<p>Hi</p>' } };
+			await router.push(editor.query['returnTo'] as string);
+			await flushPromises();
+
+			expect(router.currentRoute.value.query).toEqual({ id: 'cmp1', step: 'review' });
+			const { data, initialSchedule } = reviewProps(wrapper);
+			expect(data).toMatchObject({
+				campaignId: 'cmp1',
+				campaignName: 'Weekly digest',
+				fromName: 'Ada',
+				fromEmail: 'ada@example.com',
+				emailBodyHtml: '<p>Hi</p>',
+			});
+			expect(initialSchedule).toBeNull();
+		});
+
+		it('reopens the real Setup step filled in after the editor round trip', async () => {
+			// The real Setup step and its pickers, against the persisted draft: the
+			// editor navigation dropped the KeepAlive cache, so Setup mounts fresh.
+			const sender = {
+				_id: 'sender_1',
+				email: 'ada@example.com',
+				displayName: 'Ada',
+				isDefault: false,
+				domainVerified: true,
+				alignment: 'aligned' as const,
+				alignmentReason: null,
+			};
+			installNuxtStubs({
+				...wizardStubs(),
+				useFormValidation,
+				useModal,
+				useCampaignABTest,
+				useOrganizationQuery: (reference: FunctionReference<'query'>) =>
+					getFunctionName(reference) === 'campaigns/senders:listForPicker'
+						? queryResult({ senders: [sender], isCustomAllowed: false, canManage: true })
+						: queryResult(undefined),
+				useTopicsList: () => paginatedResult([{ _id: 'topic_1', name: 'Newsletter' }]),
+				useOrganization: () => ({ members: ref([]), fetchMembers: async () => {} }),
+			});
+			const { CampaignsStepsSetupStep: _real, ...stubs } = stepStubs;
+			const saved = {
+				...draft,
+				replyTo: 'replies@example.com',
+				audience: { kind: 'topic' as const, topicId: 'topic_1' },
+			};
+
+			campaign.value = { ...saved, emailTemplate: template };
+			const { wrapper, router } = await mountWizard(
+				'/dashboard/campaigns/new?id=cmp1&step=content',
+				{
+					stubs: {
+						...stubs,
+						UiErrorAlert: true,
+						UiSelect: true,
+						CampaignsSenderAuthChip: true,
+						CampaignsStepsSetupAddSenderInline: true,
+						CampaignsABTestConfig: true,
+						I18nT: true,
+					},
+					components: {
+						CampaignsStepsSetupStep: SetupStep,
+						CampaignsStepsSetupSenderPicker: SetupSenderPicker,
+						CampaignsStepsSetupAudiencePicker: SetupAudiencePicker,
+					},
+				}
+			);
+			await wrapper.findComponent(stepStubs.CampaignsStepsContentStep).vm.$emit('compose', 'tpl1');
+			await flushPromises();
+			campaign.value = { ...saved, emailTemplate: { ...template, htmlContent: '<p>Hi</p>' } };
+			await router.push(router.currentRoute.value.query['returnTo'] as string);
+			await flushPromises();
+
+			await wrapper.findComponent(stepStubs.CampaignsStepsReviewStep).vm.$emit('editStep', 'setup');
+			await flushPromises();
+
+			const setup = wrapper.findComponent(SetupStep);
+			const value = (selector: string) => (setup.find(selector).element as HTMLInputElement).value;
+			expect(value('#campaignName')).toBe('Weekly digest');
+			expect(value('#replyTo')).toBe('replies@example.com');
+			expect(value('[data-testid="audience-picker"]')).toBe('topic:topic_1');
+			expect((setup.vm as unknown as { form: Record<string, string> }).form).toMatchObject({
+				fromName: 'Ada',
+				fromEmail: 'ada@example.com',
+			});
+			expect(setup.find('button[type="submit"]').attributes('disabled')).toBeUndefined();
+		});
+
+		it('lets an existing but empty email reach Review only as a blocked send', async () => {
+			campaign.value = { ...draft, emailTemplate: template };
+			const { wrapper, router } = await mountWizard(
+				'/dashboard/campaigns/new?id=cmp1&step=content'
+			);
+
+			await wrapper.findComponent(stepStubs.CampaignsStepsContentStep).vm.$emit('submit');
+			await flushPromises();
+
+			expect(router.currentRoute.value.query['step']).toBe('review');
+			// `null` is the Review step's "Email body is empty" blocker.
+			expect(reviewProps(wrapper).data['emailBodyHtml']).toBeNull();
+			// …and the indicator does not tick Content off while the email is empty.
+			const status = wrapper.findComponent(stepStubs.UiStepIndicator).props('getStepStatus') as (
+				step: string
+			) => string;
+			expect(status('setup')).toBe('completed');
+			expect(status('content')).toBe('upcoming');
+		});
+
+		it('keeps a pending schedule through Edit email', async () => {
+			campaign.value = { ...draft, emailTemplate: { ...template, htmlContent: '<p>Hi</p>' } };
+			const { wrapper, router } = await mountWizard('/dashboard/campaigns/new?id=cmp1&step=review');
+			const status = wrapper.findComponent(stepStubs.UiStepIndicator).props('getStepStatus') as (
+				step: string
+			) => string;
+			expect(status('content')).toBe('completed');
+
+			const schedule = { date: '2026-10-05', time: '09:30', recipientTimezone: true };
+			await wrapper
+				.findComponent(stepStubs.CampaignsStepsReviewStep)
+				.vm.$emit('editEmail', schedule);
+			await flushPromises();
+
+			expect(wrapper.find('.leave-dialog').exists()).toBe(false);
+			expect(router.currentRoute.value.path).toBe('/dashboard/send/emails/tpl1/edit');
+
+			await router.push(router.currentRoute.value.query['returnTo'] as string);
+			await flushPromises();
+
+			expect(router.currentRoute.value.query).toMatchObject({ id: 'cmp1', step: 'review' });
+			expect(reviewProps(wrapper).initialSchedule).toEqual(schedule);
+		});
 	});
 
 	it('drops a step that no draft backs at all', async () => {
