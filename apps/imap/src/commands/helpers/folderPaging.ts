@@ -215,16 +215,20 @@ export async function loadMessageIds(
  * unsolicited `* n FETCH` lines IDLE builds from these rows used to come out in
  * sequence order, and nothing is gained by making that output depend on the
  * order flags happened to be written in.
+ *
+ * Aborts like {@link loadFolderUids}: `signal` is checked before each page.
  */
 export async function loadChangedEnvelopes(
 	convex: ConvexClient,
 	folderId: string,
 	modseqSince: number,
+	signal?: AbortSignal,
 	pageSize = 200
 ): Promise<FetchEnvelope[]> {
 	const rows: FetchEnvelope[] = [];
 	let cursor: string | null = null;
 	for (let page = 0; page < MAX_PAGES; page += 1) {
+		signal?.throwIfAborted();
 		// Annotated: `cursor` is fed back from `result`, which TypeScript cannot
 		// infer through the generic call.
 		const result: ChangedEnvelopePage = await convex.query(fn.fetchChangedEnvelopes, {

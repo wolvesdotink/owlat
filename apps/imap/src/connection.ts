@@ -131,7 +131,13 @@ export class ImapConnection {
 			remoteIp,
 			capabilityLine,
 			tls,
-			closeConnection: () => this.socket.end(),
+			// LOGOUT: `end()` only half-closes, and `close` (which cancels the
+			// sessions) can come much later. Stop in-flight work now, so an IDLE
+			// poll cannot answer after the BYE.
+			closeConnection: () => {
+				this.cancelSessions();
+				this.socket.end();
+			},
 			commit: (next) => {
 				this.state = next;
 			},
