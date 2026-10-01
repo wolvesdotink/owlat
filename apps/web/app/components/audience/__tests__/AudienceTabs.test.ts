@@ -13,10 +13,12 @@ import { installNuxtStubs, queryResult } from '~/__tests__/a11y';
 
 let path = '/dashboard/audience/contacts';
 let isAdmin = true;
+let totalContacts: number | null = 12480;
 
 beforeEach(() => {
 	path = '/dashboard/audience/contacts';
 	isAdmin = true;
+	totalContacts = 12480;
 });
 
 function render() {
@@ -24,8 +26,7 @@ function render() {
 		...i18nStubs,
 		useRoute: () => ({ path, query: {}, params: {} }),
 		usePermissions: () => ({ isAdmin: ref(isAdmin) }),
-		useOrganizationQuery: () =>
-			queryResult({ totalContacts: 12480, topicCount: 3, segmentCount: 2 }),
+		useOrganizationQuery: () => queryResult({ totalContacts, topicCount: 3, segmentCount: 2 }),
 	});
 	return mount(AudienceTabs, { global: { plugins: [createTestI18n()] } });
 }
@@ -63,5 +64,13 @@ describe('AudienceTabs', () => {
 			'contacts',
 			'suppressions',
 		]);
+	});
+
+	it('shows no contact count while the count is pending (null), and shows a real zero', () => {
+		// #917: with no cached count the API answers null instead of scanning.
+		totalContacts = null;
+		expect(render().find('a[data-tab="contacts"]').text().trim()).toBe('Contacts');
+		totalContacts = 0;
+		expect(render().find('a[data-tab="contacts"]').text().replace(/\s+/g, ' ')).toBe('Contacts 0');
 	});
 });

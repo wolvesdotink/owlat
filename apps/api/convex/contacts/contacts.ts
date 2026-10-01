@@ -11,7 +11,7 @@ import { listResources, countFacet } from '../lib/listing';
 import { contactListing, redactContactCapabilityFields } from './listing';
 import { contactCreateSourceValidator } from '../lib/validators/contacts';
 import { applyContactEdit, createContactStrict } from './contactEdit';
-import { reconcileContactCount } from '../lib/contactCountHelpers';
+import { startContactCountReconcile } from './countReconcile';
 import { softDeleteContact } from '../lib/contactMutations';
 import { eraseContactNow } from './erasure/walker';
 import { sweepContactRetention } from './erasure/retention';
@@ -521,14 +521,15 @@ export const listByTeam = internalQuery({
 // ==========================================
 
 /**
- * Reconcile contact counts.
- * Called by daily cron.
+ * Reconcile the cached contact count. Called by the daily cron.
+ *
+ * Starts (or joins) a bounded, multi-transaction recount — see
+ * `contacts/countReconcile.ts`; it no longer counts in this transaction.
  */
 export const reconcileAllContactCounts = internalMutation({
 	args: {},
 	handler: async (ctx) => {
-		// Single instance — just reconcile directly
-		await reconcileContactCount(ctx);
+		await startContactCountReconcile(ctx);
 	},
 });
 
