@@ -170,4 +170,3 @@ These are illustrative wireframes, **not implemented after screenshots**. Every 
 [Issue](https://github.com/wolvesdotink/owlat/issues/1053) · [Editable SVG](proposals/schedule-validation.svg)
 
 </details>
-
