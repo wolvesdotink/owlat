@@ -22,6 +22,7 @@ import type { ActionCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import type { attachmentSuggestionsValidator } from '../lib/validators/attachment';
 import type { AskFileSource } from '@owlat/shared/answerMode';
+import type { MailboxAttachmentScope } from '../lib/validators/answerAsk';
 import {
 	detectAttachmentRequest,
 	pickAttachmentSuggestion,
@@ -117,17 +118,18 @@ const MAX_FOUND_PER_SOURCE = MAX_CANDIDATES + 4;
 /**
  * Everything that could answer "can you send me X": the contact-scoped Files
  * search above, plus the Postbox mailbox's own attachment index when the reply
- * is written from one. The mailbox search runs through
- * `mail.attachExisting.searchMailboxAttachments`, which re-checks that the
- * caller can read that mailbox. Each leg fails soft to no hits, so a broken
- * search reads as "nothing found" and the owner is asked instead.
+ * is written from one, limited the same way to the reply's thread and its
+ * counterpart (`mail.attachExisting.searchMailboxAttachments`, which also
+ * re-checks that the caller can read that mailbox). Each leg fails soft to no
+ * hits, so a broken search reads as "nothing found" and the owner is asked
+ * instead.
  */
 export async function searchFilesForRequest(
 	ctx: Pick<ActionCtx, 'runAction' | 'runQuery'>,
 	args: {
 		query: string;
 		contactId?: Id<'contacts'> | undefined;
-		mailboxId?: Id<'mailboxes'> | undefined;
+		mailboxScope?: MailboxAttachmentScope | undefined;
 	}
 ): Promise<FoundFile[]> {
 	const queryText = args.query.slice(0, MAX_QUERY_CHARS).trim();
@@ -155,10 +157,10 @@ export async function searchFilesForRequest(
 	} catch {
 		// Fail-soft: no Files hits.
 	}
-	if (args.mailboxId) {
+	if (args.mailboxScope) {
 		try {
 			const rows = await ctx.runQuery(internal.mail.attachExisting.searchMailboxAttachments, {
-				mailboxId: args.mailboxId,
+				scope: args.mailboxScope,
 				queryText,
 				limit: MAX_FOUND_PER_SOURCE,
 			});

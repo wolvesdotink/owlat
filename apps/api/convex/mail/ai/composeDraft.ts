@@ -234,7 +234,7 @@ export const start = authedAction({
 			subject: context.subject,
 			counterpartAddress: context.counterpartAddress,
 			contactId: context.contactId,
-			mailboxId: context.mailboxId,
+			mailboxScope: context.mailboxScope,
 			eagerness: context.eagerness,
 			instruction,
 			locale,

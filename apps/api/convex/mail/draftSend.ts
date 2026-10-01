@@ -44,7 +44,7 @@ export async function sendHandler(
 	// Answer mode gap placeholders block the send (mail/ai/composeDraftStore.ts).
 	await assertNoAnswerGaps(ctx, { kind: 'mailDraft', draftId: args.draftId }, async () => {
 		const body = await openMailDraftBody(draft);
-		return `${body.bodyText ?? ''}\n${body.bodyHtml}`;
+		return { html: body.bodyHtml, text: body.bodyText };
 	});
 
 	let isUnsealedSendAllowed = false;

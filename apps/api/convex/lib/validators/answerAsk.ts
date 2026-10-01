@@ -52,6 +52,20 @@ export const answerDraftContextValidator = v.object({
 export type AnswerDraftContext = Infer<typeof answerDraftContextValidator>;
 
 /**
+ * Whose mail an AUTOMATIC mailbox attachment search may look at: the reply's
+ * own thread, and mail from or to the people the reply answers. A person's
+ * explicit pick (`mail.drafts.attachExisting`) is not limited this way.
+ */
+export const mailboxAttachmentScopeValidator = v.object({
+	mailboxId: v.id('mailboxes'),
+	threadId: v.optional(v.id('mailThreads')),
+	// Lowercased bare addresses of the counterpart (sender, reply-to).
+	counterparts: v.array(v.string()),
+});
+
+export type MailboxAttachmentScope = Infer<typeof mailboxAttachmentScopeValidator>;
+
+/**
  * One string per target, indexed, so "the live session of this draft" is a
  * point read whichever kind of target it is.
  */

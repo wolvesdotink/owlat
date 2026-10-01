@@ -48,6 +48,7 @@ import {
 } from '../../inbox/askEagerness';
 import { detectAttachmentRequest } from '../../inbox/attachmentMatch';
 import { searchFilesForRequest } from '../../inbox/attachmentSuggest';
+import type { MailboxAttachmentScope } from '../../lib/validators/answerAsk';
 import { localizeQuestions } from '../../inbox/clarificationLocalize';
 import { answerKindForSlot, applyMemoryFills } from '../../inbox/clarificationAnswers';
 import {
@@ -69,8 +70,8 @@ export interface GapCheckInput {
 	subject: string;
 	counterpartAddress?: string | undefined;
 	contactId?: Id<'contacts'> | undefined;
-	/** The Postbox mailbox whose own attachments may answer a file request. */
-	mailboxId?: Id<'mailboxes'> | undefined;
+	/** The part of the Postbox mailbox (this thread, the counterpart's mail) the file search reads. */
+	mailboxScope?: MailboxAttachmentScope | undefined;
 	eagerness?: EagernessMode | undefined;
 	/** The owner's own instruction; a slot it already answers is not asked. */
 	instruction?: string | undefined;
@@ -230,7 +231,7 @@ export async function runGapCheck(ctx: ActionCtx, input: GapCheckInput): Promise
 		const found = await searchFilesForRequest(ctx, {
 			query,
 			contactId: input.contactId,
-			mailboxId: input.mailboxId,
+			mailboxScope: input.mailboxScope,
 		});
 		const outcome = decideFileOutcome(rankFoundFiles(query, found));
 		fileRequest = { questionId: FILE_QUESTION_ID, label };

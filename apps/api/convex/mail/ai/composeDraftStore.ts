@@ -37,6 +37,8 @@ import {
 	needsReplyClarificationQuestionValidator,
 } from '../../lib/validators/clarification';
 import { hasDraftGaps } from '@owlat/shared/answerMode';
+import { htmlToPlainText } from '@owlat/shared/html';
+import { splitQuotedHtml, splitQuotedText } from '@owlat/shared/quotedText';
 import { throwForbidden, throwInvalidState, throwNotFound } from '../../_utils/errors';
 import {
 	FILE_QUESTION_ID,
@@ -230,6 +232,12 @@ export const sweepStaleSessions = internalMutation({
 	},
 });
 
+/** A reply body as a send path has it: HTML (Postbox) and/or plain text. */
+interface DraftBody {
+	html?: string | undefined;
+	text?: string | undefined;
+}
+
 /** Whether anyone started "Draft with AI" on this target (the send guards' trigger). */
 async function targetHasAskSession(ctx: QueryCtx, target: AnswerAskTarget): Promise<boolean> {
 	const row = await ctx.db
@@ -247,15 +255,25 @@ async function targetHasAskSession(ctx: QueryCtx, target: AnswerAskTarget): Prom
  * brackets in hand-written mail are not ours to block. Every send path of both
  * composers runs this (`mail/draftSend.ts`, the team inbox's approve and
  * follow-up).
+ *
+ * Only the authored part is checked: a `[[...]]` in the quoted original belongs
+ * to the mail being answered, and the composer neither highlights nor counts
+ * it. The split is the shared quote-aware one (`@owlat/shared/quotedText`) the
+ * composer's gap count uses (web `freshDraftGaps`); the HTML decides when there
+ * is HTML, since the plain text is derived from it and may not mark the quote.
+ * The saved and sent body keep the quote either way.
  */
 export async function assertNoAnswerGaps(
 	ctx: QueryCtx,
 	target: AnswerAskTarget,
-	text: string | (() => Promise<string>)
+	body: DraftBody | (() => Promise<DraftBody>)
 ): Promise<void> {
 	if (!(await targetHasAskSession(ctx, target))) return;
-	const body = typeof text === 'string' ? text : await text();
-	if (hasDraftGaps(body)) {
+	const { html, text } = typeof body === 'function' ? await body() : body;
+	const authored = html?.trim()
+		? htmlToPlainText(splitQuotedHtml(html).fresh)
+		: splitQuotedText(text ?? '').fresh;
+	if (hasDraftGaps(authored)) {
 		throwInvalidState('Fill in the highlighted gaps before sending', { code: 'DRAFT_HAS_GAPS' });
 	}
 }

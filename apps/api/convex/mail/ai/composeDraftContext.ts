@@ -29,6 +29,7 @@ import {
 } from '../../lib/answerFileToFiles';
 import { asEagernessMode, type EagernessMode } from '../../inbox/askEagerness';
 import { throwForbidden, throwNotFound } from '../../_utils/errors';
+import type { MailboxAttachmentScope } from '../../lib/validators/answerAsk';
 import { buildThreadTranscript, ANSWER_DRAFT } from './transcript';
 
 /** Messages of a Postbox thread the draft sees (newest kept when trimming). */
@@ -113,8 +114,20 @@ export const loadMailDraftContext = internalQuery({
 		const identifier = counterpartAddress ? normalizeEmail(counterpartAddress) : '';
 		const found = identifier ? await findContactByIdentifier(ctx, 'email', identifier) : null;
 
+		// The automatic file search may look at this thread and at mail from or
+		// to the person answered, never at the rest of the mailbox.
+		const counterparts = trigger
+			? [trigger.fromAddress, ...(trigger.replyToAddress ? [trigger.replyToAddress] : [])]
+			: draft.toAddresses.slice(0, 1);
+		const mailboxScope: MailboxAttachmentScope = {
+			mailboxId: draft.mailboxId,
+			...(threadId ? { threadId } : {}),
+			counterparts: counterparts.map((address) => normalizeEmail(address)).filter(Boolean),
+		};
+
 		return {
 			mailboxId: draft.mailboxId,
+			mailboxScope,
 			ownerAddress: mailbox.address,
 			subject: trigger?.subject ?? draft.subject,
 			transcript,
