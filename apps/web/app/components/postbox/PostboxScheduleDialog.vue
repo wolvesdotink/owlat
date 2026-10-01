@@ -124,7 +124,121 @@ function presetClock(preset: SchedulePreset): string {
 		: t('components.postbox.postboxScheduleDialog.yoursThenTheirs', { yours: mine, theirs });
 }
 
+// ── Custom time ──────────────────────────────────────────────────────────────
+//
+// The native `datetime-local` value is a wall clock with no zone: the browser
+// reads it in the sender's own zone, the same clock `senderOffsetMinutes`
+// describes. The summary line under the input says which zone that is and
+// echoes the exact instant Schedule will emit, so what the sender reads is what
+// gets scheduled.
+
 const customDate = ref('');
+const customInputId = useId();
+const customSummaryId = useId();
+
+/** The sender's IANA zone, for naming the clock; the offset when there is none. */
+const senderZoneName = computed(() => {
+	const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+	if (zone) return zone;
+	const offset = senderOffsetMinutes.value;
+	const abs = Math.abs(offset);
+	return `UTC${offset < 0 ? '-' : '+'}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`;
+});
+
+// The clock validation reads against. It ticks while the dialog is open, so a
+// time that was a minute ahead turns into the error line once that minute has
+// gone by, and Schedule re-reads it on click: `min` on the native picker is
+// only a hint the browser applies when it feels like it.
+const validationNow = ref(Date.now());
+let ticker: ReturnType<typeof setInterval> | undefined;
+function stopTicker() {
+	if (ticker !== undefined) clearInterval(ticker);
+	ticker = undefined;
+}
+watch(
+	() => props.open,
+	(open) => {
+		stopTicker();
+		if (!open) return;
+		validationNow.value = Date.now();
+		ticker = setInterval(() => {
+			validationNow.value = Date.now();
+		}, 15_000);
+	},
+	{ immediate: true }
+);
+onBeforeUnmount(stopTicker);
+
+/** `YYYY-MM-DDTHH:mm` in the sender's clock: the picker's floor, this minute. */
+const customMin = computed(() => {
+	const local = new Date(
+		validationNow.value - new Date(validationNow.value).getTimezoneOffset() * 60_000
+	);
+	return local.toISOString().slice(0, 16);
+});
+
+/** The instant the custom value names, or null while the field is empty. */
+const customAt = computed<number | null>(() =>
+	customDate.value ? new Date(customDate.value).getTime() : null
+);
+/** A value is there but it is not a time Schedule can use. */
+const customInvalid = computed(
+	() =>
+		customAt.value !== null &&
+		(Number.isNaN(customAt.value) || customAt.value <= validationNow.value)
+);
+
+/** "Thu, Oct 2, 9:00 AM" in the reader's language, in the given offset's clock. */
+function dateTimeAt(at: number, offsetMinutes: number): string {
+	return new Intl.DateTimeFormat(locale.value, {
+		timeZone: 'UTC',
+		weekday: 'short',
+		day: 'numeric',
+		month: 'short',
+		hour: 'numeric',
+		minute: '2-digit',
+	}).format(new Date(at + offsetMinutes * 60_000));
+}
+
+/** The recipient's clock at `at`; carries the weekday when their day differs. */
+function recipientClockAt(at: number, senderOffset: number, theirOffset: number): string {
+	const sameDay =
+		new Date(at + senderOffset * 60_000).getUTCDate() ===
+		new Date(at + theirOffset * 60_000).getUTCDate();
+	return sameDay
+		? clockAt(at, theirOffset)
+		: `${weekdayShort(at, theirOffset)} ${clockAt(at, theirOffset)}`;
+}
+function weekdayShort(at: number, offsetMinutes: number): string {
+	return new Intl.DateTimeFormat(locale.value, { timeZone: 'UTC', weekday: 'short' }).format(
+		new Date(at + offsetMinutes * 60_000)
+	);
+}
+
+const customSummary = computed(() => {
+	const at = customAt.value;
+	const key = 'components.postbox.postboxScheduleDialog';
+	if (at === null) return t(`${key}.customZone`, { zone: senderZoneName.value });
+	if (customInvalid.value) return t(`${key}.customPast`);
+	// The offset AT the chosen instant, so a time past a DST change still
+	// reads back as the clock that was typed.
+	const senderOffset = -new Date(at).getTimezoneOffset();
+	const when = dateTimeAt(at, senderOffset);
+	const zone = senderZoneName.value;
+	const theirOffset = recipientTimeZone.value
+		? zoneOffsetMinutes(recipientTimeZone.value, at)
+		: null;
+	// Compared at the chosen instant, not at open: two zones that share an
+	// offset today can split after a DST change before the send.
+	if (theirOffset === null || theirOffset === senderOffset) {
+		return t(`${key}.customSends`, { when, zone });
+	}
+	return t(`${key}.customSendsBoth`, {
+		when,
+		zone,
+		theirs: recipientClockAt(at, senderOffset, theirOffset),
+	});
+});
 
 function close() {
 	emit('update:open', false);
@@ -134,10 +248,12 @@ function pickPreset(preset: SchedulePreset) {
 	close();
 }
 function pickCustom() {
-	if (!customDate.value) return;
-	const ts = new Date(customDate.value).getTime();
-	if (Number.isNaN(ts) || ts <= Date.now()) return;
-	emit('confirm', ts);
+	// Re-read the clock: the minute may have run out since the last tick. An
+	// invalid value then shows the error line instead of doing nothing.
+	validationNow.value = Date.now();
+	const at = customAt.value;
+	if (at === null || customInvalid.value) return;
+	emit('confirm', at);
 	close();
 }
 </script>
@@ -176,15 +292,38 @@ function pickCustom() {
 			</li>
 		</ul>
 		<div class="border-t border-border-subtle pt-3">
-			<label class="text-xs font-medium text-text-tertiary block mb-1">{{
+			<label :for="customInputId" class="text-xs font-medium text-text-tertiary block mb-1">{{
 				t('components.postbox.postboxScheduleDialog.custom')
 			}}</label>
 			<div class="flex items-center gap-2">
-				<input v-model="customDate" type="datetime-local" class="input flex-1" />
-				<UiButton type="button" :disabled="!customDate" @click="pickCustom">
+				<input
+					:id="customInputId"
+					v-model="customDate"
+					type="datetime-local"
+					class="input flex-1"
+					:min="customMin"
+					:aria-invalid="customInvalid ? 'true' : undefined"
+					:aria-describedby="customSummaryId"
+					data-testid="postbox-schedule-custom-input"
+				/>
+				<UiButton
+					type="button"
+					:disabled="customAt === null || customInvalid"
+					data-testid="postbox-schedule-custom-submit"
+					@click="pickCustom"
+				>
 					{{ t('components.postbox.postboxScheduleDialog.schedule') }}
 				</UiButton>
 			</div>
+			<p
+				:id="customSummaryId"
+				class="text-xs mt-1.5"
+				:class="customInvalid ? 'text-error' : 'text-text-tertiary'"
+				aria-live="polite"
+				data-testid="postbox-schedule-custom-summary"
+			>
+				{{ customSummary }}
+			</p>
 		</div>
 	</UiModal>
 </template>

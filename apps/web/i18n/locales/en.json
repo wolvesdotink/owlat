@@ -4405,6 +4405,10 @@
 			},
 			"postboxScheduleDialog": {
 				"custom": "Custom",
+				"customPast": "Pick a time in the future",
+				"customSends": "Sends {when} ({zone})",
+				"customSendsBoth": "Sends {when} your time ({zone}), {theirs} theirs",
+				"customZone": "Times are in your timezone, {zone}",
 				"nextWeekdayMorning": "{weekday} morning",
 				"recipientMorning": "Tomorrow morning, their time",
 				"recipientZone": "Times below are read against {zone}, the timezone on record for your recipient.",

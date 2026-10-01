@@ -4405,6 +4405,10 @@
 			},
 			"postboxScheduleDialog": {
 				"custom": "Benutzerdefiniert",
+				"customPast": "Wähle einen Zeitpunkt in der Zukunft",
+				"customSends": "Versand am {when} ({zone})",
+				"customSendsBoth": "Versand am {when} bei dir ({zone}), {theirs} bei ihnen",
+				"customZone": "Zeiten gelten in deiner Zeitzone, {zone}",
 				"nextWeekdayMorning": "{weekday}morgen",
 				"recipientMorning": "Morgen früh, in ihrer Zeitzone",
 				"recipientZone": "Die Zeiten unten beziehen sich auf {zone}, die hinterlegte Zeitzone deiner Empfänger.",
