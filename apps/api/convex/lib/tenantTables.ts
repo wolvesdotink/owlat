@@ -332,6 +332,11 @@ export const NON_TENANT_TABLES = [
 	'instanceSettings',
 	'featureFlagSettings',
 	'instanceCounters',
+	// Progress of the instance-wide sweep that clears body-search excerpts when
+	// the operator turns the switch off: a generation, counts and a pagination
+	// cursor, no message content. It follows the instance switch rather than the
+	// org, and a sweep still running during a wipe must keep its fence.
+	'mailBodySearchPurges',
 	// Per-org AI provider selection + encrypted key envelope — an admin-recreated
 	// config singleton like instanceSettings, not org business data.
 	'aiProviderConfig',

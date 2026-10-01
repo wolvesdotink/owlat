@@ -33,12 +33,6 @@ vi.mock('@owlat/desktop/src/keychain', () => ({
 	secretSet: vi.fn(async () => undefined),
 	secretDelete: vi.fn(async () => undefined),
 }));
-vi.mock('~/lib/desktop/keychainStorage', () => ({
-	keychainStorage: {},
-	configureKeychainStorage: vi.fn(),
-	clearKeychainStorage: vi.fn(),
-	snapshotKeychain: vi.fn(() => ''),
-}));
 vi.mock('~/lib/desktop/workspaceAccent', () => ({ applyWorkspaceAccent: vi.fn() }));
 vi.mock('~/lib/desktop/workspaceSwitch', () => ({
 	showSwitchSkeleton: vi.fn(() => ({})),

@@ -5264,6 +5264,7 @@
 				"backfillPending": "Existing mail is not indexed yet.",
 				"backfillRunning": "Indexing… {count} messages read",
 				"backfillStart": "Index existing mail",
+				"backfillStopped": "Indexing stopped before it finished. Run it again to cover the rest.",
 				"cancelOperation": "Stop indexing",
 				"confirmDisableAction": "Turn off and clear excerpts",
 				"confirmDisableDescription": "Search will go back to the first 200 characters of each message, and every body excerpt already stored will be deleted. You can turn it on again later, but existing mail will have to be indexed from scratch.",
@@ -6800,6 +6801,7 @@
 					"pageTitle": "Desktop app updates — Owlat",
 					"pin": {
 						"label": "Release to pin to",
+						"missing": "Pinned to {version}, which this instance no longer has cached. Connected apps are offered no update until you pin a cached release or choose another mode.",
 						"noneCached": "No cached release on this channel to pin to. Check now first.",
 						"placeholder": "Choose a cached release"
 					},

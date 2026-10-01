@@ -5264,6 +5264,7 @@
 				"backfillPending": "Vorhandene E-Mails sind noch nicht indexiert.",
 				"backfillRunning": "Indexierung läuft … {count} Nachrichten gelesen",
 				"backfillStart": "Vorhandene E-Mails indexieren",
+				"backfillStopped": "Die Indexierung wurde vor dem Abschluss unterbrochen. Starten Sie sie erneut, um den Rest zu erfassen.",
 				"cancelOperation": "Indexierung stoppen",
 				"confirmDisableAction": "Deaktivieren und Auszüge löschen",
 				"confirmDisableDescription": "Die Suche erfasst wieder nur die ersten 200 Zeichen jeder Nachricht, und alle bereits gespeicherten Textauszüge werden gelöscht. Sie können die Option später wieder aktivieren, vorhandene E-Mails müssen dann aber neu indexiert werden.",
@@ -6800,6 +6801,7 @@
 					"pageTitle": "Desktop-App-Updates — Owlat",
 					"pin": {
 						"label": "Version, auf die festgelegt wird",
+						"missing": "Festgelegt auf {version}, aber diese Version ist nicht mehr zwischengespeichert. Verbundene Apps erhalten kein Update, bis Sie eine zwischengespeicherte Version festlegen oder einen anderen Modus wählen.",
 						"noneCached": "In diesem Kanal ist keine Version zwischengespeichert. Prüfen Sie zuerst.",
 						"placeholder": "Zwischengespeicherte Version wählen"
 					},

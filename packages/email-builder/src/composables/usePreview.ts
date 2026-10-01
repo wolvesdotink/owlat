@@ -1,4 +1,4 @@
-import { ref, watch, type Ref, type ComputedRef } from 'vue';
+import { computed, ref, watch, type Ref, type ComputedRef } from 'vue';
 import type {
 	EditorBlock,
 	PreviewMode,
@@ -60,19 +60,34 @@ export interface UsePreviewReturn {
 	plainText: Ref<string>;
 	/** The generated plain text WITHOUT preview variable substitution. */
 	plainTextSource: Ref<string>;
+	/**
+	 * AMP HTML for the current content. Rendered only while `ampRequested` is
+	 * true (the AMP view or the export menu is open); otherwise it is the last
+	 * AMP rendered for unchanged content, or '' once the content has moved on,
+	 * so nothing can read a stale AMP body.
+	 */
 	ampHtml: Ref<string>;
+	/** Set while a view or export needs `ampHtml`; flipping it on renders AMP on demand. */
+	ampRequested: Ref<boolean>;
 	renderWarnings: Ref<string[]>;
 	emailAnalysis: Ref<EmailAnalysis | null>;
 	healthScore: Ref<EmailHealthScore | null>;
 	validationIssues: Ref<ValidationIssue[]>;
-	optimizations: Ref<OptimizationSuggestion[]>;
+	/** Computed on first read from `generatedHtml`; nothing is spent while no one reads it. */
+	optimizations: Readonly<Ref<OptimizationSuggestion[]>>;
 	emailDiff: Ref<EmailDiff | null>;
 
 	generateEmailHtml: (darkMode?: boolean) => string;
 	generatePlainText: (options?: { fillVariables?: boolean }) => string;
 	generateAmpHtml: () => string;
 	runAnalysis: () => void;
+	/** Re-render every artifact after a Block, theme or render-option change. */
 	regenerate: () => void;
+	/**
+	 * Re-render only the HTML and its analysis (e.g. after a dark-mode change).
+	 * Plain text, AMP and Block validation do not depend on dark mode and are kept.
+	 */
+	regenerateHtml: () => void;
 	togglePreviewMode: () => void;
 	toggleDarkModePreview: () => void;
 }
@@ -98,13 +113,19 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 	const plainText = ref('');
 	const plainTextSource = ref('');
 	const ampHtml = ref('');
+	const ampRequested = ref(false);
 	const renderWarnings = ref<string[]>([]);
 	const emailAnalysis = ref<EmailAnalysis | null>(null);
 	const healthScore = ref<EmailHealthScore | null>(null);
 	const validationIssues = ref<ValidationIssue[]>([]);
-	const optimizations = ref<OptimizationSuggestion[]>([]);
 	const emailDiff = ref<EmailDiff | null>(null);
 	const previousHtml = ref('');
+	// Bumped by every content regenerate; AMP is cached against it.
+	let contentVersion = 0;
+	let ampVersion = -1;
+	// Block validation for the current content, shared with health scoring.
+	// `undefined` when validation threw, so health scoring runs its own pass.
+	let contentValidationIssues: ValidationIssue[] | undefined;
 
 	const appendMandatoryUnsubscribeFooter = (html: string): string => {
 		if (!showMandatoryUnsubscribeFooter.value) return html;
@@ -182,9 +203,11 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 	// a caller seeding a manual override wants the raw `{{token}}` body — the
 	// stored override is personalized per recipient at send time, so freezing a
 	// preview value into it would ship the same name to everyone.
+	const renderRawPlainText = (): string =>
+		renderPlainText(canvasBlocks.value, buildRenderOptions());
+
 	const generatePlainText = (options?: { fillVariables?: boolean }): string => {
-		const opts = buildRenderOptions();
-		const raw = renderPlainText(canvasBlocks.value, opts);
+		const raw = renderRawPlainText();
 		return options?.fillVariables === false ? raw : fillVariables(raw, false);
 	};
 
@@ -194,42 +217,68 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 		return fillVariables(renderAmpEmail(canvasBlocks.value, opts), true);
 	};
 
-	// Run analysis on current HTML
-	const runAnalysis = () => {
+	// Validate the Blocks once per content change. Health scoring validates
+	// with level 'soft'; the level only changes `valid`, never the issue list, so
+	// the same issues feed both the Validation tab and the accessibility score.
+	const validateContent = () => {
+		try {
+			contentValidationIssues = validateBlocks(canvasBlocks.value, {
+				accessibilityAudit: true,
+			}).issues;
+		} catch {
+			contentValidationIssues = undefined;
+		}
+		validationIssues.value = contentValidationIssues ?? [];
+	};
+
+	// Analyze the current HTML: one analyzeEmail pass, shared with health scoring.
+	const analyzeHtml = () => {
 		const html = generatedHtml.value;
 		if (!html) {
 			emailAnalysis.value = null;
 			healthScore.value = null;
-			validationIssues.value = [];
-			optimizations.value = [];
 			return;
 		}
 
+		let analysis: EmailAnalysis | null;
 		try {
-			emailAnalysis.value = analyzeEmail(html);
+			analysis = analyzeEmail(html);
 		} catch {
-			emailAnalysis.value = null;
+			analysis = null;
 		}
+		emailAnalysis.value = analysis;
 
 		try {
-			healthScore.value = getEmailHealthScore(canvasBlocks.value, html);
+			healthScore.value = getEmailHealthScore(canvasBlocks.value, html, undefined, {
+				analysis: analysis ?? undefined,
+				validationIssues: contentValidationIssues,
+			});
 		} catch {
 			healthScore.value = null;
 		}
-
-		try {
-			const result = validateBlocks(canvasBlocks.value, { accessibilityAudit: true });
-			validationIssues.value = result.issues;
-		} catch {
-			validationIssues.value = [];
-		}
-
-		try {
-			optimizations.value = suggestOptimizations(html);
-		} catch {
-			optimizations.value = [];
-		}
 	};
+
+	// Run analysis on current HTML
+	const runAnalysis = () => {
+		if (!generatedHtml.value) {
+			emailAnalysis.value = null;
+			healthScore.value = null;
+			validationIssues.value = [];
+			return;
+		}
+		validateContent();
+		analyzeHtml();
+	};
+
+	// Nothing in the editor reads the suggestions, so they are derived on demand.
+	const optimizations = computed<OptimizationSuggestion[]>(() => {
+		if (!generatedHtml.value) return [];
+		try {
+			return suggestOptimizations(generatedHtml.value);
+		} catch {
+			return [];
+		}
+	});
 
 	// Compute diff when HTML changes
 	const computeDiff = () => {
@@ -244,18 +293,45 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 		}
 	};
 
-	// Regenerate every derived preview artifact (html, plain text, AMP, analysis,
-	// diff) from the current canvas + render options. Shared by the toggle, the
-	// dark-mode toggle, the render-options watch, and host-driven re-renders so
-	// each control change produces a complete, consistent preview.
-	const regenerate = () => {
+	// Render AMP only while a view or export asks for it, once per content
+	// version. Unrequested AMP for outdated content is dropped rather than kept.
+	const syncAmp = () => {
+		if (ampVersion === contentVersion) return;
+		if (ampRequested.value) {
+			ampHtml.value = generateAmpHtml();
+			ampVersion = contentVersion;
+		} else {
+			ampHtml.value = '';
+		}
+	};
+	watch(ampRequested, syncAmp, { flush: 'sync' });
+
+	// HTML, its analysis and the diff against the previous render. Shared by the
+	// dark-mode path, which changes nothing else.
+	const renderHtml = () => {
 		previousHtml.value = generatedHtml.value;
 		generatedHtml.value = generateEmailHtml(previewDarkMode.value);
-		plainText.value = generatePlainText();
-		plainTextSource.value = generatePlainText({ fillVariables: false });
-		ampHtml.value = generateAmpHtml();
-		runAnalysis();
+		analyzeHtml();
 		computeDiff();
+	};
+
+	// Regenerate the preview artifacts from the current canvas + render options.
+	// Shared by the toggle, the render-options watch, and host-driven re-renders
+	// so each content change produces a complete, consistent preview. Plain text
+	// is rendered once and the substituted copy derived from it; AMP follows
+	// `ampRequested`.
+	const regenerate = () => {
+		contentVersion++;
+		const rawPlainText = renderRawPlainText();
+		plainTextSource.value = rawPlainText;
+		plainText.value = fillVariables(rawPlainText, false);
+		validateContent();
+		renderHtml();
+		syncAmp();
+	};
+
+	const regenerateHtml = () => {
+		renderHtml();
 	};
 
 	// Toggle preview mode
@@ -265,13 +341,14 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 			regenerate();
 		} else {
 			previewMode.value = 'edit';
+			ampRequested.value = false;
 		}
 	};
 
 	// Toggle dark mode preview
 	const toggleDarkModePreview = () => {
 		previewDarkMode.value = !previewDarkMode.value;
-		if (previewMode.value !== 'edit') regenerate();
+		if (previewMode.value !== 'edit') regenerateHtml();
 	};
 
 	// Re-render when render options change while in preview mode
@@ -294,6 +371,7 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 		plainText,
 		plainTextSource,
 		ampHtml,
+		ampRequested,
 		renderWarnings,
 		emailAnalysis,
 		healthScore,
@@ -305,6 +383,7 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 		generateAmpHtml,
 		runAnalysis,
 		regenerate,
+		regenerateHtml,
 		togglePreviewMode,
 		toggleDarkModePreview,
 	};

@@ -2,8 +2,13 @@
 import type { Id } from '@owlat/api/dataModel';
 import { isMentionHandlePrefix } from '@owlat/shared/chatMentions';
 
-const emit = defineEmits<{
-	send: [text: string, attachmentIds?: Id<'mediaAssets'>[]];
+const props = defineProps<{
+	/**
+	 * Delivers the draft. An awaited callback rather than an event, because the
+	 * composer needs the answer: the text and attachments stay put until this
+	 * resolves `ok`, so a refused or failed send is still there to retry.
+	 */
+	send: (text: string, attachmentIds?: Id<'mediaAssets'>[]) => Promise<{ ok: boolean }>;
 }>();
 
 const { t } = useI18n();
@@ -24,8 +29,15 @@ const { candidates: mentionCandidates } = useChatMentionSearch(
 	() => mentionQuery.value
 );
 
+// True while a send is waiting for the backend; blocks a second send of the
+// same draft.
+const isSending = ref(false);
+
 const canSend = computed(
-	() => (text.value.trim().length > 0 || pendingAttachments.value.length > 0) && !isUploading.value
+	() =>
+		(text.value.trim().length > 0 || pendingAttachments.value.length > 0) &&
+		!isUploading.value &&
+		!isSending.value
 );
 
 const recalcMentionQuery = () => {
@@ -62,11 +74,15 @@ const recalcMentionQuery = () => {
 	mentionQuery.value = fragment;
 };
 
-const handleInput = () => {
+const fitTextarea = () => {
 	if (textareaRef.value) {
 		textareaRef.value.style.height = 'auto';
 		textareaRef.value.style.height = Math.min(textareaRef.value.scrollHeight, 200) + 'px';
 	}
+};
+
+const handleInput = () => {
+	fitTextarea();
 	recalcMentionQuery();
 };
 
@@ -144,16 +160,33 @@ const removeAttachment = (id: Id<'mediaAssets'>) => {
 
 const handleSend = async () => {
 	if (!canSend.value) return;
-	const trimmed = text.value.trim();
-	const attachmentIds = pendingAttachments.value.map((a) => a.id);
-	emit('send', trimmed, attachmentIds.length > 0 ? attachmentIds : undefined);
-	text.value = '';
-	pendingAttachments.value = [];
+	// Freeze what is being sent. The draft stays on screen, and editable, until
+	// the backend accepts it; then only this snapshot is taken away.
+	const submittedText = text.value;
+	const submittedIds = pendingAttachments.value.map((a) => a.id);
 	mentionQuery.value = null;
 	mentionStart.value = -1;
-	nextTick(() => {
-		if (textareaRef.value) textareaRef.value.style.height = 'auto';
-	});
+	isSending.value = true;
+	let outcome: { ok: boolean };
+	try {
+		outcome = await props.send(
+			submittedText.trim(),
+			submittedIds.length > 0 ? submittedIds : undefined
+		);
+	} finally {
+		isSending.value = false;
+	}
+	// Refused or failed: the operation has toasted it, the draft is kept.
+	if (!outcome.ok) return;
+
+	// Text typed after pressing Send follows the sent text, so the sent prefix
+	// goes and the rest stays. A draft edited inside the sent part no longer
+	// starts with it and is left alone: it is not what was sent.
+	if (text.value.startsWith(submittedText)) {
+		text.value = text.value.slice(submittedText.length);
+	}
+	pendingAttachments.value = pendingAttachments.value.filter((a) => !submittedIds.includes(a.id));
+	nextTick(fitTextarea);
 };
 </script>
 
@@ -221,9 +254,16 @@ const handleSend = async () => {
 				:disabled="!canSend"
 				class="flex-shrink-0 w-10 h-10 p-0 rounded-xl"
 				:aria-label="t('common.send')"
+				:aria-busy="isSending || undefined"
+				data-testid="chat-send"
 				@click="handleSend"
 			>
-				<Icon name="lucide:send" class="w-4 h-4" />
+				<Icon
+					v-if="isSending"
+					name="lucide:loader-2"
+					class="w-4 h-4 animate-spin motion-reduce:animate-none"
+				/>
+				<Icon v-else name="lucide:send" class="w-4 h-4" />
 			</UiButton>
 		</div>
 

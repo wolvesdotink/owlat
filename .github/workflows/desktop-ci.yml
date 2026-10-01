@@ -89,3 +89,8 @@ jobs:
 
       - name: Build + test Rust shell
         run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+
+      # The developer build (`tauri dev`) adds the local-source provisioning
+      # commands; test that shape too, including the IPC ACL it compiles in.
+      - name: Build + test Rust shell (dev-provisioning)
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --features dev-provisioning
