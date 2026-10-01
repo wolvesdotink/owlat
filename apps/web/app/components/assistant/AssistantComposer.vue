@@ -17,6 +17,10 @@ const { t } = useI18n();
 
 const text = ref('');
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
+// The placeholder disappears once the member types, so the field carries its
+// own name, and the Enter / Shift+Enter hint is wired to it as its description.
+const fieldId = useId();
+const hintId = useId();
 
 const { isSending, submit } = useAcknowledgedDraft(text);
 // The last send was refused or failed. The operation has toasted it; this
@@ -76,7 +80,11 @@ const handleKeydown = (event: KeyboardEvent) => {
 <template>
 	<div class="border-t border-border-subtle bg-bg-elevated px-4 py-3">
 		<div class="flex items-end gap-2">
+			<label :for="fieldId" class="sr-only">
+				{{ t('components.assistant.assistantComposer.label') }}
+			</label>
 			<textarea
+				:id="fieldId"
 				ref="textareaRef"
 				v-model="text"
 				:placeholder="
@@ -85,6 +93,7 @@ const handleKeydown = (event: KeyboardEvent) => {
 						: t('components.assistant.assistantComposer.placeholder')
 				"
 				:disabled="disabled"
+				:aria-describedby="hintId"
 				rows="1"
 				class="flex-1 resize-none bg-bg-surface border border-border-subtle rounded-xl px-4 py-2.5 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-60"
 				@keydown="handleKeydown"
@@ -142,7 +151,7 @@ const handleKeydown = (event: KeyboardEvent) => {
 				</button>
 			</p>
 		</div>
-		<p class="text-[11px] text-text-tertiary mt-1.5 px-1">
+		<p :id="hintId" class="text-[11px] text-text-tertiary mt-1.5 px-1">
 			{{ t('components.assistant.assistantComposer.hint') }}
 		</p>
 	</div>
