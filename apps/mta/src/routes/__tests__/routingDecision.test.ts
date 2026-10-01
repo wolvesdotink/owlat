@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
+import type { AuthEnv } from '../../__tests__/helpers/honoAuth.js';
 import type { Context } from 'hono';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../../config.js';
@@ -104,7 +105,7 @@ async function decide(
 	redis: Redis = persistingRedis(),
 	config: MtaConfig = { ipPools: {} } as MtaConfig
 ) {
-	const app = new Hono();
+	const app = new Hono<AuthEnv>();
 	app.use('/send/decision', async (c, next) => {
 		c.set('auth', { isMasterKey: true });
 		await next();
@@ -207,22 +208,24 @@ describe('routing lease reads', () => {
 
 describe('global breaker dominance over relay fallback', () => {
 	it.each([
-		['candidate relay', { candidateProvider: 'relay' }, () => undefined],
+		['candidate relay', { candidateProvider: 'relay' }, (): void => {}],
 		[
 			'provider breaker',
 			{},
-			() =>
-				breaker.canSendScope.mockResolvedValue({ allowed: false, state: 'open', generation: 2 }),
+			() => {
+				breaker.canSendScope.mockResolvedValue({ allowed: false, state: 'open', generation: 2 });
+			},
 		],
 		[
 			'warming overflow',
 			{ allowWarmupOverflow: true },
-			() =>
+			() => {
 				warming.reserveWarmingSlot.mockResolvedValue({
 					allowed: false,
 					sentToday: 10,
 					dailyCap: 10,
-				}),
+				});
+			},
 		],
 		[
 			'provider probe exhaustion',

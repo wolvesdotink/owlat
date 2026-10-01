@@ -33,7 +33,7 @@
 
 import { v } from 'convex/values';
 import { internalAction, type MutationCtx, type QueryCtx } from '../_generated/server';
-import { internalMutation } from '../lib/writeFence';
+import { internalMutation, readActiveWorkspaceDeletion } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { logError } from '../lib/runtimeLog';
@@ -272,10 +272,15 @@ export const recordFailure = internalMutation({
  * Restart chains that went quiet (a crashed action, a lost schedule) and
  * re-arm failed jobs, so a job that keeps failing is retried hourly and stays
  * visible as `failed` in between.
+ *
+ * Not while a workspace deletion runs: it cancels the chains, so every job
+ * looks stalled, and the write fence refuses the re-arm until the deletion
+ * sweeps the job table. The deletion removes the jobs anyway.
  */
 export const resumeStalled = internalMutation({
 	args: {},
 	handler: async (ctx): Promise<{ restarted: number }> => {
+		if (await readActiveWorkspaceDeletion(ctx.db)) return { restarted: 0 };
 		const now = Date.now();
 		let restarted = 0;
 		for (const status of ['running', 'retrying', 'failed'] as const) {

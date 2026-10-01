@@ -29,7 +29,7 @@ export const accordionModule: BlockModule<'accordion'> = {
 		);
 	},
 
-	html({ content, ctx, walk }) {
+	html({ block, content, ctx, walk }) {
 		const headerBg = escapeCss(content.headerBackgroundColor || '#f5f5f5');
 		const headerColor = escapeCss(content.headerTextColor || '#333333');
 		const headerFontSize = px(content.headerFontSize, 0) || 16;
@@ -38,13 +38,16 @@ export const accordionModule: BlockModule<'accordion'> = {
 		const sectionBorder = escapeCss(content.sectionBorderColor || '#e0e0e0');
 		const borderRadius = px(content.borderRadius, 0);
 		const headerFontFamily = escapeCss(ctx.theme.fontFamily);
+		// One radio group per Block: a shared name would let a second single-open
+		// accordion in the same email close this one's open section.
+		const radioGroupName = `owlat-accordion-${escapeAttr(block.id)}`;
 
 		const sections = content.sections
 			.map((section, idx) => {
 				const isInitiallyExpanded = content.initialExpanded === idx;
 				const inputType = content.allowMultiple ? 'checkbox' : 'radio';
 				const sectionId = escapeAttr(section.id);
-				const inputName = content.allowMultiple ? `owlat-acc-${sectionId}` : 'owlat-accordion';
+				const inputName = content.allowMultiple ? `owlat-acc-${sectionId}` : radioGroupName;
 				const checkedAttr = isInitiallyExpanded ? ' checked' : '';
 
 				const childHtml = section.items

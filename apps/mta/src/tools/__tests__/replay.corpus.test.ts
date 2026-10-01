@@ -31,7 +31,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { generateKeyPairSync } from 'node:crypto';
-import { dkimSign } from 'mailauth/lib/dkim/sign.js';
+import { mailauthDkimSign } from '../../__tests__/helpers/mailauthDkimSign.js';
 import {
 	diffAuth,
 	diffDrivers,
@@ -59,7 +59,7 @@ import { extractReportParts, type ReportPart } from '../../bounce/reportParts.js
 import { parseBounce } from '../../bounce/parser.js';
 import { buildVerpAddress } from '../../bounce/verp.js';
 import { tryParseARF } from '../../bounce/fblProcessor.js';
-import type { BounceClassification } from '../../bounce/types.js';
+import type { BounceClassification } from '../../types.js';
 
 const CORPUS_DIR = join(
 	dirname(fileURLToPath(import.meta.url)),
@@ -215,7 +215,7 @@ describe('DKIM verdicts flow through the harness (feeds the A2 differential suit
 			privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
 		});
 		const txt = `v=DKIM1; k=rsa; p=${pemToBase64(rsa.publicKey)}`;
-		const signed = await dkimSign(Buffer.from(RAW_MESSAGE), {
+		const signed = await mailauthDkimSign(Buffer.from(RAW_MESSAGE), {
 			canonicalization: 'relaxed/relaxed',
 			algorithm: 'rsa-sha256',
 			signatureData: [{ signingDomain: DOMAIN, selector: SELECTOR, privateKey: rsa.privateKey }],
@@ -269,7 +269,7 @@ describe('DKIM verdicts flow through the harness (feeds the A2 differential suit
 		].join('\r\n');
 		// `maxBodyLength` makes mailauth emit an l= tag over the WHOLE body: the old
 		// stack authenticates it (pass), the new stack caps l= at neutral (I2 a).
-		const signed = await dkimSign(Buffer.from(lMessage), {
+		const signed = await mailauthDkimSign(Buffer.from(lMessage), {
 			canonicalization: 'relaxed/relaxed',
 			algorithm: 'rsa-sha256',
 			signatureData: [

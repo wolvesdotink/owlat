@@ -152,7 +152,7 @@ beforeEach(() => {
 	capture.listen.mockReset();
 	capture.on.mockReset();
 	connectionCtor.mockReset();
-	delete process.env.NODE_ENV;
+	delete process.env['NODE_ENV'];
 });
 
 afterEach(() => {
@@ -169,7 +169,7 @@ describe('startImapServer — server flavor selection', () => {
 			minVersion: 'TLSv1.2',
 			honorCipherOrder: true,
 		});
-		expect(typeof capture.options!.ciphers).toBe('string');
+		expect(typeof capture.options!['ciphers']).toBe('string');
 	});
 
 	it('hands the TLS server and its cipher policy to the certificate reloader', () => {
@@ -178,20 +178,20 @@ describe('startImapServer — server flavor selection', () => {
 		expect(startImapTlsReload).toHaveBeenCalledWith(
 			expect.objectContaining({ listen: capture.listen }),
 			tls,
-			expect.objectContaining({ minVersion: 'TLSv1.2', ciphers: capture.options!.ciphers })
+			expect.objectContaining({ minVersion: 'TLSv1.2', ciphers: capture.options!['ciphers'] })
 		);
 		stopTlsReload();
 		expect(reloaderStop).toHaveBeenCalledOnce();
 	});
 
 	it('binds the plain TCP server outside production when tls is null', () => {
-		process.env.NODE_ENV = 'development';
+		process.env['NODE_ENV'] = 'development';
 		start({ tls: null });
 		expect(capture.flavor).toBe('tcp');
 	});
 
 	it('refuses to start in production without TLS', () => {
-		process.env.NODE_ENV = 'production';
+		process.env['NODE_ENV'] = 'production';
 		expect(() => startImapServer({ ...baseConfig, tls: null }, convex, limiter)).toThrow(
 			/refusing to start in production without TLS/
 		);
@@ -221,13 +221,13 @@ describe('startImapServer — TLS bootstrap posture (PR-62 / RFC 8314)', () => {
 
 	it('floors the negotiated protocol at TLSv1.2 and prefers the server cipher order', () => {
 		start({ tls: { cert: 'c', key: 'k' } });
-		expect(capture.options!.minVersion).toBe('TLSv1.2');
-		expect(capture.options!.honorCipherOrder).toBe(true);
+		expect(capture.options!['minVersion']).toBe('TLSv1.2');
+		expect(capture.options!['honorCipherOrder']).toBe(true);
 	});
 
 	it('advertises only AEAD ciphers — no RC4 / DES / 3DES / CBC / NULL', () => {
 		start({ tls: { cert: 'c', key: 'k' } });
-		const ciphers = capture.options!.ciphers as string;
+		const ciphers = capture.options!['ciphers'] as string;
 		const suites = ciphers.split(':');
 		expect(suites.length).toBeGreaterThan(0);
 		// Every advertised suite is an authenticated-encryption mode (GCM or
@@ -252,7 +252,7 @@ describe('startImapServer — TLS bootstrap posture (PR-62 / RFC 8314)', () => {
 	});
 
 	it('in production with tls:null throws AND never creates any listener', () => {
-		process.env.NODE_ENV = 'production';
+		process.env['NODE_ENV'] = 'production';
 		// The whole point of the production guard is fail-CLOSED: not only does it
 		// throw, it must short-circuit before either createServer is invoked, so
 		// no plaintext (or half-built) socket is ever bound.
@@ -265,7 +265,7 @@ describe('startImapServer — TLS bootstrap posture (PR-62 / RFC 8314)', () => {
 	});
 
 	it('with a TLS cert succeeds and installs an accepting connection handler', () => {
-		process.env.NODE_ENV = 'production';
+		process.env['NODE_ENV'] = 'production';
 		const { handler } = start({ tls: { cert: 'c', key: 'k' } });
 		expect(typeof handler).toBe('function');
 		// And it actually accepts: the captured handler spins up a connection.
@@ -282,7 +282,7 @@ describe('startImapServer — TLS bootstrap posture (PR-62 / RFC 8314)', () => {
 	});
 
 	it('passes tls=false to ImapConnection on the plaintext dev fallback', () => {
-		process.env.NODE_ENV = 'development';
+		process.env['NODE_ENV'] = 'development';
 		const { handler } = start({ tls: null });
 		connect(handler, '10.0.0.1');
 		const args = connectionCtor.mock.calls[0]!;

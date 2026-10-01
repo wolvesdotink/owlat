@@ -10,11 +10,14 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getFunctionName, type AnyFunctionReference } from 'convex/server';
+import { getFunctionName } from 'convex/server';
 import { fetchModule, type FetchArgs } from '../index.js';
 import { formatBodySection, parseBodySectionItem, splitHeaderText } from '../bodySection.js';
 import type { FetchEnvelope } from '../format.js';
 import type { CommandDeps, ConnectionState, StartArgs } from '../../types.js';
+
+// convex/server declares AnyFunctionReference without exporting it.
+type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
 
 const RAW = 'Subject: Hi\r\n\r\nHello world';
 

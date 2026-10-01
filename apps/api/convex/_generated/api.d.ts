@@ -14,6 +14,8 @@ import type * as migrations_0050_reindex_mailbox_knowledge from '../migrations/0
 import type * as migrations_0051_clear_residual_search_bodies from '../migrations/0051_clear_residual_search_bodies.js';
 import type * as migrations_0052_reerase_legacy_account_deletions from '../migrations/0052_reerase_legacy_account_deletions.js';
 import type * as migrations_0053_project_open_commitments from '../migrations/0053_project_open_commitments.js';
+import type * as migrations_0055_repair_repeated_block_ids from '../migrations/0055_repair_repeated_block_ids.js';
+import type * as lib_repeatedBlockIds from '../lib/repeatedBlockIds.js';
 import type * as lib_migrationLedger from '../lib/migrationLedger.js';
 import type * as schema_migrationRuns from '../schema/migrationRuns.js';
 import type * as migrations_0054_backfill_folder_membership from '../migrations/0054_backfill_folder_membership.js';
@@ -1393,6 +1395,8 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0051_clear_residual_search_bodies': typeof migrations_0051_clear_residual_search_bodies;
 	'migrations/0052_reerase_legacy_account_deletions': typeof migrations_0052_reerase_legacy_account_deletions;
 	'migrations/0053_project_open_commitments': typeof migrations_0053_project_open_commitments;
+	'migrations/0055_repair_repeated_block_ids': typeof migrations_0055_repair_repeated_block_ids;
+	'lib/repeatedBlockIds': typeof lib_repeatedBlockIds;
 	'lib/migrationLedger': typeof lib_migrationLedger;
 	'schema/migrationRuns': typeof schema_migrationRuns;
 	'migrations/0054_backfill_folder_membership': typeof migrations_0054_backfill_folder_membership;

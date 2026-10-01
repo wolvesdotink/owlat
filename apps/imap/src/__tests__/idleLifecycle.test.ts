@@ -8,17 +8,21 @@
  * The same poll outliving LOGOUT or a closed socket is work nobody receives.
  *
  * idle.test.ts covers the same fence at the module level (timeout, paging,
- * overlapping ticks); this file covers the three ways the pump ends IDLE.
+ * overlapping ticks); this file covers it through the pump: DONE followed by
+ * another command, DONE followed by LOGOUT, and the socket closing.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getFunctionName, type AnyFunctionReference } from 'convex/server';
+import { getFunctionName } from 'convex/server';
 import { EventEmitter } from 'events';
 import type { Socket } from 'net';
 import { ImapConnection } from '../connection.js';
 import type { ImapConfig } from '../config.js';
 import type { ConvexClient } from '../convex.js';
 import { AuthRateLimiter } from '../rateLimit.js';
+
+// convex/server declares AnyFunctionReference without exporting it.
+type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
 
 vi.mock('../logger.js', () => ({
 	logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -116,9 +120,9 @@ async function idleWithHeldPoll(): Promise<Fixture> {
 			case 'mail/imap/session:listFolders':
 				return Promise.resolve([INBOX, SENT]);
 			case 'mail/imap/session:selectFolder':
-				return Promise.resolve({ folder: args.folderId === 'f1' ? INBOX : SENT });
+				return Promise.resolve({ folder: args['folderId'] === 'f1' ? INBOX : SENT });
 			case 'mail/imap/fetch:listFolderUidsPage':
-				return Promise.resolve({ uids: args.folderId === 'f1' ? inboxUids : [], nextUid: null });
+				return Promise.resolve({ uids: args['folderId'] === 'f1' ? inboxUids : [], nextUid: null });
 			case 'mail/imap/fetch:fetchChangedEnvelopes':
 				return Promise.resolve({ page: [], isDone: true, continueCursor: null });
 			case 'mail/imap/session:peekFolderModseq':
@@ -205,14 +209,19 @@ describe('IDLE — a poll in flight when the pump ends the session writes nothin
 		expect(fixture.peekCalls()).toBe(1);
 	});
 
-	it('LOGOUT while IDLE stops the poll before the socket finishes closing', async () => {
+	it('DONE + LOGOUT: the poll stays silent before the socket finishes closing', async () => {
 		const fixture = await idleWithHeldPoll();
 		const { socket } = fixture;
 
+		// RFC 2177: LOGOUT without DONE is refused, and the IDLE goes on.
 		await send(socket, 'a3 LOGOUT');
-		expect(socket.lines().slice(-2)).toEqual([
+		expect(socket.lines().at(-1)).toBe('a3 BAD Expected DONE');
+
+		await send(socket, 'DONE\r\na4 LOGOUT');
+		expect(socket.lines().slice(-3)).toEqual([
+			'a2 OK IDLE terminated',
 			'* BYE Owlat IMAP signing off',
-			'a3 OK LOGOUT completed',
+			'a4 OK LOGOUT completed',
 		]);
 		const afterLogout = socket.lines().length;
 		const readsAtLogout = fixture.query.mock.calls.length;

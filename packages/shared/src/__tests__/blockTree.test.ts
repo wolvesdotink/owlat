@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	childBlockLists,
 	mapChildBlockLists,
+	ownedEntries,
 	renewBlockTreeIds,
 	type BlockTreeNode,
 } from '../blockTree';
@@ -114,6 +115,25 @@ describe('mapChildBlockLists', () => {
 	it('returns a leaf as is', () => {
 		const node = leaf('t');
 		expect(mapChildBlockLists(node, () => [])).toBe(node);
+	});
+});
+
+describe('ownedEntries', () => {
+	it('returns the stored accordion sections, so an id written to one lands in the tree', () => {
+		const accordion: BlockTreeNode = {
+			id: 'acc',
+			type: 'accordion',
+			content: { sections: [{ id: 's1', title: 'One', items: [] }, 'not a section'] },
+		};
+		const entries = ownedEntries(accordion);
+		expect(entries.map((entry) => entry['id'])).toEqual(['s1']);
+		entries[0]!['id'] = 's9';
+		expect((accordion.content as { sections: { id: string }[] }).sections[0]!.id).toBe('s9');
+	});
+
+	it('is empty for every type that owns no such entries', () => {
+		expect(ownedEntries(tree())).toEqual([]);
+		expect(ownedEntries(leaf('t'))).toEqual([]);
 	});
 });
 

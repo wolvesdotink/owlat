@@ -1,5 +1,10 @@
-import { describe, it, expect } from 'vitest';
-import { computeEnvShowRows, isSecretKey, maskSecretValue } from '../env';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { computeEnvShowRows, isSecretKey, maskSecretValue, runEnv } from '../env';
+import { cliOptionsFromArgv } from '../../lib/argv';
+import { readEnv } from '../../lib/env';
 import type { FeatureFlagState } from '@owlat/shared/featureFlags';
 
 /**
@@ -29,7 +34,7 @@ describe('env — computeEnvShowRows', () => {
 		// scan.urls requires GOOGLE_SAFE_BROWSING_API_KEY (a *_KEY secret).
 		const rows = computeEnvShowRows(
 			{ 'scan.urls': true },
-			{ GOOGLE_SAFE_BROWSING_API_KEY: 'gsb-rawsecretvalue' },
+			{ GOOGLE_SAFE_BROWSING_API_KEY: 'gsb-rawsecretvalue' }
 		);
 		const row = rows.find((r) => r.key === 'GOOGLE_SAFE_BROWSING_API_KEY');
 		expect(row?.set).toBe(true);
@@ -53,7 +58,10 @@ describe('env — computeEnvShowRows', () => {
 	});
 
 	it('shows a non-secret value verbatim and attributes it to the requiring flag', () => {
-		const rows = computeEnvShowRows({ 'analytics.posthog': true }, { POSTHOG_HOST: 'https://ph.example' });
+		const rows = computeEnvShowRows(
+			{ 'analytics.posthog': true },
+			{ POSTHOG_HOST: 'https://ph.example' }
+		);
 		const host = rows.find((r) => r.key === 'POSTHOG_HOST');
 		expect(host?.set).toBe(true);
 		expect(host?.masked).toBe('https://ph.example');
@@ -77,7 +85,7 @@ describe('env — computeEnvShowRows', () => {
 		const withProvider = computeEnvShowRows(
 			flags,
 			{ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'mta_rawsecret' },
-			{ deliveryProvider: 'mta' },
+			{ deliveryProvider: 'mta' }
 		);
 		const apiKey = withProvider.find((r) => r.key === 'MTA_API_KEY');
 		expect(apiKey?.requiredBy).toContain('send path');
@@ -90,5 +98,40 @@ describe('env — computeEnvShowRows', () => {
 		const withoutProvider = computeEnvShowRows(flags, {}).map((r) => r.key);
 		expect(withoutProvider).not.toContain('MTA_API_URL');
 		expect(withoutProvider).not.toContain('MTA_API_KEY');
+	});
+});
+
+describe('owlat-setup env <KEY> <VALUE> with --owlat-dir', () => {
+	const roots: string[] = [];
+	afterEach(async () => {
+		vi.restoreAllMocks();
+		await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+	});
+
+	// The argv tail as the dispatcher parses it, so an option value that leaked
+	// into the positional arguments would end up in the key or the value.
+	it.each([
+		[
+			'after the arguments',
+			(dir: string) => ['SITE_URL', 'https://mail.example.com', '--owlat-dir', dir],
+		],
+		[
+			'before the arguments',
+			(dir: string) => ['--owlat-dir', dir, 'SITE_URL', 'https://mail.example.com'],
+		],
+		[
+			'as --owlat-dir=<dir>',
+			(dir: string) => ['SITE_URL', 'https://mail.example.com', `--owlat-dir=${dir}`],
+		],
+	])('writes exactly KEY=VALUE into <dir>/.env with the option %s', async (_label, argv) => {
+		const root = await mkdtemp(join(tmpdir(), 'owlat-env-'));
+		roots.push(root);
+		vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+		await expect(runEnv(cliOptionsFromArgv(argv(root), {}))).resolves.toBe(0);
+
+		expect(await readEnv(join(root, '.env'))).toEqual({
+			SITE_URL: 'https://mail.example.com',
+		});
 	});
 });

@@ -773,6 +773,16 @@ else. For that reason the `domains` step now runs the sending domain
 removal inline on the worker's context instead of through
 `ctx.runMutation`, whose callee would be fenced.
 
+**Recovery crons stand down (#1073).** A cron that re-issues scheduled
+work it finds lost sees exactly that during a job: the quiesce phase
+cancelled the work, and the rows that point at it stay until the walk
+reaches their table. The recovery sweeps for integration imports,
+contact property deletions, outbound webhook deliveries and stranded
+campaign send walks therefore read the fence first and return without
+doing anything while a job is active. Otherwise each run would fail on
+the fence (or schedule a hop that does), every few minutes for the
+length of the walk. After an abort the next run recovers what is left.
+
 **Inbound deliveries: accept and drop.** The two MTA mail routes
 (`/webhooks/mta-mailbox`, `/webhooks/mta-inbound`), the provider feedback
 pipeline and the plugin feedback route answer a fence refusal (and the

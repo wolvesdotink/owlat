@@ -1419,8 +1419,17 @@ write_selfhost_env() {
 # Both ways the key can arrive — auto-generated, or pasted by hand when
 # generate_admin_key.sh fails — land here, so neither can leave the stack
 # crash-looping.
+#
+# The key is a secret, so .env is made owner-only here too rather than relying
+# on write_selfhost_env having done it earlier: `sed -i` keeps whatever mode
+# the file has.
 persist_admin_key() {
   [[ -n "$SELFHOST_CONVEX_ADMIN_KEY" ]] || return 0
+  if ! secure_env_file .env; then
+    error "Could not make .env owner-only (chmod 600), so the admin key was not saved to it."
+    info "Fix the ownership of .env, then set CONVEX_ADMIN_KEY in it (docker compose exec convex ./generate_admin_key.sh prints a key)."
+    return 1
+  fi
   sed -i.bak "s/^CONVEX_ADMIN_KEY=.*/CONVEX_ADMIN_KEY=${SELFHOST_CONVEX_ADMIN_KEY}/" .env
   rm -f .env.bak
   success "Admin key saved to .env"

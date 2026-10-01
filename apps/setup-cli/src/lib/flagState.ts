@@ -13,7 +13,7 @@
  * scripted / pre-boot flows can flip flags without a running stack.
  */
 
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
 	applyToggle,
@@ -44,9 +44,15 @@ export async function loadFlagState(owlatDir: string): Promise<FeatureFlagState>
 	return {};
 }
 
-/** Persist a flag state to `<owlatDir>/.owlat-flags.json`. */
+/**
+ * Persist a flag state to `<owlatDir>/.owlat-flags.json`. The file is created
+ * owner-only (0600), the same mode the web setup wizard and the updater give
+ * it, so its mode no longer depends on which tool wrote it first.
+ */
 export async function saveFlagState(owlatDir: string, state: FeatureFlagState): Promise<void> {
-	await Bun.write(join(owlatDir, STATE_FILE), JSON.stringify(state, null, 2));
+	await writeFile(join(owlatDir, STATE_FILE), JSON.stringify(state, null, 2), {
+		mode: 0o600,
+	});
 }
 
 /** Result of a flag toggle transaction. */

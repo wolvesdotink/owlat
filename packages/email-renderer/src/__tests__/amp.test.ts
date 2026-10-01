@@ -20,8 +20,16 @@ describe('AMP Email Output', () => {
 
 	it('renders text blocks as semantic HTML', () => {
 		const blocks: EditorBlock[] = [
-			{ id: '1', type: 'text', content: { html: '<h1>Title</h1>', blockType: 'h1', fontSize: 32, textColor: '#000' } },
-			{ id: '2', type: 'text', content: { html: '<p>Body</p>', blockType: 'paragraph', fontSize: 16, textColor: '#333' } },
+			{
+				id: '1',
+				type: 'text',
+				content: { html: '<h1>Title</h1>', blockType: 'h1', fontSize: 32, textColor: '#000' },
+			},
+			{
+				id: '2',
+				type: 'text',
+				content: { html: '<p>Body</p>', blockType: 'paragraph', fontSize: 16, textColor: '#333' },
+			},
 		];
 
 		const html = renderAmpEmail(blocks);
@@ -74,9 +82,7 @@ describe('AMP Email Output', () => {
 				id: '1',
 				type: 'accordion',
 				content: {
-					sections: [
-						{ id: 's1', title: 'Section 1', items: [] },
-					],
+					sections: [{ id: 's1', title: 'Section 1', items: [] }],
 				},
 			},
 		];
@@ -128,8 +134,34 @@ describe('AMP Email Output', () => {
 					ratio: 'equal',
 					mobileStacking: true,
 					columns: [
-						[{ id: 'c1', type: 'text', content: { html: '<p>Left</p>', blockType: 'paragraph', fontSize: 16, textColor: '#333' } }],
-						[{ id: 'c2', type: 'button', content: { text: 'Go', url: 'https://example.com', backgroundColor: '#000', textColor: '#fff', align: 'center', borderRadius: 4, paddingX: 24, paddingY: 12 } }],
+						[
+							{
+								id: 'c1',
+								type: 'text',
+								content: {
+									html: '<p>Left</p>',
+									blockType: 'paragraph',
+									fontSize: 16,
+									textColor: '#333',
+								},
+							},
+						],
+						[
+							{
+								id: 'c2',
+								type: 'button',
+								content: {
+									text: 'Go',
+									url: 'https://example.com',
+									backgroundColor: '#000',
+									textColor: '#fff',
+									align: 'center',
+									borderRadius: 4,
+									paddingX: 24,
+									paddingY: 12,
+								},
+							},
+						],
 					],
 				},
 			},
@@ -155,7 +187,16 @@ describe('AMP Email Output', () => {
 					verticalAlign: 'middle',
 					overlayColor: '#101010',
 					items: [
-						{ id: 'h1', type: 'text', content: { html: '<h1>Welcome</h1>', blockType: 'h1', fontSize: 32, textColor: '#fff' } },
+						{
+							id: 'h1',
+							type: 'text',
+							content: {
+								html: '<h1>Welcome</h1>',
+								blockType: 'h1',
+								fontSize: 32,
+								textColor: '#fff',
+							},
+						},
 					],
 				},
 			},
@@ -195,9 +236,26 @@ describe('AMP Email Output', () => {
 
 	it('renders list, progress bar, menu without dropping to comments', () => {
 		const blocks: EditorBlock[] = [
-			{ id: '1', type: 'list', content: { items: ['One', 'Two'], listType: 'bullet', fontSize: 16, textColor: '#333' } },
-			{ id: '2', type: 'progressBar', content: { value: 50, barColor: '#000', trackColor: '#ccc', height: 20 } },
-			{ id: '3', type: 'menu', content: { items: [{ label: 'Home', url: 'https://example.com' }], align: 'center', fontSize: 14, textColor: '#333' } },
+			{
+				id: '1',
+				type: 'list',
+				content: { items: ['One', 'Two'], listType: 'bullet', fontSize: 16, textColor: '#333' },
+			},
+			{
+				id: '2',
+				type: 'progressBar',
+				content: { value: 50, barColor: '#000', trackColor: '#ccc', height: 20 },
+			},
+			{
+				id: '3',
+				type: 'menu',
+				content: {
+					items: [{ label: 'Home', url: 'https://example.com' }],
+					align: 'center',
+					fontSize: 14,
+					textColor: '#333',
+				},
+			},
 		];
 
 		const html = renderAmpEmail(blocks);
@@ -208,8 +266,29 @@ describe('AMP Email Output', () => {
 
 	it('renders image-bearing blocks (social, video) as amp-img', () => {
 		const blocks: EditorBlock[] = [
-			{ id: '1', type: 'social', content: { links: [{ platform: 'twitter', url: 'https://x.com/owlat', enabled: true }], iconStyle: 'filled', align: 'center', iconSize: 32, iconSpacing: 12 } },
-			{ id: '2', type: 'video', content: { thumbnailUrl: 'https://example.com/thumb.png', videoUrl: 'https://example.com/watch', alt: 'Clip', width: 100, align: 'center' } },
+			{
+				id: '1',
+				type: 'social',
+				content: {
+					links: [{ platform: 'twitter', url: 'https://x.com/owlat', enabled: true }],
+					iconStyle: 'filled',
+					align: 'center',
+					iconSize: 32,
+					iconSpacing: 12,
+					iconColor: '#374151',
+				},
+			},
+			{
+				id: '2',
+				type: 'video',
+				content: {
+					thumbnailUrl: 'https://example.com/thumb.png',
+					videoUrl: 'https://example.com/watch',
+					alt: 'Clip',
+					width: 100,
+					align: 'center',
+				},
+			},
 		];
 
 		const html = renderAmpEmail(blocks);

@@ -891,7 +891,12 @@ with no cancel involved:
    with no lease (only the previous release writes those) is treated the
    same once it has been quiet for thirty minutes, well past an action's
    time limit. A re-issued page that the lost hop did commit after all
-   finds its identity gone and changes nothing.
+   finds its identity gone and changes nothing. While a workspace
+   deletion is active the sweep does nothing (#1073): the deletion has
+   cancelled every queued hop and sweeps `integrationImports` late, so
+   every running row would look lost and the write fence would refuse
+   the re-issue on every run. The deletion removes the rows; after an
+   abort the next sweep picks them up.
 4. Recovery needs the config, and the config holds the provider key. The
    row keeps `resumeConfig` only when the key is sealed with the import
    credential key (or the provider has no key), drops it when the run
@@ -905,9 +910,10 @@ with no cancel involved:
    the run. A run that was cancelled first stays cancelled.
 
 A fetch is at least once: a re-issued page is fetched again and the
-commit applies what the second fetch returned. Offset-based pagination
-can still skip or repeat a member when the provider's list changes
-during a run; that is unchanged.
+commit applies what the second fetch returned. How a provider pages a
+list that changes during the run is the adapter's concern; see the
+Mailchimp amendment below (Stripe pages by a `starting_after` cursor
+and is not affected).
 
 **Compatibility.** The new fields are optional and the new arguments
 are optional. A hop the previous release queued runs the new action and
@@ -920,3 +926,51 @@ re-issued hop already committed) and `completeImport` (unchanged for
 callers that name no page). A previous-release run whose chain died has
 no sealed config and is ended by the sweep after the grace period, with
 a reason that asks the operator to start it again.
+
+## Amendment: Mailchimp paging over a changing audience (#1075, 2026-10-01)
+
+The Mailchimp adapter paged with `count=100&offset=N` and no sort order.
+Pages are separate requests, minutes apart when one is retried, and an
+audience keeps changing in between. A member deleted from a page already
+read moved every later member one place up, so one member fell between
+two pages and was never fetched; a member who unsubscribed or was
+cleaned after their page was read was never carried into suppressions.
+The run reported success either way.
+
+The cursor is now a small JSON object (`providers/mailchimp/index.ts`,
+`MailchimpCursor`): the pass, the position after the last member read,
+the run's start time, and a hash of the last member read (not the
+address: cursors appear in run errors).
+
+1. **A fixed order.** The audience pass requests
+   `sort_field=timestamp_signup&sort_dir=ASC`, so new signups land at
+   the end instead of shifting members already read.
+2. **Overlapping pages.** Each later page starts twenty members before
+   the previous page's end and imports what follows the previous page's
+   last member, wherever that member now sits. If that member was
+   deleted too, the whole window is imported. Up to twenty deletions
+   between two requests therefore leave no member between the pages,
+   and in the usual case nothing is read twice.
+3. **A closing pass.** After the last audience page, the adapter reads
+   the members with `since_last_changed` at the run's start (minus five
+   minutes for clock skew), in `last_changed` order, with the same
+   overlap. That carries over a member who unsubscribed or was cleaned
+   after their page was read, and imports a signup the first pass
+   placed behind its position. An audience read in a single request
+   skips it: nothing could change between its pages.
+
+Repeats remain possible (a member changed during the run is read in both
+passes; a deleted boundary member makes a window re-read) and are
+harmless: the contact import dedupes by email and applying a
+suppression twice changes nothing. A repeat counts as skipped or
+updated in the run summary. The remaining limit is more than twenty
+members deleted from before the read position between two page
+requests, and the order Mailchimp returns for members with the same
+signup time.
+
+**Compatibility.** A run the previous release started keeps a bare
+numeric cursor. The adapter recognises it and finishes that run with the
+previous request (no sort, no overlap, no closing pass), because
+switching the order mid-run would scramble the offsets it has already
+passed. A hop the previous release queued at the empty first-page
+cursor starts with the new scheme. No schema change.

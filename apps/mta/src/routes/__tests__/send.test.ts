@@ -15,6 +15,7 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import { Hono } from 'hono';
+import type { AuthEnv } from '../../__tests__/helpers/honoAuth.js';
 import type { Queue } from 'groupmq';
 import type Redis from 'ioredis';
 import RedisMock from 'ioredis-mock';
@@ -108,8 +109,8 @@ function buildApp(
 	redis: Redis,
 	auth: AuthContext = { isMasterKey: true },
 	mode: 'governed' | 'postbox' | 'system' = 'governed'
-): Hono {
-	const app = new Hono();
+): Hono<AuthEnv> {
+	const app = new Hono<AuthEnv>();
 	app.use('/send', async (c, next) => {
 		c.set('auth', auth);
 		await next();
@@ -144,7 +145,7 @@ function validBody(overrides: Record<string, unknown> = {}): string {
 	});
 }
 
-function post(app: Hono, body: string) {
+function post(app: Hono<AuthEnv>, body: string) {
 	return app.request('/send', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
@@ -281,7 +282,7 @@ describe('POST /send — request validation', () => {
 		// The full display-name header is preserved on the job (the compose
 		// path re-encodes the From header from this value downstream).
 		const arg = queue.add.mock.calls[0]![0] as { data: Record<string, unknown> };
-		expect(arg.data.from).toBe('Owlat <noreply@mail.example.com>');
+		expect(arg.data['from']).toBe('Owlat <noreply@mail.example.com>');
 	});
 
 	it('returns 400 on a malformed angle-addr "from" (no usable address)', async () => {
@@ -604,8 +605,8 @@ describe('POST /send — dedup', () => {
 });
 
 describe('GET /send/receipt/:workAttemptId', () => {
-	function receiptApp(redis: Redis, auth: AuthContext): Hono {
-		const app = new Hono();
+	function receiptApp(redis: Redis, auth: AuthContext): Hono<AuthEnv> {
+		const app = new Hono<AuthEnv>();
 		app.use('/send/*', async (c, next) => {
 			c.set('auth', auth);
 			await next();
@@ -624,8 +625,8 @@ describe('GET /send/receipt/:workAttemptId', () => {
 		});
 		const response = await receiptApp(redis, {
 			isMasterKey: false,
-			orgCredential: { organizationId: 'other-org', id: 'credential' },
-		} as AuthContext).request('/send/receipt/guessed-work-id');
+			orgCredential: { organizationId: 'other-org', name: 'credential', createdAt: 0 },
+		}).request('/send/receipt/guessed-work-id');
 		expect(response.status).toBe(403);
 		expect(await response.text()).not.toContain('send-secret');
 	});

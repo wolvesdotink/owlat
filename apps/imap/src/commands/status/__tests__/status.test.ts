@@ -71,6 +71,7 @@ function makeDeps(convex: ConvexClient): CommandDeps {
 		rateLimiter: {} as CommandDeps['rateLimiter'],
 		remoteIp: '127.0.0.1',
 		capabilityLine: 'CAPABILITY IMAP4rev1',
+		tls: true,
 		closeConnection: () => {},
 		commit: () => {},
 	};

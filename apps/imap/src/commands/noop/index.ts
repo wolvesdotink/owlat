@@ -32,6 +32,7 @@ export function reportNews({ deps, state, tag, verb, send }: StartArgs<void>): C
 
 export const noopModule: ImapCommandModule<void> = {
 	verbs: ['NOOP'],
+	concurrent: () => true,
 	parseArgs: () => ({ ok: true, args: undefined }),
 	start: reportNews,
 };

@@ -6,6 +6,7 @@ import { locateBlock } from '../../utils/blockTree';
 import type {
 	EditorBlock,
 	TextBlockContent,
+	ButtonBlockContent,
 	ColumnsBlockContent,
 	ContainerBlockContent,
 	EmailTheme,
@@ -27,6 +28,10 @@ const defaultTheme: Required<EmailTheme> = {
 	buttonDefaults: {},
 	headingDefaults: {},
 	blockDefaults: {},
+	darkModeBackgroundColor: '#121212',
+	darkModeTextColor: '#e4e4e7',
+	darkModeLinkColor: '#93c5fd',
+	baseWidth: 600,
 };
 
 function makeTextBlock(id: string): EditorBlock {
@@ -61,10 +66,10 @@ function makeColumnsBlock(id: string): EditorBlock {
 			ratio: 'equal',
 			mobileStacking: true,
 			columns: [
-				[{ id: 'col-item-1', type: 'text', content: { html: 'Col 1' } }],
-				[{ id: 'col-item-2', type: 'button', content: { text: 'Click' } }],
+				[{ id: 'col-item-1', type: 'text', content: { html: 'Col 1' } as TextBlockContent }],
+				[{ id: 'col-item-2', type: 'button', content: { text: 'Click' } as ButtonBlockContent }],
 			],
-			gap: 16,
+			columnGap: 16,
 			paddingTop: 0,
 			paddingRight: 0,
 			paddingBottom: 0,
@@ -74,7 +79,7 @@ function makeColumnsBlock(id: string): EditorBlock {
 			marginRight: 0,
 			marginBottom: 0,
 			marginLeft: 0,
-		} as ColumnsBlockContent,
+		},
 	};
 }
 
@@ -612,6 +617,64 @@ describe('useBlockManagement', () => {
 			ctx.handleColumnCountChange('inner-cols', 3);
 			const cols = locateBlock(ctx.canvasBlocks.value, 'inner-cols')!.block;
 			expect((cols.content as ColumnsBlockContent).columns).toHaveLength(3);
+		});
+	});
+
+	describe('handleInsertBlockAtSlot', () => {
+		it('inserts into a nested column at the slot, with the column defaults', () => {
+			const ctx = setup([makeContainerBlock('box'), makeColumnsBlock('cols')]);
+			const inserted = ctx.handleInsertBlockAtSlot('text', {
+				parentId: 'cols',
+				listIndex: 1,
+				index: 0,
+				rootId: 'cols',
+			});
+			expect(inserted!.parentId).toBe('cols');
+			const location = locateBlock(ctx.canvasBlocks.value, inserted!.block.id)!;
+			expect(location.listIndex).toBe(1);
+			expect(location.list.map((b) => b.id)).toEqual([inserted!.block.id, 'col-item-2']);
+			expect((inserted!.block.content as TextBlockContent).fontSize).toBe(14);
+			// A nested insertion leaves the root selection to the caller.
+			expect(ctx.selectedBlockId.value).toBeNull();
+		});
+
+		it('applies the content callback to the placement defaults', () => {
+			const ctx = setup([makeContainerBlock('box')]);
+			const inserted = ctx.handleInsertBlockAtSlot(
+				'text',
+				{ parentId: 'citem-2', listIndex: 0, index: 1, rootId: 'box' },
+				(defaults) => ({ ...defaults, html: '' })
+			);
+			const list = locateBlock(ctx.canvasBlocks.value, 'nested-1')!.list;
+			expect(list.map((b) => b.id)).toEqual(['nested-1', inserted!.block.id]);
+			expect((inserted!.block.content as TextBlockContent).html).toBe('');
+		});
+
+		it('passes a type the composite does not accept up to the nearest list that does', () => {
+			const ctx = setup([makeContainerBlock('box'), makeTextBlock('after')]);
+			// A list Block is placed at root only.
+			const inserted = ctx.handleInsertBlockAtSlot('list', {
+				parentId: 'citem-2',
+				listIndex: 0,
+				index: 1,
+				rootId: 'box',
+			});
+			expect(inserted!.parentId).toBeNull();
+			expect(ctx.canvasBlocks.value.map((b) => b.id)).toEqual(['box', inserted!.block.id, 'after']);
+			expect(ctx.selectedBlockId.value).toBe(inserted!.block.id);
+		});
+
+		it('returns null when the slot is gone', () => {
+			const ctx = setup([makeTextBlock('b1')]);
+			expect(
+				ctx.handleInsertBlockAtSlot('text', {
+					parentId: 'missing',
+					listIndex: 0,
+					index: 0,
+					rootId: 'b1',
+				})
+			).toBeNull();
+			expect(ctx.canvasBlocks.value).toHaveLength(1);
 		});
 	});
 });

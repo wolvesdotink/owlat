@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { renderEmailHtml, renderBlockFragment } from '../renderer';
-import type { EditorBlock } from '@owlat/shared';
+import type { ButtonBlockContent, EditorBlock } from '@owlat/shared';
 
 const textBlock: EditorBlock = {
 	id: '1',
@@ -196,10 +196,9 @@ describe('button section wrapper', () => {
 		const gradientButton: EditorBlock = {
 			...buttonBlock,
 			content: {
-				...(buttonBlock.content as object),
+				...(buttonBlock.content as ButtonBlockContent),
 				backgroundGradient: {
-					type: 'linear',
-					angle: 90,
+					direction: 'to bottom',
 					stops: [
 						{ color: '#ff0000', position: 0 },
 						{ color: '#0000ff', position: 100 },
@@ -458,6 +457,7 @@ describe('mobileFontSize', () => {
 				html: '<p>Responsive text</p>',
 				blockType: 'paragraph',
 				fontSize: 16,
+				textColor: '#333',
 				mobileFontSize: 14,
 			},
 		};
@@ -657,6 +657,54 @@ describe('link transform', () => {
 		// `&` is escaped to `&amp;` in HTML attribute values (matches menu test above).
 		// Pre-XSS-fix this URL was interpolated raw — the fix now escapes attributes.
 		expect(html).toContain('https://youtube.com/watch?v=123?utm_source=email&amp;block=video');
+	});
+});
+
+describe('single-open accordions', () => {
+	const accordion = (id: string, sectionPrefix: string): EditorBlock => ({
+		id,
+		type: 'accordion',
+		content: {
+			allowMultiple: false,
+			sections: [1, 2].map((n) => ({
+				id: `${sectionPrefix}-${n}`,
+				title: `Section ${n}`,
+				items: [
+					{
+						id: `${sectionPrefix}-t${n}`,
+						type: 'text',
+						content: {
+							html: `<p>Body ${n}</p>`,
+							blockType: 'paragraph',
+							fontSize: 14,
+							textColor: '#000',
+						},
+					},
+				],
+			})),
+		},
+	});
+
+	it('gives each accordion in one email its own radio group', () => {
+		const html = renderEmailHtml([accordion('acc-a', 'a'), accordion('acc-b', 'b')]);
+		const radios = [...html.matchAll(/<input type="radio" name="([^"]*)" id="([^"]*)"/g)].map(
+			(m) => ({
+				name: m[1],
+				id: m[2],
+			})
+		);
+		expect(radios).toEqual([
+			{ name: 'owlat-accordion-acc-a', id: 'owlat-acc-a-1' },
+			{ name: 'owlat-accordion-acc-a', id: 'owlat-acc-a-2' },
+			{ name: 'owlat-accordion-acc-b', id: 'owlat-acc-b-1' },
+			{ name: 'owlat-accordion-acc-b', id: 'owlat-acc-b-2' },
+		]);
+	});
+
+	it('escapes the Block id inside the group name', () => {
+		const html = renderEmailHtml([accordion('acc"x', 'a')]);
+		expect(html).toContain('name="owlat-accordion-acc&quot;x"');
+		expect(html).not.toContain('name="owlat-accordion-acc"x"');
 	});
 });
 

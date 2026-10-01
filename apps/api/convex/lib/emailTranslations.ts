@@ -20,7 +20,6 @@
  * the overlay (`emailHtmlTranslations.ts`), so the two share one revision.
  */
 
-import { childBlockLists } from '@owlat/shared/blockTree';
 import { throwAlreadyExists, throwInvalidInput, throwNotFound } from '../_utils/errors';
 import { nextContentRevision } from './contentRevision';
 import { renderedLanguagePatch } from './emailHtmlTranslations';
@@ -30,6 +29,7 @@ import {
 	sanitizeStoredBlocksJson,
 } from './emailContentSanitize';
 import {
+	extractTranslatableContent,
 	mergeTranslationIntoItem,
 	type TranslatableBlockContent,
 } from '../emailTemplates/translationMerge';
@@ -95,50 +95,7 @@ export function serializeTranslations(translations: Record<string, Translation>)
 	return JSON.stringify(translations);
 }
 
-// --- translatable-content extraction ---------------------------------------
-
-// Extract translatable content from an item and, through the shared Block-tree
-// child contract, from every Block nested inside it.
-function extractFromItem(
-	item: { id: string; type: string; content: Record<string, unknown> },
-	translatableContent: Record<string, TranslatableBlockContent>
-): void {
-	const content: TranslatableBlockContent = {};
-
-	if (item.type === 'text' && item.content['html']) {
-		content.html = item.content['html'] as string;
-	} else if (item.type === 'button' && item.content['text']) {
-		content.buttonText = item.content['text'] as string;
-	} else if (item.type === 'image' && item.content['alt']) {
-		content.alt = item.content['alt'] as string;
-	}
-
-	// Only add if there's translatable content
-	if (Object.keys(content).length > 0) {
-		translatableContent[item.id] = content;
-	}
-
-	for (const list of childBlockLists(item)) {
-		for (const child of list) extractFromItem(child, translatableContent);
-	}
-}
-
-export function extractTranslatableContent(
-	blocksJson: string
-): Record<string, TranslatableBlockContent> {
-	try {
-		const blocks = JSON.parse(blocksJson) as Block[];
-		const translatableContent: Record<string, TranslatableBlockContent> = {};
-
-		for (const block of blocks) {
-			extractFromItem(block, translatableContent);
-		}
-
-		return translatableContent;
-	} catch {
-		return {};
-	}
-}
+// --- merge ------------------------------------------------------------------
 
 // Helper to merge translation blocks with main content blocks.
 // Takes the block structure/styling from main content and applies translated text.
@@ -311,6 +268,8 @@ export interface TranslationPatch {
 	defaultLanguage?: string;
 	translations?: string;
 	supportedLanguages?: string[];
+	htmlContent?: string;
+	plainTextContent?: string;
 	htmlTranslations?: string;
 	contentRevision: number;
 	updatedAt: number;
@@ -428,19 +387,36 @@ export function updateTranslationPatch(
 }
 
 /**
+ * The delivery representations of a row after a default-language change,
+ * rendered by the caller from the swapped content and overlays: the new
+ * default's HTML and text/plain body, and every other language's HTML
+ * (the outgoing default included).
+ */
+export interface SwappedDelivery {
+	htmlContent?: string;
+	plainTextContent?: string;
+	htmlTranslations?: string;
+}
+
+/**
  * Patch for promoting a language overlay to the default language, or `null`
  * when `language` already is the default (nothing to write).
  *
  * The new default's full content is the current main content structure with
  * the new language's translatable text merged in. The outgoing default becomes
  * a translation overlay (its translatable text extracted from the current main
- * content), so re-selecting it later round-trips. Throws not_found when the
- * language has no overlay.
+ * content), so re-selecting it later round-trips, and both languages stay
+ * supported. Throws not_found when the language has no overlay.
+ *
+ * `delivery` is written in the same patch, so the HTML the send path delivers
+ * changes language together with the body and subject. Without it the stored
+ * HTML is left as it was (older callers).
  */
 export function setDefaultLanguagePatch(
 	row: TranslatableEntity,
 	language: string,
-	fields: TranslatableFields
+	fields: TranslatableFields,
+	delivery: SwappedDelivery = {}
 ): TranslationPatch | null {
 	const currentDefault = row.defaultLanguage ?? DEFAULT_LANGUAGE;
 	if (language === currentDefault) {
@@ -476,12 +452,27 @@ export function setDefaultLanguagePatch(
 		[currentDefault]: outgoingDefaultOverlay,
 	};
 
+	// The demoted default is an overlay like any other, so it stays deliverable.
+	// A row without the list restricts nothing and keeps it that way.
+	const supportedLanguages = row.supportedLanguages ?? [];
+	const missing = row.supportedLanguages
+		? [currentDefault, language].filter((lang) => !supportedLanguages.includes(lang))
+		: [];
+
 	return {
 		subject: newDefault.subject,
 		...(fields.hasPreviewText ? { previewText: newDefault.previewText } : {}),
 		content: sanitizeStoredBlocksJson(newDefaultContent),
 		defaultLanguage: language,
 		translations: serializeTranslations(updatedTranslations),
+		...(missing.length > 0 && { supportedLanguages: [...supportedLanguages, ...missing] }),
+		...(delivery.htmlContent !== undefined && { htmlContent: delivery.htmlContent }),
+		...(delivery.plainTextContent !== undefined && {
+			plainTextContent: delivery.plainTextContent,
+		}),
+		...(delivery.htmlTranslations !== undefined && {
+			htmlTranslations: delivery.htmlTranslations,
+		}),
 		...revisionStamp(row),
 	};
 }

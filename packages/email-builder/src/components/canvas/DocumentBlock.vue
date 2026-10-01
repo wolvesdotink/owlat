@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, type Component } from 'vue';
+import { computed, inject, type Component } from 'vue';
 import type { EditorBlock, EmailTheme, Variable, SlashCommand } from '../../types';
 import type { ParentContext } from './types';
+import InlineTextEditor from './InlineTextEditor.vue';
 
 // Preview components
 import TextPreview from './previews/TextPreview.vue';
@@ -62,10 +63,38 @@ const emit = defineEmits<{
 const previewComponent = computed(() => {
 	return previewComponents[props.block.type] || IframePreview;
 });
+
+// A nested text Block being edited inline shows the editor in place of its
+// preview. The canvas mounts the editor for a root Block itself.
+const isInlineEditing = computed(
+	() => props.nested && props.inlineEditBlockId === props.block.id && props.block.type === 'text'
+);
+
+const registerInlineEditor = inject<(ref: { el: HTMLElement } | null) => void>(
+	'registerInlineEditor',
+	() => {}
+);
+
+function handleInlineEditorRef(comp: unknown) {
+	const el = (comp as { el?: HTMLElement | null } | null)?.el;
+	if (el) registerInlineEditor({ el });
+}
 </script>
 
 <template>
+	<InlineTextEditor
+		v-if="isInlineEditing"
+		:ref="handleInlineEditorRef"
+		:block="block"
+		:theme="theme"
+		:variables="variables"
+		@exit="emit('exit-inline-edit')"
+		@slash-command-select="(cmd: SlashCommand) => emit('slash-command-select', cmd, block.id)"
+		@insert-block-after="emit('insert-block-after', block.id)"
+		@open-link-dialog="emit('open-link-dialog', block.id)"
+	/>
 	<component
+		v-else
 		:is="previewComponent"
 		:block="block"
 		:theme="theme"

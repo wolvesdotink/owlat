@@ -46,10 +46,14 @@ const CONFIG: MailSyncConfig = {
 	port: 3200,
 	listenAddress: '0.0.0.0',
 	convexUrl: 'https://example.convex.cloud',
+	convexSiteUrl: 'https://example.convex.cloud/http',
 	convexAdminKey: 'admin-key',
 	apiKey: 'api-key',
 	reconcileIntervalMs: 30_000,
 	folderPollIntervalMs: 300_000,
+	inboxPollIntervalMs: 60_000,
+	backfillBatchSize: 200,
+	allowedFetchOrigins: ['https://example.convex.cloud'],
 };
 
 function account(id: string): ConnectableAccount {
