@@ -1322,6 +1322,7 @@ import type * as workspaces_deletion_job from '../workspaces/deletion/job.js';
 import type * as workspaces_deletion_quiesce from '../workspaces/deletion/quiesce.js';
 import type * as workspaces_deletion_steps__common from '../workspaces/deletion/steps/_common.js';
 import type * as workspaces_deletion_steps_accountExportArtifacts from '../workspaces/deletion/steps/accountExportArtifacts.js';
+import type * as workspaces_deletion_steps_cascadeOrder from '../workspaces/deletion/steps/cascadeOrder.js';
 import type * as workspaces_deletion_steps_contacts from '../workspaces/deletion/steps/contacts.js';
 import type * as workspaces_deletion_steps_domains from '../workspaces/deletion/steps/domains.js';
 import type * as workspaces_deletion_steps_inboundMessages from '../workspaces/deletion/steps/inboundMessages.js';
@@ -2658,6 +2659,7 @@ declare const fullApi: ApiFromModules<{
 	'workspaces/deletion/quiesce': typeof workspaces_deletion_quiesce;
 	'workspaces/deletion/steps/_common': typeof workspaces_deletion_steps__common;
 	'workspaces/deletion/steps/accountExportArtifacts': typeof workspaces_deletion_steps_accountExportArtifacts;
+	'workspaces/deletion/steps/cascadeOrder': typeof workspaces_deletion_steps_cascadeOrder;
 	'workspaces/deletion/steps/contacts': typeof workspaces_deletion_steps_contacts;
 	'workspaces/deletion/steps/domains': typeof workspaces_deletion_steps_domains;
 	'workspaces/deletion/steps/inboundMessages': typeof workspaces_deletion_steps_inboundMessages;
