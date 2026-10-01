@@ -57,7 +57,7 @@ export async function finalizeSubmissions(
 
 type CarryTarget =
 	| { kind: 'move'; token: string }
-	| { kind: 'finalize'; at: number }
+	| { kind: 'finalize'; at: number | undefined }
 	| { kind: 'stop' };
 
 /**
@@ -66,7 +66,8 @@ type CarryTarget =
  * contact holds `toToken`. A scheduled follow-up can find the token moved on:
  *   - replaced again: that replacement carried `toToken`'s rows already, so
  *     these go straight to the token the contact holds now;
- *   - spent on a confirmation: these finalize as that confirmation would have;
+ *   - spent on a confirmation: these finalize as that confirmation would have,
+ *     under the token it consumed (`confirmedToken`);
  *   - a global opt-out ended the episode, or the contact is gone: they stay
  *     put. The episode check comes first because the contact's token and
  *     status alone cannot tell a resend in the same episode from a new signup
@@ -84,16 +85,47 @@ function carryTarget(
 		return token === fromToken ? { kind: 'stop' } : { kind: 'move', token };
 	}
 	if (contact.doiStatus === 'confirmed' && token === undefined) {
-		return { kind: 'finalize', at: contact.doiConfirmedAt ?? Date.now() };
+		return { kind: 'finalize', at: contact.doiConfirmedAt };
 	}
 	return { kind: 'stop' };
+}
+
+/**
+ * The token the contact's confirmation consumed, read back from the rows that
+ * confirmation finalized: both confirmation routes stamp them with the
+ * contact's `doiConfirmedAt`. The carry's own `toToken` cannot stand in for
+ * it, because a later resend can have replaced that token before the
+ * confirmation. Undefined when no finalized row records it (the confirmed
+ * token had no rows of this contact), and then the carried rows are finalized
+ * without a token, so no superseded link resolves to them.
+ */
+async function confirmedToken(
+	ctx: MutationCtx,
+	contactId: Id<'contacts'>,
+	confirmedAt: number | undefined
+): Promise<string | undefined> {
+	if (confirmedAt === undefined) return undefined;
+	const row = await ctx.db
+		.query('formSubmissions')
+		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+		.filter((q) =>
+			q.and(
+				q.eq(q.field('status'), 'success'),
+				q.eq(q.field('confirmedAt'), confirmedAt),
+				q.neq(q.field('confirmationToken'), undefined)
+			)
+		)
+		.first(); // bounded: one contact's form submissions
+	return row?.confirmationToken;
 }
 
 const carryArgsValidator = {
 	contactId: v.id('contacts'),
 	// The token the contact held before the replacement.
 	fromToken: v.string(),
-	// The token that replaced it.
+	// The token that replaced it, or on a follow-up the token the previous page
+	// moved rows to. Informational: every page resolves its destination from
+	// the contact, since a later resend can have replaced this one.
 	toToken: v.string(),
 	// The contact's `doiConsentEpisode` when the token was replaced. Every page
 	// stops once the contact is in a later episode.
@@ -127,14 +159,17 @@ export const carryPendingSubmissions = internalMutation({
 
 		let carried = 0;
 		let finalized = 0;
+		let destination: string | undefined;
 		if (target.kind === 'move') {
+			destination = target.token;
 			for (const submission of rows) {
-				await ctx.db.patch(submission._id, { confirmationToken: target.token });
+				await ctx.db.patch(submission._id, { confirmationToken: destination });
 			}
 			carried = rows.length;
 		} else {
-			finalized = await finalizeSubmissions(ctx, rows, target.at, {
-				confirmationToken: args.toToken,
+			destination = await confirmedToken(ctx, args.contactId, target.at);
+			finalized = await finalizeSubmissions(ctx, rows, target.at ?? Date.now(), {
+				confirmationToken: destination,
 			});
 		}
 
@@ -143,7 +178,7 @@ export const carryPendingSubmissions = internalMutation({
 			await ctx.scheduler.runAfter(0, internal.forms.pendingConfirmations.carryPendingSubmissions, {
 				contactId: args.contactId,
 				fromToken: args.fromToken,
-				toToken: target.kind === 'move' ? target.token : args.toToken,
+				toToken: destination ?? args.toToken,
 				episode: args.episode,
 				cursor: page.continueCursor,
 			});

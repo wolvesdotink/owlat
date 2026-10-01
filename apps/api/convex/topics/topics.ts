@@ -343,11 +343,15 @@ export const confirmDoi = internalMutation({
 		// check internally — this read is purely for the response shape.
 		const contact = await findContactByConfirmationToken(ctx, args.token);
 
+		// The form rows below are stamped with the contact's confirmation time,
+		// which is how a carry still paging finds the token this confirmation
+		// consumed (forms/pendingConfirmations.ts).
+		const at = Date.now();
 		const outcome: DoiTransitionOutcome = await ctx.runMutation(
 			internal.contacts.doiLifecycle.transitionByConfirmationToken,
 			{
 				token: args.token,
-				input: { to: 'confirmed', at: Date.now() },
+				input: { to: 'confirmed', at },
 			}
 		);
 
@@ -362,6 +366,7 @@ export const confirmDoi = internalMutation({
 		await ctx.runMutation(internal.forms.submission.markConfirmedByToken, {
 			token: args.token,
 			contactId: outcome.contactId,
+			at,
 		});
 
 		return {

@@ -474,10 +474,7 @@ describe('a carry continuation follows the contact', () => {
 		);
 	});
 
-	it('finalizes the rest when the contact confirmed in between', async () => {
-		const t = setupTest();
-		const { formId, contactId, left } = await seedHalfCarried(t);
-		const confirmedAt = Date.now() - 1000;
+	async function confirmContact(t: T, contactId: Id<'contacts'>, confirmedAt: number) {
 		await t.run((ctx) =>
 			ctx.db.patch(contactId, {
 				doiStatus: 'confirmed',
@@ -486,6 +483,26 @@ describe('a carry continuation follows the contact', () => {
 				doiTokenExpiresAt: undefined,
 			})
 		);
+	}
+
+	it('finalizes the rest under the token the confirmation consumed', async () => {
+		const t = setupTest();
+		const { formId, contactId, left } = await seedHalfCarried(t);
+		const confirmedAt = Date.now() - 1000;
+		// A later resend replaced `second-token`, and the contact confirmed that
+		// one; the row its confirmation finalized records the consumed token.
+		await t.run((ctx) =>
+			ctx.db.insert('formSubmissions', {
+				formEndpointId: formId,
+				contactId,
+				data: { email: 'race@example.com' },
+				status: 'success',
+				confirmationToken: 'third-token',
+				confirmedAt,
+				submittedAt: Date.now(),
+			})
+		);
+		await confirmContact(t, contactId, confirmedAt);
 
 		await t.mutation(internal.forms.pendingConfirmations.carryPendingSubmissions, {
 			contactId,
@@ -496,8 +513,27 @@ describe('a carry continuation follows the contact', () => {
 
 		const rows = await rowsById(t, left);
 		expect(rows.every((r) => r?.status === 'success' && r.confirmedAt === confirmedAt)).toBe(true);
-		expect(rows.every((r) => r?.confirmationToken === 'second-token')).toBe(true);
+		expect(rows.every((r) => r?.confirmationToken === 'third-token')).toBe(true);
 		expect(await successCount(t, formId)).toBe(3);
+	});
+
+	it('finalizes the rest without a token when no row records the consumed one', async () => {
+		const t = setupTest();
+		const { formId, contactId, left } = await seedHalfCarried(t);
+		await confirmContact(t, contactId, Date.now() - 1000);
+
+		await t.mutation(internal.forms.pendingConfirmations.carryPendingSubmissions, {
+			contactId,
+			fromToken: 'first-token',
+			toToken: 'second-token',
+			episode: 0,
+		});
+
+		const rows = await rowsById(t, left);
+		expect(rows.every((r) => r?.status === 'success')).toBe(true);
+		expect(rows.every((r) => r?.confirmationToken === undefined)).toBe(true);
+		expect(await successCount(t, formId)).toBe(3);
+		await expectDeadLink(t, 'second-token');
 	});
 
 	it('stops when an opt-out withdrew the token in between', async () => {
@@ -626,5 +662,65 @@ describe('a carry continuation stops at the end of its consent episode', () => {
 		expect(after.filter((r) => r?.status === 'success')).toHaveLength(100);
 		expect(after.filter((r) => r?.status === 'pending_confirmation')).toHaveLength(50);
 		expect(await successCount(t, formId)).toBe(101);
+	});
+});
+
+// ─── Two replacements before the follow-up runs ─────────────────────────────
+
+describe('a carry continuation after a second resend', () => {
+	async function seedForTwoResends(t: T) {
+		const formId = await createForm(t, { doubleOptIn: true, name: 'A' });
+		const contactId = await seedContact(t, 'twice@example.com', {
+			doiStatus: 'pending',
+			doiConfirmationToken: 'first-token',
+			doiTokenExpiresAt: Date.now() + DOI_TOKEN_TTL_MS,
+		});
+		const rows = await seedPendingRows(t, {
+			count: 150,
+			forms: [formId],
+			contactId,
+			token: 'first-token',
+		});
+		return { formId, contactId, rows };
+	}
+
+	async function expectAllConfirmedUnderNewestToken(
+		t: T,
+		formId: Id<'formEndpoints'>,
+		rows: Id<'formSubmissions'>[]
+	) {
+		const after = await rowsById(t, rows);
+		expect(after.every((r) => r?.status === 'success')).toBe(true);
+		expect(after.every((r) => r?.confirmationToken === 'third-token')).toBe(true);
+		expect(await successCount(t, formId)).toBe(150);
+		await expectDeadLink(t, 'second-token');
+		await expectDeadLink(t, 'first-token');
+	}
+
+	it('confirms the queued rows under the newest token when it was confirmed first', async () => {
+		vi.useFakeTimers();
+		const t = setupTest();
+		const { formId, contactId, rows } = await seedForTwoResends(t);
+
+		await resend(t, contactId, 'second-token');
+		await resend(t, contactId, 'third-token');
+		await t.mutation(api.forms.endpoints.confirmSubmission, { token: 'third-token' });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		await expectAllConfirmedUnderNewestToken(t, formId, rows);
+	});
+
+	it('confirms every row under the newest token when the follow-up ran between the resends', async () => {
+		vi.useFakeTimers();
+		const t = setupTest();
+		const { formId, contactId, rows } = await seedForTwoResends(t);
+
+		await resend(t, contactId, 'second-token');
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		await resend(t, contactId, 'third-token');
+		await t.mutation(api.forms.endpoints.confirmSubmission, { token: 'third-token' });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		await expectAllConfirmedUnderNewestToken(t, formId, rows);
 	});
 });

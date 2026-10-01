@@ -360,10 +360,13 @@ export const confirmSubmission = publicMutation({
 
 		// Step 1: confirm DOI on the contact. The lifecycle module owns the
 		// contact-side patch, the trigger fanout, the topic_confirmed activity
-		// rows, and the token-expiry check.
+		// rows, and the token-expiry check. The rows below are stamped with the
+		// same time, which is how a carry still paging finds the token this
+		// confirmation consumed (forms/pendingConfirmations.ts).
+		const at = Date.now();
 		const doiOutcome: DoiTransitionOutcome = await ctx.runMutation(
 			internal.contacts.doiLifecycle.transitionByConfirmationToken,
-			{ token: args.token, input: { to: 'confirmed', at: Date.now() } }
+			{ token: args.token, input: { to: 'confirmed', at } }
 		);
 
 		if (!doiOutcome.ok) {
@@ -391,6 +394,7 @@ export const confirmSubmission = publicMutation({
 		await ctx.runMutation(internal.forms.submission.markConfirmedByToken, {
 			token: args.token,
 			contactId: doiOutcome.contactId,
+			at,
 		});
 
 		return { success: true, alreadyConfirmed: doiOutcome.applied === 'recorded' };

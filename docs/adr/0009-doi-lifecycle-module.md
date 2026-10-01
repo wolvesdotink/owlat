@@ -617,6 +617,13 @@ writes the new token and after the contact patch:
   more, the rest go to the token the contact holds now; if the contact
   confirmed in between, they are finalized as that confirmation would have
   done; if an opt-out withdrew the token, they stay where they are.
+- A finalizing page records the token the confirmation consumed, not the
+  carry's own `toToken`, which a second resend can have replaced before the
+  confirmation. Both confirmation routes stamp the rows they finalize with
+  the contact's `doiConfirmedAt`, so the page reads the consumed token back
+  from such a row. If no row records it, the carried rows are finalized
+  without a token. Either way a replaced link never resolves to a finished
+  submission.
 - A carry never leaves its consent episode. The contact's token and status
   cannot tell a second resend from a fresh signup after a global opt-out,
   and confirming that signup clears `unsubscribedAt`, so the contact gains a
@@ -649,5 +656,6 @@ opt-out (a later signup waiting for a fresh confirmation).
 `__tests__/formTokenCarry.integration.test.ts` covers both replacement paths,
 more than one page of rows, the rows that must stay put, and the follow-up
 cases, including a follow-up that runs after a global opt-out and a new
-signup, before or after that signup is confirmed; `migrations/__tests__/withdrawOptedOutTokens.test.ts` covers the
+signup, before or after that signup is confirmed, and two resends before
+the newest token is confirmed; `migrations/__tests__/withdrawOptedOutTokens.test.ts` covers the
 migration.

@@ -969,7 +969,9 @@ rows land directly in a terminal state at create time, so the legal-edges
   `pending_confirmation` rows from a replaced token to the new one, paged
   with a scheduled follow-up. Called by the **DOI lifecycle (module)** in
   the transaction that writes the new token. Every page stops once the
-  contact's `doiConsentEpisode` differs from `episode`.
+  contact's `doiConsentEpisode` differs from `episode`, moves rows to the
+  token the contact holds now, or, if the contact confirmed, finalizes them
+  under the token that confirmation consumed.
 
 Classification rules inside `submit`:
 

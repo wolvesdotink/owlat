@@ -762,7 +762,11 @@ which holds what happens to rows that wait on a confirmation token:
   from the outgoing token to the new one, paged like `markConfirmedByToken`.
   `episode` is the contact's `doiConsentEpisode` at the replacement; a page
   that finds the contact in a later episode stops and leaves the remaining
-  rows `pending_confirmation` on their old token.
+  rows `pending_confirmation` on their old token. A page that finds the
+  contact confirmed finalizes the rows under the token the confirmation
+  consumed, read back from a row that confirmation finalized (both routes
+  stamp them with the contact's `doiConfirmedAt`), or without a token if no
+  such row exists.
 
 `submission.ts` keeps `submit` and `markConfirmedByToken`; the module still
 owns every write to `formSubmissions`.
