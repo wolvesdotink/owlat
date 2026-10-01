@@ -79,8 +79,13 @@ export class TransactionalResource extends BaseResource {
 				// Validate base64 content format
 				if (attachment.content) {
 					if (!/^[A-Za-z0-9+/]*={0,2}$/.test(attachment.content)) {
+						// MIME-style base64 wraps lines every 76 characters; name
+						// that case, since the bare message does not say what is wrong.
+						const hint = /[\r\n]/.test(attachment.content)
+							? ': it contains line breaks; send plain base64 without line breaks'
+							: '';
 						throw new ValidationError(
-							`Attachment "${attachment.filename}" has invalid base64 content`,
+							`Attachment "${attachment.filename}" has invalid base64 content${hint}`,
 							'invalid_input'
 						);
 					}
