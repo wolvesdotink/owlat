@@ -17,10 +17,11 @@
  * hosts only, no cross-host redirects, bounded timeout + size cap, injected
  * fetch/DNS) and `e2ee/discoveryVerify.ts` (key<->address binding, signed
  * rotation statements, manifest signature). The fetched key is bound to the
- * address (`keyCertifiesAddress`) before it is trusted, and the fingerprint runs
- * through the pure TOFU state machine (`e2ee/pinning.ts`). Results (24h positive
- * / 1h negative TTL) land in `recipientKeys` via `e2ee/recipientKeys.ts`; a cron
- * refreshes expiring rows.
+ * address (`keyCertifiesAddress`) before it is trusted. Results (24h positive /
+ * 1h negative TTL) land in `recipientKeys` via `e2ee/recipientKeys.ts`, whose
+ * commit runs the fingerprint through the pure TOFU state machine
+ * (`e2ee/pinning.ts`) against the row at commit time; a cron refreshes expiring
+ * rows.
  */
 
 import { v } from 'convex/values';
@@ -42,12 +43,7 @@ import {
 	keyCertifiesAddress,
 	verifyFetchedManifest,
 } from './discoveryVerify';
-import {
-	evaluatePin,
-	fingerprintsEqual,
-	type PinDecision,
-	type RotationStatement,
-} from './pinning';
+import { fingerprintsEqual, type PinDecision, type RotationStatement } from './pinning';
 
 // Re-export so the module's public surface stays stable after RotationStatement
 // (+ rotationStatementText) moved into pinning.ts — consumers still import it here.
@@ -161,12 +157,26 @@ type DiscoveryOutcome = {
 };
 
 /**
+ * How many times one discovery starts over after its commit found the row
+ * changed underneath it. Each retry re-reads the row and fetches again (the
+ * cache check is skipped: the row was just written by the competing commit, so
+ * it always looks fresh), so the committed observation is always newer than the
+ * state it transitions from, and a key that differs from the competing pin is
+ * recorded as `keyChanged` rather than dropped.
+ */
+const MAX_DISCOVERY_ATTEMPTS = 3;
+
+/**
  * Discover (or refresh) the key for one address and persist the discovery +
  * TOFU pin decision. Cache-aware (skips a fresh row unless `force`) and
  * flag-gated (a no-op when Sealed Mail is off). Hoisted out of the action
  * handler so the cron can call it directly — that removes the action→action
  * hop (a Convex antipattern within one runtime) and the same-module `internal`
  * self-reference that would otherwise collapse this module's wired-api types.
+ *
+ * The pin decision itself is made by `recipientKeys.commitDiscoveredKey` against
+ * the row at commit time; when another writer got there first the commit
+ * reports `stale` and this starts over from a fresh read.
  */
 async function runRecipientKeyDiscovery(
 	ctx: ActionCtx,
@@ -176,6 +186,27 @@ async function runRecipientKeyDiscovery(
 		return { outcome: 'disabled' };
 	}
 	const address = normalizeEmail(args.address);
+	let latest: DiscoveryOutcome['outcome'] = 'notFound';
+	for (let attempt = 0; attempt < MAX_DISCOVERY_ATTEMPTS; attempt++) {
+		const result = await discoverOnce(ctx, address, {
+			...args,
+			force: args.force || attempt > 0,
+		});
+		if (!('stale' in result)) return result;
+		latest = result.current ?? 'notFound';
+	}
+	// Other writers kept committing between our read and our commit; each of
+	// those is at least as fresh as what we would have written, so report the
+	// row they left.
+	return { outcome: latest };
+}
+
+/** One read -> fetch -> commit pass of {@link runRecipientKeyDiscovery}. */
+async function discoverOnce(
+	ctx: ActionCtx,
+	address: string,
+	args: { force?: boolean; skipManifest?: boolean }
+): Promise<DiscoveryOutcome | { stale: true; current: DiscoveryOutcome['outcome'] | null }> {
 	const now = Date.now();
 	const cached = await ctx.runQuery(internal.e2ee.recipientKeys.getCached, {
 		address,
@@ -190,28 +221,24 @@ async function runRecipientKeyDiscovery(
 	});
 	const domain = address.slice(address.lastIndexOf('@') + 1);
 
-	// A discovery MISS never drops an existing pin — preserve prior trust, re-check sooner.
+	// A discovery MISS never drops an existing pin — it only refreshes metadata
+	// on the row as it is at commit time, and re-checks sooner.
 	if (fetched.outcome === 'notFound') {
-		await ctx.runMutation(internal.e2ee.recipientKeys.upsertDiscovery, {
+		await ctx.runMutation(internal.e2ee.recipientKeys.recordDiscoveryMiss, {
 			address,
 			domain,
-			outcome: cached?.pinnedFingerprint ? cached.outcome : 'notFound',
-			pinnedFingerprint: cached?.pinnedFingerprint,
-			pinnedPublicKeyArmored: cached?.pinnedPublicKeyArmored,
-			observedFingerprint: cached?.observedFingerprint,
-			observedPublicKeyArmored: cached?.observedPublicKeyArmored,
-			source: cached?.source,
-			instanceFingerprint: fetched.instanceFingerprint ?? cached?.instanceFingerprint,
+			instanceFingerprint: fetched.instanceFingerprint,
 			expiresAt: now + TTL_NEGATIVE_MS,
 		});
-		return { outcome: 'notFound' as const };
+		return { outcome: 'notFound' };
 	}
 
 	const observedFingerprint = fetched.fingerprint;
-	const observedArmored = fetched.publicKeyArmored;
 	const pinnedFingerprint = cached?.pinnedFingerprint ?? null;
 
 	// Did the remote publish a valid signed rotation from our pin to this key?
+	// The proof is handed to the commit bound to the exact pin it was checked
+	// against; the commit ignores it if the pin has moved.
 	const rotationSignatureValid =
 		pinnedFingerprint !== null &&
 		!fingerprintsEqual(pinnedFingerprint, observedFingerprint) &&
@@ -225,31 +252,25 @@ async function runRecipientKeyDiscovery(
 				)
 			: false;
 
-	const decision: PinDecision = evaluatePin({
-		pinnedFingerprint,
-		observedFingerprint,
-		rotationSignatureValid,
-	});
-
-	// On `keyChanged` the pin stays the OLD key; otherwise the observed key
-	// becomes the trusted pin.
-	const trustedIsObserved = decision.state === 'pinned';
-	await ctx.runMutation(internal.e2ee.recipientKeys.upsertDiscovery, {
+	const committed = await ctx.runMutation(internal.e2ee.recipientKeys.commitDiscoveredKey, {
 		address,
 		domain,
-		outcome: decision.state === 'pinned' ? 'trusted' : 'keyChanged',
-		pinnedFingerprint: decision.pinnedFingerprint,
-		pinnedPublicKeyArmored: trustedIsObserved ? observedArmored : cached?.pinnedPublicKeyArmored,
-		observedFingerprint,
-		observedPublicKeyArmored: observedArmored,
-		source: 'wkd',
-		instanceFingerprint: fetched.instanceFingerprint ?? cached?.instanceFingerprint,
+		basis: {
+			revision: cached?.revision ?? 0,
+			pinnedFingerprint: pinnedFingerprint ?? undefined,
+		},
+		fingerprint: observedFingerprint,
+		publicKeyArmored: fetched.publicKeyArmored,
+		source: fetched.source,
+		rotation:
+			rotationSignatureValid && pinnedFingerprint !== null
+				? { oldFingerprint: pinnedFingerprint, newFingerprint: observedFingerprint }
+				: undefined,
+		instanceFingerprint: fetched.instanceFingerprint,
 		expiresAt: now + TTL_FOUND_MS,
 	});
-	return {
-		outcome: decision.state === 'pinned' ? 'trusted' : 'keyChanged',
-		action: decision.action,
-	};
+	if (committed.status === 'stale') return { stale: true, current: committed.outcome };
+	return { outcome: committed.outcome, action: committed.action };
 }
 
 /**

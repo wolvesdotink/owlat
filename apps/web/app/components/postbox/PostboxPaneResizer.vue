@@ -18,11 +18,12 @@
  *                somewhere unusable.
  *
  * All the arithmetic lives in utils/postboxReadingPane; this component owns
- * only the events. `v-model` updates live during the drag (the layout follows
- * the pointer) while `commit` fires once on release — a settings mutation per
+ * only the events. `v-model` updates live during the drag, once per animation
+ * frame (the layout follows the pointer) while `commit` fires once on release — a settings mutation per
  * pointermove would be a write storm.
  */
 import type { PostboxPaneAxis } from '~/utils/postboxReadingPane';
+import { createRafThrottle } from '~/composables/postbox/usePostboxVirtualList';
 import {
 	POSTBOX_LIST_SIZE_LIMITS,
 	clampPostboxListSize,
@@ -62,11 +63,25 @@ function applyLive(size: number) {
 	if (size !== props.modelValue) emit('update:modelValue', size);
 }
 
+// A pointer reports far more often than the screen paints (120 Hz+ mice,
+// coalesced touch), and every live update re-lays out the list, the reader and
+// its email frames. Keep only the newest position and apply it once per frame.
+let pendingSize: number | null = null;
+const liveFrame = createRafThrottle(flushPending);
+
+function flushPending() {
+	if (pendingSize === null) return;
+	const size = pendingSize;
+	pendingSize = null;
+	applyLive(size);
+}
+
 function onPointerMove(event: PointerEvent) {
 	const origin = paneOrigin();
 	if (origin === null) return;
 	const pointer = props.axis === 'width' ? event.clientX : event.clientY;
-	applyLive(postboxListSizeFromPointer(pointer, origin, props.axis));
+	pendingSize = postboxListSizeFromPointer(pointer, origin, props.axis);
+	liveFrame.schedule();
 }
 
 function endDrag() {
@@ -75,7 +90,12 @@ function endDrag() {
 	window.removeEventListener('pointermove', onPointerMove);
 	window.removeEventListener('pointerup', endDrag);
 	window.removeEventListener('pointercancel', endDrag);
-	emit('commit', clampPostboxListSize(props.modelValue, props.axis));
+	// The release lands where the pointer last was, even if that move is still
+	// waiting for its frame; the prop has not caught up with it yet either.
+	liveFrame.cancel();
+	const last = pendingSize;
+	flushPending();
+	emit('commit', clampPostboxListSize(last ?? props.modelValue, props.axis));
 }
 
 function onPointerDown(event: PointerEvent) {

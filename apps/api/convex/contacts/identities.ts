@@ -7,7 +7,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import type { Doc } from '../_generated/dataModel';
@@ -341,7 +342,7 @@ export const autoMergeDuplicates = internalMutation({
 				.withIndex('by_identifier', (q) => q.eq('channel', channel))
 				.collect(); // bounded: identities for one identifier (≈1 row)
 			for (const row of rows) {
-				const key = `${row.channel} ${row.identifier}`;
+				const key = `${row.channel}\0${row.identifier}`;
 				const bucket = seen.get(key);
 				if (bucket) bucket.push(row);
 				else seen.set(key, [row]);

@@ -10,6 +10,8 @@
  * pill is only a number on screen, so without the label a screen reader hears
  * the subject and no unread count.
  */
+import { usePostboxThreadTimestamp } from '~/composables/postbox/usePostboxListClock';
+
 export type PostboxConversationThread = {
 	_id: string;
 	latestMessageId?: string;
@@ -35,6 +37,8 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
+// Ticks with the list's shared minute clock (usePostboxListClock).
+const formatTimestamp = usePostboxThreadTimestamp();
 
 const rowLabel = computed(() =>
 	props.thread.unreadCount > 0
@@ -69,7 +73,7 @@ const rowLabel = computed(() =>
 				>
 			</span>
 			<span class="text-xs text-text-tertiary flex-shrink-0">
-				{{ formatThreadTimestamp(thread.lastMessageAt) }}
+				{{ formatTimestamp(thread.lastMessageAt) }}
 			</span>
 		</div>
 		<div class="flex items-center gap-1.5 mt-0.5">

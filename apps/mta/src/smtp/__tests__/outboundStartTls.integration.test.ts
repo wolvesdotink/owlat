@@ -418,6 +418,6 @@ describe('outbound require-verified vs broken TLS (T1)', () => {
 		expect(isSmtpError(caught)).toBe(true);
 		if (!isSmtpError(caught)) throw caught;
 		expect(caught.tlsCause).toBe('starttls-unavailable');
-		expect(classifyTlsFailure(caught.tlsCause)).toBe('starttls-not-supported');
+		expect(classifyTlsFailure(caught.tlsCause!)).toBe('starttls-not-supported');
 	}, 15000);
 });

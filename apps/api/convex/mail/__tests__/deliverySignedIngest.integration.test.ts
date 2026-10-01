@@ -41,7 +41,7 @@ import {
 	type SignaturePartEncoding,
 } from '../../e2ee/__tests__/signedMailTestHelpers';
 import { modules } from '../../__tests__/testModulesWithoutNodeActions';
-import { openMailMessageInlineBody } from '../../lib/messageBody';
+import { openStoredInlineBody } from '../../lib/messageBodyStore';
 import { expectScheduledFailure } from '../../__tests__/helpers/scheduledFailures';
 
 // The functions below need configuration this suite only stubs inside its
@@ -118,7 +118,7 @@ async function readRow(t: T, messageId: Id<'mailMessages'>) {
 	return await t.run(async (ctx) => {
 		const msg = await ctx.db.get(messageId);
 		if (!msg) throw new Error('mailMessages row missing');
-		const { text, html } = await openMailMessageInlineBody(msg);
+		const { text, html } = await openStoredInlineBody(ctx.db, msg);
 		return { ...msg, textBodyInline: text, htmlBodyInline: html };
 	});
 }

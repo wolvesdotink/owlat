@@ -17,7 +17,7 @@ const props = defineProps<{
 const { t } = useI18n();
 const route = useRoute();
 const { isEnabled } = useFeatureFlag();
-const { isAdmin } = usePermissions();
+const { isAdmin, isRoleLoading } = usePermissions();
 const { isCollapsed, toggleGroup } = useShellSidebarPrefs();
 
 const campaignsOn = computed(() => isEnabled('campaigns'));
@@ -227,6 +227,17 @@ const activeAutomationId = computed(
 					>
 				</div>
 			</template>
+
+			<!-- Automations and Templates are admin-only, and the page renders before
+			     the role is known: hold their place instead of letting them pop in. -->
+			<div
+				v-if="isRoleLoading"
+				class="mt-3 space-y-2 px-3"
+				data-testid="shell-marketing-role-skeleton"
+			>
+				<UiSkeleton v-if="isEnabled('automations')" class="h-3 w-24" />
+				<UiSkeleton class="h-4 w-3/4" />
+			</div>
 
 			<div class="mt-3 flex flex-col gap-px">
 				<NuxtLink

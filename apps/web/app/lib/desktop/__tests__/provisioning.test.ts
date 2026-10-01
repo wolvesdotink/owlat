@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { COMPOSE_BUILD_SERVICES } from '@owlat/shared/composeBuildServices';
 import { MIN_PASSWORD_LENGTH } from '@owlat/shared/passwordPolicy';
 import { SetupStep } from '@owlat/shared/setupProgress';
 import {
@@ -22,7 +23,12 @@ import {
 	dockerPlatform,
 	setupConfigPath,
 	DEFAULT_REMOTE,
+	DEV_IMAGES,
 	LOCAL_SETUP_IMAGE,
+	parseMissingImages,
+	verifyImagesCommand,
+	localSetupImageBuild,
+	localStackBuild,
 	installRef,
 	isReleaseVersion,
 	releaseSetupImage,
@@ -300,6 +306,66 @@ describe('remote commands', () => {
 		expect(dockerPlatform('x86_64')).toBe('linux/amd64');
 		expect(dockerPlatform('aarch64')).toBe('linux/arm64');
 		expect(dockerPlatform('arm64')).toBe('linux/arm64');
+	});
+
+	it('local builds name only what to build, never a program, flags or environment', () => {
+		// The desktop turns these into the docker invocation itself and accepts
+		// nothing else (apps/desktop/src-tauri/src/ssh/dev.rs); every name must
+		// read as a plain Compose name, never as a flag.
+		const stack = localStackBuild('linux/arm64');
+		expect(stack).toEqual({
+			kind: 'stack',
+			platform: 'linux/arm64',
+			profiles: [
+				'clamav',
+				'deploy',
+				'dev',
+				'external-mail',
+				'inbox-codetasks',
+				'mta',
+				'personal-mail',
+				'plugin-tasks',
+			],
+			services: COMPOSE_BUILD_SERVICES.map((s) => s.service),
+		});
+		if (stack.kind === 'stack') {
+			for (const name of [...stack.profiles, ...stack.services]) {
+				expect(name).toMatch(/^[A-Za-z0-9][A-Za-z0-9_.-]*$/);
+			}
+		}
+		expect(localSetupImageBuild('linux/amd64')).toEqual({
+			kind: 'setupImage',
+			platform: 'linux/amd64',
+		});
+		// The images pushed are the local `dev` builds the desktop accepts: one
+		// per buildable service plus the setup image.
+		expect(DEV_IMAGES).toContain(LOCAL_SETUP_IMAGE);
+		expect(DEV_IMAGES).toHaveLength(COMPOSE_BUILD_SERVICES.length + 1);
+		for (const image of DEV_IMAGES) expect(image).toMatch(/^[a-z0-9][a-z0-9._/-]*:dev$/);
+	});
+
+	it('checks every pushed image on the server and reports only the missing ones', () => {
+		const cmd = verifyImagesCommand(['ghcr.io/wolvesdotink/web:dev', 'owlat-code-worker:dev']);
+		expect(cmd).toBe(
+			`for i in 'ghcr.io/wolvesdotink/web:dev' 'owlat-code-worker:dev'; do docker image inspect "$i" >/dev/null 2>&1 || echo "missing=$i"; done`
+		);
+		expect(
+			parseMissingImages(['missing=ghcr.io/wolvesdotink/unbound:dev', 'noise', ' missing= ', ''])
+		).toEqual(['ghcr.io/wolvesdotink/unbound:dev']);
+	});
+
+	it('the installer deletes the uploaded config itself when its run ends', () => {
+		// scripts/owlat removes the plaintext config on every exit path when
+		// asked (scripts/__tests__/owlat-quickstart-config.test.ts), so a killed
+		// desktop cannot leave it behind; every install source asks.
+		for (const o of [
+			remote,
+			{ ...remote, version: '0.4.4' },
+			{ ...remote, localSource: '/x' },
+			{ ...remote, localSource: '/x', localImages: true },
+		]) {
+			expect(installerCommand(o)).toContain('OWLAT_CONSUME_CONFIG=1 ./scripts/owlat quickstart');
+		}
 	});
 
 	it('derives the install source from remote options', () => {

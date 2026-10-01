@@ -14,8 +14,8 @@
  *                         `settings:manage` (owner/admin). Unifies the
  *                         pre-deepening drift where any signed-in member
  *                         could write these fields.
- *   - `remove`           — schedules the **Organization deletion**
- *                         walker; owner-only.
+ *   - `remove`           — opens (or joins) the **Organization deletion**
+ *                         job; owner-only.
  *   - `createInternal`   — idempotent bootstrap (called by
  *                         `seedAdminHttp.ts`); fills the seed columns onto a
  *                         row another writer created first.
@@ -29,15 +29,18 @@
 import { v } from 'convex/values';
 import { MAX_TRUSTED_ARC_FORWARDERS, sanitizeTrustedForwarders } from '@owlat/shared/arcTrust';
 import { sealPolicyValidator } from '../mail/sealPolicy';
+import { beginSearchBodyPurge, stopSearchBodyPurge } from '../mail/_bodySearchLifecycle';
 import { mtaStsModeValidator } from '../lib/convexValidators';
 import { inboundRawRetentionDaysValidator } from '../lib/literalValidators';
-import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
+import { internalQuery, type MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { Doc } from '../_generated/dataModel';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { throwInvalidInput } from '../_utils/errors';
 import { internal } from '../_generated/api';
 import { recordAuditLog } from '../lib/auditLog';
 import { getInstanceSettings, upsertInstanceSettings } from '../lib/instanceSettings';
+import { beginWorkspaceDeletion } from './deletion/job';
 import {
 	getUserIdFromSession,
 	getMutationContext,
@@ -170,14 +173,23 @@ export const update = authedMutation({
 		// THE OPT-OUT HAS TO REMOVE, NOT JUST STOP (ADR-0059). Deep body search
 		// widens the plaintext carve-out to a ~8KB excerpt per message; an operator
 		// who turns it off is asking for that plaintext to be gone, not merely for
-		// new mail to skip it. A true→false transition therefore schedules the
-		// sweep that clears every `searchBody` already written. Gated on the
-		// TRANSITION (not on the argument) so re-saving an unrelated setting
-		// while it is already off cannot restart the walk.
-		if (args.isBodySearchIndexingEnabled === false && existing?.isBodySearchIndexingEnabled) {
-			await ctx.scheduler.runAfter(0, internal.mail.bodySearchBackfill.purgeSearchBodies, {
-				cursor: null,
+		// new mail to skip it. Writing the switch off therefore retires every
+		// index walk and starts the sweep that clears every `searchBody` already
+		// written, in THIS transaction. Keyed on the ARGUMENT: a save of other
+		// settings never touches it, while an explicit off on an instance that is
+		// already off repairs whatever an earlier, unfinished sweep left behind
+		// (it joins a sweep that is still live rather than forking a second one).
+		if (args.isBodySearchIndexingEnabled === false) {
+			await beginSearchBodyPurge(ctx, {
+				isTransition: existing?.isBodySearchIndexingEnabled === true,
 			});
+		} else if (
+			args.isBodySearchIndexingEnabled === true &&
+			!existing?.isBodySearchIndexingEnabled
+		) {
+			// Back on: a sweep still running stops, so the rest of the corpus is
+			// not erased behind the operator.
+			await stopSearchBodyPurge(ctx);
 		}
 		return settingsId;
 	},
@@ -213,8 +225,21 @@ export const remove = authedMutation({
 	handler: async (ctx) => {
 		const session = await getMutationContext(ctx);
 		requirePermission(session.role === 'owner', 'Only the owner can delete the organization');
-		await ctx.scheduler.runAfter(0, internal.workspaces.deletion.walker.start, {});
-		return { success: true, message: 'Organization deletion started' };
+		// Opens the durable job in THIS transaction, so the write fence is up the
+		// moment the owner is told the deletion started. A repeated request joins
+		// the job in progress instead of starting a second one.
+		const job = await beginWorkspaceDeletion(ctx, {
+			source: 'workspace_settings',
+			requestedBy: session.userId,
+		});
+		return {
+			success: true,
+			message: job.isJoined
+				? 'Organization deletion is already in progress'
+				: 'Organization deletion started',
+			generation: job.generation,
+			isJoined: job.isJoined,
+		};
 	},
 });
 

@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { publicQuery, publicMutation } from '../lib/authedFunctions';
 import { formsQuery, formsMutation } from './_helpers';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 
 /** Per-batch cap for the scheduled form-submission cascade delete. */
@@ -13,7 +13,6 @@ import { rateLimiter } from '../lib/rateLimiter';
 import { formFieldValidator } from '../lib/convexValidators';
 import type { TransitionOutcome as DoiTransitionOutcome } from '../contacts/doiLifecycle';
 import { findContactByConfirmationToken, isFormTokenDisabled } from '../contacts/doiLifecycle';
-import type { MarkConfirmedOutcome } from './submission';
 
 // Field configuration type
 export interface FormField {
@@ -249,9 +248,12 @@ export const getByConfirmationToken = publicQuery({
 		// A form-minted token follows the `forms` flag, like the submit endpoint.
 		if (await isFormTokenDisabled(ctx, args.token)) return null;
 
+		// Several signups can share one token. A still-pending row sorts first
+		// on the status key (only pending and confirmed rows carry a token), so
+		// the page offers the confirm step until the token is spent.
 		const submission = await ctx.db
 			.query('formSubmissions')
-			.withIndex('by_confirmation_token', (q) => q.eq('confirmationToken', args.token))
+			.withIndex('by_confirmation_token_and_status', (q) => q.eq('confirmationToken', args.token))
 			.first();
 
 		if (!submission) {
@@ -281,14 +283,18 @@ export const getByConfirmationToken = publicQuery({
 			return null;
 		}
 
-		// Expired-token parity with the contact-fallback branch above: a still-
-		// pending submission whose DOI token has lapsed resolves to null, same
-		// as a lapsed contact-level token. Only the pending state checks —
-		// confirmed submissions have had their token cleared from the contact,
-		// so re-checking it there would break the already-confirmed landing page.
+		// Parity with the contact-fallback branch above: a still-pending
+		// submission whose DOI token has lapsed, or that no contact holds any
+		// more (a global opt-out withdrew it), resolves to null — confirming it
+		// would fail. A token a resend or later signup replaced has no pending
+		// rows of its contact left: the replacement carried them to the new
+		// token. Only the pending state checks — confirmed submissions have had
+		// their token cleared from the contact, so re-checking it there would
+		// break the already-confirmed landing page.
 		if (submission.status === 'pending_confirmation') {
 			const contact = await findContactByConfirmationToken(ctx, args.token);
-			if (contact?.doiTokenExpiresAt && contact.doiTokenExpiresAt < Date.now()) {
+			if (!contact) return null;
+			if (contact.doiTokenExpiresAt && contact.doiTokenExpiresAt < Date.now()) {
 				return null;
 			}
 		}
@@ -318,15 +324,20 @@ export const getByConfirmationToken = publicQuery({
  * Confirm a form submission (double opt-in).
  *
  * Per ADR-0009 + ADR-0015: the form submission's `confirmationToken` is
- * the same string as the contact's `doiConfirmationToken`. Each module
+ * the same string as the contact's `doiConfirmationToken`, and one token is
+ * shared by every signup made while the contact was pending. Each module
  * owns its own table — this handler chains the two:
- *   1. **DOI lifecycle (module)** patches the contact + fires the
- *      `fire_topic_subscribed_triggers` and `contact_activity_topic_confirmed`
- *      effects.
- *   2. **Form submission (module)** patches the `formSubmissions` row to
- *      `success` via `markConfirmedByToken`.
+ *   1. **DOI lifecycle (module)** checks the token's identity and expiry,
+ *      patches the contact + fires the `fire_topic_subscribed_triggers` and
+ *      `contact_activity_topic_confirmed` effects.
+ *   2. **Form submission (module)** patches every form submission that
+ *      waited on the token to `success` via `markConfirmedByToken`.
  *
- * Idempotent — re-confirming an already-`success` submission returns
+ * Contact-level DOI added through any non-form path mints the same kind of
+ * token with no form row, and confirms through step 1 alone.
+ *
+ * Idempotent — the contact forgets a token once it is spent, but the form
+ * rows it finalized remember it, so a second click returns
  * `{ success: true, alreadyConfirmed: true }` without erroring.
  */
 type ConfirmSubmissionResult =
@@ -339,8 +350,6 @@ export const confirmSubmission = publicMutation({
 		token: v.string(),
 	},
 	handler: async (ctx, args): Promise<ConfirmSubmissionResult> => {
-		const now = Date.now();
-
 		// This publicMutation is reachable directly on the Convex client API,
 		// parallel to the rate-limited HTTP /confirm/doi route — cap confirm
 		// storms against a single token (the high-entropy token itself defeats
@@ -358,75 +367,44 @@ export const confirmSubmission = publicMutation({
 			return { success: false, error: 'invalid_token' };
 		}
 
-		// Step 1: peek the form-side state. The DOI side clears its token on
-		// confirm (per the lifecycle reducer), so a second click can't be
-		// disambiguated via DOI alone — the form-side memory of the token
-		// outlives DOI's. Catching the already-`success` case here also
-		// avoids a redundant DOI mutation when the user just refreshes the
-		// confirmation page.
-		const submission = await ctx.db
-			.query('formSubmissions')
-			.withIndex('by_confirmation_token', (q) => q.eq('confirmationToken', args.token))
-			.first();
-
-		if (!submission) {
-			// Contact-level DOI (added via the public API / any non-form path) mints
-			// the same token but has no formSubmissions row. Confirm it directly via
-			// the DOI lifecycle — there is no form row to patch in step 3.
-			const doiOnly: DoiTransitionOutcome = await ctx.runMutation(
-				internal.contacts.doiLifecycle.transitionByConfirmationToken,
-				{ token: args.token, input: { to: 'confirmed', at: now } }
-			);
-			if (!doiOnly.ok) {
-				if (doiOnly.reason === 'token_expired') return { success: false, error: 'token_expired' };
-				return { success: false, error: 'invalid_token' };
-			}
-			return { success: true, alreadyConfirmed: doiOnly.applied === 'recorded' };
-		}
-		if (submission.status === 'success') {
-			return { success: true, alreadyConfirmed: true };
-		}
-		if (submission.status !== 'pending_confirmation') {
-			return { success: false, error: 'invalid_status' };
-		}
-
-		// Step 2: confirm DOI on the contact. The lifecycle module owns the
-		// contact-side patch, the trigger fanout, the topic_confirmed
-		// activity rows, and the token-expiry check.
+		// Step 1: confirm DOI on the contact. The lifecycle module owns the
+		// contact-side patch, the trigger fanout, the topic_confirmed activity
+		// rows, and the token-expiry check. The rows below are stamped with the
+		// same time, which is how a carry still paging finds the token this
+		// confirmation consumed (forms/pendingConfirmations.ts).
+		const at = Date.now();
 		const doiOutcome: DoiTransitionOutcome = await ctx.runMutation(
 			internal.contacts.doiLifecycle.transitionByConfirmationToken,
-			{
-				token: args.token,
-				input: { to: 'confirmed', at: now },
-			}
+			{ token: args.token, input: { to: 'confirmed', at } }
 		);
 
 		if (!doiOutcome.ok) {
 			if (doiOutcome.reason === 'token_expired') {
 				return { success: false, error: 'token_expired' };
 			}
-			// token_not_found — the contact-side has no row matching this token.
+			// No contact holds the token. Either it was spent already — the rows
+			// it finalized remember it, so this is a repeat click — or it never
+			// existed, or its contact no longer holds it (a global opt-out
+			// withdrew it, or a resend or later signup replaced it and carried
+			// its pending rows to the new token).
+			const confirmed = await ctx.db
+				.query('formSubmissions')
+				.withIndex('by_confirmation_token_and_status', (q) =>
+					q.eq('confirmationToken', args.token).eq('status', 'success')
+				)
+				.first();
+			if (confirmed) return { success: true, alreadyConfirmed: true };
 			return { success: false, error: 'invalid_token' };
 		}
 
-		// Step 3: patch the form submission row to `success`. The peek above
-		// already filtered to `pending_confirmation`, so the only soft outcome
-		// here is the unlikely race where another caller flipped the row
-		// between the peek and now.
-		const submissionOutcome: MarkConfirmedOutcome = await ctx.runMutation(
-			internal.forms.submission.markConfirmedByToken,
-			{ token: args.token }
-		);
-
-		if (!submissionOutcome.ok) {
-			if (submissionOutcome.reason === 'already_confirmed') {
-				return { success: true, alreadyConfirmed: true };
-			}
-			if (submissionOutcome.reason === 'no_submission_for_token') {
-				return { success: false, error: 'invalid_token' };
-			}
-			return { success: false, error: 'invalid_status' };
-		}
+		// Step 2: finalize every form submission that waited on this token.
+		// `no_submission_for_token` is the contact-level DOI case; the other
+		// soft outcomes are a race with another confirmation of the same token.
+		await ctx.runMutation(internal.forms.submission.markConfirmedByToken, {
+			token: args.token,
+			contactId: doiOutcome.contactId,
+			at,
+		});
 
 		return { success: true, alreadyConfirmed: doiOutcome.applied === 'recorded' };
 	},

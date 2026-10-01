@@ -4,6 +4,9 @@ import type { ImapCommandModule } from '../types.js';
 import { asyncSession, syncSession } from '../helpers/session.js';
 import { serverFailure } from '../helpers/replies.js';
 import { resolveSelectedSet } from '../helpers/seqMap.js';
+import { expungeFromView, syncSequenceView } from '../helpers/sequenceView.js';
+import { loadCurrentUids } from '../helpers/membership.js';
+import { holdSequence } from '../helpers/sequenceGate.js';
 import { inBatches } from '../helpers/uidSet.js';
 
 interface ExpungeArgs {
@@ -18,6 +21,16 @@ interface ExpungeArgs {
  * to a UID set; bare EXPUNGE clears the whole folder. The UID set is resolved
  * against the folder first, so the mutation receives only UIDs that exist in
  * it, never an expansion of the raw ranges.
+ *
+ * Both first bring the client's sequence view up to date (announcing other
+ * sessions' changes), then number each expunged message against that view, the
+ * numbering the client holds, and take it out of the view as it is announced.
+ *
+ * A UID set goes to Convex in batches (Convex caps an array argument at 8,192
+ * elements), highest UIDs first: the backend walks downwards and stops at each
+ * batch's lowest UID, so the cursor it returns is where the next, lower batch
+ * starts and a backend without the view's `uids` still reports continuous
+ * sequence numbers.
  *
  * The pre-deepening handler mutated `this.selected.totalCount` and
  * `this.selected.highestModseq` directly; under immutable state the
@@ -45,14 +58,13 @@ export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 		}
 
 		return asyncSession(async () => {
+			const lease = holdSequence(deps, 'sync');
 			try {
-				// A bare EXPUNGE is one walk of the folder. A UID set goes out in
-				// batches, highest UIDs first: the backend walks downwards and stops
-				// at each batch's lowest UID, so the cursor it returns is where the
-				// next, lower batch starts and the sequence numbers stay continuous.
+				await lease.ready;
+				// A bare EXPUNGE is one walk of the folder.
 				let uidBatches: Array<number[] | undefined> = [undefined];
 				if (uidSpec) {
-					const { resolved } = await resolveSelectedSet(deps, state, uidSpec, true);
+					const { resolved } = await resolveSelectedSet(deps, state, uidSpec, true, send, lease);
 					if (resolved.length === 0) {
 						send(`${tag} OK ${label} completed`);
 						return;
@@ -60,7 +72,14 @@ export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 					// `resolved` is ascending, so the batches are taken from the end;
 					// each batch itself stays ascending.
 					uidBatches = inBatches(resolved.map((r) => r.uid)).reverse();
+				} else if (state.selected!.view) {
+					await syncSequenceView(deps, state, send, lease);
 				}
+				// Every EXPUNGE below renumbers the view: commands sent before this
+				// one finish with the numbering they started with.
+				await lease.exclusive();
+				const view = state.selected!.view;
+				let viewNeedsReload = false;
 
 				let selected = state.selected!;
 				let beforeUid: number | undefined;
@@ -75,12 +94,19 @@ export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 						});
 						// Each page has already committed. Publish it before requesting the
 						// next page so a later failure cannot hide permanent deletions.
-						for (const seq of [...result.sequenceNumbers].sort((a, b) => b - a)) {
-							send(`* ${seq} EXPUNGE`);
+						let sequenceNumbers: number[];
+						if (view && result.uids) {
+							sequenceNumbers = expungeFromView(view, result.uids);
+						} else {
+							// A backend older than the view (no `uids`): its numbers are the
+							// folder's own, and the view is re-read once the folder settles.
+							sequenceNumbers = [...result.sequenceNumbers].sort((a, b) => b - a);
+							viewNeedsReload = view !== undefined;
 						}
+						for (const seq of sequenceNumbers) send(`* ${seq} EXPUNGE`);
 						selected = {
 							...selected,
-							totalCount: Math.max(0, selected.totalCount - result.sequenceNumbers.length),
+							totalCount: Math.max(0, selected.totalCount - sequenceNumbers.length),
 							highestModseq: result.modseq,
 						};
 						deps.commit({ ...state, selected });
@@ -97,11 +123,16 @@ export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 						nextSequenceNumber = undefined;
 					}
 				}
+				if (view && viewNeedsReload) {
+					view.uids = await loadCurrentUids(deps.convex, state.selected!.folderId);
+				}
 
 				send(`${tag} OK ${label} completed`);
 			} catch (err) {
 				logger.error({ err }, 'EXPUNGE failed');
 				send(serverFailure(tag, label));
+			} finally {
+				lease.release();
 			}
 		});
 	},

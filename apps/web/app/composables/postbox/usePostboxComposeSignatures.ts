@@ -23,6 +23,11 @@ export function usePostboxComposeSignatures(opts: {
 	bodyHtml: Ref<string>;
 	/** True when reopening a saved draft — suppresses the auto-prepend. */
 	isReopenedDraft: boolean;
+	/**
+	 * True while a reopened draft's body has not loaded: a signature picked then
+	 * would become the whole body and replace the saved one.
+	 */
+	bodyLocked?: () => boolean;
 }) {
 	// Signatures for this mailbox. The default is auto-prepended to a fresh
 	// draft; the composer toolbar lets the user pick a different one per
@@ -39,6 +44,7 @@ export function usePostboxComposeSignatures(opts: {
 
 	/** Swap the in-body signature block to the chosen signature (or none). */
 	function applySignature(signatureId: Id<'mailSignatures'> | null) {
+		if (opts.bodyLocked?.()) return;
 		const sig = signatureId ? signatures.value.find((s) => s._id === signatureId) : null;
 		opts.bodyHtml.value = applySignatureToBody(opts.bodyHtml.value, sig?.html ?? '');
 		activeSignatureId.value = sig?._id ?? null;

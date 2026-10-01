@@ -1,7 +1,13 @@
 import * as mailMessage from '@owlat/mail-message';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-import { ingestMessage, syntheticMessageId, type RawUploadConfig } from '../ingest.js';
+import {
+	ingestMessage,
+	RAW_UPLOAD_TIMEOUT_MS,
+	syntheticMessageId,
+	type RawUploadConfig,
+	type StagedIngest,
+} from '../ingest.js';
 import type { ConvexClient } from '../convex.js';
 
 /** Build a mock Convex client that records the args of the single `action` call. */
@@ -10,7 +16,7 @@ function mockConvex() {
 	return {
 		client: { action } as unknown as ConvexClient,
 		action,
-		lastPayload: () => action.mock.calls[0]?.[1] as Record<string, unknown>,
+		lastPayload: () => action.mock.calls[0]?.[1] as StagedIngest['args'],
 	};
 }
 
@@ -166,12 +172,10 @@ describe('ingestMessage', () => {
 		expect(payload.textBodyInline).toContain('This is the body text.');
 		// The raw `.eml` goes out of band; the call carries only its storage id,
 		// its size, and the 64 KiB header block the action reads headers from.
-		expect(payload.rawBytesBase64).toBeUndefined();
+		expect(payload).not.toHaveProperty('rawBytesBase64');
 		expect(payload.rawStorageId).toBe('kg_raw_1');
 		expect(payload.rawSize).toBe(1234);
-		expect(Buffer.from(payload.headerBlockBase64 as string, 'base64').toString()).toContain(
-			'Hello there'
-		);
+		expect(Buffer.from(payload.headerBlockBase64, 'base64').toString()).toContain('Hello there');
 	});
 
 	it('uploads the raw bytes out of band, authenticated, before referencing them', async () => {
@@ -198,6 +202,43 @@ describe('ingestMessage', () => {
 		// The WHOLE message goes up, not a capped prefix — the size ceiling this
 		// replaced is exactly what used to drop large mail.
 		expect(Buffer.from(calls[0]!.init.body as Uint8Array).toString()).toBe(RAW);
+		// And it carries a deadline, so a hung upload cannot stall the folder.
+		expect(calls[0]!.init.signal).toBeInstanceOf(AbortSignal);
+	});
+
+	it('throws when the raw upload hangs past its deadline, without ingesting', async () => {
+		// A peer that never answers: the request only ends when its signal fires,
+		// rejecting the way undici does.
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(
+				(_url: string | URL, init: RequestInit) =>
+					new Promise((_resolve, reject) => {
+						init.signal?.addEventListener('abort', () => reject(init.signal!.reason));
+					})
+			)
+		);
+		const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => {
+			const controller = new AbortController();
+			setTimeout(() => controller.abort(new DOMException('timed out', 'TimeoutError')), 5);
+			return controller.signal;
+		});
+		const { client, action } = mockConvex();
+
+		await expect(
+			ingestMessage(client, UPLOAD, {
+				accountId: 'acct_1',
+				folderRole: 'inbox',
+				remoteName: 'INBOX',
+				remoteUid: 42,
+				remoteUidValidity: 7,
+				raw: Buffer.from(RAW),
+				flags: new Set<string>(),
+				origin: 'sync',
+			})
+		).rejects.toThrow('timed out');
+		expect(timeoutSpy).toHaveBeenCalledWith(RAW_UPLOAD_TIMEOUT_MS);
+		expect(action).not.toHaveBeenCalled();
 	});
 
 	it('throws when the raw upload fails, so the walk counts the message as failed', async () => {
@@ -366,7 +407,7 @@ describe('ingestMessage', () => {
 			origin: 'sync',
 		});
 
-		const attachments = lastPayload().attachments as Array<Record<string, unknown>>;
+		const attachments = lastPayload().attachments;
 		expect(attachments).toHaveLength(1);
 		expect(attachments[0]?.filename).toBe('pic.png');
 		expect(attachments[0]?.contentType).toBe('image/png');
@@ -419,7 +460,7 @@ describe('ingestMessage', () => {
 			origin: 'sync',
 		});
 
-		const attachments = lastPayload().attachments as Array<Record<string, unknown>>;
+		const attachments = lastPayload().attachments;
 		expect(attachments).toHaveLength(1);
 		// Delta (1): parse-layer default, not `attachment-1`.
 		expect(attachments[0]?.filename).toBe('attachment');

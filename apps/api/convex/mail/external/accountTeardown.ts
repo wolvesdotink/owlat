@@ -25,14 +25,22 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, type MutationCtx } from '../../_generated/server';
+import type { MutationCtx } from '../../_generated/server';
+import { internalMutation } from '../../lib/writeFence';
 import { internal } from '../../_generated/api';
 import { removeMessageAttachments } from '../attachmentIndex';
 import { deleteMessageRowAndBlobs } from '../messagePurge';
+import { deleteMailboxUsage } from '../mailboxUsage';
+import { deleteFolderCounters, deleteMailboxCounters } from '../messageCounters';
+import { dropFolderMembership } from '../folderMembership';
 import { isFeatureEnabled } from '../../lib/featureFlags';
 import { cancelActiveMigrationForAccount } from './accountShared';
+import { deleteStoredAccessToken } from './accessTokenStore';
 import { listMailboxesOnAddress } from '../mailbox/addressResolution';
 import type { Doc } from '../../_generated/dataModel';
+import { deleteMailThreadCatchUps } from '../ai/catchUpStore';
+import { deleteResourceUploads, mailThreadUploadKey } from '../../storage/uploads';
+import { deleteAskSessionsForDraft } from '../ai/composeDraftStore';
 
 /** Messages deleted per purge step; the step re-schedules itself while more remain. */
 const PURGE_CHUNK = 200;
@@ -78,6 +86,9 @@ export async function stopExternalAccountSync(
 		secretAuthTag: undefined,
 		secretEnvelopeVersion: undefined,
 	});
+	// And the access token minted from it: forgetting the grant but keeping a
+	// token that still opens the mailbox for up to an hour would not be forgetting.
+	await deleteStoredAccessToken(ctx, account._id);
 	// `cancelActiveMigrationForAccount` is the quiet half (no audit row) — the
 	// audited `migration.cancel` is for a member cancelling an import they meant
 	// to run. Here the mailbox is going away in the same transaction, and this
@@ -186,7 +197,11 @@ export const _purgeChunk = internalMutation({
 			.query('mailFolders')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
 			.collect(); // bounded: per-mailbox folder set
-		for (const f of folders) await ctx.db.delete(f._id);
+		for (const f of folders) {
+			await deleteFolderCounters(ctx, f._id);
+			await dropFolderMembership(ctx, f._id);
+			await ctx.db.delete(f._id);
+		}
 
 		// Threads are per-conversation, not per-message, but a long-lived mailbox can
 		// still hold more of them than one mutation may delete. Drain them a page at
@@ -196,7 +211,13 @@ export const _purgeChunk = internalMutation({
 			.query('mailThreads')
 			.withIndex('by_mailbox_and_last_message', (q) => q.eq('mailboxId', args.mailboxId))
 			.take(PURGE_CHUNK);
-		for (const t of threads) await ctx.db.delete(t._id);
+		for (const t of threads) {
+			// Answer mode catch-up cards retell the thread's mail.
+			await deleteMailThreadCatchUps(ctx, t._id);
+			// A Reply Queue answer's upload the thread still holds.
+			await deleteResourceUploads(ctx, mailThreadUploadKey(t._id));
+			await ctx.db.delete(t._id);
+		}
 		if (threads.length === PURGE_CHUNK) {
 			await ctx.scheduler.runAfter(0, internal.mail.external.accountTeardown._purgeChunk, args);
 			return;
@@ -218,7 +239,11 @@ export const _purgeChunk = internalMutation({
 			.query('mailDrafts')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
 			.collect(); // bounded: per-mailbox drafts
-		for (const d of drafts) await ctx.db.delete(d._id);
+		for (const d of drafts) {
+			// Ask sessions quote the mail and hold the owner's answers and draft stream.
+			await deleteAskSessionsForDraft(ctx, d._id);
+			await ctx.db.delete(d._id);
+		}
 
 		const labels = await ctx.db
 			.query('mailLabels')
@@ -248,6 +273,7 @@ export const _purgeChunk = internalMutation({
 			.withIndex('by_account', (q) => q.eq('accountId', args.accountId))
 			.collect(); // bounded: per-account folder cursors (≤ a handful)
 		for (const sr of syncRows) await ctx.db.delete(sr._id);
+		await deleteStoredAccessToken(ctx, args.accountId);
 
 		// The account's import jobs (personal migrations AND team-inbox ones) point
 		// at a row that is about to stop existing — drop them. Deleting is enough to
@@ -270,6 +296,8 @@ export const _purgeChunk = internalMutation({
 		for (const mv of moves) await ctx.db.delete(mv._id);
 
 		await ctx.db.delete(args.accountId);
+		await deleteMailboxUsage(ctx, args.mailboxId);
+		await deleteMailboxCounters(ctx, args.mailboxId);
 		await ctx.db.delete(args.mailboxId);
 	},
 });

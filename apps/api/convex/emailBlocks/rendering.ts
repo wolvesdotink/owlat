@@ -2,7 +2,7 @@
 
 /**
  * Saved-block rerender action. The render itself is the shared
- * `renderPublishableEmail` (lib/publishableEmail.ts), which the editor save
+ * `renderPublishableEmail` (lib/publishableEmailRender.ts), which the editor save
  * and publish mutations also call. Enqueued by the saved-block module's
  * `schedule_rerender` effect into the `rerenderBlocksPool` (see
  * `renderingPool.ts`).
@@ -19,6 +19,7 @@
 import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
+import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
 import type { EmailTheme } from '@owlat/shared';
 import type { RerenderPatchOutcome } from './renderingPool';
 import { currentContentRevision } from '../lib/contentRevision';
@@ -27,11 +28,11 @@ import {
 	type PublishableEmailVariableType,
 	type RenderablePublishableEmail,
 	type RenderedPublishableEmail,
-} from '../lib/publishableEmail';
+} from '../lib/publishableEmailRender';
 
 // ─── Per-consumer-row rerender ───────────────────────────────────────────────
 //
-// The render itself is `renderPublishableEmail` in lib/publishableEmail.ts,
+// The render itself is `renderPublishableEmail` in lib/publishableEmailRender.ts,
 // which the editor save and publish mutations call too, so every stored HTML
 // comes from the same function over the same stored blocks.
 
@@ -99,6 +100,7 @@ export const reRenderEmails = internalAction({
 						htmlTranslations,
 						plainTextContent,
 						expectedContentRevision: currentContentRevision(template),
+						rendererVersion: EMAIL_RENDERER_VERSION,
 					}),
 			});
 		}
@@ -115,6 +117,7 @@ export const reRenderEmails = internalAction({
 						htmlTranslations,
 						plainTextContent,
 						expectedContentRevision: currentContentRevision(email),
+						rendererVersion: EMAIL_RENDERER_VERSION,
 					}),
 			});
 		}

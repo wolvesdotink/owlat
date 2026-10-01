@@ -1,6 +1,8 @@
 /**
- * Feature flags (module) — sole writer of the singleton
- * `instanceSettings` row's `featureFlags` map. Sibling of
+ * Feature flags (module) — sole writer of the feature flag map and plugin
+ * capability grants on the `featureFlagSettings` singleton (through
+ * `lib/featureFlagSettings.ts`, which mirrors them onto the deprecated
+ * `instanceSettings` columns). Sibling of
  * **Organization settings (module)** (which owns the settings columns),
  * **Abuse status (module)** (which owns the abuse-status columns), and
  * the **Organization deletion (module)** walker.
@@ -32,7 +34,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery, internalMutation, type MutationCtx } from '../_generated/server';
+import { internalQuery, type MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { publicQuery, authedQuery, authedMutation } from '../lib/authedFunctions';
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
 import { isEnvPresent } from '../lib/env';
@@ -56,7 +59,7 @@ import {
 } from '@owlat/shared/featureFlags';
 import { getStoredFlags } from '../lib/featureFlags';
 import { recordAuditLog } from '../lib/auditLog';
-import { getInstanceSettings, upsertInstanceSettings } from '../lib/instanceSettings';
+import { readFeatureFlagSettings, writeFeatureFlagSettings } from '../lib/featureFlagSettings';
 import { hasStoredAiProviderConfig } from '../lib/aiNotConfigured';
 import { throwInvalidInput } from '../_utils/errors';
 import {
@@ -115,8 +118,7 @@ export const getFlagsConfigStatus = authedQuery({
 		// same way `LLM_PROVIDER`/`LLM_API_KEY` in env do — env stays the fallback,
 		// a stored config also counts. Org-singleton ⇒ `first()` is bounded (≤1 row).
 		const aiConfigStored = await hasStoredAiProviderConfig(ctx.db);
-		const settings = await getInstanceSettings(ctx.db);
-		const pluginCapabilityGrants = settings?.pluginCapabilityGrants ?? {};
+		const { pluginCapabilityGrants } = await readFeatureFlagSettings(ctx.db);
 		const status: Record<string, string[]> = {};
 		for (const def of Object.values(FEATURE_FLAG_REGISTRY)) {
 			const missing: string[] = [];
@@ -194,18 +196,18 @@ export const setFeatureFlag = authedMutation({
 		const stored = await getStoredFlags(ctx);
 		const { next, cascaded } = applyToggle(stored, flag, args.value, FEATURE_FLAG_REGISTRY);
 
-		const existing = await getInstanceSettings(ctx.db);
+		const existing = await readFeatureFlagSettings(ctx.db);
 		const patch = pluginFlag
 			? {
 					featureFlags: next,
 					pluginCapabilityGrants: updatePluginCapabilityGrants(
-						existing?.pluginCapabilityGrants ?? {},
+						existing.pluginCapabilityGrants,
 						flag,
 						approvedPluginGrants
 					),
 				}
 			: { featureFlags: next };
-		const settingsId = await upsertInstanceSettings(ctx, patch);
+		const settingsId = await writeFeatureFlagSettings(ctx, patch);
 		if (pluginFlag) {
 			await recordAuditLog(ctx, {
 				userId: session.userId,
@@ -283,14 +285,14 @@ export const setFeaturePack = authedMutation({
 		const stored = await getStoredFlags(ctx);
 		const { next, cascaded } = applyPackToggle(stored, packKey, args.value, FEATURE_FLAG_REGISTRY);
 
-		await upsertInstanceSettings(ctx, { featureFlags: next });
+		await writeFeatureFlagSettings(ctx, { featureFlags: next });
 
 		return { flags: next, cascaded };
 	},
 });
 
 /** Validate, cascade-resolve, and persist the whole flag map onto the
- * singleton instanceSettings row. Shared by the admin mutation and the
+ * `featureFlagSettings` singleton. Shared by the admin mutation and the
  * setup-seed internal mutation so both stay the sole writer of the map. */
 async function writeAllFlags(ctx: MutationCtx, flags: FeatureFlagState) {
 	for (const key of Object.keys(flags)) {
@@ -303,9 +305,9 @@ async function writeAllFlags(ctx: MutationCtx, flags: FeatureFlagState) {
 		}
 	}
 
-	const existing = await getInstanceSettings(ctx.db);
+	const existing = await readFeatureFlagSettings(ctx.db);
 	const currentOverrides = registeredFeatureFlagOverrides(
-		(existing?.featureFlags ?? {}) as FeatureFlagState,
+		existing.featureFlags as FeatureFlagState,
 		FEATURE_FLAG_REGISTRY
 	);
 	const pluginOverrides: FeatureFlagState = {};
@@ -321,11 +323,11 @@ async function writeAllFlags(ctx: MutationCtx, flags: FeatureFlagState) {
 	const patch = {
 		featureFlags: { ...resolvedCoreFlags, ...pluginOverrides },
 		pluginCapabilityGrants: preserveRegisteredPluginGrants(
-			existing?.pluginCapabilityGrants ?? {},
+			existing.pluginCapabilityGrants,
 			pluginOverrides
 		),
 	};
-	return await upsertInstanceSettings(ctx, patch);
+	return await writeFeatureFlagSettings(ctx, patch);
 }
 
 export const setAllFeatureFlags = authedMutation({
@@ -378,7 +380,7 @@ function preserveRegisteredPluginGrants(
  * Persist the setup wizard's chosen flags during first-run seeding. Called by
  * the `/seed/admin` HTTP action (no session yet), so it skips the admin gate —
  * it is reachable only from the instance-secret-protected seed path. Without
- * this, instanceSettings.featureFlags stays unset and every wizard selection is
+ * this, the stored flag map stays unset and every wizard selection is
  * silently discarded in favour of the compiled-in defaults.
  */
 export const setAllInternal = internalMutation({

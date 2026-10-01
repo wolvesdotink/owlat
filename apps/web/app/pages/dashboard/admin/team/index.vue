@@ -34,6 +34,10 @@ const {
 	cancelInvite,
 	resendInvite,
 } = useOrganization();
+// Nothing loads the roster at boot any more; this page asks for it (the
+// invite modal reads the same invitations). Started in setup so the spinner
+// shows from the first frame instead of an empty roster.
+void fetchMembers();
 
 // Roster search + per-member mailbox status (hosted / external / none).
 const { memberSearch, filteredMembers, isMailboxStatusPending, mailboxMetaFor } =
@@ -301,12 +305,13 @@ const formatExpiryTime = (expiresAt: Date) => {
 			</div>
 		</div>
 		<!-- Loading State -->
-		<div v-if="isLoading && members.length === 0" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">{{ t('dashboard.admin.team.loading') }}</p>
-			</div>
-		</div>
+		<DashboardDetailSkeleton
+			v-if="isLoading && members.length === 0"
+			:label="t('dashboard.admin.team.loading')"
+			:header="false"
+			body="list"
+			:sections="4"
+		/>
 
 		<!-- Error State — the members fetch failed and we have nothing to show -->
 		<UiCard v-else-if="membersError && members.length === 0" padding="none" overflow="hidden">

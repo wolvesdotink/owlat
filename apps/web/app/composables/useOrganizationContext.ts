@@ -59,52 +59,35 @@ function workspaceSettingsQuery(): NonNullable<SettingsQuery> {
  */
 export function useOrganizationContext() {
 	const { isPending: authPending, activeOrganizationId, user } = useAuth();
-	const {
-		organization,
-		organizations,
-		isLoadingMembers,
-		hasResolvedMembers,
-		activeOrganizationError,
-		currentMemberRole,
-		setActive,
-	} = useOrganization();
+	const { organization, organizations, setActive } = useOrganization();
+	const { role: memberRole, isResolved: roleResolved } = useActiveMemberRole();
 
 	// Instance settings from Convex (timezone, email theme, etc.) — shared, see
 	// `workspaceSettingsQuery`.
 	const { data: settings, isLoading: settingsLoading, error } = workspaceSettingsQuery();
 
-	// Loading logic:
-	// 1. If auth session is still loading, we're loading
-	// 2. If user doesn't have an active organization in their session, no need to wait for org data
-	// 3. Otherwise, wait for Convex settings and member data (for role) to load
-	// Note: we don't include BetterAuth's hook isPending here — authPending already
-	// gates the initial state, and the session provides the activeOrganizationId.
+	// Loading means "the member's role is not known yet":
+	// 1. the session itself is still loading, or
+	// 2. the session names an active organization and the role lookup for it has
+	//    not settled. It settles on failure too (no role), so nothing waiting on
+	//    this can hang on a request that already failed.
+	// No active organization means no role is coming: loaded. Neither the member
+	// list nor the invitation list is involved; only roster pages load those.
+	// The `auth` guard does not wait on this at all, only `admin` does, so every
+	// other page renders at once and shows skeletons for its role-gated parts.
 	const isLoading = computed(() => {
 		if (authPending.value) return true;
 		if (!activeOrganizationId.value) return false;
-		// A failed active-organization request is a settled answer — no role is
-		// coming — so report loaded and let the caller act on what it has. Waiting
-		// on it instead would trade the bounce for a worse bug: every guard
-		// stalling its full timeout and every page that folds this into a loading
-		// flag spinning forever.
-		if (activeOrganizationError.value) return false;
-		// Not `isLoadingMembers`: that starts false and only turns true once the
-		// fetch begins, which waits on BetterAuth's separate organization request.
-		// Reading it directly reports "loaded" during the window where the role is
-		// simply not known yet — and a guard that asks "is this user an admin?"
-		// then gets `false` for an owner. Stay loading until the fetch has SETTLED.
-		return !hasResolvedMembers.value || isLoadingMembers.value;
+		return !roleResolved.value;
 	});
 
 	const isSettingsLoading = computed(() => settingsLoading.value);
 
 	const organizationId = computed(() => activeOrganizationId.value ?? null);
 
-	// Use the current member role from useOrganization (fetched via member list)
-	// This is more reliable than trying to extract from useActiveOrganization hook
-	const role = computed<OrganizationRole | null>(() => {
-		return currentMemberRole.value ?? null;
-	});
+	// One small `get-active-member` lookup keyed on the session (see
+	// `useActiveMemberRole`), not the member list.
+	const role = computed<OrganizationRole | null>(() => memberRole.value ?? null);
 
 	return {
 		// BetterAuth organization data (name, slug, etc.)

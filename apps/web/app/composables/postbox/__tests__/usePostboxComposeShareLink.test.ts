@@ -10,7 +10,10 @@
  *   - a file the malware scan refused changes NOTHING — the attachment is still
  *     on the draft, the body is untouched, and the user is told why. A silently
  *     vanished attachment is far worse than a bounce at send time;
- *   - a failed call (offline, no draft) is likewise a no-op on both.
+ *   - a failed call (offline, no draft) is likewise a no-op on both;
+ *   - a reopened draft whose body has not loaded refuses the swap outright:
+ *     the link block would land in an empty body and replace the saved one
+ *     (#896).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
@@ -37,10 +40,12 @@ vi.mock('@owlat/api', () => ({
 
 /** What `attachmentSharesActions.shareDraftAttachment` answers this run. */
 let shareOutcome: { ok: boolean; result?: unknown };
+let shareCalls: number;
 const showToast = vi.fn();
 
 beforeEach(() => {
 	showToast.mockClear();
+	shareCalls = 0;
 	shareOutcome = {
 		ok: true,
 		result: {
@@ -63,22 +68,28 @@ beforeEach(() => {
 	vi.stubGlobal('formatCompactFileSize', formatCompactFileSize);
 	vi.stubGlobal('formatDate', formatDate);
 	vi.stubGlobal('useBackendOperation', (fn: unknown) => ({
-		run: vi.fn(async () =>
-			fn === 'attachmentSharesActions.shareDraftAttachment'
-				? shareOutcome
-				: { ok: true, result: { ok: true } }
-		),
+		run: vi.fn(async () => {
+			if (fn !== 'attachmentSharesActions.shareDraftAttachment') {
+				return { ok: true, result: { ok: true } };
+			}
+			shareCalls += 1;
+			return shareOutcome;
+		}),
 		isLoading: ref(false),
 	}));
 });
 
-async function makeAttachments(bodyHtml = ref('<p>Numbers attached.</p>')) {
+async function makeAttachments(
+	bodyHtml = ref('<p>Numbers attached.</p>'),
+	bodyLocked?: () => boolean
+) {
 	const { usePostboxComposeAttachments } = await import('../usePostboxComposeAttachments');
 	const composable = withSetup(() =>
 		usePostboxComposeAttachments({
 			ensureDraft: async () => 'd1' as never,
 			draftId: ref('d1' as never),
 			bodyHtml,
+			bodyLocked,
 		})
 	).result;
 	composable.attachments.value = [
@@ -137,6 +148,16 @@ describe('usePostboxComposeAttachments — share as link instead', () => {
 
 		expect(composable.attachments.value).toHaveLength(1);
 		expect(bodyHtml.value).toBe(before);
+	});
+
+	it('refuses the swap while a reopened draft body is still loading', async () => {
+		const { composable, bodyHtml } = await makeAttachments(ref(''), () => true);
+
+		await expect(composable.shareAsLink('st-1')).resolves.toBe(false);
+
+		expect(shareCalls).toBe(0);
+		expect(composable.attachments.value).toHaveLength(1);
+		expect(bodyHtml.value).toBe('');
 	});
 
 	it('refuses a storageId that is not on this draft', async () => {

@@ -1,12 +1,8 @@
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
-import {
-	internalMutation,
-	internalQuery,
-	type MutationCtx,
-	type QueryCtx,
-} from '../_generated/server';
+import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { requireSelf } from '../lib/sessionOrganization';
 
 const ACCOUNT_EXPORT_TTL_MS = 60 * 60 * 1_000;

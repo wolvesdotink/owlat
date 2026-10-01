@@ -119,6 +119,7 @@ const decisionFeatureState = computed(() => {
 // Same shared composable + dialog the General settings page uses.
 const {
 	showDialog: showUnsavedDialog,
+	isSavingBeforeLeave,
 	confirmDiscard,
 	confirmSave,
 	cancelNavigation,
@@ -452,6 +453,7 @@ watch(isDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 		<!-- Unsaved Changes Dialog -->
 		<UnsavedChangesDialog
 			:show="showUnsavedDialog"
+			:saving="isSavingBeforeLeave"
 			@close="cancelNavigation"
 			@discard="confirmDiscard"
 			@save="confirmSave"

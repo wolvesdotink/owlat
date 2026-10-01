@@ -8,18 +8,29 @@
  * transitionByProviderMessageId). Reducers return { patch, effects, applied };
  * the runner is the only place that touches the DB and the scheduler.
  *
+ * Consent episodes: a confirmation counts only for the episode it was issued
+ * in. A global opt-out ends the episode (`endConsentEpisode`: the token is
+ * withdrawn and `doiConsentEpisode` moves on), and a later public signup opens
+ * a new one (`reopen`) instead of reusing the old confirmation. See ADR-0009's
+ * 2026-10 amendments.
+ *
  * Effects:
  *   send_confirmation_email          — schedules confirmationEmail.send
  *   fire_topic_subscribed_triggers   — fans out to DOI-required memberships
  *   contact_activity                 — one `topic_confirmed` row per
  *                                      DOI-required membership; routed
  *                                      through the Contact activity (module)
+ *   carry_pending_submissions        — moves the form submissions that waited
+ *                                      on a replaced token to the new one;
+ *                                      routed through the Form submission
+ *                                      (module)
  *
  * See docs/adr/0009-doi-lifecycle-module.md.
  */
 
 import { v } from 'convex/values';
-import { internalMutation, type MutationCtx, type QueryCtx } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import {
@@ -49,6 +60,12 @@ export type TransitionInput =
 			token: string;
 			ttlMs: number;
 			siteUrl?: string;
+			/**
+			 * Open a new consent episode for a contact whose earlier confirmation
+			 * a global opt-out has since ended. Sanctions `confirmed → pending`,
+			 * and only while `contacts.unsubscribedAt` is set; refused otherwise.
+			 */
+			reopen?: boolean;
 	  }
 	| { to: 'confirmed'; at: number }
 	| {
@@ -88,6 +105,7 @@ const transitionInputValidator = v.union(
 		token: v.string(),
 		ttlMs: v.number(),
 		siteUrl: v.optional(v.string()),
+		reopen: v.optional(v.boolean()),
 	}),
 	// Admin-attest variant declared before the plain `{ to: 'confirmed', at }`
 	// variant so the union validator matches the discriminated `source` field
@@ -110,10 +128,11 @@ const transitionInputValidator = v.union(
 // The graph and the dispatcher preamble that reads it live in the generic
 // lifecycle core (`lib/lifecycle.ts`, ADR-0058); the reducers and effects below
 // stay here. `confirmed` is terminal and this machine publishes the distinct
-// `terminal` refusal, so `reportsTerminalRefusals` is on. The one edge the
-// graph cannot express — ADR-0019's admin-attest relaxation of
-// `not_required → confirmed` — rides the per-call `isSanctionedEdge` opt-out
-// in `dispatch` rather than being declared here.
+// `terminal` refusal, so `reportsTerminalRefusals` is on. The two edges the
+// graph cannot express ride the per-call `isSanctionedEdge` opt-out in
+// `dispatch` rather than being declared here: ADR-0019's admin-attest
+// relaxation of `not_required → confirmed`, and the `reopen` of
+// `confirmed → pending` for a contact whose consent a global opt-out ended.
 
 const DOI_LIFECYCLE = defineLifecycle<DoiStatus>(
 	{
@@ -155,15 +174,28 @@ type Effect =
 			topicIds: ReadonlyArray<Id<'topics'>>;
 	  }
 	| {
-			// Fires on the admin-attest path. The token-keyed confirm and the
-			// pending transition do not emit audit_log entries today — adding
-			// universal audit_log to the DOI lifecycle is tracked separately;
-			// this kind only fires for `to: 'confirmed', source: 'admin_attest'`.
+			// A new token replaced one the contact still held (a lapsed one; a
+			// live token is kept). The form submissions that waited on it move to
+			// the new token, so the next confirmation finalizes them as well.
+			// `episode` is the contact's consent episode; a follow-up page that
+			// finds it moved on stops.
+			kind: 'carry_pending_submissions';
+			contactId: Id<'contacts'>;
+			fromToken: string;
+			toToken: string;
+			episode: number;
+	  }
+	| {
+			// Fires on the admin-attest path and when a new consent episode is
+			// opened over an earlier confirmation (`reopen`), so the confirmation
+			// it supersedes stays on the record. The plain token-keyed confirm and
+			// pending transitions do not emit audit_log entries today — adding
+			// universal audit_log to the DOI lifecycle is tracked separately.
 			kind: 'audit_log';
-			action: 'doi.admin_attested';
+			action: 'doi.admin_attested' | 'doi.reconfirmation_requested';
 			contactId: Id<'contacts'>;
 			triggeredBy: string;
-			attestSource: string;
+			details: Record<string, string | number>;
 	  }
 	| ContactActivityEffect;
 
@@ -179,16 +211,90 @@ type ReducerResult = {
 // confirmed reducer) the pre-resolved DOI-required topic ids, return a
 // ReducerResult. Reducers do not touch the DB or the scheduler.
 
+/**
+ * Whether the contact holds a confirmation token that can still be redeemed.
+ * A pending contact can lack one: a global opt-out withdraws it, and an
+ * unclicked one lapses after `DOI_TOKEN_TTL_MS`.
+ */
+function holdsLiveToken(contact: Doc<'contacts'>, at: number): boolean {
+	if (contact.doiConfirmationToken === undefined) return false;
+	return contact.doiTokenExpiresAt === undefined || contact.doiTokenExpiresAt >= at;
+}
+
+/**
+ * Whether the contact is globally opted out and its token was issued at or
+ * before that opt-out. Every token is minted with `DOI_TOKEN_TTL_MS`, so its
+ * issue time is `doiTokenExpiresAt - DOI_TOKEN_TTL_MS`; a token without an
+ * expiry predates expiries and counts as earlier. A global opt-out withdraws
+ * the token now, so only a contact that opted out before that change can
+ * still hold one (see migration 0057).
+ */
+export function tokenPredatesOptOut(
+	contact: Pick<Doc<'contacts'>, 'doiConfirmationToken' | 'doiTokenExpiresAt' | 'unsubscribedAt'>
+): boolean {
+	if (contact.doiConfirmationToken === undefined || contact.unsubscribedAt === undefined) {
+		return false;
+	}
+	if (contact.doiTokenExpiresAt === undefined) return true;
+	return contact.doiTokenExpiresAt - DOI_TOKEN_TTL_MS <= contact.unsubscribedAt;
+}
+
+/** The contact's consent episode; a contact no global opt-out reached is in 0. */
+function consentEpisodeOf(contact: Doc<'contacts'>): number {
+	return contact.doiConsentEpisode ?? 0;
+}
+
+/**
+ * The token whose pending form submissions a replacement by `newToken`
+ * carries over, if any. A withdrawn token is no longer on the contact, and a
+ * token that predates the contact's opt-out belongs to the episode the
+ * opt-out ended, so neither is carried.
+ */
+function outgoingTokenToCarry(contact: Doc<'contacts'>, newToken: string): string | undefined {
+	const token = contact.doiConfirmationToken;
+	if (token === undefined || token === newToken || tokenPredatesOptOut(contact)) return undefined;
+	return token;
+}
+
 function reducePending(
 	contact: Doc<'contacts'>,
 	args: Extract<TransitionInput, { to: 'pending' }>
 ): ReducerResult {
 	const from = (contact.doiStatus ?? 'not_required') as DoiStatus;
-	if (from === 'pending') {
-		// Idempotent — already pending, no second email.
+	if (from === 'pending' && holdsLiveToken(contact, args.at)) {
+		// Idempotent — already pending with a usable link, no second email.
+		// Every signup made in this window shares the one token.
 		return { patch: {}, effects: [], applied: 'recorded' };
 	}
 	const effects: Effect[] = [];
+	if (from === 'confirmed') {
+		// A new consent episode (dispatch only lets `reopen` through here). The
+		// earlier confirmation is superseded, not erased: `doiConfirmedAt` is
+		// left alone until the new one lands, and the audit row keeps both
+		// timestamps after that.
+		effects.push({
+			kind: 'audit_log',
+			action: 'doi.reconfirmation_requested',
+			contactId: contact._id,
+			triggeredBy: 'system',
+			details: {
+				...(contact.doiConfirmedAt !== undefined
+					? { previousConfirmedAt: contact.doiConfirmedAt }
+					: {}),
+				...(contact.unsubscribedAt !== undefined ? { unsubscribedAt: contact.unsubscribedAt } : {}),
+			},
+		});
+	}
+	const carryFrom = outgoingTokenToCarry(contact, args.token);
+	if (carryFrom !== undefined) {
+		effects.push({
+			kind: 'carry_pending_submissions',
+			contactId: contact._id,
+			fromToken: carryFrom,
+			toToken: args.token,
+			episode: consentEpisodeOf(contact),
+		});
+	}
 	// Only schedule the confirmation email when the caller provides a siteUrl
 	// — admin imports that pre-confirm out-of-band leave it absent.
 	if (args.siteUrl && contact.email) {
@@ -253,7 +359,7 @@ function reduceConfirmed(
 			action: 'doi.admin_attested',
 			contactId: contact._id,
 			triggeredBy: args.triggeredBy ?? 'system',
-			attestSource: args.attestSource,
+			details: { attestSource: args.attestSource },
 		});
 		effects.push({
 			kind: 'contact_activity',
@@ -306,6 +412,10 @@ function reduceConfirmed(
 		// token-keyed path.
 		patch['doiConfirmationToken'] = undefined;
 		patch['doiTokenExpiresAt'] = undefined;
+		// A recipient confirmation supersedes an earlier attestation (a
+		// reopened episode on an attested contact); the attest audit row keeps
+		// that history.
+		if (contact.doiAttestedSource !== undefined) patch['doiAttestedSource'] = undefined;
 	}
 	return {
 		patch,
@@ -315,6 +425,23 @@ function reduceConfirmed(
 }
 
 // ─── Runner ─────────────────────────────────────────────────────────────────
+
+/**
+ * Hand the rows that waited on a replaced token to the Form submission
+ * (module), in this transaction. Runs after the contact patch, so the contact
+ * already holds `toToken`.
+ */
+async function carryPendingSubmissions(
+	ctx: MutationCtx,
+	args: { contactId: Id<'contacts'>; fromToken: string; toToken: string; episode: number }
+): Promise<void> {
+	await ctx.runMutation(internal.forms.pendingConfirmations.carryPendingSubmissions, {
+		contactId: args.contactId,
+		fromToken: args.fromToken,
+		toToken: args.toToken,
+		episode: args.episode,
+	});
+}
 
 async function applyEffects(ctx: MutationCtx, effects: ReadonlyArray<Effect>): Promise<void> {
 	for (const effect of effects) {
@@ -350,13 +477,17 @@ async function applyEffects(ctx: MutationCtx, effects: ReadonlyArray<Effect>): P
 				await recordContactActivity(ctx, args);
 				break;
 			}
+			case 'carry_pending_submissions': {
+				await carryPendingSubmissions(ctx, effect);
+				break;
+			}
 			case 'audit_log': {
 				await recordAuditLog(ctx, {
 					userId: effect.triggeredBy,
 					action: effect.action,
 					resource: 'contact',
 					resourceId: effect.contactId,
-					details: { attestSource: effect.attestSource },
+					details: effect.details,
 				});
 				break;
 			}
@@ -395,7 +526,7 @@ export async function isFormTokenDisabled(
 ): Promise<boolean> {
 	const submission = await ctx.db
 		.query('formSubmissions')
-		.withIndex('by_confirmation_token', (q) => q.eq('confirmationToken', token))
+		.withIndex('by_confirmation_token_and_status', (q) => q.eq('confirmationToken', token))
 		.first();
 	return submission !== null && !(await isFeatureEnabled(ctx, 'forms'));
 }
@@ -453,8 +584,18 @@ async function dispatch(
 		'source' in input &&
 		input.source === 'admin_attest' &&
 		from === 'not_required';
+	// A new consent episode over an earlier confirmation. Only a standing
+	// global opt-out ends a confirmation, so without one there is nothing to
+	// reopen and the edge stays refused.
+	const isReopenEdge =
+		input.to === 'pending' &&
+		input.reopen === true &&
+		from === 'confirmed' &&
+		contact.unsubscribedAt !== undefined;
 
-	const verdict = DOI_LIFECYCLE.classify(from, input.to, { isSanctionedEdge: isAdminAttestEdge });
+	const verdict = DOI_LIFECYCLE.classify(from, input.to, {
+		isSanctionedEdge: isAdminAttestEdge || isReopenEdge,
+	});
 
 	if (verdict.kind === 'refused') {
 		return refuse(verdict);
@@ -564,7 +705,8 @@ export type RefreshOutcome =
  * if the Contact is not currently in `pending`. Used by the
  * resend-confirmation user-facing flow — distinct from `transition`
  * because it deliberately keeps the status the same while replacing
- * the token.
+ * the token. The form submissions that waited on the replaced token move
+ * to the new one, so confirming the resent link finalizes them.
  */
 export const refreshPendingToken = internalMutation({
 	args: {
@@ -586,6 +728,15 @@ export const refreshPendingToken = internalMutation({
 			doiTokenExpiresAt: args.at + args.ttlMs,
 			updatedAt: args.at,
 		});
+		const carryFrom = outgoingTokenToCarry(contact, args.token);
+		if (carryFrom !== undefined) {
+			await carryPendingSubmissions(ctx, {
+				contactId: args.contactId,
+				fromToken: carryFrom,
+				toToken: args.token,
+				episode: consentEpisodeOf(contact),
+			});
+		}
 		if (contact.email) {
 			await ctx.scheduler.runAfter(0, internal.confirmationEmail.sendConfirmationEmail, {
 				email: contact.email,
@@ -595,5 +746,55 @@ export const refreshPendingToken = internalMutation({
 			});
 		}
 		return { ok: true, from, contactId: args.contactId };
+	},
+});
+
+// ─── Ending a consent episode ───────────────────────────────────────────────
+//
+// The other half of a consent episode's boundary. A global opt-out ends the
+// episode, so a confirmation link minted before it must not lift it later:
+// the token is withdrawn and `doiStatus` is left as it is. A later signup
+// mints a fresh token (see `reducePending`) and the episode starts over.
+// `doiConsentEpisode` moves on as well, so a form-submission carry still
+// paging through the old episode's rows stops instead of following that
+// fresh token or its confirmation.
+
+/**
+ * Clear a loaded Contact's confirmation token, leaving `doiStatus` as it is.
+ * The form submissions that waited on the token keep it and are not carried
+ * to a later one. Returns whether there was a token to clear.
+ */
+export async function withdrawToken(
+	ctx: MutationCtx,
+	contact: Doc<'contacts'>,
+	at: number
+): Promise<boolean> {
+	if (contact.doiConfirmationToken === undefined) return false;
+	await ctx.db.patch(contact._id, {
+		doiConfirmationToken: undefined,
+		doiTokenExpiresAt: undefined,
+		updatedAt: at,
+	});
+	return true;
+}
+
+/**
+ * End a Contact's consent episode: withdraw its outstanding confirmation
+ * token, if any, and move `doiConsentEpisode` on. Called by the Topic
+ * subscription (module) on every global opt-out, with or without a token,
+ * because a carry can still be paging after the token was spent on a
+ * confirmation.
+ */
+export const endConsentEpisode = internalMutation({
+	args: { contactId: v.id('contacts'), at: v.number() },
+	handler: async (ctx, args): Promise<{ withdrawn: boolean }> => {
+		const contact = await ctx.db.get(args.contactId);
+		if (!contact) return { withdrawn: false };
+		const withdrawn = await withdrawToken(ctx, contact, args.at);
+		await ctx.db.patch(contact._id, {
+			doiConsentEpisode: consentEpisodeOf(contact) + 1,
+			updatedAt: args.at,
+		});
+		return { withdrawn };
 	},
 });

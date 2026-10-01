@@ -3,8 +3,8 @@
  *
  * Owns the reactive list of connected owlat instances + which is active, and the
  * actions to add / switch / remove / sign out. Adding or switching a workspace
- * reloads the webview so the auth + Convex singletons (built at module load from
- * the active workspace) are cleanly re-seeded — see auth-client.ts / convex.client.ts.
+ * reloads the webview so the auth + Convex clients (built once per page from the
+ * active workspace) are cleanly re-seeded — see auth-client.ts / convex.client.ts.
  *
  * No-op outside the Tauri runtime.
  *
@@ -13,8 +13,13 @@
  * lib/desktop/workspaceConnect.ts; this file owns boot, switching, removal and
  * the public composable.
  */
+import { authClient } from '~/lib/auth-client';
 import { isDesktopRuntime, setActiveWorkspace } from '~/lib/desktop/activeWorkspace';
-import { configureKeychainStorage, clearKeychainStorage } from '~/lib/desktop/keychainStorage';
+import {
+	createKeychainStorage,
+	getActiveKeychainStorage,
+	setActiveKeychainStorage,
+} from '~/lib/desktop/keychainStorage';
 import {
 	type WorkspaceAccent,
 	type WorkspaceStoreShape,
@@ -23,6 +28,7 @@ import {
 	workspaceTokenRef,
 } from '~/lib/desktop/workspaceTypes';
 import { applyWorkspaceAccent } from '~/lib/desktop/workspaceAccent';
+import { clearCachedFeatureFlags } from '~/lib/featureFlagCache';
 import {
 	hideSwitchSkeleton,
 	showSwitchSkeleton,
@@ -127,8 +133,9 @@ async function seedLocalDevWorkspace(): Promise<void> {
 
 /**
  * Read the persisted workspaces, seed the active-workspace singleton, and
- * hydrate the keychain cache for the active workspace. Awaited by the boot
- * plugin BEFORE the Convex/auth singletons are first imported.
+ * hydrate the active workspace's session storage from its keychain entry.
+ * Awaited by the boot plugin BEFORE the Convex client and the auth client are
+ * first built.
  *
  * `seedLocalDev` (passed by the boot plugin only in dev) auto-connects the
  * page's own origin as a workspace — see `seedLocalDevWorkspace`.
@@ -137,17 +144,25 @@ async function seedLocalDevWorkspace(): Promise<void> {
  * plugin only on a cold launch of the main window — never on the webview
  * reloads a workspace switch performs) overrides the persisted last-active
  * workspace when it still exists. Persisted when applied, so secondary windows
- * (compose) reading the store agree on the active workspace.
+ * (compose) reading the store agree on the active workspace. It may be passed
+ * as a promise: the pin lives in the device settings, and reading those runs
+ * alongside the workspace store read instead of before it.
  */
 export async function loadWorkspaces(options?: {
 	seedLocalDev?: boolean;
-	preferredActiveId?: string | null;
+	preferredActiveId?: string | null | Promise<string | null>;
 }): Promise<void> {
 	if (!isDesktopRuntime() || loaded) return;
 	loaded = true;
 
-	const { loadWorkspaceStore } = await store();
-	const state = (await loadWorkspaceStore()) as unknown as WorkspaceStoreShape;
+	// The keychain bridge is only needed once the active workspace is known;
+	// fetch its module now so that step does not wait on the import too.
+	void keychain().catch(() => {});
+	const [rawState, preferredActiveId] = await Promise.all([
+		store().then(({ loadWorkspaceStore }) => loadWorkspaceStore()),
+		options?.preferredActiveId ?? null,
+	]);
+	const state = rawState as unknown as WorkspaceStoreShape;
 	workspaces.value = Array.isArray(state.workspaces) ? state.workspaces : [];
 	activeId.value = state.activeWorkspaceId ?? workspaces.value[0]?.id ?? null;
 
@@ -165,11 +180,11 @@ export async function loadWorkspaces(options?: {
 	if (options?.seedLocalDev) await seedLocalDevWorkspace();
 
 	if (
-		options?.preferredActiveId &&
-		options.preferredActiveId !== activeId.value &&
-		workspaces.value.some((w) => w.id === options.preferredActiveId)
+		preferredActiveId &&
+		preferredActiveId !== activeId.value &&
+		workspaces.value.some((w) => w.id === preferredActiveId)
 	) {
-		activeId.value = options.preferredActiveId;
+		activeId.value = preferredActiveId;
 		await persistStore();
 	}
 
@@ -179,7 +194,7 @@ export async function loadWorkspaces(options?: {
 	if (active) {
 		const { secretGet } = await keychain();
 		const blob = await secretGet(active.tokenRef);
-		configureKeychainStorage(active.tokenRef, blob, makePersister());
+		setActiveKeychainStorage(createKeychainStorage(active.tokenRef, blob, makePersister()));
 	}
 }
 
@@ -190,6 +205,9 @@ async function switchTo(id: string, opts?: { destination?: string }): Promise<vo
 	ws.lastActiveAt = Date.now();
 	activeId.value = id;
 	await persistStore();
+	// The reload below ends this page's writer for the current workspace's
+	// session; land whatever it still holds (a refreshed session) first.
+	await getActiveKeychainStorage()?.flush();
 
 	// Perceived-instant switch: before the (unavoidable) reload,
 	// repaint the destination accent and drop a skeleton washed in it so the eye
@@ -242,16 +260,21 @@ async function removeWorkspace(id: string): Promise<void> {
 	const wasActive = id === activeId.value;
 	if (wasActive) {
 		try {
-			// Lazy import so merely loading this module (at boot, for loadWorkspaces)
-			// does not construct the auth-client singleton before the active
-			// workspace has been seeded.
-			const { authClient } = await import('~/lib/auth-client');
 			await authClient.signOut();
 		} catch {
 			// best-effort; we're discarding the session anyway
 		}
-		clearKeychainStorage();
+		// Forget the session without writing the emptied cache: the entry is
+		// deleted below, and a queued write landing after that would recreate it.
+		await getActiveKeychainStorage()?.discard();
 	}
+	// Removing a workspace signs out of it without going through useAuth, so
+	// forget the last-known feature flags and the Postbox offline rows here too
+	// (see useAuth.signOut).
+	clearCachedFeatureFlags();
+	const { wipePostboxOfflineReadCache } =
+		await import('~/composables/postbox/usePostboxOfflineCache');
+	await wipePostboxOfflineReadCache();
 	const { secretDelete } = await keychain();
 	await secretDelete(workspaceTokenRef(id));
 

@@ -19,17 +19,20 @@
  * that is not external, an account that is disconnected, a seed or set to
  * receive new mail only (`syncMode: 'incoming'`), or a message whose Message-ID
  * the worker had to invent. The opposite direction — changes made on the
- * provider — is `remoteState.ts`.
+ * provider — is `remoteState.ts`. The order ops reach the provider in, and how
+ * a newer flag change supersedes an older one, is `remoteOpOrder.ts`.
+ * How a folder the worker renamed at the provider is followed through the
+ * backend is `remoteFolderRename.ts`.
  */
 
 import { v, type Infer } from 'convex/values';
 import {
 	internalAction,
-	internalMutation,
 	internalQuery,
 	type MutationCtx,
 	type QueryCtx,
 } from '../../_generated/server';
+import { internalMutation } from '../../lib/writeFence';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type {
@@ -38,6 +41,13 @@ import type {
 } from '../../lib/validators/mail';
 import { findDuplicateInMailbox } from '../deliveryPipeline/insert';
 import { getMailSyncConfig, mtaFetch } from '../mtaClient';
+import { deferOpsBehind, dueRemoteOps, insertRemoteOp } from './remoteOpOrder';
+import {
+	deferralBudget,
+	deferralValidator,
+	runDeferral,
+	type DeferralBudget,
+} from './remoteOpDeferral';
 
 export type RemoteFolderRef = Infer<typeof remoteFolderRefValidator>;
 export type RemoteFlagChanges = Infer<typeof remoteFlagChangesValidator>;
@@ -103,6 +113,7 @@ export async function recordRemoteChanges(
 	const mappings = new Map<Id<'externalMailAccounts'>, Map<Id<'mailFolders'>, string>>();
 	const refs = new Map<Id<'mailFolders'>, RemoteFolderRef | null>();
 	const nudge = new Set<Id<'externalMailAccounts'>>();
+	const budget = deferralBudget();
 	const now = Date.now();
 
 	const accountFor = async (mailboxId: Id<'mailboxes'>) => {
@@ -143,12 +154,7 @@ export async function recordRemoteChanges(
 			if (Object.keys(change.flags).length === 0) continue;
 			const source = await refFor(message.folderId);
 			if (!source) continue;
-			await ctx.db.insert('externalMailRemoteOps', {
-				...base,
-				kind: 'flags',
-				source,
-				flags: change.flags,
-			});
+			await insertRemoteOp(ctx, { ...base, kind: 'flags', source, flags: change.flags }, budget);
 		} else {
 			let sourceFolderId = message.folderId;
 			let targetFolderId: Id<'mailFolders'> | null = null;
@@ -169,17 +175,30 @@ export async function recordRemoteChanges(
 			const source = await refFor(sourceFolderId);
 			if (!source) continue;
 			if (targetFolderId === null) {
-				await ctx.db.insert('externalMailRemoteOps', { ...base, kind: 'delete', source });
+				await insertRemoteOp(ctx, { ...base, kind: 'delete', source }, budget);
 			} else {
 				const target = await refFor(targetFolderId);
 				if (!target || sameRef(source, target)) continue;
-				await ctx.db.insert('externalMailRemoteOps', { ...base, kind: 'move', source, target });
+				await insertRemoteOp(ctx, { ...base, kind: 'move', source, target }, budget);
 			}
 		}
 		nudge.add(accountId);
 	}
 
+	await scheduleLeftoverDeferrals(ctx, budget);
 	for (const id of nudge) await nudgeWorker(ctx, id);
+}
+
+/**
+ * Hand the deferrals one transaction had no room left for to a continuation
+ * (`remoteOpDeferral.ts`).
+ */
+async function scheduleLeftoverDeferrals(ctx: MutationCtx, budget: DeferralBudget): Promise<void> {
+	for (const deferral of budget.leftover) {
+		await ctx.scheduler.runAfter(0, internal.mail.external.remoteOps.continueRemoteOpDeferral, {
+			deferral,
+		});
+	}
 }
 
 /** Wake the worker for an account (best-effort; it also drains on every poll). */
@@ -246,13 +265,13 @@ export async function enqueueRemoteOp(
 	}
 ): Promise<void> {
 	const now = Date.now();
-	await ctx.db.insert('externalMailRemoteOps', {
-		...op,
-		accountId,
-		attempts: 0,
-		nextAttemptAt: now,
-		createdAt: now,
-	});
+	const budget = deferralBudget();
+	await insertRemoteOp(
+		ctx,
+		{ ...op, accountId, attempts: 0, nextAttemptAt: now, createdAt: now },
+		budget
+	);
+	await scheduleLeftoverDeferrals(ctx, budget);
 }
 
 /** The remote name each mapped local folder of an account syncs with. */
@@ -316,29 +335,33 @@ async function remoteFolderRef(
 
 // ── Worker surface ─────────────────────────────────────────────────────
 
-/** The account's ops that are due, oldest first. None while it receives new mail only. */
+/**
+ * The account's due ops that may run now: none that waits behind an older op
+ * still queued for its message or folder (`remoteOpOrder.ts`). None while the
+ * account receives new mail only.
+ */
 export const listDueRemoteOps = internalQuery({
 	args: { accountId: v.id('externalMailAccounts') },
 	handler: async (ctx, args) => {
 		const account = await ctx.db.get(args.accountId);
 		if (!account || !writesBack(account)) return [];
-		const rows = await ctx.db
-			.query('externalMailRemoteOps')
-			.withIndex('by_account_and_next_attempt', (q) =>
-				q.eq('accountId', args.accountId).lte('nextAttemptAt', Date.now())
-			)
-			.take(DUE_PAGE_SIZE);
-		return rows.map((r) => ({
-			opId: r._id,
-			kind: r.kind,
-			rfc822MessageId: r.rfc822MessageId,
-			source: r.source,
-			target: r.target,
-			flags: r.flags,
-			attempts: r.attempts,
-		}));
+		const rows = await dueRemoteOps(ctx, args.accountId, Date.now(), DUE_PAGE_SIZE);
+		return rows.map(workerOp);
 	},
 });
+
+/** An op as the worker replays it. */
+export function workerOp(r: Doc<'externalMailRemoteOps'>) {
+	return {
+		opId: r._id,
+		kind: r.kind,
+		rfc822MessageId: r.rfc822MessageId,
+		source: r.source,
+		target: r.target,
+		flags: r.flags,
+		attempts: r.attempts,
+	};
+}
 
 /** Backoff after the `attempts`-th failure: 1, 2, 4 … minutes, capped at an hour. */
 export function remoteOpRetryDelayMs(attempts: number): number {
@@ -347,8 +370,9 @@ export function remoteOpRetryDelayMs(attempts: number): number {
 
 /**
  * Close out a batch the worker replayed. `done` and `not_found` retire the op
- * (there is nothing left to do on the server); `failed` pushes it back, and
- * drops it once its attempts are spent.
+ * (there is nothing left to do on the server); `failed` pushes it back, along
+ * with the later ops of its message that wait behind it, and drops it once its
+ * attempts are spent.
  */
 export const settleRemoteOps = internalMutation({
 	args: {
@@ -362,9 +386,18 @@ export const settleRemoteOps = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		const now = Date.now();
+		const budget = deferralBudget();
 		for (const result of args.results) {
 			const op = await ctx.db.get(result.opId);
 			if (!op) continue;
+			// A rename the worker reported, whose queued ops are still being
+			// rewritten: it stays until its last rewrite (remoteFolderRename.ts).
+			if (op.renameRewrite) {
+				if (op.renameRewrite.settledAt === undefined) {
+					await ctx.db.patch(op._id, { renameRewrite: { ...op.renameRewrite, settledAt: now } });
+				}
+				continue;
+			}
 			if (result.outcome !== 'failed') {
 				await ctx.db.delete(op._id);
 				continue;
@@ -378,12 +411,26 @@ export const settleRemoteOps = internalMutation({
 				await ctx.db.delete(op._id);
 				continue;
 			}
-			await ctx.db.patch(op._id, {
-				attempts,
-				lastError,
-				nextAttemptAt: now + remoteOpRetryDelayMs(attempts),
-			});
+			const nextAttemptAt = now + remoteOpRetryDelayMs(attempts);
+			await ctx.db.patch(op._id, { attempts, lastError, nextAttemptAt });
+			await deferOpsBehind(ctx, op, nextAttemptAt, budget);
 		}
+		await scheduleLeftoverDeferrals(ctx, budget);
+	},
+});
+
+/**
+ * Carry on a deferral the transaction that started it had no room left for,
+ * then nudge the worker: until it is done, the ops still to push back can fill
+ * the front of the queue.
+ */
+export const continueRemoteOpDeferral = internalMutation({
+	args: { deferral: deferralValidator },
+	handler: async (ctx, args) => {
+		const budget = deferralBudget();
+		await runDeferral(ctx, args.deferral, budget);
+		if (budget.leftover.length > 0) await scheduleLeftoverDeferrals(ctx, budget);
+		else await nudgeWorker(ctx, args.deferral.accountId);
 	},
 });
 

@@ -11,12 +11,12 @@ in subtle, drift-prone ways. There is no module owning the three-state
 machine (`not_required → pending → confirmed`); each producer holds its own
 slice of the contract.
 
-| Site | Mode | Token namespace | Patches contact DOI | Schedules confirmation email | Fires `topic_subscribed` trigger | Writes `topic_confirmed` activity |
-|---|---|---|---|---|---|---|
-| `topics/topics.ts:addContact:292-318` | request | `contacts.doiConfirmationToken` | ✅ | ✅ | only if already `confirmed` | ❌ |
-| `topics/bulk.ts:addContacts:59-83` | request | `contacts.doiConfirmationToken` | ✅ | ✅ | only if already `confirmed` | ❌ |
-| `topics/topics.ts:confirmDoi:362-420` | confirm | `contacts.doiConfirmationToken` (lookup) | ✅ | — | ✅ (for all DOI-required memberships) | ❌ |
-| `forms/endpoints.ts:confirmFormSubmission:410-479` | confirm | `formSubmissions.confirmationToken` (lookup) → cascades to contact | ✅ | — | ❌ **(divergence)** | ❌ |
+| Site                                               | Mode    | Token namespace                                                    | Patches contact DOI | Schedules confirmation email | Fires `topic_subscribed` trigger      | Writes `topic_confirmed` activity |
+| -------------------------------------------------- | ------- | ------------------------------------------------------------------ | ------------------- | ---------------------------- | ------------------------------------- | --------------------------------- |
+| `topics/topics.ts:addContact:292-318`              | request | `contacts.doiConfirmationToken`                                    | ✅                  | ✅                           | only if already `confirmed`           | ❌                                |
+| `topics/bulk.ts:addContacts:59-83`                 | request | `contacts.doiConfirmationToken`                                    | ✅                  | ✅                           | only if already `confirmed`           | ❌                                |
+| `topics/topics.ts:confirmDoi:362-420`              | confirm | `contacts.doiConfirmationToken` (lookup)                           | ✅                  | —                            | ✅ (for all DOI-required memberships) | ❌                                |
+| `forms/endpoints.ts:confirmFormSubmission:410-479` | confirm | `formSubmissions.confirmationToken` (lookup) → cascades to contact | ✅                  | —                            | ❌ **(divergence)**                   | ❌                                |
 
 Four drift signals concentrate.
 
@@ -54,7 +54,7 @@ from `contacts.doiConfirmationToken`. The two are populated independently:
 its own. Each is checked by its own HTTP endpoint
 (`POST /confirm/doi` vs `POST /forms/confirm/:formId`). For the common
 case of "submit a form whose topic requires DOI," the user receives
-*one* email but two backend tokens exist for it. The form-confirm
+_one_ email but two backend tokens exist for it. The form-confirm
 endpoint then cascades to the contact-side patch separately
 (`forms/endpoints.ts:446-475`) without going through the DOI write path.
 
@@ -117,50 +117,46 @@ today; if one lands later, it gets its own transition input
 type DoiStatus = 'not_required' | 'pending' | 'confirmed';
 
 type TransitionInput =
-  | {
-      to: 'pending';
-      at: number;
-      token: string;
-      ttlMs: number;
-      // Optional; if absent, the send_confirmation_email effect is omitted
-      // (admin-import-style flows that pre-confirm out-of-band).
-      siteUrl?: string;
-    }
-  | {
-      to: 'confirmed';
-      at: number;
-    };
+	| {
+			to: 'pending';
+			at: number;
+			token: string;
+			ttlMs: number;
+			// Optional; if absent, the send_confirmation_email effect is omitted
+			// (admin-import-style flows that pre-confirm out-of-band).
+			siteUrl?: string;
+	  }
+	| {
+			to: 'confirmed';
+			at: number;
+	  };
 
 type TransitionOutcome =
-  | {
-      ok: true;
-      applied: 'transitioned' | 'recorded';
-      from: DoiStatus;
-      to: DoiStatus;
-      contactId: Id<'contacts'>;
-    }
-  | {
-      ok: false;
-      reason:
-        | 'contact_not_found'
-        | 'token_not_found'
-        | 'token_expired'
-        | 'illegal_edge'
-        | 'terminal';
-      from?: DoiStatus;
-      to?: DoiStatus;
-    };
+	| {
+			ok: true;
+			applied: 'transitioned' | 'recorded';
+			from: DoiStatus;
+			to: DoiStatus;
+			contactId: Id<'contacts'>;
+	  }
+	| {
+			ok: false;
+			reason:
+				'contact_not_found' | 'token_not_found' | 'token_expired' | 'illegal_edge' | 'terminal';
+			from?: DoiStatus;
+			to?: DoiStatus;
+	  };
 
 // Direct path
 export const transition: (
-  ctx,
-  args: { contactId: Id<'contacts'>; input: TransitionInput }
+	ctx,
+	args: { contactId: Id<'contacts'>; input: TransitionInput }
 ) => Promise<TransitionOutcome>;
 
 // Token-keyed path (symmetric to Send lifecycle's transitionByProviderMessageId)
 export const transitionByConfirmationToken: (
-  ctx,
-  args: { token: string; input: TransitionInput }
+	ctx,
+	args: { token: string; input: TransitionInput }
 ) => Promise<TransitionOutcome>;
 ```
 
@@ -207,7 +203,7 @@ The module owns:
   production caller of that index (today's `topics.getContactByDoiToken`
   query becomes a thin wrapper).
 
-The module does *not* own:
+The module does _not_ own:
 
 - Form-submission lifecycle (`formSubmissions.status`). The form-confirm
   endpoint coordinates: it patches the form submission to `'success'`
@@ -226,20 +222,20 @@ The module does *not* own:
 // topics/topics.ts:addContact (was lines 292-318)
 const requiresDoi = topic.requireDoubleOptIn === true && args.skipDoi !== true;
 if (requiresDoi) {
-  const token = nanoid(32);
-  const outcome = await doiLifecycle.transition(ctx, {
-    contactId: args.contactId,
-    input: { to: 'pending', at: now, token, ttlMs: DOI_TOKEN_TTL_MS, siteUrl: args.siteUrl },
-  });
-  // outcome.applied === 'recorded' if already pending or already confirmed
+	const token = nanoid(32);
+	const outcome = await doiLifecycle.transition(ctx, {
+		contactId: args.contactId,
+		input: { to: 'pending', at: now, token, ttlMs: DOI_TOKEN_TTL_MS, siteUrl: args.siteUrl },
+	});
+	// outcome.applied === 'recorded' if already pending or already confirmed
 }
 ```
 
 ```ts
 // topics/topics.ts:confirmDoi (was lines 362-420)
 const outcome = await doiLifecycle.transitionByConfirmationToken(ctx, {
-  token: args.token,
-  input: { to: 'confirmed', at: Date.now() },
+	token: args.token,
+	input: { to: 'confirmed', at: Date.now() },
 });
 if (!outcome.ok) return { success: false, error: outcome.reason };
 return { success: true, alreadyConfirmed: outcome.applied === 'recorded' };
@@ -248,17 +244,17 @@ return { success: true, alreadyConfirmed: outcome.applied === 'recorded' };
 ```ts
 // forms/endpoints.ts:confirmFormSubmission (was lines 410-479)
 const submission = await ctx.db
-  .query('formSubmissions')
-  .withIndex('by_confirmation_token', (q) => q.eq('confirmationToken', token))
-  .first();
+	.query('formSubmissions')
+	.withIndex('by_confirmation_token', (q) => q.eq('confirmationToken', token))
+	.first();
 if (!submission) return { success: false, error: 'invalid_token' };
 if (submission.status === 'success') return { success: true, alreadyConfirmed: true };
 
 // Unified token: the contact-side patch + trigger fanout + activity log
 // happens here, in the lifecycle module.
 const outcome = await doiLifecycle.transitionByConfirmationToken(ctx, {
-  token,
-  input: { to: 'confirmed', at: now },
+	token,
+	input: { to: 'confirmed', at: now },
 });
 if (!outcome.ok) return { success: false, error: outcome.reason };
 
@@ -269,18 +265,19 @@ await ctx.db.patch(submission._id, { status: 'success', confirmedAt: now });
 // already fired the trigger for it via the fanout).
 const form = await ctx.db.get(submission.formEndpointId);
 if (form?.topicId && submission.contactId) {
-  const existing = await ctx.db.query('contactTopics')
-    .withIndex('by_contact_and_topic', (q) =>
-      q.eq('contactId', submission.contactId!).eq('topicId', form.topicId!),
-    )
-    .first();
-  if (!existing) {
-    await ctx.db.insert('contactTopics', {
-      contactId: submission.contactId,
-      topicId: form.topicId,
-      addedAt: now,
-    });
-  }
+	const existing = await ctx.db
+		.query('contactTopics')
+		.withIndex('by_contact_and_topic', (q) =>
+			q.eq('contactId', submission.contactId!).eq('topicId', form.topicId!)
+		)
+		.first();
+	if (!existing) {
+		await ctx.db.insert('contactTopics', {
+			contactId: submission.contactId,
+			topicId: form.topicId,
+			addedAt: now,
+		});
+	}
 }
 ```
 
@@ -288,7 +285,7 @@ if (form?.topicId && submission.contactId) {
 
 ### Token namespace
 
-1. **Unify token namespaces** *(chosen)*. One token per pending
+1. **Unify token namespaces** _(chosen)_. One token per pending
    confirmation. `formSubmissions.confirmationToken` and
    `contacts.doiConfirmationToken` are the same string. Closes drift
    signal #4. Pre-prod: trivial.
@@ -305,8 +302,8 @@ if (form?.topicId && submission.contactId) {
 
 ### Trigger fanout on confirm
 
-1. **Fan out to all DOI-required memberships** *(chosen — keeps today's
-   contact-level DOI semantics)*. The contact, not the topic, owns the
+1. **Fan out to all DOI-required memberships** _(chosen — keeps today's
+   contact-level DOI semantics)_. The contact, not the topic, owns the
    DOI grant. One click confirms the contact; every DOI-required topic
    the contact is in receives its `topic_subscribed` trigger.
 2. **Fan out only to the topic that originated the email.** Requires
@@ -316,7 +313,7 @@ if (form?.topicId && submission.contactId) {
 
 ### Token TTL
 
-1. **7 days** *(chosen, longer of the two existing values)*. Matches
+1. **7 days** _(chosen, longer of the two existing values)_. Matches
    today's `topics/*` paths; more user-friendly (people open marketing
    emails days after sending). Form-path's 48h was tighter without
    apparent justification.
@@ -327,7 +324,7 @@ if (form?.topicId && submission.contactId) {
 
 ### Admin force-confirm
 
-1. **No skip-pending transition** *(chosen)*. `not_required → confirmed`
+1. **No skip-pending transition** _(chosen)_. `not_required → confirmed`
    is `illegal_edge`. No existing producer skips pending; YAGNI.
 2. **Add `{ to: 'confirmed'; by: 'admin' }` skip-pending input.**
    Speculative; rejected. Lands as an additive transition when the
@@ -335,8 +332,8 @@ if (form?.topicId && submission.contactId) {
 
 ### `doiStatus` representation
 
-1. **Always-write `'not_required'` at Contact-create time** *(chosen,
-   pre-prod)*. `undefined` no longer appears at rest. The
+1. **Always-write `'not_required'` at Contact-create time** _(chosen,
+   pre-prod)_. `undefined` no longer appears at rest. The
    **Contact resolution (module)** writes `'not_required'` (per
    ADR-0008's owner-list extension). Cleaner reads; no `?? 'not_required'`
    defaulting needed downstream.
@@ -346,7 +343,7 @@ if (form?.topicId && submission.contactId) {
 
 ### Operation surface
 
-1. **Two entry points: direct + token-keyed** *(chosen)*. Mirrors the
+1. **Two entry points: direct + token-keyed** _(chosen)_. Mirrors the
    Send lifecycle's `transition` + `transitionByProviderMessageId`
    pattern. The token-keyed entry is the customer-facing surface; the
    direct entry is for internal admin / migration paths.
@@ -376,9 +373,9 @@ if (form?.topicId && submission.contactId) {
   by the `to: 'confirmed'` effect path when the user eventually clicks).
 - `apps/api/convex/forms/endpoints.ts:410-479` — `confirmFormSubmission`
   loses the open-coded contact patch + topic-membership insert
-  + missing trigger-fire. Contact-side write delegates to
-  `transitionByConfirmationToken`; form-side patch and topic-membership
-  insert stay in the handler.
+  - missing trigger-fire. Contact-side write delegates to
+    `transitionByConfirmationToken`; form-side patch and topic-membership
+    insert stay in the handler.
 - `apps/api/convex/topics/topics.ts:getContactByDoiToken` —
   preserved (used by the GET `/confirm/doi/verify` endpoint for pre-confirm
   display). The lookup logic now reuses the lifecycle module's
@@ -490,7 +487,7 @@ section.
    subscription flow lands for inbound contacts, the request transition
    runs naturally.
 4. **Form submission's own `'pending_confirmation' | 'success' |
-   'invalid' | 'spam' | 'duplicate'` lifecycle.** Today the form
+'invalid' | 'spam' | 'duplicate'` lifecycle.** Today the form
    handler open-codes its status transitions. If/when a fifth status
    appears or the drift becomes painful, that's its own deepening
    candidate (ADR-pending). Out of scope here.
@@ -514,3 +511,152 @@ CONTEXT.md is updated in the same pass (DOI status + DOI lifecycle
 (module) entries + Relationships paragraph). The
 **Contact resolution (module)** entry is amended to list `doiStatus`
 among its create-time writes.
+
+---
+
+## Amendment — consent episodes and the shared token (2026-10-01)
+
+Issues #994, #995 and #1017. Three changes to the contract above; the rest
+of it stands.
+
+### A confirmation belongs to one consent episode
+
+The Decision refused `confirmed → pending` as an illegal revoke and kept
+`confirmed` terminal, so a confirmation had no end. It now has one: a
+confirmation counts only for the episode it was issued in, and a global
+opt-out (`contacts.unsubscribedAt`, written by the **Topic subscription
+(module)**) ends that episode.
+
+- **A global opt-out ends the episode.** `unsubscribeAllForContact` with no
+  topic scope calls the new in-state operation
+  `withdrawConfirmationToken({ contactId, at })`, which clears
+  `doiConfirmationToken` and `doiTokenExpiresAt` and leaves `doiStatus`
+  alone. A link minted before the opt-out stops resolving, so it can never
+  lift the opt-out later.
+- **A new episode reopens a confirmed contact.** The `to: 'pending'` input
+  gains `reopen?: boolean`. It sanctions `confirmed → pending` through the
+  same `isSanctionedEdge` hook ADR-0019 uses, and only while
+  `contacts.unsubscribedAt` is set; without an opt-out the edge is still
+  refused (`terminal`). Callers decide when to ask for it (ADR-0013's consent
+  rule); the lifecycle only refuses it when there is nothing to reopen.
+- **History is kept.** The reopen leaves `doiConfirmedAt` (the last
+  completed confirmation) untouched while the new episode is pending, and
+  emits an `audit_log` effect, `doi.reconfirmation_requested`, carrying
+  `previousConfirmedAt` and `unsubscribedAt`. When the new confirmation lands
+  it overwrites `doiConfirmedAt`, clears `unsubscribedAt` exactly once (the
+  existing `reduceConfirmed` behaviour), and fires the deferred
+  `fire_topic_subscribed_triggers` for the memberships waiting on it. A
+  token confirmation also clears a stale `doiAttestedSource`; the
+  `doi.admin_attested` audit row keeps the attestation.
+
+### `pending → pending` needs a live token to be a no-op
+
+`pending → pending` stays idempotent (`recorded`, no second email) only
+while the contact holds a token that is present and unexpired. A pending
+contact without one (withdrawn by an opt-out, or lapsed after
+`DOI_TOKEN_TTL_MS`) gets a fresh token and a fresh confirmation email, so a
+new signup always carries a usable link.
+
+### Token cardinality: one token, many form submissions
+
+The Decision said the form submission's `confirmationToken` "equals the
+contact's token" and the confirm handler patched "the form submission". Both
+were written for one submission per token. In practice every signup made
+while a contact is pending reuses the live token (the `recorded` path
+above), so one token correlates **one contact with many
+`formSubmissions` rows** — across forms, topics, and forms without a topic.
+
+Confirmation therefore finalizes every pending row that carries the token
+and belongs to the confirmed contact, not the first one found:
+
+- Both confirmation routes call the **Form submission (module)**'s
+  `markConfirmedByToken({ token, contactId })` after
+  `transitionByConfirmationToken` succeeds: the form-confirm mutation
+  (`forms/endpoints.ts:confirmSubmission`) and the contact-only
+  `/confirm/doi` route (`topics/topics.ts:confirmDoi`). The lifecycle still
+  writes only the contact table; it enforces token identity and expiry
+  before either route touches a form row.
+- The fanout is paged (100 rows per mutation, continued by a scheduled
+  follow-up), reads the pending rows through the
+  `formSubmissions.by_confirmation_token_and_status` index (which replaces
+  `by_confirmation_token`), and bumps each form's
+  `successfulSubmissionCount` once per finalized row.
+- Rows of another contact, or in any other status, are left alone. A repeat
+  click finds no contact holding the spent token and is answered from the
+  finalized rows (`alreadyConfirmed: true`).
+
+Pending rows whose token was replaced (an admin resend through
+`refreshPendingToken`, or the lapsed-token refresh above) were not re-keyed
+and stayed `pending_confirmation`. The token-replacement amendment below
+carries them to the new token.
+
+---
+
+## Amendment — replacing a token carries its pending submissions (2026-10)
+
+Issue #1054; follows the consent-episode amendment above.
+
+Two operations replace a contact's token: the admin resend
+(`refreshPendingToken`) and a new signup after the token lapsed
+(`reducePending`). Each now hands the outgoing token's waiting form
+submissions to the **Form submission (module)**, in the transaction that
+writes the new token and after the contact patch:
+
+- `reducePending` emits a new effect, `carry_pending_submissions` (with
+  `contactId`, `fromToken` and `toToken`), when the contact still holds a
+  token other than the new one. `refreshPendingToken` makes the same call directly.
+- The runner calls `forms/pendingConfirmations.ts:carryPendingSubmissions`,
+  which moves this contact's `pending_confirmation` rows from `fromToken` to
+  `toToken`, 100 per mutation, with a scheduled follow-up for the rest. Rows
+  of other contacts and rows in any other status keep their token.
+- The match is on the outgoing token, the value on the contact before the
+  patch. A token a global opt-out withdrew is no longer on the contact, so
+  its rows are never carried into the next episode. A contact with no token
+  on record carries nothing.
+- A follow-up page reads the contact again. If the token was replaced once
+  more, the rest go to the token the contact holds now; if the contact
+  confirmed in between, they are finalized as that confirmation would have
+  done; if an opt-out withdrew the token, they stay where they are.
+- A finalizing page records the token the confirmation consumed, not the
+  carry's own `toToken`, which a second resend can have replaced before the
+  confirmation. Both confirmation routes stamp the rows they finalize with
+  the contact's `doiConfirmedAt`, so the page reads the consumed token back
+  from such a row, through an index on contact, status and confirmation time
+  (ADR-0015 amendment). If no row records it, the carried rows are finalized
+  without a token. Either way a replaced link never resolves to a finished
+  submission.
+- A carry never leaves its consent episode. The contact's token and status
+  cannot tell a second resend from a fresh signup after a global opt-out,
+  and confirming that signup clears `unsubscribedAt`, so the contact gains a
+  counter, `doiConsentEpisode` (undefined reads as 0). Every global opt-out
+  increments it, with or without a token to withdraw, because a carry can
+  still be paging after the token was spent on a confirmation. The
+  carry records the counter when it starts, passes it to every follow-up,
+  and each page stops when the contact's counter differs. The rows it had
+  not reached stay `pending_confirmation` on their old token, which no
+  contact holds any more: they are never finalized, the safe outcome for
+  signups whose episode ended. In practice a follow-up runs right after the
+  page that scheduled it, so only an opt-out in that gap leaves rows behind.
+- `withdrawConfirmationToken` is renamed `endConsentEpisode` for this: it
+  still clears the token and its expiry and leaves `doiStatus` alone, and it
+  now also increments `doiConsentEpisode`. `unsubscribeAllForContact` calls
+  it on every global opt-out, not only when the contact holds a token.
+
+The outgoing link stays dead: no contact holds it and none of its contact's
+pending rows remain, so `getByConfirmationToken` answers `null` and
+`confirmSubmission` answers `invalid_token`.
+
+Contacts who opted out before the consent-episode amendment still held the
+token they had then. `tokenPredatesOptOut` recognises such a token (the
+contact is opted out and the token was issued at or before the opt-out), and
+a replacement does not carry its rows. Migration
+`0057_withdraw_opted_out_confirmation_tokens` withdraws it, with
+the token clearing of `endConsentEpisode`, and leaves a token issued after the
+opt-out (a later signup waiting for a fresh confirmation).
+
+`__tests__/formTokenCarry.integration.test.ts` covers both replacement paths,
+more than one page of rows, the rows that must stay put, and the follow-up
+cases, including a follow-up that runs after a global opt-out and a new
+signup, before or after that signup is confirmed, and two resends before
+the newest token is confirmed; `migrations/__tests__/withdrawOptedOutTokens.test.ts` covers the
+migration.

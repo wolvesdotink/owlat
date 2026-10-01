@@ -14,7 +14,11 @@
 #   owlat config              — re-open the wizard for an existing install
 #   owlat sample-data [install|remove|status] — opt-in demo content, removable
 #   owlat feature <key> on|off — toggle a single feature flag
+#   owlat feature --sync      — rewrite .owlat-flags.json from the flags the
+#                               running backend holds (after a restore)
 #   owlat env <KEY> <VALUE>   — set a single env var in .env
+#   owlat unset-env <KEY...>  — clear Convex function-runtime keys from the
+#                               deployment and .env (apply never deletes one)
 #   owlat start               — docker compose up -d
 #   owlat stop                — docker compose down
 #   owlat apply [service...]  — apply .env / feature changes: recreate changed
@@ -348,16 +352,16 @@ compose_project_name() {
 	docker compose config 2>/dev/null | sed -n 's/^name:[[:space:]]*//p' | head -1 || true
 }
 
-# Whether the pinned setup image knows `push-env`, which arrived with `owlat
-# apply`. A host `owlat` newer than the stack runs an older image, which answers
-# `push-env` with "Unknown command" and its whole help text. `--help` exits 0 on
-# every version and lists the commands, so it answers the question without
-# running anything. A probe that fails counts as yes: the real run then reports
-# its own error.
-setup_image_has_push_env() {
+# Whether the pinned setup image knows the command $1 (`push-env` arrived with
+# `owlat apply`, `unset-env` later). A host `owlat` newer than the stack runs an
+# older image, which answers an unknown command with "Unknown command" and its
+# whole help text. `--help` exits 0 on every version and lists the commands, so
+# it answers the question without running anything. A probe that fails counts
+# as yes: the real run then reports its own error.
+setup_image_has_command() {
 	local help_text
 	help_text="$(docker run --rm "$OWLAT_SETUP_IMAGE" --help 2>/dev/null)" || return 0
-	[[ "$help_text" == *push-env* ]]
+	[[ "$help_text" == *"$1"* ]]
 }
 
 # The compose profiles feature flags turn on and off, the only ones `owlat
@@ -407,6 +411,39 @@ stop_inactive_profile_services() {
 		# shellcheck disable=SC2086 # one container id per word
 		docker stop $ids >/dev/null && docker rm $ids >/dev/null
 	done
+}
+
+# ── Flag mirror ───────────────────────────────────────────────────────────────
+# `owlat feature --sync` rewrites .owlat-flags.json, the CLI's copy of the
+# instance feature flags, from the flags the running backend holds. The setup
+# CLI, the web wizard and the updater's Apply write that file as a side effect
+# of a change; this rebuilds it with no change, which a restore from an archive
+# made before backups carried it needs. scripts/read-feature-flags.mjs does the
+# read through node in the web container: it is on the compose network with
+# the backend and has node on every release, so the step works whatever version
+# the restored stack runs, which a command in the version-pinned setup image
+# would not. Only the file is written: the override, COMPOSE_PROFILES and the
+# running containers stay as they are.
+sync_flag_mirror() {
+	if [[ $# -ne 0 ]]; then
+		echo "Usage: owlat feature --sync" >&2
+		return 2
+	fi
+	local mirror="$OWLAT_DIR/.owlat-flags.json" flags tmp
+	if ! flags="$(docker compose exec -T web node --input-type=module - \
+		<"$(dirname "$OWLAT_CLI_SOURCE")/read-feature-flags.mjs")"; then
+		echo "Error: could not read the feature flags from the backend; $mirror was not changed." >&2
+		echo "The stack must be running with Convex healthy ('owlat status'). Then run 'owlat feature --sync' again." >&2
+		return 1
+	fi
+	# mktemp creates the file owner-only, as every other writer leaves it.
+	tmp="$(mktemp "$mirror.XXXXXX")" || return 1
+	if ! { printf '%s' "$flags" >"$tmp" && mv -f "$tmp" "$mirror"; }; then
+		rm -f "$tmp"
+		echo "Error: could not write $mirror." >&2
+		return 1
+	fi
+	printf '%b\n' "${GREEN}${BOLD}[ ok ]${RESET} Wrote $mirror from the backend's feature flags."
 }
 
 # ── Subcommands ───────────────────────────────────────────────────────────────
@@ -505,10 +542,29 @@ case "$cmd" in
 esac
 
 case "$cmd" in
-	setup|quickstart|config|sample-data|feature|env|doctor|apply)
+	setup|quickstart|config|sample-data|feature|env|unset-env|doctor|apply)
 		require_supported_arch
 		;;
 esac
+
+# ── Consume-once setup config ─────────────────────────────────────────────────
+# A setup config holds the admin password and provider keys in plaintext. With
+# OWLAT_CONSUME_CONFIG=1 (the desktop wizard sets it) quickstart's config file
+# is deleted as soon as the run ends: success, failure, or a signal. That
+# includes the wizard's SSH session dropping mid-run, which ends the docker
+# client on its next write. The container reads the bind-mounted copy while it
+# runs; a retry uploads a fresh config. Without the variable the file is left
+# alone (install.sh and hand-run installs manage their own).
+run_quickstart_container() {
+	if [[ "${OWLAT_CONSUME_CONFIG:-0}" != "1" || -z "$OWLAT_CONFIG_FILE" ]]; then
+		exec "$@"
+	fi
+	trap 'rm -f -- "$OWLAT_CONFIG_FILE"' EXIT
+	trap 'exit 129' HUP
+	trap 'exit 130' INT
+	trap 'exit 143' TERM
+	"$@"
+}
 
 # Provisioning subcommands double as the repair path: an install that never got
 # the symlink (desktop SSH flow, hand-clone) gains it here, and one that already
@@ -576,7 +632,7 @@ case "$cmd" in
 			quickstart_docker_desktop=1
 		fi
 		if [[ "$quickstart_docker_desktop" == "1" ]]; then
-			exec docker run --rm $([ -t 1 ] && echo "-it") \
+			run_quickstart_container docker run --rm $([ -t 1 ] && echo "-it") \
 				--add-host=host.docker.internal:host-gateway \
 				-v "$OWLAT_DIR:/opt/owlat" \
 				-v /var/run/docker.sock:/var/run/docker.sock \
@@ -588,8 +644,9 @@ case "$cmd" in
 				-e "OWLAT_BUILD_LOCAL=${OWLAT_BUILD_LOCAL:-0}" \
 				-e "OWLAT_LOCAL_IMAGES=${OWLAT_LOCAL_IMAGES:-0}" \
 				"$OWLAT_SETUP_IMAGE" quickstart "$@"
+			exit $?
 		fi
-		exec docker run --rm $([ -t 1 ] && echo "-it") \
+		run_quickstart_container docker run --rm $([ -t 1 ] && echo "-it") \
 			--network host \
 			-v "$OWLAT_DIR:/opt/owlat" \
 			-v /var/run/docker.sock:/var/run/docker.sock \
@@ -600,6 +657,7 @@ case "$cmd" in
 			-e "OWLAT_BUILD_LOCAL=${OWLAT_BUILD_LOCAL:-0}" \
 			-e "OWLAT_LOCAL_IMAGES=${OWLAT_LOCAL_IMAGES:-0}" \
 			"$OWLAT_SETUP_IMAGE" quickstart "$@"
+		exit $?
 		;;
 	config)
 		exec docker run --rm $([ -t 1 ] && echo "-it") \
@@ -636,6 +694,11 @@ case "$cmd" in
 			"$OWLAT_SETUP_IMAGE" sample-data "$@"
 		;;
 	feature)
+		if [[ "${1:-}" == --sync ]]; then
+			shift
+			sync_flag_mirror "$@"
+			exit $?
+		fi
 		exec docker run --rm \
 			-v "$OWLAT_DIR:/opt/owlat" \
 			"$OWLAT_SETUP_IMAGE" feature "$@"
@@ -644,6 +707,26 @@ case "$cmd" in
 		exec docker run --rm \
 			-v "$OWLAT_DIR:/opt/owlat" \
 			"$OWLAT_SETUP_IMAGE" env "$@"
+		;;
+	unset-env)
+		# Clear Convex function-runtime keys from the deployment and from .env.
+		# `apply` only ever sets the keys .env has a value for, so blanking or
+		# deleting a line leaves the old value live; this is the explicit way to
+		# clear one. The setup CLI checks each key against the runtime-key list,
+		# then runs `convex env remove` through `docker compose run convex-deploy`
+		# on the host socket, joining THIS project like apply's push does.
+		if ! setup_image_has_command unset-env; then
+			printf '%b\n' "${YELLOW}${BOLD}[warn]${RESET} Nothing was changed: this stack's setup image (${OWLAT_SETUP_IMAGE}) predates 'owlat unset-env'." \
+				"       Upgrade the stack with 'owlat upgrade', then run 'owlat unset-env' again." >&2
+			exit 1
+		fi
+		project_name="$(compose_project_name)"
+		exec docker run --rm \
+			-v "$OWLAT_DIR:/opt/owlat" \
+			-v /var/run/docker.sock:/var/run/docker.sock \
+			-e "OWLAT_DIR=/opt/owlat" \
+			${project_name:+-e "COMPOSE_PROJECT_NAME=$project_name"} \
+			"$OWLAT_SETUP_IMAGE" unset-env "$@"
 		;;
 	start|up)
 		# Activate docker-compose profiles for enabled features.
@@ -677,7 +760,7 @@ case "$cmd" in
 			exit 0
 		fi
 		stop_inactive_profile_services
-		if ! setup_image_has_push_env; then
+		if ! setup_image_has_command push-env; then
 			printf '%b\n' "${YELLOW}${BOLD}[warn]${RESET} Containers are up to date, but the Convex function-runtime keys were NOT pushed:" \
 				"       this stack's setup image (${OWLAT_SETUP_IMAGE}) predates 'owlat apply'." \
 				"       Upgrade the stack with 'owlat upgrade', then run 'owlat apply' again." >&2

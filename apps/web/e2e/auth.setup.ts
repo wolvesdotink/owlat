@@ -17,6 +17,11 @@ import { STORAGE_STATE } from './storage-state';
  * one-shot rule ("refuses if any user exists") is satisfied.
  */
 setup('bootstrap the instance and save auth state', async ({ page, request }) => {
+	// Sign-in, the background first-login check and the welcome stamp are three
+	// round trips to a cold hosted deployment on top of the seed; the suite's
+	// 45 s default leaves no headroom for that.
+	setup.setTimeout(90_000);
+
 	const owner = testUser();
 	const siteUrl = process.env['NUXT_PUBLIC_CONVEX_SITE_URL'];
 	const instanceSecret = process.env['CONVEX_TEST_INSTANCE_SECRET'];
@@ -57,18 +62,38 @@ setup('bootstrap the instance and save auth state', async ({ page, request }) =>
 	await page.getByRole('button', { name: 'Sign in' }).click();
 
 	// A brand-new owner has never seen the welcome screen, so `first-login.global`
-	// routes them there — but only when its Convex query wins the race against JWT
-	// setup, which makes a bare wait for /dashboard flaky. Accept either, and when
-	// we do land on /welcome let it stamp `welcomedAt` (it fires markWelcomed on
-	// mount) so every later spec gets a deterministic /dashboard.
+	// sends them there. The check does not block the navigation: /dashboard
+	// renders first, and once Convex has authenticated the new session the
+	// onboarding query answers and the redirect follows. Wait for that answer
+	// rather than guessing with reloads: the page ends up on /welcome (never
+	// welcomed) or the guard caches the "welcomed" answer in localStorage.
 	await page.waitForURL(/\/(dashboard|welcome)/, { timeout: 30_000 });
 
-	if (new URL(page.url()).pathname.startsWith('/welcome')) {
-		await expect(page.getByRole('heading').first()).toBeVisible({ timeout: 15_000 });
+	// `.catch`: evaluating mid-navigation throws "execution context destroyed".
+	const welcomedCached = () =>
+		page
+			.evaluate(() => Object.keys(localStorage).some((key) => key.startsWith('owlat:welcomed:')))
+			.catch(() => false);
+	const onWelcome = () => new URL(page.url()).pathname.startsWith('/welcome');
+	await expect
+		.poll(async () => onWelcome() || (await welcomedCached()), { timeout: 30_000 })
+		.toBe(true);
+
+	if (onWelcome()) {
+		await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+		// welcome.vue writes the cache entry only once `markWelcomed` has
+		// committed, so after this the server knows the owner has been welcomed
+		// and leaving cannot bounce back here. The seeded owner has no mailbox, so
+		// the screen shows the "no mailbox yet" surface, which has no exit link of
+		// its own: navigate the way a member would, by opening the dashboard.
+		await expect.poll(welcomedCached, { timeout: 20_000 }).toBe(true);
 		await page.goto('/dashboard');
 	}
 
-	await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 });
+	await expect(page).toHaveURL(/\/dashboard/);
+	// The cache entry goes into the saved storage state, so every later spec gets
+	// a deterministic /dashboard without asking the server again.
+	expect(await welcomedCached()).toBe(true);
 
 	await page.context().storageState({ path: STORAGE_STATE });
 });

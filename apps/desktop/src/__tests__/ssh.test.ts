@@ -12,6 +12,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 	},
 }));
 
+import * as bridge from '../ssh';
 import {
 	sshConnect,
 	sshAcceptHostKey,
@@ -19,7 +20,12 @@ import {
 	sshExecStream,
 	sshWriteFile,
 	sshDisconnect,
+	sshCancel,
+	sshUploadDir,
+	sshPushImages,
+	localDockerBuild,
 	type ExecEvent,
+	type LocalBuild,
 } from '../ssh';
 
 beforeEach(() => {
@@ -51,13 +57,19 @@ describe('ssh bridge', () => {
 	it('sshAcceptHostKey invokes ssh_accept_host_key with the session id', async () => {
 		invokeMock.mockResolvedValue(undefined);
 		await sshAcceptHostKey('s1');
-		expect(invokeMock).toHaveBeenCalledWith('ssh_accept_host_key', { sessionId: 's1', acceptChanged: undefined });
+		expect(invokeMock).toHaveBeenCalledWith('ssh_accept_host_key', {
+			sessionId: 's1',
+			acceptChanged: undefined,
+		});
 	});
 
 	it('sshAcceptHostKey forwards acceptChanged when re-accepting a changed key', async () => {
 		invokeMock.mockResolvedValue(undefined);
 		await sshAcceptHostKey('s1', true);
-		expect(invokeMock).toHaveBeenCalledWith('ssh_accept_host_key', { sessionId: 's1', acceptChanged: true });
+		expect(invokeMock).toHaveBeenCalledWith('ssh_accept_host_key', {
+			sessionId: 's1',
+			acceptChanged: true,
+		});
 	});
 
 	it('sshAuthenticate forwards a password credential exactly once', async () => {
@@ -126,10 +138,64 @@ describe('ssh bridge', () => {
 		expect(invokeMock).toHaveBeenCalledWith('ssh_disconnect', { sessionId: 's1' });
 	});
 
+	it('sshCancel invokes ssh_cancel for the session', async () => {
+		invokeMock.mockResolvedValue(undefined);
+		await sshCancel('s1');
+		expect(invokeMock).toHaveBeenCalledWith('ssh_cancel', { sessionId: 's1' });
+	});
+
+	it('sshUploadDir invokes ssh_upload_dir with the checkout and target dir', async () => {
+		invokeMock.mockResolvedValue(undefined);
+		await sshUploadDir('s1', '/home/dev/owlat', '/opt/owlat');
+		expect(invokeMock).toHaveBeenCalledWith('ssh_upload_dir', {
+			sessionId: 's1',
+			localDir: '/home/dev/owlat',
+			remoteDir: '/opt/owlat',
+		});
+	});
+
+	it('sshPushImages streams the image list over a channel', async () => {
+		invokeMock.mockResolvedValue(undefined);
+		const events: ExecEvent[] = [];
+		const promise = sshPushImages('s1', ['ghcr.io/wolvesdotink/web:dev'], (e) => events.push(e));
+		const [cmd, args] = invokeMock.mock.calls[0]!;
+		expect(cmd).toBe('ssh_push_images');
+		expect(args.images).toEqual(['ghcr.io/wolvesdotink/web:dev']);
+		args.onEvent.onmessage({ kind: 'stdout', line: 'Loaded image' });
+		expect(events).toEqual([{ kind: 'stdout', line: 'Loaded image' }]);
+		await promise;
+	});
+
+	it('localDockerBuild sends a typed build, never a program, arguments or environment', async () => {
+		invokeMock.mockResolvedValue(0);
+		const build: LocalBuild = {
+			kind: 'stack',
+			platform: 'linux/amd64',
+			profiles: ['deploy'],
+			services: ['web'],
+		};
+
+		const code = await localDockerBuild('s1', '/home/dev/owlat', build, () => {});
+
+		const [cmd, args] = invokeMock.mock.calls[0]!;
+		expect(cmd).toBe('local_docker_build');
+		expect(Object.keys(args).sort()).toEqual(['build', 'localDir', 'onEvent', 'sessionId']);
+		// The session owns the build, so cancelling it stops the build too.
+		expect(args.sessionId).toBe('s1');
+		expect(args.localDir).toBe('/home/dev/owlat');
+		expect(args.build).toEqual(build);
+		expect(code).toBe(0);
+	});
+
+	it('exposes no generic local process runner', () => {
+		expect(Object.keys(bridge)).not.toContain('localExecStream');
+		expect(Object.keys(bridge).filter((k) => /exec/i.test(k))).toEqual(['sshExecStream']);
+	});
+
 	it('propagates a rejected invoke (e.g. auth failure)', async () => {
 		invokeMock.mockRejectedValue(new Error('Authentication failed'));
-		await expect(sshAuthenticate('s1', 'root', { type: 'password', password: 'bad' })).rejects.toThrow(
-			/Authentication failed/
-		);
+		await expect(
+			sshAuthenticate('s1', 'root', { type: 'password', password: 'bad' })
+		).rejects.toThrow(/Authentication failed/);
 	});
 });

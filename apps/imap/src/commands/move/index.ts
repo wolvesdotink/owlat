@@ -3,6 +3,7 @@ import type { ImapCommandModule } from '../types.js';
 import { asyncSession } from '../helpers/session.js';
 import { runCopyOrMove } from '../helpers/copyMove.js';
 import { seqForUid } from '../helpers/seqMap.js';
+import { expungeFromView } from '../helpers/sequenceView.js';
 import { inBatches } from '../helpers/uidSet.js';
 
 interface MoveArgs {
@@ -13,22 +14,19 @@ interface MoveArgs {
 
 /**
  * MOVE (RFC 6851) — COPY + EXPUNGE as one step. Each moved source message
- * is reported as `* n EXPUNGE` with its sequence number from the seq map
- * the set was resolved against, highest first, so every number is still
- * valid when the client reads it (RFC 3501 §7.4.1), and the selected
+ * is reported as `* n EXPUNGE` with its sequence number in the client's
+ * sequence view (taking it out of the view), highest first, so every number
+ * is still valid when the client reads it (RFC 3501 §7.4.1), and the selected
  * state's message count drops by the same amount.
  *
  * A large set moves in batches, lowest UIDs first, and each batch is reported
  * (`* OK [COPYUID …] Move` and its EXPUNGE lines) as soon as it has committed.
- * Every message in a later batch sits above every message already expunged, so
- * its sequence number is lowered by the count reported so far. If a batch
- * fails, the batches before it stay moved and reported and the command answers
- * NO: RFC 6851 §3.3 allows a partial MOVE as long as each message is either
- * moved or left in place.
- *
- * The message set, including `*`, is resolved against the folder as it is when
- * the command runs, like every other command that takes a set (see
- * `helpers/seqMap.ts`).
+ * Taking a batch out of the view renumbers the messages above it, so a later
+ * batch's numbers are already the lowered ones; without a view, every message
+ * in a later batch sits above every message already expunged, so its number is
+ * lowered by the count reported so far. If a batch fails, the batches before
+ * it stay moved and reported and the command answers NO: RFC 6851 §3.3 allows
+ * a partial MOVE as long as each message is either moved or left in place.
  */
 export const moveModule: ImapCommandModule<MoveArgs> = {
 	verbs: ['MOVE'],
@@ -68,12 +66,19 @@ export const moveModule: ImapCommandModule<MoveArgs> = {
 						const sources = result.pairs.map((p) => p.sourceUid).join(',');
 						const targets = result.pairs.map((p) => p.targetUid).join(',');
 						send(`* OK [COPYUID ${result.uidValidity} ${sources} ${targets}] Move`);
-						const expunged = result.pairs
-							.map((p) => seqForUid(seqMap, p.sourceUid))
-							.filter((seq): seq is number => seq !== undefined)
-							.sort((a, b) => b - a);
+						const view = selected.view;
+						const expunged = view
+							? expungeFromView(
+									view,
+									result.pairs.map((p) => p.sourceUid)
+								)
+							: result.pairs
+									.map((p) => seqForUid(seqMap, p.sourceUid))
+									.filter((seq): seq is number => seq !== undefined)
+									.map((seq) => seq - expungedSoFar)
+									.sort((a, b) => b - a);
 						for (const seq of expunged) {
-							send(`* ${seq - expungedSoFar} EXPUNGE`);
+							send(`* ${seq} EXPUNGE`);
 						}
 						expungedSoFar += expunged.length;
 						// Keep the selected message count in step with the EXPUNGE

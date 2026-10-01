@@ -1,7 +1,7 @@
 /**
  * Permanent deletion of one message row, and everything that has to move with
- * it: the folder counters, the mailbox's `usedBytes`, the raw/body blobs and the
- * attachment index.
+ * it: the folder counters, the mailbox's `usedBytes`, the raw/body blobs, the
+ * attachment parts stored out of the raw blob and the attachment index.
  *
  * Extracted from `messageActions.purge` (the bulk-bar's "Delete forever") so the
  * unattended trash auto-purge sweep (`mail/trashRetention.ts`) destroys mail
@@ -16,6 +16,11 @@ import type { Id, Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { removeMessageAttachments } from './attachmentIndex';
+import { applyMailboxUsageDelta } from './mailboxUsage';
+import { recordMessageCounters } from './messageCounters';
+import { recordFolderMembership } from './folderMembership';
+import { deleteMessageBody } from '../lib/messageBodyStore';
+import { deleteMessagePartsForRaw } from './messageParts';
 
 /** The `mailMessages` columns that hold a storage blob a SIBLING row may share. */
 type SharedBlobColumn = 'rawStorageId' | 'textBodyStorageId' | 'htmlBodyStorageId';
@@ -101,10 +106,14 @@ export async function deleteMessageRowAndBlobs(
 	ctx: MutationCtx,
 	message: Doc<'mailMessages'>
 ): Promise<void> {
+	// Bump the usage revision so a concurrent recount (migration 0042) restarts.
 	const mailbox = await ctx.db.get(message.mailboxId);
-	if (mailbox) await ctx.db.patch(mailbox._id, { usageRevision: (mailbox.usageRevision ?? 0) + 1 });
+	if (mailbox) await applyMailboxUsageDelta(ctx, mailbox, 0);
 
 	await ctx.db.delete(message._id);
+	await deleteMessageBody(ctx.db, message._id);
+	await recordMessageCounters(ctx, message, null);
+	await recordFolderMembership(ctx, message, null);
 
 	const blobs: ReadonlyArray<readonly [SharedBlobColumn, Id<'_storage'> | undefined]> = [
 		['rawStorageId', message.rawStorageId],
@@ -119,6 +128,9 @@ export async function deleteMessageRowAndBlobs(
 		} catch {
 			// Storage may already be gone — the row is what had to disappear.
 		}
+		// The attachment parts cut out of the raw `.eml` share its lifetime: every
+		// row that shares the raw blob shares them, so they go with the last one.
+		if (column === 'rawStorageId') await deleteMessagePartsForRaw(ctx, storageId);
 	}
 }
 
@@ -143,12 +155,7 @@ export async function purgeMessageRow(
 	}
 
 	const mailbox = await ctx.db.get(message.mailboxId);
-	if (mailbox) {
-		await ctx.db.patch(message.mailboxId, {
-			usedBytes: Math.max(0, mailbox.usedBytes - message.rawSize),
-			updatedAt: Date.now(),
-		});
-	}
+	if (mailbox) await applyMailboxUsageDelta(ctx, mailbox, -message.rawSize);
 
 	// The attachment index is a function of the message table; a row that
 	// outlived its message would list a file that opens into nothing.

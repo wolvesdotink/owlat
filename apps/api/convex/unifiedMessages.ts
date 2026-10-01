@@ -7,7 +7,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery, internalMutation, internalAction } from './_generated/server';
+import { internalQuery, internalAction } from './_generated/server';
+import { internalMutation } from './lib/writeFence';
 import type { MutationCtx } from './_generated/server';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { requireOrgPermission, hasPermission, requirePermission } from './lib/sessionOrganization';

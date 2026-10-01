@@ -10,6 +10,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
 import { usePostboxSettings } from '../usePostboxSettings';
+import { optimisticUpdateSettings } from '~/lib/mailOptimistic/settingsUpdater';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -21,17 +22,21 @@ vi.mock('@owlat/api', () => {
 
 const settingsRow = ref<Record<string, unknown> | null>(null);
 const runSpy = vi.fn(async () => undefined);
+let operationOptions: Record<string, unknown> = {};
 
 beforeEach(() => {
 	settingsRow.value = null;
 	runSpy.mockClear();
 	vi.stubGlobal('useConvexQuery', () => ({ data: settingsRow, isLoading: ref(false) }));
-	vi.stubGlobal('useBackendOperation', () => ({ run: runSpy, isLoading: ref(false) }));
+	vi.stubGlobal('useBackendOperation', (_fn: unknown, opts: Record<string, unknown>) => {
+		operationOptions = opts;
+		return { run: runSpy, isLoading: ref(false) };
+	});
 	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => false }));
 });
 
 describe('usePostboxSettings density', () => {
-	it("defaults to comfortable while unset/loading", () => {
+	it('defaults to comfortable while unset/loading', () => {
 		const { density } = usePostboxSettings();
 		expect(density.value).toBe('comfortable');
 	});
@@ -52,5 +57,10 @@ describe('usePostboxSettings density', () => {
 		const { setDensity } = usePostboxSettings();
 		await setDensity('compact');
 		expect(runSpy).toHaveBeenCalledWith({ density: 'compact' });
+	});
+
+	it('repaints the switch before the server answers (plan 2.2)', () => {
+		usePostboxSettings();
+		expect(operationOptions.optimisticUpdate).toBe(optimisticUpdateSettings);
 	});
 });

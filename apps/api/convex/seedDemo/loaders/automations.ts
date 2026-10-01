@@ -16,6 +16,7 @@
 
 import type { MutationCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
+import { recordListingCounter } from '../../lib/listingCounters';
 import { SEED_TAG, type LoadResult, type Loader, type LoaderOptions, type SeedRefs } from './types';
 
 type TriggerType = 'contact_created' | 'contact_updated' | 'event_received' | 'topic_subscribed';
@@ -67,6 +68,7 @@ async function load(
 			createdAt: now,
 			updatedAt: now,
 		});
+		await recordListingCounter(ctx, 'automationStatus', null, { status });
 
 		for (let idx = 0; idx < rec.steps.length; idx++) {
 			const step = rec.steps[idx]!;

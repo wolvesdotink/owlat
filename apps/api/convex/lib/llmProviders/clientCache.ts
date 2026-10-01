@@ -60,12 +60,18 @@ export function memoizeClient<T>(cache: Map<string, T>, cacheKey: string, build:
  * (required vs. defaulted) — both of which the caller resolves before calling.
  * The cache key stores only a non-reversible hash of the key, never a slice of
  * the raw secret.
+ *
+ * `supportsStructuredOutputs` makes `generateObject` send the Zod schema as a
+ * `json_schema` response format. Without it the provider downgrades to a bare
+ * `json_object` request and DROPS the schema, so the model never learns the
+ * shape it has to return and structured calls fail to parse.
  */
 export function openAICompatibleClient(
 	cache: Map<string, OpenAICompatibleClient>,
 	name: string,
 	baseURL: string,
-	apiKey: string | undefined
+	apiKey: string | undefined,
+	options: { supportsStructuredOutputs?: boolean } = {}
 ): OpenAICompatibleClient {
 	const cacheKey = `${baseURL}::${keyFingerprint(apiKey)}`;
 	return memoizeClient(cache, cacheKey, () =>
@@ -73,6 +79,7 @@ export function openAICompatibleClient(
 			name,
 			baseURL,
 			...(apiKey ? { apiKey } : {}),
+			...(options.supportsStructuredOutputs ? { supportsStructuredOutputs: true } : {}),
 		})
 	);
 }

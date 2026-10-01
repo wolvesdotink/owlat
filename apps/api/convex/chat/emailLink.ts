@@ -17,7 +17,8 @@
  */
 
 import { v } from 'convex/values';
-import { openInboundMessageBody } from '../lib/messageBody';
+import type { Doc } from '../_generated/dataModel';
+import { openInboundMessageBody } from '../lib/messageBodyInbound';
 import { getMutationContext } from '../lib/sessionOrganization';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
@@ -89,6 +90,13 @@ export const unlinkChannel = chatMutation({
 	},
 });
 
+/** The panel's preview text: the text part, or the excerpt of one held in
+ * storage (a query cannot read the blob), capped for the compact list. */
+async function linkedMessagePreviewText(message: Doc<'inboundMessages'>): Promise<string | null> {
+	const { text, excerpt } = await openInboundMessageBody(message, null);
+	return (text ?? excerpt)?.slice(0, 4000) ?? null;
+}
+
 /**
  * Get the inline view of a linked inbox thread: the thread metadata plus a
  * compact list of recent inbound messages for the panel.
@@ -138,7 +146,7 @@ export const getLinkedThreadView = chatQuery({
 					from: m.from,
 					to: m.to,
 					subject: m.subject,
-					textBody: (await openInboundMessageBody(m)).text?.slice(0, 4000) ?? null,
+					textBody: await linkedMessagePreviewText(m),
 					receivedAt: m.receivedAt,
 					processingStatus: m.processingStatus,
 				}))

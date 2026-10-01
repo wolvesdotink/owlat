@@ -14,6 +14,7 @@ import type {
 	DeliveryStatus,
 	ChannelHealth,
 } from './types';
+import { FETCH_TIMEOUTS, fetchWithTimeout } from '../../lib/fetchWithTimeout';
 
 interface WhatsAppConfig {
 	phoneNumberId: string;
@@ -47,14 +48,18 @@ export class WhatsAppAdapter implements ChannelAdapter {
 				text: { body: message.content.text ?? '' },
 			};
 
-			const response = await fetch(url, {
-				method: 'POST',
-				headers: {
-					Authorization: `Bearer ${this.config.accessToken}`,
-					'Content-Type': 'application/json',
+			const response = await fetchWithTimeout(
+				url,
+				{
+					method: 'POST',
+					headers: {
+						Authorization: `Bearer ${this.config.accessToken}`,
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify(payload),
 				},
-				body: JSON.stringify(payload),
-			});
+				FETCH_TIMEOUTS.thirdPartyApi
+			);
 
 			if (response.ok) {
 				const data = (await response.json()) as WhatsAppSendResponse;
@@ -78,9 +83,13 @@ export class WhatsAppAdapter implements ChannelAdapter {
 
 		try {
 			const url = `https://graph.facebook.com/v18.0/${this.config.phoneNumberId}`;
-			const response = await fetch(url, {
-				headers: { Authorization: `Bearer ${this.config.accessToken}` },
-			});
+			const response = await fetchWithTimeout(
+				url,
+				{
+					headers: { Authorization: `Bearer ${this.config.accessToken}` },
+				},
+				FETCH_TIMEOUTS.thirdPartyApi
+			);
 
 			if (response.ok) {
 				return { status: 'healthy' };

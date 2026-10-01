@@ -18,12 +18,8 @@
  */
 
 import { v } from 'convex/values';
-import {
-	internalMutation,
-	type ActionCtx,
-	type MutationCtx,
-	type QueryCtx,
-} from '../_generated/server';
+import type { ActionCtx, MutationCtx, QueryCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { adminQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { tokenUsageValidator } from '../lib/convexValidators';
@@ -130,6 +126,27 @@ export async function recordLlmSpend(
 ): Promise<void> {
 	if (!tokenUsage) return;
 	await ctx.runMutation(internal.analytics.llmUsage.record, { feature, modelUsed, tokenUsage });
+}
+
+/**
+ * {@link recordLlmSpend} for interactive surfaces: schedules the ledger write
+ * instead of running it, so the user's answer is not held for a mutation round
+ * trip. The row lands moments later. The advisory budget gate
+ * (mail/ai/gate.ts) is the only reader on these paths, and it only needs the
+ * row before the next call, not before this one returns.
+ */
+export async function scheduleLlmSpend(
+	ctx: ActionCtx,
+	feature: string,
+	tokenUsage: TokenUsage | undefined,
+	modelUsed: string | undefined
+): Promise<void> {
+	if (!tokenUsage) return;
+	await ctx.scheduler.runAfter(0, internal.analytics.llmUsage.record, {
+		feature,
+		modelUsed,
+		tokenUsage,
+	});
 }
 
 /**

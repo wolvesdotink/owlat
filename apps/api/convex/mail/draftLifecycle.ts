@@ -37,7 +37,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, internalQuery } from '../_generated/server';
+import { internalQuery } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { Id } from '../_generated/dataModel';
 import { logError } from '../lib/runtimeLog';
 import { isFeatureEnabled } from '../lib/featureFlags';

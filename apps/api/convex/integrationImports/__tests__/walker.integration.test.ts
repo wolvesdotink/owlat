@@ -31,6 +31,7 @@ import { api, internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { isSealedImportCredential } from '../credentialSeal';
 import { expectScheduledFailure } from '../../__tests__/helpers/scheduledFailures';
+import { fakeMailchimpAudience } from './fakeMailchimpAudience';
 
 // The functions below need configuration this suite only stubs inside its
 // tests (or not at all), and their jobs fire after that is gone. These tests
@@ -309,41 +310,46 @@ describe('processIntegrationPage — happy path with terminal page', () => {
 // ─── processIntegrationPage — multi-page sequence ───────────────────────────
 
 describe('processIntegrationPage — multi-page sequence', () => {
-	it('returns non-null nextCursor on full page; null on partial page', async () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('returns non-null nextCursor on full page; null once every pass is read', async () => {
+		// Each hop is run by hand; the ones the commits schedule never fire.
+		vi.useFakeTimers();
 		const t = convexTest(schema, modules);
-		// Page 1: 100 members (full) → walker patches cursor to "100".
-		const page1Emails = Array.from({ length: 100 }, (_, i) => `u${i}@example.com`);
-		global.fetch = vi.fn().mockImplementation(() => mailchimpPageResponse(page1Emails, 150));
-
+		const audience = fakeMailchimpAudience(
+			Array.from({ length: 150 }, (_, i) => ({ email: `u${i}@example.com`, status: 'subscribed' }))
+		);
+		global.fetch = audience.fetch;
 		const importId = await seedRunningImport(t);
-		await t.action(internal.integrationImports.walker.processIntegrationPage, {
-			importId,
-			config: VALID_MAILCHIMP_CONFIG,
-			cursor: '',
-		});
+		const runHop = async (page: number) => {
+			const row = asImport(await t.run(async (ctx) => ctx.db.get(importId)));
+			await t.action(internal.integrationImports.walker.processIntegrationPage, {
+				importId,
+				config: VALID_MAILCHIMP_CONFIG,
+				cursor: row.cursor,
+				page,
+			});
+			return asImport(await t.run(async (ctx) => ctx.db.get(importId)));
+		};
 
+		// Page 1: 100 members (full) → next hop scheduled, status still running.
+		const first = await runHop(0);
+		expect(first).toMatchObject({ status: 'running', imported: 100, pagesCommitted: 1 });
+		expect(JSON.parse(first.cursor)).toMatchObject({ pass: 'audience', offset: 100 });
+
+		// Page 2: the last 50 (partial) → the audience is read; the closing pass
+		// over members changed during the run is next.
+		const second = await runHop(1);
+		expect(second).toMatchObject({ status: 'running', imported: 150, pagesCommitted: 2 });
+		expect(JSON.parse(second.cursor)).toMatchObject({ pass: 'changed', offset: 0 });
+
+		// Page 3: nothing changed → walker completes.
+		const third = await runHop(2);
+		expect(third).toMatchObject({ status: 'completed', imported: 150 });
 		await t.run(async (ctx) => {
-			const row = asImport(await ctx.db.get(importId));
-			// Full page → next hop scheduled, status still running.
-			expect(row.status).toBe('running');
-			expect(row.imported).toBe(100);
-			expect(row.cursor).toBe('100');
-		});
-
-		// Page 2: 50 members (partial) → walker completes.
-		const page2Emails = Array.from({ length: 50 }, (_, i) => `v${i}@example.com`);
-		global.fetch = vi.fn().mockImplementation(() => mailchimpPageResponse(page2Emails, 150));
-
-		await t.action(internal.integrationImports.walker.processIntegrationPage, {
-			importId,
-			config: VALID_MAILCHIMP_CONFIG,
-			cursor: '100',
-		});
-
-		await t.run(async (ctx) => {
-			const row = asImport(await ctx.db.get(importId));
-			expect(row.status).toBe('completed');
-			expect(row.imported).toBe(150);
+			expect(await ctx.db.query('contacts').collect()).toHaveLength(150);
 		});
 	});
 });

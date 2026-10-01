@@ -16,13 +16,16 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { getFunctionName, type AnyFunctionReference } from 'convex/server';
+import { getFunctionName } from 'convex/server';
 import { fetchModule, type FetchArgs } from '../index.js';
 import { storeModule, type StoreArgs } from '../../store/index.js';
 import { selectModule } from '../../select/index.js';
 import { uidModule } from '../../uid/index.js';
 import type { FetchEnvelope } from '../format.js';
 import type { CommandDeps, ConnectionState, ImapVerb, StartArgs } from '../../types.js';
+
+// convex/server declares AnyFunctionReference without exporting it.
+type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
 
 /** UID → sequence number for the fixture mailbox (5,9,14 → 1,2,3). */
 const FOLDER_UIDS = [5, 9, 14];
@@ -64,6 +67,7 @@ function makeConvex(calls: ConvexCalls) {
 				const ref = getFunctionName(fnRef);
 				// Every folder read is paged: the backend answers with one page plus
 				// the UID to resume from, and `nextUid: null` means "that was all".
+				if (ref.endsWith(':folderMembershipPage')) return null;
 				if (ref.endsWith(':listFolderUidsPage')) {
 					return { uids: [...FOLDER_UIDS], nextUid: null };
 				}
@@ -169,7 +173,7 @@ async function runStore(
 		args,
 		tag: 'a001',
 		verb: 'STORE' as ImapVerb,
-		send: (line: string) => lines.push(line),
+		send: (line) => lines.push(line as string),
 	});
 	await session.completion;
 	return { lines, calls, convex };
@@ -220,6 +224,8 @@ describe('PR-58 true sequence numbers', () => {
 				if (ref.endsWith(':listFolders')) {
 					return [{ _id: 'f1', name: 'INBOX', role: 'inbox' }];
 				}
+				if (ref.endsWith(':folderMembershipPage')) return null;
+				if (ref.endsWith(':listFolderUidsPage')) return { uids: [5, 9, 14], nextUid: null };
 				if (ref.endsWith(':selectFolder')) {
 					return {
 						folder: {
@@ -232,9 +238,10 @@ describe('PR-58 true sequence numbers', () => {
 							totalCount: 3,
 							unseenCount: 2,
 						},
-						// First unseen is UID 9, which sits at sequence number 2.
+						// First unseen is UID 9, which sits at sequence number 2. The
+						// server numbers it against its own view; it asks the backend
+						// not to count (`skipFirstUnseenSeq`), so no firstUnseenSeq.
 						firstUnseenUid: 9,
-						firstUnseenSeq: 2,
 					};
 				}
 				return null;
@@ -255,5 +262,9 @@ describe('PR-58 true sequence numbers', () => {
 		await session.completion;
 		const unseen = lines.find((l) => l.includes('[UNSEEN'));
 		expect(unseen).toBe('* OK [UNSEEN 2] First unseen');
+		expect(convex.query).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ folderId: 'f1', skipFirstUnseenSeq: true })
+		);
 	});
 });

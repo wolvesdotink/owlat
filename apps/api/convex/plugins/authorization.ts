@@ -7,6 +7,7 @@ import {
 import { resolveFlags } from '@owlat/shared/featureFlags';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { isEnvPresent } from '../lib/env';
+import { readFeatureFlagSettings } from '../lib/featureFlagSettings';
 import {
 	getBetterAuthSessionWithRole,
 	getSingletonOrganizationId,
@@ -41,7 +42,7 @@ export function getBundledPluginManifest(pluginId: PluginId): PluginManifest {
 
 /**
  * The per-request runtime facts a plugin authorization decision reads from the
- * instance settings singleton: whether the plugin's flag is enabled and the
+ * feature flag singleton: whether the plugin's flag is enabled and the
  * operator's capability grants for it. Read fresh in the caller's transaction so
  * disabling the plugin or revoking a grant takes effect immediately. `manifest`
  * must be the resolved manifest for `pluginId`; a plugin whose manifest declares
@@ -58,11 +59,11 @@ export async function loadPluginRuntimeFacts(
 	manifest: PluginManifest
 ): Promise<PluginRuntimeFacts> {
 	const flagKey = `plugin.${pluginId}` as const;
-	const settings = await ctx.db.query('instanceSettings').first();
-	const flags = resolveFlags(settings?.featureFlags ?? {}, { registry: FEATURE_FLAG_REGISTRY });
+	const stored = await readFeatureFlagSettings(ctx.db);
+	const flags = resolveFlags(stored.featureFlags, { registry: FEATURE_FLAG_REGISTRY });
 	return {
 		flagEnabled: manifest.flag !== undefined && flags[flagKey] === true,
-		grants: settings?.pluginCapabilityGrants?.[flagKey],
+		grants: stored.pluginCapabilityGrants[flagKey],
 	};
 }
 

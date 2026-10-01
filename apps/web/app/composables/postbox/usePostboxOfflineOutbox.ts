@@ -35,17 +35,18 @@ import {
 	type OfflineComposePayload,
 	type OfflineOutboxItem,
 } from '~/utils/postboxOfflineStore';
+import { POSTBOX_UNDO_SEND_DEFAULT_SECONDS } from '~/utils/postboxUndoSendWindow';
 import { usePostboxOfflineCache } from './usePostboxOfflineCache';
 
 const QUEUED_TOKEN_PREFIX = 'outbox:';
 
 /**
- * Undo window shown for a queued (offline) send — mirrors the server's
- * `DEFAULT_UNDO_SEND_DELAY_MS` so the toast counts down exactly like an online
- * send. The item stays un-queueable for as long as it is queued; the window
- * only bounds the toast.
+ * Undo window shown for a queued (offline) send — the default window, the same
+ * one the server's `DEFAULT_UNDO_SEND_DELAY_MS` holds for, so the toast counts
+ * down exactly like an online send. The item stays un-queueable for as long as
+ * it is queued; the window only bounds the toast.
  */
-export const OFFLINE_QUEUE_UNDO_WINDOW_MS = 30_000;
+export const OFFLINE_QUEUE_UNDO_WINDOW_MS = POSTBOX_UNDO_SEND_DEFAULT_SECONDS * 1_000;
 
 /** True for the synthetic undo tokens minted by {@link queueSend}. */
 export function isQueuedSendToken(undoToken: string): boolean {

@@ -19,6 +19,15 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { PostboxFlagOverride } from './usePostboxOptimisticFlags';
+import {
+	optimisticArchive,
+	optimisticMarkRead,
+	optimisticMove,
+	optimisticSetStar,
+	optimisticSnooze,
+	optimisticSnoozeThread,
+	optimisticTrash,
+} from '~/lib/mailOptimistic/mailUpdaters';
 
 export function usePostboxRowTriage(args: {
 	/** Hide a row optimistically while its mutation is in flight. */
@@ -33,29 +42,40 @@ export function usePostboxRowTriage(args: {
 	const { t } = useI18n();
 	const triageUndo = usePostboxTriageUndo();
 
+	// Each verb also carries its native optimistic update (plan 2.2), which
+	// patches every other surface the row appears on (the rail's counts, the
+	// open conversation, the sidebar). The list's own hide/flag claims below
+	// set the same absolute values, so the two agree rather than stack.
 	const archiveOp = useBackendOperation(api.mail.messageActions.archive, {
 		label: () => t('components.postbox.postboxThreadList.archiveOperation'),
+		optimisticUpdate: optimisticArchive,
 	});
 	const trashOp = useBackendOperation(api.mail.messageActions.trash, {
 		label: () => t('components.postbox.postboxThreadList.trashOperation'),
+		optimisticUpdate: optimisticTrash,
 	});
 	const setStarOp = useBackendOperation(api.mail.messageActions.setStar, {
 		label: () => t('components.postbox.postboxThreadList.starOperation'),
+		optimisticUpdate: optimisticSetStar,
 	});
 	const markReadOp = useBackendOperation(api.mail.messageActions.markRead, {
 		label: () => t('components.postbox.postboxThreadList.markReadOperation'),
+		optimisticUpdate: optimisticMarkRead,
 	});
 	const snoozeOp = useBackendOperation(api.mail.snooze.snooze, {
 		label: () => t('components.postbox.postboxThreadList.snoozeOperation'),
+		optimisticUpdate: optimisticSnooze,
 	});
 	const snoozeThreadOp = useBackendOperation(api.mail.snooze.snoozeThread, {
 		label: () => t('components.postbox.postboxThreadList.snoozeOperation'),
+		optimisticUpdate: optimisticSnoozeThread,
 	});
 	const setMutedOp = useBackendOperation(api.mail.mute.setMutedForMessage, {
 		label: () => t('components.postbox.postboxThreadList.muteOperation'),
 	});
 	const moveOp = useBackendOperation(api.mail.messageActions.move, {
 		label: () => t('components.postbox.postboxThreadList.moveOperation'),
+		optimisticUpdate: optimisticMove,
 	});
 	// Follow-up chip on a watched row: cancel the armed watch / dismiss the due
 	// "No reply yet" indicator. Ownership-checked server-side.

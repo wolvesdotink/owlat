@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
-import { internalQuery, internalMutation } from '../_generated/server';
+import { internalQuery } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import type { Id } from '../_generated/dataModel';
 import type { ImportOutcome } from './import';
@@ -10,7 +11,7 @@ import { listResources, countFacet } from '../lib/listing';
 import { contactListing, redactContactCapabilityFields } from './listing';
 import { contactCreateSourceValidator } from '../lib/validators/contacts';
 import { applyContactEdit, createContactStrict } from './contactEdit';
-import { reconcileContactCount } from '../lib/contactCountHelpers';
+import { startContactCountReconcile } from './countReconcile';
 import { softDeleteContact } from '../lib/contactMutations';
 import { eraseContactNow } from './erasure/walker';
 import { sweepContactRetention } from './erasure/retention';
@@ -474,8 +475,8 @@ export const removeForTeam = internalMutation({
 		// 30-day soft-delete grace to). The UI delete (`remove` above) soft-deletes.
 		// The tombstone hides the contact and frees its identifiers at once; the
 		// erasure's first bounded transaction runs right here, so an ordinary
-		// contact is gone on return and only a large history finishes in the
-		// background.
+		// contact (a few hundred rows, one page of sends) is gone on return and
+		// only a large history finishes in the background.
 		await softDeleteContact(ctx, args.contactId, 'api');
 		await eraseContactNow(ctx, args.contactId, 'api_delete');
 	},
@@ -520,14 +521,15 @@ export const listByTeam = internalQuery({
 // ==========================================
 
 /**
- * Reconcile contact counts.
- * Called by daily cron.
+ * Reconcile the cached contact count. Called by the daily cron.
+ *
+ * Starts (or joins) a bounded, multi-transaction recount — see
+ * `contacts/countReconcile.ts`; it no longer counts in this transaction.
  */
 export const reconcileAllContactCounts = internalMutation({
 	args: {},
 	handler: async (ctx) => {
-		// Single instance — just reconcile directly
-		await reconcileContactCount(ctx);
+		await startContactCountReconcile(ctx);
 	},
 });
 

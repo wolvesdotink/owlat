@@ -8,7 +8,8 @@
  *   - a remembered value starts selected and, submitted untouched, goes back
  *     with `source: 'memory'`; a changed value goes back as `user`;
  *   - a chip picked in the reader's language is submitted as the canonical
- *     option.
+ *     option;
+ *   - a surface can replace a question's input through the `answer` slot.
  */
 import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -155,5 +156,30 @@ describe('ClarificationQuestions', () => {
 		const wrapper = mountList({ questions: [plan, date], requireAll: true, numbered: true });
 		expect(wrapper.text()).toContain('Question 1 of 2');
 		expect(wrapper.text()).toContain('Question 2 of 2');
+	});
+
+	it('lets a surface answer a question its own way through the answer slot', async () => {
+		const wrapper = mount(ClarificationQuestions, {
+			props: { questions: [plan, date], requireAll: true },
+			slots: {
+				answer: `<template #answer="{ question, setValue, value }">
+					<button :data-testid="'own-' + question.id" @click="setValue('picked ' + question.id)">{{ value }}</button>
+				</template>`,
+				actions: `<template #actions="{ canSubmit, submit }">
+					<button data-testid="go" :disabled="!canSubmit" @click="submit">go</button>
+				</template>`,
+			},
+			global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		});
+		// The default chips and text line are replaced, not added to.
+		expect(chips(wrapper)).toHaveLength(0);
+		await wrapper.get('[data-testid="own-plan"]').trigger('click');
+		await wrapper.get('[data-testid="own-date"]').trigger('click');
+		expect(wrapper.get('[data-testid="own-plan"]').text()).toBe('picked plan');
+		await wrapper.get('[data-testid="go"]').trigger('click');
+		expect(submitted(wrapper)).toEqual([
+			{ questionId: 'plan', value: 'picked plan', source: 'user' },
+			{ questionId: 'date', value: 'picked date', source: 'user' },
+		]);
 	});
 });

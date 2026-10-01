@@ -39,48 +39,60 @@ function makeCtx(message: Record<string, unknown>) {
 
 describe('inboundBodyForContext', () => {
 	it('strips a remote tracking pixel from an HTML-only body', async () => {
-		const body = await inboundBodyForContext({
-			textBody: null,
-			htmlBody: `<p>Hello</p>${REMOTE_PIXEL}`,
-		});
+		const body = await inboundBodyForContext(
+			{
+				textBody: null,
+				htmlBody: `<p>Hello</p>${REMOTE_PIXEL}`,
+			},
+			null
+		);
 		expect(body).toContain('<p>Hello</p>');
 		expect(body).not.toContain('tracker.evil');
 		expect(body).not.toContain('<img');
 	});
 
 	it('keeps inline cid: content while stripping remote images', async () => {
-		const body = await inboundBodyForContext({
-			textBody: null,
-			htmlBody: `${INLINE_CID}${REMOTE_PIXEL}`,
-		});
+		const body = await inboundBodyForContext(
+			{
+				textBody: null,
+				htmlBody: `${INLINE_CID}${REMOTE_PIXEL}`,
+			},
+			null
+		);
 		expect(body).toContain('cid:logo@corp');
 		expect(body).not.toContain('tracker.evil');
 	});
 
 	it('prefers the plain-text part verbatim (no images to strip)', async () => {
-		const body = await inboundBodyForContext({
-			textBody: 'Plain text body',
-			htmlBody: REMOTE_PIXEL,
-		});
+		const body = await inboundBodyForContext(
+			{
+				textBody: 'Plain text body',
+				htmlBody: REMOTE_PIXEL,
+			},
+			null
+		);
 		expect(body).toBe('Plain text body');
 	});
 
 	it('removes hidden elements from an HTML-only body', async () => {
-		const body = await inboundBodyForContext({
-			textBody: null,
-			htmlBody: '<p>Real</p><span style="display:none">HIDDENPAYLOAD</span>',
-		});
+		const body = await inboundBodyForContext(
+			{
+				textBody: null,
+				htmlBody: '<p>Real</p><span style="display:none">HIDDENPAYLOAD</span>',
+			},
+			null
+		);
 		expect(body).toContain('Real');
 		expect(body).not.toContain('HIDDENPAYLOAD');
 	});
 
 	it('keeps markup quoted in a plain-text body, which a reader sees as written', async () => {
 		const text = 'To hide it, use <template> in Vue.\n\nThe rest of this text is VISIBLE.';
-		expect(await inboundBodyForContext({ textBody: text, htmlBody: null })).toBe(text);
+		expect(await inboundBodyForContext({ textBody: text, htmlBody: null }, null)).toBe(text);
 	});
 
 	it('returns undefined when neither body part is present', async () => {
-		expect(await inboundBodyForContext({ textBody: null, htmlBody: null })).toBeUndefined();
+		expect(await inboundBodyForContext({ textBody: null, htmlBody: null }, null)).toBeUndefined();
 	});
 });
 

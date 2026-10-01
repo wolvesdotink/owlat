@@ -4,7 +4,8 @@
 # gate added here fires in both places and the two chains cannot drift apart.
 #
 #   bash scripts/ci-gate.sh lint     plugin smokes + turbo lint + the ratchets
-#   bash scripts/ci-gate.sh verify   the same, with turbo typecheck and test
+#   bash scripts/ci-gate.sh verify   the same, with turbo typecheck, the scripts/
+#                                    typecheck and test
 #
 # The plugin smokes are ordered so provider-kit and plugin-kit are built ONCE.
 # The first smoke deletes packages/plugin-kit/dist and proves the API tests do
@@ -47,13 +48,18 @@ step node packages/plugin-codegen/scripts/convexBundleSmoke.ts
 step bun packages/plugin-codegen/scripts/convexFunctionGraphSmoke.ts
 
 step bunx turbo "${turbo_tasks[@]}" "${turbo_concurrency_args[@]}" --filter='!@owlat/desktop'
+# scripts/ is not a workspace, so turbo typecheck never reaches it; the root
+# scripts and their tests get their own tsc run (ci:typecheck does the same).
+if [[ "$1" == verify ]]; then
+	step bun run typecheck:scripts
+fi
 
 # script-tests is the single vitest boot for scripts/__tests__ — the unit tests
 # for the gate scripts themselves. It used to be a `vitest run <file>` prefix
 # inside each lint:* entry, which booted vitest once per gate and left the
 # test files without a matching lint:* entry running only in security.yml.
 for gate in warnings scripts script-tests deadcode catalog build-graph convex-orphans convex-globals filesize adr branding format imports providers \
-	ui-buttons page-headers tokens member-jargon docker-workspaces deploy-closure installer compose mail-services html-to-text crypto-primitives; do
+	ui-buttons page-headers tokens member-jargon docker-workspaces deploy-closure installer compose mail-services html-to-text crypto-primitives source-bytes; do
 	step bun run "lint:$gate"
 done
 # lint:plugin-imports without its plugins:prepare prefix (see above).

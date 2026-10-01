@@ -37,6 +37,33 @@ vi.mock('@owlat/api', () => {
 
 const bodyData: Ref<unknown> = ref(undefined);
 
+// Animation frames and ResizeObserver under test control, so the follow-up
+// re-fits are deterministic.
+let frameQueue = new Map<number, FrameRequestCallback>();
+let nextFrameId = 1;
+function runFrame() {
+	const due = [...frameQueue.values()];
+	frameQueue = new Map();
+	for (const cb of due) cb(0);
+}
+class MockResizeObserver {
+	static instances: MockResizeObserver[] = [];
+	targets: unknown[] = [];
+	constructor(private readonly callback: ResizeObserverCallback) {
+		MockResizeObserver.instances.push(this);
+	}
+	observe(target: unknown) {
+		this.targets.push(target);
+	}
+	unobserve() {}
+	disconnect() {
+		this.targets = [];
+	}
+	fire() {
+		this.callback([], this as unknown as ResizeObserver);
+	}
+}
+
 beforeAll(() => {
 	// The body copy flows through vue-i18n now; `useI18n` is a Nuxt auto-import.
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
@@ -53,6 +80,17 @@ beforeAll(() => {
 
 beforeEach(() => {
 	getPostboxRenderCache().clear();
+	frameQueue = new Map();
+	MockResizeObserver.instances = [];
+	vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+		const id = nextFrameId++;
+		frameQueue.set(id, cb);
+		return id;
+	});
+	vi.stubGlobal('cancelAnimationFrame', (id: number) => {
+		frameQueue.delete(id);
+	});
+	vi.stubGlobal('ResizeObserver', MockResizeObserver);
 });
 
 const iconStub = { props: ['name'], template: '<span />' };
@@ -101,5 +139,63 @@ describe('PostboxMessageBody iframe sizing', () => {
 			showQuoted: false,
 		});
 		expect(getPostboxRenderCache().get(key)?.height).toBe(840);
+	});
+
+	it('re-fits when the document grows after load, once per frame', async () => {
+		const w = mountBody();
+		await nextTick();
+		const iframe = w.find('iframe').element as HTMLIFrameElement;
+		const doc = {
+			readyState: 'complete',
+			URL: 'about:srcdoc',
+			documentElement: { scrollHeight: 600 },
+			body: {},
+		};
+		Object.defineProperty(iframe, 'contentDocument', { configurable: true, value: doc });
+		iframe.dispatchEvent(new Event('load'));
+		await nextTick();
+		expect(iframe.style.height).toBe('600px');
+
+		// A late image: the observer reports it, the frame follows on the next frame.
+		const observer = MockResizeObserver.instances.find((o) =>
+			o.targets.includes(doc.documentElement)
+		)!;
+		expect(observer).toBeDefined();
+		doc.documentElement.scrollHeight = 1400;
+		observer.fire();
+		observer.fire();
+		runFrame();
+		await nextTick();
+		expect(iframe.style.height).toBe('1400px');
+		const key = postboxRenderKey(message._id, {
+			scheme: 'light',
+			showImages: false,
+			loadEverything: false,
+			showQuoted: false,
+		});
+		expect(getPostboxRenderCache().get(key)?.height).toBe(1400);
+	});
+
+	it('keeps the measured height while a new render of the same message loads', async () => {
+		const w = mountBody();
+		await nextTick();
+		const iframe = w.find('iframe').element as HTMLIFrameElement;
+		Object.defineProperty(iframe, 'contentDocument', {
+			configurable: true,
+			value: {
+				readyState: 'complete',
+				URL: 'about:srcdoc',
+				documentElement: { scrollHeight: 840 },
+			},
+		});
+		iframe.dispatchEvent(new Event('load'));
+		await nextTick();
+		expect(iframe.style.height).toBe('840px');
+
+		// Showing images is a new render key with no cached height yet. The frame
+		// must not drop back to the min-height while that document loads.
+		await w.setProps({ senderImagesAllowed: true });
+		await nextTick();
+		expect(iframe.style.height).toBe('840px');
 	});
 });

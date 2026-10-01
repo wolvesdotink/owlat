@@ -1,12 +1,19 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import {
+	usePostboxListNow,
+	usePostboxThreadTimestamp,
+} from '~/composables/postbox/usePostboxListClock';
+import { useAnswerModeNav } from '~/composables/useAnswerMode';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
 }>();
 
 const { t } = useI18n();
+// The list is its own row renderer: one minute clock for every draft's age.
+const formatTimestamp = usePostboxThreadTimestamp(usePostboxListNow());
 
 const stack = usePostboxComposerStack();
 
@@ -15,8 +22,15 @@ const { data, isLoading } = useConvexQuery(api.mail.drafts.listForMailbox, () =>
 }));
 const drafts = computed(() => data.value ?? []);
 
-function openDraft(draftId: string) {
-	stack.open({ mailboxId: props.mailboxId, draftId: draftId as Id<'mailDrafts'> });
+// A reply draft is continued where replies are written (Answer mode, on the
+// message it answers); a new email or a forward reopens in a popup.
+const answerNav = useAnswerModeNav();
+function openDraft(draft: { _id: string; inReplyToMessageId?: string }) {
+	if (draft.inReplyToMessageId) {
+		void answerNav.open(draft.inReplyToMessageId, { draftId: draft._id });
+		return;
+	}
+	stack.open({ mailboxId: props.mailboxId, draftId: draft._id as Id<'mailDrafts'> });
 }
 
 function preview(bodyHtml: string | undefined): string {
@@ -31,7 +45,10 @@ function preview(bodyHtml: string | undefined): string {
 
 <template>
 	<div v-if="isLoading" class="p-6 flex justify-center">
-		<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
+		<Icon
+			name="lucide:loader-2"
+			class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
+		/>
 	</div>
 	<div v-else-if="drafts.length === 0" class="p-12 text-center">
 		<Icon name="lucide:file-edit" class="w-10 h-10 mx-auto text-text-tertiary" />
@@ -44,7 +61,7 @@ function preview(bodyHtml: string | undefined): string {
 			<button
 				type="button"
 				class="w-full text-left block px-4 py-3 hover:bg-bg-elevated"
-				@click="openDraft(d._id)"
+				@click="openDraft(d)"
 			>
 				<div class="flex items-baseline justify-between gap-3">
 					<span class="truncate text-sm font-medium text-text-primary">
@@ -55,7 +72,7 @@ function preview(bodyHtml: string | undefined): string {
 						}}
 					</span>
 					<span class="text-xs text-text-tertiary flex-shrink-0">
-						{{ formatThreadTimestamp(d.lastEditedAt) }}
+						{{ formatTimestamp(d.lastEditedAt) }}
 					</span>
 				</div>
 				<p

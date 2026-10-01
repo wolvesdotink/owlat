@@ -5,6 +5,7 @@ import { isValidEmail } from '@owlat/shared';
 import { openAfterSave, openWithoutSaving } from '~/lib/openAfterSave';
 import type { SenderPickerHandle } from '~/utils/campaignSenderPicker';
 import { formatNumber } from '~/utils/formatters';
+import { exactEligibleCount, isLowerBoundCount } from '~/composables/useRecipientCount';
 
 const { t, locale } = useI18n();
 
@@ -60,6 +61,7 @@ const {
 
 	// Unsaved-changes guard
 	showUnsavedChangesDialog,
+	isSavingBeforeLeave,
 	hasUnsavedChanges,
 	confirmDiscard,
 	confirmSave,
@@ -162,15 +164,25 @@ const { data: warmingOverview } = useOrganizationQuery(
 	api.analytics.reputationQueries.getSendingOverview
 );
 
+// The eligible count only when it is exact (#916): a big audience's readout is
+// a lower bound until its background count completes, and the send estimate
+// and readiness note must not plan against an understated size. The label
+// keeps the "N+" reading for copy that just names the number.
+const exactAudienceSize = computed(() => exactEligibleCount(audienceCount.value));
+const audienceCountLabel = computed(
+	() =>
+		`${formatNumber(audienceCount.value?.eligible ?? 0)}${isLowerBoundCount(audienceCount.value) ? '+' : ''}`
+);
+
 // Warming-aware "this campaign will take ~N days" estimate. The projection
 // algorithm lives once on the backend (getCampaignSendEstimate); we just feed
-// it the eligible recipient count and reshape estimatedDays → days for the
-// template. Skips until the audience count is known (factory returns undefined).
+// it the exact eligible recipient count and reshape estimatedDays → days for
+// the template. Skips until an exact count is known (factory returns undefined).
 const { data: sendEstimateRaw } = useOrganizationQuery(
 	api.analytics.reputationQueries.getCampaignSendEstimate,
 	() => {
-		const count = audienceCount.value?.eligible;
-		if (count === undefined) return undefined;
+		const count = exactAudienceSize.value;
+		if (count === null) return undefined;
 		return { recipientCount: count };
 	}
 );
@@ -834,7 +846,12 @@ const shownCapacityPlan = computed(() => {
 
 							<!-- Send Estimate -->
 							<div
-								v-if="!shownCapacityPlan && sendEstimate && audienceCount && sendEstimate.days > 1"
+								v-if="
+									!shownCapacityPlan &&
+									sendEstimate &&
+									exactAudienceSize !== null &&
+									sendEstimate.days > 1
+								"
 								class="flex items-start gap-3 p-3 bg-warning/10 border border-warning/20 rounded-lg"
 							>
 								<Icon name="lucide:clock" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
@@ -851,7 +868,7 @@ const shownCapacityPlan = computed(() => {
 									<p class="text-sm text-text-secondary mt-0.5">
 										{{
 											t('dashboard.campaigns.detail.edit.warmup.estimateDetail', {
-												count: formatNumber(audienceCount.eligible ?? 0),
+												count: formatNumber(exactAudienceSize ?? 0),
 												message: sendEstimate.message,
 											})
 										}}
@@ -867,7 +884,7 @@ const shownCapacityPlan = computed(() => {
 					     capacity is unmeasured or uncapped-and-unremarkable. -->
 					<CampaignsSendReadinessNote
 						:readiness="sendingReadiness"
-						:audience-size="audienceCount?.eligible ?? null"
+						:audience-size="exactAudienceSize"
 					/>
 
 					<!-- Actions -->
@@ -935,7 +952,7 @@ const shownCapacityPlan = computed(() => {
 			:title="t('dashboard.campaigns.detail.edit.sendConfirm.title')"
 			:description="
 				t('dashboard.campaigns.detail.edit.sendConfirm.description', {
-					count: formatNumber(audienceCount?.eligible ?? 0),
+					count: audienceCountLabel,
 				})
 			"
 			:confirm-text="t('dashboard.campaigns.detail.edit.actions.sendNow')"
@@ -957,6 +974,7 @@ const shownCapacityPlan = computed(() => {
 		<!-- Unsaved Changes Dialog — leaving the page (Back / any navigation) -->
 		<UnsavedChangesDialog
 			:show="showUnsavedChangesDialog"
+			:saving="isSavingBeforeLeave"
 			@close="cancelNavigation"
 			@discard="confirmDiscard"
 			@save="confirmSave"

@@ -212,6 +212,28 @@ describe('Desktop updates — the pin picker', () => {
 		);
 	});
 
+	it('warns when the saved pin is no longer cached, and only then', async () => {
+		// Clients are offered nothing while the policy points at a release the
+		// cache lost; the picker alone would just show its placeholder.
+		policy.value = {
+			...storedPolicy({ mode: 'pinned', pinnedVersion: '0.3.9' }),
+			pinCached: false,
+		};
+		const wrapper = mountPage();
+		await nextTick();
+
+		expect(wrapper.find('[data-testid="desktop-updates-pin-missing"]').text()).toContain(
+			'Pinned to 0.3.9'
+		);
+
+		policy.value = {
+			...storedPolicy({ mode: 'pinned', pinnedVersion: '0.4.6' }),
+			pinCached: true,
+		};
+		await nextTick();
+		expect(wrapper.find('[data-testid="desktop-updates-pin-missing"]').exists()).toBe(false);
+	});
+
 	it('surfaces the recorded error from a failed poll', () => {
 		policy.value = {
 			...storedPolicy(),

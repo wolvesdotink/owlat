@@ -49,6 +49,7 @@ const contact = {
 };
 
 beforeEach(() => {
+	window.sessionStorage.clear();
 	answers = {};
 	fetchMock.mockClear();
 	convex.query.mockReset();
@@ -58,7 +59,8 @@ beforeEach(() => {
 	vi.stubGlobal('useSeoMeta', vi.fn());
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
-	vi.stubGlobal('useRoute', () => ({ query: { token: 'tok' } }));
+	vi.stubGlobal('useRoute', () => ({ path: '/', query: { token: 'tok' }, hash: '' }));
+	vi.stubGlobal('useRouter', () => ({ replace: vi.fn() }));
 	vi.stubGlobal('useRuntimeConfig', () => ({ public: { convexSiteUrl: 'https://api.test' } }));
 	vi.stubGlobal('useConvex', () => convex);
 	vi.stubGlobal('useRecipientSender', () => ({

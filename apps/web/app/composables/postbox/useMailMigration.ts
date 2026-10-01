@@ -58,6 +58,27 @@ export function deriveMigrationStep(
 }
 
 /**
+ * Whether a finished import can still be learned from (exported for unit
+ * tests): it completed, brought mail in, and either never had knowledge
+ * indexing on (a team inbox left unticked, or `ai.knowledge` off at import
+ * time) or swept nothing. Only meaningful where `ai.knowledge` is on now —
+ * the backend refuses the sweep otherwise.
+ */
+export function canLearnFromImport(
+	migration: {
+		status: MigrationStatus;
+		isAiIndexingEnabled: boolean;
+		messagesImported: number;
+		messagesIndexed: number;
+	} | null,
+	isKnowledgeEnabled: boolean
+): boolean {
+	if (!isKnowledgeEnabled || !migration) return false;
+	if (migration.status !== 'completed' || migration.messagesImported === 0) return false;
+	return !migration.isAiIndexingEnabled || migration.messagesIndexed === 0;
+}
+
+/**
  * When a throttle-paused import picks up again, or `null` when it is not
  * paused. The backend holds an import whose provider ran out of its daily
  * download budget at `importing` with a `resumesAt` (#760) — a wait, not a
@@ -185,6 +206,9 @@ export function useMailMigration() {
 	const cancelOp = useBackendOperation(api.mail.migration.cancel, {
 		label: () => t('shared.postbox.useMailMigration.cancelOperation'),
 	});
+	const learnOp = useBackendOperation(api.mail.migration.learnFromImport, {
+		label: () => t('shared.postbox.useMailMigration.learnOperation'),
+	});
 
 	const step = computed<MigrationStep>(() =>
 		deriveMigrationStep(migration.value?.status, isConnected.value, accountStatus.value)
@@ -212,6 +236,10 @@ export function useMailMigration() {
 	async function cancel() {
 		return await cancelOp.run({});
 	}
+	/** Learn from a finished import after the fact; the indexing step takes over. */
+	async function learn() {
+		return await learnOp.run({});
+	}
 
 	return {
 		migration,
@@ -227,8 +255,10 @@ export function useMailMigration() {
 		failureMessage,
 		start,
 		cancel,
+		learn,
 		startBusy: startOp.isLoading,
 		cancelBusy: cancelOp.isLoading,
+		learnBusy: learnOp.isLoading,
 	};
 }
 
@@ -287,6 +317,9 @@ export function useSharedMailMigration(mailboxId: MaybeRefOrGetter<Id<'mailboxes
 	const cancelOp = useBackendOperation(api.mail.migrationShared.cancelShared, {
 		label: () => t('shared.postbox.useMailMigration.cancelSharedOperation'),
 	});
+	const learnOp = useBackendOperation(api.mail.migrationShared.learnFromImportShared, {
+		label: () => t('shared.postbox.useMailMigration.learnSharedOperation'),
+	});
 
 	const step = computed<MigrationStep>(() =>
 		deriveMigrationStep(migration.value?.status, isConnected.value, accountStatus.value)
@@ -315,6 +348,13 @@ export function useSharedMailMigration(mailboxId: MaybeRefOrGetter<Id<'mailboxes
 	async function cancel() {
 		return await cancelOp.run({ mailboxId: toValue(mailboxId) });
 	}
+	/**
+	 * The knowledge opt-in, given after the import finished without it: re-runs
+	 * the sweep over the imported mail, and the card's indexing state takes over.
+	 */
+	async function learn() {
+		return await learnOp.run({ mailboxId: toValue(mailboxId) });
+	}
 
 	return {
 		migration,
@@ -331,7 +371,9 @@ export function useSharedMailMigration(mailboxId: MaybeRefOrGetter<Id<'mailboxes
 		failureMessage,
 		start,
 		cancel,
+		learn,
 		startBusy: startOp.isLoading,
 		cancelBusy: cancelOp.isLoading,
+		learnBusy: learnOp.isLoading,
 	};
 }

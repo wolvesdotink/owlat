@@ -22,14 +22,17 @@
 
 import { v } from 'convex/values';
 import { emailTemplateTypeValidator } from '../lib/convexValidators';
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
 import { defineLifecycle, refuse } from '../lib/lifecycle';
 import { applyUsageCountDelta } from '../emailBlocks/module';
 import { deleteTemplateVersions } from './versions';
 import { buildSearchableText } from '../lib/queryHelpers';
-import { duplicateEmailFields, loadEmailTheme } from '../lib/publishableEmail';
+import { recordListingCounter } from '../lib/listingCounters';
+import { duplicateEmailFields } from '../lib/publishableEmail';
+import { loadEmailTheme } from '../lib/publishableEmailRender';
 import { sanitizeStoredBlocksJson } from '../lib/emailContentSanitize';
 import { CURRENT_CONTENT_BLOCK_VERSION, CURRENT_RENDERER_VERSION } from '../lib/constants';
 
@@ -43,6 +46,8 @@ type EmailTemplateTransitionInput =
 			at: number;
 			htmlContent: string;
 			htmlTranslations?: string;
+			/** Set when the publish stores the caller's HTML (`publishedHtml`). */
+			rendererVersion?: number;
 	  }
 	| { to: 'draft'; at: number };
 
@@ -80,6 +85,7 @@ const transitionInputValidator = v.union(
 		at: v.number(),
 		htmlContent: v.string(),
 		htmlTranslations: v.optional(v.string()),
+		rendererVersion: v.optional(v.number()),
 	}),
 	v.object({ to: v.literal('draft'), at: v.number() })
 );
@@ -183,6 +189,7 @@ function buildPatch(input: EmailTemplateTransitionInput): Record<string, unknown
 				status: 'published',
 				htmlContent: input.htmlContent,
 				htmlTranslations: input.htmlTranslations,
+				...(input.rendererVersion !== undefined && { rendererVersion: input.rendererVersion }),
 				publishedAt: input.at,
 				updatedAt: input.at,
 			};
@@ -290,6 +297,7 @@ export const create = internalMutation({
 			createdAt: now,
 			updatedAt: now,
 		});
+		await recordListingCounter(ctx, 'templateType', null, { type: args.type });
 
 		const effects: Effect[] = [
 			{
@@ -369,6 +377,7 @@ export const duplicate = internalMutation({
 			createdAt: now,
 			updatedAt: now,
 		});
+		await recordListingCounter(ctx, 'templateType', null, { type: template.type });
 
 		const effects: Effect[] = [
 			{
@@ -413,6 +422,7 @@ export const remove = internalMutation({
 
 		const name = template.name;
 		await ctx.db.delete(args.templateId);
+		await recordListingCounter(ctx, 'templateType', template, null);
 		// Cascade: version snapshots are owned by the template row.
 		await deleteTemplateVersions(ctx, args.templateId);
 

@@ -204,6 +204,8 @@ function defaultStubs(): Record<string, unknown> {
 			back: vi.fn(),
 			resolve: (to: string) => ({ href: to }),
 			currentRoute: ref(route),
+			// Navigation guards (the Postbox perf marks) register and never fire.
+			beforeEach: () => () => {},
 		}),
 		// Mirrors nuxt.config's `runtimeConfig.public` defaults — including the
 		// legal/company block, which is EMPTY on a stock self-host install. A
@@ -289,6 +291,7 @@ function defaultStubs(): Record<string, unknown> {
 		}),
 		usePermissions: () => ({
 			role: ref('owner'),
+			isRoleLoading: ref(false),
 			isOwner: ref(true),
 			isAdmin: ref(true),
 			canSendTestEmails: ref(true),
@@ -491,12 +494,17 @@ export function dashboardShellStubs(): Record<string, unknown> {
 			ids: ref([]),
 			hasPersonalMail: ref(true),
 			isLoading: ref(false),
+			error: ref(null),
+			refetch: vi.fn(),
 		}),
+		useAnswerQueueCount: () => ({ count: ref(0) }),
 		useAnswerQueue: () => ({
 			items: ref([]),
 			count: ref(0),
 			counts: ref({ mail: 0, team: 0, mention: 0, drafts: 0 }),
 			isLoading: ref(false),
+			error: ref(null),
+			refetch: vi.fn(),
 			teamEnabled: ref(false),
 			chatEnabled: ref(false),
 		}),

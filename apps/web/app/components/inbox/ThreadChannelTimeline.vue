@@ -186,6 +186,9 @@ async function submitReply(item: TimelineMessage) {
 						<p class="text-text-secondary text-sm mt-0.5">
 							{{ truncateTimelineText(item.content.text || '') }}
 						</p>
+						<p v-if="item.content.isBodyTruncated" class="text-text-tertiary text-xs mt-0.5">
+							{{ t('components.inbox.threadChannelTimeline.longMessage') }}
+						</p>
 
 						<!-- Time -->
 						<p class="text-text-tertiary text-xs mt-1">

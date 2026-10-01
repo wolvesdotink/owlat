@@ -43,7 +43,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { Id } from '../_generated/dataModel';
 import { resolveNow } from '../lib/clock';
 import { applyEffects, transportOutcomeEffect } from './sendLifecycle/effects';

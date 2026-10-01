@@ -112,9 +112,13 @@ afterEach(() => {
 	// globals are replaced by the next `beforeEach`.
 });
 
-function mountStep(overrides: Partial<Record<string, unknown>> = {}) {
+function mountStep(
+	overrides: Partial<Record<string, unknown>> = {},
+	extraProps: Record<string, unknown> = {}
+) {
 	return mount(ReviewStep, {
 		props: {
+			...extraProps,
 			data: {
 				campaignId: CAMPAIGN_ID,
 				campaignName: 'Weekly digest #34',
@@ -145,6 +149,7 @@ function mountStep(overrides: Partial<Record<string, unknown>> = {}) {
 				CampaignsCapacitySchedulePanel: true,
 				CampaignsSendReadinessNote: true,
 				CampaignsTestEmailModal: true,
+				CampaignsEmailBodyPreview: true,
 				Icon: true,
 				I18nT: passthroughStub,
 			},
@@ -231,6 +236,30 @@ describe('ReviewStep send confirmation threshold', () => {
 		expect(wrapper.find('.confirm-dialog').exists()).toBe(true);
 	});
 
+	it('confirms a lower-bound count however small, and names it as "at least" (#916)', async () => {
+		// A first background count still running: 24 is what it has seen so far,
+		// not the audience size.
+		const wrapper = mountStep({ audienceCount: 24, audienceCountAtLeast: true });
+		// The capacity note plans against the size, so it gets no number at all.
+		const note = wrapper.find('campaigns-send-readiness-note-stub');
+		expect(note.exists()).toBe(true);
+		expect(note.attributes('audience-size')).toBeUndefined();
+
+		await clickSend(wrapper);
+
+		expect(scheduleRuns).toEqual([]);
+		const dialog = wrapper.find('.confirm-dialog');
+		expect(dialog.exists()).toBe(true);
+		expect(dialog.find('.confirm-title').text()).toBe('Send to 24+ recipients?');
+	});
+
+	it('hands an exact count to the capacity note', () => {
+		const wrapper = mountStep({ audienceCount: 12408 });
+		expect(wrapper.find('campaigns-send-readiness-note-stub').attributes('audience-size')).toBe(
+			'12408'
+		);
+	});
+
 	it('does not interrupt a scheduled send — a date is its own undo', async () => {
 		const wrapper = mountStep({ audienceCount: 12408 });
 
@@ -282,5 +311,79 @@ describe('ReviewStep layout', () => {
 
 		expect(headings.indexOf('Send test email')).toBeGreaterThanOrEqual(0);
 		expect(headings.indexOf('Send test email')).toBeLessThan(headings.indexOf('When to send'));
+	});
+});
+
+describe('ReviewStep email body (#1048)', () => {
+	const template = { _id: 'tpl_1' as Id<'emailTemplates'>, name: 'Digest', subject: 'Hi' };
+
+	function sendButton(wrapper: ReturnType<typeof mountStep>) {
+		return wrapper.findAll('button').find((candidate) => candidate.text() === 'Send campaign')!;
+	}
+
+	it('blocks the send while the email body is empty, through the send-blocked path', async () => {
+		const wrapper = mountStep({ selectedTemplate: template, emailBodyHtml: null });
+
+		expect(wrapper.text()).toContain('Email body is empty. Design the email before sending it.');
+		expect(wrapper.find('[data-testid="review-empty-body"]').exists()).toBe(true);
+		expect(wrapper.find('campaigns-email-body-preview-stub').exists()).toBe(false);
+		expect(sendButton(wrapper).attributes('disabled')).toBeDefined();
+
+		await clickSend(wrapper);
+		expect(scheduleRuns).toEqual([]);
+	});
+
+	it('previews a real body and lets the send through', async () => {
+		const wrapper = mountStep({
+			selectedTemplate: template,
+			emailBodyHtml: '<p>What shipped</p>',
+		});
+
+		const preview = wrapper.find('campaigns-email-body-preview-stub');
+		expect(preview.exists()).toBe(true);
+		expect(preview.attributes('html')).toBe('<p>What shipped</p>');
+		expect(wrapper.text()).not.toContain('Email body is empty');
+		// The old "edit it later" line is gone: the edit is right here.
+		expect(wrapper.text()).not.toContain('after the campaign is created');
+		expectFullyLocalized(wrapper);
+
+		await clickSend(wrapper);
+		expect(scheduleRuns).toHaveLength(1);
+	});
+
+	it('does not block on a body it has not loaded yet', () => {
+		const wrapper = mountStep({ selectedTemplate: template });
+		expect(wrapper.text()).not.toContain('Email body is empty');
+		expect(sendButton(wrapper).attributes('disabled')).toBeUndefined();
+	});
+
+	it('hands a pending schedule to Edit email, and restores one it is given back', async () => {
+		const wrapper = mountStep({ selectedTemplate: template, emailBodyHtml: null });
+
+		await wrapper.findAll('input[type="radio"]')[1]!.setValue();
+		await wrapper.find('input[type="date"]').setValue('2026-03-11');
+		await wrapper.find('input[type="time"]').setValue('09:30');
+		await wrapper.find('[data-testid="review-edit-email"]').trigger('click');
+
+		const schedule = { date: '2026-03-11', time: '09:30', recipientTimezone: false };
+		expect(wrapper.emitted('editEmail')).toEqual([[schedule]]);
+
+		const restored = mountStep(
+			{ selectedTemplate: template, emailBodyHtml: '<p>Hi</p>' },
+			{ initialSchedule: schedule }
+		);
+		expect((restored.findAll('input[type="radio"]')[1]!.element as HTMLInputElement).checked).toBe(
+			true
+		);
+		expect((restored.find('input[type="date"]').element as HTMLInputElement).value).toBe(
+			'2026-03-11'
+		);
+		expect((restored.find('input[type="time"]').element as HTMLInputElement).value).toBe('09:30');
+	});
+
+	it('sends no schedule along for an immediate send', async () => {
+		const wrapper = mountStep({ selectedTemplate: template, emailBodyHtml: '<p>Hi</p>' });
+		await wrapper.find('[data-testid="review-edit-email"]').trigger('click');
+		expect(wrapper.emitted('editEmail')).toEqual([[null]]);
 	});
 });

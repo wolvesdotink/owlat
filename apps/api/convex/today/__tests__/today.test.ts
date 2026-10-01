@@ -1,10 +1,12 @@
 /**
  * Today's per-user memory and per-mailbox reads.
  *
- *   - the watermark moves forward only, and can be undone once;
+ *   - the watermark moves forward only, and can be undone once; the
+ *     first-visit fallback counts from the server clock, not a client `now`;
  *   - a thread visit makes later messages read as "Updated" / "What changed"
  *     for THAT member only (a shared inbox has shared read flags);
- *   - the digest sorts new mail into changed / arrived / filed, leaves
+ *   - the digest counts from the caller's own watermark (never a client
+ *     `since`), sorts new mail into changed / arrived / filed, leaves
  *     needs-reply threads to the Answer queue, and hides mail the caller
  *     cannot open;
  *   - the sidebar returns one status per row and surfaces hidden urgency.
@@ -65,6 +67,25 @@ function setSession(userId: string, role: 'owner' | 'admin' | 'editor' | null = 
 
 const HOUR = 60 * 60 * 1000;
 
+/**
+ * The first-visit fallback: 24 hours before the server's clock, which ran
+ * between `before` and the end of the query.
+ */
+function expectFallbackFrom(seenAt: number, before: number) {
+	expect(seenAt).toBeGreaterThanOrEqual(before - 24 * HOUR);
+	expect(seenAt).toBeLessThanOrEqual(Date.now() - 24 * HOUR);
+}
+
+/** The digest counts from the tab's own watermark; set it, then read. */
+async function digestSince(
+	t: TestConvex<typeof schema>,
+	mailboxId: Id<'mailboxes'>,
+	since: number
+) {
+	await t.mutation(api.today.state.markSeen, { at: since, scope: mailboxId });
+	return t.query(api.today.mailbox.digest, { mailboxId });
+}
+
 async function threadOf(t: TestConvex<typeof schema>, messageId: Id<'mailMessages'>) {
 	return t.run(async (ctx) => {
 		const message = await ctx.db.get(messageId);
@@ -113,9 +134,10 @@ describe('today watermark', () => {
 		const t = convexTest(schema, modules);
 		setSession('user-A');
 		const now = Date.now();
-		const first = await t.query(api.today.state.get, { now });
+		// `now` from a client of the previous release is accepted and ignored.
+		const first = await t.query(api.today.state.get, { now: 0 });
 		expect(first.isFallback).toBe(true);
-		expect(first.seenAt).toBe(now - 24 * HOUR);
+		expectFallbackFrom(first.seenAt, now);
 
 		await t.mutation(api.today.state.markSeen, { at: now - HOUR });
 		await t.mutation(api.today.state.markSeen, { at: now - 2 * HOUR }); // backwards: ignored
@@ -130,7 +152,7 @@ describe('today watermark', () => {
 
 		// Another member's watermark is independent.
 		setSession('user-B');
-		expect((await t.query(api.today.state.get, { now })).isFallback).toBe(true);
+		expect((await t.query(api.today.state.get, {})).isFallback).toBe(true);
 	});
 });
 
@@ -158,14 +180,15 @@ describe('today inbox choice', () => {
 		setSession('user-B');
 		await t.mutation(api.today.state.setMailboxShown, { mailboxId: support, shown: false });
 		await t.mutation(api.today.state.setMailboxShown, { mailboxId: support, shown: false });
-		const hidden = await t.query(api.today.state.get, { now });
+		const hidden = await t.query(api.today.state.get, {});
 		expect(hidden.hiddenMailboxIds).toEqual([support]);
 		// Choosing inboxes before the first mark keeps the first-visit fallback.
-		expect(hidden).toMatchObject({ isFallback: true, seenAt: now - 24 * HOUR });
+		expect(hidden.isFallback).toBe(true);
+		expectFallbackFrom(hidden.seenAt, now);
 
 		// The other member of the same inbox still has it on their Today.
 		setSession('user-C');
-		expect((await t.query(api.today.state.get, { now })).hiddenMailboxIds).toEqual([]);
+		expect((await t.query(api.today.state.get, {})).hiddenMailboxIds).toEqual([]);
 
 		setSession('user-B');
 		await t.mutation(api.today.state.markSeen, { at: now - HOUR });
@@ -243,7 +266,7 @@ describe('today digest', () => {
 		});
 		await seedMessage(t, mailboxId, { subject: 'Old news', receivedAt: now - 10 * HOUR });
 
-		const digest = await t.query(api.today.mailbox.digest, { mailboxId, since });
+		const digest = await digestSince(t, mailboxId, since);
 		expect(digest).not.toBeNull();
 		expect(digest!.changed.map((c) => c.subject)).toEqual(['Renewal']);
 		expect(digest!.changed[0]!.newMessages).toBe(1);
@@ -253,12 +276,58 @@ describe('today digest', () => {
 		expect(digest!.newMail).toBe(4);
 	});
 
+	it("counts from the caller's own watermark, whatever `since` a client sends", async () => {
+		const t = convexTest(schema, modules);
+		setSession('user-A');
+		const mailboxId = await seedMailbox(t);
+		await seedFolder(t, mailboxId);
+		const now = Date.now();
+		for (const [subject, hoursAgo] of [
+			['Yesterday', 30],
+			['This morning', 5],
+			['Just now', 1],
+		] as const) {
+			await threadOf(
+				t,
+				await seedMessage(t, mailboxId, { subject, receivedAt: now - hoursAgo * HOUR })
+			);
+		}
+		const subjects = async (args: { since?: number } = {}) =>
+			(await t.query(api.today.mailbox.digest, { mailboxId, ...args }))!.arrived
+				.map((a) => a.subject)
+				.sort();
+
+		// No mark yet: the last 24 hours. A client `since` of the previous release is ignored.
+		expect(await subjects({ since: 0 })).toEqual(['Just now', 'This morning']);
+
+		// This tab's mark.
+		await t.mutation(api.today.state.markSeen, { at: now - 3 * HOUR, scope: mailboxId });
+		expect(await subjects({ since: 0 })).toEqual(['Just now']);
+
+		// A later global mark (finishing the Answer queue) catches the tab up.
+		await t.mutation(api.today.state.markSeen, { at: now - HOUR / 2 });
+		expect(await subjects()).toEqual([]);
+
+		// Another member's watermark is their own.
+		await t.run(async (ctx) => {
+			await ctx.db.insert('mailboxMembers', {
+				mailboxId,
+				authUserId: 'user-B',
+				role: 'member',
+				addedBy: 'user-A',
+				createdAt: now,
+			});
+		});
+		setSession('user-B');
+		expect(await subjects()).toEqual(['Just now', 'This morning']);
+	});
+
 	it('returns null for a mailbox the caller cannot open', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedMailbox(t, { userId: 'user-A' });
 		await seedFolder(t, mailboxId);
 		setSession('user-B');
-		expect(await t.query(api.today.mailbox.digest, { mailboxId, since: 0 })).toBeNull();
+		expect(await t.query(api.today.mailbox.digest, { mailboxId })).toBeNull();
 		expect(await t.query(api.today.mailbox.sidebarThreads, { mailboxId, limit: 3 })).toBeNull();
 	});
 });

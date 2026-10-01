@@ -11,7 +11,8 @@ import { validateStringLength, STRING_LIMITS } from './lib/inputGuards';
 import { v } from 'convex/values';
 import { consumeUpload, deleteOwnedUpload, storedFileSize } from './storage/uploads';
 import { paginationOptsValidator, type PaginationResult } from 'convex/server';
-import { internalQuery, internalMutation, type MutationCtx } from './_generated/server';
+import { internalQuery, type MutationCtx } from './_generated/server';
+import { internalMutation } from './lib/writeFence';
 import { internal } from './_generated/api';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { requireAdminContext } from './lib/sessionOrganization';
@@ -419,8 +420,11 @@ export const ingest = internalMutation({
  * created with a dangling one was an inconsistency only the write path could
  * produce. Validating in the one shared insert covers the user upload and both
  * server-side ingestion sources at once.
+ *
+ * Exported for Answer mode (mail/ai/composeDraftContext.ts), which keeps an
+ * uploaded file answer in Files through this same insert.
  */
-async function insertSemanticFile(
+export async function insertSemanticFile(
 	ctx: MutationCtx,
 	args: {
 		storageId: Id<'_storage'>;

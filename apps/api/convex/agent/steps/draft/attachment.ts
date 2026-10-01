@@ -29,13 +29,20 @@ type DraftAttachmentCtx = Pick<ActionCtx, 'runAction'>;
 /**
  * Compute the persist-ready attachment-suggestion patch for `recordDraftOutput`.
  * Returns `{ attachmentSuggestions }` on a match, else `{}` so the caller can
- * spread it unconditionally. Never throws.
+ * spread it unconditionally. When the owner already answered the attachment
+ * question (`ownerAttachment` is set: their pick, or null for "no file"), that
+ * answer stands and the search is not run again, so a resumed draft can never
+ * swap the owner's file for a different match. Never throws.
  */
 export async function draftAttachmentPatch(
 	ctx: DraftAttachmentCtx,
 	context: string,
-	contactId: Id<'contacts'> | undefined
+	contactId: Id<'contacts'> | undefined,
+	ownerAttachment?: AttachmentSuggestions | null
 ): Promise<{ attachmentSuggestions: AttachmentSuggestions } | Record<string, never>> {
+	if (ownerAttachment !== undefined) {
+		return ownerAttachment ? { attachmentSuggestions: ownerAttachment } : {};
+	}
 	const suggestions = await computeAttachmentSuggestions(ctx, { context, contactId });
 	return suggestions ? { attachmentSuggestions: suggestions } : {};
 }

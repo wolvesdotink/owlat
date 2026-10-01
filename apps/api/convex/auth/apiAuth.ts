@@ -12,7 +12,7 @@
  * What stays here is what has a generated path (`internal.auth.apiAuth.*`);
  * the CORS-preflight and health-check routes live in `auth/apiAuthHttp.ts`.
  */
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { v } from 'convex/values';
 import { rateLimiter } from '../lib/rateLimiter';
 import { deriveEffectiveScopes } from '../plugins/apiKeyBinding';

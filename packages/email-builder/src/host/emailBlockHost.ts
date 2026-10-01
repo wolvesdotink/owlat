@@ -32,6 +32,11 @@ import {
 	registeredBlockTypes,
 	type BlockRenderer,
 } from '@owlat/email-renderer';
+import {
+	disarmEmailBlockRegistryFreeze,
+	armEmailBlockRegistryFreeze,
+	isEmailBlockRegistryFreezeArmed,
+} from '@owlat/email-renderer/registry-latch';
 import { orderHostedContributions, type HostedContribution } from '@owlat/plugin-host';
 import type { PluginId } from '@owlat/plugin-kit';
 import {
@@ -271,9 +276,12 @@ function pairContribution(
  * Compose the bundled plugins' email blocks through the host, register both
  * halves of each surviving block, then freeze every block registry.
  *
- * Called once at host boot. Passing an empty list still freezes the registries,
- * which is the point: a deployment with no plugin blocks still latches the
- * built-in registries shut after boot.
+ * Called at most once, before the first registry read. Passing an empty list
+ * still freezes the registries, which is the point: a deployment with no plugin
+ * blocks still latches the built-in registries shut. A host that loads the email
+ * packages lazily and has no contributions arms the freeze-on-first-read latch
+ * instead (`@owlat/email-renderer/registry-latch`), which has the same effect
+ * without importing the packages at boot.
  */
 export function composeHostedEmailBlocks(
 	contributions: readonly HostedEmailBlockContribution[]
@@ -285,6 +293,22 @@ export function composeHostedEmailBlocks(
 		);
 	}
 
+	// A host that armed freeze-on-first-read still composes explicitly: claim the
+	// latch so composition's own registry reads do not freeze the registries
+	// before the contributions are registered. A failed composition re-arms it.
+	const wasArmed = isEmailBlockRegistryFreezeArmed();
+	disarmEmailBlockRegistryFreeze();
+	try {
+		return composeUnlatched(contributions);
+	} catch (error) {
+		if (wasArmed) armEmailBlockRegistryFreeze();
+		throw error;
+	}
+}
+
+function composeUnlatched(
+	contributions: readonly HostedEmailBlockContribution[]
+): readonly ComposedEmailBlock[] {
 	const reserved = reservedBlockTypes();
 	const preRegistered = preRegisteredBlockTypes();
 

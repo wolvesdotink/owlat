@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { useClickOutside } from '~/composables/useClickOutside';
+import { useLocalized } from '~/composables/useLocalized';
 import type { TrustLabel } from '~/utils/trustLabel';
+import { useEscapeToClose } from '~/composables/useEscapeToClose';
 
 /**
  * Human trust chip for agent-drafted replies: "Ready to send" / "Worth a look"
@@ -24,10 +26,7 @@ const { t } = useI18n();
  * fields hold i18n keys — parameterized ones as `{ key, params }` (see the
  * localization guide). Render every one of them through here.
  */
-type Translatable = string | { key: string; params?: Record<string, unknown> };
-function tv(value: Translatable): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const tv = useLocalized();
 
 const trustText = computed(() => tv(props.trust.label));
 
@@ -37,14 +36,8 @@ const rootRef = ref<HTMLElement | null>(null);
 useClickOutside(rootRef, () => {
 	if (open.value) open.value = false;
 });
-const handleEscape = (event: KeyboardEvent) => {
-	if (event.key === 'Escape') open.value = false;
-};
-watch(open, (isOpen) => {
-	if (isOpen) document.addEventListener('keydown', handleEscape);
-	else document.removeEventListener('keydown', handleEscape);
-});
-onUnmounted(() => document.removeEventListener('keydown', handleEscape));
+// Claimed, so the press does not also leave Answer mode or close the page.
+useEscapeToClose(open);
 
 const VARIANT_CLASS: Record<TrustLabel['variant'], string> = {
 	success: 'bg-success/10 text-success',

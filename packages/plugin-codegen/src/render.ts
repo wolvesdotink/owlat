@@ -121,6 +121,14 @@ export function generatedArtifacts(
 	);
 }
 
+/**
+ * The web composition when no plugin is bundled. `composeBundledPlugins([])` is
+ * a frozen empty list, so the generated Nuxt plugin states that value directly
+ * and imports `@owlat/plugin-host` for its type only: the host's runtime
+ * (manifest parsing, validation) then stays out of the web boot bundle.
+ */
+const EMPTY_NUXT_COMPOSITION = `${GENERATED_HEADER}import type { BundledPlugin } from '@owlat/plugin-host';\n\n// No bundled plugins: the composition is empty, so the runtime composer is not imported.\nexport const bundledPluginComposition: readonly BundledPlugin[] = Object.freeze([]);\n`;
+
 export function renderPluginComposition(
 	plugins: readonly BundledPlugin[]
 ): GeneratedPluginComposition {
@@ -147,7 +155,7 @@ export function renderPluginComposition(
 	return Object.freeze({
 		convex: shared,
 		components: renderConvexComponents(plugins),
-		nuxt: `${shared}\nexport default defineNuxtPlugin({\n\tname: 'owlat:bundled-plugin-composition',\n\tsetup() {\n\t\tvoid bundledPluginComposition;\n\t},\n});\n`,
+		nuxt: `${plugins.length === 0 ? EMPTY_NUXT_COMPOSITION : shared}\nexport default defineNuxtPlugin({\n\tname: 'owlat:bundled-plugin-composition',\n\tsetup() {\n\t\tvoid bundledPluginComposition;\n\t},\n});\n`,
 		sendTransportCatalog,
 		// The same data-only artifact in the browser's package. Web must not reach
 		// across the package boundary into `apps/api`, and rendering this twice from

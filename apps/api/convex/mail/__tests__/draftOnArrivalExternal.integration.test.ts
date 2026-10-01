@@ -13,7 +13,8 @@
  *       mail/ai/draftOnArrival.generateForThread (the flag gate under test)
  *     → the scheduled Node action runs the REAL shared draft service (only the
  *       LLM seams mocked) and persists the review slot
- *     → the Reply Queue row carries `draftSlot`.
+ *     → the Reply Queue row says a draft is ready (`hasDraftSlot`) and
+ *       `getDraftSlot` returns it.
  *
  * The control test flips only `mail.external` off: with neither any-of member
  * ON the resolved flag is forced off, nothing is scheduled, and the queue row
@@ -271,11 +272,17 @@ async function seedSharedExternalAccount(t: TestConvex<typeof schema>): Promise<
 	return { mailboxId, accountId };
 }
 
-/** Verdict + persistence: the real getThreadContext read → the real pure heuristic → applyResult. */
+/**
+ * Verdict + persistence: the real getThreadContext read → the real pure
+ * heuristic → applyResult. `source` is the stage the verdict comes from: the
+ * classifier writes a `heuristic` placeholder first and the model's `llm`
+ * verdict after it, and only the second one may start a draft.
+ */
 async function detectAndApplyVerdict(
 	t: TestConvex<typeof schema>,
 	threadId: Id<'mailThreads'>,
-	messageId: Id<'mailMessages'>
+	messageId: Id<'mailMessages'>,
+	source: 'heuristic' | 'llm' = 'llm'
 ): Promise<void> {
 	const context = await t.query(internal.mail.needsReply.getThreadContext, { threadId });
 	expect(context).not.toBeNull();
@@ -287,7 +294,7 @@ async function detectAndApplyVerdict(
 	await t.mutation(internal.mail.needsReply.applyResult, {
 		threadId,
 		expectedLatestMessageId: context!.latestMessageId,
-		needsReply: { messageId, source: 'heuristic', urgency: 'normal' },
+		needsReply: { messageId, source, urgency: 'normal' },
 	});
 }
 
@@ -333,9 +340,12 @@ describe('draft-on-arrival on an external-only install (postbox=false)', () => {
 		expect(queue.items).toHaveLength(1);
 		const row = queue.items[0]!;
 		expect(row.kind).toBe('needs_reply');
-		expect(row.draftSlot).toBeDefined();
-		expect(row.draftSlot!.draft).toBe('EXTERNAL DRAFT BODY');
-		expect(row.draftSlot!.confidence).toBe(0.72);
+		expect(row.hasDraftSlot).toBe(true);
+		const slot = await t.query(api.mail.needsReply.getDraftSlot, {
+			threadId: row.threadId,
+		});
+		expect(slot?.draft).toBe('EXTERNAL DRAFT BODY');
+		expect(slot?.confidence).toBe(0.72);
 		// Human-review only: the message was never marked answered by the pipeline.
 		await t.run(async (ctx) => {
 			expect((await ctx.db.get(messageId))!.flagAnswered).toBe(false);
@@ -377,9 +387,35 @@ describe('draft-on-arrival on an external-only install (postbox=false)', () => {
 		expect(llm.runLlmText).not.toHaveBeenCalled();
 	});
 
+	// The classifier persists the deterministic flag BEFORE the model has
+	// looked at the message. Drafting off that placeholder wrote replies to
+	// PayPal notices and sales pitches the model went on to reject, and a
+	// second draft for every message the model did confirm.
+	it('the heuristic placeholder flag schedules no draft; only the model verdict does', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await seedInstanceFlags(t, {
+			ai: true,
+			'mail.external': true,
+			postbox: false,
+			'postbox.aiDraft': true,
+		});
+		const { threadId, messageId } = await seedExternalThread(t);
+
+		await detectAndApplyVerdict(t, threadId, messageId, 'heuristic');
+		expect(await scheduledJobNames(t)).toEqual([]);
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(threadId))!.needsReply?.source).toBe('heuristic');
+		});
+
+		await detectAndApplyVerdict(t, threadId, messageId, 'llm');
+		const names = await scheduledJobNames(t);
+		expect(names.filter((name) => name.includes('draftOnArrival'))).toHaveLength(1);
+	});
+
 	// Gap 1 end-to-end on a TEAM inbox, starting at the worker's ingest:
 	//   ingestExternalMessage(origin: 'sync', INBOX)
-	//     → enqueueNeedsReplyCheck + enqueueCategoryCheck
+	//     → pending stamp in the insert + scheduleNeedsReplyClassify + enqueueCategoryCheck
 	//     → the real classify action → applyResult → draft slot.
 	// The admin who connected the account has the HEY-style sender screener ON.
 	// On a PERSONAL mailbox that setting holds an unknown first-time sender out
@@ -443,7 +479,14 @@ describe('draft-on-arrival on an external-only install (postbox=false)', () => {
 		// and the whole pipeline ran through to the pre-generated draft.
 		const queue = await t.query(api.mail.needsReply.listQueue, { mailboxId });
 		expect(queue.items).toHaveLength(1);
-		expect(queue.items[0]!.draftSlot?.draft).toBe('EXTERNAL DRAFT BODY');
+		const slot = await t.query(api.mail.needsReply.getDraftSlot, {
+			threadId: queue.items[0]!.threadId,
+		});
+		expect(slot?.draft).toBe('EXTERNAL DRAFT BODY');
+		// One draft per message: the placeholder flag the classifier writes
+		// before the model call does not start a draft of its own.
+		const names = await scheduledJobNames(t);
+		expect(names.filter((name) => name.includes('draftOnArrival'))).toHaveLength(1);
 	});
 
 	// The same synced path, for the mail that started this screen: an

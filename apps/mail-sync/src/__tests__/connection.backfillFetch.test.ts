@@ -13,17 +13,29 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { FetchQueryObject } from 'imapflow';
 import type { ConnectableAccount, ConvexClient } from '../convex.js';
 import type { MailSyncConfig } from '../config.js';
 import type { BackfillFolderDeps } from '../backfill.js';
 
-const ingest = vi.hoisted(() => ({
-	ingestMessage: vi.fn(async () => ({ messageId: 'msg_1' })),
-	isMessageLanded: vi.fn(() => true),
-}));
+const ingest = vi.hoisted(() => {
+	const ingestMessage = vi.fn(async (..._args: unknown[]) => ({ messageId: 'msg_1' }));
+	return {
+		ingestMessage,
+		isMessageLanded: vi.fn(() => true),
+		// The staged path lands in `ingestMessage` too, so every ingest — staged
+		// or not — shows up in one call log, in commit order.
+		stageIngest: vi.fn(async (_config: unknown, params: unknown) => ({ params })),
+		commitIngest: vi.fn(async (convex: unknown, staged: { params: unknown }) =>
+			ingestMessage(convex, undefined, staged.params)
+		),
+	};
+});
 vi.mock('../ingest.js', () => ({
 	ingestMessage: ingest.ingestMessage,
 	isMessageLanded: ingest.isMessageLanded,
+	stageIngest: ingest.stageIngest,
+	commitIngest: ingest.commitIngest,
 }));
 
 const { AccountConnection } = await import('../connection.js');
@@ -60,7 +72,7 @@ function fakeClient(messages: FakeMessage[]) {
 	return {
 		calls,
 		getMailboxLock: async () => ({ release: () => {} }),
-		async *fetch(range: string, query: Record<string, unknown>) {
+		async *fetch(range: string, query: FetchQueryObject) {
 			calls.push({
 				range,
 				wantsEnvelope: query.envelope === true,

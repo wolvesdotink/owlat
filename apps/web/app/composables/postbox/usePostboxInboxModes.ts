@@ -131,6 +131,8 @@ export function usePostboxInboxModes(options: PostboxInboxModesOptions) {
 	function onModeKeydown(event: KeyboardEvent) {
 		// The mobile folder drawer owns Esc while it is open.
 		if (event.key === 'Escape' && railOpen.value) {
+			// Claimed, so the reader's own Esc (close the conversation) stays put.
+			event.preventDefault();
 			railOpen.value = false;
 			return;
 		}

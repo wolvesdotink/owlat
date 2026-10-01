@@ -1,11 +1,11 @@
 /**
  * Contact-hygiene crons.
  *
- * These four schedules all do the same KIND of work — keeping the contact book
+ * These schedules all do the same KIND of work — keeping the contact book
  * honest between user actions — and they were the tail of a `crons.ts` that had
  * reached the ~500 LOC split threshold CONVENTIONS.md sets. Registration still
- * happens at module load from `crons.ts`; only the grouping moved, so the job
- * names, cadences and arguments are byte-for-byte what they were.
+ * happens at module load from `crons.ts`; only the grouping moved, so the four
+ * original jobs kept their names, cadences and arguments byte-for-byte.
  */
 
 import { cronJobs } from 'convex/server';
@@ -56,6 +56,37 @@ export function registerContactHygieneCrons(crons: Crons): void {
 		'sweep contact sunset policy',
 		{ hours: 1 },
 		internal.contacts.sunsetSweep.sweepSunsetPolicy,
+		{}
+	);
+
+	// Recover a missing cached contact count (new or restored instance). The
+	// dashboards show the count as pending instead of scanning; this starts the
+	// bounded recount that fills it in. One read while a count is cached.
+	crons.interval(
+		'recover missing contact count',
+		{ minutes: 10 },
+		internal.contacts.countReconcile.recoverMissingCount,
+		{}
+	);
+
+	// Contact property deletion (#918): restart cleanup chains that went quiet
+	// and re-arm failed ones. A deletion normally finishes on its own chain;
+	// this only recovers a crashed action or a lost schedule.
+	crons.interval(
+		'resume stalled contact property deletions',
+		{ hours: 1 },
+		internal.contacts.propertyDeletion.resumeStalled,
+		{}
+	);
+
+	// Integration imports (Mailchimp, Stripe, Mandrill): re-issue the current
+	// page of a running import whose hop was lost, or end the run with a reason
+	// after a few tries, so a stranded run cannot block every later import.
+	// Bounded; finds nothing in steady state (integrationImports/recovery.ts).
+	crons.interval(
+		'recover stalled integration imports',
+		{ minutes: 10 },
+		internal.integrationImports.recovery.recoverStalledImports,
 		{}
 	);
 }

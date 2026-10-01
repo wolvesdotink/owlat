@@ -2,7 +2,7 @@
 
 import { v } from 'convex/values';
 import type { DatabaseReader, MutationCtx } from '../_generated/server';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { utcDayStart } from '../lib/clock';
 import { UNSUBSCRIBE_HONOR_WINDOW_MS } from '@owlat/shared/deliverabilityPolicy';

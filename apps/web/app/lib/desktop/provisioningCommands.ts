@@ -1,12 +1,14 @@
 /**
  * Remote/local command builders for the desktop "set up a new server" flow:
  * the exact command strings the wizard drives over SSH (probe, install Docker,
- * fetch the repo, run the installer) plus the local docker invocations used by
- * the local-source modes. Split from `provisioning.ts` (timeline + transport),
- * which consumes these via {@link InstallSource}.
+ * fetch the repo, run the installer) plus the local image builds the
+ * local-source modes ask the desktop for. Split from `provisioning.ts`
+ * (timeline + transport), which consumes these via {@link InstallSource}.
  *
  * Everything here is a pure string/spec builder — unit testable without SSH.
  */
+
+import type { LocalBuild } from '@owlat/desktop/src/ssh';
 
 export interface RemoteOptions {
 	/** Install directory on the server (default /opt/owlat). */
@@ -151,7 +153,7 @@ export function installDockerCommand(): string {
  * `image:` interpolation resolves to the locally built images instead of
  * pulling `:latest` from GHCR.
  */
-const LOCAL_VERSION_TAG = 'dev';
+export const LOCAL_VERSION_TAG = 'dev';
 export const LOCAL_SETUP_IMAGE = `ghcr.io/wolvesdotink/setup:${LOCAL_VERSION_TAG}`;
 
 /** Create the install dir (root-owned path like /opt) and hand it to the SSH user. */
@@ -182,69 +184,9 @@ export function buildSetupImageCommand(o: RemoteOptions): string {
 	return `cd '${o.installDir}' && docker build -f apps/setup-cli/Dockerfile -t '${LOCAL_SETUP_IMAGE}' .`;
 }
 
-/** Every image the stack needs under the `dev` tag (push-images mode). */
-export const DEV_IMAGES = [
-	`ghcr.io/wolvesdotink/web:${LOCAL_VERSION_TAG}`,
-	`ghcr.io/wolvesdotink/mta:${LOCAL_VERSION_TAG}`,
-	`ghcr.io/wolvesdotink/updater:${LOCAL_VERSION_TAG}`,
-	`ghcr.io/wolvesdotink/convex-deploy:${LOCAL_VERSION_TAG}`,
-	`owlat-code-worker:${LOCAL_VERSION_TAG}`,
-	LOCAL_SETUP_IMAGE,
-] as const;
-
-/**
- * Local `docker compose build` invocation (push-images mode), targeting the
- * server's platform. All profiles so every buildable service is covered;
- * `INSTANCE_SECRET` only silences compose interpolation warnings.
- */
-export function localBuildInvocation(platform: string): {
-	program: string;
-	args: string[];
-	env: Record<string, string>;
-} {
-	return {
-		program: 'docker',
-		args: [
-			'compose',
-			'--profile',
-			'deploy',
-			'--profile',
-			'ai',
-			'build',
-			'web',
-			'mta',
-			'updater',
-			'convex-deploy',
-			'code-worker',
-		],
-		env: {
-			OWLAT_VERSION: LOCAL_VERSION_TAG,
-			DOCKER_DEFAULT_PLATFORM: platform,
-			INSTANCE_SECRET: 'build-only',
-		},
-	};
-}
-
-/** Local build of the setup-cli image (push-images mode). */
-export function localSetupImageInvocation(platform: string): {
-	program: string;
-	args: string[];
-	env: Record<string, string>;
-} {
-	return {
-		program: 'docker',
-		args: [
-			'build',
-			'--platform',
-			platform,
-			'-f',
-			'apps/setup-cli/Dockerfile',
-			'-t',
-			LOCAL_SETUP_IMAGE,
-			'.',
-		],
-		env: {},
-	};
+/** The local build of the setup-cli image as {@link LOCAL_SETUP_IMAGE} (push-images mode). */
+export function localSetupImageBuild(platform: string): LocalBuild {
+	return { kind: 'setupImage', platform };
 }
 
 /**
@@ -261,6 +203,12 @@ export function localSetupImageInvocation(platform: string): {
  * `docker compose --build` from source (`OWLAT_BUILD_LOCAL`) or to use the
  * pre-pushed `dev` images as-is (`OWLAT_LOCAL_IMAGES`). A branch install sets
  * nothing and lets the compose default build from the checkout.
+ *
+ * `OWLAT_CONSUME_CONFIG=1` makes `scripts/owlat` delete the uploaded config
+ * (admin password, provider keys) once quickstart exits, however it exits, so
+ * the secret does not outlive the run even when this app is gone by then. An
+ * older `scripts/owlat` (a release that predates it) ignores the variable; the
+ * wizard's own cleanup covers that case.
  */
 export function installerCommand(o: RemoteOptions): string {
 	const source = installSource(o);
@@ -274,5 +222,5 @@ export function installerCommand(o: RemoteOptions): string {
 		env = `OWLAT_SETUP_IMAGE='${releaseSetupImage(o.version)}' `;
 		versionFlag = ` --owlat-version '${o.version}'`;
 	}
-	return `cd '${o.installDir}' && ${env}OWLAT_PROGRESS=json OWLAT_ASSUME_YES=1 ./scripts/owlat quickstart --terminal${versionFlag} --config '${CONTAINER_CONFIG_PATH}'`;
+	return `cd '${o.installDir}' && ${env}OWLAT_PROGRESS=json OWLAT_ASSUME_YES=1 OWLAT_CONSUME_CONFIG=1 ./scripts/owlat quickstart --terminal${versionFlag} --config '${CONTAINER_CONFIG_PATH}'`;
 }

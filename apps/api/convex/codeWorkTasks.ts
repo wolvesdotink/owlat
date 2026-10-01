@@ -7,19 +7,24 @@
  */
 
 import { v } from 'convex/values';
-import { openInboundMessageBody } from './lib/messageBody';
-import { normalizeEmail } from '@owlat/shared';
-import { internalMutation, internalQuery } from './_generated/server';
-import type { MutationCtx } from './_generated/server';
-import type { Doc } from './_generated/dataModel';
+import { internalQuery } from './_generated/server';
+import { internalMutation } from './lib/writeFence';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { requireOrgPermission, requirePermission } from './lib/sessionOrganization';
 import { isSharedInboxReader } from './inbox/access';
-import { isFeatureEnabled } from './lib/featureFlags';
 import { getOrThrow, throwInvalidState } from './_utils/errors';
-import { extractEmail } from './lib/emailAddress';
-import { checkCodeAgentSafety, isDmarcAligned } from './lib/codeAgentGuard';
-import { CODE_TASK_MAX_ATTEMPTS, codeTaskRetryDecision } from './lib/codeTaskRetry';
+import { createCodeTaskFromInbound } from './lib/codeTaskInbound';
+import {
+	CODE_TASK_MAX_ATTEMPTS,
+	codeTaskMayRunAgent,
+	codeTaskRetryDecision,
+} from './lib/codeTaskRetry';
+import {
+	WORKER_OWNED_STATUSES,
+	codeTaskWorkerVerdict,
+	type CodeTaskStopReason,
+	type CodeTaskWorkerVerdict,
+} from './lib/codeTaskFence';
 
 /** Upper bound on rows a single reclaim sweep touches — keeps it bounded. */
 const RECLAIM_SCAN_LIMIT = 100;
@@ -28,49 +33,22 @@ const RECLAIM_SCAN_LIMIT = 100;
 const LIST_RECENT_DEFAULT_LIMIT = 20;
 const LIST_RECENT_MAX_LIMIT = 100;
 
-/** Statuses in which the code-worker (not the user) owns the task. */
-const WORKER_OWNED_STATUSES = ['running', 'testing'] as const;
-
-type CodeTaskStatus = Doc<'codeWorkTasks'>['status'];
-
-function isWorkerOwned(status: CodeTaskStatus): boolean {
-	return (WORKER_OWNED_STATUSES as readonly CodeTaskStatus[]).includes(status);
-}
-
 /** What `markFailed` did with the task — the worker logs the retry schedule. */
 export type CodeTaskFailureOutcome = {
 	status: 'queued' | 'failed';
 	retried: boolean;
 	attempts: number;
 	nextAttemptAt?: number;
+	/** Set when the report was not applied, and why (see lib/codeTaskFence). */
+	ignored?: CodeTaskStopReason;
 };
 
 /**
- * Is the inbound sender a trusted org member?
- *
- * A code-work task hands an attacker-controllable email body to an autonomous
- * coding agent, so ONLY mail from an org member (a real, provisioned account on
- * this single-org instance) may spawn one. Membership is resolved from
- * `userProfiles` — the org member table — matched on the normalized sender
- * address. The table is small (one org per deployment), so a bounded scan is
- * both cheap and casing-robust regardless of how BetterAuth stored the address.
- * Soft-deleted profiles are excluded.
+ * The claim attempt a worker callback belongs to. Optional only because the
+ * previous release's worker sends none; its calls still get the status and
+ * cancellation checks. N-1 compatibility: make it required after release N+1.
  */
-async function isTrustedInboundSender(ctx: MutationCtx, fromField: string): Promise<boolean> {
-	const sender = extractEmail(fromField);
-	if (!sender) return false;
-
-	// Fast path: exact match on the by_email index (emails commonly stored
-	// lowercased). Falls through to a bounded normalized scan otherwise.
-	const exact = await ctx.db
-		.query('userProfiles')
-		.withIndex('by_email', (q) => q.eq('email', sender))
-		.first();
-	if (exact && !exact.deletedAt) return true;
-
-	const profiles = await ctx.db.query('userProfiles').take(1000);
-	return profiles.some((p) => !p.deletedAt && normalizeEmail(p.email) === sender);
-}
+const workerAttemptArg = v.optional(v.number());
 
 /**
  * List recent tasks (for dashboard / verification queue).
@@ -171,12 +149,16 @@ export const cancel = authedMutation({
 		if (task.status === 'merged') throwInvalidState('Cannot cancel a merged task');
 
 		// Terminal: clearing the backoff gate keeps a cancelled retry from looking
-		// like a task still waiting for its next attempt.
+		// like a task still waiting for its next attempt. `cancelledAt` is what the
+		// worker callbacks check, so a run still in flight stops at its next call
+		// (lib/codeTaskFence) instead of moving the task on.
+		const now = Date.now();
 		await ctx.db.patch(args.taskId, {
 			status: 'failed',
 			errorMessage: 'Cancelled by user',
 			nextAttemptAt: undefined,
-			updatedAt: Date.now(),
+			cancelledAt: task.cancelledAt ?? now,
+			updatedAt: now,
 		});
 	},
 });
@@ -186,95 +168,13 @@ export const cancel = authedMutation({
 // ============================================================
 
 /**
- * Create a code work task from an inbound feature-request message.
- *
- * Called by the inbox processing lifecycle when a message is classified as a
- * feature request. Fails safe on several fronts before anything reaches the
- * coding agent:
- *   - the `inbox.codeTasks` feature flag must be on (off by default);
- *   - the message must carry a DMARC-aligned `pass` (computed by the MTA over
- *     the raw bytes at ingest). The allowlist below keys on the verbatim,
- *     forgeable "From" address; without this gate a spoofed member address would
- *     satisfy it. DMARC binds the From domain to an aligned SPF/DKIM pass, so it
- *     is the primary anti-spoofing control here, checked BEFORE the allowlist;
- *   - the sender must be a trusted org member — an untrusted sender's mail
- *     still processes as normal inbound, it simply does NOT spawn a code task
- *     (a stranger cannot direct the coding agent by emailing the inbox);
- *   - a code-agent-specific appropriateness check must pass — instructions
- *     smuggled to a CODE agent ("add a backdoor", "leak the env secrets",
- *     "force-push to main") are distinct from the email-assistant injection
- *     the upstream `security_scan` step guards, so they get their own gate.
- * We never create a second task for the same inbound message (idempotent on
- * `inboundMessageId`).
+ * Create a code work task from an inbound feature-request message, behind the
+ * feature flag, DMARC, sender-trust and code-agent safety gates. Idempotent on
+ * `inboundMessageId`. See `lib/codeTaskInbound.ts`.
  */
 export const createFromInbound = internalMutation({
 	args: { inboundMessageId: v.id('inboundMessages') },
-	handler: async (ctx, args) => {
-		// Feature gate — boolean check (internal mutation, no throwing).
-		if (!(await isFeatureEnabled(ctx, 'inbox.codeTasks'))) {
-			return null;
-		}
-
-		// Idempotency: never spawn a second task for the same inbound message.
-		const existing = await ctx.db
-			.query('codeWorkTasks')
-			.withIndex('by_inbound', (q) => q.eq('inboundMessageId', args.inboundMessageId))
-			.first();
-		if (existing) {
-			return existing._id;
-		}
-
-		const message = await ctx.db.get(args.inboundMessageId);
-		if (!message) {
-			return null;
-		}
-
-		// DMARC gate (PRIMARY anti-spoofing control): the allowlist below trusts
-		// the verbatim "From" header, which any sender can forge. Require a
-		// DMARC-aligned pass — the MTA computed it over the raw bytes at ingest —
-		// so a forged member address cannot direct the coding agent. Fails CLOSED:
-		// an absent/failed/non-pass verdict spawns no task (the mail still
-		// processes as normal inbound). The content denylist stays as backstop.
-		if (!isDmarcAligned(message)) {
-			return null;
-		}
-
-		// Trust gate: only org members may spawn code-work tasks. Untrusted
-		// senders are processed as normal inbound (already done upstream); they
-		// just don't reach the coding agent.
-		if (!(await isTrustedInboundSender(ctx, message.from))) {
-			return null;
-		}
-
-		// Code-agent appropriateness check — distinct from the email-assistant
-		// injection guard. Rejects destructive / exfiltrating / backdoor
-		// instructions before a task is ever queued.
-		const { text: bodyText, html: bodyHtml } = await openInboundMessageBody(message);
-		const safety = checkCodeAgentSafety({
-			subject: message.subject ?? '',
-			textBody: bodyText,
-			htmlBody: bodyHtml,
-		});
-		if (!safety.safe) {
-			return null;
-		}
-
-		// Build the task description from the inbound subject + body.
-		const subject = message.subject?.trim() || '(no subject)';
-		const body = (bodyText ?? bodyHtml ?? '').trim();
-		const description = body ? `${subject}\n\n${body}` : subject;
-
-		const now = Date.now();
-		return await ctx.db.insert('codeWorkTasks', {
-			description,
-			inboundMessageId: args.inboundMessageId,
-			status: 'queued',
-			attempts: 0,
-			maxAttempts: CODE_TASK_MAX_ATTEMPTS,
-			createdAt: now,
-			updatedAt: now,
-		});
-	},
+	handler: async (ctx, args) => await createCodeTaskFromInbound(ctx, args.inboundMessageId),
 });
 
 /**
@@ -282,6 +182,11 @@ export const createFromInbound = internalMutation({
  *
  * Counts the attempt and re-checks the backoff gate: a poll result can be a
  * moment stale, and a retry must never start before its window has elapsed.
+ * A task cancelled while queued is `failed` and is never claimed.
+ *
+ * The result names the attempt, which the worker sends back on every later
+ * call, and whether this claim may run the agent: a reconcile-only grace claim
+ * (lib/codeTaskRetry) may only finish an earlier attempt's publication.
  */
 export const claim = internalMutation({
 	args: { taskId: v.id('codeWorkTasks'), now: v.optional(v.number()) },
@@ -295,15 +200,27 @@ export const claim = internalMutation({
 			return { claimed: false };
 		}
 
+		const attempt = (task.attempts ?? 0) + 1;
 		await ctx.db.patch(args.taskId, {
 			status: 'running',
-			attempts: (task.attempts ?? 0) + 1,
+			attempts: attempt,
 			nextAttemptAt: undefined,
 			updatedAt: now,
 		});
 
-		return { claimed: true };
+		return { claimed: true, attempt, mayRunAgent: codeTaskMayRunAgent(task, attempt) };
 	},
+});
+
+/**
+ * Is this run still the task's live attempt? The worker asks between steps
+ * and right before each external effect, and aborts its sandbox children when
+ * the answer turns (the user cancelled, or a newer attempt owns the task).
+ */
+export const checkAttempt = internalQuery({
+	args: { taskId: v.id('codeWorkTasks'), attempt: v.number() },
+	handler: async (ctx, args): Promise<CodeTaskWorkerVerdict> =>
+		codeTaskWorkerVerdict(await ctx.db.get(args.taskId), args.attempt),
 });
 
 /**
@@ -313,12 +230,16 @@ export const updateBranch = internalMutation({
 	args: {
 		taskId: v.id('codeWorkTasks'),
 		branch: v.string(),
+		attempt: workerAttemptArg,
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args): Promise<CodeTaskWorkerVerdict> => {
+		const verdict = codeTaskWorkerVerdict(await ctx.db.get(args.taskId), args.attempt);
+		if (!verdict.ok) return verdict;
 		await ctx.db.patch(args.taskId, {
 			branch: args.branch,
 			updatedAt: Date.now(),
 		});
+		return verdict;
 	},
 });
 
@@ -326,17 +247,53 @@ export const updateBranch = internalMutation({
  * Move task to testing phase
  */
 export const markTesting = internalMutation({
-	args: { taskId: v.id('codeWorkTasks') },
-	handler: async (ctx, args) => {
+	args: { taskId: v.id('codeWorkTasks'), attempt: workerAttemptArg },
+	handler: async (ctx, args): Promise<CodeTaskWorkerVerdict> => {
+		const verdict = codeTaskWorkerVerdict(await ctx.db.get(args.taskId), args.attempt);
+		if (!verdict.ok) return verdict;
 		await ctx.db.patch(args.taskId, {
 			status: 'testing',
 			updatedAt: Date.now(),
 		});
+		return verdict;
 	},
 });
 
 /**
- * Complete task with PR URL — moves to review
+ * Record the publication checkpoint right before the worker pushes: the branch,
+ * the commit it is about to push and the test output that goes into the PR.
+ * Doubles as the last cancellation check before anything leaves the worker. A
+ * later attempt that finds the remote branch at this commit resumes publication
+ * rather than regenerating (see `publishCommitSha` in schema/codeWork.ts).
+ */
+export const recordPublication = internalMutation({
+	args: {
+		taskId: v.id('codeWorkTasks'),
+		attempt: v.number(),
+		branch: v.string(),
+		commitSha: v.string(),
+		testResults: v.optional(v.string()),
+	},
+	handler: async (ctx, args): Promise<CodeTaskWorkerVerdict> => {
+		const verdict = codeTaskWorkerVerdict(await ctx.db.get(args.taskId), args.attempt);
+		if (!verdict.ok) return verdict;
+		await ctx.db.patch(args.taskId, {
+			branch: args.branch,
+			publishCommitSha: args.commitSha,
+			testResults: args.testResults,
+			updatedAt: Date.now(),
+		});
+		return verdict;
+	},
+});
+
+/**
+ * Complete task with PR URL — moves to review.
+ *
+ * Idempotent for the attempt that completed it, so the worker can repeat an
+ * acknowledgement whose response was lost. A publication that raced the user's
+ * cancel keeps the cancelled outcome but records the PR it produced, so the
+ * external artifact is accounted for rather than left orphaned.
  */
 export const completeWithPR = internalMutation({
 	args: {
@@ -344,15 +301,28 @@ export const completeWithPR = internalMutation({
 		prUrl: v.string(),
 		testResults: v.optional(v.string()),
 		llmCost: v.optional(v.number()),
+		attempt: workerAttemptArg,
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args): Promise<CodeTaskWorkerVerdict> => {
+		const task = await ctx.db.get(args.taskId);
+		const verdict = codeTaskWorkerVerdict(task, args.attempt);
+		if (!verdict.ok) {
+			if (verdict.reason === 'cancelled' && args.prUrl && task?.prUrl !== args.prUrl) {
+				await ctx.db.patch(args.taskId, { prUrl: args.prUrl, updatedAt: Date.now() });
+			}
+			const repeated =
+				verdict.reason === 'finished' && task?.status === 'review' && task.prUrl === args.prUrl;
+			return repeated ? { ok: true } : verdict;
+		}
 		await ctx.db.patch(args.taskId, {
 			status: 'review',
 			prUrl: args.prUrl,
-			testResults: args.testResults,
+			// A resumed publication may carry no output; keep the checkpoint's.
+			testResults: args.testResults ?? task?.testResults,
 			llmCost: args.llmCost,
 			updatedAt: Date.now(),
 		});
+		return verdict;
 	},
 });
 
@@ -370,10 +340,12 @@ export const completeWithPR = internalMutation({
  * clone/agent/test cycles to reach the same answer. The worker names those
  * explicitly rather than the backend guessing from an error string.
  *
- * Only a `running`/`testing` task is touched. A task the user cancelled is
- * already terminal `failed`, and the in-flight run reporting its own failure
- * must never resurrect it into another attempt — cancellation is not escapable
- * by failing, the same rule the Tier-3 plugin queue enforces.
+ * Only a `running`/`testing` task of the reporting attempt is touched. A task
+ * the user cancelled is already terminal `failed`, and the in-flight run
+ * reporting its own failure must never resurrect it into another attempt —
+ * cancellation is not escapable by failing, the same rule the Tier-3 plugin
+ * queue enforces. Nor may an attempt that a reclaim superseded fail the newer
+ * one.
  */
 export const markFailed = internalMutation({
 	args: {
@@ -382,12 +354,15 @@ export const markFailed = internalMutation({
 		llmCost: v.optional(v.number()),
 		terminal: v.optional(v.boolean()),
 		now: v.optional(v.number()),
+		attempt: workerAttemptArg,
 	},
 	handler: async (ctx, args): Promise<CodeTaskFailureOutcome> => {
 		const now = args.now ?? Date.now();
 		const task = await ctx.db.get(args.taskId);
-		if (!task || !isWorkerOwned(task.status)) {
-			return { status: 'failed', retried: false, attempts: task?.attempts ?? 0 };
+		const verdict = codeTaskWorkerVerdict(task, args.attempt);
+		if (!task || !verdict.ok) {
+			const ignored = verdict.ok ? undefined : verdict.reason;
+			return { status: 'failed', retried: false, attempts: task?.attempts ?? 0, ignored };
 		}
 
 		// Keep a cost already recorded for the task when this report carries none.
@@ -426,10 +401,13 @@ export const markFailed = internalMutation({
 /**
  * Reclaim tasks abandoned mid-run by a crashed or restarted worker.
  *
- * The code-worker calls this on startup. This is a SINGLE-worker deployment
+ * The code-worker calls this on startup, and again between tasks after a run
+ * whose final report never reached the backend. This is a SINGLE-worker deployment
  * (one sidecar drains the queue, one task at a time), so a freshly started
  * process provably owns no task: every `running`/`testing` row is residue of
- * its crashed predecessor, whatever its timestamps say — hence no lease window.
+ * its crashed predecessor (or of its own unacknowledged run: the worker only
+ * calls this while it holds no task), whatever its timestamps say — hence no
+ * lease window.
  * That premise is not a hope: both compose files pin `code-worker` to
  * `deploy.replicas: 1`, because a second worker starting up would requeue the
  * first one's in-flight task.

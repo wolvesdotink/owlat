@@ -2,6 +2,7 @@ import { v } from 'convex/values';
 import type { DatabaseReader } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { getDailySendVolume } from '../lib/sendingLimits';
+import { readInstanceCounter } from '../lib/instanceCounters';
 import {
 	summarize,
 	readDomainReputationBucketGroups,
@@ -79,7 +80,8 @@ export const getSendingOverview = authedQuery({
 		const warmingState = await ctx.db.query('warmingState').first();
 
 		// Compute volume tracking
-		const volume = getDailySendVolume(settings.dailySendCount ?? 0, settings.dailySendCountResetAt);
+		const sends = await readInstanceCounter(ctx.db, 'sends');
+		const volume = getDailySendVolume(sends.dailySendCount ?? 0, sends.dailySendCountResetAt);
 
 		// Rolling 30-day org reputation, derived on read through the single
 		// summarizer, then shaped for the card (`null` on no in-window

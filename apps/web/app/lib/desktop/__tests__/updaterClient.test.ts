@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { WorkspaceConfig } from '../workspaceTypes';
+import { IDLE_FALLBACK_DELAY_MS } from '~/lib/scheduleIdle';
 
 // The module under test talks to three seams: the active workspace (which
 // instance to ask), the desktop bridge (the Rust updater commands) and the
@@ -169,10 +170,15 @@ describe('resolveUpdateSource', () => {
 		await expect(resolveUpdateSource()).resolves.toEqual({ kind: 'skip', host: 'acme.example' });
 	});
 
-	it('asks GitHub while a managing instance has nothing cached yet', async () => {
+	it.each([
+		['an instance that reports an empty cache', { hasCachedReleases: false }],
+		['an instance older than the cache flag', {}],
+	])('asks GitHub while the default policy has nothing cached yet (%s)', async (_label, extra) => {
 		// A server upgraded minutes ago, before its first refresh: it would answer
 		// 204 to everyone, and the app would call itself up to date although a
-		// newer release exists. The instance has nothing to offer, so GitHub decides.
+		// newer release exists. Under the default policy the instance would offer
+		// GitHub's newest stable release anyway, so GitHub decides. This is the
+		// one deliberate way around a reachable instance.
 		getActiveWorkspace.mockReturnValue(workspace('https://acme.example'));
 		fetchMock.mockResolvedValue(
 			policyResponse(200, {
@@ -180,11 +186,66 @@ describe('resolveUpdateSource', () => {
 				latestVersion: null,
 				latestPublishedAt: null,
 				checkedAt: null,
+				...extra,
 			})
 		);
 		const { resolveUpdateSource } = await load();
 
 		await expect(resolveUpdateSource()).resolves.toEqual({ kind: 'github', endpoint: null });
+	});
+
+	it.each([
+		['a pin', { mode: 'pinned', pinnedVersion: '0.4.6' }],
+		['a defer window', { deferHours: 168 }],
+		['the pre-release channel', { channel: 'prerelease' }],
+	])('keeps the instance in charge when nothing is cached under %s', async (_label, constraint) => {
+		// GitHub's endpoint knows nothing of the operator's pin, hold or channel:
+		// going around the instance here would install exactly what it withholds.
+		getActiveWorkspace.mockReturnValue(workspace('https://acme.example'));
+		const policy = { ...POLICY, ...constraint, latestVersion: null, latestPublishedAt: null };
+		fetchMock.mockResolvedValue(policyResponse(200, policy));
+		const { resolveUpdateSource } = await load();
+
+		await expect(resolveUpdateSource()).resolves.toEqual({
+			kind: 'server',
+			endpoint: 'https://acme.example/api/desktop/update/{{target}}/{{arch}}/{{current_version}}',
+			host: 'acme.example',
+			policy,
+		});
+	});
+
+	it('keeps the instance in charge when it has releases but none on its channel', async () => {
+		// Only pre-releases cached and the fleet on stable: an empty summary is
+		// the instance's answer, not a gap for GitHub to fill.
+		getActiveWorkspace.mockReturnValue(workspace('https://acme.example'));
+		const policy = {
+			...POLICY,
+			latestVersion: null,
+			latestPublishedAt: null,
+			hasCachedReleases: true,
+		};
+		fetchMock.mockResolvedValue(policyResponse(200, policy));
+		const { resolveUpdateSource } = await load();
+
+		await expect(resolveUpdateSource()).resolves.toMatchObject({ kind: 'server', policy });
+	});
+
+	it.each([
+		['no body', null],
+		['a string', '<html>Bad gateway</html>'],
+		['an unknown mode', { ...POLICY, mode: 'whatever' }],
+		['an unknown channel', { ...POLICY, channel: 'beta' }],
+		['a defer window that is not a number', { ...POLICY, latestVersion: null, deferHours: '168' }],
+		['a missing defer window', { ...POLICY, latestVersion: null, deferHours: undefined }],
+		['a latest version that is not a string', { ...POLICY, latestVersion: 7 }],
+		['a pin that is not a string', { ...POLICY, mode: 'pinned', pinnedVersion: 46 }],
+		['a cache flag that is not a boolean', { ...POLICY, hasCachedReleases: 'yes' }],
+	])('skips the round when the probe answers 200 with %s', async (_label, body) => {
+		getActiveWorkspace.mockReturnValue(workspace('https://acme.example'));
+		fetchMock.mockResolvedValue(policyResponse(200, body));
+		const { resolveUpdateSource } = await load();
+
+		await expect(resolveUpdateSource()).resolves.toEqual({ kind: 'skip', host: 'acme.example' });
 	});
 
 	it('still honours a paused policy when nothing is cached', async () => {
@@ -336,6 +397,25 @@ describe('runUpdateCheck', () => {
 		await first;
 	});
 
+	it('asks the instance, not GitHub, inside a defer window with nothing cached', async () => {
+		// The audit's example: a one-week hold and an empty summary used to send
+		// the app to GitHub, which could install a release the hold was for.
+		getActiveWorkspace.mockReturnValue(workspace('https://acme.example'));
+		fetchMock.mockResolvedValue(
+			policyResponse(200, { ...POLICY, deferHours: 168, latestVersion: null })
+		);
+		const { runUpdateCheck, state } = await load();
+
+		await runUpdateCheck();
+
+		expect(checkForUpdate).toHaveBeenCalledTimes(1);
+		expect(checkForUpdate).toHaveBeenCalledWith(
+			'https://acme.example/api/desktop/update/{{target}}/{{arch}}/{{current_version}}'
+		);
+		expect(state.source.value).toMatchObject({ kind: 'server', host: 'acme.example' });
+		expect(state.phase.value).toBe('upToDate');
+	});
+
 	it('records which instance chose the update, for the device card', async () => {
 		getActiveWorkspace.mockReturnValue(workspace('https://acme.example'));
 		fetchMock.mockResolvedValue(policyResponse(200));
@@ -370,8 +450,10 @@ describe('setupUpdateChecks', () => {
 		const setInterval_ = vi.spyOn(globalThis, 'setInterval');
 		const { setupUpdateChecks } = await load();
 
-		setupUpdateChecks();
+		setupUpdateChecks({ firstCheckDelayMs: 0 });
 		await vi.waitFor(() => expect(setInterval_).toHaveBeenCalledTimes(1));
+		await vi.waitFor(() => expect(loadDesktopAppSettings).toHaveBeenCalledTimes(1));
+		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		expect(checkForUpdate).not.toHaveBeenCalled();
 		clearInterval(setInterval_.mock.results[0]?.value as ReturnType<typeof setInterval>);
@@ -387,7 +469,7 @@ describe('setupUpdateChecks', () => {
 	it('re-reads the setting at every tick, so switching it off mid-session stops the timer runs', async () => {
 		const setInterval_ = vi.spyOn(globalThis, 'setInterval');
 		const { setupUpdateChecks } = await load();
-		setupUpdateChecks();
+		setupUpdateChecks({ firstCheckDelayMs: 0 });
 		const tick = await armedTick(setInterval_);
 		await vi.waitFor(() => expect(checkForUpdate).toHaveBeenCalledTimes(1));
 
@@ -424,7 +506,7 @@ describe('setupUpdateChecks', () => {
 		const clearInterval_ = vi.spyOn(globalThis, 'clearInterval');
 		const { setupUpdateChecks, state } = await load();
 
-		setupUpdateChecks();
+		setupUpdateChecks({ firstCheckDelayMs: 0 });
 		await vi.waitFor(() => expect(setInterval_).toHaveBeenCalledTimes(1));
 		await vi.waitFor(() => expect(state.phase.value).toBe('ready'));
 
@@ -441,13 +523,14 @@ describe('setupUpdateChecks', () => {
 		const addEventListener_ = vi.spyOn(window, 'addEventListener');
 		const { setupUpdateChecks } = await load();
 
-		setupUpdateChecks();
+		setupUpdateChecks({ firstCheckDelayMs: 0 });
 		const handler = addEventListener_.mock.calls.find(
 			([name]) => name === 'owlat:check-updates'
 		)?.[1];
 		expect(handler).toBeTypeOf('function');
 		(handler as EventListener)(new Event('owlat:check-updates'));
-		await new Promise((resolve) => setTimeout(resolve, 10));
+		// Past the delayed boot check's idle fallback too.
+		await new Promise((resolve) => setTimeout(resolve, IDLE_FALLBACK_DELAY_MS + 50));
 
 		// No boot check, no timer, and the shared menu event is left to main.
 		expect(checkForUpdate).not.toHaveBeenCalled();
@@ -455,6 +538,29 @@ describe('setupUpdateChecks', () => {
 		expect(setInterval_).not.toHaveBeenCalled();
 		addEventListener_.mockRestore();
 		setInterval_.mockRestore();
+	});
+
+	it('waits FIRST_CHECK_DELAY_MS and then an idle moment before the boot check', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		try {
+			const { setupUpdateChecks, FIRST_CHECK_DELAY_MS } = await load();
+			expect(FIRST_CHECK_DELAY_MS).toBe(30_000);
+			setupUpdateChecks();
+
+			// The launch is left alone: no probe, no settings read, no check.
+			await vi.advanceTimersByTimeAsync(FIRST_CHECK_DELAY_MS - 1);
+			expect(loadDesktopAppSettings).not.toHaveBeenCalled();
+			expect(checkForUpdate).not.toHaveBeenCalled();
+
+			// The delay is over; the check still waits for idle time.
+			await vi.advanceTimersByTimeAsync(1);
+			expect(checkForUpdate).not.toHaveBeenCalled();
+
+			await vi.advanceTimersByTimeAsync(IDLE_FALLBACK_DELAY_MS);
+		} finally {
+			vi.useRealTimers();
+		}
+		await vi.waitFor(() => expect(checkForUpdate).toHaveBeenCalledTimes(1));
 	});
 
 	it('still runs a manual check when auto-checks are off', async () => {

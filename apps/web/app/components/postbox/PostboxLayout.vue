@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
 const props = defineProps<{
@@ -63,19 +62,21 @@ const {
 });
 // The divider measures the list pane it moves, so it needs the element itself.
 const listPaneRef = ref<HTMLElement | null>(null);
+// Plan 0.2: time an open to its body on screen, and back to the list's rows.
+usePostboxPerfMarks({ activeMessageId: () => props.activeMessageId, listPane: listPaneRef });
 
 // Newest / oldest arrival order for the list, persisted per user. The pick
 // applies optimistically and the feed re-subscribes on the new order (its
 // resetKey carries the direction, so no cursor outlives the change).
 const { sortOrder, selectSortOrder } = usePostboxSortOrder({ savedSortOrder, setSortOrder });
 
-const { messages, isLoading, isLoadingMore, isRefetching, hasMore, canLoadMore, loadMore } =
-	usePostboxThreads({
-		mailboxId: mailboxIdRef,
-		folderRole: folderRef,
-		folderId: folderIdRef,
-		sortOrder,
-	});
+const feed = usePostboxThreads({
+	mailboxId: mailboxIdRef,
+	folderRole: folderRef,
+	folderId: folderIdRef,
+	sortOrder,
+});
+const { messages, isLoading, isLoadingMore, isRefetching, hasMore, canLoadMore, loadMore } = feed;
 
 // The virtual Snoozed folder is take()-bounded server-side: more matches can
 // exist with no cursor to reach them. Say so plainly instead of offering a
@@ -141,13 +142,7 @@ const {
 // composer + reader chunks so pressing `c` or Enter never waits on a chunk
 // download. Idempotent + fail-soft; the Designer-mode EmailBuilder stays lazy.
 const chunkWarmup = usePostboxChunkWarmup();
-watch(
-	isLoading,
-	(loading) => {
-		if (!loading) chunkWarmup.warm();
-	},
-	{ immediate: true }
-);
+watch(isLoading, (loading) => !loading && chunkWarmup.warm(), { immediate: true });
 
 // Cmd/Ctrl+Z walks back the undo stack (newest first) while entries are
 // pending. The listener is installed app-wide by usePostboxTriageUndo itself
@@ -225,16 +220,14 @@ const {
 	listMessages,
 });
 
-const listActive = computed(() => messages.value.find((m) => m._id === props.activeMessageId));
-// Deep-link fallback: when the active message isn't in the loaded page (an old
-// message reached via bookmark / notification / search), fetch it by id so the
-// reader renders instead of showing an empty "Select a message".
-const { data: fetchedActive } = useConvexQuery(api.mail.mailbox.messages.getMessage, () =>
-	props.activeMessageId && !listActive.value
-		? { messageId: props.activeMessageId as Id<'mailMessages'> }
-		: 'skip'
-);
-const activeMessage = computed(() => listActive.value ?? fetchedActive.value ?? undefined);
+// The reader's message: the list row, else its row from the thread the page
+// already subscribed from the route (plan 2.5), else a fetch by id for an old
+// message reached via bookmark / notification / search.
+const activeRead = usePostboxActiveMessageRead({
+	activeMessageId: () => props.activeMessageId,
+	listRows: () => messages.value,
+});
+const activeMessage = activeRead.message;
 
 // Auto-advance context for the reader: the flat list's visual row order
 // (optimistic-hide filtered, via the template ref below). In every grouped
@@ -365,8 +358,14 @@ const advanceIds = computed(() =>
 										:key="`${String(folderId ?? folderRole ?? 'all')}:${activeListRenderer}`"
 										class="h-full"
 									>
+										<!-- A failed read is not an empty folder (#721); cached rows win. -->
+										<UiQueryBoundary
+											v-if="feed.error.value && !showingCached"
+											:error="feed.error.value"
+											@retry="feed.refetch"
+										/>
 										<PostboxThreadCategoryList
-											v-if="categoriesEnabled"
+											v-else-if="categoriesEnabled"
 											:sections="categories.sections.value"
 											:collapsed="categories.collapsed.value"
 											:loading="categories.isLoading.value"
@@ -419,6 +418,7 @@ const advanceIds = computed(() =>
 											:messages="listMessages"
 											:loading="isLoading && !showingCached"
 											:folder-role="folderRole"
+											:folder-id="folderId"
 											:active-message-id="activeMessageId"
 											:has-more="canLoadMore"
 											:loading-more="isLoadingMore"
@@ -465,23 +465,29 @@ const advanceIds = computed(() =>
 							<span class="capitalize truncate">{{ currentFolderName }}</span>
 						</button>
 
-						<Transition name="pbx-reader" mode="out-in">
-							<PostboxThreadReader
-								v-if="activeMessage"
-								:key="activeMessageId ?? undefined"
-								:message="activeMessage"
-								:advance-ids="advanceIds"
-								:folder-role="folderId ? String(folderId) : folderRole"
-							/>
-							<div v-else class="h-full flex items-center justify-center">
-								<div class="text-center">
-									<Icon name="lucide:mail-open" class="w-12 h-12 mx-auto text-text-tertiary" />
-									<p class="mt-4 text-text-secondary">
-										{{ t('components.postbox.postboxLayout.selectMessage') }}
-									</p>
-								</div>
+						<!-- Keyed, enter-only swap (postbox-motion.css): the next thread
+						     mounts in the same frame the previous one goes. -->
+						<PostboxThreadReader
+							v-if="activeMessage"
+							:key="activeMessageId ?? undefined"
+							class="pbx-reader-swap"
+							:message="activeMessage"
+							:advance-ids="advanceIds"
+							:folder-role="folderId ? String(folderId) : folderRole"
+						/>
+						<UiQueryBoundary
+							v-else-if="activeMessageId && activeRead.error.value"
+							:error="activeRead.error.value"
+							@retry="activeRead.refetch"
+						/>
+						<div v-else class="pbx-reader-swap h-full flex items-center justify-center">
+							<div class="text-center">
+								<Icon name="lucide:mail-open" class="w-12 h-12 mx-auto text-text-tertiary" />
+								<p class="mt-4 text-text-secondary">
+									{{ t('components.postbox.postboxLayout.selectMessage') }}
+								</p>
 							</div>
-						</Transition>
+						</div>
 					</section>
 				</div>
 			</div>

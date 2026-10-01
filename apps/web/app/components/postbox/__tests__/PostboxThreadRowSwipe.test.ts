@@ -67,7 +67,7 @@ function mountRow(props: Partial<Record<'swipeLeft' | 'swipeRight', string>> = {
 				UiAvatar: { props: ['name', 'email', 'size'], template: '<span />' },
 				PostboxThreadRowFollowUp: { template: '<span />' },
 			},
-			mocks: { formatThreadTimestamp: () => '2h', resolveComponent: () => 'a' },
+			mocks: { resolveComponent: () => 'a' },
 		},
 	});
 }

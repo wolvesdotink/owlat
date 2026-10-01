@@ -17,6 +17,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { PostboxBundleMessage } from '~/utils/postboxBundles';
 import { bundlePostboxFeed } from '~/utils/postboxBundles';
+import { optimisticArchive, optimisticMove } from '~/lib/mailOptimistic/mailUpdaters';
 
 export function usePostboxThreadBundles<T extends PostboxBundleMessage>(args: {
 	mailboxId: Ref<Id<'mailboxes'> | null>;
@@ -38,9 +39,11 @@ export function usePostboxThreadBundles<T extends PostboxBundleMessage>(args: {
 	const triageUndo = usePostboxTriageUndo();
 	const archiveOp = useBackendOperation(api.mail.messageActions.archive, {
 		label: () => t('shared.postbox.usePostboxThreadBundles.archiveOperation'),
+		optimisticUpdate: optimisticArchive,
 	});
 	const moveOp = useBackendOperation(api.mail.messageActions.move, {
 		label: () => t('shared.postbox.usePostboxThreadBundles.moveOperation'),
+		optimisticUpdate: optimisticMove,
 	});
 	const unsubscribeOp = useBackendOperation(api.mail.subscriptions.unsubscribeAndArchive, {
 		label: () => t('shared.postbox.usePostboxThreadBundles.unsubscribeOperation'),

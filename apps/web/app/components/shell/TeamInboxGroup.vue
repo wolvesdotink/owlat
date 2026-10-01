@@ -18,11 +18,17 @@ const emit = defineEmits<{ toggle: [] }>();
 const { t } = useI18n();
 const route = useRoute();
 
-const { data } = useConvexQuery(api.inbox.queries.listThreads, () => ({
-	filter: 'open' as const,
-	sort: 'needs-attention' as const,
-	limit: props.collapsed ? 1 : Math.max(props.limit, 1),
-}));
+// keepPreviousData: collapsing or changing the count keeps the rows and the
+// status dot until the new list lands, like the per-inbox groups.
+const { data } = useConvexQuery(
+	api.inbox.queries.listThreads,
+	() => ({
+		filter: 'open' as const,
+		sort: 'needs-attention' as const,
+		limit: props.collapsed ? 1 : Math.max(props.limit, 1),
+	}),
+	{ keepPreviousData: true }
+);
 const { data: stats } = useConvexQuery(api.inbox.queries.getInboundStats, () => ({}));
 
 const rows = computed(() => {

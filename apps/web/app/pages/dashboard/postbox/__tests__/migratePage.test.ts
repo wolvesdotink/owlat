@@ -30,10 +30,18 @@ const connectedAccount: Account = {
 
 const start = vi.fn(async () => ({ ok: true as const, result: null }));
 const cancel = vi.fn(async () => ({ ok: true as const, result: null }));
+const learn = vi.fn(async () => ({ ok: true as const, result: null }));
+/** Pins the wizard step; `null` derives it from the account as before. */
+const stepOverride = ref<string | null>(null);
 const showToast = vi.fn();
 const replace = vi.fn();
 const account = ref<Account | null>(null);
-const migration = ref<{ status: string } | null>(null);
+const migration = ref<{
+	status: string;
+	isAiIndexingEnabled?: boolean;
+	messagesImported?: number;
+	messagesIndexed?: number;
+} | null>(null);
 const query = ref<Record<string, string>>({});
 
 beforeAll(() => {
@@ -57,15 +65,17 @@ beforeAll(() => {
 		useMailMigration: () => ({
 			migration,
 			account,
-			step: computed(() => (account.value?.configured ? 'ready' : 'connect')),
+			step: computed(() => stepOverride.value ?? (account.value?.configured ? 'ready' : 'connect')),
 			importPercent: computed(() => 0),
 			indexPercent: computed(() => 0),
 			isAiIndexing: computed(() => false),
 			isDiscovering: computed(() => false),
 			start,
 			cancel,
+			learn,
 			startBusy: ref(false),
 			cancelBusy: ref(false),
+			learnBusy: ref(false),
 		}),
 	});
 });
@@ -76,6 +86,7 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	account.value = null;
 	migration.value = null;
+	stepOverride.value = null;
 	query.value = { googleConnected: '1' };
 });
 
@@ -167,5 +178,46 @@ describe('migrate wizard — returning from Google sign-in', () => {
 
 		expect(start).not.toHaveBeenCalled();
 		expect(replace).toHaveBeenCalled();
+	});
+});
+
+describe('migrate wizard — learning from a finished import', () => {
+	beforeEach(() => {
+		query.value = {};
+		account.value = connectedAccount;
+		stepOverride.value = 'completed';
+	});
+
+	it('offers to learn from an import that finished without it', async () => {
+		migration.value = {
+			status: 'completed',
+			isAiIndexingEnabled: false,
+			messagesImported: 8300,
+			messagesIndexed: 0,
+		};
+		const page = mountPage();
+		await nextTick();
+
+		const card = page.find('[data-testid="migrate-learn"]');
+		expect(card.exists()).toBe(true);
+		await card.find('button').trigger('click');
+		await nextTick();
+
+		expect(learn).toHaveBeenCalledTimes(1);
+		expect(start).not.toHaveBeenCalled();
+		expect(showToast).toHaveBeenCalledWith(expect.stringContaining('learning'), 'success');
+	});
+
+	it('stays quiet once the import has been learned from', async () => {
+		migration.value = {
+			status: 'completed',
+			isAiIndexingEnabled: true,
+			messagesImported: 8300,
+			messagesIndexed: 8300,
+		};
+		const page = mountPage();
+		await nextTick();
+
+		expect(page.find('[data-testid="migrate-learn"]').exists()).toBe(false);
 	});
 });

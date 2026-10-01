@@ -18,7 +18,7 @@
 			"trendAriaLabel": "Trenddiagramm"
 		},
 		"confirmationDialog": {
-			"title": "Sind Sie sicher?",
+			"title": "Bist du sicher?",
 			"description": "Diese Aktion kann nicht rückgängig gemacht werden."
 		},
 		"disclosure": {
@@ -30,7 +30,7 @@
 			"clear": "Filter zurücksetzen"
 		},
 		"errorBoundary": {
-			"message": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut."
+			"message": "Etwas ist schiefgelaufen. Bitte versuche es erneut."
 		},
 		"modal": {
 			"close": "Dialog schließen"
@@ -42,7 +42,7 @@
 			"linkPrompt": "Link-URL"
 		},
 		"select": {
-			"placeholder": "Bitte wählen Sie eine Option"
+			"placeholder": "Bitte wähle eine Option"
 		},
 		"stepIndicator": {
 			"label": "Fortschritt",
@@ -52,10 +52,16 @@
 			"system": "Systemeinstellung",
 			"light": "Heller Modus",
 			"dark": "Dunkler Modus",
-			"ariaLabel": "Design: {mode}. Klicken Sie, um zu wechseln."
+			"ariaLabel": "Design: {mode}. Klicke, um zu wechseln."
 		},
 		"toast": {
 			"dismiss": "Benachrichtigung ausblenden"
+		},
+		"unsavedChanges": {
+			"title": "Ungespeicherte Änderungen",
+			"description": "Du hast ungespeicherte Änderungen. Möchtest du sie speichern, bevor du gehst?",
+			"discard": "Verwerfen",
+			"save": "Speichern"
 		}
 	}
 }

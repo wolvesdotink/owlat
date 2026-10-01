@@ -32,7 +32,7 @@ const CONFIG = { folderPollIntervalMs: 60_000 } as unknown as MailSyncConfig;
 
 function newConnection(result: WorkerCredentialsResult) {
 	const action = vi.fn(async () => result);
-	const mutation = vi.fn(async () => ({}));
+	const mutation = vi.fn(async (_ref: unknown, _args: unknown) => ({}));
 	const convex = {
 		query: vi.fn(async () => []),
 		mutation,

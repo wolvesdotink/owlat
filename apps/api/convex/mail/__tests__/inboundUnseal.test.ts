@@ -32,6 +32,7 @@ import {
 } from '../../e2ee/__tests__/sealedMailTestHelpers';
 import { modules } from '../../__tests__/testModulesWithoutNodeActions';
 import { openMailMessageInlineBody } from '../../lib/messageBody';
+import { loadStoredInlineBody } from '../../lib/messageBodyStore';
 import { isSealedAtRest, isSealedBytesAtRest } from '../../lib/atRestBodies';
 import { readSealedBlobBytes } from '../../lib/sealedBlob';
 import { expectScheduledFailure } from '../../__tests__/helpers/scheduledFailures';
@@ -136,8 +137,12 @@ async function readRow(t: T, messageId: Id<'mailMessages'>) {
 		// WRITE-PATH PROOF: the inline bodies AND the raw `.eml` blob are CIPHERTEXT
 		// at rest — the ingest path sealed them at write (this fails if the sealing
 		// is a no-op, since the accessors pass plaintext through).
-		if (msg.textBodyInline) expect(isSealedAtRest(msg.textBodyInline)).toBe(true);
-		if (msg.htmlBodyInline) expect(isSealedAtRest(msg.htmlBodyInline)).toBe(true);
+		// Plan 3.2: the inline bodies live in `mailMessageBodies`, not on the row.
+		expect(msg.textBodyInline).toBeUndefined();
+		expect(msg.htmlBodyInline).toBeUndefined();
+		const stored = await loadStoredInlineBody(ctx.db, msg);
+		if (stored.textBodyInline) expect(isSealedAtRest(stored.textBodyInline)).toBe(true);
+		if (stored.htmlBodyInline) expect(isSealedAtRest(stored.htmlBodyInline)).toBe(true);
 		const rawStored = await ctx.storage.get(msg.rawStorageId);
 		const rawStoredBytes = rawStored
 			? new Uint8Array(await rawStored.arrayBuffer())
@@ -147,7 +152,7 @@ async function readRow(t: T, messageId: Id<'mailMessages'>) {
 		// plaintext assertions exercise the decrypt-on-ingest → at-rest-seal path.
 		const rawBytes = await readSealedBlobBytes(ctx.storage, msg.rawStorageId);
 		const rawText = rawBytes ? new TextDecoder().decode(rawBytes) : '';
-		const { text, html } = await openMailMessageInlineBody(msg);
+		const { text, html } = await openMailMessageInlineBody(stored);
 		return { msg: { ...msg, textBodyInline: text, htmlBodyInline: html }, rawText };
 	});
 }

@@ -1,12 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
+import { COMPOSE_BUILD_SERVICES } from '@owlat/shared/composeBuildServices';
 import { PROGRESS_SENTINEL, SetupStep } from '@owlat/shared/setupProgress';
 import { createTestI18n } from '~/__tests__/i18n';
 import { useServerProvisioning, type ServerCredentials } from '../useServerProvisioning';
-import type {
-	ProvisionTransport,
-	ConnectInfo,
-	ExecEvent,
-	SetupConfigInput,
+import {
+	DEV_IMAGES,
+	type ProvisionTransport,
+	type ConnectInfo,
+	type ExecEvent,
+	type LocalBuild,
+	type SetupConfigInput,
 } from '~/lib/desktop/provisioning';
 
 // The wizard is driven outside a component here, so `useI18n` is stubbed with
@@ -26,6 +29,16 @@ interface FakeOpts {
 	cleanupExit?: number;
 	authError?: string;
 	uploadError?: string;
+	// The config upload fails (it may still have created the file).
+	writeError?: string;
+	// The installer's exec fails in the transport (the session dropped).
+	installerError?: string;
+	// The installer (or a local build) runs until the session is cancelled,
+	// like a hung server that never sends EOF.
+	installerHangs?: boolean;
+	localBuildHangs?: boolean;
+	// Images the post-push check reports as missing on the server.
+	missingImages?: string[];
 	// stdout emitted by the public-IP probe; undefined = no output (detection fails).
 	publicIpLine?: string;
 	// stdout emitted by the latest-release lookup; null = no output (lookup fails).
@@ -35,16 +48,31 @@ interface FakeOpts {
 class FakeTransport implements ProvisionTransport {
 	commands: string[] = [];
 	uploads: Array<{ localDir: string; remoteDir: string }> = [];
-	localCommands: Array<{
-		program: string;
-		args: string[];
-		cwd: string;
-		env: Record<string, string>;
-	}> = [];
+	localBuilds: Array<{ sessionId: string; localDir: string; build: LocalBuild }> = [];
 	pushedImages: string[][] = [];
+	writes: Array<{ path: string; content: string }> = [];
+	// Every call that changes the session, in order: what leaving does, and
+	// that nothing starts after it.
+	journal: string[] = [];
+	// Hold connect() until the test releases it (a handshake in flight).
+	connectGate: Promise<void> | null = null;
+	private cancelled: Array<() => void> = [];
 	constructor(private opts: FakeOpts = {}) {}
 
+	/** A call that only ends when the session is cancelled, then rejects like the native side. */
+	private untilCancelled<T>(): Promise<T> {
+		return new Promise<T>((_resolve, reject) => {
+			this.cancelled.push(() => reject(new Error('Cancelled.')));
+		});
+	}
+
+	async cancel(sessionId: string): Promise<void> {
+		this.journal.push(`cancel ${sessionId}`);
+		for (const stop of this.cancelled.splice(0)) stop();
+	}
+
 	async connect(host: string, port: number): Promise<ConnectInfo> {
+		if (this.connectGate) await this.connectGate;
 		return {
 			sessionId: 's1',
 			fingerprint: 'SHA256:deadbeef',
@@ -58,9 +86,12 @@ class FakeTransport implements ProvisionTransport {
 	}
 	async execStream(_id: string, command: string, onEvent: (e: ExecEvent) => void): Promise<number> {
 		this.commands.push(command);
+		this.journal.push(`exec ${command}`);
 		const out = (line: string) => onEvent({ kind: 'stdout', line });
 		const err = (line: string) => onEvent({ kind: 'stderr', line });
 		if (command.includes('quickstart')) {
+			if (this.opts.installerHangs) return this.untilCancelled();
+			if (this.opts.installerError) throw new Error(this.opts.installerError);
 			for (const l of this.opts.installerLines ?? []) out(l);
 			for (const l of this.opts.installerStderr ?? []) err(l);
 			return this.opts.installerExit ?? 0;
@@ -76,6 +107,10 @@ class FakeTransport implements ProvisionTransport {
 		}
 		if (command.startsWith('rm -f')) {
 			return this.opts.cleanupExit ?? 0;
+		}
+		if (command.includes('docker image inspect')) {
+			for (const image of this.opts.missingImages ?? []) out(`missing=${image}`);
+			return 0;
 		}
 		if (command.includes('get.docker.com')) {
 			out('installing docker');
@@ -94,7 +129,11 @@ class FakeTransport implements ProvisionTransport {
 		}
 		return 0;
 	}
-	async writeFile(): Promise<void> {}
+	async writeFile(_id: string, path: string, content: string): Promise<void> {
+		this.journal.push(`write ${path}`);
+		this.writes.push({ path, content });
+		if (this.opts.writeError) throw new Error(this.opts.writeError);
+	}
 	async uploadDir(_id: string, localDir: string, remoteDir: string): Promise<void> {
 		if (this.opts.uploadError) throw new Error(this.opts.uploadError);
 		this.uploads.push({ localDir, remoteDir });
@@ -102,16 +141,16 @@ class FakeTransport implements ProvisionTransport {
 	async pushImages(_id: string, images: string[]): Promise<void> {
 		this.pushedImages.push(images);
 	}
-	async localExec(
-		program: string,
-		args: string[],
-		cwd: string,
-		env: Record<string, string>
-	): Promise<number> {
-		this.localCommands.push({ program, args, cwd, env });
+	async localBuild(sessionId: string, localDir: string, build: LocalBuild): Promise<number> {
+		this.journal.push(`build ${build.kind}`);
+		this.localBuilds.push({ sessionId, localDir, build });
+		if (this.opts.localBuildHangs) return this.untilCancelled();
 		return 0;
 	}
-	async disconnect(): Promise<void> {}
+	async disconnect(sessionId: string): Promise<void> {
+		this.journal.push(`disconnect ${sessionId}`);
+		for (const stop of this.cancelled.splice(0)) stop();
+	}
 }
 
 const creds: ServerCredentials = {
@@ -469,18 +508,29 @@ describe('useServerProvisioning — local source + push-images mode', () => {
 		await p.provision(config);
 		expect(p.stage.value).toBe('done');
 
-		// local builds: stack compose build + the setup image, in the source dir,
-		// pinned to the server's platform (fake reports x86_64).
-		expect(t.localCommands).toHaveLength(2);
-		expect(t.localCommands[0]?.args).toContain('compose');
-		expect(t.localCommands[0]?.cwd).toBe('/Users/dev/owlat');
-		expect(t.localCommands[0]?.env['DOCKER_DEFAULT_PLATFORM']).toBe('linux/amd64');
-		expect(t.localCommands[1]?.args).toContain('apps/setup-cli/Dockerfile');
+		// local builds: the stack, then the setup image, in the source dir,
+		// pinned to the server's platform (fake reports x86_64). The wizard names
+		// what to build; the desktop owns the docker invocation itself.
+		expect(t.localBuilds).toHaveLength(2);
+		expect(t.localBuilds[0]).toMatchObject({
+			sessionId: 's1',
+			localDir: '/Users/dev/owlat',
+			build: { kind: 'stack', platform: 'linux/amd64' },
+		});
+		expect(t.localBuilds[1]).toEqual({
+			sessionId: 's1',
+			localDir: '/Users/dev/owlat',
+			build: { kind: 'setupImage', platform: 'linux/amd64' },
+		});
 
-		// images streamed once, including the setup image.
-		expect(t.pushedImages).toHaveLength(1);
+		// images streamed once, including the setup image, then checked on the
+		// server before anything else runs there.
+		expect(t.pushedImages).toEqual([[...DEV_IMAGES]]);
 		expect(t.pushedImages[0]).toContain('ghcr.io/wolvesdotink/setup:dev');
 		expect(t.pushedImages[0]).toContain('ghcr.io/wolvesdotink/web:dev');
+		const verifyIdx = t.commands.findIndex((c) => c.includes('docker image inspect'));
+		expect(verifyIdx).toBeGreaterThan(-1);
+		expect(verifyIdx).toBeLessThan(t.commands.findIndex((c) => c.includes('quickstart')));
 
 		// nothing builds on the server; installer uses preloaded images.
 		expect(t.commands.some((c) => c.includes('docker build'))).toBe(false);
@@ -554,5 +604,264 @@ describe('useServerProvisioning — log cap, failure tail, secrets cleanup', () 
 		});
 		expect(p.stage.value).toBe('done');
 		expect(p.secretsRemoved.value).toBe(false);
+	});
+});
+
+// ---- #956: local-push builds and pushes every first-party image -----------
+
+describe('useServerProvisioning — local-push images come from the Compose services', () => {
+	const pushCreds: ServerCredentials = {
+		...creds,
+		remote: { localSource: '/Users/dev/owlat', localImages: true },
+	};
+
+	it('builds every buildable service and pushes their images, the MTA resolver included', async () => {
+		const t = new FakeTransport({
+			knownHostStatus: 'match',
+			installerLines: happyInstallerLines({ siteUrl: 'http://x:3000' }),
+		});
+		const p = useServerProvisioning(t);
+		await p.connect(pushCreds);
+		await p.provision(config);
+		expect(p.stage.value).toBe('done');
+
+		const stack = t.localBuilds[0]?.build;
+		expect(stack?.kind === 'stack' && stack.services).toEqual(
+			COMPOSE_BUILD_SERVICES.map((s) => s.service)
+		);
+		const pushed = t.pushedImages[0] ?? [];
+		// The services the old hand-written list missed: the MTA's DNS
+		// resolver, ClamAV, IMAP, mail-sync and the code-task auxiliaries.
+		for (const image of [
+			'ghcr.io/wolvesdotink/unbound:dev',
+			'ghcr.io/wolvesdotink/clamav:dev',
+			'ghcr.io/wolvesdotink/imap:dev',
+			'ghcr.io/wolvesdotink/mail-sync:dev',
+			'ghcr.io/wolvesdotink/tinyproxy:dev',
+			'owlat-convex-fn-proxy:dev',
+		]) {
+			expect(pushed).toContain(image);
+		}
+	});
+
+	it('stops before the installer when a pushed image is missing on the server', async () => {
+		const t = new FakeTransport({
+			knownHostStatus: 'match',
+			missingImages: ['ghcr.io/wolvesdotink/unbound:dev'],
+			installerLines: happyInstallerLines({ siteUrl: 'http://x:3000' }),
+		});
+		const p = useServerProvisioning(t);
+		await p.connect(pushCreds);
+		await p.provision(config);
+
+		expect(p.stage.value).toBe('error');
+		expect(p.error.value).toBe(
+			'These images did not arrive on the server: ghcr.io/wolvesdotink/unbound:dev'
+		);
+		expect(p.steps.find((s) => s.id === 'push-images')?.state).toBe('failed');
+		// Neither the secrets nor the installer reached the server.
+		expect(t.writes).toEqual([]);
+		expect(t.commands.some((c) => c.includes('quickstart'))).toBe(false);
+	});
+});
+
+// ---- #953: the uploaded setup config never outlives the install -----------
+
+describe('useServerProvisioning — setup config cleanup on every outcome', () => {
+	const CLEANUP = "rm -f '/opt/owlat/.owlat-setup.json'";
+	const failedInstaller = [
+		sentinel({ v: 1, event: 'step', id: SetupStep.ComposeUp, title: 'x', status: 'failed', ts: 1 }),
+	];
+
+	async function run(opts: FakeOpts) {
+		const t = new FakeTransport({ knownHostStatus: 'match', dockerLine: 'docker=yes', ...opts });
+		const p = useServerProvisioning(t);
+		await p.connect(creds);
+		await p.provision(config);
+		return { t, p };
+	}
+
+	it('removes the config after an installer that exits non-zero, keeping its error', async () => {
+		const { t, p } = await run({ installerLines: failedInstaller, installerExit: 1 });
+		expect(p.stage.value).toBe('error');
+		expect(p.error.value).toBe('Provisioning did not complete (exit 1).');
+		expect(t.commands.at(-1)).toBe(CLEANUP);
+		expect(p.leftoverConfigCleanup.value).toBeNull();
+	});
+
+	it('removes the config when the transport fails after the upload', async () => {
+		const { t, p } = await run({ installerError: 'channel closed' });
+		expect(p.stage.value).toBe('error');
+		expect(p.error.value).toBe('channel closed');
+		expect(t.commands.at(-1)).toBe(CLEANUP);
+	});
+
+	it('treats a failed upload as one that may have left the file behind', async () => {
+		const { t, p } = await run({ writeError: 'Remote write failed (exit 1).' });
+		expect(p.stage.value).toBe('error');
+		expect(p.error.value).toBe('Remote write failed (exit 1).');
+		expect(t.commands.some((c) => c.includes('quickstart'))).toBe(false);
+		expect(t.commands.at(-1)).toBe(CLEANUP);
+	});
+
+	it('does not touch the server for a failure before anything was uploaded', async () => {
+		const { t, p } = await run({ releaseLine: null });
+		expect(p.stage.value).toBe('error');
+		expect(t.writes).toEqual([]);
+		expect(t.commands.some((c) => c.startsWith('rm -f'))).toBe(false);
+	});
+
+	it('a failed cleanup adds a visible warning without replacing the installer error or leaking secrets', async () => {
+		const { p } = await run({ installerLines: failedInstaller, installerExit: 1, cleanupExit: 1 });
+		expect(p.stage.value).toBe('error');
+		expect(p.error.value).toBe('Provisioning did not complete (exit 1).');
+		expect(p.leftoverConfigCleanup.value).toBe(CLEANUP);
+		const shown = [
+			p.error.value,
+			p.leftoverConfigCleanup.value,
+			...p.logs.value.map((l) => l.line),
+		];
+		expect(shown.join('\n')).not.toContain(config.admin!.password);
+	});
+
+	it('a retry uploads a fresh config instead of relying on the old one', async () => {
+		const { t, p } = await run({
+			installerLines: failedInstaller,
+			installerExit: 1,
+			cleanupExit: 1,
+		});
+		p.retry();
+		expect(p.leftoverConfigCleanup.value).toBeNull();
+		await p.provision(config);
+		expect(t.writes).toHaveLength(2);
+		expect(t.writes[1]).toEqual(t.writes[0]);
+		expect(JSON.parse(t.writes[1]!.content)).toEqual(config);
+	});
+
+	it('leaving the wizard after a failed cleanup tries the removal again before disconnecting', async () => {
+		const { t, p } = await run({
+			installerLines: failedInstaller,
+			installerExit: 1,
+			cleanupExit: 1,
+		});
+		t.journal.length = 0;
+		await p.disconnect();
+		// Nothing was running, so nothing is cancelled.
+		expect(t.journal).toEqual([`exec ${CLEANUP}`, 'disconnect s1']);
+	});
+
+	it('leaving after a successful install only disconnects', async () => {
+		const { t, p } = await run({
+			installerLines: happyInstallerLines({ siteUrl: 'http://x:3000' }),
+		});
+		expect(p.secretsRemoved.value).toBe(true);
+		t.journal.length = 0;
+		await p.disconnect();
+		expect(t.journal).toEqual(['disconnect s1']);
+	});
+});
+
+// ---- #952: leaving the wizard stops what is running ------------------------
+
+/** Let pending promise continuations run (the fake transport resolves at once). */
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+describe('useServerProvisioning — leaving the wizard mid-flight', () => {
+	it('cancels a long installer, removes the config, disconnects, and starts nothing after', async () => {
+		const t = new FakeTransport({ knownHostStatus: 'match', installerHangs: true });
+		const p = useServerProvisioning(t);
+		await p.connect(creds);
+		const running = p.provision(config);
+		while (!t.commands.some((c) => c.includes('quickstart'))) await settle();
+		t.journal.length = 0;
+
+		await p.disconnect();
+		await running;
+
+		expect(t.journal).toEqual([
+			'cancel s1',
+			"exec rm -f '/opt/owlat/.owlat-setup.json'",
+			'disconnect s1',
+		]);
+		// Left, not failed: there is no one to show an error to.
+		expect(p.stage.value).toBe('provisioning');
+		expect(p.error.value).toBeNull();
+		expect(p.busy.value).toBe(false);
+	});
+
+	it('a step that completes after leaving does not start the next one', async () => {
+		let release!: () => void;
+		let installing!: () => void;
+		const installStarted = new Promise<void>((resolve) => (installing = resolve));
+		const t = new FakeTransport({ knownHostStatus: 'match', dockerLine: 'docker=no' });
+		const gate = new Promise<void>((resolve) => (release = resolve));
+		const exec = t.execStream.bind(t);
+		t.execStream = async (id, command, onEvent) => {
+			if (command.includes('get.docker.com')) {
+				installing();
+				await gate; // finishes on its own, whatever the cancel says
+			}
+			return exec(id, command, onEvent);
+		};
+		const p = useServerProvisioning(t);
+		await p.connect(creds);
+		const running = p.provision(config);
+		await installStarted;
+
+		const leaving = p.disconnect();
+		release();
+		await Promise.all([leaving, running]);
+
+		// install-docker finished late; neither the release lookup, the clone,
+		// the upload nor the installer ran after it.
+		const after = t.commands.slice(t.commands.findIndex((c) => c.includes('get.docker.com')) + 1);
+		expect(after).toEqual([]);
+		expect(t.writes).toEqual([]);
+		expect(t.journal).toContain('disconnect s1');
+		expect(p.error.value).toBeNull();
+	});
+
+	it('a connect that lands after leaving disconnects its own session and goes no further', async () => {
+		let release!: () => void;
+		const t = new FakeTransport({ knownHostStatus: 'match' });
+		t.connectGate = new Promise<void>((resolve) => (release = resolve));
+		const p = useServerProvisioning(t);
+		const connecting = p.connect(creds);
+
+		await p.disconnect(); // no session yet: nothing to release here
+		expect(t.journal).toEqual([]);
+		release();
+		await connecting;
+
+		expect(t.journal).toEqual(['disconnect s1']);
+		expect(p.connectInfo.value).toBeNull();
+		expect(p.stage.value).toBe('connecting');
+		expect(p.steps.find((s) => s.id === 'authenticate')?.state).toBe('pending');
+	});
+
+	it('cancels a local image build that is still running and pushes nothing', async () => {
+		const t = new FakeTransport({ knownHostStatus: 'match', localBuildHangs: true });
+		const p = useServerProvisioning(t);
+		await p.connect({ ...creds, remote: { localSource: '/Users/dev/owlat', localImages: true } });
+		const running = p.provision(config);
+		while (!t.localBuilds.length) await settle();
+
+		await p.disconnect();
+		await running;
+
+		expect(t.journal.slice(-2)).toEqual(['cancel s1', 'disconnect s1']);
+		expect(t.localBuilds).toHaveLength(1);
+		expect(t.pushedImages).toEqual([]);
+		expect(p.error.value).toBeNull();
+	});
+
+	it('leaving an idle wizard only disconnects', async () => {
+		const t = new FakeTransport({ knownHostStatus: 'match' });
+		const p = useServerProvisioning(t);
+		await p.connect(creds);
+		t.journal.length = 0;
+		await p.disconnect();
+		await p.disconnect(); // unmount twice: still one disconnect
+		expect(t.journal).toEqual(['disconnect s1']);
 	});
 });

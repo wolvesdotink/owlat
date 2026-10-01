@@ -28,7 +28,8 @@ import {
 	workspaceLogoBytesProblem,
 	type WorkspaceLogoVariant,
 } from '@owlat/shared/workspaceLogo';
-import { internalAction, internalMutation, type QueryCtx } from '../_generated/server';
+import { internalAction, type QueryCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';

@@ -29,11 +29,12 @@
  * See docs/adr/0008-contact-resolution-module.md.
  */
 
-import type { MutationCtx } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { throwAlreadyExists } from '../_utils/errors';
 import { buildSearchableText } from '../lib/queryHelpers';
 import type { ContactSource } from '../lib/validators/contacts';
+import { recordContactGrowth } from './growthCounters';
 
 // ============================================================
 // Types
@@ -82,10 +83,12 @@ export interface ResolveResult {
  * Find a live Contact (and its identity row) by `(channel, identifier)`.
  * Returns null if no row matches or the matched Contact is soft-deleted.
  *
- * Exported for `addIdentity` and tests; internal callers use `resolveContact`.
+ * Exported for `addIdentity`, read-only lookups (Answer mode resolves the
+ * contact a reply goes to inside a query) and tests; internal callers use
+ * `resolveContact`.
  */
 export async function findContactByIdentifier(
-	ctx: MutationCtx,
+	ctx: Pick<QueryCtx, 'db'>,
 	channel: ChannelKind,
 	identifier: string
 ): Promise<{ contact: Doc<'contacts'>; identity: Doc<'contactIdentities'> } | null> {
@@ -243,6 +246,7 @@ async function insertContactRow(
 		createdAt: now,
 		updatedAt: now,
 	});
+	await recordContactGrowth(ctx, null, { createdAt: now });
 
 	// Every Contact gets at least one `contactIdentities` row. The primary
 	// identity is the one created here; secondary identities for the same

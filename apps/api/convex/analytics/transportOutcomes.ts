@@ -59,7 +59,8 @@
 
 import { v } from 'convex/values';
 import { literalUnion } from '../lib/literalUnion';
-import { internalMutation, type DatabaseReader, type MutationCtx } from '../_generated/server';
+import type { DatabaseReader, MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { DeliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
 import { logWarn } from '../lib/runtimeLog';

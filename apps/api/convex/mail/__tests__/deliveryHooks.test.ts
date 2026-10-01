@@ -21,6 +21,7 @@ import {
 	autoReplyRecipient,
 	autoReplyThreadingHeaders,
 } from '../deliveryHooks';
+import { FETCH_TIMEOUTS } from '../../lib/fetchWithTimeout';
 
 afterEach(() => {
 	vi.restoreAllMocks();
@@ -100,6 +101,31 @@ describe('forwardToTarget', () => {
 		const body = calls[0]!.body;
 		expect(body.html).not.toContain('<script>');
 		expect(body.html).toContain('ok');
+	});
+
+	it('gives up on an MTA that never answers instead of hanging the hook', async () => {
+		// A peer that accepts the request and never responds: only the request's
+		// own abort signal can end it. The deadline is driven by hand so the test
+		// does not wait out the real budget.
+		const deadline = new AbortController();
+		const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => deadline.signal);
+		vi.spyOn(globalThis, 'fetch').mockImplementation(
+			(_url, init) =>
+				new Promise<Response>((_resolve, reject) => {
+					init?.signal?.addEventListener('abort', () =>
+						reject(new DOMException('The operation timed out.', 'TimeoutError'))
+					);
+				})
+		);
+
+		const sent = forwardToTarget(mta, baseArgs, 'forward-target@elsewhere.example');
+		deadline.abort();
+
+		await expect(sent).rejects.toMatchObject({
+			name: 'TimeoutError',
+			timeoutMs: FETCH_TIMEOUTS.mtaIntake,
+		});
+		expect(timeoutSpy).toHaveBeenCalledWith(FETCH_TIMEOUTS.mtaIntake);
 	});
 });
 

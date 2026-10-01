@@ -24,6 +24,9 @@
 #     mutable :latest.
 #   • Docker socket: only the read-only docker-socket-proxy mounts it, and the
 #     privileged Docker API sits on an internal-only network.
+#   • Updater shutdown: both templates give the updater the stop grace its
+#     shutdown budget is computed against (apps/updater/src/lifecycle.ts), and
+#     an init to reap what a stopped docker command leaves behind.
 #   • Receiving profiles: external-mail and personal-mail stay bootable.
 #   • IMAP: the TLS key is owned by the uid the image actually runs as (and
 #     stays 0600), and the LOGIN brute-force limiter has a Redis behind it.
@@ -171,6 +174,22 @@ if grep -qE 'DOCKER_HOST: *tcp://docker-socket-proxy:2375' <<<"$updater" \
 	&& ! grep -qE '\- */var/run/docker\.sock' <<<"$updater"; then
 	ok "$root updater reaches Docker through the proxy, never the raw socket"
 else bad "$root updater must set DOCKER_HOST=tcp://docker-socket-proxy:2375, depend on the proxy and mount no socket"; fi
+
+# The updater finishes a rollout it has committed to before it exits, inside a
+# budget apps/updater/src/lifecycle.ts computes against STOP_GRACE_SECONDS.
+# Docker's default 10s grace SIGKILLs it halfway through a recreate, so both
+# templates (the release template is generated from the root one) declare that
+# number, and an init to reap the docker CLI processes a stopped command leaves.
+updater_grace=$(grep -oE '^export const STOP_GRACE_SECONDS = [0-9]+;' apps/updater/src/lifecycle.ts |
+	grep -oE '[0-9]+')
+for compose in "$root" "$vps"; do
+	updater_block=$(service_block "$compose" updater)
+	if [ -n "$updater_grace" ] \
+		&& grep -qE "^ {4}stop_grace_period: ${updater_grace}s$" <<<"$updater_block" \
+		&& grep -qE '^ {4}init: true$' <<<"$updater_block"; then
+		ok "$compose: updater declares stop_grace_period ${updater_grace}s (lifecycle.ts STOP_GRACE_SECONDS) and init: true"
+	else bad "$compose: updater must declare stop_grace_period: <STOP_GRACE_SECONDS>s (apps/updater/src/lifecycle.ts, ${updater_grace:-unreadable}) and init: true"; fi
+done
 
 if grep -Pzq '\n {2}docker-proxy:\n {4}internal: true\n' "$root"; then
 	ok "$root keeps the docker-proxy network internal:true"

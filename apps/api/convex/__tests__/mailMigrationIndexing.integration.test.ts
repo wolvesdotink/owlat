@@ -4,6 +4,8 @@ import type { GenericActionCtx, GenericMutationCtx } from 'convex/server';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { DataModel, Id } from '../_generated/dataModel';
+import { internalAction } from '../_generated/server';
+import { v } from 'convex/values';
 import { createTestKnowledgeEntry, enableFeatures } from './factories';
 
 // The ctx shape convex-test hands to `t.run` (a mutation ctx plus storage).
@@ -59,6 +61,24 @@ const modules = Object.fromEntries(
 			!path.includes('llmProvider')
 	)
 );
+
+// For the screening tests: the same graph with a stand-in extractor that records
+// which messages reached it instead of calling an LLM.
+const extracted: string[] = [];
+const modulesWithExtractorStub = {
+	...modules,
+	'../knowledge/extraction.ts': async () => ({
+		extractFromMailMessage: internalAction({
+			args: {
+				mailMessageId: v.id('mailMessages'),
+				contactIds: v.optional(v.array(v.id('contacts'))),
+			},
+			handler: async (_ctx, args) => {
+				extracted.push(args.mailMessageId);
+			},
+		}),
+	}),
+};
 
 // Suppress "Could not find module" rejections from the scheduler trying to run
 // the excluded extraction action — the skip path means it's never reached, but
@@ -449,6 +469,51 @@ describe('migrationIndexing.runIndexChunk', () => {
 		});
 	});
 
+	it('stops a chunk that outruns its time budget, keeps its progress and reschedules', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
+		let s!: Seeded;
+		let migrationId!: Id<'mailboxMigrations'>;
+		const ids: Id<'mailMessages'>[] = [];
+		await t.run(async (ctx) => {
+			s = await seedMailbox(ctx);
+			for (let i = 0; i < 6; i++) {
+				const msgId = await seedMessage(ctx, s, { receivedAt: 1000 + i });
+				await ctx.db.insert(
+					'knowledgeEntries',
+					createTestKnowledgeEntry({ sourceType: 'email', sourceId: msgId })
+				);
+				ids.push(msgId);
+			}
+			migrationId = await seedMigration(ctx, s, { messagesImported: 6 });
+		});
+
+		// Every Date.now() read jumps 5 minutes: the budget is spent after the
+		// first group of four, as if each extraction were a slow LLM call.
+		let clock = Date.now();
+		const now = vi.spyOn(Date, 'now').mockImplementation(() => (clock += 5 * 60 * 1000));
+		try {
+			await t.action(internal.mail.migrationIndexing.runIndexChunk, {
+				migrationId,
+				chunkSize: 25,
+				interChunkDelayMs: 0,
+			});
+		} finally {
+			now.mockRestore();
+		}
+
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(migrationId);
+			expect(m!.status).toBe('indexing');
+			expect(m!.messagesIndexed).toBe(4);
+			expect(m!.indexCursorId).toBe(ids[3]);
+			const next = (await ctx.db.system.query('_scheduled_functions').collect()).filter((job) =>
+				job.name.includes('runIndexChunk')
+			);
+			expect(next).toHaveLength(1);
+		});
+	});
+
 	it('completes without indexing when ai.knowledge is disabled', async () => {
 		const t = convexTest(schema, modules);
 		// ai.knowledge NOT enabled → defaults off.
@@ -617,5 +682,130 @@ describe('migrationIndexing — onboarding stamps are personal-only', () => {
 			expect(m!.messagesIndexed).toBe(2);
 		});
 		expect(await onboardingRows(t)).toHaveLength(0);
+	});
+});
+
+// =====================================================================
+// reindexMigration — operator re-run of a finished import's sweep
+// =====================================================================
+
+describe('migrationIndexing.reindexMigration', () => {
+	it('re-sweeps a completed import that finished without knowledge', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
+		let migrationId!: Id<'mailboxMigrations'>;
+		await t.run(async (ctx) => {
+			const s = await seedMailbox(ctx);
+			for (let i = 0; i < 2; i++) {
+				const msgId = await seedMessage(ctx, s, { receivedAt: 1000 + i });
+				await ctx.db.insert(
+					'knowledgeEntries',
+					createTestKnowledgeEntry({ sourceType: 'email', sourceId: msgId })
+				);
+			}
+			migrationId = await seedMigration(ctx, s, {
+				status: 'completed',
+				isAiIndexingEnabled: false,
+				messagesImported: 2,
+				completedAt: Date.now(),
+			});
+		});
+
+		const res = await t.mutation(internal.mail.migrationIndexing.reindexMigration, {
+			migrationId,
+		});
+		expect(res).toEqual({ started: true });
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(migrationId);
+			expect(m!.status).toBe('indexing');
+			expect(m!.isAiIndexingEnabled).toBe(true);
+			expect(m!.messagesIndexed).toBe(0);
+		});
+
+		await t.finishAllScheduledFunctions(() => {});
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(migrationId);
+			expect(m!.status).toBe('completed');
+			expect(m!.messagesIndexed).toBe(2);
+		});
+	});
+
+	it('refuses an import that is still running', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
+		let migrationId!: Id<'mailboxMigrations'>;
+		await t.run(async (ctx) => {
+			migrationId = await seedMigration(ctx, await seedMailbox(ctx), { status: 'importing' });
+		});
+		const res = await t.mutation(internal.mail.migrationIndexing.reindexMigration, {
+			migrationId,
+		});
+		expect(res).toEqual({ started: false, reason: 'status_importing' });
+	});
+
+	it('refuses while ai.knowledge is off', async () => {
+		const t = convexTest(schema, modules);
+		let migrationId!: Id<'mailboxMigrations'>;
+		await t.run(async (ctx) => {
+			migrationId = await seedMigration(ctx, await seedMailbox(ctx), { status: 'completed' });
+		});
+		const res = await t.mutation(internal.mail.migrationIndexing.reindexMigration, {
+			migrationId,
+		});
+		expect(res).toEqual({ started: false, reason: 'ai_knowledge_disabled' });
+	});
+});
+
+// =====================================================================
+// runIndexChunk — untrusted mail never reaches the extractor
+// =====================================================================
+
+describe('migrationIndexing.runIndexChunk — screening', () => {
+	it('extracts a normal message but not a phishing one, and counts both', async () => {
+		extracted.length = 0;
+		const t = convexTest(schema, modulesWithExtractorStub);
+		await enableFeatures(t, ['ai.knowledge']);
+		let migrationId!: Id<'mailboxMigrations'>;
+		let normalId!: Id<'mailMessages'>;
+		await t.run(async (ctx) => {
+			const s = await seedMailbox(ctx);
+			normalId = await seedMessage(ctx, s, { receivedAt: 1000 });
+			// Imported from a provider's inbox: no spam verdict on the row.
+			await seedMessage(ctx, s, {
+				receivedAt: 1001,
+				fromAddress: 'support@page-help.example.com',
+				fromName: 'Support Team',
+				subject: 'Action required: your page will be restricted',
+				textBodyInline:
+					'Dear user, verify your password within 24 hours or your page will be restricted.',
+				htmlBodyInline:
+					'<p>Dear user, verify your password within 24 hours or your page will be restricted.</p>' +
+					'<a href="https://paypa1.fake.xyz/login">https://www.example.com/support</a>',
+			});
+			// Clean content, but the From domain spoofs a known contact's.
+			await seedMessage(ctx, s, {
+				receivedAt: 1002,
+				fromAddress: 'bob@examp1e.com',
+				senderHeuristics: { lookalikeOfContactDomain: 'example.com' },
+			});
+			migrationId = await seedMigration(ctx, s, { messagesImported: 3 });
+		});
+
+		await t.action(internal.mail.migrationIndexing.runIndexChunk, {
+			migrationId,
+			chunkSize: 30,
+			interChunkDelayMs: 0,
+		});
+
+		expect(extracted).toEqual([normalId]);
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(migrationId);
+			expect(m!.status).toBe('completed');
+			expect(m!.messagesIndexed).toBe(3);
+			const emails = (await ctx.db.query('contacts').collect()).map((c) => c.email);
+			expect(emails).toContain('alice@example.com');
+			expect(emails).not.toContain('support@page-help.example.com');
+			expect(emails).not.toContain('bob@examp1e.com');
+		});
 	});
 });

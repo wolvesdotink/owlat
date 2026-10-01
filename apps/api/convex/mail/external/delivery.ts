@@ -25,12 +25,8 @@
 
 import { v } from 'convex/values';
 import { mailUnsubscribeValidator } from '../../lib/validators/mailContent';
-import {
-	internalAction,
-	internalMutation,
-	internalQuery,
-	type MutationCtx,
-} from '../../_generated/server';
+import { internalAction, internalQuery, type MutationCtx } from '../../_generated/server';
+import { internalMutation } from '../../lib/writeFence';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import {
@@ -132,6 +128,8 @@ export const ingestExternalMessage = internalMutation({
 			return { skipped: 'no_target' };
 		}
 
+		// An older worker that sends no origin is read as a backfill.
+		const origin = args.origin ?? 'backfill';
 		const messageId = await insertDeliveredMessage(ctx, {
 			mailbox,
 			folder,
@@ -157,17 +155,24 @@ export const ingestExternalMessage = internalMutation({
 			flagSeen: args.flagSeen,
 			flagFlagged: args.flagFlagged,
 			unsubscribe: args.unsubscribe,
+			// The provider holds it here: the evidence a later reconcile needs to
+			// call it deleted there, even one after a worker restart.
+			remoteSighting: {
+				remoteName: args.remoteName,
+				uidValidity: args.remoteUidValidity,
+				uid: args.remoteUid,
+			},
 			// Remote provider already filtered spam/virus; no verdict fields.
 			countUsedBytes: true,
+			inboundOrigin: origin,
 		});
 
 		// Classifier enqueues, follow-up / snooze-until-reply clears and the
 		// owner-reply Reply Queue settle — the tail shared with hosted delivery.
-		// An older worker that sends no origin is read as a backfill.
 		await runPostInsertInboundEffects(ctx, {
 			messageId,
 			folder,
-			origin: args.origin ?? 'backfill',
+			origin,
 			antiLoopHeaders: args.antiLoopHeaders,
 		});
 		await advanceCursor(ctx, args, mailbox._id);
@@ -355,6 +360,26 @@ export const recordFolderMapping = internalMutation({
 			lastSeenUid: args.initialLastSeenUid,
 			lastSyncedAt: now,
 		});
+	},
+});
+
+/**
+ * Free the raw upload of a message the worker staged but will never ingest:
+ * its ingest pipeline stopped (a redeploy mid-poll) or a commit ahead of it
+ * failed. Nothing else would ever delete the blob; the message itself stays on
+ * the remote server and is fetched again by the next poll. A blob a message row
+ * already points at is left alone, so a late or repeated discard can never
+ * take stored mail with it.
+ */
+export const discardStagedRaw = internalMutation({
+	args: { rawStorageId: v.id('_storage') },
+	handler: async (ctx, args) => {
+		const referenced = await ctx.db
+			.query('mailMessages')
+			.withIndex('by_raw_storage', (q) => q.eq('rawStorageId', args.rawStorageId))
+			.first();
+		if (referenced) return;
+		await dropStagedBlobs(ctx, [args.rawStorageId]);
 	},
 });
 

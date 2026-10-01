@@ -9,14 +9,16 @@ import { listResources } from '../lib/listing';
 import { emailTemplateListing } from './listing';
 import { getOrThrow, throwNotFound, throwInvalidState } from '../_utils/errors';
 import { recordAuditLog } from '../lib/auditLog';
+import { recordListingCounter } from '../lib/listingCounters';
 import {
 	assertEditableForPublishableChange,
 	buildEditablePatch,
-	loadEmailTheme,
 	publishedHtml,
 } from '../lib/publishableEmail';
+import { loadEmailTheme } from '../lib/publishableEmailRender';
 import { captureTemplateVersion } from './versions';
 import { assertContentRevision } from '../lib/contentRevision';
+import { rendererVersionArg } from '../lib/rendererVersion';
 
 // Query to get a single email template by ID
 export const get = authedQuery({
@@ -52,6 +54,9 @@ export const update = authedMutation({
 		translations: v.optional(v.string()),
 		// Ignored, like htmlContent: rendered from the translation overlays.
 		htmlTranslations: v.optional(v.string()),
+		// Ignored, like htmlContent: the stored HTML is stamped with this
+		// server's renderer (lib/rendererVersion.ts).
+		rendererVersion: rendererVersionArg,
 		// IDs of saved blocks linked in this template
 		linkedBlockIds: v.optional(v.array(v.string())),
 		// Allow editing publishable content on a `published` row; default `false`.
@@ -121,6 +126,9 @@ export const publish = authedMutation({
 		htmlContent: v.optional(v.string()),
 		// Ignored, like htmlContent.
 		htmlTranslations: v.optional(v.string()),
+		// Ignored, like htmlContent: the stored HTML is stamped with this
+		// server's renderer (lib/rendererVersion.ts).
+		rendererVersion: rendererVersionArg,
 		// The `contentRevision` the caller last saw. When given, a row that has
 		// moved on is refused with `conflict`, so what goes live is the version
 		// the caller was looking at.
@@ -263,6 +271,7 @@ export const changeType = authedMutation({
 			type: args.type,
 			updatedAt: Date.now(),
 		});
+		await recordListingCounter(ctx, 'templateType', template, { ...template, type: args.type });
 
 		await recordAuditLog(ctx, {
 			userId: session.userId,

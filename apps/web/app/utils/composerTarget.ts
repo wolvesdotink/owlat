@@ -13,22 +13,25 @@
  * A composer target names the destination. Everything that differs between
  * the two follows from its `kind` through {@link composerTargetCapabilities},
  * so a surface asks "does this target take attachments?" rather than "am I the
- * thread page?". Pure: no Vue, no Convex, no i18n.
+ * thread page?". Both composers render inside the same frame
+ * (`PostboxComposerShell`), and the shared footer reads the table to leave out
+ * the controls a target cannot use. Pure: no Vue, no Convex, no i18n.
  */
 
 import type { Id } from '@owlat/api/dataModel';
 import { replyBodyToHtml } from '@owlat/shared/html';
 import { preflightDraft, type PreflightFinding } from '~/utils/postboxPreflight';
 
-export type ComposerTarget =
-	| {
-			kind: 'mailbox';
-			mailboxId: Id<'mailboxes'>;
-			/** Reopen an existing draft (continue editing, after undo-send). */
-			draftId?: Id<'mailDrafts'>;
-			inReplyToMessageId?: Id<'mailMessages'>;
-	  }
-	| TeamThreadComposerTarget;
+export type ComposerTarget = MailboxComposerTarget | TeamThreadComposerTarget;
+
+/** A message written in a mailbox: a `mailDrafts` row, sent by `mail.drafts.send`. */
+export interface MailboxComposerTarget {
+	kind: 'mailbox';
+	mailboxId: Id<'mailboxes'>;
+	/** Reopen an existing draft (continue editing, after undo-send). */
+	draftId?: Id<'mailDrafts'>;
+	inReplyToMessageId?: Id<'mailMessages'>;
+}
 
 /** The reply to one inbound message on a Team inbox thread. */
 export interface TeamThreadComposerTarget {
@@ -41,10 +44,14 @@ export interface TeamThreadComposerTarget {
 /**
  * What a target supports. Every flag reads "the composer may offer this".
  *
- * Only `body`, `preflight` and `subjectFallback` have a reader today
- * ({@link composerPreflight}). The rest are declarative: they record what
- * each target allows, and nothing enforces them until the PostboxComposer
- * slice of #812 reads them to hide the controls a target cannot use.
+ * The shared footer (`PostboxComposerFooter`) hides the send-as name, the
+ * paperclip, scheduling, the reply reminder, the signature picker and the
+ * rich-body tools by these flags, and the shell (`PostboxComposerShell`) takes
+ * file drops only where `attachments` is the composer's own.
+ * {@link composerPreflight} reads `body`, `preflight` and `subjectFallback`.
+ * `envelope`, `sendAs`, `seal` and `recipientGuards` describe the mailbox
+ * composer's own envelope, seal lock and guards, which a team reply never
+ * mounts.
  */
 export interface ComposerTargetCapabilities {
 	/**
@@ -62,10 +69,17 @@ export interface ComposerTargetCapabilities {
 	/** The From address can be picked, and signatures are per identity. */
 	sendAs: boolean;
 	signatures: boolean;
-	/** Files can ride along. Team replies have no storage for them yet. */
-	attachments: boolean;
+	/**
+	 * Where files ride along. `draft`: on the draft row, uploaded by the
+	 * composer itself (the paperclip, drops and pastes). `thread`: on the Team
+	 * inbox thread (`inbox.replyAttachments`), through the attachment panel the
+	 * host puts under the editor; the composer offers no upload of its own.
+	 */
+	attachments: 'draft' | 'thread';
 	/** The send can be scheduled for later. */
 	schedule: boolean;
+	/** "Remind me if no reply by …", kept on the draft row. */
+	replyReminder: boolean;
 	/** Sealed Mail's per-recipient encryption state applies. */
 	seal: boolean;
 	/** First-time-recipient and domain-alignment checks (mailbox-keyed queries). */
@@ -84,8 +98,9 @@ const MAILBOX: ComposerTargetCapabilities = {
 	envelope: true,
 	sendAs: true,
 	signatures: true,
-	attachments: true,
+	attachments: 'draft',
 	schedule: true,
+	replyReminder: true,
 	seal: true,
 	recipientGuards: true,
 	preflight: true,
@@ -99,14 +114,27 @@ const TEAM_THREAD: ComposerTargetCapabilities = {
 	envelope: false,
 	sendAs: false,
 	signatures: false,
-	attachments: false,
+	attachments: 'thread',
 	schedule: false,
+	replyReminder: false,
 	seal: false,
 	recipientGuards: false,
 	preflight: true,
 	subjectFallback: true,
 	agentDraft: true,
 };
+
+/** The mailbox target a composer seed opens on (its location fields, named). */
+export function mailboxComposerTarget(
+	location: Omit<MailboxComposerTarget, 'kind'>
+): MailboxComposerTarget {
+	return {
+		kind: 'mailbox',
+		mailboxId: location.mailboxId,
+		draftId: location.draftId,
+		inReplyToMessageId: location.inReplyToMessageId,
+	};
+}
 
 export function composerTargetCapabilities(target: ComposerTarget): ComposerTargetCapabilities {
 	switch (target.kind) {

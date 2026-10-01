@@ -49,79 +49,97 @@ export const listMyUnreadMentions = chatQuery({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		const userId = await getUserIdFromSession(ctx);
-		const limit = Math.max(1, Math.min(args.limit ?? 50, 200));
-
-		const mentions = await ctx.db
-			.query('chatMentions')
-			.withIndex('by_mentioned_unread', (q) =>
-				q.eq('mentionedMemberId', userId).eq('readAt', undefined)
-			)
-			.order('desc')
-			.take(limit);
-
-		// A page of mentions points at independent messages, and usually at only
-		// a few distinct rooms — two batched reads instead of two per mention.
-		const [messages, rooms] = await Promise.all([
-			batchGet(
-				ctx,
-				mentions.map((mention) => mention.messageId)
-			),
-			batchGet(
-				ctx,
-				mentions.map((mention) => mention.roomId)
-			),
-		]);
-
-		// A mention in a mail-thread discussion points at the email thread, not a
-		// chat room, and is only shown while the caller can still read that
-		// thread's mailbox (access can be revoked after the mention was written).
-		// One mailbox check per distinct discussion room on the page.
-		const discussionAccess = new Map<
-			string,
-			Awaited<ReturnType<typeof loadDiscussionMailboxForSession>>
-		>();
-
-		const result = [];
-		for (const mention of mentions) {
-			const message = messages.get(mention.messageId);
-			if (!message || message.deletedAt) continue;
-			const room = rooms.get(mention.roomId);
-			if (!room) continue;
-			let mailThread: {
-				threadId: Id<'mailThreads'>;
-				mailboxId: Id<'mailboxes'>;
-				latestMessageId: Id<'mailMessages'> | null;
-			} | null = null;
-			let roomName = room.name;
-			if (room.purpose) {
-				const key = room._id.toString();
-				if (!discussionAccess.has(key)) {
-					discussionAccess.set(key, await loadDiscussionMailboxForSession(ctx, room));
-				}
-				const access = discussionAccess.get(key);
-				if (!access) continue;
-				mailThread = {
-					threadId: access.thread._id,
-					mailboxId: access.thread.mailboxId,
-					latestMessageId: access.thread.latestMessageId ?? null,
-				};
-				roomName = access.thread.latestSubject;
-			}
-			result.push({
-				_id: mention._id,
-				roomId: mention.roomId,
-				roomName,
-				roomKind: room.kind,
-				mailThread,
-				messageId: mention.messageId,
-				messagePreview: message.text.slice(0, 180),
-				mentioningMemberId: mention.mentioningMemberId,
-				createdAt: mention.createdAt,
-			});
-		}
-		return result;
+		return await loadVisibleUnreadMentions(ctx, userId, args.limit);
 	},
 });
+
+/**
+ * How many rows `listMyUnreadMentions` returns for the same `limit`, without
+ * shipping them (plan 2.11). The shell's Answer badge counts the mentions the
+ * Answer page would show, so a mention of a deleted message or of a mail
+ * thread the caller can no longer read is not counted; `countMyUnreadMentions`
+ * stays the raw index count the chat badge uses.
+ */
+// authz: self — only the caller's own mentions; a mail-thread discussion's mentions also need that mailbox's access
+export const countMyVisibleUnreadMentions = chatQuery({
+	args: { limit: v.optional(v.number()) },
+	handler: async (ctx, args, session): Promise<number> =>
+		(await loadVisibleUnreadMentions(ctx, session.userId, args.limit)).length,
+});
+
+/** The caller's unread mentions the feed shows (message and room still there, mailbox readable). */
+async function loadVisibleUnreadMentions(ctx: QueryCtx, userId: string, requested?: number) {
+	const limit = Math.max(1, Math.min(requested ?? 50, 200));
+	const mentions = await ctx.db
+		.query('chatMentions')
+		.withIndex('by_mentioned_unread', (q) =>
+			q.eq('mentionedMemberId', userId).eq('readAt', undefined)
+		)
+		.order('desc')
+		.take(limit);
+
+	// A page of mentions points at independent messages, and usually at only
+	// a few distinct rooms — two batched reads instead of two per mention.
+	const [messages, rooms] = await Promise.all([
+		batchGet(
+			ctx,
+			mentions.map((mention) => mention.messageId)
+		),
+		batchGet(
+			ctx,
+			mentions.map((mention) => mention.roomId)
+		),
+	]);
+
+	// A mention in a mail-thread discussion points at the email thread, not a
+	// chat room, and is only shown while the caller can still read that
+	// thread's mailbox (access can be revoked after the mention was written).
+	// One mailbox check per distinct discussion room on the page.
+	const discussionAccess = new Map<
+		string,
+		Awaited<ReturnType<typeof loadDiscussionMailboxForSession>>
+	>();
+
+	const result = [];
+	for (const mention of mentions) {
+		const message = messages.get(mention.messageId);
+		if (!message || message.deletedAt) continue;
+		const room = rooms.get(mention.roomId);
+		if (!room) continue;
+		let mailThread: {
+			threadId: Id<'mailThreads'>;
+			mailboxId: Id<'mailboxes'>;
+			latestMessageId: Id<'mailMessages'> | null;
+		} | null = null;
+		let roomName = room.name;
+		if (room.purpose) {
+			const key = room._id.toString();
+			if (!discussionAccess.has(key)) {
+				discussionAccess.set(key, await loadDiscussionMailboxForSession(ctx, room));
+			}
+			const access = discussionAccess.get(key);
+			if (!access) continue;
+			mailThread = {
+				threadId: access.thread._id,
+				mailboxId: access.thread.mailboxId,
+				latestMessageId: access.thread.latestMessageId ?? null,
+			};
+			roomName = access.thread.latestSubject;
+		}
+		result.push({
+			_id: mention._id,
+			roomId: mention.roomId,
+			roomName,
+			roomKind: room.kind,
+			mailThread,
+			messageId: mention.messageId,
+			messagePreview: message.text.slice(0, 180),
+			mentioningMemberId: mention.mentioningMemberId,
+			createdAt: mention.createdAt,
+		});
+	}
+	return result;
+}
 
 /**
  * Compact count of unread mentions for the nav badge.

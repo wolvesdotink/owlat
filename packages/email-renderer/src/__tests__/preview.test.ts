@@ -16,7 +16,7 @@ import type { BlockType } from '@owlat/shared';
  *   GENERATE_PREVIEWS=1 npx vitest run src/__tests__/preview.test.ts
  */
 
-const GENERATE = process.env.GENERATE_PREVIEWS === '1';
+const GENERATE = process.env['GENERATE_PREVIEWS'] === '1';
 const PKG_ROOT = resolve(dirname(decodeURIComponent(new URL(import.meta.url).pathname)), '../..');
 const OUT_DIR = resolve(PKG_ROOT, 'previews');
 const BLOCKS_DIR = resolve(OUT_DIR, 'blocks');
@@ -114,7 +114,6 @@ describe('Kitchen sink preview', () => {
 
 		// Progress bar — value
 		expect(html).toContain('73');
-
 	});
 });
 

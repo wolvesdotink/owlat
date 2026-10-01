@@ -12,8 +12,10 @@
  *   • ENV `LLM_*` is the deployment fallback when no row exists — self-hosters
  *     who set `LLM_*` keep working with zero UI.
  *
- * The resolved config is memoized in-process for a short TTL so a burst of LLM
- * calls reads (and decrypts) at most once per window rather than per call. Both
+ * The config row is memoized in-process (`./llmProviders/storedConfigCache`) and
+ * each plane's key is decrypted only when that plane is asked for (a text call
+ * never decrypts the embedding key), then kept for five minutes. The row itself
+ * is re-read every 30 s, and a changed row drops the cached keys. Both
  * paths resolve through the provider-adapter registry (`./llmProviders`), where
  * a `kind` selects the adapter that builds the client.
  *
@@ -30,8 +32,8 @@
  *
  * A misconfigured hosted embedder surfaces an actionable error at resolve time
  * (never a silent empty/zero vector); changing the embedder bumps the stored
- * `embeddingModelVersion` so a re-index can be prompted, and a mismatched-width
- * vector is rejected at write time by `assertEmbeddingDimension`.
+ * `embeddingModelVersion` so a re-index can be prompted, and every vector is
+ * fitted to the index width by `toIndexVector` (narrower ones zero-padded).
  *
  * Environment (fallback only):
  *   LLM_PROVIDER        openai (default) | openrouter | ollama
@@ -43,7 +45,6 @@
  */
 
 import type { EmbeddingModel, LanguageModel } from 'ai';
-import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { getOptional } from './env';
@@ -65,13 +66,22 @@ import {
 	type ResolvedLanguageModel,
 } from './llmProviders';
 import type { StoredEmbeddingProviderKind } from './validators/aiProviderConfig';
+import {
+	invalidateAiConfigCache,
+	loadConfigEntry,
+	planeKey,
+} from './llmProviders/storedConfigCache';
+
+export { invalidateAiConfigCache } from './llmProviders/storedConfigCache';
 
 /**
  * Task types map to a model tier:
- * - fast: classification, extraction, guardrails, summarization
+ * - fast: classification, extraction, guardrails, summarization, short
+ *   suggested-reply options (a user is waiting on them, and 1–2 sentence
+ *   replies do not need the capable model)
  * - capable: drafting replies, planning multi-step actions
  */
-export type LLMTask = 'classify' | 'extract' | 'guard' | 'summarize' | 'draft' | 'plan';
+export type LLMTask = 'classify' | 'extract' | 'guard' | 'summarize' | 'suggest' | 'draft' | 'plan';
 /** Model tiers exposed to callers. */
 type LLMTier = 'fast' | 'capable';
 
@@ -239,121 +249,52 @@ export function buildStoredProviderConfig(
 	};
 }
 
-// A short in-process TTL cache so a burst of LLM calls (classify → clarify →
-// draft → guard …) resolves — and decrypts — the config at most once per window
-// rather than per call. Bounded staleness after an admin edit is the tradeoff.
-const AI_CONFIG_CACHE_TTL_MS = 30_000;
-let configCache: { config: ResolvedProviderConfig; expiresAt: number } | null = null;
-
-/** A complete, decryptable AES-256-GCM envelope read off a config row. */
-interface KeyEnvelope {
-	ciphertext: string;
-	iv: string;
-	authTag: string;
-	version: number;
-}
-
-/**
- * Assemble a `KeyEnvelope` from a row's four secret columns, or `undefined` when
- * any is absent (no key stored). Single-sources the read side across both planes,
- * mirroring how `storedEnvelopeOf` single-sources the persist side.
- */
-function envelopeFromColumns(
-	ciphertext: string | undefined,
-	iv: string | undefined,
-	authTag: string | undefined,
-	version: number | undefined
-): KeyEnvelope | undefined {
-	if (
-		ciphertext === undefined ||
-		iv === undefined ||
-		authTag === undefined ||
-		version === undefined
-	) {
-		return undefined;
-	}
-	return { ciphertext, iv, authTag, version };
-}
-
-/** The language-key envelope of a row, or `undefined` when no key is stored. */
-function languageKeyEnvelope(row: Doc<'aiProviderConfig'>): KeyEnvelope | undefined {
-	return envelopeFromColumns(
-		row.secretCiphertext,
-		row.secretIv,
-		row.secretAuthTag,
-		row.secretEnvelopeVersion
-	);
-}
-
-/** The embedding-key envelope of a row, or `undefined` when no key is stored. */
-function embeddingKeyEnvelope(row: Doc<'aiProviderConfig'>): KeyEnvelope | undefined {
-	return envelopeFromColumns(
-		row.embeddingSecretCiphertext,
-		row.embeddingSecretIv,
-		row.embeddingSecretAuthTag,
-		row.embeddingSecretEnvelopeVersion
-	);
-}
-
 /**
  * Resolve the org's AI config for both planes: the stored per-org row WINS when
- * present (decrypting hosted keys inside a Node action), otherwise the env
- * `LLM_*` fallback. Memoized for a short TTL. This is the single point every
- * language- AND embedding-model resolution flows through. The two planes decrypt
- * their own keys — a hosted language provider and a hosted embedder can each
- * carry a distinct key.
+ * present, otherwise the env `LLM_*` fallback. The two planes decrypt their own
+ * keys, in parallel — a hosted language provider and a hosted embedder can each
+ * carry a distinct key. Callers that need one plane use the plane resolvers
+ * below, which decrypt only that plane's key.
  */
 export async function resolveAiConfig(ctx: ActionCtx): Promise<ResolvedProviderConfig> {
-	const cached = configCache;
-	if (cached && cached.expiresAt > Date.now()) return cached.config;
-
-	const row = await ctx.runQuery(internal.aiProviderConfig._getConfigRow, {});
-	let config: ResolvedProviderConfig;
-	if (!row) {
-		config = resolveEnvProviderConfig();
-	} else {
-		// Decrypt ONLY inside the Node action — this v8-safe module never touches
-		// node:crypto. Each plaintext key builds a model and is then discarded; it
-		// never reaches a query result or the client. Only hosted providers carry a
-		// key; local/keyless ones decrypt nothing.
-		const languageLocal = languageProviderFor(row.languageProviderKind).isLocal;
-		const embeddingLocal = embeddingProviderFor(row.embeddingProviderKind).isLocal;
-		const languageEnvelope = languageLocal ? undefined : languageKeyEnvelope(row);
-		const embeddingEnvelope = embeddingLocal ? undefined : embeddingKeyEnvelope(row);
-		const languageKey = languageEnvelope ? await decryptEnvelope(ctx, languageEnvelope) : undefined;
-		const embeddingKey = embeddingEnvelope
-			? await decryptEnvelope(ctx, embeddingEnvelope)
-			: undefined;
-		config = buildStoredProviderConfig(row, languageKey, embeddingKey);
-	}
-
-	configCache = { config, expiresAt: Date.now() + AI_CONFIG_CACHE_TTL_MS };
-	return config;
+	const entry = await loadConfigEntry(ctx);
+	if (!entry.row) return resolveEnvProviderConfig();
+	const [languageKey, embeddingKey] = await Promise.all([
+		planeKey(ctx, entry, 'language'),
+		planeKey(ctx, entry, 'embedding'),
+	]);
+	return buildStoredProviderConfig(entry.row, languageKey, embeddingKey);
 }
 
-/** Decrypt one envelope via the Node crypto action (the v8 resolver can't). */
-function decryptEnvelope(ctx: ActionCtx, envelope: KeyEnvelope): Promise<string> {
-	return ctx.runAction(internal.aiProviderConfigActions._decryptSecretEnvelope, envelope);
+/** The language plane alone: never decrypts the embedding key. */
+async function resolveLanguagePlane(ctx: ActionCtx): Promise<ResolvedLanguagePlane> {
+	const entry = await loadConfigEntry(ctx);
+	if (!entry.row) return resolveEnvProviderConfig().language;
+	const languageKey = await planeKey(ctx, entry, 'language');
+	return buildStoredProviderConfig(entry.row, languageKey, undefined).language;
+}
+
+/** The embedding plane alone: never decrypts the language key. */
+async function resolveEmbeddingPlaneConfig(ctx: ActionCtx): Promise<ResolvedEmbeddingPlane> {
+	const entry = await loadConfigEntry(ctx);
+	if (!entry.row) return resolveEnvProviderConfig().embedding;
+	const embeddingKey = await planeKey(ctx, entry, 'embedding');
+	return buildStoredProviderConfig(entry.row, undefined, embeddingKey).embedding;
 }
 
 /** Test-only: drop the in-process config cache so a fresh resolution runs. */
-export function __resetAiConfigCacheForTests(): void {
-	configCache = null;
-}
+export const __resetAiConfigCacheForTests = invalidateAiConfigCache;
 
 /** Build a model together with the trusted, secret-free resolution metadata. */
-function resolveLanguageModelFromConfig(
-	cfg: ResolvedProviderConfig,
+function resolveLanguageModelFromPlane(
+	language: ResolvedLanguagePlane,
 	tier: LLMTier
 ): ResolvedLanguageModel {
-	const modelId = tier === 'fast' ? cfg.language.models.fast : cfg.language.models.capable;
+	const modelId = tier === 'fast' ? language.models.fast : language.models.capable;
 	return Object.freeze({
-		model: languageProviderFor(cfg.language.kind).buildChatModel(
-			cfg.language.clientConfig,
-			modelId
-		),
+		model: languageProviderFor(language.kind).buildChatModel(language.clientConfig, modelId),
 		modelId,
-		endpointProvenance: cfg.language.endpointProvenance,
+		endpointProvenance: language.endpointProvenance,
 	});
 }
 
@@ -362,8 +303,7 @@ export async function resolveLanguageModelWithProvenance(
 	ctx: ActionCtx,
 	task: LLMTask = 'draft'
 ): Promise<ResolvedLanguageModel> {
-	const cfg = await resolveAiConfig(ctx);
-	return resolveLanguageModelFromConfig(cfg, taskTier(task));
+	return resolveLanguageModelFromPlane(await resolveLanguagePlane(ctx), taskTier(task));
 }
 
 /** Resolve the language model for a given task (plugs into the AI SDK helpers). */
@@ -387,12 +327,12 @@ export async function resolveLanguageModelForUserText(
 	task: LLMTask,
 	userText: string
 ): Promise<LanguageModel> {
-	const cfg = await resolveAiConfig(ctx);
+	const language = await resolveLanguagePlane(ctx);
 	const downgrade =
 		getOptional('LLM_COMPLEXITY_ROUTING') === '1' &&
 		taskTier(task) === 'capable' &&
 		isTrivialUserText(userText);
-	return resolveLanguageModelFromConfig(cfg, downgrade ? 'fast' : taskTier(task)).model;
+	return resolveLanguageModelFromPlane(language, downgrade ? 'fast' : taskTier(task)).model;
 }
 
 /**
@@ -410,16 +350,16 @@ export async function resolveLanguageModelForClassifiedDraft(
 	ctx: ActionCtx,
 	signals: ClassificationSignals
 ): Promise<LanguageModel> {
-	const cfg = await resolveAiConfig(ctx);
+	const language = await resolveLanguagePlane(ctx);
 	const downgrade =
 		getOptional('LLM_COMPLEXITY_ROUTING') === '1' && isTrivialClassifiedMessage(signals);
-	return resolveLanguageModelFromConfig(cfg, downgrade ? 'fast' : 'capable').model;
+	return resolveLanguageModelFromPlane(language, downgrade ? 'fast' : 'capable').model;
 }
 
 // Known embedding models and their native output width. Used to fail fast when
-// a configured model's vectors won't fit the fixed EMBEDDING_DIMENSIONS-wide
-// vector index. Unknown/custom (e.g. local Ollama) models aren't listed — they're
-// caught at write time by assertEmbeddingDimension.
+// a configured model's vectors are WIDER than the fixed EMBEDDING_DIMENSIONS
+// index (narrower ones are zero-padded by toIndexVector). Unknown/custom models
+// aren't listed — an oversized vector is caught at embed time by toIndexVector.
 const KNOWN_EMBEDDING_DIMENSIONS: Record<string, number> = {
 	'text-embedding-3-small': 1536,
 	'text-embedding-ada-002': 1536,
@@ -427,13 +367,13 @@ const KNOWN_EMBEDDING_DIMENSIONS: Record<string, number> = {
 };
 
 /**
- * Fail fast when a resolved embedding model's known native width won't fit the
- * fixed vector index. Only checks models with a known width; local/custom ones
- * are validated at write time by {@link assertEmbeddingDimension}.
+ * Fail fast when a resolved embedding model's known native width is wider than
+ * the fixed vector index. Only checks models with a known width; local/custom
+ * ones are checked at embed time by {@link toIndexVector}.
  */
 function assertKnownEmbeddingWidth(modelId: string): void {
 	const known = KNOWN_EMBEDDING_DIMENSIONS[modelId];
-	if (known !== undefined && known !== EMBEDDING_DIMENSIONS) {
+	if (known !== undefined && known > EMBEDDING_DIMENSIONS) {
 		throw new Error(
 			`Embedding model '${modelId}' produces ${known}-dimensional vectors, but the ` +
 				`vector index is fixed at ${EMBEDDING_DIMENSIONS}. Choose a ${EMBEDDING_DIMENSIONS}-dim ` +
@@ -452,8 +392,7 @@ function assertKnownEmbeddingWidth(modelId: string): void {
  * try/catch so a misconfiguration surfaces rather than being swallowed.
  */
 export async function resolveEmbeddingModel(ctx: ActionCtx): Promise<EmbeddingModel> {
-	const cfg = await resolveAiConfig(ctx);
-	const { kind, modelId, clientConfig } = cfg.embedding;
+	const { kind, modelId, clientConfig } = await resolveEmbeddingPlaneConfig(ctx);
 	assertKnownEmbeddingWidth(modelId);
 	const adapter = embeddingProviderFor(kind);
 	// Surface an unusable config (missing hosted key / local base URL) as an
@@ -463,18 +402,35 @@ export async function resolveEmbeddingModel(ctx: ActionCtx): Promise<EmbeddingMo
 }
 
 /**
- * Throw if an embedding vector won't fit the fixed-width vector index. Catches
- * custom / unknown models whose dimension can't be validated at config time —
- * without this a wrong-width vector is silently stored and breaks every vector
- * search (or surfaces as an opaque Convex vectorIndex error).
+ * Fit an embedding vector to the fixed-width vector index.
+ *
+ * The index is EMBEDDING_DIMENSIONS wide (the OpenAI default), but the DEFAULT
+ * embedder is local (`nomic-embed-text`, 768-dim) and Google / most
+ * OpenAI-compatible models are narrower too. A narrower vector is right-padded
+ * with zeros: padding changes neither dot products nor norms, so cosine
+ * similarity between two padded vectors is exactly that of the originals, and
+ * the index ranks them identically. Rejecting them instead meant the default
+ * configuration could never store a single knowledge entry.
+ *
+ * A WIDER vector can't be fitted without changing its geometry, so it throws —
+ * an actionable error rather than a silently-broken vector search. Query-time
+ * vectors go through here too: a 768-dim query against 1536-wide rows would be
+ * refused by the index.
  */
-export function assertEmbeddingDimension(embedding: ArrayLike<number>): void {
-	if (embedding.length !== EMBEDDING_DIMENSIONS) {
+export function toIndexVector(embedding: ArrayLike<number>): number[] {
+	if (embedding.length > EMBEDDING_DIMENSIONS) {
 		throw new Error(
 			`Embedding model produced a ${embedding.length}-dimensional vector but the vector ` +
-				`index requires ${EMBEDDING_DIMENSIONS}. Set LLM_EMBEDDING_MODEL to a ${EMBEDDING_DIMENSIONS}-dim model.`
+				`index holds at most ${EMBEDDING_DIMENSIONS}. Choose an embedding model of at most ` +
+				`${EMBEDDING_DIMENSIONS} dimensions.`
 		);
 	}
+	if (embedding.length === 0) {
+		throw new Error('Embedding model returned an empty vector.');
+	}
+	const vector = Array.from(embedding);
+	while (vector.length < EMBEDDING_DIMENSIONS) vector.push(0);
+	return vector;
 }
 
 /** Snapshot of the active env LLM configuration for logging / debugging (no secrets). */

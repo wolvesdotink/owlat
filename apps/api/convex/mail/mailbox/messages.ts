@@ -10,18 +10,15 @@
  */
 
 import { v } from 'convex/values';
-import {
-	openMailMessageInlineBody,
-	openMailMessageRow,
-	openMailMessageRows,
-} from '../../lib/messageBody';
+import { openStoredInlineBody, openStoredMailMessageRow } from '../../lib/messageBodyStore';
 import { mintRawEmlUrl, sealedBlobUrl } from '../../lib/sealedBlob';
-import { internalQuery, type QueryCtx } from '../../_generated/server';
+import { internalQuery, type ActionCtx, type QueryCtx } from '../../_generated/server';
 import { publicAction, publicQuery } from '../../lib/authedFunctions';
 import type { Id, Doc } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
 import { requireMessageAccess, loadReadableMailbox } from '../permissions';
 import { senderHeuristicsValidator } from '../../lib/validators/senderHeuristics';
+import { loadThreadOutboundDelivery, loadThreadPage } from './threadReads';
 
 /**
  * Load a message the caller is allowed to READ (owner/admin, or the mailbox
@@ -30,7 +27,7 @@ import { senderHeuristicsValidator } from '../../lib/validators/senderHeuristics
  * through the canonical {@link loadReadableMailbox} so a suspended/deleted
  * mailbox can't be read by id.
  */
-async function loadReadableMessage(
+export async function loadReadableMessage(
 	ctx: QueryCtx,
 	messageId: Id<'mailMessages'>
 ): Promise<Doc<'mailMessages'> | null> {
@@ -51,37 +48,45 @@ export const getMessage = publicQuery({
 	args: { messageId: v.id('mailMessages') },
 	handler: async (ctx, args) => {
 		const message = await loadReadableMessage(ctx, args.messageId);
-		// E8b: the row's inline bodies are sealed at rest; the reader renders them
-		// straight off the row, so they leave this boundary as plaintext.
-		return message === null ? null : openMailMessageRow(message);
+		// E8b: the inline bodies are sealed at rest; the reader renders them
+		// straight off the row, so they leave this boundary as plaintext. Plan 3.2:
+		// they live in `mailMessageBodies` and are attached here.
+		return message === null ? null : openStoredMailMessageRow(ctx.db, message);
 	},
 });
 
-/** Fetch all messages in a thread (oldest first). Used by the conversation view. */
+/**
+ * The messages of a thread, oldest first. Used by the conversation view and by
+ * the AI features that read a whole conversation.
+ *
+ * Without paging arguments it returns the whole thread (its newest
+ * `THREAD_READ_CAP` messages, see `threadReads.ts`) with every body, the shape the reader has
+ * always rendered. Paging (plan 3.3) is opt-in: `pageSize` messages per page,
+ * newest first; only the newest `withBodies` of them come with bodies in
+ * `messages`, the older ones arrive as body-less `envelopes`; `olderCursor`
+ * fetches the next-older page (pass `withBodies: 0` there and load a body on
+ * expand through `getMessageInlineBody`).
+ */
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const listThreadMessages = publicQuery({
-	args: { messageId: v.id('mailMessages') },
+	args: {
+		messageId: v.id('mailMessages'),
+		pageSize: v.optional(v.number()),
+		withBodies: v.optional(v.number()),
+		cursor: v.optional(v.union(v.string(), v.null())),
+	},
 	handler: async (ctx, args) => {
 		const seed = await ctx.db.get(args.messageId);
 		if (!seed) return null;
 		const mailbox = await loadReadableMailbox(ctx, seed.mailboxId);
 		if (!mailbox) return null;
-		const siblings = await ctx.db
-			.query('mailMessages')
-			.withIndex('by_thread', (q) => q.eq('threadId', seed.threadId))
-			.collect(); // bounded: one thread's messages
-		siblings.sort((a, b) => a.receivedAt - b.receivedAt);
+		const page = await loadThreadPage(ctx, seed.threadId, args);
 		const labels = await ctx.db
 			.query('mailLabels')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', seed.mailboxId))
 			.collect(); // bounded: one mailbox's labels
-		const labelMap = new Map(labels.map((l) => [l._id, l]));
 		const thread = await ctx.db.get(seed.threadId);
-		return {
-			thread,
-			messages: await openMailMessageRows(siblings),
-			labels: Array.from(labelMap.values()),
-		};
+		return { thread, labels, ...page };
 	},
 });
 
@@ -232,42 +237,11 @@ export const listThreadOutboundDelivery = publicQuery({
 		if (!seed) return null;
 		const mailbox = await loadReadableMailbox(ctx, seed.mailboxId);
 		if (!mailbox) return null;
-		const siblings = await ctx.db
-			.query('mailMessages')
-			.withIndex('by_thread', (q) => q.eq('threadId', seed.threadId))
-			.collect(); // bounded: one thread's messages
-		siblings.sort((a, b) => a.receivedAt - b.receivedAt);
 		// Only SENT rows carry `outbound`; an inbound message contributes nothing,
 		// so a purely inbound thread yields an empty array (never a false "queued").
-		return siblings.flatMap((message) =>
-			message.outbound ? [{ messageId: message._id, ...projectOutbound(message.outbound) }] : []
-		);
+		return await loadThreadOutboundDelivery(ctx, seed.threadId);
 	},
 });
-
-/**
- * Narrow a stored `outbound` object to what the reader may see: every
- * per-recipient field EXCEPT `mtaJobId`, which is dispatch bookkeeping. Written
- * as explicit spreads rather than a destructure so an `undefined` never travels
- * as a present key — the reader must be able to tell "no bounce text" from
- * "empty bounce text".
- */
-function projectOutbound(outbound: NonNullable<Doc<'mailMessages'>['outbound']>) {
-	return {
-		state: outbound.state,
-		recipients: outbound.recipients.map((r) => ({
-			idx: r.idx,
-			address: r.address,
-			state: r.state,
-			...(r.sentAt !== undefined ? { sentAt: r.sentAt } : {}),
-			...(r.acceptedAt !== undefined ? { acceptedAt: r.acceptedAt } : {}),
-			...(r.bouncedAt !== undefined ? { bouncedAt: r.bouncedAt } : {}),
-			...(r.failedAt !== undefined ? { failedAt: r.failedAt } : {}),
-			...(r.bounceMessage !== undefined ? { bounceMessage: r.bounceMessage } : {}),
-			...(r.errorCode !== undefined ? { errorCode: r.errorCode } : {}),
-		})),
-	};
-}
 
 /**
  * Team-inbox collision safety. Given any message in a thread, return the
@@ -314,25 +288,112 @@ export const latestReplyState = publicQuery({
 });
 
 /**
- * Resolve a single message's body for the reader. Small bodies are stored
- * inline on the row; bodies over the inline threshold (newsletters, long
- * threads) live in storage blobs (`htmlBodyStorageId` / `textBodyStorageId`)
- * and are fetched lazily via the returned signed URLs — previously they had no
- * inline value and rendered blank.
+ * The reader's body, as a reactive QUERY: the unsealed inline html/text plus
+ * whether the body also has an over-threshold storage blob. Most mail fits the
+ * 64 KB inline threshold, so the reader can render straight from this
+ * subscription without an action round trip. Only when `hasHtmlBlob` /
+ * `hasTextBlob` is set and the matching inline value is null does it need
+ * {@link getMessageBodyBlobUrls} (queries cannot mint storage URLs).
+ *
+ * Same read gate as every other by-id read here ({@link loadReadableMessage}),
+ * so a message from another mailbox, or an anonymous caller, gets null.
+ */
+// public: soft-auth — returns null for anonymous; mailbox access is still enforced in-handler
+export const getMessageInlineBody = publicQuery({
+	args: { messageId: v.id('mailMessages') },
+	returns: v.union(
+		v.null(),
+		v.object({
+			htmlInline: v.union(v.string(), v.null()),
+			textInline: v.union(v.string(), v.null()),
+			hasHtmlBlob: v.boolean(),
+			hasTextBlob: v.boolean(),
+		})
+	),
+	handler: async (ctx, args) => {
+		const message = await loadReadableMessage(ctx, args.messageId);
+		if (!message) return null;
+		const { text, html } = await openStoredInlineBody(ctx.db, message);
+		return {
+			htmlInline: html ?? null,
+			textInline: text ?? null,
+			hasHtmlBlob: message.htmlBodyStorageId !== undefined,
+			hasTextBlob: message.textBodyStorageId !== undefined,
+		};
+	},
+});
+
+/** Blob ids only: the URL-minting action needs no decrypted inline body. */
+export const getReadableMessageBodyStorageIds = internalQuery({
+	args: { messageId: v.id('mailMessages') },
+	handler: async (ctx, args): Promise<BodyStorageIds | null> => {
+		const message = await loadReadableMessage(ctx, args.messageId);
+		if (!message) return null;
+		return {
+			htmlBodyStorageId: message.htmlBodyStorageId ?? null,
+			textBodyStorageId: message.textBodyStorageId ?? null,
+		};
+	},
+});
+
+type BodyStorageIds = {
+	htmlBodyStorageId: Id<'_storage'> | null;
+	textBodyStorageId: Id<'_storage'> | null;
+};
+type BodyBlobUrls = { htmlUrl: string | null; textUrl: string | null };
+
+/** E8b: the over-threshold body blobs are sealed at rest, so hand the reader a
+ * decrypt-serving proxy URL. Action storage can inspect a keyless blob before
+ * minting a direct legacy-plaintext URL, so key loss fails closed. */
+async function mintBodyBlobUrls(
+	storage: ActionCtx['storage'],
+	ids: BodyStorageIds
+): Promise<BodyBlobUrls> {
+	return {
+		htmlUrl: ids.htmlBodyStorageId
+			? await sealedBlobUrl(storage, ids.htmlBodyStorageId, 'text/html; charset=utf-8')
+			: null,
+		textUrl: ids.textBodyStorageId
+			? await sealedBlobUrl(storage, ids.textBodyStorageId, 'text/plain; charset=utf-8')
+			: null,
+	};
+}
+
+/**
+ * Signed URLs for a large body's storage blobs — the action half of
+ * {@link getMessageInlineBody}. Call it only when that query reports a blob;
+ * a message without blobs answers `{ htmlUrl: null, textUrl: null }`.
+ */
+// public: soft-auth — internal source query returns null for anonymous and enforces mailbox access
+// authz: gate lives in internal.mail.mailbox.messages.getReadableMessageBodyStorageIds (loadReadableMessage).
+export const getMessageBodyBlobUrls = publicAction({
+	args: { messageId: v.id('mailMessages') },
+	handler: async (ctx, args): Promise<BodyBlobUrls | null> => {
+		const ids: BodyStorageIds | null = await ctx.runQuery(
+			internal.mail.mailbox.messages.getReadableMessageBodyStorageIds,
+			args
+		);
+		return ids ? await mintBodyBlobUrls(ctx.storage, ids) : null;
+	},
+});
+
+/**
+ * Inline body plus blob URLs in one action. Superseded by
+ * {@link getMessageInlineBody} + {@link getMessageBodyBlobUrls}. The web reader
+ * moved over in plan 2.5; this stays one release for tabs still running the
+ * previous reader (`scripts/entryWiringPreviousRelease.ts`), then goes.
  */
 type ReadableMessageBodySource = {
 	htmlInline: string | null;
 	textInline: string | null;
-	htmlBodyStorageId: Id<'_storage'> | null;
-	textBodyStorageId: Id<'_storage'> | null;
-} | null;
+} & BodyStorageIds;
 
 export const getReadableMessageBodySource = internalQuery({
 	args: { messageId: v.id('mailMessages') },
-	handler: async (ctx, args): Promise<ReadableMessageBodySource> => {
+	handler: async (ctx, args): Promise<ReadableMessageBodySource | null> => {
 		const message = await loadReadableMessage(ctx, args.messageId);
 		if (!message) return null;
-		const { text, html } = await openMailMessageInlineBody(message);
+		const { text, html } = await openStoredInlineBody(ctx.db, message);
 		return {
 			htmlInline: html ?? null,
 			textInline: text ?? null,
@@ -345,32 +406,22 @@ export const getReadableMessageBodySource = internalQuery({
 type ReadableMessageBody = {
 	htmlInline: string | null;
 	textInline: string | null;
-	htmlUrl: string | null;
-	textUrl: string | null;
-} | null;
+} & BodyBlobUrls;
 
 // public: soft-auth — internal source query returns null for anonymous and enforces mailbox access
 // authz: gate lives in internal.mail.mailbox.messages.getReadableMessageBodySource (loadReadableMessage).
 export const getMessageBody = publicAction({
 	args: { messageId: v.id('mailMessages') },
-	handler: async (ctx, args): Promise<ReadableMessageBody> => {
-		const source: ReadableMessageBodySource = await ctx.runQuery(
+	handler: async (ctx, args): Promise<ReadableMessageBody | null> => {
+		const source: ReadableMessageBodySource | null = await ctx.runQuery(
 			internal.mail.mailbox.messages.getReadableMessageBodySource,
 			args
 		);
 		if (!source) return null;
-		// E8b: the over-threshold body blobs are sealed at rest, so hand the reader
-		// a decrypt-serving proxy URL. Action storage can inspect a keyless blob
-		// before minting a direct legacy-plaintext URL, so key loss fails closed.
 		return {
 			htmlInline: source.htmlInline,
 			textInline: source.textInline,
-			htmlUrl: source.htmlBodyStorageId
-				? await sealedBlobUrl(ctx.storage, source.htmlBodyStorageId, 'text/html; charset=utf-8')
-				: null,
-			textUrl: source.textBodyStorageId
-				? await sealedBlobUrl(ctx.storage, source.textBodyStorageId, 'text/plain; charset=utf-8')
-				: null,
+			...(await mintBodyBlobUrls(ctx.storage, source)),
 		};
 	},
 });

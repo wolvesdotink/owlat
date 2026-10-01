@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { postboxPageTransition } from '~/utils/postboxPageTransition';
 /**
  * Subscriptions — the mailbox-wide list-mail hygiene view.
  *
@@ -11,18 +12,28 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.postbox.subscriptions.pageTitle') });
 definePageMeta({
 	layout: 'dashboard',
-	middleware: 'auth',
+	middleware: ['auth', postboxPageTransition],
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
-const { currentMailbox, isLoading: mailboxesLoading } = usePostboxMailbox();
+const {
+	currentMailbox,
+	isLoading: mailboxesLoading,
+	error: mailboxesError,
+	refetch: refetchMailboxes,
+} = usePostboxMailbox();
 const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 </script>
 
 <template>
 	<!-- flex-col so the guard's loading and no-mailbox states fill the frame. -->
 	<div class="h-[calc(100vh-4rem)] overflow-auto bg-bg-base flex flex-col">
-		<PostboxMailboxGuard :mailbox-id="mailboxId" :loading="mailboxesLoading">
+		<PostboxMailboxGuard
+			:mailbox-id="mailboxId"
+			:loading="mailboxesLoading"
+			:error="mailboxesError"
+			@retry="refetchMailboxes"
+		>
 			<div class="w-full max-w-3xl mx-auto p-6">
 				<PostboxSubscriptionsPanel :mailbox-id="mailboxId!" />
 			</div>

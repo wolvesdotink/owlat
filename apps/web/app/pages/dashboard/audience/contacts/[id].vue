@@ -16,25 +16,29 @@ definePageMeta({
 // Get contact ID from route
 const contactId = useRouteId<'contacts'>();
 
-// GDPR data-subject access export: lazily fetch the full personal-data bundle
-// on demand and download it as JSON. The query is skipped until requested.
+// GDPR data-subject access export: fetch the full personal-data bundle on
+// demand and download it as JSON. An action, not a query: a Team Inbox body too
+// large for its row lives in storage, which only an action can read.
 const exportRequested = ref(false);
-const { data: exportData } = useConvexQuery(api.contacts.dataExport.exportContactData, () =>
-	exportRequested.value ? { contactId: contactId.value } : 'skip'
-);
-watch(exportData, (data) => {
-	if (!data || !exportRequested.value || !import.meta.client) return;
-	const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-	const url = URL.createObjectURL(blob);
-	const a = document.createElement('a');
-	a.href = url;
-	a.download = `contact-${contactId.value}-data-export.json`;
-	a.click();
-	URL.revokeObjectURL(url);
-	exportRequested.value = false;
-});
-function handleExportData() {
+async function handleExportData() {
+	if (exportRequested.value) return;
 	exportRequested.value = true;
+	try {
+		const data = await requireConvex().action(api.contacts.dataExport.exportContactDataBundle, {
+			contactId: contactId.value,
+		});
+		const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = `contact-${contactId.value}-data-export.json`;
+		a.click();
+		URL.revokeObjectURL(url);
+	} catch {
+		showToast(t('dashboard.audience.contacts.detail.toasts.exportFailed'), 'error');
+	} finally {
+		exportRequested.value = false;
+	}
 }
 
 // Resend the double-opt-in confirmation email for a contact stuck in `pending`.
@@ -52,6 +56,8 @@ async function handleResendDoi() {
 const {
 	contact,
 	contactLoading,
+	contactError,
+	refetchContact,
 	properties,
 	isEditing,
 	isSaving,
@@ -245,15 +251,18 @@ async function handleRemoveSuppression() {
 			{{ t('dashboard.audience.contacts.detail.backToCustomers') }}
 		</NuxtLink>
 
+		<!-- A failed read is not a missing contact (#721). -->
+		<UiQueryBoundary v-if="contactError" :error="contactError" @retry="refetchContact" />
+
 		<!-- Loading State -->
-		<div v-if="contactLoading && !contact" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">
-					{{ t('dashboard.audience.contacts.detail.loading') }}
-				</p>
-			</div>
-		</div>
+		<DashboardDetailSkeleton
+			v-else-if="contactLoading && !contact"
+			:label="t('dashboard.audience.contacts.detail.loading')"
+			lead="avatar"
+			meta
+			:actions="2"
+			tabs
+		/>
 
 		<!-- Not Found State -->
 		<div

@@ -9,7 +9,7 @@ import {
 	mailUnsubscribeValidator,
 } from '../lib/validators/mailContent';
 import { senderHeuristicsValidator } from '../lib/validators/senderHeuristics';
-import { folderRoleValidator } from '../lib/validators/mail';
+import { folderRoleValidator, remoteSightingValidator } from '../lib/validators/mail';
 import { mailEncryptionInfoValidator } from '../mail/sealPolicy';
 
 /**
@@ -73,13 +73,20 @@ export const mailMessagesTables = {
 		// ABSENT is the default and is exactly the pre-idea-32 behaviour. Turning
 		// the switch back off schedules a sweep that clears it again
 		// (`mail/bodySearchBackfill.purgeSearchBodies`). See `mail/searchBody.ts`
-		// and docs/adr/0059-widened-body-search-carve-out.md.
+		// and docs/adr/0059-widened-body-search-carve-out.md. Unlike the inline
+		// bodies it did NOT move to `mailMessageBodies` (plan 3.2): the
+		// `search_message_bodies` filter fields must sit on the searched document.
 		searchBody: v.optional(v.string()),
 
 		// Storage refs
 		rawStorageId: v.id('_storage'),
 		rawSize: v.number(),
 		textBodyStorageId: v.optional(v.id('_storage')),
+		// DEPRECATED (plan 3.2): inline bodies now live in `mailMessageBodies`
+		// below. These two columns only hold bodies of rows written before that
+		// move, until `migrations/0049_move_message_bodies` clears them; readers
+		// fall back to them through `lib/messageBodyStore.ts`. Drop them once the
+		// migration has run everywhere.
 		textBodyInline: v.optional(v.string()),
 		htmlBodyStorageId: v.optional(v.id('_storage')),
 		htmlBodyInline: v.optional(v.string()),
@@ -107,6 +114,11 @@ export const mailMessagesTables = {
 		// as "old", so turning the setting on can never destroy mail whose age in
 		// the bin is unknown.
 		trashedAt: v.optional(v.number()),
+		// External mailboxes only: where the provider was last seen holding this
+		// message (remote folder, UIDVALIDITY, UID). Recorded at ingest and kept
+		// current by the worker's reconcile; absent on mail the provider was never
+		// seen with, which is therefore never reported deleted there.
+		remoteSighting: v.optional(remoteSightingValidator),
 		// Snooze (P8): hides the message from the inbox until the timestamp
 		// passes; a 1-min cron sweep returns it (and bumps the thread
 		// `lastMessageAt` so the inbox sort floats it back to the top).
@@ -290,7 +302,24 @@ export const mailMessagesTables = {
 		.index('by_folder_and_trashed', ['folderId', 'trashedAt'])
 		.index('by_mailbox_and_snoozed', ['mailboxId', 'snoozedUntil'])
 		.index('by_thread', ['threadId'])
+		// Thread-scoped slices (plan 3.3), so a flag change or a reader page never
+		// reads the whole conversation: `by_thread_and_received` pages the reader
+		// newest-first; `by_thread_and_seen` finds only the rows a mark-thread-read
+		// actually flips; `by_thread_and_flagged` answers "is anything else still
+		// starred" with one `first()` after an unflag; `by_thread_and_outbound_state`
+		// yields only the SENT rows the delivery strip reads (inbound rows index
+		// `outbound.state` as undefined and never match a concrete state).
+		// `by_thread` is a prefix of `by_thread_and_received` and can go once its
+		// readers move over.
+		.index('by_thread_and_received', ['threadId', 'receivedAt'])
+		.index('by_thread_and_seen', ['threadId', 'flagSeen'])
+		.index('by_thread_and_flagged', ['threadId', 'flagFlagged'])
+		.index('by_thread_and_outbound_state', ['threadId', 'outbound.state'])
 		.index('by_rfc822_message_id', ['rfc822MessageId'])
+		// Per-mailbox Message-ID lookups — the delivery dedup and the threading
+		// walk seek straight to one mailbox's copy instead of reading every
+		// mailbox's copy of a widely-sent Message-ID and filtering (plan C10).
+		.index('by_mailbox_and_rfc822_message_id', ['mailboxId', 'rfc822MessageId'])
 		.index('by_mailbox_and_thread_root', ['mailboxId', 'threadRootId'])
 		.index('by_mailbox_and_from', ['mailboxId', 'fromAddress'])
 		.index('by_mailbox_and_unseen', ['mailboxId', 'flagSeen'])
@@ -337,6 +366,21 @@ export const mailMessagesTables = {
 			searchField: 'searchBody',
 			filterFields: ['mailboxId', 'folderId', 'fromAddress', 'flagSeen', 'flagFlagged'],
 		}),
+
+	// Inline message bodies, 1:1 with `mailMessages` (plan 3.2). Convex reads
+	// whole documents, so bodies on the message row made every list, count and
+	// flag write pay for up to 2 × 64 KB of text it never used; here only the
+	// readers that render or analyse a body load them. Values are sealed at rest
+	// exactly like the old row columns (`sealBodyAtWrite`), written and read only
+	// through `lib/messageBodyStore.ts`. A message whose body lives in storage
+	// blobs, or that has no body, has no row. `searchBody` deliberately stays on
+	// `mailMessages`: its search index filters on mailbox, folder, sender and
+	// flags, and a search index can only filter on fields of the same document.
+	mailMessageBodies: defineTable({
+		messageId: v.id('mailMessages'),
+		textBodyInline: v.optional(v.string()),
+		htmlBodyInline: v.optional(v.string()),
+	}).index('by_message', ['messageId']),
 
 	// Conversation grouping across folders. Aggregates updated by mutations.
 };

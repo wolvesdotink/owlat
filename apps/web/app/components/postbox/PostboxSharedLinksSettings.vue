@@ -20,6 +20,7 @@
  */
 import type { Id } from '@owlat/api/dataModel';
 import { ATTACHMENT_SHARE_EXPIRY_DAY_CHOICES } from '@owlat/shared/attachmentShares';
+import { useLocalized } from '~/composables/useLocalized';
 import {
 	postboxShareLinkScopeKey,
 	postboxShareLinkStatusKey,
@@ -27,6 +28,7 @@ import {
 } from '~/utils/postboxShareLink';
 
 const { t } = useI18n();
+const localized = useLocalized();
 
 const { currentMailbox } = usePostboxMailbox();
 const mailboxId = computed(() => currentMailbox.value?._id ?? null);
@@ -39,8 +41,7 @@ type ShareRow = (typeof shares.value)[number];
 const revokeTarget = ref<ShareRow | null>(null);
 
 function summaryFor(row: ShareRow): string {
-	const message = postboxShareLinkSummary(row.state, row.downloadCount);
-	return t(message.key, message.params ?? {});
+	return localized(postboxShareLinkSummary(row.state, row.downloadCount));
 }
 
 async function confirmRevoke() {

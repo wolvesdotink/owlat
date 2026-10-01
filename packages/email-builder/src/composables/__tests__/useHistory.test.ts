@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { ref, nextTick } from 'vue';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { effectScope, ref, nextTick, type EffectScope } from 'vue';
 import { useHistory } from '../useHistory';
 import type { EditorBlock } from '../../types';
 
@@ -7,23 +7,21 @@ import type { EditorBlock } from '../../types';
  * Stateful undo/redo tests for `useHistory` — the riskiest untested surface in
  * the editor (P2-5). The pure delta helpers are covered by deltaHistory.test.ts;
  * here we exercise the composable's interactions: undo→edit→redo invalidation,
- * checkpoint-every-N reconstruction, cache eviction, and trimming past the
- * max-entries cap.
+ * checkpoint-every-N reconstruction, cache eviction, trimming past the
+ * max-entries cap, and the availability flags the toolbar and shortcuts read.
  *
- * Assertions favour observable ground truth — the restored `name`/`blocks`
- * values and `currentIndex` (set directly by push/undo/redo) — over the
- * derived `canUndo`/`canRedo`/`historyLength` refs. Those derived refs are
- * synced by `updateComputedStates`, which the change-watcher runs *before* the
- * debounced push lands, so they lag one push behind and aren't reliable
- * immediately after a commit. Calling `undo()`/`redo()` re-syncs them.
+ * `canUndo`/`canRedo`/`historyLength` are part of the contract: the Undo and
+ * Redo buttons render from them, so every test that moves through history
+ * asserts them alongside the restored values and `currentIndex`.
  *
  * Harness notes:
  *  - `blocks` is a deep `ref`, matching the editor's `canvasBlocks`. Its
  *    `.value` is a reactive proxy, which `structuredClone` rejects in every
- *    engine (DataCloneError) — the composable's JSON-fallback clone must absorb
- *    that, so using a deep ref here is the regression test for the editor
- *    crashing at mount.
- *  - Real timers with a tiny `debounceMs` drive the debounce.
+ *    engine (DataCloneError) — the composable's clone (utils/plainClone) must
+ *    read through it, so using a deep ref here is the regression test for the
+ *    editor crashing at mount.
+ *  - The composable runs inside an effect scope, as it does in the editor, and
+ *    fake timers drive the debounce so pending-edit interleavings are exact.
  */
 
 const DEBOUNCE = 2;
@@ -36,39 +34,70 @@ function block(id: string, html: string): EditorBlock {
 	};
 }
 
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const htmlOf = (b: EditorBlock) => (b.content as { html: string }).html;
+
+let scope: EffectScope | null = null;
+
+beforeEach(() => {
+	vi.useFakeTimers();
+});
+
+afterEach(() => {
+	scope?.stop();
+	scope = null;
+	vi.useRealTimers();
+});
 
 function setup() {
 	const blocks = ref<EditorBlock[]>([block('a', 'one')]);
 	const name = ref('Initial');
 	const subject = ref('Subj');
-	const history = useHistory(blocks, name, subject, {
-		debounceMs: DEBOUNCE,
-		checkpointInterval: 10,
-	});
+	scope = effectScope();
+	const history = scope.run(() =>
+		useHistory(blocks, name, subject, {
+			debounceMs: DEBOUNCE,
+			checkpointInterval: 10,
+		})
+	)!;
 	return { blocks, name, subject, history };
 }
 
-// Mutate the tracked refs, then let the debounced watcher fire and the
-// navigating-reset (0ms) timer clear, so the next edit is recorded.
-async function commit(mutate: () => void) {
+// Mutate the tracked refs and let the watcher see it; the edit is now pending.
+async function edit(mutate: () => void) {
 	mutate();
-	await nextTick();
-	await sleep(DEBOUNCE + 5);
 	await nextTick();
 }
 
-// Settle after an undo/redo so the isNavigating flag is cleared.
-async function settle() {
-	await sleep(5);
+// Mutate the tracked refs, then let the debounced push fire, so the edit is
+// committed and the next one is recorded separately.
+async function commit(mutate: () => void) {
+	await edit(mutate);
+	vi.advanceTimersByTime(DEBOUNCE);
 	await nextTick();
+}
+
+// Settle after an undo/redo: the watcher sees the applied state, then the
+// navigating-reset (0ms) timer clears so the next edit is recorded.
+async function settle() {
+	await nextTick();
+	vi.advanceTimersByTime(0);
+	await nextTick();
+}
+
+// The flags the toolbar renders, read together.
+function flags(history: ReturnType<typeof setup>['history']) {
+	return {
+		canUndo: history.canUndo.value,
+		canRedo: history.canRedo.value,
+		length: history.historyLength.value,
+		index: history.currentIndex.value,
+	};
 }
 
 describe('useHistory', () => {
 	it('records edits and supports undo/redo round-trip', async () => {
 		const { blocks, name, history } = setup();
-		expect(history.currentIndex.value).toBe(0);
+		expect(flags(history)).toEqual({ canUndo: false, canRedo: false, length: 1, index: 0 });
 
 		await commit(() => {
 			name.value = 'Second';
@@ -76,25 +105,56 @@ describe('useHistory', () => {
 		await commit(() => {
 			blocks.value = [block('a', 'two')];
 		});
-		expect(history.currentIndex.value).toBe(2);
+		expect(flags(history)).toEqual({ canUndo: true, canRedo: false, length: 3, index: 2 });
 
 		history.undo();
 		await settle();
 		expect(htmlOf(blocks.value[0]!)).toBe('one');
 		expect(name.value).toBe('Second');
-		expect(history.canRedo.value).toBe(true);
+		expect(flags(history)).toEqual({ canUndo: true, canRedo: true, length: 3, index: 1 });
 
 		history.redo();
 		await settle();
 		expect(htmlOf(blocks.value[0]!)).toBe('two');
-		expect(history.canRedo.value).toBe(false);
+		expect(flags(history)).toEqual({ canUndo: true, canRedo: false, length: 3, index: 2 });
+	});
+
+	it('offers Undo as soon as the first edit is committed, and it restores the initial state', async () => {
+		const { blocks, name, history } = setup();
+
+		await commit(() => {
+			name.value = 'B';
+		});
+		expect(flags(history)).toEqual({ canUndo: true, canRedo: false, length: 2, index: 1 });
+
+		history.undo();
+		await settle();
+		expect(name.value).toBe('Initial');
+		expect(htmlOf(blocks.value[0]!)).toBe('one');
+		expect(flags(history)).toEqual({ canUndo: false, canRedo: true, length: 2, index: 0 });
 	});
 
 	it('undo does not run when there is nothing to undo', async () => {
-		const { history } = setup();
+		const { name, history } = setup();
 		expect(history.canUndo.value).toBe(false);
 		history.undo(); // no-op
+		await settle();
 		expect(history.currentIndex.value).toBe(0);
+		expect(name.value).toBe('Initial');
+	});
+
+	it('redo does not move past the last entry when called directly', async () => {
+		const { name, history } = setup();
+		await commit(() => {
+			name.value = 'B';
+		});
+		expect(history.canRedo.value).toBe(false);
+
+		history.redo();
+		history.redo();
+		await settle();
+		expect(flags(history)).toEqual({ canUndo: true, canRedo: false, length: 2, index: 1 });
+		expect(name.value).toBe('B');
 	});
 
 	it('undo → new edit invalidates the redo branch', async () => {
@@ -109,17 +169,24 @@ describe('useHistory', () => {
 
 		history.undo();
 		await settle();
-		expect(history.currentIndex.value).toBe(1);
-		expect(history.canRedo.value).toBe(true);
+		expect(flags(history)).toEqual({ canUndo: true, canRedo: true, length: 3, index: 1 });
 		expect(name.value).toBe('B');
 
 		// A fresh edit from the undone position must drop the future "C" entry.
 		await commit(() => {
 			blocks.value = [block('a', 'branch')];
 		});
-		expect(history.currentIndex.value).toBe(2);
+		expect(flags(history)).toEqual({ canUndo: true, canRedo: false, length: 3, index: 2 });
 
-		// There is nothing to redo into, and undoing returns to "B", never "C".
+		// A direct redo call has nothing to move into: it stays in bounds and
+		// leaves the branch on screen.
+		history.redo();
+		await settle();
+		expect(flags(history)).toEqual({ canUndo: true, canRedo: false, length: 3, index: 2 });
+		expect(htmlOf(blocks.value[0]!)).toBe('branch');
+		expect(name.value).toBe('B');
+
+		// Undoing returns to "B", never "C".
 		history.undo();
 		await settle();
 		expect(name.value).toBe('B');
@@ -127,7 +194,7 @@ describe('useHistory', () => {
 		history.redo();
 		await settle();
 		expect(htmlOf(blocks.value[0]!)).toBe('branch');
-		expect(history.canRedo.value).toBe(false);
+		expect(flags(history)).toEqual({ canUndo: true, canRedo: false, length: 3, index: 2 });
 	});
 
 	it('reconstructs correct state across the checkpoint interval (undo replay)', async () => {
@@ -138,17 +205,20 @@ describe('useHistory', () => {
 				name.value = `v${i}`;
 			});
 		}
-		expect(history.currentIndex.value).toBe(12);
+		expect(flags(history)).toEqual({ canUndo: true, canRedo: false, length: 13, index: 12 });
 		expect(name.value).toBe('v11');
 
 		// Undo all the way back; every step must reconstruct without throwing
 		// (nearest-checkpoint + forward-delta replay via reconstructState) and
 		// land on the original state.
+		let undoSteps = 0;
 		while (history.canUndo.value) {
 			history.undo();
 			await settle();
+			undoSteps++;
 		}
-		expect(history.currentIndex.value).toBe(0);
+		expect(undoSteps).toBe(12);
+		expect(flags(history)).toEqual({ canUndo: false, canRedo: true, length: 13, index: 0 });
 		expect(name.value).toBe('Initial');
 
 		// Redo a few steps forward off the first checkpoint (delta fast-path).
@@ -167,8 +237,12 @@ describe('useHistory', () => {
 				name.value = `n${i}`;
 			});
 		}
-		// Trimming keeps the index within the retained window (no runaway growth).
-		expect(history.currentIndex.value).toBeLessThanOrEqual(50);
+		// Trimming keeps the index within the retained window (no runaway growth),
+		// and the flags describe that window.
+		expect(history.historyLength.value).toBeLessThanOrEqual(50);
+		expect(history.currentIndex.value).toBe(history.historyLength.value - 1);
+		expect(history.canUndo.value).toBe(true);
+		expect(history.canRedo.value).toBe(false);
 		expect(name.value).toBe('n69');
 
 		// The retained tail must still be fully navigable *backwards* without
@@ -176,6 +250,7 @@ describe('useHistory', () => {
 		// make the reconstruct walk fail. Undo uses reconstructState (a JSON
 		// deep-copy of the nearest retained checkpoint + forward deltas), so
 		// reaching the earliest retained entry proves no delta was orphaned.
+		const retained = history.historyLength.value;
 		let undoSteps = 0;
 		while (history.canUndo.value) {
 			history.undo();
@@ -184,6 +259,7 @@ describe('useHistory', () => {
 		}
 		expect(history.currentIndex.value).toBe(0);
 		// We walked the entire retained window (more than one entry) cleanly.
+		expect(undoSteps).toBe(retained - 1);
 		expect(undoSteps).toBeGreaterThan(1);
 		expect(typeof name.value).toBe('string');
 
@@ -225,25 +301,170 @@ describe('useHistory', () => {
 		expect(history.currentIndex.value).toBe(2);
 
 		history.clearHistory();
-		expect(history.historyLength.value).toBe(1);
-		expect(history.currentIndex.value).toBe(0);
-		expect(history.canUndo.value).toBe(false);
-		expect(history.canRedo.value).toBe(false);
+		expect(flags(history)).toEqual({ canUndo: false, canRedo: false, length: 1, index: 0 });
+		expect(name.value).toBe('Y');
 	});
 
 	it('debounces rapid edits into a single entry', async () => {
 		const { name, history } = setup();
 		// Three rapid mutations within one debounce window → one pushState.
-		name.value = 'a';
-		await nextTick();
-		name.value = 'b';
-		await nextTick();
-		name.value = 'c';
-		await nextTick();
-		await sleep(DEBOUNCE + 5);
+		await edit(() => {
+			name.value = 'a';
+		});
+		await edit(() => {
+			name.value = 'b';
+		});
+		await edit(() => {
+			name.value = 'c';
+		});
+		vi.advanceTimersByTime(DEBOUNCE);
 		await nextTick();
 
 		// initial checkpoint (idx 0) + exactly one debounced entry (idx 1).
-		expect(history.currentIndex.value).toBe(1);
+		expect(flags(history)).toEqual({ canUndo: true, canRedo: false, length: 2, index: 1 });
+	});
+
+	describe('an edit still inside the debounce window', () => {
+		it('offers Undo and withholds Redo until it commits', async () => {
+			const { name, history } = setup();
+			await commit(() => {
+				name.value = 'B';
+			});
+			history.undo();
+			await settle();
+			expect(history.canRedo.value).toBe(true);
+
+			await edit(() => {
+				name.value = 'D';
+			});
+			// Committing "D" will drop the redo branch, so Redo is already gone;
+			// Undo is offered for "D" itself. Nothing is committed yet.
+			expect(flags(history)).toEqual({ canUndo: true, canRedo: false, length: 2, index: 0 });
+
+			vi.advanceTimersByTime(DEBOUNCE);
+			await nextTick();
+			expect(flags(history)).toEqual({ canUndo: true, canRedo: false, length: 2, index: 1 });
+		});
+
+		it('is committed and then undone by undo, and its timer does not push it back', async () => {
+			const { name, history } = setup();
+			await commit(() => {
+				name.value = 'B';
+			});
+			await edit(() => {
+				name.value = 'C';
+			});
+
+			history.undo();
+			await settle();
+			expect(name.value).toBe('B');
+			expect(flags(history)).toEqual({ canUndo: true, canRedo: true, length: 3, index: 1 });
+
+			// The debounce window the edit opened passes: nothing lands on top.
+			vi.advanceTimersByTime(DEBOUNCE * 10);
+			await nextTick();
+			expect(name.value).toBe('B');
+			expect(flags(history)).toEqual({ canUndo: true, canRedo: true, length: 3, index: 1 });
+
+			history.redo();
+			await settle();
+			expect(name.value).toBe('C');
+		});
+
+		it('undoes the very first edit before it has committed', async () => {
+			const { name, history } = setup();
+			await edit(() => {
+				name.value = 'B';
+			});
+			expect(history.canUndo.value).toBe(true);
+
+			history.undo();
+			await settle();
+			vi.advanceTimersByTime(DEBOUNCE * 10);
+			await nextTick();
+			expect(name.value).toBe('Initial');
+			expect(flags(history)).toEqual({ canUndo: false, canRedo: true, length: 2, index: 0 });
+		});
+
+		it('is committed, dropping the redo branch, when redo is called', async () => {
+			const { name, history } = setup();
+			await commit(() => {
+				name.value = 'B';
+			});
+			await commit(() => {
+				name.value = 'C';
+			});
+			history.undo();
+			await settle();
+			await edit(() => {
+				name.value = 'D';
+			});
+
+			history.redo();
+			await settle();
+			expect(name.value).toBe('D');
+			expect(flags(history)).toEqual({ canUndo: true, canRedo: false, length: 3, index: 2 });
+
+			history.undo();
+			await settle();
+			expect(name.value).toBe('B');
+		});
+
+		it('is folded into the reset by clearHistory, and its timer does not push later', async () => {
+			const { name, history } = setup();
+			await commit(() => {
+				name.value = 'B';
+			});
+			await edit(() => {
+				name.value = 'C';
+			});
+
+			history.clearHistory();
+			expect(flags(history)).toEqual({ canUndo: false, canRedo: false, length: 1, index: 0 });
+
+			vi.advanceTimersByTime(DEBOUNCE * 10);
+			await nextTick();
+			expect(flags(history)).toEqual({ canUndo: false, canRedo: false, length: 1, index: 0 });
+			expect(name.value).toBe('C');
+		});
+
+		it('becomes its own step when commitPending runs before a state load', async () => {
+			const { name, subject, history } = setup();
+			await edit(() => {
+				name.value = 'Typed';
+			});
+
+			// What EmailBuilder.loadState does: commit the pending edit, then
+			// replace the state.
+			history.commitPending();
+			expect(flags(history)).toEqual({ canUndo: true, canRedo: false, length: 2, index: 1 });
+			await commit(() => {
+				name.value = 'Loaded';
+				subject.value = 'Loaded subject';
+			});
+			expect(flags(history)).toEqual({ canUndo: true, canRedo: false, length: 3, index: 2 });
+
+			history.undo();
+			await settle();
+			expect(name.value).toBe('Typed');
+			expect(subject.value).toBe('Subj');
+			history.undo();
+			await settle();
+			expect(name.value).toBe('Initial');
+			expect(history.canUndo.value).toBe(false);
+		});
+
+		it('is dropped with its timer when the owning scope is disposed', async () => {
+			const { name, history } = setup();
+			await edit(() => {
+				name.value = 'B';
+			});
+			expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+			scope!.stop();
+			expect(vi.getTimerCount()).toBe(0);
+			vi.advanceTimersByTime(DEBOUNCE * 10);
+			expect(history.historyLength.value).toBe(1);
+		});
 	});
 });

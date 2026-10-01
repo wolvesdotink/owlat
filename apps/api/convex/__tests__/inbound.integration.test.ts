@@ -9,7 +9,8 @@ import {
 	createTestConversationThread,
 	createTestInboundMessage,
 } from './factories';
-import { openInboundMessageBody, openUnifiedMessageContent } from '../lib/messageBody';
+import { openUnifiedMessageContent } from '../lib/messageBody';
+import { openInboundMessageBody } from '../lib/messageBodyInbound';
 import { expectScheduledFailure } from './helpers/scheduledFailures';
 
 // The flow under test schedules the functions below, which this suite's
@@ -402,7 +403,7 @@ describe('inbound.receiveMessage', () => {
 
 		await t.run(async (ctx) => {
 			const msg = await ctx.db.get(result.inboundMessageId);
-			const body = await openInboundMessageBody(msg!);
+			const body = await openInboundMessageBody(msg!, null);
 			expect(msg!.from).toBe('Fields Test <fields@example.com>');
 			expect(msg!.to).toBe('inbox@myapp.com');
 			expect(msg!.subject).toBe('Field Validation');

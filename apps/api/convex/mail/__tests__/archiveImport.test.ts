@@ -16,6 +16,7 @@ import type { Id } from '../../_generated/dataModel';
 import { api } from '../../_generated/api';
 import { MAX_ARCHIVE_BYTES } from '../archiveImport';
 import { modules, seedMailbox, seedFolder } from './helpers.testlib';
+import { readMailboxUsage } from '../mailboxUsage';
 
 const sessionMocks = vi.hoisted(() => ({
 	userId: 'user-A',
@@ -255,7 +256,9 @@ describe('archive import', () => {
 		);
 		expect(status?.messagesImported).toBe(1);
 		expect((await messagesIn(t, mailboxId)).map((m) => m.subject)).toEqual(['One']);
-		const mailbox = await t.run(async (ctx) => await ctx.db.get(mailboxId));
+		const mailbox = await t.run(
+			async (ctx) => await readMailboxUsage(ctx.db, (await ctx.db.get(mailboxId))!)
+		);
 		expect(mailbox?.usedBytes).toBeGreaterThan(0);
 		expect(mailbox?.usedBytes).toBeLessThanOrEqual(quotaBytes);
 	});

@@ -20,7 +20,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalAction, internalMutation } from '../_generated/server';
+import { internalAction } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { logInfo } from '../lib/runtimeLog';
 

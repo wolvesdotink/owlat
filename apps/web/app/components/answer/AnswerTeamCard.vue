@@ -8,6 +8,7 @@ import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 import TaskContext from '~/components/agent-tasks/TaskContext.vue';
 import { resolveReviewFocusKey } from '~/utils/taskFlowKeyboard';
 import { useOrganization } from '~/composables/useOrganization';
+import { useLocalized } from '~/composables/useLocalized';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import {
 	GENERIC_TEAMMATE_NAME,
@@ -42,10 +43,7 @@ const categoryLabel = computed(() => {
 	return capitalize(te(key) ? t(key) : category);
 });
 
-type CollisionMessage = string | { key: string; params?: Record<string, unknown> };
-function collisionText(message: CollisionMessage): string {
-	return typeof message === 'string' ? t(message) : t(message.key, message.params ?? {});
-}
+const collisionText = useLocalized();
 
 const { needsReply, onApprove, approveOption, onReject, undoApprove, composeAndSend } =
 	useReviewQueue();
@@ -179,8 +177,9 @@ async function sendReply() {
 	}
 }
 
+// Editing happens where every reply is written: Answer mode on the thread.
 function openThread() {
-	if (props.entry.thread) void navigateTo(`/dashboard/inbox/${props.entry.thread._id}`);
+	if (props.entry.thread) props.controls.openAnswer();
 }
 
 function onKeydown(event: KeyboardEvent) {
@@ -220,7 +219,11 @@ const secondaryButton =
 		<TaskAsk
 			class="mt-3 mb-4"
 			:ask="message.subject || undefined"
-			:detail="message.textBody || t('components.agentTasks.reviewFocusFlow.noTextContent')"
+			:detail="
+				message.textBody ||
+				message.bodyExcerpt ||
+				t('components.agentTasks.reviewFocusFlow.noTextContent')
+			"
 			:why="
 				message.agentDecision?.reason
 					? t(

@@ -2,7 +2,12 @@ import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
-import { assertEditableForPublishableChange } from '../lib/publishableEmail';
+import {
+	assertEditableForPublishableChange,
+	withRenderedTranslations,
+} from '../lib/publishableEmail';
+import { assertContentRevision } from '../lib/contentRevision';
+import { rendererVersionArg } from '../lib/rendererVersion';
 import {
 	addTranslationPatch,
 	removeTranslationPatch,
@@ -39,7 +44,16 @@ export const addTranslation = authedMutation({
 	args: {
 		templateId: v.id('emailTemplates'),
 		language: v.string(), // Language code (e.g., "de", "fr", "es")
+		// Ignored: the server renders every language's delivery HTML from the
+		// stored overlays in this write (lib/publishableEmail.ts). Still accepted
+		// so older clients keep working.
+		htmlContent: v.optional(v.string()),
+		// Ignored, like htmlContent.
+		rendererVersion: rendererVersionArg,
 		forceWhilePublished: v.optional(v.boolean()),
+		// The `contentRevision` the caller built this write on. When given, the
+		// write is refused with `conflict` if the row has moved on since.
+		expectedContentRevision: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		await requireOrgPermission(
@@ -49,12 +63,17 @@ export const addTranslation = authedMutation({
 		);
 		const template = await getOrThrow(ctx, args.templateId, 'Email template');
 		assertEditableForPublishableChange(template, 'Template', args.forceWhilePublished);
+		assertContentRevision(template, args.expectedContentRevision);
 
-		await ctx.db.patch(
-			args.templateId,
-			addTranslationPatch(template, args.language, TEMPLATE_TRANSLATABLE_FIELDS)
+		const patch = await withRenderedTranslations(
+			ctx,
+			template,
+			addTranslationPatch(template, args.language, TEMPLATE_TRANSLATABLE_FIELDS),
+			'personalization'
 		);
-		return args.templateId;
+		await ctx.db.patch(args.templateId, patch);
+		// The revision this write stored; the next write builds on it.
+		return { templateId: args.templateId, contentRevision: patch.contentRevision };
 	},
 });
 
@@ -68,7 +87,16 @@ export const updateTranslation = authedMutation({
 		subject: v.optional(v.string()),
 		previewText: v.optional(v.string()),
 		blocks: v.optional(v.string()), // JSON string of Record<blockId, TranslatableBlockContent>
+		// Ignored: the server renders every language's delivery HTML from the
+		// stored overlays in this write (lib/publishableEmail.ts). Still accepted
+		// so older clients keep working.
+		htmlContent: v.optional(v.string()),
+		// Ignored, like htmlContent.
+		rendererVersion: rendererVersionArg,
 		forceWhilePublished: v.optional(v.boolean()),
+		// The `contentRevision` the caller built this write on. When given, the
+		// write is refused with `conflict` if the row has moved on since.
+		expectedContentRevision: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		await requireOrgPermission(
@@ -78,12 +106,17 @@ export const updateTranslation = authedMutation({
 		);
 		const template = await getOrThrow(ctx, args.templateId, 'Email template');
 		assertEditableForPublishableChange(template, 'Template', args.forceWhilePublished);
+		assertContentRevision(template, args.expectedContentRevision);
 
-		await ctx.db.patch(
-			args.templateId,
-			updateTranslationPatch(template, args, TEMPLATE_TRANSLATABLE_FIELDS)
+		const patch = await withRenderedTranslations(
+			ctx,
+			template,
+			updateTranslationPatch(template, args, TEMPLATE_TRANSLATABLE_FIELDS),
+			'personalization'
 		);
-		return args.templateId;
+		await ctx.db.patch(args.templateId, patch);
+		// The revision this write stored; the next write builds on it.
+		return { templateId: args.templateId, contentRevision: patch.contentRevision };
 	},
 });
 
@@ -93,6 +126,9 @@ export const removeTranslation = authedMutation({
 		templateId: v.id('emailTemplates'),
 		language: v.string(),
 		forceWhilePublished: v.optional(v.boolean()),
+		// The `contentRevision` the caller built this write on. When given, the
+		// write is refused with `conflict` if the row has moved on since.
+		expectedContentRevision: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		await requireOrgPermission(
@@ -102,9 +138,17 @@ export const removeTranslation = authedMutation({
 		);
 		const template = await getOrThrow(ctx, args.templateId, 'Email template');
 		assertEditableForPublishableChange(template, 'Template', args.forceWhilePublished);
+		assertContentRevision(template, args.expectedContentRevision);
 
-		await ctx.db.patch(args.templateId, removeTranslationPatch(template, args.language));
-		return args.templateId;
+		const patch = await withRenderedTranslations(
+			ctx,
+			template,
+			removeTranslationPatch(template, args.language),
+			'personalization'
+		);
+		await ctx.db.patch(args.templateId, patch);
+		// The revision this write stored; the next write builds on it.
+		return { templateId: args.templateId, contentRevision: patch.contentRevision };
 	},
 });
 
@@ -114,7 +158,18 @@ export const setDefaultLanguage = authedMutation({
 	args: {
 		templateId: v.id('emailTemplates'),
 		language: v.string(),
+		// Ignored: the server renders the swapped row's HTML, text/plain body and
+		// every other language's HTML in this write, so the send path never pairs
+		// the new subject with the old language's body. Still accepted so older
+		// clients keep working.
+		htmlContent: v.optional(v.string()),
+		plainTextContent: v.optional(v.string()),
+		htmlTranslations: v.optional(v.string()),
+		rendererVersion: rendererVersionArg,
 		forceWhilePublished: v.optional(v.boolean()),
+		// The `contentRevision` the caller built this write on. When given, the
+		// write is refused with `conflict` if the row has moved on since.
+		expectedContentRevision: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		await requireOrgPermission(
@@ -124,10 +179,14 @@ export const setDefaultLanguage = authedMutation({
 		);
 		const template = await getOrThrow(ctx, args.templateId, 'Email template');
 		assertEditableForPublishableChange(template, 'Template', args.forceWhilePublished);
+		assertContentRevision(template, args.expectedContentRevision);
 
 		const patch = setDefaultLanguagePatch(template, args.language, TEMPLATE_TRANSLATABLE_FIELDS);
 		if (patch) {
-			await ctx.db.patch(args.templateId, patch);
+			await ctx.db.patch(
+				args.templateId,
+				await withRenderedTranslations(ctx, template, patch, 'personalization')
+			);
 		}
 		return args.templateId;
 	},

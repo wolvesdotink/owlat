@@ -1,9 +1,12 @@
 import { v } from 'convex/values';
-import { internalAction, internalMutation, internalQuery } from '../_generated/server';
+import { internalAction, internalQuery } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { getOptional } from '../lib/env';
 import { summarize } from './sendingReputation';
 import { logError, logWarn } from '../lib/runtimeLog';
+import { readInstanceCounter } from '../lib/instanceCounters';
+import { readCachedContactCount } from '../lib/contactCountHelpers';
 
 /**
  * Gather instance metrics for reporting to the control plane.
@@ -42,15 +45,15 @@ export const gatherMetrics = internalQuery({
 		);
 
 		// 2. Transactional emails sent: read cached count
-		const settings = await ctx.db.query('instanceSettings').first();
-		const transactionalEmailsSent = settings?.transactionalSendCount ?? 0;
+		const sends = await readInstanceCounter(ctx.db, 'sends');
+		const transactionalEmailsSent = sends.transactionalSendCount ?? 0;
 
 		// 3. User count: org-scoped, bounded by org membership size.
 		const users = await ctx.db.query('userProfiles').collect(); // bounded: single-org membership
 		const userCount = users.length;
 
 		// 4. Contact count: read cached value
-		const contactCount = settings?.contactCount ?? 0;
+		const contactCount = (await readCachedContactCount(ctx.db)) ?? 0;
 
 		// 5. Sending reputation — rolling 30-day org window, derived on read
 		// through the single summarizer (no longer the stale latest-bucket
@@ -135,7 +138,7 @@ export const reconcileTransactionalSendCount = internalMutation({
 		const settings = await ctx.db.query('instanceSettings').first();
 		if (!settings) return;
 
-		const cachedCount = settings.transactionalSendCount ?? 0;
+		const cachedCount = (await readInstanceCounter(ctx.db, 'sends')).transactionalSendCount ?? 0;
 		const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
 
 		// Count recent sends by streaming (async iteration, no `.paginate()`):

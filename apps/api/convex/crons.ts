@@ -111,6 +111,15 @@ crons.interval(
 	internal.auth.accountDeletion.processPendingDeletions
 );
 
+// Resume a workspace deletion whose chain went quiet or ran out of retries, from
+// its saved step: the write fence stays up until the deletion completes.
+crons.interval(
+	'recover workspace deletion',
+	{ minutes: 10 },
+	internal.workspaces.deletion.walker.recover,
+	{}
+);
+
 // Clean up old webhook delivery logs weekly
 // Removes logs older than 30 days to prevent unbounded growth
 crons.interval('cleanup webhook logs', { hours: 168 }, internal.webhooks.cleanup.cleanupOldLogs);
@@ -306,7 +315,7 @@ crons.interval(
 );
 
 // Thread-presence sweep — delete shared-inbox presence rows whose heartbeat has
-// aged past the 60s active window (tab closed without a clean leave, laptop
+// aged past the 90s active window (tab closed without a clean leave, laptop
 // slept). Keeps threadPresence bounded; presence is read-side only.
 crons.interval(
 	'sweep expired thread presence',

@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { isReactive, watch } from 'vue';
 import { ConvexError } from 'convex/values';
 import { useConvexQuery } from '../useConvexQuery';
+import { SUBSCRIPTION_LINGER_MS } from '~/lib/sharedConvexSubscriptions';
 
 describe('useConvexQuery', () => {
 	let mockOnUpdateCallback: ((data: unknown) => void) | null = null;
@@ -99,6 +101,56 @@ describe('useConvexQuery', () => {
 		});
 	});
 
+	describe('structural sharing', () => {
+		const doc = (id: string, subject: string) => ({ _id: id, subject, labels: ['inbox'] });
+
+		it('keeps the object of every row that did not change', () => {
+			const { data } = useConvexQuery(fakeQuery, { teamId: '123' });
+			mockOnUpdateCallback!({ threads: [doc('a', 'One'), doc('b', 'Two')], nextCursor: null });
+			const first = data.value as { threads: ReturnType<typeof doc>[] };
+			const [a, b] = first.threads;
+
+			// Convex re-delivers everything as new objects; only b changed, and a new
+			// row arrived on top.
+			mockOnUpdateCallback!({
+				threads: [doc('c', 'Three'), doc('a', 'One'), doc('b', 'Two, edited')],
+				nextCursor: null,
+			});
+			const second = data.value as { threads: ReturnType<typeof doc>[] };
+
+			expect(second).not.toBe(first);
+			expect(second.threads[1]).toBe(a);
+			expect(second.threads[2]).not.toBe(b);
+			expect(second.threads[2]!.subject).toBe('Two, edited');
+			expect(second.threads[2]!.labels).toBe(b!.labels);
+		});
+
+		it('does not touch data, or wake its watchers, when an update changes nothing', () => {
+			const { data } = useConvexQuery(fakeQuery, { teamId: '123' });
+			mockOnUpdateCallback!([doc('a', 'One')]);
+			const before = data.value;
+			const onChange = vi.fn();
+			watch(data, onChange, { flush: 'sync' });
+
+			mockOnUpdateCallback!([doc('a', 'One')]);
+			expect(data.value).toBe(before);
+			expect(onChange).not.toHaveBeenCalled();
+
+			mockOnUpdateCallback!([doc('a', 'Changed')]);
+			expect(onChange).toHaveBeenCalledOnce();
+		});
+
+		it('holds the delivered value shallowly, without reactive proxies', () => {
+			const { data } = useConvexQuery(fakeQuery, { teamId: '123' });
+			const delivered = [doc('a', 'One')];
+
+			mockOnUpdateCallback!(delivered);
+
+			expect(data.value).toBe(delivered);
+			expect(isReactive(data.value)).toBe(false);
+		});
+	});
+
 	describe('skip behavior', () => {
 		it('stays loading and does not call onUpdate when args return skip', () => {
 			const { isLoading } = useConvexQuery(fakeQuery, () => 'skip' as const);
@@ -187,15 +239,22 @@ describe('useConvexQuery', () => {
 	});
 
 	describe('cleanup', () => {
-		it('cleans up subscription on unmount', () => {
-			useConvexQuery(fakeQuery, { teamId: '123' });
+		it('releases the subscription once the linger after unmount runs out', () => {
+			vi.useFakeTimers();
+			try {
+				useConvexQuery(fakeQuery, { teamId: '123' });
 
-			expect(mockClient.onUpdate).toHaveBeenCalledOnce();
-			expect(onScopeDisposeCallback).toBeTypeOf('function');
+				expect(mockClient.onUpdate).toHaveBeenCalledOnce();
+				expect(onScopeDisposeCallback).toBeTypeOf('function');
 
-			onScopeDisposeCallback!();
+				onScopeDisposeCallback!();
+				expect(mockUnsubscribe).not.toHaveBeenCalled();
 
-			expect(mockUnsubscribe).toHaveBeenCalledOnce();
+				vi.advanceTimersByTime(SUBSCRIPTION_LINGER_MS);
+				expect(mockUnsubscribe).toHaveBeenCalledOnce();
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 
 		it('does not call unsubscribe on unmount if no subscription exists', () => {
@@ -347,17 +406,30 @@ describe('useConvexQuery', () => {
 			expect(mockClient.onUpdate).toHaveBeenCalledTimes(2);
 		});
 
-		it('unsubscribes old subscription before subscribing new on args change', async () => {
-			const teamId = ref('123');
-			useConvexQuery(fakeQuery, () => ({ teamId: teamId.value }));
+		it('keeps the old args warm after an args change, then releases them', async () => {
+			vi.useFakeTimers();
+			try {
+				const teamId = ref('123');
+				const { data } = useConvexQuery(fakeQuery, () => ({ teamId: teamId.value }));
+				mockOnUpdateCallback!(['team 123']);
 
-			expect(mockUnsubscribe).not.toHaveBeenCalled();
+				teamId.value = '456';
+				await nextTick();
+				expect(mockClient.onUpdate).toHaveBeenCalledTimes(2);
+				expect(mockUnsubscribe).not.toHaveBeenCalled();
 
-			teamId.value = '456';
-			await nextTick();
+				// Back to the first args inside the linger: no new subscription, and
+				// the value is there before any callback fires.
+				teamId.value = '123';
+				await nextTick();
+				expect(mockClient.onUpdate).toHaveBeenCalledTimes(2);
+				expect(data.value).toEqual(['team 123']);
 
-			expect(mockUnsubscribe).toHaveBeenCalledOnce();
-			expect(mockClient.onUpdate).toHaveBeenCalledTimes(2);
+				vi.advanceTimersByTime(SUBSCRIPTION_LINGER_MS);
+				expect(mockUnsubscribe).toHaveBeenCalledOnce();
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 	});
 

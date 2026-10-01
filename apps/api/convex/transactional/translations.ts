@@ -2,7 +2,12 @@ import { v } from 'convex/values';
 import { transactionalMutation, transactionalQuery } from './_helpers';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
-import { assertEditableForPublishableChange } from '../lib/publishableEmail';
+import {
+	assertEditableForPublishableChange,
+	withRenderedTranslations,
+} from '../lib/publishableEmail';
+import { assertContentRevision } from '../lib/contentRevision';
+import { rendererVersionArg } from '../lib/rendererVersion';
 import {
 	addTranslationPatch,
 	removeTranslationPatch,
@@ -41,7 +46,16 @@ export const addTranslation = transactionalMutation({
 	args: {
 		id: v.id('transactionalEmails'),
 		language: v.string(),
+		// Ignored: the server renders every language's delivery HTML from the
+		// stored overlays in this write (lib/publishableEmail.ts). Still accepted
+		// so older clients keep working.
+		htmlContent: v.optional(v.string()),
+		// Ignored, like htmlContent.
+		rendererVersion: rendererVersionArg,
 		forceWhilePublished: v.optional(v.boolean()),
+		// The `contentRevision` the caller built this write on. When given, the
+		// write is refused with `conflict` if the row has moved on since.
+		expectedContentRevision: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		await requireOrgPermission(
@@ -51,12 +65,17 @@ export const addTranslation = transactionalMutation({
 		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 		assertEditableForPublishableChange(email, 'Transactional email', args.forceWhilePublished);
+		assertContentRevision(email, args.expectedContentRevision);
 
-		await ctx.db.patch(
-			args.id,
-			addTranslationPatch(email, args.language, TRANSACTIONAL_TRANSLATABLE_FIELDS)
+		const patch = await withRenderedTranslations(
+			ctx,
+			email,
+			addTranslationPatch(email, args.language, TRANSACTIONAL_TRANSLATABLE_FIELDS),
+			'data'
 		);
-		return args.id;
+		await ctx.db.patch(args.id, patch);
+		// The revision this write stored; the next write builds on it.
+		return { id: args.id, contentRevision: patch.contentRevision };
 	},
 });
 
@@ -70,7 +89,16 @@ export const updateTranslation = transactionalMutation({
 		language: v.string(),
 		subject: v.optional(v.string()),
 		blocks: v.optional(v.string()), // JSON string of Record<blockId, TranslatableBlockContent>
+		// Ignored: the server renders every language's delivery HTML from the
+		// stored overlays in this write (lib/publishableEmail.ts). Still accepted
+		// so older clients keep working.
+		htmlContent: v.optional(v.string()),
+		// Ignored, like htmlContent.
+		rendererVersion: rendererVersionArg,
 		forceWhilePublished: v.optional(v.boolean()),
+		// The `contentRevision` the caller built this write on. When given, the
+		// write is refused with `conflict` if the row has moved on since.
+		expectedContentRevision: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		await requireOrgPermission(
@@ -80,12 +108,17 @@ export const updateTranslation = transactionalMutation({
 		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 		assertEditableForPublishableChange(email, 'Transactional email', args.forceWhilePublished);
+		assertContentRevision(email, args.expectedContentRevision);
 
-		await ctx.db.patch(
-			args.id,
-			updateTranslationPatch(email, args, TRANSACTIONAL_TRANSLATABLE_FIELDS)
+		const patch = await withRenderedTranslations(
+			ctx,
+			email,
+			updateTranslationPatch(email, args, TRANSACTIONAL_TRANSLATABLE_FIELDS),
+			'data'
 		);
-		return args.id;
+		await ctx.db.patch(args.id, patch);
+		// The revision this write stored; the next write builds on it.
+		return { id: args.id, contentRevision: patch.contentRevision };
 	},
 });
 
@@ -97,6 +130,9 @@ export const removeTranslation = transactionalMutation({
 		id: v.id('transactionalEmails'),
 		language: v.string(),
 		forceWhilePublished: v.optional(v.boolean()),
+		// The `contentRevision` the caller built this write on. When given, the
+		// write is refused with `conflict` if the row has moved on since.
+		expectedContentRevision: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		await requireOrgPermission(
@@ -106,8 +142,16 @@ export const removeTranslation = transactionalMutation({
 		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 		assertEditableForPublishableChange(email, 'Transactional email', args.forceWhilePublished);
+		assertContentRevision(email, args.expectedContentRevision);
 
-		await ctx.db.patch(args.id, removeTranslationPatch(email, args.language));
-		return args.id;
+		const patch = await withRenderedTranslations(
+			ctx,
+			email,
+			removeTranslationPatch(email, args.language),
+			'data'
+		);
+		await ctx.db.patch(args.id, patch);
+		// The revision this write stored; the next write builds on it.
+		return { id: args.id, contentRevision: patch.contentRevision };
 	},
 });

@@ -322,6 +322,48 @@ describe('useBackendOperation', () => {
 		});
 	});
 
+	describe('optimisticUpdate', () => {
+		it("hands the operation's optimistic update to client.mutation", async () => {
+			mutation.mockResolvedValue(null);
+			const optimisticUpdate = vi.fn();
+			const { run } = build(fakeOp, { label: 'star', optimisticUpdate });
+
+			await run({ id: 'm1' });
+
+			expect(mutation).toHaveBeenCalledWith(fakeOp, { id: 'm1' }, { optimisticUpdate });
+		});
+
+		it('lets one run use its own optimistic update instead', async () => {
+			mutation.mockResolvedValue(null);
+			const own = vi.fn();
+			const perRun = vi.fn();
+			const { run } = build(fakeOp, { label: 'star', optimisticUpdate: own });
+
+			await run({ id: 'm1' }, { optimisticUpdate: perRun });
+
+			expect(mutation).toHaveBeenCalledWith(fakeOp, { id: 'm1' }, { optimisticUpdate: perRun });
+		});
+
+		it('keeps the plain two-argument call without one', async () => {
+			mutation.mockResolvedValue(null);
+			const { run } = build(fakeOp, { label: 'star' });
+
+			await run({ id: 'm1' }, {});
+
+			expect(mutation.mock.calls[0]).toEqual([fakeOp, { id: 'm1' }]);
+		});
+
+		it('still applies the failure policy when an optimistic write fails', async () => {
+			mutation.mockRejectedValue(
+				new ConvexError({ category: 'forbidden', message: 'Backend English' })
+			);
+			const { run } = build(fakeOp, { label: 'star', optimisticUpdate: vi.fn() });
+
+			expect(await run({ id: 'm1' })).toEqual({ ok: false });
+			expect(showToast).toHaveBeenCalledWith(expect.any(String), 'error');
+		});
+	});
+
 	describe('null client', () => {
 		it('toasts and returns a failure envelope without throwing', async () => {
 			vi.stubGlobal('useConvex', () => null);

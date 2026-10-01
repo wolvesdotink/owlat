@@ -10,7 +10,8 @@
 import type { MutationCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
 import { sanitizeStoredBlocksJson } from '../../lib/emailContentSanitize';
-import { loadEmailTheme, renderPublishableEmail } from '../../lib/publishableEmail';
+import { recordListingCounter } from '../../lib/listingCounters';
+import { loadEmailTheme, renderPublishableEmail } from '../../lib/publishableEmailRender';
 import { SEED_TAG, type LoadResult, type Loader } from './types';
 
 type TemplateType = 'marketing' | 'transactional';
@@ -64,6 +65,7 @@ async function load(ctx: MutationCtx, rawRecords: unknown[]): Promise<LoadResult
 			createdAt: now,
 			updatedAt: now,
 		});
+		await recordListingCounter(ctx, 'templateType', null, { type: rec.type });
 		ids[rec.slug] = id;
 		inserted++;
 	}

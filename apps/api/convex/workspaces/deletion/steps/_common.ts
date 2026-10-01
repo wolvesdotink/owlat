@@ -32,8 +32,11 @@ export type OrganizationDeletionTable =
 	| 'mailAttachments'
 	| 'mailAttachmentBackfillJobs'
 	| 'mailBodySearchBackfillJobs'
+	| 'mailMessageBodies'
 	| 'mailMessages'
+	| 'mailMessageParts'
 	| 'mailDrafts'
+	| 'transactionalPendingUploads'
 	| 'transactionalSends'
 	| 'emailSends'
 	| 'agentActions'
@@ -50,9 +53,14 @@ export type OrganizationDeletionTable =
 	| 'threadPresence'
 	| 'threadReads'
 	| 'inboxFollowUps'
+	| 'threadCatchUps'
 	| 'inboxAssignmentNotices'
 	| 'inboundMessages'
 	| 'conversationThreads'
+	| 'counterScopes'
+	| 'counterBuckets'
+	| 'mailFolderMembership'
+	| 'mailFolderUidBlocks'
 	| 'mailAliases'
 	| 'mailFolders'
 	| 'mailLabels'
@@ -73,6 +81,7 @@ export type OrganizationDeletionTable =
 	| 'mailThreadVisits'
 	| 'todayStates'
 	| 'todayThreadSummaries'
+	| 'mailboxUsage'
 	| 'mailboxes'
 	| 'webhookDeliveryLogs'
 	| 'mtaCampaignAlertReceipts'
@@ -90,6 +99,7 @@ export type OrganizationDeletionTable =
 	| 'emailBlocks'
 	| 'contactErasureJobs'
 	| 'contacts'
+	| 'contactPropertyDeletionJobs'
 	| 'contactProperties'
 	| 'topics'
 	| 'segments'
@@ -123,6 +133,8 @@ export type OrganizationDeletionTable =
 	| 'onboardingProgress'
 	| 'auditLogs'
 	| 'invitationResends'
+	| 'featureFlagSettings'
+	| 'instanceCounters'
 	| 'instanceSettings'
 	| 'unifiedMessages'
 	| 'channelConfigs'
@@ -154,6 +166,7 @@ export type OrganizationDeletionTable =
 	| 'mailArchiveImports'
 	| 'mailboxMoves'
 	| 'externalMailFolderSync'
+	| 'externalMailAccessTokens'
 	| 'externalMailRemoteOps'
 	| 'externalMailAccounts'
 	| 'externalMailOAuthStates'
@@ -163,6 +176,7 @@ export type OrganizationDeletionTable =
 	| 'webhookPayloads'
 	| 'automationStatShards'
 	| 'campaignSendJobs'
+	| 'audienceCountJobs'
 	| 'campaignStatShards'
 	| 'campaignSenders'
 	| 'sendDailyStats'
@@ -183,6 +197,7 @@ export type OrganizationDeletionTable =
 	| 'aiMessages'
 	| 'aiConversations'
 	| 'aiDraftStreams'
+	| 'answerAskSessions'
 	| 'coalesceBatches'
 	| 'visualizations'
 	| 'dashboardLayouts'
@@ -224,8 +239,11 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailAttachments'),
 	v.literal('mailAttachmentBackfillJobs'),
 	v.literal('mailBodySearchBackfillJobs'),
+	v.literal('mailMessageBodies'),
 	v.literal('mailMessages'),
+	v.literal('mailMessageParts'),
 	v.literal('mailDrafts'),
+	v.literal('transactionalPendingUploads'),
 	v.literal('transactionalSends'),
 	v.literal('emailSends'),
 	v.literal('agentActions'),
@@ -242,9 +260,14 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('threadPresence'),
 	v.literal('threadReads'),
 	v.literal('inboxFollowUps'),
+	v.literal('threadCatchUps'),
 	v.literal('inboxAssignmentNotices'),
 	v.literal('inboundMessages'),
 	v.literal('conversationThreads'),
+	v.literal('counterScopes'),
+	v.literal('counterBuckets'),
+	v.literal('mailFolderMembership'),
+	v.literal('mailFolderUidBlocks'),
 	v.literal('mailAliases'),
 	v.literal('mailFolders'),
 	v.literal('mailLabels'),
@@ -265,6 +288,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailThreadVisits'),
 	v.literal('todayStates'),
 	v.literal('todayThreadSummaries'),
+	v.literal('mailboxUsage'),
 	v.literal('mailboxes'),
 	v.literal('webhookDeliveryLogs'),
 	v.literal('mtaCampaignAlertReceipts'),
@@ -282,6 +306,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('emailBlocks'),
 	v.literal('contactErasureJobs'),
 	v.literal('contacts'),
+	v.literal('contactPropertyDeletionJobs'),
 	v.literal('contactProperties'),
 	v.literal('topics'),
 	v.literal('segments'),
@@ -315,6 +340,8 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('onboardingProgress'),
 	v.literal('auditLogs'),
 	v.literal('invitationResends'),
+	v.literal('featureFlagSettings'),
+	v.literal('instanceCounters'),
 	v.literal('instanceSettings'),
 	v.literal('unifiedMessages'),
 	v.literal('channelConfigs'),
@@ -346,6 +373,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailArchiveImports'),
 	v.literal('mailboxMoves'),
 	v.literal('externalMailFolderSync'),
+	v.literal('externalMailAccessTokens'),
 	v.literal('externalMailRemoteOps'),
 	v.literal('externalMailAccounts'),
 	v.literal('externalMailOAuthStates'),
@@ -355,6 +383,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('webhookPayloads'),
 	v.literal('automationStatShards'),
 	v.literal('campaignSendJobs'),
+	v.literal('audienceCountJobs'),
 	v.literal('campaignStatShards'),
 	v.literal('campaignSenders'),
 	v.literal('sendDailyStats'),
@@ -375,6 +404,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('aiMessages'),
 	v.literal('aiConversations'),
 	v.literal('aiDraftStreams'),
+	v.literal('answerAskSessions'),
 	v.literal('coalesceBatches'),
 	v.literal('visualizations'),
 	v.literal('dashboardLayouts'),

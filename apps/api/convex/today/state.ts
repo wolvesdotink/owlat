@@ -46,13 +46,52 @@ function effectiveSeenAt(state: Doc<'todayStates'> | null, scope: Scope | undefi
 	return candidates.length > 0 ? Math.max(...candidates) : undefined;
 }
 
+/** One Workbench's "since you last looked", as the page and the digest use it. */
+export interface Watermark {
+	seenAt: number;
+	previousSeenAt: number | null;
+	isFallback: boolean;
+}
+
+/**
+ * The watermark for one Workbench (or the global one without `scope`). With
+ * no watermark yet it is the first-visit fallback: the last 24 hours from the
+ * server's `now`. The digest reads it here too, so the client never passes a
+ * `since` and both reads agree on the same stored marks.
+ */
+export function resolveWatermark(
+	state: Doc<'todayStates'> | null,
+	scope: Scope | undefined,
+	now: number
+): Watermark {
+	const seenAt = effectiveSeenAt(state, scope);
+	if (seenAt === undefined) {
+		return {
+			seenAt: Math.max(0, now - FIRST_VISIT_LOOKBACK_MS),
+			previousSeenAt: null,
+			isFallback: true,
+		};
+	}
+	const mark = scope ? state?.marks?.find((m) => m.key === scope) : undefined;
+	const previous = scope ? mark?.previousSeenAt : state?.previousSeenAt;
+	return {
+		seenAt,
+		previousSeenAt: previous === undefined || previous === NO_EARLIER_MARK ? null : previous,
+		isFallback: false,
+	};
+}
+
 async function assertScopeReadable(ctx: MutationCtx, scope: Scope | undefined) {
 	if (scope === undefined || scope === 'team') return;
 	const access = await requireMailboxAccess(ctx, scope);
 	if (!access.ok) throwForbidden('Mailbox not accessible');
 }
 
-async function loadState(ctx: QueryCtx | MutationCtx, userId: string, organizationId: string) {
+export async function loadState(
+	ctx: QueryCtx | MutationCtx,
+	userId: string,
+	organizationId: string
+) {
 	return ctx.db
 		.query('todayStates')
 		.withIndex('by_user_and_organization', (q) =>
@@ -66,32 +105,34 @@ async function loadState(ctx: QueryCtx | MutationCtx, userId: string, organizati
  * of that Workbench's mark and the global one). `isFallback` marks the
  * first-visit case, where the page shows the last 24 hours instead of "since
  * you last looked".
+ *
+ * `watermarks` carries the same answer for every Workbench at once: each tab
+ * with a mark of its own, and `unmarked` for any other tab (the global
+ * watermark, with nothing to undo). The web reads this query once, without
+ * `scope`, and picks the open tab's watermark locally, so the hide list and
+ * the watermark share one subscription and a tab switch needs no round trip.
+ *
+ * The first-visit fallback counts from the server clock. `now` is still
+ * accepted for clients from before that change and ignored; drop it after
+ * one release.
  */
 // all-members: every member reads only their own watermark (keyed by session.userId).
 export const get = authedQuery({
 	args: { now: v.optional(v.number()), scope: scopeValidator },
 	handler: async (ctx, args, session) => {
 		const state = await loadState(ctx, session.userId, session.activeOrganizationId);
-		const hiddenMailboxIds = state?.hiddenMailboxIds ?? [];
-		const seenAt = effectiveSeenAt(state, args.scope);
-		if (seenAt !== undefined) {
-			const mark = args.scope ? state?.marks?.find((m) => m.key === args.scope) : undefined;
-			const previous = args.scope ? mark?.previousSeenAt : state?.previousSeenAt;
-			return {
-				seenAt,
-				previousSeenAt: previous === undefined || previous === NO_EARLIER_MARK ? null : previous,
-				isFallback: false,
-				hiddenMailboxIds,
-			};
-		}
-		// `now` comes from the client so the query result is stable between
-		// renders; the server clock would re-key the subscription every call.
-		const now = args.now ?? 0;
+		const now = Date.now();
+		const marks = (state?.marks ?? []).map((m) => ({
+			scope: m.key,
+			...resolveWatermark(state, m.key, now),
+		}));
 		return {
-			seenAt: Math.max(0, now - FIRST_VISIT_LOOKBACK_MS),
-			previousSeenAt: null,
-			isFallback: true,
-			hiddenMailboxIds,
+			...resolveWatermark(state, args.scope, now),
+			hiddenMailboxIds: state?.hiddenMailboxIds ?? [],
+			watermarks: {
+				unmarked: { ...resolveWatermark(state, undefined, now), previousSeenAt: null },
+				marks,
+			},
 		};
 	},
 });

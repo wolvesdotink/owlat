@@ -22,6 +22,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { effectScope, ref, nextTick } from 'vue';
 import { createTestI18n } from '~/__tests__/i18n';
 import { queryResult } from '~/__tests__/queryStubs';
+import { DEFAULT_UNDO_SEND_SECONDS } from '@owlat/shared/undoSendPolicy';
 
 // The composables under test are stood up OUTSIDE a component setup here, so
 // the `useI18n` auto-import resolves straight to a catalog-backed composer —
@@ -47,7 +48,7 @@ vi.mock('@owlat/api', () => ({
 			signatures: { list: 'signatures.list' },
 			// usePostboxCompose reads the undo-send window through
 			// usePostboxSettings (plan idea 8); unanswered here, so it resolves to
-			// the 30s default and puts no `undoSendDelayMs` on the wire.
+			// the 10s default and puts no `undoSendDelayMs` on the wire.
 			settings: { get: 'settings.get', update: 'settings.update' },
 		},
 	},
@@ -262,6 +263,8 @@ beforeEach(async () => {
 
 	vi.stubGlobal('useI18n', () => i18n.global);
 	vi.stubGlobal('useDesktopContext', () => ({ isDesktop: ref(false) }));
+	// The offline cache namespaces its rows by the signed-in user.
+	vi.stubGlobal('useAuth', () => ({ user: ref({ id: 'user-test' }) }));
 	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => false }));
 	vi.stubGlobal('useToast', () => ({
 		showToast: (msg: string) => {
@@ -350,6 +353,22 @@ describe('offline send', () => {
 		// The queued send arms the undo window with its synthetic token.
 		expect(undoArm).toHaveBeenCalledOnce();
 		expect(undoArm).toHaveBeenCalledWith({ ...result, mailboxId: 'mbx-1' });
+	});
+
+	it('holds a default-window queued send for the shared default window', async () => {
+		const { OFFLINE_QUEUE_UNDO_WINDOW_MS } = await import('../usePostboxOfflineOutbox');
+		const composer = await makeComposer();
+		goOffline();
+
+		const before = Date.now();
+		const result = await composer.send();
+		const after = Date.now();
+
+		// The default window puts no delay on the payload, so the queue's own
+		// window decides the countdown — and it must be the one the server holds for.
+		expect(OFFLINE_QUEUE_UNDO_WINDOW_MS).toBe(DEFAULT_UNDO_SEND_SECONDS * 1_000);
+		expect(result.sendAt).toBeGreaterThanOrEqual(before + OFFLINE_QUEUE_UNDO_WINDOW_MS);
+		expect(result.sendAt).toBeLessThanOrEqual(after + OFFLINE_QUEUE_UNDO_WINDOW_MS);
 	});
 
 	it('surfaces a storage failure instead of pretending the send worked', async () => {

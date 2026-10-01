@@ -16,8 +16,9 @@
  * exactly the value written. Insertion order is preserved.
  */
 
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { writeOwnerOnlyFile } from './ownerOnlyFile';
 
 export type EnvMap = Record<string, string>;
 
@@ -261,6 +262,10 @@ async function readCurrentEntries(path: string): Promise<Map<string, EnvEntry>> 
  * unrelated write (`owlat env`, the setup wizard) would change what the
  * containers get or fail outright. Changed and new values are encoded with
  * {@link formatEnvValue}.
+ *
+ * The file holds deployment secrets, so it is written owner-only (0600), and
+ * an existing file is tightened before anything is written into it (see
+ * {@link writeOwnerOnlyFile}).
  */
 export async function writeEnvFile(path: string, map: EnvMap): Promise<void> {
 	const current = await readCurrentEntries(path);
@@ -289,7 +294,7 @@ export async function writeEnvFile(path: string, map: EnvMap): Promise<void> {
 		}
 		lines.push(`${key}=${formatEnvValue(value)}`);
 	}
-	await writeFile(path, lines.join('\n') + '\n', { mode: 0o600 });
+	await writeOwnerOnlyFile(path, lines.join('\n') + '\n');
 }
 
 /**

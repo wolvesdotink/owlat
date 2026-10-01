@@ -27,7 +27,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, internalQuery } from '../_generated/server';
+import { internalQuery } from '../_generated/server';
+import { internalMutation, readActiveWorkspaceDeletion } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { audienceValidator } from './audience';
 import { abVariantValidator } from '../lib/literalValidators';
@@ -324,10 +325,15 @@ const STUCK_SEND_JOB_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes without progre
  * is the belt to that braces: it also covers rows parked before that rule
  * existed. Both are cleared by the first hop that makes progress, so a park that
  * never wakes up is still re-driven once its instant has passed.
+ *
+ * Not while a workspace deletion runs: it cancels the walk's hops, so every
+ * resolving walk looks stranded, and a re-driven hop would only have its first
+ * write refused by the fence. The deletion removes the job anyway.
  */
 export const redriveStuckSendJobs = internalMutation({
 	args: {},
 	handler: async (ctx): Promise<{ redriven: number }> => {
+		if (await readActiveWorkspaceDeletion(ctx.db)) return { redriven: 0 };
 		const now = Date.now();
 		const cutoff = now - STUCK_SEND_JOB_THRESHOLD_MS;
 

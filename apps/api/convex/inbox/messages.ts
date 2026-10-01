@@ -12,7 +12,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, internalQuery } from '../_generated/server';
+import { internalQuery } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
@@ -29,7 +30,7 @@ import { rateLimiter } from '../lib/rateLimiter';
 import { extractEmail, normalizeSubject } from '../lib/emailAddress';
 import { isAutomatedMail } from '../lib/inboundClassification';
 import { isSuppressed } from '../lib/suppression';
-import { sealBodyAtWriteMaybe } from '../lib/messageBody';
+import { inboundBodyColumns, inboundMirrorContent } from './bodyStorage';
 import { attachmentIndexingValidator } from '../lib/literalValidators';
 import {
 	inboundMessageArgs,
@@ -49,6 +50,13 @@ export { extractEmail, normalizeSubject };
  * of times, not thousands.
  */
 const DUPLICATE_SCAN_LIMIT = 16;
+
+/** Headroom over the 4,000 characters `classifyReplyOutcome` reads after it
+ * collapses whitespace. */
+const REPLY_TEXT_ARG_CHARS = 64 * 1024;
+
+/** How much of each part the thread preview is built from. */
+const PREVIEW_SOURCE_CHARS = 200_000;
 
 /**
  * The stored row this delivery would duplicate, or `null`.
@@ -115,6 +123,11 @@ export const receiveMessage = internalMutation({
 		// existing caller (and plaintext mail) is byte-identical.
 		isInboundSignatureValid: v.optional(v.boolean()),
 		inboundSignerFingerprint: v.optional(v.string()),
+		// The parts `receiveStoringLargeBodies` moved to sealed storage because
+		// they would not fit the row. `textBody`/`htmlBody` still carry them in
+		// full, for the projections derived below; they are not inlined.
+		textBodyStorageId: v.optional(v.id('_storage')),
+		htmlBodyStorageId: v.optional(v.id('_storage')),
 	},
 	// One spelling of the result, shared with the sealed-mail writer in
 	// `e2ee/open.decryptAndReceive`: a stored message always has a thread and a
@@ -180,15 +193,20 @@ export const receiveMessage = internalMutation({
 			inReplyTo: args.inReplyTo,
 			references: args.references,
 			occurredAt: now,
-			preview: buildMessagePreview({ text: args.textBody, html: args.htmlBody }),
+			// Sliced first: a 140-character preview need not convert or collapse a
+			// 10 MiB body inside a mutation's time budget.
+			preview: buildMessagePreview({
+				text: args.textBody?.slice(0, PREVIEW_SOURCE_CHARS),
+				html: args.htmlBody?.slice(0, PREVIEW_SOURCE_CHARS),
+			}),
 		});
 
 		// ── 3. Store the inbound message ──
 		// E8b: seal the inline bodies at rest before they land in the row (the
-		// preview derived above is sealed by the thread module too. Readers unseal
-		// both through the accessor plane.
-		const sealedTextBody = await sealBodyAtWriteMaybe(args.textBody);
-		const sealedHtmlBody = await sealBodyAtWriteMaybe(args.htmlBody);
+		// preview derived above is sealed by the thread module too). A part the
+		// ingest action already moved to storage is referenced, not inlined.
+		// Readers go through lib/messageBodyInbound.ts for either shape.
+		const bodyColumns = await inboundBodyColumns(args);
 		// Confirmed malware quarantines the row instead of drafting on it — the
 		// team-inbox analogue of the personal-mailbox route's `infected → Spam`
 		// routing. The message is STORED either way: this path has a hard
@@ -199,8 +217,7 @@ export const receiveMessage = internalMutation({
 			from: args.from,
 			to: args.to,
 			subject: args.subject,
-			textBody: sealedTextBody,
-			htmlBody: sealedHtmlBody,
+			...bodyColumns,
 			inReplyTo: args.inReplyTo,
 			references: args.references,
 			headers: args.headers,
@@ -241,9 +258,11 @@ export const receiveMessage = internalMutation({
 		const replyText = args.textBody ?? args.htmlBody;
 		if (isReply && replyText && !isInfected && (await isFeatureEnabled(ctx, 'ai.agent'))) {
 			try {
+				// The classifier reads its first 4,000 characters; a multi-megabyte
+				// body has no business in the scheduled job's arguments.
 				await ctx.scheduler.runAfter(0, internal.agent.outcomeFeedback.classifyReplyOutcome, {
 					replyMessageId: inboundMessageId,
-					replyText,
+					replyText: replyText.slice(0, REPLY_TEXT_ARG_CHARS),
 				});
 			} catch (err) {
 				logError('[Inbound Email] Failed to schedule reply-outcome classification:', err);
@@ -270,14 +289,9 @@ export const receiveMessage = internalMutation({
 				threadId,
 				channel: 'email',
 				contactId,
-				content: JSON.stringify({
-					// `text`/`html` are the DECRYPTED plaintext when `sealed` (D3): the
-					// unified timeline + agent pipeline read real content, not ciphertext.
-					text: args.textBody,
-					html: args.htmlBody,
-					subject: args.subject,
-					...(args.isSealed ? { isSealed: true, isSignatureValid: args.isSignatureValid } : {}),
-				}),
+				// Bounded: a large message is mirrored as an excerpt plus the id of
+				// this row, never as a second copy of the whole body.
+				content: inboundMirrorContent(args, inboundMessageId),
 				externalMessageId: args.messageId,
 			});
 		} catch (err) {

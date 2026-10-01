@@ -214,6 +214,7 @@ const copyUrl = async (url: string) => {
 				v-model="selectedTag"
 				:options="tagFilterOptions"
 				:placeholder="t('dashboard.send.media.allTags')"
+				:aria-label="t('dashboard.send.media.tags')"
 			/>
 		</div>
 
@@ -254,7 +255,7 @@ const copyUrl = async (url: string) => {
 			v-else-if="isLoading && assets.length === 0"
 			class="flex items-center justify-center py-20"
 		>
-			<UiSpinner />
+			<UiSpinner delay />
 		</div>
 
 		<!-- Empty state -->

@@ -7,6 +7,7 @@ import {
 	type Variable,
 } from '@owlat/email-builder';
 import { api } from '@owlat/api';
+import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
 import type { StoredAttachment } from '~/components/AttachmentPanel.vue';
 
 const { t } = useI18n();
@@ -133,6 +134,7 @@ const {
 	isSaving,
 	hasChanges,
 	showUnsavedChangesDialog,
+	isSavingBeforeLeave,
 	confirmDiscard,
 	confirmSave,
 	cancelNavigation,
@@ -241,6 +243,7 @@ const handleTogglePublish = async () => {
 				id: emailId.value,
 				htmlContent,
 				htmlTranslations,
+				rendererVersion: EMAIL_RENDERER_VERSION,
 				expectedContentRevision,
 			});
 		}
@@ -430,6 +433,7 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 		<!-- Unsaved Changes Dialog -->
 		<UnsavedChangesDialog
 			:show="showUnsavedChangesDialog"
+			:saving="isSavingBeforeLeave"
 			@close="cancelNavigation"
 			@discard="confirmDiscard"
 			@save="confirmSave"

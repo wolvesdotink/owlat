@@ -21,6 +21,7 @@ import { modules, seedMailbox } from './helpers.testlib';
 import { createTestDomain } from '../../__tests__/factories';
 import { internal } from '../../_generated/api';
 import { resolveSendAsIdentitiesForCtx, isSanctionedSendAsForUser } from '../identities';
+import { readMailboxUsage } from '../mailboxUsage';
 
 // One mutable hoisted session drives both the authedMutation wrapper floor
 // (`getMutationContext`) and the in-handler mailbox gate
@@ -252,7 +253,7 @@ describe('runSentEffects — sent-copy placement', () => {
 		const threads = await t.run((ctx) => ctx.db.query('mailThreads').collect());
 		expect(threads).toHaveLength(1);
 		// Byte usage is charged to the team mailbox.
-		const teamMb = await t.run((ctx) => ctx.db.get(team));
+		const teamMb = await t.run(async (ctx) => readMailboxUsage(ctx.db, (await ctx.db.get(team))!));
 		expect(teamMb?.usedBytes).toBe(RAW_SIZE);
 	});
 
@@ -293,8 +294,10 @@ describe('runSentEffects — sent-copy placement', () => {
 		expect(freshThread?.mailboxId).toBe(personal);
 
 		// usedBytes is charged to the PERSONAL mailbox, not the team mailbox.
-		const personalMb = await t.run((ctx) => ctx.db.get(personal));
-		const teamMb = await t.run((ctx) => ctx.db.get(team));
+		const personalMb = await t.run(async (ctx) =>
+			readMailboxUsage(ctx.db, (await ctx.db.get(personal))!)
+		);
+		const teamMb = await t.run(async (ctx) => readMailboxUsage(ctx.db, (await ctx.db.get(team))!));
 		expect(personalMb?.usedBytes).toBe(RAW_SIZE);
 		expect(teamMb?.usedBytes).toBe(0);
 

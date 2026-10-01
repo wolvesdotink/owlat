@@ -43,7 +43,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery, internalMutation } from '../../_generated/server';
+import { internalQuery } from '../../_generated/server';
+import { internalMutation } from '../../lib/writeFence';
 import { internal } from '../../_generated/api';
 import { publicQuery } from '../../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';

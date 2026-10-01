@@ -18,7 +18,7 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { nanoid } from 'nanoid';
@@ -27,6 +27,7 @@ import { checkEmailDomainVerification } from '../domains/domains';
 import { resolveSendRouteFromDb } from '../lib/sendProviders/route';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { nextDailySendCount } from '../lib/sendingLimits';
+import { readInstanceCounter, writeInstanceCounter } from '../lib/instanceCounters';
 import { enqueueGovernedSend } from '../delivery/governedEnqueue';
 import { recordSendAssignments } from '../delivery/sendAssignments';
 import { runSendIntakeGates, type SendIntakeRejectionReason } from '../delivery/sendIntakeGates';
@@ -34,6 +35,7 @@ import { jsonPrimitiveValue } from '../lib/convexValidators';
 import { getOptional } from '../lib/env';
 import { logWarn } from '../lib/runtimeLog';
 import { featureDisabledMessage, resolveStoredFeatureFlags } from '../lib/featureFlags';
+import { claimPendingUploads } from './pendingUploads';
 import type { FeatureFlagState } from '@owlat/shared/featureFlags';
 import {
 	validateDataVariables,
@@ -110,6 +112,12 @@ export const dispatch = internalMutation({
 		dataVariables: v.optional(v.record(v.string(), jsonPrimitiveValue)),
 		language: v.optional(v.string()),
 		attachmentRefs: v.optional(v.array(attachmentRefValidator)),
+		// The shell registered every `storageId` above as a pending upload, and
+		// this transaction must claim them (`transactional/pendingUploads.ts`).
+		// Optional for a shell of the previous release still running across the
+		// deploy, which registers nothing: remove after the next release and
+		// claim unconditionally.
+		uploadsPending: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args): Promise<DispatchOutcome> => {
 		// 1. The shared pre-row gate sequence: abuse → provider-ready →
@@ -299,6 +307,12 @@ export const dispatch = internalMutation({
 		const attachmentStorageIds = args.attachmentRefs
 			?.filter((a) => a.storageId)
 			.map((a) => a.storageId!);
+		// Ownership of the request's uploaded bytes moves to the row inserted
+		// below, in this transaction. A claim that fails throws, so no Send ever
+		// names a blob the shell released or the expiry sweep freed.
+		if (args.uploadsPending && attachmentStorageIds) {
+			await claimPendingUploads(ctx, attachmentStorageIds);
+		}
 
 		// 9. Insert `transactionalSends` row in `queued`. Writes the resolved
 		//     language onto the row — pre-deepening this lived on the API
@@ -325,14 +339,14 @@ export const dispatch = internalMutation({
 		//     `dispatch` closes the drift seam. The per-template `sendCount`
 		//     denormalization replaces the N+1 scan that `transactional.sends.getCounts`
 		//     used to do over `transactionalSends` per template.
-		// Single instanceSettings patch — transactional + daily counters together
-		// — so the latency-sensitive transactional send RMWs the config singleton
-		// once instead of twice (the daily counter used to re-fetch + patch it
-		// separately, doubling the OCC pressure on one row).
+		// One write for the transactional + daily counters together, on the
+		// `sends` counter row rather than the config singleton every feature gate
+		// reads (plan 2.4), so a send no longer re-runs gated queries.
 		if (settings) {
-			await ctx.db.patch(settings._id, {
-				transactionalSendCount: (settings.transactionalSendCount ?? 0) + 1,
-				...nextDailySendCount(settings, 1, Date.now()),
+			const sends = await readInstanceCounter(ctx.db, 'sends');
+			await writeInstanceCounter(ctx, 'sends', {
+				transactionalSendCount: (sends.transactionalSendCount ?? 0) + 1,
+				...nextDailySendCount(sends, 1, Date.now()),
 			});
 		}
 		await ctx.db.patch(template._id, {

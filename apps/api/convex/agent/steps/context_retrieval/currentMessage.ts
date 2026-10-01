@@ -14,7 +14,11 @@
 import { internal } from '../../../_generated/api';
 import type { ActionCtx } from '../../../_generated/server';
 import { stripRemoteImages } from '@owlat/shared/postboxTrackers';
-import { openInboundMessageBody } from '../../../lib/messageBody';
+import {
+	openInboundMessageBody,
+	type InboundMessageBodyFields,
+} from '../../../lib/messageBodyInbound';
+import type { BlobGet } from '../../../lib/sealedBlob';
 import { stripHiddenContent } from '../security_scan/patterns';
 
 /**
@@ -27,16 +31,16 @@ import { stripHiddenContent } from '../security_scan/patterns';
  * it becomes context. Fails soft (see `stripRemoteImages`): a strip error leaves
  * the HTML as-is, matching prior behaviour, and never blocks retrieval.
  */
-export async function inboundBodyForContext(message: {
-	textBody?: string | null;
-	htmlBody?: string | null;
-}): Promise<string | undefined> {
+export async function inboundBodyForContext(
+	message: InboundMessageBodyFields,
+	storage: BlobGet | null
+): Promise<string | undefined> {
 	// Strip hidden content (HTML comments / display:none / zero-width smuggling)
 	// before the body becomes model context, so a hidden instruction never
 	// reaches the draft even when the message scored below the quarantine
 	// threshold. The plain-text part keeps any markup it quotes, since a reader
 	// sees it as written; only the HTML part has its hidden elements removed.
-	const { text, html } = await openInboundMessageBody(message);
+	const { text, html } = await openInboundMessageBody(message, storage);
 	if (text != null) return stripHiddenContent(text);
 	if (html != null) return stripHiddenContent(stripRemoteImages(html).html, { html: true });
 	return undefined;

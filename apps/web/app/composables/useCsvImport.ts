@@ -2,6 +2,25 @@ import { normalizeEmail } from '@owlat/shared';
 import { parseCsvFile } from '~/utils/contactsCsv';
 import { useDropZone } from '~/composables/useDropZone';
 import { useNativeFilePicker } from '~/composables/useNativeFilePicker';
+import type { BackendOperationResult } from '~/composables/useBackendOperation';
+import {
+	assignColumnField,
+	conflictingScalarField,
+	detectColumnMapping,
+	prepareCsvRows,
+	scalarFieldOwners,
+	type ColumnMapping,
+	type ContactImport,
+	type MappableField,
+	type PreparedRow,
+} from '~/utils/csvImportMapping';
+
+export type {
+	ContactImport,
+	ContactPropertyValue,
+	MappableField,
+	PreparedRow,
+} from '~/utils/csvImportMapping';
 
 export type ImportStep =
 	| 'upload'
@@ -10,16 +29,6 @@ export type ImportStep =
 	| 'preview'
 	| 'importing'
 	| 'complete';
-export type MappableField =
-	| 'email'
-	| 'firstName'
-	| 'lastName'
-	| 'language'
-	| 'topic'
-	| 'property'
-	| 'ignore';
-
-export type ContactPropertyValue = string | number | boolean | null;
 export type HandleDuplicates = 'skip' | 'update';
 export type ListAssignmentMode = 'none' | 'global' | 'column';
 
@@ -32,17 +41,41 @@ export interface ImportResults {
 	addedToList?: number;
 }
 
-export interface ContactImport {
-	email: string;
-	firstName?: string;
-	lastName?: string;
-	language?: string;
-	properties?: Record<string, ContactPropertyValue>;
-}
-
 export interface ContactListAssignment {
 	email: string;
 	topicIds: string[];
+}
+
+/**
+ * One batch's outcome, in the operation module's envelope. The failure arm may
+ * carry the reason: the module has already toasted it, but the completion step
+ * shows it again next to the rows the failure cost.
+ */
+export type ImportBatchOutcome =
+	| BackendOperationResult<ImportResults>
+	| { ok: false; reason: string };
+
+/** The same envelope for the pre-import property registration. */
+export type PreparationOutcome = BackendOperationResult<void> | { ok: false; reason: string };
+
+export type ImportBatchFn = (
+	contacts: ContactImport[],
+	handleDuplicates: HandleDuplicates,
+	options?: {
+		topicId?: string;
+		contactListAssignments?: ContactListAssignment[];
+	}
+) => Promise<ImportBatchOutcome>;
+
+export type RegisterPropertiesFn = (keys: string[]) => Promise<PreparationOutcome>;
+
+/** A CSV data row that did not reach the backend, or reached it in a batch that failed. */
+export interface NotImportedRow {
+	/** 1-based data-row number, the numbering the preview's warnings use. */
+	row: number;
+	email: string;
+	/** `true` for the rows of the failed batch, `false` for the ones never sent. */
+	attempted: boolean;
 }
 
 export interface ValidationResult {
@@ -64,6 +97,15 @@ export const mappableFields: { value: MappableField; label: string }[] = [
 	{ value: 'ignore', label: 'shared.useCsvImport.fields.ignore' },
 ];
 
+/** Rows per `importBatch` call, well under the backend's per-call cap. */
+const IMPORT_BATCH_SIZE = 100;
+
+interface PreparedContact {
+	/** 1-based data-row number. */
+	row: number;
+	contact: ContactImport;
+}
+
 export function useCsvImport() {
 	const { t } = useI18n();
 	const isOpen = ref(false);
@@ -77,7 +119,7 @@ export function useCsvImport() {
 	const csvHeaders = ref<string[]>([]);
 
 	// Mapping state
-	const columnMapping = ref<Record<number, MappableField>>({});
+	const columnMapping = ref<ColumnMapping>({});
 	const handleDuplicates = ref<HandleDuplicates>('skip');
 
 	// Validation state
@@ -85,7 +127,13 @@ export function useCsvImport() {
 
 	// Progress state
 	const progress = ref(0);
+	// Counters of the batches the backend COMMITTED, cumulative across retries.
 	const results = ref<ImportResults | null>(null);
+	// The retry set: the failed batch followed by every row after it, in file
+	// order. Empty once every row has been through a committed batch.
+	const pendingContacts = shallowRef<PreparedContact[]>([]);
+	// How many of `pendingContacts` were in the batch that failed, and why.
+	const failedBatch = ref<{ size: number; reason: string } | null>(null);
 
 	// Topic assignment state
 	const listAssignmentMode = ref<ListAssignmentMode>('none');
@@ -96,7 +144,22 @@ export function useCsvImport() {
 	// Computed
 	const isEmailMapped = computed(() => Object.values(columnMapping.value).includes('email'));
 	const isTopicMapped = computed(() => Object.values(columnMapping.value).includes('topic'));
-	const previewRows = computed(() => parsedData.value.slice(0, 5));
+	/** The column feeding each scalar field (Email, First name, Last name, Language). */
+	const scalarOwners = computed(() => scalarFieldOwners(columnMapping.value));
+	const mappingConflict = computed(() => conflictingScalarField(columnMapping.value));
+	/**
+	 * Every data row as the import will send it. Validation, the preview and the
+	 * payload all read this, so what the preview shows is what gets imported.
+	 */
+	const preparedRows = computed<PreparedRow[]>(() =>
+		prepareCsvRows(parsedData.value, csvHeaders.value, columnMapping.value)
+	);
+	const previewRows = computed(() => preparedRows.value.slice(0, 5));
+	/** Header of the column the email comes from, for the preview. */
+	const emailSourceColumn = computed(() => {
+		const owner = scalarOwners.value.email;
+		return owner === undefined ? null : (csvHeaders.value[owner] ?? null);
+	});
 	const totalRowCount = computed(() => parsedData.value.length);
 	const validContactCount = computed(() => validation.value?.validCount ?? 0);
 	const hasValidationWarnings = computed(() => {
@@ -105,6 +168,16 @@ export function useCsvImport() {
 		return v.invalidEmails.length > 0 || v.duplicateEmails.length > 0 || v.missingEmails.length > 0;
 	});
 	const canImport = computed(() => validContactCount.value > 0);
+
+	const notImportedRows = computed<NotImportedRow[]>(() => {
+		const attemptedCount = failedBatch.value?.size ?? 0;
+		return pendingContacts.value.map((pending, index) => ({
+			row: pending.row,
+			email: pending.contact.email,
+			attempted: index < attemptedCount,
+		}));
+	});
+	const notImportedRowCount = computed(() => pendingContacts.value.length);
 
 	const mappedListCount = computed(() => {
 		return Object.values(listNameMapping.value).filter((v) => v !== null).length;
@@ -116,39 +189,23 @@ export function useCsvImport() {
 
 	// Auto-detect column mapping based on header names
 	const autoDetectMapping = () => {
-		const mapping: Record<number, MappableField> = {};
+		columnMapping.value = detectColumnMapping(csvHeaders.value);
+	};
 
-		csvHeaders.value.forEach((header, index) => {
-			const headerLower = header.toLowerCase().trim();
-
-			if (headerLower === 'email' || headerLower === 'e-mail' || headerLower.includes('email')) {
-				mapping[index] = 'email';
-			} else if (['first name', 'firstname', 'first_name', 'given name'].includes(headerLower)) {
-				mapping[index] = 'firstName';
-			} else if (
-				['last name', 'lastname', 'last_name', 'family name', 'surname'].includes(headerLower)
-			) {
-				mapping[index] = 'lastName';
-			} else if (['language', 'lang', 'locale', 'preferred_language'].includes(headerLower)) {
-				mapping[index] = 'language';
-			} else if (
-				[
-					'list',
-					'topic',
-					'topics',
-					'mailing list',
-					'mailing_list',
-					'mailinglist',
-					'lists',
-				].includes(headerLower)
-			) {
-				mapping[index] = 'topic';
-			} else {
-				mapping[index] = 'ignore';
-			}
-		});
-
+	/**
+	 * Map one column. A scalar field another column owns moves here, and that
+	 * column falls back to Custom property (Skip for a blank header). Returns the
+	 * displaced columns.
+	 */
+	const mapColumn = (column: number, field: MappableField): number[] => {
+		const { mapping, displaced } = assignColumnField(
+			columnMapping.value,
+			csvHeaders.value,
+			column,
+			field
+		);
 		columnMapping.value = mapping;
+		return displaced;
 	};
 
 	// Reset state
@@ -163,6 +220,8 @@ export function useCsvImport() {
 		validation.value = null;
 		progress.value = 0;
 		results.value = null;
+		pendingContacts.value = [];
+		failedBatch.value = null;
 		isDragging.value = false;
 		listAssignmentMode.value = 'none';
 		selectedTopicId.value = null;
@@ -258,13 +317,8 @@ export function useCsvImport() {
 	const handleDragLeave = dropZone.handleDragLeave;
 	const handleDrop = dropZone.handleDrop;
 
-	// Validate contacts against the current mapping
+	// Validate contacts against the current mapping, from the prepared rows
 	const validateContacts = (): ValidationResult => {
-		const emailColumnIndex = Object.entries(columnMapping.value).find(
-			([, field]) => field === 'email'
-		)?.[0];
-		const emailIdx = emailColumnIndex !== undefined ? parseInt(emailColumnIndex, 10) : -1;
-
 		const result: ValidationResult = {
 			validCount: 0,
 			invalidEmails: [],
@@ -272,42 +326,12 @@ export function useCsvImport() {
 			missingEmails: [],
 			totalRows: parsedData.value.length,
 		};
-
-		const seenEmails = new Set<string>();
-
-		for (let i = 0; i < parsedData.value.length; i++) {
-			const row = parsedData.value[i]!;
-			const rawEmail = emailIdx >= 0 ? row[emailIdx] : undefined;
-			const email = rawEmail?.trim() ?? '';
-			const rowNum = i + 1; // 1-based for display
-
-			if (!email) {
-				result.missingEmails.push(rowNum);
-				continue;
-			}
-
-			// Basic email validation: must have @ with something before and a . after @
-			const atIndex = email.indexOf('@');
-			const isValid =
-				atIndex > 0 &&
-				email.indexOf('.', atIndex) > atIndex + 1 &&
-				email.indexOf('.', atIndex) < email.length - 1;
-
-			if (!isValid) {
-				result.invalidEmails.push({ row: rowNum, email });
-				continue;
-			}
-
-			const normalizedEmail = email.toLowerCase();
-			if (seenEmails.has(normalizedEmail)) {
-				result.duplicateEmails.push({ row: rowNum, email });
-				continue;
-			}
-
-			seenEmails.add(normalizedEmail);
-			result.validCount++;
+		for (const { row, contact, status } of preparedRows.value) {
+			if (status === 'missing') result.missingEmails.push(row);
+			else if (status === 'invalid') result.invalidEmails.push({ row, email: contact.email });
+			else if (status === 'duplicate') result.duplicateEmails.push({ row, email: contact.email });
+			else result.validCount++;
 		}
-
 		return result;
 	};
 
@@ -342,6 +366,12 @@ export function useCsvImport() {
 	const goToPreview = () => {
 		if (!isEmailMapped.value) {
 			error.value = t('shared.useCsvImport.errors.emailColumnRequired');
+			return;
+		}
+		if (mappingConflict.value) {
+			error.value = t('shared.useCsvImport.errors.conflictingMapping', {
+				field: t(`shared.useCsvImport.fieldNames.${mappingConflict.value}`),
+			});
 			return;
 		}
 		error.value = '';
@@ -399,16 +429,6 @@ export function useCsvImport() {
 		}
 	};
 
-	// Get mapped value from row
-	const getMappedValue = (row: string[], field: MappableField): string => {
-		for (const [indexStr, mappedField] of Object.entries(columnMapping.value)) {
-			if (mappedField === field) {
-				return row[parseInt(indexStr, 10)] || '—';
-			}
-		}
-		return '—';
-	};
-
 	// Distinct property keys for every column mapped to 'property'. The CSV
 	// header text is the property key (and label). Used to pre-register the
 	// keys before import — CSV is an "operator" import source, so the backend
@@ -423,43 +443,13 @@ export function useCsvImport() {
 		return Array.from(keys);
 	};
 
-	// Transform parsed data to contacts
-	const getContactsFromParsedData = (): ContactImport[] => {
-		const contacts: ContactImport[] = [];
-
-		for (const row of parsedData.value) {
-			const contact: ContactImport = { email: '' };
-			const properties: Record<string, ContactPropertyValue> = {};
-
-			for (const [indexStr, field] of Object.entries(columnMapping.value)) {
-				const index = parseInt(indexStr, 10);
-				const value = row[index]?.trim();
-
-				if (field === 'email' && value) {
-					contact.email = value;
-				} else if (field === 'firstName' && value) {
-					contact.firstName = value;
-				} else if (field === 'lastName' && value) {
-					contact.lastName = value;
-				} else if (field === 'language' && value) {
-					contact.language = value;
-				} else if (field === 'property' && value) {
-					// CSV header is the property key; CSV cells are always strings.
-					const key = csvHeaders.value[index]?.trim();
-					if (key) properties[key] = value;
-				}
-			}
-
-			if (contact.email) {
-				if (Object.keys(properties).length > 0) {
-					contact.properties = properties;
-				}
-				contacts.push(contact);
-			}
-		}
-
-		return contacts;
-	};
+	// The prepared rows that carry an email, each tagged with the data row it
+	// came from so a failed batch can name its rows. Rows without an email are
+	// not sent at all; `startImport` counts them as skipped.
+	const getContactsFromParsedData = (): PreparedContact[] =>
+		preparedRows.value
+			.filter((prepared) => prepared.contact.email)
+			.map(({ row, contact }) => ({ row, contact }));
 
 	// Build per-contact list assignments from CSV data + listNameMapping
 	const getContactListAssignments = (): ContactListAssignment[] => {
@@ -471,20 +461,13 @@ export function useCsvImport() {
 		if (listColumnIndex === undefined) return [];
 
 		const listIdx = parseInt(listColumnIndex, 10);
-		const emailColumnIndex = Object.entries(columnMapping.value).find(
-			([, field]) => field === 'email'
-		)?.[0];
-		if (emailColumnIndex === undefined) return [];
-
-		const emailIdx = parseInt(emailColumnIndex, 10);
 		const assignments: ContactListAssignment[] = [];
 
-		for (const row of parsedData.value) {
-			const rawEmail = row[emailIdx];
-			const email = rawEmail ? normalizeEmail(rawEmail) : undefined;
-			if (!email) continue;
+		for (const { row, contact } of preparedRows.value) {
+			if (!contact.email) continue;
+			const email = normalizeEmail(contact.email);
 
-			const cellValue = row[listIdx]?.trim();
+			const cellValue = parsedData.value[row - 1]?.[listIdx]?.trim();
 			if (!cellValue) continue;
 
 			const names = cellValue
@@ -508,22 +491,108 @@ export function useCsvImport() {
 		return assignments;
 	};
 
+	const listOptionsForImport = (): {
+		topicId?: string;
+		contactListAssignments?: ContactListAssignment[];
+	} => {
+		if (listAssignmentMode.value === 'global' && selectedTopicId.value) {
+			return { topicId: selectedTopicId.value };
+		}
+		if (listAssignmentMode.value === 'column') {
+			return { contactListAssignments: getContactListAssignments() };
+		}
+		return {};
+	};
+
+	// A throwing callback is folded into the same failure arm as `{ ok: false }`,
+	// so both leave the same accounting behind.
+	const settle = async <T extends { ok: boolean }>(
+		attempt: () => Promise<T>
+	): Promise<T | { ok: false; reason: string }> => {
+		try {
+			return await attempt();
+		} catch (err) {
+			return {
+				ok: false,
+				reason: err instanceof Error ? err.message : t('shared.useCsvImport.errors.importFailed'),
+			};
+		}
+	};
+
+	const failureReason = (outcome: { ok: false; reason?: string }) =>
+		outcome.reason || t('shared.useCsvImport.errors.importFailed');
+
+	/**
+	 * Send `queue` in batches, adding each committed batch to `results`.
+	 *
+	 * Stops at the first failed batch rather than carrying on: a failure is
+	 * usually the session, a rate limit or the connection, which the next batch
+	 * would hit too (one more toast, or one more login redirect, each). The
+	 * failed batch and everything after it become the retry set, so every row
+	 * ends up imported, updated, skipped, failed per row, or not imported.
+	 */
+	const runBatches = async (
+		queue: PreparedContact[],
+		importFn: ImportBatchFn,
+		committed: ImportResults
+	) => {
+		const listOptions = listOptionsForImport();
+		const aggregated: ImportResults = { ...committed, errors: [...committed.errors] };
+		pendingContacts.value = [];
+		failedBatch.value = null;
+
+		const totalBatches = Math.ceil(queue.length / IMPORT_BATCH_SIZE);
+		for (let i = 0; i < totalBatches; i++) {
+			const batch = queue
+				.slice(i * IMPORT_BATCH_SIZE, (i + 1) * IMPORT_BATCH_SIZE)
+				.map((pending) => pending.contact);
+
+			// For per-contact assignments, filter to only emails in this batch
+			let batchListOptions = { ...listOptions };
+			if (listOptions.contactListAssignments) {
+				const batchEmails = new Set(batch.map((c) => normalizeEmail(c.email)));
+				batchListOptions = {
+					...listOptions,
+					contactListAssignments: listOptions.contactListAssignments.filter((a) =>
+						batchEmails.has(a.email)
+					),
+				};
+			}
+
+			const outcome = await settle(() => importFn(batch, handleDuplicates.value, batchListOptions));
+			if (!outcome.ok) {
+				pendingContacts.value = queue.slice(i * IMPORT_BATCH_SIZE);
+				failedBatch.value = { size: batch.length, reason: failureReason(outcome) };
+				break;
+			}
+
+			const batchResults = outcome.result;
+			aggregated.imported += batchResults.imported;
+			aggregated.updated += batchResults.updated;
+			aggregated.skipped += batchResults.skipped;
+			aggregated.failed += batchResults.failed;
+			aggregated.errors.push(...batchResults.errors.slice(0, 10));
+			aggregated.addedToList = (aggregated.addedToList ?? 0) + (batchResults.addedToList ?? 0);
+
+			progress.value = Math.round(((i + 1) / totalBatches) * 100);
+		}
+
+		results.value = aggregated;
+		step.value = 'complete';
+		return aggregated;
+	};
+
 	// Start import
 	const startImport = async (
-		importFn: (
-			contacts: ContactImport[],
-			handleDuplicates: HandleDuplicates,
-			options?: {
-				topicId?: string;
-				contactListAssignments?: ContactListAssignment[];
-			}
-		) => Promise<ImportResults>,
+		importFn: ImportBatchFn,
 		// Optional pre-import hook to register the custom-property keys mapped in
 		// this import. CSV is an operator source, so the backend silently drops
 		// values for unregistered keys — registering them first is what makes
 		// mapped custom columns actually land.
-		registerProperties?: (keys: string[]) => Promise<void>
+		registerProperties?: RegisterPropertiesFn
 	) => {
+		// One run at a time: a second call would send the same rows twice.
+		if (step.value === 'importing') return;
 		step.value = 'importing';
 		progress.value = 0;
 		error.value = '';
@@ -539,73 +608,42 @@ export function useCsvImport() {
 		if (registerProperties) {
 			const propertyKeys = getMappedPropertyKeys();
 			if (propertyKeys.length > 0) {
-				await registerProperties(propertyKeys);
-			}
-		}
-
-		// Determine list assignment options
-		const listOptions: {
-			topicId?: string;
-			contactListAssignments?: ContactListAssignment[];
-		} = {};
-
-		if (listAssignmentMode.value === 'global' && selectedTopicId.value) {
-			listOptions.topicId = selectedTopicId.value;
-		} else if (listAssignmentMode.value === 'column') {
-			listOptions.contactListAssignments = getContactListAssignments();
-		}
-
-		try {
-			// Process in batches
-			const batchSize = 100;
-			const totalBatches = Math.ceil(contacts.length / batchSize);
-			const aggregatedResults: ImportResults = {
-				imported: 0,
-				updated: 0,
-				skipped: 0,
-				failed: 0,
-				errors: [],
-				addedToList: 0,
-			};
-
-			for (let i = 0; i < totalBatches; i++) {
-				const batch = contacts.slice(i * batchSize, (i + 1) * batchSize);
-
-				// For per-contact assignments, filter to only emails in this batch
-				let batchListOptions = { ...listOptions };
-				if (listOptions.contactListAssignments) {
-					const batchEmails = new Set(batch.map((c) => normalizeEmail(c.email)));
-					batchListOptions = {
-						...listOptions,
-						contactListAssignments: listOptions.contactListAssignments.filter((a) =>
-							batchEmails.has(a.email)
-						),
-					};
+				// Nothing is written until every mapped key is registered: rows sent
+				// without their key would land with those columns silently dropped.
+				const prepared = await settle(() => registerProperties(propertyKeys));
+				if (!prepared.ok) {
+					error.value = t('shared.useCsvImport.errors.propertiesFailed', {
+						reason: failureReason(prepared),
+					});
+					step.value = 'preview';
+					return;
 				}
-
-				const batchResults = await importFn(batch, handleDuplicates.value, batchListOptions);
-
-				aggregatedResults.imported += batchResults.imported;
-				aggregatedResults.updated += batchResults.updated;
-				aggregatedResults.skipped += batchResults.skipped;
-				aggregatedResults.failed += batchResults.failed;
-				aggregatedResults.errors.push(...batchResults.errors.slice(0, 10));
-				aggregatedResults.addedToList =
-					(aggregatedResults.addedToList ?? 0) + (batchResults.addedToList ?? 0);
-
-				progress.value = Math.round(((i + 1) / totalBatches) * 100);
 			}
-
-			results.value = aggregatedResults;
-			step.value = 'complete';
-
-			return aggregatedResults;
-		} catch (err) {
-			error.value =
-				err instanceof Error ? err.message : t('shared.useCsvImport.errors.importFailed');
-			step.value = 'mapping';
-			throw err;
 		}
+
+		return runBatches(contacts, importFn, {
+			imported: 0,
+			updated: 0,
+			// Rows without an email are never sent; the preview already flagged them.
+			skipped: parsedData.value.length - contacts.length,
+			failed: 0,
+			errors: [],
+			addedToList: 0,
+		});
+	};
+
+	/**
+	 * Resend the failed batch and the rows after it — never a committed batch —
+	 * with the same mapping, duplicate handling and topic assignment. The
+	 * properties were registered before the first attempt got this far.
+	 */
+	const retryFailedRows = async (importFn: ImportBatchFn) => {
+		const queue = pendingContacts.value;
+		if (step.value === 'importing' || queue.length === 0 || !results.value) return;
+		step.value = 'importing';
+		progress.value = 0;
+		error.value = '';
+		return runBatches(queue, importFn, results.value);
 	};
 
 	// Watch for column mapping changes — auto-manage list assignment mode
@@ -633,9 +671,13 @@ export function useCsvImport() {
 		isDragging,
 		columnMapping,
 		handleDuplicates,
+		preparedRows,
 		validation,
 		progress,
 		results,
+		failedBatch,
+		notImportedRows,
+		notImportedRowCount,
 
 		// Topic state
 		listAssignmentMode,
@@ -646,7 +688,10 @@ export function useCsvImport() {
 		// Computed
 		isEmailMapped,
 		isTopicMapped,
+		scalarOwners,
+		mappingConflict,
 		previewRows,
+		emailSourceColumn,
 		totalRowCount,
 		validContactCount,
 		hasValidationWarnings,
@@ -668,8 +713,9 @@ export function useCsvImport() {
 		goBackToMapping,
 		goBackToMappingFromListMapping,
 		selectGlobalTopic,
-		getMappedValue,
+		mapColumn,
 		getMappedPropertyKeys,
 		startImport,
+		retryFailedRows,
 	};
 }

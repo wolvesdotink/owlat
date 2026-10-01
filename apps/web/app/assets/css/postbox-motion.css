@@ -7,7 +7,8 @@
  *
  * Vocabulary (aliases over the shared Fluid Functionalism motion tiers —
  * packages/ui/assets/css/tokens.css):
- *   - fast → moderate tier (160ms): content swaps, hover reveals, toasts
+ *   - swap → fast tier (80ms): the reader's enter-only fade on thread change
+ *   - fast → moderate tier (160ms): list swaps, hover reveals, toasts
  *   - panel → slow tier (240ms): popups + dialogs opening/closing
  *   - exits are one notch faster and ride a plain ease-out tween
  *
@@ -16,6 +17,7 @@
  */
 
 :root {
+	--pbx-motion-swap: var(--motion-fast);
 	--pbx-motion-fast: var(--motion-moderate);
 	--pbx-motion-fast-exit: var(--motion-moderate-exit);
 	--pbx-motion-panel: var(--motion-slow);
@@ -24,23 +26,22 @@
 	--pbx-motion-ease-exit: var(--ease-exit);
 }
 
-/* Reader-pane content swap on thread change: subtle fade + 2px rise. */
-.pbx-reader-enter-active {
-	transition:
-		opacity var(--pbx-motion-fast) var(--pbx-motion-ease),
-		transform var(--pbx-motion-fast) var(--pbx-motion-ease);
+/* Reader content swap (three-pane reader, Today overlay, and the thread swap
+   inside it). Enter-only on purpose: the old thread leaves in the same frame the
+   next one mounts, and the new one fades in on the fast tier. It used to be an
+   out-in <Transition> (120ms leave, then 160ms enter), which made every j/k and
+   every triage auto-advance wait about 280ms before the next thread painted.
+   A keyframe animation on the keyed element rather than a <Transition>: with no
+   leave there is nothing for the wrapper to do, and it would still keep the old
+   thread in the DOM for two frames and force a synchronous layout per swap.
+   Opacity only, so it is already what prefers-reduced-motion asks for. */
+@keyframes pbx-reader-swap-in {
+	from {
+		opacity: 0;
+	}
 }
-.pbx-reader-leave-active {
-	transition:
-		opacity var(--pbx-motion-fast-exit) var(--pbx-motion-ease-exit),
-		transform var(--pbx-motion-fast-exit) var(--pbx-motion-ease-exit);
-}
-.pbx-reader-enter-from {
-	opacity: 0;
-	transform: translateY(2px);
-}
-.pbx-reader-leave-to {
-	opacity: 0;
+.pbx-reader-swap {
+	animation: pbx-reader-swap-in var(--pbx-motion-swap) var(--pbx-motion-ease);
 }
 
 /* Folder-change list swap: plain fade. */
@@ -115,36 +116,6 @@
 .pbx-cardstack-leave-to {
 	opacity: 0;
 	transform: translateY(-16px);
-}
-
-/* Focus compose: promoting a popup to the centered distraction-free surface.
-   The scrim fades on the slow tier; the centered column enters on the bouncy
-   spring (`.pbx-focus-frame.is-focused`) and is hidden + inert otherwise so its
-   teleport mount can stay in the DOM without catching clicks. */
-.pbx-focus-scrim-enter-active {
-	transition: opacity var(--pbx-motion-panel) var(--ease-spring-bounce);
-}
-.pbx-focus-scrim-leave-active {
-	transition: opacity var(--pbx-motion-panel-exit) var(--pbx-motion-ease-exit);
-}
-.pbx-focus-scrim-enter-from,
-.pbx-focus-scrim-leave-to {
-	opacity: 0;
-}
-
-.pbx-focus-frame {
-	transition:
-		opacity var(--pbx-motion-panel) var(--ease-spring-bounce),
-		transform var(--pbx-motion-panel) var(--ease-spring-bounce);
-}
-.pbx-focus-frame:not(.is-focused) {
-	opacity: 0;
-	transform: scale(0.96) translateY(6px);
-	pointer-events: none;
-}
-.pbx-focus-frame.is-focused {
-	opacity: 1;
-	transform: none;
 }
 
 /*
@@ -235,8 +206,6 @@
 	}
 
 	/* Collapse all Postbox transitions to opacity-only: no movement, no scale. */
-	.pbx-reader-enter-active,
-	.pbx-reader-leave-active,
 	.pbx-fade-enter-active,
 	.pbx-fade-leave-active,
 	.pbx-popup-enter-active,
@@ -244,20 +213,15 @@
 	.pbx-toast-enter-active,
 	.pbx-toast-leave-active,
 	.pbx-cardstack-enter-active,
-	.pbx-cardstack-leave-active,
-	.pbx-focus-scrim-enter-active,
-	.pbx-focus-scrim-leave-active,
-	.pbx-focus-frame {
+	.pbx-cardstack-leave-active {
 		transition-property: opacity;
 	}
-	.pbx-reader-enter-from,
 	.pbx-popup-enter-from,
 	.pbx-popup-leave-to,
 	.pbx-toast-enter-from,
 	.pbx-toast-leave-to,
 	.pbx-cardstack-enter-from,
-	.pbx-cardstack-leave-to,
-	.pbx-focus-frame:not(.is-focused) {
+	.pbx-cardstack-leave-to {
 		transform: none;
 	}
 }

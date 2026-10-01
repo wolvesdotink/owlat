@@ -1,6 +1,7 @@
 /**
- * The organization-deletion CASCADE: the ordered table list and the typed
- * dispatch registry the walker drives.
+ * The organization-deletion CASCADE: the typed dispatch registry the walker
+ * drives. The ordered table list lives in `cascadeOrder.ts` (re-exported here
+ * as `STEPS`) so neither file outgrows the ~500 LOC ratchet.
  *
  * Split out of `walker.ts` for the ~500 LOC ratchet, and the seam is where the
  * churn is: this file grows a line every time a per-org table is added, while
@@ -13,8 +14,8 @@
 import type { OrganizationDeletionStepModule, OrganizationDeletionTable } from './_common';
 
 // Distinct steps with per-row side effects the generic sweep can't express:
-// storage-blob purges (mediaAssets / semanticFiles / mailMessages /
-// inboundMessages / mailDrafts / transactionalSends) and delegated cascades (contacts →
+// storage-blob purges (mediaAssets / semanticFiles / mailMessages / inboundMessages /
+// mailDrafts / transactionalSends / the team reply tables) and delegated cascades (contacts →
 // permanentlyDeleteContactWithRelations, domains → sendingDomainLifecycle.remove).
 // Every other table is a pure `take + delete` sweep, expressed inline below via
 // makeSweepStep — no per-table file needed.
@@ -22,261 +23,22 @@ import { mediaAssetsStep } from './mediaAssets';
 import { accountExportArtifactsStep } from './accountExportArtifacts';
 import { semanticFilesStep } from './semanticFiles';
 import { mailMessagesStep } from './mailMessages';
+import { mailMessagePartsStep } from './mailMessageParts';
 import { inboundMessagesStep } from './inboundMessages';
+import { conversationThreadsStep, inboxFollowUpsStep } from './teamReplies';
 import { mailDraftsStep } from './mailDrafts';
 import { mailAttachmentSharesStep } from './mailAttachmentShares';
 import { mailArchiveImportsStep } from './mailArchiveImports';
-import { transactionalSendsStep } from './transactionalSends';
+import { transactionalPendingUploadsStep, transactionalSendsStep } from './transactionalSends';
 import { contactsStep } from './contacts';
 import { domainsStep } from './domains';
 import { makeSweepStep } from './sweep';
 import { storageUploadsStep } from './storageUploads';
 import { instanceSettingsStep } from './instanceSettings';
 
-/**
- * Ordered cascade: children before parents, storage-bearing tables
- * purge their blobs before row delete, audit logs second-to-last (they
- * accumulate from delegated lifecycle calls during the wipe), and the
- * terminal `instanceSettings` row last (the singleton that owned the
- * organization).
- *
- * The order matters: by the time the `contacts` step runs, all
- * `emailSends` / `transactionalSends` are already gone — the
- * delegated `permanentlyDeleteContactWithRelations` helper's
- * soft-mark-sends loop is a no-op index lookup, no waste.
- */
-export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletionTable[]] = [
-	'storageUploads',
-	'accountExportArtifactLeases',
-	'accountExportArtifacts',
-	'accountExportSessions',
-	// Storage-bearing leaves: storage hooks fire before row delete
-	'mediaAssets',
-	'semanticFileContacts', // junction mirror — clear before its parent files
-	'semanticFiles',
-	// Attachment index: a junction mirror of mailMessages, cleared before its
-	// parent rows so the sweep never leaves a file pointing at a deleted message.
-	'mailAttachments',
-	'mailAttachmentBackfillJobs',
-	'mailBodySearchBackfillJobs',
-	'mailMessages',
-	'mailDrafts',
-	// Share links own the blobs the drafts above no longer reference, so they
-	// have to purge their own storage rather than ride a generic sweep.
-	'mailAttachmentShares',
-	'transactionalSends',
+import { STEPS } from './cascadeOrder';
 
-	// Send + dispatch leaves
-	'emailSends',
-	'agentActions',
-	'agentMetrics',
-	'llmUsageEvents',
-	'agentCircuitBreakers',
-	'agentConfig',
-	'autonomyFeedback',
-	'autonomyRules',
-	'autonomySuggestions',
-	'handlingRules',
-	'askEagernessSettings',
-	'clarificationAskLog',
-	'clarificationMemory',
-	'agentShadowDecisions',
-	'agentShadowScorecard',
-	'contentScanResults',
-
-	// Conversation parents (after their leaves)
-	'unifiedMessages',
-	'threadPresence', // ephemeral viewer/replier signals — clear before their threads
-	'threadReads', // per-user read markers — clear before their threads
-	'inboxFollowUps', // team follow-up bodies — clear before their threads
-	'inboxAssignmentNotices', // per-assignee notice denormalized subjects/assigner names
-	'inboundMessages',
-	'conversationThreads',
-	'channelConfigs',
-
-	// Postbox sidecar family (children + logs before mailboxes)
-	'mailThreads',
-	'mailContacts',
-	'mailSenderCategoryOverrides',
-	'mailSenderImageAllowlist',
-	'mailTriageTallies',
-	'mailCommitments',
-	'mailDailyBriefs',
-	'mailBriefCards',
-	'mailThreadVisits',
-	'todayStates',
-	'todayThreadSummaries',
-	'mailForwarding',
-	'mailVacationResponders',
-	'mailVacationLog',
-	'mailAuditLog',
-	'mailAuthFailures',
-	'externalMailFolderSync',
-	'externalMailRemoteOps',
-	'externalMailAccounts',
-	'externalMailOAuthStates',
-	'mailboxMigrations',
-	'mailArchiveImports',
-	'mailboxMoves',
-	'pendingMailboxes',
-	'mailboxRequests',
-	'accessRequests',
-
-	// Postbox configuration before mailboxes
-	'mailAliases',
-	'mailFolders',
-	'mailLabels',
-	'mailVoiceProfiles',
-	'mailContactStyleOverrides',
-	'mailFilters',
-	'mailFilterRunJobs',
-	'mailSignatures',
-	'mailSnippets',
-	'mailSavedSearches',
-	'mailUserSettings',
-	'mailAppPasswords',
-	'mailboxMembers',
-	'pendingMailboxMembers',
-	'mailboxes',
-
-	// Delivery reputation history — standalone daily snapshots, no dependents
-	'deliverySnapshots',
-	'seedPlacementProbes',
-	'gmailDeliveryReceipts',
-	'gmailVolumeBuckets',
-	'gmailDomainVolumeRollups',
-	'gmailDomainVolumeRollupJobs',
-	'googlePostmasterStats',
-	'googlePostmasterCompliance',
-	'unsubscribeLatencyBuckets',
-
-	// Webhook / form children before parents
-	'webhookDeliveryLogs',
-	'mtaCampaignAlertReceipts',
-	'webhookPayloads',
-	'webhooks',
-	'formSubmissions',
-	'formEndpoints',
-
-	// Automation children before parents
-	'automationStepRuns',
-	'automationRuns',
-	'automationSteps',
-	'automationStatShards',
-	'automations',
-
-	// Campaign machinery before the campaign parents
-	'campaignSendJobs',
-	'campaignStatShards',
-	'campaignSenders',
-	'sendDailyStats',
-
-	// Campaign + template parents
-	'campaigns',
-	// Version snapshots before the templates they belong to.
-	'emailTemplateVersions',
-	'emailTemplates',
-	'transactionalEmails',
-	'emailBlocks',
-
-	// Contact cascade — delegates; sweeps 5 child tables that aren't
-	// standalone steps (contactTopics, contactPropertyValues,
-	// contactActivities, contactIdentities, contactRelationships)
-	'contactErasureJobs', // erasure progress rows point at the contacts below
-	'contacts',
-
-	// Orphan sweeps: the contacts step delegates these per contact, but rows
-	// whose parent is already gone would survive — sweep the remainder.
-	'contactTopics',
-	'contactPropertyValues',
-	'contactActivities',
-	'contactIdentities',
-	'contactRelationships',
-
-	// Per-topic sunset-policy overrides — configuration rows with no
-	// parent among the contact tables.
-	'sunsetPolicies',
-
-	// Independent definitions (no parent/child among themselves)
-	'contactProperties',
-	'topics',
-	'segments',
-	'apiKeys',
-	'blockedEmails',
-	'knowledgeEntryContacts', // junction mirror — clear before its parent entries
-	'knowledgeRelations',
-	'knowledgeEntries',
-	'knowledgeBackfillJobs',
-	'knowledgeEdgeBackfillJobs',
-	'knowledgeGraphStats',
-
-	// Domain stack — reputation before domains. The domains step clears BOTH
-	// identity siblings and schedules both external provider deletions, so it
-	// must run before the orphan-sweep fallbacks erase that routing evidence.
-	'trackingDomains',
-	'sendingReputation',
-	'providerHealth',
-	'providerRoutes',
-	'deliverabilityRouteStates',
-	'deliverabilityAlignmentStates',
-	'deliverabilityAlertRecipients',
-	'deliverabilityAlertRecipientReceipts',
-	'deliverabilityRegressionAlerts',
-	'deliverabilityVerificationState',
-	'deliverabilityEvidence',
-	'deliverabilityLoopbackAttempts',
-	'destinationProviderDomains',
-	'sendAssignments',
-	'transportOutcomes',
-	'smtpResponseCategories',
-	'mixDecisions',
-	'rampStreamPresets',
-	'yahooCflEnrollments',
-	'domains',
-	'sendingDomainMtaIdentities',
-	'sendingDomainSesIdentities',
-	'sendingDomainRelayIdentities',
-
-	// Chat (children before parents)
-	'chatMentions',
-	'chatMessages',
-	'chatRoomMembers',
-	'chatRooms',
-
-	// AI assistant (children before parent)
-	'aiMessages',
-	'aiConversations',
-
-	// AI draft-revise stream buffers (ephemeral, owner-scoped)
-	'aiDraftStreams',
-
-	// Independent feature state
-	'coalesceBatches',
-	'visualizations',
-	'dashboardLayouts',
-	'connectedApps',
-	'pluginStorageEntries',
-	'pluginStorageUsage',
-	'pluginLlmReservations',
-	'pluginLlmDailyUsage',
-	'pluginTasks',
-	'draftStrategySelections',
-	'shareLinks',
-	'integrationImports',
-	'codeWorkTasks',
-
-	// UI / onboarding state
-	'onboardingProgress',
-
-	// Invitation resend throttle rows — pure org data, no dependents.
-	'invitationResends',
-
-	// Audit logs LAST (accumulates from delegated lifecycle calls above)
-	'auditLogs',
-
-	// Terminal — the singleton row that owned the org's existence
-	'instanceSettings',
-] as const;
+export { STEPS };
 
 /**
  * Compile-time guard: STEPS must visit every OrganizationDeletionTable —
@@ -304,14 +66,21 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailAttachments: makeSweepStep('mailAttachments'),
 	mailAttachmentBackfillJobs: makeSweepStep('mailAttachmentBackfillJobs'),
 	mailBodySearchBackfillJobs: makeSweepStep('mailBodySearchBackfillJobs'),
+	mailMessageBodies: makeSweepStep('mailMessageBodies'),
 	mailMessages: mailMessagesStep,
+	mailMessageParts: mailMessagePartsStep,
 	mailDrafts: mailDraftsStep,
+	transactionalPendingUploads: transactionalPendingUploadsStep,
 	transactionalSends: transactionalSendsStep,
 	emailSends: makeSweepStep('emailSends'),
 	agentActions: makeSweepStep('agentActions'),
 	contentScanResults: makeSweepStep('contentScanResults'),
 	inboundMessages: inboundMessagesStep,
-	conversationThreads: makeSweepStep('conversationThreads'),
+	conversationThreads: conversationThreadsStep,
+	counterScopes: makeSweepStep('counterScopes'),
+	counterBuckets: makeSweepStep('counterBuckets'),
+	mailFolderMembership: makeSweepStep('mailFolderMembership'),
+	mailFolderUidBlocks: makeSweepStep('mailFolderUidBlocks'),
 	mailAliases: makeSweepStep('mailAliases'),
 	mailFolders: makeSweepStep('mailFolders'),
 	mailLabels: makeSweepStep('mailLabels'),
@@ -326,6 +95,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailAppPasswords: makeSweepStep('mailAppPasswords'),
 	mailboxMembers: makeSweepStep('mailboxMembers'),
 	pendingMailboxMembers: makeSweepStep('pendingMailboxMembers'),
+	mailboxUsage: makeSweepStep('mailboxUsage'),
 	mailboxes: makeSweepStep('mailboxes'),
 	deliverySnapshots: makeSweepStep('deliverySnapshots'),
 	seedPlacementProbes: makeSweepStep('seedPlacementProbes'),
@@ -352,6 +122,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	emailBlocks: makeSweepStep('emailBlocks'),
 	contactErasureJobs: makeSweepStep('contactErasureJobs'),
 	contacts: contactsStep,
+	contactPropertyDeletionJobs: makeSweepStep('contactPropertyDeletionJobs'),
 	contactProperties: makeSweepStep('contactProperties'),
 	topics: makeSweepStep('topics'),
 	segments: makeSweepStep('segments'),
@@ -385,10 +156,13 @@ export const ORGANIZATION_DELETION_STEPS = {
 	onboardingProgress: makeSweepStep('onboardingProgress'),
 	invitationResends: makeSweepStep('invitationResends'),
 	auditLogs: makeSweepStep('auditLogs'),
+	featureFlagSettings: makeSweepStep('featureFlagSettings'),
+	instanceCounters: makeSweepStep('instanceCounters'),
 	instanceSettings: instanceSettingsStep,
 	threadPresence: makeSweepStep('threadPresence'),
 	threadReads: makeSweepStep('threadReads'),
-	inboxFollowUps: makeSweepStep('inboxFollowUps'),
+	inboxFollowUps: inboxFollowUpsStep,
+	threadCatchUps: makeSweepStep('threadCatchUps'),
 	inboxAssignmentNotices: makeSweepStep('inboxAssignmentNotices'),
 	unifiedMessages: makeSweepStep('unifiedMessages'),
 	channelConfigs: makeSweepStep('channelConfigs'),
@@ -426,6 +200,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailArchiveImports: mailArchiveImportsStep,
 	mailboxMoves: makeSweepStep('mailboxMoves'),
 	externalMailFolderSync: makeSweepStep('externalMailFolderSync'),
+	externalMailAccessTokens: makeSweepStep('externalMailAccessTokens'),
 	externalMailRemoteOps: makeSweepStep('externalMailRemoteOps'),
 	externalMailAccounts: makeSweepStep('externalMailAccounts'),
 	externalMailOAuthStates: makeSweepStep('externalMailOAuthStates'),
@@ -435,6 +210,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	webhookPayloads: makeSweepStep('webhookPayloads'),
 	automationStatShards: makeSweepStep('automationStatShards'),
 	campaignSendJobs: makeSweepStep('campaignSendJobs'),
+	audienceCountJobs: makeSweepStep('audienceCountJobs'),
 	campaignStatShards: makeSweepStep('campaignStatShards'),
 	campaignSenders: makeSweepStep('campaignSenders'),
 	sendDailyStats: makeSweepStep('sendDailyStats'),
@@ -455,6 +231,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	aiMessages: makeSweepStep('aiMessages'),
 	aiConversations: makeSweepStep('aiConversations'),
 	aiDraftStreams: makeSweepStep('aiDraftStreams'),
+	answerAskSessions: makeSweepStep('answerAskSessions'),
 	coalesceBatches: makeSweepStep('coalesceBatches'),
 	visualizations: makeSweepStep('visualizations'),
 	dashboardLayouts: makeSweepStep('dashboardLayouts'),

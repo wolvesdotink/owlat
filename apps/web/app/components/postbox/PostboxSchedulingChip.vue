@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { useSuggestReplies } from '~/composables/postbox/useSuggestReplies';
 
 /**
  * Quiet advisory chip shown under the header of a plain-prose scheduling
@@ -27,21 +27,22 @@ const emit = defineEmits<{
 	(e: 'dismiss'): void;
 }>();
 
-const replies = ref<string[]>([]);
-
-const suggestOp = useBackendOperation(api.mail.ai.assist.suggestReplies, {
+// Options stream in one by one; the one still being written can't be picked yet.
+const {
+	replies,
+	readyCount,
+	busy: suggestBusy,
+	run: runSuggest,
+} = useSuggestReplies({
 	label: () => t('components.postbox.postboxSchedulingChip.draftOperation'),
-	type: 'action',
 });
 
 async function draft() {
-	replies.value = [];
-	const res = await suggestOp.run({
+	await runSuggest({
 		messageId: props.messageId as Id<'mailMessages'>,
 		focus: 'scheduling',
 		proposedTimes: props.proposedTimes,
 	});
-	if (res.ok) replies.value = res.result.replies;
 }
 </script>
 
@@ -52,14 +53,14 @@ async function draft() {
 				variant="outline"
 				size="sm"
 				class="gap-1.5 px-2.5 py-1 text-xs"
-				:disabled="suggestOp.isLoading.value"
+				:disabled="suggestBusy"
 				@click="draft"
 			>
 				<template #iconLeft>
 					<Icon
-						:name="suggestOp.isLoading.value ? 'lucide:loader-2' : 'lucide:calendar-clock'"
+						:name="suggestBusy ? 'lucide:loader-2' : 'lucide:calendar-clock'"
 						class="w-3.5 h-3.5"
-						:class="{ 'animate-spin motion-reduce:animate-none': suggestOp.isLoading.value }"
+						:class="{ 'animate-spin motion-reduce:animate-none': suggestBusy }"
 					/>
 				</template>
 				{{ t('components.postbox.postboxSchedulingChip.prompt') }}
@@ -75,8 +76,8 @@ async function draft() {
 			</button>
 		</div>
 
-		<div aria-live="polite" :aria-busy="suggestOp.isLoading.value">
-			<span v-if="suggestOp.isLoading.value" class="sr-only">{{
+		<div aria-live="polite" :aria-busy="suggestBusy">
+			<span v-if="suggestBusy" class="sr-only">{{
 				t('components.postbox.postboxSchedulingChip.drafting')
 			}}</span>
 			<div
@@ -89,7 +90,8 @@ async function draft() {
 					v-for="(r, i) in replies"
 					:key="i"
 					type="button"
-					class="text-left text-xs px-3 py-2 rounded-lg border border-border-subtle hover:border-brand hover:bg-bg-surface max-w-xs"
+					class="text-left text-xs px-3 py-2 rounded-lg border border-border-subtle hover:border-brand hover:bg-bg-surface max-w-xs disabled:opacity-60 disabled:pointer-events-none"
+					:disabled="i >= readyCount"
 					@click="emit('use-reply', r)"
 				>
 					{{ r }}

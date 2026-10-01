@@ -1,6 +1,12 @@
 # Contact import module + DOI lifecycle admin-attest edge
 
-**Status:** proposed
+**Status:** accepted (`apps/api/convex/contacts/import.ts`, the
+`admin_attest` edge in `contacts/doiLifecycle.ts` and
+`contactActivities/doi_attested/` have been in the tree since the initial
+commit, 2026-06-30); **amended 2026-10-01**. The API-key import shell and
+its `contacts:import_attest` permission were never built, so two shells
+call the module, not three. See [the implementation-check amendment](#amendment-implementation-check-2026-10-01) at the end of this
+document.
 
 ## Context
 
@@ -956,3 +962,32 @@ Avoid:
 - ADR-0017 (Campaign lifecycle modules) — the `source`
   discriminator pattern on `TransitionInput` adopted here for
   the DOI lifecycle's `admin_attest` source.
+
+---
+
+## Amendment: implementation check (2026-10-01)
+
+Issue #1066 compared this ADR with the code on main. `contacts/import.ts`
+owns batch import as decided, with the per-row order, the source-gated
+property policy and the single `incrementContactCount` call. The DOI
+lifecycle has the `admin_attest` edge, `contacts.doiAttestedSource` and
+the `contactProperties.autoRegistered*` fields exist,
+`contactActivities/doi_attested/` has both halves, and
+`contacts/internal.ts:importBatchInternal` is gone. These details differ
+from the Decision above:
+
+- Two shells call `importBatch`, not three. The API-key shell
+  (`importBatchForOrganization` with `topicId` and `doiAttest`) and the
+  `contacts:import_attest` API-key permission were never built, and the
+  public HTTP API has no batch-import route. A placeholder for that
+  permission was removed in #595 on 2026-09-04. Drift #2 is therefore moot
+  rather than fixed. `ImportSource` still includes `'api'`, but no caller
+  passes it.
+- The web shell `contacts/contacts.ts:importBatch` accepts `doiAttest`
+  behind `contacts:manage`, but the CSV import screen never sends it. In
+  practice only integration imports attest.
+- Mailchimp and Stripe are integration import provider adapters
+  (ADR-0027). `integrationImports/pageCommit.ts` calls `importBatch` and
+  passes the adapter's `defaultDoiAttest` as the attest source, instead of
+  the inline row normalization sketched for `integrationImports.ts`.
+- `doiAttest` also accepts an optional `triggeredBy`.

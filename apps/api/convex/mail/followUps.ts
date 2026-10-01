@@ -24,7 +24,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { postboxMutation } from './_helpers';
 import type { Doc, Id } from '../_generated/dataModel';
 import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
@@ -32,6 +33,8 @@ import { isMessageSnoozed } from '../lib/mailSnooze';
 import { requireMailboxAccess, requireMessageAccess } from './permissions';
 import { adjustFolderUnseen } from './folders';
 import { rebuildThreadAggregates } from './messageActions';
+import { recordMessageCounters } from './messageCounters';
+import { recordFolderMembership } from './folderMembership';
 
 // ─── Pure helpers ────────────────────────────────────────────────────────────
 
@@ -197,6 +200,12 @@ export const internalSweep = internalMutation({
 					modseq: inbox.highestModseq + 1,
 					updatedAt: now,
 				});
+				await recordMessageCounters(ctx, message, { ...message, folderId: inbox._id });
+				await recordFolderMembership(ctx, message, {
+					...message,
+					folderId: inbox._id,
+					uid: inbox.uidNext,
+				});
 				await ctx.db.patch(inbox._id, {
 					uidNext: inbox.uidNext + 1,
 					highestModseq: inbox.highestModseq + 1,
@@ -220,6 +229,7 @@ export const internalSweep = internalMutation({
 					}
 				}
 				await ctx.db.patch(fresh._id, patch);
+				await recordMessageCounters(ctx, fresh, { ...fresh, ...patch });
 			}
 
 			// Re-derive thread aggregates (folderRoles/unreadCount/hasFlagged),

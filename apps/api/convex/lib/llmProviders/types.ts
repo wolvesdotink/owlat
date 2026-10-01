@@ -183,8 +183,8 @@ export interface EmbeddingProviderAdapter<K extends EmbeddingProviderKind = Embe
 	readonly label: string;
 	/**
 	 * Native embedding width for this provider's default model. Metadata for the
-	 * UI / docs — the authoritative runtime guard is `assertEmbeddingDimension`,
-	 * which rejects any vector that won't fit the fixed-width index at write time.
+	 * UI / docs — every vector is fitted to the fixed-width index at runtime by
+	 * `toIndexVector` (narrower ones zero-padded, wider ones rejected).
 	 */
 	readonly dimensions: number;
 	/** True for locally-hosted embedders (keyless, base-URL driven). */

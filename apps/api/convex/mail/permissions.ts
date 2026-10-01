@@ -37,10 +37,11 @@ import { components } from '../_generated/api';
 import {
 	getBetterAuthSessionWithRole,
 	hasPermission,
+	type MutationSessionContext,
 	type OrganizationRole,
 } from '../lib/sessionOrganization';
 import { batchGet } from '../_utils/batchLoader';
-import { isFeatureEnabled } from '../lib/featureFlags';
+import { getStoredFlags, resolveStoredFeatureFlags } from '../lib/featureFlags';
 import { POSTBOX_FEATURE_FLAGS } from './_helpers';
 import { mailboxScope } from './mailbox/shared';
 
@@ -79,19 +80,89 @@ export type MailboxAccessOutcome =
  * mailbox legitimate.
  */
 export async function personalMailEnabled(ctx: QueryCtx): Promise<boolean> {
-	for (const flag of POSTBOX_FEATURE_FLAGS) {
-		if (await isFeatureEnabled(ctx, flag)) return true;
-	}
-	return false;
+	// One storage read for the whole any-of set (plan 1.13): the old loop called
+	// `isFeatureEnabled` per flag, reading and resolving the settings row twice
+	// whenever the first flag was off.
+	const resolved = resolveStoredFeatureFlags(await getStoredFlags(ctx));
+	return POSTBOX_FEATURE_FLAGS.some((flag) => resolved[flag] === true);
+}
+
+type GateCtx = Parameters<typeof getBetterAuthSessionWithRole>[0];
+type GateSession = Awaited<ReturnType<typeof getBetterAuthSessionWithRole>>;
+
+/**
+ * The caller's session with role, as {@link requireMailboxAccess} needs it.
+ *
+ * `session` is the one the `authedMutation` / `authedQuery` floor (and so
+ * `postboxMutation` / `postboxQuery`) already resolved and passes to every
+ * handler as its third argument. It comes from the very same
+ * `getBetterAuthSessionWithRole` call in the same transaction, so reusing it
+ * decides exactly what a second call would — minus a second Better Auth
+ * `member` component lookup (plan 1.13 / C6). Callers without a floor session
+ * (public queries, other surfaces) omit it and resolve here as before.
+ */
+async function resolveGateSession(
+	ctx: GateCtx,
+	session: MutationSessionContext | undefined
+): Promise<GateSession> {
+	return session ?? (await getBetterAuthSessionWithRole(ctx));
 }
 
 export async function requireMailboxAccess(
-	ctx: Parameters<typeof getBetterAuthSessionWithRole>[0],
+	ctx: GateCtx,
 	mailboxId: Id<'mailboxes'>,
-	minRole: MailboxMemberRole = 'member'
+	minRole: MailboxMemberRole = 'member',
+	session?: MutationSessionContext
 ): Promise<MailboxAccessOutcome> {
 	if (!(await personalMailEnabled(ctx as QueryCtx))) return { ok: false, reason: 'feature_off' };
-	const s = await getBetterAuthSessionWithRole(ctx);
+	return decideMailboxAccess(ctx, mailboxId, minRole, await resolveGateSession(ctx, session));
+}
+
+/**
+ * A {@link requireMailboxAccess} memoized for ONE handler invocation (plan
+ * 1.13 / C6): the flag floor is read once, the session is resolved at most
+ * once (or taken from the floor), and the decision is cached per
+ * `mailboxId` + `minRole`.
+ *
+ * For the bulk triage loops (`applyFlags`, `purge`, `moveToRoleWithVerdict`),
+ * which used to run the whole gate — two flag reads plus a Better Auth member
+ * lookup — once per message. Nothing those loops write can change a decision
+ * (they patch messages and folders, never mailboxes, memberships, flags or the
+ * org role), so a cached decision is the one a fresh check would make. Create
+ * it inside the handler and drop it with the handler; never share one across
+ * invocations. The `mailbox` doc on a cached outcome is the one read at the
+ * first check — callers here use only the decision.
+ */
+export function createMailboxAccessGate(
+	ctx: GateCtx,
+	session?: MutationSessionContext
+): (mailboxId: Id<'mailboxes'>, minRole?: MailboxMemberRole) => Promise<MailboxAccessOutcome> {
+	let enabled: Promise<boolean> | undefined;
+	let resolvedSession: Promise<GateSession> | undefined;
+	const decisions = new Map<string, Promise<MailboxAccessOutcome>>();
+	return (mailboxId, minRole = 'member') => {
+		const key = `${mailboxId}:${minRole}`;
+		let decision = decisions.get(key);
+		if (!decision) {
+			enabled ??= personalMailEnabled(ctx as QueryCtx);
+			decision = (async (): Promise<MailboxAccessOutcome> => {
+				if (!(await enabled)) return { ok: false, reason: 'feature_off' };
+				resolvedSession ??= resolveGateSession(ctx, session);
+				return decideMailboxAccess(ctx, mailboxId, minRole, await resolvedSession);
+			})();
+			decisions.set(key, decision);
+		}
+		return decision;
+	};
+}
+
+/** The body of the gate once the feature floor has passed. */
+async function decideMailboxAccess(
+	ctx: GateCtx,
+	mailboxId: Id<'mailboxes'>,
+	minRole: MailboxMemberRole,
+	s: GateSession
+): Promise<MailboxAccessOutcome> {
 	if (!s || !s.role) return { ok: false, reason: 'no_session' };
 	const mailbox = await ctx.db.get(mailboxId);
 	if (!mailbox) return { ok: false, reason: 'mailbox_missing' };

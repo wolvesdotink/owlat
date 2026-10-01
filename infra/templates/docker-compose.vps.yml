@@ -37,8 +37,8 @@
 x-default-logging: &default-logging
   driver: json-file
   options:
-    max-size: "10m"
-    max-file: "5"
+    max-size: '10m'
+    max-file: '5'
 
 services:
   # ── Convex Backend (database + serverless functions) ──
@@ -46,17 +46,17 @@ services:
     logging: *default-logging
     image: ghcr.io/get-convex/convex-backend:${CONVEX_BACKEND_VERSION:?CONVEX_BACKEND_VERSION must be set}
     ports:
-      - "127.0.0.1:3210:3210"
-      - "127.0.0.1:3211:3211"
+      - '127.0.0.1:3210:3210'
+      - '127.0.0.1:3211:3211'
     volumes:
       - convex-data:/convex/data
     environment:
-      PORT: "3210"
-      SITE_PROXY_PORT: "3211"
+      PORT: '3210'
+      SITE_PROXY_PORT: '3211'
       INSTANCE_SECRET: ${INSTANCE_SECRET}
       CONTROL_PLANE_URL: ${CONTROL_PLANE_URL:-}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3210/version"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:3210/version']
       interval: 15s
       timeout: 5s
       retries: 5
@@ -78,10 +78,10 @@ services:
     logging: *default-logging
     image: ghcr.io/wolvesdotink/web:${OWLAT_VERSION:?OWLAT_VERSION must be set}
     ports:
-      - "127.0.0.1:3000:3000"
+      - '127.0.0.1:3000:3000'
     environment:
-      HOST: "0.0.0.0"
-      PORT: "3000"
+      HOST: '0.0.0.0'
+      PORT: '3000'
       INSTANCE_SECRET: ${INSTANCE_SECRET}
       NUXT_PUBLIC_CONVEX_URL: ${NUXT_PUBLIC_CONVEX_URL:-http://localhost:3210}
       NUXT_PUBLIC_CONVEX_SITE_URL: ${NUXT_PUBLIC_CONVEX_SITE_URL:-http://localhost:3211}
@@ -161,9 +161,9 @@ services:
     logging: *default-logging
     image: ghcr.io/wolvesdotink/imap:${OWLAT_VERSION:?OWLAT_VERSION must be set}
     ports:
-      - "0.0.0.0:993:993"
+      - '0.0.0.0:993:993'
     environment:
-      IMAP_PORT: "993"
+      IMAP_PORT: '993'
       IMAP_GREETING_HOST: ${EHLO_HOSTNAME:-mail.localhost}
       CONVEX_URL: http://convex:3210
       CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY}
@@ -203,7 +203,7 @@ services:
     logging: *default-logging
     image: ghcr.io/wolvesdotink/mail-sync:${OWLAT_VERSION:?OWLAT_VERSION must be set}
     environment:
-      MAIL_SYNC_PORT: "3200"
+      MAIL_SYNC_PORT: '3200'
       CONVEX_URL: http://convex:3210
       CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY}
       # Storage URLs are minted on the PUBLIC convex origin; allow fetching there.
@@ -228,11 +228,11 @@ services:
     logging: *default-logging
     image: ghcr.io/wolvesdotink/mta:${OWLAT_VERSION:?OWLAT_VERSION must be set}
     ports:
-      - "127.0.0.1:3100:3100"
-      - "0.0.0.0:25:25"
+      - '127.0.0.1:3100:3100'
+      - '0.0.0.0:25:25'
     environment:
-      PORT: "3100"
-      BOUNCE_PORT: "25"
+      PORT: '3100'
+      BOUNCE_PORT: '25'
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       MTA_API_KEY: ${MTA_API_KEY}
       # Seals DKIM private keys + relay credentials at rest (>= 32 bytes). The
@@ -264,7 +264,7 @@ services:
       LOG_LEVEL: ${MTA_LOG_LEVEL:-info}
       NODE_ENV: production
       CLAMAV_HOST: clamav
-      CLAMAV_PORT: "3310"
+      CLAMAV_PORT: '3310'
       # Inbound STARTTLS cert/key: default.{crt,key} published by the acme
       # sidecar into mail-certs (apps/mta/src/bounceTlsConfig.ts). Picked up
       # without a restart when renewed or first issued.
@@ -317,7 +317,7 @@ services:
     image: ghcr.io/wolvesdotink/unbound:${OWLAT_VERSION:?OWLAT_VERSION must be set}
     read_only: true
     healthcheck:
-      test: ["CMD", "unbound-control", "status"]
+      test: ['CMD', 'unbound-control', 'status']
       interval: 30s
       timeout: 5s
       retries: 3
@@ -342,7 +342,7 @@ services:
     # traverse an appendonlydir created (and owned as 999) by a previous run —
     # startup fails on preserved volumes (#551). As non-root the entrypoint
     # skips its chown/su-exec path entirely and works for fresh volumes too.
-    user: "999:1000"
+    user: '999:1000'
     volumes:
       - redis-data:/data
     # Bounded on purpose — an unbounded Redis is a whole-host outage. A
@@ -363,7 +363,7 @@ services:
       --maxmemory ${REDIS_MAXMEMORY:-512mb}
       --maxmemory-policy noeviction
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "--no-auth-warning", "ping"]
+      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD}', '--no-auth-warning', 'ping']
       interval: 10s
       timeout: 5s
       retries: 3
@@ -389,7 +389,7 @@ services:
       # `clamdcheck` alias is gone from clamav/clamav:stable as of 1.5.4);
       # older images only have the bare name. Probe both so the floating
       # `stable` tag can move in either direction without going unhealthy.
-      test: ["CMD-SHELL", "clamdcheck.sh || clamdcheck"]
+      test: ['CMD-SHELL', 'clamdcheck.sh || clamdcheck']
       interval: 60s
       timeout: 10s
       retries: 5
@@ -397,7 +397,7 @@ services:
       # RAM before clamd answers — easily several minutes on a small VPS.
       start_period: 600s
     environment:
-      CLAMAV_NO_FRESHCLAMD: "false"
+      CLAMAV_NO_FRESHCLAMD: 'false'
     cap_drop:
       - ALL
     # ClamAV's entrypoint runs as root to prepare /run/clamav and chown the
@@ -462,9 +462,9 @@ services:
     logging: *default-logging
     image: ghcr.io/wolvesdotink/updater:${OWLAT_VERSION:?OWLAT_VERSION must be set}
     ports:
-      - "127.0.0.1:3200:3200"
+      - '127.0.0.1:3200:3200'
     environment:
-      PORT: "3200"
+      PORT: '3200'
       INSTANCE_SECRET: ${INSTANCE_SECRET}
       OWLAT_DIR: /opt/owlat
       DOCKER_HOST: tcp://docker-socket-proxy:2375
@@ -476,6 +476,9 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    # Same grace and init as the root compose file; see the note there.
+    init: true
+    stop_grace_period: 120s
     restart: unless-stopped
 
   # ── Convex Deploy (one-shot: pushes functions to backend) ──
@@ -506,7 +509,7 @@ services:
       # LEAST-PRIVILEGE (security review M4): this container runs UNTRUSTED,
       # inbound-email-driven code, so it holds NO deployment admin key. It reaches
       # Convex ONLY through the `convex-fn-proxy` sidecar, which holds the real
-      # admin key and forwards ONLY the thirteen allowlisted `codeWorkTasks:*` /
+      # admin key and forwards ONLY the fifteen allowlisted `codeWorkTasks:*` /
       # `plugins/workerTasks:*` calls the worker makes. The worker authenticates
       # to the proxy with CODE_WORKER_PROXY_TOKEN (presented as its Convex key);
       # the proxy validates+strips it and injects the admin key. Set
@@ -531,7 +534,7 @@ services:
       https_proxy: http://code-worker-egress:8888
       NO_PROXY: localhost,127.0.0.1,convex-fn-proxy
       no_proxy: localhost,127.0.0.1,convex-fn-proxy
-      NODE_USE_ENV_PROXY: "1"
+      NODE_USE_ENV_PROXY: '1'
       LLM_PROVIDER: ${LLM_PROVIDER:-openai}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
@@ -606,7 +609,7 @@ services:
   # ── Convex function-allowlist proxy (least-privilege for code-worker) ──
   # SECURITY REVIEW M4: self-hosted Convex mints only a FULL admin key, so this
   # sidecar builds the least-privilege boundary OUTSIDE Convex. It holds the real
-  # CONVEX_ADMIN_KEY and forwards ONLY the thirteen allowlisted `codeWorkTasks:*`
+  # CONVEX_ADMIN_KEY and forwards ONLY the fifteen allowlisted `codeWorkTasks:*`
   # / `plugins/workerTasks:*` calls the worker makes; it authenticates the worker
   # with CODE_WORKER_PROXY_TOKEN (constant-time, then stripped) and injects the
   # admin key upstream. Any other function path → 403. The untrusted code-worker
@@ -674,7 +677,7 @@ services:
     volumes:
       - ollama-data:/root/.ollama
     environment:
-      OLLAMA_HOST: "0.0.0.0:11434"
+      OLLAMA_HOST: '0.0.0.0:11434'
     cap_drop:
       - ALL
     security_opt:
@@ -683,6 +686,43 @@ services:
       - ai
     restart: unless-stopped
 
+  # ── Ollama embedding model (one-shot, runs on every `up`) ─────────────
+  # The knowledge graph, semantic file search and quick answers embed text
+  # through the LOCAL embedding plane by default: the `ollama` service above,
+  # serving LOCAL_EMBEDDING_MODEL. A fresh Ollama holds no models, so every
+  # embed call answered "model not found" and nothing was ever stored. This
+  # pulls the model into the shared volume (a no-op once it is there).
+  #
+  # Always exits 0: a slow or failed download must not fail an update's
+  # readiness check. The next `up` retries it.
+  ollama-models:
+    logging: *default-logging
+    image: ollama/ollama:${OLLAMA_VERSION:-0.34.4}
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        i=0
+        until ollama list >/dev/null 2>&1; do
+          i=$$((i + 1))
+          if [ "$$i" -ge 60 ]; then echo "ollama-models: ollama never answered, skipping"; exit 0; fi
+          sleep 2
+        done
+        ollama pull "$$EMBEDDING_MODEL" || echo "ollama-models: pulling $$EMBEDDING_MODEL failed, retried on the next start"
+        exit 0
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      EMBEDDING_MODEL: ${LOCAL_EMBEDDING_MODEL:-nomic-embed-text}
+    depends_on:
+      ollama:
+        condition: service_started
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - ai
+    restart: 'no'
+
 # ── Networks ──
 # `default` is the implicit bridge every service joins unless it opts out.
 # `code-worker` is an isolated, INTERNAL bridge (security review M4). With
@@ -690,7 +730,7 @@ services:
 # (inbound-email-driven) code task cannot pivot to the mail/infra tier on
 # `default` AND cannot reach the internet directly. Its only paths off this
 # network are the two dual-homed sidecars: convex-fn-proxy (holds the Convex
-# admin key, forwards only the thirteen allowlisted worker functions) and
+# admin key, forwards only the fifteen allowlisted worker functions) and
 # code-worker-egress (the tinyproxy forward-proxy — the SOLE bridge to `default`,
 # permitting only the git remote and the LLM endpoint). No open bridge means a
 # task cannot bypass the egress allowlist by ignoring HTTP_PROXY.

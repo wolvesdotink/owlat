@@ -13,15 +13,12 @@ import { htmlToPlainText } from '@owlat/shared/html';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { openInboundMessageBody, readMailMessageText } from '../lib/messageBody';
+import { readMailMessageText } from '../lib/messageBody';
+import { openInboundMessageBody } from '../lib/messageBodyInbound';
 import { CURRENT_EMBEDDING_MODEL } from '../lib/constants';
 import { embed, type EmbeddingModel } from 'ai';
 import { z } from 'zod';
-import {
-	resolveLanguageModel,
-	resolveEmbeddingModel,
-	assertEmbeddingDimension,
-} from '../lib/llmProvider';
+import { resolveLanguageModel, resolveEmbeddingModel, toIndexVector } from '../lib/llmProvider';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { runLlmObject } from '../lib/llm/dispatch';
 import { recordLlmSpend } from '../analytics/llmUsage';
@@ -47,6 +44,21 @@ export function injectionRisk(text: string, html?: string): string | null {
 	if (smuggling.detected) return `smuggling:${smuggling.type}`;
 	return null;
 }
+
+/**
+ * Deadline for one extraction's LLM dispatch, all attempts included. Without
+ * one a hung provider held the action until Convex's 600s limit killed it, and
+ * an import sweep waiting on it stalled with it. Reasoning models take 20-60s
+ * on a long email; three attempts fit comfortably.
+ */
+const EXTRACTION_LLM_DEADLINE_MS = 180_000;
+
+/**
+ * How much of a team-inbox body the extraction prompt carries. A body held in
+ * storage can run to the 10 MiB the inbound route accepts, which no model
+ * takes in one prompt; the injection check still reads all of it.
+ */
+const INBOUND_EXTRACTION_BODY_CHARS = 100_000;
 
 type ExtractedEntry = z.infer<typeof extractionSchema>['entries'][number];
 
@@ -90,7 +102,6 @@ async function persistExtractedEntries(
 			model: embeddingModel,
 			value: `${entry.title}: ${entry.content}`,
 		});
-		assertEmbeddingDimension(embedding);
 
 		// Deterministic fingerprint of the normalized title+content, so saveEntry's
 		// content-hash leg can dedup the same fact restated across sources.
@@ -106,7 +117,7 @@ async function persistExtractedEntries(
 			sourceId: source.sourceId,
 			contactIds: source.contactIds,
 			threadId: source.threadId,
-			embedding: Array.from(embedding),
+			embedding: toIndexVector(embedding),
 			embeddingModel: CURRENT_EMBEDDING_MODEL,
 			embeddingGeneratedAt: Date.now(),
 			confidence: entry.confidence,
@@ -142,7 +153,7 @@ export const extractFromMessage = internalAction({
 			inboundMessageId: args.inboundMessageId,
 		});
 		if (!message) return;
-		const { text: bodyText, html: bodyHtml } = await openInboundMessageBody(message);
+		const { text: bodyText, html: bodyHtml } = await openInboundMessageBody(message, ctx.storage);
 
 		const textContent = bodyText ?? '';
 		if (textContent.length < 20) return; // Skip very short messages
@@ -178,7 +189,7 @@ export const extractFromMessage = internalAction({
 From: ${message.from}
 Subject: ${message.subject}
 Body:
-${textContent}
+${textContent.slice(0, INBOUND_EXTRACTION_BODY_CHARS)}
 
 Extract any:
 - Facts: verifiable information about people, companies, or things
@@ -191,6 +202,7 @@ Extract any:
 
 Only extract knowledge you are confident about. Skip trivial greetings or small talk.`,
 				temperature: 0.1,
+				abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
 			});
 			logInfo('[knowledge.extract] llm call', { tokenUsage, modelUsed });
 			await recordLlmSpend(ctx, 'knowledge_extract_message', tokenUsage, modelUsed);
@@ -267,6 +279,7 @@ ${textContent}
 
 Extract any facts, decisions, events, preferences, goals, relationships, or action items. Skip boilerplate and formatting noise.`,
 				temperature: 0.1,
+				abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
 			});
 			logInfo('[knowledge.extractFile] llm call', { tokenUsage, modelUsed });
 			await recordLlmSpend(ctx, 'knowledge_extract_file', tokenUsage, modelUsed);
@@ -292,6 +305,9 @@ Extract any facts, decisions, events, preferences, goals, relationships, or acti
  * scoped to the sender contact resolved by the migration indexer. Entries are
  * stored with `sourceType: 'email'`, so they retrieve through the same
  * contact-scoped vector search as live agent-extracted knowledge.
+ *
+ * Callers screen the message first (`mail/knowledgeScreen.ts#loadExtractableMail`)
+ * so phishing and spoofed mail never reaches this action.
  *
  * Idempotent: a re-run (migration restart / cron retry) no-ops if this message
  * already produced entries. Best-effort: a single message's failure never
@@ -362,6 +378,7 @@ Extract any:
 
 Only extract knowledge you are confident about. Skip trivial greetings or small talk.`,
 				temperature: 0.1,
+				abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
 			});
 			logInfo('[knowledge.extractMail] llm call', { tokenUsage, modelUsed });
 			await recordLlmSpend(ctx, 'knowledge_extract_mail', tokenUsage, modelUsed);

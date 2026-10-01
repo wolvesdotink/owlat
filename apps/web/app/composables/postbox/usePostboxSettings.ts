@@ -105,6 +105,7 @@ import type { ShortcutPreset, StoredShortcutOverride } from '~/utils/shortcutPre
 import { resolveShortcutPreset } from '~/utils/shortcutPresets';
 import type { AttachmentShareExpiryDays } from '@owlat/shared/attachmentShares';
 import { resolveAttachmentShareExpiryDays } from '@owlat/shared/attachmentShares';
+import { optimisticUpdateSettings } from '~/lib/mailOptimistic/settingsUpdater';
 
 export function usePostboxSettings() {
 	const { data, isLoading } = useConvexQuery(api.mail.settings.get, () => ({}));
@@ -169,7 +170,7 @@ export function usePostboxSettings() {
 	// no sound, so the composer stays silent unless the user turns it on.
 	const sendSound = computed<boolean>(() => data.value?.isSendSoundOn ?? false);
 
-	// Undo-send window. An unset (or unknown) value resolves to 30s — the server
+	// Undo-send window. An unset (or unknown) value resolves to 10s — the server
 	// default the composer gets by sending no `undoSendDelayMs` at all.
 	const undoSendSeconds = computed<PostboxUndoSendSeconds>(() =>
 		resolvePostboxUndoSendSeconds(data.value?.undoSendSeconds)
@@ -242,8 +243,11 @@ export function usePostboxSettings() {
 	// inventing a schedule nobody chose.
 	const dailyBriefEmail = computed(() => data.value?.dailyBriefEmail ?? null);
 
+	// Every switch repaints from the patched settings row at once (plan 2.2);
+	// a refused save drops the patch and toasts.
 	const updateOp = useBackendOperation(api.mail.settings.update, {
 		label: 'Save Postbox settings',
+		optimisticUpdate: optimisticUpdateSettings,
 	});
 
 	// Default lifetime of a new share link. Resolves through the SAME shared

@@ -11,8 +11,8 @@
  * a prop with no runtime effect, passes a substring check and fails a user.
  */
 import { mount } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ref, type Ref } from 'vue';
+import { beforeEach, describe, expect, it, vi, onTestFinished } from 'vitest';
+import { nextTick, ref, type Ref } from 'vue';
 import MeasurementPage from '../advanced/measurement.vue';
 import { armSummary, cellView } from '~/components/delivery/__tests__/measurementFixtures';
 import type { DeliverabilityDashboard } from '~/utils/deliverabilityMeasurement';
@@ -127,10 +127,15 @@ describe('measurement page — headings and landmarks', () => {
 });
 
 describe('measurement page — states', () => {
-	it('announces the loading state instead of labelling a bare div', () => {
+	it('announces the loading state instead of labelling a bare div', async () => {
+		vi.useFakeTimers();
+		onTestFinished(() => vi.useRealTimers());
 		isLoading.value = true;
 		data.value = undefined;
 		const wrapper = mountPage();
+		// The boundary holds its loader back for 150 ms (useDelayedLoading).
+		vi.advanceTimersByTime(150);
+		await nextTick();
 		const status = wrapper.find('[role="status"]');
 		expect(status.exists()).toBe(true);
 		expect(status.attributes('aria-live')).toBe('polite');

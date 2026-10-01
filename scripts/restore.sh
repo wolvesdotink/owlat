@@ -8,9 +8,18 @@
 # current contents of each volume are copied to <volume>-pre-restore-<time>,
 # and the volumes are repopulated. If any step fails, or the restore is
 # interrupted (Ctrl-C), the old data is put back and the previous stack
-# restarted. .env is restored from the backup unless --keep-env is specified.
+# restarted. .env is restored from the backup unless --keep-env is specified;
+# the override, Caddyfile and .owlat-flags.json (the CLI's copy of the feature
+# flags) belong to the restored database and are restored either way.
 # On a fresh host with no .env yet, Compose reads the archive's .env until the
 # restored one is in place.
+#
+# The volumes are restored into the Compose project the RESTORED configuration
+# starts (its .env, or the current one with --keep-env, plus its override),
+# which can differ from the project running here now. Each payload goes into
+# the volume that configuration mounts for the compose key the archive's
+# VOLUMES.txt records. The restore stops when that cannot be worked out
+# before any volume is touched.
 #
 # Usage:
 #   bash scripts/restore.sh path/to/owlat-20260101-123456.tar.gz
@@ -20,8 +29,8 @@
 #
 # This is DESTRUCTIVE. Existing volume data is replaced; the pre-restore
 # copies need as much free disk as the volumes they copy and are kept until
-# you remove them. The current .env, docker-compose.override.yml and
-# Caddyfile are preserved as <file>.before-restore-YYYYMMDD-HHMMSS.
+# you remove them. The current .env, docker-compose.override.yml, Caddyfile
+# and .owlat-flags.json are preserved as <file>.before-restore-YYYYMMDD-HHMMSS.
 # ═══════════════════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -40,7 +49,7 @@ while [[ $# -gt 0 ]]; do
 			shift
 			;;
 		--help|-h)
-			sed -n '4,24p' "$0" | sed 's/^# \{0,1\}//'
+			sed -n '4,33p' "$0" | sed 's/^# \{0,1\}//'
 			exit 0
 			;;
 		-*)
@@ -139,6 +148,20 @@ for dir in "${VOLUME_DIRS[@]}"; do
 done
 ok "All ${#VOLUME_DIRS[@]} volume payloads verified"
 
+# VOLUMES.txt ("<payload> <compose key> <volume>" per payload) says which
+# volume each payload was dumped from. Archives made before backup.sh wrote it
+# carry only the payload names; volume_targets reconstructs those below.
+VOLUME_LIST="$STAGING/VOLUMES.txt"
+if [[ -f "$VOLUME_LIST" ]]; then
+	for dir in "${VOLUME_DIRS[@]}"; do
+		suffix=$(basename "$dir")
+		[[ "$(awk -v p="$suffix" '$1 == p' "$VOLUME_LIST" | wc -l)" -eq 1 ]] \
+			|| die "VOLUMES.txt does not record the volume of payload ${suffix} exactly once — refusing to touch the running stack."
+	done
+	awk 'NF != 3 || $2 !~ /^([A-Za-z0-9][A-Za-z0-9_.-]*|-)$/ || $3 !~ /^[A-Za-z0-9][A-Za-z0-9_.-]*$/ { bad = 1 } END { exit bad }' "$VOLUME_LIST" \
+		|| die "VOLUMES.txt in the archive is malformed — refusing to touch the running stack."
+fi
+
 echo ""
 sed 's/^/  /' "$STAGING/MANIFEST.txt"
 echo ""
@@ -161,53 +184,210 @@ compose() {
 	fi
 }
 
-# ── Detect project name (volume prefix) ───────────────────────────────────────
-# The name Compose resolves here is the one `docker compose up` will use for
-# the volumes afterwards, so it wins. When Compose cannot resolve it (the
-# archive's .env predates a variable the compose file now requires), work the
-# name out the way Compose will once the restore is done, so the data lands in
-# the volumes `up` mounts. The name backup.sh recorded only feeds a warning:
-# restoring into it when this checkout derives another name would leave the
-# data where nothing reads it.
+# The configuration `docker compose up` reads once the restore is done: the
+# archive's .env (the current one with --keep-env) and the archive's override
+# (the current one when the archive has none). Handing those files to Compose
+# explicitly answers which project and volumes the restored stack mounts
+# before a single volume is touched.
+RESTORED_ENV=.env
+[[ $KEEP_ENV -eq 0 && -f "$STAGING/env" ]] && RESTORED_ENV="$STAGING/env"
+RESTORED_OVERRIDE=""
+if [[ -f "$STAGING/docker-compose.override.yml" ]]; then
+	RESTORED_OVERRIDE="$STAGING/docker-compose.override.yml"
+elif [[ -f docker-compose.override.yml ]]; then
+	RESTORED_OVERRIDE=docker-compose.override.yml
+elif [[ -f docker-compose.override.yaml ]]; then
+	RESTORED_OVERRIDE=docker-compose.override.yaml
+fi
+restored_compose() {
+	local args=()
+	[[ -f "$RESTORED_ENV" ]] && args+=(--env-file "$RESTORED_ENV")
+	args+=(-f docker-compose.yml)
+	[[ -n "$RESTORED_OVERRIDE" ]] && args+=(-f "$RESTORED_OVERRIDE")
+	docker compose "${args[@]}" "$@"
+}
+
+# ── Detect project names (volume prefix) ──────────────────────────────────────
+# Two identities matter. The CURRENT project is what `down` stops and what a
+# rollback restarts. The RESTORED project is what `up` starts after the config
+# files are replaced, so its volumes are the ones that receive the data. They
+# differ when the archived .env or override names another project; restoring
+# into the current project's volumes then left the data where the started
+# stack never looks.
 # Compose's own normalization: lowercase, only [a-z0-9_-], no leading _ or -.
 normalize_project() { tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]//g;s/^[_-]*//'; }
 unquote() { sed "s/^[[:space:]]*[\"']//;s/[\"'][[:space:]]*\$//"; }
-# Compose's precedence without -p: COMPOSE_PROJECT_NAME from the environment,
-# then from the .env it reads (the restored one, unless --keep-env), then a
-# top-level `name:` in the compose files, then this directory's name.
+# The last assignment of $1 in the env file $2, the way Compose reads it.
+env_value() {
+	sed -n "s/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}$1=//p" "$2" | tail -1 | unquote
+}
+
+# COMPOSE_FILE, or a compose.yaml that Compose prefers over
+# docker-compose.yml, swaps the file set `up` reads for one this script cannot
+# hand to Compose alongside the archived override.
+if [[ -n "${COMPOSE_FILE:-}" ]] \
+	|| { [[ -f "$RESTORED_ENV" ]] && [[ -n "$(env_value COMPOSE_FILE "$RESTORED_ENV")" ]]; }; then
+	die "COMPOSE_FILE is set (in the shell or the .env being restored). The restore can only work out which volumes docker compose up mounts for docker-compose.yml plus docker-compose.override.yml. Unset COMPOSE_FILE and run the restore again — nothing was changed."
+fi
+for file in compose.yaml compose.yml; do
+	[[ ! -f "$file" ]] \
+		|| die "$file is present, and Compose reads it instead of docker-compose.yml. Move it away and run the restore again — nothing was changed."
+done
+
+# For when Compose cannot read the CURRENT configuration (it only decides what
+# `down` stops and a rollback restarts): Compose's precedence without -p
+# is COMPOSE_PROJECT_NAME from the environment, then from the env file, then a
+# top-level `name:` in the override, then in docker-compose.yml, then this
+# directory's name. $1 is the env file, $2 the override ("" for none).
 compose_derived_project() {
-	local env_file=.env name="${COMPOSE_PROJECT_NAME:-}" file
-	[[ $KEEP_ENV -eq 0 && -f "$STAGING/env" ]] && env_file="$STAGING/env"
+	local env_file="$1" override="$2" name="${COMPOSE_PROJECT_NAME:-}" file
 	if [[ -z "$name" && -f "$env_file" ]]; then
-		name=$(sed -n 's/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}COMPOSE_PROJECT_NAME=//p' "$env_file" | tail -1 | unquote)
+		name=$(env_value COMPOSE_PROJECT_NAME "$env_file")
 	fi
-	for file in docker-compose.override.yml docker-compose.yml; do
-		[[ -z "$name" && -f "$file" ]] || continue
+	for file in "$override" docker-compose.yml; do
+		[[ -z "$name" && -n "$file" && -f "$file" ]] || continue
 		name=$(sed -n 's/^name:[[:space:]]*//p' "$file" | head -1 | unquote)
-		# An interpolated name needs Compose itself, which just failed.
-		[[ "$name" == *'$'* ]] && name=""
 	done
+	# An interpolated name needs Compose itself, which just failed. Guessing
+	# past it could put the data where nothing reads it.
+	[[ "$name" != *'$'* ]] || return 1
 	[[ -n "$name" ]] || name=$(basename "$PWD")
 	printf '%s\n' "$name" | normalize_project
 }
+# `docker compose config` prints the resolved project as `name:` and every
+# top-level volume an active service mounts with the name Docker knows it by,
+# explicit `name:` or not.
+config_project() { sed -n 's/^name: //p' | head -1; }
+config_volumes() {
+	awk '/^[^ ]/ { in_volumes = ($0 == "volumes:"); next }
+		in_volumes && /^  [^ ]/ { key = $1; sub(/:$/, "", key); gsub(/["\047]/, "", key); next }
+		in_volumes && /^    name: / { name = $2; gsub(/["\047]/, "", name); print key, name }'
+}
+# The live volume each archived payload goes into: "<compose key> <name> <how>"
+# per line, in VOLUME_DIRS order. $1 is the project, $2 the config_volumes
+# output. <how> is
+#   mounted    the restored stack mounts <name> under <compose key>
+#   unmounted  no active service mounts the payload's volume, so it goes
+#              where Compose would create it: "<project>_<key>", or the
+#              explicit name it was dumped from
+#   unmatched  an archive without VOLUMES.txt whose payload matches no
+#              mounted volume; <name> is the default "<project>_<payload>"
+#   ambiguous  an archive without VOLUMES.txt whose payload matches several
+#              mounted volumes; <name> lists them
+volume_targets() {
+	local project="$1" volumes="$2" dir payload key source match names
+	for dir in "${VOLUME_DIRS[@]}"; do
+		payload=$(basename "$dir")
+		key="-" source=""
+		if [[ -f "$VOLUME_LIST" ]]; then
+			read -r key source < <(awk -v p="$payload" '$1 == p { print $2, $3; exit }' "$VOLUME_LIST") || true
+			[[ -n "$key" ]] || key="-"
+		fi
+		if [[ "$key" != "-" ]]; then
+			match=$(awk -v k="$key" '$1 == k { print; exit }' <<<"$volumes")
+			if [[ -n "$match" ]]; then
+				printf '%s mounted\n' "$match"
+			elif [[ "$source" == "${MANIFEST_PROJECT}_${key}" ]]; then
+				printf '%s %s_%s unmounted\n' "$key" "$project" "$key"
+			else
+				printf '%s %s unmounted\n' "$key" "$source"
+			fi
+			continue
+		fi
+		# No recorded key: the payload is the volume name minus the source
+		# project's "<project>_" prefix, which an explicit name loses as well.
+		# Accept every reading of it (a compose key match first) and refuse
+		# when they name different volumes.
+		match=$(awk -v p="$payload" -v full="${MANIFEST_PROJECT:+${MANIFEST_PROJECT}_}$payload" \
+			'$1 == p || $2 == p || $2 == full { print ($1 == p ? 0 : 1), $0 }' <<<"$volumes" \
+			| sort | cut -d' ' -f2-)
+		names=$(cut -d' ' -f2 <<<"$match" | sort -u | paste -sd, -)
+		if [[ -z "$match" ]]; then
+			printf '%s %s_%s unmatched\n' "$payload" "$project" "$payload"
+		elif [[ "$names" != *,* ]]; then
+			printf '%s mounted\n' "$(head -1 <<<"$match")"
+		else
+			printf '%s %s ambiguous\n' "$payload" "$names"
+		fi
+	done
+}
+
 MANIFEST_PROJECT=$(sed -n 's/^Project name:[[:space:]]*//p' "$STAGING/MANIFEST.txt" | head -1 | normalize_project)
 COMPOSE_ERR="$STAGING/compose-config.err"
-PROJECT=""
-if CONFIG=$(compose config 2>"$COMPOSE_ERR"); then
-	PROJECT=$(printf '%s\n' "$CONFIG" | sed -n 's/^name: //p' | head -1)
-else
-	warn "docker compose config failed:"
+
+CURRENT_ENV=.env
+[[ -f .env ]] || CURRENT_ENV="$STAGING/env"
+CURRENT_PROJECT=""
+if CONFIG=$(compose config 2>/dev/null); then
+	CURRENT_PROJECT=$(config_project <<<"$CONFIG")
+fi
+if [[ -z "$CURRENT_PROJECT" ]]; then
+	CURRENT_PROJECT=$(compose_derived_project "$CURRENT_ENV" docker-compose.override.yml) \
+		|| die "Could not determine the current Compose project name — nothing was changed. Set COMPOSE_PROJECT_NAME and run the restore again."
+fi
+
+# Only Compose knows which volumes `up` mounts (explicit names, profiles,
+# interpolation). Without its answer every target would be a guess, so the
+# restore stops here rather than replace volumes the started stack may not use.
+if ! CONFIG=$(restored_compose config 2>"$COMPOSE_ERR"); then
+	warn "docker compose config failed for the configuration being restored:"
 	sed 's/^/    /' "$COMPOSE_ERR" >&2
+	if [[ $KEEP_ENV -eq 1 || ! -f "$STAGING/env" ]]; then
+		die "Without that answer the restore cannot tell which volumes docker compose up mounts — nothing was changed. Fix the error above in .env or the override, then run the restore again."
+	fi
+	die "Without that answer the restore cannot tell which volumes docker compose up mounts — nothing was changed. A .env from an older release can lack a variable the compose file now requires: write the archive's copy to .env (tar -xzOf $ARCHIVE ./env > .env && chmod 600 .env), fix what the error above names, and run the restore again with --keep-env."
 fi
-if [[ -z "$PROJECT" ]]; then
-	PROJECT=$(compose_derived_project)
-	warn "Could not resolve the project name from Compose; using '$PROJECT', the name docker compose up derives here."
-fi
+PROJECT=$(config_project <<<"$CONFIG")
+RESTORED_VOLUMES=$(config_volumes <<<"$CONFIG")
+[[ -n "$PROJECT" ]] || die "docker compose config printed no project name for the configuration being restored — nothing was changed."
 if [[ -n "$MANIFEST_PROJECT" && "$MANIFEST_PROJECT" != "$PROJECT" ]]; then
 	warn "The backup was taken from project '$MANIFEST_PROJECT'; this checkout is project '$PROJECT'. Restoring into ${PROJECT}_* volumes, which is what docker compose up uses here."
 fi
-[[ -n "$PROJECT" ]] || die "Could not determine the Compose project name. Set COMPOSE_PROJECT_NAME and run the restore again."
+if [[ $HAD_ENV -eq 1 && "$CURRENT_PROJECT" != "$PROJECT" ]]; then
+	warn "This install runs as project '$CURRENT_PROJECT', but the restored configuration starts project '$PROJECT'. The data goes into the volumes '$PROJECT' mounts; the volumes of '$CURRENT_PROJECT' are left as they are."
+fi
 info "Project name: ${PROJECT}"
+
+TARGETS=()        # live volume names, in restore order
+TARGET_KEYS=()    # parallel to TARGETS: the volume's key in the compose file
+TARGET_HOW=()     # parallel to TARGETS: how volume_targets matched it
+while read -r key name how; do
+	TARGET_KEYS+=("$key")
+	TARGETS+=("$name")
+	TARGET_HOW+=("$how")
+done < <(volume_targets "$PROJECT" "$RESTORED_VOLUMES")
+[[ ${#TARGETS[@]} -eq ${#VOLUME_DIRS[@]} ]] \
+	|| die "Could not map every volume payload to a volume of project '$PROJECT' — nothing was changed."
+MOUNTED_NAMES=$(cut -d' ' -f2 <<<"$RESTORED_VOLUMES")
+TARGET_NAMES=$(printf '%s\n' "${TARGETS[@]}")
+UNFILLED=""       # volumes the restored stack mounts that no payload goes into
+while read -r key name; do
+	[[ -z "$name" ]] || grep -qxF -- "$name" <<<"$TARGET_NAMES" \
+		|| UNFILLED="${UNFILLED:+$UNFILLED, }$name"
+done <<<"$RESTORED_VOLUMES"
+for i in "${!TARGETS[@]}"; do
+	payload=$(basename "${VOLUME_DIRS[$i]}")
+	case "${TARGET_HOW[$i]}" in
+		ambiguous)
+			die "This archive predates VOLUMES.txt, and payload ${payload} could belong to any of ${TARGETS[$i]} in the restored configuration — nothing was changed. Rename the payload directory in the archive to the compose key of its volume and run the restore again."
+			;;
+		unmatched)
+			[[ -z "$UNFILLED" ]] \
+				|| die "This archive predates VOLUMES.txt, and payload ${payload} matches no volume the restored configuration mounts, while ${UNFILLED} would get no payload. The payload is probably one of those under another name — nothing was changed. Rename the payload directory in the archive to the compose key of its volume and run the restore again."
+			warn "Payload ${payload} matches no volume the restored configuration mounts; restoring it into ${TARGETS[$i]}, which the started stack does not use."
+			;;
+		unmounted)
+			warn "No service the restored configuration starts mounts the volume of payload ${payload}; restoring it into ${TARGETS[$i]}."
+			;;
+	esac
+	if [[ "${TARGET_HOW[$i]}" != mounted ]] && grep -qxF -- "${TARGETS[$i]}" <<<"$MOUNTED_NAMES"; then
+		die "Payload ${payload} would go into ${TARGETS[$i]}, which the restored configuration mounts as another volume — nothing was changed."
+	fi
+done
+CLASHES=$(printf '%s\n' "${TARGETS[@]}" | sort | uniq -d)
+[[ -z "$CLASHES" ]] \
+	|| die "Several payloads in the archive map to the same volume (${CLASHES//$'\n'/, }) in the restored configuration — nothing was changed."
+info "Restoring into: ${TARGETS[*]}"
 
 # ── Confirm ───────────────────────────────────────────────────────────────────
 warn "This will STOP the stack and REPLACE volume data from $ARCHIVE."
@@ -234,12 +414,8 @@ extract_into_volume() {
 		sh -c 'cd "$1" && tar -xf "$2"' sh /dst "/src/$(basename "$2")"
 }
 
-TARGETS=()        # live volume names, in restore order
 KEPT=()           # parallel to TARGETS: pre-restore copy, or "" when the volume did not exist
 TOUCHED=0         # how many TARGETS have been (partly) overwritten
-for dir in "${VOLUME_DIRS[@]}"; do
-	TARGETS+=("${PROJECT}_$(basename "$dir")")
-done
 
 # Start the previous stack again after a failed or interrupted restore that
 # has left (or put back) the original data. Without a .env before the restore
@@ -326,14 +502,19 @@ compose down || DOWN_FAILED=1
 # one started by hand, can still hold a volume open and keep writing into it
 # while it is being replaced. Equally, `down` failing is not a blocker when
 # nothing of the project runs (a fresh host whose archived .env lacks a
-# variable the compose file now requires): these checks are the proof.
-RUNNING=$(docker ps -q --filter "label=com.docker.compose.project=${PROJECT}") \
-	|| die "Could not list running containers — nothing was changed."
-if [[ -n "$RUNNING" && $DOWN_FAILED -eq 1 ]]; then
-	die "docker compose down failed and containers of project '${PROJECT}' are still running — nothing was changed. Stop the stack and run the restore again."
-fi
-[[ -z "$RUNNING" ]] \
-	|| die "Containers of project '${PROJECT}' are still running after docker compose down — nothing was changed. Stop them and run the restore again."
+# variable the compose file now requires): these checks are the proof. `down`
+# stops the current project; a restored project of another name must not be
+# running either, since its volumes are the ones being replaced.
+STOPPED_PROJECTS=$(printf '%s\n' "$CURRENT_PROJECT" "$PROJECT" | sort -u)
+for project in $STOPPED_PROJECTS; do
+	RUNNING=$(docker ps -q --filter "label=com.docker.compose.project=${project}") \
+		|| die "Could not list running containers — nothing was changed."
+	if [[ -n "$RUNNING" && $DOWN_FAILED -eq 1 ]]; then
+		die "docker compose down failed and containers of project '${project}' are still running — nothing was changed. Stop the stack and run the restore again."
+	fi
+	[[ -z "$RUNNING" ]] \
+		|| die "Containers of project '${project}' are still running after docker compose down — nothing was changed. Stop them and run the restore again."
+done
 for vol in "${TARGETS[@]}"; do
 	USERS=$(docker ps -q --filter "volume=${vol}") \
 		|| die "Could not list running containers — nothing was changed."
@@ -341,7 +522,7 @@ for vol in "${TARGETS[@]}"; do
 		|| die "Volume ${vol} is still in use by a running container — nothing was changed. Stop it and run the restore again."
 done
 if [[ $DOWN_FAILED -eq 1 ]]; then
-	warn "docker compose down failed, but no container of project '${PROJECT}' is running and none uses the volumes being restored — continuing."
+	warn "docker compose down failed, but no container of project '${CURRENT_PROJECT}' is running and none uses the volumes being restored — continuing."
 fi
 ok "Stack stopped"
 
@@ -367,7 +548,7 @@ done
 # ── Restore volumes ───────────────────────────────────────────────────────────
 restore_volume() {
 	local volume="$1"
-	local suffix="$2"
+	local key="$2"
 	local src_tar="$3"
 
 	info "Restoring volume $volume…"
@@ -378,7 +559,7 @@ restore_volume() {
 	else
 		docker volume create \
 			--label "com.docker.compose.project=${PROJECT}" \
-			--label "com.docker.compose.volume=${suffix}" \
+			--label "com.docker.compose.volume=${key}" \
 			"$volume" >/dev/null || return 1
 	fi
 	extract_into_volume "$volume" "$src_tar" || return 1
@@ -391,7 +572,7 @@ PHASE=restoring
 for i in "${!VOLUME_DIRS[@]}"; do
 	dir="${VOLUME_DIRS[$i]}"
 	TOUCHED=$((i + 1))
-	restore_volume "${TARGETS[$i]}" "$(basename "$dir")" "$dir/volume.tar" \
+	restore_volume "${TARGETS[$i]}" "${TARGET_KEYS[$i]}" "$dir/volume.tar" \
 		|| rollback_and_die "Restoring ${TARGETS[$i]} failed."
 done
 
@@ -433,6 +614,53 @@ if [[ -f "$STAGING/Caddyfile" ]]; then
 	ok "Restored Caddyfile"
 fi
 
+# .owlat-flags.json is the CLI's copy of the feature flags the restored
+# database holds; `owlat doctor`, `feature` and `pack` read it, and a toggle
+# rewrites the override from it. It belongs to the restored database and
+# override, so it is restored even with --keep-env (which keeps only .env).
+# Owner-only, like the setup wizard and the updater write it.
+FLAG_MIRROR=.owlat-flags.json
+MIRROR_MISSING=0
+if [[ -f "$STAGING/owlat-flags.json" ]]; then
+	preserve "$FLAG_MIRROR"
+	cp "$STAGING/owlat-flags.json" "$FLAG_MIRROR" \
+		|| config_die "Could not restore $FLAG_MIRROR from the archive."
+	chmod 600 "$FLAG_MIRROR" || warn "Could not make $FLAG_MIRROR owner-only (chmod 600 $FLAG_MIRROR)."
+	ok "Restored $FLAG_MIRROR (CLI feature flags)"
+else
+	# An archive from before backups carried the file. The current copy
+	# describes the install being replaced, not the restored database: keep it
+	# aside rather than let a later toggle rewrite the restored profiles from it.
+	if [[ -f "$FLAG_MIRROR" ]]; then
+		mv "$FLAG_MIRROR" "$FLAG_MIRROR.before-restore-${STAMP}" \
+			|| config_die "Could not move the current $FLAG_MIRROR aside; it describes the install being replaced."
+		ok "Moved current $FLAG_MIRROR → $FLAG_MIRROR.before-restore-${STAMP}"
+	fi
+	# `owlat feature --sync` rebuilds it from the restored database once the
+	# stack is up; the summary at the end repeats the step.
+	MIRROR_MISSING=1
+	warn "The archive has no $FLAG_MIRROR (backups made before it was included). Until it is written again, owlat doctor, feature and pack assume the default feature flags, not the ones the restored database holds. Once the stack is up and Convex is healthy, run 'owlat feature --sync': it writes the file from the restored database's flags. Do not toggle flags with owlat feature or owlat pack before that."
+fi
+
+# The files now in place must start exactly the project whose volumes were
+# just restored. Compare before `up`, while the stack is still down. What
+# Compose mounts now must be the set the restore was planned against, and every
+# payload meant for a mounted volume must be in that volume.
+CONFIG=$(compose config 2>"$COMPOSE_ERR") \
+	|| config_die "docker compose config fails with the restored config files: $(head -1 "$COMPOSE_ERR")."
+FINAL_PROJECT=$(config_project <<<"$CONFIG")
+FINAL_VOLUMES=$(config_volumes <<<"$CONFIG")
+VERIFIED=1
+[[ "$FINAL_PROJECT" == "$PROJECT" ]] || VERIFIED=0
+[[ "$(sort <<<"$FINAL_VOLUMES")" == "$(sort <<<"$RESTORED_VOLUMES")" ]] || VERIFIED=0
+for i in "${!TARGETS[@]}"; do
+	[[ "${TARGET_HOW[$i]}" != mounted ]] \
+		|| grep -qxF -- "${TARGET_KEYS[$i]} ${TARGETS[$i]}" <<<"$FINAL_VOLUMES" || VERIFIED=0
+done
+if [[ $VERIFIED -eq 0 ]]; then
+	config_die "The restored config files start project '${FINAL_PROJECT}' with the volumes $(cut -d' ' -f2 <<<"$FINAL_VOLUMES" | paste -sd' ' -), which does not mount the restored volumes (${TARGETS[*]})."
+fi
+
 # ── Bring stack back up ───────────────────────────────────────────────────────
 # Profiles come from COMPOSE_PROFILES in the restored .env and from the
 # restored docker-compose.override.yml, so feature services return too.
@@ -446,6 +674,9 @@ echo ""
 printf '%b\n' "${GREEN}${BOLD}Restore complete.${RESET}"
 echo "Wait 15–30 seconds for Convex to become healthy, then:"
 echo "  • Check status:  docker compose ps"
+if [[ $MIRROR_MISSING -eq 1 ]]; then
+	echo "  • Rebuild the CLI's copy of the feature flags:  owlat feature --sync"
+fi
 echo "  • Run doctor:    bash scripts/setup.sh doctor"
 for keep in "${KEPT[@]}"; do
 	[[ -n "$keep" ]] || continue

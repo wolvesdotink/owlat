@@ -2,7 +2,10 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { Ref } from 'vue';
 
-/** Client heartbeat cadence. Two beats fit inside the 60s server active window. */
+/**
+ * Client heartbeat cadence. The server rewrites a same-mode row only once it is
+ * 45s old and keeps it active for 90s (inbox/presence.ts).
+ */
 const HEARTBEAT_INTERVAL_MS = 20_000;
 
 export interface ThreadPresencePerson {

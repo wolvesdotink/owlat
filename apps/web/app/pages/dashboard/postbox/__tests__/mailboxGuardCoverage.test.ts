@@ -36,8 +36,7 @@ describe('Postbox pages render the mailbox guard', () => {
 				'subscriptions.vue',
 				'search.vue',
 				'contacts.vue',
-				join('[folder]', 'index.vue'),
-				join('[folder]', '[messageId].vue'),
+				join('[folder]', '[[messageId]].vue'),
 				join('label', '[labelId].vue'),
 			])
 		);

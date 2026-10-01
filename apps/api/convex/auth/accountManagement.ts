@@ -8,6 +8,8 @@ import { randomToken } from '../lib/randomToken';
 import { getOptional } from '../lib/env';
 import { requireOrgPermission, requireSelf, loadOwnUserProfile } from '../lib/sessionOrganization';
 import { throwNotFound, throwInvalidState } from '../_utils/errors';
+import { beginWorkspaceDeletion } from '../workspaces/deletion/job';
+import { beginMemberErasure, resumeRequestWithoutProfile } from './erasure/lifecycle';
 
 /**
  * Get contacts export data with property values (CSV format).
@@ -31,8 +33,9 @@ export const exportContactsForOrganization = authedQuery({
 			.withIndex('by_deleted_at_and_created_at', (q) => q.eq('deletedAt', undefined))
 			.collect(); // bounded: csv-export
 
-		// Get all contact properties
-		const properties = await ctx.db.query('contactProperties').collect(); // bounded: csv-export
+		// Get all contact properties, minus any being deleted (#918)
+		const properties = (await ctx.db.query('contactProperties').collect()) // bounded: csv-export
+			.filter((property) => property.deletionRequestedAt === undefined);
 
 		// Get all property values for all contacts
 		const contactIds = contacts.map((c) => c._id);
@@ -205,13 +208,16 @@ export const cancelAccountDeletion = publicMutation({
 		let request;
 
 		if (args.cancellationToken) {
-			// Find by token (from email link)
+			// Find by token (from email link). Looked up in any state, so a link
+			// followed after the erasure began is told so rather than "not found".
 			const token = args.cancellationToken;
 			request = await ctx.db
 				.query('accountDeletionRequests')
 				.withIndex('by_cancellation_token', (q) => q.eq('cancellationToken', token))
-				.filter((q) => q.eq(q.field('status'), 'pending'))
 				.first();
+			if (request && request.status !== 'pending') {
+				refuseCancellationOf(request);
+			}
 		} else {
 			await requireSelf(ctx, args.userId);
 
@@ -231,7 +237,9 @@ export const cancelAccountDeletion = publicMutation({
 			throwNotFound('Pending deletion request');
 		}
 
-		// Update the request status
+		// Only a `pending` request reaches this point, in this transaction: the
+		// deletion cron moves a request to `erasing` in the same transaction that
+		// starts destroying data, so the two cannot interleave.
 		await ctx.db.patch(request._id, {
 			status: 'cancelled',
 			statusChangedAt: Date.now(),
@@ -242,11 +250,25 @@ export const cancelAccountDeletion = publicMutation({
 });
 
 /**
- * Execute one account deletion in full: the org's tenant data (when the user
- * owns the org), the BetterAuth organization + memberships, onboarding
- * progress, the user profile, and finally marking the deletion request
- * `completed`. Shared by the daily `processPendingDeletions` cron in
- * `auth/accountDeletion.ts`.
+ * A request that is no longer `pending` cannot be cancelled: from `erasing` on,
+ * data is already gone. Says which state it is in instead of "not found".
+ */
+function refuseCancellationOf(request: Doc<'accountDeletionRequests'>): never {
+	if (request.status === 'cancelled')
+		throwInvalidState('This deletion request was already cancelled');
+	throwInvalidState('The account deletion has already started and can no longer be cancelled', {
+		reason: 'account_deletion_started',
+		status: request.status,
+	});
+}
+
+/**
+ * Start one account deletion: the org's tenant data (when the user owns the
+ * org), the BetterAuth organization + memberships, onboarding progress and the
+ * user profile go here; the persisted member erasure (auth/erasure/) removes
+ * the login identity and the member's personal data and marks the request
+ * `completed` once it has verified the result. Shared by the daily
+ * `processPendingDeletions` cron in `auth/accountDeletion.ts`.
  *
  * The caller is responsible for confirming the request is `pending` and past
  * its grace period before calling this.
@@ -254,15 +276,14 @@ export const cancelAccountDeletion = publicMutation({
 export async function deleteAccountForRequest(
 	ctx: MutationCtx,
 	request: Doc<'accountDeletionRequests'>
-): Promise<void> {
-	const now = Date.now();
-
+): Promise<'started' | 'resumed' | 'failed'> {
 	// Get user profile to get authUserId for BetterAuth queries
 	const userProfile = await ctx.db.get(request.userProfileId);
 	if (!userProfile) {
-		// Profile already gone — just close out the request.
-		await ctx.db.patch(request._id, { status: 'completed', statusChangedAt: now });
-		return;
+		// A missing profile is NOT proof of completion: before erasures were
+		// persisted, the profile went first and the rest of the erasure lived
+		// only in a scheduled chain that may have died.
+		return await resumeRequestWithoutProfile(ctx, request);
 	}
 
 	// Get all organization memberships from BetterAuth's member table
@@ -279,7 +300,6 @@ export async function deleteAccountForRequest(
 	}>;
 
 	// For each organization, delete user-specific data
-	let isOwner = false;
 	for (const membership of memberships) {
 		const organizationId = membership.organizationId;
 
@@ -290,8 +310,14 @@ export async function deleteAccountForRequest(
 		// cron then failed forever) and never purged storage blobs; the walker
 		// is batched, storage-aware, and covers all of TENANT_TABLES.
 		if (membership.role === 'owner') {
-			isOwner = true;
-			await ctx.scheduler.runAfter(0, internal.workspaces.deletion.walker.start, {});
+			// Opened in this transaction, so the write fence is up before the
+			// BetterAuth rows below go. Those rows are not part of the sweep: the
+			// organization and this owner's membership leave here, once, before
+			// any tenant table is touched.
+			await beginWorkspaceDeletion(ctx, {
+				source: 'account_deletion',
+				requestedBy: userProfile.authUserId,
+			});
 
 			// Delete the organization itself from BetterAuth's organization table
 			await ctx.runMutation(components.betterAuth.adapter.deleteOne, {
@@ -323,21 +349,18 @@ export async function deleteAccountForRequest(
 		await ctx.db.delete(record._id);
 	}
 
+	// Persist the subject and start the erasure BEFORE the profile that names it
+	// goes (same transaction): the request becomes `erasing` and can no longer
+	// be cancelled, the login identity is removed so every session stops
+	// resolving, and the job's first step is scheduled. The job erases the
+	// member's personal data (for an owner it waits for the workspace sweep to
+	// finish) and only then marks the request `completed`.
+	await beginMemberErasure(ctx, request._id, {
+		authUserId: userProfile.authUserId,
+		email: userProfile.email,
+	});
+
 	// Delete the user profile
 	await ctx.db.delete(request.userProfileId);
-
-	if (isOwner) {
-		// The org walker is draining the whole tenant dataset in the background;
-		// the auth-side rows above are already gone, so the request is done.
-		await ctx.db.patch(request._id, { status: 'completed', statusChangedAt: now });
-	} else {
-		// Non-owner members own personal data the org keeps running without:
-		// their mailbox + mail (and blobs), external account credentials, chat
-		// authorship. A batched background job erases it and marks the request
-		// completed when it finishes (previously this data silently survived).
-		await ctx.scheduler.runAfter(0, internal.auth.memberErasure.eraseMemberData, {
-			authUserId: userProfile.authUserId,
-			requestId: request._id,
-		});
-	}
+	return 'started';
 }

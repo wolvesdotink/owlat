@@ -17,6 +17,7 @@ import {
 	postboxSectionKey,
 	postboxSectionLimitArgs,
 } from '~/utils/postboxSections';
+import { usePostboxRoleFolderId } from './usePostboxRoleFolderId';
 
 export interface PostboxInboxSection {
 	/** `null` is the unnamed remainder — rendered as "Everything else". */
@@ -36,13 +37,27 @@ export function usePostboxThreadSections(args: {
 	// One entry per section the user has grown; absent means the server default.
 	const limits = ref<Record<string, number>>({});
 
+	// The inbox id, once `listFolders` has it, spares the server the folder
+	// document read that would re-run every section on each inbox mark-read.
+	const inboxFolderId = usePostboxRoleFolderId({
+		mailboxId: args.mailboxId,
+		folderRole: ref('inbox'),
+		enabled: args.enabled,
+	});
+
 	const { data, isLoading } = useConvexQuery(
 		api.mail.sections.listSections,
-		() =>
-			args.enabled.value && args.mailboxId.value
-				? { mailboxId: args.mailboxId.value, limits: postboxSectionLimitArgs(limits.value) }
-				: 'skip',
-		{ keepPreviousData: true }
+		() => {
+			if (!args.enabled.value || !args.mailboxId.value) return 'skip';
+			const folderId = inboxFolderId.value;
+			return {
+				mailboxId: args.mailboxId.value,
+				...(folderId ? { folderId } : {}),
+				limits: postboxSectionLimitArgs(limits.value),
+			};
+		},
+		// Growing a section closes the window it grew out of instead of keeping it live.
+		{ keepPreviousData: true, windowArg: 'limits' }
 	);
 
 	const sections = computed<PostboxInboxSection[]>(() =>

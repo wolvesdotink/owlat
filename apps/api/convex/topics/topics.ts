@@ -1,10 +1,6 @@
 import { v } from 'convex/values';
-import {
-	internalQuery,
-	internalMutation,
-	type MutationCtx,
-	type QueryCtx,
-} from '../_generated/server';
+import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { paginationOptsValidator } from 'convex/server';
 import { internal } from '../_generated/api';
@@ -348,11 +344,15 @@ export const confirmDoi = internalMutation({
 		// check internally — this read is purely for the response shape.
 		const contact = await findContactByConfirmationToken(ctx, args.token);
 
+		// The form rows below are stamped with the contact's confirmation time,
+		// which is how a carry still paging finds the token this confirmation
+		// consumed (forms/pendingConfirmations.ts).
+		const at = Date.now();
 		const outcome: DoiTransitionOutcome = await ctx.runMutation(
 			internal.contacts.doiLifecycle.transitionByConfirmationToken,
 			{
 				token: args.token,
-				input: { to: 'confirmed', at: Date.now() },
+				input: { to: 'confirmed', at },
 			}
 		);
 
@@ -361,6 +361,14 @@ export const confirmDoi = internalMutation({
 			// customer-facing error (consistent with prior behavior).
 			return { success: false, error: 'Invalid or expired confirmation token' };
 		}
+
+		// The same token may also carry form signups made while the contact was
+		// pending; this route confirms them too, as the form-confirm one does.
+		await ctx.runMutation(internal.forms.submission.markConfirmedByToken, {
+			token: args.token,
+			contactId: outcome.contactId,
+			at,
+		});
 
 		return {
 			success: true,

@@ -144,4 +144,36 @@ describe('useOptimisticMutation', () => {
 		expect(showToast).not.toHaveBeenCalledWith('Sender disabled', 'success', expect.anything());
 		expect(inverse).not.toHaveBeenCalled();
 	});
+
+	describe('native optimistic update', () => {
+		it('forwards a per-run optimisticUpdate to client.mutation', async () => {
+			mutation.mockResolvedValue(null);
+			const optimisticUpdate = vi.fn();
+			const { run } = useOptimisticMutation(fakeOp, { label: 'star' });
+
+			await run({ id: 'm1' }, { optimisticUpdate });
+
+			expect(mutation).toHaveBeenCalledWith(fakeOp, { id: 'm1' }, { optimisticUpdate });
+		});
+
+		it("forwards the operation's own optimisticUpdate when the run has none", async () => {
+			mutation.mockResolvedValue(null);
+			const optimisticUpdate = vi.fn();
+			const { run } = useOptimisticMutation(fakeOp, { label: 'star', optimisticUpdate });
+
+			await run({ id: 'm1' }, {});
+
+			expect(mutation).toHaveBeenCalledWith(fakeOp, { id: 'm1' }, { optimisticUpdate });
+		});
+
+		it('needs no apply: a failed write with only an optimisticUpdate just returns undefined', async () => {
+			mutation.mockRejectedValue(new ConvexError({ category: 'forbidden', message: 'No access' }));
+			const { run } = useOptimisticMutation(fakeOp, { label: 'star' });
+
+			const result = await run({ id: 'm1' }, { optimisticUpdate: vi.fn() });
+
+			expect(result).toBeUndefined();
+			expect(showToast).toHaveBeenCalledWith('No access', 'error');
+		});
+	});
 });

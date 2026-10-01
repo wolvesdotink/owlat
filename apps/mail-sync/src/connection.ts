@@ -7,23 +7,39 @@
  * first sight of a folder (or a UIDVALIDITY change) we record the current
  * high-water UID and skip historical backfill.
  *
- * Reconnect uses exponential backoff with jitter. An authentication failure is
- * terminal: we mark the account `auth_error` and stop until the user re-enters
- * credentials (the reconcile loop then restarts us). So is the backend refusing
- * to mint credentials because the OAuth grant was revoked — there it has already
+ * Reconnect uses exponential backoff with jitter. A login the provider keeps
+ * rejecting for AUTH_REJECTION_GRACE_MS is terminal: we mark the account
+ * `auth_error` and stop until the user re-enters credentials (the reconcile
+ * loop then restarts us). A single rejection is not — providers refuse logins
+ * for passing reasons too (loginFailure.ts). So is the backend refusing to mint
+ * credentials because the OAuth grant was revoked — there it has already
  * written `auth_error` and the reconnect instruction, so we stop and leave the
  * message alone.
  */
 
 import { ImapFlow } from 'imapflow';
 import { sleep } from '@owlat/shared';
-import type { BackfillWork, ConnectableAccount, ConvexClient } from './convex.js';
-import { CredentialsUnavailableError, fetchWorkerCredentials, fn } from './convex.js';
+import type { BackfillWork, ConnectableAccount, ConvexClient, IngestOutcome } from './convex.js';
+import {
+	CredentialsUnavailableError,
+	fetchWorkerCredentials,
+	fn,
+	isMissingFunction,
+} from './convex.js';
 import type { MailSyncConfig } from './config.js';
-import { mapFolderRole, mirroredFolderPath, type FolderRole } from './folders.js';
+import { isVirtualView, mapFolderRole, mirroredFolderPath, type FolderRole } from './folders.js';
 import { imapAuth } from './auth.js';
 import { imapTlsOptions } from './tls.js';
-import { ingestMessage, isMessageLanded, type RawUploadConfig } from './ingest.js';
+import { AUTH_REJECTION_GRACE_MS, describeConnectError, isAuthError } from './loginFailure.js';
+import {
+	commitIngest,
+	discardStagedIngest,
+	ingestMessage,
+	isMessageLanded,
+	stageIngest,
+	type RawUploadConfig,
+} from './ingest.js';
+import { FORWARD_INGEST_CONCURRENCY, newMessages, runIngestPipeline } from './ingestPipeline.js';
 import {
 	backfillFolder,
 	type BackfillFetchedMessage,
@@ -37,8 +53,17 @@ import {
 	nextBackfillRetryState,
 	type BackfillRetryState,
 } from './backfillRetry.js';
-import { drainRemoteOps, isAllMailFolder, RemoteOpReplayer } from './remoteOps.js';
-import { LOCAL_PAGE, reconcile, type FolderView, type ModseqCursor } from './remoteState.js';
+import { CommandRefusals } from './imapCommandErrors.js';
+import { isAllMailFolder, RemoteOpReplayer } from './remoteOps.js';
+import type { QueuedRenamesPage } from './remoteOpTypes.js';
+import { drainRemoteOps, recoverQueuedRenames, reportFolderRename } from './remoteOpsDrain.js';
+import {
+	LOCAL_PAGE,
+	noPendingChanges,
+	reconcile,
+	type FolderView,
+	type ModseqCursor,
+} from './remoteState.js';
 import { logger } from './logger.js';
 
 interface Cursor {
@@ -84,44 +109,39 @@ const MAX_BACKOFF_MS = 5 * 60 * 1000;
 const SOURCE_FETCH_CHUNK = 50;
 
 /**
- * Terminal "the credentials are wrong" — as opposed to a transient drop worth
- * backing off and retrying.
- *
- * ImapFlow sets `authenticationFailed` on the error it throws from
- * `connect()`, but the message it carries is whatever the server said, and the
- * XOAUTH2 path says different things to the password path: Gmail answers a dead
- * or unauthorized token with `[AUTHENTICATIONFAILED] Invalid credentials
- * (Failure)` and a revoked grant with `invalid_grant`. Matching those too keeps
- * an expired Google authorization from looping on exponential backoff forever
- * instead of surfacing the "Reconnect with Google" prompt the user must act on.
+ * Least time between two INBOX forward polls that the backfill makes between
+ * its batches. A re-walk of mail that is already imported moves through a
+ * batch in one envelope fetch, and polling after every one of those would
+ * spend a SELECT pair per batch against providers that meter commands.
  */
-export function isAuthError(err: unknown): boolean {
-	const e = err as { authenticationFailed?: boolean; responseStatus?: string } | null;
-	if (e?.authenticationFailed) return true;
-	const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
-	return (
-		msg.includes('authentication failed') ||
-		msg.includes('authenticationfailed') ||
-		msg.includes('invalid credentials') ||
-		msg.includes('login failed') ||
-		msg.includes('[alert] invalid') ||
-		// XOAUTH2: the SASL exchange failed, or the grant behind the token is gone.
-		msg.includes('invalid_grant') ||
-		msg.includes('invalid status code for xoauth2') ||
-		msg.includes('xoauth2 authentication failed')
-	);
-}
+const BACKFILL_INBOX_POLL_MIN_MS = 10_000;
 
 export class AccountConnection {
 	private client: ImapFlow | null = null;
 	private stopped = false;
 	private backoffMs = INITIAL_BACKOFF_MS;
+	// One reconnect loop per account, ever (see connectLoop).
+	private isConnectLoopRunning = false;
+	// When the current run of back-to-back login rejections began. Reset by a
+	// login the provider accepts and by any failure that is not a rejection.
+	private authRejectedSince: number | null = null;
 	private folderTimer: ReturnType<typeof setInterval> | null = null;
+	private inboxTimer: ReturnType<typeof setInterval> | null = null;
+	// Set while the INBOX catch-up poll runs, so a slow one is never stacked.
+	private isInboxCatchUpRunning = false;
 	private folders: SyncedFolder[] = [];
 	// Every path the provider's last LIST returned, mirrored or not.
 	private listedPaths: string[] = [];
+	// Listed paths that are views onto mail filed elsewhere (All Mail, Starred,
+	// Important). Never mirrored; a folder an older worker mirrored for one is
+	// retired once reconcile has moved its mail to where it really lives.
+	private virtualPaths: string[] = [];
 	// Folders the write-back renamed (remoteOps.ts), kept across drains.
 	private readonly renamedFolders = new Map<string, string>();
+	// Whether the queued renames were checked since this worker started (remoteOps.ts).
+	private renamesRecovered = false;
+	// The error behind a command ImapFlow reports refused only by resolving `false`.
+	private readonly refusals = new CommandRefusals();
 	// Gmail-style "All Mail" paths: the write-back copies out of them instead of moving.
 	private allMailPaths = new Set<string>();
 	// ── Sync cycles (write-back + remote change sync) — one at a time ──
@@ -132,6 +152,8 @@ export class AccountConnection {
 	// Per-folder views of the provider (remoteState.ts). Kept across reconnects,
 	// so a change made while the connection was down still shows up as a change.
 	private readonly views = new Map<string, FolderView>();
+	// What a reconcile cut short had noticed but not yet settled (remoteState.ts).
+	private pendingRemote = noPendingChanges();
 	private readonly allMailCursor: ModseqCursor = { uidValidity: null, highestModseq: null };
 	private cursors = new Map<string, Cursor>();
 	private polling = false;
@@ -143,6 +165,8 @@ export class AccountConnection {
 	// Batches this run has persisted — the difference between an import that is
 	// advancing and one that is stuck. Read once the run ends.
 	private backfillBatchesThisRun = 0;
+	// When the backfill last forward-polled the INBOX (pollInboxForward).
+	private lastInboxPollAt = 0;
 
 	constructor(
 		private readonly account: ConnectableAccount,
@@ -153,6 +177,11 @@ export class AccountConnection {
 	/** Where `ingestMessage` PUTs the raw `.eml` before referencing it. */
 	private get rawUploadConfig(): RawUploadConfig {
 		return { convexSiteUrl: this.config.convexSiteUrl, apiKey: this.config.apiKey };
+	}
+
+	/** True once the connection has stopped for good (see connectLoop). */
+	get isStopped(): boolean {
+		return this.stopped;
 	}
 
 	async start(): Promise<void> {
@@ -166,6 +195,7 @@ export class AccountConnection {
 			clearInterval(this.folderTimer);
 			this.folderTimer = null;
 		}
+		this.clearInboxTimer();
 		if (this.eventCycleTimer) {
 			clearTimeout(this.eventCycleTimer);
 			this.eventCycleTimer = null;
@@ -181,13 +211,30 @@ export class AccountConnection {
 		}
 	}
 
+	/**
+	 * Connect, backing off between failures, until connected or stopped. Never
+	 * runs twice at once: a second loop would double every connect attempt and
+	 * status write, and each of its failures could start yet another — the
+	 * reconnect storm that once took Convex down with thousands of attempts a
+	 * minute.
+	 */
 	private async connectLoop(): Promise<void> {
+		if (this.isConnectLoopRunning) return;
+		this.isConnectLoopRunning = true;
+		try {
+			await this.connectUntilConnected();
+		} finally {
+			this.isConnectLoopRunning = false;
+		}
+	}
+
+	private async connectUntilConnected(): Promise<void> {
 		while (!this.stopped) {
 			try {
 				await this.connectOnce();
 				return; // connected; event-driven + timer from here
 			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err);
+				const message = describeConnectError(err);
 				// The backend refused to hand over credentials and only the user can
 				// change that: the Google grant behind them was revoked, or the member
 				// disconnected the account and the password was dropped with it. Either
@@ -205,15 +252,31 @@ export class AccountConnection {
 					return;
 				}
 				if (isAuthError(err)) {
+					const now = Date.now();
+					this.authRejectedSince ??= now;
+					if (now - this.authRejectedSince >= AUTH_REJECTION_GRACE_MS) {
+						logger.warn(
+							{ accountId: this.account.accountId, err },
+							'login still rejected — pausing until credentials are updated'
+						);
+						await this.setStatus('auth_error', message);
+						this.stopped = true;
+						return;
+					}
+					// Retried on the ordinary backoff below. The status is `error`,
+					// which keeps the account connectable and already shows the
+					// member the reconnect form should the rejection persist.
 					logger.warn(
-						{ accountId: this.account.accountId },
-						'auth error — pausing until credentials are updated'
+						{ accountId: this.account.accountId, err },
+						'login rejected; retrying before treating the credentials as wrong'
 					);
-					await this.setStatus('auth_error', message);
-					this.stopped = true;
-					return;
+				} else {
+					// Anything else breaks the streak: the grace period measures logins
+					// refused back to back, and a temporary refusal or a dropped socket
+					// in between says nothing about the credentials.
+					this.authRejectedSince = null;
+					logger.warn({ accountId: this.account.accountId, err }, 'connect failed; backing off');
 				}
-				logger.warn({ accountId: this.account.accountId, err }, 'connect failed; backing off');
 				await this.setStatus('error', message);
 				await sleep(this.backoffMs + Math.floor(Math.random() * 1000));
 				this.backoffMs = Math.min(this.backoffMs * 2, MAX_BACKOFF_MS);
@@ -227,6 +290,7 @@ export class AccountConnection {
 			clearInterval(this.folderTimer);
 			this.folderTimer = null;
 		}
+		this.clearInboxTimer();
 		this.client = null;
 		void this.connectLoop();
 	}
@@ -249,22 +313,42 @@ export class AccountConnection {
 				pass: creds.imapPassword,
 				accessToken: creds.imapAccessToken,
 			}),
-			logger: false,
+			// Logs nothing; keeps the error of a refused MOVE, COPY, STORE or EXPUNGE.
+			logger: this.refusals.logger,
 			emitLogs: false,
 		});
 		client.on('error', (err) => {
 			logger.warn({ accountId: this.account.accountId, err }, 'imap client error');
 		});
 		client.on('close', () => {
-			if (!this.stopped) {
-				logger.info({ accountId: this.account.accountId }, 'imap connection closed; reconnecting');
-				this.scheduleReconnect();
-			}
+			// Only the live connection reconnects. A client that never finished
+			// connecting is closed by the loop that is already backing off, and
+			// letting its close start another loop is how one failure became two.
+			if (this.stopped || this.client !== client) return;
+			logger.info({ accountId: this.account.accountId }, 'imap connection closed; reconnecting');
+			this.scheduleReconnect();
 		});
 
+		try {
+			await this.openSession(client);
+		} catch (err) {
+			// ImapFlow leaves the socket open when LOGIN is refused; a provider
+			// that caps simultaneous connections counts every one left behind.
+			if (this.client === client) this.client = null;
+			client.close();
+			throw err;
+		}
+	}
+
+	/** Log in on a fresh client and bring it to IDLE on INBOX with the timers armed. */
+	private async openSession(client: ImapFlow): Promise<void> {
 		await client.connect();
+		this.authRejectedSince = null;
 		this.client = client;
 		this.backoffMs = INITIAL_BACKOFF_MS;
+		// Whatever left a folder while the connection was down was never reported
+		// to us: every folder's first refresh compares its whole UID list.
+		for (const view of this.views.values()) view.censusDue = true;
 
 		await this.loadCursors();
 		await this.discoverFolders(client, (await this.syncMode())?.mode ?? 'incoming');
@@ -279,11 +363,22 @@ export class AccountConnection {
 		});
 		// Read, starred or removed on the provider while INBOX is open.
 		client.on('flags', () => this.scheduleEventCycle());
-		client.on('expunge', () => this.scheduleEventCycle());
+		client.on('expunge', (event: { path?: string } | undefined) => {
+			// Something left that folder (INBOX, or one a cycle has open): its next
+			// refresh takes a census. The other folders stay on the cheap path
+			// unless their message counts disagree with their views.
+			const view = event?.path ? this.views.get(event.path) : undefined;
+			if (view) view.censusDue = true;
+			this.scheduleEventCycle();
+		});
 
 		await this.setStatus('connected');
 
 		await this.pollAll();
+		// A close during setup found the reconnect loop still busy with this
+		// attempt and started nothing; failing it is what retries. Nothing below
+		// awaits, so a later close finds the loop free.
+		if (this.client !== client) throw new Error('IMAP connection closed during setup');
 		// Changes made on either side while the connection was down, then a
 		// migration's historical backfill if one is queued — in the background, so
 		// it never blocks IDLE / forward polling.
@@ -296,6 +391,35 @@ export class AccountConnection {
 					logger.warn({ accountId: this.account.accountId, err }, 'periodic poll failed')
 				);
 		}, this.config.folderPollIntervalMs);
+		this.inboxTimer = setInterval(() => void this.catchUpInbox(), this.config.inboxPollIntervalMs);
+	}
+
+	private clearInboxTimer(): void {
+		if (this.inboxTimer) {
+			clearInterval(this.inboxTimer);
+			this.inboxTimer = null;
+		}
+	}
+
+	/**
+	 * Poll the INBOX for new mail on a short timer of its own. IDLE is the fast
+	 * path, but it only runs while the connection is otherwise idle: every cycle,
+	 * reconcile and backfill takes the connection away from it, and a long-lived
+	 * worker on a busy team inbox was seen ingesting new mail only on the
+	 * five-minute folder tick for days, so every reply draft started minutes
+	 * late. This bounds that at one interval whatever IDLE does. The poll waits
+	 * its turn on the mailbox lock, so it slots in between a cycle's folders
+	 * rather than behind the whole cycle, and costs one UID FETCH when nothing
+	 * is new.
+	 */
+	private async catchUpInbox(): Promise<void> {
+		if (this.stopped || !this.client || this.isInboxCatchUpRunning) return;
+		this.isInboxCatchUpRunning = true;
+		try {
+			await this.pollInboxForward();
+		} finally {
+			this.isInboxCatchUpRunning = false;
+		}
 	}
 
 	/** The account's sync mode, read fresh each cycle; null when it cannot be read. */
@@ -366,6 +490,7 @@ export class AccountConnection {
 		await this.pollAll();
 		if (settings.mode !== 'full') {
 			this.views.clear();
+			this.pendingRemote = noPendingChanges();
 			return;
 		}
 		const accountId = this.account.accountId;
@@ -382,6 +507,7 @@ export class AccountConnection {
 			allMailCursor: this.allMailCursor,
 			isAligned: settings.isAligned,
 			forceFull: Date.now() - this.lastFullReconcileAt > FULL_RECONCILE_INTERVAL_MS,
+			pending: this.pendingRemote,
 			listLocal: (cursor) =>
 				this.convex.query(fn.listLocalMessages, {
 					accountId,
@@ -404,6 +530,7 @@ export class AccountConnection {
 			await this.convex.mutation(fn.forgetRemoteFolders, {
 				accountId,
 				listed: [...new Set([...this.listedPaths, ...this.folders.map((f) => f.remoteName)])],
+				retired: this.virtualPaths.filter((p) => !this.folders.some((f) => f.remoteName === p)),
 			});
 		}
 	}
@@ -431,6 +558,7 @@ export class AccountConnection {
 	private async discoverFolders(client: ImapFlow, mode: 'full' | 'incoming'): Promise<void> {
 		const list = await client.list();
 		this.listedPaths = list.map((e) => e.path);
+		this.virtualPaths = list.filter((e) => isVirtualView(e)).map((e) => e.path);
 		const seen = new Set<FolderRole>();
 		const mapped: SyncedFolder[] = [];
 		this.allMailPaths = new Set(
@@ -469,15 +597,26 @@ export class AccountConnection {
 		}
 	}
 
-	/** Return to INBOX so IDLE resumes there for real-time delivery. */
+	/**
+	 * Return to INBOX so IDLE resumes there for real-time delivery, and catch up
+	 * on what arrived while another folder was selected: that mail raised no
+	 * 'exists' event, so without the UIDNEXT check it would wait for the next
+	 * periodic poll.
+	 */
 	private async resumeInboxIdle(): Promise<void> {
-		if (this.client && !this.stopped) {
-			try {
-				await this.client.mailboxOpen('INBOX');
-			} catch {
-				/* reconnect handler will recover */
-			}
+		const client = this.client;
+		if (!client || this.stopped) return;
+		try {
+			await client.mailboxOpen('INBOX');
+		} catch {
+			return; // reconnect handler will recover
 		}
+		const inbox = this.folders.find((f) => f.role === 'inbox');
+		const cursor = inbox ? this.cursors.get(inbox.remoteName) : undefined;
+		const mb = client.mailbox;
+		if (!cursor || !mb || typeof mb === 'boolean') return;
+		if (Number(mb.uidValidity) !== cursor.uidValidity) return; // pollAll remaps it
+		if (Number(mb.uidNext) > cursor.lastSeenUid + 1) await this.pollInboxForward();
 	}
 
 	private async pollFolder(
@@ -578,61 +717,83 @@ export class AccountConnection {
 
 			if (uidNext <= cursor.lastSeenUid + 1) return; // nothing new
 
-			let maxUid = cursor.lastSeenUid;
-			for await (const msg of client.fetch(
-				`${cursor.lastSeenUid + 1}:*`,
-				{ uid: true, source: true, flags: true },
-				{ uid: true }
-			)) {
-				if (this.stopped) break;
-				const uid = Number(msg.uid);
-				if (!msg.source || uid <= cursor.lastSeenUid) continue;
-				try {
-					await ingestMessage(this.convex, this.rawUploadConfig, {
-						accountId: this.account.accountId,
-						folderRole: role,
-						remoteName,
-						remoteUid: uid,
-						remoteUidValidity: uidValidity,
-						raw: msg.source,
-						flags: msg.flags ?? new Set<string>(),
-						// Forward sync: this mail is arriving now, so the server may
-						// enqueue the Reply Queue + category classification for it.
-						origin: 'sync',
-					});
-				} catch (err) {
-					// Advance past one bad message so it cannot head-of-line-block newer
-					// mail, but persist the hole before ingesting any later UID. Every hole is retried independently
-					// and becomes a visible terminal-failure count after three attempts.
-					logger.warn(
-						{ accountId: this.account.accountId, remoteName, uid, err },
-						'ingest failed; skipping message'
-					);
-					const state = await this.convex.mutation(fn.recordForwardIngestFailure, {
-						accountId: this.account.accountId,
-						remoteName,
-						remoteUidValidity: uidValidity,
-						uid,
-					});
-					if (state.retry) {
-						cursor.forwardIngestFailures.push({ uid, attempts: state.attempts });
-					} else {
-						logger.error(
-							{
+			// Uploads run FORWARD_INGEST_CONCURRENCY at a time while the ingest calls
+			// commit one by one in UID order, so the cursor below is always the
+			// highest UID of a committed prefix — never past a message still in
+			// flight.
+			const lastSeenUid = cursor.lastSeenUid;
+			const failures = cursor.forwardIngestFailures;
+			let maxUid = lastSeenUid;
+			try {
+				await runIngestPipeline(
+					newMessages(
+						client.fetch(
+							`${lastSeenUid + 1}:*`,
+							{ uid: true, source: true, flags: true },
+							{ uid: true }
+						),
+						lastSeenUid
+					),
+					{
+						concurrency: FORWARD_INGEST_CONCURRENCY,
+						stage: (msg) =>
+							stageIngest(this.rawUploadConfig, {
 								accountId: this.account.accountId,
+								folderRole: role,
 								remoteName,
-								uid,
-								attempts: state.attempts,
-							},
-							'forward-sync message could not enter the retry ledger'
-						);
+								remoteUid: msg.uid,
+								remoteUidValidity: uidValidity,
+								raw: msg.source,
+								flags: msg.flags,
+								// Forward sync: this mail is arriving now, so the server may
+								// enqueue the Reply Queue + category classification for it.
+								origin: 'sync',
+							}),
+						commit: async (msg, staged) => {
+							const uid = msg.uid;
+							try {
+								if (!staged.ok) throw staged.error;
+								await commitIngest(this.convex, staged.value);
+							} catch (err) {
+								// Advance past one bad message so it cannot head-of-line-block
+								// newer mail, but persist the hole before committing any later
+								// UID. Every hole is retried independently and becomes a
+								// visible terminal-failure count after three attempts.
+								logger.warn(
+									{ accountId: this.account.accountId, remoteName, uid, err },
+									'ingest failed; skipping message'
+								);
+								const state = await this.convex.mutation(fn.recordForwardIngestFailure, {
+									accountId: this.account.accountId,
+									remoteName,
+									remoteUidValidity: uidValidity,
+									uid,
+								});
+								if (state.retry) {
+									failures.push({ uid, attempts: state.attempts });
+								} else {
+									logger.error(
+										{
+											accountId: this.account.accountId,
+											remoteName,
+											uid,
+											attempts: state.attempts,
+										},
+										'forward-sync message could not enter the retry ledger'
+									);
+								}
+							}
+							// Advance only after successful ingest or a durable retry/terminal record.
+							if (uid > maxUid) maxUid = uid;
+						},
+						isStopped: () => this.stopped,
+						discard: (_msg, staged) => discardStagedIngest(this.convex, staged),
 					}
+				);
+			} finally {
+				if (maxUid > lastSeenUid) {
+					this.cursors.set(remoteName, { ...cursor, uidValidity, lastSeenUid: maxUid });
 				}
-				// Advance only after successful ingest or a durable retry/terminal record.
-				if (uid > maxUid) maxUid = uid;
-			}
-			if (maxUid > cursor.lastSeenUid) {
-				this.cursors.set(remoteName, { ...cursor, uidValidity, lastSeenUid: maxUid });
 			}
 		} finally {
 			lock.release();
@@ -648,17 +809,59 @@ export class AccountConnection {
 		const accountId = this.account.accountId;
 		const byRole = new Map<FolderRole, string>();
 		for (const f of this.folders) if (f.role) byRole.set(f.role, f.remoteName);
+		const replayer = new RemoteOpReplayer(
+			client,
+			{ byRole, allMail: this.allMailPaths, renamed: this.renamedFolders },
+			{
+				takeRefusal: () => this.refusals.take(),
+				renamed: async (op, { to, delimiter }) => {
+					const recorded = await reportFolderRename({
+						record: () =>
+							this.convex.mutation(fn.recordRemoteFolderRename, {
+								opId: op.opId,
+								remoteName: to,
+								delimiter,
+							}),
+						isUnsupported: (err) => isMissingFunction(err, fn.recordRemoteFolderRename),
+					});
+					if (!recorded) {
+						logger.warn(
+							{ accountId, opId: op.opId },
+							'the backend cannot record folder renames yet; ops naming the old folder follow it until this worker restarts'
+						);
+					}
+				},
+				skipped: (op, reason) =>
+					logger.warn(
+						{ accountId, opId: op.opId, kind: op.kind, reason },
+						'remote write-back skipped'
+					),
+			}
+		);
 		try {
+			if (!this.renamesRecovered) {
+				// A rename carried out but not recorded before this worker last stopped.
+				this.renamesRecovered = await recoverQueuedRenames({
+					listPage: (cursor) => this.queuedFolderRenames(cursor),
+					replayer,
+					isStopped: () => this.stopped || this.client !== client,
+				});
+				if (!this.renamesRecovered) {
+					// One could not be checked: an op naming its old folder would find no
+					// folder and be retired. Nothing runs until a later drain checks it.
+					logger.warn(
+						{ accountId },
+						'remote write-back held: a queued folder rename could not be checked'
+					);
+					return;
+				}
+			}
 			await drainRemoteOps({
 				listDue: () => this.convex.query(fn.listDueRemoteOps, { accountId }),
 				settle: async (results) => {
 					await this.convex.mutation(fn.settleRemoteOps, { results });
 				},
-				replayer: new RemoteOpReplayer(client, {
-					byRole,
-					allMail: this.allMailPaths,
-					renamed: this.renamedFolders,
-				}),
+				replayer,
 				client,
 				isStopped: () => this.stopped || this.client !== client,
 				onError: (op, err) =>
@@ -666,6 +869,19 @@ export class AccountConnection {
 			});
 		} catch (err) {
 			logger.warn({ accountId, err }, 'remote write-back drain failed');
+		}
+	}
+
+	/** One page of the account's queued folder renames; null from a backend that predates the listing. */
+	private async queuedFolderRenames(cursor: string | null): Promise<QueuedRenamesPage | null> {
+		try {
+			return await this.convex.query(fn.listQueuedFolderRenames, {
+				accountId: this.account.accountId,
+				cursor,
+			});
+		} catch (err) {
+			if (isMissingFunction(err, fn.listQueuedFolderRenames)) return null;
+			throw err;
 		}
 	}
 
@@ -838,7 +1054,9 @@ export class AccountConnection {
 	 * user gets no draft for a message that arrived while importing.
 	 *
 	 * Polling the INBOX immediately before each folder's ceiling snapshot lets
-	 * the arriving copy win that race with origin 'sync'. Safe to call with
+	 * the arriving copy win that race with origin 'sync'; the rate-limited poll
+	 * between batches (pollInboxBetweenBatches) keeps the delay short inside a
+	 * long folder, and resumeInboxIdle uses it to catch up. Safe to call with
 	 * `backfillRunning` set: it takes the same per-mailbox IMAP lock as every
 	 * other fetch (the backfill holds no lock between batches) and never waits on
 	 * the backfill, and it doesn't touch the IDLE state — `maybeRunBackfill`
@@ -849,14 +1067,23 @@ export class AccountConnection {
 	private async pollInboxForward(): Promise<void> {
 		const inbox = this.folders.find((f) => f.role === 'inbox');
 		if (!inbox || this.stopped || !this.client) return;
+		this.lastInboxPollAt = Date.now();
 		try {
 			await this.pollFolder(inbox.remoteName, inbox.role);
 		} catch (err) {
-			logger.warn(
-				{ accountId: this.account.accountId, err },
-				'inbox forward poll during backfill failed'
-			);
+			logger.warn({ accountId: this.account.accountId, err }, 'inbox forward poll failed');
 		}
+	}
+
+	/**
+	 * The same forward poll between two batches of one folder, so a long folder
+	 * (a Gmail All Mail of 100k messages) does not hold new mail back until the
+	 * folder is done. Rate-limited by BACKFILL_INBOX_POLL_MIN_MS; the poll before
+	 * each folder's ceiling snapshot is not, because that one decides the race.
+	 */
+	private async pollInboxBetweenBatches(): Promise<void> {
+		if (Date.now() - this.lastInboxPollAt < BACKFILL_INBOX_POLL_MIN_MS) return;
+		await this.pollInboxForward();
 	}
 
 	/** Read a folder's high-water UID, message count, and UIDVALIDITY. */
@@ -999,6 +1226,35 @@ export class AccountConnection {
 
 	private makeBackfillDeps(uidValidity: number, migrationId: string): BackfillFolderDeps {
 		const accountId = this.account.accountId;
+		const backfillParams = (
+			remoteName: string,
+			role: FolderRole | undefined,
+			uid: number,
+			raw: Buffer,
+			flags: Set<string>
+		) => ({
+			accountId,
+			folderRole: role,
+			remoteName,
+			remoteUid: uid,
+			remoteUidValidity: uidValidity,
+			raw,
+			flags,
+			// Historical import: never enqueue background LLM work for it.
+			origin: 'backfill' as const,
+		});
+		const landedOrWarn = (outcome: IngestOutcome, remoteName: string, uid: number): boolean => {
+			const landed = isMessageLanded(outcome);
+			if (!landed && 'skipped' in outcome) {
+				// Stored nothing and did not throw — the shape that used to be
+				// indistinguishable from a successful import.
+				logger.warn(
+					{ accountId, remoteName, uid, reason: outcome.skipped },
+					'backfill ingest stored nothing'
+				);
+			}
+			return landed;
+		};
 		return {
 			batchSize: this.config.backfillBatchSize,
 			initFolder: async (remoteName, ceilingUid, messageCount) =>
@@ -1010,29 +1266,28 @@ export class AccountConnection {
 					messageCount,
 				}),
 			fetchBatch: (remoteName, start, end) => this.fetchBackfillBatch(remoteName, start, end),
-			ingest: async (remoteName, role, uid, raw, flags) => {
-				const outcome = await ingestMessage(this.convex, this.rawUploadConfig, {
-					accountId,
-					folderRole: role,
+			ingest: async (remoteName, role, uid, raw, flags) =>
+				landedOrWarn(
+					await ingestMessage(
+						this.convex,
+						this.rawUploadConfig,
+						backfillParams(remoteName, role, uid, raw, flags)
+					),
 					remoteName,
-					remoteUid: uid,
-					remoteUidValidity: uidValidity,
-					raw,
-					flags,
-					// Historical import: never enqueue background LLM work for it.
-					origin: 'backfill',
-				});
-				const landed = isMessageLanded(outcome);
-				if (!landed && 'skipped' in outcome) {
-					// Stored nothing and did not throw — the shape that used to be
-					// indistinguishable from a successful import.
-					logger.warn(
-						{ accountId, remoteName, uid, reason: outcome.skipped },
-						'backfill ingest stored nothing'
-					);
-				}
-				return landed;
+					uid
+				),
+			stageIngest: async (remoteName, role, uid, raw, flags) => {
+				const staged = await stageIngest(
+					this.rawUploadConfig,
+					backfillParams(remoteName, role, uid, raw, flags)
+				);
+				return {
+					commit: async () =>
+						landedOrWarn(await commitIngest(this.convex, staged), remoteName, uid),
+					discard: () => discardStagedIngest(this.convex, staged),
+				};
 			},
+			ingestConcurrency: FORWARD_INGEST_CONCURRENCY,
 			reportIngestFailure: (remoteName, uid, err) => {
 				// The forward-sync loop logs its skips (pollFolder below); the backfill
 				// used to swallow them, which is how an ingest that threw on every
@@ -1059,6 +1314,7 @@ export class AccountConnection {
 				return res.stillImporting;
 			},
 			isStopped: () => this.stopped,
+			betweenBatches: () => this.pollInboxBetweenBatches(),
 		};
 	}
 

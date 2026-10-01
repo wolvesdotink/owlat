@@ -1,10 +1,12 @@
-import { computed, onMounted, ref, type Ref } from 'vue';
+import { onMounted, ref, type Ref } from 'vue';
 import { PUBLIC_TOKEN_REASONS, type PublicTokenResult } from '~/lib/publicTokenClient';
+import { useUrlCredential } from '~/composables/useUrlCredential';
 
 /**
  * The token flow behind every recipient page (unsubscribe, preferences,
- * double opt-in, share, archive): read `?token=`, verify it on mount, then run
- * the page's one action with it.
+ * double opt-in, share, archive): read `?token=` (then take it out of the
+ * address bar, see `useUrlCredential`), verify it on mount, then run the page's
+ * one action with it.
  *
  *   loading ──verify──▶ ready ──run──▶ done
  *      │                  │
@@ -45,6 +47,11 @@ export interface RecipientRunOptions extends RecipientStepErrors {
 	 * the page can show it next to the form it came from.
 	 */
 	inline?: boolean;
+	/**
+	 * The action uses the token up (a double opt-in confirmation): on success
+	 * the tab's stored copy is forgotten.
+	 */
+	spendsToken?: boolean;
 }
 
 /** Shown for a rate-limited request unless the page's table says otherwise. */
@@ -56,11 +63,7 @@ const UNREACHABLE = new Set<string>([
 ]);
 
 export function useRecipientTokenFlow<V>(options: RecipientTokenFlowOptions<V>) {
-	const route = useRoute();
-	const token = computed(() => {
-		const raw = route.query['token'];
-		return typeof raw === 'string' && raw.length > 0 ? raw : undefined;
-	});
+	const { token, forget } = useUrlCredential('token');
 
 	const state = ref<RecipientFlowState>('loading');
 	/** What `verify` resolved to; the page may replace it after an action. */
@@ -108,7 +111,10 @@ export function useRecipientTokenFlow<V>(options: RecipientTokenFlowOptions<V>) 
 		try {
 			const result = await attempt(action, value);
 			if (!result.ok) fail(result.reason, errors, errors.inline);
-			else if (!errors.inline) state.value = 'done';
+			else {
+				if (errors.spendsToken) forget();
+				if (!errors.inline) state.value = 'done';
+			}
 			return result;
 		} finally {
 			isProcessing.value = false;
@@ -125,6 +131,11 @@ export function useRecipientTokenFlow<V>(options: RecipientTokenFlowOptions<V>) 
 		}
 		const result = await attempt(options.verify, value);
 		if (!result.ok) {
+			// The server rejected the token itself: keeping it for a reload would
+			// only replay the rejection. Unreachable or rate-limited is not a verdict.
+			const retryable =
+				UNREACHABLE.has(result.reason) || result.reason === PUBLIC_TOKEN_REASONS.rateLimited;
+			if (!retryable) forget();
 			fail(result.reason, options);
 			return;
 		}

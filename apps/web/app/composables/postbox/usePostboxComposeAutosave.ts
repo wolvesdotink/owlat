@@ -11,31 +11,55 @@
  * write and each wants something different, so each gets a verb instead of the
  * handle:
  *
- *  - `flush()`        — write now, then tell me the id (promoting an inline
- *                       reply to a popup: the popup must reopen the SAME row).
+ *  - `flush()`        — write now, then tell me the id (a popup reply moving
+ *                       to Answer mode must reopen the SAME row).
  *  - `settlePendingSave()` — send: a debounced write must land BEFORE the send
  *                       mutation reads the row, or the message goes out a
  *                       keystroke stale.
  *  - `cancelAutosave()` — discard and the offline hand-off: the row is about to
  *                       be thrown away or superseded, so a late write is at
  *                       best wasted and at worst resurrects discarded text.
+ *
+ * `flush()` and `settlePendingSave()` resolve to the Operation envelope, and
+ * `ok: true` means one thing only: the server acknowledged the snapshot the
+ * editor holds NOW (#895). A failed write, a write of an older snapshot, or a
+ * draft row that could not be created is `ok: false`, and the failure has
+ * already been surfaced by the operation that failed.
+ *
+ * Nothing is written while a reopened draft is still loading (#896): every
+ * write is a complete snapshot, and before the row arrives that snapshot holds
+ * empty recipients and an empty body, which `drafts.update` would store over
+ * the saved ones.
  */
 
 import type { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
 import type { Ref } from 'vue';
-import type { BackendOperation } from '~/composables/useBackendOperation';
+import type { BackendOperation, BackendOperationResult } from '~/composables/useBackendOperation';
 import { composeDraftFields } from '~/utils/postboxDraftFields';
+import { answerDraftHasContent } from '~/utils/answerMode';
 import type { ComposerMode } from './usePostboxCompose';
+import type { InitialHydrationState } from './usePostboxComposeHydration';
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
+/** Writes `settlePendingSave` makes before giving up on fields that keep changing. */
+const SETTLE_WRITES = 3;
+
+/**
+ * What `settlePendingSave` / `flush` resolve to: the Operation envelope, plus
+ * one refusal no operation surfaced — every write landed, but the fields kept
+ * changing under them — which the caller has to explain itself.
+ */
+export type SettleOutcome<T> = BackendOperationResult<T> | { ok: false; stillChanging: true };
 
 interface AutosaveOptions {
 	mailboxId: Id<'mailboxes'>;
 	inReplyToMessageId?: Id<'mailMessages'>;
 	draftId: Ref<Id<'mailDrafts'> | null>;
 	draftState: Ref<'draft' | 'pending_send' | 'scheduled'>;
+	/** Whether a reopened draft's row has loaded; always 'ready' for a new one. */
+	initialHydration: Ref<InitialHydrationState>;
 	ensuring: Ref<boolean>;
 	isSaving: Ref<boolean>;
 	lastSavedAt: Ref<number | null>;
@@ -55,6 +79,7 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 	const {
 		draftId,
 		draftState,
+		initialHydration,
 		ensuring,
 		isSaving,
 		lastSavedAt,
@@ -70,9 +95,19 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 		updateDraft,
 	} = opts;
 
-	async function ensureDraft(): Promise<Id<'mailDrafts'> | null> {
-		if (draftId.value) return draftId.value;
-		if (ensuring.value) return null;
+	// A second caller while the row is being created (an attachment upload and
+	// a save, say) waits for the same row rather than being told there is none.
+	let creating: Promise<Id<'mailDrafts'> | null> | null = null;
+
+	function ensureDraft(): Promise<Id<'mailDrafts'> | null> {
+		if (draftId.value) return Promise.resolve(draftId.value);
+		creating ??= createRow().finally(() => {
+			creating = null;
+		});
+		return creating;
+	}
+
+	async function createRow(): Promise<Id<'mailDrafts'> | null> {
 		ensuring.value = true;
 		try {
 			const result = await createDraft.run({
@@ -96,56 +131,124 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 	}
 
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
-	let pendingSave: Promise<void> | null = null;
+	let pendingSave: Promise<BackendOperationResult<Id<'mailDrafts'>>> | null = null;
+	// The snapshot the server last acknowledged, and for which row.
+	let acknowledged: { id: Id<'mailDrafts'>; key: string } | null = null;
+
+	/** Everything `drafts.update` receives besides the id: the canonical snapshot. */
+	function snapshot() {
+		return {
+			// The same one the on-device mirror stores (so its restore offer
+			// compares like with like).
+			...composeDraftFields(opts),
+			// Always sent: a timestamp arms, explicit null clears server-side.
+			followUpRemindAt: followUpRemindAt.value,
+		};
+	}
+
+	function isAcknowledged(id: Id<'mailDrafts'> | null): id is Id<'mailDrafts'> {
+		return (
+			id !== null && acknowledged?.id === id && acknowledged.key === JSON.stringify(snapshot())
+		);
+	}
+
+	function clearTimer() {
+		if (saveTimer) {
+			clearTimeout(saveTimer);
+			saveTimer = null;
+		}
+	}
 
 	function schedulePersist() {
 		// A scheduled (or pending_send) row is read-only until unscheduled —
 		// drafts.update rejects it. Skip autosave so touching a field while
 		// reviewing a scheduled draft doesn't spam 'Save draft' error toasts.
 		if (draftState.value !== 'draft') return;
-		if (saveTimer) clearTimeout(saveTimer);
+		// Early edits wait for the row; hydration merges them and wakes us.
+		if (initialHydration.value !== 'ready') return;
+		clearTimer();
 		saveTimer = setTimeout(() => {
+			saveTimer = null;
 			pendingSave = persist();
 		}, AUTOSAVE_DEBOUNCE_MS);
 	}
 
-	async function persist(): Promise<void> {
+	async function persist(): Promise<BackendOperationResult<Id<'mailDrafts'>>> {
+		// Unreachable from the composer, which checks readiness first and tells
+		// the user why; kept so no path can ever write unloaded defaults.
+		if (initialHydration.value !== 'ready') return { ok: false };
 		const id = await ensureDraft();
-		if (!id) return;
+		if (!id) return { ok: false };
+		const fields = snapshot();
 		isSaving.value = true;
 		try {
-			const result = await updateDraft.run({
-				draftId: id,
-				// The canonical draft snapshot, the same one the on-device mirror
-				// stores (so its restore offer compares like with like).
-				...composeDraftFields(opts),
-				// Always sent: a timestamp arms, explicit null clears server-side.
-				followUpRemindAt: followUpRemindAt.value,
-			});
-			if (!result.ok) return;
+			const result = await updateDraft.run({ draftId: id, ...fields });
+			if (!result.ok) return { ok: false };
+			acknowledged = { id, key: JSON.stringify(fields) };
 			lastSavedAt.value = (result.result.savedAt as number) ?? Date.now();
+			return { ok: true, result: id };
 		} finally {
 			isSaving.value = false;
 		}
 	}
 
 	/**
-	 * Flush any pending autosave immediately and return the draft id (creating
-	 * the row if it doesn't exist yet). Used when promoting an inline reply to
-	 * a popup so the popup reopens the SAME draft with nothing lost.
+	 * Make sure the snapshot the editor holds NOW has reached the server, and
+	 * resolve to the row it lives on. Send calls this before the send mutation
+	 * reads the row.
+	 *
+	 * No save is taken on trust, its own included: an in-flight write may carry
+	 * an older snapshot or fail, and the fields stay editable while a write is
+	 * outstanding, so an acknowledgement can be a keystroke stale by the time it
+	 * lands. After every awaited write the acknowledged snapshot is compared
+	 * with the current fields, and a mismatch writes again. The loop is bounded:
+	 * fields that are still changing after `SETTLE_WRITES` writes resolve to
+	 * `stillChanging`, which the caller surfaces itself — never to a send of an
+	 * older snapshot. The autosave is re-armed first, so the last edit still
+	 * reaches the server on the normal debounce.
+	 *
+	 * `beforeWrite` runs before each write this call makes, so a caller can judge
+	 * those writes apart from an earlier one it only waited on.
 	 */
-	async function flush(): Promise<Id<'mailDrafts'> | null> {
-		if (saveTimer) {
-			clearTimeout(saveTimer);
-			saveTimer = null;
+	async function settlePendingSave(
+		beforeWrite?: () => void
+	): Promise<SettleOutcome<Id<'mailDrafts'>>> {
+		for (let writes = 0; ; writes += 1) {
+			clearTimer();
+			if (pendingSave) await pendingSave;
+			const id = draftId.value;
+			// Read-only rows (scheduled / pending send) cannot be written; there is
+			// nothing of the editor's they could be missing.
+			if (id && draftState.value !== 'draft') return { ok: true, result: id };
+			if (isAcknowledged(id)) return { ok: true, result: id };
+			if (writes === SETTLE_WRITES) {
+				// The loop cleared the timer the latest edit armed; put it back.
+				schedulePersist();
+				return { ok: false, stillChanging: true };
+			}
+			beforeWrite?.();
+			pendingSave = persist();
+			const saved = await pendingSave;
+			if (!saved.ok) return saved;
 		}
+	}
+
+	/**
+	 * Save now and return the draft id (creating the row if it doesn't exist
+	 * yet). Used when a popup reply moves to Answer mode (which reopens the SAME
+	 * draft with nothing lost), when Answer mode is left with something typed in
+	 * the last debounce window, and when an ask session needs the row. Nothing
+	 * is lost only when the save landed, so a failure is `ok: false` and the
+	 * caller stays put.
+	 */
+	async function flush(): Promise<SettleOutcome<Id<'mailDrafts'> | null>> {
 		// Scheduled/pending rows are read-only (drafts.update rejects them) —
 		// just report the id without persisting.
-		if (draftState.value === 'draft') {
-			pendingSave = persist();
-			await pendingSave;
+		if (draftState.value !== 'draft') {
+			clearTimer();
+			return { ok: true, result: draftId.value };
 		}
-		return draftId.value;
+		return settlePendingSave();
 	}
 
 	// Watch for any field change
@@ -166,25 +269,43 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 		{ deep: true }
 	);
 
+	// The row has loaded and any early edits are merged over it: save them.
+	watch(initialHydration, (state) => {
+		if (state === 'ready') schedulePersist();
+	});
+
+	// A composer that goes away with a debounced write still armed (a popup
+	// docked, Answer mode left by the browser's Back within 1.5 s) saves it now:
+	// the edit exists nowhere else (the crash mirror is keyed by the row). The
+	// one timer that is dropped is a row-less composer's that holds nothing the
+	// person wrote (a signature or a hydration re-arm, say): saving it would
+	// leave an empty draft nobody asked for. The editor itself emits nothing on
+	// a blur without an edit, so an untouched reply never arms the timer.
+	const seededEnvelope = envelopeKey();
+	function envelopeKey(): string {
+		return JSON.stringify([
+			toAddresses.value,
+			ccAddresses.value,
+			bccAddresses.value,
+			subject.value,
+		]);
+	}
+	function holdsAnEdit(): boolean {
+		return (
+			answerDraftHasContent(bodyHtml.value, 0) ||
+			bodyBlocks.value.length > 0 ||
+			envelopeKey() !== seededEnvelope
+		);
+	}
+	onScopeDispose(() => {
+		if (!saveTimer) return;
+		clearTimer();
+		if (draftId.value || holdsAnEdit()) pendingSave = persist();
+	});
+
 	/** Drop a debounced write on the floor — the row is going away or is stale. */
 	function cancelAutosave(): void {
-		if (saveTimer) {
-			clearTimeout(saveTimer);
-			saveTimer = null;
-		}
-	}
-
-	/**
-	 * Make sure whatever the editor holds has reached the server, then resolve.
-	 * Send calls this before the send mutation reads the row.
-	 */
-	async function settlePendingSave(): Promise<void> {
-		if (saveTimer) {
-			clearTimeout(saveTimer);
-			saveTimer = null;
-			pendingSave = persist();
-		}
-		if (pendingSave) await pendingSave;
+		clearTimer();
 	}
 
 	return { ensureDraft, flush, cancelAutosave, settlePendingSave };

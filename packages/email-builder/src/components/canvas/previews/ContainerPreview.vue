@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent } from 'vue';
+import { computed, defineAsyncComponent, inject } from 'vue';
 import type { EditorBlock, EmailTheme, ContainerBlockContent, Variable, SlashCommand } from '../../../types';
 import { blockBoxStyle } from '../../../utils/blocks';
 import type { ParentContext } from '../types';
@@ -26,6 +26,13 @@ const emit = defineEmits<{
 	(e: 'insert-block-after', blockId: string): void;
 	(e: 'open-link-dialog', blockId: string): void;
 }>();
+
+// Nested items register their element like root Blocks do, so the toolbar
+// can anchor to a selected item at any depth.
+const setBlockElement = inject<(blockId: string, el: HTMLElement | null) => void>(
+	'setBlockElement',
+	() => {}
+);
 
 const content = computed(() => props.block.content as ContainerBlockContent);
 
@@ -67,6 +74,11 @@ function handleChildSelect(itemId: string, event: MouseEvent) {
 		element: el,
 	});
 }
+
+// Double-clicking a nested text Block opens it in the inline editor, in place.
+function handleChildDoubleClick(item: { id: string; type: string }) {
+	if (item.type === 'text') emit('double-click-block', item.id);
+}
 </script>
 
 <template>
@@ -85,6 +97,7 @@ function handleChildSelect(itemId: string, event: MouseEvent) {
 				:key="item.id"
 				class="relative group/nested-block"
 				:data-block-id="item.id"
+				:ref="(el) => setBlockElement(item.id, el as HTMLElement | null)"
 				:class="[
 					'border rounded my-0.5 transition-[border-color] duration-(--motion-fast)',
 					item.id === selectedNestedItemId
@@ -92,6 +105,7 @@ function handleChildSelect(itemId: string, event: MouseEvent) {
 						: 'border-transparent hover:border-border-subtle',
 				]"
 				@click="(e) => handleChildSelect(item.id, e)"
+				@dblclick="handleChildDoubleClick(item)"
 			>
 				<DocumentBlock
 					:block="{ id: item.id, type: item.type, content: item.content } as EditorBlock"
@@ -100,6 +114,13 @@ function handleChildSelect(itemId: string, event: MouseEvent) {
 					:selected-nested-item-id="selectedNestedItemId"
 					:inline-edit-block-id="inlineEditBlockId"
 					:variables="variables"
+					@select-nested="(payload: { itemId: string; context: ParentContext; element: HTMLElement }) => emit('select-nested', payload)"
+					@update-children="(blockId: string, children: unknown[]) => emit('update-children', blockId, children)"
+					@double-click-block="(id: string) => emit('double-click-block', id)"
+					@exit-inline-edit="emit('exit-inline-edit')"
+					@slash-command-select="(cmd: SlashCommand, blockId: string) => emit('slash-command-select', cmd, blockId)"
+					@insert-block-after="(id: string) => emit('insert-block-after', id)"
+					@open-link-dialog="(id: string) => emit('open-link-dialog', id)"
 				/>
 			</div>
 		</VueDraggable>

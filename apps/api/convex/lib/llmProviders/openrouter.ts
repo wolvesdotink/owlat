@@ -34,8 +34,13 @@ function openrouterBaseUrl(cfg: ProviderClientConfig): string {
 	return cfg.baseUrl ?? OPENROUTER_BASE_URL;
 }
 
+// OpenRouter accepts `response_format: json_schema` and forwards it to upstreams
+// that support structured outputs (OpenAI, Anthropic, Gemini, ...). Without the
+// flag every `runLlmObject` call went out as a schema-less `json_object` request.
 function openrouterClient(cfg: ProviderClientConfig): OpenAICompatibleClient {
-	return openAICompatibleClient(clientCache, 'openrouter', openrouterBaseUrl(cfg), cfg.apiKey);
+	return openAICompatibleClient(clientCache, 'openrouter', openrouterBaseUrl(cfg), cfg.apiKey, {
+		supportsStructuredOutputs: true,
+	});
 }
 
 export const openrouterLanguageAdapter: LanguageProviderAdapter<'openrouter'> = {

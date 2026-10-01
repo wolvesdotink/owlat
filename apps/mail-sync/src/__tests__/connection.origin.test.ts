@@ -10,18 +10,33 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getFunctionName, type AnyFunctionReference } from 'convex/server';
+import { getFunctionName } from 'convex/server';
 import type { ConnectableAccount, ConvexClient } from '../convex.js';
 import type { MailSyncConfig } from '../config.js';
 import type { BackfillFolderDeps } from '../backfill.js';
+import type { IngestParams } from '../ingest.js';
 
-const ingest = vi.hoisted(() => ({
-	ingestMessage: vi.fn(async () => ({ messageId: 'msg_1' })),
-	isMessageLanded: vi.fn(() => true),
-}));
+// convex/server declares AnyFunctionReference without exporting it.
+type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
+
+const ingest = vi.hoisted(() => {
+	const ingestMessage = vi.fn(async (..._args: unknown[]) => ({ messageId: 'msg_1' }));
+	return {
+		ingestMessage,
+		isMessageLanded: vi.fn(() => true),
+		// The staged path lands in `ingestMessage` too, so both call shapes are
+		// asserted through one call log.
+		stageIngest: vi.fn(async (_config: unknown, params: unknown) => ({ params })),
+		commitIngest: vi.fn(async (convex: unknown, staged: { params: unknown }) =>
+			ingestMessage(convex, undefined, staged.params)
+		),
+	};
+});
 vi.mock('../ingest.js', () => ({
 	ingestMessage: ingest.ingestMessage,
 	isMessageLanded: ingest.isMessageLanded,
+	stageIngest: ingest.stageIngest,
+	commitIngest: ingest.commitIngest,
 }));
 
 // The folder walk itself is covered by backfill.test.ts; stubbing it here keeps
@@ -96,7 +111,7 @@ describe('ingest origin at the connection call sites', () => {
 		await conn.pollFolder('INBOX', 'inbox');
 
 		expect(ingest.ingestMessage).toHaveBeenCalledTimes(1);
-		const params = ingest.ingestMessage.mock.calls[0]![2] as Record<string, unknown>;
+		const params = ingest.ingestMessage.mock.calls[0]![2] as IngestParams;
 		expect(params.origin).toBe('sync');
 		expect(params.remoteUid).toBe(42);
 		expect(params.folderRole).toBe('inbox');
@@ -109,13 +124,16 @@ describe('ingest origin at the connection call sites', () => {
 		await deps.ingest('INBOX', 'inbox', 17, RAW, new Set<string>());
 
 		expect(ingest.ingestMessage).toHaveBeenCalledTimes(1);
-		const params = ingest.ingestMessage.mock.calls[0]![2] as Record<string, unknown>;
+		const params = ingest.ingestMessage.mock.calls[0]![2] as IngestParams;
 		expect(params.origin).toBe('backfill');
 		expect(params.remoteUid).toBe(17);
 	});
 
 	it('persists a failed forward UID and retries it even when no newer mail arrives', async () => {
-		const mutation = vi.fn(async () => ({ retry: true, attempts: 1 }));
+		const mutation = vi.fn(async (_ref: AnyFunctionReference, _args: unknown) => ({
+			retry: true,
+			attempts: 1,
+		}));
 		const convex = {
 			query: vi.fn(async () => []),
 			mutation,
@@ -260,7 +278,7 @@ describe('forward INBOX poll inside the backfill loop', () => {
 		// Exactly one ingest: the forward poll's, tagged 'sync' — and it happened
 		// before the first folder's walk could reach the same message.
 		expect(ingest.ingestMessage).toHaveBeenCalledTimes(1);
-		const params = ingest.ingestMessage.mock.calls[0]![2] as Record<string, unknown>;
+		const params = ingest.ingestMessage.mock.calls[0]![2] as IngestParams;
 		expect(params.origin).toBe('sync');
 		expect(params.folderRole).toBe('inbox');
 		expect(params.remoteUid).toBe(42);
@@ -272,7 +290,10 @@ describe('forward INBOX poll inside the backfill loop', () => {
 });
 
 it('persists holes even if the fetch stream disconnects', async () => {
-	const mutation = vi.fn(async () => ({ retry: true, attempts: 1 }));
+	const mutation = vi.fn(async (_ref: AnyFunctionReference, _args: unknown) => ({
+		retry: true,
+		attempts: 1,
+	}));
 	const convex = { query: vi.fn(), mutation, action: vi.fn() } as unknown as ConvexClient;
 	const conn = new AccountConnection(ACCOUNT, convex, CONFIG) as unknown as ConnectionInternals;
 	conn.cursors.set('INBOX', { uidValidity: 7, lastSeenUid: 41 });

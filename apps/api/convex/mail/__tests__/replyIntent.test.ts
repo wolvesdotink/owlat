@@ -93,6 +93,22 @@ describe('buildReplyIntentPrompt', () => {
 		expect(prompt).toContain('informational_update');
 	});
 
+	// A team inbox: the customer sends the billing address the team asked for
+	// and waits for the invoice. "Doing a task it mentions is not replying" read
+	// that as FYI; the task here IS the email back.
+	it('counts a task whose result goes back to the sender by email as a reply', () => {
+		expect(prompt).toContain('waiting to RECEIVE something from the reader by email');
+		expect(prompt).toContain('only supplies details the reader asked them for');
+		expect(prompt).toContain('that sends nothing back to the sender is not replying');
+	});
+
+	// Cold pitches ("quick question about your website") end in a question and
+	// were drafted like customer mail.
+	it('files unsolicited sales outreach as broadcast even when it asks a question', () => {
+		expect(prompt).toContain('cold outreach');
+		expect(prompt).toContain('The question is a sales device');
+	});
+
 	it('warns the model when the sender looks like a publishing mailbox', () => {
 		const automated = buildReplyIntentPrompt({
 			systemGuard: 'GUARD',

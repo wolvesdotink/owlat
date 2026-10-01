@@ -30,6 +30,13 @@ export const TENANT_TABLES = [
 	'accountExportArtifactLeases',
 	'accountExportArtifacts',
 	'accountExportSessions',
+	// Maintained counts (plan 3.1): derived from the rows below and wiped first,
+	// so the rest of the wipe does not keep moving buckets on its way out.
+	'counterScopes',
+	'counterBuckets',
+	// IMAP folder membership (#927): derived from mailMessages the same way.
+	'mailFolderMembership',
+	'mailFolderUidBlocks',
 
 	// ── Contacts subtree (children first) ──
 	'contactPropertyValues',
@@ -44,6 +51,8 @@ export const TENANT_TABLES = [
 	// Per-contact erasure progress; references the contact rows below.
 	'contactErasureJobs',
 	'contacts',
+	// Property-deletion progress; references the property rows below.
+	'contactPropertyDeletionJobs',
 	'contactProperties',
 
 	// ── Automations (children first) ──
@@ -54,6 +63,9 @@ export const TENANT_TABLES = [
 	'automations',
 
 	// ── Transactional ──
+	// Attachment bytes a transactional API request stored but no Send claimed
+	// yet; the step frees each blob with its row.
+	'transactionalPendingUploads',
 	'transactionalSends',
 	'transactionalEmails',
 
@@ -76,6 +88,7 @@ export const TENANT_TABLES = [
 
 	// ── Campaigns (children first) ──
 	'campaignSendJobs',
+	'audienceCountJobs',
 	'campaignStatShards',
 	'campaignSenders',
 	'campaigns',
@@ -139,6 +152,9 @@ export const TENANT_TABLES = [
 	'threadPresence',
 	'threadReads',
 	'inboxFollowUps',
+	// Answer mode catch-up cards of team and Postbox threads: derived from the
+	// mail, so they go before the threads they summarise.
+	'threadCatchUps',
 	'inboundMessages',
 	'conversationThreads',
 	'coalesceBatches',
@@ -182,7 +198,12 @@ export const TENANT_TABLES = [
 	// names this org's mailboxes, so it wipes with the mail it walked. (The
 	// excerpt itself is a COLUMN on `mailMessages` and needs no entry here.)
 	'mailBodySearchBackfillJobs',
+	// Inline bodies, 1:1 with the message rows below (plan 3.2).
+	'mailMessageBodies',
 	'mailMessages',
+	// Attachment parts stored out of a raw `.eml` (plan 3.5). Freed with the raw
+	// blob by `deleteMessageRowAndBlobs`; listed so an orphan still wipes.
+	'mailMessageParts',
 	'mailThreads',
 	'mailDrafts',
 	'mailLabels',
@@ -223,6 +244,8 @@ export const TENANT_TABLES = [
 	'mailArchiveImports',
 	'mailboxMoves',
 	'externalMailFolderSync',
+	// Sealed OAuth access-token cache, one row per oauth2 account.
+	'externalMailAccessTokens',
 	// Pending local → remote write-backs (moves, flags, deletes) for an account.
 	'externalMailRemoteOps',
 	'externalMailAccounts',
@@ -236,6 +259,8 @@ export const TENANT_TABLES = [
 	'seedPlacementProbes',
 	'mailboxMembers',
 	'pendingMailboxMembers',
+	// 1:1 storage accounting row of a mailbox (plan 2.4).
+	'mailboxUsage',
 	'mailboxes',
 	'pendingMailboxes',
 	'mailboxRequests',
@@ -252,6 +277,8 @@ export const TENANT_TABLES = [
 
 	// ── AI draft-revise stream buffers (ephemeral, owner-scoped) ──
 	'aiDraftStreams',
+	// Answer mode ask sessions (owner-scoped, reference drafts and team threads).
+	'answerAskSessions',
 
 	// ── Dashboard & visualizations ──
 	'visualizations',
@@ -307,9 +334,30 @@ export const NON_TENANT_TABLES = [
 	// The deletion-tracking table itself — account deletion patches the request
 	// row to `completed`, so it must survive the wipe.
 	'accountDeletionRequests',
+	// Member erasure's progress rows. The erasure they drive runs across a
+	// workspace deletion (it waits for the sweep), so they must outlive it too.
+	'memberErasureJobs',
+	// Workspace deletion's own control plane (the durable job and the write
+	// fence's switch). It has to outlive the tables it empties, and its finished
+	// rows are the generation history.
+	'workspaceDeletionJobs',
+	'workspaceDeletionProgress',
+	// The migration ledger: which data migrations ran on this deployment, how far
+	// they got and when they finished. Deployment state, not org data: a contract
+	// step reads it after any wipe, and a wipe must not make a finished migration
+	// look as if it never ran.
+	'migrationRuns',
 	// Instance configuration singleton — recreated by setup; reset clears it in a
-	// dedicated step.
+	// dedicated step. The flag singleton and counter rows split off it (plan 2.4)
+	// go with it, in the same reset step and the walker's terminal steps.
 	'instanceSettings',
+	'featureFlagSettings',
+	'instanceCounters',
+	// Progress of the instance-wide sweep that clears body-search excerpts when
+	// the operator turns the switch off: a generation, counts and a pagination
+	// cursor, no message content. It follows the instance switch rather than the
+	// org, and a sweep still running during a wipe must keep its fence.
+	'mailBodySearchPurges',
 	// Per-org AI provider selection + encrypted key envelope — an admin-recreated
 	// config singleton like instanceSettings, not org business data.
 	'aiProviderConfig',

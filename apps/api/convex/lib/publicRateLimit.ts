@@ -1,5 +1,5 @@
 import { v, type Infer } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from './writeFence';
 import { rateLimiter } from './rateLimiter';
 import {
 	getTrustedProxyMode,

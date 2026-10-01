@@ -11,6 +11,8 @@
  * INLINE BODY COLUMNS SEALED (DB strings, text cipher):
  *   - inboundMessages : textBody, htmlBody          (AI-inbox inline bodies)
  *   - mailMessages    : textBodyInline, htmlBodyInline (personal-mailbox snippet)
+ *   - mailMessageBodies : textBodyInline, htmlBodyInline (the same bodies since
+ *                         plan 3.2 moved them out of the message row)
  *   - unifiedMessages : content                      (the JSON body blob)
  *   - mailDrafts      : bodyHtml, bodyText, bodyBlocks (compose drafts)
  *   - conversationThreads : lastPreview                (team-inbox snippet)
@@ -58,12 +60,8 @@
  */
 
 import { v } from 'convex/values';
-import {
-	internalAction,
-	internalMutation,
-	internalQuery,
-	type MutationCtx,
-} from '../_generated/server';
+import { internalAction, internalQuery, type MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Doc, Id, TableNames } from '../_generated/dataModel';
 import {
@@ -91,6 +89,7 @@ interface PageResult {
 interface SealCounts {
 	inboundMessages: number;
 	mailMessages: number;
+	mailMessageBodies: number;
 	unifiedMessages: number;
 	mailDrafts: number;
 	conversationThreads: number;
@@ -142,6 +141,16 @@ export const sealMailMessagesPage = internalMutation({
 	args: cursorArg,
 	handler: (ctx, { cursor }): Promise<PageResult> =>
 		sealPage(ctx, 'mailMessages', cursor, sealMailInlineBodyPatch, (id, patch) =>
+			ctx.db.patch(id, patch)
+		),
+});
+
+/** Seal `mailMessageBodies` for one page: the inline bodies plan 3.2 moved out
+ * of `mailMessages`, under the same column names, so the same patch builder. */
+export const sealMailMessageBodiesPage = internalMutation({
+	args: cursorArg,
+	handler: (ctx, { cursor }): Promise<PageResult> =>
+		sealPage(ctx, 'mailMessageBodies', cursor, sealMailInlineBodyPatch, (id, patch) =>
 			ctx.db.patch(id, patch)
 		),
 });
@@ -256,6 +265,9 @@ export const run = internalAction({
 		const mailMessages = await drainTable((a) =>
 			ctx.runMutation(internal.migrations['0035_seal_bodies_at_rest'].sealMailMessagesPage, a)
 		);
+		const mailMessageBodies = await drainTable((a) =>
+			ctx.runMutation(internal.migrations['0035_seal_bodies_at_rest'].sealMailMessageBodiesPage, a)
+		);
 		const unifiedMessages = await drainTable((a) =>
 			ctx.runMutation(internal.migrations['0035_seal_bodies_at_rest'].sealUnifiedMessagesPage, a)
 		);
@@ -277,6 +289,7 @@ export const run = internalAction({
 			sealed: {
 				inboundMessages,
 				mailMessages,
+				mailMessageBodies,
 				unifiedMessages,
 				mailDrafts,
 				conversationThreads,

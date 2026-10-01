@@ -22,12 +22,8 @@
 import { v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import { takeReceivedAtChunk } from '../lib/receivedAtCursor';
-import {
-	internalAction,
-	internalMutation,
-	internalQuery,
-	type MutationCtx,
-} from '../_generated/server';
+import { internalAction, internalQuery, type MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { publicQuery, adminMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { isActiveOrgMember } from '../lib/sessionOrganization';

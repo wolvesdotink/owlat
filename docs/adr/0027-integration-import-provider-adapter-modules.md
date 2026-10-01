@@ -818,3 +818,159 @@ status column with a `LEGAL_EDGES` graph — the
 `integrationImports.status` field has only three terminal-ish values
 and no inter-state transitions worth a reducer) and does not bear
 on that question.
+
+## Amendment: fenced page commits and recovery (#996, #999, 2026-10-01)
+
+The walker shape above split one page's work across separate calls from
+the page action: a status check before the fetch, then the contact
+import, the suppression carry-over, the progress patch and the next
+hop's schedule, each on its own. Two failures followed from that.
+Cancelling while a page was being fetched did not stop the page:
+contacts, topic memberships, DOI confirmations and suppressions still
+landed, the progress patch then refused the cancelled run, and the
+cancel had already reopened the start gate to a second run. And a page
+action that died after its progress patch and before its schedule left
+the run `'running'` with nothing queued behind it, which blocked every
+later import until someone cancelled it by hand.
+
+**Page identity.** A page is named by the cursor it is fetched at and
+the number of pages the run had committed when its hop was issued. The
+row carries both (`cursor`, `pagesCommitted`); the hop's arguments carry
+both (`cursor`, `page`). A hop the previous release queued has no
+`page`, and a row it started has no `pagesCommitted`; both read as 0.
+
+**The commit is the fence (#996).** `processIntegrationPage` only
+fetches. It hands the page to `pageCommit.commitIntegrationPage`, which
+in one transaction checks that the run is `'running'` and that the
+row's identity still names this page, then imports the contacts
+(`contacts.import.importBatch`), applies the carried-over suppressions
+(`suppressions.applySuppressionBatch`), adds the page's counts, moves
+the cursor and page count on, and schedules the next hop or ends the
+run. `cancelImport` is a transaction too, so the two serialize: a
+cancel accepted before the commit leaves no effect of the page, and a
+page committed before the cancel is fully counted. Because a cancelled
+run can no longer write, the gate it releases is safe to reuse: a
+replacement import started right after a cancel cannot receive the old
+run's page. Every terminal and progress write requires `'running'`, and
+a hop's own failure (`completeImport` with `cursor`/`page`) also
+requires its page to still be current, so neither a late hop nor a
+retry can reopen or append to a run that has ended or moved on.
+
+The two stages run as nested mutations inside the commit. One that
+throws rolls back its own writes and is recorded on the run while the
+rest of the page commits, which is what the separate calls did. The
+per-provider semantics are unchanged: `contactSource` still decides
+whether a provider reaches the Contact import module, `defaultDoiAttest`
+is still threaded into it, and the suppression routing still belongs to
+the adapters and `applySuppressionBatch`. A page's transaction holds at
+most one provider page (100 entries, split between contacts and
+suppressions), the same bound each of the old transactions had.
+
+A cancel now ends the run through the same terminal helper as every
+other ending (`pageCommit.finishImport`), so a cancelled run that
+carried suppressions over records its `blocklist.provider_import_summary`
+row like a run that failed halfway.
+
+**Progress, scheduling and recovery invariants (#999).** These hold
+with no cancel involved:
+
+1. A run's counts and cursor change only in the transaction that
+   commits a page, and that transaction also moves the page identity on.
+   A page is therefore counted at most once, however many hops fetch it.
+2. Whatever moves a run onto a page (the start mutation, a page commit,
+   the recovery sweep) schedules that page's hop in the same transaction
+   and records it as the run's lease (`pageJobId`). A `'running'` row
+   always has a queued or running hop for its current page, or its hop
+   was lost.
+3. `recovery.recoverStalledImports`, run every ten minutes by the
+   `recover stalled integration imports` cron, reads at most twenty
+   running rows. A row whose lease job is no longer pending or in
+   progress gets its current page re-issued under the same identity, at
+   most three times (`pageRecoveries`, reset by the next commit), and is
+   then ended as `'failed'` with the page's cursor in the reason. A row
+   with no lease (only the previous release writes those) is treated the
+   same once it has been quiet for thirty minutes, well past an action's
+   time limit. A re-issued page that the lost hop did commit after all
+   finds its identity gone and changes nothing. While a workspace
+   deletion is active the sweep does nothing (#1073): the deletion has
+   cancelled every queued hop and sweeps `integrationImports` late, so
+   every running row would look lost and the write fence would refuse
+   the re-issue on every run. The deletion removes the rows; after an
+   abort the next sweep picks them up.
+4. Recovery needs the config, and the config holds the provider key. The
+   row keeps `resumeConfig` only when the key is sealed with the import
+   credential key (or the provider has no key), drops it when the run
+   ends, and `getImportProgress` strips it. On an instance without
+   `INSTANCE_SECRET` sealing passes the key through in plaintext, so
+   nothing is stored and a run whose hop is lost is ended with a "start
+   it again" reason instead of resumed.
+5. A sealed credential that no longer opens (the instance secret
+   changed) fails the run with a reason through the same fenced
+   terminal path, instead of throwing out of the action and stranding
+   the run. A run that was cancelled first stays cancelled.
+
+A fetch is at least once: a re-issued page is fetched again and the
+commit applies what the second fetch returned. How a provider pages a
+list that changes during the run is the adapter's concern; see the
+Mailchimp amendment below (Stripe pages by a `starting_after` cursor
+and is not affected).
+
+**Compatibility.** The new fields are optional and the new arguments
+are optional. A hop the previous release queued runs the new action and
+commits as page 0 of its row; the first such commit also stores the
+sealed config, so the run becomes resumable. An action of the previous
+release still running at deploy keeps calling `updateImportProgress`
+(kept for one release, listed in `PREVIOUS_RELEASE_ENTRIES`, and
+applied only to rows without a page count, so it cannot count a page a
+re-issued hop already committed) and `completeImport` (unchanged for
+callers that name no page). A previous-release run whose chain died has
+no sealed config and is ended by the sweep after the grace period, with
+a reason that asks the operator to start it again.
+
+## Amendment: Mailchimp paging over a changing audience (#1075, 2026-10-01)
+
+The Mailchimp adapter paged with `count=100&offset=N` and no sort order.
+Pages are separate requests, minutes apart when one is retried, and an
+audience keeps changing in between. A member deleted from a page already
+read moved every later member one place up, so one member fell between
+two pages and was never fetched; a member who unsubscribed or was
+cleaned after their page was read was never carried into suppressions.
+The run reported success either way.
+
+The cursor is now a small JSON object (`providers/mailchimp/index.ts`,
+`MailchimpCursor`): the pass, the position after the last member read,
+the run's start time, and a hash of the last member read (not the
+address: cursors appear in run errors).
+
+1. **A fixed order.** The audience pass requests
+   `sort_field=timestamp_signup&sort_dir=ASC`, so new signups land at
+   the end instead of shifting members already read.
+2. **Overlapping pages.** Each later page starts twenty members before
+   the previous page's end and imports what follows the previous page's
+   last member, wherever that member now sits. If that member was
+   deleted too, the whole window is imported. Up to twenty deletions
+   between two requests therefore leave no member between the pages,
+   and in the usual case nothing is read twice.
+3. **A closing pass.** After the last audience page, the adapter reads
+   the members with `since_last_changed` at the run's start (minus five
+   minutes for clock skew), in `last_changed` order, with the same
+   overlap. That carries over a member who unsubscribed or was cleaned
+   after their page was read, and imports a signup the first pass
+   placed behind its position. An audience read in a single request
+   skips it: nothing could change between its pages.
+
+Repeats remain possible (a member changed during the run is read in both
+passes; a deleted boundary member makes a window re-read) and are
+harmless: the contact import dedupes by email and applying a
+suppression twice changes nothing. A repeat counts as skipped or
+updated in the run summary. The remaining limit is more than twenty
+members deleted from before the read position between two page
+requests, and the order Mailchimp returns for members with the same
+signup time.
+
+**Compatibility.** A run the previous release started keeps a bare
+numeric cursor. The adapter recognises it and finishes that run with the
+previous request (no sort, no overlap, no closing pass), because
+switching the order mid-run would scramble the offsets it has already
+passed. A hop the previous release queued at the empty first-page
+cursor starts with the new scheme. No schema change.

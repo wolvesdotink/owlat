@@ -19,6 +19,19 @@ import type { PaletteScope } from '~/lib/commandPaletteScope';
  */
 export const COMMAND_PALETTE_OPEN_EVENT = 'owlat:command-palette-open';
 
+/** The palette's own "Ask knowledge…" verb: opens the palette on its Ask scope. */
+export const COMMAND_PALETTE_ASK_EVENT = 'owlat:open-knowledge-query';
+
+/**
+ * What a keydown means to the palette: plain Cmd/Ctrl+K toggles it, and
+ * Cmd/Ctrl+Shift+K opens it on Ask. Shared by the palette and the layout's
+ * pre-mount listener (`useCommandPaletteHost`), so the chord lives in one place.
+ */
+export function commandPaletteChord(event: KeyboardEvent): 'toggle' | 'ask' | null {
+	if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k') return null;
+	return event.shiftKey ? 'ask' : 'toggle';
+}
+
 /** Detail carried by the open event. Absent detail means "follow the route". */
 export interface CommandPaletteOpenDetail {
 	scope?: PaletteScope;
@@ -28,6 +41,56 @@ export interface CommandPaletteOpenDetail {
 	 * second one on the page.
 	 */
 	query?: string;
+}
+
+/** What each palette trigger asks for; see {@link listenForCommandPaletteTriggers}. */
+export interface CommandPaletteTriggers {
+	/** Plain Cmd/Ctrl+K. */
+	toggle: () => void;
+	/** Cmd/Ctrl+Shift+K or the Ask verb's event, only while Ask is available. */
+	ask: () => void;
+	/** The shared open event, with the detail its caller sent. */
+	open: (detail: CommandPaletteOpenDetail | undefined) => void;
+}
+
+/**
+ * Attach the window listeners that open the palette: the Cmd/Ctrl+K chords,
+ * the shared open event and the Ask verb's event. Both the palette and the
+ * layout's pre-mount stand-in (`useCommandPaletteHost`) listen through this, so
+ * the two agree on what counts as a request. A chord the palette acts on has
+ * its browser default suppressed; the Ask chord without Ask is left alone.
+ * Returns the detach.
+ */
+export function listenForCommandPaletteTriggers(
+	triggers: CommandPaletteTriggers,
+	isAskAvailable: () => boolean
+): () => void {
+	const onKeydown = (event: KeyboardEvent) => {
+		const chord = commandPaletteChord(event);
+		if (!chord) return;
+		if (chord === 'ask') {
+			if (!isAskAvailable()) return;
+			event.preventDefault();
+			triggers.ask();
+			return;
+		}
+		event.preventDefault();
+		triggers.toggle();
+	};
+	const onOpen = (event: Event) => {
+		triggers.open((event as CustomEvent<CommandPaletteOpenDetail>).detail ?? undefined);
+	};
+	const onAsk = () => {
+		if (isAskAvailable()) triggers.ask();
+	};
+	window.addEventListener('keydown', onKeydown);
+	window.addEventListener(COMMAND_PALETTE_OPEN_EVENT, onOpen);
+	window.addEventListener(COMMAND_PALETTE_ASK_EVENT, onAsk);
+	return () => {
+		window.removeEventListener('keydown', onKeydown);
+		window.removeEventListener(COMMAND_PALETTE_OPEN_EVENT, onOpen);
+		window.removeEventListener(COMMAND_PALETTE_ASK_EVENT, onAsk);
+	};
 }
 
 export interface CommandPaletteControls {

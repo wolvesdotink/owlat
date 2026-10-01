@@ -15,10 +15,12 @@ definePageMeta({
 const { hasActiveOrganization, isLoading: organizationLoading } = useOrganizationContext();
 
 // Fetch webhooks with real-time updates
-const { data: webhooks, isLoading: webhooksLoading } = useOrganizationQuery(
-	api.webhooks.endpoints.listByOrganization,
-	{ includeInactive: true }
-);
+const {
+	data: webhooks,
+	isLoading: webhooksLoading,
+	error: webhooksError,
+	refetch: refetchWebhooks,
+} = useOrganizationQuery(api.webhooks.endpoints.listByOrganization, { includeInactive: true });
 
 const isLoading = computed(() => organizationLoading.value || webhooksLoading.value);
 
@@ -132,6 +134,7 @@ const isEditDirty = computed(() => {
 
 const {
 	showDialog: showUnsavedDialog,
+	isSavingBeforeLeave,
 	confirmDiscard,
 	confirmSave,
 	cancelNavigation,
@@ -228,6 +231,9 @@ async function handleGuardSave() {
 				:title="t('dashboard.admin.delivery.webhooks.noWorkspace.title')"
 				:description="t('dashboard.admin.delivery.webhooks.noWorkspace.description')"
 			/>
+
+			<!-- A failed read is not an empty list (#721). -->
+			<UiQueryBoundary v-else-if="webhooksError" :error="webhooksError" @retry="refetchWebhooks" />
 
 			<!-- Empty State (no webhooks) -->
 			<UiEmptyState
@@ -355,10 +361,10 @@ async function handleGuardSave() {
 		<!-- Unsaved Changes Dialog -->
 		<UnsavedChangesDialog
 			:show="showUnsavedDialog"
+			:saving="isSavingBeforeLeave"
 			@close="cancelNavigation"
 			@discard="confirmDiscard"
 			@save="handleGuardSave"
 		/>
 	</div>
 </template>
-

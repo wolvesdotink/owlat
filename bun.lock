@@ -17,7 +17,7 @@
     },
     "apps/api": {
       "name": "@owlat/api",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "dependencies": {
         "@ai-sdk/anthropic": "catalog:ai",
         "@ai-sdk/azure": "catalog:ai",
@@ -62,7 +62,7 @@
     },
     "apps/code-worker": {
       "name": "@owlat/code-worker",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "dependencies": {
         "@octokit/rest": "^22.0.1",
         "@owlat/plugin-kit": "workspace:*",
@@ -78,7 +78,7 @@
     },
     "apps/convex-fn-proxy": {
       "name": "@owlat/convex-fn-proxy",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "devDependencies": {
         "@types/node": "catalog:",
         "convex": "catalog:convex",
@@ -89,7 +89,7 @@
     },
     "apps/desktop": {
       "name": "@owlat/desktop",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "dependencies": {
         "@tauri-apps/api": "^2.11.1",
         "@tauri-apps/plugin-autostart": "^2.5.1",
@@ -109,7 +109,7 @@
     },
     "apps/docs": {
       "name": "@owlat/docs",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "dependencies": {
         "@takumi-rs/core": "^2.7.1",
         "nuxt": "catalog:vue",
@@ -132,7 +132,7 @@
     },
     "apps/imap": {
       "name": "@owlat/imap",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "dependencies": {
         "@owlat/mail-message": "workspace:*",
         "@owlat/shared": "workspace:*",
@@ -151,7 +151,7 @@
     },
     "apps/mail-sync": {
       "name": "@owlat/mail-sync",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "dependencies": {
         "@hono/node-server": "^2.1.0",
         "@owlat/mail-message": "workspace:*",
@@ -191,7 +191,7 @@
     },
     "apps/mta": {
       "name": "@owlat/mta",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "dependencies": {
         "@hono/node-server": "^2.1.0",
         "@owlat/email-scanner": "workspace:*",
@@ -222,7 +222,7 @@
     },
     "apps/setup-cli": {
       "name": "@owlat/setup-cli",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "bin": {
         "owlat-setup": "./src/index.ts",
       },
@@ -243,7 +243,7 @@
     },
     "apps/updater": {
       "name": "@owlat/updater",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "dependencies": {
         "@owlat/shared": "workspace:*",
       },
@@ -256,7 +256,7 @@
     },
     "apps/web": {
       "name": "@owlat/web",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "dependencies": {
         "@convex-dev/better-auth": "catalog:convex",
         "@nuxtjs/color-mode": "catalog:vue",
@@ -369,7 +369,7 @@
     },
     "packages/email-builder": {
       "name": "@owlat/email-builder",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "dependencies": {
         "@owlat/email-renderer": "workspace:*",
         "@owlat/plugin-host": "workspace:*",
@@ -395,7 +395,7 @@
     },
     "packages/email-renderer": {
       "name": "@owlat/email-renderer",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "dependencies": {
         "@owlat/shared": "workspace:*",
         "sanitize-html": "^2.17.6",
@@ -410,7 +410,7 @@
     },
     "packages/email-scanner": {
       "name": "@owlat/email-scanner",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "dependencies": {
         "@owlat/shared": "workspace:*",
       },
@@ -423,7 +423,7 @@
     },
     "packages/mail-auth": {
       "name": "@owlat/mail-auth",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "dependencies": {
         "@owlat/mail-canon": "workspace:*",
         "@owlat/shared": "workspace:*",
@@ -439,7 +439,7 @@
     },
     "packages/mail-canon": {
       "name": "@owlat/mail-canon",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "devDependencies": {
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
@@ -450,7 +450,7 @@
     },
     "packages/mail-message": {
       "name": "@owlat/mail-message",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "dependencies": {
         "@owlat/mail-canon": "workspace:*",
       },
@@ -468,7 +468,7 @@
     },
     "packages/mta-protocol": {
       "name": "@owlat/mta-protocol",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "dependencies": {
         "@owlat/shared": "workspace:*",
       },
@@ -481,7 +481,7 @@
     },
     "packages/plugin-cli": {
       "name": "@owlat/plugin-cli",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "bin": {
         "owlat-plugins": "./src/index.ts",
       },
@@ -499,7 +499,7 @@
     },
     "packages/plugin-codegen": {
       "name": "@owlat/plugin-codegen",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "dependencies": {
         "@owlat/plugin-host": "workspace:*",
         "@owlat/plugin-kit": "workspace:*",
@@ -518,7 +518,7 @@
     },
     "packages/plugin-host": {
       "name": "@owlat/plugin-host",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "dependencies": {
         "@owlat/plugin-kit": "workspace:*",
         "@owlat/shared": "workspace:*",
@@ -532,7 +532,7 @@
     },
     "packages/plugin-kit": {
       "name": "@owlat/plugin-kit",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "dependencies": {
         "@owlat/provider-kit": "workspace:*",
       },
@@ -546,7 +546,7 @@
     },
     "packages/provider-kit": {
       "name": "@owlat/provider-kit",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "devDependencies": {
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
@@ -557,7 +557,7 @@
     },
     "packages/sdk-js": {
       "name": "@owlat/sdk-js",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "devDependencies": {
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
@@ -568,7 +568,7 @@
     },
     "packages/shared": {
       "name": "@owlat/shared",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "dependencies": {
         "@owlat/mail-message": "workspace:*",
         "tldts": "^7.0.30",
@@ -589,7 +589,7 @@
     },
     "packages/smtp-client": {
       "name": "@owlat/smtp-client",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "dependencies": {
         "@owlat/shared": "workspace:*",
       },
@@ -604,7 +604,7 @@
     },
     "packages/smtp-listener": {
       "name": "@owlat/smtp-listener",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "dependencies": {
         "@owlat/shared": "workspace:*",
       },
@@ -643,13 +643,14 @@
   "overrides": {
     "@ai-sdk/provider-utils": "^4.0.38",
     "@babel/core": "^7.29.6",
-    "brace-expansion": "^5.0.9",
+    "brace-expansion": "^5.0.12",
     "browserslist": "^4.28.8",
     "devalue": "^5.9.2",
+    "dompurify": "^3.4.16",
     "fast-xml-builder": "^1.2.0",
     "fflate": "^0.4.9",
     "hono": "^4.13.5",
-    "ip-address": "^10.4.0",
+    "ip-address": "^10.7.2",
     "joi": "^18.2.5",
     "js-cookie": "^3.0.8",
     "js-yaml": "^3.15.2",
@@ -667,7 +668,7 @@
     "svgo": "^4.1.0",
     "tar": "^7.5.22",
     "tmp": "^0.2.7",
-    "undici": "^7.29.0",
+    "undici": "^7.29.1",
     "valibot": "^1.4.2",
     "vite": "^8.2.0",
     "ws": "^8.21.0",
@@ -2070,7 +2071,7 @@
 
     "bowser": ["bowser@2.14.1", "", {}, "sha512-tzPjzCxygAKWFOJP011oxFHs57HzIhOEracIgAePE4pqB3LikALKnSzUyU4MGs9/iCEUuHlAJTjTc5M+u7YEGg=="],
 
-    "brace-expansion": ["brace-expansion@5.0.9", "", { "dependencies": { "balanced-match": "^4.0.2" } }, "sha512-ScQ4IuvIEF1TMlP7Zt+vjJ//9zlPb2SDcxWxM3bk8s6t6GGdJ7KO1dCcTidOPJKePW30LE/2cT7wCyPho9/Wxg=="],
+    "brace-expansion": ["brace-expansion@5.0.12", "", { "dependencies": { "balanced-match": "^4.0.2" } }, "sha512-YovQ3rzhaLMIrDjNDMkNS01tea93qhEhG5xy8f6+R0l+dw3Ki+5sCoIoI942iuLZTHWogWktgwVDhU09iNEimQ=="],
 
     "braces": ["braces@3.0.3", "", { "dependencies": { "fill-range": "^7.1.1" } }, "sha512-yQbXgO/OSZVD2IsiLlro+7Hf6Q18EJrKSEsdoMzKePKXct3gvD8oLcOQdIzGupr5Fj+EDe8gO/lxc1BzfMpxvA=="],
 
@@ -2270,7 +2271,7 @@
 
     "domhandler": ["domhandler@5.0.3", "", { "dependencies": { "domelementtype": "^2.3.0" } }, "sha512-cgwlv/1iFQiFnU96XXgROh8xTeetsnJiDsTc7TYCLFd9+/WNkIqPTxiM/8pSd8VIrhXGTf1Ny1q1hquVqDJB5w=="],
 
-    "dompurify": ["dompurify@3.4.13", "", { "optionalDependencies": { "@types/trusted-types": "^2.0.7" } }, "sha512-2vmYIoqjze2d+kakP8S/nS5shfsl587kzwEjcGlTdiksUVgFHnFCsLYDVj/JNqJVOQZGSYBTmuycv0PodwmnMQ=="],
+    "dompurify": ["dompurify@3.4.16", "", { "optionalDependencies": { "@types/trusted-types": "^2.0.7" } }, "sha512-sqo+pNp3qRhCIpbgRi1y8Tgk27Bo2Ry7w0dC1NBeNTdZChWjz9Xb/KOoZbRP/R6pQZ80Qw8YhXw13hWWBbMRnQ=="],
 
     "domutils": ["domutils@3.2.2", "", { "dependencies": { "dom-serializer": "^2.0.0", "domelementtype": "^2.3.0", "domhandler": "^5.0.3" } }, "sha512-6kZKyUajlDuqlHKVX1w7gyslj9MPIXzIFiz/rGu35uC1wMi+kMhQwGhl4lt9unC9Vb9INnY9Z3/ZA3+FhASLaw=="],
 
@@ -2602,7 +2603,7 @@
 
     "ioredis-mock": ["ioredis-mock@8.13.1", "", { "dependencies": { "@ioredis/as-callback": "^3.0.0", "@ioredis/commands": "^1.4.0", "fengari": "^0.1.4", "fengari-interop": "^0.1.3", "semver": "^7.7.2" }, "peerDependencies": { "@types/ioredis-mock": "^8", "ioredis": "^5" } }, "sha512-Wsi50AU+cMiI32nAgfwpUaJVBtb4iQdVsOHl9M6R3tePCO/8vGsToCVIG82XWAxN4Se55TZoOzVseu+QngFLyw=="],
 
-    "ip-address": ["ip-address@10.4.0", "", {}, "sha512-oSK96Grm3aP6OrS263xVxbNDGVL7rzBtYdpGqlDG8iQdoenDoTs/nkki+DflYbAEE8Xl6o5YxhxlrKvI3nqKXQ=="],
+    "ip-address": ["ip-address@10.7.2", "", {}, "sha512-7H/2gFSIitxc0hG3nOI1glS8QLo/EHBFFLk8vEUjXY/xu0AdL8jZ9U1IzO2PUm0d2D/ofQcAifb0g6OBkt8U7w=="],
 
     "ipaddr.js": ["ipaddr.js@2.5.0", "", {}, "sha512-aq+t5NAc+cS6rZQQVWC2x98CPqGtKKTMDd4Gaodv0wShnItdKg/51djkGJ1hqH+Oy0ivDftCbSLCQob8zso01w=="],
 
@@ -3578,7 +3579,7 @@
 
     "unctx": ["unctx@3.0.0", "", { "peerDependencies": { "magic-string": ">=0.30.21", "oxc-parser": ">=0.140.0", "rolldown": "^1.1.5", "unplugin": "^3.3.0" }, "optionalPeers": ["magic-string", "oxc-parser", "rolldown", "unplugin"] }, "sha512-DoXdZVeyi2jyEsn86i8MO5RTItm1kffUkH9/+DQORn3Q688AMOy2551CIl6AdGL2UpwD675wtbNOl75wIQN/uA=="],
 
-    "undici": ["undici@7.29.0", "", {}, "sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw=="],
+    "undici": ["undici@7.30.0", "", {}, "sha512-dkrQXeHSaoamnItlYbmzG0wFYrM0ZwDxCIg0A7aKjTyyhh9svRzCNFEzV+Vm05/yehjCzjDZ31KXfGEjYSztDQ=="],
 
     "undici-types": ["undici-types@7.19.2", "", {}, "sha512-qYVnV5OEm2AW8cJMCpdV20CDyaN3g0AjDlOGf1OW4iaDEx8MwdtChUp4zu4H0VP3nDRF/8RKWH+IPp9uW0YGZg=="],
 

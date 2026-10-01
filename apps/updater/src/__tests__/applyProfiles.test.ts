@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import { createServer, type Server } from 'node:http';
-import { mkdtempSync, writeFileSync, readFileSync, statSync } from 'node:fs';
+import { chmodSync, mkdtempSync, writeFileSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getActiveProfiles, type FeatureFlagState } from '@owlat/shared/featureFlags';
@@ -14,11 +14,14 @@ import { applyEnvUpdates, validateFlagSnapshot } from '../security.js';
  * per-service health report.
  */
 
-const { execFileSyncMock, rateLimitedMock } = vi.hoisted(() => ({
-	execFileSyncMock: vi.fn(),
+const { commandMock, rateLimitedMock } = vi.hoisted(() => ({
+	commandMock: vi.fn(),
 	rateLimitedMock: vi.fn((_endpoint: string) => false),
 }));
-vi.mock('node:child_process', () => ({ execFileSync: execFileSyncMock }));
+vi.mock('node:child_process', async () => {
+	const { spawnFrom } = await import('./fakeSpawn.js');
+	return { spawn: spawnFrom(commandMock) };
+});
 vi.mock('../security.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../security.js')>();
 	return { ...actual, isRateLimited: rateLimitedMock };
@@ -27,7 +30,6 @@ vi.mock('../security.js', async (importOriginal) => {
 const OWLAT_DIR = mkdtempSync(join(tmpdir(), 'owlat-apply-profiles-test-'));
 process.env['INSTANCE_SECRET'] = 'test-instance-secret-0123456789';
 process.env['OWLAT_DIR'] = OWLAT_DIR;
-process.env['PORT'] = '0';
 
 // Dynamic import AFTER env is staged — server.ts reads env at module load.
 const { buildRequestListener } = await import('../server.js');
@@ -62,7 +64,7 @@ const INITIAL_ENV =
 
 beforeEach(() => {
 	rateLimitedMock.mockReturnValue(false);
-	execFileSyncMock.mockReset().mockImplementation(dockerFixture);
+	commandMock.mockReset().mockImplementation(dockerFixture);
 	writeFileSync(ENV_FILE, INITIAL_ENV);
 });
 
@@ -112,7 +114,7 @@ describe('auth + rate limit', () => {
 	it('rejects a missing instance secret with 401', async () => {
 		const res = await post({ flags: {} }, {});
 		expect(res.status).toBe(401);
-		expect(execFileSyncMock).not.toHaveBeenCalled();
+		expect(commandMock).not.toHaveBeenCalled();
 	});
 
 	it('rejects a wrong instance secret with 401', async () => {
@@ -143,7 +145,7 @@ describe('flag snapshot validation', () => {
 			const res = await post({ flags });
 			expect(res.status).toBe(400);
 		}
-		expect(execFileSyncMock).not.toHaveBeenCalled();
+		expect(commandMock).not.toHaveBeenCalled();
 	});
 
 	it('rejects a non-boolean flag value', async () => {
@@ -160,7 +162,7 @@ describe('flag snapshot validation', () => {
 		expect(body.error).toContain('not.a.flag');
 		// Nothing was applied.
 		expect(readFileSync(ENV_FILE, 'utf-8')).toBe(INITIAL_ENV);
-		expect(execFileSyncMock).not.toHaveBeenCalled();
+		expect(commandMock).not.toHaveBeenCalled();
 	});
 
 	it('accepts plugin-shaped keys and mirrors them (profiles unaffected)', async () => {
@@ -242,6 +244,15 @@ describe('.env rewrite', () => {
 		);
 	});
 
+	it.skipIf(process.platform === 'win32')(
+		'makes a world-readable .env owner-only when it rewrites it',
+		async () => {
+			chmodSync(ENV_FILE, 0o644);
+			await post({ flags: { 'mail.external': true } });
+			expect(statSync(ENV_FILE).mode & 0o777).toBe(0o600);
+		}
+	);
+
 	it('is idempotent — applying the same snapshot twice leaves .env byte-identical', async () => {
 		writeFileSync(ENV_FILE, 'EMAIL_PROVIDER=resend\n');
 		await post({ flags: { inbox: true } });
@@ -271,7 +282,7 @@ describe('override regeneration + flag mirror', () => {
 
 describe('compose invocation + per-service health', () => {
 	it('runs `docker compose up -d --remove-orphans` in OWLAT_DIR, then reports compose ps', async () => {
-		execFileSyncMock.mockImplementation((file: string, args: string[]) =>
+		commandMock.mockImplementation((file: string, args: string[]) =>
 			[file, ...args].join(' ').includes('ps --format json')
 				? '{"Service":"mail-sync","State":"running","Status":"Up 5 seconds","Image":"ghcr.io/wolvesdotink/mail-sync:0.4.3","Health":"healthy"}\n'
 				: dockerFixture(file, args)
@@ -279,9 +290,9 @@ describe('compose invocation + per-service health', () => {
 		const res = await post({ flags: { 'mail.external': true } });
 		expect(res.status).toBe(200);
 
-		// `exec` runs execFileSync, so a call is (file, argv, options); joining
+		// `exec` spawns an argv, so a call is (file, argv, options); joining
 		// the two back together keeps these expectations readable as commands.
-		const calls = execFileSyncMock.mock.calls.map((c) => [
+		const calls = commandMock.mock.calls.map((c) => [
 			[String(c[0]), ...(c[1] as string[])].join(' '),
 			(c[2] as { cwd: string }).cwd,
 		]);
@@ -320,7 +331,7 @@ describe('compose invocation + per-service health', () => {
 	 * has to have tried to start them back up.
 	 */
 	it('fails with 500 (files already converged) when compose up fails, after restarting the stack', async () => {
-		execFileSyncMock.mockImplementation((file: string, args: string[]) => {
+		commandMock.mockImplementation((file: string, args: string[]) => {
 			const cmd = [file, ...args].join(' ');
 			// Only the recreate fails; the smaller recovery `up` that follows works.
 			if (cmd.includes(' up -d --remove-orphans')) {
@@ -348,7 +359,7 @@ describe('compose invocation + per-service health', () => {
 	});
 
 	it('names the services still down when the stack cannot be restarted', async () => {
-		execFileSyncMock.mockImplementation((file: string, args: string[]) => {
+		commandMock.mockImplementation((file: string, args: string[]) => {
 			const cmd = [file, ...args].join(' ');
 			if (cmd.includes(' up -d')) {
 				throw Object.assign(new Error('boom'), { stdout: '', stderr: 'daemon down' });

@@ -14,19 +14,17 @@
  */
 
 import type { MutationCtx } from '../../_generated/server';
+import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
-import { clearNeedsReplyOnOwnerReply, enqueueNeedsReplyCheck } from '../needsReply';
+import { clearNeedsReplyOnOwnerReply, scheduleNeedsReplyClassify } from '../needsReply';
 import { isFromMailboxOwner } from '../needsReplyHeuristic';
-import { enqueueCategoryCheck } from '../category';
+import { enqueueCategoryCheck } from '../categoryArrival';
 import { clearThreadFollowUp } from '../followUps';
 import { clearSnoozeUntilReplyForThread } from '../snooze';
+import { shouldExtractLiveMessage } from '../liveKnowledge';
+import { queuesNeedsReplyCheck, type InboundOrigin } from './insert';
 
-/**
- * Where an inbound message came from. `'mx'` is hosted delivery, `'sync'` is
- * forward IMAP sync, `'backfill'` is a historical IMAP import (and what an
- * older sync worker that sends no origin is read as).
- */
-export type InboundOrigin = 'mx' | 'sync' | 'backfill';
+export type { InboundOrigin };
 
 /** Folders whose mail is never "the reply arrived". */
 const NOT_A_REPLY_ROLES: ReadonlySet<string> = new Set(['spam', 'trash', 'sent', 'drafts']);
@@ -40,12 +38,18 @@ const NOT_A_REPLY_ROLES: ReadonlySet<string> = new Set(['spam', 'trash', 'sent',
  *
  *   - Reply Queue + smart-inbox category enqueues: inbox mail that stayed in
  *     the inbox, never from a backfill (importing years of history must not
- *     fan out background LLM work). The anti-loop headers ride along because
- *     they are not persisted on the row.
+ *     fan out background LLM work). The category heuristic runs right here in
+ *     the insert; only ambiguous mail reaches the LLM. The anti-loop headers
+ *     ride along because they are not persisted on the row. The Reply Queue's
+ *     pending marker was already stamped by the insert's thread patch (same
+ *     `origin`, passed as `inboundOrigin`), so only the classify is scheduled
+ *     here.
  *   - Follow-up and snooze-until-reply clears: the awaited reply arrived. Only
  *     for mail from someone other than the mailbox owner, outside Spam, Trash,
  *     Sent and Drafts, and never from a backfill (an old message is not a new
  *     reply).
+ *   - Knowledge extraction, under the same conditions (`../liveKnowledge`).
+ *     A backfill is history, which a mailbox import's indexing sweep covers.
  *   - The owner's own reply settles the thread's Reply Queue row.
  */
 export async function runPostInsertInboundEffects(
@@ -62,9 +66,9 @@ export async function runPostInsertInboundEffects(
 	if (!delivered) return;
 	const isLive = origin !== 'backfill';
 
-	if (isLive && folder.role === 'inbox' && delivered.folderId === folder._id) {
+	if (queuesNeedsReplyCheck(origin, folder, delivered.folderId)) {
 		const precedence = antiLoopHeaders?.['precedence'];
-		await enqueueNeedsReplyCheck(ctx, delivered.threadId, {
+		await scheduleNeedsReplyClassify(ctx, delivered.threadId, {
 			precedence,
 			// RFC 3834 / list traffic: the strongest "a machine sent this" signal
 			// the Reply Queue can get, and like Precedence it lives only on the
@@ -80,6 +84,13 @@ export async function runPostInsertInboundEffects(
 		if (mailbox && !isFromMailboxOwner(delivered, mailbox.address)) {
 			await clearThreadFollowUp(ctx, delivered.threadId);
 			await clearSnoozeUntilReplyForThread(ctx, delivered.threadId, Date.now());
+			if (
+				await shouldExtractLiveMessage(ctx, { spamVerdict: delivered.spamVerdict, antiLoopHeaders })
+			) {
+				await ctx.scheduler.runAfter(0, internal.mail.liveKnowledge.extractLiveMessage, {
+					mailMessageId: messageId,
+				});
+			}
 		}
 	}
 

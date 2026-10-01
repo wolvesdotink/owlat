@@ -36,8 +36,12 @@ export interface ReplyQueueClarificationQuestion {
 	options?: string[];
 	/** Per-locale renderings of text + options (see utils/clarificationLocale). */
 	translations?: { locale: string; text: string; options?: string[] }[];
-	/** The owner's answer — present once answered. */
-	answer?: { value: string; at: number };
+	/**
+	 * The owner's answer, present once answered. Answer-memory writes one with
+	 * `source: 'memory'` before the owner sees the card: the card pre-picks it
+	 * with a "last time" tag, and the owner can change it.
+	 */
+	answer?: { value: string; at: number; source?: 'user' | 'memory' };
 }
 
 /** The clarification payload on a needs-reply thread (server shape). */
@@ -113,11 +117,13 @@ export interface ReplyQueueItem {
 	 */
 	clarification?: ReplyQueueClarification;
 	/**
-	 * Draft-on-arrival review slot (postbox.aiDraft): present when a reply was
+	 * Draft-on-arrival review slot (postbox.aiDraft): true when a reply was
 	 * pre-generated for this thread. Drives the "Draft ready — review & send"
-	 * affordance on the row. Absent when the flag is off or generation failed.
+	 * affordance on the row. The draft itself ({@link ReplyQueueDraftSlot}) is
+	 * read by the card that shows it (`mail.needsReply.getDraftSlot`), so the
+	 * queue does not carry every row's draft.
 	 */
-	draftSlot?: ReplyQueueDraftSlot;
+	hasDraftSlot?: boolean;
 	fromAddress: string;
 	fromName?: string;
 	subject: string;

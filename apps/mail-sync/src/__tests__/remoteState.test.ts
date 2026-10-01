@@ -21,111 +21,10 @@ import {
 	refreshFolder,
 	type LocalMessageRow,
 	type RemoteObservation,
-	type RemoteStateClient,
 	type ReconcileDeps,
 } from '../remoteState.js';
-import { mirroredFolderPath } from '../folders.js';
-
-interface FakeMessage {
-	uid: number;
-	messageId: string;
-	flags: Set<string>;
-	modseq: bigint;
-}
-
-interface FakeBox {
-	uidValidity: bigint;
-	messages: FakeMessage[];
-}
-
-class FakeImap implements RemoteStateClient {
-	readonly boxes = new Map<string, FakeBox>();
-	private selected: string | null = null;
-	private nextUid = 100;
-	private modseq = 10n;
-	constructor(
-		boxes: Record<string, string[]>,
-		private readonly condstore = true
-	) {
-		for (const [path, ids] of Object.entries(boxes)) {
-			this.boxes.set(path, { uidValidity: 1n, messages: [] });
-			for (const id of ids) this.add(path, id);
-		}
-	}
-
-	get mailbox() {
-		const box = this.selected ? this.boxes.get(this.selected) : undefined;
-		if (!box) return false as const;
-		const highest = box.messages.reduce((m, msg) => (msg.modseq > m ? msg.modseq : m), 1n);
-		return this.condstore
-			? { uidValidity: box.uidValidity, highestModseq: highest }
-			: { uidValidity: box.uidValidity };
-	}
-
-	private box(): FakeBox {
-		const box = this.selected ? this.boxes.get(this.selected) : undefined;
-		if (!box) throw new Error('nothing selected');
-		return box;
-	}
-
-	add(path: string, messageId: string, flags: string[] = []): void {
-		this.boxes.get(path)!.messages.push({
-			uid: this.nextUid++,
-			messageId,
-			flags: new Set(flags),
-			modseq: ++this.modseq,
-		});
-	}
-
-	remove(path: string, messageId: string): void {
-		const box = this.boxes.get(path)!;
-		box.messages = box.messages.filter((m) => m.messageId !== messageId);
-	}
-
-	move(from: string, to: string, messageId: string): void {
-		this.remove(from, messageId);
-		this.add(to, messageId);
-	}
-
-	setFlag(path: string, messageId: string, flag: string, on: boolean): void {
-		const msg = this.boxes.get(path)!.messages.find((m) => m.messageId === messageId)!;
-		if (on) msg.flags.add(flag);
-		else msg.flags.delete(flag);
-		msg.modseq = ++this.modseq;
-	}
-
-	async getMailboxLock(path: string) {
-		if (!this.boxes.has(path)) throw new Error(`NO [NONEXISTENT] ${path}`);
-		this.selected = path;
-		return { release: () => undefined };
-	}
-
-	async search(query: object) {
-		const matches = (q: Record<string, unknown>, m: FakeMessage): boolean => {
-			if (q['all']) return true;
-			if (Array.isArray(q['or'])) return q['or'].some((sub) => matches(sub, m));
-			const header = q['header'] as Record<string, string> | undefined;
-			return !!header && m.messageId.includes(header['message-id'] ?? '');
-		};
-		return this.box()
-			.messages.filter((m) => matches(query as Record<string, unknown>, m))
-			.map((m) => m.uid);
-	}
-
-	async *fetch(range: string, _query: object, options: { changedSince?: bigint }) {
-		const uids = range === '1:*' ? null : new Set(range.split(',').map(Number));
-		for (const m of this.box().messages) {
-			if (uids && !uids.has(m.uid)) continue;
-			if (options.changedSince !== undefined && m.modseq <= options.changedSince) continue;
-			yield {
-				uid: m.uid,
-				flags: new Set(m.flags),
-				headers: Buffer.from(`Message-ID: <${m.messageId}>\r\n\r\n`),
-				modseq: m.modseq,
-			};
-		}
-	}
-}
+import { FakeImap } from './fakeImap.js';
+import { isVirtualView, mirroredFolderPath } from '../folders.js';
 
 const NO_FLAGS = { seen: false, flagged: false, answered: false };
 
@@ -412,5 +311,19 @@ describe('mirroredFolderPath', () => {
 		expect(
 			mirroredFolderPath({ path: '[Gmail]/Starred', delimiter: '/', specialUse: '\\Flagged' }, '')
 		).toBeNull();
+	});
+
+	// imapflow fills `specialUse` only from the RFC 6154 set, which has no
+	// \Important: Gmail's Important view reaches us as a bare LIST attribute.
+	it('skips a view that carries its attribute only in the LIST flags (Gmail Important)', () => {
+		const important = {
+			path: '[Gmail]/Wichtig',
+			delimiter: '/',
+			flags: new Set(['\\HasNoChildren', '\\Important']),
+		};
+		const archive = { path: 'Erledigt', delimiter: '/', flags: new Set(['\\HasNoChildren']) };
+		expect(isVirtualView(important)).toBe(true);
+		expect(mirroredFolderPath(important, '')).toBeNull();
+		expect(isVirtualView(archive)).toBe(false);
 	});
 });

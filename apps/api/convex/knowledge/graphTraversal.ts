@@ -17,7 +17,7 @@
  * crucially no edge to it is emitted (a dropped contact-B node leaks neither its
  * content nor its existence), and it never becomes a frontier (so a 2-hop walk
  * cannot reach ITS neighbours either — containment). This file is allowlisted in
- * `scripts/check-graph-scope.sh`, which positively asserts it calls
+ * `apps/api/scripts/check-graph-scope.sh`, which positively asserts it calls
  * `isContactScopeVisible`.
  */
 
@@ -56,10 +56,26 @@ interface ExpandedEdge {
 interface ExpandNeighborsResult {
 	neighbors: ExpandedNeighbor[];
 	edges: ExpandedEdge[];
+	/**
+	 * True when the document-read budget ran out while unknown nodes were still
+	 * reachable, so the neighbour set may be smaller than `neighborBudget` even
+	 * though more eligible nodes exist. The result is still complete and
+	 * scope-safe for what it contains; callers treat it like any other expansion.
+	 */
+	truncated: boolean;
 }
 
 /** Largest connected subgraph (edges) `expandNeighbors` will ever return. */
 const MAX_EDGES = 512;
+
+/**
+ * Document-read budget for one traversal, across all seeds and hops: the
+ * accepted neighbours plus room to inspect (and reject) three ineligible nodes
+ * per accepted slot, and never fewer than {@link MIN_DOC_READS}. Every full
+ * `knowledgeEntries` read carries an embedding, so this is also the byte bound.
+ */
+const DOC_READS_PER_NEIGHBOR = 4;
+const MIN_DOC_READS = 32;
 
 /**
  * Whether graph-augmented retrieval is enabled (`ai.knowledge.graphRetrieval`).
@@ -108,6 +124,14 @@ export const expandNeighbors = internalQuery({
 		// Seeds start the BFS at hop 0; they are already visible, so they never
 		// re-enter the neighbour set — only edges to them are recorded.
 		const visited = new Set<Id<'knowledgeEntries'>>(args.seedIds);
+		// Nodes read once and rejected (missing, expired, wrong type, out of
+		// scope). Rejection depends only on the node and this query's `now`, so a
+		// repeated edge to one of them is skipped without another read. A rejected
+		// node never becomes a frontier and no edge to it is emitted.
+		const rejected = new Set<Id<'knowledgeEntries'>>();
+		const docReadBudget = Math.max(MIN_DOC_READS, neighborBudget * DOC_READS_PER_NEIGHBOR);
+		let docReads = 0;
+		let truncated = false;
 		const neighbors = new Map<Id<'knowledgeEntries'>, ExpandedNeighbor>();
 		const edges: ExpandedEdge[] = [];
 		const seenEdge = new Set<string>();
@@ -149,22 +173,32 @@ export const expandNeighbors = internalQuery({
 						continue;
 					}
 
-					const entry = await ctx.db.get(neighborId);
-					if (!entry) continue;
+					if (rejected.has(neighborId)) continue;
 
-					// Gates, in order: TTL → entryType → ★ THE PER-HOP SCOPE GATE ★.
-					if (entry.expiresAt !== undefined && entry.expiresAt <= now) continue;
-					if (entryType && entry.entryType !== entryType) continue;
-					const visible =
-						(args.includeInboxDerived || !isInboxDerivedKnowledge(entry)) &&
-						(scope === 'org-wide' || isContactScopeVisible(entry.contactIds, scope));
+					// Budgets are checked BEFORE the read: once the neighbour set is
+					// full no unknown node can be accepted, so reading it would be
+					// wasted work (edges among visible nodes above are still recorded).
+					if (neighbors.size >= neighborBudget) continue;
+					if (docReads >= docReadBudget) {
+						truncated = true;
+						continue;
+					}
+					docReads++;
+
+					const entry = await ctx.db.get(neighborId);
+					// Gates, in order: exists → TTL → entryType → ★ THE PER-HOP SCOPE GATE ★.
 					// A dropped node leaks neither content nor existence: no edge is
 					// emitted and it never becomes a frontier (2-hop containment).
-					if (!visible) continue;
-
-					// Respect the neighbour budget — don't accept new nodes past it
-					// (already-visible edges above are still recorded for ranking).
-					if (neighbors.size >= neighborBudget) continue;
+					if (
+						!entry ||
+						(entry.expiresAt !== undefined && entry.expiresAt <= now) ||
+						(entryType !== undefined && entry.entryType !== entryType) ||
+						(!args.includeInboxDerived && isInboxDerivedKnowledge(entry)) ||
+						!(scope === 'org-wide' || isContactScopeVisible(entry.contactIds, scope))
+					) {
+						rejected.add(neighborId);
+						continue;
+					}
 
 					neighbors.set(neighborId, {
 						id: neighborId,
@@ -191,7 +225,7 @@ export const expandNeighbors = internalQuery({
 			if (frontier.length === 0) break;
 		}
 
-		return { neighbors: [...neighbors.values()], edges };
+		return { neighbors: [...neighbors.values()], edges, truncated };
 	},
 });
 

@@ -28,7 +28,7 @@
 
 import { v } from 'convex/values';
 import { isAttachmentSharePurgeable } from '@owlat/shared/attachmentShares';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { releaseShareBytes } from './attachmentShares';
 

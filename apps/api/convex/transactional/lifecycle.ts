@@ -28,13 +28,15 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
 import { defineLifecycle, refuse } from '../lib/lifecycle';
 import { applyUsageCountDelta } from '../emailBlocks/module';
 import { buildSearchableText } from '../lib/queryHelpers';
-import { duplicateEmailFields, loadEmailTheme } from '../lib/publishableEmail';
+import { duplicateEmailFields } from '../lib/publishableEmail';
+import { loadEmailTheme } from '../lib/publishableEmailRender';
 import { sanitizeStoredBlocksJson } from '../lib/emailContentSanitize';
 import { CURRENT_CONTENT_BLOCK_VERSION, CURRENT_RENDERER_VERSION } from '../lib/constants';
 import { dataVariablesSchemaValidator } from '../lib/convexValidators';
@@ -57,6 +59,8 @@ type TransactionalEmailTransitionInput =
 			at: number;
 			htmlContent: string;
 			htmlTranslations?: string;
+			/** Set when the publish stores the caller's HTML (`publishedHtml`). */
+			rendererVersion?: number;
 	  }
 	| { to: 'draft'; at: number }
 	| { to: 'approved'; at: number }
@@ -98,6 +102,7 @@ const transitionInputValidator = v.union(
 		at: v.number(),
 		htmlContent: v.string(),
 		htmlTranslations: v.optional(v.string()),
+		rendererVersion: v.optional(v.number()),
 	}),
 	v.object({ to: v.literal('draft'), at: v.number() }),
 	v.object({ to: v.literal('approved'), at: v.number() }),
@@ -223,6 +228,7 @@ function reduce(
 				status: 'pending_review',
 				htmlContent: input.htmlContent,
 				htmlTranslations: input.htmlTranslations,
+				...(input.rendererVersion !== undefined && { rendererVersion: input.rendererVersion }),
 				updatedAt: input.at,
 			};
 			// Idempotent: pending_review → pending_review is still applied
@@ -325,6 +331,7 @@ function buildPatch(
 				status: 'published',
 				htmlContent: input.htmlContent,
 				htmlTranslations: input.htmlTranslations,
+				...(input.rendererVersion !== undefined && { rendererVersion: input.rendererVersion }),
 				publishedAt: input.at,
 				updatedAt: input.at,
 			};

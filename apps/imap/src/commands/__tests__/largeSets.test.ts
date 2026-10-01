@@ -6,10 +6,15 @@
  * batches. The fake backend below enforces that cap and keeps a real in-memory
  * folder, so the tests check both the batching and that the untagged responses
  * still describe the folder correctly (sequence numbers, COPYUID, MODIFIED).
+ *
+ * The EXPUNGE and MOVE cases run twice: once with the session's sequence view
+ * (`SelectedState.view`, set by SELECT), which numbers each expunge against what
+ * the client was told, and once without it (a state built by hand), which falls
+ * back to the folder's own numbering.
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { getFunctionName, type AnyFunctionReference } from 'convex/server';
+import { getFunctionName } from 'convex/server';
 import { copyModule } from '../copy/index.js';
 import { moveModule } from '../move/index.js';
 import { storeModule } from '../store/index.js';
@@ -21,6 +26,9 @@ import type {
 	ImapVerb,
 	SelectedState,
 } from '../types.js';
+
+// convex/server declares AnyFunctionReference without exporting it.
+type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
 
 vi.mock('../../logger.js', () => ({
 	logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -38,7 +46,10 @@ interface Row {
 interface FakeOptions {
 	/** Fail the n-th (1-based) call to this mutation. */
 	readonly failCall?: { readonly name: string; readonly call: number };
-	/** Model an older backend whose last EXPUNGE page carries no cursor. */
+	/**
+	 * Model an older backend: its last EXPUNGE page carries no cursor and its
+	 * pages carry no `uids`, so the sequence numbers come from the folder.
+	 */
 	readonly legacyExpungeCursor?: boolean;
 }
 
@@ -66,13 +77,15 @@ function fakeBackend(rows: Row[], options: FakeOptions = {}) {
 				{ _id: 'tf', name: 'Target' },
 			];
 		}
+		// A folder without the membership index: UIDs come from the listing.
+		if (name.endsWith(':folderMembershipPage')) return null;
 		if (name.endsWith(':listFolderUidsPage')) {
 			return { uids: folder.map((r) => r.uid), nextUid: null };
 		}
 		if (name.endsWith(':resolveMessageIdsByUid')) {
 			return {
 				rows: folder
-					.filter((r) => r.uid >= args.uidLow! && r.uid <= args.uidHigh!)
+					.filter((r) => r.uid >= args['uidLow']! && r.uid <= args['uidHigh']!)
 					.map((r) => ({ _id: `m${r.uid}`, uid: r.uid, modseq: 1 })),
 				nextUid: null,
 			};
@@ -94,19 +107,21 @@ function fakeBackend(rows: Row[], options: FakeOptions = {}) {
 		if (name === 'expungeFolder') {
 			// The backend's keyset walk: descending from `beforeUid`, 100 rows a
 			// page, stopping at the UID set's lowest member.
-			const filter = args.uidSet ? new Set(args.uidSet as number[]) : null;
+			const filter = args['uidSet'] ? new Set(args['uidSet'] as number[]) : null;
 			const floor = filter ? Math.min(...filter) : -Infinity;
-			const before = (args.beforeUid as number | undefined) ?? Infinity;
-			let seq = (args.nextSequenceNumber as number | undefined) ?? folder.length;
+			const before = (args['beforeUid'] as number | undefined) ?? Infinity;
+			let seq = (args['nextSequenceNumber'] as number | undefined) ?? folder.length;
 			const page = folder
 				.filter((r) => r.uid < before && r.uid >= (options.legacyExpungeCursor ? -Infinity : floor))
 				.reverse()
 				.slice(0, 100);
 			const sequenceNumbers: number[] = [];
+			const uids: number[] = [];
 			for (const r of page) {
 				const current = seq--;
 				if (!r.deleted || (filter && !filter.has(r.uid))) continue;
 				sequenceNumbers.push(current);
+				uids.push(r.uid);
 				folder.splice(folder.indexOf(r), 1);
 			}
 			const done = page.length < 100;
@@ -115,14 +130,15 @@ function fakeBackend(rows: Row[], options: FakeOptions = {}) {
 			}
 			return {
 				sequenceNumbers,
+				uids,
 				modseq: 9,
 				done,
-				beforeUid: page.length > 0 ? page[page.length - 1]!.uid : args.beforeUid,
+				beforeUid: page.length > 0 ? page[page.length - 1]!.uid : args['beforeUid'],
 				nextSequenceNumber: seq,
 			};
 		}
 		if (name === 'storeFlags') {
-			const ids = args.messageIds as string[];
+			const ids = args['messageIds'] as string[];
 			const updated = ids
 				.filter((id) => uidOf(id) % 2 === 0)
 				.map((id) => ({ messageId: id, uid: uidOf(id), modseq: 5, flags: ['\\Seen'] }));
@@ -132,7 +148,7 @@ function fakeBackend(rows: Row[], options: FakeOptions = {}) {
 			return { updated, unchanged };
 		}
 		if (name === 'copyMessages' || name === 'moveMessages') {
-			const pairs = (args.messageIds as string[]).map((id) => {
+			const pairs = (args['messageIds'] as string[]).map((id) => {
 				const targetUid = targetUidNext++;
 				target.push({ uid: targetUid, from: uidOf(id) });
 				if (name === 'moveMessages') {
@@ -146,7 +162,7 @@ function fakeBackend(rows: Row[], options: FakeOptions = {}) {
 			return { uidValidity: 7, pairs };
 		}
 		if (name === 'discardCopies') {
-			const uids = new Set(args.uids as number[]);
+			const uids = new Set(args['uids'] as number[]);
 			const before = target.length;
 			for (let i = target.length - 1; i >= 0; i -= 1) {
 				if (uids.has(target[i]!.uid)) target.splice(i, 1);
@@ -169,7 +185,8 @@ function fakeBackend(rows: Row[], options: FakeOptions = {}) {
 	};
 }
 
-function selected(totalCount: number): ConnectionState {
+/** A SELECTed `f1`; `viewUids` gives the session the sequence view SELECT sets. */
+function selected(totalCount: number, viewUids?: readonly number[]): ConnectionState {
 	const sel: SelectedState = {
 		folderId: 'f1',
 		folderName: 'INBOX',
@@ -179,6 +196,7 @@ function selected(totalCount: number): ConnectionState {
 		highestModseq: 1,
 		totalCount,
 		readOnly: false,
+		...(viewUids ? { view: { uids: viewUids } } : {}),
 	};
 	return {
 		auth: { mailboxId: 'mb1', appPasswordId: 'ap1', address: 'a@t', userId: 'u1' },
@@ -233,11 +251,29 @@ function applyExpunges(view: number[], lines: string[]): number[] {
 
 const range = (n: number, map: (i: number) => Row) => Array.from({ length: n }, (_, i) => map(i));
 
-describe('UID EXPUNGE over a large folder', () => {
+/** The two ways a session numbers its expunges: through its view, or without one. */
+const VIEW_MODES = [
+	{ mode: 'with a sequence view', withView: true },
+	{ mode: 'without a sequence view', withView: false },
+] as const;
+
+/** `selected(LARGE)`, with the view SELECT would have set when `withView`. */
+function selectedFor(rows: readonly Row[], withView: boolean): ConnectionState {
+	return selected(rows.length, withView ? rows.map((r) => r.uid).sort((a, b) => a - b) : undefined);
+}
+
+/** After the command, a session's view must be the folder as it now is. */
+function expectViewInStep(state: ConnectionState, folder: readonly Row[]): void {
+	const view = state.selected!.view;
+	if (view) expect(view.uids).toEqual(folder.map((r) => r.uid));
+}
+
+describe.each(VIEW_MODES)('UID EXPUNGE over a large folder, $mode', ({ withView }) => {
 	it('expunges every message of a set larger than one Convex call accepts', async () => {
 		const rows = range(LARGE, (i) => ({ uid: i + 1, deleted: true }));
 		const b = fakeBackend(rows);
-		const lines = await run(b.deps, selected(LARGE), uid, 'UID', ['EXPUNGE', '1:*']);
+		const state = selectedFor(rows, withView);
+		const lines = await run(b.deps, state, uid, 'UID', ['EXPUNGE', '1:*']);
 
 		expect(lines.at(-1)).toBe('a1 OK UID EXPUNGE completed');
 		expect(b.folder).toEqual([]);
@@ -247,30 +283,35 @@ describe('UID EXPUNGE over a large folder', () => {
 		expect(expunges[0]).toBe(`* ${LARGE} EXPUNGE`);
 		expect(expunges.at(-1)).toBe('* 1 EXPUNGE');
 		for (const call of b.calls('expungeFolder')) {
-			expect((call.uidSet as number[]).length).toBeLessThanOrEqual(CONVEX_ARRAY_LIMIT);
+			expect((call['uidSet'] as number[]).length).toBeLessThanOrEqual(CONVEX_ARRAY_LIMIT);
 		}
+		expectViewInStep(state, b.folder);
 	});
 
 	it('keeps sequence numbers right when only part of the set is \\Deleted', async () => {
 		const rows = range(LARGE, (i) => ({ uid: 2 * i + 1, deleted: i % 3 === 0 }));
 		const b = fakeBackend(rows);
 		const view = rows.map((r) => r.uid);
-		const lines = await run(b.deps, selected(LARGE), uid, 'UID', ['EXPUNGE', '1:*']);
+		const state = selectedFor(rows, withView);
+		const lines = await run(b.deps, state, uid, 'UID', ['EXPUNGE', '1:*']);
 
 		expect(lines.at(-1)).toBe('a1 OK UID EXPUNGE completed');
 		expect(applyExpunges(view, lines)).toEqual(b.folder.map((r) => r.uid));
 		expect(b.folder.every((r) => !r.deleted)).toBe(true);
+		expectViewInStep(state, b.folder);
 	});
 
 	it('restarts each batch from the top when the backend returns no final cursor', async () => {
 		const rows = range(LARGE, (i) => ({ uid: i + 1, deleted: i % 2 === 0 }));
 		const b = fakeBackend(rows, { legacyExpungeCursor: true });
 		const view = rows.map((r) => r.uid);
-		const lines = await run(b.deps, selected(LARGE), uid, 'UID', ['EXPUNGE', '1:*']);
+		const state = selectedFor(rows, withView);
+		const lines = await run(b.deps, state, uid, 'UID', ['EXPUNGE', '1:*']);
 
 		expect(lines.at(-1)).toBe('a1 OK UID EXPUNGE completed');
 		expect(applyExpunges(view, lines)).toEqual(b.folder.map((r) => r.uid));
 		expect(b.folder).toHaveLength(LARGE / 2);
+		expectViewInStep(state, b.folder);
 	});
 });
 
@@ -281,7 +322,7 @@ describe('STORE over a large folder', () => {
 		const lines = await run(b.deps, selected(LARGE), store, 'STORE', ['1:*', '+FLAGS', '(\\Seen)']);
 
 		for (const call of b.calls('storeFlags')) {
-			expect((call.messageIds as string[]).length).toBeLessThanOrEqual(CONVEX_ARRAY_LIMIT);
+			expect((call['messageIds'] as string[]).length).toBeLessThanOrEqual(CONVEX_ARRAY_LIMIT);
 		}
 		const fetches = lines.filter((l) => l.includes(' FETCH '));
 		expect(fetches).toHaveLength(LARGE / 2);
@@ -305,7 +346,7 @@ describe('COPY over a large folder', () => {
 		expect(m![2]!.split(',')).toHaveLength(LARGE);
 		expect(b.target).toHaveLength(LARGE);
 		for (const call of b.calls('copyMessages')) {
-			expect((call.messageIds as string[]).length).toBeLessThanOrEqual(CONVEX_ARRAY_LIMIT);
+			expect((call['messageIds'] as string[]).length).toBeLessThanOrEqual(CONVEX_ARRAY_LIMIT);
 		}
 	});
 
@@ -321,7 +362,7 @@ describe('COPY over a large folder', () => {
 	});
 });
 
-describe('MOVE over a large folder', () => {
+describe.each(VIEW_MODES)('MOVE over a large folder, $mode', ({ withView }) => {
 	it('moves every message and keeps each EXPUNGE valid for the client', async () => {
 		// Sparse UIDs, and every other message moved, so batches interleave with
 		// messages that stay.
@@ -332,23 +373,26 @@ describe('MOVE over a large folder', () => {
 			.filter((_, i) => i % 2 === 1)
 			.map((r) => r.uid)
 			.join(',');
-		const lines = await run(b.deps, selected(LARGE), uid, 'UID', ['MOVE', set, 'Target']);
+		const state = selectedFor(rows, withView);
+		const lines = await run(b.deps, state, uid, 'UID', ['MOVE', set, 'Target']);
 
 		expect(lines.at(-1)).toBe('a1 OK UID MOVE completed');
 		for (const call of b.calls('moveMessages')) {
-			expect((call.messageIds as string[]).length).toBeLessThanOrEqual(CONVEX_ARRAY_LIMIT);
+			expect((call['messageIds'] as string[]).length).toBeLessThanOrEqual(CONVEX_ARRAY_LIMIT);
 		}
 		expect(b.target).toHaveLength(LARGE / 2);
 		expect(applyExpunges(view, lines)).toEqual(b.folder.map((r) => r.uid));
 		const commits = vi.mocked(b.deps.commit).mock.calls;
 		expect(commits.at(-1)![0].selected?.totalCount).toBe(LARGE / 2);
+		expectViewInStep(state, b.folder);
 	});
 
 	it('reports the batches that moved before a failure, then answers NO', async () => {
 		const rows = range(LARGE, (i) => ({ uid: i + 1, deleted: false }));
 		const b = fakeBackend(rows, { failCall: { name: 'moveMessages', call: 2 } });
 		const view = rows.map((r) => r.uid);
-		const lines = await run(b.deps, selected(LARGE), move, 'MOVE', ['1:*', 'Target']);
+		const state = selectedFor(rows, withView);
+		const lines = await run(b.deps, state, move, 'MOVE', ['1:*', 'Target']);
 
 		expect(lines.at(-1)).toBe('a1 NO [UNAVAILABLE] MOVE failed');
 		const moved = b.target.length;
@@ -358,5 +402,6 @@ describe('MOVE over a large folder', () => {
 		// view after the EXPUNGE lines matches the source folder.
 		expect(moved + b.folder.length).toBe(LARGE);
 		expect(applyExpunges(view, lines)).toEqual(b.folder.map((r) => r.uid));
+		expectViewInStep(state, b.folder);
 	});
 });

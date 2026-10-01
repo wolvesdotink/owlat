@@ -88,10 +88,10 @@ describe('createDefaultContent', () => {
 	it('creates social block with correct defaults', () => {
 		const content = createDefaultContent('social') as SocialBlockContent;
 		expect(content.links).toHaveLength(5);
-		expect(content.links[0].platform).toBe('twitter');
-		expect(content.links[0].enabled).toBe(true);
-		expect(content.links[4].platform).toBe('youtube');
-		expect(content.links[4].enabled).toBe(false);
+		expect(content.links[0]!.platform).toBe('twitter');
+		expect(content.links[0]!.enabled).toBe(true);
+		expect(content.links[4]!.platform).toBe('youtube');
+		expect(content.links[4]!.enabled).toBe(false);
 		expect(content.iconStyle).toBe('filled');
 		expect(content.align).toBe('center');
 		expect(content.iconSize).toBe(64);

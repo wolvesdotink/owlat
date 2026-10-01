@@ -14,7 +14,11 @@ vi.mock('@tauri-apps/plugin-notification', () => ({
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => invokeMock(...args) }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }));
 
-import { checkNotificationPermission, requestNotificationPermission } from '../notifications';
+import {
+	checkNotificationPermission,
+	requestNotificationPermission,
+	sendActionableNotification,
+} from '../notifications';
 
 beforeEach(() => {
 	isPermissionGrantedMock.mockReset();
@@ -71,5 +75,25 @@ describe('requestNotificationPermission', () => {
 	it('degrades to unavailable when the plugin throws', async () => {
 		isPermissionGrantedMock.mockRejectedValue(new Error('no tauri'));
 		await expect(requestNotificationPermission()).resolves.toBe('unavailable');
+	});
+});
+
+describe('sendActionableNotification', () => {
+	it('sends the workspace id along so the action can find its way back', async () => {
+		invokeMock.mockResolvedValue(undefined);
+		await sendActionableNotification('Alice', 'Hi', 'm1', 'inbox', 'ws-a');
+		expect(invokeMock).toHaveBeenCalledWith('send_actionable_notification', {
+			title: 'Alice',
+			body: 'Hi',
+			messageId: 'm1',
+			folderRole: 'inbox',
+			workspaceId: 'ws-a',
+		});
+	});
+
+	it('sends an explicit null when there is no active workspace', async () => {
+		invokeMock.mockResolvedValue(undefined);
+		await sendActionableNotification('Alice', 'Hi', 'm1', 'inbox');
+		expect(invokeMock.mock.calls[0]?.[1]).toMatchObject({ workspaceId: null });
 	});
 });

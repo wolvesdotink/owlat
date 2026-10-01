@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
-import { internalMutation, internalAction } from '../_generated/server';
+import { internalAction } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 
 /**

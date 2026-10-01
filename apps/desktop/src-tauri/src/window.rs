@@ -96,7 +96,8 @@ pub fn arm_reveal(window: &WebviewWindow) {
 }
 
 /// Command: the SPA in this window has painted (apps/web desktop boot plugin,
-/// `app:mounted`) — show the window if this is its first paint.
+/// once the opaque splash is on screen, and again on `app:mounted`) — show the
+/// window if this is its first paint.
 #[command]
 pub fn window_ready(window: WebviewWindow) {
     reveal(&window, None);

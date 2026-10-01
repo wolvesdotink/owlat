@@ -7,7 +7,9 @@
  * read — and a literal added on one side only is a silently rejected write.
  */
 
+import { UNDO_SEND_SECOND_CHOICES } from '@owlat/shared/undoSendPolicy';
 import { v } from 'convex/values';
+import { literalUnion } from '../literalUnion';
 
 // Postbox reader auto-advance preference (mailUserSettings.autoAdvance and
 // mail/settings update args) — single source so schema and args can't drift.
@@ -81,19 +83,12 @@ export const mailSortOrderValidator = v.union(v.literal('newest'), v.literal('ol
 
 // Postbox undo-send window (mailUserSettings.undoSendSeconds and mail/settings
 // update args) — how long a sent message is held in `pending_send` before it
-// actually dispatches, i.e. how long "Undo" stays offered. A CLOSED set of four
-// values rather than a free number: the composer renders it as four radio
-// choices, and an arbitrary window (7 hours) is a footgun, not a preference.
-// `0` is "Off" — dispatch immediately, no undo toast at all. Unset ⇒ the
-// server's DEFAULT_UNDO_SEND_DELAY_MS (30s), which is exactly the behaviour
-// every user had before this control existed. Single source so schema and args
-// can't drift.
-export const mailUndoSendSecondsValidator = v.union(
-	v.literal(0),
-	v.literal(10),
-	v.literal(30),
-	v.literal(60)
-);
+// actually dispatches, i.e. how long "Undo" stays offered. The closed set is
+// `UNDO_SEND_SECOND_CHOICES` in `@owlat/shared/undoSendPolicy`, the same tuple
+// the web control renders, so a choice cannot be offered by one plane and
+// rejected by the other. `0` is "Off" — dispatch immediately, no undo toast at
+// all. Unset ⇒ the server's DEFAULT_UNDO_SEND_DELAY_MS (the shared default).
+export const mailUndoSendSecondsValidator = literalUnion(UNDO_SEND_SECOND_CHOICES);
 
 // Postbox mark-as-read policy (mailUserSettings.markReadPolicy and
 // mail/settings update args) — WHEN an opened conversation loses its unread

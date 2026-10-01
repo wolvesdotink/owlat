@@ -1,6 +1,6 @@
 import { PLUGIN_AUTONOMY_GATE_CAPABILITY } from '@owlat/plugin-kit';
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { pluginAutonomyGateDefinition } from './autonomyGateCatalog';
 import {
 	authorizeHostedContribution,

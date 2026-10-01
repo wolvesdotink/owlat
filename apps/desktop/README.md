@@ -64,6 +64,20 @@ a bare Linux VPS without touching a terminal. The app SSHes in and drives the
   opaque `sessionId`, so the password/key crosses the IPC boundary exactly once.
   `ssh_exec_stream` runs a command and streams stdout/stderr line-by-line over a
   Tauri `Channel`; `ssh_write_file` uploads the generated config.
+- **Leaving the wizard** stops what is running: `ssh_cancel` cancels the
+  session's current operation without waiting for the session lock it holds
+  (local Docker builds are killed with their plugin processes), the wizard then
+  removes the uploaded config, and `ssh_disconnect` shuts the socket down. A
+  silent remote command is also stopped after 30 minutes without output, and
+  any command after 4 hours. A command already running on the server is not
+  killed: its pipes close, so it fails on its next write, and the installer is
+  idempotent for the next run.
+- **The setup config** (admin password, provider keys in plaintext) is removed
+  after every install that uploaded it, successful or not, and on leaving. The
+  installer also deletes it itself when its run ends (`OWLAT_CONSUME_CONFIG=1`
+  in `scripts/owlat`), so a desktop that is killed mid-install does not leave it
+  behind. A failed removal is shown next to the install error, with the command
+  that removes it by hand.
 - **One source of orchestration truth**: the desktop does *not* re-implement the
   ~13-step install. It runs preflight / fetch over SSH, uploads an
   `owlat-setup.json`, then runs the normal installer with
@@ -77,11 +91,29 @@ a bare Linux VPS without touching a terminal. The app SSHes in and drives the
   `pages/desktop/setup.vue`. On success it reuses the normal `addWorkspace`
   handshake to connect the new instance.
 
-**Security.** Like the `secret_*` keychain commands, the `ssh_*` commands are not
-ACL-gated — they trust the locally-bundled SPA (`tauri://localhost`), which is the
-app's trust boundary (see the CSP in `tauri.conf.json`; no remote-origin content
-is ever loaded). SSH credentials are never persisted by default and are not
-echoed to the log.
+**Security.** Every app command is ACL-gated per window.
+`src-tauri/src/ipc_commands.rs` lists the commands; `build.rs` turns each into an
+`allow-<command>` permission, and the files under `src-tauri/capabilities/` grant
+them. The `ssh_*` commands go to the main window only (`provisioning.json`); the
+compose window gets the everyday commands but cannot provision. The SPA is still
+only ever loaded from the bundle (see the CSP in `tauri.conf.json`; no
+remote-origin content is ever loaded). SSH credentials are never persisted by
+default and are not echoed to the log.
+
+**Local-source installs (development only).** The hidden "local source" install
+(upload this checkout instead of cloning; optionally build the images here and
+stream them to the server) uses `ssh_upload_dir`, `ssh_push_images` and
+`local_docker_build` (`src-tauri/src/ssh/dev.rs`). They exist only with the
+`dev-provisioning` Cargo feature, which `bun run dev` passes to `tauri dev`.
+Release builds neither compile nor register them, and an optimized build with
+the feature refuses to compile. Even in development the inputs are narrow: the
+folder must be an Owlat checkout, a local build is a typed choice (the Compose
+stack by service and profile name, or the setup image) for `linux/amd64` or
+`linux/arm64`, and only local `:dev` images are pushed. The push mode builds
+every service `docker-compose.yml` can build (the table in
+`@owlat/shared/composeBuildServices`, pinned to Compose by
+`scripts/__tests__/desktop-local-push-images.test.ts`), checks that each image
+arrived, and runs quickstart with `--no-build` so the server never builds.
 
 **Remote reachability.** For the desktop to connect to the box *after* the
 install, give it a **public domain** in the wizard. That sets

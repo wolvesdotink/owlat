@@ -21,6 +21,10 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { subscriptionBatchSummary, summarizeSubscriptionBatch } from '~/utils/postboxSubscriptions';
+import {
+	optimisticSetLabelOnMessages,
+	optimisticSnoozeMany,
+} from '~/lib/mailOptimistic/mailUpdaters';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -44,9 +48,11 @@ const snoozeOpen = ref(false);
 // with nothing able to name where it stopped.
 const setLabelOnSelection = useBackendOperation(api.mail.labels.setOnMessages, {
 	label: () => t('components.postbox.postboxQuickActionsBar.operations.label'),
+	optimisticUpdate: optimisticSetLabelOnMessages,
 });
 const snoozeMutation = useBackendOperation(api.mail.snooze.snoozeMany, {
 	label: () => t('components.postbox.postboxQuickActionsBar.operations.snooze'),
+	optimisticUpdate: optimisticSnoozeMany,
 });
 const unsnoozeMutation = useBackendOperation(api.mail.snooze.unsnoozeMany, {
 	label: () => t('components.postbox.postboxQuickActionsBar.operations.unsnooze'),

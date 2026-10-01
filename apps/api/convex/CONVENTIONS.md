@@ -198,6 +198,33 @@ API-key/no-session context must call an `internal*` sibling (see
 `scripts/check-public-functions.sh` (wired into `bun run lint`) bans the bare
 builders outside `lib/authedFunctions.ts` — a forgotten gate fails CI.
 
+### The workspace write fence
+
+While a workspace deletion runs, no mutation may put data back into a table
+the deletion sweeps. [`lib/writeFence.ts`](lib/writeFence.ts) enforces that in
+the database handle the builders give their handlers: insert, patch and
+replace on a swept table throw `invalid_state` while a `workspaceDeletionJobs`
+row is active; deletes and writes to other tables pass. The public mutation
+builders above already build on it. For internal mutations, import
+`internalMutation` from `lib/writeFence`, never from `_generated/server`:
+
+```ts
+import { internalQuery } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
+```
+
+`scripts/check-write-fence.ts` (part of `bun run lint`) fails on a raw
+`internalMutation` / `mutation` import anywhere except the fence module, the
+public builders and the deletion worker (`workspaces/deletion/walker.ts`), the
+one writer the fence exempts (it also fails on `import * as` of that module and
+on a re-export of a raw builder). A deletion step must therefore run its work
+inline on the worker's context: a `ctx.runMutation` callee is fenced.
+
+An HTTP route that ingests deliveries from the MTA or a provider answers a
+fence refusal with a final 2xx, not a 5xx that would be retried and parked for
+a replay into the emptied workspace: see `webhooks/workspaceDeletionAck.ts`.
+See ADR-0025's #898 amendment.
+
 ### Feature-flag floors
 
 Modules behind an instance feature flag (`chat`, `ai.assistant`, …) must not let
@@ -696,7 +723,7 @@ A validator that a table shares with the functions reading or writing it has
 one home, picked by its shape, not by which file has room:
 
 - `lib/literalValidators.ts`: closed literal unions (`bounceTypeValidator`,
-  `blockReasonValidator`, ...).
+  `blockedEmailReasonValidator`, ...).
 - `lib/convexValidators.ts`: the cross-domain composites (objects, records)
   and the unions derived from a shared catalog with `literalUnion`.
 - `lib/validators/<domain>.ts`: everything owned by one domain
@@ -844,8 +871,13 @@ use for the 0044 chat-media migration.
 **Durable progress and completion.** A migration records its progress in the
 deployment's database, not only in its return value: the cursor of each pass,
 counts, when it started and completed, and the release that introduced it. A
-contract step and a stepping-stone check read that record. No migration ledger
-table exists yet; the first migration that a contract step depends on adds it.
+contract step and a stepping-stone check read that record. The record is the
+migration's row in the `migrationRuns` ledger (`schema/migrationRuns.ts`),
+written through `lib/migrationLedger.ts`: `beginMigrationRun` from the `run`
+entry point, `recordMigrationPage` in each page's own transaction, and a
+generation check (`isCurrentMigrationPage`) so a resume supersedes a chain that
+is still queued. `migrations/0053_project_open_commitments.ts` is the worked
+example.
 
 **Bounded, resumable backfills.** A migration pages through its table
 (`.paginate()` with a cursor, a fixed page size well under the transaction
@@ -900,7 +932,16 @@ either: its seeded leg carries over Redis and ClamAV volumes, not Convex data.
   a one-shot migration when a version is retired.
 - `*.rendererVersion` tracks the renderer engine. Bump when re-rendering
   the same blocks produces materially different HTML — needed when reading
-  a `shareLinks` snapshot or rehydrating cached output.
+  a `shareLinks` snapshot or rehydrating cached output. The version is
+  `EMAIL_RENDERER_VERSION` in `packages/email-renderer/src/version.ts`
+  (history there; `CURRENT_RENDERER_VERSION` re-exports it). Every write that
+  stores rendered HTML stamps the version that rendered it. Editor saves,
+  publishes, duplicates and translation writes render on the server
+  (`lib/publishableEmail.ts`) and stamp the current version; the Node rerender
+  passes its own, and `lib/rendererVersion.ts` decides what the row records (a
+  write that leaves older HTML in the row keeps the older version; unreported
+  means 1). A client's `rendererVersion` argument is ignored. Share links
+  carry the source's version.
 
 ### Boolean naming
 

@@ -125,6 +125,28 @@ describe('buildThreadTranscript', () => {
 		const withTo = await buildThreadTranscript([m], { ...BUDGET, includeTo: true });
 		expect(withTo).toContain(`\nTo: ${OWNER}, b@example.com\nSubject:`);
 	});
+
+	it('names each message’s attachments only with includeAttachments', async () => {
+		const file = { contentType: 'application/pdf', size: 10, partIndex: '0' };
+		const withFiles = msg({
+			textBodyInline: 'See attached.',
+			attachments: [
+				{ ...file, filename: 'invoice-2026-08.pdf' },
+				{ ...file, filename: 'terms.pdf', partIndex: '1' },
+			],
+		});
+		const none = msg({ textBodyInline: 'Thanks!', attachments: [] });
+		const plain = await buildThreadTranscript([withFiles, none], BUDGET);
+		expect(plain).not.toContain('Attachments:');
+		const listed = await buildThreadTranscript([withFiles, none], {
+			...BUDGET,
+			includeAttachments: true,
+		});
+		expect(listed).toContain(
+			'Subject: Listing paused\nAttachments: invoice-2026-08.pdf, terms.pdf\nSee attached.'
+		);
+		expect(listed.match(/Attachments:/g)).toHaveLength(1);
+	});
 });
 
 /** A thread from `messages` (oldest first) flagged as needing a reply to the last one. */

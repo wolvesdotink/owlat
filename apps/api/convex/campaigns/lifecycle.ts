@@ -27,12 +27,14 @@
 
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
 import { defineLifecycle, refuse, type LifecycleReason } from '../lib/lifecycle';
 import { rollupCampaignStatsRow } from './statShards';
 import { trackEvent } from '../lib/posthogHelpers';
+import { recordListingCounter } from '../lib/listingCounters';
 import { throwInvalidState } from '../_utils/errors';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -478,6 +480,7 @@ async function dispatch(
 
 	if (Object.keys(result.patch).length > 0) {
 		await ctx.db.patch(campaign._id, result.patch as Partial<Doc<'campaigns'>>);
+		await recordListingCounter(ctx, 'campaignStatus', campaign, { ...campaign, ...result.patch });
 	}
 	await applyEffects(ctx, result.effects);
 

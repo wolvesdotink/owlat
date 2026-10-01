@@ -83,6 +83,18 @@ describe('PostboxTodayReaderOverlay', () => {
 		expect(w.find('.reader-stub').exists()).toBe(true);
 	});
 
+	it('swaps the thread in the same tick, with no leave to wait for', async () => {
+		// Plan 1.16: the swap used to be an out-in <Transition>, so the next
+		// thread only mounted after the previous one had faded out (~280ms per
+		// j/k). The reader is now keyed with an enter-only CSS fade.
+		const w = mountOverlay('m2');
+		await w.setProps({ message: msg('m3') as never });
+		const readers = w.findAll('.reader-stub');
+		expect(readers).toHaveLength(1);
+		expect(readers[0]!.attributes('data-id')).toBe('m3');
+		expect(readers[0]!.classes()).toContain('pbx-reader-swap');
+	});
+
 	it('arrow keys mirror j/k and the ends are a no-op', () => {
 		const w = mountOverlay('m3');
 		pressOnWindow('ArrowDown'); // already last — stays put

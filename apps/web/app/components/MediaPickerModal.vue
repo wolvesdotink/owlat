@@ -215,7 +215,7 @@ const getFileIcon = (mimeType: string) => {
 
 			<!-- Loading -->
 			<div v-if="isLoading && assets.length === 0" class="flex items-center justify-center py-12">
-				<UiSpinner size="md" />
+				<UiSpinner size="md" delay />
 			</div>
 
 			<!-- Empty -->

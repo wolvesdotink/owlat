@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { answerCounts } from '~/composables/useAnswerQueue';
 import { answerItemMatches } from '~/utils/answerQueue';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
+import { useAnswerModeNav } from '~/composables/useAnswerMode';
 import type { TodayChange, TodayLine, TodaySource } from '~/utils/todayDigest';
 import { TODAY_PEEK, peekKey, threadHref } from '~/utils/todayPeek';
 import {
@@ -41,7 +42,8 @@ const firstName = computed(() => user.value?.name?.split(' ')[0] ?? '');
 
 const route = useRoute();
 const router = useRouter();
-const { inboxes, byId, isLoading: inboxesLoading } = useInboxes();
+const inboxRead = useInboxes();
+const { inboxes, byId, isLoading: inboxesLoading } = inboxRead;
 const answer = useAnswerQueue();
 const choice = useWorkbenchInboxChoice();
 const { level: deliveryLevel, reason: deliveryReason } = useDeliveryHealth();
@@ -177,28 +179,32 @@ async function markAllSeen() {
 }
 const DWELL_MS = 30_000;
 let enteredAt = Date.now();
-// Whether this tab showed anything while open; only ever set, reset on switch.
-let hadAnything = false;
+// The tabs that showed anything of their own while open; cleared on leaving.
+// Tracked per tab: the previous tab stays on screen while the next one loads
+// (`isStale`, which does not count), and two tabs that both have content never
+// flip `hasAnything` at all.
+const hadAnything = new Set<WorkbenchScope>();
 watch(
-	hasAnything,
-	(value) => {
-		if (value) hadAnything = true;
+	() => [scope.value, hasAnything.value && !workbench.isStale.value] as const,
+	([current, showing]) => {
+		if (current && showing) hadAnything.add(current);
 	},
 	{ immediate: true }
 );
 function leaveScope(previous: WorkbenchScope | null) {
-	if (previous && hadAnything && Date.now() - enteredAt >= DWELL_MS)
+	if (previous && hadAnything.has(previous) && Date.now() - enteredAt >= DWELL_MS)
 		void workbench.markSeen(previous);
+	if (previous) hadAnything.delete(previous);
 }
 watch(scope, (_next, previous) => {
 	leaveScope(previous ?? null);
 	enteredAt = Date.now();
-	hadAnything = false;
 	hidden.value = new Set();
 });
 onBeforeUnmount(() => leaveScope(scope.value));
 
 // ── Actions on lines ────────────────────────────────────────────────────────
+const answerNav = useAnswerModeNav();
 const { run: recordVisit } = useBackendOperation(api.mail.threadVisits.recordVisit, {
 	label: () => t('dashboard.today.operations.done'),
 });
@@ -226,20 +232,29 @@ async function doneLine(line: TodayLine | TodayChange) {
 	}
 	if (!ok) unhide(line.key);
 }
-async function replyAnyway(line: TodayLine) {
+async function replyAnyway(line: TodayLine, opts: { answer?: TodaySource } = {}) {
 	if (!line.inboundMessageId) return;
 	hidden.value = new Set([...hidden.value, line.key]);
 	const result = await requestReply({
 		inboundMessageId: line.inboundMessageId as Id<'inboundMessages'>,
 	});
-	if (result.ok) {
-		showToast(t('dashboard.today.replyRequested'), 'success', {
-			action: {
-				label: t('dashboard.today.openQueue'),
-				onAction: () => void navigateTo(`/dashboard/answer?in=${TEAM_SCOPE}`),
-			},
-		});
-	} else unhide(line.key);
+	if (!result.ok) {
+		unhide(line.key);
+		return;
+	}
+	// From the peek, the person is about to answer: the reply opens in Answer
+	// mode, where the agent's draft lands in the editor.
+	const source = opts.answer;
+	if (source) {
+		void answerNav.openTeam(source.threadId, { messageId: source.id });
+		return;
+	}
+	showToast(t('dashboard.today.replyRequested'), 'success', {
+		action: {
+			label: t('dashboard.today.openQueue'),
+			onAction: () => void navigateTo(`/dashboard/answer?in=${TEAM_SCOPE}`),
+		},
+	});
 }
 
 // ── Peek panel (state in the URL) ───────────────────────────────────────────
@@ -273,7 +288,7 @@ function replyAnywayFromPeek(source: TodaySource) {
 		.concat(model.value.also)
 		.find((l) => l.inboundMessageId === source.id);
 	closePeek();
-	if (line) void replyAnyway(line);
+	if (line) void replyAnyway(line, { answer: source });
 }
 
 // ── Keyboard: j/k between lines, Enter opens, d done, r reply anyway ───────
@@ -354,7 +369,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 			<UiSkeleton class="h-36 w-full rounded-2xl" />
 		</div>
 
-		<!-- No inbox to work from yet. -->
+		<UiQueryBoundary
+			v-else-if="inboxRead.error.value && tabs.length === 0"
+			:error="inboxRead.error.value"
+			@retry="inboxRead.refetch"
+		/>
+		<!-- No inbox to work from yet (a failed read is not that, #721). -->
 		<div
 			v-else-if="scope === null"
 			class="mt-8 flex flex-col items-start gap-3 rounded-2xl border border-dashed border-border-subtle px-6 py-8"
@@ -420,7 +440,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 						moved: isTeam ? null : model.changed.length,
 						filed: model.filedTotal,
 					}"
-					:can-mark-seen="hasAnything"
+					:can-mark-seen="hasAnything && !workbench.isStale.value"
 					:inbox-href="inboxHref"
 					:compose-href="isTeam ? null : `/compose?mailbox=${scope}`"
 					@mark-seen="markAllSeen"
@@ -465,9 +485,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 			@step="(i) => openPeek(peekSources, i)"
 			@done="onPeekDone"
 		>
-			<template #actions="{ source }">
+			<template #actions="{ source, informational }">
 				<UiButton
-					v-if="source.kind === 'team'"
+					v-if="source.kind === 'team' && informational"
 					size="sm"
 					variant="secondary"
 					@click="replyAnywayFromPeek(source)"

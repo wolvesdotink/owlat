@@ -76,6 +76,20 @@ export interface UidPage {
 	readonly nextUid: number | null;
 }
 
+/**
+ * A folder's membership read (`mail/imap/fetch:folderMembershipPage`): `null`
+ * when the folder is not maintained, `isReady: false` while its backfill runs,
+ * `unchanged` when `knownVersion` is still current, otherwise one page of UID
+ * blocks (each ascending, the blocks in order) and the bound to resume after.
+ */
+export type MembershipPage = {
+	readonly version: string;
+	readonly isReady: boolean;
+	readonly unchanged?: true;
+	readonly blocks?: number[][];
+	readonly nextFirstUid?: number | null;
+} | null;
+
 /** One page of envelopes inside a UID window. */
 export interface EnvelopePage {
 	readonly rows: FetchEnvelope[];
@@ -93,15 +107,6 @@ export interface ChangedEnvelopePage {
 	readonly page: FetchEnvelope[];
 	readonly isDone: boolean;
 	readonly continueCursor: string | null;
-}
-
-/** Where a message's raw RFC822 bytes live. */
-export interface RawStorageMeta {
-	readonly storageId: string;
-	readonly rawSize: number;
-	readonly internalDate: number;
-	readonly folderId: string;
-	readonly uid: number;
 }
 
 /** STORE: the rows that changed, and the CONDSTORE rows left alone. */
@@ -124,6 +129,8 @@ export interface CopyMoveResult {
 /** One committed EXPUNGE page, plus the cursor to the next one. */
 export interface ExpungeResult {
 	readonly sequenceNumbers: number[];
+	/** The same messages by UID, same order. Absent from a backend older than #927's. */
+	readonly uids?: number[];
 	readonly modseq: number;
 	readonly done?: boolean;
 	readonly beforeUid?: number;
@@ -137,6 +144,18 @@ export interface AppendResult {
 	readonly uidValidity: number;
 	readonly modseq: number;
 }
+
+/**
+ * A UID window read: `[uidLow, uidHigh]`, optionally narrowed to ascending,
+ * disjoint `ranges` (at most `MAX_UID_RANGES` in apps/api `mail/imap/fetch.ts`).
+ */
+type UidWindowArgs = {
+	folderId: string;
+	uidLow: number;
+	uidHigh: number;
+	ranges?: Array<{ low: number; high: number }>;
+	limit?: number;
+};
 
 type FolderRole = 'inbox' | 'sent' | 'drafts' | 'trash' | 'spam' | 'archive';
 
@@ -194,14 +213,14 @@ export const fn = {
 	listFolders: makeFunctionReference<'query', { mailboxId: string }, FolderRow[]>(
 		'mail/imap/session:listFolders'
 	),
-	selectFolder: makeFunctionReference<'query', { folderId: string }, SelectFolderResult | null>(
-		'mail/imap/session:selectFolder'
-	),
-	fetchEnvelopes: makeFunctionReference<
+	selectFolder: makeFunctionReference<
 		'query',
-		{ folderId: string; uidLow: number; uidHigh: number; limit?: number },
-		EnvelopePage
-	>('mail/imap/fetch:fetchEnvelopes'),
+		{ folderId: string; skipFirstUnseenSeq?: boolean },
+		SelectFolderResult | null
+	>('mail/imap/session:selectFolder'),
+	fetchEnvelopes: makeFunctionReference<'query', UidWindowArgs, EnvelopePage>(
+		'mail/imap/fetch:fetchEnvelopes'
+	),
 	fetchChangedEnvelopes: makeFunctionReference<
 		'query',
 		{
@@ -216,9 +235,11 @@ export const fn = {
 		{ folderId: string; afterUid?: number; limit?: number },
 		UidPage
 	>('mail/imap/fetch:listFolderUidsPage'),
-	fetchRawStorageId: makeFunctionReference<'query', { messageId: string }, RawStorageMeta | null>(
-		'mail/imap/fetch:fetchRawStorageId'
-	),
+	folderMembershipPage: makeFunctionReference<
+		'query',
+		{ folderId: string; knownVersion?: string; afterFirstUid?: number },
+		MembershipPage
+	>('mail/imap/fetch:folderMembershipPage'),
 	peekFolderModseq: makeFunctionReference<'query', { folderId: string }, PeekResult | null>(
 		'mail/imap/session:peekFolderModseq'
 	),
@@ -257,14 +278,14 @@ export const fn = {
 	appendMessage: makeFunctionReference<'mutation', AppendArgs, AppendResult>(
 		'mail/imap/append:appendMessage'
 	),
-	resolveMessageIdsByUid: makeFunctionReference<
-		'query',
-		{ folderId: string; uidLow: number; uidHigh: number; limit?: number },
-		MessageIdPage
-	>('mail/imap/fetch:resolveMessageIdsByUid'),
-	getRawStorageUrl: makeFunctionReference<'action', { storageId: string }, string | null>(
-		'mail/imap/fetch:getRawStorageUrl'
+	resolveMessageIdsByUid: makeFunctionReference<'query', UidWindowArgs, MessageIdPage>(
+		'mail/imap/fetch:resolveMessageIdsByUid'
 	),
+	getRawStorageUrls: makeFunctionReference<
+		'action',
+		{ messageIds: string[] },
+		Array<{ messageId: string; url: string | null }>
+	>('mail/imap/fetch:getRawStorageUrls'),
 	generateUploadUrl: makeFunctionReference<'mutation', Record<string, never>, string>(
 		'mail/imap/append:generateRawUploadUrl'
 	),

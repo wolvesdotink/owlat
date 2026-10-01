@@ -14,30 +14,29 @@
  *   2. Cheap-tier LLM refinement (mail/ai/categoryClassify.ts, 'use node') for the
  *      ambiguous remainder, behind the same aiGate as the rest of Postbox AI.
  *      Fail-soft: any LLM/gate failure leaves the deterministic label (or
- *      `other` when the heuristic was ambiguous).
+ *      `other` when the heuristic was ambiguous, or the thread's standing LLM
+ *      label on an ambiguous follow-up).
  *
  * A per-sender user override (mailSenderCategoryOverrides) always wins and is
  * remembered for that sender — see `resolveCategory` and `recategorize`.
  *
- * Trigger: `enqueueCategoryCheck` on inbound webhook delivery and on forward
- * external IMAP sync (inbox only, bounded to the affected thread; a historical
- * import never enqueues), plus the hand-run
+ * Trigger: `enqueueCategoryCheck` (mail/categoryArrival.ts) on inbound webhook
+ * delivery and on forward external IMAP sync (inbox only, bounded to the
+ * affected thread; a historical import never enqueues), plus the hand-run
  * `migrations/0037_backfill_mail_categories:run` for recent existing threads.
+ * The override and the heuristic run inside the calling mutation, so a thread
+ * arrives already labelled; only the ambiguous remainder schedules the LLM.
  */
 
 import { v, type Infer } from 'convex/values';
-import {
-	internalMutation,
-	internalQuery,
-	type MutationCtx,
-	type QueryCtx,
-} from '../_generated/server';
+import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { postboxMutation } from './_helpers';
-import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { isBulkOrNoReplySender } from './needsReplyHeuristic';
 import { buildThreadTranscript, CATEGORY } from './ai/transcript';
+import { withStoredInlineBodies } from '../lib/messageBodyStore';
 import { requireMailboxAccess } from './permissions';
 import { moveMessagesToFolder } from './messageActions';
 import { mailCategoryLabelValidator, mailCategorySourceValidator } from '../lib/literalValidators';
@@ -143,41 +142,17 @@ export function resolveCategory(opts: {
 	return { label: 'other', source: 'heuristic' };
 }
 
-// ─── Trigger helper (called from sibling mail modules) ───────────────────────
-
-/**
- * Schedule category classification for a thread. Called from the inbound
- * webhook delivery path and from forward external IMAP sync, for inbox
- * deliveries only (a bulk IMAP history import must not fan out background
- * work), and from the one-shot `backfill` action.
- */
-export async function enqueueCategoryCheck(
-	ctx: MutationCtx,
-	threadId: Id<'mailThreads'>,
-	opts: { precedence?: string } = {}
-): Promise<void> {
-	await ctx.scheduler.runAfter(0, internal.mail.ai.categoryClassify.classifyThread, {
-		threadId,
-		precedence: opts.precedence,
-	});
-}
-
 // ─── Convex functions ────────────────────────────────────────────────────────
 
 /** How many newest thread messages the classify action considers. */
 const CATEGORY_CONTEXT_MESSAGES = 4;
 
 /**
- * Bounded thread context for the classify action: owner address, latest
- * inbound message fields (heuristic inputs), whether the sender is a known
- * human correspondent, any remembered user override, and a short transcript.
- */
-/**
  * The latest inbound (non-owner) message of a thread — the message whose sender
  * drives the thread's category and the per-sender override key. `latestInbound`
  * is the newest message that is not `outbound` and not from the mailbox owner's
- * own address. Returns `null` for an owner-only thread. Shared by
- * `getThreadCategoryContext` (classify) and `recategorize` (override) so both
+ * own address. Returns `null` for an owner-only thread. Shared (through
+ * `threadInboundView`) by classification and `recategorize` (override) so both
  * key on the same address — otherwise an override remembered on send would file
  * under the owner's address and never match future inbound mail.
  */
@@ -185,6 +160,14 @@ async function latestInboundMessage(
 	ctx: { db: QueryCtx['db'] },
 	thread: Doc<'mailThreads'>
 ): Promise<Doc<'mailMessages'> | null> {
+	return (await threadInboundView(ctx, thread))?.latestInbound ?? null;
+}
+
+/** The thread's messages oldest-first plus its latest inbound one (see above). */
+async function threadInboundView(
+	ctx: { db: QueryCtx['db'] },
+	thread: Doc<'mailThreads'>
+): Promise<{ ordered: Doc<'mailMessages'>[]; latestInbound: Doc<'mailMessages'> } | null> {
 	const mailbox = await ctx.db.get(thread.mailboxId);
 	if (!mailbox || mailbox.status !== 'active') return null;
 	const ownerAddress = mailbox.address.toLowerCase();
@@ -200,9 +183,58 @@ async function latestInboundMessage(
 		const isFromOwner = m.outbound !== undefined || m.fromAddress.toLowerCase() === ownerAddress;
 		if (!isFromOwner) latestInbound = m;
 	}
-	return latestInbound ?? null;
+	return latestInbound ? { ordered, latestInbound } : null;
 }
 
+/**
+ * The classifier's inputs for a thread, minus the LLM transcript: the latest
+ * inbound sender, any remembered override for them, and the heuristic's
+ * fields. Shared by the in-mutation pass (`mail/categoryArrival.ts`, which
+ * finds `latestInbound` with a bounded newest-first read) and the LLM action's
+ * context query (which reads the whole thread for its transcript anyway) so
+ * both decide on the same signals.
+ */
+export async function loadCategorySignals(
+	ctx: { db: QueryCtx['db'] },
+	thread: Doc<'mailThreads'>,
+	latestInbound: Doc<'mailMessages'>
+) {
+	const senderEmail = latestInbound.fromAddress.toLowerCase();
+
+	// Known human correspondent: in the personal address book, or the owner
+	// has previously written to them (both stored in mailContacts, which is
+	// populated as the user composes/replies).
+	const contact = await ctx.db
+		.query('mailContacts')
+		.withIndex('by_mailbox_and_email', (q) =>
+			q.eq('mailboxId', thread.mailboxId).eq('email', senderEmail)
+		)
+		.first();
+
+	const override = await ctx.db
+		.query('mailSenderCategoryOverrides')
+		.withIndex('by_mailbox_and_sender', (q) =>
+			q.eq('mailboxId', thread.mailboxId).eq('senderEmail', senderEmail)
+		)
+		.first();
+
+	return {
+		senderEmail,
+		override: override?.label ?? null,
+		deterministicInput: {
+			fromAddress: latestInbound.fromAddress,
+			subject: latestInbound.subject,
+			hasListUnsubscribe: latestInbound.unsubscribe !== undefined,
+			isKnownCorrespondent: contact !== null,
+		},
+	};
+}
+
+/**
+ * Bounded thread context for the classify action: latest inbound message
+ * fields (heuristic inputs), whether the sender is a known human
+ * correspondent, any remembered user override, and a short transcript.
+ */
 export const getThreadCategoryContext = internalQuery({
 	args: { threadId: v.id('mailThreads') },
 	handler: async (ctx, args) => {
@@ -210,49 +242,20 @@ export const getThreadCategoryContext = internalQuery({
 		if (!thread) return null;
 
 		// Latest inbound (not from the owner) message drives the category.
-		const latestInbound = await latestInboundMessage(ctx, thread);
-		if (!latestInbound) return null; // owner-only thread — nothing to classify
-
-		const all = await ctx.db
-			.query('mailMessages')
-			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
-			.collect(); // bounded: one thread's messages
-		const ordered = all.sort((a, b) => a.receivedAt - b.receivedAt);
-
-		const senderEmail = latestInbound.fromAddress.toLowerCase();
-
-		// Known human correspondent: in the personal address book, or the owner
-		// has previously written to them (both stored in mailContacts, which is
-		// populated as the user composes/replies).
-		const contact = await ctx.db
-			.query('mailContacts')
-			.withIndex('by_mailbox_and_email', (q) =>
-				q.eq('mailboxId', thread.mailboxId).eq('email', senderEmail)
-			)
-			.first();
-
-		const override = await ctx.db
-			.query('mailSenderCategoryOverrides')
-			.withIndex('by_mailbox_and_sender', (q) =>
-				q.eq('mailboxId', thread.mailboxId).eq('senderEmail', senderEmail)
-			)
-			.first();
+		const view = await threadInboundView(ctx, thread);
+		if (!view) return null; // owner-only thread — nothing to classify
+		const signals = await loadCategorySignals(ctx, thread, view.latestInbound);
 
 		const transcript = await buildThreadTranscript(
-			ordered.slice(-CATEGORY_CONTEXT_MESSAGES),
+			await withStoredInlineBodies(ctx.db, view.ordered.slice(-CATEGORY_CONTEXT_MESSAGES)),
 			CATEGORY
 		);
 
 		return {
 			latestMessageId: thread.latestMessageId,
-			senderEmail,
-			override: override?.label ?? null,
-			deterministicInput: {
-				fromAddress: latestInbound.fromAddress,
-				subject: latestInbound.subject,
-				hasListUnsubscribe: latestInbound.unsubscribe !== undefined,
-				isKnownCorrespondent: contact !== null,
-			},
+			senderEmail: signals.senderEmail,
+			override: signals.override,
+			deterministicInput: signals.deterministicInput,
 			transcript,
 		};
 	},
@@ -282,18 +285,31 @@ export const applyCategory = internalMutation({
 		) {
 			return; // stale — a newer ingest re-enqueued its own check
 		}
-		const previous = thread.category?.label;
-		await ctx.db.patch(args.threadId, {
-			category: { label: args.label, source: args.source, classifiedAt: Date.now() },
-			updatedAt: Date.now(),
-		});
-		// Spam goes to the Spam folder the moment the classifier says so; the
-		// thread keeps its label, so "Not spam" (recategorize) can bring it back.
-		if (args.label === 'spam' && previous !== 'spam') {
-			await moveThreadBetweenRoles(ctx, thread, 'inbox', 'spam');
-		}
+		await writeCategory(ctx, thread, args.label, args.source);
 	},
 });
+
+/**
+ * Stamp a thread's category. Spam goes to the Spam folder the moment the
+ * classifier says so; the thread keeps its label, so "Not spam"
+ * (recategorize) can bring it back.
+ */
+export async function writeCategory(
+	ctx: MutationCtx,
+	thread: Doc<'mailThreads'>,
+	label: MailCategory,
+	source: MailCategorySource
+): Promise<void> {
+	const previous = thread.category?.label;
+	const now = Date.now();
+	await ctx.db.patch(thread._id, {
+		category: { label, source, classifiedAt: now },
+		updatedAt: now,
+	});
+	if (label === 'spam' && previous !== 'spam') {
+		await moveThreadBetweenRoles(ctx, thread, 'inbox', 'spam');
+	}
+}
 
 /**
  * Move every message of `thread` that sits in the `fromRole` system folder
@@ -403,13 +419,5 @@ export const listUnclassifiedInbox = internalQuery({
 		return threads
 			.filter((t) => t.folderRoles.includes('inbox') && t.category === undefined)
 			.map((t) => t._id);
-	},
-});
-
-/** Mutation wrapper so the backfill action can schedule via the shared helper. */
-export const enqueue = internalMutation({
-	args: { threadId: v.id('mailThreads') },
-	handler: async (ctx, args) => {
-		await enqueueCategoryCheck(ctx, args.threadId);
 	},
 });

@@ -1,10 +1,31 @@
 import { ConvexClient } from 'convex/browser';
 import { authClient } from '~/lib/auth-client';
 import { getConvexAuthToken, resetConvexAuthTokenCache } from '~/lib/convex-auth';
+import { markConvexAuthPending, reportConvexAuth } from '~/lib/convexAuthReady';
 import { isDesktopRuntime, getActiveWorkspace } from '~/lib/desktop/activeWorkspace';
 import { logWarn } from '~/lib/runtimeLog';
+import { clearCachedFeatureFlags } from '~/lib/featureFlagCache';
+import { resetSharedConvexSubscriptions } from '~/lib/sharedConvexSubscriptions';
+import { isPublicPath } from '~/utils/publicRoutes';
 
 let authListenerRegistered = false;
+
+/**
+ * What `useAuth().signOut` forgets on this device, for a session that ended
+ * without one: the last-known feature flags and the Postbox rows and bodies
+ * cached for offline reading. Loaded on demand so the IndexedDB store stays out
+ * of the boot bundle.
+ */
+async function forgetSignedOutDevice(): Promise<void> {
+	clearCachedFeatureFlags();
+	try {
+		const { wipePostboxOfflineReadCache } =
+			await import('~/composables/postbox/usePostboxOfflineCache');
+		await wipePostboxOfflineReadCache();
+	} catch {
+		// The chunk failed to load: the redirect to sign-in must still happen.
+	}
+}
 
 export default defineNuxtPlugin(() => {
 	const config = useRuntimeConfig();
@@ -28,12 +49,17 @@ export default defineNuxtPlugin(() => {
 	}
 
 	const client = new ConvexClient(convexUrl);
+	const router = useRouter();
 
-	// On public pages (share, archive, etc.), skip auth entirely — these pages
-	// use direct fetch() to Convex HTTP endpoints, not the Convex client.
-	// This avoids unnecessary /api/auth/convex/token requests for unauthenticated visitors.
-	if (!isPublicRoute()) {
-		const router = useRouter();
+	/**
+	 * Install the token fetcher and the session listener on this client. Runs
+	 * once per client: at boot on an app route, or on the first navigation from
+	 * a public page into the app (see below).
+	 */
+	let authActivated = false;
+	const activateAuth = () => {
+		if (authActivated) return;
+		authActivated = true;
 		const authCallback = async ({ forceRefreshToken }: { forceRefreshToken: boolean }) => {
 			return getConvexAuthToken(forceRefreshToken);
 		};
@@ -51,7 +77,7 @@ export default defineNuxtPlugin(() => {
 			if (recovering) return;
 			recovering = true;
 			try {
-				const { data } = await authClient.getSession({
+				const { data, error } = await authClient.getSession({
 					query: { disableCookieCache: true },
 				});
 				if (data) {
@@ -61,6 +87,11 @@ export default defineNuxtPlugin(() => {
 					logWarn('Convex auth failed while the session is still valid — check auth config.');
 					return;
 				}
+				// The server says there is no session: it expired or was revoked, and
+				// nobody signed out. Forget what sign-out forgets, or the cached mail of
+				// the person who was here stays on this device. Not on a failed request
+				// (offline), where the session may be fine and the cache is the point.
+				if (!error) await forgetSignedOutDevice();
 
 				// The stored session is dead. Flip the client-side session state so
 				// gated queries unsubscribe and the app reflects signed-out. Only
@@ -98,21 +129,47 @@ export default defineNuxtPlugin(() => {
 			}
 		};
 		const onAuthChange = (isAuthenticated: boolean) => {
+			reportConvexAuth(isAuthenticated);
 			if (isAuthenticated) {
 				staleSessionNotifies = 0;
 				return;
 			}
+			resetSharedConvexSubscriptions();
 			void handleAuthLoss();
 		};
+		markConvexAuthPending();
 		client.setAuth(authCallback, onAuthChange);
 
 		if (!authListenerRegistered) {
 			authListenerRegistered = true;
+			// Fires on sign-in, sign-out and an organization switch. Queries kept
+			// warm for the previous identity must not render for the next one.
 			authClient.$store.listen('$sessionSignal', () => {
+				resetSharedConvexSubscriptions();
 				resetConvexAuthTokenCache();
+				markConvexAuthPending();
 				client.setAuth(authCallback, onAuthChange);
 			});
 		}
+	};
+
+	// On public pages (share, archive, etc.), skip auth — these pages use direct
+	// fetch() to Convex HTTP endpoints, not the Convex client, and a visitor who
+	// only opens one must not cause /api/auth/convex/token or session requests.
+	// Auth is installed instead the first time a navigation leaves the public
+	// pages (a link from /terms into the app, the sign-in page), ahead of the
+	// named route middleware that may query Convex. Plugins run once, so a
+	// check made only here would leave that client anonymous until a reload.
+	if (!isPublicRoute()) {
+		activateAuth();
+	} else {
+		addRouteMiddleware(
+			'convex-auth-activation',
+			(to) => {
+				if (!isPublicPath(to.path)) activateAuth();
+			},
+			{ global: true }
+		);
 	}
 
 	return {

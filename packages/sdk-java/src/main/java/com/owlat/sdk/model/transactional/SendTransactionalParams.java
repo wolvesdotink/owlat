@@ -84,7 +84,7 @@ public class SendTransactionalParams {
         private static final Pattern BASE64_PATTERN =
                 Pattern.compile("^[A-Za-z0-9+/]*={0,2}$");
 
-        /** Maximum total decoded attachment size, in bytes (10 MB). */
+        /** Maximum total decoded attachment size, in bytes (10 MiB). */
         private static final long MAX_TOTAL_SIZE_BYTES = 10L * 1024 * 1024;
 
         private final String email;
@@ -177,14 +177,23 @@ public class SendTransactionalParams {
                 String url = attachment.getUrl();
                 String contentType = attachment.getContentType();
 
-                // Validate base64 content format and track approximate decoded
-                // size (base64 is ~4/3 of the original).
+                // Validate base64 content format and track the exact decoded
+                // size (3 bytes per 4 characters, less the padding), the figure
+                // the API checks against 10 MiB.
                 if (content != null) {
                     if (!BASE64_PATTERN.matcher(content).matches()) {
+                        // Base64.getMimeEncoder() wraps lines every 76
+                        // characters; name that case, since the bare message
+                        // does not say what is wrong.
+                        String hint = content.indexOf('\n') >= 0 || content.indexOf('\r') >= 0
+                                ? ": it contains line breaks; send plain base64 without line breaks"
+                                        + " (use Base64.getEncoder(), not getMimeEncoder())"
+                                : "";
                         throw new IllegalArgumentException(
-                                "Attachment \"" + filename + "\" has invalid base64 content");
+                                "Attachment \"" + filename + "\" has invalid base64 content" + hint);
                     }
-                    totalSizeBytes += (long) Math.ceil(content.length() * 3.0 / 4.0);
+                    int padding = content.endsWith("==") ? 2 : content.endsWith("=") ? 1 : 0;
+                    totalSizeBytes += (content.length() * 3L) / 4L - padding;
                 }
 
                 // Reject dangerous MIME types (case-insensitive).

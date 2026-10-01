@@ -43,7 +43,7 @@ import { sendToMx } from '../sender.js';
 import type { MtaConfig } from '../../config.js';
 import type { SmtpConnection } from '@owlat/smtp-client';
 import type { EmailJob } from '../../types.js';
-import type { CtxWithIp } from '../../dispatch/types.js';
+import type { CtxWithProviderPressure } from '../../dispatch/types.js';
 import { runJournaledSmtpAttempt } from '../../queue/journaledSmtpAttempt.js';
 import { reserveSmtpOutcome, smtpOutcomeJournalKeys } from '../../queue/smtpOutcomeJournal.js';
 import { createConfig, createJob, installSenderDefaults } from './helpers/senderFixtures.js';
@@ -60,7 +60,7 @@ describe('sendToMx DATA journal boundary', () => {
 		installSenderDefaults(harness);
 	});
 
-	function createAttempt(job: EmailJob): CtxWithIp {
+	function createAttempt(job: EmailJob): CtxWithProviderPressure {
 		return {
 			job,
 			domain: 'example.com',
@@ -83,6 +83,8 @@ describe('sendToMx DATA journal boundary', () => {
 			dedicatedIp: undefined,
 			ip: '10.0.0.1',
 			eligibilityGeneration: 1,
+			providerVolumePressure: 0,
+			utcDate: '2026-07-22',
 		};
 	}
 

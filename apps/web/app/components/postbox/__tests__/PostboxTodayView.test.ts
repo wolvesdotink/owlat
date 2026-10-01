@@ -5,7 +5,8 @@
  *   - "For you" strips come from the Reply Queue feed and route there
  *   - auto-filed roll-up line summarises categorized Today mail, read off
  *     each row's own `category` (no second thread subscription)
- *   - inbox-zero shows the quiet "All clear" line
+ *   - inbox-zero shows the quiet "All clear" line; a failed inbox read does not
+ *     (#721), it shows the error with Try again
  *   - Browse button emits `browse`; "Show past mails (n)" expands inline.
  *
  * The component leans on Nuxt auto-imports; each composable is stubbed as a
@@ -19,6 +20,14 @@ import { ref, computed, nextTick, reactive } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import PostboxTodayView from '../PostboxTodayView.vue';
+import { partitionTodayMessages } from '~/utils/postboxTodayPartition';
+import type * as PartitionModule from '~/utils/postboxTodayPartition';
+
+// The real partition, wrapped so a test can count how often the view re-splits.
+vi.mock('~/utils/postboxTodayPartition', async (importOriginal) => {
+	const actual = await importOriginal<typeof PartitionModule>();
+	return { ...actual, partitionTodayMessages: vi.fn(actual.partitionTodayMessages) };
+});
 import type { ReplyQueueItem } from '~/utils/postboxReplyQueue';
 
 vi.mock('@owlat/api', () => {
@@ -35,6 +44,8 @@ const feed = {
 	isLoading: ref(false),
 	hasMore: ref(false),
 	loadMore: vi.fn(),
+	error: ref<Error | null>(null),
+	refetch: vi.fn(),
 };
 // `items` is hoisted out of the object literal so `count` can read it without
 // referencing `queue` inside its own initializer (which types as `any`).
@@ -97,6 +108,7 @@ const threadListStub = {
 		mailboxId: { type: String, default: undefined },
 		selectable: { type: Boolean, default: false },
 		activeMessageId: { type: String, default: undefined },
+		scrollParent: { type: Object, default: null },
 	},
 	emits: ['select', 'load-more'],
 	template:
@@ -140,6 +152,7 @@ const mountedWrappers: VueWrapper[] = [];
 afterEach(() => {
 	for (const w of mountedWrappers) w.unmount();
 	mountedWrappers.length = 0;
+	feed.error.value = null;
 });
 
 function mountView(extraProps: Record<string, unknown> = {}) {
@@ -228,6 +241,20 @@ describe('PostboxTodayView', () => {
 		expect(w.text()).not.toContain('Show past mails');
 	});
 
+	it('shows a failed inbox read with Try again, not All clear (#721)', async () => {
+		feed.messages.value = [];
+		queue.items.value = [];
+		feed.error.value = new Error('[CONVEX Q(mail/mailbox/queries:listMessages)] Server Error');
+		feed.refetch.mockClear();
+		const w = mountView();
+
+		expect(w.text()).not.toContain('All clear');
+		expect(w.text()).toContain('Failed to load');
+		const retry = w.findAll('button').find((b) => b.text() === 'Try again');
+		await retry!.trigger('click');
+		expect(feed.refetch).toHaveBeenCalledTimes(1);
+	});
+
 	it('emits browse from the header switch and expands past mail inline', async () => {
 		feed.messages.value = [
 			todayMsg('m-old-1', { receivedAt: Date.now() - 8 * 86_400_000, flagSeen: true }),
@@ -245,6 +272,24 @@ describe('PostboxTodayView', () => {
 		await showPast!.trigger('click');
 		expect(w.find('.thread-list').attributes('data-count')).toBe('2');
 		expect(w.text()).toContain('Past');
+	});
+
+	it('hands both lists the column scroller, so the past list windows and auto-loads', async () => {
+		// The lists sit in auto-height boxes that never scroll; without the
+		// column's scroller they would mount every loaded row and never see the
+		// scroll that triggers the next page.
+		feed.messages.value = [
+			todayMsg('m-new'),
+			todayMsg('m-old', { receivedAt: Date.now() - 8 * 86_400_000, flagSeen: true }),
+		];
+		queue.items.value = [];
+		const w = mountView();
+		const showPast = w.findAll('button').find((b) => b.text().includes('Show past mails'));
+		await showPast!.trigger('click');
+		await nextTick();
+		const lists = w.findAllComponents(threadListStub);
+		expect(lists).toHaveLength(2);
+		for (const list of lists) expect(list.props('scrollParent')).toBe(w.element);
 	});
 
 	it('opens a selected row in the centered overlay, keeping the list mounted', async () => {
@@ -320,5 +365,54 @@ describe('PostboxTodayView', () => {
 		queue.items.value = [];
 		const w = mountView({ initialMessageId: 'm-deep' });
 		expect(w.find('.reader-overlay').attributes('data-id')).toBe('m-deep');
+	});
+
+	it('follows a later deep link while it stays mounted, and closes on back', async () => {
+		// The Postbox page keeps this view mounted across /inbox ↔ /inbox/<id>,
+		// so the route's message id arrives as a prop change, not a fresh mount.
+		feed.messages.value = [todayMsg('m-a'), todayMsg('m-b')];
+		queue.items.value = [];
+		const w = mountView();
+		expect(w.find('.reader-overlay').exists()).toBe(false);
+
+		await w.setProps({ initialMessageId: 'm-b' });
+		expect(w.find('.reader-overlay').attributes('data-id')).toBe('m-b');
+
+		// Browser back to /inbox drops the id: the overlay closes with it.
+		await w.setProps({ initialMessageId: null });
+		expect(w.find('.reader-overlay').exists()).toBe(false);
+		expect(w.find('.thread-list').exists()).toBe(true);
+	});
+
+	it('re-splits the rows at local midnight, not on every clock tick', async () => {
+		vi.useFakeTimers();
+		try {
+			vi.setSystemTime(new Date(2026, 8, 28, 23, 57, 30));
+			feed.messages.value = [
+				// Read, received tonight: a Today row until midnight, past mail after.
+				todayMsg('m-tonight', {
+					receivedAt: new Date(2026, 8, 28, 23, 50).getTime(),
+					flagSeen: true,
+				}),
+				todayMsg('m-old', { receivedAt: new Date(2026, 8, 20, 9).getTime(), flagSeen: true }),
+			];
+			queue.items.value = [];
+			const partition = vi.mocked(partitionTodayMessages);
+			const w = mountView();
+			expect(w.find('.thread-list').attributes('data-count')).toBe('1');
+			expect(w.text()).toContain('Show past mails (1)');
+			const splitsAtMount = partition.mock.calls.length;
+
+			// Two minute ticks on the same day: the clock moves, the split does not.
+			await vi.advanceTimersByTimeAsync(2 * 60_000);
+			expect(partition.mock.calls.length).toBe(splitsAtMount);
+
+			// The tick after midnight rolls tonight's read mail into the past.
+			await vi.advanceTimersByTimeAsync(60_000);
+			expect(partition.mock.calls.length).toBe(splitsAtMount + 1);
+			expect(w.text()).toContain('Show past mails (2)');
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

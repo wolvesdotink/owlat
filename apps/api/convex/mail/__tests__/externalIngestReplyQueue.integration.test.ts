@@ -12,7 +12,8 @@
  *
  * The last case also covers the anti-loop headers: `ingestExternalRaw` parses
  * `Precedence:` out of the raw message and hands it down, so bulk mail reaches
- * the classifiers already flagged (the header is never persisted on the row).
+ * the classifiers already flagged (the header is never persisted on the row);
+ * the category heuristic reads it inside the insert, so no LLM job follows.
  *
  * The final block drives that ACTION itself — raw bytes in, `origin` and the
  * parsed Precedence out — so the worker-facing plumbing is pinned too, not just
@@ -276,7 +277,7 @@ describe('external IMAP ingest → Reply Queue enqueue', () => {
 		});
 	});
 
-	it('a Precedence: bulk header reaches both classifiers as their precedence arg', async () => {
+	it('a Precedence: bulk header reaches the Reply Queue job as its precedence arg', async () => {
 		const t = convexTest(schema, modules);
 		const seeded = await seedExternalAccount(t);
 
@@ -286,11 +287,12 @@ describe('external IMAP ingest → Reply Queue enqueue', () => {
 				antiLoopHeaders: { precedence: 'bulk' },
 			});
 
+			// The category pass reads the header inside the insert: bulk mail is a
+			// newsletter on arrival, with no LLM job (see the raw-ingest block).
 			const jobs = await scheduled(t);
-			expect(jobs).toHaveLength(2);
-			for (const job of jobs) {
-				expect(job.args['precedence']).toBe('bulk');
-			}
+			expect(jobs.map((job) => [job.name, job.args['precedence']])).toEqual([
+				[expect.stringContaining('needsReplyClassify'), 'bulk'],
+			]);
 		});
 	});
 });
@@ -465,17 +467,22 @@ describe('ingestExternalRaw → Reply Queue enqueue', () => {
 			await ingestRaw(t, seeded, 'sync');
 
 			expect(await pendingAt(t, seeded.mailboxId)).toEqual(expect.any(Number));
+			// The Reply Queue gets the header on its job; the category pass reads
+			// it inside the insert, so bulk mail is a newsletter on arrival and
+			// no LLM job is scheduled for it.
 			const jobs = await scheduled(t);
-			expect(jobs.map((job) => job.name)).toEqual(
-				expect.arrayContaining([
-					expect.stringContaining('needsReplyClassify'),
-					expect.stringContaining('categoryClassify'),
-				])
+			expect(jobs.map((job) => job.name)).toEqual([expect.stringContaining('needsReplyClassify')]);
+			expect(jobs[0]?.args['precedence']).toBe('bulk');
+			const category = await t.run(
+				async (ctx) =>
+					(
+						await ctx.db
+							.query('mailThreads')
+							.withIndex('by_mailbox_and_last_message', (q) => q.eq('mailboxId', seeded.mailboxId))
+							.first()
+					)?.category
 			);
-			expect(jobs).toHaveLength(2);
-			for (const job of jobs) {
-				expect(job.args['precedence']).toBe('bulk');
-			}
+			expect(category).toMatchObject({ label: 'newsletter', source: 'heuristic' });
 		});
 	});
 

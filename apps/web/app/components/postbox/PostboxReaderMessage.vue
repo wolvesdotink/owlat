@@ -21,7 +21,6 @@
 import { extractEmailAddress } from '~/utils/emailAddress';
 import { formatDateTime } from '~/utils/formatters';
 import { deriveSenderAuth, senderAuthInputOf, type SenderAuthInput } from '~/utils/senderAuth';
-import { usePostboxOriginalEml } from '~/composables/postbox/usePostboxOriginalEml';
 import type { SecureMessageClass } from '@owlat/shared/secureMessage';
 import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
 import type { OutboundDelivery } from '~/utils/postboxDeliveryStrip';
@@ -63,6 +62,14 @@ const props = defineProps<{
 	sealStatus?: RecipientKeyStatus | null;
 	/** `${messageId}:${part}` of the attachment currently being fetched, if any. */
 	downloadingAttachment?: string | null;
+	/** Mount the body now instead of when it nears the viewport (printing). */
+	eagerBody?: boolean;
+	/**
+	 * Answer mode's cut of the card (plan §09): no action row, the trust chip
+	 * only when the sender is not verified, and To/Cc, the unsubscribe chip and
+	 * the message details behind a click on the sender name.
+	 */
+	reduced?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -93,6 +100,14 @@ const { t } = useI18n();
 
 const msg = computed(() => props.message);
 
+// Reduced cards fold the recipient lines and details behind the sender name.
+const metaOpen = ref(false);
+const showMeta = computed(() => !props.reduced || metaOpen.value);
+function onSenderClick() {
+	if (props.reduced) metaOpen.value = !metaOpen.value;
+	else emit('open-sender-profile');
+}
+
 const authInput = computed<SenderAuthInput>(() => senderAuthInputOf(msg.value));
 
 /**
@@ -112,24 +127,11 @@ const showSpamBanner = computed(
 	() => msg.value.spamVerdict === 'spam' || (!props.authEnabled && msg.value.dmarcResult === 'fail')
 );
 
-const starLabel = computed(() =>
-	props.starred
-		? t('components.postbox.postboxThreadReader.unstar')
-		: t('components.postbox.postboxThreadReader.star')
-);
-
 const renderToggleLabel = computed(() =>
 	props.forcedLight
 		? t('components.postbox.postboxThreadReader.renderDark')
 		: t('components.postbox.postboxThreadReader.renderLight')
 );
-
-// The ⋯ item and the details disclosure both hand back the original `.eml`; one
-// implementation so they cannot disagree about it.
-const { downloading: downloadingEml, downloadOriginal } = usePostboxOriginalEml();
-
-const MENU_ITEM_CLASS =
-	'w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface disabled:opacity-60';
 </script>
 
 <template>
@@ -180,14 +182,27 @@ const MENU_ITEM_CLASS =
 				aria-hidden="true"
 			/>
 			<div class="flex-1 min-w-0">
-				<div class="flex items-baseline justify-between gap-3">
+				<!-- Wraps on a phone only: there the sender and the trust chip do not
+				     fit one line, and the chip (never shrinking) ran off the card's
+				     edge. The chip's group keeps to the right on the line it wraps
+				     to, so its popover (anchored right) opens inside the card. From
+				     `sm` up the row stays one line and the sender shrinks instead. -->
+				<div
+					class="flex items-baseline justify-between gap-x-3 gap-y-1 max-sm:flex-wrap"
+					data-testid="reader-message-sender-row"
+				>
 					<!-- Plan idea 45: the sender line was a text label. It now opens
 					     everything this mailbox knows about the person. -->
 					<button
 						type="button"
-						class="text-left hover:underline"
-						:title="t('components.postbox.postboxSenderProfile.open')"
-						@click="emit('open-sender-profile')"
+						class="min-w-0 break-words text-left hover:underline"
+						:title="
+							reduced
+								? t('components.postbox.postboxReaderMessage.showDetails')
+								: t('components.postbox.postboxSenderProfile.open')
+						"
+						:aria-expanded="reduced ? metaOpen : undefined"
+						@click="onSenderClick"
 					>
 						<span class="font-medium text-text-primary">
 							{{ msg.fromName || msg.fromAddress }}
@@ -195,8 +210,20 @@ const MENU_ITEM_CLASS =
 						<span v-if="msg.fromName" class="text-text-tertiary text-sm">
 							&lt;{{ msg.fromAddress }}&gt;
 						</span>
+						<!-- Reduced, the name is a disclosure; say so without a hover. -->
+						<Icon
+							v-if="reduced"
+							name="lucide:chevron-down"
+							class="ml-0.5 inline size-3.5 align-middle text-text-tertiary transition-transform motion-reduce:transition-none"
+							:class="{ 'rotate-180': metaOpen }"
+							aria-hidden="true"
+							data-testid="reader-message-details-cue"
+						/>
 					</button>
-					<div class="flex items-center gap-2 flex-shrink-0">
+					<div
+						class="ml-auto flex max-w-full flex-shrink-0 items-center gap-2"
+						data-testid="reader-message-indicators"
+					>
 						<!-- Five indicators, one pixel budget: the popover still holds the
 						     auth badge, the security / sealed badge, the tracker findings,
 						     the correspondent's sealing key and the sender controls. -->
@@ -215,6 +242,7 @@ const MENU_ITEM_CLASS =
 							:show-sender-controls="showSenderControls"
 							:seal-status="sealStatus"
 							:show-security-detail="!hideBody"
+							:hide-when-ok="reduced"
 							@seal-refetch="emit('seal-refetch')"
 						/>
 						<button
@@ -227,7 +255,7 @@ const MENU_ITEM_CLASS =
 						</button>
 					</div>
 				</div>
-				<p class="text-text-secondary text-xs mt-0.5">
+				<p v-if="showMeta" class="text-text-secondary text-xs mt-0.5">
 					{{
 						t('components.postbox.postboxThreadReader.toLine', {
 							recipients: msg.toAddresses.join(', '),
@@ -241,8 +269,16 @@ const MENU_ITEM_CLASS =
 						}}
 					</span>
 				</p>
+				<button
+					v-if="reduced && metaOpen"
+					type="button"
+					class="mt-1 text-xs text-brand hover:underline"
+					@click="emit('open-sender-profile')"
+				>
+					{{ t('components.postbox.postboxSenderProfile.open') }}
+				</button>
 				<PostboxUnsubscribeChip
-					v-if="msg.unsubscribe"
+					v-if="msg.unsubscribe && showMeta"
 					class="mt-1.5"
 					:message-id="msg._id"
 					:mailbox-id="mailboxId"
@@ -251,7 +287,7 @@ const MENU_ITEM_CLASS =
 				<!-- The badge's claims, made checkable: the real headers behind them,
 				     the original .eml (UX plan idea 52) — and, in the slot, the three
 				     message-scoped details that used to be permanent chrome. -->
-				<PostboxMessageDetails :message-id="msg._id">
+				<PostboxMessageDetails v-if="showMeta" :message-id="msg._id">
 					<button
 						v-if="showRenderToggle"
 						type="button"
@@ -314,15 +350,24 @@ const MENU_ITEM_CLASS =
 			:sealed="sealedEnabled ? msg.inboundEncryptionInfo : undefined"
 			:signature="msg.inboundSignatureInfo"
 		/>
-		<PostboxMessageBody
+		<!-- Off-screen bodies of a long thread wait as a sized placeholder
+		     until they scroll near the viewport (plan D8). -->
+		<PostboxLazyBody
 			v-else
-			:message="msg"
+			:message-id="msg._id"
 			:force-light="forcedLight"
-			:sender-images-allowed="imagesAllowed"
-			@trackers="emit('trackers', $event)"
-			@trust-sender="emit('trust-sender', $event)"
-			@untrust-sender="emit('untrust-sender', $event)"
-		/>
+			:images-allowed="imagesAllowed"
+			:eager="eagerBody"
+		>
+			<PostboxMessageBody
+				:message="msg"
+				:force-light="forcedLight"
+				:sender-images-allowed="imagesAllowed"
+				@trackers="emit('trackers', $event)"
+				@trust-sender="emit('trust-sender', $event)"
+				@untrust-sender="emit('untrust-sender', $event)"
+			/>
+		</PostboxLazyBody>
 
 		<PostboxInviteCard
 			v-if="hasInvite"
@@ -339,114 +384,21 @@ const MENU_ITEM_CLASS =
 			@download="(att) => emit('download-attachment', att)"
 		/>
 
-		<!-- Progressive disclosure: star + reply stay visible; reply-all and
-		     forward reveal on row hover in compact density (pointer) and are
-		     pinned open everywhere hover never fires. The ⋯ holds what is left
-		     once the duplicates are gone. -->
-		<div class="mt-4 flex items-center gap-2">
-			<UiButton
-				variant="ghost"
-				type="button"
-				:class="starred ? 'text-warning' : 'text-text-tertiary'"
-				:title="starLabel"
-				:aria-label="starLabel"
-				:aria-pressed="starred"
-				@click="emit('toggle-star')"
-			>
-				<Icon name="lucide:star" class="w-4 h-4" :class="{ 'fill-current': starred }" />
-			</UiButton>
-			<UiButton variant="ghost" type="button" @click="emit('reply')">
-				<Icon name="lucide:reply" class="w-4 h-4 mr-1.5" />
-				{{ t('components.postbox.postboxThreadReader.reply') }}
-			</UiButton>
-			<UiButton
-				v-if="showReplyAll"
-				variant="ghost"
-				type="button"
-				class="pbx-reader-secondary-action"
-				@click="emit('reply-all')"
-			>
-				<Icon name="lucide:reply-all" class="w-4 h-4 mr-1.5" />
-				{{ t('components.postbox.postboxThreadReader.replyAll') }}
-			</UiButton>
-			<UiButton
-				variant="ghost"
-				type="button"
-				class="pbx-reader-secondary-action"
-				@click="emit('forward')"
-			>
-				<Icon name="lucide:forward" class="w-4 h-4 mr-1.5" />
-				{{ t('components.postbox.postboxThreadReader.forward') }}
-			</UiButton>
-			<span class="flex-1" />
-			<PostboxOverflowMenu :label="t('components.postbox.postboxThreadReader.moreActions')">
-				<template #default="{ close }">
-					<button
-						type="button"
-						role="menuitem"
-						:class="MENU_ITEM_CLASS"
-						@click="
-							emit('report-spam');
-							close();
-						"
-					>
-						<Icon name="lucide:shield-alert" class="w-4 h-4 text-text-tertiary" />
-						{{ t('components.postbox.postboxThreadReader.reportSpam') }}
-					</button>
-					<button
-						type="button"
-						role="menuitem"
-						:class="MENU_ITEM_CLASS"
-						@click="
-							emit('block-sender');
-							close();
-						"
-					>
-						<Icon name="lucide:ban" class="w-4 h-4 text-text-tertiary" />
-						{{ t('components.postbox.postboxThreadReader.blockSender') }}
-					</button>
-					<!-- "One more of these" is where a filter gets written, so the rule
-					     builder opens from the message, pre-filled with it. -->
-					<button
-						type="button"
-						role="menuitem"
-						:class="MENU_ITEM_CLASS"
-						@click="
-							emit('create-filter');
-							close();
-						"
-					>
-						<Icon name="lucide:filter" class="w-4 h-4 text-text-tertiary" />
-						{{ t('components.postbox.postboxThreadReader.createFilter') }}
-					</button>
-					<button
-						type="button"
-						role="menuitem"
-						:class="MENU_ITEM_CLASS"
-						@click="
-							emit('print');
-							close();
-						"
-					>
-						<Icon name="lucide:printer" class="w-4 h-4 text-text-tertiary" />
-						{{ t('components.postbox.postboxThreadReader.print') }}
-					</button>
-					<button
-						type="button"
-						role="menuitem"
-						:class="MENU_ITEM_CLASS"
-						:disabled="downloadingEml"
-						@click="downloadOriginal(msg._id)"
-					>
-						<Icon
-							:name="downloadingEml ? 'lucide:loader-2' : 'lucide:download'"
-							class="w-4 h-4 text-text-tertiary"
-							:class="{ 'animate-spin motion-reduce:animate-none': downloadingEml }"
-						/>
-						{{ t('components.postbox.postboxMessageDetails.download') }}
-					</button>
-				</template>
-			</PostboxOverflowMenu>
-		</div>
+		<!-- Star / Reply / Reply all / Forward / ⋯. Answer mode drops the row:
+		     you are already replying, and the rest stays in the normal reader. -->
+		<PostboxReaderMessageActions
+			v-if="!reduced"
+			:message-id="msg._id"
+			:starred="starred"
+			:show-reply-all="showReplyAll"
+			@toggle-star="emit('toggle-star')"
+			@reply="emit('reply')"
+			@reply-all="emit('reply-all')"
+			@forward="emit('forward')"
+			@report-spam="emit('report-spam')"
+			@block-sender="emit('block-sender')"
+			@create-filter="emit('create-filter')"
+			@print="emit('print')"
+		/>
 	</section>
 </template>

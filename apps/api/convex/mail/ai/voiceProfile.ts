@@ -16,8 +16,9 @@
  */
 
 import { v } from 'convex/values';
-import { openMailMessageInlineBody } from '../../lib/messageBody';
-import { internalQuery, internalMutation } from '../../_generated/server';
+import { openStoredInlineBody } from '../../lib/messageBodyStore';
+import { internalQuery } from '../../_generated/server';
+import { internalMutation } from '../../lib/writeFence';
 import type { QueryCtx, MutationCtx } from '../../_generated/server';
 import { publicQuery } from '../../lib/authedFunctions';
 import { postboxMutation } from '../_helpers';
@@ -96,7 +97,7 @@ export const sampleSentBodies = internalQuery({
 		const samples = buildVoiceSamples(
 			await Promise.all(
 				messages.map(async (m) => {
-					const { text, html } = await openMailMessageInlineBody(m);
+					const { text, html } = await openStoredInlineBody(ctx.db, m);
 					return {
 						textBodyInline: text,
 						htmlBodyInline: html,

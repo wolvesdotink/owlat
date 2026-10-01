@@ -10,6 +10,12 @@
  * changes and deletions — without recording them for write-back, which would
  * echo them straight back to the provider.
  *
+ * A deletion is only ever inferred for mail the provider was seen holding:
+ * each local message records its `remoteSighting` (folder, UIDVALIDITY, UID),
+ * at ingest and from the worker's `sightings`. The worker's views are lost on
+ * a restart; the sightings are not, so a message deleted on the provider while
+ * the worker was down is still found missing from the folder it was seen in.
+ *
  * Owlat → provider is `remoteOps.ts`. The two meet in two places:
  *   - a message with a write-back still queued is skipped: Owlat's own change is
  *     in flight, and the provider will match once the worker applies it;
@@ -23,11 +29,15 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, internalQuery, type QueryCtx } from '../../_generated/server';
+import { internalQuery, type QueryCtx } from '../../_generated/server';
+import { internalMutation } from '../../lib/writeFence';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { paginationOptsValidator } from 'convex/server';
-import { applyFlagDelta, moveMessagesToFolder } from '../messageActions';
+import { remoteSightingValidator } from '../../lib/validators/mail';
+import { moveMessagesToFolder } from '../messageActions';
+import { applyFlagDelta } from '../flagWrites';
 import { purgeMessageRow } from '../messagePurge';
+import { dropFolderMembership } from '../folderMembership';
 import { rebuildThreadAggregates } from '../threadAggregates';
 import {
 	enqueueRemoteOp,
@@ -55,12 +65,15 @@ const flagStateValidator = v.object({
 	answered: v.boolean(),
 });
 
+type RemoteSighting = NonNullable<Doc<'mailMessages'>['remoteSighting']>;
+
 /** What the worker needs per local message to compare it with the provider. */
 type LocalRow = {
 	messageId: string;
 	remoteName: string | null;
 	role: Doc<'mailFolders'>['role'] | null;
 	flags: { seen: boolean; flagged: boolean; answered: boolean };
+	sighting: RemoteSighting | null;
 };
 
 async function toLocalRows(
@@ -78,9 +91,14 @@ async function toLocalRows(
 			remoteName: remoteByFolder.get(m.folderId) ?? null,
 			role: roles.get(m.folderId) ?? null,
 			flags: { seen: m.flagSeen, flagged: m.flagFlagged, answered: m.flagAnswered },
+			sighting: m.remoteSighting ?? null,
 		});
 	}
 	return rows;
+}
+
+function sameSighting(a: RemoteSighting, b: RemoteSighting | undefined): boolean {
+	return a.remoteName === b?.remoteName && a.uidValidity === b.uidValidity && a.uid === b.uid;
 }
 
 async function liveFullSyncAccount(
@@ -165,8 +183,14 @@ export const lookupLocalMessages = internalQuery({
  *   - `isGone`: the message left the folder Owlat has it in and is on none of
  *     the synced folders — deleted on the provider. Out of Trash or Spam it is
  *     deleted here too; from anywhere else it goes to Trash, so nothing a
- *     misread can cost is unrecoverable.
+ *     misread can cost is unrecoverable. A copy moved to Trash drops its
+ *     sighting, so it is not called gone a second time.
  *   - `flags`: the provider's flags, applied where they differ.
+ *   - `sightings`: where the synced folders hold the message now, with UIDs.
+ *     Each local copy records the one for the folder it ends up in.
+ *   - `forgetSightings`: drop the recorded sightings. A merge sends it for mail
+ *     it finds nowhere, because a merge deletes nothing and a sighting kept
+ *     from before it would get the message deleted once the account is aligned.
  */
 export const applyRemoteObservations = internalMutation({
 	args: {
@@ -177,6 +201,8 @@ export const applyRemoteObservations = internalMutation({
 				remoteFolders: v.optional(v.array(v.string())),
 				isGone: v.optional(v.boolean()),
 				flags: v.optional(flagStateValidator),
+				sightings: v.optional(v.array(remoteSightingValidator)),
+				forgetSightings: v.optional(v.boolean()),
 			})
 		),
 	},
@@ -204,6 +230,13 @@ export const applyRemoteObservations = internalMutation({
 		let pushed = 0;
 
 		for (const obs of args.observations) {
+			// Ahead of the in-flight check: dropping evidence is always safe, and a
+			// queued write-back must not keep a sighting the merge meant to drop.
+			if (obs.forgetSightings) {
+				for (const row of await rowsForMessageId(ctx, account.mailboxId, obs.messageId)) {
+					if (row.remoteSighting) await ctx.db.patch(row._id, { remoteSighting: undefined });
+				}
+			}
 			const pending = await ctx.db
 				.query('externalMailRemoteOps')
 				.withIndex('by_account_and_message', (q) =>
@@ -231,10 +264,14 @@ export const applyRemoteObservations = internalMutation({
 							{ messageIds: [row._id], targetFolderId: trash._id },
 							{ writeBack: false }
 						);
+						if (row.remoteSighting) await ctx.db.patch(row._id, { remoteSighting: undefined });
 						pulled += 1;
 					}
 					continue;
 				}
+
+				// The remote folder the row sits in once any move below is applied.
+				let at = local;
 
 				const remoteFolders = obs.remoteFolders ?? [];
 				if (remoteFolders.length > 0 && (local === undefined || !remoteFolders.includes(local))) {
@@ -249,6 +286,7 @@ export const applyRemoteObservations = internalMutation({
 								{ messageIds: [row._id], targetFolderId },
 								{ writeBack: false }
 							);
+							at = targetName;
 							pulled += 1;
 						} else {
 							await enqueueRemoteOp(ctx, account._id, {
@@ -260,6 +298,11 @@ export const applyRemoteObservations = internalMutation({
 							pushed += 1;
 						}
 					}
+				}
+
+				const sighting = obs.sightings?.find((s) => s.remoteName === at);
+				if (sighting && !sameSighting(sighting, row.remoteSighting)) {
+					await ctx.db.patch(row._id, { remoteSighting: sighting });
 				}
 
 				if (obs.flags) {
@@ -319,13 +362,25 @@ export const markFullSyncAligned = internalMutation({
  * deleted here too. Its mail has already followed by then — the reconcile that
  * runs first moves it to the renamed folder, or to Trash when it went with the
  * folder — so a folder still holding mail (Owlat-only mail, say) is kept.
+ *
+ * `retired` names folders the provider still lists but the worker stopped
+ * mirroring: the virtual views (Gmail's Important, say) an older worker took
+ * for real folders. Their mail lives in other folders on the provider, and the
+ * reconcile moves it there, but only while the mapping exists: a message whose
+ * folder has no mapping has no remote name and is never looked at again. So a
+ * retired mapping goes only once its folder is empty, and the folder with it.
  */
 export const forgetRemoteFolders = internalMutation({
-	args: { accountId: v.id('externalMailAccounts'), listed: v.array(v.string()) },
+	args: {
+		accountId: v.id('externalMailAccounts'),
+		listed: v.array(v.string()),
+		retired: v.optional(v.array(v.string())),
+	},
 	handler: async (ctx, args) => {
 		const account = await liveFullSyncAccount(ctx, args.accountId);
 		if (!account) return { forgotten: 0 };
-		const listed = new Set(args.listed);
+		const retired = new Set(args.retired ?? []);
+		const listed = new Set(args.listed.filter((name) => !retired.has(name)));
 		const rows = await ctx.db
 			.query('externalMailFolderSync')
 			.withIndex('by_account', (q) => q.eq('accountId', account._id))
@@ -339,18 +394,24 @@ export const forgetRemoteFolders = internalMutation({
 			.query('mailFolders')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', account.mailboxId))
 			.collect(); // bounded: one mailbox's folders
+		const holdsMail = async (folderId: Id<'mailFolders'>): Promise<boolean> =>
+			(await ctx.db
+				.query('mailMessages')
+				.withIndex('by_folder_and_uid', (q) => q.eq('folderId', folderId))
+				.first()) !== null;
+		let forgotten = 0;
 		for (const row of gone) {
+			if (retired.has(row.remoteName) && (await holdsMail(row.folderId))) continue;
 			await ctx.db.delete(row._id);
+			forgotten += 1;
 			if (stillMapped.has(row.folderId)) continue;
 			const folder = folders.find((f) => f._id === row.folderId);
 			if (!folder || folder.role) continue;
 			if (folders.some((f) => f.parentId === folder._id)) continue;
-			const holdsMail = await ctx.db
-				.query('mailMessages')
-				.withIndex('by_folder_and_uid', (q) => q.eq('folderId', folder._id))
-				.first();
-			if (!holdsMail) await ctx.db.delete(folder._id);
+			if (await holdsMail(folder._id)) continue;
+			await dropFolderMembership(ctx, folder._id);
+			await ctx.db.delete(folder._id);
 		}
-		return { forgotten: gone.length };
+		return { forgotten };
 	},
 });

@@ -1,8 +1,12 @@
 /**
- * `auth` route guard over the shipped `useAuth` / `useOrganizationContext` /
+ * `auth` route guard over the shipped `useAuth` / `useActiveMemberRole` /
  * `useOrganization` chain and a fake better-auth session. The organization
  * auto-activation path runs the real `setActive` (session refetch, active-org
- * sync, member fetch) against the mocked auth client.
+ * sync) against the mocked auth client.
+ *
+ * The guard decides on the session alone. It must not wait for the member
+ * role (only `admin` does) and nothing on the boot path may load the member or
+ * invitation lists.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RouteLocationNormalized } from 'vue-router';
@@ -10,7 +14,10 @@ import {
 	ORGANIZATION,
 	authClientMock,
 	enterDesktopRuntime,
+	getActiveMember,
 	leaveDesktopRuntime,
+	listInvitations,
+	listMembers,
 	listOrganizations,
 	loadMiddleware,
 	resetSession,
@@ -110,15 +117,88 @@ describe('auth middleware — signed in', () => {
 		expect(listOrganizations).not.toHaveBeenCalled();
 	});
 
+	it('does not wait for the member role', async () => {
+		signIn({ role: 'owner' });
+		// A role lookup that never answers: the guard must not care.
+		getActiveMember.mockImplementationOnce(() => new Promise(() => undefined));
+		const { middleware } = await load();
+		const to = route('/dashboard');
+
+		const decision = await Promise.race([
+			middleware(to, to),
+			new Promise((resolve) => setTimeout(() => resolve('WAITED'), 200)),
+		]);
+
+		expect(decision).toBeUndefined();
+		// …but it has started the lookup, so the role is on its way.
+		expect(getActiveMember).toHaveBeenCalledOnce();
+	});
+
+	it('does not wait for the full organization request either', async () => {
+		signIn();
+		// better-auth's full-organization request has not answered.
+		session.organizations.value = [];
+		const { middleware } = await load();
+		const to = route('/dashboard');
+
+		await expect(middleware(to, to)).resolves.toBeUndefined();
+		expect(listOrganizations).not.toHaveBeenCalled();
+	});
+
+	it('lets an editor through: the role does not gate ordinary pages', async () => {
+		signIn({ role: 'member' });
+		const { middleware } = await load();
+		const to = route('/dashboard/campaigns');
+
+		await expect(middleware(to, to)).resolves.toBeUndefined();
+	});
+
+	it('loads neither the member nor the invitation list on boot', async () => {
+		signIn({ role: 'owner' });
+		const { middleware } = await load();
+		const to = route('/dashboard');
+
+		await middleware(to, to);
+		// What the dashboard shell builds once the guard lets it render.
+		const { isLoading, role } = useOrganizationContext();
+		const { isAdmin } = usePermissions();
+		await waitForLoaded(isLoading);
+
+		expect(role.value).toBe('owner');
+		expect(isAdmin.value).toBe(true);
+		expect(getActiveMember).toHaveBeenCalledOnce();
+		expect(listMembers).not.toHaveBeenCalled();
+		expect(listInvitations).not.toHaveBeenCalled();
+	});
+
+	it('still hands a roster page its list before the full organization arrives', async () => {
+		signIn({ role: 'owner' });
+		session.organizations.value = [];
+		const { middleware } = await load();
+		const to = route('/dashboard/admin/team');
+
+		await middleware(to, to);
+		await useOrganization().fetchMembers();
+
+		expect(listMembers).toHaveBeenCalledWith({ query: { organizationId: ORGANIZATION.id } });
+		expect(listInvitations).toHaveBeenCalledWith({ query: { organizationId: ORGANIZATION.id } });
+	});
+
 	it('activates the first organization the member belongs to when none is active', async () => {
 		signIn({ organization: false });
 		session.organizations.value = [ORGANIZATION];
+		session.members.value = [{ userId: 'user-1', role: 'admin' }];
 		const { middleware } = await load();
 		const to = route('/dashboard');
 
 		await expect(middleware(to, to)).resolves.toBeUndefined();
 		expect(setActiveOrganization).toHaveBeenCalledWith({ organizationId: ORGANIZATION.id });
 		expect(session.activeOrganizationId.value).toBe(ORGANIZATION.id);
+		// The role follows the new session organization; the lists stay unloaded.
+		await waitForLoaded(useOrganizationContext().isLoading);
+		expect(usePermissions().role.value).toBe('admin');
+		expect(listMembers).not.toHaveBeenCalled();
+		expect(listInvitations).not.toHaveBeenCalled();
 	});
 
 	it('sends a member of no organization to the access-request page', async () => {

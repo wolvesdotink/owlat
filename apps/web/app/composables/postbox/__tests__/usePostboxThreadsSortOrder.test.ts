@@ -22,6 +22,8 @@ vi.mock('@owlat/api', () => {
 let captured: { args: () => unknown; resetKey: Ref<unknown> };
 
 beforeEach(() => {
+	// The folder list has not loaded, so the role is what gets sent.
+	vi.stubGlobal('useConvexQuery', () => ({ data: ref(undefined), isLoading: ref(true) }));
 	vi.stubGlobal(
 		'usePostboxCursorFeed',
 		(_query: unknown, args: () => unknown, resetKey: Ref<unknown>) => {

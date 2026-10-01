@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { postboxPageTransition } from '~/utils/postboxPageTransition';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
@@ -8,7 +9,7 @@ useHead({ title: () => t('dashboard.postbox.search.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
-	middleware: 'auth',
+	middleware: ['auth', postboxPageTransition],
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
@@ -29,7 +30,12 @@ function refineSearch() {
 	openCommandPalette({ scope: 'mail', query: query.value });
 }
 
-const { currentMailbox, isLoading: mailboxesLoading } = usePostboxMailbox();
+const {
+	currentMailbox,
+	isLoading: mailboxesLoading,
+	error: mailboxesError,
+	refetch: refetchMailboxes,
+} = usePostboxMailbox();
 const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 
 // Keyset-paginated results: "Load more" walks past the first page via the
@@ -44,6 +50,8 @@ const {
 	loadMore,
 	isWalking,
 	searchOlder,
+	error: searchError,
+	refetch: refetchSearch,
 } = usePostboxSearch(mailboxId, query);
 
 // The backend post-filters a page after the indexed read, so a page can come
@@ -136,7 +144,12 @@ async function confirmSave() {
 
 <template>
 	<div class="flex h-[calc(100vh-4rem)]">
-		<PostboxMailboxGuard :mailbox-id="mailboxId" :loading="mailboxesLoading">
+		<PostboxMailboxGuard
+			:mailbox-id="mailboxId"
+			:loading="mailboxesLoading"
+			:error="mailboxesError"
+			@retry="refetchMailboxes"
+		>
 			<div class="flex w-full">
 				<!-- Below lg the results and the reader are a stacked drill-in: one at a
 			     time, with a back button in the reader. -->
@@ -255,6 +268,8 @@ async function confirmSave() {
 							<template #label><code>label:work</code></template>
 							<template #isUnread><code>is:unread</code></template>
 						</I18nT>
+						<!-- A failed search is not "no results" (#721). -->
+						<UiQueryBoundary v-else-if="searchError" :error="searchError" @retry="refetchSearch" />
 						<PostboxThreadListSkeleton v-else-if="isLoading && results.length === 0" :rows="6" />
 						<!-- Recent pages filtered to zero with older mail still ahead: one
 					     click walks back until something matches or the mail runs out,

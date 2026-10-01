@@ -1,6 +1,7 @@
 import { v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { defineLifecycle, refuse, type LifecycleReason } from '../lib/lifecycle';
 import { recordPostboxOutboundAudit, type PostboxOutboundAuditEvent } from './postboxOutboundAudit';
 

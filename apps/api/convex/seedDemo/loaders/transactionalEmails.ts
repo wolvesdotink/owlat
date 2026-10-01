@@ -12,7 +12,7 @@
 import type { MutationCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
 import { sanitizeStoredBlocksJson } from '../../lib/emailContentSanitize';
-import { loadEmailTheme, renderPublishableEmail } from '../../lib/publishableEmail';
+import { loadEmailTheme, renderPublishableEmail } from '../../lib/publishableEmailRender';
 import { SEED_TAG, type LoadResult, type Loader } from './types';
 
 type TransactionalStatus = 'draft' | 'published';

@@ -8,9 +8,9 @@
  * narrow by filename, type, sender and recency; a previewable file opens in the
  * same Quick Look overlay the thread reader uses, and everything else downloads.
  *
- * Extraction is deliberately identical to the reader's: fetch the parent
- * message's raw .eml and pull the recorded MIME part. The index stores metadata
- * only — no attachment content is duplicated anywhere.
+ * Extraction is deliberately identical to the reader's: fetch the part stored on
+ * its own at delivery, or, for older mail, the parent message's raw .eml and
+ * pull the recorded MIME part out of it.
  */
 
 import type { Id } from '@owlat/api/dataModel';
@@ -36,6 +36,8 @@ const {
 	isLoadingMore,
 	canLoadMore,
 	loadMore,
+	error: filesError,
+	refetch: refetchFiles,
 	senderFacets,
 	query,
 	fromAddress,
@@ -67,6 +69,14 @@ const KIND_ICONS: Record<PostboxFileKind, string> = {
 type FileRow = (typeof files.value)[number];
 
 async function extractBlob(file: FileRow): Promise<Blob | null> {
+	// The part stored on its own first (plan 3.5); older mail has none and is
+	// cut out of the raw .eml below, as the reader does.
+	try {
+		const part = await loadMessagePart(file.messageId, file);
+		if (part) return part;
+	} catch {
+		// Fall through: the raw path reports a real failure itself.
+	}
 	const bin = await loadRawEml(file.messageId);
 	if (!bin) return null;
 	const extracted = extractAttachmentAt(bin, file.partIndex, file.filename);
@@ -152,7 +162,10 @@ function downloadLightbox(att: { filename: string; partIndex?: string }) {
 			v-else-if="backfill.status === 'running'"
 			class="card p-4 mb-4 flex items-center gap-3 text-sm text-text-secondary"
 		>
-			<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none flex-shrink-0" />
+			<Icon
+				name="lucide:loader-2"
+				class="w-4 h-4 animate-spin motion-reduce:animate-none flex-shrink-0"
+			/>
 			{{
 				t('components.postbox.postboxFilesPanel.backfillRunning', {
 					scanned: backfill.scannedCount,
@@ -223,8 +236,13 @@ function downloadLightbox(att: { filename: string; partIndex?: string }) {
 		</div>
 
 		<div v-if="isLoading" class="p-8 flex justify-center">
-			<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
+			<Icon
+				name="lucide:loader-2"
+				class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
+			/>
 		</div>
+		<!-- A failed read is not "no files" (#721). -->
+		<UiQueryBoundary v-else-if="filesError" :error="filesError" @retry="refetchFiles" />
 		<p v-else-if="files.length === 0" class="card p-8 text-center text-text-secondary">
 			{{
 				isFiltered

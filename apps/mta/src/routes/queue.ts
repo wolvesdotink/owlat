@@ -62,7 +62,7 @@ export const PENDING_LIMIT_DEFAULT = 50;
 /** A queued job as `/pending` reports it. */
 interface QueuedJobSummary {
 	jobId: string;
-	/** GroupMQ group — `{ipPool}:{recipientDomain}`, the FIFO unit. */
+	/** GroupMQ group — `[{lane}:]{ipPool}:{recipientDomain}`, the FIFO unit. */
 	groupId: string;
 	messageId: string | null;
 	to: string | null;

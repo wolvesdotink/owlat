@@ -1,14 +1,21 @@
-import type { ConvexClient } from '../../convex.js';
-import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
 import { parseList } from '../../parser.js';
 import type { ImapCommandModule } from '../types.js';
 import { asyncSession } from '../helpers/session.js';
-import { resolveSelectedSet } from '../helpers/seqMap.js';
-import { loadEnvelopes } from '../helpers/folderPaging.js';
+import { resolveSelectedSet, uidRuns } from '../helpers/seqMap.js';
+import { streamEnvelopes } from '../helpers/folderPaging.js';
+import { holdSequence } from '../helpers/sequenceGate.js';
 import { type FetchEnvelope, formatEnvelope, formatFlags, formatInternalDate } from './format.js';
-import { type BodySectionRequest, formatBodySection, parseBodySectionItem } from './bodySection.js';
+import { type BodySectionRequest, bodySectionParts, parseBodySectionItem } from './bodySection.js';
 import { serverFailure } from '../helpers/replies.js';
+import {
+	downloadRaw,
+	forEachOrdered,
+	markSeenBatch,
+	mintRawUrls,
+	RAW_DOWNLOAD_CONCURRENCY,
+	RAW_URL_BATCH,
+} from './rawBodies.js';
 
 export interface FetchArgs {
 	readonly set: string;
@@ -24,21 +31,34 @@ const CLOSE_PAREN = Buffer.from(')', 'ascii');
  * FETCH and UID FETCH share this module. The UID dispatcher constructs
  * args with `byUid: true`; direct FETCH defaults to false.
  *
- * The message set is resolved against a freshly-built sequence ↔ UID map
- * (the folder's UIDs ascending; position i is sequence number i+1, RFC
- * 3501 §2.3.1). A non-UID set holds *sequence numbers* (positions), a UID
- * set holds UIDs; either way each matched row carries its true sequence
- * number in the `* {seq} FETCH` reply — never a fabricated 1..N counter.
+ * The message set is resolved against a sequence ↔ UID map (UIDs ascending;
+ * position i is sequence number i+1, RFC 3501 §2.3.1): the client's sequence
+ * view for a non-UID set, which holds *sequence numbers* (positions), and the
+ * folder as it is for a UID set. Either way each matched row carries the
+ * sequence number the client knows in the `* {seq} FETCH` reply — never a
+ * fabricated 1..N counter. See `helpers/seqMap.ts#resolveSelectedSet`.
  *
  * Body retrieval (RFC 3501 §6.4.5) supports the whole message, the
  * HEADER / TEXT sections, single-part bodies, the RFC822* aliases, and
  * partial `<offset.length>` slices. A non-`.PEEK` body retrieval on a
  * read-write mailbox sets \Seen as a side effect (§7.4.2) and the FETCH
  * response carries the resulting FLAGS.
+ *
+ * Output is paced by the socket: after each response the module waits for
+ * `deps.waitForDrain`, and the ordered download loop only starts the next
+ * body once the response ahead of it has been taken. A slow reader therefore
+ * holds at most the output budget plus {@link RAW_DOWNLOAD_CONCURRENCY}
+ * bodies, not the whole requested mailbox. When the connection closes the
+ * session is cancelled: no further Convex pages, \Seen writes, URL mints or
+ * downloads are issued, in-flight downloads are aborted, and nothing more is
+ * sent.
  */
 export const fetchModule: ImapCommandModule<FetchArgs> = {
 	verbs: ['FETCH'],
 	requires: 'selected',
+	// A FETCH that implicitly sets \Seen writes flags, so it runs alone.
+	concurrent: ({ itemsToken }) =>
+		parseList(itemsToken).every((item) => parseBodySectionItem(item.toUpperCase())?.peek ?? true),
 	parseArgs(rawArgs) {
 		const [set, itemsToken] = rawArgs;
 		if (!set || !itemsToken) {
@@ -62,55 +82,48 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 
 		const label = args.byUid ? 'UID FETCH' : 'FETCH';
 
-		return asyncSession(async () => {
+		return asyncSession(async (signal) => {
+			// A sequence set answers in the numbering it was given, so nothing may
+			// renumber the client's messages until it completes; a UID set may
+			// first announce changes, then streams beside other FETCHes.
+			const lease = holdSequence(deps, args.byUid ? 'sync' : 'shared');
+			/**
+			 * Pace output: when the socket is over its budget, a promise that
+			 * settles once it has taken what was sent (rejecting if the
+			 * connection went meanwhile); otherwise nothing to wait for.
+			 */
+			const paced = (): Promise<void> | undefined => {
+				const wait = deps.waitForDrain?.();
+				return wait?.then(() => signal.throwIfAborted());
+			};
 			try {
-				// Build the sequence ↔ UID map for the SELECTed folder, then
-				// resolve the set against it. A non-UID set holds positions; a
-				// UID set holds UIDs. Either way `resolved` is ordered by true
-				// sequence number and carries the UID to fetch.
-				const { resolved } = await resolveSelectedSet(deps, state, args.set, args.byUid);
+				await lease.ready;
+				// Resolve the set: a non-UID set holds positions in the client's
+				// sequence view, a UID set holds UIDs (and first brings the view up
+				// to date). Either way `resolved` is ordered by the sequence number
+				// the client knows and carries the UID to fetch.
+				const { resolved } = await resolveSelectedSet(
+					deps,
+					state,
+					args.set,
+					args.byUid,
+					send,
+					lease,
+					signal
+				);
+				lease.downgrade();
 
 				if (resolved.length === 0) {
 					send(`${tag} OK ${label} completed`);
 					return;
 				}
 
-				// Envelopes for the requested min..max UID window only, read in
-				// bounded pages (`FETCH 1:*` on a large folder would otherwise be
-				// one read of every document in it). Rows are indexed by UID so
-				// each resolved {uid, seq} is emitted in true sequence order even
-				// across gaps. `resolved` is ascending by sequence number, and so by
-				// UID, so its ends are the window (no `Math.min(...uids)` spread,
-				// which a whole-folder set could push past the argument limit).
-				const slice = await loadEnvelopes(
-					deps.convex,
-					state.selected!.folderId,
-					resolved[0]!.uid,
-					resolved[resolved.length - 1]!.uid
-				);
-				const byUidMap = new Map<number, FetchEnvelope>();
-				for (const m of slice) byUidMap.set(m.uid, m);
-
-				let dropped = 0;
-				for (const { uid, seq } of resolved) {
-					const m = byUidMap.get(uid);
-					if (!m) {
-						// The UID list and the envelope pages are separate reads, so a
-						// concurrent EXPUNGE can retire a message between them. Dropping
-						// it is right (it no longer exists), but silently dropping it is
-						// how a paging bug would look too — say so in the log.
-						dropped += 1;
-						continue;
-					}
+				const emit = (
+					{ seq, m }: { seq: number; m: FetchEnvelope },
+					seenFlags: string | undefined,
+					raw: Buffer | null
+				): Promise<void> | undefined => {
 					const fields: string[] = [];
-
-					// Implicit \Seen must be applied before the FLAGS field is
-					// emitted so the response reflects the new flag set.
-					let seenFlags: string | undefined;
-					if (setsSeen && !m.flagSeen) {
-						seenFlags = await markSeen(deps.convex, m._id);
-					}
-
 					if (args.byUid || items.has('UID')) fields.push(`UID ${m.uid}`);
 					if (items.has('FLAGS') || setsSeen) {
 						fields.push(`FLAGS (${seenFlags ?? formatFlagsWithSeen(m, setsSeen)})`);
@@ -127,38 +140,117 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 					// ASCII prose fields, then each body literal spliced in
 					// verbatim. Sending it as a UTF-8 string would re-encode the
 					// body and desync the declared `{N}` octet count.
-					if (needsRaw) {
-						const raw = await fetchRawBody(deps.convex, m._id);
-						if (raw != null) {
-							// The prose prefix keeps the UTF-8 text path (an ENVELOPE
-							// subject/name may carry non-ASCII); only the appended
-							// body literal is spliced in as verbatim raw octets.
-							const parts: Buffer[] = [
-								Buffer.from(
-									`* ${seq} FETCH (${fields.length > 0 ? `${fields.join(' ')} ` : ''}`,
-									'utf8'
-								),
-							];
-							bodyRequests.forEach((req, i) => {
-								if (i > 0) parts.push(SPACE);
-								parts.push(formatBodySection(req, raw));
-							});
-							parts.push(CLOSE_PAREN);
-							send(Buffer.concat(parts));
-							continue;
+					if (raw != null) {
+						// The prose prefix keeps the UTF-8 text path (an ENVELOPE
+						// subject/name may carry non-ASCII); only the appended
+						// body literal is spliced in as verbatim raw octets. The
+						// section octets are views into `raw`, so the one concat
+						// below is the only copy of the body; the pump writes it
+						// and the CRLF without copying again.
+						const parts: Buffer[] = [
+							Buffer.from(
+								`* ${seq} FETCH (${fields.length > 0 ? `${fields.join(' ')} ` : ''}`,
+								'utf8'
+							),
+						];
+						bodyRequests.forEach((req, i) => {
+							if (i > 0) parts.push(SPACE);
+							parts.push(...bodySectionParts(req, raw));
+						});
+						parts.push(CLOSE_PAREN);
+						send(Buffer.concat(parts));
+					} else {
+						send(`* ${seq} FETCH (${fields.join(' ')})`);
+					}
+					return paced();
+				};
+
+				type Row = { seq: number; m: FetchEnvelope };
+				// Per chunk: one \Seen write and one URL mint, side by side,
+				// then the downloads in parallel and the responses in order.
+				// The implicit \Seen still lands before the chunk's FLAGS are
+				// emitted, so each response reflects the new flag set.
+				const sendChunk = async (chunk: Row[]): Promise<void> => {
+					// A cancelled FETCH marks nothing \Seen and mints nothing
+					// past the chunk it was on.
+					signal.throwIfAborted();
+					const ids = chunk.map(({ m }) => m._id);
+					const [seen, urls] = await Promise.all([
+						setsSeen
+							? markSeenBatch(
+									deps.convex,
+									chunk.filter(({ m }) => !m.flagSeen).map(({ m }) => m._id)
+								)
+							: Promise.resolve(new Map<string, string>()),
+						mintRawUrls(deps.convex, ids),
+					]);
+					await forEachOrdered(
+						chunk,
+						RAW_DOWNLOAD_CONCURRENCY,
+						({ m }) => downloadRaw(urls.get(m._id), signal),
+						(row, raw) => emit(row, seen.get(row.m._id), raw),
+						signal
+					);
+				};
+
+				// Envelopes for exactly the requested messages: one UID range
+				// per run of consecutive sequence numbers, so a sparse set reads
+				// the rows it names rather than its min..max span. Pages are
+				// matched against `resolved` (both ascending by UID) and sent as
+				// they arrive — the first response does not wait for the last
+				// page, and the sidecar holds one page and one chunk, not the set.
+				let next = 0;
+				let dropped = 0;
+				let chunk: Row[] = [];
+				const pages = streamEnvelopes(
+					deps.convex,
+					state.selected!.folderId,
+					uidRuns(resolved),
+					resolved.length,
+					signal
+				);
+				for await (const page of pages) {
+					for (const m of page) {
+						// The UID list and the envelope pages are separate reads, so
+						// a concurrent EXPUNGE can retire a message between them.
+						// Dropping it is right (it no longer exists), but silently
+						// dropping it is how a paging bug would look too — it is
+						// counted and logged below.
+						while (next < resolved.length && resolved[next]!.uid < m.uid) {
+							dropped += 1;
+							next += 1;
+						}
+						const target = resolved[next];
+						if (target === undefined || target.uid !== m.uid) continue;
+						next += 1;
+						const row: Row = { seq: target.seq, m };
+						if (!needsRaw) {
+							signal.throwIfAborted();
+							const wait = emit(row, undefined, null);
+							if (wait) await wait;
+						} else {
+							chunk.push(row);
+							if (chunk.length === RAW_URL_BATCH) {
+								await sendChunk(chunk);
+								chunk = [];
+							}
 						}
 					}
-
-					send(`* ${seq} FETCH (${fields.join(' ')})`);
 				}
+				if (chunk.length > 0) await sendChunk(chunk);
+				dropped += resolved.length - next;
 
 				if (dropped > 0) {
 					logger.warn({ dropped, label }, 'FETCH: resolved UIDs missing from envelope pages');
 				}
 				send(`${tag} OK ${label} completed`);
 			} catch (err) {
+				// The connection is gone: nobody is left to answer.
+				if (signal.aborted) return;
 				logger.error({ err }, 'FETCH failed');
 				send(serverFailure(tag, label));
+			} finally {
+				lease.release();
 			}
 		});
 	},
@@ -166,54 +258,11 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 
 /**
  * Render the message's flags as they will be after an implicit \Seen.
- * Used only when \Seen was already set on the row (so markSeen was
- * skipped) but the response must still carry FLAGS.
+ * Used when the \Seen write did not report the row (it was already seen,
+ * or it vanished) but the response must still carry FLAGS.
  */
 function formatFlagsWithSeen(m: FetchEnvelope, setsSeen: boolean): string {
 	const base = formatFlags(m);
 	if (!setsSeen || m.flagSeen) return base;
 	return base.length > 0 ? `\\Seen ${base}` : '\\Seen';
-}
-
-/**
- * Add \Seen to a message via the shared storeFlags mutation and return
- * the formatted flag string from the mutation result. Returns undefined
- * if the mutation reports no update (e.g. the row vanished) so the caller
- * falls back to the envelope's own flags.
- */
-async function markSeen(convex: ConvexClient, messageId: string): Promise<string | undefined> {
-	const result = await convex.mutation(fn.storeFlags, {
-		messageIds: [messageId],
-		flags: ['\\Seen'],
-		mode: 'add',
-	});
-	const row = result.updated[0];
-	return row ? row.flags.join(' ') : undefined;
-}
-
-/**
- * Pull a message's raw bytes out of Convex storage as a `Buffer`. Returns
- * null on any failure so FETCH can drop the body fields gracefully without
- * aborting the whole multi-row response.
- *
- * The response is read as an `ArrayBuffer`, never `res.text()`: the stored
- * RFC822 blob is arbitrary 8-bit/binary MIME, and a UTF-8 decode would
- * replace invalid bytes with U+FFFD and inflate/shrink the octet count,
- * breaking the FETCH literal framing.
- */
-async function fetchRawBody(convex: ConvexClient, messageId: string): Promise<Buffer | null> {
-	try {
-		const meta = await convex.query(fn.fetchRawStorageId, { messageId });
-		if (!meta) return null;
-		const url = await convex
-			.action(fn.getRawStorageUrl, { storageId: meta.storageId })
-			.catch(() => null);
-		if (!url) return null;
-		const res = await fetch(url);
-		if (!res.ok) return null;
-		return Buffer.from(await res.arrayBuffer());
-	} catch (err) {
-		logger.warn({ err, messageId }, 'fetchRawBody failed');
-		return null;
-	}
 }

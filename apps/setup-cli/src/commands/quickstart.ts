@@ -301,7 +301,7 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 	const upCode = await dockerComposeUp(
 		opts.owlatDir,
 		composeProfilesUnion,
-		opts.buildLocal ?? false
+		composeImageSource(opts)
 	);
 	if (upCode !== 0) {
 		reporter.fail(`docker compose up failed (exit ${upCode})`);
@@ -756,14 +756,43 @@ async function dockerReachable(): Promise<boolean> {
 	});
 }
 
+/**
+ * Where the first bring-up gets the first-party images from: `build` from this
+ * source tree (`--build-local`), `preloaded` (`--local-images`: the desktop
+ * built them elsewhere and loaded them onto this host, under a `dev` tag no
+ * registry has), or the compose default (`pull`, or build what has no tag).
+ */
+export type ComposeImageSource = 'build' | 'preloaded' | 'default';
+
+export function composeImageSource(opts: {
+	buildLocal?: boolean;
+	localImages?: boolean;
+}): ComposeImageSource {
+	if (opts.buildLocal) return 'build';
+	if (opts.localImages) return 'preloaded';
+	return 'default';
+}
+
+/**
+ * The `docker compose up` arguments for an image source. Preloaded images must
+ * never be rebuilt here: the local-images install exists for hosts that cannot
+ * afford the build, so a missing image fails the run (with compose naming it)
+ * instead of silently starting a build.
+ */
+export function composeUpArgs(source: ComposeImageSource): string[] {
+	if (source === 'build') return ['compose', 'up', '-d', '--build'];
+	if (source === 'preloaded') return ['compose', 'up', '-d', '--no-build'];
+	return ['compose', 'up', '-d'];
+}
+
 async function dockerComposeUp(
 	cwd: string,
 	profiles: string[] = [],
-	build = false
+	source: ComposeImageSource = 'default'
 ): Promise<number> {
 	const s = progressSpinner();
 	s.start(
-		build
+		source === 'build'
 			? 'Running `docker compose up -d --build` (building images from source — this can take several minutes)'
 			: 'Running `docker compose up -d` (this may take a minute on first run)'
 	);
@@ -772,11 +801,7 @@ async function dockerComposeUp(
 	const env = profiles.length
 		? { ...process.env, COMPOSE_PROFILES: profiles.join(',') }
 		: undefined;
-	const code = await spawnExitCode(
-		'docker',
-		['compose', 'up', '-d', ...(build ? ['--build'] : [])],
-		{ cwd, env }
-	);
+	const code = await spawnExitCode('docker', composeUpArgs(source), { cwd, env });
 	if (code !== 0) {
 		s.stop(pc.red(`docker compose up failed with exit code ${code}`));
 		return code;

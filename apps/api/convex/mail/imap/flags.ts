@@ -11,9 +11,10 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../../_generated/server';
+import { internalMutation } from '../../lib/writeFence';
 import type { Id, Doc } from '../../_generated/dataModel';
 import { bumpFolderModseq } from '../folders';
+import { recordMessageCounters } from '../messageCounters';
 import { changedRemoteFlags, recordRemoteChanges, type RemoteChange } from '../external/remoteOps';
 
 const IMAP_FLAG_TO_FIELD: Record<string, keyof Doc<'mailMessages'>> = {
@@ -129,6 +130,7 @@ export const storeFlags = internalMutation({
 			patch.modseq = folderModseqValue;
 
 			await ctx.db.patch(id, patch);
+			await recordMessageCounters(ctx, message, { ...message, ...patch });
 			remote.push({
 				kind: 'flags',
 				message,

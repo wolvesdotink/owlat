@@ -78,9 +78,10 @@ function mountLayout(): VueWrapper {
 			stubs: {
 				DesktopTitlebar: true,
 				DashboardShellHeader: true,
-				AppCommandPalette: true,
+				LazyAppCommandPalette: true,
 				ShellComposerOverlay: true,
-				KeyboardShortcutsHelp: true,
+				AnswerReviewApproveUndoToast: true,
+				LazyKeyboardShortcutsHelp: true,
 				Icon: true,
 				UiBadge: true,
 				UiSkeleton: true,

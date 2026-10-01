@@ -4,7 +4,11 @@
  * This composable owns:
  *   - the per-DEVICE "Store recent mail on this device" preference (localStorage,
  *     NOT a synced Convex setting — the cache is device-scoped). Default ON in
- *     the desktop shell, OFF in a browser, matching the spec.
+ *     the desktop shell and, since slim list rows made the write cheap, in the
+ *     browser too; a device where the user turned it off stays off.
+ *   - the cache namespace: signed-in user + mailbox, so a shared browser
+ *     profile never serves one member's rows to the next, and the sign-out
+ *     wipe ({@link wipePostboxOfflineReadCache}).
  *   - live connectivity (`navigator.onLine` + online/offline events),
  *   - best-effort read/write wrappers over the shared {@link PostboxOfflineStore},
  *     gated by the preference, and the reactive "writes disabled" state
@@ -16,7 +20,17 @@
  */
 
 import { getPostboxOfflineFolderStore } from '~/utils/postboxOfflineFolderStore';
-import { getPostboxOfflineStore, type OfflineBodyEntry } from '~/utils/postboxOfflineStore';
+import {
+	getOfflineKvDriver,
+	getPostboxOfflineStore,
+	type OfflineBodyEntry,
+} from '~/utils/postboxOfflineStore';
+import {
+	isLegacyOfflineCacheNamespace,
+	offlineCacheNamespace,
+	wipeOfflineReadCache,
+} from '~/utils/postboxOfflineCacheScope';
+import { scheduleIdle } from '~/lib/scheduleIdle';
 
 const STORAGE_KEY = 'owlat:postbox:offline-cache-enabled';
 
@@ -35,6 +49,62 @@ function toPlain<T>(value: readonly T[]): T[] {
 }
 
 /**
+ * How long a queued row write may wait for an idle moment. The list pushes a
+ * fresh result on every live update; the clone and the IndexedDB write are
+ * background work and must not land in the same task as the render.
+ */
+export const OFFLINE_WRITE_IDLE_TIMEOUT_MS = 1000;
+
+/** How long sign-out waits for the offline wipe before moving on. */
+export const SIGN_OUT_WIPE_TIMEOUT_MS = 3000;
+
+type Waiter = { resolve: () => void; reject: (error: unknown) => void };
+type PendingWrite = { write: () => Promise<void>; waiters: Waiter[] };
+
+/**
+ * Row writes waiting for idle time, one per cache slot (mailbox + folder, or
+ * mailbox rail). A push onto a slot that is already queued replaces the rows
+ * instead of queueing a second write, so a burst of live updates costs one
+ * clone and one write. Every caller's promise settles with the write that
+ * carried its rows or newer ones.
+ */
+const pendingWrites = new Map<string, PendingWrite>();
+
+function queueIdleWrite(slot: string, write: () => Promise<void>): Promise<void> {
+	return new Promise<void>((resolve, reject) => {
+		const queued = pendingWrites.get(slot);
+		if (queued) {
+			queued.write = write;
+			queued.waiters.push({ resolve, reject });
+			return;
+		}
+		const entry: PendingWrite = { write, waiters: [{ resolve, reject }] };
+		pendingWrites.set(slot, entry);
+		scheduleIdle(() => {
+			// Dropped meanwhile (the cache was cleared); its callers are settled.
+			if (pendingWrites.get(slot) !== entry) return;
+			pendingWrites.delete(slot);
+			entry.write().then(
+				() => {
+					for (const w of entry.waiters) w.resolve();
+				},
+				(error: unknown) => {
+					for (const w of entry.waiters) w.reject(error);
+				}
+			);
+		}, OFFLINE_WRITE_IDLE_TIMEOUT_MS);
+	});
+}
+
+/** Forget every queued write (the cache is being wiped), settling its callers. */
+function dropPendingWrites(): void {
+	for (const entry of pendingWrites.values()) {
+		for (const w of entry.waiters) w.resolve();
+	}
+	pendingWrites.clear();
+}
+
+/**
  * Client detection that is both SSR-safe (no `window` on the server) and
  * test-friendly (happy-dom provides `window`), unlike Nuxt's compile-time
  * `import.meta.client` which is undefined under vitest.
@@ -45,35 +115,94 @@ const IS_CLIENT = typeof window !== 'undefined';
 let enabledRef: Ref<boolean> | null = null;
 let onlineRef: Ref<boolean> | null = null;
 let writesDisabledRef: Ref<boolean> | null = null;
+let legacyPurgeScheduled = false;
 
 /** Test-only: reset the shared reactive state between cases. */
 export function __resetPostboxOfflineCacheState() {
 	enabledRef = null;
 	onlineRef = null;
 	writesDisabledRef = null;
+	legacyPurgeScheduled = false;
+	dropPendingWrites();
 }
 
 /**
- * @param mailboxId Active mailbox id — used to namespace every cached key so one
- *   account's cache is never served to another on a shared device. Persist/load
- *   of threads and bodies are no-ops without it (e.g. the settings screen, which
- *   only toggles the preference and clears the whole store).
+ * Forget every cached row, body and folder rail on this device, for every
+ * user and mailbox. Called on sign-out: the next session in this browser may
+ * be someone else's. Queued writes are dropped first so an idle write cannot
+ * put the signed-out user's rows straight back. Queued offline sends and
+ * draft mirrors are left alone (see postboxOfflineCacheScope.ts). Never
+ * throws: sign-out must not fail over a local cache.
+ */
+export async function wipePostboxOfflineReadCache(): Promise<void> {
+	if (!IS_CLIENT) return;
+	dropPendingWrites();
+	const wipe = (async () => {
+		try {
+			await wipeOfflineReadCache(getOfflineKvDriver());
+			// The wipe freed whatever a quota rejection was complaining about.
+			getPostboxOfflineStore().reenableWrites();
+			if (writesDisabledRef) writesDisabledRef.value = false;
+		} catch {
+			// IndexedDB unavailable: there is nothing on this device to forget.
+		}
+	})();
+	// A blocked IndexedDB open never settles; sign-out waits a bounded time and
+	// lets the wipe finish in the background.
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	await Promise.race([
+		wipe,
+		new Promise<void>((resolve) => {
+			timer = setTimeout(resolve, SIGN_OUT_WIPE_TIMEOUT_MS);
+		}),
+	]);
+	clearTimeout(timer);
+}
+
+/**
+ * Once per page session, delete the rows cached before the namespace carried
+ * the user. Nothing reads them any more, and on desktop they can hold up to a
+ * few hundred message bodies.
+ */
+function scheduleLegacyPurge(): void {
+	if (!IS_CLIENT || legacyPurgeScheduled) return;
+	legacyPurgeScheduled = true;
+	scheduleIdle(() => void purgeLegacyNamespaces(), OFFLINE_WRITE_IDLE_TIMEOUT_MS);
+}
+
+async function purgeLegacyNamespaces(): Promise<void> {
+	try {
+		await wipeOfflineReadCache(getOfflineKvDriver(), isLegacyOfflineCacheNamespace);
+	} catch {
+		// Best-effort housekeeping; the orphans are unreadable either way.
+	}
+}
+
+/**
+ * @param mailboxId Active mailbox id — together with the signed-in user it
+ *   namespaces every cached key, so one identity's cache is never served to
+ *   another on a shared device. Persist/load of threads and bodies are no-ops
+ *   without both (e.g. the settings screen, which only toggles the preference
+ *   and clears the whole store).
  */
 export function usePostboxOfflineCache(mailboxId?: MaybeRefOrGetter<string | null | undefined>) {
 	const { isDesktop } = useDesktopContext();
+	const { user } = useAuth();
 
-	/** The cache namespace: the active mailboxId, or null when none is bound. */
+	/** The cache namespace: user + mailbox, or null while either is unknown. */
 	const namespace = computed(() => {
 		const id = toValue(mailboxId);
-		return id ? String(id) : null;
+		return offlineCacheNamespace(user.value?.id, id ? String(id) : null);
 	});
+
+	scheduleLegacyPurge();
 
 	// ── "Store recent mail on this device" (device-local preference) ──────
 	if (!enabledRef) {
-		// Default ON on desktop, OFF in the browser; an explicit saved choice wins.
+		// Default ON everywhere (plan Q2); an explicit saved choice wins, so a
+		// device where the user switched it off stays off.
 		const stored = IS_CLIENT ? localStorage.getItem(STORAGE_KEY) : null;
-		const initial = stored === null ? isDesktop.value : stored === '1';
-		enabledRef = ref(initial);
+		enabledRef = ref(stored === null ? true : stored === '1');
 	}
 	const enabled = enabledRef;
 
@@ -121,11 +250,17 @@ export function usePostboxOfflineCache(mailboxId?: MaybeRefOrGetter<string | nul
 	async function persistThreads<T>(folderRole: string, rows: readonly T[]): Promise<void> {
 		const ns = namespace.value;
 		if (!canPersist.value || !store || !ns) return;
-		// Deep plain-copy so a reactive Convex proxy never hits structured-clone
-		// (a clone failure would permanently disable the whole cache for the
-		// session). toRaw alone leaves nested proxies, so round-trip through JSON.
-		await store.saveThreads(ns, folderRole, toPlain(rows));
-		syncDisabled();
+		// Queued for idle time and coalesced per folder: the deep copy below is
+		// the expensive part, and only the newest rows are worth writing.
+		return queueIdleWrite(`threads\u0000${ns}\u0000${folderRole}`, async () => {
+			// Switched off while queued: turning the cache off wiped it.
+			if (!enabled.value) return;
+			// Deep plain-copy so a reactive Convex proxy never hits structured-clone
+			// (a clone failure would permanently disable the whole cache for the
+			// session). toRaw alone leaves nested proxies, so round-trip through JSON.
+			await store.saveThreads(ns, folderRole, toPlain(rows));
+			syncDisabled();
+		});
 	}
 
 	async function loadThreads<T>(folderRole: string): Promise<T[]> {
@@ -143,9 +278,12 @@ export function usePostboxOfflineCache(mailboxId?: MaybeRefOrGetter<string | nul
 	async function persistFolders<T>(rows: readonly T[]): Promise<void> {
 		const ns = namespace.value;
 		if (!canPersist.value || !folderStore || !ns) return;
-		// Same structured-clone hazard as the thread rows: a Convex proxy would
-		// throw on the way into IndexedDB.
-		await folderStore.saveFolders(ns, toPlain(rows));
+		return queueIdleWrite(`folders\u0000${ns}`, async () => {
+			if (!enabled.value) return;
+			// Same structured-clone hazard as the thread rows: a Convex proxy would
+			// throw on the way into IndexedDB.
+			await folderStore.saveFolders(ns, toPlain(rows));
+		});
 	}
 
 	async function loadFolders<T>(): Promise<T[]> {
@@ -176,6 +314,8 @@ export function usePostboxOfflineCache(mailboxId?: MaybeRefOrGetter<string | nul
 	/** Wipe everything this device has cached and clear the disabled flag. */
 	async function clearCache(): Promise<void> {
 		if (!store) return;
+		// A write still waiting for idle time would put rows straight back.
+		dropPendingWrites();
 		await store.clear();
 		syncDisabled();
 	}

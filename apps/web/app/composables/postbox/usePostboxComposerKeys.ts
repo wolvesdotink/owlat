@@ -9,6 +9,7 @@
 
 import type { Ref } from 'vue';
 import { resolveComposerKeyAction } from '~/utils/postboxComposerKeys';
+import { isImeComposing } from '~/utils/imeComposition';
 
 export function usePostboxComposerKeys(options: {
 	/** The composer root element the keydown listener is bound to. */
@@ -43,16 +44,20 @@ export function usePostboxComposerKeys(options: {
 	 * - the schedule dialog (tracked state),
 	 * - the recipient autocomplete (marked with data-postbox-overlay-open),
 	 * - a focused native <select> (signature / From picker) whose dropdown state
-	 *   the DOM cannot expose — treat a focused select as "overlay open".
+	 *   the DOM cannot expose — treat a focused select as "overlay open";
+	 * - a popover that already closed on this very press and claimed it (the
+	 *   footer's ⋯, see useEscapeToClose), which runs first, in the capture
+	 *   phase on the document.
 	 */
 	function hasOpenInnerOverlay(event: KeyboardEvent): boolean {
+		if (event.defaultPrevented) return true;
 		if (options.scheduleOpen.value) return true;
 		if (event.target instanceof HTMLSelectElement) return true;
 		return !!options.rootEl.value?.querySelector('[data-postbox-overlay-open]');
 	}
 
 	function onComposerKeydown(event: KeyboardEvent) {
-		if (event.isComposing) return;
+		if (isImeComposing(event)) return;
 		const action = resolveComposerKeyAction(event, {
 			canSend: options.canSend.value && !options.sending.value && !options.isScheduled.value,
 			overlayOpen: hasOpenInnerOverlay(event),

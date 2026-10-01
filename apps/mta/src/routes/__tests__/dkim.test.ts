@@ -28,7 +28,7 @@ vi.mock('../../monitoring/logger.js', () => ({
 // notifier so the routes never make a real network call (which would retry for
 // minutes against an unreachable Convex) — propagation wiring is covered by the
 // dkimRotation + Convex adapter/dispatcher tests.
-const notifyConvex = vi.fn(async () => true);
+const notifyConvex = vi.fn(async (..._args: unknown[]) => true);
 vi.mock('../../webhooks/convexNotifier.js', () => ({
 	notifyConvex: (...args: unknown[]) => notifyConvex(...args),
 }));
@@ -42,11 +42,11 @@ import type { MtaConfig } from '../../config.js';
 const API_KEY = 'test-master-key';
 const config = { apiKey: API_KEY } as unknown as MtaConfig;
 
-function authedRequest(
+async function authedRequest(
 	app: ReturnType<typeof createDkimRoutes>,
 	method: string,
 	path: string,
-	body?: unknown,
+	body?: unknown
 ): Promise<Response> {
 	return app.request(path, {
 		method,
@@ -78,7 +78,12 @@ describe('DKIM rotation routes (PR-29)', () => {
 	describe('POST /:domain/rotate on a LIVE domain', () => {
 		beforeEach(async () => {
 			// Seed an existing, active key for the domain.
-			await dkimStore.setDkimKey(redis, 'example.com', 's1', '-----BEGIN PRIVATE KEY-----\nseed\n-----END PRIVATE KEY-----');
+			await dkimStore.setDkimKey(
+				redis,
+				'example.com',
+				's1',
+				'-----BEGIN PRIVATE KEY-----\nseed\n-----END PRIVATE KEY-----'
+			);
 			dkimStore.clearCache();
 		});
 
@@ -106,7 +111,12 @@ describe('DKIM rotation routes (PR-29)', () => {
 
 	describe('POST /:domain/rotation (initiate)', () => {
 		beforeEach(async () => {
-			await dkimStore.setDkimKey(redis, 'example.com', 's1', '-----BEGIN PRIVATE KEY-----\nseed\n-----END PRIVATE KEY-----');
+			await dkimStore.setDkimKey(
+				redis,
+				'example.com',
+				's1',
+				'-----BEGIN PRIVATE KEY-----\nseed\n-----END PRIVATE KEY-----'
+			);
 			dkimStore.clearCache();
 		});
 
@@ -143,7 +153,12 @@ describe('DKIM rotation routes (PR-29)', () => {
 
 	describe('POST /:domain/rotation/activate before DNS publish', () => {
 		beforeEach(async () => {
-			await dkimStore.setDkimKey(redis, 'example.com', 's1', '-----BEGIN PRIVATE KEY-----\nseed\n-----END PRIVATE KEY-----');
+			await dkimStore.setDkimKey(
+				redis,
+				'example.com',
+				's1',
+				'-----BEGIN PRIVATE KEY-----\nseed\n-----END PRIVATE KEY-----'
+			);
 			dkimStore.clearCache();
 		});
 
@@ -167,25 +182,42 @@ describe('DKIM rotation routes (PR-29)', () => {
 
 	describe('activatePendingKey gated on a published DNS record (the activation seam)', () => {
 		it('activates and serves the NEW selector once the record is published', async () => {
-			await dkimStore.setDkimKey(redis, 'pub.example.com', 's1', '-----BEGIN PRIVATE KEY-----\nseed\n-----END PRIVATE KEY-----');
+			await dkimStore.setDkimKey(
+				redis,
+				'pub.example.com',
+				's1',
+				'-----BEGIN PRIVATE KEY-----\nseed\n-----END PRIVATE KEY-----'
+			);
 			dkimStore.clearCache();
 
 			// Initiate directly so we capture the pending selector + dns record to
 			// feed back through the stubbed resolver. overlapHours:0 removes the
 			// timer wait so the DNS gate is the only thing under test.
-			const init = await dkimRotation.initiateRotation(redis, 'pub.example.com', { overlapHours: 0 });
+			const init = await dkimRotation.initiateRotation(redis, 'pub.example.com', {
+				overlapHours: 0,
+			});
 			const pubP = /p=([A-Za-z0-9+/=]+)/.exec(init.dnsRecord)![1]!;
 
 			// While the record is unpublished, activation is refused.
 			const emptyResolver = vi.fn().mockResolvedValue([]);
-			const before = await dkimRotation.activatePendingKey(redis, 'pub.example.com', false, emptyResolver);
+			const before = await dkimRotation.activatePendingKey(
+				redis,
+				'pub.example.com',
+				false,
+				emptyResolver
+			);
 			expect(before.activated).toBe(false);
 			dkimStore.clearCache();
 			expect((await dkimStore.getDkimConfig(redis, 'pub.example.com'))?.selector).toBe('s1');
 
 			// Now the resolver returns the published TXT record (chunked as DNS does).
 			const resolver = vi.fn().mockResolvedValue([[`v=DKIM1; k=rsa; p=${pubP}`]]);
-			const result = await dkimRotation.activatePendingKey(redis, 'pub.example.com', false, resolver);
+			const result = await dkimRotation.activatePendingKey(
+				redis,
+				'pub.example.com',
+				false,
+				resolver
+			);
 			expect(result.activated).toBe(true);
 			expect(result.selector).toBe(init.selector);
 
@@ -196,13 +228,25 @@ describe('DKIM rotation routes (PR-29)', () => {
 		});
 
 		it('refuses activation when the published record carries a different key', async () => {
-			await dkimStore.setDkimKey(redis, 'wrong.example.com', 's1', '-----BEGIN PRIVATE KEY-----\nseed\n-----END PRIVATE KEY-----');
+			await dkimStore.setDkimKey(
+				redis,
+				'wrong.example.com',
+				's1',
+				'-----BEGIN PRIVATE KEY-----\nseed\n-----END PRIVATE KEY-----'
+			);
 			dkimStore.clearCache();
-			const init = await dkimRotation.initiateRotation(redis, 'wrong.example.com', { overlapHours: 0 });
+			const init = await dkimRotation.initiateRotation(redis, 'wrong.example.com', {
+				overlapHours: 0,
+			});
 
 			// Resolver returns a record with a mismatched public key.
 			const resolver = vi.fn().mockResolvedValue([['v=DKIM1; k=rsa; p=SOMEOTHERKEY']]);
-			const result = await dkimRotation.activatePendingKey(redis, 'wrong.example.com', false, resolver);
+			const result = await dkimRotation.activatePendingKey(
+				redis,
+				'wrong.example.com',
+				false,
+				resolver
+			);
 			expect(result.activated).toBe(false);
 
 			dkimStore.clearCache();
@@ -214,7 +258,9 @@ describe('DKIM rotation routes (PR-29)', () => {
 
 	describe('POST /:domain/rotate on a BRAND-NEW domain', () => {
 		it('sets the key immediately (nothing to break — no active key yet)', async () => {
-			const res = await authedRequest(app, 'POST', '/new.example.com/rotate', { selector: 'fresh1' });
+			const res = await authedRequest(app, 'POST', '/new.example.com/rotate', {
+				selector: 'fresh1',
+			});
 			expect(res.status).toBe(200);
 			const json = (await res.json()) as { rotation: string; selector: string };
 			expect(json.rotation).toBe('immediate');
@@ -228,7 +274,12 @@ describe('DKIM rotation routes (PR-29)', () => {
 
 	describe('DELETE /:domain/rotation (cancel)', () => {
 		it('cancels a pending rotation', async () => {
-			await dkimStore.setDkimKey(redis, 'example.com', 's1', '-----BEGIN PRIVATE KEY-----\nseed\n-----END PRIVATE KEY-----');
+			await dkimStore.setDkimKey(
+				redis,
+				'example.com',
+				's1',
+				'-----BEGIN PRIVATE KEY-----\nseed\n-----END PRIVATE KEY-----'
+			);
 			dkimStore.clearCache();
 			await authedRequest(app, 'POST', '/example.com/rotation');
 

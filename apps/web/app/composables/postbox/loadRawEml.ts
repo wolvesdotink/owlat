@@ -4,8 +4,9 @@ import { createRawEmlLoader } from '~/composables/rawEmlLoader';
 
 /**
  * Fetch a POSTBOX message's raw `.eml`, decoded binary-safely. Shared by the
- * reader (attachment download), the composer (Forward clone), and the invite
- * card (ICS).
+ * composer (Forward clone), "download original", and — as the fallback for
+ * mail stored before parts were (`loadMessagePart`, plan 3.5) — the reader's
+ * attachment download and the invite card (ICS).
  *
  * The fetch, the latin1 decode and the bounded per-message cache are
  * `createRawEmlLoader`, shared with the team-inbox loader; only the minting

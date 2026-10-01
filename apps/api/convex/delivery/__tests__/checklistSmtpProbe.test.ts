@@ -7,6 +7,7 @@ vi.mock('../checklistProviderDetection', () => ({
 import { observeDeploymentCheck } from '../checklistDeploymentValidators';
 import { parseHealth } from '../mtaHealth';
 import { port25AwaitsSourceAddress } from '../checklistSmtpProbe';
+import { MTA_HEALTH_MAX_AGE_MS, MTA_HEALTH_RESTAMP_MS } from '../mtaHealthFreshness';
 import type { ChecklistVerificationContext } from '../checklistValidatorTypes';
 
 type ProbeIp = {
@@ -143,10 +144,22 @@ describe('deployment.source_ip', () => {
 		await expect(
 			observeDeploymentCheck(
 				'deployment.source_ip',
-				context(SHARED_NAT, Date.now() - 10 * 60_000),
+				context(SHARED_NAT, Date.now() - MTA_HEALTH_MAX_AGE_MS - 60_000),
 				false
 			)
 		).resolves.toMatchObject({ status: 'warn', diagnostic: expect.stringContaining('too old') });
+	});
+
+	it('still judges a snapshot the recorder kept instead of re-stamping', async () => {
+		// `mtaHealth.record` leaves an unchanged snapshot in place for up to the
+		// re-stamp interval, so its probe timestamps age with it.
+		await expect(
+			observeDeploymentCheck(
+				'deployment.source_ip',
+				context(SHARED_NAT, Date.now() - MTA_HEALTH_RESTAMP_MS - 60_000),
+				false
+			)
+		).resolves.toMatchObject({ status: 'fail' });
 	});
 });
 

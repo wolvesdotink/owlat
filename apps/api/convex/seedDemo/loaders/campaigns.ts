@@ -10,6 +10,7 @@
 
 import type { MutationCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
+import { recordListingCounter } from '../../lib/listingCounters';
 import { SEED_TAG, type LoadResult, type Loader, type SeedRefs } from './types';
 
 type CampaignStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'cancelled' | 'pending_review';
@@ -91,6 +92,7 @@ async function load(ctx: MutationCtx, rawRecords: unknown[], refs: SeedRefs): Pr
 			createdAt: now,
 			updatedAt: now,
 		});
+		await recordListingCounter(ctx, 'campaignStatus', null, { status: rec.status });
 		ids[rec.slug] = campaignId;
 		inserted++;
 

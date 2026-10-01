@@ -1,7 +1,16 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// The developer-only provisioning commands (ssh::dev) never ship: the feature
+// is for `tauri dev`, and an optimized build that enables it does not compile.
+#[cfg(all(feature = "dev-provisioning", not(debug_assertions)))]
+compile_error!(
+    "the `dev-provisioning` feature is for development builds only; build releases without it"
+);
+
 mod files;
+#[cfg(test)]
+mod ipc_commands;
 mod links;
 mod menu;
 mod notifications;
@@ -70,7 +79,10 @@ fn main() {
         .manage(window::Revealed::default())
         // The app-wide page zoom (View → Zoom In/Out; zoom.rs).
         .manage(zoom::ZoomLevel::default())
-        // Register Tauri commands
+        // Register Tauri commands. Which window may call which is decided by
+        // the capabilities (see ipc_commands.rs, which lists every command
+        // here); the local-source provisioning commands exist only in
+        // `dev-provisioning` builds.
         .invoke_handler(tauri::generate_handler![
             notifications::update_unread_badge,
             notifications::send_native_notification,
@@ -91,10 +103,14 @@ fn main() {
             ssh::ssh_authenticate,
             ssh::ssh_exec_stream,
             ssh::ssh_write_file,
-            ssh::ssh_upload_dir,
-            ssh::ssh_push_images,
-            ssh::local_exec_stream,
+            ssh::ssh_cancel,
             ssh::ssh_disconnect,
+            #[cfg(feature = "dev-provisioning")]
+            ssh::dev::ssh_upload_dir,
+            #[cfg(feature = "dev-provisioning")]
+            ssh::dev::ssh_push_images,
+            #[cfg(feature = "dev-provisioning")]
+            ssh::dev::local_docker_build,
             updater::updater_check,
             updater::updater_install,
             updater::updater_restart,

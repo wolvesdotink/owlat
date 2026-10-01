@@ -18,6 +18,7 @@
 
 import type { MutationCtx } from '../../_generated/server';
 import { deleteOwnedUpload } from '../../storage/uploads';
+import { deleteAskSessionsForDraft } from '../ai/composeDraftStore';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { recordAuditLog } from '../../lib/auditLog';
@@ -25,8 +26,10 @@ import { isSanctionedSendAsForUser } from '../identities';
 import { followUpWaitingOn } from '../followUps';
 import { mergeThreadParticipants } from '../threadAggregates';
 import { normalizeSubject } from '../../lib/emailAddress';
-import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
+import { insertMessageBody } from '../../lib/messageBodyStore';
 import { indexMessageAttachments } from '../attachmentIndex';
+import { recordFolderMembership } from '../folderMembership';
+import { applyMailboxUsageDelta } from '../mailboxUsage';
 import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 import { buildSnippet } from '../deliveryPipeline/insert';
 import { changedRemoteFlags, recordRemoteChanges } from '../external/remoteOps';
@@ -147,12 +150,6 @@ async function runSentEffects(
 			: undefined,
 		rawStorageId: context.rawStorageId,
 		rawSize: context.rawSize,
-		textBodyInline: await sealBodyAtWriteMaybe(
-			context.bodyText && context.bodyText.length <= 64 * 1024 ? context.bodyText : undefined
-		),
-		htmlBodyInline: await sealBodyAtWriteMaybe(
-			context.bodyHtml.length <= 64 * 1024 ? context.bodyHtml : undefined
-		),
 		attachments: context.attachmentsMeta,
 		hasAttachments: context.attachmentsMeta.length > 0,
 		// Team-inbox attribution: WHO fired this send (captured by drafts.send).
@@ -174,6 +171,12 @@ async function runSentEffects(
 		...(context.encryptionInfo ? { encryptionInfo: context.encryptionInfo } : {}),
 		createdAt: now,
 		updatedAt: now,
+	});
+	await recordFolderMembership(ctx, null, { folderId: sentFolder._id, uid });
+
+	await insertMessageBody(ctx.db, messageId, {
+		text: context.bodyText && context.bodyText.length <= 64 * 1024 ? context.bodyText : undefined,
+		html: context.bodyHtml.length <= 64 * 1024 ? context.bodyHtml : undefined,
 	});
 
 	await ctx.db.patch(messageId, {
@@ -240,6 +243,8 @@ async function runSentEffects(
 			messageCount: thread.messageCount + 1,
 			hasAttachments: thread.hasAttachments || context.attachmentsMeta.length > 0,
 			latestMessageId: messageId,
+			// A just-sent message is never snoozed (plan C8).
+			latestSnoozedUntil: null,
 			// Team-inbox collision safety: record this reply as the thread's newest
 			// outbound so a second teammate who opened the thread earlier is warned
 			// before sending a duplicate (see mail/mailbox/messages.ts::latestReplyState).
@@ -300,11 +305,7 @@ async function runSentEffects(
 	}
 
 	// patch_mailbox_bytes effect — the SENDING mailbox holds the sent copy.
-	await ctx.db.patch(sendingMailboxId, {
-		usedBytes: mailbox.usedBytes + context.rawSize,
-		usageRevision: (mailbox.usageRevision ?? 0) + 1,
-		updatedAt: now,
-	});
+	await applyMailboxUsageDelta(ctx, mailbox, context.rawSize, now);
 
 	return { messageId };
 }
@@ -476,7 +477,8 @@ export async function dispatch(
 
 		// delete_draft_row effect — runs LAST so a crash mid-sequence
 		// leaves the draft for retry rather than a half-applied send with
-		// no draft to recover from.
+		// no draft to recover from. Its Answer mode ask sessions go with it.
+		await deleteAskSessionsForDraft(ctx, draft._id);
 		await ctx.db.delete(draft._id);
 	} else {
 		await applyNonSentEffects(ctx, result.effects);

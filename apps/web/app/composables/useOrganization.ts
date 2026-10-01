@@ -14,6 +14,7 @@ import {
 	updateOrganization as updateOrg,
 	getFullOrganization as getFullOrg,
 } from '~/lib/auth-client';
+import { mapFromBetterAuthRole } from './useActiveMemberRole';
 
 export interface PendingMailboxInput {
 	localpart: string;
@@ -65,15 +66,6 @@ export function planOwnershipTransfer(
 
 // BetterAuth uses 'member' internally, but we use 'editor' in our app
 type BetterAuthRole = 'owner' | 'admin' | 'member';
-
-/**
- * Map BetterAuth role to our app role
- * BetterAuth uses 'member', we use 'editor'
- */
-function mapFromBetterAuthRole(role: string): OrganizationRole {
-	if (role === 'member') return 'editor';
-	return role as OrganizationRole;
-}
 
 /**
  * Map our app role to BetterAuth role
@@ -128,6 +120,11 @@ const MEMBERS_CACHE_TTL_MS = 60_000; // 60 seconds
 
 // Module-level flag — resets on HMR (unlike useState which persists)
 let watchSetUp = false;
+// Whether any surface has asked for the member and invitation lists. Nothing
+// loads them at boot: the role comes from `useActiveMemberRole`, and only the
+// pages that show a roster call `fetchMembers`. Once one has, an organization
+// switch refreshes the lists it is holding.
+let membersWanted = false;
 const ORGANIZATION_SYNC_TIMEOUT_MS = 5_000;
 
 /**
@@ -195,7 +192,11 @@ export function useOrganization() {
 	// where there is no effect scope and no component instance — so a `useAuth()`
 	// there would leak whatever it subscribes to and silently take the
 	// no-instance branch of its translator.
-	const { user: sessionUser, refetch: refetchSession } = useAuth();
+	const {
+		user: sessionUser,
+		refetch: refetchSession,
+		activeOrganizationId: sessionOrganizationId,
+	} = useAuth();
 	const { activeOrganization: activeOrgRef, organizationsList: orgsListRef } =
 		betterAuthOrganizationStores();
 
@@ -203,19 +204,15 @@ export function useOrganization() {
 	const members = useState<OrganizationMember[]>('org-members', () => []);
 	const invitations = useState<OrganizationInvitation[]>('org-invitations', () => []);
 	const isLoadingMembers = useState<boolean>('org-loading-members', () => false);
-	// Whether the members fetch has SETTLED at least once this session.
-	//
-	// `isLoadingMembers` starts false and only turns true inside `fetchMembers`,
-	// which a watcher fires when `organizationId` arrives from BetterAuth — a
-	// separate async request. On a cold load there is a window where the session
-	// is known, the role is not, and nothing is "loading": the admin guard read
-	// that as "loaded, and not an admin" and bounced owners off every admin deep
-	// link (a refresh or a bookmark; in-app navigation was fine because the role
-	// was already cached). Guards must wait on this, not on `isLoadingMembers`.
+	// Whether the member-list fetch has SETTLED at least once for this
+	// organization. Only roster pages care; the guards wait on the role from
+	// `useActiveMemberRole`, which no longer depends on the lists.
 	const hasResolvedMembers = useState<boolean>('org-members-resolved', () => false);
 	// Non-null once a members/invitations fetch fails, so the team page can render
 	// an explicit error state (with a retry) instead of an ambiguous empty list.
 	const membersError = useState<string | null>('org-members-error', () => null);
+	// Owned by `useActiveMemberRole` (same key); `fetchMembers` also writes it
+	// when a loaded roster shows this member's role.
 	const currentMemberRole = useState<OrganizationRole | null>('org-current-role', () => null);
 
 	// Computed values - BetterAuth hooks return refs with nested data/isPending
@@ -296,7 +293,11 @@ export function useOrganization() {
 	 * Deduplicates concurrent requests for the same org.
 	 */
 	async function fetchMembers(options?: { force?: boolean }) {
-		const orgId = organizationId.value;
+		membersWanted = true;
+		// The session names the organization before better-auth's separate
+		// full-organization request has answered; a page mounting in that window
+		// must still get its roster.
+		const orgId = organizationId.value ?? sessionOrganizationId.value;
 		if (!orgId) return;
 
 		// Skip fetch if cached for the same org and within TTL
@@ -340,11 +341,13 @@ export function useOrganization() {
 						role: mapFromBetterAuthRole(m['role'] as string),
 					})) as OrganizationMember[];
 
-					// Find current user's role
-					if (sessionUser.value?.id) {
-						const currentMember = members.value.find((m) => m.userId === sessionUser.value?.id);
-						currentMemberRole.value = currentMember?.role ?? null;
-					}
+					// A fresher answer for the current user's role, when the roster
+					// shows them. Not finding them (a roster page beyond the first
+					// page) says nothing; `useActiveMemberRole` owns the role.
+					const currentMember = sessionUser.value?.id
+						? members.value.find((m) => m.userId === sessionUser.value?.id)
+						: undefined;
+					if (currentMember) currentMemberRole.value = currentMember.role;
 				}
 
 				if (invitationsResult.data) {
@@ -654,7 +657,9 @@ export function useOrganization() {
 			activeOrganizationId: orgId,
 		});
 		await waitForActiveOrganization(orgId);
-		await fetchMembers({ force: true });
+		// The role follows the session on its own (`useActiveMemberRole`); the
+		// lists are refreshed only when a page is holding them.
+		if (membersWanted) await fetchMembers({ force: true });
 
 		return result.data;
 	}
@@ -705,12 +710,13 @@ export function useOrganization() {
 	}
 
 	// Single watch — only the first instance sets it up to avoid duplicate fetchMembers.
+	// It no longer loads the lists at boot: only once a page has asked for them.
 	// Uses module-level flag (not useState) so it resets on HMR, allowing the watch to be re-created.
 	//
 	// It belongs to a DETACHED scope, not to whichever caller happened to be
 	// first: registered on a component's scope, that component unmounting would
 	// stop the app's ONLY members watcher and no later organization switch would
-	// refetch the member list (and therefore the role) for anybody.
+	// refetch the member list for anybody.
 	if (!watchSetUp) {
 		watchSetUp = true;
 		membersScope = effectScope(true);
@@ -719,6 +725,7 @@ export function useOrganization() {
 				organizationId,
 				async (newId) => {
 					if (newId) {
+						if (!membersWanted) return;
 						try {
 							await fetchMembers();
 						} catch {
@@ -727,11 +734,9 @@ export function useOrganization() {
 					} else {
 						members.value = [];
 						invitations.value = [];
-						currentMemberRole.value = null;
-						// Re-arm: the next organization's role is unknown again. Leaving
-						// this true let a sign-out-then-sign-in in the same tab reuse the
-						// previous session's "resolved", which puts the admin-deep-link
-						// bounce straight back.
+						// Re-arm: the next organization's lists are unknown again. The
+						// role is not reset here; `useActiveMemberRole` owns it and
+						// keys it on the session.
 						hasResolvedMembers.value = false;
 					}
 				},

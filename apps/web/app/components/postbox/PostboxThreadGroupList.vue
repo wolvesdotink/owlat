@@ -8,6 +8,7 @@
 import { POSTBOX_ROW_HEIGHT, POSTBOX_VIRTUAL_THRESHOLD } from '~/utils/postboxDensity';
 import { usePostboxVirtualList } from '~/composables/postbox/usePostboxVirtualList';
 import { usePostboxListAutoLoad } from '~/composables/postbox/usePostboxListAutoLoad';
+import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
 import type { PostboxConversationThread } from './PostboxConversationRow.vue';
 
 const props = defineProps<{
@@ -21,6 +22,7 @@ const props = defineProps<{
 const emit = defineEmits<{ (e: 'load-more'): void }>();
 
 const { t } = useI18n();
+usePostboxListNow(); // one minute clock for every row's timestamp
 
 function threadTo(thread: { latestMessageId?: string }) {
 	return thread.latestMessageId

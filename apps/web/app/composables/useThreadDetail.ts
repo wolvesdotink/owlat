@@ -1,15 +1,32 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { OperationError } from '@owlat/shared/operationError';
+import { findDraftGaps } from '@owlat/shared/answerMode';
 import type { TeamThreadReply } from '~/utils/teamThreadReply';
+import { isDraftGapsRefusal } from '~/utils/answerDraft';
 
 export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 	const { t } = useI18n();
+	const { showToast } = useToast();
+
+	// A reply drafted with AI that still has a `[[...]]` gap is refused
+	// (DRAFT_HAS_GAPS); say it the way the composer does, counting the gaps in
+	// the text that was about to go out.
+	let outgoingText = '';
+	const claimGapRefusal = (op: OperationError): boolean => {
+		if (!isDraftGapsRefusal(op)) return false;
+		const count = Math.max(1, findDraftGaps(outgoingText).length);
+		showToast(t('components.postbox.postboxComposerFooter.gapsLeft', { count }, count), 'error');
+		return true;
+	};
 
 	// Fetch thread with messages
-	const { data: threadData, isLoading: threadLoading } = useConvexQuery(
-		api.inbox.queries.getThread,
-		() => ({ threadId: threadId.value })
-	);
+	const {
+		data: threadData,
+		isLoading: threadLoading,
+		error: threadError,
+		refetch: refetchThread,
+	} = useConvexQuery(api.inbox.queries.getThread, () => ({ threadId: threadId.value }));
 
 	const thread = computed(() => threadData.value?.thread ?? null);
 	const messages = computed(() => threadData.value?.messages ?? []);
@@ -25,6 +42,7 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 	// Mutations
 	const { run: approveDraft } = useBackendOperation(api.inbox.mutations.approveDraft, {
 		label: () => t('shared.useThreadDetail.approveDraft'),
+		onError: claimGapRefusal,
 	});
 	const { run: rejectDraft } = useBackendOperation(api.inbox.mutations.rejectDraft, {
 		label: () => t('shared.useThreadDetail.rejectDraft'),
@@ -55,6 +73,7 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 	);
 	const { run: sendFollowUpOperation } = useBackendOperation(api.inbox.followUps.sendFollowUp, {
 		label: () => t('shared.useThreadDetail.sendFollowUp'),
+		onError: claimGapRefusal,
 	});
 	const { run: cancelFollowUpOperation } = useBackendOperation(api.inbox.followUps.cancelFollowUp, {
 		label: () => t('shared.useThreadDetail.cancelFollowUp'),
@@ -65,6 +84,7 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 	// success — `useBackendOperation.run` resolves to `undefined` (and has
 	// already toasted) on a categorized failure, so it never throws here.
 	const handleApprove = async (messageId: Id<'inboundMessages'>) => {
+		outgoingText = messages.value.find((m) => m._id === messageId)?.draftResponse ?? '';
 		return await approveDraft({ inboundMessageId: messageId });
 	};
 
@@ -89,6 +109,7 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 			draftSubject: reply.subject || undefined,
 		});
 		if (!saved.ok) return saved;
+		outgoingText = reply.body;
 		return await approveDraft({ inboundMessageId: messageId });
 	};
 
@@ -106,6 +127,7 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 	// Write again after the thread's latest message was answered. It waits out
 	// the same undo window an approved reply does before it leaves.
 	const sendFollowUp = async (reply: TeamThreadReply) => {
+		outgoingText = reply.body;
 		return await sendFollowUpOperation({
 			threadId: threadId.value,
 			body: reply.body,
@@ -143,6 +165,8 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 		takeOver,
 		followUps,
 		threadLoading,
+		threadError,
+		refetchThread,
 		// Actions
 		handleApprove,
 		handleReject,

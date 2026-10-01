@@ -12,9 +12,13 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { derivePostboxSidebarSections } from '~/utils/postboxMailboxSections';
+import { seedPostboxMailboxId } from '~/utils/postboxMailboxSeed';
 
 export function usePostboxMailbox() {
-	const { data, isLoading, error } = useConvexQuery(api.mail.mailbox.identity.list, () => ({}));
+	const { data, isLoading, error, refetch } = useConvexQuery(
+		api.mail.mailbox.identity.list,
+		() => ({})
+	);
 	const mailboxes = computed(() => data.value ?? []);
 
 	// Shared across every consumer so a switch in the sidebar reaches the page,
@@ -65,6 +69,21 @@ export function usePostboxMailbox() {
 	const { data: accessibleData } = useConvexQuery(api.mail.mailbox.queries.accessible, () => ({}));
 	const accessible = computed(() => accessibleData.value ?? []);
 
+	// The id the Postbox renders with (plan 2.5): the current mailbox once
+	// `list` has loaded, and before that a seed verified against the
+	// shell-warm `accessible` rows, so the page starts its list and message
+	// queries without waiting for `list`. See utils/postboxMailboxSeed.
+	const mailboxId = computed<Id<'mailboxes'> | null>(() => {
+		if (currentMailbox.value) return currentMailbox.value._id;
+		if (!isLoading.value) return null;
+		const requested = route.query['mailbox'];
+		return seedPostboxMailboxId({
+			requested: typeof requested === 'string' ? requested : null,
+			persisted: persistedId.value,
+			accessible: accessibleData.value,
+		}) as Id<'mailboxes'> | null;
+	});
+
 	// Personal mailbox(es) vs shared (team) inboxes, for the sidebar switcher.
 	const sections = computed(() => derivePostboxSidebarSections(accessible.value));
 
@@ -72,9 +91,11 @@ export function usePostboxMailbox() {
 		mailboxes,
 		sections,
 		currentMailbox,
+		mailboxId,
 		setCurrentMailbox,
 		switchToMailbox,
 		isLoading,
 		error,
+		refetch,
 	};
 }

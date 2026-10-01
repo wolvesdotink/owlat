@@ -30,14 +30,14 @@
  */
 
 import { type Infer, v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { enqueueGovernedSend } from './governedEnqueue';
 import type { SuppressionScope } from '../lib/suppression';
 import type { MessageType } from '../lib/sendProviders/route';
 import { recordSendAssignments } from './sendAssignments';
-import { normalizeEngagementScore } from './workerEnvelope';
+import { attachmentRefValidator, normalizeEngagementScore } from './workerEnvelope';
 import { runSendIntakeGates, type SendIntakeRejectionReason } from './sendIntakeGates';
 import { loadContactMarketingIneligibility } from '../lib/marketingEligibility';
 import { findStepRunSend } from '../automations/stepRunSend';
@@ -155,6 +155,11 @@ export const intake = internalMutation({
 		from: v.string(),
 		replyTo: v.optional(v.string()),
 		headers: v.optional(v.record(v.string(), v.string())),
+		// Team inbox replies only: the files a person attached, as own-storage
+		// refs. Deliberately NOT copied into `attachmentStorageIds`, whose blobs
+		// the Send lifecycle deletes once the send settles: these belong to the
+		// reply's record on the thread and outlive the Send.
+		attachmentRefs: v.optional(v.array(attachmentRefValidator)),
 		// NO `providerType` / `ipPool` args, deliberately. Both producers used to
 		// resolve an ADVISORY route in their own action and hand the answer down
 		// — a second resolution of the same message, from a context that could
@@ -311,6 +316,7 @@ export const intake = internalMutation({
 						: {}),
 					...(organizationId ? { organizationId } : {}),
 					...(args.headers ? { headers: args.headers } : {}),
+					...(args.attachmentRefs?.length ? { attachmentRefs: args.attachmentRefs } : {}),
 					...(args.contactId ? { contactId: args.contactId } : {}),
 					...(args.listUnsubscribe ? { listUnsubscribe: args.listUnsubscribe } : {}),
 					...(args.convexSiteUrl ? { convexSiteUrl: args.convexSiteUrl } : {}),

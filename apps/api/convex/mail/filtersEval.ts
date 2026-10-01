@@ -11,7 +11,8 @@
  */
 
 import type { Doc, Id } from '../_generated/dataModel';
-import { openMailMessageInlineBody } from '../lib/messageBody';
+import type { DatabaseReader } from '../_generated/server';
+import { openStoredInlineBody } from '../lib/messageBodyStore';
 
 export interface EvalMessage {
 	from: string;
@@ -134,15 +135,21 @@ export function filterConditionsMatch(
  *
  * ASYNC because the inline body columns are SEALED at rest (E8b): matching a
  * `body:` condition against the sealed bytes would silently never fire, so the
- * row goes through `openMailMessageInlineBody` rather than being read directly.
+ * row goes through `openStoredInlineBody` rather than being read directly (it
+ * also finds the body in `mailMessageBodies`, where plan 3.2 moved it).
  *
  * The stored row has no raw headers (they live inside the .eml blob), so
  * `header:` conditions see an empty map and simply do not match — which is the
  * honest answer for a retroactive run, not a silent claim that they did.
+ *
+ * Pass `filter` so a rule with no `body:` condition skips the body read: the
+ * body sits in its own table (plan 3.2) and the dry-run preview walks 300 rows.
  */
 export async function evalMessageFromRow(
+	db: DatabaseReader,
 	message: Pick<
 		Doc<'mailMessages'>,
+		| '_id'
 		| 'fromAddress'
 		| 'toAddresses'
 		| 'ccAddresses'
@@ -152,9 +159,13 @@ export async function evalMessageFromRow(
 		| 'htmlBodyInline'
 		| 'rawSize'
 		| 'hasAttachments'
-	>
+	>,
+	filter?: Pick<Doc<'mailFilters'>, 'conditions'>
 ): Promise<EvalMessage> {
-	const body = await openMailMessageInlineBody(message);
+	const readsBody = filter === undefined || filter.conditions.some((c) => c.field === 'body');
+	const body = readsBody
+		? await openStoredInlineBody(db, message)
+		: { text: undefined, html: undefined };
 	return {
 		from: message.fromAddress,
 		to: message.toAddresses,

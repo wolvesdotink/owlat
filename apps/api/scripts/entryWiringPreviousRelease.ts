@@ -19,6 +19,7 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'webhooks/deliveryQueries.ts#markDeliveryRetrying': 'old delivery actions mid-run',
 	'webhooks/deliveryQueries.ts#markDeliveryFailed': 'old delivery actions mid-run',
 	'automations/lifecycle.ts#recordRunFailure': 'old step walker actions mid-run',
+	'integrationImports/walker.ts#updateImportProgress': 'old import page actions mid-run',
 	'automations/stepExecutorQueries.ts#advanceAutomationRun': 'old step walker actions mid-run',
 	'automations/stepExecutorQueries.ts#cancelAutomationRun': 'old step walker actions mid-run',
 	'automations/stepExecutorQueries.ts#completeAutomationRun': 'old step walker actions mid-run',
@@ -32,7 +33,18 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'automations/stepExecutorQueries.ts#markStepFailed': 'old step walker actions mid-run',
 	'automations/stepExecutorQueries.ts#markStepsSkipped': 'old step walker actions mid-run',
 	'blockedEmails.ts#isBlockedInternal': 'old email worker actions mid-run',
+	'e2ee/recipientKeys.ts#upsertDiscovery': 'old recipient-key discovery actions mid-run',
 	'domains/lifecycle.ts#reconcileReturnPathAfterRegistration': 'old registration actions mid-run',
 	'domains/lifecycle.ts#recordReturnPathPushResult': 'old return-path push actions mid-run',
 	'domains/lifecycle.ts#recordDkimRotation': 'old webhook dispatcher actions mid-run',
+	'mail/imap/fetch.ts#fetchRawStorageId':
+		'the previous IMAP server, until its container is replaced',
+	'mail/imap/fetch.ts#getRawStorageUrl':
+		'the previous IMAP server, until its container is replaced',
+	'workspaces/deletion/walker.ts#start': 'deletion starts queued before the deploy',
+	'workspaces/deletion/walker.ts#runStep': 'the previous walker chain, mid-deletion',
+	'mail/mailbox/messages.ts#getMessageBody':
+		'the previous web reader, in tabs opened before the deploy (plan 2.5)',
+	'contacts/dataExport.ts#exportContactData':
+		'the previous contact page, in tabs opened before the deploy (#900)',
 };

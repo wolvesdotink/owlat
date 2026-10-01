@@ -9,7 +9,7 @@ export type AppPasswordScope = 'imap' | 'smtp';
 
 export function usePostboxAppPasswords(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	const { t } = useI18n();
-	const { data, isLoading } = useConvexQuery(api.mail.appPasswords.list, () =>
+	const { data, isLoading, error, refetch } = useConvexQuery(api.mail.appPasswords.list, () =>
 		mailboxId.value ? { mailboxId: mailboxId.value } : 'skip'
 	);
 
@@ -46,6 +46,8 @@ export function usePostboxAppPasswords(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	return {
 		passwords,
 		isLoading,
+		error,
+		refetch,
 		generate,
 		revoke,
 		revokeAll,

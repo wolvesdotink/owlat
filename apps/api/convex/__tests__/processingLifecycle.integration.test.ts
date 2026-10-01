@@ -923,6 +923,33 @@ describe('processingLifecycle.reconcileStuckApproved', () => {
 		expect(await countReEnqueues(t, messageId)).toBe(1);
 	});
 
+	it('re-fires an automatic approval as an autonomous send', async () => {
+		const t = convexTest(schema, modules);
+		const auto = await createMessage(t, {
+			processingStatus: 'approved',
+			processedAt: STALE_BEFORE,
+			draftResponse: 'A reply',
+			approvalSource: 'auto',
+		});
+		const human = await createMessage(t, {
+			processingStatus: 'approved',
+			processedAt: STALE_BEFORE,
+			draftResponse: 'A reply',
+			approvalSource: 'human',
+		});
+
+		await t.mutation(internal.inbox.processingLifecycle.reconcileStuckApproved, {});
+		const flags = await t.run(async (ctx) => {
+			const scheduled = await ctx.db.system.query('_scheduled_functions').collect();
+			const flagOf = (id: Id<'inboundMessages'>) =>
+				scheduled
+					.map((j) => j.args[0] as { inboundMessageId?: string; autonomous?: boolean })
+					.find((a) => a?.inboundMessageId === id)?.autonomous;
+			return { auto: flagOf(auto), human: flagOf(human) };
+		});
+		expect(flags).toEqual({ auto: true, human: false });
+	});
+
 	it('leaves an approved message alone while its agent_reply send is still queued', async () => {
 		const t = convexTest(schema, modules);
 		const messageId = await createMessage(t, {

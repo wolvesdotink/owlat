@@ -13,7 +13,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, internalQuery } from '../_generated/server';
+import { internalQuery } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { normalizeEmail } from '@owlat/shared';
 import { ipRateLimitKey } from '@owlat/shared/ipAddress';
 import {

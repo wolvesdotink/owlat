@@ -25,8 +25,6 @@ export interface InboxThreadRowThread {
 	assignedTo?: string | null;
 	/** Assigned member, resolved for the avatar (null when unassigned). */
 	assignee?: { name?: string; email: string; image?: string | null } | null;
-	/** The assignee currently has the thread open (drives the presence ring). */
-	assigneePresent?: boolean;
 }
 </script>
 
@@ -60,6 +58,12 @@ const props = withDefaults(
 		 * cannot know the time must not guess at an age.
 		 */
 		now?: number;
+		/**
+		 * The assignee has the thread open right now (the presence ring). The
+		 * list asks for it separately (useInboxAssigneePresence); `listThreads`
+		 * rows don't carry it.
+		 */
+		assigneePresent?: boolean;
 	}>(),
 	{ canManage: true }
 );
@@ -189,7 +193,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 					class="flex-shrink-0 mt-0.5"
 					:title="t('components.inbox.inboxThreadRow.assignedTo', { name: assigneeName })"
 				>
-					<span :class="thread.assigneePresent ? 'ui-presence-ring' : ''">
+					<span :class="assigneePresent ? 'ui-presence-ring' : ''">
 						<UiAvatar
 							:name="assigneeName ?? undefined"
 							:email="thread.assignee.email"

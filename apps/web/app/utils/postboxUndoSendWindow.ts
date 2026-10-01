@@ -2,22 +2,21 @@
  * Postbox undo-send window — how long a sent message is held before it actually
  * dispatches, and therefore how long "Undo" stays on offer.
  *
- * The backend has accepted `undoSendDelayMs` on `mail.drafts.send` since the
- * draft lifecycle was written; nothing on the web ever passed it, so every user
- * lived with the server default (`DEFAULT_UNDO_SEND_DELAY_MS`, 30s). This module
- * is the whole preference: a CLOSED set of four windows, the mapping to the
- * wire argument, and the rule that decides whether an undo toast exists at all.
+ * The backend accepts `undoSendDelayMs` on `mail.drafts.send` and falls back to
+ * its own default (`DEFAULT_UNDO_SEND_DELAY_MS`, 10s) when it is absent. The
+ * windows and the default are the shared policy (`@owlat/shared/undoSendPolicy`),
+ * the same tuple the backend validates the stored preference against. This
+ * module owns the web half: the mapping to the wire argument and the rule that
+ * decides whether an undo toast exists at all.
  *
- * Four values rather than a free number because the control is four radio
- * choices and an arbitrary window (seven hours) is a footgun, not a preference.
- *
- * Two invariants the tests pin, both of them "absent = exactly today's
- * behaviour":
+ * Invariants the tests pin:
  *   - an unset preference resolves to {@link POSTBOX_UNDO_SEND_DEFAULT_SECONDS}
- *     (30s), the server default; and
- *   - the default window sends NO `undoSendDelayMs` at all, so a user who never
- *     touches the setting produces the byte-identical mutation call they
- *     produced before the control existed.
+ *     (10s), the server default;
+ *   - the default window sends NO `undoSendDelayMs` at all, so the server keeps
+ *     owning the number for a user who never touched the setting; and
+ *   - every other stored window (30/60 included, the old default) is sent
+ *     explicitly, so lowering the default (plan Q1, 30s -> 10s) moved only the
+ *     users on the implicit default and nobody who picked a window.
  *
  * 'Off' (0s) is a real choice, not a disabled feature: the message dispatches
  * immediately and {@link postboxUndoSendShowsToast} is false, so the composer
@@ -25,16 +24,23 @@
  * component — so the semantics are unit-testable on their own.
  */
 
-/** The four windows offered, in seconds. `0` is Off (no hold, no toast). */
-export const POSTBOX_UNDO_SEND_SECONDS = [0, 10, 30, 60] as const;
+import {
+	DEFAULT_UNDO_SEND_SECONDS,
+	UNDO_SEND_SECOND_CHOICES,
+	type UndoSendSeconds,
+} from '@owlat/shared/undoSendPolicy';
 
-export type PostboxUndoSendSeconds = (typeof POSTBOX_UNDO_SEND_SECONDS)[number];
+/** The windows offered, in seconds. `0` is Off (no hold, no toast). */
+export const POSTBOX_UNDO_SEND_SECONDS = UNDO_SEND_SECOND_CHOICES;
+
+export type PostboxUndoSendSeconds = UndoSendSeconds;
 
 /**
- * The window an unset preference means. Matches the server's
- * `DEFAULT_UNDO_SEND_DELAY_MS` (30_000ms) — the hold every user already had.
+ * The window an unset preference means. The server's `DEFAULT_UNDO_SEND_DELAY_MS`
+ * is derived from the same shared default: the default is expressed by sending
+ * nothing, so a mismatch would show one window and hold for another.
  */
-export const POSTBOX_UNDO_SEND_DEFAULT_SECONDS: PostboxUndoSendSeconds = 30;
+export const POSTBOX_UNDO_SEND_DEFAULT_SECONDS = DEFAULT_UNDO_SEND_SECONDS;
 
 /** Normalise a stored/unknown value to one of the four windows, defaulting safely. */
 export function resolvePostboxUndoSendSeconds(
@@ -47,8 +53,7 @@ export function resolvePostboxUndoSendSeconds(
 
 /**
  * What `send()` should put on the wire. The DEFAULT window is expressed by
- * sending NOTHING: a user on the default keeps the exact mutation shape they
- * had before this preference existed, and the server keeps owning the number.
+ * sending NOTHING, so the server keeps owning the number.
  * Every other window (Off included — `0` is meaningful and must survive) is
  * sent explicitly in milliseconds.
  */

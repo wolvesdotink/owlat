@@ -6,6 +6,7 @@ import type {
 } from 'convex/server';
 import type { PaginationStatus } from 'convex/browser';
 import { createConvexSubscription } from '~/lib/convexSubscription';
+import { shareStructure } from '~/lib/structuralSharing';
 
 export type PaginatedQueryArgs<Query extends FunctionReference<'query'>> = Omit<
 	FunctionArgs<Query>,
@@ -44,6 +45,13 @@ interface PaginatedUpdateResult<T> {
  * as in `useConvexQuery`. `refetch` reopens the subscription on demand (the
  * handler behind a "Try again" control); it starts over from the first page.
  *
+ * Like `useConvexQuery`, identical queries share one subscription, which stays
+ * warm for a while after its last reader leaves, with the pages loaded so far.
+ *
+ * `results` is a shallow ref, read-only like `useConvexQuery`'s `data`: a row
+ * that did not change keeps its object across updates and page loads, so only
+ * changed rows re-render.
+ *
  * Note: Results are typed as `unknown[]` because Convex's onPaginatedUpdate_experimental
  * has mismatched declared vs runtime types, preventing proper generic inference.
  */
@@ -53,7 +61,7 @@ export function usePaginatedQuery<Query extends FunctionReference<'query'>>(
 	options: PaginatedQueryOptions
 ) {
 	const client = useConvex();
-	const results = ref<PaginatedItem<Query>[]>([]) as Ref<PaginatedItem<Query>[]>;
+	const results = shallowRef<PaginatedItem<Query>[]>([]) as Ref<PaginatedItem<Query>[]>;
 	const status = ref<PaginationStatus>('LoadingFirstPage');
 	const _loadMore = ref<((numItems: number) => boolean) | null>(null);
 
@@ -74,9 +82,12 @@ export function usePaginatedQuery<Query extends FunctionReference<'query'>>(
 						onError
 					)
 			: null,
+		// Shared and kept warm like `useConvexQuery`, pages loaded so far included.
+		// The page size is part of the key: it shapes what the transport holds.
+		share: client ? { source: client, variant: `paginated:${options.initialNumItems}` } : undefined,
 		hasData: () => results.value.length > 0,
 		accept: (update) => {
-			results.value = update.results ?? [];
+			results.value = shareStructure(results.value, update.results ?? []);
 			status.value = update.status ?? 'Exhausted';
 			_loadMore.value = update.loadMore ?? null;
 		},

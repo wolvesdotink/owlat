@@ -24,13 +24,15 @@ const topicId = useRouteId<'topics'>();
 const contactId = useRouteId<'contacts'>('contactId');
 
 // Fetch contact in topic details
-const { data: details, isLoading } = useConvexQuery(
-	api.topics.topics.getContactInTopicDetails,
-	() => ({
-		topicId: topicId.value,
-		contactId: contactId.value,
-	})
-);
+const {
+	data: details,
+	isLoading,
+	error: detailsError,
+	refetch: refetchDetails,
+} = useConvexQuery(api.topics.topics.getContactInTopicDetails, () => ({
+	topicId: topicId.value,
+	contactId: contactId.value,
+}));
 
 // Update breadcrumbs when data is loaded
 watch(
@@ -173,15 +175,17 @@ const contactInitials = computed(() => {
 
 <template>
 	<div class="p-6 lg:p-8">
+		<!-- A failed read is not a missing contact (#721). -->
+		<UiQueryBoundary v-if="detailsError" :error="detailsError" @retry="refetchDetails" />
+
 		<!-- Loading State -->
-		<div v-if="isLoading && !details" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">
-					{{ t('dashboard.audience.topics.detail.contacts.detail.loading') }}
-				</p>
-			</div>
-		</div>
+		<DashboardDetailSkeleton
+			v-else-if="isLoading && !details"
+			:label="t('dashboard.audience.topics.detail.contacts.detail.loading')"
+			back="link"
+			:header="false"
+			:sections="3"
+		/>
 
 		<!-- Not Found State -->
 		<div

@@ -284,7 +284,8 @@ export const preview = publicQuery({
 		const draft = { conditions: args.conditions, matchType: args.matchType };
 		const matching: typeof scanned = [];
 		for (const m of scanned) {
-			if (filterConditionsMatch(draft, await evalMessageFromRow(m))) matching.push(m);
+			if (filterConditionsMatch(draft, await evalMessageFromRow(ctx.db, m, draft)))
+				matching.push(m);
 		}
 		const limit = Math.min(Math.max(1, args.limit ?? 20), 100);
 		return {

@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
+	activePin,
 	DEFAULT_DESKTOP_UPDATE_POLICY,
+	DESKTOP_RELEASE_CACHE_LIMIT,
 	newestRelease,
 	oneRowPerVersion,
+	releasesToPrune,
 	resolveDesktopUpdate,
 	type DesktopUpdatePolicy,
 } from '../updateResolver';
@@ -196,5 +199,56 @@ describe('resolveDesktopUpdate — stop conditions', () => {
 			kind: 'none',
 			reason: 'noRelease',
 		});
+	});
+});
+
+describe('releasesToPrune', () => {
+	/** `count` rows, oldest first: 0.1.0 is the oldest, 0.1.<count-1> the newest. */
+	function rows(count: number) {
+		return Array.from({ length: count }, (_, i) => ({
+			version: `0.1.${i}`,
+			line: 'unified' as const,
+			publishedAt: NOW - (count - i) * HOUR,
+		}));
+	}
+
+	it('keeps everything while the cache is within its limit', () => {
+		expect(releasesToPrune(rows(DESKTOP_RELEASE_CACHE_LIMIT), undefined)).toEqual([]);
+	});
+
+	it('drops the oldest rows past the limit when nothing is pinned', () => {
+		const doomed = releasesToPrune(rows(DESKTOP_RELEASE_CACHE_LIMIT + 3), undefined);
+		expect(doomed.map((row) => row.version).sort()).toEqual(['0.1.0', '0.1.1', '0.1.2']);
+	});
+
+	it('keeps the pinned version on top of the newest rows', () => {
+		const doomed = releasesToPrune(rows(DESKTOP_RELEASE_CACHE_LIMIT + 3), '0.1.0');
+		expect(doomed.map((row) => row.version).sort()).toEqual(['0.1.1', '0.1.2']);
+	});
+
+	it('keeps both release lines of a pinned version', () => {
+		const cache = [
+			...rows(DESKTOP_RELEASE_CACHE_LIMIT + 1),
+			{ version: '0.1.0', line: 'desktop' as const, publishedAt: NOW - 1000 * HOUR },
+		];
+		expect(releasesToPrune(cache, '0.1.0')).toEqual([]);
+	});
+
+	it('does not grow the cache when the pin is already among the newest', () => {
+		const pin = `0.1.${DESKTOP_RELEASE_CACHE_LIMIT + 2}`;
+		const doomed = releasesToPrune(rows(DESKTOP_RELEASE_CACHE_LIMIT + 3), pin);
+		expect(doomed.map((row) => row.version).sort()).toEqual(['0.1.0', '0.1.1', '0.1.2']);
+	});
+});
+
+describe('activePin', () => {
+	it('is the pinned version only while the policy is pinned', () => {
+		expect(activePin({ mode: 'pinned', channel: 'stable', pinnedVersion: '0.4.6' })).toBe('0.4.6');
+		expect(
+			activePin({ mode: 'latest', channel: 'stable', pinnedVersion: '0.4.6' })
+		).toBeUndefined();
+		expect(
+			activePin({ mode: 'paused', channel: 'stable', pinnedVersion: '0.4.6' })
+		).toBeUndefined();
 	});
 });

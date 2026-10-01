@@ -143,10 +143,14 @@ export const authenticateModule: ImapCommandModule<AuthenticateArgs> = {
 		// §6.2.2: `+` followed by a base64 challenge — empty for PLAIN).
 		send('+ ');
 
+		// PLAIN takes exactly one response line. Anything after it is the next
+		// command, which the pump holds until verification has finished.
+		let responded = false;
 		const session: CommandSession = {
 			completion,
 			onClientLine(line) {
-				if (resolved) return 'pass';
+				if (resolved || responded) return 'pass';
+				responded = true;
 				// RFC 3501 §6.1: a bare `*` cancels the authentication exchange.
 				if (line.trim() === '*') {
 					send(`${tag} BAD AUTHENTICATE cancelled`);

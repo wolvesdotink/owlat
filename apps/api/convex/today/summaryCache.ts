@@ -9,7 +9,8 @@
 
 import { v } from 'convex/values';
 import type { Id } from '../_generated/dataModel';
-import { internalMutation, type QueryCtx } from '../_generated/server';
+import type { QueryCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 
 export async function loadTodaySummary(
 	ctx: QueryCtx,

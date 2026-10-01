@@ -10,6 +10,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { getImageDimensions } from '~/utils/getImageDimensions';
 import { SurfacedOperationError } from '~/lib/operationError';
+import { versionedRef } from '~/lib/versionedRef';
 import { useEditorDirtyTracking } from './useEditorDirtyTracking';
 import { StaleDraftError } from './useEditorSaveOperation';
 import { useOperationErrorToast } from './useOperationErrorToast';
@@ -201,6 +202,7 @@ export interface EmailEditorBridgeReturn {
 	hasChanges: Ref<boolean>;
 	// Unsaved-changes dialog.
 	showUnsavedChangesDialog: Ref<boolean>;
+	isSavingBeforeLeave: Readonly<Ref<boolean>>;
 	confirmDiscard: () => void;
 	confirmSave: () => Promise<void>;
 	cancelNavigation: () => void;
@@ -243,8 +245,9 @@ export function useEmailEditorBridge<S>(
 		label: () => t('shared.useEmailEditorBridge.saveBlockOperation'),
 	});
 
-	// Universal canvas state.
-	const blocks = ref<EditorBlock[]>([]);
+	// Universal canvas state. The canvas emits every change to its blocks, so
+	// counting those writes stands in for deep-watching the tree.
+	const { ref: blocks, version: blocksVersion } = versionedRef<EditorBlock[]>([]);
 	const subject = ref('');
 	const name = ref('');
 	const isSaving = ref(false);
@@ -254,6 +257,7 @@ export function useEmailEditorBridge<S>(
 	// only invoked later from the navigation guard, by which point it is defined.
 	const {
 		showDialog: showUnsavedChangesDialog,
+		isSavingBeforeLeave,
 		confirmDiscard,
 		confirmSave,
 		cancelNavigation,
@@ -292,6 +296,7 @@ export function useEmailEditorBridge<S>(
 			});
 		},
 		watchSources: [blocks, subject, name, ...(opts.extraWatch ?? [])],
+		changeSignals: new Map([[blocks, blocksVersion]]),
 		onDirtyChange: setHasChanges,
 	});
 
@@ -460,6 +465,7 @@ export function useEmailEditorBridge<S>(
 		isSaving,
 		hasChanges,
 		showUnsavedChangesDialog,
+		isSavingBeforeLeave,
 		confirmDiscard,
 		confirmSave,
 		cancelNavigation,

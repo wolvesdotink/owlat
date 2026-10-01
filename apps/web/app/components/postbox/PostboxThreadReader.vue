@@ -22,6 +22,13 @@ export type PostboxReaderMessage = {
 	receivedAt: number;
 	htmlBodyInline?: string;
 	textBodyInline?: string;
+	// Where a body over the inline threshold lives (thread rows), or the inline
+	// body query's word for it while the reader renders from a list row (plan
+	// 2.5; see usePostboxReaderOpenRow).
+	htmlBodyStorageId?: string;
+	textBodyStorageId?: string;
+	hasBodyBlob?: boolean;
+	bodyPending?: boolean;
 	hasAttachments: boolean;
 	attachments: Array<{
 		filename: string;
@@ -79,6 +86,14 @@ import { deriveReplyRisk, senderRiskInputOf, type ReplyRisk } from '~/utils/send
 import { formatCompactRelativeTime } from '~/utils/formatters';
 import { useNow } from '~/composables/useNow';
 import { isLongThreadForSummary } from '~/utils/postboxAutoSummary';
+import { usePostboxReaderExpansion } from '~/composables/postbox/usePostboxReaderExpansion';
+import { usePostboxReaderOpenRow } from '~/composables/postbox/usePostboxReaderOpenRow';
+import {
+	usePostboxEnvelopeBodies,
+	usePostboxThreadPages,
+} from '~/composables/postbox/usePostboxThreadPages';
+import { placeAnchorRow } from '~/composables/postbox/postboxThreadPage';
+import { usePostboxMountAllBodies } from '~/composables/postbox/usePostboxLazyBody';
 import {
 	POSTBOX_MARK_READ_DWELL_MS,
 	markReadOnOpen,
@@ -92,6 +107,7 @@ import {
 } from '@owlat/shared/secureMessage';
 import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
 import type { OutboundDelivery } from '~/utils/postboxDeliveryStrip';
+import { optimisticMarkThreadRead } from '~/lib/mailOptimistic/mailUpdaters';
 
 const props = defineProps<{
 	message: PostboxReaderMessage;
@@ -182,19 +198,53 @@ function openSenderProfile(msg: { fromAddress: string; fromName?: string | null 
 }
 
 const messageId = computed(() => props.message._id as Id<'mailMessages'>);
-const { data: threadData, isLoading } = useConvexQuery(
-	api.mail.mailbox.messages.listThreadMessages,
-	() => ({
-		messageId: messageId.value,
-	})
-);
+const threadKey = () => props.message.threadId ?? props.message._id;
+// The conversation in pages (plan 3.3): the newest messages with bodies, older
+// ones as envelopes, earlier pages behind "Load earlier".
+const threadPages = usePostboxThreadPages({ messageId: () => props.message._id, threadKey });
+const { data: threadData, isLoading } = threadPages.newest;
+const { hasEarlier, loadingEarlier, earlierFailed, loadEarlier } = threadPages;
 
-const allMessages = computed(() => threadData.value?.messages ?? [props.message]);
+// Until the thread answers, render the row the reader was opened with and
+// its inline body (plan 2.5) instead of a skeleton; the page subscribed both
+// from the route in parallel with the list, so they are usually here already.
+const openRow = usePostboxReaderOpenRow({
+	message: () => props.message,
+	threadMessages: () => threadData.value?.messages,
+});
+
+// Expanded messages: the default set is built once per thread from its newest
+// page, then only grows as messages arrive (see usePostboxReaderExpansion).
+const { expanded, toggleExpanded } = usePostboxReaderExpansion({
+	threadKey,
+	activeId: () => props.message._id,
+	messages: () => threadPages.newestRows.value,
+	startsThread: () => threadPages.startsThread.value,
+});
+// The opened message is always in the conversation, even before the page that
+// holds it has loaded; an expanded envelope gets its body folded in.
+const threadMessages = usePostboxEnvelopeBodies({
+	rows: () => {
+		const rows = threadPages.rows.value;
+		return rows
+			? placeAnchorRow<(typeof rows)[number] | PostboxReaderMessage>(rows, openRow.value)
+			: undefined;
+	},
+	expanded: () => expanded.value,
+	bodyIds: () => threadPages.bodyIds.value,
+});
+const allMessages = computed(() => threadMessages.value ?? [openRow.value]);
+/** What the header counts: the whole thread once part of it is not loaded. */
+const threadMessageCount = computed(() =>
+	hasEarlier.value
+		? Math.max(threadData.value?.thread?.messageCount ?? 0, allMessages.value.length)
+		: allMessages.value.length
+);
 const latestMessage = computed(() => allMessages.value[allMessages.value.length - 1]);
 
 // The one reader AI strip (PostboxAiStrip) mounts whenever AI is on and the
-// thread has a latest message; it hosts the summary gist and Ask (Draft reply
-// lives in the inline reply bar, next to the box it seeds).
+// thread has a latest message; it hosts the summary gist and Ask (drafting a
+// reply with AI happens in Answer mode, where the reply is written).
 // `warrantsSummary` decides whether it eagerly generates a summary: long thread
 // (>= 5 messages OR a lot of body text) AND the per-user auto-summary toggle
 // (default ON). When false and nothing is cached, the strip collapses to zero
@@ -331,8 +381,11 @@ const { autoAdvance, replyDefault, markReadPolicy } = usePostboxSettings();
 //
 // Guarded per thread so the reactive re-fetch that follows (flagSeen flips →
 // query re-runs) doesn't re-fire, and so a dwell timer is armed at most once.
+// The optimistic update clears the list row's bold and the rail's count as the
+// conversation opens, not a round trip later (plan 2.2).
 const markThreadReadOp = useBackendOperation(api.mail.messageActions.markThreadRead, {
 	label: () => t('components.postbox.postboxThreadReader.markReadOperation'),
+	optimisticUpdate: optimisticMarkThreadRead,
 });
 const markedThreads = new Set<string>();
 let dwellTimer: ReturnType<typeof setTimeout> | undefined;
@@ -349,7 +402,7 @@ function runMarkThreadRead(threadId: string) {
 }
 
 /** True while the open thread still has an unread message (drives the button). */
-const threadHasUnread = computed(() => (threadData.value?.messages ?? []).some((m) => !m.flagSeen));
+const threadHasUnread = threadPages.hasUnread;
 const showsManualMarkReadButton = computed(() =>
 	showsManualMarkRead(markReadPolicy.value, threadHasUnread.value)
 );
@@ -368,7 +421,7 @@ watch(
 		const thread = data?.thread;
 		if (!thread) return;
 		if (markedThreads.has(thread._id)) return;
-		if (!(data?.messages ?? []).some((m) => !m.flagSeen)) return;
+		if (!threadHasUnread.value) return;
 		const mode = markReadOnOpen(markReadPolicy.value);
 		if (mode === 'never') return;
 		markedThreads.add(thread._id);
@@ -414,7 +467,12 @@ watch(
 	{ immediate: true }
 );
 
-const expanded = ref<Set<string>>(new Set());
+// Expanded bodies mount as they near the viewport; printing mounts them all.
+const articleEl = ref<HTMLElement | null>(null);
+const { mountAll: mountAllBodies, preparePrint } = usePostboxMountAllBodies({
+	threadKey: () => props.message.threadId ?? props.message._id,
+	root: articleEl,
+});
 
 // Minute tick so the relative timestamps ("2h ago") stay fresh while a
 // thread sits open. Presentation-only; the absolute datetime lives in the
@@ -431,35 +489,6 @@ function relativeReceivedAt(timestamp: number): string {
 const { isDark: appIsDark } = useAppTheme();
 const { isForcedLight, toggleForcedLight } = usePostboxForcedLight();
 
-watch(
-	allMessages,
-	(messages) => {
-		if (messages.length === 0) {
-			expanded.value = new Set();
-			return;
-		}
-		const next = new Set<string>();
-		const last = messages[messages.length - 1];
-		if (last) next.add(last._id);
-		// Show first message too if more than 2
-		const first = messages[0];
-		if (messages.length > 2 && first) next.add(first._id);
-		// Show all unread
-		for (const m of messages) if (!m.flagSeen) next.add(m._id);
-		// Always include the active message
-		next.add(props.message._id);
-		expanded.value = next;
-	},
-	{ immediate: true }
-);
-
-function toggleExpanded(id: string) {
-	const next = new Set(expanded.value);
-	if (next.has(id)) next.delete(id);
-	else next.add(id);
-	expanded.value = next;
-}
-
 const mailboxIdRef = computed(() => props.message.mailboxId as Id<'mailboxes'>);
 
 // Per-sender remote-image allowlist. One subscription for the whole thread —
@@ -467,8 +496,7 @@ const mailboxIdRef = computed(() => props.message.mailboxId as Id<'mailboxes'>);
 // open one subscription per rendered message.
 const imageAllowlist = usePostboxImageAllowlist(mailboxIdRef);
 
-// Reply / reply-all / forward composer concerns (popup openers, the pinned
-// inline reply box, and the list→reader r/a/f hand-off).
+// Reply / reply-all / forward: every one of them opens Answer mode.
 const {
 	openReplyAll,
 	openPrimaryReply,
@@ -476,20 +504,18 @@ const {
 	openForward,
 	openResend,
 	hasOtherRecipients,
-	inlineSpec,
-	inlineReplyEl,
-	expandInline,
-	guardedExpandReply,
-	guardedExpandReplyAll,
-	collapseInline,
-	inlineSenderLabel,
+	replyToLatest,
+	replyAllToLatest,
+	forwardLatest,
 } = usePostboxReaderComposer({
-	getMessage: () => props.message,
+	// List rows carry no body (plan 2.3): quote from the thread query's copy of
+	// the open message once it has loaded, so Reply/Forward need no body fetch.
+	getMessage: () => allMessages.value.find((m) => m._id === props.message._id) ?? props.message,
 	latestMessage,
 	ownAddresses,
 	replyDefault,
-	// Route every in-composer reply/reply-all path (keyboard, inline box, list
-	// hand-off) through the sender-auth reply guard against the latest message.
+	// The keyboard reply paths go through the sender-auth reply guard against
+	// the latest message.
 	guardReply: (run) => guardLatestReply(run),
 });
 
@@ -570,8 +596,9 @@ function replyRisk(msg: PostboxReaderMessage): ReplyRisk | null {
 /**
  * Run `action` behind the reply guard for `msg`: a one-time-per-thread confirm
  * when the sender is in one of the flagged shapes, else straight through. Shared
- * by every reply/reply-all entry point (per-message buttons, keyboard, inline
- * box, list hand-off) so none of them can bypass the interstitial.
+ * by every reply/reply-all entry point here (per-message buttons, keyboard, ⌘K)
+ * so none of them can bypass the interstitial; Answer mode repeats it for links
+ * that never pass through the reader.
  *
  * The destination it names is the From address, because that is what a reply is
  * actually addressed to here (`buildReplySpec` prefills `To: [fromAddress]`) —
@@ -598,7 +625,7 @@ function guardedReplyAll(msg: PostboxReaderMessage) {
 	guardedOpen(msg, openReplyAll);
 }
 
-/** Guard a reply/reply-all against the LATEST message (keyboard/inline paths). */
+/** Guard a reply/reply-all against the LATEST message (the keyboard paths). */
 function guardLatestReply(run: () => void) {
 	runGuarded(latestMessage.value, run);
 }
@@ -632,6 +659,7 @@ const {
 	allMessages,
 	readerThread,
 	autoAdvance,
+	beforePrint: preparePrint,
 	advance: {
 		ids: () => props.advanceIds,
 		folderRole: () => props.folderRole,
@@ -639,11 +667,9 @@ const {
 		emit: (target) => emit('advance', target),
 	},
 	compose: {
-		reply: guardedExpandReply,
-		replyAll: guardedExpandReplyAll,
-		forward: () => {
-			void expandInline('forward');
-		},
+		reply: replyToLatest,
+		replyAll: replyAllToLatest,
+		forward: forwardLatest,
 	},
 });
 
@@ -696,10 +722,14 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 </script>
 
 <template>
-	<article class="pbx-reader-article p-6 max-w-4xl mx-auto" :class="discussionArticleClass">
+	<article
+		ref="articleEl"
+		class="pbx-reader-article p-6 max-w-4xl mx-auto"
+		:class="discussionArticleClass"
+	>
 		<PostboxThreadHeader
 			:subject="message.subject"
-			:message-count="allMessages.length"
+			:message-count="threadMessageCount"
 			:message-id="messageId"
 			:thread="readerThread"
 			:latest-outbound-id="latestOutboundId"
@@ -735,20 +765,28 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			@accepted="refetchCorrespondentKey()"
 		/>
 
-		<!-- Layout-matching skeleton while the thread loads (header is already
-		     rendered above from the list row, so only the message card shimmers). -->
-		<PostboxReaderSkeleton v-if="isLoading" />
-
-		<div v-else class="space-y-2">
+		<!-- No skeleton while the thread loads: the opened row renders with its
+		     inline body, and the rest of the conversation joins it on arrival.
+		     What depends on the whole thread (the AI strip, the triage offer)
+		     waits for it. -->
+		<div class="space-y-2">
 			<!-- The reader's ONE AI home, one line: the summary gist plus an Ask
-			     link (Draft reply lives in the reply bar). Renders nothing when
+			     link. Renders nothing when
 			     there's no summary and the thread is too short to warrant one
 			     (fail-soft, same thresholds). -->
 			<PostboxAiStrip
-				v-if="showAiStrip && latestMessage"
+				v-if="showAiStrip && latestMessage && !isLoading"
 				:key="latestMessage._id"
 				:message-id="latestMessage._id"
 				:warrants-summary="warrantsSummary"
+			/>
+
+			<PostboxThreadEarlier
+				v-if="hasEarlier || loadingEarlier || earlierFailed"
+				:remaining="Math.max(0, threadMessageCount - allMessages.length)"
+				:loading="loadingEarlier"
+				:failed="earlierFailed"
+				@load="loadEarlier"
 			/>
 
 			<PostboxReaderMessage
@@ -775,6 +813,7 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 				:has-invite="!!calendarAttachment(msg)"
 				:seal-status="sealStatusFor(msg)"
 				:downloading-attachment="downloadingAttachment"
+				:eager-body="mountAllBodies"
 				@toggle-expanded="toggleExpanded(msg._id)"
 				@open-sender-profile="openSenderProfile(msg)"
 				@toggle-forced-light="toggleForcedLight(msg._id)"
@@ -797,34 +836,12 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 				@seal-refetch="refetchCorrespondentKey()"
 			/>
 
-			<!-- Inline reply box pinned under the conversation (r / a / f or the
-			     affordance expand it; it collapses back after send/discard). -->
-			<PostboxInlineReply
-				v-if="latestMessage"
-				ref="inlineReplyEl"
-				:sender-label="inlineSenderLabel"
-				:show-reply-all="hasOtherRecipients(latestMessage)"
-				:spec="inlineSpec"
-				:ai-enabled="aiEnabled"
-				:draft-message-id="latestMessage._id"
-				@use-reply="(text) => latestMessage && openReplyWithBody(latestMessage, text)"
-				@expand="
-					(kind) =>
-						kind === 'reply'
-							? guardedExpandReply()
-							: kind === 'replyAll'
-								? guardedExpandReplyAll()
-								: void expandInline(kind)
-				"
-				@collapse="collapseInline"
-			/>
-
 			<!-- "You archive everything from this sender. Always archive it?"
 			     (idea 27). Foot of the reader, under the conversation: it is an
 			     observation about the SENDER, not about this message. Strictly an
 			     offer — it renders nothing until a sender's tally earns one, and
 			     nothing is ever applied without the explicit click. -->
-			<PostboxTriageSuggestion v-if="latestMessage" :message-id="latestMessage._id" />
+			<PostboxTriageSuggestion v-if="latestMessage && !isLoading" :message-id="latestMessage._id" />
 		</div>
 
 		<PostboxThreadDiscussion

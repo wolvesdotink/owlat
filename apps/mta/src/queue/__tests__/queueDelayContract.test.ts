@@ -93,7 +93,7 @@ describe('queue delay contract', () => {
 		expect(await redis.hget(jobStatusKey(root), 'status')).toBe('completed');
 		// Still scheduled, and still the promoter's to release — a job popped
 		// early would leave this entry behind with no owner.
-		expect(await redis.zrange(DELAYED_KEY, 0, -1)).toEqual(['successor']);
+		expect(await redis.zrange(DELAYED_KEY, '0', '-1')).toEqual(['successor']);
 		expect(await redis.hget(jobStatusKey('successor'), 'status')).toBe('delayed');
 	});
 
@@ -109,7 +109,7 @@ describe('queue delay contract', () => {
 		);
 
 		expect(chained?.id).toBe('successor');
-		expect(await redis.zrange(DELAYED_KEY, 0, -1)).toEqual([]);
+		expect(await redis.zrange(DELAYED_KEY, '0', '-1')).toEqual([]);
 	});
 
 	it('cannot run a defer ladder faster than its delays', async () => {
@@ -136,7 +136,7 @@ describe('queue delay contract', () => {
 			current = chained.id;
 		}
 
-		expect(await redis.zrange(DELAYED_KEY, 0, -1)).toEqual(['rung-1']);
+		expect(await redis.zrange(DELAYED_KEY, '0', '-1')).toEqual(['rung-1']);
 	});
 
 	/** Leave a `:delayed` member behind with its payload already gone. */
@@ -154,7 +154,7 @@ describe('queue delay contract', () => {
 
 		// Nothing else in the system can remove this entry: the job it names has
 		// no payload, so it will never be reserved, run, completed or trimmed.
-		expect(await redis.zrange(DELAYED_KEY, 0, -1)).toEqual([]);
+		expect(await redis.zrange(DELAYED_KEY, '0', '-1')).toEqual([]);
 	});
 
 	it('still promotes a due member that has its payload', async () => {
@@ -163,8 +163,8 @@ describe('queue delay contract', () => {
 
 		expect(await queue.promoteDelayedJobs()).toBe(1);
 
-		expect(await redis.zrange(DELAYED_KEY, 0, -1)).toEqual([]);
-		expect(await redis.zrange(`groupmq:${NAMESPACE}:ready`, 0, -1)).toEqual([GROUP]);
+		expect(await redis.zrange(DELAYED_KEY, '0', '-1')).toEqual([]);
+		expect(await redis.zrange(`groupmq:${NAMESPACE}:ready`, '0', '-1')).toEqual([GROUP]);
 	});
 
 	it('leaves a member that is not due yet alone, payload or not', async () => {
@@ -174,7 +174,7 @@ describe('queue delay contract', () => {
 
 		expect(await queue.promoteDelayedJobs()).toBe(0);
 
-		expect(await redis.zrange(DELAYED_KEY, 0, -1)).toEqual(['not-due']);
+		expect(await redis.zrange(DELAYED_KEY, '0', '-1')).toEqual(['not-due']);
 	});
 
 	it('keeps enqueuing after a restart empties the script cache', async () => {

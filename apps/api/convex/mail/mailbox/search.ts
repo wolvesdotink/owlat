@@ -19,7 +19,7 @@ import { loadAccessibleMailboxes, loadReadableMailbox } from '../permissions';
 import { readSession } from './shared';
 import type { FolderRole } from '../../lib/validators/mail';
 import { resolveBodySearchMode, textSearchQuery } from '../searchBody';
-import { openMailMessageRows } from '../../lib/messageBody';
+import { toMailListRow, type MailListRow } from './rowThreadState';
 import {
 	type MailboxPage,
 	type MailboxScanPosition,
@@ -242,7 +242,7 @@ async function searchByFilename(
 	names: ResolvedNames,
 	limit: number,
 	cursor: string | null
-): Promise<{ messages: Doc<'mailMessages'>[]; hasMore: boolean; nextCursor: string | null }> {
+): Promise<{ messages: MailListRow[]; hasMore: boolean; nextCursor: string | null }> {
 	const page = await ctx.db
 		.query('mailAttachments')
 		.withSearchIndex('search_filenames', (q) =>
@@ -265,9 +265,9 @@ async function searchByFilename(
 	}
 
 	return {
-		// E8b: results leave the read boundary with their inline bodies unsealed —
-		// the reader renders a result row's body straight off the row.
-		messages: await openMailMessageRows(messages),
+		// Results leave as slim list rows (plan 2.3): the reader loads the body
+		// through its own thread query, so no row body is unsealed here.
+		messages: messages.map(toMailListRow),
 		hasMore: !page.isDone,
 		nextCursor: page.isDone ? null : page.continueCursor,
 	};
@@ -312,7 +312,7 @@ export const search = publicQuery({
 		cursor: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const empty = { messages: [] as Doc<'mailMessages'>[], hasMore: false, nextCursor: null };
+		const empty = { messages: [] as MailListRow[], hasMore: false, nextCursor: null };
 		const { mailboxId, mailboxIds, or, limit: rawLimit, cursor, ...primary } = args;
 		// Case-fold every clause before anything reads it: the matching below
 		// does not trust the caller to have lowercased its operands.
@@ -332,7 +332,7 @@ export const search = publicQuery({
 			}
 			const merged = mergeMailboxPages(pages, limit);
 			return {
-				messages: await openMailMessageRows(merged.page),
+				messages: merged.page.map(toMailListRow),
 				hasMore: merged.hasMore,
 				nextCursor: merged.hasMore ? encodeMultiCursor(merged.cursor) : null,
 			};
@@ -403,7 +403,7 @@ export const search = publicQuery({
 		);
 
 		return {
-			messages: await openMailMessageRows(filtered),
+			messages: filtered.map(toMailListRow),
 			hasMore: !page.isDone,
 			nextCursor: page.isDone ? null : page.continueCursor,
 		};

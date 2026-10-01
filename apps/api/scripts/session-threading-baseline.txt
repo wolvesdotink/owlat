@@ -132,7 +132,6 @@ convex/forms/endpoints.ts:remove
 convex/forms/endpoints.ts:update
 convex/globalSearch.ts:search
 convex/inbox/askEagernessSettings.ts:setAskEagerness
-convex/inbox/clarification.ts:answerClarification
 convex/inbox/clarificationMemory.ts:promoteClarificationMemory
 convex/inbox/clarificationMemory.ts:revokeClarificationMemory
 convex/inbox/mutations.ts:approveDraft

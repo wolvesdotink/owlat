@@ -34,9 +34,13 @@ export const listFolders = internalQuery({
 });
 
 /** SELECT response — returns folder metadata and the message count
- *  required for `* {n} EXISTS / RECENT / OK [UNSEEN]`. */
+ *  required for `* {n} EXISTS / RECENT / OK [UNSEEN]`.
+ *
+ *  `skipFirstUnseenSeq`: the caller numbers `firstUnseenUid` itself (the IMAP
+ *  server does, against the sequence view it already holds), so the count of
+ *  every message below it is not read. */
 export const selectFolder = internalQuery({
-	args: { folderId: v.id('mailFolders') },
+	args: { folderId: v.id('mailFolders'), skipFirstUnseenSeq: v.optional(v.boolean()) },
 	handler: async (ctx, args) => {
 		const folder = await ctx.db.get(args.folderId);
 		if (!folder) return null;
@@ -55,7 +59,7 @@ export const selectFolder = internalQuery({
 		// number is the 1-based position by UID ascending, i.e. one more
 		// than the count of messages with a smaller UID.
 		let firstUnseenSeq: number | undefined;
-		if (firstUnseen) {
+		if (firstUnseen && args.skipFirstUnseenSeq !== true) {
 			const earlier = await ctx.db
 				.query('mailMessages')
 				.withIndex('by_folder_and_uid', (q) =>

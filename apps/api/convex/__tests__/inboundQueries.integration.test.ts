@@ -14,6 +14,7 @@ import {
 import { findOrCreateForEmail, transition } from '../inbox/threads/module';
 import { sealBodyAtWriteMaybe } from '../lib/messageBody';
 import { isSealedAtRest } from '../lib/atRestBodies';
+import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -358,6 +359,31 @@ describe('inboundQueries.listThreads', () => {
 		expect(result.threads).toHaveLength(1);
 		expect(result.threads[0]!.assignedTo).toBe('test-user-123');
 	});
+
+	it('leaves assignee presence out of the rows (served by inbox.presence.presentAssignees)', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['inbox']);
+
+		const threadId = await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+			const id = await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, assignedTo: 'other-user' })
+			);
+			await ctx.db.insert('threadPresence', {
+				threadId: id,
+				userId: 'other-user',
+				mode: 'viewing',
+				heartbeatAt: Date.now(),
+			});
+			return id;
+		});
+
+		const result = await t.withIdentity(testIdentity).query(api.inbox.queries.listThreads, {});
+
+		expect(result.threads.map((row) => row._id)).toEqual([threadId]);
+		expect(result.threads[0]).not.toHaveProperty('assigneePresent');
+	});
 });
 
 // ============ getThreadFilterCounts ============
@@ -668,6 +694,56 @@ describe('inboundQueries.getReviewQueue', () => {
 			.query(api.inbox.queries.getReviewQueue, { limit: 2 });
 
 		expect(result).toHaveLength(2);
+	});
+});
+
+// ============ countReviewQueue (plan 2.11) ============
+
+describe('inboundQueries.countReviewQueue', () => {
+	async function seedReviewRows(t: ReturnType<typeof convexTest>, drafts: number) {
+		await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+			const threadId = await ctx.db.insert('conversationThreads', threadData({ contactId }));
+			for (let i = 0; i < drafts; i++) {
+				await ctx.db.insert(
+					'inboundMessages',
+					msgData({ threadId, contactId, processingStatus: 'draft_ready' })
+				);
+			}
+			await ctx.db.insert(
+				'inboundMessages',
+				msgData({ threadId, contactId, processingStatus: 'received' })
+			);
+		});
+	}
+
+	it('counts the rows getReviewQueue returns for the same limit', async () => {
+		const t = convexTest(schema, modules);
+		await seedReviewRows(t, 3);
+		const admin = t.withIdentity(testIdentity);
+
+		const list = await admin.query(api.inbox.queries.getReviewQueue, {});
+		expect(await admin.query(api.inbox.queries.countReviewQueue, {})).toBe(list.length);
+		expect(list).toHaveLength(3);
+
+		const capped = await admin.query(api.inbox.queries.getReviewQueue, { limit: 2 });
+		expect(await admin.query(api.inbox.queries.countReviewQueue, { limit: 2 })).toBe(capped.length);
+	});
+
+	it('returns 0 when not authenticated and for a member who cannot read the team inbox', async () => {
+		const t = convexTest(schema, modules);
+		await seedReviewRows(t, 2);
+
+		expect(await t.query(api.inbox.queries.countReviewQueue, {})).toBe(0);
+
+		vi.mocked(getBetterAuthSessionWithRole).mockResolvedValueOnce({
+			userId: 'editor-user',
+			activeOrganizationId: 'org-test',
+			role: 'editor',
+		});
+		expect(await t.withIdentity(testIdentity).query(api.inbox.queries.countReviewQueue, {})).toBe(
+			0
+		);
 	});
 });
 

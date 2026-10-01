@@ -67,15 +67,28 @@ interface UpdateArgs {
 	subject?: string;
 	previewText?: string;
 	blocks?: string;
+	htmlContent?: string;
+	expectedContentRevision?: number;
+}
+
+/** What the add / remove mutations accept beyond the row and the language. */
+interface WriteOptions {
+	htmlContent?: string;
+	expectedContentRevision?: number;
 }
 
 interface Driver {
 	table: Table;
 	hasPreviewText: boolean;
 	seed: (t: T, overrides?: Record<string, unknown>) => Promise<RowId>;
-	add: (t: T, id: RowId, language: string) => Promise<unknown>;
+	add: (t: T, id: RowId, language: string, options?: WriteOptions) => Promise<unknown>;
 	update: (t: T, id: RowId, args: UpdateArgs) => Promise<unknown>;
-	remove: (t: T, id: RowId, language: string) => Promise<unknown>;
+	remove: (
+		t: T,
+		id: RowId,
+		language: string,
+		options?: Pick<WriteOptions, 'expectedContentRevision'>
+	) => Promise<unknown>;
 	setDefault?: (t: T, id: RowId, language: string, force?: boolean) => Promise<unknown>;
 }
 
@@ -110,17 +123,22 @@ const drivers: Driver[] = [
 					})
 				)
 			),
-		add: (t, id, language) =>
-			t.mutation(api.emailTemplates.i18n.addTranslation, { templateId: asTemplate(id), language }),
+		add: (t, id, language, options) =>
+			t.mutation(api.emailTemplates.i18n.addTranslation, {
+				templateId: asTemplate(id),
+				language,
+				...options,
+			}),
 		update: (t, id, args) =>
 			t.mutation(api.emailTemplates.i18n.updateTranslation, {
 				templateId: asTemplate(id),
 				...args,
 			}),
-		remove: (t, id, language) =>
+		remove: (t, id, language, options) =>
 			t.mutation(api.emailTemplates.i18n.removeTranslation, {
 				templateId: asTemplate(id),
 				language,
+				...options,
 			}),
 		setDefault: (t, id, language, forceWhilePublished) =>
 			t.mutation(api.emailTemplates.i18n.setDefaultLanguage, {
@@ -147,10 +165,11 @@ const drivers: Driver[] = [
 					})
 				)
 			),
-		add: (t, id, language) =>
+		add: (t, id, language, options) =>
 			t.mutation(api.transactional.translations.addTranslation, {
 				id: asTransactional(id),
 				language,
+				...options,
 			}),
 		// The transactional mutation takes no previewText argument.
 		update: (t, id, { previewText: _previewText, ...args }) =>
@@ -158,10 +177,11 @@ const drivers: Driver[] = [
 				id: asTransactional(id),
 				...args,
 			}),
-		remove: (t, id, language) =>
+		remove: (t, id, language, options) =>
 			t.mutation(api.transactional.translations.removeTranslation, {
 				id: asTransactional(id),
 				language,
+				...options,
 			}),
 	},
 ];
@@ -275,6 +295,139 @@ describe.each(drivers)('translation mutations on $table', (driver) => {
 		expect(row?.supportedLanguages).toEqual(['en']);
 		expect(overlays(row)).toEqual({});
 		expect(row?.contentRevision).toBe(4);
+	});
+
+	// The delivery HTML is rendered on the server from the stored overlays
+	// (lib/publishableEmail.ts); HTML a client sends is ignored.
+	describe('overlay and delivery HTML as one revision', () => {
+		const rendered = (row: { htmlTranslations?: string } | null) =>
+			JSON.parse(row?.htmlTranslations ?? '{}') as Record<
+				string,
+				{ htmlContent: string; subject: string }
+			>;
+		const withRendered = (extra: Record<string, unknown> = {}) =>
+			withGerman(driver.hasPreviewText, {
+				supportedLanguages: ['en', 'de', 'fr'],
+				translations: JSON.stringify({
+					de: {
+						subject: 'Deutscher Betreff',
+						...(driver.hasPreviewText ? { previewText: 'Deutsche Vorschau' } : {}),
+						blocks: DE_BLOCKS,
+					},
+					fr: { subject: 'Sujet', blocks: { b1: { html: 'Bonjour' } } },
+				}),
+				htmlTranslations: JSON.stringify({
+					de: { htmlContent: '<p>Stale</p>', subject: 'Deutscher Betreff' },
+					fr: { htmlContent: '<p>Stale</p>', subject: 'Sujet' },
+				}),
+				...extra,
+			});
+
+		it('updateTranslation writes the overlay and its HTML in the same write', async () => {
+			const t = convexTest(schema, modules);
+			const id = await driver.seed(t, withRendered());
+
+			const result = await driver.update(t, id, {
+				language: 'de',
+				subject: ' Neuer Betreff ',
+				blocks: JSON.stringify({ b1: { html: 'Neu' } }),
+				htmlContent: '<p>Client HTML</p>',
+				expectedContentRevision: 3,
+			});
+
+			const row = await read(t, id);
+			expect(result).toMatchObject({ contentRevision: 4 });
+			expect(row?.contentRevision).toBe(4);
+			expect(overlays(row)['de']?.['blocks']).toEqual({ b1: { html: 'Neu' } });
+			// The HTML is rendered from the stored overlay with the subject it
+			// stored (trimmed); every other language is rendered from its own.
+			const html = rendered(row);
+			expect(Object.keys(html).sort()).toEqual(['de', 'fr']);
+			expect(html['de']?.subject).toBe('Neuer Betreff');
+			expect(html['de']?.htmlContent).toContain('Neu');
+			expect(html['de']?.htmlContent).not.toContain('Client HTML');
+			expect(html['fr']).toMatchObject({ subject: 'Sujet' });
+			expect(html['fr']?.htmlContent).toContain('Bonjour');
+		});
+
+		it('updateTranslation built on an older revision is refused and writes nothing', async () => {
+			const t = convexTest(schema, modules);
+			const id = await driver.seed(t, withRendered());
+			const before = await read(t, id);
+
+			const error = await operationError(
+				driver.update(t, id, {
+					language: 'de',
+					subject: 'Veraltet',
+					htmlContent: '<p>Veraltet</p>',
+					expectedContentRevision: 2,
+				})
+			);
+
+			expect(error.category).toBe('conflict');
+			expect(error.data?.['reason']).toBe('stale_content_revision');
+			expect(await read(t, id)).toEqual(before);
+		});
+
+		it('addTranslation stores the new language with its HTML', async () => {
+			const t = convexTest(schema, modules);
+			const id = await driver.seed(t);
+
+			const result = await driver.add(t, id, 'de', {
+				htmlContent: '<p>Client HTML</p>',
+				expectedContentRevision: 3,
+			});
+
+			const row = await read(t, id);
+			expect(result).toMatchObject({ contentRevision: 4 });
+			expect(row?.supportedLanguages).toEqual(['en', 'de']);
+			// The seeded overlay is the default text, rendered with the default subject.
+			const html = rendered(row);
+			expect(Object.keys(html)).toEqual(['de']);
+			expect(html['de']?.subject).toBe('English subject');
+			expect(html['de']?.htmlContent).toContain('Hello world');
+			expect(html['de']?.htmlContent).not.toContain('Client HTML');
+		});
+
+		it('addTranslation built on an older revision is refused', async () => {
+			const t = convexTest(schema, modules);
+			const id = await driver.seed(t);
+			const before = await read(t, id);
+
+			const error = await operationError(
+				driver.add(t, id, 'de', { htmlContent: '<p>x</p>', expectedContentRevision: 1 })
+			);
+
+			expect(error.category).toBe('conflict');
+			expect(await read(t, id)).toEqual(before);
+		});
+
+		it('removeTranslation drops the language HTML with the overlay', async () => {
+			const t = convexTest(schema, modules);
+			const id = await driver.seed(t, withRendered());
+
+			await driver.remove(t, id, 'de', { expectedContentRevision: 3 });
+
+			const row = await read(t, id);
+			expect(row?.supportedLanguages).toEqual(['en', 'fr']);
+			expect(overlays(row)['de']).toBeUndefined();
+			const html = rendered(row);
+			expect(Object.keys(html)).toEqual(['fr']);
+			expect(html['fr']?.htmlContent).toContain('Bonjour');
+		});
+
+		it('removeTranslation built on an older revision is refused', async () => {
+			const t = convexTest(schema, modules);
+			const id = await driver.seed(t, withRendered());
+			const before = await read(t, id);
+
+			const error = await operationError(
+				driver.remove(t, id, 'de', { expectedContentRevision: 0 })
+			);
+
+			expect(error.category).toBe('conflict');
+			expect(await read(t, id)).toEqual(before);
+		});
 	});
 
 	if (setDefault) {

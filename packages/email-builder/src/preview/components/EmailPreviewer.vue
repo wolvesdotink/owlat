@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onBeforeUnmount } from 'vue';
+// The --ep-* fallbacks load with the previewer, not with every host page.
+import '../styles/variables.css';
 import {
 	Code,
 	Eye,
@@ -22,7 +24,6 @@ import type {
 	EmailClient,
 	DevicePreset,
 	CompatibilityReport,
-	NestingDepthResult,
 	PreviewEmailAnalysis,
 	PreviewHealthScore,
 	PreviewValidationIssue,
@@ -50,8 +51,6 @@ const props = withDefaults(
 		defaultDevice?: string;
 		autoAnalyze?: boolean;
 		showSendTest?: boolean;
-		/** Optional nesting depth analysis result to show warning in compatibility panel */
-		nestingDepthWarning?: NestingDepthResult | null;
 		/** Plain text version of the email (generated from the block document) */
 		plainText?: string;
 		/**
@@ -66,6 +65,11 @@ const props = withDefaults(
 		allowPlainTextOverride?: boolean;
 		/** AMP HTML version of the email */
 		ampHtml?: string;
+		/**
+		 * The host renders AMP on request: show the AMP view even while `ampHtml`
+		 * is still empty, and listen to `update:amp-requested`.
+		 */
+		ampAvailable?: boolean;
 		/** Render warnings from the renderer */
 		renderWarnings?: string[];
 		/** Email size/quality analysis */
@@ -94,12 +98,12 @@ const props = withDefaults(
 		defaultDevice: 'desktop',
 		autoAnalyze: true,
 		showSendTest: false,
-		nestingDepthWarning: null,
 		plainText: '',
 		plainTextSource: '',
 		plainTextOverride: '',
 		allowPlainTextOverride: false,
 		ampHtml: '',
+		ampAvailable: false,
 		renderWarnings: () => [],
 		emailAnalysis: null,
 		healthScore: null,
@@ -118,6 +122,7 @@ const emit = defineEmits<{
 	(e: 'update:render-options', options: Partial<PreviewRenderOptions>): void;
 	(e: 'update:dark-mode', value: boolean): void;
 	(e: 'update:plain-text-override', value: string): void;
+	(e: 'update:amp-requested', value: boolean): void;
 }>();
 
 // State
@@ -230,6 +235,14 @@ function resetPlainTextOverride() {
 	plainTextDraft.value = '';
 	emit('update:plain-text-override', '');
 }
+
+// AMP is only needed by the AMP view and the export menu; tell the host when,
+// so it does not render AMP for every preview.
+const ampNeeded = computed(() => viewMode.value === 'amp' || exportMenuOpen.value);
+watch(ampNeeded, (needed) => emit('update:amp-requested', needed));
+onBeforeUnmount(() => {
+	if (ampNeeded.value) emit('update:amp-requested', false);
+});
 
 const hasWarnings = computed(() => (props.renderWarnings?.length ?? 0) > 0);
 const hasDiff = computed(() => props.emailDiff && !props.emailDiff.identical);
@@ -346,7 +359,7 @@ function handleClickOutside(event: MouseEvent) {
 						Text
 					</button>
 					<button
-						v-if="ampHtml"
+						v-if="ampHtml || ampAvailable"
 						class="ep-view-btn"
 						:class="{ 'ep-view-active': viewMode === 'amp' }"
 						@click="viewMode = 'amp'"
@@ -617,7 +630,6 @@ function handleClickOutside(event: MouseEvent) {
 				:health-score="healthScore ?? null"
 				:validation-issues="validationIssues ?? []"
 				:compatibility-report="report"
-				:nesting-depth-warning="nestingDepthWarning"
 				:is-analyzing="isAnalyzing"
 				:expanded="compatibilityExpanded"
 				@toggle="compatibilityExpanded = !compatibilityExpanded"

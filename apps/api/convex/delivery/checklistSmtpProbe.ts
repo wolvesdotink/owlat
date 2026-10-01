@@ -1,6 +1,6 @@
 /**
  * Deployment checks judged from the MTA's live outbound SMTP probe
- * (`/health` → `smtpOutbound`, cached on `instanceSettings.mtaHealth`).
+ * (`/health` → `smtpOutbound`, cached on the `mtaHealth` counter row).
  *
  * `deployment.port25` asks whether each source address reaches a recipient MX.
  * `deployment.source_ip` asks whether each address leaves from its own IP: the
@@ -15,9 +15,7 @@ import {
 	type ChecklistObservation,
 	type ChecklistVerificationContext,
 } from './checklistValidatorTypes';
-
-/** How old the MTA health snapshot, and the probe inside it, may be. */
-const MTA_HEALTH_MAX_AGE_MS = 5 * 60_000;
+import { MTA_HEALTH_MAX_AGE_MS } from './mtaHealthFreshness';
 
 export const STALE_MTA_HEALTH =
 	'The MTA health snapshot is missing or too old to verify this check.';

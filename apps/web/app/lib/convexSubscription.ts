@@ -7,13 +7,25 @@
  * their transport (`client.onUpdate`, `client.onPaginatedUpdate_experimental`)
  * and where a delivered value goes. Everything else lives here.
  *
+ * Owners of the same query and args share one transport subscription (the
+ * registry in `~/lib/sharedConvexSubscriptions`), and a released query lingers briefly so a remount reads its
+ * value in the same tick instead of flashing a skeleton.
+ *
  * Uses the Vue auto-imports (`computed`, `watch`, `getCurrentScope`, ...) like
  * the composables it serves, so their specs can stub the effect scope.
  */
-import { getFunctionName, type FunctionReference } from 'convex/server';
+import type { FunctionReference } from 'convex/server';
 import { convexToJson } from 'convex/values';
 import { isDevBuild, logWarn } from '~/lib/runtimeLog';
 import { createTransientRetry } from '~/lib/queryRetry';
+import {
+	functionNameOf,
+	lingerClassOf,
+	openShared,
+	sharedSubscriptionKey,
+	type OpenSubscription,
+	type ReleaseReason,
+} from '~/lib/sharedConvexSubscriptions';
 import type { Ref } from 'vue';
 
 /** Query args, or a factory that returns them or `'skip'` when they are not ready yet. */
@@ -74,26 +86,37 @@ export function argsIdentity(args: unknown): string {
 	}
 }
 
+/**
+ * Identity of the args with the window arg left out: two args values with the
+ * same frame read the same list, only more or less of it.
+ */
+function frameIdentity(args: unknown, windowArg: string): string {
+	if (args === 'skip' || args === null || typeof args !== 'object') return argsIdentity(args);
+	const { [windowArg]: _window, ...frame } = args as Record<string, unknown>;
+	return argsIdentity(frame);
+}
+
 /** Anything a transport rejects with, as an `Error`. */
 export function toError(value: unknown): Error {
 	return value instanceof Error ? value : new Error(String(value));
 }
 
-/** Opens the transport and returns its unsubscribe. */
-export type OpenSubscription<Args, Update> = (
-	args: Args,
-	onUpdate: (update: Update) => void,
-	onError: (error: unknown) => void
-) => () => void;
-
 export interface ConvexSubscriptionOptions<Args, Update> {
-	/** The subscribed query. Only used to name it in the out-of-scope warning. */
+	/** The subscribed query: part of the shared-subscription key, and named in the out-of-scope warning. */
 	query: FunctionReference<'query'>;
 	/** The composable, as the prefix of the out-of-scope warning. */
 	name: string;
 	args: ArgsOrFactory<Args>;
 	/** Opens the transport; `null` when there is no Convex client. */
 	open: OpenSubscription<Args, Update> | null;
+	/**
+	 * Share the transport subscription with every other owner of the same query
+	 * and args on the same `source` (the Convex client), and keep it warm for
+	 * `SUBSCRIPTION_LINGER_MS` after the last owner leaves. `variant` tells
+	 * transports apart (plain vs paginated with its page size). Without it each
+	 * owner opens and closes its own subscription.
+	 */
+	share?: { source: object; variant: string };
 	/** Whether the adapter holds a value from an earlier delivery. */
 	hasData: () => boolean;
 	/** Stores a delivered value. */
@@ -106,6 +129,17 @@ export interface ConvexSubscriptionOptions<Args, Update> {
 	 * subscription (a paginated `loadMore`) now points at a dead closure.
 	 */
 	onRelease?: () => void;
+	/**
+	 * The arg that only sizes a window over one list: a growable `limit` that
+	 * "Load more" raises. When the args change in this arg alone, the previous
+	 * window is superseded rather than left: it closes as soon as no other owner
+	 * holds it, instead of lingering live (and re-running on every change) next
+	 * to the window that replaced it. Any other args change lingers as usual, and
+	 * so does the first window opened for a frame, which is where a return to
+	 * that frame starts. A shrink with an unchanged frame (a limit reset whose
+	 * key is not part of the args) supersedes the larger window the same way.
+	 */
+	windowArg?: string;
 	/** Keep showing the previous value while new args load, flagged `isRefetching`. */
 	keepPreviousData?: boolean;
 	timeout?: number;
@@ -116,8 +150,20 @@ export interface ConvexSubscription {
 	isLoading: Ref<boolean>;
 	/** True while re-subscribing with a previous value still on screen. */
 	isRefetching: Ref<boolean>;
-	/** Re-subscribe with the current args, keeping the previous value visible. */
+	/**
+	 * Re-subscribe with the current args, keeping the previous value visible.
+	 * Skips the shared cache, so the query runs again once no one else holds it.
+	 */
 	refetch: () => void;
+	/**
+	 * Drop the value on screen, so the next delivery is a first load again.
+	 * `keepPreviousData` bridges one args change to the next within a session; a
+	 * surface that starts over (a search overlay reopening) calls this so it
+	 * never opens on the last session's result. A skipped query stays blank
+	 * until its args return; a live one re-subscribes and reads its value afresh
+	 * (in the same tick while the shared subscription is still warm).
+	 */
+	reset: () => void;
 }
 
 /**
@@ -138,13 +184,33 @@ export function createConvexSubscription<Args, Update>(
 
 	const timeoutMs = options.timeout ?? DEFAULT_SUBSCRIPTION_TIMEOUT;
 	const retry = createTransientRetry();
-	let unsubscribe: (() => void) | null = null;
+	let unsubscribe: ((reason?: ReleaseReason) => void) | null = null;
+	/** Frame and full identity of the args the live subscription was opened with. */
+	let subscribedFrame: string | null = null;
+	let subscribedKey: string | null = null;
+	/**
+	 * The first window opened for the current frame, and that frame. A growable
+	 * limit starts every visit to a frame (a remount, a return to the room) at
+	 * this window, so it is the one a quick return reads: it is never
+	 * superseded, only left, and lingers like any other query.
+	 */
+	let baseFrame: string | null = null;
+	let baseKey: string | null = null;
 	let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
 	const resolvedArgs = computed<Args | 'skip'>(() =>
 		typeof options.args === 'function' ? (options.args as () => Args | 'skip')() : options.args
 	);
 	const argsKey = computed(() => argsIdentity(resolvedArgs.value));
+
+	// Args that will not serialise get a one-off identity; sharing them would
+	// only park a subscription nobody can ever find again.
+	const sharedKeyFor = (): string | null => {
+		const share = options.share;
+		const identity = argsKey.value;
+		if (!share || identity.startsWith('unserialisable:')) return null;
+		return sharedSubscriptionKey(share, options.query, identity);
+	};
 
 	const clearSubscriptionTimeout = () => {
 		if (timeoutId !== null) {
@@ -158,23 +224,37 @@ export function createConvexSubscription<Args, Update>(
 	// Leaving it set meant a valid → skip → valid args sequence (typing through
 	// an invalid email, say) called the dead unsubscribe again, the throw aborted
 	// the re-subscribe, and the UI kept the PREVIOUS args' data forever.
-	const releaseSubscription = () => {
+	const releaseSubscription = (reason?: ReleaseReason) => {
 		if (!unsubscribe) return;
 		const release = unsubscribe;
 		unsubscribe = null;
-		release();
+		subscribedFrame = null;
+		subscribedKey = null;
+		release(reason);
 		options.onRelease?.();
 	};
 
-	const subscribe = (opts?: { background?: boolean; isRetry?: boolean }) => {
+	// The live window is superseded when the next args differ from it only in
+	// `windowArg`. Same args (a reset) or a different frame (another room, another
+	// folder) is an ordinary leave, and the old query lingers. So is the frame's
+	// first window: a return to the frame starts there again and should find it
+	// warm. Only the intermediate windows ("Load more" steps) close at once.
+	const releaseReasonFor = (args: Args | 'skip'): ReleaseReason => {
+		const windowArg = options.windowArg;
+		if (!windowArg || args === 'skip' || subscribedFrame === null) return 'leave';
+		if (argsKey.value === subscribedKey || subscribedKey === baseKey) return 'leave';
+		return frameIdentity(args, windowArg) === subscribedFrame ? 'superseded' : 'leave';
+	};
+
+	const subscribe = (opts?: { background?: boolean; isRetry?: boolean; fresh?: boolean }) => {
 		// A retry spends the budget; anything else (new args, a manual refetch)
 		// starts it over.
 		retry.cancel();
 		if (!opts?.isRetry) retry.reset();
-		releaseSubscription();
+		const args = resolvedArgs.value;
+		releaseSubscription(releaseReasonFor(args));
 		clearSubscriptionTimeout();
 
-		const args = resolvedArgs.value;
 		// There is no pending request, so only stay in the loading state if
 		// nothing was ever delivered (initial skip, waiting for real args). Once a
 		// value has loaded, a transition to skip is idle: never leave
@@ -203,35 +283,33 @@ export function createConvexSubscription<Args, Update>(
 		}
 		error.value = null;
 
-		unsubscribe = options.open(
-			args,
-			(update) => {
-				clearSubscriptionTimeout();
-				retry.reset();
-				options.accept(update);
-				isLoading.value = false;
-				isRefetching.value = false;
-				error.value = null;
-			},
-			(e) => {
-				clearSubscriptionTimeout();
-				// Release the failed subscription BEFORE waiting, not at the retry:
-				// the Convex client shares one server query between identical
-				// subscriptions and re-runs it only once its last subscriber has
-				// gone. Components that failed together unsubscribe together, so
-				// the first one back re-executes the query instead of inheriting
-				// the cached failure.
-				if (retry.schedule(e, () => subscribe({ background: true, isRetry: true }))) {
-					releaseSubscription();
-					return;
-				}
-				error.value = toError(e);
-				isLoading.value = false;
-				isRefetching.value = false;
+		const onUpdate = (update: Update) => {
+			clearSubscriptionTimeout();
+			retry.reset();
+			options.accept(update);
+			isLoading.value = false;
+			isRefetching.value = false;
+			error.value = null;
+		};
+		const onError = (e: unknown) => {
+			clearSubscriptionTimeout();
+			// Release the failed subscription BEFORE waiting, not at the retry:
+			// the Convex client shares one server query between identical
+			// subscriptions and re-runs it only once its last subscriber has
+			// gone. Components that failed together unsubscribe together, so
+			// the first one back re-executes the query instead of inheriting
+			// the cached failure.
+			if (retry.schedule(e, () => subscribe({ background: true, isRetry: true }))) {
+				releaseSubscription();
+				return;
 			}
-		);
+			error.value = toError(e);
+			isLoading.value = false;
+			isRefetching.value = false;
+		};
 
-		// If neither callback fires, stop loading with an error.
+		// If neither callback fires, stop loading with an error. Armed before
+		// opening: a shared query that is already loaded delivers during `open`.
 		timeoutId = setTimeout(() => {
 			timeoutId = null;
 			if (isLoading.value || isRefetching.value) {
@@ -240,6 +318,30 @@ export function createConvexSubscription<Args, Update>(
 				isRefetching.value = false;
 			}
 		}, timeoutMs);
+
+		const shareKey = sharedKeyFor();
+		if (options.windowArg) {
+			subscribedFrame = frameIdentity(args, options.windowArg);
+			subscribedKey = argsKey.value;
+			if (subscribedFrame !== baseFrame) {
+				baseFrame = subscribedFrame;
+				baseKey = subscribedKey;
+			}
+		}
+		if (shareKey === null) {
+			// An unshared transport has nothing to linger: it closes either way.
+			const close = options.open(args, onUpdate, onError);
+			unsubscribe = () => close();
+			return;
+		}
+		unsubscribe = openShared(
+			shareKey,
+			args,
+			options.open,
+			{ update: (v) => onUpdate(v as Update), fail: onError },
+			opts?.fresh === true,
+			lingerClassOf(options.query)
+		);
 	};
 
 	// Re-subscribe only when the args' VALUE changes. See `argsIdentity`.
@@ -258,16 +360,27 @@ export function createConvexSubscription<Args, Update>(
 		// scope is no longer active: one leaked subscription per navigation, on a
 		// guard that runs on nearly every page. Shared state like this belongs in a
 		// module singleton owned by a detached `effectScope`; see `useFeatureFlag`.
-		let queryName: string;
-		try {
-			queryName = getFunctionName(options.query);
-		} catch {
-			queryName = String(options.query);
-		}
 		logWarn(
-			`[${options.name}] ${queryName} was created outside an effect scope — its subscription will never be released.`
+			`[${options.name}] ${functionNameOf(options.query)} was created outside an effect scope — its subscription will never be released.`
 		);
 	}
 
-	return { error, isLoading, isRefetching, refetch: () => subscribe({ background: true }) };
+	const reset = () => {
+		options.clear();
+		if (resolvedArgs.value !== 'skip') {
+			subscribe();
+			return;
+		}
+		// The same state as a query that has not had its args yet.
+		isLoading.value = true;
+		isRefetching.value = false;
+	};
+
+	return {
+		error,
+		isLoading,
+		isRefetching,
+		refetch: () => subscribe({ background: true, fresh: true }),
+		reset,
+	};
 }

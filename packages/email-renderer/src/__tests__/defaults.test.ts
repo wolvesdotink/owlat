@@ -39,10 +39,7 @@ describe('renderer defaults come from @owlat/shared/emailDefaults', () => {
 	});
 
 	it('creates a container with the shared block padding and margin', () => {
-		const content = moduleFor('container')?.createDefault?.(DEFAULT_EMAIL_THEME) as Record<
-			string,
-			unknown
-		>;
+		const content = moduleFor('container')?.createDefault?.(DEFAULT_EMAIL_THEME);
 		expect(content).toMatchObject({ ...DEFAULT_BLOCK_PADDING, ...DEFAULT_BLOCK_MARGIN });
 	});
 });

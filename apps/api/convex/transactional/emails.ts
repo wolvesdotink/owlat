@@ -15,10 +15,11 @@ import { dataVariablesSchemaValidator } from '../lib/convexValidators';
 import {
 	assertEditableForPublishableChange,
 	buildEditablePatch,
-	loadEmailTheme,
 	publishedHtml,
 } from '../lib/publishableEmail';
+import { loadEmailTheme } from '../lib/publishableEmailRender';
 import { assertContentRevision } from '../lib/contentRevision';
+import { rendererVersionArg } from '../lib/rendererVersion';
 import { recordAuditLog } from '../lib/auditLog';
 
 // Data variable type for schema definition
@@ -171,6 +172,9 @@ export const update = transactionalMutation({
 		translations: v.optional(v.string()),
 		// Ignored, like htmlContent: rendered from the translation overlays.
 		htmlTranslations: v.optional(v.string()),
+		// Ignored, like htmlContent: the stored HTML is stamped with this
+		// server's renderer (lib/rendererVersion.ts).
+		rendererVersion: rendererVersionArg,
 		// IDs of saved blocks linked in this email
 		linkedBlockIds: v.optional(v.array(v.string())),
 		// File attachments as JSON string
@@ -256,6 +260,9 @@ export const publish = transactionalMutation({
 		htmlContent: v.optional(v.string()),
 		// Ignored, like htmlContent.
 		htmlTranslations: v.optional(v.string()),
+		// Ignored, like htmlContent: the stored HTML is stamped with this
+		// server's renderer (lib/rendererVersion.ts).
+		rendererVersion: rendererVersionArg,
 		// The `contentRevision` the HTML was rendered from. When given, a row
 		// that has moved on is refused with `conflict` instead of going live
 		// with HTML that no longer matches its content.

@@ -4,7 +4,8 @@
  *
  * The load-bearing behaviour: "Accept new key" is the ONLY re-pin path across an
  * unsigned key change, and it calls the E2 mutation
- * `api.e2ee.recipientKeys.reacceptKeyChange` with the recipient's address, then
+ * `api.e2ee.recipientKeys.reacceptKeyChange` with the recipient's address and the
+ * new fingerprint it displayed (the key being accepted), then
  * emits `accepted` on success. A failed re-accept surfaces an inline error and
  * does NOT emit accepted. Because re-pinning is an admin-only mutation, the
  * accept button shows ONLY to admins; members get honest "ask an admin" copy
@@ -72,13 +73,16 @@ describe('PostboxKeyChangeBanner', () => {
 		expect(wrapper.text()).toContain('bob@b.test');
 	});
 
-	it('Accept new key calls the re-pin mutation with the address and emits accepted', async () => {
+	it('Accept new key calls the re-pin mutation with the address and the shown key, and emits accepted', async () => {
 		const wrapper = mountBanner();
 		await wrapper.find('[data-testid="key-change-accept"]').trigger('click');
 		await flushPromises();
 
 		expect(reacceptRun).toHaveBeenCalledTimes(1);
-		expect(reacceptRun.mock.calls[0]![0]).toEqual({ address: 'bob@b.test' });
+		expect(reacceptRun.mock.calls[0]![0]).toEqual({
+			address: 'bob@b.test',
+			observedFingerprint: 'NEWFP5566778899',
+		});
 		expect(wrapper.emitted('accepted')).toHaveLength(1);
 	});
 
@@ -88,6 +92,16 @@ describe('PostboxKeyChangeBanner', () => {
 		await wrapper.find('[data-testid="key-change-accept"]').trigger('click');
 		await flushPromises();
 
+		expect(wrapper.emitted('accepted')).toBeUndefined();
+		expect(wrapper.find('[data-testid="key-change-error"]').exists()).toBe(true);
+	});
+
+	it('without a displayed new key there is nothing to accept, so no call is made', async () => {
+		const wrapper = mountBanner({ newFingerprint: null });
+		await wrapper.find('[data-testid="key-change-accept"]').trigger('click');
+		await flushPromises();
+
+		expect(reacceptRun).not.toHaveBeenCalled();
 		expect(wrapper.emitted('accepted')).toBeUndefined();
 		expect(wrapper.find('[data-testid="key-change-error"]').exists()).toBe(true);
 	});
@@ -130,6 +144,9 @@ describe('PostboxKeyChangeBanner · a change away from a VERIFIED key', () => {
 		const wrapper = mountBanner({ wasVerified: true });
 		await wrapper.find('[data-testid="key-change-accept"]').trigger('click');
 		await flushPromises();
-		expect(reacceptRun).toHaveBeenCalledWith({ address: 'bob@b.test' });
+		expect(reacceptRun).toHaveBeenCalledWith({
+			address: 'bob@b.test',
+			observedFingerprint: 'NEWFP5566778899',
+		});
 	});
 });

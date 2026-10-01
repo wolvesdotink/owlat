@@ -1,5 +1,5 @@
 /**
- * `mailboxes.usedBytes` across an IMAP COPY.
+ * A mailbox's used bytes (the `mailboxUsage` row) across an IMAP COPY.
  *
  * Both delete paths decrement one row's `rawSize` unconditionally
  * (`purgeMessageRow`, `expungeFolder`), so COPY had to charge it — otherwise a
@@ -16,11 +16,27 @@ import { internal } from '../../_generated/api';
 import schema from '../../schema';
 import { purgeMessageRow } from '../messagePurge';
 import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
+import { readMailboxUsage } from '../mailboxUsage';
 
 type Test = TestConvex<typeof schema>;
 
 async function usedBytes(t: Test, mailboxId: Id<'mailboxes'>): Promise<number> {
-	return t.run(async (ctx) => (await ctx.db.get(mailboxId))?.usedBytes ?? -1);
+	return t.run(async (ctx) => {
+		const mailbox = await ctx.db.get(mailboxId);
+		return mailbox ? (await readMailboxUsage(ctx.db, mailbox)).usedBytes : -1;
+	});
+}
+
+/** Force the stored count, wherever it currently lives (row or legacy column). */
+async function setUsedBytes(t: Test, mailboxId: Id<'mailboxes'>, bytes: number): Promise<void> {
+	await t.run(async (ctx) => {
+		const row = await ctx.db
+			.query('mailboxUsage')
+			.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
+			.unique();
+		if (row) await ctx.db.patch(row._id, { usedBytes: bytes });
+		else await ctx.db.patch(mailboxId, { usedBytes: bytes });
+	});
 }
 
 describe('mailbox usedBytes across IMAP COPY', () => {
@@ -32,7 +48,7 @@ describe('mailbox usedBytes across IMAP COPY', () => {
 		const messageId = await seedMessage(t, mailboxId, { subject: 'billable' });
 		const rawSize = await t.run(async (ctx) => (await ctx.db.get(messageId))?.rawSize ?? 0);
 		// Model the state delivery would have left: the one row is already charged.
-		await t.run(async (ctx) => ctx.db.patch(mailboxId, { usedBytes: rawSize }));
+		await setUsedBytes(t, mailboxId, rawSize);
 
 		await t.mutation(internal.mail.imap.move.copyMessages, {
 			sourceFolderId: inboxId,
@@ -76,7 +92,7 @@ describe('mailbox usedBytes across IMAP COPY', () => {
 			targetFolderId: archiveId,
 			messageIds: [messageId],
 		});
-		await t.run((ctx) => ctx.db.patch(mailboxId, { usedBytes: 0 }));
+		await setUsedBytes(t, mailboxId, 0);
 
 		await expect(
 			t.action(internal.migrations['0042_recompute_mailbox_used_bytes'].run, {})
@@ -93,7 +109,7 @@ it('migration must not overwrite a concurrent COPY charge', async () => {
 	const archiveId = await seedFolder(t, mailboxId, 'archive');
 	const messageId = await seedMessage(t, mailboxId, { subject: 'race' });
 	const rawSize = await t.run(async (ctx) => (await ctx.db.get(messageId))!.rawSize);
-	await t.run((ctx) => ctx.db.patch(mailboxId, { usedBytes: rawSize }));
+	await setUsedBytes(t, mailboxId, rawSize);
 	const page = await t.query(
 		internal.migrations['0042_recompute_mailbox_used_bytes'].messageSizePage,
 		{ mailboxId, cursor: null }

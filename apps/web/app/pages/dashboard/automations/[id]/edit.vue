@@ -24,10 +24,14 @@ const router = useRouter();
 const automationId = useRouteId<'automations'>();
 
 // Fetch automation with steps
-const { data: automation, isLoading: isLoadingAutomation } = useConvexQuery(
-	api.automations.automations.getWithRelations,
-	() => ({ automationId: automationId.value })
-);
+const {
+	data: automation,
+	isLoading: isLoadingAutomation,
+	error: automationError,
+	refetch: refetchAutomation,
+} = useConvexQuery(api.automations.automations.getWithRelations, () => ({
+	automationId: automationId.value,
+}));
 
 // Fetch email templates for email step selection (marketing templates can be used in automations)
 const { results: emailTemplates } = usePaginatedQuery(
@@ -200,6 +204,7 @@ const handleBack = () => {
 // persists the open step config before navigating.
 const {
 	showDialog: showLeaveDialog,
+	isSavingBeforeLeave,
 	confirmDiscard: confirmLeaveDiscard,
 	confirmSave: confirmLeaveSave,
 	cancelNavigation: cancelLeave,
@@ -479,12 +484,14 @@ onUnmounted(() => {
 			</div>
 		</div>
 
+		<!-- A failed read is not a missing automation (#721). -->
+		<div v-if="automationError" class="flex-1 flex items-center justify-center">
+			<UiQueryBoundary :error="automationError" @retry="refetchAutomation" />
+		</div>
+
 		<!-- Loading State -->
-		<div v-if="isLoadingAutomation" class="flex-1 flex items-center justify-center">
-			<Icon
-				name="lucide:loader-2"
-				class="w-8 h-8 animate-spin motion-reduce:animate-none text-brand"
-			/>
+		<div v-else-if="isLoadingAutomation" class="flex-1 flex items-center justify-center">
+			<UiSpinner delay />
 		</div>
 
 		<!-- Not Found -->
@@ -954,6 +961,7 @@ onUnmounted(() => {
 		<!-- Unsaved Changes Dialog — leaving the page with unsaved step edits -->
 		<UnsavedChangesDialog
 			:show="showLeaveDialog"
+			:saving="isSavingBeforeLeave"
 			@close="cancelLeave"
 			@discard="confirmLeaveDiscard"
 			@save="confirmLeaveSave"

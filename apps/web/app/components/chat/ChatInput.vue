@@ -1,9 +1,16 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import { isMentionHandlePrefix } from '@owlat/shared/chatMentions';
+import { useAcknowledgedDraft } from '~/composables/useAcknowledgedDraft';
+import { isImeComposing } from '~/utils/imeComposition';
 
-const emit = defineEmits<{
-	send: [text: string, attachmentIds?: Id<'mediaAssets'>[]];
+const props = defineProps<{
+	/**
+	 * Delivers the draft. An awaited callback rather than an event, because the
+	 * composer needs the answer: the text and attachments stay put until this
+	 * resolves `ok`, so a refused or failed send is still there to retry.
+	 */
+	send: (text: string, attachmentIds?: Id<'mediaAssets'>[]) => Promise<{ ok: boolean }>;
 }>();
 
 const { t } = useI18n();
@@ -24,8 +31,15 @@ const { candidates: mentionCandidates } = useChatMentionSearch(
 	() => mentionQuery.value
 );
 
+// `isSending` is true while a send is waiting for the backend; it blocks a
+// second send of the same draft.
+const { isSending, submit } = useAcknowledgedDraft(text);
+
 const canSend = computed(
-	() => (text.value.trim().length > 0 || pendingAttachments.value.length > 0) && !isUploading.value
+	() =>
+		(text.value.trim().length > 0 || pendingAttachments.value.length > 0) &&
+		!isUploading.value &&
+		!isSending.value
 );
 
 const recalcMentionQuery = () => {
@@ -62,15 +76,21 @@ const recalcMentionQuery = () => {
 	mentionQuery.value = fragment;
 };
 
-const handleInput = () => {
+const fitTextarea = () => {
 	if (textareaRef.value) {
 		textareaRef.value.style.height = 'auto';
 		textareaRef.value.style.height = Math.min(textareaRef.value.scrollHeight, 200) + 'px';
 	}
+};
+
+const handleInput = () => {
+	fitTextarea();
 	recalcMentionQuery();
 };
 
 const handleKeydown = (event: KeyboardEvent) => {
+	// An IME's confirming Enter finishes the word, it does not send (#1052).
+	if (isImeComposing(event)) return;
 	if (event.key === 'Enter' && !event.shiftKey && mentionQuery.value === null) {
 		event.preventDefault();
 		void handleSend();
@@ -144,16 +164,18 @@ const removeAttachment = (id: Id<'mediaAssets'>) => {
 
 const handleSend = async () => {
 	if (!canSend.value) return;
-	const trimmed = text.value.trim();
-	const attachmentIds = pendingAttachments.value.map((a) => a.id);
-	emit('send', trimmed, attachmentIds.length > 0 ? attachmentIds : undefined);
-	text.value = '';
-	pendingAttachments.value = [];
+	// The text snapshot is the composable's; the attachment selection is frozen
+	// here the same way, and only these ids go once the send is accepted.
+	const submittedIds = pendingAttachments.value.map((a) => a.id);
 	mentionQuery.value = null;
 	mentionStart.value = -1;
-	nextTick(() => {
-		if (textareaRef.value) textareaRef.value.style.height = 'auto';
-	});
+	const outcome = await submit((snapshot) =>
+		props.send(snapshot.trim(), submittedIds.length > 0 ? submittedIds : undefined)
+	);
+	// Refused or failed: the operation has toasted it, the draft is kept.
+	if (!outcome?.ok) return;
+	pendingAttachments.value = pendingAttachments.value.filter((a) => !submittedIds.includes(a.id));
+	nextTick(fitTextarea);
 };
 </script>
 
@@ -221,9 +243,16 @@ const handleSend = async () => {
 				:disabled="!canSend"
 				class="flex-shrink-0 w-10 h-10 p-0 rounded-xl"
 				:aria-label="t('common.send')"
+				:aria-busy="isSending || undefined"
+				data-testid="chat-send"
 				@click="handleSend"
 			>
-				<Icon name="lucide:send" class="w-4 h-4" />
+				<Icon
+					v-if="isSending"
+					name="lucide:loader-2"
+					class="w-4 h-4 animate-spin motion-reduce:animate-none"
+				/>
+				<Icon v-else name="lucide:send" class="w-4 h-4" />
 			</UiButton>
 		</div>
 

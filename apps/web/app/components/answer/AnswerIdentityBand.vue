@@ -18,7 +18,7 @@ const band = computed(() => {
 		const kind =
 			item.row.kind === 'followup'
 				? t('components.answer.band.followUp')
-				: item.row.draftSlot
+				: item.row.hasDraftSlot
 					? t('components.answer.band.draftReady')
 					: item.row.clarification
 						? t('components.answer.band.question')

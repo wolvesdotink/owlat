@@ -29,6 +29,8 @@ vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
 	return {
 		...actual,
+		// The auth floor threads this session to handlers that take it (plan 2.11's
+		// mention count), so it follows the test's current user too.
 		requireOrgMember: vi.fn().mockImplementation(async () => ({
 			userId: sessionMock.user.id,
 			role: sessionMock.user.role,
@@ -412,6 +414,106 @@ describe('chat.messages.sendMessage', () => {
 	});
 });
 
+describe('chat.messages.markRead', () => {
+	// Bob is a member of Alice's channel and has read nothing since `base`.
+	// Two messages mention him, a second apart; the web client acknowledges the
+	// createdAt of the newest message it displayed.
+	async function seedRoom(t: TestConvex<typeof schema>) {
+		await seedUsers(t, ['user-alice', 'user-bob']);
+		setUser('user-alice', 'editor');
+		const roomId = (await t.mutation(api.chat.rooms.createChannel, {
+			name: 'general',
+			visibility: 'public',
+		}))!;
+		await t.mutation(api.chat.members.addMember, { roomId, memberId: 'user-bob' });
+
+		const base = Date.now() - 60_000;
+		const [first, second] = [base + 1_000, base + 2_000];
+		await t.run(async (ctx) => {
+			const bob = await ctx.db
+				.query('chatRoomMembers')
+				.withIndex('by_room_and_member', (q) => q.eq('roomId', roomId).eq('memberId', 'user-bob'))
+				.first();
+			await ctx.db.patch(bob!._id, { lastReadAt: base });
+			for (const createdAt of [first, second]) {
+				const messageId = await ctx.db.insert('chatMessages', {
+					roomId,
+					authorId: 'user-alice',
+					text: '@bob look',
+					mentions: ['user-bob'],
+					createdAt,
+				});
+				await ctx.db.insert('chatMentions', {
+					messageId,
+					roomId,
+					mentionedMemberId: 'user-bob',
+					mentioningMemberId: 'user-alice',
+					createdAt,
+				});
+			}
+		});
+
+		const readState = () =>
+			t.run(async (ctx) => ({
+				membership: await ctx.db
+					.query('chatRoomMembers')
+					.withIndex('by_room_and_member', (q) => q.eq('roomId', roomId).eq('memberId', 'user-bob'))
+					.first(),
+				mentions: await ctx.db
+					.query('chatMentions')
+					.withIndex('by_room', (q) => q.eq('roomId', roomId))
+					.collect(),
+			}));
+		setUser('user-bob', 'editor');
+		return { roomId, first, second, readState };
+	}
+
+	it('reads up to the given point only, and a repeated point writes nothing', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['chat']);
+		const { roomId, first, readState } = await seedRoom(t);
+
+		await t.mutation(api.chat.messages.markRead, { roomId, at: first });
+		const once = await readState();
+		expect(once.membership!.lastReadAt).toBe(first);
+		// The later message and its mention stay unread.
+		expect(once.mentions.map((m) => m.readAt)).toEqual([first, undefined]);
+		const unread = await t.query(api.chat.messages.myUnreadCounts, {});
+		expect(unread[roomId]).toEqual({ unreadCount: 1, hasMention: true });
+
+		// The same point again, and an older one, leave every row as it was.
+		await t.mutation(api.chat.messages.markRead, { roomId, at: first });
+		await t.mutation(api.chat.messages.markRead, { roomId, at: first - 500 });
+		expect(await readState()).toEqual(once);
+	});
+
+	it('clears mentions up to the point even when the read marker is already past it', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['chat']);
+		const { roomId, second, readState } = await seedRoom(t);
+
+		// Bob replies from elsewhere: sending moves his marker, not his mentions.
+		await t.mutation(api.chat.messages.sendMessage, { roomId, text: 'on it' });
+		const afterSend = await readState();
+		expect(afterSend.membership!.lastReadAt).toBeGreaterThan(second);
+		expect(afterSend.mentions.every((m) => m.readAt === undefined)).toBe(true);
+
+		await t.mutation(api.chat.messages.markRead, { roomId, at: second });
+		const afterRead = await readState();
+		expect(afterRead.membership).toEqual(afterSend.membership);
+		expect(afterRead.mentions.map((m) => m.readAt)).toEqual([second, second]);
+	});
+
+	it('does not move the marker past the server clock', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['chat']);
+		const { roomId, readState } = await seedRoom(t);
+
+		await t.mutation(api.chat.messages.markRead, { roomId, at: Date.now() + 3_600_000 });
+		expect((await readState()).membership!.lastReadAt).toBeLessThanOrEqual(Date.now());
+	});
+});
+
 describe('chat.dms.findOrCreateDm', () => {
 	it('is idempotent for the same participant set', async () => {
 		const t = convexTest(schema, modules);
@@ -567,6 +669,43 @@ describe('chat.mentions', () => {
 
 		const mentions = await t.run(async (ctx) => ctx.db.query('chatMentions').collect());
 		expect(mentions).toHaveLength(0);
+	});
+});
+
+describe('chat.mentions.countMyVisibleUnreadMentions (plan 2.11)', () => {
+	it('counts the mentions the feed shows, not the raw unread rows', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['chat']);
+		await seedUsers(t, ['alice', 'bob']);
+
+		setUser('alice', 'editor');
+		const roomId = await t.mutation(api.chat.rooms.createChannel, {
+			name: 'general',
+			visibility: 'public',
+		});
+		await t.mutation(api.chat.members.addMember, { roomId: roomId!, memberId: 'bob' });
+		for (const text of ['@bob first', '@bob second', '@bob third']) {
+			await t.mutation(api.chat.messages.sendMessage, { roomId: roomId!, text });
+		}
+		// A deleted message drops out of the feed, but its mention row stays unread.
+		const [deleted] = await t.run(async (ctx) =>
+			ctx.db
+				.query('chatMessages')
+				.filter((q) => q.eq(q.field('text'), '@bob second'))
+				.collect()
+		);
+		await t.mutation(api.chat.messages.deleteMessage, { messageId: deleted!._id });
+
+		setUser('bob', 'editor');
+		const feed = await t.query(api.chat.mentions.listMyUnreadMentions, {});
+		expect(feed).toHaveLength(2);
+		expect(await t.query(api.chat.mentions.countMyVisibleUnreadMentions, {})).toBe(feed.length);
+		expect(await t.query(api.chat.mentions.countMyUnreadMentions, {})).toBe(3);
+
+		const page = await t.query(api.chat.mentions.listMyUnreadMentions, { limit: 1 });
+		expect(await t.query(api.chat.mentions.countMyVisibleUnreadMentions, { limit: 1 })).toBe(
+			page.length
+		);
 	});
 });
 

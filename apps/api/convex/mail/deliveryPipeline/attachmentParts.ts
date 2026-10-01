@@ -79,18 +79,26 @@ export function inboundAttachmentCandidates(rawBinary: string): InboundAttachmen
  * Leaves past the bound are absent from `candidates`, yet the raw message is
  * still served whole to mail clients, which render them. A scan that covered
  * every candidate has therefore not covered the message.
+ *
+ * `leaves` is the untouched document-order walk, which the scan hands to the
+ * per-part store (plan 3.5) instead of walking the message a second time.
  */
 export function inboundAttachmentWalk(rawBinary: string): {
 	candidates: InboundAttachmentPart[];
+	leaves: InboundAttachmentPart[];
 	truncated: boolean;
 } {
 	const { attachments, truncated } = extractAttachmentsWithBounds(rawBinary);
-	const leaves = attachments.filter((part) => part.bytes.byteLength > 0);
-	return {
-		candidates: [
-			...leaves.filter((part) => part.disposition !== 'inline'),
-			...leaves.filter((part) => part.disposition === 'inline'),
-		],
-		truncated,
-	};
+	return { candidates: candidatesFromLeaves(attachments), leaves: attachments, truncated };
+}
+
+/** The scan candidates among a walk's leaves: non-empty, documents before inline parts. */
+function candidatesFromLeaves(
+	allLeaves: readonly InboundAttachmentPart[]
+): InboundAttachmentPart[] {
+	const leaves = allLeaves.filter((part) => part.bytes.byteLength > 0);
+	return [
+		...leaves.filter((part) => part.disposition !== 'inline'),
+		...leaves.filter((part) => part.disposition === 'inline'),
+	];
 }

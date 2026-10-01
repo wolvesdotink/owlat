@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
-import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
+import { internalQuery, type MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { publicQuery } from '../lib/authedFunctions';
 import type { Id } from '../_generated/dataModel';
@@ -78,9 +79,12 @@ export const getContactForUnsubscribe = internalQuery({
  * Thin shell delegating to the Topic subscription (module)'s
  * `unsubscribeAllForContact` entry. The module owns the membership delete,
  * the topic_unsubscribed activity row, the cachedMemberCount decrement, the
- * contact.updatedAt patch, the formSubmissions.confirmedAt clear, the
- * campaigns.statsUnsubscribed increment, and the topic.unsubscribed webhook
- * fanout — all gated on `source: 'public_email_link'`.
+ * contact.updatedAt patch, the campaigns.statsUnsubscribed increment, and the
+ * topic.unsubscribed webhook fanout — all gated on
+ * `source: 'public_email_link'`. A global opt-out also withdraws the contact's
+ * DOI confirmation token. Whether a later signup must confirm again is decided
+ * from the contact row by `requiresFreshConfirmation` (topics/subscription.ts),
+ * not from the form submissions, whose `confirmedAt` an unsubscribe keeps.
  *
  * See docs/adr/0013-topic-subscription-module.md.
  */

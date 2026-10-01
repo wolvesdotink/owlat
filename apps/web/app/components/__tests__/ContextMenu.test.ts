@@ -9,6 +9,8 @@
  *   - closes on Escape
  *   - degrades gracefully: with no enabled items it never opens, so the native
  *     browser menu shows through
+ *   - `items` may be a getter, called only when the menu opens (long tables
+ *     pass one so no row builds a menu array on render)
  */
 import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -18,7 +20,9 @@ import UiContextMenu, { type ContextMenuItem } from '@owlat/ui/components/ui/Con
 
 const Icon = defineComponent({ name: 'Icon', props: ['name'], template: '<i />' });
 
-function makeHarness(items: ContextMenuItem[]) {
+type Items = ContextMenuItem[] | (() => ContextMenuItem[]);
+
+function makeHarness(items: Items) {
 	return defineComponent({
 		components: { UiContextMenu },
 		setup() {
@@ -32,7 +36,7 @@ function makeHarness(items: ContextMenuItem[]) {
 	});
 }
 
-function mountHarness(items: ContextMenuItem[]) {
+function mountHarness(items: Items) {
 	return mount(makeHarness(items), {
 		attachTo: document.body,
 		global: { components: { Icon } },
@@ -126,6 +130,44 @@ describe('UiContextMenu', () => {
 
 		await wrapper.find('.trigger').trigger('contextmenu', { clientX: 5, clientY: 5 });
 
+		expect(menuEl()).toBeNull();
+		wrapper.unmount();
+	});
+
+	it('calls an items getter only when the menu opens, once per opening', async () => {
+		let selected = false;
+		const getItems = vi.fn((): ContextMenuItem[] => [
+			{ id: 'select', label: selected ? 'Deselect' : 'Select', run: () => {} },
+		]);
+		const wrapper = mountHarness(getItems);
+
+		// Mounting (a table row rendering) builds nothing.
+		expect(getItems).not.toHaveBeenCalled();
+
+		await wrapper.find('.trigger').trigger('contextmenu', { clientX: 5, clientY: 5 });
+		expect(getItems).toHaveBeenCalledTimes(1);
+		expect(menuItems().map((el) => el.textContent?.trim())).toEqual(['Select']);
+
+		document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+		await waitForClose();
+
+		// The next opening reads the state as it is now.
+		selected = true;
+		await wrapper.find('.trigger').trigger('keydown', { key: 'ContextMenu' });
+		expect(getItems).toHaveBeenCalledTimes(2);
+		expect(menuItems().map((el) => el.textContent?.trim())).toEqual(['Deselect']);
+		wrapper.unmount();
+	});
+
+	it('lets the native menu through when a getter yields no enabled items', async () => {
+		const wrapper = mountHarness(() => [
+			{ id: 'archive', label: 'Archive', disabled: true, run: () => {} },
+		]);
+		const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+		wrapper.find('.trigger').element.dispatchEvent(event);
+		await wrapper.vm.$nextTick();
+
+		expect(event.defaultPrevented).toBe(false);
 		expect(menuEl()).toBeNull();
 		wrapper.unmount();
 	});

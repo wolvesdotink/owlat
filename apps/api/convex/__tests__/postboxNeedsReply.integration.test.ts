@@ -27,14 +27,23 @@ import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { api, internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
+import { normalizeQuestionKey } from '../inbox/clarificationMemoryMatch';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
 	return {
 		...actual,
-		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		requireOrgMember: vi.fn().mockResolvedValue({
+			userId: 'test-user',
+			role: 'owner',
+			activeOrganizationId: 'test-org',
+		}),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
-		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		getMutationContext: vi.fn().mockResolvedValue({
+			userId: 'test-user',
+			role: 'owner',
+			activeOrganizationId: 'test-org',
+		}),
 		getBetterAuthSessionWithRole: vi.fn().mockResolvedValue({
 			userId: 'test-user',
 			role: 'owner',
@@ -45,6 +54,9 @@ vi.mock('../lib/sessionOrganization', async () => {
 
 // Hoisted so the vi.mock factories below can reference it.
 const runLlmObjectMock = vi.hoisted(() => vi.fn());
+// Candidate replies for the clarification divergence check. Rejects unless a
+// test queues replies, which is what the real dispatcher does without a key.
+const runLlmTextMock = vi.hoisted(() => vi.fn());
 
 // Stub the model resolver so the action needs no LLM key, and the object
 // dispatch so we control the refinement result.
@@ -55,7 +67,7 @@ vi.mock('../lib/llmProvider', async () => {
 
 vi.mock('../lib/llm/dispatch', async () => {
 	const actual = await vi.importActual<typeof import('../lib/llm/dispatch')>('../lib/llm/dispatch');
-	return { ...actual, runLlmObject: runLlmObjectMock };
+	return { ...actual, runLlmObject: runLlmObjectMock, runLlmText: runLlmTextMock };
 });
 
 // AWS-SDK / heavy node-only modules aren't on the path under test; drop them.
@@ -71,6 +83,8 @@ const modules = Object.fromEntries(
 
 beforeEach(() => {
 	runLlmObjectMock.mockReset();
+	runLlmTextMock.mockReset();
+	runLlmTextMock.mockRejectedValue(new Error('no model in tests'));
 });
 
 // ─── Seed helpers ────────────────────────────────────────────────────────────
@@ -214,6 +228,84 @@ async function setNeedsReply(
 // ─── classifyThread ──────────────────────────────────────────────────────────
 
 describe('mail.needsReplyClassify.classifyThread', () => {
+	it('keeps a memory-filled question on the card, pre-picked as a memory answer', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['ai']);
+		const seeded = await seedMailbox(t);
+		const { threadId } = await seedThreadWithMessage(t, seeded, {
+			needsReplyPendingAt: Date.now(),
+		});
+		const dock = 'Which loading dock should they use?';
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			// Org-general standing answer: fills for any sender.
+			await ctx.db.insert('clarificationMemory', {
+				slotType: 'factual_lookup',
+				questionKey: normalizeQuestionKey('factual_lookup', dock),
+				questionText: dock,
+				answerValue: 'Bay 3',
+				source: 'reply_queue',
+				answerCount: 2,
+				useCount: 0,
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+
+		const usage = { promptTokens: 1, completionTokens: 1, totalTokens: 2 };
+		const slot = (slotType: string, question: string) => ({
+			slotType,
+			question,
+			answerableFromContext: false,
+			decisionRelevant: true,
+			options: [],
+		});
+		runLlmObjectMock
+			.mockResolvedValueOnce({
+				object: {
+					intent: 'request_for_action',
+					needsReply: true,
+					urgency: 'normal',
+					askSummary: 'Delivery details',
+					dueHint: null,
+				},
+				tokenUsage: usage,
+				modelUsed: 'test-model',
+			})
+			.mockResolvedValueOnce({
+				object: {
+					slots: [slot('factual_lookup', dock), slot('date_time', 'When can we deliver?')],
+				},
+				tokenUsage: usage,
+				modelUsed: 'test-model',
+			})
+			.mockResolvedValueOnce({
+				object: { divergentSlotIndexes: [0, 1] },
+				tokenUsage: usage,
+				modelUsed: 'test-model',
+			})
+			.mockResolvedValueOnce({ object: { translations: [] }, tokenUsage: usage, modelUsed: 'm' });
+		runLlmTextMock
+			.mockResolvedValueOnce({ text: 'Bay 1, Monday.', tokenUsage: usage, modelUsed: 'm' })
+			.mockResolvedValueOnce({ text: 'Bay 3, Friday.', tokenUsage: usage, modelUsed: 'm' });
+
+		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, { threadId });
+
+		const clarification = (await getThread(t, threadId))?.needsReply?.clarification;
+		expect(clarification?.isNeeded).toBe(true);
+		expect(clarification?.questions).toEqual([
+			expect.objectContaining({
+				text: dock,
+				answerKind: 'text',
+				answer: expect.objectContaining({ value: 'Bay 3', source: 'memory' }),
+			}),
+			expect.objectContaining({ text: 'When can we deliver?', answerKind: 'date' }),
+		]);
+		expect(clarification?.questions[1]?.answer).toBeUndefined();
+	});
+
 	it('persists the LLM-refined result on the thread', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['mail.external']);
@@ -615,6 +707,82 @@ describe('mail.needsReply.listQueue', () => {
 	});
 });
 
+// ─── Reply Queue count (plan 2.11) ──────────────────────────────────────────
+
+describe('mail.needsReply.countQueue', () => {
+	it('counts exactly the rows listQueue returns, follow-ups included', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const seeded = await seedMailbox(t);
+		const visible = await seedThreadWithMessage(t, seeded);
+		const snoozed = await seedThreadWithMessage(t, seeded);
+		const orphan = await seedThreadWithMessage(t, seeded);
+		const muted = await seedThreadWithMessage(t, seeded);
+		const followUp = await seedThreadWithMessage(t, seeded, { fromAddress: OWNER });
+		for (const row of [visible, snoozed, orphan, muted]) {
+			await setNeedsReply(t, row.threadId, row.messageId);
+		}
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			await ctx.db.patch(snoozed.messageId, { snoozedUntil: now + 60 * 60 * 1000 });
+			await ctx.db.delete(orphan.messageId);
+			await ctx.db.patch(muted.threadId, { mutedAt: now });
+			await ctx.db.patch(followUp.threadId, {
+				followUp: {
+					messageId: followUp.messageId,
+					remindAt: now - 1000,
+					armedAt: now - 5000,
+					dueAt: now - 1000,
+					waitingOn: 'alice@example.com',
+				},
+			});
+		});
+
+		const { items } = await t.query(api.mail.needsReply.listQueue, {
+			mailboxId: seeded.mailboxId,
+		});
+		const count = await t.query(api.mail.needsReply.countQueue, {
+			mailboxId: seeded.mailboxId,
+		});
+
+		expect(items.map((i) => i.threadId).sort()).toEqual(
+			[visible.threadId, followUp.threadId].sort()
+		);
+		expect(count).toBe(items.length);
+	});
+
+	it('follows the list as rows are cleared', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const seeded = await seedMailbox(t);
+		const { threadId, messageId } = await seedThreadWithMessage(t, seeded);
+		await setNeedsReply(t, threadId, messageId);
+		expect(await t.query(api.mail.needsReply.countQueue, { mailboxId: seeded.mailboxId })).toBe(1);
+
+		await t.mutation(api.mail.needsReply.clear, { threadId });
+
+		expect(await t.query(api.mail.needsReply.countQueue, { mailboxId: seeded.mailboxId })).toBe(0);
+	});
+
+	it('returns 0 for an anonymous caller and for an editor who does not own the mailbox', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const seeded = await seedMailbox(t);
+		const { threadId, messageId } = await seedThreadWithMessage(t, seeded);
+		await setNeedsReply(t, threadId, messageId);
+
+		vi.mocked(getBetterAuthSessionWithRole).mockResolvedValueOnce(null);
+		expect(await t.query(api.mail.needsReply.countQueue, { mailboxId: seeded.mailboxId })).toBe(0);
+
+		vi.mocked(getBetterAuthSessionWithRole).mockResolvedValueOnce({
+			userId: 'other-user',
+			role: 'editor',
+			activeOrganizationId: 'test-org',
+		});
+		expect(await t.query(api.mail.needsReply.countQueue, { mailboxId: seeded.mailboxId })).toBe(0);
+	});
+});
+
 // ─── Reconcile sweep ─────────────────────────────────────────────────────────
 
 describe('mail.needsReply.sweepPending', () => {
@@ -622,9 +790,15 @@ describe('mail.needsReply.sweepPending', () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['mail.external']);
 		const seeded = await seedMailbox(t);
-		const staleAt = Date.now() - 10 * 60 * 1000;
+		const staleAt = Date.now() - 20 * 60 * 1000;
 		const { threadId: staleThread } = await seedThreadWithMessage(t, seeded, {
 			needsReplyPendingAt: staleAt,
+		});
+		// Still waiting for an action slot, not lost: re-scheduling it would
+		// classify (and draft) the thread twice.
+		const queuedAt = Date.now() - 8 * 60 * 1000;
+		const { threadId: queuedThread } = await seedThreadWithMessage(t, seeded, {
+			needsReplyPendingAt: queuedAt,
 		});
 		const { threadId: freshThread } = await seedThreadWithMessage(t, seeded, {
 			needsReplyPendingAt: Date.now(),
@@ -640,6 +814,8 @@ describe('mail.needsReply.sweepPending', () => {
 
 			const stale = await getThread(t, staleThread);
 			expect(stale?.needsReplyPendingAt).toBeGreaterThan(staleAt);
+			const queued = await getThread(t, queuedThread);
+			expect(queued?.needsReplyPendingAt).toBe(queuedAt);
 			const fresh = await getThread(t, freshThread);
 			expect(fresh?.needsReplyPendingAt).toBeDefined();
 			const idle = await getThread(t, idleThread);

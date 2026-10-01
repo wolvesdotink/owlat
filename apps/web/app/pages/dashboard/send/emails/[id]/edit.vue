@@ -7,6 +7,7 @@ import {
 	type HistoryState,
 } from '@owlat/email-builder';
 import { api } from '@owlat/api';
+import { campaignReturnTarget } from '~/lib/campaignCompose';
 
 const { t } = useI18n();
 
@@ -18,6 +19,7 @@ definePageMeta({
 });
 
 const router = useRouter();
+const route = useRoute();
 const templateId = useRouteId<'emailTemplates'>();
 const { hasActiveOrganization } = useOrganizationContext();
 const { isFocusMode } = useFocusMode();
@@ -68,6 +70,7 @@ const {
 	isSaving,
 	hasChanges,
 	showUnsavedChangesDialog,
+	isSavingBeforeLeave,
 	confirmDiscard,
 	confirmSave,
 	cancelNavigation,
@@ -132,9 +135,18 @@ const handleRestoreVersion = (state: HistoryState) => {
 	builderRef.value?.loadState(state);
 };
 
+// Opened from the campaign wizard (`?returnTo=`), every way back leads to that
+// campaign instead of the email list, so the draft picks up where it left off.
+const campaignReturn = computed(() => campaignReturnTarget(route.query['returnTo']));
+const backLabel = computed(() =>
+	campaignReturn.value
+		? t('dashboard.send.emails.detail.edit.backToCampaign')
+		: t('dashboard.send.emails.detail.edit.backToEmails')
+);
+
 // Back handler
 const handleBack = () => {
-	router.push('/dashboard/send/marketing');
+	router.push(campaignReturn.value ?? '/dashboard/send/marketing');
 };
 
 // Settings handler
@@ -175,110 +187,132 @@ async function handlePublicationToggle() {
 
 <template>
 	<div
+		class="flex flex-col"
 		:class="
 			isFocusMode
 				? 'h-[calc(100dvh-var(--titlebar-h,0px))]'
 				: 'h-[calc(100dvh-var(--titlebar-h,0px)-64px)]'
 		"
 	>
-		<UiQueryBoundary
-			:loading="templateLoading"
-			:error="templateError"
-			:error-title="t('dashboard.send.emails.detail.edit.loadError')"
-			@retry="refetchTemplate"
+		<!--
+			Opened from the campaign wizard: a strip above the builder, not one more
+			toolbar button, because the toolbar is already full at laptop widths.
+		-->
+		<div
+			v-if="campaignReturn"
+			class="shrink-0 flex items-center justify-between gap-3 border-b border-border-subtle bg-bg-surface px-4 py-2"
+			data-testid="editor-campaign-return"
 		>
-			<template #loading>
-				<div class="h-full flex items-center justify-center bg-bg-deep">
-					<div class="flex flex-col items-center gap-3">
-						<UiSpinner />
-						<p class="text-text-secondary text-sm">
-							{{ t('dashboard.send.emails.detail.edit.loading') }}
+			<p class="min-w-0 text-sm text-text-secondary">
+				{{ t('dashboard.send.emails.detail.edit.campaignReturnHint') }}
+			</p>
+			<UiButton variant="secondary" size="sm" class="shrink-0" @click="handleBack">
+				<template #iconLeft><Icon name="lucide:arrow-left" class="w-4 h-4" /></template>
+				{{ backLabel }}
+			</UiButton>
+		</div>
+
+		<div class="min-h-0 flex-1">
+			<UiQueryBoundary
+				:loading="templateLoading"
+				:error="templateError"
+				:error-title="t('dashboard.send.emails.detail.edit.loadError')"
+				@retry="refetchTemplate"
+			>
+				<template #loading>
+					<div class="h-full flex items-center justify-center bg-bg-deep">
+						<div class="flex flex-col items-center gap-3">
+							<UiSpinner />
+							<p class="text-text-secondary text-sm">
+								{{ t('dashboard.send.emails.detail.edit.loading') }}
+							</p>
+						</div>
+					</div>
+				</template>
+
+				<!-- Not Found State -->
+				<div v-if="!template" class="h-full flex items-center justify-center bg-bg-deep">
+					<div class="text-center">
+						<div class="w-12 h-12 text-error mx-auto mb-4">!</div>
+						<h2 class="text-xl font-semibold text-text-primary mb-2">
+							{{ t('dashboard.send.emails.detail.edit.notFound.title') }}
+						</h2>
+						<p class="text-text-secondary mb-6">
+							{{ t('dashboard.send.emails.detail.edit.notFound.description') }}
 						</p>
+						<UiButton @click="handleBack">{{ backLabel }}</UiButton>
 					</div>
 				</div>
-			</template>
 
-			<!-- Not Found State -->
-			<div v-if="!template" class="h-full flex items-center justify-center bg-bg-deep">
-				<div class="text-center">
-					<div class="w-12 h-12 text-error mx-auto mb-4">!</div>
-					<h2 class="text-xl font-semibold text-text-primary mb-2">
-						{{ t('dashboard.send.emails.detail.edit.notFound.title') }}
-					</h2>
-					<p class="text-text-secondary mb-6">
-						{{ t('dashboard.send.emails.detail.edit.notFound.description') }}
-					</p>
-					<UiButton @click="handleBack">{{
-						t('dashboard.send.emails.detail.edit.backToEmails')
-					}}</UiButton>
-				</div>
-			</div>
-
-			<!-- Too narrow for the canvas — an honest gate beats a broken editor. -->
-			<EmailBuilderViewportGate v-else-if="!builderFits">
-				<template #action>
-					<UiButton variant="secondary" @click="handleBack">
-						{{ t('dashboard.send.emails.detail.edit.backToEmails') }}
-					</UiButton>
-				</template>
-			</EmailBuilderViewportGate>
-
-			<!-- Email Builder -->
-			<UiErrorBoundary
-				v-else
-				:fallback-message="t('dashboard.send.emails.detail.edit.builderError')"
-			>
-				<EmailBuilder
-					ref="builderRef"
-					v-model:blocks="blocks"
-					v-model:subject="subject"
-					v-model:name="name"
-					:variables="variables"
-					:config="{
-						variableType: 'personalization',
-						theme: emailTheme,
-						showMandatoryUnsubscribeFooter: true,
-						showSettings: true,
-					}"
-					:is-saving="isSaving"
-					:plain-text-override="plainTextOverride"
-					:allow-plain-text-override="true"
-					@update:plain-text-override="plainTextOverride = $event"
-					@save="requestSave"
-					@back="handleBack"
-					@settings="handleSettings"
-					@send-test="handleSendTest"
-				>
-					<!-- Toolbar actions -->
-					<template #toolbar-actions>
-						<EmailTemplatePublishButton
-							:is-published="isPublished"
-							:has-changes="hasChanges"
-							:has-stored-html="Boolean(template?.htmlContent)"
-							:loading="isChangingPublication"
-							@toggle="handlePublicationToggle"
-						/>
-						<EmailTemplateHistoryPanel
-							:template-id="templateId"
-							:has-unsaved-changes="hasChanges"
-							@restore="handleRestoreVersion"
-						/>
-						<ShareLinksPopover :email-template-id="templateId" :has-unsaved-changes="hasChanges" />
-						<UiButton
-							variant="outline"
-							size="sm"
-							:title="t('dashboard.send.emails.detail.edit.manageTranslations')"
-							@click="handleTranslations"
-						>
-							<template #iconLeft>
-								<Icon name="lucide:languages" class="w-4 h-4" />
-							</template>
-							{{ t('dashboard.send.emails.detail.edit.translations') }}
+				<!-- Too narrow for the canvas — an honest gate beats a broken editor. -->
+				<EmailBuilderViewportGate v-else-if="!builderFits">
+					<template #action>
+						<UiButton variant="secondary" @click="handleBack">
+							{{ backLabel }}
 						</UiButton>
 					</template>
-				</EmailBuilder>
-			</UiErrorBoundary>
-		</UiQueryBoundary>
+				</EmailBuilderViewportGate>
+
+				<!-- Email Builder -->
+				<UiErrorBoundary
+					v-else
+					:fallback-message="t('dashboard.send.emails.detail.edit.builderError')"
+				>
+					<EmailBuilder
+						ref="builderRef"
+						v-model:blocks="blocks"
+						v-model:subject="subject"
+						v-model:name="name"
+						:variables="variables"
+						:config="{
+							variableType: 'personalization',
+							theme: emailTheme,
+							showMandatoryUnsubscribeFooter: true,
+							showSettings: true,
+						}"
+						:is-saving="isSaving"
+						:plain-text-override="plainTextOverride"
+						:allow-plain-text-override="true"
+						@update:plain-text-override="plainTextOverride = $event"
+						@save="requestSave"
+						@back="handleBack"
+						@settings="handleSettings"
+						@send-test="handleSendTest"
+					>
+						<!-- Toolbar actions -->
+						<template #toolbar-actions>
+							<EmailTemplatePublishButton
+								:is-published="isPublished"
+								:has-changes="hasChanges"
+								:has-stored-html="Boolean(template?.htmlContent)"
+								:loading="isChangingPublication"
+								@toggle="handlePublicationToggle"
+							/>
+							<EmailTemplateHistoryPanel
+								:template-id="templateId"
+								:has-unsaved-changes="hasChanges"
+								@restore="handleRestoreVersion"
+							/>
+							<ShareLinksPopover
+								:email-template-id="templateId"
+								:has-unsaved-changes="hasChanges"
+							/>
+							<UiButton
+								variant="outline"
+								size="sm"
+								:title="t('dashboard.send.emails.detail.edit.manageTranslations')"
+								@click="handleTranslations"
+							>
+								<template #iconLeft>
+									<Icon name="lucide:languages" class="w-4 h-4" />
+								</template>
+								{{ t('dashboard.send.emails.detail.edit.translations') }}
+							</UiButton>
+						</template>
+					</EmailBuilder>
+				</UiErrorBoundary>
+			</UiQueryBoundary>
+		</div>
 
 		<!-- Media Picker Modal -->
 		<MediaPickerModal
@@ -290,6 +324,7 @@ async function handlePublicationToggle() {
 		<!-- Unsaved Changes Dialog -->
 		<UnsavedChangesDialog
 			:show="showUnsavedChangesDialog"
+			:saving="isSavingBeforeLeave"
 			@close="cancelNavigation"
 			@discard="confirmDiscard"
 			@save="confirmSave"

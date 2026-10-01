@@ -77,6 +77,7 @@ import { getClientIp, rateLimitedResponse } from '../lib/publicRateLimit';
 import { pluginVerifier } from '../providers/feedback';
 import { missingDeclaredSignatureHeaders } from './providerVerifierRegistry';
 import { InboundBatchDispatchError, dispatchEventsInOrder, jsonResponse } from './inboundHttp';
+import { isWorkspaceDeletionRefusal, workspaceDeletionAck } from './workspaceDeletionAck';
 import type { PluginFeedbackClaimResult } from './pluginFeedbackDeliveries';
 import {
 	PluginFeedbackBatchTooLargeError,
@@ -262,6 +263,12 @@ async function deliver(
 		// The claim goes back: a body we could not apply is a delivery that did not
 		// happen, and the provider's retry must not be mistaken for an attack.
 		await releaseClaim(ctx, verification.deliveryDigest);
+		// The workspace is being deleted: acknowledge rather than have the
+		// provider redeliver into the emptied workspace (no audit row either —
+		// the fence would refuse it).
+		if (isWorkspaceDeletionRefusal(error)) {
+			return workspaceDeletionAck(`[${definition.kind} Webhook]`);
+		}
 		logError(`[${definition.kind} Webhook] Failed to apply delivery:`, error);
 		// AUDITED WHATEVER WENT WRONG. An authenticated, authorized delivery that
 		// we then refused is exactly the case an operator opens the Audit Log to

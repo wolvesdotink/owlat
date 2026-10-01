@@ -17,6 +17,8 @@ definePageMeta({
 const router = useRouter();
 const templateId = useRouteId<'emailTemplates'>();
 const { showToast } = useToast();
+const { showOperationError } = useOperationErrorToast();
+const { emailTheme } = useEmailTheme();
 
 // Fetch template data
 const {
@@ -73,6 +75,7 @@ const getLanguageNativeLabel = (code: string) => {
 // user stays on the page with their edits.
 const {
 	showDialog: showUnsavedDialog,
+	isSavingBeforeLeave,
 	confirmDiscard,
 	confirmSave,
 	cancelNavigation,
@@ -155,6 +158,9 @@ const buildTranslationsJson = () => {
 // Save handler. Resolves to whether the save succeeded so the unsaved-changes
 // guard keeps the user on the page (with their edits) when it fails.
 const handleSave = async (): Promise<boolean> => {
+	// The row the writes and their delivery HTML are built on.
+	const row = template.value;
+	if (!row) return false;
 	isSaving.value = true;
 	try {
 		const outcome = await emailSettingsSave({
@@ -170,14 +176,23 @@ const handleSave = async (): Promise<boolean> => {
 				supportedLanguages: form.supportedLanguages,
 				translations: buildTranslationsJson(),
 			},
+			base: {
+				content: row.content,
+				plainTextOverride: row.plainTextOverride,
+				revision: row.contentRevision ?? 0,
+			},
+			renderOptions: { theme: emailTheme.value, variableType: 'personalization' },
 			update: (payload) => updateTemplate({ templateId: templateId.value, ...payload }),
-			setDefaultLanguage: ({ language }) =>
-				promoteDefaultLanguage({ templateId: templateId.value, language }),
+			setDefaultLanguage: (payload) =>
+				promoteDefaultLanguage({ templateId: templateId.value, ...payload }),
 		});
 
 		switch (outcome.status) {
 			case 'failed':
 				// The mutation already surfaced its own error toast.
+				return false;
+			case 'render-failed':
+				showOperationError(outcome.error);
 				return false;
 			case 'no-overlay':
 				showToast(
@@ -336,6 +351,7 @@ const handleBack = () => {
 		<!-- Unsaved Changes Dialog -->
 		<UnsavedChangesDialog
 			:show="showUnsavedDialog"
+			:saving="isSavingBeforeLeave"
 			@close="cancelNavigation"
 			@discard="confirmDiscard"
 			@save="confirmSave"

@@ -9,6 +9,8 @@
  *   - before alignment the two sides are merged: inbox mail follows the
  *     provider, mail filed in Owlat is pushed, flags are combined, nothing is
  *     deleted;
+ *   - each message records where the provider was last seen holding it, so
+ *     a restarted worker can still tell a deletion from mail it never had;
  *   - "new mail only" stops both directions and drops the queue;
  *   - provider folders are mirrored as local folders, and mail lands in them.
  */
@@ -106,6 +108,8 @@ const observe = (
 		remoteFolders?: string[];
 		isGone?: boolean;
 		flags?: { seen: boolean; flagged: boolean; answered: boolean };
+		sightings?: Array<{ remoteName: string; uidValidity: number; uid: number }>;
+		forgetSightings?: boolean;
 	}>
 ) =>
 	t.mutation(internal.mail.external.remoteState.applyRemoteObservations, {
@@ -187,6 +191,109 @@ describe('mirroring provider changes once aligned', () => {
 		// The provider has not been told yet, so it still shows the inbox.
 		await observe(t, accountId, [{ messageId: 'a@x.example', remoteFolders: ['INBOX'] }]);
 
+		expect(await folderOf(t, id)).toBe(folders.archive);
+	});
+});
+
+describe('where the provider was seen holding a message (#1071)', () => {
+	const sightingOf = async (t: TestConvex<typeof schema>, id: Id<'mailMessages'>) =>
+		await t.run(async (ctx) => (await ctx.db.get(id))?.remoteSighting ?? null);
+	const seenIn = (t: TestConvex<typeof schema>, id: Id<'mailMessages'>, remoteName: string) =>
+		t.run(async (ctx) =>
+			ctx.db.patch(id, { remoteSighting: { remoteName, uidValidity: 1, uid: 9 } })
+		);
+
+	it('records it at ingest and hands it to the worker', async () => {
+		const { t, accountId } = await fullSyncMailbox();
+		const blob = await t.run(async (ctx) => ctx.storage.store(new Blob(['raw'])));
+		const outcome = await t.mutation(internal.mail.external.delivery.ingestExternalMessage, {
+			accountId,
+			folderRole: 'inbox',
+			remoteName: 'INBOX',
+			remoteUid: 42,
+			remoteUidValidity: 3,
+			rawStorageId: blob,
+			rawSize: 3,
+			from: 'someone@example.com',
+			to: ['a@owlat.test'],
+			cc: [],
+			bcc: [],
+			subject: 'New',
+			messageId: '<n@x.example>',
+			receivedAt: Date.now(),
+			attachments: [],
+			origin: 'sync',
+		});
+		if (!('messageId' in outcome)) throw new Error('not ingested');
+
+		const sighting = { remoteName: 'INBOX', uidValidity: 3, uid: 42 };
+		expect(await sightingOf(t, outcome.messageId)).toEqual(sighting);
+		const listed = await t.query(internal.mail.external.remoteState.listLocalMessages, {
+			accountId,
+			paginationOpts: { numItems: 10, cursor: null },
+		});
+		expect(listed.page).toEqual([expect.objectContaining({ messageId: 'n@x.example', sighting })]);
+	});
+
+	it('records the sighting of the folder each copy sits in', async () => {
+		const { t, mailboxId, accountId } = await fullSyncMailbox();
+		const inInbox = await seedMessage(t, mailboxId, { rfc822MessageId: 'a@x.example' });
+		const inSent = await seedMessage(t, mailboxId, {
+			rfc822MessageId: 'a@x.example',
+			role: 'sent',
+		});
+
+		await observe(t, accountId, [
+			{
+				messageId: 'a@x.example',
+				sightings: [
+					{ remoteName: 'INBOX', uidValidity: 1, uid: 10 },
+					{ remoteName: 'Archive', uidValidity: 1, uid: 20 },
+				],
+			},
+		]);
+
+		expect(await sightingOf(t, inInbox)).toEqual({ remoteName: 'INBOX', uidValidity: 1, uid: 10 });
+		expect(await sightingOf(t, inSent)).toBeNull();
+	});
+
+	it('records the sighting of the folder a pulled move lands in', async () => {
+		const { t, mailboxId, accountId, folders } = await fullSyncMailbox();
+		const id = await seedMessage(t, mailboxId, { rfc822MessageId: 'a@x.example' });
+		await seenIn(t, id, 'INBOX');
+
+		await observe(t, accountId, [
+			{
+				messageId: 'a@x.example',
+				remoteFolders: ['Archive'],
+				sightings: [{ remoteName: 'Archive', uidValidity: 1, uid: 20 }],
+			},
+		]);
+
+		expect(await folderOf(t, id)).toBe(folders.archive);
+		expect(await sightingOf(t, id)).toEqual({ remoteName: 'Archive', uidValidity: 1, uid: 20 });
+	});
+
+	it('drops the sighting of mail it moves to Trash as gone, so it is not called gone again', async () => {
+		const { t, mailboxId, accountId, folders } = await fullSyncMailbox();
+		const id = await seedMessage(t, mailboxId, { rfc822MessageId: 'a@x.example' });
+		await seenIn(t, id, 'INBOX');
+
+		await observe(t, accountId, [{ messageId: 'a@x.example', isGone: true }]);
+
+		expect(await folderOf(t, id)).toBe(folders.trash);
+		expect(await sightingOf(t, id)).toBeNull();
+	});
+
+	it('forgets sightings when a merge asks, even with a write-back in flight', async () => {
+		const { t, mailboxId, accountId, folders } = await fullSyncMailbox({ aligned: false });
+		const id = await seedMessage(t, mailboxId, { rfc822MessageId: 'a@x.example' });
+		await seenIn(t, id, 'INBOX');
+		await t.mutation(api.mail.messageActions.archive, { messageIds: [id] });
+
+		await observe(t, accountId, [{ messageId: 'a@x.example', forgetSightings: true }]);
+
+		expect(await sightingOf(t, id)).toBeNull();
 		expect(await folderOf(t, id)).toBe(folders.archive);
 	});
 });
@@ -450,6 +557,50 @@ describe('mirrored folders renamed or deleted', () => {
 		});
 
 		expect(await t.run(async (ctx) => ctx.db.get(receiptsId))).not.toBeNull();
+	});
+
+	// Gmail's Important view ("[Gmail]/Wichtig") was mirrored as a folder by
+	// workers that read `specialUse` only. The provider still lists it, so it is
+	// not "gone"; the worker names it retired. Dropping its mapping while it held
+	// mail would leave that mail with no remote name, never reconciled again.
+	it('keeps a retired folder mapped while it holds mail, then drops it once empty', async () => {
+		const { t, mailboxId, accountId, receiptsId } = await withReceipts();
+		const id = await seedMessage(t, mailboxId, { rfc822MessageId: 'r@x.example' });
+		await t.run(async (ctx) => ctx.db.patch(id, { folderId: receiptsId }));
+		const mappings = async () =>
+			await t.run(async (ctx) =>
+				ctx.db
+					.query('externalMailFolderSync')
+					.withIndex('by_folder', (q) => q.eq('folderId', receiptsId))
+					.collect()
+			);
+		const listed = [...Object.values(REMOTE), 'INBOX.Receipts'];
+
+		await t.mutation(internal.mail.external.remoteState.forgetRemoteFolders, {
+			accountId,
+			listed,
+			retired: ['INBOX.Receipts'],
+		});
+		expect(await mappings()).toHaveLength(1);
+		expect(await t.run(async (ctx) => ctx.db.get(receiptsId))).not.toBeNull();
+
+		// Reconcile moved the message to where it lives on the provider.
+		const inbox = await t.run(
+			async (ctx) =>
+				(await ctx.db
+					.query('mailFolders')
+					.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
+					.collect())!.find((f) => f.role === 'inbox')!._id
+		);
+		await t.run(async (ctx) => ctx.db.patch(id, { folderId: inbox }));
+
+		await t.mutation(internal.mail.external.remoteState.forgetRemoteFolders, {
+			accountId,
+			listed,
+			retired: ['INBOX.Receipts'],
+		});
+		expect(await mappings()).toEqual([]);
+		expect(await t.run(async (ctx) => ctx.db.get(receiptsId))).toBeNull();
 	});
 
 	it('keeps a folder the provider renamed, which its new name still maps to', async () => {

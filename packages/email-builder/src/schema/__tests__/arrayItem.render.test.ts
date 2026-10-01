@@ -3,7 +3,7 @@ import { renderEmailHtml } from '@owlat/email-renderer';
 import { getSchema } from '../index';
 import { createArrayItem } from '../arrayItem';
 import type { PropertyField } from '../types';
-import type { EditorBlock } from '../../types';
+import type { EditorBlock, TableBlockContent } from '../../types';
 
 /**
  * Regression: clicking "Add item" on a List (`items: string[]`) or a Table
@@ -60,7 +60,7 @@ describe('array editor "Add item" keeps primitive array shape', () => {
 
 		const blocks: EditorBlock[] = [
 			{ id: 'list-1', type: 'list', content: { items: listItems, listType: 'bullet' } },
-			{ id: 'table-1', type: 'table', content: { headers, rows } },
+			{ id: 'table-1', type: 'table', content: { headers, rows } as TableBlockContent },
 		];
 
 		let html = '';
@@ -69,5 +69,25 @@ describe('array editor "Add item" keeps primitive array shape', () => {
 		}).not.toThrow();
 		expect(typeof html).toBe('string');
 		expect(html).toContain('First item');
+	});
+});
+
+describe('array editor "Add item" on accordion sections', () => {
+	it('gives every added section its own id, so the email keeps distinct toggles', () => {
+		const sectionsField = fieldByKey('accordion', 'sections');
+		const first = createArrayItem(sectionsField, []) as { id: string };
+		const second = createArrayItem(sectionsField, [first]) as { id: string };
+		expect(first.id).not.toBe('');
+		expect(second.id).not.toBe(first.id);
+
+		const html = renderEmailHtml([
+			{
+				id: 'acc',
+				type: 'accordion',
+				content: { sections: [first, second] },
+			} as unknown as EditorBlock,
+		]);
+		const ids = [...html.matchAll(/<input[^>]* id="([^"]*)"/g)].map((m) => m[1]);
+		expect(new Set(ids).size).toBe(2);
 	});
 });

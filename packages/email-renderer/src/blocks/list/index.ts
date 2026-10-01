@@ -84,7 +84,9 @@ export const listModule: BlockModule<'list'> = {
 	plaintext({ content }) {
 		return content.items
 			.map((item, i) => {
-				const stripped = item.replace(/<[^>]+>/g, '').trim();
+				// Items are plain text (the html part escapes them), so the text part
+				// shows them as written.
+				const stripped = item.trim();
 				switch (content.listType) {
 					case 'numbered':
 						return `${i + 1}. ${stripped}`;

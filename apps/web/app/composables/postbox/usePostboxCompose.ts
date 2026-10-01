@@ -4,8 +4,12 @@
  * Lifecycle:
  *   - ensureDraft() creates a draft row server-side if missing
  *   - any field change triggers a 1.5s-debounced upsert via update()
- *   - send() flushes pending autosave first, then invokes mailDrafts.send
- *     (which schedules dispatch after undoSendDelayMs)
+ *   - send() requires the server to have acknowledged the current snapshot
+ *     (retrying a failed save once), then invokes mailDrafts.send (which
+ *     schedules dispatch after undoSendDelayMs); a save that still fails
+ *     sends nothing
+ *   - a reopened draft writes and sends nothing until its row has loaded;
+ *     edits made meanwhile are merged over it (usePostboxComposeHydration)
  *   - offline (or a send that network-fails), send() instead queues the full
  *     compose payload in the on-device outbox and returns a synthetic
  *     {undoToken, sendAt}; the undo toast un-queues via the token
@@ -14,20 +18,26 @@
  */
 
 import type { FunctionReturnType } from 'convex/server';
+import type { OperationError } from '@owlat/shared/operationError';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
-import type { OperationError } from '@owlat/shared/operationError';
-import { SurfacedOperationError } from '~/lib/operationError';
+import type { MailboxComposerTarget } from '~/utils/composerTarget';
 import { postboxUndoSendDelayMsArg } from '~/utils/postboxUndoSendWindow';
+import { freshDraftGaps, isDraftGapsRefusal } from '~/utils/answerDraft';
 import {
 	usePostboxComposeAttachments,
 	type ComposerAttachment,
 } from './usePostboxComposeAttachments';
 import { usePostboxComposeAutosave } from './usePostboxComposeAutosave';
-import { usePostboxComposeHydration } from './usePostboxComposeHydration';
+import {
+	usePostboxComposeHydration,
+	type InitialHydrationState,
+	type TrackedDraftField,
+} from './usePostboxComposeHydration';
 import { usePostboxComposeMirror } from './usePostboxComposeMirror';
-import { usePostboxComposeOfflineSend, type SendOpts } from './usePostboxComposeOfflineSend';
+import { usePostboxComposeOfflineSend } from './usePostboxComposeOfflineSend';
+import { createSendNetworkClaim, usePostboxComposeSend } from './usePostboxComposeSend';
 import { usePostboxComposeSignatures } from './usePostboxComposeSignatures';
 import { usePostboxOfflineOutbox } from './usePostboxOfflineOutbox';
 import { usePostboxSettings } from './usePostboxSettings';
@@ -47,14 +57,15 @@ export type SendAsIdentity = FunctionReturnType<
 
 /**
  * The one-time seed a composer opens with: the one declaration every host
- * writes (the popup stack's ComposerSpec, the reader's InlineComposeSpec, the
+ * writes (the popup stack's ComposerSpec, Answer mode's seed, the
  * desktop compose window) and PostboxComposer hands over whole.
+ *
+ * Where it writes is a mailbox composer target (`utils/composerTarget`): the
+ * seed carries that target's fields (`mailboxId`, and `draftId` to reopen a
+ * draft or `inReplyToMessageId` for a reply) beside what to pre-fill, and
+ * `mailboxComposerTarget(seed)` names it.
  */
-export interface ComposerSeed {
-	mailboxId: Id<'mailboxes'>;
-	/** Reopen an existing draft (continue editing / after undo-send). */
-	draftId?: Id<'mailDrafts'>;
-	inReplyToMessageId?: Id<'mailMessages'>;
+export interface ComposerSeed extends Omit<MailboxComposerTarget, 'kind'> {
 	prefillTo?: string[];
 	prefillCc?: string[];
 	prefillBcc?: string[];
@@ -99,6 +110,15 @@ export function usePostboxCompose(seed: ComposerSeed) {
 	// "Remind me if no reply by…" — persisted on the draft and carried onto the
 	// sent thread as a follow-up watch (mail/followUps.ts). null = off.
 	const followUpRemindAt = ref<number | null>(null);
+	// A reopened draft's fields start empty and fill in when `drafts.get`
+	// answers; until then nothing may write or send the snapshot (#896).
+	const initialHydration = ref<InitialHydrationState>(seed.draftId ? 'loading' : 'ready');
+	// The body editor is withheld until then too, unless the seed brought the
+	// body: typing into an empty-looking editor would replace a saved body the
+	// user never saw, which the merge cannot tell from an intended rewrite.
+	const bodyPending = computed(
+		() => initialHydration.value !== 'ready' && seed.prefillBodyHtml === undefined
+	);
 
 	// Offline outbox: send() queues instead of failing while offline; the
 	// drain replays queued payloads on reconnect (usePostboxOfflineOutbox).
@@ -115,27 +135,23 @@ export function usePostboxCompose(seed: ComposerSeed) {
 	// completes, so every host gets the toast and the send sound.
 	const undoWindow = usePostboxUndoSend();
 	function armUndo(sent: { undoToken: string; sendAt: number }) {
-		undoWindow.arm({ ...sent, mailboxId: seed.mailboxId });
+		undoWindow.arm({
+			...sent,
+			mailboxId: seed.mailboxId,
+			replyToMessageId: seed.inReplyToMessageId,
+		});
 		return sent;
 	}
-	// While send() is actively intercepting, a TRANSPORT failure is claimed
-	// (no error toast) and turned into an offline enqueue instead. Every other
-	// category, and every failure outside a send, keeps today's treatment.
-	let interceptingSend = false;
-	let sendNetworkFailed = false;
-	const claimSendNetworkFailure = (op: OperationError): boolean => {
-		if (!interceptingSend || op.category !== 'network') return false;
-		sendNetworkFailed = true;
-		return true;
-	};
+	// During a send, a TRANSPORT failure becomes an offline enqueue.
+	const sendNetwork = createSendNetworkClaim();
 
 	const createDraft = useBackendOperation(api.mail.drafts.create, {
 		label: () => t('shared.postbox.usePostboxCompose.createOperation'),
-		onError: claimSendNetworkFailure,
+		onError: sendNetwork.claim,
 	});
 	const updateDraft = useBackendOperation(api.mail.drafts.update, {
 		label: () => t('shared.postbox.usePostboxCompose.saveOperation'),
-		onError: claimSendNetworkFailure,
+		onError: sendNetwork.claim,
 	});
 	const setIdentityMutation = useBackendOperation(api.mail.drafts.setIdentity, {
 		label: () => t('shared.postbox.usePostboxCompose.setIdentityOperation'),
@@ -143,9 +159,18 @@ export function usePostboxCompose(seed: ComposerSeed) {
 	const discardDraft = useBackendOperation(api.mail.drafts.discard, {
 		label: () => t('shared.postbox.usePostboxCompose.discardOperation'),
 	});
+	// An AI draft with a `[[...]]` gap left: Send is disabled for that already,
+	// so this is a race (a gap typed in the last moment); say it the same way.
+	const { showToast } = useToast();
+	const claimGapRefusal = (op: OperationError): boolean => {
+		if (!isDraftGapsRefusal(op)) return false;
+		const count = Math.max(1, freshDraftGaps(bodyHtml.value).length);
+		showToast(t('components.postbox.postboxComposerFooter.gapsLeft', { count }, count), 'error');
+		return true;
+	};
 	const sendDraft = useBackendOperation(api.mail.drafts.send, {
 		label: () => t('shared.postbox.usePostboxCompose.sendOperation'),
-		onError: claimSendNetworkFailure,
+		onError: (op) => sendNetwork.claim(op) || claimGapRefusal(op),
 	});
 	const cancelPending = useBackendOperation(api.mail.drafts.cancelPendingSend, {
 		label: () => t('shared.postbox.usePostboxCompose.undoSendOperation'),
@@ -156,11 +181,12 @@ export function usePostboxCompose(seed: ComposerSeed) {
 
 	// Draft row creation + the 1.5s-debounced autosave live in a sibling
 	// composable. Everything below drives the SAME row through `ensureDraft`.
-	const { ensureDraft, flush, cancelAutosave, settlePendingSave } = usePostboxComposeAutosave({
+	const autosave = usePostboxComposeAutosave({
 		mailboxId: seed.mailboxId,
 		inReplyToMessageId: seed.inReplyToMessageId,
 		draftId,
 		draftState,
+		initialHydration,
 		ensuring,
 		isSaving,
 		lastSavedAt,
@@ -175,6 +201,7 @@ export function usePostboxCompose(seed: ComposerSeed) {
 		createDraft,
 		updateDraft,
 	});
+	const { ensureDraft, cancelAutosave } = autosave;
 	// Attachment upload/remove + pending-handoff + forward-clone live in a
 	// sibling composable; it drives the same draft via ensureDraft/draftId.
 	const {
@@ -199,6 +226,7 @@ export function usePostboxCompose(seed: ComposerSeed) {
 		// autosaves — otherwise the swap would drop the attachment and leave the
 		// recipient with no way to reach it.
 		bodyHtml,
+		bodyLocked: () => bodyPending.value,
 		attachPendingKey: seed.attachPendingKey,
 		forwardAttachmentsFromMessageId: seed.forwardAttachmentsFromMessageId,
 	});
@@ -212,23 +240,37 @@ export function usePostboxCompose(seed: ComposerSeed) {
 	if (seed.prefillAttachments?.length) attachments.value = [...seed.prefillAttachments];
 
 	// Reopen an existing draft: hydrate the editor fields from the saved row.
-	if (seed.draftId) {
-		usePostboxComposeHydration(seed.draftId, {
-			toAddresses,
-			ccAddresses,
-			bccAddresses,
-			subject,
-			bodyHtml,
-			bodyBlocks,
-			fromAddress,
-			composerMode,
-			draftState,
-			scheduledSendAt,
-			followUpRemindAt,
-			attachments,
-			lastSavedAt,
-		});
-	}
+	// Fields the seed filled in are newer than the row and win the merge.
+	const seeded = (
+		[
+			['toAddresses', seed.prefillTo],
+			['ccAddresses', seed.prefillCc],
+			['bccAddresses', seed.prefillBcc],
+			['subject', seed.prefillSubject],
+			['bodyHtml', seed.prefillBodyHtml],
+		] as const
+	).flatMap(([name, value]): TrackedDraftField[] => (value === undefined ? [] : [name]));
+	const hydration = seed.draftId
+		? usePostboxComposeHydration(
+				seed.draftId,
+				{
+					toAddresses,
+					ccAddresses,
+					bccAddresses,
+					subject,
+					bodyHtml,
+					bodyBlocks,
+					fromAddress,
+					composerMode,
+					draftState,
+					scheduledSendAt,
+					followUpRemindAt,
+					attachments,
+					lastSavedAt,
+				},
+				{ state: initialHydration, seeded }
+			)
+		: null;
 
 	// Plan idea 7: mirror these exact fields on-device between server autosaves,
 	// and offer them back when a crash left the server row behind.
@@ -272,22 +314,7 @@ export function usePostboxCompose(seed: ComposerSeed) {
 		mailboxId: seed.mailboxId,
 		bodyHtml,
 		isReopenedDraft: Boolean(seed.draftId),
-	});
-
-	const canSend = computed(() => {
-		// Never let a send fire while an attachment upload is still in flight: the
-		// draft's `attachments` array has not yet committed the pending file, so a
-		// mid-upload send would silently drop it from the outgoing message. Mirror
-		// the chat composer (ChatInput), which gates its Send on `!isUploading`.
-		if (isUploading.value) return false;
-		if (toAddresses.value.length === 0) return false;
-		if (subject.value.trim().length > 0) return true;
-		if (attachments.value.length > 0) return true;
-		if (composerMode.value === 'full') return bodyBlocks.value.length > 0;
-		// Strip HTML tags before measuring length so an empty <p></p>
-		// from the contenteditable doesn't count as content.
-		const plain = bodyHtml.value.replace(/<[^>]+>/g, '').trim();
-		return plain.length > 0;
+		bodyLocked: () => bodyPending.value,
 	});
 
 	// The offline queue's payload builder lives in a sibling (file-size ratchet);
@@ -311,70 +338,43 @@ export function usePostboxCompose(seed: ComposerSeed) {
 		undoSendDelayMs: () => undoSendDelayMs.value,
 	});
 
-	/**
-	 * Hand the composition to the on-device outbox and retire its mirror.
-	 *
-	 * The queued payload is a COMPLETE copy of the text (undo hands the whole
-	 * thing back), so the mirror has nothing left to protect — and leaving it
-	 * would be actively wrong: a fresh compose mirrors under a shared
-	 * provisional key, so the next blank compose would be offered "Restore
-	 * unsaved changes" holding a message that is already queued, one click from
-	 * sending it twice. Only reached on a successful queue: `queueOfflineSend`
-	 * throws when the device could not store the payload, and that message still
-	 * lives in the composer, and no undo window is armed for it.
-	 */
-	async function queueSendOffline(opts?: SendOpts) {
-		const queued = await queueOfflineSend(opts);
-		draftMirror.retire();
-		return armUndo(queued);
-	}
+	const { send, flush, sendReady, draftNotice } = usePostboxComposeSend({
+		initialHydration,
+		// The offline-undo seed: the whole composition, newer than the row.
+		seedCarriesComposition:
+			seed.prefillTo !== undefined &&
+			seed.prefillSubject !== undefined &&
+			seed.prefillBodyHtml !== undefined,
+		isOffline: offlineOutbox.isOffline,
+		lastSavedAt,
+		network: sendNetwork,
+		settlePendingSave: autosave.settlePendingSave,
+		flushSave: autosave.flush,
+		sendDraft,
+		queueOfflineSend,
+		retireMirror: () => draftMirror.retire(),
+		armUndo,
+		undoSendDelayMs: () => undoSendDelayMs.value,
+	});
 
-	async function send(opts?: SendOpts) {
-		// Offline never touches the network — queue the payload on-device.
-		if (offlineOutbox.isOffline.value) return queueSendOffline(opts);
-
-		interceptingSend = true;
-		sendNetworkFailed = false;
-		try {
-			// Flush any pending autosave first
-			await settlePendingSave();
-
-			const id = await ensureDraft();
-			if (!id) {
-				// The draft row couldn't be created because the connection dropped
-				// mid-send — queue instead of losing the message.
-				if (sendNetworkFailed) return queueSendOffline(opts);
-				throw new Error('No draft');
-			}
-
-			const result = await sendDraft.run({
-				draftId: id,
-				// An explicit per-send window (the offline drain, tests) wins; with
-				// none, the user's preference decides. On the default window that
-				// resolves back to `undefined` and the server's own default applies.
-				undoSendDelayMs: opts?.undoSendDelayMs ?? undoSendDelayMs.value,
-				scheduledSendAt: opts?.scheduledSendAt,
-				allowUnsealed: opts?.allowUnsealed,
-			});
-			// `useBackendOperation.run` swallows categorized failures (it has already
-			// toasted them) and returns `undefined`. Surface that as a throw so undo
-			// is never armed and the host never moves on after a failed send —
-			// unless the failure was the TRANSPORT, in which case the message
-			// queues offline.
-			if (!result.ok) {
-				if (sendNetworkFailed) return queueSendOffline(opts);
-				// Already toasted by the operation module — the throw exists only so
-				// the caller does not treat a refusal as a send.
-				throw new SurfacedOperationError('Send failed');
-			}
-			// It is on the wire (or queued behind the undo window) — the mirror has
-			// nothing left to protect, and must not resurface on a reopened draft.
-			draftMirror.retire();
-			return armUndo(result.result as { undoToken: string; sendAt: number });
-		} finally {
-			interceptingSend = false;
-		}
-	}
+	const canSend = computed(() => {
+		// Never let a send fire while an attachment upload is still in flight: the
+		// draft's `attachments` array has not yet committed the pending file, so a
+		// mid-upload send would silently drop it from the outgoing message. Mirror
+		// the chat composer (ChatInput), which gates its Send on `!isUploading`.
+		if (isUploading.value) return false;
+		// A reopened draft that has not loaded would send (or queue) a snapshot
+		// of empty stand-ins; the draft notice says why Send is waiting.
+		if (!sendReady.value) return false;
+		if (toAddresses.value.length === 0) return false;
+		if (subject.value.trim().length > 0) return true;
+		if (attachments.value.length > 0) return true;
+		if (composerMode.value === 'full') return bodyBlocks.value.length > 0;
+		// Strip HTML tags before measuring length so an empty <p></p>
+		// from the contenteditable doesn't count as content.
+		const plain = bodyHtml.value.replace(/<[^>]+>/g, '').trim();
+		return plain.length > 0;
+	});
 
 	async function discard() {
 		cancelAutosave();
@@ -443,6 +443,9 @@ export function usePostboxCompose(seed: ComposerSeed) {
 		isSaving,
 		lastSavedAt,
 		draftMirror,
+		draftNotice,
+		bodyPending,
+		retryLoad: () => hydration?.retry(),
 		canSend,
 		isScheduled,
 		scheduledSendAt,

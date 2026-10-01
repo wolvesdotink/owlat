@@ -34,7 +34,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
+import { internalQuery, type MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { Doc, Id } from '../_generated/dataModel';
 import { mailMessageAttachmentValidator } from '../lib/validators/mailContent';
 import { insertDeliveredMessage } from './deliveryPipeline/insert';

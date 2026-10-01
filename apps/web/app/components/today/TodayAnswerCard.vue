@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { AnswerItem } from '~/composables/useAnswerQueue';
-import { replyQueueHeadline, type ReplyQueueText } from '~/utils/postboxReplyQueue';
+import { replyQueueHeadline } from '~/utils/postboxReplyQueue';
+import { useLocalized } from '~/composables/useLocalized';
 import { parseFromHeader } from '~/utils/todayDigest';
 import {
 	answerEffortParts,
@@ -34,9 +35,7 @@ const { t } = useI18n();
 const TOP = 3;
 const top = computed(() => props.items.slice(0, TOP));
 
-function text(value: ReplyQueueText): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const text = useLocalized();
 
 function rowTitle(item: AnswerItem): string {
 	if (item.source === 'mail') return text(replyQueueHeadline(item.row));
@@ -60,7 +59,7 @@ function rowDetail(item: AnswerItem): string {
 }
 function rowMeta(item: AnswerItem): string {
 	const when = formatCompactRelativeTime(item.at);
-	if (item.source === 'mail' && item.row.draftSlot)
+	if (item.source === 'mail' && item.row.hasDraftSlot)
 		return `${when} · ${t('components.today.answer.draftReady')}`;
 	if (item.source === 'team' && item.entry.message.draftResponse?.trim()) {
 		return `${when} · ${t('components.today.answer.draftReady')}`;

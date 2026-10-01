@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import type { Id } from '@owlat/api/dataModel';
-
 // The rail, its drawer and the new-channel / new-DM / browse / mentions
 // dialogs live in the parent route (pages/dashboard/chat.vue); this page is
 // the room's main column and its room-only dialogs.
@@ -20,8 +18,12 @@ const { railOpen, openRail } = useChatShell();
 const {
 	room,
 	roomLoading,
+	roomError,
+	refetchRoom,
 	messages,
 	messagesLoading,
+	messagesError,
+	refetchMessages,
 	hasMoreMessages,
 	loadMoreMessages,
 	atMaxMessages,
@@ -67,10 +69,6 @@ useHead({
 	},
 });
 
-const handleSend = async (text: string, attachmentIds?: Id<'mediaAssets'>[]) => {
-	await sendMessage(text, attachmentIds);
-};
-
 const handleLeave = async () => {
 	await leaveRoom();
 	router.push('/dashboard/chat');
@@ -96,10 +94,13 @@ const handleLeave = async () => {
 			</button>
 		</div>
 
-		<!-- Loading shell -->
-		<div v-if="roomLoading" class="flex-1 flex items-center justify-center">
-			<UiSpinner />
+		<!-- A failed read is not a room you cannot reach (#721). -->
+		<div v-if="roomError" class="flex-1 flex items-center justify-center">
+			<UiQueryBoundary :error="roomError" @retry="refetchRoom" />
 		</div>
+
+		<!-- Loading shell -->
+		<ChatRoomSkeleton v-else-if="roomLoading" />
 
 		<!-- Not found / no access -->
 		<div
@@ -161,17 +162,18 @@ const handleLeave = async () => {
 					>
 						{{ t('dashboard.chat.detail.loadEarlier') }}
 					</button>
+					<div v-if="messagesError" class="flex-1 flex items-center justify-center">
+						<UiQueryBoundary :error="messagesError" @retry="refetchMessages" />
+					</div>
 					<ChatMessageList
-						v-if="!messagesLoading"
+						v-else-if="!messagesLoading"
 						:messages="messages"
 						:current-user-id="currentUserId"
 						@edit="(id, text) => editMessage(id, text)"
 						@delete="(id) => deleteMessage(id)"
 					/>
-					<div v-else class="flex-1 flex items-center justify-center">
-						<UiSpinner size="md" />
-					</div>
-					<ChatInput v-if="room.isMember" @send="handleSend" />
+					<ChatRoomSkeleton v-else :header="false" />
+					<ChatInput v-if="room.isMember" :send="sendMessage" />
 				</div>
 
 				<!-- Member panel (right column) -->

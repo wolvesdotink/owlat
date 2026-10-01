@@ -30,12 +30,15 @@
  * counter.
  */
 
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { components } from '../_generated/api';
 import { TENANT_TABLES } from '../lib/tenantTables';
 import { betterAuthAdapterArgs } from '../lib/betterAuthAdapterArgs';
 import { deleteMessageRowAndBlobs } from '../mail/messagePurge';
+import { partBlobIds } from '../mail/messageParts';
 import { deleteBlobQuietly } from '../lib/storageBlobs';
+import { inboundBodyBlobIds } from '../lib/messageBodyInbound';
 import type { Doc, Id, TableNames } from '../_generated/dataModel';
 
 interface ResetCounts {
@@ -140,6 +143,11 @@ export const runReset = internalMutation({
 			await ctx.db.delete(s._id);
 			counts.instanceSettings++;
 		}
+		// The rows split off the singleton (plan 2.4): flags and counters.
+		const flagRows = await ctx.db.query('featureFlagSettings').collect(); // bounded: dev-only; singleton row
+		for (const row of flagRows) await ctx.db.delete(row._id);
+		const counterRows = await ctx.db.query('instanceCounters').collect(); // bounded: dev-only; one row per counter key
+		for (const row of counterRows) await ctx.db.delete(row._id);
 
 		const onboarding = await ctx.db.query('onboardingProgress').collect(); // bounded: dev-only; one row per user
 		for (const o of onboarding) {
@@ -204,9 +212,17 @@ function ownedBlobs(table: (typeof TENANT_TABLES)[number], row: Doc<TableNames>)
 		case 'mediaAssets':
 			return [(row as Doc<'mediaAssets'>).storageId];
 		case 'inboundMessages': {
-			const raw = (row as Doc<'inboundMessages'>).rawStorageId;
-			return raw ? [raw] : [];
+			const message = row as Doc<'inboundMessages'>;
+			return [
+				...(message.rawStorageId ? [message.rawStorageId] : []),
+				...inboundBodyBlobIds(message),
+				...replyBlobs(message.replyAttachments),
+			];
 		}
+		case 'conversationThreads':
+			return replyBlobs((row as Doc<'conversationThreads'>).replyAttachments);
+		case 'inboxFollowUps':
+			return replyBlobs((row as Doc<'inboxFollowUps'>).attachments);
 		case 'semanticFiles': {
 			const stored = (row as Doc<'semanticFiles'>).storageId;
 			return stored ? [stored] : [];
@@ -219,13 +235,22 @@ function ownedBlobs(table: (typeof TENANT_TABLES)[number], row: Doc<TableNames>)
 			const stored = (row as Doc<'mailArchiveImports'>).storageId;
 			return stored ? [stored] : [];
 		}
+		case 'mailMessageParts':
+			return partBlobIds(row as Doc<'mailMessageParts'>);
 		case 'mailDrafts':
 			return (row as Doc<'mailDrafts'>).attachments.map((att) => att.storageId);
 		case 'transactionalSends':
 			return ((row as Doc<'transactionalSends'>).attachmentStorageIds ?? []) as Id<'_storage'>[];
+		case 'transactionalPendingUploads':
+			return [(row as Doc<'transactionalPendingUploads'>).storageId];
 		default:
 			return [];
 	}
+}
+
+/** The blobs a Team inbox reply's attachment list owns. */
+function replyBlobs(entries: Doc<'inboxFollowUps'>['attachments']): Id<'_storage'>[] {
+	return (entries ?? []).flatMap((entry) => (entry.storageId ? [entry.storageId] : []));
 }
 
 /**

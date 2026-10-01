@@ -106,14 +106,14 @@ const errorTrend = computed<'up' | 'down' | 'stable'>(() => {
 		</div>
 
 		<!-- Loading State -->
-		<div v-if="metricsLoading" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">
-					{{ t('dashboard.admin.instance.agentHealth.loading') }}
-				</p>
-			</div>
-		</div>
+		<DashboardDetailSkeleton
+			v-if="metricsLoading"
+			:label="t('dashboard.admin.instance.agentHealth.loading')"
+			:header="false"
+			body="cards"
+			:sections="3"
+			class="max-w-5xl"
+		/>
 
 		<template v-else>
 			<div class="space-y-8 max-w-5xl">
@@ -155,7 +155,9 @@ const errorTrend = computed<'up' | 'down' | 'stable'>(() => {
 							:label="t('dashboard.admin.instance.agentHealth.metrics.queueDepth.label')"
 							:value="queueDepth"
 							icon="lucide:layers"
-							:description="t('dashboard.admin.instance.agentHealth.metrics.queueDepth.description')"
+							:description="
+								t('dashboard.admin.instance.agentHealth.metrics.queueDepth.description')
+							"
 						/>
 						<AgentMetricCard
 							:label="t('dashboard.admin.instance.agentHealth.metrics.latency.label')"
@@ -174,7 +176,9 @@ const errorTrend = computed<'up' | 'down' | 'stable'>(() => {
 							:label="t('dashboard.admin.instance.agentHealth.metrics.autoApprove.label')"
 							:value="autoApproveRatio"
 							icon="lucide:check-circle"
-							:description="t('dashboard.admin.instance.agentHealth.metrics.autoApprove.description')"
+							:description="
+								t('dashboard.admin.instance.agentHealth.metrics.autoApprove.description')
+							"
 						/>
 						<AgentMetricCard
 							:label="t('dashboard.admin.instance.agentHealth.metrics.llmCost.label')"
@@ -186,7 +190,9 @@ const errorTrend = computed<'up' | 'down' | 'stable'>(() => {
 							:label="t('dashboard.admin.instance.agentHealth.metrics.processing.label')"
 							:value="metrics?.processingCount ?? 0"
 							icon="lucide:loader"
-							:description="t('dashboard.admin.instance.agentHealth.metrics.processing.description')"
+							:description="
+								t('dashboard.admin.instance.agentHealth.metrics.processing.description')
+							"
 						/>
 					</div>
 				</section>

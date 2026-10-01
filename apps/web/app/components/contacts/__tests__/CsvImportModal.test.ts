@@ -243,6 +243,21 @@ describe('CsvImportModal — the close guard', () => {
 	});
 });
 
+describe('CsvImportModal — the error alert', () => {
+	/** A refused property registration lands here, after the toast has gone. */
+	it('announces itself', () => {
+		const { wrapper, csvImport } = mountModal({ step: 'preview' });
+		csvImport.error.value = 'Custom properties could not be registered';
+
+		return flushPromises().then(() => {
+			const alert = wrapper.findAll('[role="alert"]');
+			expect(
+				alert.some((a) => a.text().includes('Custom properties could not be registered'))
+			).toBe(true);
+		});
+	});
+});
+
 describe('CsvImportModal — the error rows', () => {
 	const errors = Array.from({ length: 12 }, (_, i) => `Invalid email: row-${i + 1}@bad`);
 
@@ -369,5 +384,184 @@ describe('CsvImportModal — where the import goes next', () => {
 		const { wrapper } = mountModal({ step: 'complete', results: { imported: 2 } }, []);
 
 		expect(wrapper.text()).not.toContain('Add to topic');
+	});
+});
+
+/**
+ * #897: a batch the backend did not commit. The completion step must not read
+ * as a clean import, must name the rows and the reason, and must offer a retry
+ * of exactly those rows.
+ */
+describe('CsvImportModal — a failed batch', () => {
+	const rows = Array.from({ length: 201 }, (_, i) => [`user${i + 1}@example.com`, `User ${i + 1}`]);
+
+	/** Runs the real import with the second batch failing, then shows its completion step. */
+	async function mountAfterFailedBatch(topics: Array<{ _id: string; name: string }> = []) {
+		const mounted = mountModal({ step: 'preview', rows }, topics);
+		let call = 0;
+		await mounted.csvImport.startImport(async (contacts) => {
+			call++;
+			return call === 2
+				? { ok: false, reason: 'Too many imports, try again in a minute' }
+				: {
+						ok: true,
+						result: {
+							imported: contacts.length,
+							updated: 0,
+							skipped: 0,
+							failed: 0,
+							errors: [],
+						},
+					};
+		});
+		await flushPromises();
+		return mounted;
+	}
+
+	it('says the import is incomplete and names the rows and the reason', async () => {
+		const { wrapper } = await mountAfterFailedBatch();
+
+		const text = wrapper.text();
+		expect(text).toContain('Import incomplete');
+		// Neither the title nor the header's step line may call it complete.
+		expect(text).not.toContain('Import complete');
+		expect(text).toContain('100 of 201 rows processed. 101 rows were not imported.');
+		expect(text).toContain('Rows 101–200 failed: Too many imports, try again in a minute');
+		expect(text).toContain('Row 201 was not sent after the failure.');
+		// The Failed card counts every row that is not in.
+		const failedCard = wrapper
+			.findAll('ui-stat-card-stub')
+			.find((card) => card.attributes('label') === 'Failed');
+		expect(failedCard?.attributes('value')).toBe('101');
+	});
+
+	it('asks the page to retry, and keeps the clean summary for a clean run', async () => {
+		const { wrapper } = await mountAfterFailedBatch();
+
+		await clickButton(wrapper, 'Retry 101 rows');
+		expect(wrapper.emitted('retry')).toHaveLength(1);
+
+		const clean = mountModal({ step: 'complete', results: { imported: 3 } });
+		expect(clean.wrapper.text()).toContain('Import complete!');
+		expect(clean.wrapper.text()).not.toContain('Retry');
+	});
+
+	it('asks before a stray close drops the retry set', async () => {
+		const { wrapper, csvImport } = await mountAfterFailedBatch();
+
+		await wrapper.find('.dismiss').trigger('click');
+
+		expect(csvImport.isOpen.value).toBe(true);
+		expect(wrapper.text()).toContain(DISCARD_PROMPT);
+		expect(wrapper.text()).toContain('101 rows were not imported. Closing now drops them');
+		// The prompt says to download the missing rows first, so it offers that.
+		await clickButton(wrapper, 'Download error rows');
+		expect(downloads).toHaveLength(1);
+		expect(await downloads[0]!.blob.text()).toContain('user201@example.com');
+		expect(wrapper.text()).toContain(DISCARD_PROMPT);
+
+		await clickButton(wrapper, 'Keep editing');
+		expect(csvImport.notImportedRowCount.value).toBe(101);
+		expect(wrapper.text()).toContain('Retry 101 rows');
+
+		await wrapper.find('.dismiss').trigger('click');
+		await clickButton(wrapper, 'Discard');
+		expect(csvImport.isOpen.value).toBe(false);
+	});
+
+	it('keeps footer labels on one line, secondary actions left and Retry last', async () => {
+		const { wrapper } = await mountAfterFailedBatch([{ _id: 'topic-1', name: 'Newsletter' }]);
+
+		const groups = wrapper.findAll('.footer > div > div');
+		expect(groups).toHaveLength(2);
+		const [left, right] = groups.map((g) => g.findAll('button').map((b) => b.text()));
+		expect(left).toEqual(['Download error rows', 'Add to topic']);
+		expect(right).toEqual(['View imported', 'Retry 101 rows']);
+		for (const button of wrapper.findAll('.footer button')) {
+			expect(button.classes()).toContain('whitespace-nowrap');
+		}
+	});
+
+	it('lists every row that did not make it in the error download', async () => {
+		const { wrapper } = await mountAfterFailedBatch();
+
+		await clickButton(wrapper, 'Download error rows');
+
+		const csv = await downloads[0]!.blob.text();
+		expect(csv).toContain('user101@example.com');
+		expect(csv).toContain('Not imported (row 101): user101@example.com – Too many imports');
+		expect(csv).toContain('Not sent (row 201): user201@example.com');
+		// Header + 101 rows.
+		expect(csv.split('\n')).toHaveLength(102);
+	});
+
+	it('assigns only the imported rows to a topic, never the ones left for the retry', async () => {
+		const { wrapper } = await mountAfterFailedBatch([{ _id: 'topic-1', name: 'Newsletter' }]);
+
+		await clickButton(wrapper, 'Add to topic');
+		await wrapper.find('select').setValue('topic-1');
+		await clickButton(wrapper, 'Add');
+		await flushPromises();
+
+		const sent = runOperation.mock.calls.flatMap(
+			([args]) => (args as { contacts: Array<{ email: string }> }).contacts
+		);
+		expect(sent).toHaveLength(100);
+		expect(sent.map((c) => c.email)).not.toContain('user101@example.com');
+	});
+});
+
+/** #1042: one column per identity field, and a preview that names its source. */
+describe('CsvImportModal — identity mapping', () => {
+	const headers = ['email', 'secondary_email'];
+	const rows = [
+		['contact0@owlat.example', 'billing0@owlat.example'],
+		['contact1@owlat.example', ''],
+	];
+
+	async function mountMapping() {
+		const mounted = mountModal({ step: 'mapping', headers, rows });
+		mounted.csvImport.columnMapping.value = { 0: 'email', 1: 'property' };
+		await flushPromises();
+		return mounted;
+	}
+
+	it('labels a taken field with the column that owns it', async () => {
+		const { wrapper } = await mountMapping();
+		const [ownerSelect, otherSelect] = wrapper.findAll('select');
+
+		const optionText = (select: typeof ownerSelect) =>
+			select!
+				.findAll('option')
+				.find((o) => o.attributes('value') === 'email')!
+				.text();
+		expect(optionText(ownerSelect)).toBe('Email (required)');
+		expect(optionText(otherSelect)).toBe('Email (column: email)');
+		expect(otherSelect!.attributes('aria-label')).toBe('Field for column secondary_email');
+	});
+
+	it('moves Email when another column picks it, and announces the move', async () => {
+		const { wrapper, csvImport } = await mountMapping();
+		const otherSelect = wrapper.findAll('select')[1]!;
+
+		await otherSelect.setValue('email');
+
+		expect(csvImport.columnMapping.value).toEqual({ 0: 'property', 1: 'email' });
+		expect((wrapper.findAll('select')[0]!.element as HTMLSelectElement).value).toBe('property');
+		expect(wrapper.find('[role="status"]').text()).toBe(
+			'Email now comes from column secondary_email. Column email is imported as a custom property.'
+		);
+	});
+
+	it('shows the source column and the addresses the import will send', async () => {
+		const { wrapper, csvImport } = await mountMapping();
+		await wrapper.findAll('select')[1]!.setValue('email');
+		csvImport.goToPreview();
+		await flushPromises();
+
+		const header = wrapper.find('thead').text();
+		expect(header).toContain('Column: secondary_email');
+		const emailCells = wrapper.findAll('tbody tr').map((tr) => tr.findAll('td')[1]!.text());
+		expect(emailCells).toEqual(['billing0@owlat.example', '—']);
 	});
 });

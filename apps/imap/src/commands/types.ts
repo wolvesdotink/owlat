@@ -13,6 +13,7 @@
 import type { ImapConfig } from '../config.js';
 import type { ConvexClient } from '../convex.js';
 import type { AuthRateLimiter } from '../rateLimit.js';
+import type { SequenceGate } from './helpers/sequenceGate.js';
 
 /** Per-connection auth — populated by LOGIN, cleared on LOGOUT. */
 export interface AuthState {
@@ -20,6 +21,26 @@ export interface AuthState {
 	readonly appPasswordId: string;
 	readonly address: string;
 	readonly userId: string;
+}
+
+/**
+ * The message sequence the client holds for the SELECTed folder: UIDs
+ * ascending, position i being sequence number i+1 (RFC 3501 §2.3.1.2).
+ *
+ * It is the folder as the server last DESCRIBED it to the client (SELECT, then
+ * every `* n EXPUNGE` / `* n EXISTS` sent since), not the folder as it is now.
+ * Another session's EXPUNGE does not renumber the client's messages until this
+ * session announces it, so a sequence-number command is resolved here: `FETCH
+ * 2` still means the message the client knows as 2, and if that message is gone
+ * it is simply absent from the reply instead of being swapped for its neighbour.
+ *
+ * Deliberately mutable and shared by reference: every copy of the selection's
+ * state (each command spreads it) sees one view, and an announcement must be
+ * applied to it exactly once, in the order it was sent. Only
+ * `helpers/sequenceView.ts` and the commands that announce EXPUNGE write it.
+ */
+export interface SequenceView {
+	uids: readonly number[];
 }
 
 /** The currently-SELECTed folder. Cleared by UNSELECT / CLOSE. */
@@ -32,6 +53,11 @@ export interface SelectedState {
 	readonly highestModseq: number;
 	readonly totalCount: number;
 	readonly readOnly: boolean;
+	/**
+	 * Set by SELECT / EXAMINE. Absent only in states built by hand (tests),
+	 * which then resolve sequence numbers against the folder as it is now.
+	 */
+	readonly view?: SequenceView;
 }
 
 /**
@@ -72,8 +98,9 @@ export interface CommandDeps {
 	 */
 	readonly tls: boolean;
 	/**
-	 * Called by LOGOUT (and, on IDLE timeout, by the IDLE module) to tear
-	 * down the socket. The pump's implementation is `socket.end()`.
+	 * Called by LOGOUT to tear down the socket. The pump's implementation
+	 * stops dispatching (anything the client sent after LOGOUT is dropped),
+	 * cancels every in-flight session, then calls `socket.end()`.
 	 */
 	readonly closeConnection: () => void;
 	/**
@@ -84,6 +111,24 @@ export interface CommandDeps {
 	 * state return would add.
 	 */
 	readonly commit: (state: ConnectionState) => void;
+	/**
+	 * Output pacing for bulk writers. Returns `undefined` while the socket's
+	 * outbound queue is within the pump's output budget (the common case, so
+	 * a fast reader costs no extra await), otherwise a promise that resolves
+	 * on the next `drain` — or on close/error, so a wait never outlives the
+	 * connection (check the session's abort signal after it resolves). Never
+	 * rejects. FETCH consults it after every response so a slow reader holds
+	 * back the work that produces output instead of letting it pile up in
+	 * memory. Absent in unit-test deps, where output is unbounded by design.
+	 */
+	readonly waitForDrain?: () => Promise<void> | undefined;
+	/**
+	 * Orders the commands that use or change the client's sequence view, so no
+	 * EXPUNGE is announced while a sequence-number command is in progress
+	 * (`helpers/sequenceGate.ts`). One per connection. Absent in unit-test deps,
+	 * where every lease is granted at once.
+	 */
+	readonly sequenceGate?: SequenceGate;
 }
 
 /**
@@ -94,19 +139,21 @@ export type ParseResult<T> = { ok: true; args: T } | { ok: false; error: string 
 
 /**
  * The handle a module returns from `start`. One-shot commands return a
- * session with neither `onClientLine` nor `awaitingLiteral` — the pump
- * treats them as fire-and-forget and just awaits `completion` for the
- * next state. Long-running commands (IDLE, APPEND) set one or both, and
- * the pump tracks them in the active-session slot until `completion`
- * resolves.
+ * session with neither `onClientLine` nor `awaitingLiteral`. Long-running
+ * commands (IDLE, APPEND, AUTHENTICATE awaiting its response) set one or
+ * both, and the pump tracks them in the active-session slot until
+ * `completion` resolves. Unless the module is `concurrent`, the pump
+ * dispatches no further command until `completion` resolves (RFC 3501
+ * §5.5), so the next command sees the state this one committed.
  */
 export interface CommandSession {
 	/**
 	 * Resolves when the command terminates. State transitions are applied
 	 * via `deps.commit` *before* completion resolves so the next command
 	 * dispatched off the pump's state field sees the new value. Failures
-	 * must still resolve — modules emit their own NO/BAD responses;
-	 * throwing here would crash the pump.
+	 * must still resolve — modules emit their own NO/BAD responses; a
+	 * completion that never resolves stalls every later command that may
+	 * not overlap it.
 	 */
 	readonly completion: Promise<void>;
 	/**
@@ -118,9 +165,11 @@ export interface CommandSession {
 	/**
 	 * Called by the pump for each line that arrives while this session is
 	 * the active long-running session. Return 'absorbed' to consume the
-	 * line (IDLE swallows bare `DONE`); return 'pass' to let the pump
-	 * dispatch the line as a fresh command (no IMAP verb currently does
-	 * this, but it keeps the door open).
+	 * line: IDLE takes bare `DONE` and answers any other line BAD (RFC
+	 * 2177), AUTHENTICATE takes its SASL response. Return 'pass' once the
+	 * session reads no more input (IDLE after it has ended, AUTHENTICATE
+	 * after its one response): the pump treats the line as the next
+	 * command, held as usual while a command that runs alone is pending.
 	 */
 	onClientLine?(line: string): 'absorbed' | 'pass';
 	/**
@@ -136,32 +185,40 @@ export interface CommandSession {
 	cancel(): void;
 }
 
-/** The closed verb namespace dispatched by the walker. */
-export type ImapVerb =
-	| 'CAPABILITY'
-	| 'NOOP'
-	| 'LOGOUT'
-	| 'ID'
-	| 'NAMESPACE'
-	| 'ENABLE'
-	| 'LOGIN'
-	| 'AUTHENTICATE'
-	| 'LIST'
-	| 'LSUB'
-	| 'SELECT'
-	| 'EXAMINE'
-	| 'UNSELECT'
-	| 'CLOSE'
-	| 'STATUS'
-	| 'FETCH'
-	| 'UID'
-	| 'IDLE'
-	| 'CHECK'
-	| 'STORE'
-	| 'COPY'
-	| 'MOVE'
-	| 'EXPUNGE'
-	| 'APPEND';
+/**
+ * The closed verb namespace dispatched by the walker. `ImapVerb` is derived
+ * from this list, so a verb cannot be added to the type without being added
+ * here, and `commands/__tests__/walker.test.ts` checks that every entry has
+ * a registered module.
+ */
+export const IMAP_VERBS = [
+	'CAPABILITY',
+	'NOOP',
+	'LOGOUT',
+	'ID',
+	'NAMESPACE',
+	'ENABLE',
+	'LOGIN',
+	'AUTHENTICATE',
+	'LIST',
+	'LSUB',
+	'SELECT',
+	'EXAMINE',
+	'UNSELECT',
+	'CLOSE',
+	'STATUS',
+	'FETCH',
+	'UID',
+	'IDLE',
+	'CHECK',
+	'STORE',
+	'COPY',
+	'MOVE',
+	'EXPUNGE',
+	'APPEND',
+] as const;
+
+export type ImapVerb = (typeof IMAP_VERBS)[number];
 
 /**
  * The connection state a command needs before it may run, from weakest
@@ -192,6 +249,14 @@ export interface ImapCommandModule<TArgs = unknown> {
 	 * depends on the parsed args stays inline in `start`.
 	 */
 	readonly requires?: CommandRequirement;
+	/**
+	 * Whether the command may run alongside other commands (RFC 3501 §5.5):
+	 * the pump starts it while earlier commands that also returned true are
+	 * still running. Absent, or false, for a command that changes the
+	 * connection state or touches flags or messages: it waits for every
+	 * running command to complete, and no command starts until it has.
+	 */
+	concurrent?(args: TArgs): boolean;
 	parseArgs(rawArgs: string[]): ParseResult<TArgs>;
 	start(args: StartArgs<TArgs>): CommandSession;
 }

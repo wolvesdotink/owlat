@@ -9,6 +9,44 @@ import {
 } from '../lib/validators/mailContent';
 
 /**
+ * One stored attachment leaf. `filename` / `contentType` are exactly what the
+ * client-side walker (`@owlat/shared/mailMime.extractAttachments`) reports for
+ * the leaf, and the array position IS its `partIndex`, so a server-side lookup
+ * picks the same part `extractAttachmentAt` would.
+ */
+export const mailMessagePartValidator = v.object({
+	filename: v.string(),
+	contentType: v.string(),
+	size: v.number(),
+	storageId: v.id('_storage'),
+});
+
+/** What the delivery action stored for one message, handed to the insert. */
+export const mailMessageStoredPartsFields = {
+	/**
+	 * `stored`: every attachment leaf is in `parts`, in document order.
+	 * `too_many_parts`: the message has more leaves than one ingest stores, so
+	 * `parts` is empty and downloads keep using the raw `.eml`.
+	 */
+	status: v.union(v.literal('stored'), v.literal('too_many_parts')),
+	parts: v.array(mailMessagePartValidator),
+	/**
+	 * The first `text/calendar` leaf (inline or attached), what the invite card
+	 * reads. Absent when the message has none.
+	 */
+	calendarStorageId: v.optional(v.id('_storage')),
+};
+
+export const mailMessageStoredPartsValidator = v.object(mailMessageStoredPartsFields);
+
+export const mailMessagePartsFields = {
+	/** The raw `.eml` blob these parts were cut out of. */
+	rawStorageId: v.id('_storage'),
+	...mailMessageStoredPartsFields,
+	createdAt: v.number(),
+};
+
+/**
  * Composing and attachments: drafts, attachment rows and their
  * backfill jobs, share links, signatures and snippets.
  *
@@ -121,6 +159,15 @@ export const mailCompositionTables = {
 			filterFields: ['mailboxId'],
 		}),
 
+	// Attachment leaves of a received message, each stored as its OWN sealed
+	// blob so the reader can download one part instead of the whole raw `.eml`
+	// (plan 3.5). One row per RAW BLOB, not per message: IMAP COPY shares a raw
+	// blob across rows, so its parts are shared too, and they are freed when the
+	// raw blob is (`mail/messagePurge.deleteMessageRowAndBlobs`). Derived data,
+	// written by MX delivery only: a message without a row (older mail, IMAP
+	// sync, imports) falls back to extracting from the raw `.eml` client-side.
+	mailMessageParts: defineTable(mailMessagePartsFields).index('by_raw_storage', ['rawStorageId']),
+
 	// Resumable backfill of `mailAttachments` over mail that predates the index.
 	//
 	// One row per mailbox (found/replaced via `by_mailbox`), so a re-run resumes
@@ -150,6 +197,9 @@ export const mailCompositionTables = {
 	//    never be mistaken for a ready index.
 	//  - the walk runs from an ACTION, not a mutation: a large body lives in a
 	//    storage blob and blob contents are unreadable from a query/mutation.
+	//    The action reads a page, does its blob reads, then commits; because the
+	//    row is reused across restarts, `generation` ties each commit to the run
+	//    that loaded it (`mail/bodySearchBackfill.commitBatch`).
 
 	mailBodySearchBackfillJobs: defineTable({
 		mailboxId: v.id('mailboxes'),
@@ -157,7 +207,28 @@ export const mailCompositionTables = {
 		...mailboxJobFields,
 		/** Rows whose `searchBody` this walk actually wrote (or cleared). */
 		indexedCount: v.number(),
+		/** Bumped by every start, restart and opt-out. A batch commits only into
+		 * the generation it was loaded for. MISSING = 0 (rows written before it). */
+		generation: v.optional(v.number()),
+		/** The scheduled `runBatch` that owns the next page, written in the same
+		 * mutation that schedules it. A running job whose batch is no longer
+		 * pending or in progress has stalled. MISSING = no lease recorded. */
+		batchFunctionId: v.optional(v.id('_scheduled_functions')),
 	}).index('by_mailbox', ['mailboxId']),
+
+	// The instance-wide sweep that clears every `searchBody` when the operator
+	// turns deep body search off (ADR-0059). Singleton. Unlike the per-mailbox
+	// walks above it pages the whole `mailMessages` table, so it keeps its own
+	// cursor, generation and lease: a newer opt-out supersedes an older sweep,
+	// and a sweep whose page failed is visible as a dead lease and restartable
+	// (`mail/_bodySearchLifecycle.beginSearchBodyPurge`).
+	mailBodySearchPurges: defineTable({
+		...mailboxJobFields,
+		generation: v.number(),
+		/** Rows whose `searchBody` this sweep cleared. */
+		clearedCount: v.number(),
+		batchFunctionId: v.optional(v.id('_scheduled_functions')),
+	}),
 
 	// Saved searches — a named, re-runnable Postbox query.
 	//

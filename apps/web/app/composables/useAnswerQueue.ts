@@ -2,7 +2,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { FunctionReturnType } from 'convex/server';
 import type { InboxIdentity } from '~/utils/inboxIdentity';
-import { compareAnswerItems } from '~/utils/answerQueue';
+import { ANSWER_MENTION_LIMIT, ANSWER_REVIEW_LIMIT, compareAnswerItems } from '~/utils/answerQueue';
 import type { ReplyQueueItem } from '~/utils/postboxReplyQueue';
 
 type ReviewEntry = FunctionReturnType<typeof api.inbox.queries.getReviewQueue>[number];
@@ -27,27 +27,36 @@ export type AnswerItem =
  * is available to them). Each source keeps its own permission check — this
  * only merges what the viewer could already open. A Workbench tab narrows the
  * list itself (`answerItemMatches`) and tallies its share with `answerCounts`.
+ *
+ * Only the pages that show the list (Answer, Today) call this; the shell's
+ * badges need a number and use `useAnswerQueueCount`, which reads the same
+ * sources as counts (plan 2.11).
  */
-export function useAnswerQueue() {
+export function useAnswerQueue(opts: { enabled?: () => boolean } = {}) {
 	const { isEnabled } = useFeatureFlag();
-	const { isAdmin } = usePermissions();
-	const { ids, byId, isLoading: inboxesLoading } = useInboxes();
+	const { isAdmin, isRoleLoading } = usePermissions();
+	const inboxRead = useInboxes();
+	const { ids, byId, isLoading: inboxesLoading } = inboxRead;
+	// A host that mounts on every Answer mode route (the queue's parent page)
+	// reads nothing until the queue is actually in use.
+	const reading = computed(() => opts.enabled?.() ?? true);
+	const mailboxIds = computed(() => (reading.value ? ids.value : []));
 
-	const mailResults = useConvexQueryMap(api.mail.needsReply.listQueue, ids, (mailboxId) => ({
+	const mailResults = useConvexQueryMap(api.mail.needsReply.listQueue, mailboxIds, (mailboxId) => ({
 		mailboxId,
 	}));
 
-	const teamEnabled = computed(() => isAdmin.value && isEnabled('inbox'));
-	const { data: reviewData, isLoading: reviewLoading } = useConvexQuery(
-		api.inbox.queries.getReviewQueue,
-		() => (teamEnabled.value ? { limit: 50 } : 'skip')
+	const teamEnabled = computed(() => reading.value && isAdmin.value && isEnabled('inbox'));
+	const review = useConvexQuery(api.inbox.queries.getReviewQueue, () =>
+		teamEnabled.value ? { limit: ANSWER_REVIEW_LIMIT } : 'skip'
 	);
 
-	const chatEnabled = computed(() => isAdmin.value && isEnabled('chat'));
-	const { data: mentionData, isLoading: mentionLoading } = useConvexQuery(
-		api.chat.mentions.listMyUnreadMentions,
-		() => (chatEnabled.value ? { limit: 25 } : 'skip')
+	const chatEnabled = computed(() => reading.value && isAdmin.value && isEnabled('chat'));
+	const mentions = useConvexQuery(api.chat.mentions.listMyUnreadMentions, () =>
+		chatEnabled.value ? { limit: ANSWER_MENTION_LIMIT } : 'skip'
 	);
+	const { data: reviewData, isLoading: reviewLoading } = review;
+	const { data: mentionData, isLoading: mentionLoading } = mentions;
 
 	const items = computed<AnswerItem[]>(() => {
 		const out: AnswerItem[] = [];
@@ -93,6 +102,10 @@ export function useAnswerQueue() {
 
 	const isLoading = computed(() => {
 		if (inboxesLoading.value) return true;
+		// The team drafts and mentions are gated on the role: until it resolves,
+		// the list is not whole. A queue that started on the mail rows alone took
+		// a team draft in later only at its end, out of its rank.
+		if (reading.value && isRoleLoading?.value) return true;
 		for (const result of mailResults.values()) if (result.isLoading.value) return true;
 		return (
 			(teamEnabled.value && reviewLoading.value) || (chatEnabled.value && mentionLoading.value)
@@ -101,11 +114,30 @@ export function useAnswerQueue() {
 
 	const counts = computed(() => answerCounts(items.value));
 
+	// The first source whose read failed. A queue with nothing in it and a
+	// failed source is not "all clear" (#721); Try again re-reads the failed ones.
+	// Only the sources the list reads count: a query switched to 'skip' keeps
+	// its last error, so a team review that failed before the inbox feature
+	// went off (or the viewer lost admin) would report an error nothing can
+	// clear.
+	const sources = () => [
+		...(reading.value ? [inboxRead] : []),
+		...mailResults.values(),
+		...(teamEnabled.value ? [review] : []),
+		...(chatEnabled.value ? [mentions] : []),
+	];
+	const error = computed(() => sources().find((s) => s.error.value)?.error.value ?? null);
+	const refetch = () => {
+		for (const s of sources()) if (s.error.value) s.refetch();
+	};
+
 	return {
 		items,
 		count: computed(() => items.value.length),
 		counts,
 		isLoading,
+		error,
+		refetch,
 		teamEnabled,
 		chatEnabled,
 	};
@@ -117,7 +149,7 @@ export function answerCounts(items: readonly AnswerItem[]) {
 	for (const item of items) {
 		tally[item.source] += 1;
 		if (item.source === 'team' && item.entry.message.draftResponse?.trim()) tally.drafts += 1;
-		if (item.source === 'mail' && item.row.draftSlot) tally.drafts += 1;
+		if (item.source === 'mail' && item.row.hasDraftSlot) tally.drafts += 1;
 	}
 	return tally;
 }

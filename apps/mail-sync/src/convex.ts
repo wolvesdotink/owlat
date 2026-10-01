@@ -9,11 +9,11 @@
 
 import { createAdminConvexClient } from '@owlat/shared';
 import { ConvexHttpClient } from 'convex/browser';
-import { makeFunctionReference } from 'convex/server';
+import { getFunctionName, makeFunctionReference, type FunctionReference } from 'convex/server';
 import type { MailSyncConfig } from './config.js';
 import type { FolderRole } from './folders.js';
 import type { SeedProbeDeps, SeedProbeWorkPage } from './seedProbes.js';
-import type { RemoteOp, RemoteOpResult } from './remoteOps.js';
+import type { QueuedRenamesPage, RemoteOp, RemoteOpResult } from './remoteOpTypes.js';
 import type { LocalMessageRow, RemoteObservation } from './remoteState.js';
 
 export type ConvexClient = ConvexHttpClient;
@@ -47,8 +47,9 @@ export interface WorkerCredentials {
 	 * The IMAP twin of {@link WorkerCredentials.smtpAccessToken}. Present (with
 	 * both password fields empty) on an `authMethod: 'oauth2'` account, where
 	 * ImapFlow authenticates with `AUTHENTICATE XOAUTH2` instead of LOGIN. Minted
-	 * per credential fetch by the backend from the stored refresh token, so it is
-	 * already live and this worker never refreshes or persists it.
+	 * by the backend from the stored refresh token (and reused there until a
+	 * minute before it expires), so it is already live and this worker never
+	 * refreshes or persists it.
 	 */
 	imapAccessToken?: string;
 }
@@ -108,6 +109,21 @@ export async function fetchWorkerCredentials(
 	if (result === null) return { kind: 'unavailable', reason: 'missing' };
 	if (!('kind' in result)) return { kind: 'credentials', credentials: result };
 	return result;
+}
+
+/**
+ * Whether `err` is the backend answering that it has no function `ref`: a
+ * backend older than this worker, mid-rollout. Any other failure, a network
+ * error or a 503 included, is not.
+ */
+export function isMissingFunction(
+	err: unknown,
+	ref: FunctionReference<'query' | 'mutation' | 'action', 'public' | 'internal'>
+): boolean {
+	const message = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+	const named = /Could not find (?:public )?function for '([^']+)'/.exec(message)?.[1];
+	// The backend may name the module with its file extension.
+	return named?.replace(/\.js(?=:|$)/, '') === getFunctionName(ref);
 }
 
 /** Summary row from listConnectableAccounts. */
@@ -248,6 +264,10 @@ export const fn = {
 	ingestExternalRaw: makeFunctionReference<'action', IngestExternalRawArgs, IngestOutcome>(
 		'mail/external/delivery:ingestExternalRaw'
 	),
+	// Free the raw upload of a staged message the pipeline will never commit.
+	discardStagedRaw: makeFunctionReference<'mutation', { rawStorageId: string }, null>(
+		'mail/external/delivery:discardStagedRaw'
+	),
 	// Resume cursors per folder.
 	getSyncState: makeFunctionReference<'query', { accountId: string }, FolderCursor[]>(
 		'mail/external/delivery:getSyncState'
@@ -347,6 +367,18 @@ export const fn = {
 	settleRemoteOps: makeFunctionReference<'mutation', { results: RemoteOpResult[] }, null>(
 		'mail/external/remoteOps:settleRemoteOps'
 	),
+	// A folder the worker renamed: the backend rewrites its mapping and the ops still naming the old name.
+	recordRemoteFolderRename: makeFunctionReference<
+		'mutation',
+		{ opId: string; remoteName: string; delimiter: string },
+		null
+	>('mail/external/remoteFolderRename:recordRemoteFolderRename'),
+	// Queued folder renames, a page at a time, checked before the first replay in case one was carried out but never recorded.
+	listQueuedFolderRenames: makeFunctionReference<
+		'query',
+		{ accountId: string; cursor: string | null },
+		QueuedRenamesPage
+	>('mail/external/remoteFolderRename:listQueuedFolderRenames'),
 
 	// ── Remote → local change sync (moves, flags, deletes made on the provider) ──
 	getSyncSettings: makeFunctionReference<
@@ -374,7 +406,7 @@ export const fn = {
 	),
 	forgetRemoteFolders: makeFunctionReference<
 		'mutation',
-		{ accountId: string; listed: string[] },
+		{ accountId: string; listed: string[]; retired?: string[] },
 		{ forgotten: number }
 	>('mail/external/remoteState:forgetRemoteFolders'),
 };

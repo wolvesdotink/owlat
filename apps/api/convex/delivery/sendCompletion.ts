@@ -6,7 +6,8 @@ import {
 	type GovernedDeadlineVerdict,
 } from '@owlat/shared';
 import { internal } from '../_generated/api';
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { logError } from '../lib/runtimeLog';
 import { clampRetryAfterMs, LOCAL_DEFER_MS, RETRY_AFTER_MIN_MS } from '../lib/sendProviders/errors';
 import { enqueueGovernedSend } from './governedEnqueue';

@@ -153,8 +153,8 @@ describe('useSlashCommands', () => {
 		it('adds saved blocks to filteredCommands', () => {
 			const { open, filteredCommands, setSavedBlocks } = useSlashCommands();
 			setSavedBlocks([
-				{ _id: 'sb1', name: 'My Footer', content: '{}' },
-				{ _id: 'sb2', name: 'My Header', description: 'Site header', content: '{}' },
+				{ _id: 'sb1', name: 'My Footer', content: '{}', usageCount: 0 },
+				{ _id: 'sb2', name: 'My Header', description: 'Site header', content: '{}', usageCount: 0 },
 			]);
 			open({ top: 0, left: 0 });
 			const ids = filteredCommands.value.map((c) => c.id);
@@ -170,8 +170,8 @@ describe('useSlashCommands', () => {
 		it('filters saved blocks by name', () => {
 			const { open, updateQuery, filteredCommands, setSavedBlocks } = useSlashCommands();
 			setSavedBlocks([
-				{ _id: 'sb1', name: 'My Footer', content: '{}' },
-				{ _id: 'sb2', name: 'My Header', content: '{}' },
+				{ _id: 'sb1', name: 'My Footer', content: '{}', usageCount: 0 },
+				{ _id: 'sb2', name: 'My Header', content: '{}', usageCount: 0 },
 			]);
 			open({ top: 0, left: 0 });
 			updateQuery('footer');

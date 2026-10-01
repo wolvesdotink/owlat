@@ -11,10 +11,11 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { countLiveMatchesForSegments, evaluateSegmentCount } from '../conditions';
 import type { Doc } from '../_generated/dataModel';
+import type { MutationCtx } from '../_generated/server';
 
 /** Segments whose counts share one live-Contact walk. */
 const BATCH_SIZE = 10;
@@ -41,6 +42,32 @@ const partialTallyValidator = v.object({
 	count: v.number(),
 	filtersKey: v.string(),
 });
+
+/**
+ * How long an unchanged count may keep its stamp. A refresh that lands on the
+ * count already stored skips the write (each one re-runs every query reading
+ * the `segments` table) unless `cachedCountUpdatedAt` is older than this, so the
+ * stamp still means "confirmed within the last RESTAMP_MS plus one cron
+ * interval" rather than "last changed".
+ */
+export const SEGMENT_COUNT_RESTAMP_MS = 6 * 60 * 60_000;
+
+/** Write a finished tally, unless it only repeats a recently confirmed count. */
+async function writeCachedCount(
+	ctx: MutationCtx,
+	segment: Doc<'segments'>,
+	count: number,
+	now: number
+): Promise<void> {
+	if (
+		segment.cachedCount === count &&
+		segment.cachedCountUpdatedAt !== undefined &&
+		now - segment.cachedCountUpdatedAt < SEGMENT_COUNT_RESTAMP_MS
+	) {
+		return;
+	}
+	await ctx.db.patch(segment._id, { cachedCount: count, cachedCountUpdatedAt: now });
+}
 
 /** The identity of a segment's filter set, for "did this change mid-walk?". */
 function filtersKey(segment: Doc<'segments'>): string {
@@ -137,10 +164,7 @@ export const refreshAllSegmentCounts = internalMutation({
 			// filters; writing this tally would replace that fresher count with one
 			// computed from the filters the edit retired.
 			if (filtersKey(segment) !== tally.filtersKey) continue;
-			await ctx.db.patch(segment._id, {
-				cachedCount: tally.count,
-				cachedCountUpdatedAt: now,
-			});
+			await writeCachedCount(ctx, segment, tally.count, now);
 		}
 
 		await scheduleNextBatch();
@@ -186,9 +210,6 @@ export const refreshSingleSegmentCount = internalMutation({
 			return;
 		}
 
-		await ctx.db.patch(args.segmentId, {
-			cachedCount: total,
-			cachedCountUpdatedAt: Date.now(),
-		});
+		await writeCachedCount(ctx, segment, total, Date.now());
 	},
 });

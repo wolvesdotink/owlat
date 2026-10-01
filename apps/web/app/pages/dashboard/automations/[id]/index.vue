@@ -25,10 +25,14 @@ const router = useRouter();
 const automationId = useRouteId<'automations'>();
 
 // Fetch automation with related data
-const { data: automation, isLoading: automationLoading } = useConvexQuery(
-	api.automations.automations.getWithRelations,
-	() => ({ automationId: automationId.value })
-);
+const {
+	data: automation,
+	isLoading: automationLoading,
+	error: automationError,
+	refetch: refetchAutomation,
+} = useConvexQuery(api.automations.automations.getWithRelations, () => ({
+	automationId: automationId.value,
+}));
 
 // Fetch automation stats
 const { data: stats, isLoading: statsLoading } = useConvexQuery(
@@ -48,15 +52,17 @@ type RunStatusFilter = 'all' | 'running' | 'completed' | 'cancelled';
 const selectedRunStatus = ref<RunStatusFilter>('all');
 
 // Fetch automation runs (contacts in automation)
-const { data: runs, isLoading: runsLoading } = useConvexQuery(
-	api.automations.analytics.getAutomationRuns,
-	() => ({
-		automationId: automationId.value,
-		status: selectedRunStatus.value === 'all' ? undefined : selectedRunStatus.value,
-		limit: pageSize,
-		offset: runsOffset.value,
-	})
-);
+const {
+	data: runs,
+	isLoading: runsLoading,
+	error: runsError,
+	refetch: refetchRuns,
+} = useConvexQuery(api.automations.analytics.getAutomationRuns, () => ({
+	automationId: automationId.value,
+	status: selectedRunStatus.value === 'all' ? undefined : selectedRunStatus.value,
+	limit: pageSize,
+	offset: runsOffset.value,
+}));
 
 const isLoading = computed(() => automationLoading.value || statsLoading.value);
 
@@ -224,15 +230,18 @@ const handleEdit = () => {
 
 <template>
 	<div class="p-6 lg:p-8">
+		<!-- A failed read is not a missing automation (#721). -->
+		<UiQueryBoundary v-if="automationError" :error="automationError" @retry="refetchAutomation" />
+
 		<!-- Loading State -->
-		<div v-if="isLoading && !automation" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">
-					{{ t('dashboard.automations.detail.index.loading') }}
-				</p>
-			</div>
-		</div>
+		<DashboardDetailSkeleton
+			v-else-if="isLoading && !automation"
+			:label="t('dashboard.automations.detail.index.loading')"
+			back="link"
+			meta
+			:stats="4"
+			body="cards"
+		/>
 
 		<!-- Automation Not Found -->
 		<div
@@ -515,6 +524,8 @@ const handleEdit = () => {
 						class="w-6 h-6 text-brand animate-spin motion-reduce:animate-none"
 					/>
 				</div>
+
+				<UiQueryBoundary v-else-if="runsError" :error="runsError" @retry="refetchRuns" />
 
 				<!-- Empty state -->
 				<div v-else-if="!runs || runs.runs.length === 0" class="py-12 text-center">

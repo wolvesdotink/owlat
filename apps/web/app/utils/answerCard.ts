@@ -19,13 +19,19 @@ export interface AnswerCardControls {
 	undoSelf(): void;
 	back(): void;
 	next(): void;
+	/**
+	 * Answer this item in Answer mode. The queue keeps its place, and the item
+	 * is done only once the reply is sent there (or it is archived, snoozed or
+	 * marked done); opening the composer alone finishes nothing.
+	 */
+	openAnswer(): void;
 }
 
 /** The flow kind of a Postbox reply-queue row (drives ordering + card). */
 export function mailAnswerKind(
-	row: Pick<ReplyQueueItem, 'clarification' | 'kind' | 'draftSlot'>
+	row: Pick<ReplyQueueItem, 'clarification' | 'kind' | 'hasDraftSlot'>
 ): TaskFlowKind {
 	if (replyQueueSection(row) === 'needs_input') return 'question';
-	if (row.kind !== 'followup' && row.draftSlot) return 'draft_review';
+	if (row.kind !== 'followup' && row.hasDraftSlot) return 'draft_review';
 	return 'reply';
 }

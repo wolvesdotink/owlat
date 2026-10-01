@@ -8,10 +8,17 @@
 
 import { v } from 'convex/values';
 import { postboxMutation } from './_helpers';
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { requireMailboxAccess } from './permissions';
+import { recordMessageCounters } from './messageCounters';
+import {
+	dropFolderMembership,
+	recordFolderMembership,
+	startFolderMembership,
+} from './folderMembership';
 import {
 	recordRemoteChanges,
 	recordRemoteFolderChange,
@@ -90,7 +97,7 @@ export const create = postboxMutation({
 		}
 
 		const now = Date.now();
-		return ctx.db.insert('mailFolders', {
+		const folderId = await ctx.db.insert('mailFolders', {
 			mailboxId: args.mailboxId,
 			name: trimmed,
 			role: undefined,
@@ -104,6 +111,8 @@ export const create = postboxMutation({
 			createdAt: now,
 			updatedAt: now,
 		});
+		await startFolderMembership(ctx, folderId, { isEmpty: true });
+		return folderId;
 	},
 });
 
@@ -199,6 +208,8 @@ export const relocateAndDeleteFolder = internalMutation({
 					modseq,
 					updatedAt: now,
 				});
+				await recordMessageCounters(ctx, m, { ...m, folderId: args.inboxId });
+				await recordFolderMembership(ctx, m, { ...m, folderId: args.inboxId, uid: uidNext });
 				uidNext += 1;
 				totalDelta += 1;
 				unseenDelta += m.flagSeen ? 0 : 1;
@@ -233,6 +244,7 @@ export const relocateAndDeleteFolder = internalMutation({
 			if (folder) {
 				await recordRemoteFolderChange(ctx, args.folderId, { kind: 'delete' });
 				await dropFolderMappings(ctx, args.folderId);
+				await dropFolderMembership(ctx, args.folderId);
 				await ctx.db.delete(args.folderId);
 			}
 		}

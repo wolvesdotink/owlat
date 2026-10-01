@@ -22,7 +22,12 @@ const segmentId = useRouteId<'segments'>();
 const { isLoading: organizationLoading } = useOrganizationContext();
 
 // Fetch segment details
-const { data: segment, isLoading: segmentLoading } = useConvexQuery(api.segments.get, () => ({
+const {
+	data: segment,
+	isLoading: segmentLoading,
+	error: segmentError,
+	refetch: refetchSegment,
+} = useConvexQuery(api.segments.get, () => ({
 	id: segmentId.value,
 }));
 
@@ -33,6 +38,7 @@ const membersPage = usePaginatedQuery(api.segments.listMembers, () => ({ id: seg
 	initialNumItems: 200,
 });
 const membersLoading = membersPage.isLoading;
+const membersError = membersPage.error;
 
 const isLoading = computed(
 	() => organizationLoading.value || segmentLoading.value || membersLoading.value
@@ -132,15 +138,18 @@ const handleExport = async () => {
 
 <template>
 	<div class="p-6 lg:p-8">
+		<!-- A failed read is not a missing segment (#721). -->
+		<UiQueryBoundary v-if="segmentError" :error="segmentError" @retry="refetchSegment" />
+
 		<!-- Loading State -->
-		<div v-if="isLoading && !segment" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">
-					{{ t('dashboard.audience.segments.detail.index.loading') }}
-				</p>
-			</div>
-		</div>
+		<DashboardDetailSkeleton
+			v-else-if="isLoading && !segment"
+			:label="t('dashboard.audience.segments.detail.index.loading')"
+			back="button"
+			lead="tile"
+			meta
+			body="table"
+		/>
 
 		<!-- Not Found State -->
 		<div
@@ -221,6 +230,7 @@ const handleExport = async () => {
 				:active-search="members.debouncedSearch"
 				:search-placeholder="t('dashboard.audience.segments.detail.index.searchPlaceholder')"
 				:loading="membersLoading"
+				:error="membersError"
 				:empty="{
 					icon: 'lucide:users',
 					title: t('dashboard.audience.segments.detail.index.empty.title'),
@@ -235,6 +245,7 @@ const handleExport = async () => {
 				@sort="members.toggleSort"
 				@page="members.goToPage"
 				@clear-search="members.clearSearch"
+				@retry="membersPage.refetch"
 			>
 				<template #empty-action>
 					<UiButton variant="secondary" to="/dashboard/audience/segments">

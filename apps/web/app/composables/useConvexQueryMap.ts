@@ -1,5 +1,5 @@
 import type { FunctionArgs, FunctionReference, FunctionReturnType } from 'convex/server';
-import { effectScope, type EffectScope, type Ref } from 'vue';
+import { effectScope, shallowReactive, type EffectScope, type Ref } from 'vue';
 import type { ConvexQueryResult } from './useConvexQuery';
 
 /**

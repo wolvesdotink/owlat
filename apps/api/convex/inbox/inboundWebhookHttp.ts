@@ -19,15 +19,13 @@
  * TWO ceilings remain, and neither is this route's to raise:
  *   · Convex's 16 MiB ARGUMENT cap, which the forward is budgeted against —
  *     see `fitsForwardedArgBudget` below for the whole reasoning;
- *   · Convex's 1 MiB DOCUMENT cap. `inbox.messages.receiveMessage` inlines
- *     `textBody`/`htmlBody` on the row, so a message whose parsed body is over
- *     that — a 1.5 MiB HTML newsletter, well under the listener's own limit —
- *     throws on insert, answers 500 and is dead-lettered. The mailbox route
- *     splits its bodies into a sealed blob over 64 KiB
- *     (`deliveryPipeline/ingest.splitBodyForStorage`); the team inbox does not
- *     yet, and doing it means a stored-body column plus a reader that fetches
- *     it. Out of scope here, written down so the next reader does not assume
- *     the argument budget above covers it.
+ *   · Convex's 1 MiB DOCUMENT cap, for everything on the row EXCEPT the body.
+ *     A body part too large for the row is written to a sealed blob before the
+ *     insert (`inbox/bodyStorage.ts`, staged by
+ *     `receiveInbound.receiveStoringLargeBodies`), so a 1.5 MiB HTML
+ *     newsletter is stored like any other message. The header map,
+ *     `references` and the attachment metadata are still inlined unbounded, so
+ *     a message with most of a megabyte of headers still fails its insert.
  *
  * Everything the two routes share — the per-source rate limit, the
  * `verifyMtaSignedRequest` HMAC, the unbounded body read and the bounded audit row —
@@ -40,6 +38,11 @@ import { httpAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { logError, logWarn } from '../lib/runtimeLog';
 import { jsonResponse } from '../webhooks/inboundHttp';
+import {
+	isWorkspaceBeingDeleted,
+	isWorkspaceDeletionRefusal,
+	workspaceDeletionAck,
+} from '../webhooks/workspaceDeletionAck';
 import {
 	base64ByteLength,
 	clampAuditField,
@@ -111,10 +114,12 @@ export const handleInboundWebhook = httpAction(async (ctx, request) => {
 		payload = null;
 	}
 
-	// Audit FIRST, including a body we could not parse — an MTA sending us
-	// garbage is precisely what the audit trail is for.
+	// Audit EVERY body, including one we could not parse — an MTA sending us
+	// garbage is precisely what the audit trail is for. The write runs beside
+	// the ingest rather than ahead of it (it never rejects), and every response
+	// below waits for it, so no request is answered unaudited.
 	const ip = payload?.inboundPayload;
-	await storeRawRouteAudit(ctx, {
+	const audited = storeRawRouteAudit(ctx, {
 		source: 'mta-inbound',
 		logTag: '[Inbound Webhook]',
 		bodyText,
@@ -131,11 +136,20 @@ export const handleInboundWebhook = httpAction(async (ctx, request) => {
 	});
 
 	if (!payload) {
+		await audited;
 		return jsonResponse(400, { error: 'Invalid JSON' });
 	}
 
 	if (payload.event !== 'inbound.received' || !payload.inboundPayload) {
+		await audited;
 		return jsonResponse(400, { error: `Unsupported event: ${payload.event}` });
+	}
+
+	// Accept and drop while the workspace is being deleted (see
+	// `webhooks/workspaceDeletionAck.ts`): no raw bytes stored, no DLQ replay.
+	if (await isWorkspaceBeingDeleted(ctx)) {
+		await audited;
+		return workspaceDeletionAck('[Inbound Webhook]');
 	}
 
 	// Envelope normalization is the SHARED parser the legacy `/webhooks/mta`
@@ -163,16 +177,22 @@ export const handleInboundWebhook = httpAction(async (ctx, request) => {
 	}
 
 	try {
-		const result = await ctx.runAction(internal.inbox.inboundIngest.ingestFromWebhook, {
-			mail: input,
-			rawBytesBase64,
-		});
+		const [result] = await Promise.all([
+			ctx.runAction(internal.inbox.inboundIngest.ingestFromWebhook, {
+				mail: input,
+				rawBytesBase64,
+			}),
+			audited,
+		]);
 		// `duplicate` is a SUCCESS: the MTA retried a delivery we already
 		// completed (a slow scan tripped its 10 s fetch timeout, say). Answering
 		// 200 is what stops the retry loop; the field is there so an operator
 		// reading the MTA's log can tell a re-ack from a first delivery.
 		return jsonResponse(200, { success: true, duplicate: result.isDuplicate });
 	} catch (err) {
+		await audited;
+		// A deletion that began after the check above.
+		if (isWorkspaceDeletionRefusal(err)) return workspaceDeletionAck('[Inbound Webhook]');
 		logError('[Inbound Webhook] Ingest failed:', err);
 		return jsonResponse(500, { error: 'Ingest failed' });
 	}

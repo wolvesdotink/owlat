@@ -15,6 +15,11 @@
  * here, passing a descriptor of which translatable fields the entity carries.
  * The `*Patch` helpers at the bottom return the complete row patch for each
  * translation mutation, content revision and timestamp included.
+ *
+ * The delivery HTML is not computed here: each mutation shell renders it on
+ * the server from the patched row (`withRenderedTranslations` in
+ * `publishableEmail.ts`) and writes it in the same patch, so the overlay and
+ * its HTML share one revision.
  */
 
 import { throwAlreadyExists, throwInvalidInput, throwNotFound } from '../_utils/errors';
@@ -25,6 +30,7 @@ import {
 	sanitizeStoredBlocksJson,
 } from './emailContentSanitize';
 import {
+	extractTranslatableContent,
 	mergeTranslationIntoItem,
 	type TranslatableBlockContent,
 } from '../emailTemplates/translationMerge';
@@ -89,63 +95,7 @@ export function serializeTranslations(translations: Record<string, Translation>)
 	return JSON.stringify(translations);
 }
 
-// --- translatable-content extraction ---------------------------------------
-
-// Recursive helper to extract translatable content from any block-like item.
-function extractFromItem(
-	item: { id: string; type: string; content: Record<string, unknown> },
-	translatableContent: Record<string, TranslatableBlockContent>
-): void {
-	const content: TranslatableBlockContent = {};
-
-	if (item.type === 'text' && item.content['html']) {
-		content.html = item.content['html'] as string;
-	} else if (item.type === 'button' && item.content['text']) {
-		content.buttonText = item.content['text'] as string;
-	} else if (item.type === 'image' && item.content['alt']) {
-		content.alt = item.content['alt'] as string;
-	} else if (item.type === 'columns' && Array.isArray(item.content['columns'])) {
-		// Recursively extract from column items
-		for (const column of item.content['columns'] as Array<
-			Array<{ id: string; type: string; content: Record<string, unknown> }>
-		>) {
-			for (const columnItem of column) {
-				extractFromItem(columnItem, translatableContent);
-			}
-		}
-	} else if (item.type === 'container' && Array.isArray(item.content['items'])) {
-		// Recursively extract from container items
-		for (const containerItem of item.content['items'] as Array<{
-			id: string;
-			type: string;
-			content: Record<string, unknown>;
-		}>) {
-			extractFromItem(containerItem, translatableContent);
-		}
-	}
-
-	// Only add if there's translatable content
-	if (Object.keys(content).length > 0) {
-		translatableContent[item.id] = content;
-	}
-}
-
-export function extractTranslatableContent(
-	blocksJson: string
-): Record<string, TranslatableBlockContent> {
-	try {
-		const blocks = JSON.parse(blocksJson) as Block[];
-		const translatableContent: Record<string, TranslatableBlockContent> = {};
-
-		for (const block of blocks) {
-			extractFromItem(block, translatableContent);
-		}
-
-		return translatableContent;
-	} catch {
-		return {};
-	}
-}
+// --- merge ------------------------------------------------------------------
 
 // Helper to merge translation blocks with main content blocks.
 // Takes the block structure/styling from main content and applies translated text.
@@ -408,8 +358,8 @@ export function updateTranslationPatch(
  * The new default's full content is the current main content structure with
  * the new language's translatable text merged in. The outgoing default becomes
  * a translation overlay (its translatable text extracted from the current main
- * content), so re-selecting it later round-trips. Throws not_found when the
- * language has no overlay.
+ * content), so re-selecting it later round-trips, and both languages stay
+ * supported. Throws not_found when the language has no overlay.
  */
 export function setDefaultLanguagePatch(
 	row: TranslatableEntity,
@@ -450,12 +400,20 @@ export function setDefaultLanguagePatch(
 		[currentDefault]: outgoingDefaultOverlay,
 	};
 
+	// The demoted default is an overlay like any other, so it stays deliverable.
+	// A row without the list restricts nothing and keeps it that way.
+	const supportedLanguages = row.supportedLanguages ?? [];
+	const missing = row.supportedLanguages
+		? [currentDefault, language].filter((lang) => !supportedLanguages.includes(lang))
+		: [];
+
 	return {
 		subject: newDefault.subject,
 		...(fields.hasPreviewText ? { previewText: newDefault.previewText } : {}),
 		content: sanitizeStoredBlocksJson(newDefaultContent),
 		defaultLanguage: language,
 		translations: serializeTranslations(updatedTranslations),
+		...(missing.length > 0 && { supportedLanguages: [...supportedLanguages, ...missing] }),
 		...revisionStamp(row),
 	};
 }

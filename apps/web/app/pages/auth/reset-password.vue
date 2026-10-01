@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { MIN_PASSWORD_LENGTH, meetsMinPasswordLength } from '@owlat/shared/passwordPolicy';
+import { useUrlCredential } from '~/composables/useUrlCredential';
 
 const { t } = useI18n();
 
@@ -10,9 +11,9 @@ definePageMeta({
 });
 
 const { resetPassword } = useAuth();
-const route = useRoute();
 
-const token = computed(() => (route.query['token'] as string) || '');
+const { token: credential, forget: forgetToken } = useUrlCredential('token');
+const token = computed(() => credential.value ?? '');
 
 // Form state
 const newPassword = ref('');
@@ -65,6 +66,8 @@ async function handleSubmit() {
 
 	await submit(async () => {
 		await resetPassword(newPassword.value, token.value);
+		// Spent: a reload must not bring the form back with it.
+		forgetToken();
 		isSuccess.value = true;
 	}, t('auth.resetPassword.failed'));
 }

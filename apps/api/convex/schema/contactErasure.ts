@@ -32,6 +32,11 @@ export const contactErasureTables = {
 		transactions: v.number(),
 		// Consecutive failed attempts; reset by the next successful transaction.
 		attempts: v.number(),
+		// Rows per transaction while recovering from one that hit a platform
+		// limit: one after the failure, doubling with every transaction that
+		// commits, absent once back at the full budget. Kept when the job
+		// gives up, so the daily re-arm retries a row at a time.
+		rowCap: v.optional(v.number()),
 		lastError: v.optional(v.string()),
 		lastErrorAt: v.optional(v.number()),
 		createdAt: v.number(),

@@ -13,11 +13,12 @@
  * only be exercised against a real server.
  */
 
-import type { ConnectInfo, ExecEvent, SshAuth } from '@owlat/desktop/src/ssh';
+import type { ConnectInfo, ExecEvent, LocalBuild, SshAuth } from '@owlat/desktop/src/ssh';
 import type { SetupConfig } from '@owlat/shared/setupConfigTypes';
 
 // Split to stay under the file-size cap; consumers keep importing from here.
 export * from './provisioningCommands';
+export * from './provisioningImages';
 export * from './provisioningTimeline';
 
 // ---- transport (implemented by the native bridge, faked in tests) ----------
@@ -25,7 +26,7 @@ export * from './provisioningTimeline';
 // The bridge's own types, re-exported type-only: the native module itself is
 // only ever loaded lazily (see createTauriTransport), so this adds no runtime
 // import and the transport contract cannot drift from what the bridge returns.
-export type { ConnectInfo, ExecEvent, SshAuth };
+export type { ConnectInfo, ExecEvent, LocalBuild, SshAuth };
 
 export interface ProvisionTransport {
 	connect(host: string, port: number): Promise<ConnectInfo>;
@@ -37,14 +38,21 @@ export interface ProvisionTransport {
 	uploadDir(sessionId: string, localDir: string, remoteDir: string): Promise<void>;
 	/** Stream locally built images to the server (docker save → load). */
 	pushImages(sessionId: string, images: string[], onEvent: (e: ExecEvent) => void): Promise<void>;
-	/** Run a process on THIS machine (local image builds), streaming output. */
-	localExec(
-		program: string,
-		args: string[],
-		cwd: string,
-		env: Record<string, string>,
+	/**
+	 * Build images on THIS machine in the checkout at `localDir`, streaming
+	 * output. The session owns the build: cancelling it kills the build.
+	 */
+	localBuild(
+		sessionId: string,
+		localDir: string,
+		build: LocalBuild,
 		onEvent: (e: ExecEvent) => void
 	): Promise<number>;
+	/**
+	 * Stop whatever runs on the session, keeping the session; the stopped call
+	 * rejects. Never kills a command already running on the server.
+	 */
+	cancel(sessionId: string): Promise<void>;
 	disconnect(sessionId: string): Promise<void>;
 }
 
@@ -59,7 +67,8 @@ export async function createTauriTransport(): Promise<ProvisionTransport> {
 		writeFile: (id, path, content, mode) => ssh.sshWriteFile(id, path, content, mode),
 		uploadDir: (id, localDir, remoteDir) => ssh.sshUploadDir(id, localDir, remoteDir),
 		pushImages: (id, images, on) => ssh.sshPushImages(id, images, on),
-		localExec: (program, args, cwd, env, on) => ssh.localExecStream(program, args, cwd, env, on),
+		localBuild: (id, localDir, build, on) => ssh.localDockerBuild(id, localDir, build, on),
+		cancel: (id) => ssh.sshCancel(id),
 		disconnect: (id) => ssh.sshDisconnect(id),
 	};
 }

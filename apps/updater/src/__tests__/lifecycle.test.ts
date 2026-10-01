@@ -5,11 +5,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { installShutdown } from '@owlat/shared/nodeShutdown';
 
-const { execSyncMock, rateLimitedMock } = vi.hoisted(() => ({
-	execSyncMock: vi.fn(),
+const { commandMock, rateLimitedMock } = vi.hoisted(() => ({
+	commandMock: vi.fn(),
 	rateLimitedMock: vi.fn(() => false),
 }));
-vi.mock('node:child_process', () => ({ execFileSync: execSyncMock }));
+vi.mock('node:child_process', async () => {
+	const { spawnFrom } = await import('./fakeSpawn.js');
+	return { spawn: spawnFrom(commandMock) };
+});
 vi.mock('../security.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../security.js')>();
 	return { ...actual, isRateLimited: rateLimitedMock };
@@ -18,10 +21,18 @@ vi.mock('../security.js', async (importOriginal) => {
 const OWLAT_DIR = mkdtempSync(join(tmpdir(), 'owlat-updater-lifecycle-'));
 process.env['INSTANCE_SECRET'] = 'test-instance-secret-0123456789';
 process.env['OWLAT_DIR'] = OWLAT_DIR;
-process.env['PORT'] = '0';
 
 const { buildRequestListener } = await import('../server.js');
-const { critical, setShutdownHandle } = await import('../lifecycle.js');
+const {
+	beginShutdown,
+	CHILD_STOP_GRACE_MS,
+	critical,
+	exitAfterStoppingChildren,
+	setShutdownHandle,
+	SHUTDOWN_DEADLINE_MS,
+	shutdownSignal,
+	STOP_GRACE_SECONDS,
+} = await import('../lifecycle.js');
 const { fastReadiness } = await import('./readinessStubs.js');
 
 const AUTH = { 'x-instance-secret': 'test-instance-secret-0123456789' };
@@ -49,7 +60,7 @@ beforeEach(() => {
 	// inspects this container before it recreates anything, so a mock that
 	// answers '' to everything describes a broken host and never reaches the
 	// critical section this file is about.
-	execSyncMock.mockReset().mockImplementation((file: unknown, args: unknown) => {
+	commandMock.mockReset().mockImplementation((file: unknown, args: unknown) => {
 		const cmd = [String(file), ...((args as string[]) ?? [])].join(' ');
 		if (cmd.includes('config --services')) return 'web\nupdater\n';
 		if (cmd.startsWith('docker inspect')) {
@@ -184,5 +195,50 @@ describe('critical', () => {
 		await expect(applied).resolves.toBe('applied');
 		await shutting;
 		expect(exit).toHaveBeenCalledWith(0);
+	});
+});
+
+describe('shutdownSignal', () => {
+	it('aborts the moment the installed shutdown begins', async () => {
+		const handle = installShutdown({
+			timeoutMs: 1_000,
+			log: () => {},
+			signals: [],
+			exit: () => {},
+			onShutdown: beginShutdown,
+		});
+		setShutdownHandle(handle);
+		const signal = shutdownSignal();
+		expect(signal.aborted).toBe(false);
+
+		await handle.shutdown('SIGTERM');
+		expect(signal.aborted).toBe(true);
+	});
+
+	it('starts clear with each handle, and never aborts without one', () => {
+		beginShutdown();
+		setShutdownHandle(undefined);
+		expect(shutdownSignal().aborted).toBe(false);
+	});
+});
+
+describe('the shutdown budget', () => {
+	/**
+	 * Docker SIGKILLs the updater STOP_GRACE_SECONDS after SIGTERM. The deadline,
+	 * the grace its children get and the second to collect them must all end
+	 * before that, or the SIGKILL is what stops a recreate in flight.
+	 */
+	it('ends before the compose stop grace', () => {
+		expect(SHUTDOWN_DEADLINE_MS + CHILD_STOP_GRACE_MS + 1_000).toBeLessThan(
+			STOP_GRACE_SECONDS * 1_000
+		);
+	});
+
+	it('exits once, with the first code, after stopping the children', async () => {
+		const exit = vi.fn();
+		// The deadline's exit(1), then a drain that finishes in the meantime.
+		await Promise.all([exitAfterStoppingChildren(1, exit), exitAfterStoppingChildren(0, exit)]);
+		expect(exit).toHaveBeenCalledTimes(1);
+		expect(exit).toHaveBeenCalledWith(1);
 	});
 });

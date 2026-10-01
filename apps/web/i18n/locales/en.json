@@ -333,7 +333,9 @@
 		"assistant": {
 			"assistantComposer": {
 				"hint": "Enter to send · Shift+Enter for newline · the assistant can search your workspace and draft copy",
+				"label": "Question for the assistant",
 				"placeholder": "Ask the assistant anything…",
+				"sendFailed": "Couldn't send. Your question is still here.",
 				"stop": "Stop generating",
 				"unavailablePlaceholder": "Assistant is unavailable"
 			},
@@ -485,7 +487,7 @@
 						"createCta": "Create new email",
 						"createPrompt": "Or create a new email template for this automation:",
 						"editTemplate": "Edit template →",
-						"noTemplates": "No automation templates found. {link} with type \"Automation\" first.",
+						"noTemplates": "No marketing templates yet. {link} first.",
 						"noTemplatesLink": "Create an email template",
 						"previewLabel": "Template preview",
 						"previewSubject": "Subject: {subject}",
@@ -493,9 +495,7 @@
 						"subjectLabel": "Subject line override (optional)",
 						"subjectPlaceholder": "Leave blank to use template subject",
 						"templateHint": "Choose the email template to send to the contact.",
-						"templateLabel": "Email template",
-						"templateOption": "{name} ({status})",
-						"templatePlaceholder": "Select a template..."
+						"templateLabel": "Email template"
 					}
 				}
 			},
@@ -814,14 +814,13 @@
 					"existingDescription": "Pick from your saved marketing templates.",
 					"existingTemplatesLabel": "Existing templates",
 					"existingTitle": "Use an existing marketing email",
-					"newDescription": "A new template will be created only when you continue.",
+					"newDescription": "Opens the email editor once you continue, then brings you back to review and send.",
 					"newTemplateNameHint": "This will create a new draft marketing template and link it to this campaign.",
 					"newTemplateNameLabel": "New template name",
 					"newTemplateNamePlaceholder": "e.g. Summer launch email",
-					"newTitle": "Create a new marketing email",
-					"noMatches": "No templates match your search.",
+					"newTitle": "Create and design email",
 					"noSubject": "No subject",
-					"searchPlaceholder": "Search by name or subject...",
+					"openEditor": "Create and open editor",
 					"selectedTemplate": "Selected template",
 					"subjectLabel": "Email subject",
 					"subjectPlaceholder": "e.g. Your weekly newsletter is here!",
@@ -835,12 +834,14 @@
 					"audience": "Audience",
 					"blocked": {
 						"domainMissing": "Sending is disabled because \"{domain}\" is not registered. Add and verify it in Settings → Domains.",
-						"domainUnverified": "Sending is disabled because \"{domain}\" is not verified. Complete DNS verification in Settings → Domains."
+						"domainUnverified": "Sending is disabled because \"{domain}\" is not verified. Complete DNS verification in Settings → Domains.",
+						"emptyBody": "Email body is empty. Design the email before sending it."
 					},
 					"campaignName": "Campaign name",
 					"dateLabel": "Date",
-					"editLater": "You can edit this email after the campaign is created.",
+					"editEmail": "Edit email",
 					"emailContent": "Email content",
+					"emptyBody": "Email body is empty.",
 					"errors": {
 						"dateRequired": "Please select a date for scheduling",
 						"timeInPast": "Scheduled time must be in the future",
@@ -849,6 +850,7 @@
 					"estimatedRecipients": "{count} estimated recipients",
 					"from": "From",
 					"previewExample": "For example: {time} ET, {time} PT, {time} GMT, etc.",
+					"previewFrameTitle": "Email preview",
 					"previewHeading": "Your campaign will be sent:",
 					"previewHeadingAt": "Your campaign will be sent at:",
 					"previewPerTimezone": "{time} in each recipient's timezone",
@@ -908,6 +910,8 @@
 					"submit": "Add sender"
 				},
 				"setupAudiencePicker": {
+					"countCountedAt": "Counted at {time}",
+					"countCounting": "Counting every matching contact. The number updates when the count is done.",
 					"createSegment": "Create a segment",
 					"createTopic": "Create a topic",
 					"empty": "There are no topics or segments yet.",
@@ -1332,11 +1336,19 @@
 					"addToTopicTitle": "Add these contacts to a topic",
 					"addedToTopic": "{count} contact added to {name} | {count} contacts added to {name}",
 					"addedToTopics": "{count} contact added to topic | {count} contacts added to topics",
+					"batchFailed": "Row {first} failed: {reason} | Rows {first}–{last} failed: {reason}",
 					"chooseTopic": "Choose a topic…",
 					"downloadErrors": "Download error rows",
 					"errorsTitle": "Errors (first {count})",
 					"failed": "Failed",
 					"imported": "Imported",
+					"incompleteTitle": "Import incomplete",
+					"notImportedRow": "Not imported (row {row}): {email} – {reason}",
+					"notImportedSummary": "{processed} of {total} rows processed. {count} row was not imported. | {processed} of {total} rows processed. {count} rows were not imported.",
+					"notSent": "Row {first} was not sent after the failure. | Rows {first}–{last} were not sent after the failure.",
+					"notSentRow": "Not sent (row {row}): {email}",
+					"retry": "Retry {count} row | Retry {count} rows",
+					"retryHint": "A retry sends only these rows. Rows that were already imported are not sent again.",
 					"skipped": "Skipped",
 					"title": "Import complete!",
 					"updated": "Updated",
@@ -1345,6 +1357,7 @@
 				},
 				"discard": {
 					"body": "Your file and column mapping will be lost.",
+					"incompleteBody": "{count} row was not imported. Closing now drops it and the retry; download the error rows first to keep it. | {count} rows were not imported. Closing now drops them and the retry; download the error rows first to keep them.",
 					"keepEditing": "Keep editing",
 					"title": "Discard this import?"
 				},
@@ -1364,10 +1377,14 @@
 				},
 				"mapping": {
 					"addToTopic": "Add to topic",
+					"fieldMovedToIgnore": "{field} now comes from column {to}. Column {from} is ignored.",
+					"fieldMovedToProperty": "{field} now comes from column {to}. Column {from} is imported as a custom property.",
+					"fieldTaken": "{field} (column: {column})",
 					"found": "Found {count} contacts in {filename}",
 					"globalTopicHint": "All imported contacts will be added to this topic. Or map a CSV column to \"Topic\" for per-contact assignment.",
 					"handleDuplicates": "Handle duplicates",
 					"sample": "e.g., {value}",
+					"selectLabel": "Field for column {column}",
 					"skipDuplicates": "Skip duplicates",
 					"topicMappedHint": "Disabled because a column is mapped to \"Topic\". Remove that mapping to select a global topic.",
 					"updateExisting": "Update existing"
@@ -1376,6 +1393,7 @@
 					"andMore": "...and {count} more",
 					"duplicateEmailsTitle": "Duplicate emails",
 					"duplicates": "Duplicates",
+					"emailSource": "Column: {column}",
 					"firstName": "First name",
 					"invalidEmails": "Invalid emails",
 					"invalidEmailsTitle": "Invalid emails",
@@ -1652,7 +1670,9 @@
 				"emptyForChannel": "No {channel} messages",
 				"emptyHint": "Cross-channel messages will appear here as they are sent and received.",
 				"loading": "Loading timeline...",
+				"longMessage": "Shortened: this is the beginning of a long email.",
 				"messagePlaceholder": "Type a message to send on this channel…",
+				"openFullMessage": "Open the full message",
 				"sendTitle": "Send a message",
 				"statuses": {
 					"delivered": "delivered",
@@ -3134,6 +3154,17 @@
 					"save": "Saved",
 					"send": "Sent"
 				}
+			},
+			"templatePicker": {
+				"listLabel": "Templates",
+				"loadMore": "Load more",
+				"loading": "Loading templates…",
+				"loadingMore": "Loading more…",
+				"noMatches": "No templates match your search.",
+				"noSubject": "No subject",
+				"none": "No templates yet.",
+				"searchPlaceholder": "Search by name or subject…",
+				"searching": "Searching…"
 			}
 		},
 		"files": {
@@ -3317,6 +3348,7 @@
 				"returned": "· Returned"
 			},
 			"threadChannelTimeline": {
+				"longMessage": "Shortened: the full message is shown above.",
 				"reply": "Reply",
 				"replyOn": "Reply on {channel}",
 				"replyPlaceholder": "Reply on {channel}…",
@@ -3659,16 +3691,17 @@
 				"suggestionCategory": "{category}:"
 			},
 			"postboxComposer": {
+				"bodyLoading": "Message body, loading",
 				"bodyPlaceholder": "Write your message…",
 				"composerName": "Postbox compose {timestamp}",
 				"dropHint": "Drop to attach · drop in text to embed",
 				"minimize": "Minimize",
 				"newMessage": "New message",
-				"openInPopup": "Open in popup",
 				"savedAt": "Saved {time}",
 				"scheduledFor": "Scheduled for {datetime}",
 				"unschedule": "Unschedule to edit",
-				"uploadingToast": "Waiting for attachments to finish uploading…"
+				"uploadingToast": "Waiting for attachments to finish uploading…",
+				"openInAnswerMode": "Open in Answer mode"
 			},
 			"postboxComposerAttachments": {
 				"cancel": "Cancel {filename}",
@@ -3713,7 +3746,13 @@
 				"signature": "Signature",
 				"uploadingTitle": "Waiting for attachments to finish uploading…",
 				"previewAsSent": "Preview as sent",
-				"sendAs": "as {name}"
+				"sendAs": "as {name}",
+				"showCoach": "Coach and revise",
+				"hideCoach": "Hide coach and revise",
+				"discardDraft": "Discard draft",
+				"showQuote": "Show quoted text",
+				"hideQuote": "Hide quoted text",
+				"gapsLeft": "1 gap left | {count} gaps left"
 			},
 			"postboxComposerGuards": {
 				"alignment": {
@@ -3924,18 +3963,6 @@
 				"label": "Inbox view",
 				"priority": "Priority",
 				"title": "Priority mail or all mail (B)"
-			},
-			"postboxInlineReply": {
-				"dialogLabel": "Inline reply",
-				"draftAReply": "Draft a reply",
-				"draftReply": "Draft reply",
-				"forward": "Forward",
-				"noSuggestions": "No suggestions right now. Try again in a moment.",
-				"replyAll": "Reply all",
-				"replyTo": "Reply to {sender}…",
-				"suggestOperation": "Suggest replies",
-				"suggestedReplies": "Suggested replies",
-				"working": "Working…"
 			},
 			"postboxInviteCard": {
 				"accept": "Accept",
@@ -4250,9 +4277,8 @@
 					"unsupported": "Not available in this browser — Owlat needs a connection to start."
 				},
 				"store": {
-					"defaultBrowser": "Off by default in the browser.",
-					"defaultDesktop": "On by default in the desktop app.",
-					"hint": "Keeps your inbox list and recently-read messages readable instantly and without a connection. Only sanitized mail is stored, unencrypted, in this browser's local database — leave it off on shared computers.",
+					"default": "On by default, and wiped when you sign out.",
+					"hint": "Keeps your inbox list and recently-read messages readable instantly and without a connection. Only sanitized mail is stored, unencrypted, in this browser's local database — turn it off on shared computers.",
 					"label": "Store recent mail on this device"
 				},
 				"writesDisabled": "Local storage is full or unavailable — new mail isn't being cached on this device. Clearing the cache may help."
@@ -4381,6 +4407,10 @@
 			},
 			"postboxScheduleDialog": {
 				"custom": "Custom",
+				"customPast": "Pick a time in the future",
+				"customSends": "Sends {when} ({zone})",
+				"customSendsBoth": "Sends {when} your time ({zone}), {theirs} theirs",
+				"customZone": "Times are in your timezone, {zone}",
 				"nextWeekdayMorning": "{weekday} morning",
 				"recipientMorning": "Tomorrow morning, their time",
 				"recipientZone": "Times below are read against {zone}, the timezone on record for your recipient.",
@@ -4569,6 +4599,11 @@
 				"trashOperation": "Move to trash",
 				"trashedUndo": "Moved to trash"
 			},
+			"postboxThreadEarlier": {
+				"load": "Load earlier messages",
+				"loadCount": "Load {count} earlier message | Load {count} earlier messages",
+				"failed": "Earlier messages could not be loaded. Try again."
+			},
 			"postboxThreadReader": {
 				"attachmentDownloadFailed": "That attachment could not be downloaded. Try again.",
 				"blockSender": "Block sender",
@@ -4606,6 +4641,7 @@
 			"postboxThreadRow": {
 				"backFromSnooze": "Back from snooze",
 				"deselect": "Deselect",
+				"justNow": "just now",
 				"markAsRead": "Mark as read",
 				"markAsUnread": "Mark as unread",
 				"markRead": "Mark read",
@@ -4888,6 +4924,15 @@
 				"message": "Unsaved changes from {time} were recovered from this device.",
 				"restore": "Restore unsaved changes"
 			},
+			"postboxComposerDraftNotice": {
+				"loadFailed": "This draft couldn't be loaded. Nothing has been saved over it; changes you make now are kept and added once it loads.",
+				"loading": "Loading your saved draft… Send is available once it has arrived.",
+				"missing": "This draft no longer exists, or you no longer have access to it. Nothing here will be saved or sent.",
+				"notSaved": "Your latest changes couldn't be saved. Everything you wrote is still here.",
+				"notSent": "Your latest changes couldn't be saved, so nothing was sent. Everything you wrote is still here; try Send again.",
+				"stillChanging": "Your message changed while it was being saved, so nothing was sent. Everything you wrote is still here; try again.",
+				"tryAgain": "Try again"
+			},
 			"postboxPreviewAsSent": {
 				"ampNote": "+ AMP part",
 				"ampNoteTitle": "This design uses an interactive block, so an AMP alternative ships alongside the HTML.",
@@ -5087,6 +5132,22 @@
 				"label": "Sync changes with your provider",
 				"toastOff": "Only new mail comes in from now on.",
 				"toastOn": "Two-way sync is on. Both sides are lined up on the next sync."
+			},
+			"postboxReaderMessage": {
+				"showDetails": "Show recipients and details"
+			},
+			"postboxComposerEnvelopeLine": {
+				"label": "Recipients, sender and subject. Open to edit",
+				"copies": "+{count} in copy",
+				"replyAll": "Reply all",
+				"edit": "Edit",
+				"to": "To {names}",
+				"from": "From {address}"
+			},
+			"postboxAnswerDraftBar": {
+				"saved": "Draft to {name} saved",
+				"resume": "Resume",
+				"dismiss": "Hide this reminder"
 			}
 		},
 		"preferences": {
@@ -5235,6 +5296,7 @@
 				"backfillPending": "Existing mail is not indexed yet.",
 				"backfillRunning": "Indexing… {count} messages read",
 				"backfillStart": "Index existing mail",
+				"backfillStopped": "Indexing stopped before it finished. Run it again to cover the rest.",
 				"cancelOperation": "Stop indexing",
 				"confirmDisableAction": "Turn off and clear excerpts",
 				"confirmDisableDescription": "Search will go back to the first 200 characters of each message, and every body excerpt already stored will be deleted. You can turn it on again later, but existing mail will have to be indexed from scratch.",
@@ -5555,13 +5617,24 @@
 		"translation": {
 			"cell": {
 				"cancelTitle": "Cancel (Esc)",
+				"conflict": "Changed elsewhere since you edited it",
+				"discard": "Discard",
+				"discardLabel": "Discard your edit of {field}",
+				"editHint": "Press Ctrl+Enter or Cmd+Enter to save, Escape to cancel.",
+				"editLabel": "Edit {field}",
+				"fieldName": "{field} ({language})",
 				"htmlBadge": "HTML",
 				"noContent": "No content",
 				"placeholder": "Click to translate",
+				"retry": "Save again",
+				"retryLabel": "Save {field} again",
+				"saveFailed": "Not saved",
 				"saveTitle": "Save (Cmd+Enter)",
+				"saving": "Saving…",
 				"sourceBadge": "source"
 			},
 			"manager": {
+				"accordionSectionPrefix": "{prefix}Accordion {index}, section {section}",
 				"addLanguage": "Add language",
 				"addLanguageOperation": "Add language",
 				"allTranslated": "All fields are already translated",
@@ -5578,6 +5651,7 @@
 				"fieldColumn": "Field",
 				"goBack": "Go back",
 				"heading": "{name} - Translations",
+				"heroPrefix": "{prefix}Hero {index}",
 				"htmlBadge": "HTML",
 				"imageBlock": "{prefix}image {index} alt text",
 				"infoBody": "Click any cell to edit the translation. Changes are saved automatically. Use the sparkle icon to auto-translate empty fields using AI. The default language content is read-only here - edit it in the main email editor.",
@@ -5596,7 +5670,7 @@
 				"removeLanguageOperation": "Remove language",
 				"removeLanguageTitle": "Remove language",
 				"saveTranslationOperation": "Save translation",
-				"saveTranslationsOperation": "Save translations",
+				"savingChanges": "Saving…",
 				"subjectLine": "Subject line",
 				"textBlock": "{prefix}text block {index}",
 				"unsavedChanges": "Unsaved changes"
@@ -5880,7 +5954,8 @@
 				"gone": "This email is no longer available here. It may have been moved or deleted.",
 				"done": "Done",
 				"openThread": "Open conversation",
-				"markReadOperation": "Mark as read"
+				"markReadOperation": "Mark as read",
+				"reply": "Reply"
 			},
 			"inboxPicker": {
 				"label": "Choose the inboxes on the Workbench",
@@ -5953,6 +6028,145 @@
 			},
 			"mail": {
 				"writeOwn": "Write my own"
+			},
+			"mode": {
+				"back": "Back to {page}",
+				"backTo": {
+					"inbox": "Inbox",
+					"queue": "Answer queue",
+					"workbench": "Workbench",
+					"previous": "Previous page",
+					"teamInbox": "Team inbox"
+				},
+				"messageCount": "{count} message | {count} messages",
+				"tabsLabel": "Conversation or reply",
+				"tabs": {
+					"conversation": "Conversation",
+					"reply": "Reply"
+				},
+				"sheet": {
+					"hint": "Drag the handle, or use the up and down arrow keys, to change how much of the screen the reply takes.",
+					"raise": "Show the reply",
+					"lower": "Lower the reply",
+					"shrink": "Make the reply smaller",
+					"peek": "Reply to {name}…",
+					"peekNoName": "Write a reply…"
+				},
+				"viewLabel": "How much of the conversation to show",
+				"viewShortcut": "Switch with T",
+				"view": {
+					"summary": "Summary",
+					"full": "Full conversation"
+				},
+				"more": "More for this conversation",
+				"openInPostbox": "Open in Postbox"
+			},
+			"catchUp": {
+				"title": "Catching up",
+				"meta": "{count} message since {date} | {count} messages since {date}",
+				"marker": "Show the message from {sender}, {date}",
+				"loading": "Catching up on this conversation",
+				"asksTitle": "They are asking for",
+				"askCovered": "Covered by your draft:",
+				"askOpen": "Not covered yet:",
+				"filesTitle": "Files in this thread",
+				"attachHint": "Click to attach it to the reply, or drag it into the reply",
+				"attachFile": "Attach {file} to the reply",
+				"attachFailed": "The file could not be attached.",
+				"attachOperation": "Attach file",
+				"covered": "{covered} of {total} ask covered | {covered} of {total} asks covered",
+				"asksCount": "{count} ask | {count} asks",
+				"show": "Show",
+				"hide": "Hide"
+			},
+			"aiBar": {
+				"label": "What should the reply say?",
+				"placeholder": "What should the reply say? Optional, e.g. “send it, say sorry it's late”",
+				"draft": "Draft with AI",
+				"shortcut": "Cmd+J or Ctrl+J jumps here",
+				"checking": "Checking what the reply needs…",
+				"drafting": "Writing the draft…",
+				"failed": "The draft could not be written. Try again.",
+				"aiDraft": "AI draft",
+				"discard": "Discard",
+				"injectionFlagged": "The email may contain instructions meant for the AI. Read the draft before you send it.",
+				"operation": "Draft with AI",
+				"peekDraft": "Draft",
+				"readyKept": "The AI draft is ready. Your text stays until you use the draft.",
+				"useDraft": "Use the draft",
+				"preparedFileFailed": "{filename} from the prepared reply could not be attached. Attach it again if the reply needs it."
+			},
+			"askCard": {
+				"title": "One thing before I write this | {count} things before I write this",
+				"round": "round {round} of {total}",
+				"subline": "Answer what you can. Anything you skip becomes a highlighted gap in the draft.",
+				"placeholder": {
+					"choice": "Something else…",
+					"text": "Type your answer…",
+					"number": "A number or an amount…",
+					"date": "Or type a date…"
+				},
+				"pickDate": "Pick a date",
+				"answerAndDraft": "Answer and draft",
+				"skip": "Skip, draft with gaps",
+				"operation": "Answer the questions"
+			},
+			"fileAsk": {
+				"dropHere": "Drop the file here or",
+				"choose": "choose a file",
+				"uploading": "Uploading… {percent}%",
+				"attachedAndSaved": "Attached to this reply and saved to the contact's Files",
+				"attachedAndSavedIfContact": "Attached to this reply, and saved to Files if the sender is one of your contacts",
+				"attachedOnly": "Attached to this reply only",
+				"dontKeep": "Don't keep a copy in Files",
+				"nearMisses": "Close, but maybe not it:",
+				"candidates": "Which one?",
+				"pickFromFiles": "Pick from files",
+				"remove": "Remove {file}",
+				"tooLarge": "{filename} is larger than {mb} MB.",
+				"uploadFailed": "{filename} could not be uploaded.",
+				"unsupported": "{filename} is not a file type that can be attached here."
+			},
+			"filePicker": {
+				"title": "Pick from files",
+				"search": "Search by name",
+				"files": "Files",
+				"mail": "Mail attachments",
+				"empty": "No files found."
+			},
+			"queueBar": {
+				"position": "{position} of {total}",
+				"previous": "Previous in the Answer queue",
+				"next": "Next in the Answer queue",
+				"menu": "Answer queue",
+				"inQueue": "in Answer queue",
+				"markDone": "Mark done",
+				"backToQueue": "Back to the Answer queue"
+			},
+			"team": {
+				"to": "To {name}",
+				"more": "More for this reply",
+				"showChanges": "Show changes to the agent's draft",
+				"hideChanges": "Hide changes",
+				"discardDraft": "Discard draft",
+				"clear": "Clear",
+				"attachments": {
+					"attach": "Attach",
+					"upload": "Upload a file",
+					"fromThread": "From this conversation",
+					"fromContact": "Other files for {name}",
+					"copying": "Copying…",
+					"failed": "Couldn't copy",
+					"failedWithReason": "Couldn't copy: {reason}",
+					"remove": "Remove {file}",
+					"retry": "Retry",
+					"cancelUpload": "Cancel the upload of {file}",
+					"hold": {
+						"uploading": "Send waits until the upload has finished.",
+						"copying": "Send waits until the file is copied.",
+						"failed": "Remove the file that couldn't be copied, then send."
+					}
+				}
 			}
 		}
 	},
@@ -6771,6 +6985,7 @@
 					"pageTitle": "Desktop app updates — Owlat",
 					"pin": {
 						"label": "Release to pin to",
+						"missing": "Pinned to {version}, which this instance no longer has cached. Connected apps are offered no update until you pin a cached release or choose another mode.",
 						"noneCached": "No cached release on this channel to pin to. Check now first.",
 						"placeholder": "Choose a cached release"
 					},
@@ -7180,6 +7395,12 @@
 						"question": "Are you sure you want to delete the property {name}?",
 						"title": "Delete property"
 					},
+					"deletion": {
+						"deleting": "Deleting",
+						"failed": "Deletion stopped after repeated errors",
+						"progress": "{count} value removed so far | {count} values removed so far",
+						"retry": "Retry deletion"
+					},
 					"editModal": {
 						"immutable": "Key and type cannot be changed after creation.",
 						"save": "Save changes",
@@ -7219,6 +7440,7 @@
 					"toasts": {
 						"created": "Property \"{label}\" created",
 						"deleted": "Property \"{label}\" deleted",
+						"deletionStarted": "Deleting \"{label}\" and its values in the background",
 						"updated": "Property updated"
 					},
 					"types": {
@@ -7717,9 +7939,9 @@
 					}
 				},
 				"dangerZone": {
-					"body": "Deleting the workspace permanently removes every team member, all contacts, campaigns, automations, mailboxes, and analytics. This action cannot be undone.",
+					"body": "Deleting the workspace permanently removes its data: contacts, campaigns, templates, automations, mailboxes and their mail, sending domains, and analytics. Team members keep their accounts and memberships, so they can still sign in to the emptied workspace. This action cannot be undone.",
 					"heading": "Danger zone",
-					"subtitle": "Permanently delete this workspace and all of its data",
+					"subtitle": "Permanently delete this workspace's data",
 					"title": "Delete workspace"
 				},
 				"deleteModal": {
@@ -7728,7 +7950,7 @@
 					"subtitle": "This cannot be undone",
 					"title": "Delete workspace",
 					"typeToConfirm": "Type {phrase} to confirm",
-					"warning": "{label} This permanently deletes {workspace} and all of its data — team members, contacts, campaigns, automations, mailboxes, and analytics. You will be signed out immediately.",
+					"warning": "{label} This permanently deletes the data in {workspace}: contacts, campaigns, templates, automations, mailboxes and their mail, sending domains, and analytics. Team members keep their accounts and memberships. You will be signed out immediately.",
 					"warningLabel": "Warning:"
 				},
 				"inboxes": {
@@ -7790,6 +8012,9 @@
 						},
 						"knowledgeDescription": "Builds the shared knowledge profile for each contact from this team's history. Off by default, because it reads the whole archive.",
 						"knowledgeLabel": "Also learn from the imported mail",
+						"learnAction": "Learn from imported mail",
+						"learnBody": "Build each contact's shared knowledge profile from the mail this import brought in. It reads the whole archive, and nothing is downloaded again.",
+						"learnTitle": "This import has not been learned from yet",
 						"paused": "Paused until {when}",
 						"pausedBody": "The provider's daily download limit is used up. The import picks up again on its own — there is nothing to do.",
 						"progressLabel": "Import progress",
@@ -7800,6 +8025,7 @@
 						"throttleExhausted": "The provider refused every download for {days} days in a row, so the import stopped where it got to.",
 						"title": "Import existing mail",
 						"toastCancelled": "Import stopped",
+						"toastLearnStarted": "Learning from the imported mail",
 						"toastStarted": "Import started"
 					},
 					"intro": "Shared addresses your team reads and sends from together — like {supportAddress} or {salesAddress}.",
@@ -8003,6 +8229,9 @@
 					"performance": "Summarize the performance of our most recent campaign.",
 					"reEngagement": "Draft a friendly re-engagement email for inactive subscribers."
 				},
+				"jumpToLatest": "Jump to latest",
+				"moreActions": "More actions",
+				"moreActionsFor": "More actions for {title}",
 				"newChat": "New chat",
 				"noConversations": "No conversations yet.",
 				"openConversations": "Conversations",
@@ -8084,6 +8313,7 @@
 						"addedToTopic": "Added to \"{topic}\"",
 						"doiFailed": "Could not resend confirmation",
 						"doiSent": "Confirmation email sent",
+						"exportFailed": "Could not export the contact data",
 						"noteSaved": "Customer note saved",
 						"removedFromTopic": "Removed from \"{topic}\"",
 						"suppressionRemoved": "Suppression removed"
@@ -9130,11 +9360,7 @@
 			},
 			"detail": {
 				"agentNeedsInput": "The agent needs your input",
-				"agentNeedsInputEyebrow": "Waiting on you",
-				"answerAndResume": "Answer and resume draft",
 				"answerClarificationOperation": "Answer clarification",
-				"answerPlaceholder": "Type your answer",
-				"answerRemaining": "Answer {count} more to resume | Answer {count} more to resume",
 				"assign": "Assign",
 				"assignThreadAria": "Assign thread",
 				"assignToMe": "Assign to me",
@@ -9142,6 +9368,7 @@
 				"assignedToAria": "Assigned to {name}",
 				"autoSendCancelledToast": "Automatic send cancelled and returned to review",
 				"backToInbox": "Back to team inbox",
+				"bodyExcerptNotice": "Showing the beginning of a long message.",
 				"breadcrumb": "Conversation",
 				"categories": {
 					"billing": "billing",
@@ -9155,8 +9382,6 @@
 				},
 				"changeStatusAria": "Status: {status}. Change thread status",
 				"channelLinkFailedToast": "Channel created, but linking failed",
-				"clarificationLead": "Answer below and the agent finishes the draft with your answers as confirmed facts.",
-				"clarificationProgress": "{answered} of {total} answered",
 				"clarificationSavedToast": "Answers saved — drafting resumed",
 				"composer": {
 					"agentDraft": "Drafted by the agent",
@@ -9278,7 +9503,8 @@
 				"waitingDraft": {
 					"notice": "A draft reply to this message is also waiting.",
 					"answer": "Answer this message"
-				}
+				},
+				"answerInReply": "Answer in the reply"
 			},
 			"failed": {
 				"emptyBody": "Every inbound message processed successfully.",
@@ -9704,6 +9930,9 @@
 				"indexingBody": "Reading through your imported mail to learn about your contacts and conversations.",
 				"indexingFootnote": "Your mail is already in your inbox — this last step just makes the AI smarter.",
 				"indexingTitle": "Teaching your AI assistant",
+				"learnAction": "Learn from imported mail",
+				"learnBody": "Let it read through the imported mail to learn about your contacts and conversations. Nothing is downloaded again.",
+				"learnTitle": "Your AI assistant hasn't learned from this mail yet",
 				"openInbox": "Open your inbox",
 				"pageTitle": "Import your mail — Owlat",
 				"pausedBody": "Your mail provider limits how much mail can be downloaded each day, and today's share is used up. The import picks up again on its own — there is nothing you need to do.",
@@ -9738,6 +9967,7 @@
 				"toastCancelled": "Migration cancelled. Imported mail was kept.",
 				"toastCredentialsUpdated": "Credentials updated.",
 				"toastImportStarted": "Importing your mail history now.",
+				"toastLearnStarted": "Your AI assistant is learning from your imported mail.",
 				"toastSignatureSaved": "Saved as your default signature.",
 				"tryAgain": "Try again",
 				"useThisSignature": "Use this signature"
@@ -10279,8 +10509,10 @@
 			"emails": {
 				"detail": {
 					"edit": {
+						"backToCampaign": "Back to campaign",
 						"backToEmails": "Back to emails",
 						"builderError": "The email editor hit an unexpected error. Please refresh — your last saved version is safe.",
+						"campaignReturnHint": "Save your changes, then go back to review and send the campaign.",
 						"loadError": "Couldn't load this template",
 						"loading": "Loading template...",
 						"manageTranslations": "Manage translations",
@@ -10644,7 +10876,10 @@
 			}
 		},
 		"answer": {
-			"pageTitle": "Answer queue"
+			"pageTitle": "Answer queue",
+			"mode": {
+				"pageTitle": "Answer mode"
+			}
 		},
 		"inboxes": {
 			"pageTitle": "All inboxes",
@@ -10890,6 +11125,7 @@
 			"pageTitle": "Set up a server — Owlat",
 			"provision": "Provision server",
 			"secrets": {
+				"leftAfterFailure": "The setup file is still on the server. It holds your admin password and provider keys in plaintext, so delete it over SSH: {command}",
 				"notRemoved": "Couldn't auto-remove the setup file. It holds your admin password and provider keys in plaintext — delete {file} from the install directory.",
 				"removed": "The setup file — which held your admin password and provider API keys in plaintext — was removed from the server."
 			},
@@ -11399,6 +11635,7 @@
 			"continueToSignIn": "Continue to sign in",
 			"emailProvider": "Email provider",
 			"errorUnknown": "Setup failed for an unknown reason.",
+			"errorWriteFailed": "Setup could not write {file}: {cause}. Your admin account and runtime settings are already in place, so nothing is lost. Fix the file on the server, then launch again. Retrying is safe.",
 			"eyebrow": "Owlat setup",
 			"finishing": "Finishing…",
 			"fromIdentity": "From identity",
@@ -13098,7 +13335,9 @@
 				"emptySubject": "no subject",
 				"linkMismatch": "a link reads {text} but goes to {host}",
 				"placeholder": "“{token}” left in the message",
-				"unfilledVariable": "{name} was never filled in"
+				"unfilledVariable": "{name} was never filled in",
+				"draftGap": "“{label}” still needs filling in",
+				"draftGaps": "{count} gaps still need filling in, starting with “{label}”"
 			},
 			"useDraftRevise": {
 				"failed": "Revise failed — your draft is unchanged."
@@ -13106,6 +13345,8 @@
 			"useMailMigration": {
 				"cancelOperation": "Cancel mailbox migration",
 				"cancelSharedOperation": "Stop team inbox import",
+				"learnOperation": "Learn from imported mail",
+				"learnSharedOperation": "Learn from team inbox import",
 				"startOperation": "Start mailbox migration",
 				"startSharedOperation": "Start team inbox import"
 			},
@@ -13931,7 +14172,8 @@
 				"organize": "Organize",
 				"triage": "Triage",
 				"workspace": "Workspaces",
-				"review": "Updates list"
+				"review": "Updates list",
+				"answer": "Answer mode"
 			},
 			"labels": {
 				"addLabel": "Add label",
@@ -13940,7 +14182,6 @@
 				"closeConversation": "Close the open conversation / back to Priority",
 				"compose": "Compose",
 				"extendSelection": "Extend selection",
-				"focusComposer": "Focus the composer",
 				"focusSearch": "Focus search",
 				"forward": "Forward",
 				"goToAdmin": "Go to admin",
@@ -13985,7 +14226,13 @@
 				"goToMarketing": "Go to marketing",
 				"next": "Next",
 				"previous": "Previous",
-				"openThread": "Open thread"
+				"openThread": "Open thread",
+				"leaveAnswerMode": "Leave Answer mode (in the editor, the first Esc only lets go of it)",
+				"toggleAnswerView": "Switch between Summary and Full conversation",
+				"draftWithAi": "Draft with AI (instead of opening the Assistant)",
+				"pickAskOption": "Pick an answer on the AI’s question card",
+				"previousQueueItem": "Previous item in the Answer queue",
+				"nextQueueItem": "Next item in the Answer queue"
 			}
 		},
 		"signatureBadge": {
@@ -14639,11 +14886,13 @@
 		},
 		"useCsvImport": {
 			"errors": {
+				"conflictingMapping": "{field} is mapped to more than one column. Map it to one column only.",
 				"dropCsv": "Please drop a CSV file",
 				"emailColumnRequired": "You must map a column to Email (required)",
 				"importFailed": "Import failed",
 				"noValidContacts": "No valid contacts found in CSV",
 				"parseFailed": "CSV parsing error: {message}",
+				"propertiesFailed": "The mapped custom properties could not be registered, so no contacts were imported: {reason}",
 				"selectCsv": "Please select a CSV file",
 				"tooFewRows": "CSV file must have at least a header row and one data row"
 			},
@@ -14655,6 +14904,12 @@
 				"lastName": "Last name",
 				"property": "Custom property",
 				"topic": "Topic"
+			},
+			"fieldNames": {
+				"email": "Email",
+				"firstName": "First name",
+				"language": "Language",
+				"lastName": "Last name"
 			},
 			"pickerTitle": "Choose a CSV file"
 		},
@@ -14673,6 +14928,12 @@
 			"quietSummary": {
 				"body": "1 message arrived during quiet hours | {count} messages arrived during quiet hours",
 				"title": "While you were away"
+			},
+			"replyNotCarried": "Your reply was not sent because it could not be passed to {workspace}. Copy it, then switch to {workspace} to send it.",
+			"workspaceGone": {
+				"action": "That notification came from a workspace that is no longer connected, so nothing was changed.",
+				"copyReply": "Copy reply",
+				"reply": "Your reply was not sent because its workspace is no longer connected. Copy it to keep your text."
 			}
 		},
 		"useDesktopUpdatePolicy": {
@@ -14859,6 +15120,7 @@
 			"didNotComplete": "Provisioning did not complete (exit {code}).",
 			"exitCode": "exit {code}",
 			"hostKeyAccepted": "accepted",
+			"imagesMissing": "These images did not arrive on the server: {images}",
 			"knownHost": "known host",
 			"localBuildFailed": "Local image build failed (exit {code}). Is Docker running here?",
 			"localSetupImageFailed": "Local setup-image build failed (exit {code}).",

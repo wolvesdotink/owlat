@@ -4,6 +4,9 @@
  * `useFeatureFlag`, `useConvexQuery`) and the real `vue-i18n` `useI18n`, over a
  * fake session and a fake Convex client that the test drives.
  *
+ * The role comes from `useActiveMemberRole` (better-auth `getActiveMember`),
+ * which the harness answers from the same fake session.
+ *
  * The stubs stop at the process boundary: the better-auth client
  * (`~/lib/auth-client`, mocked by each suite via {@link authClientMock}), the
  * Convex client (`useNuxtApp().$convex`), Nuxt's `useState` / `useRuntimeConfig`
@@ -22,6 +25,7 @@ import { useI18n } from 'vue-i18n';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import type { RouteLocationNormalized } from 'vue-router';
 import { useConvex } from '@owlat/ui/composables/useConvex';
+import type * as ConvexAuthReady from '~/lib/convexAuthReady';
 import { useToast } from '@owlat/ui/composables/useToast';
 import { useAnnounce } from '~/composables/useAnnounce';
 import { usePostHog } from '~/composables/usePostHog';
@@ -115,6 +119,22 @@ export const useListOrganizations = vi.fn(() =>
 export const listMembers = vi.fn(async () => ({ data: { members: session.members.value } }));
 export const listInvitations = vi.fn(async () => ({ data: [] as unknown[] }));
 export const listOrganizations = vi.fn(async () => ({ data: session.organizations.value }));
+/**
+ * better-auth's `/organization/get-active-member`: the caller's member row in
+ * the session's active organization, or an error when they are not in it (the
+ * same condition that makes the full-organization request fail).
+ */
+export const getActiveMember = vi.fn(async () => {
+	const member = session.activeOrganizationError.value
+		? undefined
+		: session.members.value.find((m) => m.userId === session.user.value?.id);
+	return member
+		? {
+				data: { ...member, organizationId: session.activeOrganizationId.value },
+				error: null,
+			}
+		: { data: null, error: session.activeOrganizationError.value ?? { message: 'FORBIDDEN' } };
+});
 export const setActiveOrganization = vi.fn(async (input: { organizationId: string }) => {
 	session.activeOrganizationId.value = input.organizationId;
 	return {
@@ -133,6 +153,7 @@ export function resetSession(): void {
 	listMembers.mockClear();
 	listInvitations.mockClear();
 	listOrganizations.mockClear();
+	getActiveMember.mockClear();
 	setActiveOrganization.mockClear();
 	useActiveOrganization.mockClear();
 	useListOrganizations.mockClear();
@@ -193,7 +214,7 @@ export function authClientMock() {
 		cancelInvitation: vi.fn(),
 		removeMember: vi.fn(),
 		updateMemberRole: vi.fn(),
-		getActiveMember: vi.fn(),
+		getActiveMember,
 		leaveOrganization: vi.fn(),
 	};
 }
@@ -247,6 +268,12 @@ export function createFakeConvex(): FakeConvex {
 export interface LoadOptions {
 	convex?: FakeConvex | null;
 	runtimeConfig?: { public: Record<string, unknown> };
+	/**
+	 * Where the Convex client's auth stands when the guard runs
+	 * (`~/lib/convexAuthReady`). Defaults to confirmed; `'pending'` leaves it
+	 * for the case to report through {@link Loaded.convexAuth}.
+	 */
+	convexAuth?: boolean | 'pending';
 }
 
 export interface Loaded<T> {
@@ -254,6 +281,8 @@ export interface Loaded<T> {
 	convex: FakeConvex | null;
 	/** Nuxt's `useState` buckets for this load, keyed like the app keys them. */
 	state: Map<string, { value: unknown }>;
+	/** This load's copy of the auth-settled signal the convex plugin drives. */
+	convexAuth: typeof ConvexAuthReady;
 }
 
 /**
@@ -292,6 +321,7 @@ export async function loadMiddleware<T>(
 
 	const [
 		auth,
+		activeMemberRole,
 		organization,
 		organizationContext,
 		permissions,
@@ -300,6 +330,7 @@ export async function loadMiddleware<T>(
 		backendOperation,
 	] = await Promise.all([
 		import('~/composables/useAuth'),
+		import('~/composables/useActiveMemberRole'),
 		import('~/composables/useOrganization'),
 		import('~/composables/useOrganizationContext'),
 		import('~/composables/usePermissions'),
@@ -308,6 +339,7 @@ export async function loadMiddleware<T>(
 		import('~/composables/useBackendOperation'),
 	]);
 	vi.stubGlobal('useAuth', auth.useAuth);
+	vi.stubGlobal('useActiveMemberRole', activeMemberRole.useActiveMemberRole);
 	vi.stubGlobal('useBackendOperation', backendOperation.useBackendOperation);
 	vi.stubGlobal('useOrganization', organization.useOrganization);
 	vi.stubGlobal('useOrganizationContext', organizationContext.useOrganizationContext);
@@ -315,8 +347,11 @@ export async function loadMiddleware<T>(
 	vi.stubGlobal('useFeatureFlag', featureFlag.useFeatureFlag);
 	vi.stubGlobal('useConvexQuery', convexQuery.useConvexQuery);
 
+	const convexAuth = await import('~/lib/convexAuthReady');
+	if (options.convexAuth !== 'pending') convexAuth.reportConvexAuth(options.convexAuth ?? true);
+
 	const middleware = (await importer()).default as T;
-	return { middleware, convex, state };
+	return { middleware, convex, state, convexAuth };
 }
 
 /** Mark the page as the packaged desktop webview (`isDesktopRuntime()` reads this). */

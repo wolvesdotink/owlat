@@ -1,43 +1,22 @@
 <script setup lang="ts">
-import {
-	localizedQuestionCopy,
-	type LocalizableClarificationQuestion,
-} from '~/utils/clarificationLocale';
-import type { ClarificationAnswer } from '~/utils/clarificationAnswers';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { useOrganization } from '~/composables/useOrganization';
-import { useNow } from '~/composables/useNow';
-import { sendHoldReason } from '~/utils/replyCollision';
+import { teamThreadPreview } from '~/utils/teamThreadPreviews';
 import { capitalize, formatRelativeTime } from '~/utils/formatters';
 import {
 	classificationSummary,
-	hasAgentDraft,
-	isChannelMessage,
-	isFollowUp,
 	latestClassification,
 	otherWaitingDrafts,
 	pickReplyTarget,
-	replyBlocker,
-	replyNotice,
-	replySubject,
 } from '~/utils/teamThreadReply';
-import type { TeamThreadComposerTarget } from '~/utils/composerTarget';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
+import { useAnswerModeNav } from '~/composables/useAnswerMode';
+import { useTeamKeptReply } from '~/composables/useTeamKeptReply';
 
 const { t, te, locale } = useI18n();
 
 useHead({ title: () => t('dashboard.inbox.detail.pageTitle') });
-
-/**
- * Collision copy lives in utils/replyCollision as an i18n key + params (the
- * registry convention for module-scope definitions); the string form is still
- * accepted so a plain sentence renders as itself.
- */
-type CollisionMessage = string | { key: string; params?: Record<string, unknown> };
-function collisionText(message: CollisionMessage): string {
-	return typeof message === 'string' ? t(message) : t(message.key, message.params ?? {});
-}
 
 // Classification / processing labels are translated here; the backend enums stay
 // the source of truth, so an unrecognised value renders as stored.
@@ -53,20 +32,19 @@ definePageMeta({
 });
 
 const threadId = useRouteId<'conversationThreads'>('threadId');
+// The Team Inbox row this thread was opened from, if the list loaded it.
+const threadPreview = computed(() => teamThreadPreview(threadId.value));
 
 const {
 	thread,
 	messages,
 	contact,
-	takeOver,
 	followUps,
 	threadLoading,
-	handleApprove,
+	threadError,
+	refetchThread,
 	handleReject,
 	handleRetry,
-	saveEditedDraft,
-	saveDraftOnly,
-	sendFollowUp,
 	cancelFollowUp,
 	handleStatusChange,
 	handleSnooze,
@@ -74,6 +52,8 @@ const {
 	handleAssign,
 } = useThreadDetail(threadId);
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
+const answerNav = useAnswerModeNav();
+const keptReply = useTeamKeptReply();
 
 // Times read relative ("2 hours ago"), with the exact moment in the reader's
 // locale on hover — the same as everywhere else in the app.
@@ -134,7 +114,7 @@ const assignToMe = () => {
 	const me = user.value?.id;
 	if (me) void handleAssign(me);
 };
-// `r` opens the reply composer, as the shortcut sheet promises.
+// `r` opens the reply in Answer mode, as the shortcut sheet promises.
 function onThreadKeydown(event: KeyboardEvent) {
 	const key = event.key.toLowerCase();
 	if (key !== 'i' && key !== 'r') return;
@@ -171,11 +151,11 @@ const assignedMemberName = computed(() => {
 	return m ? m.user.name || m.user.email : id;
 });
 
-// Live thread presence — heartbeat while this thread is open, flip to "replying"
-// while the person is writing in the composer. `others` excludes the current user; resolve
-// each to a display name/avatar via the already-fetched org members.
-const composerTyping = ref(false);
-const { others: presenceOthers } = useThreadPresence(threadId, { replying: composerTyping });
+// Live thread presence — heartbeat while this thread is open (the reply is
+// written in Answer mode, which reports "replying" itself). `others` excludes
+// the current user; resolve each to a display name/avatar via the
+// already-fetched org members.
+const { others: presenceOthers } = useThreadPresence(threadId, { replying: ref(false) });
 const presencePeople = computed(() =>
 	presenceOthers.value.map((p) => {
 		const m = members.value.find((x) => x.userId === p.userId);
@@ -188,63 +168,16 @@ const presencePeople = computed(() =>
 	})
 );
 
-// Collision soft-hold: while another teammate is actively replying to THIS
-// thread, hold the send/approve controls (disabled-styled but visible) so we
-// don't double-answer. Never a lock — it releases on its own when their
-// `replying` presence expires or drops. The `approveDraft` mutation re-checks
-// server-side as a belt-and-braces guard (see utils/replyCollision.ts).
-const heldByReplierName = computed(() => {
-	const r = presencePeople.value.find((p) => p.mode === 'replying');
-	return r ? r.name : null;
-});
-const isHeld = computed(() => heldByReplierName.value !== null);
-const holdReason = computed(() =>
-	isHeld.value && heldByReplierName.value
-		? collisionText(sendHoldReason(heldByReplierName.value))
-		: undefined
-);
-
 // Actions state
 const isRejecting = ref(false);
 const isRetrying = ref(false);
 const rejectReason = ref('');
 const showRejectModal = ref(false);
 const actionMessageId = ref<Id<'inboundMessages'> | null>(null);
-// Drives the follow-up countdowns and the reply blocker's received-wait.
-const now = useNow({ intervalMs: 250 });
-
-const { run: answerClarification, isLoading: isAnsweringClarification } = useBackendOperation(
-	api.inbox.clarification.answerClarification,
-	{ label: () => t('dashboard.inbox.detail.answerClarificationOperation') }
-);
 const { run: undoAutoSend, isLoading: isUndoingAutoSend } = useBackendOperation(
 	api.inbox.mutations.undoAutoSend,
 	{ label: () => t('dashboard.inbox.detail.undoAutoSendOperation') }
 );
-
-// The question in the reader's own language (canonical English when no
-// translation landed).
-function questionCopy(question: LocalizableClarificationQuestion) {
-	return localizedQuestionCopy(question, locale.value);
-}
-
-/** Questions answered from memory on a message that already has its draft. */
-function reusedAnswers(message: NonNullable<typeof messages.value>[number]) {
-	return (message.pendingClarification?.questions ?? []).filter(
-		(q) => q.answer?.source === 'memory'
-	);
-}
-
-// The answers come from InboxThreadClarification, canonical and with their
-// source, so a remembered value confirmed untouched is not re-captured.
-async function submitClarification(
-	messageId: Id<'inboundMessages'>,
-	answers: ClarificationAnswer[]
-) {
-	if (!isAdmin.value) return;
-	const result = await answerClarification({ inboundMessageId: messageId, answers });
-	if (result.ok) showToast(t('dashboard.inbox.detail.clarificationSavedToast'));
-}
 
 async function cancelAutoSend(messageId: Id<'inboundMessages'>) {
 	if (!isAdmin.value) return;
@@ -252,8 +185,6 @@ async function cancelAutoSend(messageId: Id<'inboundMessages'>) {
 	if (result.ok && result.result.cancelled)
 		showToast(t('dashboard.inbox.detail.autoSendCancelledToast'));
 }
-
-const followUpSecondsLeft = (sendAt: number) => Math.max(0, Math.ceil((sendAt - now.value) / 1000));
 
 // Use the shared global toast. The underlying actions go through
 // useBackendOperation, which already toasts any categorized failure — so we
@@ -279,68 +210,21 @@ const onUnsnooze = async () => {
 	if (result.ok) showToast(t('dashboard.inbox.detail.unsnoozedToast'));
 };
 
-// ── Reply composer ──
-// The composer answers one message: the newest still waiting for a reply,
-// otherwise the newest message (whose state then says why nothing can go out).
-// A person can pick an earlier message that also holds a waiting draft; the
-// choice holds while that message still waits for a reply.
-const chosenTargetId = ref<Id<'inboundMessages'> | null>(null);
-const replyTarget = computed(() => {
-	const chosen = chosenTargetId.value
-		? messages.value.find(
-				(m) => m._id === chosenTargetId.value && m.processingStatus === 'draft_ready'
-			)
-		: undefined;
-	return chosen ?? pickReplyTarget(messages.value);
-});
+// ── Reply ──
+// Every reply is written in Answer mode (`/dashboard/answer/t/<threadId>`); this
+// page keeps assignment, status and the discussion. The reply answers the
+// newest message still waiting; a note on an older message that also holds a
+// waiting draft opens Answer mode on that one instead.
+const replyTarget = computed(() => pickReplyTarget(messages.value));
 const waitingDraftIds = computed(
 	() => new Set(otherWaitingDrafts(messages.value, replyTarget.value).map((m) => m._id))
 );
-function answerMessage(messageId: Id<'inboundMessages'>) {
-	chosenTargetId.value = messageId;
-	openReply();
+function openReply(messageId?: Id<'inboundMessages'>) {
+	void answerNav.openTeam(threadId.value, { messageId: messageId ?? null });
 }
-const replyTargetBlocker = computed(() => {
-	const target = replyTarget.value;
-	if (!target) return null;
-	// The server's own takeover facts (getThread), so the composer never opens
-	// on a message `takeOverReply` would refuse.
-	const facts = takeOver.value?.messages.find((m) => m.messageId === target._id);
-	return replyBlocker(target.processingStatus, {
-		agentEnabled: isFeatureEnabled('ai.agent'),
-		scanFinished: facts?.scanFinished,
-		pipelineStarted: facts?.pipelineStarted,
-		receivedWaitMs: takeOver.value?.receivedWaitMs,
-		receivedAt: target._creationTime,
-		now: now.value,
-		isChannel: isChannelMessage(target),
-	});
-});
-const replyTargetNotice = computed(() =>
-	replyTarget.value ? replyNotice(replyTarget.value.processingStatus) : null
-);
-// A message no agent will answer (failed, agent off, never picked up, rejected
-// or archived) is taken over first, so the normal edit → approve path can send
-// a person's reply.
-const { run: takeOverReply } = useBackendOperation(api.inbox.manualReply.takeOverReply, {
-	label: () => t('dashboard.inbox.detail.takeOverOperation'),
-});
-// A rejected draft was thrown out on purpose: the person starts from an empty box.
-// So does a follow-up: the message's draft is the reply that already went out.
-const replyDraft = computed(() =>
-	replyTarget.value &&
-	replyTarget.value.processingStatus !== 'rejected' &&
-	!isFollowUp(replyTarget.value.processingStatus) &&
-	hasAgentDraft(replyTarget.value)
-		? (replyTarget.value.draftResponse ?? null)
-		: null
-);
-const replyDefaultSubject = computed(() =>
-	replyTarget.value ? replySubject(replyTarget.value) : null
-);
-const replyOriginalDraft = computed(() =>
-	replyTarget.value && replyDraft.value ? agentOriginalDraft(replyTarget.value) : null
-);
+function answerMessage(messageId: Id<'inboundMessages'>) {
+	openReply(messageId);
+}
 const replySenderLabel = computed(() => {
 	if (contact.value) {
 		const name = `${contact.value.firstName ?? ''} ${contact.value.lastName ?? ''}`.trim();
@@ -372,69 +256,8 @@ function hasAgentInsight(message: {
 		message.processingStatus === 'quarantined'
 	);
 }
-const composerOpen = ref(false);
-const composerRef = ref<{
-	focus: () => void;
-	reset: () => void;
-	fill: (body: string, subject: string) => void;
-} | null>(null);
-function openReply() {
-	composerRef.value?.focus();
-}
 // "Compose email" (top bar, palette, shortcut) on a thread answers the thread.
 watch(useThreadReplyRequest(), () => openReply());
-
-// The thread as a composer target: the reply's save and send paths, and the
-// refusals a send can come back with, live in useTeamThreadComposer.
-const replyComposerTarget = computed<TeamThreadComposerTarget | null>(() =>
-	replyTarget.value
-		? { kind: 'teamThread', threadId: threadId.value, inboundMessageId: replyTarget.value._id }
-		: null
-);
-const {
-	busy: isSending,
-	send: sendReply,
-	save: saveReply,
-} = useTeamThreadComposer(
-	{
-		target: () => replyComposerTarget.value,
-		processingStatus: () => replyTarget.value?.processingStatus,
-		held: () => isHeld.value,
-	},
-	{
-		approve: handleApprove,
-		saveAndApprove: saveEditedDraft,
-		saveRevision: saveDraftOnly,
-		sendFollowUp,
-		takeOver: (inboundMessageId) => takeOverReply({ inboundMessageId }),
-	}
-);
-
-const onComposerSend = async (body: string, fromDraft: boolean, subject: string) => {
-	const sent = await sendReply({ body, subject }, fromDraft);
-	if (!sent) return;
-	composerRef.value?.reset();
-	composerOpen.value = false;
-	// A follow-up keeps answering the same message; a reply moves the composer on.
-	if (sent === 'reply') chosenTargetId.value = null;
-};
-
-// Save WITHOUT sending: the message stays waiting for review ("Saved · edited
-// by you"); no collision hold applies because nothing is sent.
-const onComposerSave = (body: string, subject: string) => saveReply({ body, subject });
-
-// An update the classifier filed as needing no reply can be sent to drafting
-// after all; the draft then opens in the composer.
-const { run: requestReply, isLoading: isRequestingReply } = useBackendOperation(
-	api.inbox.updates.requestReply,
-	{ label: () => t('dashboard.inbox.detail.requestReplyOperation') }
-);
-async function onRequestReply() {
-	const target = replyTarget.value;
-	if (!target || !isAdmin.value) return;
-	const result = await requestReply({ inboundMessageId: target._id });
-	if (result.ok) showToast(t('dashboard.inbox.detail.replyRequestedToast'));
-}
 
 // ── What the team sent ──
 // The reply that answered each message, and the follow-ups written after it,
@@ -458,9 +281,11 @@ async function undoFollowUp(followUpId: Id<'inboxFollowUps'>) {
 	try {
 		const result = await cancelFollowUp(followUpId);
 		if (!result.ok || !result.result.cancelled) return;
-		// Hand the text back so nothing typed is lost.
-		composerRef.value?.fill(result.result.body, result.result.subject);
+		// Hand the text back so nothing typed is lost: it waits in the reply,
+		// which opens in Answer mode.
+		keptReply.set(threadId.value, { body: result.result.body, subject: result.result.subject });
 		showToast(t('dashboard.inbox.detail.followUpUndoneToast'));
+		openReply();
 	} finally {
 		undoingFollowUpId.value = null;
 	}
@@ -553,13 +378,11 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 			{{ t('dashboard.inbox.detail.backToInbox') }}
 		</NuxtLink>
 
-		<!-- Loading -->
-		<div v-if="threadLoading && !thread" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">{{ t('dashboard.inbox.detail.loading') }}</p>
-			</div>
-		</div>
+		<!-- A failed read is not a missing thread (#721). -->
+		<UiQueryBoundary v-if="threadError" :error="threadError" @retry="refetchThread" />
+
+		<!-- Loading: the page's own shape, headed by the list row when we have it. -->
+		<InboxThreadDetailSkeleton v-else-if="threadLoading && !thread" :preview="threadPreview" />
 
 		<!-- Not Found -->
 		<div v-else-if="!thread" class="flex flex-col items-center justify-center py-16 text-center">
@@ -637,7 +460,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 					:assigned-member-name="assignedMemberName"
 					:is-snoozed="isSnoozed"
 					:current-status="currentStatus"
-					@reply="openReply"
+					@reply="openReply()"
 					@assign="onAssign"
 					@new-channel="showNewChannel = true"
 					@snooze="showSnoozeDialog = true"
@@ -692,10 +515,9 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						     unless the viewer is permitted on both surfaces. -->
 							<InboxCrossSurfaceStrip :inbound-message-id="message._id" class="mb-3" />
 
-							<!-- Message Body -->
-							<div class="text-text-secondary text-sm whitespace-pre-wrap">
-								{{ message.textBody || t('dashboard.inbox.detail.noTextContent') }}
-							</div>
+							<!-- Message Body. A text part too large for its row is fetched
+						     from storage; the component shows its excerpt until then. -->
+							<InboxMessageBody :message="message" />
 
 							<!-- Attachments. getThread returns the row unprojected, so the
 						     list needs no extra query; the component owns the download. -->
@@ -746,17 +568,24 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								</UiButton>
 							</div>
 
-							<InboxThreadClarification
+							<!-- The agent's questions are answered where the reply is written. -->
+							<div
 								v-if="
 									isAdmin &&
 									message.processingStatus === 'awaiting_clarification' &&
 									message.pendingClarification
 								"
-								:questions="message.pendingClarification.questions"
-								:language="message.classification?.language"
-								:submitting="isAnsweringClarification"
-								@submit="submitClarification(message._id, $event)"
-							/>
+								class="mt-4 flex flex-wrap items-center gap-2 rounded-lg border-l-2 border-l-brand/60 surface-2 p-3"
+								data-testid="thread-clarification-pointer"
+							>
+								<p class="flex-1 text-sm text-text-secondary">
+									{{ t('dashboard.inbox.detail.agentNeedsInput') }}
+								</p>
+								<UiButton size="sm" @click="openReply(message._id)">
+									<Icon name="lucide:message-circle-question" class="w-3.5 h-3.5" />
+									{{ t('dashboard.inbox.detail.answerInReply') }}
+								</UiButton>
+							</div>
 
 							<InboxAutoSendCountdown
 								v-if="isAdmin && message.pendingAutoSend"
@@ -789,7 +618,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							:body="followUp.body"
 							:at="followUp.sentAt ?? followUp.createdAt"
 							:status="followUp.status"
-							:seconds-left="followUpSecondsLeft(followUp.sendAt)"
+							:send-at="followUp.sendAt"
 							:error-message="followUp.errorMessage ?? null"
 							:undoing="undoingFollowUpId === followUp._id"
 							@undo="undoFollowUp(followUp._id)"
@@ -803,77 +632,24 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						:title="t('dashboard.inbox.detail.noMessages')"
 					/>
 
-					<!-- Answers the agent reused from memory for the draft below. -->
-					<div
-						v-if="
-							replyTarget &&
-							replyTarget.processingStatus === 'draft_ready' &&
-							reusedAnswers(replyTarget).length > 0
-						"
-						class="surface-1 rounded-(--radius-card) p-4"
-						data-testid="reused-answers"
+					<!-- Every reply is written in Answer mode; this is the way in. -->
+					<button
+						v-if="isAdmin && replyTarget"
+						type="button"
+						class="card flex w-full items-center gap-3 text-left text-sm text-text-tertiary transition-colors duration-(--motion-fast) hover:text-text-primary"
+						data-testid="thread-reply-open"
+						@click="openReply()"
 					>
-						<span class="lp-eyebrow">{{ t('dashboard.inbox.detail.reusedAnswersEyebrow') }}</span>
-						<p class="mt-1 text-sm font-medium text-text-primary">
-							{{ t('dashboard.inbox.detail.reusedAnswersTitle') }}
-						</p>
-						<ul class="mt-2 space-y-1.5 text-sm">
-							<li
-								v-for="question in reusedAnswers(replyTarget)"
-								:key="question.id"
-								class="flex items-baseline gap-2"
-							>
-								<Icon
-									name="lucide:history"
-									class="w-3.5 h-3.5 shrink-0 translate-y-0.5 text-text-tertiary"
-								/>
-								<span class="text-text-secondary">{{ questionCopy(question).text }}</span>
-								<span class="font-medium text-text-primary">{{ question.answer?.value }}</span>
-							</li>
-						</ul>
-						<p class="mt-2 text-xs text-text-tertiary">
-							{{ t('dashboard.inbox.detail.reusedAnswersHint') }}
-							<NuxtLink
-								to="/dashboard/admin/instance/ai-replies"
-								class="underline hover:text-text-primary"
-								>{{ t('dashboard.inbox.detail.reusedAnswersManage') }}</NuxtLink
-							>
-						</p>
-					</div>
-
-					<!-- Reply composer: on every thread, pre-filled with the agent's
-					     draft when there is one. -->
-					<InboxThreadComposer
-						v-if="isAdmin && replyComposerTarget"
-						ref="composerRef"
-						v-model:open="composerOpen"
-						:sender-label="replySenderLabel"
-						:blocker="replyTargetBlocker"
-						:notice="replyTargetNotice"
-						:draft="replyDraft"
-						:original-draft="replyOriginalDraft"
-						:subject="replyDefaultSubject"
-						:target="replyComposerTarget"
-						:busy="isSending"
-						:held="isHeld"
-						:held-reason="holdReason"
-						@send="onComposerSend"
-						@save="onComposerSave"
-						@reject="openRejectModal(replyComposerTarget.inboundMessageId)"
-						@typing="composerTyping = $event"
-					>
-						<template v-if="replyTargetBlocker === 'update'" #blocked-action>
-							<UiButton
-								variant="secondary"
-								size="sm"
-								:loading="isRequestingReply"
-								@click="onRequestReply"
-							>
-								<Icon name="lucide:sparkles" class="w-3.5 h-3.5" />
-								{{ t('dashboard.inbox.detail.requestReply') }}
-							</UiButton>
-						</template>
-					</InboxThreadComposer>
+						<Icon name="lucide:reply" class="w-4 h-4 shrink-0" />
+						<span class="min-w-0 flex-1 truncate">
+							{{ t('dashboard.inbox.detail.composer.replyTo', { name: replySenderLabel }) }}
+						</span>
+						<kbd
+							class="hidden sm:inline px-1 py-px rounded border border-border-subtle bg-bg-surface font-mono text-[10px] text-text-secondary"
+							aria-hidden="true"
+							>R</kbd
+						>
+					</button>
 				</div>
 
 				<!-- Sidebar -->

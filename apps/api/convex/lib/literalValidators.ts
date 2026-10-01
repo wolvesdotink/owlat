@@ -221,8 +221,17 @@ export const sendStatusValidator = v.union(
 	v.literal('complained')
 );
 
-/** Which composer surface asked for a draft revision. */
-export const draftSurfaceValidator = v.union(v.literal('compose'), v.literal('review'));
+/**
+ * Which surface owns an `aiDraftStreams` buffer: a draft revision from the
+ * composer or the review pane, streamed suggested replies (`suggest`), or an
+ * Answer mode "Draft with AI" draft (`answer`, mail/ai/composeDraft.ts).
+ */
+export const draftSurfaceValidator = v.union(
+	v.literal('compose'),
+	v.literal('review'),
+	v.literal('suggest'),
+	v.literal('answer')
+);
 
 /** Which surface asked a clarification question or captured its answer. */
 export const clarificationSourceValidator = v.union(v.literal('agent'), v.literal('reply_queue'));

@@ -79,6 +79,10 @@ export const AUDIT_ACTION_LITERALS = [
 	action('contact.sunset_clock_confirmed'),
 	// DOI lifecycle admin-attest. See ADR-0019.
 	action('doi.admin_attested'),
+	// DOI lifecycle: a new consent episode opened over an earlier confirmation
+	// that a global opt-out ended. Keeps the superseded confirmation on the
+	// record. See ADR-0009.
+	action('doi.reconfirmation_requested'),
 	// Topic
 	action('topic.created'),
 	action('topic.updated'),
@@ -121,6 +125,9 @@ export const AUDIT_ACTION_LITERALS = [
 	action('automation.reverted_to_draft'),
 	// Settings + team
 	action('settings.updated'),
+	// An operator ended a workspace deletion before it completed, lifting its
+	// write fence (workspaces/deletion/walker.ts `abort`).
+	action('settings.workspace_deletion_aborted'),
 	// Pluggable AI providers — admin save of the per-org language/embedding
 	// backend config (bring-your-own-key). Fired by aiProviderConfig.
 	action('ai_provider_config.updated'),

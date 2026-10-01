@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import schema from '../schema';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { expectScheduledFailure } from './helpers/scheduledFailures';
+import { openInboundMessageBody } from '../lib/messageBodyInbound';
 
 /**
  * Signature / secret-verification tests for the webhook handlers NOT covered by
@@ -797,7 +798,10 @@ describe('handleInboundWebhook (/webhooks/mta-inbound)', () => {
 		expect(rows[0]!.rawStorageId).toBeUndefined();
 		expect(rows[0]!.rawSize).toBeUndefined();
 		expect(rows[0]!.virusVerdict).toBeUndefined();
-		expect(rows[0]!.textBody).toHaveLength(textBody.length);
+		// A 2 MiB text part does not fit on the row, so it is in storage — whole.
+		expect(rows[0]!.textBody).toBeUndefined();
+		const stored = await t.run((ctx) => openInboundMessageBody(rows[0]!, ctx.storage));
+		expect(stored.text).toHaveLength(textBody.length);
 	});
 
 	it('audit-stores a digest of the body, never the message itself', async () => {

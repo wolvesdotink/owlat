@@ -16,8 +16,8 @@
  *      boolean says otherwise. Fail-soft: any LLM/gate failure leaves the
  *      deterministic candidate flag with urgency `normal` and no askSummary.
  *
- * Trigger: `enqueueNeedsReplyCheck` on inbound webhook delivery (bounded to
- * the affected thread), plus a reconcile cron (`sweepPending`) that
+ * Trigger: `scheduleNeedsReplyClassify` on inbound webhook delivery (bounded to
+ * the affected thread; the insert stamps the pending marker), plus a reconcile cron (`sweepPending`) that
  * re-schedules threads whose scheduled classification was lost.
  *
  * Clearing: any outbound send in the thread (draftLifecycle sent-effects),
@@ -26,21 +26,25 @@
  */
 
 import { v, type Infer } from 'convex/values';
-import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
+import { internalQuery, type MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { publicQuery } from '../lib/authedFunctions';
 import { postboxMutation } from './_helpers';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
-import { isMessageSnoozed } from '../lib/mailSnooze';
-import { isThreadMuted } from '../lib/mailMute';
+import { needsReplyTriggerOf } from './needsReplyTrigger';
+import { QUEUE_LIMIT, scanReplyQueue } from './needsReplyQueueScan';
 import { requireMailboxAccess, loadReadableMailbox } from './permissions';
 import { urgencyFallbackScore } from './ai/priorityScore';
 import { scoreAndScreenResult } from './ai/needsReplyScoring';
 import { buildThreadTranscript, NEEDS_REPLY } from './ai/transcript';
+import { withStoredInlineBodies } from '../lib/messageBodyStore';
 import { resolveCounterpartName } from './counterpartName';
 import { isFeatureEnabled } from '../lib/featureFlags';
-import { isFromMailboxOwner, type NeedsReplyHeaders } from './needsReplyHeuristic';
+import { type NeedsReplyHeaders } from './needsReplyHeuristic';
+import { mailboxOwnAddresses } from './identities';
+import { normalizeEmail } from '@owlat/shared';
 import { needsReplyResultFields } from '../schema/mailThreads';
 import type { needsReplyClarificationValidator } from '../lib/validators/clarification';
 
@@ -58,22 +62,37 @@ export function isCalendarAttachment(att: { filename: string; contentType: strin
 export const NEEDS_REPLY_CONTEXT_MESSAGES = 6;
 
 /**
- * Mark the thread pending and schedule the classify action. Called for inbox
- * deliveries only, from hosted delivery (deliverToMailbox) and forward IMAP
- * sync (mail/external/delivery.ts, `origin: 'sync'`): a bulk history import
- * must never fan out LLM work, and the reconcile cron stays bounded likewise.
+ * Mark the thread pending and schedule the classify action (the reconcile
+ * cron's requeue). Inbound delivery does not come through here: the insert
+ * stamps `needsReplyPendingAt` in its own thread patch and the post-insert
+ * tail calls {@link scheduleNeedsReplyClassify} directly (plan C10).
  */
 export async function enqueueNeedsReplyCheck(
 	ctx: MutationCtx,
 	threadId: Id<'mailThreads'>,
-	// Ingest-time headers of the triggering message. None of them are persisted
-	// on the row, so they ride along here or the screen never sees them.
 	opts: NeedsReplyHeaders = {}
 ): Promise<void> {
 	await ctx.db.patch(threadId, {
 		needsReplyPendingAt: Date.now(),
 		updatedAt: Date.now(),
 	});
+	await scheduleNeedsReplyClassify(ctx, threadId, opts);
+}
+
+/**
+ * Schedule the classify action for a thread already marked pending. Called for
+ * inbox deliveries only, from hosted delivery (deliverToMailbox) and forward
+ * IMAP sync (mail/external/delivery.ts, `origin: 'sync'`), via
+ * deliveryPipeline/afterInsert.ts: a bulk history import must never fan out
+ * LLM work, and the reconcile cron stays bounded likewise.
+ */
+export async function scheduleNeedsReplyClassify(
+	ctx: MutationCtx,
+	threadId: Id<'mailThreads'>,
+	// Ingest-time headers of the triggering message. None of them are persisted
+	// on the row, so they ride along here or the screen never sees them.
+	opts: NeedsReplyHeaders = {}
+): Promise<void> {
 	await ctx.scheduler.runAfter(0, internal.mail.ai.needsReplyClassify.classifyThread, {
 		threadId,
 		precedence: opts.precedence,
@@ -112,14 +131,23 @@ export async function clearNeedsReplyOnOwnerReply(
 	const message = await ctx.db.get(messageId);
 	if (!message) return;
 	const thread = await ctx.db.get(message.threadId);
+	if (!thread?.needsReply) return;
 	const mailbox = await ctx.db.get(message.mailboxId);
-	if (!thread?.needsReply || !mailbox || !isFromMailboxOwner(message, mailbox.address)) return;
+	if (!mailbox || !isOwnMessage(message, await mailboxOwnAddresses(ctx, mailbox))) return;
 	const trigger = await ctx.db.get(thread.needsReply.messageId);
 	if (trigger && trigger.receivedAt > message.receivedAt) return;
 	await clearThreadNeedsReply(ctx, thread._id);
 }
 
 // ─── Convex functions ────────────────────────────────────────────────────────
+
+/** Sent by the mailbox itself: outbound, or From one of its own addresses. */
+function isOwnMessage(
+	message: Pick<Doc<'mailMessages'>, 'outbound' | 'fromAddress'>,
+	ownAddresses: ReadonlySet<string>
+): boolean {
+	return message.outbound !== undefined || ownAddresses.has(normalizeEmail(message.fromAddress));
+}
 
 /**
  * Bounded thread context for the classify action: the mailbox owner address,
@@ -141,10 +169,16 @@ export const getThreadContext = internalQuery({
 			.sort((a, b) => a.receivedAt - b.receivedAt)
 			.slice(-NEEDS_REPLY_CONTEXT_MESSAGES);
 		const ownerAddress = mailbox.address.toLowerCase();
+		// Every address that is "us": the mailbox's own plus each alias that
+		// targets it. A team inbox reached through `info@` would otherwise read
+		// every customer mail as not addressed to it, and a reply sent from the
+		// alias as the customer's.
+		const ownAddresses = await mailboxOwnAddresses(ctx, mailbox);
 		return {
 			ownerAddress,
+			ownerAddresses: [...ownAddresses],
 			latestMessageId: thread.latestMessageId,
-			transcript: await buildThreadTranscript(newest, {
+			transcript: await buildThreadTranscript(await withStoredInlineBodies(ctx.db, newest), {
 				...NEEDS_REPLY,
 				ownerAddress,
 				includeTo: true,
@@ -159,7 +193,7 @@ export const getThreadContext = internalQuery({
 				// A real calendar invite (.ics) is handled by PostboxInviteCard —
 				// the scheduling chip must never double up on it.
 				hasCalendarInvite: (m.attachments ?? []).some(isCalendarAttachment),
-				isFromOwner: isFromMailboxOwner(m, ownerAddress),
+				isFromOwner: isOwnMessage(m, ownAddresses),
 				receivedAt: m.receivedAt,
 				subject: m.subject,
 			})),
@@ -223,7 +257,16 @@ export const applyResult = internalMutation({
 		}
 
 		await ctx.db.patch(args.threadId, {
-			needsReply: resolved === null ? undefined : { ...resolved, detectedAt: Date.now() },
+			needsReply:
+				resolved === null
+					? undefined
+					: {
+							...resolved,
+							detectedAt: Date.now(),
+							// The queue row's sender and subject, so listQueue need not load
+							// the message (plan C8).
+							...(message ? { trigger: needsReplyTriggerOf(message) } : {}),
+						},
 			needsReplyPendingAt: undefined,
 			updatedAt: Date.now(),
 		});
@@ -232,16 +275,23 @@ export const applyResult = internalMutation({
 		// need a reply, pre-generate a draft into the review slot via the shared
 		// draft service. Flag-gated + fully async (own action) + fail-soft: it
 		// never blocks classification and degrades to no slot when AI is off.
-		if (resolved !== null && (await isFeatureEnabled(ctx, 'postbox.aiDraft'))) {
+		// Only the model's verdict confirms. The `heuristic` flag is the
+		// placeholder the classifier persists BEFORE the model has looked, and
+		// drafting off it wrote replies to PayPal notices and cold pitches the
+		// model then rejected (and a second draft for every real one once the
+		// model agreed). A heuristic flag that outlives a failed model call stays
+		// in the queue for a human, without a draft.
+		if (
+			resolved !== null &&
+			resolved.source === 'llm' &&
+			(await isFeatureEnabled(ctx, 'postbox.aiDraft'))
+		) {
 			await ctx.scheduler.runAfter(0, internal.mail.ai.draftOnArrival.generateForThread, {
 				threadId: args.threadId,
 			});
 		}
 	},
 });
-
-/** Upper bound on Reply Queue rows returned per query (joins one message each). */
-const QUEUE_LIMIT = 100;
 
 /**
  * The Reply Queue — every thread in the mailbox currently flagged as
@@ -262,24 +312,9 @@ export const listQueue = publicQuery({
 		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
 		if (!mailbox) return { items: [] };
 
-		const now = Date.now();
-		const threads = await ctx.db
-			.query('mailThreads')
-			.withIndex('by_mailbox_needs_reply', (q) =>
-				q.eq('mailboxId', args.mailboxId).gt('needsReply.detectedAt', 0)
-			)
-			.order('desc')
-			.take(QUEUE_LIMIT);
-
+		const { needsReply, followUps } = await scanReplyQueue(ctx, args.mailboxId, Date.now());
 		const items = [];
-		for (const thread of threads) {
-			const flag = thread.needsReply;
-			// Muted (mail/mute.ts) = the owner opted out of the conversation.
-			if (!flag || isThreadMuted(thread)) continue;
-			const message = await ctx.db.get(flag.messageId);
-			if (!message) continue;
-			// Snoozed = deliberately deferred; it re-enters the queue on wakeup.
-			if (isMessageSnoozed(message, now)) continue;
+		for (const { thread, flag, trigger } of needsReply) {
 			items.push({
 				kind: 'needs_reply' as const,
 				threadId: thread._id,
@@ -297,34 +332,18 @@ export const listQueue = publicQuery({
 				// input" card (question + scoped chips + free-text) instead of the
 				// plain needs-reply row. Absent for the deterministic/plain case.
 				clarification: flag.clarification,
-				// Draft-on-arrival review slot (postbox.aiDraft): a pre-generated reply
-				// + confidence/quality, reviewed-and-sent by the owner. Absent when the
-				// flag is off or generation hasn't landed / failed. Never auto-sent.
-				draftSlot: flag.draftSlot,
-				fromAddress: message.fromAddress,
-				fromName: message.fromName,
-				subject: message.subject,
+				// Draft-on-arrival review slot (postbox.aiDraft): whether a pre-generated
+				// reply is waiting for review. The draft itself is read by the card that
+				// shows it (`getDraftSlot`, plan C8), not shipped on every row.
+				hasDraftSlot: flag.draftSlot !== undefined,
+				fromAddress: trigger.fromAddress,
+				fromName: trigger.fromName,
+				subject: trigger.subject,
 				snippet: thread.latestSnippet,
-				receivedAt: message.receivedAt,
+				receivedAt: trigger.receivedAt,
 			});
 		}
-
-		// Follow-up items — sent mail whose "remind me if no reply" deadline
-		// passed (mail/followUps.ts sweep stamped followUp.dueAt). Deterministic;
-		// cleared by any inbound reply or the cancel/dismiss mutation.
-		const dueFollowUps = await ctx.db
-			.query('mailThreads')
-			.withIndex('by_mailbox_follow_up_due', (q) =>
-				q.eq('mailboxId', args.mailboxId).gt('followUp.dueAt', 0)
-			)
-			.order('desc')
-			.take(QUEUE_LIMIT);
-		for (const thread of dueFollowUps) {
-			const flag = thread.followUp;
-			if (!flag || flag.dueAt === undefined || isThreadMuted(thread)) continue;
-			const message = await ctx.db.get(flag.messageId);
-			if (!message) continue;
-			if (isMessageSnoozed(message, now)) continue;
+		for (const { thread, flag, message } of followUps) {
 			const counterpart = flag.waitingOn ?? message.toAddresses[0] ?? message.fromAddress;
 			items.push({
 				kind: 'followup' as const,
@@ -340,7 +359,7 @@ export const listQueue = publicQuery({
 				source: 'heuristic' as const,
 				waitingOn: flag.waitingOn,
 				clarification: undefined as Infer<typeof needsReplyClarificationValidator> | undefined,
-				draftSlot: undefined,
+				hasDraftSlot: false,
 				// The counterpart shown on the card is who we're waiting ON.
 				fromAddress: counterpart,
 				fromName: await resolveCounterpartName(ctx, args.mailboxId, thread._id, counterpart),
@@ -350,6 +369,42 @@ export const listQueue = publicQuery({
 			});
 		}
 		return { items };
+	},
+});
+
+/**
+ * How many rows `listQueue` returns for the mailbox, without building them
+ * (plan 2.11). The shell's Answer badge subscribes to this on every dashboard
+ * page; the full list is only read on the Answer and Today pages. Same scan,
+ * same filters, so the badge matches the list; it skips the per-follow-up name
+ * lookups, and a change to a card's text does not re-send anything.
+ */
+// public: soft-auth — returns 0 for anonymous; mailbox access is still enforced in-handler
+export const countQueue = publicQuery({
+	args: { mailboxId: v.id('mailboxes') },
+	handler: async (ctx, args): Promise<number> => {
+		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
+		if (!mailbox) return 0;
+		const { needsReply, followUps } = await scanReplyQueue(ctx, args.mailboxId, Date.now());
+		return needsReply.length + followUps.length;
+	},
+});
+
+/**
+ * The draft-on-arrival review slot of one flagged thread: the pre-generated
+ * reply, its confidence, quality check and alternatives. The Answer card that
+ * shows the thread reads it (plan C8); `listQueue` only says whether one
+ * exists (`hasDraftSlot`), so the drafts of the rows nobody opens never travel.
+ */
+// public: soft-auth — returns null for anonymous; mailbox access is still enforced in-handler
+export const getDraftSlot = publicQuery({
+	args: { threadId: v.id('mailThreads') },
+	handler: async (ctx, args) => {
+		const thread = await ctx.db.get(args.threadId);
+		if (!thread) return null;
+		const mailbox = await loadReadableMailbox(ctx, thread.mailboxId);
+		if (!mailbox) return null;
+		return thread.needsReply?.draftSlot ?? null;
 	},
 });
 
@@ -367,13 +422,20 @@ export const clear = postboxMutation({
 });
 
 /**
- * Pending markers older than this are considered lost and re-scheduled.
+ * Pending markers older than this are considered lost and re-scheduled. The
+ * marker clears the moment the classify action starts (its first applyResult),
+ * so an old marker means a run that never STARTED, and on a busy self-hosted
+ * deployment a scheduled action can wait several minutes for an action slot.
+ * At five minutes the sweep read a queued run as lost and scheduled a second
+ * one, which drafted twice and deepened the very backlog that delayed the
+ * first. Past the ten-minute action limit plus headroom, a marker this old
+ * really was lost (a restart, a dropped job).
  *
  * The Postbox clarification loop (answerClarification, getClarificationContext,
  * persistClarificationDraft) lives in the sibling `mail/ai/needsReplyClarify.ts`
  * to keep this file under the domain-file size gate.
  */
-const SWEEP_MIN_AGE_MS = 5 * 60 * 1000;
+const SWEEP_MIN_AGE_MS = 15 * 60 * 1000;
 const SWEEP_BATCH = 20;
 
 /**

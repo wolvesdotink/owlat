@@ -27,7 +27,7 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 
 /**
  * Expired rows removed per claim. Bounded so the hot path stays O(1)-ish, and

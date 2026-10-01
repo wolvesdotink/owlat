@@ -9,7 +9,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import { createTestEmailTemplate, createTestTransactionalEmail } from './factories';
-import { renderPublishableEmail } from '../lib/publishableEmail';
+import { renderPublishableEmail } from '../lib/publishableEmailRender';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');

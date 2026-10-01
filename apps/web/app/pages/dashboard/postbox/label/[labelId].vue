@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { postboxPageTransition } from '~/utils/postboxPageTransition';
 import { api } from '@owlat/api';
 
 const { t } = useI18n();
@@ -7,12 +8,17 @@ useHead({ title: () => t('dashboard.postbox.label.detail.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
-	middleware: 'auth',
+	middleware: ['auth', postboxPageTransition],
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
 const labelId = useRouteId<'mailLabels'>('labelId');
-const { currentMailbox, isLoading: mailboxesLoading } = usePostboxMailbox();
+const {
+	currentMailbox,
+	isLoading: mailboxesLoading,
+	error: mailboxesError,
+	refetch: refetchMailboxes,
+} = usePostboxMailbox();
 const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 
 // Server-side label view: `listByLabel` scans the mailbox's newest messages
@@ -25,7 +31,11 @@ const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 // display cap gets everything the view can reach. When matches overflow even
 // that slice (`hasMore`), the honest cap note renders — there is no deeper
 // page to load, by design, until label membership gets a real index.
-const { data: labelData, isLoading, error } = useConvexQuery(
+const {
+	data: labelData,
+	isLoading,
+	error,
+} = useConvexQuery(
 	api.mail.mailbox.queries.listByLabel,
 	() =>
 		mailboxId.value ? { mailboxId: mailboxId.value, labelId: labelId.value, limit: 500 } : 'skip',
@@ -38,7 +48,12 @@ const overCap = computed(() => labelData.value?.hasMore ?? false);
 
 <template>
 	<div class="flex h-[calc(100vh-4rem)]">
-		<PostboxMailboxGuard :mailbox-id="mailboxId" :loading="mailboxesLoading">
+		<PostboxMailboxGuard
+			:mailbox-id="mailboxId"
+			:loading="mailboxesLoading"
+			:error="mailboxesError"
+			@retry="refetchMailboxes"
+		>
 			<div class="flex w-full">
 				<aside
 					class="w-full lg:w-96 lg:flex-shrink-0 border-r border-border-subtle flex flex-col bg-bg-surface"

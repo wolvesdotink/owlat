@@ -11,6 +11,7 @@
  * See docs/adr/0028-mail-draft-lifecycle-module.md.
  */
 
+import { DEFAULT_UNDO_SEND_SECONDS } from '@owlat/shared/undoSendPolicy';
 import { v } from 'convex/values';
 import { mailMessageAttachmentValidator } from '../../lib/validators/mailContent';
 import type { Doc, Id } from '../../_generated/dataModel';
@@ -18,7 +19,12 @@ import { mailEncryptionInfoValidator, type OutboundEncryptionInfo } from '../sea
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-export const DEFAULT_UNDO_SEND_DELAY_MS = 30_000;
+// How long a Postbox send waits in `pending_send` when the sender has no stored
+// undo-send preference. The composer sends no delay for exactly this window, so
+// it is the shared default rather than a number of its own. Senders who
+// explicitly picked another window send it on the wire, so this default never
+// reaches them.
+export const DEFAULT_UNDO_SEND_DELAY_MS = DEFAULT_UNDO_SEND_SECONDS * 1_000;
 
 // ─── States / inputs / outcomes ─────────────────────────────────────────────
 

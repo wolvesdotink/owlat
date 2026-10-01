@@ -28,7 +28,7 @@ beforeEach(() => {
 		useRoute: () => ({ path }),
 		useFeatureFlag: () => ({ isEnabled: (flag: string) => flags.has(flag) }),
 		// A member: every admin-only branch is closed.
-		usePermissions: () => ({ isAdmin: ref(false) }),
+		usePermissions: () => ({ isAdmin: ref(false), isRoleLoading: ref(false) }),
 		useAuth: () => ({
 			user: ref({ name: 'Ada Member', email: 'ada@example.com' }),
 			signOut: vi.fn(),
@@ -36,7 +36,7 @@ beforeEach(() => {
 		}),
 		useKeyboardShortcuts: () => ({ openHelpModal: vi.fn() }),
 		useInboxes: () => ({ inboxes: ref([]), hasPersonalMail: ref(false) }),
-		useAnswerQueue: () => ({ count: ref(0) }),
+		useAnswerQueueCount: () => ({ count: ref(0) }),
 		useShellSidebarPrefs: () => ({
 			perInbox: ref(5),
 			sort: ref('recent'),

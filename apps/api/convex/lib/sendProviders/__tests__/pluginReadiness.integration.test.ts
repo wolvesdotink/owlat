@@ -85,7 +85,7 @@ function fakeContext({ isEnabled = true, isGranted = true }: ReadinessFixture = 
 		runQuery: vi.fn(async () => ({ page: [{ id: 'organization-id' }] })),
 		db: {
 			query: vi.fn((table: string) => {
-				if (table === 'instanceSettings') {
+				if (table === 'featureFlagSettings') {
 					return { first: vi.fn(async () => settings) };
 				}
 				if (table === 'providerRoutes') {

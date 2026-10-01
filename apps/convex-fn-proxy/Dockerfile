@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7-labs
 
 # Owlat Convex function-allowlist proxy — holds the deployment admin key and
-# forwards only the code-worker's thirteen allowlisted codeWorkTasks/workerTasks
+# forwards only the code-worker's fifteen allowlisted codeWorkTasks/workerTasks
 # calls to the real Convex backend, so the untrusted worker never holds admin.
 # Built from the MONOREPO ROOT context (like web/mta/updater): the package.json
 # uses bun workspace `catalog:` versions, which only resolve inside the

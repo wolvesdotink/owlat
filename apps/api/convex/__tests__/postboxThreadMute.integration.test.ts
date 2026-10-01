@@ -36,11 +36,13 @@ vi.mock('../lib/sessionOrganization', async () => {
 		requireOrgMember: vi.fn().mockImplementation(async () => ({
 			userId: sessionMock.userId,
 			role: sessionMock.role,
+			activeOrganizationId: 'test-org',
 		})),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getMutationContext: vi.fn().mockImplementation(async () => ({
 			userId: sessionMock.userId,
 			role: sessionMock.role,
+			activeOrganizationId: 'test-org',
 		})),
 		getBetterAuthSessionWithRole: vi.fn().mockImplementation(async () => ({
 			userId: sessionMock.userId,

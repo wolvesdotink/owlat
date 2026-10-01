@@ -9,12 +9,14 @@
  * - UnifiedToolbar: combined floating toolbar (formatting + settings)
  */
 import { ref, computed, watch, provide, onMounted, onUnmounted, nextTick } from 'vue';
+// The builder's keyframes and variable-chip style load with the builder chunk,
+// not with every page of the host app.
+import '../styles/utilities.css';
 import type {
 	EditorBlock,
 	BlockType,
 	Variable,
 	EmailBuilderConfig,
-	ColumnsBlockContent,
 	ContainerBlockContent,
 	HeroBlockContent,
 	ContainerItem,
@@ -30,11 +32,12 @@ import type { ParentContext } from './canvas/types';
 import { useEmailBuilderHandlers } from '../composables/useEmailBuilderHandlers';
 import { useFocusMode } from '../composables/useFocusMode';
 import { useBlockState } from '../composables/useBlockState';
-import { useBlockManagement } from '../composables/useBlockManagement';
+import { headingContent, useBlockManagement } from '../composables/useBlockManagement';
+import { useBlockTreeVersion } from '../composables/useBlockTreeVersion';
 import { useRecentColors } from '../composables/useRecentColors';
 import { useHistory, type HistoryState } from '../composables/useHistory';
 import { useInlineTextEdit } from '../composables/useInlineTextEdit';
-import { useLinkedBlocks } from '../composables/useLinkedBlocks';
+import { LINKED_BLOCK_INDEX_KEY, useLinkedBlocks } from '../composables/useLinkedBlocks';
 import { useSavedBlockPicker } from '../composables/useSavedBlockPicker';
 import { useSaveBlockModal } from '../composables/useSaveBlockModal';
 import { useSlashCommands } from '../composables/useSlashCommands';
@@ -45,6 +48,13 @@ import type { PreviewRenderOptions } from '../preview/types';
 
 // Utilities
 import { createBlock, createColumnItem, withPrimaryStoredImage } from '../utils/blocks';
+import {
+	blockSlot,
+	locateBlock,
+	locateWithin,
+	replaceBlockInTree,
+	type BlockSlot,
+} from '../utils/blockTree';
 import { moveBlock, type MoveDirection } from '../utils/blockMove';
 import { resolveEditorKeyAction } from '../utils/editorKeyboard';
 import { htmlToBlocks } from '../utils/htmlToBlocks';
@@ -150,8 +160,12 @@ watch(
  * Blocks equal to the canvas are left alone, so a host may push every server
  * copy through here: its own save echoing back does not replace the block
  * objects under an open inline editor or add an undo step.
+ *
+ * An edit still inside the history debounce is committed first, so it stays
+ * its own undo step instead of merging into the loaded state.
  */
 function loadState(state: HistoryState) {
+	commitPendingHistory();
 	if (JSON.stringify(state.blocks) !== JSON.stringify(canvasBlocks.value)) {
 		canvasBlocks.value = [...state.blocks];
 	}
@@ -184,14 +198,18 @@ watch(
 	{ immediate: true }
 );
 
+// One counter for every change to the block tree; everything below that
+// follows the canvas watches it instead of deep-watching the blocks.
+const { version: blocksVersion, bump: bumpBlocks } = useBlockTreeVersion(canvasBlocks);
+
 // Emit local → props
 watch(
-	canvasBlocks,
-	(v) => {
-		lastEmittedBlocks = v;
-		emit('update:blocks', v);
+	blocksVersion,
+	() => {
+		lastEmittedBlocks = canvasBlocks.value;
+		emit('update:blocks', canvasBlocks.value);
 	},
-	{ deep: true, flush: 'post' }
+	{ flush: 'post' }
 );
 watch(formSubject, (v) => emit('update:subject', v));
 watch(formName, (v) => emit('update:name', v));
@@ -245,13 +263,15 @@ const allowedBlockTypes = computed<BlockType[] | undefined>(() => props.config?.
 const handlers = useEmailBuilderHandlers();
 
 // Linked blocks
-const { isLinkedBlock, detachBlock, getLinkedGroupByBlockId, isFirstInGroup, isLastInGroup } =
-	useLinkedBlocks({ canvasBlocks });
+const {
+	index: linkedBlockIndex,
+	isLinkedBlock,
+	detachBlock,
+	getLinkedGroupByBlockId,
+} = useLinkedBlocks({ canvasBlocks, onTreeMutated: bumpBlocks });
 
-// Provide linked block helpers so CanvasBlock can access them without prop drilling
-provide('isLinkedBlock', isLinkedBlock);
-provide('isFirstInLinkedGroup', isFirstInGroup);
-provide('isLastInLinkedGroup', isLastInGroup);
+// Share the linked-block index with the canvas so both read one pass over the Blocks
+provide(LINKED_BLOCK_INDEX_KEY, linkedBlockIndex);
 provide('requestDetachLinkedBlock', requestDetachBlock);
 
 // Block selection
@@ -295,61 +315,83 @@ const activeBlockSchema = computed(() => {
 	return getSchema(activeBlock.value.type);
 });
 
-// Linked block state for the active selection
-const isActiveBlockLinked = computed(() => {
-	if (selectedBlockId.value) return isLinkedBlock(selectedBlockId.value);
-	if (blockState.selectedColumnContext.value)
-		return isLinkedBlock(blockState.selectedColumnContext.value.blockId);
-	if (blockState.selectedContainerContext.value)
-		return isLinkedBlock(blockState.selectedContainerContext.value.blockId);
-	return false;
-});
+// Linked block state for the active selection. Linked-group state lives on
+// the root Block, however deep the selection is.
+const selectedRootId = blockState.selectedRootId;
+const isActiveBlockLinked = computed(() =>
+	selectedRootId.value ? isLinkedBlock(selectedRootId.value) : false
+);
 
 const activeLinkedBlockName = computed<string | null>(() => {
-	if (!isActiveBlockLinked.value) return null;
-	const rootId =
-		selectedBlockId.value ??
-		blockState.selectedColumnContext.value?.blockId ??
-		blockState.selectedContainerContext.value?.blockId;
-	if (!rootId) return null;
-	const group = getLinkedGroupByBlockId(rootId);
+	if (!isActiveBlockLinked.value || !selectedRootId.value) return null;
+	const group = getLinkedGroupByBlockId(selectedRootId.value);
 	return group?.blockName ?? null;
 });
 
-// Handle nested selection from CanvasArea
+/**
+ * Whether the content of the Block `blockId` (a root or a nested item) may be
+ * edited. A linked Block mirrors the saved-block library, so nothing inside
+ * it is edited in place until it is detached.
+ */
+function isEditable(blockId: string): boolean {
+	const location = locateBlock(canvasBlocks.value, blockId, selectedRootId.value);
+	return !!location && !isLinkedBlock(location.root.id);
+}
+
+/**
+ * Select the nested item `itemId`, found anywhere below the composite
+ * `scopeId`. Inside a linked Block the root is selected instead: the group is
+ * edited as a whole.
+ */
+function selectNestedItem(scopeId: string, itemId: string, element?: HTMLElement) {
+	const location = locateWithin(canvasBlocks.value, scopeId, itemId);
+	if (!location?.parent) return;
+	if (isLinkedBlock(location.root.id)) {
+		handleSelectBlock(location.root.id);
+		return;
+	}
+	if (location.parent.type === 'columns') {
+		handleSelectColumnItem(location.parent.id, location.listIndex, itemId, undefined, element);
+	} else {
+		handleSelectContainerItem(location.parent.id, itemId, undefined, element);
+	}
+}
+
+// Handle nested selection from the canvas, at any depth
 function handleSelectNested(payload: {
 	itemId: string;
 	context: ParentContext;
 	element: HTMLElement;
 }) {
-	const { itemId, context, element } = payload;
-	if (context.type === 'column') {
-		handleSelectColumnItem(context.parentId, context.columnIndex, itemId, undefined, element);
-	} else if (context.type === 'container') {
-		handleSelectContainerItem(context.parentId, itemId, undefined, element);
-	}
+	selectNestedItem(payload.context.parentId, payload.itemId, payload.element);
 }
 
 // Block CRUD (simplified: no TipTap cleanup callbacks)
 const {
 	handleAddBlock,
-	handleAddHeadingBlock,
+	handleInsertBlockAtSlot,
 	handleDeleteBlock,
 	handleDuplicateBlock,
-	handleDuplicateColumnItem,
-	handleDuplicateContainerItem,
+	handleDuplicateNestedItem,
 	handleAddItemToColumn,
-	handleDeleteColumnItem,
-	handleDeleteContainerItem,
-	handleColumnCountChange,
+	handleDeleteNestedItem,
 } = useBlockManagement({
 	canvasBlocks,
 	selectedBlockId,
 	theme,
+	onTreeMutated: bumpBlocks,
 });
 
 // History
-const { canUndo, canRedo, undo, redo } = useHistory(canvasBlocks, formName, formSubject);
+const {
+	canUndo,
+	canRedo,
+	undo,
+	redo,
+	commitPending: commitPendingHistory,
+} = useHistory(canvasBlocks, formName, formSubject, {
+	blocksVersion,
+});
 
 // Focus mode
 const { isFocusMode, toggleFocusMode, exitFocusMode, setupKeyboardShortcut } = useFocusMode();
@@ -395,7 +437,7 @@ const {
 } = useInlineTextEdit({
 	activeBlock,
 	onUpdate: handleBlockPropertyUpdate,
-	onDeleteBlock: handleDeleteBlock,
+	onDeleteBlock: handleDeleteInlineEditedBlock,
 });
 
 // `isInlineEditing` tells a host that text may be typed which the blocks do not
@@ -470,7 +512,7 @@ function handleKeydown(event: KeyboardEvent) {
 			handleDeleteActiveBlock();
 			break;
 		case 'duplicate':
-			if (activeBlock.value) handleDuplicateBlock(activeBlock.value.id);
+			handleDuplicateActiveBlock();
 			break;
 	}
 }
@@ -513,12 +555,14 @@ const {
 	plainText: previewPlainText,
 	plainTextSource: previewPlainTextSource,
 	ampHtml: previewAmpHtml,
+	ampRequested: previewAmpRequested,
 	renderWarnings: previewRenderWarnings,
 	emailAnalysis: previewEmailAnalysis,
 	healthScore: previewHealthScore,
 	validationIssues: previewValidationIssues,
 	emailDiff: previewEmailDiff,
 	regenerate: regeneratePreview,
+	regenerateHtml: regeneratePreviewHtml,
 	togglePreviewMode,
 } = usePreview({
 	canvasBlocks,
@@ -540,18 +584,15 @@ const previewSubject = computed(() =>
 
 // Keep the live editing reactivity the canvas had before: while a non-edit
 // preview is open, re-render the moment the blocks change.
-watch(
-	canvasBlocks,
-	() => {
-		if (previewMode.value !== 'edit') regeneratePreview();
-	},
-	{ deep: true }
-);
+watch(blocksVersion, () => {
+	if (previewMode.value !== 'edit') regeneratePreview();
+});
 
-// Dark-mode toggle from the previewer re-renders against the new mode.
+// Dark-mode toggle from the previewer re-renders the HTML against the new mode;
+// plain text, AMP and Block validation do not depend on it.
 function handlePreviewDarkMode(value: boolean) {
 	previewDarkMode.value = value;
-	if (previewMode.value !== 'edit') regeneratePreview();
+	if (previewMode.value !== 'edit') regeneratePreviewHtml();
 }
 
 // ---------------------------------------------------------------------------
@@ -559,123 +600,37 @@ function handlePreviewDarkMode(value: boolean) {
 // ---------------------------------------------------------------------------
 
 /**
- * Find a nested block inside columns/containers and return its parent + mutator.
+ * Write one property of a Block, a root or a nested item at any depth. The
+ * root and the composites on the path are replaced rather than mutated, so the
+ * edit lands as one write to the root array. A dotted key (`labels.days`)
+ * writes a nested property.
  */
-function findNestedBlock(
-	blockId: string
-): { parentIndex: number; mutate: (value: unknown, key: string) => void } | null {
-	for (let i = 0; i < canvasBlocks.value.length; i++) {
-		const block = canvasBlocks.value[i]!;
-		if (block.type === 'columns') {
-			const content = block.content as ColumnsBlockContent;
-			for (let colIdx = 0; colIdx < content.columns.length; colIdx++) {
-				const col = content.columns[colIdx]!;
-				const itemIdx = col.findIndex((item) => item.id === blockId);
-				if (itemIdx !== -1) {
-					return {
-						parentIndex: i,
-						mutate: (value, key) => {
-							const newColumns = content.columns.map((c, ci) => {
-								if (ci !== colIdx) return c;
-								return c.map((item, ii) => {
-									if (ii !== itemIdx) return item;
-									if (key.includes('.')) {
-										const itemContent = setByPath(
-											item.content as unknown as Record<string, unknown>,
-											key,
-											value
-										);
-										return { ...item, content: itemContent as unknown as ColumnItem['content'] };
-									}
-									return { ...item, content: { ...item.content, [key]: value } };
-								});
-							});
-							canvasBlocks.value[i] = {
-								...block,
-								content: { ...content, columns: newColumns },
-							} as EditorBlock;
-						},
-					};
-				}
-			}
-		}
-		if (block.type === 'container' || block.type === 'hero') {
-			const content = block.content as ContainerBlockContent;
-			const itemIdx = content.items.findIndex((item) => item.id === blockId);
-			if (itemIdx !== -1) {
-				return {
-					parentIndex: i,
-					mutate: (value, key) => {
-						const newItems = content.items.map((item, ii) => {
-							if (ii !== itemIdx) return item;
-							if (key.includes('.')) {
-								const itemContent = setByPath(
-									item.content as unknown as Record<string, unknown>,
-									key,
-									value
-								);
-								return { ...item, content: itemContent as unknown as ContainerItem['content'] };
-							}
-							return { ...item, content: { ...item.content, [key]: value } };
-						});
-						canvasBlocks.value[i] = {
-							...block,
-							content: { ...content, items: newItems },
-						} as EditorBlock;
-					},
-				};
-			}
-		}
-	}
-	return null;
-}
-
 function handleBlockPropertyUpdate(blockId: string, key: string, value: unknown) {
-	// Block edits on linked blocks
-	if (isLinkedBlock(blockId)) return;
-	const nestedCheck = findNestedBlock(blockId);
-	if (nestedCheck && canvasBlocks.value[nestedCheck.parentIndex]?.savedBlockRef) return;
-
-	// Try root blocks first
-	const blockIndex = canvasBlocks.value.findIndex((b) => b.id === blockId);
-	if (blockIndex !== -1) {
-		const block = canvasBlocks.value[blockIndex]!;
-
-		// Support dot notation (e.g. 'labels.days')
-		if (key.includes('.')) {
-			const content = setByPath(block.content as unknown as Record<string, unknown>, key, value);
-			canvasBlocks.value[blockIndex] = {
+	if (!isEditable(blockId)) return;
+	const replaced = replaceBlockInTree(
+		canvasBlocks.value,
+		blockId,
+		(block) =>
+			({
 				...block,
-				content: content as unknown as EditorBlock['content'],
-			} as EditorBlock;
-		} else {
-			canvasBlocks.value[blockIndex] = {
-				...block,
-				content: { ...block.content, [key]: value } as EditorBlock['content'],
-			} as EditorBlock;
-		}
-		return;
-	}
-
-	// Fallback: search nested items in columns/containers
-	const nested = findNestedBlock(blockId);
-	if (nested) {
-		nested.mutate(value, key);
-	}
+				content: (key.includes('.')
+					? setByPath(block.content as unknown as Record<string, unknown>, key, value)
+					: { ...block.content, [key]: value }) as unknown as EditorBlock['content'],
+			}) as EditorBlock,
+		selectedRootId.value
+	);
+	if (replaced) canvasBlocks.value[replaced.rootIndex] = replaced.root;
 }
 
 function handleDeleteActiveBlock() {
 	if (!activeBlock.value) return;
 	const blockId = activeBlock.value.id;
 
-	// Check if it's a nested item
-	if (selectedColumnItemId.value && blockState.selectedColumnContext.value) {
-		const ctx = blockState.selectedColumnContext.value;
-		handleDeleteColumnItem(ctx.blockId, ctx.columnIndex, blockId);
-		clearBlockSelection();
-	} else if (selectedContainerItemId.value && blockState.selectedContainerContext.value) {
-		const ctx = blockState.selectedContainerContext.value;
-		handleDeleteContainerItem(ctx.blockId, blockId);
+	// A nested item, at any depth
+	const scope =
+		blockState.selectedColumnContext.value ?? blockState.selectedContainerContext.value;
+	if (selectedNestedItemId.value && scope) {
+		if (isEditable(scope.blockId)) handleDeleteNestedItem(scope.blockId, blockId);
 		clearBlockSelection();
 	} else {
 		// If this block is part of a linked group, delete all blocks in the group
@@ -698,16 +653,12 @@ function handleDuplicateActiveBlock() {
 	if (!activeBlock.value) return;
 	const blockId = activeBlock.value.id;
 
-	if (selectedColumnItemId.value && blockState.selectedColumnContext.value) {
-		// Duplicate within a column — delegate to the canonical handler so the
-		// clone is deep (no shared nested references with the original).
-		const ctx = blockState.selectedColumnContext.value;
-		handleDuplicateColumnItem(ctx.blockId, ctx.columnIndex, blockId);
-	} else if (selectedContainerItemId.value && blockState.selectedContainerContext.value) {
-		// Duplicate within a container — delegate to the canonical handler so the
-		// clone is deep AND nested container/column item IDs are regenerated.
-		const ctx = blockState.selectedContainerContext.value;
-		handleDuplicateContainerItem(ctx.blockId, blockId);
+	// A nested item is copied next to itself, at any depth. The canonical
+	// handler deep-clones it and gives it and everything inside it fresh ids.
+	const scope =
+		blockState.selectedColumnContext.value ?? blockState.selectedContainerContext.value;
+	if (selectedNestedItemId.value && scope) {
+		if (isEditable(scope.blockId)) handleDuplicateNestedItem(scope.blockId, blockId);
 	} else {
 		handleDuplicateBlock(blockId);
 	}
@@ -717,7 +668,10 @@ function handleMoveBlock(direction: MoveDirection) {
 	if (!activeBlock.value) return;
 
 	// One whole-array write, whatever level the moved item lives at, so the
-	// history watcher records the move as a single undoable step.
+	// history watcher records the move as a single undoable step. Items inside
+	// a linked Block keep their order.
+	if (selectedNestedItemId.value && selectedRootId.value && isLinkedBlock(selectedRootId.value))
+		return;
 	const moved = moveBlock(
 		canvasBlocks.value,
 		{
@@ -730,8 +684,12 @@ function handleMoveBlock(direction: MoveDirection) {
 	if (moved) canvasBlocks.value = moved;
 }
 
+// Child-panel commands for the active composite, which may itself be nested.
+// Where a new child goes and which defaults it gets is the composite's
+// placement: column items take the compact column defaults.
 function handleAddChild(blockId: string, childType: BlockType) {
-	const block = canvasBlocks.value.find((b) => b.id === blockId);
+	if (!isEditable(blockId)) return;
+	const block = locateBlock(canvasBlocks.value, blockId, selectedRootId.value)?.block;
 	if (!block) return;
 
 	if (block.type === 'columns') {
@@ -750,26 +708,17 @@ function handleAddChild(blockId: string, childType: BlockType) {
 }
 
 function handleRemoveChild(blockId: string, childId: string) {
-	const block = canvasBlocks.value.find((b) => b.id === blockId);
-	if (!block) return;
+	if (isEditable(blockId)) handleDeleteNestedItem(blockId, childId);
+}
 
-	if (block.type === 'container' || block.type === 'hero') {
-		handleDeleteContainerItem(blockId, childId);
-	} else if (block.type === 'columns') {
-		const content = block.content as ColumnsBlockContent;
-		for (let colIdx = 0; colIdx < content.columns.length; colIdx++) {
-			const idx = content.columns[colIdx]!.findIndex((item) => item.id === childId);
-			if (idx !== -1) {
-				handleDeleteColumnItem(blockId, colIdx, childId);
-				return;
-			}
-		}
-	}
+function handleSelectChild(blockId: string, childId: string) {
+	selectNestedItem(blockId, childId);
 }
 
 function handleUpdateChildren(blockId: string, children: unknown[]) {
-	const block = canvasBlocks.value.find((b) => b.id === blockId);
-	const key = block?.type === 'columns' ? 'columns' : 'items';
+	const block = locateBlock(canvasBlocks.value, blockId, selectedRootId.value)?.block;
+	if (!block) return;
+	const key = block.type === 'columns' ? 'columns' : 'items';
 	handleBlockPropertyUpdate(blockId, key, children);
 }
 
@@ -790,10 +739,45 @@ function handleToolbarDuplicate() {
 	handleDuplicateActiveBlock();
 }
 
-// Inline edit handlers
+// Inline edit handlers. Text at any depth is edited in place; text inside a
+// linked Block is not.
 function handleDoubleClickBlock(blockId: string) {
-	if (isActiveBlockLinked.value) return;
+	if (!isEditable(blockId)) return;
 	enterInlineEdit(blockId);
+}
+
+// The inline editor removes a text Block it closes empty, root or nested.
+function handleDeleteInlineEditedBlock(blockId: string) {
+	const location = locateBlock(canvasBlocks.value, blockId, selectedRootId.value);
+	if (!location) return;
+	if (!location.parent) {
+		handleDeleteBlock(blockId);
+		return;
+	}
+	if (!isEditable(blockId)) return;
+	handleDeleteNestedItem(location.parent.id, blockId);
+	if (selectedNestedItemId.value === blockId) clearBlockSelection();
+}
+
+/**
+ * Insert a Block next to the text Block `sourceId` the inline editor has just
+ * closed on, at `source`, the slot it held while open: right after it in the
+ * list that holds it, or in its place when closing the editor removed it
+ * (it was left empty). The new Block is selected.
+ */
+function insertAfterInlineSource(
+	source: BlockSlot,
+	sourceId: string,
+	type: BlockType,
+	content?: (defaults: EditorBlock['content']) => EditorBlock['content']
+): EditorBlock | null {
+	const current = blockSlot(canvasBlocks.value, sourceId, source.rootId);
+	const slot = current ? { ...current, index: current.index + 1 } : source;
+	const inserted = handleInsertBlockAtSlot(type, slot, content);
+	if (!inserted) return null;
+	if (inserted.parentId) selectNestedItem(inserted.parentId, inserted.block.id);
+	else handleSelectBlock(inserted.block.id);
+	return inserted.block;
 }
 
 function handleExitInlineEdit() {
@@ -826,13 +810,7 @@ function cancelDetach() {
 }
 
 function handleDetachActiveBlock() {
-	const rootId =
-		selectedBlockId.value ??
-		blockState.selectedColumnContext.value?.blockId ??
-		blockState.selectedContainerContext.value?.blockId;
-	if (rootId) {
-		requestDetachBlock(rootId);
-	}
+	if (selectedRootId.value) requestDetachBlock(selectedRootId.value);
 }
 
 // Add text block from placeholder click
@@ -855,18 +833,19 @@ function handleAddTextBlockFromPlaceholder() {
 	});
 }
 
-// Enter key in inline editor: create new text block after current
+// Enter key in inline editor: create an empty text Block after the current
+// one, in the same list, and keep typing in it
 function handleInsertBlockAfter(blockId: string) {
+	const source = isEditable(blockId)
+		? blockSlot(canvasBlocks.value, blockId, selectedRootId.value)
+		: null;
 	exitInlineEdit();
-	const newBlock = handleAddBlock('text', blockId);
-	// Clear HTML for empty start
-	const idx = canvasBlocks.value.findIndex((b) => b.id === newBlock.id);
-	if (idx !== -1) {
-		canvasBlocks.value[idx] = {
-			...canvasBlocks.value[idx]!,
-			content: { ...canvasBlocks.value[idx]!.content, html: '' },
-		} as EditorBlock;
-	}
+	if (!source) return;
+	const newBlock = insertAfterInlineSource(source, blockId, 'text', (defaults) => ({
+		...defaults,
+		html: '',
+	}));
+	if (!newBlock) return;
 	nextTick(() => {
 		enterInlineEdit(newBlock.id);
 	});
@@ -933,37 +912,40 @@ function handleInsertBlockAt(type: BlockType, afterBlockId: string) {
 	handleAddBlock(type, afterBlockId);
 }
 
-// Slash command handler: insert block after the block where "/" was typed
+// Slash command handler: insert block after the block where "/" was typed,
+// in the list that holds it
 function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
-	// Capture the block index before exitInlineEdit, which may auto-delete
-	// an empty text block (e.g. one that only contained "/slash-text")
-	const fromIndex = canvasBlocks.value.findIndex((b) => b.id === fromBlockId);
+	// Capture the slot before exitInlineEdit, which may auto-delete an empty
+	// text block (e.g. one that only contained "/slash-text")
+	const source = isEditable(fromBlockId)
+		? blockSlot(canvasBlocks.value, fromBlockId, selectedRootId.value)
+		: null;
 
 	exitInlineEdit();
+	if (!source) return;
 
-	// After exitInlineEdit, the source block may have been deleted.
-	// Find a stable insertion anchor: the block now at fromIndex - 1.
-	const blockStillExists = canvasBlocks.value.some((b) => b.id === fromBlockId);
-	const anchorBlockId = blockStillExists
-		? fromBlockId
-		: fromIndex > 0
-			? (canvasBlocks.value[fromIndex - 1]?.id ?? null)
-			: null;
-
-	// Handle saved block direct insertion
+	// Handle saved block direct insertion. A saved Block is linked, and linked
+	// Blocks are roots: it goes after the root that holds the source, or for a
+	// root source that closing removed, after the Block before it.
 	if (command.savedBlock) {
-		// Set selectedBlockId so handleSavedBlockSelect inserts after the anchor
+		const anchorBlockId = source.parentId
+			? source.rootId
+			: canvasBlocks.value.some((b) => b.id === fromBlockId)
+				? fromBlockId
+				: (canvasBlocks.value[source.index - 1]?.id ?? null);
+		// Select the anchor so handleSavedBlockSelect inserts after it
+		clearBlockSelection();
 		selectedBlockId.value = anchorBlockId;
 		handleSavedBlockSelect(command.savedBlock);
 		return;
 	}
 
-	const afterId = anchorBlockId ?? undefined;
 	const headingMatch = command.id.match(/^h([123])$/);
 	if (headingMatch) {
-		handleAddHeadingBlock(Number(headingMatch[1]) as 1 | 2 | 3, afterId);
+		const level = Number(headingMatch[1]) as 1 | 2 | 3;
+		insertAfterInlineSource(source, fromBlockId, 'text', () => headingContent(level));
 	} else {
-		handleAddBlock(command.id as BlockType, afterId);
+		insertAfterInlineSource(source, fromBlockId, command.id as BlockType);
 	}
 }
 </script>
@@ -1090,7 +1072,7 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 			@duplicate="handleToolbarDuplicate"
 			@detach="handleDetachActiveBlock"
 			@save-block="openSaveBlockModal"
-			@select-child="(_, childId) => handleSelectBlock(childId)"
+			@select-child="handleSelectChild"
 			@add-child="handleAddChild"
 			@remove-child="handleRemoveChild"
 			@reorder-children="handleReorderChildren"
@@ -1108,6 +1090,7 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 				:plain-text-override="props.plainTextOverride ?? ''"
 				:allow-plain-text-override="props.allowPlainTextOverride ?? false"
 				:amp-html="previewAmpHtml"
+				amp-available
 				:render-warnings="previewRenderWarnings"
 				:email-analysis="previewEmailAnalysis"
 				:health-score="previewHealthScore"
@@ -1116,6 +1099,7 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 				:render-options="renderOptions"
 				@update:render-options="renderOptions = $event"
 				@update:dark-mode="handlePreviewDarkMode"
+				@update:amp-requested="previewAmpRequested = $event"
 				@send-test="emit('send-test', previewHtml)"
 				@update:plain-text-override="emit('update:plainTextOverride', $event)"
 			/>

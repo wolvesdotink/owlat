@@ -29,11 +29,14 @@ function routePattern(file: string): RegExp {
 		.split('/')
 		.map((part) => {
 			if (/^\[\.\.\..+\]$/.test(part)) return '.+';
-			if (/^\[\[.+\]\]$/.test(part)) return '[^/]*';
+			// An optional segment takes its leading slash with it:
+			// `[folder]/[[messageId]]` matches both `/inbox` and `/inbox/<id>`.
+			if (/^\[\[.+\]\]$/.test(part)) return '\0';
 			if (/^\[.+\]$/.test(part)) return '[^/]+';
 			return part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 		})
-		.join('/');
+		.join('/')
+		.replaceAll('/\0', '(?:/[^/]+)?');
 	return new RegExp(`^${pattern}/?$`);
 }
 

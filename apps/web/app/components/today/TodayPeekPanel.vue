@@ -4,6 +4,8 @@ import type { Id } from '@owlat/api/dataModel';
 import type { TodaySource } from '~/utils/todayDigest';
 import { parsePeekKey, threadHref } from '~/utils/todayPeek';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
+import { optimisticSetFlags } from '~/lib/mailOptimistic/mailUpdaters';
+import { useAnswerModeNav } from '~/composables/useAnswerMode';
 
 /**
  * The email behind a Today phrase, in a panel over the page. Today stays put
@@ -85,7 +87,7 @@ const view = computed(() => {
 			from: m.from,
 			to: m.to,
 			at: m.receivedAt,
-			body: m.textBody?.trim() || '',
+			body: (m.textBody ?? m.bodyExcerpt)?.trim() || '',
 			attachments: [] as string[],
 		};
 	}
@@ -101,6 +103,7 @@ const inbox = computed(() =>
 // Reading it here counts as reading it: mark a Postbox email read on open.
 const { run: markRead } = useBackendOperation(api.mail.messageActions.setFlags, {
 	label: () => t('components.today.peek.markReadOperation'),
+	optimisticUpdate: optimisticSetFlags,
 });
 watch(
 	() => mailMessage.value?._id,
@@ -109,6 +112,22 @@ watch(
 			void markRead({ messageIds: [id], seen: true });
 		}
 	}
+);
+
+// Every reply is written in Answer mode: a Postbox email on its message, a
+// team message on its thread (answering that message).
+const answerNav = useAnswerModeNav();
+function reply(source: TodaySource) {
+	if (source.kind === 'team') void answerNav.openTeam(source.threadId, { messageId: source.id });
+	else void answerNav.open(source.id);
+}
+// A team update needs no reply until someone asks for one ("Reply anyway", the
+// page's own action); any other team message can be answered straight away.
+const teamInformational = computed(() => teamMessage.value?.processingStatus === 'informational');
+const canReply = computed(
+	() =>
+		source.value?.kind === 'mail' ||
+		(source.value?.kind === 'team' && !!teamMessage.value && !teamInformational.value)
 );
 
 function step(delta: number) {
@@ -238,7 +257,17 @@ watch(target, async (value, previous) => {
 				<UiButton size="sm" @click="emit('done', source)">
 					{{ t('components.today.peek.done') }}
 				</UiButton>
-				<slot name="actions" :source="source" />
+				<UiButton
+					v-if="canReply"
+					size="sm"
+					variant="secondary"
+					data-testid="peek-reply"
+					@click="reply(source)"
+				>
+					<Icon name="lucide:reply" class="size-3.5" />
+					{{ t('components.today.peek.reply') }}
+				</UiButton>
+				<slot name="actions" :source="source" :informational="teamInformational" />
 				<UiButton size="sm" variant="secondary" :to="threadHref(source)" class="ml-auto">
 					{{ t('components.today.peek.openThread') }}
 				</UiButton>
