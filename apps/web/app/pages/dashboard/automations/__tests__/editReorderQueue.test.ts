@@ -21,23 +21,50 @@ import {
 } from './editPageHarness';
 
 type HeldSave = { stepOrder: string[]; settle: (ok: boolean) => void };
+type HeldAdd = { insertAtIndex?: number; settle: () => Promise<void> };
 
 function stubHeldReorder() {
 	const harness = stubEditPage();
 	const saves: HeldSave[] = [];
 	const settled = new Set<HeldSave>();
+	const adds: HeldAdd[] = [];
 	vi.stubGlobal('useAutomationSteps', useAutomationSteps);
+	const held = (name: string) => {
+		if (name === 'automations/steps:reorderSteps') {
+			return (args: { stepOrder: string[] }) =>
+				new Promise((resolve) => {
+					saves.push({
+						stepOrder: args.stepOrder,
+						settle: (ok) => resolve(ok ? { ok: true, result: null } : { ok: false }),
+					});
+				});
+		}
+		if (name === 'automations/steps:addStep') {
+			// Settling inserts `st_new` where the server would: at `insertAtIndex`
+			// of the order it holds, or at the end.
+			return (args: { stepType: string; insertAtIndex?: number }) =>
+				new Promise((resolve) => {
+					adds.push({
+						insertAtIndex: args.insertAtIndex,
+						settle: async () => {
+							const steps = [...harness.data.value.steps];
+							const at = Math.min(args.insertAtIndex ?? steps.length, steps.length);
+							steps.splice(at, 0, {
+								_id: 'st_new',
+								stepType: args.stepType,
+								config: '{}',
+							} as HarnessStep);
+							harness.data.value = { ...harness.data.value, steps };
+							resolve({ ok: true, result: 'st_new' });
+							await flushPromises();
+						},
+					});
+				});
+		}
+		return vi.fn(() => Promise.resolve({ ok: true, result: null }));
+	};
 	vi.stubGlobal('useBackendOperation', (reference: FunctionReference<'mutation'>) => ({
-		run:
-			getFunctionName(reference) === 'automations/steps:reorderSteps'
-				? (args: { stepOrder: string[] }) =>
-						new Promise((resolve) => {
-							saves.push({
-								stepOrder: args.stepOrder,
-								settle: (ok) => resolve(ok ? { ok: true, result: null } : { ok: false }),
-							});
-						})
-				: vi.fn(() => Promise.resolve({ ok: true, result: null })),
+		run: held(getFunctionName(reference)),
 		isLoading: ref(false),
 		inlineError: ref(null),
 	}));
@@ -58,7 +85,7 @@ function stubHeldReorder() {
 		await flushPromises();
 	};
 	const outstanding = () => saves.filter((entry) => !settled.has(entry));
-	return { ...harness, saves, echo, settle, outstanding };
+	return { ...harness, saves, adds, echo, settle, outstanding };
 }
 
 const order = (wrapper: EditPageWrapper) =>
@@ -75,6 +102,13 @@ const moveDown = async (wrapper: EditPageWrapper, id: string) => {
 };
 const press = async (wrapper: EditPageWrapper, id: string, key: string) => {
 	await wrapper.get(`[data-step-handle="${id}"]`).trigger('keydown', { key });
+	await flushPromises();
+};
+/** Add a step through the "+" under the step at `index` on screen. */
+const addStepAfter = async (wrapper: EditPageWrapper, index: number) => {
+	const card = wrapper.findAll('[data-testid="automation-step"]')[index]!;
+	await card.find('button[aria-label="Add"]').trigger('click');
+	await wrapper.get('[data-testid="add-step-menu"] button').trigger('click');
 	await flushPromises();
 };
 const keyboardMoveDown = async (wrapper: EditPageWrapper, id: string) => {
@@ -393,6 +427,55 @@ describe('keyboard previews and the reorder queue', () => {
 		await flushPromises();
 		await settle();
 		expect(saves.map((save) => save.stepOrder)).toEqual([['st_3', 'st_1', 'st_2']]);
+		wrapper.unmount();
+	});
+});
+
+describe('adding a step while an order is being saved', () => {
+	beforeEach(() => {
+		vi.resetModules();
+	});
+
+	it('Add step waits for queued moves, then inserts after the same step', async () => {
+		const { saves, adds, settle } = stubHeldReorder();
+		const wrapper = await mountEditPage();
+
+		await moveDown(wrapper, 'st_1');
+		await moveDown(wrapper, 'st_1');
+		expect(order(wrapper)).toEqual(['st_2', 'st_3', 'st_1']);
+		// Add under st_3, second on screen, while the server still has st_1 there.
+		await addStepAfter(wrapper, 1);
+		expect(adds).toHaveLength(0);
+
+		await settle();
+		expect(adds).toHaveLength(0);
+		await settle();
+		expect(adds.map((add) => add.insertAtIndex)).toEqual([2]);
+
+		await adds[0]!.settle();
+		expect(order(wrapper)).toEqual(['st_2', 'st_3', 'st_new', 'st_1']);
+		expect(saves.map((save) => save.stepOrder)).toEqual([
+			['st_2', 'st_1', 'st_3'],
+			['st_2', 'st_3', 'st_1'],
+		]);
+		wrapper.unmount();
+	});
+
+	it('a move made while a step is being added saves an order that includes it', async () => {
+		const { saves, adds, settle } = stubHeldReorder();
+		const wrapper = await mountEditPage();
+
+		await addStepAfter(wrapper, 0);
+		expect(adds.map((add) => add.insertAtIndex)).toEqual([1]);
+		await moveDown(wrapper, 'st_2');
+		expect(order(wrapper)).toEqual(['st_1', 'st_3', 'st_2']);
+		// The order waits for the new step instead of leaving it out.
+		expect(saves).toHaveLength(0);
+
+		await adds[0]!.settle();
+		expect(saves.map((save) => save.stepOrder)).toEqual([['st_1', 'st_new', 'st_3', 'st_2']]);
+		await settle();
+		expect(order(wrapper)).toEqual(['st_1', 'st_new', 'st_3', 'st_2']);
 		wrapper.unmount();
 	});
 });

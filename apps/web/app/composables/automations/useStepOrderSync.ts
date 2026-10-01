@@ -88,7 +88,12 @@ export function useStepOrderSync<T extends { _id: string }>(options: StepOrderSy
 		let sent = idsOf(options.server.value);
 		while (queued) {
 			queued = false;
-			const ids = committed;
+			// The save carries every step the server has now. A step added since
+			// the order was committed goes in at its server position, so the
+			// stored order never leaves a step out (two steps would then share
+			// a position).
+			const ids = idsOf(arrange(options.server.value, committed));
+			committed = ids;
 			if (sameOrder(ids, sent)) continue;
 			sent = ids;
 			if (!(await options.save(ids))) {
@@ -118,5 +123,10 @@ export function useStepOrderSync<T extends { _id: string }>(options: StepOrderSy
 		return running;
 	};
 
-	return { items, isSaving, persist, showCommitted };
+	/** Resolves once every queued order has been saved (or dropped). */
+	const settled = async (): Promise<void> => {
+		for (let current = running; current; current = running) await current;
+	};
+
+	return { items, isSaving, persist, showCommitted, settled };
 }

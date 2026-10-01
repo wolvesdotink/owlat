@@ -94,6 +94,8 @@ const {
 	getStepDescription,
 } = useAutomationSteps(automationId, automation, emailTemplates);
 
+// The add-step mutation in flight, if any. See `requestAddStep`.
+let stepAdding: Promise<unknown> = Promise.resolve();
 // The list the drag handle reorders. VueDraggable writes the new order back
 // through v-model the moment an item is dropped, and the keyboard and the
 // step menu move it the same way; every route then commits the order shown,
@@ -104,8 +106,13 @@ const stepOrder = useStepOrderSync({
 	server: mutableSteps,
 	save: (ids) => persistStepOrder(ids as Id<'automationSteps'>[]),
 	// The open step's save lands first, like every other change to the
-	// workflow's shape.
-	whenReady: (proceed, cancel) => afterStepSaved(proceed, cancel),
+	// workflow's shape, and so does a step being added: the order sent must
+	// include it.
+	whenReady: (proceed, cancel) =>
+		afterStepSaved(async () => {
+			await stepAdding;
+			await proceed();
+		}, cancel),
 	isPreviewing: (): boolean => keyboardReorder.liftedId.value !== null,
 	// A failed save shows the server's order, so a lift on top of it is gone.
 	onReplaced: (): void => keyboardReorder.reset(),
@@ -348,9 +355,21 @@ const closeInspector = () =>
 		await nextTick();
 		if (stepId) focusStepControl(stepId, 'title');
 	});
+// `insertAtIndex` is a position on screen, which the server only shares once
+// queued reorders are saved. Wait for them, then insert after the same step.
 const requestAddStep = (stepType: StepKind, insertAtIndex?: number) => {
 	closeDropdowns();
-	return afterStepSaved(() => handleAddStep(stepType, insertAtIndex));
+	const afterStepId = insertAtIndex ? orderedSteps.value[insertAtIndex - 1]?._id : undefined;
+	return afterStepSaved(async () => {
+		await stepOrder.settled();
+		let index = insertAtIndex;
+		if (afterStepId) {
+			const anchor = orderedSteps.value.findIndex((step) => step._id === afterStepId);
+			if (anchor !== -1) index = anchor + 1;
+		}
+		stepAdding = handleAddStep(stepType, index);
+		await stepAdding;
+	});
 };
 
 // Handle save draft: the automation's name and description. Step edits save
@@ -939,6 +958,7 @@ onUnmounted(() => {
 									<!-- Dropdown -->
 									<div
 										v-if="addStepDropdownIndex === index"
+										data-testid="add-step-menu"
 										class="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-64 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg z-20"
 									>
 										<div class="p-2">
