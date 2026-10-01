@@ -107,7 +107,7 @@ export function diffIdle(args: {
  *
  *   1. Client sends bare `DONE` → onClientLine consumes it
  *   2. The configured idle timeout fires → emit `* OK [TIMEOUT]` + OK
- *   3. Socket closes or the client logs out (cancel) → tear down timers,
+ *   3. Socket closes or the server shuts down (cancel) → tear down timers,
  *      commit the currently-tracked state and resolve, so the pump's `.then`
  *      continuation releases its session reference
  *
