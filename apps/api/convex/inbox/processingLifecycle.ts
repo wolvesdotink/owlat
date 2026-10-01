@@ -289,8 +289,11 @@ export const reconcileStuckApproved = internalMutation({
 			if (isOutboundChannel(message.to)) continue;
 			// Lost completion: re-fire the approved-send effect. Idempotent against
 			// duplication because we only reach here when no queued send remains.
+			// An automatic approval re-fires as one, so the unattended-send checks and
+			// the attachment rule for autonomous replies still apply.
 			await ctx.scheduler.runAfter(0, internal.agent.agentPipeline.sendApprovedReply, {
 				inboundMessageId: message._id,
+				autonomous: message.approvalSource === 'auto',
 			});
 			reEnqueued++;
 		}
