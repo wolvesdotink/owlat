@@ -214,11 +214,17 @@ export function useTranslationDrafts(opts: UseTranslationDraftsOptions) {
 		if (drafts.value[cellKey(cell)]?.status === 'failed') setDraft(cellKey(cell), null);
 	};
 
-	/** Drop every draft of a language that no longer exists. */
+	/**
+	 * Drop every draft and open editor text of a language that no longer
+	 * exists, so neither keeps the page dirty nor is saved to it on leaving.
+	 */
 	const forgetLanguage = (language: string) => {
 		for (const [key, draft] of Object.entries(drafts.value)) {
 			if (draft.cell.language === language) setDraft(key, null);
 		}
+		openEdits.value = Object.fromEntries(
+			Object.entries(openEdits.value).filter(([, open]) => open.cell.language !== language)
+		);
 	};
 
 	/** Text open in a cell editor, or null once the editor closed. */
