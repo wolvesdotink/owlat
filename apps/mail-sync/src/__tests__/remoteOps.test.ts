@@ -7,7 +7,10 @@
  *     deleted from, and a delete only ever touches the folder it names;
  *   - a message filed before the queue existed is still found in the other
  *     synced folders;
- *   - user folders are created once, under the server's namespace.
+ *   - user folders are created once, under the server's namespace;
+ *   - only a folder the server confirms is missing counts as absent: a refused
+ *     SELECT, STATUS or SEARCH fails the op so it is retried, and a lost
+ *     connection leaves it uncharged.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -20,6 +23,21 @@ import {
 	type RemoteOpsClient,
 } from '../remoteOps.js';
 import type { FolderRole } from '../folders.js';
+
+/** An error shaped like the one ImapFlow rejects a refused command with. */
+function refused(
+	responseStatus: 'NO' | 'BAD',
+	serverResponseCode: string | undefined,
+	responseText: string,
+	extra: Record<string, unknown> = {}
+): Error {
+	return Object.assign(new Error('Command failed'), {
+		responseStatus,
+		serverResponseCode,
+		responseText,
+		...extra,
+	});
+}
 
 interface FakeMessage {
 	uid: number;
@@ -63,7 +81,10 @@ class FakeImap implements RemoteOpsClient {
 	}
 
 	async getMailboxLock(path: string) {
-		if (!this.boxes.has(path)) throw new Error(`NO [NONEXISTENT] ${path}`);
+		// ImapFlow runs LIST after a refused SELECT and marks the error when the folder is not listed.
+		if (!this.boxes.has(path)) {
+			throw refused('NO', 'NONEXISTENT', 'Unknown Mailbox', { mailboxMissing: true });
+		}
 		this.selected = path;
 		return { release: () => void (this.selected = null) };
 	}
@@ -130,9 +151,11 @@ class FakeImap implements RemoteOpsClient {
 		this.boxes.delete(path);
 	}
 
-	async status(path: string) {
+	async status(path: string): Promise<{ messages?: number } | false> {
 		const box = this.boxes.get(path);
-		if (!box) throw new Error(`NO [NONEXISTENT] ${path}`);
+		// What ImapFlow throws once LIST confirms a refused STATUS named no folder.
+		if (!box)
+			throw Object.assign(new Error(`Mailbox doesn't exist: ${path}`), { code: 'NotFound' });
 		return { messages: box.length };
 	}
 
@@ -552,5 +575,211 @@ describe('drainRemoteOps', () => {
 
 		expect(h.settled).toEqual([]);
 		expect(h.errors).toEqual([first.opId]);
+	});
+});
+
+describe('RemoteOpReplayer — a refused SELECT or STATUS is not a missing folder', () => {
+	const unavailable = () => refused('NO', 'UNAVAILABLE', 'Temporary server failure');
+	const throttled = () =>
+		Object.assign(refused('BAD', undefined, 'Request is throttled.'), {
+			code: 'ETHROTTLE',
+			throttleReset: 30_000,
+		});
+	const noPermission = () => refused('NO', 'NOPERM', 'Access denied');
+
+	function settledFor(imap: FakeImap, operation: RemoteOp) {
+		const settled: RemoteOpResult[][] = [];
+		return {
+			settled,
+			run: () =>
+				drainRemoteOps({
+					listDue: (() => {
+						let served = false;
+						return async () => (served ? [] : ((served = true), [operation]));
+					})(),
+					settle: async (results) => void settled.push(results),
+					replayer: new RemoteOpReplayer(imap, folderMap(STANDARD)),
+					client: imap,
+					isStopped: () => false,
+					onError: () => {},
+				}),
+		};
+	}
+
+	const deleteFromTrash = () =>
+		op({ kind: 'delete', rfc822MessageId: 'a@x', source: { role: 'trash' } });
+
+	it('retires a message op whose folder the server confirms does not exist', async () => {
+		const imap = new FakeImap({ INBOX: [[1, '<a@x>']] });
+		const h = settledFor(imap, deleteFromTrash());
+
+		await h.run();
+
+		expect(h.settled[0]).toEqual([expect.objectContaining({ outcome: 'not_found' })]);
+	});
+
+	it.each([
+		[
+			'a temporary UNAVAILABLE',
+			unavailable,
+			'Command failed: NO [UNAVAILABLE] Temporary server failure',
+		],
+		['throttling', throttled, 'Command failed (ETHROTTLE): BAD Request is throttled.'],
+		['a permission refusal', noPermission, 'Command failed: NO [NOPERM] Access denied'],
+	])('retries a message op when SELECT meets %s', async (_name, error, recorded) => {
+		const imap = new FakeImap({ INBOX: [], Archive: [], Trash: [[1, '<a@x>']], Sent: [] });
+		imap.getMailboxLock = async () => {
+			throw error();
+		};
+		const operation = deleteFromTrash();
+		const h = settledFor(imap, operation);
+
+		await h.run();
+
+		expect(h.settled).toEqual([[{ opId: operation.opId, outcome: 'failed', error: recorded }]]);
+		expect(imap.ids('Trash')).toEqual(['<a@x>']);
+	});
+
+	it('retries a move when the fallback folders cannot be selected, instead of calling it gone', async () => {
+		// The op's own folder no longer holds it; Archive, where it now sits, is briefly unavailable.
+		const imap = new FakeImap({ INBOX: [], Archive: [[4, '<a@x>']], Trash: [], Sent: [] });
+		const select = imap.getMailboxLock.bind(imap);
+		imap.getMailboxLock = async (path) => {
+			if (path === 'Archive') throw unavailable();
+			return await select(path);
+		};
+		const operation = op({
+			kind: 'move',
+			rfc822MessageId: 'a@x',
+			source: { role: 'inbox' },
+			target: { role: 'trash' },
+		});
+		const h = settledFor(imap, operation);
+
+		await h.run();
+
+		expect(h.settled[0]).toEqual([expect.objectContaining({ outcome: 'failed' })]);
+	});
+
+	it('still finds the message in a later folder when an earlier one cannot be selected', async () => {
+		const imap = new FakeImap({ INBOX: [], Archive: [], Trash: [[4, '<a@x>']], Sent: [] });
+		const select = imap.getMailboxLock.bind(imap);
+		imap.getMailboxLock = async (path) => {
+			if (path === 'Archive') throw unavailable();
+			return await select(path);
+		};
+		const operation = op({
+			kind: 'flags',
+			rfc822MessageId: 'a@x',
+			source: { role: 'inbox' },
+			flags: { flagged: true },
+		});
+		const h = settledFor(imap, operation);
+
+		await h.run();
+
+		expect(h.settled).toEqual([[{ opId: operation.opId, outcome: 'done' }]]);
+		expect(imap.log).toEqual(['+FLAGS Trash 4 \\Flagged']);
+	});
+
+	it('retries when SEARCH is refused rather than reading it as no match', async () => {
+		const imap = new FakeImap({ INBOX: [[1, '<a@x>']], Archive: [], Trash: [], Sent: [] });
+		imap.search = async () => false;
+		const operation = op({
+			kind: 'flags',
+			rfc822MessageId: 'a@x',
+			source: { role: 'inbox' },
+			flags: { seen: true },
+		});
+		const h = settledFor(imap, operation);
+
+		await h.run();
+
+		expect(h.settled).toEqual([
+			[{ opId: operation.opId, outcome: 'failed', error: 'SEARCH failed' }],
+		]);
+	});
+
+	it('retires a folder op whose folder STATUS confirms is gone', async () => {
+		const imap = new FakeImap({ INBOX: [] });
+		const replayer = new RemoteOpReplayer(imap, folderMap({ inbox: 'INBOX' }));
+
+		expect(await replayer.apply(op({ kind: 'deleteFolder', source: { remote: 'Receipts' } }))).toBe(
+			'not_found'
+		);
+		expect(
+			await replayer.apply(
+				op({ kind: 'renameFolder', source: { remote: 'Receipts' }, target: { path: ['R'] } })
+			)
+		).toBe('not_found');
+	});
+
+	it.each([
+		['throws UNAVAILABLE', async () => Promise.reject(unavailable())],
+		['throws a throttling error', async () => Promise.reject(throttled())],
+		['is refused for permission', async () => Promise.reject(noPermission())],
+		// ImapFlow's answer when the server refuses STATUS of a folder LIST still shows.
+		['resolves false', async () => false as const],
+	])(
+		'keeps a folder delete queued, and its mail in place, when STATUS %s',
+		async (_name, status) => {
+			const imap = new FakeImap({ INBOX: [], Receipts: [[5, '<r@x>']] });
+			imap.status = status;
+			const operation = op({ kind: 'deleteFolder', source: { remote: 'Receipts' } });
+			const h = settledFor(imap, operation);
+
+			await h.run();
+
+			expect(h.settled[0]).toEqual([expect.objectContaining({ outcome: 'failed' })]);
+			expect(imap.log).toEqual([]);
+			expect(imap.ids('Receipts')).toEqual(['<r@x>']);
+		}
+	);
+
+	it('keeps a folder rename queued when STATUS is refused', async () => {
+		const imap = new FakeImap({ INBOX: [], Receipts: [] });
+		imap.status = async () => Promise.reject(unavailable());
+		const operation = op({
+			kind: 'renameFolder',
+			source: { remote: 'Receipts' },
+			target: { path: ['Invoices'] },
+		});
+		const h = settledFor(imap, operation);
+
+		await h.run();
+
+		expect(h.settled[0]).toEqual([expect.objectContaining({ outcome: 'failed' })]);
+		expect(imap.boxes.has('Receipts')).toBe(true);
+	});
+
+	it.each([
+		[
+			'SELECT',
+			(imap: FakeImap) => {
+				imap.getMailboxLock = async () => {
+					imap.usable = false;
+					throw new Error('Connection not available');
+				};
+				return deleteFromTrash();
+			},
+		],
+		[
+			'STATUS',
+			(imap: FakeImap) => {
+				// ImapFlow swallows the dropped STATUS into `false`; the connection says why.
+				imap.status = async () => {
+					imap.usable = false;
+					return false;
+				};
+				return op({ kind: 'deleteFolder', source: { remote: 'Receipts' } });
+			},
+		],
+	])('leaves the op uncharged when the connection drops during %s', async (_name, arrange) => {
+		const imap = new FakeImap({ INBOX: [], Trash: [[1, '<a@x>']], Receipts: [] });
+		const h = settledFor(imap, arrange(imap));
+
+		await h.run();
+
+		expect(h.settled).toEqual([]);
 	});
 });

@@ -167,3 +167,37 @@ describe('TranslationCell', () => {
 		expect(violations).toEqual([]);
 	});
 });
+
+/**
+ * Issue #1080: the "source" badge and the "HTML" hover badge were absolutely
+ * positioned in the cell's top-right corner with no room kept for them, so any
+ * line long enough ran under the badge. happy-dom does no layout, so this pins
+ * the structure that rules the overlap out: the badge is a non-shrinking item
+ * in the same flex row as the text, and the text takes only the space left.
+ */
+describe('TranslationCell badges', () => {
+	const LONG = 'A subject line long enough to reach the right edge of the cell and keep going';
+
+	function badgeBesideText(w: VueWrapper, label: string) {
+		const badge = w.findAll('span').find((s) => s.text() === label);
+		expect(badge, `${label} badge`).toBeDefined();
+		const text = w.findAll('span').find((s) => s.text() === LONG);
+		expect(text, 'cell text').toBeDefined();
+
+		expect(badge!.classes()).not.toContain('absolute');
+		expect(badge!.classes()).toContain('shrink-0');
+		expect(badge!.element.parentElement).toBe(text!.element.parentElement);
+		expect(badge!.element.parentElement!.classList.contains('flex')).toBe(true);
+		expect(text!.classes()).toEqual(expect.arrayContaining(['flex-1', 'min-w-0']));
+	}
+
+	it('keeps the source badge beside the source text, not over it', () => {
+		const w = mountCell({ value: LONG, isDefault: true });
+		badgeBesideText(w, 'source');
+	});
+
+	it('keeps the HTML badge beside the text of an editable cell, not over it', () => {
+		const w = mountCell({ value: `<p>${LONG}</p>`, isHtml: true });
+		badgeBesideText(w, 'HTML');
+	});
+});

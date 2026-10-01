@@ -7,7 +7,8 @@
 #   • every Docker volume of the compose project (convex-data, redis-data,
 #     mail-certs, …) — discovered dynamically, so newly added volumes are
 #     never silently missed
-#   • .env, docker-compose.override.yml, Caddyfile (when present)
+#   • .env, docker-compose.override.yml, Caddyfile and .owlat-flags.json (the
+#     CLI's copy of the feature flags), when present
 #
 # Usage:
 #   bash scripts/backup.sh                  # creates ./backups/owlat-YYYYMMDD-HHMMSS.tar.gz
@@ -75,6 +76,7 @@ VOLUMES=$(docker volume ls -q --filter "label=com.docker.compose.project=${PROJE
 [[ -n "$VOLUMES" ]] || die "No volumes found for project '${PROJECT}'. Has the stack ever been started here?"
 
 selected_volumes=()
+selected_suffixes=""
 for volume in $VOLUMES; do
 	suffix="${volume#"${PROJECT}"_}"
 	case "$suffix" in
@@ -85,6 +87,11 @@ for volume in $VOLUMES; do
 			[[ "$INCLUDE_OLLAMA" == "1" ]] || { info "Skipping $suffix (models are re-downloadable; OWLAT_BACKUP_INCLUDE_OLLAMA=1 to include)"; continue; }
 			;;
 	esac
+	# "owlat_database" and "database" both strip to "database".
+	grep -qxF -- "$suffix" <<<"$selected_suffixes" \
+		&& die "Volumes of project '${PROJECT}' would share the payload name '${suffix}' — rename one of them."
+	selected_suffixes="${selected_suffixes}${suffix}
+"
 	selected_volumes+=("$volume")
 done
 
@@ -130,14 +137,28 @@ dump_volume() {
 		-v "$volume":/src:ro \
 		-v "$dest":/dst \
 		busybox:latest \
-		sh -c "cd /src && tar -cf /dst/volume.tar ."
+		sh -c 'cd "$1" && tar -cf "$2/volume.tar" .' sh /src /dst
 	ok   "  → $(du -sh "$dest/volume.tar" | cut -f1)"
 }
 
+# The compose key Compose labels a volume with ("convex-data"), or "-" when
+# the label is missing. A payload is named after its volume minus the
+# "<project>_" prefix, which drops what an explicit `name:` looked like, so
+# VOLUMES.txt records "<payload> <compose key> <volume>" per payload for
+# restore.sh to find the volume the restored stack mounts for each one.
+compose_key() {
+	local key
+	key=$(docker volume inspect --format '{{ index .Labels "com.docker.compose.volume" }}' "$1" 2>/dev/null) || key=""
+	[[ "$key" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || key="-"
+	printf '%s\n' "$key"
+}
+
 captured_list=""
+: > "$STAGING/VOLUMES.txt"
 for volume in "${selected_volumes[@]}"; do
 	suffix="${volume#"${PROJECT}"_}"
 	dump_volume "$volume" "$STAGING/$suffix"
+	printf '%s %s %s\n' "$suffix" "$(compose_key "$volume")" "$volume" >> "$STAGING/VOLUMES.txt"
 	captured_list="${captured_list}  ${suffix}/volume.tar
 "
 done
@@ -161,6 +182,13 @@ if [[ -f Caddyfile ]]; then
 	cp Caddyfile "$STAGING/Caddyfile"
 	ok "Captured Caddyfile"
 fi
+# The CLI's copy of the feature flags, written by `owlat feature`/`pack`, the
+# web setup wizard and the updater's Apply. Without it a restored install's
+# doctor, feature and pack fall back to the default flags.
+if [[ -f .owlat-flags.json ]]; then
+	cp .owlat-flags.json "$STAGING/owlat-flags.json"
+	ok "Captured .owlat-flags.json (CLI feature flags)"
+fi
 
 # ── Manifest ──────────────────────────────────────────────────────────────────
 cat > "$STAGING/MANIFEST.txt" <<EOF
@@ -172,9 +200,11 @@ Project name: ${PROJECT}
 Consistency:  $([[ "$HOT" == "1" ]] && echo "HOT (convex/redis not paused — snapshot may be torn)" || echo "convex/redis paused during volume copy")
 Permissions:  archive is owner-only (chmod 600) — it embeds the full .env
 Includes:
-${captured_list}  env                      — .env file
+${captured_list}  VOLUMES.txt              — compose key and volume name of each payload
+  env                      — .env file
 $([[ -f "$STAGING/docker-compose.override.yml" ]] && echo "  docker-compose.override.yml — feature-profile selection")
 $([[ -f "$STAGING/Caddyfile" ]] && echo "  Caddyfile                — reverse-proxy config")
+$([[ -f "$STAGING/owlat-flags.json" ]] && echo "  owlat-flags.json         — .owlat-flags.json, CLI feature flags")
 
 To restore (fresh VPS: clone the repo, install Docker, then):
   bash scripts/restore.sh ${NAME}.tar.gz

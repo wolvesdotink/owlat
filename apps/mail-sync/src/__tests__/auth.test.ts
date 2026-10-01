@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { imapAuth, smtpAuth } from '../auth.js';
-import { isAuthError } from '../connection.js';
+import { describeConnectError, isAuthError } from '../loginFailure.js';
 
 describe('imapAuth', () => {
 	it('uses XOAUTH2 when an access token is present', () => {
@@ -71,5 +71,51 @@ describe('isAuthError', () => {
 	it('leaves a transient network drop retryable', () => {
 		expect(isAuthError(new Error('ECONNRESET'))).toBe(false);
 		expect(isAuthError(new Error('socket timeout'))).toBe(false);
+	});
+
+	// ImapFlow flags every NO to LOGIN `authenticationFailed`; the server's own
+	// code or words are what say whether the password is at fault.
+	const refused = (serverResponseCode: string | undefined, responseText: string) =>
+		Object.assign(new Error('Command failed'), {
+			authenticationFailed: true,
+			serverResponseCode,
+			responseText,
+		});
+
+	it('does not read a refusal the server calls temporary as bad credentials', () => {
+		expect(isAuthError(refused('UNAVAILABLE', 'Temporary System Problem. Try again later.'))).toBe(
+			false
+		);
+		expect(isAuthError(refused('INUSE', 'Mailbox in use'))).toBe(false);
+		expect(isAuthError(refused('LIMIT', 'Too many connections'))).toBe(false);
+		expect(isAuthError(refused('ALERT', 'Too many simultaneous connections. (Failure)'))).toBe(
+			false
+		);
+		expect(isAuthError(refused(undefined, 'Account exceeded command or bandwidth limits.'))).toBe(
+			false
+		);
+	});
+
+	it('still reads a credential refusal as one', () => {
+		expect(isAuthError(refused('AUTHENTICATIONFAILED', 'Invalid credentials (Failure)'))).toBe(
+			true
+		);
+		expect(isAuthError(refused('ALERT', 'Application-specific password required'))).toBe(true);
+	});
+});
+
+describe('describeConnectError', () => {
+	it("appends the server's reply to ImapFlow's generic message", () => {
+		const err = Object.assign(new Error('Command failed'), {
+			serverResponseCode: 'UNAVAILABLE',
+			responseText: 'Temporary System Problem. Try again later.',
+		});
+		expect(describeConnectError(err)).toBe(
+			'Command failed: [UNAVAILABLE] Temporary System Problem. Try again later.'
+		);
+	});
+
+	it('leaves an error without a server reply as it is', () => {
+		expect(describeConnectError(new Error('read ECONNRESET'))).toBe('read ECONNRESET');
 	});
 });

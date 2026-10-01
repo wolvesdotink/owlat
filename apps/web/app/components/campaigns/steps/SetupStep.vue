@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { WatchSource } from 'vue';
 import { rules } from '~/composables/useFormValidation';
 import { useCampaignAudience } from '~/composables/useCampaignAudience';
 import { joinList, missingSetupItems } from '~/utils/campaignSetupReadiness';
@@ -68,6 +69,7 @@ const {
 	audienceCount,
 	selectedTopicName,
 	selectedSegment,
+	hydrate: hydrateAudience,
 } = useCampaignAudience();
 const audienceError = ref<string | null>(null);
 
@@ -94,15 +96,56 @@ const selectedTemplateId = computed(
 	() => (campaignDetails.value?.emailTemplateId as Id<'emailTemplates'> | undefined) ?? null
 );
 
-// Seed the A/B expander from an existing campaign draft exactly once.
-let abInitialized = false;
+// --- Hydration from the persisted campaign ----------------------------------
+// The step can mount fresh against a campaign that already exists: a refresh,
+// a shared link, or the email editor round trip, which leaves the wizard and so
+// drops its <KeepAlive> cache. Each part of the form is filled from the
+// campaign once, when it first loads, unless the user has already edited that
+// part here; a late query never overwrites typing. The sender is the picker's
+// to preselect (SetupSenderPicker waits for the same campaign).
+type HydratedPart = 'name' | 'replyTo' | 'audience' | 'abTest';
+const editedParts = new Set<HydratedPart>();
+let hydrating = false;
+const trackEdits = (part: HydratedPart, source: WatchSource | WatchSource[]) =>
+	watch(
+		source,
+		() => {
+			if (!hydrating) editedParts.add(part);
+		},
+		{ flush: 'sync' }
+	);
+trackEdits('name', () => form.campaignName);
+trackEdits('replyTo', () => form.replyTo);
+trackEdits('audience', [audienceType, selectedTopicId, selectedSegmentId]);
+trackEdits('abTest', [
+	abTestExpanded,
+	abTest.abTestEnabled,
+	abTest.abTestType,
+	abTest.abVariantBSubject,
+	abTest.abVariantBTemplateId,
+	abTest.abSplitPercentage,
+	abTest.abWinnerCriteria,
+	abTest.abTestDuration,
+]);
+
+let hydrated = false;
 watch(
 	campaignDetails,
 	(campaign) => {
-		if (!campaign || abInitialized) return;
-		abInitialized = true;
-		abTest.initializeFromCampaign(campaign);
-		if (campaign.isABTest) abTestExpanded.value = true;
+		if (!campaign || hydrated) return;
+		hydrated = true;
+		hydrating = true;
+		try {
+			if (!editedParts.has('name')) form.campaignName = campaign.name ?? '';
+			if (!editedParts.has('replyTo')) form.replyTo = campaign.replyTo ?? '';
+			if (!editedParts.has('audience') && campaign.audience) hydrateAudience(campaign.audience);
+			if (!editedParts.has('abTest')) {
+				abTest.initializeFromCampaign(campaign);
+				if (campaign.isABTest) abTestExpanded.value = true;
+			}
+		} finally {
+			hydrating = false;
+		}
 	},
 	{ immediate: true }
 );

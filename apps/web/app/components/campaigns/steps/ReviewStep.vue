@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { isValidEmail } from '@owlat/shared';
 import { needsSendConfirmation, SEND_UNDO_WINDOW_MS } from '~/lib/campaignSend';
+import type { ReviewSchedule } from '~/lib/campaignCompose';
 
 type SendOption = 'now' | 'later';
 
@@ -28,6 +29,11 @@ interface CampaignData {
 	audienceCountAtLeast?: boolean;
 	campaignSubject: string;
 	selectedTemplate: EmailTemplate | null;
+	/**
+	 * The attached email's rendered HTML: `null` when it has no body yet (which
+	 * blocks the send), `undefined` while that is not known.
+	 */
+	emailBodyHtml?: string | null;
 	// A/B Test data
 	abTestEnabled: boolean;
 	abTestType: 'subject' | 'content';
@@ -43,6 +49,8 @@ interface CampaignData {
 
 interface Props {
 	data: CampaignData;
+	/** A "Schedule for later" choice made before a trip to the email editor. */
+	initialSchedule?: ReviewSchedule | null;
 }
 
 const props = defineProps<Props>();
@@ -52,6 +60,8 @@ const emit = defineEmits<{
 	editStep: [step: string];
 	complete: [];
 	retryTemplates: [];
+	/** Open the email editor; the schedule comes back with the return link. */
+	editEmail: [schedule: ReviewSchedule | null];
 }>();
 
 const router = useRouter();
@@ -59,10 +69,23 @@ const { showToast } = useToast();
 const { t, locale } = useI18n();
 
 // Send options
-const sendOption = ref<SendOption>('now');
-const scheduledDate = ref('');
-const scheduledTime = ref('');
-const useRecipientTimezone = ref(false);
+const sendOption = ref<SendOption>(props.initialSchedule ? 'later' : 'now');
+const scheduledDate = ref(props.initialSchedule?.date ?? '');
+const scheduledTime = ref(props.initialSchedule?.time ?? '');
+const useRecipientTimezone = ref(props.initialSchedule?.recipientTimezone ?? false);
+
+const handleEditEmail = () => {
+	emit(
+		'editEmail',
+		sendOption.value === 'later'
+			? {
+					date: scheduledDate.value,
+					time: scheduledTime.value,
+					recipientTimezone: useRecipientTimezone.value,
+				}
+			: null
+	);
+};
 
 // Test email modal
 const isTestEmailModalOpen = ref(false);
@@ -133,6 +156,12 @@ const { data: sendingReadiness } = useOrganizationQuery(
 );
 
 const sendBlockedReason = computed(() => {
+	// The send pipeline refuses an email without HTML; say so here, not after
+	// the click.
+	if (props.data.emailBodyHtml === null) {
+		return t('components.campaigns.steps.reviewStep.blocked.emptyBody');
+	}
+
 	const status = domainVerificationStatus.value;
 	if (!status) return null;
 
@@ -398,32 +427,57 @@ const variantBTemplateName = computed(() => {
 				</div>
 
 				<!-- Email Content -->
-				<div class="flex items-start justify-between p-4 bg-bg-surface shadow-surface-1 rounded-lg">
-					<div class="flex items-start gap-3">
-						<UiIconBox icon="lucide:mail" size="sm" variant="warning" rounded="lg" />
-						<div class="flex-1 min-w-0">
-							<p class="text-sm text-text-secondary">
-								{{ t('components.campaigns.steps.reviewStep.emailContent') }}
-							</p>
-							<p class="font-medium text-text-primary mt-0.5">{{ data.campaignSubject }}</p>
-							<div v-if="data.selectedTemplate" class="mt-2 flex items-center gap-2">
-								<span class="text-sm text-text-secondary">{{
-									t('components.campaigns.steps.reviewStep.template')
-								}}</span>
-								<span class="text-sm text-text-primary">{{ data.selectedTemplate.name }}</span>
+				<div class="p-4 bg-bg-surface shadow-surface-1 rounded-lg">
+					<div class="flex items-start justify-between gap-3">
+						<div class="flex flex-1 min-w-0 items-start gap-3">
+							<UiIconBox icon="lucide:mail" size="sm" variant="warning" rounded="lg" />
+							<div class="flex-1 min-w-0">
+								<p class="text-sm text-text-secondary">
+									{{ t('components.campaigns.steps.reviewStep.emailContent') }}
+								</p>
+								<p class="font-medium text-text-primary mt-0.5">{{ data.campaignSubject }}</p>
+								<div v-if="data.selectedTemplate" class="mt-2 flex items-center gap-2">
+									<span class="text-sm text-text-secondary">{{
+										t('components.campaigns.steps.reviewStep.template')
+									}}</span>
+									<span class="text-sm text-text-primary">{{ data.selectedTemplate.name }}</span>
+								</div>
 							</div>
-							<p class="text-xs text-text-tertiary mt-2">
-								{{ t('components.campaigns.steps.reviewStep.editLater') }}
-							</p>
 						</div>
+						<button
+							class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+							@click="emit('editStep', 'content')"
+							:aria-label="t('common.edit')"
+						>
+							<Icon name="lucide:pencil" class="w-4 h-4" />
+						</button>
 					</div>
-					<button
-						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-						@click="emit('editStep', 'content')"
-						:aria-label="t('common.edit')"
-					>
-						<Icon name="lucide:pencil" class="w-4 h-4" />
-					</button>
+					<!-- Under the header, not inside it, so a phone gets the card's full width. -->
+					<div v-if="data.selectedTemplate" class="mt-3 sm:pl-11">
+						<CampaignsEmailBodyPreview
+							v-if="data.emailBodyHtml"
+							:html="data.emailBodyHtml"
+							:title="t('components.campaigns.steps.reviewStep.previewFrameTitle')"
+						/>
+						<p
+							v-else-if="data.emailBodyHtml === null"
+							class="flex items-center gap-2 text-sm text-warning"
+							data-testid="review-empty-body"
+						>
+							<Icon name="lucide:alert-circle" class="h-4 w-4 shrink-0" />
+							{{ t('components.campaigns.steps.reviewStep.emptyBody') }}
+						</p>
+						<UiButton
+							variant="secondary"
+							size="sm"
+							class="mt-3"
+							data-testid="review-edit-email"
+							@click="handleEditEmail"
+						>
+							<template #iconLeft><Icon name="lucide:pen-line" class="w-4 h-4" /></template>
+							{{ t('components.campaigns.steps.reviewStep.editEmail') }}
+						</UiButton>
+					</div>
 				</div>
 
 				<!-- A/B Test Summary -->

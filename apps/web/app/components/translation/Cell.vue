@@ -161,18 +161,23 @@ watch(editValue, () => {
 			</div>
 		</div>
 
-		<!-- Default language: read-only source text -->
+		<!-- Default language: read-only source text. The badge sits in the row
+		     beside the text, never over it. -->
 		<div
 			v-else-if="isDefault"
-			class="relative min-h-[40px] p-2 rounded-lg text-sm bg-bg-surface/50"
+			class="flex items-start gap-2 min-h-[40px] p-2 rounded-lg text-sm bg-bg-surface/50"
 		>
-			<span v-if="isEmpty" class="text-text-tertiary italic">
+			<span v-if="isEmpty" class="min-w-0 flex-1 text-text-tertiary italic">
 				{{ t('components.translation.cell.noContent') }}
 			</span>
-			<span v-else class="text-text-primary break-words" :class="{ 'line-clamp-3': !isHtml }">
+			<span
+				v-else
+				class="min-w-0 flex-1 text-text-primary break-words"
+				:class="{ 'line-clamp-3': !isHtml }"
+			>
 				{{ displayText }}
 			</span>
-			<span class="absolute top-1 right-1 text-xs text-brand bg-brand/10 px-1.5 py-0.5 rounded">
+			<span class="shrink-0 text-xs text-brand bg-brand/10 px-1.5 py-0.5 rounded">
 				{{ t('components.translation.cell.sourceBadge') }}
 			</span>
 		</div>
@@ -183,7 +188,7 @@ watch(editValue, () => {
 				ref="entryRef"
 				type="button"
 				:class="[
-					'group relative block w-full min-h-[40px] p-2 rounded-lg text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+					'group relative flex items-start gap-2 w-full min-h-[40px] p-2 rounded-lg text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
 					hasError
 						? 'border border-error/60 hover:bg-bg-surface'
 						: isEmpty
@@ -196,7 +201,7 @@ watch(editValue, () => {
 				@click="startEditing"
 			>
 				<!-- Empty state -->
-				<span v-if="isEmpty" :id="valueId" class="text-text-tertiary italic">
+				<span v-if="isEmpty" :id="valueId" class="min-w-0 flex-1 text-text-tertiary italic">
 					{{ placeholderText }}
 				</span>
 
@@ -204,16 +209,17 @@ watch(editValue, () => {
 				<span
 					v-else
 					:id="valueId"
-					class="text-text-primary break-words"
+					class="min-w-0 flex-1 text-text-primary break-words"
 					:class="{ 'line-clamp-3': !isHtml }"
 				>
 					{{ displayText }}
 				</span>
 
-				<!-- HTML indicator -->
+				<!-- HTML indicator: its space is kept while hidden, so the text never
+				     runs under it and does not reflow on hover. -->
 				<span
 					v-if="isHtml && !isEmpty"
-					class="absolute top-1 right-1 text-xs text-text-tertiary bg-bg-surface px-1 rounded opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity"
+					class="shrink-0 text-xs text-text-tertiary bg-bg-surface px-1 rounded opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity"
 				>
 					{{ t('components.translation.cell.htmlBadge') }}
 				</span>
