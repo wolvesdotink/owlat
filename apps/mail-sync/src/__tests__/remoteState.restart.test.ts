@@ -298,3 +298,115 @@ describe('provider deletions made while the worker was stopped (#1071)', () => {
 		]);
 	});
 });
+
+/**
+ * A view only vouches for absence when it read everything its folder holds.
+ * A refused SEARCH or a FETCH that leaves rows out is missing evidence, never
+ * evidence of a deletion: the worst outcome is a deletion mirrored a pass later.
+ */
+describe('an incomplete look at a folder is never taken for a deletion', () => {
+	const refuseCensus = (only?: string) => (path: string, q: Record<string, unknown>) =>
+		q['all'] === true && (only === undefined || path === only);
+
+	it('reports nothing gone after a restart when the census SEARCH is refused', async () => {
+		const acc = account({ INBOX: [], Trash: ['t@x'] });
+		acc.ingested('t@x', 'Trash');
+		acc.imap.refuseSearch = refuseCensus();
+
+		expect(gone(await acc.pass())).toEqual([]);
+		expect(acc.local.has('t@x')).toBe(true);
+
+		acc.imap.refuseSearch = null;
+		expect(gone(await acc.pass())).toEqual([]);
+		expect(acc.local.has('t@x')).toBe(true);
+	});
+
+	it('still mirrors a downtime deletion once the refused census succeeds', async () => {
+		const acc = account({ INBOX: ['a@x'], Trash: ['t@x'] });
+		await acc.pass();
+
+		acc.restart();
+		acc.imap.remove('Trash', 't@x');
+		acc.imap.refuseSearch = refuseCensus('Trash');
+		expect(gone(await acc.pass())).toEqual([]);
+		expect(acc.local.has('t@x')).toBe(true);
+
+		acc.imap.refuseSearch = null;
+		expect(gone(await acc.pass())).toEqual(['t@x']);
+		expect(acc.local.get('a@x')?.remoteName).toBe('INBOX');
+	});
+
+	it('reports nothing gone after a restart when SEARCH lists the message but FETCH omits it', async () => {
+		const acc = account({ INBOX: [], Trash: ['t@x'] });
+		acc.ingested('t@x', 'Trash');
+		acc.imap.unreadable.add(acc.imap.uidOf('Trash', 't@x')!);
+
+		expect(gone(await acc.pass())).toEqual([]);
+		expect(acc.local.has('t@x')).toBe(true);
+
+		acc.imap.unreadable.clear();
+		expect(gone(await acc.pass())).toEqual([]);
+		expect(acc.local.has('t@x')).toBe(true);
+	});
+
+	it('does not take an unread arrival below a read one for gone', async () => {
+		const acc = account({ INBOX: ['a@x'], Trash: [] });
+		await acc.pass();
+		for (const id of ['n1@x', 'n2@x']) {
+			acc.imap.add('INBOX', id);
+			acc.local.set(id, { messageId: id, remoteName: 'INBOX', role: 'inbox', flags: NO_FLAGS });
+			acc.ingested(id, 'INBOX');
+		}
+		acc.imap.unreadable.add(acc.imap.uidOf('INBOX', 'n1@x')!);
+
+		acc.deps.forceFull = true;
+		expect(gone(await acc.pass())).toEqual([]);
+		expect(acc.local.get('n1@x')?.remoteName).toBe('INBOX');
+	});
+
+	it('holds back a deletion while the folder it may have moved to cannot be read', async () => {
+		const acc = account({ INBOX: ['a@x'], Archive: [], Trash: [] });
+		await acc.pass();
+
+		acc.imap.move('INBOX', 'Archive', 'a@x');
+		acc.imap.unreadable.add(acc.imap.uidOf('Archive', 'a@x')!);
+		expect(gone(await acc.pass())).toEqual([]);
+		expect(acc.local.get('a@x')?.remoteName).toBe('INBOX');
+
+		acc.imap.unreadable.clear();
+		expect(await acc.pass()).toContainEqual(
+			expect.objectContaining({ messageId: 'a@x', remoteFolders: ['Archive'] })
+		);
+		expect(acc.local.get('a@x')?.remoteName).toBe('Archive');
+	});
+
+	it.each([
+		[
+			'refuses the SEARCH',
+			(acc: ReturnType<typeof account>) => {
+				acc.imap.refuseSearch = (path) => path === ALL_MAIL;
+			},
+		],
+		[
+			'omits the FETCH row',
+			(acc: ReturnType<typeof account>) => {
+				acc.imap.unreadable.add(acc.imap.uidOf(ALL_MAIL, 'g@x')!);
+			},
+		],
+	])('does not call archived Gmail mail gone when All Mail %s', async (_, fault) => {
+		const acc = account(
+			{ INBOX: ['g@x'], '[Gmail]/Trash': [], [ALL_MAIL]: ['g@x'] },
+			{ allMail: ALL_MAIL }
+		);
+		await acc.pass();
+
+		acc.imap.remove('INBOX', 'g@x');
+		fault(acc);
+		expect(gone(await acc.pass())).toEqual([]);
+		expect(acc.local.get('g@x')?.remoteName).toBe('INBOX');
+
+		acc.imap.refuseSearch = null;
+		acc.imap.unreadable.clear();
+		expect(await acc.pass()).toContainEqual({ messageId: 'g@x', remoteFolders: [ALL_MAIL] });
+	});
+});

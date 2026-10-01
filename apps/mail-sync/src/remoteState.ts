@@ -303,10 +303,15 @@ export async function reconcile(
 		untrackedFlags,
 		sightings: index,
 	};
+	// "Gone" means no folder holds it, which only complete views can say. While
+	// one is incomplete (its census failed, or mail it listed could not be read),
+	// what seems gone may be sitting there, so it waits.
+	const canTellGone = deps.tracked.every((name) => deps.views.get(name)?.isComplete === true);
 	let confirmsLeft = MAX_CONFIRMS_PER_CYCLE;
-	// Candidates past the look-up budget. The views no longer hold them, so they
-	// are handed to the next pass (with the evidence that they vanished) rather
-	// than dropped with the rest of `pending`.
+	// Candidates past the look-up budget, or not yet decidable (see canTellGone,
+	// and a failed All Mail look-up). The views no longer hold them, so they are
+	// handed to the next pass (with the evidence that they vanished) rather than
+	// dropped with the rest of `pending`.
 	const deferred: string[] = [];
 	const settle = async (rows: LocalMessageRow[]) => {
 		const { observations, unplaced } = decide(rows, input);
@@ -326,19 +331,25 @@ export async function reconcile(
 			confirmsLeft -= checked.length;
 			for (const row of unplaced.slice(checked.length)) deferred.push(row.messageId);
 		}
-		const inAllMail = deps.allMail
+		const { found: inAllMail, unknown } = deps.allMail
 			? await findInFolder(
 					deps.client,
 					deps.allMail,
 					checked.map((r) => r.messageId)
 				)
-			: new Set<string>();
+			: { found: new Set<string>(), unknown: new Set<string>() };
 		for (const row of checked) {
 			if (inAllMail.has(row.messageId)) {
 				observations.push({ messageId: row.messageId, remoteFolders: [deps.allMail!] });
-			} else if (vanished.has(row.messageId)) {
+			} else if (!vanished.has(row.messageId)) {
+				continue;
+			} else if (canTellGone && !unknown.has(row.messageId)) {
 				// It left a folder and is nowhere now: deleted on the provider.
 				observations.push({ messageId: row.messageId, isGone: true });
+			} else {
+				// Not every place it could be was read. A deletion missed this pass is
+				// mirrored by a later one; one wrongly reported cannot be undone.
+				deferred.push(row.messageId);
 			}
 		}
 		if (!deps.isAligned) {
