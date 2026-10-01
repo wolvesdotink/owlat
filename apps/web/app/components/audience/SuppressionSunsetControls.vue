@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import {
+	SUNSET_MIN_WINDOW_DAYS,
+	SUNSET_REENGAGE_AFTER_DAYS,
+	SUNSET_SUPPRESS_AFTER_DAYS,
+} from '@owlat/shared/sunsetPolicy';
 
 const { t } = useI18n();
 const { isAdmin } = usePermissions();
@@ -19,8 +24,8 @@ const { data: suppressedContacts } = useConvexQuery(api.contacts.sunset.listSuns
 
 const policyForm = reactive({
 	isEnabled: true,
-	reengageAfterDays: 180,
-	suppressAfterDays: 270,
+	reengageAfterDays: SUNSET_REENGAGE_AFTER_DAYS,
+	suppressAfterDays: SUNSET_SUPPRESS_AFTER_DAYS,
 });
 watch(
 	policies,
@@ -89,7 +94,7 @@ const restore = async (contactId: Id<'contacts'>) => {
 				v-model.number="policyForm.reengageAfterDays"
 				type="number"
 				:label="t('components.audience.suppressionSunsetControls.reengageAfterDays')"
-				:min="30"
+				:min="SUNSET_MIN_WINDOW_DAYS"
 			/>
 			<UiInput
 				v-model.number="policyForm.suppressAfterDays"
