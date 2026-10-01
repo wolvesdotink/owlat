@@ -6,6 +6,7 @@ import type {
 	ProvisionTransport,
 	ConnectInfo,
 	ExecEvent,
+	LocalBuild,
 	SetupConfigInput,
 } from '~/lib/desktop/provisioning';
 
@@ -35,12 +36,7 @@ interface FakeOpts {
 class FakeTransport implements ProvisionTransport {
 	commands: string[] = [];
 	uploads: Array<{ localDir: string; remoteDir: string }> = [];
-	localCommands: Array<{
-		program: string;
-		args: string[];
-		cwd: string;
-		env: Record<string, string>;
-	}> = [];
+	localBuilds: Array<{ localDir: string; build: LocalBuild }> = [];
 	pushedImages: string[][] = [];
 	constructor(private opts: FakeOpts = {}) {}
 
@@ -102,13 +98,8 @@ class FakeTransport implements ProvisionTransport {
 	async pushImages(_id: string, images: string[]): Promise<void> {
 		this.pushedImages.push(images);
 	}
-	async localExec(
-		program: string,
-		args: string[],
-		cwd: string,
-		env: Record<string, string>
-	): Promise<number> {
-		this.localCommands.push({ program, args, cwd, env });
+	async localBuild(localDir: string, build: LocalBuild): Promise<number> {
+		this.localBuilds.push({ localDir, build });
 		return 0;
 	}
 	async disconnect(): Promise<void> {}
@@ -469,13 +460,21 @@ describe('useServerProvisioning — local source + push-images mode', () => {
 		await p.provision(config);
 		expect(p.stage.value).toBe('done');
 
-		// local builds: stack compose build + the setup image, in the source dir,
-		// pinned to the server's platform (fake reports x86_64).
-		expect(t.localCommands).toHaveLength(2);
-		expect(t.localCommands[0]?.args).toContain('compose');
-		expect(t.localCommands[0]?.cwd).toBe('/Users/dev/owlat');
-		expect(t.localCommands[0]?.env['DOCKER_DEFAULT_PLATFORM']).toBe('linux/amd64');
-		expect(t.localCommands[1]?.args).toContain('apps/setup-cli/Dockerfile');
+		// local builds: the stack, then the setup image, in the source dir,
+		// pinned to the server's platform (fake reports x86_64). The wizard names
+		// what to build; the desktop owns the docker invocation itself.
+		expect(t.localBuilds).toEqual([
+			{
+				localDir: '/Users/dev/owlat',
+				build: {
+					kind: 'stack',
+					platform: 'linux/amd64',
+					profiles: ['deploy', 'ai'],
+					services: ['web', 'mta', 'updater', 'convex-deploy', 'code-worker'],
+				},
+			},
+			{ localDir: '/Users/dev/owlat', build: { kind: 'setupImage', platform: 'linux/amd64' } },
+		]);
 
 		// images streamed once, including the setup image.
 		expect(t.pushedImages).toHaveLength(1);

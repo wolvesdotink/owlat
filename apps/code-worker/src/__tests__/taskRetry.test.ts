@@ -1,6 +1,6 @@
 import { getFunctionName } from 'convex/server';
 import { describe, it, expect, vi } from 'vitest';
-import { reportTaskFailure } from '../taskRunner.js';
+import { reportTaskFailure } from '../taskProcess.js';
 import { getConvexClient } from '../convexClient.js';
 import type { CodeTaskFailureOutcome } from '../convexClient.js';
 

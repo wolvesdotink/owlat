@@ -73,6 +73,7 @@ const getLanguageNativeLabel = (code: string) => {
 // user stays on the page with their edits.
 const {
 	showDialog: showUnsavedDialog,
+	isSavingBeforeLeave,
 	confirmDiscard,
 	confirmSave,
 	cancelNavigation,
@@ -336,6 +337,7 @@ const handleBack = () => {
 		<!-- Unsaved Changes Dialog -->
 		<UnsavedChangesDialog
 			:show="showUnsavedDialog"
+			:saving="isSavingBeforeLeave"
 			@close="cancelNavigation"
 			@discard="confirmDiscard"
 			@save="confirmSave"

@@ -1,4 +1,14 @@
-import { ref, watch, type Ref, type WatchSource } from 'vue';
+import {
+	computed,
+	getCurrentScope,
+	onScopeDispose,
+	ref,
+	shallowRef,
+	watch,
+	type ComputedRef,
+	type Ref,
+	type WatchSource,
+} from 'vue';
 import { applyPatch } from 'fast-json-patch';
 import type { EditorBlock } from '../types';
 import {
@@ -35,12 +45,17 @@ export interface UseHistoryOptions {
 }
 
 export interface UseHistoryReturn {
-	canUndo: Ref<boolean>;
-	canRedo: Ref<boolean>;
+	/** True when there is a committed step before the current one, or an edit waiting to be committed. */
+	canUndo: ComputedRef<boolean>;
+	/** True when there is a committed step after the current one and no pending edit that would discard it. */
+	canRedo: ComputedRef<boolean>;
 	undo: () => void;
 	redo: () => void;
 	clearHistory: () => void;
-	historyLength: Ref<number>;
+	/** Record an edit still waiting out the debounce now, instead of when the timer fires. */
+	commitPending: () => void;
+	/** Number of committed entries. */
+	historyLength: ComputedRef<number>;
 	currentIndex: Ref<number>;
 }
 
@@ -48,6 +63,12 @@ export interface UseHistoryReturn {
  * Composable for managing undo/redo history in the email builder.
  * Uses delta-based storage with periodic checkpoints for memory efficiency.
  * Tracks changes to blocks, name, and subject and allows navigating through history.
+ *
+ * An edit is committed once it has been quiet for `debounceMs`. Until then it is
+ * pending: Undo is offered (it commits the edit first, then steps back over it),
+ * Redo is not (committing the edit drops the redo branch). Undo, redo and
+ * clearHistory settle the pending edit before they touch the entries, so a timer
+ * armed before them can never land afterwards and rewrite the history they left.
  */
 export function useHistory(
 	blocks: Ref<EditorBlock[]>,
@@ -98,8 +119,11 @@ export function useHistory(
 		stateCache.clear();
 	};
 
-	// Debounce timer
+	// Debounce timer; `hasPending` mirrors it so the availability flags react.
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+	const hasPending = shallowRef(false);
+	// Clears `isNavigating` once the watcher has seen the state undo/redo applied.
+	let navigatingTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const cloneState = (): HistoryState => ({
 		blocks: deepClone(blocks.value),
@@ -175,14 +199,29 @@ export function useHistory(
 		}
 	};
 
-	// Debounced state push
-	const debouncedPushState = () => {
+	const cancelPending = () => {
 		if (debounceTimer) {
 			clearTimeout(debounceTimer);
+			debounceTimer = null;
 		}
+		hasPending.value = false;
+	};
+
+	// Debounced state push
+	const debouncedPushState = () => {
+		cancelPending();
+		hasPending.value = true;
 		debounceTimer = setTimeout(() => {
+			debounceTimer = null;
+			hasPending.value = false;
 			pushState();
 		}, debounceMs);
+	};
+
+	const commitPending = () => {
+		if (!debounceTimer) return;
+		cancelPending();
+		pushState();
 	};
 
 	// Apply a history state
@@ -193,26 +232,26 @@ export function useHistory(
 		subject.value = state.subject;
 		previousState = state;
 		// Use nextTick equivalent with setTimeout to ensure state is applied
-		setTimeout(() => {
+		if (navigatingTimer) clearTimeout(navigatingTimer);
+		navigatingTimer = setTimeout(() => {
+			navigatingTimer = null;
 			isNavigating.value = false;
 		}, 0);
 	};
 
-	// Computed states
-	const canUndo = ref(false);
-	const canRedo = ref(false);
-	const historyLength = ref(0);
-
-	// Update computed states
-	const updateComputedStates = () => {
-		canUndo.value = currentIndex.value > 0;
-		canRedo.value = currentIndex.value < entries.value.length - 1;
-		historyLength.value = entries.value.length;
-	};
+	// Availability follows the committed entries, so every mutation of them
+	// (push, branch truncation, trimming, clear) is reflected without a resync.
+	const historyLength = computed(() => entries.value.length);
+	const canUndo = computed(() => hasPending.value || currentIndex.value > 0);
+	const canRedo = computed(
+		() => !hasPending.value && currentIndex.value < entries.value.length - 1
+	);
 
 	// Undo action
 	const undo = () => {
-		if (!canUndo.value) return;
+		// A pending edit is committed first, so this steps back over it.
+		commitPending();
+		if (currentIndex.value <= 0) return;
 
 		const currentEntry = entries.value[currentIndex.value];
 		currentIndex.value--;
@@ -235,13 +274,14 @@ export function useHistory(
 				applyState(state);
 			}
 		}
-
-		updateComputedStates();
 	};
 
 	// Redo action
 	const redo = () => {
-		if (!canRedo.value) return;
+		// Committing a pending edit discards the redo branch, which leaves
+		// nothing to redo; the bounds check below then makes this a no-op.
+		commitPending();
+		if (currentIndex.value >= entries.value.length - 1) return;
 
 		currentIndex.value++;
 		const entry = entries.value[currentIndex.value];
@@ -269,12 +309,13 @@ export function useHistory(
 				applyState(state);
 			}
 		}
-
-		updateComputedStates();
 	};
 
 	// Clear history
 	const clearHistory = () => {
+		// The current state becomes the only entry, which already includes any
+		// pending edit; its timer must not push on top of the reset later.
+		cancelPending();
 		const initialState = cloneState();
 		const checkpoint: HistoryCheckpoint = {
 			type: 'checkpoint',
@@ -284,7 +325,6 @@ export function useHistory(
 		currentIndex.value = 0;
 		previousState = initialState;
 		invalidateCache();
-		updateComputedStates();
 	};
 
 	// Watch for changes and push to history
@@ -292,14 +332,24 @@ export function useHistory(
 		if (!isNavigating.value) {
 			debouncedPushState();
 		}
-		updateComputedStates();
 	};
 	if (blocksVersion) watch([blocksVersion, name, subject], onChange);
 	else watch([blocks, name, subject], onChange, { deep: true });
 
+	// The watchers stop with the owning scope; the timers have to as well, or a
+	// push could still land after the editor unmounted.
+	if (getCurrentScope()) {
+		onScopeDispose(() => {
+			cancelPending();
+			if (navigatingTimer) {
+				clearTimeout(navigatingTimer);
+				navigatingTimer = null;
+			}
+		});
+	}
+
 	// Initialize with current state
 	pushState();
-	updateComputedStates();
 
 	return {
 		canUndo,
@@ -307,6 +357,7 @@ export function useHistory(
 		undo,
 		redo,
 		clearHistory,
+		commitPending,
 		historyLength,
 		currentIndex,
 	};

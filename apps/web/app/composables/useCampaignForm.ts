@@ -178,6 +178,7 @@ export function useCampaignForm(
 	// point it exists; it throws on a failed save so the user stays on the page.
 	const {
 		showDialog: showUnsavedChangesDialog,
+		isSavingBeforeLeave,
 		hasUnsavedChanges,
 		confirmDiscard,
 		confirmSave,
@@ -358,6 +359,7 @@ export function useCampaignForm(
 
 		// Unsaved-changes guard
 		showUnsavedChangesDialog,
+		isSavingBeforeLeave,
 		hasUnsavedChanges,
 		confirmDiscard,
 		confirmSave,
