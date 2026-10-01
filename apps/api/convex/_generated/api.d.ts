@@ -17,6 +17,7 @@ import type * as migrations_0053_project_open_commitments from '../migrations/00
 import type * as migrations_0055_repair_repeated_block_ids from '../migrations/0055_repair_repeated_block_ids.js';
 import type * as migrations_0056_retry_parked_mail_accounts from '../migrations/0056_retry_parked_mail_accounts.js';
 import type * as lib_repeatedBlockIds from '../lib/repeatedBlockIds.js';
+import type * as migrations_0057_withdraw_opted_out_confirmation_tokens from '../migrations/0057_withdraw_opted_out_confirmation_tokens.js';
 import type * as lib_migrationLedger from '../lib/migrationLedger.js';
 import type * as schema_migrationRuns from '../schema/migrationRuns.js';
 import type * as migrations_0054_backfill_folder_membership from '../migrations/0054_backfill_folder_membership.js';
@@ -593,6 +594,7 @@ import type * as eventsApi from '../eventsApi.js';
 import type * as forms__helpers from '../forms/_helpers.js';
 import type * as forms_apiHttp from '../forms/apiHttp.js';
 import type * as forms_endpoints from '../forms/endpoints.js';
+import type * as forms_pendingConfirmations from '../forms/pendingConfirmations.js';
 import type * as forms_submission from '../forms/submission.js';
 import type * as globalSearch from '../globalSearch.js';
 import type * as http from '../http.js';
@@ -787,6 +789,7 @@ import type * as lib_randomToken from '../lib/randomToken.js';
 import type * as lib_rateLimiter from '../lib/rateLimiter.js';
 import type * as lib_receivedAtCursor from '../lib/receivedAtCursor.js';
 import type * as lib_redactSecret from '../lib/redactSecret.js';
+import type * as lib_rendererVersion from '../lib/rendererVersion.js';
 import type * as lib_retentionSweep from '../lib/retentionSweep.js';
 import type * as lib_rrf from '../lib/rrf.js';
 import type * as lib_runtimeLog from '../lib/runtimeLog.js';
@@ -986,6 +989,7 @@ import type * as mail_external_googleOAuthTokens from '../mail/external/googleOA
 import type * as mail_external_personalAccount from '../mail/external/personalAccount.js';
 import type * as mail_external_mirroredFolders from '../mail/external/mirroredFolders.js';
 import type * as mail_external_remoteFolderOpOrder from '../mail/external/remoteFolderOpOrder.js';
+import type * as mail_external_remoteFolderRename from '../mail/external/remoteFolderRename.js';
 import type * as mail_external_remoteOpDeferral from '../mail/external/remoteOpDeferral.js';
 import type * as mail_external_remoteOpOrder from '../mail/external/remoteOpOrder.js';
 import type * as mail_external_remoteOps from '../mail/external/remoteOps.js';
@@ -1399,6 +1403,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0055_repair_repeated_block_ids': typeof migrations_0055_repair_repeated_block_ids;
 	'migrations/0056_retry_parked_mail_accounts': typeof migrations_0056_retry_parked_mail_accounts;
 	'lib/repeatedBlockIds': typeof lib_repeatedBlockIds;
+	'migrations/0057_withdraw_opted_out_confirmation_tokens': typeof migrations_0057_withdraw_opted_out_confirmation_tokens;
 	'lib/migrationLedger': typeof lib_migrationLedger;
 	'schema/migrationRuns': typeof schema_migrationRuns;
 	'migrations/0054_backfill_folder_membership': typeof migrations_0054_backfill_folder_membership;
@@ -1965,6 +1970,7 @@ declare const fullApi: ApiFromModules<{
 	'forms/_helpers': typeof forms__helpers;
 	'forms/apiHttp': typeof forms_apiHttp;
 	'forms/endpoints': typeof forms_endpoints;
+	'forms/pendingConfirmations': typeof forms_pendingConfirmations;
 	'forms/submission': typeof forms_submission;
 	globalSearch: typeof globalSearch;
 	http: typeof http;
@@ -2159,6 +2165,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/rateLimiter': typeof lib_rateLimiter;
 	'lib/receivedAtCursor': typeof lib_receivedAtCursor;
 	'lib/redactSecret': typeof lib_redactSecret;
+	'lib/rendererVersion': typeof lib_rendererVersion;
 	'lib/retentionSweep': typeof lib_retentionSweep;
 	'lib/rrf': typeof lib_rrf;
 	'lib/runtimeLog': typeof lib_runtimeLog;
@@ -2358,6 +2365,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/external/personalAccount': typeof mail_external_personalAccount;
 	'mail/external/mirroredFolders': typeof mail_external_mirroredFolders;
 	'mail/external/remoteFolderOpOrder': typeof mail_external_remoteFolderOpOrder;
+	'mail/external/remoteFolderRename': typeof mail_external_remoteFolderRename;
 	'mail/external/remoteOpDeferral': typeof mail_external_remoteOpDeferral;
 	'mail/external/remoteOpOrder': typeof mail_external_remoteOpOrder;
 	'mail/external/remoteOps': typeof mail_external_remoteOps;

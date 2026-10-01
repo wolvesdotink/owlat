@@ -18,9 +18,9 @@ function write(root: string, path: string, contents = 'export const value = 1;\n
 
 function formatEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
 	const env = { ...process.env };
-	delete env.GITHUB_BASE_REF;
-	delete env.GITHUB_ENV;
-	delete env.OXFMT_BASE;
+	delete env['GITHUB_BASE_REF'];
+	delete env['GITHUB_ENV'];
+	delete env['OXFMT_BASE'];
 	return { ...env, ...overrides };
 }
 

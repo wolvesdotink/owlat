@@ -598,7 +598,7 @@ describe('subscription.unsubscribe — admin source', () => {
 // ============================================================
 
 describe('subscription.unsubscribe — public_email_link source', () => {
-	it('clears form-submission confirmedAt and increments campaign statsUnsubscribed', async () => {
+	it('keeps form-submission confirmedAt and increments campaign statsUnsubscribed', async () => {
 		const t = convexTest(schema, modules);
 		const contactId = await createContact(t);
 		const topicId = await createTopic(t, false);
@@ -611,6 +611,7 @@ describe('subscription.unsubscribe — public_email_link source', () => {
 		});
 
 		// Add a confirmed form submission.
+		const confirmedAt = Date.now() - 60_000;
 		const formId = await t.run(async (ctx) =>
 			ctx.db.insert('formEndpoints', {
 				name: 'f',
@@ -628,7 +629,7 @@ describe('subscription.unsubscribe — public_email_link source', () => {
 				contactId,
 				data: {},
 				status: 'success' as const,
-				confirmedAt: Date.now(),
+				confirmedAt,
 				submittedAt: Date.now(),
 			})
 		);
@@ -671,9 +672,10 @@ describe('subscription.unsubscribe — public_email_link source', () => {
 		expect(outcome.ok).toBe(true);
 		if (outcome.ok) expect(outcome.action).toBe('unsubscribed');
 
-		// Form submission confirmedAt cleared.
+		// The submission keeps the time it was confirmed: an unsubscribe is not
+		// what makes a returning contact confirm again (#1062).
 		const submission = await t.run(async (ctx) => ctx.db.get(submissionId));
-		expect(submission?.confirmedAt).toBeUndefined();
+		expect(submission?.confirmedAt).toBe(confirmedAt);
 
 		// Campaign statsUnsubscribed attributed off the synchronous public path via
 		// the scheduled recordCampaignUnsubscribe.
@@ -772,7 +774,7 @@ describe('subscription.unsubscribeAllForContact', () => {
 			source: 'admin',
 		});
 
-		// Add multiple confirmed form submissions to verify they're ALL cleared once.
+		// Confirmed form submissions keep their confirmation time.
 		const formId = await t.run(async (ctx) =>
 			ctx.db.insert('formEndpoints', {
 				name: 'f',
@@ -826,9 +828,9 @@ describe('subscription.unsubscribeAllForContact', () => {
 		expect((await getTopic(t, topicB))?.cachedMemberCount).toBe(0);
 		expect((await getTopic(t, topicC))?.cachedMemberCount).toBe(0);
 
-		// Form submission confirmations cleared (per-contact, all).
-		expect((await t.run(async (ctx) => ctx.db.get(sub1)))?.confirmedAt).toBeUndefined();
-		expect((await t.run(async (ctx) => ctx.db.get(sub2)))?.confirmedAt).toBeUndefined();
+		// Form submission confirmations kept (#1062).
+		expect((await t.run(async (ctx) => ctx.db.get(sub1)))?.confirmedAt).toBeTypeOf('number');
+		expect((await t.run(async (ctx) => ctx.db.get(sub2)))?.confirmedAt).toBeTypeOf('number');
 
 		// Three activity rows (one per topic).
 		const activities = await getActivitiesForContact(t, contactId);

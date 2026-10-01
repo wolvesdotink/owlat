@@ -20,7 +20,12 @@
 import { ImapFlow } from 'imapflow';
 import { sleep } from '@owlat/shared';
 import type { BackfillWork, ConnectableAccount, ConvexClient, IngestOutcome } from './convex.js';
-import { CredentialsUnavailableError, fetchWorkerCredentials, fn } from './convex.js';
+import {
+	CredentialsUnavailableError,
+	fetchWorkerCredentials,
+	fn,
+	isMissingFunction,
+} from './convex.js';
 import type { MailSyncConfig } from './config.js';
 import { isVirtualView, mapFolderRole, mirroredFolderPath, type FolderRole } from './folders.js';
 import { imapAuth } from './auth.js';
@@ -48,7 +53,10 @@ import {
 	nextBackfillRetryState,
 	type BackfillRetryState,
 } from './backfillRetry.js';
-import { drainRemoteOps, isAllMailFolder, RemoteOpReplayer } from './remoteOps.js';
+import { CommandRefusals } from './imapCommandErrors.js';
+import { isAllMailFolder, RemoteOpReplayer } from './remoteOps.js';
+import type { QueuedRenamesPage } from './remoteOpTypes.js';
+import { drainRemoteOps, recoverQueuedRenames, reportFolderRename } from './remoteOpsDrain.js';
 import {
 	LOCAL_PAGE,
 	noPendingChanges,
@@ -130,6 +138,10 @@ export class AccountConnection {
 	private virtualPaths: string[] = [];
 	// Folders the write-back renamed (remoteOps.ts), kept across drains.
 	private readonly renamedFolders = new Map<string, string>();
+	// Whether the queued renames were checked since this worker started (remoteOps.ts).
+	private renamesRecovered = false;
+	// The error behind a command ImapFlow reports refused only by resolving `false`.
+	private readonly refusals = new CommandRefusals();
 	// Gmail-style "All Mail" paths: the write-back copies out of them instead of moving.
 	private allMailPaths = new Set<string>();
 	// ── Sync cycles (write-back + remote change sync) — one at a time ──
@@ -301,7 +313,8 @@ export class AccountConnection {
 				pass: creds.imapPassword,
 				accessToken: creds.imapAccessToken,
 			}),
-			logger: false,
+			// Logs nothing; keeps the error of a refused MOVE, COPY, STORE or EXPUNGE.
+			logger: this.refusals.logger,
 			emitLogs: false,
 		});
 		client.on('error', (err) => {
@@ -796,17 +809,59 @@ export class AccountConnection {
 		const accountId = this.account.accountId;
 		const byRole = new Map<FolderRole, string>();
 		for (const f of this.folders) if (f.role) byRole.set(f.role, f.remoteName);
+		const replayer = new RemoteOpReplayer(
+			client,
+			{ byRole, allMail: this.allMailPaths, renamed: this.renamedFolders },
+			{
+				takeRefusal: () => this.refusals.take(),
+				renamed: async (op, { to, delimiter }) => {
+					const recorded = await reportFolderRename({
+						record: () =>
+							this.convex.mutation(fn.recordRemoteFolderRename, {
+								opId: op.opId,
+								remoteName: to,
+								delimiter,
+							}),
+						isUnsupported: (err) => isMissingFunction(err, fn.recordRemoteFolderRename),
+					});
+					if (!recorded) {
+						logger.warn(
+							{ accountId, opId: op.opId },
+							'the backend cannot record folder renames yet; ops naming the old folder follow it until this worker restarts'
+						);
+					}
+				},
+				skipped: (op, reason) =>
+					logger.warn(
+						{ accountId, opId: op.opId, kind: op.kind, reason },
+						'remote write-back skipped'
+					),
+			}
+		);
 		try {
+			if (!this.renamesRecovered) {
+				// A rename carried out but not recorded before this worker last stopped.
+				this.renamesRecovered = await recoverQueuedRenames({
+					listPage: (cursor) => this.queuedFolderRenames(cursor),
+					replayer,
+					isStopped: () => this.stopped || this.client !== client,
+				});
+				if (!this.renamesRecovered) {
+					// One could not be checked: an op naming its old folder would find no
+					// folder and be retired. Nothing runs until a later drain checks it.
+					logger.warn(
+						{ accountId },
+						'remote write-back held: a queued folder rename could not be checked'
+					);
+					return;
+				}
+			}
 			await drainRemoteOps({
 				listDue: () => this.convex.query(fn.listDueRemoteOps, { accountId }),
 				settle: async (results) => {
 					await this.convex.mutation(fn.settleRemoteOps, { results });
 				},
-				replayer: new RemoteOpReplayer(client, {
-					byRole,
-					allMail: this.allMailPaths,
-					renamed: this.renamedFolders,
-				}),
+				replayer,
 				client,
 				isStopped: () => this.stopped || this.client !== client,
 				onError: (op, err) =>
@@ -814,6 +869,19 @@ export class AccountConnection {
 			});
 		} catch (err) {
 			logger.warn({ accountId, err }, 'remote write-back drain failed');
+		}
+	}
+
+	/** One page of the account's queued folder renames; null from a backend that predates the listing. */
+	private async queuedFolderRenames(cursor: string | null): Promise<QueuedRenamesPage | null> {
+		try {
+			return await this.convex.query(fn.listQueuedFolderRenames, {
+				accountId: this.account.accountId,
+				cursor,
+			});
+		} catch (err) {
+			if (isMissingFunction(err, fn.listQueuedFolderRenames)) return null;
+			throw err;
 		}
 	}
 

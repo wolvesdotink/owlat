@@ -620,6 +620,7 @@ fi
 # override, so it is restored even with --keep-env (which keeps only .env).
 # Owner-only, like the setup wizard and the updater write it.
 FLAG_MIRROR=.owlat-flags.json
+MIRROR_MISSING=0
 if [[ -f "$STAGING/owlat-flags.json" ]]; then
 	preserve "$FLAG_MIRROR"
 	cp "$STAGING/owlat-flags.json" "$FLAG_MIRROR" \
@@ -635,7 +636,10 @@ else
 			|| config_die "Could not move the current $FLAG_MIRROR aside; it describes the install being replaced."
 		ok "Moved current $FLAG_MIRROR → $FLAG_MIRROR.before-restore-${STAMP}"
 	fi
-	warn "The archive has no $FLAG_MIRROR (backups made before it was included). Until it is written again, owlat doctor, feature and pack assume the default feature flags, not the ones the restored database holds. Check the features in the web app (/dashboard/admin/instance/features) before running owlat feature or owlat pack; the next Apply & restart on that page writes the file again."
+	# `owlat feature --sync` rebuilds it from the restored database once the
+	# stack is up; the summary at the end repeats the step.
+	MIRROR_MISSING=1
+	warn "The archive has no $FLAG_MIRROR (backups made before it was included). Until it is written again, owlat doctor, feature and pack assume the default feature flags, not the ones the restored database holds. Once the stack is up and Convex is healthy, run 'owlat feature --sync': it writes the file from the restored database's flags. Do not toggle flags with owlat feature or owlat pack before that."
 fi
 
 # The files now in place must start exactly the project whose volumes were
@@ -670,6 +674,9 @@ echo ""
 printf '%b\n' "${GREEN}${BOLD}Restore complete.${RESET}"
 echo "Wait 15–30 seconds for Convex to become healthy, then:"
 echo "  • Check status:  docker compose ps"
+if [[ $MIRROR_MISSING -eq 1 ]]; then
+	echo "  • Rebuild the CLI's copy of the feature flags:  owlat feature --sync"
+fi
 echo "  • Run doctor:    bash scripts/setup.sh doctor"
 for keep in "${KEPT[@]}"; do
 	[[ -n "$keep" ]] || continue

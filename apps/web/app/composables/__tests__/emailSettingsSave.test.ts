@@ -6,6 +6,7 @@ import {
 	type EmailSettingsUpdatePayload,
 } from '../emailSettingsSave';
 import type { RenderOptions } from '../useEmailHtmlRendering';
+import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
 
 /**
  * The template Settings save. Besides routing to `update` / `setDefaultLanguage`,
@@ -107,6 +108,13 @@ describe('emailSettingsSave', () => {
 		// Step 2: promote the now-persisted overlay.
 		expect(setDefaultLanguage).toHaveBeenCalledWith(expect.objectContaining({ language: 'de' }));
 		expect(order).toEqual(['update', 'setDefaultLanguage']);
+		// Both writes store HTML, so both name the renderer that produced it.
+		expect(update).toHaveBeenCalledWith(
+			expect.objectContaining({ rendererVersion: EMAIL_RENDERER_VERSION })
+		);
+		expect(setDefaultLanguage).toHaveBeenCalledWith(
+			expect.objectContaining({ rendererVersion: EMAIL_RENDERER_VERSION })
+		);
 	});
 
 	it('persists a freshly-typed subject in the same save as a default-language swap', async () => {

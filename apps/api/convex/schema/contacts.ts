@@ -117,6 +117,12 @@ export const contactTables = {
 		doiConfirmationToken: v.optional(v.string()),
 		doiTokenExpiresAt: v.optional(v.number()),
 		doiConfirmedAt: v.optional(v.number()),
+		// Consent episode counter, written by the DOI lifecycle (module). Every
+		// global opt-out ends the episode and increments it; undefined reads as
+		// 0. A form-submission carry records the episode it started in and stops
+		// once the counter moves, so rows queued before an opt-out never follow
+		// a later signup's token. See ADR-0009's 2026-10 amendments.
+		doiConsentEpisode: v.optional(v.number()),
 		// Global marketing opt-out. Set when the Contact unsubscribes from ALL
 		// topics at once (the public unsubscribe link / preference-center
 		// "unsubscribe from everything") via `unsubscribeAllForContact` with no

@@ -9,6 +9,10 @@
  * many other ops are queued does not matter.
  *
  * A folder op is not due before the ops it waits for (`remoteOpDeferral.ts`).
+ *
+ * While a reported rename's queued ops are still being rewritten to the new
+ * name (`remoteFolderRename.ts`), the ops it has yet to reach wait for it too
+ * (`renameRewriteHold`).
  */
 
 import type { Doc, Id } from '../../_generated/dataModel';
@@ -30,6 +34,8 @@ const FOLDER_CHECKS_LIMIT = 50;
 const BELOW_SCAN_LIMIT = 100;
 /** The oldest folder ops that fallback orders; a newer one waits until they have run. */
 const FOLDER_OPS_LIMIT = 500;
+/** Renames with an unfinished rewrite one read checks against; past this, every op waits. */
+const REWRITES_LIMIT = 20;
 /**
  * Hierarchy delimiters a remote name may use. Matching on both only ever makes
  * a folder op wait longer. They are adjacent characters ('.' U+002E, '/'
@@ -187,5 +193,45 @@ export function folderOpOrder(ctx: QueryCtx, accountId: Id<'externalMailAccounts
 		if (older) return older;
 		const naming = await messageOpNaming(ctx, accountId, folder);
 		return naming ? { lead: naming } : null;
+	};
+}
+
+/**
+ * Decides, for one read of the queue, whether an op waits for a reported
+ * rename whose queued ops are still being rewritten (`remoteFolderRename.ts`):
+ * the rename op itself, an op naming the old folder or one below it (a
+ * restarted worker would look for it there), and a folder op on the branch of
+ * the old or the new name (it must see every op already rewritten, and a
+ * second rename must not run before the first one's rewrite has). None of
+ * them has a lead: the rename that holds them is never handed out again.
+ */
+export function renameRewriteHold(ctx: QueryCtx, accountId: Id<'externalMailAccounts'>) {
+	let rewrites: RemoteOpRow[] | undefined;
+	return async (op: RemoteOpRow): Promise<Held | null> => {
+		if (op.renameRewrite) return {};
+		rewrites ??= await ctx.db
+			.query('externalMailRemoteOps')
+			.withIndex('by_account_and_rename_rewrite', (q) =>
+				q.eq('accountId', accountId).gte('renameRewrite.from', '')
+			)
+			.take(REWRITES_LIMIT + 1);
+		if (rewrites.length === 0) return null;
+		if (rewrites.length > REWRITES_LIMIT) return {};
+		const folder = folderOf(op);
+		for (const rename of rewrites) {
+			if (!rename.renameRewrite) continue;
+			const { from, delimiter } = rename.renameRewrite;
+			// What the rewrite rewrites: the folder and, by the provider's delimiter, those below it.
+			const below = (name: string, renamed: string) =>
+				name === renamed || (delimiter !== '' && name.startsWith(renamed + delimiter));
+			const waits =
+				folder === null
+					? remoteNames(op).some((name) => below(name, from))
+					: [from, ...remoteNames(rename)].some(
+							(name) => sameBranch(folder, name) || below(folder, name) || below(name, folder)
+						);
+			if (waits) return {};
+		}
+		return null;
 	};
 }

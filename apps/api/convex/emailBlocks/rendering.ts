@@ -19,6 +19,7 @@ import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { renderEmailHtml, renderPlainText } from '@owlat/email-renderer';
+import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
 import type { EmailTheme } from '@owlat/shared';
 import { parseContentBlocks } from './module';
 import type { RerenderPatchOutcome } from './renderingPool';
@@ -183,6 +184,7 @@ export const reRenderEmails = internalAction({
 						htmlTranslations,
 						plainTextContent,
 						expectedContentRevision: currentContentRevision(template),
+						rendererVersion: EMAIL_RENDERER_VERSION,
 					}),
 			});
 		}
@@ -199,6 +201,7 @@ export const reRenderEmails = internalAction({
 						htmlTranslations,
 						plainTextContent,
 						expectedContentRevision: currentContentRevision(email),
+						rendererVersion: EMAIL_RENDERER_VERSION,
 					}),
 			});
 		}

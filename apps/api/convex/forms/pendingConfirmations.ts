@@ -1,0 +1,200 @@
+/**
+ * Form submission (module): the rows that wait on a confirmation token.
+ *
+ * A `pending_confirmation` row stores the contact's DOI token. Two things
+ * happen to those rows besides the insert in `submission.ts`:
+ *   - the contact confirms, and `markConfirmedByToken` finalizes them through
+ *     `finalizeSubmissions` here;
+ *   - the contact's token is replaced (an admin resend, or a new signup after
+ *     the token lapsed), and `carryPendingSubmissions` moves them to the new
+ *     token so the next confirmation finalizes them too.
+ *
+ * A token a global opt-out withdrew is never carried: the contact no longer
+ * holds it when the next token is minted, so nothing names it as outgoing.
+ * Nor does a carry outlive its consent episode: each page checks the contact's
+ * `doiConsentEpisode` against the one the carry started in, and stops once a
+ * global opt-out has moved it on. The rows it had not reached yet stay
+ * `pending_confirmation` on their old token.
+ *
+ * See docs/adr/0015-form-submission-module.md.
+ */
+
+import { v } from 'convex/values';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
+import { internal } from '../_generated/api';
+import type { Doc, Id } from '../_generated/dataModel';
+
+/** Rows moved per mutation; the rest continue in a scheduled follow-up. */
+const CARRY_BATCH = 100;
+
+/**
+ * Patch rows `pending_confirmation → success` and bump each form's success
+ * count once per row. Returns how many rows it finalized.
+ */
+export async function finalizeSubmissions(
+	ctx: MutationCtx,
+	submissions: ReadonlyArray<Doc<'formSubmissions'>>,
+	at: number,
+	patch: { confirmationToken?: string } = {}
+): Promise<number> {
+	const confirmedPerForm = new Map<Id<'formEndpoints'>, number>();
+	for (const submission of submissions) {
+		await ctx.db.patch(submission._id, { ...patch, status: 'success', confirmedAt: at });
+		const formId = submission.formEndpointId;
+		confirmedPerForm.set(formId, (confirmedPerForm.get(formId) ?? 0) + 1);
+	}
+	for (const [formId, confirmed] of confirmedPerForm) {
+		const form = await ctx.db.get(formId);
+		if (form) {
+			await ctx.db.patch(formId, {
+				successfulSubmissionCount: (form.successfulSubmissionCount ?? 0) + confirmed,
+			});
+		}
+	}
+	return submissions.length;
+}
+
+type CarryTarget =
+	| { kind: 'move'; token: string }
+	| { kind: 'finalize'; at: number | undefined }
+	| { kind: 'stop' };
+
+/**
+ * Where the rest of a carry goes, read from the contact at the time the page
+ * runs. The first page runs in the transaction that replaced the token, so the
+ * contact holds `toToken`. A scheduled follow-up can find the token moved on:
+ *   - replaced again: that replacement carried `toToken`'s rows already, so
+ *     these go straight to the token the contact holds now;
+ *   - spent on a confirmation: these finalize as that confirmation would have,
+ *     under the token it consumed (`confirmedToken`);
+ *   - a global opt-out ended the episode, or the contact is gone: they stay
+ *     put. The episode check comes first because the contact's token and
+ *     status alone cannot tell a resend in the same episode from a new signup
+ *     after the opt-out, and confirming that signup clears `unsubscribedAt`.
+ */
+function carryTarget(
+	contact: Doc<'contacts'> | null,
+	fromToken: string,
+	episode: number
+): CarryTarget {
+	if (!contact) return { kind: 'stop' };
+	if ((contact.doiConsentEpisode ?? 0) !== episode) return { kind: 'stop' };
+	const token = contact.doiConfirmationToken;
+	if (contact.doiStatus === 'pending' && token !== undefined) {
+		return token === fromToken ? { kind: 'stop' } : { kind: 'move', token };
+	}
+	if (contact.doiStatus === 'confirmed' && token === undefined) {
+		return { kind: 'finalize', at: contact.doiConfirmedAt };
+	}
+	return { kind: 'stop' };
+}
+
+/**
+ * The token the contact's confirmation consumed, read back from the rows that
+ * confirmation finalized: both confirmation routes stamp them with the
+ * contact's `doiConfirmedAt`. The carry's own `toToken` cannot stand in for
+ * it, because a later resend can have replaced that token before the
+ * confirmation. Undefined when no finalized row records it (the confirmed
+ * token had no rows of this contact), and then the carried rows are finalized
+ * without a token, so no superseded link resolves to them.
+ *
+ * One indexed read, whatever the size of the contact's history. Every row in
+ * the range was finalized by this confirmation: by `markConfirmedByToken`,
+ * whose first page runs in the confirming transaction, or by a carry page,
+ * which copies that witness's token. So the first row has the token if any
+ * row does.
+ */
+async function confirmedToken(
+	ctx: MutationCtx,
+	contactId: Id<'contacts'>,
+	confirmedAt: number | undefined
+): Promise<string | undefined> {
+	if (confirmedAt === undefined) return undefined;
+	const row = await confirmationWitnesses(ctx, contactId, confirmedAt).first();
+	return row?.confirmationToken;
+}
+
+/**
+ * The rows one confirmation of the contact finalized, as an index range.
+ * Exported so a test can read it under a byte budget.
+ */
+export function confirmationWitnesses(
+	ctx: QueryCtx,
+	contactId: Id<'contacts'>,
+	confirmedAt: number
+) {
+	return ctx.db
+		.query('formSubmissions')
+		.withIndex('by_contact_and_status_and_confirmed_at', (q) =>
+			q.eq('contactId', contactId).eq('status', 'success').eq('confirmedAt', confirmedAt)
+		);
+}
+
+const carryArgsValidator = {
+	contactId: v.id('contacts'),
+	// The token the contact held before the replacement.
+	fromToken: v.string(),
+	// The token that replaced it, or on a follow-up the token the previous page
+	// moved rows to. Informational: every page resolves its destination from
+	// the contact, since a later resend can have replaced this one.
+	toToken: v.string(),
+	// The contact's `doiConsentEpisode` when the token was replaced. Every page
+	// stops once the contact is in a later episode.
+	episode: v.number(),
+	// Continuation state, set only by the scheduled follow-up.
+	cursor: v.optional(v.string()),
+};
+
+/**
+ * Move a contact's `pending_confirmation` rows from `fromToken` to the token
+ * that replaced it. Called by the DOI lifecycle in the transaction that writes
+ * the new token, after the contact patch. Rows of other contacts and rows in
+ * any other status keep their token.
+ */
+export const carryPendingSubmissions = internalMutation({
+	args: carryArgsValidator,
+	handler: async (
+		ctx,
+		args
+	): Promise<{ carried: number; finalized: number; continued: boolean }> => {
+		const target = carryTarget(await ctx.db.get(args.contactId), args.fromToken, args.episode);
+		if (target.kind === 'stop') return { carried: 0, finalized: 0, continued: false };
+
+		const page = await ctx.db
+			.query('formSubmissions')
+			.withIndex('by_confirmation_token_and_status', (q) =>
+				q.eq('confirmationToken', args.fromToken).eq('status', 'pending_confirmation')
+			)
+			.paginate({ cursor: args.cursor ?? null, numItems: CARRY_BATCH });
+		const rows = page.page.filter((submission) => submission.contactId === args.contactId);
+
+		let carried = 0;
+		let finalized = 0;
+		let destination: string | undefined;
+		if (target.kind === 'move') {
+			destination = target.token;
+			for (const submission of rows) {
+				await ctx.db.patch(submission._id, { confirmationToken: destination });
+			}
+			carried = rows.length;
+		} else {
+			destination = await confirmedToken(ctx, args.contactId, target.at);
+			finalized = await finalizeSubmissions(ctx, rows, target.at ?? Date.now(), {
+				confirmationToken: destination,
+			});
+		}
+
+		const continued = !page.isDone;
+		if (continued) {
+			await ctx.scheduler.runAfter(0, internal.forms.pendingConfirmations.carryPendingSubmissions, {
+				contactId: args.contactId,
+				fromToken: args.fromToken,
+				toToken: destination ?? args.toToken,
+				episode: args.episode,
+				cursor: page.continueCursor,
+			});
+		}
+		return { carried, finalized, continued };
+	},
+});

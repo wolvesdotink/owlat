@@ -429,11 +429,26 @@
 		},
 		"automations": {
 			"stepEditorPanel": {
+				"conflict": {
+					"body": "This step was changed elsewhere.",
+					"keepMine": "Keep mine",
+					"useTheirs": "Use theirs"
+				},
 				"delete": "Delete step",
-				"emptyBody": "Pick a step in the workflow to change its settings.",
-				"emptyTitle": "No step selected",
-				"save": "Save changes",
 				"title": "Step settings"
+			},
+			"stepSaveFailedDialog": {
+				"body": "Your changes are still here. Retry the save, discard them, or stay on this step.",
+				"discard": "Discard",
+				"stay": "Stay",
+				"title": "This step couldn't be saved"
+			},
+			"stepSaveStatus": {
+				"conflict": "Changed elsewhere",
+				"error": "Couldn't save.",
+				"retry": "Retry",
+				"saved": "Saved",
+				"saving": "Saving…"
 			},
 			"steps": {
 				"condition": {
@@ -8739,6 +8754,7 @@
 					"activateDialog": {
 						"automation": "Automation",
 						"body": "Once activated, this automation will start running and will trigger for new contacts that match the trigger criteria.",
+						"saveFailed": "Your latest step changes couldn't be saved, so nothing was activated. Retry the save on the step, then activate again.",
 						"stepCount": "{count} step | {count} steps",
 						"steps": "Steps",
 						"title": "Activate automation?"
@@ -8769,6 +8785,17 @@
 					},
 					"pageTitle": "Edit automation — Owlat",
 					"pause": "Pause",
+					"reorder": {
+						"actions": "Step {number} actions",
+						"cancelled": "Move cancelled. Step {position} of {total}.",
+						"dropped": "Step moved to position {position} of {total}.",
+						"handle": "Move step {number}",
+						"instructions": "Press Space to pick the step up, the arrow keys to move it, Space to drop it and Escape to cancel.",
+						"moveDown": "Move down",
+						"moveUp": "Move up",
+						"pickedUp": "Picked up step {position} of {total}.",
+						"position": "Step {position} of {total}."
+					},
 					"resume": "Resume",
 					"saveDraft": "Save draft",
 					"status": {
@@ -8784,7 +8811,9 @@
 						"activated": "Automation activated",
 						"draftSaved": "Draft saved",
 						"paused": "Automation paused",
-						"resumed": "Automation resumed"
+						"resumeBlocked": "Your step changes couldn't be saved, so the automation wasn't resumed.",
+						"resumed": "Automation resumed",
+						"stepSaveFailed": "Your step changes couldn't be saved."
 					},
 					"trigger": "Trigger",
 					"validation": {
@@ -14723,7 +14752,6 @@
 			}
 		},
 		"useAutomationStepConfig": {
-			"stepUpdated": "Step updated",
 			"updateStepOperation": "Update automation step"
 		},
 		"useAutomationSteps": {

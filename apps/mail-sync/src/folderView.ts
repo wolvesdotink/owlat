@@ -31,6 +31,26 @@ export class FolderView {
 	 * reconnect after which nothing seen before the gap can be trusted as-is.
 	 */
 	censusDue = false;
+	/**
+	 * The folder's UIDNEXT when the last census began. Every UID below it had
+	 * been handed out by then, so one the view lacks has left the folder.
+	 */
+	censusUidNext = 0;
+	/** A census has listed the whole folder since the view was last cleared. */
+	isCensused = false;
+	/**
+	 * The latest look at the folder failed (a census SEARCH, the search for new
+	 * mail, or the SELECT). What the view holds dates from an earlier look, so
+	 * mail that reached the folder since may be missing from it. Cleared only by
+	 * a census that succeeds.
+	 */
+	isStale = false;
+	/**
+	 * UIDs the provider listed that the view could not read yet: their FETCH
+	 * left them out or broke off. They are in the folder, just unidentified, so
+	 * the view cannot vouch that any message is absent from it until they are read.
+	 */
+	private readonly unread = new Set<number>();
 	private readonly byUid = new Map<number, CachedMessage>();
 	/** Message-ID → its UID, or UIDs when the folder holds copies. */
 	private readonly byMessageId = new Map<string, number | number[]>();
@@ -50,6 +70,26 @@ export class FolderView {
 	 */
 	get maxUid(): number {
 		return this.highestUid;
+	}
+
+	/**
+	 * The view holds every message the folder holds as of this look: a census
+	 * listed the folder, no look since has failed, and every UID listed has been
+	 * read. Only then does a message's absence from the view say anything about
+	 * the provider.
+	 */
+	get isComplete(): boolean {
+		return this.isCensused && !this.isStale && this.unread.size === 0;
+	}
+
+	/** Listed by the provider, about to be read; stays unread until `set`. */
+	markUnread(uid: number): void {
+		if (!this.byUid.has(uid)) this.unread.add(uid);
+	}
+
+	/** Drop the unread UIDs a census did not list: they left before being read. */
+	keepUnread(listed: ReadonlySet<number>): void {
+		for (const uid of this.unread) if (!listed.has(uid)) this.unread.delete(uid);
 	}
 
 	get(uid: number): CachedMessage | undefined {
@@ -78,6 +118,7 @@ export class FolderView {
 			this.ascending.push(uid);
 		}
 		this.byUid.set(uid, cached);
+		this.unread.delete(uid);
 		if (cached.messageId) this.index(uid, cached.messageId);
 	}
 
@@ -97,6 +138,10 @@ export class FolderView {
 		this.highestUid = 0;
 		this.highestModseq = null;
 		this.lastCensusAt = 0;
+		this.censusUidNext = 0;
+		this.isCensused = false;
+		this.isStale = false;
+		this.unread.clear();
 	}
 
 	/** The flags of this folder's copy of `messageId` (the first, if it holds several). */
@@ -104,6 +149,23 @@ export class FolderView {
 		const uids = this.byMessageId.get(messageId);
 		if (uids === undefined) return undefined;
 		return this.byUid.get(typeof uids === 'number' ? uids : uids[0]!)?.flags;
+	}
+
+	/** This folder's UID for `messageId` (the lowest, if it holds several copies). */
+	uidOf(messageId: string): number | undefined {
+		const uids = this.byMessageId.get(messageId);
+		return typeof uids === 'number' ? uids : uids && Math.min(...uids);
+	}
+
+	/**
+	 * Whether `uid` was in this folder once and the view knows it is not now: the
+	 * UID had been handed out by the time the view last looked, the provider did
+	 * not list it, and the view lacks it. Only meaningful under the view's own
+	 * UIDVALIDITY.
+	 */
+	hasLeft(uid: number): boolean {
+		if (!this.isCensused || this.byUid.has(uid) || this.unread.has(uid)) return false;
+		return uid <= this.highestUid || uid < this.censusUidNext;
 	}
 
 	/** Up to `count` of the highest cached UIDs, highest first. */

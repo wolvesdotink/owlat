@@ -9,7 +9,12 @@ import type { FlagState, FolderView } from './folderView.js';
 /** `exists` is kept current by the client between SELECTs (EXISTS / EXPUNGE responses). */
 type Mailbox =
 	| false
-	| { uidValidity: bigint | number; highestModseq?: bigint | number; exists?: number };
+	| {
+			uidValidity: bigint | number;
+			uidNext?: number;
+			highestModseq?: bigint | number;
+			exists?: number;
+	  };
 
 interface FetchedMessage {
 	uid: number;
@@ -139,7 +144,11 @@ export async function refreshFolder(
 	const lock = await client.getMailboxLock(path);
 	try {
 		const mailbox = client.mailbox;
-		if (!mailbox) return result;
+		if (!mailbox) {
+			// Not selected, so not looked at: the view is as old as its last look.
+			view.isStale = true;
+			return result;
+		}
 		const uidValidity = BigInt(mailbox.uidValidity);
 		if (view.uidValidity !== uidValidity) {
 			view.clear();
@@ -148,23 +157,47 @@ export async function refreshFolder(
 			if (options.into) options.into.rebuilt = true;
 		}
 
-		let census = options.census === true || result.rebuilt || view.censusDue;
+		// An incomplete view (no census since it was cleared, or UIDs it could not
+		// read) is listed again until it is whole.
+		let census = options.census === true || result.rebuilt || view.censusDue || !view.isComplete;
 		if (!census) {
 			const floor = view.maxUid;
-			const hits = (await client.search({ uid: `${floor + 1}:*` }, UID)) || [];
-			// `n:*` names the highest UID even when it is below n.
-			await addArrivals(
-				client,
-				view,
-				result,
-				hits.filter((uid) => uid > floor)
-			);
-			// Read after the search, so it counts at least what the search saw.
-			const now = client.mailbox;
-			census = !now || typeof now.exists !== 'number' || now.exists !== view.size;
+			const hits = await client.search({ uid: `${floor + 1}:*` }, UID);
+			if (Array.isArray(hits)) {
+				// `n:*` names the highest UID even when it is below n.
+				await addArrivals(
+					client,
+					view,
+					result,
+					hits.filter((uid) => uid > floor)
+				);
+				// Read after the search, so it counts at least what the search saw.
+				const now = client.mailbox;
+				census = !now || typeof now.exists !== 'number' || now.exists !== view.size;
+			} else {
+				// Arrivals unknown: an equal message count no longer means nothing left.
+				census = true;
+			}
 		}
-		if (census) {
-			const present = new Set((await client.search({ all: true }, UID)) || []);
+		const listed = census ? await client.search({ all: true }, UID) : undefined;
+		if (census && !Array.isArray(listed)) {
+			// The server refused or failed the SEARCH (ImapFlow answers `false`).
+			// That lists nothing, so this pass learns nothing about what left: no
+			// removals, and the census stays due. Nor does it see what arrived, so
+			// until a census succeeds the view cannot vouch for an absence, even if
+			// an earlier census completed it. What other folders saw leave stays
+			// pending for that later pass.
+			view.censusDue = true;
+			view.isStale = true;
+		} else if (Array.isArray(listed)) {
+			const present = new Set(listed);
+			if (!view.isCensused && !result.rebuilt) {
+				// The first whole look at a view whose earlier census failed: as with
+				// a rebuild, nothing is known to have changed, so compare every message.
+				result.rebuilt = true;
+				if (options.into) options.into.rebuilt = true;
+			}
+			view.keepUnread(present);
 			for (const [uid, cached] of view.entries()) {
 				if (present.has(uid)) continue;
 				view.delete(uid);
@@ -178,6 +211,12 @@ export async function refreshFolder(
 			await addArrivals(client, view, result, arrived);
 			view.lastCensusAt = options.now ?? Date.now();
 			view.censusDue = false;
+			view.isCensused = true;
+			view.isStale = false;
+			// UIDNEXT as of the SELECT: every UID below it was handed out before the
+			// search ran, so one the search did not list had left by then. One it
+			// listed but could not read stays unread, not absent (FolderView.hasLeft).
+			view.censusUidNext = mailbox.uidNext ?? 0;
 			result.census = true;
 		}
 
@@ -209,6 +248,9 @@ async function addArrivals(
 	result: RefreshResult,
 	uids: ReadonlyArray<number>
 ): Promise<void> {
+	// Listed, so in the folder, until read: a FETCH that leaves a row out or
+	// breaks off must not make that message look absent.
+	for (const uid of uids) view.markUnread(uid);
 	for (const chunk of chunks(uids, FETCH_CHUNK)) {
 		for await (const msg of client.fetch(
 			chunk.join(','),
@@ -279,33 +321,50 @@ export async function readChangedFlags(
 	}
 }
 
+export interface FolderLookup {
+	/** Held by the folder. */
+	found: Set<string>;
+	/** Not answered: the SEARCH failed, or its hits could not all be read. Neither held nor absent. */
+	unknown: Set<string>;
+}
+
 /** Which of `ids` All Mail holds — the check before calling a message moved or deleted. */
 export async function findInFolder(
 	client: RemoteStateClient,
 	path: string,
 	ids: ReadonlyArray<string>
-): Promise<Set<string>> {
-	const found = new Set<string>();
-	if (ids.length === 0) return found;
+): Promise<FolderLookup> {
+	const lookup: FolderLookup = { found: new Set(), unknown: new Set() };
+	if (ids.length === 0) return lookup;
 	const lock = await client.getMailboxLock(path);
 	try {
 		for (const chunk of chunks(ids, CONFIRM_CHUNK)) {
 			const terms = chunk.map((id) => ({ header: { 'message-id': id } }));
 			const hits = await client.search(terms.length === 1 ? terms[0]! : { or: terms }, UID);
-			if (!hits || hits.length === 0) continue;
+			if (!Array.isArray(hits)) {
+				for (const id of chunk) lookup.unknown.add(id);
+				continue;
+			}
+			if (hits.length === 0) continue;
 			const wanted = new Set(chunk);
+			let read = 0;
 			for (const part of chunks(hits, FETCH_CHUNK)) {
 				for await (const msg of client.fetch(
 					part.join(','),
 					{ uid: true, flags: true, headers: ['message-id'] },
 					UID
 				)) {
+					read++;
 					const id = parseMessageIdHeader(msg.headers);
-					if (id && wanted.has(id)) found.add(id);
+					if (id && wanted.has(id)) lookup.found.add(id);
 				}
 			}
+			// A hit the FETCH left out may be any of the chunk's messages.
+			if (read < hits.length) {
+				for (const id of chunk) if (!lookup.found.has(id)) lookup.unknown.add(id);
+			}
 		}
-		return found;
+		return lookup;
 	} finally {
 		lock.release();
 	}

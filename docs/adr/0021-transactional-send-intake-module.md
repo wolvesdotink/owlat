@@ -1,12 +1,17 @@
 # Transactional send intake module — single intake path for the public transactional send API
 
-**Status:** proposed; **amended 2026-08-25** — the "Scope — include
+**Status:** accepted (`apps/api/convex/transactional/dispatch.ts` has
+been in the tree since the initial commit, 2026-06-30;
+`delivery/sendIntakeGates.ts` and `delivery/nonCampaignIntake.ts` since
+2026-08-25); **amended 2026-08-25**. The "Scope — include
 automation step's email send path or not" decision is REOPENED and
 partly reversed (see [Amendment — PIECE C2](#amendment--piece-c2-2026-08-25)
-at the end of this document). **Amended 2026-10-01** — uploaded
+at the end of this document). **Amended 2026-10-01** twice: uploaded
 attachment bytes now pass from the HTTP shell to the Send through a
 pending-upload handoff, and the send route has its own body ceiling (see
-[Amendment — attachment ownership handoff](#amendment--attachment-ownership-handoff-2026-10-01)).
+[Amendment — attachment ownership handoff](#amendment--attachment-ownership-handoff-2026-10-01)),
+and [the implementation-check amendment](#amendment-implementation-check-2026-10-01)
+records small differences between this proposal and the shipped intake.
 Everything else stands.
 
 ## Context
@@ -1181,3 +1186,32 @@ the body text and the parsed strings (about 27 MiB). Both stay inside
 - The SDKs already enforced 10 attachments and 10 MiB decoded. Both now
   compute the decoded size exactly (they used to round up and refuse a
   file of exactly 10 MiB the API accepts).
+
+---
+
+## Amendment: implementation check (2026-10-01)
+
+Issue #1066 compared this ADR with the code on main. The intake shipped as
+decided: the `convex/transactional/` folder, `dispatch` as the only writer
+of new `transactionalSends` rows, the resolved `language` on the row, both
+counters incremented in the insert transaction, and an exhaustive reason
+mapping in `transactional/api.ts`. The PIECE C2 modules
+(`delivery/sendIntakeGates.ts`, `delivery/nonCampaignIntake.ts`) landed on
+2026-08-25 and match that amendment. These details differ from the
+Decision above:
+
+- Contact find-or-create goes through `createContact`
+  (`contacts/creation.ts`, ADR-0038), which wraps `resolveContact`. The
+  verification grep `rg "resolveContact" .../transactional/dispatch.ts`
+  no longer matches, although there is still no open-coded upsert.
+- `dispatch` also refuses with `feature_disabled` while the
+  `transactional` feature flag is off.
+- The helpers `validateDataVariables`, `resolveLanguage`, `selectContent`
+  and `mergeAttachments` live in `transactional/dispatchContent.ts`.
+- The workpool enqueue goes through
+  `delivery/governedEnqueue.ts:enqueueGovernedSend`. That function wires
+  `onComplete` and `sendRef` once for every producer, so `dispatch` no
+  longer calls `transactionalEmailPool.enqueueAction` itself.
+
+The attachment ownership handoff between the HTTP shell and `dispatch`
+changed on the same day and has its own amendment above.

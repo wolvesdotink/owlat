@@ -8,6 +8,8 @@ import { provideConditionEditorContext } from '~/composables/conditions';
 import { stepEditorModuleFor, type StepKind } from '~/composables/automations/steps';
 import { triggerEditorModuleFor, type TriggerKind } from '~/composables/automations/triggers';
 import { useLocalized } from '~/composables/useLocalized';
+import { useKeyboardReorder } from '~/composables/automations/useKeyboardReorder';
+import { useStepOrderSync } from '~/composables/automations/useStepOrderSync';
 import type { LocalizedText } from '~/utils/localizedText';
 
 const { t } = useI18n();
@@ -65,7 +67,7 @@ const { results: topics } = useTopicsList();
 // Use automation steps composable
 const {
 	// State
-	isSaving,
+	stepSaveStatus,
 	isAddStepDropdownOpen,
 	addStepDropdownIndex,
 	selectedStepId,
@@ -75,36 +77,109 @@ const {
 	canActivate,
 	currentConfig,
 	isCurrentConfigDirty,
+	hasRemoteStepChange,
 
 	// Methods
 	handleAddStep,
 	handleDeleteStep,
-	handleDragEnd,
-	handleUpdateStepConfig,
+	persistStepOrder,
+	requestStepSave,
+	flushStepSave,
+	discardStepChanges,
+	takeRemoteStepConfig,
+	keepLocalStepConfig,
 	closeDropdowns,
 
 	// Description helper
 	getStepDescription,
 } = useAutomationSteps(automationId, automation, emailTemplates);
 
+// The add-step mutation in flight, if any. See `requestAddStep`.
+let stepAdding: Promise<unknown> = Promise.resolve();
 // The list the drag handle reorders. VueDraggable writes the new order back
-// through v-model the moment an item is dropped, so the row stays where the
-// user put it while `handleDragEnd` persists the move; the next server
-// snapshot then replaces this copy.
-const orderedSteps = ref<typeof mutableSteps.value>([]);
-watch(
-	mutableSteps,
-	(steps) => {
-		orderedSteps.value = [...steps];
-	},
-	{ immediate: true }
-);
-// A failed save leaves the server order unchanged, so no new snapshot arrives
-// to replace the dropped order: put the saved order back ourselves.
-async function onStepDragEnd(event: { oldIndex?: number | null; newIndex?: number | null }) {
-	const saved = await handleDragEnd(event);
-	if (!saved) orderedSteps.value = [...mutableSteps.value];
+// through v-model the moment an item is dropped, and the keyboard and the
+// step menu move it the same way; every route then commits the order shown,
+// so what runs is what the user sees. A lifted keyboard step is only a
+// preview until it is dropped. See `useStepOrderSync` for how commits made
+// while a save is in flight are queued.
+const stepOrder = useStepOrderSync({
+	server: mutableSteps,
+	save: (ids) => persistStepOrder(ids as Id<'automationSteps'>[]),
+	// The open step's save lands first, like every other change to the
+	// workflow's shape, and so does a step being added: the order sent must
+	// include it.
+	whenReady: (proceed, cancel) =>
+		afterStepSaved(async () => {
+			await stepAdding;
+			await proceed();
+		}, cancel),
+	isPreviewing: (): boolean => keyboardReorder.liftedId.value !== null,
+	// A failed save shows the server's order, so a lift on top of it is gone.
+	onReplaced: (): void => keyboardReorder.reset(),
+});
+const orderedSteps = stepOrder.items;
+const persistDisplayedOrder = (onSaved?: () => void): Promise<void> => stepOrder.persist(onSaved);
+// A pointer drag starts from the committed order, not from a keyboard lift.
+function onStepDragStart(): void {
+	keyboardReorder.cancel({ refocusHandle: false });
 }
+function onStepDragEnd() {
+	return persistDisplayedOrder();
+}
+
+// Keyboard and screen-reader route to the same reorder: the step title is the
+// button that opens a step, the handle is the button that moves it.
+const { announce } = useAnnounce();
+const stepControl = (stepId: string, control: 'title' | 'handle') =>
+	document.querySelector<HTMLElement>(`[data-step-${control}="${stepId}"]`);
+const focusStepControl = (stepId: string, control: 'title' | 'handle') => {
+	stepControl(stepId, control)?.focus();
+};
+const positionMessage =
+	(key: string) =>
+	(position: number, total: number): string =>
+		t(key, { position, total });
+const keyboardReorder = useKeyboardReorder({
+	items: orderedSteps,
+	restore: () => stepOrder.showCommitted(),
+	commit: (onSaved) => persistDisplayedOrder(onSaved),
+	handleElement: (id) => stepControl(id, 'handle'),
+	focusHandle: (id) => focusStepControl(id, 'handle'),
+	announce,
+	messages: {
+		pickedUp: positionMessage('dashboard.automations.detail.edit.reorder.pickedUp'),
+		moved: positionMessage('dashboard.automations.detail.edit.reorder.position'),
+		dropped: positionMessage('dashboard.automations.detail.edit.reorder.dropped'),
+		cancelled: positionMessage('dashboard.automations.detail.edit.reorder.cancelled'),
+	},
+});
+// Opening a step in the inspector (or closing it) ends a lift.
+watch(selectedStepId, () => keyboardReorder.cancel({ refocusHandle: false }));
+const liftedStepId = keyboardReorder.liftedId;
+// Move up / Move down from the step's actions menu, for anyone who does not
+// know the handle works from the keyboard. Focus stays on the moved step.
+const moveStepBy = (stepId: string, delta: -1 | 1) => {
+	keyboardReorder.cancel({ refocusHandle: false });
+	const from = orderedSteps.value.findIndex((step) => step._id === stepId);
+	const to = from + delta;
+	if (from === -1 || to < 0 || to >= orderedSteps.value.length) return;
+	const next = [...orderedSteps.value];
+	const [moved] = next.splice(from, 1);
+	next.splice(to, 0, moved!);
+	orderedSteps.value = next;
+	void nextTick(() => focusStepControl(stepId, 'title'));
+	return persistDisplayedOrder(() =>
+		announce(
+			positionMessage('dashboard.automations.detail.edit.reorder.dropped')(to + 1, next.length)
+		)
+	);
+};
+const openStepMenuId = ref<string | null>(null);
+
+// Below `lg` the inspector is a sheet over the page, so what it covers leaves
+// the tab order until it closes.
+const isWideViewport = useMediaQuery('(min-width: 1024px)');
+const isInspectorOverlay = computed(() => selectedStep.value !== null && !isWideViewport.value);
 
 // Provide reference data to descendant Condition editor modules
 provideConditionEditorContext({ contactProperties, topics });
@@ -116,6 +191,9 @@ const { showToast } = useToast();
 const isSavingDraft = ref(false);
 const isActivating = ref(false);
 const showActivateConfirmModal = ref(false);
+// The open step's edits could not be saved when activation asked for them, so
+// the modal explains why it did not activate instead of closing.
+const activationSaveFailed = ref(false);
 
 // Trigger display — resolved through the trigger editor module registry.
 const getTriggerInfo = (triggerType: string) => {
@@ -169,7 +247,7 @@ const STEP_ACCENT: Readonly<Record<StepKind, StepAccent>> = {
 
 const stepAccent = (stepType: string): StepAccent => STEP_ACCENT[stepType as StepKind];
 
-// Handle automation activation/pause
+// Pause or resume. A draft activates through the confirm modal below.
 const handleToggleStatus = async () => {
 	if (!automation.value) return;
 
@@ -180,21 +258,24 @@ const handleToggleStatus = async () => {
 			if (!(await pauseAutomation({ automationId: automationId.value })).ok) return;
 			showToast(t('dashboard.automations.detail.edit.toasts.paused'));
 		} else if (automation.value.status === 'paused') {
+			// Resuming runs what is saved, so what is on screen has to be saved first.
+			if (!(await flushStepSave())) {
+				showToast(t('dashboard.automations.detail.edit.toasts.resumeBlocked'), 'error');
+				return;
+			}
 			if (!(await resumeAutomation({ automationId: automationId.value })).ok) return;
 			showToast(t('dashboard.automations.detail.edit.toasts.resumed'));
-		} else {
-			// Draft - activate
-			if (!(await activateAutomation({ automationId: automationId.value })).ok) return;
-			showToast(t('dashboard.automations.detail.edit.toasts.activated'));
 		}
 	} finally {
 		isActivating.value = false;
 	}
 };
 
-// Navigate back. `router.push` triggers the unsaved-changes route guard below
-// when the open step panel has edits, so Back prompts instead of dropping them.
-const handleBack = () => {
+// Navigate back once the open step's save has landed. If it could not be saved,
+// `router.push` hits the unsaved-changes route guard below, which prompts
+// instead of dropping the edits.
+const handleBack = async () => {
+	await flushStepSave();
 	router.push('/dashboard/automations');
 };
 
@@ -211,58 +292,98 @@ const {
 	setHasChanges,
 } = useUnsavedChanges({
 	onSave: async () => {
-		await handleUpdateStepConfig();
 		// A failed step-config save keeps the panel dirty; throw so the guard
 		// stays put instead of clearing the flag and navigating away — mirrors
-		// the sibling saveStepSwitch and the campaign/settings surfaces.
-		if (isCurrentConfigDirty.value) throw new Error('Save failed');
+		// the step-exit guard and the campaign/settings surfaces.
+		if (!(await flushStepSave())) throw new Error('Save failed');
 	},
 });
 watch(isCurrentConfigDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 
-// Guarded step selection: switching steps re-derives currentConfig from the
-// persisted step, which would silently drop unsaved panel edits. Prompt first.
-const pendingStepId = ref<Id<'automationSteps'> | null>(null);
-const showStepSwitchDialog = ref(false);
-const requestSelectStep = (stepId: Id<'automationSteps'>) => {
-	if (stepId === selectedStepId.value) return;
-	if (isCurrentConfigDirty.value) {
-		pendingStepId.value = stepId;
-		showStepSwitchDialog.value = true;
+// Leaving the open step (Close, Add step, another step, a reorder) waits for
+// its save and then goes ahead. Only when the save fails, or the step changed
+// elsewhere under unsaved edits, does the member get asked: Retry, Discard or
+// Stay. Stay keeps the selection and every value as they were.
+type StepExit = { proceed: () => unknown; stay?: () => void };
+const pendingStepExit = ref<StepExit | null>(null);
+const isRetryingStepExit = ref(false);
+async function afterStepSaved(proceed: () => unknown, stay?: () => void) {
+	if (await flushStepSave()) {
+		await proceed();
 		return;
 	}
-	selectedStepId.value = stepId;
+	pendingStepExit.value = { proceed, stay };
+}
+const continueStepExit = async () => {
+	const exit = pendingStepExit.value;
+	pendingStepExit.value = null;
+	await exit?.proceed();
 };
-const applyPendingStep = () => {
-	selectedStepId.value = pendingStepId.value;
-	pendingStepId.value = null;
-	showStepSwitchDialog.value = false;
+const retryStepExit = async () => {
+	isRetryingStepExit.value = true;
+	let saved: boolean;
+	try {
+		saved = hasRemoteStepChange.value ? await keepLocalStepConfig() : await flushStepSave();
+	} finally {
+		isRetryingStepExit.value = false;
+	}
+	if (saved) await continueStepExit();
 };
-const discardStepSwitch = () => {
-	applyPendingStep();
+const discardStepExit = async () => {
+	if (hasRemoteStepChange.value) takeRemoteStepConfig();
+	else discardStepChanges();
+	await continueStepExit();
 };
-const saveStepSwitch = async () => {
-	await handleUpdateStepConfig();
-	// A failed save keeps the panel dirty — stay on the current step so edits
-	// aren't lost, leaving the dialog up.
-	if (isCurrentConfigDirty.value) return;
-	applyPendingStep();
-};
-const cancelStepSwitch = () => {
-	pendingStepId.value = null;
-	showStepSwitchDialog.value = false;
+const stayOnStep = () => {
+	const exit = pendingStepExit.value;
+	pendingStepExit.value = null;
+	exit?.stay?.();
 };
 
-// Handle save draft (save automation name/description + the open step config)
+const requestSelectStep = (stepId: Id<'automationSteps'>) => {
+	if (stepId === selectedStepId.value) return;
+	return afterStepSaved(() => {
+		selectedStepId.value = stepId;
+	});
+};
+// Focus goes back to the step's title, so a keyboard user carries on from the
+// step they just edited instead of from the top of the page.
+const closeInspector = () =>
+	afterStepSaved(async () => {
+		const stepId = selectedStepId.value;
+		selectedStepId.value = null;
+		await nextTick();
+		if (stepId) focusStepControl(stepId, 'title');
+	});
+// `insertAtIndex` is a position on screen, which the server only shares once
+// queued reorders are saved. Wait for them, then insert after the same step.
+const requestAddStep = (stepType: StepKind, insertAtIndex?: number) => {
+	closeDropdowns();
+	const afterStepId = insertAtIndex ? orderedSteps.value[insertAtIndex - 1]?._id : undefined;
+	return afterStepSaved(async () => {
+		await stepOrder.settled();
+		let index = insertAtIndex;
+		if (afterStepId) {
+			const anchor = orderedSteps.value.findIndex((step) => step._id === afterStepId);
+			if (anchor !== -1) index = anchor + 1;
+		}
+		stepAdding = handleAddStep(stepType, index);
+		await stepAdding;
+	});
+};
+
+// Handle save draft: the automation's name and description. Step edits save
+// themselves; Save draft only waits for them, and says so when they did not
+// land rather than reporting a draft that is not what the inspector shows.
 const handleSaveDraft = async () => {
 	if (!automation.value) return;
 
 	isSavingDraft.value = true;
 
 	try {
-		// Persist the open step's edits too, so Save Draft doesn't drop panel work.
-		if (selectedStepId.value && isCurrentConfigDirty.value) {
-			await handleUpdateStepConfig({ silent: true });
+		if (!(await flushStepSave())) {
+			showToast(t('dashboard.automations.detail.edit.toasts.stepSaveFailed'), 'error');
+			return;
 		}
 		const result = await updateAutomation({
 			automationId: automationId.value,
@@ -276,13 +397,26 @@ const handleSaveDraft = async () => {
 	}
 };
 
-// Show activate confirmation modal
-const handleShowActivateConfirm = () => {
-	if (!canActivate.value.valid) {
-		showToast(
-			canActivate.value.reasons[0] || t('dashboard.automations.detail.edit.cannotActivate'),
-			'error'
-		);
+const toastCannotActivate = () => {
+	showToast(
+		canActivate.value.reasons[0] || t('dashboard.automations.detail.edit.cannotActivate'),
+		'error'
+	);
+};
+
+// Activation always means "what you see": the open step's edits are saved
+// first, and the readiness check runs on the steps as saved.
+const handleShowActivateConfirm = async () => {
+	isActivating.value = true;
+	let saved: boolean;
+	try {
+		saved = await flushStepSave();
+	} finally {
+		isActivating.value = false;
+	}
+	activationSaveFailed.value = !saved;
+	if (saved && !canActivate.value.valid) {
+		toastCannotActivate();
 		return;
 	}
 	showActivateConfirmModal.value = true;
@@ -290,8 +424,25 @@ const handleShowActivateConfirm = () => {
 
 // Confirm activation
 const handleConfirmActivate = async () => {
-	showActivateConfirmModal.value = false;
-	await handleToggleStatus();
+	if (!automation.value) return;
+	isActivating.value = true;
+	try {
+		// Edits made since the modal opened, or a save that failed before it.
+		if (!(await flushStepSave())) {
+			activationSaveFailed.value = true;
+			return;
+		}
+		activationSaveFailed.value = false;
+		showActivateConfirmModal.value = false;
+		if (!canActivate.value.valid) {
+			toastCannotActivate();
+			return;
+		}
+		if (!(await activateAutomation({ automationId: automationId.value })).ok) return;
+		showToast(t('dashboard.automations.detail.edit.toasts.activated'));
+	} finally {
+		isActivating.value = false;
+	}
 };
 
 // Get icon color class
@@ -329,12 +480,15 @@ onUnmounted(() => {
 <template>
 	<div class="min-h-full bg-bg-base flex flex-col">
 		<!-- Header -->
-		<div class="bg-bg-elevated border-b border-border-subtle shrink-0">
-			<div class="max-w-7xl mx-auto px-4 sm:px-6 py-4">
-				<!-- Wraps on a phone: the status and Pause/Activate drop under the
-				     name instead of squeezing it into a two-word column. -->
-				<div class="flex flex-wrap items-center justify-between gap-3">
-					<div class="flex items-center gap-2 sm:gap-4 min-w-0">
+		<div
+			class="bg-bg-elevated border-b border-border-subtle shrink-0"
+			:inert="isInspectorOverlay || undefined"
+		>
+			<div class="max-w-7xl mx-auto px-4 py-4 sm:px-6">
+				<!-- Wraps on a phone, so the actions drop below the name instead of
+				     running off the edge. -->
+				<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+					<div class="flex items-center gap-4 min-w-0">
 						<button
 							class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 							@click="handleBack"
@@ -355,7 +509,14 @@ onUnmounted(() => {
 					</div>
 
 					<!-- Status and Actions -->
-					<div v-if="automation" class="flex items-center gap-3 max-sm:ml-auto">
+					<div v-if="automation" class="flex flex-wrap items-center gap-3">
+						<!-- Mirrors the inspector's save line, which may be scrolled away. -->
+						<AutomationsStepSaveStatus
+							class="hidden md:flex"
+							:status="stepSaveStatus"
+							@retry="requestStepSave"
+						/>
+
 						<!-- Status Badge -->
 						<span
 							:class="[
@@ -458,8 +619,11 @@ onUnmounted(() => {
 		</div>
 
 		<!-- Progress Indicator -->
-		<div class="bg-bg-elevated border-b border-border-subtle shrink-0">
-			<div class="max-w-7xl mx-auto px-6 py-4">
+		<div
+			class="bg-bg-elevated border-b border-border-subtle shrink-0"
+			:inert="isInspectorOverlay || undefined"
+		>
+			<div class="max-w-7xl mx-auto px-4 py-4 sm:px-6">
 				<div class="flex items-center gap-3">
 					<div class="flex items-center gap-2">
 						<div
@@ -512,12 +676,15 @@ onUnmounted(() => {
 			</div>
 		</div>
 
-		<!-- Main Content - Two Panel Layout -->
+		<!-- Main Content: the canvas, plus the step inspector while a step is open -->
 		<!-- overflow-clip, not -hidden: a scroll container here would pin the step
 		     panel's sticky content to this box instead of the viewport. -->
-		<div v-else class="flex-1 flex flex-col lg:flex-row overflow-clip">
-			<!-- Workflow Canvas (Left Panel; on top below lg) -->
-			<div class="flex-1 overflow-y-auto p-4 sm:p-6">
+		<div v-else class="flex-1 flex overflow-clip">
+			<!-- Workflow Canvas -->
+			<div
+				class="flex-1 min-w-0 overflow-y-auto p-4 sm:p-6"
+				:inert="isInspectorOverlay || undefined"
+			>
 				<div class="max-w-xl mx-auto">
 					<!-- Trigger Node -->
 					<div class="relative">
@@ -583,7 +750,7 @@ onUnmounted(() => {
 											v-for="type in stepTypes"
 											:key="type.id"
 											class="flex items-center gap-3 w-full p-2 rounded-lg text-left transition-colors hover:bg-bg-surface"
-											@click="handleAddStep(type.id, 0)"
+											@click="requestAddStep(type.id, 0)"
 										>
 											<div
 												:class="[
@@ -616,6 +783,9 @@ onUnmounted(() => {
 					</div>
 
 					<!-- Steps List -->
+					<p id="step-reorder-instructions" class="sr-only">
+						{{ t('dashboard.automations.detail.edit.reorder.instructions') }}
+					</p>
 					<!-- vue-draggable-plus renders only its default slot: the rows are a
 						plain v-for inside it (the old vuedraggable `#item` slot is ignored). -->
 					<VueDraggable
@@ -623,6 +793,7 @@ onUnmounted(() => {
 						v-model="orderedSteps"
 						handle=".drag-handle"
 						ghost-class="opacity-50"
+						@start="onStepDragStart"
 						@end="onStepDragEnd"
 					>
 						<div
@@ -631,23 +802,39 @@ onUnmounted(() => {
 							class="relative"
 							data-testid="automation-step"
 						>
-							<!-- Step Card -->
+							<!-- Step Card. The title is the button that opens it; the card
+							     click is a larger target for the pointer. -->
 							<div
 								:class="[
-									'card p-4 cursor-pointer transition-all',
+									'card p-4 cursor-pointer transition-all has-[.step-title:focus-visible]:ring-2 has-[.step-title:focus-visible]:ring-brand',
 									selectedStepId === step._id
 										? 'ring-2 ring-brand border-brand'
 										: 'hover:border-border-default',
+									liftedStepId === step._id ? 'ring-2 ring-brand/60 shadow-lg' : '',
 								]"
 								@click="requestSelectStep(step._id)"
 							>
 								<div class="flex items-center gap-3">
-									<!-- Drag Handle -->
-									<div
-										class="drag-handle cursor-grab active:cursor-grabbing p-1 -ml-1 text-text-tertiary hover:text-text-secondary"
+									<!-- Drag handle: pointer drag, or Space / arrows / Space from the keyboard -->
+									<button
+										type="button"
+										class="drag-handle cursor-grab active:cursor-grabbing p-1 -ml-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+										:class="
+											liftedStepId === step._id
+												? 'text-brand'
+												: 'text-text-tertiary hover:text-text-secondary'
+										"
+										:aria-label="
+											t('dashboard.automations.detail.edit.reorder.handle', { number: index + 1 })
+										"
+										:aria-pressed="liftedStepId === step._id"
+										aria-describedby="step-reorder-instructions"
+										:data-step-handle="step._id"
+										@click.stop
+										@keydown="keyboardReorder.onKeydown($event, step._id)"
 									>
 										<Icon name="lucide:grip-vertical" class="w-4 h-4" />
-									</div>
+									</button>
 
 									<!-- Step Icon (resolved via the step editor module registry;
 											page-local accent palette via STEP_ACCENT) -->
@@ -662,16 +849,24 @@ onUnmounted(() => {
 
 									<!-- Step Content -->
 									<div class="flex-1 min-w-0">
-										<div class="flex items-center gap-2">
-											<span class="text-xs font-medium text-text-tertiary uppercase tracking-wide">
+										<button
+											type="button"
+											class="step-title block text-left focus-visible:outline-none"
+											:aria-current="selectedStepId === step._id ? 'step' : undefined"
+											:data-step-title="step._id"
+											@click.stop="requestSelectStep(step._id)"
+										>
+											<span
+												class="block text-xs font-medium text-text-tertiary uppercase tracking-wide"
+											>
 												{{
 													t('dashboard.automations.detail.edit.stepNumber', { number: index + 1 })
 												}}
 											</span>
-										</div>
-										<p class="font-medium text-text-primary">
-											{{ t(stepInfo(step.stepType).label) }}
-										</p>
+											<span class="block font-medium text-text-primary">
+												{{ t(stepInfo(step.stepType).label) }}
+											</span>
+										</button>
 										<!-- Description: plain text when no pill accent, pill chrome when defined. -->
 										<p
 											v-if="!stepAccent(step.stepType).pill"
@@ -700,14 +895,49 @@ onUnmounted(() => {
 										</div>
 									</div>
 
-									<!-- Delete Button -->
-									<button
-										class="p-2 text-text-tertiary hover:text-error transition-colors"
-										@click.stop="handleDeleteStep(step._id)"
-										:aria-label="t('common.delete')"
-									>
-										<Icon name="lucide:trash-2" class="w-4 h-4" />
-									</button>
+									<!-- Step actions -->
+									<div @click.stop>
+										<UiDropdownMenu
+											:open="openStepMenuId === step._id"
+											@update:open="openStepMenuId = $event ? step._id : null"
+										>
+											<template #trigger>
+												<button
+													type="button"
+													class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+													:aria-label="
+														t('dashboard.automations.detail.edit.reorder.actions', {
+															number: index + 1,
+														})
+													"
+												>
+													<Icon name="lucide:more-vertical" class="w-4 h-4" />
+												</button>
+											</template>
+											<UiDropdownMenuItem
+												icon="lucide:arrow-up"
+												:disabled="index === 0"
+												@click="moveStepBy(step._id, -1)"
+											>
+												{{ t('dashboard.automations.detail.edit.reorder.moveUp') }}
+											</UiDropdownMenuItem>
+											<UiDropdownMenuItem
+												icon="lucide:arrow-down"
+												:disabled="index === orderedSteps.length - 1"
+												@click="moveStepBy(step._id, 1)"
+											>
+												{{ t('dashboard.automations.detail.edit.reorder.moveDown') }}
+											</UiDropdownMenuItem>
+											<UiDropdownDivider />
+											<UiDropdownMenuItem
+												icon="lucide:trash-2"
+												danger
+												@click="handleDeleteStep(step._id)"
+											>
+												{{ t('common.delete') }}
+											</UiDropdownMenuItem>
+										</UiDropdownMenu>
+									</div>
 								</div>
 							</div>
 
@@ -728,6 +958,7 @@ onUnmounted(() => {
 									<!-- Dropdown -->
 									<div
 										v-if="addStepDropdownIndex === index"
+										data-testid="add-step-menu"
 										class="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-64 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg z-20"
 									>
 										<div class="p-2">
@@ -740,7 +971,7 @@ onUnmounted(() => {
 												v-for="type in stepTypes"
 												:key="type.id"
 												class="flex items-center gap-3 w-full p-2 rounded-lg text-left transition-colors hover:bg-bg-surface"
-												@click="handleAddStep(type.id, index + 1)"
+												@click="requestAddStep(type.id, index + 1)"
 											>
 												<div
 													:class="[
@@ -787,11 +1018,11 @@ onUnmounted(() => {
 							{{ t('dashboard.automations.detail.edit.empty.body') }}
 						</p>
 						<div class="flex justify-center gap-3">
-							<UiButton class="gap-2" @click="handleAddStep('email')">
+							<UiButton class="gap-2" @click="requestAddStep('email')">
 								<Icon name="lucide:mail" class="w-4 h-4" />
 								{{ t('dashboard.automations.detail.edit.empty.addEmail') }}
 							</UiButton>
-							<UiButton variant="secondary" class="gap-2" @click="handleAddStep('delay')">
+							<UiButton variant="secondary" class="gap-2" @click="requestAddStep('delay')">
 								<Icon name="lucide:clock" class="w-4 h-4" />
 								{{ t('dashboard.automations.detail.edit.empty.addDelay') }}
 							</UiButton>
@@ -836,15 +1067,19 @@ onUnmounted(() => {
 				</div>
 			</div>
 
-			<!-- Settings Panel (Right Panel) -->
+			<!-- Step inspector: a column at lg, a sheet below it -->
 			<AutomationsStepEditorPanel
+				v-if="selectedStep"
 				:selected-step="selectedStep"
-				:is-saving="isSaving"
+				:save-status="stepSaveStatus"
 				:email-templates="emailTemplates"
 				:current-config="currentConfig"
 				:mutable-steps="mutableSteps"
-				@close="selectedStepId = null"
-				@save="handleUpdateStepConfig"
+				@close="closeInspector"
+				@save="requestStepSave"
+				@retry="requestStepSave"
+				@use-theirs="takeRemoteStepConfig"
+				@keep-mine="keepLocalStepConfig"
 				@delete="handleDeleteStep"
 				@update:current-config="currentConfig = $event"
 			/>
@@ -891,6 +1126,15 @@ onUnmounted(() => {
 							<p class="text-text-secondary text-center mb-6">
 								{{ t('dashboard.automations.detail.edit.activateDialog.body') }}
 							</p>
+
+							<div
+								v-if="activationSaveFailed"
+								role="alert"
+								class="flex items-start gap-2 p-3 mb-6 rounded-lg bg-error/10 border border-error/20 text-sm text-error"
+							>
+								<Icon name="lucide:alert-circle" class="w-4 h-4 shrink-0 mt-0.5" />
+								<span>{{ t('dashboard.automations.detail.edit.activateDialog.saveFailed') }}</span>
+							</div>
 
 							<!-- Summary -->
 							<div
@@ -969,12 +1213,14 @@ onUnmounted(() => {
 			@save="confirmLeaveSave"
 		/>
 
-		<!-- Unsaved Changes Dialog — switching steps with unsaved step edits -->
-		<UnsavedChangesDialog
-			:show="showStepSwitchDialog"
-			@close="cancelStepSwitch"
-			@discard="discardStepSwitch"
-			@save="saveStepSwitch"
+		<!-- Leaving a step whose save failed, or that changed elsewhere -->
+		<AutomationsStepSaveFailedDialog
+			:open="pendingStepExit !== null"
+			:conflict="hasRemoteStepChange"
+			:retrying="isRetryingStepExit"
+			@retry="retryStepExit"
+			@discard="discardStepExit"
+			@stay="stayOnStep"
 		/>
 	</div>
 </template>

@@ -21,6 +21,7 @@ import {
 	type PublishableEmailPayload,
 } from '../publishableEmailSave';
 import type { EditorBlock } from '@owlat/email-builder';
+import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
 import type { RenderOptions } from '../useEmailHtmlRendering';
 
 const text = (id: string, html: string, savedBlockId?: string): EditorBlock =>
@@ -91,6 +92,8 @@ describe('publishableEmailSave', () => {
 			content: JSON.stringify(blocks),
 			htmlContent: 'A|B|C|D',
 			htmlTranslations: '{}',
+			// The renderer version that produced the HTML, recorded with it.
+			rendererVersion: EMAIL_RENDERER_VERSION,
 			linkedBlockIds: ['b1', 'b2'],
 			plainTextContent: 'rendered text',
 			plainTextOverride: '',

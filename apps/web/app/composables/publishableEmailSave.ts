@@ -4,6 +4,7 @@ import {
 	type BlockLikeItem,
 	type TranslatableBlockContent,
 } from '@owlat/api/translationMerge';
+import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
 import { useEmailHtmlRendering, type RenderOptions } from './useEmailHtmlRendering';
 
 /**
@@ -51,6 +52,8 @@ export interface PublishableEmailPayload {
 	content: string;
 	htmlContent: string;
 	htmlTranslations: string;
+	/** The renderer version that produced `htmlContent` and `htmlTranslations`. */
+	rendererVersion: number;
 	linkedBlockIds: string[];
 	plainTextContent: string;
 	plainTextOverride: string;
@@ -130,6 +133,7 @@ function buildPublishableEmailPayload(
 		content,
 		htmlContent: renderBlocksToHtml(blocks, renderOptions),
 		htmlTranslations: JSON.stringify(htmlTranslations),
+		rendererVersion: EMAIL_RENDERER_VERSION,
 		linkedBlockIds: deriveLinkedBlockIds(blocks),
 		plainTextContent: renderBlocksToPlainText(blocks, plainTextOverride),
 		plainTextOverride,

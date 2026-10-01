@@ -13,6 +13,7 @@ import { mount } from '@vue/test-utils';
 import { computed, ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { queryResult, paginatedResult } from '~/__tests__/queryStubs';
+import { dropdownStubs } from './editPageHarness';
 
 Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
@@ -47,6 +48,8 @@ function stubPage(automation: typeof AUTOMATION) {
 	vi.stubGlobal('useOrganizationQuery', () => queryResult([]));
 	vi.stubGlobal('useTopicsList', () => paginatedResult([]));
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
+	vi.stubGlobal('useAnnounce', () => ({ announce: vi.fn() }));
+	vi.stubGlobal('useMediaQuery', () => ref(true));
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(), isLoading: ref(false) }));
 	vi.stubGlobal('useUnsavedChanges', () => ({
 		showDialog: ref(false),
@@ -56,7 +59,7 @@ function stubPage(automation: typeof AUTOMATION) {
 		setHasChanges: vi.fn(),
 	}));
 	vi.stubGlobal('useAutomationSteps', () => ({
-		isSaving: ref(false),
+		stepSaveStatus: ref('saved'),
 		isAddStepDropdownOpen: ref(false),
 		addStepDropdownIndex: ref<number | null>(null),
 		selectedStepId: ref(null),
@@ -68,8 +71,10 @@ function stubPage(automation: typeof AUTOMATION) {
 		isCurrentConfigDirty: ref(false),
 		handleAddStep: vi.fn(),
 		handleDeleteStep: vi.fn(),
-		handleDragEnd: vi.fn(),
-		handleUpdateStepConfig: vi.fn(),
+		persistStepOrder: vi.fn(),
+		requestStepSave: vi.fn(),
+		flushStepSave: vi.fn(() => Promise.resolve(true)),
+		discardStepChanges: vi.fn(),
 		closeDropdowns: vi.fn(),
 		getStepDescription: (step: Step) => DESCRIPTIONS[step._id] ?? '',
 	}));
@@ -88,6 +93,9 @@ async function mountBuilder() {
 				UiButton: { template: '<button><slot /></button>' },
 				UnsavedChangesDialog: true,
 				AutomationsStepEditorPanel: true,
+				AutomationsStepSaveStatus: true,
+				AutomationsStepSaveFailedDialog: true,
+				...dropdownStubs,
 				Teleport: true,
 			},
 		},
@@ -121,26 +129,6 @@ describe('automation builder', () => {
 		await wrapper.vm.$nextTick();
 
 		expect(wrapper.findAll('[data-testid="automation-step"]')).toHaveLength(3);
-		wrapper.unmount();
-	});
-});
-
-describe('step settings panel with nothing selected', () => {
-	it('explains what to do in words, not translation keys', async () => {
-		const Panel = (await import('~/components/automations/StepEditorPanel.vue')).default;
-		const wrapper = mount(Panel as never, {
-			props: {
-				selectedStep: null,
-				isSaving: false,
-				emailTemplates: [],
-				currentConfig: null,
-				mutableSteps: [],
-			},
-			global: { plugins: [createTestI18n()], stubs: { Icon: true, UiButton: true } },
-		});
-
-		expect(wrapper.text()).toContain('No step selected');
-		expect(wrapper.text()).not.toContain('stepEditorPanel');
 		wrapper.unmount();
 	});
 });
