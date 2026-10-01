@@ -161,7 +161,7 @@ describe('searchFilesForRequest (Answer mode)', () => {
 		const found = await searchFilesForRequest(ctx, {
 			query: 'invoice for september',
 			contactId: CONTACT,
-			mailboxId: MAILBOX,
+			mailboxScope: { mailboxId: MAILBOX, counterparts: ['jonas@example.com'] },
 		});
 		expect(actions[0]!.args).toMatchObject({
 			scopeToContact: CONTACT,
@@ -169,7 +169,8 @@ describe('searchFilesForRequest (Answer mode)', () => {
 		});
 		expect(queries[0]).toMatchObject({
 			name: 'mail/attachExisting:searchMailboxAttachments',
-			args: { mailboxId: MAILBOX },
+			// The mailbox leg carries the counterpart scope (no mailbox-wide search).
+			args: { scope: { mailboxId: MAILBOX, counterparts: ['jonas@example.com'] } },
 		});
 		// A Files row whose bytes were released cannot be offered.
 		expect(found).toEqual([
@@ -197,7 +198,10 @@ describe('searchFilesForRequest (Answer mode)', () => {
 			failFiles: true,
 			mail: [{ id: 'm1', filename: 'a.pdf', contentType: 'application/pdf', size: 1 }],
 		});
-		const found = await searchFilesForRequest(ctx, { query: 'a', mailboxId: MAILBOX });
+		const found = await searchFilesForRequest(ctx, {
+			query: 'a',
+			mailboxScope: { mailboxId: MAILBOX, counterparts: ['jonas@example.com'] },
+		});
 		expect(found.map((f) => f.id)).toEqual(['m1']);
 	});
 });
