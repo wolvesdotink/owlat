@@ -101,23 +101,27 @@ export function useDesktopNotifications() {
 	);
 
 	/**
-	 * A notification from a workspace that has since been removed: nothing runs,
-	 * and an inline reply's words stay one click from the clipboard.
+	 * An inline reply that could not be sent where it belongs: the notice stays
+	 * up and keeps the words one click from the clipboard.
 	 */
 	const { copy } = useCopyToClipboard();
-	function notifyWorkspaceGone(effect: NonNullable<NotifEffect>): void {
-		if (effect.type !== 'reply') {
-			showToast(t('shared.useDesktopNotifications.workspaceGone.action'), 'warning');
-			return;
-		}
-		const text = effect.text;
-		showToast(t('shared.useDesktopNotifications.workspaceGone.reply'), 'warning', {
+	function offerReplyCopy(message: string, text: string): void {
+		showToast(message, 'warning', {
 			durationMs: 0,
 			action: {
 				label: t('shared.useDesktopNotifications.workspaceGone.copyReply'),
 				onAction: () => void copy(text),
 			},
 		});
+	}
+
+	/** A notification from a workspace that has since been removed: nothing runs. */
+	function notifyWorkspaceGone(effect: NonNullable<NotifEffect>): void {
+		if (effect.type !== 'reply') {
+			showToast(t('shared.useDesktopNotifications.workspaceGone.action'), 'warning');
+			return;
+		}
+		offerReplyCopy(t('shared.useDesktopNotifications.workspaceGone.reply'), effect.text);
 	}
 
 	// Route notification clicks / Archive / Mark read / Reply → focus + triage,
@@ -140,6 +144,15 @@ export function useDesktopNotifications() {
 				exists: (id) => workspaces.value.some((w) => w.id === id),
 				switchTo: (id, destination) => switchTo(id, { destination }),
 				onUnavailable: notifyWorkspaceGone,
+				// The workspace switch could not take the reply along (storage
+				// failed), so it is not attempted: the words stay here to copy.
+				onReplyNotCarried: (effect, id) => {
+					const workspace = workspaces.value.find((w) => w.id === id)?.label ?? id;
+					offerReplyCopy(
+						t('shared.useDesktopNotifications.replyNotCarried', { workspace }),
+						effect.text
+					);
+				},
 			},
 			storage: sessionStorage,
 			authReady: () => whenConvexAuthSettled(),

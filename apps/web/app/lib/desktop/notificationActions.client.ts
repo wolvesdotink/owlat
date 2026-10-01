@@ -235,6 +235,12 @@ export interface NotificationWorkspaces {
 	 * must stay recoverable.
 	 */
 	onUnavailable: (effect: NonNullable<NotifEffect>) => void;
+	/**
+	 * A reply from another workspace could not be stored for the switch. The
+	 * switch reloads the webview and would drop it, so nothing switches and the
+	 * user gets the text back, with the workspace it belongs to.
+	 */
+	onReplyNotCarried: (effect: Extract<NotifEffect, { type: 'reply' }>, workspaceId: string) => void;
 }
 
 export interface NotificationRoutingContext {
@@ -278,8 +284,9 @@ export async function handleNotificationAction(
 		return;
 	}
 	// An open needs nothing but the destination. Anything else rides the reload
-	// in sessionStorage; if that cannot be written, land on the thread instead so
-	// the user can act there.
+	// in sessionStorage. If that cannot be written, a triage action lands on the
+	// thread so the user can act there; a reply stays here, because its words
+	// exist only in this page and the reload would lose them.
 	const carried =
 		effect.type !== 'open' &&
 		!!ctx.storage &&
@@ -293,6 +300,10 @@ export async function handleNotificationAction(
 			},
 			(ctx.now ?? Date.now)()
 		);
+	if (effect.type === 'reply' && !carried) {
+		workspaces.onReplyNotCarried(effect, route.workspaceId);
+		return;
+	}
 	const destination =
 		effect.type === 'open'
 			? threadPath(effect)

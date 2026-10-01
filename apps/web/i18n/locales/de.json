@@ -14714,6 +14714,7 @@
 				"body": "1 Nachricht ist während der Ruhezeiten eingegangen | {count} Nachrichten sind während der Ruhezeiten eingegangen",
 				"title": "Während Sie weg waren"
 			},
+			"replyNotCarried": "Ihre Antwort wurde nicht gesendet, weil sie nicht an {workspace} übergeben werden konnte. Kopieren Sie sie und wechseln Sie dann zu {workspace}, um sie zu senden.",
 			"workspaceGone": {
 				"action": "Diese Benachrichtigung stammt aus einem Workspace, der nicht mehr verbunden ist. Es wurde nichts geändert.",
 				"copyReply": "Antwort kopieren",

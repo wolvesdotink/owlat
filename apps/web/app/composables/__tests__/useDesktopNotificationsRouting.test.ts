@@ -42,6 +42,8 @@ vi.mock('~/composables/useLocalized', () => ({ useLocalized: () => (k: unknown) 
 
 const unread = ref<{ total: number; messages: unknown[] } | null>(null);
 const showToast = vi.fn();
+const copy = vi.fn(async (_text: string) => true);
+const switchTo = vi.fn(async (..._args: unknown[]) => {});
 
 function stubNuxt(): void {
 	vi.stubGlobal('useDesktopContext', () => ({ isDesktop: ref(true) }));
@@ -57,16 +59,22 @@ function stubNuxt(): void {
 		request: vi.fn(async () => {}),
 	}));
 	vi.stubGlobal('useToast', () => ({ showToast }));
-	vi.stubGlobal('useI18n', () => ({ t: (k: string) => k }));
-	vi.stubGlobal('useCopyToClipboard', () => ({ copy: vi.fn(async () => true) }));
+	vi.stubGlobal('useI18n', () => ({
+		t: (k: string, params?: Record<string, unknown>) =>
+			params && typeof params === 'object' ? `${k} ${JSON.stringify(params)}` : k,
+	}));
+	vi.stubGlobal('useCopyToClipboard', () => ({ copy }));
 	vi.stubGlobal('useDesktopAppSettings', () => ({
 		settings: ref({ global: { notificationsEnabled: true, showUnreadBadge: true } }),
 		workspaceLocal: () => ({ muteNotifications: false }),
 	}));
 	vi.stubGlobal('useDesktopWorkspaces', () => ({
 		activeId: ref('ws-a'),
-		workspaces: ref([{ id: 'ws-a' }]),
-		switchTo: vi.fn(async () => {}),
+		workspaces: ref([
+			{ id: 'ws-a', label: 'Acme' },
+			{ id: 'ws-b', label: 'Globex' },
+		]),
+		switchTo,
 	}));
 	vi.stubGlobal('useConvexQuery', (_fn: unknown, args: () => unknown) => {
 		// Only the unread peek feeds this spec; the other queries stay empty.
@@ -99,6 +107,10 @@ beforeEach(() => {
 	bridge.windowLabel = 'main';
 	unread.value = null;
 	sendActionableNotification.mockClear();
+	showToast.mockClear();
+	copy.mockClear();
+	switchTo.mockClear();
+	sessionStorage.clear();
 });
 
 describe('useDesktopNotifications: notification action subscription', () => {
@@ -163,5 +175,33 @@ describe('useDesktopNotifications: workspace provenance', () => {
 		expect(sendActionableNotification).toHaveBeenCalledTimes(1);
 		expect(sendActionableNotification.mock.calls[0]?.slice(2)).toEqual(['m1', 'inbox', 'ws-a']);
 		wrapper.unmount();
+	});
+});
+
+describe('useDesktopNotifications: a reply that cannot reach its workspace', () => {
+	it('stays in this workspace and offers the typed reply to copy', async () => {
+		const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+			throw new DOMException('quota', 'QuotaExceededError');
+		});
+		try {
+			const wrapper = await mountDashboard();
+			await settle();
+			for (const cb of listeners) {
+				cb({ action: 'reply', messageId: 'm1', reply: 'See you at 3', workspaceId: 'ws-b' });
+			}
+			await settle();
+
+			expect(switchTo).not.toHaveBeenCalled();
+			expect(showToast).toHaveBeenCalledTimes(1);
+			const [message, type, options] = showToast.mock.calls[0] ?? [];
+			expect(message).toBe('shared.useDesktopNotifications.replyNotCarried {"workspace":"Globex"}');
+			expect(type).toBe('warning');
+			expect(options).toMatchObject({ durationMs: 0 });
+			options.action.onAction();
+			expect(copy).toHaveBeenCalledWith('See you at 3');
+			wrapper.unmount();
+		} finally {
+			setItem.mockRestore();
+		}
 	});
 });

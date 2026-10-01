@@ -99,12 +99,14 @@ function context(
 ): NotificationRoutingContext & {
 	switchTo: ReturnType<typeof vi.fn>;
 	onUnavailable: ReturnType<typeof vi.fn>;
+	onReplyNotCarried: ReturnType<typeof vi.fn>;
 	navigate: ReturnType<typeof vi.fn>;
 	openComposer: ReturnType<typeof vi.fn>;
 } {
 	const { activeId = null, known = [], ...rest } = overrides;
 	const switchTo = vi.fn(async () => {});
 	const onUnavailable = vi.fn();
+	const onReplyNotCarried = vi.fn();
 	const navigate = vi.fn();
 	const openComposer = vi.fn(async () => {});
 	return {
@@ -119,9 +121,11 @@ function context(
 			exists: (id) => known.includes(id),
 			switchTo,
 			onUnavailable,
+			onReplyNotCarried,
 		},
 		switchTo,
 		onUnavailable,
+		onReplyNotCarried,
 		...rest,
 	} as never;
 }
@@ -382,6 +386,47 @@ describe('notification actions keep their workspace', () => {
 		expect(ctx.switchTo).toHaveBeenCalledWith('ws-a', '/dashboard/postbox/inbox/m1');
 		expect(b.calls).toEqual([]);
 	});
+
+	it.each([
+		['storage is unavailable', () => null],
+		[
+			'setItem throws',
+			() => ({
+				...memoryStorage(),
+				setItem: () => {
+					throw new DOMException('quota', 'QuotaExceededError');
+				},
+			}),
+		],
+	])(
+		'a reply from A that cannot be carried keeps B and hands the text back (%s)',
+		async (_, storage) => {
+			const b = instanceB();
+			const ctx = context({
+				convex: b.client,
+				storage: storage(),
+				activeId: 'ws-b',
+				known: ['ws-a', 'ws-b'],
+			});
+
+			await handleNotificationAction(
+				{ action: 'reply', messageId: 'm1', reply: 'See you at 3', workspaceId: 'ws-a' },
+				ctx
+			);
+
+			// The switch reloads the webview; with nothing stored it would drop the
+			// words. Stay put and give them back instead.
+			expect(ctx.switchTo).not.toHaveBeenCalled();
+			expect(ctx.onReplyNotCarried).toHaveBeenCalledWith(
+				{ type: 'reply', messageId: 'm1', text: 'See you at 3' },
+				'ws-a'
+			);
+			// Nothing is sent or composed from B for A's message.
+			expect(b.calls).toEqual([]);
+			expect(ctx.openComposer).not.toHaveBeenCalled();
+			expect(ctx.onUnavailable).not.toHaveBeenCalled();
+		}
+	);
 
 	it('keeps a carried action for its own workspace when another one boots', async () => {
 		const b = instanceB();
