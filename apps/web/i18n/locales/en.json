@@ -6798,6 +6798,7 @@
 					"pageTitle": "Desktop app updates — Owlat",
 					"pin": {
 						"label": "Release to pin to",
+						"missing": "Pinned to {version}, which this instance no longer has cached. Connected apps are offered no update until you pin a cached release or choose another mode.",
 						"noneCached": "No cached release on this channel to pin to. Check now first.",
 						"placeholder": "Choose a cached release"
 					},
