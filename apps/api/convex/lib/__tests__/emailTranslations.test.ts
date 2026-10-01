@@ -192,3 +192,116 @@ describe('removeLanguage', () => {
 		).toBe('not_found');
 	});
 });
+
+// Hero children (and anything nested in them) go through the same child
+// contract as columns and containers: seeded, merged and resolved alike, for
+// templates and transactional emails.
+describe('Hero descendants', () => {
+	const HERO_CONTENT = JSON.stringify([
+		{
+			id: 'hero',
+			type: 'hero',
+			content: {
+				backgroundImage: 'https://example.com/bg.png',
+				height: 400,
+				items: [
+					{ id: 'h-text', type: 'text', content: { html: '<p>Welcome</p>', textColor: '#fff' } },
+					{
+						id: 'h-btn',
+						type: 'button',
+						content: { text: 'Shop now', url: 'https://example.com' },
+					},
+					{
+						id: 'h-img',
+						type: 'image',
+						content: { src: 'https://example.com/a.png', alt: 'Logo' },
+					},
+					{
+						id: 'h-box',
+						type: 'container',
+						content: {
+							items: [
+								{
+									id: 'h-cols',
+									type: 'columns',
+									content: {
+										columns: [[{ id: 'h-deep', type: 'text', content: { html: '<p>Deep</p>' } }]],
+									},
+								},
+							],
+						},
+					},
+				],
+			},
+		},
+	]);
+
+	const GERMAN: Translation['blocks'] = {
+		'h-text': { html: '<p>Willkommen</p>' },
+		'h-btn': { buttonText: 'Jetzt kaufen' },
+		'h-img': { alt: 'Firmenlogo' },
+		'h-deep': { html: '<p>Tief</p>' },
+	};
+
+	it('extracts text, button and image descendants and a nested composite', () => {
+		expect(extractTranslatableContent(HERO_CONTENT)).toEqual({
+			'h-text': { html: '<p>Welcome</p>' },
+			'h-btn': { buttonText: 'Shop now' },
+			'h-img': { alt: 'Logo' },
+			'h-deep': { html: '<p>Deep</p>' },
+		});
+	});
+
+	it('merges the overlay into each descendant and keeps styling and structure', () => {
+		const [hero] = JSON.parse(mergeTranslationWithContent(HERO_CONTENT, GERMAN));
+		const [text, button, image, box] = hero.content.items;
+		expect(hero.content.backgroundImage).toBe('https://example.com/bg.png');
+		expect(hero.content.height).toBe(400);
+		expect(text.content).toEqual({ html: '<p>Willkommen</p>', textColor: '#fff' });
+		expect(button.content).toEqual({ text: 'Jetzt kaufen', url: 'https://example.com' });
+		expect(image.content).toEqual({ src: 'https://example.com/a.png', alt: 'Firmenlogo' });
+		expect(box.content.items[0].content.columns[0][0].content.html).toBe('<p>Tief</p>');
+	});
+
+	for (const [kind, fields] of [
+		['template', TEMPLATE_TRANSLATABLE_FIELDS],
+		['transactional email', TRANSACTIONAL_TRANSLATABLE_FIELDS],
+	] as const) {
+		it(`seeds and resolves a language through the hero for a ${kind}`, () => {
+			const entity = templateEntity({ content: HERO_CONTENT });
+			const seeded = parseTranslations(addLanguage(entity, 'de', fields).translations);
+			expect(Object.keys(seeded['de']!.blocks).sort()).toEqual([
+				'h-btn',
+				'h-deep',
+				'h-img',
+				'h-text',
+			]);
+
+			const translated = templateEntity({
+				content: HERO_CONTENT,
+				supportedLanguages: ['en', 'de'],
+				translations: serializeTranslations({ de: { subject: 'Hallo', blocks: GERMAN } }),
+			});
+			const resolved = resolveForLanguage(translated, 'de', fields);
+			const items = JSON.parse(resolved.content)[0].content.items;
+			expect(items[0].content.html).toBe('<p>Willkommen</p>');
+			expect(items[1].content.text).toBe('Jetzt kaufen');
+			expect(items[2].content.alt).toBe('Firmenlogo');
+			expect(items[3].content.items[0].content.columns[0][0].content.html).toBe('<p>Tief</p>');
+		});
+	}
+
+	it('translates two copies with distinct child ids independently', () => {
+		const copy = (rootId: string, childId: string) => ({
+			id: rootId,
+			type: 'columns',
+			content: { columns: [[{ id: childId, type: 'text', content: { html: '<p>Hi</p>' } }]] },
+		});
+		const content = JSON.stringify([copy('a', 'a-text'), copy('b', 'b-text')]);
+		const merged = JSON.parse(
+			mergeTranslationWithContent(content, { 'b-text': { html: '<p>Hallo</p>' } })
+		);
+		expect(merged[0].content.columns[0][0].content.html).toBe('<p>Hi</p>');
+		expect(merged[1].content.columns[0][0].content.html).toBe('<p>Hallo</p>');
+	});
+});

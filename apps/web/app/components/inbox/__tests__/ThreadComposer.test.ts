@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 import { enableAutoUnmount, mount } from '@vue/test-utils';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick, ref } from 'vue';
 import ThreadComposer from '../ThreadComposer.vue';
+import PostboxComposerPreflightChip from '../../postbox/PostboxComposerPreflightChip.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const platform = ref('linux');
@@ -10,6 +11,9 @@ beforeAll(() => {
 	Object.assign(globalThis, {
 		useI18n: i18nStubs.useI18n,
 		useDesktopContext: () => ({ platform }),
+		// The shared Postbox footer's own lookups (send-as name, native picker).
+		useInboxes: () => ({ byId: ref(new Map()) }),
+		useNativeFilePicker: () => ({ isDesktop: ref(false), pickNativeFiles: vi.fn() }),
 	});
 });
 enableAutoUnmount(afterEach);
@@ -43,7 +47,16 @@ function mountComposer(props: Record<string, unknown> = {}, slots: Record<string
 		attachTo: document.body,
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: true, PostboxOverflowMenu: MenuStub },
+			components: { PostboxComposerPreflightChip },
+			stubs: {
+				Icon: true,
+				PostboxOverflowMenu: MenuStub,
+				// The mailbox-only controls of the shared footer, never shown here.
+				PostboxComposerFollowUp: true,
+				PostboxComposerModeControls: true,
+				PostboxFollowUpDialog: true,
+				PostboxPreviewAsSent: true,
+			},
 		},
 	});
 }
@@ -60,7 +73,7 @@ describe('InboxThreadComposer send hint and ⋯', () => {
 
 describe('InboxThreadComposer and the gaps the AI left', () => {
 	const sendButton = (w: ReturnType<typeof mountComposer>) =>
-		w.get('[data-testid="thread-composer-send"]');
+		w.get('[data-testid="composer-send"]');
 
 	it('holds Send and says how many gaps are left after an AI draft', async () => {
 		const wrapper = mountComposer({ statusNote: '1 of 2 asks covered' });
@@ -68,13 +81,11 @@ describe('InboxThreadComposer and the gaps the AI left', () => {
 		await vm.answer.applyAiDraft('Attached [[the invoice]].');
 		await nextTick();
 		expect(sendButton(wrapper).attributes('disabled')).toBeDefined();
-		expect(wrapper.get('[data-testid="thread-composer-status"]').text()).toBe('1 gap left');
+		expect(wrapper.get('[data-testid="composer-save-state"]').text()).toBe('1 gap left');
 
 		await wrapper.get('[data-testid="thread-composer-body"]').setValue('Attached the invoice.');
 		expect(sendButton(wrapper).attributes('disabled')).toBeUndefined();
-		expect(wrapper.get('[data-testid="thread-composer-status"]').text()).toBe(
-			'1 of 2 asks covered'
-		);
+		expect(wrapper.get('[data-testid="composer-save-state"]').text()).toBe('1 of 2 asks covered');
 	});
 
 	it('holds Send when the thread has a Draft with AI session (the server would refuse)', async () => {
@@ -98,15 +109,15 @@ describe('InboxThreadComposer in Answer mode', () => {
 		expect(wrapper.get('[data-testid="thread-composer-envelope"]').text()).toContain('To Ana Ruiz');
 		const body = wrapper.get('[data-testid="thread-composer-body"]');
 		await body.setValue('We have refunded the invoice.');
-		await wrapper.get('[data-testid="thread-composer-send"]').trigger('click');
+		await wrapper.get('[data-testid="composer-send"]').trigger('click');
 
 		expect(wrapper.emitted('send')?.[0]).toEqual(['We have refunded the invoice.', false, '']);
-		expect(wrapper.get('[data-testid="thread-composer-send"]').text()).toBe('Send reply');
+		expect(wrapper.get('[data-testid="composer-send"]').text()).toBe('Send reply');
 	});
 
 	it('does not send an empty reply', async () => {
 		const wrapper = mountComposer();
-		const send = wrapper.get('[data-testid="thread-composer-send"]');
+		const send = wrapper.get('[data-testid="composer-send"]');
 		expect(send.attributes('disabled')).toBeDefined();
 		await send.trigger('click');
 		expect(wrapper.emitted('send')).toBeUndefined();
@@ -120,7 +131,7 @@ describe('InboxThreadComposer in Answer mode', () => {
 			'Drafted by the agent'
 		);
 
-		await wrapper.get('[data-testid="thread-composer-send"]').trigger('click');
+		await wrapper.get('[data-testid="composer-send"]').trigger('click');
 		expect(wrapper.emitted('send')?.[0]).toEqual(['Hi Ana, here is your invoice.', true, '']);
 	});
 
@@ -136,7 +147,7 @@ describe('InboxThreadComposer in Answer mode', () => {
 		await wrapper.get('[data-testid="thread-composer-show-changes"]').trigger('click');
 		expect(wrapper.get('[data-testid="thread-composer-diff"]').text()).toContain('Hi Ana.');
 
-		await wrapper.get('[data-testid="thread-composer-send"]').trigger('click');
+		await wrapper.get('[data-testid="composer-send"]').trigger('click');
 		expect(wrapper.emitted('send')?.[0]).toEqual(['Hi Ana, sorry for the wait.', false, '']);
 
 		await wrapper.get('[data-testid="thread-composer-save"]').trigger('click');
@@ -149,9 +160,7 @@ describe('InboxThreadComposer in Answer mode', () => {
 		await nextTick();
 		const body = wrapper.get<HTMLTextAreaElement>('[data-testid="thread-composer-body"]');
 		expect(body.element.value).toBe('');
-		expect(
-			wrapper.get('[data-testid="thread-composer-send"]').attributes('disabled')
-		).toBeDefined();
+		expect(wrapper.get('[data-testid="composer-send"]').attributes('disabled')).toBeDefined();
 	});
 
 	it('"Discard draft" rejects the agent draft; a plain reply only clears', async () => {
@@ -184,7 +193,7 @@ describe('InboxThreadComposer in Answer mode', () => {
 			heldBy: 'Priya',
 			heldReason: 'held while Priya is editing',
 		});
-		const send = wrapper.get('[data-testid="thread-composer-send"]');
+		const send = wrapper.get('[data-testid="composer-send"]');
 		expect(send.text()).toBe('Priya is replying');
 		expect(send.attributes('disabled')).toBeDefined();
 		await send.trigger('click');
@@ -199,9 +208,7 @@ describe('InboxThreadComposer in Answer mode', () => {
 			draft: 'Draft',
 			sendHold: 'Send waits until the file is copied.',
 		});
-		expect(
-			wrapper.get('[data-testid="thread-composer-send"]').attributes('disabled')
-		).toBeDefined();
+		expect(wrapper.get('[data-testid="composer-send"]').attributes('disabled')).toBeDefined();
 		expect(wrapper.get('[data-testid="thread-composer-send-hold"]').text()).toBe(
 			'Send waits until the file is copied.'
 		);
@@ -223,7 +230,7 @@ describe('InboxThreadComposer in Answer mode', () => {
 			'The agent is still drafting.'
 		);
 		await wrapper.get('[data-testid="thread-composer-body"]').setValue('Here is the answer.');
-		await wrapper.get('[data-testid="thread-composer-send"]').trigger('click');
+		await wrapper.get('[data-testid="composer-send"]').trigger('click');
 		expect(wrapper.emitted('send')?.[0]).toEqual(['Here is the answer.', false, '']);
 	});
 
@@ -260,7 +267,7 @@ describe('InboxThreadComposer in Answer mode', () => {
 		expect((subject.element as HTMLInputElement).value).toBe('Re: Invoice');
 
 		await subject.setValue('Re: Invoice 1042');
-		await wrapper.get('[data-testid="thread-composer-send"]').trigger('click');
+		await wrapper.get('[data-testid="composer-send"]').trigger('click');
 		expect(wrapper.emitted('send')?.[0]).toEqual(['Hi Ana.', false, 'Re: Invoice 1042']);
 	});
 
@@ -316,5 +323,64 @@ describe('InboxThreadComposer in Answer mode', () => {
 		const wrapper = mountComposer();
 		await wrapper.get('[data-testid="thread-composer-body"]').setValue('All sorted.');
 		expect(wrapper.find('[data-testid="postbox-preflight-chip"]').exists()).toBe(false);
+	});
+});
+
+// #812 — the team reply renders inside the Postbox composer's frame and
+// footer; the footer reads the team target's capabilities and leaves out what
+// a team reply cannot carry.
+describe('InboxThreadComposer in the shared Postbox composer shell', () => {
+	it('renders in the shell as a team-thread target, its editor in the scroll region', () => {
+		const wrapper = mountComposer();
+		const shell = wrapper.get('[data-composer-target="teamThread"]');
+		expect(
+			shell
+				.get('[data-testid="composer-scroll"]')
+				.find('[data-testid="thread-composer-body"]')
+				.exists()
+		).toBe(true);
+		// Send sits in the footer, outside the region, so it never scrolls away.
+		expect(
+			shell.get('[data-testid="composer-scroll"]').find('[data-testid="composer-send"]').exists()
+		).toBe(false);
+		expect(shell.find('footer [data-testid="composer-send"]').exists()).toBe(true);
+	});
+
+	it('offers none of the mailbox draft’s controls: no attach, schedule, reminder, signature, preview or editor mode', async () => {
+		const wrapper = mountComposer({ draft: 'Hi Ana.' });
+		await wrapper.get('[data-testid="thread-composer-body"]').setValue('Hi Ana, sorted.');
+		const footer = wrapper.get('footer');
+		expect(footer.find('input[type="file"]').exists()).toBe(false);
+		expect(footer.find('[data-testid="composer-schedule"]').exists()).toBe(false);
+		expect(footer.find('[data-testid="postbox-send-as"]').exists()).toBe(false);
+		expect(footer.find('[data-testid="composer-discard"]').exists()).toBe(false);
+		expect(footer.find('select').exists()).toBe(false);
+		for (const stub of [
+			'postbox-composer-follow-up-stub',
+			'postbox-follow-up-dialog-stub',
+			'postbox-preview-as-sent-stub',
+			'postbox-composer-mode-controls-stub',
+		]) {
+			expect(footer.find(stub).exists()).toBe(false);
+		}
+		// The ⋯ menu holds the reply's own items, under its own name.
+		const menu = footer.get('[data-testid="menu"]');
+		expect(menu.attributes('label')).toBe('More for this reply');
+		expect(menu.findAll('[role="menuitem"]').map((item) => item.attributes('data-testid'))).toEqual(
+			[
+				'thread-composer-show-changes',
+				'thread-composer-save',
+				'thread-composer-restore',
+				'thread-composer-write-own',
+				'thread-composer-skip',
+			]
+		);
+	});
+
+	it('keeps the Send label while a save or send is in flight', () => {
+		const wrapper = mountComposer({ draft: 'Hi Ana.', busy: true });
+		const send = wrapper.get('[data-testid="composer-send"]');
+		expect(send.text()).toBe('Send reply');
+		expect(send.attributes('disabled')).toBeDefined();
 	});
 });

@@ -13,7 +13,12 @@ definePageMeta({
 });
 
 const labelId = useRouteId<'mailLabels'>('labelId');
-const { currentMailbox, isLoading: mailboxesLoading } = usePostboxMailbox();
+const {
+	currentMailbox,
+	isLoading: mailboxesLoading,
+	error: mailboxesError,
+	refetch: refetchMailboxes,
+} = usePostboxMailbox();
 const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 
 // Server-side label view: `listByLabel` scans the mailbox's newest messages
@@ -43,7 +48,12 @@ const overCap = computed(() => labelData.value?.hasMore ?? false);
 
 <template>
 	<div class="flex h-[calc(100vh-4rem)]">
-		<PostboxMailboxGuard :mailbox-id="mailboxId" :loading="mailboxesLoading">
+		<PostboxMailboxGuard
+			:mailbox-id="mailboxId"
+			:loading="mailboxesLoading"
+			:error="mailboxesError"
+			@retry="refetchMailboxes"
+		>
 			<div class="flex w-full">
 				<aside
 					class="w-full lg:w-96 lg:flex-shrink-0 border-r border-border-subtle flex flex-col bg-bg-surface"

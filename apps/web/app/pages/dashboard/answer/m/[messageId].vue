@@ -61,10 +61,12 @@ const messageId = computed(() => singleQueryValue(route.params['messageId']) ?? 
 const openedDraftId = singleQueryValue(route.query['draft']);
 const openedKind = parseAnswerKind(route.query['kind']);
 
-const message = usePostboxActiveMessage<PostboxReaderMessage>({
+const messageRead = usePostboxActiveMessageRead<PostboxReaderMessage>({
 	activeMessageId: () => messageId.value,
 	listRows: () => [],
-}) as ComputedRef<PostboxReaderMessage | undefined>;
+});
+const message = messageRead.message as ComputedRef<PostboxReaderMessage | undefined>;
+const messageError = messageRead.error;
 
 useHead({ title: () => message.value?.subject || t('dashboard.answer.mode.pageTitle') });
 
@@ -354,6 +356,12 @@ onBeforeUnmount(() => {
 						/>
 					</template>
 				</AnswerConversation>
+				<!-- A failed read is not a message still loading (#721). -->
+				<UiQueryBoundary
+					v-else-if="messageError"
+					:error="messageError"
+					@retry="messageRead.refetch"
+				/>
 				<PostboxReaderSkeleton v-else />
 			</template>
 

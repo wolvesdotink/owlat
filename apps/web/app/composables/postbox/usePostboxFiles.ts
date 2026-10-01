@@ -86,6 +86,8 @@ export function usePostboxFiles(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		isLoadingMore: feed.isLoadingMore,
 		canLoadMore: feed.canLoadMore,
 		loadMore: feed.loadMore,
+		error: feed.firstPageError,
+		refetch: feed.refetch,
 		senderFacets,
 		query,
 		fromAddress,

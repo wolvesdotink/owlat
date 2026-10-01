@@ -11,8 +11,8 @@
 import type Redis from 'ioredis';
 import {
 	composeMessage,
+	htmlToPlainText,
 	signMessage,
-	stripHtml,
 	type ComposeAttachment,
 } from '@owlat/mail-message';
 import { extractDomainOrNull } from '@owlat/shared';
@@ -115,7 +115,7 @@ function composeStructured(
 		// Always ship a non-empty text part (multipart/alternative deliverability,
 		// RFC 8058 §4): the explicit text when supplied, else an HTML-derived
 		// fallback — the historic behaviour.
-		text: job.text || stripHtml(job.html),
+		text: job.text || htmlToPlainText(job.html),
 		...(job.amp ? { amp: job.amp } : {}),
 		...(job.replyTo ? { replyTo: job.replyTo } : {}),
 		...(attachments ? { attachments } : {}),

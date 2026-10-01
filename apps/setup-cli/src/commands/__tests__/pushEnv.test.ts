@@ -4,13 +4,17 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import type * as ConvexDeploy from '../../lib/convexDeploy';
 
-const { setConvexEnvVars } = vi.hoisted(() => ({ setConvexEnvVars: vi.fn() }));
+const { setConvexEnvVars, removeConvexEnvVars } = vi.hoisted(() => ({
+	setConvexEnvVars: vi.fn(),
+	removeConvexEnvVars: vi.fn(),
+}));
 
 // Only the docker-driven push is faked; the key selection and the admin-key
 // check are the real ones `owlat quickstart` uses.
 vi.mock('../../lib/convexDeploy', async (importOriginal) => ({
 	...(await importOriginal<typeof ConvexDeploy>()),
 	setConvexEnvVars,
+	removeConvexEnvVars,
 }));
 
 import { runPushEnv } from '../pushEnv';
@@ -58,6 +62,21 @@ describe('owlat-setup push-env', () => {
 		expect(pushed).toMatchObject({ EMAIL_PROVIDER: 'ses', AWS_SES_REGION: 'eu-west-1' });
 		expect(pushed).not.toHaveProperty('EHLO_HOSTNAMES');
 		expect(pushed).not.toHaveProperty('CONVEX_ADMIN_KEY');
+	});
+
+	it('stays additive: a blank or missing key is skipped, never removed', async () => {
+		// Clearing a deployment value is `unset-env`'s job, never push-env's.
+		const root = await installWithEnv(
+			[`CONVEX_ADMIN_KEY=${ADMIN_KEY}`, 'EMAIL_PROVIDER=ses', 'LLM_BASE_URL='].join('\n')
+		);
+
+		await expect(runPushEnv({ owlatDir: root })).resolves.toBe(0);
+
+		const pushed = Object.fromEntries(
+			setConvexEnvVars.mock.calls[0]![1] as Array<[string, string]>
+		);
+		expect(pushed).toEqual({ EMAIL_PROVIDER: 'ses' });
+		expect(removeConvexEnvVars).not.toHaveBeenCalled();
 	});
 
 	it('says why nothing was pushed when .env has no admin key', async () => {

@@ -11,10 +11,23 @@ definePageMeta({
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
-const { currentMailbox, isLoading: mailboxesLoading } = usePostboxMailbox();
+const {
+	currentMailbox,
+	isLoading: mailboxesLoading,
+	error: mailboxesError,
+	refetch: refetchMailboxes,
+} = usePostboxMailbox();
 const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 
-const { signatures, isLoading, create, update, remove } = usePostboxSignatures(mailboxId);
+const {
+	signatures,
+	isLoading,
+	error: listError,
+	refetch: refetchList,
+	create,
+	update,
+	remove,
+} = usePostboxSignatures(mailboxId);
 
 // Sanitized once per list change. In the template it ran for every signature on
 // every render, and the editor below re-renders the page on each keystroke.
@@ -127,6 +140,8 @@ async function makeDefault(id: Id<'mailSignatures'>) {
 					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
 				/>
 			</div>
+			<!-- A failed read is not an empty list (#721). -->
+			<UiQueryBoundary v-else-if="listError" :error="listError" @retry="refetchList" />
 			<div v-else-if="signatures.length === 0" class="p-8 text-center text-text-secondary">
 				{{ t('dashboard.preferences.signatures.empty') }}
 			</div>
@@ -169,7 +184,15 @@ async function makeDefault(id: Id<'mailSignatures'>) {
 			</ul>
 		</section>
 
-		<div v-if="!mailboxId && !mailboxesLoading" class="card p-6 text-center text-text-secondary">
+		<UiQueryBoundary
+			v-if="!mailboxId && mailboxesError"
+			:error="mailboxesError"
+			@retry="refetchMailboxes"
+		/>
+		<div
+			v-else-if="!mailboxId && !mailboxesLoading"
+			class="card p-6 text-center text-text-secondary"
+		>
 			{{ t('dashboard.preferences.signatures.noMailbox') }}
 		</div>
 

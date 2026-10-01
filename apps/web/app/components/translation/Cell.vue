@@ -106,6 +106,10 @@ const handleKeydown = (e: KeyboardEvent) => {
 
 // Report the open editor's text, so unsaved typing counts before it is saved.
 watch([isEditing, editValue], ([editing, text]) => emit('edit', editing ? text : null));
+// A cell that goes away (its language or row removed) takes its text with it.
+onBeforeUnmount(() => {
+	if (isEditing.value) emit('edit', null);
+});
 
 // Auto-resize textarea
 const autoResize = () => {

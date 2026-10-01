@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent } from 'vue';
+import { computed, defineAsyncComponent, inject } from 'vue';
 import type { EditorBlock, EmailTheme, ColumnsBlockContent, Variable, SlashCommand } from '../../../types';
 import type { ParentContext } from '../types';
 import { blockBoxStyle, getColumnWidths } from '../../../utils/blocks';
@@ -25,6 +25,13 @@ const emit = defineEmits<{
 	(e: 'insert-block-after', blockId: string): void;
 	(e: 'open-link-dialog', blockId: string): void;
 }>();
+
+// Nested items register their element like root Blocks do, so the toolbar
+// can anchor to a selected item at any depth.
+const setBlockElement = inject<(blockId: string, el: HTMLElement | null) => void>(
+	'setBlockElement',
+	() => {}
+);
 
 const content = computed(() => props.block.content as ColumnsBlockContent);
 
@@ -106,6 +113,7 @@ function handleChildSelect(itemId: string, colIdx: number, event: MouseEvent) {
 						:key="item.id"
 						class="relative group/nested-block"
 						:data-block-id="item.id"
+						:ref="(el) => setBlockElement(item.id, el as HTMLElement | null)"
 						:class="[
 							'border rounded my-0.5 transition-[border-color] duration-(--motion-fast)',
 							item.id === selectedNestedItemId
@@ -121,6 +129,8 @@ function handleChildSelect(itemId: string, colIdx: number, event: MouseEvent) {
 							:selected-nested-item-id="selectedNestedItemId"
 							:inline-edit-block-id="inlineEditBlockId"
 							:variables="variables"
+							@select-nested="(payload: { itemId: string; context: ParentContext; element: HTMLElement }) => emit('select-nested', payload)"
+							@update-children="(blockId: string, children: unknown[]) => emit('update-children', blockId, children)"
 						/>
 					</div>
 				</VueDraggable>

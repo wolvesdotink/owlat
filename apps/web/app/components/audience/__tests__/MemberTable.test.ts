@@ -8,7 +8,7 @@
  *     row still opens the contact, but a click on a row action does not;
  *   - the header sorts only declared columns and shows the active chevron;
  *   - below `md` exactly one of the table and the card list is mounted;
- *   - the empty, no-results and paging states.
+ *   - the empty, no-results and paging states, and a failed read (#721).
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -18,6 +18,9 @@ import MemberTable from '../MemberTable.vue';
 import UiEmptyState from '@owlat/ui/components/ui/EmptyState.vue';
 import UiCard from '@owlat/ui/components/ui/Card.vue';
 import UiInput from '@owlat/ui/components/ui/Input.vue';
+import UiErrorAlert from '@owlat/ui/components/ui/ErrorAlert.vue';
+import UiSpinner from '@owlat/ui/components/ui/Spinner.vue';
+import UiQueryBoundary from '~/components/ui/QueryBoundary.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const tableFits = ref(true);
@@ -45,6 +48,7 @@ const baseProps = {
 	activeSearch: '',
 	searchPlaceholder: 'Search contacts in this topic...',
 	loading: false,
+	error: null as Error | null,
 	empty: { icon: 'lucide:users', title: 'No contacts in this topic', description: 'Add some.' },
 	isSortable: (field: string) => ['email', 'firstName', 'lastName', 'addedAt'].includes(field),
 	getSortIcon: (field: string) => (field === 'addedAt' ? 'lucide:chevron-down' : null),
@@ -66,7 +70,7 @@ function render(props: Partial<typeof baseProps> = {}, slots: Record<string, str
 		slots,
 		global: {
 			plugins: [createTestI18n()],
-			components: { UiEmptyState, UiCard, UiInput },
+			components: { UiEmptyState, UiCard, UiInput, UiErrorAlert, UiSpinner, UiQueryBoundary },
 		},
 	});
 }
@@ -155,6 +159,20 @@ describe('MemberTable states', () => {
 		const clear = wrapper.findAll('button').find((button) => button.text() === 'Clear search');
 		await clear!.trigger('click');
 		expect(wrapper.emitted('clear-search')).toHaveLength(1);
+	});
+
+	it('shows a failed member read with Try again, not "no contacts" (#721)', async () => {
+		const wrapper = render({
+			rows: [],
+			showingRange: null,
+			error: new Error('[CONVEX Q(segments:listMembers)] [Request ID: 1] Server Error'),
+		});
+		expect(wrapper.text()).not.toContain('No contacts in this topic');
+		expect(wrapper.text()).toContain('Failed to load');
+		expect(wrapper.text()).not.toContain('Request ID');
+		const retry = wrapper.findAll('button').find((button) => button.text() === 'Try again');
+		await retry!.trigger('click');
+		expect(wrapper.emitted('retry')).toHaveLength(1);
 	});
 
 	it('shows no empty state while the first page loads', () => {

@@ -18,8 +18,12 @@ const { railOpen, openRail } = useChatShell();
 const {
 	room,
 	roomLoading,
+	roomError,
+	refetchRoom,
 	messages,
 	messagesLoading,
+	messagesError,
+	refetchMessages,
 	hasMoreMessages,
 	loadMoreMessages,
 	atMaxMessages,
@@ -90,8 +94,13 @@ const handleLeave = async () => {
 			</button>
 		</div>
 
+		<!-- A failed read is not a room you cannot reach (#721). -->
+		<div v-if="roomError" class="flex-1 flex items-center justify-center">
+			<UiQueryBoundary :error="roomError" @retry="refetchRoom" />
+		</div>
+
 		<!-- Loading shell -->
-		<ChatRoomSkeleton v-if="roomLoading" />
+		<ChatRoomSkeleton v-else-if="roomLoading" />
 
 		<!-- Not found / no access -->
 		<div
@@ -152,8 +161,11 @@ const handleLeave = async () => {
 					>
 						{{ t('dashboard.chat.detail.loadEarlier') }}
 					</button>
+					<div v-if="messagesError" class="flex-1 flex items-center justify-center">
+						<UiQueryBoundary :error="messagesError" @retry="refetchMessages" />
+					</div>
 					<ChatMessageList
-						v-if="!messagesLoading"
+						v-else-if="!messagesLoading"
 						:messages="messages"
 						:current-user-id="currentUserId"
 						@edit="(id, text) => editMessage(id, text)"

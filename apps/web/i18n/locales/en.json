@@ -5612,6 +5612,7 @@
 				"sourceBadge": "source"
 			},
 			"manager": {
+				"accordionSectionPrefix": "{prefix}Accordion {index}, section {section}",
 				"addLanguage": "Add language",
 				"addLanguageOperation": "Add language",
 				"allTranslated": "All fields are already translated",
@@ -5628,6 +5629,7 @@
 				"fieldColumn": "Field",
 				"goBack": "Go back",
 				"heading": "{name} - Translations",
+				"heroPrefix": "{prefix}Hero {index}",
 				"htmlBadge": "HTML",
 				"imageBlock": "{prefix}image {index} alt text",
 				"infoBody": "Click any cell to edit the translation. Changes are saved automatically. Use the sparkle icon to auto-translate empty fields using AI. The default language content is read-only here - edit it in the main email editor.",
@@ -7915,9 +7917,9 @@
 					}
 				},
 				"dangerZone": {
-					"body": "Deleting the workspace permanently removes every team member, all contacts, campaigns, automations, mailboxes, and analytics. This action cannot be undone.",
+					"body": "Deleting the workspace permanently removes its data: contacts, campaigns, templates, automations, mailboxes and their mail, sending domains, and analytics. Team members keep their accounts and memberships, so they can still sign in to the emptied workspace. This action cannot be undone.",
 					"heading": "Danger zone",
-					"subtitle": "Permanently delete this workspace and all of its data",
+					"subtitle": "Permanently delete this workspace's data",
 					"title": "Delete workspace"
 				},
 				"deleteModal": {
@@ -7926,7 +7928,7 @@
 					"subtitle": "This cannot be undone",
 					"title": "Delete workspace",
 					"typeToConfirm": "Type {phrase} to confirm",
-					"warning": "{label} This permanently deletes {workspace} and all of its data — team members, contacts, campaigns, automations, mailboxes, and analytics. You will be signed out immediately.",
+					"warning": "{label} This permanently deletes the data in {workspace}: contacts, campaigns, templates, automations, mailboxes and their mail, sending domains, and analytics. Team members keep their accounts and memberships. You will be signed out immediately.",
 					"warningLabel": "Warning:"
 				},
 				"inboxes": {

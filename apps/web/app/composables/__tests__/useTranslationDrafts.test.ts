@@ -223,6 +223,39 @@ describe('useTranslationDrafts', () => {
 		expect(drafts.hasUnsavedWork.value).toBe(false);
 	});
 
+	it('forgets the open editor text and drafts of a removed language', async () => {
+		const { base, writes, drafts } = setup();
+
+		drafts.setOpenEdit(SUBJECT, 'Getippt');
+		drafts.setOpenEdit(FR_SUBJECT, 'Tapé');
+		const failed = drafts.saveCell(BODY, 'Neuer Text');
+		await flush();
+		writes[0]!.settle({ ok: false });
+		await failed;
+		expect(drafts.statusOf(BODY)).toBe('failed');
+
+		// The language is removed; the server row no longer carries it.
+		drafts.forgetLanguage('de');
+		const { de: _removed, ...rest } = row(2).translations;
+		base.value = { ...row(2), translations: rest };
+		await flush();
+		expect(drafts.statusOf(BODY)).toBe('idle');
+
+		// Only the other language's open text is still unsaved, and only it is saved.
+		expect(drafts.hasUnsavedWork.value).toBe(true);
+		const all = drafts.saveAll();
+		await flush();
+		expect(writes).toHaveLength(2);
+		expect(writes[1]!.language).toBe('fr');
+		writes[1]!.settle({ ok: true, revision: 3 });
+		base.value = { ...row(3), translations: { fr: { subject: 'Tapé', blocks: {} } } };
+		await expect(all).resolves.toBe(true);
+		expect(writes.map((write) => write.language)).toEqual(['de', 'fr']);
+
+		drafts.setOpenEdit(FR_SUBJECT, null);
+		expect(drafts.hasUnsavedWork.value).toBe(false);
+	});
+
 	it('saves generated values for one language as one write', async () => {
 		const { writes, drafts } = setup();
 

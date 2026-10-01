@@ -108,7 +108,11 @@ beforeAll(() => {
 			if (!state.has(key)) state.set(key, ref(init()));
 			return state.get(key);
 		},
-		usePostboxActiveMessage: () => computed(() => message),
+		usePostboxActiveMessageRead: () => ({
+			message: computed(() => message),
+			error: ref(null),
+			refetch: () => {},
+		}),
 		useConvexQuery: () => ({ data: ref(['ada@example.com']), error: ref(null) }),
 		usePostboxSettings: () => ({ replyDefault: ref('reply') }),
 		useFeatureFlag: () => ({ isEnabled: () => false }),

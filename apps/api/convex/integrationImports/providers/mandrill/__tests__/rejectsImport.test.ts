@@ -431,6 +431,7 @@ describe('mandrill rejects import — through the walker', () => {
 			importId: t0._id,
 			config: CONFIG,
 			cursor: '250',
+			page: 1,
 		});
 
 		const final = (await t.run(
@@ -442,8 +443,8 @@ describe('mandrill rejects import — through the walker', () => {
 
 		// The first hop also SCHEDULED its successor. Drain it here rather than
 		// letting it fire after the suite has restored `global.fetch` — a hop that
-		// outlives its stub would reach the real network. It is a no-op: the run
-		// is terminal, and every hop re-checks status at entry.
+		// outlives its stub would reach the real network. It is a no-op: its page
+		// is already committed, and the commit is fenced on the page identity.
 		await t.finishInProgressScheduledFunctions();
 		expect(await blocklist(t)).toHaveLength(260);
 	});

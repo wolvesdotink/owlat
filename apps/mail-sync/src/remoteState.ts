@@ -52,7 +52,10 @@ export {
 } from './folderRefresh.js';
 export { FolderView, type FlagState };
 
-/** All Mail look-ups per cycle; the rest wait for the next one. */
+/**
+ * All Mail look-ups per cycle; the rest stay in `pending` for the next one.
+ * Without All Mail there is nothing to look up, and no limit.
+ */
 const MAX_CONFIRMS_PER_CYCLE = 500;
 /** Local messages per page of a full reconcile. */
 export const LOCAL_PAGE = 500;
@@ -153,7 +156,8 @@ export function decide(rows: ReadonlyArray<LocalMessageRow>, input: DecideInput)
  * What a reconcile noticed on the provider but has not settled locally yet.
  * The views have already moved on, so a pass cut short (lost connection,
  * shutdown) hands this to the next one instead of forgetting that a message
- * left a folder or that a view was rebuilt.
+ * left a folder or that a view was rebuilt. So does a pass that ran out of
+ * All Mail look-ups, for the messages it could not check.
  */
 export interface PendingChanges {
 	changed: Set<string>;
@@ -180,7 +184,10 @@ export interface ReconcileDeps {
 	forceFull: boolean;
 	/** Clock for the census cadence (CENSUS_INTERVAL_MS); defaults to Date.now. */
 	now?: () => number;
-	/** Carried across passes; a pass that completes empties it. */
+	/**
+	 * Carried across passes. A pass that completes empties it, except for the
+	 * messages it had no All Mail look-ups left for.
+	 */
 	pending?: PendingChanges;
 	listLocal(cursor: string | null): Promise<{
 		page: LocalMessageRow[];
@@ -239,10 +246,21 @@ export async function reconcile(
 		untrackedFlags,
 	};
 	let confirmsLeft = MAX_CONFIRMS_PER_CYCLE;
+	// Candidates past the look-up budget. The views no longer hold them, so they
+	// are handed to the next pass (with the evidence that they vanished) rather
+	// than dropped with the rest of `pending`.
+	const deferred: string[] = [];
 	const settle = async (rows: LocalMessageRow[]) => {
 		const { observations, unplaced } = decide(rows, input);
-		const checked = unplaced.slice(0, confirmsLeft);
-		confirmsLeft -= checked.length;
+		let checked = unplaced;
+		if (deps.allMail) {
+			// What left a folder is checked before what merely sits in none, so a
+			// backlog of mail the provider never had cannot starve real deletions.
+			unplaced.sort((a, b) => +vanished.has(b.messageId) - +vanished.has(a.messageId));
+			checked = unplaced.slice(0, confirmsLeft);
+			confirmsLeft -= checked.length;
+			for (const row of unplaced.slice(checked.length)) deferred.push(row.messageId);
+		}
 		const inAllMail = deps.allMail
 			? await findInFolder(
 					deps.client,
@@ -278,9 +296,12 @@ export async function reconcile(
 			await settle(await deps.lookupLocal(ids));
 		}
 	}
+	const stillVanished = deferred.filter((id) => vanished.has(id));
 	changed.clear();
 	vanished.clear();
 	untrackedFlags.clear();
 	pending.rebuilt = false;
+	for (const id of deferred) changed.add(id);
+	for (const id of stillVanished) vanished.add(id);
 	return { full, completed: true };
 }

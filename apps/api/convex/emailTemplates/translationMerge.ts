@@ -14,6 +14,8 @@
  * stores it.
  */
 
+import { childBlockLists, mapChildBlockLists } from '@owlat/shared/blockTree';
+
 export interface TranslatableBlockContent {
 	html?: string; // for text blocks
 	buttonText?: string; // for button blocks
@@ -26,7 +28,9 @@ export interface BlockLikeItem {
 	content: Record<string, unknown>;
 }
 
-// Recursive helper to merge translation into any block-like item.
+// Merge the overlay into an item and, through the shared Block-tree child
+// contract, into every Block nested inside it (columns, container, hero and
+// accordion sections alike).
 export function mergeTranslationIntoItem(
 	item: BlockLikeItem,
 	translationBlocks: Record<string, TranslatableBlockContent>
@@ -34,31 +38,23 @@ export function mergeTranslationIntoItem(
 	const translatedContent = translationBlocks[item.id];
 
 	// Create a copy with potentially translated content.
-	const mergedContent: Record<string, unknown> = {
-		...item.content,
-		...(translatedContent?.html !== undefined && { html: translatedContent.html }),
-		...(translatedContent?.buttonText !== undefined && { text: translatedContent.buttonText }),
-		...(translatedContent?.alt !== undefined && { alt: translatedContent.alt }),
+	const merged: BlockLikeItem = {
+		...item,
+		content: {
+			...item.content,
+			...(translatedContent?.html !== undefined && { html: translatedContent.html }),
+			...(translatedContent?.buttonText !== undefined && { text: translatedContent.buttonText }),
+			...(translatedContent?.alt !== undefined && { alt: translatedContent.alt }),
+		},
 	};
 
-	// Recursively handle columns.
-	if (item.type === 'columns' && Array.isArray(item.content['columns'])) {
-		mergedContent['columns'] = (item.content['columns'] as BlockLikeItem[][]).map((column) =>
-			column.map((columnItem) => mergeTranslationIntoItem(columnItem, translationBlocks))
-		);
-	}
-
-	// Recursively handle containers.
-	if (item.type === 'container' && Array.isArray(item.content['items'])) {
-		mergedContent['items'] = (item.content['items'] as BlockLikeItem[]).map((containerItem) =>
-			mergeTranslationIntoItem(containerItem, translationBlocks)
-		);
-	}
-
-	return { ...item, content: mergedContent };
+	return mapChildBlockLists(merged, (list) =>
+		list.map((child) => mergeTranslationIntoItem(child, translationBlocks))
+	);
 }
 
-// Recursive helper to extract translatable content from any block-like item.
+// Extract translatable content from an item and, through the shared Block-tree
+// child contract, from every Block nested inside it.
 function extractFromItem(
 	item: BlockLikeItem,
 	translatableContent: Record<string, TranslatableBlockContent>
@@ -71,23 +67,15 @@ function extractFromItem(
 		content.buttonText = item.content['text'] as string;
 	} else if (item.type === 'image' && item.content['alt']) {
 		content.alt = item.content['alt'] as string;
-	} else if (item.type === 'columns' && Array.isArray(item.content['columns'])) {
-		// Recursively extract from column items
-		for (const column of item.content['columns'] as BlockLikeItem[][]) {
-			for (const columnItem of column) {
-				extractFromItem(columnItem, translatableContent);
-			}
-		}
-	} else if (item.type === 'container' && Array.isArray(item.content['items'])) {
-		// Recursively extract from container items
-		for (const containerItem of item.content['items'] as BlockLikeItem[]) {
-			extractFromItem(containerItem, translatableContent);
-		}
 	}
 
 	// Only add if there's translatable content
 	if (Object.keys(content).length > 0) {
 		translatableContent[item.id] = content;
+	}
+
+	for (const list of childBlockLists(item)) {
+		for (const child of list) extractFromItem(child, translatableContent);
 	}
 }
 
