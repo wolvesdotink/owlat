@@ -32,7 +32,7 @@ import type { ParentContext } from './canvas/types';
 import { useEmailBuilderHandlers } from '../composables/useEmailBuilderHandlers';
 import { useFocusMode } from '../composables/useFocusMode';
 import { useBlockState } from '../composables/useBlockState';
-import { useBlockManagement } from '../composables/useBlockManagement';
+import { headingContent, useBlockManagement } from '../composables/useBlockManagement';
 import { useBlockTreeVersion } from '../composables/useBlockTreeVersion';
 import { useRecentColors } from '../composables/useRecentColors';
 import { useHistory, type HistoryState } from '../composables/useHistory';
@@ -48,7 +48,13 @@ import type { PreviewRenderOptions } from '../preview/types';
 
 // Utilities
 import { createBlock, createColumnItem, withPrimaryStoredImage } from '../utils/blocks';
-import { locateBlock, locateWithin, replaceBlockInTree } from '../utils/blockTree';
+import {
+	blockSlot,
+	locateBlock,
+	locateWithin,
+	replaceBlockInTree,
+	type BlockSlot,
+} from '../utils/blockTree';
 import { moveBlock, type MoveDirection } from '../utils/blockMove';
 import { resolveEditorKeyAction } from '../utils/editorKeyboard';
 import { htmlToBlocks } from '../utils/htmlToBlocks';
@@ -363,7 +369,7 @@ function handleSelectNested(payload: {
 // Block CRUD (simplified: no TipTap cleanup callbacks)
 const {
 	handleAddBlock,
-	handleAddHeadingBlock,
+	handleInsertBlockAtSlot,
 	handleDeleteBlock,
 	handleDuplicateBlock,
 	handleDuplicateNestedItem,
@@ -431,7 +437,7 @@ const {
 } = useInlineTextEdit({
 	activeBlock,
 	onUpdate: handleBlockPropertyUpdate,
-	onDeleteBlock: handleDeleteBlock,
+	onDeleteBlock: handleDeleteInlineEditedBlock,
 });
 
 // `isInlineEditing` tells a host that text may be typed which the blocks do not
@@ -733,10 +739,45 @@ function handleToolbarDuplicate() {
 	handleDuplicateActiveBlock();
 }
 
-// Inline edit handlers
+// Inline edit handlers. Text at any depth is edited in place; text inside a
+// linked Block is not.
 function handleDoubleClickBlock(blockId: string) {
-	if (isActiveBlockLinked.value) return;
+	if (!isEditable(blockId)) return;
 	enterInlineEdit(blockId);
+}
+
+// The inline editor removes a text Block it closes empty, root or nested.
+function handleDeleteInlineEditedBlock(blockId: string) {
+	const location = locateBlock(canvasBlocks.value, blockId, selectedRootId.value);
+	if (!location) return;
+	if (!location.parent) {
+		handleDeleteBlock(blockId);
+		return;
+	}
+	if (!isEditable(blockId)) return;
+	handleDeleteNestedItem(location.parent.id, blockId);
+	if (selectedNestedItemId.value === blockId) clearBlockSelection();
+}
+
+/**
+ * Insert a Block next to the text Block `sourceId` the inline editor has just
+ * closed on, at `source`, the slot it held while open: right after it in the
+ * list that holds it, or in its place when closing the editor removed it
+ * (it was left empty). The new Block is selected.
+ */
+function insertAfterInlineSource(
+	source: BlockSlot,
+	sourceId: string,
+	type: BlockType,
+	content?: (defaults: EditorBlock['content']) => EditorBlock['content']
+): EditorBlock | null {
+	const current = blockSlot(canvasBlocks.value, sourceId, source.rootId);
+	const slot = current ? { ...current, index: current.index + 1 } : source;
+	const inserted = handleInsertBlockAtSlot(type, slot, content);
+	if (!inserted) return null;
+	if (inserted.parentId) selectNestedItem(inserted.parentId, inserted.block.id);
+	else handleSelectBlock(inserted.block.id);
+	return inserted.block;
 }
 
 function handleExitInlineEdit() {
@@ -792,18 +833,19 @@ function handleAddTextBlockFromPlaceholder() {
 	});
 }
 
-// Enter key in inline editor: create new text block after current
+// Enter key in inline editor: create an empty text Block after the current
+// one, in the same list, and keep typing in it
 function handleInsertBlockAfter(blockId: string) {
+	const source = isEditable(blockId)
+		? blockSlot(canvasBlocks.value, blockId, selectedRootId.value)
+		: null;
 	exitInlineEdit();
-	const newBlock = handleAddBlock('text', blockId);
-	// Clear HTML for empty start
-	const idx = canvasBlocks.value.findIndex((b) => b.id === newBlock.id);
-	if (idx !== -1) {
-		canvasBlocks.value[idx] = {
-			...canvasBlocks.value[idx]!,
-			content: { ...canvasBlocks.value[idx]!.content, html: '' },
-		} as EditorBlock;
-	}
+	if (!source) return;
+	const newBlock = insertAfterInlineSource(source, blockId, 'text', (defaults) => ({
+		...defaults,
+		html: '',
+	}));
+	if (!newBlock) return;
 	nextTick(() => {
 		enterInlineEdit(newBlock.id);
 	});
@@ -870,37 +912,40 @@ function handleInsertBlockAt(type: BlockType, afterBlockId: string) {
 	handleAddBlock(type, afterBlockId);
 }
 
-// Slash command handler: insert block after the block where "/" was typed
+// Slash command handler: insert block after the block where "/" was typed,
+// in the list that holds it
 function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
-	// Capture the block index before exitInlineEdit, which may auto-delete
-	// an empty text block (e.g. one that only contained "/slash-text")
-	const fromIndex = canvasBlocks.value.findIndex((b) => b.id === fromBlockId);
+	// Capture the slot before exitInlineEdit, which may auto-delete an empty
+	// text block (e.g. one that only contained "/slash-text")
+	const source = isEditable(fromBlockId)
+		? blockSlot(canvasBlocks.value, fromBlockId, selectedRootId.value)
+		: null;
 
 	exitInlineEdit();
+	if (!source) return;
 
-	// After exitInlineEdit, the source block may have been deleted.
-	// Find a stable insertion anchor: the block now at fromIndex - 1.
-	const blockStillExists = canvasBlocks.value.some((b) => b.id === fromBlockId);
-	const anchorBlockId = blockStillExists
-		? fromBlockId
-		: fromIndex > 0
-			? (canvasBlocks.value[fromIndex - 1]?.id ?? null)
-			: null;
-
-	// Handle saved block direct insertion
+	// Handle saved block direct insertion. A saved Block is linked, and linked
+	// Blocks are roots: it goes after the root that holds the source, or for a
+	// root source that closing removed, after the Block before it.
 	if (command.savedBlock) {
-		// Set selectedBlockId so handleSavedBlockSelect inserts after the anchor
+		const anchorBlockId = source.parentId
+			? source.rootId
+			: canvasBlocks.value.some((b) => b.id === fromBlockId)
+				? fromBlockId
+				: (canvasBlocks.value[source.index - 1]?.id ?? null);
+		// Select the anchor so handleSavedBlockSelect inserts after it
+		clearBlockSelection();
 		selectedBlockId.value = anchorBlockId;
 		handleSavedBlockSelect(command.savedBlock);
 		return;
 	}
 
-	const afterId = anchorBlockId ?? undefined;
 	const headingMatch = command.id.match(/^h([123])$/);
 	if (headingMatch) {
-		handleAddHeadingBlock(Number(headingMatch[1]) as 1 | 2 | 3, afterId);
+		const level = Number(headingMatch[1]) as 1 | 2 | 3;
+		insertAfterInlineSource(source, fromBlockId, 'text', () => headingContent(level));
 	} else {
-		handleAddBlock(command.id as BlockType, afterId);
+		insertAfterInlineSource(source, fromBlockId, command.id as BlockType);
 	}
 }
 </script>
