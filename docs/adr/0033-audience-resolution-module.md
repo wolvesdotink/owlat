@@ -1,6 +1,11 @@
 # Audience resolution module — single definition of campaign recipient eligibility, discriminated `Audience` value, closing count/send drift and the soft-delete leak
 
-**Status:** proposed
+**Status:** accepted (`apps/api/convex/campaigns/audienceResolution.ts`
+and `packages/shared/src/types/audience.ts` have been in the tree since the
+initial commit, 2026-06-30); **amended 2026-10-01**. The `0033` migration
+was retired, the module is split across two files, and the wizard count
+is bounded and finished by a background job. See [the implementation-check amendment](#amendment-implementation-check-2026-10-01) at
+the end of this document.
 
 ## Context
 
@@ -446,3 +451,34 @@ honest). Soft-deleted Contacts with surviving memberships/matches stop
 receiving (correctness). No risk to in-flight scheduled campaigns —
 resolution runs fresh at send time; a scheduled campaign stores only the
 `audience` selection, resolved when the orchestrator fires.
+
+---
+
+## Amendment: implementation check (2026-10-01)
+
+Issue #1066 compared this ADR with the code on main. The `Audience` value
+is in `packages/shared/src/types/audience.ts`, the validator is in
+`campaigns/audience.ts`, `campaigns` stores one `audience` field, and
+`getCampaignRecipients` and `getAudienceCountByOrganization` are gone.
+Count and send share one eligibility predicate. These details differ from
+the Decision above:
+
+- There is no `migrations/0033_campaign_audience.ts` on main. The
+  migration shipped in the initial commit, and the one-shot was deleted
+  with the other retired migrations 0005 to 0034 in #597 on 2026-09-10.
+  The four flat columns are gone from the schema.
+- The module is two files. `campaigns/audienceCandidates.ts` holds
+  `selectRecipient`, the candidate stream and the counting core.
+  `campaigns/audienceResolution.ts` holds the page resolver and the
+  `resolveRecipientPage` and `countRecipients` entry points. The split
+  came when the file passed the size limit in CONVENTIONS.md.
+- `selectRecipient` rejects contacts through the shared
+  `contactMarketingIneligibility` helper, which covers soft-deleted
+  contacts and a global marketing opt-out, and takes the per-membership
+  `pendingDoiConfirmation` flag as its third argument.
+- `countRecipients` is a permission-gated `campaignsQuery`, not a plain
+  `query`, and reads at most one budgeted page. An audience larger than
+  that page is counted by the resumable job in
+  `campaigns/audienceCountJob.ts` (since 2026-09-30), so the readout
+  carries `completeness` and `background` along with `total` and
+  `eligible`.

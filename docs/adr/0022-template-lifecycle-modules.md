@@ -1,6 +1,11 @@
 # Template lifecycle modules — sibling lifecycles for email-template and transactional-email publish state
 
-**Status:** proposed
+**Status:** accepted (`apps/api/convex/emailTemplates/lifecycle.ts` and
+`transactional/lifecycle.ts` have been in the tree since the initial
+commit, 2026-06-30); **amended 2026-10-01**. The publish guard is one
+shared function in `lib/publishableEmail.ts`, and both graphs are built
+with `defineLifecycle`. See [the implementation-check amendment](#amendment-implementation-check-2026-10-01) at the end of this
+document.
 
 ## Context
 
@@ -746,3 +751,28 @@ rg "assertEditableForPublishableChange" apps/api/convex/emailTemplates/ apps/api
   entry, and the two new Relationships bullets match this ADR.
 - Per-transition-kind reducer tests pass on both lifecycles.
 - The grep verification matches above all hold.
+
+---
+
+## Amendment: implementation check (2026-10-01)
+
+Issue #1066 compared this ADR with the code on main. Both lifecycles
+shipped as decided: `emailTemplates/lifecycle.ts` and
+`transactional/lifecycle.ts` own create, transition, duplicate and remove
+for their tables, the content scan runs inside the transactional
+`→ published` reducer, the admin `approved` and `rejected` inputs exist,
+and the three top-level `emailTemplates*.ts` files moved under
+`convex/emailTemplates/`. These details differ from the Decision above:
+
+- The publish guard is one shared function,
+  `assertEditableForPublishableChange(row, noun, force?)` in
+  `lib/publishableEmail.ts` (since 2026-09-28), instead of one export per
+  lifecycle. It throws an `invalid_state` Operation error (ADR-0036) with
+  `data.action = 'unpublish'`, not `ConvexError({ code:
+  'template_published' })`. The same file holds the publish, duplicate and
+  delete rules both tables share.
+- Neither module exports `LEGAL_EDGES`. Each builds its graph with
+  `defineLifecycle` from `lib/lifecycle.ts` (ADR-0058).
+- Transition inputs carry an `at` timestamp. Outcomes report
+  `applied: 'transitioned' | 'recorded'` with `from` and `to`, and refuse
+  with `template_not_found` / `email_not_found` or `illegal_edge`.

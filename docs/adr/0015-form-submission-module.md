@@ -1,6 +1,11 @@
 # Form submission module — single intake path for public form endpoints
 
-**Status:** proposed
+**Status:** accepted (`apps/api/convex/forms/submission.ts` has been in
+the tree since the initial commit, 2026-06-30); **amended 2026-10-01**
+twice: for form-only DOI and the shared confirmation token (see
+[that amendment](#amendment--form-only-doi-and-the-shared-confirmation-token-2026-10-01)),
+and for the smaller differences between this proposal and the shipped
+module (see [the implementation-check amendment](#amendment-implementation-check-2026-10-01)).
 
 ## Context
 
@@ -735,3 +740,35 @@ no longer decides whether their form rows are finalized.
 holds its token any more, matching what confirming it would answer.
 
 Rows still pending from before this change are not repaired.
+
+---
+
+## Amendment: implementation check (2026-10-01)
+
+Issue #1066 compared this ADR with the code on main. The module is in
+place as decided. `submit` and `markConfirmedByToken` live in
+`forms/submission.ts` with `classifyAction` and the field validation
+beside them, `recordSubmission` and the open-coded find-or-create are
+gone, and nothing outside the module writes `formSubmissions.status`.
+These details differ from the Decision above:
+
+- `subscribe()` kept the ADR-0013 outcome union instead of the
+  `{ action: 'inserted' | 'already_member'; doiToken? }` shape sketched in
+  "Topic subscription return-shape bump". Its actions are `subscribed`,
+  `pending_doi` and `already_member`, and only `pending_doi` carries
+  `doiToken`. `classifyAction` therefore tests for `pending_doi`.
+- `classifyAction` takes a third argument, `topicExpected`. When the form
+  has a topic and the subscription failed, the submission is classified
+  `invalid` so it does not count as a successful submission. The fourth
+  argument, `confirmationRequested`, is described in the amendment above.
+- `submit` also refuses with `feature_disabled` while the `forms` feature
+  flag is off, and its success outcome carries `errorMessage` for the
+  `invalid` response.
+- `forms/apiHttp.ts:submitForm` is a `publicTokenEndpoint` declaration
+  (ADR-0030). CORS, the method gate, the rate limit and body parsing
+  happen in that shell, and the redirect goes out as a raw `302`
+  response. The handler is about 100 lines, not the 80 the Done-when list
+  set.
+- `confirmSubmission` in `forms/endpoints.ts` is a public mutation, not an
+  `httpAction`. It still confirms through the DOI lifecycle first and then
+  calls `markConfirmedByToken`.
