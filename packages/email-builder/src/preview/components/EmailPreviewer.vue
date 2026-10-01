@@ -24,7 +24,6 @@ import type {
 	EmailClient,
 	DevicePreset,
 	CompatibilityReport,
-	NestingDepthResult,
 	PreviewEmailAnalysis,
 	PreviewHealthScore,
 	PreviewValidationIssue,
@@ -52,8 +51,6 @@ const props = withDefaults(
 		defaultDevice?: string;
 		autoAnalyze?: boolean;
 		showSendTest?: boolean;
-		/** Optional nesting depth analysis result to show warning in compatibility panel */
-		nestingDepthWarning?: NestingDepthResult | null;
 		/** Plain text version of the email (generated from the block document) */
 		plainText?: string;
 		/**
@@ -101,7 +98,6 @@ const props = withDefaults(
 		defaultDevice: 'desktop',
 		autoAnalyze: true,
 		showSendTest: false,
-		nestingDepthWarning: null,
 		plainText: '',
 		plainTextSource: '',
 		plainTextOverride: '',
@@ -634,7 +630,6 @@ function handleClickOutside(event: MouseEvent) {
 				:health-score="healthScore ?? null"
 				:validation-issues="validationIssues ?? []"
 				:compatibility-report="report"
-				:nesting-depth-warning="nestingDepthWarning"
 				:is-analyzing="isAnalyzing"
 				:expanded="compatibilityExpanded"
 				@toggle="compatibilityExpanded = !compatibilityExpanded"
