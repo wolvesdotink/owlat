@@ -71,6 +71,7 @@ const isEditDirty = computed(
 
 const {
 	showDialog: showUnsavedDialog,
+	isSavingBeforeLeave,
 	confirmDiscard,
 	confirmSave,
 	cancelNavigation,
@@ -737,6 +738,7 @@ watch([isAddDirty, isEditDirty], ([add, edit]) => setHasChanges(add || edit), { 
 		<!-- Unsaved Changes Dialog -->
 		<UnsavedChangesDialog
 			:show="showUnsavedDialog"
+			:saving="isSavingBeforeLeave"
 			@close="cancelNavigation"
 			@discard="confirmDiscard"
 			@save="confirmSave"

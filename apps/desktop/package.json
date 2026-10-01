@@ -6,7 +6,7 @@
 	"homepage": "https://owlat.app",
 	"type": "module",
 	"scripts": {
-		"dev": "tauri dev",
+		"dev": "tauri dev --features dev-provisioning",
 		"build": "tauri build",
 		"typecheck": "tsc --noEmit",
 		"lint": "oxlint --config ../../oxlintrc.json src scripts",

@@ -15,7 +15,7 @@ let client: ConvexHttpClient | null = null;
  * not a silent gap. The seam is here so an operator who has a narrower key can
  * supply it via `CODE_WORKER_CONVEX_KEY` WITHOUT a code change. The concrete
  * narrower key shipped for this is the `apps/convex-fn-proxy` sidecar: it holds
- * the real admin key, forwards ONLY the thirteen allowlisted `codeWorkTasks:*` /
+ * the real admin key, forwards ONLY the fifteen allowlisted `codeWorkTasks:*` /
  * `plugins/workerTasks:*` calls this module makes, and validates+strips the
  * token the worker presents. In that composed deployment `CONVEX_URL` points at
  * the proxy and `CODE_WORKER_CONVEX_KEY` is the proxy token — the token is what
@@ -73,9 +73,30 @@ export interface CodeWorkTask {
 	attempts?: number;
 	maxAttempts?: number;
 	nextAttemptAt?: number;
+	cancelledAt?: number;
+	/** Commit an earlier attempt was about to push to `branch` (publication checkpoint). */
+	publishCommitSha?: string;
 	createdAt: number;
 	updatedAt: number;
 }
+
+/**
+ * Why the backend refused a worker callback (see apps/api
+ * `lib/codeTaskFence.ts`): the task is gone, the user cancelled it, a newer
+ * attempt owns it, or it already left the worker-owned statuses.
+ */
+export type CodeTaskStopReason = 'missing' | 'cancelled' | 'stale' | 'finished';
+
+export type CodeTaskWorkerVerdict = { ok: true } | { ok: false; reason: CodeTaskStopReason };
+
+/**
+ * `claim` result. `attempt` identifies this run on every later call;
+ * `mayRunAgent` is false for a reconcile-only claim that may only finish an
+ * earlier attempt's publication.
+ */
+type CodeTaskClaimResult =
+	| { claimed: false }
+	| { claimed: true; attempt: number; mayRunAgent: boolean };
 
 /**
  * What the backend did with a failure report: requeued the task behind a
@@ -88,6 +109,8 @@ export interface CodeTaskFailureOutcome {
 	retried: boolean;
 	attempts: number;
 	nextAttemptAt?: number;
+	/** Set when the report was not applied, and why. */
+	ignored?: CodeTaskStopReason;
 }
 
 /**
@@ -100,18 +123,32 @@ export const fn = {
 	getNextQueued: makeFunctionReference<'query', Record<string, never>, CodeWorkTask | null>(
 		'codeWorkTasks:getNextQueued'
 	),
-	claim: makeFunctionReference<'mutation', { taskId: string }, { claimed: boolean } | null>(
+	claim: makeFunctionReference<'mutation', { taskId: string }, CodeTaskClaimResult | null>(
 		'codeWorkTasks:claim'
 	),
-	updateBranch: makeFunctionReference<'mutation', { taskId: string; branch: string }, null>(
-		'codeWorkTasks:updateBranch'
-	),
-	markTesting: makeFunctionReference<'mutation', { taskId: string }, null>(
-		'codeWorkTasks:markTesting'
-	),
+	checkAttempt: makeFunctionReference<
+		'query',
+		{ taskId: string; attempt: number },
+		CodeTaskWorkerVerdict
+	>('codeWorkTasks:checkAttempt'),
+	updateBranch: makeFunctionReference<
+		'mutation',
+		{ taskId: string; branch: string; attempt: number },
+		CodeTaskWorkerVerdict
+	>('codeWorkTasks:updateBranch'),
+	markTesting: makeFunctionReference<
+		'mutation',
+		{ taskId: string; attempt: number },
+		CodeTaskWorkerVerdict
+	>('codeWorkTasks:markTesting'),
+	recordPublication: makeFunctionReference<
+		'mutation',
+		{ taskId: string; attempt: number; branch: string; commitSha: string; testResults: string },
+		CodeTaskWorkerVerdict
+	>('codeWorkTasks:recordPublication'),
 	markFailed: makeFunctionReference<
 		'mutation',
-		{ taskId: string; errorMessage: string; terminal?: boolean },
+		{ taskId: string; errorMessage: string; terminal?: boolean; attempt?: number },
 		CodeTaskFailureOutcome
 	>('codeWorkTasks:markFailed'),
 	reclaimStale: makeFunctionReference<'mutation', Record<string, never>, { reclaimed: number }>(
@@ -119,8 +156,8 @@ export const fn = {
 	),
 	completeWithPR: makeFunctionReference<
 		'mutation',
-		{ taskId: string; prUrl: string; testResults: string },
-		null
+		{ taskId: string; prUrl: string; testResults?: string; attempt: number },
+		CodeTaskWorkerVerdict
 	>('codeWorkTasks:completeWithPR'),
 };
 

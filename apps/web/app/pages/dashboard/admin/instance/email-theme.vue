@@ -358,6 +358,7 @@ const {
 		<!-- Unsaved Changes Dialog -->
 		<UnsavedChangesDialog
 			:show="unsavedDialog.showDialog"
+			:saving="unsavedDialog.isSavingBeforeLeave"
 			@close="unsavedDialog.cancelNavigation"
 			@discard="unsavedDialog.confirmDiscard"
 			@save="unsavedDialog.confirmSave"

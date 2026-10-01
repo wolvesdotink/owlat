@@ -77,11 +77,25 @@ a bare Linux VPS without touching a terminal. The app SSHes in and drives the
   `pages/desktop/setup.vue`. On success it reuses the normal `addWorkspace`
   handshake to connect the new instance.
 
-**Security.** Like the `secret_*` keychain commands, the `ssh_*` commands are not
-ACL-gated — they trust the locally-bundled SPA (`tauri://localhost`), which is the
-app's trust boundary (see the CSP in `tauri.conf.json`; no remote-origin content
-is ever loaded). SSH credentials are never persisted by default and are not
-echoed to the log.
+**Security.** Every app command is ACL-gated per window.
+`src-tauri/src/ipc_commands.rs` lists the commands; `build.rs` turns each into an
+`allow-<command>` permission, and the files under `src-tauri/capabilities/` grant
+them. The `ssh_*` commands go to the main window only (`provisioning.json`); the
+compose window gets the everyday commands but cannot provision. The SPA is still
+only ever loaded from the bundle (see the CSP in `tauri.conf.json`; no
+remote-origin content is ever loaded). SSH credentials are never persisted by
+default and are not echoed to the log.
+
+**Local-source installs (development only).** The hidden "local source" install
+(upload this checkout instead of cloning; optionally build the images here and
+stream them to the server) uses `ssh_upload_dir`, `ssh_push_images` and
+`local_docker_build` (`src-tauri/src/ssh/dev.rs`). They exist only with the
+`dev-provisioning` Cargo feature, which `bun run dev` passes to `tauri dev`.
+Release builds neither compile nor register them, and an optimized build with
+the feature refuses to compile. Even in development the inputs are narrow: the
+folder must be an Owlat checkout, a local build is a typed choice (the Compose
+stack by service and profile name, or the setup image) for `linux/amd64` or
+`linux/arm64`, and only local `:dev` images are pushed.
 
 **Remote reachability.** For the desktop to connect to the box *after* the
 install, give it a **public domain** in the wizard. That sets

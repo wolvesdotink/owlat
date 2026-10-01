@@ -7,7 +7,7 @@ import { createTestI18n } from '~/__tests__/i18n';
 const { t } = createTestI18n().global;
 
 // The workspace switch deliberately KEEPS a full webview reload: the auth +
-// Convex singletons are built once at module load from the active workspace, so
+// Convex clients are built once per page from the active workspace, so
 // switching cleanly re-seeds them only by reloading into the newly-persisted
 // active workspace. This test pins that invariant — `switchTo` must persist the
 // new active workspace id BEFORE navigating, and it must navigate — so the
@@ -21,9 +21,10 @@ vi.mock('@owlat/desktop/src/workspace', () => ({
 }));
 
 const secretGet = vi.fn(async () => 'session-blob');
+const secretSet = vi.fn(async (..._args: unknown[]) => {});
 vi.mock('@owlat/desktop/src/keychain', () => ({
 	secretGet: (...args: unknown[]) => secretGet(...(args as [])),
-	secretSet: vi.fn(async () => {}),
+	secretSet: (...args: unknown[]) => secretSet(...args),
 	secretDelete: vi.fn(async () => {}),
 }));
 
@@ -31,14 +32,6 @@ const setActiveWorkspace = vi.fn();
 vi.mock('~/lib/desktop/activeWorkspace', () => ({
 	isDesktopRuntime: () => true,
 	setActiveWorkspace: (...args: unknown[]) => setActiveWorkspace(...args),
-}));
-
-const configureKeychainStorage = vi.fn();
-vi.mock('~/lib/desktop/keychainStorage', () => ({
-	keychainStorage: {},
-	configureKeychainStorage: (...args: unknown[]) => configureKeychainStorage(...args),
-	clearKeychainStorage: vi.fn(),
-	snapshotKeychain: vi.fn(() => ''),
 }));
 
 const applyWorkspaceAccent = vi.fn();
@@ -55,6 +48,7 @@ vi.mock('~/lib/desktop/workspaceSwitch', () => ({
 }));
 
 import { loadWorkspaces, useDesktopWorkspaces } from '../useDesktopWorkspaces';
+import { getActiveKeychainStorage } from '~/lib/desktop/keychainStorage';
 
 function workspace(id: string, accentColor: WorkspaceConfig['accentColor']): WorkspaceConfig {
 	return {
@@ -103,6 +97,15 @@ describe('useDesktopWorkspaces.switchTo — re-seed handoff into the reloaded do
 		await loadWorkspaces();
 		// Ignore the load-time persist (accent backfill); assert on the switch.
 		saveWorkspaceStore.mockClear();
+		// A session refresh the debounce has not written yet.
+		getActiveKeychainStorage()?.setItem('better-auth_cookie', 'refreshed');
+		assign.mockImplementation(() => {
+			// By the reload, the current workspace's entry holds that refresh.
+			expect(secretSet).toHaveBeenCalledWith(
+				'token-w1',
+				JSON.stringify({ 'better-auth_cookie': 'refreshed' })
+			);
+		});
 
 		await useDesktopWorkspaces().switchTo('w2');
 

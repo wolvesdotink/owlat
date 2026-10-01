@@ -2,7 +2,10 @@ import { createAuthClient } from 'better-auth/vue';
 import { convexClient, crossDomainClient } from '@convex-dev/better-auth/client/plugins';
 import { organizationClient, twoFactorClient } from 'better-auth/client/plugins';
 import { isDesktopRuntime, getActiveWorkspace } from '~/lib/desktop/activeWorkspace';
-import { keychainStorage } from '~/lib/desktop/keychainStorage';
+import {
+	getActiveKeychainStorage,
+	type KeychainSessionStorage,
+} from '~/lib/desktop/keychainStorage';
 
 // Web (default): auth requests are proxied to Convex via same-origin (see:
 // server/api/auth/[...].ts). Use window.location.origin on client; fall back to
@@ -18,59 +21,170 @@ function createWebAuthClient() {
 	});
 }
 
-// Desktop (Tauri): there is no local Nitro proxy and cookies don't survive the
-// `tauri://localhost` → instance cross-origin hop, so we talk directly to the
-// active workspace's Convex site URL (where /api/auth/* lives) and carry the
-// session in the `Better-Auth-Cookie` header via the cross-domain plugin,
-// persisted in the OS keychain. The active workspace is seeded by the boot
-// plugin (plugins/0.desktop-workspace.client.ts) before this module is first
-// imported; switching workspace reloads the webview, reconstructing this client.
-// Cast to the web client's type so the ~10 consumers + `$Infer` are unchanged —
-// the desktop client is a structural superset (adds cross-domain actions).
-export const authClient: ReturnType<typeof createWebAuthClient> = isDesktopRuntime()
-	? (createAuthClient({
-			baseURL: getActiveWorkspace()?.convexSiteUrl || 'http://localhost:3211',
-			plugins: [
-				convexClient(),
-				organizationClient(),
-				// No `onTwoFactorRedirect` / `twoFactorPage` on either client: the
-				// challenge is a STEP inside the login form, not a route. Configuring
-				// a redirect here would navigate away mid-submit and strand the
-				// desktop app, which has no such route to navigate to.
-				twoFactorClient(),
-				crossDomainClient({ storage: keychainStorage }),
-			],
-		}) as unknown as ReturnType<typeof createWebAuthClient>)
-	: createWebAuthClient();
+type AuthClient = ReturnType<typeof createWebAuthClient>;
+type FetchImpl = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
-export type AuthSessionData = typeof authClient.$Infer.Session;
+/**
+ * An auth client for one desktop workspace (Tauri). There is no local Nitro
+ * proxy and cookies don't survive the `tauri://localhost` → instance
+ * cross-origin hop, so it talks directly to the workspace's Convex site URL
+ * (where /api/auth/* lives) and carries the session in the `Better-Auth-Cookie`
+ * header via the cross-domain plugin, kept in `storage`.
+ *
+ * `storage` must belong to this workspace alone: the client reads the session
+ * it sends from there and writes every session the server returns back into
+ * it. Also used by the connect handshake for the instance being added.
+ *
+ * Cast to the web client's type so the ~10 consumers + `$Infer` are unchanged —
+ * the desktop client is a structural superset (adds cross-domain actions).
+ */
+export function createDesktopAuthClient(
+	convexSiteUrl: string,
+	storage: Pick<KeychainSessionStorage, 'getItem' | 'setItem'>,
+	fetchImpl?: FetchImpl
+): AuthClient {
+	return createAuthClient({
+		baseURL: convexSiteUrl,
+		...(fetchImpl ? { fetchOptions: { customFetchImpl: fetchImpl } } : {}),
+		plugins: [
+			convexClient(),
+			organizationClient(),
+			// No `onTwoFactorRedirect` / `twoFactorPage` on either client: the
+			// challenge is a STEP inside the login form, not a route. Configuring
+			// a redirect here would navigate away mid-submit and strand the
+			// desktop app, which has no such route to navigate to.
+			twoFactorClient(),
+			crossDomainClient({ storage }),
+		],
+	}) as unknown as AuthClient;
+}
 
-// Export individual auth methods for convenience
-export const { signIn, signUp, signOut, useSession, getSession } = authClient;
+/**
+ * Desktop with no workspace connected: there is no backend to ask. Answer every
+ * auth request locally, as "no session", instead of sending it anywhere.
+ */
+const disconnectedFetch: FetchImpl = async () =>
+	new Response('null', { status: 200, headers: { 'content-type': 'application/json' } });
+
+const disconnectedStorage = {
+	getItem: () => null,
+	setItem: () => {},
+};
+
+/** A desktop client and the workspace endpoint + session it is bound to. */
+interface DesktopBinding {
+	client: AuthClient;
+	/** The workspace's Convex site URL, or null for the disconnected client. */
+	convexSiteUrl: string | null;
+}
+
+let webClient: AuthClient | null = null;
+let desktopBinding: DesktopBinding | null = null;
+let disconnectedBinding: DesktopBinding | null = null;
+
+/**
+ * The desktop client for the active workspace, built on first use.
+ *
+ * Desktop auth depends on the active workspace, which the boot plugin
+ * (plugins/0.desktop-workspace.client.ts) only knows after an async keychain and
+ * store read. Plugin files are imported (and this module evaluated) before any
+ * plugin runs, so nothing may be constructed at import time: the client is
+ * built on the first auth call, which the boot order places after hydration.
+ * Switching workspace reloads the webview, so the binding holds for the page.
+ * With no workspace connected (or a call before hydration) the answer is a
+ * disconnected client that sends nothing; it is kept apart from the workspace
+ * binding, so it cannot pin the page to "no workspace".
+ */
+function desktopClient(): DesktopBinding {
+	if (desktopBinding) return desktopBinding;
+	const workspace = getActiveWorkspace();
+	const storage = getActiveKeychainStorage();
+	if (!workspace || !storage || storage.accountKey !== workspace.tokenRef) {
+		disconnectedBinding ??= {
+			client: createDesktopAuthClient(
+				'http://disconnected.invalid',
+				disconnectedStorage,
+				disconnectedFetch
+			),
+			convexSiteUrl: null,
+		};
+		return disconnectedBinding;
+	}
+	desktopBinding = {
+		client: createDesktopAuthClient(workspace.convexSiteUrl, storage),
+		convexSiteUrl: workspace.convexSiteUrl,
+	};
+	return desktopBinding;
+}
+
+/** The auth client for this page: the web client, or the active workspace's. */
+function getAuthClient(): AuthClient {
+	if (isDesktopRuntime()) return desktopClient().client;
+	webClient ??= createWebAuthClient();
+	return webClient;
+}
+
+/**
+ * Where the Convex JWT for the active desktop workspace is fetched from, and
+ * the session to present there — both taken from the SAME bound client, so the
+ * token request can never pair one workspace's endpoint with another's
+ * session. Null when no workspace is connected.
+ */
+export function desktopConvexTokenRequest(): { convexSiteUrl: string; cookie: string } | null {
+	const { client, convexSiteUrl } = desktopClient();
+	if (!convexSiteUrl) return null;
+	const getCookie = (client as unknown as { getCookie?: () => string }).getCookie;
+	return { convexSiteUrl, cookie: getCookie ? getCookie() : '' };
+}
+
+/**
+ * A stand-in that resolves `resolve()` on every use rather than at import time.
+ * Property reads and calls both forward, so `signIn.email(...)`,
+ * `getSession()` and `authClient.$store` behave as on the real client.
+ */
+function deferred<T>(resolve: () => T): T {
+	return new Proxy(() => {}, {
+		// better-auth's client methods do not use `this`, so a value is handed out
+		// as is rather than re-bound.
+		get: (_target, prop) => Reflect.get(resolve() as object, prop),
+		apply: (_target, _this, args) =>
+			Reflect.apply(resolve() as (...a: unknown[]) => unknown, undefined, args),
+		has: (_target, prop) => Reflect.has(resolve() as object, prop),
+	}) as unknown as T;
+}
+
+export const authClient: AuthClient = deferred(getAuthClient);
+
+export type AuthSessionData = AuthClient['$Infer']['Session'];
+
+// Export individual auth methods for convenience. Each resolves the client when
+// it is used, not when this module loads (see `desktopClient`).
+export const signIn = deferred(() => getAuthClient().signIn);
+export const signUp = deferred(() => getAuthClient().signUp);
+export const signOut = deferred(() => getAuthClient().signOut);
+export const useSession = deferred(() => getAuthClient().useSession);
+export const getSession = deferred(() => getAuthClient().getSession);
 
 // Export organization-related methods.
 // Owlat is single-organization-per-deployment — the singleton org is bootstrapped
 // by `/seed/admin` on apps/api. Creating additional orgs is disabled at the
 // BetterAuth plugin level (`allowUserToCreateOrganization: false`) so we do not
 // re-export `organization.create` or `organization.delete` from the client.
-export const {
-	organization: {
-		update: updateOrganization,
-		getFullOrganization,
-		list: listOrganizations,
-		setActive: setActiveOrganization,
-		checkSlug: checkOrgSlug,
-		inviteMember,
-		acceptInvitation,
-		rejectInvitation,
-		cancelInvitation,
-		removeMember,
-		updateMemberRole,
-		getActiveMember,
-		listMembers,
-		listInvitations,
-		leave: leaveOrganization,
-	},
-	useListOrganizations,
-	useActiveOrganization,
-} = authClient;
+const organization = () => getAuthClient().organization;
+export const updateOrganization = deferred(() => organization().update);
+export const getFullOrganization = deferred(() => organization().getFullOrganization);
+export const listOrganizations = deferred(() => organization().list);
+export const setActiveOrganization = deferred(() => organization().setActive);
+export const checkOrgSlug = deferred(() => organization().checkSlug);
+export const inviteMember = deferred(() => organization().inviteMember);
+export const acceptInvitation = deferred(() => organization().acceptInvitation);
+export const rejectInvitation = deferred(() => organization().rejectInvitation);
+export const cancelInvitation = deferred(() => organization().cancelInvitation);
+export const removeMember = deferred(() => organization().removeMember);
+export const updateMemberRole = deferred(() => organization().updateMemberRole);
+export const getActiveMember = deferred(() => organization().getActiveMember);
+export const listMembers = deferred(() => organization().listMembers);
+export const listInvitations = deferred(() => organization().listInvitations);
+export const leaveOrganization = deferred(() => organization().leave);
+export const useListOrganizations = deferred(() => getAuthClient().useListOrganizations);
+export const useActiveOrganization = deferred(() => getAuthClient().useActiveOrganization);

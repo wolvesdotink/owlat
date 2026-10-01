@@ -13,14 +13,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // Hoisted mock state, shared between the vi.mock factory and the tests.
 const mocks = vi.hoisted(() => {
 	const create = vi.fn();
+	const list = vi.fn();
 	const OctokitCtor = vi.fn();
-	return { create, OctokitCtor };
+	return { create, list, OctokitCtor };
 });
 
 vi.mock('@octokit/rest', () => ({
 	Octokit: class {
 		auth: unknown;
-		pulls = { create: mocks.create };
+		pulls = { create: mocks.create, list: mocks.list };
 		constructor(opts: { auth: string }) {
 			// Record construction so we can assert the token was passed through.
 			mocks.OctokitCtor(opts);
@@ -38,12 +39,13 @@ const PR_DETAILS = {
 	base: 'main',
 };
 
-describe('createPullRequest', () => {
+describe('GitHub pull requests', () => {
 	const ORIGINAL_TOKEN = process.env.GITHUB_TOKEN;
 
 	beforeEach(() => {
 		vi.resetModules();
 		mocks.create.mockReset();
+		mocks.list.mockReset();
 		mocks.OctokitCtor.mockReset();
 		process.env.GITHUB_TOKEN = 'ghp_test_token';
 	});
@@ -101,7 +103,7 @@ describe('createPullRequest', () => {
 		const { createPullRequest } = await import('../github.js');
 
 		await expect(createPullRequest(PR_DETAILS)).rejects.toThrow(
-			'GITHUB_TOKEN environment variable is required',
+			'GITHUB_TOKEN environment variable is required'
 		);
 		expect(mocks.OctokitCtor).not.toHaveBeenCalled();
 		expect(mocks.create).not.toHaveBeenCalled();
@@ -113,8 +115,37 @@ describe('createPullRequest', () => {
 		const { createPullRequest } = await import('../github.js');
 
 		await expect(createPullRequest(PR_DETAILS)).rejects.toThrow(
-			'Validation Failed: pull request already exists',
+			'Validation Failed: pull request already exists'
 		);
 		expect(mocks.create).toHaveBeenCalledTimes(1);
+	});
+
+	it('finds the newest PR from the task branch in any state', async () => {
+		mocks.list.mockResolvedValue({
+			data: [{ html_url: 'https://github.com/acme/widgets/pull/7' }],
+		});
+
+		const { findPullRequest } = await import('../github.js');
+		const url = await findPullRequest(PR_DETAILS);
+
+		expect(mocks.list).toHaveBeenCalledWith({
+			owner: 'acme',
+			repo: 'widgets',
+			head: 'acme:code-worker/task-1',
+			base: 'main',
+			state: 'all',
+			sort: 'created',
+			direction: 'desc',
+			per_page: 1,
+		});
+		expect(url).toBe('https://github.com/acme/widgets/pull/7');
+	});
+
+	it('returns null when the task branch has no PR', async () => {
+		mocks.list.mockResolvedValue({ data: [] });
+
+		const { findPullRequest } = await import('../github.js');
+
+		expect(await findPullRequest(PR_DETAILS)).toBeNull();
 	});
 });

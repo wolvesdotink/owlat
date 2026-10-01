@@ -22,7 +22,10 @@ import {
 	dockerPlatform,
 	setupConfigPath,
 	DEFAULT_REMOTE,
+	DEV_IMAGES,
 	LOCAL_SETUP_IMAGE,
+	localSetupImageBuild,
+	localStackBuild,
 	installRef,
 	isReleaseVersion,
 	releaseSetupImage,
@@ -300,6 +303,31 @@ describe('remote commands', () => {
 		expect(dockerPlatform('x86_64')).toBe('linux/amd64');
 		expect(dockerPlatform('aarch64')).toBe('linux/arm64');
 		expect(dockerPlatform('arm64')).toBe('linux/arm64');
+	});
+
+	it('local builds name only what to build, never a program, flags or environment', () => {
+		// The desktop turns these into the docker invocation itself and accepts
+		// nothing else (apps/desktop/src-tauri/src/ssh/dev.rs); every name must
+		// read as a plain Compose name, never as a flag.
+		const stack = localStackBuild('linux/arm64');
+		expect(stack).toEqual({
+			kind: 'stack',
+			platform: 'linux/arm64',
+			profiles: ['deploy', 'ai'],
+			services: ['web', 'mta', 'updater', 'convex-deploy', 'code-worker'],
+		});
+		if (stack.kind === 'stack') {
+			for (const name of [...stack.profiles, ...stack.services]) {
+				expect(name).toMatch(/^[A-Za-z0-9][A-Za-z0-9_.-]*$/);
+			}
+		}
+		expect(localSetupImageBuild('linux/amd64')).toEqual({
+			kind: 'setupImage',
+			platform: 'linux/amd64',
+		});
+		// The images pushed are the local `dev` builds the desktop accepts.
+		expect(DEV_IMAGES).toContain(LOCAL_SETUP_IMAGE);
+		for (const image of DEV_IMAGES) expect(image).toMatch(/^[a-z0-9][a-z0-9._/-]*:dev$/);
 	});
 
 	it('derives the install source from remote options', () => {
