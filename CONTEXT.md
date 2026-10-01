@@ -59,6 +59,19 @@ wrapping. Owns the table-and-cell HTML around each Block. Replaces the
 parallel `renderBlock` / `renderColumnItem` / `renderContainerItem`
 switches in `email-renderer/src/blocks/index.ts`.
 
+**Block tree child contract**:
+The one declaration of which composite Blocks hold child Blocks and where:
+`columns` holds one list per column, `container` and `hero` hold one `items`
+list, and `accordion` holds one `items` list per section. Lives in
+`@owlat/shared/blockTree` (`childBlockLists`, `mapChildBlockLists`,
+`renewBlockTreeIds`). Every traversal outside the Walker goes through it: the
+editor's nested selection and editing, fresh ids for duplicated and
+re-inserted Blocks, the translation table's rows, and the backend's
+translation extraction and overlay merge. Every Block id in a document is
+unique at every depth, because edits and translation overlays are keyed by
+it. Which child types a composite accepts stays with **Placement**.
+_Avoid_: Adding a per-feature `columns`/`container`/`hero` switch.
+
 **Feature compatibility**:
 A Block module's declared knowledge of how its features render across
 email clients — per-client `support` level, the `fallback` description
