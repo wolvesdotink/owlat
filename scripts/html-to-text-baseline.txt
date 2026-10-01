@@ -4,4 +4,7 @@
 # snippet, preview, prompt, search excerpt, scan sample and text/plain part goes
 # through htmlToPlainText.
 #
-# (none)
+# The renderer's analyzer only measures a render: the text length behind the
+# text-to-image ratio and the text bytes of the size breakdown, with flags its
+# metrics are pinned to. Nothing it strips is shown, sent or stored as text.
+packages/email-renderer/src/analyzer.ts:.replace(/<[^>]+>/g

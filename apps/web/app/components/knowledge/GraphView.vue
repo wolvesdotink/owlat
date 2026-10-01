@@ -19,6 +19,8 @@ const {
 	depth,
 	entryTypeFilter,
 	isLoading,
+	error,
+	refetch,
 	selectedNodeId,
 	selectedEntry,
 	selectedOutgoing,
@@ -119,8 +121,9 @@ const typeFilters = computed(() => [
 		<div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
 			<!-- Canvas -->
 			<div class="lg:col-span-2 space-y-3">
+				<UiQueryBoundary v-if="error" :error="error" @retry="refetch" />
 				<div
-					v-if="isLoading && graph.nodes.length === 0"
+					v-else-if="isLoading && graph.nodes.length === 0"
 					class="flex items-center justify-center py-24"
 				>
 					<UiSpinner delay />

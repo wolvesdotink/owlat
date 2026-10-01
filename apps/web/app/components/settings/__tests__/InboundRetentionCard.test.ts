@@ -85,8 +85,7 @@ async function open(wrapper: ReturnType<typeof mount>): Promise<void> {
 }
 
 function optionButtons(wrapper: ReturnType<typeof mount>) {
-	// The trigger is the first button; the menu's options follow it.
-	return wrapper.findAll('button').slice(1);
+	return wrapper.findAll('[role="option"]');
 }
 
 function options(wrapper: ReturnType<typeof mount>): SelectOption[] {

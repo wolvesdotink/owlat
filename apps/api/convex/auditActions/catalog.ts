@@ -79,6 +79,10 @@ export const AUDIT_ACTION_LITERALS = [
 	action('contact.sunset_clock_confirmed'),
 	// DOI lifecycle admin-attest. See ADR-0019.
 	action('doi.admin_attested'),
+	// DOI lifecycle: a new consent episode opened over an earlier confirmation
+	// that a global opt-out ended. Keeps the superseded confirmation on the
+	// record. See ADR-0009.
+	action('doi.reconfirmation_requested'),
 	// Topic
 	action('topic.created'),
 	action('topic.updated'),

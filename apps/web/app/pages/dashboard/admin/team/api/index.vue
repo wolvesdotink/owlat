@@ -22,7 +22,12 @@ const { hasActiveOrganization, isLoading: organizationLoading } = useOrganizatio
 const { isAdmin: canManage, showAdminGate } = usePermissions();
 
 // Fetch API keys with real-time updates.
-const { data: apiKeys, isLoading: keysLoading } = useOrganizationQuery(
+const {
+	data: apiKeys,
+	isLoading: keysLoading,
+	error: keysError,
+	refetch: refetchKeys,
+} = useOrganizationQuery(
 	api.auth.apiKeys.listByTeam,
 	{ includeRevoked: true }
 );
@@ -453,6 +458,9 @@ const activeKeysCount = computed(() => {
 					{{ t('dashboard.admin.team.api.index.noWorkspace.description') }}
 				</p>
 			</div>
+
+			<!-- A failed read is not an empty list (#721). -->
+			<UiQueryBoundary v-else-if="keysError" :error="keysError" @retry="refetchKeys" />
 
 			<!-- Empty State (no API keys) -->
 			<div

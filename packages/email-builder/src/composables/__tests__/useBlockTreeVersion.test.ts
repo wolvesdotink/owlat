@@ -121,25 +121,25 @@ describe('in-place block edits report themselves', () => {
 		const ctx = managed([columns('cols')]);
 
 		ctx.handleAddItemToColumn('cols', 0, 'text');
-		ctx.handleDeleteColumnItem('cols', 1, 'c-2');
-		ctx.handleDuplicateColumnItem('cols', 0, 'c-1');
+		ctx.handleDeleteNestedItem('cols', 'c-2');
+		ctx.handleDuplicateNestedItem('cols', 'c-1');
 		ctx.handleColumnCountChange('cols', 3);
 		expect(ctx.onTreeMutated).toHaveBeenCalledTimes(4);
 
 		// No change, no report.
 		ctx.handleColumnCountChange('cols', 3);
-		ctx.handleDeleteColumnItem('cols', 0, 'missing');
+		ctx.handleDeleteNestedItem('cols', 'missing');
 		expect(ctx.onTreeMutated).toHaveBeenCalledTimes(4);
 	});
 
 	it('container items: delete and duplicate', () => {
 		const ctx = managed([container('box')]);
 
-		ctx.handleDuplicateContainerItem('box', 'i-1');
-		ctx.handleDeleteContainerItem('box', 'i-1');
+		ctx.handleDuplicateNestedItem('box', 'i-1');
+		ctx.handleDeleteNestedItem('box', 'i-1');
 		expect(ctx.onTreeMutated).toHaveBeenCalledTimes(2);
 
-		ctx.handleDeleteContainerItem('box', 'missing');
+		ctx.handleDeleteNestedItem('box', 'missing');
 		expect(ctx.onTreeMutated).toHaveBeenCalledTimes(2);
 	});
 
