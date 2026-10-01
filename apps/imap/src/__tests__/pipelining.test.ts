@@ -3,9 +3,11 @@
  *
  * RFC 3501 §5.5 lets a client send its next command before the previous one
  * has completed, and requires the server to run them in order whenever the
- * result could depend on it. The pump holds every line behind a command that
- * is still running, so a FETCH sent right after a SELECT reads the folder the
- * SELECT opened, and an EXPUNGE sent right after a STORE sees its flag.
+ * result could depend on it. Only `concurrent` commands (FETCH without an
+ * implicit \Seen, NOOP, STATUS, ...) overlap; any other command waits for
+ * every running one, and every later one waits for it. So a FETCH sent right
+ * after a SELECT reads the folder the SELECT opened, and an EXPUNGE sent right
+ * after a STORE sees its flag.
  *
  * Also covered here: the only line IDLE accepts is DONE (RFC 2177), and
  * nothing a client sends after LOGOUT is dispatched.
@@ -153,8 +155,12 @@ function makeBackend() {
 		customFlags: [],
 	});
 
-	const answer = <T>(compute: () => T): Promise<T> =>
-		new Promise((resolve) => setTimeout(() => resolve(compute()), LATENCY_MS));
+	/** Functions a test wants to answer slowly, e.g. to keep a FETCH running. */
+	const slow = new Set<string>();
+	const answer = <T>(compute: () => T, name = ''): Promise<T> =>
+		new Promise((resolve) =>
+			setTimeout(() => resolve(compute()), slow.has(name) ? 10 * LATENCY_MS : LATENCY_MS)
+		);
 
 	const query = vi.fn((ref: AnyFunctionReference, args: Record<string, unknown>) =>
 		answer(() => {
@@ -191,7 +197,7 @@ function makeBackend() {
 				default:
 					return null;
 			}
-		})
+		}, getFunctionName(ref))
 	);
 
 	const mutation = vi.fn((ref: AnyFunctionReference, args: Record<string, unknown>) =>
@@ -242,7 +248,7 @@ function makeBackend() {
 			.filter(([ref]) => getFunctionName(ref as AnyFunctionReference) === name)
 			.map(([, args]) => args as Record<string, unknown>);
 
-	return { folders, convex: { query, mutation, action }, calls };
+	return { folders, convex: { query, mutation, action }, calls, slow };
 }
 
 function connect() {
@@ -395,6 +401,44 @@ describe('pipelined commands run in order (RFC 3501 §5.5)', () => {
 		]);
 	});
 
+	it('SELECT behind a running FETCH waits for it, so the FETCH answers for the old folder first', async () => {
+		const { socket, slow } = await loggedIn();
+		await sendSegment(socket, 'a1 SELECT INBOX');
+		slow.add('mail/imap/fetch:fetchEnvelopes');
+		const mark = socket.lines().length;
+
+		await sendSegment(socket, 'a2 FETCH 1:* (UID)', 'a3 SELECT Archive');
+
+		const out = since(socket, mark);
+		expect(out.slice(0, 3)).toEqual([
+			'* 1 FETCH (UID 1)',
+			'* 2 FETCH (UID 2)',
+			'a2 OK FETCH completed',
+		]);
+		expect(out.at(-1)).toBe('a3 OK [READ-WRITE] SELECT completed');
+	});
+
+	it('read-only commands pipelined behind a FETCH start at once', async () => {
+		const { socket, calls } = await loggedIn();
+		await sendSegment(socket, 'a1 SELECT INBOX');
+		const fetches = calls('mail/imap/fetch:fetchEnvelopes').length;
+
+		socket.receive('a2 FETCH 1 (UID)\r\na3 FETCH 2 (UID)\r\na4 STATUS Archive (MESSAGES)\r\n');
+		expect(socket.paused).toBe(false);
+		// Both FETCHes read before either backend call (LATENCY_MS) answers.
+		await vi.advanceTimersByTimeAsync(1);
+		expect(calls('mail/imap/fetch:fetchEnvelopes').length - fetches).toBe(2);
+		await vi.advanceTimersByTimeAsync(100);
+
+		// They ran side by side, so they may complete in any order.
+		expect(
+			socket
+				.lines()
+				.filter((l) => /^a[234] /.test(l))
+				.sort()
+		).toEqual(['a2 OK FETCH completed', 'a3 OK FETCH completed', 'a4 OK STATUS completed']);
+	});
+
 	it('stops reading the socket while a line is held, and resumes once it is dispatched', async () => {
 		const { socket } = await loggedIn();
 
@@ -541,5 +585,8 @@ describe('nothing is dispatched after LOGOUT', () => {
 			'* BYE Owlat IMAP signing off',
 			'a2 OK LOGOUT completed',
 		]);
+		// The socket was paused behind SELECT; it must flow again to see the
+		// client's FIN and close.
+		expect(socket.paused).toBe(false);
 	});
 });

@@ -574,11 +574,22 @@ one whole value. Tests capture the committed values through a stub
 `completion.state`. It does not add the per-field setters that option 3
 rejected.
 
-The pump does not serialize dispatch behind a one-shot session that is
-still working. Each command is dispatched against the state current at
-that moment, so a command pipelined in the same chunk behind an
-asynchronous state change (SELECT, then FETCH) is dispatched before
-that change is committed.
+The pump also orders pipelined commands (RFC 3501 §5.5). A module may
+declare `concurrent(args)`: CAPABILITY, NAMESPACE, LIST / LSUB, STATUS,
+NOOP, CHECK, IDLE, a FETCH that sets no implicit `\Seen`, and UID FETCH
+on the same terms. Such a command starts while earlier concurrent ones
+are still running. Every other command (it changes the connection state
+or touches flags or messages) waits until every running command has
+completed, and nothing starts while it runs. A held line stays in the
+buffer with the socket paused, and the pump drains again when a
+`completion` resolves. So a command pipelined behind an asynchronous
+state change (SELECT, then FETCH; LOGIN, then SELECT; STORE `\Deleted`,
+then EXPUNGE) runs against the committed state, and the tagged responses
+come back in order, while pipelined FETCHes still stream side by side
+under the sequence gate. While IDLE runs, only `DONE` ends it; any other
+line is answered `BAD Expected DONE` (RFC 2177) and the IDLE continues.
+After LOGOUT the pump drops the rest of its input and dispatches nothing
+more.
 
 ### Session construction helpers
 
@@ -599,8 +610,10 @@ IDLE and APPEND still build their sessions by hand, as proposed.
 The pump keeps every session whose `completion` is pending in a set and
 cancels all of them on socket close or server shutdown, not only the one
 in the active slot. Only a session that sets `awaitingLiteral` or
-`onClientLine` (APPEND, IDLE) occupies the active-session slot. An
-asynchronous one-shot session does not.
+`onClientLine` (APPEND, IDLE, AUTHENTICATE until its SASL response
+arrives) occupies the active-session slot and reads input while it
+runs. An asynchronous one-shot session does not, but unless its module
+is `concurrent` the next command still waits for its `completion`.
 
 ### Module signature
 
@@ -628,9 +641,10 @@ command, which LOGIN records as the app password's last-used client.
 The walker builds its registry at load time from a `MODULES` list into
 a `Partial<Record<ImapVerb, …>>`. An `ImapVerb` without a module answers
 BAD "not supported" at runtime. The compile-time exhaustiveness the
-Decision describes, and the type-level walker test listed under "Test
-surface", were not built. Adding a verb means a folder, an `ImapVerb`
-member and one `MODULES` entry.
+Decision describes was not built; instead `ImapVerb` is derived from the
+`IMAP_VERBS` tuple, and `commands/__tests__/walker.test.ts` asserts
+through `hasModule` that every entry has a module. Adding a verb means
+a folder, an `IMAP_VERBS` entry and one `MODULES` entry.
 
 `assembleCapabilityLine(tls)` depends on the connection's TLS state:
 over plaintext (the development fallback) it advertises `LOGINDISABLED`

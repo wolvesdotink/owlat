@@ -10,7 +10,7 @@
  * the parse-and-start ceremony.
  */
 
-import type { ParsedCommand } from '../parser.js';
+import { matchTrailingLiteral, parseLine, type ParsedCommand } from '../parser.js';
 import type {
 	CommandDeps,
 	CommandSession,
@@ -46,6 +46,7 @@ interface DispatchEnv {
 interface ErasedCommandModule {
 	readonly verbs: readonly ImapVerb[];
 	readonly capabilities?: readonly string[];
+	concurrent(rawArgs: string[]): boolean;
 	dispatch(env: DispatchEnv): CommandSession;
 }
 
@@ -53,6 +54,10 @@ function erase<TArgs>(m: ImapCommandModule<TArgs>): ErasedCommandModule {
 	return {
 		verbs: m.verbs,
 		capabilities: m.capabilities,
+		concurrent(rawArgs) {
+			const parsed = m.parseArgs(rawArgs);
+			return parsed.ok && (m.concurrent?.(parsed.args) ?? false);
+		},
 		dispatch(env) {
 			const parseResult = m.parseArgs(env.rawArgs);
 			if (!parseResult.ok) {
@@ -136,6 +141,18 @@ for (const m of MODULES) {
  */
 export function hasModule(verb: ImapVerb): boolean {
 	return REGISTRY[verb] !== undefined;
+}
+
+/**
+ * Whether a complete command line may start while earlier commands are still
+ * running: its module declares it `concurrent` for these args. A line that
+ * opens a literal never does, nor does an unknown verb.
+ */
+export function runsConcurrently(line: string): boolean {
+	if (matchTrailingLiteral(line)) return false;
+	const parsed = parseLine(line);
+	if (!parsed) return false;
+	return REGISTRY[parsed.command as ImapVerb]?.concurrent(parsed.args) ?? false;
 }
 
 /**

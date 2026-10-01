@@ -116,8 +116,8 @@ export function diffIdle(args: {
  * DONE is the only line a client may send while idling (RFC 2177). Any other
  * line is answered `BAD Expected DONE` and changes nothing: the IDLE keeps
  * polling the folder it started on, and no command is dispatched. Once the
- * session has ended, `onClientLine` returns `'pass'`, and the pump dispatches
- * the line as the next command after `completion` resolves.
+ * session has ended, `onClientLine` returns `'pass'`, and the pump treats the
+ * line as the next command.
  *
  * During IDLE the poll loop diffs the folder against its last snapshot and
  * pushes unsolicited EXPUNGE / EXISTS / FETCH responses (RFC 3501 §7.4) so
@@ -137,6 +137,8 @@ export const idleModule: ImapCommandModule<void> = {
 	verbs: ['IDLE'],
 	capabilities: ['IDLE'],
 	requires: 'selected',
+	// Starts beside a FETCH still running; its polls wait on the sequence gate.
+	concurrent: () => true,
 	parseArgs: () => ({ ok: true, args: undefined }),
 	start({ deps, state, tag, send }) {
 		let currentSelected: SelectedState = state.selected!;

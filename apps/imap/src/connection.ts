@@ -13,11 +13,11 @@
  * and `{N}` octet declarations frame correctly. Command text is decoded
  * as UTF-8 only once a full CRLF-terminated line has been sliced off.
  *
- * Commands run one at a time, in order (RFC 3501 §5.5): a line that arrives
- * while a command is still running waits in the buffer, socket paused, until
- * its `completion` resolves, so SELECT + FETCH reads the folder SELECT opened.
- * Only the active session's own input (IDLE's DONE, AUTHENTICATE's response,
- * APPEND's literal) is read meanwhile.
+ * RFC 3501 §5.5: only `concurrent` commands (FETCH, NOOP, LIST, ...) overlap.
+ * Any other line waits in the buffer, socket paused, until every running
+ * command has completed, and nothing starts while it runs, so SELECT + FETCH
+ * reads the folder SELECT opened. Only the active session's own input (IDLE's
+ * DONE, AUTHENTICATE's response, APPEND's literal) is read meanwhile.
  */
 
 import type { Socket } from 'net';
@@ -28,7 +28,7 @@ import { logger } from './logger.js';
 import { parseLine, parseCommandWithLiterals, matchTrailingLiteral } from './parser.js';
 import type { AuthRateLimiter } from './rateLimit.js';
 import { drainWaiter, writeLine } from './socketOutput.js';
-import { dispatch, assembleCapabilityLine } from './commands/walker.js';
+import { dispatch, assembleCapabilityLine, runsConcurrently } from './commands/walker.js';
 import { SequenceGate } from './commands/helpers/sequenceGate.js';
 import type { CommandDeps, CommandSession, ConnectionState } from './commands/types.js';
 
@@ -72,6 +72,8 @@ export class ImapConnection {
 	private activeSession: CommandSession | null = null;
 	/** Every session whose completion is still pending; cancelled on close. */
 	private readonly sessions = new Set<CommandSession>();
+	/** The pending sessions that must run alone (not `concurrent`). */
+	private readonly exclusive = new Set<CommandSession>();
 	private literalRemaining = 0;
 	/** Non-APPEND command being assembled across `{N}` continuations. */
 	private pendingCommand: PendingCommand | null = null;
@@ -142,9 +144,8 @@ export class ImapConnection {
 			remoteIp,
 			capabilityLine,
 			tls,
-			// LOGOUT: `end()` only half-closes, and `close` can come much later.
-			// Stop in-flight work and drop the rest of the input now, so nothing
-			// (no IDLE poll, no pipelined command) runs after the BYE.
+			// LOGOUT: `end()` only half-closes and `close` can come much later, so
+			// stop in-flight work and drop the input now: nothing runs after the BYE.
 			closeConnection: () => {
 				this.loggedOut = true;
 				this.buffer = Buffer.alloc(0);
@@ -242,14 +243,11 @@ export class ImapConnection {
 		this.drain();
 	}
 
-	/**
-	 * Drain the buffer, then pause the socket while a line waits behind a
-	 * running command (backpressure: the buffer cannot grow meanwhile) and
-	 * resume it otherwise. Test mock sockets may lack `pause`/`resume`.
-	 */
+	/** Drain; pause the socket while a line is held, so the buffer cannot grow. */
 	private drain(): void {
-		const held = this.drainBuffer() === 'held';
-		if (this.closed || this.loggedOut || held === this.inputHeld) return;
+		// After LOGOUT the socket flows again (`onData` drops it) so it can end.
+		const held = this.drainBuffer() === 'held' && !this.loggedOut;
+		if (this.closed || held === this.inputHeld) return;
 		this.inputHeld = held;
 		if (held) this.socket.pause?.();
 		else this.socket.resume?.();
@@ -340,9 +338,10 @@ export class ImapConnection {
 					continue;
 				}
 
-				// 2b — a command is still running: the line waits until its
-				// `completion` resolves (`trackSession` drains again), RFC 3501 §5.5.
-				if (this.sessions.size > 0) return 'held';
+				// 2b — RFC 3501 §5.5: held (`trackSession` drains again) unless the
+				// line and every running command are `concurrent`.
+				if (this.sessions.size > 0 && (this.exclusive.size > 0 || !runsConcurrently(line)))
+					return 'held';
 				this.buffer = this.buffer.subarray(newlineIdx + 2);
 
 				// 2c — does this line/segment end in a `{N}` / `{N+}` literal that we
@@ -394,7 +393,7 @@ export class ImapConnection {
 
 		// APPEND owns its own byte-streaming literal path — let it dispatch
 		// normally so its module sets `awaitingLiteral` and handles `+ Ready`.
-		if (this.pendingCommand === null && this.peekVerb(line) === 'APPEND') {
+		if (this.pendingCommand === null && parseLine(line)?.command === 'APPEND') {
 			return false;
 		}
 
@@ -437,12 +436,6 @@ export class ImapConnection {
 		return m ? m[0].length : 0;
 	}
 
-	/** Best-effort peek at the command verb (second token) of a raw line. */
-	private peekVerb(line: string): string | null {
-		const parsed = parseLine(line);
-		return parsed ? parsed.command : null;
-	}
-
 	/**
 	 * Dispatch a fully-assembled command. When a `pendingCommand` is in
 	 * flight, `line` is its final segment (no trailing literal): splice the
@@ -451,6 +444,7 @@ export class ImapConnection {
 	 */
 	private dispatchAssembled(line: string): void {
 		let parsed;
+		const concurrent = this.pendingCommand === null && runsConcurrently(line);
 		if (this.pendingCommand) {
 			this.pendingCommand.segments.push(line);
 			parsed = parseCommandWithLiterals(this.pendingCommand.segments, this.pendingCommand.literals);
@@ -461,10 +455,10 @@ export class ImapConnection {
 		if (!parsed) return;
 
 		const session = dispatch(this.deps, this.state, parsed, (l) => this.send(l));
-		this.trackSession(session);
+		this.trackSession(session, concurrent);
 	}
 
-	private trackSession(session: CommandSession): void {
+	private trackSession(session: CommandSession, concurrent: boolean): void {
 		if (this.closed || this.loggedOut) {
 			session.cancel();
 			return;
@@ -485,15 +479,17 @@ export class ImapConnection {
 			}
 		}
 		this.sessions.add(session);
+		if (!concurrent) this.exclusive.add(session);
 		session.completion
 			.then(() => {
 				this.sessions.delete(session);
+				this.exclusive.delete(session);
 				if (this.activeSession === session) {
 					this.activeSession = null;
 					this.literalRemaining = 0;
 				}
-				// The command has finished: dispatch the lines held behind it.
-				if (this.sessions.size === 0) this.drain();
+				// Dispatch the lines held behind it, if any can start now.
+				this.drain();
 			})
 			.catch((err) => {
 				logger.error({ err }, 'session completion crashed');

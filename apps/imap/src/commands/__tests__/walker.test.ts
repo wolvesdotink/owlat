@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { dispatch, hasModule } from '../walker.js';
+import { dispatch, hasModule, runsConcurrently } from '../walker.js';
 import { IMAP_VERBS, type CommandDeps, type ConnectionState } from '../types.js';
 
 vi.mock('../../logger.js', () => ({
@@ -34,5 +34,47 @@ describe('IMAP command walker — registry coverage', () => {
 			sent.push(String(line))
 		);
 		expect(sent).toEqual(['a1 BAD Command "XFOO" not supported']);
+	});
+});
+
+describe('IMAP command walker — which commands may overlap (RFC 3501 §5.5)', () => {
+	it.each([
+		'a FETCH 1:* (UID FLAGS)',
+		'a FETCH 1 BODY.PEEK[]',
+		'a FETCH 1 RFC822.HEADER',
+		'a UID FETCH 1:* (FLAGS)',
+		'a NOOP',
+		'a CHECK',
+		'a IDLE',
+		'a LIST "" "*"',
+		'a STATUS INBOX (MESSAGES)',
+		'a CAPABILITY',
+	])('%s runs beside earlier commands', (line) => {
+		expect(runsConcurrently(line)).toBe(true);
+	});
+
+	it.each([
+		// A body FETCH without .PEEK sets \Seen, so it writes flags.
+		'a FETCH 1 BODY[]',
+		'a FETCH 1 (UID RFC822)',
+		'a UID FETCH 1 BODY[TEXT]',
+		'a UID STORE 1 +FLAGS (\\Seen)',
+		'a STORE 1 +FLAGS (\\Deleted)',
+		'a EXPUNGE',
+		'a COPY 1 Archive',
+		'a MOVE 1 Archive',
+		'a SELECT INBOX',
+		'a EXAMINE INBOX',
+		'a CLOSE',
+		'a LOGIN user pass',
+		'a LOGOUT',
+		'a ENABLE CONDSTORE',
+		'a ID NIL',
+		// A literal, an unknown verb and an unparseable FETCH wait too.
+		'a LOGIN {4}',
+		'a XFOO',
+		'a FETCH',
+	])('%s runs alone', (line) => {
+		expect(runsConcurrently(line)).toBe(false);
 	});
 });

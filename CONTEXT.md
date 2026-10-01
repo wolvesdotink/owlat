@@ -4133,7 +4133,8 @@ another session's EXPUNGE cannot renumber messages under the client
 what changed and bring it up to date. Distinct from the folder's
 **membership**, its current UIDs, which the backend keeps in
 `mailFolderUidBlocks` under a version the IMAP server caches by.
-Pipelined commands run side by side, so the connection's sequence gate
+Pipelined `concurrent` commands (FETCH, NOOP, CHECK, IDLE, ...) run side
+by side, so the connection's sequence gate
 (`apps/imap/src/commands/helpers/sequenceGate.ts`) orders them: an
 announcement waits for every sequence-number command sent before it, and
 one sent after it waits for the announcement.
@@ -4150,11 +4151,13 @@ dispatch one-shot commands, starts long-running sessions, routes
 subsequent client lines / literal bytes to the active session if any,
 writes session-emitted lines back to the socket, and calls
 `session.cancel()` on every still-pending session when the socket
-closes. Commands run one at a time, in the order the client sent them
-(RFC 3501 §5.5): a line that arrives while a command is still running
-waits in the buffer, with the socket paused, until that command's
-`completion` resolves, so a pipelined FETCH reads the folder the SELECT
-before it opened. Only the active session's own input is read meanwhile
+closes. Pipelined commands keep their order (RFC 3501 §5.5): only
+commands whose module is `concurrent` (FETCH without an implicit
+`\Seen`, UID FETCH, NOOP, CHECK, STATUS, LIST, IDLE, ...) run side by
+side. Any other command waits in the buffer, with the socket paused,
+until every running command's `completion` resolves, and nothing starts
+while it runs, so a pipelined FETCH reads the folder the SELECT before
+it opened. Only the active session's own input is read meanwhile
 (IDLE's `DONE`, AUTHENTICATE's SASL response, APPEND's literal); IDLE
 answers any other line BAD. Nothing is dispatched after LOGOUT. The pump
 never knows what an IMAP verb means; that lives in modules (its one verb
@@ -5759,8 +5762,8 @@ scope)` is the only summarizer of the window; both the public auth-
   absorbs its `{N+}` body). **Connection state** (`auth`, `selected`,
   `clientId`) is immutable across modules — LOGIN / SELECT / EXAMINE /
   UNSELECT / CLOSE and the other state-changing modules hand the next
-  value to `deps.commit` before their tagged OK, and the pump dispatches
-  the following command against it only once that command has finished.
+  value to `deps.commit` before their tagged OK, and the pump holds the
+  following command until that command has finished.
   A walker test checks that every `ImapVerb` has a registered module;
   CAPABILITY-line atoms are aggregated
   from per-module `capabilities?` declarations so adding `MOVE` or
