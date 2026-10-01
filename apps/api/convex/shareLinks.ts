@@ -4,12 +4,14 @@ import { nanoid } from 'nanoid';
 import { getOptional } from './lib/env';
 import { requireOrgPermission, requirePermission, hasPermission } from './lib/sessionOrganization';
 import { getOrThrow, throwInvalidInput, throwInvalidState } from './_utils/errors';
+import { UNSTAMPED_RENDERER_VERSION } from './lib/rendererVersion';
 
 const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 
 /**
  * Create a share link for an email template or transactional email.
- * Snapshots the current HTML content at creation time.
+ * Snapshots the current HTML content at creation time, with the renderer
+ * version the source row records for it.
  */
 export const createShareLink = authedMutation({
 	args: {
@@ -32,6 +34,7 @@ export const createShareLink = authedMutation({
 		}
 
 		let htmlContent: string | undefined;
+		let rendererVersion: number | undefined;
 		let subject: string;
 		let previewText: string | undefined;
 
@@ -41,6 +44,7 @@ export const createShareLink = authedMutation({
 				throwInvalidState('Template must be saved at least once before sharing');
 			}
 			htmlContent = template.htmlContent;
+			rendererVersion = template.rendererVersion;
 			subject = template.subject;
 			previewText = template.previewText;
 		} else {
@@ -49,6 +53,7 @@ export const createShareLink = authedMutation({
 				throwInvalidState('Email must be saved at least once before sharing');
 			}
 			htmlContent = email.htmlContent;
+			rendererVersion = email.rendererVersion;
 			subject = email.subject;
 		}
 
@@ -61,6 +66,7 @@ export const createShareLink = authedMutation({
 			transactionalEmailId: args.transactionalEmailId,
 			token,
 			htmlContent,
+			rendererVersion: rendererVersion ?? UNSTAMPED_RENDERER_VERSION,
 			subject,
 			previewText,
 			expiresAt: now + FORTY_EIGHT_HOURS_MS,

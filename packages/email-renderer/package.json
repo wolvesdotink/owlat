@@ -32,6 +32,10 @@
 		"./sanitize": {
 			"types": "./src/sanitize.ts",
 			"import": "./src/sanitize.ts"
+		},
+		"./version": {
+			"types": "./src/version.ts",
+			"import": "./src/version.ts"
 		}
 	},
 	"scripts": {

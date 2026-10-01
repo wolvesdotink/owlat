@@ -14,8 +14,9 @@ import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { throwInvalidState } from '../_utils/errors';
 import { applyUsageCountDelta } from '../emailBlocks/module';
-import { CURRENT_CONTENT_BLOCK_VERSION, CURRENT_RENDERER_VERSION } from './constants';
+import { CURRENT_CONTENT_BLOCK_VERSION } from './constants';
 import { nextContentRevision } from './contentRevision';
+import { rendererVersionAfterWrite, UNSTAMPED_RENDERER_VERSION } from './rendererVersion';
 import { parseTranslations } from './emailTranslations';
 import { buildSearchableText } from './queryHelpers';
 import { sanitizeStoredBlocksJson, sanitizeTranslationsJson } from './emailContentSanitize';
@@ -57,11 +58,17 @@ export function assertEditableForPublishableChange(
  * pre-propagation HTML live on a row whose render state says it is current.
  * For the same reason a row whose HTML is still behind its content (a rerender
  * pending or failed) is refused instead of published.
+ *
+ * `rendererVersion` is set only when the caller's HTML is used: it is the
+ * version the row records for that HTML (see lib/rendererVersion.ts).
  */
 export function publishedHtml(
-	row: Pick<PublishableEmailRow, 'htmlContent' | 'htmlTranslations' | 'htmlRenderState'>,
-	args: { htmlContent?: string; htmlTranslations?: string }
-): { htmlContent: string; htmlTranslations?: string } {
+	row: Pick<
+		PublishableEmailRow,
+		'htmlContent' | 'htmlTranslations' | 'htmlRenderState' | 'rendererVersion'
+	>,
+	args: { htmlContent?: string; htmlTranslations?: string; rendererVersion?: number }
+): { htmlContent: string; htmlTranslations?: string; rendererVersion?: number } {
 	if (row.htmlRenderState?.stale) {
 		throwInvalidState(
 			'A saved block this email uses changed and its HTML is still being updated, so it was not published. Try again in a moment.',
@@ -81,7 +88,14 @@ export function publishedHtml(
 			messageKey: 'dashboard.send.emails.detail.edit.toasts.saveBeforePublish',
 		});
 	}
-	return { htmlContent: args.htmlContent, htmlTranslations: args.htmlTranslations };
+	return {
+		htmlContent: args.htmlContent,
+		htmlTranslations: args.htmlTranslations,
+		rendererVersion: rendererVersionAfterWrite(row, args.rendererVersion, {
+			htmlContent: true,
+			htmlTranslations: args.htmlTranslations !== undefined,
+		}),
+	};
 }
 
 // ─── Duplicate ──────────────────────────────────────────────────────────────
@@ -130,7 +144,8 @@ export function duplicateEmailFields<T extends PublishableEmailRow>(
 		copy['translations'] = sanitizeTranslationsJson(row.translations);
 	}
 	copy['contentBlockVersion'] = row.contentBlockVersion ?? CURRENT_CONTENT_BLOCK_VERSION;
-	copy['rendererVersion'] = row.rendererVersion ?? CURRENT_RENDERER_VERSION;
+	// The copy holds the source's HTML, so it keeps the source's renderer version.
+	copy['rendererVersion'] = row.rendererVersion ?? UNSTAMPED_RENDERER_VERSION;
 	return copy as Omit<T, NotDuplicated> & Pick<Partial<T>, 'htmlRenderState'>;
 }
 
@@ -152,6 +167,8 @@ export interface EditableEmailArgs {
 	supportedLanguages?: string[];
 	translations?: string;
 	htmlTranslations?: string;
+	/** The renderer version that produced `htmlContent` / `htmlTranslations`. */
+	rendererVersion?: number;
 	linkedBlockIds?: string[];
 }
 
@@ -166,6 +183,7 @@ export interface EditableEmailPatch {
 	supportedLanguages?: string[];
 	translations?: string;
 	htmlTranslations?: string;
+	rendererVersion?: number;
 	linkedBlockIds?: string[];
 	searchableText?: string;
 	htmlRenderState?: { stale: boolean };
@@ -240,6 +258,12 @@ export async function buildEditablePatch(
 		patch.translations = sanitizeTranslationsJson(args.translations);
 	}
 	if (args.htmlTranslations !== undefined) patch.htmlTranslations = args.htmlTranslations;
+	if (args.htmlContent !== undefined || args.htmlTranslations !== undefined) {
+		patch.rendererVersion = rendererVersionAfterWrite(row, args.rendererVersion, {
+			htmlContent: args.htmlContent !== undefined,
+			htmlTranslations: args.htmlTranslations !== undefined,
+		});
+	}
 
 	if (args.linkedBlockIds !== undefined) {
 		patch.linkedBlockIds = args.linkedBlockIds;

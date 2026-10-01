@@ -19,6 +19,7 @@ import { components } from '../_generated/api';
 import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { currentContentRevision } from '../lib/contentRevision';
+import { rendererVersionAfterWrite, rendererVersionArg } from '../lib/rendererVersion';
 import { recordAuditLog } from '../lib/auditLog';
 import type { Doc, Id } from '../_generated/dataModel';
 
@@ -102,6 +103,9 @@ const rerenderPatchArgs = {
 	// translation edit landing in between must not be overwritten with HTML
 	// rendered from the older content.
 	expectedContentRevision: v.number(),
+	// The renderer version the action rendered with. Optional for an action
+	// started before the deploy that added it, whose renderer was version 1.
+	rendererVersion: rendererVersionArg,
 };
 
 async function patchRenderedHtml(
@@ -112,6 +116,7 @@ async function patchRenderedHtml(
 		htmlTranslations?: string;
 		plainTextContent?: string;
 		expectedContentRevision: number;
+		rendererVersion?: number;
 	}
 ): Promise<RerenderPatchOutcome> {
 	const row = await ctx.db.get(id);
@@ -121,6 +126,10 @@ async function patchRenderedHtml(
 	}
 	const updates: Partial<Doc<'emailTemplates'>> & Partial<Doc<'transactionalEmails'>> = {
 		htmlContent: args.htmlContent,
+		rendererVersion: rendererVersionAfterWrite(row, args.rendererVersion, {
+			htmlContent: true,
+			htmlTranslations: args.htmlTranslations !== undefined,
+		}),
 		// Action succeeded — clear stale flag atomically with the HTML write.
 		htmlRenderState: { stale: false },
 	};
