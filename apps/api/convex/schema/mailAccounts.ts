@@ -320,7 +320,10 @@ export const mailAccountsTables = {
 		target: v.optional(remoteFolderRefValidator),
 		flags: v.optional(remoteFlagChangesValidator), // 'flags' only
 		attempts: v.number(),
-		nextAttemptAt: v.number(), // the enqueue time until a failed attempt pushes it back
+		// The enqueue time until a failed attempt pushes it back. An op that waits
+		// behind an older one for its message is not due before it
+		// (mail/external/remoteOpOrder.ts).
+		nextAttemptAt: v.number(),
 		lastError: v.optional(v.string()),
 		createdAt: v.number(),
 	})

@@ -19,7 +19,8 @@
  * that is not external, an account that is disconnected, a seed or set to
  * receive new mail only (`syncMode: 'incoming'`), or a message whose Message-ID
  * the worker had to invent. The opposite direction — changes made on the
- * provider — is `remoteState.ts`.
+ * provider — is `remoteState.ts`. The order ops reach the provider in, and how
+ * a newer flag change supersedes an older one, is `remoteOpOrder.ts`.
  */
 
 import { v, type Infer } from 'convex/values';
@@ -38,6 +39,7 @@ import type {
 } from '../../lib/validators/mail';
 import { findDuplicateInMailbox } from '../deliveryPipeline/insert';
 import { getMailSyncConfig, mtaFetch } from '../mtaClient';
+import { deferOpsBehind, dueRemoteOps, insertRemoteOp } from './remoteOpOrder';
 
 export type RemoteFolderRef = Infer<typeof remoteFolderRefValidator>;
 export type RemoteFlagChanges = Infer<typeof remoteFlagChangesValidator>;
@@ -143,12 +145,7 @@ export async function recordRemoteChanges(
 			if (Object.keys(change.flags).length === 0) continue;
 			const source = await refFor(message.folderId);
 			if (!source) continue;
-			await ctx.db.insert('externalMailRemoteOps', {
-				...base,
-				kind: 'flags',
-				source,
-				flags: change.flags,
-			});
+			await insertRemoteOp(ctx, { ...base, kind: 'flags', source, flags: change.flags });
 		} else {
 			let sourceFolderId = message.folderId;
 			let targetFolderId: Id<'mailFolders'> | null = null;
@@ -169,11 +166,11 @@ export async function recordRemoteChanges(
 			const source = await refFor(sourceFolderId);
 			if (!source) continue;
 			if (targetFolderId === null) {
-				await ctx.db.insert('externalMailRemoteOps', { ...base, kind: 'delete', source });
+				await insertRemoteOp(ctx, { ...base, kind: 'delete', source });
 			} else {
 				const target = await refFor(targetFolderId);
 				if (!target || sameRef(source, target)) continue;
-				await ctx.db.insert('externalMailRemoteOps', { ...base, kind: 'move', source, target });
+				await insertRemoteOp(ctx, { ...base, kind: 'move', source, target });
 			}
 		}
 		nudge.add(accountId);
@@ -246,7 +243,7 @@ export async function enqueueRemoteOp(
 	}
 ): Promise<void> {
 	const now = Date.now();
-	await ctx.db.insert('externalMailRemoteOps', {
+	await insertRemoteOp(ctx, {
 		...op,
 		accountId,
 		attempts: 0,
@@ -316,18 +313,17 @@ async function remoteFolderRef(
 
 // ── Worker surface ─────────────────────────────────────────────────────
 
-/** The account's ops that are due, oldest first. None while it receives new mail only. */
+/**
+ * The account's due ops that may run now: none that waits behind an older op
+ * still queued for its message or folder (`remoteOpOrder.ts`). None while the
+ * account receives new mail only.
+ */
 export const listDueRemoteOps = internalQuery({
 	args: { accountId: v.id('externalMailAccounts') },
 	handler: async (ctx, args) => {
 		const account = await ctx.db.get(args.accountId);
 		if (!account || !writesBack(account)) return [];
-		const rows = await ctx.db
-			.query('externalMailRemoteOps')
-			.withIndex('by_account_and_next_attempt', (q) =>
-				q.eq('accountId', args.accountId).lte('nextAttemptAt', Date.now())
-			)
-			.take(DUE_PAGE_SIZE);
+		const rows = await dueRemoteOps(ctx, args.accountId, Date.now(), DUE_PAGE_SIZE);
 		return rows.map((r) => ({
 			opId: r._id,
 			kind: r.kind,
@@ -347,8 +343,9 @@ export function remoteOpRetryDelayMs(attempts: number): number {
 
 /**
  * Close out a batch the worker replayed. `done` and `not_found` retire the op
- * (there is nothing left to do on the server); `failed` pushes it back, and
- * drops it once its attempts are spent.
+ * (there is nothing left to do on the server); `failed` pushes it back, along
+ * with the later ops of its message that wait behind it, and drops it once its
+ * attempts are spent.
  */
 export const settleRemoteOps = internalMutation({
 	args: {
@@ -378,11 +375,9 @@ export const settleRemoteOps = internalMutation({
 				await ctx.db.delete(op._id);
 				continue;
 			}
-			await ctx.db.patch(op._id, {
-				attempts,
-				lastError,
-				nextAttemptAt: now + remoteOpRetryDelayMs(attempts),
-			});
+			const nextAttemptAt = now + remoteOpRetryDelayMs(attempts);
+			await ctx.db.patch(op._id, { attempts, lastError, nextAttemptAt });
+			await deferOpsBehind(ctx, op, nextAttemptAt);
 		}
 	},
 });
