@@ -31,30 +31,6 @@ export interface CompatibilityReport {
 	issues: CompatibilityIssue[];
 	testedClients: string[];
 	timestamp: Date;
-	/** Maximum container nesting depth found in blocks (if blocks provided) */
-	nestingDepth?: number;
-}
-
-/**
- * Generic block structure for nesting depth analysis
- * Works with any block structure that has type and content
- */
-export interface AnalyzableBlock {
-	type: string;
-	content: {
-		items?: AnalyzableBlock[];
-		columns?: Array<{ content: { items?: AnalyzableBlock[] } }[]>;
-		[key: string]: unknown;
-	};
-}
-
-/**
- * Result of nesting depth analysis
- */
-export interface NestingDepthResult {
-	maxDepth: number;
-	hasDeepNesting: boolean;
-	warningMessage?: string;
 }
 
 // ============================================================

@@ -40,21 +40,21 @@ const PR_DETAILS = {
 };
 
 describe('GitHub pull requests', () => {
-	const ORIGINAL_TOKEN = process.env.GITHUB_TOKEN;
+	const ORIGINAL_TOKEN = process.env['GITHUB_TOKEN'];
 
 	beforeEach(() => {
 		vi.resetModules();
 		mocks.create.mockReset();
 		mocks.list.mockReset();
 		mocks.OctokitCtor.mockReset();
-		process.env.GITHUB_TOKEN = 'ghp_test_token';
+		process.env['GITHUB_TOKEN'] = 'ghp_test_token';
 	});
 
 	afterEach(() => {
 		if (ORIGINAL_TOKEN === undefined) {
-			delete process.env.GITHUB_TOKEN;
+			delete process.env['GITHUB_TOKEN'];
 		} else {
-			process.env.GITHUB_TOKEN = ORIGINAL_TOKEN;
+			process.env['GITHUB_TOKEN'] = ORIGINAL_TOKEN;
 		}
 	});
 
@@ -98,7 +98,7 @@ describe('GitHub pull requests', () => {
 	});
 
 	it('throws when GITHUB_TOKEN is not set and never constructs a client', async () => {
-		delete process.env.GITHUB_TOKEN;
+		delete process.env['GITHUB_TOKEN'];
 
 		const { createPullRequest } = await import('../github.js');
 

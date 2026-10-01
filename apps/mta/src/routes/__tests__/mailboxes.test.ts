@@ -8,7 +8,7 @@ import { createMailboxRoutes } from '../mailboxes.js';
 const API_KEY = 'test-master-key';
 const config = { apiKey: API_KEY } as unknown as MtaConfig;
 
-function authedPost(
+async function authedPost(
 	app: ReturnType<typeof createMailboxRoutes>,
 	path: string,
 	body: unknown

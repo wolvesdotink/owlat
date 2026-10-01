@@ -59,7 +59,8 @@ export interface SendTransactionalParams {
 
 	/**
 	 * File attachments to include with the email.
-	 * Maximum 10 attachments, 10 MB total size limit.
+	 * Maximum 10 attachments and 10 MB (10 MiB) of decoded content in total.
+	 * Send `content` as plain base64 without line breaks.
 	 */
 	attachments?: TransactionalAttachment[];
 }

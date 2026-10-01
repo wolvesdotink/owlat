@@ -90,6 +90,11 @@ function handleChildSelect(itemId: string, event: MouseEvent) {
 		element: el,
 	});
 }
+
+// Double-clicking a nested text Block opens it in the inline editor, in place.
+function handleChildDoubleClick(item: { id: string; type: string }) {
+	if (item.type === 'text') emit('double-click-block', item.id);
+}
 </script>
 
 <template>
@@ -130,6 +135,7 @@ function handleChildSelect(itemId: string, event: MouseEvent) {
 						: 'border-transparent hover:border-white/20',
 				]"
 				@click="(e) => handleChildSelect(item.id, e)"
+				@dblclick="handleChildDoubleClick(item)"
 			>
 				<DocumentBlock
 					:block="{ id: item.id, type: item.type, content: item.content } as EditorBlock"
@@ -140,6 +146,11 @@ function handleChildSelect(itemId: string, event: MouseEvent) {
 					:variables="variables"
 					@select-nested="(payload: { itemId: string; context: ParentContext; element: HTMLElement }) => emit('select-nested', payload)"
 					@update-children="(blockId: string, children: unknown[]) => emit('update-children', blockId, children)"
+					@double-click-block="(id: string) => emit('double-click-block', id)"
+					@exit-inline-edit="emit('exit-inline-edit')"
+					@slash-command-select="(cmd: SlashCommand, blockId: string) => emit('slash-command-select', cmd, blockId)"
+					@insert-block-after="(id: string) => emit('insert-block-after', id)"
+					@open-link-dialog="(id: string) => emit('open-link-dialog', id)"
 				/>
 			</div>
 		</VueDraggable>

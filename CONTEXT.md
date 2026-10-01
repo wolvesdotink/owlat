@@ -4110,9 +4110,12 @@ Modules never touch the socket directly, never reach for a connection
 field via `this` (there is no `this`), and never know the rate limiter
 is shared with the next connection — all I/O and shared deps flow
 through `deps`. A module is registered by one entry in the walker's
-`MODULES` list; an `ImapVerb` with no registered module answers BAD at
-runtime (nothing checks registry coverage at compile time). Replaces the
-1106-LOC `ImapConnection` class with a per-verb module folder structure.
+`MODULES` list. The registry is built from that list at load time, so a
+missing registration is not a compile error:
+`commands/__tests__/walker.test.ts` fails instead, for any verb in
+`IMAP_VERBS` (the tuple `ImapVerb` is derived from) without a module.
+Replaces the 1106-LOC `ImapConnection` class with a per-verb module
+folder structure.
 _Avoid_: IMAP handler (the current file's term for `handleX` methods —
 overloaded with the HTTP/Convex "handler" vocabulary), Command alone
 (overloaded), Verb module (the verb is the dispatch key, not the noun),
@@ -4145,7 +4148,8 @@ another session's EXPUNGE cannot renumber messages under the client
 what changed and bring it up to date. Distinct from the folder's
 **membership**, its current UIDs, which the backend keeps in
 `mailFolderUidBlocks` under a version the IMAP server caches by.
-Pipelined commands run side by side, so the connection's sequence gate
+Pipelined `concurrent` commands (FETCH, NOOP, CHECK, IDLE, ...) run side
+by side, so the connection's sequence gate
 (`apps/imap/src/commands/helpers/sequenceGate.ts`) orders them: an
 announcement waits for every sequence-number command sent before it, and
 one sent after it waits for the announcement.
@@ -4162,12 +4166,19 @@ dispatch one-shot commands, starts long-running sessions, routes
 subsequent client lines / literal bytes to the active session if any,
 writes session-emitted lines back to the socket, and calls
 `session.cancel()` on every still-pending session when the socket
-closes. Only sessions that absorb input (IDLE, APPEND) hold the
-active-session slot; an async one-shot session does not block the next
-command. The pump never knows what an IMAP verb means; that lives in
-modules (its one verb check routes APPEND's literal to the session).
-The buffer holds raw octets, so `{N}` literals are counted in bytes and
-8-bit APPEND bodies round-trip.
+closes. Pipelined commands keep their order (RFC 3501 §5.5): only
+commands whose module is `concurrent` (FETCH without an implicit
+`\Seen`, UID FETCH, NOOP, CHECK, STATUS, LIST, IDLE, ...) run side by
+side. Any other command waits in the buffer, with the socket paused,
+until every running command's `completion` resolves, and nothing starts
+while it runs, so a pipelined FETCH reads the folder the SELECT before
+it opened. Only the active session's own input is read meanwhile
+(IDLE's `DONE`, AUTHENTICATE's SASL response, APPEND's literal); IDLE
+answers any other line BAD. Nothing is dispatched after LOGOUT. The pump
+never knows what an IMAP verb means; that lives in modules (its one verb
+check routes APPEND's literal to the session). The buffer holds raw
+octets, so `{N}` literals are counted in bytes and 8-bit APPEND bodies
+round-trip.
 _Avoid_: IMAP server (that's `server.ts` — the TLS bootstrap and
 per-IP accounting), IMAP connection alone (the class keeps that name;
 "pump" names the _role_ the post-deepening class plays).
@@ -5766,9 +5777,10 @@ scope)` is the only summarizer of the window; both the public auth-
   absorbs its `{N+}` body). **Connection state** (`auth`, `selected`,
   `clientId`) is immutable across modules — LOGIN / SELECT / EXAMINE /
   UNSELECT / CLOSE and the other state-changing modules hand the next
-  value to `deps.commit` before their tagged OK, and the pump dispatches
-  the following command against it. The walker's verb-keyed registry
-  answers BAD for a verb with no module; CAPABILITY-line atoms are aggregated
+  value to `deps.commit` before their tagged OK, and the pump holds the
+  following command until that command has finished.
+  A walker test checks that every `ImapVerb` has a registered module;
+  CAPABILITY-line atoms are aggregated
   from per-module `capabilities?` declarations so adding `MOVE` or
   `UIDPLUS` support is one module edit. The IMAP modules sit _upstream_
   of the Postbox / Inbox lifecycle modules — APPEND lands a message into

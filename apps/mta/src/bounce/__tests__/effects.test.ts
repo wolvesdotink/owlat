@@ -101,7 +101,7 @@ describe('applyEffects — per-effect dispatch', () => {
 	it('fbl_stats_record → daily redis hincrby, expired', async () => {
 		const deps = makeDeps();
 		await applyEffects([{ kind: 'fbl_stats_record' }], deps);
-		const today = new Date().toISOString().split('T')[0];
+		const today = new Date().toISOString().split('T')[0]!;
 		const value = await deps.redis.hget(fblStatsKey(today), 'total');
 		expect(value).toBe('1');
 		// The counter is keyed by UTC day, so without a TTL this un-guarded path
@@ -376,7 +376,7 @@ describe('applyEffects — batch dispatch', () => {
 		expect(circuitBreaker.recordOutcome).toHaveBeenCalled();
 		expect(metrics.fblComplaintsTotal.inc).toHaveBeenCalled();
 		expect(queueConvexWebhook).toHaveBeenCalled();
-		const today = new Date().toISOString().split('T')[0];
+		const today = new Date().toISOString().split('T')[0]!;
 		expect(await deps.redis.hget(fblStatsKey(today), 'total')).toBe('1');
 	});
 });

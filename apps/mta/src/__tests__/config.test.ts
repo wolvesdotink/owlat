@@ -30,22 +30,22 @@ describe('loadConfig', () => {
 	});
 
 	it('throws on missing MTA_API_KEY', () => {
-		delete process.env.MTA_API_KEY;
+		delete process.env['MTA_API_KEY'];
 		expect(() => loadConfig()).toThrow('MTA_API_KEY');
 	});
 
 	it('throws on missing EHLO_HOSTNAME', () => {
-		delete process.env.EHLO_HOSTNAME;
+		delete process.env['EHLO_HOSTNAME'];
 		expect(() => loadConfig()).toThrow('EHLO_HOSTNAME');
 	});
 
 	it('throws when MTA_SECRET is missing', () => {
-		delete process.env.MTA_SECRET;
+		delete process.env['MTA_SECRET'];
 		expect(() => loadConfig()).toThrow('MTA_SECRET');
 	});
 
 	it('throws when MTA_SECRET is shorter than 32 bytes', () => {
-		process.env.MTA_SECRET = 'too-short';
+		process.env['MTA_SECRET'] = 'too-short';
 		expect(() => loadConfig()).toThrow('MTA_SECRET must be at least 32 bytes');
 	});
 
@@ -55,23 +55,23 @@ describe('loadConfig', () => {
 	});
 
 	it('requires a strong VERP signing key at startup', () => {
-		delete process.env.BOUNCE_VERP_KEY;
+		delete process.env['BOUNCE_VERP_KEY'];
 		expect(() => loadConfig()).toThrow('BOUNCE_VERP_KEY');
-		process.env.BOUNCE_VERP_KEY = 'too-short';
+		process.env['BOUNCE_VERP_KEY'] = 'too-short';
 		expect(() => loadConfig()).toThrow('BOUNCE_VERP_KEY must be at least 32 bytes');
 	});
 
 	it.each(['replace-with-openssl-rand-base64-32', 'REPLACE-WITH-OPENSSL-RAND-BASE64-32'])(
 		'rejects the known VERP placeholder %s even though it is long enough',
 		(placeholder) => {
-			process.env.BOUNCE_VERP_KEY = placeholder;
+			process.env['BOUNCE_VERP_KEY'] = placeholder;
 			expect(() => loadConfig()).toThrow('not a placeholder');
 		}
 	);
 
 	it('uses defaults for PORT and REDIS_URL', () => {
-		delete process.env.PORT;
-		delete process.env.REDIS_URL;
+		delete process.env['PORT'];
+		delete process.env['REDIS_URL'];
 
 		const config = loadConfig();
 
@@ -80,28 +80,28 @@ describe('loadConfig', () => {
 	});
 
 	it('fails closed without an explicit owned-v2 install or cutover acknowledgement', () => {
-		delete process.env.FBL_DEDUP_PROTOCOL;
+		delete process.env['FBL_DEDUP_PROTOCOL'];
 		expect(() => loadConfig()).toThrow('FBL_DEDUP_PROTOCOL must be explicitly set to owned-v2');
 
-		process.env.FBL_DEDUP_PROTOCOL = 'owned-v2';
-		delete process.env.FBL_DEDUP_CUTOVER_ACK;
+		process.env['FBL_DEDUP_PROTOCOL'] = 'owned-v2';
+		delete process.env['FBL_DEDUP_CUTOVER_ACK'];
 		expect(() => loadConfig()).toThrow('FBL_DEDUP_CUTOVER_ACK');
 	});
 
 	it('defaults distributed pool coordination to the rolling-upgrade-safe legacy protocol', () => {
-		delete process.env.SMTP_POOL_COORDINATION_PROTOCOL;
+		delete process.env['SMTP_POOL_COORDINATION_PROTOCOL'];
 		expect(loadConfig().smtpPoolCoordinationProtocol).toBe('legacy-v0');
 	});
 
 	it('accepts leases-v1 explicitly and rejects unknown pool protocols', () => {
-		process.env.SMTP_POOL_COORDINATION_PROTOCOL = 'leases-v1';
+		process.env['SMTP_POOL_COORDINATION_PROTOCOL'] = 'leases-v1';
 		expect(loadConfig().smtpPoolCoordinationProtocol).toBe('leases-v1');
-		process.env.SMTP_POOL_COORDINATION_PROTOCOL = 'leases-v2';
+		process.env['SMTP_POOL_COORDINATION_PROTOCOL'] = 'leases-v2';
 		expect(() => loadConfig()).toThrow('SMTP_POOL_COORDINATION_PROTOCOL');
 	});
 
 	it('parses IP_POOLS_TRANSACTIONAL as comma-separated', () => {
-		process.env.IP_POOLS_TRANSACTIONAL = '10.0.0.1, 10.0.0.2, 10.0.0.3';
+		process.env['IP_POOLS_TRANSACTIONAL'] = '10.0.0.1, 10.0.0.2, 10.0.0.3';
 
 		const config = loadConfig();
 
@@ -109,67 +109,67 @@ describe('loadConfig', () => {
 	});
 
 	it('rejects invalid entries and keeps IPv6 off by default', () => {
-		process.env.IP_POOLS_TRANSACTIONAL = 'not-an-ip';
+		process.env['IP_POOLS_TRANSACTIONAL'] = 'not-an-ip';
 		expect(() => loadConfig()).toThrow('not a valid bare IP');
-		process.env.IP_POOLS_TRANSACTIONAL = '2001:db8::1';
+		process.env['IP_POOLS_TRANSACTIONAL'] = '2001:db8::1';
 		expect(() => loadConfig()).toThrow('MTA_IPV6_ENABLED is false');
 	});
 
 	it('accepts IPv6 only by explicit opt-in and canonicalizes equivalent pool entries', () => {
-		process.env.MTA_IPV6_ENABLED = 'true';
-		process.env.IP_POOLS_TRANSACTIONAL = '10.0.0.1,2001:0DB8:0:0:0:0:0:1,2001:db8::1';
+		process.env['MTA_IPV6_ENABLED'] = 'true';
+		process.env['IP_POOLS_TRANSACTIONAL'] = '10.0.0.1,2001:0DB8:0:0:0:0:0:1,2001:db8::1';
 		const config = loadConfig();
 		expect(config.ipv6Enabled).toBe(true);
 		expect(config.ipPools.transactional).toEqual(['10.0.0.1', '2001:db8::1']);
 	});
 
 	it('requires a safe IPv4 fallback and rejects ambiguous IPv6 source syntax', () => {
-		process.env.MTA_IPV6_ENABLED = 'true';
-		process.env.IP_POOLS_TRANSACTIONAL = '2001:db8::1';
-		process.env.IP_POOLS_CAMPAIGN = '2001:db8::2';
+		process.env['MTA_IPV6_ENABLED'] = 'true';
+		process.env['IP_POOLS_TRANSACTIONAL'] = '2001:db8::1';
+		process.env['IP_POOLS_CAMPAIGN'] = '2001:db8::2';
 		expect(() => loadConfig()).toThrow(
 			'transactional pool requires an IPv4 fallback in that same pool'
 		);
 
-		process.env.IP_POOLS_TRANSACTIONAL = '10.0.0.1,::';
-		process.env.IP_POOLS_CAMPAIGN = '10.0.0.2';
+		process.env['IP_POOLS_TRANSACTIONAL'] = '10.0.0.1,::';
+		process.env['IP_POOLS_CAMPAIGN'] = '10.0.0.2';
 		expect(() => loadConfig()).toThrow('cannot select an outbound source');
 
 		for (const invalid of ['[2001:db8::1]', 'fe80::1%eth0', '::ffff:192.0.2.1']) {
-			process.env.IP_POOLS_TRANSACTIONAL = `10.0.0.1,${invalid}`;
+			process.env['IP_POOLS_TRANSACTIONAL'] = `10.0.0.1,${invalid}`;
 			expect(() => loadConfig()).toThrow();
 		}
 	});
 
 	it('parses MTA_IPV6_ENABLED strictly', () => {
-		delete process.env.MTA_IPV6_ENABLED;
+		delete process.env['MTA_IPV6_ENABLED'];
 		expect(loadConfig().ipv6Enabled).toBe(false);
-		process.env.MTA_IPV6_ENABLED = 'yes';
+		process.env['MTA_IPV6_ENABLED'] = 'yes';
 		expect(() => loadConfig()).toThrow('MTA_IPV6_ENABLED must be true or false');
 	});
 
 	it('defaults to a fail-closed identity gate and parses safe custom PTR suffixes', () => {
-		delete process.env.MTA_ALLOW_UNVERIFIED_FCRDNS;
-		process.env.MTA_GENERIC_PTR_SUFFIXES = 'static.example-vps.net, customer.host.test ';
+		delete process.env['MTA_ALLOW_UNVERIFIED_FCRDNS'];
+		process.env['MTA_GENERIC_PTR_SUFFIXES'] = 'static.example-vps.net, customer.host.test ';
 		const config = loadConfig();
 		expect(config.allowUnverifiedFcrdns).toBe(false);
 		expect(config.genericPtrSuffixes).toEqual(['static.example-vps.net', 'customer.host.test']);
 	});
 
 	it('accepts only an explicit boolean lab override', () => {
-		process.env.MTA_ALLOW_UNVERIFIED_FCRDNS = 'true';
+		process.env['MTA_ALLOW_UNVERIFIED_FCRDNS'] = 'true';
 		expect(loadConfig().allowUnverifiedFcrdns).toBe(true);
-		process.env.MTA_ALLOW_UNVERIFIED_FCRDNS = 'yes';
+		process.env['MTA_ALLOW_UNVERIFIED_FCRDNS'] = 'yes';
 		expect(() => loadConfig()).toThrow('must be true or false');
 	});
 
 	it('throws on invalid DKIM_KEYS JSON', () => {
-		process.env.DKIM_KEYS = 'not-valid-json{{{';
+		process.env['DKIM_KEYS'] = 'not-valid-json{{{';
 		expect(() => loadConfig()).toThrow('DKIM_KEYS must be valid JSON');
 	});
 
 	it('parses valid DKIM_KEYS JSON', () => {
-		process.env.DKIM_KEYS = JSON.stringify({
+		process.env['DKIM_KEYS'] = JSON.stringify({
 			'owlat.com': { selector: 's1', privateKey: 'pk-test' },
 		});
 
@@ -182,28 +182,28 @@ describe('loadConfig', () => {
 	});
 
 	it('throws when IP pool is empty after filtering', () => {
-		process.env.IP_POOLS_TRANSACTIONAL = '  ,  , ';
+		process.env['IP_POOLS_TRANSACTIONAL'] = '  ,  , ';
 		expect(() => loadConfig()).toThrow('at least one IP');
 	});
 
 	it('refuses to boot when SUBMISSION_ENABLED=true but no TLS cert/key', () => {
-		process.env.SUBMISSION_ENABLED = 'true';
-		delete process.env.SUBMISSION_TLS_CERT;
-		delete process.env.SUBMISSION_TLS_KEY;
+		process.env['SUBMISSION_ENABLED'] = 'true';
+		delete process.env['SUBMISSION_TLS_CERT'];
+		delete process.env['SUBMISSION_TLS_KEY'];
 		expect(() => loadConfig()).toThrow(/SUBMISSION_TLS_CERT/);
 	});
 
 	it('refuses to boot when submission TLS cert is set but key is missing', () => {
-		process.env.SUBMISSION_ENABLED = 'true';
-		process.env.SUBMISSION_TLS_CERT = 'cert-pem';
-		delete process.env.SUBMISSION_TLS_KEY;
+		process.env['SUBMISSION_ENABLED'] = 'true';
+		process.env['SUBMISSION_TLS_CERT'] = 'cert-pem';
+		delete process.env['SUBMISSION_TLS_KEY'];
 		expect(() => loadConfig()).toThrow(/SUBMISSION_TLS_KEY/);
 	});
 
 	it('boots with submission enabled when both cert and key are present', () => {
-		process.env.SUBMISSION_ENABLED = 'true';
-		process.env.SUBMISSION_TLS_CERT = 'cert-pem';
-		process.env.SUBMISSION_TLS_KEY = 'key-pem';
+		process.env['SUBMISSION_ENABLED'] = 'true';
+		process.env['SUBMISSION_TLS_CERT'] = 'cert-pem';
+		process.env['SUBMISSION_TLS_KEY'] = 'key-pem';
 		const config = loadConfig();
 		expect(config.submissionEnabled).toBe(true);
 		expect(config.submissionTlsCert).toBe('cert-pem');
@@ -211,16 +211,16 @@ describe('loadConfig', () => {
 	});
 
 	it('does not require submission TLS when submission is disabled', () => {
-		process.env.SUBMISSION_ENABLED = 'false';
-		delete process.env.SUBMISSION_TLS_CERT;
-		delete process.env.SUBMISSION_TLS_KEY;
+		process.env['SUBMISSION_ENABLED'] = 'false';
+		delete process.env['SUBMISSION_TLS_CERT'];
+		delete process.env['SUBMISSION_TLS_KEY'];
 		expect(() => loadConfig()).not.toThrow();
 	});
 
 	it('exposes submission brute-force defaults', () => {
-		delete process.env.SUBMISSION_MAX_CONNECTIONS_PER_IP;
-		delete process.env.SUBMISSION_MAX_CLIENTS;
-		delete process.env.SUBMISSION_MAX_AUTH_FAILURES_PER_IP;
+		delete process.env['SUBMISSION_MAX_CONNECTIONS_PER_IP'];
+		delete process.env['SUBMISSION_MAX_CLIENTS'];
+		delete process.env['SUBMISSION_MAX_AUTH_FAILURES_PER_IP'];
 		const config = loadConfig();
 		expect(config.submissionMaxConnectionsPerIp).toBe(10);
 		expect(config.submissionMaxClients).toBe(200);
@@ -228,8 +228,8 @@ describe('loadConfig', () => {
 	});
 
 	it('treats a blank numeric limit as unset', () => {
-		process.env.SUBMISSION_MAX_CLIENTS = '';
-		process.env.BOUNCE_MAX_CLIENTS = '   ';
+		process.env['SUBMISSION_MAX_CLIENTS'] = '';
+		process.env['BOUNCE_MAX_CLIENTS'] = '   ';
 		const config = loadConfig();
 		expect(config.submissionMaxClients).toBe(200);
 		expect(config.bounceMaxClients).toBe(200);
@@ -252,14 +252,14 @@ describe('loadConfig', () => {
 	});
 
 	it('accepts a zero tarpit delay', () => {
-		process.env.BOUNCE_TARPIT_DELAY_MS = '0';
+		process.env['BOUNCE_TARPIT_DELAY_MS'] = '0';
 		expect(loadConfig().bounceTarpitDelayMs).toBe(0);
 	});
 
 	it('enables Google Postmaster only when the complete OAuth credential set is present', () => {
-		process.env.GOOGLE_POSTMASTER_CLIENT_ID = 'client-id';
-		process.env.GOOGLE_POSTMASTER_CLIENT_SECRET = 'client-secret';
-		process.env.GOOGLE_POSTMASTER_REFRESH_TOKEN = 'refresh-token';
+		process.env['GOOGLE_POSTMASTER_CLIENT_ID'] = 'client-id';
+		process.env['GOOGLE_POSTMASTER_CLIENT_SECRET'] = 'client-secret';
+		process.env['GOOGLE_POSTMASTER_REFRESH_TOKEN'] = 'refresh-token';
 
 		expect(loadConfig().googlePostmaster).toEqual({
 			clientId: 'client-id',
@@ -267,62 +267,62 @@ describe('loadConfig', () => {
 			refreshToken: 'refresh-token',
 		});
 
-		delete process.env.GOOGLE_POSTMASTER_REFRESH_TOKEN;
+		delete process.env['GOOGLE_POSTMASTER_REFRESH_TOKEN'];
 		expect(() => loadConfig()).toThrow('GOOGLE_POSTMASTER_REFRESH_TOKEN must be set together');
 	});
 
 	it('requires the official 32-character Abusix DNSBL API key shape', () => {
 		const validKey = '0123456789abcdef0123456789abcdef';
-		process.env.ABUSIX_DNSBL_API_KEY = validKey;
+		process.env['ABUSIX_DNSBL_API_KEY'] = validKey;
 		expect(loadConfig().abusixDnsblApiKey).toBe(validKey);
 
-		process.env.ABUSIX_DNSBL_API_KEY = 'short-key';
+		process.env['ABUSIX_DNSBL_API_KEY'] = 'short-key';
 		expect(() => loadConfig()).toThrow('32-character');
 
-		process.env.ABUSIX_DNSBL_API_KEY = '0123456789abcdef0123456789abcde.';
+		process.env['ABUSIX_DNSBL_API_KEY'] = '0123456789abcdef0123456789abcde.';
 		expect(() => loadConfig()).toThrow('ABUSIX_DNSBL_API_KEY');
 
-		process.env.ABUSIX_DNSBL_API_KEY = '-1234567890abcdef1234567890abcde';
+		process.env['ABUSIX_DNSBL_API_KEY'] = '-1234567890abcdef1234567890abcde';
 		expect(() => loadConfig()).toThrow('ABUSIX_DNSBL_API_KEY');
 	});
 
 	it('reads the blocklist resolver, and treats an empty value as the system resolver', () => {
-		process.env.DNSBL_RESOLVER = 'dns-resolver:5335';
+		process.env['DNSBL_RESOLVER'] = 'dns-resolver:5335';
 		expect(loadConfig().dnsblResolver).toEqual({ host: 'dns-resolver', port: 5335 });
 
-		process.env.DNSBL_RESOLVER = '';
+		process.env['DNSBL_RESOLVER'] = '';
 		expect(loadConfig().dnsblResolver).toBeUndefined();
 
-		process.env.DNSBL_RESOLVER = 'udp://dns-resolver';
+		process.env['DNSBL_RESOLVER'] = 'udp://dns-resolver';
 		expect(() => loadConfig()).toThrow('DNSBL_RESOLVER');
 	});
 
 	// ── PR-63 item 2: EHLO_HOSTNAME FQDN validation ──
 	describe('EHLO_HOSTNAME FQDN validation', () => {
 		it("rejects 'localhost'", () => {
-			process.env.EHLO_HOSTNAME = 'localhost';
+			process.env['EHLO_HOSTNAME'] = 'localhost';
 			expect(() => loadConfig()).toThrow('EHLO_HOSTNAME');
 		});
 
 		it("rejects a bare hostname like 'mta1'", () => {
-			process.env.EHLO_HOSTNAME = 'mta1';
+			process.env['EHLO_HOSTNAME'] = 'mta1';
 			expect(() => loadConfig()).toThrow('EHLO_HOSTNAME');
 		});
 
 		it("rejects a raw IP literal like '203.0.113.10'", () => {
-			process.env.EHLO_HOSTNAME = '203.0.113.10';
+			process.env['EHLO_HOSTNAME'] = '203.0.113.10';
 			expect(() => loadConfig()).toThrow('EHLO_HOSTNAME');
 		});
 
 		it('rejects whitespace-containing values', () => {
-			process.env.EHLO_HOSTNAME = 'mail.example.com ';
+			process.env['EHLO_HOSTNAME'] = 'mail.example.com ';
 			expect(() => loadConfig()).toThrow('EHLO_HOSTNAME');
-			process.env.EHLO_HOSTNAME = 'mail .example.com';
+			process.env['EHLO_HOSTNAME'] = 'mail .example.com';
 			expect(() => loadConfig()).toThrow('EHLO_HOSTNAME');
 		});
 
 		it("accepts a valid FQDN like 'mail.example.com'", () => {
-			process.env.EHLO_HOSTNAME = 'mail.example.com';
+			process.env['EHLO_HOSTNAME'] = 'mail.example.com';
 			expect(() => loadConfig()).not.toThrow();
 			expect(loadConfig().ehloHostname).toBe('mail.example.com');
 		});
@@ -331,12 +331,12 @@ describe('loadConfig', () => {
 	// ── PR-63 item 1: per-IP EHLO hostname map ──
 	describe('EHLO_HOSTNAMES per-IP map', () => {
 		it('defaults to an empty map when unset', () => {
-			delete process.env.EHLO_HOSTNAMES;
+			delete process.env['EHLO_HOSTNAMES'];
 			expect(loadConfig().ehloHostnames).toEqual({});
 		});
 
 		it('parses a JSON IP→hostname map', () => {
-			process.env.EHLO_HOSTNAMES = JSON.stringify({
+			process.env['EHLO_HOSTNAMES'] = JSON.stringify({
 				'10.0.0.1': 'mail1.example.com',
 				'10.0.0.2': 'mail2.example.com',
 			});
@@ -347,14 +347,14 @@ describe('loadConfig', () => {
 		});
 
 		it('canonicalizes IPv6 keys and rejects conflicting equivalent mappings', () => {
-			process.env.MTA_IPV6_ENABLED = 'true';
-			process.env.IP_POOLS_TRANSACTIONAL = '10.0.0.1,2001:db8::1';
-			process.env.EHLO_HOSTNAMES = JSON.stringify({
+			process.env['MTA_IPV6_ENABLED'] = 'true';
+			process.env['IP_POOLS_TRANSACTIONAL'] = '10.0.0.1,2001:db8::1';
+			process.env['EHLO_HOSTNAMES'] = JSON.stringify({
 				'2001:0DB8:0:0:0:0:0:1': 'mail6.example.com',
 			});
 			expect(loadConfig().ehloHostnames).toEqual({ '2001:db8::1': 'mail6.example.com' });
 
-			process.env.EHLO_HOSTNAMES = JSON.stringify({
+			process.env['EHLO_HOSTNAMES'] = JSON.stringify({
 				'2001:0DB8:0:0:0:0:0:1': 'mail6.example.com',
 				'2001:db8::1': 'other.example.com',
 			});
@@ -362,12 +362,12 @@ describe('loadConfig', () => {
 		});
 
 		it('throws on invalid JSON', () => {
-			process.env.EHLO_HOSTNAMES = 'not-json{{{';
+			process.env['EHLO_HOSTNAMES'] = 'not-json{{{';
 			expect(() => loadConfig()).toThrow('EHLO_HOSTNAMES must be valid JSON');
 		});
 
 		it('throws when a mapped name is not a valid FQDN', () => {
-			process.env.EHLO_HOSTNAMES = JSON.stringify({ '10.0.0.1': 'localhost' });
+			process.env['EHLO_HOSTNAMES'] = JSON.stringify({ '10.0.0.1': 'localhost' });
 			expect(() => loadConfig()).toThrow('EHLO_HOSTNAMES');
 		});
 	});

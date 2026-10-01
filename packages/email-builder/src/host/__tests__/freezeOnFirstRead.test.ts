@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import type { EditorBlock } from '@owlat/shared';
+import type { BlockType, EditorBlock } from '@owlat/shared';
 import type { BlockDefinition } from '../../registry/blockRegistry';
 import type { HostedEmailBlockContribution } from '../emailBlockHost';
 
@@ -95,7 +95,7 @@ describe('freeze-on-first-read latch', () => {
 
 		expect(composed.map((block) => block.type)).toEqual(['acme-note']);
 		expect(host.areEmailBlockRegistriesFrozen()).toBe(true);
-		expect(registry.getBlock('acme-note')?.label).toBe('acme-note');
+		expect(registry.getBlock('acme-note' as BlockType)?.label).toBe('acme-note');
 		expect(renderer.getRegisteredBlocks()).toContain('acme-note');
 	});
 

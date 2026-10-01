@@ -73,7 +73,7 @@ async function enqueue(
 	});
 }
 
-function request(method: string, path: string, auth = true): Promise<Response> {
+async function request(method: string, path: string, auth = true): Promise<Response> {
 	return createQueueRoutes(queue, redis as unknown as Redis, config).request(path, {
 		method,
 		headers: auth ? { Authorization: `Bearer ${API_KEY}` } : {},

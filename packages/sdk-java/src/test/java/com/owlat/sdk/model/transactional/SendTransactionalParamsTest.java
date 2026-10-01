@@ -162,6 +162,41 @@ class SendTransactionalParamsTest {
     }
 
     @Test
+    void builderNamesLineBreaksInMimeWrappedBase64() {
+        // getMimeEncoder() wraps every 76 characters with "\r\n"; 100 bytes
+        // encode to 136 characters, so the output holds one line break.
+        String content = java.util.Base64.getMimeEncoder().encodeToString(new byte[100]);
+        assertTrue(content.contains("\r\n"), content);
+
+        SendTransactionalParams.Builder builder = SendTransactionalParams.builder("user@example.com")
+                .slug("welcome")
+                .attachment(TransactionalAttachment.builder("doc.pdf")
+                        .content(content)
+                        .build());
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, builder::build);
+        assertEquals(
+                "Attachment \"doc.pdf\" has invalid base64 content: it contains line breaks;"
+                        + " send plain base64 without line breaks"
+                        + " (use Base64.getEncoder(), not getMimeEncoder())",
+                ex.getMessage());
+    }
+
+    @Test
+    void builderAcceptsUnwrappedBase64FromGetEncoder() {
+        String content = java.util.Base64.getEncoder().encodeToString(new byte[100]);
+
+        SendTransactionalParams params = SendTransactionalParams.builder("user@example.com")
+                .slug("welcome")
+                .attachment(TransactionalAttachment.builder("doc.pdf")
+                        .content(content)
+                        .build())
+                .build();
+
+        assertEquals(content, params.getAttachments().get(0).getContent());
+    }
+
+    @Test
     void builderAcceptsValidBase64WithPadding() {
         SendTransactionalParams params = SendTransactionalParams.builder("user@example.com")
                 .slug("welcome")
@@ -209,6 +244,34 @@ class SendTransactionalParamsTest {
         SendTransactionalParams.Builder builder = SendTransactionalParams.builder("user@example.com")
                 .slug("welcome")
                 .attachment(TransactionalAttachment.builder("big.bin").content(big).build());
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, builder::build);
+        assertTrue(ex.getMessage().contains("exceeds 10MB limit"), ex.getMessage());
+    }
+
+    @Test
+    void builderAcceptsTotalSizeOfExactly10MiB() {
+        // 10 MiB is not a multiple of 3, so its base64 ends in "==": the size
+        // check must subtract the padding to accept the API's own boundary.
+        byte[] bytes = new byte[10 * 1024 * 1024];
+        String content = java.util.Base64.getEncoder().encodeToString(bytes);
+
+        SendTransactionalParams params = SendTransactionalParams.builder("user@example.com")
+                .slug("welcome")
+                .attachment(TransactionalAttachment.builder("boundary.bin").content(content).build())
+                .build();
+
+        assertEquals(1, params.getAttachments().size());
+    }
+
+    @Test
+    void builderRejectsTotalSizeOneByteOver10MiB() {
+        byte[] bytes = new byte[10 * 1024 * 1024 + 1];
+        String content = java.util.Base64.getEncoder().encodeToString(bytes);
+
+        SendTransactionalParams.Builder builder = SendTransactionalParams.builder("user@example.com")
+                .slug("welcome")
+                .attachment(TransactionalAttachment.builder("over.bin").content(content).build());
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, builder::build);
         assertTrue(ex.getMessage().contains("exceeds 10MB limit"), ex.getMessage());

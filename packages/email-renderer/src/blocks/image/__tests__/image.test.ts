@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { imageModule } from '../index';
 import { validateBlocks } from '../../../validator';
 import type { ImageBlockContent } from '@owlat/shared';
-import type { RenderArgs, RenderContext } from '../../_module';
+import type { RenderArgs } from '../../_module';
+import type { RenderContext } from '../../../types';
 
 const ctx = { baseWidth: 600, linkTransform: undefined } as RenderContext;
 const args = (

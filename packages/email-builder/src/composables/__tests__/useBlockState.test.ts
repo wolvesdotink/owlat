@@ -1,7 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { ref } from 'vue';
 import { useBlockState } from '../useBlockState';
-import type { EditorBlock, ColumnsBlockContent, ContainerBlockContent } from '../../types';
+import type {
+	ButtonBlockContent,
+	ColumnsBlockContent,
+	ContainerBlockContent,
+	EditorBlock,
+	ImageBlockContent,
+	TextBlockContent,
+} from '../../types';
 
 // Ensure block definitions are registered
 import '../../registry';
@@ -39,12 +46,12 @@ function makeColumnsBlock(id: string): EditorBlock {
 			mobileStacking: true,
 			columns: [
 				[
-					{ id: 'col-item-1', type: 'text', content: { html: 'Col 1' } },
-					{ id: 'col-item-2', type: 'image', content: { src: '' } },
+					{ id: 'col-item-1', type: 'text', content: { html: 'Col 1' } as TextBlockContent },
+					{ id: 'col-item-2', type: 'image', content: { src: '' } as ImageBlockContent },
 				],
-				[{ id: 'col-item-3', type: 'button', content: { text: 'Click' } }],
+				[{ id: 'col-item-3', type: 'button', content: { text: 'Click' } as ButtonBlockContent }],
 			],
-			gap: 16,
+			columnGap: 16,
 			paddingTop: 0,
 			paddingRight: 0,
 			paddingBottom: 0,
@@ -54,7 +61,7 @@ function makeColumnsBlock(id: string): EditorBlock {
 			marginRight: 0,
 			marginBottom: 0,
 			marginLeft: 0,
-		} as ColumnsBlockContent,
+		},
 	};
 }
 

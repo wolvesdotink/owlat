@@ -3,7 +3,11 @@
 **Status:** proposed; **amended 2026-08-25** — the "Scope — include
 automation step's email send path or not" decision is REOPENED and
 partly reversed (see [Amendment — PIECE C2](#amendment--piece-c2-2026-08-25)
-at the end of this document). Everything else stands.
+at the end of this document). **Amended 2026-10-01** — uploaded
+attachment bytes now pass from the HTTP shell to the Send through a
+pending-upload handoff, and the send route has its own body ceiling (see
+[Amendment — attachment ownership handoff](#amendment--attachment-ownership-handoff-2026-10-01)).
+Everything else stands.
 
 ## Context
 
@@ -44,13 +48,13 @@ ADR closes the transactional-side gap.
 
 ### Pre-deepening landscape — `transactional*.ts`
 
-| File | LOC | Role |
-|---|---|---|
-| `transactionalApiHttp.ts` | 659 | `sendTransactional` httpAction (lines 165-636) + `transactionalCollection` OPTIONS/405 handler + `validateDataVariables` pure function (lines 98-160) + the `SendTransactionalBody` / `SendTransactionalResponse` / `TransactionalEmail` / `HtmlTranslation` / `Contact` / `AttachmentInput` type aliases |
-| `transactionalApi.ts` | 107 | `enqueueTransactionalEmail` internal mutation — inserts `transactionalSends` row + enqueues workpool |
-| `transactionalSends.ts` | 396 | `transactionalSends` row CRUD: `listByTransactionalEmail`, `listAll`, `get`, `getByProviderMessageId`, `getStatsByTransactionalEmail`, `getCountByTransactionalEmail`, `getCounts`, `create` (the pre-ADR-0006 mutation inserting directly in `sent`), `deleteByTransactionalEmail`, `getByEmail` |
-| `transactionalEmails.ts` | 483 | `transactionalEmails` row CRUD: create / list / get / get-by-slug / update / publish / unpublish / duplicate / delete + the template-side attachments management |
-| `transactionalEmailsTranslations.ts` | 343 | Per-language translation CRUD for `transactionalEmails` (subject, htmlContent per locale) |
+| File                                 | LOC | Role                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------ | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `transactionalApiHttp.ts`            | 659 | `sendTransactional` httpAction (lines 165-636) + `transactionalCollection` OPTIONS/405 handler + `validateDataVariables` pure function (lines 98-160) + the `SendTransactionalBody` / `SendTransactionalResponse` / `TransactionalEmail` / `HtmlTranslation` / `Contact` / `AttachmentInput` type aliases |
+| `transactionalApi.ts`                | 107 | `enqueueTransactionalEmail` internal mutation — inserts `transactionalSends` row + enqueues workpool                                                                                                                                                                                                      |
+| `transactionalSends.ts`              | 396 | `transactionalSends` row CRUD: `listByTransactionalEmail`, `listAll`, `get`, `getByProviderMessageId`, `getStatsByTransactionalEmail`, `getCountByTransactionalEmail`, `getCounts`, `create` (the pre-ADR-0006 mutation inserting directly in `sent`), `deleteByTransactionalEmail`, `getByEmail`         |
+| `transactionalEmails.ts`             | 483 | `transactionalEmails` row CRUD: create / list / get / get-by-slug / update / publish / unpublish / duplicate / delete + the template-side attachments management                                                                                                                                          |
+| `transactionalEmailsTranslations.ts` | 343 | Per-language translation CRUD for `transactionalEmails` (subject, htmlContent per locale)                                                                                                                                                                                                                 |
 
 Five files at the top level of `convex/` — past the convention threshold
 where the area gets a subdirectory (`forms/`, `contacts/`, `campaigns/`,
@@ -67,36 +71,36 @@ Five drift signals across the intake path.
 
 ```ts
 const existingContact = await ctx.runQuery<Contact | null>(
-  require('./_generated/api').internal.contacts.contacts.getByEmailForTeam,
-  { email: body.email.toLowerCase().trim() },
+	require('./_generated/api').internal.contacts.contacts.getByEmailForTeam,
+	{ email: body.email.toLowerCase().trim() }
 );
 
 if (existingContact) {
-  contactId = existingContact._id;
-  contactLanguage = existingContact.language;
+	contactId = existingContact._id;
+	contactLanguage = existingContact.language;
 } else {
-  // Always create contact for history tracking
-  try {
-    contactId = await ctx.runMutation<Id<'contacts'>>(
-      require('./_generated/api').internal.contacts.contacts.createForTeam,
-      { email: body.email, source: 'transactional' as const },
-    );
-    contactCreated = true;
-  } catch (error) {
-    // Race condition: another concurrent send created the contact
-    if (error instanceof Error && error.message?.includes('already exists')) {
-      const raceContact = await ctx.runQuery<Contact | null>(
-        require('./_generated/api').internal.contacts.contacts.getByEmailForTeam,
-        { email: body.email.toLowerCase().trim() },
-      );
-      if (raceContact) {
-        contactId = raceContact._id;
-        contactLanguage = raceContact.language;
-      }
-    } else {
-      throw error;
-    }
-  }
+	// Always create contact for history tracking
+	try {
+		contactId = await ctx.runMutation<Id<'contacts'>>(
+			require('./_generated/api').internal.contacts.contacts.createForTeam,
+			{ email: body.email, source: 'transactional' as const }
+		);
+		contactCreated = true;
+	} catch (error) {
+		// Race condition: another concurrent send created the contact
+		if (error instanceof Error && error.message?.includes('already exists')) {
+			const raceContact = await ctx.runQuery<Contact | null>(
+				require('./_generated/api').internal.contacts.contacts.getByEmailForTeam,
+				{ email: body.email.toLowerCase().trim() }
+			);
+			if (raceContact) {
+				contactId = raceContact._id;
+				contactLanguage = raceContact.language;
+			}
+		} else {
+			throw error;
+		}
+	}
 }
 ```
 
@@ -116,10 +120,10 @@ behind the seam that exists for exactly this.
 
 Two counters fire on every accepted dispatch:
 
-| Counter | Site | Atomic with row insert? |
-|---|---|---|
-| `instanceSettings.transactionalSendCount` | `transactionalApi.ts:76-81` (inside `enqueueTransactionalEmail`) | yes — same mutation as the row insert |
-| daily send count via `incrementDailySendCountInternal` | `transactionalApiHttp.ts:610-612` (in the HTTP shell, *after* the enqueue mutation returns) | no — separate mutation, fired by the HTTP shell |
+| Counter                                                | Site                                                                                        | Atomic with row insert?                         |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `instanceSettings.transactionalSendCount`              | `transactionalApi.ts:76-81` (inside `enqueueTransactionalEmail`)                            | yes — same mutation as the row insert           |
+| daily send count via `incrementDailySendCountInternal` | `transactionalApiHttp.ts:610-612` (in the HTTP shell, _after_ the enqueue mutation returns) | no — separate mutation, fired by the HTTP shell |
 
 Today the only caller is the HTTP shell, so the drift is invisible. But
 the seam is open: any future non-HTTP shell (admin replay, batch
@@ -211,69 +215,73 @@ landed: see the `## Transactional sends` section).
 // convex/transactional/dispatch.ts
 
 export type DispatchOutcome =
-  | {
-      ok: true;
-      sendId: Id<'transactionalSends'>;
-      contactId: Id<'contacts'>;
-      contactCreated: boolean;
-      language: string;
-      queued: true;
-    }
-  | {
-      ok: false;
-      reason:
-        | 'abuse_blocked'
-        | 'recipient_blocked'
-        | 'template_not_found'
-        | 'template_not_published'
-        | 'template_no_content'
-        | 'domain_unverified'
-        | 'invalid_variables';
-      detail?: string;
-    };
+	| {
+			ok: true;
+			sendId: Id<'transactionalSends'>;
+			contactId: Id<'contacts'>;
+			contactCreated: boolean;
+			language: string;
+			queued: true;
+	  }
+	| {
+			ok: false;
+			reason:
+				| 'abuse_blocked'
+				| 'recipient_blocked'
+				| 'template_not_found'
+				| 'template_not_published'
+				| 'template_no_content'
+				| 'domain_unverified'
+				| 'invalid_variables';
+			detail?: string;
+	  };
 
 export const dispatch = internalMutation({
-  args: {
-    // Pre-validated by the HTTP shell. The shell did JSON-shape
-    // validation (required fields, types, email format, language
-    // format, attachment count + size limits, https-only URL check)
-    // and attachment storage upload (base64 decode →
-    // ctx.storage.store, which can only run in an httpAction
-    // context). The module's input is typed, well-formed data.
-    templateLookup: v.union(
-      v.object({ kind: v.literal('id'), id: v.id('transactionalEmails') }),
-      v.object({ kind: v.literal('slug'), slug: v.string() }),
-    ),
-    email: v.string(),             // already lowercased + trimmed
-    dataVariables: v.optional(v.record(v.string(), jsonPrimitiveValue)),
-    language: v.optional(v.string()),
-    attachmentRefs: v.optional(v.array(v.object({
-      filename: v.string(),
-      contentType: v.optional(v.string()),
-      url: v.string(),
-      storageId: v.optional(v.string()),
-    }))),
-  },
-  handler: async (ctx, args): Promise<DispatchOutcome> => {
-    // 1. Abuse gate → 'abuse_blocked'
-    // 2. Blocklist → 'recipient_blocked'
-    // 3. Template lookup + published + has-HTML
-    //      → 'template_not_found' | 'template_not_published' | 'template_no_content'
-    // 4. Sender + domain verification → 'domain_unverified'
-    // 5. Validate dataVariables against template schema → 'invalid_variables'
-    // 6. resolveContact({ channel: 'email', identifier: email, mode: 'upsert',
-    //                     source: 'transactional', contactFields: { language } })
-    // 7. Language resolution (request → contact → template default → 'en')
-    //    Pulls htmlContent + subject from htmlTranslations[language] when present
-    // 8. Provider route resolution (providerRoutes.getRoute + provider health → resolveRoute)
-    // 9. Template + request attachment merge
-    // 10. Insert transactionalSends row in 'queued' (with resolved language)
-    // 11. Increment instanceSettings.transactionalSendCount AND
-    //     incrementDailySendCountInternal — atomic with the row insert
-    // 12. Enqueue transactionalEmailPool.enqueueAction
-    //     ({ onComplete: emailOnComplete, sendRef: { kind: 'transactional', id: sendId } })
-    // 13. Return { ok: true, sendId, contactId, contactCreated, language, queued: true }
-  },
+	args: {
+		// Pre-validated by the HTTP shell. The shell did JSON-shape
+		// validation (required fields, types, email format, language
+		// format, attachment count + size limits, https-only URL check)
+		// and attachment storage upload (base64 decode →
+		// ctx.storage.store, which can only run in an httpAction
+		// context). The module's input is typed, well-formed data.
+		templateLookup: v.union(
+			v.object({ kind: v.literal('id'), id: v.id('transactionalEmails') }),
+			v.object({ kind: v.literal('slug'), slug: v.string() })
+		),
+		email: v.string(), // already lowercased + trimmed
+		dataVariables: v.optional(v.record(v.string(), jsonPrimitiveValue)),
+		language: v.optional(v.string()),
+		attachmentRefs: v.optional(
+			v.array(
+				v.object({
+					filename: v.string(),
+					contentType: v.optional(v.string()),
+					url: v.string(),
+					storageId: v.optional(v.string()),
+				})
+			)
+		),
+	},
+	handler: async (ctx, args): Promise<DispatchOutcome> => {
+		// 1. Abuse gate → 'abuse_blocked'
+		// 2. Blocklist → 'recipient_blocked'
+		// 3. Template lookup + published + has-HTML
+		//      → 'template_not_found' | 'template_not_published' | 'template_no_content'
+		// 4. Sender + domain verification → 'domain_unverified'
+		// 5. Validate dataVariables against template schema → 'invalid_variables'
+		// 6. resolveContact({ channel: 'email', identifier: email, mode: 'upsert',
+		//                     source: 'transactional', contactFields: { language } })
+		// 7. Language resolution (request → contact → template default → 'en')
+		//    Pulls htmlContent + subject from htmlTranslations[language] when present
+		// 8. Provider route resolution (providerRoutes.getRoute + provider health → resolveRoute)
+		// 9. Template + request attachment merge
+		// 10. Insert transactionalSends row in 'queued' (with resolved language)
+		// 11. Increment instanceSettings.transactionalSendCount AND
+		//     incrementDailySendCountInternal — atomic with the row insert
+		// 12. Enqueue transactionalEmailPool.enqueueAction
+		//     ({ onComplete: emailOnComplete, sendRef: { kind: 'transactional', id: sendId } })
+		// 13. Return { ok: true, sendId, contactId, contactCreated, language, queued: true }
+	},
 });
 ```
 
@@ -292,73 +300,94 @@ that this module owns.
 to ~80:
 
 ```ts
-export const sendTransactional = createAuthenticatedHandler(
-  async (ctx, request, _auth) => {
-    // 1. Parse body (parseTransactionalBody helper — kept local)
-    let body: SendTransactionalBody;
-    try {
-      body = await request.json();
-    } catch {
-      return errorResponse('Invalid JSON in request body', 400, 'invalid_json');
-    }
+export const sendTransactional = createAuthenticatedHandler(async (ctx, request, _auth) => {
+	// 1. Parse body (parseTransactionalBody helper — kept local)
+	let body: SendTransactionalBody;
+	try {
+		body = await request.json();
+	} catch {
+		return errorResponse('Invalid JSON in request body', 400, 'invalid_json');
+	}
 
-    // 2. JSON-shape validation (validateRequestShape helper — kept local)
-    const shapeError = validateRequestShape(body);
-    if (shapeError) return shapeError;
+	// 2. JSON-shape validation (validateRequestShape helper — kept local)
+	const shapeError = validateRequestShape(body);
+	if (shapeError) return shapeError;
 
-    // 3. Attachment storage upload (uploadAttachments helper — kept local;
-    //    requires action context for ctx.storage.store)
-    const uploadResult = await uploadAttachments(ctx, body.attachments);
-    if (!uploadResult.ok) return uploadResult.response;
-    const attachmentRefs = uploadResult.refs;
+	// 3. Attachment storage upload (uploadAttachments helper — kept local;
+	//    requires action context for ctx.storage.store)
+	const uploadResult = await uploadAttachments(ctx, body.attachments);
+	if (!uploadResult.ok) return uploadResult.response;
+	const attachmentRefs = uploadResult.refs;
 
-    // 4. Build templateLookup discriminator
-    const templateLookup = body.transactionalId
-      ? { kind: 'id' as const, id: body.transactionalId as Id<'transactionalEmails'> }
-      : { kind: 'slug' as const, slug: body.slug! };
+	// 4. Build templateLookup discriminator
+	const templateLookup = body.transactionalId
+		? { kind: 'id' as const, id: body.transactionalId as Id<'transactionalEmails'> }
+		: { kind: 'slug' as const, slug: body.slug! };
 
-    // 5. Dispatch
-    const outcome = await ctx.runMutation(internal.transactional.dispatch.dispatch, {
-      templateLookup,
-      email: body.email.toLowerCase().trim(),
-      dataVariables: body.dataVariables,
-      language: body.language,
-      attachmentRefs,
-    });
+	// 5. Dispatch
+	const outcome = await ctx.runMutation(internal.transactional.dispatch.dispatch, {
+		templateLookup,
+		email: body.email.toLowerCase().trim(),
+		dataVariables: body.dataVariables,
+		language: body.language,
+		attachmentRefs,
+	});
 
-    // 6. Map outcome → response
-    if (!outcome.ok) {
-      switch (outcome.reason) {
-        case 'abuse_blocked':
-          return errorResponse('Your account has been suspended. Please contact support for assistance.', 403, 'account_suspended');
-        case 'recipient_blocked':
-          return errorResponse('This email address is blocked. The recipient may have previously bounced or filed a complaint.', 400, 'email_blocked');
-        case 'template_not_found':
-          return errorResponse(outcome.detail ?? 'Transactional email not found', 404, 'not_found');
-        case 'template_not_published':
-          return errorResponse(outcome.detail ?? 'Transactional email is not published.', 400, 'not_published');
-        case 'template_no_content':
-          return errorResponse(outcome.detail ?? 'Transactional email has no HTML content.', 400, 'no_content');
-        case 'domain_unverified':
-          return errorResponse(outcome.detail ?? 'Sending domain is not verified.', 400, 'domain_not_verified');
-        case 'invalid_variables':
-          return errorResponse(outcome.detail ?? 'Invalid data variables', 400, 'invalid_variables');
-      }
-    }
+	// 6. Map outcome → response
+	if (!outcome.ok) {
+		switch (outcome.reason) {
+			case 'abuse_blocked':
+				return errorResponse(
+					'Your account has been suspended. Please contact support for assistance.',
+					403,
+					'account_suspended'
+				);
+			case 'recipient_blocked':
+				return errorResponse(
+					'This email address is blocked. The recipient may have previously bounced or filed a complaint.',
+					400,
+					'email_blocked'
+				);
+			case 'template_not_found':
+				return errorResponse(outcome.detail ?? 'Transactional email not found', 404, 'not_found');
+			case 'template_not_published':
+				return errorResponse(
+					outcome.detail ?? 'Transactional email is not published.',
+					400,
+					'not_published'
+				);
+			case 'template_no_content':
+				return errorResponse(
+					outcome.detail ?? 'Transactional email has no HTML content.',
+					400,
+					'no_content'
+				);
+			case 'domain_unverified':
+				return errorResponse(
+					outcome.detail ?? 'Sending domain is not verified.',
+					400,
+					'domain_not_verified'
+				);
+			case 'invalid_variables':
+				return errorResponse(outcome.detail ?? 'Invalid data variables', 400, 'invalid_variables');
+		}
+	}
 
-    return jsonResponse({
-      data: {
-        status: 'queued' as const,
-        email: body.email,
-        transactionalEmailId: outcome.sendId,
-        slug: body.slug ?? '',
-        contactId: outcome.contactId,
-        contactCreated: outcome.contactCreated,
-        language: outcome.language,
-      },
-    }, 202);
-  },
-);
+	return jsonResponse(
+		{
+			data: {
+				status: 'queued' as const,
+				email: body.email,
+				transactionalEmailId: outcome.sendId,
+				slug: body.slug ?? '',
+				contactId: outcome.contactId,
+				contactCreated: outcome.contactCreated,
+				language: outcome.language,
+			},
+		},
+		202
+	);
+});
 ```
 
 `switch (outcome.reason)` is exhaustive — the TypeScript compiler will
@@ -394,7 +423,9 @@ become orphaned cleanly).
 This is the same trade-off the form path makes implicitly (form
 submissions have no attachments, so the problem doesn't surface there).
 The cost: orphaned blob storage on partial-failure paths until a
-sweeper picks them up. The benefit: a mutation-shaped module that
+sweeper picks them up. (No such sweeper existed, and Convex does not
+collect an unreferenced blob on its own; the 2026-10-01 amendment adds
+the ownership record and the sweep this paragraph assumed.) The benefit: a mutation-shaped module that
 participates in Convex's atomicity model.
 
 ## Considered options
@@ -459,6 +490,7 @@ automation's runtime gives it a `contact` arg, not an email string).
 
 The two paths share three concerns (template lookup, route resolution,
 provider dispatch) but diverge on everything else:
+
 - Sync vs async (workpool queueing)
 - Row-writing vs row-less
 - Contact-by-id vs email-upsert
@@ -559,6 +591,7 @@ convention is a subdirectory once an area has ≥3 files (`forms/`,
 largest cluster still at the top level.
 
 Move all five files under `convex/transactional/`:
+
 - `transactionalApiHttp.ts → transactional/api.ts`
 - `transactionalApi.ts → DELETED` (absorbed into
   `transactional/dispatch.ts`)
@@ -567,6 +600,7 @@ Move all five files under `convex/transactional/`:
 - `transactionalEmailsTranslations.ts → transactional/translations.ts`
 
 Add the new file:
+
 - `transactional/dispatch.ts` (the module)
 
 Partial moves (subdirectory for the new module only, others stay at
@@ -589,22 +623,22 @@ error, not a runtime surprise.
 
 ### Files that collapse / disappear
 
-| File | What happens |
-|---|---|
-| `convex/transactionalApiHttp.ts` | Renamed → `convex/transactional/api.ts`. `sendTransactional` shrinks from ~470 lines of handler logic to ~80. Open-coded contact upsert with race-retry (lines 466-512), inline language resolution (lines 514-552), domain verification block (lines 427-454), variable validation block (lines 456-463), attachment merging (lines 574-593), and the four `runMutation` / `runQuery` orchestration calls (lines 555-612) all move into `transactional/dispatch.ts`. `validateDataVariables` moves to `transactional/dispatch.ts` as a private helper. CORS / OPTIONS handler (`transactionalCollection`) stays. `validateRequestShape` and `uploadAttachments` extract as new private helpers in `transactional/api.ts`. |
-| `convex/transactionalApi.ts` | Deleted. Its sole export `enqueueTransactionalEmail` is absorbed into `transactional/dispatch.ts`. The intermediate internal mutation no longer exists. |
-| `convex/transactionalSends.ts:create` | Deleted — the pre-ADR-0006 public mutation inserting directly in `sent`. Grep-confirmed zero callers. |
-| `convex/transactionalSends.ts` (the file as a whole) | Renamed → `convex/transactional/sends.ts`. The focused reads stay (`listByTransactionalEmail`, `get`, `getByProviderMessageId`, `getStatsByTransactionalEmail`, `getCountByTransactionalEmail`, `getCounts`). The unreachable broad/history reads and `deleteByTransactionalEmail` mutation were later removed under #528. |
-| `convex/transactionalEmails.ts` | Renamed → `convex/transactional/emails.ts`. Otherwise unchanged. |
-| `convex/transactionalEmailsTranslations.ts` | Renamed → `convex/transactional/translations.ts`. Otherwise unchanged. |
+| File                                                 | What happens                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `convex/transactionalApiHttp.ts`                     | Renamed → `convex/transactional/api.ts`. `sendTransactional` shrinks from ~470 lines of handler logic to ~80. Open-coded contact upsert with race-retry (lines 466-512), inline language resolution (lines 514-552), domain verification block (lines 427-454), variable validation block (lines 456-463), attachment merging (lines 574-593), and the four `runMutation` / `runQuery` orchestration calls (lines 555-612) all move into `transactional/dispatch.ts`. `validateDataVariables` moves to `transactional/dispatch.ts` as a private helper. CORS / OPTIONS handler (`transactionalCollection`) stays. `validateRequestShape` and `uploadAttachments` extract as new private helpers in `transactional/api.ts`. |
+| `convex/transactionalApi.ts`                         | Deleted. Its sole export `enqueueTransactionalEmail` is absorbed into `transactional/dispatch.ts`. The intermediate internal mutation no longer exists.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `convex/transactionalSends.ts:create`                | Deleted — the pre-ADR-0006 public mutation inserting directly in `sent`. Grep-confirmed zero callers.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `convex/transactionalSends.ts` (the file as a whole) | Renamed → `convex/transactional/sends.ts`. The focused reads stay (`listByTransactionalEmail`, `get`, `getByProviderMessageId`, `getStatsByTransactionalEmail`, `getCountByTransactionalEmail`, `getCounts`). The unreachable broad/history reads and `deleteByTransactionalEmail` mutation were later removed under #528.                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `convex/transactionalEmails.ts`                      | Renamed → `convex/transactional/emails.ts`. Otherwise unchanged.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `convex/transactionalEmailsTranslations.ts`          | Renamed → `convex/transactional/translations.ts`. Otherwise unchanged.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 ### Files that grow
 
-| File | What it gains |
-|---|---|
-| `convex/transactional/dispatch.ts` (new) | `dispatch` internalMutation, the 22-step intake handler, private helpers: `validateDataVariables` (ported from `api.ts`), `resolveLanguage`, `selectContent`, `mergeAttachments`. ~280 LOC total. |
-| `convex/transactional/api.ts` (was `transactionalApiHttp.ts`) | New private helpers: `validateRequestShape` (~70 LOC, ports the JSON-shape gates from the original handler) and `uploadAttachments` (~50 LOC, ports the base64-decode + storage.store loop). |
-| `convex/schema/transactional.ts` (or wherever `transactionalSends` schema lives) | New field: `language: v.optional(v.string())` on the `transactionalSends` table. Drift bug #4 fix. |
+| File                                                                             | What it gains                                                                                                                                                                                     |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `convex/transactional/dispatch.ts` (new)                                         | `dispatch` internalMutation, the 22-step intake handler, private helpers: `validateDataVariables` (ported from `api.ts`), `resolveLanguage`, `selectContent`, `mergeAttachments`. ~280 LOC total. |
+| `convex/transactional/api.ts` (was `transactionalApiHttp.ts`)                    | New private helpers: `validateRequestShape` (~70 LOC, ports the JSON-shape gates from the original handler) and `uploadAttachments` (~50 LOC, ports the base64-decode + storage.store loop).      |
+| `convex/schema/transactional.ts` (or wherever `transactionalSends` schema lives) | New field: `language: v.optional(v.string())` on the `transactionalSends` table. Drift bug #4 fix.                                                                                                |
 
 ### Migration
 
@@ -638,32 +672,32 @@ Pre-prod. Single shot:
    - `internal.transactionalEmails.*` → `internal.transactional.emails.*`
    - `api.transactionalEmails.*` → `api.transactional.emails.*`
    - `api.transactionalEmailsTranslations.*` → `api.transactional.translations.*`
-   The Convex codegen at `_generated/api.d.ts` regenerates;
-   missed references are compile errors.
+     The Convex codegen at `_generated/api.d.ts` regenerates;
+     missed references are compile errors.
 
 No back-compat shims. No deprecation period. Pre-prod cut.
 
 ### Test surface
 
-| Surface | Before | After |
-|---|---|---|
-| Rejection classification ("template missing → `template_not_found`; template draft → `template_not_published`; recipient blocked → `recipient_blocked`; ...") | Implicit in 470-line `sendTransactional` handler. Requires HTTP test harness, body parsing setup, abuse-gate seed, blocklist seed, contacts seed, templates seed, domains seed. ~50-80 LOC per case. | Mutation test: `expect(await dispatch({ templateLookup, email, ... })).toEqual({ ok: false, reason: 'template_not_found' })`. No HTTP harness, no body parsing setup — just call `dispatch` with typed args. ~10 LOC per case. Seven reason literals cover the matrix. |
-| Happy-path dispatch (success → `queued`) | One end-to-end HTTP test that seeds everything, calls the endpoint, asserts the response shape AND the row in `transactionalSends` AND the workpool job exists. ~150 LOC. | One mutation test per assertion class. ~30 LOC each: dispatch returns `{ ok: true, ... }`; row exists in `queued` with the right `language`; both counters incremented; workpool job enqueued with the right `sendRef`. |
-| Race-retry on concurrent contact creation | No test (the race-retry try/catch is the test). | Inherited from **Contact resolution (module)** — race coverage lives once, in `convex/contacts/resolution.ts` tests, and every caller benefits. The transactional path no longer carries its own race-retry test. |
-| Language resolution fallback chain | Hidden inside the handler. End-to-end tests with different `language` request values, different contact `language` fields, different template defaults. Hard to set up. | Pure-function test on `resolveLanguage(requestLang, contactLang, templateDefault, availableLangs)`. Eight cases cover the fallback matrix. |
-| HTTP layer | Mixed with classification logic — every test is end-to-end. | Isolated. HTTP-shell tests cover auth, CORS, JSON-shape validation, attachment storage upload, and outcome → response mapping. They mock `internal.transactional.dispatch.dispatch` and verify the response shape per outcome — no contacts, templates, abuse settings, or domain rows needed. |
+| Surface                                                                                                                                                       | Before                                                                                                                                                                                               | After                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rejection classification ("template missing → `template_not_found`; template draft → `template_not_published`; recipient blocked → `recipient_blocked`; ...") | Implicit in 470-line `sendTransactional` handler. Requires HTTP test harness, body parsing setup, abuse-gate seed, blocklist seed, contacts seed, templates seed, domains seed. ~50-80 LOC per case. | Mutation test: `expect(await dispatch({ templateLookup, email, ... })).toEqual({ ok: false, reason: 'template_not_found' })`. No HTTP harness, no body parsing setup — just call `dispatch` with typed args. ~10 LOC per case. Seven reason literals cover the matrix.                         |
+| Happy-path dispatch (success → `queued`)                                                                                                                      | One end-to-end HTTP test that seeds everything, calls the endpoint, asserts the response shape AND the row in `transactionalSends` AND the workpool job exists. ~150 LOC.                            | One mutation test per assertion class. ~30 LOC each: dispatch returns `{ ok: true, ... }`; row exists in `queued` with the right `language`; both counters incremented; workpool job enqueued with the right `sendRef`.                                                                        |
+| Race-retry on concurrent contact creation                                                                                                                     | No test (the race-retry try/catch is the test).                                                                                                                                                      | Inherited from **Contact resolution (module)** — race coverage lives once, in `convex/contacts/resolution.ts` tests, and every caller benefits. The transactional path no longer carries its own race-retry test.                                                                              |
+| Language resolution fallback chain                                                                                                                            | Hidden inside the handler. End-to-end tests with different `language` request values, different contact `language` fields, different template defaults. Hard to set up.                              | Pure-function test on `resolveLanguage(requestLang, contactLang, templateDefault, availableLangs)`. Eight cases cover the fallback matrix.                                                                                                                                                     |
+| HTTP layer                                                                                                                                                    | Mixed with classification logic — every test is end-to-end.                                                                                                                                          | Isolated. HTTP-shell tests cover auth, CORS, JSON-shape validation, attachment storage upload, and outcome → response mapping. They mock `internal.transactional.dispatch.dispatch` and verify the response shape per outcome — no contacts, templates, abuse settings, or domain rows needed. |
 
 ### Behavior
 
-Identical to today on every accepted path, *except*:
+Identical to today on every accepted path, _except_:
 
 - **The race-retry hack is gone.** The four lines of `if
-  (error.message?.includes('already exists'))` try/catch disappear.
+(error.message?.includes('already exists'))` try/catch disappear.
   Replaced by the Contact resolution module's internal race handling.
   Same observable outcome: a concurrent send for the same email
   returns the same `contactId`. The mechanism moves behind a seam.
 - **Both counters fire atomically with the row insert.** Today the
-  daily counter is fired by the HTTP shell *after* the enqueue mutation
+  daily counter is fired by the HTTP shell _after_ the enqueue mutation
   returns; under this module both increments are part of the same
   mutation as the row insert. Net effect: counters can no longer
   diverge from `transactionalSends.length` on partial failure.
@@ -738,15 +772,15 @@ lifecycle (module)** (downstream), and the **Send dispatch (helper)**
    `resolveLanguage` and `selectContent` and `mergeAttachments`
    helpers. Use `resolveContact` from `convex/contacts/resolution.ts`
    (upsert mode, `source: 'transactional'`, pass `contactFields:
-   { language }` so the resolution module patches the field for
+{ language }` so the resolution module patches the field for
    `mode: 'upsert'` per its existing semantics).
 3. **Move four files under `convex/transactional/`.**
    - `transactionalApiHttp.ts → transactional/api.ts`
    - `transactionalSends.ts → transactional/sends.ts`
    - `transactionalEmails.ts → transactional/emails.ts`
    - `transactionalEmailsTranslations.ts → transactional/translations.ts`
-   Update internal `import` statements between these files (the new
-   relative paths will need adjusting).
+     Update internal `import` statements between these files (the new
+     relative paths will need adjusting).
 4. **Rewire the HTTP shell.** Edit `transactional/api.ts:sendTransactional`
    to:
    - Extract `validateRequestShape(body)` — JSON-shape validation that
@@ -758,7 +792,7 @@ lifecycle (module)** (downstream), and the **Send dispatch (helper)**
      `ctx.storage.store` loop that today lives inline. Stays in this
      file (requires action context).
    - Call `ctx.runMutation(internal.transactional.dispatch.dispatch,
-     { ... })`.
+{ ... })`.
    - Map `outcome.reason` via an exhaustive `switch` to
      `errorResponse(...)`.
    - Compose the success response from `{ ok: true, ... }` fields.
@@ -775,8 +809,8 @@ lifecycle (module)** (downstream), and the **Send dispatch (helper)**
    - `api.transactionalEmails.*` → `api.transactional.emails.*`
    - `api.transactionalEmailsTranslations.*` →
      `api.transactional.translations.*`
-   Mechanical search-and-replace. The Convex codegen runs as part of
-   `bun dev`/`bun run codegen`; missed references are compile errors.
+     Mechanical search-and-replace. The Convex codegen runs as part of
+     `bun dev`/`bun run codegen`; missed references are compile errors.
 8. **Tests.** Add per-case unit tests for each `reason` literal on
    `dispatch`. Add the happy-path mutation test (assert row in
    `queued`, `language` on the row, both counters incremented,
@@ -862,7 +896,6 @@ rg "language:" apps/api/convex/transactional/dispatch.ts
   this ADR.
 - The grep verification matches above all hold.
 
-
 ---
 
 ## Amendment — PIECE C2 (2026-08-25)
@@ -884,6 +917,7 @@ when this ADR was written:
 
 > It does **not** write a `transactionalSends` row, does **not** use the
 > workpool, dispatches synchronously […]
+>
 > - Sync vs async (workpool queueing)
 > - Row-writing vs row-less
 
@@ -954,7 +988,7 @@ everything downstream of the input:
    holds only the campaign producer), runs the shared gates, resolves its
    own route, inserts the row, records the experiment assignment, enqueues
    the workpool job, and returns `{ ok: true, sendId, queued: true } |
-   { ok: false, reason, detail? }` — the `DispatchOutcome` shape this ADR
+{ ok: false, reason, detail? }` — the `DispatchOutcome` shape this ADR
    chose, now used by both intakes.
 
 3. **Both magic-string constants are deleted**, along with every
@@ -976,11 +1010,11 @@ everything downstream of the input:
 The point of a typed union is that each producer answers each reason
 DELIBERATELY. Recorded here because the choices are policy, not mechanics:
 
-| reason | automation step | agent approved-reply |
-| --- | --- | --- |
-| `recipient_blocked` | step `completed`, no Send row, no retry | inbound message → `archived`, reason `sender_blocked` |
-| `no_delivery_provider` | step `failed` | inbound message → `failed` |
-| `abuse_blocked` | step `failed` | inbound message → `failed` |
+| reason                 | automation step                         | agent approved-reply                                  |
+| ---------------------- | --------------------------------------- | ----------------------------------------------------- |
+| `recipient_blocked`    | step `completed`, no Send row, no retry | inbound message → `archived`, reason `sender_blocked` |
+| `no_delivery_provider` | step `failed`                           | inbound message → `failed`                            |
+| `abuse_blocked`        | step `failed`                           | inbound message → `failed`                            |
 
 `recipient_blocked` is about the RECIPIENT and will never clear by
 retrying, so neither producer treats it as a fault. The agent side archives
@@ -1052,3 +1086,98 @@ rg "internal\.delivery\.enqueue\.enqueueNonCampaignSend" apps/api/convex
 # The three upstream advisory route resolutions are gone
 rg "route\.resolveSendRoute\b" apps/api/convex/automations apps/api/convex/agent
 ```
+
+## Amendment — attachment ownership handoff (2026-10-01)
+
+### Why
+
+The section "Why attachment uploads stay at the HTTP boundary" accepted
+orphaned blobs on partial-failure paths on the assumption that an
+unreferenced blob is GC-eligible. It is not: Convex keeps a stored blob
+until something deletes it, and nothing did. The shell also stored each
+base64 attachment inside the validation loop, so an invalid second
+attachment left the first one behind, and every dispatch rejection
+(template, domain, variables, provider, blocklist) left all of them
+behind. The Send lifecycle's `attachment_cleanup` could not reach them
+because a refused intake creates no Send row. Issue #997.
+
+Separately, the shared 100,000-byte cap on every key-authenticated body
+made the documented 10 MiB attachment budget unreachable: base64 adds a
+third, so a 100 KiB invoice was already refused. Issue #998.
+
+### Decision
+
+The storage writes stay in the shell (the reasons above still hold), and
+ownership of each blob is now recorded instead of assumed:
+
+1. **Validate first.** `transactional/attachmentIntake.ts` checks and
+   decodes the whole attachment list (filenames, content xor url, URL
+   safety, base64, the 10 MiB decoded budget) before storing a byte.
+2. **Register at once.** Each stored blob is pushed onto the request's
+   list the moment `ctx.storage.store` returns and then gets a
+   `transactionalPendingUploads` row (`register`) with a one-hour expiry.
+   The row is deletion authority for that blob.
+3. **Claim in the Send's transaction.** The dispatch mutation, called with
+   `uploadsPending: true`, deletes the pending rows of its attachment
+   storage ids in the same transaction that inserts the Send, which owns
+   the blobs from then on (`attachmentStorageIds`, freed by the Send
+   lifecycle). A row that is missing (released or expired) makes the claim
+   throw, which rolls the insert back, so a Send never names bytes that
+   may already be gone.
+4. **Release on every refusal.** A storage error, a missing storage URL, a
+   dispatch rejection and a thrown dispatch all call `release`, which
+   deletes only the blobs whose pending row still exists. A blob whose row
+   was claimed is left alone, so a dispatch that committed but whose
+   result the shell never saw cannot lose its attachment. A blob whose row
+   could not be written is deleted directly; no dispatch ran that could
+   have claimed it.
+5. **Expire what is left.** A request that dies between the steps (a
+   timeout, a redeploy, a release that failed) leaves rows behind; the
+   `sweep expired transactional uploads` cron deletes their blobs once the
+   rows expire. The expiry is longer than any request can run, and the
+   claim check in step 3 keeps it safe even if one did.
+6. **End a row only when its blob is gone.** Release and the sweep delete
+   a row only after the blob is deleted or confirmed already absent. A
+   storage error keeps the row, marks it unclaimable and moves its expiry
+   out (15 minutes, doubling per failure), so the sweep retries it later
+   and the rest of the batch still runs. After 8 failed attempts (about
+   32 hours) the row is dropped and the blob is logged as orphaned, so a
+   blob that never deletes is not retried for ever.
+
+The one window left is between `ctx.storage.store` returning and the
+`register` mutation committing; an action killed in exactly that gap
+leaks one blob. No API can close it from an action, and the window is a
+single mutation call.
+
+The send route gets its own body ceiling, `TRANSACTIONAL_MAX_BODY_BYTES`
+in `transactional/api.ts`, passed to `createAuthenticatedHandler`; every
+other endpoint keeps the 100,000-byte cap. The ceiling is the 10 MiB
+budget as base64 (4 bytes per 3, plus padding for up to 10 parts) plus
+the same 100,000 bytes for the rest of the request, 14,081,056 bytes in
+total, and the shell checks that the non-`content` part of the request
+stays within those 100,000 bytes. Authentication still runs before the
+body is read, and the body is still read through the streaming cap, so
+a larger one is cut off at the first byte past the ceiling.
+
+The number was checked against the runtime's limits before it was
+chosen. The Convex backend accepts at most 20 MiB of HTTP action request
+body (`HTTP_ACTION_BODY_LIMIT`), and an action runs with a 64 MiB V8 heap
+and a separate 64 MiB ArrayBuffer pool (`ISOLATE_MAX_USER_HEAP_SIZE`,
+`ISOLATE_MAX_ARRAY_BUFFER_TOTAL_SIZE`). Counting a copy at each step, the
+pool holds the buffered body and its re-wrapped copy (about 27 MiB) plus
+the decoded attachments and one blob copy (20 MiB), and the heap holds
+the body text and the parsed strings (about 27 MiB). Both stay inside
+64 MiB, so the published 10 MiB stays; it did not need to be lowered.
+
+### Compatibility
+
+- `transactionalPendingUploads` is a new table: additive, no migration.
+  It is tenant data (`TENANT_TABLES`), wiped with its blobs by the
+  organization deletion walker and the dev reset.
+- `uploadsPending` is an optional dispatch argument. A shell of the
+  previous release still running across the deploy registers nothing and
+  omits it, and dispatch then claims nothing, as before. Remove the flag
+  after the next release and claim unconditionally.
+- The SDKs already enforced 10 attachments and 10 MiB decoded. Both now
+  compute the decoded size exactly (they used to round up and refuse a
+  file of exactly 10 MiB the API accepts).

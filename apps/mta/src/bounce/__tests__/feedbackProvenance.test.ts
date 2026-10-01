@@ -30,7 +30,7 @@ function job(
 	};
 }
 
-function dsn(messageId: string): BounceAttempt {
+function dsn(messageId: string): Extract<BounceAttempt, { kind: 'dsn_attributed' }> {
 	return {
 		kind: 'dsn_attributed',
 		bounce: {

@@ -56,6 +56,12 @@
 		},
 		"toast": {
 			"dismiss": "Benachrichtigung ausblenden"
+		},
+		"unsavedChanges": {
+			"title": "Ungespeicherte Änderungen",
+			"description": "Du hast ungespeicherte Änderungen. Möchtest du sie speichern, bevor du gehst?",
+			"discard": "Verwerfen",
+			"save": "Speichern"
 		}
 	}
 }

@@ -1,5 +1,5 @@
 /**
- * Migration 0056 withdraws the confirmation token of every contact that opted
+ * Migration 0057 withdraws the confirmation token of every contact that opted
  * out before the token-withdrawal change and still holds a token issued at or
  * before that opt-out. A token issued after the opt-out (a later signup that
  * waits for a fresh confirmation) stays. Progress lives in the migration
@@ -18,8 +18,8 @@ import { DOI_TOKEN_TTL_MS, tokenPredatesOptOut } from '../../contacts/doiLifecyc
 
 type Harness = TestConvex<typeof schema>;
 
-const MIGRATION = '0056_withdraw_opted_out_confirmation_tokens';
-const migration = internal.migrations['0056_withdraw_opted_out_confirmation_tokens'];
+const MIGRATION = '0057_withdraw_opted_out_confirmation_tokens';
+const migration = internal.migrations['0057_withdraw_opted_out_confirmation_tokens'];
 const DAY = 24 * 60 * 60 * 1000;
 
 function harness(): Harness {
@@ -105,7 +105,7 @@ describe('tokenPredatesOptOut', () => {
 	});
 });
 
-describe('migration 0056', () => {
+describe('migration 0057', () => {
 	it('withdraws pre-opt-out tokens across pages and keeps the rest', async () => {
 		const t = harness();
 		const now = Date.now();

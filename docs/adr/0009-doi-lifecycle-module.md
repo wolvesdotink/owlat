@@ -629,7 +629,7 @@ Contacts who opted out before the consent-episode amendment still held the
 token they had then. `tokenPredatesOptOut` recognises such a token (the
 contact is opted out and the token was issued at or before the opt-out), and
 a replacement does not carry its rows. Migration
-`0056_withdraw_opted_out_confirmation_tokens` withdraws it, with
+`0057_withdraw_opted_out_confirmation_tokens` withdraws it, with
 `withdrawConfirmationToken`'s semantics, and leaves a token issued after the
 opt-out (a later signup waiting for a fresh confirmation).
 

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,7 +15,6 @@ beforeEach(() => {
 					.catch(() => false),
 			text: async () => readFile(path, 'utf8'),
 		}),
-		write: (path: string, contents: string) => writeFile(path, contents),
 	});
 });
 
@@ -54,6 +53,26 @@ describe('setup CLI flag persistence', () => {
 	});
 });
 
+describe.skipIf(process.platform === 'win32')('setup CLI flag file mode', () => {
+	// The web setup wizard and the updater create the file owner-only; `owlat
+	// feature` and `owlat pack` must agree with them.
+	it('creates .owlat-flags.json owner-only on a flag toggle', async () => {
+		const root = await temporaryOwlatDirectory();
+
+		await applyAndPersist(root, 'ai', false);
+
+		expect((await stat(join(root, '.owlat-flags.json'))).mode & 0o777).toBe(0o600);
+	});
+
+	it('creates .owlat-flags.json owner-only on a pack toggle', async () => {
+		const root = await temporaryOwlatDirectory();
+
+		await applyPackAndPersist(root, 'emailClient', true);
+
+		expect((await stat(join(root, '.owlat-flags.json'))).mode & 0o777).toBe(0o600);
+	});
+});
+
 describe('setup CLI flag toggles keep .env COMPOSE_PROFILES in step with the override', () => {
 	it('drops a disabled profile from .env and keeps install-owned ones and every other line', async () => {
 		const root = await temporaryOwlatDirectory();
@@ -85,6 +104,19 @@ describe('setup CLI flag toggles keep .env COMPOSE_PROFILES in step with the ove
 			`SITE_URL=https://owlat.example.com\nCOMPOSE_PROFILES=${result.profiles.join(',')}\n`
 		);
 	});
+
+	it.skipIf(process.platform === 'win32')(
+		'makes a world-readable .env owner-only when it rewrites it',
+		async () => {
+			const root = await temporaryOwlatDirectory();
+			await writeFile(join(root, '.env'), 'INSTANCE_SECRET=abc\nCOMPOSE_PROFILES=clamav\n');
+			await chmod(join(root, '.env'), 0o644);
+
+			await applyAndPersist(root, 'scan.files', false);
+
+			expect((await stat(join(root, '.env'))).mode & 0o777).toBe(0o600);
+		}
+	);
 
 	it('does not create a .env for a directory that has none', async () => {
 		const root = await temporaryOwlatDirectory();

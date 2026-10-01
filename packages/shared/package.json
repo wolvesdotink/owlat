@@ -46,6 +46,10 @@
 			"types": "./src/inboundRetention.ts",
 			"import": "./src/inboundRetention.ts"
 		},
+		"./sunsetPolicy": {
+			"types": "./src/sunsetPolicy.ts",
+			"import": "./src/sunsetPolicy.ts"
+		},
 		"./workspaceLogo": {
 			"types": "./src/workspaceLogo.ts",
 			"import": "./src/workspaceLogo.ts"
@@ -117,6 +121,10 @@
 		"./setupEnv": {
 			"types": "./src/setupEnv.ts",
 			"import": "./src/setupEnv.ts"
+		},
+		"./ownerOnlyFile": {
+			"types": "./src/ownerOnlyFile.ts",
+			"import": "./src/ownerOnlyFile.ts"
 		},
 		"./containerHealth": {
 			"types": "./src/containerHealth.ts",

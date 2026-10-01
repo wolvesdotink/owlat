@@ -12,7 +12,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import net from 'node:net';
-import { getFunctionName, type AnyFunctionReference } from 'convex/server';
+import { getFunctionName } from 'convex/server';
 import { fetchModule, type FetchArgs } from '../index.js';
 import type { FetchEnvelope } from '../format.js';
 import type { CommandDeps, ConnectionState, StartArgs } from '../../types.js';
@@ -23,6 +23,9 @@ import type { ConvexClient } from '../../../convex.js';
 import { AuthRateLimiter } from '../../../rateLimit.js';
 import { drainWaiter, OUTPUT_BUDGET_BYTES } from '../../../socketOutput.js';
 import { EventEmitter } from 'node:events';
+
+// convex/server declares AnyFunctionReference without exporting it.
+type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
 
 vi.mock('../../../logger.js', () => ({
 	logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },

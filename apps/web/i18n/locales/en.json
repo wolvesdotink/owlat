@@ -814,14 +814,13 @@
 					"existingDescription": "Pick from your saved marketing templates.",
 					"existingTemplatesLabel": "Existing templates",
 					"existingTitle": "Use an existing marketing email",
-					"newDescription": "A new template will be created only when you continue.",
+					"newDescription": "Opens the email editor once you continue, then brings you back to review and send.",
 					"newTemplateNameHint": "This will create a new draft marketing template and link it to this campaign.",
 					"newTemplateNameLabel": "New template name",
 					"newTemplateNamePlaceholder": "e.g. Summer launch email",
-					"newTitle": "Create a new marketing email",
-					"noMatches": "No templates match your search.",
+					"newTitle": "Create and design email",
 					"noSubject": "No subject",
-					"searchPlaceholder": "Search by name or subject...",
+					"openEditor": "Create and open editor",
 					"selectedTemplate": "Selected template",
 					"subjectLabel": "Email subject",
 					"subjectPlaceholder": "e.g. Your weekly newsletter is here!",
@@ -835,12 +834,14 @@
 					"audience": "Audience",
 					"blocked": {
 						"domainMissing": "Sending is disabled because \"{domain}\" is not registered. Add and verify it in Settings → Domains.",
-						"domainUnverified": "Sending is disabled because \"{domain}\" is not verified. Complete DNS verification in Settings → Domains."
+						"domainUnverified": "Sending is disabled because \"{domain}\" is not verified. Complete DNS verification in Settings → Domains.",
+						"emptyBody": "Email body is empty. Design the email before sending it."
 					},
 					"campaignName": "Campaign name",
 					"dateLabel": "Date",
-					"editLater": "You can edit this email after the campaign is created.",
+					"editEmail": "Edit email",
 					"emailContent": "Email content",
+					"emptyBody": "Email body is empty.",
 					"errors": {
 						"dateRequired": "Please select a date for scheduling",
 						"timeInPast": "Scheduled time must be in the future",
@@ -849,6 +850,7 @@
 					"estimatedRecipients": "{count} estimated recipients",
 					"from": "From",
 					"previewExample": "For example: {time} ET, {time} PT, {time} GMT, etc.",
+					"previewFrameTitle": "Email preview",
 					"previewHeading": "Your campaign will be sent:",
 					"previewHeadingAt": "Your campaign will be sent at:",
 					"previewPerTimezone": "{time} in each recipient's timezone",
@@ -4405,6 +4407,10 @@
 			},
 			"postboxScheduleDialog": {
 				"custom": "Custom",
+				"customPast": "Pick a time in the future",
+				"customSends": "Sends {when} ({zone})",
+				"customSendsBoth": "Sends {when} your time ({zone}), {theirs} theirs",
+				"customZone": "Times are in your timezone, {zone}",
 				"nextWeekdayMorning": "{weekday} morning",
 				"recipientMorning": "Tomorrow morning, their time",
 				"recipientZone": "Times below are read against {zone}, the timezone on record for your recipient.",
@@ -5611,10 +5617,20 @@
 		"translation": {
 			"cell": {
 				"cancelTitle": "Cancel (Esc)",
+				"conflict": "Changed elsewhere since you edited it",
+				"discard": "Discard",
+				"discardLabel": "Discard your edit of {field}",
+				"editHint": "Press Ctrl+Enter or Cmd+Enter to save, Escape to cancel.",
+				"editLabel": "Edit {field}",
+				"fieldName": "{field} ({language})",
 				"htmlBadge": "HTML",
 				"noContent": "No content",
 				"placeholder": "Click to translate",
+				"retry": "Save again",
+				"retryLabel": "Save {field} again",
+				"saveFailed": "Not saved",
 				"saveTitle": "Save (Cmd+Enter)",
+				"saving": "Saving…",
 				"sourceBadge": "source"
 			},
 			"manager": {
@@ -5654,7 +5670,7 @@
 				"removeLanguageOperation": "Remove language",
 				"removeLanguageTitle": "Remove language",
 				"saveTranslationOperation": "Save translation",
-				"saveTranslationsOperation": "Save translations",
+				"savingChanges": "Saving…",
 				"subjectLine": "Subject line",
 				"textBlock": "{prefix}text block {index}",
 				"unsavedChanges": "Unsaved changes"
@@ -10493,8 +10509,10 @@
 			"emails": {
 				"detail": {
 					"edit": {
+						"backToCampaign": "Back to campaign",
 						"backToEmails": "Back to emails",
 						"builderError": "The email editor hit an unexpected error. Please refresh — your last saved version is safe.",
+						"campaignReturnHint": "Save your changes, then go back to review and send the campaign.",
 						"loadError": "Couldn't load this template",
 						"loading": "Loading template...",
 						"manageTranslations": "Manage translations",
@@ -11617,6 +11635,7 @@
 			"continueToSignIn": "Continue to sign in",
 			"emailProvider": "Email provider",
 			"errorUnknown": "Setup failed for an unknown reason.",
+			"errorWriteFailed": "Setup could not write {file}: {cause}. Your admin account and runtime settings are already in place, so nothing is lost. Fix the file on the server, then launch again. Retrying is safe.",
 			"eyebrow": "Owlat setup",
 			"finishing": "Finishing…",
 			"fromIdentity": "From identity",

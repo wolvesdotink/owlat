@@ -6,9 +6,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getFunctionName, type AnyFunctionReference } from 'convex/server';
+import { getFunctionName } from 'convex/server';
 import type { ConnectableAccount, ConvexClient } from '../convex.js';
 import type { MailSyncConfig } from '../config.js';
+
+// convex/server declares AnyFunctionReference without exporting it.
+type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
 
 const ingest = vi.hoisted(() => ({
 	ingestMessage: vi.fn(async (..._args: unknown[]) => ({ messageId: 'msg_1' })),
@@ -47,7 +50,10 @@ type Internals = {
 	pollFolder(remoteName: string, role: string): Promise<void>;
 };
 
-function connection(uids: number[], mutation = vi.fn(async () => ({}))) {
+function connection(
+	uids: number[],
+	mutation = vi.fn(async (_fnRef: AnyFunctionReference) => ({}))
+) {
 	const convex = {
 		query: vi.fn(async () => []),
 		mutation,

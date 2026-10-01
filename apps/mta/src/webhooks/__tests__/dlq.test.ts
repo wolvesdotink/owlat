@@ -19,6 +19,7 @@ import {
 	WEBHOOK_DLQ_PROTECTED_KEY,
 } from '../dlq.js';
 import { createTestConfig } from '../../__tests__/helpers/fixtures.js';
+import type { MtaRoutingReentry } from '@owlat/mta-protocol';
 import type { MtaWebhookEvent } from '../../types.js';
 
 const TRANSPORT_FAILURE = { category: 'transport' } as const;
@@ -143,7 +144,7 @@ describe('dlq', () => {
 		});
 
 		it('ignores key order and undefined members inside nested payloads', async () => {
-			const reentry = (routingReentry: object): MtaWebhookEvent => ({
+			const reentry = (routingReentry: MtaRoutingReentry): MtaWebhookEvent => ({
 				event: 'routing.reentry',
 				messageId: 'msg-nested',
 				workAttemptId: 'work-attempt-1',
@@ -182,7 +183,10 @@ describe('dlq', () => {
 				workAttemptId: 'work-attempt-1',
 				routingReentryToken: 'rr2.token',
 				routingReentryReason: 'routing_lease_stale',
-				routingReentry: { envelopeInput, retryState: { attempt: 1 } },
+				routingReentry: {
+					envelopeInput,
+					retryState: { attempt: 1, startedAt: 1, idempotencyKey: 'msg-null' },
+				},
 				timestamp: 1_700_000_000_000,
 			});
 			const key = 'dispatch:msg-null:routing.reentry';

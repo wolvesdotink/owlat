@@ -15,17 +15,21 @@
  * here, passing a descriptor of which translatable fields the entity carries.
  * The `*Patch` helpers at the bottom return the complete row patch for each
  * translation mutation, content revision and timestamp included.
+ *
+ * A mutation handed a language's delivery HTML writes it in the same patch as
+ * the overlay (`emailHtmlTranslations.ts`), so the two share one revision.
  */
 
-import { childBlockLists } from '@owlat/shared/blockTree';
 import { throwAlreadyExists, throwInvalidInput, throwNotFound } from '../_utils/errors';
 import { nextContentRevision } from './contentRevision';
+import { renderedLanguagePatch } from './emailHtmlTranslations';
 import {
 	sanitizeOverlayBlocks,
 	sanitizeOverlayBlocksJson,
 	sanitizeStoredBlocksJson,
 } from './emailContentSanitize';
 import {
+	extractTranslatableContent,
 	mergeTranslationIntoItem,
 	type TranslatableBlockContent,
 } from '../emailTemplates/translationMerge';
@@ -67,6 +71,7 @@ export interface TranslatableEntity {
 	defaultLanguage?: string;
 	supportedLanguages?: string[];
 	contentRevision?: number;
+	htmlTranslations?: string;
 }
 
 /** Describes which translatable fields an entity carries. */
@@ -90,50 +95,7 @@ export function serializeTranslations(translations: Record<string, Translation>)
 	return JSON.stringify(translations);
 }
 
-// --- translatable-content extraction ---------------------------------------
-
-// Extract translatable content from an item and, through the shared Block-tree
-// child contract, from every Block nested inside it.
-function extractFromItem(
-	item: { id: string; type: string; content: Record<string, unknown> },
-	translatableContent: Record<string, TranslatableBlockContent>
-): void {
-	const content: TranslatableBlockContent = {};
-
-	if (item.type === 'text' && item.content['html']) {
-		content.html = item.content['html'] as string;
-	} else if (item.type === 'button' && item.content['text']) {
-		content.buttonText = item.content['text'] as string;
-	} else if (item.type === 'image' && item.content['alt']) {
-		content.alt = item.content['alt'] as string;
-	}
-
-	// Only add if there's translatable content
-	if (Object.keys(content).length > 0) {
-		translatableContent[item.id] = content;
-	}
-
-	for (const list of childBlockLists(item)) {
-		for (const child of list) extractFromItem(child, translatableContent);
-	}
-}
-
-export function extractTranslatableContent(
-	blocksJson: string
-): Record<string, TranslatableBlockContent> {
-	try {
-		const blocks = JSON.parse(blocksJson) as Block[];
-		const translatableContent: Record<string, TranslatableBlockContent> = {};
-
-		for (const block of blocks) {
-			extractFromItem(block, translatableContent);
-		}
-
-		return translatableContent;
-	} catch {
-		return {};
-	}
-}
+// --- merge ------------------------------------------------------------------
 
 // Helper to merge translation blocks with main content blocks.
 // Takes the block structure/styling from main content and applies translated text.
@@ -306,6 +268,9 @@ export interface TranslationPatch {
 	defaultLanguage?: string;
 	translations?: string;
 	supportedLanguages?: string[];
+	htmlContent?: string;
+	plainTextContent?: string;
+	htmlTranslations?: string;
 	contentRevision: number;
 	updatedAt: number;
 }
@@ -316,21 +281,39 @@ function revisionStamp(
 	return { contentRevision: nextContentRevision(row), updatedAt: Date.now() };
 }
 
-/** Patch for adding a language overlay (see `addLanguage`). */
+/**
+ * Patch for adding a language overlay (see `addLanguage`). `htmlContent` is the
+ * new language's delivery HTML; the seeded overlay is the default text, so it
+ * is rendered from the row's content as it stands.
+ */
 export function addTranslationPatch(
 	row: TranslatableEntity,
 	language: string,
-	fields: TranslatableFields
+	fields: TranslatableFields,
+	htmlContent?: string
 ): TranslationPatch {
-	return { ...addLanguage(row, language, fields), ...revisionStamp(row) };
+	return {
+		...addLanguage(row, language, fields),
+		...(htmlContent !== undefined &&
+			renderedLanguagePatch(row.htmlTranslations, language, { htmlContent, subject: row.subject })),
+		...revisionStamp(row),
+	};
 }
 
-/** Patch for removing a language overlay (see `removeLanguage`). */
+/**
+ * Patch for removing a language overlay (see `removeLanguage`), together with
+ * the language's delivery HTML.
+ */
 export function removeTranslationPatch(
 	row: TranslatableEntity,
 	language: string
 ): TranslationPatch {
-	return { ...removeLanguage(row, language), ...revisionStamp(row) };
+	return {
+		...removeLanguage(row, language),
+		...(row.htmlTranslations !== undefined &&
+			renderedLanguagePatch(row.htmlTranslations, language, null)),
+		...revisionStamp(row),
+	};
 }
 
 export interface TranslationUpdate {
@@ -339,6 +322,12 @@ export interface TranslationUpdate {
 	previewText?: string;
 	/** JSON string of `Record<blockId, TranslatableBlockContent>`. */
 	blocks?: string;
+	/**
+	 * The language's delivery HTML, rendered from the updated overlay on the
+	 * row's content. Stored with the overlay's subject. Ignored for the default
+	 * language, whose HTML only the editor save writes.
+	 */
+	htmlContent?: string;
 }
 
 /**
@@ -386,7 +375,27 @@ export function updateTranslationPatch(
 	}
 	translations[update.language] = translation;
 
-	return { translations: serializeTranslations(translations), ...revisionStamp(row) };
+	return {
+		translations: serializeTranslations(translations),
+		...(update.htmlContent !== undefined &&
+			renderedLanguagePatch(row.htmlTranslations, update.language, {
+				htmlContent: update.htmlContent,
+				subject: translation.subject,
+			})),
+		...revisionStamp(row),
+	};
+}
+
+/**
+ * The delivery representations of a row after a default-language change,
+ * rendered by the caller from the swapped content and overlays: the new
+ * default's HTML and text/plain body, and every other language's HTML
+ * (the outgoing default included).
+ */
+export interface SwappedDelivery {
+	htmlContent?: string;
+	plainTextContent?: string;
+	htmlTranslations?: string;
 }
 
 /**
@@ -396,13 +405,18 @@ export function updateTranslationPatch(
  * The new default's full content is the current main content structure with
  * the new language's translatable text merged in. The outgoing default becomes
  * a translation overlay (its translatable text extracted from the current main
- * content), so re-selecting it later round-trips. Throws not_found when the
- * language has no overlay.
+ * content), so re-selecting it later round-trips, and both languages stay
+ * supported. Throws not_found when the language has no overlay.
+ *
+ * `delivery` is written in the same patch, so the HTML the send path delivers
+ * changes language together with the body and subject. Without it the stored
+ * HTML is left as it was (older callers).
  */
 export function setDefaultLanguagePatch(
 	row: TranslatableEntity,
 	language: string,
-	fields: TranslatableFields
+	fields: TranslatableFields,
+	delivery: SwappedDelivery = {}
 ): TranslationPatch | null {
 	const currentDefault = row.defaultLanguage ?? DEFAULT_LANGUAGE;
 	if (language === currentDefault) {
@@ -438,12 +452,27 @@ export function setDefaultLanguagePatch(
 		[currentDefault]: outgoingDefaultOverlay,
 	};
 
+	// The demoted default is an overlay like any other, so it stays deliverable.
+	// A row without the list restricts nothing and keeps it that way.
+	const supportedLanguages = row.supportedLanguages ?? [];
+	const missing = row.supportedLanguages
+		? [currentDefault, language].filter((lang) => !supportedLanguages.includes(lang))
+		: [];
+
 	return {
 		subject: newDefault.subject,
 		...(fields.hasPreviewText ? { previewText: newDefault.previewText } : {}),
 		content: sanitizeStoredBlocksJson(newDefaultContent),
 		defaultLanguage: language,
 		translations: serializeTranslations(updatedTranslations),
+		...(missing.length > 0 && { supportedLanguages: [...supportedLanguages, ...missing] }),
+		...(delivery.htmlContent !== undefined && { htmlContent: delivery.htmlContent }),
+		...(delivery.plainTextContent !== undefined && {
+			plainTextContent: delivery.plainTextContent,
+		}),
+		...(delivery.htmlTranslations !== undefined && {
+			htmlTranslations: delivery.htmlTranslations,
+		}),
 		...revisionStamp(row),
 	};
 }

@@ -1,4 +1,4 @@
-import Redis from 'ioredis';
+import type { Cluster, Redis } from 'ioredis';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
 	dockerRedisAvailable,
@@ -183,7 +183,7 @@ describe.runIf(dockerRedisAvailable())('webhook DLQ on standalone Redis', () => 
 
 describe.runIf(dockerRedisAvailable())('webhook DLQ on Redis Cluster', () => {
 	let fixture: RedisClusterFixture;
-	let cluster: Redis.Cluster;
+	let cluster: Cluster;
 
 	beforeAll(async () => {
 		fixture = await startRedisClusterFixture('dlq');

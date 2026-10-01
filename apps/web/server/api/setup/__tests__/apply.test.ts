@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -55,6 +55,7 @@ interface ApplyResult {
 	ok: boolean;
 	message?: string;
 	redirectTo?: string;
+	writeFailure?: { file: string; cause: string };
 }
 
 async function callRoute(): Promise<ApplyResult> {
@@ -268,6 +269,68 @@ describe('POST /api/setup/apply — email-verification provider coupling (H3)', 
 
 		const result = await callRoute();
 		expect(result.ok).toBe(true);
+	});
+});
+
+/**
+ * The writes after provisioning: by then the admin exists and the runtime env
+ * is pushed, so a failed write must come back as a wizard error that names the
+ * file and the cause (the operator fixes it and launches again, which takes the
+ * existing-admin 409 path), never as an unhandled throw that h3 turns into a 500.
+ */
+describe('POST /api/setup/apply — a file write fails after provisioning', () => {
+	beforeEach(() => {
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+	});
+
+	it('answers a failed .env write with the file and the cause, after seeding and pushing', async () => {
+		const cause = `Refusing to write ${join(DIR, '.env')}: could not make it owner-only (chmod 600): EPERM. Run the command as the file's owner, then retry`;
+		writeMock.mockRejectedValue(new Error(`${cause}.`));
+
+		const result = await callRoute();
+
+		expect(result.ok).toBe(false);
+		// The cause loses its own full stop; the sentence around it adds one.
+		expect(result.writeFailure).toEqual({ file: join(DIR, '.env'), cause });
+		expect(result.message).toContain(`Could not write ${join(DIR, '.env')}: ${cause}. The admin`);
+		expect(result.message).toMatch(/retrying is safe/);
+		expect(result.redirectTo).toBeUndefined();
+		// Provisioning ran before the write that failed.
+		expect(fetch).toHaveBeenCalledTimes(1);
+		expect(pushMock).toHaveBeenCalledTimes(1);
+		expect(console.error).toHaveBeenCalled();
+	});
+
+	it.each(['docker-compose.override.yml', '.owlat-flags.json'])(
+		'answers a failed %s write with the file and the cause',
+		async (name) => {
+			// A directory where the file belongs makes the real write fail (EISDIR).
+			const path = join(DIR, name);
+			rmSync(path, { recursive: true, force: true });
+			mkdirSync(path);
+			try {
+				const result = await callRoute();
+
+				expect(result.ok).toBe(false);
+				expect(result.writeFailure?.file).toBe(path);
+				expect(result.writeFailure?.cause).toMatch(/EISDIR/);
+				expect(result.message).toContain(`Could not write ${path}`);
+			} finally {
+				rmSync(path, { recursive: true, force: true });
+			}
+		}
+	);
+
+	it('lets a retry after the fix finish through the existing-admin path', async () => {
+		writeMock.mockRejectedValueOnce(new Error('EROFS: read-only file system'));
+		expect((await callRoute()).ok).toBe(false);
+
+		fetchStatus = 409;
+		const retry = await callRoute();
+
+		expect(retry.ok).toBe(true);
+		expect(retry.redirectTo).toBe('/auth/login?postSetup=1');
+		expect(writeMock).toHaveBeenCalledTimes(2);
 	});
 });
 

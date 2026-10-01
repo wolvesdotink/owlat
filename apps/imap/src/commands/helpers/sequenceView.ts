@@ -13,10 +13,10 @@
  *     first announce what changed (`* n EXPUNGE` for each message gone, highest
  *     first, then `* n EXISTS` if any arrived) and adopt the folder as it is.
  *
- * Pipelined commands run side by side, so "in progress" is enforced by the
- * connection's sequence gate (`./sequenceGate.ts`): an announcement waits until
- * every sequence-number command sent before it has completed, and one sent
- * after it waits for the announcement.
+ * Pipelined `concurrent` commands run side by side, so "in progress" is
+ * enforced by the connection's sequence gate (`./sequenceGate.ts`): an
+ * announcement waits until every sequence-number command sent before it has
+ * completed, and one sent after it waits for the announcement.
  */
 
 import type { CommandDeps, ConnectionState, SequenceView } from '../types.js';

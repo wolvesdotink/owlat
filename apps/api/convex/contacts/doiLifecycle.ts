@@ -222,7 +222,7 @@ function holdsLiveToken(contact: Doc<'contacts'>, at: number): boolean {
  * issue time is `doiTokenExpiresAt - DOI_TOKEN_TTL_MS`; a token without an
  * expiry predates expiries and counts as earlier. A global opt-out withdraws
  * the token now, so only a contact that opted out before that change can
- * still hold one (see migration 0056).
+ * still hold one (see migration 0057).
  */
 export function tokenPredatesOptOut(
 	contact: Pick<Doc<'contacts'>, 'doiConfirmationToken' | 'doiTokenExpiresAt' | 'unsubscribedAt'>

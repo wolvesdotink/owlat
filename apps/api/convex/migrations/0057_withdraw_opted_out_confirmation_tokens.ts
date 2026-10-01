@@ -1,6 +1,6 @@
 /**
  * Withdraw outstanding confirmation tokens for contacts who opted out before
- * the token-withdrawal change (migration 0056).
+ * the token-withdrawal change (migration 0057).
  *
  * A global opt-out now withdraws the contact's DOI confirmation token
  * (`doiLifecycle.withdrawConfirmationToken`), so a link minted before the
@@ -9,7 +9,7 @@
  * change still hold the token they had then. This back-fill withdraws it with
  * the same semantics: the token and its expiry are cleared, `doiStatus` stays.
  *
- *   npx convex run migrations/0056_withdraw_opted_out_confirmation_tokens:run
+ *   npx convex run migrations/0057_withdraw_opted_out_confirmation_tokens:run
  *
  * WHICH TOKENS: a contact with `unsubscribedAt` set whose token was issued at
  * or before that opt-out (`doiLifecycle.tokenPredatesOptOut`). A token issued
@@ -20,7 +20,7 @@
  * DURABLE AND RESUMABLE: `run` schedules the first page; each page is its own
  * mutation that schedules the next one. Progress and completion live in the
  * migration ledger (`migrationRuns` row
- * `0056_withdraw_opted_out_confirmation_tokens`, lib/migrationLedger.ts): each
+ * `0057_withdraw_opted_out_confirmation_tokens`, lib/migrationLedger.ts): each
  * page records its cursor and counts in the same transaction as its writes,
  * and the final page marks the row `completed`. Running `run` again on an
  * unfinished pass resumes it and supersedes any chain still queued; on a
@@ -42,7 +42,7 @@ import {
 	recordMigrationPage,
 } from '../lib/migrationLedger';
 
-const MIGRATION = '0056_withdraw_opted_out_confirmation_tokens';
+const MIGRATION = '0057_withdraw_opted_out_confirmation_tokens';
 /** The release this migration ships in, recorded on its ledger row. */
 const INTRODUCED_IN = '0.6.7';
 
@@ -83,7 +83,7 @@ export const processPage = internalMutation({
 	handler: async (ctx, args): Promise<PageResult> => {
 		const run = await readMigrationRun(ctx, MIGRATION);
 		if (!isCurrentMigrationPage(run, args.generation)) {
-			logInfo('migration.0056_withdraw_opted_out_confirmation_tokens.superseded', {
+			logInfo('migration.0057_withdraw_opted_out_confirmation_tokens.superseded', {
 				generation: args.generation,
 			});
 			return {
@@ -102,7 +102,7 @@ export const processPage = internalMutation({
 			scanned: result.scanned,
 			changed: result.withdrawn,
 		});
-		logInfo('migration.0056_withdraw_opted_out_confirmation_tokens.page', {
+		logInfo('migration.0057_withdraw_opted_out_confirmation_tokens.page', {
 			scanned: result.scanned,
 			withdrawn: result.withdrawn,
 			isDone: result.isDone,
@@ -111,7 +111,7 @@ export const processPage = internalMutation({
 		if (!result.isDone) {
 			await ctx.scheduler.runAfter(
 				0,
-				internal.migrations['0056_withdraw_opted_out_confirmation_tokens'].processPage,
+				internal.migrations['0057_withdraw_opted_out_confirmation_tokens'].processPage,
 				{ cursor: result.cursor, generation: run.generation }
 			);
 		}
@@ -144,10 +144,10 @@ export const run = internalMutation({
 		}
 		await ctx.scheduler.runAfter(
 			0,
-			internal.migrations['0056_withdraw_opted_out_confirmation_tokens'].processPage,
+			internal.migrations['0057_withdraw_opted_out_confirmation_tokens'].processPage,
 			{ cursor: begun.cursor ?? null, generation: begun.generation }
 		);
-		logInfo('migration.0056_withdraw_opted_out_confirmation_tokens.started', {
+		logInfo('migration.0057_withdraw_opted_out_confirmation_tokens.started', {
 			cursor: begun.cursor ?? null,
 			generation: begun.generation,
 			pageCount: begun.pageCount,

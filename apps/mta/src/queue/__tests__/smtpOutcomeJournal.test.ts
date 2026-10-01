@@ -85,8 +85,7 @@ describe('SMTP outcome journal', () => {
 	});
 
 	it('replays an entry written before the pressure dimension existed', async () => {
-		const legacy = attempt('message-legacy') as Record<string, unknown>;
-		delete legacy['providerVolumePressure'];
+		const { providerVolumePressure: _pressure, ...legacy } = attempt('message-legacy');
 		const fresh = await reserveSmtpOutcome(redis, 'job-legacy', 'message-legacy', legacy as never, {
 			now: 100,
 			capacity: 10,
@@ -107,8 +106,7 @@ describe('SMTP outcome journal', () => {
 	});
 
 	it('dates a legacy reservation’s warming day from the reservation, not the replaying clock', async () => {
-		const legacy = attempt('message-legacy') as Record<string, unknown>;
-		delete legacy['utcDate'];
+		const { utcDate: _utcDate, ...legacy } = attempt('message-legacy');
 		const reservedAt = Date.UTC(2026, 2, 14, 6, 0, 0);
 		const fresh = await reserveSmtpOutcome(redis, 'job-legacy', 'message-legacy', legacy as never, {
 			now: reservedAt,
@@ -131,8 +129,7 @@ describe('SMTP outcome journal', () => {
 	});
 
 	it('dates a legacy completed entry from its completion reading', async () => {
-		const legacy = attempt('message-legacy') as Record<string, unknown>;
-		delete legacy['utcDate'];
+		const { utcDate: _utcDate, ...legacy } = attempt('message-legacy');
 		// The attempt straddles midnight, so the two readings name different days
 		// and the completed path cannot pass by borrowing the reservation's.
 		const reservedAt = Date.UTC(2026, 2, 14, 23, 59, 0);
