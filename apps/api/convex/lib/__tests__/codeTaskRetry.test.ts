@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
 	CODE_TASK_MAX_ATTEMPTS,
+	CODE_TASK_PUBLICATION_GRACE_ATTEMPTS,
 	CODE_TASK_RETRY_DELAYS_MS,
+	codeTaskMayRunAgent,
 	codeTaskRetryDecision,
 	codeTaskRetryDelayMs,
 } from '../codeTaskRetry';
@@ -54,5 +56,22 @@ describe('codeTaskRetryDecision', () => {
 	it('falls back to the default ceiling for rows written before retries existed', () => {
 		expect(codeTaskRetryDecision({}, NOW)).toMatchObject({ retry: true, attempts: 0 });
 		expect(codeTaskRetryDecision({ attempts: CODE_TASK_MAX_ATTEMPTS }, NOW).retry).toBe(false);
+	});
+});
+
+describe('publication grace', () => {
+	it('gives a task that recorded a publication checkpoint one reconcile-only claim past its ceiling', () => {
+		const published = { attempts: 3, maxAttempts: 3, publishCommitSha: 'abc123' };
+		expect(codeTaskRetryDecision(published, NOW)).toMatchObject({ retry: true, attempts: 3 });
+		expect(codeTaskMayRunAgent(published, 4)).toBe(false);
+
+		const graceSpent = { ...published, attempts: 3 + CODE_TASK_PUBLICATION_GRACE_ATTEMPTS };
+		expect(codeTaskRetryDecision(graceSpent, NOW).retry).toBe(false);
+	});
+
+	it('lets every claim within the ceiling run the agent', () => {
+		expect(codeTaskMayRunAgent({ maxAttempts: 3 }, 1)).toBe(true);
+		expect(codeTaskMayRunAgent({ maxAttempts: 3 }, 3)).toBe(true);
+		expect(codeTaskMayRunAgent({}, CODE_TASK_MAX_ATTEMPTS)).toBe(true);
 	});
 });

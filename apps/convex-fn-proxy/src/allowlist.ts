@@ -6,7 +6,7 @@
  * mints only a FULL deployment admin key — there is no per-function scoping — so
  * the least-privilege boundary is built OUTSIDE Convex, here: this sidecar holds
  * the real admin key, and only forwards a request whose Convex function `path`
- * is one of the exact thirteen the worker legitimately calls. Everything else is
+ * is one of the exact fifteen the worker legitimately calls. Everything else is
  * a 403 that never reaches the backend, so a compromised task cannot use the
  * worker's credential to read or write any other table.
  *
@@ -28,8 +28,10 @@ export const ALLOWED_FUNCTION_PATHS: ReadonlySet<string> = new Set([
 	// codeWorkTasks (coding-agent queue)
 	'codeWorkTasks:getNextQueued',
 	'codeWorkTasks:claim',
+	'codeWorkTasks:checkAttempt',
 	'codeWorkTasks:updateBranch',
 	'codeWorkTasks:markTesting',
+	'codeWorkTasks:recordPublication',
 	'codeWorkTasks:completeWithPR',
 	'codeWorkTasks:markFailed',
 	'codeWorkTasks:reclaimStale',

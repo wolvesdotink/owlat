@@ -40,3 +40,30 @@ export async function createPullRequest(details: PRDetails): Promise<string> {
 
 	return pr.html_url;
 }
+
+/**
+ * Find the pull request already opened from `head` into `base`, newest first,
+ * in any state. Returns its URL, or null when there is none.
+ *
+ * A task's branch is derived from its id, so a PR from it can only be this
+ * task's: finding one binds the existing artifact instead of opening a
+ * duplicate after a response was lost.
+ */
+export async function findPullRequest(
+	details: Pick<PRDetails, 'owner' | 'repo' | 'head' | 'base'>
+): Promise<string | null> {
+	const gh = getOctokit();
+
+	const { data: prs } = await gh.pulls.list({
+		owner: details.owner,
+		repo: details.repo,
+		head: `${details.owner}:${details.head}`,
+		base: details.base,
+		state: 'all',
+		sort: 'created',
+		direction: 'desc',
+		per_page: 1,
+	});
+
+	return prs[0]?.html_url ?? null;
+}
