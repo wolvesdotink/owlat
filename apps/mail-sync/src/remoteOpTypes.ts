@@ -93,3 +93,10 @@ export interface ReplayHooks {
 	/** The op settles without the part of its change the provider cannot keep. */
 	skipped?(op: RemoteOp, reason: string): void;
 }
+
+/** One page of an account's queued folder renames (`listQueuedFolderRenames`). */
+export interface QueuedRenamesPage {
+	page: RemoteOp[];
+	isDone: boolean;
+	continueCursor: string;
+}

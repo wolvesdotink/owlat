@@ -5,7 +5,12 @@
 
 import { describeRemoteOpError } from './imapCommandErrors.js';
 import type { RemoteOpReplayer } from './remoteOps.js';
-import type { RemoteOp, RemoteOpResult, RemoteOpsClient } from './remoteOpTypes.js';
+import type {
+	QueuedRenamesPage,
+	RemoteOp,
+	RemoteOpResult,
+	RemoteOpsClient,
+} from './remoteOpTypes.js';
 
 export interface DrainDeps {
 	listDue(): Promise<RemoteOp[]>;
@@ -78,5 +83,33 @@ export async function reportFolderRename(deps: RenameReportDeps): Promise<boolea
 			if (delay === undefined) throw err;
 			await sleep(delay);
 		}
+	}
+}
+
+export interface RenameRecoveryDeps {
+	/** One page of the queued renames; null for a backend that predates the listing. */
+	listPage(cursor: string | null): Promise<QueuedRenamesPage | null>;
+	replayer: Pick<RemoteOpReplayer, 'recoverRenames'>;
+	isStopped(): boolean;
+}
+
+/**
+ * Check every queued rename before the first replay after a start
+ * (`RemoteOpReplayer.recoverRenames`), walking every page of the backend's
+ * list. True only once all of them were checked: one left unchecked, on any
+ * page, may have renamed a folder that ops still name by its old name, so the
+ * caller replays nothing until a later drain gets through. A failed page or
+ * report throws, with the same effect.
+ */
+export async function recoverQueuedRenames(deps: RenameRecoveryDeps): Promise<boolean> {
+	let complete = true;
+	let cursor: string | null = null;
+	for (;;) {
+		if (deps.isStopped()) return false;
+		const result = await deps.listPage(cursor);
+		if (result === null) return true;
+		if (!(await deps.replayer.recoverRenames(result.page))) complete = false;
+		if (result.isDone) return complete;
+		cursor = result.continueCursor;
 	}
 }

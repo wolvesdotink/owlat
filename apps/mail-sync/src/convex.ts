@@ -13,7 +13,7 @@ import { getFunctionName, makeFunctionReference, type FunctionReference } from '
 import type { MailSyncConfig } from './config.js';
 import type { FolderRole } from './folders.js';
 import type { SeedProbeDeps, SeedProbeWorkPage } from './seedProbes.js';
-import type { RemoteOp, RemoteOpResult } from './remoteOpTypes.js';
+import type { QueuedRenamesPage, RemoteOp, RemoteOpResult } from './remoteOpTypes.js';
 import type { LocalMessageRow, RemoteObservation } from './remoteState.js';
 
 export type ConvexClient = ConvexHttpClient;
@@ -373,10 +373,12 @@ export const fn = {
 		{ opId: string; remoteName: string; delimiter: string },
 		null
 	>('mail/external/remoteFolderRename:recordRemoteFolderRename'),
-	// Queued folder renames, checked before the first replay in case one was carried out but never recorded.
-	listQueuedFolderRenames: makeFunctionReference<'query', { accountId: string }, RemoteOp[]>(
-		'mail/external/remoteFolderRename:listQueuedFolderRenames'
-	),
+	// Queued folder renames, a page at a time, checked before the first replay in case one was carried out but never recorded.
+	listQueuedFolderRenames: makeFunctionReference<
+		'query',
+		{ accountId: string; cursor: string | null },
+		QueuedRenamesPage
+	>('mail/external/remoteFolderRename:listQueuedFolderRenames'),
 
 	// ── Remote → local change sync (moves, flags, deletes made on the provider) ──
 	getSyncSettings: makeFunctionReference<

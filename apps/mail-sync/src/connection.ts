@@ -55,8 +55,8 @@ import {
 } from './backfillRetry.js';
 import { CommandRefusals } from './imapCommandErrors.js';
 import { isAllMailFolder, RemoteOpReplayer } from './remoteOps.js';
-import type { RemoteOp } from './remoteOpTypes.js';
-import { drainRemoteOps, reportFolderRename } from './remoteOpsDrain.js';
+import type { QueuedRenamesPage } from './remoteOpTypes.js';
+import { drainRemoteOps, recoverQueuedRenames, reportFolderRename } from './remoteOpsDrain.js';
 import {
 	LOCAL_PAGE,
 	noPendingChanges,
@@ -841,7 +841,11 @@ export class AccountConnection {
 		try {
 			if (!this.renamesRecovered) {
 				// A rename carried out but not recorded before this worker last stopped.
-				this.renamesRecovered = await replayer.recoverRenames(await this.queuedFolderRenames());
+				this.renamesRecovered = await recoverQueuedRenames({
+					listPage: (cursor) => this.queuedFolderRenames(cursor),
+					replayer,
+					isStopped: () => this.stopped || this.client !== client,
+				});
 				if (!this.renamesRecovered) {
 					// One could not be checked: an op naming its old folder would find no
 					// folder and be retired. Nothing runs until a later drain checks it.
@@ -868,14 +872,15 @@ export class AccountConnection {
 		}
 	}
 
-	/** The account's queued folder renames; none from a backend that predates the listing. */
-	private async queuedFolderRenames(): Promise<RemoteOp[]> {
+	/** One page of the account's queued folder renames; null from a backend that predates the listing. */
+	private async queuedFolderRenames(cursor: string | null): Promise<QueuedRenamesPage | null> {
 		try {
 			return await this.convex.query(fn.listQueuedFolderRenames, {
 				accountId: this.account.accountId,
+				cursor,
 			});
 		} catch (err) {
-			if (isMissingFunction(err, fn.listQueuedFolderRenames)) return [];
+			if (isMissingFunction(err, fn.listQueuedFolderRenames)) return null;
 			throw err;
 		}
 	}

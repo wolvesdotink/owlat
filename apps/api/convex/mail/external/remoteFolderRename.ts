@@ -8,7 +8,8 @@
  * its old name, so the worker keeps the rename op queued until the report is
  * recorded, and reports again on every retry. After a restart the worker
  * first reports every queued rename the provider already shows as done
- * (`listQueuedFolderRenames`), before any op for the old name runs.
+ * (`listQueuedFolderRenames`, page by page), before any op for the old name
+ * runs.
  *
  * Recording names the rename op by the new name and marks it with the old one
  * (`renameRewrite`) until every queued op is rewritten, which can take more
@@ -30,8 +31,8 @@ import { nudgeWorker, workerOp, writesBack } from './remoteOps';
 
 /** Queued ops one transaction rewrites before it hands the rest to a continuation. */
 const RENAME_ROWS_PER_RUN = 1000;
-/** Queued renames the worker checks before its first replay. */
-const QUEUED_RENAMES_LIMIT = 50;
+/** Queued renames one page of the worker's pre-replay check holds. */
+const QUEUED_RENAMES_PAGE = 50;
 
 const folderRenameValidator = v.object({
 	accountId: v.id('externalMailAccounts'),
@@ -199,25 +200,31 @@ export const continueFolderRename = internalMutation({
 });
 
 /**
- * The account's queued folder renames, oldest first, for the worker to check
- * before its first replay: one it carried out but could not report before it
- * stopped is still named by the old name here.
+ * One page of the account's queued folder renames, in index order, for the
+ * worker to check before its first replay: one it carried out but could not
+ * report before it stopped is still named by the old name here. The worker
+ * walks every page (`continueCursor` until `isDone`) before it replays
+ * anything, so a rename past the first page is never missed.
  */
 export const listQueuedFolderRenames = internalQuery({
-	args: { accountId: v.id('externalMailAccounts') },
+	args: {
+		accountId: v.id('externalMailAccounts'),
+		cursor: v.optional(v.union(v.string(), v.null())),
+	},
 	handler: async (ctx, args) => {
 		const account = await ctx.db.get(args.accountId);
-		if (!account || !writesBack(account)) return [];
-		const rows = await ctx.db
+		if (!account || !writesBack(account)) return { page: [], isDone: true, continueCursor: '' };
+		const result = await ctx.db
 			.query('externalMailRemoteOps')
 			.withIndex('by_account_kind_and_source_remote', (q) =>
 				q.eq('accountId', args.accountId).eq('kind', 'renameFolder')
 			)
-			.take(QUEUED_RENAMES_LIMIT);
-		// One already recorded is not reported again.
-		return rows
-			.filter((r) => !r.renameRewrite)
-			.sort((a, b) => a._creationTime - b._creationTime)
-			.map(workerOp);
+			.paginate({ numItems: QUEUED_RENAMES_PAGE, cursor: args.cursor ?? null });
+		return {
+			// One already recorded is not reported again.
+			page: result.page.filter((r) => !r.renameRewrite).map(workerOp),
+			isDone: result.isDone,
+			continueCursor: result.continueCursor,
+		};
 	},
 });

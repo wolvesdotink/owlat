@@ -515,7 +515,8 @@ describe('a folder the worker renamed', () => {
 			internal.mail.external.remoteFolderRename.listQueuedFolderRenames,
 			{ accountId }
 		);
-		expect(renames.map((o) => [o.opId, o.source])).toEqual([
+		expect(renames.isDone).toBe(true);
+		expect(renames.page.map((o) => [o.opId, o.source])).toEqual([
 			[rename!.opId, { remote: 'Projects/Owlat' }],
 		]);
 		await t.mutation(internal.mail.external.remoteFolderRename.recordRemoteFolderRename, {
@@ -577,6 +578,52 @@ describe('a folder the worker renamed', () => {
 			(await queued(t)).map((o) => ('remote' in o.source ? o.source.remote : ''))
 		);
 		expect([...names]).toEqual(['Projects/Clients']);
+	});
+
+	it('lists every queued rename for the restart check, a page at a time', async () => {
+		const { t, accountId } = await mirroredFolders();
+		await t.run(async (ctx) => {
+			// More renames than one page holds, all sorting before the one that matters.
+			for (let i = 0; i < 50; i++) {
+				await ctx.db.insert('externalMailRemoteOps', {
+					accountId,
+					kind: 'renameFolder',
+					source: { remote: `A${String(i).padStart(2, '0')}` },
+					target: { path: [`A${i}-new`] },
+					attempts: 1,
+					nextAttemptAt: Date.now() + 60_000,
+					createdAt: Date.now(),
+				});
+			}
+			await ctx.db.insert('externalMailRemoteOps', {
+				accountId,
+				kind: 'renameFolder',
+				source: { remote: 'Projects/Owlat' },
+				target: { path: ['Clients'] },
+				attempts: 1,
+				nextAttemptAt: Date.now() + 60_000,
+				createdAt: Date.now(),
+			});
+		});
+
+		const listed: string[] = [];
+		let cursor: string | null = null;
+		for (let pages = 0; pages < 10; pages++) {
+			const result: { page: Array<{ source: unknown }>; isDone: boolean; continueCursor: string } =
+				await t.query(internal.mail.external.remoteFolderRename.listQueuedFolderRenames, {
+					accountId,
+					cursor,
+				});
+			expect(result.page.length).toBeLessThanOrEqual(50);
+			for (const o of result.page) {
+				listed.push((o.source as { remote: string }).remote);
+			}
+			if (result.isDone) break;
+			cursor = result.continueCursor;
+		}
+
+		expect(listed).toHaveLength(51);
+		expect(listed).toContain('Projects/Owlat');
 	});
 
 	it('ignores a report for an op that is not a folder rename', async () => {
@@ -698,7 +745,7 @@ describe('a folder the worker renamed', () => {
 				await t.query(internal.mail.external.remoteFolderRename.listQueuedFolderRenames, {
 					accountId,
 				})
-			).toEqual([]);
+			).toMatchObject({ page: [], isDone: true });
 			const beforeRewrite = await drainQueue(t, accountId, provider);
 			expect(beforeRewrite.filter((op) => op.kind === 'delete')).toEqual([]);
 			expect(beforeRewrite.filter((op) => op.outcome !== 'done')).toEqual([]);

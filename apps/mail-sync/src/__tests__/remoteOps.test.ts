@@ -1386,17 +1386,31 @@ describe('RemoteOpReplayer — a rename whose report did not reach the backend',
 	});
 
 	/**
-	 * The backend as connection.ts calls it: a recorded rename rewrites the ops
-	 * naming the old folder or one below it; a backed-off rename is not due.
+	 * The backend as connection.ts calls it: queued renames are listed 50 to a
+	 * page in source-name order, a recorded rename rewrites the ops naming the
+	 * old folder or one below it, and a backed-off rename is not due.
+	 * `pageFails` makes the listing fail from that page on.
 	 */
-	function convexBackend(queue: RemoteOp[]) {
+	function convexBackend(queue: RemoteOp[], opts: { pageFails?: number } = {}) {
 		const settled: RemoteOpResult[] = [];
 		const open = () => queue.filter((o) => !settled.some((r) => r.opId === o.opId));
 		const named = (ref: unknown) => getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
+		const remoteOf = (o: RemoteOp) => ('remote' in o.source ? o.source.remote : '');
 		const convex = {
-			query: async (ref: unknown) => {
+			query: async (ref: unknown, args: Record<string, unknown>) => {
 				if (named(ref) === getFunctionName(fn.listQueuedFolderRenames)) {
-					return open().filter((o) => o.kind === 'renameFolder');
+					const from = Number(args['cursor'] ?? 0);
+					if (opts.pageFails !== undefined && from / 50 >= opts.pageFails) {
+						throw new Error('fetch failed: 503 Service Unavailable');
+					}
+					const renames = open()
+						.filter((o) => o.kind === 'renameFolder')
+						.sort((a, b) => remoteOf(a).localeCompare(remoteOf(b)));
+					return {
+						page: renames.slice(from, from + 50),
+						isDone: from + 50 >= renames.length,
+						continueCursor: String(from + 50),
+					};
 				}
 				if (named(ref) === getFunctionName(fn.listDueRemoteOps)) {
 					return open().filter((o) => o.kind !== 'renameFolder');
@@ -1432,6 +1446,81 @@ describe('RemoteOpReplayer — a rename whose report did not reach the backend',
 		return { convex, settled };
 	}
 
+	/** A restarted worker's connection (production `AccountConnection`), its drain reachable. */
+	async function restartedConnection(convex: unknown, imap: FakeImap) {
+		const { AccountConnection } = await import('../connection.js');
+		const connection = new AccountConnection(
+			{
+				accountId: 'acct_1',
+				mailboxId: 'mbx_1',
+				imapHost: 'imap.example.com',
+				imapPort: 993,
+				isImapSecure: true,
+				imapUsername: 'me@example.com',
+				status: 'connected',
+			},
+			convex as ConstructorParameters<typeof AccountConnection>[1],
+			{} as ConstructorParameters<typeof AccountConnection>[2]
+		);
+		const internals = connection as unknown as {
+			client: unknown;
+			drainQueue(client: unknown): Promise<void>;
+		};
+		internals.client = imap;
+		return internals;
+	}
+
+	/**
+	 * A rename the provider carried out but the backend never recorded, behind
+	 * 50 queued renames (not carried out) whose folders sort before it, and a
+	 * delete still queued for its old name.
+	 */
+	async function renameBehindAFullPage() {
+		const others = Array.from({ length: 50 }, (_, i) => `A${String(i).padStart(2, '0')}`);
+		const imap = new FakeImap({
+			INBOX: [],
+			'Projects/Owlat': [[2, '<b@x>']],
+			...Object.fromEntries(others.map((name) => [name, []])),
+		});
+		const rename = renameToClients();
+		const { hooks } = backend([]);
+		const before = { ...folderMap({ inbox: 'INBOX' }), renamed: new Map<string, string>() };
+		expect(await drainOne(imap, rename, before, hooks)).toEqual([
+			[expect.objectContaining({ outcome: 'failed' })],
+		]);
+		const queue = [
+			...others.map((name) =>
+				op({ kind: 'renameFolder', source: { remote: name }, target: { path: [`${name}-new`] } })
+			),
+			rename,
+			op({ kind: 'delete', rfc822MessageId: 'b@x', source: { remote: 'Projects/Owlat' } }),
+		];
+		return { imap, queue, deletion: queue[queue.length - 1]! };
+	}
+
+	it('checks the queued renames past the first page before anything runs', async () => {
+		const { imap, queue, deletion } = await renameBehindAFullPage();
+		const { convex, settled } = convexBackend(queue);
+
+		await (await restartedConnection(convex, imap)).drainQueue(imap);
+
+		expect(deletion.source).toEqual({ remote: 'Projects/Clients' });
+		expect(settled).toEqual([{ opId: deletion.opId, outcome: 'done' }]);
+		expect(imap.ids('Projects/Clients')).toEqual([]);
+	});
+
+	it('drains nothing while a page of the queued renames could not be read', async () => {
+		const { imap, queue, deletion } = await renameBehindAFullPage();
+		const { convex, settled } = convexBackend(queue, { pageFails: 1 });
+		const connection = await restartedConnection(convex, imap);
+
+		await connection.drainQueue(imap);
+
+		expect(settled).toEqual([]);
+		expect(imap.ids('Projects/Clients')).toEqual(['<b@x>']);
+		expect(deletion.source).toEqual({ remote: 'Projects/Owlat' });
+	});
+
 	it('drains nothing after a restart until every queued rename could be checked', async () => {
 		const imap = new FakeImap({ INBOX: [], 'Projects/Owlat': [[2, '<b@x>']] });
 		const rename = renameToClients();
@@ -1449,26 +1538,8 @@ describe('RemoteOpReplayer — a rename whose report did not reach the backend',
 
 		// A restart, with the delete still queued by the old name. STATUS answers
 		// for the old name (gone) but not for the new one.
-		const { AccountConnection } = await import('../connection.js');
 		const { convex, settled } = convexBackend([rename, deletion]);
-		const connection = new AccountConnection(
-			{
-				accountId: 'acct_1',
-				mailboxId: 'mbx_1',
-				imapHost: 'imap.example.com',
-				imapPort: 993,
-				isImapSecure: true,
-				imapUsername: 'me@example.com',
-				status: 'connected',
-			},
-			convex as unknown as ConstructorParameters<typeof AccountConnection>[1],
-			{} as ConstructorParameters<typeof AccountConnection>[2]
-		);
-		const internals = connection as unknown as {
-			client: unknown;
-			drainQueue(client: unknown): Promise<void>;
-		};
-		internals.client = imap;
+		const internals = await restartedConnection(convex, imap);
 		const status = imap.status.bind(imap);
 		imap.status = async (path) => (path === 'Projects/Clients' ? false : await status(path));
 
