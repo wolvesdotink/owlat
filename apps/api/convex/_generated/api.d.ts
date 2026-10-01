@@ -12,7 +12,9 @@ import type * as migrations_0048_backfill_counters from '../migrations/0048_back
 import type * as migrations_0049_move_message_bodies from '../migrations/0049_move_message_bodies.js';
 import type * as migrations_0050_reindex_mailbox_knowledge from '../migrations/0050_reindex_mailbox_knowledge.js';
 import type * as migrations_0051_clear_residual_search_bodies from '../migrations/0051_clear_residual_search_bodies.js';
-import type * as migrations_0051_project_open_commitments from '../migrations/0051_project_open_commitments.js';
+import type * as migrations_0052_project_open_commitments from '../migrations/0052_project_open_commitments.js';
+import type * as lib_migrationLedger from '../lib/migrationLedger.js';
+import type * as schema_migrationRuns from '../schema/migrationRuns.js';
 import type * as schema_counters from '../schema/counters.js';
 import type * as workspaces_deletion_steps_storageUploads from '../workspaces/deletion/steps/storageUploads.js';
 import type * as storage_uploadsHttp from '../storage/uploadsHttp.js';
@@ -1328,7 +1330,9 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0049_move_message_bodies': typeof migrations_0049_move_message_bodies;
 	'migrations/0050_reindex_mailbox_knowledge': typeof migrations_0050_reindex_mailbox_knowledge;
 	'migrations/0051_clear_residual_search_bodies': typeof migrations_0051_clear_residual_search_bodies;
-	'migrations/0051_project_open_commitments': typeof migrations_0051_project_open_commitments;
+	'migrations/0052_project_open_commitments': typeof migrations_0052_project_open_commitments;
+	'lib/migrationLedger': typeof lib_migrationLedger;
+	'schema/migrationRuns': typeof schema_migrationRuns;
 	'schema/counters': typeof schema_counters;
 	'workspaces/deletion/steps/storageUploads': typeof workspaces_deletion_steps_storageUploads;
 	'storage/uploadsHttp': typeof storage_uploadsHttp;

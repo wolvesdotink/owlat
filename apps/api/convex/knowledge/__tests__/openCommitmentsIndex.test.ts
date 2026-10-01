@@ -107,7 +107,7 @@ async function backfill(t: Harness): Promise<{ pages: number; projected: number 
 	let projected = 0;
 	for (;;) {
 		const page: { cursor: string; isDone: boolean; projected: number } = await t.mutation(
-			internal.migrations['0051_project_open_commitments'].projectPage,
+			internal.migrations['0052_project_open_commitments'].projectPage,
 			{ cursor }
 		);
 		pages++;

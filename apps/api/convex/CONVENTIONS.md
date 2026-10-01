@@ -864,8 +864,13 @@ use for the 0044 chat-media migration.
 **Durable progress and completion.** A migration records its progress in the
 deployment's database, not only in its return value: the cursor of each pass,
 counts, when it started and completed, and the release that introduced it. A
-contract step and a stepping-stone check read that record. No migration ledger
-table exists yet; the first migration that a contract step depends on adds it.
+contract step and a stepping-stone check read that record. The record is the
+migration's row in the `migrationRuns` ledger (`schema/migrationRuns.ts`),
+written through `lib/migrationLedger.ts`: `beginMigrationRun` from the `run`
+entry point, `recordMigrationPage` in each page's own transaction, and a
+generation check (`isCurrentMigrationPage`) so a resume supersedes a chain that
+is still queued. `migrations/0052_project_open_commitments.ts` is the worked
+example.
 
 **Bounded, resumable backfills.** A migration pages through its table
 (`.paginate()` with a cursor, a fixed page size well under the transaction
