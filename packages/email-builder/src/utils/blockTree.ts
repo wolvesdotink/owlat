@@ -86,6 +86,35 @@ export function locateBlock(
 }
 
 /**
+ * A position in the tree, held by ids so it outlives an edit that copies the
+ * path to it: index `index` in child list `listIndex` of the composite
+ * `parentId`, or in the root array when `parentId` is null.
+ */
+export interface BlockSlot {
+	parentId: string | null;
+	listIndex: number;
+	index: number;
+	/** The root Block the slot lies in, preferred when looking `parentId` up. */
+	rootId: string;
+}
+
+/** The slot the Block `id` occupies, or null when it is absent. */
+export function blockSlot(
+	blocks: readonly EditorBlock[],
+	id: string,
+	preferRootId?: string | null
+): BlockSlot | null {
+	const location = locateBlock(blocks, id, preferRootId);
+	if (!location) return null;
+	return {
+		parentId: location.parent?.id ?? null,
+		listIndex: location.listIndex,
+		index: location.index,
+		rootId: location.root.id,
+	};
+}
+
+/**
  * Locate `id` strictly inside the subtree of the Block `scopeId` (which may
  * itself be nested). Returns null when either is missing or `id` is the scope.
  */
