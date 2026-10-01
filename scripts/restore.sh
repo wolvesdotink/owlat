@@ -580,9 +580,13 @@ done
 # Only once every volume is in: a failed volume restore rolls back to the old
 # data, which must keep running with the old config.
 PHASE=config
+# The copies are owner-only whatever mode the original had: .env holds every
+# deployment secret, and a copy of a 0644 original would otherwise stay
+# readable by other local users long after the restore.
 preserve() {
 	[[ -f "$1" ]] || return 0
-	cp "$1" "$1.before-restore-${STAMP}" || config_die "Could not preserve $1."
+	(umask 077 && cp "$1" "$1.before-restore-${STAMP}") || config_die "Could not preserve $1."
+	chmod 600 "$1.before-restore-${STAMP}" || config_die "Could not make the copy of $1 owner-only (chmod 600 $1.before-restore-${STAMP})."
 	ok "Preserved current $1 → $1.before-restore-${STAMP}"
 }
 preserve .env
@@ -590,10 +594,14 @@ preserve .env
 if [[ $KEEP_ENV -eq 1 ]]; then
 	info ".env: keeping current (as requested)"
 elif [[ -f "$STAGING/env" ]]; then
-	cp "$STAGING/env" .env || config_die "Could not restore .env from the archive."
 	# The archived .env carries every deployment secret — restore it owner-only
 	# (the archive may have been created before backups were chmod 600, or the
-	# mode may have been lost in an offsite copy).
+	# mode may have been lost in an offsite copy). cp onto an existing file keeps
+	# that file's mode, so tighten a current .env BEFORE the secrets go into it.
+	if [[ -f .env ]]; then
+		chmod 600 .env || config_die "Could not make .env owner-only (chmod 600 .env); it holds every deployment secret."
+	fi
+	(umask 077 && cp "$STAGING/env" .env) || config_die "Could not restore .env from the archive."
 	chmod 600 .env || config_die "Could not make .env owner-only (chmod 600 .env); it holds every deployment secret."
 	ok "Restored .env from archive"
 else

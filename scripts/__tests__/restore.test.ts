@@ -365,6 +365,23 @@ describe('restore.sh rolls back when interrupted', () => {
 	}, 30_000);
 });
 
+describe('restore.sh keeps deployment secrets owner-only', () => {
+	it('tightens a world-readable .env and its pre-restore copy', async () => {
+		const install = await makeInstall();
+		const envPath = join(install.dir, '.env');
+		await chmod(envPath, 0o644);
+		const result = await install.run();
+
+		expect(result.code).toBe(0);
+		expect((await stat(envPath)).mode & 0o777).toBe(0o600);
+		const copies = (await readdir(install.dir)).filter((f) => f.startsWith('.env.before-restore-'));
+		expect(copies).toHaveLength(1);
+		const copy = join(install.dir, copies[0]!);
+		await expect(readFile(copy, 'utf8')).resolves.toBe('CURRENT=1\n');
+		expect((await stat(copy)).mode & 0o777).toBe(0o600);
+	});
+});
+
 describe('restore.sh config-file failures', () => {
 	it('stops with the next step when .env cannot be made owner-only', async () => {
 		const install = await makeInstall();

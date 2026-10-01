@@ -74,6 +74,8 @@ async function backupOfSourceInstall(): Promise<string> {
 	expect(result.out).toContain('Captured .owlat-flags.json');
 	const archive = (await readdir(backups)).find((name) => name.endsWith('.tar.gz'));
 	if (!archive) throw new Error(`backup.sh wrote no archive:\n${result.out}`);
+	// It embeds the whole .env.
+	expect((await stat(join(backups, archive))).mode & 0o777).toBe(0o600);
 	return join(backups, archive);
 }
 

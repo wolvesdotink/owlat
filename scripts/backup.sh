@@ -212,9 +212,10 @@ EOF
 
 # ── Archive ───────────────────────────────────────────────────────────────────
 info "Creating archive…"
-tar -czf "${BACKUP_DIR}/${NAME}.tar.gz" -C "$STAGING" .
 # The archive embeds the full .env (every deployment secret). Backups get
-# copied offsite more often than almost anything else — keep it owner-only.
+# copied offsite more often than almost anything else — keep it owner-only,
+# from its first byte (umask) and whatever the umask turned out to be (chmod).
+(umask 077 && tar -czf "${BACKUP_DIR}/${NAME}.tar.gz" -C "$STAGING" .)
 chmod 600 "${BACKUP_DIR}/${NAME}.tar.gz"
 SIZE=$(du -h "${BACKUP_DIR}/${NAME}.tar.gz" | cut -f1)
 
