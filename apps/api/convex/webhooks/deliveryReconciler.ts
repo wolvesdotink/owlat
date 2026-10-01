@@ -1,4 +1,4 @@
-import { internalMutation } from '../lib/writeFence';
+import { internalMutation, readActiveWorkspaceDeletion } from '../lib/writeFence';
 import type { MutationCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
@@ -131,12 +131,17 @@ async function reconcileOne(
  * schedules a continuation. Rows written before attempts were tracked are
  * first given a deadline, or failed when they have waited too long
  * (`adoptUntrackedRows`), in the same run.
+ *
+ * Not while a workspace deletion runs: it cancels every queued attempt, so
+ * each open row looks lost, and the write fence refuses the re-issue until the
+ * deletion sweeps the delivery logs, which it does anyway.
  */
 export const reconcileOverdueDeliveries = internalMutation({
 	args: {},
 	handler: async (ctx) => {
-		const now = Date.now();
 		const counts = { waiting: 0, rescheduled: 0, failed: 0 };
+		if (await readActiveWorkspaceDeletion(ctx.db)) return counts;
+		const now = Date.now();
 		let batchFull = false;
 
 		for (const status of ['pending', 'retrying'] as const) {
