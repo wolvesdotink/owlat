@@ -5611,10 +5611,20 @@
 		"translation": {
 			"cell": {
 				"cancelTitle": "Abbrechen (Esc)",
+				"conflict": "Inzwischen woanders geändert",
+				"discard": "Verwerfen",
+				"discardLabel": "Deine Änderung an {field} verwerfen",
+				"editHint": "Strg+Enter oder Cmd+Enter speichert, Escape bricht ab.",
+				"editLabel": "{field} bearbeiten",
+				"fieldName": "{field} ({language})",
 				"htmlBadge": "HTML",
 				"noContent": "Kein Inhalt",
 				"placeholder": "Zum Übersetzen klicken",
+				"retry": "Erneut speichern",
+				"retryLabel": "{field} erneut speichern",
+				"saveFailed": "Nicht gespeichert",
 				"saveTitle": "Speichern (Cmd+Enter)",
+				"saving": "Wird gespeichert…",
 				"sourceBadge": "Quelle"
 			},
 			"manager": {
@@ -5654,7 +5664,7 @@
 				"removeLanguageOperation": "Sprache entfernen",
 				"removeLanguageTitle": "Sprache entfernen",
 				"saveTranslationOperation": "Übersetzung speichern",
-				"saveTranslationsOperation": "Übersetzungen speichern",
+				"savingChanges": "Wird gespeichert…",
 				"subjectLine": "Betreffzeile",
 				"textBlock": "{prefix}Textblock {index}",
 				"unsavedChanges": "Nicht gespeicherte Änderungen"
