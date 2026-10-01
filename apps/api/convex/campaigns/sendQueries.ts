@@ -178,8 +178,12 @@ export const getEmailTemplateForLanguage = internalQuery({
 			};
 		}
 
-		// Check if HTML translation exists for requested language
-		if (template.htmlTranslations) {
+		// Check if HTML translation exists for requested language. A language
+		// removed from the template is not delivered even while HTML rendered
+		// for it is still stored; its recipients get the default language. A
+		// row without the list restricts nothing.
+		const supported = template.supportedLanguages?.includes(requestedLanguage) ?? true;
+		if (supported && template.htmlTranslations) {
 			try {
 				const htmlTranslations: Record<string, HtmlTranslation> = JSON.parse(
 					template.htmlTranslations

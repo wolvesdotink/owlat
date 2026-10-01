@@ -138,7 +138,17 @@ export const setDefaultLanguage = authedMutation({
 	args: {
 		templateId: v.id('emailTemplates'),
 		language: v.string(),
+		// The delivery HTML rendered from the swapped row: the new default's
+		// HTML and text/plain body, and every other language's HTML (the
+		// outgoing default included). Written with the swap, so the send path
+		// never pairs the new subject with the old language's body.
+		htmlContent: v.optional(v.string()),
+		plainTextContent: v.optional(v.string()),
+		htmlTranslations: v.optional(v.string()),
 		forceWhilePublished: v.optional(v.boolean()),
+		// The `contentRevision` the caller built this write on. When given, the
+		// write is refused with `conflict` if the row has moved on since.
+		expectedContentRevision: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		await requireOrgPermission(
@@ -148,10 +158,21 @@ export const setDefaultLanguage = authedMutation({
 		);
 		const template = await getOrThrow(ctx, args.templateId, 'Email template');
 		assertEditableForPublishableChange(template, 'Template', args.forceWhilePublished);
+		assertContentRevision(template, args.expectedContentRevision);
 
-		const patch = setDefaultLanguagePatch(template, args.language, TEMPLATE_TRANSLATABLE_FIELDS);
+		const patch = setDefaultLanguagePatch(template, args.language, TEMPLATE_TRANSLATABLE_FIELDS, {
+			htmlContent: args.htmlContent,
+			plainTextContent: args.plainTextContent,
+			htmlTranslations: args.htmlTranslations,
+		});
 		if (patch) {
-			await ctx.db.patch(args.templateId, patch);
+			// Body and HTML now match again, so a saved-block rerender pending
+			// for the previous revision has nothing left to fix.
+			const rendered = args.htmlContent !== undefined && args.htmlTranslations !== undefined;
+			await ctx.db.patch(args.templateId, {
+				...patch,
+				...(rendered && template.htmlRenderState && { htmlRenderState: { stale: false } }),
+			});
 		}
 		return args.templateId;
 	},
