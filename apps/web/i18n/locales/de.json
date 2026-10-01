@@ -1375,10 +1375,14 @@
 				},
 				"mapping": {
 					"addToTopic": "Zu Thema hinzufügen",
+					"fieldMovedToIgnore": "{field} kommt jetzt aus der Spalte {to}. Die Spalte {from} wird ignoriert.",
+					"fieldMovedToProperty": "{field} kommt jetzt aus der Spalte {to}. Die Spalte {from} wird als benutzerdefinierte Eigenschaft importiert.",
+					"fieldTaken": "{field} (Spalte: {column})",
 					"found": "{count} Kontakte in {filename} gefunden",
 					"globalTopicHint": "Alle importierten Kontakte werden diesem Thema hinzugefügt. Oder ordne eine CSV-Spalte \"Thema\" zu, um sie pro Kontakt zuzuweisen.",
 					"handleDuplicates": "Umgang mit Duplikaten",
 					"sample": "z. B. {value}",
+					"selectLabel": "Feld für Spalte {column}",
 					"skipDuplicates": "Duplikate überspringen",
 					"topicMappedHint": "Deaktiviert, weil eine Spalte \"Thema\" zugeordnet ist. Entferne diese Zuordnung, um ein globales Thema auszuwählen.",
 					"updateExisting": "Vorhandene aktualisieren"
@@ -1387,6 +1391,7 @@
 					"andMore": "...und {count} weitere",
 					"duplicateEmailsTitle": "Doppelte E-Mail-Adressen",
 					"duplicates": "Duplikate",
+					"emailSource": "Spalte: {column}",
 					"firstName": "Vorname",
 					"invalidEmails": "Ungültige E-Mail-Adressen",
 					"invalidEmailsTitle": "Ungültige E-Mail-Adressen",
@@ -14862,6 +14867,7 @@
 		},
 		"useCsvImport": {
 			"errors": {
+				"conflictingMapping": "{field} ist mehr als einer Spalte zugeordnet. Ordne es nur einer Spalte zu.",
 				"dropCsv": "Bitte lege eine CSV-Datei ab",
 				"emailColumnRequired": "Du musst eine Spalte auf E-Mail (erforderlich) zuordnen",
 				"importFailed": "Import fehlgeschlagen",
@@ -14879,6 +14885,12 @@
 				"lastName": "Nachname",
 				"property": "Benutzerdefinierte Eigenschaft",
 				"topic": "Thema"
+			},
+			"fieldNames": {
+				"email": "E-Mail",
+				"firstName": "Vorname",
+				"language": "Sprache",
+				"lastName": "Nachname"
 			},
 			"pickerTitle": "CSV-Datei auswählen"
 		},
