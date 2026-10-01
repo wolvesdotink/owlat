@@ -220,9 +220,9 @@ function makeBackend() {
 				case 'mail/imap/move:expungeFolder': {
 					const folder = byId(args.folderId);
 					const sequenceNumbers: number[] = [];
-					folder.messages.forEach((m, i) => {
+					for (const [i, m] of folder.messages.entries()) {
 						if (m.deleted) sequenceNumbers.push(i + 1);
-					});
+					}
 					folder.messages = folder.messages.filter((m) => !m.deleted);
 					folder.modseq += 1;
 					return { sequenceNumbers, modseq: folder.modseq, done: true };
@@ -248,14 +248,14 @@ function makeBackend() {
 function connect() {
 	const socket = new MockSocket();
 	const backend = makeBackend();
-	new ImapConnection(
+	const connection = new ImapConnection(
 		socket as unknown as Socket,
 		config,
 		backend.convex as unknown as ConvexClient,
 		new AuthRateLimiter(null, config.authRateLimit),
 		'10.0.0.1'
 	);
-	return { socket, ...backend };
+	return { connection, socket, ...backend };
 }
 
 /** Send one segment (one or more CRLF-terminated lines) and let it all run. */
