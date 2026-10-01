@@ -72,7 +72,8 @@ export interface RemoteOpsClient {
 	mailboxCreate(path: string[]): Promise<{ path: string }>;
 	mailboxRename(path: string, newPath: string): Promise<unknown>;
 	mailboxDelete(path: string): Promise<unknown>;
-	status(path: string, query: { messages: true }): Promise<{ messages?: number }>;
+	/** ImapFlow resolves `false`, not a rejection, when the server refuses a STATUS of a folder it lists. */
+	status(path: string, query: { messages: true }): Promise<{ messages?: number } | false>;
 }
 
 /** What folder discovery learned about the account, shared with the replay. */
@@ -105,6 +106,46 @@ export function isAllMailFolder(specialUse: string | undefined, path: string): b
 	if (specialUse === '\\All') return true;
 	const p = path.toLowerCase();
 	return p === '[gmail]/all mail' || p === '[google mail]/all mail';
+}
+
+/**
+ * The server said the mailbox does not exist: ImapFlow's LIST check after a
+ * refused SELECT (`mailboxMissing`) or STATUS (`NotFound`), or the server's own
+ * NONEXISTENT response code. Anything else — UNAVAILABLE, throttling, a
+ * permission refusal — says nothing about whether the folder is there.
+ */
+export function isMissingMailbox(err: unknown): boolean {
+	if (!err || typeof err !== 'object') return false;
+	const e = err as { mailboxMissing?: unknown; code?: unknown; serverResponseCode?: unknown };
+	return (
+		e.mailboxMissing === true ||
+		e.code === 'NotFound' ||
+		(typeof e.serverResponseCode === 'string' &&
+			e.serverResponseCode.toUpperCase() === 'NONEXISTENT')
+	);
+}
+
+/**
+ * What to record as a failed op's error. ImapFlow's message for a refused
+ * command is only "Command failed"; the server's status, response code and
+ * text carry the reason.
+ */
+export function describeRemoteOpError(err: unknown): string {
+	if (!(err instanceof Error)) return String(err);
+	const e = err as Error & {
+		code?: unknown;
+		responseStatus?: unknown;
+		serverResponseCode?: unknown;
+		responseText?: unknown;
+	};
+	const detail = [
+		e.responseStatus,
+		typeof e.serverResponseCode === 'string' ? `[${e.serverResponseCode}]` : undefined,
+		e.responseText,
+	].filter((part): part is string => typeof part === 'string' && part.length > 0);
+	let text = err.message;
+	if (typeof e.code === 'string' && !text.includes(e.code)) text += ` (${e.code})`;
+	return detail.length > 0 ? `${text}: ${detail.join(' ')}` : text;
 }
 
 function canonicalMessageId(raw: string): string {
@@ -213,14 +254,24 @@ export class RemoteOpReplayer {
 		);
 	}
 
-	/** How many messages a folder holds, or null when the provider has no such folder. */
+	/**
+	 * How many messages a folder holds, or null when the provider says it has
+	 * no such folder. Any other failure throws, so the op is retried rather
+	 * than retired — or, for a delete, run against a folder whose contents
+	 * were never counted.
+	 */
 	private async messageCount(path: string): Promise<number | null> {
+		let status: { messages?: number } | false;
 		try {
-			return (await this.client.status(path, { messages: true })).messages ?? 0;
+			status = await this.client.status(path, { messages: true });
 		} catch (err) {
-			if (!this.client.usable) throw err;
-			return null;
+			if (this.client.usable && isMissingMailbox(err)) return null;
+			throw err;
 		}
+		if (!status || typeof status.messages !== 'number') {
+			throw new Error('STATUS failed: the server returned no message count');
+		}
+		return status.messages;
 	}
 
 	/**
@@ -241,29 +292,55 @@ export class RemoteOpReplayer {
 			if (target !== null && (role === 'sent' || role === 'drafts')) continue;
 			candidates.push(path);
 		}
+		let unreadable: unknown;
 		for (const path of candidates) {
-			if (await this.withMessage(path, id, (uids) => action(uids, path))) return true;
+			const found = await this.withMessage(
+				path,
+				id,
+				(uids) => action(uids, path),
+				(err) => (unreadable ??= err)
+			);
+			if (found) return true;
 		}
+		// Absent from every folder that could be read; one that could not may still hold it.
+		if (unreadable !== undefined) throw unreadable;
 		return false;
 	}
 
-	/** Select `path`, find the message, and run `action` on its UIDs. False when absent. */
+	/**
+	 * Select `path`, find the message, and run `action` on its UIDs. False when
+	 * the message, or the folder itself, is confirmed absent. A folder the
+	 * server would not select or search for any other reason throws, so the op
+	 * is retried — or, given `unreadable`, is reported there and passed over,
+	 * for a caller that looks in other folders first.
+	 */
 	private async withMessage(
 		path: string,
 		id: string,
-		action: (uids: string) => Promise<unknown>
+		action: (uids: string) => Promise<unknown>,
+		unreadable?: (err: unknown) => void
 	): Promise<boolean> {
+		const passOver = (err: unknown): false => {
+			if (!unreadable || !this.client.usable) throw err;
+			unreadable(err);
+			return false;
+		};
 		let lock: { release(): void };
 		try {
 			lock = await this.client.getMailboxLock(path);
 		} catch (err) {
 			// A folder that does not exist (a user folder never mirrored, or one
 			// deleted on the provider) simply does not hold the message.
-			if (!this.client.usable) throw err;
-			return false;
+			if (this.client.usable && isMissingMailbox(err)) return false;
+			return passOver(err);
 		}
 		try {
-			const uids = await this.findUids(id);
+			let uids: number[];
+			try {
+				uids = await this.findUids(id);
+			} catch (err) {
+				return passOver(err);
+			}
 			if (uids.length === 0) return false;
 			await action(uids.join(','));
 			return true;
@@ -274,6 +351,8 @@ export class RemoteOpReplayer {
 
 	private async findUids(id: string): Promise<number[]> {
 		const hits = await this.client.search({ header: { 'message-id': id } }, UID);
+		// ImapFlow resolves `false` for a SEARCH the server refused: not a miss.
+		if (hits === false) throw new Error('SEARCH failed');
 		if (!hits || hits.length === 0) return [];
 		const confirmed: number[] = [];
 		for await (const msg of this.client.fetch(hits.join(','), { uid: true, envelope: true }, UID)) {
@@ -369,8 +448,7 @@ export async function drainRemoteOps(deps: DrainDeps): Promise<void> {
 					connectionLost = true;
 					break;
 				}
-				const error = err instanceof Error ? err.message : String(err);
-				results.push({ opId: op.opId, outcome: 'failed', error });
+				results.push({ opId: op.opId, outcome: 'failed', error: describeRemoteOpError(err) });
 			}
 		}
 		if (results.length > 0) await deps.settle(results);
