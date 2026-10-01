@@ -1,60 +1,38 @@
 <script setup lang="ts">
-import { api } from '@owlat/api';
 import AgentTaskFlow from '~/components/agent-tasks/AgentTaskFlow.vue';
-import { useTaskFlow } from '~/composables/useTaskFlow';
 import type { AnswerItem } from '~/composables/useAnswerQueue';
-import { mailAnswerKind, type AnswerCardControls } from '~/utils/answerCard';
-import { formatTaskFlowEstimate, type TaskFlowOrderKey } from '~/utils/taskFlow';
+import {
+	createAnswerQueueSession,
+	useAnswerQueueSession,
+} from '~/composables/useAnswerQueueSession';
+import { formatTaskFlowEstimate } from '~/utils/taskFlow';
 import { replyQueueHeadline } from '~/utils/postboxReplyQueue';
-import { answerItemMatches, parseAnswerFilter } from '~/utils/answerQueue';
+import { opensInAnswerMode } from '~/utils/answerQueue';
+import { useAnswerQueueChips } from '~/composables/useAnswerQueueChips';
 
 /**
- * The Answer queue — one card at a time over everything waiting on the
- * viewer's answer: mail from every inbox they read, the team inbox's agent
- * drafts, chat mentions. Each card says who the reply goes out as. Filter
- * chips narrow it to one inbox (`?in=<mailboxId>`), the team inbox
- * (`?in=team`) or chat (`?in=chat`); `?focus=<id>` opens on a given card.
- * Finishing the queue moves Today's "since you last looked" mark.
+ * The Answer queue page's body — over everything waiting on the viewer's
+ * answer: mail from every inbox they read, the team inbox's agent drafts, chat
+ * mentions. Filter chips narrow it to one inbox (`?in=<mailboxId>`), the team
+ * inbox (`?in=team`) or chat (`?in=chat`); `?focus=<id>` opens on a given item.
+ *
+ * The queue itself is the session the parent route owns
+ * (useAnswerQueueSession): its current item opens in Answer mode when it has
+ * one, so this page shows the loading, empty and done states, and the items
+ * that stay cards (chat mentions, follow-up reminders).
  */
 const { t } = useI18n();
-const route = useRoute();
-const router = useRouter();
-const queue = useAnswerQueue();
-const { inboxes } = useInboxes();
+const session = useAnswerQueueSession() ?? createAnswerQueueSession();
+const { queue, flow, filter, source } = session;
 
-const filter = computed(() => parseAnswerFilter(route.query['in']));
-function setFilter(next: string) {
-	const { in: _in, focus: _focus, ...rest } = route.query;
-	void router.replace({ query: next === 'all' ? rest : { ...rest, in: next } });
-}
-
-const matches = (item: AnswerItem) => answerItemMatches(item, filter.value);
-const source = computed(() => queue.items.value.filter(matches));
-
-function orderKey(item: AnswerItem): TaskFlowOrderKey {
-	if (item.source === 'mail') {
-		return {
-			id: item.id,
-			kind: mailAnswerKind(item.row),
-			threadId: item.row.threadId,
-			contactKey: item.row.fromAddress,
-		};
-	}
-	if (item.source === 'team') {
-		const hasDraft = !!item.entry.message.draftResponse?.trim();
-		return {
-			id: item.id,
-			kind: hasDraft ? 'draft_review' : 'reply',
-			threadId: item.entry.thread?._id,
-			contactKey: item.entry.message.from,
-		};
-	}
-	return { id: item.id, kind: 'reply', threadId: item.mention.roomId };
-}
-
-const flow = useTaskFlow<AnswerItem>(source, { key: orderKey });
+const setFilter = (next: string) => session.setFilter(next);
 const current = computed(() => flow.current.value);
 const estimateLabel = computed(() => formatTaskFlowEstimate(flow.remainingSeconds.value));
+// The current item is on its way to Answer mode: hold the skeleton rather than
+// flashing its card for a frame.
+const leavingForAnswerMode = computed(
+	() => !!current.value && !flow.isComplete.value && opensInAnswerMode(current.value)
+);
 
 function headline(item: AnswerItem): string {
 	if (item.source === 'mail') {
@@ -66,117 +44,7 @@ function headline(item: AnswerItem): string {
 }
 const peekLabel = computed(() => (flow.nextItem.value ? headline(flow.nextItem.value) : ''));
 
-// Enter the flow once the merged queue has loaded; re-enter when the filter changes.
-function startFlow() {
-	flow.start();
-	const focus = route.query['focus'];
-	if (typeof focus !== 'string') return;
-	for (
-		let i = 0;
-		i < flow.total.value && flow.currentId.value !== focus && flow.canGoNext.value;
-		i++
-	) {
-		flow.next();
-	}
-}
-watch(
-	[queue.isLoading, () => source.value.length, filter],
-	([loading, length], previous) => {
-		const filterChanged = previous && previous[2] !== filter.value;
-		if (filterChanged) flow.exit();
-		if (flow.active.value || loading || length === 0) return;
-		startFlow();
-	},
-	{ immediate: true }
-);
-
-function controlsFor(item: AnswerItem): AnswerCardControls {
-	return {
-		complete: (outcome, inverse) =>
-			flow.complete(item.id, { outcome, ...(inverse ? { inverse } : {}) }),
-		skip: () => flow.skip(item.id),
-		undoSelf: () => void flow.undoById(item.id),
-		back: () => flow.back(),
-		next: () => flow.next(),
-	};
-}
-
-onMounted(() => window.addEventListener('keydown', flow.onWindowKeydown));
-onBeforeUnmount(() => window.removeEventListener('keydown', flow.onWindowKeydown));
-
-// Finishing the queue is a natural "I've caught up": move Today's watermark.
-const { run: markSeen } = useBackendOperation(api.today.state.markSeen, {
-	label: () => t('dashboard.today.operations.markSeen'),
-});
-watch(
-	() => flow.isComplete.value,
-	(complete) => {
-		if (complete) void markSeen({});
-	}
-);
-
-const chips = computed(() => {
-	const count = (pred: (i: AnswerItem) => boolean) => queue.items.value.filter(pred).length;
-	const list: Array<{
-		id: string;
-		label: string;
-		count: number;
-		slot?: number | null;
-		icon?: string;
-	}> = [{ id: 'all', label: t('components.answer.filter.all'), count: queue.items.value.length }];
-	for (const inbox of inboxes.value) {
-		const n = count((i) => i.source === 'mail' && i.mailboxId === inbox.mailboxId);
-		if (n > 0) list.push({ id: inbox.mailboxId, label: inbox.name, count: n, slot: inbox.slot });
-	}
-	const team = count((i) => i.source === 'team');
-	if (team > 0)
-		list.push({
-			id: 'team',
-			label: t('components.shell.teamInbox'),
-			count: team,
-			icon: 'lucide:bot',
-		});
-	const chat = count((i) => i.source === 'mention');
-	if (chat > 0)
-		list.push({
-			id: 'chat',
-			label: t('components.shell.chat.title'),
-			count: chat,
-			icon: 'lucide:message-circle',
-		});
-	// A link can land on a filter with nothing in it (`?in=team` once the team
-	// queue is clear). Keep that chip visible so the page says what it is
-	// filtered to, instead of looking like the whole queue is empty.
-	const active = filter.value;
-	if (active !== 'all' && !list.some((chip) => chip.id === active)) {
-		const inbox = inboxes.value.find((i) => i.mailboxId === active);
-		if (active === 'team') {
-			list.push({
-				id: 'team',
-				label: t('components.shell.teamInbox'),
-				count: 0,
-				icon: 'lucide:bot',
-			});
-		} else if (active === 'chat') {
-			list.push({
-				id: 'chat',
-				label: t('components.shell.chat.title'),
-				count: 0,
-				icon: 'lucide:message-circle',
-			});
-		} else if (inbox) {
-			list.push({ id: inbox.mailboxId, label: inbox.name, count: 0, slot: inbox.slot });
-		}
-	}
-	return list;
-});
-
-// The chip row earns its space once there is a choice to make — or when the
-// page is already filtered, so the filter is visible and can be cleared.
-const showChips = computed(() => chips.value.length > 2 || filter.value !== 'all');
-const activeChipLabel = computed(
-	() => chips.value.find((chip) => chip.id === filter.value && chip.id !== 'all')?.label ?? null
-);
+const { chips, showChips, activeChipLabel } = useAnswerQueueChips(session);
 </script>
 
 <template>
@@ -216,7 +84,7 @@ const activeChipLabel = computed(
 		</div>
 
 		<div
-			v-if="queue.isLoading.value && !flow.active.value"
+			v-if="(queue.isLoading.value && !flow.active.value) || leavingForAnswerMode"
 			class="mx-auto max-w-2xl space-y-3 px-6 py-10"
 		>
 			<UiSkeleton class="h-4 w-40" />
@@ -261,9 +129,9 @@ const activeChipLabel = computed(
 			:can-go-back="flow.canGoBack.value"
 			:can-go-next="flow.canGoNext.value"
 			@exit="navigateTo('/dashboard')"
-			@undo="flow.undo()"
-			@back="flow.back()"
-			@next="flow.next()"
+			@undo="session.undo()"
+			@back="session.back()"
+			@next="session.next()"
 		>
 			<template v-if="current">
 				<AnswerIdentityBand :item="current" />
@@ -272,19 +140,19 @@ const activeChipLabel = computed(
 					:key="current.id"
 					:row="current.row"
 					:mailbox-id="current.mailboxId"
-					:controls="controlsFor(current)"
+					:controls="session.controlsFor(current)"
 				/>
 				<AnswerTeamCard
 					v-else-if="current.source === 'team'"
 					:key="current.id"
 					:entry="current.entry"
-					:controls="controlsFor(current)"
+					:controls="session.controlsFor(current)"
 				/>
 				<AnswerMentionCard
 					v-else
 					:key="current.id"
 					:mention="current.mention"
-					:controls="controlsFor(current)"
+					:controls="session.controlsFor(current)"
 				/>
 			</template>
 

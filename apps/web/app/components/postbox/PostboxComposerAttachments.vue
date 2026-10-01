@@ -48,6 +48,8 @@ const offerShare = computed(() => shouldOfferShareLink(props.meter));
 		v-if="attachments.length > 0 || uploads.length > 0"
 		class="px-3 py-2 border-t border-border-subtle flex flex-col gap-2"
 	>
+		<!-- The chips' icon buttons are 16px for a mouse; on touch
+		     (pointer-coarse) they grow to a fingertip. -->
 		<div class="flex flex-wrap gap-2">
 			<!-- Committed attachments -->
 			<span
@@ -70,7 +72,7 @@ const offerShare = computed(() => shouldOfferShareLink(props.meter));
 				<button
 					v-if="offerShare"
 					type="button"
-					class="p-0.5 rounded hover:bg-bg-elevated text-text-tertiary hover:text-accent disabled:opacity-50"
+					class="p-0.5 pointer-coarse:p-2 rounded hover:bg-bg-elevated text-text-tertiary hover:text-accent disabled:opacity-50"
 					:disabled="isSharing || shareDisabled"
 					:title="t('components.postbox.postboxComposerAttachments.shareTitle')"
 					:aria-label="
@@ -82,7 +84,7 @@ const offerShare = computed(() => shouldOfferShareLink(props.meter));
 				</button>
 				<button
 					type="button"
-					class="p-0.5 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
+					class="p-0.5 pointer-coarse:p-2 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
 					:aria-label="
 						t('components.postbox.postboxComposerAttachments.remove', { filename: att.filename })
 					"
@@ -127,7 +129,7 @@ const offerShare = computed(() => shouldOfferShareLink(props.meter));
 				<button
 					v-if="up.status === 'failed'"
 					type="button"
-					class="p-0.5 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
+					class="p-0.5 pointer-coarse:p-2 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
 					:aria-label="
 						t('components.postbox.postboxComposerAttachments.retry', { filename: up.filename })
 					"
@@ -138,7 +140,7 @@ const offerShare = computed(() => shouldOfferShareLink(props.meter));
 				</button>
 				<button
 					type="button"
-					class="p-0.5 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
+					class="p-0.5 pointer-coarse:p-2 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
 					:aria-label="
 						up.status === 'failed'
 							? t('components.postbox.postboxComposerAttachments.dismiss', {

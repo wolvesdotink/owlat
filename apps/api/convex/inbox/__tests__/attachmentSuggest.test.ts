@@ -10,7 +10,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { getFunctionName } from 'convex/server';
-import { computeAttachmentSuggestions } from '../attachmentSuggest';
+import { computeAttachmentSuggestions, searchFilesForRequest } from '../attachmentSuggest';
 import type { Id } from '../../_generated/dataModel';
 
 type SearchArgs = { queryText?: string; scopeToContact: unknown; limit?: number };
@@ -130,5 +130,78 @@ describe('computeAttachmentSuggestions', () => {
 		});
 		expect(result).not.toBeNull();
 		expect(runMutation).not.toHaveBeenCalled();
+	});
+});
+
+describe('searchFilesForRequest (Answer mode)', () => {
+	const MAILBOX = 'mailbox_1' as Id<'mailboxes'>;
+
+	function makeSearchCtx(opts: { files?: unknown[]; mail?: unknown[]; failFiles?: boolean }) {
+		const actions: { name: string; args: SearchArgs }[] = [];
+		const queries: { name: string; args: Record<string, unknown> }[] = [];
+		const ctx = {
+			runAction: vi.fn(async (ref: unknown, args: SearchArgs) => {
+				actions.push({ name: getFunctionName(ref as never), args });
+				if (opts.failFiles) throw new Error('search down');
+				return opts.files ?? [];
+			}),
+			runQuery: vi.fn(async (ref: unknown, args: Record<string, unknown>) => {
+				queries.push({ name: getFunctionName(ref as never), args });
+				return opts.mail ?? [];
+			}),
+		};
+		return { ctx: ctx as never, actions, queries };
+	}
+
+	it('merges contact-scoped Files hits with the mailbox’s own attachments', async () => {
+		const { ctx, actions, queries } = makeSearchCtx({
+			files: [fileRow('f1', 0.4), fileRow('gone', 0.9, { storageId: undefined })],
+			mail: [{ id: 'm1', filename: 'invoice-09.pdf', contentType: 'application/pdf', size: 99 }],
+		});
+		const found = await searchFilesForRequest(ctx, {
+			query: 'invoice for september',
+			contactId: CONTACT,
+			mailboxScope: { mailboxId: MAILBOX, counterparts: ['jonas@example.com'] },
+		});
+		expect(actions[0]!.args).toMatchObject({
+			scopeToContact: CONTACT,
+			queryText: 'invoice for september',
+		});
+		expect(queries[0]).toMatchObject({
+			name: 'mail/attachExisting:searchMailboxAttachments',
+			// The mailbox leg carries the counterpart scope (no mailbox-wide search).
+			args: { scope: { mailboxId: MAILBOX, counterparts: ['jonas@example.com'] } },
+		});
+		// A Files row whose bytes were released cannot be offered.
+		expect(found).toEqual([
+			expect.objectContaining({ source: 'semanticFile', id: 'f1', score: 0.4 }),
+			{
+				source: 'mailAttachment',
+				id: 'm1',
+				filename: 'invoice-09.pdf',
+				mimeType: 'application/pdf',
+				size: 99,
+				score: 0,
+			},
+		]);
+	});
+
+	it('scopes to org-general files without a contact and skips the mailbox leg without a mailbox', async () => {
+		const { ctx, actions, queries } = makeSearchCtx({ files: [] });
+		await searchFilesForRequest(ctx, { query: 'price list' });
+		expect(actions[0]!.args.scopeToContact).toBe('org-general-only');
+		expect(queries).toEqual([]);
+	});
+
+	it('fails soft: a broken Files search still returns the mailbox hits', async () => {
+		const { ctx } = makeSearchCtx({
+			failFiles: true,
+			mail: [{ id: 'm1', filename: 'a.pdf', contentType: 'application/pdf', size: 1 }],
+		});
+		const found = await searchFilesForRequest(ctx, {
+			query: 'a',
+			mailboxScope: { mailboxId: MAILBOX, counterparts: ['jonas@example.com'] },
+		});
+		expect(found.map((f) => f.id)).toEqual(['m1']);
 	});
 });

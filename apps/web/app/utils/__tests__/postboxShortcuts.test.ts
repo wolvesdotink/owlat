@@ -2,37 +2,11 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
 	resolvePostboxShortcut,
 	isEditableTarget,
-	isFocusComposeChord,
 	nextUnreadIndex,
 	postboxShortcutSheet,
-	settlePendingCompose,
 } from '../postboxShortcuts';
 import { shortcutSheetKeys } from '../shortcutRegistry';
 import { applyShortcutPreferences, resetShortcutPreferences } from '../shortcutScope';
-
-describe('isFocusComposeChord', () => {
-	const chord = (over: Record<string, unknown>) => ({
-		key: 'f',
-		metaKey: false,
-		ctrlKey: false,
-		shiftKey: false,
-		altKey: false,
-		...over,
-	});
-
-	it('matches Cmd/Ctrl + Shift + F (either case)', () => {
-		expect(isFocusComposeChord(chord({ metaKey: true, shiftKey: true }))).toBe(true);
-		expect(isFocusComposeChord(chord({ ctrlKey: true, shiftKey: true }))).toBe(true);
-		expect(isFocusComposeChord(chord({ metaKey: true, shiftKey: true, key: 'F' }))).toBe(true);
-	});
-
-	it('rejects the chord without Shift, without a modifier, with Alt, or a different key', () => {
-		expect(isFocusComposeChord(chord({ metaKey: true }))).toBe(false);
-		expect(isFocusComposeChord(chord({ shiftKey: true }))).toBe(false);
-		expect(isFocusComposeChord(chord({ metaKey: true, shiftKey: true, altKey: true }))).toBe(false);
-		expect(isFocusComposeChord(chord({ metaKey: true, shiftKey: true, key: 'g' }))).toBe(false);
-	});
-});
 
 describe('resolvePostboxShortcut', () => {
 	beforeEach(() => resetShortcutPreferences());
@@ -81,8 +55,11 @@ describe('resolvePostboxShortcut', () => {
 		expect(resolvePostboxShortcut('g')).toBeNull();
 	});
 
+	it('maps Esc to closing the open conversation (the key the cheat sheet always listed)', () => {
+		expect(resolvePostboxShortcut('Escape')).toBe('close');
+	});
+
 	it('returns null for unmapped keys', () => {
-		expect(resolvePostboxShortcut('Escape')).toBeNull();
 		expect(resolvePostboxShortcut('Tab')).toBeNull();
 		// Capitalized variants of mapped keys are NOT mapped (Shift changes meaning).
 		expect(resolvePostboxShortcut('R')).toBeNull();
@@ -110,58 +87,6 @@ describe('isEditableTarget', () => {
 		expect(isEditableTarget(document.createElement('div'))).toBe(false);
 		expect(isEditableTarget(document.createElement('button'))).toBe(false);
 		expect(isEditableTarget(null)).toBe(false);
-	});
-});
-
-describe('settlePendingCompose (list → reader r/a/f handoff)', () => {
-	it('is a no-op without a pending intent', () => {
-		expect(settlePendingCompose(null, 'msg-a', 'msg-a')).toEqual({ open: null, clear: false });
-	});
-
-	it('consumes a matching intent exactly once (opens + clears)', () => {
-		const pending = { messageId: 'msg-a', mode: 'reply' as const };
-		expect(settlePendingCompose(pending, 'msg-a', 'msg-b')).toEqual({
-			open: 'reply',
-			clear: true,
-		});
-	});
-
-	it('consumes when the target message is ALREADY open (id did not change)', () => {
-		// r/a/f on the focused row of the currently-open message: the reader
-		// re-settles when the intent itself changes, with an unchanged id.
-		const pending = { messageId: 'msg-a', mode: 'forward' as const };
-		expect(settlePendingCompose(pending, 'msg-a', 'msg-a')).toEqual({
-			open: 'forward',
-			clear: true,
-		});
-	});
-
-	it('keeps an in-flight intent for another message while the id is unchanged', () => {
-		// The list just armed the intent for msg-b; navigation has not landed yet.
-		const pending = { messageId: 'msg-b', mode: 'replyAll' as const };
-		expect(settlePendingCompose(pending, 'msg-a', 'msg-a')).toEqual({
-			open: null,
-			clear: false,
-		});
-	});
-
-	it('drops a stale intent when a DIFFERENT message is opened', () => {
-		// Intent was armed for msg-b, but the user opened msg-c (even by plain
-		// click, much later): never open a composer, and clear the intent so it
-		// cannot fire on a future open of msg-b.
-		const pending = { messageId: 'msg-b', mode: 'reply' as const };
-		expect(settlePendingCompose(pending, 'msg-c', 'msg-a')).toEqual({
-			open: null,
-			clear: true,
-		});
-	});
-
-	it('drops a stale intent on first mount (no previous id)', () => {
-		const pending = { messageId: 'msg-b', mode: 'reply' as const };
-		expect(settlePendingCompose(pending, 'msg-a', undefined)).toEqual({
-			open: null,
-			clear: true,
-		});
 	});
 });
 

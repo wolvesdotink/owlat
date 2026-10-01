@@ -11,11 +11,12 @@
  *   - the confirm is asked only ONCE per thread — a second reply on the same
  *     thread runs immediately with no interstitial;
  *   - a null risk (ordinary sender, or the flag off) never shows the interstitial;
- *   - cancel drops the pending reply without running it.
+ *   - cancel drops the pending reply without running it (and says so);
+ *   - a confirmation holds across instances (the reader, then Answer mode).
  */
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { nextTick } from 'vue';
+import { nextTick, ref } from 'vue';
 
 import PostboxReplyGuard from '../PostboxReplyGuard.vue';
 import { deriveReplyRisk, type ReplyRisk } from '~/utils/senderAuth';
@@ -23,6 +24,13 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+});
+
+// The confirmed-threads memory is session state shared by every guard; each
+// test starts from an empty one.
+beforeEach(() => {
+	const confirmed = ref<string[]>([]);
+	vi.stubGlobal('useState', () => confirmed);
 });
 
 const iconStub = { props: ['name'], template: '<span />' };
@@ -141,5 +149,21 @@ describe('PostboxReplyGuard', () => {
 		await wrapper.find('[data-testid="reply-guard-cancel"]').trigger('click');
 		expect(reply).not.toHaveBeenCalled();
 		expect(wrapper.find('[data-testid="modal"]').exists()).toBe(false);
+		// A host with nothing to show without the reply (Answer mode) steps back.
+		expect(wrapper.emitted('cancel')).toHaveLength(1);
+	});
+
+	it('remembers a confirmed thread across guard instances (reader, then Answer mode)', async () => {
+		const reader = mountGuard();
+		reader.vm.guard('thread-1', FAILED, 'billing@acme.com', vi.fn());
+		await nextTick();
+		await reader.wrapper.find('[data-testid="reply-guard-confirm"]').trigger('click');
+
+		const answerMode = mountGuard();
+		const reply = vi.fn();
+		answerMode.vm.guard('thread-1', FAILED, 'billing@acme.com', reply);
+		await nextTick();
+		expect(answerMode.wrapper.find('[data-testid="modal"]').exists()).toBe(false);
+		expect(reply).toHaveBeenCalledTimes(1);
 	});
 });

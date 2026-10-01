@@ -129,6 +129,18 @@ export interface AppendResult {
 	readonly modseq: number;
 }
 
+/**
+ * A UID window read: `[uidLow, uidHigh]`, optionally narrowed to ascending,
+ * disjoint `ranges` (at most `MAX_UID_RANGES` in apps/api `mail/imap/fetch.ts`).
+ */
+type UidWindowArgs = {
+	folderId: string;
+	uidLow: number;
+	uidHigh: number;
+	ranges?: Array<{ low: number; high: number }>;
+	limit?: number;
+};
+
 type FolderRole = 'inbox' | 'sent' | 'drafts' | 'trash' | 'spam' | 'archive';
 
 type CopyMoveArgs = {
@@ -188,11 +200,9 @@ export const fn = {
 	selectFolder: makeFunctionReference<'query', { folderId: string }, SelectFolderResult | null>(
 		'mail/imap/session:selectFolder'
 	),
-	fetchEnvelopes: makeFunctionReference<
-		'query',
-		{ folderId: string; uidLow: number; uidHigh: number; limit?: number },
-		EnvelopePage
-	>('mail/imap/fetch:fetchEnvelopes'),
+	fetchEnvelopes: makeFunctionReference<'query', UidWindowArgs, EnvelopePage>(
+		'mail/imap/fetch:fetchEnvelopes'
+	),
 	fetchChangedEnvelopes: makeFunctionReference<
 		'query',
 		{
@@ -240,11 +250,9 @@ export const fn = {
 	appendMessage: makeFunctionReference<'mutation', AppendArgs, AppendResult>(
 		'mail/imap/append:appendMessage'
 	),
-	resolveMessageIdsByUid: makeFunctionReference<
-		'query',
-		{ folderId: string; uidLow: number; uidHigh: number; limit?: number },
-		MessageIdPage
-	>('mail/imap/fetch:resolveMessageIdsByUid'),
+	resolveMessageIdsByUid: makeFunctionReference<'query', UidWindowArgs, MessageIdPage>(
+		'mail/imap/fetch:resolveMessageIdsByUid'
+	),
 	getRawStorageUrls: makeFunctionReference<
 		'action',
 		{ messageIds: string[] },

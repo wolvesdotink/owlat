@@ -26,6 +26,10 @@
 			"types": "./src/unicode.ts",
 			"import": "./src/unicode.ts"
 		},
+		"./answerMode": {
+			"types": "./src/answerMode.ts",
+			"import": "./src/answerMode.ts"
+		},
 		"./templateVariables": {
 			"types": "./src/templateVariables.ts",
 			"import": "./src/templateVariables.ts"

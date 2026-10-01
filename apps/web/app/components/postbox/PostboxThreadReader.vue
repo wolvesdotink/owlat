@@ -243,8 +243,8 @@ const threadMessageCount = computed(() =>
 const latestMessage = computed(() => allMessages.value[allMessages.value.length - 1]);
 
 // The one reader AI strip (PostboxAiStrip) mounts whenever AI is on and the
-// thread has a latest message; it hosts the summary gist and Ask (Draft reply
-// lives in the inline reply bar, next to the box it seeds).
+// thread has a latest message; it hosts the summary gist and Ask (drafting a
+// reply with AI happens in Answer mode, where the reply is written).
 // `warrantsSummary` decides whether it eagerly generates a summary: long thread
 // (>= 5 messages OR a lot of body text) AND the per-user auto-summary toggle
 // (default ON). When false and nothing is cached, the strip collapses to zero
@@ -496,8 +496,7 @@ const mailboxIdRef = computed(() => props.message.mailboxId as Id<'mailboxes'>);
 // open one subscription per rendered message.
 const imageAllowlist = usePostboxImageAllowlist(mailboxIdRef);
 
-// Reply / reply-all / forward composer concerns (popup openers, the pinned
-// inline reply box, and the list→reader r/a/f hand-off).
+// Reply / reply-all / forward: every one of them opens Answer mode.
 const {
 	openReplyAll,
 	openPrimaryReply,
@@ -505,13 +504,9 @@ const {
 	openForward,
 	openResend,
 	hasOtherRecipients,
-	inlineSpec,
-	inlineReplyEl,
-	expandInline,
-	guardedExpandReply,
-	guardedExpandReplyAll,
-	collapseInline,
-	inlineSenderLabel,
+	replyToLatest,
+	replyAllToLatest,
+	forwardLatest,
 } = usePostboxReaderComposer({
 	// List rows carry no body (plan 2.3): quote from the thread query's copy of
 	// the open message once it has loaded, so Reply/Forward need no body fetch.
@@ -519,8 +514,8 @@ const {
 	latestMessage,
 	ownAddresses,
 	replyDefault,
-	// Route every in-composer reply/reply-all path (keyboard, inline box, list
-	// hand-off) through the sender-auth reply guard against the latest message.
+	// The keyboard reply paths go through the sender-auth reply guard against
+	// the latest message.
 	guardReply: (run) => guardLatestReply(run),
 });
 
@@ -601,8 +596,9 @@ function replyRisk(msg: PostboxReaderMessage): ReplyRisk | null {
 /**
  * Run `action` behind the reply guard for `msg`: a one-time-per-thread confirm
  * when the sender is in one of the flagged shapes, else straight through. Shared
- * by every reply/reply-all entry point (per-message buttons, keyboard, inline
- * box, list hand-off) so none of them can bypass the interstitial.
+ * by every reply/reply-all entry point here (per-message buttons, keyboard, ⌘K)
+ * so none of them can bypass the interstitial; Answer mode repeats it for links
+ * that never pass through the reader.
  *
  * The destination it names is the From address, because that is what a reply is
  * actually addressed to here (`buildReplySpec` prefills `To: [fromAddress]`) —
@@ -629,7 +625,7 @@ function guardedReplyAll(msg: PostboxReaderMessage) {
 	guardedOpen(msg, openReplyAll);
 }
 
-/** Guard a reply/reply-all against the LATEST message (keyboard/inline paths). */
+/** Guard a reply/reply-all against the LATEST message (the keyboard paths). */
 function guardLatestReply(run: () => void) {
 	runGuarded(latestMessage.value, run);
 }
@@ -671,11 +667,9 @@ const {
 		emit: (target) => emit('advance', target),
 	},
 	compose: {
-		reply: guardedExpandReply,
-		replyAll: guardedExpandReplyAll,
-		forward: () => {
-			void expandInline('forward');
-		},
+		reply: replyToLatest,
+		replyAll: replyAllToLatest,
+		forward: forwardLatest,
 	},
 });
 
@@ -773,11 +767,11 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 
 		<!-- No skeleton while the thread loads: the opened row renders with its
 		     inline body, and the rest of the conversation joins it on arrival.
-		     What depends on the whole thread (the AI strip, the reply box, the
-		     triage offer) waits for it. -->
+		     What depends on the whole thread (the AI strip, the triage offer)
+		     waits for it. -->
 		<div class="space-y-2">
 			<!-- The reader's ONE AI home, one line: the summary gist plus an Ask
-			     link (Draft reply lives in the reply bar). Renders nothing when
+			     link. Renders nothing when
 			     there's no summary and the thread is too short to warrant one
 			     (fail-soft, same thresholds). -->
 			<PostboxAiStrip
@@ -840,28 +834,6 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 				@use-reply="(text) => openReplyWithBody(msg, text)"
 				@dismiss-scheduling="dismissScheduling(msg._id)"
 				@seal-refetch="refetchCorrespondentKey()"
-			/>
-
-			<!-- Inline reply box pinned under the conversation (r / a / f or the
-			     affordance expand it; it collapses back after send/discard). -->
-			<PostboxInlineReply
-				v-if="latestMessage && !isLoading"
-				ref="inlineReplyEl"
-				:sender-label="inlineSenderLabel"
-				:show-reply-all="hasOtherRecipients(latestMessage)"
-				:spec="inlineSpec"
-				:ai-enabled="aiEnabled"
-				:draft-message-id="latestMessage._id"
-				@use-reply="(text) => latestMessage && openReplyWithBody(latestMessage, text)"
-				@expand="
-					(kind) =>
-						kind === 'reply'
-							? guardedExpandReply()
-							: kind === 'replyAll'
-								? guardedExpandReplyAll()
-								: void expandInline(kind)
-				"
-				@collapse="collapseInline"
 			/>
 
 			<!-- "You archive everything from this sender. Always archive it?"

@@ -19,13 +19,21 @@
  *
  * The guard is transparent: it never blocks a reply to an ordinary sender, and
  * it does not touch DMARC→Spam routing — that stays server-side.
+ *
+ * "Never ask again for that thread" holds for the session, across instances:
+ * the reader asks before it opens Answer mode, and Answer mode asks again for
+ * links that skip the reader (a notification, a reload). A thread confirmed in
+ * one passes straight through the other. Cancelling emits `cancel`, so a host
+ * that has nothing to show without the reply (Answer mode) can step back.
  */
 import type { ReplyRisk, SenderAuthText } from '~/utils/senderAuth';
 
 const { t } = useI18n();
 
+const emit = defineEmits<{ cancel: [] }>();
+
 const open = ref(false);
-const confirmed = ref<Set<string>>(new Set());
+const confirmed = useState<string[]>('postbox:reply-guard-confirmed', () => []);
 const risk = ref<ReplyRisk | null>(null);
 /**
  * The address the reply would actually be addressed to. Shown verbatim: naming
@@ -46,16 +54,14 @@ function guard(
 	replyDestination: string,
 	action: () => void
 ) {
-	if (!replyRisk || confirmed.value.has(threadId)) {
+	if (!replyRisk || confirmed.value.includes(threadId)) {
 		action();
 		return;
 	}
 	risk.value = replyRisk;
 	destination.value = replyDestination;
 	pending = () => {
-		const next = new Set(confirmed.value);
-		next.add(threadId);
-		confirmed.value = next;
+		confirmed.value = [...confirmed.value, threadId];
 		action();
 	};
 	open.value = true;
@@ -71,6 +77,7 @@ function proceed() {
 function cancel() {
 	pending = null;
 	open.value = false;
+	emit('cancel');
 }
 
 defineExpose({ guard });

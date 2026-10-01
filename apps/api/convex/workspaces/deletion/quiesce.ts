@@ -55,8 +55,10 @@ export const SCHEDULER_RESCAN_MARGIN_MS = 5_000;
  *   - the deletion's own chain (drive, its retries);
  *   - the provider-side release of a removed sending domain, which the
  *     `domains` step itself schedules and which writes nothing;
- *   - member erasure, which closes a non-owner's account deletion (it only
- *     removes that user's rows outside the sweep while a deletion runs);
+ *   - member erasure, which closes an account deletion (it removes that
+ *     user's rows outside the sweep, then waits for the deletion to finish);
+ *     `auth/memberErasure` is the entry point hops scheduled by the previous
+ *     release still call;
  *   - the mail to an account holder whose account is being deleted;
  *   - instance key material (Sealed Mail `keyVault`), which is outside the
  *     sweep;
@@ -67,6 +69,7 @@ export const SURVIVING_SCHEDULED_FUNCTIONS: readonly string[] = [
 	'workspaces/deletion/',
 	'domains/providers/registerAction:deleteDomainAction',
 	'auth/memberErasure:eraseMemberData',
+	'auth/erasure/',
 	'accountDeletionEmail:sendAccountDeletionEmail',
 	'e2ee/',
 	'mail/mailboxActions:pushInboundTlsPolicy',

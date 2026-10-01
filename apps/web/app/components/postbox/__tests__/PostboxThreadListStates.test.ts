@@ -81,7 +81,6 @@ beforeAll(() => {
 	// rather than being replaced by a mock that can drift from the real shape.
 	vi.stubGlobal('usePostboxRowTriage', usePostboxRowTriage);
 	vi.stubGlobal('useState', (_key: string, init?: () => unknown) => ref(init ? init() : null));
-	vi.stubGlobal('POSTBOX_PENDING_COMPOSE_KEY', 'postbox:pending-compose');
 	vi.stubGlobal('usePostboxLabels', () => ({ labels: ref([]), setOnMessage: vi.fn() }));
 	vi.stubGlobal('usePostboxFolders', () => ({ folders: ref([]) }));
 	// The h/l/v picker state lives in its own composable now; real, because it is

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PLUGIN_WORKER_RESULT_MAX_BYTES, pluginWorkerJobLocalIdOf } from '@owlat/plugin-kit';
 import { getConvexClient, pluginFn, type PluginTask } from './convexClient.js';
-import { chownDirToSandbox, runUntrusted } from './sandbox.js';
+import { chownDirToSandbox, runUntrusted, SANDBOX_OUTPUT_LIMITS } from './sandbox.js';
 import { removeWorkspace } from './taskRunner.js';
 import { log } from './log.js';
 
@@ -221,9 +221,20 @@ export async function runPluginJob(task: PluginTask, deps: RunPluginJobDeps = {}
 				timeoutMs: task.timeoutMs,
 				signal: controller.signal,
 				reap: deps.reap,
+				// The head must cover a whole result so capture never cuts one shorter
+				// than the result ceiling would.
+				outputLimits: {
+					...SANDBOX_OUTPUT_LIMITS,
+					headBytes: Math.max(SANDBOX_OUTPUT_LIMITS.headBytes, PLUGIN_WORKER_RESULT_MAX_BYTES),
+				},
 			},
 			spawnFn
 		);
+		if (result.outputTruncated) {
+			log(
+				`Plugin job ${task.taskId} output exceeded the sandbox capture limit; kept head and tail`
+			);
+		}
 
 		if (cancelled || result.killed) {
 			// The host sees isCancelRequested and records the cancelled terminal state

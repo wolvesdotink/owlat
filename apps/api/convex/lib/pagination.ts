@@ -9,12 +9,15 @@ import type { TableNames } from '../_generated/dataModel';
  * permits only ONE `.paginate()` call per function execution (a second throws
  * at runtime in a deployed backend), and a count frequently runs alongside a
  * real paginated list in the same execution (e.g. the Listing engine's page +
- * total). Async-iterating the query reads rows incrementally under the normal
- * per-execution read limit.
+ * total).
  *
- * It reads every matching row, so callers that must count very large sets
- * should keep a denormalized counter and only fall back here when one is
- * absent.
+ * Streaming keeps memory flat but does NOT reset the transaction's budget:
+ * every matching row is a document read against the per-transaction limits
+ * (documents scanned and bytes read), so a large range fails the whole query
+ * or mutation. Use it only for ranges that are bounded by construction; a set
+ * that can grow with the contact book needs a maintained counter, and a
+ * recount of one has to be split across transactions (see
+ * `contacts/countReconcile.ts`).
  */
 export async function countIndexRange(
 	db: DatabaseReader,

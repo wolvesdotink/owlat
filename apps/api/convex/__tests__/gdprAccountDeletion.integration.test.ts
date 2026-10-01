@@ -1,9 +1,9 @@
 /**
  * The account-deletion path: a non-owner member's deletion erases their
- * auth-side rows + onboarding + profile and hands off to the batched
- * member-erasure walk (auth/memberErasure.ts); that walk anonymizes/erases the
- * member's mailbox, app passwords, external credentials, chat authorship and
- * staged export artifacts, then terminates by marking the request `completed`.
+ * auth-side rows + onboarding + profile and hands off to the persisted
+ * member erasure (auth/erasure/); that walk anonymizes/erases the member's
+ * mailbox, app passwords, external credentials, chat authorship and staged
+ * export artifacts, then terminates by marking the request `completed`.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -87,25 +87,17 @@ describe('accountManagement.deleteAccountForRequest — non-owner member', () =>
 		} as never)) as { page: unknown[] };
 		expect(remainingMembers.page).toHaveLength(0);
 
-		// Request is NOT yet completed: the batched member-erasure walk owns that
-		// transition (it was scheduled, not run inline). Still pending here.
+		// Request is NOT yet completed: the persisted member erasure owns that
+		// transition (its first step was scheduled, not run inline).
 		await t.run(async (ctx) => {
 			const request = await ctx.db.get(requestId);
-			expect(request?.status).toBe('pending');
+			expect(request?.status).toBe('erasing');
+			expect(request?.authUserId).toBe('auth-user-1');
 		});
 
-		// Run the member-erasure walk the cron handed off to. This member owns no
-		// personal data, so it terminates in one hop, marking the request done.
-		await t.mutation(internal.auth.memberErasure.eraseMemberData, {
-			authUserId: 'auth-user-1',
-			requestId,
-		});
-		await t.mutation(internal.auth.memberErasure.eraseMemberData, {
-			authUserId: 'auth-user-1',
-			requestId,
-			isAlertErasureDone: true,
-			isAlertReceiptErasureDone: true,
-		});
+		// Run the erasure the cron handed off to. This member owns no personal
+		// data, so it walks its phases and marks the request done.
+		await tickToCompletion(t, requestId);
 		await t.run(async (ctx) => {
 			const request = await ctx.db.get(requestId);
 			expect(request?.status).toBe('completed');
@@ -113,49 +105,49 @@ describe('accountManagement.deleteAccountForRequest — non-owner member', () =>
 	});
 });
 
+/** Run the request's erasure job one transaction at a time until it finishes. */
+async function tickToCompletion(
+	t: TestConvex<typeof schema>,
+	requestId: Id<'accountDeletionRequests'>
+): Promise<void> {
+	for (let i = 0; i < 200; i++) {
+		const job = await t.run((ctx) =>
+			ctx.db
+				.query('memberErasureJobs')
+				.withIndex('by_request', (q) => q.eq('requestId', requestId))
+				.first()
+		);
+		if (!job) return;
+		await t.mutation(internal.auth.erasure.walker.tick, { jobId: job._id });
+	}
+	throw new Error('member erasure did not terminate within hop budget');
+}
+
+/**
+ * Start the erasure the way an in-flight hop of the previous release does
+ * (that release deleted the profile before scheduling it), then run it.
+ */
+async function drainWalk(
+	t: TestConvex<typeof schema>,
+	authUserId: string,
+	requestId: Id<'accountDeletionRequests'>
+): Promise<void> {
+	await t.run(async (ctx) => {
+		const profile = await ctx.db
+			.query('userProfiles')
+			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', authUserId))
+			.first();
+		if (profile) await ctx.db.delete(profile._id);
+	});
+	await t.mutation(internal.auth.memberErasure.eraseMemberData, { authUserId, requestId });
+	await tickToCompletion(t, requestId);
+}
+
 // ============================================================
-// member-erasure batched walk (auth/memberErasure.ts)
+// member erasure (auth/erasure/)
 // ============================================================
 
 describe('memberErasure.eraseMemberData', () => {
-	/** Drive the self-rescheduling walk to completion deterministically. */
-	async function drainWalk(
-		t: TestConvex<typeof schema>,
-		authUserId: string,
-		requestId: Id<'accountDeletionRequests'>
-	): Promise<void> {
-		// Bounded loop — every hop either deletes a batch (and reschedules) or
-		// reaches phase 4. A handful of hops covers the seeded data.
-		for (let i = 0; i < 20; i++) {
-			const erasureState = await t.run(async (ctx) => {
-				const recipient = await ctx.db
-					.query('deliverabilityAlertRecipients')
-					.withIndex('by_user', (q) => q.eq('userId', authUserId))
-					.first();
-				const receipt = await ctx.db
-					.query('deliverabilityAlertRecipientReceipts')
-					.withIndex('by_user', (q) => q.eq('userId', authUserId))
-					.first();
-				return {
-					isAlertErasureDone: recipient === null,
-					isAlertReceiptErasureDone: receipt === null,
-				};
-			});
-			await t.mutation(internal.auth.memberErasure.eraseMemberData, {
-				authUserId,
-				requestId,
-				...(erasureState.isAlertErasureDone ? { isAlertErasureDone: true } : {}),
-				...(erasureState.isAlertReceiptErasureDone ? { isAlertReceiptErasureDone: true } : {}),
-			});
-			const done = await t.run(async (ctx) => {
-				const r = await ctx.db.get(requestId);
-				return r?.status === 'completed';
-			});
-			if (done) return;
-		}
-		throw new Error('member-erasure walk did not terminate within hop budget');
-	}
-
 	it('erases the mailbox + app passwords, external creds, chat authorship and completes the request', async () => {
 		const t = newHarness();
 		const authUserId = 'auth-user-2';
@@ -589,12 +581,7 @@ describe('memberErasure.eraseMemberData', () => {
 			});
 		});
 
-		await t.mutation(internal.auth.memberErasure.eraseMemberData, {
-			authUserId,
-			requestId,
-			isAlertErasureDone: true,
-			isAlertReceiptErasureDone: true,
-		});
+		await drainWalk(t, authUserId, requestId);
 
 		await t.run(async (ctx) => {
 			const request = await ctx.db.get(requestId);
@@ -628,12 +615,7 @@ describe('memberErasure.eraseMemberData', () => {
 			});
 		});
 
-		await t.mutation(internal.auth.memberErasure.eraseMemberData, {
-			authUserId,
-			requestId,
-			isAlertErasureDone: true,
-			isAlertReceiptErasureDone: true,
-		});
+		await drainWalk(t, authUserId, requestId);
 
 		const left = await t.run(async (ctx) => ctx.db.query('platformAdmins').collect());
 		expect(left).toEqual([]);
@@ -672,12 +654,7 @@ describe('memberErasure.eraseMemberData', () => {
 			});
 		});
 
-		await t.mutation(internal.auth.memberErasure.eraseMemberData, {
-			authUserId,
-			requestId,
-			isAlertErasureDone: true,
-			isAlertReceiptErasureDone: true,
-		});
+		await drainWalk(t, authUserId, requestId);
 
 		await t.run(async (ctx) => {
 			const accessRequests = await ctx.db.query('accessRequests').collect();

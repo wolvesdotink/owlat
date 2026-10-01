@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { effectScope, ref } from 'vue';
+import { effectScope, nextTick, ref } from 'vue';
 import { ConvexError } from 'convex/values';
 import type { FunctionReference } from 'convex/server';
 import { api } from '@owlat/api';
@@ -64,6 +64,7 @@ function own(
 		accept?: (value: unknown) => void;
 		keepPreviousData?: boolean;
 		query?: FunctionReference<'query'>;
+		windowArg?: string;
 	} = {}
 ) {
 	const scope = effectScope();
@@ -84,6 +85,7 @@ function own(
 				data.value = undefined;
 			},
 			keepPreviousData: opts.keepPreviousData,
+			windowArg: opts.windowArg,
 		})
 	)!;
 	return { ...subscription, data, leave: () => scope.stop() };
@@ -364,6 +366,132 @@ describe('shared Convex subscriptions', () => {
 		client.wire[1]!.push('fresh');
 		expect(a.data.value).toBe('fresh');
 		expect(a.isRefetching.value).toBe(false);
+	});
+
+	describe('growable windows (windowArg)', () => {
+		const live = (client: Client) => client.wire.filter((w) => !w.unsubscribe.mock.calls.length);
+
+		it('closes each intermediate window at once and lets the first one linger', async () => {
+			const client = fakeClient();
+			const limit = ref(100);
+			const chat = own(client, () => ({ roomId: 'r1', limit: limit.value }), {
+				windowArg: 'limit',
+			});
+			for (let next = 200; next <= 500; next += 100) {
+				client.wire.at(-1)!.push({ rows: limit.value });
+				limit.value = next;
+				await nextTick();
+			}
+
+			expect(client.onUpdate).toHaveBeenCalledTimes(5);
+			// The first window is where a return to this frame starts: it was left,
+			// not superseded, so it lingers next to the live one.
+			expect(live(client).map((w) => w.args.limit)).toEqual([100, 500]);
+
+			// The last window is an ordinary leave: both linger, then close.
+			chat.leave();
+			vi.advanceTimersByTime(SUBSCRIPTION_LINGER_MS - 1);
+			expect(live(client)).toHaveLength(2);
+			vi.advanceTimersByTime(1);
+			expect(live(client)).toHaveLength(0);
+		});
+
+		it('reopens the first window warm when the frame comes back', async () => {
+			const client = fakeClient();
+			const args = ref({ roomId: 'r1', limit: 100 });
+			const view = own(client, () => args.value, { windowArg: 'limit' });
+			client.wire[0]!.push('room one, page one');
+			args.value = { roomId: 'r1', limit: 200 };
+			await nextTick();
+			client.wire[1]!.push('room one, two pages');
+			args.value = { roomId: 'r2', limit: 100 };
+			await nextTick();
+			client.wire[2]!.push('room two');
+
+			args.value = { roomId: 'r1', limit: 100 };
+			await nextTick();
+
+			expect(client.onUpdate).toHaveBeenCalledTimes(3);
+			expect(view.isLoading.value).toBe(false);
+			expect(view.data.value).toBe('room one, page one');
+		});
+
+		it('supersedes a larger window when the limit shrinks back', async () => {
+			const client = fakeClient();
+			const limit = ref(100);
+			own(client, () => ({ roomId: 'r1', limit: limit.value }), { windowArg: 'limit' });
+			limit.value = 200;
+			await nextTick();
+			limit.value = 100;
+			await nextTick();
+
+			expect(client.onUpdate).toHaveBeenCalledTimes(2);
+			expect(client.wire[1]!.unsubscribe).toHaveBeenCalledOnce();
+			expect(client.wire[0]!.unsubscribe).not.toHaveBeenCalled();
+		});
+
+		it('keeps an outgrown window live while another owner reads it', async () => {
+			const client = fakeClient();
+			const limit = ref(50);
+			const grower = own(client, () => ({ folder: 'inbox', limit: limit.value }), {
+				windowArg: 'limit',
+			});
+			const other = own(client, { folder: 'inbox', limit: 50 }, { windowArg: 'limit' });
+			expect(client.onUpdate).toHaveBeenCalledOnce();
+			client.wire[0]!.push('page one');
+
+			limit.value = 100;
+			await nextTick();
+			expect(client.wire[0]!.unsubscribe).not.toHaveBeenCalled();
+			client.wire[0]!.push('page one, again');
+			expect(other.data.value).toBe('page one, again');
+
+			// Its remaining owner navigates away: that is a leave, so it lingers.
+			other.leave();
+			vi.advanceTimersByTime(SUBSCRIPTION_LINGER_MS - 1);
+			expect(client.wire[0]!.unsubscribe).not.toHaveBeenCalled();
+			vi.advanceTimersByTime(1);
+			expect(client.wire[0]!.unsubscribe).toHaveBeenCalledOnce();
+			grower.leave();
+		});
+
+		it('lets a window linger when the rest of the args change too', async () => {
+			const client = fakeClient();
+			const args = ref({ roomId: 'r1', limit: 300 });
+			own(client, () => args.value, { windowArg: 'limit' });
+			client.wire[0]!.push('room one');
+
+			args.value = { roomId: 'r2', limit: 100 };
+			await nextTick();
+			vi.advanceTimersByTime(SUBSCRIPTION_LINGER_MS - 1);
+			expect(client.wire[0]!.unsubscribe).not.toHaveBeenCalled();
+			vi.advanceTimersByTime(1);
+			expect(client.wire[0]!.unsubscribe).toHaveBeenCalledOnce();
+		});
+
+		it('keeps the window warm across a reset of the same args', () => {
+			const client = fakeClient();
+			const view = own(client, { roomId: 'r1', limit: 100 }, { windowArg: 'limit' });
+			client.wire[0]!.push('warm');
+
+			view.reset();
+
+			expect(client.onUpdate).toHaveBeenCalledOnce();
+			expect(client.wire[0]!.unsubscribe).not.toHaveBeenCalled();
+			expect(view.data.value).toBe('warm');
+		});
+
+		it('lingers on a limit change for a query without a window arg', async () => {
+			const client = fakeClient();
+			const limit = ref(100);
+			own(client, () => ({ roomId: 'r1', limit: limit.value }));
+			limit.value = 200;
+			await nextTick();
+
+			expect(client.wire[0]!.unsubscribe).not.toHaveBeenCalled();
+			vi.advanceTimersByTime(SUBSCRIPTION_LINGER_MS);
+			expect(client.wire[0]!.unsubscribe).toHaveBeenCalledOnce();
+		});
 	});
 
 	it('does not share args that will not serialise', () => {

@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
 import { denseDailySeries, utcDayKey } from '../lib/clock';
-import { getContactCount } from '../lib/contactCountHelpers';
+import { getCachedContactCount } from '../lib/contactCountHelpers';
 import { redactContactCapabilityFields } from './listing';
 import { readContactGrowth } from './growthCounters';
 
@@ -25,8 +25,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const getAudienceStats = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		// Cached count, else a live count (soft-deleted contacts excluded).
-		const totalContacts = await getContactCount(ctx);
+		// The cached live-contact count, or `null` while none is cached yet
+		// (pending: contacts/countReconcile.ts recovers it). Never a scan.
+		const totalContacts: number | null = await getCachedContactCount(ctx);
 
 		// Get topics count
 		const topics = await ctx.db.query('topics').collect(); // bounded: org topics (org-scale config)

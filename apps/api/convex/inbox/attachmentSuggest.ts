@@ -21,6 +21,8 @@ import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import type { attachmentSuggestionsValidator } from '../lib/validators/attachment';
+import type { AskFileSource } from '@owlat/shared/answerMode';
+import type { MailboxAttachmentScope } from '../lib/validators/answerAsk';
 import {
 	detectAttachmentRequest,
 	pickAttachmentSuggestion,
@@ -90,4 +92,91 @@ export async function computeAttachmentSuggestions(
 		// Fail-soft: no suggestion, no ask — today's behaviour.
 		return null;
 	}
+}
+
+// Answer mode: files for a request, across Files and the mailbox.
+
+/**
+ * One file a search found for an Answer mode file request, before ranking
+ * (`mail/ai/composeDraftPolicy.ts` rankFoundFiles scores it against the
+ * request). `score` is the file search's own score; mail attachments have none.
+ */
+export interface FoundFile {
+	/** A found file already exists; only an answer can be a fresh upload. */
+	source: Exclude<AskFileSource, 'upload'>;
+	id: string;
+	filename: string;
+	title?: string | undefined;
+	mimeType: string;
+	size: number;
+	score: number;
+}
+
+/** Hits taken from each search before ranking. */
+const MAX_FOUND_PER_SOURCE = MAX_CANDIDATES + 4;
+
+/**
+ * Everything that could answer "can you send me X": the contact-scoped Files
+ * search above, plus the Postbox mailbox's own attachment index when the reply
+ * is written from one, limited the same way to the reply's thread and its
+ * counterpart (`mail.attachExisting.searchMailboxAttachments`, which also
+ * re-checks that the caller can read that mailbox). Each leg fails soft to no
+ * hits, so a broken search reads as "nothing found" and the owner is asked
+ * instead.
+ */
+export async function searchFilesForRequest(
+	ctx: Pick<ActionCtx, 'runAction' | 'runQuery'>,
+	args: {
+		query: string;
+		contactId?: Id<'contacts'> | undefined;
+		mailboxScope?: MailboxAttachmentScope | undefined;
+	}
+): Promise<FoundFile[]> {
+	const queryText = args.query.slice(0, MAX_QUERY_CHARS).trim();
+	if (queryText.length === 0) return [];
+	const found: FoundFile[] = [];
+	try {
+		const files = await ctx.runAction(internal.semanticFileProcessing.semanticSearch, {
+			queryText,
+			scopeToContact: args.contactId ?? 'org-general-only',
+			limit: MAX_FOUND_PER_SOURCE,
+		});
+		for (const file of files) {
+			// Released bytes cannot be attached (see computeAttachmentSuggestions).
+			if (file.storageId === undefined) continue;
+			found.push({
+				source: 'semanticFile',
+				id: file._id,
+				filename: file.filename,
+				...(file.title ? { title: file.title } : {}),
+				mimeType: file.mimeType,
+				size: file.fileSize,
+				score: file._score,
+			});
+		}
+	} catch {
+		// Fail-soft: no Files hits.
+	}
+	if (args.mailboxScope) {
+		try {
+			const rows = await ctx.runQuery(internal.mail.attachExisting.searchMailboxAttachments, {
+				scope: args.mailboxScope,
+				queryText,
+				limit: MAX_FOUND_PER_SOURCE,
+			});
+			for (const row of rows) {
+				found.push({
+					source: 'mailAttachment',
+					id: row.id,
+					filename: row.filename,
+					mimeType: row.contentType,
+					size: row.size,
+					score: 0,
+				});
+			}
+		} catch {
+			// Fail-soft: no mailbox hits.
+		}
+	}
+	return found;
 }

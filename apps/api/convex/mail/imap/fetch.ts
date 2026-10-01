@@ -16,7 +16,7 @@ import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
-import { internalAction, internalQuery } from '../../_generated/server';
+import { internalAction, internalQuery, type QueryCtx } from '../../_generated/server';
 import { sealedBlobUrl } from '../../lib/sealedBlob';
 import { throwInvalidInput } from '../../_utils/errors';
 
@@ -55,6 +55,76 @@ function nextUid(rows: ReadonlyArray<{ uid: number }>, limit: number): number | 
 	return last === undefined ? null : last.uid + 1;
 }
 
+/**
+ * Most sub-ranges one windowed read accepts. The IMAP server sends at most this
+ * many per call (apps/imap `MAX_RANGES_PER_READ`); each is one index range scan
+ * inside the same execution, and the page's row limit still bounds what is read.
+ */
+export const MAX_UID_RANGES = 100;
+
+/**
+ * Optional restriction of a UID window to disjoint sub-ranges. A sparse set
+ * such as `UID FETCH 1,100000` resolves to two single-UID ranges; without them
+ * the window is the min..max span and every row between is read and thrown
+ * away. The IMAP server builds the ranges from its sequence map, so each one
+ * holds only requested messages.
+ */
+const uidRangesValidator = v.optional(v.array(v.object({ low: v.number(), high: v.number() })));
+
+type UidWindowArgs = {
+	folderId: Id<'mailFolders'>;
+	uidLow: number;
+	uidHigh: number;
+	ranges?: ReadonlyArray<{ low: number; high: number }>;
+};
+
+/**
+ * Up to `limit` rows of `[uidLow, uidHigh]`, ascending by UID — intersected
+ * with `ranges` when given. Ranges must be ascending and disjoint, so walking
+ * them in order keeps the page in UID order and `nextUid` (last UID + 1 on a
+ * full page) is a resume point the caller can clip its ranges against.
+ */
+async function readUidWindow(
+	ctx: QueryCtx,
+	args: UidWindowArgs,
+	limit: number
+): Promise<Doc<'mailMessages'>[]> {
+	const scan = (low: number, high: number, take: number) =>
+		ctx.db
+			.query('mailMessages')
+			.withIndex('by_folder_and_uid', (q) =>
+				q.eq('folderId', args.folderId).gte('uid', low).lte('uid', high)
+			)
+			.take(take);
+	if (args.ranges === undefined) return await scan(args.uidLow, args.uidHigh, limit);
+
+	if (args.ranges.length > MAX_UID_RANGES) {
+		throwInvalidInput(`At most ${MAX_UID_RANGES} UID ranges per call.`);
+	}
+	let previousHigh = -Infinity;
+	for (const range of args.ranges) {
+		if (
+			!Number.isInteger(range.low) ||
+			!Number.isInteger(range.high) ||
+			range.low > range.high ||
+			range.low <= previousHigh
+		) {
+			throwInvalidInput('UID ranges must be integer, ascending, non-empty and disjoint.');
+		}
+		previousHigh = range.high;
+	}
+	const rows: Doc<'mailMessages'>[] = [];
+	for (const range of args.ranges) {
+		const low = Math.max(range.low, args.uidLow);
+		const high = Math.min(range.high, args.uidHigh);
+		if (low > high) continue;
+		// Sequential on purpose: each scan takes only what the page has left.
+		rows.push(...(await scan(low, high, limit - rows.length)));
+		if (rows.length >= limit) break;
+	}
+	return rows;
+}
+
 /** The IMAP-visible projection of a message row. */
 function toEnvelope(m: Doc<'mailMessages'>) {
 	return {
@@ -89,23 +159,20 @@ function toEnvelope(m: Doc<'mailMessages'>) {
  * `FETCH <set> (FLAGS UID INTERNALDATE ENVELOPE)`. The caller passes the
  * window it actually asked for and re-issues from `nextUid` until that comes
  * back `null`, so a `FETCH 1:*` over a big folder is N bounded reads instead of
- * one read of everything.
+ * one read of everything. `ranges` narrows the window to the sub-ranges a
+ * sparse set actually addresses (see {@link readUidWindow}).
  */
 export const fetchEnvelopes = internalQuery({
 	args: {
 		folderId: v.id('mailFolders'),
 		uidLow: v.number(),
 		uidHigh: v.number(),
+		ranges: uidRangesValidator,
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		const limit = pageSize(args.limit, DEFAULT_ENVELOPE_PAGE_SIZE);
-		const rows = await ctx.db
-			.query('mailMessages')
-			.withIndex('by_folder_and_uid', (q) =>
-				q.eq('folderId', args.folderId).gte('uid', args.uidLow).lte('uid', args.uidHigh)
-			)
-			.take(limit);
+		const rows = await readUidWindow(ctx, args, limit);
 		// The index walks `uid` ascending, so the page is already in IMAP order.
 		return { rows: rows.map(toEnvelope), nextUid: nextUid(rows, limit) };
 	},
@@ -260,23 +327,20 @@ export const getRawStorageUrls = internalAction({
  * Helper: one page of the IMAP-visible message ids for a UID window. Used by
  * the IMAP server to translate `STORE 1:* +FLAGS \Seen` into the concrete
  * mailMessages ids that `storeFlags` expects — `1:*` is a whole-folder window,
- * so this pages the same way `fetchEnvelopes` does.
+ * so this pages the same way `fetchEnvelopes` does, and takes the same
+ * optional `ranges` for a sparse set.
  */
 export const resolveMessageIdsByUid = internalQuery({
 	args: {
 		folderId: v.id('mailFolders'),
 		uidLow: v.number(),
 		uidHigh: v.number(),
+		ranges: uidRangesValidator,
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		const limit = pageSize(args.limit, DEFAULT_ENVELOPE_PAGE_SIZE);
-		const rows = await ctx.db
-			.query('mailMessages')
-			.withIndex('by_folder_and_uid', (q) =>
-				q.eq('folderId', args.folderId).gte('uid', args.uidLow).lte('uid', args.uidHigh)
-			)
-			.take(limit);
+		const rows = await readUidWindow(ctx, args, limit);
 		return {
 			rows: rows.map((m) => ({ _id: m._id, uid: m.uid, modseq: m.modseq })),
 			nextUid: nextUid(rows, limit),

@@ -3677,11 +3677,11 @@
 				"dropHint": "Drop to attach · drop in text to embed",
 				"minimize": "Minimize",
 				"newMessage": "New message",
-				"openInPopup": "Open in popup",
 				"savedAt": "Saved {time}",
 				"scheduledFor": "Scheduled for {datetime}",
 				"unschedule": "Unschedule to edit",
-				"uploadingToast": "Waiting for attachments to finish uploading…"
+				"uploadingToast": "Waiting for attachments to finish uploading…",
+				"openInAnswerMode": "Open in Answer mode"
 			},
 			"postboxComposerAttachments": {
 				"cancel": "Cancel {filename}",
@@ -3726,7 +3726,13 @@
 				"signature": "Signature",
 				"uploadingTitle": "Waiting for attachments to finish uploading…",
 				"previewAsSent": "Preview as sent",
-				"sendAs": "as {name}"
+				"sendAs": "as {name}",
+				"showCoach": "Coach and revise",
+				"hideCoach": "Hide coach and revise",
+				"discardDraft": "Discard draft",
+				"showQuote": "Show quoted text",
+				"hideQuote": "Hide quoted text",
+				"gapsLeft": "1 gap left | {count} gaps left"
 			},
 			"postboxComposerGuards": {
 				"alignment": {
@@ -3937,18 +3943,6 @@
 				"label": "Inbox view",
 				"priority": "Priority",
 				"title": "Priority mail or all mail (B)"
-			},
-			"postboxInlineReply": {
-				"dialogLabel": "Inline reply",
-				"draftAReply": "Draft a reply",
-				"draftReply": "Draft reply",
-				"forward": "Forward",
-				"noSuggestions": "No suggestions right now. Try again in a moment.",
-				"replyAll": "Reply all",
-				"replyTo": "Reply to {sender}…",
-				"suggestOperation": "Suggest replies",
-				"suggestedReplies": "Suggested replies",
-				"working": "Working…"
 			},
 			"postboxInviteCard": {
 				"accept": "Accept",
@@ -5114,6 +5108,22 @@
 				"label": "Sync changes with your provider",
 				"toastOff": "Only new mail comes in from now on.",
 				"toastOn": "Two-way sync is on. Both sides are lined up on the next sync."
+			},
+			"postboxReaderMessage": {
+				"showDetails": "Show recipients and details"
+			},
+			"postboxComposerEnvelopeLine": {
+				"label": "Recipients, sender and subject. Open to edit",
+				"copies": "+{count} in copy",
+				"replyAll": "Reply all",
+				"edit": "Edit",
+				"to": "To {names}",
+				"from": "From {address}"
+			},
+			"postboxAnswerDraftBar": {
+				"saved": "Draft to {name} saved",
+				"resume": "Resume",
+				"dismiss": "Hide this reminder"
 			}
 		},
 		"preferences": {
@@ -5908,7 +5918,8 @@
 				"gone": "This email is no longer available here. It may have been moved or deleted.",
 				"done": "Done",
 				"openThread": "Open conversation",
-				"markReadOperation": "Mark as read"
+				"markReadOperation": "Mark as read",
+				"reply": "Reply"
 			},
 			"inboxPicker": {
 				"label": "Choose the inboxes on the Workbench",
@@ -5981,6 +5992,145 @@
 			},
 			"mail": {
 				"writeOwn": "Write my own"
+			},
+			"mode": {
+				"back": "Back to {page}",
+				"backTo": {
+					"inbox": "Inbox",
+					"queue": "Answer queue",
+					"workbench": "Workbench",
+					"previous": "Previous page",
+					"teamInbox": "Team inbox"
+				},
+				"messageCount": "{count} message | {count} messages",
+				"tabsLabel": "Conversation or reply",
+				"tabs": {
+					"conversation": "Conversation",
+					"reply": "Reply"
+				},
+				"sheet": {
+					"hint": "Drag the handle, or use the up and down arrow keys, to change how much of the screen the reply takes.",
+					"raise": "Show the reply",
+					"lower": "Lower the reply",
+					"shrink": "Make the reply smaller",
+					"peek": "Reply to {name}…",
+					"peekNoName": "Write a reply…"
+				},
+				"viewLabel": "How much of the conversation to show",
+				"viewShortcut": "Switch with T",
+				"view": {
+					"summary": "Summary",
+					"full": "Full conversation"
+				},
+				"more": "More for this conversation",
+				"openInPostbox": "Open in Postbox"
+			},
+			"catchUp": {
+				"title": "Catching up",
+				"meta": "{count} message since {date} | {count} messages since {date}",
+				"marker": "Show the message from {sender}, {date}",
+				"loading": "Catching up on this conversation",
+				"asksTitle": "They are asking for",
+				"askCovered": "Covered by your draft:",
+				"askOpen": "Not covered yet:",
+				"filesTitle": "Files in this thread",
+				"attachHint": "Click to attach it to the reply, or drag it into the reply",
+				"attachFile": "Attach {file} to the reply",
+				"attachFailed": "The file could not be attached.",
+				"attachOperation": "Attach file",
+				"covered": "{covered} of {total} ask covered | {covered} of {total} asks covered",
+				"asksCount": "{count} ask | {count} asks",
+				"show": "Show",
+				"hide": "Hide"
+			},
+			"aiBar": {
+				"label": "What should the reply say?",
+				"placeholder": "What should the reply say? Optional, e.g. “send it, say sorry it's late”",
+				"draft": "Draft with AI",
+				"shortcut": "Cmd+J or Ctrl+J jumps here",
+				"checking": "Checking what the reply needs…",
+				"drafting": "Writing the draft…",
+				"failed": "The draft could not be written. Try again.",
+				"aiDraft": "AI draft",
+				"discard": "Discard",
+				"injectionFlagged": "The email may contain instructions meant for the AI. Read the draft before you send it.",
+				"operation": "Draft with AI",
+				"peekDraft": "Draft",
+				"readyKept": "The AI draft is ready. Your text stays until you use the draft.",
+				"useDraft": "Use the draft",
+				"preparedFileFailed": "{filename} from the prepared reply could not be attached. Attach it again if the reply needs it."
+			},
+			"askCard": {
+				"title": "One thing before I write this | {count} things before I write this",
+				"round": "round {round} of {total}",
+				"subline": "Answer what you can. Anything you skip becomes a highlighted gap in the draft.",
+				"placeholder": {
+					"choice": "Something else…",
+					"text": "Type your answer…",
+					"number": "A number or an amount…",
+					"date": "Or type a date…"
+				},
+				"pickDate": "Pick a date",
+				"answerAndDraft": "Answer and draft",
+				"skip": "Skip, draft with gaps",
+				"operation": "Answer the questions"
+			},
+			"fileAsk": {
+				"dropHere": "Drop the file here or",
+				"choose": "choose a file",
+				"uploading": "Uploading… {percent}%",
+				"attachedAndSaved": "Attached to this reply and saved to the contact's Files",
+				"attachedAndSavedIfContact": "Attached to this reply, and saved to Files if the sender is one of your contacts",
+				"attachedOnly": "Attached to this reply only",
+				"dontKeep": "Don't keep a copy in Files",
+				"nearMisses": "Close, but maybe not it:",
+				"candidates": "Which one?",
+				"pickFromFiles": "Pick from files",
+				"remove": "Remove {file}",
+				"tooLarge": "{filename} is larger than {mb} MB.",
+				"uploadFailed": "{filename} could not be uploaded.",
+				"unsupported": "{filename} is not a file type that can be attached here."
+			},
+			"filePicker": {
+				"title": "Pick from files",
+				"search": "Search by name",
+				"files": "Files",
+				"mail": "Mail attachments",
+				"empty": "No files found."
+			},
+			"queueBar": {
+				"position": "{position} of {total}",
+				"previous": "Previous in the Answer queue",
+				"next": "Next in the Answer queue",
+				"menu": "Answer queue",
+				"inQueue": "in Answer queue",
+				"markDone": "Mark done",
+				"backToQueue": "Back to the Answer queue"
+			},
+			"team": {
+				"to": "To {name}",
+				"more": "More for this reply",
+				"showChanges": "Show changes to the agent's draft",
+				"hideChanges": "Hide changes",
+				"discardDraft": "Discard draft",
+				"clear": "Clear",
+				"attachments": {
+					"attach": "Attach",
+					"upload": "Upload a file",
+					"fromThread": "From this conversation",
+					"fromContact": "Other files for {name}",
+					"copying": "Copying…",
+					"failed": "Couldn't copy",
+					"failedWithReason": "Couldn't copy: {reason}",
+					"remove": "Remove {file}",
+					"retry": "Retry",
+					"cancelUpload": "Cancel the upload of {file}",
+					"hold": {
+						"uploading": "Send waits until the upload has finished.",
+						"copying": "Send waits until the file is copied.",
+						"failed": "Remove the file that couldn't be copied, then send."
+					}
+				}
 			}
 		}
 	},
@@ -9164,11 +9314,7 @@
 			},
 			"detail": {
 				"agentNeedsInput": "The agent needs your input",
-				"agentNeedsInputEyebrow": "Waiting on you",
-				"answerAndResume": "Answer and resume draft",
 				"answerClarificationOperation": "Answer clarification",
-				"answerPlaceholder": "Type your answer",
-				"answerRemaining": "Answer {count} more to resume | Answer {count} more to resume",
 				"assign": "Assign",
 				"assignThreadAria": "Assign thread",
 				"assignToMe": "Assign to me",
@@ -9190,8 +9336,6 @@
 				},
 				"changeStatusAria": "Status: {status}. Change thread status",
 				"channelLinkFailedToast": "Channel created, but linking failed",
-				"clarificationLead": "Answer below and the agent finishes the draft with your answers as confirmed facts.",
-				"clarificationProgress": "{answered} of {total} answered",
 				"clarificationSavedToast": "Answers saved — drafting resumed",
 				"composer": {
 					"agentDraft": "Drafted by the agent",
@@ -9313,7 +9457,8 @@
 				"waitingDraft": {
 					"notice": "A draft reply to this message is also waiting.",
 					"answer": "Answer this message"
-				}
+				},
+				"answerInReply": "Answer in the reply"
 			},
 			"failed": {
 				"emptyBody": "Every inbound message processed successfully.",
@@ -10683,7 +10828,10 @@
 			}
 		},
 		"answer": {
-			"pageTitle": "Answer queue"
+			"pageTitle": "Answer queue",
+			"mode": {
+				"pageTitle": "Answer mode"
+			}
 		},
 		"inboxes": {
 			"pageTitle": "All inboxes",
@@ -13138,7 +13286,9 @@
 				"emptySubject": "no subject",
 				"linkMismatch": "a link reads {text} but goes to {host}",
 				"placeholder": "“{token}” left in the message",
-				"unfilledVariable": "{name} was never filled in"
+				"unfilledVariable": "{name} was never filled in",
+				"draftGap": "“{label}” still needs filling in",
+				"draftGaps": "{count} gaps still need filling in, starting with “{label}”"
 			},
 			"useDraftRevise": {
 				"failed": "Revise failed — your draft is unchanged."
@@ -13973,7 +14123,8 @@
 				"organize": "Organize",
 				"triage": "Triage",
 				"workspace": "Workspaces",
-				"review": "Updates list"
+				"review": "Updates list",
+				"answer": "Answer mode"
 			},
 			"labels": {
 				"addLabel": "Add label",
@@ -13982,7 +14133,6 @@
 				"closeConversation": "Close the open conversation / back to Priority",
 				"compose": "Compose",
 				"extendSelection": "Extend selection",
-				"focusComposer": "Focus the composer",
 				"focusSearch": "Focus search",
 				"forward": "Forward",
 				"goToAdmin": "Go to admin",
@@ -14027,7 +14177,13 @@
 				"goToMarketing": "Go to marketing",
 				"next": "Next",
 				"previous": "Previous",
-				"openThread": "Open thread"
+				"openThread": "Open thread",
+				"leaveAnswerMode": "Leave Answer mode (in the editor, the first Esc only lets go of it)",
+				"toggleAnswerView": "Switch between Summary and Full conversation",
+				"draftWithAi": "Draft with AI (instead of opening the Assistant)",
+				"pickAskOption": "Pick an answer on the AI’s question card",
+				"previousQueueItem": "Previous item in the Answer queue",
+				"nextQueueItem": "Next item in the Answer queue"
 			}
 		},
 		"signatureBadge": {

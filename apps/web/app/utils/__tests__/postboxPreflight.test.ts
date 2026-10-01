@@ -153,4 +153,33 @@ describe('preflightDraft', () => {
 		expect(findings[0]?.params?.token).toHaveLength(40);
 		expect(findings[0]?.params?.token?.endsWith('…')).toBe(true);
 	});
+
+	it('names the first gap an AI draft left, and says how many there are', () => {
+		expect(
+			preflightDraft({
+				subject: 'Re: invoice',
+				bodyHtml: '<p>Hi, [[attach the September invoice]].</p>',
+			})
+		).toEqual([
+			{
+				id: 'draftGap',
+				key: 'shared.postbox.preflight.draftGap',
+				params: { label: 'attach the September invoice', count: '1' },
+			},
+		]);
+		const two = preflightDraft({
+			subject: 'Re: invoice',
+			bodyHtml: '<p>[[the PO number]] and [[the date]]</p>',
+		});
+		expect(two[0]).toMatchObject({
+			key: 'shared.postbox.preflight.draftGaps',
+			params: { label: 'the PO number', count: '2' },
+		});
+	});
+
+	it('ignores gap brackets inside the quoted original', () => {
+		const bodyHtml =
+			'<p>Done.</p><div class="gmail_quote"><blockquote>[[their template]]</blockquote></div>';
+		expect(ids({ subject: 'Re: x', bodyHtml })).toEqual([]);
+	});
 });

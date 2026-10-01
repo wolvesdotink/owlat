@@ -79,6 +79,9 @@ export function usePostboxListKeyboard<T extends { _id: string }>(opts: {
 	});
 
 	function onKeydown(event: KeyboardEvent) {
+		// Something inside the list already answered this key: a popover that
+		// closed on Esc must not also close the open conversation.
+		if (event.defaultPrevented) return;
 		const items = opts.items.value;
 		if (items.length === 0) return;
 		// A sequence chord is half-typed (`g` …) and the app-wide dispatcher is

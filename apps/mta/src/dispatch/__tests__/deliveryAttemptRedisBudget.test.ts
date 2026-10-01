@@ -65,8 +65,14 @@ const config = {
 type TerminalOutcome = 'delivered' | 'deferred' | 'bounced';
 const TERMINAL_OUTCOMES: TerminalOutcome[] = ['delivered', 'deferred', 'bounced'];
 
-/** Keys one delivered campaign message leaves in Redis. */
-const KEYS_PER_DELIVERED_CAMPAIGN_MESSAGE = 21;
+/**
+ * Keys one delivered campaign message leaves in Redis. Three of them are the
+ * delivery-log indexes (#925): the day's status counts, the organization's
+ * status counts and the day's messageId -> stream-ID hash. They are per day
+ * (and per organization), share the stream's expiry, and the message hash
+ * grows by one field per message logged that day, like the stream beside it.
+ */
+const KEYS_PER_DELIVERED_CAMPAIGN_MESSAGE = 24;
 /**
  * Of those, the ones minted per ATTEMPT rather than shared across attempts —
  * per terminal outcome, because they are the cost that MULTIPLIES. A delivered
