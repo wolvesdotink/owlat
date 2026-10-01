@@ -11,6 +11,10 @@
  *
  * A token a global opt-out withdrew is never carried: the contact no longer
  * holds it when the next token is minted, so nothing names it as outgoing.
+ * Nor does a carry outlive its consent episode: each page checks the contact's
+ * `doiConsentEpisode` against the one the carry started in, and stops once a
+ * global opt-out has moved it on. The rows it had not reached yet stay
+ * `pending_confirmation` on their old token.
  *
  * See docs/adr/0015-form-submission-module.md.
  */
@@ -63,10 +67,18 @@ type CarryTarget =
  *   - replaced again: that replacement carried `toToken`'s rows already, so
  *     these go straight to the token the contact holds now;
  *   - spent on a confirmation: these finalize as that confirmation would have;
- *   - withdrawn by a global opt-out, or the contact gone: they stay put.
+ *   - a global opt-out ended the episode, or the contact is gone: they stay
+ *     put. The episode check comes first because the contact's token and
+ *     status alone cannot tell a resend in the same episode from a new signup
+ *     after the opt-out, and confirming that signup clears `unsubscribedAt`.
  */
-function carryTarget(contact: Doc<'contacts'> | null, fromToken: string): CarryTarget {
+function carryTarget(
+	contact: Doc<'contacts'> | null,
+	fromToken: string,
+	episode: number
+): CarryTarget {
 	if (!contact) return { kind: 'stop' };
+	if ((contact.doiConsentEpisode ?? 0) !== episode) return { kind: 'stop' };
 	const token = contact.doiConfirmationToken;
 	if (contact.doiStatus === 'pending' && token !== undefined) {
 		return token === fromToken ? { kind: 'stop' } : { kind: 'move', token };
@@ -83,6 +95,9 @@ const carryArgsValidator = {
 	fromToken: v.string(),
 	// The token that replaced it.
 	toToken: v.string(),
+	// The contact's `doiConsentEpisode` when the token was replaced. Every page
+	// stops once the contact is in a later episode.
+	episode: v.number(),
 	// Continuation state, set only by the scheduled follow-up.
 	cursor: v.optional(v.string()),
 };
@@ -99,7 +114,7 @@ export const carryPendingSubmissions = internalMutation({
 		ctx,
 		args
 	): Promise<{ carried: number; finalized: number; continued: boolean }> => {
-		const target = carryTarget(await ctx.db.get(args.contactId), args.fromToken);
+		const target = carryTarget(await ctx.db.get(args.contactId), args.fromToken, args.episode);
 		if (target.kind === 'stop') return { carried: 0, finalized: 0, continued: false };
 
 		const page = await ctx.db
@@ -129,6 +144,7 @@ export const carryPendingSubmissions = internalMutation({
 				contactId: args.contactId,
 				fromToken: args.fromToken,
 				toToken: target.kind === 'move' ? target.token : args.toToken,
+				episode: args.episode,
 				cursor: page.continueCursor,
 			});
 		}

@@ -6,7 +6,8 @@
  * (`doiLifecycle.refreshPendingToken`) and a new signup after the token lapsed
  * (`reducePending`). The signups that waited on the outgoing token must
  * complete when the contact confirms with the new one, and the outgoing link
- * must stay dead. A token a global opt-out withdrew is never carried.
+ * must stay dead. A token a global opt-out withdrew is never carried, and a
+ * carry still paging when a global opt-out ends the consent episode stops there.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -465,6 +466,7 @@ describe('a carry continuation follows the contact', () => {
 			contactId,
 			fromToken: 'first-token',
 			toToken: 'second-token',
+			episode: 0,
 		});
 
 		expect((await rowsById(t, left)).every((r) => r?.confirmationToken === 'third-token')).toBe(
@@ -489,6 +491,7 @@ describe('a carry continuation follows the contact', () => {
 			contactId,
 			fromToken: 'first-token',
 			toToken: 'second-token',
+			episode: 0,
 		});
 
 		const rows = await rowsById(t, left);
@@ -512,10 +515,116 @@ describe('a carry continuation follows the contact', () => {
 			contactId,
 			fromToken: 'first-token',
 			toToken: 'second-token',
+			episode: 0,
 		});
 
 		const rows = await rowsById(t, left);
 		expect(rows.every((r) => r?.confirmationToken === 'first-token')).toBe(true);
 		expect(rows.every((r) => r?.status === 'pending_confirmation')).toBe(true);
+	});
+});
+
+// ─── A carry that outlives its consent episode ──────────────────────────────
+
+describe('a carry continuation stops at the end of its consent episode', () => {
+	// 150 rows wait on the first token; a resend moves the first page of 100 in
+	// its own transaction and queues the other 50. A global opt-out and a fresh
+	// signup land before the queued page runs.
+	async function carryInterruptedByOptOutAndSignup(t: T) {
+		const formId = await createForm(t, { doubleOptIn: true, name: 'A' });
+		const email = 'episode@example.com';
+		const contactId = await seedContact(t, email, {
+			doiStatus: 'pending',
+			doiConfirmationToken: 'first-token',
+			doiTokenExpiresAt: Date.now() + DOI_TOKEN_TTL_MS,
+		});
+		const rows = await seedPendingRows(t, {
+			count: 150,
+			forms: [formId],
+			contactId,
+			token: 'first-token',
+		});
+
+		await resend(t, contactId, 'resent-token');
+		const afterResend = await rowsById(t, rows);
+		expect(afterResend.filter((r) => r?.confirmationToken === 'resent-token')).toHaveLength(100);
+		const queued = rows.filter((_, i) => afterResend[i]?.confirmationToken === 'first-token');
+		expect(queued).toHaveLength(50);
+
+		await t.mutation(internal.topics.subscription.unsubscribeAllForContact, {
+			contactId,
+			source: 'public_email_link',
+		});
+		const signup = await submit(t, formId, email);
+		const freshToken = signup.row.confirmationToken!;
+		expect(freshToken).not.toBe('resent-token');
+		return { formId, queued, signup, freshToken };
+	}
+
+	it('leaves the queued rows pending when it runs before the new signup is confirmed', async () => {
+		vi.useFakeTimers();
+		const t = setupTest();
+		const { formId, queued, signup, freshToken } = await carryInterruptedByOptOutAndSignup(t);
+
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		await t.mutation(api.forms.endpoints.confirmSubmission, { token: freshToken });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const left = await rowsById(t, queued);
+		expect(left.every((r) => r?.status === 'pending_confirmation')).toBe(true);
+		expect(left.every((r) => r?.confirmationToken === 'first-token')).toBe(true);
+		expect((await rowsById(t, [signup.outcome.submissionId]))[0]?.status).toBe('success');
+		expect(await successCount(t, formId)).toBe(1);
+	});
+
+	it('leaves the queued rows pending when it runs after the new signup is confirmed', async () => {
+		vi.useFakeTimers();
+		const t = setupTest();
+		const { formId, queued, signup, freshToken } = await carryInterruptedByOptOutAndSignup(t);
+
+		await t.mutation(api.forms.endpoints.confirmSubmission, { token: freshToken });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const left = await rowsById(t, queued);
+		expect(left.every((r) => r?.status === 'pending_confirmation')).toBe(true);
+		expect(left.every((r) => r?.confirmationToken === 'first-token')).toBe(true);
+		expect((await rowsById(t, [signup.outcome.submissionId]))[0]?.status).toBe('success');
+		expect(await successCount(t, formId)).toBe(1);
+	});
+
+	it('stops when the opt-out came after the token was already confirmed', async () => {
+		vi.useFakeTimers();
+		const t = setupTest();
+		const formId = await createForm(t, { doubleOptIn: true, name: 'A' });
+		const email = 'confirmed-then-out@example.com';
+		const contactId = await seedContact(t, email, {
+			doiStatus: 'pending',
+			doiConfirmationToken: 'first-token',
+			doiTokenExpiresAt: Date.now() + DOI_TOKEN_TTL_MS,
+		});
+		const rows = await seedPendingRows(t, {
+			count: 150,
+			forms: [formId],
+			contactId,
+			token: 'first-token',
+		});
+		await resend(t, contactId, 'resent-token');
+		await t.mutation(api.forms.endpoints.confirmSubmission, { token: 'resent-token' });
+		// The opt-out finds no token to withdraw, and still ends the episode.
+		await t.mutation(internal.topics.subscription.unsubscribeAllForContact, {
+			contactId,
+			source: 'public_email_link',
+		});
+		const signup = await submit(t, formId, email);
+		await t.mutation(api.forms.endpoints.confirmSubmission, {
+			token: signup.row.confirmationToken!,
+		});
+
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const after = await rowsById(t, rows);
+		expect(after.filter((r) => r?.status === 'success')).toHaveLength(100);
+		expect(after.filter((r) => r?.status === 'pending_confirmation')).toHaveLength(50);
+		expect(await successCount(t, formId)).toBe(101);
 	});
 });

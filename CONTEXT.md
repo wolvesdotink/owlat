@@ -248,8 +248,9 @@ confirm path leaves it undefined. Legal edges:
   `doi.reconfirmation_requested` in the audit log. See the ADR-0009
   amendment.)
 
-A global opt-out withdraws any outstanding token
-(`withdrawConfirmationToken`), so a link minted before it cannot lift it. The
+A global opt-out ends the consent episode (`endConsentEpisode`): it withdraws
+any outstanding token, so a link minted before it cannot lift it, and
+increments `contacts.doiConsentEpisode`. The
 token TTL is 7 days (`DOI_TOKEN_TTL_MS`), consolidated from the prior
 7d (topics paths) vs 48h (form path) drift.
 _Avoid_: Opt-in status (vague), DOI state (collides with the per-machine
@@ -314,7 +315,9 @@ attestSource } })` — fires only on the admin-attest path
   (`refreshPendingToken`) does the same. A token a global opt-out withdrew
   is no longer on the contact, and one issued before the contact's opt-out
   (`tokenPredatesOptOut`) belongs to the episode the opt-out ended, so
-  their rows are never carried.
+  their rows are never carried. The effect records the contact's
+  `doiConsentEpisode`; a carry page that finds a later episode stops, and
+  the rows it had not reached stay pending on their old token.
 - `audit_log({ action: 'doi.admin_attested', contactId, details: {
 attestSource } })` — fires only on the admin-attest path. The
   audit action is new in `auditActions/catalog.ts`. The
@@ -961,11 +964,12 @@ rows land directly in a terminal state at create time, so the legal-edges
   re-confirm. Returns `{ ok: true, finalized, continued }` or
   `{ ok: false, reason: 'no_submission_for_token' | 'already_confirmed'
 | 'invalid_state' }`.
-* `carryPendingSubmissions({ contactId, fromToken, toToken })`
+* `carryPendingSubmissions({ contactId, fromToken, toToken, episode })`
   (`forms/pendingConfirmations.ts`) — moves the contact's
   `pending_confirmation` rows from a replaced token to the new one, paged
   with a scheduled follow-up. Called by the **DOI lifecycle (module)** in
-  the transaction that writes the new token.
+  the transaction that writes the new token. Every page stops once the
+  contact's `doiConsentEpisode` differs from `episode`.
 
 Classification rules inside `submit`:
 
@@ -2132,7 +2136,7 @@ Per-call order of operations:
     consolidating into the module closes the drift seam where any
     future non-HTTP shell would miss it.
 11. Enqueue through `enqueueGovernedSend(ctx, { kind: 'transactional',
-    id: sendId }, { envelopeInput })` (`delivery/governedEnqueue.ts`), which
+id: sendId }, { envelopeInput })` (`delivery/governedEnqueue.ts`), which
     picks the transactional pool and wires `onComplete: completeSend` with
     the `sendRef` context.
 

@@ -842,9 +842,9 @@ export const unsubscribeAllForContact = internalMutation({
 		}
 		// The opt-out also ends the open consent episode: a confirmation link
 		// minted before it must not lift it later. The DOI lifecycle withdraws
-		// the token; a later signup gets a fresh one.
-		if (isGlobalUnsubscribe && contact.doiConfirmationToken !== undefined) {
-			await ctx.runMutation(internal.contacts.doiLifecycle.withdrawConfirmationToken, {
+		// the token and moves the episode on; a later signup gets a fresh token.
+		if (isGlobalUnsubscribe) {
+			await ctx.runMutation(internal.contacts.doiLifecycle.endConsentEpisode, {
 				contactId: args.contactId,
 				at: now,
 			});

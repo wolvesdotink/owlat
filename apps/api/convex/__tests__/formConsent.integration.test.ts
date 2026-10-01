@@ -684,7 +684,7 @@ describe('DOI lifecycle consent episodes', () => {
 		expect(await confirmationEmailsFor(t, 'fresh-token')).toBe(1);
 	});
 
-	it('withdrawConfirmationToken clears the token and keeps the status', async () => {
+	it('endConsentEpisode clears the token, keeps the status and moves the episode on', async () => {
 		const t = setupTest();
 		const contactId = await seedContact(t, 'withdraw@example.com', {
 			doiStatus: 'pending',
@@ -693,7 +693,7 @@ describe('DOI lifecycle consent episodes', () => {
 		});
 
 		expect(
-			await t.mutation(internal.contacts.doiLifecycle.withdrawConfirmationToken, {
+			await t.mutation(internal.contacts.doiLifecycle.endConsentEpisode, {
 				contactId,
 				at: Date.now(),
 			})
@@ -703,5 +703,15 @@ describe('DOI lifecycle consent episodes', () => {
 		expect(contact?.doiStatus).toBe('pending');
 		expect(contact?.doiConfirmationToken).toBeUndefined();
 		expect(contact?.doiTokenExpiresAt).toBeUndefined();
+		expect(contact?.doiConsentEpisode).toBe(1);
+
+		// Without a token to withdraw, the episode still moves on.
+		expect(
+			await t.mutation(internal.contacts.doiLifecycle.endConsentEpisode, {
+				contactId,
+				at: Date.now(),
+			})
+		).toEqual({ withdrawn: false });
+		expect((await getContact(t, contactId))?.doiConsentEpisode).toBe(2);
 	});
 });

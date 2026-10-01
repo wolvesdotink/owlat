@@ -3,7 +3,7 @@
  * the token-withdrawal change (migration 0057).
  *
  * A global opt-out now withdraws the contact's DOI confirmation token
- * (`doiLifecycle.withdrawConfirmationToken`), so a link minted before the
+ * (`doiLifecycle.endConsentEpisode`), so a link minted before the
  * opt-out cannot lift it later, and the form submissions that waited on that
  * token are not carried to a later one. Contacts who opted out before that
  * change still hold the token they had then. This back-fill withdraws it with
