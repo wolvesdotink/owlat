@@ -706,11 +706,13 @@ describe('ImapConnection — SELECT / EXAMINE PERMANENTFLAGS', () => {
 		unseenCount: 0,
 	};
 
-	/** listFolders → selectFolder, in that call order. */
+	/** listFolders → selectFolder → the sequence view's UIDs, in that call order. */
 	function stubSelect(convex: MockConvex): void {
 		convex.query
 			.mockResolvedValueOnce([INBOX_FOLDER]) // resolveFolderByName → listFolders
-			.mockResolvedValueOnce({ folder: INBOX_FOLDER }); // selectFolder
+			.mockResolvedValueOnce({ folder: INBOX_FOLDER }) // selectFolder
+			.mockResolvedValueOnce(null) // folderMembershipPage: not maintained
+			.mockResolvedValueOnce({ uids: [1, 2, 3], nextUid: null }); // listFolderUidsPage
 	}
 
 	it('SELECT (read-write) advertises the writable system flags + \\*', async () => {
@@ -746,10 +748,9 @@ describe('ImapConnection — SELECT / EXAMINE PERMANENTFLAGS', () => {
 		mocks.convex.query.mockReset();
 		mocks.convex.mutation.mockReset();
 
-		// STORE 1 +FLAGS (\Flagged): listFolderUidsPage (seq↔UID map) →
-		// collectMessageIds → resolveMessageIdsByUid, then storeFlags mutation
-		// returns the updated row. Sequence 1 maps to UID 1.
-		mocks.convex.query.mockResolvedValueOnce({ uids: [1], nextUid: null }); // listFolderUidsPage
+		// STORE 1 +FLAGS (\Flagged): sequence 1 maps to UID 1 in the sequence
+		// view SELECT started, so no UID listing is read → collectMessageIds →
+		// resolveMessageIdsByUid, then storeFlags mutation returns the updated row.
 		mocks.convex.query.mockResolvedValueOnce({
 			rows: [{ _id: 'm1', uid: 1, modseq: 7 }],
 			nextUid: null,
@@ -766,13 +767,12 @@ describe('ImapConnection — SELECT / EXAMINE PERMANENTFLAGS', () => {
 		);
 		expect(storeLines.some((l) => /^\* 1 FETCH .*FLAGS \(\\Flagged\)/.test(l))).toBe(true);
 		expect(storeLines.pop()).toBe('a002 OK STORE completed');
+		expect(mocks.convex.query).toHaveBeenCalledTimes(1);
 
-		// FETCH 1 (FLAGS) now reflects the stored flag. The module first reads
-		// listFolderUidsPage to build the seq↔UID map (sequence 1 → UID 1), then
-		// fetchEnvelopes for the resolved UID.
+		// FETCH 1 (FLAGS) now reflects the stored flag. Sequence 1 resolves
+		// against the view (UID 1); the only read is fetchEnvelopes.
 		mocks.socket.written.length = 0;
 		mocks.convex.query.mockReset();
-		mocks.convex.query.mockResolvedValueOnce({ uids: [1], nextUid: null }); // listFolderUidsPage
 		mocks.convex.query.mockResolvedValueOnce({
 			rows: [
 				{
@@ -791,6 +791,7 @@ describe('ImapConnection — SELECT / EXAMINE PERMANENTFLAGS', () => {
 		const fetchLines = mocks.socket.lines();
 		expect(fetchLines).toContain('* 1 FETCH (FLAGS (\\Flagged))');
 		expect(fetchLines.pop()).toBe('a003 OK FETCH completed');
+		expect(mocks.convex.query).toHaveBeenCalledTimes(1);
 	});
 });
 

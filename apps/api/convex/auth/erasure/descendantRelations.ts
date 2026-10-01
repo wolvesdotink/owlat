@@ -240,6 +240,8 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	desc('mailFolders', 'mailMessages', 'folderId', 'delete', SAME_MAILBOX),
 	desc('mailFolders', 'mailMessages', 'snoozedFromFolderId', 'delete', SAME_MAILBOX),
 	desc('mailFolders', 'mailAttachments', 'folderId', 'delete', SAME_MAILBOX),
+	desc('mailFolders', 'mailFolderMembership', 'folderId', 'delete', SAME_MAILBOX),
+	desc('mailFolders', 'mailFolderUidBlocks', 'folderId', 'delete', SAME_MAILBOX),
 	desc('mailFolders', 'mailFilters', 'actions[].folderId', 'delete', SAME_MAILBOX),
 	desc('mailLabels', 'mailMessages', 'labelIds[]', 'delete', SAME_MAILBOX),
 	desc('mailLabels', 'mailThreads', 'labelIds[]', 'delete', SAME_MAILBOX),

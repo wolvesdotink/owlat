@@ -3,6 +3,7 @@ import type { ImapCommandModule } from '../types.js';
 import { asyncSession } from '../helpers/session.js';
 import { runCopyOrMove } from '../helpers/copyMove.js';
 import { seqForUid } from '../helpers/seqMap.js';
+import { expungeFromView } from '../helpers/sequenceView.js';
 
 interface MoveArgs {
 	readonly set: string;
@@ -12,9 +13,9 @@ interface MoveArgs {
 
 /**
  * MOVE (RFC 6851) — atomically COPY + EXPUNGE. Each moved source message
- * is reported as `* n EXPUNGE` with its sequence number from the seq map
- * the set was resolved against, highest first, so every number is still
- * valid when the client reads it (RFC 3501 §7.4.1), and the selected
+ * is reported as `* n EXPUNGE` with its sequence number in the client's
+ * sequence view (taking it out of the view), highest first, so every number
+ * is still valid when the client reads it (RFC 3501 §7.4.1), and the selected
  * state's message count drops by the same amount.
  */
 export const moveModule: ImapCommandModule<MoveArgs> = {
@@ -48,10 +49,16 @@ export const moveModule: ImapCommandModule<MoveArgs> = {
 						const sources = result.pairs.map((p) => p.sourceUid).join(',');
 						const targets = result.pairs.map((p) => p.targetUid).join(',');
 						send(`* OK [COPYUID ${result.uidValidity} ${sources} ${targets}] Move`);
-						const expunged = result.pairs
-							.map((p) => seqForUid(seqMap, p.sourceUid))
-							.filter((seq): seq is number => seq !== undefined)
-							.sort((a, b) => b - a);
+						const view = state.selected!.view;
+						const expunged = view
+							? expungeFromView(
+									view,
+									result.pairs.map((p) => p.sourceUid)
+								)
+							: result.pairs
+									.map((p) => seqForUid(seqMap, p.sourceUid))
+									.filter((seq): seq is number => seq !== undefined)
+									.sort((a, b) => b - a);
 						for (const seq of expunged) {
 							send(`* ${seq} EXPUNGE`);
 						}

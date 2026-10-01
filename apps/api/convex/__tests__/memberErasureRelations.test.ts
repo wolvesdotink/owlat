@@ -89,6 +89,9 @@ const DELETED_BY_HELPER = new Set([
 	'mailMessageBodies',
 	'mailboxUsage',
 	'counterScopes',
+	// dropFolderMembership, and deleteMessageRowAndBlobs as each message goes.
+	'mailFolderMembership',
+	'mailFolderUidBlocks',
 	'externalMailAccessTokens',
 	'userProfiles',
 	'memberErasureJobs',

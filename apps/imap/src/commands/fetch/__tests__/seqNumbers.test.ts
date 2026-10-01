@@ -64,6 +64,7 @@ function makeConvex(calls: ConvexCalls) {
 				const ref = getFunctionName(fnRef);
 				// Every folder read is paged: the backend answers with one page plus
 				// the UID to resume from, and `nextUid: null` means "that was all".
+				if (ref.endsWith(':folderMembershipPage')) return null;
 				if (ref.endsWith(':listFolderUidsPage')) {
 					return { uids: [...FOLDER_UIDS], nextUid: null };
 				}
@@ -220,6 +221,8 @@ describe('PR-58 true sequence numbers', () => {
 				if (ref.endsWith(':listFolders')) {
 					return [{ _id: 'f1', name: 'INBOX', role: 'inbox' }];
 				}
+				if (ref.endsWith(':folderMembershipPage')) return null;
+				if (ref.endsWith(':listFolderUidsPage')) return { uids: [5, 9, 14], nextUid: null };
 				if (ref.endsWith(':selectFolder')) {
 					return {
 						folder: {
@@ -232,9 +235,10 @@ describe('PR-58 true sequence numbers', () => {
 							totalCount: 3,
 							unseenCount: 2,
 						},
-						// First unseen is UID 9, which sits at sequence number 2.
+						// First unseen is UID 9, which sits at sequence number 2. The
+						// server numbers it against its own view; it asks the backend
+						// not to count (`skipFirstUnseenSeq`), so no firstUnseenSeq.
 						firstUnseenUid: 9,
-						firstUnseenSeq: 2,
 					};
 				}
 				return null;
@@ -255,5 +259,9 @@ describe('PR-58 true sequence numbers', () => {
 		await session.completion;
 		const unseen = lines.find((l) => l.includes('[UNSEEN'));
 		expect(unseen).toBe('* OK [UNSEEN 2] First unseen');
+		expect(convex.query).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ folderId: 'f1', skipFirstUnseenSeq: true })
+		);
 	});
 });

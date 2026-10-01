@@ -4,6 +4,8 @@ import { resolveFolderByName } from '../helpers/folders.js';
 import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
 import { serverFailure } from '../helpers/replies.js';
+import { loadCurrentUids } from '../helpers/membership.js';
+import { seqForUid } from '../helpers/seqMap.js';
 
 interface SelectArgs {
 	readonly mailboxName: string;
@@ -28,7 +30,7 @@ export const selectModule: ImapCommandModule<SelectArgs> = {
 	start({ deps, state, args, tag, verb, send }) {
 		const readOnly = verb === 'EXAMINE';
 
-		return asyncSession(async () => {
+		return asyncSession(async (signal) => {
 			try {
 				const target = await resolveFolderByName(
 					deps.convex,
@@ -40,12 +42,19 @@ export const selectModule: ImapCommandModule<SelectArgs> = {
 					return;
 				}
 
-				const result = await deps.convex.query(fn.selectFolder, { folderId: target._id });
+				const result = await deps.convex.query(fn.selectFolder, {
+					folderId: target._id,
+					skipFirstUnseenSeq: true,
+				});
 
 				if (!result) {
 					send(`${tag} NO Mailbox not found`);
 					return;
 				}
+				// The client's sequence view starts as the folder is now; EXISTS
+				// below is its length, so the numbers the client counts from it are
+				// the ones the server resolves against (see `SequenceView`).
+				const uids = await loadCurrentUids(deps.convex, result.folder._id, signal);
 
 				const selected: SelectedState = {
 					folderId: result.folder._id,
@@ -54,19 +63,22 @@ export const selectModule: ImapCommandModule<SelectArgs> = {
 					uidValidity: result.folder.uidValidity,
 					uidNext: result.folder.uidNext,
 					highestModseq: result.folder.highestModseq,
-					totalCount: result.folder.totalCount,
+					totalCount: uids.length,
 					readOnly,
+					view: { uids },
 				};
 
-				send(`* ${result.folder.totalCount} EXISTS`);
+				send(`* ${uids.length} EXISTS`);
 				send(`* 0 RECENT`);
 				send(`* OK [UIDVALIDITY ${result.folder.uidValidity}] UIDs valid`);
 				send(`* OK [UIDNEXT ${result.folder.uidNext}] Predicted next UID`);
 				send(`* OK [HIGHESTMODSEQ ${result.folder.highestModseq}] Highest`);
 				// RFC 3501 §7.1: `[UNSEEN n]` is the message *sequence number* of
 				// the first unseen message, not its UID.
-				if (result.firstUnseenSeq != null) {
-					send(`* OK [UNSEEN ${result.firstUnseenSeq}] First unseen`);
+				const firstUnseenSeq =
+					result.firstUnseenUid == null ? undefined : seqForUid({ uids }, result.firstUnseenUid);
+				if (firstUnseenSeq != null) {
+					send(`* OK [UNSEEN ${firstUnseenSeq}] First unseen`);
 				}
 				send('* FLAGS (\\Seen \\Answered \\Flagged \\Deleted \\Draft)');
 				if (readOnly) {

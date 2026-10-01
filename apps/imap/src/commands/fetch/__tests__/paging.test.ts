@@ -64,6 +64,7 @@ function makePagingConvex(uids: readonly number[], calls: QueryCall[]) {
 		query: vi.fn(async (fnRef: AnyFunctionReference, params: Record<string, unknown>) => {
 			const ref = getFunctionName(fnRef);
 			calls.push({ ref, params });
+			if (ref.endsWith(':folderMembershipPage')) return null;
 			if (ref.endsWith(':listFolderUidsPage')) {
 				const after = (params.afterUid as number | undefined) ?? 0;
 				const page = uids.filter((u) => u >= after).slice(0, PAGE);
@@ -176,6 +177,7 @@ describe('a walk that never terminates fails the command', () => {
 		const convex = {
 			query: vi.fn(async (fnRef: AnyFunctionReference, params: Record<string, unknown>) => {
 				const ref = getFunctionName(fnRef);
+				if (ref.endsWith(':folderMembershipPage')) return null;
 				if (ref.endsWith(':listFolderUidsPage')) {
 					const after = (params.afterUid as number | undefined) ?? 1;
 					return { uids: [after, after + 1, after + 2], nextUid: after + 3 };
@@ -204,6 +206,7 @@ describe('a walk that never terminates fails the command', () => {
 		const convex = {
 			query: vi.fn(async (fnRef: AnyFunctionReference) => {
 				const ref = getFunctionName(fnRef);
+				if (ref.endsWith(':folderMembershipPage')) return null;
 				if (ref.endsWith(':listFolderUidsPage')) return { uids: [1, 2, 3], nextUid: 1 };
 				return null;
 			}),
@@ -223,8 +226,9 @@ describe('a walk that never terminates fails the command', () => {
 		await session.completion;
 
 		expect(lines).toEqual(['a005 NO [UNAVAILABLE] FETCH failed']);
-		// Two reads: the first page, then the one whose resume point repeated it.
-		expect(convex.query).toHaveBeenCalledTimes(2);
+		// The membership read (not maintained), then two listing reads: the first
+		// page, then the one whose resume point repeated it.
+		expect(convex.query).toHaveBeenCalledTimes(3);
 	});
 });
 
@@ -293,6 +297,7 @@ describe('CHANGEDSINCE reads go through the modseq index', () => {
 					if (ref.endsWith(':peekFolderModseq')) {
 						return { highestModseq: 9, uidNext: 4, totalCount: 3, unseenCount: 1 };
 					}
+					if (ref.endsWith(':folderMembershipPage')) return null;
 					if (ref.endsWith(':listFolderUidsPage')) return { uids: [1, 2, 3], nextUid: null };
 					if (ref.endsWith(':fetchChangedEnvelopes')) {
 						return { page: [envelope(1)], isDone: true, continueCursor: null };

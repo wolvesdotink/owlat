@@ -18,6 +18,9 @@ import type * as migrations_0055_repair_repeated_block_ids from '../migrations/0
 import type * as lib_repeatedBlockIds from '../lib/repeatedBlockIds.js';
 import type * as lib_migrationLedger from '../lib/migrationLedger.js';
 import type * as schema_migrationRuns from '../schema/migrationRuns.js';
+import type * as migrations_0054_backfill_folder_membership from '../migrations/0054_backfill_folder_membership.js';
+import type * as maintenance_folderMembershipBackfill from '../maintenance/folderMembershipBackfill.js';
+import type * as mail_folderMembership from '../mail/folderMembership.js';
 import type * as schema_counters from '../schema/counters.js';
 import type * as workspaces_deletion_steps_storageUploads from '../workspaces/deletion/steps/storageUploads.js';
 import type * as storage_uploadsHttp from '../storage/uploadsHttp.js';
@@ -1206,6 +1209,7 @@ import type * as schema_mailAi from '../schema/mailAi.js';
 import type * as schema_mailAuth from '../schema/mailAuth.js';
 import type * as schema_mailComposition from '../schema/mailComposition.js';
 import type * as schema_mailContacts from '../schema/mailContacts.js';
+import type * as schema_mailFolderMembership from '../schema/mailFolderMembership.js';
 import type * as schema_mailMessages from '../schema/mailMessages.js';
 import type * as schema_mailRules from '../schema/mailRules.js';
 import type * as schema_mailSettings from '../schema/mailSettings.js';
@@ -1389,6 +1393,9 @@ declare const fullApi: ApiFromModules<{
 	'lib/repeatedBlockIds': typeof lib_repeatedBlockIds;
 	'lib/migrationLedger': typeof lib_migrationLedger;
 	'schema/migrationRuns': typeof schema_migrationRuns;
+	'migrations/0054_backfill_folder_membership': typeof migrations_0054_backfill_folder_membership;
+	'maintenance/folderMembershipBackfill': typeof maintenance_folderMembershipBackfill;
+	'mail/folderMembership': typeof mail_folderMembership;
 	'schema/counters': typeof schema_counters;
 	'workspaces/deletion/steps/storageUploads': typeof workspaces_deletion_steps_storageUploads;
 	'storage/uploadsHttp': typeof storage_uploadsHttp;
@@ -2567,6 +2574,7 @@ declare const fullApi: ApiFromModules<{
 	'schema/mailAuth': typeof schema_mailAuth;
 	'schema/mailComposition': typeof schema_mailComposition;
 	'schema/mailContacts': typeof schema_mailContacts;
+	'schema/mailFolderMembership': typeof schema_mailFolderMembership;
 	'schema/mailMessages': typeof schema_mailMessages;
 	'schema/mailRules': typeof schema_mailRules;
 	'schema/mailSettings': typeof schema_mailSettings;
