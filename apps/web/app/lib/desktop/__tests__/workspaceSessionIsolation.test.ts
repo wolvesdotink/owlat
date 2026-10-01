@@ -70,6 +70,27 @@ let aSession: unknown = { user: { id: 'user-a' }, session: { id: 's-a' } };
 let duringRedeem: () => Promise<void> = async () => {};
 /** Runs while B's new session is being checked (B's session already received). */
 let duringSessionCheck: () => Promise<void> = async () => {};
+/**
+ * Holds A's next session check until released, and answers it with what the
+ * release passes: a body, and optionally the session cookie A's server sets.
+ */
+let heldACheck: {
+	sent: Promise<void>;
+	markSent: () => void;
+	release: (body: unknown, setCookie?: string) => void;
+	answer: Promise<{ body: unknown; setCookie?: string }>;
+} | null = null;
+
+function holdNextACheck() {
+	let markSent!: () => void;
+	let release!: (body: unknown, setCookie?: string) => void;
+	const sent = new Promise<void>((resolve) => (markSent = resolve));
+	const answer = new Promise<{ body: unknown; setCookie?: string }>(
+		(resolve) => (release = (body, setCookie) => resolve({ body, setCookie }))
+	);
+	heldACheck = { sent, markSent, release, answer };
+	return heldACheck;
+}
 
 function json(body: unknown, headers: Record<string, string> = {}): Response {
 	return new Response(JSON.stringify(body), {
@@ -104,7 +125,16 @@ const fakeFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => 
 		await duringSessionCheck();
 		return json({ user: { id: 'user-b' }, session: { id: 's-b' } });
 	}
-	if (url.startsWith('https://site.a.example.com/api/auth/get-session')) return json(aSession);
+	if (url.startsWith('https://site.a.example.com/api/auth/get-session')) {
+		const held = heldACheck;
+		if (held) {
+			heldACheck = null;
+			held.markSent();
+			const { body, setCookie } = await held.answer;
+			return json(body, setCookie ? { 'set-better-auth-cookie': setCookie } : {});
+		}
+		return json(aSession);
+	}
 	if (url.startsWith('https://site.a.example.com/api/auth/convex/token')) {
 		return json({ token: null });
 	}
@@ -148,6 +178,7 @@ beforeEach(() => {
 	aSession = { user: { id: 'user-a' }, session: { id: 's-a' } };
 	duringRedeem = async () => {};
 	duringSessionCheck = async () => {};
+	heldACheck = null;
 	vi.stubGlobal('fetch', fakeFetch);
 	assign = vi.fn();
 	Object.defineProperty(window.location, 'assign', {
@@ -234,9 +265,10 @@ describe('desktop workspace session isolation', () => {
  * native keychain.
  */
 describe('desktop session replacement across windows', () => {
-	async function reauthenticateAInMain() {
+	async function reauthenticateAInMain(beforeReauth: (compose: Modules) => void = () => {}) {
 		const compose = await bootWithA();
 		const main = await bootWithA();
+		beforeReauth(compose);
 		await main.addWorkspace(A.siteUrl);
 		const { openExternal } = await import('@owlat/desktop/src/shell');
 		const opened = new URL(vi.mocked(openExternal).mock.calls.at(-1)?.[0] as string);
@@ -288,5 +320,51 @@ describe('desktop session replacement across windows', () => {
 		await composeSessionCheck(compose);
 
 		expect(keychainEntries.get(A.tokenRef)).toContain('A-new-session');
+	});
+
+	// A request compose sent with the older session is still in flight when
+	// main signs in again; its answer arrives after compose took the new one.
+	describe('a compose request sent before the new session, answered after', () => {
+		async function run(answer: { body: unknown; setCookie?: string }) {
+			const held = holdNextACheck();
+			let pending: Promise<unknown> = Promise.resolve();
+			const { compose } = await reauthenticateAInMain((c) => {
+				pending = c.authClient
+					.getSession({ query: { disableCookieCache: true } })
+					.catch((e: unknown) => e);
+			});
+			await held.sent;
+			expect(cookiesSentTo('https://site.a.example.com/api/auth/get-session')[0]).toContain(
+				'A-session'
+			);
+			// Compose has taken the new session from the replace event.
+			const storage = compose.getActiveKeychainStorage();
+			await storage?.flush();
+			expect(storage?.getItem('better-auth_cookie')).toContain('A-new-session');
+
+			held.release(answer.body, answer.setCookie);
+			await pending;
+			await storage?.flush();
+			return { compose, storage, outcome: await pending };
+		}
+
+		it('a signed-out answer does not clear the new session', async () => {
+			const { storage, outcome } = await run({ body: null });
+
+			expect(outcome).toBeInstanceOf(Error);
+			expect(keychainEntries.get(A.tokenRef)).toContain('A-new-session');
+			expect(storage?.getItem('better-auth_cookie')).toContain('A-new-session');
+		});
+
+		it('an answer carrying the older session cookie does not bring it back', async () => {
+			const { storage } = await run({
+				body: { user: { id: 'user-a' }, session: { id: 's-a' } },
+				setCookie: 'better-auth.session_token=A-session; Max-Age=3600; Path=/',
+			});
+
+			expect(keychainEntries.get(A.tokenRef)).toContain('A-new-session');
+			expect(keychainEntries.get(A.tokenRef)).not.toContain('"A-session"');
+			expect(storage?.getItem('better-auth_cookie')).toContain('A-new-session');
+		});
 	});
 });

@@ -60,6 +60,38 @@ export function createDesktopAuthClient(
 }
 
 /**
+ * Thrown in place of an auth response whose request went out with a session
+ * that has since been replaced.
+ */
+export class StaleSessionResponseError extends Error {
+	constructor() {
+		super('The session changed while this auth request was in flight.');
+		this.name = 'StaleSessionResponseError';
+	}
+}
+
+/**
+ * The fetch for a workspace's auth client. Another window can sign in to the
+ * workspace again while a request this window sent with the older session is
+ * in flight; once this window has taken the new session, that request's
+ * response must not reach the storage, where the cross-domain plugin would
+ * write its cookie (or, on a signed-out answer, clear the cookie) under the new
+ * revision. So a response is handed to the client only when the storage still
+ * holds the revision the request was sent with.
+ */
+export function sessionFencedFetch(
+	storage: Pick<KeychainSessionStorage, 'revision'>,
+	fetchImpl: FetchImpl = (input, init) => fetch(input, init)
+): FetchImpl {
+	return async (input, init) => {
+		const sentAt = storage.revision;
+		const response = await fetchImpl(input, init);
+		if (storage.revision !== sentAt) throw new StaleSessionResponseError();
+		return response;
+	};
+}
+
+/**
  * Desktop with no workspace connected: there is no backend to ask. Answer every
  * auth request locally, as "no session", instead of sending it anywhere.
  */
@@ -111,7 +143,11 @@ function desktopClient(): DesktopBinding {
 		return disconnectedBinding;
 	}
 	desktopBinding = {
-		client: createDesktopAuthClient(workspace.convexSiteUrl, storage),
+		client: createDesktopAuthClient(
+			workspace.convexSiteUrl,
+			storage,
+			sessionFencedFetch(storage)
+		),
 		convexSiteUrl: workspace.convexSiteUrl,
 	};
 	return desktopBinding;

@@ -36,6 +36,12 @@ export interface SessionPersistence {
 export interface KeychainSessionStorage {
 	/** The keychain entry this storage reads from and writes to. Fixed. */
 	readonly accountKey: string;
+	/**
+	 * The session revision this storage holds. It moves when the storage takes
+	 * a session replaced elsewhere, so an auth response to a request sent
+	 * before that can be told apart (see `sessionFencedFetch`).
+	 */
+	readonly revision: number;
 	getItem(key: string): string | null;
 	setItem(key: string, value: string): void;
 	removeItem(key: string): void;
@@ -156,6 +162,9 @@ export function createKeychainStorage(
 
 	return {
 		accountKey,
+		get revision() {
+			return revision;
+		},
 		getItem(key) {
 			return key in cache ? cache[key]! : null;
 		},
