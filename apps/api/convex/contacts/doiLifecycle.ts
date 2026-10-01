@@ -695,6 +695,25 @@ export const refreshPendingToken = internalMutation({
 // mints a fresh token (see `reducePending`) and the episode starts over.
 
 /**
+ * Clear a loaded Contact's confirmation token, leaving `doiStatus` as it is.
+ * The form submissions that waited on the token keep it and are not carried
+ * to a later one. Returns whether there was a token to clear.
+ */
+export async function withdrawToken(
+	ctx: MutationCtx,
+	contact: Doc<'contacts'>,
+	at: number
+): Promise<boolean> {
+	if (contact.doiConfirmationToken === undefined) return false;
+	await ctx.db.patch(contact._id, {
+		doiConfirmationToken: undefined,
+		doiTokenExpiresAt: undefined,
+		updatedAt: at,
+	});
+	return true;
+}
+
+/**
  * Withdraw a Contact's outstanding confirmation token. Called by the Topic
  * subscription (module) on a global opt-out. A no-op when the Contact holds
  * no token.
@@ -703,12 +722,7 @@ export const withdrawConfirmationToken = internalMutation({
 	args: { contactId: v.id('contacts'), at: v.number() },
 	handler: async (ctx, args): Promise<{ withdrawn: boolean }> => {
 		const contact = await ctx.db.get(args.contactId);
-		if (!contact || contact.doiConfirmationToken === undefined) return { withdrawn: false };
-		await ctx.db.patch(args.contactId, {
-			doiConfirmationToken: undefined,
-			doiTokenExpiresAt: undefined,
-			updatedAt: args.at,
-		});
-		return { withdrawn: true };
+		if (!contact) return { withdrawn: false };
+		return { withdrawn: await withdrawToken(ctx, contact, args.at) };
 	},
 });

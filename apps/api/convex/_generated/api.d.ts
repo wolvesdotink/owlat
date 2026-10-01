@@ -14,6 +14,7 @@ import type * as migrations_0050_reindex_mailbox_knowledge from '../migrations/0
 import type * as migrations_0051_clear_residual_search_bodies from '../migrations/0051_clear_residual_search_bodies.js';
 import type * as migrations_0052_reerase_legacy_account_deletions from '../migrations/0052_reerase_legacy_account_deletions.js';
 import type * as migrations_0053_project_open_commitments from '../migrations/0053_project_open_commitments.js';
+import type * as migrations_0056_withdraw_opted_out_confirmation_tokens from '../migrations/0056_withdraw_opted_out_confirmation_tokens.js';
 import type * as lib_migrationLedger from '../lib/migrationLedger.js';
 import type * as schema_migrationRuns from '../schema/migrationRuns.js';
 import type * as schema_counters from '../schema/counters.js';
@@ -1382,6 +1383,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0051_clear_residual_search_bodies': typeof migrations_0051_clear_residual_search_bodies;
 	'migrations/0052_reerase_legacy_account_deletions': typeof migrations_0052_reerase_legacy_account_deletions;
 	'migrations/0053_project_open_commitments': typeof migrations_0053_project_open_commitments;
+	'migrations/0056_withdraw_opted_out_confirmation_tokens': typeof migrations_0056_withdraw_opted_out_confirmation_tokens;
 	'lib/migrationLedger': typeof lib_migrationLedger;
 	'schema/migrationRuns': typeof schema_migrationRuns;
 	'schema/counters': typeof schema_counters;
