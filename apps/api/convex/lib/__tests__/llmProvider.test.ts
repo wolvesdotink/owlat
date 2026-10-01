@@ -392,6 +392,21 @@ describe('llmProvider', () => {
 			expect(runAction).toHaveBeenCalledTimes(4);
 		});
 
+		it('drops the cached keys and falls back to env once the row is removed', async () => {
+			vi.useFakeTimers({ toFake: ['Date'] });
+			vi.setSystemTime(new Date('2026-09-29T10:00:00Z'));
+			vi.stubEnv('OPENAI_API_KEY', 'env-key');
+			const { resolveAiConfig } = await import('../llmProvider');
+			const { ctx, runQuery } = makeCtx(twoKeyRow());
+			expect((await resolveAiConfig(ctx)).source).toBe('stored');
+			// aiProviderConfig.removeConfig deleted the row in another isolate.
+			runQuery.mockResolvedValue(null);
+			vi.setSystemTime(new Date('2026-09-29T10:00:31Z'));
+			const cfg = await resolveAiConfig(ctx);
+			expect(cfg.source).toBe('env');
+			expect(cfg.language.clientConfig.apiKey).toBe('env-key');
+		});
+
 		it('invalidateAiConfigCache makes the next call re-read the row', async () => {
 			const { resolveLanguageModel, invalidateAiConfigCache } = await import('../llmProvider');
 			const { ctx, runQuery } = makeCtx(twoKeyRow());
