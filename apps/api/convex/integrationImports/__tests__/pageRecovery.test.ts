@@ -27,6 +27,7 @@ import {
 } from '../../__tests__/helpers/workspaceDeletionFence';
 import { isSealedImportCredential, sealImportCredential } from '../credentialSeal';
 import { MAX_PAGE_RECOVERIES, UNLEASED_RUN_GRACE_MS } from '../recovery';
+import { fakeMailchimpAudience } from './fakeMailchimpAudience';
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
@@ -59,29 +60,19 @@ function subscribers(prefix: string, count: number) {
  * A three-page audience: 99 subscribers and one bounce, then 100 subscribers,
  * then 49 subscribers and one departure who is not a contact here.
  */
-const AUDIENCE: Record<number, { email: string; status: string }[]> = {
-	0: [...subscribers('p1', 99), { email: 'bounced@example.com', status: 'cleaned' }],
-	100: subscribers('p2', 100),
-	200: [...subscribers('p3', 49), { email: 'stranger@example.com', status: 'unsubscribed' }],
-};
+const AUDIENCE: { email: string; status: string }[] = [
+	...subscribers('p1', 99),
+	{ email: 'bounced@example.com', status: 'cleaned' },
+	...subscribers('p2', 100),
+	...subscribers('p3', 49),
+	{ email: 'stranger@example.com', status: 'unsubscribed' },
+];
 const TOTAL_IMPORTED = 99 + 100 + 49;
+/** Three audience pages, then the closing pass over members changed during the run. */
+const PROVIDER_CALLS = 4;
 
 function audienceFetch() {
-	return vi.fn(async (url: unknown) => {
-		const offset = Number(new URL(String(url)).searchParams.get('offset'));
-		const members = AUDIENCE[offset] ?? [];
-		return new Response(
-			JSON.stringify({
-				members: members.map((m) => ({
-					email_address: m.email,
-					status: m.status,
-					merge_fields: { FNAME: 'F', LNAME: 'L' },
-				})),
-				total_items: 250,
-			}),
-			{ status: 200 }
-		);
-	});
+	return fakeMailchimpAudience(AUDIENCE).fetch;
 }
 
 // ─── Fault injection into the real page commit ──────────────────────────────
@@ -259,7 +250,7 @@ describe('integration import page continuation (#999)', () => {
 
 			const stalled = await readRun(t, importId);
 			expect(stalled.status).toBe('running');
-			expect(stalled.cursor).toBe('100');
+			expect(JSON.parse(stalled.cursor)).toMatchObject({ pass: 'audience', offset: 100 });
 			expect(stalled.pagesCommitted).toBe(1);
 			expect(stalled.imported).toBe(99);
 			expect(stalled.suppressionCounts).toMatchObject({ bouncedHard: 1, noContact: 0 });
@@ -275,8 +266,8 @@ describe('integration import page continuation (#999)', () => {
 			expectExactTotals(finished);
 			expect(finished.pageRecoveries).toBeUndefined();
 			expect(await counts(t)).toEqual({ contacts: TOTAL_IMPORTED, blocked: 1 });
-			// Pages one and three once, page two twice (the lost hop and its re-issue).
-			expect(providerCalls(fetch)).toBe(4);
+			// Every page once, page two twice (the lost hop and its re-issue).
+			expect(providerCalls(fetch)).toBe(PROVIDER_CALLS + 1);
 		}
 	);
 
@@ -482,7 +473,8 @@ describe('integration import runs from the previous release', () => {
 		});
 
 		const continued = await readRun(t, importId);
-		expect(continued).toMatchObject({ status: 'running', cursor: '100', pagesCommitted: 1 });
+		expect(continued).toMatchObject({ status: 'running', pagesCommitted: 1 });
+		expect(JSON.parse(continued.cursor)).toMatchObject({ pass: 'audience', offset: 100 });
 		expect(continued.resumeConfig).toEqual(sealed);
 		expect(continued.pageJobId).toBeDefined();
 
