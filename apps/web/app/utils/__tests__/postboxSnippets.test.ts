@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { detectSnippetTrigger, rankSnippets, firstNameOf } from '../postboxSnippets';
+import {
+	detectSnippetTrigger,
+	rankSnippets,
+	firstNameOf,
+	lastNameOf,
+	threadSubjectOf,
+} from '../postboxSnippets';
 
 describe('detectSnippetTrigger', () => {
 	it('triggers on a "/" at the very start of the input', () => {
@@ -25,6 +31,13 @@ describe('detectSnippetTrigger', () => {
 
 	it('returns null when there is no slash', () => {
 		expect(detectSnippetTrigger('just text')).toBeNull();
+	});
+
+	it('triggers on ";", the documented key, the same way', () => {
+		expect(detectSnippetTrigger(';ref')).toEqual({ query: 'ref', triggerStart: 0 });
+		expect(detectSnippetTrigger('Hello\n;re')).toEqual({ query: 're', triggerStart: 6 });
+		expect(detectSnippetTrigger('a;b')).toBeNull();
+		expect(detectSnippetTrigger('; ')).toBeNull();
 	});
 
 	it('reads the query up to the caret (last slash wins)', () => {
@@ -64,6 +77,46 @@ describe('rankSnippets', () => {
 
 	it('drops non-matching snippets', () => {
 		expect(rankSnippets(snippets, 'zzz')).toHaveLength(0);
+	});
+
+	it('matches fuzzily, as a subsequence', () => {
+		expect(rankSnippets(snippets, 'grtg').map((s) => s.name)).toEqual(['Greeting']);
+	});
+
+	it('lists the most used first before anything is typed, then the most recent', () => {
+		const used = [
+			{ name: 'Alpha', shortcut: 'a', useCount: 1, lastUsedAt: 5 },
+			{ name: 'Beta', shortcut: 'b', useCount: 4, lastUsedAt: 1 },
+			{ name: 'Gamma', shortcut: 'g', useCount: 1, lastUsedAt: 9 },
+			{ name: 'Delta', shortcut: 'd' },
+		];
+		expect(rankSnippets(used, '').map((s) => s.name)).toEqual(['Beta', 'Gamma', 'Alpha', 'Delta']);
+	});
+
+	it('breaks ties between equal matches by usage', () => {
+		const used = [
+			{ name: 'Refund A', shortcut: '', useCount: 0 },
+			{ name: 'Refund B', shortcut: '', useCount: 7 },
+		];
+		expect(rankSnippets(used, 'refund').map((s) => s.name)).toEqual(['Refund B', 'Refund A']);
+	});
+});
+
+describe('lastNameOf', () => {
+	it('takes everything after the first name', () => {
+		expect(lastNameOf('Ada King Lovelace')).toBe('King Lovelace');
+		expect(lastNameOf('Ada')).toBeUndefined();
+		expect(lastNameOf(null)).toBeUndefined();
+	});
+});
+
+describe('threadSubjectOf', () => {
+	it('drops reply and forward markers, in several languages', () => {
+		expect(threadSubjectOf('Re: Re: Invoice 4471')).toBe('Invoice 4471');
+		expect(threadSubjectOf('AW: WG: Angebot')).toBe('Angebot');
+		expect(threadSubjectOf('Fwd: Re[2]: Plan')).toBe('Plan');
+		expect(threadSubjectOf('Regarding the plan')).toBe('Regarding the plan');
+		expect(threadSubjectOf(undefined)).toBe('');
 	});
 });
 

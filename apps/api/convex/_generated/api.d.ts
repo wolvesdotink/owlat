@@ -22,6 +22,7 @@ import type * as migrations_0057_withdraw_opted_out_confirmation_tokens from '..
 import type * as migrations_0064_backfill_send_time_profiles from '../migrations/0064_backfill_send_time_profiles.js';
 import type * as lib_migrationLedger from '../lib/migrationLedger.js';
 import type * as schema_migrationRuns from '../schema/migrationRuns.js';
+import type * as migrations_0060_saved_reply_scopes from '../migrations/0060_saved_reply_scopes.js';
 import type * as migrations_0054_backfill_folder_membership from '../migrations/0054_backfill_folder_membership.js';
 import type * as maintenance_folderMembershipBackfill from '../maintenance/folderMembershipBackfill.js';
 import type * as mail_folderMembership from '../mail/folderMembership.js';
@@ -797,6 +798,7 @@ import type * as lib_mailSnooze from '../lib/mailSnooze.js';
 import type * as lib_mapWithConcurrency from '../lib/mapWithConcurrency.js';
 import type * as lib_marketingEligibility from '../lib/marketingEligibility.js';
 import type * as lib_accountExportTemplates from '../lib/accountExportTemplates.js';
+import type * as lib_mediaLibraryPolicy from '../lib/mediaLibraryPolicy.js';
 import type * as lib_messageBody from '../lib/messageBody.js';
 import type * as lib_messageBodyExport from '../lib/messageBodyExport.js';
 import type * as lib_messageBodyInbound from '../lib/messageBodyInbound.js';
@@ -890,6 +892,7 @@ import type * as lib_userProfiles from '../lib/userProfiles.js';
 import type * as lib_validators_aiProviderConfig from '../lib/validators/aiProviderConfig.js';
 import type * as lib_validators_answerAsk from '../lib/validators/answerAsk.js';
 import type * as lib_validators_attachment from '../lib/validators/attachment.js';
+import type * as lib_validators_brandKit from '../lib/validators/brandKit.js';
 import type * as lib_validators_autonomy from '../lib/validators/autonomy.js';
 import type * as lib_validators_campaigns from '../lib/validators/campaigns.js';
 import type * as lib_validators_catchUp from '../lib/validators/catchUp.js';
@@ -900,6 +903,7 @@ import type * as lib_validators_contentScan from '../lib/validators/contentScan.
 import type * as lib_validators_dashboard from '../lib/validators/dashboard.js';
 import type * as lib_validators_deliverability from '../lib/validators/deliverability.js';
 import type * as lib_validators_deliveryChecklist from '../lib/validators/deliveryChecklist.js';
+import type * as lib_validators_draftRevision from '../lib/validators/draftRevision.js';
 import type * as lib_validators_e2ee from '../lib/validators/e2ee.js';
 import type * as lib_validators_editLearning from '../lib/validators/editLearning.js';
 import type * as lib_validators_fields from '../lib/validators/fields.js';
@@ -1104,6 +1108,8 @@ import type * as mail_postboxOutboundAudit from '../mail/postboxOutboundAudit.js
 import type * as mail_postboxOutboundLifecycle from '../mail/postboxOutboundLifecycle.js';
 import type * as mail_replyOptions from '../mail/replyOptions.js';
 import type * as mail_rfc822 from '../mail/rfc822.js';
+import type * as mail_savedReplies from '../mail/savedReplies.js';
+import type * as mail_savedReplyRules from '../mail/savedReplyRules.js';
 import type * as mail_savedSearches from '../mail/savedSearches.js';
 import type * as mail_searchBody from '../mail/searchBody.js';
 import type * as mail_sealPolicy from '../mail/sealPolicy.js';
@@ -1393,6 +1399,9 @@ import type * as webhooks_yahooCflObservation from '../webhooks/yahooCflObservat
 import type * as workspaces_abuseGate from '../workspaces/abuseGate.js';
 import type * as workspaces_abuseStatus from '../workspaces/abuseStatus.js';
 import type * as workspaces_branding from '../workspaces/branding.js';
+import type * as workspaces_brandKit from '../workspaces/brandKit.js';
+import type * as workspaces_brandKitImport from '../workspaces/brandKitImport.js';
+import type * as workspaces_brandKitWebsite from '../workspaces/brandKitWebsite.js';
 import type * as workspaces_deletion_job from '../workspaces/deletion/job.js';
 import type * as workspaces_deletion_quiesce from '../workspaces/deletion/quiesce.js';
 import type * as workspaces_deletion_steps__common from '../workspaces/deletion/steps/_common.js';
@@ -1444,6 +1453,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0064_backfill_send_time_profiles': typeof migrations_0064_backfill_send_time_profiles;
 	'lib/migrationLedger': typeof lib_migrationLedger;
 	'schema/migrationRuns': typeof schema_migrationRuns;
+	'migrations/0060_saved_reply_scopes': typeof migrations_0060_saved_reply_scopes;
 	'migrations/0054_backfill_folder_membership': typeof migrations_0054_backfill_folder_membership;
 	'maintenance/folderMembershipBackfill': typeof maintenance_folderMembershipBackfill;
 	'mail/folderMembership': typeof mail_folderMembership;
@@ -2209,6 +2219,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/mapWithConcurrency': typeof lib_mapWithConcurrency;
 	'lib/marketingEligibility': typeof lib_marketingEligibility;
 	'lib/accountExportTemplates': typeof lib_accountExportTemplates;
+	'lib/mediaLibraryPolicy': typeof lib_mediaLibraryPolicy;
 	'lib/messageBody': typeof lib_messageBody;
 	'lib/messageBodyExport': typeof lib_messageBodyExport;
 	'lib/messageBodyInbound': typeof lib_messageBodyInbound;
@@ -2302,6 +2313,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/validators/aiProviderConfig': typeof lib_validators_aiProviderConfig;
 	'lib/validators/answerAsk': typeof lib_validators_answerAsk;
 	'lib/validators/attachment': typeof lib_validators_attachment;
+	'lib/validators/brandKit': typeof lib_validators_brandKit;
 	'lib/validators/autonomy': typeof lib_validators_autonomy;
 	'lib/validators/campaigns': typeof lib_validators_campaigns;
 	'lib/validators/catchUp': typeof lib_validators_catchUp;
@@ -2312,6 +2324,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/validators/dashboard': typeof lib_validators_dashboard;
 	'lib/validators/deliverability': typeof lib_validators_deliverability;
 	'lib/validators/deliveryChecklist': typeof lib_validators_deliveryChecklist;
+	'lib/validators/draftRevision': typeof lib_validators_draftRevision;
 	'lib/validators/e2ee': typeof lib_validators_e2ee;
 	'lib/validators/editLearning': typeof lib_validators_editLearning;
 	'lib/validators/fields': typeof lib_validators_fields;
@@ -2516,6 +2529,8 @@ declare const fullApi: ApiFromModules<{
 	'mail/postboxOutboundLifecycle': typeof mail_postboxOutboundLifecycle;
 	'mail/replyOptions': typeof mail_replyOptions;
 	'mail/rfc822': typeof mail_rfc822;
+	'mail/savedReplies': typeof mail_savedReplies;
+	'mail/savedReplyRules': typeof mail_savedReplyRules;
 	'mail/savedSearches': typeof mail_savedSearches;
 	'mail/searchBody': typeof mail_searchBody;
 	'mail/sealPolicy': typeof mail_sealPolicy;
@@ -2805,6 +2820,9 @@ declare const fullApi: ApiFromModules<{
 	'workspaces/abuseGate': typeof workspaces_abuseGate;
 	'workspaces/abuseStatus': typeof workspaces_abuseStatus;
 	'workspaces/branding': typeof workspaces_branding;
+	'workspaces/brandKit': typeof workspaces_brandKit;
+	'workspaces/brandKitImport': typeof workspaces_brandKitImport;
+	'workspaces/brandKitWebsite': typeof workspaces_brandKitWebsite;
 	'workspaces/deletion/job': typeof workspaces_deletion_job;
 	'workspaces/deletion/quiesce': typeof workspaces_deletion_quiesce;
 	'workspaces/deletion/steps/_common': typeof workspaces_deletion_steps__common;

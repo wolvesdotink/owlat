@@ -37,6 +37,7 @@ export const MEMBER_ERASURE_PHASES = [
 	'chatAuthorship',
 	'chatMemberships',
 	'chatMentions',
+	'savedReplyAuthorship',
 	'noteAuthorship',
 	'noteMentions',
 ] as const;

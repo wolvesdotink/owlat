@@ -98,10 +98,10 @@ export const mailCompositionTables = {
 		// behaviour. Snapshotted ONCE and never overwritten.
 		aiDraftBaseline: v.optional(v.object({ text: v.string(), capturedAt: v.number() })),
 		// An AI text holding `[[...]]` gap placeholders went into this draft (a
-		// Reply Queue draft waiting for files, say). Such a draft has no Answer
-		// mode ask session, so this is what keeps its send guard on after a
-		// reload (mail/ai/composeDraftStore.ts assertNoAnswerGaps). Set by
-		// `drafts.update` from the AI text it records; never cleared.
+		// Reply Queue draft waiting for files, say), or a saved reply with gaps
+		// did. Such a draft has no Answer mode ask session, so this is what keeps
+		// its send guard on after a reload (mail/ai/composeDraftStore.ts
+		// assertNoAnswerGaps). Set by `drafts.update`; never cleared.
 		isGapGuarded: v.optional(v.boolean()),
 
 		// Team-inbox attribution: the BetterAuth user id of the teammate who fired
@@ -310,13 +310,31 @@ export const mailCompositionTables = {
 		.index('by_mailbox', ['mailboxId'])
 		.index('by_mailbox_and_default', ['mailboxId', 'isDefault']),
 
-	// Per-mailbox canned responses ("snippets"). Inserted into a draft via the
-	// composer's "/" slash-trigger. `bodyHtml` is stored post-sanitize (same
-	// allowlist as signatures) and may carry plain-text {{firstName}}-style
-	// placeholder tokens resolved at insert time from the draft's recipient.
+	// Saved replies (the table keeps its first name, "snippets"). Inserted into
+	// a draft or a Team inbox reply from the composer's `;` trigger or its
+	// picker. `bodyHtml` is stored post-sanitize (same allowlist as signatures)
+	// and may carry plain-text {{contact.firstName}}-style tokens and free
+	// `[[...]]` gaps, both resolved at insert time (mail/savedReplies.ts).
+	//
+	// `scope` decides who sees a row: 'personal' ⇒ only `ownerUserId`;
+	// 'shared' ⇒ every member of `organizationId`, or only the composers of
+	// the team inboxes in `mailboxIds` when that is set; editable by admins.
+	// Unset ⇒ a row written before saved replies, scoped to its `mailboxId`;
+	// migration 0060 gives each one a scope. Member erasure deletes a
+	// member's personal rows and clears `authorUserId` on shared ones.
 
 	mailSnippets: defineTable({
-		mailboxId: v.id('mailboxes'),
+		// Set on rows written before saved replies (and kept on them); unset on
+		// rows that belong to a person or the organization instead.
+		mailboxId: v.optional(v.id('mailboxes')),
+		organizationId: v.optional(v.string()),
+		scope: v.optional(v.union(v.literal('personal'), v.literal('shared'))),
+		ownerUserId: v.optional(v.string()),
+		authorUserId: v.optional(v.string()),
+		mailboxIds: v.optional(v.array(v.id('mailboxes'))),
+		// AGGREGATED — bumped by mail/savedReplies.ts:recordUse on every insert.
+		useCount: v.optional(v.number()),
+		lastUsedAt: v.optional(v.number()),
 		name: v.string(),
 		shortcut: v.string(),
 		bodyHtml: v.string(),
@@ -328,7 +346,11 @@ export const mailCompositionTables = {
 		variables: v.optional(v.array(mailSnippetVariableValidator)),
 		createdAt: v.number(),
 		updatedAt: v.number(),
-	}).index('by_mailbox', ['mailboxId']),
+	})
+		.index('by_mailbox', ['mailboxId'])
+		.index('by_owner', ['ownerUserId'])
+		.index('by_author', ['authorUserId'])
+		.index('by_organization_and_scope', ['organizationId', 'scope']),
 
 	// Per-user Postbox behavior preferences (one row per BetterAuth user,
 	// spanning all of the user's mailboxes). Currently: what the reader does

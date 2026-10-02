@@ -65,12 +65,12 @@ export interface UseBlockManagementReturn {
 }
 
 /** The content a slash-menu heading command inserts, at any placement. */
-export function headingContent(level: 1 | 2 | 3): TextBlockContent {
+export function headingContent(level: 1 | 2 | 3, theme?: EmailTheme): TextBlockContent {
 	return {
 		html: level === 1 ? 'Heading 1' : level === 2 ? 'Heading 2' : 'Heading 3',
 		blockType: `h${level}`,
 		fontSize: level === 1 ? 32 : level === 2 ? 24 : 20,
-		textColor: '#374151',
+		textColor: theme?.blockDefaults?.text?.textColor ?? '#374151',
 		lineHeight: 1.3,
 		...defaultPadding,
 		...defaultMargin,
@@ -121,7 +121,7 @@ export function useBlockManagement(options: UseBlockManagementOptions): UseBlock
 		const newBlock: EditorBlock = {
 			id: generateId(),
 			type: 'text',
-			content: headingContent(level),
+			content: headingContent(level, theme.value),
 		};
 		insertBlock(newBlock, afterBlockId);
 		return newBlock;

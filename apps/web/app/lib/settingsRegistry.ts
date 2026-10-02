@@ -192,9 +192,10 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 	}),
 	entry('snippets', {
 		path: `${SETTINGS_ROOT}/snippets`,
-		icon: 'lucide:text-quote',
+		icon: 'lucide:message-square-quote',
 		section: 'mail',
-		gate: hasMail,
+		// Saved replies serve the Team inbox's composer too.
+		gate: any(hasMail, flag('inbox')),
 	}),
 	entry('writingVoice', {
 		path: `${SETTINGS_ROOT}/writing-voice`,

@@ -56,7 +56,12 @@ const mailSnippetVariableSourceValidator = v.union(
 	v.literal('senderName'),
 	v.literal('senderEmail'),
 	v.literal('date'),
-	v.literal('prompt')
+	v.literal('prompt'),
+	// Saved replies (the `{{contact.lastName}}`-style variables).
+	v.literal('recipientLastName'),
+	v.literal('recipientEmail'),
+	v.literal('senderFirstName'),
+	v.literal('threadSubject')
 );
 export type MailSnippetVariableSource = Infer<typeof mailSnippetVariableSourceValidator>;
 

@@ -146,6 +146,22 @@ describe('useThreadDetail', () => {
 			expect(approveRun()).not.toHaveBeenCalled();
 			expect(result).toEqual({ ok: true, result: { success: true } });
 		});
+
+		// A saved reply's gaps hold Send after a reload only if the guard is
+		// stored with the text, and the server refuses the approve from it.
+		it('stores the saved-reply gap guard with the text, on every path', async () => {
+			const detail = useThreadDetail(threadId);
+			const reply = { body: 'Order [[order number]]', subject: '', gapGuarded: true };
+
+			await detail.saveDraftOnly(messageId, reply);
+			await detail.saveEditedDraft(messageId, reply);
+			await detail.sendFollowUp(reply);
+
+			const guarded = expect.objectContaining({ isGapGuarded: true });
+			expect(saveRevisionRun()).toHaveBeenCalledWith(guarded);
+			expect(editRun()).toHaveBeenCalledWith(guarded);
+			expect(sendFollowUpRun()).toHaveBeenCalledWith(guarded);
+		});
 	});
 
 	// #807 — an answered thread takes a follow-up: its own send, keyed to the

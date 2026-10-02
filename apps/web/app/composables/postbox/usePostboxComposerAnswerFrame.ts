@@ -20,7 +20,14 @@
  * In the popup frame all three are simply "open", which is today's composer.
  */
 import { computed, nextTick, onMounted, ref, watch, type Ref } from 'vue';
+import type { EditorSnippet } from './usePostboxSnippetPicker';
 import { bodyHasQuote } from '~/utils/answerMode';
+
+/** What the composer calls on its simple editor. */
+export interface BasicEditorHandle {
+	focus: () => void;
+	insertSnippet: (snippet: EditorSnippet) => void;
+}
 
 export function usePostboxComposerAnswerFrame(opts: {
 	/** `frame === 'answer'`; fixed for the life of the composer. */
@@ -44,9 +51,10 @@ export function usePostboxComposerAnswerFrame(opts: {
 
 	// Template refs the composer binds: the envelope (its reply-all switch) and
 	// the body editor, focused on mount in Answer mode, which only ever opens on
-	// an explicit reply, so this never steals focus on load.
+	// an explicit reply, so this never steals focus on load (and handed a saved
+	// reply picked outside its text).
 	const envelopeRef = ref<{ switchToReplyAll: () => void } | null>(null);
-	const basicEditor = ref<{ focus: () => void } | null>(null);
+	const basicEditor = ref<BasicEditorHandle | null>(null);
 	function focusBody() {
 		basicEditor.value?.focus();
 	}

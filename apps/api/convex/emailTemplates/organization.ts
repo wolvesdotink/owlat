@@ -7,6 +7,7 @@ import { requireOrgPermission } from '../lib/sessionOrganization';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { countFacet } from '../lib/listing';
 import { emailTemplateListing } from './listing';
+import { brandedNewEmailContent } from '../workspaces/brandKit';
 
 // Count of templates by type (API-key shell) — the descriptor's `byType` facet
 // returns per-type counts plus their `total`.
@@ -43,7 +44,8 @@ export const createFromPreset = authedMutation({
 			type: args.type,
 			subject: args.subject,
 			previewText: args.previewText,
-			content: args.content,
+			// The preset, restyled with the brand kit.
+			content: await brandedNewEmailContent(ctx, args.content),
 			defaultLanguage: args.defaultLanguage,
 			userId,
 		});
