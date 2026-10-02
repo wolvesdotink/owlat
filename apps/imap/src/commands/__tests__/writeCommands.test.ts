@@ -16,6 +16,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { IMAP_WIRE_VERSION } from '@owlat/shared/imapWire';
 import { expungeModule } from '../expunge/index.js';
 import { copyModule } from '../copy/index.js';
 import { storeModule } from '../store/index.js';
@@ -182,6 +183,7 @@ describe('EXPUNGE — descending order + \\Deleted-only + modseq bump (RFC 3501 
 			folderId: 'f1',
 			uidSet: undefined,
 			beforeUid: 151,
+			imapWireVersion: IMAP_WIRE_VERSION,
 		});
 		expect(lines.filter((line) => line.endsWith('EXPUNGE'))).toEqual([
 			'* 250 EXPUNGE',
