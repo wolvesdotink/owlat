@@ -7968,7 +7968,7 @@
 					}
 				},
 				"dangerZone": {
-					"body": "Das Löschen des Workspace entfernt dauerhaft seine Daten: Kontakte, Kampagnen, Vorlagen, Automatisierungen, Postfächer samt Mails, Versanddomains und Auswertungen. Die Teammitglieder behalten ihre Konten und Mitgliedschaften und können sich weiterhin im geleerten Workspace anmelden. Diese Aktion kann nicht rückgängig gemacht werden.",
+					"body": "Das Löschen des Workspace entfernt dauerhaft seine Daten: Kontakte, Kampagnen, Vorlagen, Automatisierungen, Postfächer samt Mails, Versanddomains, Auswertungen, Workspace-Einstellungen und gespeicherte API-Schlüssel, auch die des KI-Anbieters. Die Teammitglieder behalten ihre Konten und Mitgliedschaften und können sich weiterhin im geleerten Workspace anmelden. Diese Aktion kann nicht rückgängig gemacht werden.",
 					"heading": "Gefahrenbereich",
 					"subtitle": "Die Daten dieses Workspace dauerhaft löschen",
 					"title": "Workspace löschen"
@@ -7979,7 +7979,7 @@
 					"subtitle": "Das kann nicht rückgängig gemacht werden",
 					"title": "Workspace löschen",
 					"typeToConfirm": "Gib zur Bestätigung {phrase} ein",
-					"warning": "{label} Dies löscht dauerhaft die Daten in {workspace}: Kontakte, Kampagnen, Vorlagen, Automatisierungen, Postfächer samt Mails, Versanddomains und Auswertungen. Die Teammitglieder behalten ihre Konten und Mitgliedschaften. Du wirst sofort abgemeldet.",
+					"warning": "{label} Dies löscht dauerhaft die Daten in {workspace}: Kontakte, Kampagnen, Vorlagen, Automatisierungen, Postfächer samt Mails, Versanddomains, Auswertungen, Workspace-Einstellungen und gespeicherte API-Schlüssel, auch die des KI-Anbieters. Die Teammitglieder behalten ihre Konten und Mitgliedschaften. Du wirst sofort abgemeldet.",
 					"warningLabel": "Warnung:"
 				},
 				"inboxes": {

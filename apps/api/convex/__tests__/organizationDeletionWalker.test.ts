@@ -849,6 +849,20 @@ describe('Organization deletion walker — dispatch loop', () => {
 				createdAt: Date.now(),
 			});
 			await ctx.db.insert('emailTemplates', createTestEmailTemplate());
+			// The AI provider choice with an encrypted key envelope (#1101).
+			await ctx.db.insert('aiProviderConfig', {
+				languageProviderKind: 'anthropic',
+				modelFast: 'fast-model',
+				modelCapable: 'capable-model',
+				secretCiphertext: 'ct',
+				secretIv: 'iv',
+				secretAuthTag: 'tag',
+				secretEnvelopeVersion: 1,
+				keyPreview: 'sk-…a1b2',
+				embeddingProviderKind: 'local',
+				embeddingModelVersion: 1,
+				updatedAt: Date.now(),
+			});
 			await ctx.db.insert('instanceSettings', {
 				createdAt: Date.now(),
 				updatedAt: Date.now(),
@@ -863,6 +877,7 @@ describe('Organization deletion walker — dispatch loop', () => {
 		await drainAndCancel(t);
 
 		await t.run(async (ctx) => {
+			expect(await ctx.db.query('aiProviderConfig').collect()).toHaveLength(0);
 			expect(await ctx.db.query('apiKeys').collect()).toHaveLength(0);
 			expect(await ctx.db.query('segments').collect()).toHaveLength(0);
 			expect(await ctx.db.query('topics').collect()).toHaveLength(0);

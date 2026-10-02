@@ -198,6 +198,7 @@ export type OrganizationDeletionTable =
 	| 'aiConversations'
 	| 'aiDraftStreams'
 	| 'answerAskSessions'
+	| 'aiProviderConfig'
 	| 'coalesceBatches'
 	| 'visualizations'
 	| 'dashboardLayouts'
@@ -405,6 +406,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('aiConversations'),
 	v.literal('aiDraftStreams'),
 	v.literal('answerAskSessions'),
+	v.literal('aiProviderConfig'),
 	v.literal('coalesceBatches'),
 	v.literal('visualizations'),
 	v.literal('dashboardLayouts'),
