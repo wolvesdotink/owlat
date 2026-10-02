@@ -64,12 +64,20 @@ async function admit(
 	return limit.ok ? who : null;
 }
 
-/** What an admin typed, as an absolute http(s) URL (`example.com` means https). */
+/**
+ * What an admin typed, as an absolute http(s) URL (`example.com` means https).
+ * Only `scheme://` counts as a scheme, so `example.com:8443` is a host and port.
+ */
 function normalizeSiteUrl(input: string): string | null {
 	const trimmed = input.trim();
 	if (!trimmed || trimmed.length > MAX_URL_LENGTH) return null;
-	const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(trimmed) ? trimmed : `https://${trimmed}`;
+	const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 	return resolveHttpUrl(withScheme, withScheme);
+}
+
+/** Drop a body nobody reads; a stream that already failed has nothing to cancel. */
+async function discard(response: Response): Promise<void> {
+	await response.body?.cancel().catch(() => undefined);
 }
 
 /** GET `url` through the SSRF guard, following a few redirects (each re-checked). */
@@ -88,17 +96,33 @@ async function fetchFollowing(
 		return { ok: false, error: error instanceof SsrfBlockedError ? 'blocked' : 'unreachable' };
 	}
 	if (!response.ok) {
-		await response.body?.cancel();
+		await discard(response);
 		return { ok: false, error: 'unreachable' };
 	}
 	// The URL the body came from, after redirects, resolves the page's links.
 	return { ok: true, value: { response, url: response.url || url } };
 }
 
-async function readText(response: Response, maxBytes: number): Promise<string> {
-	const prefix = await readStreamPrefix(response.body, maxBytes, { timeoutMs: FETCH_TIMEOUT_MS });
+/**
+ * The body's first `maxBytes`, or `null` when the body fails mid-read (the
+ * fetch's timeout fires, the connection drops).
+ */
+async function readBody(
+	response: Response,
+	maxBytes: number
+): Promise<{ bytes: Uint8Array<ArrayBuffer>; truncated: boolean } | null> {
+	try {
+		return await readStreamPrefix(response.body, maxBytes, { timeoutMs: FETCH_TIMEOUT_MS });
+	} catch {
+		return null;
+	}
+}
+
+/** The body as text, or `null` when it could not be read. */
+async function readText(response: Response, maxBytes: number): Promise<string | null> {
+	const prefix = await readBody(response, maxBytes);
 	// A page cut at the cap still carries its <head>, which is what matters.
-	return prefix ? new TextDecoder('utf-8').decode(prefix.bytes) : '';
+	return prefix ? new TextDecoder('utf-8').decode(prefix.bytes) : null;
 }
 
 /**
@@ -117,10 +141,11 @@ export const importFromWebsite = authedAction({
 		if (!page.ok) return page;
 		const type = page.value.response.headers.get('content-type') ?? '';
 		if (!/text\/html|application\/xhtml/i.test(type)) {
-			await page.value.response.body?.cancel();
+			await discard(page.value.response);
 			return { ok: false, error: 'not_html' };
 		}
 		const html = await readText(page.value.response, MAX_PAGE_BYTES);
+		if (html === null) return { ok: false, error: 'unreachable' };
 		const signals = extractWebsiteSignals(html, page.value.url);
 
 		// Linked stylesheets carry most of a site's colours. One that fails is
@@ -128,7 +153,7 @@ export const importFromWebsite = authedAction({
 		const sheets = await Promise.all(
 			signals.stylesheetUrls.map(async (sheetUrl) => {
 				const sheet = await fetchFollowing(sheetUrl, 'text/css');
-				return sheet.ok ? await readText(sheet.value.response, MAX_STYLESHEET_BYTES) : '';
+				return sheet.ok ? ((await readText(sheet.value.response, MAX_STYLESHEET_BYTES)) ?? '') : '';
 			})
 		);
 		const colors = countCssColors([signals.inlineCss, ...sheets].join('\n'));
@@ -171,13 +196,12 @@ export const importLogo = authedAction({
 			.trim()
 			.toLowerCase();
 		if (!isWorkspaceLogoMimeType(mimeType)) {
-			await fetched.value.response.body?.cancel();
+			await discard(fetched.value.response);
 			return { ok: false, error: 'not_image' };
 		}
-		const prefix = await readStreamPrefix(fetched.value.response.body, MAX_IMAGE_BYTES, {
-			timeoutMs: FETCH_TIMEOUT_MS,
-		});
-		if (!prefix || prefix.truncated) return { ok: false, error: 'too_large' };
+		const prefix = await readBody(fetched.value.response, MAX_IMAGE_BYTES);
+		if (!prefix) return { ok: false, error: 'unreachable' };
+		if (prefix.truncated) return { ok: false, error: 'too_large' };
 		if (workspaceLogoBytesProblem(mimeType, prefix.bytes) !== null) {
 			return { ok: false, error: 'not_image' };
 		}
