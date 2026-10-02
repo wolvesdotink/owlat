@@ -213,7 +213,14 @@ function declaredLength(response: Response): number | undefined {
 async function probeImage(url: string, stop: AbortSignal): Promise<ImageProbe> {
 	const result = await headThenGet(url, stop);
 	if ('failure' in result) return { url, status: result.failure };
-	const { response } = result;
+	let { response } = result;
+	if (result.method === 'HEAD' && declaredLength(response) === undefined) {
+		// A HEAD answer has no body to count: fetch the image itself, and judge it
+		// by that answer, since it is the one being measured.
+		const get = await follow(url, 'GET', stop);
+		if (!(get instanceof Response)) return { url, status: get.failure };
+		response = get;
+	}
 	const status = statusOf(response.status);
 	const answered = { url, status, httpStatus: response.status };
 	const declared = status === 'ok' ? declaredLength(response) : undefined;
@@ -221,10 +228,8 @@ async function probeImage(url: string, stop: AbortSignal): Promise<ImageProbe> {
 		await response.body?.cancel().catch(() => undefined);
 		return declared === undefined ? answered : { ...answered, bytes: declared };
 	}
-	// No declared length: count the image itself (a HEAD answer has no body).
-	const body = result.method === 'HEAD' ? await follow(url, 'GET', stop) : response;
-	if (!(body instanceof Response)) return answered;
-	const measured = await measureBody(body.body);
+	// No declared length: count the image itself.
+	const measured = await measureBody(response.body);
 	// Cut off mid-body by the hard stop: the size is unknown, not small.
 	if (stop.aborted) return { url, status: 'skipped' };
 	return {

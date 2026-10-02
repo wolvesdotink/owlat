@@ -208,6 +208,32 @@ describe('image probes', () => {
 		expect(images[1]).toMatchObject({ bytes: IMAGE_MEASURE_CAP_BYTES, bytesAtLeast: true });
 	});
 
+	it('judges the image by the GET it measured when HEAD said 200 without a length', async () => {
+		serve((url, method) => {
+			if (method === 'HEAD') return new Response(null, { status: 200 });
+			if (url.includes('down')) throw new TypeError('connection reset');
+			if (url.includes('sized')) {
+				return new Response(null, { status: 200, headers: { 'content-length': '5000' } });
+			}
+			return new Response('<h1>Not found</h1>', { status: 404 });
+		});
+
+		const { images } = await probeResources(
+			[],
+			[
+				'https://cdn.example/missing.png',
+				'https://cdn.example/down.png',
+				'https://cdn.example/sized.png',
+			]
+		);
+
+		expect(images).toEqual([
+			{ url: 'https://cdn.example/missing.png', status: 'broken', httpStatus: 404 },
+			{ url: 'https://cdn.example/down.png', status: 'unreachable' },
+			{ url: 'https://cdn.example/sized.png', status: 'ok', httpStatus: 200, bytes: 5000 },
+		]);
+	});
+
 	it('reports a missing image without measuring it', async () => {
 		serve(() => new Response(null, { status: 404 }));
 
