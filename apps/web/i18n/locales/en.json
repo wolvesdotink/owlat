@@ -3383,6 +3383,10 @@
 				"alsoInPostbox": "Also in {mailbox}",
 				"alreadyAnswered": "already answered there",
 				"open": "Open in Postbox"
+			},
+			"readFailureNotice": {
+				"inboxList": "your inbox list",
+				"message": "Couldn't load {names}, so this list is incomplete."
 			}
 		},
 		"keyboardShortcutsHelp": {
@@ -4756,7 +4760,6 @@
 				"inviteHint": "Invite them by email. They'll get an invitation naming this inbox, and it'll be in their sidebar the moment they accept.",
 				"inviteOperation": "Invite to team inbox",
 				"inviteSent": "Invitation sent to {email}. They'll land in this inbox once they accept.",
-				"loadError": "Couldn't load the member list. Please try again.",
 				"makeOwner": "Make owner",
 				"makeOwnerTitle": "Make this member the owner",
 				"member": "Member",

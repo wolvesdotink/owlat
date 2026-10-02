@@ -201,9 +201,10 @@ const { backToList, onTodayReaderClosed } = usePostboxLayoutNav({
 	activeMessageId: computed(() => props.activeMessageId),
 });
 
-// The feed behind whichever renderer is active (conversations / categories /
-// bundles). Exactly one subscribes; the rest skip.
+// The feed behind whichever renderer is active, and the read its error state shows.
 const {
+	listError,
+	retryList,
 	grouped,
 	conversationsEnabled,
 	categoriesEnabled,
@@ -218,6 +219,8 @@ const {
 	folderRole: folderRef,
 	renderer: activeListRenderer,
 	listMessages,
+	flatRead: feed,
+	showingCached,
 });
 
 // The reader's message: the list row, else its row from the thread the page
@@ -359,11 +362,7 @@ const advanceIds = computed(() =>
 										class="h-full"
 									>
 										<!-- A failed read is not an empty folder (#721); cached rows win. -->
-										<UiQueryBoundary
-											v-if="feed.error.value && !showingCached"
-											:error="feed.error.value"
-											@retry="feed.refetch"
-										/>
+										<UiQueryBoundary v-if="listError" :error="listError" @retry="retryList" />
 										<PostboxThreadCategoryList
 											v-else-if="categoriesEnabled"
 											:sections="categories.sections.value"

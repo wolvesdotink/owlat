@@ -1,7 +1,6 @@
 /**
- * The inbox list's read error only counts while the list is read: a skipped
- * query keeps its last error, which would otherwise outlive personal mail
- * being switched off (#721).
+ * The inbox list hands its read error through, so a failed list is not an
+ * empty one (#721). A skipped query reports no error of its own (#1099).
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
@@ -28,13 +27,7 @@ beforeEach(() => {
 });
 
 describe('useInboxes', () => {
-	it('reports the failed read while personal mail is on', () => {
+	it('hands the failed read through', () => {
 		expect(useInboxes().error.value).toBe(failure);
-	});
-
-	it('masks the retained error once personal mail is off', () => {
-		const inboxes = useInboxes();
-		postbox.value = false;
-		expect(inboxes.error.value).toBeNull();
 	});
 });

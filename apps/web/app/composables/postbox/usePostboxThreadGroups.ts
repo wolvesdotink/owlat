@@ -18,7 +18,7 @@ export function usePostboxThreadGroups(args: {
 }) {
 	const { limit, loadMore, atMax } = useGrowableLimit(args.limitKey ?? args.folderRole);
 
-	const { data, isLoading, isRefetching } = useConvexQuery(
+	const { data, isLoading, isRefetching, error, refetch } = useConvexQuery(
 		api.mail.mailbox.queries.listThreads,
 		() =>
 			args.enabled.value && args.mailboxId.value
@@ -35,5 +35,5 @@ export function usePostboxThreadGroups(args: {
 	const threads = computed(() => data.value?.threads ?? []);
 	const hasMore = computed(() => (data.value?.hasMore ?? false) && !atMax.value);
 
-	return { threads, isLoading, isRefetching, hasMore, loadMore };
+	return { threads, isLoading, isRefetching, error, refetch, hasMore, loadMore };
 }

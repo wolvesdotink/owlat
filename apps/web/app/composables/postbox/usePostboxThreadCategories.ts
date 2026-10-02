@@ -58,7 +58,7 @@ export function usePostboxThreadCategories(args: {
 	const { t } = useI18n();
 	// The same listThreads feed as the conversation view, on its own growable
 	// limit so paging one view does not grow the other.
-	const { threads, isLoading, hasMore, loadMore } = usePostboxThreadGroups({
+	const { threads, isLoading, error, refetch, hasMore, loadMore } = usePostboxThreadGroups({
 		...args,
 		limitKey: computed(() => `category:${args.folderRole.value}`),
 	});
@@ -85,5 +85,15 @@ export function usePostboxThreadCategories(args: {
 		await recategorizeOp.run({ threadId, label });
 	}
 
-	return { sections, isLoading, hasMore, loadMore, collapsed, toggle, recategorize };
+	return {
+		sections,
+		isLoading,
+		error,
+		refetch,
+		hasMore,
+		loadMore,
+		collapsed,
+		toggle,
+		recategorize,
+	};
 }

@@ -3383,6 +3383,10 @@
 				"alsoInPostbox": "Auch in {mailbox}",
 				"alreadyAnswered": "dort bereits beantwortet",
 				"open": "In Postbox öffnen"
+			},
+			"readFailureNotice": {
+				"inboxList": "deine Postfachliste",
+				"message": "Nicht geladen: {names}. Diese Liste ist deshalb unvollständig."
 			}
 		},
 		"keyboardShortcutsHelp": {
@@ -4756,7 +4760,6 @@
 				"inviteHint": "Lade die Person per E-Mail ein. Sie erhält eine Einladung, die dieses Postfach nennt, und findet es in ihrer Seitenleiste, sobald sie annimmt.",
 				"inviteOperation": "Zum Team-Postfach einladen",
 				"inviteSent": "Einladung an {email} gesendet. Sobald sie angenommen wird, landet die Person in diesem Postfach.",
-				"loadError": "Die Mitgliederliste konnte nicht geladen werden. Bitte versuche es erneut.",
 				"makeOwner": "Zum Inhaber machen",
 				"makeOwnerTitle": "Dieses Mitglied zum Inhaber machen",
 				"member": "Mitglied",
