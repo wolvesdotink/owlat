@@ -164,7 +164,7 @@ describe('importFromWebsite', () => {
 				await t.action(api.workspaces.brandKitImport.importFromWebsite, { url: 'javascript:x' })
 			);
 		}
-		expect(outcomes.at(-1)).toEqual({ ok: false, error: 'rate_limited' });
+		expect(outcomes[outcomes.length - 1]).toEqual({ ok: false, error: 'rate_limited' });
 		expect(net.fetchGuarded).not.toHaveBeenCalled();
 	});
 });
