@@ -15,6 +15,7 @@
  */
 
 import { sleep } from '@owlat/shared';
+import { IMAP_WIRE_VERSION } from '@owlat/shared/imapWire';
 import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
 import type { CommandRequirement, ConnectionState, StartArgs } from '../types.js';
@@ -129,6 +130,9 @@ export async function authenticateAppPassword(
 				appPasswordId: result.appPasswordId,
 				ip: deps.remoteIp,
 				...(state.clientId ? { userAgent: state.clientId } : {}),
+				// Tells the backend this login did not come through an IMAP server
+				// too old to report its version (ADR-0063).
+				imapWireVersion: IMAP_WIRE_VERSION,
 			})
 			.catch(() => undefined);
 

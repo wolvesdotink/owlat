@@ -137,6 +137,14 @@ export interface ExpungeResult {
 	readonly nextSequenceNumber?: number;
 }
 
+/** The wire-version handshake (`mail/imap/serverRegistry:report`, ADR-0063). */
+export interface ImapServerReportResult {
+	readonly backendWireVersion: number;
+	readonly minSupportedWireVersion: number;
+	readonly compatible: boolean;
+	readonly reason?: string;
+}
+
 /** APPEND: what `[APPENDUID …]` reports. */
 export interface AppendResult {
 	readonly messageId: string;
@@ -207,9 +215,20 @@ export const fn = {
 	>('mail/appPasswords:verify'),
 	touchAppPassword: makeFunctionReference<
 		'mutation',
-		{ appPasswordId: string; ip?: string; userAgent?: string },
+		{ appPasswordId: string; ip?: string; userAgent?: string; imapWireVersion?: number },
 		null
 	>('mail/appPasswords:touch'),
+	reportServer: makeFunctionReference<
+		'mutation',
+		{
+			instanceId: string;
+			hostLabel: string;
+			owlatVersion: string;
+			wireVersion: number;
+			startedAt: number;
+		},
+		ImapServerReportResult
+	>('mail/imap/serverRegistry:report'),
 	listFolders: makeFunctionReference<'query', { mailboxId: string }, FolderRow[]>(
 		'mail/imap/session:listFolders'
 	),
