@@ -817,6 +817,64 @@
 				"none": "{open} opened and {click} clicked.",
 				"onPar": "{open} opened and {click} clicked — in line with your average."
 			},
+			"sendTimeDistribution": {
+				"chartLabel": "Predicted sends per hour",
+				"noHistory": "No engagement history yet. Send times are learned from opens and clicks, so this gets better with every campaign.",
+				"noRecipients": "This campaign has no recipients yet.",
+				"pickStart": "Pick a date and time to see when your contacts will get the email.",
+				"sample": "Based on the first {count} recipients",
+				"sends": "{count} send | {count} sends",
+				"sources": {
+					"contact": "{share} at their own usual hour",
+					"holdout": "{share} as the comparison group at the start time",
+					"organization": "{share} at your audience's busiest hour ({time})",
+					"start": "{share} at the start time in their own time zone (not enough history yet)"
+				},
+				"title": "Predicted sends per hour"
+			},
+			"sendTimeReport": {
+				"clickRate": "Click rate",
+				"difference": "Difference",
+				"holdoutColumn": "Start time ({count})",
+				"method": "Rates are per delivered email. A difference only counts when a two-proportion test puts it beyond chance at the 95% level.",
+				"metric": "Metric",
+				"noHoldout": "No comparison group was kept, so there is nothing to measure the send times against.",
+				"openRate": "Open rate",
+				"optimizedColumn": "Optimized ({count})",
+				"points": "{change} pts",
+				"stillSending": "Still sending: these numbers will change.",
+				"summary": "Each contact got the email at their usual hour, within {hours} hours of the start.",
+				"summaryWithHoldout": "Each contact got the email at their usual hour, within {hours} hours of the start. {percent}% got it at the start time for comparison.",
+				"title": "Send-time optimization",
+				"tooEarly": "Too early to compare. Each group needs {min} delivered emails; so far {optimized} optimized and {holdout} at the start time.",
+				"verdict": {
+					"higher": "Higher, beyond chance",
+					"lower": "Lower, beyond chance",
+					"no_difference": "No clear difference"
+				}
+			},
+			"sendTimingOptions": {
+				"fixed": {
+					"hint": "Everyone gets the email at {time} in your time zone.",
+					"title": "Same moment for everyone"
+				},
+				"holdoutHint": "A comparison group gets the email at the start time, so the report can show whether the optimized send times made a difference.",
+				"holdoutLabel": "Comparison group",
+				"holdoutNone": "None",
+				"holdoutOption": "{percent}% at the start time",
+				"legend": "Delivery time",
+				"local": {
+					"hint": "Each contact gets the email at {time} in their own time zone. Contacts without a time zone get it at your selected time.",
+					"title": "Recipient's local time"
+				},
+				"optimized": {
+					"abTest": "Not available for A/B tests: spreading the test group over the day would skew the result.",
+					"hint": "Each contact gets the email at the hour they usually open or click, within the window below. Contacts without enough history get the hour your audience reads most, or your start time in their own time zone.",
+					"title": "Optimized per contact"
+				},
+				"windowLabel": "Send window",
+				"windowOption": "Within {hours} hours"
+			},
 			"steps": {
 				"contentStep": {
 					"choiceLabel": "Email template choice",
@@ -868,15 +926,14 @@
 					"previewFrameTitle": "Email preview",
 					"previewHeading": "Your campaign will be sent:",
 					"previewHeadingAt": "Your campaign will be sent at:",
+					"previewHeadingOptimized": "Your campaign starts sending:",
+					"previewOptimized": "Each contact gets it at their usual hour within {hours} hours.",
 					"previewPerTimezone": "{time} in each recipient's timezone",
-					"recipientTimezone": "Send at recipient's local time",
-					"recipientTimezoneHint": "Emails will be sent at {time} in each contact's timezone. Contacts without a timezone will receive the email at your selected time.",
 					"replyTo": "Reply-to: {email}",
 					"scheduleCampaign": "Schedule campaign",
 					"scheduleLater": "Schedule for later",
 					"scheduleLaterDescription": "Choose a specific date and time to send your campaign.",
 					"scheduleOperation": "Schedule campaign",
-					"scheduledTimeFallback": "the scheduled time",
 					"scheduling": "Scheduling...",
 					"sendCampaign": "Send campaign",
 					"sendConfirm": {
@@ -903,6 +960,7 @@
 					"toast": {
 						"scheduled": "Campaign scheduled successfully!",
 						"scheduledPerTimezone": "Campaign scheduled for {time} in each recipient's timezone!",
+						"scheduledOptimized": "Campaign scheduled. Each contact gets it at their usual hour.",
 						"sending": "Campaign is now sending!"
 					},
 					"whenToSend": "When to send",
@@ -9066,15 +9124,14 @@
 					"schedule": {
 						"date": "Date",
 						"inRecipientTimezone": "{time} in each recipient's timezone",
-						"recipientTimezone": "Send at recipient's local time",
-						"recipientTimezoneHint": "Emails will be sent at {time} in each contact's timezone. Contacts without a timezone will receive the email at your selected time.",
+						"optimizedWithin": "Each contact gets it at their usual hour within {hours} hours.",
 						"retitle": "Reschedule campaign",
-						"theScheduledTime": "the scheduled time",
 						"time": "Time",
 						"timezoneExamples": "For example: {time} ET, {time} PT, {time} GMT, etc.",
 						"title": "Schedule campaign",
 						"willBeSent": "Campaign will be sent:",
-						"willBeSentAt": "Campaign will be sent at:"
+						"willBeSentAt": "Campaign will be sent at:",
+						"willStartAt": "Campaign starts sending:"
 					},
 					"scheduledNotice": {
 						"cancelCampaign": "Cancel campaign",
@@ -14865,6 +14922,7 @@
 				"saved": "Campaign saved successfully!",
 				"scheduled": "Campaign scheduled successfully!",
 				"scheduledRecipientTimezone": "Campaign scheduled for {time} in each recipient's timezone!",
+				"scheduledOptimized": "Campaign scheduled. Each contact gets it at their usual hour.",
 				"unscheduled": "Campaign unscheduled. You can now edit it."
 			}
 		},

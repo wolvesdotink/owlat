@@ -16,6 +16,8 @@ import { isMarketingOnlyBlockReason } from '../suppressionMirror';
 import { scheduleSuppressionMirror } from '../suppressionMirrorScheduler';
 import type { TransportOutcomeEvent } from '../../analytics/transportOutcomes';
 import type { SendRef } from './types';
+import type { SendTimeGroup } from '../../lib/validators/sendTime';
+import { sendTimeStatDelta, type SendTimeEngagementEffect } from './sendTimeEffects';
 
 // ─── Effects (a discriminated list returned by reducers) ────────────────────
 
@@ -71,11 +73,15 @@ export type Effect =
 			kind: 'campaign_stats_delivered';
 			campaignId: Id<'campaigns'>;
 			at: number;
+			// The send-time optimization arm, which gets its own counter too.
+			sendTimeGroup?: SendTimeGroup;
 	  }
 	| {
 			kind: 'campaign_stats_opened';
 			campaignId: Id<'campaigns'>;
 			at: number;
+			// The send-time optimization arm, which gets its own counter too.
+			sendTimeGroup?: SendTimeGroup;
 	  }
 	| {
 			kind: 'campaign_stats_automated_opened';
@@ -89,6 +95,8 @@ export type Effect =
 			kind: 'campaign_stats_clicked';
 			campaignId: Id<'campaigns'>;
 			at: number;
+			// The send-time optimization arm, which gets its own counter too.
+			sendTimeGroup?: SendTimeGroup;
 	  }
 	| {
 			kind: 'content_scan_complaint';
@@ -122,7 +130,8 @@ export type Effect =
 	| {
 			kind: 'customer_webhook';
 			spec: FanoutSpec;
-	  };
+	  }
+	| SendTimeEngagementEffect;
 
 /**
  * The ONE constructor for the per-cell outcome effect. Every site that records
@@ -273,11 +282,17 @@ export async function applyEffects(
 				break;
 			}
 			case 'campaign_stats_delivered': {
-				await bumpCampaignStats(ctx, effect.campaignId, { statsDelivered: 1 });
+				await bumpCampaignStats(ctx, effect.campaignId, {
+					statsDelivered: 1,
+					...sendTimeStatDelta(effect.sendTimeGroup, 'delivered'),
+				});
 				break;
 			}
 			case 'campaign_stats_opened': {
-				await bumpCampaignStats(ctx, effect.campaignId, { statsOpened: 1 });
+				await bumpCampaignStats(ctx, effect.campaignId, {
+					statsOpened: 1,
+					...sendTimeStatDelta(effect.sendTimeGroup, 'opened'),
+				});
 				break;
 			}
 			case 'campaign_stats_automated_opened': {
@@ -289,7 +304,10 @@ export async function applyEffects(
 				break;
 			}
 			case 'campaign_stats_clicked': {
-				await bumpCampaignStats(ctx, effect.campaignId, { statsClicked: 1 });
+				await bumpCampaignStats(ctx, effect.campaignId, {
+					statsClicked: 1,
+					...sendTimeStatDelta(effect.sendTimeGroup, 'clicked'),
+				});
 				break;
 			}
 			case 'content_scan_complaint': {
@@ -352,6 +370,16 @@ export async function applyEffects(
 			}
 			case 'customer_webhook': {
 				await scheduleFanout(ctx, effect.spec);
+				break;
+			}
+			case 'send_time_engagement': {
+				// SCHEDULED, like `transport_outcome`: the fold also bumps a shard of
+				// the organization histogram, which every open of a blast writes to.
+				await ctx.scheduler.runAfter(0, internal.analytics.sendTimeProfileSync.recordEngagement, {
+					contactId: effect.contactId,
+					engagement: effect.engagement,
+					at: effect.at,
+				});
 				break;
 			}
 			default: {
