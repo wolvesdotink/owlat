@@ -9,8 +9,9 @@
  *
  * `open` creates the session from the email row, and brings a session with
  * nothing unsaved up to date when the row changed elsewhere (the translations
- * page, an API write). `reset` throws away the shared unsaved changes. The
- * sweep (`sweep.ts`) drops a session an hour after the last editor left.
+ * page, an API write). `reset` throws away the shared unsaved changes. Every
+ * `open` first runs the bounded sweep (`sweep.ts`), which drops a session an
+ * hour after the last editor left.
  *
  * Writes need `templates:manage`, like saving the email. No audit-log entry:
  * the session is a draft; the save that persists it is audited.
@@ -29,6 +30,7 @@ import {
 	type CoeditTarget,
 } from '../lib/validators/coediting';
 import { captureTemplateVersion } from '../emailTemplates/versions';
+import { sweepStaleCoediting } from './sweep';
 import {
 	COEDIT_FIELDS_VERSION,
 	findSession,
@@ -118,6 +120,7 @@ export const open = authedMutation({
 		requirePermission(hasPermission(session.role, 'templates:manage'), EDIT_DENIED);
 		const row = await loadTarget(ctx, args.target);
 		const now = Date.now();
+		await sweepStaleCoediting(ctx, now);
 		const live = await findSession(ctx, args.target);
 		if (!live) {
 			const sessionId = await ctx.db.insert('emailCoeditSessions', {

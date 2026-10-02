@@ -324,16 +324,6 @@ crons.interval(
 	{}
 );
 
-// Email co-editing sweep — expired editor presence, old "your change was
-// replaced" notices, and live editing sessions nobody has had open for an hour
-// (docs/adr/0071-email-coediting.md).
-crons.interval(
-	'sweep email co-editing',
-	{ minutes: 1 },
-	internal.emailCoediting.sweep.internalSweep,
-	{}
-);
-
 // Channel health checks every 5 minutes
 // Monitors SMS, WhatsApp, webhook channel connectivity
 crons.interval(

@@ -14,7 +14,7 @@ import { convexTest, type TestConvex } from 'convex-test';
 import { ConvexError, type Value } from 'convex/values';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
-import { api, internal } from '../_generated/api';
+import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { COEDIT_LEASE_TTL_MS, COEDIT_PRESENCE_WINDOW_MS } from '../emailCoediting/target';
 import { COEDIT_SESSION_IDLE_MS } from '../emailCoediting/sweep';
@@ -460,7 +460,7 @@ describe('presence and leases', () => {
 });
 
 describe('cleanup', () => {
-	it('sweeps expired presence, old notices and idle sessions nobody has open', async () => {
+	it('sweeps expired presence, old notices and idle sessions on the next open', async () => {
 		as('user-a');
 		const t = convexTest(schema, modules);
 		const { target } = await openTemplate(t);
@@ -493,11 +493,38 @@ describe('cleanup', () => {
 			});
 		});
 
-		const swept = await t.mutation(internal.emailCoediting.sweep.internalSweep, {});
-		expect(swept).toEqual({ presence: 1, notices: 1, sessions: 1 });
+		// Opening any editor sweeps first.
+		await openTemplate(t, { name: 'Another' });
+		const left = await t.run(async (ctx) => ({
+			presence: (await ctx.db.query('emailEditorPresence').collect()).map((r) => r.clientId),
+			notices: (await ctx.db.query('emailCoeditNotices').collect()).length,
+		}));
+		expect(left).toEqual({ presence: ['tab-busy'], notices: 0 });
 		expect(await t.query(api.emailCoediting.sessions.get, { target })).toBeNull();
 		// Someone still has the busy email open: its draft stays.
 		expect(await t.query(api.emailCoediting.sessions.get, { target: busy.target })).not.toBeNull();
+	});
+
+	it('reseeds a session dropped for idleness when the email is opened again', async () => {
+		as('user-a');
+		const t = convexTest(schema, modules);
+		const { target } = await openTemplate(t);
+		await t.mutation(api.emailCoediting.sessions.applyOps, {
+			target,
+			clientId: 'tab-1',
+			ops: [update(block('a', 'Abandoned draft'), 1)],
+		});
+		await t.run(async (ctx) => {
+			for (const session of await ctx.db.query('emailCoeditSessions').collect()) {
+				await ctx.db.patch(session._id, {
+					lastActivityAt: Date.now() - COEDIT_SESSION_IDLE_MS - 1,
+				});
+			}
+		});
+		await t.mutation(api.emailCoediting.sessions.open, { target });
+		const session = await t.query(api.emailCoediting.sessions.get, { target });
+		expect(blocksOf(session)[0]).toEqual(['a', 'Alpha']);
+		expect(session?.version).toBe(session?.savedVersion);
 	});
 
 	it("deletes an email's co-editing rows with the email", async () => {

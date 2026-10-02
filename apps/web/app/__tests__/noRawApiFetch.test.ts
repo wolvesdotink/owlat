@@ -28,8 +28,8 @@ const APP_DIR = join(import.meta.dirname, '..');
  * to this origin, it belongs on `apiFetch`.
  */
 const ALLOWED = new Map<string, string>([
+	['composables/emailEditorHandlers.ts', 'upload to a minted Convex storage URL'],
 	['composables/postbox/usePostboxComposeAttachments.ts', 'upload to a minted Convex storage URL'],
-	['composables/useEmailEditorBridge.ts', 'upload to a minted Convex storage URL'],
 	['utils/storageUpload.ts', 'upload to a minted Convex storage URL'],
 	['pages/preferences.vue', 'token-authed POST to the Convex site URL (/prefs/update)'],
 	['pages/unsubscribe.vue', 'token-authed POST to the Convex site URL (/unsub)'],

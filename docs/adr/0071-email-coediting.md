@@ -90,9 +90,11 @@ session (it ended) the payload is the draft, as before.
 ### 5. Lifetime
 
 Presence lives for its 35-second window, notices for an hour, and a session
-is dropped an hour after the last person left (`emailCoediting/sweep.ts`,
-every minute). Unsaved shared changes therefore survive a reload or a short
-absence, but do not linger. The unsaved-changes prompt only shows when the
+is dropped an hour after the last person left. The bounded sweep
+(`emailCoediting/sweep.ts`) runs at the start of every `open` rather than on
+a cron: an editor can then never join a session that should already have
+been dropped, and `crons.ts` stays as it is. Unsaved shared changes survive a
+reload or a short absence, but do not linger. The unsaved-changes prompt only shows when the
 leaving person is the last one in the editor; "discard" then resets the
 session. If a tab returns to a session that was swept while it held unsaved
 work, it pushes its copy into the new session instead of dropping it.
