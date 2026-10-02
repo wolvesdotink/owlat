@@ -1,10 +1,12 @@
 import { api } from '@owlat/api';
 import type { FunctionReturnType } from 'convex/server';
 import {
+	DEFAULT_INBOX_FILTER,
 	DEFAULT_INBOX_SORT,
 	inboxAssigneeArg,
 	inboxAssigneeToQuery,
 	inboxFilterToQuery,
+	isInboxSlaFilter,
 	legacyInboxSort,
 	nextInboxSort,
 	parseInboxAssignee,
@@ -273,7 +275,18 @@ export function useInbox(gate?: Ref<boolean>) {
 		},
 		{ keepPreviousData: true }
 	);
-	watch(slaData, (data) => (slaSummary.value = data ?? null), { immediate: true });
+	watch(
+		slaData,
+		(data) => {
+			slaSummary.value = data ?? null;
+			// Targets off: the Overdue / Due soon pills are gone, so a view still on
+			// one (an old link, a breach notice) returns to the default tab.
+			if (data && !data.isEnabled && isInboxSlaFilter(filter.value)) {
+				filter.value = DEFAULT_INBOX_FILTER;
+			}
+		},
+		{ immediate: true }
+	);
 
 	// ── Actions ──
 	const loadMoreThreads = () => {

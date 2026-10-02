@@ -293,4 +293,19 @@ describe('useInbox pagination', () => {
 		expect(isSlaEnabled.value).toBe(true);
 		expect(sort.value).toBe('due');
 	});
+
+	it('leaves an Overdue view for the default tab once targets turn out to be off', async () => {
+		vi.stubGlobal('useRoute', () => ({ query: { filter: 'sla-overdue' } }));
+		const { filter } = useInbox();
+		expect(filter.value).toBe('sla-overdue');
+		const sla = created[4]!;
+
+		sla.data.value = { isEnabled: true, overdue: 1, dueSoon: 0, cap: 100 };
+		await nextTick();
+		expect(filter.value).toBe('sla-overdue');
+
+		sla.data.value = { isEnabled: false, overdue: 0, dueSoon: 0, cap: 100 };
+		await nextTick();
+		expect(filter.value).toBe('open');
+	});
 });
