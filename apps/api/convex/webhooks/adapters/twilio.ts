@@ -62,6 +62,9 @@ const TWIML_SUCCESS_BODY = '<?xml version="1.0" encoding="UTF-8"?><Response></Re
 export const twilioAdapter: InboundAdapter = {
 	source: 'twilio',
 
+	missingSignatureHeaders: (request) =>
+		request.headers.get('x-twilio-signature') ? null : 'Missing X-Twilio-Signature header',
+
 	async verifySignature(request, rawBody, ctx) {
 		// Twilio signs with the SAME account auth token the outbound adapter
 		// sends with, so the SMS card's existing "Auth Token" field is the

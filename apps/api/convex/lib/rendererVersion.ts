@@ -60,14 +60,3 @@ export function rendererVersionAfterWrite(
 	if (replacesAll) return written;
 	return Math.min(row.rendererVersion ?? UNSTAMPED_RENDERER_VERSION, written);
 }
-
-/** `rendererVersionAfterWrite` for a write that stores one language's HTML. */
-export function languageRendererVersion(
-	row: { rendererVersion?: number; htmlContent?: string; htmlTranslations?: string },
-	renderedWith: number | undefined
-): number {
-	return rendererVersionAfterWrite(row, renderedWith, {
-		htmlContent: false,
-		htmlTranslations: false,
-	});
-}

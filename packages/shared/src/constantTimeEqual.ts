@@ -12,8 +12,10 @@
  * lengths: an unequal length costs the same as an unequal byte, and the time
  * taken says nothing about the expected value's length or content.
  *
- * `scripts/check-crypto-primitives.sh` keeps `timingSafeEqual(` out of every
- * other module, so a new comparison has to come through here.
+ * `scripts/check-crypto-primitives.sh` reports any `timingSafeEqual` reference
+ * outside this module and the convex-fn-proxy's own copy (that package has no
+ * workspace dependencies), so a new comparison should come through here. It is
+ * a pattern check, not a proof.
  */
 
 import { createHash, timingSafeEqual } from 'node:crypto';

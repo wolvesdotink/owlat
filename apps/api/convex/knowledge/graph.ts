@@ -12,17 +12,21 @@ import { internalQuery } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
-import { publicQuery, authedMutation, adminMutation } from '../lib/authedFunctions';
-import { assertFeatureEnabled } from '../lib/featureFlags';
-import {
-	getMutationContext,
-	hasPermission,
-	isActiveOrgMember,
-	requirePermission,
-} from '../lib/sessionOrganization';
+import { publicQuery } from '../lib/authedFunctions';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import type { MutationSessionContext } from '../lib/sessionOrganization';
+import { isInboxDerivedKnowledge, isSharedInboxReader } from '../inbox/access';
+import {
+	isKnowledgeEntryVisible,
+	knowledgeAdminMutation,
+	knowledgeMutation,
+	loadWritableEntry,
+	pageLimit,
+	resolveKnowledgeViewer,
+	takeVisibleEntries,
+} from './visibility';
 import { batchGet } from '../_utils/batchLoader';
-import { throwInvalidInput } from '../_utils/errors';
+import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { sameContactScope } from '../lib/contactScope';
 import {
 	entryTypeValidator,
@@ -106,20 +110,22 @@ export const search = publicQuery({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'ai.knowledge');
-		if (!(await isActiveOrgMember(ctx))) return [];
+		const viewer = await resolveKnowledgeViewer(ctx);
+		if (!viewer) return [];
 
-		const limit = args.limit ?? 25;
+		const limit = pageLimit(args.limit, 25);
 
-		let searchQuery = ctx.db.query('knowledgeEntries').withSearchIndex('search_knowledge', (q) => {
-			let sq = q.search('searchableText', args.searchQuery);
-			if (args.entryType) {
-				sq = sq.eq('entryType', args.entryType);
-			}
-			return sq;
-		});
+		const searchQuery = ctx.db
+			.query('knowledgeEntries')
+			.withSearchIndex('search_knowledge', (q) => {
+				let sq = q.search('searchableText', args.searchQuery);
+				if (args.entryType) {
+					sq = sq.eq('entryType', args.entryType);
+				}
+				return sq;
+			});
 
-		return await searchQuery.take(limit);
+		return await takeVisibleEntries(searchQuery, viewer.canReadInbox, limit);
 	},
 });
 
@@ -133,13 +139,14 @@ export const listByType = publicQuery({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		if (!(await isActiveOrgMember(ctx))) return [];
+		const viewer = await resolveKnowledgeViewer(ctx);
+		if (!viewer) return [];
 
-		return await ctx.db
+		const rows = ctx.db
 			.query('knowledgeEntries')
 			.withIndex('by_entry_type', (q) => q.eq('entryType', args.entryType))
-			.order('desc')
-			.take(args.limit ?? 50);
+			.order('desc');
+		return await takeVisibleEntries(rows, viewer.canReadInbox, pageLimit(args.limit, 50));
 	},
 });
 
@@ -155,13 +162,11 @@ export const listAll = publicQuery({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		if (!(await isActiveOrgMember(ctx))) return [];
+		const viewer = await resolveKnowledgeViewer(ctx);
+		if (!viewer) return [];
 
-		return await ctx.db
-			.query('knowledgeEntries')
-			.withIndex('by_created_at')
-			.order('desc')
-			.take(args.limit ?? 50);
+		const rows = ctx.db.query('knowledgeEntries').withIndex('by_created_at').order('desc');
+		return await takeVisibleEntries(rows, viewer.canReadInbox, pageLimit(args.limit, 50));
 	},
 });
 
@@ -174,33 +179,46 @@ export const getEntry = publicQuery({
 		entryId: v.id('knowledgeEntries'),
 	},
 	handler: async (ctx, args) => {
-		if (!(await isActiveOrgMember(ctx))) return null;
+		const viewer = await resolveKnowledgeViewer(ctx);
+		if (!viewer) return null;
 
 		const entry = await ctx.db.get(args.entryId);
-		if (!entry) return null;
+		if (!entry || !isKnowledgeEntryVisible(viewer.canReadInbox, entry)) return null;
 
 		// Get outgoing relations
-		const outgoing = await ctx.db
+		const allOutgoing = await ctx.db
 			.query('knowledgeRelations')
 			.withIndex('by_from', (q) => q.eq('fromEntryId', args.entryId))
 			.collect(); // bounded: one node's outgoing graph edges
 
 		// Get incoming relations
-		const incoming = await ctx.db
+		const allIncoming = await ctx.db
 			.query('knowledgeRelations')
 			.withIndex('by_to', (q) => q.eq('toEntryId', args.entryId))
 			.collect(); // bounded: one node's incoming graph edges
 
 		// Resolve the related entries' titles so the UI can render readable links
-		// instead of raw Convex ids.
-		const relatedIds = [...outgoing.map((r) => r.toEntryId), ...incoming.map((r) => r.fromEntryId)];
+		// instead of raw Convex ids. A relation whose other end the caller may not
+		// see is dropped with it, title and id alike.
+		const relatedIds = [
+			...allOutgoing.map((r) => r.toEntryId),
+			...allIncoming.map((r) => r.fromEntryId),
+		];
 		const relatedDocs = await batchGet(ctx, relatedIds);
 		const relatedEntries: Record<string, { title: string; entryType: string }> = {};
+		const hidden = new Set<string>();
 		for (const [id, doc] of relatedDocs) {
 			// All ids came from knowledgeRelations, so every hit is a knowledgeEntry.
 			const kdoc = doc as Doc<'knowledgeEntries'> | null;
-			if (kdoc) relatedEntries[id] = { title: kdoc.title, entryType: kdoc.entryType };
+			if (!kdoc) continue;
+			if (isKnowledgeEntryVisible(viewer.canReadInbox, kdoc)) {
+				relatedEntries[id] = { title: kdoc.title, entryType: kdoc.entryType };
+			} else {
+				hidden.add(id);
+			}
 		}
+		const outgoing = allOutgoing.filter((r) => !hidden.has(r.toEntryId));
+		const incoming = allIncoming.filter((r) => !hidden.has(r.fromEntryId));
 
 		return { entry, outgoing, incoming, relatedEntries };
 	},
@@ -216,9 +234,10 @@ export const getByContact = publicQuery({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		if (!(await isActiveOrgMember(ctx))) return [];
+		const viewer = await resolveKnowledgeViewer(ctx);
+		if (!viewer) return [];
 
-		const limit = args.limit ?? 20;
+		const limit = pageLimit(args.limit, 20);
 		const now = Date.now();
 
 		// Query the index-able `knowledgeEntryContacts` mirror by contact, then
@@ -237,7 +256,9 @@ export const getByContact = publicQuery({
 		return [...entryMap.values()]
 			.filter(
 				(e): e is Doc<'knowledgeEntries'> =>
-					e !== null && !(e.expiresAt !== undefined && e.expiresAt < now)
+					e !== null &&
+					!(e.expiresAt !== undefined && e.expiresAt < now) &&
+					isKnowledgeEntryVisible(viewer.canReadInbox, e)
 			)
 			.sort((a, b) => b.createdAt - a.createdAt)
 			.slice(0, limit);
@@ -274,7 +295,7 @@ function requireCuratedWriter(
  * authors knowledge today.
  */
 // all-members: any org member can author knowledge; admin-only would block the AI assistant's primary write path
-export const createEntry = authedMutation({
+export const createEntry = knowledgeMutation({
 	args: {
 		...pick(knowledgeEntriesFields, [
 			'entryType',
@@ -290,8 +311,20 @@ export const createEntry = authedMutation({
 		// Defaults to 0.8 for a manually authored entry.
 		confidence: v.optional(knowledgeEntriesFields.confidence),
 	},
-	handler: async (ctx, args) => {
-		await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		// A hand-authored entry is `manual`. The other sources name a pipeline
+		// (extraction, files, chat, imported mail), and `agent_extracted` in
+		// particular marks an entry as Team Inbox-derived (inbox/access.ts), so a
+		// client does not get to claim one. Curated answers have their own
+		// admin path (createPolicyEntry).
+		if (args.sourceType !== 'manual') {
+			throwInvalidInput('Knowledge entries created by hand have the source Manual.');
+		}
+		// A thread link makes the entry Team Inbox-derived (inbox/access.ts), so
+		// only a reader may set one.
+		if (args.threadId !== undefined && !isSharedInboxReader(session)) {
+			throwForbidden('Linking knowledge to a Team Inbox thread requires Team Inbox access');
+		}
 
 		const now = Date.now();
 
@@ -332,7 +365,7 @@ export const createEntry = authedMutation({
  * Editing counts as a re-validation, so `lastValidatedAt` is stamped.
  */
 // all-members: any org member can correct knowledge they author; mirrors createEntry's write tier
-export const updateEntry = authedMutation({
+export const updateEntry = knowledgeMutation({
 	args: {
 		entryId: v.id('knowledgeEntries'),
 		...optionalFields(
@@ -348,12 +381,15 @@ export const updateEntry = authedMutation({
 			])
 		),
 	},
-	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-
-		const entry = await ctx.db.get(args.entryId);
+	handler: async (ctx, args, session) => {
+		const entry = await loadWritableEntry(ctx, session, args.entryId);
 		if (!entry) return null;
 		requireCuratedWriter(session, entry);
+		// The source records where an entry came from, and decides whether it is
+		// Team Inbox-derived (inbox/access.ts); an edit cannot rewrite it.
+		if (args.sourceType !== undefined && args.sourceType !== entry.sourceType) {
+			throwInvalidInput('The source of a knowledge entry cannot be changed.');
+		}
 
 		const now = Date.now();
 		const patch: Partial<Doc<'knowledgeEntries'>> = {
@@ -363,7 +399,6 @@ export const updateEntry = authedMutation({
 		if (args.entryType !== undefined) patch.entryType = args.entryType;
 		if (args.title !== undefined) patch.title = args.title;
 		if (args.content !== undefined) patch.content = args.content;
-		if (args.sourceType !== undefined) patch.sourceType = args.sourceType;
 		if (args.contactIds !== undefined) patch.contactIds = args.contactIds;
 		if (args.confidence !== undefined) patch.confidence = args.confidence;
 		if (args.tags !== undefined) patch.tags = args.tags;
@@ -411,14 +446,12 @@ export const updateEntry = authedMutation({
  * this drains in a single pass.
  */
 // all-members: any org member can delete knowledge they author; mirrors createEntry's write tier
-export const deleteEntry = authedMutation({
+export const deleteEntry = knowledgeMutation({
 	args: {
 		entryId: v.id('knowledgeEntries'),
 	},
-	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-
-		const entry = await ctx.db.get(args.entryId);
+	handler: async (ctx, args, session) => {
+		const entry = await loadWritableEntry(ctx, session, args.entryId);
 		if (!entry) return null;
 		requireCuratedWriter(session, entry);
 
@@ -507,13 +540,20 @@ export const saveEntry = internalMutation({
 		// same fact restated in a different message/file. The scope match
 		// (sameContactScope) is mandatory: folding an org-general write into a
 		// contact-A row (or vice versa) would silently widen/narrow the fact's
-		// contact visibility, so cross-scope hashes are kept as distinct rows.
+		// contact visibility, so cross-scope hashes are kept as distinct rows. For
+		// the same reason a Team Inbox-derived write never folds into a
+		// member-visible row or the reverse (inbox/access.ts).
 		if (args.contentHash) {
 			const byHash = await ctx.db
 				.query('knowledgeEntries')
 				.withIndex('by_content_hash', (q) => q.eq('contentHash', args.contentHash))
 				.collect(); // bounded: entries sharing one content hash (this dedup keeps it ~1)
-			const dup = byHash.find((e) => sameContactScope(e.contactIds, args.contactIds));
+			const inboxDerived = isInboxDerivedKnowledge(args);
+			const dup = byHash.find(
+				(e) =>
+					sameContactScope(e.contactIds, args.contactIds) &&
+					isInboxDerivedKnowledge(e) === inboxDerived
+			);
 			if (dup) return dup._id;
 		}
 		const entry = {
@@ -543,21 +583,19 @@ export const saveEntry = internalMutation({
  * itself), and de-dupes an identical edge so repeated clicks don't pile up rows.
  */
 // all-members: any org member can curate knowledge relations; mirrors createEntry's write tier
-export const addRelation = authedMutation({
+export const addRelation = knowledgeMutation({
 	args: {
 		fromEntryId: v.id('knowledgeEntries'),
 		toEntryId: v.id('knowledgeEntries'),
 		relationType: relationTypeValidator,
 	},
-	handler: async (ctx, args) => {
-		await getMutationContext(ctx);
-
+	handler: async (ctx, args, session) => {
 		if (args.fromEntryId === args.toEntryId) {
 			throwInvalidInput('A knowledge entry cannot be related to itself.');
 		}
 
-		const from = await ctx.db.get(args.fromEntryId);
-		const to = await ctx.db.get(args.toEntryId);
+		const from = await loadWritableEntry(ctx, session, args.fromEntryId);
+		const to = await loadWritableEntry(ctx, session, args.toEntryId);
 		if (!from || !to) {
 			throwInvalidInput('Both knowledge entries must exist to relate them.');
 		}
@@ -595,15 +633,20 @@ export const addRelation = authedMutation({
  * the row was already gone.
  */
 // all-members: any org member can curate knowledge relations; mirrors createEntry's write tier
-export const removeRelation = authedMutation({
+export const removeRelation = knowledgeMutation({
 	args: {
 		relationId: v.id('knowledgeRelations'),
 	},
-	handler: async (ctx, args) => {
-		await getMutationContext(ctx);
-
+	handler: async (ctx, args, session) => {
 		const relation = await ctx.db.get(args.relationId);
 		if (!relation) return null;
+		// A relation touching an entry the caller cannot see is treated as
+		// missing. An endpoint that no longer exists hides nothing.
+		const canReadInbox = isSharedInboxReader(session);
+		for (const endpointId of [relation.fromEntryId, relation.toEntryId]) {
+			const endpoint = await ctx.db.get(endpointId);
+			if (endpoint && !isKnowledgeEntryVisible(canReadInbox, endpoint)) return null;
+		}
 
 		await ctx.db.delete(args.relationId);
 
@@ -634,7 +677,7 @@ const policyEntryTypeValidator = literalUnion(POLICY_ENTRY_TYPES);
  * `searchableText`, so a fresh policy is retrievable at once.
  */
 // admin-only: a curated answer outranks every extracted fact and is quoted to customers
-export const createPolicyEntry = adminMutation({
+export const createPolicyEntry = knowledgeAdminMutation({
 	args: {
 		entryId: v.optional(v.id('knowledgeEntries')),
 		entryType: v.optional(policyEntryTypeValidator),
@@ -705,9 +748,10 @@ export const listPolicies = publicQuery({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		if (!(await isActiveOrgMember(ctx))) return [];
+		const viewer = await resolveKnowledgeViewer(ctx);
+		if (!viewer) return [];
 
-		const limit = args.limit ?? 100;
+		const limit = pageLimit(args.limit, 100);
 		const out: Doc<'knowledgeEntries'>[] = [];
 		for (const entryType of POLICY_ENTRY_TYPES) {
 			const rows = await ctx.db
@@ -720,7 +764,11 @@ export const listPolicies = publicQuery({
 			// (sourceType 'agent_extracted', never authoritative); those must not
 			// intermix with hand-authored answers here.
 			for (const row of rows) {
-				if (row.sourceType === 'curated' && row.isAuthoritative === true) {
+				if (
+					row.sourceType === 'curated' &&
+					row.isAuthoritative === true &&
+					isKnowledgeEntryVisible(viewer.canReadInbox, row)
+				) {
 					out.push(row);
 				}
 			}
@@ -737,16 +785,14 @@ export const listPolicies = publicQuery({
  * commitment would keep leading the briefing until decay/expiry.
  */
 // all-members: any org member can resolve a commitment; mirrors createEntry's write tier
-export const setCommitmentStatus = authedMutation({
+export const setCommitmentStatus = knowledgeMutation({
 	args: {
 		entryId: v.id('knowledgeEntries'),
 		commitmentStatus: commitmentStatusValidator,
 		dueAt: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
-		await getMutationContext(ctx);
-
-		const entry = await ctx.db.get(args.entryId);
+	handler: async (ctx, args, session) => {
+		const entry = await loadWritableEntry(ctx, session, args.entryId);
 		if (!entry) return null;
 
 		const now = Date.now();
@@ -832,11 +878,20 @@ export const getOpenCommitmentsByContact = internalQuery({
 	args: {
 		contactId: v.id('contacts'),
 		limit: v.optional(v.number()),
+		// Same contract as semanticSearch: Team Inbox-derived commitments are
+		// returned only when the caller passes `true`.
+		includeInboxDerived: v.boolean(),
 	},
 	handler: async (ctx, args): Promise<OpenCommitment[]> =>
 		// Walks the contact's open-commitment junction rows in due order and loads
 		// only the entries it returns (knowledge/commitmentFacets.ts, issue #919).
-		await readOpenCommitments(ctx, args.contactId, args.limit ?? 10, Date.now()),
+		await readOpenCommitments(
+			ctx,
+			args.contactId,
+			args.limit ?? 10,
+			Date.now(),
+			args.includeInboxDerived
+		),
 });
 
 /**

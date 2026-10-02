@@ -346,8 +346,9 @@ describe('emailTemplates.changeType — audit + behavior', () => {
 describe('emailTemplates publish/unpublish/duplicate/remove — public wrappers', () => {
 	it('publish promotes draft → published and stamps htmlContent on a never-rendered row', async () => {
 		const t = convexTest(schema, modules);
-		// A row with rendered HTML publishes that HTML; the caller's copy is
-		// only used for one without (emailContentRevision.integration.test.ts).
+		// A row with rendered HTML publishes that HTML; one without is rendered
+		// from its blocks, never from the caller's copy
+		// (publishableEmailServerRender.integration.test.ts).
 		const templateId = await seedTemplate(t, { status: 'draft', htmlContent: undefined });
 
 		setUser('user-olive', 'owner');
@@ -358,7 +359,8 @@ describe('emailTemplates publish/unpublish/duplicate/remove — public wrappers'
 
 		const row = await t.run(async (ctx) => ctx.db.get(templateId));
 		expect(row?.status).toBe('published');
-		expect(row?.htmlContent).toBe('<p>published html</p>');
+		expect(row?.htmlContent).toContain('<!DOCTYPE html>');
+		expect(row?.htmlContent).not.toContain('published html');
 		expect(row?.publishedAt).toBeTypeOf('number');
 	});
 

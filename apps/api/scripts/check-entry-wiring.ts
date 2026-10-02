@@ -140,6 +140,8 @@ const EXPECTED_BUILDERS: readonly string[] = [
 	'internalAction',
 	'internalMutation',
 	'internalQuery',
+	'knowledgeAdminMutation',
+	'knowledgeMutation',
 	'mutation',
 	'ownerMutation',
 	'platformAdminMutation',
@@ -165,6 +167,7 @@ const NOT_ENTRY_BUILDERS: Readonly<Record<string, string>> = {
 	composeBundledPlugins: 'folds the generated plugin manifests into one composition object',
 	createFeatureFlagRegistry: 'builds the plugin feature-flag lookup map',
 	defineStep: 'declares one workspace-deletion step — data the deletion walker reads',
+	elementNames: 'builds a set of HTML element names from a word list',
 	featureGated: 'RETURNS a builder; its products are collected as builders above',
 	featureGatedAny: 'RETURNS a builder (any-of flag floor); same as featureGated',
 	fenceMutationBuilder:

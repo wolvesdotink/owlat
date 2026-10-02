@@ -41,8 +41,11 @@ const withCurrent = <T extends string>(options: readonly T[], current: string | 
 const entryTypeOptions = computed(() =>
 	withCurrent(AUTHORABLE_ENTRY_TYPES, props.initialValues?.entryType)
 );
+// The source is fixed once an entry exists: editing shows only its own.
 const sourceTypeOptions = computed(() =>
-	withCurrent(AUTHORABLE_SOURCE_TYPES, props.initialValues?.sourceType)
+	props.isEdit && props.initialValues?.sourceType
+		? [props.initialValues.sourceType as SourceType]
+		: [...AUTHORABLE_SOURCE_TYPES]
 );
 
 const { t, te } = useI18n();

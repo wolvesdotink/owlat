@@ -7,6 +7,7 @@ import { resolveSelectedSet } from '../helpers/seqMap.js';
 import { expungeFromView, syncSequenceView } from '../helpers/sequenceView.js';
 import { loadCurrentUids } from '../helpers/membership.js';
 import { holdSequence } from '../helpers/sequenceGate.js';
+import { inBatches } from '../helpers/uidSet.js';
 
 interface ExpungeArgs {
 	/** The UID set of a UID EXPUNGE; absent for a whole-folder sweep. */
@@ -24,6 +25,12 @@ interface ExpungeArgs {
  * Both first bring the client's sequence view up to date (announcing other
  * sessions' changes), then number each expunged message against that view, the
  * numbering the client holds, and take it out of the view as it is announced.
+ *
+ * A UID set goes to Convex in batches (Convex caps an array argument at 8,192
+ * elements), highest UIDs first: the backend walks downwards and stops at each
+ * batch's lowest UID, so the cursor it returns is where the next, lower batch
+ * starts and a backend without the view's `uids` still reports continuous
+ * sequence numbers.
  *
  * The pre-deepening handler mutated `this.selected.totalCount` and
  * `this.selected.highestModseq` directly; under immutable state the
@@ -54,14 +61,17 @@ export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 			const lease = holdSequence(deps, 'sync');
 			try {
 				await lease.ready;
-				let uidSet: number[] | undefined;
+				// A bare EXPUNGE is one walk of the folder.
+				let uidBatches: Array<number[] | undefined> = [undefined];
 				if (uidSpec) {
 					const { resolved } = await resolveSelectedSet(deps, state, uidSpec, true, send, lease);
 					if (resolved.length === 0) {
 						send(`${tag} OK ${label} completed`);
 						return;
 					}
-					uidSet = resolved.map((r) => r.uid);
+					// `resolved` is ascending, so the batches are taken from the end;
+					// each batch itself stays ascending.
+					uidBatches = inBatches(resolved.map((r) => r.uid)).reverse();
 				} else if (state.selected!.view) {
 					await syncSequenceView(deps, state, send, lease);
 				}
@@ -74,35 +84,45 @@ export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 				let selected = state.selected!;
 				let beforeUid: number | undefined;
 				let nextSequenceNumber: number | undefined;
-				do {
-					const result = await deps.convex.mutation(fn.expungeFolder, {
-						folderId: state.selected!.folderId,
-						uidSet,
-						beforeUid,
-						nextSequenceNumber,
-					});
-					// Each page has already committed. Publish it before requesting the
-					// next page so a later failure cannot hide permanent deletions.
-					let sequenceNumbers: number[];
-					if (view && result.uids) {
-						sequenceNumbers = expungeFromView(view, result.uids);
-					} else {
-						// A backend older than the view (no `uids`): its numbers are the
-						// folder's own, and the view is re-read once the folder settles.
-						sequenceNumbers = [...result.sequenceNumbers].sort((a, b) => b - a);
-						viewNeedsReload = view !== undefined;
+				for (const uidSet of uidBatches) {
+					for (;;) {
+						const result = await deps.convex.mutation(fn.expungeFolder, {
+							folderId: state.selected!.folderId,
+							uidSet,
+							beforeUid,
+							nextSequenceNumber,
+						});
+						// Each page has already committed. Publish it before requesting the
+						// next page so a later failure cannot hide permanent deletions.
+						let sequenceNumbers: number[];
+						if (view && result.uids) {
+							sequenceNumbers = expungeFromView(view, result.uids);
+						} else {
+							// A backend older than the view (no `uids`): its numbers are the
+							// folder's own, and the view is re-read once the folder settles.
+							sequenceNumbers = [...result.sequenceNumbers].sort((a, b) => b - a);
+							viewNeedsReload = view !== undefined;
+						}
+						for (const seq of sequenceNumbers) send(`* ${seq} EXPUNGE`);
+						selected = {
+							...selected,
+							totalCount: Math.max(0, selected.totalCount - sequenceNumbers.length),
+							highestModseq: result.modseq,
+						};
+						deps.commit({ ...state, selected });
+						beforeUid = result.beforeUid;
+						nextSequenceNumber = result.nextSequenceNumber;
+						if (result.done !== false) break;
+						if (beforeUid === undefined || nextSequenceNumber === undefined) break;
 					}
-					for (const seq of sequenceNumbers) send(`* ${seq} EXPUNGE`);
-					selected = {
-						...selected,
-						totalCount: Math.max(0, selected.totalCount - sequenceNumbers.length),
-						highestModseq: result.modseq,
-					};
-					deps.commit({ ...state, selected });
-					if (result.done !== false) break;
-					beforeUid = result.beforeUid;
-					nextSequenceNumber = result.nextSequenceNumber;
-				} while (beforeUid !== undefined && nextSequenceNumber !== undefined);
+					// A backend that returns no cursor with its last page walked the
+					// whole folder; the next batch then starts again from the top,
+					// which counts sequence numbers from the folder as it is now.
+					if (beforeUid === undefined || nextSequenceNumber === undefined) {
+						beforeUid = undefined;
+						nextSequenceNumber = undefined;
+					}
+				}
 				if (view && viewNeedsReload) {
 					view.uids = await loadCurrentUids(deps.convex, state.selected!.folderId);
 				}

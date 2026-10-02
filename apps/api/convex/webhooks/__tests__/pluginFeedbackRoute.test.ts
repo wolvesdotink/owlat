@@ -407,6 +407,22 @@ describe('a caller who cannot produce the signature', () => {
 		expect(mocks.dispatch).not.toHaveBeenCalled();
 	});
 
+	it.each([
+		['no signature header', { signature: null }],
+		['no timestamp header', { timestamp: null }],
+	] as const)(
+		'is refused with 401 before spending a rate-limit token: %s',
+		async (_label, options) => {
+			const { ctx, calls } = fakeContext();
+			const request = webhookRequest(options);
+			const response = await handler(ctx, request);
+
+			expect(response.status).toBe(401);
+			expect(calls).toEqual([]);
+			expect(request.bodyUsed).toBe(false);
+		}
+	);
+
 	it('rejects a valid signature over a DIFFERENT body', async () => {
 		// The body is inside the signed string, so swapping it after signing must
 		// not verify — this is what stops a captured signature from being reused to
@@ -1037,6 +1053,18 @@ describe('a plugin whose provider signs with svix', () => {
 		// the arm that sent.
 		expect(mocks.dispatch.mock.calls[0]?.[1]).toMatchObject({ providerType: mocks.svix.kind });
 		expect(scheduled.map((entry) => entry.args['outcome'])).toEqual(['completed']);
+	});
+
+	it.each([
+		['no signature header', { 'svix-signature': '' }],
+		['no message id', { 'svix-id': '' }],
+		['no timestamp', { 'svix-timestamp': '' }],
+	] as const)('refuses %s before spending a rate-limit token', async (_label, headers) => {
+		const { ctx, calls } = fakeContext();
+		const response = await handler(ctx, svixRequest({ headers }));
+
+		expect(response.status).toBe(401);
+		expect(calls).toEqual([]);
 	});
 
 	it.each([

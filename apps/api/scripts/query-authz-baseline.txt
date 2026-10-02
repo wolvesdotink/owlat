@@ -13,8 +13,6 @@ convex/automations/automations.ts:countByStatus
 convex/automations/automations.ts:get
 convex/automations/automations.ts:getWithRelations
 convex/automations/automations.ts:list
-convex/autonomy.ts:#inbox-tables
-convex/autonomyOutcome.ts:#inbox-tables
 convex/blockedEmails.ts:getByEmail
 convex/blockedEmails.ts:getCountsByReason
 convex/blockedEmails.ts:listByTeam
@@ -23,9 +21,7 @@ convex/campaigns/audienceResolution.ts:countRecipients
 convex/campaigns/campaigns.ts:getWithRelations
 convex/campaigns/campaigns.ts:list
 convex/campaigns/organization.ts:countByStatusByOrganization
-convex/channels/outbound.ts:#inbox-tables
 convex/chat/dms.ts:listMyDms
-convex/chat/emailLink.ts:findChannelsForInboxThread
 convex/chat/mentions.ts:countMyUnreadMentions
 convex/chat/mentions.ts:listMyUnreadMentions
 convex/chat/mentions.ts:searchOrgMembersForMention
@@ -33,14 +29,12 @@ convex/chat/messages.ts:myUnreadCounts
 convex/chat/rooms.ts:getRoom
 convex/chat/rooms.ts:listMyChannels
 convex/chat/rooms.ts:listPublicChannels
-convex/codeWorkTasks.ts:#inbox-tables
 convex/contacts/activities.ts:listByContact
 convex/contacts/analytics.ts:getAudienceStats
 convex/contacts/analytics.ts:getRecent
 convex/contacts/analytics.ts:getSubscriberGrowth
 convex/contacts/contacts.ts:get
 convex/contacts/contacts.ts:list
-convex/contacts/dataExport.ts:#inbox-tables
 convex/contacts/identities.ts:getMergeSuggestions
 convex/contacts/identities.ts:listByContact
 convex/contacts/organization.ts:getPropertyValuesForContacts
@@ -50,8 +44,6 @@ convex/contacts/properties.ts:listByOrganization
 convex/contacts/propertyValues.ts:countByProperty
 convex/contacts/propertyValues.ts:listByContact
 convex/contacts/relationships.ts:listByContact
-convex/contacts/timeline.ts:#inbox-tables
-convex/contacts/timeline.ts:getTimeline
 convex/contacts/timeline.ts:getTimelineStats
 convex/delivery/sends.ts:get
 convex/delivery/sends.ts:getClickedContacts
@@ -73,15 +65,11 @@ convex/emailTemplates/organization.ts:countByTypeByOrganization
 convex/forms/endpoints.ts:getSubmissions
 convex/forms/endpoints.ts:listByTeam
 convex/integrationImports/walker.ts:getImportProgress
-convex/knowledge/messageBackfill.ts:#inbox-tables
-convex/mail/handlingRules.ts:#inbox-tables
 convex/mediaAssets.ts:getStats
 convex/mediaAssets.ts:list
 convex/mediaAssets.ts:listTags
 convex/segments.ts:get
 convex/segments.ts:list
-convex/semanticFiles.ts:#inbox-tables
-convex/semanticFiles.ts:get
 convex/semanticFiles.ts:getVersionHistory
 convex/semanticFiles.ts:list
 convex/semanticFiles.ts:listByContact
@@ -99,5 +87,4 @@ convex/transactional/sends.ts:get
 convex/transactional/sends.ts:getCounts
 convex/transactional/sends.ts:listByTransactionalEmail
 convex/transactional/translations.ts:getForLanguage
-convex/unifiedMessages.ts:#inbox-tables
 convex/workspaces/settings.ts:get

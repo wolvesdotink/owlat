@@ -10,7 +10,8 @@ import { v } from 'convex/values';
 import { internalQuery } from './_generated/server';
 import { internalMutation } from './lib/writeFence';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
-import { requireOrgPermission, requirePermission, hasPermission } from './lib/sessionOrganization';
+import { requireOrgPermission, requirePermission } from './lib/sessionOrganization';
+import { isSharedInboxReader } from './inbox/access';
 import { getOrThrow, throwInvalidState } from './_utils/errors';
 import { createCodeTaskFromInbound } from './lib/codeTaskInbound';
 import {
@@ -53,17 +54,14 @@ const workerAttemptArg = v.optional(v.number());
  * List recent tasks (for dashboard / verification queue).
  *
  * A task's `description` is inbound-email-derived text (subject + body of a
- * feature request), so this read is gated to the same owner/admin role that may
- * create or cancel tasks — not every authenticated org member — and the caller's
+ * feature request), so this read follows the shared-inbox reader rule
+ * (inbox/access.ts) — not every authenticated org member — and the caller's
  * `limit` is CLAMPED to a hard ceiling so it can never sweep the whole table.
  */
 export const listRecent = authedQuery({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, args, session) => {
-		requirePermission(
-			hasPermission(session.role, 'organization:manage'),
-			'Only owners and admins can view code tasks'
-		);
+		requirePermission(isSharedInboxReader(session), 'Only owners and admins can view code tasks');
 		const requested = args.limit ?? LIST_RECENT_DEFAULT_LIMIT;
 		// Clamp into [1, MAX]: a non-positive or oversized limit is coerced rather
 		// than trusted, so inbound-derived text exposure stays bounded.
@@ -113,19 +111,16 @@ export const getNextQueued = internalQuery({
 // ============================================================
 
 /**
- * Create a new code work task from a feature request
+ * Create a new code work task from a feature request. The task may point at a
+ * Team Inbox message, so the caller must be a shared-inbox reader.
  */
 export const create = authedMutation({
 	args: {
 		description: v.string(),
 		inboundMessageId: v.optional(v.id('inboundMessages')),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
-			'Only owners and admins can manage code tasks'
-		);
+	handler: async (ctx, args, session) => {
+		requirePermission(isSharedInboxReader(session), 'Only owners and admins can manage code tasks');
 		const now = Date.now();
 		return await ctx.db.insert('codeWorkTasks', {
 			description: args.description,

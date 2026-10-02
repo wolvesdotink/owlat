@@ -55,6 +55,19 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 20,
 	},
 
+	// Failed instance-secret compares on the upload service routes
+	// (`/storage/upload/*`, `requireInstanceSecretBearer`). A bucket of its own,
+	// so calls to the operator routes above never spend the upload budget. Only
+	// a failed compare spends a token, so the web server's legitimate upload
+	// bursts never do. The bucket is read before the compare only for a resolved
+	// client address, never for the shared 'unknown' key.
+	uploadServiceSecret: {
+		kind: 'token bucket',
+		rate: 10,
+		period: MINUTE,
+		capacity: 20,
+	},
+
 	// Email tracking: high volume legitimate traffic (100 per minute per IP, burst to 150)
 	emailTracking: {
 		kind: 'token bucket',

@@ -4,10 +4,11 @@
  * Signature checks, capability tokens and shared-secret headers in
  * `apps/api/convex` compare and sign through here rather than open-coding their
  * own `importKey` + `sign` + encoding or their own compare loop.
- * `scripts/check-crypto-primitives.sh` guards the common forms: an HMAC
- * `importKey` or a `timingSafeEqual(` outside the sanctioned modules fails
- * `bun run lint`. It is a pattern check, not a proof, so review new crypto code
- * against this module too.
+ * `scripts/check-crypto-primitives.sh` (`bun run lint:crypto-primitives`, part
+ * of the root `ci:lint`) guards the common forms outside the sanctioned
+ * modules: an HMAC or variable-algorithm `importKey`, an HMAC `sign`/`verify`,
+ * any `timingSafeEqual` reference and an XOR-accumulate compare loop. It is a
+ * pattern check, not a proof, so review new crypto code against this module too.
  *
  * Web Crypto only, so the module runs in the V8 isolate and in `'use node'`
  * actions alike. `webhooks/security.ts` re-exports the compare and HMAC

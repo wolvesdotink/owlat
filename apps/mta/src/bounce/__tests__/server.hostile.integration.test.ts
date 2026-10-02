@@ -311,9 +311,9 @@ describe('MX listener bounds a connection flood with 421 (production config)', (
 });
 
 // Per-IP connection cap (`bounceMaxConnectionsPerIp`): the listener's admission
-// refuses the N+1th connection from one IP with the pre-cutover smtp-server
-// `554`, counting on the shared `mta:bounce:conn:<ip>` key.
-describe('MX listener caps connections per IP with 554 (production config)', () => {
+// refuses the N+1th connection from one IP with a retry-later `421 4.7.0`,
+// counting on the shared `mta:bounce:conn:<ip>` key.
+describe('MX listener caps connections per IP with 421 (production config)', () => {
 	it('refuses the N+1th connection from one IP and releases every slot on close', async () => {
 		const { port, redis } = await start({ bounceMaxConnectionsPerIp: 2 });
 		const key = 'mta:bounce:conn:127.0.0.1';
@@ -327,9 +327,9 @@ describe('MX listener caps connections per IP with 554 (production config)', () 
 		expect(await redis.get(key)).toBe('2');
 
 		const over = await Client.connect(port);
-		await over.waitCode(554);
+		await over.waitCode(421);
 		await over.waitClose();
-		expect(over.received).toContain('554 Too many connections from your IP\r\n');
+		expect(over.received).toContain('421 4.7.0 Too many connections from your IP\r\n');
 		expect(await redis.get(key)).toBe('2');
 
 		for (const c of held) c.end();

@@ -27,6 +27,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { COMMITMENT_ENTRY_TYPES, isCommitmentOpen } from '../schema/knowledge';
 import { logWarn } from '../lib/runtimeLog';
 import { batchGet } from '../_utils/batchLoader';
+import { isInboxDerivedKnowledge } from '../inbox/access';
 
 /** Due key of an undated commitment: after every real due date. */
 export const UNDATED_DUE_KEY = Number.MAX_VALUE;
@@ -162,18 +163,23 @@ function compareOpenCommitments(a: OpenCommitment, b: OpenCommitment): number {
  *      0053 has run): hydrated and filtered as before. Empty once backfilled.
  * Every loaded entry is re-checked against its own fields, so a row whose
  * facets drifted can drop a stale candidate but never return a wrong one.
+ *
+ * Team Inbox-derived entries (inbox/access.ts) are returned only when
+ * `includeInboxDerived` is true, as in `knowledge.retrieval.semanticSearch`.
  */
 export async function readOpenCommitments(
 	ctx: QueryCtx,
 	contactId: Id<'contacts'>,
 	limit: number,
-	now: number
+	now: number,
+	includeInboxDerived: boolean
 ): Promise<OpenCommitment[]> {
 	if (limit <= 0) return [];
 	const found = new Map<Id<'knowledgeEntries'>, OpenCommitment>();
 	const accept = (entry: Doc<'knowledgeEntries'> | null): boolean => {
 		if (!entry || found.has(entry._id)) return false;
 		if (!isLive(entry, now) || !isOpenCommitmentEntry(entry)) return false;
+		if (!includeInboxDerived && isInboxDerivedKnowledge(entry)) return false;
 		found.set(entry._id, toOpenCommitment(entry));
 		return true;
 	};

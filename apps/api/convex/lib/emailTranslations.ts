@@ -16,14 +16,14 @@
  * The `*Patch` helpers at the bottom return the complete row patch for each
  * translation mutation, content revision and timestamp included.
  *
- * A mutation handed a language's delivery HTML writes it in the same patch as
- * the overlay (`emailHtmlTranslations.ts`), so the two share one revision.
+ * The delivery HTML is not computed here: each mutation shell renders it on
+ * the server from the patched row (`withRenderedTranslations` in
+ * `publishableEmail.ts`) and writes it in the same patch, so the overlay and
+ * its HTML share one revision.
  */
 
 import { throwAlreadyExists, throwInvalidInput, throwNotFound } from '../_utils/errors';
 import { nextContentRevision } from './contentRevision';
-import { renderedLanguagePatch } from './emailHtmlTranslations';
-import { languageRendererVersion, rendererVersionAfterWrite } from './rendererVersion';
 import {
 	sanitizeOverlayBlocks,
 	sanitizeOverlayBlocksJson,
@@ -72,9 +72,6 @@ export interface TranslatableEntity {
 	defaultLanguage?: string;
 	supportedLanguages?: string[];
 	contentRevision?: number;
-	htmlContent?: string;
-	htmlTranslations?: string;
-	rendererVersion?: number;
 }
 
 /** Describes which translatable fields an entity carries. */
@@ -271,10 +268,6 @@ export interface TranslationPatch {
 	defaultLanguage?: string;
 	translations?: string;
 	supportedLanguages?: string[];
-	htmlContent?: string;
-	plainTextContent?: string;
-	htmlTranslations?: string;
-	rendererVersion?: number;
 	contentRevision: number;
 	updatedAt: number;
 }
@@ -285,45 +278,21 @@ function revisionStamp(
 	return { contentRevision: nextContentRevision(row), updatedAt: Date.now() };
 }
 
-/**
- * Patch for adding a language overlay (see `addLanguage`). `htmlContent` is the
- * new language's delivery HTML (rendered by renderer `rendererVersion`); the
- * seeded overlay is the default text, so it is the row's content as it stands.
- */
+/** Patch for adding a language overlay (see `addLanguage`). */
 export function addTranslationPatch(
 	row: TranslatableEntity,
 	language: string,
-	fields: TranslatableFields,
-	htmlContent?: string,
-	rendererVersion?: number
+	fields: TranslatableFields
 ): TranslationPatch {
-	return {
-		...addLanguage(row, language, fields),
-		...(htmlContent !== undefined && {
-			...renderedLanguagePatch(row.htmlTranslations, language, {
-				htmlContent,
-				subject: row.subject,
-			}),
-			rendererVersion: languageRendererVersion(row, rendererVersion),
-		}),
-		...revisionStamp(row),
-	};
+	return { ...addLanguage(row, language, fields), ...revisionStamp(row) };
 }
 
-/**
- * Patch for removing a language overlay (see `removeLanguage`), together with
- * the language's delivery HTML.
- */
+/** Patch for removing a language overlay (see `removeLanguage`). */
 export function removeTranslationPatch(
 	row: TranslatableEntity,
 	language: string
 ): TranslationPatch {
-	return {
-		...removeLanguage(row, language),
-		...(row.htmlTranslations !== undefined &&
-			renderedLanguagePatch(row.htmlTranslations, language, null)),
-		...revisionStamp(row),
-	};
+	return { ...removeLanguage(row, language), ...revisionStamp(row) };
 }
 
 export interface TranslationUpdate {
@@ -332,14 +301,6 @@ export interface TranslationUpdate {
 	previewText?: string;
 	/** JSON string of `Record<blockId, TranslatableBlockContent>`. */
 	blocks?: string;
-	/**
-	 * The language's delivery HTML, rendered from the updated overlay on the
-	 * row's content. Stored with the overlay's subject. Ignored for the default
-	 * language, whose HTML only the editor save writes.
-	 */
-	htmlContent?: string;
-	/** The renderer version that produced `htmlContent`. */
-	rendererVersion?: number;
 }
 
 /**
@@ -387,31 +348,7 @@ export function updateTranslationPatch(
 	}
 	translations[update.language] = translation;
 
-	return {
-		translations: serializeTranslations(translations),
-		...(update.htmlContent !== undefined && {
-			...renderedLanguagePatch(row.htmlTranslations, update.language, {
-				htmlContent: update.htmlContent,
-				subject: translation.subject,
-			}),
-			rendererVersion: languageRendererVersion(row, update.rendererVersion),
-		}),
-		...revisionStamp(row),
-	};
-}
-
-/**
- * The delivery representations of a row after a default-language change,
- * rendered by the caller from the swapped content and overlays: the new
- * default's HTML and text/plain body, and every other language's HTML
- * (the outgoing default included).
- */
-export interface SwappedDelivery {
-	htmlContent?: string;
-	plainTextContent?: string;
-	htmlTranslations?: string;
-	/** The renderer version that produced the HTML. */
-	rendererVersion?: number;
+	return { translations: serializeTranslations(translations), ...revisionStamp(row) };
 }
 
 /**
@@ -423,16 +360,11 @@ export interface SwappedDelivery {
  * a translation overlay (its translatable text extracted from the current main
  * content), so re-selecting it later round-trips, and both languages stay
  * supported. Throws not_found when the language has no overlay.
- *
- * `delivery` is written in the same patch, so the HTML the send path delivers
- * changes language together with the body and subject. Without it the stored
- * HTML is left as it was (older callers).
  */
 export function setDefaultLanguagePatch(
 	row: TranslatableEntity,
 	language: string,
-	fields: TranslatableFields,
-	delivery: SwappedDelivery = {}
+	fields: TranslatableFields
 ): TranslationPatch | null {
 	const currentDefault = row.defaultLanguage ?? DEFAULT_LANGUAGE;
 	if (language === currentDefault) {
@@ -482,19 +414,6 @@ export function setDefaultLanguagePatch(
 		defaultLanguage: language,
 		translations: serializeTranslations(updatedTranslations),
 		...(missing.length > 0 && { supportedLanguages: [...supportedLanguages, ...missing] }),
-		...(delivery.htmlContent !== undefined && { htmlContent: delivery.htmlContent }),
-		...(delivery.plainTextContent !== undefined && {
-			plainTextContent: delivery.plainTextContent,
-		}),
-		...(delivery.htmlTranslations !== undefined && {
-			htmlTranslations: delivery.htmlTranslations,
-		}),
-		...((delivery.htmlContent !== undefined || delivery.htmlTranslations !== undefined) && {
-			rendererVersion: rendererVersionAfterWrite(row, delivery.rendererVersion, {
-				htmlContent: delivery.htmlContent !== undefined,
-				htmlTranslations: delivery.htmlTranslations !== undefined,
-			}),
-		}),
 		...revisionStamp(row),
 	};
 }

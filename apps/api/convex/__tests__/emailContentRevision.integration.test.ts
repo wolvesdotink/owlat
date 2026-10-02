@@ -142,8 +142,8 @@ describe('emailTemplates.update — content revision', () => {
 			htmlRenderState: { stale: true, failureCount: 1 },
 		});
 
-		// A subject-only write leaves the HTML as stale as it was.
-		await t.mutation(api.emailTemplates.emails.update, { templateId, subject: 'Just the subject' });
+		// A name-only write leaves the HTML as stale as it was.
+		await t.mutation(api.emailTemplates.emails.update, { templateId, name: 'Just the name' });
 		expect((await t.run((ctx) => ctx.db.get(templateId)))?.htmlRenderState?.stale).toBe(true);
 
 		await t.mutation(api.emailTemplates.emails.update, {
@@ -152,6 +152,21 @@ describe('emailTemplates.update — content revision', () => {
 			htmlContent: '<p>Hello</p>',
 			expectedContentRevision: 3,
 		});
+		expect((await t.run((ctx) => ctx.db.get(templateId)))?.htmlRenderState).toEqual({
+			stale: false,
+		});
+	});
+
+	it('clears a pending rerender flag on a subject-only write, which renders too', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t, {
+			contentRevision: 2,
+			htmlRenderState: { stale: true, failureCount: 1 },
+		});
+
+		// Translated HTML falls back to the default subject, so a subject write
+		// renders the stored blocks and the HTML matches them again.
+		await t.mutation(api.emailTemplates.emails.update, { templateId, subject: 'Just the subject' });
 		expect((await t.run((ctx) => ctx.db.get(templateId)))?.htmlRenderState).toEqual({
 			stale: false,
 		});
@@ -300,7 +315,7 @@ describe('publish — content revision', () => {
 		expect((await t.run((ctx) => ctx.db.get(templateId)))?.status).toBe('published');
 	});
 
-	it('puts the HTML the row holds live, not the HTML the client sent', async () => {
+	it('puts a render of the blocks live, not the HTML the row holds or the client sent', async () => {
 		const t = convexTest(schema, modules);
 		const templateId = await seedTemplate(t, {
 			contentRevision: 5,
@@ -317,11 +332,12 @@ describe('publish — content revision', () => {
 
 		const row = await t.run((ctx) => ctx.db.get(templateId));
 		expect(row?.status).toBe('published');
-		expect(row?.htmlContent).toBe('<p>Stored</p>');
-		expect(row?.htmlTranslations).toContain('Gespeichert');
+		expect(row?.htmlContent).toContain('Hello');
+		expect(row?.htmlContent).not.toContain('Stored');
+		expect(row?.htmlContent).not.toContain('Client copy');
 	});
 
-	it('publishes the rerendered HTML when the rerender lands between the tab snapshot and the publish', async () => {
+	it('publishes current HTML when the rerender lands between the tab snapshot and the publish', async () => {
 		const t = convexTest(schema, modules);
 		// Saved-block propagation just landed: revision 5, HTML stale. The tab
 		// snapshots { htmlContent: OLD, contentRevision: 5 }.
@@ -348,7 +364,8 @@ describe('publish — content revision', () => {
 
 		const row = await t.run((ctx) => ctx.db.get(templateId));
 		expect(row?.status).toBe('published');
-		expect(row?.htmlContent).toBe('<p>NEW rerendered</p>');
+		expect(row?.htmlContent).toContain('Hello');
+		expect(row?.htmlContent).not.toContain('OLD pre-propagation');
 		expect(row?.htmlRenderState?.stale).toBe(false);
 	});
 
@@ -376,28 +393,23 @@ describe('publish — content revision', () => {
 		expect((await t.run((ctx) => ctx.db.get(templateId)))?.status).toBe('draft');
 	});
 
-	it('uses the caller HTML only for a row that was never rendered, and refuses one without any', async () => {
+	it('renders a row that was never rendered from its blocks, with or without caller HTML', async () => {
 		const t = convexTest(schema, modules);
-		const unrendered = await seedTemplate(t, { htmlContent: undefined });
-		const missing = await seedTemplate(t, { htmlContent: undefined });
+		const withCallerHtml = await seedTemplate(t, { htmlContent: undefined });
+		const withoutCallerHtml = await seedTemplate(t, { htmlContent: undefined });
 
 		await t.mutation(api.emailTemplates.emails.publish, {
-			templateId: unrendered,
+			templateId: withCallerHtml,
 			htmlContent: '<p>From the API caller</p>',
 		});
-		const data = await operationError(
-			t.mutation(api.emailTemplates.emails.publish, { templateId: missing })
-		);
+		await t.mutation(api.emailTemplates.emails.publish, { templateId: withoutCallerHtml });
 
-		expect((await t.run((ctx) => ctx.db.get(unrendered)))?.htmlContent).toBe(
-			'<p>From the API caller</p>'
-		);
-		expect(data.category).toBe('invalid_state');
-		expect(data.data).toMatchObject({
-			reason: 'html_missing',
-			messageKey: 'dashboard.send.emails.detail.edit.toasts.saveBeforePublish',
-		});
-		expect((await t.run((ctx) => ctx.db.get(missing)))?.status).toBe('draft');
+		for (const id of [withCallerHtml, withoutCallerHtml]) {
+			const row = await t.run((ctx) => ctx.db.get(id));
+			expect(row?.status).toBe('published');
+			expect(row?.htmlContent).toContain('Hello');
+			expect(row?.htmlContent).not.toContain('From the API caller');
+		}
 	});
 
 	it('keeps publishing without a revision for callers that do not send one', async () => {
@@ -454,12 +466,13 @@ describe('saved-block rerender patch — content revision', () => {
 			contentRevision: 4,
 			htmlRenderState: { stale: true, failureCount: 0 },
 		});
-		// The editor saves blocks + HTML built on revision 4 while the action renders.
+		// The editor saves blocks built on revision 4 while the action renders;
+		// the save renders their HTML (and the German overlay's) itself.
 		await t.mutation(api.emailTemplates.emails.update, {
 			templateId,
-			content: CONTENT,
-			htmlContent: '<p>Editor save</p>',
-			htmlTranslations: '{"de":{"htmlContent":"<p>Hallo</p>","subject":"Hallo"}}',
+			content: JSON.stringify([{ id: 'b1', type: 'text', content: { html: 'Editor save' } }]),
+			supportedLanguages: ['en', 'de'],
+			translations: '{"de":{"subject":"Hallo","blocks":{"b1":{"html":"Hallo"}}}}',
 			expectedContentRevision: 4,
 		});
 
@@ -472,7 +485,8 @@ describe('saved-block rerender patch — content revision', () => {
 
 		expect(outcome).toBe('superseded');
 		const row = await t.run((ctx) => ctx.db.get(templateId));
-		expect(row?.htmlContent).toBe('<p>Editor save</p>');
+		expect(row?.htmlContent).toContain('Editor save');
+		expect(row?.htmlContent).not.toBe('<p>Rerendered</p>');
 		expect(row?.htmlTranslations).toContain('Hallo');
 	});
 

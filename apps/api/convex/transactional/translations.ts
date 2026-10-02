@@ -2,7 +2,10 @@ import { v } from 'convex/values';
 import { transactionalMutation, transactionalQuery } from './_helpers';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
-import { assertEditableForPublishableChange } from '../lib/publishableEmail';
+import {
+	assertEditableForPublishableChange,
+	withRenderedTranslations,
+} from '../lib/publishableEmail';
 import { assertContentRevision } from '../lib/contentRevision';
 import { rendererVersionArg } from '../lib/rendererVersion';
 import {
@@ -43,10 +46,11 @@ export const addTranslation = transactionalMutation({
 	args: {
 		id: v.id('transactionalEmails'),
 		language: v.string(),
-		// The new language's delivery HTML, rendered from the row's content (the
-		// seeded overlay is the default text). Written with the overlay.
+		// Ignored: the server renders every language's delivery HTML from the
+		// stored overlays in this write (lib/publishableEmail.ts). Still accepted
+		// so older clients keep working.
 		htmlContent: v.optional(v.string()),
-		// The renderer version that produced `htmlContent` (lib/rendererVersion.ts).
+		// Ignored, like htmlContent.
 		rendererVersion: rendererVersionArg,
 		forceWhilePublished: v.optional(v.boolean()),
 		// The `contentRevision` the caller built this write on. When given, the
@@ -63,12 +67,11 @@ export const addTranslation = transactionalMutation({
 		assertEditableForPublishableChange(email, 'Transactional email', args.forceWhilePublished);
 		assertContentRevision(email, args.expectedContentRevision);
 
-		const patch = addTranslationPatch(
+		const patch = await withRenderedTranslations(
+			ctx,
 			email,
-			args.language,
-			TRANSACTIONAL_TRANSLATABLE_FIELDS,
-			args.htmlContent,
-			args.rendererVersion
+			addTranslationPatch(email, args.language, TRANSACTIONAL_TRANSLATABLE_FIELDS),
+			'data'
 		);
 		await ctx.db.patch(args.id, patch);
 		// The revision this write stored; the next write builds on it.
@@ -86,10 +89,11 @@ export const updateTranslation = transactionalMutation({
 		language: v.string(),
 		subject: v.optional(v.string()),
 		blocks: v.optional(v.string()), // JSON string of Record<blockId, TranslatableBlockContent>
-		// The language's delivery HTML, rendered from this overlay on the row's
-		// content. Written with the overlay, so the two cannot disagree.
+		// Ignored: the server renders every language's delivery HTML from the
+		// stored overlays in this write (lib/publishableEmail.ts). Still accepted
+		// so older clients keep working.
 		htmlContent: v.optional(v.string()),
-		// The renderer version that produced `htmlContent` (lib/rendererVersion.ts).
+		// Ignored, like htmlContent.
 		rendererVersion: rendererVersionArg,
 		forceWhilePublished: v.optional(v.boolean()),
 		// The `contentRevision` the caller built this write on. When given, the
@@ -106,7 +110,12 @@ export const updateTranslation = transactionalMutation({
 		assertEditableForPublishableChange(email, 'Transactional email', args.forceWhilePublished);
 		assertContentRevision(email, args.expectedContentRevision);
 
-		const patch = updateTranslationPatch(email, args, TRANSACTIONAL_TRANSLATABLE_FIELDS);
+		const patch = await withRenderedTranslations(
+			ctx,
+			email,
+			updateTranslationPatch(email, args, TRANSACTIONAL_TRANSLATABLE_FIELDS),
+			'data'
+		);
 		await ctx.db.patch(args.id, patch);
 		// The revision this write stored; the next write builds on it.
 		return { id: args.id, contentRevision: patch.contentRevision };
@@ -135,7 +144,12 @@ export const removeTranslation = transactionalMutation({
 		assertEditableForPublishableChange(email, 'Transactional email', args.forceWhilePublished);
 		assertContentRevision(email, args.expectedContentRevision);
 
-		const patch = removeTranslationPatch(email, args.language);
+		const patch = await withRenderedTranslations(
+			ctx,
+			email,
+			removeTranslationPatch(email, args.language),
+			'data'
+		);
 		await ctx.db.patch(args.id, patch);
 		// The revision this write stored; the next write builds on it.
 		return { id: args.id, contentRevision: patch.contentRevision };

@@ -256,12 +256,12 @@ export const dispatchOutbound = internalAction({
  * Unlike the agent path, misconfiguration here THROWS (channel disabled, no
  * contact address) so the admin sees the error in the compose UI rather than a
  * silent `failed` row. The provider call itself still runs through fail-safe
- * `dispatchOutbound`. Admin-only: a manual outbound on the shared inbox is a
- * support action, matching `unifiedMessages.sendChatMessage`.
+ * `dispatchOutbound`. Shared-inbox readers only: a manual outbound on the Team
+ * Inbox is a support action, matching `unifiedMessages.sendChatMessage`.
  */
-// authz: admin floor enforced via internal.auth.membership.assertOrgAdmin
-// (organization:manage) inside the handler — actions can't call
-// requireOrgPermission directly.
+// authz: shared-inbox reader gate enforced via internal.inbox.access
+// .assertSharedInboxReader inside the handler — actions can't read the session
+// directly.
 export const sendChannelMessage = authedAction({
 	args: {
 		contactId: v.id('contacts'),
@@ -273,9 +273,10 @@ export const sendChannelMessage = authedAction({
 	},
 	returns: v.null(),
 	handler: async (ctx, args): Promise<null> => {
-		// Admin floor (organization:manage) — actions can't run requireOrgPermission
-		// directly, so assert through the internal query that inherits our identity.
-		await ctx.runQuery(internal.auth.membership.assertOrgAdmin, {});
+		// A reply on a Team Inbox conversation: the shared-inbox reader gate
+		// (inbox/access.ts). Actions can't read the session, so assert through
+		// the internal query that inherits our identity.
+		await ctx.runQuery(internal.inbox.access.assertSharedInboxReader, {});
 
 		const text = args.text.trim();
 		if (!text) throwInvalidInput('Message cannot be empty');

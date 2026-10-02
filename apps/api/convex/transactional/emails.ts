@@ -17,6 +17,7 @@ import {
 	buildEditablePatch,
 	publishedHtml,
 } from '../lib/publishableEmail';
+import { loadEmailTheme } from '../lib/publishableEmailRender';
 import { assertContentRevision } from '../lib/contentRevision';
 import { rendererVersionArg } from '../lib/rendererVersion';
 import { recordAuditLog } from '../lib/auditLog';
@@ -156,6 +157,8 @@ export const update = transactionalMutation({
 		slug: v.optional(v.string()),
 		subject: v.optional(v.string()),
 		content: v.optional(v.string()),
+		// Accepted for older clients and ignored: the server renders the HTML
+		// from the stored blocks (lib/publishableEmail.ts buildEditablePatch).
 		htmlContent: v.optional(v.string()),
 		// text/plain alternative + the author's override, as on `emailTemplates`.
 		// An EMPTY `plainTextOverride` reverts to the generated body.
@@ -167,9 +170,10 @@ export const update = transactionalMutation({
 		defaultLanguage: v.optional(v.string()),
 		supportedLanguages: v.optional(v.array(v.string())),
 		translations: v.optional(v.string()),
+		// Ignored, like htmlContent: rendered from the translation overlays.
 		htmlTranslations: v.optional(v.string()),
-		// The renderer version that produced `htmlContent` / `htmlTranslations`
-		// (lib/rendererVersion.ts); older clients omit it.
+		// Ignored, like htmlContent: the stored HTML is stamped with this
+		// server's renderer (lib/rendererVersion.ts).
 		rendererVersion: rendererVersionArg,
 		// IDs of saved blocks linked in this email
 		linkedBlockIds: v.optional(v.array(v.string())),
@@ -215,6 +219,7 @@ export const update = transactionalMutation({
 		const updates = {
 			...(await buildEditablePatch(ctx, email, args, {
 				noun: 'Transactional email',
+				variableType: 'data',
 				searchableFields: ['name', 'subject', 'slug'],
 			})),
 			...(args.slug !== undefined && { slug: args.slug }),
@@ -249,14 +254,14 @@ export const update = transactionalMutation({
 export const publish = transactionalMutation({
 	args: {
 		id: v.id('transactionalEmails'),
-		// Ignored when the row holds rendered HTML (see `publishedHtml`). Still
-		// accepted so older clients, which send the row's HTML back, keep working,
-		// and used for a row that was never rendered.
+		// Ignored: publish uses the row's own HTML, or renders a never-rendered
+		// row from its blocks (see `publishedHtml`). Still accepted so older
+		// clients, which send the row's HTML back, keep working.
 		htmlContent: v.optional(v.string()),
-		// Pre-rendered HTML for each translation language, with the same rule.
+		// Ignored, like htmlContent.
 		htmlTranslations: v.optional(v.string()),
-		// The renderer version that produced the HTML above, recorded when it is
-		// used (lib/rendererVersion.ts).
+		// Ignored, like htmlContent: the stored HTML is stamped with this
+		// server's renderer (lib/rendererVersion.ts).
 		rendererVersion: rendererVersionArg,
 		// The `contentRevision` the HTML was rendered from. When given, a row
 		// that has moved on is refused with `conflict` instead of going live
@@ -275,7 +280,10 @@ export const publish = transactionalMutation({
 			throwInvalidState('Transactional email is already published');
 		}
 		assertContentRevision(email, args.expectedContentRevision, 'publish');
-		const html = publishedHtml(email, args);
+		const html = publishedHtml(email, {
+			variableType: 'data',
+			theme: await loadEmailTheme(ctx),
+		});
 
 		const outcome = await ctx.runMutation(internal.transactional.lifecycle.transition, {
 			emailId: args.id,

@@ -10,6 +10,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
+import { ipRateLimitKey, unmapIpv4 } from '@owlat/shared/ipAddress';
 import { createConnectionLimiter } from '../connectionSlots.js';
 
 const peer = (remoteAddress: string) => ({ remoteAddress });
@@ -24,12 +25,14 @@ afterEach(async () => {
 	await redis.flushall();
 });
 
+// The MX listener counts each address; the submission listeners count an IPv6
+// peer per /64. Everything else about the counter is shared.
 describe.each([
-	{ listener: 'bounce', prefix: 'mta:bounce:conn:' },
-	{ listener: 'submission', prefix: 'mta:submission:conn:' },
-])('createConnectionLimiter ($listener prefix)', ({ prefix }) => {
+	{ listener: 'bounce', prefix: 'mta:bounce:conn:', peerKey: unmapIpv4 },
+	{ listener: 'submission', prefix: 'mta:submission:conn:', peerKey: ipRateLimitKey },
+])('createConnectionLimiter ($listener prefix)', ({ prefix, peerKey }) => {
 	const limiter = (max: number, r: RealRedis = redis) =>
-		createConnectionLimiter(r, prefix, 300, max);
+		createConnectionLimiter(r, prefix, 300, max, peerKey);
 	const count = async (ip: string): Promise<string | null> => redis.get(`${prefix}${ip}`);
 
 	it('allows up to the per-IP max, then refuses', async () => {
@@ -142,10 +145,37 @@ describe.each([
 });
 
 it('keeps the bounce and submission counters apart', async () => {
-	await createConnectionLimiter(redis, 'mta:submission:conn:', 300, 1).acquire(peer('1.2.3.4'));
+	await createConnectionLimiter(redis, 'mta:submission:conn:', 300, 1, ipRateLimitKey).acquire(
+		peer('1.2.3.4')
+	);
 	expect(await redis.get('mta:submission:conn:1.2.3.4')).toBe('1');
 	expect(await redis.get('mta:bounce:conn:1.2.3.4')).toBeNull();
 	expect(
-		await createConnectionLimiter(redis, 'mta:bounce:conn:', 300, 1).acquire(peer('1.2.3.4'))
+		await createConnectionLimiter(redis, 'mta:bounce:conn:', 300, 1, unmapIpv4).acquire(
+			peer('1.2.3.4')
+		)
 	).toBe(true);
+});
+
+it('counts every IPv6 address of one /64 under one submission key', async () => {
+	const l = createConnectionLimiter(redis, 'mta:submission:conn:', 300, 2, ipRateLimitKey);
+	expect(await l.acquire(peer('2001:db8:1:2::1'))).toBe(true);
+	expect(await l.acquire(peer('2001:db8:1:2:aaaa:bbbb:cccc:dddd'))).toBe(true);
+	expect(await l.acquire(peer('2001:db8:1:2::ffff'))).toBe(false);
+	expect(await redis.get('mta:submission:conn:2001:db8:1:2::/64')).toBe('2');
+	// A neighbouring /64 is a different client.
+	expect(await l.acquire(peer('2001:db8:1:3::1'))).toBe(true);
+
+	await l.release(peer('2001:db8:1:2::ffff:1'));
+	expect(await redis.get('mta:submission:conn:2001:db8:1:2::/64')).toBe('1');
+});
+
+it('counts each IPv6 address on its own for the MX listener', async () => {
+	// Large senders deliver from many hosts in one /64.
+	const l = createConnectionLimiter(redis, 'mta:bounce:conn:', 300, 1, unmapIpv4);
+	expect(await l.acquire(peer('2001:db8:1:2::1'))).toBe(true);
+	expect(await l.acquire(peer('2001:db8:1:2::2'))).toBe(true);
+	expect(await l.acquire(peer('2001:db8:1:2::1'))).toBe(false);
+	expect(await redis.get('mta:bounce:conn:2001:db8:1:2::1')).toBe('1');
+	expect(await redis.get('mta:bounce:conn:2001:db8:1:2::2')).toBe('1');
 });

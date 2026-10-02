@@ -16,6 +16,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 		...actual,
 		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
+		getBetterAuthSessionWithRole: vi.fn().mockResolvedValue({
+			userId: 'test-user',
+			role: 'owner',
+			activeOrganizationId: 'test-org',
+		}),
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
@@ -237,8 +242,8 @@ describe('knowledgeGraphAnalytics soft-auth', () => {
 		await seedEntry(t, { title: 'hidden' });
 		await t.action(internal.knowledge.graphAnalyticsRecompute.recomputeStats, {});
 
-		const { isActiveOrgMember } = await import('../lib/sessionOrganization');
-		vi.mocked(isActiveOrgMember).mockResolvedValueOnce(false);
+		const { getBetterAuthSessionWithRole } = await import('../lib/sessionOrganization');
+		vi.mocked(getBetterAuthSessionWithRole).mockResolvedValueOnce(null);
 
 		const stats = await t.query(api.knowledge.graphAnalytics.getGraphStats, {});
 		expect(stats).toBeNull();
@@ -251,8 +256,8 @@ describe('knowledgeGraphAnalytics soft-auth', () => {
 		const neighbour = await seedEntry(t, { title: 'neighbour' });
 		await seedEdge(t, root, neighbour);
 
-		const { isActiveOrgMember } = await import('../lib/sessionOrganization');
-		vi.mocked(isActiveOrgMember).mockResolvedValueOnce(false);
+		const { getBetterAuthSessionWithRole } = await import('../lib/sessionOrganization');
+		vi.mocked(getBetterAuthSessionWithRole).mockResolvedValueOnce(null);
 
 		const sub = await t.query(api.knowledge.graphAnalytics.getSubgraph, { entryId: root });
 		expect(sub.nodes).toEqual([]);

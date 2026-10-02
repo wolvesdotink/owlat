@@ -38,6 +38,8 @@ interface GenericPayload {
 	metadata?: Record<string, string | undefined>;
 }
 
+const MISSING_AUTH_REASON = 'Missing authentication (x-webhook-secret or Authorization header)';
+
 function extractHeaderSecret(request: Request): string | null {
 	const direct = request.headers.get('x-webhook-secret');
 	if (direct) return direct;
@@ -48,6 +50,8 @@ function extractHeaderSecret(request: Request): string | null {
 
 export const genericAdapter: InboundAdapter = {
 	source: 'generic',
+
+	missingSignatureHeaders: (request) => (extractHeaderSecret(request) ? null : MISSING_AUTH_REASON),
 
 	async verifySignature(request, _rawBody, ctx) {
 		const secret = await resolveChannelInboundSecret(
@@ -65,7 +69,7 @@ export const genericAdapter: InboundAdapter = {
 			return {
 				ok: false,
 				status: 401,
-				reason: 'Missing authentication (x-webhook-secret or Authorization header)',
+				reason: MISSING_AUTH_REASON,
 			};
 		}
 

@@ -18,7 +18,7 @@ import { api, internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { modules } from '../../__tests__/testModules';
-import { createTestContact } from '../../__tests__/factories';
+import { createTestContact, enableFeatures } from '../../__tests__/factories';
 import { getOpenCommitmentsByContact } from '../graph';
 import { KNOWLEDGE_ENTRY_JUNCTION, repointContactJunction } from '../../lib/contactJunctions';
 import type * as SessionOrganization from '../../lib/sessionOrganization';
@@ -121,6 +121,7 @@ async function titles(t: Harness, contactId: Id<'contacts'>, limit?: number): Pr
 	const rows = await t.query(internal.knowledge.graph.getOpenCommitmentsByContact, {
 		contactId,
 		limit,
+		includeInboxDerived: true,
 	});
 	return rows.map((r) => r.title);
 }
@@ -152,7 +153,7 @@ async function countedRecall(
 					: value;
 			},
 		});
-		const rows = await handler({ ...ctx, db }, { contactId });
+		const rows = await handler({ ...ctx, db }, { contactId, includeInboxDerived: true });
 		return {
 			titles: rows.map((r) => r['title'] as string),
 			entryLoads,
@@ -173,6 +174,8 @@ describe('open-commitments recall reads the junction projection', () => {
 		{ timeout: 180_000 },
 		async () => {
 			const t = convexTest(schema, modules);
+			// The public knowledge functions follow the `ai.knowledge` flag.
+			await enableFeatures(t, ['ai.knowledge']);
 			const contactId = await newContact(t);
 			const otherId = await newContact(t);
 
@@ -260,6 +263,8 @@ describe('open-commitments recall reads the junction projection', () => {
 
 	it('merges rows written before the projection with projected ones', async () => {
 		const t = convexTest(schema, modules);
+		// The public knowledge functions follow the `ai.knowledge` flag.
+		await enableFeatures(t, ['ai.knowledge']);
 		const contactId = await newContact(t);
 		const now = Date.now();
 		await t.run(async (ctx) => {
@@ -293,6 +298,8 @@ describe('open-commitments recall reads the junction projection', () => {
 
 	it('skips expired candidates without loading them', async () => {
 		const t = convexTest(schema, modules);
+		// The public knowledge functions follow the `ai.knowledge` flag.
+		await enableFeatures(t, ['ai.knowledge']);
 		const contactId = await newContact(t);
 		const now = Date.now();
 		for (let i = 0; i < 20; i++) {
@@ -308,8 +315,34 @@ describe('open-commitments recall reads the junction projection', () => {
 		expect(recall.entryLoads).toBe(1);
 	});
 
+	it('leaves Team Inbox-derived commitments out unless the caller includes them', async () => {
+		const t = convexTest(schema, modules);
+		const contactId = await newContact(t);
+		await save(t, [contactId], { entryType: 'action_item', title: 'From the Team Inbox' });
+		await t.run(async (ctx) => {
+			await insertLegacy(ctx, contactId, {
+				entryType: 'action_item',
+				title: 'Written by hand',
+				sourceType: 'manual',
+			});
+		});
+
+		const recall = (includeInboxDerived: boolean) =>
+			t.query(internal.knowledge.graph.getOpenCommitmentsByContact, {
+				contactId,
+				includeInboxDerived,
+			});
+		expect((await recall(true)).map((r) => r.title).sort()).toEqual([
+			'From the Team Inbox',
+			'Written by hand',
+		]);
+		expect((await recall(false)).map((r) => r.title)).toEqual(['Written by hand']);
+	});
+
 	it('follows edits: type change, expiry, policy conversion, reopening', async () => {
 		const t = convexTest(schema, modules);
+		// The public knowledge functions follow the `ai.knowledge` flag.
+		await enableFeatures(t, ['ai.knowledge']);
 		const contactId = await newContact(t);
 		const a = await save(t, [contactId], { entryType: 'action_item', title: 'A' });
 		const b = await save(t, [contactId], { entryType: 'action_item', title: 'B' });
@@ -349,6 +382,8 @@ describe('open-commitments recall reads the junction projection', () => {
 
 	it('keeps the projection through a dedup merge and a contact merge', async () => {
 		const t = convexTest(schema, modules);
+		// The public knowledge functions follow the `ai.knowledge` flag.
+		await enableFeatures(t, ['ai.knowledge']);
 		const contactA = await newContact(t);
 		const contactB = await newContact(t);
 		const same = [1, 0, 0];
@@ -388,6 +423,8 @@ describe('open-commitments recall reads the junction projection', () => {
 
 	it('backfill marks an orphan row not-open so the reader never hydrates it', async () => {
 		const t = convexTest(schema, modules);
+		// The public knowledge functions follow the `ai.knowledge` flag.
+		await enableFeatures(t, ['ai.knowledge']);
 		const contactId = await newContact(t);
 		const rowId = await t.run(async (ctx) => {
 			const entryId = await insertLegacy(ctx, contactId, {

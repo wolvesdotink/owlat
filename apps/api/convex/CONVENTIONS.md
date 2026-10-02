@@ -259,6 +259,13 @@ Gated families and their builders:
 | `campaigns`                  | `campaignsQuery`, `campaignsMutation`                                    | `campaigns/_helpers.ts`            |
 | `automations`                | `automationsQuery`, `automationsMutation`                                | `automations/_helpers.ts`          |
 | `forms`                      | `formsQuery`, `formsMutation`                                            | `forms/_helpers.ts`                |
+| `ai.knowledge`               | `knowledgeMutation`, `knowledgeAdminMutation`                            | `knowledge/visibility.ts`          |
+
+The knowledge soft-auth reads apply `ai.knowledge` through
+`resolveKnowledgeViewer` (they return empty rather than throw). The one
+exception in `knowledge/` is the message backfill's `getStatus` / `cancel`
+(`knowledge/messageBackfill.ts`): that job belongs to `ai.agent`, which starts
+and stops it, so it follows that flag instead.
 
 Actions in the `mail.external` family call `assertExternalEnabled(ctx)` from
 the same module; campaign actions call `assertCampaignsEnabledInAction(ctx)`
@@ -928,11 +935,13 @@ either: its seeded leg carries over Redis and ClamAV volumes, not Convex data.
   a `shareLinks` snapshot or rehydrating cached output. The version is
   `EMAIL_RENDERER_VERSION` in `packages/email-renderer/src/version.ts`
   (history there; `CURRENT_RENDERER_VERSION` re-exports it). Every write that
-  stores rendered HTML stamps the version that rendered it: the browser sends
-  `rendererVersion` with the HTML, the Node rerender passes its own, and
-  `lib/rendererVersion.ts` decides what the row records (a write that leaves
-  older HTML in the row keeps the older version; unreported means 1). Copies
-  (duplicates, share links) carry the source's version.
+  stores rendered HTML stamps the version that rendered it. Editor saves,
+  publishes, duplicates and translation writes render on the server
+  (`lib/publishableEmail.ts`) and stamp the current version; the Node rerender
+  passes its own, and `lib/rendererVersion.ts` decides what the row records (a
+  write that leaves older HTML in the row keeps the older version; unreported
+  means 1). A client's `rendererVersion` argument is ignored. Share links
+  carry the source's version.
 
 ### Boolean naming
 

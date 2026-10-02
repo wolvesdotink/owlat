@@ -59,6 +59,13 @@ interface GithubPullRequestPayload {
 }
 
 export const handleGithubWebhook = httpAction(async (ctx, request) => {
+	// A request without the signature header cannot verify, so it is refused
+	// before it can spend the bucket below or have its body read.
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) {
+		return new Response('Missing X-Hub-Signature-256 header', { status: 401 });
+	}
+
 	// Spend the ingestion bucket BEFORE reading the body — an unauthenticated
 	// flood must not turn this route into a free body-read + HMAC oracle. Note
 	// that without RATE_LIMIT_TRUSTED_PROXY (the default) getClientIp returns
@@ -80,11 +87,6 @@ export const handleGithubWebhook = httpAction(async (ctx, request) => {
 			status: 503,
 			headers: { 'Content-Type': 'application/json' },
 		});
-	}
-
-	const signature = request.headers.get('x-hub-signature-256');
-	if (!signature) {
-		return new Response('Missing X-Hub-Signature-256 header', { status: 401 });
 	}
 
 	let rawBody: string;

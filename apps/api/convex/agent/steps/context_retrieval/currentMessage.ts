@@ -38,11 +38,11 @@ export async function inboundBodyForContext(
 	// Strip hidden content (HTML comments / display:none / zero-width smuggling)
 	// before the body becomes model context, so a hidden instruction never
 	// reaches the draft even when the message scored below the quarantine
-	// threshold. `stripHiddenContent` is a no-op on already-clean text (the
-	// plain-text part passes through verbatim).
+	// threshold. The plain-text part keeps any markup it quotes, since a reader
+	// sees it as written; only the HTML part has its hidden elements removed.
 	const { text, html } = await openInboundMessageBody(message, storage);
 	if (text != null) return stripHiddenContent(text);
-	if (html != null) return stripHiddenContent(stripRemoteImages(html).html);
+	if (html != null) return stripHiddenContent(stripRemoteImages(html).html, { html: true });
 	return undefined;
 }
 

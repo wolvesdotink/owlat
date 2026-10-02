@@ -71,7 +71,10 @@ export const ask = authedAction({
 		// Gate FIRST (flag, then knowledge:read). As an action we can't read the db
 		// directly, so both gates run in an internal query that inherits our
 		// identity; a disabled feature or a non-member throws here before retrieval.
-		await ctx.runQuery(internal.quickQueryGate.assertKnowledgeReadAccess, {});
+		const { canReadInbox } = await ctx.runQuery(
+			internal.quickQueryGate.assertKnowledgeReadAccess,
+			{}
+		);
 
 		const question = args.question.trim();
 		if (!question) {
@@ -112,6 +115,7 @@ export const ask = authedAction({
 				queryText: question,
 				embedding,
 				scopeToContact: 'org-wide',
+				includeInboxDerived: canReadInbox,
 				limit: PER_SOURCE_LIMIT,
 			}),
 			ctx.runAction(internal.semanticFileProcessing.semanticSearch, {

@@ -2,7 +2,10 @@ import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
-import { assertEditableForPublishableChange } from '../lib/publishableEmail';
+import {
+	assertEditableForPublishableChange,
+	withRenderedTranslations,
+} from '../lib/publishableEmail';
 import { assertContentRevision } from '../lib/contentRevision';
 import { rendererVersionArg } from '../lib/rendererVersion';
 import {
@@ -41,10 +44,11 @@ export const addTranslation = authedMutation({
 	args: {
 		templateId: v.id('emailTemplates'),
 		language: v.string(), // Language code (e.g., "de", "fr", "es")
-		// The new language's delivery HTML, rendered from the row's content (the
-		// seeded overlay is the default text). Written with the overlay.
+		// Ignored: the server renders every language's delivery HTML from the
+		// stored overlays in this write (lib/publishableEmail.ts). Still accepted
+		// so older clients keep working.
 		htmlContent: v.optional(v.string()),
-		// The renderer version that produced `htmlContent` (lib/rendererVersion.ts).
+		// Ignored, like htmlContent.
 		rendererVersion: rendererVersionArg,
 		forceWhilePublished: v.optional(v.boolean()),
 		// The `contentRevision` the caller built this write on. When given, the
@@ -61,12 +65,11 @@ export const addTranslation = authedMutation({
 		assertEditableForPublishableChange(template, 'Template', args.forceWhilePublished);
 		assertContentRevision(template, args.expectedContentRevision);
 
-		const patch = addTranslationPatch(
+		const patch = await withRenderedTranslations(
+			ctx,
 			template,
-			args.language,
-			TEMPLATE_TRANSLATABLE_FIELDS,
-			args.htmlContent,
-			args.rendererVersion
+			addTranslationPatch(template, args.language, TEMPLATE_TRANSLATABLE_FIELDS),
+			'personalization'
 		);
 		await ctx.db.patch(args.templateId, patch);
 		// The revision this write stored; the next write builds on it.
@@ -84,10 +87,11 @@ export const updateTranslation = authedMutation({
 		subject: v.optional(v.string()),
 		previewText: v.optional(v.string()),
 		blocks: v.optional(v.string()), // JSON string of Record<blockId, TranslatableBlockContent>
-		// The language's delivery HTML, rendered from this overlay on the row's
-		// content. Written with the overlay, so the two cannot disagree.
+		// Ignored: the server renders every language's delivery HTML from the
+		// stored overlays in this write (lib/publishableEmail.ts). Still accepted
+		// so older clients keep working.
 		htmlContent: v.optional(v.string()),
-		// The renderer version that produced `htmlContent` (lib/rendererVersion.ts).
+		// Ignored, like htmlContent.
 		rendererVersion: rendererVersionArg,
 		forceWhilePublished: v.optional(v.boolean()),
 		// The `contentRevision` the caller built this write on. When given, the
@@ -104,7 +108,12 @@ export const updateTranslation = authedMutation({
 		assertEditableForPublishableChange(template, 'Template', args.forceWhilePublished);
 		assertContentRevision(template, args.expectedContentRevision);
 
-		const patch = updateTranslationPatch(template, args, TEMPLATE_TRANSLATABLE_FIELDS);
+		const patch = await withRenderedTranslations(
+			ctx,
+			template,
+			updateTranslationPatch(template, args, TEMPLATE_TRANSLATABLE_FIELDS),
+			'personalization'
+		);
 		await ctx.db.patch(args.templateId, patch);
 		// The revision this write stored; the next write builds on it.
 		return { templateId: args.templateId, contentRevision: patch.contentRevision };
@@ -131,7 +140,12 @@ export const removeTranslation = authedMutation({
 		assertEditableForPublishableChange(template, 'Template', args.forceWhilePublished);
 		assertContentRevision(template, args.expectedContentRevision);
 
-		const patch = removeTranslationPatch(template, args.language);
+		const patch = await withRenderedTranslations(
+			ctx,
+			template,
+			removeTranslationPatch(template, args.language),
+			'personalization'
+		);
 		await ctx.db.patch(args.templateId, patch);
 		// The revision this write stored; the next write builds on it.
 		return { templateId: args.templateId, contentRevision: patch.contentRevision };
@@ -144,14 +158,13 @@ export const setDefaultLanguage = authedMutation({
 	args: {
 		templateId: v.id('emailTemplates'),
 		language: v.string(),
-		// The delivery HTML rendered from the swapped row: the new default's
-		// HTML and text/plain body, and every other language's HTML (the
-		// outgoing default included). Written with the swap, so the send path
-		// never pairs the new subject with the old language's body.
+		// Ignored: the server renders the swapped row's HTML, text/plain body and
+		// every other language's HTML in this write, so the send path never pairs
+		// the new subject with the old language's body. Still accepted so older
+		// clients keep working.
 		htmlContent: v.optional(v.string()),
 		plainTextContent: v.optional(v.string()),
 		htmlTranslations: v.optional(v.string()),
-		// The renderer version that produced the HTML (lib/rendererVersion.ts).
 		rendererVersion: rendererVersionArg,
 		forceWhilePublished: v.optional(v.boolean()),
 		// The `contentRevision` the caller built this write on. When given, the
@@ -168,20 +181,12 @@ export const setDefaultLanguage = authedMutation({
 		assertEditableForPublishableChange(template, 'Template', args.forceWhilePublished);
 		assertContentRevision(template, args.expectedContentRevision);
 
-		const patch = setDefaultLanguagePatch(template, args.language, TEMPLATE_TRANSLATABLE_FIELDS, {
-			htmlContent: args.htmlContent,
-			plainTextContent: args.plainTextContent,
-			htmlTranslations: args.htmlTranslations,
-			rendererVersion: args.rendererVersion,
-		});
+		const patch = setDefaultLanguagePatch(template, args.language, TEMPLATE_TRANSLATABLE_FIELDS);
 		if (patch) {
-			// Body and HTML now match again, so a saved-block rerender pending
-			// for the previous revision has nothing left to fix.
-			const rendered = args.htmlContent !== undefined && args.htmlTranslations !== undefined;
-			await ctx.db.patch(args.templateId, {
-				...patch,
-				...(rendered && template.htmlRenderState && { htmlRenderState: { stale: false } }),
-			});
+			await ctx.db.patch(
+				args.templateId,
+				await withRenderedTranslations(ctx, template, patch, 'personalization')
+			);
 		}
 		return args.templateId;
 	},

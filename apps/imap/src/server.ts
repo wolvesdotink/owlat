@@ -6,7 +6,7 @@
 
 import { createServer as createPlainServer, type Server as TlsServer, type TlsOptions } from 'tls';
 import { createServer as createTcpServer, type Server as TcpServer } from 'net';
-import { unmapIpv4 } from '@owlat/shared/ipAddress';
+import { ipRateLimitKey, unmapIpv4 } from '@owlat/shared/ipAddress';
 import { HARDENED_SERVER_TLS_OPTIONS } from '@owlat/shared/tlsPolicy';
 import type { ImapConfig } from './config.js';
 import type { ConvexClient } from './convex.js';
@@ -58,7 +58,10 @@ export function startImapServer(
 		// A dual-stack listener reports IPv4 peers as `::ffff:a.b.c.d`; unmap so
 		// one host is counted under one key whichever family it arrived on.
 		const ip = unmapIpv4(socket.remoteAddress ?? 'unknown');
-		const perIp = (accounting.perIp.get(ip) ?? 0) + 1;
+		// The per-IP cap counts an IPv6 peer by its /64, as the LOGIN limiter
+		// does: one host can take a fresh address from its /64 per connection.
+		const slotKey = ipRateLimitKey(ip);
+		const perIp = (accounting.perIp.get(slotKey) ?? 0) + 1;
 		if (perIp > config.maxConnectionsPerIp) {
 			socket.write('* BYE Too many connections from this IP\r\n');
 			socket.end();
@@ -69,13 +72,13 @@ export function startImapServer(
 			socket.end();
 			return;
 		}
-		accounting.perIp.set(ip, perIp);
+		accounting.perIp.set(slotKey, perIp);
 		accounting.totalActive += 1;
 		socket.on('close', () => {
 			accounting.totalActive = Math.max(0, accounting.totalActive - 1);
-			const remaining = (accounting.perIp.get(ip) ?? 1) - 1;
-			if (remaining <= 0) accounting.perIp.delete(ip);
-			else accounting.perIp.set(ip, remaining);
+			const remaining = (accounting.perIp.get(slotKey) ?? 1) - 1;
+			if (remaining <= 0) accounting.perIp.delete(slotKey);
+			else accounting.perIp.set(slotKey, remaining);
 		});
 
 		const connection = new ImapConnection(socket, config, convex, rateLimiter, ip, tls);

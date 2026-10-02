@@ -321,6 +321,13 @@ export const runChunk = internalAction({
 // ============================================================
 // Public surface for the dashboard
 // ============================================================
+//
+// The one deliberate exception to "every public knowledge function follows
+// `ai.knowledge`" (CONVENTIONS.md → Feature-flag floors): this job belongs to
+// the agent. `setFeatureFlag` starts it on the first `ai.agent` enable,
+// `runChunk` stops on `ai.agent` alone, and its card renders under the agent
+// settings. Gating these two on `ai.knowledge` would hide, and make
+// uncancellable, a job that is running.
 
 /**
  * Most recent backfill job (for the progress card).

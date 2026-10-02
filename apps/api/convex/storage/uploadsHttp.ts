@@ -2,30 +2,22 @@ import { httpAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { BodyTooLargeError, readBodyText } from '../lib/readBody';
 import { errorResponse, jsonResponse } from '../lib/httpResponse';
-import { getOptional } from '../lib/env';
-import { secretMatches } from '../lib/crypto';
+import { requireInstanceSecretBearer } from '../lib/instanceSecret';
 import type { Id } from '../_generated/dataModel';
 
 /** Only the web server sees native upload responses and can attest blob ownership.
  * File bytes stream through Nuxt to native storage, never through a Convex HTTP
- * action (whose request limit is below the supported archive/library size).
+ * action (whose request limit is below the supported archive/library size). The
+ * web server authenticates with the instance secret as a bearer token; see
+ * `requireInstanceSecretBearer` for how failed compares are throttled.
  */
-function authenticated(request: Request): boolean {
-	const current = getOptional('INSTANCE_SECRET');
-	if (!current) return false;
-	const header = request.headers.get('authorization') ?? '';
-	if (!header.startsWith('Bearer ')) return false;
-	const token = header.slice(7);
-	const previous = getOptional('INSTANCE_SECRET_PREVIOUS');
-	return secretMatches(token, current) || secretMatches(token, previous);
-}
-
 async function serviceRequest(
 	ctx: ActionCtx,
 	request: Request,
 	operation: 'begin' | 'finish' | 'abort'
 ): Promise<Response> {
-	if (!authenticated(request)) return errorResponse('unauthenticated', 'Unauthorized');
+	const denied = await requireInstanceSecretBearer(ctx, request);
+	if (denied) return denied;
 	try {
 		const body: unknown = JSON.parse(await readBodyText(request, 10 * 1024));
 		if (!body || typeof body !== 'object' || Array.isArray(body))

@@ -14,7 +14,8 @@ import { internalQuery, type QueryCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { authedAction, authedQuery } from '../lib/authedFunctions';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requireOrgPermission, requirePermission } from '../lib/sessionOrganization';
+import { isSharedInboxReader } from '../inbox/access';
 import { getOrThrow } from '../_utils/errors';
 import { utf8Bytes } from '../lib/bytes';
 import { redactContactCapabilityFields } from './listing';
@@ -214,9 +215,13 @@ type ContactDataExport = Omit<ContactDataBundle, 'inboundMessages'> & {
  */
 export const exportContactData = authedQuery({
 	args: { contactId: v.id('contacts') },
-	handler: async (ctx, args) => {
-		// Full personal-data disclosure — operator surface.
-		await requireOrgPermission(ctx, 'organization:manage');
+	handler: async (ctx, args, session) => {
+		// Full personal-data disclosure — operator surface. The bundle carries the
+		// contact's Team Inbox mail and threads, so the caller must also pass the
+		// shared-inbox reader gate (inbox/access.ts): a bundle with those left out
+		// would not answer an access request.
+		requirePermission(hasPermission(session.role, 'organization:manage'));
+		requirePermission(isSharedInboxReader(session));
 		return await collectContactData(ctx, args.contactId);
 	},
 });
@@ -225,9 +230,9 @@ export const exportContactData = authedQuery({
 export const readContactDataForExport = internalQuery({
 	args: { contactId: v.id('contacts') },
 	handler: async (ctx, args): Promise<ContactDataBundle> => {
-		// Full personal-data disclosure — operator surface. The identity is the
-		// calling action's.
-		await requireOrgPermission(ctx, 'organization:manage');
+		// Same gate as exportContactData; the identity is the calling action's.
+		const session = await requireOrgPermission(ctx, 'organization:manage');
+		requirePermission(isSharedInboxReader(session));
 		return await collectContactData(ctx, args.contactId);
 	},
 });
@@ -238,7 +243,7 @@ export const readContactDataForExport = internalQuery({
  * {@link EXPORT_RESULT_BUDGET_BYTES}. A part that could not be included says
  * why in `storedBodyAvailability`, and its row keeps the excerpt.
  */
-// authz: gate lives in internal.contacts.dataExport.readContactDataForExport (organization:manage, inherited identity).
+// authz: gate lives in internal.contacts.dataExport.readContactDataForExport (organization:manage + shared-inbox reader, inherited identity).
 export const exportContactDataBundle = authedAction({
 	args: { contactId: v.id('contacts') },
 	handler: async (ctx, args): Promise<ContactDataExport> => {

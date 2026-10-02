@@ -270,6 +270,11 @@ export const fn = {
 		{ folderId: string; uidSet?: number[]; beforeUid?: number; nextSequenceNumber?: number },
 		ExpungeResult
 	>('mail/imap/move:expungeFolder'),
+	discardCopies: makeFunctionReference<
+		'mutation',
+		{ targetFolderId: string; uids: number[] },
+		{ removed: number }
+	>('mail/imap/move:discardCopies'),
 	appendMessage: makeFunctionReference<'mutation', AppendArgs, AppendResult>(
 		'mail/imap/append:appendMessage'
 	),

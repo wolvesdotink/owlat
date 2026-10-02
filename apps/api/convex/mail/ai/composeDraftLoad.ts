@@ -46,6 +46,9 @@ async function commitmentSection(ctx: ActionCtx, contactId: Id<'contacts'>): Pro
 		const open = await ctx.runQuery(internal.knowledge.graph.getOpenCommitmentsByContact, {
 			contactId,
 			limit: 5,
+			// A personal-mail draft: knowledge learned from the Team Inbox stays
+			// with Team Inbox readers and out of personal mail (inbox/access.ts).
+			includeInboxDerived: false,
 		});
 		if (open.length === 0) return '';
 		return `[OPEN COMMITMENTS — still owed to this contact]\n${open

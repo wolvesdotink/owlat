@@ -166,7 +166,8 @@ export async function assembleInboundBriefing(
 		// briefing even for an unrelated inbound. First-class briefing section.
 		const openCommitments = await ctx.runQuery(
 			internal.knowledge.graph.getOpenCommitmentsByContact,
-			{ contactId: message.contactId }
+			// A Team Inbox reply that a reader reviews: inbox-derived knowledge is in scope.
+			{ contactId: message.contactId, includeInboxDerived: true }
 		);
 		if (openCommitments.length > 0) {
 			hasKnowledge = true;
@@ -255,6 +256,9 @@ export async function assembleInboundBriefing(
 			queryText,
 			limit: CONTEXT_BUDGET.knowledgeEntryLimit,
 			scopeToContact,
+			// The briefing grounds a Team Inbox reply that a reader reviews, so
+			// knowledge learned from earlier inbox mail is in scope here.
+			includeInboxDerived: true,
 			expandGraph: graphRetrieval,
 		});
 		if (knowledge.length > 0) {

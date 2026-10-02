@@ -4,11 +4,15 @@
  *
  * Direct insert — the public creation path is session-gated and runs the
  * content scan (pending_review hold); seeded fixtures are trusted demo
- * content, so we skip both.
+ * content, so we skip both. The content still goes through the write-time
+ * sanitizer, and `htmlContent` is rendered here from the sanitized blocks, as
+ * an editor save does (lib/publishableEmail.ts).
  */
 
 import type { MutationCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
+import { sanitizeStoredBlocksJson } from '../../lib/emailContentSanitize';
+import { loadEmailTheme, renderPublishableEmail } from '../../lib/publishableEmailRender';
 import { SEED_TAG, type LoadResult, type Loader } from './types';
 
 type TransactionalStatus = 'draft' | 'published';
@@ -20,7 +24,6 @@ interface TransactionalEmailFixture {
 	subject: string;
 	status: TransactionalStatus;
 	content: string;
-	htmlContent?: string;
 	dataVariablesSchema?: Record<string, DataVariableType>;
 	showUnsubscribe?: boolean;
 }
@@ -34,6 +37,7 @@ async function load(ctx: MutationCtx, rawRecords: unknown[]): Promise<LoadResult
 
 	const existing = await ctx.db.query('transactionalEmails').collect(); // bounded: tiny seed table
 	const bySlug = new Map(existing.map((t) => [t.slug, t]));
+	const theme = await loadEmailTheme(ctx);
 
 	for (const rec of records) {
 		const found = bySlug.get(rec.slug);
@@ -42,12 +46,14 @@ async function load(ctx: MutationCtx, rawRecords: unknown[]): Promise<LoadResult
 			skipped++;
 			continue;
 		}
+		const content = sanitizeStoredBlocksJson(rec.content);
+		const rendered = renderPublishableEmail({ content, subject: rec.subject }, 'data', theme);
 		const id = await ctx.db.insert('transactionalEmails', {
 			name: rec.name,
 			slug: rec.slug,
 			subject: rec.subject,
-			content: rec.content,
-			htmlContent: rec.htmlContent,
+			content,
+			htmlContent: rendered.html,
 			dataVariablesSchema: rec.dataVariablesSchema,
 			status: rec.status,
 			publishedAt: rec.status === 'published' ? now : undefined,

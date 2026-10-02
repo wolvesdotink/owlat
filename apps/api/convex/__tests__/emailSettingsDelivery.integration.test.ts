@@ -4,9 +4,10 @@
  * `emailTemplates.emails.update` and `emailTemplates.i18n.setDefaultLanguage`;
  * both must leave the stored delivery HTML, subject and text/plain body in the
  * same language as the row, in the same write, because the send path
- * (`getEmailTemplateForLanguage`) delivers the stored HTML directly. The HTML
- * strings stand in for what the page renders; the web app's
- * `emailSettingsSave` tests cover the rendering itself.
+ * (`getEmailTemplateForLanguage`) delivers the stored HTML directly. The
+ * server renders that HTML from the stored blocks and overlays
+ * (lib/publishableEmail.ts); the HTML the page still sends is ignored, so the
+ * tests check the rendered text and subjects rather than exact markup.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -92,13 +93,12 @@ async function operationError(promise: Promise<unknown>) {
 }
 
 describe('Settings page: default-language change', () => {
-	// What the page sends after swapping: the German body rendered as the new
-	// default, and English rendered as an overlay.
+	// What the page sends after swapping (ignored: the server renders the swap).
 	const swapped = {
-		htmlContent: '<p>Hallo Welt</p>',
-		plainTextContent: 'Hallo Welt',
+		htmlContent: '<p>Client HTML</p>',
+		plainTextContent: 'Client text',
 		htmlTranslations: JSON.stringify({
-			en: { htmlContent: '<p>Hello world</p>', subject: 'English subject' },
+			en: { htmlContent: '<p>Client HTML</p>', subject: 'English subject' },
 		}),
 	};
 
@@ -117,11 +117,13 @@ describe('Settings page: default-language change', () => {
 		expect(row?.defaultLanguage).toBe('de');
 		expect(row?.contentRevision).toBe(6);
 		expect(row?.subject).toBe('Deutscher Betreff');
-		expect(row?.htmlContent).toBe('<p>Hallo Welt</p>');
-		expect(row?.plainTextContent).toBe('Hallo Welt');
-		expect(rendered(row)).toEqual({
-			en: { htmlContent: '<p>Hello world</p>', subject: 'English subject' },
-		});
+		expect(row?.htmlContent).toContain('Hallo Welt');
+		expect(row?.htmlContent).not.toContain('Client HTML');
+		expect(row?.plainTextContent).toContain('Hallo Welt');
+		const html = rendered(row);
+		expect(Object.keys(html)).toEqual(['en']);
+		expect(html['en']?.subject).toBe('English subject');
+		expect(html['en']?.htmlContent).toContain('Hello world');
 	});
 
 	it('a send right after the swap delivers one language per recipient', async () => {
@@ -136,18 +138,16 @@ describe('Settings page: default-language change', () => {
 		});
 
 		// German is the default now.
-		expect(await deliver(t, id, 'de')).toEqual({
-			htmlContent: '<p>Hallo Welt</p>',
-			subject: 'Deutscher Betreff',
-			plainTextContent: 'Hallo Welt',
-			resolvedLanguage: 'de',
-		});
+		const german = await deliver(t, id, 'de');
+		expect(german).toMatchObject({ subject: 'Deutscher Betreff', resolvedLanguage: 'de' });
+		expect(german?.htmlContent).toContain('Hallo Welt');
+		expect(german?.htmlContent).not.toContain('Hello world');
+		expect(german?.plainTextContent).toContain('Hallo Welt');
 		// English is an overlay now, with its own subject.
-		expect(await deliver(t, id, 'en')).toEqual({
-			htmlContent: '<p>Hello world</p>',
-			subject: 'English subject',
-			resolvedLanguage: 'en',
-		});
+		const english = await deliver(t, id, 'en');
+		expect(english).toMatchObject({ subject: 'English subject', resolvedLanguage: 'en' });
+		expect(english?.htmlContent).toContain('Hello world');
+		expect(english?.htmlContent).not.toContain('Hallo Welt');
 	});
 
 	it('keeps the outgoing default supported, so its recipients still get it', async () => {
@@ -237,24 +237,20 @@ describe('Settings page: editing, adding and removing languages', () => {
 
 		expect(result.contentRevision).toBe(6);
 		const row = await read(t, id);
-		expect(rendered(row)).toEqual({
-			de: { htmlContent: '<p>Hallo Welt</p>', subject: 'Neuer Betreff' },
-			es: { htmlContent: '<p>Hello world</p>', subject: 'Asunto' },
-		});
+		const html = rendered(row);
+		expect(Object.keys(html).sort()).toEqual(['de', 'es']);
+		expect(html['de']?.subject).toBe('Neuer Betreff');
+		expect(html['es']?.subject).toBe('Asunto');
 
-		expect(await deliver(t, id, 'de')).toEqual({
-			htmlContent: '<p>Hallo Welt</p>',
-			subject: 'Neuer Betreff',
-			resolvedLanguage: 'de',
-		});
+		const german = await deliver(t, id, 'de');
+		expect(german).toMatchObject({ subject: 'Neuer Betreff', resolvedLanguage: 'de' });
+		expect(german?.htmlContent).toContain('Hallo Welt');
 		expect((await deliver(t, id, 'es'))?.subject).toBe('Asunto');
 		// French recipients fall back to the default language.
-		expect(await deliver(t, id, 'fr')).toEqual({
-			htmlContent: '<p>Hello world</p>',
-			subject: 'English subject',
-			plainTextContent: 'Hello world',
-			resolvedLanguage: 'en',
-		});
+		const french = await deliver(t, id, 'fr');
+		expect(french).toMatchObject({ subject: 'English subject', resolvedLanguage: 'en' });
+		expect(french?.htmlContent).toContain('Hello world');
+		expect(french?.plainTextContent).toContain('Hello world');
 	});
 
 	it('a Settings save built on an older revision is refused and writes nothing', async () => {

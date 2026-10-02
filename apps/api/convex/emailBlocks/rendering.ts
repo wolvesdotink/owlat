@@ -1,8 +1,9 @@
 'use node';
 
 /**
- * Saved-block rerender action. Runs in Node.js so it can call
- * `@owlat/email-renderer`. Enqueued by the saved-block module's
+ * Saved-block rerender action. The render itself is the shared
+ * `renderPublishableEmail` (lib/publishableEmailRender.ts), which the editor save
+ * and publish mutations also call. Enqueued by the saved-block module's
  * `schedule_rerender` effect into the `rerenderBlocksPool` (see
  * `renderingPool.ts`).
  *
@@ -18,116 +19,31 @@
 import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { renderEmailHtml, renderPlainText } from '@owlat/email-renderer';
 import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
 import type { EmailTheme } from '@owlat/shared';
-import { parseContentBlocks } from './module';
 import type { RerenderPatchOutcome } from './renderingPool';
 import { currentContentRevision } from '../lib/contentRevision';
 import {
-	mergeTranslationIntoItem,
-	type BlockLikeItem,
-	type TranslatableBlockContent,
-} from '../emailTemplates/translationMerge';
-
-// ─── Per-language merge ──────────────────────────────────────────────────────
-//
-// A translation stores only translatable *text* keyed by block id — not a full
-// block array. Rendering a non-default language means taking the default
-// content's block structure/styling and overlaying the translated text, exactly
-// as `getForLanguage` does at save time via `mergeTranslationWithContent`. The
-// recursive overlay itself lives in the pure (`'use node'`-safe) shared module
-// `emailTemplates/translationMerge`, imported above.
-
-/**
- * Overlay a language's translated text onto the default-language blocks. Falls
- * back to the unmerged blocks if the translation has no per-block map.
- */
-function mergeTranslatedBlocks(
-	defaultBlocks: BlockLikeItem[],
-	translationBlocks: Record<string, TranslatableBlockContent> | undefined
-): BlockLikeItem[] {
-	if (!translationBlocks) return defaultBlocks;
-	return defaultBlocks.map((block) => mergeTranslationIntoItem(block, translationBlocks));
-}
+	renderPublishableEmail,
+	type PublishableEmailVariableType,
+	type RenderablePublishableEmail,
+	type RenderedPublishableEmail,
+} from '../lib/publishableEmailRender';
 
 // ─── Per-consumer-row rerender ───────────────────────────────────────────────
 //
-// Templates and transactional emails carry the identical block→HTML rerender
-// shape — render the default-language body, then overlay each supported
-// language's translated text onto the default block structure and render that
-// too. The two differ only by `variableType` (templates personalize, transac-
-// tional emails interpolate data) and the per-row `subject`/`content` fields,
-// which are read here off the shared shape. Keeping this in one place stops the
-// two loops from drifting.
+// The render itself is `renderPublishableEmail` in lib/publishableEmailRender.ts,
+// which the editor save and publish mutations call too, so every stored HTML
+// comes from the same function over the same stored blocks.
 
-type RerenderableRow = {
-	content: string;
-	subject: string;
-	translations?: string;
-	supportedLanguages?: string[];
-	defaultLanguage?: string;
-	/** Author's hand-written text/plain body — never overwritten by a rerender. */
-	plainTextOverride?: string;
-};
+type RerenderableRow = RenderablePublishableEmail;
 
 export function rerenderRow(
 	row: RerenderableRow,
-	variableType: 'personalization' | 'data',
+	variableType: PublishableEmailVariableType,
 	theme: EmailTheme | undefined
-): { html: string; htmlTranslations: string | undefined; plainTextContent: string | undefined } {
-	const blocks = parseContentBlocks(row.content);
-	const html = renderEmailHtml(blocks as Parameters<typeof renderEmailHtml>[0], {
-		variableType,
-		theme,
-	});
-	// The text/plain body tracks the blocks exactly as the html does — EXCEPT
-	// when the author wrote their own, which a saved-block edit must not clobber.
-	const plainTextContent = row.plainTextOverride?.trim()
-		? undefined
-		: renderPlainText(blocks as Parameters<typeof renderPlainText>[0]);
-
-	let htmlTranslations: string | undefined;
-	if (row.translations && row.supportedLanguages?.length) {
-		const translationsObj: Record<string, { htmlContent: string; subject: string }> = {};
-		try {
-			const translations = JSON.parse(row.translations) as Record<
-				string,
-				{ subject?: string; blocks?: Record<string, TranslatableBlockContent> }
-			>;
-
-			for (const lang of row.supportedLanguages) {
-				if (lang === row.defaultLanguage) continue;
-				const langTranslation = translations[lang];
-				if (!langTranslation) continue;
-
-				// Overlay this language's translated text onto the default
-				// block structure, then render — instead of re-emitting the
-				// default-language body for every language.
-				const translatedBlocks = mergeTranslatedBlocks(
-					blocks as BlockLikeItem[],
-					langTranslation.blocks
-				);
-				const translatedHtml = renderEmailHtml(
-					translatedBlocks as unknown as Parameters<typeof renderEmailHtml>[0],
-					{ variableType, theme }
-				);
-
-				translationsObj[lang] = {
-					htmlContent: translatedHtml,
-					subject: langTranslation.subject ?? row.subject,
-				};
-			}
-		} catch {
-			// Invalid translations JSON — skip; render still proceeds.
-		}
-
-		if (Object.keys(translationsObj).length > 0) {
-			htmlTranslations = JSON.stringify(translationsObj);
-		}
-	}
-
-	return { html, htmlTranslations, plainTextContent };
+): RenderedPublishableEmail {
+	return renderPublishableEmail(row, variableType, theme);
 }
 
 /**

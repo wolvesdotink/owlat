@@ -9,7 +9,7 @@
 # The generator prints `path:exportName` for
 #   (a) every `assertFeatureEnabled(ctx, '<flag>')` inside a file that belongs
 #       to that flag's gated family (FAMILIES below: mail.external, and the
-#       transactional, campaigns, automations and forms folders), and
+#       transactional, campaigns, automations, forms and knowledge folders), and
 #   (b) every `export const X = authedQuery(` / `= authedMutation(` under
 #       convex/mail/ — Postbox handlers use `postboxQuery`/`postboxMutation`
 #       (mail/_helpers.ts), the external-mailbox family the `externalMail*`
@@ -38,6 +38,7 @@ transactional convex/transactional/
 campaigns convex/campaigns/
 automations convex/automations/
 forms convex/forms/
+ai.knowledge convex/knowledge/
 '
 
 generate() {

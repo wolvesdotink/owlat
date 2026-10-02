@@ -19,6 +19,7 @@ import { batchGet } from '../_utils/batchLoader';
 import {
 	DOI_TOKEN_TTL_MS,
 	findContactByConfirmationToken,
+	isFormTokenDisabled,
 	type TransitionOutcome as DoiTransitionOutcome,
 	type RefreshOutcome as DoiRefreshOutcome,
 } from '../contacts/doiLifecycle';
@@ -386,7 +387,7 @@ export const getContactByDoiToken = internalQuery({
 	handler: async (ctx, args) => {
 		const contact = await findContactByConfirmationToken(ctx, args.token);
 
-		if (!contact) {
+		if (!contact || (await isFormTokenDisabled(ctx, args.token))) {
 			return null;
 		}
 

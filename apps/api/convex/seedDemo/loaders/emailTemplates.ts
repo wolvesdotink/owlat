@@ -2,13 +2,16 @@
  * Seed loader: emailTemplates.
  *
  * Direct insert — public mutation is session-gated and triggers the saved-block
- * rerender pool. Seeded templates are pre-rendered into `htmlContent`, so the
- * rerender pool would have nothing to do anyway.
+ * rerender pool. The content still goes through the write-time sanitizer, and
+ * `htmlContent` is rendered here from the sanitized blocks, as an editor save
+ * does (lib/publishableEmail.ts).
  */
 
 import type { MutationCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
+import { sanitizeStoredBlocksJson } from '../../lib/emailContentSanitize';
 import { recordListingCounter } from '../../lib/listingCounters';
+import { loadEmailTheme, renderPublishableEmail } from '../../lib/publishableEmailRender';
 import { SEED_TAG, type LoadResult, type Loader } from './types';
 
 type TemplateType = 'marketing' | 'transactional';
@@ -22,7 +25,6 @@ interface TemplateFixture {
 	previewText?: string;
 	status: TemplateStatus;
 	content: string;
-	htmlContent?: string;
 }
 
 async function load(ctx: MutationCtx, rawRecords: unknown[]): Promise<LoadResult> {
@@ -34,6 +36,7 @@ async function load(ctx: MutationCtx, rawRecords: unknown[]): Promise<LoadResult
 
 	const existing = await ctx.db.query('emailTemplates').collect(); // bounded: tiny seed table
 	const byName = new Map(existing.map((t) => [t.name, t]));
+	const theme = await loadEmailTheme(ctx);
 
 	for (const rec of records) {
 		const found = byName.get(rec.name);
@@ -42,14 +45,20 @@ async function load(ctx: MutationCtx, rawRecords: unknown[]): Promise<LoadResult
 			skipped++;
 			continue;
 		}
+		const content = sanitizeStoredBlocksJson(rec.content);
+		const rendered = renderPublishableEmail(
+			{ content, subject: rec.subject },
+			'personalization',
+			theme
+		);
 		const id = await ctx.db.insert('emailTemplates', {
 			name: rec.name,
 			type: rec.type,
 			subject: rec.subject,
 			previewText: rec.previewText,
 			status: rec.status,
-			content: rec.content,
-			htmlContent: rec.htmlContent,
+			content,
+			htmlContent: rendered.html,
 			publishedAt: rec.status === 'published' ? now : undefined,
 			searchableText: `${rec.name} ${rec.subject}`,
 			seedTag: SEED_TAG,
