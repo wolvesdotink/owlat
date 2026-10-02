@@ -129,6 +129,41 @@ describe('Convex -> MTA send intake bytes', () => {
 		expect(captured?.body).toBe(SYSTEM_SEND_REQUEST_BYTES);
 	});
 
+	it('carries files on the system intake only, base64-encoded', async () => {
+		const attachments = [
+			{
+				filename: 'invite.ics',
+				contentType: 'text/calendar; method=REQUEST; charset=utf-8',
+				content: new TextEncoder().encode('BEGIN:VCALENDAR'),
+			},
+		];
+		const params = {
+			to: 'recipient@example.com',
+			from: 'sender@mail.example.org',
+			subject: 'invite',
+			html: '<p>invite</p>',
+			attachments,
+		};
+		stubFetch(new Response(SEND_ACCEPTED_BYTES, { status: 200 }));
+		await mtaSendProvider.sendEmail(
+			resolveSendTransport('mta'),
+			params,
+			mtaSendProvider.buildSystemMailExtras!({})
+		);
+		expect(JSON.parse(captured!.body).attachments).toEqual([
+			{
+				filename: 'invite.ics',
+				contentType: 'text/calendar; method=REQUEST; charset=utf-8',
+				contentBase64: Buffer.from('BEGIN:VCALENDAR').toString('base64'),
+			},
+		]);
+
+		// The tenant intake refuses files, so they are never put on that wire.
+		stubFetch(new Response(SEND_ACCEPTED_BYTES, { status: 200 }));
+		await mtaSendProvider.sendEmail(resolveSendTransport('mta'), params);
+		expect(Object.keys(JSON.parse(captured!.body))).not.toContain('attachments');
+	});
+
 	it('omits absent optional fields rather than zeroing them', async () => {
 		stubFetch(new Response(SEND_ACCEPTED_BYTES, { status: 200 }));
 		await mtaSendProvider.sendEmail(resolveSendTransport('mta'), {

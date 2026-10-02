@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	parseICalendar,
 	buildReplyICalendar,
+	buildEventICalendar,
 	icalDateTimeToEpoch,
 	wallClockToEpoch,
 	type ICalDateTime,
@@ -206,5 +207,58 @@ describe('wallClockToEpoch', () => {
 
 	it('throws a RangeError for an unknown zone', () => {
 		expect(() => wallClockToEpoch(2026, 7, 8, 9, 0, 'Nowhere/Else')).toThrow(RangeError);
+	});
+});
+
+describe('buildEventICalendar', () => {
+	const event = {
+		method: 'REQUEST' as const,
+		uid: 'abc@owlat',
+		sequence: 1,
+		start: new Date(Date.UTC(2026, 2, 2, 10, 0)),
+		end: new Date(Date.UTC(2026, 2, 2, 10, 30)),
+		summary: 'Intro call, with notes; really',
+		description: 'Line one\nLine two',
+		location: 'Room 1',
+		url: 'https://video.example.com/x',
+		organizer: { name: 'Ada "Host"', email: 'ada@example.com' },
+		attendees: [{ name: 'Grace', email: 'grace@example.com\r\nX-INJECT:1' }],
+		now: new Date(Date.UTC(2026, 1, 1)),
+	};
+
+	it('round-trips through the parser as a REQUEST in UTC', () => {
+		const ics = buildEventICalendar(event);
+		expect(ics.endsWith('\r\n')).toBe(true);
+		const parsed = parseICalendar(ics);
+		expect(parsed.method).toBe('REQUEST');
+		const [parsedEvent] = parsed.events;
+		expect(parsedEvent).toMatchObject({
+			uid: 'abc@owlat',
+			sequence: 1,
+			summary: 'Intro call, with notes; really',
+			description: 'Line one\nLine two',
+			location: 'Room 1',
+			organizer: { email: 'ada@example.com' },
+		});
+		expect(parsedEvent!.start!.raw).toBe('20260302T100000Z');
+		expect(parsedEvent!.attendees[0]).toMatchObject({ partstat: 'NEEDS-ACTION' });
+		expect(ics).not.toMatch(/^X-INJECT/m);
+		expect(ics).toContain('ORGANIZER;CN="Ada Host":mailto:ada@example.com');
+	});
+
+	it('cancels with the same UID and STATUS:CANCELLED', () => {
+		const ics = buildEventICalendar({ ...event, method: 'CANCEL', sequence: 2 });
+		expect(ics).toContain('METHOD:CANCEL');
+		expect(ics).toContain('STATUS:CANCELLED');
+		expect(ics).toContain('SEQUENCE:2');
+		expect(ics).not.toContain('RSVP=TRUE');
+	});
+
+	it('folds long lines at 75 octets without splitting a character', () => {
+		const ics = buildEventICalendar({ ...event, description: 'ä'.repeat(120) });
+		for (const line of ics.split('\r\n')) {
+			expect(new TextEncoder().encode(line).length).toBeLessThanOrEqual(75);
+		}
+		expect(parseICalendar(ics).events[0]!.description).toBe('ä'.repeat(120));
 	});
 });

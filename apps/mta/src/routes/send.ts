@@ -30,6 +30,7 @@ import {
 } from './sendReceipt.js';
 
 import { readEngagementScore } from './sendEngagementScore.js';
+import { readSystemAttachments } from './sendAttachments.js';
 
 export { createSendReceiptHandler } from './sendReceipt.js';
 
@@ -275,6 +276,11 @@ export function createSendHandler(
 			}
 		}
 
+		const attachmentsReading = readSystemAttachments(body.attachments, mode);
+		if (!attachmentsReading.ok) {
+			return refuse(c, { error: attachmentsReading.error }, 400);
+		}
+
 		if (body.ipPool !== 'transactional' && body.ipPool !== 'campaign') {
 			return refuse(c, { error: 'ipPool must be "transactional" or "campaign"' }, 400);
 		}
@@ -373,6 +379,7 @@ export function createSendHandler(
 			text: body.text,
 			sealedMimeBase64: body.sealedMimeBase64,
 			amp: body.amp,
+			...(attachmentsReading.attachments ? { attachments: attachmentsReading.attachments } : {}),
 			replyTo: body.replyTo,
 			headers: body.headers,
 			ipPool: body.ipPool,
