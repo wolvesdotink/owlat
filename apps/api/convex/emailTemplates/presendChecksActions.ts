@@ -25,10 +25,18 @@ import { probeResources, type ImageProbe, type LinkProbe } from './presendProbes
 /** The MTA answers from Redis plus, at most, one 5 s rspamd call. */
 const SCREENING_TIMEOUT_MS = 10_000;
 
+/** The longest address RFC 5321 allows in a path; the MTA refuses a longer `from`. */
+const MAX_FROM_CHARS = 320;
+
 export type ScreeningView =
 	| { status: 'ready'; verdict: MtaContentScreeningVerdict }
 	/** No MTA on this instance, an MTA that predates `/scan/content`, or a fault. */
 	| { status: 'unavailable' }
+	/**
+	 * The message is past what the MTA accepts for a preview (its HTML or its
+	 * subject); the links and images are still probed.
+	 */
+	| { status: 'too_large' }
 	/** The caller did not ask for screening. */
 	| { status: 'not_requested' };
 
@@ -93,31 +101,35 @@ export const run = authedAction({
 		const links = boundedUrls(args.links, PRESEND_MAX_LINKS, 'links');
 		const images = boundedUrls(args.images, PRESEND_MAX_IMAGES, 'images');
 		const screening = args.screening;
-		if (screening) {
-			if (Buffer.byteLength(screening.html) > CONTENT_SCREENING_MAX_HTML_BYTES) {
-				throwInvalidInput('The email is too large to screen.');
-			}
-			if (screening.subject.length > CONTENT_SCREENING_MAX_SUBJECT_CHARS) {
-				throwInvalidInput('The subject is too long.');
-			}
-		}
+		// Too big to screen is an answer about the email, not a bad request: the
+		// probes still run, and the check says why screening did not.
+		const screenable =
+			!!screening &&
+			Buffer.byteLength(screening.html) <= CONTENT_SCREENING_MAX_HTML_BYTES &&
+			screening.subject.length <= CONTENT_SCREENING_MAX_SUBJECT_CHARS;
 
 		const limit = await rateLimiter.limit(ctx, 'presendChecks', { key: userId });
 		if (!limit.ok) {
 			throwRateLimited('Too many checks in a row. Try again in a moment.', limit.retryAfter);
 		}
 
-		const from = screening?.fromEmail?.trim() || defaultFromEmail || undefined;
+		const typed = screening?.fromEmail?.trim();
+		const from =
+			(typed && typed.length <= MAX_FROM_CHARS ? typed : undefined) ||
+			defaultFromEmail ||
+			undefined;
 		const [probes, screeningView] = await Promise.all([
 			probeResources(links, images),
-			screening
-				? screen({
-						// A header value: no line breaks, whatever the caller typed.
-						subject: screening.subject.replace(/[\r\n]+/g, ' '),
-						html: screening.html,
-						...(from && !/[\r\n]/.test(from) ? { from } : {}),
-					})
-				: Promise.resolve<ScreeningView>({ status: 'not_requested' }),
+			!screening
+				? Promise.resolve<ScreeningView>({ status: 'not_requested' })
+				: !screenable
+					? Promise.resolve<ScreeningView>({ status: 'too_large' })
+					: screen({
+							// A header value: no line breaks, whatever the caller typed.
+							subject: screening.subject.replace(/[\r\n]+/g, ' '),
+							html: screening.html,
+							...(from && !/[\r\n]/.test(from) ? { from } : {}),
+						}),
 		]);
 		return { ...probes, screening: screeningView };
 	},

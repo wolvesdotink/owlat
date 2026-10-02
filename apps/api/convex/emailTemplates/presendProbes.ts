@@ -14,11 +14,15 @@
  * dropped unread: plenty of servers answer HEAD with 404 or 405 for pages that
  * load fine. Probes run a few at a time, each with its own timeout, inside one
  * overall budget so a page of slow hosts cannot hold the Review step; whatever
- * the budget did not reach comes back `skipped`.
+ * the budget did not reach comes back `skipped`. A probe already under way when
+ * the budget runs out gets one request timeout more, then is cut off and comes
+ * back `skipped` too, however many hops and retries it had left.
  *
- * Results are cached per URL for a few minutes in the action runtime's memory,
- * so reopening the Review step or pressing "Check email" twice does not knock
- * on every host again. The cache is best effort (a cold runtime starts empty).
+ * Results are cached per URL in the action runtime's memory, so reopening the
+ * Review step or pressing "Check email" twice does not knock on every host
+ * again: a working URL for a few minutes, a failing one only briefly, so
+ * "Recheck" after fixing a page sees the fix. The cache is best effort (a cold
+ * runtime starts empty).
  */
 
 import { validatePublicUrl, fetchWithGuardedDispatcher } from '../lib/ssrfGuard';
@@ -58,6 +62,10 @@ const RUN_BUDGET_MS = 25_000;
 const MAX_REDIRECTS = 5;
 const CONCURRENCY = 6;
 const CACHE_TTL_MS = 10 * 60_000;
+/** A failing answer is remembered only this long; the page may be fixed in a minute. */
+const FAILURE_CACHE_TTL_MS = 60_000;
+/** Past the budget, an in-flight probe gets this long before it is cut off. */
+const HARD_STOP_MS = RUN_BUDGET_MS + REQUEST_TIMEOUT_MS;
 const CACHE_MAX_ENTRIES = 2_000;
 /** An image body is read at most this far to measure it. */
 export const IMAGE_MEASURE_CAP_BYTES = 5 * 1024 * 1024;
@@ -83,7 +91,8 @@ function remember(key: string, value: LinkProbe | ImageProbe, now: number): void
 		const oldest = cache.keys().next().value;
 		if (oldest !== undefined) cache.delete(oldest);
 	}
-	cache.set(key, { expiresAt: now + CACHE_TTL_MS, value });
+	const ttl = value.status === 'ok' ? CACHE_TTL_MS : FAILURE_CACHE_TTL_MS;
+	cache.set(key, { expiresAt: now + ttl, value });
 }
 
 /** Test seam: forget every cached result. */
@@ -91,20 +100,28 @@ export function clearProbeCache(): void {
 	cache.clear();
 }
 
-type Failure = { failure: Exclude<ProbeStatus, 'ok' | 'unverified' | 'skipped'> };
+type Failure = { failure: Exclude<ProbeStatus, 'ok' | 'unverified'> };
 
-function classifyError(error: unknown): Failure {
+/** A request that threw: cut off by the run's hard stop, timed out, or never connected. */
+function classifyError(error: unknown, stop: AbortSignal): Failure {
+	if (stop.aborted) return { failure: 'skipped' };
 	const name = error instanceof Error ? error.name : '';
 	return { failure: name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'unreachable' };
 }
 
 /**
  * `method` on `url`, following up to {@link MAX_REDIRECTS} redirects, each hop
- * validated against the SSRF blocklist before it is requested.
+ * validated against the SSRF blocklist before it is requested. `stop` is the
+ * run's hard stop: it aborts the request in flight and ends the walk.
  */
-async function follow(url: string, method: 'HEAD' | 'GET'): Promise<Response | Failure> {
+async function follow(
+	url: string,
+	method: 'HEAD' | 'GET',
+	stop: AbortSignal
+): Promise<Response | Failure> {
 	let current = url;
 	for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+		if (stop.aborted) return { failure: 'skipped' };
 		const check = await validatePublicUrl(current);
 		if (!check.ok) {
 			return { failure: check.code === 'blocked_address' ? 'blocked' : 'unreachable' };
@@ -115,10 +132,10 @@ async function follow(url: string, method: 'HEAD' | 'GET'): Promise<Response | F
 				method,
 				redirect: 'manual',
 				headers: REQUEST_HEADERS,
-				signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+				signal: AbortSignal.any([AbortSignal.timeout(REQUEST_TIMEOUT_MS), stop]),
 			});
 		} catch (error) {
-			return classifyError(error);
+			return classifyError(error, stop);
 		}
 		const location = response.headers.get('location');
 		if (response.status >= 300 && response.status < 400 && location) {
@@ -148,17 +165,17 @@ interface Answered {
 }
 
 /** HEAD first; GET when HEAD failed or answered anything but 2xx. */
-async function headThenGet(url: string): Promise<Answered | Failure> {
-	const head = await follow(url, 'HEAD');
+async function headThenGet(url: string, stop: AbortSignal): Promise<Answered | Failure> {
+	const head = await follow(url, 'HEAD', stop);
 	if (head instanceof Response && head.ok) return { response: head, method: 'HEAD' };
 	if (head instanceof Response) await head.body?.cancel().catch(() => undefined);
-	else if (head.failure === 'blocked') return head;
-	const get = await follow(url, 'GET');
+	else if (head.failure === 'blocked' || head.failure === 'skipped') return head;
+	const get = await follow(url, 'GET', stop);
 	return get instanceof Response ? { response: get, method: 'GET' } : get;
 }
 
-async function probeLink(url: string): Promise<LinkProbe> {
-	const result = await headThenGet(url);
+async function probeLink(url: string, stop: AbortSignal): Promise<LinkProbe> {
+	const result = await headThenGet(url, stop);
 	if ('failure' in result) return { url, status: result.failure };
 	await result.response.body?.cancel().catch(() => undefined);
 	return { url, status: statusOf(result.response.status), httpStatus: result.response.status };
@@ -193,8 +210,8 @@ function declaredLength(response: Response): number | undefined {
 	return Number.isFinite(length) && length >= 0 ? length : undefined;
 }
 
-async function probeImage(url: string): Promise<ImageProbe> {
-	const result = await headThenGet(url);
+async function probeImage(url: string, stop: AbortSignal): Promise<ImageProbe> {
+	const result = await headThenGet(url, stop);
 	if ('failure' in result) return { url, status: result.failure };
 	const { response } = result;
 	const status = statusOf(response.status);
@@ -205,9 +222,11 @@ async function probeImage(url: string): Promise<ImageProbe> {
 		return declared === undefined ? answered : { ...answered, bytes: declared };
 	}
 	// No declared length: count the image itself (a HEAD answer has no body).
-	const body = result.method === 'HEAD' ? await follow(url, 'GET') : response;
+	const body = result.method === 'HEAD' ? await follow(url, 'GET', stop) : response;
 	if (!(body instanceof Response)) return answered;
 	const measured = await measureBody(body.body);
+	// Cut off mid-body by the hard stop: the size is unknown, not small.
+	if (stop.aborted) return { url, status: 'skipped' };
 	return {
 		...answered,
 		bytes: measured.bytes,
@@ -218,17 +237,18 @@ async function probeImage(url: string): Promise<ImageProbe> {
 async function probeAll<T extends LinkProbe>(
 	kind: 'link' | 'image',
 	urls: readonly string[],
-	probe: (url: string) => Promise<T>,
+	probe: (url: string, stop: AbortSignal) => Promise<T>,
 	deadline: number,
-	clock: () => number
+	clock: () => number,
+	stop: AbortSignal
 ): Promise<T[]> {
 	const results = await mapWithConcurrency(urls, CONCURRENCY, async (url) => {
 		const key = `${kind}:${url}`;
 		const hit = cached<T>(key, clock());
 		if (hit) return hit;
-		if (clock() >= deadline) return { url, status: 'skipped' } as T;
-		const value = await probe(url).catch(
-			(error: unknown) => ({ url, status: classifyError(error).failure }) as T
+		if (clock() >= deadline || stop.aborted) return { url, status: 'skipped' } as T;
+		const value = await probe(url, stop).catch(
+			(error: unknown) => ({ url, status: classifyError(error, stop).failure }) as T
 		);
 		remember(key, value, clock());
 		return value;
@@ -236,16 +256,20 @@ async function probeAll<T extends LinkProbe>(
 	return results.map((result, index) => result ?? ({ url: urls[index]!, status: 'skipped' } as T));
 }
 
-/** Probe every link and image, inside one shared time budget. */
+/**
+ * Probe every link and image, inside one shared time budget. `stop` (a test
+ * seam) is the hard stop that cuts off whatever is still in flight.
+ */
 export async function probeResources(
 	links: readonly string[],
 	images: readonly string[],
-	clock: () => number = Date.now
+	clock: () => number = Date.now,
+	stop: AbortSignal = AbortSignal.timeout(HARD_STOP_MS)
 ): Promise<{ links: LinkProbe[]; images: ImageProbe[] }> {
 	const deadline = clock() + RUN_BUDGET_MS;
 	const [linkResults, imageResults] = await Promise.all([
-		probeAll('link', links, probeLink, deadline, clock),
-		probeAll('image', images, probeImage, deadline, clock),
+		probeAll('link', links, probeLink, deadline, clock, stop),
+		probeAll('image', images, probeImage, deadline, clock, stop),
 	]);
 	return { links: linkResults, images: imageResults };
 }

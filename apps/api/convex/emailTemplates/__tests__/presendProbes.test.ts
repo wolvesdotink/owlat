@@ -131,6 +131,50 @@ describe('link probes', () => {
 		const { links } = await probeResources(['https://example.com/b'], [], clock);
 		expect(links).toEqual([{ url: 'https://example.com/b', status: 'skipped' }]);
 	});
+	it('remembers a failing link only briefly, so a recheck sees a fixed page', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		let live = false;
+		serve(() => new Response(null, { status: live ? 200 : 404 }));
+		const first = await probeResources(['https://example.com/launch'], []);
+		expect(first.links[0]).toMatchObject({ status: 'broken' });
+
+		live = true;
+		vi.advanceTimersByTime(30_000);
+		const soon = await probeResources(['https://example.com/launch'], []);
+		expect(soon.links[0]).toMatchObject({ status: 'broken' });
+
+		vi.advanceTimersByTime(31_000);
+		const later = await probeResources(['https://example.com/launch'], []);
+		expect(later.links[0]).toMatchObject({ status: 'ok' });
+
+		// A working answer is kept for longer than that.
+		live = false;
+		vi.advanceTimersByTime(120_000);
+		const cached = await probeResources(['https://example.com/launch'], []);
+		expect(cached.links[0]).toMatchObject({ status: 'ok' });
+	});
+
+	it('cuts off a probe still in flight at the hard stop and reports it not checked', async () => {
+		const stop = new AbortController();
+		fetchWithGuardedDispatcher.mockImplementation(
+			(_url: string, init: RequestInit) =>
+				new Promise((_resolve, reject) => {
+					init.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+				})
+		);
+
+		const run = probeResources(['https://slow.example/'], [], Date.now, stop.signal);
+		await vi.waitFor(() => expect(fetchWithGuardedDispatcher).toHaveBeenCalledTimes(1));
+		stop.abort(new DOMException('stop', 'TimeoutError'));
+		const { links } = await run;
+
+		expect(links).toEqual([{ url: 'https://slow.example/', status: 'skipped' }]);
+		// Not retried with GET after the stop, and not cached as a failure.
+		expect(fetchWithGuardedDispatcher).toHaveBeenCalledTimes(1);
+		serve(() => new Response(null, { status: 200 }));
+		const again = await probeResources(['https://slow.example/'], []);
+		expect(again.links[0]).toMatchObject({ status: 'ok' });
+	});
 });
 
 describe('image probes', () => {

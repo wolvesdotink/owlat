@@ -159,6 +159,41 @@ describe('emailTemplates.presendChecksActions.run', () => {
 		expect(notAsked.screening).toEqual({ status: 'not_requested' });
 	});
 
+	it('still probes an email too large to screen, and says so instead of failing the run', async () => {
+		const t = asMember(setup());
+		const big = await t.action(api.emailTemplates.presendChecksActions.run, {
+			links: ['https://example.com/a'],
+			images: [],
+			// Over the 2 MB screening budget in UTF-8, under the 1M-character
+			// ceiling every public argument has.
+			screening: { subject: 'Hello', html: '€'.repeat(700_000) },
+		});
+		expect(big.links).toHaveLength(1);
+		expect(big.screening).toEqual({ status: 'too_large' });
+
+		const longSubject = await t.action(api.emailTemplates.presendChecksActions.run, {
+			links: [],
+			images: [],
+			screening: { subject: 'a'.repeat(999), html: '<p>Hi</p>' },
+		});
+		expect(longSubject.screening).toEqual({ status: 'too_large' });
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it('leaves out a From address the MTA would refuse for its length', async () => {
+		const t = asMember(setup());
+		await t.action(api.emailTemplates.presendChecksActions.run, {
+			links: [],
+			images: [],
+			screening: {
+				subject: 'Hello',
+				html: '<p>Hi</p>',
+				fromEmail: `${'a'.repeat(320)}@example.com`,
+			},
+		});
+		expect(JSON.parse(fetchMock.mock.calls[0]![1].body).from).toBeUndefined();
+	});
+
 	it('refuses anonymous callers before anything leaves the server', async () => {
 		sessionMocks.session = null;
 		await expect(
