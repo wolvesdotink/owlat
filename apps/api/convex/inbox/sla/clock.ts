@@ -11,8 +11,9 @@
  * A clock ENDS three ways:
  *   - a reply goes out (manual reply, approved draft, autonomous send, team
  *     follow-up): judged met or missed against the deadline;
- *   - the thread is resolved or closed, or every message since the start turns
- *     out to need no reply (informational, archived, quarantined): not judged,
+ *   - the thread is resolved or closed, or every message since the team's
+ *     last reply turns out to need none (informational, archived,
+ *     quarantined; `./threadClock.ts`): not judged,
  *     unless the deadline had already passed, which stays a miss;
  *   - targets are switched off: not judged.
  *

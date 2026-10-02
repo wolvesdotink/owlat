@@ -247,3 +247,125 @@ describe('a message that needs a reply after all', () => {
 		expect((await getThread(t, threadId))!.responseDueAt).toBe(arrived + HOUR);
 	});
 });
+
+/** A timeline row on the thread: the customer's message, or the team's reply. */
+async function insertTimelineRow(
+	t: T,
+	threadId: Id<'conversationThreads'>,
+	direction: 'inbound' | 'outbound',
+	createdAt = Date.now()
+) {
+	await t.run((ctx) =>
+		ctx.db.insert('unifiedMessages', {
+			threadId,
+			channel: 'sms',
+			direction,
+			content: JSON.stringify({ text: 'Hello' }),
+			status: direction === 'inbound' ? 'received' : 'delivered',
+			createdAt,
+		})
+	);
+}
+
+describe('what still needs an answer', () => {
+	it('keeps the clock when a later message is filed away and an earlier one is unanswered', async () => {
+		const t = await setup();
+		await t.mutation(api.inbox.sla.policy.savePolicy, calendarPolicy);
+		// The clock starts when the thread write runs; the message carries the
+		// mail server's earlier arrival time.
+		const startedAt = Date.now();
+		const threadId = await insertThread(t, {
+			responseDueAt: startedAt + HOUR,
+			responseDueKind: 'first',
+			responseClockStartedAt: startedAt,
+		});
+		await insertMessage(t, threadId, 'draft_ready', startedAt - 5_000);
+		const later = await insertMessage(t, threadId, 'classifying');
+		await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: later,
+			input: { to: 'informational', at: Date.now() },
+		});
+		expect((await getThread(t, threadId))!.responseDueAt).toBe(startedAt + HOUR);
+	});
+
+	it('keeps a clock the switch-on sweep started for an older message', async () => {
+		const t = await setup();
+		const threadId = await insertThread(t);
+		await insertMessage(t, threadId, 'draft_ready', Date.now() - 3 * HOUR);
+		await t.mutation(api.inbox.sla.policy.savePolicy, calendarPolicy);
+		await runApplySweep(t);
+		const due = (await getThread(t, threadId))!.responseDueAt;
+		expect(due).toBeGreaterThan(Date.now());
+
+		const later = await insertMessage(t, threadId, 'classifying');
+		await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: later,
+			input: { to: 'archived', at: Date.now(), reason: 'classifier_spam' },
+		});
+		expect((await getThread(t, threadId))!.responseDueAt).toBe(due);
+	});
+
+	it('stops the clock when the only unanswered-looking message predates the last reply', async () => {
+		const t = await setup();
+		await t.mutation(api.inbox.sla.policy.savePolicy, calendarPolicy);
+		const threadId = await insertThread(t, {
+			channel: 'sms',
+			responseDueAt: Date.now() + HOUR,
+			responseDueKind: 'next',
+			responseClockStartedAt: Date.now(),
+		});
+		// Answered from the SMS composer, which leaves the message's state alone.
+		await insertMessage(t, threadId, 'draft_ready', Date.now() - 2 * HOUR);
+		await insertTimelineRow(t, threadId, 'outbound', Date.now() - HOUR);
+		const later = await insertMessage(t, threadId, 'classifying');
+		await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: later,
+			input: { to: 'informational', at: Date.now() },
+		});
+		expect((await getThread(t, threadId))!.responseDueAt).toBeUndefined();
+	});
+
+	it('switching on skips threads the team answered outside the lifecycle', async () => {
+		const t = await setup();
+		// Agent off: channel threads have a timeline but no inbound messages.
+		const teamWroteLast = await insertThread(t, { channel: 'sms' });
+		await insertTimelineRow(t, teamWroteLast, 'inbound', Date.now() - 2 * HOUR);
+		await insertTimelineRow(t, teamWroteLast, 'outbound', Date.now() - HOUR);
+		const customerWroteLast = await insertThread(t, { channel: 'sms' });
+		await insertTimelineRow(t, customerWroteLast, 'outbound', Date.now() - 2 * HOUR);
+		await insertTimelineRow(t, customerWroteLast, 'inbound', Date.now() - HOUR);
+		// A draft nobody used, answered from the composer afterwards.
+		const answeredByHand = await insertThread(t, { channel: 'sms' });
+		await insertMessage(t, answeredByHand, 'draft_ready', Date.now() - 2 * HOUR);
+		await insertTimelineRow(t, answeredByHand, 'outbound', Date.now() - HOUR);
+
+		await t.mutation(api.inbox.sla.policy.savePolicy, calendarPolicy);
+		await runApplySweep(t);
+
+		expect((await getThread(t, teamWroteLast))!.responseDueAt).toBeUndefined();
+		expect((await getThread(t, customerWroteLast))!.responseDueAt).toBeGreaterThan(Date.now());
+		expect((await getThread(t, answeredByHand))!.responseDueAt).toBeUndefined();
+	});
+
+	it('starts no clock for a message quarantined on arrival', async () => {
+		const t = await setup();
+		await t.mutation(api.inbox.sla.policy.savePolicy, calendarPolicy);
+		const { threadId, inboundMessageId } = await t.mutation(
+			internal.inbox.messages.receiveMessage,
+			{
+				from: 'Someone <someone@example.com>',
+				to: 'support@example.com',
+				subject: 'Invoice',
+				textBody: 'See attachment',
+				messageId: '<infected-1@example.com>',
+				timestamp: Date.now(),
+				virusVerdict: 'infected',
+			}
+		);
+		const message = await t.run((ctx) => ctx.db.get(inboundMessageId));
+		expect(message!.processingStatus).toBe('quarantined');
+		const thread = await getThread(t, threadId);
+		expect(thread!.responseDueAt).toBeUndefined();
+		expect(thread!.slaMissedCount).toBeUndefined();
+	});
+});

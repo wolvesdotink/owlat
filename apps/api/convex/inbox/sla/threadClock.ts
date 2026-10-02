@@ -5,8 +5,15 @@
  *   - `snoozeClockPatch`: snooze, unsnooze and the wake sweep (`inbox/snooze.ts`).
  *   - `settleClockForMessage`: the processing lifecycle, when a message is
  *     answered, turns out to need no reply, or needs one after all.
+ *   - `releaseClockIfNothingOwed`: a message stored already set aside
+ *     (quarantined on arrival), which never passes through the lifecycle.
  *   - `isReplyOwed`: the switch-on sweep (`./apply.ts`), which starts clocks
  *     only where the customer still waits on an answer.
+ *
+ * "Still owed" means a message in a state that needs an answer that arrived
+ * after the team last replied. The last reply is read off the unified timeline
+ * (`unifiedMessages`), which records every reply channel, including a person's
+ * SMS, WhatsApp or chat reply that leaves the inbound message untouched.
  */
 
 import type { MutationCtx } from '../../_generated/server';
@@ -14,7 +21,14 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import { transition as threadTransition } from '../threads/module';
 import type { ProcessingStatus, TransitionInput } from '../processingLifecycle/types';
 import { loadSlaPolicy } from './policy';
-import { pauseClock, resumeClock, startClockOnThread, stopClock, type ClockPatch } from './clock';
+import {
+	isClockSet,
+	pauseClock,
+	resumeClock,
+	startClockOnThread,
+	stopClock,
+	type ClockPatch,
+} from './clock';
 
 /**
  * The clock patch for a snooze write: pause on snooze, resume on wake. A
@@ -54,6 +68,15 @@ function isAwaitingReply(status: ProcessingStatus): boolean {
 
 /** How many of a thread's messages the no-reply check reads. */
 const MESSAGE_SCAN_LIMIT = 200;
+/** How many of a thread's newest timeline rows the last-reply lookup reads. */
+const TIMELINE_SCAN_LIMIT = 50;
+
+/** Timeline states of an outbound row that reached the customer. */
+const DELIVERED_STATES: ReadonlySet<Doc<'unifiedMessages'>['status']> = new Set([
+	'sent',
+	'delivered',
+	'read',
+]);
 
 /**
  * Move the clock for a processing-lifecycle edge of one inbound message:
@@ -76,7 +99,7 @@ export async function settleClockForMessage(
 		return;
 	}
 	if (NO_REPLY_STATES.has(input.to)) {
-		await stopIfNothingOwed(ctx, threadId, message._id);
+		await releaseClockIfNothingOwed(ctx, threadId, message._id);
 		return;
 	}
 	if (OVERRULED_STATES.has(message.processingStatus) && isAwaitingReply(input.to)) {
@@ -89,11 +112,29 @@ export async function settleClockForMessage(
 }
 
 /**
+ * When the team last replied on this thread: the newest outbound timeline row
+ * that reached the customer, or undefined when none is on record.
+ */
+async function lastReplyAt(
+	ctx: MutationCtx,
+	threadId: Id<'conversationThreads'>
+): Promise<number | undefined> {
+	const rows = await ctx.db
+		.query('unifiedMessages')
+		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
+		.order('desc')
+		.take(TIMELINE_SCAN_LIMIT);
+	return rows.find((row) => row.direction === 'outbound' && DELIVERED_STATES.has(row.status))
+		?.createdAt;
+}
+
+/**
  * Does the customer still wait on an answer? Read off the thread's newest
- * inbound message: answered, or set aside as needing none, means no. A thread
- * without inbound messages (a channel conversation while the agent is off)
- * has nothing to tell, so it counts as waiting, as an open thread does for
- * the list's waiting time (inbox/threadSort.ts).
+ * inbound message: answered, set aside as needing none, or older than the
+ * team's last reply means no. A thread without inbound messages (a channel
+ * conversation while the agent is off) is read off its timeline instead: it
+ * waits when the customer wrote last, or when nothing is on record, as an open
+ * thread does for the list's waiting time (inbox/threadSort.ts).
  */
 export async function isReplyOwed(
 	ctx: MutationCtx,
@@ -104,26 +145,44 @@ export async function isReplyOwed(
 		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
 		.order('desc')
 		.first();
-	return newest === null || isAwaitingReply(newest.processingStatus);
+	if (newest) {
+		if (!isAwaitingReply(newest.processingStatus)) return false;
+		const repliedAt = await lastReplyAt(ctx, threadId);
+		return repliedAt === undefined || newest.receivedAt > repliedAt;
+	}
+	const latest = await ctx.db
+		.query('unifiedMessages')
+		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
+		.order('desc')
+		.first();
+	return latest === null || latest.direction === 'inbound';
 }
 
-async function stopIfNothingOwed(
+/**
+ * Stop the clock when nothing on the thread still needs an answer, now that
+ * `settledId` turned out to need none. Newest first: a message already
+ * answered (`sent`) means everything before it was answered too, and a message
+ * from before the team's last reply is not owed whatever its state says.
+ */
+export async function releaseClockIfNothingOwed(
 	ctx: MutationCtx,
 	threadId: Id<'conversationThreads'>,
 	settledId: Id<'inboundMessages'>
 ): Promise<void> {
 	const thread = await ctx.db.get(threadId);
-	const startedAt = thread?.responseClockStartedAt;
-	if (!thread || startedAt === undefined) return;
+	if (!thread || !isClockSet(thread)) return;
+	const repliedAt = await lastReplyAt(ctx, threadId);
 	const messages = await ctx.db
 		.query('inboundMessages')
 		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
 		.order('desc')
 		.take(MESSAGE_SCAN_LIMIT);
-	const stillOwed = messages.some(
-		(m) => m._id !== settledId && m.receivedAt >= startedAt && isAwaitingReply(m.processingStatus)
-	);
-	if (stillOwed) return;
+	for (const message of messages) {
+		if (message._id === settledId) continue;
+		if (message.processingStatus === 'sent') break;
+		if (repliedAt !== undefined && message.receivedAt <= repliedAt) continue;
+		if (isAwaitingReply(message.processingStatus)) return;
+	}
 	const patch = stopClock(thread, Date.now());
 	if (Object.keys(patch).length > 0) await ctx.db.patch(threadId, patch);
 }
