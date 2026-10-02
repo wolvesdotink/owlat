@@ -5,6 +5,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as Shared from '@owlat/shared';
+import { IMAP_WIRE_VERSION } from '@owlat/shared/imapWire';
 import { checkRequires } from '../auth.js';
 import { dispatch } from '../../walker.js';
 import type {
@@ -150,6 +151,7 @@ describe('LOGIN and AUTHENTICATE share one credential flow', () => {
 			appPasswordId: 'ap1',
 			ip: '192.0.2.1',
 			userAgent: 'Thunderbird',
+			imapWireVersion: IMAP_WIRE_VERSION,
 		});
 		expect(committed.at(-1)?.auth).toEqual({ ...good, address: 'alice@test' });
 		expect(rateLimiter.recordFailure).not.toHaveBeenCalled();
