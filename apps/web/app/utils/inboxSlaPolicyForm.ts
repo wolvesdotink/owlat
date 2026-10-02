@@ -131,10 +131,11 @@ export function formToPolicy(form: SlaPolicyFormState): SlaPolicyShape {
 	};
 }
 
+/** Whether this browser knows `timeZone` (the backend checks the same way). */
 function isValidTimeZone(timeZone: string): boolean {
+	if (timeZone.length === 0) return false;
 	try {
-		new Intl.DateTimeFormat('en-US', { timeZone });
-		return timeZone.length > 0;
+		return new Intl.DateTimeFormat('en-US', { timeZone }).resolvedOptions().timeZone.length > 0;
 	} catch {
 		return false;
 	}
