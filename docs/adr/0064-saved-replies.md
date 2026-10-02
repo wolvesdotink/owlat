@@ -72,8 +72,13 @@ An unresolved variable becomes a `[[...]]` gap, the placeholder AI drafts
 already use. The composer holds Send while gaps remain once a saved reply put
 one in; in the Postbox the draft is marked `isGapGuarded`, so the server's
 `DRAFT_HAS_GAPS` check applies and survives a reload. The Team Inbox reply has
-no draft row, so there the hold is the composer's, kept with the reply's text
-when the person leaves the thread and comes back in the same session.
+no draft row; its working draft is the message's own text. A save stores the
+composer's hold with it (`inboundMessages.isDraftGapGuarded`), so a reloaded
+draft holds Send again and `approveDraft` refuses it (`DRAFT_HAS_GAPS`) even
+though no "Draft with AI" session exists. A follow-up has no stored draft, so
+its send carries the composer's hold. Text never saved keeps the hold in the
+session, with the reply's text, when the person leaves the thread and comes
+back.
 
 ### 5. Erasure and export
 
