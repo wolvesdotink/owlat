@@ -440,10 +440,30 @@ const {
 	onDeleteBlock: handleDeleteInlineEditedBlock,
 });
 
+/**
+ * Select the Block `blockId` (a root or a nested item) and scroll it into
+ * view, switching back from a preview to the canvas first. Hosts call it to
+ * point at a Block from outside the builder (the pre-send checks' "Show me").
+ * Returns false when no Block has that id.
+ */
+function selectBlock(blockId: string): boolean {
+	const location = locateBlock(canvasBlocks.value, blockId);
+	if (!location) return false;
+	if (previewMode.value !== 'edit') previewMode.value = 'edit';
+	if (location.parent) selectNestedItem(location.root.id, blockId);
+	else handleSelectBlock(blockId);
+	nextTick(() => {
+		blockElements.value
+			.get(location.root.id)
+			?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+	});
+	return true;
+}
+
 // `isInlineEditing` tells a host that text may be typed which the blocks do not
 // hold yet (the inline editor commits when it closes), so replacing the canvas
 // now would leave that text to be committed on top of whatever replaced it.
-defineExpose({ loadState, isInlineEditing });
+defineExpose({ loadState, isInlineEditing, selectBlock });
 
 // Saved block picker
 const {
@@ -627,8 +647,7 @@ function handleDeleteActiveBlock() {
 	const blockId = activeBlock.value.id;
 
 	// A nested item, at any depth
-	const scope =
-		blockState.selectedColumnContext.value ?? blockState.selectedContainerContext.value;
+	const scope = blockState.selectedColumnContext.value ?? blockState.selectedContainerContext.value;
 	if (selectedNestedItemId.value && scope) {
 		if (isEditable(scope.blockId)) handleDeleteNestedItem(scope.blockId, blockId);
 		clearBlockSelection();
@@ -655,8 +674,7 @@ function handleDuplicateActiveBlock() {
 
 	// A nested item is copied next to itself, at any depth. The canonical
 	// handler deep-clones it and gives it and everything inside it fresh ids.
-	const scope =
-		blockState.selectedColumnContext.value ?? blockState.selectedContainerContext.value;
+	const scope = blockState.selectedColumnContext.value ?? blockState.selectedContainerContext.value;
 	if (selectedNestedItemId.value && scope) {
 		if (isEditable(scope.blockId)) handleDuplicateNestedItem(scope.blockId, blockId);
 	} else {
