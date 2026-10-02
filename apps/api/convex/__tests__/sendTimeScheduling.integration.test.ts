@@ -352,6 +352,68 @@ describe('the predicted distribution', () => {
 		expect(localTimeParts(busy[0]!.at, 'UTC').hour).toBe(14);
 	});
 
+	it('names no busiest hour before the organization histogram is used, and ignores an impossible start time', async () => {
+		const t = setupTest();
+		const startAt = Date.now() + 24 * HOUR;
+		const { campaignId } = await seedCampaign(t, {}, [{ timezone: 'UTC' }]);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('sendTimeHistogramShards', {
+				shardKey: 0,
+				...habit(14, localTimeParts(startAt, 'UTC').weekday, 5, startAt),
+			});
+		});
+		const preview = await t.query(api.campaigns.sendTimeQueries.previewSendTimes, {
+			campaignId,
+			startAt,
+			windowHours: 24,
+			holdoutPercent: 0,
+			scheduledHour: 30,
+			scheduledMinute: 0,
+		});
+		expect(preview.organizationBestHour).toBeNull();
+		expect(preview.sources).toEqual({ contact: 0, organization: 0, start: 1, holdout: 0 });
+		expect(preview.hours[0]!.count).toBe(1);
+	});
+
+	it("starts the bars on the viewer's hours in a half-hour zone", async () => {
+		const t = setupTest();
+		// Tomorrow 03:00 UTC is 08:30 in Kolkata (UTC+5:30, no DST).
+		const tomorrow = new Date(Date.now() + 24 * HOUR);
+		const startAt = Date.UTC(
+			tomorrow.getUTCFullYear(),
+			tomorrow.getUTCMonth(),
+			tomorrow.getUTCDate(),
+			3,
+			0
+		);
+		const weekday = localTimeParts(startAt, 'Asia/Kolkata').weekday;
+		const profile = { ...habit(9, weekday, 5, startAt), timeZone: 'Asia/Kolkata' };
+		const { campaignId } = await seedCampaign(t, {}, [
+			{ timezone: 'Asia/Kolkata', sendTimeProfile: profile },
+		]);
+		const args = { campaignId, startAt, windowHours: 6, holdoutPercent: 0 };
+
+		const viewer = await t.query(api.campaigns.sendTimeQueries.previewSendTimes, {
+			...args,
+			timeZone: 'Asia/Kolkata',
+		});
+		expect(localTimeParts(viewer.hours[0]!.at, 'Asia/Kolkata')).toMatchObject({
+			hour: 8,
+			minute: 0,
+		});
+		const busy = viewer.hours.filter((h) => h.count > 0);
+		expect(busy).toHaveLength(1);
+		// The 09:00 send sits in the bar labelled 9, not in an 8:30 one.
+		expect(localTimeParts(busy[0]!.at, 'Asia/Kolkata')).toMatchObject({ hour: 9, minute: 0 });
+
+		// Without a (valid) zone the bars fall back to UTC hours.
+		const fallback = await t.query(api.campaigns.sendTimeQueries.previewSendTimes, {
+			...args,
+			timeZone: 'Not/AZone',
+		});
+		expect(fallback.hours[0]!.at).toBe(startAt);
+	});
+
 	it('is empty for a campaign without an audience and refuses bad settings', async () => {
 		const t = setupTest();
 		const { campaignId } = await seedCampaign(t, { audience: undefined });

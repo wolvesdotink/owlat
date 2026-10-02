@@ -106,11 +106,14 @@ export function sendTimeOptimizationFor(
 }
 
 /**
- * The window a page plans into. It opens when the campaign started sending.
- * A walk that is still going after its window closed (a multi-day plan resumed
- * on a later day) gets a fresh window from now. When a day budget applies, the
- * window ends with the day the budget belongs to, so a slice never lands in
- * the next day's cap window.
+ * The window a page plans into. It closes `windowHours` after the campaign
+ * started sending, and opens at the later of that start and now: a page
+ * resolved after part of the window has passed (a multi-day plan resumed the
+ * next day) must not pick an hour that is already over, which would send at
+ * once instead. A walk that is still going after its window closed gets a
+ * fresh window from now. When a day budget applies, the window ends with the
+ * day the budget belongs to, so a slice never lands in the next day's cap
+ * window.
  */
 export function resolveSendTimeWindow(args: {
 	sentAt: number | undefined;
@@ -119,9 +122,10 @@ export function resolveSendTimeWindow(args: {
 	dayBudgetEndsAt?: number | undefined;
 }): SendTimeWindow {
 	const length = args.windowHours * HOUR_MS;
-	let startAt = args.sentAt ?? args.now;
-	if (args.now >= startAt + length) startAt = args.now;
-	let endAt = startAt + length;
+	let opensAt = args.sentAt ?? args.now;
+	if (args.now >= opensAt + length) opensAt = args.now;
+	const startAt = Math.max(opensAt, args.now);
+	let endAt = opensAt + length;
 	if (args.dayBudgetEndsAt !== undefined) endAt = Math.min(endAt, args.dayBudgetEndsAt);
 	return { startAt, endAt: Math.max(endAt, startAt + 1) };
 }

@@ -1,4 +1,5 @@
 import type { Id } from '../../_generated/dataModel';
+import { DAY_MS } from '../../lib/constants';
 import type { CampaignStatField } from '../../lib/validators/campaigns';
 import type { SendTimeGroup } from '../../lib/validators/sendTime';
 import type { SendTimeEngagementKind } from '../../analytics/sendTimeProfile';
@@ -13,7 +14,10 @@ import type { EmailSendDoc, SendRef, TransactionalSendDoc } from './types';
 // 1. The comparison counters. A campaign send planned by the send-time
 //    optimizer carries `sendTimeGroup`; its delivered / first reader open /
 //    first reader click bump that arm's counters in the SAME shard write as
-//    the campaign's own counter.
+//    the campaign's own counter. An open or click only counts for its arm
+//    within `SEND_TIME_ATTRIBUTION_MS` of the send going out, so both arms are
+//    measured over the same exposure: the holdout goes out first and would
+//    otherwise have had up to a whole window longer to collect engagement.
 // 2. The engagement that teaches the profile: the first reader open of a
 //    campaign send that our pixel judged to be a mail client, and the first
 //    reader click. Provider-reported opens (no `agent`) are left out because
@@ -32,14 +36,34 @@ export type SendTimeEngagementEffect = {
 	at: number;
 };
 
-/** The `sendTimeGroup` to spread onto a `campaign_stats_*` effect, if any. */
+/**
+ * How long after a send goes out its first reader open or click still counts
+ * for its arm. The report waits this long after the last send before it
+ * compares the arms (`apps/web/app/utils/sendTimeComparison.ts`).
+ */
+export const SEND_TIME_ATTRIBUTION_MS = DAY_MS;
+
+/**
+ * The `sendTimeGroup` to spread onto a `campaign_stats_*` effect, if any. Pass
+ * `engagedAt` for an open or click: one later than `SEND_TIME_ATTRIBUTION_MS`
+ * after the send went out still bumps the campaign counter, not the arm's.
+ */
 export function sendTimeGroupOf(
 	send: EmailSendDoc | TransactionalSendDoc,
-	ref: SendRef
+	ref: SendRef,
+	engagedAt?: number
 ): { sendTimeGroup?: SendTimeGroup } {
 	if (ref.kind !== 'campaign') return {};
-	const group = (send as EmailSendDoc).sendTimeGroup;
-	return group === undefined ? {} : { sendTimeGroup: group };
+	const { sendTimeGroup: group, sentAt } = send as EmailSendDoc;
+	if (group === undefined) return {};
+	if (
+		engagedAt !== undefined &&
+		sentAt !== undefined &&
+		engagedAt - sentAt > SEND_TIME_ATTRIBUTION_MS
+	) {
+		return {};
+	}
+	return { sendTimeGroup: group };
 }
 
 /**
