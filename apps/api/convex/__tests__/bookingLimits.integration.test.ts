@@ -7,7 +7,9 @@
  *   - a guest name cannot carry a line break into the host's mail subject;
  *   - the public routes limit per IP and page, so a flood on one page (or on a
  *     made-up one) does not close another member's page while every caller
- *     shares the default `'unknown'` IP.
+ *     shares the default `'unknown'` IP, and a page or manage link spelled
+ *     another way (capitals, percent escapes) does not reach the page with a
+ *     bucket of its own.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -233,5 +235,50 @@ describe('public route limits', () => {
 			email: 'grace@example.com',
 		});
 		expect(ok.status).toBe(200);
+	});
+});
+
+describe('public route spelling', () => {
+	const post = (t: TestConvex<typeof schema>, path: string, body: Record<string, unknown>) =>
+		t.fetch(path, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(body),
+		});
+
+	it('answers only to the page slug as stored', async () => {
+		const t = await setup();
+		expect((await t.fetch('/booking/page/ada?type=intro')).status).toBe(200);
+		for (const variant of ['ADA', 'Ada', '%61da', 'ad%61']) {
+			expect((await t.fetch(`/booking/page/${variant}?type=intro`)).status).toBe(404);
+			const booked = await post(t, `/booking/book/${variant}`, {
+				type: 'intro',
+				start: tenOClockInDays(2),
+				name: 'Grace',
+				email: 'grace@example.com',
+			});
+			expect(booked.status).toBe(404);
+		}
+		expect(await t.run((ctx) => ctx.db.query('bookings').collect())).toEqual([]);
+	});
+
+	it('answers only to the manage token as minted', async () => {
+		const t = await setup();
+		const token = `bk_${'a'.repeat(40)}`;
+		await t.mutation(internal.booking.public.reserve, {
+			slug: 'ada',
+			typeSlug: 'intro',
+			start: tenOClockInDays(2),
+			guestName: 'Grace',
+			guestEmail: 'grace@example.com',
+			manageToken: token,
+		});
+		expect((await t.fetch(`/booking/manage/${token}`)).status).toBe(200);
+		const escaped = token.replace(/a$/, '%61');
+		expect((await t.fetch(`/booking/manage/${escaped}`)).status).toBe(404);
+		expect((await post(t, `/booking/cancel/${escaped}`, {})).status).toBe(404);
+		const [row] = await t.run((ctx) => ctx.db.query('bookings').collect());
+		expect(row?.status).toBe('confirmed');
+		expect((await post(t, `/booking/cancel/${token}`, {})).status).toBe(200);
 	});
 });

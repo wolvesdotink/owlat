@@ -16,15 +16,18 @@
  * Every route keys its limit on `<ip>:<page slug or manage token>`, like the
  * forms endpoint: while `RATE_LIMIT_TRUSTED_PROXY` is unset (the default) every
  * caller shares the `'unknown'` IP, and an IP-only key would let one visitor
- * close every member's page. What one page can take in total is held by the
- * per-host limit inside `reserve` / `rescheduleByToken`.
+ * close every member's page. The segment must be spelled as it is stored
+ * (a lowercase slug, a manage token, no percent escapes); any other spelling
+ * answers "not found", so it cannot stand in for the page with a bucket of its
+ * own. What one page can take in total is held by the per-host limit inside
+ * `reserve` / `rescheduleByToken`.
  */
 
 import type { HttpRouter } from 'convex/server';
 import { internal } from '../_generated/api';
 import { publicTokenEndpoint, type ResultAction } from '../lib/publicTokenEndpoint';
 import { randomToken } from '../lib/randomToken';
-import { BOOKING_LIMITS } from '@owlat/shared/booking';
+import { BOOKING_LIMITS, isValidBookingSlug } from '@owlat/shared/booking';
 import { hashManageToken } from './model';
 
 const NOT_FOUND: ResultAction = {
@@ -33,6 +36,25 @@ const NOT_FOUND: ResultAction = {
 	message: 'Booking page not found',
 	status: 404,
 };
+
+/** A manage token as `randomToken(40, 'bk_')` mints it. */
+const MANAGE_TOKEN_RE = /^bk_[A-Za-z0-9]{40}$/;
+
+/**
+ * Whether the path's last segment is `token` exactly as sent: no percent
+ * escapes and, for a page slug, no capitals. The rate-limit key is the raw
+ * segment, so a spelling that still resolved (`ADA`, `%61da`) would open a
+ * fresh bucket per variant.
+ */
+function isCanonicalSegment(
+	request: Request,
+	token: string,
+	kind: 'slug' | 'manageToken'
+): boolean {
+	const segments = new URL(request.url).pathname.split('/').filter(Boolean);
+	if (segments[segments.length - 1] !== token) return false;
+	return kind === 'slug' ? isValidBookingSlug(token) : MANAGE_TOKEN_RE.test(token);
+}
 
 /** A finite number query parameter, or undefined. */
 function numberParam(request: Request, name: string): number | undefined {
@@ -74,7 +96,7 @@ const getBookingPage = publicTokenEndpoint(
 	async (ctx, { token, request }) => {
 		const type = new URL(request.url).searchParams.get('type') ?? undefined;
 		if (
-			token.length > BOOKING_LIMITS.slugMaxLength ||
+			!isCanonicalSegment(request, token, 'slug') ||
 			(type?.length ?? 0) > BOOKING_LIMITS.slugMaxLength
 		) {
 			return NOT_FOUND;
@@ -99,7 +121,8 @@ const createBooking = publicTokenEndpoint(
 		body: 'json',
 		resultMode: 'action',
 	},
-	async (ctx, { token, body }) => {
+	async (ctx, { token, body, request }) => {
+		if (!isCanonicalSegment(request, token, 'slug')) return NOT_FOUND;
 		const fields = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
 		const start = fields['start'];
 		const typeSlug = stringField(fields, 'type', BOOKING_LIMITS.slugMaxLength);
@@ -152,7 +175,7 @@ const getManagedBooking = publicTokenEndpoint(
 		resultMode: 'action',
 	},
 	async (ctx, { token, request }) => {
-		if (token.length > 64) return NOT_FOUND;
+		if (!isCanonicalSegment(request, token, 'manageToken')) return NOT_FOUND;
 		const managed = await ctx.runQuery(internal.booking.public.getManaged, {
 			manageTokenHash: await hashManageToken(token),
 			from: numberParam(request, 'from'),
@@ -171,8 +194,8 @@ const cancelManagedBooking = publicTokenEndpoint(
 		cors: 'POST, OPTIONS',
 		resultMode: 'action',
 	},
-	async (ctx, { token }) => {
-		if (token.length > 64) return NOT_FOUND;
+	async (ctx, { token, request }) => {
+		if (!isCanonicalSegment(request, token, 'manageToken')) return NOT_FOUND;
 		const result = await ctx.runMutation<{ ok: true } | { ok: false; reason: string }>(
 			internal.booking.public.cancelByToken,
 			{ manageTokenHash: await hashManageToken(token) }
@@ -191,8 +214,8 @@ const rescheduleManagedBooking = publicTokenEndpoint(
 		body: 'json',
 		resultMode: 'action',
 	},
-	async (ctx, { token, body }) => {
-		if (token.length > 64) return NOT_FOUND;
+	async (ctx, { token, body, request }) => {
+		if (!isCanonicalSegment(request, token, 'manageToken')) return NOT_FOUND;
 		const start = (body && typeof body === 'object' ? (body as Record<string, unknown>) : {})[
 			'start'
 		];
