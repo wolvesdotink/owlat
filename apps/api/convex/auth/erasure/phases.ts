@@ -189,6 +189,22 @@ export async function remainingMemberData(
 					.withIndex('by_author', (q) => q.eq('authorId', authUserId))
 					.first(),
 		],
+		[
+			'personal saved replies',
+			() =>
+				ctx.db
+					.query('mailSnippets')
+					.withIndex('by_owner', (q) => q.eq('ownerUserId', authUserId))
+					.first(),
+		],
+		[
+			'saved reply authorship',
+			() =>
+				ctx.db
+					.query('mailSnippets')
+					.withIndex('by_author', (q) => q.eq('authorUserId', authUserId))
+					.first(),
+		],
 	];
 	for (const [name, probe] of probes) {
 		if ((await probe()) !== null) remaining.push(name);
