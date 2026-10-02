@@ -71,6 +71,7 @@ function makeCompose() {
 		scheduledSendAt: ref(null),
 		cancelSchedule: vi.fn(),
 		followUpRemindAt: ref(null),
+		isGapGuarded: ref(false),
 		flush,
 		send: vi.fn(),
 		discard: vi.fn(async () => {}),
@@ -349,6 +350,20 @@ describe('PostboxComposer frame="answer"', () => {
 		expect(keysCanSend.value).toBe(false);
 		expect(w.get('[data-testid="composer-save-state"]').text()).toBe('1 gap left');
 		w.unmount();
+	});
+
+	// Issue #1131 review: a reopened Reply Queue draft has no ask session and no
+	// in-memory AI draft; the saved row's `isGapGuarded` keeps Send held.
+	it('holds Send on a reopened draft the AI left gaps in, without an ask session', async () => {
+		compose.isGapGuarded.value = true;
+		const w = mountComposer({ frame: 'answer' });
+		compose.bodyHtml.value = `<p>Here they are. [[Provide the invoices]]</p>${QUOTED}`;
+		await nextTick();
+
+		expect(keysCanSend.value).toBe(false);
+		expect(w.get('[data-testid="composer-save-state"]').text()).toBe('1 gap left');
+		w.unmount();
+		compose.isGapGuarded.value = false;
 	});
 
 	it('hands its slot and its host the Answer mode API', async () => {

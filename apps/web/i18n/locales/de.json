@@ -6133,7 +6133,10 @@
 				"pickDate": "Datum wählen",
 				"answerAndDraft": "Antworten und entwerfen",
 				"skip": "Überspringen, mit Lücken entwerfen",
-				"operation": "Fragen beantworten"
+				"operation": "Fragen beantworten",
+				"waitingForFiles": "Entwurf fertig. Wartet auf deine Dateien",
+				"waitingForFilesSubline": "Die Antwort ist geschrieben. Füge die angefragten Dateien hinzu, dann wird sie mit ihnen als Anhang angepasst.",
+				"attachAndUpdate": "Anhängen und Entwurf anpassen"
 			},
 			"fileAsk": {
 				"dropHere": "Lege die Datei hier ab oder",
@@ -6149,7 +6152,9 @@
 				"remove": "{file} entfernen",
 				"tooLarge": "{filename} ist größer als {mb} MB.",
 				"uploadFailed": "{filename} konnte nicht hochgeladen werden.",
-				"unsupported": "{filename} hat einen Dateityp, der hier nicht angehängt werden kann."
+				"unsupported": "{filename} hat einen Dateityp, der hier nicht angehängt werden kann.",
+				"dropHereMany": "Lege die Dateien hier ab oder",
+				"dropAnother": "Noch eine? Lege sie hier ab oder"
 			},
 			"filePicker": {
 				"title": "Aus den Dateien wählen",

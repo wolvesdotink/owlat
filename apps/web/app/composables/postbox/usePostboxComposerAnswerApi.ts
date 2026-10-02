@@ -17,9 +17,9 @@
  * asks covered"), else the save state.
  *
  * `[[...]]` gaps hold Send back only when the AI wrote them: an AI draft went
- * into this composer, or the host says the draft has an ask session (a resumed
- * draft, whose AI text arrived before this composer mounted; the server refuses
- * that send too). Anywhere else double brackets are the person's own text (a
+ * into this composer, or the host says the draft has an ask session or the
+ * saved row is gap-guarded (a resumed draft, whose AI text arrived before this
+ * composer mounted; the server refuses that send too). Anywhere else double brackets are the person's own text (a
  * wiki link, a template token), and the preflight chip names them as advice.
  */
 import { computed, ref, type Ref } from 'vue';

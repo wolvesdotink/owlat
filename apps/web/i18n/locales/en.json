@@ -6133,7 +6133,10 @@
 				"pickDate": "Pick a date",
 				"answerAndDraft": "Answer and draft",
 				"skip": "Skip, draft with gaps",
-				"operation": "Answer the questions"
+				"operation": "Answer the questions",
+				"waitingForFiles": "Draft ready. Waiting for your files",
+				"waitingForFilesSubline": "The reply is written. Add the files they asked for and it is updated to go out with them.",
+				"attachAndUpdate": "Attach and update draft"
 			},
 			"fileAsk": {
 				"dropHere": "Drop the file here or",
@@ -6149,7 +6152,9 @@
 				"remove": "Remove {file}",
 				"tooLarge": "{filename} is larger than {mb} MB.",
 				"uploadFailed": "{filename} could not be uploaded.",
-				"unsupported": "{filename} is not a file type that can be attached here."
+				"unsupported": "{filename} is not a file type that can be attached here.",
+				"dropHereMany": "Drop the files here or",
+				"dropAnother": "Another one? Drop it here or"
 			},
 			"filePicker": {
 				"title": "Pick from files",

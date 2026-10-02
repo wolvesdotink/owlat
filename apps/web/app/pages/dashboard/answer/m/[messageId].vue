@@ -44,6 +44,7 @@ import AskCard from '~/components/answer/AskCard.vue';
 import type { FileCopyPolicy } from '~/components/answer/FileAsk.vue';
 import AnswerMailMenu from '~/components/answer/AnswerMailMenu.vue';
 import { isImeComposing } from '~/utils/imeComposition';
+import { hasOwnWriting } from '~/utils/answerDraft';
 
 definePageMeta({
 	layout: 'dashboard',
@@ -423,10 +424,10 @@ onBeforeUnmount(() => {
 							:message-id="messageId"
 							:mailbox-id="seed.mailboxId"
 							:resolve-thread-file="assist.resolveThreadFile"
-							:written="!!composer.draftText.value.trim()"
+							:written="hasOwnWriting(composer.draftText.value, composer.aiDraft.value)"
 							:copy-policy="copyPolicy"
 							@visible="queueAskVisible = $event"
-							@use-draft="composer.applyAiDraft($event)"
+							@use-draft="assist.applyQueueDraft(composer, $event)"
 						/>
 						<template v-if="assist.aiEnabled.value && !queueAskVisible">
 							<AskCard
