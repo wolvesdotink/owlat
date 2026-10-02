@@ -25,6 +25,8 @@ export interface InboxThreadRowThread {
 	assignedTo?: string | null;
 	/** Assigned member, resolved for the avatar (null when unassigned). */
 	assignee?: { name?: string; email: string; image?: string | null } | null;
+	/** Running reply deadline while response targets are on; absent otherwise. */
+	responseDueAt?: number | null;
 }
 </script>
 
@@ -39,6 +41,7 @@ export interface InboxThreadRowThread {
  * mutation; this row maps DOM events to semantic emits.
  */
 import { INBOX_WAITING_TIER_CLASS, inboxWaitingChip } from '~/utils/inboxWaiting';
+import { INBOX_SLA_TIER_CLASS, inboxSlaChip } from '~/utils/inboxSla';
 
 const props = withDefaults(
 	defineProps<{
@@ -86,6 +89,10 @@ const { t } = useI18n();
 // re-derives on ONE ticking clock, not one per row.
 const waiting = computed(() =>
 	props.now === undefined ? null : inboxWaitingChip(props.thread, props.now)
+);
+// A running reply deadline says more than the age, so it takes the chip's place.
+const sla = computed(() =>
+	props.now === undefined ? null : inboxSlaChip(props.thread, props.now)
 );
 
 const rowMembers = computed(() => props.members ?? []);
@@ -168,11 +175,21 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 							<Icon name="lucide:message-circle" class="w-3 h-3" />
 							{{ channelLabel }}
 						</span>
-						<!-- Aging chip: how long this customer has been waiting on us,
-						     escalating fresh → attention → overdue. Colour is never the
-						     only signal — the duration is spelled out beside it. -->
+						<!-- Response-target chip (due in / overdue) while a reply deadline
+						     runs; otherwise the aging chip: how long this customer has been
+						     waiting on us, escalating fresh → attention → overdue. Colour is
+						     never the only signal — the duration is spelled out beside it. -->
 						<span
-							v-if="waiting"
+							v-if="sla"
+							class="flex-shrink-0 inline-flex items-center gap-1 text-xs tabular-nums"
+							:class="INBOX_SLA_TIER_CLASS[sla.tier]"
+							data-testid="inbox-sla-chip"
+						>
+							<Icon name="lucide:alarm-clock" class="w-3 h-3" />
+							{{ t(sla.label.key, sla.label.params) }}
+						</span>
+						<span
+							v-else-if="waiting"
 							class="flex-shrink-0 inline-flex items-center gap-1 text-xs tabular-nums"
 							:class="INBOX_WAITING_TIER_CLASS[waiting.tier]"
 						>

@@ -83,13 +83,32 @@ export function useInbox(gate?: Ref<boolean>) {
 	// first". That order holds for this view only: following an old link must
 	// not rewrite the viewer's saved sort. Picking a sort drops the override.
 	const legacySort = ref<InboxSort | null>(legacyInboxSort(route.query['filter']) ?? null);
-	const sort = computed<InboxSort>(() => legacySort.value ?? resolveInboxSort(storedSort.value));
+
+	// ── Response targets (SLA): whether they are on, and the Overdue / Due soon
+	// counts beside the tabs. Owner/admin read, like the rest of the inbox.
+	const { data: slaSummary } = useConvexQuery(
+		api.inbox.sla.queries.getListSummary,
+		() => {
+			if (!subscribed()) return 'skip';
+			const assigneeArg = inboxAssigneeArg(assignee.value);
+			return assigneeArg ? { assignee: assigneeArg } : {};
+		},
+		{ keepPreviousData: true }
+	);
+	const isSlaEnabled = computed(() => slaSummary.value?.isEnabled === true);
+
+	// A saved "due first" order falls back to the default while targets are off:
+	// without deadlines it would only repeat "oldest waiting" under another name.
+	const sort = computed<InboxSort>(() => {
+		const chosen = legacySort.value ?? resolveInboxSort(storedSort.value);
+		return chosen === 'due' && !isSlaEnabled.value ? DEFAULT_INBOX_SORT : chosen;
+	});
 	const setSort = (next: InboxSort) => {
 		legacySort.value = null;
 		setStoredSort(next);
 	};
 	const toggleSort = () => {
-		setSort(nextInboxSort(sort.value));
+		setSort(nextInboxSort(sort.value, isSlaEnabled.value));
 	};
 
 	// ── Thread list (keyset pagination; the args pick the backend index) ──
@@ -262,6 +281,8 @@ export function useInbox(gate?: Ref<boolean>) {
 		setSort,
 		toggleSort,
 		filterCounts,
+		slaSummary,
+		isSlaEnabled,
 		threads,
 		threadsLoading,
 		threadsError,

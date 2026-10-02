@@ -141,3 +141,57 @@ describe('InboxThreadRow', () => {
 		expect(w.emitted('snooze')).toHaveLength(1);
 	});
 });
+
+describe('InboxThreadRow response-target chip', () => {
+	const NOW = 10_000_000;
+	function mountAt(thread: Partial<InboxThreadRowThread>) {
+		return mount(InboxThreadRow, {
+			props: {
+				thread: {
+					_id: 't1',
+					_creationTime: 1000,
+					subject: 'Refund request',
+					contactIdentifier: 'customer@example.com',
+					status: 'open',
+					lastMessageAt: NOW - 5 * 60 * 60 * 1000,
+					...thread,
+				},
+				focused: false,
+				formatCompactRelativeTime: () => '5m',
+				now: NOW,
+			},
+			global: {
+				plugins: [createTestI18n()],
+				components: { PostboxRowCore, InboxStatusChip: StatusChip },
+				stubs: {
+					Icon: true,
+					UiAvatar: UiAvatarStub,
+					NuxtLink: NuxtLinkStub,
+					InboxAssignPopover: AssignPopoverStub,
+				},
+			},
+		});
+	}
+
+	it('shows the waiting age when no deadline runs', () => {
+		const w = mountAt({});
+		expect(w.find('[data-testid="inbox-sla-chip"]').exists()).toBe(false);
+		expect(w.text()).toContain('waiting 5h');
+	});
+
+	it('replaces the age with the deadline, in its tier colour', () => {
+		const due = mountAt({ responseDueAt: NOW + 3 * 60 * 60 * 1000 });
+		const chip = due.get('[data-testid="inbox-sla-chip"]');
+		expect(chip.text()).toBe('due in 3h');
+		expect(chip.classes()).toContain('text-text-tertiary');
+		expect(due.text()).not.toContain('waiting 5h');
+
+		const soon = mountAt({ responseDueAt: NOW + 20 * 60 * 1000 });
+		expect(soon.get('[data-testid="inbox-sla-chip"]').classes()).toContain('text-warning');
+
+		const late = mountAt({ responseDueAt: NOW - 90 * 60 * 1000 });
+		const lateChip = late.get('[data-testid="inbox-sla-chip"]');
+		expect(lateChip.text()).toBe('overdue 1h');
+		expect(lateChip.classes()).toContain('text-error');
+	});
+});

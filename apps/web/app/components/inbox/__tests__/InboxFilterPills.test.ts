@@ -38,4 +38,33 @@ describe('InboxFilterPills', () => {
 		expect(wrapper.emitted('update:assignee')?.[0]).toEqual(['me']);
 		expect(wrapper.emitted('update:modelValue')).toBeUndefined();
 	});
+
+	it('hides the response-target pills while targets are off', () => {
+		const wrapper = mount(InboxFilterPills, {
+			props: {
+				modelValue: 'open',
+				assignee: 'anyone',
+				counts,
+				sla: { isEnabled: false, overdue: 0, dueSoon: 0, cap: 100 },
+			},
+			global: { plugins: [createTestI18n()] },
+		});
+		expect(wrapper.find('[data-testid="inbox-sla-filters"]').exists()).toBe(false);
+	});
+
+	it('offers Overdue and Due soon with counts while targets are on', async () => {
+		const wrapper = mount(InboxFilterPills, {
+			props: {
+				modelValue: 'open',
+				assignee: 'anyone',
+				counts,
+				sla: { isEnabled: true, overdue: 3, dueSoon: 100, cap: 100 },
+			},
+			global: { plugins: [createTestI18n()] },
+		});
+		const pills = wrapper.get('[data-testid="inbox-sla-filters"]').findAll('button');
+		expect(pills.map((b) => b.text())).toEqual(['Overdue3', 'Due soon99+']);
+		await pills[0]!.trigger('click');
+		expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['sla-overdue']);
+	});
 });

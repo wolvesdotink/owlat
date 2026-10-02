@@ -47,6 +47,8 @@ const {
 	setSort,
 	toggleSort,
 	filterCounts,
+	slaSummary,
+	isSlaEnabled,
 	threads,
 	threadsLoading,
 	threadsError,
@@ -232,6 +234,10 @@ const showOldestFirst = () => setSort('oldest-waiting');
 			:description="t('dashboard.inbox.index.subtitle')"
 		>
 			<template #actions>
+				<UiButton v-if="isAdmin" to="/dashboard/inbox/analytics" variant="secondary" class="gap-2">
+					<Icon name="lucide:bar-chart-3" class="w-4 h-4" />
+					{{ t('dashboard.inbox.index.analytics') }}
+				</UiButton>
 				<!-- The one answer queue, filtered to this inbox. -->
 				<UiButton to="/dashboard/answer?in=team" class="gap-2">
 					<Icon name="lucide:check-circle" class="w-4 h-4" />
@@ -270,7 +276,12 @@ const showOldestFirst = () => setSort('oldest-waiting');
 		<template v-else>
 			<!-- Filter pills (live counts) + needs-attention sort chip -->
 			<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
-				<InboxFilterPills v-model="filter" v-model:assignee="assignee" :counts="filterCounts" />
+				<InboxFilterPills
+					v-model="filter"
+					v-model:assignee="assignee"
+					:counts="filterCounts"
+					:sla="slaSummary"
+				/>
 
 				<!-- The sort chip states the CURRENT order and cycles to the next
 				     one; with three orders a toggle would have had to hide one. -->
@@ -279,7 +290,7 @@ const showOldestFirst = () => setSort('oldest-waiting');
 					class="inline-flex items-center gap-1.5 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded px-1.5 py-1"
 					:title="
 						t('dashboard.inbox.index.sortSwitchTo', {
-							sort: t(INBOX_SORT_META[nextInboxSort(sort)].label),
+							sort: t(INBOX_SORT_META[nextInboxSort(sort, isSlaEnabled)].label),
 						})
 					"
 					@click="toggleSort"

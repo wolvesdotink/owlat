@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+	assignmentGroupNotificationParts,
 	assignmentGroupToastMessage,
 	assignmentNotificationParts,
 	assignmentToastMessage,
@@ -115,6 +116,47 @@ describe('clarification notices', () => {
 		const n = notice({ id: 'a', kind: 'assignment' });
 		expect(render(assignmentToastMessage(n))).toBe(
 			'Assigned to you — Where is my order? · from Ada'
+		);
+	});
+});
+
+describe('response-target breach notices', () => {
+	const breach = (id: string, createdAt: number) => ({
+		id,
+		kind: 'sla_breach' as const,
+		threadId: `t-${id}`,
+		subject: 'Help',
+		assignedByName: 'customer@example.com',
+		createdAt,
+	});
+
+	it('groups a sweep burst apart from assignments', () => {
+		const plans = planAssignmentNotices(
+			[
+				breach('b1', 1000),
+				{ id: 'a1', threadId: 't', subject: 'S', assignedByName: 'Ann', createdAt: 1001 },
+				breach('b2', 1002),
+			],
+			new Set()
+		);
+		expect(plans).toHaveLength(2);
+		expect(plans[0]).toMatchObject({ kind: 'single', notice: { id: 'a1' } });
+		expect(plans[1]).toMatchObject({ kind: 'group', count: 2, sample: { kind: 'sla_breach' } });
+	});
+
+	it('words a breach as overdue, not as an assignment', () => {
+		expect(assignmentToastMessage(breach('b1', 1)).key).toBe(
+			'shared.inbox.assignmentNoticeRules.slaBreach.toast.withSubject'
+		);
+		expect(assignmentGroupToastMessage(3, 'sla_breach')).toEqual({
+			key: 'shared.inbox.assignmentNoticeRules.slaBreach.group',
+			params: { count: 3 },
+		});
+		expect(assignmentGroupNotificationParts(3, 'sla_breach').title.key).toBe(
+			'shared.inbox.assignmentNoticeRules.slaBreach.notificationTitle'
+		);
+		expect(assignmentNotificationParts(breach('b1', 1)).title.key).toBe(
+			'shared.inbox.assignmentNoticeRules.slaBreach.notificationTitle'
 		);
 	});
 });
