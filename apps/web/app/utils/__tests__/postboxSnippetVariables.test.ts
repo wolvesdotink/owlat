@@ -129,6 +129,18 @@ describe('resolveSnippetBody', () => {
 		expect(html).toBe('Ref [[Ticket]]');
 	});
 
+	it('never makes an empty gap out of a label of only brackets', () => {
+		const declared: SnippetVariable[] = [{ token: 'ticket', source: 'prompt', label: '[ ]]' }];
+		const asked = resolveSnippetBody('Ref {{ticket}}', { declared, context });
+		expect(asked.html).toBe('Ref [[ticket]]');
+		expect(asked.hasGaps).toBe(true);
+		const labelled = resolveSnippetBody('Hi {{contact.firstName}}', {
+			context: {},
+			gapLabel: () => '[]',
+		});
+		expect(labelled.html).toBe('Hi [[contact.firstName]]');
+	});
+
 	it('keeps the free gaps a reply carries, and reports them', () => {
 		const { html, unresolved, hasGaps } = resolveSnippetBody(
 			'<p>Hi {{firstName}}, your order [[order number]] ships today.</p>',

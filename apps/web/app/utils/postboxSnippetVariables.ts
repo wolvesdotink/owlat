@@ -239,9 +239,16 @@ export function resolveSnippetBody(
 		if (fallback && fallback.trim()) return escapeHtml(fallback);
 		const written = writtenAs.get(token) ?? token;
 		if (!unresolved.includes(written)) unresolved.push(written);
-		const declaredLabel = declared.find((v) => v.token === token)?.label?.trim();
-		const label = declaredLabel || options.gapLabel?.(written, source) || written;
-		return escapeHtml(formatDraftGap(label));
+		// The first label that still makes a gap: one of only brackets would
+		// format to an empty `[[]]`, which holds nothing and would go out as is.
+		const labels = [
+			declared.find((v) => v.token === token)?.label,
+			options.gapLabel?.(written, source),
+		];
+		const gap =
+			labels.map((label) => label && formatDraftGap(label)).find((g) => g && hasDraftGaps(g)) ??
+			formatDraftGap(written);
+		return escapeHtml(gap);
 	});
 
 	return { html, unresolved, hasGaps: hasDraftGaps(htmlToPlainText(html)) };
