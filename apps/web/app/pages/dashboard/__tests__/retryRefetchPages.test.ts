@@ -97,6 +97,7 @@ const FEATURE_STUBS = Object.fromEntries(
 		'CampaignsCampaignEditLocked',
 		'CampaignsCapacitySchedulePanel',
 		'CampaignsSendReadinessNote',
+		'CampaignsSendTimingOptions',
 		'CampaignsStepsSetupAudiencePicker',
 		'CampaignsStepsSetupSenderPicker',
 		'CampaignsTestEmailModal',
