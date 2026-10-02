@@ -3177,12 +3177,34 @@
 			}
 		},
 		"email": {
+			"coeditNotices": {
+				"blockReplaced": "Deine Änderung an einem Block wurde von {name} ersetzt, weil ihr ihn gleichzeitig bearbeitet habt.",
+				"dismiss": "Schließen",
+				"fieldReplaced": "Deine Änderung an {field} wurde von {name} ersetzt, weil ihr gleichzeitig daran gearbeitet habt.",
+				"fields": {
+					"attachments": "den Anhängen",
+					"name": "dem Namen",
+					"plainText": "der Nur-Text-Version",
+					"subject": "dem Betreff",
+					"unsubscribe": "der Abmelde-Einstellung"
+				},
+				"inHistory": "Deine Version ist auch im Versionsverlauf gespeichert.",
+				"restore": "Meine zurückholen"
+			},
 			"editorConflictDialog": {
 				"description": "Sie wurde an anderer Stelle gespeichert, nachdem du sie geöffnet hast: in einem anderen Tab, auf der Seite „Übersetzungen“ oder über einen gespeicherten Block, den sie verwendet. Deine Änderungen sind noch nicht gespeichert. Behalte deine Version, um sie über die neuere zu speichern, oder lade die aktuelle Version und verwirf deine Änderungen.",
 				"keepMine": "Meine Version behalten",
 				"languageChanged": "Die Standardsprache dieser E-Mail wurde geändert, nachdem du sie geöffnet hast. Deine Änderungen gehören deshalb zu einer anderen Sprache und können nicht darüber gespeichert werden. Lade die aktuelle Version und nimm deine Änderungen dann erneut vor.",
 				"loadLatest": "Aktuelle Version laden",
 				"title": "Diese E-Mail wurde während deiner Bearbeitung geändert"
+			},
+			"editorPresence": {
+				"label": "Personen, die diese E-Mail bearbeiten",
+				"more": "{count} weitere",
+				"offline": "Nicht synchronisiert",
+				"offlineTitle": "Deine letzten Änderungen sind noch nicht bei den anderen angekommen. Sie bleiben erhalten und werden automatisch erneut gesendet.",
+				"titleEditing": "{name} bearbeitet gerade einen Block",
+				"titleViewing": "{name} hat diese E-Mail geöffnet"
 			},
 			"emailBuilderViewportGate": {
 				"body": "Bearbeiten per Drag-and-drop passt nicht auf ein Telefon. Öffne diese Seite auf einem Tablet oder Desktop, um Änderungen vorzunehmen – alles Gespeicherte ist genau so, wie du es verlassen hast.",
@@ -3223,6 +3245,7 @@
 				"trigger": "Verlauf",
 				"triggerTitle": "Versionsverlauf",
 				"triggers": {
+					"conflict": "Vor einem Bearbeitungskonflikt",
 					"publish": "Veröffentlicht",
 					"save": "Gespeichert",
 					"send": "Gesendet"
@@ -13193,6 +13216,10 @@
 			"title": "Ausrichtung beider Transportwege",
 			"unknown": "Wir konnten das DNS für deine Versanddomains noch nicht vollständig lesen, deshalb bleibt die Umstellung, wo sie ist. Das wird automatisch erneut geprüft — du musst nichts tun.",
 			"unknownDomains": "Wir konnten das DNS für ({domains}) noch nicht vollständig lesen, deshalb bleibt die Umstellung, wo sie ist. Das wird automatisch erneut geprüft — du musst nichts tun."
+		},
+		"editorPresence": {
+			"isEditing": "{name} bearbeitet",
+			"someone": "Jemand"
 		},
 		"gettingStarted": {
 			"addedContacts": {

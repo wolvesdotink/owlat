@@ -467,4 +467,78 @@ describe('useHistory', () => {
 			expect(history.historyLength.value).toBe(1);
 		});
 	});
+
+	describe("absorb (a collaborator's change)", () => {
+		// Their change: block `b` appears after `a`, and the subject changes.
+		const theirs = (state: { blocks: EditorBlock[]; name: string; subject: string }) => ({
+			...state,
+			blocks: [...state.blocks, block('b', 'theirs')],
+			subject: 'Their subject',
+		});
+
+		async function receive(ctx: ReturnType<typeof setup>, transform: typeof theirs): Promise<void> {
+			ctx.history.absorb(transform);
+			const next = transform({
+				blocks: ctx.blocks.value,
+				name: ctx.name.value,
+				subject: ctx.subject.value,
+			});
+			ctx.blocks.value = next.blocks;
+			ctx.subject.value = next.subject;
+			await settle();
+		}
+
+		it('is not recorded as an undo step', async () => {
+			const ctx = setup();
+			await commit(() => {
+				ctx.name.value = 'Mine';
+			});
+			await receive(ctx, theirs);
+			expect(flags(ctx.history)).toEqual({ canUndo: true, canRedo: false, length: 2, index: 1 });
+		});
+
+		it("undoes only this editor's own edits and keeps theirs", async () => {
+			const ctx = setup();
+			await commit(() => {
+				ctx.blocks.value = [block('a', 'mine')];
+			});
+			await receive(ctx, theirs);
+
+			ctx.history.undo();
+			await settle();
+			expect(ctx.blocks.value.map(htmlOf)).toEqual(['one', 'theirs']);
+			expect(ctx.subject.value).toBe('Their subject');
+
+			ctx.history.redo();
+			await settle();
+			expect(ctx.blocks.value.map(htmlOf)).toEqual(['mine', 'theirs']);
+			expect(ctx.subject.value).toBe('Their subject');
+		});
+
+		it('commits a pending edit first so it stays its own step', async () => {
+			const ctx = setup();
+			await edit(() => {
+				ctx.name.value = 'Typing';
+			});
+			await receive(ctx, theirs);
+			expect(ctx.history.historyLength.value).toBe(2);
+
+			ctx.history.undo();
+			await settle();
+			expect(ctx.name.value).toBe('Initial');
+			expect(ctx.blocks.value.map(htmlOf)).toEqual(['one', 'theirs']);
+		});
+
+		it('records the next own edit as a delta on top of the absorbed state', async () => {
+			const ctx = setup();
+			await receive(ctx, theirs);
+			await commit(() => {
+				ctx.name.value = 'After';
+			});
+			ctx.history.undo();
+			await settle();
+			expect(ctx.name.value).toBe('Initial');
+			expect(ctx.blocks.value.map(htmlOf)).toEqual(['one', 'theirs']);
+		});
+	});
 });
