@@ -21,7 +21,7 @@ import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { internalMutation } from '../lib/writeFence';
-import { internalQuery } from '../_generated/server';
+import { internalQuery, type QueryCtx } from '../_generated/server';
 import { adminQuery } from '../lib/authedFunctions';
 import { getOptional } from '../lib/env';
 import { DAY_MS } from '../lib/constants';
@@ -51,6 +51,12 @@ export const DMARC_REPORT_RETENTION_DAYS = 90;
 const DMARC_DASHBOARD_WINDOW_DAYS = [7, 30, 90] as const;
 /** Rows read for one dashboard view; a busier domain shows a truncated view. */
 const MAX_ROWS_PER_SUMMARY = 20_000;
+/**
+ * Bytes of rows one dashboard view reads. Convex fails a query past 16 MiB read,
+ * and the report address is public, so a few reports with long (but valid)
+ * strings must truncate the view rather than break it for the whole retention.
+ */
+const MAX_ROW_BYTES_PER_SUMMARY = 6 * 1024 * 1024;
 const MAX_REPORTS_PER_SUMMARY = 3_000;
 /** Source IPs per report that get a reverse DNS lookup. */
 export const MAX_RESOLVED_SOURCES_PER_REPORT = 100;
@@ -294,6 +300,38 @@ function nextPolicy(policy: DmarcPolicy): DmarcPolicy | null {
 }
 
 /**
+ * A domain's report rows since `since`, newest first, until either the row cap
+ * or the byte budget is reached. Sizes are estimated from the JSON encoding,
+ * which tracks what Convex counts closely enough for a budget well under its
+ * limit.
+ */
+export async function readSummaryRows(
+	ctx: QueryCtx,
+	policyDomain: string,
+	since: number,
+	limits: { maxRows: number; maxBytes: number } = {
+		maxRows: MAX_ROWS_PER_SUMMARY,
+		maxBytes: MAX_ROW_BYTES_PER_SUMMARY,
+	}
+): Promise<{ rows: Doc<'dmarcReportRecords'>[]; isTruncated: boolean }> {
+	const rows: Doc<'dmarcReportRecords'>[] = [];
+	let bytes = 0;
+	for await (const row of ctx.db
+		.query('dmarcReportRecords')
+		.withIndex('by_policy_domain_range', (q) =>
+			q.eq('policyDomain', policyDomain).gte('rangeBeginMs', since)
+		)
+		.order('desc')) {
+		bytes += JSON.stringify(row).length;
+		if (rows.length >= limits.maxRows || bytes > limits.maxBytes) {
+			return { rows, isTruncated: true };
+		}
+		rows.push(row);
+	}
+	return { rows, isTruncated: false };
+}
+
+/**
  * The per-domain DMARC dashboard: volume and pass rate per day, sources grouped
  * by organisation (failing first), and the enforcement readiness verdict with
  * the exact `_dmarc` record to publish for the next policy step.
@@ -309,28 +347,18 @@ export const getDomainSummary = adminQuery({
 		const readDays = Math.max(windowDays, READINESS_WINDOW_DAYS);
 		const since = now - readDays * DAY_MS;
 
-		const [matchedReports, matchedRows] = await Promise.all([
+		const [matchedReports, rowRead] = await Promise.all([
 			ctx.db
 				.query('dmarcReports')
 				.withIndex('by_policy_domain_range', (q) =>
 					q.eq('policyDomain', domain.domain).gte('rangeBeginMs', now - windowDays * DAY_MS)
 				)
-				.take(MAX_REPORTS_PER_SUMMARY + 1),
-			ctx.db
-				.query('dmarcReportRecords')
-				.withIndex('by_policy_domain_range', (q) =>
-					q.eq('policyDomain', domain.domain).gte('rangeBeginMs', since)
-				)
 				.order('desc')
-				.take(MAX_ROWS_PER_SUMMARY + 1),
+				.take(MAX_REPORTS_PER_SUMMARY + 1),
+			readSummaryRows(ctx, domain.domain, since),
 		]);
 		const reports = matchedReports.slice(0, MAX_REPORTS_PER_SUMMARY);
-		const rollup = rollUpDmarcRows(
-			matchedRows.slice(0, MAX_ROWS_PER_SUMMARY),
-			ownInfrastructure(),
-			windowDays,
-			now
-		);
+		const rollup = rollUpDmarcRows(rowRead.rows, ownInfrastructure(), windowDays, now);
 
 		const currentPolicy = domain.dmarcPolicy ?? DEFAULT_DMARC_POLICY;
 		const next = nextPolicy(currentPolicy);
@@ -352,9 +380,7 @@ export const getDomainSummary = adminQuery({
 			windowDays,
 			reportCount: reports.length,
 			reporterCount: new Set(reports.map((report) => report.reporterOrgName)).size,
-			isTruncated:
-				matchedReports.length > MAX_REPORTS_PER_SUMMARY ||
-				matchedRows.length > MAX_ROWS_PER_SUMMARY,
+			isTruncated: matchedReports.length > MAX_REPORTS_PER_SUMMARY || rowRead.isTruncated,
 			lastReportAt: reports.reduce<number | null>(
 				(latest, report) => Math.max(latest ?? 0, report.receivedAt),
 				null

@@ -15,6 +15,7 @@ import type * as SessionOrganization from '../../lib/sessionOrganization';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
 import { createTestDomain } from '../../__tests__/factories';
 import { DAY_MS } from '../../lib/constants';
+import { readSummaryRows } from '../dmarcReports';
 
 let mockRole: OrganizationRole = 'admin';
 
@@ -244,6 +245,34 @@ describe('getDomainSummary', () => {
 			type: 'TXT',
 			host: '_dmarc',
 			value: 'v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@bounces.example.com',
+		});
+	});
+
+	it('stops reading rows at the byte budget and says the view is truncated', async () => {
+		const t = convexTest(schema, modules);
+		await seedDomain(t);
+		for (let day = 1; day <= 3; day++) {
+			await t.action(internal.domains.dmarcReportsNode.decodeAndIngest, {
+				contentBase64: gz(report(day, `r-${day}`)),
+			});
+		}
+		const read = (limits: { maxRows: number; maxBytes: number }) =>
+			t.run(async (ctx) => {
+				const result = await readSummaryRows(ctx, 'example.com', 0, limits);
+				return { count: result.rows.length, isTruncated: result.isTruncated };
+			});
+		expect(await read({ maxRows: 100, maxBytes: 1024 * 1024 })).toEqual({
+			count: 9,
+			isTruncated: false,
+		});
+		// Roughly two rows' worth of bytes: the newest rows are kept, the rest cut.
+		const { count, isTruncated } = await read({ maxRows: 100, maxBytes: 1_200 });
+		expect(isTruncated).toBe(true);
+		expect(count).toBeGreaterThan(0);
+		expect(count).toBeLessThan(9);
+		expect(await read({ maxRows: 4, maxBytes: 1024 * 1024 })).toEqual({
+			count: 4,
+			isTruncated: true,
 		});
 	});
 
