@@ -210,7 +210,13 @@ type AppendArgs = {
 export const fn = {
 	verifyAppPassword: makeFunctionReference<
 		'action',
-		{ address: string; password: string; scope: 'imap' | 'smtp'; ip?: string },
+		{
+			address: string;
+			password: string;
+			scope: 'imap' | 'smtp';
+			ip?: string;
+			imapWireVersion?: number;
+		},
 		VerifyAppPasswordResult | null
 	>('mail/appPasswords:verify'),
 	touchAppPassword: makeFunctionReference<
@@ -286,7 +292,13 @@ export const fn = {
 	),
 	expungeFolder: makeFunctionReference<
 		'mutation',
-		{ folderId: string; uidSet?: number[]; beforeUid?: number; nextSequenceNumber?: number },
+		{
+			folderId: string;
+			uidSet?: number[];
+			beforeUid?: number;
+			nextSequenceNumber?: number;
+			imapWireVersion?: number;
+		},
 		ExpungeResult
 	>('mail/imap/move:expungeFolder'),
 	discardCopies: makeFunctionReference<

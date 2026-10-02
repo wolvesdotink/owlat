@@ -146,6 +146,7 @@ describe('LOGIN and AUTHENTICATE share one credential flow', () => {
 			password: 'secret',
 			scope: 'imap',
 			ip: '192.0.2.1',
+			imapWireVersion: IMAP_WIRE_VERSION,
 		});
 		expect(convex.mutation).toHaveBeenCalledWith(expect.anything(), {
 			appPasswordId: 'ap1',
@@ -170,4 +171,30 @@ describe('LOGIN and AUTHENTICATE share one credential flow', () => {
 		expect(committed).toEqual([]);
 		expect(lines).toEqual(['a1 NO Authentication failed']);
 	});
+
+	it.each(commands)(
+		'$verb: a wire-version refusal is a clean NO that does not count against the client',
+		async ({ verb, args }) => {
+			const { deps, rateLimiter, convex, committed } = makeDeps(false);
+			// What `assertImapWireSupported` throws once the backend stops serving
+			// this server's contract (ADR-0063).
+			convex.action.mockRejectedValueOnce(
+				Object.assign(new Error('Update the IMAP container.'), {
+					data: {
+						category: 'invalid_state',
+						message: 'Update the IMAP container.',
+						data: { imapWireVersion: 1, minSupportedWireVersion: 2 },
+					},
+				})
+			);
+			const lines: string[] = [];
+			await dispatch(deps, UNAUTHENTICATED, { tag: 'a1', command: verb, args: [...args] }, (l) =>
+				lines.push(l as string)
+			).completion;
+
+			expect(rateLimiter.recordFailure).not.toHaveBeenCalled();
+			expect(committed).toEqual([]);
+			expect(lines).toEqual(['a1 NO Authentication failed']);
+		}
+	);
 });

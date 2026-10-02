@@ -13,6 +13,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import { modules } from '../../__tests__/testModulesWithoutNodeActions';
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
+import { seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
 import type * as ImapWire from '@owlat/shared/imapWire';
 
 const wire = vi.hoisted(() => ({ version: 3, min: 2 }));
@@ -248,11 +250,65 @@ describe('serverRegistry.status', () => {
 		expect(narrow.safeToRaiseMinTo).toBe(3);
 	});
 
+	it('derives the summary from every row, not from the capped list', async () => {
+		// The review repro: an older server inside the window, behind 200 newer rows.
+		const t = harness();
+		await seedServer(t, {
+			hostLabel: 'old-host',
+			owlatVersion: '0.6.8',
+			wireVersion: 1,
+			lastSeenAt: T0 - 60_000,
+		});
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 200; i++) {
+				await ctx.db.insert('imapServers', {
+					instanceId: `p${i}`,
+					hostLabel: `h${i}`,
+					owlatVersion: '0.6.9',
+					wireVersion: 3,
+					startedAt: T0,
+					lastSeenAt: T0,
+				});
+			}
+		});
+
+		const status = await t.query(internal.mail.imap.serverRegistry.status, {});
+		expect(status.servers).toHaveLength(200);
+		expect(status.servers.some((s) => s.hostLabel === 'old-host')).toBe(false);
+		expect(status.isListTruncated).toBe(true);
+		expect(status.oldestWireVersionSeen).toBe(1);
+		expect(status.safeToRaiseMinTo).toBe(1);
+		expect(status.newestWireVersionSeen).toBe(3);
+	});
+
+	it('skips a wire version whose reports all fall outside the window', async () => {
+		const t = harness();
+		await seedServer(t, {
+			hostLabel: 'gone',
+			owlatVersion: '0.6.8',
+			wireVersion: 1,
+			lastSeenAt: T0 - 10 * DAY,
+		});
+		await seedServer(t, { hostLabel: 'h1', owlatVersion: '0.6.9', wireVersion: 2, lastSeenAt: T0 });
+		await seedServer(t, {
+			hostLabel: 'h2',
+			owlatVersion: '0.7.1',
+			wireVersion: 5,
+			lastSeenAt: T0 - 10 * DAY,
+		});
+
+		const status = await t.query(internal.mail.imap.serverRegistry.status, {});
+		expect(status.oldestWireVersionSeen).toBe(2);
+		expect(status.newestWireVersionSeen).toBe(2);
+		expect(status.isListTruncated).toBe(false);
+	});
+
 	it('allows raising to the current version when nothing reported', async () => {
 		const t = harness();
 		const status = await t.query(internal.mail.imap.serverRegistry.status, {});
 		expect(status.servers).toEqual([]);
 		expect(status.oldestWireVersionSeen).toBeNull();
+		expect(status.newestWireVersionSeen).toBeNull();
 		expect(status.safeToRaiseMinTo).toBe(3);
 	});
 });
@@ -328,5 +384,65 @@ describe('serverRegistry.pruneStale', () => {
 		await t.mutation(internal.mail.imap.serverRegistry.pruneStale, {});
 		const rows = await t.run((ctx) => ctx.db.query('imapServers').collect());
 		expect(rows.map((r) => r.hostLabel)).toEqual(['recent']);
+	});
+});
+
+describe('the wire gate (backend at wire 3, serving 2 and newer)', () => {
+	it('refuses an IMAP login from a server below the minimum, legacy included, before checking the password', async () => {
+		const t = harness();
+		rateLimiterTest.register(t);
+		const login = (extra: { imapWireVersion?: number; scope?: 'imap' | 'smtp' }) =>
+			t.action(internal.mail.appPasswords.verify, {
+				address: 'alice@example.com',
+				password: 'wrong-password',
+				scope: extra.scope ?? 'imap',
+				ip: '203.0.113.9',
+				...(extra.imapWireVersion === undefined ? {} : { imapWireVersion: extra.imapWireVersion }),
+			});
+
+		await expect(login({})).rejects.toThrow(/Update the IMAP container/);
+		await expect(login({ imapWireVersion: 1 })).rejects.toThrow(/wire version 1/);
+		// The refusal is not a failed login.
+		expect(await t.run((ctx) => ctx.db.query('mailAuthFailures').collect())).toHaveLength(0);
+
+		// A served IMAP server and SMTP submission go on to the password check.
+		await expect(login({ imapWireVersion: 2 })).resolves.toBeNull();
+		await expect(login({ scope: 'smtp' })).resolves.toBeNull();
+	});
+
+	it('refuses an EXPUNGE page from a server below the minimum before deleting anything', async () => {
+		const t = harness();
+		const mailboxId = await seedMailbox(t);
+		const inboxId = await seedFolder(t, mailboxId, 'inbox');
+		for (const uid of [1, 2]) {
+			const id = await seedMessage(t, mailboxId, { subject: `m${uid}`, flagSeen: true });
+			await t.run((ctx) => ctx.db.patch(id, { uid, flagDeleted: true }));
+		}
+		await t.run((ctx) => ctx.db.patch(inboxId, { totalCount: 2, uidNext: 3 }));
+		const remaining = () =>
+			t.run(
+				async (ctx) =>
+					(
+						await ctx.db
+							.query('mailMessages')
+							.withIndex('by_folder_and_uid', (q) => q.eq('folderId', inboxId))
+							.collect()
+					).length
+			);
+
+		await expect(
+			t.mutation(internal.mail.imap.move.expungeFolder, { folderId: inboxId })
+		).rejects.toThrow(/Update the IMAP container/);
+		await expect(
+			t.mutation(internal.mail.imap.move.expungeFolder, { folderId: inboxId, imapWireVersion: 1 })
+		).rejects.toThrow(/wire version 1/);
+		expect(await remaining()).toBe(2);
+
+		const served = await t.mutation(internal.mail.imap.move.expungeFolder, {
+			folderId: inboxId,
+			imapWireVersion: 3,
+		});
+		expect(served.uids).toEqual([2, 1]);
+		expect(await remaining()).toBe(0);
 	});
 });

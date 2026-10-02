@@ -27,7 +27,7 @@ import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/erro
 import { mailAppPasswordScopeValidator } from '../lib/literalValidators';
 import { bytesToHex } from '../lib/bytes';
 import { constantTimeEqual } from '../lib/crypto';
-import { noteLegacyImapLogin } from './imap/serverRegistry';
+import { assertImapWireSupported, noteLegacyImapLogin } from './imap/serverRegistry';
 
 const PBKDF2_ITERATIONS = 100_000;
 const SALT_BYTES = 16;
@@ -209,6 +209,9 @@ export const verify = internalAction({
 		// The logging-in client's IP (the IMAP peer, or the SMTP peer the MTA
 		// forwarded), keyed per client by the shared auth-failure table.
 		ip: v.optional(v.string()),
+		// The IMAP server's wire version (ADR-0063); absent from IMAP servers
+		// that predate reporting and from SMTP submission.
+		imapWireVersion: v.optional(v.number()),
 	},
 	handler: async (
 		ctx,
@@ -219,6 +222,11 @@ export const verify = internalAction({
 		userId: string;
 		organizationId: string;
 	} | null> => {
+		// An IMAP server the backend no longer serves cannot open a session,
+		// whether or not it reports: refused before the password is checked, so
+		// the refusal is never counted as a failed login here.
+		if (args.scope === 'imap') assertImapWireSupported(args.imapWireVersion);
+
 		const lowerAddress = args.address.toLowerCase();
 
 		// Cross-protocol throttle, per address and per client IP, for IMAP and

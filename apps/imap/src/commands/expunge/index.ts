@@ -1,4 +1,5 @@
 import { fn } from '../../convex.js';
+import { IMAP_WIRE_VERSION } from '@owlat/shared/imapWire';
 import { logger } from '../../logger.js';
 import type { ImapCommandModule } from '../types.js';
 import { asyncSession, syncSession } from '../helpers/session.js';
@@ -91,6 +92,9 @@ export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 							uidSet,
 							beforeUid,
 							nextSequenceNumber,
+							// Lets the backend refuse this page before it deletes anything
+							// once it stops serving this server's contract (ADR-0063).
+							imapWireVersion: IMAP_WIRE_VERSION,
 						});
 						// Each page has already committed. Publish it before requesting the
 						// next page so a later failure cannot hide permanent deletions.

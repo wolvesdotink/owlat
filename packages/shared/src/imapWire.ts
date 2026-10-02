@@ -25,8 +25,11 @@
  * - Raise `IMAP_WIRE_MIN_SUPPORTED` only in the PR that removes a compatibility
  *   path, and only to a version every IMAP release inside the supported skew
  *   window speaks (the IMAP server may lag the backend by one release). The PR
- *   cites `npx convex run mail/imap/serverRegistry:status`. An IMAP server
- *   below the minimum is refused at the handshake and does not start.
+ *   cites `npx convex run mail/imap/serverRegistry:status`. A reporting IMAP
+ *   server below the minimum does not start; the backend refuses logins and
+ *   gated calls from any server below it, including those that never report
+ *   (`assertImapWireSupported`). A function about to be contracted takes an
+ *   optional `imapWireVersion` one release ahead so the removing PR can gate it.
  *
  * Dependency-free on purpose: the api, imap and web images all read it.
  */
