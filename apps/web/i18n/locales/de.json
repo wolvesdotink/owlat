@@ -6783,6 +6783,9 @@
 						"baseUrlDisclosure": "Erweitert: eigener API-Origin (Proxy / Gateway)",
 						"baseUrlHelp": "Nur der Origin, etwa https://api.example.com. Den Endpunktpfad hängt der Adapter selbst an; eine vollständige Endpunkt-URL stünde hier also doppelt.",
 						"baseUrlLabel": "API-Origin",
+						"baseUrlDisclosureLocal": "Erweitert: Adresse der Engine",
+						"baseUrlHelpLocal": "Wo der Dienst decision-local lauscht. Lass das Feld leer für den mitgelieferten Dienst unter http://decision-local:8080.",
+						"baseUrlLabelLocal": "Adresse der Engine",
 						"consent": {
 							"acknowledge": "Ich habe gelesen, was diese Installation verlässt, und aktiviere TypeSafe mit einem eigenen Schlüssel.",
 							"controller": "Wer dafür einsteht: In einer selbst gehosteten Installation bist du die verantwortliche Stelle und TypeSafe ist dein Auftragsverarbeiter, nicht unserer. Owlat vermittelt keine Schlüssel und unterschreibt nichts in deinem Namen.",
@@ -6797,6 +6800,7 @@
 							"breakerOpen": "Die Ebene ist so oft ausgefallen, dass sie vorerst abgeschaltet wurde. Bis sie sich erholt, laufen die Entscheidungen so wie vor ihrer Einrichtung.",
 							"keyMissing": "Für diesen Anbieter ist kein Schlüssel hinterlegt. Sofern die Installation nicht TYPESAFE_API_KEY in ihrer Umgebung bereitstellt, beantwortet stattdessen dein Sprachmodell jede Entscheidung.",
 							"languageBacked": "Dein Sprachmodell beantwortet diese Entscheidungen. Es liefert ein Label ohne kalibrierte Wahrscheinlichkeit; eine Zahl, die hier nach Konfidenz aussieht, ist die Selbsteinschätzung des Modells.",
+							"localUncalibrated": "Das lokale Modell läuft auf deinem Server und liefert echte Wahrscheinlichkeiten, aber noch hat niemand gemessen, wie gut sie zur Wirklichkeit passen. Bis dahin liest kein Schwellenwert sie aus.",
 							"testFailed": "Der letzte Schlüsseltest endete mit einem Fehler, die gespeicherte Konfiguration ist also möglicherweise nicht lauffähig.",
 							"title": "Diese Ebene ist eingeschränkt"
 						},
@@ -6817,6 +6821,7 @@
 							"uncalibrated": "Kam ohne kalibrierte Wahrscheinlichkeit zurück"
 						},
 						"modelHint": "Bewusst auf eine Version festgelegt. Du kannst eine andere angeben, und genau diese Kennung wird gesendet — Antworten aus einer anderen als der festgelegten Version gelten jedoch als unkalibriert, sodass alle Schwellenwerte ruhen, bis die Kalibrierung erneut gelaufen ist.",
+						"modelHintLocal": "Das Modell, das der Dienst decision-local geladen hat. Zum Wechseln setzt du DECISION_LOCAL_MODEL an diesem Dienst, startest ihn neu und wählst hier dieselbe Kennung.",
 						"modelLabel": "Entscheidungsmodell",
 						"offBody": "Dein Sprachmodell beantwortet jede Ja/Nein-, Kategorie- und Bewertungsentscheidung, genau wie bisher. An einen fremden Entscheidungsanbieter geht nichts.",
 						"offTitle": "Kein Entscheidungsanbieter — nichts verlässt deine Installation",
@@ -6824,6 +6829,8 @@
 						"saveFirstTest": "Erst speichern, dann testen.",
 						"testConnection": "Entscheidungsschlüssel testen",
 						"testOk": "Der Anbieter hat eine Testfrage beantwortet — Schlüssel, Endpunkt und Modellversion funktionieren",
+						"testEngine": "Lokale Engine testen",
+						"testOkLocal": "Die lokale Engine hat eine Testfrage beantwortet. Der Dienst läuft und das Modell ist geladen.",
 						"thresholds": {
 							"active": "Sie gelten für jede Entscheidung, die diese Ebene beantwortet.",
 							"description": "Jede Antwortart wird auf ihrer eigenen Skala beurteilt; einen einzelnen Konfidenzregler gibt es hier deshalb nicht. Eine Ja/Nein-Antwort trägt überhaupt keine Konfidenz: Ihre Wahrscheinlichkeit ist die Antwort.",
@@ -11751,6 +11758,10 @@
 					"llm": {
 						"hint": "Kein Dritter. Dieselben Fragen gehen an dein konfiguriertes Sprachmodell, das sie ohne kalibrierte Wahrscheinlichkeiten beantwortet.",
 						"label": "Sprachmodell verwenden (kein Dritter)"
+					},
+					"local": {
+						"hint": "Führt ein GLiNER-Entscheidungsmodell über den Dienst decision-local auf deiner eigenen Hardware aus, sodass nichts deine Installation verlässt. Starte ihn mit dem Compose-Profil decision-local. Seine Wahrscheinlichkeiten sind nicht kalibriert.",
+						"label": "Lokales GLiNER-Modell (auf deinem Server)"
 					},
 					"typesafe": {
 						"hint": "Die Jev-Entscheidungsmodelle. Füge einen TypeSafe-API-Schlüssel ein; er wird verschlüsselt gespeichert und ausschließlich an deren API gesendet.",

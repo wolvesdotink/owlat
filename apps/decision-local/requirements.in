@@ -1,0 +1,11 @@
+# Top-level dependencies. requirements.txt is the resolved lock built from this
+# file inside the image's own base (see the Dockerfile header for how).
+--extra-index-url https://download.pytorch.org/whl/cpu
+# The CPU build: the default PyPI wheel pulls ~3 GB of CUDA libraries a CPU
+# host never loads.
+torch==2.14.1+cpu
+gliner2[local]==2.0.0
+# The multilingual checkpoint's mDeBERTa tokenizer converts through these;
+# transformers imports them lazily, so a missing one only fails at model load.
+protobuf
+sentencepiece

@@ -94,5 +94,13 @@
 		"title": "owlat-unbound",
 		"description": "Owlat recursive DNS resolver for blocklist lookups (Unbound)",
 		"rootCompose": "ghcr"
+	},
+	{
+		"name": "decision-local",
+		"dockerfile": "apps/decision-local/Dockerfile",
+		"context": "apps/decision-local",
+		"title": "owlat-decision-local",
+		"description": "Owlat local decision engine (GLiNER, CPU)",
+		"rootCompose": "ghcr"
 	}
 ]

@@ -138,16 +138,19 @@ export async function testDecisionPlane(ctx: ActionCtx): Promise<{ ok: boolean; 
 			breaker: decisionBreakerPort(ctx),
 			recordUsage: decisionUsageRecorder(ctx),
 		});
-		// An answer that came back uncalibrated means the provider served a model
-		// the thresholds were not measured against — the key works and the plane
-		// would answer, but every threshold downstream is inert, so the button
-		// must not report a plain success.
-		return decided.calibrated
+		// An answer that came back uncalibrated FROM A CALIBRATED ADAPTER means the
+		// provider served a model the thresholds were not measured against — the
+		// key works and the plane would answer, but every threshold downstream is
+		// inert, so the button must not report a plain success. An adapter that is
+		// never calibrated (the local engine) says so on the card instead; its
+		// round trip working is the whole of what this button can prove.
+		const adapter = decisionProviderFor(plane.kind);
+		return decided.calibrated || !adapter.calibrated
 			? { ok: true }
 			: {
 					ok: false,
 					error:
-						`The key works, but ${decisionProviderFor(plane.kind).label} answered with '${decided.modelUsed}' rather than the ` +
+						`The key works, but ${adapter.label} answered with '${decided.modelUsed}' rather than the ` +
 						'pinned model version. Answers from it are treated as uncalibrated and thresholds ' +
 						'stay inert until the calibration harness has been re-run.',
 				};
@@ -160,8 +163,11 @@ export async function testDecisionPlane(ctx: ActionCtx): Promise<{ ok: boolean; 
  * The model ids the stored DECISION provider exposes. The native adapter serves
  * a documented catalog rather than a discovery call, so this usually makes no
  * request at all; the guarded https fetcher is supplied anyway, because the day
- * an adapter does reach out, the key rides that request. Fails soft, like its
- * language sibling: a listing error is returned inline, never thrown.
+ * an adapter does reach out, the key rides that request. The local engine is
+ * the exception: it does ask, and it lives on the internal network, so it gets
+ * a plain fetcher and the keyless origin rule — it has no key to protect. Fails
+ * soft, like its language sibling: a listing error is returned inline, never
+ * thrown.
  */
 export async function listDecisionModels(
 	ctx: ActionCtx,
@@ -176,8 +182,9 @@ export async function listDecisionModels(
 	try {
 		const cfg = decisionClientConfig(row, kind);
 		const baseUrl = cfg.baseUrl ?? adapter.defaultBaseUrl;
+		const isKeyless = !adapter.requiresApiKey && adapter.isLocal;
 		if (baseUrl !== undefined) {
-			const check = validateOutboundUrl(baseUrl, { requirePublic: true });
+			const check = validateOutboundUrl(baseUrl, { requirePublic: !isKeyless });
 			if (!check.ok) {
 				return { supported: true, models: [], error: `Base URL ${check.error}.` };
 			}
@@ -186,7 +193,9 @@ export async function listDecisionModels(
 			...cfg,
 			fetchImpl: async (input, init) => {
 				await ctx.runMutation(internal.decision.gate.assertDecisionAllowed, {});
-				return fetchGuarded(input, { ...init, protocols: ['https:'] });
+				return isKeyless
+					? fetch(input, init)
+					: fetchGuarded(input, { ...init, protocols: ['https:'] });
 			},
 		});
 		return { supported: true, models };

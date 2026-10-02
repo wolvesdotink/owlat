@@ -24,6 +24,7 @@ import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import { typesafeDecisionAdapter, PINNED_DECISION_MODEL } from '../lib/decisionProviders/typesafe';
+import { DEFAULT_LOCAL_DECISION_MODEL } from '../lib/decisionProviders/local';
 import { __resetDecisionPlaneCacheForTests } from '../lib/decisionProvider';
 
 vi.stubEnv('INSTANCE_SECRET', 'test-instance-secret-value-for-aes-256-gcm-kdf');
@@ -232,4 +233,65 @@ describe('decision model discovery', () => {
 			}
 		}
 	);
+});
+
+describe('the local engine', () => {
+	async function setupLocal() {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				featureFlags: { ai: true, 'ai.decisionPlane': true },
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+		const authed = t.withIdentity(identity);
+		await authed.action(api.aiProviderConfigActions.saveConfig, {
+			languageProviderKind: 'anthropic',
+			apiKey: 'sk-ant-language-key-1234',
+			decisionProviderKind: 'local',
+			decisionBaseUrl: 'http://decision-local:8080',
+		});
+		return authed;
+	}
+
+	it('tests green although its answers are uncalibrated, and never touches the guard', async () => {
+		const t = await setupLocal();
+		const fetchMock = vi.fn(async (_input: string) =>
+			jsonResponse(probeBody(DEFAULT_LOCAL_DECISION_MODEL))
+		);
+		vi.stubGlobal('fetch', fetchMock);
+		try {
+			const res = await t.action(api.aiProviderConfigActions.testConnection, {
+				plane: 'decision',
+			});
+			expect(res).toEqual({ ok: true });
+			expect(fetchMock.mock.calls[0]?.[0]).toBe('http://decision-local:8080/v1/decide');
+			expect(guard.fetchGuarded).not.toHaveBeenCalled();
+			const rows = await t.run(async (ctx) => await ctx.db.query('llmUsageEvents').collect());
+			expect(rows).toHaveLength(1);
+			// Free, and recorded as the uncalibrated answer it is.
+			expect(rows[0]?.costUsd).toBe(0);
+			expect(rows[0]?.isCalibrated).toBe(false);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it('lists the checkpoint the engine loaded through a plain fetch', async () => {
+		const t = await setupLocal();
+		const fetchMock = vi.fn(async (_input: string) =>
+			jsonResponse(JSON.stringify({ data: [{ id: DEFAULT_LOCAL_DECISION_MODEL }] }))
+		);
+		vi.stubGlobal('fetch', fetchMock);
+		try {
+			const result = await t.action(api.aiProviderConfigActions.listModels, { plane: 'decision' });
+			expect(result.error).toBeUndefined();
+			expect(result.models[0]).toBe(DEFAULT_LOCAL_DECISION_MODEL);
+			expect(guard.fetchGuarded).not.toHaveBeenCalled();
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
 });

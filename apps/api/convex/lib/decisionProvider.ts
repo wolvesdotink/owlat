@@ -50,14 +50,20 @@
  * function call can reach another isolate's memory.
  *
  * Environment (fallback only):
- *   DECISION_PROVIDER   typesafe | llm      — unrecognised values are ignored
+ *   DECISION_PROVIDER   typesafe | local | llm — unrecognised values are ignored
  *   TYPESAFE_API_KEY    the TypeSafe (Jev) key
  *   DECISION_MODEL      model id override — SENT as the model id. Unset ⇒ the
  *                       adapter's pinned version. An answer the provider
  *                       reports against any other version comes back
  *                       `calibrated: false`, so thresholds go inert until the
  *                       calibration harness has been re-run.
- *   DECISION_BASE_URL   API origin override (a proxy in front of the vendor)
+ *   DECISION_BASE_URL   API origin override (a proxy in front of the vendor,
+ *                       or where the local engine listens when it is not the
+ *                       bundled `decision-local` service)
+ *
+ * `local` needs no key at all: it resolves to the bundled engine at
+ * `http://decision-local:8080` unless an origin is configured, and like the
+ * language-backed adapter it answers uncalibrated.
  */
 
 import { internal } from '../_generated/api';
@@ -314,8 +320,12 @@ function planeFor(input: {
 		kind,
 		clientConfig,
 		modelId: input.storedModel ?? decisionEnv('DECISION_MODEL') ?? adapter.defaultModel,
+		// An origin override turns a HOSTED endpoint into an unknown third party;
+		// a local engine is the operator's own wherever its origin points.
 		endpointProvenance:
-			clientConfig.baseUrl !== undefined ? 'custom' : adapter.defaultEndpointProvenance,
+			clientConfig.baseUrl !== undefined && !adapter.isLocal
+				? 'custom'
+				: adapter.defaultEndpointProvenance,
 		calibrated: adapter.calibrated,
 		deadlineMs: deadlineForKind(kind),
 		source,

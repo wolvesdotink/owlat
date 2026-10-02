@@ -14,6 +14,7 @@
 
 import { select, password, text, group, isCancel, log } from '@clack/prompts';
 import { validateWithSpinner } from '../lib/progress';
+import { parseComposeProfileList } from '@owlat/shared/composeOverride';
 import { type EnvMap } from '../lib/env';
 import { SETUP_DEFAULT_DECISION_KIND } from '../lib/setupEnvDefaults';
 import { validateOpenAIKey, validateOpenRouterKey } from '../lib/validators';
@@ -107,6 +108,26 @@ export interface DecisionProviderChoice {
 	readonly env: EnvMap;
 	/** True only when a decision provider was actually configured. */
 	readonly isPlaneConfigured: boolean;
+	/**
+	 * Compose profiles the choice needs running. Install-owned rather than
+	 * flag-owned (no feature flag derives them), so the profile writers preserve
+	 * them across later flag applies the way they preserve `tls`.
+	 */
+	readonly composeProfiles?: readonly string[];
+}
+
+/** The compose profile that runs the bundled GLiNER engine (`decision-local`). */
+export const LOCAL_DECISION_PROFILE = 'decision-local';
+
+/**
+ * A COMPOSE_PROFILES value with `profiles` added to whatever it already held —
+ * a union, so choosing the local engine never drops `tls` or `mta`.
+ */
+export function withComposeProfiles(
+	current: string | undefined,
+	profiles: readonly string[]
+): string {
+	return [...new Set([...parseComposeProfileList(current ?? ''), ...profiles])].join(',');
 }
 
 /**
@@ -149,10 +170,29 @@ export async function pickDecisionProvider(): Promise<DecisionProviderChoice | n
 				value: 'typesafe',
 				hint: 'recommended; your own key, and message text leaves the deployment',
 			},
+			{
+				label: 'Local GLiNER model (on this server)',
+				value: 'local',
+				hint: 'no key and nothing leaves; ~1.1 GB download, ~2 GB RAM, uncalibrated',
+			},
 		],
 		initialValue: SETUP_DEFAULT_DECISION_KIND,
 	});
 	if (isCancel(provider)) return null;
+	if (provider === 'local') {
+		log.info(
+			'The bundled decision-local service answers each judgement with a GLiNER2.5 Decide\n' +
+				'model on this server, so no message text leaves it. Its first start downloads the\n' +
+				'model (~1.1 GB) and it needs about 2 GB of RAM. Its probabilities are not calibrated,\n' +
+				'so decision thresholds stay inert. Turning the `ai.decisionPlane` flag off puts every\n' +
+				'judgement back on your language model, with no redeploy.'
+		);
+		return {
+			env: { DECISION_PROVIDER: 'local' },
+			isPlaneConfigured: true,
+			composeProfiles: [LOCAL_DECISION_PROFILE],
+		};
+	}
 	if (provider !== 'typesafe') return skipped;
 
 	log.info(

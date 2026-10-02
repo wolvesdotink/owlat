@@ -6783,6 +6783,9 @@
 						"baseUrlDisclosure": "Advanced: custom API origin (proxy / gateway)",
 						"baseUrlHelp": "The origin only, like https://api.example.com. The endpoint path is appended for you, so a full endpoint URL here would be requested twice over.",
 						"baseUrlLabel": "API origin",
+						"baseUrlDisclosureLocal": "Advanced: engine address",
+						"baseUrlHelpLocal": "Where the decision-local service listens. Leave it empty for the bundled service at http://decision-local:8080.",
+						"baseUrlLabelLocal": "Engine address",
 						"consent": {
 							"acknowledge": "I have read what leaves this deployment, and I am enabling TypeSafe with a key of our own.",
 							"controller": "Who answers for it: in a self-hosted deployment you are the data controller and TypeSafe is your processor, not ours. Owlat brokers no keys and signs nothing on your behalf.",
@@ -6797,6 +6800,7 @@
 							"breakerOpen": "The plane has failed often enough to be cut off for the moment. Until it recovers, judgements run the way they did before it was configured.",
 							"keyMissing": "No key is stored for this provider. Unless this deployment supplies TYPESAFE_API_KEY in its environment, every judgement resolves to your language model instead.",
 							"languageBacked": "Your language model is answering these judgements. It returns a label without a calibrated probability, so a number that looks like confidence here is the model's own guess about itself.",
+							"localUncalibrated": "The local model runs on your server and returns real probabilities, but nobody has measured how well they match reality yet. No threshold reads them until that has been done.",
 							"testFailed": "The last key test came back with an error, so the stored configuration may not be able to run.",
 							"title": "This plane is degraded"
 						},
@@ -6817,6 +6821,7 @@
 							"uncalibrated": "Came back without a calibrated probability"
 						},
 						"modelHint": "Pinned to a version on purpose. You can name another one, and it is the id that gets sent — but answers from any version other than the pinned one are treated as uncalibrated, so every threshold goes inert until the calibration has been re-run.",
+						"modelHintLocal": "The checkpoint the decision-local service has loaded. To switch, set DECISION_LOCAL_MODEL on that service, restart it, and pick the same id here.",
 						"modelLabel": "Decision model",
 						"offBody": "Your language model answers every yes/no, category and score judgement, exactly as it does today. Nothing is sent to a third-party decision provider.",
 						"offTitle": "No decision provider — nothing leaves your deployment",
@@ -6824,6 +6829,8 @@
 						"saveFirstTest": "Save first, then test.",
 						"testConnection": "Test decision key",
 						"testOk": "The provider answered a test question — the key, the endpoint and the model version all work",
+						"testEngine": "Test local engine",
+						"testOkLocal": "The local engine answered a test question. The service is running and the model is loaded.",
 						"thresholds": {
 							"active": "These apply to every judgement the plane answers.",
 							"description": "Each answer type is judged on its own scale, so there is no single confidence slider here. A yes/no answer carries no confidence field at all: its probability is the answer.",
@@ -11751,6 +11758,10 @@
 					"llm": {
 						"hint": "No third party. The same questions go to your configured language model, which answers them without calibrated probabilities.",
 						"label": "Use the language model (no third party)"
+					},
+					"local": {
+						"hint": "Runs a GLiNER decision model on your own hardware through the decision-local service, so nothing leaves your deployment. Start it with the decision-local compose profile. Its probabilities are not calibrated.",
+						"label": "Local GLiNER model (on your server)"
 					},
 					"typesafe": {
 						"hint": "The Jev decision models. Paste a TypeSafe API key; it is encrypted at rest and only ever sent to their API.",

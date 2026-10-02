@@ -712,6 +712,7 @@ import type * as lib_decision_questions from '../lib/decision/questions.js';
 import type * as lib_decisionProvider from '../lib/decisionProvider.js';
 import type * as lib_decisionProviders_index from '../lib/decisionProviders/index.js';
 import type * as lib_decisionProviders_llm from '../lib/decisionProviders/llm.js';
+import type * as lib_decisionProviders_local from '../lib/decisionProviders/local.js';
 import type * as lib_decisionProviders_types from '../lib/decisionProviders/types.js';
 import type * as lib_decisionProviders_typesafe from '../lib/decisionProviders/typesafe.js';
 import type * as lib_decisionProviders_wire from '../lib/decisionProviders/wire.js';
@@ -2096,6 +2097,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/decisionProvider': typeof lib_decisionProvider;
 	'lib/decisionProviders/index': typeof lib_decisionProviders_index;
 	'lib/decisionProviders/llm': typeof lib_decisionProviders_llm;
+	'lib/decisionProviders/local': typeof lib_decisionProviders_local;
 	'lib/decisionProviders/types': typeof lib_decisionProviders_types;
 	'lib/decisionProviders/typesafe': typeof lib_decisionProviders_typesafe;
 	'lib/decisionProviders/wire': typeof lib_decisionProviders_wire;
