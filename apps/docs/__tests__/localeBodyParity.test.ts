@@ -71,12 +71,12 @@ const knownStructureDrift = {
 		en: {
 			headings: '123311322222',
 			fences: ['sh', 'plain', 'sh', 'plain'],
-			tables: ['5x3', '9x3', '35x4'],
+			tables: ['5x3', '9x3', '36x4'],
 		},
 		de: {
 			headings: '123311322222',
 			fences: ['sh', 'plain', 'sh', 'plain'],
-			tables: ['5x3', '8x3', '34x4'],
+			tables: ['5x3', '8x3', '35x4'],
 		},
 	},
 	'1.guide/34.code-tasks.md': {
