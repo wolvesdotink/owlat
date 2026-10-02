@@ -21,13 +21,12 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { enableFeatures } from './factories';
 import { hashManageToken } from '../booking/model';
+import type * as SessionOrganization from '../lib/sessionOrganization';
 
 let mockUserId = 'host-A';
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
-		'../lib/sessionOrganization'
-	);
+	const actual = await vi.importActual<typeof SessionOrganization>('../lib/sessionOrganization');
 	const session = async () => ({
 		userId: mockUserId,
 		role: 'editor' as const,
@@ -230,7 +229,7 @@ describe('public page', () => {
 		// 09:00 to 16:30, every half hour.
 		expect(slots).toHaveLength(16);
 		expect(new Date(slots[0]!).getUTCHours()).toBe(9);
-		expect(new Date(slots.at(-1)!).getUTCHours()).toBe(16);
+		expect(new Date(slots[slots.length - 1]!).getUTCHours()).toBe(16);
 	});
 
 	it('answers not found while the flag is off or the host is gone', async () => {

@@ -20,8 +20,7 @@ const MINUTE_MS = 60_000;
 export function isKnownTimeZone(timeZone: string): boolean {
 	if (!timeZone || timeZone.length > 64) return false;
 	try {
-		new Intl.DateTimeFormat('en-US', { timeZone });
-		return true;
+		return new Intl.DateTimeFormat('en-US', { timeZone }).resolvedOptions().timeZone !== '';
 	} catch {
 		return false;
 	}

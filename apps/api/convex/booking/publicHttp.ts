@@ -56,7 +56,7 @@ function refusal(reason: string): ResultAction {
 	return { ok: false, reason, status };
 }
 
-export const getBookingPage = publicTokenEndpoint(
+const getBookingPage = publicTokenEndpoint(
 	{
 		path: '/booking/page/:token',
 		method: 'GET',
@@ -82,7 +82,7 @@ export const getBookingPage = publicTokenEndpoint(
 	}
 );
 
-export const createBooking = publicTokenEndpoint(
+const createBooking = publicTokenEndpoint(
 	{
 		path: '/booking/book/:token',
 		method: 'POST',
@@ -134,7 +134,7 @@ export const createBooking = publicTokenEndpoint(
 	}
 );
 
-export const getManagedBooking = publicTokenEndpoint(
+const getManagedBooking = publicTokenEndpoint(
 	{
 		path: '/booking/manage/:token',
 		method: 'GET',
@@ -154,7 +154,7 @@ export const getManagedBooking = publicTokenEndpoint(
 	}
 );
 
-export const cancelManagedBooking = publicTokenEndpoint(
+const cancelManagedBooking = publicTokenEndpoint(
 	{
 		path: '/booking/cancel/:token',
 		method: 'POST',
@@ -173,7 +173,7 @@ export const cancelManagedBooking = publicTokenEndpoint(
 	}
 );
 
-export const rescheduleManagedBooking = publicTokenEndpoint(
+const rescheduleManagedBooking = publicTokenEndpoint(
 	{
 		path: '/booking/reschedule/:token',
 		method: 'POST',
