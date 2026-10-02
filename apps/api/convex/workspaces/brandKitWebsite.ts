@@ -86,12 +86,21 @@ export function parseAttributes(tag: string): Record<string, string> {
 	return attrs;
 }
 
+/** A numeric character reference's character, or the reference itself when it names none. */
+function fromCodePoint(reference: string, code: number): string {
+	const isScalar = code > 0 && code <= 0x10ffff && (code < 0xd800 || code > 0xdfff);
+	return Number.isInteger(code) && isScalar ? String.fromCodePoint(code) : reference;
+}
+
 function decodeEntities(value: string): string {
 	return value
 		.replace(/&quot;/g, '"')
 		.replace(/&#39;|&apos;/g, "'")
 		.replace(/&lt;/g, '<')
 		.replace(/&gt;/g, '>')
+		.replace(/&nbsp;/g, ' ')
+		.replace(/&#x([0-9a-f]{1,6});/gi, (ref, hex: string) => fromCodePoint(ref, parseInt(hex, 16)))
+		.replace(/&#(\d{1,7});/g, (ref, dec: string) => fromCodePoint(ref, Number(dec)))
 		.replace(/&amp;/g, '&');
 }
 
@@ -168,7 +177,7 @@ export function extractWebsiteSignals(html: string, pageUrl: string): WebsiteBra
 	const themeColor = normalizeColor(meta('theme-color') ?? '');
 	const title = elementTexts(html, 'title')[0];
 	const siteName =
-		meta('og:site_name') || (title ? decodeEntities(title.replace(/\s+/g, ' ').trim()) : '');
+		meta('og:site_name') || (title ? decodeEntities(title).replace(/\s+/g, ' ').trim() : '');
 
 	const candidates: LogoCandidate[] = [];
 	const add = (href: string | undefined, source: LogoCandidateSource) => {

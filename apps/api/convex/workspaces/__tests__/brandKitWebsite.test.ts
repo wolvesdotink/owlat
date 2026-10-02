@@ -57,6 +57,13 @@ describe('extractWebsiteSignals', () => {
 		const page = '<title>  Example   Studio </title>';
 		expect(extractWebsiteSignals(page, 'https://example.com/').siteName).toBe('Example Studio');
 	});
+
+	it('decodes named and numeric character references in the title', () => {
+		const page = '<title>Smith &amp; Sons&nbsp;&#8211; Caf&#xE9; &#0; &#xD800;</title>';
+		expect(extractWebsiteSignals(page, 'https://example.com/').siteName).toBe(
+			'Smith & Sons – Café &#0; &#xD800;'
+		);
+	});
 });
 
 describe('parseAttributes', () => {
