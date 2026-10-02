@@ -107,6 +107,7 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 			inboundMessageId: messageId,
 			draftResponse: reply.body,
 			draftSubject: reply.subject || undefined,
+			isGapGuarded: reply.gapGuarded,
 		});
 		if (!saved.ok) return saved;
 		outgoingText = reply.body;
@@ -121,6 +122,7 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 			inboundMessageId: messageId,
 			draftResponse: reply.body,
 			draftSubject: reply.subject || undefined,
+			isGapGuarded: reply.gapGuarded,
 		});
 	};
 
@@ -132,6 +134,7 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 			threadId: threadId.value,
 			body: reply.body,
 			subject: reply.subject,
+			isGapGuarded: reply.gapGuarded,
 		});
 	};
 

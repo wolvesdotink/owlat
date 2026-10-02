@@ -47,4 +47,8 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 		'the previous web reader, in tabs opened before the deploy (plan 2.5)',
 	'contacts/dataExport.ts#exportContactData':
 		'the previous contact page, in tabs opened before the deploy (#900)',
+	'mail/snippets.ts#list': 'the previous Postbox composer, in tabs opened before the deploy',
+	'mail/snippets.ts#create': 'the previous snippets page, in tabs opened before the deploy',
+	'mail/snippets.ts#update': 'the previous snippets page, in tabs opened before the deploy',
+	'mail/snippets.ts#remove': 'the previous snippets page, in tabs opened before the deploy',
 };

@@ -455,6 +455,13 @@ export const exportUserDataPage = authedAction({
 			)) as PaginationResult<Record<string, unknown>>;
 			return serializeAccountExportPage(result);
 		}
+		if (args.resource === 'savedReplies') {
+			const result = (await ctx.runQuery(
+				internal.auth.accountExportQueries.listPersonalSavedReplies,
+				{ userId: args.userId, paginationOpts }
+			)) as PaginationResult<Doc<'mailSnippets'>>;
+			return serializeAccountExportPage(result);
+		}
 		if (args.resource === 'chatMessages') {
 			const result = (await ctx.runQuery(
 				internal.auth.accountExportQueries.listPersonalChatMessages,

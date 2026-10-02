@@ -27,6 +27,7 @@ export const ACCOUNT_EXPORT_PERSONAL_RESOURCES = [
 	'deliverabilityAlertRecipientStates',
 	'bookingPages',
 	'bookings',
+	'savedReplies',
 ] as const;
 
 export type AccountExportPersonalResource = (typeof ACCOUNT_EXPORT_PERSONAL_RESOURCES)[number];

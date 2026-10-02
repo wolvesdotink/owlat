@@ -5019,8 +5019,8 @@
 				"unbound": "Not set"
 			},
 			"postboxSnippetPicker": {
-				"empty": "No matching snippets",
-				"listLabel": "Snippets"
+				"empty": "No matching saved replies",
+				"listLabel": "Saved replies"
 			},
 			"postboxSnoozeDialog": {
 				"confirm": "Snooze",
@@ -5454,7 +5454,7 @@
 			"postboxSnippetVariableDialog": {
 				"description": "“{name}” needs a few details before it goes in.",
 				"insert": "Insert",
-				"title": "Fill in the snippet"
+				"title": "Fill in the saved reply"
 			},
 			"postboxSnippetVariableEditor": {
 				"automatic": "Work it out automatically",
@@ -7480,6 +7480,163 @@
 						"title": "When to send automatically"
 					}
 				},
+				"brandKit": {
+					"buttons": {
+						"paddingX": "Side padding",
+						"paddingY": "Top and bottom padding",
+						"radius": "Corner radius",
+						"title": "Buttons"
+					},
+					"colors": {
+						"addSwatch": "Add swatch",
+						"background": "Background",
+						"backgroundHelp": "The email body behind your content.",
+						"link": "Link",
+						"linkHelp": "Links inside text.",
+						"pickColor": "Pick a color for {label}",
+						"primary": "Primary",
+						"primaryHelp": "Buttons, bullets, icons and other accents.",
+						"removeSwatch": "Remove swatch {color}",
+						"secondary": "Secondary",
+						"secondaryHelp": "Dividers and secondary accents.",
+						"subtitle": "New blocks start in these colors, and every color picker in the editor offers them first.",
+						"swatchValue": "Swatch {n}, hex value",
+						"swatches": "Extra swatches",
+						"swatchesHelp": "Up to {max} more colors for the editor's color pickers.",
+						"text": "Text",
+						"textHelp": "Headings and body text.",
+						"title": "Colors"
+					},
+					"errors": {
+						"addressTooLong": "The address is too long.",
+						"buttonOutOfRange": "The button radius or padding is out of range.",
+						"companyNameTooLong": "The company name is too long.",
+						"invalidColor": "Enter a hex color such as #c4785a.",
+						"invalidSocialUrl": "Enter a full address starting with https://.",
+						"tooManySocialLinks": "A brand kit has at most eight social links.",
+						"tooManySwatches": "A brand kit has at most six extra swatches.",
+						"unknownFont": "Pick both fonts from the list.",
+						"widthOutOfRange": "The email width must be between 400 and 800 px."
+					},
+					"footer": {
+						"addSocialLink": "Add social link",
+						"address": "Postal address",
+						"addressHelp": "Many countries require a postal address in marketing emails.",
+						"companyName": "Company name",
+						"platform": "Platform",
+						"removeSocialLink": "Remove the {platform} link",
+						"socialLinks": "Social links",
+						"subtitle": "Your company details and social links. New emails end with them, and the editor can insert them anywhere.",
+						"title": "Footer",
+						"url": "{platform} profile address",
+						"urlPlaceholder": "https://",
+						"useWorkspaceName": "Use “{name}”"
+					},
+					"import": {
+						"appliedToast": "Applied to the brand kit. Review it and save.",
+						"apply": "Apply to brand kit",
+						"applying": "Applying...",
+						"back": "Try another address",
+						"cancel": "Cancel",
+						"description": "Enter your website. Owlat reads its colors, logo and name and proposes a brand kit for you to review. Nothing is saved until you save the brand kit.",
+						"errors": {
+							"blocked": "That address points to a private network and cannot be read.",
+							"invalid_url": "Enter a website address such as example.com.",
+							"not_html": "That address is not a web page.",
+							"not_image": "That logo is not a PNG, JPEG or safe SVG image.",
+							"rate_limited": "Too many imports. Wait a minute and try again.",
+							"too_large": "That logo file is too large.",
+							"unreachable": "That website could not be reached."
+						},
+						"fetch": "Read website",
+						"fetchOperation": "Read website",
+						"fetching": "Reading website...",
+						"logoOperation": "Import logo",
+						"noCandidates": "No usable logo found on that page.",
+						"noColors": "No brand colors found on that page.",
+						"noLogo": "Keep the current logo",
+						"proposalHint": "Found on {url}. Choose what to use; you can still change everything before saving.",
+						"sources": {
+							"appleTouchIcon": "App icon",
+							"icon": "Site icon",
+							"logoImage": "Logo on the page",
+							"ogImage": "Sharing image"
+						},
+						"title": "Import from website",
+						"urlLabel": "Website",
+						"urlPlaceholder": "example.com",
+						"useColors": "Use these colors",
+						"useName": "Use “{name}” as the company name"
+					},
+					"importButton": "Import from website",
+					"layout": {
+						"emailWidth": "Email width",
+						"emailWidthHelp": "Maximum width of your emails on desktop (400–800 px). The default is 600 px."
+					},
+					"loading": "Loading the brand kit...",
+					"logo": {
+						"choose": "Choose from media library",
+						"dark": "Dark-mode logo",
+						"darkHelp": "Optional. Shown instead in email clients that switch to dark mode.",
+						"light": "Logo",
+						"lightHelp": "Shown on light backgrounds.",
+						"pickerTitle": "Choose a logo",
+						"remove": "Remove",
+						"replace": "Replace",
+						"subtitle": "Placed at the top of new emails and insertable from the editor. Pick it from the media library.",
+						"title": "Logo"
+					},
+					"pageTitle": "Brand kit — Owlat",
+					"preview": {
+						"body": "This is how body text reads in your emails, and links look",
+						"button": "Call to action",
+						"dark": "Dark",
+						"frameTitle": "Brand kit preview email",
+						"heading": "Your brand, in every email",
+						"light": "Light",
+						"link": "like this",
+						"subtitle": "A sample email in your brand, rendered the way it is sent.",
+						"title": "Preview"
+					},
+					"px": "px",
+					"resetToDefaults": "Reset to defaults",
+					"save": "Save brand kit",
+					"saveOperation": "Save brand kit",
+					"savedToast": "Brand kit saved",
+					"saving": "Saving...",
+					"subtitle": "Set your brand once. Every new email starts from it, and the editor offers it wherever you style a block.",
+					"title": "Brand kit",
+					"typography": {
+						"bodyFont": "Body font",
+						"fonts": {
+							"arial": "Arial",
+							"courierNew": "Courier New",
+							"georgia": "Georgia",
+							"helvetica": "Helvetica",
+							"inter": "Inter",
+							"lato": "Lato",
+							"lora": "Lora",
+							"merriweather": "Merriweather",
+							"montserrat": "Montserrat",
+							"openSans": "Open Sans",
+							"playfairDisplay": "Playfair Display",
+							"poppins": "Poppins",
+							"roboto": "Roboto",
+							"systemDefault": "System default",
+							"timesNewRoman": "Times New Roman",
+							"trebuchetMs": "Trebuchet MS",
+							"verdana": "Verdana"
+						},
+						"groupSafe": "Email-safe fonts",
+						"groupWeb": "Web fonts",
+						"headingFont": "Heading font",
+						"otherFont": "Current font ({stack})",
+						"subtitle": "Fonts for headings and body text, and the shape every new button starts with.",
+						"title": "Typography and buttons",
+						"webFontHelp": "Web fonts show in Apple Mail, iOS Mail and Thunderbird. Gmail and Outlook use the email-safe font named after them."
+					},
+					"unsaved": "Unsaved"
+				},
 				"channels": {
 					"addChannel": "Add channel",
 					"addedToast": "Channel added — configure it below",
@@ -7575,51 +7732,6 @@
 					"save": "Save",
 					"savedToast": "Desktop update policy saved.",
 					"title": "Desktop app updates"
-				},
-				"emailTheme": {
-					"backgroundColor": "Background color",
-					"backgroundColorHelp": "The background color of your email body.",
-					"emailWidth": "Email width",
-					"emailWidthHelp": "Maximum width of your email on desktop (400–800px). Default is 600px.",
-					"errors": {
-						"backgroundColor": "Please enter a valid hex color (e.g., #ffffff)",
-						"primaryColor": "Please enter a valid hex color (e.g., #c4785a)"
-					},
-					"fontFamily": "Font family",
-					"fontFamilyHelp": "The default font for text content in your emails.",
-					"fonts": {
-						"arial": "Arial",
-						"courierNew": "Courier New",
-						"georgia": "Georgia",
-						"helvetica": "Helvetica",
-						"systemDefault": "System default",
-						"timesNewRoman": "Times New Roman",
-						"trebuchetMs": "Trebuchet MS",
-						"verdana": "Verdana"
-					},
-					"loading": "Loading theme settings...",
-					"pageTitle": "Email theme — Owlat",
-					"preview": {
-						"body": "Thank you for subscribing! We're excited to have you on board. Stay tuned for updates, tips, and exclusive content delivered straight to your inbox.",
-						"button": "Get started",
-						"footer": "You're receiving this email because you signed up for our newsletter.",
-						"heading": "Welcome to our newsletter",
-						"note": "This is a simplified preview. Actual emails may vary based on email client rendering."
-					},
-					"previewSubtitle": "See how your theme looks in emails",
-					"primaryColor": "Primary color",
-					"primaryColorHelp": "Used for buttons and call-to-action elements in your emails.",
-					"px": "px",
-					"resetToDefaults": "Reset to defaults",
-					"saveOperation": "Save email theme",
-					"saveTheme": "Save theme",
-					"savedToast": "Email theme saved successfully",
-					"savingTheme": "Saving...",
-					"settingsSubtitle": "Set colors and fonts for your emails",
-					"settingsTitle": "Theme settings",
-					"subtitle": "Configure default styling for your email templates",
-					"title": "Email theme",
-					"unsaved": "Unsaved"
 				},
 				"features": {
 					"approval": {
@@ -7824,6 +7936,10 @@
 							"description": "Choose whether the AI drafts replies for review, sends them when confident, or stays off.",
 							"title": "AI replies"
 						},
+						"brandKit": {
+							"description": "Logo, colors, fonts and footer that every email starts from.",
+							"title": "Brand kit"
+						},
 						"channels": {
 							"description": "Messaging channels available across the instance.",
 							"title": "Channels"
@@ -7831,10 +7947,6 @@
 						"desktopUpdates": {
 							"description": "Choose which release connected desktop apps install, or hold them all.",
 							"title": "Desktop updates"
-						},
-						"emailTheme": {
-							"description": "Default visual styling for messages sent by this workspace.",
-							"title": "Email theme"
 						},
 						"features": {
 							"description": "Fine-grained feature flags and packs for advanced configuration.",
@@ -8704,6 +8816,15 @@
 				},
 				"roles": {
 					"title": "What each role can do"
+				},
+				"savedReplies": {
+					"adminGate": {
+						"description": "Ask an owner or admin of this workspace to add or change one. You can still insert them in any composer.",
+						"title": "Only admins manage shared replies"
+					},
+					"intro": "Answers the whole team can insert with {triggerKey} and a shortcut, or from the picker beside Send. Limit one to some team inboxes to keep it where it belongs.",
+					"pageTitle": "Saved replies — Owlat",
+					"title": "Saved replies"
 				},
 				"senders": {
 					"addModal": {
@@ -10642,7 +10763,7 @@
 				"emailChangeRequested": "Check your inbox to confirm the change",
 				"emailInvalid": "Enter a valid email address",
 				"emailUnchanged": "That is already your login email",
-				"exportBody": "You can export your data at any time. The export includes your profile information, your personal mailbox and mail, drafts, connected external accounts, your chat messages, and your team memberships. For teams where you are an owner or admin, it also includes contacts, campaigns, automations, and other associated data.",
+				"exportBody": "You can export your data at any time. The export includes your profile information, your personal mailbox and mail, drafts, connected external accounts, your chat messages, your saved replies, and your team memberships. For teams where you are an owner or admin, it also includes contacts, campaigns, automations, and other associated data.",
 				"exportCsvAction": "Export CSV",
 				"exportCsvDescription": "CSV format for easy import into spreadsheets or other email tools.",
 				"exportCsvFailed": "Failed to export contacts",
@@ -10989,19 +11110,10 @@
 				"yourSignatures": "Your signatures"
 			},
 			"snippets": {
-				"bodyPlaceholder": "Hi {firstName}, thanks for reaching out…",
-				"deleteConfirm": "Delete snippet",
-				"deleteDescription": "This snippet will be removed. This action cannot be undone.",
-				"deleteTitle": "Delete snippet?",
-				"empty": "No snippets yet.",
-				"intro": "Canned responses you can drop into a message. In the composer, type {slashKey} at the start of a line to pick one. Use {firstNameToken} to greet the recipient by name.",
-				"namePlaceholder": "Snippet name (e.g. Thanks)",
-				"newSnippet": "New snippet",
-				"noMailbox": "No mailbox configured.",
-				"pageTitle": "Snippets — Owlat",
-				"saveChanges": "Save changes",
-				"shortcutPlaceholder": "shortcut",
-				"yourSnippets": "Your snippets"
+				"intro": "Answers you write again and again, ready in two keystrokes. In any composer, type {triggerKey} and the shortcut, or pick one with the button beside Send. Only you see the ones here.",
+				"pageTitle": "Saved replies — Owlat",
+				"sharedHint": "Replies for the whole team are on",
+				"sharedLink": "Team → Saved replies"
 			},
 			"vacation": {
 				"defaultBody": "I'm away from email and will respond when I return.",
@@ -12545,6 +12657,7 @@
 				"automations": "Automations",
 				"backups": "Backups",
 				"blocks": "Blocks",
+				"brandKit": "Brand kit",
 				"campaignSenders": "Campaign senders",
 				"campaigns": "Campaigns",
 				"cells": "Delivery cells",
@@ -12557,7 +12670,6 @@
 				"deliveryProvider": "Delivery provider",
 				"desktopUpdates": "Desktop app updates",
 				"dmarcReports": "DMARC reports",
-				"emailTheme": "Email theme",
 				"features": "Features",
 				"failedMessages": "Failed messages",
 				"files": "Files",
@@ -12579,6 +12691,7 @@
 				"providerRouting": "Provider routing",
 				"sealedMail": "Sealed mail",
 				"quarantine": "Quarantine",
+				"savedReplies": "Saved replies",
 				"segments": "Segments",
 				"sendingDomains": "Sending domains",
 				"subscriptions": "Subscriptions",
@@ -14105,11 +14218,6 @@
 				"deleteSignature": "Delete signature",
 				"saveSignature": "Save signature"
 			},
-			"usePostboxSnippets": {
-				"createSnippet": "Create snippet",
-				"deleteSnippet": "Delete snippet",
-				"saveSnippet": "Save snippet"
-			},
 			"usePostboxThreadCategories": {
 				"options": {
 					"newsletter": "Newsletter",
@@ -14155,10 +14263,14 @@
 					"date": "Today’s date",
 					"prompt": "Ask me when inserting",
 					"recipientCompany": "Recipient’s company",
+					"recipientEmail": "Recipient’s email address",
 					"recipientFirstName": "Recipient’s first name",
 					"recipientFullName": "Recipient’s full name",
+					"recipientLastName": "Recipient’s last name",
 					"senderEmail": "My From address",
-					"senderName": "My name"
+					"senderFirstName": "My first name",
+					"senderName": "My name",
+					"threadSubject": "Conversation subject"
 				}
 			},
 			"useArchiveImport": {
@@ -14479,6 +14591,68 @@
 				"summary": "Sealed — sender verified"
 			}
 		},
+		"savedReplies": {
+			"fields": {
+				"limit": "Limit to team inboxes",
+				"limitHint": "Leave them all unchecked to offer it in every composer, the Team inbox included.",
+				"name": "Name",
+				"namePlaceholder": "e.g. Refund policy",
+				"noTeamInboxes": "There are no team inboxes yet.",
+				"scope": "Who can use it",
+				"shortcut": "Shortcut",
+				"shortcutPlaceholder": "refund",
+				"text": "Text",
+				"textPlaceholder": "Write the reply…"
+			},
+			"help": {
+				"gaps": "Write {example} for anything you fill in by hand each time. Send waits until every gap is filled.",
+				"title": "Variables and gaps",
+				"variables": "These fill in when you insert the reply. One without a value becomes a gap to fill in before sending."
+			},
+			"library": {
+				"deleteDescription": {
+					"personal": "It is removed from your picker. This cannot be undone.",
+					"shared": "It is removed from everyone’s picker. This cannot be undone."
+				},
+				"deleteTitle": "Delete this saved reply?",
+				"empty": {
+					"personal": "No saved replies yet. Add one here, or save one from a composer.",
+					"shared": "No shared replies yet."
+				},
+				"limitedTo": "Only in {inboxes}",
+				"neverUsed": "Not used yet",
+				"new": "New saved reply",
+				"unknownInbox": "a deleted inbox",
+				"used": "Used once · {when} | Used {count} times · last used {when}"
+			},
+			"operations": {
+				"create": "Save reply",
+				"recordUse": "Count reply use",
+				"remove": "Delete reply",
+				"save": "Update reply"
+			},
+			"paletteHeading": "Saved replies",
+			"picker": {
+				"button": "Saved replies",
+				"empty": "No saved replies yet. Save one from this composer, or add them under My settings → Saved replies.",
+				"manage": "Manage saved replies",
+				"noMatch": "No saved reply matches.",
+				"search": "Search saved replies",
+				"title": "Insert a saved reply"
+			},
+			"saveChanges": "Save changes",
+			"saveCurrent": "Save as reply",
+			"saveDialog": {
+				"emptyText": "Write something first.",
+				"save": "Save reply",
+				"title": "Save as reply"
+			},
+			"scopes": {
+				"personal": "Only me",
+				"shared": "Everyone in the team"
+			},
+			"sharedBadge": "Shared"
+		},
 		"sendReadiness": {
 			"audienceFits": "Your audience of {audience} fits in today's capacity.",
 			"capacity": {
@@ -14613,9 +14787,9 @@
 					"keywords": "sign-off, footer, disclaimer"
 				},
 				"snippets": {
-					"title": "Snippets",
-					"description": "Canned responses via slash",
-					"keywords": "canned responses, boilerplate, shortcuts"
+					"title": "Saved replies",
+					"description": "Your reusable answers for every composer",
+					"keywords": "snippets, canned responses, templates, macros, boilerplate, shortcuts"
 				},
 				"writingVoice": {
 					"title": "Writing voice",
@@ -14863,6 +15037,7 @@
 				"pickAskOption": "Pick an answer on the AI’s question card",
 				"previousQueueItem": "Previous item in the Answer queue",
 				"nextQueueItem": "Next item in the Answer queue",
+				"savedReplies": "Insert a saved reply",
 				"writeNote": "Write an internal note (Team inbox threads)"
 			}
 		},
@@ -15973,6 +16148,7 @@
 			"mailMessages": "Messages",
 			"mailboxes": "Mailboxes",
 			"organizationMemberships": "Workspace memberships",
+			"savedReplies": "Saved replies",
 			"segments": "Segments",
 			"threadNotes": "Internal notes",
 			"topics": "Topics",

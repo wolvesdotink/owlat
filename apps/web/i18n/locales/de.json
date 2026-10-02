@@ -5019,8 +5019,8 @@
 				"unbound": "Nicht belegt"
 			},
 			"postboxSnippetPicker": {
-				"empty": "Keine passenden Textbausteine",
-				"listLabel": "Textbausteine"
+				"empty": "Keine passende gespeicherte Antwort",
+				"listLabel": "Gespeicherte Antworten"
 			},
 			"postboxSnoozeDialog": {
 				"confirm": "Zurückstellen",
@@ -5454,7 +5454,7 @@
 			"postboxSnippetVariableDialog": {
 				"description": "„{name}“ braucht noch ein paar Angaben.",
 				"insert": "Einfügen",
-				"title": "Textbaustein ausfüllen"
+				"title": "Gespeicherte Antwort ausfüllen"
 			},
 			"postboxSnippetVariableEditor": {
 				"automatic": "Automatisch ermitteln",
@@ -7480,6 +7480,163 @@
 						"title": "Wann automatisch gesendet wird"
 					}
 				},
+				"brandKit": {
+					"buttons": {
+						"paddingX": "Innenabstand seitlich",
+						"paddingY": "Innenabstand oben und unten",
+						"radius": "Eckenradius",
+						"title": "Buttons"
+					},
+					"colors": {
+						"addSwatch": "Farbfeld hinzufügen",
+						"background": "Hintergrund",
+						"backgroundHelp": "Der E-Mail-Hintergrund hinter deinen Inhalten.",
+						"link": "Link",
+						"linkHelp": "Links im Text.",
+						"pickColor": "Farbe für {label} wählen",
+						"primary": "Primärfarbe",
+						"primaryHelp": "Buttons, Aufzählungszeichen, Icons und andere Akzente.",
+						"removeSwatch": "Farbfeld {color} entfernen",
+						"secondary": "Sekundärfarbe",
+						"secondaryHelp": "Trennlinien und zweite Akzente.",
+						"subtitle": "Neue Blöcke starten in diesen Farben, und jede Farbauswahl im Editor bietet sie zuerst an.",
+						"swatchValue": "Farbfeld {n}, Hex-Wert",
+						"swatches": "Weitere Farbfelder",
+						"swatchesHelp": "Bis zu {max} weitere Farben für die Farbauswahl im Editor.",
+						"text": "Text",
+						"textHelp": "Überschriften und Fließtext.",
+						"title": "Farben"
+					},
+					"errors": {
+						"addressTooLong": "Die Anschrift ist zu lang.",
+						"buttonOutOfRange": "Eckenradius oder Innenabstand des Buttons liegt außerhalb des Bereichs.",
+						"companyNameTooLong": "Der Firmenname ist zu lang.",
+						"invalidColor": "Gib eine Hex-Farbe wie #c4785a ein.",
+						"invalidSocialUrl": "Gib eine vollständige Adresse ein, die mit https:// beginnt.",
+						"tooManySocialLinks": "Ein Markenkit hat höchstens acht Social-Media-Links.",
+						"tooManySwatches": "Ein Markenkit hat höchstens sechs weitere Farbfelder.",
+						"unknownFont": "Wähle beide Schriften aus der Liste.",
+						"widthOutOfRange": "Die E-Mail-Breite muss zwischen 400 und 800 px liegen."
+					},
+					"footer": {
+						"addSocialLink": "Social-Media-Link hinzufügen",
+						"address": "Postanschrift",
+						"addressHelp": "Viele Länder schreiben eine Postanschrift in Marketing-E-Mails vor.",
+						"companyName": "Firmenname",
+						"platform": "Plattform",
+						"removeSocialLink": "{platform}-Link entfernen",
+						"socialLinks": "Social-Media-Links",
+						"subtitle": "Deine Firmenangaben und Social-Media-Links. Neue E-Mails enden damit, und der Editor fügt sie überall ein.",
+						"title": "Fußzeile",
+						"url": "Adresse deines {platform}-Profils",
+						"urlPlaceholder": "https://",
+						"useWorkspaceName": "„{name}“ verwenden"
+					},
+					"import": {
+						"appliedToast": "Ins Markenkit übernommen. Prüfe es und speichere.",
+						"apply": "Ins Markenkit übernehmen",
+						"applying": "Wird übernommen...",
+						"back": "Andere Adresse versuchen",
+						"cancel": "Abbrechen",
+						"description": "Gib deine Website ein. Owlat liest Farben, Logo und Namen aus und schlägt dir ein Markenkit zur Prüfung vor. Gespeichert wird erst, wenn du das Markenkit speicherst.",
+						"errors": {
+							"blocked": "Diese Adresse zeigt in ein privates Netzwerk und kann nicht gelesen werden.",
+							"invalid_url": "Gib eine Website-Adresse wie example.com ein.",
+							"not_html": "Diese Adresse ist keine Webseite.",
+							"not_image": "Dieses Logo ist kein PNG-, JPEG- oder sicheres SVG-Bild.",
+							"rate_limited": "Zu viele Importe. Warte eine Minute und versuch es noch einmal.",
+							"too_large": "Diese Logodatei ist zu groß.",
+							"unreachable": "Diese Website war nicht erreichbar."
+						},
+						"fetch": "Website auslesen",
+						"fetchOperation": "Website auslesen",
+						"fetching": "Website wird ausgelesen...",
+						"logoOperation": "Logo importieren",
+						"noCandidates": "Auf dieser Seite wurde kein brauchbares Logo gefunden.",
+						"noColors": "Auf dieser Seite wurden keine Markenfarben gefunden.",
+						"noLogo": "Aktuelles Logo behalten",
+						"proposalHint": "Gefunden auf {url}. Wähle, was du übernehmen willst; vor dem Speichern kannst du alles noch ändern.",
+						"sources": {
+							"appleTouchIcon": "App-Icon",
+							"icon": "Website-Icon",
+							"logoImage": "Logo auf der Seite",
+							"ogImage": "Vorschaubild zum Teilen"
+						},
+						"title": "Von Website importieren",
+						"urlLabel": "Website",
+						"urlPlaceholder": "example.com",
+						"useColors": "Diese Farben übernehmen",
+						"useName": "„{name}“ als Firmennamen übernehmen"
+					},
+					"importButton": "Von Website importieren",
+					"layout": {
+						"emailWidth": "E-Mail-Breite",
+						"emailWidthHelp": "Maximale Breite deiner E-Mails auf dem Desktop (400–800 px). Standard sind 600 px."
+					},
+					"loading": "Markenkit wird geladen...",
+					"logo": {
+						"choose": "Aus der Mediathek wählen",
+						"dark": "Logo für den Dunkelmodus",
+						"darkHelp": "Optional. Wird stattdessen in E-Mail-Programmen gezeigt, die in den Dunkelmodus wechseln.",
+						"light": "Logo",
+						"lightHelp": "Wird auf hellem Hintergrund gezeigt.",
+						"pickerTitle": "Logo wählen",
+						"remove": "Entfernen",
+						"replace": "Ersetzen",
+						"subtitle": "Steht oben in neuen E-Mails und lässt sich im Editor einfügen. Wähle es aus der Mediathek.",
+						"title": "Logo"
+					},
+					"pageTitle": "Markenkit — Owlat",
+					"preview": {
+						"body": "So liest sich Fließtext in deinen E-Mails, und Links sehen",
+						"button": "Zur Aktion",
+						"dark": "Dunkel",
+						"frameTitle": "Vorschau-E-Mail des Markenkits",
+						"heading": "Deine Marke, in jeder E-Mail",
+						"light": "Hell",
+						"link": "so aus",
+						"subtitle": "Eine Beispiel-E-Mail in deiner Marke, so gerendert, wie sie verschickt wird.",
+						"title": "Vorschau"
+					},
+					"px": "px",
+					"resetToDefaults": "Auf Standard zurücksetzen",
+					"save": "Markenkit speichern",
+					"saveOperation": "Markenkit speichern",
+					"savedToast": "Markenkit gespeichert",
+					"saving": "Wird gespeichert...",
+					"subtitle": "Leg deine Marke einmal fest. Jede neue E-Mail startet damit, und der Editor bietet sie überall an, wo du einen Block gestaltest.",
+					"title": "Markenkit",
+					"typography": {
+						"bodyFont": "Schrift für Fließtext",
+						"fonts": {
+							"arial": "Arial",
+							"courierNew": "Courier New",
+							"georgia": "Georgia",
+							"helvetica": "Helvetica",
+							"inter": "Inter",
+							"lato": "Lato",
+							"lora": "Lora",
+							"merriweather": "Merriweather",
+							"montserrat": "Montserrat",
+							"openSans": "Open Sans",
+							"playfairDisplay": "Playfair Display",
+							"poppins": "Poppins",
+							"roboto": "Roboto",
+							"systemDefault": "Systemschrift",
+							"timesNewRoman": "Times New Roman",
+							"trebuchetMs": "Trebuchet MS",
+							"verdana": "Verdana"
+						},
+						"groupSafe": "E-Mail-sichere Schriften",
+						"groupWeb": "Webschriften",
+						"headingFont": "Schrift für Überschriften",
+						"otherFont": "Aktuelle Schrift ({stack})",
+						"subtitle": "Schriften für Überschriften und Fließtext und die Form, mit der jeder neue Button startet.",
+						"title": "Schrift und Buttons",
+						"webFontHelp": "Webschriften erscheinen in Apple Mail, iOS Mail und Thunderbird. Gmail und Outlook nutzen die E-Mail-sichere Schrift, die danach genannt ist."
+					},
+					"unsaved": "Nicht gespeichert"
+				},
 				"channels": {
 					"addChannel": "Kanal hinzufügen",
 					"addedToast": "Kanal hinzugefügt — konfiguriere ihn unten",
@@ -7575,51 +7732,6 @@
 					"save": "Speichern",
 					"savedToast": "Richtlinie für Desktop-Updates gespeichert.",
 					"title": "Desktop-App-Updates"
-				},
-				"emailTheme": {
-					"backgroundColor": "Hintergrundfarbe",
-					"backgroundColorHelp": "Die Hintergrundfarbe deines E-Mail-Textkörpers.",
-					"emailWidth": "E-Mail-Breite",
-					"emailWidthHelp": "Maximale Breite deiner E-Mail auf dem Desktop (400–800 px). Standard sind 600 px.",
-					"errors": {
-						"backgroundColor": "Bitte gib eine gültige Hex-Farbe ein (z. B. #ffffff)",
-						"primaryColor": "Bitte gib eine gültige Hex-Farbe ein (z. B. #c4785a)"
-					},
-					"fontFamily": "Schriftart",
-					"fontFamilyHelp": "Die Standardschrift für Textinhalte in deinen E-Mails.",
-					"fonts": {
-						"arial": "Arial",
-						"courierNew": "Courier New",
-						"georgia": "Georgia",
-						"helvetica": "Helvetica",
-						"systemDefault": "Systemstandard",
-						"timesNewRoman": "Times New Roman",
-						"trebuchetMs": "Trebuchet MS",
-						"verdana": "Verdana"
-					},
-					"loading": "Design-Einstellungen werden geladen...",
-					"pageTitle": "E-Mail-Design — Owlat",
-					"preview": {
-						"body": "Danke für deine Anmeldung! Wir freuen uns, dich an Bord zu haben. Freu dich auf Neuigkeiten, Tipps und exklusive Inhalte direkt in deinem Postfach.",
-						"button": "Jetzt loslegen",
-						"footer": "Du erhältst diese E-Mail, weil du dich für unseren Newsletter angemeldet hast.",
-						"heading": "Willkommen zu unserem Newsletter",
-						"note": "Dies ist eine vereinfachte Vorschau. Tatsächliche E-Mails können je nach Darstellung im E-Mail-Programm abweichen."
-					},
-					"previewSubtitle": "Sieh, wie dein Design in E-Mails wirkt",
-					"primaryColor": "Primärfarbe",
-					"primaryColorHelp": "Wird für Schaltflächen und Handlungsaufforderungen in deinen E-Mails verwendet.",
-					"px": "px",
-					"resetToDefaults": "Auf Standardwerte zurücksetzen",
-					"saveOperation": "E-Mail-Design speichern",
-					"saveTheme": "Design speichern",
-					"savedToast": "E-Mail-Design erfolgreich gespeichert",
-					"savingTheme": "Wird gespeichert...",
-					"settingsSubtitle": "Lege Farben und Schriften für deine E-Mails fest",
-					"settingsTitle": "Design-Einstellungen",
-					"subtitle": "Konfiguriere die Standardgestaltung für deine E-Mail-Vorlagen",
-					"title": "E-Mail-Design",
-					"unsaved": "Nicht gespeichert"
 				},
 				"features": {
 					"approval": {
@@ -7824,6 +7936,10 @@
 							"description": "Lege fest, ob die KI Antworten zur Prüfung entwirft, sie bei hoher Sicherheit selbst sendet oder aus bleibt.",
 							"title": "KI-Antworten"
 						},
+						"brandKit": {
+							"description": "Logo, Farben, Schriften und Fußzeile, mit denen jede E-Mail startet.",
+							"title": "Markenkit"
+						},
 						"channels": {
 							"description": "Nachrichtenkanäle, die in der gesamten Instanz verfügbar sind.",
 							"title": "Kanäle"
@@ -7831,10 +7947,6 @@
 						"desktopUpdates": {
 							"description": "Lege fest, welche Version verbundene Desktop-Apps installieren — oder halte alle zurück.",
 							"title": "Desktop-Updates"
-						},
-						"emailTheme": {
-							"description": "Standardgestaltung für Nachrichten, die dieser Workspace versendet.",
-							"title": "E-Mail-Design"
 						},
 						"features": {
 							"description": "Feingranulare Feature-Flags und Pakete für die erweiterte Konfiguration.",
@@ -8704,6 +8816,15 @@
 				},
 				"roles": {
 					"title": "Was jede Rolle darf"
+				},
+				"savedReplies": {
+					"adminGate": {
+						"description": "Bitte eine Inhaberin oder einen Admin dieses Workspaces, eine hinzuzufügen oder zu ändern. Einfügen kannst du sie trotzdem in jedem Editor.",
+						"title": "Nur Admins verwalten geteilte Antworten"
+					},
+					"intro": "Antworten, die das ganze Team mit {triggerKey} und einem Kürzel oder über die Auswahl neben Senden einfügt. Beschränke eine auf einzelne Team-Postfächer, damit sie nur dort erscheint.",
+					"pageTitle": "Gespeicherte Antworten — Owlat",
+					"title": "Gespeicherte Antworten"
 				},
 				"senders": {
 					"addModal": {
@@ -10642,7 +10763,7 @@
 				"emailChangeRequested": "Prüfe deinen Posteingang, um die Änderung zu bestätigen",
 				"emailInvalid": "Gib eine gültige E-Mail-Adresse ein",
 				"emailUnchanged": "Das ist bereits deine Anmelde-E-Mail",
-				"exportBody": "Du kannst deine Daten jederzeit exportieren. Der Export enthält deine Profilinformationen, dein persönliches Postfach und deine E-Mails, Entwürfe, verbundene externe Konten, deine Chatnachrichten und deine Teammitgliedschaften. Für Teams, in denen du Inhaberin oder Administrator bist, enthält er außerdem Kontakte, Kampagnen, Automatisierungen und weitere zugehörige Daten.",
+				"exportBody": "Du kannst deine Daten jederzeit exportieren. Der Export enthält deine Profilinformationen, dein persönliches Postfach und deine E-Mails, Entwürfe, verbundene externe Konten, deine Chatnachrichten, deine gespeicherten Antworten und deine Teammitgliedschaften. Für Teams, in denen du Inhaberin oder Administrator bist, enthält er außerdem Kontakte, Kampagnen, Automatisierungen und weitere zugehörige Daten.",
 				"exportCsvAction": "CSV exportieren",
 				"exportCsvDescription": "CSV-Format für den einfachen Import in Tabellenkalkulationen oder andere E-Mail-Tools.",
 				"exportCsvFailed": "Kontakte konnten nicht exportiert werden",
@@ -10989,19 +11110,10 @@
 				"yourSignatures": "Deine Signaturen"
 			},
 			"snippets": {
-				"bodyPlaceholder": "Hallo {firstName}, danke für deine Nachricht…",
-				"deleteConfirm": "Textbaustein löschen",
-				"deleteDescription": "Dieser Textbaustein wird entfernt. Diese Aktion kann nicht rückgängig gemacht werden.",
-				"deleteTitle": "Textbaustein löschen?",
-				"empty": "Noch keine Textbausteine.",
-				"intro": "Vorgefertigte Antworten, die du in eine Nachricht einfügen kannst. Tippe im Editor {slashKey} am Zeilenanfang, um einen auszuwählen. Mit {firstNameToken} sprichst du die empfangende Person mit Namen an.",
-				"namePlaceholder": "Name des Textbausteins (z. B. Danke)",
-				"newSnippet": "Neuer Textbaustein",
-				"noMailbox": "Kein Postfach konfiguriert.",
-				"pageTitle": "Textbausteine — Owlat",
-				"saveChanges": "Änderungen speichern",
-				"shortcutPlaceholder": "Kürzel",
-				"yourSnippets": "Deine Textbausteine"
+				"intro": "Antworten, die du immer wieder schreibst, mit zwei Tastendrücken eingefügt. Tippe in jedem Editor {triggerKey} und das Kürzel oder wähle eine über die Schaltfläche neben Senden. Die Antworten hier siehst nur du.",
+				"pageTitle": "Gespeicherte Antworten — Owlat",
+				"sharedHint": "Antworten für das ganze Team findest du unter",
+				"sharedLink": "Team → Gespeicherte Antworten"
 			},
 			"vacation": {
 				"defaultBody": "Ich bin derzeit nicht per E-Mail erreichbar und antworte nach meiner Rückkehr.",
@@ -12545,6 +12657,7 @@
 				"automations": "Automationen",
 				"backups": "Backups",
 				"blocks": "Blöcke",
+				"brandKit": "Markenkit",
 				"campaignSenders": "Kampagnenabsender",
 				"campaigns": "Kampagnen",
 				"cells": "Zustellungszellen",
@@ -12557,7 +12670,6 @@
 				"deliveryProvider": "Zustellungsanbieter",
 				"desktopUpdates": "Desktop-App-Updates",
 				"dmarcReports": "DMARC-Berichte",
-				"emailTheme": "E-Mail-Design",
 				"features": "Funktionen",
 				"failedMessages": "Fehlgeschlagene Nachrichten",
 				"files": "Dateien",
@@ -12579,6 +12691,7 @@
 				"providerRouting": "Anbieter-Routing",
 				"sealedMail": "Versiegelte Mail",
 				"quarantine": "Quarantäne",
+				"savedReplies": "Gespeicherte Antworten",
 				"segments": "Segmente",
 				"sendingDomains": "Versanddomains",
 				"subscriptions": "Abonnements",
@@ -14105,11 +14218,6 @@
 				"deleteSignature": "Signatur löschen",
 				"saveSignature": "Signatur speichern"
 			},
-			"usePostboxSnippets": {
-				"createSnippet": "Textbaustein erstellen",
-				"deleteSnippet": "Textbaustein löschen",
-				"saveSnippet": "Textbaustein speichern"
-			},
 			"usePostboxThreadCategories": {
 				"options": {
 					"newsletter": "Newsletter",
@@ -14155,10 +14263,14 @@
 					"date": "Heutiges Datum",
 					"prompt": "Beim Einfügen nachfragen",
 					"recipientCompany": "Firma der Empfängerin",
+					"recipientEmail": "E-Mail-Adresse der Empfängerin",
 					"recipientFirstName": "Vorname der Empfängerin",
 					"recipientFullName": "Voller Name der Empfängerin",
+					"recipientLastName": "Nachname der Empfängerin",
 					"senderEmail": "Meine Absenderadresse",
-					"senderName": "Mein Name"
+					"senderFirstName": "Mein Vorname",
+					"senderName": "Mein Name",
+					"threadSubject": "Betreff der Unterhaltung"
 				}
 			},
 			"useArchiveImport": {
@@ -14479,6 +14591,68 @@
 				"summary": "Versiegelt — Absender bestätigt"
 			}
 		},
+		"savedReplies": {
+			"fields": {
+				"limit": "Auf Team-Postfächer beschränken",
+				"limitHint": "Lässt du alle frei, steht sie in jedem Editor zur Verfügung, auch bei Antworten im Team-Postfach.",
+				"name": "Bezeichnung",
+				"namePlaceholder": "z. B. Erstattung",
+				"noTeamInboxes": "Es gibt noch keine Team-Postfächer.",
+				"scope": "Wer sie nutzen kann",
+				"shortcut": "Kürzel",
+				"shortcutPlaceholder": "erstattung",
+				"text": "Antworttext",
+				"textPlaceholder": "Schreib die Antwort…"
+			},
+			"help": {
+				"gaps": "Schreib {example} für alles, was du jedes Mal von Hand einträgst. Senden wartet, bis jede Lücke gefüllt ist.",
+				"title": "Variablen und Lücken",
+				"variables": "Diese werden beim Einfügen ausgefüllt. Fehlt ein Wert, entsteht eine Lücke, die du vor dem Senden füllst."
+			},
+			"library": {
+				"deleteDescription": {
+					"personal": "Sie verschwindet aus deiner Auswahl. Das lässt sich nicht rückgängig machen.",
+					"shared": "Sie verschwindet bei allen aus der Auswahl. Das lässt sich nicht rückgängig machen."
+				},
+				"deleteTitle": "Diese gespeicherte Antwort löschen?",
+				"empty": {
+					"personal": "Noch keine gespeicherten Antworten. Leg hier eine an oder speichere eine aus einem Editor.",
+					"shared": "Noch keine geteilten Antworten."
+				},
+				"limitedTo": "Nur in {inboxes}",
+				"neverUsed": "Noch nicht verwendet",
+				"new": "Neue gespeicherte Antwort",
+				"unknownInbox": "einem gelöschten Postfach",
+				"used": "Einmal verwendet · {when} | {count}-mal verwendet · zuletzt {when}"
+			},
+			"operations": {
+				"create": "Antwort speichern",
+				"recordUse": "Verwendung zählen",
+				"remove": "Antwort löschen",
+				"save": "Antwort ändern"
+			},
+			"paletteHeading": "Gespeicherte Antworten",
+			"picker": {
+				"button": "Gespeicherte Antworten",
+				"empty": "Noch keine gespeicherten Antworten. Speichere eine aus diesem Editor oder leg sie unter Meine Einstellungen → Gespeicherte Antworten an.",
+				"manage": "Gespeicherte Antworten verwalten",
+				"noMatch": "Keine gespeicherte Antwort passt.",
+				"search": "Gespeicherte Antworten durchsuchen",
+				"title": "Gespeicherte Antwort einfügen"
+			},
+			"saveChanges": "Änderungen speichern",
+			"saveCurrent": "Als Antwort speichern",
+			"saveDialog": {
+				"emptyText": "Schreib zuerst etwas.",
+				"save": "Antwort speichern",
+				"title": "Als Antwort speichern"
+			},
+			"scopes": {
+				"personal": "Nur ich",
+				"shared": "Das ganze Team"
+			},
+			"sharedBadge": "Team"
+		},
 		"sendReadiness": {
 			"audienceFits": "Deine Zielgruppe von {audience} passt in die heutige Kapazität.",
 			"capacity": {
@@ -14613,9 +14787,9 @@
 					"keywords": "Grußformel, Fußzeile, Haftungsausschluss"
 				},
 				"snippets": {
-					"title": "Textbausteine",
-					"description": "Vorgefertigte Antworten über den Schrägstrich",
-					"keywords": "vorgefertigte Antworten, Standardtext, Kürzel"
+					"title": "Gespeicherte Antworten",
+					"description": "Deine wiederverwendbaren Antworten für jeden Editor",
+					"keywords": "Textbausteine, vorgefertigte Antworten, Vorlagen, Makros, Standardtext, Kürzel"
 				},
 				"writingVoice": {
 					"title": "Schreibstil",
@@ -14863,6 +15037,7 @@
 				"pickAskOption": "Eine Antwort auf der Fragekarte der KI wählen",
 				"previousQueueItem": "Vorheriger Eintrag in der Antwortliste",
 				"nextQueueItem": "Nächster Eintrag in der Antwortliste",
+				"savedReplies": "Gespeicherte Antwort einfügen",
 				"writeNote": "Interne Notiz schreiben (Threads im Team-Postfach)"
 			}
 		},
@@ -15973,6 +16148,7 @@
 			"mailMessages": "Nachrichten",
 			"mailboxes": "Postfächer",
 			"organizationMemberships": "Workspace-Mitgliedschaften",
+			"savedReplies": "Gespeicherte Antworten",
 			"segments": "Segmente",
 			"threadNotes": "Interne Notizen",
 			"topics": "Themen",

@@ -21,6 +21,7 @@ import { internalMutation } from '../lib/writeFence';
 import { currentContentRevision } from '../lib/contentRevision';
 import { rendererVersionAfterWrite, rendererVersionArg } from '../lib/rendererVersion';
 import { recordAuditLog } from '../lib/auditLog';
+import { brandKitEmailTheme, resolveBrandKitDesign } from '@owlat/shared/brandKit';
 import type { Doc, Id } from '../_generated/dataModel';
 
 // ─── Workpool ───────────────────────────────────────────────────────────────
@@ -72,9 +73,13 @@ export const getTransactionalEmail = internalQuery({
  */
 export const getEmailTheme = internalQuery({
 	args: {},
+	// The brand kit's projection, as `loadEmailTheme` builds it for the save
+	// path, so a rerender keeps the kit's text colour, heading font and web
+	// fonts too. (That module imports this one's importer, hence no reuse.)
 	handler: async (ctx) => {
 		const settings = await ctx.db.query('instanceSettings').first();
-		return settings?.emailTheme;
+		if (!settings?.emailTheme && !settings?.brandKit) return undefined;
+		return brandKitEmailTheme(resolveBrandKitDesign(settings.emailTheme, settings.brandKit));
 	},
 });
 

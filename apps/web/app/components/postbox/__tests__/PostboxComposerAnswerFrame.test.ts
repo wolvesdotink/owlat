@@ -109,7 +109,16 @@ beforeEach(() => {
 		usePostboxToolbarPreference: () => ({ persistentToolbar: ref(false), toggleToolbar: vi.fn() }),
 		usePostboxComposerSnippets: () => ({
 			editorSnippets: ref([]),
-			snippetVariableContext: ref({}),
+			snippetInsert: ref({ variableContext: {} }),
+			footer: {
+				replies: computed(() => []),
+				enabled: computed(() => false),
+				currentBodyHtml: computed(() => ''),
+				pickerOpen: ref(false),
+				saveOpen: ref(false),
+				pick: vi.fn(),
+				handleKeydown: () => false,
+			},
 		}),
 		usePostboxComposerSendGate: () => ({
 			sending: ref(false),

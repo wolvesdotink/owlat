@@ -12,6 +12,7 @@ import {
 	Redo2,
 	Settings,
 	Keyboard,
+	Palette,
 } from '@lucide/vue';
 import UiButton from '@owlat/ui/components/ui/Button.vue';
 import UiSegmentedControl from '@owlat/ui/components/ui/SegmentedControl.vue';
@@ -29,6 +30,8 @@ const props = defineProps<{
 	config?: EmailBuilderConfig;
 	canUndo?: boolean;
 	canRedo?: boolean;
+	/** Offer "Apply brand kit" (the organization has saved one). */
+	canApplyBrand?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -42,6 +45,7 @@ const emit = defineEmits<{
 	(e: 'redo'): void;
 	(e: 'settings'): void;
 	(e: 'show-shortcuts'): void;
+	(e: 'apply-brand'): void;
 }>();
 
 const previewModeOptions = computed(() => [
@@ -176,6 +180,19 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 				@click="emit('show-shortcuts')"
 			>
 				<Keyboard class="w-4 h-4" />
+			</UiButton>
+
+			<!-- Restyle the email with the brand kit (confirmed, undoable) -->
+			<UiButton
+				v-if="canApplyBrand"
+				variant="ghost"
+				class="!px-2 !py-2"
+				title="Apply brand kit"
+				aria-label="Apply brand kit"
+				data-testid="apply-brand-kit"
+				@click="emit('apply-brand')"
+			>
+				<Palette class="w-4 h-4" />
 			</UiButton>
 
 			<div class="w-px h-6 bg-border-default" />

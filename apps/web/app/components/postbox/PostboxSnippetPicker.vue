@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
- * Presentational snippet "/" picker overlay for {@link PostboxBasicEditor}.
+ * Presentational saved-reply `;` picker overlay for {@link PostboxBasicEditor}
+ * and the Team inbox reply's textarea.
  *
  * Pure chrome: the caret-anchored dropdown of ranked snippets. All trigger /
  * positioning / keyboard / insert logic lives in `usePostboxSnippetPicker`;
@@ -49,10 +50,17 @@ const { t } = useI18n();
 			@mousemove="emit('hover', i)"
 		>
 			<span class="truncate">{{ item.name }}</span>
-			<span
-				v-if="item.shortcut"
-				class="shrink-0 text-xs text-text-tertiary font-mono"
-			>/{{ item.shortcut }}</span>
+			<span class="flex shrink-0 items-center gap-1.5">
+				<Icon
+					v-if="item.isShared"
+					name="lucide:users"
+					class="size-3 text-text-tertiary"
+					:aria-label="t('shared.savedReplies.sharedBadge')"
+				/>
+				<span v-if="item.shortcut" class="text-xs text-text-tertiary font-mono"
+					>;{{ item.shortcut }}</span
+				>
+			</span>
 		</button>
 	</div>
 </template>

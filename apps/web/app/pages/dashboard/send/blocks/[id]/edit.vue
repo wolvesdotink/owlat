@@ -40,7 +40,7 @@ const { run: updateBlock } = useBackendOperation(api.emailBlocks.blocks.update, 
 
 // Fetch organization settings for email theme
 // Organization email theme (incl. baseWidth) from the shared source.
-const { emailTheme } = useEmailTheme();
+const { emailTheme, brand } = useEmailTheme();
 
 // Personalization variables: built-in contact fields plus custom properties.
 const variables = usePersonalizationVariables();
@@ -53,6 +53,8 @@ const showSettingsModal = ref(false);
 const builderConfig = computed<EmailBuilderConfig>(() => ({
 	variableType: 'personalization',
 	theme: emailTheme.value,
+	// Brand swatches, logo/footer Blocks and "Apply brand kit"
+	brand: brand.value,
 	// Hide subject field since blocks don't have subjects
 	hideSubject: true,
 	// Mode for editing saved blocks

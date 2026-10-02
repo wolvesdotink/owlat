@@ -19,6 +19,9 @@
  *     is the `featureFlagSettings` singleton (`lib/featureFlagSettings.ts`).
  *   - Abuse status (`workspaces/abuseStatus.ts`): the abuse-status columns.
  *   - Workspace branding (`workspaces/branding.ts`): the logo columns.
+ *   - Brand kit (`workspaces/brandKit.ts`): `brandKit`, and `emailTheme`
+ *     together with it (`settings.update` still takes `emailTheme` for one
+ *     release, for clients that predate the brand kit).
  *
  * Counters and telemetry (contact count, inbox and send counters, MTA health,
  * delivery-test stamp) no longer belong here: they live on `instanceCounters`

@@ -259,10 +259,11 @@ async function isAiDraftedTarget(ctx: QueryCtx, target: AnswerAskTarget): Promis
  * missing fact `[[...]]`, and sending one would ship the marker to the
  * recipient, so a send is refused (`DRAFT_HAS_GAPS`) until the person fills or
  * deletes it. Only a target the AI wrote into is checked (an ask session, or
- * a draft an AI text with gaps went into): double brackets in hand-written mail
- * are not ours to block. Every send path of both
- * composers runs this (`mail/draftSend.ts`, the team inbox's approve and
- * follow-up).
+ * a draft an AI text with gaps went into), or a text a saved reply left gaps in
+ * (`opts.guarded`: the Team inbox's stored `isDraftGapGuarded`, or the
+ * follow-up composer's guard): double brackets in hand-written mail are not
+ * ours to block. Every send path of both composers runs this
+ * (`mail/draftSend.ts`, the team inbox's approve and follow-up).
  *
  * Only the authored part is checked: a `[[...]]` in the quoted original belongs
  * to the mail being answered, and the composer neither highlights nor counts
@@ -274,9 +275,10 @@ async function isAiDraftedTarget(ctx: QueryCtx, target: AnswerAskTarget): Promis
 export async function assertNoAnswerGaps(
 	ctx: QueryCtx,
 	target: AnswerAskTarget,
-	body: DraftBody | (() => Promise<DraftBody>)
+	body: DraftBody | (() => Promise<DraftBody>),
+	opts: { guarded?: boolean } = {}
 ): Promise<void> {
-	if (!(await isAiDraftedTarget(ctx, target))) return;
+	if (!opts.guarded && !(await isAiDraftedTarget(ctx, target))) return;
 	const { html, text } = typeof body === 'function' ? await body() : body;
 	const authored = html?.trim()
 		? htmlToPlainText(splitQuotedHtml(html).fresh)

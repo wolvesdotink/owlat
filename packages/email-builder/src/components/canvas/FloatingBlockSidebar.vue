@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, shallowRef, computed, onMounted, onUnmounted, watch } from 'vue';
 import type { Component } from 'vue';
-import type { BlockType } from '../../types';
+import type { BlockType, BrandBlockKind } from '../../types';
 import BlockPickerPopover from './BlockPickerPopover.vue';
 import {
 	Type,
@@ -12,6 +12,8 @@ import {
 	Share2,
 	Square,
 	MoreHorizontal,
+	Stamp,
+	PanelBottom,
 } from '@lucide/vue';
 
 const props = defineProps<{
@@ -19,11 +21,19 @@ const props = defineProps<{
 	visible?: boolean;
 	/** Restrict the insertable palette to this allowlist (EmailBuilderConfig.blockTypes). Undefined = all. */
 	blockTypes?: BlockType[];
+	/** The brand kit Blocks there is something to insert for. */
+	brandBlocks?: BrandBlockKind[];
 }>();
 
 const emit = defineEmits<{
 	(e: 'add-block', type: BlockType): void;
+	(e: 'add-brand-block', kind: BrandBlockKind): void;
 }>();
+
+const BRAND_BUTTONS: Record<BrandBlockKind, { icon: Component; label: string }> = {
+	logo: { icon: Stamp, label: 'Brand logo' },
+	footer: { icon: PanelBottom, label: 'Brand footer' },
+};
 
 const sidebarRef = ref<HTMLElement | null>(null);
 const moreButtonRef = shallowRef<HTMLElement | null>(null);
@@ -149,6 +159,22 @@ function handlePickerSelect(type: BlockType) {
 			>
 				<component :is="block.icon" :size="16" />
 			</button>
+
+			<template v-if="brandBlocks && brandBlocks.length > 0">
+				<div class="w-6 h-px bg-border-subtle my-0.5" />
+				<button
+					v-for="kind in brandBlocks"
+					:key="kind"
+					class="flex items-center justify-center w-[32px] h-[32px] rounded-lg border-none bg-transparent text-brand cursor-pointer transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover active:scale-[0.92]"
+					:title="BRAND_BUTTONS[kind].label"
+					:aria-label="`Add ${BRAND_BUTTONS[kind].label}`"
+					:data-testid="`add-brand-${kind}`"
+					type="button"
+					@click="emit('add-brand-block', kind)"
+				>
+					<component :is="BRAND_BUTTONS[kind].icon" :size="16" />
+				</button>
+			</template>
 
 			<div class="w-6 h-px bg-border-subtle my-0.5" />
 

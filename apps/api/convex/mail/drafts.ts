@@ -173,6 +173,9 @@ export const update = postboxMutation({
 		// AI text sent here that holds `[[...]]` gaps also marks the draft
 		// `isGapGuarded`, which keeps the send guard on after a reload.
 		aiBaseline: v.optional(v.string()),
+		// A saved reply with `[[...]]` gaps went into the body: guard the send
+		// the way an AI text with gaps does. Never unset here.
+		isGapGuarded: v.optional(v.literal(true)),
 	},
 	handler: async (ctx, args) => {
 		const draft = await getOrThrow(ctx, args.draftId, 'Draft');
@@ -207,6 +210,7 @@ export const update = postboxMutation({
 		if (args.aiBaseline !== undefined && !draft.isGapGuarded && hasDraftGaps(args.aiBaseline)) {
 			patch['isGapGuarded'] = true;
 		}
+		if (args.isGapGuarded) patch['isGapGuarded'] = true;
 
 		await ctx.db.patch(args.draftId, patch);
 		if (

@@ -269,6 +269,7 @@ export async function exportAllUserData(
 			deliverabilityAlertRecipientStates: await loadPages('deliverabilityAlertRecipientStates'),
 			bookingPages: await loadPages('bookingPages'),
 			bookings: await loadPages('bookings'),
+			savedReplies: await loadPages('savedReplies'),
 		},
 	};
 }

@@ -36,6 +36,7 @@ export const DEFAULT_EMAIL_THEME: Required<EmailTheme> = {
 	darkModeTextColor: '#e4e4e7',
 	darkModeLinkColor: '#93c5fd',
 	baseWidth: DEFAULT_EMAIL_BASE_WIDTH,
+	fontUrls: [],
 };
 
 /** Padding a block gets when its content does not set one. */

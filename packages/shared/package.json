@@ -262,6 +262,14 @@
 			"types": "./src/emailDefaults.ts",
 			"import": "./src/emailDefaults.ts"
 		},
+		"./brandKit": {
+			"types": "./src/brandKit.ts",
+			"import": "./src/brandKit.ts"
+		},
+		"./brandKitBlocks": {
+			"types": "./src/brandKitBlocks.ts",
+			"import": "./src/brandKitBlocks.ts"
+		},
 		"./attachments": {
 			"types": "./src/attachments.ts",
 			"import": "./src/attachments.ts"

@@ -1,5 +1,7 @@
 /**
- * Snippet "/" slash-trigger PICKER controller for the Postbox Simple composer.
+ * Saved-reply PICKER controller for the Postbox Simple composer: the `;` (or
+ * `/`) trigger typed into the text, and insertion at the caret for the
+ * composer's own picker and the command palette.
  *
  * This is the Selection/Range + keyboard glue that sits between
  * {@link PostboxBasicEditor}'s contenteditable and the pure trigger/rank/
@@ -14,18 +16,17 @@
  * input / keydown / selection / blur hooks; everything snippet-picker lives
  * here.
  *
- * Typing "/" at the start of a line (or after whitespace) opens the picker;
- * filter-as-you-type, arrow keys + Enter/Tab to insert, Esc to dismiss (the
- * literal "/" is never removed until a snippet is chosen). Insertion routes
- * through `document.execCommand` so native undo + the @input autosave both see
- * it.
+ * Typing `;` at the start of a line (or after whitespace) opens the picker
+ * while some reply matches; filter-as-you-type, arrow keys + Enter/Tab to
+ * insert, Esc to dismiss (the literal `;` is never removed until a reply is
+ * chosen). Insertion routes through `document.execCommand` so native undo +
+ * the @input autosave both see it.
  *
- * Typed variables (plan idea 13) resolve at insertion from the recipient, the
- * sender identity and the date. A snippet carrying `prompt` variables PAUSES
- * here — the trigger token is consumed, the caret position remembered, and the
- * body is inserted once the dialog hands back the answers. Anything still
- * unresolved stays a literal `{{token}}`, which is what the composer's
- * preflight flags beside Send.
+ * Variables resolve at insertion from the recipient, the sender identity, the
+ * subject and the date. A reply carrying `prompt` variables PAUSES here — the
+ * trigger token is consumed, the caret position remembered, and the body is
+ * inserted once the dialog hands back the answers. Anything still unresolved
+ * becomes a `[[...]]` gap, which holds Send until it is filled.
  */
 
 import { ref, computed, nextTick, type Ref } from 'vue';
@@ -33,11 +34,13 @@ import { detectSnippetTrigger, rankSnippets } from '~/utils/postboxSnippets';
 import {
 	promptedSnippetVariables,
 	resolveSnippetBody,
+	type ResolveSnippetOptions,
+	type ResolvedSnippet,
 	type SnippetVariable,
 	type SnippetVariableContext,
 } from '~/utils/postboxSnippetVariables';
 
-/** A canned response offered by the composer's "/" slash-trigger. */
+/** A saved reply offered by the composer's picker and `;` trigger. */
 export interface EditorSnippet {
 	_id: string;
 	name: string;
@@ -45,6 +48,23 @@ export interface EditorSnippet {
 	bodyHtml: string;
 	/** Typed variable declarations (plan idea 13); absent = implicit tokens only. */
 	variables?: SnippetVariable[];
+	/** Shared with the organization (the picker marks it). */
+	isShared?: boolean;
+	useCount?: number;
+	lastUsedAt?: number | null;
+}
+
+/** What the composer hands the editor for inserting replies. */
+export interface SnippetInsertOptions {
+	/**
+	 * Everything a variable can resolve from at insert time: recipient facts,
+	 * the sender's identity, the subject, today's date. An absent value makes
+	 * its variable a `[[...]]` gap.
+	 */
+	variableContext: SnippetVariableContext;
+	gapLabel?: ResolveSnippetOptions['gapLabel'];
+	/** A reply went in (counted for the picker's order; gaps guard Send). */
+	onInserted?: (snippet: EditorSnippet, resolved: ResolvedSnippet) => void;
 }
 
 /** A snippet held open waiting for its prompt-on-insert answers. */
@@ -56,14 +76,9 @@ export interface SnippetPromptRequest {
 export interface SnippetPickerOptions {
 	editorRef: Ref<HTMLDivElement | null>;
 	surfaceRef: Ref<HTMLDivElement | null>;
-	/** Canned responses; empty/undefined disables the picker entirely. */
+	/** Saved replies; empty/undefined disables the trigger entirely. */
 	snippets: () => EditorSnippet[] | undefined;
-	/**
-	 * Everything a variable can resolve from at insert time: recipient facts,
-	 * the sender's identity, today's date. An absent value leaves its token
-	 * standing for the preflight to flag.
-	 */
-	variableContext: () => SnippetVariableContext;
+	insertOptions: () => SnippetInsertOptions | undefined;
 	/** Re-emit the editor's HTML after an insert mutates the DOM. */
 	emitContent: () => void;
 }
@@ -74,10 +89,13 @@ export function usePostboxSnippetPicker(opts: SnippetPickerOptions) {
 	const index = ref(0);
 	const style = ref<Record<string, string> | null>(null);
 	// The trigger token last dismissed with Esc — suppresses immediate reopening
-	// while the caret still sits in the same "/token" run.
+	// while the caret still sits in the same ";token" run.
 	const dismissed = ref<string | null>(null);
 	// A chosen snippet waiting on its prompt-on-insert answers.
 	const prompt = ref<SnippetPromptRequest | null>(null);
+	// Where the caret last was inside the editor, for an insert from outside it
+	// (the composer's picker button, the command palette).
+	let lastRange: Range | null = null;
 
 	const items = computed(() => rankSnippets(opts.snippets() ?? [], query.value));
 
@@ -140,6 +158,8 @@ export function usePostboxSnippetPicker(opts: SnippetPickerOptions) {
 		if (dismissed.value === token) return; // stay closed until token changes
 		dismissed.value = null;
 		query.value = trigger.query;
+		// ";)" is a wink, not a shortcut: only open over something to pick.
+		if (items.value.length === 0) return close();
 		if (!open.value) {
 			open.value = true;
 			index.value = 0;
@@ -175,19 +195,32 @@ export function usePostboxSnippetPicker(opts: SnippetPickerOptions) {
 	}
 
 	function resolveAndWrite(snippet: EditorSnippet, answers: Record<string, string>) {
-		const { html } = resolveSnippetBody(snippet.bodyHtml, {
+		const insert = opts.insertOptions();
+		const resolved = resolveSnippetBody(snippet.bodyHtml, {
 			declared: snippet.variables ?? [],
-			context: opts.variableContext(),
+			context: insert?.variableContext ?? {},
+			gapLabel: insert?.gapLabel,
 			answers,
 		});
-		writeHtml(html);
+		writeHtml(resolved.html);
 		opts.emitContent();
+		insert?.onInserted?.(snippet, resolved);
+	}
+
+	/** Ask the prompt variables first, or write the reply straight away. */
+	function begin(snippet: EditorSnippet) {
+		const fields = promptedSnippetVariables(snippet.bodyHtml, snippet.variables ?? []);
+		if (fields.length > 0) {
+			prompt.value = { snippet, fields };
+			return;
+		}
+		resolveAndWrite(snippet, {});
 	}
 
 	/**
-	 * Replace the "/token" with the snippet body. A snippet with prompt-on-insert
+	 * Replace the ";token" with the snippet body. A snippet with prompt-on-insert
 	 * variables consumes the trigger and parks itself in `prompt` instead: the
-	 * "/" is already gone, so the caret is where the body belongs, and the dialog
+	 * ";" is already gone, so the caret is where the body belongs, and the dialog
 	 * completes the insert with `submitPrompt`.
 	 */
 	function insert(snippet: EditorSnippet) {
@@ -200,13 +233,26 @@ export function usePostboxSnippetPicker(opts: SnippetPickerOptions) {
 		el.focus();
 		const tokenLen = trigger ? 1 + trigger.query.length : 0;
 		for (let i = 0; i < tokenLen; i++) document.execCommand('delete', false);
+		begin(snippet);
+	}
 
-		const fields = promptedSnippetVariables(snippet.bodyHtml, snippet.variables ?? []);
-		if (fields.length > 0) {
-			prompt.value = { snippet, fields };
-			return;
+	/**
+	 * Insert a reply chosen outside the text (the composer's picker, the command
+	 * palette) where the caret last was, or at the start of an editor that was
+	 * never clicked into.
+	 */
+	function insertAtCaret(snippet: EditorSnippet) {
+		const el = opts.editorRef.value;
+		if (!el) return;
+		close();
+		el.focus();
+		const sel = window.getSelection();
+		const inside = !!sel && sel.rangeCount > 0 && el.contains(sel.getRangeAt(0).startContainer);
+		if (sel && !inside && lastRange && el.contains(lastRange.startContainer)) {
+			sel.removeAllRanges();
+			sel.addRange(lastRange);
 		}
-		resolveAndWrite(snippet, {});
+		begin(snippet);
 	}
 
 	/** The dialog answered: finish the parked insert at the remembered caret. */
@@ -221,7 +267,7 @@ export function usePostboxSnippetPicker(opts: SnippetPickerOptions) {
 	/**
 	 * The dialog was cancelled. The body is NOT inserted — a half-filled canned
 	 * response the sender backed out of is worse than none — but the consumed
-	 * "/token" stays consumed, because re-typing it is trivial and re-inserting
+	 * ";token" stays consumed, because re-typing it is trivial and re-inserting
 	 * text into a contenteditable the user has since clicked away from is not.
 	 */
 	function cancelPrompt() {
@@ -260,8 +306,13 @@ export function usePostboxSnippetPicker(opts: SnippetPickerOptions) {
 		return false;
 	}
 
-	/** A caret move within the "/token" run refreshes it; a move out closes. */
+	/** A caret move within the ";token" run refreshes it; a move out closes. */
 	function onSelectionChange() {
+		const sel = window.getSelection();
+		const el = opts.editorRef.value;
+		if (sel && sel.rangeCount > 0 && el?.contains(sel.getRangeAt(0).startContainer)) {
+			lastRange = sel.getRangeAt(0).cloneRange();
+		}
 		if (!open.value) return;
 		const before = getCaretText();
 		const trigger = before == null ? null : detectSnippetTrigger(before);
@@ -278,6 +329,7 @@ export function usePostboxSnippetPicker(opts: SnippetPickerOptions) {
 		prompt,
 		update,
 		insert,
+		insertAtCaret,
 		submitPrompt,
 		cancelPrompt,
 		close,

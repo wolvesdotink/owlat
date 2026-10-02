@@ -152,13 +152,6 @@ beforeEach(() => {
 			update: vi.fn(),
 			remove: vi.fn(),
 		}),
-		usePostboxSnippets: () => ({
-			snippets: ref([]),
-			isLoading: ref(false),
-			create: vi.fn(),
-			update: vi.fn(),
-			remove: vi.fn(),
-		}),
 		useOrganization: () => ({
 			organization: ref({ id: 'org1', name: 'Owlat' }),
 			members: ref([]),

@@ -59,6 +59,7 @@ const { showOperationError } = useOperationErrorToast();
 // The seed names the target; the shell and footer read its capabilities.
 const target = mailboxComposerTarget(props.seed);
 
+const compose = usePostboxCompose(props.seed);
 const {
 	draftId: activeDraftId,
 	toAddresses,
@@ -102,7 +103,7 @@ const {
 	flush,
 	send,
 	discard,
-} = usePostboxCompose(props.seed);
+} = compose;
 
 // Inline ghost-text autocomplete: gated by the `ai` flag AND the per-user
 // toggle; the subject line is the bounded thread context for the prompt.
@@ -130,17 +131,6 @@ const { chipSealStates, removeSealBlocker } = usePostboxComposerSealChips(seal, 
 // on selection); the footer "Aa" affordance flips back to the classic persistent
 // toolbar and persists the choice per user.
 const { persistentToolbar, toggleToolbar } = usePostboxToolbarPreference();
-
-// Canned responses ("/" slash-trigger); inert when the mailbox has no snippets.
-// The third argument is what a snippet's sender-identity variables resolve to.
-const { editorSnippets, snippetVariableContext } = usePostboxComposerSnippets(
-	() => props.seed.mailboxId ?? null,
-	() => toAddresses.value[0],
-	() => ({
-		name: availableIdentities.value.find((i) => i.address === fromAddress.value)?.label,
-		email: fromAddress.value,
-	})
-);
 
 async function onFromChange(address: string) {
 	try {
@@ -241,6 +231,8 @@ const { rootEl, bindRoot, dragActive, onDragOver, onDragLeave, onDrop, onPaste }
 
 // An AI draft's `[[...]]` gaps hold Send back until they are filled.
 const { gapCount } = usePostboxComposerGaps({ rootEl, bodyHtml });
+// Saved replies: the `;` trigger, the footer picker (⌘;), ⌘K while typing here, "Save as reply".
+const savedReplies = usePostboxComposerSnippets(props.seed, compose, { rootEl, basicEditor });
 const { answerApi, footerStatus, gapsHoldSend } = usePostboxComposerAnswerApi({
 	bodyHtml,
 	attachments,
@@ -277,6 +269,10 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 	},
 	onMinimize: () => emit('minimize'),
 });
+// ⌘; (the saved-reply picker) first, then the composer's own keys.
+function onKeydown(event: KeyboardEvent) {
+	if (!savedReplies.footer.handleKeydown(event)) onComposerKeydown(event);
+}
 </script>
 
 <template>
@@ -288,7 +284,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 		@dragleave="onDragLeave"
 		@drop="onDrop"
 		@paste="onPaste"
-		@keydown.capture="onComposerKeydown"
+		@keydown.capture="onKeydown"
 	>
 		<template v-if="!answerFrame" #header>
 			<PostboxComposerHeader
@@ -397,8 +393,8 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 				:inline-images-enabled="true"
 				:embed-image="addInlineImage"
 				:on-remove-embedded-image="removeInlineImage"
-				:snippets="editorSnippets"
-				:snippet-variable-context="snippetVariableContext"
+				:snippets="savedReplies.editorSnippets.value"
+				:snippet-insert="savedReplies.snippetInsert.value"
 			/>
 			<EmailBuilder
 				v-else
@@ -468,6 +464,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 				:quote-folded="frameView.quoteFolded.value"
 				:advisory-available="aiRewriteEnabled"
 				:advisory-open="frameView.advisoryOpen.value"
+				:saved-replies="savedReplies.footer"
 				@send="handleSend()"
 				@toggle-quote="frameView.toggleQuote()"
 				@toggle-advisory="frameView.toggleAdvisory()"

@@ -16,6 +16,7 @@ import {
 	publishedHtml,
 } from '../lib/publishableEmail';
 import { loadEmailTheme } from '../lib/publishableEmailRender';
+import { brandedNewEmailContent } from '../workspaces/brandKit';
 import { captureTemplateVersion } from './versions';
 import { assertContentRevision } from '../lib/contentRevision';
 import { rendererVersionArg } from '../lib/rendererVersion';
@@ -346,7 +347,8 @@ export const create = authedMutation({
 			type: args.type,
 			subject: args.subject,
 			previewText: args.previewText,
-			content: args.content,
+			// A blank email starts with the brand kit's logo and footer.
+			content: args.content ?? (await brandedNewEmailContent(ctx, undefined)),
 			userId: session.userId,
 		});
 

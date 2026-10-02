@@ -32,7 +32,7 @@ const preferencesPages = join(here, '../../pages/dashboard/preferences');
 
 const FULL: SettingsEnvironment = { isFeatureEnabled: () => true, isDesktop: true };
 const NO_MAIL: SettingsEnvironment = {
-	isFeatureEnabled: (flag) => flag !== 'postbox' && flag !== 'mail.external',
+	isFeatureEnabled: (flag) => flag !== 'postbox' && flag !== 'mail.external' && flag !== 'inbox',
 	isDesktop: false,
 };
 const NO_AI: SettingsEnvironment = { isFeatureEnabled: (flag) => flag !== 'ai', isDesktop: false };
@@ -145,6 +145,14 @@ describe('gates', () => {
 		};
 		expect(visibleSettingsEntries(noBooking).map((entry) => entry.id)).not.toContain('booking');
 		expect(visibleSettingsEntries(WEB_WITH_MAIL).map((entry) => entry.id)).toContain('booking');
+	});
+
+	it('keeps saved replies on a Team-inbox-only instance (its composer uses them)', () => {
+		const teamInboxOnly: SettingsEnvironment = {
+			isFeatureEnabled: (flag) => flag !== 'postbox' && flag !== 'mail.external',
+			isDesktop: false,
+		};
+		expect(visibleSettingsEntries(teamInboxOnly).map((entry) => entry.id)).toContain('snippets');
 	});
 
 	it('hides the writing voice when AI is off but mail is on', () => {

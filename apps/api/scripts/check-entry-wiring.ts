@@ -157,6 +157,8 @@ const EXPECTED_BUILDERS: readonly string[] = [
 	'publicQuery',
 	'publicTokenEndpoint',
 	'query',
+	'savedReplyMutation',
+	'savedReplyQuery',
 	'transactionalMutation',
 	'transactionalQuery',
 ];
@@ -177,6 +179,7 @@ const NOT_ENTRY_BUILDERS: Readonly<Record<string, string>> = {
 	gateIds: 'projects a gate list to its ids',
 	getBundledPluginFeatureFlagDefinitions: 'reads the generated flag definitions',
 	literalUnion: 'builds a Convex validator from a literal tuple',
+	mergePolicy: 'merges a file-type policy over the scanner default',
 	optionalCountFields: 'builds optional counter column validators from a name tuple',
 	urgencyFallbackScore: 'maps an urgency label to its numeric score',
 	withPlatformGate: 'RETURNS a builder; its exported products are collected as builders above',
