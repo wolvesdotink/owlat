@@ -364,7 +364,7 @@ describe('what still needs an answer', () => {
 		);
 		const message = await t.run((ctx) => ctx.db.get(inboundMessageId));
 		expect(message!.processingStatus).toBe('quarantined');
-		const thread = await getThread(t, threadId);
+		const thread = await getThread(t, threadId!);
 		expect(thread!.responseDueAt).toBeUndefined();
 		expect(thread!.slaMissedCount).toBeUndefined();
 	});
