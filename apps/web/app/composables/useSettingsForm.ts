@@ -41,6 +41,13 @@ export interface UseSettingsFormOptions<Row, F extends SettingsFormShape> {
 	validate?: (form: F) => boolean;
 	/** What counts as a change. Defaults to the whole form. */
 	dirtyKey?: (form: F) => unknown;
+	/**
+	 * Hold a route leave (and warn on tab close) while the draft is dirty. On by
+	 * default, for a page that binds `unsavedDialog`. Turn it off for a form that
+	 * is one card on a page and binds no dialog: the guard would hold the leave
+	 * with nothing on screen to answer.
+	 */
+	leaveGuard?: boolean;
 }
 
 /** The leave guard, ready to bind to `UnsavedChangesDialog`. */
@@ -152,7 +159,9 @@ export function useSettingsForm<Row, F extends SettingsFormShape>(
 			if (!(await handleSave())) throw new Error('Save failed');
 		},
 	});
-	watch(isDirty, (dirty) => guard.setHasChanges(dirty), { immediate: true });
+	if (opts.leaveGuard !== false) {
+		watch(isDirty, (dirty) => guard.setHasChanges(dirty), { immediate: true });
+	}
 
 	const unsavedDialog = reactive({
 		showDialog: guard.showDialog,

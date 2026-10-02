@@ -333,6 +333,32 @@ describe('useSettingsForm', () => {
 		expect(save).toHaveBeenCalledWith({ timezone: 'Europe/Berlin', fromName: 'Owlat Team' });
 	});
 
+	it('holds no leave while dirty when the leave guard is off (#1128)', async () => {
+		const source = ref<Row | null | undefined>({ fromName: 'Owlat' });
+		const { form, isDirty } = withSetup(() =>
+			useSettingsForm({
+				source,
+				defaults: DEFAULTS,
+				project: (row) => ({
+					timezone: row?.timezone || DEFAULTS.timezone,
+					fromName: row?.fromName || DEFAULTS.fromName,
+				}),
+				save: vi.fn(async () => true),
+				leaveGuard: false,
+			})
+		).result;
+		await settle();
+
+		form.fromName = 'Owlat Team';
+		await settle();
+		expect(isDirty.value).toBe(true);
+
+		// A card that binds no dialog: holding the leave would strand the operator.
+		const next = vi.fn();
+		h.guard?.({ fullPath: '/elsewhere' }, {}, next);
+		expect(next).toHaveBeenCalledWith();
+	});
+
 	it('counts no stored row as an answer', async () => {
 		const { loaded } = setup(null);
 		await settle();
