@@ -68,6 +68,7 @@ const messageRead = usePostboxActiveMessageRead<PostboxReaderMessage>({
 });
 const message = messageRead.message as ComputedRef<PostboxReaderMessage | undefined>;
 const messageError = messageRead.error;
+const messageNotFound = messageRead.notFound;
 
 useHead({ title: () => message.value?.subject || t('dashboard.answer.mode.pageTitle') });
 
@@ -223,6 +224,22 @@ const queueSession = useAnswerQueueSession();
 // While the queue item's own questions are up, "Draft with AI" waits below them.
 const queueAskVisible = ref(false);
 
+/**
+ * The message is gone (#1100). Inside a queue session the way on is the next
+ * item: this one is skipped when it is the queue's current item, otherwise the
+ * queue goes back to its current item. Elsewhere it is the page Answer mode
+ * was opened from.
+ */
+const skipsInQueue = computed(
+	() => !!queueSession && queueSession.engaged.value && queueSession.flow.active.value
+);
+function leaveMissing() {
+	const item = queueSession?.flow.current.value;
+	if (!queueSession || !skipsInQueue.value) answerNav.leave();
+	else if (item && queueSession.isCurrentRoute.value) queueSession.controlsFor(item).skip();
+	else queueSession.goCurrent();
+}
+
 function onSent() {
 	leftDraft.clearFor(draftId.value);
 	if (queueSession?.handleSent()) return;
@@ -363,6 +380,22 @@ onBeforeUnmount(() => {
 					:error="messageError"
 					@retry="messageRead.refetch"
 				/>
+				<!-- Nor is a message that is gone: no endless skeleton for it (#1100). -->
+				<PostboxMessageNotFound v-else-if="messageNotFound">
+					<template #action>
+						<UiButton
+							variant="secondary"
+							data-testid="answer-not-found-leave"
+							@click="leaveMissing"
+						>
+							{{
+								skipsInQueue
+									? t('components.answer.mode.skipMissing')
+									: t('components.answer.mode.back', { page: backLabel })
+							}}
+						</UiButton>
+					</template>
+				</PostboxMessageNotFound>
 				<PostboxReaderSkeleton v-else />
 			</template>
 
@@ -419,7 +452,11 @@ onBeforeUnmount(() => {
 						</template>
 					</template>
 				</PostboxComposer>
-				<div v-else class="flex-1 space-y-3 p-4" aria-hidden="true">
+				<div
+					v-else-if="!messageError && !messageNotFound"
+					class="flex-1 space-y-3 p-4"
+					aria-hidden="true"
+				>
 					<UiSkeleton class="h-4 w-2/3" />
 					<UiSkeleton class="h-32 w-full" />
 				</div>

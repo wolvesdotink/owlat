@@ -75,10 +75,12 @@ export function usePostboxActiveMessage<Row extends { _id: string }>(source: {
 }
 
 /**
- * `usePostboxActiveMessage` plus the read's failure, for a surface whose main
- * content is the message (Answer mode, the reader pane): the by-id fetch is the
+ * `usePostboxActiveMessage` plus the read's outcome, for a surface whose main
+ * content is the message (Answer mode, the reader pane). The by-id fetch is the
  * last source, so its `error` means the message could not be read at all
- * (#721). A skipped fetch reports no error.
+ * (#721), and its `null` answer means there is no such message for this viewer:
+ * deleted, moved by another client, purged, or its mailbox no longer shared
+ * (`notFound`). A skipped fetch reports neither.
  */
 export function usePostboxActiveMessageRead<Row extends { _id: string }>(source: {
 	activeMessageId: () => string | null | undefined;
@@ -97,11 +99,19 @@ export function usePostboxActiveMessageRead<Row extends { _id: string }>(source:
 	});
 	const {
 		data: fetchedActive,
+		isLoading: fetchLoading,
 		error,
 		refetch,
 	} = useConvexQuery(api.mail.mailbox.messages.getMessage, () => fetchArgs.value);
 	const message = computed(
 		() => listActive.value ?? threadMessage.value ?? fetchedActive.value ?? undefined
 	);
-	return { message, error, refetch };
+	const notFound = computed(
+		() =>
+			fetchArgs.value !== 'skip' &&
+			!fetchLoading.value &&
+			!error.value &&
+			fetchedActive.value === null
+	);
+	return { message, notFound, error, refetch };
 }
