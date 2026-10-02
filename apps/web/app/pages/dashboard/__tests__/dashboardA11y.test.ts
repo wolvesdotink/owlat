@@ -120,6 +120,8 @@ beforeEach(() => {
 		useInbox: () => ({
 			filter: ref('open'),
 			assignee: ref('anyone'),
+			mentions: ref(false),
+			unreadMentions: ref(2),
 			sort: ref('newest'),
 			setSort: vi.fn(),
 			toggleSort: vi.fn(),
@@ -133,6 +135,7 @@ beforeEach(() => {
 		}),
 		useInboxTriage: () => ({ visible: ref([]), run: vi.fn(), onWindowKeydown: vi.fn() }),
 		useInboxAssigneePresence: () => () => false,
+		useInboxNoteCounts: () => () => 0,
 		useOrganization: () => ({
 			organization: ref({ id: 'org1', name: 'Owlat' }),
 			members: ref([]),

@@ -42,7 +42,11 @@ const AssignPopoverStub = {
 		'<div><slot name="trigger" /><button class="assign-pick" @click="$emit(\'assign\', \'picked-user\')" /></div>',
 };
 
-function mountRow(thread: Partial<InboxThreadRowThread>, assigneePresent?: boolean) {
+function mountRow(
+	thread: Partial<InboxThreadRowThread>,
+	assigneePresent?: boolean,
+	extra: Record<string, unknown> = {}
+) {
 	const full: InboxThreadRowThread = {
 		_id: 't1',
 		_creationTime: 1000,
@@ -58,6 +62,7 @@ function mountRow(thread: Partial<InboxThreadRowThread>, assigneePresent?: boole
 			focused: false,
 			formatCompactRelativeTime: () => '5m',
 			...(assigneePresent === undefined ? {} : { assigneePresent }),
+			...extra,
 		},
 		global: {
 			plugins: [createTestI18n()],
@@ -139,5 +144,14 @@ describe('InboxThreadRow', () => {
 		expect(w.emitted('assign')).toEqual([['picked-user']]);
 		expect(w.emitted('resolve')).toHaveLength(1);
 		expect(w.emitted('snooze')).toHaveLength(1);
+	});
+
+	it('shows how many internal notes the thread has, and nothing when none', () => {
+		expect(mountRow({}).find('[data-testid="inbox-row-note-count"]').exists()).toBe(false);
+		const chip = mountRow({}, undefined, { noteCount: 3 }).get(
+			'[data-testid="inbox-row-note-count"]'
+		);
+		expect(chip.text()).toContain('3 internal notes');
+		expect(mountRow({}, undefined, { noteCount: 100 }).text()).toContain('99+');
 	});
 });
