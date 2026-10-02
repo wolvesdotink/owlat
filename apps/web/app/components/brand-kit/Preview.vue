@@ -114,6 +114,7 @@ const usesWebFont = computed(
 			<UiSegmentedControl v-model="mode" :options="modeOptions" size="sm" fit="content" />
 		</div>
 		<div class="p-4 bg-bg-surface">
+			<!-- palette-ok: the email document paints its own background; white until it loads -->
 			<iframe
 				:srcdoc="html"
 				sandbox=""

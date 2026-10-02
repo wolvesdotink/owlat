@@ -199,6 +199,7 @@ async function apply() {
 						"
 					>
 						<input v-model="chosenLogo" type="radio" :value="candidate.url" class="sr-only" />
+						<!-- palette-ok: a logo candidate is shown on the email paper it is meant for -->
 						<span class="h-16 flex items-center justify-center bg-white rounded">
 							<img
 								:src="candidate.url"

@@ -34,6 +34,7 @@ function handleSelect(asset: {
 
 <template>
 	<div class="flex items-center gap-4">
+		<!-- palette-ok: the logo sits on the light or dark email surface it will appear on -->
 		<div
 			class="w-28 h-16 shrink-0 rounded-lg border border-border-subtle flex items-center justify-center overflow-hidden p-2"
 			:class="props.isDark ? 'bg-[#18181b]' : 'bg-white'"
