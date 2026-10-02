@@ -270,7 +270,7 @@ describe('InboxThreadComposer in Answer mode', () => {
 		const wrapper = mountComposer({ subject: 'Re: Invoice' });
 		const vm = wrapper.vm as unknown as {
 			fill: (b: string, s: string) => void;
-			snapshot: () => { body: string; subject: string; touched: boolean };
+			snapshot: () => { body: string; subject: string; touched: boolean; gapGuarded: boolean };
 		};
 		vm.fill('The CSV has both variants.', 'Re: Invoice');
 		await nextTick();

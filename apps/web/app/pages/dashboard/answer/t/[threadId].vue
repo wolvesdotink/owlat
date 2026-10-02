@@ -120,8 +120,8 @@ const sendHold = computed(() => {
 const composerRef = shallowRef<{
 	focus: () => void;
 	reset: () => void;
-	fill: (body: string, subject: string) => void;
-	snapshot: () => { body: string; subject: string; touched: boolean };
+	fill: (body: string, subject: string, gapGuarded?: boolean) => void;
+	snapshot: () => { body: string; subject: string; touched: boolean; gapGuarded: boolean };
 	answer: AnswerComposerApi;
 } | null>(null);
 
