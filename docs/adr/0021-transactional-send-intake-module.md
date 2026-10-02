@@ -1122,13 +1122,15 @@ ownership of each blob is now recorded instead of assumed:
    list the moment `ctx.storage.store` returns and then gets a
    `transactionalPendingUploads` row (`register`) with a one-hour expiry.
    The row is deletion authority for that blob.
-3. **Claim in the Send's transaction.** The dispatch mutation, called with
-   `uploadsPending: true`, deletes the pending rows of its attachment
-   storage ids in the same transaction that inserts the Send, which owns
-   the blobs from then on (`attachmentStorageIds`, freed by the Send
-   lifecycle). A row that is missing (released or expired) makes the claim
-   throw, which rolls the insert back, so a Send never names bytes that
-   may already be gone.
+3. **Claim in the Send's transaction.** The dispatch mutation deletes the
+   pending rows of its attachment storage ids in the same transaction
+   that inserts the Send, which owns the blobs from then on
+   (`attachmentStorageIds`, freed by the Send lifecycle). It always
+   claims; no caller can opt out. A row that is missing (released,
+   expired, or never registered) makes the claim throw, which rolls the
+   insert back, so a Send never names bytes that may already be gone, and
+   a new caller that stores a blob without registering it fails at its
+   first test.
 4. **Release on every refusal.** A storage error, a missing storage URL, a
    dispatch rejection and a thrown dispatch all call `release`, which
    deletes only the blobs whose pending row still exists. A blob whose row
@@ -1179,10 +1181,17 @@ the body text and the parsed strings (about 27 MiB). Both stay inside
 - `transactionalPendingUploads` is a new table: additive, no migration.
   It is tenant data (`TENANT_TABLES`), wiped with its blobs by the
   organization deletion walker and the dev reset.
-- `uploadsPending` is an optional dispatch argument. A shell of the
-  previous release still running across the deploy registers nothing and
-  omits it, and dispatch then claims nothing, as before. Remove the flag
-  after the next release and claim unconditionally.
+- The claim is unconditional since issue #1076. v0.6.7 gated it on an
+  optional `uploadsPending` argument so that a v0.6.6 shell still running
+  across that deploy, which registers nothing, could dispatch. Dispatch
+  still accepts `uploadsPending: true` and ignores it: the v0.6.7 shell
+  passes it, a request of that release in flight during the upgrade calls
+  the newly deployed mutation, and Convex refuses an argument the
+  validator does not list. The field has no effect and is removed in the
+  release after. An operator going straight from v0.6.6 sees a v0.6.6
+  request that had already stored a base64 attachment when the deploy
+  landed refused with an error the client can retry; its blob is left
+  behind, as v0.6.6 left one behind on any failure.
 - The SDKs already enforced 10 attachments and 10 MiB decoded. Both now
   compute the decoded size exactly (they used to round up and refuse a
   file of exactly 10 MiB the API accepts).
