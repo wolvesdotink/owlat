@@ -25,6 +25,16 @@ export const SLA_DUE_SOON_MS = 60 * 60 * 1000;
 
 export type SlaSlice = 'sla-overdue' | 'sla-due-soon';
 
+/**
+ * The time the slices are cut at. A deadline passing writes nothing, so a
+ * subscription cut at the server's time would never re-run on its own: the
+ * list sends its clock as an argument instead, and each new value re-runs the
+ * read. Absent or not a finite number: the server's time.
+ */
+export function slaSliceNow(clientNow: number | undefined): number {
+	return clientNow !== undefined && Number.isFinite(clientNow) ? clientNow : Date.now();
+}
+
 export function isSlaSlice(filter: string | undefined): filter is SlaSlice {
 	return filter === 'sla-overdue' || filter === 'sla-due-soon';
 }

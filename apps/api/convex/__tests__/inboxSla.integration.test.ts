@@ -360,6 +360,28 @@ describe('breaches, slices and notices', () => {
 		expect(optedIn.map((n) => n.kind)).toEqual(['sla_breach']);
 	});
 
+	it('cuts the slices at the clock the list sends', async () => {
+		const t = await setup();
+		await enable(t);
+		const eight = Date.now();
+		const threadId = await insertThread(t, { responseDueAt: eight + 2 * HOUR });
+		const at = async (now: number) => ({
+			summary: await t.query(api.inbox.sla.queries.getListSummary, { now }),
+			dueSoon: await t.query(api.inbox.queries.listThreads, { filter: 'sla-due-soon', now }),
+			overdue: await t.query(api.inbox.queries.listThreads, { filter: 'sla-overdue', now }),
+		});
+
+		const early = await at(eight);
+		expect(early.summary).toMatchObject({ overdue: 0, dueSoon: 0 });
+		expect(early.dueSoon.threads).toHaveLength(0);
+		const soon = await at(eight + HOUR + 60_000);
+		expect(soon.summary).toMatchObject({ overdue: 0, dueSoon: 1 });
+		expect(soon.dueSoon.threads.map((r) => r._id)).toEqual([threadId]);
+		const late = await at(eight + 2 * HOUR + 60_000);
+		expect(late.summary).toMatchObject({ overdue: 1, dueSoon: 0 });
+		expect(late.overdue.threads.map((r) => r._id)).toEqual([threadId]);
+	});
+
 	it('does nothing while targets are off', async () => {
 		const t = await setup();
 		await insertThread(t, { responseDueAt: Date.now() - 1 });

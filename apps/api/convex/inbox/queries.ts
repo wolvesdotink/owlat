@@ -24,7 +24,7 @@ import {
 	threadSortValidator,
 	type ThreadFilter,
 } from './threadFilters';
-import { compareResponseDue, isSlaSlice } from './sla/slices';
+import { compareResponseDue, isSlaSlice, slaSliceNow } from './sla/slices';
 import { searchThreads } from './threadSearch';
 import { takeOverViewFor } from './manualReply';
 import { redactContactCapabilityFields } from '../contacts/listing';
@@ -101,6 +101,10 @@ export const listThreads = publicQuery({
 		search: v.optional(v.string()),
 		limit: v.optional(v.number()),
 		cursor: v.optional(v.string()),
+		// The list's clock, sent with the Overdue / Due soon slices so the first
+		// page re-runs as deadlines pass (see sla/slices.ts `slaSliceNow`).
+		// Absent = the server's time.
+		now: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'inbox');
@@ -111,7 +115,7 @@ export const listThreads = publicQuery({
 
 		const limit = args.limit ?? 20;
 		// A later page reuses the first page's `now`: see pinThreadCursor.
-		const pinned = openThreadCursor(args.cursor, Date.now());
+		const pinned = openThreadCursor(args.cursor, slaSliceNow(args.now));
 		const now = pinned.now;
 		const sort = isSlaSlice(args.filter) ? 'due' : (args.sort ?? 'newest');
 

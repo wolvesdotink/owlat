@@ -9,7 +9,7 @@ import type { QueryCtx } from '../../_generated/server';
 import { readMigrationRun } from '../../lib/migrationLedger';
 import { throwInvalidInput } from '../../_utils/errors';
 import { FILTER_COUNT_CAP, threadAssigneeValidator } from '../threadFilters';
-import { buildSlaThreadQuery } from './slices';
+import { buildSlaThreadQuery, slaSliceNow } from './slices';
 import { readSlaPolicyRow, teamInboxAdminMutation, teamInboxAdminQuery } from './policy';
 import { slaPolicyView } from './policyRules';
 import { summarizeResponseAnalytics } from './analyticsRules';
@@ -31,14 +31,15 @@ const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 /**
  * Whether targets are on, and how many threads are overdue / due within the
  * hour, for the Team Inbox highlights. Counts read at most `cap` rows, like
- * the tab counts; `assignee` narrows them the same way.
+ * the tab counts; `assignee` narrows them the same way. `now` is the list's
+ * clock (see `slaSliceNow`): a new value re-counts as deadlines pass.
  */
 export const getListSummary = teamInboxAdminQuery({
-	args: { assignee: v.optional(threadAssigneeValidator) },
+	args: { assignee: v.optional(threadAssigneeValidator), now: v.optional(v.number()) },
 	handler: async (ctx, args, session) => {
 		const isEnabled = slaPolicyView(await readSlaPolicyRow(ctx)) !== null;
 		if (!isEnabled) return { isEnabled, overdue: 0, dueSoon: 0, cap: FILTER_COUNT_CAP };
-		const now = Date.now();
+		const now = slaSliceNow(args.now);
 		const count = async (slice: 'sla-overdue' | 'sla-due-soon') =>
 			(
 				await buildSlaThreadQuery(ctx, slice, session.userId, now, args.assignee).take(
