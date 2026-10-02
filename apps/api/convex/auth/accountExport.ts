@@ -472,8 +472,8 @@ export const exportUserDataPage = authedAction({
 		if (args.resource === 'bookingPages' || args.resource === 'bookings') {
 			const result = (await ctx.runQuery(
 				args.resource === 'bookings'
-					? internal.auth.accountExportQueries.listBookings
-					: internal.auth.accountExportQueries.listBookingPages,
+					? internal.auth.accountExportBookingQueries.listBookings
+					: internal.auth.accountExportBookingQueries.listBookingPages,
 				{ userId: args.userId, paginationOpts }
 			)) as PaginationResult<Record<string, unknown>>;
 			return serializeAccountExportPage(result);

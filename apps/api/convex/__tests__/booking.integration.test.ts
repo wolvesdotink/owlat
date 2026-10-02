@@ -441,12 +441,12 @@ describe('account export', () => {
 			const rows = await ctx.db.query('bookings').collect();
 			return rows.map(({ manageTokenHash: _digest, ...rest }) => rest);
 		});
-		const exported = await t.query(internal.auth.accountExportQueries.listBookings, {
+		const exported = await t.query(internal.auth.accountExportBookingQueries.listBookings, {
 			userId: 'host-A',
 			paginationOpts: { numItems: 10, cursor: null },
 		});
 		expect(exported.page).toEqual(page);
-		const pages = await t.query(internal.auth.accountExportQueries.listBookingPages, {
+		const pages = await t.query(internal.auth.accountExportBookingQueries.listBookingPages, {
 			userId: 'host-A',
 			paginationOpts: { numItems: 10, cursor: null },
 		});

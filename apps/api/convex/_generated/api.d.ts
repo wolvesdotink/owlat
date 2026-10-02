@@ -130,6 +130,7 @@ import type * as auth_accessRequest from '../auth/accessRequest.js';
 import type * as auth_accountDeletion from '../auth/accountDeletion.js';
 import type * as auth_accountExport from '../auth/accountExport.js';
 import type * as auth_accountExportArtifacts from '../auth/accountExportArtifacts.js';
+import type * as auth_accountExportBookingQueries from '../auth/accountExportBookingQueries.js';
 import type * as auth_accountExportQueries from '../auth/accountExportQueries.js';
 import type * as auth_accountManagement from '../auth/accountManagement.js';
 import type * as apiV1Http from '../apiV1Http.js';
@@ -1561,6 +1562,7 @@ declare const fullApi: ApiFromModules<{
 	'auth/accountDeletion': typeof auth_accountDeletion;
 	'auth/accountExport': typeof auth_accountExport;
 	'auth/accountExportArtifacts': typeof auth_accountExportArtifacts;
+	'auth/accountExportBookingQueries': typeof auth_accountExportBookingQueries;
 	'auth/accountExportQueries': typeof auth_accountExportQueries;
 	'auth/accountManagement': typeof auth_accountManagement;
 	apiV1Http: typeof apiV1Http;
