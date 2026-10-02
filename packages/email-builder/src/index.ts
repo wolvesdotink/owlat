@@ -73,6 +73,7 @@ export type {
 	PreviewMode,
 	SlashCommand,
 	SlashMenuState,
+	EmailBuilderBrand,
 } from './types';
 
 // Utilities

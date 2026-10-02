@@ -25,6 +25,7 @@ import type {
 	SlashCommand,
 	EmailTheme,
 	VariableType,
+	BrandBlockKind,
 } from '../types';
 import type { ParentContext } from './canvas/types';
 
@@ -42,6 +43,7 @@ import { useSavedBlockPicker } from '../composables/useSavedBlockPicker';
 import { useSaveBlockModal } from '../composables/useSaveBlockModal';
 import { useSlashCommands } from '../composables/useSlashCommands';
 import { usePreview } from '../composables/usePreview';
+import { useBrandKit } from '../composables/useBrandKit';
 
 // Render options surfaced in the preview's RenderOptionsPanel.
 import type { PreviewRenderOptions } from '../preview/types';
@@ -393,6 +395,39 @@ const {
 	blocksVersion,
 });
 
+// Brand kit: swatches for the colour pickers, the logo and footer Blocks, and
+// the "Apply brand kit" restyle (one undoable step).
+const { isBrandConfigured, insertableBrandBlocks, brandBlocksFor, applyBrand } = useBrandKit({
+	brand: computed(() => props.config?.brand),
+	theme,
+	allowedBlockTypes,
+	canvasBlocks,
+	commitPendingHistory: () => commitPendingHistory(),
+});
+const showApplyBrandConfirm = ref(false);
+
+function confirmApplyBrand() {
+	showApplyBrandConfirm.value = false;
+	clearSelection();
+	applyBrand();
+}
+
+/**
+ * Insert the brand kit's logo or footer as root Blocks at `index`, or, without
+ * one, after the selected Block; with nothing selected the logo goes on top
+ * and the footer at the bottom.
+ */
+function insertBrandBlocks(kind: BrandBlockKind, index?: number) {
+	const blocks = brandBlocksFor(kind);
+	if (blocks.length === 0) return;
+	const anchor = selectedRootId.value
+		? canvasBlocks.value.findIndex((b) => b.id === selectedRootId.value)
+		: -1;
+	const at = index ?? (anchor >= 0 ? anchor + 1 : kind === 'logo' ? 0 : canvasBlocks.value.length);
+	canvasBlocks.value.splice(Math.min(at, canvasBlocks.value.length), 0, ...blocks);
+	handleSelectBlock(blocks[0]!.id);
+}
+
 // Focus mode
 const { isFocusMode, toggleFocusMode, exitFocusMode, setupKeyboardShortcut } = useFocusMode();
 setupKeyboardShortcut();
@@ -518,10 +553,11 @@ function handleKeydown(event: KeyboardEvent) {
 }
 
 // Slash commands — fetch saved blocks so they appear directly in the slash menu
-const { setSavedBlocks, setAllowedBlockTypes } = useSlashCommands();
+const { setSavedBlocks, setAllowedBlockTypes, setBrandBlocks } = useSlashCommands();
 
 // Keep the slash menu's insertable set in sync with the host config allowlist.
 watch(allowedBlockTypes, (types) => setAllowedBlockTypes(types), { immediate: true });
+watch(insertableBrandBlocks, (kinds) => setBrandBlocks(kinds), { immediate: true });
 
 async function fetchSavedBlocksForSlashMenu() {
 	if (!handlers.savedBlocks) return;
@@ -627,8 +663,7 @@ function handleDeleteActiveBlock() {
 	const blockId = activeBlock.value.id;
 
 	// A nested item, at any depth
-	const scope =
-		blockState.selectedColumnContext.value ?? blockState.selectedContainerContext.value;
+	const scope = blockState.selectedColumnContext.value ?? blockState.selectedContainerContext.value;
 	if (selectedNestedItemId.value && scope) {
 		if (isEditable(scope.blockId)) handleDeleteNestedItem(scope.blockId, blockId);
 		clearBlockSelection();
@@ -655,8 +690,7 @@ function handleDuplicateActiveBlock() {
 
 	// A nested item is copied next to itself, at any depth. The canonical
 	// handler deep-clones it and gives it and everything inside it fresh ids.
-	const scope =
-		blockState.selectedColumnContext.value ?? blockState.selectedContainerContext.value;
+	const scope = blockState.selectedColumnContext.value ?? blockState.selectedContainerContext.value;
 	if (selectedNestedItemId.value && scope) {
 		if (isEditable(scope.blockId)) handleDuplicateNestedItem(scope.blockId, blockId);
 	} else {
@@ -940,10 +974,20 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 		return;
 	}
 
+	// Brand kit Blocks are roots, placed like a saved Block: after the root
+	// that holds the source, or where a root source that closing removed was.
+	if (command.brandBlock) {
+		const rootIndex = canvasBlocks.value.findIndex(
+			(b) => b.id === (source.parentId ? source.rootId : fromBlockId)
+		);
+		insertBrandBlocks(command.brandBlock, rootIndex >= 0 ? rootIndex + 1 : source.index);
+		return;
+	}
+
 	const headingMatch = command.id.match(/^h([123])$/);
 	if (headingMatch) {
 		const level = Number(headingMatch[1]) as 1 | 2 | 3;
-		insertAfterInlineSource(source, fromBlockId, 'text', () => headingContent(level));
+		insertAfterInlineSource(source, fromBlockId, 'text', () => headingContent(level, theme.value));
 	} else {
 		insertAfterInlineSource(source, fromBlockId, command.id as BlockType);
 	}
@@ -968,6 +1012,7 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 				:config="config"
 				:can-undo="canUndo"
 				:can-redo="canRedo"
+				:can-apply-brand="isBrandConfigured"
 				@update:name="formName = $event"
 				@update:subject="formSubject = $event"
 				@toggle-preview="togglePreviewMode"
@@ -978,6 +1023,7 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 				@undo="undo"
 				@redo="redo"
 				@show-shortcuts="showShortcutsDialog = true"
+				@apply-brand="showApplyBrandConfirm = true"
 			>
 				<template v-if="$slots['toolbar-actions']" #toolbar-actions>
 					<slot name="toolbar-actions" />
@@ -1050,7 +1096,9 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 				:canvas-element="canvasInnerElement"
 				:visible="true"
 				:block-types="allowedBlockTypes"
+				:brand-blocks="insertableBrandBlocks"
 				@add-block="handleAddBlockFromToolbar"
+				@add-brand-block="insertBrandBlocks"
 			/>
 		</div>
 
@@ -1148,6 +1196,18 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 
 		<!-- Keyboard shortcuts help sheet -->
 		<KeyboardShortcutsDialog :show="showShortcutsDialog" @close="showShortcutsDialog = false" />
+
+		<!-- Apply brand kit: restyles the whole email, so it asks first -->
+		<UiConfirmationDialog
+			:open="showApplyBrandConfirm"
+			title="Apply brand kit?"
+			description="Colors, fonts and button styles across this email change to your brand kit. Text, images and links stay as they are, and you can undo it."
+			confirm-text="Apply brand kit"
+			cancel-text="Cancel"
+			@confirm="confirmApplyBrand"
+			@cancel="showApplyBrandConfirm = false"
+			@update:open="!$event && (showApplyBrandConfirm = false)"
+		/>
 
 		<!-- Detach confirmation dialog -->
 		<UiConfirmationDialog

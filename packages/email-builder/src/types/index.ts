@@ -69,4 +69,6 @@ export type {
 	PreviewMode,
 	SlashCommand,
 	SlashMenuState,
+	EmailBuilderBrand,
+	BrandBlockKind,
 } from './editor';

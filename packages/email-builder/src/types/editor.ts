@@ -1,8 +1,21 @@
 import type { EditorBlock, BlockType, SavedBlock } from './blocks';
 import type { Variable, VariableType } from './variables';
 import type { EmailTheme } from '@owlat/shared';
+import type { BrandKitDesign } from '@owlat/shared/brandKit';
+import type { BrandLogos } from '@owlat/shared/brandKitBlocks';
 
 export type { EmailTheme } from '@owlat/shared';
+
+/**
+ * The organization's brand kit, as the editor uses it: its colours lead every
+ * colour picker, its logo and footer can be inserted as Blocks, and "Apply
+ * brand kit" restyles the email with it. Pass `theme` from the same kit so new
+ * Blocks start in its styles.
+ */
+export interface EmailBuilderBrand {
+	design: BrandKitDesign;
+	logos: BrandLogos;
+}
 
 /**
  * Email builder mode
@@ -34,6 +47,8 @@ export interface EmailBuilderConfig {
 	 * otherwise the button is a dead control.
 	 */
 	showSettings?: boolean;
+	/** The brand kit. Without it the editor offers no brand swatches, Blocks or restyle. */
+	brand?: EmailBuilderBrand;
 }
 
 /**
@@ -112,6 +127,9 @@ export type PreviewDevice = 'desktop' | 'tablet' | 'mobile';
  */
 export type PreviewMode = 'edit' | 'preview' | 'code';
 
+/** The brand kit Blocks the editor can insert. */
+export type BrandBlockKind = 'logo' | 'footer';
+
 /**
  * Slash command definition
  */
@@ -120,9 +138,11 @@ export interface SlashCommand {
 	name: string;
 	description: string;
 	icon: unknown; // Component type
-	category: 'text' | 'media' | 'layout' | 'components' | 'saved';
+	category: 'text' | 'media' | 'layout' | 'components' | 'brand' | 'saved';
 	aliases?: string[];
 	savedBlock?: SavedBlock;
+	/** Inserts the brand kit's logo or footer Blocks. */
+	brandBlock?: BrandBlockKind;
 }
 
 /**
