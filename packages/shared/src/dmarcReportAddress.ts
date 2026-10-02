@@ -18,7 +18,7 @@
 import { trySplitZone } from './dnsZone';
 
 /** Local part of the default report address on the return-path domain. */
-export const DEFAULT_DMARC_REPORT_LOCAL_PART = 'dmarc-reports';
+const DEFAULT_DMARC_REPORT_LOCAL_PART = 'dmarc-reports';
 
 /** Value of `MTA_DMARC_REPORT_ADDRESS` that turns Owlat's report address off. */
 const DMARC_REPORT_ADDRESS_OFF = 'off';

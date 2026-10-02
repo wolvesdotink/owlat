@@ -3,7 +3,6 @@ import { deflateRawSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import {
 	DMARC_REPORT_MAX_RECORDS,
-	DMARC_REPORT_MAX_ZIP_ENTRIES,
 	locateZipXmlEntry,
 	parseDmarcReport,
 	sniffDmarcReportContainer,
@@ -154,7 +153,8 @@ describe('containers', () => {
 	it('refuses encrypted entries, too many entries and archives without XML', () => {
 		const body = new Uint8Array([60]);
 		expect(locateZipXmlEntry(zip([{ name: 'r.xml', body, flags: 1 }])).ok).toBe(false);
-		const crowd = Array.from({ length: DMARC_REPORT_MAX_ZIP_ENTRIES + 1 }, (_, i) => ({
+		// One more than the 16-entry cap.
+		const crowd = Array.from({ length: 17 }, (_, i) => ({
 			name: `r${i}.xml`,
 			body,
 		}));

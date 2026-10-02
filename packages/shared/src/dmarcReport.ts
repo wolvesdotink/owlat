@@ -24,7 +24,7 @@ export const DMARC_REPORT_MAX_COMPRESSED_BYTES = 5 * 1024 * 1024;
 /** Largest XML document (after decompression) we will parse. */
 export const DMARC_REPORT_MAX_XML_BYTES = 8 * 1024 * 1024;
 /** A zip holding more entries than this is not a DMARC report. */
-export const DMARC_REPORT_MAX_ZIP_ENTRIES = 16;
+const DMARC_REPORT_MAX_ZIP_ENTRIES = 16;
 /** Rows (`<record>` elements) one report may carry. */
 export const DMARC_REPORT_MAX_RECORDS = 5_000;
 /** Per-row message count ceiling; keeps sums exact in a 20,000-row read. */
