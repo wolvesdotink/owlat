@@ -860,6 +860,24 @@ Where N-1 can have left work half done (an action killed between two of its
 calls), N also ships the sweep that finds it and finishes or ends it, as
 `automations/stalledRuns.ts` does for automation runs.
 
+**IMAP wire version.** The functions the IMAP server calls (the `fn` table in
+`apps/imap/src/convex.ts`) are a contract with a separately deployed image,
+versioned by `IMAP_WIRE_VERSION` and `IMAP_WIRE_MIN_SUPPORTED` in
+`@owlat/shared/imapWire` (ADR-0063). The IMAP server reports its wire version
+at startup and every 5 minutes (`mail/imap/serverRegistry:report`), serves only
+a backend that speaks it, and refuses to start below the minimum.
+
+- Bump `IMAP_WIRE_VERSION` in the PR that changes the contract: an argument or
+  result field of an IMAP-called function is added, removed or changes meaning,
+  or the IMAP server starts calling a function the previous backend lacks. The
+  expand rules above still apply; the bump records that the step happened.
+- Removing a path an older IMAP server still uses is a contract step that also
+  raises `IMAP_WIRE_MIN_SUPPORTED`, only to a version every IMAP release inside
+  the N-1 window speaks. The PR cites the output of
+  `npx convex run mail/imap/serverRegistry:status` (its `safeToRaiseMinTo`) from
+  a deployment running the window's oldest IMAP release, and the release notes
+  tell operators to run it before updating.
+
 **Migration manifest.** A release that needs data work ships a manifest listing,
 per migration: its module (`migrations/NNNN_name:run`), whether it must finish
 before users are let back in or may run in the background, whether a later
