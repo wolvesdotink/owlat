@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ref, nextTick, type Ref } from 'vue';
+import { ref, nextTick, reactive, type Ref } from 'vue';
+import { flushPromises } from '@vue/test-utils';
 import { useInbox } from '../useInbox';
 
 /**
@@ -298,5 +299,28 @@ describe('useInbox pagination', () => {
 		mentions.value = false;
 		expect(mentionList!.args()).toBe('skip');
 		expect(first!.args()).toMatchObject({ filter: 'open' });
+	});
+
+	it('leaves the Mentions view when a status tab is picked from it', async () => {
+		// The router's shape: `route.query` only changes once a navigation lands,
+		// and the last `replace` wins. Picking a tab clears `mentions` and sets
+		// `filter` in the same tick, so a write per key would each start from
+		// `?mentions=1` and the later one would put it back.
+		const route = reactive({ query: { mentions: '1' } as Record<string, unknown> });
+		const replace = vi.fn(async ({ query }: { query: Record<string, unknown> }) => {
+			await Promise.resolve();
+			route.query = query;
+		});
+		vi.stubGlobal('useRoute', () => route);
+		vi.stubGlobal('useRouter', () => ({ replace }));
+		const { mentions, filter } = useInbox();
+
+		mentions.value = false;
+		filter.value = 'waiting';
+		await flushPromises();
+
+		expect(route.query).toEqual({ filter: 'waiting' });
+		expect(mentions.value).toBe(false);
+		expect(filter.value).toBe('waiting');
 	});
 });
