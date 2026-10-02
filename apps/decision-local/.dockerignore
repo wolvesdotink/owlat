@@ -1,0 +1,7 @@
+*
+!requirements.txt
+!decide.py
+!engine.py
+!server.py
+!tests
+tests/__pycache__

@@ -47,7 +47,7 @@ import { applySetupDefaults } from '../lib/setupEnvDefaults';
 import { assertFblDedupCutoverConfigured } from '../lib/fblDedupSetup';
 import { applyAssumeYes, applyConfigFile } from './setupNonInteractive';
 import { pickSendingProvider } from './setupSendingProvider';
-import { pickAIProvider, pickDecisionProvider } from './setupAiProvider';
+import { pickAIProvider, pickDecisionProvider, withComposeProfiles } from './setupAiProvider';
 import { collectDomain } from './setupDomain';
 import {
 	validatePostHogHost,
@@ -164,6 +164,17 @@ export async function runSetup(opts: RunOptions): Promise<number> {
 		// the flag off would produce a deployment that holds a credential and
 		// never uses it — the quiet kind of wrong. Skipping touches neither.
 		if (decision.isPlaneConfigured) flags['ai.decisionPlane'] = true;
+		// The local engine is a service of its own. Its profile joins whatever the
+		// install already runs; persisting the setup keeps install-owned profiles.
+		if (decision.composeProfiles?.length) {
+			envPatch = {
+				...envPatch,
+				COMPOSE_PROFILES: withComposeProfiles(
+					envPatch['COMPOSE_PROFILES'] ?? existingEnv['COMPOSE_PROFILES'],
+					decision.composeProfiles
+				),
+			};
+		}
 	}
 
 	// Step 5: optional integrations

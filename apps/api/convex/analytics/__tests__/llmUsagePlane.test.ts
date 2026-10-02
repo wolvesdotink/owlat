@@ -88,6 +88,30 @@ describe('the plane tag on llmUsageEvents', () => {
 		});
 	});
 
+	it('prices a local-engine row at zero and files it under Local, whatever its model id', async () => {
+		const t = convexTest(schema, modules);
+
+		// An operator's own checkpoint: no price table knows this id, and its
+		// org-prefixed shape would otherwise read as OpenRouter.
+		await t.mutation(internal.analytics.llmUsage.record, {
+			feature: 'inbound_triage',
+			modelUsed: 'someone/custom-finetune',
+			tokenUsage: { promptTokens: 1_000_000, completionTokens: 0, totalTokens: 1_000_000 },
+			plane: 'decision',
+			isCalibrated: false,
+			isLocalEngine: true,
+		});
+
+		await t.run(async (ctx) => {
+			const [row] = await ctx.db.query('llmUsageEvents').collect();
+			expect(row?.costUsd).toBe(0);
+			expect(row?.isLocalEngine).toBe(true);
+		});
+		const spend = await t.query(api.analytics.llmUsage.getSpendByProvider, {});
+		expect(spend.providers.map((p) => p.provider)).toEqual(['Local']);
+		expect(spend.totalCostUsd).toBe(0);
+	});
+
 	it('leaves an untagged row exactly as it was before the plane existed', async () => {
 		const t = convexTest(schema, modules);
 

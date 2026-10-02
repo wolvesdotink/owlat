@@ -59,18 +59,29 @@ describe('the two defaults stay separable', () => {
 });
 
 describe('the catalog the picker offers', () => {
-	it('offers the language model and TypeSafe, recommended first', () => {
-		expect(DECISION_PROVIDERS.map((p) => p.kind)).toEqual(['typesafe', 'llm']);
+	it('offers TypeSafe, the local engine and the language model, recommended first', () => {
+		expect(DECISION_PROVIDERS.map((p) => p.kind)).toEqual(['typesafe', 'local', 'llm']);
 		expect(DECISION_PROVIDERS.find((p) => p.kind === 'typesafe')?.recommended).toBe(true);
 		expect(DECISION_PROVIDERS.find((p) => p.kind === 'llm')?.recommended).toBeUndefined();
 	});
 
-	it('names both options in words, with the recommendation inside the message', () => {
+	it('names every option in words, with the recommendation inside the message', () => {
 		const labels = decisionProviderOptions().map((option) => t(option.label));
 		expect(labels).toEqual([
 			'TypeSafe Jev (recommended)',
+			'Local GLiNER model (on your server)',
 			'Use the language model (no third party)',
 		]);
+	});
+
+	it('ships the local engine keyless, uncalibrated and on the newest GLiNER Decide model', () => {
+		const local = DECISION_PROVIDERS.find((p) => p.kind === 'local');
+		expect(local?.requiresKey).toBe(false);
+		expect(local?.calibrated).toBe(false);
+		expect(local?.isLocal).toBe(true);
+		expect(local?.defaultModel).toBe('fastino/GLiNER2.5-multi-Decide');
+		expect(local?.curatedModels[0]).toBe(local?.defaultModel);
+		expect(local?.defaultBaseUrl).toBe('http://decision-local:8080');
 	});
 
 	it('pins a version rather than an alias as the default model', () => {
@@ -163,6 +174,21 @@ describe('the degraded state, in words', () => {
 		expect(t(`dashboard.admin.instance.aiProvider.decision.degraded.${reasons[0]}`)).toContain(
 			'without a calibrated probability'
 		);
+	});
+
+	it('says the local engine is uncalibrated in its own words, not as the language model', () => {
+		const reasons = decisionDegradedReasons({ kind: 'local', hasStoredKey: false });
+		expect(reasons).toEqual(['localUncalibrated']);
+		expect(t(`dashboard.admin.instance.aiProvider.decision.degraded.${reasons[0]}`)).toContain(
+			'runs on your server'
+		);
+		expect(areDecisionThresholdsInert({ kind: 'local', hasStoredKey: false })).toBe(true);
+	});
+
+	it('owes no consent for the local engine — nothing leaves the deployment', () => {
+		expect(decisionConsentOwed(snapshot({ enabled: true, kind: 'local' }))).toBe(false);
+		expect(validateDecisionConfig(snapshot({ enabled: true, kind: 'local' }))).toBeNull();
+		expect(decisionKeyNotice(snapshot({ enabled: true, kind: 'local' }))).toBeNull();
 	});
 
 	it('reports a keyed adapter with no key as a missing key, not as uncalibrated', () => {

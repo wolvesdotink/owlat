@@ -31,6 +31,7 @@ import type { ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import { recordDecisionSpend } from '../../analytics/llmUsage';
 import { errorStatus } from '../llm/dispatch';
+import { decisionProviderFor } from '../decisionProviders';
 import type {
 	DecisionAttemptRecord,
 	DecisionFallbackBreaker,
@@ -72,6 +73,11 @@ export function decisionUsageRecorder(ctx: ActionCtx): DecisionUsageRecorder {
 			isFallback: record.fallback,
 			...(record.calibrated === undefined ? {} : { isCalibrated: record.calibrated }),
 			...(status !== undefined ? { isThrottled: THROTTLED_STATUSES.includes(status) } : {}),
+			// From the adapter that ran, not the model id it reported: a local
+			// engine may load any checkpoint, and every one of them is free.
+			...(record.provenance === 'local' || decisionProviderFor(record.provider).isLocal
+				? { isLocalEngine: true }
+				: {}),
 		});
 	};
 }
