@@ -26,8 +26,8 @@ import { matchAsciiSmiley } from '~/utils/postboxEmojiShortcodes';
 import {
 	usePostboxSnippetPicker,
 	type EditorSnippet,
+	type SnippetInsertOptions,
 } from '~/composables/postbox/usePostboxSnippetPicker';
-import type { SnippetVariableContext } from '~/utils/postboxSnippetVariables';
 import type { Id } from '@owlat/api/dataModel';
 
 export type { EditorSnippet };
@@ -70,17 +70,12 @@ const props = defineProps<{
 	/** Enable the `:shortcode:` emoji picker + ASCII-smiley conversion (opt-in). */
 	emojiShortcodesEnabled?: boolean;
 	/**
-	 * Canned responses offered by the "/" slash-trigger. Empty/undefined
-	 * disables the picker entirely (the editor's other mount sites don't wire
-	 * snippets, so "/" stays literal there).
+	 * Saved replies offered by the `;` trigger. Empty/undefined disables it
+	 * (the editor's other mount sites don't wire replies, so `;` stays literal).
 	 */
 	snippets?: EditorSnippet[];
-	/**
-	 * What a snippet's typed variables resolve from at insert time (plan idea
-	 * 13): recipient facts, the sender identity, today's date. An absent value
-	 * leaves its `{{token}}` standing for the preflight to flag.
-	 */
-	snippetVariableContext?: SnippetVariableContext;
+	/** What a reply's variables resolve from at insert time, and what follows an insert. */
+	snippetInsert?: SnippetInsertOptions;
 }>();
 
 const emit = defineEmits<{
@@ -143,7 +138,7 @@ const {
 function onInput() {
 	emitContent();
 	snippetPicker.update();
-	// While the snippet picker is open the caret sits in a "/token" run; don't
+	// While the snippet picker is open the caret sits in a ";token" run; don't
 	// also fire ghost-text requests over it.
 	if (!snippetPicker.open.value) scheduleGhost();
 	emoji.refresh(); // re-evaluate the `:shortcode:` trigger at the caret
@@ -171,17 +166,17 @@ const {
 	emitContent,
 });
 
-// ── Snippet "/" slash-trigger picker ────────────────────────────────────
-// Typing "/" at the start of a line (or after whitespace) opens a compact
-// canned-response picker. All of the trigger/positioning/keyboard/insert
-// wiring lives in the controller composable (mirroring the ghost-text and
-// rewrite seams); the editor just hands it refs + input hooks.
+// ── Saved-reply `;` trigger ─────────────────────────────────────────────
+// Typing `;` at the start of a line (or after whitespace) opens a compact
+// saved-reply picker. All of the trigger/positioning/keyboard/insert wiring
+// lives in the controller composable (mirroring the ghost-text and rewrite
+// seams); the editor just hands it refs + input hooks.
 
 const snippetPicker = usePostboxSnippetPicker({
 	editorRef,
 	surfaceRef,
 	snippets: () => props.snippets,
-	variableContext: () => props.snippetVariableContext ?? {},
+	insertOptions: () => props.snippetInsert,
 	emitContent,
 });
 
@@ -260,9 +255,6 @@ const { onBeforeInput, onKeydown: baseOnKeydown } = usePostboxEditorInput({
 	rewrite: rewriteCtl,
 });
 
-// The snippet picker owns navigation keys while it's open; otherwise the key
-// event flows to the multiplexed editor-input pathway (emoji / ghost / rewrite
-// / format shortcuts).
 function onKeydown(event: KeyboardEvent) {
 	// The snippet picker owns navigation keys while it's open; otherwise the key
 	// event flows to the multiplexed editor-input pathway (emoji / ghost / rewrite
@@ -300,7 +292,7 @@ function onSelectionChange() {
 	if (ghost.hasGhost()) ghost.cancel();
 	// A caret move re-evaluates an OPEN emoji picker (closes it if the trigger is gone).
 	if (emoji.open.value) emoji.refresh();
-	// A caret move out of the "/token" run closes the snippet picker; a move within
+	// A caret move out of the ";token" run closes the snippet picker; a move within
 	// it (e.g. after inserting a char) refreshes the query + position.
 	snippetPicker.onSelectionChange();
 	// A selection change aborts an in-flight rewrite (its anchor is now stale)
@@ -337,7 +329,8 @@ onBeforeUnmount(() => {
 	rewriteCtl.dispose();
 });
 
-defineExpose({ focus: focusEditor });
+// `insertSnippet`: a reply picked outside the text goes in at the caret.
+defineExpose({ focus: focusEditor, insertSnippet: snippetPicker.insertAtCaret });
 </script>
 
 <template>
@@ -421,7 +414,7 @@ defineExpose({ focus: focusEditor });
 				@link="withFocus(setLink)()"
 				@ai-select="rewriteCtl.onSelect"
 			/>
-			<!-- Snippet "/" dropdown + the prompt-on-insert dialog behind it. -->
+			<!-- Saved-reply `;` dropdown + the prompt-on-insert dialog behind it. -->
 			<PostboxSnippetSurface :picker="snippetPicker" />
 			<!-- AI rewrite pill + preview + undo affordance (all flag-gated). -->
 			<PostboxRewriteLayer v-if="rewriteEnabled" :controller="rewriteCtl" />

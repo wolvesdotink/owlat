@@ -117,6 +117,7 @@ export const sidebarConfig: SidebarGroup[] = [
 		items: [
 			{ label: 'Connect your AI', to: '/guide/connect-your-ai' },
 			{ label: 'Team Inbox', to: '/guide/team-inbox' },
+			{ label: 'Saved Replies', to: '/guide/saved-replies' },
 			{ label: 'AI Agent & Autonomy', to: '/guide/ai-agent' },
 			{ label: 'AI Dashboards', to: '/guide/ai-agent#visualization-agent-adaptive-dashboards' },
 			{ label: 'Code Tasks', to: '/guide/code-tasks' },

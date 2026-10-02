@@ -20,76 +20,20 @@
  * `__tests__/adminSettingsRegistry.test.ts`, which also globs
  * `pages/dashboard/admin/` and fails when a page on disk has no entry.
  */
-import {
-	anyFlag,
-	flag,
-	platformOnly,
-	rampStarted,
-	withPlugins,
+import { anyFlag, flag, platformOnly, rampStarted, withPlugins } from './adminSettingsGates';
+import type { AdminEntry, AdminEnvironment } from './adminSettingsTypes';
+
+export {
+	ADMIN_AREAS,
+	type AdminAreaKey,
+	type AdminAttentionKey,
+	type AdminEntry,
 	type AdminEnvironment,
 	type AdminGate,
-} from './adminSettingsGates';
-
-export type { AdminEnvironment, AdminGate } from './adminSettingsGates';
+} from './adminSettingsTypes';
 
 /** Where the Workspace settings tree lives. Everything under it is registry-owned. */
 export const ADMIN_ROOT = '/dashboard/admin';
-
-/** The groups the rail renders as eyebrows, in this order. */
-export type AdminAreaKey = 'overview' | 'team' | 'delivery' | 'ai' | 'features' | 'system';
-
-export const ADMIN_AREAS: readonly {
-	readonly key: AdminAreaKey;
-	readonly titleKey: string;
-}[] = [
-	{ key: 'overview', titleKey: 'shell.admin.areas.overview' },
-	{ key: 'team', titleKey: 'shell.admin.areas.team' },
-	{ key: 'delivery', titleKey: 'shell.admin.areas.delivery' },
-	{ key: 'ai', titleKey: 'shell.admin.areas.ai' },
-	{ key: 'features', titleKey: 'shell.admin.areas.features' },
-	{ key: 'system', titleKey: 'shell.admin.areas.system' },
-];
-
-/**
- * A live count that earns a rail entry an attention badge. The layout resolves
- * it (it owns the Convex read); the registry only says which count it is.
- */
-export type AdminAttentionKey = 'quarantined' | 'failed';
-
-/** One Workspace settings destination. */
-export interface AdminEntry {
-	readonly id: string;
-	readonly path: string;
-	/**
-	 * i18n KEY for the label — used by the rail, the crumb and the palette alike,
-	 * so the three print one string. Module scope cannot call `useI18n`, so every
-	 * consumer resolves it at its own render boundary.
-	 */
-	readonly titleKey: string;
-	readonly icon: string;
-	readonly area: AdminAreaKey;
-	readonly gate?: AdminGate;
-	/**
-	 * Reachable, crumbed and searchable, but not listed in the rail — the rail
-	 * shows its `parent` instead, and marks the parent current while you are here.
-	 */
-	readonly hidden?: boolean;
-	/** Id of the rail entry that stands for this page. Only set on hidden entries. */
-	readonly parent?: string;
-	/**
-	 * The page's hidden children render as tabs above it (the "Advanced" group of
-	 * ramp pages is one rail entry with four tabs, not four rail entries).
-	 */
-	readonly tabs?: boolean;
-	/**
-	 * Tables and side-by-side layouts that need room (domains, cells, the
-	 * channel list with its overview, the email theme beside its preview) opt
-	 * out of the settings shell's reading width.
-	 */
-	readonly wide?: boolean;
-	/** Badge this entry with a live count when it is non-zero. */
-	readonly attention?: AdminAttentionKey;
-}
 
 /** Breadcrumb page label, by its key leaf. Keeps the table below readable. */
 const label = (leaf: string) => `shared.breadcrumbRoutes.pages.${leaf}`;
@@ -124,6 +68,15 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 		area: 'team',
 		// Same pair the page's `requiresAnyFeature` names.
 		gate: anyFlag('postbox', 'mail.external'),
+	},
+	{
+		id: 'savedReplies',
+		path: `${ADMIN_ROOT}/team/saved-replies`,
+		titleKey: label('savedReplies'),
+		icon: 'lucide:message-square-quote',
+		area: 'team',
+		// Same set the page's `requiresAnyFeature` names.
+		gate: anyFlag('postbox', 'mail.external', 'inbox'),
 	},
 	{
 		id: 'senders',

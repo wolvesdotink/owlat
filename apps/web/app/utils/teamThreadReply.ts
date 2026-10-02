@@ -30,6 +30,12 @@
 export interface TeamThreadReply {
 	body: string;
 	subject: string;
+	/**
+	 * A saved reply left `[[...]]` gaps in the text: saved with it
+	 * (`isDraftGapGuarded`), so they hold Send after a reload too. Omitted =
+	 * the stored guard stays as it is.
+	 */
+	gapGuarded?: boolean;
 }
 
 /** The slice of an inbound message this module reads. */

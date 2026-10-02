@@ -25,6 +25,7 @@ export const ACCOUNT_EXPORT_PERSONAL_RESOURCES = [
 	'chatMessages',
 	'threadNotes',
 	'deliverabilityAlertRecipientStates',
+	'savedReplies',
 ] as const;
 
 export type AccountExportPersonalResource = (typeof ACCOUNT_EXPORT_PERSONAL_RESOURCES)[number];

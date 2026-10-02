@@ -12,6 +12,7 @@ import { classificationValidator } from '../lib/validators/classification';
 import { pendingClarificationValidator } from '../lib/validators/clarification';
 import { attachmentSuggestionsValidator } from '../lib/validators/attachment';
 import { teamReplyAttachmentsValidator } from '../lib/validators/teamReplyAttachment';
+import { draftRevisionValidator } from '../lib/validators/draftRevision';
 import { agentStepKindValidator } from '../agent/steps/catalog';
 import { llmUsageTagFields } from '../lib/llmUsageTags';
 import {
@@ -358,20 +359,15 @@ export const inboxTables = {
 		// review diff renders against it, and the approve-time `'edited'`
 		// autonomy signal compares the sent text to it. Absent until a human
 		// saves.
-		draftRevisions: v.optional(
-			v.array(
-				v.object({
-					text: v.string(),
-					subject: v.optional(v.string()),
-					savedAt: v.number(),
-					savedBy: v.string(),
-				})
-			)
-		),
+		draftRevisions: v.optional(v.array(draftRevisionValidator)),
 		// Stamped on every save-without-approving (and every revision-appending
 		// edit). Drives the review queue's "Saved · edited by you" chip and its
 		// saved-first sort bump. The row stays `draft_ready` — no status change.
 		draftSavedAt: v.optional(v.number()),
+		// A saved reply left `[[...]]` gaps in the working draft: they hold Send, and
+		// `approveDraft` refuses them (DRAFT_HAS_GAPS) until filled. Written by the
+		// composer's saves (`draftRevisions.appendDraftRevision`).
+		isDraftGapGuarded: v.optional(v.boolean()),
 		// Error tracking
 		errorMessage: v.optional(v.string()),
 		// Timestamps

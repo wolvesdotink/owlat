@@ -8,12 +8,15 @@
  * optional.
  *
  * Slots: `send-hint` (beside Send), `menu` (first in ⋯, receives `close`),
- * `notes` (under the pre-send checks).
+ * `notes` (under the pre-send checks). Both composers pass `savedReplies`, which
+ * puts the saved-reply picker beside the paperclip.
  */
 import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
 import type { ComposerMode } from '~/composables/postbox/usePostboxCompose';
 import type { ComposerTargetCapabilities } from '~/utils/composerTarget';
+import type { ComposerSavedReplies } from '~/composables/useComposerSavedReplyPicker';
+import SavedReplyComposerTools from '~/components/savedReply/SavedReplyComposerTools.vue';
 import type { PreflightFinding } from '~/utils/postboxPreflight';
 
 const props = defineProps<{
@@ -60,6 +63,8 @@ const props = defineProps<{
 	/** Coach and Revise are available (AI on) — answer frame lists them in ⋯. */
 	advisoryAvailable?: boolean;
 	advisoryOpen?: boolean;
+	/** The composer's saved replies (picker button, "Save as reply"). */
+	savedReplies?: ComposerSavedReplies;
 }>();
 
 const followUpRemindAt = defineModel<number | null>('followUpRemindAt', {
@@ -205,6 +210,7 @@ function onPickFiles(event: Event) {
 						@change="onPickFiles"
 					/>
 				</template>
+				<SavedReplyComposerTools v-if="savedReplies" :api="savedReplies" />
 				<!-- Answer mode has the room: schedule and the follow-up chip sit on
 				     the row itself instead of behind ⋯. -->
 				<template v-if="answerFrame">

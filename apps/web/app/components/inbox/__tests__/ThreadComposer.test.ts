@@ -7,6 +7,9 @@ import PostboxComposerPreflightChip from '../../postbox/PostboxComposerPreflight
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const platform = ref('linux');
+// The saved replies the composer may insert, and the "it went in" counter.
+const savedReplies = ref<unknown[]>([]);
+const recordUse = vi.fn(async () => ({ ok: true, result: null }));
 beforeAll(() => {
 	Object.assign(globalThis, {
 		useI18n: i18nStubs.useI18n,
@@ -14,7 +17,19 @@ beforeAll(() => {
 		// The shared Postbox footer's own lookups (send-as name, native picker).
 		useInboxes: () => ({ byId: ref(new Map()) }),
 		useNativeFilePicker: () => ({ isDesktop: ref(false), pickNativeFiles: vi.fn() }),
+		// Saved replies: the list, the use counter, the writer's name, the palette.
+		useFeatureFlag: () => ({ isEnabled: () => true }),
+		useConvexQuery: () => ({ data: savedReplies, isLoading: ref(false), error: ref(null) }),
+		useBackendOperation: () => ({ run: recordUse, isLoading: ref(false) }),
+		useAuth: () => ({ user: ref({ name: 'Mira Holt', email: 'mira@owlat.example' }) }),
+		useState: (_key: string, init: () => unknown) => ref(init()),
+		registerCommandPaletteProvider: vi.fn(),
+		usePermissions: () => ({ isAdmin: ref(false) }),
 	});
+});
+afterEach(() => {
+	savedReplies.value = [];
+	recordUse.mockClear();
 });
 enableAutoUnmount(afterEach);
 
@@ -28,6 +43,14 @@ enableAutoUnmount(afterEach);
  *  - a state no reply can go to: no editor, a plain reason instead.
  */
 // The ⋯ menu renders its items inline, so a test can click them.
+const ModalStub = defineComponent({
+	name: 'UiModal',
+	props: { open: Boolean, title: { type: String, default: '' } },
+	setup:
+		(props, { slots }) =>
+		() =>
+			props.open ? h('div', { role: 'dialog' }, slots.default?.()) : null,
+});
 const MenuStub = defineComponent({
 	name: 'PostboxOverflowMenu',
 	setup:
@@ -51,6 +74,7 @@ function mountComposer(props: Record<string, unknown> = {}, slots: Record<string
 			stubs: {
 				Icon: true,
 				PostboxOverflowMenu: MenuStub,
+				UiModal: ModalStub,
 				// The mailbox-only controls of the shared footer, never shown here.
 				PostboxComposerFollowUp: true,
 				PostboxComposerModeControls: true,
@@ -111,7 +135,12 @@ describe('InboxThreadComposer in Answer mode', () => {
 		await body.setValue('We have refunded the invoice.');
 		await wrapper.get('[data-testid="composer-send"]').trigger('click');
 
-		expect(wrapper.emitted('send')?.[0]).toEqual(['We have refunded the invoice.', false, '']);
+		expect(wrapper.emitted('send')?.[0]).toEqual([
+			'We have refunded the invoice.',
+			false,
+			'',
+			false,
+		]);
 		expect(wrapper.get('[data-testid="composer-send"]').text()).toBe('Send reply');
 	});
 
@@ -132,7 +161,12 @@ describe('InboxThreadComposer in Answer mode', () => {
 		);
 
 		await wrapper.get('[data-testid="composer-send"]').trigger('click');
-		expect(wrapper.emitted('send')?.[0]).toEqual(['Hi Ana, here is your invoice.', true, '']);
+		expect(wrapper.emitted('send')?.[0]).toEqual([
+			'Hi Ana, here is your invoice.',
+			true,
+			'',
+			false,
+		]);
 	});
 
 	it('sends an edited draft as the person’s own text; the changes are under ⋯', async () => {
@@ -148,10 +182,10 @@ describe('InboxThreadComposer in Answer mode', () => {
 		expect(wrapper.get('[data-testid="thread-composer-diff"]').text()).toContain('Hi Ana.');
 
 		await wrapper.get('[data-testid="composer-send"]').trigger('click');
-		expect(wrapper.emitted('send')?.[0]).toEqual(['Hi Ana, sorry for the wait.', false, '']);
+		expect(wrapper.emitted('send')?.[0]).toEqual(['Hi Ana, sorry for the wait.', false, '', false]);
 
 		await wrapper.get('[data-testid="thread-composer-save"]').trigger('click');
-		expect(wrapper.emitted('save')?.[0]).toEqual(['Hi Ana, sorry for the wait.', '']);
+		expect(wrapper.emitted('save')?.[0]).toEqual(['Hi Ana, sorry for the wait.', '', false]);
 	});
 
 	it('"Write my own" clears the editor so the person can start over', async () => {
@@ -183,7 +217,7 @@ describe('InboxThreadComposer in Answer mode', () => {
 		const body = wrapper.get('[data-testid="thread-composer-body"]');
 		await body.setValue('Done.');
 		await body.trigger('keydown', { key: 'Enter', ctrlKey: true });
-		expect(wrapper.emitted('send')?.[0]).toEqual(['Done.', false, '']);
+		expect(wrapper.emitted('send')?.[0]).toEqual(['Done.', false, '', false]);
 	});
 
 	it('holds Send while a teammate is replying, and says who on the button', async () => {
@@ -231,7 +265,7 @@ describe('InboxThreadComposer in Answer mode', () => {
 		);
 		await wrapper.get('[data-testid="thread-composer-body"]').setValue('Here is the answer.');
 		await wrapper.get('[data-testid="composer-send"]').trigger('click');
-		expect(wrapper.emitted('send')?.[0]).toEqual(['Here is the answer.', false, '']);
+		expect(wrapper.emitted('send')?.[0]).toEqual(['Here is the answer.', false, '', false]);
 	});
 
 	it('marks a reply to an answered message as a follow-up', () => {
@@ -246,7 +280,7 @@ describe('InboxThreadComposer in Answer mode', () => {
 		const wrapper = mountComposer({ subject: 'Re: Invoice' });
 		const vm = wrapper.vm as unknown as {
 			fill: (b: string, s: string) => void;
-			snapshot: () => { body: string; subject: string; touched: boolean };
+			snapshot: () => { body: string; subject: string; touched: boolean; gapGuarded: boolean };
 		};
 		vm.fill('The CSV has both variants.', 'Re: Invoice');
 		await nextTick();
@@ -256,6 +290,7 @@ describe('InboxThreadComposer in Answer mode', () => {
 			body: 'The CSV has both variants.',
 			subject: 'Re: Invoice',
 			touched: true,
+			gapGuarded: false,
 		});
 	});
 
@@ -268,7 +303,7 @@ describe('InboxThreadComposer in Answer mode', () => {
 
 		await subject.setValue('Re: Invoice 1042');
 		await wrapper.get('[data-testid="composer-send"]').trigger('click');
-		expect(wrapper.emitted('send')?.[0]).toEqual(['Hi Ana.', false, 'Re: Invoice 1042']);
+		expect(wrapper.emitted('send')?.[0]).toEqual(['Hi Ana.', false, 'Re: Invoice 1042', false]);
 	});
 
 	it('focuses the editor as it opens', async () => {
@@ -382,5 +417,194 @@ describe('InboxThreadComposer in the shared Postbox composer shell', () => {
 		const send = wrapper.get('[data-testid="composer-send"]');
 		expect(send.text()).toBe('Send reply');
 		expect(send.attributes('disabled')).toBeDefined();
+	});
+});
+
+describe('InboxThreadComposer and saved replies', () => {
+	const refund = {
+		_id: 'sn_1',
+		name: 'Refund',
+		shortcut: 'refund',
+		bodyHtml: '<p>Hi {{contact.firstName}},</p><p>your refund is on its way. {{me.firstName}}</p>',
+		scope: 'personal',
+		useCount: 3,
+		lastUsedAt: 1,
+	};
+	const order = {
+		_id: 'sn_2',
+		name: 'Order status',
+		shortcut: 'order',
+		bodyHtml: '<p>Order [[order number]] for {{contact.lastName}} ships today.</p>',
+		scope: 'shared',
+		useCount: 0,
+		lastUsedAt: null,
+	};
+	const body = (w: ReturnType<typeof mountComposer>) =>
+		w.get<HTMLTextAreaElement>('[data-testid="thread-composer-body"]');
+
+	async function type(w: ReturnType<typeof mountComposer>, text: string) {
+		const textarea = body(w);
+		textarea.element.value = text;
+		textarea.element.setSelectionRange(text.length, text.length);
+		await textarea.trigger('input');
+	}
+
+	it('inserts the reply a typed ";" and shortcut picks, with its variables filled in', async () => {
+		savedReplies.value = [refund, order];
+		const wrapper = mountComposer({ recipient: { firstName: 'Ana', lastName: 'Ruiz' } });
+		await type(wrapper, 'Hello\n;ref');
+		expect(wrapper.findAll('[role="option"]').map((o) => o.text())).toEqual(['Refund;refund']);
+
+		await body(wrapper).trigger('keydown', { key: 'Enter' });
+		expect(body(wrapper).element.value).toBe('Hello\nHi Ana,\n\nyour refund is on its way. Mira');
+		expect(wrapper.find('[role="option"]').exists()).toBe(false);
+		expect(recordUse).toHaveBeenCalledWith({ replyId: 'sn_1' });
+		expect(wrapper.get('[data-testid="composer-send"]').attributes('disabled')).toBeUndefined();
+	});
+
+	it('does not open over a ";" nothing matches, nor in the middle of a word', async () => {
+		savedReplies.value = [refund];
+		const wrapper = mountComposer();
+		await type(wrapper, 'Thanks ;)');
+		expect(wrapper.find('[role="option"]').exists()).toBe(false);
+		await type(wrapper, 'a;ref');
+		expect(wrapper.find('[role="option"]').exists()).toBe(false);
+		// `/` is only the Postbox's older trigger.
+		await type(wrapper, 'see /ref');
+		expect(wrapper.find('[role="option"]').exists()).toBe(false);
+	});
+
+	it('turns what it cannot fill into gaps that hold Send until they are filled', async () => {
+		savedReplies.value = [order];
+		const wrapper = mountComposer();
+		await type(wrapper, ';order');
+		await body(wrapper).trigger('keydown', { key: 'Tab' });
+
+		expect(body(wrapper).element.value).toBe(
+			'Order [[order number]] for [[Recipient’s last name]] ships today.'
+		);
+		const send = wrapper.get('[data-testid="composer-send"]');
+		expect(send.attributes('disabled')).toBeDefined();
+		expect(wrapper.get('[data-testid="composer-save-state"]').text()).toBe('2 gaps left');
+
+		await body(wrapper).setValue('Order 4471 for Ruiz ships today.');
+		expect(send.attributes('disabled')).toBeUndefined();
+	});
+
+	it('opens the picker with Ctrl+; and inserts the chosen reply at the caret', async () => {
+		savedReplies.value = [order, refund];
+		const wrapper = mountComposer({ recipient: { firstName: 'Ana' } });
+		await type(wrapper, 'Thanks!');
+		await body(wrapper).trigger('keydown', { key: ';', ctrlKey: true });
+		const picker = wrapper.get('[data-testid="saved-reply-picker"]');
+		// The most used first, before anything is typed; a shared one is marked.
+		expect(picker.findAll('[role="option"]').map((o) => o.text())).toEqual([
+			expect.stringContaining('Refund'),
+			expect.stringContaining('Order status'),
+		]);
+		await picker.get('input').setValue('ordr');
+		expect(picker.findAll('[role="option"]')).toHaveLength(1);
+		await picker.get('input').trigger('keydown', { key: 'Enter' });
+
+		expect(wrapper.find('[data-testid="saved-reply-picker"]').exists()).toBe(false);
+		expect(body(wrapper).element.value).toBe(
+			'Thanks!Order [[order number]] for [[Recipient’s last name]] ships today.'
+		);
+	});
+
+	it('replaces the ";token" at the caret, also after the caret moved without typing', async () => {
+		savedReplies.value = [refund];
+		const wrapper = mountComposer({ recipient: { firstName: 'Ana' } });
+		await type(wrapper, 'Hi ;ref');
+		expect(wrapper.find('[role="option"]').exists()).toBe(true);
+
+		// ← past the ";" closes the dropdown, so Enter is a newline again.
+		const textarea = body(wrapper);
+		textarea.element.setSelectionRange(2, 2);
+		await textarea.trigger('keyup', { key: 'ArrowLeft' });
+		expect(wrapper.find('[role="option"]').exists()).toBe(false);
+
+		// Back at the end of the token, Enter replaces exactly the token.
+		textarea.element.setSelectionRange(7, 7);
+		await textarea.trigger('keyup', { key: 'End' });
+		await textarea.trigger('keydown', { key: 'Enter' });
+		expect(textarea.element.value).toBe('Hi Hi Ana,\n\nyour refund is on its way. Mira');
+	});
+
+	it('keeps holding Send for a saved reply’s gaps when the text is put back', async () => {
+		savedReplies.value = [order];
+		const wrapper = mountComposer();
+		await type(wrapper, ';order');
+		await body(wrapper).trigger('keydown', { key: 'Enter' });
+		const kept = (wrapper.vm as unknown as { snapshot: () => Record<string, unknown> }).snapshot();
+		expect(kept).toMatchObject({ gapGuarded: true });
+
+		// The thread is opened again: the kept text goes back in with its guard.
+		const again = mountComposer();
+		const api = again.vm as unknown as {
+			fill: (body: string, subject: string, gapGuarded?: boolean) => void;
+		};
+		api.fill(String(kept['body']), '', true);
+		await nextTick();
+		expect(again.get('[data-testid="composer-send"]').attributes('disabled')).toBeDefined();
+		api.fill('Order [[order number]] ships.', '');
+		await nextTick();
+		expect(again.get('[data-testid="composer-send"]').attributes('disabled')).toBeUndefined();
+	});
+
+	it('saves the gap guard with the working draft, and a reload of it keeps holding Send', async () => {
+		savedReplies.value = [order];
+		const wrapper = mountComposer({ draft: 'Thanks for writing.' });
+		await type(wrapper, ';order');
+		await body(wrapper).trigger('keydown', { key: 'Enter' });
+		await wrapper.get('[data-testid="thread-composer-save"]').trigger('click');
+		const [savedText, , guard] = wrapper.emitted('save')?.[0] ?? [];
+		expect(guard).toBe(true);
+
+		// A full reload: the stored draft comes back with its stored guard.
+		const reloaded = mountComposer({ draft: savedText, draftGapGuarded: true });
+		const send = reloaded.get('[data-testid="composer-send"]');
+		expect(send.attributes('disabled')).toBeDefined();
+		expect(reloaded.get('[data-testid="composer-save-state"]').text()).toBe('2 gaps left');
+
+		// Filled in, it sends, and the guard still rides along.
+		await body(reloaded).setValue('Order 4471 for Ruiz ships today.');
+		expect(send.attributes('disabled')).toBeUndefined();
+		await send.trigger('click');
+		expect(reloaded.emitted('send')?.[0]?.[3]).toBe(true);
+	});
+
+	it('takes the stored guard back with "Restore draft", and drops it for "Write my own"', async () => {
+		const gapped = 'Order [[order number]] ships today.';
+		const wrapper = mountComposer({ draft: gapped, draftGapGuarded: true });
+		const send = () => wrapper.get('[data-testid="composer-send"]').attributes('disabled');
+		expect(send()).toBeDefined();
+
+		await wrapper.get('[data-testid="thread-composer-write-own"]').trigger('click');
+		await type(wrapper, 'See [[wiki link]].');
+		expect(send()).toBeUndefined();
+
+		await wrapper.get('[data-testid="thread-composer-restore"]').trigger('click');
+		await nextTick();
+		expect(body(wrapper).element.value).toBe(gapped);
+		expect(send()).toBeDefined();
+
+		// Without a stored guard, double brackets in a saved draft are the person's own.
+		const plain = mountComposer({ draft: 'See [[wiki link]].' });
+		expect(plain.get('[data-testid="composer-send"]').attributes('disabled')).toBeUndefined();
+	});
+
+	it('offers to save what was written as a new reply', async () => {
+		const wrapper = mountComposer();
+		await wrapper.get('[data-testid="saved-reply-button"]').trigger('click');
+		const save = wrapper.get('[data-testid="saved-reply-save-current"]');
+		expect(save.attributes('disabled')).toBeDefined();
+
+		await type(wrapper, 'We have refunded the invoice.');
+		await wrapper.get('[data-testid="saved-reply-button"]').trigger('click');
+		await wrapper.get('[data-testid="saved-reply-save-current"]').trigger('click');
+		expect(wrapper.get('[data-testid="saved-reply-save-dialog"]').text()).toContain(
+			'We have refunded the invoice.'
+		);
 	});
 });

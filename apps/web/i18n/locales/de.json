@@ -4862,8 +4862,8 @@
 				"unbound": "Nicht belegt"
 			},
 			"postboxSnippetPicker": {
-				"empty": "Keine passenden Textbausteine",
-				"listLabel": "Textbausteine"
+				"empty": "Keine passende gespeicherte Antwort",
+				"listLabel": "Gespeicherte Antworten"
 			},
 			"postboxSnoozeDialog": {
 				"confirm": "Zurückstellen",
@@ -5297,7 +5297,7 @@
 			"postboxSnippetVariableDialog": {
 				"description": "„{name}“ braucht noch ein paar Angaben.",
 				"insert": "Einfügen",
-				"title": "Textbaustein ausfüllen"
+				"title": "Gespeicherte Antwort ausfüllen"
 			},
 			"postboxSnippetVariableEditor": {
 				"automatic": "Automatisch ermitteln",
@@ -8548,6 +8548,15 @@
 				"roles": {
 					"title": "Was jede Rolle darf"
 				},
+				"savedReplies": {
+					"adminGate": {
+						"description": "Bitte eine Inhaberin oder einen Admin dieses Workspaces, eine hinzuzufügen oder zu ändern. Einfügen kannst du sie trotzdem in jedem Editor.",
+						"title": "Nur Admins verwalten geteilte Antworten"
+					},
+					"intro": "Antworten, die das ganze Team mit {triggerKey} und einem Kürzel oder über die Auswahl neben Senden einfügt. Beschränke eine auf einzelne Team-Postfächer, damit sie nur dort erscheint.",
+					"pageTitle": "Gespeicherte Antworten — Owlat",
+					"title": "Gespeicherte Antworten"
+				},
 				"senders": {
 					"addModal": {
 						"displayNameHelp": "Wird Empfängern als Absendername angezeigt. Optional.",
@@ -10485,7 +10494,7 @@
 				"emailChangeRequested": "Prüfe deinen Posteingang, um die Änderung zu bestätigen",
 				"emailInvalid": "Gib eine gültige E-Mail-Adresse ein",
 				"emailUnchanged": "Das ist bereits deine Anmelde-E-Mail",
-				"exportBody": "Du kannst deine Daten jederzeit exportieren. Der Export enthält deine Profilinformationen, dein persönliches Postfach und deine E-Mails, Entwürfe, verbundene externe Konten, deine Chatnachrichten und deine Teammitgliedschaften. Für Teams, in denen du Inhaberin oder Administrator bist, enthält er außerdem Kontakte, Kampagnen, Automatisierungen und weitere zugehörige Daten.",
+				"exportBody": "Du kannst deine Daten jederzeit exportieren. Der Export enthält deine Profilinformationen, dein persönliches Postfach und deine E-Mails, Entwürfe, verbundene externe Konten, deine Chatnachrichten, deine gespeicherten Antworten und deine Teammitgliedschaften. Für Teams, in denen du Inhaberin oder Administrator bist, enthält er außerdem Kontakte, Kampagnen, Automatisierungen und weitere zugehörige Daten.",
 				"exportCsvAction": "CSV exportieren",
 				"exportCsvDescription": "CSV-Format für den einfachen Import in Tabellenkalkulationen oder andere E-Mail-Tools.",
 				"exportCsvFailed": "Kontakte konnten nicht exportiert werden",
@@ -10826,19 +10835,10 @@
 				"yourSignatures": "Deine Signaturen"
 			},
 			"snippets": {
-				"bodyPlaceholder": "Hallo {firstName}, danke für deine Nachricht…",
-				"deleteConfirm": "Textbaustein löschen",
-				"deleteDescription": "Dieser Textbaustein wird entfernt. Diese Aktion kann nicht rückgängig gemacht werden.",
-				"deleteTitle": "Textbaustein löschen?",
-				"empty": "Noch keine Textbausteine.",
-				"intro": "Vorgefertigte Antworten, die du in eine Nachricht einfügen kannst. Tippe im Editor {slashKey} am Zeilenanfang, um einen auszuwählen. Mit {firstNameToken} sprichst du die empfangende Person mit Namen an.",
-				"namePlaceholder": "Name des Textbausteins (z. B. Danke)",
-				"newSnippet": "Neuer Textbaustein",
-				"noMailbox": "Kein Postfach konfiguriert.",
-				"pageTitle": "Textbausteine — Owlat",
-				"saveChanges": "Änderungen speichern",
-				"shortcutPlaceholder": "Kürzel",
-				"yourSnippets": "Deine Textbausteine"
+				"intro": "Antworten, die du immer wieder schreibst, mit zwei Tastendrücken eingefügt. Tippe in jedem Editor {triggerKey} und das Kürzel oder wähle eine über die Schaltfläche neben Senden. Die Antworten hier siehst nur du.",
+				"pageTitle": "Gespeicherte Antworten — Owlat",
+				"sharedHint": "Antworten für das ganze Team findest du unter",
+				"sharedLink": "Team → Gespeicherte Antworten"
 			},
 			"vacation": {
 				"defaultBody": "Ich bin derzeit nicht per E-Mail erreichbar und antworte nach meiner Rückkehr.",
@@ -12416,6 +12416,7 @@
 				"providerRouting": "Anbieter-Routing",
 				"sealedMail": "Versiegelte Mail",
 				"quarantine": "Quarantäne",
+				"savedReplies": "Gespeicherte Antworten",
 				"segments": "Segmente",
 				"sendingDomains": "Versanddomains",
 				"subscriptions": "Abonnements",
@@ -13942,11 +13943,6 @@
 				"deleteSignature": "Signatur löschen",
 				"saveSignature": "Signatur speichern"
 			},
-			"usePostboxSnippets": {
-				"createSnippet": "Textbaustein erstellen",
-				"deleteSnippet": "Textbaustein löschen",
-				"saveSnippet": "Textbaustein speichern"
-			},
 			"usePostboxThreadCategories": {
 				"options": {
 					"newsletter": "Newsletter",
@@ -13992,10 +13988,14 @@
 					"date": "Heutiges Datum",
 					"prompt": "Beim Einfügen nachfragen",
 					"recipientCompany": "Firma der Empfängerin",
+					"recipientEmail": "E-Mail-Adresse der Empfängerin",
 					"recipientFirstName": "Vorname der Empfängerin",
 					"recipientFullName": "Voller Name der Empfängerin",
+					"recipientLastName": "Nachname der Empfängerin",
 					"senderEmail": "Meine Absenderadresse",
-					"senderName": "Mein Name"
+					"senderFirstName": "Mein Vorname",
+					"senderName": "Mein Name",
+					"threadSubject": "Betreff der Unterhaltung"
 				}
 			},
 			"useArchiveImport": {
@@ -14316,6 +14316,68 @@
 				"summary": "Versiegelt — Absender bestätigt"
 			}
 		},
+		"savedReplies": {
+			"fields": {
+				"limit": "Auf Team-Postfächer beschränken",
+				"limitHint": "Lässt du alle frei, steht sie in jedem Editor zur Verfügung, auch bei Antworten im Team-Postfach.",
+				"name": "Bezeichnung",
+				"namePlaceholder": "z. B. Erstattung",
+				"noTeamInboxes": "Es gibt noch keine Team-Postfächer.",
+				"scope": "Wer sie nutzen kann",
+				"shortcut": "Kürzel",
+				"shortcutPlaceholder": "erstattung",
+				"text": "Antworttext",
+				"textPlaceholder": "Schreib die Antwort…"
+			},
+			"help": {
+				"gaps": "Schreib {example} für alles, was du jedes Mal von Hand einträgst. Senden wartet, bis jede Lücke gefüllt ist.",
+				"title": "Variablen und Lücken",
+				"variables": "Diese werden beim Einfügen ausgefüllt. Fehlt ein Wert, entsteht eine Lücke, die du vor dem Senden füllst."
+			},
+			"library": {
+				"deleteDescription": {
+					"personal": "Sie verschwindet aus deiner Auswahl. Das lässt sich nicht rückgängig machen.",
+					"shared": "Sie verschwindet bei allen aus der Auswahl. Das lässt sich nicht rückgängig machen."
+				},
+				"deleteTitle": "Diese gespeicherte Antwort löschen?",
+				"empty": {
+					"personal": "Noch keine gespeicherten Antworten. Leg hier eine an oder speichere eine aus einem Editor.",
+					"shared": "Noch keine geteilten Antworten."
+				},
+				"limitedTo": "Nur in {inboxes}",
+				"neverUsed": "Noch nicht verwendet",
+				"new": "Neue gespeicherte Antwort",
+				"unknownInbox": "einem gelöschten Postfach",
+				"used": "Einmal verwendet · {when} | {count}-mal verwendet · zuletzt {when}"
+			},
+			"operations": {
+				"create": "Antwort speichern",
+				"recordUse": "Verwendung zählen",
+				"remove": "Antwort löschen",
+				"save": "Antwort ändern"
+			},
+			"paletteHeading": "Gespeicherte Antworten",
+			"picker": {
+				"button": "Gespeicherte Antworten",
+				"empty": "Noch keine gespeicherten Antworten. Speichere eine aus diesem Editor oder leg sie unter Meine Einstellungen → Gespeicherte Antworten an.",
+				"manage": "Gespeicherte Antworten verwalten",
+				"noMatch": "Keine gespeicherte Antwort passt.",
+				"search": "Gespeicherte Antworten durchsuchen",
+				"title": "Gespeicherte Antwort einfügen"
+			},
+			"saveChanges": "Änderungen speichern",
+			"saveCurrent": "Als Antwort speichern",
+			"saveDialog": {
+				"emptyText": "Schreib zuerst etwas.",
+				"save": "Antwort speichern",
+				"title": "Als Antwort speichern"
+			},
+			"scopes": {
+				"personal": "Nur ich",
+				"shared": "Das ganze Team"
+			},
+			"sharedBadge": "Team"
+		},
 		"sendReadiness": {
 			"audienceFits": "Deine Zielgruppe von {audience} passt in die heutige Kapazität.",
 			"capacity": {
@@ -14445,9 +14507,9 @@
 					"keywords": "Grußformel, Fußzeile, Haftungsausschluss"
 				},
 				"snippets": {
-					"title": "Textbausteine",
-					"description": "Vorgefertigte Antworten über den Schrägstrich",
-					"keywords": "vorgefertigte Antworten, Standardtext, Kürzel"
+					"title": "Gespeicherte Antworten",
+					"description": "Deine wiederverwendbaren Antworten für jeden Editor",
+					"keywords": "Textbausteine, vorgefertigte Antworten, Vorlagen, Makros, Standardtext, Kürzel"
 				},
 				"writingVoice": {
 					"title": "Schreibstil",
@@ -14695,6 +14757,7 @@
 				"pickAskOption": "Eine Antwort auf der Fragekarte der KI wählen",
 				"previousQueueItem": "Vorheriger Eintrag in der Antwortliste",
 				"nextQueueItem": "Nächster Eintrag in der Antwortliste",
+				"savedReplies": "Gespeicherte Antwort einfügen",
 				"writeNote": "Interne Notiz schreiben (Threads im Team-Postfach)"
 			}
 		},
@@ -15803,6 +15866,7 @@
 			"mailMessages": "Nachrichten",
 			"mailboxes": "Postfächer",
 			"organizationMemberships": "Workspace-Mitgliedschaften",
+			"savedReplies": "Gespeicherte Antworten",
 			"segments": "Segmente",
 			"threadNotes": "Interne Notizen",
 			"topics": "Themen",
