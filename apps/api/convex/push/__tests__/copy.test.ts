@@ -32,10 +32,12 @@ describe('push copy', () => {
 	});
 
 	it('clips a chat author and room by characters too', () => {
+		// 38 + 3 emoji is 41 characters but 44 UTF-16 units: a unit cut at 39
+		// would split the first owl.
 		const payload = chatPayload(
 			{
 				roomId: 'r1',
-				authorName: `${'b'.repeat(39)}🦉🦉`,
+				authorName: `${'b'.repeat(38)}🦉🦉🦉`,
 				roomName: '#general',
 				text: 'hi',
 				url: '/dashboard/chat/r1',
@@ -43,6 +45,6 @@ describe('push copy', () => {
 			'en',
 			false
 		);
-		expect(payload.title).toBe(`${'b'.repeat(39)}… in #general`);
+		expect(payload.title).toBe(`${'b'.repeat(38)}🦉… in #general`);
 	});
 });
