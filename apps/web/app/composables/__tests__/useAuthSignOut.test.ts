@@ -33,13 +33,21 @@ vi.mock('~/composables/postbox/usePostboxOfflineCache', () => ({
 	wipePostboxOfflineReadCache: () => wipeOfflineCache(),
 }));
 
+const releaseWebPush = vi.fn(async (_convex: unknown) => {});
+vi.mock('~/composables/useWebPush', () => ({
+	releaseWebPushOnSignOut: (convex: unknown) => releaseWebPush(convex),
+}));
+const convexClient = { tag: 'convex' };
+
 const navigateTo = vi.fn();
 
 beforeEach(() => {
 	localStorage.clear();
 	navigateTo.mockClear();
 	wipeOfflineCache.mockClear();
+	releaseWebPush.mockClear();
 	vi.stubGlobal('navigateTo', navigateTo);
+	vi.stubGlobal('useConvex', () => convexClient);
 	vi.stubGlobal('waitForLoaded', vi.fn());
 	signOutResult.value = { data: { success: true }, error: null };
 });
@@ -63,6 +71,16 @@ describe('useAuth sign-out', () => {
 		expect(wipeOfflineCache).toHaveBeenCalledTimes(1);
 		expect(wipeOfflineCache.mock.invocationCallOrder[0]).toBeLessThan(
 			navigateTo.mock.invocationCallOrder[0] ?? 0
+		);
+	});
+
+	it('releases this device’s push notifications while the session still exists', async () => {
+		const { authClient } = await import('~/lib/auth-client');
+		const { useAuth } = await import('../useAuth');
+		await useAuth().signOut();
+		expect(releaseWebPush).toHaveBeenCalledWith(convexClient);
+		expect(releaseWebPush.mock.invocationCallOrder[0]).toBeLessThan(
+			vi.mocked(authClient.signOut).mock.invocationCallOrder.at(-1) ?? 0
 		);
 	});
 

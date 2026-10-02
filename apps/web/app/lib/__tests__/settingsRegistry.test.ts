@@ -35,6 +35,11 @@ const NO_MAIL: SettingsEnvironment = {
 	isFeatureEnabled: (flag) => flag !== 'postbox' && flag !== 'mail.external',
 	isDesktop: false,
 };
+/** Nothing on the instance could ever send a Web Push: no mail, shared inbox or chat. */
+const NO_PUSH_SOURCE: SettingsEnvironment = {
+	isFeatureEnabled: (flag) => !['postbox', 'mail.external', 'inbox', 'chat'].includes(flag),
+	isDesktop: false,
+};
 const NO_AI: SettingsEnvironment = { isFeatureEnabled: (flag) => flag !== 'ai', isDesktop: false };
 const WEB_WITH_MAIL: SettingsEnvironment = { isFeatureEnabled: () => true, isDesktop: false };
 
@@ -130,10 +135,17 @@ describe('SETTINGS_REGISTRY — coverage', () => {
 
 describe('gates', () => {
 	it('keeps a no-mail instance on the pages that are not about mail', () => {
+		expect(visibleSettingsEntries(NO_PUSH_SOURCE).map((entry) => entry.id)).toEqual([
+			'overview',
+			'account',
+			'security',
+		]);
+		// Chat and the shared inbox still push, and push lives on the device page.
 		expect(visibleSettingsEntries(NO_MAIL).map((entry) => entry.id)).toEqual([
 			'overview',
 			'account',
 			'security',
+			'device',
 		]);
 	});
 
@@ -144,7 +156,7 @@ describe('gates', () => {
 
 	it('keeps the device page on the web (the offline cache lives there too)', () => {
 		expect(visibleSettingsEntries(WEB_WITH_MAIL).map((entry) => entry.id)).toContain('device');
-		expect(visibleSettingsEntries(NO_MAIL).map((entry) => entry.id)).not.toContain('device');
+		expect(visibleSettingsEntries(NO_PUSH_SOURCE).map((entry) => entry.id)).not.toContain('device');
 	});
 
 	it('leaves a hidden entry reachable but unlisted', () => {
@@ -153,7 +165,7 @@ describe('gates', () => {
 	});
 
 	it('drops empty sections rather than rendering an empty heading', () => {
-		expect(settingsSectionsFor(NO_MAIL).map((section) => section.key)).toEqual([
+		expect(settingsSectionsFor(NO_PUSH_SOURCE).map((section) => section.key)).toEqual([
 			'general',
 			'account',
 		]);
@@ -176,12 +188,21 @@ describe('settingsControlTargets', () => {
 	it('drops the desktop-only switches on the web', () => {
 		const ids = settingsControlTargets(WEB_WITH_MAIL).map((target) => target.control.id);
 		expect(ids).toContain('offlineCache');
+		expect(ids).toContain('pushNotifications');
 		expect(ids).not.toContain('autostart');
 		expect(ids).not.toContain('notifyAbout');
 	});
 
+	it('keeps Web Push to the browser — the desktop app has native notifications', () => {
+		const ids = settingsControlTargets(FULL).map((target) => target.control.id);
+		expect(ids).not.toContain('pushNotifications');
+		expect(settingsControlTargets(NO_MAIL).map((target) => target.control.id)).toContain(
+			'pushNotifications'
+		);
+	});
+
 	it('drops every control of a page the environment cannot reach', () => {
-		const ids = settingsControlTargets(NO_MAIL).map((target) => target.control.id);
+		const ids = settingsControlTargets(NO_PUSH_SOURCE).map((target) => target.control.id);
 		expect(ids).toEqual(['appearance', 'language']);
 	});
 });

@@ -5244,6 +5244,49 @@
 				"title": "Your data",
 				"trashPurgeHelp": "Counted from the day you bin a message. Off unless you turn it on.",
 				"trashPurgeLabel": "Empty the trash automatically"
+			},
+			"webPush": {
+				"heading": "Push notifications",
+				"intro": "Get notified about new mail, conversations assigned to you and chat messages on this device, even when Owlat is closed.",
+				"thisDevice": "This device",
+				"status": {
+					"on": "On. This device gets notifications.",
+					"off": "Off. Turn on to get notifications here.",
+					"blocked": "Blocked in this browser’s site settings.",
+					"unsupported": "This browser can’t receive push notifications.",
+					"needsHomeScreen": "Available once Owlat is on your Home Screen."
+				},
+				"turnOn": "Turn on",
+				"turnOff": "Turn off",
+				"iosHint": "On iPhone and iPad, notifications only reach Owlat installed on the Home Screen. Tap Share, choose Add to Home Screen, then open Owlat from there and turn notifications on.",
+				"blockedHint": "Notifications are blocked for this site. Allow them in your browser’s site settings, then turn them on here.",
+				"private": {
+					"label": "Private notifications",
+					"hint": "Show only “New mail” or “New chat message”, never the sender, subject or text. Applies to every device, including the desktop app."
+				},
+				"devices": {
+					"heading": "Devices that notify you",
+					"empty": "No devices yet. Turn on notifications in each browser or installed app you want to hear from.",
+					"current": "This device",
+					"added": "Added {date}",
+					"lastNotified": "last notified {when}",
+					"test": "Send test",
+					"remove": "Remove",
+					"removeLabel": "Remove {device}"
+				},
+				"testSent": "Test notification sent. It should arrive in a few seconds.",
+				"enableFailed": "Notifications couldn’t be turned on in this browser. Try again, or check the browser’s site settings.",
+				"loadFailed": "Your notification devices couldn’t be loaded.",
+				"operations": {
+					"enable": "Turn on push notifications",
+					"remove": "Remove a notification device",
+					"test": "Send a test notification",
+					"private": "Change private notifications"
+				},
+				"rules": {
+					"heading": "What notifies you",
+					"notifyAboutHint": "Which new mail sends a notification. Quiet hours hold notifications back and send one summary when they end. Chat mentions and direct messages count as people."
+				}
 			}
 		},
 		"query": {
@@ -14191,6 +14234,10 @@
 				"connectedAccount": {
 					"keywords": "disconnect, remove, delete, unlink, connected mailbox, external account, gmail, outlook, fastmail",
 					"title": "Disconnect a connected mailbox"
+				},
+				"pushNotifications": {
+					"title": "Push notifications",
+					"keywords": "web push, browser notifications, phone, mobile, pwa, notify, devices"
 				}
 			}
 		},
@@ -15402,7 +15449,8 @@
 			"segments": "Segments",
 			"topics": "Topics",
 			"transactionalEmails": "Transactional emails",
-			"webhooks": "Webhooks"
+			"webhooks": "Webhooks",
+			"pushSubscriptions": "Notification devices"
 		},
 		"archiveImport": {
 			"refused": {

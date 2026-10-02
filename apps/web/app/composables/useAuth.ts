@@ -300,6 +300,12 @@ export function useAuth() {
 	};
 
 	const signOut = async () => {
+		// Before the session ends (the server forgets the device only for its
+		// owner): this browser stops showing the leaving person's notifications.
+		const convex = useConvex();
+		const { releaseWebPushOnSignOut } = await import('~/composables/useWebPush');
+		await releaseWebPushOnSignOut(convex);
+
 		const result = await authClient.signOut();
 
 		if (result.error) {

@@ -1,8 +1,11 @@
 import {
+	PUSH_ONLY_WORKER_URL,
 	SERVICE_WORKER_URL,
 	clearShellCaches,
 	decideServiceWorkerAction,
 	isOwnServiceWorker,
+	navigatePathFrom,
+	teardownActionFor,
 } from '~/utils/offlineShell';
 
 /**
@@ -19,6 +22,13 @@ import {
  *
  * Registration is deferred to `load`: it must never compete with the first
  * paint or with the Convex subscription that follows it.
+ *
+ * The worker also shows Web Push notifications. A worker that carries a push
+ * subscription is therefore never unregistered by the kill switch: it is
+ * re-registered push-only (`/sw.js?shell=off`), which drops the shell caches
+ * and stops answering fetches but keeps this device's notifications alive.
+ * A notification click posts the path to open; the listener below routes it
+ * in-app.
  */
 export default defineNuxtPlugin(() => {
 	const config = useRuntimeConfig();
@@ -32,6 +42,13 @@ export default defineNuxtPlugin(() => {
 	});
 
 	if (action === 'skip') return;
+
+	// A notification click on an already-open window: route in-app rather than
+	// reloading it (`sw.js` handleNotificationClick).
+	navigator.serviceWorker.addEventListener('message', (event) => {
+		const path = navigatePathFrom(event.data);
+		if (path) void navigateTo(path);
+	});
 
 	if (action === 'unregister') {
 		void teardown();
@@ -52,12 +69,23 @@ async function register(): Promise<void> {
 	}
 }
 
-/** Remove any worker this origin installed earlier, plus its caches. */
+/**
+ * Remove any worker this origin installed earlier, plus its caches — except
+ * one that carries a push subscription, which is downgraded to push-only so
+ * this device keeps its notifications.
+ */
 async function teardown(): Promise<void> {
 	try {
 		const registrations = await navigator.serviceWorker.getRegistrations();
 		await Promise.all(
-			registrations.filter(isOwnServiceWorker).map((registration) => registration.unregister())
+			registrations.filter(isOwnServiceWorker).map(async (registration) => {
+				const subscription = await registration.pushManager?.getSubscription().catch(() => null);
+				if (teardownActionFor(!!subscription) === 'downgrade') {
+					await navigator.serviceWorker.register(PUSH_ONLY_WORKER_URL, { scope: '/' });
+				} else {
+					await registration.unregister();
+				}
+			})
 		);
 	} catch {
 		// Nothing to unregister, or the API is unavailable.

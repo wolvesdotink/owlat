@@ -1,13 +1,34 @@
 <script setup lang="ts">
 /**
- * Desktop-only native notification preferences: OS permission, scope, badge
- * counting, quiet hours and preview hiding. Self-contained — reads/writes the
- * same per-user mail-settings row via usePostboxSettings, so the parent
- * settings page stays under the file-size cap. The permission strip and the
- * quiet-hours editor are split out for the same reason.
+ * Notification preferences: OS permission, scope, badge counting, quiet hours
+ * and preview hiding. Self-contained — reads/writes the same per-user
+ * mail-settings row via usePostboxSettings, so the parent settings page stays
+ * under the file-size cap. The permission strip and the quiet-hours editor are
+ * split out for the same reason.
+ *
+ * `surface="web"` is the browser's copy, under the Web Push card: the scope
+ * and quiet hours govern push exactly as they govern desktop toasts, while the
+ * OS permission strip and the dock badge are desktop things, and preview
+ * hiding is the push card's own "Private notifications" switch.
  */
 import type { PostboxNotifyAbout } from '~/utils/postboxNotify';
 import { POSTBOX_NOTIFY_ABOUT_OPTIONS } from '~/utils/postboxNotify';
+
+const props = withDefaults(defineProps<{ surface?: 'desktop' | 'web' }>(), {
+	surface: 'desktop',
+});
+const isDesktopSurface = computed(() => props.surface === 'desktop');
+// The web copy talks about push, not desktop notifications.
+const headingKey = computed(() =>
+	isDesktopSurface.value
+		? 'components.postbox.postboxNotificationSettings.heading'
+		: 'components.preferences.webPush.rules.heading'
+);
+const notifyAboutHintKey = computed(() =>
+	isDesktopSurface.value
+		? 'components.postbox.postboxNotificationSettings.notifyAbout.hint'
+		: 'components.preferences.webPush.rules.notifyAboutHint'
+);
 
 const { t } = useI18n();
 
@@ -37,24 +58,23 @@ function onNotifyAboutChange(event: Event) {
 	const value = (event.target as HTMLSelectElement).value as PostboxNotifyAbout;
 	void setNotifyAbout(value);
 }
-
 </script>
 
 <template>
 	<section class="card !p-0 mb-6">
 		<header class="px-5 py-3 border-b border-border-subtle">
 			<h2 class="font-semibold">
-				{{ t('components.postbox.postboxNotificationSettings.heading') }}
+				{{ t(headingKey) }}
 			</h2>
 		</header>
-		<PostboxNotificationPermission />
+		<PostboxNotificationPermission v-if="isDesktopSurface" />
 		<div class="px-5 py-4 flex items-center justify-between gap-4">
 			<div class="min-w-0">
 				<label for="postbox-notify-about" class="font-medium text-sm block">
 					{{ t('components.postbox.postboxNotificationSettings.notifyAbout.label') }}
 				</label>
 				<p class="text-xs text-text-tertiary mt-0.5">
-					{{ t('components.postbox.postboxNotificationSettings.notifyAbout.hint') }}
+					{{ t(notifyAboutHintKey) }}
 				</p>
 			</div>
 			<select
@@ -69,7 +89,10 @@ function onNotifyAboutChange(event: Event) {
 				</option>
 			</select>
 		</div>
-		<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
+		<div
+			v-if="isDesktopSurface"
+			class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
+		>
 			<div class="min-w-0">
 				<label for="postbox-badge-nonpeople" class="font-medium text-sm block">
 					{{ t('components.postbox.postboxNotificationSettings.badgeAll.label') }}
@@ -90,7 +113,10 @@ function onNotifyAboutChange(event: Event) {
 			:disabled="isSaving"
 			@update="setQuietHours($event)"
 		/>
-		<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
+		<div
+			v-if="isDesktopSurface"
+			class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
+		>
 			<div class="min-w-0">
 				<label for="postbox-hide-preview" class="font-medium text-sm block">
 					{{ t('components.postbox.postboxNotificationSettings.hidePreview.label') }}

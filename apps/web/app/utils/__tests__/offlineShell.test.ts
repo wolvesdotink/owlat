@@ -1,11 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
+	PUSH_ONLY_WORKER_URL,
 	SERVICE_WORKER_URL,
 	SHELL_CACHE_PREFIX,
 	clearShellCaches,
 	decideServiceWorkerAction,
 	describeShellStatus,
 	isOwnServiceWorker,
+	navigatePathFrom,
+	teardownActionFor,
+	workerUrlFor,
 	type ServiceWorkerEnv,
 } from '../offlineShell';
 import { createTestI18n } from '~/__tests__/i18n';
@@ -111,5 +115,35 @@ describe('clearShellCaches', () => {
 		expect(await clearShellCaches(undefined)).toBe(0);
 		const throwing = { keys: vi.fn(async () => Promise.reject(new Error('blocked'))) };
 		expect(await clearShellCaches(throwing as unknown as CacheStorage)).toBe(0);
+	});
+});
+
+describe('Web Push on the shell worker', () => {
+	it('registers the full shell where it may run, the push-only script elsewhere', () => {
+		expect(workerUrlFor('register')).toBe(SERVICE_WORKER_URL);
+		expect(workerUrlFor('unregister')).toBe(PUSH_ONLY_WORKER_URL);
+		// Still our worker: same path, so teardown and status recognise it.
+		expect(
+			isOwnServiceWorker({
+				active: { scriptURL: `https://mail.example.com${PUSH_ONLY_WORKER_URL}` },
+			})
+		).toBe(true);
+	});
+
+	it('never tears down a worker that carries this device’s push subscription', () => {
+		expect(teardownActionFor(true)).toBe('downgrade');
+		expect(teardownActionFor(false)).toBe('unregister');
+	});
+
+	it('only routes in-app paths a notification click posts', () => {
+		expect(navigatePathFrom({ type: 'owlat:navigate', path: '/dashboard/chat/r1' })).toBe(
+			'/dashboard/chat/r1'
+		);
+		expect(
+			navigatePathFrom({ type: 'owlat:navigate', path: 'https://evil.example.com' })
+		).toBeNull();
+		expect(navigatePathFrom({ type: 'owlat:navigate', path: '//evil.example.com' })).toBeNull();
+		expect(navigatePathFrom({ type: 'other', path: '/dashboard' })).toBeNull();
+		expect(navigatePathFrom('nope')).toBeNull();
 	});
 });

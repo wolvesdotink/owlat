@@ -32,11 +32,25 @@
  * static bundle never contains it, and the client plugin refuses to register
  * on a desktop build, in dev, or when the runtime kill switch is off.
  *
+ * WEB PUSH. The same worker shows Web Push notifications (`push` and
+ * `notificationclick` below; the server side is apps/api/convex/push/). A
+ * browser keeps one worker per scope, and a push subscription belongs to that
+ * registration, so push cannot live in a second script. When the offline shell
+ * is switched off (kill switch, or the dev server) but this browser has push
+ * turned on, the page registers this file as `/sw.js?shell=off`: the worker
+ * then answers no fetch at all, keeps no cache, and only shows notifications.
+ *
  * PLAIN CLASSIC SCRIPT, ON PURPOSE. No imports and no build step: every global
  * it touches is reached through `self`, so the file that ships is the file the
  * unit test loads and exercises (see app/utils/__tests__/offlineShellWorker.
  * test.ts) via the `self.__owlatShell` seam at the bottom.
  */
+
+/**
+ * False when registered as `/sw.js?shell=off` (push only): no precache, no
+ * fetch handling, and every shell cache is dropped on activation.
+ */
+const SHELL_ENABLED = new URLSearchParams(self.location.search || '').get('shell') !== 'off';
 
 /** Cache-name namespace. Everything with this prefix is ours to delete. */
 const CACHE_PREFIX = 'owlat-shell-';
@@ -229,22 +243,133 @@ async function precache() {
 	}
 }
 
+/** Push-only mode: drop every shell cache, so switching the shell off frees its storage. */
+async function purgeAllShellCaches() {
+	try {
+		const names = await self.caches.keys();
+		await Promise.all(
+			names.filter((name) => name.startsWith(CACHE_PREFIX)).map((name) => self.caches.delete(name))
+		);
+	} catch {
+		// Nothing to free, or CacheStorage is unavailable.
+	}
+}
+
+/** Notification tag the server uses for "send a test notification". */
+const TEST_TAG = 'test';
+/** Shown when a push arrives without a readable payload (should not happen). */
+const FALLBACK_TITLE = 'Owlat';
+
+/**
+ * The notification a push asks for, read defensively: the payload comes from
+ * our own server, but a malformed one must still show something sane, and the
+ * click target must stay an in-app path (never another origin).
+ */
+function parsePushPayload(data) {
+	let raw = null;
+	try {
+		raw = data ? data.json() : null;
+	} catch {
+		raw = null;
+	}
+	const text = (value, fallback) => (typeof value === 'string' && value ? value : fallback);
+	return {
+		title: text(raw && raw.title, FALLBACK_TITLE),
+		body: text(raw && raw.body, ''),
+		tag: text(raw && raw.tag, undefined),
+		url: safeAppPath(raw && raw.url),
+	};
+}
+
+/** An in-app path (`/dashboard/...`), or the dashboard for anything else. */
+function safeAppPath(value) {
+	return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//')
+		? value
+		: '/dashboard';
+}
+
+/** Our open windows, controlled by this worker or not (a tab opened before it activated). */
+function appWindows() {
+	return self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+}
+
+/**
+ * Show the notification unless an Owlat window is focused and visible: that
+ * person is looking at the app, which already shows the mail, the assignment
+ * toast and the chat live, so a system notification on top would be a double.
+ * The test notification always shows — it exists to prove the device rings.
+ */
+async function handlePush(data) {
+	const payload = parsePushPayload(data);
+	if (payload.tag !== TEST_TAG) {
+		const windows = await appWindows();
+		if (windows.some((client) => client.focused && client.visibilityState === 'visible')) return;
+	}
+	await self.registration.showNotification(payload.title, {
+		body: payload.body,
+		// One notification per thread or room: a newer one replaces it and,
+		// with renotify, still alerts.
+		tag: payload.tag,
+		renotify: payload.tag !== undefined,
+		icon: '/icons/icon-192.png',
+		badge: '/icons/icon-maskable-192.png',
+		data: { url: payload.url },
+	});
+}
+
+/**
+ * Open what the notification is about: focus an existing Owlat window and ask
+ * it to route there (an in-app navigation keeps the loaded app and its live
+ * connection), or open a new window when none is around.
+ */
+async function handleNotificationClick(notification) {
+	notification.close();
+	const path = safeAppPath(notification.data && notification.data.url);
+	const windows = await appWindows();
+	const existing = windows.find((client) => {
+		try {
+			return new URL(client.url).origin === self.location.origin;
+		} catch {
+			return false;
+		}
+	});
+	if (existing) {
+		await existing.focus();
+		existing.postMessage({ type: 'owlat:navigate', path });
+		return;
+	}
+	await self.clients.openWindow(path);
+}
+
 self.addEventListener('install', (event) => {
-	event.waitUntil(precache().then(() => self.skipWaiting()));
+	event.waitUntil((SHELL_ENABLED ? precache() : Promise.resolve()).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {
 	event.waitUntil(
 		(async () => {
-			// Re-resolve: a new build may have shipped since this worker last woke.
-			cacheNamePromise = null;
-			await currentCacheName();
+			if (SHELL_ENABLED) {
+				// Re-resolve: a new build may have shipped since this worker last woke.
+				cacheNamePromise = null;
+				await currentCacheName();
+			} else {
+				await purgeAllShellCaches();
+			}
 			await self.clients.claim();
 		})()
 	);
 });
 
+self.addEventListener('push', (event) => {
+	event.waitUntil(handlePush(event.data));
+});
+
+self.addEventListener('notificationclick', (event) => {
+	event.waitUntil(handleNotificationClick(event.notification));
+});
+
 self.addEventListener('fetch', (event) => {
+	if (!SHELL_ENABLED) return;
 	const request = event.request;
 	const kind = classifyRequest({
 		method: request.method,
@@ -271,6 +396,10 @@ self.__owlatShell = {
 	handleNavigate,
 	handleAsset,
 	precache,
+	SHELL_ENABLED,
+	parsePushPayload,
+	handlePush,
+	handleNotificationClick,
 	resetCacheName: () => {
 		cacheNamePromise = null;
 	},

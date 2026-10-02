@@ -5244,6 +5244,49 @@
 				"title": "Deine Daten",
 				"trashPurgeHelp": "Gezählt ab dem Tag, an dem du etwas wegwirfst. Standardmäßig aus.",
 				"trashPurgeLabel": "Papierkorb automatisch leeren"
+			},
+			"webPush": {
+				"heading": "Push-Benachrichtigungen",
+				"intro": "Lass dich auf diesem Gerät über neue E-Mails, dir zugewiesene Konversationen und Chat-Nachrichten benachrichtigen, auch wenn Owlat geschlossen ist.",
+				"thisDevice": "Dieses Gerät",
+				"status": {
+					"on": "An. Dieses Gerät bekommt Benachrichtigungen.",
+					"off": "Aus. Schalte sie ein, um hier Benachrichtigungen zu bekommen.",
+					"blocked": "In den Website-Einstellungen dieses Browsers blockiert.",
+					"unsupported": "Dieser Browser kann keine Push-Benachrichtigungen empfangen.",
+					"needsHomeScreen": "Verfügbar, sobald Owlat auf deinem Home-Bildschirm ist."
+				},
+				"turnOn": "Einschalten",
+				"turnOff": "Ausschalten",
+				"iosHint": "Auf iPhone und iPad erreichen Benachrichtigungen nur Owlat auf dem Home-Bildschirm. Tippe auf Teilen, wähle „Zum Home-Bildschirm“, öffne Owlat von dort und schalte die Benachrichtigungen ein.",
+				"blockedHint": "Benachrichtigungen sind für diese Website blockiert. Erlaube sie in den Website-Einstellungen deines Browsers und schalte sie dann hier ein.",
+				"private": {
+					"label": "Private Benachrichtigungen",
+					"hint": "Zeigt nur „Neue E-Mail“ oder „Neue Chat-Nachricht“, nie Absender, Betreff oder Text. Gilt für alle Geräte, auch für die Desktop-App."
+				},
+				"devices": {
+					"heading": "Geräte, die dich benachrichtigen",
+					"empty": "Noch keine Geräte. Schalte Benachrichtigungen in jedem Browser und jeder installierten App ein, die dich erreichen sollen.",
+					"current": "Dieses Gerät",
+					"added": "Hinzugefügt {date}",
+					"lastNotified": "zuletzt benachrichtigt {when}",
+					"test": "Test senden",
+					"remove": "Entfernen",
+					"removeLabel": "{device} entfernen"
+				},
+				"testSent": "Testbenachrichtigung gesendet. Sie sollte in ein paar Sekunden ankommen.",
+				"enableFailed": "Benachrichtigungen konnten in diesem Browser nicht eingeschaltet werden. Versuch es noch einmal oder prüfe die Website-Einstellungen des Browsers.",
+				"loadFailed": "Deine Benachrichtigungsgeräte konnten nicht geladen werden.",
+				"operations": {
+					"enable": "Push-Benachrichtigungen einschalten",
+					"remove": "Benachrichtigungsgerät entfernen",
+					"test": "Testbenachrichtigung senden",
+					"private": "Private Benachrichtigungen ändern"
+				},
+				"rules": {
+					"heading": "Was dich benachrichtigt",
+					"notifyAboutHint": "Welche neue E-Mail eine Benachrichtigung auslöst. Ruhezeiten halten Benachrichtigungen zurück und senden am Ende eine Zusammenfassung. Chat-Erwähnungen und Direktnachrichten zählen als Personen."
+				}
 			}
 		},
 		"query": {
@@ -14191,6 +14234,10 @@
 				"connectedAccount": {
 					"keywords": "trennen, entfernen, löschen, verbundenes Postfach, externes Konto, gmail, outlook, fastmail",
 					"title": "Verbundenes Postfach trennen"
+				},
+				"pushNotifications": {
+					"title": "Push-Benachrichtigungen",
+					"keywords": "web push, browser-benachrichtigungen, handy, smartphone, pwa, benachrichtigen, geräte"
 				}
 			}
 		},
@@ -15402,7 +15449,8 @@
 			"segments": "Segmente",
 			"topics": "Themen",
 			"transactionalEmails": "Transaktions-E-Mails",
-			"webhooks": "Webhooks"
+			"webhooks": "Webhooks",
+			"pushSubscriptions": "Benachrichtigungsgeräte"
 		},
 		"archiveImport": {
 			"refused": {
