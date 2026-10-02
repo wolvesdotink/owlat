@@ -24,13 +24,18 @@ export function isWebPushConfigured(): boolean {
 /**
  * The full signing identity, or null when push is off. The subject falls back
  * to the site URL: push services want a way to reach the operator, and the
- * instance's own address is the one every deployment has.
+ * instance's own address is the one every deployment has. RFC 8292 only allows
+ * a `mailto:` or `https:` contact (Apple refuses anything else), so a plain
+ * `http:` site URL falls through to the placeholder mailbox.
  */
 export function readVapidKeys(): VapidKeys | null {
 	const publicKey = getOptional('VAPID_PUBLIC_KEY');
 	const privateKey = getOptional('VAPID_PRIVATE_KEY');
 	if (!publicKey || !privateKey) return null;
+	const siteUrl = getOptional('SITE_URL');
 	const subject =
-		getOptional('VAPID_SUBJECT') || getOptional('SITE_URL') || 'mailto:postmaster@localhost';
+		getOptional('VAPID_SUBJECT') ||
+		(siteUrl?.startsWith('https://') ? siteUrl : undefined) ||
+		'mailto:postmaster@localhost';
 	return { publicKey, privateKey, subject };
 }
