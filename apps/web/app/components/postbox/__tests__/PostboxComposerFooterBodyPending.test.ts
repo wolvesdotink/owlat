@@ -25,6 +25,8 @@ beforeAll(() => {
 		useNativeFilePicker: () => ({ isDesktop: ref(false), pickNativeFiles: vi.fn() }),
 		useI18n: i18nStubs.useI18n,
 		useInboxes: () => ({ byId: ref(new Map()) }),
+		useFeatureFlag: () => ({ isEnabled: () => true }),
+		useToast: () => ({ showToast: vi.fn() }),
 	});
 });
 
@@ -80,6 +82,13 @@ describe('PostboxComposerFooter while the body is loading', () => {
 		const wrapper = mountFooter(true);
 		expect(wrapper.get('select').attributes('disabled')).toBeDefined();
 		expect(modeSwitch(wrapper).attributes('disabled')).toBeDefined();
+	});
+
+	it('waits for the body before inserting availability, too', () => {
+		const item = (wrapper: ReturnType<typeof mountFooter>) =>
+			wrapper.get('[data-testid="composer-insert-availability"]');
+		expect(item(mountFooter(true)).attributes('disabled')).toBeDefined();
+		expect(item(mountFooter(false)).attributes('disabled')).toBeUndefined();
 	});
 
 	it('enables both once the body has loaded', () => {

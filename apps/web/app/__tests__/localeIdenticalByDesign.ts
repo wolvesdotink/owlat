@@ -15,6 +15,7 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'components.autonomy.autonomyDemotionAlerts.incident',
 	'components.autonomy.autonomyRuleEditor.categories.spam',
 	'components.autonomy.autonomyRuleEditor.categories.support',
+	'components.booking.profile.slug',
 	'components.campaigns.commandRow.abBadge',
 	'components.campaigns.steps.setupStep.optional',
 	'components.channels.channelConfigCard.channels.chat.label',

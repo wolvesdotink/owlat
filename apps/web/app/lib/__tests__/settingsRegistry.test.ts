@@ -132,9 +132,19 @@ describe('gates', () => {
 	it('keeps a no-mail instance on the pages that are not about mail', () => {
 		expect(visibleSettingsEntries(NO_MAIL).map((entry) => entry.id)).toEqual([
 			'overview',
+			'booking',
 			'account',
 			'security',
 		]);
+	});
+
+	it('shows the booking page only while its flag is on', () => {
+		const noBooking: SettingsEnvironment = {
+			isFeatureEnabled: (flag) => flag !== 'calendar.booking',
+			isDesktop: false,
+		};
+		expect(visibleSettingsEntries(noBooking).map((entry) => entry.id)).not.toContain('booking');
+		expect(visibleSettingsEntries(WEB_WITH_MAIL).map((entry) => entry.id)).toContain('booking');
 	});
 
 	it('hides the writing voice when AI is off but mail is on', () => {

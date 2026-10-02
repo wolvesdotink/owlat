@@ -110,6 +110,57 @@
 			"termsRequired": "You must agree to the Terms of Service"
 		}
 	},
+	"booking": {
+		"errors": {
+			"alreadyStarted": "This meeting has already started.",
+			"bookFailed": "That did not work. Please try again.",
+			"cancelFailed": "The meeting could not be cancelled. Please try again.",
+			"invalidGuest": "Check your name and email address.",
+			"missingToken": "This link is incomplete. Open it again from your confirmation email.",
+			"notChangeable": "This meeting can no longer be changed.",
+			"notFound": "This booking page does not exist, or it is not taking bookings right now.",
+			"rateLimited": "Too many attempts. Please wait a moment and try again.",
+			"slotTaken": "Someone just booked that time. Please pick another one.",
+			"tooMany": "You already have several meetings booked here. Cancel one before booking another.",
+			"unreachable": "The page could not be reached. Check your connection and try again."
+		},
+		"host": {
+			"empty": "There are no meetings to book right now.",
+			"heading": "Book a meeting with {host}",
+			"seoTitle": "Book a meeting with {host}"
+		},
+		"manage": {
+			"alreadyCancelled": "This meeting is cancelled.",
+			"cancel": "Cancel meeting",
+			"cancelConfirmBody": "{host} gets an email that you cancelled.",
+			"cancelConfirmTitle": "Cancel this meeting?",
+			"cancelledBody": "We let {host} know.",
+			"cancelledHeading": "Your meeting is cancelled",
+			"keep": "Keep it",
+			"moveDisabled": "Pick a new time",
+			"moveTo": "Move to {time}",
+			"movedBody": "We emailed you the new time and an updated invite. Use the links in that email from now on.",
+			"movedHeading": "Your meeting has moved",
+			"notChangeable": "This meeting can no longer be changed here.",
+			"notFoundBody": "This link does not work anymore. If you moved the meeting, use the link in your newest email.",
+			"notFoundHeading": "Booking not found",
+			"pageTitle": "Your booking",
+			"pickHeading": "Pick a new time",
+			"reschedule": "Pick another time",
+			"withHost": "Meeting with {host}"
+		},
+		"page": {
+			"bookedBody": "The details and a calendar invite are on their way to {email}.",
+			"bookedHeading": "You are booked",
+			"detailsHeading": "Your details",
+			"loading": "Loading open times…",
+			"notFoundHeading": "Page not found",
+			"pageTitle": "Book a meeting",
+			"pickHeading": "Pick a time",
+			"seoTitle": "{meeting} with {host}",
+			"unreachableHeading": "Could not load the page"
+		}
+	},
 	"cancelDeletion": {
 		"errorBody": "We couldn't process your cancellation request.",
 		"errorHint": "The link may have expired or the deletion may have already been cancelled. If you believe this is an error, please contact support.",
@@ -705,6 +756,103 @@
 		"backupCommandRow": {
 			"copied": "Command copied",
 			"copyFailed": "Could not copy — select and copy manually"
+		},
+		"booking": {
+			"guestForm": {
+				"change": "Change",
+				"confirm": "Book this time",
+				"email": "Email",
+				"honeypot": "Leave this field empty",
+				"name": "Your name",
+				"note": "Anything to share before the meeting?"
+			},
+			"meetingTypes": {
+				"active": "Guests can book this meeting",
+				"add": "Add meeting",
+				"copyLink": "Copy the link to {title}",
+				"delete": "Delete {title}",
+				"deleteBody": "Guests can no longer book {title}. Meetings already booked stay as they are.",
+				"deleteOperation": "Delete meeting type",
+				"deleteTitle": "Delete this meeting type?",
+				"description": "Description",
+				"duration": "Length",
+				"edit": "Edit {title}",
+				"editTitle": "Edit meeting",
+				"emptyBody": "Add a meeting so people can pick a time on your page.",
+				"emptyTitle": "No meetings yet",
+				"heading": "Meetings",
+				"inactive": "Paused",
+				"intro": "Each meeting has its own link. Send the one that fits.",
+				"location": "Where",
+				"locationPlaceholder": "Office, phone number, or leave empty",
+				"newTitle": "New meeting",
+				"saveOperation": "Save meeting type",
+				"slug": "Link name",
+				"title": "Title",
+				"titlePlaceholder": "30 minute intro",
+				"videoUrl": "Video call link",
+				"videoUrlHint": "Only guests who book get this link, in their confirmation."
+			},
+			"profile": {
+				"addOverride": "Add date",
+				"buffer": "Buffer between meetings (minutes)",
+				"bufferHint": "Free time kept before and after each booking.",
+				"create": "Create booking page",
+				"displayName": "Name on the page",
+				"displayNamePlaceholder": "Your name",
+				"horizon": "Bookable days ahead",
+				"horizonHint": "How far into the future guests can book.",
+				"notice": "Minimum notice (hours)",
+				"noticeHint": "No bookings closer to now than this.",
+				"overrideDate": "Date",
+				"overridesHeading": "Dates that differ",
+				"overridesIntro": "Change your hours for one day, or leave a day without hours to take it off.",
+				"pageHeading": "Your page",
+				"removeOverride": "Remove",
+				"rulesHeading": "Rules",
+				"saveOperation": "Save booking page",
+				"saved": "Saved",
+				"slug": "Link",
+				"slugHint": "3 to 40 lowercase letters, digits and hyphens.",
+				"timeZone": "Your time zone",
+				"weeklyHeading": "Weekly hours",
+				"weeklyIntro": "When people can book you, in your time zone. Add more than one range to leave a gap for lunch."
+			},
+			"ranges": {
+				"add": "Add hours",
+				"from": "{day} from",
+				"problems": {
+					"bounds": "Fill in both times.",
+					"order": "The end has to be after the start.",
+					"overlap": "These hours overlap.",
+					"tooMany": "That is the most ranges a day can have."
+				},
+				"remove": "Remove these hours on {day}",
+				"to": "{day} until",
+				"unavailable": "Unavailable"
+			},
+			"slotPicker": {
+				"nextMonth": "Next month",
+				"noTimes": "No open times on this day.",
+				"previousMonth": "Previous month",
+				"timeZone": "Times shown in"
+			},
+			"summary": {
+				"duration": "{minutes} min",
+				"videoLink": "Video call link in the confirmation"
+			},
+			"upcoming": {
+				"cancel": "Cancel meeting",
+				"cancelBody": "{guest} gets an email that the meeting is cancelled.",
+				"cancelOperation": "Cancel booking",
+				"cancelTitle": "Cancel this meeting?",
+				"emptyBody": "When someone books a time on your page, it shows up here.",
+				"emptyTitle": "No upcoming bookings",
+				"heading": "Upcoming bookings",
+				"intro": "Times in {zone}.",
+				"keep": "Keep it",
+				"with": "{title} with {guest}"
+			}
 		},
 		"breadcrumbs": {
 			"home": "Home",
@@ -3982,6 +4130,15 @@
 				"label": "Inbox view",
 				"priority": "Priority",
 				"title": "Priority mail or all mail (B)"
+			},
+			"postboxInsertAvailability": {
+				"intro": "Here are a few times that work for me ({zone}):",
+				"introNoTimes": "I have no open times in the next weeks, but you can check my calendar here.",
+				"linkLead": "Or pick any time that suits you:",
+				"loadFailed": "Your open times could not be loaded.",
+				"menuItem": "Insert availability",
+				"notSetUp": "Set up your booking page first: it decides which times you offer.",
+				"setUp": "Set up"
 			},
 			"postboxInviteCard": {
 				"accept": "Accept",
@@ -10232,6 +10389,12 @@
 				"usageLine": "Created {created} · Last used {lastUsed}",
 				"usernameLabel": "Username"
 			},
+			"booking": {
+				"copied": "Copied",
+				"copyLink": "Copy link",
+				"intro": "A page where people pick a time to meet you, so nobody has to email back and forth. Guests get a calendar invite and can cancel or move the meeting themselves.",
+				"pageTitle": "Booking page"
+			},
 			"device": {
 				"intro": "Settings stored on this device only — they never travel to another computer or browser.",
 				"nothingHere": "Nothing on this instance stores anything on this device."
@@ -14017,6 +14180,11 @@
 					"description": "Your key map and remapped keys",
 					"keywords": "keyboard, shortcuts, hotkeys, key bindings, remap, keys"
 				},
+				"booking": {
+					"title": "Booking page",
+					"description": "Let people pick a time to meet",
+					"keywords": "calendar, schedule, meeting, appointment, availability, calendly"
+				},
 				"filters": {
 					"title": "Filters",
 					"description": "Auto-route inbound mail",
@@ -15386,6 +15554,8 @@
 			"apiKeys": "API keys",
 			"automations": "Automations",
 			"blockedEmails": "Blocked addresses",
+			"bookingPages": "Booking page",
+			"bookings": "Bookings",
 			"campaigns": "Campaigns",
 			"chatMessages": "Chat messages",
 			"contactProperties": "Contact properties",
@@ -15746,6 +15916,12 @@
 					"stripe": {
 						"description": "Charge tenants via Stripe (hosted control plane only).",
 						"label": "Stripe billing"
+					}
+				},
+				"calendar": {
+					"booking": {
+						"description": "Give each member a public page where people pick a meeting time, and insert your open times into an email.",
+						"label": "Booking page"
 					}
 				},
 				"campaigns": {

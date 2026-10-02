@@ -16,6 +16,14 @@ describe('public routes', () => {
 		expect(isPublicPath('/auth/login')).toBe(false);
 	});
 
+	it('treats every booking page as public', () => {
+		expect(isPublicPath('/book/ada')).toBe(true);
+		expect(isPublicPath('/book/ada/intro')).toBe(true);
+		expect(isPublicPath('/book/manage')).toBe(true);
+		expect(isPublicPath('/booking')).toBe(false);
+		expect(isPublicPath('/dashboard/preferences/booking')).toBe(false);
+	});
+
 	it('reads the current route', () => {
 		onRoute('/imprint');
 		expect(isPublicRoute()).toBe(true);

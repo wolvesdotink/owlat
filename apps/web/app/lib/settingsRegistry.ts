@@ -160,6 +160,12 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 		gate: hasMail,
 		controls: [control('shortcuts', 'shortcuts', hasMail)],
 	}),
+	entry('booking', {
+		path: `${SETTINGS_ROOT}/booking`,
+		icon: 'lucide:calendar-check',
+		section: 'general',
+		gate: flag('calendar.booking'),
+	}),
 	entry('filters', {
 		path: `${SETTINGS_ROOT}/filters`,
 		icon: 'lucide:list-filter',
