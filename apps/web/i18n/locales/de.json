@@ -5268,7 +5268,7 @@
 					"heading": "Geräte, die dich benachrichtigen",
 					"empty": "Noch keine Geräte. Schalte Benachrichtigungen in jedem Browser und jeder installierten App ein, die dich erreichen sollen.",
 					"current": "Dieses Gerät",
-					"added": "Hinzugefügt {date}",
+					"added": "Hinzugefügt am {date}",
 					"lastNotified": "zuletzt benachrichtigt {when}",
 					"test": "Test senden",
 					"remove": "Entfernen",
