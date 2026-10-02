@@ -1187,11 +1187,16 @@ the body text and the parsed strings (about 27 MiB). Both stay inside
   still accepts `uploadsPending: true` and ignores it: the v0.6.7 shell
   passes it, a request of that release in flight during the upgrade calls
   the newly deployed mutation, and Convex refuses an argument the
-  validator does not list. The field has no effect and is removed in the
-  release after. An operator going straight from v0.6.6 sees a v0.6.6
-  request that had already stored a base64 attachment when the deploy
-  landed refused with an error the client can retry; its blob is left
-  behind, as v0.6.6 left one behind on any failure.
+  validator does not list. The shell of this release also keeps passing
+  the ignored flag, so a backend rolled back to v0.6.7, whose dispatch
+  claims only when the flag is set, still claims the uploads this shell
+  registered; without it the pending rows would survive the queued Send
+  and the expiry sweep would delete its bytes. The next release removes
+  both the shell's flag and the validator field. An operator going
+  straight from v0.6.6 sees a v0.6.6 request that had already stored a
+  base64 attachment when the deploy landed refused with an error the
+  client can retry; its blob is left behind, as v0.6.6 left one behind
+  on any failure.
 - The SDKs already enforced 10 attachments and 10 MiB decoded. Both now
   compute the decoded size exactly (they used to round up and refuse a
   file of exactly 10 MiB the API accepts).
