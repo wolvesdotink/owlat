@@ -16,10 +16,13 @@ const WORKER_READY_TIMEOUT_MS = 15_000;
 const RELEASE_TIMEOUT_MS = 2_500;
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
 	return Promise.race([
 		promise,
-		new Promise<T>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
-	]);
+		new Promise<T>((_, reject) => {
+			timer = setTimeout(() => reject(new Error('timeout')), ms);
+		}),
+	]).finally(() => clearTimeout(timer));
 }
 
 /** This browser's push subscription, if it has one. Never prompts, never registers. */
@@ -37,23 +40,24 @@ async function currentSubscription(): Promise<PushSubscription | null> {
  * Sign-out: stop this device from notifying the person who is leaving. The
  * browser profile may be someone else's next, and a notification is the one
  * thing that would still reach them after the session is gone. Best effort and
- * bounded — sign-out never waits on it for long.
+ * bounded as a whole — the subscription lookup and the browser's unsubscribe
+ * can stall on the push service too, and sign-out never waits on any of it for
+ * longer than `RELEASE_TIMEOUT_MS`. Never rejects.
  */
 export async function releaseWebPushOnSignOut(convex: ConvexClient | null): Promise<void> {
+	await withTimeout(releaseDevice(convex), RELEASE_TIMEOUT_MS).catch(() => {});
+}
+
+async function releaseDevice(convex: ConvexClient | null): Promise<void> {
 	const subscription = await currentSubscription();
 	if (!subscription) return;
-	try {
-		if (convex) {
-			await withTimeout(
-				convex.mutation(api.push.subscriptions.remove, { endpoint: subscription.endpoint }),
-				RELEASE_TIMEOUT_MS
-			);
-		}
-	} catch {
-		// Offline or slow: the local unsubscribe below still ends delivery, and
-		// the server prunes the row the first time the push service says 410.
-	}
-	await subscription.unsubscribe().catch(() => false);
+	// Side by side, so a slow server cannot use up the time the local unsubscribe
+	// needs. Either one alone ends delivery: the server prunes a row the first
+	// time the push service answers 410 for it.
+	await Promise.allSettled([
+		convex?.mutation(api.push.subscriptions.remove, { endpoint: subscription.endpoint }),
+		subscription.unsubscribe(),
+	]);
 }
 
 /**

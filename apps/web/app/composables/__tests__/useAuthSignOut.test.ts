@@ -84,6 +84,15 @@ describe('useAuth sign-out', () => {
 		);
 	});
 
+	it('signs out even when releasing the device fails', async () => {
+		const { authClient } = await import('~/lib/auth-client');
+		releaseWebPush.mockRejectedValueOnce(new Error('chunk failed to load'));
+		const { useAuth } = await import('../useAuth');
+		await useAuth().signOut();
+		expect(vi.mocked(authClient.signOut)).toHaveBeenCalled();
+		expect(navigateTo).toHaveBeenCalledWith('/auth/login');
+	});
+
 	it('keeps them when the sign-out fails', async () => {
 		writeCachedFeatureFlags('https://convex.example', { postbox: true });
 		signOutResult.value = { data: null, error: { message: 'nope' } };
