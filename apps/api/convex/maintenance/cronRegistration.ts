@@ -51,6 +51,13 @@ export function registerRetentionCrons(crons: ReturnType<typeof cronJobs>): void
 	// Bytes only — every row and all of its metadata stays. ONE entry for one
 	// horizon: the two walks are the same decision from the same setting. Daily,
 	// because the horizon is measured in days, so a tick stays small.
+	// DMARC aggregate reports (domains/dmarcReports.ts) and their rows, 90 days.
+	crons.interval(
+		'retention: dmarc reports',
+		{ hours: 24 },
+		internal.domains.dmarcReports.sweepExpiredReports,
+		{}
+	);
 	crons.interval(
 		'retention: inbound mail files',
 		{ hours: 24 },

@@ -27,14 +27,17 @@ type SendingDomainDmarcOutcome =
  * rollout). Regenerates the `_dmarc` TXT record value from the new settings
  * and clears the stale DMARC verification result — the customer must re-publish
  * the changed record, so a previously-verified domain drops back to needing a
- * re-verify on the DMARC record only. Single writer of `domains.dmarcPolicy` +
+ * re-verify on the DMARC record only. Calling it with the stored settings
+ * refreshes a record whose `rua=` no longer matches `dmarcRuaFromEnv` (the
+ * DMARC reports panel's "ask for reports" action). Single writer of `domains.dmarcPolicy` +
  * `domains.dmarcSubdomainPolicy` + `domains.dmarcPct` + `dnsRecords`, written through
  * `patchDomainRecords`. Does not move `domains.status`; verification is a
  * separate, explicit user action.
  *
  * Passing `undefined` for `subdomainPolicy`/`pct` clears the corresponding tag
  * (the field is removed from the row); passing a value sets it. The change is a
- * no-op only when all three settings already match what's stored.
+ * no-op only when all three settings and the regenerated record already match
+ * what's stored.
  */
 export const setDmarcPolicy = internalMutation({
 	args: {
@@ -53,15 +56,6 @@ export const setDmarcPolicy = internalMutation({
 		if (!dmarc) return { ok: false, reason: 'no_dmarc_record' };
 
 		const currentPolicy = domain.dmarcPolicy ?? DEFAULT_DMARC_POLICY;
-		const unchanged =
-			currentPolicy === args.policy &&
-			domain.dmarcSubdomainPolicy === args.subdomainPolicy &&
-			domain.dmarcPct === args.pct;
-		if (unchanged) {
-			return { ok: true, policy: args.policy, changed: false };
-		}
-
-		const at = Date.now();
 		// `buildDmarcRecordValue` throws on an out-of-range `pct=` (RFC 7489
 		// requires an integer 0–100) — surface that to the caller rather than
 		// publishing a record receivers will ignore.
@@ -71,6 +65,19 @@ export const setDmarcPolicy = internalMutation({
 			pct: args.pct,
 			rua: dmarcRuaFromEnv(),
 		});
+		// Same settings AND the same record: nothing to do. A record whose `rua=`
+		// predates the current reporting address is regenerated even at the same
+		// policy, which is how a domain starts asking for reports.
+		const unchanged =
+			currentPolicy === args.policy &&
+			domain.dmarcSubdomainPolicy === args.subdomainPolicy &&
+			domain.dmarcPct === args.pct &&
+			dmarc.value === nextValue;
+		if (unchanged) {
+			return { ok: true, policy: args.policy, changed: false };
+		}
+
+		const at = Date.now();
 		const nextDnsRecords: DnsRecords = {
 			...dnsRecords,
 			dmarc: { ...dmarc, value: nextValue },

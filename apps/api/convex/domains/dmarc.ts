@@ -31,6 +31,10 @@
  */
 
 import { v, type Infer } from 'convex/values';
+import {
+	normalizeDmarcReportAddress,
+	resolveDmarcReportAddress,
+} from '@owlat/shared/dmarcReportAddress';
 import { getOptional } from '../lib/env';
 import type { dnsRecordValidator } from '../lib/convexValidators';
 
@@ -89,12 +93,11 @@ interface DmarcRecordOptions {
 	/** SPF alignment strictness — the `aspf=` tag. */
 	aspf?: DmarcAlignment;
 	/**
-	 * Aggregate-report reporting URI — the `rua=` tag. Owlat does not provision
-	 * a `dmarc@<customer-domain>` mailbox, so this is emitted only when the
-	 * operator opts in (the `MTA_DMARC_RUA` env var, read by `dmarcRuaFromEnv`
-	 * and threaded in by the provider adapters and the lifecycle). Emitted
-	 * verbatim and expected to be an RFC-7489 reporting URI such as
-	 * `mailto:dmarc-reports@example.com`.
+	 * Aggregate-report reporting URI(s) — the `rua=` tag. Owlat never provisions
+	 * a `dmarc@<customer-domain>` mailbox; the value is Owlat's own report
+	 * address and/or the operator's `MTA_DMARC_RUA`, combined by
+	 * `dmarcRuaFromEnv` and threaded in by the provider adapters and the
+	 * lifecycle. Emitted verbatim, e.g. `mailto:dmarc-reports@example.com`.
 	 */
 	rua?: string;
 }
@@ -142,13 +145,41 @@ export function buildDmarcRecordValue(domain: string, options: DmarcRecordOption
 }
 
 /**
- * The operator's aggregate-report URI (`MTA_DMARC_RUA`), trimmed, or
- * `undefined` when unset or blank. The only read of that env key: the provider
- * adapters, `setDmarcPolicy` and the stream-subdomain wizard all come here, so
- * every `_dmarc` record Owlat renders carries the same `rua=` (or none).
+ * The address Owlat reads DMARC aggregate reports at, or null when this install
+ * cannot read them. Resolved with the MTA's own resolver
+ * (`MTA_DMARC_REPORT_ADDRESS`, else `dmarc-reports@<MTA_RETURN_PATH_DOMAIN>`),
+ * and only when `MTA_WEBHOOK_SECRET` is set: without it the signed forward to
+ * `/webhooks/mta-dmarc-report` can never be accepted.
+ */
+export function owlatDmarcReportAddress(): string | null {
+	if (!getOptional('MTA_WEBHOOK_SECRET')) return null;
+	return resolveDmarcReportAddress(
+		getOptional('MTA_DMARC_REPORT_ADDRESS'),
+		getOptional('MTA_RETURN_PATH_DOMAIN')
+	);
+}
+
+/** The operator's own aggregate-report URI (`MTA_DMARC_RUA`), trimmed. */
+export function externalDmarcRuaFromEnv(): string | undefined {
+	return getOptional('MTA_DMARC_RUA')?.trim() || undefined;
+}
+
+/**
+ * The `rua=` value every generated `_dmarc` record carries, or `undefined` for
+ * none. Owlat's own report address comes first, then the operator's
+ * `MTA_DMARC_RUA` (RFC 7489 allows a comma-separated list), so an operator who
+ * already sends reports to another service keeps them and gains the dashboard.
+ * The only reader of either key for records: the provider adapters,
+ * `setDmarcPolicy` and the stream-subdomain wizard all come here, so every
+ * `_dmarc` record Owlat renders carries the same `rua=` (or none).
  */
 export function dmarcRuaFromEnv(): string | undefined {
-	return getOptional('MTA_DMARC_RUA')?.trim() || undefined;
+	const external = externalDmarcRuaFromEnv();
+	const own = owlatDmarcReportAddress();
+	if (!own) return external;
+	if (!external) return `mailto:${own}`;
+	const isListed = external.split(',').some((uri) => normalizeDmarcReportAddress(uri) === own);
+	return isListed ? external : `mailto:${own},${external}`;
 }
 
 /**

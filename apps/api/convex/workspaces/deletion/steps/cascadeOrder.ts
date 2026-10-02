@@ -224,6 +224,8 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'mixDecisions',
 	'rampStreamPresets',
 	'yahooCflEnrollments',
+	'dmarcReportRecords',
+	'dmarcReports',
 	'domains',
 	'sendingDomainMtaIdentities',
 	'sendingDomainSesIdentities',
