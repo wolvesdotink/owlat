@@ -16,6 +16,12 @@
  * with Reply-To set to the host, so a reply reaches them; the host's has
  * Reply-To set to the guest.
  *
+ * Each job carries the calendar sequence its change wrote. Every change to a
+ * booking (book, move, cancel) raises the sequence, so a job whose sequence
+ * is no longer the booking's has been overtaken by a later change and sends
+ * nothing: a confirmation still queued when the booking is cancelled must not
+ * reach a calendar as a `REQUEST` after the `CANCEL`.
+ *
  * A failed send is logged and not retried; the booking itself stands either
  * way, and the page told the guest it was booked.
  */
@@ -117,6 +123,8 @@ export const send = internalAction({
 	args: {
 		bookingId: v.id('bookings'),
 		kind: kindValidator,
+		/** The `icalSequence` the change that queued this mail wrote. */
+		sequence: v.number(),
 		manageToken: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
@@ -127,6 +135,9 @@ export const send = internalAction({
 		const { booking, host } = loaded;
 		const kind: BookingMailKind = args.kind;
 		const isCancelled = kind === 'cancelled';
+		// Overtaken by a later change, which queued its own mail.
+		if (booking.icalSequence !== args.sequence) return;
+		if (isCancelled !== (booking.status === 'cancelled')) return;
 		const now = new Date();
 		const ics = buildEventICalendar({
 			method: isCancelled ? 'CANCEL' : 'REQUEST',

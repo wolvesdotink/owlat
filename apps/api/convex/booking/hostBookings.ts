@@ -63,16 +63,18 @@ export const cancel = bookingMutation({
 		if (!booking || booking.userId !== session.userId) throwNotFound('Booking');
 		if (booking.status === 'cancelled') return;
 		const now = Date.now();
+		const sequence = booking.icalSequence + 1;
 		await ctx.db.patch(booking._id, {
 			status: 'cancelled',
 			cancelledAt: now,
 			cancelSource: 'host',
-			icalSequence: booking.icalSequence + 1,
+			icalSequence: sequence,
 			updatedAt: now,
 		});
 		await ctx.scheduler.runAfter(0, internal.booking.emails.send, {
 			bookingId: booking._id,
 			kind: 'cancelled',
+			sequence,
 		});
 	},
 });

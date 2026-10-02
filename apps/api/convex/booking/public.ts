@@ -255,6 +255,7 @@ export const reserve = internalMutation({
 		await ctx.scheduler.runAfter(0, internal.booking.emails.send, {
 			bookingId,
 			kind: 'confirmed',
+			sequence: 0,
 			manageToken: args.manageToken,
 		});
 		return {
@@ -333,16 +334,18 @@ export const cancelByToken = internalMutation({
 		if (booking.status === 'cancelled') return { ok: true };
 		const now = Date.now();
 		if (booking.startAt <= now) return { ok: false, reason: 'already_started' };
+		const sequence = booking.icalSequence + 1;
 		await ctx.db.patch(booking._id, {
 			status: 'cancelled',
 			cancelledAt: now,
 			cancelSource: 'guest',
-			icalSequence: booking.icalSequence + 1,
+			icalSequence: sequence,
 			updatedAt: now,
 		});
 		await ctx.scheduler.runAfter(0, internal.booking.emails.send, {
 			bookingId: booking._id,
 			kind: 'cancelled',
+			sequence,
 		});
 		return { ok: true };
 	},
@@ -394,16 +397,18 @@ export const rescheduleByToken = internalMutation({
 		const hostLimit = await rateLimiter.limit(ctx, 'bookingPerHost', { key: booking.userId });
 		if (!hostLimit.ok) return { ok: false, reason: 'rate_limited' };
 
+		const sequence = booking.icalSequence + 1;
 		await ctx.db.patch(booking._id, {
 			startAt: args.start,
 			endAt: args.start + durationMs,
-			icalSequence: booking.icalSequence + 1,
+			icalSequence: sequence,
 			manageTokenHash: await hashManageToken(args.nextManageToken),
 			updatedAt: now,
 		});
 		await ctx.scheduler.runAfter(0, internal.booking.emails.send, {
 			bookingId: booking._id,
 			kind: 'rescheduled',
+			sequence,
 			manageToken: args.nextManageToken,
 		});
 		return { ok: true, startAt: args.start, endAt: args.start + durationMs };

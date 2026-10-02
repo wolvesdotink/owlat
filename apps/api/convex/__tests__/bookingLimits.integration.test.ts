@@ -11,15 +11,19 @@
  *     another way (capitals, percent escapes) does not reach the page with a
  *     bucket of its own;
  *   - date overrides already over are dropped on save, so they never fill the
- *     override cap.
+ *     override cap;
+ *   - an invite mail overtaken by a later change (a cancel, a move) sends
+ *     nothing, so a late confirmation cannot bring a cancelled event back.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
+import type { FunctionArgs } from 'convex/server';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { enableFeatures } from './factories';
+import { hashManageToken } from '../booking/model';
 import type * as SessionOrganization from '../lib/sessionOrganization';
 import type * as SystemMail from '../systemMail';
 
@@ -41,13 +45,19 @@ vi.mock('../lib/sessionOrganization', async () => {
 	};
 });
 
-const sentMail = vi.hoisted(() => [] as { subject: string; to: string }[]);
+const sentMail = vi.hoisted(() => [] as { subject: string; to: string; ics: string }[]);
 vi.mock('../systemMail', async (importOriginal) => ({
 	...(await importOriginal<typeof SystemMail>()),
-	attemptSystemEmail: vi.fn(async (_ctx: unknown, args: { subject: string; to: string }) => {
-		sentMail.push({ subject: args.subject, to: args.to });
-		return { status: 'accepted' };
-	}),
+	attemptSystemEmail: vi.fn(
+		async (
+			_ctx: unknown,
+			args: { subject: string; to: string; attachments?: { contentBase64: string }[] }
+		) => {
+			const ics = Buffer.from(args.attachments?.[0]?.contentBase64 ?? '', 'base64').toString();
+			sentMail.push({ subject: args.subject, to: args.to, ics });
+			return { status: 'accepted' };
+		}
+	),
 }));
 
 const modules = import.meta.glob('../**/*.*s');
@@ -207,7 +217,11 @@ describe('guest input', () => {
 		});
 		await reserve(t, tenOClockInDays(2));
 		const row = await t.run((ctx) => ctx.db.query('bookings').first());
-		await t.action(internal.booking.emails.send, { bookingId: row!._id, kind: 'confirmed' });
+		await t.action(internal.booking.emails.send, {
+			bookingId: row!._id,
+			kind: 'confirmed',
+			sequence: 0,
+		});
 		expect(sentMail.map((mail) => mail.to).sort()).toEqual([
 			'guest@example.com',
 			'host-A@example.com',
@@ -305,5 +319,65 @@ describe('date overrides', () => {
 		});
 		const mine = await t.query(api.booking.settings.getMine, {});
 		expect(mine.profile?.dateOverrides).toEqual([upcoming]);
+	});
+});
+
+describe('invite mail order', () => {
+	// Hold the queued mails so each test runs them itself, in the order it picks.
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	/** The arguments of every queued invite mail, oldest first. */
+	async function queuedMail(t: TestConvex<typeof schema>) {
+		const jobs = await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect());
+		return jobs
+			.filter((job) => job.name.includes('booking/emails'))
+			.map((job) => job.args[0] as FunctionArgs<typeof internal.booking.emails.send>);
+	}
+	const methods = () => sentMail.map((mail) => /^METHOD:(\w+)/m.exec(mail.ics)?.[1]);
+
+	it('drops a confirmation the host cancelled before it went out', async () => {
+		const t = await setup();
+		await reserve(t, tenOClockInDays(2));
+		const [booking] = await t.query(api.booking.hostBookings.listUpcoming, {});
+		await t.mutation(api.booking.hostBookings.cancel, { bookingId: booking!._id });
+		const [confirmed, cancelled] = await queuedMail(t);
+		expect(confirmed).toMatchObject({ kind: 'confirmed' });
+		expect(cancelled).toMatchObject({ kind: 'cancelled' });
+
+		await t.action(internal.booking.emails.send, confirmed!);
+		expect(sentMail).toEqual([]);
+		await t.action(internal.booking.emails.send, cancelled!);
+		expect(methods()).toEqual(['CANCEL', 'CANCEL']);
+		for (const mail of sentMail) expect(mail.ics).toMatch(/^SEQUENCE:1\r$/m);
+	});
+
+	it('drops a confirmation the guest moved before it went out', async () => {
+		const t = await setup();
+		const token = `bk_${'b'.repeat(40)}`;
+		await t.mutation(internal.booking.public.reserve, {
+			slug: 'ada',
+			typeSlug: 'intro',
+			start: tenOClockInDays(2),
+			guestName: 'Grace',
+			guestEmail: 'grace@example.com',
+			manageToken: token,
+		});
+		await t.mutation(internal.booking.public.rescheduleByToken, {
+			manageTokenHash: await hashManageToken(token),
+			start: tenOClockInDays(3),
+			nextManageToken: `bk_${'c'.repeat(40)}`,
+		});
+		const [confirmed, moved] = await queuedMail(t);
+
+		await t.action(internal.booking.emails.send, confirmed!);
+		expect(sentMail).toEqual([]);
+		await t.action(internal.booking.emails.send, moved!);
+		expect(methods()).toEqual(['REQUEST', 'REQUEST']);
+		for (const mail of sentMail) expect(mail.ics).toMatch(/^SEQUENCE:1\r$/m);
 	});
 });
