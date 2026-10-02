@@ -69,7 +69,8 @@ export function candidateHandles(candidate: MentionCandidate): string[] {
  * The people `body` mentions, as user ids, in the order their handles first
  * appear. Only `candidates` can be reached (the caller passes Team Inbox
  * readers, so nobody without access is ever notified), the author never
- * mentions themself, and at most {@link MAX_NOTE_MENTIONS} are returned.
+ * mentions themself, punctuation closing a sentence after a handle is not part
+ * of it, and at most {@link MAX_NOTE_MENTIONS} are returned.
  */
 export function resolveMentionedUserIds(
 	body: string,
@@ -87,7 +88,10 @@ export function resolveMentionedUserIds(
 	}
 	const resolved: string[] = [];
 	for (const handle of parseMentionHandles(body)) {
-		for (const userId of byHandle.get(handle) ?? []) {
+		// The handle grammar takes `.`, `-` and `_`, so "Thanks @ben." reads as
+		// `ben.`; a handle that names nobody is retried without that tail.
+		const ids = byHandle.get(handle) ?? byHandle.get(handle.replace(/[.\-_]+$/, '')) ?? [];
+		for (const userId of ids) {
 			if (!resolved.includes(userId)) resolved.push(userId);
 		}
 	}

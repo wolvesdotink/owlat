@@ -43,6 +43,14 @@ describe('resolveMentionedUserIds', () => {
 		expect(resolveMentionedUserIds('@ben', [BEN, BEN_TOO], 'u_x')).toEqual(['u_ben', 'u_ben2']);
 	});
 
+	it('reads a full stop or dash after a handle as punctuation, not as part of it', () => {
+		expect(resolveMentionedUserIds('Thanks @ben. And @ada.marlow...', [ADA, BEN], 'u_x')).toEqual([
+			'u_ben',
+			'u_ada',
+		]);
+		expect(resolveMentionedUserIds('@ada- can you check?', [ADA], 'u_x')).toEqual(['u_ada']);
+	});
+
 	it('ignores an @ inside a word such as an email address', () => {
 		expect(resolveMentionedUserIds('mail ada@example.com', [ADA], 'u_x')).toEqual([]);
 	});

@@ -139,8 +139,9 @@ async function isUnreadMention(ctx: QueryCtx, userId: string, mention: Mentioned
 /**
  * The Mentions filter: the threads a teammate mentioned the viewer on, newest
  * mention first, as the same rows `listThreads` returns plus `mentionedAt` and
- * `unreadMention`. One page (`nextCursor` is always null), like the search
- * path. Soft-auth: empty for anyone who cannot read the Team Inbox.
+ * `unreadMention`; `unread` is also set while the mention is unseen. One page
+ * (`nextCursor` is always null), like the search path. Soft-auth: empty for
+ * anyone who cannot read the Team Inbox.
  */
 // public: soft-auth — admin-only shared inbox; returns empty for non-admins
 export const listMentionedThreads = publicQuery({
@@ -168,10 +169,14 @@ export const listMentionedThreads = publicQuery({
 		const threads = await Promise.all(
 			rows.map(async (row, index) => {
 				const mention = present[index]!.mention;
+				const unreadMention = await isUnreadMention(ctx, viewerId, mention);
+				// The row reads bold until the viewer has seen the mention too, so
+				// the list shows which threads the Mentions badge is counting.
 				return {
 					...row,
+					unread: row.unread || unreadMention,
 					mentionedAt: mention.mentionedAt,
-					unreadMention: await isUnreadMention(ctx, viewerId, mention),
+					unreadMention,
 				};
 			})
 		);

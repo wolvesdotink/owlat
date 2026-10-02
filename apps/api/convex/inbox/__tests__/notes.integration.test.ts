@@ -182,6 +182,25 @@ describe('inbox notes', () => {
 		expect(await t.query(api.inbox.noteMentions.countUnreadMentions, {})).toBe(0);
 	});
 
+	it('shows a mentioned thread as unread until the mention is seen, even with no new mail', async () => {
+		const t = convexTest(schema, modules);
+		const threadId = await seed(t);
+		// Ben read the thread after its last message and before the note.
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			await ctx.db.patch(threadId, { lastMessageAt: now - 10_000 });
+			await ctx.db.insert('threadReads', { threadId, userId: 'user_ben', lastSeenAt: now - 5_000 });
+		});
+		await t.mutation(api.inbox.notes.create, { threadId, body: 'Thanks @ben.' });
+
+		as('user_ben');
+		const [row] = (await t.query(api.inbox.noteMentions.listMentionedThreads, {})).threads;
+		expect(row).toMatchObject({ _id: threadId, unread: true, unreadMention: true });
+		await t.mutation(api.inbox.reads.markThreadSeen, { threadId });
+		const [seen] = (await t.query(api.inbox.noteMentions.listMentionedThreads, {})).threads;
+		expect(seen).toMatchObject({ unread: false, unreadMention: false });
+	});
+
 	it('an edit notifies only the newly mentioned and drops the unmentioned', async () => {
 		const t = convexTest(schema, modules);
 		const threadId = await seed(t);
