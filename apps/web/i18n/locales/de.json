@@ -14455,7 +14455,7 @@
 				"pickAskOption": "Eine Antwort auf der Fragekarte der KI wählen",
 				"previousQueueItem": "Vorheriger Eintrag in der Antwortliste",
 				"nextQueueItem": "Nächster Eintrag in der Antwortliste",
-				"writeNote": "Interne Notiz schreiben"
+				"writeNote": "Interne Notiz schreiben (Threads im Team-Postfach)"
 			}
 		},
 		"signatureBadge": {
