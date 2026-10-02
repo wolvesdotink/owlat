@@ -23,6 +23,9 @@ beforeAll(() => {
 		useNativeFilePicker: () => ({ isDesktop: ref(false), pickNativeFiles: vi.fn() }),
 		useI18n: i18nStubs.useI18n,
 		useInboxes: () => ({ byId: ref(new Map([['mbx_1', { name: 'Ada' }]])) }),
+		// Insert availability (booking page) in the footer's ⋯ menu.
+		useFeatureFlag: () => ({ isEnabled: () => false }),
+		useToast: () => ({ showToast: vi.fn() }),
 	});
 });
 

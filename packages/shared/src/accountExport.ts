@@ -25,6 +25,8 @@ export const ACCOUNT_EXPORT_PERSONAL_RESOURCES = [
 	'chatMessages',
 	'threadNotes',
 	'deliverabilityAlertRecipientStates',
+	'bookingPages',
+	'bookings',
 	'savedReplies',
 ] as const;
 

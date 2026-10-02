@@ -293,4 +293,29 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		period: MINUTE,
 		capacity: 40,
 	},
+
+	// The public booking page (`/booking/*`, see booking/publicHttp.ts), keyed
+	// per IP and page (a manage link per IP and token). Reads (the page and its
+	// open times, a guest's manage link) are cheap. A booking sends two emails,
+	// so it is held to a few per IP and page, and per HOST as well: a
+	// rotating-IP flood can fill one person's calendar or mail a stranger list
+	// only that fast.
+	bookingPage: {
+		kind: 'token bucket',
+		rate: 60,
+		period: MINUTE,
+		capacity: 120,
+	},
+	bookingCreate: {
+		kind: 'token bucket',
+		rate: 10,
+		period: HOUR,
+		capacity: 5,
+	},
+	bookingPerHost: {
+		kind: 'token bucket',
+		rate: 30,
+		period: HOUR,
+		capacity: 20,
+	},
 });

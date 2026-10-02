@@ -83,6 +83,9 @@ export type OrganizationDeletionTable =
 	| 'mailThreadVisits'
 	| 'todayStates'
 	| 'todayThreadSummaries'
+	| 'bookings'
+	| 'bookingMeetingTypes'
+	| 'bookingProfiles'
 	| 'mailboxUsage'
 	| 'mailboxes'
 	| 'webhookDeliveryLogs'
@@ -300,6 +303,9 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailThreadVisits'),
 	v.literal('todayStates'),
 	v.literal('todayThreadSummaries'),
+	v.literal('bookings'),
+	v.literal('bookingMeetingTypes'),
+	v.literal('bookingProfiles'),
 	v.literal('mailboxUsage'),
 	v.literal('mailboxes'),
 	v.literal('webhookDeliveryLogs'),

@@ -469,6 +469,15 @@ export const exportUserDataPage = authedAction({
 			)) as PaginationResult<Doc<'chatMessages'>>;
 			return serializeAccountExportPage(result);
 		}
+		if (args.resource === 'bookingPages' || args.resource === 'bookings') {
+			const result = (await ctx.runQuery(
+				args.resource === 'bookings'
+					? internal.auth.accountExportBookingQueries.listBookings
+					: internal.auth.accountExportBookingQueries.listBookingPages,
+				{ userId: args.userId, paginationOpts }
+			)) as PaginationResult<Record<string, unknown>>;
+			return serializeAccountExportPage(result);
+		}
 		if (args.resource === 'threadNotes') {
 			const result = (await ctx.runQuery(
 				internal.auth.accountExportQueries.listPersonalThreadNotes,

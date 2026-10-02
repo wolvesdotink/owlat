@@ -443,7 +443,7 @@ function onKeydown(event: KeyboardEvent) {
 				:composer-mode="composerMode"
 				:body-pending="bodyPending"
 				:subject="subject"
-				:body-html="bodyHtml"
+				v-model:body-html="bodyHtml"
 				:body-blocks="bodyBlocks"
 				:persistent-toolbar="persistentToolbar"
 				:preflight="guards.preflight"

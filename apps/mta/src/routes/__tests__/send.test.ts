@@ -943,3 +943,77 @@ describe('POST /send — engagement score is validated, never cast', () => {
 		});
 	});
 });
+
+describe('POST /send/system — attachments', () => {
+	const ICS = Buffer.from('BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n').toString('base64');
+	const systemOverrides = {
+		organizationId: 'system',
+		messageType: undefined,
+		routingLease: undefined,
+		routingReentry: undefined,
+		routingReentryToken: undefined,
+		workAttemptId: undefined,
+	};
+	const invite = {
+		filename: 'invite.ics',
+		contentType: 'text/calendar; method=REQUEST; charset=utf-8',
+		contentBase64: ICS,
+	};
+
+	async function send(mode: 'governed' | 'postbox' | 'system', overrides: Record<string, unknown>) {
+		const queue = fakeQueue();
+		const res = await post(
+			buildApp(queue, fakeRedis(), { isMasterKey: true }, mode),
+			validBody(overrides)
+		);
+		return { res, queue };
+	}
+
+	it('carries a system message attachment onto the job', async () => {
+		const { res, queue } = await send('system', { ...systemOverrides, attachments: [invite] });
+		expect(res.status).toBe(200);
+		const arg = queue.add.mock.calls[0]![0] as { data: Record<string, unknown> };
+		expect(arg.data['attachments']).toEqual([invite]);
+	});
+
+	it('leaves a job without attachments unchanged', async () => {
+		const { res, queue } = await send('system', systemOverrides);
+		expect(res.status).toBe(200);
+		const arg = queue.add.mock.calls[0]![0] as { data: Record<string, unknown> };
+		expect(arg.data).not.toHaveProperty('attachments');
+	});
+
+	it('refuses attachments on the tenant intake', async () => {
+		const { res, queue } = await send('governed', { attachments: [invite] });
+		expect(res.status).toBe(400);
+		expect(queue.add).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		[
+			'a header break in the type',
+			{ ...invite, contentType: 'text/calendar\r\nBcc: x@example.com' },
+		],
+		['a quote in the filename', { ...invite, filename: 'in"vite.ics' }],
+		['a path in the filename', { ...invite, filename: '../invite.ics' }],
+		['bytes that are not base64', { ...invite, contentBase64: 'not base64!' }],
+		['a missing field', { filename: 'invite.ics', contentBase64: ICS }],
+	])('refuses %s', async (_label, entry) => {
+		const { res, queue } = await send('system', { ...systemOverrides, attachments: [entry] });
+		expect(res.status).toBe(400);
+		expect(queue.add).not.toHaveBeenCalled();
+	});
+
+	it('refuses more files or bytes than a system message carries', async () => {
+		const many = await send('system', {
+			...systemOverrides,
+			attachments: Array.from({ length: 5 }, () => invite),
+		});
+		expect(many.res.status).toBe(400);
+		const large = await send('system', {
+			...systemOverrides,
+			attachments: [{ ...invite, contentBase64: Buffer.alloc(600 * 1024).toString('base64') }],
+		});
+		expect(large.res.status).toBe(400);
+	});
+});

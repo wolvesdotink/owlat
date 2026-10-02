@@ -22,9 +22,17 @@ const PUBLIC_ROUTE_PATHS = new Set([
 	'/desktop/setup',
 ]);
 
+/**
+ * Path prefixes whose every page is public: the booking pages
+ * (`/book/<host>`, `/book/<host>/<meeting>`, `/book/manage`).
+ */
+const PUBLIC_ROUTE_PREFIXES = ['/book/'];
+
 /** Whether a route path is a public page that doesn't need auth. */
 export function isPublicPath(path: string): boolean {
-	return PUBLIC_ROUTE_PATHS.has(path);
+	return (
+		PUBLIC_ROUTE_PATHS.has(path) || PUBLIC_ROUTE_PREFIXES.some((prefix) => path.startsWith(prefix))
+	);
 }
 
 /**

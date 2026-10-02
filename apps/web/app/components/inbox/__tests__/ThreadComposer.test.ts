@@ -17,8 +17,10 @@ beforeAll(() => {
 		// The shared Postbox footer's own lookups (send-as name, native picker).
 		useInboxes: () => ({ byId: ref(new Map()) }),
 		useNativeFilePicker: () => ({ isDesktop: ref(false), pickNativeFiles: vi.fn() }),
+		// Insert availability (booking page) in the footer's ⋯ menu stays off.
+		useToast: () => ({ showToast: vi.fn() }),
 		// Saved replies: the list, the use counter, the writer's name, the palette.
-		useFeatureFlag: () => ({ isEnabled: () => true }),
+		useFeatureFlag: () => ({ isEnabled: (flag: string) => flag !== 'calendar.booking' }),
 		useConvexQuery: () => ({ data: savedReplies, isLoading: ref(false), error: ref(null) }),
 		useBackendOperation: () => ({ run: recordUse, isLoading: ref(false) }),
 		useAuth: () => ({ user: ref({ name: 'Mira Holt', email: 'mira@owlat.example' }) }),

@@ -51,6 +51,17 @@ const systemMailArgs = {
 	subject: v.string(),
 	html: v.string(),
 	idempotencyKey: v.optional(v.string()),
+	replyTo: v.optional(v.string()),
+	// Small files a system message carries (a booking's `.ics` invite).
+	attachments: v.optional(
+		v.array(
+			v.object({
+				filename: v.string(),
+				contentType: v.string(),
+				contentBase64: v.string(),
+			})
+		)
+	),
 };
 
 type SystemMailArgs = {
@@ -59,6 +70,8 @@ type SystemMailArgs = {
 	subject: string;
 	html: string;
 	idempotencyKey?: string;
+	replyTo?: string;
+	attachments?: { filename: string; contentType: string; contentBase64: string }[];
 };
 
 function failedAttempt(
@@ -128,7 +141,17 @@ export async function attemptSystemEmail(
 				from: args.from,
 				subject: args.subject,
 				html: args.html,
+				...(args.replyTo ? { replyTo: args.replyTo } : {}),
 				headers: { 'Auto-Submitted': 'auto-generated' },
+				...(args.attachments?.length
+					? {
+							attachments: args.attachments.map((attachment) => ({
+								filename: attachment.filename,
+								contentType: attachment.contentType,
+								content: new Uint8Array(Buffer.from(attachment.contentBase64, 'base64')),
+							})),
+						}
+					: {}),
 			},
 			buildSystemMailExtrasFor(provider, { idempotencyKey: args.idempotencyKey })
 		);

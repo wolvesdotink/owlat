@@ -435,6 +435,12 @@ export const getPersonalExportCounts = internalQuery({
 				.query('deliverabilityAlertRecipients')
 				.withIndex('by_user', (q) => q.eq('userId', args.userId))
 		);
+		const bookingPages = await boundedCount(
+			ctx.db.query('bookingProfiles').withIndex('by_user', (q) => q.eq('userId', args.userId))
+		);
+		const bookings = await boundedCount(
+			ctx.db.query('bookings').withIndex('by_user_and_start', (q) => q.eq('userId', args.userId))
+		);
 
 		return [
 			{ resource: 'mailboxes' as const, count: mailboxes.length, isCapped: false },
@@ -460,6 +466,8 @@ export const getPersonalExportCounts = internalQuery({
 				count: alertStates.count,
 				isCapped: alertStates.isCapped,
 			},
+			{ resource: 'bookingPages' as const, ...bookingPages },
+			{ resource: 'bookings' as const, ...bookings },
 			{
 				resource: 'savedReplies' as const,
 				count: savedReplies.count,

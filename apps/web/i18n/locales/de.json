@@ -110,6 +110,57 @@
 			"termsRequired": "Du musst den Nutzungsbedingungen zustimmen"
 		}
 	},
+	"booking": {
+		"errors": {
+			"alreadyStarted": "Dieser Termin hat schon begonnen.",
+			"bookFailed": "Das hat nicht geklappt. Bitte versuch es noch einmal.",
+			"cancelFailed": "Der Termin konnte nicht abgesagt werden. Bitte versuch es noch einmal.",
+			"invalidGuest": "Prüf deinen Namen und deine E-Mail-Adresse.",
+			"missingToken": "Dieser Link ist unvollständig. Öffne ihn noch einmal aus deiner Bestätigungsmail.",
+			"notChangeable": "Dieser Termin lässt sich nicht mehr ändern.",
+			"notFound": "Diese Buchungsseite gibt es nicht, oder sie nimmt gerade keine Buchungen an.",
+			"rateLimited": "Zu viele Versuche. Warte kurz und versuch es dann noch einmal.",
+			"slotTaken": "Diese Zeit wurde gerade gebucht. Bitte wähl eine andere.",
+			"tooMany": "Du hast hier schon mehrere Termine gebucht. Sag einen ab, bevor du einen weiteren buchst.",
+			"unreachable": "Die Seite war nicht erreichbar. Prüf deine Verbindung und versuch es noch einmal."
+		},
+		"host": {
+			"empty": "Gerade gibt es keine Termine zum Buchen.",
+			"heading": "Termin mit {host} buchen",
+			"seoTitle": "Termin mit {host} buchen"
+		},
+		"manage": {
+			"alreadyCancelled": "Dieser Termin ist abgesagt.",
+			"cancel": "Termin absagen",
+			"cancelConfirmBody": "{host} bekommt eine E-Mail, dass du abgesagt hast.",
+			"cancelConfirmTitle": "Diesen Termin absagen?",
+			"cancelledBody": "Wir haben {host} Bescheid gegeben.",
+			"cancelledHeading": "Dein Termin ist abgesagt",
+			"keep": "Behalten",
+			"moveDisabled": "Neue Zeit wählen",
+			"moveTo": "Auf {time} verschieben",
+			"movedBody": "Wir haben dir die neue Zeit und eine aktualisierte Einladung geschickt. Nutz ab jetzt die Links aus dieser E-Mail.",
+			"movedHeading": "Dein Termin wurde verschoben",
+			"notChangeable": "Dieser Termin lässt sich hier nicht mehr ändern.",
+			"notFoundBody": "Dieser Link funktioniert nicht mehr. Wenn du den Termin verschoben hast, nimm den Link aus deiner neuesten E-Mail.",
+			"notFoundHeading": "Buchung nicht gefunden",
+			"pageTitle": "Deine Buchung",
+			"pickHeading": "Neue Zeit wählen",
+			"reschedule": "Andere Zeit wählen",
+			"withHost": "Termin mit {host}"
+		},
+		"page": {
+			"bookedBody": "Die Details und eine Kalendereinladung sind unterwegs an {email}.",
+			"bookedHeading": "Du bist gebucht",
+			"detailsHeading": "Deine Angaben",
+			"loading": "Freie Zeiten werden geladen…",
+			"notFoundHeading": "Seite nicht gefunden",
+			"pageTitle": "Termin buchen",
+			"pickHeading": "Zeit wählen",
+			"seoTitle": "{meeting} mit {host}",
+			"unreachableHeading": "Seite konnte nicht geladen werden"
+		}
+	},
 	"cancelDeletion": {
 		"errorBody": "Wir konnten deine Abbruchanfrage nicht verarbeiten.",
 		"errorHint": "Möglicherweise ist der Link abgelaufen oder die Löschung wurde bereits abgebrochen. Wenn du glaubst, dass es sich um einen Fehler handelt, wende dich bitte an den Support.",
@@ -705,6 +756,103 @@
 		"backupCommandRow": {
 			"copied": "Befehl kopiert",
 			"copyFailed": "Kopieren nicht möglich — bitte markieren und manuell kopieren"
+		},
+		"booking": {
+			"guestForm": {
+				"change": "Ändern",
+				"confirm": "Diese Zeit buchen",
+				"email": "E-Mail",
+				"honeypot": "Dieses Feld leer lassen",
+				"name": "Dein Name",
+				"note": "Möchtest du vorab etwas mitteilen?"
+			},
+			"meetingTypes": {
+				"active": "Gäste können diesen Termin buchen",
+				"add": "Termin hinzufügen",
+				"copyLink": "Link zu {title} kopieren",
+				"delete": "{title} löschen",
+				"deleteBody": "{title} kann nicht mehr gebucht werden. Bereits gebuchte Termine bleiben bestehen.",
+				"deleteOperation": "Terminart löschen",
+				"deleteTitle": "Diese Terminart löschen?",
+				"description": "Beschreibung",
+				"duration": "Dauer",
+				"edit": "{title} bearbeiten",
+				"editTitle": "Termin bearbeiten",
+				"emptyBody": "Füge einen Termin hinzu, damit Leute auf deiner Seite eine Zeit wählen können.",
+				"emptyTitle": "Noch keine Termine",
+				"heading": "Termine",
+				"inactive": "Pausiert",
+				"intro": "Jeder Termin hat einen eigenen Link. Schick den, der passt.",
+				"location": "Wo",
+				"locationPlaceholder": "Büro, Telefonnummer oder leer lassen",
+				"newTitle": "Neuer Termin",
+				"saveOperation": "Terminart speichern",
+				"slug": "Linkname",
+				"title": "Titel",
+				"titlePlaceholder": "30 Minuten Kennenlernen",
+				"videoUrl": "Link zum Videoanruf",
+				"videoUrlHint": "Nur wer bucht, bekommt diesen Link mit der Bestätigung."
+			},
+			"profile": {
+				"addOverride": "Datum hinzufügen",
+				"buffer": "Puffer zwischen Terminen (Minuten)",
+				"bufferHint": "Freie Zeit vor und nach jeder Buchung.",
+				"create": "Buchungsseite anlegen",
+				"displayName": "Name auf der Seite",
+				"displayNamePlaceholder": "Dein Name",
+				"horizon": "Buchbare Tage im Voraus",
+				"horizonHint": "Wie weit im Voraus Gäste buchen können.",
+				"notice": "Mindestvorlauf (Stunden)",
+				"noticeHint": "Keine Buchungen, die näher als das liegen.",
+				"overrideDate": "Datum",
+				"overridesHeading": "Abweichende Tage",
+				"overridesIntro": "Ändere deine Zeiten für einen Tag oder lass einen Tag ohne Zeiten, um ihn freizunehmen.",
+				"pageHeading": "Deine Seite",
+				"removeOverride": "Entfernen",
+				"rulesHeading": "Regeln",
+				"saveOperation": "Buchungsseite speichern",
+				"saved": "Gespeichert",
+				"slug": "Link",
+				"slugHint": "3 bis 40 Kleinbuchstaben, Ziffern und Bindestriche.",
+				"timeZone": "Deine Zeitzone",
+				"weeklyHeading": "Wöchentliche Zeiten",
+				"weeklyIntro": "Wann man dich buchen kann, in deiner Zeitzone. Mit mehreren Zeiträumen lässt du eine Mittagspause frei."
+			},
+			"ranges": {
+				"add": "Zeiten hinzufügen",
+				"from": "{day} von",
+				"problems": {
+					"bounds": "Fülle beide Zeiten aus.",
+					"order": "Das Ende muss nach dem Beginn liegen.",
+					"overlap": "Diese Zeiten überschneiden sich.",
+					"tooMany": "Mehr Zeiträume gehen an einem Tag nicht."
+				},
+				"remove": "Diese Zeiten am {day} entfernen",
+				"to": "{day} bis",
+				"unavailable": "Nicht verfügbar"
+			},
+			"slotPicker": {
+				"nextMonth": "Nächster Monat",
+				"noTimes": "An diesem Tag ist nichts frei.",
+				"previousMonth": "Vorheriger Monat",
+				"timeZone": "Zeiten in"
+			},
+			"summary": {
+				"duration": "{minutes} Min.",
+				"videoLink": "Link zum Videoanruf in der Bestätigung"
+			},
+			"upcoming": {
+				"cancel": "Termin absagen",
+				"cancelBody": "{guest} bekommt eine E-Mail, dass der Termin abgesagt ist.",
+				"cancelOperation": "Buchung absagen",
+				"cancelTitle": "Diesen Termin absagen?",
+				"emptyBody": "Sobald jemand auf deiner Seite eine Zeit bucht, erscheint sie hier.",
+				"emptyTitle": "Keine anstehenden Buchungen",
+				"heading": "Anstehende Buchungen",
+				"intro": "Zeiten in {zone}.",
+				"keep": "Behalten",
+				"with": "{title} mit {guest}"
+			}
 		},
 		"breadcrumbs": {
 			"home": "Startseite",
@@ -4352,6 +4500,15 @@
 				"label": "Posteingangsansicht",
 				"priority": "Priorität",
 				"title": "Wichtige E-Mails oder alle E-Mails (B)"
+			},
+			"postboxInsertAvailability": {
+				"intro": "Hier ein paar Zeiten, die bei mir passen ({zone}):",
+				"introNoTimes": "In den nächsten Wochen habe ich keine freien Zeiten, aber hier siehst du meinen Kalender.",
+				"linkLead": "Oder such dir eine Zeit aus, die dir passt:",
+				"loadFailed": "Deine freien Zeiten konnten nicht geladen werden.",
+				"menuItem": "Verfügbarkeit einfügen",
+				"notSetUp": "Richte zuerst deine Buchungsseite ein: Sie bestimmt, welche Zeiten du anbietest.",
+				"setUp": "Einrichten"
 			},
 			"postboxInviteCard": {
 				"accept": "Annehmen",
@@ -10848,6 +11005,12 @@
 				"usageLine": "Erstellt {created} · Zuletzt verwendet {lastUsed}",
 				"usernameLabel": "Benutzername"
 			},
+			"booking": {
+				"copied": "Kopiert",
+				"copyLink": "Link kopieren",
+				"intro": "Eine Seite, auf der Leute eine Zeit für ein Treffen mit dir wählen, ganz ohne Hin und Her per E-Mail. Gäste bekommen eine Kalendereinladung und können den Termin selbst absagen oder verschieben.",
+				"pageTitle": "Buchungsseite"
+			},
 			"device": {
 				"intro": "Einstellungen, die nur auf diesem Gerät gespeichert werden — sie wandern nie auf einen anderen Computer oder Browser.",
 				"nothingHere": "Auf dieser Instanz speichert nichts etwas auf diesem Gerät."
@@ -14730,6 +14893,11 @@
 					"description": "Deine Tastenbelegung und geänderte Tasten",
 					"keywords": "Tastatur, Tastenkürzel, Hotkeys, Tastenbelegung, neu belegen, Tasten"
 				},
+				"booking": {
+					"title": "Buchungsseite",
+					"description": "Leute eine Zeit für ein Treffen wählen lassen",
+					"keywords": "kalender, termin, meeting, verfügbarkeit, terminbuchung, calendly"
+				},
 				"filters": {
 					"title": "Filter",
 					"description": "Eingehende Post automatisch einsortieren",
@@ -16103,6 +16271,8 @@
 			"apiKeys": "API-Schlüssel",
 			"automations": "Automationen",
 			"blockedEmails": "Blockierte Adressen",
+			"bookingPages": "Buchungsseite",
+			"bookings": "Buchungen",
 			"campaigns": "Kampagnen",
 			"chatMessages": "Chat-Nachrichten",
 			"contactProperties": "Kontaktfelder",
@@ -16484,6 +16654,12 @@
 					"stripe": {
 						"description": "Mandanten über Stripe abrechnen (nur gehostete Steuerungsebene).",
 						"label": "Stripe-Abrechnung"
+					}
+				},
+				"calendar": {
+					"booking": {
+						"description": "Gib jedem Mitglied eine öffentliche Seite, auf der Leute eine Zeit für ein Treffen wählen, und füge deine freien Zeiten in eine E-Mail ein.",
+						"label": "Buchungsseite"
 					}
 				},
 				"campaigns": {

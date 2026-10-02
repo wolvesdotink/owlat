@@ -173,6 +173,13 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	),
 	desc('mailboxes', 'todayStates', 'marks[].key', 'retain', 'As above.'),
 	desc(
+		'bookingMeetingTypes',
+		'bookings',
+		'meetingTypeId',
+		'delete',
+		'Bookings are deleted by the host’s user id with their meeting types.'
+	),
+	desc(
 		'mailboxes',
 		'mailThreadVisits',
 		'mailboxId',

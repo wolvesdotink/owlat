@@ -18,6 +18,7 @@ import type { ComposerTargetCapabilities } from '~/utils/composerTarget';
 import type { ComposerSavedReplies } from '~/composables/useComposerSavedReplyPicker';
 import SavedReplyComposerTools from '~/components/savedReply/SavedReplyComposerTools.vue';
 import type { PreflightFinding } from '~/utils/postboxPreflight';
+import { usePostboxInsertAvailability } from '~/composables/postbox/usePostboxInsertAvailability';
 
 const props = defineProps<{
 	/** What the composer's target allows; hides the controls it cannot use. */
@@ -40,9 +41,8 @@ const props = defineProps<{
 	composerMode?: ComposerMode;
 	/** A reopened draft's body has not loaded: mode and signature wait for it. */
 	bodyPending?: boolean;
-	/** Live subject + body, for the read-only "Preview as sent" dialog below. */
+	/** Live subject + blocks, for the read-only "Preview as sent" dialog below. */
 	subject?: string;
-	bodyHtml?: string;
 	bodyBlocks?: EditorBlock[];
 	persistentToolbar?: boolean;
 	/** Deterministic pre-send findings (plan idea 6); empty means nothing to say. */
@@ -70,6 +70,11 @@ const props = defineProps<{
 const followUpRemindAt = defineModel<number | null>('followUpRemindAt', {
 	default: null,
 });
+/**
+ * The live body: read by "Preview as sent", written by "Insert availability"
+ * (which adds the sender's open times above the signature and the quote).
+ */
+const bodyHtml = defineModel<string>('bodyHtml', { default: '' });
 
 const emit = defineEmits<{
 	(e: 'send'): void;
@@ -86,6 +91,7 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 const answerFrame = computed(() => props.frame === 'answer');
+const availability = usePostboxInsertAvailability(bodyHtml);
 // The rich body's tools (Preview as sent, editor mode, toolbar) and the draft
 // row's own Discard only exist where the target writes an HTML draft row.
 const richBody = computed(() => props.capabilities.body === 'html');
@@ -285,6 +291,22 @@ function onPickFiles(event: Event) {
 								<Icon name="lucide:scan-eye" class="w-4 h-4 text-text-tertiary" />
 								{{ t('components.postbox.postboxComposerFooter.previewAsSent') }}
 							</button>
+							<!-- The booking page's next open times and link, into the body. -->
+							<button
+								v-if="availability.isAvailable.value && composerMode !== 'full'"
+								type="button"
+								role="menuitem"
+								class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface disabled:opacity-50"
+								:disabled="bodyPending || availability.isInserting.value"
+								data-testid="composer-insert-availability"
+								@click="
+									availability.insertAvailability();
+									close();
+								"
+							>
+								<Icon name="lucide:calendar-check" class="w-4 h-4 text-text-tertiary" />
+								{{ t('components.postbox.postboxInsertAvailability.menuItem') }}
+							</button>
 						</template>
 						<template v-if="!answerFrame && capabilities.schedule">
 							<div class="border-t border-border-subtle my-1" />
@@ -361,7 +383,7 @@ function onPickFiles(event: Event) {
 					v-if="richBody"
 					:open="previewOpen"
 					:subject="subject ?? ''"
-					:body-html="bodyHtml ?? ''"
+					:body-html="bodyHtml"
 					:body-blocks="bodyBlocks ?? []"
 					:composer-mode="composerMode ?? 'simple'"
 					@update:open="previewOpen = $event"
