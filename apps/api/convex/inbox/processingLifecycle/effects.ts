@@ -16,6 +16,7 @@ import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { listSharedInboxReaderIds } from '../access';
 import { transition as threadTransition } from '../threads/module';
+import { settleClockForMessage } from '../sla/threadClock';
 import { applyInboxStatsDelta, bucketForStatus } from '../../lib/inboxStats';
 import {
 	failedActionStatus,
@@ -347,6 +348,8 @@ export async function dispatch(
 		await ctx.db.patch(message._id, result.patch as Partial<Doc<'inboundMessages'>>);
 	}
 	await applyEffects(ctx, result.effects);
+	// The thread's response clock (inbox/sla): a reply sent, nothing left to answer.
+	await settleClockForMessage(ctx, message, input);
 
 	// Maintain the singleton `instanceSettings.inboxStats` counter doc so
 	// `getInboundStats` does not have to `.collect()` the whole table on

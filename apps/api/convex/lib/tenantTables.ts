@@ -182,6 +182,7 @@ export const TENANT_TABLES = [
 	'handlingRules',
 	'autonomySuggestions',
 	'askEagernessSettings',
+	'inboxSlaPolicies',
 	'clarificationAskLog',
 	'clarificationMemory',
 	'agentShadowDecisions',

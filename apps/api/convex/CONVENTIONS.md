@@ -260,6 +260,7 @@ Gated families and their builders:
 | `automations`                | `automationsQuery`, `automationsMutation`                                | `automations/_helpers.ts`          |
 | `forms`                      | `formsQuery`, `formsMutation`                                            | `forms/_helpers.ts`                |
 | `ai.knowledge`               | `knowledgeMutation`, `knowledgeAdminMutation`                            | `knowledge/visibility.ts`          |
+| `inbox` (response targets)   | `teamInboxAdminQuery`, `teamInboxAdminMutation`                          | `inbox/sla/policy.ts`              |
 
 The knowledge soft-auth reads apply `ai.knowledge` through
 `resolveKnowledgeViewer` (they return empty rather than throw). The one

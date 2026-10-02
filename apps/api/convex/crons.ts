@@ -4,6 +4,7 @@ import { internal } from './_generated/api';
 import { registerDeliveryCrons } from './delivery/cronRegistration';
 import { registerBundledPluginCrons } from './plugins/cronRegistration';
 import { registerContactHygieneCrons } from './contacts/crons';
+import { registerTeamInboxCrons } from './inbox/cronRegistration';
 import { registerSeedPlacementCrons } from './analytics/cronRegistration';
 
 const crons = cronJobs();
@@ -305,24 +306,9 @@ crons.interval(
 	{}
 );
 
-// Team-inbox snooze sweep — float snoozed conversation threads back into the
-// Open filter once their snoozedUntil has passed (stamps a "returned" marker).
-crons.interval(
-	'inbox wake snoozed threads',
-	{ minutes: 1 },
-	internal.inbox.snooze.internalSweep,
-	{}
-);
-
-// Thread-presence sweep — delete shared-inbox presence rows whose heartbeat has
-// aged past the 90s active window (tab closed without a clean leave, laptop
-// slept). Keeps threadPresence bounded; presence is read-side only.
-crons.interval(
-	'sweep expired thread presence',
-	{ minutes: 1 },
-	internal.inbox.presence.internalSweep,
-	{}
-);
+// Team-inbox thread sweeps (snooze wake, presence expiry, response-target
+// breaches). Grouped in `inbox/cronRegistration.ts`.
+registerTeamInboxCrons(crons);
 
 // Channel health checks every 5 minutes
 // Monitors SMS, WhatsApp, webhook channel connectivity

@@ -147,6 +147,7 @@ export type OrganizationDeletionTable =
 	| 'autonomySuggestions'
 	| 'handlingRules'
 	| 'askEagernessSettings'
+	| 'inboxSlaPolicies'
 	| 'clarificationAskLog'
 	| 'clarificationMemory'
 	| 'agentShadowDecisions'
@@ -355,6 +356,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('autonomySuggestions'),
 	v.literal('handlingRules'),
 	v.literal('askEagernessSettings'),
+	v.literal('inboxSlaPolicies'),
 	v.literal('clarificationAskLog'),
 	v.literal('clarificationMemory'),
 	v.literal('agentShadowDecisions'),

@@ -155,6 +155,8 @@ const EXPECTED_BUILDERS: readonly string[] = [
 	'publicQuery',
 	'publicTokenEndpoint',
 	'query',
+	'teamInboxAdminMutation',
+	'teamInboxAdminQuery',
 	'transactionalMutation',
 	'transactionalQuery',
 ];

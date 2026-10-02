@@ -65,9 +65,13 @@ export const inboxCollaborationTables = {
 		// What the notice is about. `assignment` (absent = assignment, the
 		// original meaning) is a teammate handing over a thread; `clarification`
 		// is the agent parking a reply because it needs a fact from this person
-		// (inbox/processingLifecycle/effects.ts `notify_clarification`). The
-		// client picks its copy by kind.
-		kind: v.optional(v.union(v.literal('assignment'), v.literal('clarification'))),
+		// (inbox/processingLifecycle/effects.ts `notify_clarification`);
+		// `sla_breach` is a reply target passing unanswered (inbox/sla/breaches.ts),
+		// where `assignedByName` carries the waiting customer. The client picks
+		// its copy by kind.
+		kind: v.optional(
+			v.union(v.literal('assignment'), v.literal('clarification'), v.literal('sla_breach'))
+		),
 		// The parked message, for `clarification` notices only.
 		inboundMessageId: v.optional(v.id('inboundMessages')),
 		// Assignee (BetterAuth user id) — who the thread was handed to.

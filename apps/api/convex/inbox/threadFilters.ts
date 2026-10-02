@@ -12,6 +12,7 @@ import { v, type Infer } from 'convex/values';
 import type { QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { WAITING_OVER_24H_MS } from './threadSort';
+import { buildSlaThreadQuery, isSlaSlice, threadMatchesSlaSlice } from './sla/slices';
 
 /**
  * Team Inbox filter pills. Each value is one focused slice of the shared inbox:
@@ -22,6 +23,8 @@ import { WAITING_OVER_24H_MS } from './threadSort';
  *   - waiting-24h waiting on US for longer than a day (see ./threadSort)
  *   - snoozed     currently snoozed (returns automatically later)
  *   - resolved    marked resolved
+ *   - sla-overdue / sla-due-soon  a reply target passed / passes within the
+ *                 hour (./sla/slices.ts)
  * Absent = every thread (used by the chat "link an inbox thread" picker).
  */
 export const threadFilterValidator = v.union(
@@ -31,7 +34,9 @@ export const threadFilterValidator = v.union(
 	v.literal('waiting'),
 	v.literal('waiting-24h'),
 	v.literal('snoozed'),
-	v.literal('resolved')
+	v.literal('resolved'),
+	v.literal('sla-overdue'),
+	v.literal('sla-due-soon')
 );
 
 /**
@@ -44,6 +49,19 @@ export const threadAssigneeValidator = v.union(v.literal('me'), v.literal('unass
 
 /** Derived from the validator, so the two can never drift apart. */
 export type ThreadAssignee = Infer<typeof threadAssigneeValidator>;
+
+/**
+ * Team Inbox list order. `needs-attention` (the default view) floats
+ * drafts-ready then unassigned-unread then oldest-open to the top;
+ * `oldest-waiting` puts the longest-waiting customer first; `due` the earliest
+ * response deadline (./sla/slices.ts); `newest` is plain recency.
+ */
+export const threadSortValidator = v.union(
+	v.literal('needs-attention'),
+	v.literal('oldest-waiting'),
+	v.literal('due'),
+	v.literal('newest')
+);
 
 /** How many rows a filter-count pill will read before rendering "99+". */
 export const FILTER_COUNT_CAP = 100;
@@ -68,6 +86,7 @@ export function buildThreadQuery(
 	assignee?: ThreadAssignee
 ) {
 	const base = ctx.db.query('conversationThreads');
+	if (isSlaSlice(filter)) return buildSlaThreadQuery(ctx, filter, userId, now, assignee);
 	if (assignee && filter && ASSIGNABLE_STATUS_FILTERS.has(filter)) {
 		return buildAssignedStatusQuery(ctx, filter, userId, now, assignee);
 	}
@@ -240,6 +259,7 @@ export function threadMatchesFilter(
 	now: number,
 	assignee?: ThreadAssignee
 ): boolean {
+	if (isSlaSlice(filter)) return threadMatchesSlaSlice(thread, filter, userId, now, assignee);
 	if (assignee && filter && ASSIGNABLE_STATUS_FILTERS.has(filter)) {
 		const owner = assignee === 'me' ? userId : undefined;
 		if (thread.assignedTo !== owner) return false;

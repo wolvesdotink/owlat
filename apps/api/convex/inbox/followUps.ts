@@ -37,6 +37,7 @@ import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { isOutboundChannel } from '../lib/convexValidators';
 import { getOrThrow, throwInvalidInput, throwInvalidState } from '../_utils/errors';
 import { mirrorEmailSendWrite } from '../unifiedMessages';
+import { transition as threadTransition } from './threads/module';
 import { buildThreadingHeaders, extractRecipient } from '../agent/replyEnvelope';
 import { replyBodyToHtml } from '@owlat/shared/html';
 import type {
@@ -314,6 +315,11 @@ export const completeSend = internalMutation({
 		}
 		const moved = await transitionFollowUp(ctx, followUp, 'sent', { sentAt: args.outcome.at });
 		if (!moved) return;
+		// A follow-up is a reply too: it closes the thread's response clock.
+		await threadTransition(ctx, {
+			threadId: followUp.threadId,
+			input: { kind: 'reply_sent', at: args.outcome.at },
+		});
 		try {
 			const thread = await ctx.db.get(followUp.threadId);
 			if (thread?.contactId) {

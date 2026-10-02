@@ -39,6 +39,7 @@ campaigns convex/campaigns/
 automations convex/automations/
 forms convex/forms/
 ai.knowledge convex/knowledge/
+inbox convex/inbox/sla/
 '
 
 generate() {

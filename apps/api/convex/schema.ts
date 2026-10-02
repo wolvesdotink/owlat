@@ -25,6 +25,7 @@ import { seedPlacementTables } from './schema/seedPlacement';
 import { inboxTables } from './schema/inbox';
 import { inboxCollaborationTables } from './schema/inboxCollaboration';
 import { inboxFollowUpTables } from './schema/inboxFollowUps';
+import { inboxSlaTables } from './schema/inboxSla';
 import { autonomyTables } from './schema/autonomy';
 import { askEagernessTables } from './schema/askEagerness';
 import { knowledgeTables } from './schema/knowledge';
@@ -74,6 +75,7 @@ export default defineSchema({
 	...inboxTables,
 	...inboxCollaborationTables,
 	...inboxFollowUpTables,
+	...inboxSlaTables,
 	...autonomyTables,
 	...askEagernessTables,
 	...knowledgeTables,
