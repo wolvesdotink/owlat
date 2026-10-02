@@ -5539,6 +5539,25 @@
 			"unsavedHint": "Speichere deine Änderungen, bevor du einen Freigabelink erstellst."
 		},
 		"system": {
+			"imapServersCard": {
+				"title": "IMAP-Server",
+				"intro": "IMAP-Server, die sich in den letzten 7 Tagen bei diesem Backend gemeldet haben. Aktualisiere zuerst das Backend, dann den IMAP-Container: Der IMAP-Server darf ein Release hinter dem Backend liegen, ihm aber nie voraus sein, und ein Server außerhalb dieses Fensters startet nicht.",
+				"loading": "IMAP-Server werden geladen…",
+				"empty": "In den letzten 7 Tagen hat sich kein IMAP-Server gemeldet. Das ist zu erwarten, wenn dieses Deployment keinen IMAP-Container betreibt.",
+				"legacyWarning": "Ein IMAP-Server von vor der Versionsmeldung (0.6.7 oder älter) hat am {date} eine Anmeldung bearbeitet. Aktualisiere den IMAP-Container auf das Release des Backends.",
+				"unsupportedWarning": "Ein IMAP-Server, der älter ist, als dieses Backend unterstützt, hat sich gemeldet. Er startet erst wieder, wenn du den IMAP-Container aktualisierst.",
+				"aheadWarning": "Ein IMAP-Server, der neuer ist als dieses Backend, hat sich gemeldet. Er stellt erst wieder Mail bereit, wenn das Backend aktualisiert ist.",
+				"host": "Hostname",
+				"version": "Version",
+				"lastSeen": "Letzte Meldung",
+				"wireVersion": "(Protokollversion {version})",
+				"verdict": {
+					"current": "Aktuell",
+					"supported": "Älter, unterstützt",
+					"unsupported": "Nicht unterstützt",
+					"ahead": "Wartet auf Backend-Update"
+				}
+			},
 			"llmSpendCard": {
 				"advisoryPaused": "Beratende KI ist pausiert; das verbleibende Budget ist für autonome Antworten reserviert.",
 				"approachingCeiling": "Obergrenze nähert sich",
