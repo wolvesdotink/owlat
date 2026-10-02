@@ -69,4 +69,6 @@ export type {
 	PreviewMode,
 	SlashCommand,
 	SlashMenuState,
+	RemoteBlockMark,
+	BuilderCollabFocus,
 } from './editor';

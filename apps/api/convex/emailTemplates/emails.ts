@@ -19,6 +19,7 @@ import { loadEmailTheme } from '../lib/publishableEmailRender';
 import { captureTemplateVersion } from './versions';
 import { assertContentRevision } from '../lib/contentRevision';
 import { rendererVersionArg } from '../lib/rendererVersion';
+import { loadCoeditSave, markCoeditSaved } from '../emailCoediting/save';
 
 // Query to get a single email template by ID
 export const get = authedQuery({
@@ -64,13 +65,23 @@ export const update = authedMutation({
 		// The `contentRevision` the caller's payload was built on. When given, the
 		// write is refused with `conflict` if the row has moved on since.
 		expectedContentRevision: v.optional(v.number()),
+		// The co-editing session version the caller has seen. When given and the
+		// template has a live session, the session's draft is saved instead of
+		// the payload's blocks and shared fields (emailCoediting/save.ts).
+		coeditVersion: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, rawArgs) => {
 		const session = await requireOrgPermission(
 			ctx,
 			'templates:manage',
 			'Only owners and admins can update email templates'
 		);
+		const coedit = await loadCoeditSave(
+			ctx,
+			{ type: 'emailTemplate', id: rawArgs.templateId },
+			rawArgs.coeditVersion
+		);
+		const args = coedit ? { ...rawArgs, ...coedit.overrides } : rawArgs;
 
 		const template = await getOrThrow(ctx, args.templateId, 'Email template');
 
@@ -87,6 +98,7 @@ export const update = authedMutation({
 		};
 
 		await ctx.db.patch(args.templateId, updates);
+		if (coedit) await markCoeditSaved(ctx, coedit, updates.contentRevision);
 
 		// Persisted version history (the editor's undo stack dies with the tab).
 		// Snapshot the POST-patch row, in this transaction, so a rolled-back save
