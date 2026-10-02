@@ -50,6 +50,7 @@ function mountSection(spfCoexistence: { existing: string; merged: string } | nul
 				Icon: true,
 				DomainsDNSRecordPanel: true,
 				DomainsReturnPathEditor: true,
+				DomainsDmarcReportingPanel: true,
 			},
 		},
 	});
