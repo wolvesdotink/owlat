@@ -128,6 +128,7 @@ beforeAll(() => {
 		useFeatureFlag: () => ({ isEnabled: () => true }),
 		useAuth: () => ({ user: ref({ id: 'u_me' }) }),
 		useToast: () => ({ showToast: vi.fn() }),
+		registerCommandPaletteProvider: vi.fn(),
 		useThreadPresence: () => ({ others: presence }),
 		useConvexQuery: (query: unknown, args: () => unknown) => {
 			void query;

@@ -13929,13 +13929,13 @@
 			"fields": {
 				"limit": "Auf Team-Postfächer beschränken",
 				"limitHint": "Lässt du alle frei, steht sie in jedem Editor zur Verfügung, auch bei Antworten im Team-Postfach.",
-				"name": "Name",
+				"name": "Bezeichnung",
 				"namePlaceholder": "z. B. Erstattung",
 				"noTeamInboxes": "Es gibt noch keine Team-Postfächer.",
 				"scope": "Wer sie nutzen kann",
 				"shortcut": "Kürzel",
 				"shortcutPlaceholder": "erstattung",
-				"text": "Text",
+				"text": "Antworttext",
 				"textPlaceholder": "Schreib die Antwort…"
 			},
 			"help": {

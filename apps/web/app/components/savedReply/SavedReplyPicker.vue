@@ -130,9 +130,12 @@ function saveCurrent() {
 						<span v-if="reply.shortcut" class="shrink-0 font-mono text-xs text-text-tertiary"
 							>;{{ reply.shortcut }}</span
 						>
-						<UiBadge v-if="reply.isShared" size="sm" class="ml-auto shrink-0">
+						<span
+							v-if="reply.isShared"
+							class="ml-auto shrink-0 rounded bg-brand/10 px-1.5 py-0.5 text-2xs font-medium text-brand"
+						>
 							{{ t('shared.savedReplies.sharedBadge') }}
-						</UiBadge>
+						</span>
 					</div>
 					<p class="mt-0.5 line-clamp-2 text-xs text-text-tertiary">{{ preview(reply) }}</p>
 				</li>

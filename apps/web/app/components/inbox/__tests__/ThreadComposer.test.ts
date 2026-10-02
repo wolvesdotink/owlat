@@ -75,7 +75,6 @@ function mountComposer(props: Record<string, unknown> = {}, slots: Record<string
 				Icon: true,
 				PostboxOverflowMenu: MenuStub,
 				UiModal: ModalStub,
-				UiBadge: true,
 				// The mailbox-only controls of the shared footer, never shown here.
 				PostboxComposerFollowUp: true,
 				PostboxComposerModeControls: true,
