@@ -127,6 +127,22 @@ describe('AskCard', () => {
 		w.unmount();
 	});
 
+	it('focuses the first open question, then the submit button once all are answered', async () => {
+		const w = mountCard({ round: undefined, questions: QUESTIONS.slice(3) });
+		const inputs = w.findAll('[data-testid="ask-input"]');
+		expect((w.vm as unknown as { focusFirstOpen: () => boolean }).focusFirstOpen()).toBe(true);
+		expect(document.activeElement).toBe(inputs[0]!.element);
+
+		await inputs[0]!.setValue('4,200 EUR');
+		(w.vm as unknown as { focusFirstOpen: () => boolean }).focusFirstOpen();
+		expect(document.activeElement).toBe(inputs[1]!.element);
+
+		await inputs[1]!.setValue('Nothing else');
+		(w.vm as unknown as { focusFirstOpen: () => boolean }).focusFirstOpen();
+		expect(document.activeElement).toBe(w.get('[data-testid="ask-submit"]').element);
+		w.unmount();
+	});
+
 	it('says where the questions came from without a domain when they do not agree', () => {
 		const questions = [
 			{ ...QUESTIONS[3]!, attribution: 'Generated from an email from a.example — x' },

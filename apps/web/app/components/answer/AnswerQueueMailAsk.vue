@@ -102,6 +102,13 @@ function useWaitingDraft() {
 	if (draft) emit('use-draft', draft);
 }
 
+const askCardRef = ref<InstanceType<typeof AskCard> | null>(null);
+/** Focus the first open question (the page's "Answer the questions…" row); false when none is up. */
+function focusQuestion(): boolean {
+	return askCardRef.value?.focusFirstOpen() ?? false;
+}
+defineExpose({ focusQuestion });
+
 const answerOp = useBackendOperation(api.mail.ai.needsReplyClarify.answerClarification, {
 	label: () => t('components.postbox.postboxReplyFlow.operations.answer'),
 });
@@ -125,6 +132,7 @@ async function submit(answers: AskCardAnswer[]) {
 	<div v-if="visible && row" data-testid="answer-queue-ask">
 		<AskCard
 			v-if="state === 'asking'"
+			ref="askCardRef"
 			:questions="questions"
 			:submitting="submitting"
 			:mailbox-id="mailboxId"

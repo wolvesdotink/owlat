@@ -54,7 +54,8 @@ const emit = defineEmits<{
 	/**
 	 * "Reply to Jonas…" was tapped and the composer is showing: the page puts
 	 * the caret in the body through the composer (a DOM query here would find
-	 * the folded envelope's inputs, or the AI bar's, before the editor).
+	 * the folded envelope's inputs, or the AI bar's, before the editor), or,
+	 * when the row named something else to do (`peekText`), where that is.
 	 * Emitted inside the tap, so the page's focus is too.
 	 */
 	'start-reply': [];

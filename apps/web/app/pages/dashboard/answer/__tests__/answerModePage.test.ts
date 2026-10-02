@@ -166,6 +166,15 @@ const ComposerStub = defineComponent({
 			h('div', { 'data-testid': 'composer' }, slots['above-editor']?.({ composer: answerApi }));
 	},
 });
+const queueAskFocus = vi.fn(() => true);
+const QueueAskStub = defineComponent({
+	name: 'AnswerQueueMailAsk',
+	emits: ['visible', 'use-draft'],
+	setup(_p, { expose }) {
+		expose({ focusQuestion: queueAskFocus });
+		return () => h('div');
+	},
+});
 const AiBarStub = defineComponent({
 	name: 'AnswerAiBar',
 	props: ['phase', 'busy', 'hasAiDraft', 'injectionFlagged'],
@@ -230,7 +239,7 @@ async function mountAt(query: Record<string, string>, opts: { realMenu?: boolean
 				PostboxMessageNotFound: inert('PostboxMessageNotFound'),
 				UiSkeleton: inert('UiSkeleton'),
 				AnswerQueueBar: inert('AnswerQueueBar'),
-				AnswerQueueMailAsk: inert('AnswerQueueMailAsk'),
+				AnswerQueueMailAsk: QueueAskStub,
 				AnswerPeekDraft: inert('AnswerPeekDraft'),
 				PostboxLabelPickerDialog: LabelDialogStub,
 				PostboxAiStrip: AiStripStub,
@@ -500,6 +509,20 @@ describe('Answer mode page', () => {
 		const w = await mountAt({});
 		w.getComponent(AnswerModeFrame).vm.$emit('start-reply');
 		// Synchronously: iOS only raises the keyboard for a focus inside the tap.
+		expect(composerFocusBody).toHaveBeenCalledTimes(1);
+	});
+
+	it('puts the caret in the first open question while the queue item asks, not the body', async () => {
+		queueAskFocus.mockClear();
+		const w = await mountAt({});
+		w.getComponent(QueueAskStub).vm.$emit('visible', true);
+		await flushPromises();
+		w.getComponent(AnswerModeFrame).vm.$emit('start-reply');
+		expect(queueAskFocus).toHaveBeenCalledTimes(1);
+		expect(composerFocusBody).not.toHaveBeenCalled();
+		// Nothing there to focus: the body after all.
+		queueAskFocus.mockReturnValueOnce(false);
+		w.getComponent(AnswerModeFrame).vm.$emit('start-reply');
 		expect(composerFocusBody).toHaveBeenCalledTimes(1);
 	});
 

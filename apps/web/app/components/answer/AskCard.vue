@@ -176,6 +176,28 @@ function onKeydown(event: KeyboardEvent) {
 onMounted(() => window.addEventListener('keydown', onKeydown));
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 
+const FOCUSABLE =
+	'input:not([type="hidden"]):not(:disabled), textarea:not(:disabled), button:not(:disabled)';
+
+/**
+ * Put the focus where the answering starts: the first control of the first
+ * question still open (a remembered answer counts as answered), or "Answer and
+ * draft" once every question has one. Synchronous, so a tap that calls it
+ * raises the phone's keyboard. False when there is nothing to focus.
+ */
+function focusFirstOpen(): boolean {
+	const open = props.questions.findIndex((q) => !(values[q.id] ?? q.answer?.value ?? '').trim());
+	const rows = rootEl.value?.querySelectorAll<HTMLElement>('[data-testid="ask-question"]');
+	const target =
+		open >= 0
+			? rows?.[open]?.querySelector<HTMLElement>(FOCUSABLE)
+			: rootEl.value?.querySelector<HTMLElement>('[data-testid="ask-submit"]:not(:disabled)');
+	if (!target) return false;
+	target.focus();
+	return true;
+}
+defineExpose({ focusFirstOpen });
+
 const titleId = useId();
 
 const title = computed(() => {

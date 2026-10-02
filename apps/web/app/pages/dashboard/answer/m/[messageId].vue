@@ -227,6 +227,17 @@ function leave() {
 const queueSession = useAnswerQueueSession();
 // While the queue item's own questions are up, "Draft with AI" waits below them.
 const queueAskVisible = ref(false);
+const queueAskRef = ref<{ focusQuestion: () => boolean } | null>(null);
+
+/**
+ * The phone/tablet sheet's resting row was tapped. While it reads "Answer the
+ * questions…", the caret goes to the first open question; otherwise (or with
+ * nothing there to focus) into the reply body. Inside the tap, for iOS.
+ */
+function startReply() {
+	if (queueAskVisible.value && queueAskRef.value?.focusQuestion()) return;
+	composerRef.value?.focusBody();
+}
 
 /**
  * The message is gone (#1100). Inside a queue session the way on is the next
@@ -317,7 +328,7 @@ onBeforeUnmount(() => {
 			:counterpart="counterpart"
 			:peek-text="queueAskVisible ? t('components.answer.mode.sheet.peekQuestions') : undefined"
 			@back="leave"
-			@start-reply="composerRef?.focusBody()"
+			@start-reply="startReply"
 		>
 			<!-- Only the inbox's chip: the reply's From line and "as Ada" beside
 			     Send already say who it goes out as, in full. -->
@@ -432,6 +443,7 @@ onBeforeUnmount(() => {
 							:resolve-thread-file="assist.resolveThreadFile"
 							:written="hasOwnWriting(composer.draftText.value, composer.aiDraft.value)"
 							:copy-policy="copyPolicy"
+							ref="queueAskRef"
 							@visible="queueAskVisible = $event"
 							@use-draft="assist.applyQueueDraft(composer, $event)"
 						/>
