@@ -42,6 +42,54 @@ describe('ensureSecrets', () => {
 		expect(out['MTA_SECRET']).toBe('operator-provided-secret-value-32bytes!!');
 	});
 
+	it('mints a matching Web Push VAPID key pair on a fresh install', async () => {
+		const out = ensureSecrets({});
+		const publicKey = Buffer.from(out['VAPID_PUBLIC_KEY']!, 'base64url');
+		const privateKey = Buffer.from(out['VAPID_PRIVATE_KEY']!, 'base64url');
+		// Uncompressed P-256 point and a raw 32-byte scalar, base64url unpadded.
+		expect(publicKey).toHaveLength(65);
+		expect(publicKey[0]).toBe(0x04);
+		expect(privateKey).toHaveLength(32);
+		expect(out['VAPID_PUBLIC_KEY']).toMatch(/^[A-Za-z0-9_-]+$/);
+		// The two halves belong together: a signature made with the private half
+		// verifies under the public half.
+		const subtle = globalThis.crypto.subtle;
+		const signingKey = await subtle.importKey(
+			'jwk',
+			{
+				kty: 'EC',
+				crv: 'P-256',
+				d: out['VAPID_PRIVATE_KEY'],
+				x: publicKey.subarray(1, 33).toString('base64url'),
+				y: publicKey.subarray(33).toString('base64url'),
+			},
+			{ name: 'ECDSA', namedCurve: 'P-256' },
+			false,
+			['sign']
+		);
+		const verifyKey = await subtle.importKey(
+			'raw',
+			publicKey,
+			{ name: 'ECDSA', namedCurve: 'P-256' },
+			false,
+			['verify']
+		);
+		const data = new TextEncoder().encode('owlat');
+		const signature = await subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, signingKey, data);
+		expect(
+			await subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, verifyKey, signature, data)
+		).toBe(true);
+	});
+
+	it('never replaces half of an existing VAPID pair', () => {
+		const kept = ensureSecrets({ VAPID_PUBLIC_KEY: 'operator-public' });
+		expect(kept['VAPID_PUBLIC_KEY']).toBe('operator-public');
+		expect(kept['VAPID_PRIVATE_KEY']).toBeUndefined();
+		const both = ensureSecrets({ VAPID_PUBLIC_KEY: 'a', VAPID_PRIVATE_KEY: 'b' });
+		expect(both['VAPID_PUBLIC_KEY']).toBe('a');
+		expect(both['VAPID_PRIVATE_KEY']).toBe('b');
+	});
+
 	it('is idempotent — preserves an operator-supplied MAIL_SYNC_API_KEY', () => {
 		const out = ensureSecrets({ MAIL_SYNC_API_KEY: 'msk_existing' });
 		expect(out['MAIL_SYNC_API_KEY']).toBe('msk_existing');

@@ -236,6 +236,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	coalesceBatches: makeSweepStep('coalesceBatches'),
 	visualizations: makeSweepStep('visualizations'),
 	dashboardLayouts: makeSweepStep('dashboardLayouts'),
+	pushSubscriptions: makeSweepStep('pushSubscriptions'),
 	connectedApps: makeSweepStep('connectedApps'),
 	pluginStorageEntries: makeSweepStep('pluginStorageEntries'),
 	pluginStorageUsage: makeSweepStep('pluginStorageUsage'),

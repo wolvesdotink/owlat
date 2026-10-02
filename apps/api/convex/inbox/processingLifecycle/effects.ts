@@ -33,6 +33,7 @@ import {
 	reduce,
 	requiresManualTakeover,
 } from './reducers';
+import { enqueuePush } from '../../push/events';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -105,7 +106,7 @@ async function notifyClarification(
 	const recipients = await resolveClarificationRecipients(ctx, message);
 	const now = Date.now();
 	for (const userId of recipients) {
-		await ctx.db.insert('inboxAssignmentNotices', {
+		const noticeId = await ctx.db.insert('inboxAssignmentNotices', {
 			kind: 'clarification',
 			inboundMessageId,
 			userId,
@@ -114,6 +115,7 @@ async function notifyClarification(
 			assignedByName: message.from,
 			createdAt: now,
 		});
+		await enqueuePush(ctx, userId, { kind: 'assignment', noticeId });
 	}
 }
 

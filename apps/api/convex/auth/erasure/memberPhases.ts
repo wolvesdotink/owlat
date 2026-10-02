@@ -96,6 +96,11 @@ export const eraseMemberRecords: MemberPhaseRunner = async (phase) => {
 				.take(n),
 		(n) =>
 			ctx.db
+				.query('pushSubscriptions')
+				.withIndex('by_user', (q) => q.eq('userId', uid))
+				.take(n),
+		(n) =>
+			ctx.db
 				.query('threadPresence')
 				.withIndex('by_user', (q) => q.eq('userId', uid))
 				.take(n),

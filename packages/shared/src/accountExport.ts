@@ -24,6 +24,7 @@ export const ACCOUNT_EXPORT_PERSONAL_RESOURCES = [
 	'externalMailAccounts',
 	'chatMessages',
 	'deliverabilityAlertRecipientStates',
+	'pushSubscriptions',
 ] as const;
 
 export type AccountExportPersonalResource = (typeof ACCOUNT_EXPORT_PERSONAL_RESOURCES)[number];

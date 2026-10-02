@@ -271,6 +271,32 @@ export const listPersonalChatMessages = internalQuery({
 	},
 });
 
+/**
+ * The member's Web Push devices: label and timestamps only. The endpoint and
+ * the two keys are a live capability to notify this person, so they stay out
+ * of a file that is meant to be downloaded and kept.
+ */
+export const listPersonalPushSubscriptions = internalQuery({
+	args: { userId: v.string(), paginationOpts: paginationOptsValidator },
+	handler: async (ctx, args) => {
+		await requireSelf(ctx, args.userId);
+		const result = await ctx.db
+			.query('pushSubscriptions')
+			.withIndex('by_user', (q) => q.eq('userId', args.userId))
+			.paginate(args.paginationOpts);
+		return {
+			...result,
+			page: result.page.map((row) => ({
+				_id: row._id,
+				label: row.label,
+				timeZone: row.timeZone,
+				createdAt: row.createdAt,
+				lastSuccessAt: row.lastSuccessAt,
+			})),
+		};
+	},
+});
+
 export const listDeliverabilityAlertRecipientStates = internalQuery({
 	args: { userId: v.string(), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
@@ -405,6 +431,9 @@ export const getPersonalExportCounts = internalQuery({
 				.query('deliverabilityAlertRecipients')
 				.withIndex('by_user', (q) => q.eq('userId', args.userId))
 		);
+		const pushDevices = await boundedCount(
+			ctx.db.query('pushSubscriptions').withIndex('by_user', (q) => q.eq('userId', args.userId))
+		);
 
 		return [
 			{ resource: 'mailboxes' as const, count: mailboxes.length, isCapped: false },
@@ -424,6 +453,11 @@ export const getPersonalExportCounts = internalQuery({
 				resource: 'deliverabilityAlertRecipientStates' as const,
 				count: alertStates.count,
 				isCapped: alertStates.isCapped,
+			},
+			{
+				resource: 'pushSubscriptions' as const,
+				count: pushDevices.count,
+				isCapped: pushDevices.isCapped,
 			},
 		];
 	},
