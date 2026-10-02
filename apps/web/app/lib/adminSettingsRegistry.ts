@@ -145,15 +145,6 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 		gate: anyFlag('postbox', 'mail.external'),
 	},
 	{
-		// Reply deadlines for the Team Inbox; the page's `requiresFeature`.
-		id: 'responseTargets',
-		path: `${ADMIN_ROOT}/team/response-targets`,
-		titleKey: label('responseTargets'),
-		icon: 'lucide:alarm-clock',
-		area: 'team',
-		gate: flag('inbox'),
-	},
-	{
 		id: 'senders',
 		path: `${ADMIN_ROOT}/team/senders`,
 		titleKey: label('campaignSenders'),

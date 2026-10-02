@@ -163,7 +163,7 @@ const labelEvery = computed(() => Math.max(1, Math.ceil(volumeSeries.value.lengt
 			:description="t('dashboard.inbox.analytics.subtitle')"
 		>
 			<template #actions>
-				<UiButton to="/dashboard/admin/team/response-targets" variant="secondary" class="gap-2">
+				<UiButton to="/dashboard/inbox/response-targets" variant="secondary" class="gap-2">
 					<Icon name="lucide:alarm-clock" class="w-4 h-4" />
 					{{ t('dashboard.inbox.analytics.targetsLink') }}
 				</UiButton>
@@ -224,10 +224,7 @@ const labelEvery = computed(() => Math.max(1, Math.ceil(volumeSeries.value.lengt
 					>
 						<p v-if="!analytics.isTargetsEnabled" data-testid="inbox-analytics-targets-off">
 							{{ t('dashboard.inbox.analytics.targetsOff') }}
-							<NuxtLink
-								to="/dashboard/admin/team/response-targets"
-								class="text-brand hover:underline"
-							>
+							<NuxtLink to="/dashboard/inbox/response-targets" class="text-brand hover:underline">
 								{{ t('dashboard.inbox.analytics.targetsOffLink') }}
 							</NuxtLink>
 						</p>

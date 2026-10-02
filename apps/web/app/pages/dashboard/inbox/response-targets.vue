@@ -11,11 +11,11 @@ import { DEFAULT_SLA_FORM_POLICY, type SlaPolicyShape } from '~/utils/inboxSlaPo
 
 const { t } = useI18n();
 
-useHead({ title: () => t('dashboard.admin.team.responseTargets.pageTitle') });
+useHead({ title: () => t('dashboard.inbox.responseTargets.pageTitle') });
 
 definePageMeta({
-	layout: 'admin',
-	middleware: ['auth', 'admin'],
+	layout: 'dashboard',
+	middleware: 'auth',
 	requiresFeature: 'inbox',
 });
 
@@ -47,26 +47,30 @@ const policy = computed<SlaPolicyShape>(() => {
 
 const { run: savePolicy, isLoading: isSaving } = useBackendOperation(
 	api.inbox.sla.policy.savePolicy,
-	{ label: () => t('dashboard.admin.team.responseTargets.saveOperation') }
+	{ label: () => t('dashboard.inbox.responseTargets.saveOperation') }
 );
 
 async function onSave(next: SlaPolicyShape) {
 	const result = await savePolicy(next);
-	if (result.ok) showToast(t('dashboard.admin.team.responseTargets.saved'));
+	if (result.ok) showToast(t('dashboard.inbox.responseTargets.saved'));
 }
 </script>
 
 <template>
-	<div>
+	<div class="mx-auto w-full max-w-page p-6 lg:p-8">
 		<UiPageHeader
 			class="mb-6"
-			:title="t('dashboard.admin.team.responseTargets.title')"
-			:description="t('dashboard.admin.team.responseTargets.subtitle')"
+			:title="t('dashboard.inbox.responseTargets.title')"
+			:description="t('dashboard.inbox.responseTargets.subtitle')"
 		>
 			<template #actions>
 				<UiButton to="/dashboard/inbox/analytics" variant="secondary" class="gap-2">
 					<Icon name="lucide:bar-chart-3" class="w-4 h-4" />
-					{{ t('dashboard.admin.team.responseTargets.analyticsLink') }}
+					{{ t('dashboard.inbox.responseTargets.analyticsLink') }}
+				</UiButton>
+				<UiButton to="/dashboard/inbox" variant="ghost" class="gap-2">
+					<Icon name="lucide:inbox" class="w-4 h-4" />
+					{{ t('dashboard.inbox.responseTargets.backToInbox') }}
 				</UiButton>
 			</template>
 		</UiPageHeader>
@@ -77,17 +81,17 @@ async function onSave(next: SlaPolicyShape) {
 		>
 			<UiIconBox icon="lucide:lock" size="xl" variant="surface" rounded="full" class="mb-4" />
 			<p class="text-text-secondary font-medium">
-				{{ t('dashboard.admin.team.responseTargets.adminGate.title') }}
+				{{ t('dashboard.inbox.responseTargets.adminGate.title') }}
 			</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				{{ t('dashboard.admin.team.responseTargets.adminGate.description') }}
+				{{ t('dashboard.inbox.responseTargets.adminGate.description') }}
 			</p>
 		</div>
 		<UiQueryBoundary
 			v-else
 			:loading="isLoading"
 			:error="error"
-			:error-title="t('dashboard.admin.team.responseTargets.errorTitle')"
+			:error-title="t('dashboard.inbox.responseTargets.errorTitle')"
 			@retry="refetch"
 		>
 			<template #loading>

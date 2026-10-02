@@ -8214,19 +8214,6 @@
 					"removing": "Removing...",
 					"title": "Remove team member"
 				},
-				"responseTargets": {
-					"adminGate": {
-						"description": "Response targets can be managed by workspace owners and admins.",
-						"title": "Admins only"
-					},
-					"analyticsLink": "Response analytics",
-					"errorTitle": "Response targets could not be loaded",
-					"pageTitle": "Response targets",
-					"saveOperation": "Save response targets",
-					"saved": "Response targets saved",
-					"subtitle": "How fast the team should answer Team Inbox conversations.",
-					"title": "Response targets"
-				},
 				"roles": {
 					"title": "What each role can do"
 				},
@@ -9785,6 +9772,20 @@
 				"subtitle": "Incoming messages the safety check held back. Release the ones that are fine, or block the sender.",
 				"title": "Quarantine",
 				"whyHeldLabel": "Why this was held"
+			},
+			"responseTargets": {
+				"adminGate": {
+					"description": "Response targets can be managed by workspace owners and admins.",
+					"title": "Admins only"
+				},
+				"analyticsLink": "Response analytics",
+				"errorTitle": "Response targets could not be loaded",
+				"pageTitle": "Response targets",
+				"saveOperation": "Save response targets",
+				"saved": "Response targets saved",
+				"subtitle": "How fast the team should answer Team Inbox conversations.",
+				"title": "Response targets",
+				"backToInbox": "Team Inbox"
 			},
 			"updates": {
 				"blockDialogConfirm": "Block sender",

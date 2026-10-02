@@ -8214,19 +8214,6 @@
 					"removing": "Wird entfernt...",
 					"title": "Teammitglied entfernen"
 				},
-				"responseTargets": {
-					"adminGate": {
-						"description": "Antwortziele können Inhaber und Admins des Workspace verwalten.",
-						"title": "Nur für Admins"
-					},
-					"analyticsLink": "Antwortzeiten",
-					"errorTitle": "Die Antwortziele konnten nicht geladen werden",
-					"pageTitle": "Antwortziele",
-					"saveOperation": "Antwortziele speichern",
-					"saved": "Antwortziele gespeichert",
-					"subtitle": "Wie schnell das Team auf Konversationen im Team-Postfach antworten soll.",
-					"title": "Antwortziele"
-				},
 				"roles": {
 					"title": "Was jede Rolle darf"
 				},
@@ -9785,6 +9772,20 @@
 				"subtitle": "Eingehende Nachrichten, die die Sicherheitsprüfung zurückgehalten hat. Gib unbedenkliche frei oder blockiere den Absender.",
 				"title": "Quarantäne",
 				"whyHeldLabel": "Warum diese Nachricht zurückgehalten wurde"
+			},
+			"responseTargets": {
+				"adminGate": {
+					"description": "Antwortziele können Inhaber und Admins des Workspace verwalten.",
+					"title": "Nur für Admins"
+				},
+				"analyticsLink": "Antwortzeiten",
+				"errorTitle": "Die Antwortziele konnten nicht geladen werden",
+				"pageTitle": "Antwortziele",
+				"saveOperation": "Antwortziele speichern",
+				"saved": "Antwortziele gespeichert",
+				"subtitle": "Wie schnell das Team auf Konversationen im Team-Postfach antworten soll.",
+				"title": "Antwortziele",
+				"backToInbox": "Team-Postfach"
 			},
 			"updates": {
 				"blockDialogConfirm": "Absender sperren",
