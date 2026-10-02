@@ -291,13 +291,19 @@ function fmtUtc(d: Date): string {
 	);
 }
 
-/** Escape a TEXT property value per RFC 5545 §3.3.11 (\, ;, ,, newlines). */
+/**
+ * Escape a TEXT property value per RFC 5545 §3.3.11 (\, ;, ,, newlines). Every
+ * line break (CRLF, a lone CR or a lone LF) becomes `\n` and the other control
+ * characters TEXT does not allow are dropped, so free text cannot end its
+ * content line and start a property of its own.
+ */
 function escapeText(value: string): string {
 	return value
 		.replace(/\\/g, '\\\\')
 		.replace(/;/g, '\\;')
 		.replace(/,/g, '\\,')
-		.replace(/\r?\n/g, '\\n');
+		.replace(/\r\n|\r|\n/g, '\\n')
+		.replace(/\p{Cc}/gu, (char) => (char === '\t' ? char : ''));
 }
 
 /** Strip CR/LF so an address can't smuggle in extra content lines. */
@@ -359,9 +365,12 @@ export interface ICalEventInput {
 	now: Date;
 }
 
-/** Quote a CN parameter value; DQUOTE is not allowed inside it (RFC 5545 §3.2). */
+/**
+ * Quote a CN parameter value; DQUOTE and control characters are not allowed
+ * inside it (RFC 5545 §3.1, §3.2).
+ */
 function paramValue(value: string): string {
-	return `"${value.replace(/[\r\n"]/g, '').trim()}"`;
+	return `"${value.replace(/"|\p{Cc}/gu, '').trim()}"`;
 }
 
 function calAddress(prefix: string, person: ICalPerson, extra = ''): string {

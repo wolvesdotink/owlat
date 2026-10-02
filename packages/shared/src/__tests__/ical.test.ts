@@ -261,4 +261,23 @@ describe('buildEventICalendar', () => {
 		}
 		expect(parseICalendar(ics).events[0]!.description).toBe('ä'.repeat(120));
 	});
+
+	it('keeps free text on its own content line, whatever line break it carries', () => {
+		const ics = buildEventICalendar({
+			...event,
+			description: 'Hi\rURL:https://phish.example.com\nLOCATION:Elsewhere\x0bend',
+			attendees: [{ name: 'Grace\rX-INJECT:1\x00', email: 'grace@example.com' }],
+		});
+		// Only CRLF ends a line, and no other control character is left.
+		expect(ics.replace(/\r\n/g, '')).not.toMatch(/\p{Cc}/u);
+		const lines = ics.split('\r\n');
+		expect(lines.filter((line) => line.startsWith('URL:'))).toEqual([
+			'URL:https://video.example.com/x',
+		]);
+		expect(lines.filter((line) => line.startsWith('LOCATION:'))).toEqual(['LOCATION:Room 1']);
+		expect(parseICalendar(ics).events[0]!.description).toBe(
+			'Hi\nURL:https://phish.example.com\nLOCATION:Elsewhereend'
+		);
+		expect(ics).toContain('ATTENDEE;CN="GraceX-INJECT:1"');
+	});
 });
