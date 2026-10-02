@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { applyCoeditOps, type CoeditDocument, type CoeditOp } from '@owlat/shared/coeditOps';
+import {
+	MAX_COEDIT_OPS_PER_BATCH,
+	applyCoeditOps,
+	type CoeditDocument,
+	type CoeditOp,
+} from '@owlat/shared/coeditOps';
 import { CoeditSync, type CoeditServerState } from '../coeditSync';
 
 interface Block {
@@ -149,6 +154,31 @@ describe('CoeditSync', () => {
 		sync.receive(server(1, doc([b('a')]), { sessionId: 's2' }), local);
 		sync.acked(99);
 		expect(sync.outgoing(local)?.sessionId).toBe('s2');
+	});
+
+	it('sends a change bigger than one batch in several, each building on the last', () => {
+		const initial = doc([b('a'), b('b')]);
+		const sync = start(initial);
+		// Replace everything with many new blocks (an HTML import, say).
+		const many = Array.from({ length: MAX_COEDIT_OPS_PER_BATCH + 40 }, (_, i) => b(`n${i}`));
+		const local = doc(many, 'New subject');
+		let serverDoc = initial;
+		let version = 1;
+		let batches = 0;
+		for (let out = sync.outgoing(local); out !== null; out = sync.outgoing(local)) {
+			expect(out.ops.length).toBeLessThanOrEqual(MAX_COEDIT_OPS_PER_BATCH);
+			sync.sent(out);
+			serverDoc = applyCoeditOps(
+				serverDoc,
+				out.ops.map((o) => o.op)
+			);
+			version += 1;
+			batches += 1;
+			sync.acked(version);
+			expect(sync.receive(server(version, serverDoc), local)).toEqual({ kind: 'merge', ops: [] });
+		}
+		expect(batches).toBe(2);
+		expect(serverDoc).toEqual(local);
 	});
 
 	it('reports unsent edits', () => {

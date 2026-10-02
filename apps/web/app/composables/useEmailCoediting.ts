@@ -106,16 +106,28 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 
 	// ── Joining ──────────────────────────────────────────────────────────
 	let isOpening = false;
+	// Nothing the session query delivers is shown before this tab's first
+	// `open` landed: that call drops an idle session (and brings a clean one up
+	// to date), and a state read before it could still be the dropped draft,
+	// which this tab would then carry into the new session as its own work.
+	// Once `open` resolves, the query already reflects it.
+	let hasJoined = false;
 	const open = async () => {
 		const current = target.value;
 		if (!client || !current || isOpening) return;
 		isOpening = true;
+		let isOpen = false;
 		try {
 			await client.mutation(api.emailCoediting.sessions.open, { target: current });
+			isOpen = true;
 		} catch {
 			if (status.value === 'connecting') status.value = 'unavailable';
 		} finally {
 			isOpening = false;
+		}
+		if (isOpen && !hasJoined) {
+			hasJoined = true;
+			onSession(session.value);
 		}
 	};
 
@@ -126,6 +138,7 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 			if (prev === undefined || prev === null || next === prev) return;
 			sync = new CoeditSync<EditorBlock>();
 			meta.value = null;
+			hasJoined = false;
 			if (status.value === 'active') status.value = 'connecting';
 		}
 	);
@@ -238,8 +251,8 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 	};
 
 	// ── Receiving ───────────────────────────────────────────────────────
-	watch(session, (row) => {
-		if (row === undefined || status.value === 'unavailable') return;
+	function onSession(row: typeof session.value) {
+		if (row === undefined || !hasJoined || status.value === 'unavailable') return;
 		if (row === null) {
 			// Not created yet, or it ended while this tab was away: (re)join.
 			void open();
@@ -272,7 +285,8 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 		notifyWaiters();
 		refreshUnsent();
 		if (hasUnsent.value) scheduleSend();
-	});
+	}
+	watch(session, onSession);
 
 	// A session with nothing unsaved follows the email when it changes
 	// elsewhere (the translations page, an API write).

@@ -1,4 +1,5 @@
 import {
+	MAX_COEDIT_OPS_PER_BATCH,
 	applyCoeditOps,
 	coeditOpKey,
 	diffCoeditDocument,
@@ -120,11 +121,16 @@ export class CoeditSync<B extends CoeditBlock> {
 		return { kind: 'merge', ops: diffCoeditDocument(local, merged) };
 	}
 
-	/** This tab's edits to send now, or null (nothing to send, or a send must wait). */
+	/**
+	 * This tab's edits to send now, or null (nothing to send, or a send must
+	 * wait). A change bigger than the server takes in one batch goes out in
+	 * several: the diff lists deletes, then inserts and moves in target order,
+	 * then updates, so every prefix of it is a consistent state to build on.
+	 */
 	outgoing(local: CoeditDocument<B>): { sessionId: string; ops: CoeditOutgoing<B>[] } | null {
 		const shadow = this.shadow;
 		if (shadow === null || this.isInFlight || shadow.version < this.awaitVersion) return null;
-		const ops = diffCoeditDocument(shadow.doc, local);
+		const ops = diffCoeditDocument(shadow.doc, local).slice(0, MAX_COEDIT_OPS_PER_BATCH);
 		if (ops.length === 0) return null;
 		return {
 			sessionId: shadow.sessionId,

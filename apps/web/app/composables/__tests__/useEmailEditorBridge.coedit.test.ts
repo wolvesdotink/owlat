@@ -242,6 +242,42 @@ describe('useEmailEditorBridge with co-editing', () => {
 		unmount();
 	});
 
+	it('shows nothing the session query delivered before its own open landed', async () => {
+		// `open` drops a session nobody had open for an hour. A state read before
+		// it may still be that dropped draft; shown and then replaced by the new
+		// session, this tab would push the abandoned changes back in as its own.
+		let finishOpen: () => void = () => {};
+		mutation.mockImplementation(async (fn: string) => {
+			if (fn === 'sessions.open') {
+				await new Promise<void>((resolve) => {
+					finishOpen = resolve;
+				});
+			}
+			if (fn === 'sessions.applyOps') return { version: 2 };
+			return null;
+		});
+		const { bridge, unmount } = setup();
+		queries['sessions.get']!.value = sessionRow(7, [text('a', 'Abandoned draft')], {
+			sessionId: 'old',
+			savedVersion: 2,
+		});
+		await settle();
+		expect(bridge.isConnecting.value).toBe(true);
+
+		queries['sessions.get']!.value = sessionRow(1, [text('a', 'Alpha')], {
+			sessionId: 'new',
+			savedVersion: 1,
+		});
+		finishOpen();
+		await settle();
+		await settle();
+		expect(bridge.isConnecting.value).toBe(false);
+		expect(bridge.blocks.value.map((b) => (b.content as { html: string }).html)).toEqual(['Alpha']);
+		await wait(400);
+		expect(mutation).not.toHaveBeenCalledWith('sessions.applyOps', expect.anything());
+		unmount();
+	});
+
 	it('edits the classic way when the member may not co-edit', async () => {
 		canManage = false;
 		const { bridge, unmount } = setup();
