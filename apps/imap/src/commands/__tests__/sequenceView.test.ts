@@ -392,7 +392,7 @@ describe('cross-session EXPUNGE cannot retarget a sequence number (#927)', () =>
 		expect(a.state.selected!.view!.uids).toEqual([10, 30]);
 	});
 
-	it('an older backend without expunged UIDs falls back to its numbers and re-reads the view', async () => {
+	it("numbers EXPUNGE from the expunged UIDs alone, never the backend's sequence numbers", async () => {
 		const b = backend([10, 20, 30]);
 		const a = session(b.convex);
 		await a.run('a1 SELECT INBOX');
@@ -401,13 +401,20 @@ describe('cross-session EXPUNGE cannot retarget a sequence number (#927)', () =>
 		b.mutation.mockImplementation(
 			async (ref: AnyFunctionReference, args: Record<string, unknown>) => {
 				const out = (await real(ref, args)) as Record<string, unknown>;
-				delete out['uids'];
+				// Counted from a stored total that drifted: a server that read these
+				// would announce a message the client does not have.
+				out['sequenceNumbers'] = [99];
+				out['nextSequenceNumber'] = 98;
 				return out;
 			}
 		);
 
 		expect(await a.run('a2 EXPUNGE')).toEqual(['* 2 EXPUNGE', 'a2 OK EXPUNGE completed']);
 		expect(a.state.selected!.view!.uids).toEqual([10, 30]);
+		const expunge = b.mutation.mock.calls.find(([ref]) =>
+			getFunctionName(ref as AnyFunctionReference).endsWith(':expungeFolder')
+		)!;
+		expect(expunge[1]).not.toHaveProperty('nextSequenceNumber');
 		expect(await a.run('a3 NOOP')).toEqual(['a3 OK NOOP completed']);
 	});
 });

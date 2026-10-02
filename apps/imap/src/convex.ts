@@ -59,7 +59,6 @@ export interface SelectFolderResult {
 		readonly unseenCount: number;
 	};
 	readonly firstUnseenUid?: number;
-	readonly firstUnseenSeq?: number;
 }
 
 /** The counters IDLE polls to notice a change. */
@@ -126,15 +125,17 @@ export interface CopyMoveResult {
 	readonly pairs: ReadonlyArray<{ sourceUid: number; targetUid: number }>;
 }
 
-/** One committed EXPUNGE page, plus the cursor to the next one. */
+/**
+ * One committed EXPUNGE page, plus the cursor to the next one. The backend also
+ * returns `sequenceNumbers` and `nextSequenceNumber` for an IMAP server older
+ * than the sequence view; this one numbers `uids` against the view instead.
+ */
 export interface ExpungeResult {
-	readonly sequenceNumbers: number[];
-	/** The same messages by UID, same order. Absent from a backend older than #927's. */
-	readonly uids?: number[];
+	/** The expunged messages by UID, highest first. */
+	readonly uids: number[];
 	readonly modseq: number;
 	readonly done?: boolean;
 	readonly beforeUid?: number;
-	readonly nextSequenceNumber?: number;
 }
 
 /** APPEND: what `[APPENDUID …]` reports. */
@@ -267,7 +268,7 @@ export const fn = {
 	),
 	expungeFolder: makeFunctionReference<
 		'mutation',
-		{ folderId: string; uidSet?: number[]; beforeUid?: number; nextSequenceNumber?: number },
+		{ folderId: string; uidSet?: number[]; beforeUid?: number },
 		ExpungeResult
 	>('mail/imap/move:expungeFolder'),
 	discardCopies: makeFunctionReference<
