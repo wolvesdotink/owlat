@@ -73,6 +73,16 @@ describe('BrandKitPreview', () => {
 		expect(srcdoc(wrapper)).toContain('https://cdn.example.com/logo-dark.png');
 	});
 
+	it('follows the toggle, not the OS colour scheme', async () => {
+		const wrapper = mountPreview();
+		expect(srcdoc(wrapper)).not.toContain('prefers-color-scheme:dark');
+		expect(srcdoc(wrapper)).toContain('@media not all{');
+		await wrapper.find('[data-testid="mode"]').trigger('click');
+		await nextTick();
+		expect(srcdoc(wrapper)).not.toContain('prefers-color-scheme:dark');
+		expect(srcdoc(wrapper)).toContain('@media all{');
+	});
+
 	it('shows the web font note only for a web font', () => {
 		const withWebFont = mountPreview();
 		expect(withWebFont.text()).toContain('Gmail');

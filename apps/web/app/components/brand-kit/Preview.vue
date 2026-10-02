@@ -87,12 +87,18 @@ const blocks = computed<EditorBlock[]>(() => {
 	] as EditorBlock[];
 });
 
+/**
+ * The email's dark-mode rules (and the dark logo swap) sit behind
+ * `prefers-color-scheme`, which in the frame follows the viewer's OS. The
+ * preview pins that query to the toggle so "Light" shows light on a dark OS
+ * and "Dark" shows the dark logo on a light one.
+ */
 const html = computed(() =>
 	renderEmailHtml(blocks.value, {
 		theme: brandKitEmailTheme(fullDesign.value),
 		variableType: 'personalization',
 		darkMode: mode.value === 'dark',
-	})
+	}).replaceAll('(prefers-color-scheme:dark)', mode.value === 'dark' ? 'all' : 'not all')
 );
 
 const usesWebFont = computed(
