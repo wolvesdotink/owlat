@@ -68,8 +68,8 @@ describe('brandLogoBlock', () => {
 describe('brandFooterBlocks', () => {
 	it('escapes the company details and keeps the address line breaks', () => {
 		const [text, social] = brandFooterBlocks(design, ids());
-		expect(text?.type).toBe('text');
-		expect((text?.content as { html: string }).html).toBe(
+		expect(text!.type).toBe('text');
+		expect((text!.content as { html: string }).html).toBe(
 			'<strong>Northwind &lt;Studio&gt;</strong><br>1 Example Street<br>12345 Example City'
 		);
 		expect(social).toMatchObject({
