@@ -17,15 +17,20 @@ beforeAll(() => {
 // Tue 2026-03-03 and Thu 2026-03-05, 09:00 and 09:30 UTC.
 const SLOTS = [Date.UTC(2026, 2, 3, 9, 0), Date.UTC(2026, 2, 3, 9, 30), Date.UTC(2026, 2, 5, 9, 0)];
 
-function mountPicker(timeZone = 'UTC') {
+function mountPicker(
+	timeZone = 'UTC',
+	bounds: { earliest: number; latest: number } = {
+		earliest: Date.UTC(2026, 2, 1),
+		latest: Date.UTC(2026, 4, 30),
+	}
+) {
 	return mount(BookingSlotPicker, {
 		props: {
 			slots: SLOTS,
 			timeZone,
 			month: { year: 2026, month: 3 },
 			selected: null,
-			earliest: Date.UTC(2026, 2, 1),
-			latest: Date.UTC(2026, 4, 30),
+			...bounds,
 		},
 		global: {
 			plugins: [createTestI18n()],
@@ -66,5 +71,14 @@ describe('BookingSlotPicker', () => {
 
 		await wrapper.get('[aria-label="Next month"]').trigger('click');
 		expect(wrapper.emitted('update:month')?.at(-1)).toEqual([{ year: 2026, month: 4 }]);
+	});
+
+	it('pages to the month the bookable range reaches in the shown zone, not in UTC', () => {
+		// 31 March 23:30 UTC is already 1 April in Berlin, so April still has times there.
+		const bounds = { earliest: Date.UTC(2026, 2, 1), latest: Date.UTC(2026, 2, 31, 23, 30) };
+		const next = (zone: string) =>
+			mountPicker(zone, bounds).get('[aria-label="Next month"]').attributes('disabled');
+		expect(next('UTC')).toBeDefined();
+		expect(next('Europe/Berlin')).toBeUndefined();
 	});
 });

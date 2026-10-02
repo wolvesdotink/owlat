@@ -7,6 +7,7 @@
  * `month` changes. Used by the public booking page and the guest's reschedule
  * page alike.
  */
+import { getTzParts } from '@owlat/shared/ical';
 import {
 	calendarWeeks,
 	formatDayKey,
@@ -67,22 +68,21 @@ function shift(delta: number) {
 }
 
 const monthKey = (year: number, m: number) => year * 12 + m;
-const canGoBack = computed(() => {
-	if (props.earliest === undefined) return true;
-	const first = new Date(props.earliest);
-	return (
-		monthKey(month.value.year, month.value.month) >
-		monthKey(first.getUTCFullYear(), first.getUTCMonth() + 1)
-	);
-});
-const canGoForward = computed(() => {
-	if (props.latest === undefined) return true;
-	const last = new Date(props.latest);
-	return (
-		monthKey(month.value.year, month.value.month) <
-		monthKey(last.getUTCFullYear(), last.getUTCMonth() + 1)
-	);
-});
+/** The month an instant falls in, in the zone the calendar is shown in. */
+function zonedMonthKey(ms: number): number {
+	const parts = getTzParts(ms, timeZone.value);
+	return monthKey(parts.year, parts.month);
+}
+const canGoBack = computed(
+	() =>
+		props.earliest === undefined ||
+		monthKey(month.value.year, month.value.month) > zonedMonthKey(props.earliest)
+);
+const canGoForward = computed(
+	() =>
+		props.latest === undefined ||
+		monthKey(month.value.year, month.value.month) < zonedMonthKey(props.latest)
+);
 
 const zones = computed(() => timeZoneOptions(timeZone.value));
 
