@@ -2,6 +2,7 @@ import { computed, onMounted, onUnmounted, ref, watch, type Ref, type WatchSourc
 import { api } from '@owlat/api';
 import type { BuilderCollabFocus, EditorBlock, RemoteBlockMark } from '@owlat/email-builder';
 import { canonicalJson } from '@owlat/shared/canonicalJson';
+import type { CoeditOp } from '@owlat/shared/coeditOps';
 import { AVATAR_COLOR_STYLES, initialsAndColorForAddress } from '~/utils/avatar';
 import type { CoeditTarget } from './useEmailCoediting';
 
@@ -80,6 +81,19 @@ export function useEmailEditorPresence(opts: EmailEditorPresenceOptions) {
 		if (!rootId || editedRootId.value === rootId) return;
 		if (snapshotOf(rootId) !== selectedSnapshot) editedRootId.value = rootId;
 	});
+	/**
+	 * Other people's edits were applied: a change they made to the selected
+	 * block is not this tab editing it, so it becomes the new starting point.
+	 */
+	const acceptRemote = (ops: readonly CoeditOp<EditorBlock>[]) => {
+		const rootId = opts.focus.value.selectedRootId;
+		if (!rootId || editedRootId.value === rootId) return;
+		for (const op of ops) {
+			if ((op.kind === 'update' || op.kind === 'insert') && op.block.id === rootId) {
+				selectedSnapshot = canonicalJson(op.block);
+			}
+		}
+	};
 	const leaseBlockId = computed<string | null>(() => {
 		const { inlineEditRootId, selectedRootId } = opts.focus.value;
 		if (inlineEditRootId) return inlineEditRootId;
@@ -248,5 +262,5 @@ export function useEmailEditorPresence(opts: EmailEditorPresenceOptions) {
 		leave();
 	});
 
-	return { people, remoteMarks, leaseBlockId };
+	return { people, remoteMarks, leaseBlockId, acceptRemote };
 }

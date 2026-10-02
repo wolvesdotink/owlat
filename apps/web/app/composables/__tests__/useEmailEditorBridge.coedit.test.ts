@@ -308,6 +308,35 @@ describe('useEmailEditorBridge with co-editing', () => {
 		unmount();
 	});
 
+	it('takes the edit lease only for its own change to the selected block', async () => {
+		const { bridge, unmount } = setup();
+		queries['sessions.get']!.value = sessionRow(1, [text('a', 'Alpha'), text('b', 'Beta')]);
+		await settle();
+		bridge.onCollabFocus({ selectedRootId: 'a', inlineEditRootId: null });
+		await settle();
+		const leases = () =>
+			mutation.mock.calls
+				.filter(([fn]) => fn === 'presence.heartbeat')
+				.map(([, args]) => (args as { leaseBlockId: string | null }).leaseBlockId);
+
+		// Someone else changes the block this tab has selected.
+		queries['sessions.get']!.value = sessionRow(2, [text('a', 'Theirs'), text('b', 'Beta')]);
+		await settle();
+		await settle();
+		expect(bridge.blocks.value.map((b) => (b.content as { html: string }).html)).toEqual([
+			'Theirs',
+			'Beta',
+		]);
+		expect(leases().every((lease) => lease === null)).toBe(true);
+
+		// This tab changes it.
+		bridge.blocks.value = [text('a', 'Mine'), text('b', 'Beta')];
+		await settle();
+		await settle();
+		expect(leases()).toContain('a');
+		unmount();
+	});
+
 	it('edits the classic way when the member may not co-edit', async () => {
 		canManage = false;
 		const { bridge, unmount } = setup();
