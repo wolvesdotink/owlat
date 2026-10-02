@@ -1,8 +1,12 @@
 <script setup lang="ts">
-// The email theme page grew into the brand kit; old links and bookmarks land there.
+/**
+ * Redirect only. The email theme page grew into the brand kit; the route
+ * survives because bookmarks and older links still point here.
+ */
 definePageMeta({
-	middleware: ['auth', 'admin'],
 	redirect: '/dashboard/admin/instance/brand-kit',
+	// The target page runs these too; kept so the stub itself never renders unguarded.
+	middleware: ['auth', 'admin'],
 });
 </script>
 
