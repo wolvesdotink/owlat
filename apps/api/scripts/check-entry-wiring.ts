@@ -126,6 +126,8 @@ const EXPECTED_BUILDERS: readonly string[] = [
 	'authedQuery',
 	'automationsMutation',
 	'automationsQuery',
+	'bookingMutation',
+	'bookingQuery',
 	'campaignsMutation',
 	'campaignsQuery',
 	'chatMutation',

@@ -150,6 +150,10 @@
 			"types": "./src/setupToken.ts",
 			"import": "./src/setupToken.ts"
 		},
+		"./booking": {
+			"types": "./src/booking.ts",
+			"import": "./src/booking.ts"
+		},
 		"./canonicalJson": {
 			"types": "./src/canonicalJson.ts",
 			"import": "./src/canonicalJson.ts"

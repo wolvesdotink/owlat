@@ -266,6 +266,8 @@ export async function exportAllUserData(
 			externalMailAccounts: await loadPages('externalMailAccounts'),
 			chatMessages: await loadPages('chatMessages'),
 			deliverabilityAlertRecipientStates: await loadPages('deliverabilityAlertRecipientStates'),
+			bookingPages: await loadPages('bookingPages'),
+			bookings: await loadPages('bookings'),
 		},
 	};
 }

@@ -9,7 +9,8 @@
 # The generator prints `path:exportName` for
 #   (a) every `assertFeatureEnabled(ctx, '<flag>')` inside a file that belongs
 #       to that flag's gated family (FAMILIES below: mail.external, and the
-#       transactional, campaigns, automations, forms and knowledge folders), and
+#       transactional, campaigns, automations, forms, knowledge and booking
+#       folders), and
 #   (b) every `export const X = authedQuery(` / `= authedMutation(` under
 #       convex/mail/ — Postbox handlers use `postboxQuery`/`postboxMutation`
 #       (mail/_helpers.ts), the external-mailbox family the `externalMail*`
@@ -39,6 +40,7 @@ campaigns convex/campaigns/
 automations convex/automations/
 forms convex/forms/
 ai.knowledge convex/knowledge/
+calendar.booking convex/booking/
 '
 
 generate() {
@@ -101,6 +103,7 @@ bare authedQuery/authedMutation (CONVENTIONS.md → Feature-flag floors):
                                  actions call assertCampaignsEnabledInAction
   automations/**                 automationsQuery / automationsMutation (automations/_helpers.ts)
   forms/**                       formsQuery / formsMutation (forms/_helpers.ts)
+  booking/**                     bookingQuery / bookingMutation (booking/_helpers.ts)
 Only a soft-auth publicQuery (marked '// flag-inline:') or a module that
 serves another surface (see mail/_helpers.ts) may be listed in {baseline},
 with its reason." \

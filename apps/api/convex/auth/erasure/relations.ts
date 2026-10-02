@@ -162,6 +162,14 @@ export const MEMBER_RELATIONS: readonly MemberRelation[] = [
 	rel('mailBriefCards', 'userId', 'delete', 'The member’s own greeting cards, on any mailbox.'),
 	rel('mailThreadVisits', 'userId', 'delete', 'Reading history.'),
 	rel('todayStates', 'userId', 'delete', 'Personal Today state.'),
+	rel('bookingProfiles', 'userId', 'delete', 'The member’s booking page and hours.'),
+	rel('bookingMeetingTypes', 'userId', 'delete', 'The meetings offered on the booking page.'),
+	rel(
+		'bookings',
+		'userId',
+		'delete',
+		'Meetings booked with the member, with each guest’s name, address and note; they exist only because of this member’s page.'
+	),
 	rel('threadPresence', 'userId', 'delete', 'Live presence.'),
 	rel('threadReads', 'userId', 'delete', 'Read markers.'),
 	rel('inboxAssignmentNotices', 'userId', 'delete', 'Notices addressed to the member.'),

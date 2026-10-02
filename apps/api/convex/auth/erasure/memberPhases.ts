@@ -52,7 +52,8 @@ export const eraseInstanceRows: MemberPhaseRunner = async ({ ctx, authUserId, bu
  * queues (they carry the email, name and a free-text note), Today state and
  * the thread-visit log (reading history), mail settings, dashboard layout,
  * inbox presence, read markers and assignment notices, OAuth handshakes in
- * flight, leftover draft-revise buffers, mailbox moves, and mailbox
+ * flight, leftover draft-revise buffers, mailbox moves, the booking page with
+ * its meeting types and every booking guests made on it, and mailbox
  * reservations the member accepted but the domain never activated (the
  * activation sweep would otherwise provision a mailbox for the erased id).
  */
@@ -122,6 +123,21 @@ export const eraseMemberRecords: MemberPhaseRunner = async (phase) => {
 		(n) =>
 			ctx.db
 				.query('mailboxMoves')
+				.withIndex('by_user', (q) => q.eq('userId', uid))
+				.take(n),
+		(n) =>
+			ctx.db
+				.query('bookings')
+				.withIndex('by_user_and_start', (q) => q.eq('userId', uid))
+				.take(n),
+		(n) =>
+			ctx.db
+				.query('bookingMeetingTypes')
+				.withIndex('by_user_and_slug', (q) => q.eq('userId', uid))
+				.take(n),
+		(n) =>
+			ctx.db
+				.query('bookingProfiles')
 				.withIndex('by_user', (q) => q.eq('userId', uid))
 				.take(n),
 	]);

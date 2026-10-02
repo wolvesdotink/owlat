@@ -799,7 +799,12 @@ describe('featureFlags — feature packs', () => {
 	});
 
 	it('isPackEnabled returns "on" when every member is enabled', () => {
-		const stored: FeatureFlagState = { inbox: true, chat: true, postbox: true };
+		const stored: FeatureFlagState = {
+			inbox: true,
+			chat: true,
+			postbox: true,
+			'calendar.booking': true,
+		};
 		expect(isPackEnabled(stored, 'emailClient')).toBe('on');
 	});
 
@@ -833,6 +838,7 @@ describe('featureFlags — feature packs', () => {
 		expect(next.inbox).toBe(true);
 		expect(next.chat).toBe(true);
 		expect(next.postbox).toBe(true);
+		expect(next['calendar.booking']).toBe(true);
 	});
 
 	it('applyPackToggle for marketing on flips campaigns/automations/transactional all on', () => {

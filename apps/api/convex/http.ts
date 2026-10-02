@@ -7,6 +7,7 @@ import { seedAdmin } from './seedAdminHttp';
 import { seedDemoHttp } from './seedDemo/indexHttp';
 import { registerSampleDataRoutes } from './sampleData/manageHttp';
 import { registerPublicApiRoutes } from './apiV1Http';
+import { registerBookingRoutes } from './booking/publicHttp';
 import { resetHttp } from './devShortcuts/resetHttp';
 import {
 	handleOneClickUnsubscribe,
@@ -395,6 +396,7 @@ http.route({
 });
 
 registerSampleDataRoutes(http); // POST /sample-data/{install,remove,status} — see sampleData/manageHttp.ts
+registerBookingRoutes(http); // /booking/{page,book,manage,cancel,reschedule}/ — see booking/publicHttp.ts
 
 // POST /dev/reset - Wipe instance back to blank slate (dev/selfhost only)
 http.route({
