@@ -25,6 +25,7 @@ vi.mock('~/composables/useAnswerFileUpload', () => ({
 }));
 
 const clarification = ref<Record<string, unknown>>({});
+const hasDraftSlot = ref(false);
 const current = computed(() => ({
 	id: 'mail:thr_1',
 	source: 'mail',
@@ -32,6 +33,7 @@ const current = computed(() => ({
 		kind: 'needs_reply',
 		threadId: 'thr_1',
 		messageId: 'msg_1',
+		hasDraftSlot: hasDraftSlot.value,
 		clarification: clarification.value,
 	},
 }));
@@ -50,6 +52,7 @@ beforeAll(() => {
 enableAutoUnmount(afterEach);
 beforeEach(() => {
 	run.mockClear();
+	hasDraftSlot.value = false;
 	clarification.value = {
 		isNeeded: true,
 		askedAt: 1,
@@ -139,5 +142,60 @@ describe('AnswerQueueMailAsk', () => {
 		await flushPromises();
 		expect(w.emitted('use-draft')).toBeUndefined();
 		expect(w.find('[data-testid="answer-queue-ask"]').exists()).toBe(false);
+	});
+
+	// Issue #1131: the arrival draft is written, only the invoices are missing.
+	describe('a draft waiting for files', () => {
+		beforeEach(() => {
+			clarification.value = {
+				isNeeded: true,
+				askedAt: 1,
+				questions: [
+					{
+						id: 'clarify_0',
+						slotType: 'attachment',
+						answerKind: 'file',
+						text: 'Please provide the invoice PDFs for the four bookings',
+						attribution: 'From example.org',
+						fileCandidates: [
+							{
+								source: 'mailAttachment',
+								id: 'att_1',
+								filename: 'invoice-1.pdf',
+								mimeType: 'application/pdf',
+								size: 1000,
+								score: 0.7,
+							},
+						],
+					},
+				],
+			};
+		});
+
+		it('says the draft is ready, and sends the files the person gave', async () => {
+			hasDraftSlot.value = true;
+			const w = mountAsk();
+			expect(w.text()).toContain('Draft ready. Waiting for your files');
+			await w.get('[data-testid="file-ask-candidate"]').trigger('click');
+			await w.get('[data-testid="ask-submit"]').trigger('click');
+			await flushPromises();
+			expect(run).toHaveBeenCalledWith({
+				threadId: 'thr_1',
+				answers: [
+					{
+						questionId: 'clarify_0',
+						files: [{ source: 'mailAttachment', id: 'att_1', filename: 'invoice-1.pdf' }],
+						keepCopy: true,
+						source: 'user',
+					},
+				],
+			});
+		});
+
+		it('asks before it writes while no draft exists yet', () => {
+			hasDraftSlot.value = false;
+			const w = mountAsk();
+			expect(w.text()).not.toContain('Waiting for your files');
+		});
 	});
 });

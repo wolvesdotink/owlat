@@ -21,6 +21,7 @@ const {
 	data: propertiesData,
 	isLoading: propertiesLoading,
 	error: propertiesError,
+	refetch: refetchProperties,
 } = useOrganizationQuery(api.contacts.properties.listByOrganization, () => ({
 	includePendingDeletion: true,
 }));
@@ -324,6 +325,7 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 		<UiQueryBoundary
 			:loading="isLoading && !propertiesData"
 			:error="propertiesError"
+			@retry="refetchProperties"
 			:error-title="t('dashboard.admin.instance.properties.errorTitle')"
 			:loading-label="t('dashboard.admin.instance.properties.loading')"
 		>

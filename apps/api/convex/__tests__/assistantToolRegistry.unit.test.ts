@@ -127,6 +127,16 @@ describe('scrubToolOutput', () => {
 		});
 	});
 
+	it('removes hidden elements from a string that is an HTML document, and only from those', () => {
+		const out = scrubToolOutput({
+			page: '<!doctype html><p>Visible</p><div style="display:none">SECRETPAYLOAD</div>',
+			note: 'Wrap it in <template> tags; this stays VISIBLE.',
+		}) as { page: string; note: string };
+		expect(out.page).toContain('Visible');
+		expect(out.page).not.toContain('SECRETPAYLOAD');
+		expect(out.note).toBe('Wrap it in <template> tags; this stays VISIBLE.');
+	});
+
 	it('recurses through arrays and nested objects', () => {
 		const out = scrubToolOutput({
 			results: [{ content: INJECTION }, { content: 'safe' }],
@@ -219,11 +229,13 @@ describe('withHostScrub', () => {
 	});
 });
 
+const READER = { canReadInbox: true };
+
 describe('buildAssistantTools', () => {
 	it('assembles exactly the built-in set, in order, with no flag I/O', async () => {
 		const runQuery = vi.fn();
 		const ctx = { runQuery } as unknown as ActionCtx;
-		const set = await buildAssistantTools(ctx);
+		const set = await buildAssistantTools(ctx, READER);
 		expect(Object.keys(set)).toEqual([
 			'searchKnowledge',
 			'searchFiles',
@@ -240,7 +252,7 @@ describe('buildAssistantTools', () => {
 	it('omits a tool whose flag is off, resolving flags through the host', async () => {
 		const runQuery = vi.fn(async () => ({ 'plugin.on': true, 'plugin.off': false }));
 		const ctx = { runQuery } as unknown as ActionCtx;
-		const set = await buildAssistantTools(ctx, [
+		const set = await buildAssistantTools(ctx, READER, [
 			fixtureModule({ name: 'shown', flag: 'plugin.on' }, {}),
 			fixtureModule({ name: 'hidden', flag: 'plugin.off' }, {}),
 		]);
@@ -250,16 +262,29 @@ describe('buildAssistantTools', () => {
 
 	it('host-scrubs the output of an assembled scrub tool before the model sees it', async () => {
 		const ctx = {} as ActionCtx;
-		const set = await buildAssistantTools(ctx, [
+		const set = await buildAssistantTools(ctx, READER, [
 			fixtureModule({ name: 'poisoned' }, { note: INJECTION, hits: 3 }),
 		]);
 		const result = await set['poisoned']?.execute?.({}, options);
 		expect(result).toEqual({ note: WITHHELD, hits: 3 });
 	});
 
+	it('asks retrieval for Team Inbox knowledge only on behalf of a reader', async () => {
+		for (const canReadInbox of [false, true]) {
+			const runAction = vi.fn(async () => []);
+			const ctx = { runQuery: vi.fn(async () => false), runAction } as unknown as ActionCtx;
+			const set = await buildAssistantTools(ctx, { canReadInbox });
+			await set['searchKnowledge']?.execute?.({ query: 'refund policy' }, options);
+			expect(runAction).toHaveBeenCalledWith(
+				expect.anything(),
+				expect.objectContaining({ includeInboxDerived: canReadInbox })
+			);
+		}
+	});
+
 	it('leaves output untouched when a module opts out of scrubbing', async () => {
 		const ctx = {} as ActionCtx;
-		const set = await buildAssistantTools(ctx, [
+		const set = await buildAssistantTools(ctx, READER, [
 			fixtureModule({ name: 'raw', scrubOutput: false }, { note: INJECTION }),
 		]);
 		const result = await set['raw']?.execute?.({}, options);

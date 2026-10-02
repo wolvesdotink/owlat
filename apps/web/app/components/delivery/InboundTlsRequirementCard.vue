@@ -19,7 +19,11 @@ const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 
 const hasHostedMail = computed(() => isFeatureEnabled('postbox'));
 
-const { data: settings } = useOrganizationQuery(api.workspaces.settings.get);
+const {
+	data: settings,
+	error: settingsError,
+	refetch: refetchSettings,
+} = useOrganizationQuery(api.workspaces.settings.get);
 
 // Local mirror so the switch feels instant; the query re-emits the stored value.
 // Unset ⇒ required (the backend's default).
@@ -59,7 +63,7 @@ async function setRequired(value: boolean) {
 						{{ t('components.delivery.inboundTlsRequirementCard.description') }}
 					</p>
 					<p
-						v-if="!isRequired"
+						v-if="!isRequired && !settingsError"
 						class="mt-2 text-xs text-warning"
 						data-testid="inbound-tls-plaintext-warning"
 					>
@@ -68,6 +72,7 @@ async function setRequired(value: boolean) {
 				</div>
 			</div>
 			<UiSwitch
+				v-if="!settingsError"
 				:model-value="isRequired"
 				:disabled="saving || settings === undefined"
 				:label="t('components.delivery.inboundTlsRequirementCard.title')"
@@ -75,5 +80,7 @@ async function setRequired(value: boolean) {
 				@update:model-value="setRequired"
 			/>
 		</div>
+		<!-- A failed read is not "required": the switch would show the default. -->
+		<UiQueryBoundary v-if="settingsError" :error="settingsError" @retry="refetchSettings" />
 	</UiCard>
 </template>

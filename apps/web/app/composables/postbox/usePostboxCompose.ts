@@ -110,6 +110,8 @@ export function usePostboxCompose(seed: ComposerSeed) {
 	// "Remind me if no reply by…" — persisted on the draft and carried onto the
 	// sent thread as a follow-up watch (mail/followUps.ts). null = off.
 	const followUpRemindAt = ref<number | null>(null);
+	// The AI left `[[...]]` gaps in this draft before (from the saved row).
+	const isGapGuarded = ref(false);
 	// A reopened draft's fields start empty and fill in when `drafts.get`
 	// answers; until then nothing may write or send the snapshot (#896).
 	const initialHydration = ref<InitialHydrationState>(seed.draftId ? 'loading' : 'ready');
@@ -267,6 +269,7 @@ export function usePostboxCompose(seed: ComposerSeed) {
 					followUpRemindAt,
 					attachments,
 					lastSavedAt,
+					isGapGuarded,
 				},
 				{ state: initialHydration, seeded }
 			)
@@ -446,6 +449,7 @@ export function usePostboxCompose(seed: ComposerSeed) {
 		draftNotice,
 		bodyPending,
 		retryLoad: () => hydration?.retry(),
+		isGapGuarded,
 		canSend,
 		isScheduled,
 		scheduledSendAt,

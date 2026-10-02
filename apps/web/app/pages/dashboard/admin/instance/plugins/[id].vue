@@ -36,6 +36,7 @@ const {
 	data: overview,
 	isLoading,
 	error,
+	refetch,
 } = useConvexQuery(api.plugins.settings.getPluginSettingsOverview, () => ({}));
 
 const entry = computed(() =>
@@ -148,7 +149,7 @@ function confirmOrphanClear() {
 			{{ t('dashboard.admin.instance.plugins.detail.allPlugins') }}
 		</NuxtLink>
 
-		<UiQueryBoundary :loading="isLoading && !overview" :error="error">
+		<UiQueryBoundary :loading="isLoading && !overview" :error="error" @retry="refetch">
 			<!-- Uninstalled plugin with residual settings: purge-only state. -->
 			<UiCard v-if="isOrphaned">
 				<UiEmptyState

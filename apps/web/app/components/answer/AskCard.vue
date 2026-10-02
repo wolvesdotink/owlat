@@ -18,6 +18,11 @@
  * there and sends the same, telling the server to stop asking: whatever is left
  * becomes a highlighted gap in the draft. A remembered answer left as it was
  * is not sent again (the server already holds it as remembered).
+ *
+ * A Reply Queue item can arrive with its draft already written and only the
+ * files it promises still missing (`waitingForFiles`): the card then says so
+ * instead of asking before it writes, and its file questions take several
+ * files (`multipleFiles`).
  */
 import type { Id } from '@owlat/api/dataModel';
 import { MAX_ASK_ROUNDS } from '@owlat/shared/answerMode';
@@ -33,6 +38,9 @@ import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { isDialogOpen } from '~/utils/dialogOpen';
 import type { ThreadFile } from '~/utils/answerThreadFiles';
 import FileAsk, { type FileAnswerRef, type FileAskValue, type FileCopyPolicy } from './FileAsk.vue';
+
+/** An answer as the card emits it: `files` only when `multipleFiles` is on. */
+export type AskCardAnswer = AskAnswer & { files?: FileAnswerRef[] };
 
 const props = withDefaults(
 	defineProps<{
@@ -56,6 +64,10 @@ const props = withDefaults(
 		requireAll?: boolean;
 		/** Whether an uploaded file answer is kept in Files (see FileAsk). */
 		copyPolicy?: FileCopyPolicy;
+		/** File questions take several files (the Reply Queue's answer does). */
+		multipleFiles?: boolean;
+		/** The draft is written; only files are still open. Changes the header. */
+		waitingForFiles?: boolean;
 	}>(),
 	{
 		requireAll: false,
@@ -68,8 +80,8 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-	answer: [answers: AskAnswer[]];
-	skip: [answers: AskAnswer[]];
+	answer: [answers: AskCardAnswer[]];
+	skip: [answers: AskCardAnswer[]];
 }>();
 
 const { t, locale } = useI18n();
@@ -94,17 +106,26 @@ function set(questionId: string, value: string, setValue: (v: string) => void) {
 
 function onFileValue(questionId: string, value: FileAskValue, setValue: (v: string) => void) {
 	fileValues[questionId] = value;
-	const label = !value ? '' : value.kind === 'file' ? value.file.filename : value.value;
+	const label = !value
+		? ''
+		: value.kind === 'file'
+			? value.file.filename
+			: value.kind === 'files'
+				? value.files.map((f) => f.filename).join(', ')
+				: value.value;
 	set(questionId, label, setValue);
 }
 
 /** Submitted answers as the server takes them. */
-function toAskAnswers(answers: readonly ClarificationAnswer[]): AskAnswer[] {
-	return answers.flatMap((answer): AskAnswer[] => {
+function toAskAnswers(answers: readonly ClarificationAnswer[]): AskCardAnswer[] {
+	return answers.flatMap((answer): AskCardAnswer[] => {
 		if (answer.source === 'memory') return [];
 		const file = fileValues[answer.questionId];
 		if (file?.kind === 'file') {
 			return [{ questionId: answer.questionId, file: file.file, keepCopy: file.keepCopy }];
+		}
+		if (file?.kind === 'files') {
+			return [{ questionId: answer.questionId, files: file.files, keepCopy: file.keepCopy }];
 		}
 		return [{ questionId: answer.questionId, value: answer.value }];
 	});
@@ -170,7 +191,13 @@ const titleId = useId();
 					<Icon name="lucide:sparkles" class="size-3.5 self-center text-brand" aria-hidden="true" />
 					<h2 :id="titleId" class="text-sm font-semibold text-text-primary">
 						{{
-							t('components.answer.askCard.title', { count: questions.length }, questions.length)
+							waitingForFiles
+								? t('components.answer.askCard.waitingForFiles')
+								: t(
+										'components.answer.askCard.title',
+										{ count: questions.length },
+										questions.length
+									)
 						}}
 					</h2>
 					<span
@@ -182,7 +209,11 @@ const titleId = useId();
 					</span>
 				</div>
 				<p class="mt-0.5 text-xs text-text-secondary">
-					{{ t('components.answer.askCard.subline') }}
+					{{
+						waitingForFiles
+							? t('components.answer.askCard.waitingForFilesSubline')
+							: t('components.answer.askCard.subline')
+					}}
 				</p>
 			</template>
 
@@ -196,6 +227,7 @@ const titleId = useId();
 					:resolve-thread-file="resolveThreadFile"
 					:disabled="submitting"
 					:copy-policy="copyPolicy"
+					:multiple="multipleFiles"
 					@update:model-value="onFileValue(question.id, $event, setValue)"
 				/>
 				<template v-else>
@@ -241,7 +273,11 @@ const titleId = useId();
 							class="mr-1 size-3.5 animate-spin motion-reduce:animate-none"
 							aria-hidden="true"
 						/>
-						{{ t('components.answer.askCard.answerAndDraft') }}
+						{{
+							waitingForFiles
+								? t('components.answer.askCard.attachAndUpdate')
+								: t('components.answer.askCard.answerAndDraft')
+						}}
 					</UiButton>
 					<UiButton
 						type="button"

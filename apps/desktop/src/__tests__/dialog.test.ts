@@ -6,21 +6,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // reads), and `invoke('read_authorized_file', { path })` returns the bytes for
 // one of those paths. `onDragDropEvent` is the OS-level drop stream. Hoisted so
 // the spies exist when the mock factories run.
-const { openMock, invokeMock, onDragDropEventMock } = vi.hoisted(() => ({
-	openMock: vi.fn(),
+const { invokeMock, onDragDropEventMock } = vi.hoisted(() => ({
 	invokeMock: vi.fn(),
 	onDragDropEventMock: vi.fn(),
 }));
 
-vi.mock('@tauri-apps/plugin-dialog', () => ({
-	open: (...args: unknown[]) => openMock(...args),
-}));
 vi.mock('@tauri-apps/api/core', () => ({
 	invoke: (...args: unknown[]) => invokeMock(...args),
-}));
-vi.mock('@tauri-apps/api/path', () => ({
-	homeDir: vi.fn(async () => '/home/user'),
-	join: vi.fn(async (...parts: string[]) => parts.join('/')),
 }));
 vi.mock('@tauri-apps/api/webview', () => ({
 	getCurrentWebview: () => ({ onDragDropEvent: onDragDropEventMock }),
@@ -51,7 +43,6 @@ function stubInvoke(pickedPaths: string[], reads: Record<string, ArrayBuffer | E
 }
 
 beforeEach(() => {
-	openMock.mockReset();
 	invokeMock.mockReset();
 	onDragDropEventMock.mockReset();
 });

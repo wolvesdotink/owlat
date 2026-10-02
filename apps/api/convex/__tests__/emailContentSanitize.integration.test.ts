@@ -44,7 +44,12 @@ const blocksJson = (html: string) =>
 		{
 			id: 'c1',
 			type: 'columns',
-			content: { columns: [[{ id: 'b2', type: 'text', content: { html } }]] },
+			content: {
+				columnCount: 1,
+				ratio: 'equal',
+				mobileStacking: true,
+				columns: [[{ id: 'b2', type: 'text', content: { html } }]],
+			},
 		},
 	]);
 

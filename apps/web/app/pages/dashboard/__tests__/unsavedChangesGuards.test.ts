@@ -174,8 +174,10 @@ function stubPage(): void {
 		hasActiveOrganization: ref(true),
 		isLoading: ref(false),
 	}));
+	// Every read answered, with nothing stored: the route editor only opens
+	// once the routes and the transport catalog have been read (#1097).
 	vi.stubGlobal('useOrganizationQuery', () => ({
-		data: ref(undefined),
+		data: ref([]),
 		isLoading: ref(false),
 		error: ref(null),
 		refetch: vi.fn(),

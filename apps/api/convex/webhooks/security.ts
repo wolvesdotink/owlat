@@ -124,3 +124,32 @@ export function isWithinTimestampTolerance(
 ): boolean {
 	return Math.abs(nowMs / 1000 - Number(timestamp)) <= toleranceSeconds;
 }
+
+/**
+ * Bodies whose declared size is at or under this are read and verified BEFORE
+ * any rate-limit bucket is charged, on the verify-first webhook routes (the
+ * inbound pipeline's local-HMAC adapters and the raw MTA routes).
+ *
+ * Verifying first keeps unsigned traffic from spending a bucket the real sender
+ * shares, but verifying means reading the body, and that read is a cost an
+ * unauthenticated caller must not be able to impose at will. So the free read is
+ * offered only when the request's own `Content-Length` says the body is small,
+ * and it is capped at this size while reading. Anything bigger, or undeclared,
+ * pays a separate `<source>:unverified:<ip>` key first.
+ *
+ * 256 KiB covers every signature probe, health check and single-event delivery.
+ */
+export const FREE_VERIFY_BODY_BYTES = 256 * 1024;
+
+/**
+ * Does this request's own `Content-Length` declare a body of at most `limit`
+ * bytes? Absent (a chunked body declares nothing), empty, negative or
+ * non-numeric all answer `false`, because a free body read is offered on the
+ * strength of that number alone.
+ */
+export function declaresBodyAtMost(request: Request, limit: number): boolean {
+	const raw = request.headers.get('content-length');
+	if (raw === null || raw.trim() === '') return false;
+	const declared = Number(raw);
+	return Number.isFinite(declared) && declared >= 0 && declared <= limit;
+}

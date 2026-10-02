@@ -66,6 +66,7 @@ const {
 	data: updates,
 	isLoading,
 	error,
+	refetch,
 } = useConvexQuery(api.inbox.updates.listUpdates, () => ({ limit: 50, view: view.value }));
 const { data: counts } = useConvexQuery(api.inbox.updates.getUpdateCounts, () => ({}));
 
@@ -321,6 +322,7 @@ const HINTS: ReadonlyArray<{ keys: string[]; label: string; spamToo: boolean }> 
 		<UiQueryBoundary
 			:loading="isLoading"
 			:error="error"
+			@retry="refetch"
 			:empty="!updates || visibleRows.length === 0"
 			:error-title="t('dashboard.inbox.updates.errorTitle')"
 			:error-message="t('dashboard.inbox.updates.errorMessage')"

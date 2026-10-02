@@ -754,3 +754,98 @@ describe('workspace deletion — completion invariant', () => {
 		expect(await status(t)).toMatchObject({ generation: 2, isActive: true, status: 'running' });
 	});
 });
+
+describe('workspace deletion — AI provider keys and Sealed Mail keys (#1101)', () => {
+	const envelope = (tag: string) => ({
+		ciphertext: `ct-${tag}`,
+		iv: `iv-${tag}`,
+		authTag: `at-${tag}`,
+	});
+
+	async function seedKeys(t: Harness) {
+		const now = Date.now();
+		return await t.run(async (ctx) => ({
+			configId: await ctx.db.insert('aiProviderConfig', {
+				languageProviderKind: 'anthropic',
+				modelFast: 'fast-model',
+				modelCapable: 'capable-model',
+				secretCiphertext: 'ct-language',
+				secretIv: 'iv-language',
+				secretAuthTag: 'at-language',
+				secretEnvelopeVersion: 1,
+				keyPreview: 'sk-…a1b2',
+				embeddingProviderKind: 'openai',
+				embeddingModelVersion: 3,
+				embeddingSecretCiphertext: 'ct-embedding',
+				embeddingSecretIv: 'iv-embedding',
+				embeddingSecretAuthTag: 'at-embedding',
+				embeddingSecretEnvelopeVersion: 1,
+				embeddingKeyPreview: 'sk-…c3d4',
+				decisionProviderKind: 'typesafe',
+				decisionSecretCiphertext: 'ct-decision',
+				decisionSecretIv: 'iv-decision',
+				decisionSecretAuthTag: 'at-decision',
+				decisionSecretEnvelopeVersion: 1,
+				decisionKeyPreview: 'sk-…e5f6',
+				updatedAt: now,
+			}),
+			identityId: await ctx.db.insert('keyVault', {
+				kind: 'instance',
+				fingerprint: 'INSTANCE',
+				algorithm: 'eddsaLegacy',
+				publicKeyArmored: 'PUB',
+				publicKeyBinaryBase64: 'AAAA',
+				sealedPrivateKey: envelope('instance'),
+				isActive: true,
+				createdAt: now,
+				updatedAt: now,
+			}),
+		}));
+	}
+
+	it('removes the AI provider configuration and its encrypted keys', async () => {
+		const t = newHarness();
+		await seedKeys(t);
+		const jobId = await startDeletion(t);
+
+		await runToCompletion(t, jobId);
+		expect(await status(t)).toMatchObject({ status: 'completed', isActive: false });
+		expect(await t.run(async (ctx) => ctx.db.query('aiProviderConfig').collect())).toHaveLength(0);
+	});
+
+	it('refuses an AI provider save while the deletion runs', async () => {
+		const t = newHarness();
+		const { configId } = await seedKeys(t);
+		await startDeletion(t);
+
+		await t.run(async (raw) => {
+			const ctx = fenceWorkspaceWrites(raw);
+			await expect(ctx.db.patch(configId, { keyPreview: 'sk-…late' })).rejects.toMatchObject(
+				REFUSED
+			);
+			await expect(
+				ctx.db.insert('aiProviderConfig', {
+					languageProviderKind: 'anthropic',
+					modelFast: 'fast-model',
+					modelCapable: 'capable-model',
+					embeddingProviderKind: 'local',
+					embeddingModelVersion: 1,
+					updatedAt: Date.now(),
+				})
+			).rejects.toMatchObject(REFUSED);
+		});
+	});
+
+	it("keeps the instance's own Sealed Mail keys", async () => {
+		const t = newHarness();
+		const { identityId } = await seedKeys(t);
+		const jobId = await startDeletion(t);
+
+		await runToCompletion(t, jobId);
+		expect(await status(t)).toMatchObject({ status: 'completed' });
+		expect(await t.run(async (ctx) => ctx.db.get(identityId))).toMatchObject({
+			kind: 'instance',
+			fingerprint: 'INSTANCE',
+		});
+	});
+});

@@ -164,15 +164,54 @@ describe('usePostboxActiveMessageRead (#721)', () => {
 		stubs[BY_ID]!.error.value = failure;
 		expect(read.message.value).toBeUndefined();
 		expect(read.error.value).toBe(failure);
+		expect(read.notFound.value).toBe(false);
+	});
+});
+
+describe('usePostboxActiveMessageRead: a message that is gone (#1100)', () => {
+	function openGone() {
+		return run(() =>
+			usePostboxActiveMessageRead({ activeMessageId: () => 'gone', listRows: () => [] })
+		);
+	}
+
+	it('reports notFound once getMessage answers null', () => {
+		const read = openGone();
+		// Still loading the thread: nothing is known yet.
+		expect(read.notFound.value).toBe(false);
+		answerThread(null);
+		const byId = stubs[BY_ID]!;
+		expect(byId.args.value).toEqual({ messageId: 'gone' });
+		// The by-id fetch is in flight: still loading, not gone.
+		expect(read.notFound.value).toBe(false);
+		byId.data.value = null;
+		byId.isLoading.value = false;
+		expect(read.message.value).toBeUndefined();
+		expect(read.error.value).toBeNull();
+		expect(read.notFound.value).toBe(true);
 	});
 
-	it('ignores the error a skipped fetch kept from the previous message', () => {
+	it('is not notFound while the list or the thread has the message', () => {
 		const read = run(() =>
-			usePostboxActiveMessageRead({ activeMessageId: () => 'm1', listRows: () => [] })
+			usePostboxActiveMessageRead({
+				activeMessageId: () => 'm1',
+				listRows: () => [{ _id: 'm1' }],
+			})
 		);
-		// The thread is still loading, so the by-id fetch is skipped.
-		stubs[BY_ID]!.error.value = new Error('stale');
+		answerThread([{ _id: 'm1' }]);
+		// A null left behind by an earlier by-id fetch does not count once skipped.
+		stubs[BY_ID]!.data.value = null;
+		stubs[BY_ID]!.isLoading.value = false;
 		expect(stubs[BY_ID]?.args.value).toBe('skip');
-		expect(read.error.value).toBeNull();
+		expect(read.notFound.value).toBe(false);
+	});
+
+	it('is not notFound on the folder list', () => {
+		const read = run(() =>
+			usePostboxActiveMessageRead({ activeMessageId: () => null, listRows: () => [] })
+		);
+		stubs[BY_ID]!.data.value = null;
+		stubs[BY_ID]!.isLoading.value = false;
+		expect(read.notFound.value).toBe(false);
 	});
 });

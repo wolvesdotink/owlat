@@ -20,6 +20,7 @@ const {
 	data: overview,
 	isLoading,
 	error,
+	refetch,
 } = useConvexQuery(api.plugins.settings.getPluginSettingsOverview, () => ({}));
 
 const { showToast } = useToast();
@@ -63,7 +64,7 @@ async function confirmPurge() {
 			</I18nT>
 		</div>
 
-		<UiQueryBoundary :loading="isLoading && !overview" :error="error">
+		<UiQueryBoundary :loading="isLoading && !overview" :error="error" @retry="refetch">
 			<div class="space-y-8">
 				<UiCard v-if="manifests.length === 0">
 					<UiEmptyState

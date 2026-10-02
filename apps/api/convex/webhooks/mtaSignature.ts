@@ -21,8 +21,10 @@
  */
 
 import {
+	MTA_LENGTH_SIGNATURE_HEADER,
 	MTA_SIGNATURE_HEADER,
 	MTA_TIMESTAMP_HEADER,
+	mtaLengthSigningInput,
 	mtaSigningInput,
 } from '@owlat/mta-protocol/signature';
 import {
@@ -96,4 +98,34 @@ export async function verifyMtaSignedRequest(
 	return constantTimeEqual(headers.signature, expected)
 		? { ok: true }
 		: { ok: false, reason: 'invalid_signature' };
+}
+
+/**
+ * The body length the MTA attested to in `X-MTA-Length-Signature`, or `null`
+ * when the header is absent, the timestamp is outside the window, the request
+ * declares no plain `Content-Length`, the length exceeds `maxBytes`, or the
+ * signature does not match.
+ *
+ * Needs no body, so a route can tell a large signed delivery from unsigned
+ * traffic before reading anything. It proves only that the MTA signed a request
+ * of this length at this time: the caller must still read at most the returned
+ * number of bytes and verify `X-MTA-Signature` over them.
+ */
+export async function verifyMtaDeclaredLength(
+	request: Request,
+	options: MtaSignatureWindow & { secret: string; maxBytes: number }
+): Promise<number | null> {
+	const lengthSignature = request.headers.get(MTA_LENGTH_SIGNATURE_HEADER);
+	if (!lengthSignature) return null;
+	const headers = readMtaSignatureHeaders(request, options);
+	if (!headers.ok) return null;
+	const declared = request.headers.get('content-length')?.trim() ?? '';
+	if (!/^\d{1,12}$/.test(declared)) return null;
+	const byteLength = Number(declared);
+	if (byteLength > options.maxBytes) return null;
+	const expected = await hmacSha256Hex(
+		options.secret,
+		mtaLengthSigningInput(headers.timestamp, byteLength)
+	);
+	return constantTimeEqual(lengthSignature, expected) ? byteLength : null;
 }

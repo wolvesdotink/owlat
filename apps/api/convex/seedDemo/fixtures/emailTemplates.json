@@ -6,8 +6,7 @@
 		"subject": "Summer Sale — 20% off this week only",
 		"previewText": "Our biggest discount of the season, for one week.",
 		"status": "published",
-		"content": "[{\"id\":\"t-1a\",\"type\":\"text\",\"content\":{\"html\":\"Summer Sale: 20% off everything\",\"blockType\":\"h2\",\"fontSize\":24,\"textColor\":\"#374151\",\"lineHeight\":1.3}},{\"id\":\"t-1b\",\"type\":\"text\",\"content\":{\"html\":\"Hi {{first_name}}, our biggest discount of the season is live. Use code SUMMER20 at checkout — valid through Sunday.\",\"blockType\":\"paragraph\",\"fontSize\":16,\"textColor\":\"#374151\",\"lineHeight\":1.5}},{\"id\":\"t-1c\",\"type\":\"button\",\"content\":{\"text\":\"Shop the sale\",\"url\":\"https://example.com/sale\",\"backgroundColor\":\"#2563eb\",\"textColor\":\"#ffffff\",\"align\":\"center\",\"borderRadius\":6,\"paddingX\":24,\"paddingY\":12}}]",
-		"htmlContent": "<html><body><h2>Summer Sale: 20% off everything</h2><p>Our biggest discount of the season is live. Use code SUMMER20 at checkout — valid through Sunday.</p><p><a href=\"https://example.com/sale\">Shop the sale</a></p></body></html>"
+		"content": "[{\"id\":\"t-1a\",\"type\":\"text\",\"content\":{\"html\":\"Summer Sale: 20% off everything\",\"blockType\":\"h2\",\"fontSize\":24,\"textColor\":\"#374151\",\"lineHeight\":1.3}},{\"id\":\"t-1b\",\"type\":\"text\",\"content\":{\"html\":\"Hi {{first_name}}, our biggest discount of the season is live. Use code SUMMER20 at checkout — valid through Sunday.\",\"blockType\":\"paragraph\",\"fontSize\":16,\"textColor\":\"#374151\",\"lineHeight\":1.5}},{\"id\":\"t-1c\",\"type\":\"button\",\"content\":{\"text\":\"Shop the sale\",\"url\":\"https://example.com/sale\",\"backgroundColor\":\"#2563eb\",\"textColor\":\"#ffffff\",\"align\":\"center\",\"borderRadius\":6,\"paddingX\":24,\"paddingY\":12}}]"
 	},
 	{
 		"slug": "monthly-newsletter",

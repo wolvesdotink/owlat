@@ -134,6 +134,9 @@ export const inferRelations = internalAction({
 			const hits = await ctx.runAction(internal.knowledge.retrieval.semanticSearch, {
 				embedding,
 				scopeToContact: scopeForAnchor(anchor),
+				// The linker writes edges, not reads for a person; every read of an
+				// edge re-applies the reader rule to both ends.
+				includeInboxDerived: true,
 				limit: CANDIDATES_PER_ANCHOR,
 			});
 			for (const hit of hits) {

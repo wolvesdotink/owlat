@@ -23,8 +23,13 @@ import { getClientIp, rateLimitedResponse } from '../../lib/publicRateLimit';
 import { logError } from '../../lib/runtimeLog';
 import { getOptional } from '../../lib/env';
 import { MTA_SIGNATURE_HEADER, MTA_TIMESTAMP_HEADER } from '@owlat/mta-protocol/signature';
-import { MTA_EVENT_TOLERANCE_SECONDS, verifyMtaSignedRequest } from '../mtaSignature';
+import {
+	MTA_EVENT_TOLERANCE_SECONDS,
+	verifyMtaDeclaredLength,
+	verifyMtaSignedRequest,
+} from '../mtaSignature';
 import { jsonResponse } from '../inboundHttp';
+import { declaresBodyAtMost, FREE_VERIFY_BODY_BYTES } from '../security';
 
 /**
  * Which of the two raw routes is calling — the audit row's `source` and the
@@ -160,38 +165,6 @@ export async function storeRawRouteAudit(
 }
 
 /**
- * Bodies at or under this declared size are HMAC-verified BEFORE the shared
- * rate-limit bucket is charged.
- *
- * WHY A BOUND AT ALL. Verifying first is what keeps unsigned traffic from
- * spending the bucket — but verifying means READING the body, and on a route
- * that accepts a 13 MiB base64 message that read is the cost an unauthenticated
- * caller must not be able to impose at will. So the free verification is
- * offered only to a caller whose own `Content-Length` says the body is small;
- * anything bigger pays first, on a key of its own (see `readVerifiedMtaBody`). A caller that lies
- * about its length is reading a body no bigger than the route already accepts
- * from a signed one, and it pays the bucket on the very next request.
- *
- * 256 KiB comfortably covers every signature probe, every health check and
- * every hand-rolled junk POST — the traffic this exists to keep off the bucket.
- */
-const FREE_VERIFY_BYTES = 256 * 1024;
-
-/**
- * Does this request's own `Content-Length` declare a body at or under `limit`?
- *
- * Strict about the header itself: absent (a chunked body declares nothing),
- * empty, negative or not a number all answer `false`, because the free body
- * read below is offered on the strength of that number alone.
- */
-function declaresBodyUnder(request: Request, limit: number): boolean {
-	const raw = request.headers.get('content-length');
-	if (raw === null || raw.trim() === '') return false;
-	const declared = Number(raw);
-	return Number.isFinite(declared) && declared >= 0 && declared <= limit;
-}
-
-/**
  * Everything that has to be true before a raw-route body is worth parsing:
  * method, both signature headers, a configured secret, a readable body, a valid
  * HMAC inside the staleness window, and the per-source rate limit — ordered so
@@ -204,9 +177,11 @@ function declaresBodyUnder(request: Request, limit: number): boolean {
  * genuine delivery, which the MTA reads as retryable: six attempts, then the
  * DLQ. Refusing a request without both signature headers costs one header
  * lookup and charges nothing; refusing a SMALL request whose signature does not
- * verify costs one read and one HMAC and also charges nothing. A body too big
- * to verify for free pays before it is read, from a separate
- * `<route>:unverified:<ip>` key; every verified request pays `<route>:<ip>`.
+ * verify costs one read and one HMAC and also charges nothing. A larger body
+ * whose length the MTA signed is read up to that length and verified without a
+ * pre-charge. Any other body too big to verify for free pays before it is read,
+ * from a separate `<route>:unverified:<ip>` key; every verified request pays
+ * `<route>:<ip>`.
  *
  * Returns the verified body, or the exact `Response` to answer with. The body
  * budget is larger than the feedback pipeline's because these routes carry
@@ -238,10 +213,10 @@ export async function readVerifiedMtaBody(
 	 * the 5-minute staleness window, through the one MTA verifier
 	 * (`../mtaSignature.ts`) every MTA route shares.
 	 */
-	const readAndVerify = async (): Promise<VerifiedMtaBody> => {
+	const readAndVerify = async (maxBytes: number): Promise<VerifiedMtaBody> => {
 		let bodyText: string;
 		try {
-			bodyText = await readBodyText(request, MAX_RAW_WEBHOOK_BYTES);
+			bodyText = await readBodyText(request, maxBytes);
 		} catch (error) {
 			if (error instanceof BodyTooLargeError) {
 				return { ok: false, response: jsonResponse(413, { error: 'Payload too large' }) };
@@ -282,15 +257,35 @@ export async function readVerifiedMtaBody(
 	// `Number(null)` is 0. Absent, empty, unparseable or large: the read is paid
 	// for first, from a key of its own, so it never spends the budget of
 	// requests that verify for free; once verified it is charged like them.
-	if (declaresBodyUnder(request, FREE_VERIFY_BYTES)) {
-		const verified = await readAndVerify();
+	if (declaresBodyAtMost(request, FREE_VERIFY_BODY_BYTES)) {
+		const verified = await readAndVerify(FREE_VERIFY_BODY_BYTES);
 		if (!verified.ok) return verified;
 		return (await charge(verifiedKey)) ?? verified;
 	}
 
-	const limited = await charge(`${opts.rateLimitKeyPrefix}:unverified:${ip}`);
+	// A larger body the MTA signed for (`X-MTA-Length-Signature`, a header-only
+	// HMAC over the timestamp and the declared length) is read up to that length
+	// and verified without touching the unverified key, so unsigned traffic
+	// cannot hold back a large signed delivery. An MTA that predates the header
+	// falls through to the unverified key below.
+	const attestedLength = await verifyMtaDeclaredLength(request, {
+		secret,
+		toleranceSeconds: MTA_EVENT_TOLERANCE_SECONDS,
+		maxBytes: MAX_RAW_WEBHOOK_BYTES,
+	});
+	const unverifiedKey = `${opts.rateLimitKeyPrefix}:unverified:${ip}`;
+	if (attestedLength !== null) {
+		const verified = await readAndVerify(attestedLength);
+		// A valid length signature over a body that does not verify is a replayed
+		// or mangled header set: it pays the unverified key after the fact, so it
+		// cannot be repeated for free reads.
+		if (!verified.ok) return (await charge(unverifiedKey)) ?? verified;
+		return (await charge(verifiedKey)) ?? verified;
+	}
+
+	const limited = await charge(unverifiedKey);
 	if (limited) return limited;
-	const verified = await readAndVerify();
+	const verified = await readAndVerify(MAX_RAW_WEBHOOK_BYTES);
 	if (!verified.ok) return verified;
 	return (await charge(verifiedKey)) ?? verified;
 }

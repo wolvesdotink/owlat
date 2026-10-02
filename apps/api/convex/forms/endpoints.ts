@@ -12,7 +12,7 @@ import { getOrThrow, throwRateLimited, throwInvalidInput } from '../_utils/error
 import { rateLimiter } from '../lib/rateLimiter';
 import { formFieldValidator } from '../lib/convexValidators';
 import type { TransitionOutcome as DoiTransitionOutcome } from '../contacts/doiLifecycle';
-import { findContactByConfirmationToken } from '../contacts/doiLifecycle';
+import { findContactByConfirmationToken, isFormTokenDisabled } from '../contacts/doiLifecycle';
 
 // Field configuration type
 export interface FormField {
@@ -245,6 +245,9 @@ export const getByConfirmationToken = publicQuery({
 		token: v.string(),
 	},
 	handler: async (ctx, args) => {
+		// A form-minted token follows the `forms` flag, like the submit endpoint.
+		if (await isFormTokenDisabled(ctx, args.token)) return null;
+
 		// Several signups can share one token. A still-pending row sorts first
 		// on the status key (only pending and confirmed rows carry a token), so
 		// the page offers the confirm step until the token is spent.
@@ -356,6 +359,12 @@ export const confirmSubmission = publicMutation({
 		});
 		if (!ok) {
 			throwRateLimited('Too many confirmation attempts. Please try again shortly.', retryAfter);
+		}
+
+		// A form-minted token follows the `forms` flag, like the submit endpoint.
+		// Refused here rather than falling through to the contact-level confirm.
+		if (await isFormTokenDisabled(ctx, args.token)) {
+			return { success: false, error: 'invalid_token' };
 		}
 
 		// Step 1: confirm DOI on the contact. The lifecycle module owns the

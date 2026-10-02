@@ -52,6 +52,7 @@ import { buildGroupKey, extractDomain } from '../queue/groups.js';
 import { mapToPriority, priorityToOrderMs } from '../intelligence/engagementPriority.js';
 import { logger } from '../monitoring/logger.js';
 import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
+import { ipRateLimitKey } from '@owlat/shared/ipAddress';
 import { emailDomain } from '@owlat/shared/spfAlignment';
 import { enqueueReconciledIntake } from '../queue/intakeEnqueue.js';
 import { checkAuthThrottle, recordAuthFailure } from './submissionSecurity.js';
@@ -444,7 +445,8 @@ function submissionAdmission(config: MtaConfig, redis: Redis): SmtpAdmission {
 				redis,
 				SUBMISSION_CONNECTION_PREFIX,
 				SUBMISSION_CONNECTION_TTL_SECONDS,
-				config.submissionMaxConnectionsPerIp
+				config.submissionMaxConnectionsPerIp,
+				ipRateLimitKey
 			),
 			rejectReply: { code: 421, enhanced: '4.7.0', text: 'Too many connections from your IP' },
 		},

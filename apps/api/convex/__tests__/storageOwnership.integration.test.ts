@@ -1,4 +1,5 @@
-import { convexTest, type TestConvex } from 'convex-test';
+import { convexTest as baseConvexTest, type TestConvex } from 'convex-test';
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
@@ -22,6 +23,13 @@ vi.mock('../lib/sessionOrganization', async () => ({
 
 const modules = import.meta.glob('../**/*.*s');
 type Harness = TestConvex<typeof schema>;
+
+/** The upload service routes charge a failed secret compare to the limiter. */
+function convexTest(s: typeof schema, m: typeof modules): Harness {
+	const t = baseConvexTest(s, m);
+	rateLimiterTest.register(t);
+	return t;
+}
 
 beforeEach(() => {
 	session.userId = 'user-A';

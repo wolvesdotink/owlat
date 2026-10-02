@@ -110,7 +110,10 @@ export function checkCodeAgentSafety(input: CodeAgentSafetyInput): CodeAgentSafe
 	// zero-width chars) so a smuggled instruction can't slip past the pattern
 	// matches by hiding in markup the coding agent would still read.
 	const subject = stripHiddenContent(input.subject);
-	const body = stripHiddenContent(input.textBody ?? input.htmlBody ?? '');
+	const body =
+		input.textBody != null
+			? stripHiddenContent(input.textBody)
+			: stripHiddenContent(input.htmlBody ?? '', { html: true });
 	const combined = `${subject}\n\n${body}`;
 
 	// Hidden HTML instruction smuggling in the raw markup.

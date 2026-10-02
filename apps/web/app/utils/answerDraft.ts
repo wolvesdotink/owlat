@@ -100,3 +100,16 @@ export function ownerTimeZone(): string | undefined {
 		return undefined;
 	}
 }
+
+const collapseSpace = (text: string) => text.replace(/\s+/g, ' ').trim();
+
+/**
+ * Whether the person wrote something of their own: text in the editor that is
+ * not just the AI draft as it went in. A newer AI draft may replace an
+ * untouched one; it must not replace the person's words.
+ */
+export function hasOwnWriting(written: string, aiDraft: string | null): boolean {
+	const text = collapseSpace(written);
+	if (!text) return false;
+	return aiDraft === null || text !== collapseSpace(aiDraft);
+}

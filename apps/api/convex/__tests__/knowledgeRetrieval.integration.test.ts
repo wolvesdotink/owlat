@@ -17,8 +17,8 @@ const modules = Object.fromEntries(
 		([path]) =>
 			!path.includes('sesActions') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('semanticFileProcessing'),
-	),
+			!path.includes('semanticFileProcessing')
+	)
 );
 
 const DIM = 1536;
@@ -35,7 +35,10 @@ type EntrySpec = {
 	searchableText?: string;
 };
 
-async function insertEntry(t: ReturnType<typeof convexTest>, spec: EntrySpec): Promise<Id<'knowledgeEntries'>> {
+async function insertEntry(
+	t: ReturnType<typeof convexTest>,
+	spec: EntrySpec
+): Promise<Id<'knowledgeEntries'>> {
 	const now = Date.now();
 	return await t.run(async (ctx) =>
 		ctx.db.insert('knowledgeEntries', {
@@ -50,7 +53,7 @@ async function insertEntry(t: ReturnType<typeof convexTest>, spec: EntrySpec): P
 			searchableText: spec.searchableText ?? spec.title,
 			createdAt: now,
 			updatedAt: now,
-		}),
+		})
 	);
 }
 
@@ -63,6 +66,7 @@ describe('semanticSearch — expiresAt filtering', () => {
 		await insertEntry(t, { title: 'expired fact', embedAt: 5, expiresAt: now - 1_000 });
 
 		const results = await t.action(internal.knowledge.retrieval.semanticSearch, {
+			includeInboxDerived: true,
 			embedding: unit(5),
 			scopeToContact: 'org-wide',
 			limit: 10,
@@ -83,7 +87,11 @@ describe('semanticSearch — hybrid (vector + FTS) recall', () => {
 		// that embedding (orthogonal, embedAt 999) — pure vector ranks it last/out
 		// — but its searchableText carries the exact order number we query for.
 		for (let i = 0; i < 60; i++) {
-			await insertEntry(t, { title: `decoy ${i}`, embedAt: 7, searchableText: `unrelated chatter ${i}` });
+			await insertEntry(t, {
+				title: `decoy ${i}`,
+				embedAt: 7,
+				searchableText: `unrelated chatter ${i}`,
+			});
 		}
 		await insertEntry(t, {
 			title: 'order ABC-12345 shipped',
@@ -92,6 +100,7 @@ describe('semanticSearch — hybrid (vector + FTS) recall', () => {
 		});
 
 		const results = await t.action(internal.knowledge.retrieval.semanticSearch, {
+			includeInboxDerived: true,
 			queryText: 'ABC-12345',
 			embedding: unit(7),
 			scopeToContact: 'org-wide',
@@ -104,9 +113,14 @@ describe('semanticSearch — hybrid (vector + FTS) recall', () => {
 
 	it('still returns vector hits when there is no FTS match (graceful degrade)', async () => {
 		const t = convexTest(schema, modules);
-		await insertEntry(t, { title: 'a concept', embedAt: 3, searchableText: 'totally different words' });
+		await insertEntry(t, {
+			title: 'a concept',
+			embedAt: 3,
+			searchableText: 'totally different words',
+		});
 
 		const results = await t.action(internal.knowledge.retrieval.semanticSearch, {
+			includeInboxDerived: true,
 			queryText: 'zzzznomatch',
 			embedding: unit(3),
 			scopeToContact: 'org-wide',

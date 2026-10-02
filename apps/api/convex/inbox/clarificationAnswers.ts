@@ -8,7 +8,8 @@
  * uploaded file reaches the draft as a trusted fact.
  */
 
-import type { AskAnswerKind } from '@owlat/shared/answerMode';
+import { formatDraftGap, type AskAnswerKind } from '@owlat/shared/answerMode';
+import { detectInjection } from '../agent/steps/security_scan/patterns';
 
 /**
  * The canonical "the file doesn't exist yet" option on a file question. English
@@ -94,6 +95,18 @@ export function candidateForLabel<C extends CandidateLike>(
 	);
 }
 
+/**
+ * Every file an answer carries: `files` when the owner gave several, else the
+ * single `file`. Rows written before multi-file answers only have `file`.
+ */
+export function answerFiles<F>(
+	answer: { file?: F | undefined; files?: readonly F[] | undefined } | undefined
+): readonly F[] {
+	if (!answer) return [];
+	if (answer.files && answer.files.length > 0) return answer.files;
+	return answer.file ? [answer.file] : [];
+}
+
 const MAX_NOTE_FILENAME_CHARS = 120;
 
 /**
@@ -112,14 +125,17 @@ const MAX_NOTE_FILENAME_CHARS = 120;
  */
 export function buildFileAnswerNotes(
 	questions: ReadonlyArray<{
-		answer?: { file?: { source?: string; filename: string } | undefined } | undefined;
+		answer?:
+			| {
+					file?: { source?: string; filename: string } | undefined;
+					files?: ReadonlyArray<{ source?: string; filename: string }> | undefined;
+			  }
+			| undefined;
 	}>,
 	mode: 'attached' | 'pending' = 'attached'
 ): string {
 	const lines: string[] = [];
-	for (const q of questions) {
-		const file = q.answer?.file;
-		if (!file) continue;
+	for (const file of questions.flatMap((q) => answerFiles(q.answer))) {
 		const filename = file.filename
 			.replace(/[\r\n"]+/g, ' ')
 			.trim()
@@ -132,6 +148,51 @@ export function buildFileAnswerNotes(
 		);
 	}
 	return lines.join('\n');
+}
+
+/** Longest starter reply a Reply Queue clarification card stores. */
+export const MAX_CLARIFICATION_DRAFT_CHARS = 4000;
+
+const MAX_GAP_LABEL_CHARS = 80;
+
+/**
+ * The `[[...]]` placeholder for each file question still waiting on the owner,
+ * in question order. A reply drafted before the files arrive writes these where
+ * the files would be handed over, so it never claims an attachment that is not
+ * there, and the composer's send guard holds the reply until they are filled.
+ * The label is the question, which the model wrote from the email: one that
+ * reads like an injection falls back to a neutral label.
+ */
+export function openFileGaps(
+	questions: ReadonlyArray<{
+		slotType: string;
+		text: string;
+		answerKind?: AskAnswerKind | undefined;
+		answer?: unknown;
+	}>
+): string[] {
+	const gaps: string[] = [];
+	for (const q of questions) {
+		if (!isFileQuestion(q) || q.answer !== undefined) continue;
+		const label = q.text
+			.replace(/\s+/g, ' ')
+			.replace(/\?+\s*$/, '')
+			.trim()
+			.slice(0, MAX_GAP_LABEL_CHARS)
+			.trim();
+		const safe = label.length > 0 && !detectInjection(label).detected;
+		gaps.push(formatDraftGap(safe ? label : 'attach the requested files'));
+	}
+	return gaps;
+}
+
+/**
+ * The trusted line telling the drafter about {@link openFileGaps}. '' when no
+ * file is outstanding.
+ */
+export function buildOpenFileNote(gaps: readonly string[]): string {
+	if (gaps.length === 0) return '';
+	return `- The files the sender asked for are not attached yet; the owner will add them. Do not say anything is attached or enclosed. Where the reply would hand them over, write this placeholder exactly as given: ${gaps.join(' ')}`;
 }
 
 /** Join two confirmed-facts blocks, skipping empty ones. */

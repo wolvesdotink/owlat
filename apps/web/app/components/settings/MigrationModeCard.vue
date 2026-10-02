@@ -23,10 +23,12 @@ const props = defineProps<{
 const { t } = useI18n();
 const { showToast } = useToast();
 
-const { data: settings, isLoading: isLoadingSettings } = useConvexQuery(
-	api.workspaces.settings.get,
-	{}
-);
+const {
+	data: settings,
+	isLoading: isLoadingSettings,
+	error: settingsError,
+	refetch: refetchSettings,
+} = useConvexQuery(api.workspaces.settings.get, {});
 const { data: liveFlags } = useConvexQuery(api.workspaces.featureFlags.getFeatureFlags, {});
 
 const isMigrationMode = computed<boolean>(() => settings.value?.isMigrationMode ?? false);
@@ -57,7 +59,7 @@ const isSaving = computed(() => isSavingSettings.value || isSavingFlag.value);
 const confirmEnableImport = ref(false);
 
 async function onToggle(next: boolean) {
-	if (!props.canManage || next === isMigrationMode.value) return;
+	if (!props.canManage || settings.value === undefined || next === isMigrationMode.value) return;
 
 	// Turning ON while the import capability is off: confirm before we enable both.
 	if (next && !mailExternalEnabled.value) {
@@ -116,6 +118,9 @@ async function confirmAndEnable() {
 				{{ t('components.settings.migrationModeCard.loading') }}
 			</span>
 		</div>
+
+		<!-- A failed read is not "off": show the error, not the default. -->
+		<UiQueryBoundary v-else-if="settingsError" :error="settingsError" @retry="refetchSettings" />
 
 		<div v-else class="mt-4 flex items-start justify-between gap-4">
 			<div class="min-w-0">

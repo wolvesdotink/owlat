@@ -65,6 +65,9 @@ const META_SUCCESS_BODY = 'OK';
 export const metaAdapter: InboundAdapter = {
 	source: 'meta',
 
+	missingSignatureHeaders: (request) =>
+		request.headers.get('x-hub-signature-256') ? null : 'Missing X-Hub-Signature-256 header',
+
 	async verifySignature(request, rawBody, ctx) {
 		const appSecret = await resolveChannelInboundSecret(
 			'whatsapp',

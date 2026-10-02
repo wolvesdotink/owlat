@@ -297,19 +297,28 @@ describe.each(drivers)('translation mutations on $table', (driver) => {
 		expect(row?.contentRevision).toBe(4);
 	});
 
+	// The delivery HTML is rendered on the server from the stored overlays
+	// (lib/publishableEmail.ts); HTML a client sends is ignored.
 	describe('overlay and delivery HTML as one revision', () => {
 		const rendered = (row: { htmlTranslations?: string } | null) =>
 			JSON.parse(row?.htmlTranslations ?? '{}') as Record<
 				string,
 				{ htmlContent: string; subject: string }
 			>;
-		const FR_HTML = { htmlContent: '<p>Bonjour</p>', subject: 'Sujet' };
 		const withRendered = (extra: Record<string, unknown> = {}) =>
 			withGerman(driver.hasPreviewText, {
 				supportedLanguages: ['en', 'de', 'fr'],
+				translations: JSON.stringify({
+					de: {
+						subject: 'Deutscher Betreff',
+						...(driver.hasPreviewText ? { previewText: 'Deutsche Vorschau' } : {}),
+						blocks: DE_BLOCKS,
+					},
+					fr: { subject: 'Sujet', blocks: { b1: { html: 'Bonjour' } } },
+				}),
 				htmlTranslations: JSON.stringify({
-					de: { htmlContent: '<p>Hallo Welt</p>', subject: 'Deutscher Betreff' },
-					fr: FR_HTML,
+					de: { htmlContent: '<p>Stale</p>', subject: 'Deutscher Betreff' },
+					fr: { htmlContent: '<p>Stale</p>', subject: 'Sujet' },
 				}),
 				...extra,
 			});
@@ -322,7 +331,7 @@ describe.each(drivers)('translation mutations on $table', (driver) => {
 				language: 'de',
 				subject: ' Neuer Betreff ',
 				blocks: JSON.stringify({ b1: { html: 'Neu' } }),
-				htmlContent: '<p>Neu</p>',
+				htmlContent: '<p>Client HTML</p>',
 				expectedContentRevision: 3,
 			});
 
@@ -330,12 +339,15 @@ describe.each(drivers)('translation mutations on $table', (driver) => {
 			expect(result).toMatchObject({ contentRevision: 4 });
 			expect(row?.contentRevision).toBe(4);
 			expect(overlays(row)['de']?.['blocks']).toEqual({ b1: { html: 'Neu' } });
-			// The HTML carries the subject the overlay stored (trimmed), and the
-			// other languages' HTML is left alone.
-			expect(rendered(row)).toEqual({
-				de: { htmlContent: '<p>Neu</p>', subject: 'Neuer Betreff' },
-				fr: FR_HTML,
-			});
+			// The HTML is rendered from the stored overlay with the subject it
+			// stored (trimmed); every other language is rendered from its own.
+			const html = rendered(row);
+			expect(Object.keys(html).sort()).toEqual(['de', 'fr']);
+			expect(html['de']?.subject).toBe('Neuer Betreff');
+			expect(html['de']?.htmlContent).toContain('Neu');
+			expect(html['de']?.htmlContent).not.toContain('Client HTML');
+			expect(html['fr']).toMatchObject({ subject: 'Sujet' });
+			expect(html['fr']?.htmlContent).toContain('Bonjour');
 		});
 
 		it('updateTranslation built on an older revision is refused and writes nothing', async () => {
@@ -362,16 +374,19 @@ describe.each(drivers)('translation mutations on $table', (driver) => {
 			const id = await driver.seed(t);
 
 			const result = await driver.add(t, id, 'de', {
-				htmlContent: '<p>Hello world</p>',
+				htmlContent: '<p>Client HTML</p>',
 				expectedContentRevision: 3,
 			});
 
 			const row = await read(t, id);
 			expect(result).toMatchObject({ contentRevision: 4 });
 			expect(row?.supportedLanguages).toEqual(['en', 'de']);
-			expect(rendered(row)).toEqual({
-				de: { htmlContent: '<p>Hello world</p>', subject: 'English subject' },
-			});
+			// The seeded overlay is the default text, rendered with the default subject.
+			const html = rendered(row);
+			expect(Object.keys(html)).toEqual(['de']);
+			expect(html['de']?.subject).toBe('English subject');
+			expect(html['de']?.htmlContent).toContain('Hello world');
+			expect(html['de']?.htmlContent).not.toContain('Client HTML');
 		});
 
 		it('addTranslation built on an older revision is refused', async () => {
@@ -396,7 +411,9 @@ describe.each(drivers)('translation mutations on $table', (driver) => {
 			const row = await read(t, id);
 			expect(row?.supportedLanguages).toEqual(['en', 'fr']);
 			expect(overlays(row)['de']).toBeUndefined();
-			expect(rendered(row)).toEqual({ fr: FR_HTML });
+			const html = rendered(row);
+			expect(Object.keys(html)).toEqual(['fr']);
+			expect(html['fr']?.htmlContent).toContain('Bonjour');
 		});
 
 		it('removeTranslation built on an older revision is refused', async () => {

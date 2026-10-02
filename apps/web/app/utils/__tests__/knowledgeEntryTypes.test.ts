@@ -88,7 +88,7 @@ describe('knowledge entry type map', () => {
 		expect(AUTHORABLE_ENTRY_TYPES).not.toContain('policy');
 		expect(AUTHORABLE_ENTRY_TYPES).not.toContain('faq');
 		expect(AUTHORABLE_ENTRY_TYPES).toHaveLength(7);
-		expect(AUTHORABLE_SOURCE_TYPES).not.toContain('curated');
+		expect(AUTHORABLE_SOURCE_TYPES).toEqual(['manual']);
 	});
 
 	it.each([

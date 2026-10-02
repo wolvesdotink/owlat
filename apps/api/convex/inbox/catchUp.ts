@@ -47,7 +47,7 @@ import {
 async function inboundPlainText(message: Doc<'inboundMessages'>): Promise<string> {
 	const { text, html, excerpt } = await openInboundMessageBody(message, null);
 	if (text != null && text.trim()) return stripHiddenContent(text).trim();
-	if (html != null) return htmlToPlainText(stripHiddenContent(html));
+	if (html != null) return htmlToPlainText(stripHiddenContent(html, { html: true }));
 	return stripHiddenContent(excerpt ?? '').trim();
 }
 

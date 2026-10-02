@@ -49,7 +49,9 @@ function hmacVerifier(
  * already has (`aws-sns` and `mandrill-form` are not in its vocabulary — see
  * `PluginSvixSignatureContract` in `@owlat/plugin-kit`).
  */
-function pluginVerifier(signature: PluginWebhookSignatureContract): ProviderFeedbackVerifier {
+export function pluginVerifier(
+	signature: PluginWebhookSignatureContract
+): ProviderFeedbackVerifier {
 	if (isPluginSvixSignatureContract(signature)) {
 		return {
 			scheme: 'svix',

@@ -43,6 +43,7 @@ import { recordAuditLog } from '../lib/auditLog';
 import { defineLifecycle, refuse, type LifecycleReason } from '../lib/lifecycle';
 import { logWarn } from '../lib/runtimeLog';
 import { batchGet } from '../_utils/batchLoader';
+import { isFeatureEnabled } from '../lib/featureFlags';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -513,6 +514,23 @@ export async function findContactByConfirmationToken(
 		.first();
 }
 
+/**
+ * Whether `token` was minted by a form submission while the `forms` flag is
+ * off. Such a token neither resolves nor confirms, on any DOI surface, until
+ * the flag is back on: the confirmation follows the flag like the public submit
+ * endpoint does. A contact-level token that no form minted is unaffected.
+ */
+export async function isFormTokenDisabled(
+	ctx: QueryCtx | MutationCtx,
+	token: string
+): Promise<boolean> {
+	const submission = await ctx.db
+		.query('formSubmissions')
+		.withIndex('by_confirmation_token_and_status', (q) => q.eq('confirmationToken', token))
+		.first();
+	return submission !== null && !(await isFeatureEnabled(ctx, 'forms'));
+}
+
 // ─── Topic membership resolution ────────────────────────────────────────────
 //
 // At confirm time, we need the contact's DOI-required topic memberships
@@ -656,7 +674,9 @@ export const transitionByConfirmationToken = internalMutation({
 	args: { token: v.string(), input: transitionInputValidator },
 	handler: async (ctx, args): Promise<TransitionOutcome> => {
 		const contact = await findContactByConfirmationToken(ctx, args.token);
-		if (!contact) return { ok: false, reason: 'token_not_found' };
+		if (!contact || (await isFormTokenDisabled(ctx, args.token))) {
+			return { ok: false, reason: 'token_not_found' };
+		}
 		if (contact.doiTokenExpiresAt !== undefined && contact.doiTokenExpiresAt < args.input.at) {
 			return { ok: false, reason: 'token_expired' };
 		}

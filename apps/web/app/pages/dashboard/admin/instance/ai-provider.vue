@@ -18,9 +18,11 @@ const {
 	config,
 	isLoading,
 	error,
+	refetch,
 	isSaving,
 	isTesting,
 	isLoadingModels,
+	isRemoving,
 	providerOptions: providerOptionKeys,
 	embeddingOptions: embeddingOptionKeys,
 	form,
@@ -49,6 +51,7 @@ const {
 	handleSave,
 	handleTest,
 	handleLoadModels,
+	handleRemove,
 	// The DECISION plane — the opt-in third card. Every one of these is inert
 	// until an operator switches it on, and `decisionSaveArgs` sends nothing at
 	// all until then, so an install that never opted in saves what it always did.
@@ -145,7 +148,7 @@ watch(isDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 			class="mb-8"
 		/>
 
-		<UiQueryBoundary :loading="isLoading && !config" :error="error">
+		<UiQueryBoundary :loading="isLoading && !config" :error="error" @retry="refetch">
 			<!--
 				First load: a content-shaped placeholder at the geometry of the
 				provider cards below, rather than a centred spinner that blanks
@@ -442,6 +445,15 @@ watch(isDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 					</UiButton>
 				</div>
 			</form>
+
+			<!-- Only a stored row can be removed; env-only installs have nothing here. -->
+			<SettingsAiRemoveConfigCard
+				v-if="config?.configured"
+				class="mt-6 max-w-3xl"
+				:remove="handleRemove"
+				:is-removing="isRemoving"
+				:disabled="isSaving"
+			/>
 		</UiQueryBoundary>
 
 		<!-- Unsaved Changes Dialog -->

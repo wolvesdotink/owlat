@@ -5,7 +5,7 @@
  *
  * The built-in tools are declared as hosted modules in {@link TOOL_MODULES} —
  * each pairs the AI-SDK tool with the metadata the host enforces (flag, scope,
- * spend tag, scrub policy; see `./toolRegistry`). `buildAssistantTools(ctx)`
+ * spend tag, scrub policy; see `./toolRegistry`). `buildAssistantTools(ctx, audience)`
  * assembles the AI-SDK `ToolSet` the conversation runner passes to
  * `runLlmStream`: it flag-gates membership, then wraps each tool so the host
  * injection-scrubs its output before it can reach a prompt.
@@ -38,6 +38,7 @@ import {
 	hasFlaggedModule,
 	selectAssistantToolModules,
 	withHostScrub,
+	type AssistantAudience,
 	type HostedAssistantToolModule,
 } from './toolRegistry';
 
@@ -48,7 +49,7 @@ const MAX_KNOWLEDGE_CONTENT = 1200;
 const MAX_FILE_EXCERPT = 1000;
 const MAX_RELATED_TITLE = 200;
 
-function buildSearchKnowledge(ctx: ActionCtx): Tool {
+function buildSearchKnowledge(ctx: ActionCtx, audience: AssistantAudience): Tool {
 	return tool({
 		description:
 			'Search the workspace knowledge graph (facts, decisions, and preferences extracted from the team’s conversations and files) for information relevant to a question. Use this first for anything about what the team or its contacts know, decided, or prefer.',
@@ -68,6 +69,8 @@ function buildSearchKnowledge(ctx: ActionCtx): Tool {
 				queryText: query,
 				limit: clampInt(limit, 1, 10, 6),
 				scopeToContact: 'org-wide',
+				// Knowledge learned from Team Inbox mail only for a reader.
+				includeInboxDerived: audience.canReadInbox,
 				expandGraph: graphRetrieval,
 			});
 			return {
@@ -301,7 +304,7 @@ export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze(
 
 /**
  * Assemble the AI-SDK tool set from the hosted registry, closing over the
- * runner's action context. Flag-gates membership (a tool whose `flag` is OFF is
+ * runner's action context and the turn's audience. Flag-gates membership (a tool whose `flag` is OFF is
  * omitted — feature-off ⇒ the model never sees it), then wraps each tool so the
  * host injection-scrubs its output before it can reach a prompt.
  *
@@ -311,6 +314,7 @@ export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze(
  */
 export async function buildAssistantTools(
 	ctx: ActionCtx,
+	audience: AssistantAudience,
 	modules: readonly HostedAssistantToolModule[] = TOOL_MODULES
 ): Promise<ToolSet> {
 	const flags = hasFlaggedModule(modules)
@@ -318,7 +322,7 @@ export async function buildAssistantTools(
 		: {};
 	const set: ToolSet = {};
 	for (const module of selectAssistantToolModules(modules, flags)) {
-		const built = module.build(ctx);
+		const built = module.build(ctx, audience);
 		set[module.name] = module.scrubOutput ? withHostScrub(built) : built;
 	}
 	return set;

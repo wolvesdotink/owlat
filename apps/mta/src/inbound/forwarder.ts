@@ -86,24 +86,26 @@ export async function forwardToEndpoint(
 
 	const body = JSON.stringify(payload);
 
-	// System routes (e.g. the TLS-RPT reporting webhook) forward to one of our
-	// own trusted Convex endpoints, so we HMAC-sign the body with the shared
-	// webhook secret — same scheme the Convex handlers verify. Customer routes
-	// carry no secret and stay unsigned.
-	const signedHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
-	if (idempotencyIdentity) signedHeaders['Idempotency-Key'] = idempotencyIdentity;
-	if (route.systemSecret) {
-		Object.assign(signedHeaders, signMtaRequest(route.systemSecret, body));
-	}
+	const baseHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+	if (idempotencyIdentity) baseHeaders['Idempotency-Key'] = idempotencyIdentity;
 
 	for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
 		try {
 			const controller = new AbortController();
 			const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
+			// System routes (e.g. the TLS-RPT reporting webhook) forward to one of
+			// our own trusted Convex endpoints, so we HMAC-sign the body with the
+			// shared webhook secret — same scheme the Convex handlers verify. Each
+			// attempt is signed afresh, because the endpoint accepts only a recent
+			// timestamp. Customer routes carry no secret and stay unsigned.
+			const headers = route.systemSecret
+				? { ...baseHeaders, ...signMtaRequest(route.systemSecret, body) }
+				: baseHeaders;
+
 			const response = await fetch(route.endpointUrl, {
 				method: 'POST',
-				headers: signedHeaders,
+				headers,
 				body,
 				signal: controller.signal,
 			});

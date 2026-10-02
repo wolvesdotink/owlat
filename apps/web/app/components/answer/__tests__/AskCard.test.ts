@@ -213,4 +213,27 @@ describe('AskCard', () => {
 		expect(submit.attributes('disabled')).toBeDefined();
 		w.unmount();
 	});
+
+	it('sends several files for one question when the card takes them', async () => {
+		const w = mountCard({ questions: [QUESTIONS[0]], round: undefined, multipleFiles: true });
+		await w.get('[data-testid="file-ask-candidate"]').trigger('click');
+		await w.get('[data-testid="ask-submit"]').trigger('click');
+		expect(w.emitted('answer')?.[0]?.[0]).toEqual([
+			{
+				questionId: 'file_request',
+				files: [{ source: 'semanticFile', id: 'sf_1', filename: 'invoice-2026-08.pdf' }],
+				keepCopy: true,
+			},
+		]);
+		w.unmount();
+	});
+
+	it('says the draft is ready and only waits for files', () => {
+		const w = mountCard({ questions: [QUESTIONS[0]], round: undefined, waitingForFiles: true });
+		expect(w.text()).toContain('Draft ready. Waiting for your files');
+		expect(w.text()).toContain('The reply is written.');
+		expect(w.get('[data-testid="ask-submit"]').text()).toBe('Attach and update draft');
+		expectFullyLocalized(w);
+		w.unmount();
+	});
 });

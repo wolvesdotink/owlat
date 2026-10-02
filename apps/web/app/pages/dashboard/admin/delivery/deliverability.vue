@@ -50,6 +50,7 @@ const {
 	data: centerData,
 	isLoading,
 	error,
+	refetch,
 } = useOrganizationQuery(api.delivery.checklist.getCenter);
 
 const center = computed<DeliverabilityCenter | null>(() => centerData.value ?? null);
@@ -215,6 +216,7 @@ async function copyReport() {
 		<UiQueryBoundary
 			:loading="isLoading"
 			:error="error"
+			@retry="refetch"
 			:empty="!center"
 			:error-title="t('dashboard.admin.delivery.deliverability.errorTitle')"
 			:error-message="t('dashboard.admin.delivery.deliverability.errorMessage')"

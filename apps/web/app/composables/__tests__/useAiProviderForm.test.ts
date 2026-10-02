@@ -15,7 +15,7 @@
  * against the form — the form is not what reaches the backend.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ref, type Ref } from 'vue';
+import { nextTick, ref, type Ref } from 'vue';
 import { createTestI18n } from '~/__tests__/i18n';
 
 // `api` is a bottomless Proxy: every path resolves to the same value, which is
@@ -36,6 +36,10 @@ let config: Ref<Record<string, unknown> | null>;
 let saveCalls: Record<string, unknown>[];
 /** What `testConnection` answers next. */
 let testResult: { ok: boolean; error?: string };
+/** Whether `removeConfig` lands; `false` is a refused call the toast reports. */
+let removeOk: boolean;
+/** Answers the `listModels` call in flight, so a test decides when it lands. */
+let answerListModels: ((models: string[]) => void) | null;
 
 beforeEach(() => {
 	const i18n = createTestI18n();
@@ -46,6 +50,8 @@ beforeEach(() => {
 	config = ref(null);
 	saveCalls = [];
 	testResult = { ok: true };
+	removeOk = true;
+	answerListModels = null;
 	vi.stubGlobal('useOrganizationQuery', () => ({
 		data: config,
 		isLoading: ref(false),
@@ -61,6 +67,15 @@ beforeEach(() => {
 				run: vi.fn(async (args: Record<string, unknown>) => {
 					if (label === 'Save AI provider') saveCalls.push(args);
 					if (label === 'Test AI connection') return { ok: true, result: testResult };
+					if (label === 'Load available models') {
+						return new Promise((resolve) => {
+							answerListModels = (models) =>
+								resolve({ ok: true, result: { supported: true, models } });
+						});
+					}
+					if (label === 'Remove AI provider configuration') {
+						return removeOk ? { ok: true, result: { removed: true } } : { ok: false };
+					}
 					return { ok: true, result: { ok: true } };
 				}),
 				isLoading: ref(false),
@@ -305,5 +320,112 @@ describe('the degraded state the card puts into words', () => {
 		});
 		expect(form.decisionDegradedReasons.value).toEqual(['testFailed']);
 		expect(form.decisionThresholdsInert.value).toBe(true);
+	});
+});
+
+describe('removing the stored configuration', () => {
+	/** A configured install with a hosted model, a hosted embedder and a decision vendor. */
+	function storedEverything() {
+		return existingConfig({
+			languageProviderKind: 'anthropic',
+			modelFast: 'claude-haiku-4-5',
+			modelCapable: 'claude-sonnet-4-5',
+			embeddingProviderKind: 'openai',
+			embeddingModel: 'text-embedding-3-small',
+			isEmbeddingKeySet: true,
+			decisionProviderKind: 'typesafe',
+			decisionModel: 'jev-1.13.0',
+			isDecisionKeySet: true,
+		});
+	}
+
+	it('puts back the form a brand-new install starts from', async () => {
+		// Snapshot first: every form here watches the same `config` ref.
+		const fresh = useAiProviderForm();
+		const freshForm = { ...fresh.form };
+		const freshDecisionForm = { ...fresh.decisionForm };
+		config.value = storedEverything();
+		const form = useAiProviderForm();
+		form.form.apiKey = 'sk-typed-but-unsaved';
+		expect(form.isDirty.value).toBe(true);
+
+		expect(await form.handleRemove()).toBe(true);
+		// The subscription then reports the row gone, which `hydrate` ignores.
+		config.value = { configured: false };
+
+		expect({ ...form.form }).toEqual(freshForm);
+		expect({ ...form.decisionForm }).toEqual(freshDecisionForm);
+		expect(form.decisionEnabled.value).toBe(false);
+		expect(form.showHostedEmbedder.value).toBe(false);
+		expect(form.isDirty.value).toBe(false);
+	});
+
+	it('keeps the form as it was when the removal is refused', async () => {
+		config.value = storedEverything();
+		const form = useAiProviderForm();
+		removeOk = false;
+
+		expect(await form.handleRemove()).toBe(false);
+
+		expect(form.form.languageProviderKind).toBe('anthropic');
+		expect(form.form.embeddingProviderKind).toBe('openai');
+		expect(form.decisionEnabled.value).toBe(true);
+	});
+
+	it('resets a tab that was showing the config when another tab removes it', async () => {
+		const fresh = useAiProviderForm();
+		const freshForm = { ...fresh.form };
+		config.value = storedEverything();
+		const form = useAiProviderForm();
+		expect(form.decisionEnabled.value).toBe(true);
+
+		// This tab never called removeConfig; the subscription reports the row gone.
+		config.value = { configured: false };
+		await nextTick();
+
+		expect({ ...form.form }).toEqual(freshForm);
+		expect(form.decisionEnabled.value).toBe(false);
+		expect(form.showHostedEmbedder.value).toBe(false);
+		expect(form.isDirty.value).toBe(false);
+	});
+
+	it('keeps unsaved edits on a page that never had a stored config', async () => {
+		const form = useAiProviderForm();
+		form.form.languageProviderKind = 'anthropic';
+		form.form.apiKey = 'sk-typed-but-unsaved';
+
+		config.value = { configured: false };
+		await nextTick();
+
+		expect(form.form.languageProviderKind).toBe('anthropic');
+		expect(form.form.apiKey).toBe('sk-typed-but-unsaved');
+		expect(form.isDirty.value).toBe(true);
+	});
+
+	it.each([
+		['this tab removes it', 'here'],
+		['another tab removes it', 'elsewhere'],
+	])('drops a model list that lands after %s', async (_label, where) => {
+		config.value = existingConfig({
+			languageProviderKind: 'openrouter',
+			modelFast: 'anthropic/claude-haiku-4.5',
+			modelCapable: 'anthropic/claude-sonnet-4.5',
+		});
+		const form = useAiProviderForm();
+		const loading = form.handleLoadModels();
+
+		if (where === 'here') await form.handleRemove();
+		config.value = { configured: false };
+		await nextTick();
+		answerListModels!(['openrouter/only-model']);
+		await loading;
+
+		expect(form.form.languageProviderKind).toBe('openai');
+		expect(form.liveModels.value).toEqual([]);
+		expect(form.liveModelsError.value).toBeNull();
+		const offered = [...form.fastModelOptions.value, ...form.capableModelOptions.value].map(
+			(option) => option.value
+		);
+		expect(offered).not.toContain('openrouter/only-model');
 	});
 });

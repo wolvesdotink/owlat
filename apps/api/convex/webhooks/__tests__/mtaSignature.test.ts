@@ -5,6 +5,7 @@ import {
 	MTA_EVENT_TOLERANCE_SECONDS,
 	MTA_REQUEST_TOLERANCE_SECONDS,
 	readMtaSignatureHeaders,
+	verifyMtaDeclaredLength,
 	verifyMtaSignedRequest,
 } from '../mtaSignature';
 
@@ -118,5 +119,45 @@ describe('readMtaSignatureHeaders', () => {
 				nowMs: NOW_MS,
 			})
 		).toEqual({ ok: false, reason: 'invalid_timestamp' });
+	});
+});
+
+describe('verifyMtaDeclaredLength', () => {
+	const length = String(new TextEncoder().encode(BODY).length);
+	const options = { secret: SECRET, toleranceSeconds: 300, nowMs: NOW_MS, maxBytes: 1024 };
+
+	function lengthRequest(headers: Record<string, string>): Request {
+		return new Request('https://api.example.test/webhooks/mta-inbound', {
+			method: 'POST',
+			headers: { 'content-length': length, ...headers },
+			body: BODY,
+		});
+	}
+
+	it('returns the length the MTA signed for', async () => {
+		const headers = signMtaRequest(SECRET, BODY, NOW_MS);
+		expect(await verifyMtaDeclaredLength(lengthRequest(headers), options)).toBe(Number(length));
+	});
+
+	it('answers null without the header, with a wrong key, or past the window', async () => {
+		const { 'X-MTA-Length-Signature': _omitted, ...withoutLength } = signMtaRequest(
+			SECRET,
+			BODY,
+			NOW_MS
+		);
+		expect(await verifyMtaDeclaredLength(lengthRequest(withoutLength), options)).toBeNull();
+		const wrongKey = signMtaRequest('other-secret', BODY, NOW_MS);
+		expect(await verifyMtaDeclaredLength(lengthRequest(wrongKey), options)).toBeNull();
+		const stale = signMtaRequest(SECRET, BODY, NOW_MS - 301_000);
+		expect(await verifyMtaDeclaredLength(lengthRequest(stale), options)).toBeNull();
+	});
+
+	it('answers null for a length other than the one signed, or over the cap', async () => {
+		const headers = signMtaRequest(SECRET, BODY, NOW_MS);
+		const longer = lengthRequest({ ...headers, 'content-length': String(Number(length) + 1) });
+		expect(await verifyMtaDeclaredLength(longer, options)).toBeNull();
+		expect(
+			await verifyMtaDeclaredLength(lengthRequest(headers), { ...options, maxBytes: 10 })
+		).toBeNull();
 	});
 });

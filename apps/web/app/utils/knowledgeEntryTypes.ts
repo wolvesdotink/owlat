@@ -71,11 +71,10 @@ export const SOURCE_CONFIG: Record<string, { icon: string; label: string }> = {
 	curated: { icon: 'lucide:badge-check', label: 'Canonical answer' },
 };
 
-// `curated` marks a canonical answer and is set only by the canonical-answer
-// form; the generic entry form never offers it.
-export const AUTHORABLE_SOURCE_TYPES: SourceType[] = (
-	Object.keys(SOURCE_CONFIG) as SourceType[]
-).filter((source) => source !== 'curated');
+// A hand-authored entry is always `manual`: the backend refuses any other
+// source on create (the rest name a pipeline, and `curated` has its own
+// canonical-answer form), and an edit keeps the entry's existing source.
+export const AUTHORABLE_SOURCE_TYPES: SourceType[] = ['manual'];
 
 export const entryTypeVariant = (type: string): EntryTypeVariant =>
 	TYPE_CONFIG[type as EntryType]?.variant ?? 'neutral';

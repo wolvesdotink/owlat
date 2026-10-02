@@ -409,7 +409,7 @@ export async function insertDeliveredMessage(
 			firstMessageAt: Math.min(thread.firstMessageAt, params.receivedAt),
 			updatedAt: now,
 			...(queuesNeedsReplyCheck(params.inboundOrigin, params.folder, folder._id)
-				? { needsReplyPendingAt: now }
+				? { needsReplyPendingAt: now, needsReplyRetryCount: undefined }
 				: {}),
 			...(isNewest
 				? {

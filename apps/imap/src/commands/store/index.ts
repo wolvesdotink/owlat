@@ -3,7 +3,7 @@ import { logger } from '../../logger.js';
 import { parseList } from '../../parser.js';
 import type { ImapCommandModule } from '../types.js';
 import { asyncSession } from '../helpers/session.js';
-import { collectMessageIds } from '../helpers/uidSet.js';
+import { collectMessageIds, inBatches } from '../helpers/uidSet.js';
 import { resolveSelectedSet, seqForUid } from '../helpers/seqMap.js';
 import { serverFailure } from '../helpers/replies.js';
 import { holdSequence } from '../helpers/sequenceGate.js';
@@ -91,27 +91,36 @@ export const storeModule: ImapCommandModule<StoreArgs> = {
 					return;
 				}
 
-				const result = await deps.convex.mutation(fn.storeFlags, {
-					messageIds,
-					flags: flagList,
-					mode: args.mode,
-					unchangedSinceModseq: args.unchangedSince,
-				});
+				// Batched: a set over a large folder exceeds what one Convex call
+				// accepts. Neither RFC 3501 nor RFC 9051 asks STORE to be atomic;
+				// if a later batch fails, the rows it did not reach keep their
+				// flags and the updates already sent stand.
+				const modified: number[] = [];
+				for (const batch of inBatches(messageIds)) {
+					const result = await deps.convex.mutation(fn.storeFlags, {
+						messageIds: batch,
+						flags: flagList,
+						mode: args.mode,
+						unchangedSinceModseq: args.unchangedSince,
+					});
 
-				if (!args.silent) {
-					for (const u of result.updated) {
-						const seq = seqForUid(seqMap, u.uid) ?? 0;
-						send(`* ${seq} FETCH (UID ${u.uid} MODSEQ (${u.modseq}) FLAGS (${u.flags.join(' ')}))`);
+					if (!args.silent) {
+						for (const u of result.updated) {
+							const seq = seqForUid(seqMap, u.uid) ?? 0;
+							send(
+								`* ${seq} FETCH (UID ${u.uid} MODSEQ (${u.modseq}) FLAGS (${u.flags.join(' ')}))`
+							);
+						}
+					}
+
+					// RFC 7162 §3.1.3: MODIFIED carries a UID set for UID STORE and a
+					// message (sequence) set for plain STORE, the same addressing the
+					// client used in the command.
+					for (const u of result.unchanged) {
+						const id = args.byUid ? u.uid : seqForUid(seqMap, u.uid);
+						if (id !== undefined) modified.push(id);
 					}
 				}
-
-				// RFC 7162 §3.1.3: MODIFIED carries a UID set for UID STORE and a
-				// message (sequence) set for plain STORE, the same addressing the
-				// client used in the command.
-				const modified = result.unchanged.flatMap((u) => {
-					const id = args.byUid ? u.uid : seqForUid(seqMap, u.uid);
-					return id === undefined ? [] : [id];
-				});
 				if (modified.length > 0) {
 					send(`${tag} OK [MODIFIED ${modified.join(',')}] ${label} completed`);
 					return;

@@ -5,6 +5,8 @@ export const ACKNOWLEDGED_ADVISORIES: Readonly<Record<string, string>> = Object.
 		'image-size@2.0.2 has no upstream release; patches/image-size@2.0.2.patch rejects zero, truncated, and non-advancing ICNS entries.',
 	'GHSA-5P2G-FCMC-QVQQ':
 		'image-size@2.0.2 has no upstream release; patches/image-size@2.0.2.patch rejects undersized and non-advancing HEIF/JXL boxes.',
+	'GHSA-86W9-CPQP-85RV':
+		'node-forge@1.4.0 has no upstream fix; it only reaches the dev server through listhen, which generates a self-signed certificate and never verifies an RSA signature. Drop this once node-forge ships a fix.',
 });
 
 export interface AuditFinding {

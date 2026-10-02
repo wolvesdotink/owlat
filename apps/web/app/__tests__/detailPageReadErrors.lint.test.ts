@@ -43,7 +43,6 @@ const DELEGATES: Record<string, { tag: string; file: string; branch?: RegExp }> 
 	'preferences/members/[mailboxId].vue': {
 		tag: 'PostboxTeamInboxMembersPanel',
 		file: 'components/postbox/TeamInboxMembersPanel.vue',
-		branch: /v-else-if="membersError"/,
 	},
 	// The mailbox read has its own alert on the page; the list and the open
 	// message are the layout's.

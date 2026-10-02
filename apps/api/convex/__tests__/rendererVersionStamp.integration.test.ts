@@ -3,13 +3,12 @@
  * every write that stores rendered HTML on a publishable email records the
  * renderer version that produced it, and copies of that HTML carry it along.
  *
- *   - editor saves stamp the version the client reports, or 1 when it reports
- *     none (a client from before the field)
- *   - a write that leaves older HTML in the row (one language, or only the
- *     translations) keeps the older version
+ *   - editor saves, translation writes, `setDefaultLanguage`, publish and
+ *     duplicate render on the server (lib/publishableEmail.ts) and stamp the
+ *     server's version, whatever version a client reports
+ *   - a save that stores no HTML leaves the version alone
  *   - the saved-block rerender pool stamps the version the action rendered with
- *   - `setDefaultLanguage` and a publish that stores the caller's HTML stamp it
- *   - share links and duplicates carry the source row's version
+ *   - share links carry the source row's version
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -70,25 +69,26 @@ describe('renderer version', () => {
 });
 
 describe('editor saves', () => {
-	it('stamp the version the client rendered with', async () => {
+	it("stamp the server's version, not the one the client reports", async () => {
 		const t = convexTest(schema, modules);
 		const templateId = await seedTemplate(t, RENDERED_V1);
 
 		await t.mutation(api.emailTemplates.emails.update, {
 			templateId,
 			content: CONTENT,
-			htmlContent: '<p>Hello v2</p>',
+			htmlContent: '<p>Hello v1</p>',
 			htmlTranslations: DE_HTML,
-			rendererVersion: 2,
+			rendererVersion: 1,
 		});
 
 		const row = await t.run((ctx) => ctx.db.get(templateId));
-		expect(row?.rendererVersion).toBe(2);
+		expect(row?.rendererVersion).toBe(CURRENT_RENDERER_VERSION);
+		expect(row?.htmlContent).not.toBe('<p>Hello v1</p>');
 	});
 
-	it('stamp version 1 when an older client reports no version', async () => {
+	it("stamp the server's version when an older client reports none", async () => {
 		const t = convexTest(schema, modules);
-		const emailId = await seedTransactional(t, { ...RENDERED_V1, rendererVersion: 2 });
+		const emailId = await seedTransactional(t, RENDERED_V1);
 
 		await t.mutation(api.transactional.emails.update, {
 			id: emailId,
@@ -98,22 +98,7 @@ describe('editor saves', () => {
 		});
 
 		const row = await t.run((ctx) => ctx.db.get(emailId));
-		expect(row?.rendererVersion).toBe(1);
-	});
-
-	it('keep the older version when the default HTML is left as it was', async () => {
-		const t = convexTest(schema, modules);
-		const templateId = await seedTemplate(t, RENDERED_V1);
-
-		// The Settings page re-renders only the translations.
-		await t.mutation(api.emailTemplates.emails.update, {
-			templateId,
-			htmlTranslations: DE_HTML,
-			rendererVersion: 2,
-		});
-
-		const row = await t.run((ctx) => ctx.db.get(templateId));
-		expect(row?.rendererVersion).toBe(1);
+		expect(row?.rendererVersion).toBe(CURRENT_RENDERER_VERSION);
 	});
 
 	it('leave the version alone when they store no HTML', async () => {
@@ -128,7 +113,7 @@ describe('editor saves', () => {
 });
 
 describe('translation writes', () => {
-	it('keep the older version when one language is re-rendered', async () => {
+	it("stamp the server's version when one language changes", async () => {
 		const t = convexTest(schema, modules);
 		const templateId = await seedTemplate(t, RENDERED_V1);
 
@@ -136,17 +121,17 @@ describe('translation writes', () => {
 			templateId,
 			language: 'de',
 			subject: 'Hallo!',
-			htmlContent: '<p>Hallo v2</p>',
-			rendererVersion: 2,
+			htmlContent: '<p>Hallo v1</p>',
+			rendererVersion: 1,
 		});
 
 		const row = await t.run((ctx) => ctx.db.get(templateId));
-		expect(row?.rendererVersion).toBe(1);
+		expect(row?.rendererVersion).toBe(CURRENT_RENDERER_VERSION);
 	});
 
-	it('lower the version when one language comes from an older renderer', async () => {
+	it("stamp the server's version when a language is added", async () => {
 		const t = convexTest(schema, modules);
-		const emailId = await seedTransactional(t, { ...RENDERED_V1, rendererVersion: 2 });
+		const emailId = await seedTransactional(t, RENDERED_V1);
 
 		await t.mutation(api.transactional.translations.addTranslation, {
 			id: emailId,
@@ -155,25 +140,10 @@ describe('translation writes', () => {
 		});
 
 		const row = await t.run((ctx) => ctx.db.get(emailId));
-		expect(row?.rendererVersion).toBe(1);
+		expect(row?.rendererVersion).toBe(CURRENT_RENDERER_VERSION);
 	});
 
-	it('stamp the version when the language is the only HTML the row stores', async () => {
-		const t = convexTest(schema, modules);
-		const templateId = await seedTemplate(t, { htmlContent: undefined, rendererVersion: 1 });
-
-		await t.mutation(api.emailTemplates.i18n.addTranslation, {
-			templateId,
-			language: 'de',
-			htmlContent: '<p>Hallo</p>',
-			rendererVersion: 2,
-		});
-
-		const row = await t.run((ctx) => ctx.db.get(templateId));
-		expect(row?.rendererVersion).toBe(2);
-	});
-
-	it('stamp the version on a default-language swap that re-renders every language', async () => {
+	it("stamp the server's version on a default-language swap", async () => {
 		const t = convexTest(schema, modules);
 		const templateId = await seedTemplate(t, RENDERED_V1);
 
@@ -185,12 +155,12 @@ describe('translation writes', () => {
 			htmlTranslations: JSON.stringify({
 				en: { htmlContent: '<p>Hello</p>', subject: 'Hello' },
 			}),
-			rendererVersion: 2,
+			rendererVersion: 1,
 		});
 
 		const row = await t.run((ctx) => ctx.db.get(templateId));
 		expect(row?.defaultLanguage).toBe('de');
-		expect(row?.rendererVersion).toBe(2);
+		expect(row?.rendererVersion).toBe(CURRENT_RENDERER_VERSION);
 	});
 });
 
@@ -236,36 +206,37 @@ describe('saved-block rerender pool', () => {
 });
 
 describe('publish', () => {
-	it("stamps the caller's version when it stores the caller's HTML", async () => {
+	it("stamps the server's version and ignores the caller's HTML", async () => {
 		const t = convexTest(schema, modules);
 		// Never rendered: created outside the editor.
 		const emailId = await seedTransactional(t, { htmlContent: undefined, rendererVersion: 1 });
 
 		await t.mutation(api.transactional.emails.publish, {
 			id: emailId,
-			htmlContent: '<p>Hello there, thanks for signing up.</p>',
+			htmlContent: '<p>Caller HTML</p>',
 			htmlTranslations: '{}',
-			rendererVersion: 2,
+			rendererVersion: 1,
 		});
 
 		const row = await t.run((ctx) => ctx.db.get(emailId));
-		expect(row?.htmlContent).toBe('<p>Hello there, thanks for signing up.</p>');
-		expect(row?.rendererVersion).toBe(2);
+		expect(row?.htmlContent).toContain('Hello');
+		expect(row?.htmlContent).not.toContain('Caller HTML');
+		expect(row?.rendererVersion).toBe(CURRENT_RENDERER_VERSION);
 	});
 
-	it("keeps the row's version when it publishes the row's own HTML", async () => {
+	it("re-renders a row's own HTML with the server's version", async () => {
 		const t = convexTest(schema, modules);
 		const templateId = await seedTemplate(t, RENDERED_V1);
 
 		await t.mutation(api.emailTemplates.emails.publish, {
 			templateId,
 			htmlContent: '<p>Ignored</p>',
-			rendererVersion: 2,
+			rendererVersion: 1,
 		});
 
 		const row = await t.run((ctx) => ctx.db.get(templateId));
 		expect(row?.status).toBe('published');
-		expect(row?.rendererVersion).toBe(1);
+		expect(row?.rendererVersion).toBe(CURRENT_RENDERER_VERSION);
 	});
 });
 
@@ -291,9 +262,9 @@ describe('copies of stored HTML', () => {
 		expect(unstampedLink?.rendererVersion).toBe(1);
 	});
 
-	it("duplicates keep the source's version, and version 1 for an unstamped source", async () => {
+	it("duplicates are rendered fresh and stamp the server's version", async () => {
 		const t = convexTest(schema, modules);
-		const stampedId = await seedTemplate(t, { ...RENDERED_V1, rendererVersion: 2 });
+		const stampedId = await seedTemplate(t, RENDERED_V1);
 		const unstampedId = await seedTemplate(t, { htmlContent: '<p>Hello</p>' });
 
 		const stampedCopy = await t.mutation(api.emailTemplates.emails.duplicate, {
@@ -307,7 +278,7 @@ describe('copies of stored HTML', () => {
 			await ctx.db.get(stampedCopy),
 			await ctx.db.get(unstampedCopy),
 		]);
-		expect(a?.rendererVersion).toBe(2);
-		expect(b?.rendererVersion).toBe(1);
+		expect(a?.rendererVersion).toBe(CURRENT_RENDERER_VERSION);
+		expect(b?.rendererVersion).toBe(CURRENT_RENDERER_VERSION);
 	});
 });

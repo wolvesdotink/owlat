@@ -20,6 +20,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganization';
 import { rateLimiter } from '../lib/rateLimiter';
+import { isSharedInboxReader } from '../inbox/access';
 import {
 	throwInvalidInput,
 	throwNotFound,
@@ -188,8 +189,8 @@ export const deleteConversation = assistantMutation({
 // all-members: a member sends into their own private assistant conversation (ownership checked).
 export const sendMessage = assistantMutation({
 	args: { conversationId: v.id('aiConversations'), text: v.string() },
-	handler: async (ctx, args): Promise<{ assistantMessageId: Id<'aiMessages'> }> => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session): Promise<{ assistantMessageId: Id<'aiMessages'> }> => {
+		const { userId } = session;
 		const convo = await loadOwnedConversation(ctx, args.conversationId, userId);
 
 		const text = args.text.trim();
@@ -228,6 +229,9 @@ export const sendMessage = assistantMutation({
 			conversationId: args.conversationId,
 			assistantMessageId,
 			ownerId: userId,
+			// The searchKnowledge tool returns Team Inbox-derived knowledge only
+			// to a shared-inbox reader (inbox/access.ts).
+			includeInboxDerived: isSharedInboxReader(session),
 		});
 
 		return { assistantMessageId };

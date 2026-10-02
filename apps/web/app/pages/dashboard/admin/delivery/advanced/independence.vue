@@ -55,6 +55,7 @@ const {
 	data: summary,
 	isLoading,
 	error,
+	refetch,
 } = useOrganizationQuery(api.delivery.rampIndependence.getIndependenceSummary);
 
 /**
@@ -182,6 +183,7 @@ function confirmRelayRemoval(): void {
 		<UiQueryBoundary
 			:loading="isLoading"
 			:error="error"
+			@retry="refetch"
 			:error-title="t('dashboard.admin.delivery.advanced.independence.errorTitle')"
 			:error-message="t('dashboard.admin.delivery.advanced.independence.errorMessage')"
 		>

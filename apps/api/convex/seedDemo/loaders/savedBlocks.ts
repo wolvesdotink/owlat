@@ -4,10 +4,12 @@
  * Direct insert. The public mutation lives in the saved-block module but is
  * session-gated; we skip it and the rerender-pool dispatch the public path
  * fires after insert (the pool only runs when a block is *edited*, not on
- * fresh creation, so this is a no-op skip).
+ * fresh creation, so this is a no-op skip). The content still goes through the
+ * write-time sanitizer, as on the public path.
  */
 
 import type { MutationCtx } from '../../_generated/server';
+import { sanitizeStoredBlocksJson } from '../../lib/emailContentSanitize';
 import type { Id } from '../../_generated/dataModel';
 import { SEED_TAG, type LoadResult, type Loader } from './types';
 
@@ -18,10 +20,7 @@ interface SavedBlockFixture {
 	content: string;
 }
 
-async function load(
-	ctx: MutationCtx,
-	rawRecords: unknown[],
-): Promise<LoadResult> {
+async function load(ctx: MutationCtx, rawRecords: unknown[]): Promise<LoadResult> {
 	const records = rawRecords as SavedBlockFixture[];
 	let inserted = 0;
 	let skipped = 0;
@@ -41,7 +40,7 @@ async function load(
 		const id = await ctx.db.insert('emailBlocks', {
 			name: rec.name,
 			description: rec.description,
-			content: rec.content,
+			content: sanitizeStoredBlocksJson(rec.content),
 			usageCount: 0,
 			seedTag: SEED_TAG,
 			createdAt: now,

@@ -41,6 +41,35 @@ function declaredTolerance(toleranceSeconds: number): number {
 	return clampToleranceSeconds(toleranceSeconds, PLUGIN_INBOUND_REPLAY_MAX_TOLERANCE_SECONDS);
 }
 
+const SVIX_HEADERS = ['svix-id', 'svix-timestamp', 'svix-signature'] as const;
+const MANDRILL_SIGNATURE_HEADER = 'x-mandrill-signature';
+
+/**
+ * The refusal reason for a request missing a header its declared scheme cannot
+ * verify without, or `null` when every such header is present (and always for
+ * SNS, whose signature travels in the body). The verifiers below answer the
+ * same reason, and the pipeline asks this first so it can refuse before
+ * reading the body or charging a bucket.
+ */
+export function missingDeclaredSignatureHeaders(
+	request: Request,
+	verifier: ProviderFeedbackVerifier
+): string | null {
+	const has = (name: string) => Boolean(request.headers.get(name));
+	switch (verifier.scheme) {
+		case 'hmac-timestamp-body':
+			return has(verifier.signatureHeader) && has(verifier.timestampHeader)
+				? null
+				: 'Missing signature headers';
+		case 'svix':
+			return SVIX_HEADERS.every(has) ? null : 'Missing Svix headers';
+		case 'mandrill-form':
+			return has(MANDRILL_SIGNATURE_HEADER) ? null : 'Missing X-Mandrill-Signature';
+		case 'aws-sns':
+			return null;
+	}
+}
+
 async function verifyTimestampHmac(
 	request: Request,
 	rawBody: string,
@@ -48,9 +77,10 @@ async function verifyTimestampHmac(
 ): Promise<ProviderVerificationResult> {
 	const secret = verifierSecret(verifier.secretEnvVar);
 	if (!secret) return missingSecretResult(verifier.secretEnvVar);
-	const signature = request.headers.get(verifier.signatureHeader);
-	const timestamp = request.headers.get(verifier.timestampHeader);
-	if (!signature || !timestamp) return invalidSignature('Missing signature headers');
+	const missing = missingDeclaredSignatureHeaders(request, verifier);
+	if (missing) return invalidSignature(missing);
+	const signature = request.headers.get(verifier.signatureHeader)!;
+	const timestamp = request.headers.get(verifier.timestampHeader)!;
 	if (
 		!isUnixSecondsTimestamp(timestamp) ||
 		!isWithinTimestampTolerance(timestamp, declaredTolerance(verifier.toleranceSeconds), Date.now())
@@ -73,15 +103,14 @@ async function verifySvix(
 ): Promise<ProviderVerificationResult> {
 	const secret = verifierSecret(verifier.secretEnvVar);
 	if (!secret) return missingSecretResult(verifier.secretEnvVar);
-	const id = request.headers.get('svix-id');
-	const timestamp = request.headers.get('svix-timestamp');
-	const signature = request.headers.get('svix-signature');
-	if (!id || !timestamp || !signature) return invalidSignature('Missing Svix headers');
+	const missing = missingDeclaredSignatureHeaders(request, verifier);
+	if (missing) return invalidSignature(missing);
+	const header = (name: (typeof SVIX_HEADERS)[number]) => request.headers.get(name)!;
 	return (await verifySvixHeaders(
 		rawBody,
-		id,
-		timestamp,
-		signature,
+		header('svix-id'),
+		header('svix-timestamp'),
+		header('svix-signature'),
 		secret,
 		Math.floor(Date.now() / 1000),
 		declaredTolerance(verifier.toleranceSeconds)
@@ -97,8 +126,9 @@ async function verifyMandrillForm(
 ): Promise<ProviderVerificationResult> {
 	const secret = verifierSecret(verifier.secretEnvVar);
 	if (!secret) return missingSecretResult(verifier.secretEnvVar);
-	const signature = request.headers.get('x-mandrill-signature');
-	if (!signature) return invalidSignature('Missing X-Mandrill-Signature');
+	const missing = missingDeclaredSignatureHeaders(request, verifier);
+	if (missing) return invalidSignature(missing);
+	const signature = request.headers.get(MANDRILL_SIGNATURE_HEADER)!;
 	return (await verifyMandrillSignature(
 		mandrillSignedUrlCandidates(request.url),
 		rawBody,

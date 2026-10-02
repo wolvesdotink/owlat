@@ -72,7 +72,7 @@ CONVEX_AUTHZ_GATES='requirePermission|requireAdminContext|requireOwnerContext|re
 # Soft-fail read predicates: each answers "may this caller read this?" and its
 # callers return empty on `false`. Accepted by check-query-authz only (see the
 # caveats there); a write must throw.
-CONVEX_AUTHZ_READ_PREDICATES='isActiveOrgMember|isSharedInboxReader|loadReadableMailbox|loadReadableMessage|loadAccessibleMailboxes'
+CONVEX_AUTHZ_READ_PREDICATES='isActiveOrgMember|isSharedInboxReader|resolveKnowledgeViewer|loadReadableMailbox|loadReadableMessage|loadAccessibleMailboxes'
 
 # convex_builders [convex_root]
 # Print one `name<TAB>kind<TAB>floor` row per public builder: the base builders

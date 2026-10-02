@@ -59,6 +59,11 @@ interface ComposeHydrationTargets {
 	 * clock to reconcile against the moment hydration lands.
 	 */
 	lastSavedAt: Ref<number | null>;
+	/**
+	 * An AI text with `[[...]]` gaps went into this draft before (the server's
+	 * `isGapGuarded`), so its gaps keep holding Send after a reload.
+	 */
+	isGapGuarded: Ref<boolean>;
 }
 
 /** The fields autosave writes as one snapshot; each is merged on its own. */
@@ -99,6 +104,7 @@ type DraftRow = {
 	scheduledSendAt?: number;
 	followUpRemindAt?: number;
 	lastEditedAt?: number;
+	isGapGuarded?: boolean;
 	attachments?: Array<{
 		storageId: string;
 		filename: string;
@@ -140,6 +146,7 @@ export function usePostboxComposeHydration(
 		fields.draftState.value = draft.state ?? 'draft';
 		if (draft.lastEditedAt) fields.lastSavedAt.value = draft.lastEditedAt;
 		fields.scheduledSendAt.value = draft.scheduledSendAt ?? null;
+		if (draft.isGapGuarded) fields.isGapGuarded.value = true;
 		if (!keep('followUpRemindAt')) fields.followUpRemindAt.value = draft.followUpRemindAt ?? null;
 		if (!keep('toAddresses')) fields.toAddresses.value = draft.toAddresses ?? [];
 		if (!keep('ccAddresses')) fields.ccAddresses.value = draft.ccAddresses ?? [];

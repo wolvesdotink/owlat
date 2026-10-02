@@ -91,9 +91,11 @@ of `bun run lint` and will fail CI, including:
 - `lint:crypto-primitives` (root, in `ci:lint`) — HMAC signing and
   constant-time comparison go through `apps/api/convex/lib/crypto.ts` (Convex),
   `@owlat/shared/constantTimeEqual` (Node services), and the MTA request
-  signature through `@owlat/mta-protocol/signer`; a Web Crypto HMAC
-  `importKey`/`sign` or a `timingSafeEqual(` anywhere else under `apps/` or
-  `packages/` fails (`scripts/check-crypto-primitives.sh`).
+  signature through `@owlat/mta-protocol/signer`. Elsewhere under `apps/` or
+  `packages/`, a Web Crypto HMAC `importKey`/`sign`/`verify`, an `importKey`
+  whose algorithm is not a literal, any `timingSafeEqual` reference or an
+  XOR-accumulate compare loop fails (`scripts/check-crypto-primitives.sh`). It
+  is a pattern check: Node's `createHmac` and other spellings are not covered.
 
 The web app's `lint` script (`apps/web`) runs gates of its own, including:
 

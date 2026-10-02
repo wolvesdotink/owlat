@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { WorkspaceConfig, WorkspaceStoreShape } from '~/lib/desktop/workspaceTypes';
 import type * as WorkspaceAccentModule from '~/lib/desktop/workspaceAccent';
+import { createFakeSessionKeychain } from '~/lib/desktop/__tests__/fakeSessionKeychain';
 
 // The desktop boot sequence as Nuxt runs it: every plugin module is imported
 // first (which evaluates `auth-client.ts` and everything it pulls in), and only
@@ -10,12 +11,9 @@ import type * as WorkspaceAccentModule from '~/lib/desktop/workspaceAccent';
 // workspace store and storage; the Tauri bridges, the window chrome and the
 // network are fakes.
 
-const keychainEntries = new Map<string, string>();
-vi.mock('@owlat/desktop/src/keychain', () => ({
-	secretGet: async (key: string) => keychainEntries.get(key) ?? null,
-	secretSet: async (key: string, blob: string) => void keychainEntries.set(key, blob),
-	secretDelete: async (key: string) => void keychainEntries.delete(key),
-}));
+const keychain = createFakeSessionKeychain();
+const keychainEntries = keychain.entries;
+vi.mock('@owlat/desktop/src/keychain', () => keychain.bridge);
 
 let savedStore: WorkspaceStoreShape = { workspaces: [], activeWorkspaceId: null };
 vi.mock('@owlat/desktop/src/workspace', () => ({
@@ -122,7 +120,7 @@ async function bootPage() {
 
 beforeEach(() => {
 	(window as unknown as Record<string, unknown>)['__TAURI_INTERNALS__'] = {};
-	keychainEntries.clear();
+	keychain.reset();
 	savedStore = { workspaces: [], activeWorkspaceId: null };
 	requests.length = 0;
 	convexClients.length = 0;

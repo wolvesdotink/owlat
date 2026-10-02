@@ -308,4 +308,60 @@ describe('useSettingsForm', () => {
 		expect(form.timezone).toBe('Europe/Berlin');
 		expect(isDirty.value).toBe(false);
 	});
+
+	it('is not loaded, and refuses to save the defaults, until the source answers (#1097)', async () => {
+		const { source, form, loaded, handleSave, save } = setup(undefined);
+		await settle();
+		expect(loaded.value).toBe(false);
+
+		// A read that failed leaves the source undefined: an edit made on the
+		// defaults must not be written over the settings that were never read.
+		form.fromName = 'Edited on the defaults';
+		await settle();
+		expect(await handleSave()).toBe(false);
+		expect(save).not.toHaveBeenCalled();
+
+		// The read recovers: the stored row replaces the defaults.
+		source.value = { timezone: 'Europe/Berlin', fromName: 'Owlat' };
+		await settle();
+		expect(loaded.value).toBe(true);
+		expect(form).toEqual({ timezone: 'Europe/Berlin', fromName: 'Owlat' });
+
+		form.fromName = 'Owlat Team';
+		await settle();
+		expect(await handleSave()).toBe(true);
+		expect(save).toHaveBeenCalledWith({ timezone: 'Europe/Berlin', fromName: 'Owlat Team' });
+	});
+
+	it('holds no leave while dirty when the leave guard is off (#1128)', async () => {
+		const source = ref<Row | null | undefined>({ fromName: 'Owlat' });
+		const { form, isDirty } = withSetup(() =>
+			useSettingsForm({
+				source,
+				defaults: DEFAULTS,
+				project: (row) => ({
+					timezone: row?.timezone || DEFAULTS.timezone,
+					fromName: row?.fromName || DEFAULTS.fromName,
+				}),
+				save: vi.fn(async () => true),
+				leaveGuard: false,
+			})
+		).result;
+		await settle();
+
+		form.fromName = 'Owlat Team';
+		await settle();
+		expect(isDirty.value).toBe(true);
+
+		// A card that binds no dialog: holding the leave would strand the operator.
+		const next = vi.fn();
+		h.guard?.({ fullPath: '/elsewhere' }, {}, next);
+		expect(next).toHaveBeenCalledWith();
+	});
+
+	it('counts no stored row as an answer', async () => {
+		const { loaded } = setup(null);
+		await settle();
+		expect(loaded.value).toBe(true);
+	});
 });

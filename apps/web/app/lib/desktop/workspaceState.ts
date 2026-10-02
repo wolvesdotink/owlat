@@ -11,6 +11,7 @@
  */
 import { ref } from 'vue';
 import type { WorkspaceConfig, WorkspaceStoreShape } from '~/lib/desktop/workspaceTypes';
+import type { SessionPersistence } from '~/lib/desktop/keychainStorage';
 
 /**
  * A failure the connect UI shows the user. The functions that throw it run at
@@ -42,12 +43,18 @@ export async function store(): Promise<WorkspaceBridge> {
 	return import('@owlat/desktop/src/workspace');
 }
 
-/** Writes a workspace's session blob to its keychain entry; awaitable, so a
- * storage flush can wait for the write to land. */
-export function makePersister() {
-	return async (account: string, blob: string): Promise<void> => {
-		const { secretSet } = await keychain();
-		await secretSet(account, blob);
+/** How a window's session storage reads and writes its keychain entry. The
+ * write is awaitable, so a storage flush can wait for it to land. */
+export function makeSessionPersistence(): SessionPersistence {
+	return {
+		async write(account, blob, revision) {
+			const { sessionWrite } = await keychain();
+			return sessionWrite(account, blob, revision);
+		},
+		async read(account) {
+			const { sessionRead } = await keychain();
+			return sessionRead(account);
+		},
 	};
 }
 
