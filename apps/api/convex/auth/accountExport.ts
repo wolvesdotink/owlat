@@ -469,6 +469,13 @@ export const exportUserDataPage = authedAction({
 			)) as PaginationResult<Record<string, unknown>>;
 			return serializeAccountExportPage(result);
 		}
+		if (args.resource === 'threadNotes') {
+			const result = (await ctx.runQuery(
+				internal.auth.accountExportQueries.listPersonalThreadNotes,
+				{ userId: args.userId, paginationOpts }
+			)) as PaginationResult<Doc<'threadNotes'>>;
+			return serializeAccountExportPage(result);
+		}
 		const result = (await ctx.runQuery(
 			internal.auth.accountExportQueries.listDeliverabilityAlertRecipientStates,
 			{ userId: args.userId, paginationOpts }

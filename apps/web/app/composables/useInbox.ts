@@ -8,6 +8,7 @@ import {
 	nextInboxSort,
 	parseInboxAssignee,
 	parseInboxFilter,
+	parseInboxMentions,
 	resolveInboxSort,
 	type InboxAssignee,
 	type InboxFilter,
@@ -40,6 +41,23 @@ export function useInbox(gate?: Ref<boolean>) {
 	const assignee = ref<InboxAssignee>(
 		parseInboxAssignee(route.query['assignee'], route.query['filter'])
 	);
+	// `?mentions=1`: the Mentions view (threads a teammate @-mentioned me on in
+	// a note) replaces the status/assignment slice while it is on.
+	const mentions = ref(parseInboxMentions(route.query['mentions']));
+	watch(
+		() => route.query['mentions'],
+		(raw) => {
+			const next = parseInboxMentions(raw);
+			if (next !== mentions.value) mentions.value = next;
+		}
+	);
+	watch(mentions, (on) => {
+		if (parseInboxMentions(route.query['mentions']) === on) return;
+		const query = { ...route.query };
+		if (on) query['mentions'] = '1';
+		else delete query['mentions'];
+		void router.replace({ query });
+	});
 
 	watch(
 		() => [route.query['filter'], route.query['assignee']] as const,
@@ -105,7 +123,7 @@ export function useInbox(gate?: Ref<boolean>) {
 	// keeps the rows on screen until the new first page lands, instead of
 	// blanking the list to its skeleton.
 	const listArgs = () => {
-		if (!subscribed()) return 'skip' as const;
+		if (!subscribed() || mentions.value) return 'skip' as const;
 		const assigneeArg = inboxAssigneeArg(assignee.value);
 		return {
 			filter: filter.value,
@@ -198,6 +216,7 @@ export function useInbox(gate?: Ref<boolean>) {
 	// The live first page, then every tail segment, deduped by _id: the first
 	// page wins, so a row it has grown to include shows its freshest copy.
 	const threads = computed<Thread[]>(() => {
+		if (mentions.value) return (mentionData.value?.threads ?? []) as Thread[];
 		const out: Thread[] = [];
 		const seen = new Set<string>();
 		const push = (rows: readonly Thread[]) => {
@@ -222,10 +241,15 @@ export function useInbox(gate?: Ref<boolean>) {
 	// While a new view loads, the first page on screen belongs to the previous
 	// args: its cursor would page the NEW view from an old view's position. And
 	// while a tail page loads there is no frontier yet.
-	const hasMoreThreads = computed(() => !threadsRefetching.value && !!frontier.value?.nextCursor);
-	const threadsError = computed(() => firstPageError.value ?? tailError.value);
+	const hasMoreThreads = computed(
+		() => !mentions.value && !threadsRefetching.value && !!frontier.value?.nextCursor
+	);
+	const threadsError = computed(() =>
+		mentions.value ? mentionsError.value : (firstPageError.value ?? tailError.value)
+	);
 	/** Try again on `threadsError`: re-reads whichever page failed. */
 	const retryThreads = () => {
+		if (mentions.value) return refetchMentions();
 		if (firstPageError.value) refetchFirstPage();
 		if (tailError.value) refetchTail();
 	};
@@ -248,6 +272,24 @@ export function useInbox(gate?: Ref<boolean>) {
 		subscribed() ? {} : 'skip'
 	);
 
+	// The Mentions view: one page, newest mention first (inbox/noteMentions.ts).
+	const {
+		data: mentionData,
+		isLoading: mentionsLoading,
+		error: mentionsError,
+		refetch: refetchMentions,
+	} = useConvexQuery(
+		api.inbox.noteMentions.listMentionedThreads,
+		() => (subscribed() && mentions.value ? { limit: 50 } : 'skip'),
+		{ keepPreviousData: true }
+	);
+	const { data: unreadMentions } = useConvexQuery(api.inbox.noteMentions.countUnreadMentions, () =>
+		subscribed() ? {} : 'skip'
+	);
+	watch(mentionData, (data) => {
+		if (data) rememberTeamThreadPreviews(data.threads);
+	});
+
 	// ── Actions ──
 	const loadMoreThreads = () => {
 		const next = frontier.value?.nextCursor;
@@ -258,12 +300,14 @@ export function useInbox(gate?: Ref<boolean>) {
 		// State
 		filter,
 		assignee,
+		mentions,
+		unreadMentions: computed(() => unreadMentions.value ?? 0),
 		sort,
 		setSort,
 		toggleSort,
 		filterCounts,
 		threads,
-		threadsLoading,
+		threadsLoading: computed(() => (mentions.value ? mentionsLoading.value : threadsLoading.value)),
 		threadsError,
 		retryThreads,
 		hasMoreThreads,

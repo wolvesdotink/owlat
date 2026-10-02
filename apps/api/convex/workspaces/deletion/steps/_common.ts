@@ -52,6 +52,8 @@ export type OrganizationDeletionTable =
 	| 'unsubscribeLatencyBuckets'
 	| 'threadPresence'
 	| 'threadReads'
+	| 'threadNoteMentions'
+	| 'threadNotes'
 	| 'inboxFollowUps'
 	| 'threadCatchUps'
 	| 'inboxAssignmentNotices'
@@ -262,6 +264,8 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('unsubscribeLatencyBuckets'),
 	v.literal('threadPresence'),
 	v.literal('threadReads'),
+	v.literal('threadNoteMentions'),
+	v.literal('threadNotes'),
 	v.literal('inboxFollowUps'),
 	v.literal('threadCatchUps'),
 	v.literal('inboxAssignmentNotices'),

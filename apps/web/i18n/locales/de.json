@@ -3370,7 +3370,9 @@
 			},
 			"inboxFilterPills": {
 				"groupLabel": "Konversationen filtern",
-				"assigneeLabel": "Nach Zuständigkeit filtern"
+				"assigneeLabel": "Nach Zuständigkeit filtern",
+				"mentions": "Erwähnungen",
+				"unreadMentions": "{count} noch nicht geöffnet"
 			},
 			"inboxMessageAttachments": {
 				"blocked": "Blockiert — in dieser Nachricht wurde Schadsoftware gefunden.",
@@ -3411,6 +3413,7 @@
 					"whatsapp": "WhatsApp"
 				},
 				"noSubject": "Kein Betreff",
+				"notes": "{count} interne Notiz | {count} interne Notizen",
 				"openThread": "Konversation öffnen",
 				"resolve": "Erledigen",
 				"snooze": "Zurückstellen",
@@ -3445,6 +3448,38 @@
 			"readFailureNotice": {
 				"inboxList": "deine Postfachliste",
 				"message": "Nicht geladen: {names}. Diese Liste ist deshalb unvollständig."
+			},
+			"notes": {
+				"add": "Notiz hinzufügen",
+				"ariaLabel": "Interne Notiz von {name}",
+				"badge": "Interne Notiz",
+				"composerLabel": "Interne Notiz",
+				"createOperation": "Notiz hinzufügen",
+				"delete": "Notiz löschen",
+				"deleteDialog": {
+					"description": "Die Notiz verschwindet für das ganze Team. An ihrer Stelle steht im Verlauf „Notiz gelöscht“.",
+					"title": "Diese Notiz löschen?"
+				},
+				"deleteOperation": "Notiz löschen",
+				"deleted": "Notiz gelöscht",
+				"edit": "Notiz bearbeiten",
+				"editLabel": "Notiz bearbeiten",
+				"edited": "(bearbeitet)",
+				"empty": "Noch keine Notizen. Notizen bleiben in Owlat: der Kunde sieht sie nie, und sie landen nie in einer Antwort.",
+				"formerTeammate": "Ehemaliges Teammitglied",
+				"mentionHint": "Mit {'@'} erwähnst du jemanden aus dem Team. Strg/⌘ + Enter fügt die Notiz hinzu.",
+				"open": "Interne Notiz hinzufügen",
+				"placeholder": "Schreib eine Notiz für dein Team. Mit {'@'} erwähnst du jemanden.",
+				"privacyHint": "Interne Notiz: nur dein Team sieht sie. Sie wird nie an den Kunden geschickt.",
+				"remaining": "Noch {count} Zeichen | Noch {count} Zeichen",
+				"save": "Speichern",
+				"tabs": {
+					"label": "Antwort oder interne Notiz",
+					"note": "Interne Notiz",
+					"reply": "Antwort"
+				},
+				"tooLong": "{count} Zeichen zu lang | {count} Zeichen zu lang",
+				"updateOperation": "Notiz speichern"
 			}
 		},
 		"keyboardShortcutsHelp": {
@@ -9703,6 +9738,7 @@
 				"assignThreadOperation": "Konversation zuweisen",
 				"empty": {
 					"me": "Dir ist derzeit nichts zugewiesen.",
+					"mentions": "Noch hat dich niemand in einer Notiz erwähnt.",
 					"open": "Keine offenen Gespräche. Posteingang leer.",
 					"resolved": "Noch keine erledigten Gespräche.",
 					"snoozed": "Nichts ist zurückgestellt. Zurückgestelltes erscheint hier wieder.",
@@ -13219,6 +13255,17 @@
 						"withSubject": "Der Agent braucht deine Eingabe für eine Antwort — {subject}"
 					}
 				},
+				"mention": {
+					"notificationBody": {
+						"noSubject": "Kein Betreff · {assignedByName} hat dich in einer Notiz erwähnt",
+						"withSubject": "{subject} · {assignedByName} hat dich in einer Notiz erwähnt"
+					},
+					"notificationTitle": "Du wurdest erwähnt",
+					"toast": {
+						"noSubject": "{assignedByName} hat dich in einer Notiz erwähnt — Kein Betreff",
+						"withSubject": "{assignedByName} hat dich in einer Notiz erwähnt — {subject}"
+					}
+				},
 				"notification": {
 					"body": {
 						"noSubject": "Kein Betreff · von {assignedByName}",
@@ -14427,7 +14474,8 @@
 				"draftWithAi": "Mit KI entwerfen (statt den Assistenten zu öffnen)",
 				"pickAskOption": "Eine Antwort auf der Fragekarte der KI wählen",
 				"previousQueueItem": "Vorheriger Eintrag in der Antwortliste",
-				"nextQueueItem": "Nächster Eintrag in der Antwortliste"
+				"nextQueueItem": "Nächster Eintrag in der Antwortliste",
+				"writeNote": "Interne Notiz schreiben"
 			}
 		},
 		"signatureBadge": {
@@ -15536,6 +15584,7 @@
 			"mailboxes": "Postfächer",
 			"organizationMemberships": "Workspace-Mitgliedschaften",
 			"segments": "Segmente",
+			"threadNotes": "Interne Notizen",
 			"topics": "Themen",
 			"transactionalEmails": "Transaktions-E-Mails",
 			"webhooks": "Webhooks",
