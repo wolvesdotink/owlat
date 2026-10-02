@@ -83,8 +83,10 @@ export const conversationThreadTables = {
 		.index('by_snoozed_until', ['snoozedUntil'])
 		// Response targets: the Overdue / Due soon slices and the due order range
 		// over the running clock; the breach sweep reads only un-notified clocks;
-		// analytics reads a date range of new conversations.
+		// switching targets off clears the paused ones; analytics reads a date
+		// range of new conversations.
 		.index('by_response_due_at', ['responseDueAt'])
+		.index('by_response_paused_remaining_ms', ['responsePausedRemainingMs'])
 		.index('by_breach_notified_and_response_due_at', ['slaBreachNotifiedAt', 'responseDueAt'])
 		.index('by_first_message_at', ['firstMessageAt'])
 		.index('by_assigned_to_and_snoozed_until', ['assignedTo', 'snoozedUntil'])

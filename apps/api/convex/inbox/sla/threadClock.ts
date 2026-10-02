@@ -183,6 +183,6 @@ export async function releaseClockIfNothingOwed(
 		if (repliedAt !== undefined && message.receivedAt <= repliedAt) continue;
 		if (isAwaitingReply(message.processingStatus)) return;
 	}
-	const patch = stopClock(thread, Date.now());
+	const patch = stopClock(thread, Date.now(), await loadSlaPolicy(ctx));
 	if (Object.keys(patch).length > 0) await ctx.db.patch(threadId, patch);
 }

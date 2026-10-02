@@ -143,6 +143,13 @@ describe('pause and resume', () => {
 		});
 	});
 
+	it('ends a running clock instead of pausing it with targets off', () => {
+		expect(pauseClock(thread({ responseDueAt: T0 - HOUR }), T0, null)).toMatchObject({
+			responseDueAt: undefined,
+			responsePausedRemainingMs: undefined,
+		});
+	});
+
 	it('clears a paused clock that would resume with targets off', () => {
 		expect(resumeClock(thread({ responsePausedRemainingMs: HOUR }), T0, null)).toMatchObject({
 			responseDueAt: undefined,
@@ -172,7 +179,19 @@ describe('clockOnStatus', () => {
 	});
 
 	it('keeps a passed deadline a miss when the thread is closed unanswered', () => {
-		expect(stopClock(thread({ responseDueAt: T0 - 1 }), T0).slaMissedCount).toBe(1);
+		expect(stopClock(thread({ responseDueAt: T0 - 1 }), T0, policy).slaMissedCount).toBe(1);
+	});
+
+	it('judges nothing with targets off, running or paused', () => {
+		for (const clock of [{ responseDueAt: T0 - 1 }, { responsePausedRemainingMs: -HOUR }]) {
+			const patch = clockOnStatus(thread({ ...clock, slaMissedCount: 2 }), 'resolved', T0, null);
+			expect(patch).toMatchObject({
+				responseDueAt: undefined,
+				responsePausedRemainingMs: undefined,
+				resolvedAt: T0,
+			});
+			expect(patch.slaMissedCount).toBeUndefined();
+		}
 	});
 
 	it('pauses on Waiting and resumes on Open, unless still snoozed', () => {

@@ -15,7 +15,8 @@
  *     last reply turns out to need none (informational, archived,
  *     quarantined; `./threadClock.ts`): not judged,
  *     unless the deadline had already passed, which stays a miss;
- *   - targets are switched off: not judged.
+ *   - targets are switched off: not judged. A clock the switch-off sweep
+ *     (`./apply.ts`) has not reached yet ends unjudged too, running or paused.
  *
  * A clock PAUSES while the thread is snoozed or waiting on the customer: the
  * remaining opening time is stored and the deadline moves out by the pause
@@ -169,12 +170,17 @@ export function clockOnReply(
 
 /**
  * The clock ends without a reply (resolved, closed, nothing left to answer,
- * targets off). A deadline that had already passed stays a miss.
+ * targets off). A deadline that had already passed stays a miss, unless
+ * targets are off (`policy` null): then nothing is judged.
  */
-export function stopClock(thread: ThreadClock, now: number): ClockPatch {
+export function stopClock(
+	thread: ThreadClock,
+	now: number,
+	policy: SlaPolicyView | null
+): ClockPatch {
 	if (!isClockSet(thread)) return {};
 	const patch: ClockPatch = { ...CLEARED };
-	if (judge(thread, now) === 'missed') {
+	if (policy && judge(thread, now) === 'missed') {
 		patch.slaMissedCount = (thread.slaMissedCount ?? 0) + 1;
 	}
 	return patch;
@@ -189,7 +195,10 @@ function judge(thread: ThreadClock, at: number): 'met' | 'missed' | null {
 	return null;
 }
 
-/** Snoozed or waiting on the customer: keep the remaining opening time. */
+/**
+ * Snoozed or waiting on the customer: keep the remaining opening time. With
+ * targets off there is nothing to keep: the clock ends unjudged.
+ */
 export function pauseClock(
 	thread: ThreadClock,
 	now: number,
@@ -197,8 +206,8 @@ export function pauseClock(
 ): ClockPatch {
 	const due = thread.responseDueAt;
 	if (due === undefined) return {};
-	const remaining =
-		due <= now ? due - now : policy ? businessMsBetween(now, due, policy.calendar) : due - now;
+	if (!policy) return { ...CLEARED };
+	const remaining = due <= now ? due - now : businessMsBetween(now, due, policy.calendar);
 	return { responseDueAt: undefined, responsePausedRemainingMs: remaining };
 }
 
@@ -228,7 +237,9 @@ export function clockOnStatus(
 	now: number,
 	policy: SlaPolicyView | null
 ): ClockPatch {
-	if (to === 'resolved' || to === 'closed') return { ...stopClock(thread, now), resolvedAt: now };
+	if (to === 'resolved' || to === 'closed') {
+		return { ...stopClock(thread, now, policy), resolvedAt: now };
+	}
 	const reopened: ClockPatch = thread.resolvedAt !== undefined ? { resolvedAt: undefined } : {};
 	if (to === 'waiting') return { ...reopened, ...pauseClock(thread, now, policy) };
 	// Back to open: resume, unless a snooze still holds the clock.

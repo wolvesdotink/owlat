@@ -10,8 +10,10 @@
  * customer writes again. A snoozed thread gets a paused clock that starts when
  * it wakes. Re-running ON is harmless: a thread with a clock is skipped.
  *
- * OFF: every running clock is cleared, unjudged. Paused clocks are left: they
- * clear themselves when they would resume (`clock.ts` `resumeClock`).
+ * OFF: every clock is cleared, unjudged: the running ones first, then the
+ * paused ones (snoozed or Waiting). A paused clock left in place would still
+ * be judged when the thread is resolved, and would resume with its old
+ * remainder if targets came back on.
  *
  * One page per mutation, chained. `generation` is the policy's `updatedAt` at
  * the save that scheduled the sweep. Every save schedules a sweep and
@@ -25,7 +27,7 @@ import { internalMutation } from '../../lib/writeFence';
 import { internal } from '../../_generated/api';
 import { readSlaPolicyRow } from './policy';
 import { slaPolicyView } from './policyRules';
-import { isClockSet, startClockOnThread } from './clock';
+import { isClockSet, startClockOnThread, stopClock } from './clock';
 import { isReplyOwed } from './threadClock';
 
 const PAGE_SIZE = 100;
@@ -43,21 +45,27 @@ export const applyPage = internalMutation({
 		let changed = 0;
 
 		if (!policy) {
-			// Every page re-reads the head of the range it just emptied.
+			// Every page re-reads the head of the ranges it just emptied.
 			const running = await ctx.db
 				.query('conversationThreads')
 				.withIndex('by_response_due_at', (q) => q.gt('responseDueAt', 0))
 				.take(PAGE_SIZE);
-			for (const thread of running) {
-				await ctx.db.patch(thread._id, {
-					responseDueAt: undefined,
-					responseDueKind: undefined,
-					responseClockStartedAt: undefined,
-					slaBreachNotifiedAt: undefined,
-				});
+			// An overdue pause stores a negative remainder, so the range starts at
+			// the lowest number rather than at 0.
+			const paused =
+				running.length < PAGE_SIZE
+					? await ctx.db
+							.query('conversationThreads')
+							.withIndex('by_response_paused_remaining_ms', (q) =>
+								q.gte('responsePausedRemainingMs', Number.NEGATIVE_INFINITY)
+							)
+							.take(PAGE_SIZE - running.length)
+					: [];
+			for (const thread of [...running, ...paused]) {
+				await ctx.db.patch(thread._id, stopClock(thread, now, null));
 				changed++;
 			}
-			const isDone = running.length < PAGE_SIZE;
+			const isDone = running.length + paused.length < PAGE_SIZE;
 			if (!isDone) {
 				await ctx.scheduler.runAfter(0, internal.inbox.sla.apply.applyPage, args);
 			}

@@ -153,6 +153,46 @@ describe('response-target policy', () => {
 		});
 		expect((await getThread(t, id))!.responseDueAt).toBeUndefined();
 	});
+
+	it('switching off clears paused clocks, so resolving later records no miss', async () => {
+		const t = await setup();
+		await enable(t);
+		const threadId = await insertThread(t, {
+			responseDueAt: Date.now() - HOUR,
+			responseDueKind: 'first',
+			responseClockStartedAt: Date.now() - 2 * HOUR,
+		});
+		await t.mutation(api.inbox.snooze.snoozeThread, { threadId, until: Date.now() + 10 * HOUR });
+		expect((await getThread(t, threadId))!.responsePausedRemainingMs).toBeLessThan(0);
+
+		await t.mutation(api.inbox.sla.policy.savePolicy, { ...calendarPolicy, isEnabled: false });
+		const stored = await t.query(api.inbox.sla.policy.getPolicy, {});
+		await t.mutation(internal.inbox.sla.apply.applyPage, {
+			generation: stored!.updatedAt,
+			cursor: null,
+		});
+		const cleared = await getThread(t, threadId);
+		expect(cleared!.responsePausedRemainingMs).toBeUndefined();
+		expect(cleared!.responseDueKind).toBeUndefined();
+
+		await t.mutation(api.inbox.mutations.updateThreadStatus, { threadId, status: 'resolved' });
+		expect((await getThread(t, threadId))!.slaMissedCount).toBeUndefined();
+	});
+
+	it('resolving with targets off records no miss, even before the sweep ran', async () => {
+		const t = await setup();
+		await enable(t);
+		const threadId = await insertThread(t, {
+			responsePausedRemainingMs: -HOUR,
+			responseDueKind: 'first',
+			snoozedUntil: Date.now() + 10 * HOUR,
+		});
+		await t.mutation(api.inbox.sla.policy.savePolicy, { ...calendarPolicy, isEnabled: false });
+		await t.mutation(api.inbox.mutations.updateThreadStatus, { threadId, status: 'closed' });
+		const thread = await getThread(t, threadId);
+		expect(thread!.responsePausedRemainingMs).toBeUndefined();
+		expect(thread!.slaMissedCount).toBeUndefined();
+	});
 });
 
 describe('the clock on the thread', () => {
