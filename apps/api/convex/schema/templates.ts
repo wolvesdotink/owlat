@@ -117,9 +117,16 @@ export const templateTables = {
 	// `emailTemplates/lifecycle.ts:remove`.
 	emailTemplateVersions: defineTable({
 		templateId: v.id('emailTemplates'),
-		// What produced the snapshot: an editor save, a publish, or a campaign
-		// send firing against this template.
-		trigger: v.union(v.literal('save'), v.literal('publish'), v.literal('send')),
+		// What produced the snapshot: an editor save, a publish, a campaign
+		// send firing against this template, or a co-editing conflict (the
+		// shared draft just before someone's change to a block was replaced,
+		// emailCoediting/sessions.ts).
+		trigger: v.union(
+			v.literal('save'),
+			v.literal('publish'),
+			v.literal('send'),
+			v.literal('conflict')
+		),
 		// SNAPSHOT — the template's editor state at capture time. Never updated;
 		// rewriting one would falsify the record of what was published/sent.
 		content: v.string(), // JSON string for editor state (EditorBlock[])

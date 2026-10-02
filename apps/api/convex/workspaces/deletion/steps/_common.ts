@@ -93,6 +93,9 @@ export type OrganizationDeletionTable =
 	| 'automationSteps'
 	| 'automations'
 	| 'campaigns'
+	| 'emailCoeditNotices'
+	| 'emailEditorPresence'
+	| 'emailCoeditSessions'
 	| 'emailTemplateVersions'
 	| 'emailTemplates'
 	| 'transactionalEmails'
@@ -301,6 +304,9 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('automationSteps'),
 	v.literal('automations'),
 	v.literal('campaigns'),
+	v.literal('emailCoeditNotices'),
+	v.literal('emailEditorPresence'),
+	v.literal('emailCoeditSessions'),
 	v.literal('emailTemplateVersions'),
 	v.literal('emailTemplates'),
 	v.literal('transactionalEmails'),

@@ -29,6 +29,7 @@ import { recordAuditLog, type AuditAction } from '../lib/auditLog';
 import { defineLifecycle, refuse } from '../lib/lifecycle';
 import { applyUsageCountDelta } from '../emailBlocks/module';
 import { deleteTemplateVersions } from './versions';
+import { deleteCoeditState } from '../emailCoediting/sweep';
 import { buildSearchableText } from '../lib/queryHelpers';
 import { recordListingCounter } from '../lib/listingCounters';
 import { duplicateEmailFields } from '../lib/publishableEmail';
@@ -425,6 +426,7 @@ export const remove = internalMutation({
 		await recordListingCounter(ctx, 'templateType', template, null);
 		// Cascade: version snapshots are owned by the template row.
 		await deleteTemplateVersions(ctx, args.templateId);
+		await deleteCoeditState(ctx, { type: 'emailTemplate', id: args.templateId });
 
 		const effects: Effect[] = [
 			{

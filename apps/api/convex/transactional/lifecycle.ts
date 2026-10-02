@@ -42,6 +42,7 @@ import { CURRENT_CONTENT_BLOCK_VERSION, CURRENT_RENDERER_VERSION } from '../lib/
 import { dataVariablesSchemaValidator } from '../lib/convexValidators';
 import { scanContent } from '@owlat/email-scanner';
 import { throwInvalidState } from '../_utils/errors';
+import { deleteCoeditState } from '../emailCoediting/sweep';
 import type { ContentFlag, ContentScanLevel } from '@owlat/email-scanner';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -611,6 +612,7 @@ export const remove = internalMutation({
 		const name = email.name;
 		const slug = email.slug;
 		await ctx.db.delete(args.emailId);
+		await deleteCoeditState(ctx, { type: 'transactionalEmail', id: args.emailId });
 
 		const effects: Effect[] = [
 			{
