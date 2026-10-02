@@ -4,7 +4,10 @@
  *
  * The renderer writes no Block ids into the HTML, so this matches on content:
  * the deepest Block whose own content holds the URL wins. A URL the HTML-escaped
- * text of a text Block carries (`&amp;`) is matched in that form too. Nothing
+ * text of a text Block carries (`&amp;`) is matched in that form too. The URL
+ * must be a whole value there (a property's string, or a quoted attribute in a
+ * Block's HTML), so `#` does not match a colour like `#374151`, nor
+ * `https://example.com` a Block linking to `https://example.com/page`. Nothing
  * found means no "Show me" for that item, never a wrong one.
  */
 import type { EditorBlock } from '@owlat/shared';
@@ -24,12 +27,28 @@ function variants(needle: string): string[] {
 	return [...new Set([needle, escaped])].map((value) => JSON.stringify(value).slice(1, -1));
 }
 
+/**
+ * Whether `form` sits in `own` as a whole value: opened by a quote (a JSON
+ * string, or an attribute in a Block's HTML, `href=\"…\"` once serialized)
+ * and closed by one (`"`, the `\` of an escaped `\"`, or `'`).
+ */
+function holdsValue(own: string, form: string): boolean {
+	for (let at = own.indexOf(form); at !== -1; at = own.indexOf(form, at + 1)) {
+		const before = own[at - 1];
+		const after = own[at + form.length];
+		if ((before === '"' || before === "'") && (after === '"' || after === '\\' || after === "'")) {
+			return true;
+		}
+	}
+	return false;
+}
+
 function search(nodes: readonly BlockTreeNode[], forms: string[]): string | undefined {
 	for (const node of nodes) {
 		const deeper = search(childBlockLists(node).flat(), forms);
 		if (deeper) return deeper;
 		const own = ownContent(node);
-		if (forms.some((form) => own.includes(form))) return node.id;
+		if (forms.some((form) => holdsValue(own, form))) return node.id;
 	}
 	return undefined;
 }
