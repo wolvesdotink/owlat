@@ -9,10 +9,18 @@
  * Nothing here touches the DOM, Tauri, or the network — the composable feeds it
  * plain data and executes the returned plan.
  */
+import {
+	decideNotification as decideSharedNotification,
+	isQuietAt,
+	minutesUntilQuietEnd,
+	shouldNotify as shouldSharedNotify,
+	type NotificationSuppression,
+} from '@owlat/shared/notificationRules';
 import type { MailCategory } from '~/utils/mailCategory';
 import type { PostboxNotifyAbout } from '~/utils/postboxNotify';
 import type { PostboxQuietHours } from '~/utils/postboxQuietHours';
-import { isQuietHoursArmed, MINUTES_PER_DAY } from '~/utils/postboxQuietHours';
+
+export type { NotificationSuppression };
 
 /** One unread inbox message as returned by `mail.mailbox.queries.newestUnreadInbox`. */
 export interface UnreadPeekMessage {
@@ -49,11 +57,9 @@ export function shouldNotify(
 	setting: PostboxNotifyAbout,
 	muted = false
 ): boolean {
-	if (muted) return false;
-	if (setting === 'nothing') return false;
-	if (setting === 'everything') return true;
-	// people-important
-	return category === undefined || category === 'person';
+	// The rule itself is shared with the server-sent Web Push
+	// (`@owlat/shared/notificationRules`), so desktop and push agree.
+	return shouldSharedNotify(category, setting, muted);
 }
 
 /**
@@ -66,17 +72,12 @@ export function shouldNotify(
  * night" means to a person.
  */
 export function isWithinQuietHours(q: PostboxQuietHours | undefined, at: Date): boolean {
-	if (!q || !isQuietHoursArmed(q)) return false;
-	const minutes = at.getHours() * 60 + at.getMinutes();
-	const day = at.getDay();
-	if (q.startMinute < q.endMinute) {
-		// Same-day window (09:00 → 17:00): start inclusive, end exclusive.
-		return q.days.includes(day) && minutes >= q.startMinute && minutes < q.endMinute;
-	}
-	// Wrapping window (22:00 → 07:00): the tail belongs to the PREVIOUS day's mask.
-	if (minutes >= q.startMinute) return q.days.includes(day);
-	if (minutes < q.endMinute) return q.days.includes((day + 6) % 7);
-	return false;
+	return isQuietAt(q, localClockOf(at));
+}
+
+/** This device's wall clock at `at` — the reading the shared window rule takes. */
+function localClockOf(at: Date) {
+	return { minuteOfDay: at.getHours() * 60 + at.getMinutes(), weekday: at.getDay() };
 }
 
 /**
@@ -88,14 +89,8 @@ export function minutesUntilQuietHoursEnd(
 	q: PostboxQuietHours | undefined,
 	at: Date
 ): number | null {
-	if (!isWithinQuietHours(q, at) || !q) return null;
-	const minutes = at.getHours() * 60 + at.getMinutes();
-	const delta = q.endMinute - minutes;
-	return delta > 0 ? delta : delta + MINUTES_PER_DAY;
+	return minutesUntilQuietEnd(q, localClockOf(at));
 }
-
-/** Why a toast did not fire, or null when it did. */
-export type NotificationSuppression = 'muted' | 'scope' | 'quiet-hours' | null;
 
 export interface NotifyDecisionInput {
 	category?: MailCategory;
@@ -126,11 +121,7 @@ export function decideNotification(input: NotifyDecisionInput): {
 	fire: boolean;
 	suppressed: NotificationSuppression;
 } {
-	if (input.muted) return { fire: false, suppressed: 'muted' };
-	if (input.alerted) return { fire: true, suppressed: null };
-	if (!shouldNotify(input.category, input.setting)) return { fire: false, suppressed: 'scope' };
-	if (input.quiet) return { fire: false, suppressed: 'quiet-hours' };
-	return { fire: true, suppressed: null };
+	return decideSharedNotification(input);
 }
 
 /** Quiet-hours bookkeeping carried between ticks (non-reactive, pure data). */
