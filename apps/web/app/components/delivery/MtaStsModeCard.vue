@@ -20,7 +20,12 @@ const { t } = useI18n();
 const { canManageOrganization } = usePermissions();
 const { showToast } = useToast();
 
-const { data: settings, isLoading } = useConvexQuery(api.workspaces.settings.get, {});
+const {
+	data: settings,
+	isLoading,
+	error: settingsError,
+	refetch: refetchSettings,
+} = useConvexQuery(api.workspaces.settings.get, {});
 // `getMtaStsGuidance` is admin-gated (`organization:manage`); this card renders
 // for non-admins too (with read-only copy), so subscribe only when the viewer
 // can manage the org — otherwise the query rejects with `forbidden` and the
@@ -81,7 +86,8 @@ const SAVED_TOAST_KEYS: Record<MtaStsMode, string> = {
 
 async function selectMode(next: string) {
 	// `next` is a SegmentedControl option value; narrow it before it drives a save.
-	if (!isMtaStsMode(next) || !canManageOrganization.value || next === mode.value) return;
+	if (!isMtaStsMode(next) || !canManageOrganization.value || settings.value === undefined) return;
+	if (next === mode.value) return;
 	const res = await updateSettings({ mtaStsMode: next });
 	if (!res.ok) return; // failure already toasted
 	showToast(t(SAVED_TOAST_KEYS[next]));
@@ -112,6 +118,9 @@ async function selectMode(next: string) {
 					t('components.delivery.mtaStsModeCard.loading')
 				}}</span>
 			</div>
+
+			<!-- A failed read is not "none": show the error, not the default mode. -->
+			<UiQueryBoundary v-else-if="settingsError" :error="settingsError" @retry="refetchSettings" />
 
 			<template v-else>
 				<div role="group" :aria-label="t('components.delivery.mtaStsModeCard.modeGroup')">

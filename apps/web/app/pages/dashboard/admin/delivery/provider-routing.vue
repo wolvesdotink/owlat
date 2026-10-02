@@ -2,8 +2,8 @@
 import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
 import { unknownIpPoolWarning } from '~/utils/ipPool';
+import { useProviderRoutingReads } from '~/composables/useProviderRoutingReads';
 import {
-	buildTransportOptions,
 	fallbackRelayIssue,
 	isTransportAvailable,
 	routeProvidersForWrite,
@@ -51,21 +51,18 @@ interface ProviderEntry {
 	isEnabled: boolean;
 }
 
-interface DeliverabilityFallback {
-	isEnabled: boolean;
-	relayProviderType: string;
-	isWarmupOverflowEnabled: boolean;
-}
-
 // ── Data ────────────────────────────────────────────────────────────
-const { data: routesData, isLoading: routesLoading } = useOrganizationQuery(
-	api.providerRoutes.listRoutes
-);
+// The routes and the transport catalog; Edit and Reset wait on `routesReady`.
 const {
-	data: transportCatalog,
-	isLoading: catalogLoading,
-	refetch: refetchCatalog,
-} = useOrganizationQuery(api.providerRoutes.listTransportCatalog);
+	routes: routesData,
+	isLoading: routesLoading,
+	error: readError,
+	ready: routesReady,
+	retry: retryReads,
+	refetchCatalog,
+	routeByType,
+	transportOptions,
+} = useProviderRoutingReads();
 
 // The default provider BY NAME — what a message type without a route uses. The
 // page used to name the environment variable instead of the provider.
@@ -84,37 +81,8 @@ const setupVariablesFor = (providerType: string): readonly string[] =>
 // MTA otherwise).
 const { data: ipPools } = useOrganizationQuery(api.providerRoutes.listIpPools);
 
-const isLoading = computed(
-	() => organizationLoading.value || routesLoading.value || catalogLoading.value
-);
+const isLoading = computed(() => organizationLoading.value || routesLoading.value);
 
-const routeByType = computed(() => {
-	const map = new Map<
-		MessageType,
-		{
-			strategy: string;
-			providers: ProviderEntry[];
-			ipPool?: string;
-			deliverabilityFallback?: DeliverabilityFallback;
-		}
-	>();
-	for (const route of routesData.value ?? []) {
-		map.set(route.messageType, {
-			strategy: route.strategy,
-			providers: route.providers,
-			ipPool: route.ipPool,
-			deliverabilityFallback: route.deliverabilityFallback,
-		});
-	}
-	return map;
-});
-
-const transportOptions = computed(() =>
-	buildTransportOptions(
-		transportCatalog.value ?? [],
-		(routesData.value ?? []).flatMap((route) => route.providers)
-	)
-);
 const providerLabel = (providerType: string): string =>
 	localized(transportLabel(transportOptions.value, providerType));
 const strategyLabelFor = (strategy: string): string =>
@@ -156,6 +124,7 @@ const ipPoolWarning = computed(() => {
 });
 
 function startEdit(messageType: MessageType) {
+	if (!routesReady.value) return;
 	editMessageType.value = messageType;
 	const existing = routeByType.value.get(messageType);
 
@@ -186,7 +155,7 @@ const isEditStrategyManaged = computed(() => isControllerOwnedStrategy(editStrat
 const enabledProviderCount = computed(() => editProviders.value.filter((p) => p.isEnabled).length);
 
 async function handleSave() {
-	if (!hasActiveOrganization.value) return;
+	if (!hasActiveOrganization.value || !routesReady.value) return;
 
 	const enabled = editProviders.value.filter((p) => p.isEnabled);
 	if (enabled.length === 0) {
@@ -235,8 +204,13 @@ async function handleSave() {
 const resetMessageType = ref<MessageType | null>(null);
 const isResetting = ref(false);
 
+function askReset(messageType: MessageType) {
+	if (!routesReady.value) return;
+	resetMessageType.value = messageType;
+}
+
 async function handleReset() {
-	if (!resetMessageType.value) return;
+	if (!resetMessageType.value || !routesReady.value) return;
 	isResetting.value = true;
 	const result = await removeRoute({ messageType: resetMessageType.value });
 	isResetting.value = false;
@@ -353,8 +327,10 @@ watch(isEditDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 
 			<DeliveryRelayDomainStatus />
 
-			<!-- Message-type route cards -->
-			<div class="grid gap-4">
+			<!-- Message-type route cards: an error in their place while a read has
+			     failed, never the "uses the default" line for every type. -->
+			<UiQueryBoundary v-if="readError" :error="readError" @retry="retryReads" />
+			<div v-else class="grid gap-4">
 				<DeliveryProviderRouteCard
 					v-for="type in MESSAGE_TYPES"
 					:key="type.value"
@@ -364,7 +340,7 @@ watch(isEditDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 					:provider-label="providerLabel"
 					:default-provider-name="defaultProviderName"
 					@edit="startEdit(type.value)"
-					@reset="resetMessageType = type.value"
+					@reset="askReset(type.value)"
 				/>
 			</div>
 		</div>
@@ -460,7 +436,11 @@ watch(isEditDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 				<UiButton variant="secondary" :disabled="isSaving" @click="editOpen = false">
 					{{ t('common.cancel') }}
 				</UiButton>
-				<UiButton :loading="isSaving" :disabled="enabledProviderCount === 0" @click="handleSave">
+				<UiButton
+					:loading="isSaving"
+					:disabled="enabledProviderCount === 0 || !routesReady"
+					@click="handleSave"
+				>
 					{{
 						isSaving
 							? t('dashboard.admin.delivery.providerRouting.editModal.saving')

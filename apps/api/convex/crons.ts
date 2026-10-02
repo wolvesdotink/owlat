@@ -423,11 +423,11 @@ crons.interval(
 );
 
 // Postbox Reply Queue reconcile — re-schedule needs-reply classification for
-// threads whose ingest-time scheduled check was lost (deploy restart etc.).
+// threads whose check never reached a verdict (lost, or its run was killed).
 crons.interval(
 	'postbox needs-reply reconcile',
 	{ minutes: 5 },
-	internal.mail.needsReply.sweepPending,
+	internal.mail.needsReplyPending.sweepPending,
 	{}
 );
 

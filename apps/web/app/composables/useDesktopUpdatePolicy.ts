@@ -18,7 +18,12 @@ import { api } from '@owlat/api';
 export function useDesktopUpdatePolicy() {
 	const { t } = useI18n();
 
-	const { data: policy, isLoading, error } = useConvexQuery(api.desktop.updates.getPolicy, {});
+	const {
+		data: policy,
+		isLoading,
+		error,
+		refetch,
+	} = useConvexQuery(api.desktop.updates.getPolicy, {});
 	const { data: releases } = useConvexQuery(api.desktop.updates.listReleases, {});
 
 	const { run: savePolicy, isLoading: isSaving } = useBackendOperation(
@@ -30,7 +35,17 @@ export function useDesktopUpdatePolicy() {
 		{ label: () => t('shared.useDesktopUpdatePolicy.checkOperation'), type: 'action' }
 	);
 
-	return { policy, releases, isLoading, error, savePolicy, isSaving, checkNow, isChecking };
+	return {
+		policy,
+		releases,
+		isLoading,
+		error,
+		refetch,
+		savePolicy,
+		isSaving,
+		checkNow,
+		isChecking,
+	};
 }
 
 /** The i18n key naming a cached release's line, for the page and its release table. */

@@ -110,6 +110,7 @@ beforeAll(() => {
 		},
 		usePostboxActiveMessageRead: () => ({
 			message: computed(() => message),
+			notFound: ref(false),
 			error: ref(null),
 			refetch: () => {},
 		}),
@@ -226,6 +227,7 @@ async function mountAt(query: Record<string, string>, opts: { realMenu?: boolean
 					: passThrough('PostboxOverflowMenu'),
 				InboxChip: inert('InboxChip'),
 				PostboxReaderSkeleton: inert('PostboxReaderSkeleton'),
+				PostboxMessageNotFound: inert('PostboxMessageNotFound'),
 				UiSkeleton: inert('UiSkeleton'),
 				AnswerQueueBar: inert('AnswerQueueBar'),
 				AnswerQueueMailAsk: inert('AnswerQueueMailAsk'),

@@ -241,6 +241,11 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'aiDraftStreams',
 	'answerAskSessions',
 
+	// The AI provider choice and the encrypted API keys entered for this
+	// workspace (#1101). Nothing above reads it; the deployment's LLM_* env
+	// fallback is what any later AI call resolves.
+	'aiProviderConfig',
+
 	// Independent feature state
 	'coalesceBatches',
 	'visualizations',

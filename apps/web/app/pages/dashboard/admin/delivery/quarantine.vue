@@ -18,6 +18,7 @@ const {
 	data: quarantinedMessages,
 	isLoading,
 	error,
+	refetch,
 } = useConvexQuery(api.inbox.queries.getQuarantined, () => ({ limit: 50 }));
 
 // Mutations
@@ -95,6 +96,7 @@ const confirmBlock = async () => {
 		<UiQueryBoundary
 			:loading="isLoading"
 			:error="error"
+			@retry="refetch"
 			:empty="!quarantinedMessages || quarantinedMessages.length === 0"
 			:error-title="t('dashboard.inbox.quarantine.errorTitle')"
 			:error-message="t('dashboard.inbox.quarantine.errorMessage')"

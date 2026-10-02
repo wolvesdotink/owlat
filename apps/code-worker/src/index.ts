@@ -3,8 +3,7 @@ import { pruneStaleWorkspaces } from './taskRunner.js';
 import { createCodeTaskPoller } from './taskProcess.js';
 import { pollForPluginTask } from './pluginTaskRunner.js';
 import { log } from './log.js';
-
-const POLL_INTERVAL_MS = Number(process.env['POLL_INTERVAL_MS'] ?? 10_000);
+import { readWorkerTimers, type WorkerTimers } from './env.js';
 
 // Route both crash channels through the worker's own log stream. Node ≥15 ends
 // the process on either one already, so what changes is that the event explaining
@@ -46,9 +45,9 @@ process.on('SIGTERM', () => requestStop('SIGTERM'));
 process.on('SIGINT', () => requestStop('SIGINT'));
 
 /** Idle between polls, cut short by a shutdown signal. */
-function sleepUntilNextPoll(): Promise<void> {
+function sleepUntilNextPoll(pollIntervalMs: number): Promise<void> {
 	return new Promise<void>((resolve) => {
-		const timer = setTimeout(resolve, POLL_INTERVAL_MS);
+		const timer = setTimeout(resolve, pollIntervalMs);
 		interruptSleep = () => {
 			clearTimeout(timer);
 			resolve();
@@ -68,9 +67,9 @@ async function pollForTasks(pollCodeTasks: () => Promise<void>): Promise<void> {
 }
 
 /** Drain the generalized Tier-3 plugin-task queue (same sandbox, same worker). */
-async function pollForPluginTasks(): Promise<void> {
+async function pollForPluginTasks(heartbeatIntervalMs: number): Promise<void> {
 	try {
-		await pollForPluginTask();
+		await pollForPluginTask({ heartbeatIntervalMs });
 	} catch (error) {
 		const errMsg = error instanceof Error ? error.message : String(error);
 		log(`Plugin task poll error: ${errMsg}`);
@@ -79,7 +78,18 @@ async function pollForPluginTasks(): Promise<void> {
 
 async function main(): Promise<void> {
 	log('Starting code-worker');
-	log(`Poll interval: ${POLL_INTERVAL_MS}ms`);
+
+	// A malformed timer value would otherwise become a 1 ms delay: stop here with
+	// the variable's name instead of polling Convex in a tight loop.
+	let timers: WorkerTimers;
+	try {
+		timers = readWorkerTimers(process.env);
+	} catch (error) {
+		log(`Invalid configuration: ${error instanceof Error ? error.message : String(error)}`);
+		process.exit(1);
+	}
+	log(`Poll interval: ${timers.pollIntervalMs}ms`);
+	log(`Plugin job heartbeat: ${timers.pluginJobHeartbeatMs}ms`);
 	log(`Convex URL: ${process.env['CONVEX_URL'] ?? '(not set)'}`);
 	log(`OpenCode binary: ${process.env['OPENCODE_BIN'] ?? 'opencode (default)'}`);
 
@@ -142,9 +152,9 @@ async function main(): Promise<void> {
 	while (!stopping) {
 		await pollForTasks(pollCodeTasks);
 		if (stopping) break;
-		await pollForPluginTasks();
+		await pollForPluginTasks(timers.pluginJobHeartbeatMs);
 		if (stopping) break;
-		await sleepUntilNextPoll();
+		await sleepUntilNextPoll(timers.pollIntervalMs);
 	}
 
 	// Exit explicitly: the Convex client keeps its websocket open, so returning

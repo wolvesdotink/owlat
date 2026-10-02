@@ -63,6 +63,7 @@ const {
 	data: auditLogsData,
 	isLoading: auditLogsLoading,
 	error: auditLogsError,
+	refetch: refetchAuditLogs,
 } = useOrganizationQuery(api.auditLogs.list, () => ({
 	action: selectedAction.value || undefined,
 	resource: selectedResource.value || undefined,
@@ -188,6 +189,7 @@ const dateRangeOptions = computed(() => [
 			v-else
 			:loading="isLoading && accumulatedLogs.length === 0"
 			:error="auditLogsError"
+			@retry="refetchAuditLogs"
 			:error-title="t('dashboard.admin.team.audit.errorTitle')"
 		>
 			<!-- First-load skeleton (shaped like the audit-log table). Gated on the

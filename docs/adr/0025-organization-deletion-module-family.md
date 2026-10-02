@@ -825,3 +825,46 @@ arguments for one release: the previous release's queued `start` opens
 (or joins) a job, and a previous-release `runStep` hop runs its batch
 and adopts the walk into a job that resumes at the table it would have
 continued with.
+
+## Amendment: AI provider keys go, Sealed Mail keys stay (#1101, 2026-10-01)
+
+`aiProviderConfig` was classified as non-tenant, "an admin-recreated
+config singleton like instanceSettings", and no step touched it. So a
+deletion kept the chosen language, embedding and decision providers and
+their encrypted API keys. The comparison did not hold: the walker
+deletes `instanceSettings` in its terminal steps. After an owner deleted
+their account, the emptied workspace kept calling the AI provider with
+the previous owner's keys, billed to them, behind a masked key preview
+the next person to set the workspace up would not recognise.
+
+**Decision: wipe it.** `aiProviderConfig` is tenant data now. It sits in
+`TENANT_TABLES` and has a plain sweep step after the AI assistant tables.
+Because it is in the registry, the write fence closes it for the whole
+run: an AI provider save during a deletion is refused like any other
+tenant write. After completion, AI calls resolve the deployment's
+`LLM_*` environment fallback, or report that no provider is configured,
+until someone enters keys again. An operator who wipes the workspace to
+start over has to enter the keys again. Every other credential the
+workspace stored (API keys, webhook secrets, external mailbox
+passwords and tokens) was already swept. The deletion confirmation and
+the danger-zone card now say that workspace settings and stored API
+keys, the AI provider's included, are removed.
+
+**`keyVault` stays outside the sweep.** It holds no credential anyone
+entered. The instance minted the Sealed Mail identity keypair and the
+per-address keypairs, and other instances have recorded and pinned their
+fingerprints. The identity key signs the manifest whose rotation feed
+is the only sanctioned way a pinned key changes. If a wiped address key
+were re-minted for a re-created address, every peer that pinned the old
+one would see a key change with no signed rotation and would have to
+re-accept it by hand. The rationale is written next to the table in
+`lib/tenantTables.ts`.
+
+**Compatibility.** No schema change. A job that is already past the new
+step when this deploys finds the row in its verification pass and goes
+back to sweep it, so an in-flight deletion completes with the table
+empty. Deletions that completed before this change left their row in
+place. Such a row cannot be told apart from keys someone entered after
+the deletion, so no migration removes it. The AI provider page has no
+action that removes the row; an operator clears those keys there by
+entering new ones or switching each plane to a keyless provider.

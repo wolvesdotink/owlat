@@ -71,6 +71,8 @@ export function useAnswerModeAssist(opts: {
 		enabled: () => aiEnabled.value && opts.freshReply(),
 	});
 	let preparedTaken = false;
+	/** The prepared reply put in the editor, so the queue's copy of it is not applied again. */
+	let appliedText: string | null = null;
 	watch(
 		() => [prepared.text.value, opts.composer()] as const,
 		([text, composer]) => {
@@ -78,6 +80,7 @@ export function useAnswerModeAssist(opts: {
 			preparedTaken = true;
 			// Something is already written (a suggested lead, a restored draft).
 			if (composer.draftText.value.trim()) return;
+			appliedText = text;
 			void composer
 				.applyAiDraft(text)
 				.then(() => prepared.attachFiles(composer))
@@ -85,6 +88,24 @@ export function useAnswerModeAssist(opts: {
 		},
 		{ immediate: true }
 	);
+
+	/**
+	 * The Reply Queue's starter reply, written after the person answered its
+	 * questions on this page: into the editor, with the files they gave as
+	 * answers (the invoices the draft now says are attached).
+	 */
+	async function applyQueueDraft(composer: AnswerComposerApi, text: string): Promise<void> {
+		// A reply written while no draft was waiting reaches the prepared-draft
+		// watcher above too (one thread patch flips both): whichever runs first
+		// takes it, so its files are attached once. A second upload attach would
+		// fail and say so.
+		if (appliedText === text) return;
+		preparedTaken = true;
+		appliedText = text;
+		await composer.applyAiDraft(text);
+		await prepared.attachFiles(composer);
+		void catchUp.checkCoverage();
+	}
 
 	// Files from the thread.
 	const threadFiles = useAnswerThreadFiles({
@@ -151,5 +172,6 @@ export function useAnswerModeAssist(opts: {
 		attachThreadFile,
 		resolveThreadFile,
 		onComposerDrop,
+		applyQueueDraft,
 	};
 }

@@ -238,8 +238,15 @@ interface DraftBody {
 	text?: string | undefined;
 }
 
-/** Whether anyone started "Draft with AI" on this target (the send guards' trigger). */
-async function targetHasAskSession(ctx: QueryCtx, target: AnswerAskTarget): Promise<boolean> {
+/**
+ * Whether the AI wrote into this target (the send guards' trigger): someone
+ * started "Draft with AI" on it, or an AI text with gaps went into the draft
+ * (`isGapGuarded`, the Reply Queue's prepared drafts, which have no session).
+ */
+async function isAiDraftedTarget(ctx: QueryCtx, target: AnswerAskTarget): Promise<boolean> {
+	if (target.kind === 'mailDraft' && (await ctx.db.get(target.draftId))?.isGapGuarded) {
+		return true;
+	}
 	const row = await ctx.db
 		.query('answerAskSessions')
 		.withIndex('by_target_owner', (q) => q.eq('targetKey', answerAskTargetKey(target)))
@@ -251,8 +258,9 @@ async function targetHasAskSession(ctx: QueryCtx, target: AnswerAskTarget): Prom
  * The send guard of plan §05: an Answer mode "draft with gaps" marks each
  * missing fact `[[...]]`, and sending one would ship the marker to the
  * recipient, so a send is refused (`DRAFT_HAS_GAPS`) until the person fills or
- * deletes it. Only a target somebody drafted with AI on is checked: double
- * brackets in hand-written mail are not ours to block. Every send path of both
+ * deletes it. Only a target the AI wrote into is checked (an ask session, or
+ * a draft an AI text with gaps went into): double brackets in hand-written mail
+ * are not ours to block. Every send path of both
  * composers runs this (`mail/draftSend.ts`, the team inbox's approve and
  * follow-up).
  *
@@ -268,7 +276,7 @@ export async function assertNoAnswerGaps(
 	target: AnswerAskTarget,
 	body: DraftBody | (() => Promise<DraftBody>)
 ): Promise<void> {
-	if (!(await targetHasAskSession(ctx, target))) return;
+	if (!(await isAiDraftedTarget(ctx, target))) return;
 	const { html, text } = typeof body === 'function' ? await body() : body;
 	const authored = html?.trim()
 		? htmlToPlainText(splitQuotedHtml(html).fresh)

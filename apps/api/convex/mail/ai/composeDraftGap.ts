@@ -39,6 +39,7 @@ import {
 	divergenceSchema,
 	replySlotsSchema,
 	sanitizeClarificationQuestions,
+	splitCandidateSlots,
 	type ReplySlot,
 } from '../../inbox/clarificationSlots';
 import {
@@ -102,7 +103,8 @@ export function attributionFor(counterpartAddress: string | undefined): string {
 /**
  * Stage 1 (cheap tier) and stage 2 (sampled replies + divergence judgment) of
  * the shared slot check. Returns the slots a good reply needs, that the context
- * does not answer, and that the samples fill differently.
+ * does not answer, and that the samples fill differently, plus any file the
+ * reply must carry, which skips the divergence judgment (splitCandidateSlots).
  *
  * The background loop runs this once per inbound message; here it runs on
  * every "Draft with AI" click, so the three samples use the cheap tier the
@@ -114,6 +116,8 @@ async function findOpenSlots(
 	context: string,
 	eagerness: EagernessMode | undefined
 ): Promise<ReplySlot[]> {
+	// Files owed survive a failed divergence stage: they were never judged by it.
+	let owed: ReplySlot[] = [];
 	try {
 		const extracted = await runLlmObject({
 			model: await resolveLanguageModel(ctx, 'summarize'),
@@ -122,10 +126,10 @@ async function findOpenSlots(
 			temperature: 0.2,
 		});
 		await recordLlmSpend(ctx, 'postbox_answer_slots', extracted.tokenUsage, extracted.modelUsed);
-		const candidates = extracted.object.slots.filter(
-			(slot) => !slot.answerableFromContext && slot.decisionRelevant
-		);
-		if (candidates.length === 0) return [];
+		const split = splitCandidateSlots(extracted.object.slots);
+		owed = split.owed;
+		const candidates = split.toJudge;
+		if (candidates.length === 0) return owed;
 
 		const sampleModel = await resolveLanguageModel(
 			ctx,
@@ -146,7 +150,7 @@ async function findOpenSlots(
 				// One failed sample does not end the check; judge on the rest.
 			}
 		}
-		if (samples.length < MIN_SAMPLES_FOR_JUDGMENT) return [];
+		if (samples.length < MIN_SAMPLES_FOR_JUDGMENT) return owed;
 		const judged = await runLlmObject({
 			model: await resolveLanguageModel(ctx, 'draft'),
 			schema: divergenceSchema,
@@ -155,9 +159,9 @@ async function findOpenSlots(
 		});
 		await recordLlmSpend(ctx, 'postbox_answer_diverge', judged.tokenUsage, judged.modelUsed);
 		const divergent = new Set(judged.object.divergentSlotIndexes);
-		return candidates.filter((_, index) => divergent.has(index));
+		return [...owed, ...candidates.filter((_, index) => divergent.has(index))];
 	} catch {
-		return [];
+		return owed;
 	}
 }
 

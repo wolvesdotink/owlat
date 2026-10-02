@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import { DEFAULT_TRUSTED_ARC_FORWARDERS, isValidForwarderDomain } from '@owlat/shared/arcTrust';
 import { normalizeDomain } from '@owlat/shared';
+import { useSettingsForm } from '~/composables/useSettingsForm';
 
 /**
  * Trusted forwarders editor (Delivery → provider config), Sealed Mail A5.
@@ -23,34 +24,56 @@ const { t } = useI18n();
 const { canManageOrganization } = usePermissions();
 const { showToast } = useToast();
 
-const { data: settings, isLoading } = useConvexQuery(api.workspaces.settings.get, {});
+const {
+	data: settings,
+	isLoading,
+	error: settingsError,
+	refetch: refetchSettings,
+} = useConvexQuery(api.workspaces.settings.get, {});
 
-// The effective list: the operator's saved list, or the seeded defaults when
-// they have never touched it (unset). An explicit empty array is respected (the
-// rescue is off) — distinct from "never set".
-const savedList = computed<string[]>(() =>
-	settings.value?.trustedArcForwarders != null
-		? [...settings.value.trustedArcForwarders]
-		: [...DEFAULT_TRUSTED_ARC_FORWARDERS]
-);
+const { run: updateSettings } = useBackendOperation(api.workspaces.settings.update, {
+	label: () => t('components.delivery.trustedForwardersCard.operationLabel'),
+});
 
-// Local working copy so edits don't fight the live subscription. Re-seeded from
-// the server whenever the saved list changes (initial load or another admin's save).
-const draft = ref<string[]>([]);
-watch(savedList, (next) => (draft.value = [...next]), { immediate: true });
+// The draft of the list. The settings query returns the whole instance settings
+// row, so it re-emits whenever any field on it is written (the TLS and MTA-STS
+// cards on this page save on change); the form follows those emissions only
+// while nothing here is unsaved. Until the read answers it holds the seeded
+// defaults, and `loaded` keeps Save off so they can never be written over a
+// stored list nobody saw. No leave guard: this is one card on a long page.
+const {
+	form,
+	loaded,
+	isDirty: dirty,
+	isSaving,
+	handleSave,
+	resetToDefaults: restoreDefaults,
+} = useSettingsForm({
+	source: settings,
+	defaults: { forwarders: [...DEFAULT_TRUSTED_ARC_FORWARDERS] },
+	// The operator's saved list, or the seeded defaults when they have never
+	// touched it (unset). An explicit empty array is respected (the rescue is
+	// off) — distinct from "never set".
+	project: (row) => ({
+		forwarders:
+			row?.trustedArcForwarders != null
+				? [...row.trustedArcForwarders]
+				: [...DEFAULT_TRUSTED_ARC_FORWARDERS],
+	}),
+	save: async ({ forwarders }) => {
+		const res = await updateSettings({ trustedArcForwarders: forwarders });
+		if (!res.ok) return false; // failure already toasted
+		showToast(
+			forwarders.length === 0
+				? t('components.delivery.trustedForwardersCard.clearedToast')
+				: t('components.delivery.trustedForwardersCard.savedToast')
+		);
+		return true;
+	},
+	leaveGuard: false,
+});
 
 const newDomain = ref('');
-
-const dirty = computed(
-	() =>
-		draft.value.length !== savedList.value.length ||
-		draft.value.some((d, i) => d !== savedList.value[i])
-);
-
-const { run: updateSettings, isLoading: isSaving } = useBackendOperation(
-	api.workspaces.settings.update,
-	{ label: () => t('components.delivery.trustedForwardersCard.operationLabel') }
-);
 
 function addDomain() {
 	if (!canManageOrganization.value) return;
@@ -58,33 +81,27 @@ function addDomain() {
 	// A bare, dot-bearing domain only — reject blanks, spaces, and single labels
 	// so a typo can't silently widen who we trust. Same rule the backend enforces.
 	if (!isValidForwarderDomain(domain)) return;
-	if (draft.value.includes(domain)) {
+	if (form.forwarders.includes(domain)) {
 		newDomain.value = '';
 		return;
 	}
-	draft.value = [...draft.value, domain];
+	form.forwarders = [...form.forwarders, domain];
 	newDomain.value = '';
 }
 
 function removeDomain(domain: string) {
 	if (!canManageOrganization.value) return;
-	draft.value = draft.value.filter((d) => d !== domain);
+	form.forwarders = form.forwarders.filter((d) => d !== domain);
 }
 
 function resetToDefaults() {
 	if (!canManageOrganization.value) return;
-	draft.value = [...DEFAULT_TRUSTED_ARC_FORWARDERS];
+	restoreDefaults();
 }
 
 async function save() {
 	if (!canManageOrganization.value || !dirty.value) return;
-	const res = await updateSettings({ trustedArcForwarders: [...draft.value] });
-	if (!res.ok) return; // failure already toasted
-	showToast(
-		draft.value.length === 0
-			? t('components.delivery.trustedForwardersCard.clearedToast')
-			: t('components.delivery.trustedForwardersCard.savedToast')
-	);
+	await handleSave();
 }
 </script>
 
@@ -112,15 +129,21 @@ async function save() {
 				</span>
 			</div>
 
+			<UiQueryBoundary v-else-if="settingsError" :error="settingsError" @retry="refetchSettings" />
+
 			<template v-else>
 				<p class="text-sm text-text-secondary max-w-prose">
 					{{ t('components.delivery.trustedForwardersCard.explainer') }}
 				</p>
 
 				<!-- Current list -->
-				<ul v-if="draft.length" class="flex flex-wrap gap-2" data-testid="trusted-forwarders-list">
+				<ul
+					v-if="form.forwarders.length"
+					class="flex flex-wrap gap-2"
+					data-testid="trusted-forwarders-list"
+				>
 					<li
-						v-for="domain in draft"
+						v-for="domain in form.forwarders"
 						:key="domain"
 						class="inline-flex items-center gap-1.5 rounded border border-border-subtle px-2 py-1 text-sm text-text-secondary"
 					>
@@ -158,7 +181,7 @@ async function save() {
 				</form>
 
 				<div v-if="canManageOrganization" class="flex items-center gap-2 pt-1">
-					<UiButton :disabled="!dirty || isSaving" :loading="isSaving" @click="save">
+					<UiButton :disabled="!dirty || isSaving || !loaded" :loading="isSaving" @click="save">
 						{{ t('common.save') }}
 					</UiButton>
 					<UiButton variant="ghost" :disabled="isSaving" @click="resetToDefaults">

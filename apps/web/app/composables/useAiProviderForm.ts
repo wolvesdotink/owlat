@@ -33,7 +33,12 @@ export function useAiProviderForm() {
 	const { showToast } = useToast();
 
 	// getConfig never returns a secret — only selections, a masked preview, booleans.
-	const { data: config, isLoading, error } = useOrganizationQuery(api.aiProviderConfig.getConfig);
+	const {
+		data: config,
+		isLoading,
+		error,
+		refetch,
+	} = useOrganizationQuery(api.aiProviderConfig.getConfig);
 
 	const { run: runSave, isLoading: isSaving } = useBackendOperation(
 		api.aiProviderConfigActions.saveConfig,
@@ -387,6 +392,7 @@ export function useAiProviderForm() {
 		config,
 		isLoading,
 		error,
+		refetch,
 		isSaving,
 		isTesting,
 		isLoadingModels,

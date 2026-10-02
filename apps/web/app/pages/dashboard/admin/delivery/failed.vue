@@ -18,6 +18,7 @@ const {
 	data: failedMessages,
 	isLoading,
 	error,
+	refetch,
 } = useConvexQuery(api.inbox.queries.getFailed, () => ({ limit: 50 }));
 
 // Manual re-enqueue
@@ -70,6 +71,7 @@ const onRetry = async (messageId: Id<'inboundMessages'>) => {
 		<UiQueryBoundary
 			:loading="isLoading"
 			:error="error"
+			@retry="refetch"
 			:empty="!failedMessages || failedMessages.length === 0"
 			:error-title="t('dashboard.inbox.failed.errorTitle')"
 			:error-message="t('dashboard.inbox.failed.errorMessage')"

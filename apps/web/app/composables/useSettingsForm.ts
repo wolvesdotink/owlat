@@ -41,6 +41,13 @@ export interface UseSettingsFormOptions<Row, F extends SettingsFormShape> {
 	validate?: (form: F) => boolean;
 	/** What counts as a change. Defaults to the whole form. */
 	dirtyKey?: (form: F) => unknown;
+	/**
+	 * Hold a route leave (and warn on tab close) while the draft is dirty. On by
+	 * default, for a page that binds `unsavedDialog`. Turn it off for a form that
+	 * is one card on a page and binds no dialog: the guard would hold the leave
+	 * with nothing on screen to answer.
+	 */
+	leaveGuard?: boolean;
 }
 
 /** The leave guard, ready to bind to `UnsavedChangesDialog`. */
@@ -55,6 +62,13 @@ export interface SettingsUnsavedDialog {
 export interface UseSettingsFormReturn<F extends SettingsFormShape> {
 	/** The draft. Bind the controls to it. */
 	form: F;
+	/**
+	 * The source has answered, so the draft is built on the stored settings.
+	 * Until then it holds only the defaults: a failed or pending read must not
+	 * render the form as if they were stored, and `handleSave` refuses, so a
+	 * save can never write the defaults over settings it never saw.
+	 */
+	loaded: Readonly<Ref<boolean>>;
 	isDirty: Readonly<Ref<boolean>>;
 	isSaving: Readonly<Ref<boolean>>;
 	/** Validate, then save. Resolves whether the save landed. */
@@ -83,9 +97,10 @@ export function useSettingsForm<Row, F extends SettingsFormShape>(
 	let hydrations = 0;
 	const isSaving = ref(false);
 
-	const loaded = computed(() =>
+	const answer = computed(() =>
 		opts.source.value === undefined ? undefined : { row: opts.source.value }
 	);
+	const loaded = computed(() => answer.value !== undefined);
 
 	// Dirty by value against the row the draft is built on. Declared before the
 	// tracker reads it: an emission is held back while it is true, so the
@@ -93,7 +108,7 @@ export function useSettingsForm<Row, F extends SettingsFormShape>(
 	const isDirty = computed(() => keyOf(form) !== baseKey.value);
 
 	const tracker = useEditorDirtyTracking({
-		source: loaded,
+		source: answer,
 		identity: () => SETTINGS_IDENTITY,
 		initialize: ({ row }) => {
 			Object.assign(form, opts.project(row as Row));
@@ -114,7 +129,7 @@ export function useSettingsForm<Row, F extends SettingsFormShape>(
 	);
 
 	const handleSave = async (): Promise<boolean> => {
-		if (isSaving.value) return false;
+		if (isSaving.value || !loaded.value) return false;
 		if (opts.validate && !opts.validate(form)) return false;
 		const submission = tracker.beginSubmit();
 		const draft = clone(toRaw(form)) as F;
@@ -144,7 +159,9 @@ export function useSettingsForm<Row, F extends SettingsFormShape>(
 			if (!(await handleSave())) throw new Error('Save failed');
 		},
 	});
-	watch(isDirty, (dirty) => guard.setHasChanges(dirty), { immediate: true });
+	if (opts.leaveGuard !== false) {
+		watch(isDirty, (dirty) => guard.setHasChanges(dirty), { immediate: true });
+	}
 
 	const unsavedDialog = reactive({
 		showDialog: guard.showDialog,
@@ -156,6 +173,7 @@ export function useSettingsForm<Row, F extends SettingsFormShape>(
 
 	return {
 		form,
+		loaded,
 		isDirty,
 		isSaving,
 		handleSave,

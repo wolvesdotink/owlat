@@ -203,13 +203,15 @@ async function changePassword() {
 }
 
 // Get pending deletion request
-const { data: pendingDeletion, isLoading: deletionLoading } = useConvexQuery(
-	api.auth.accountManagement.getPendingDeletionRequest,
-	() => {
-		if (!userId.value) return 'skip';
-		return { userId: userId.value };
-	}
-);
+const {
+	data: pendingDeletion,
+	isLoading: deletionLoading,
+	error: deletionError,
+	refetch: refetchDeletion,
+} = useConvexQuery(api.auth.accountManagement.getPendingDeletionRequest, () => {
+	if (!userId.value) return 'skip';
+	return { userId: userId.value };
+});
 
 // Toast notifications (global)
 const { showToast: showNotification } = useToast();
@@ -552,8 +554,15 @@ const daysRemaining = computed(() => {
 			     only exists at the top of Today. -->
 			<PostboxDailyBriefSettings v-if="hasMail" />
 
+			<!-- A failed read says nothing about a pending deletion: neither the
+			     banner nor "Request deletion" may stand in for the answer. -->
+			<UiQueryBoundary v-if="deletionError" :error="deletionError" @retry="refetchDeletion" />
+
 			<!-- Pending Deletion Banner -->
-			<div v-if="pendingDeletion" class="card p-0 overflow-hidden border-warning/30 bg-warning/5">
+			<div
+				v-else-if="pendingDeletion"
+				class="card p-0 overflow-hidden border-warning/30 bg-warning/5"
+			>
 				<div class="px-6 py-4 border-b border-warning/20 bg-warning/10">
 					<div class="flex items-center gap-3">
 						<UiIconBox icon="lucide:alert-triangle" size="sm" variant="warning" rounded="lg" />
@@ -718,7 +727,10 @@ const daysRemaining = computed(() => {
 			<PreferencesYourData />
 
 			<!-- Delete Account Section -->
-			<div v-if="!pendingDeletion" class="card p-0 overflow-hidden border-error/20">
+			<div
+				v-if="!pendingDeletion && !deletionError"
+				class="card p-0 overflow-hidden border-error/20"
+			>
 				<div class="px-6 py-4 border-b border-error/10 bg-error/5">
 					<div class="flex items-center gap-3">
 						<UiIconBox icon="lucide:trash-2" size="sm" variant="error" rounded="lg" />

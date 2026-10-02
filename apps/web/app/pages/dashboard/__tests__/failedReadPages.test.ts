@@ -219,6 +219,7 @@ const FEATURE_STUBS = Object.fromEntries(
 		'FormsFieldsEditor',
 		'FormsSubmissionsPanel',
 		'InboxChip',
+		'InboxReadFailureNotice',
 		'KnowledgeEntryForm',
 		'KnowledgeRelationsList',
 		'ShellStatusPill',

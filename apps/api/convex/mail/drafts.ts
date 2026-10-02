@@ -23,6 +23,7 @@ import { postboxQuery, postboxMutation } from './_helpers';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { normalizeEmail } from '@owlat/shared';
+import { hasDraftGaps } from '@owlat/shared/answerMode';
 import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { requireMailboxAccess } from './permissions';
 import { resolveSendAsIdentitiesForCtx } from './identities';
@@ -168,7 +169,9 @@ export const update = postboxMutation({
 		// Edit-learning flywheel: the composer passes the AI's ORIGINAL draft text
 		// here the first time it applies an AI-generated draft. Snapshotted ONCE
 		// (never overwritten) so a later human edit still diffs against the AI's
-		// version on send. Absent → no learning, exactly today's behaviour.
+		// version on send. Absent → no learning, exactly today's behaviour. Every
+		// AI text sent here that holds `[[...]]` gaps also marks the draft
+		// `isGapGuarded`, which keeps the send guard on after a reload.
 		aiBaseline: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
@@ -198,6 +201,11 @@ export const update = postboxMutation({
 			draft.aiDraftBaseline === undefined
 		) {
 			patch['aiDraftBaseline'] = { text: args.aiBaseline, capturedAt: Date.now() };
+		}
+		// Every AI text, not only the first: a later one may be the one that
+		// leaves gaps (a draft that still waits for files).
+		if (args.aiBaseline !== undefined && !draft.isGapGuarded && hasDraftGaps(args.aiBaseline)) {
+			patch['isGapGuarded'] = true;
 		}
 
 		await ctx.db.patch(args.draftId, patch);

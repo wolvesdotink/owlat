@@ -15,17 +15,47 @@ export interface RedisClusterFixture {
 	ports: number[];
 }
 
+/** Set by CI (the `mta` test job) so a missing daemon or image fails the run. */
+export const REQUIRE_DOCKER_ENV = 'OWLAT_REQUIRE_DOCKER';
+// `docker image inspect` talks to the daemon, so it doubles as the liveness
+// check. The timeout is generous because a loaded machine used to answer
+// `docker info` too slowly for the old 5 s budget and skipped the suites.
+const DOCKER_PROBE_TIMEOUT_MS = 30_000;
+
+let probeError: unknown;
+let probed = false;
+
+/**
+ * Gate for the suites that run against a real redis:7-alpine container
+ * (`describe.runIf(dockerRedisAvailable())`). The suites never pull the image
+ * themselves; `docker pull redis:7-alpine` once.
+ *
+ * Without `OWLAT_REQUIRE_DOCKER=1` a missing daemon or image skips the suites,
+ * so the rest of the MTA tests still run on a machine without Docker. With the
+ * flag set it throws instead, which fails the test file rather than reporting
+ * the Redis tests as skipped.
+ */
 export function dockerRedisAvailable(): boolean {
-	try {
-		execFileSync('docker', ['info'], { stdio: 'ignore', timeout: 5_000 });
-		execFileSync('docker', ['image', 'inspect', REDIS_IMAGE], {
-			stdio: 'ignore',
-			timeout: 5_000,
-		});
-		return true;
-	} catch {
-		return false;
+	if (!probed) {
+		probed = true;
+		try {
+			execFileSync('docker', ['image', 'inspect', REDIS_IMAGE], {
+				stdio: 'ignore',
+				timeout: DOCKER_PROBE_TIMEOUT_MS,
+			});
+		} catch (error) {
+			probeError = error;
+		}
 	}
+	if (probeError === undefined) return true;
+	if (process.env[REQUIRE_DOCKER_ENV] === '1') {
+		throw new Error(
+			`${REQUIRE_DOCKER_ENV}=1 but Docker or the ${REDIS_IMAGE} image is unavailable; ` +
+				`start Docker and run \`docker pull ${REDIS_IMAGE}\``,
+			{ cause: probeError }
+		);
+	}
+	return false;
 }
 
 function canListen(port: number): Promise<boolean> {

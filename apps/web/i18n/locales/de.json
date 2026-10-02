@@ -3383,6 +3383,10 @@
 				"alsoInPostbox": "Auch in {mailbox}",
 				"alreadyAnswered": "dort bereits beantwortet",
 				"open": "In Postbox öffnen"
+			},
+			"readFailureNotice": {
+				"inboxList": "deine Postfachliste",
+				"message": "Nicht geladen: {names}. Diese Liste ist deshalb unvollständig."
 			}
 		},
 		"keyboardShortcutsHelp": {
@@ -4182,6 +4186,11 @@
 				"stopTrustingSender": "Wieder blockieren",
 				"trackersKeptBlocked": "{count} Trackingpixel bleibt blockiert. | {count} Trackingpixel bleiben blockiert."
 			},
+			"postboxMessageNotFound": {
+				"title": "Diese Nachricht ist nicht mehr verfügbar",
+				"body": "Vielleicht wurde sie gelöscht, von einer anderen Mail-App verschoben, oder das Postfach, in dem sie lag, ist nicht mehr mit dir geteilt.",
+				"backTo": "Zurück zu {folder}"
+			},
 			"postboxMessageDetails": {
 				"arc": "ARC",
 				"dkim": "DKIM",
@@ -4756,7 +4765,6 @@
 				"inviteHint": "Lade die Person per E-Mail ein. Sie erhält eine Einladung, die dieses Postfach nennt, und findet es in ihrer Seitenleiste, sobald sie annimmt.",
 				"inviteOperation": "Zum Team-Postfach einladen",
 				"inviteSent": "Einladung an {email} gesendet. Sobald sie angenommen wird, landet die Person in diesem Postfach.",
-				"loadError": "Die Mitgliederliste konnte nicht geladen werden. Bitte versuche es erneut.",
 				"makeOwner": "Zum Inhaber machen",
 				"makeOwnerTitle": "Dieses Mitglied zum Inhaber machen",
 				"member": "Mitglied",
@@ -6074,7 +6082,8 @@
 					"full": "Ganze Unterhaltung"
 				},
 				"more": "Mehr zu dieser Unterhaltung",
-				"openInPostbox": "In Postbox öffnen"
+				"openInPostbox": "In Postbox öffnen",
+				"skipMissing": "Weiter zum nächsten Eintrag"
 			},
 			"catchUp": {
 				"title": "Kurz zusammengefasst",
@@ -6124,7 +6133,10 @@
 				"pickDate": "Datum wählen",
 				"answerAndDraft": "Antworten und entwerfen",
 				"skip": "Überspringen, mit Lücken entwerfen",
-				"operation": "Fragen beantworten"
+				"operation": "Fragen beantworten",
+				"waitingForFiles": "Entwurf fertig. Wartet auf deine Dateien",
+				"waitingForFilesSubline": "Die Antwort ist geschrieben. Füge die angefragten Dateien hinzu, dann wird sie mit ihnen als Anhang angepasst.",
+				"attachAndUpdate": "Anhängen und Entwurf anpassen"
 			},
 			"fileAsk": {
 				"dropHere": "Lege die Datei hier ab oder",
@@ -6140,7 +6152,9 @@
 				"remove": "{file} entfernen",
 				"tooLarge": "{filename} ist größer als {mb} MB.",
 				"uploadFailed": "{filename} konnte nicht hochgeladen werden.",
-				"unsupported": "{filename} hat einen Dateityp, der hier nicht angehängt werden kann."
+				"unsupported": "{filename} hat einen Dateityp, der hier nicht angehängt werden kann.",
+				"dropHereMany": "Lege die Dateien hier ab oder",
+				"dropAnother": "Noch eine? Lege sie hier ab oder"
 			},
 			"filePicker": {
 				"title": "Aus den Dateien wählen",
@@ -7962,7 +7976,7 @@
 					}
 				},
 				"dangerZone": {
-					"body": "Das Löschen des Workspace entfernt dauerhaft seine Daten: Kontakte, Kampagnen, Vorlagen, Automatisierungen, Postfächer samt Mails, Versanddomains und Auswertungen. Die Teammitglieder behalten ihre Konten und Mitgliedschaften und können sich weiterhin im geleerten Workspace anmelden. Diese Aktion kann nicht rückgängig gemacht werden.",
+					"body": "Das Löschen des Workspace entfernt dauerhaft seine Daten: Kontakte, Kampagnen, Vorlagen, Automatisierungen, Postfächer samt Mails, Versanddomains, Auswertungen, Workspace-Einstellungen und gespeicherte API-Schlüssel, auch die des KI-Anbieters. Die Teammitglieder behalten ihre Konten und Mitgliedschaften und können sich weiterhin im geleerten Workspace anmelden. Diese Aktion kann nicht rückgängig gemacht werden.",
 					"heading": "Gefahrenbereich",
 					"subtitle": "Die Daten dieses Workspace dauerhaft löschen",
 					"title": "Workspace löschen"
@@ -7973,7 +7987,7 @@
 					"subtitle": "Das kann nicht rückgängig gemacht werden",
 					"title": "Workspace löschen",
 					"typeToConfirm": "Gib zur Bestätigung {phrase} ein",
-					"warning": "{label} Dies löscht dauerhaft die Daten in {workspace}: Kontakte, Kampagnen, Vorlagen, Automatisierungen, Postfächer samt Mails, Versanddomains und Auswertungen. Die Teammitglieder behalten ihre Konten und Mitgliedschaften. Du wirst sofort abgemeldet.",
+					"warning": "{label} Dies löscht dauerhaft die Daten in {workspace}: Kontakte, Kampagnen, Vorlagen, Automatisierungen, Postfächer samt Mails, Versanddomains, Auswertungen, Workspace-Einstellungen und gespeicherte API-Schlüssel, auch die des KI-Anbieters. Die Teammitglieder behalten ihre Konten und Mitgliedschaften. Du wirst sofort abgemeldet.",
 					"warningLabel": "Warnung:"
 				},
 				"inboxes": {
@@ -11089,7 +11103,7 @@
 				"fieldInvalid": "Prüfe {field} — dieser Wert wird nicht akzeptiert.",
 				"hostRequired": "Gib die Serveradresse ein.",
 				"invalidHostLabels": "Korrigiere die angepassten Hostnamen — jedes Label muss ein gültiges, eindeutiges DNS-Label sein.",
-				"keyPathRequired": "Gib den Pfad zu deiner privaten Schlüsseldatei ein.",
+				"keyPathRequired": "Wähle deine private Schlüsseldatei aus.",
 				"passwordRequired": "Gib das Passwort ein.",
 				"portInvalid": "Der Port muss eine ganze Zahl zwischen 1 und 65535 sein (für {port} leer lassen).",
 				"privateKeyRequired": "Füge deinen privaten Schlüssel ein.",
@@ -11106,14 +11120,17 @@
 				"authentication": "Authentifizierung",
 				"branch": "Branch",
 				"browse": "Durchsuchen…",
+				"chooseKeyFileTitle": "Privaten SSH-Schlüssel auswählen",
 				"devInstall": "Entwicklungsinstallation",
 				"devInstallHint": "Installiert einen Branch (oder einen lokalen Checkout) statt des Releases. Der Stack wird auf dem Server aus dem Quellcode gebaut.",
 				"host": "Serveradresse",
 				"hostPlaceholder": "203.0.113.5 oder vps.example.com",
 				"installDir": "Installationsverzeichnis",
+				"keyFile": "Private Schlüsseldatei",
 				"localSource": "Lokaler Quellordner (Entwicklung)",
 				"localSourceHint": "Lädt den Checkout dieses Rechners auf den Server hoch — zum Testen des Installers ohne veröffentlichtes Repository oder Registry.",
 				"localSourcePlaceholder": "/pfad/zu/deinem/owlat-checkout (optional)",
+				"noKeyFile": "Keine Schlüsseldatei ausgewählt",
 				"passphrasePlaceholder": "Passphrase des Schlüssels (optional)",
 				"pasteKeyInstead": "Schlüssel stattdessen einfügen",
 				"port": "Port",

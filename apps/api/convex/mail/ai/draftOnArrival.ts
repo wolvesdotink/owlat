@@ -26,6 +26,8 @@ import { buildReplySubject } from '../../lib/emailAddress';
 import { logError } from '../../lib/runtimeLog';
 import { recordLlmSpend } from '../../analytics/llmUsage';
 import { buildConfirmedContext, runSharedDraft } from '../../agent/shared/draftService';
+import { buildOpenFileNote, joinConfirmedBlocks } from '../../inbox/clarificationAnswers';
+import { ensureGapPlaceholders } from './composeDraftPolicy';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 
 /** Map the personal-mail urgency bucket onto the shared draft block's priority vocabulary. */
@@ -69,9 +71,13 @@ export async function generateDraftOnArrival(
 	);
 
 	// Owner-confirmed clarification facts (trusted; rendered outside the
-	// untrusted tags by the shared service).
-	const confirmedContext = buildConfirmedContext(
-		loaded.clarificationQuestions ? { questions: loaded.clarificationQuestions } : undefined
+	// untrusted tags by the shared service), and the files the clarification
+	// card still waits for, which the draft must not claim to attach.
+	const confirmedContext = joinConfirmedBlocks(
+		buildConfirmedContext(
+			loaded.clarificationQuestions ? { questions: loaded.clarificationQuestions } : undefined
+		),
+		buildOpenFileNote(loaded.fileGaps)
 	);
 
 	try {
@@ -112,17 +118,20 @@ export async function generateDraftOnArrival(
 		await recordLlmSpend(ctx, 'postbox_draft', result.tokenUsage, result.modelUsed);
 
 		if (result.draftBody.trim().length === 0) return; // nothing usable
+		// The alternatives are written without the trusted block, so with files
+		// outstanding they could say "attached"; only the primary draft is kept.
+		const options = loaded.fileGaps.length === 0 ? result.draftOptions : [];
 
 		await ctx.runMutation(internal.mail.ai.draftOnArrivalStore.persistDraftSlot, {
 			threadId: args.threadId,
 			triggerMessageId: loaded.triggerMessageId,
-			draft: result.draftBody,
+			draft: ensureGapPlaceholders(result.draftBody, loaded.fileGaps),
 			draftSubject: buildReplySubject(loaded.triggerSubject),
 			// Surface the quality self-check score as the confidence; unknown
 			// quality shows a deliberately low value so review-first reads right.
 			confidence: result.draftQuality?.score ?? UNKNOWN_QUALITY_CONFIDENCE,
 			...(result.draftQuality ? { quality: result.draftQuality } : {}),
-			...(result.draftOptions.length > 0 ? { options: result.draftOptions } : {}),
+			...(options.length > 0 ? { options } : {}),
 		});
 	} catch (err) {
 		// Injection re-scan / LLM error → no slot; the thread still shows for
