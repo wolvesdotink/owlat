@@ -29,6 +29,7 @@ import { internalMutation } from '../../lib/writeFence';
 import { platformAdminQuery } from '../../lib/authedFunctions';
 import { DAY_MS, HOUR_MS } from '../../lib/constants';
 import { readInstanceCounter, writeInstanceCounter } from '../../lib/instanceCounters';
+import { throwInvalidState } from '../../_utils/errors';
 
 /** Reports not refreshed for this long are deleted. */
 export const IMAP_SERVER_RETENTION_MS = 30 * DAY_MS;
@@ -60,6 +61,27 @@ type ReportResult = {
 	compatible: boolean;
 	reason?: 'server_too_old' | 'backend_older';
 };
+
+/**
+ * Refuse a call from an IMAP server older than `IMAP_WIRE_MIN_SUPPORTED`. A
+ * caller that sends no `imapWireVersion` is one from before reporting (legacy,
+ * wire 0). A no-op while the minimum is 0.
+ *
+ * The handshake only stops servers that report, and a running one only at its
+ * next report. So a function whose contract a later PR contracts takes an
+ * optional `imapWireVersion` one release ahead, and the contracting PR calls
+ * this at the top of it, before any side effect (CONVENTIONS.md, "IMAP wire
+ * version"; ADR-0063). `mail/appPasswords:verify` calls it for IMAP logins.
+ */
+export function assertImapWireSupported(imapWireVersion: number | undefined): void {
+	const wireVersion = imapWireVersion ?? IMAP_WIRE_LEGACY;
+	if (wireVersion >= IMAP_WIRE_MIN_SUPPORTED) return;
+	throwInvalidState(
+		`This IMAP server speaks wire version ${wireVersion}; the backend serves ` +
+			`${IMAP_WIRE_MIN_SUPPORTED} and newer. Update the IMAP container.`,
+		{ imapWireVersion: wireVersion, minSupportedWireVersion: IMAP_WIRE_MIN_SUPPORTED }
+	);
+}
 
 /**
  * Record that a login went through an IMAP server too old to report its
@@ -137,17 +159,83 @@ export interface ImapServerStatus {
 		lastSeenAt: number;
 		verdict: ImapWireVerdict;
 	}>;
+	/** `servers` holds the most recent rows only; the summary fields cover every row. */
+	isListTruncated: boolean;
 	/** The last login through a pre-reporting IMAP server, any time; null if none recorded. */
 	legacyImapSeenAt: number | null;
 	isLegacyInWindow: boolean;
 	/** The lowest wire version seen in the window, legacy counting as 0; null if nothing reported. */
 	oldestWireVersionSeen: number | null;
+	/** The highest wire version reported in the window; null if nothing reported. */
+	newestWireVersionSeen: number | null;
 	/**
 	 * The highest `IMAP_WIRE_MIN_SUPPORTED` that would refuse no IMAP server seen
 	 * in the window. Evidence for this deployment only: a release that raises
 	 * the minimum still has to respect the skew policy for every deployment.
 	 */
 	safeToRaiseMinTo: number;
+}
+
+/**
+ * Distinct wire versions probed before giving up. Rows live at most 30 days and
+ * a release bumps the version at most once, so a handful exist in practice.
+ */
+const MAX_WIRE_PROBES = 32;
+
+const WIRE_INDEX = 'by_wire_version_and_last_seen_at';
+
+/**
+ * The lowest wire version any server reported since `since`, over every row,
+ * not just the listed ones: per distinct version, one read finds the version
+ * and one checks it for a report inside the window. Past the probe budget it
+ * answers legacy, which permits raising nothing.
+ */
+async function oldestReportedWireVersion(
+	db: DatabaseReader,
+	since: number
+): Promise<number | null> {
+	let after: number | undefined;
+	for (let probe = 0; probe < MAX_WIRE_PROBES; probe++) {
+		const floor = after;
+		const next = await (
+			floor === undefined
+				? db.query('imapServers').withIndex(WIRE_INDEX)
+				: db.query('imapServers').withIndex(WIRE_INDEX, (q) => q.gt('wireVersion', floor))
+		).first();
+		if (!next) return null;
+		const inWindow = await db
+			.query('imapServers')
+			.withIndex(WIRE_INDEX, (q) => q.eq('wireVersion', next.wireVersion).gte('lastSeenAt', since))
+			.first();
+		if (inWindow) return next.wireVersion;
+		after = next.wireVersion;
+	}
+	return IMAP_WIRE_LEGACY;
+}
+
+/**
+ * The highest wire version any server reported since `since`. Walking down,
+ * each version's first row is its latest report, so one read per version.
+ */
+async function newestReportedWireVersion(
+	db: DatabaseReader,
+	since: number
+): Promise<number | null> {
+	let below: number | undefined;
+	for (let probe = 0; probe < MAX_WIRE_PROBES; probe++) {
+		const ceiling = below;
+		const next = await (
+			ceiling === undefined
+				? db.query('imapServers').withIndex(WIRE_INDEX)
+				: db.query('imapServers').withIndex(WIRE_INDEX, (q) => q.lt('wireVersion', ceiling))
+		)
+			.order('desc')
+			.first();
+		if (!next) return null;
+		if (next.lastSeenAt >= since) return next.wireVersion;
+		below = next.wireVersion;
+	}
+	return null;
 }
 
 export async function readImapServerStatus(
@@ -157,12 +245,14 @@ export async function readImapServerStatus(
 ): Promise<ImapServerStatus> {
 	const windowDays = Math.min(Math.max(Math.floor(days), 1), MAX_WINDOW_DAYS);
 	const since = now - windowDays * DAY_MS;
+	// The list is for display and is capped; the summary below is not derived
+	// from it.
 	const rows = await db
 		.query('imapServers')
 		.withIndex('by_last_seen_at', (q) => q.gte('lastSeenAt', since))
 		.order('desc')
-		.take(MAX_LISTED_SERVERS);
-	const servers = rows.map((row) => ({
+		.take(MAX_LISTED_SERVERS + 1);
+	const servers = rows.slice(0, MAX_LISTED_SERVERS).map((row) => ({
 		instanceId: row.instanceId,
 		hostLabel: row.hostLabel,
 		owlatVersion: row.owlatVersion,
@@ -175,7 +265,8 @@ export async function readImapServerStatus(
 	const { legacyImapSeenAt } = await readInstanceCounter(db, 'imapLegacy');
 	const isLegacyInWindow = legacyImapSeenAt !== undefined && legacyImapSeenAt >= since;
 
-	const wireVersions = servers.map((s) => s.wireVersion);
+	const oldestReported = await oldestReportedWireVersion(db, since);
+	const wireVersions = oldestReported === null ? [] : [oldestReported];
 	if (isLegacyInWindow) wireVersions.push(IMAP_WIRE_LEGACY);
 	const oldestWireVersionSeen = wireVersions.length > 0 ? Math.min(...wireVersions) : null;
 
@@ -184,9 +275,11 @@ export async function readImapServerStatus(
 		minSupportedWireVersion: IMAP_WIRE_MIN_SUPPORTED,
 		windowDays,
 		servers,
+		isListTruncated: rows.length > MAX_LISTED_SERVERS,
 		legacyImapSeenAt: legacyImapSeenAt ?? null,
 		isLegacyInWindow,
 		oldestWireVersionSeen,
+		newestWireVersionSeen: await newestReportedWireVersion(db, since),
 		safeToRaiseMinTo:
 			oldestWireVersionSeen === null
 				? IMAP_WIRE_VERSION

@@ -36,5 +36,8 @@ export const imapServerTables = {
 		lastSeenAt: v.number(),
 	})
 		.index('by_host_and_build', ['hostLabel', 'owlatVersion', 'wireVersion'])
-		.index('by_last_seen_at', ['lastSeenAt']),
+		.index('by_last_seen_at', ['lastSeenAt'])
+		// The status summary: the lowest and highest wire version reported in a
+		// window, probed per version rather than read off the capped list.
+		.index('by_wire_version_and_last_seen_at', ['wireVersion', 'lastSeenAt']),
 };
