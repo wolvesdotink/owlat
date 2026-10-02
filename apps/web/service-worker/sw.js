@@ -281,9 +281,15 @@ function parsePushPayload(data) {
 	};
 }
 
-/** An in-app path (`/dashboard/...`), or the dashboard for anything else. */
+/**
+ * An in-app path (`/dashboard/...`), or the dashboard for anything else. A
+ * backslash is refused outright: URL parsing reads `/\host` as `//host`.
+ */
 function safeAppPath(value) {
-	return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//')
+	return typeof value === 'string' &&
+		value.startsWith('/') &&
+		!value.startsWith('//') &&
+		!value.includes('\\')
 		? value
 		: '/dashboard';
 }
@@ -308,7 +314,9 @@ async function handlePush(data) {
 		tag: payload.tag,
 		renotify: payload.tag !== undefined,
 		icon: '/icons/icon-192.png',
-		badge: '/icons/icon-maskable-192.png',
+		// Android draws the badge from its alpha channel alone, so it must be a
+		// transparent silhouette: an opaque (maskable) icon shows as a white square.
+		badge: '/icons/badge-96.png',
 		data: { url: payload.url },
 	};
 	if (payload.tag !== TEST_TAG) {

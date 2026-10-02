@@ -143,6 +143,7 @@ describe('Web Push on the shell worker', () => {
 			navigatePathFrom({ type: 'owlat:navigate', path: 'https://evil.example.com' })
 		).toBeNull();
 		expect(navigatePathFrom({ type: 'owlat:navigate', path: '//evil.example.com' })).toBeNull();
+		expect(navigatePathFrom({ type: 'owlat:navigate', path: '/\\evil.example.com' })).toBeNull();
 		expect(navigatePathFrom({ type: 'other', path: '/dashboard' })).toBeNull();
 		expect(navigatePathFrom('nope')).toBeNull();
 	});

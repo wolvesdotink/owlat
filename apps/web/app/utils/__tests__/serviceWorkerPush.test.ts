@@ -120,7 +120,7 @@ describe('push', () => {
 			tag: 'mail:thread_1',
 			renotify: true,
 			icon: '/icons/icon-192.png',
-			badge: '/icons/icon-maskable-192.png',
+			badge: '/icons/badge-96.png',
 			data: { url: MAIL.url },
 		});
 	});
@@ -179,6 +179,8 @@ describe('push', () => {
 			data: pushData({ title: 'x', url: 'https://evil.example.com/' }),
 		});
 		await fire(listeners, 'push', { data: pushData({ title: 'y', url: '//evil.example.com' }) });
+		// URL parsing reads a backslash as a slash: `/\host` is `//host`.
+		await fire(listeners, 'push', { data: pushData({ title: 'z', url: '/\\evil.example.com' }) });
 		const calls = self.registration.showNotification.mock.calls as unknown as Array<
 			[string, { data: { url: string }; renotify: boolean }]
 		>;
@@ -186,6 +188,19 @@ describe('push', () => {
 		expect(calls[0]![1].renotify).toBe(false);
 		expect(calls[1]![1].data.url).toBe('/dashboard');
 		expect(calls[2]![1].data.url).toBe('/dashboard');
+		expect(calls[3]![1].data.url).toBe('/dashboard');
+	});
+
+	it('badges with a transparent silhouette, never an opaque icon', () => {
+		// Android draws the badge from its alpha channel alone: an opaque icon
+		// (the maskable one) renders as a solid white square in the status bar.
+		const match = /badge: '([^']+)'/.exec(workerSource);
+		expect(match?.[1]).toBe('/icons/badge-96.png');
+		const png = readFileSync(resolve(here, '..', '..', '..', 'public', 'icons', 'badge-96.png'));
+		// IHDR colour type: 3 = palette (alpha via tRNS) or 6 = RGBA; never opaque RGB.
+		const colourType = png[25];
+		expect([3, 6]).toContain(colourType);
+		if (colourType === 3) expect(png.includes(Buffer.from('tRNS'))).toBe(true);
 	});
 });
 
