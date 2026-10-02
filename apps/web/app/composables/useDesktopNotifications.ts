@@ -9,6 +9,7 @@ import {
 import {
 	assignmentGroupNotificationParts,
 	assignmentGroupToastMessage,
+	assignmentNoticeHref,
 	assignmentNotificationParts,
 	assignmentToastMessage,
 	planAssignmentNotices,
@@ -185,10 +186,12 @@ export function useDesktopNotifications() {
 		isDesktop.value ? {} : 'skip'
 	);
 
-	// "Assigned to you" notices for the current user. Runs in EVERY session (not
-	// desktop-gated) so the in-app toast lands in the browser too; the desktop
-	// notification path is gated below. Empty for non-admins server-side.
+	// "Assigned to you" notices (and note @-mentions and passed reply targets)
+	// for the current user. Runs in EVERY session (not desktop-gated) so the
+	// in-app toast lands in the browser too; the desktop notification path is
+	// gated below. Empty for non-admins server-side.
 	const { data: assignmentData } = useConvexQuery(api.inbox.queries.pendingAssignments, () => ({
+		includeMentions: true,
 		includeSlaBreaches: true,
 	}));
 	const seenAssignmentIds = new Set<string>();
@@ -416,11 +419,11 @@ export function useDesktopNotifications() {
 
 			for (const plan of plans) {
 				if (plan.kind === 'single') {
-					const threadId = plan.notice.threadId;
+					const href = assignmentNoticeHref(plan.notice);
 					showToast(localize(assignmentToastMessage(plan.notice)), 'success', {
 						action: {
 							label: t('common.open'),
-							onAction: () => void navigateTo(`/dashboard/inbox/${threadId}`),
+							onAction: () => void navigateTo(href),
 						},
 					});
 					if (notif) {

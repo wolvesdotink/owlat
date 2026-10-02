@@ -13,7 +13,7 @@
  * isolation (mirrors lib/desktop/notificationRules.ts).
  */
 
-export type AssignmentNoticeKind = 'assignment' | 'clarification' | 'sla_breach';
+export type AssignmentNoticeKind = 'assignment' | 'clarification' | 'mention' | 'sla_breach';
 
 export interface AssignmentNotice {
 	/** Notice row id — the de-dup key. */
@@ -22,12 +22,17 @@ export interface AssignmentNotice {
 	 * `assignment` (a teammate handed over a thread; the default) or
 	 * `clarification` (the agent parked a reply because it needs a fact from
 	 * this person). Clarifications are never coalesced: each one is a question
-	 * someone is waiting on, so each one gets its own line. `sla_breach` is a
-	 * reply target passing unanswered (`assignedByName` is then the customer);
-	 * breaches coalesce among themselves, apart from assignments.
+	 * someone is waiting on, so each one gets its own line. `mention` (a
+	 * teammate @-mentioned this person in an internal note) is not coalesced
+	 * either, for the same reason, and it opens on the note (`noteId`).
+	 * `sla_breach` is a reply target passing unanswered (`assignedByName` is
+	 * then the customer); breaches coalesce among themselves, apart from
+	 * assignments.
 	 */
 	kind?: AssignmentNoticeKind;
 	threadId: string;
+	/** The note that mentioned the person (`mention` notices only). */
+	noteId?: string | null;
 	subject: string;
 	assignedByName: string;
 	createdAt: number;
@@ -79,7 +84,7 @@ function planRuns(notices: AssignmentNotice[], windowMs: number): AssignmentNoti
 	};
 
 	for (const n of fresh) {
-		if (n.kind === 'clarification') {
+		if (n.kind === 'clarification' || n.kind === 'mention') {
 			flush();
 			plans.push({ kind: 'single', notice: n });
 			continue;
@@ -117,8 +122,22 @@ function noticeKey(notice: AssignmentNotice, base: string): string {
 	return notice.subject ? `${base}.withSubject` : `${base}.noSubject`;
 }
 
-/** In-app toast copy for a single assignment (or a clarification ask, or a breach). */
+/**
+ * Where a single notice opens: the thread, scrolled to the note for a mention.
+ */
+export function assignmentNoticeHref(notice: AssignmentNotice): string {
+	const thread = `/dashboard/inbox/${notice.threadId}`;
+	return notice.kind === 'mention' && notice.noteId ? `${thread}#note-${notice.noteId}` : thread;
+}
+
+/** In-app toast copy for a single assignment (or a clarification ask, a mention or a breach). */
 export function assignmentToastMessage(notice: AssignmentNotice): AssignmentMessage {
+	if (notice.kind === 'mention') {
+		return {
+			key: noticeKey(notice, 'shared.inbox.assignmentNoticeRules.mention.toast'),
+			params: noticeParams(notice),
+		};
+	}
 	if (notice.kind === 'sla_breach') {
 		return {
 			key: noticeKey(notice, 'shared.inbox.assignmentNoticeRules.slaBreach.toast'),
@@ -148,11 +167,20 @@ export function assignmentGroupToastMessage(
 	return { key: 'shared.inbox.assignmentNoticeRules.toast.group', params: { count } };
 }
 
-/** Desktop notification title + body for a single assignment (or a clarification ask). */
+/** Desktop notification title + body for a single assignment (or a clarification ask, a mention or a breach). */
 export function assignmentNotificationParts(notice: AssignmentNotice): {
 	title: AssignmentMessage;
 	body: AssignmentMessage;
 } {
+	if (notice.kind === 'mention') {
+		return {
+			title: { key: 'shared.inbox.assignmentNoticeRules.mention.notificationTitle' },
+			body: {
+				key: noticeKey(notice, 'shared.inbox.assignmentNoticeRules.mention.notificationBody'),
+				params: noticeParams(notice),
+			},
+		};
+	}
 	if (notice.kind === 'sla_breach') {
 		return {
 			title: { key: 'shared.inbox.assignmentNoticeRules.slaBreach.notificationTitle' },

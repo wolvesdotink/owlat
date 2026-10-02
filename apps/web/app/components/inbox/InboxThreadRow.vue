@@ -67,8 +67,13 @@ const props = withDefaults(
 		 * rows don't carry it.
 		 */
 		assigneePresent?: boolean;
+		/**
+		 * Internal notes on the thread (the note chip). Asked separately, like
+		 * the presence ring (useInboxNoteCounts); 0 hides the chip.
+		 */
+		noteCount?: number;
 	}>(),
-	{ canManage: true }
+	{ canManage: true, noteCount: 0 }
 );
 
 const emit = defineEmits<{
@@ -174,6 +179,19 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 						>
 							<Icon name="lucide:message-circle" class="w-3 h-3" />
 							{{ channelLabel }}
+						</span>
+						<!-- Internal notes the team left on the thread. -->
+						<span
+							v-if="noteCount > 0"
+							class="flex-shrink-0 inline-flex items-center gap-1 text-xs tabular-nums text-text-tertiary"
+							:title="t('components.inbox.inboxThreadRow.notes', { count: noteCount }, noteCount)"
+							data-testid="inbox-row-note-count"
+						>
+							<Icon name="lucide:sticky-note" class="w-3 h-3" aria-hidden="true" />
+							<span class="sr-only">{{
+								t('components.inbox.inboxThreadRow.notes', { count: noteCount }, noteCount)
+							}}</span>
+							<span aria-hidden="true">{{ noteCount >= 100 ? '99+' : noteCount }}</span>
 						</span>
 						<!-- Response-target chip (due in / overdue) while a reply deadline
 						     runs; otherwise the aging chip: how long this customer has been

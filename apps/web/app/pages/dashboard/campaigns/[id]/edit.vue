@@ -46,7 +46,7 @@ const {
 	scheduledDate,
 	scheduledTime,
 	scheduledStartAt,
-	useRecipientTimezone,
+	sendTiming,
 
 	// Computed
 	selectedTemplate,
@@ -678,41 +678,36 @@ const shownCapacityPlan = computed(() => {
 							</div>
 						</div>
 
-						<!-- Timezone Scheduling Option (also honored on reschedule — toggles local-time delivery) -->
-						<div class="mt-4">
-							<label
-								class="flex items-start gap-3 p-3 bg-bg-elevated shadow-surface-1 rounded-lg cursor-pointer hover:bg-bg-surface-hover transition-colors"
-							>
-								<input
-									v-model="useRecipientTimezone"
-									type="checkbox"
-									class="mt-0.5 w-4 h-4 text-brand focus:ring-brand border-border-subtle bg-bg-surface rounded"
-								/>
-								<div class="flex-1">
-									<div class="flex items-center gap-2">
-										<Icon name="lucide:globe" class="w-4 h-4 text-brand" />
-										<span class="font-medium text-text-primary text-sm">
-											{{ t('dashboard.campaigns.detail.edit.schedule.recipientTimezone') }}
-										</span>
-									</div>
-									<p class="text-xs text-text-secondary mt-1">
-										{{
-											t('dashboard.campaigns.detail.edit.schedule.recipientTimezoneHint', {
-												time:
-													scheduledTime ||
-													t('dashboard.campaigns.detail.edit.schedule.theScheduledTime'),
-											})
-										}}
-									</p>
-								</div>
-							</label>
-						</div>
+						<!-- Delivery time (also honored on reschedule) -->
+						<CampaignsSendTimingOptions
+							v-model="sendTiming"
+							class="mt-4"
+							:time="scheduledTime"
+							:campaign-id="campaignId"
+							:start-at="scheduledStartAt"
+							:is-ab-test="abTest.abTestEnabled.value"
+						/>
 
 						<div
 							v-if="scheduledDate && scheduledTime"
 							class="mt-4 p-3 bg-bg-surface shadow-surface-1 rounded-lg"
 						>
-							<template v-if="useRecipientTimezone">
+							<template v-if="sendTiming.mode === 'optimized'">
+								<p class="text-sm text-text-secondary">
+									{{ t('dashboard.campaigns.detail.edit.schedule.willStartAt') }}
+								</p>
+								<p class="font-medium text-text-primary mt-1">
+									{{ formatDate(scheduledDate, scheduledTime) }}
+								</p>
+								<p class="text-xs text-text-tertiary mt-2">
+									{{
+										t('dashboard.campaigns.detail.edit.schedule.optimizedWithin', {
+											hours: sendTiming.windowHours,
+										})
+									}}
+								</p>
+							</template>
+							<template v-else-if="sendTiming.mode === 'local'">
 								<p class="text-sm text-text-secondary">
 									{{ t('dashboard.campaigns.detail.edit.schedule.willBeSentAt') }}
 								</p>

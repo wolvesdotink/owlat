@@ -36,6 +36,10 @@ import { rollupCampaignStatsRow } from './statShards';
 import { trackEvent } from '../lib/posthogHelpers';
 import { recordListingCounter } from '../lib/listingCounters';
 import { throwInvalidState } from '../_utils/errors';
+import {
+	sendTimeOptimizationValidator,
+	type SendTimeOptimizationSettings,
+} from '../lib/validators/sendTime';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -55,6 +59,7 @@ export type CampaignTransitionInput =
 			useRecipientTimezone?: boolean;
 			scheduledHour?: number;
 			scheduledMinute?: number;
+			sendTimeOptimization?: SendTimeOptimizationSettings;
 	  }
 	| {
 			to: 'draft';
@@ -112,6 +117,7 @@ const transitionInputValidator = v.union(
 		useRecipientTimezone: v.optional(v.boolean()),
 		scheduledHour: v.optional(v.number()),
 		scheduledMinute: v.optional(v.number()),
+		sendTimeOptimization: v.optional(sendTimeOptimizationValidator),
 	}),
 	v.object({
 		to: v.literal('draft'),
@@ -359,6 +365,9 @@ function buildPatch(
 				useRecipientTimezone: input.useRecipientTimezone ?? false,
 				...(input.scheduledHour !== undefined ? { scheduledHour: input.scheduledHour } : {}),
 				...(input.scheduledMinute !== undefined ? { scheduledMinute: input.scheduledMinute } : {}),
+				// Written every time, like `useRecipientTimezone`, so scheduling
+				// without it clears a choice left over from an earlier schedule.
+				sendTimeOptimization: input.sendTimeOptimization,
 				updatedAt,
 			};
 		case 'draft': {
@@ -400,6 +409,12 @@ function buildPatch(
 				statsBounced: 0,
 				statsHardBounced: 0,
 				statsSoftBounced: 0,
+				statsSendTimeOptimizedDelivered: 0,
+				statsSendTimeOptimizedOpened: 0,
+				statsSendTimeOptimizedClicked: 0,
+				statsSendTimeHoldoutDelivered: 0,
+				statsSendTimeHoldoutOpened: 0,
+				statsSendTimeHoldoutClicked: 0,
 				statsUnsubscribed: 0,
 				// Clear any prior block reason on re-send.
 				...(campaign.contentBlockReason ? { contentBlockReason: undefined } : {}),

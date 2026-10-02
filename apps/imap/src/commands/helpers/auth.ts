@@ -15,6 +15,7 @@
  */
 
 import { sleep } from '@owlat/shared';
+import { IMAP_WIRE_VERSION } from '@owlat/shared/imapWire';
 import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
 import type { CommandRequirement, ConnectionState, StartArgs } from '../types.js';
@@ -112,6 +113,9 @@ export async function authenticateAppPassword(
 			password,
 			scope: 'imap',
 			ip: deps.remoteIp,
+			// A backend that no longer serves this server's contract refuses the
+			// login here (ADR-0063).
+			imapWireVersion: IMAP_WIRE_VERSION,
 		});
 
 		if (!result) {
@@ -129,6 +133,9 @@ export async function authenticateAppPassword(
 				appPasswordId: result.appPasswordId,
 				ip: deps.remoteIp,
 				...(state.clientId ? { userAgent: state.clientId } : {}),
+				// Tells the backend this login did not come through an IMAP server
+				// too old to report its version (ADR-0063).
+				imapWireVersion: IMAP_WIRE_VERSION,
 			})
 			.catch(() => undefined);
 
@@ -145,7 +152,18 @@ export async function authenticateAppPassword(
 		return 'ok';
 	} catch (err) {
 		logger.error({ err }, `${verb} error`);
-		await deps.rateLimiter.recordFailure(deps.remoteIp, address);
+		// The backend refusing this server's wire version says nothing about the
+		// password, so it does not count against the client (ADR-0063).
+		if (!isWireRefusal(err)) await deps.rateLimiter.recordFailure(deps.remoteIp, address);
 		return 'failed';
 	}
+}
+
+/**
+ * `assertImapWireSupported`'s refusal: a ConvexError whose operation error
+ * (`{ category, message, data }`) names the minimum in its `data`.
+ */
+function isWireRefusal(err: unknown): boolean {
+	const detail = (err as { data?: { data?: unknown } } | null)?.data?.data;
+	return typeof detail === 'object' && detail !== null && 'minSupportedWireVersion' in detail;
 }

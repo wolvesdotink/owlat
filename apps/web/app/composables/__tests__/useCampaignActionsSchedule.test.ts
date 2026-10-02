@@ -132,8 +132,7 @@ describe('useCampaignActions schedule clock', () => {
 				campaignId: 'campaign_1',
 				scheduledAt: startsAt,
 				useRecipientTimezone: false,
-				scheduledHour: undefined,
-				scheduledMinute: undefined,
+				sendTimeOptimization: null,
 			},
 		]);
 	});

@@ -348,4 +348,25 @@ describe('useInbox pagination', () => {
 		filter.value = 'sla-overdue';
 		expect(created[0]!.args()).toHaveProperty('now');
 	});
+
+	it('?mentions=1 swaps the list for the threads that mention me, on one page', async () => {
+		vi.stubGlobal('useRoute', () => ({ query: { mentions: '1' } }));
+		const { mentions, threads, hasMoreThreads } = useInbox();
+		// Call order: list first page, list tail, counts, stats, SLA summary, mentions,
+		// unread mentions.
+		const [first, , , , , mentionList, unread] = created;
+		expect(mentions.value).toBe(true);
+		expect(first!.args()).toBe('skip');
+		expect(mentionList!.args()).toEqual({ limit: 50 });
+		expect(unread!.args()).toEqual({});
+
+		mentionList!.data.value = { threads: [thread('m1'), thread('m2')], nextCursor: null };
+		await nextTick();
+		expect(ids(threads.value)).toEqual(['m1', 'm2']);
+		expect(hasMoreThreads.value).toBe(false);
+
+		mentions.value = false;
+		expect(mentionList!.args()).toBe('skip');
+		expect(first!.args()).toMatchObject({ filter: 'open' });
+	});
 });

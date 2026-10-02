@@ -46,7 +46,7 @@ import { openInboundMessageRow, openInboundMessageRows } from '../lib/messageBod
  * admin's list, including the shell sidebar's. The Team Inbox page asks
  * `inbox/presence.ts` `presentAssignees` for its visible rows instead.
  */
-async function enrichThreadRows(
+export async function enrichThreadRows(
 	ctx: QueryCtx,
 	rows: ReadonlyArray<Doc<'conversationThreads'>>,
 	viewerId: string
@@ -101,10 +101,7 @@ export const listThreads = publicQuery({
 		search: v.optional(v.string()),
 		limit: v.optional(v.number()),
 		cursor: v.optional(v.string()),
-		// The list's clock, sent with the Overdue / Due soon slices so the first
-		// page re-runs as deadlines pass (see sla/slices.ts `slaSliceNow`).
-		// Absent = the server's time.
-		now: v.optional(v.number()),
+		now: v.optional(v.number()), // the list's clock, see sla/slices.ts `slaSliceNow`
 	},
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'inbox');
@@ -465,6 +462,8 @@ export const pendingAssignments = publicQuery({
 		sinceMs: v.optional(v.number()),
 		/** Max notices to return. Defaults to 20. */
 		limit: v.optional(v.number()),
+		/** Include `mention` notices. Absent for clients that predate them. */
+		includeMentions: v.optional(v.boolean()),
 		/** Include `sla_breach` notices; a client that predates them would word them as assignments. */
 		includeSlaBreaches: v.optional(v.boolean()),
 	},
@@ -484,15 +483,18 @@ export const pendingAssignments = publicQuery({
 			.order('desc')
 			.take(limit);
 
-		const shown = args.includeSlaBreaches ? rows : rows.filter((r) => r.kind !== 'sla_breach');
-		return shown.map((r) => ({
-			id: r._id,
-			kind: r.kind ?? ('assignment' as const),
-			threadId: r.threadId,
-			inboundMessageId: r.inboundMessageId,
-			subject: r.subject,
-			assignedByName: r.assignedByName,
-			createdAt: r.createdAt,
-		}));
+		return rows
+			.filter((r) => args.includeMentions || r.kind !== 'mention')
+			.filter((r) => args.includeSlaBreaches || r.kind !== 'sla_breach')
+			.map((r) => ({
+				id: r._id,
+				kind: r.kind ?? ('assignment' as const),
+				threadId: r.threadId,
+				inboundMessageId: r.inboundMessageId,
+				noteId: r.noteId,
+				subject: r.subject,
+				assignedByName: r.assignedByName,
+				createdAt: r.createdAt,
+			}));
 	},
 });
