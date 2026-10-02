@@ -30,8 +30,10 @@ vi.mock('@owlat/desktop/src/workspace', () => ({
 }));
 vi.mock('@owlat/desktop/src/keychain', () => ({
 	secretGet: vi.fn(async () => 'session-blob'),
-	secretSet: vi.fn(async () => undefined),
-	secretDelete: vi.fn(async () => undefined),
+	sessionRead: vi.fn(async () => ({ value: 'session-blob', revision: 0 })),
+	sessionWrite: vi.fn(async () => 'written'),
+	sessionReplace: vi.fn(async () => 1),
+	onSessionReplaced: vi.fn(async () => () => {}),
 }));
 vi.mock('~/lib/desktop/workspaceAccent', () => ({ applyWorkspaceAccent: vi.fn() }));
 vi.mock('~/lib/desktop/workspaceSwitch', () => ({

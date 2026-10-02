@@ -105,7 +105,7 @@ restart_services() {
 		STOPPED_SERVICES=""
 	fi
 }
-cleanup() { restart_services; rm -rf "$STAGING"; }
+cleanup() { restart_services; rm -rf "$STAGING"; rm -f "${ARCHIVE_TMP:-}"; }
 trap cleanup EXIT
 
 if [[ "$HOT" == "1" ]]; then
@@ -212,10 +212,16 @@ EOF
 
 # ── Archive ───────────────────────────────────────────────────────────────────
 info "Creating archive…"
-tar -czf "${BACKUP_DIR}/${NAME}.tar.gz" -C "$STAGING" .
 # The archive embeds the full .env (every deployment secret). Backups get
-# copied offsite more often than almost anything else — keep it owner-only.
-chmod 600 "${BACKUP_DIR}/${NAME}.tar.gz"
+# copied offsite more often than almost anything else — keep it owner-only
+# from its first byte. It is written to a fresh file (mktemp creates it 0600)
+# and renamed into place: a file already at the destination would keep its own
+# mode while tar wrote the secrets into it.
+ARCHIVE_TMP=$(mktemp "${BACKUP_DIR}/.${NAME}.tar.gz.XXXXXX")
+chmod 600 "$ARCHIVE_TMP"
+tar -czf "$ARCHIVE_TMP" -C "$STAGING" .
+mv -f "$ARCHIVE_TMP" "${BACKUP_DIR}/${NAME}.tar.gz"
+ARCHIVE_TMP=""
 SIZE=$(du -h "${BACKUP_DIR}/${NAME}.tar.gz" | cut -f1)
 
 # ── Checksum ──────────────────────────────────────────────────────────────────

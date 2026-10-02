@@ -12,7 +12,6 @@
  * never materialized) and it is what the deep-link handler calls directly.
  */
 import { ref } from 'vue';
-import { createDesktopAuthClient } from '~/lib/auth-client';
 import { createKeychainStorage, getActiveKeychainStorage } from '~/lib/desktop/keychainStorage';
 import {
 	clearPendingConnections,
@@ -191,6 +190,7 @@ async function connect(params: { ott: string; state: string }): Promise<void> {
 	// keeps its storage and client untouched while the handshake runs, so a
 	// failed handshake has nothing to undo.
 	const pending = createKeychainStorage(tokenRef, null, null);
+	const { createDesktopAuthClient } = await import('~/lib/desktop/desktopAuthClient');
 	const tempClient = createDesktopAuthClient(info.convexSiteUrl, pending);
 
 	const redeemed = (await (
@@ -224,10 +224,12 @@ async function connect(params: { ott: string; state: string }): Promise<void> {
 
 	// Hand the keychain over. Re-authenticating the workspace this window is
 	// signed in to means two writers for one entry: stop the current one (and
-	// wait for its writes) before the new session is written, so an older
-	// session cannot land on top of it. Any other workspace's storage keeps
-	// its own entry, and is flushed so the reload does not drop a change it
-	// still holds.
+	// wait for its writes) before the new session is written. Any other
+	// workspace's storage keeps its own entry, and is flushed so the reload
+	// does not drop a change it still holds. Other windows signed in to this
+	// workspace (an open compose window) are fenced by the replace itself: it
+	// moves the entry's session revision on, so their writes of the older
+	// session are refused and they read the new one.
 	const current = getActiveKeychainStorage();
 	const resumeCurrent = current?.accountKey === tokenRef ? await current.suspend() : null;
 	const previousList = workspaces.value;
@@ -236,8 +238,8 @@ async function connect(params: { ott: string; state: string }): Promise<void> {
 	let written = false;
 	try {
 		await current?.flush();
-		const { secretSet } = await keychain();
-		await secretSet(tokenRef, pending.snapshot());
+		const { sessionReplace } = await keychain();
+		await sessionReplace(tokenRef, pending.snapshot());
 		written = true;
 
 		const now = Date.now();
@@ -269,8 +271,8 @@ async function connect(params: { ott: string; state: string }): Promise<void> {
 		workspaces.value = previousList;
 		activeId.value = previousActiveId;
 		if (written && isNewWorkspace) {
-			const { secretDelete } = await keychain();
-			await secretDelete(tokenRef).catch(() => {});
+			const { sessionReplace } = await keychain();
+			await sessionReplace(tokenRef, null).catch(() => {});
 		}
 		if (!written) resumeCurrent?.();
 		throw e;

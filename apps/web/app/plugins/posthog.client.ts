@@ -140,6 +140,16 @@ export default defineNuxtPlugin(() => {
 					// evaluates its feature flags in Convex, not PostHog. Also keeps the
 					// project's remote settings from switching on the features below.
 					advanced_disable_flags: true,
+					// These send the raw page URL outside before_send (the conversations
+					// widget's `current_url`, console logs' `currentUrl`) or render
+					// remote content. Remote config switches them on today, and
+					// `advanced_disable_flags` turns remote config off; set them off here
+					// too so that stays true if the flags request is ever turned back on.
+					disable_surveys: true,
+					disable_conversations: true,
+					disable_product_tours: true,
+					disable_web_experiments: true,
+					logs: { captureConsoleLogs: false },
 					// Replay records the DOM (message bodies, link targets) and heatmaps
 					// key their payload by raw page URL; neither is used here.
 					disable_session_recording: true,
