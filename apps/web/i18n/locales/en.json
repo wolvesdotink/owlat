@@ -14457,7 +14457,7 @@
 				"pickAskOption": "Pick an answer on the AI’s question card",
 				"previousQueueItem": "Previous item in the Answer queue",
 				"nextQueueItem": "Next item in the Answer queue",
-				"writeNote": "Write an internal note"
+				"writeNote": "Write an internal note (Team inbox threads)"
 			}
 		},
 		"signatureBadge": {
