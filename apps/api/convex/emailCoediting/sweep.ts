@@ -4,6 +4,7 @@
  * when an email is deleted.
  */
 
+import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import type { CoeditTarget } from '../lib/validators/coediting';
 import { COEDIT_PRESENCE_WINDOW_MS, activePresence, rowTarget } from './target';
@@ -44,15 +45,29 @@ export async function sweepStaleCoediting(ctx: MutationCtx, now: number) {
 		.take(SESSION_SWEEP_BATCH);
 	let sessions = 0;
 	for (const session of idle) {
-		const target = rowTarget(session);
-		if (target && (await activePresence(ctx, target, now)).length > 0) {
-			await ctx.db.patch(session._id, { lastActivityAt: now });
-			continue;
-		}
-		await ctx.db.delete(session._id);
-		sessions += 1;
+		if (await dropIfIdle(ctx, session, now)) sessions += 1;
 	}
 	return { presence: presence.length, notices: notices.length, sessions };
+}
+
+/**
+ * Delete a session nobody has had open for `COEDIT_SESSION_IDLE_MS`. One that
+ * still has people in it is kept and its idle clock restarted. Returns whether
+ * the session was deleted.
+ */
+export async function dropIfIdle(
+	ctx: MutationCtx,
+	session: Doc<'emailCoeditSessions'>,
+	now: number
+): Promise<boolean> {
+	if (session.lastActivityAt >= now - COEDIT_SESSION_IDLE_MS) return false;
+	const target = rowTarget(session);
+	if (target && (await activePresence(ctx, target, now)).length > 0) {
+		await ctx.db.patch(session._id, { lastActivityAt: now });
+		return false;
+	}
+	await ctx.db.delete(session._id);
+	return true;
 }
 
 /** Upper bound on presence rows and notices one email can have (team-sized). */

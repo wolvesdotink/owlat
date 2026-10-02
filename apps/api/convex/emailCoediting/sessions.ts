@@ -30,7 +30,7 @@ import {
 	type CoeditTarget,
 } from '../lib/validators/coediting';
 import { captureTemplateVersion } from '../emailTemplates/versions';
-import { sweepStaleCoediting } from './sweep';
+import { dropIfIdle, sweepStaleCoediting } from './sweep';
 import {
 	COEDIT_FIELDS_VERSION,
 	findSession,
@@ -52,8 +52,8 @@ import {
 } from './sessionOps';
 
 /**
- * Upper bound on a session's block JSON, below Convex's 1 MiB document limit
- * with room for the fields and the writer list.
+ * Upper bound on a session's block and field JSON together, below Convex's
+ * 1 MiB document limit with room for the writer list.
  */
 export const MAX_COEDIT_CONTENT_LENGTH = 800_000;
 
@@ -121,7 +121,10 @@ export const open = authedMutation({
 		const row = await loadTarget(ctx, args.target);
 		const now = Date.now();
 		await sweepStaleCoediting(ctx, now);
-		const live = await findSession(ctx, args.target);
+		let live = await findSession(ctx, args.target);
+		// The sweep is bounded, so it may not have reached this email's own
+		// idle session yet; drop it here, as the sweep would have.
+		if (live && (await dropIfIdle(ctx, live, now))) live = null;
 		if (!live) {
 			const sessionId = await ctx.db.insert('emailCoeditSessions', {
 				...targetFields(args.target),
@@ -233,14 +236,15 @@ export const applyOps = authedMutation({
 		const before = sessionState(live);
 		const { state, replaced } = applySessionOps(before, parsed, args.clientId);
 		const content = JSON.stringify(state.doc.blocks);
-		if (content.length > MAX_COEDIT_CONTENT_LENGTH) {
+		const fields = JSON.stringify(state.doc.fields);
+		if (content.length + fields.length > MAX_COEDIT_CONTENT_LENGTH) {
 			throwInvalidInput('This email is too large to edit further. Remove some content first.');
 		}
 		const now = Date.now();
 		await ctx.db.patch(live._id, {
 			version: state.version,
 			content,
-			fields: JSON.stringify(state.doc.fields),
+			fields,
 			writes: [...state.writes],
 			lastActivityAt: now,
 		});

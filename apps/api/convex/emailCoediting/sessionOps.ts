@@ -11,6 +11,7 @@
  */
 
 import {
+	MAX_COEDIT_OPS_PER_BATCH,
 	applyCoeditOps,
 	coeditOpKey,
 	sameCoeditValue,
@@ -22,9 +23,6 @@ import { throwInvalidInput } from '../_utils/errors';
 import { sanitizeStoredBlocksJson } from '../lib/emailContentSanitize';
 import type { CoeditField, CoeditOpArg } from '../lib/validators/coediting';
 import { isValidFieldValue, type StoredRootBlock } from './target';
-
-/** Upper bound on operations in one `applyOps` call. */
-export const MAX_COEDIT_OPS_PER_BATCH = 200;
 
 /** Upper bound on a block id, a client id or a field key. */
 export const MAX_COEDIT_ID_LENGTH = 128;

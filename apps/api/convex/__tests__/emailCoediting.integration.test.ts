@@ -18,6 +18,7 @@ import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { COEDIT_LEASE_TTL_MS, COEDIT_PRESENCE_WINDOW_MS } from '../emailCoediting/target';
 import { COEDIT_SESSION_IDLE_MS } from '../emailCoediting/sweep';
+import { MAX_COEDIT_CONTENT_LENGTH } from '../emailCoediting/sessions';
 import { createTestEmailTemplate, createTestTransactionalEmail } from './factories';
 
 const sessionMock = vi.hoisted(() => ({
@@ -229,6 +230,60 @@ describe('sessions.applyOps', () => {
 		expect(await t.query(api.emailCoediting.notices.listForClient, { clientId: 'tab-1' })).toEqual(
 			[]
 		);
+	});
+
+	it("keeps a tab's notices to the member whose tab it is", async () => {
+		as('user-a');
+		const t = convexTest(schema, modules);
+		const { target } = await openTemplate(t);
+		await t.mutation(api.emailCoediting.presence.heartbeat, { target, clientId: 'tab-1' });
+		await t.mutation(api.emailCoediting.sessions.applyOps, {
+			target,
+			clientId: 'tab-1',
+			ops: [update(block('a', 'Mine'), 1)],
+		});
+		as('user-b');
+		await t.mutation(api.emailCoediting.sessions.applyOps, {
+			target,
+			clientId: 'tab-2',
+			ops: [update(block('a', 'Theirs'), 1)],
+		});
+
+		// Tab ids are listed in presence, so knowing one is not enough.
+		as('user-b');
+		expect(await t.query(api.emailCoediting.notices.listForClient, { clientId: 'tab-1' })).toEqual(
+			[]
+		);
+		const [notice] = await t.run((ctx) => ctx.db.query('emailCoeditNotices').collect());
+		await t.mutation(api.emailCoediting.notices.dismiss, {
+			noticeId: notice!._id,
+			clientId: 'tab-1',
+		});
+		as('user-a');
+		expect(
+			await t.query(api.emailCoediting.notices.listForClient, { clientId: 'tab-1' })
+		).toHaveLength(1);
+	});
+
+	it('refuses a batch that would make the session too large, fields included', async () => {
+		as('user-a');
+		const t = convexTest(schema, modules);
+		const { target } = await openTemplate(t);
+		const data = await operationError(
+			t.mutation(api.emailCoediting.sessions.applyOps, {
+				target,
+				clientId: 'tab-1',
+				ops: [
+					{
+						kind: 'field',
+						field: 'plainTextOverride',
+						value: JSON.stringify('x'.repeat(MAX_COEDIT_CONTENT_LENGTH)),
+						baseVersion: 1,
+					},
+				],
+			})
+		);
+		expect(data.category).toBe('invalid_input');
 	});
 
 	it('refuses an edit once the session is gone', async () => {
@@ -521,6 +576,33 @@ describe('cleanup', () => {
 				});
 			}
 		});
+		await t.mutation(api.emailCoediting.sessions.open, { target });
+		const session = await t.query(api.emailCoediting.sessions.get, { target });
+		expect(blocksOf(session)[0]).toEqual(['a', 'Alpha']);
+		expect(session?.version).toBe(session?.savedVersion);
+	});
+
+	it("drops the email's own idle session on open even when the bounded sweep did not reach it", async () => {
+		as('user-a');
+		const t = convexTest(schema, modules);
+		const { target } = await openTemplate(t);
+		await t.mutation(api.emailCoediting.sessions.applyOps, {
+			target,
+			clientId: 'tab-1',
+			ops: [update(block('a', 'Abandoned draft'), 1)],
+		});
+		// More idle sessions than one sweep takes, all older than this one.
+		for (let i = 0; i < 12; i++) await openTemplate(t, { name: `Other ${i}` });
+		await t.run(async (ctx) => {
+			const idleSince = Date.now() - COEDIT_SESSION_IDLE_MS - 60_000;
+			for (const session of await ctx.db.query('emailCoeditSessions').collect()) {
+				const isTarget = session.emailTemplateId === target.id;
+				await ctx.db.patch(session._id, {
+					lastActivityAt: isTarget ? idleSince + 30_000 : idleSince,
+				});
+			}
+		});
+
 		await t.mutation(api.emailCoediting.sessions.open, { target });
 		const session = await t.query(api.emailCoediting.sessions.get, { target });
 		expect(blocksOf(session)[0]).toEqual(['a', 'Alpha']);

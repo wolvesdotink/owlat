@@ -94,6 +94,13 @@ export async function findSession(
 		.first();
 }
 
+/**
+ * Upper bound on the active presence rows read for one email. One row per open
+ * editor tab, so a team stays far below it; it only caps what a member
+ * inventing tab ids could make a read cost.
+ */
+const MAX_ACTIVE_PRESENCE = 200;
+
 /** Presence rows for the email whose heartbeat is inside the active window. */
 export async function activePresence(
 	ctx: QueryCtx | MutationCtx,
@@ -107,14 +114,14 @@ export async function activePresence(
 			.withIndex('by_email_template_heartbeat', (q) =>
 				q.eq('emailTemplateId', target.id).gt('heartbeatAt', since)
 			)
-			.collect(); // bounded: one row per open editor tab on this email (team size)
+			.take(MAX_ACTIVE_PRESENCE);
 	}
 	return await ctx.db
 		.query('emailEditorPresence')
 		.withIndex('by_transactional_email_heartbeat', (q) =>
 			q.eq('transactionalEmailId', target.id).gt('heartbeatAt', since)
 		)
-		.collect(); // bounded: one row per open editor tab on this email (team size)
+		.take(MAX_ACTIVE_PRESENCE);
 }
 
 /** The fields each editor shares next to its blocks. */

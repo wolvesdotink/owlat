@@ -47,6 +47,12 @@ export type CoeditOp<B extends CoeditBlock = CoeditBlock> =
 	| { kind: 'update'; block: B; afterId: string | null }
 	| { kind: 'field'; field: string; value: unknown };
 
+/**
+ * Upper bound on operations in one batch an editor sends. The server refuses a
+ * larger batch, so the editor sends a bigger change in several.
+ */
+export const MAX_COEDIT_OPS_PER_BATCH = 200;
+
 /** The unit last-writer-wins is decided on: one root block or one field. */
 export type CoeditKey = `block:${string}` | `field:${string}`;
 
