@@ -1,5 +1,6 @@
 /**
  * POST /scan/attachment — Scan an attachment for malware and dangerous file types
+ * POST /scan/content    — Preview the content-screening verdict for a draft
  *
  * This endpoint combines:
  * 1. File type validation (magic bytes + extension check)
@@ -25,8 +26,16 @@
  */
 
 import { Hono } from 'hono';
+import type Redis from 'ioredis';
 import { readIntEnv, TCP_PORT_RANGE } from '@owlat/shared/nodeEnv';
+import { isRecord } from '@owlat/shared/utils/guards';
+import {
+	CONTENT_SCREENING_MAX_HTML_BYTES,
+	CONTENT_SCREENING_MAX_SUBJECT_CHARS,
+	type MtaContentScreeningRequest,
+} from '@owlat/mta-protocol/contentScreening';
 import type { MtaConfig } from '../config.js';
+import { previewScreening } from '../intelligence/contentScreening.js';
 import { validateFile } from '@owlat/email-scanner/files';
 import { createClamClient, type ClamClient } from '@owlat/email-scanner/clamav';
 import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
@@ -63,7 +72,32 @@ function decodeFilenameHeader(raw: string): string {
 	}
 }
 
-export function createScanRoutes(config: MtaConfig): Hono {
+/** Room for the JSON framing and escaping around the HTML body. */
+const CONTENT_REQUEST_MAX_BYTES = CONTENT_SCREENING_MAX_HTML_BYTES * 2;
+
+/** The longest address RFC 5321 allows in a path. */
+const MAX_FROM_CHARS = 320;
+
+/** Read a `/scan/content` body, or `null` when it is not one. */
+function parseContentRequest(value: unknown): MtaContentScreeningRequest | null {
+	if (!isRecord(value)) return null;
+	const { from, subject, html } = value;
+	if (typeof subject !== 'string' || subject.length > CONTENT_SCREENING_MAX_SUBJECT_CHARS) {
+		return null;
+	}
+	if (typeof html !== 'string' || Buffer.byteLength(html) > CONTENT_SCREENING_MAX_HTML_BYTES) {
+		return null;
+	}
+	if (from !== undefined && (typeof from !== 'string' || from.length > MAX_FROM_CHARS)) {
+		return null;
+	}
+	// Header values: a CR or LF would let the caller write its own headers into
+	// the message rspamd scores.
+	if (/[\r\n]/.test(subject) || (from && /[\r\n]/.test(from))) return null;
+	return { subject, html, ...(from ? { from } : {}) };
+}
+
+export function createScanRoutes(config: MtaConfig, redis: Redis): Hono {
 	const app = new Hono();
 
 	// All scan routes require the master key (constant-time compare)
@@ -170,6 +204,28 @@ export function createScanRoutes(config: MtaConfig): Hono {
 		}
 
 		return c.json({ clean: true });
+	});
+
+	// POST /scan/content — how content screening would judge this draft. Queues
+	// nothing and records nothing; the campaign pre-send check calls it.
+	app.post('/content', async (c) => {
+		const declared = Number(c.req.header('Content-Length') ?? 0);
+		if (declared > CONTENT_REQUEST_MAX_BYTES) {
+			return c.json({ error: 'Content too large' }, 413);
+		}
+		const body = await c.req.arrayBuffer();
+		if (body.byteLength > CONTENT_REQUEST_MAX_BYTES) {
+			return c.json({ error: 'Content too large' }, 413);
+		}
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(Buffer.from(body).toString('utf-8'));
+		} catch {
+			return c.json({ error: 'Invalid JSON' }, 400);
+		}
+		const request = parseContentRequest(parsed);
+		if (!request) return c.json({ error: 'Invalid content screening request' }, 400);
+		return c.json(await previewScreening(redis, request, config));
 	});
 
 	// GET /scan/health — Check ClamAV status
