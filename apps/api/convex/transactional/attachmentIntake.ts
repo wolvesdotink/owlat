@@ -206,7 +206,6 @@ export async function uploadAndDispatch(
 		outcome = await ctx.runMutation(internal.transactional.dispatch.dispatch, {
 			...request,
 			attachmentRefs: uploadResult.refs,
-			uploadsPending: true,
 		});
 	} catch (err) {
 		// Also covers a dispatch whose outcome is unknown: a claimed upload has

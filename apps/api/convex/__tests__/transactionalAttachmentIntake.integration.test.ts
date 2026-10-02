@@ -327,23 +327,81 @@ describe('transactional pending uploads — release, claim and expiry', () => {
 		expect(await storedBlobs(t)).toEqual([claimed]);
 	});
 
-	it('dispatch refuses to queue a send whose upload is no longer pending', async () => {
+	function dispatchArgs(slug: string, storageIds: readonly Id<'_storage'>[]) {
+		return {
+			templateLookup: { kind: 'slug' as const, slug },
+			email: 'to@example.com',
+			dataVariables: { orderNumber: 'A-1' },
+			attachmentRefs: storageIds.map((storageId, i) => ({
+				filename: `a${i}.pdf`,
+				url: `https://files.example.com/a${i}`,
+				storageId,
+			})),
+		};
+	}
+
+	async function templateSendCount(t: TestConvex<typeof schema>, slug: string) {
+		return await t.run(async (ctx) => {
+			const template = await ctx.db
+				.query('transactionalEmails')
+				.withIndex('by_slug', (q) => q.eq('slug', slug))
+				.first();
+			return template?.sendCount ?? 0;
+		});
+	}
+
+	it('dispatch refuses a stored attachment with no pending row and rolls the insert back', async () => {
+		const t = setupTest();
+		const slug = await seedSendable(t);
+		const registered = await storeBlob(t);
+		await t.mutation(internal.transactional.pendingUploads.register, { storageId: registered });
+		// Stored but never registered: what a caller that skips the handoff sends.
+		const unregistered = await storeBlob(t);
+
+		await expect(
+			t.mutation(
+				internal.transactional.dispatch.dispatch,
+				dispatchArgs(slug, [registered, unregistered])
+			)
+		).rejects.toThrow(/no longer pending/);
+
+		expect(await sendRows(t)).toHaveLength(0);
+		expect(await templateSendCount(t, slug)).toBe(0);
+		// The claim of the first upload rolled back with the rest, so it is still
+		// pending and a release or the sweep can free it.
+		expect((await pendingRows(t)).map((row) => row.storageId)).toEqual([registered]);
+	});
+
+	it('dispatch claims registered uploads without being asked to', async () => {
 		const t = setupTest();
 		const slug = await seedSendable(t);
 		const storageId = await storeBlob(t);
+		await t.mutation(internal.transactional.pendingUploads.register, { storageId });
 
-		await expect(
-			t.mutation(internal.transactional.dispatch.dispatch, {
-				templateLookup: { kind: 'slug', slug },
-				email: 'to@example.com',
-				dataVariables: { orderNumber: 'A-1' },
-				attachmentRefs: [
-					{ filename: 'a.pdf', url: 'https://files.example.com/a', storageId: storageId },
-				],
-				uploadsPending: true,
-			})
-		).rejects.toThrow(/no longer pending/);
-		expect(await sendRows(t)).toHaveLength(0);
+		const outcome = await t.mutation(
+			internal.transactional.dispatch.dispatch,
+			dispatchArgs(slug, [storageId])
+		);
+
+		expect(outcome.ok).toBe(true);
+		const [send] = await sendRows(t);
+		expect(send?.attachmentStorageIds).toEqual([storageId]);
+		expect(await pendingRows(t)).toHaveLength(0);
+	});
+
+	it('dispatch still accepts the uploadsPending flag a v0.6.7 shell sends, and ignores it', async () => {
+		const t = setupTest();
+		const slug = await seedSendable(t);
+		const storageId = await storeBlob(t);
+		await t.mutation(internal.transactional.pendingUploads.register, { storageId });
+
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			...dispatchArgs(slug, [storageId]),
+			uploadsPending: true,
+		});
+
+		expect(outcome.ok).toBe(true);
+		expect(await pendingRows(t)).toHaveLength(0);
 	});
 
 	it('the expiry sweep frees abandoned uploads and leaves fresh ones', async () => {

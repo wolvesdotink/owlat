@@ -112,12 +112,13 @@ export const dispatch = internalMutation({
 		dataVariables: v.optional(v.record(v.string(), jsonPrimitiveValue)),
 		language: v.optional(v.string()),
 		attachmentRefs: v.optional(v.array(attachmentRefValidator)),
-		// The shell registered every `storageId` above as a pending upload, and
-		// this transaction must claim them (`transactional/pendingUploads.ts`).
-		// Optional for a shell of the previous release still running across the
-		// deploy, which registers nothing: remove after the next release and
-		// claim unconditionally.
-		uploadsPending: v.optional(v.boolean()),
+		// Accepted and IGNORED. Every `storageId` above must be a pending upload
+		// the caller registered (`transactional/pendingUploads.ts`), and this
+		// transaction always claims them. The v0.6.7 shell passed `true` here; a
+		// request of that release still running across the deploy reaches this
+		// code, and the validator refuses an unknown field, so the argument stays
+		// accepted for one release. Remove it in the release after.
+		uploadsPending: v.optional(v.literal(true)),
 	},
 	handler: async (ctx, args): Promise<DispatchOutcome> => {
 		// 1. The shared pre-row gate sequence: abuse → provider-ready →
@@ -309,8 +310,9 @@ export const dispatch = internalMutation({
 			.map((a) => a.storageId!);
 		// Ownership of the request's uploaded bytes moves to the row inserted
 		// below, in this transaction. A claim that fails throws, so no Send ever
-		// names a blob the shell released or the expiry sweep freed.
-		if (args.uploadsPending && attachmentStorageIds) {
+		// names a blob the shell released or the expiry sweep freed, and a caller
+		// that stored a blob without registering it is refused.
+		if (attachmentStorageIds) {
 			await claimPendingUploads(ctx, attachmentStorageIds);
 		}
 

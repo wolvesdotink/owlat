@@ -23,7 +23,7 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-type DispatchArgs = { attachmentRefs?: { storageId?: string }[]; uploadsPending?: boolean };
+type DispatchArgs = { attachmentRefs?: { storageId?: string }[] };
 
 interface FakeOptions {
 	storeFailsOn?: number;
@@ -195,7 +195,8 @@ describe('uploadAndDispatch — stored bytes after a failure', () => {
 		const result = await uploadAndDispatch(fake.ctx, prepared(2), request);
 
 		expect(result).toEqual({ ok: true, outcome: queued });
-		expect(fake.dispatchCalls[0]?.uploadsPending).toBe(true);
+		// Dispatch claims unconditionally; the shell passes no flag for it.
+		expect(fake.dispatchCalls[0]).not.toHaveProperty('uploadsPending');
 		expect(fake.dispatchCalls[0]?.attachmentRefs?.map((ref) => ref.storageId)).toEqual([
 			'blob-1',
 			'blob-2',
