@@ -178,6 +178,9 @@ async function resolveAssignment(
 ): Promise<Resolved | null> {
 	const notice = await ctx.db.get(noticeId);
 	if (!notice || notice.userId !== userId) return null;
+	// Internal-note mentions are not pushed (nothing enqueues them yet), and
+	// assignment copy would word one as a handover.
+	if (notice.kind === 'mention') return null;
 	// The notice was authorized when it was written; the thread is shown only to
 	// whoever reads the shared inbox now, as `inbox.queries.pendingAssignments`.
 	if (!isSharedInboxReader({ role })) return null;

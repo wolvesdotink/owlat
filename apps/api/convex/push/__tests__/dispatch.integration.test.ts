@@ -238,7 +238,7 @@ describe('push.dispatch mail', () => {
 });
 
 describe('push.dispatch assignment', () => {
-	async function seedNotice(t: T, kind?: 'clarification') {
+	async function seedNotice(t: T, kind?: 'clarification' | 'mention') {
 		return t.run(async (ctx) => {
 			const now = Date.now();
 			const threadId = await ctx.db.insert('conversationThreads', {
@@ -297,6 +297,14 @@ describe('push.dispatch assignment', () => {
 		await enableFeatures(t, ['inbox']);
 		await seedDevice(t, 'user-b');
 		expect(await prepare(t, { kind: 'assignment', noticeId }, 'user-b')).toEqual([]);
+	});
+
+	it('does not word an internal-note mention as an assignment', async () => {
+		const t = await pushHarness(modules);
+		await enableFeatures(t, ['inbox']);
+		await seedDevice(t, USER);
+		const { noticeId } = await seedNotice(t, 'mention');
+		expect(await prepare(t, { kind: 'assignment', noticeId })).toEqual([]);
 	});
 
 	it('rechecks the assignee’s access: a demoted or removed member gets nothing', async () => {
