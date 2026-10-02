@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ref, nextTick, type Ref } from 'vue';
+import { computed, effectScope, ref, nextTick, type Ref } from 'vue';
 import { useInbox } from '../useInbox';
 
 /**
@@ -307,5 +307,45 @@ describe('useInbox pagination', () => {
 		sla.data.value = { isEnabled: false, overdue: 0, dueSoon: 0, cap: 100 };
 		await nextTick();
 		expect(filter.value).toBe('open');
+	});
+
+	it('re-cuts the Due soon slice and the counts as time passes, with nothing written', () => {
+		vi.useFakeTimers();
+		const scope = effectScope();
+		try {
+			const eight = Date.parse('2026-10-02T08:00:00Z');
+			vi.setSystemTime(eight);
+			vi.stubGlobal('useRoute', () => ({ query: { filter: 'sla-due-soon' } }));
+			const inbox = scope.run(() => useInbox())!;
+			const { first, tail } = handles();
+			const sla = created[4]!;
+			// What useConvexQuery watches: a new value re-subscribes the read.
+			const firstArgs = computed(() => first.args());
+			const slaArgs = computed(() => sla.args());
+			expect(firstArgs.value).toMatchObject({ filter: 'sla-due-soon', now: eight });
+			expect(slaArgs.value).toMatchObject({ now: eight });
+
+			// 09:01: a thread due at 10:00 is now due within the hour.
+			vi.advanceTimersByTime(61 * 60_000);
+			const later = eight + 61 * 60_000;
+			expect(firstArgs.value).toMatchObject({ filter: 'sla-due-soon', now: later });
+			expect(slaArgs.value).toMatchObject({ now: later });
+			expect(inbox.now.value).toBe(later);
+
+			// A tail page keeps the time its cursor pinned: a tick never reloads it.
+			first.data.value = { threads: [thread('a')], nextCursor: 'c1' };
+			inbox.loadMoreThreads();
+			expect(tail.args()).not.toHaveProperty('now');
+		} finally {
+			scope.stop();
+			vi.useRealTimers();
+		}
+	});
+
+	it('keeps the clock off the other tabs, so a tick does not reload them', () => {
+		const { filter } = useInbox();
+		expect(created[0]!.args()).not.toHaveProperty('now');
+		filter.value = 'sla-overdue';
+		expect(created[0]!.args()).toHaveProperty('now');
 	});
 });

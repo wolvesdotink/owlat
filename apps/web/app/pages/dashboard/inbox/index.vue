@@ -3,7 +3,6 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { InboxThreadRowThread } from '~/components/inbox/InboxThreadRow.vue';
 import { useOrganization } from '~/composables/useOrganization';
-import { useNow } from '~/composables/useNow';
 import {
 	DEFAULT_INBOX_ASSIGNEE,
 	DEFAULT_INBOX_FILTER,
@@ -42,6 +41,9 @@ const displayRole = computed(() => {
 });
 
 const {
+	// One ticking clock for the whole list: the waiting and deadline chips age in
+	// place, in step with the Overdue / Due soon pills cut at the same clock.
+	now,
 	filter,
 	assignee,
 	sort,
@@ -188,11 +190,6 @@ const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard<TeamThread>
 		if (key === 'i' && isAdmin.value) void assignToMe(thread);
 	},
 });
-
-// One ticking clock for the whole list: the waiting chips age in place without
-// a reload, and a minute of drift is invisible on a chip that reads in hours.
-// Deriving it per row would be one interval per visible thread.
-const now = useNow({ intervalMs: 60_000 });
 
 // Empty-state copy per active tab + assignment. An assignment on an active tab
 // has its own sentence ("Nothing is assigned to you right now."); otherwise the

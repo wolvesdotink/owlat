@@ -17,8 +17,11 @@ import {
 	type InboxSort,
 } from '~/utils/inboxFilters';
 import { rememberTeamThreadPreviews } from '~/utils/teamThreadPreviews';
+import { useNow } from '~/composables/useNow';
 
 const SORT_STORAGE_KEY = 'inbox-thread-sort';
+/** How often the list's clock ticks: a minute, the finest unit a chip shows. */
+export const INBOX_CLOCK_INTERVAL_MS = 60_000;
 
 /**
  * The shared-inbox read surface. `gate` (optional) implements the
@@ -33,6 +36,13 @@ export function useInbox(gate?: Ref<boolean>) {
 	const route = useRoute();
 	const router = useRouter();
 	const subscribed = () => !gate || gate.value;
+
+	// ── The list's clock. A deadline passing writes nothing, so the Overdue / Due
+	// soon counts and slices, cut at the server's time, would never re-run on
+	// their own: a thread due at 10:00 seen at 08:00 would not join Due soon at
+	// 09:00. Both reads take this clock as an argument instead, and each tick
+	// re-runs them. The row chips read it too, so a chip and its pill agree.
+	const now = useNow({ intervalMs: INBOX_CLOCK_INTERVAL_MS });
 
 	// ── Filter state, mirrored in the URL (`?filter=` status tab, `?assignee=`) ──
 	// Reads seed from the current query; writes replace the query (shareable,
@@ -120,7 +130,7 @@ export function useInbox(gate?: Ref<boolean>) {
 	// keepPreviousData on the first page: a filter, assignee or sort change
 	// keeps the rows on screen until the new first page lands, instead of
 	// blanking the list to its skeleton.
-	const listArgs = () => {
+	const viewArgs = () => {
 		if (!subscribed()) return 'skip' as const;
 		const assigneeArg = inboxAssigneeArg(assignee.value);
 		return {
@@ -130,13 +140,21 @@ export function useInbox(gate?: Ref<boolean>) {
 			limit: 25,
 		};
 	};
+	// The first page of an Overdue / Due soon slice carries the clock, so it
+	// re-runs every tick. Tail pages do not: their cursor pins the time the
+	// first page was cut at, and a tick must not reload them.
+	const firstPageArgs = () => {
+		const base = viewArgs();
+		if (base === 'skip' || !isInboxSlaFilter(base.filter)) return base;
+		return { ...base, now: now.value };
+	};
 	const {
 		data: threadsData,
 		isLoading: threadsLoading,
 		isRefetching: threadsRefetching,
 		error: firstPageError,
 		refetch: refetchFirstPage,
-	} = useConvexQuery(api.inbox.queries.listThreads, listArgs, { keepPreviousData: true });
+	} = useConvexQuery(api.inbox.queries.listThreads, firstPageArgs, { keepPreviousData: true });
 
 	type Thread = NonNullable<typeof threadsData.value>['threads'][number];
 
@@ -159,7 +177,7 @@ export function useInbox(gate?: Ref<boolean>) {
 		error: tailError,
 		refetch: refetchTail,
 	} = useConvexQuery(api.inbox.queries.listThreads, () => {
-		const base = listArgs();
+		const base = viewArgs();
 		if (base === 'skip' || !tailCursor.value) return 'skip';
 		return { ...base, cursor: tailCursor.value };
 	});
@@ -265,13 +283,14 @@ export function useInbox(gate?: Ref<boolean>) {
 	);
 
 	// ── Response targets: whether they are on, and the Overdue / Due soon counts
-	// beside the tabs, narrowed by the assignment like the tab counts.
+	// beside the tabs, narrowed by the assignment like the tab counts and cut at
+	// the list's clock.
 	const { data: slaData } = useConvexQuery(
 		api.inbox.sla.queries.getListSummary,
 		() => {
 			if (!subscribed()) return 'skip';
 			const assigneeArg = inboxAssigneeArg(assignee.value);
-			return assigneeArg ? { assignee: assigneeArg } : {};
+			return { ...(assigneeArg ? { assignee: assigneeArg } : {}), now: now.value };
 		},
 		{ keepPreviousData: true }
 	);
@@ -296,6 +315,7 @@ export function useInbox(gate?: Ref<boolean>) {
 
 	return {
 		// State
+		now,
 		filter,
 		assignee,
 		sort,
