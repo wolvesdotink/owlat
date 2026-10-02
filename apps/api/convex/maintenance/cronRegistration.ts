@@ -57,4 +57,12 @@ export function registerRetentionCrons(crons: ReturnType<typeof cronJobs>): void
 		internal.maintenance.retention.sweepInboundFiles,
 		{}
 	);
+	// IMAP server reports (mail/imap/serverRegistry.ts): rows no server has
+	// refreshed for 30 days, the longest window the status command reads.
+	crons.interval(
+		'retention: imap server reports',
+		{ hours: 24 },
+		internal.mail.imap.serverRegistry.pruneStale,
+		{}
+	);
 }

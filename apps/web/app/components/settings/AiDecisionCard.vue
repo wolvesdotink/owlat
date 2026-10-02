@@ -24,6 +24,10 @@
  * resolves uncalibrated, or the last test failed, the card says which and what
  * happens instead, and the thresholds are stated as inert.
  *
+ * A LOCAL engine (GLiNER on the operator's own server) shows the same model and
+ * address fields as a keyed vendor, minus the key and the consent block —
+ * nothing leaves the deployment, so there is nothing to consent to.
+ *
  * The parent owns all of it (`composables/useAiDecisionPlane.ts`); this file
  * binds and paints. Option and surface labels arrive as MESSAGE KEYS and are
  * translated here, the same contract `utils/aiProviders.ts` documents.
@@ -93,6 +97,11 @@ const providerOptions = computed(() =>
 );
 
 const healthRows = computed(() => (props.health ? decisionHealthRows(props.health) : []));
+// A local engine has no key, but it does have a model and an address of its own.
+const isLocal = computed(() => props.meta?.isLocal === true);
+const ownsEndpoint = computed(() => props.requiresKey || isLocal.value);
+const copy = (key: string) =>
+	t(`dashboard.admin.instance.aiProvider.decision.${key}${isLocal.value ? 'Local' : ''}`);
 const canReachPlane = computed(() => props.featureState === 'enabled');
 // Whole percent: these are rates over a few hundred calls at most, and a decimal
 // place would imply a precision the window does not have.
@@ -241,29 +250,29 @@ watch(baseUrl, (value) => {
 					</div>
 
 					<SettingsAiModelPicker
-						v-if="requiresKey"
+						v-if="ownsEndpoint"
 						v-model:choice="modelChoice"
 						v-model:custom="modelCustom"
 						:label="t('dashboard.admin.instance.aiProvider.decision.modelLabel')"
 						:options="modelOptions"
 						:disabled="isSaving"
-						:hint="t('dashboard.admin.instance.aiProvider.decision.modelHint')"
+						:hint="copy('modelHint')"
 					/>
 
-					<div v-if="requiresKey">
+					<div v-if="ownsEndpoint">
 						<UiDisclosure
 							v-model="showBaseUrl"
-							:label="t('dashboard.admin.instance.aiProvider.decision.baseUrlDisclosure')"
+							:label="copy('baseUrlDisclosure')"
 							controls="ai-decision-base-url"
 							:disabled="isSaving"
 						>
 							<UiInput
 								v-model="baseUrl"
 								type="text"
-								:label="t('dashboard.admin.instance.aiProvider.decision.baseUrlLabel')"
+								:label="copy('baseUrlLabel')"
 								:placeholder="meta?.defaultBaseUrl ?? 'https://…'"
 								:disabled="isSaving"
-								:help-text="t('dashboard.admin.instance.aiProvider.decision.baseUrlHelp')"
+								:help-text="copy('baseUrlHelp')"
 							/>
 						</UiDisclosure>
 					</div>
@@ -404,14 +413,18 @@ watch(baseUrl, (value) => {
 							<template #iconLeft>
 								<Icon v-if="!isTesting" name="lucide:plug-zap" class="w-4 h-4" />
 							</template>
-							{{ t('dashboard.admin.instance.aiProvider.decision.testConnection') }}
+							{{
+								t(
+									`dashboard.admin.instance.aiProvider.decision.${isLocal ? 'testEngine' : 'testConnection'}`
+								)
+							}}
 						</UiButton>
 						<p
 							v-if="testState.status === 'ok' && canReachPlane"
 							class="text-sm text-success flex items-center gap-1.5"
 						>
 							<Icon name="lucide:check" class="w-4 h-4" />
-							{{ t('dashboard.admin.instance.aiProvider.decision.testOk') }}
+							{{ copy('testOk') }}
 						</p>
 						<p
 							v-else-if="testState.status === 'error'"

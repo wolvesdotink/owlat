@@ -6,6 +6,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
 import { abVariantValidator } from '../lib/literalValidators';
+import { sendTimeGroupValidator } from '../lib/validators/sendTime';
 import { hasClicked, hasOpened, hasReachedDelivered } from './sendEngagement';
 
 // bounded: the campaign report queries below read a campaign's `emailSends`
@@ -167,6 +168,7 @@ export const createBatch = internalMutation({
 				contactFirstName: v.optional(v.string()),
 				contactLastName: v.optional(v.string()),
 				abVariant: v.optional(abVariantValidator),
+				sendTimeGroup: v.optional(sendTimeGroupValidator),
 			})
 		),
 	},
@@ -224,6 +226,7 @@ export const createBatch = internalMutation({
 				personalizedSubject: send.personalizedSubject,
 				queuedAt: now,
 				...(send.abVariant !== undefined ? { abVariant: send.abVariant } : {}),
+				...(send.sendTimeGroup !== undefined ? { sendTimeGroup: send.sendTimeGroup } : {}),
 			});
 			created.push({ contactId: send.contactId, emailSendId: id });
 		}

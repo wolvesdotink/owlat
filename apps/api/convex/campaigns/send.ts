@@ -26,6 +26,13 @@ import {
 	resolveParkInstant,
 	resolveVariantBSource,
 } from './sendPlanning';
+import {
+	makeSendTimePlanner,
+	resolveSendTimeWindow,
+	sendTimeOptimizationFor,
+	type PlannedSendTime,
+} from './sendTimeOptimization';
+import { nextUtcDayStart } from '../lib/clock';
 import { nanoid } from 'nanoid';
 // Campaign send orchestrator (module) — the single live action that takes a
 // campaign from `draft|scheduled|sending` through content scan, archive,
@@ -415,6 +422,10 @@ type EnqueueVariantArgs = {
 	// Org-level fallback zone (General settings) for recipients without a
 	// valid IANA timezone; bucket to UTC only when the org setting is unset.
 	defaultTimezone?: string;
+	// Send-time optimization: the instant and arm the planner chose per
+	// contact id. Set only for an optimized campaign; replaces both the
+	// timezone grouping and the immediate chunking.
+	plannedSendTimes?: ReadonlyMap<string, PlannedSendTime>;
 };
 
 // Create emailSends rows for a batch (one variant, one language) and
@@ -439,6 +450,9 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 			},
 		}),
 		...(args.abVariant !== undefined ? { abVariant: args.abVariant } : {}),
+		...(args.plannedSendTimes?.has(r._id)
+			? { sendTimeGroup: args.plannedSendTimes.get(r._id)!.group }
+			: {}),
 	}));
 
 	// createBatch is idempotent: it inserts a row only for a contact that does
@@ -520,7 +534,23 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 		}
 	};
 
-	if (args.useTimezone) {
+	if (args.plannedSendTimes) {
+		// One scheduled enqueue per proposed instant. The enqueue at that instant
+		// goes through the same governed path as any other, so the MTA's pacing,
+		// the ramp ceilings and the deliverability gates still own throughput.
+		const now = Date.now();
+		const recipientsByInstant = new Map<number, EmailEnqueueData[]>();
+		for (const recipient of emailsToEnqueue) {
+			const at = args.plannedSendTimes.get(recipient.contactId)?.at ?? now;
+			const bucket = recipientsByInstant.get(at);
+			if (bucket) bucket.push(recipient);
+			else recipientsByInstant.set(at, [recipient]);
+		}
+		for (const [at, recipientsAtInstant] of recipientsByInstant) {
+			await scheduleChunks(recipientsAtInstant, Math.max(0, at - now));
+			totalEnqueued += recipientsAtInstant.length;
+		}
+	} else if (args.useTimezone) {
 		// Group by the recipient's IANA zone, then resolve the next
 		// `scheduledHour:scheduledMinute` local instant per zone — DST-correct,
 		// unlike a static UTC-offset table. Recipients without a valid zone fall
@@ -757,6 +787,37 @@ export const resolveCampaignPage = internalAction({
 		const variantMode = job.variantMode ?? 'plain';
 		const useTimezone = isTimezoneScheduled(campaign, variantMode);
 
+		// Send-time optimization: propose each contact's instant inside the
+		// window. With a day budget the window ends with the budget's UTC day,
+		// so today's slice never lands in tomorrow's cap window.
+		const sendTimeSettings = sendTimeOptimizationFor(campaign, variantMode);
+		let plannedSendTimes: Map<string, PlannedSendTime> | undefined;
+		if (sendTimeSettings && page.recipients.length > 0) {
+			const now = Date.now();
+			const planning = await ctx.runQuery(
+				internal.campaigns.sendTimeQueries.getPlanningContext,
+				{}
+			);
+			const plan = makeSendTimePlanner({
+				campaignId: args.campaignId,
+				settings: sendTimeSettings,
+				window: resolveSendTimeWindow({
+					sentAt: campaign.sentAt,
+					windowHours: sendTimeSettings.windowHours,
+					now,
+					dayBudgetEndsAt: slice.remainingToday === undefined ? undefined : nextUtcDayStart(now),
+				}),
+				organization: planning.organization,
+				defaultTimezone: planning.defaultTimezone,
+				startWallClock:
+					campaign.scheduledHour !== undefined && campaign.scheduledMinute !== undefined
+						? { hour: campaign.scheduledHour, minute: campaign.scheduledMinute }
+						: undefined,
+				now,
+			});
+			plannedSendTimes = new Map(page.recipients.map((r) => [r._id, plan(r)]));
+		}
+
 		// Org-level timezone (General settings) — the fallback zone for
 		// timezone-aware scheduling when a recipient has no valid zone of their
 		// own. Only loaded on the timezone-aware path.
@@ -853,6 +914,7 @@ export const resolveCampaignPage = internalAction({
 					scheduledHour: campaign.scheduledHour,
 					scheduledMinute: campaign.scheduledMinute,
 					defaultTimezone,
+					plannedSendTimes,
 				});
 			}
 		}

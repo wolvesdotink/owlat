@@ -343,6 +343,8 @@ describe('reduceOpened — automated opens', () => {
 		expect(result.patch).toEqual({ openCount: 1, status: 'opened', openedAt: at });
 		expect(result.effects.map((e) => e.kind)).toEqual([
 			'campaign_stats_opened',
+			// A reader engagement also teaches the contact's send-time profile.
+			'send_time_engagement',
 			'daily_stats_bump',
 			'transport_outcome',
 			'customer_webhook',
@@ -448,6 +450,8 @@ describe('reduceClicked — automated clicks', () => {
 		});
 		expect(result.effects.map((e) => e.kind)).toEqual([
 			'campaign_stats_clicked',
+			// A reader engagement also teaches the contact's send-time profile.
+			'send_time_engagement',
 			'daily_stats_bump',
 			'transport_outcome',
 			'customer_webhook',

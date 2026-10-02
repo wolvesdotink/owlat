@@ -1,5 +1,5 @@
 /**
- * The CONFORMANCE suite: every registered question set, through both adapters,
+ * The CONFORMANCE suite: every registered question set, through every adapter,
  * asserting they answer the same way.
  *
  * This is the promise the whole plane rests on — any adapter answers any
@@ -17,7 +17,7 @@
  * `kind` per key, the same value DOMAIN, and the same probability KEY SPACE.
  * What is allowed to differ is exactly one thing — `calibrated` — because the
  * language-backed adapter reports one label and cannot produce a distribution
- * behind it.
+ * behind it, and the local engine's distribution has never been measured.
  *
  * No network: the native adapter runs against a synthesized wire body and the
  * language-backed one against a stubbed `runLlmObject`. Both stubs are built
@@ -38,6 +38,7 @@ import type { DecisionAnswer } from '../questions';
 import { llmDecisionAdapter } from '../../decisionProviders/llm';
 import { typesafeDecisionAdapter } from '../../decisionProviders/typesafe';
 import { PINNED_DECISION_MODEL } from '../../decisionProviders/typesafe';
+import { DEFAULT_LOCAL_DECISION_MODEL, localDecisionAdapter } from '../../decisionProviders/local';
 
 // Only `runLlmObject` is replaced; `isRetriableLlmError` and `errorStatus` stay
 // real, because the native adapter classifies its failures through them.
@@ -112,6 +113,22 @@ async function askNative(questions: QuestionSet) {
 	);
 }
 
+/** The local engine speaks the native wire, so it answers from the same synthesized body. */
+async function askLocal(questions: QuestionSet) {
+	const body = JSON.stringify({
+		model: DEFAULT_LOCAL_DECISION_MODEL,
+		answers: mapValues(questions, nativeAnswer),
+		usage: { input_tokens: 42, output_tokens: 0 },
+	});
+	return await localDecisionAdapter.ask(
+		{
+			fetchImpl: async () =>
+				new Response(body, { status: 200, headers: { 'content-type': 'application/json' } }),
+		},
+		{ state: STATE, questions }
+	);
+}
+
 async function askLanguage(questions: QuestionSet) {
 	language.runLlmObject.mockResolvedValueOnce({
 		object: mapValues(questions, languageAnswer),
@@ -128,6 +145,7 @@ async function askLanguage(questions: QuestionSet) {
 // Exhaustive: registering a provider also requires a transport fixture here.
 const conformanceAdapters = {
 	typesafe: askNative,
+	local: askLocal,
 	llm: askLanguage,
 } satisfies Record<DecisionProviderKind, (questions: QuestionSet) => Promise<DecisionResult>>;
 
@@ -233,6 +251,7 @@ function conformanceSuite(questions: QuestionSet): void {
 
 	it('differs in exactly one thing: whether the probabilities are calibrated', async () => {
 		expect((await askNative(questions)).calibrated).toBe(true);
+		expect((await askLocal(questions)).calibrated).toBe(false);
 		expect((await askLanguage(questions)).calibrated).toBe(false);
 	});
 }

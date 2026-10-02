@@ -38,4 +38,9 @@ export const COMPOSE_BUILD_SERVICES: readonly ComposeBuildService[] = [
 	},
 	{ service: 'imap', image: 'ghcr.io/wolvesdotink/imap', profiles: ['personal-mail'] },
 	{ service: 'mail-sync', image: 'ghcr.io/wolvesdotink/mail-sync', profiles: ['external-mail'] },
+	{
+		service: 'decision-local',
+		image: 'ghcr.io/wolvesdotink/decision-local',
+		profiles: ['decision-local'],
+	},
 ];

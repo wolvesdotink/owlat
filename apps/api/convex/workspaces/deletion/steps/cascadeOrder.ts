@@ -162,6 +162,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'campaignSendJobs',
 	'audienceCountJobs',
 	'campaignStatShards',
+	'sendTimeHistogramShards',
 	'campaignSenders',
 	'sendDailyStats',
 

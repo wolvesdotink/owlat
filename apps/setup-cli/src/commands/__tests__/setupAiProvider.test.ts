@@ -24,7 +24,7 @@ vi.mock('@clack/prompts', () => ({
 }));
 
 import { isCancel, password, select } from '@clack/prompts';
-import { pickDecisionProvider } from '../setupAiProvider';
+import { pickDecisionProvider, withComposeProfiles } from '../setupAiProvider';
 import { SETUP_DEFAULT_DECISION_KIND } from '../../lib/setupEnvDefaults';
 
 const selectMock = vi.mocked(select);
@@ -49,7 +49,7 @@ describe('pickDecisionProvider', () => {
 		// card reads the same one, and the two surfaces describe one answer.
 		expect(options.initialValue).toBe(SETUP_DEFAULT_DECISION_KIND);
 		expect(options.options[0]!.value).toBe('skip');
-		expect(options.options.map((option) => option.value)).toEqual(['skip', 'typesafe']);
+		expect(options.options.map((option) => option.value)).toEqual(['skip', 'typesafe', 'local']);
 	});
 
 	it('writes nothing and asks for no key when skipped', async () => {
@@ -58,6 +58,19 @@ describe('pickDecisionProvider', () => {
 		const result = await pickDecisionProvider();
 
 		expect(result).toEqual({ env: {}, isPlaneConfigured: false });
+		expect(passwordMock).not.toHaveBeenCalled();
+	});
+
+	it('configures the local engine with no key and asks for its compose profile', async () => {
+		selectMock.mockResolvedValueOnce('local' as never);
+
+		const result = await pickDecisionProvider();
+
+		expect(result).toEqual({
+			env: { DECISION_PROVIDER: 'local' },
+			isPlaneConfigured: true,
+			composeProfiles: ['decision-local'],
+		});
 		expect(passwordMock).not.toHaveBeenCalled();
 	});
 
@@ -99,5 +112,16 @@ describe('pickDecisionProvider', () => {
 		isCancelMock.mockReturnValueOnce(false).mockReturnValueOnce(true);
 
 		expect(await pickDecisionProvider()).toBeNull();
+	});
+});
+
+describe('withComposeProfiles', () => {
+	it('adds the engine profile to what the install already runs', () => {
+		expect(withComposeProfiles('mta,tls', ['decision-local'])).toBe('mta,tls,decision-local');
+	});
+
+	it('starts a value when there is none, and never duplicates', () => {
+		expect(withComposeProfiles(undefined, ['decision-local'])).toBe('decision-local');
+		expect(withComposeProfiles('decision-local', ['decision-local'])).toBe('decision-local');
 	});
 });

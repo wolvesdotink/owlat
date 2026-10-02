@@ -861,6 +861,34 @@ Where N-1 can have left work half done (an action killed between two of its
 calls), N also ships the sweep that finds it and finishes or ends it, as
 `automations/stalledRuns.ts` does for automation runs.
 
+**IMAP wire version.** The functions the IMAP server calls (the `fn` table in
+`apps/imap/src/convex.ts`) are a contract with a separately deployed image,
+versioned by `IMAP_WIRE_VERSION` and `IMAP_WIRE_MIN_SUPPORTED` in
+`@owlat/shared/imapWire` (ADR-0063). The IMAP server reports its wire version
+at startup and every 5 minutes (`mail/imap/serverRegistry:report`) and serves
+only a backend that speaks it. That handshake only covers servers that report
+(not v0.6.7 and older), and a running one only at its next report, so the
+backend also refuses callers below the minimum itself:
+`assertImapWireSupported` in `mail/imap/serverRegistry.ts`, which treats a
+caller without `imapWireVersion` as legacy (0). `mail/appPasswords:verify`
+calls it for every IMAP login.
+
+- Bump `IMAP_WIRE_VERSION` in the PR that changes the contract: an argument or
+  result field of an IMAP-called function is added, removed or changes meaning,
+  or the IMAP server starts calling a function the previous backend lacks. The
+  expand rules above still apply; the bump records that the step happened.
+- A function whose IMAP contract will be contracted takes an optional
+  `imapWireVersion` argument, sent by the IMAP server, at least one release
+  before the removal (`mail/imap/move:expungeFolder` has it).
+- The removal itself is a contract step that raises `IMAP_WIRE_MIN_SUPPORTED`,
+  only to a version every IMAP release inside the N-1 window speaks, and calls
+  `assertImapWireSupported(args.imapWireVersion)` at the top of the changed
+  function, before any side effect. The PR cites the output of
+  `npx convex run mail/imap/serverRegistry:status` (its `safeToRaiseMinTo`)
+  from a deployment running the window's oldest IMAP release, and the release
+  notes tell operators to run it and update the IMAP container before
+  updating the backend.
+
 **Migration manifest.** A release that needs data work ships a manifest listing,
 per migration: its module (`migrations/NNNN_name:run`), whether it must finish
 before users are let back in or may run in the background, whether a later

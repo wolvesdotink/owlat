@@ -126,13 +126,16 @@ export const handleVerifyCredential = httpAction(async (ctx, request) => {
 
 	// Record last-used activity for the SMTP submission path (the IMAP server
 	// touches directly via its admin client; SMTP goes through this webhook).
-	// Best-effort — never block or fail the auth response on it.
+	// `channel` tells touch this is not a login through an IMAP server too old
+	// to report its version. Best-effort — never block or fail the auth
+	// response on it.
 	const clientName = payload.clientName?.trim().slice(0, 120);
 	await ctx
 		.runMutation(internal.mail.appPasswords.touch, {
 			appPasswordId: result.appPasswordId,
 			ip: clientIp,
 			...(clientName ? { userAgent: clientName } : {}),
+			channel: 'smtp',
 		})
 		.catch(() => undefined);
 	return new Response(

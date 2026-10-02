@@ -20,9 +20,22 @@
  *     only if the version did not move while the pages were read (the pages
  *     are separate transactions; an unmoved version means none of them saw a
  *     membership change, so together they are one consistent listing);
+ *     these two stay, because the operator runs 0054 by hand (self-hosting
+ *     maintenance docs), so no release can assume it has completed;
  *   - ready: read the blocks (about 130k UIDs per query), checking that every
  *     page reports the same version; if the folder changed mid-walk, start
- *     again, and after {@link MAX_ATTEMPTS} fall back to the listing.
+ *     again after a short backoff.
+ *
+ * A walk only spans several pages above ~130k messages, so only such a folder
+ * can keep changing under it. After {@link MAX_ATTEMPTS} torn walks the read
+ * fails with {@link MembershipUnsettledError} rather than answer from the
+ * listing: that cost the whole folder in full documents on every command for
+ * as long as the folder stayed busy, the cost this module exists to remove.
+ * The caller already treats a failed read as temporary: NOOP and CHECK
+ * complete and leave the news for the next command, an IDLE poll skips its
+ * tick, and every other command answers `NO [UNAVAILABLE]`, which tells the
+ * client to retry. None of them ever sees a UID list stitched from two
+ * memberships.
  */
 
 import { fn, type ConvexClient, type MembershipPage } from '../../convex.js';
@@ -34,8 +47,26 @@ const MAX_CACHED_FOLDERS = 128;
 /** Block pages per walk: far beyond any real folder at ~130k UIDs per page. */
 const MAX_MEMBERSHIP_PAGES = 64;
 
-/** Walks restarted because the folder changed under them before giving up. */
-const MAX_ATTEMPTS = 3;
+/** Block walks tried, each after the folder changed under the last, before giving up. */
+const MAX_ATTEMPTS = 6;
+
+/**
+ * Wait before the second walk; it doubles for each walk after that, so six
+ * walks wait at most 50 + 100 + 200 + 400 + 800 ms. Each wait is jittered
+ * down by up to half, so sessions torn by the same write do not retry in step.
+ */
+const RETRY_BASE_MS = 50;
+
+/**
+ * The folder changed between the pages of every walk {@link loadCurrentUids}
+ * tried. Temporary: the next command reads it again.
+ */
+export class MembershipUnsettledError extends Error {
+	constructor(folderId: string) {
+		super(`folder ${folderId} changed during each of ${MAX_ATTEMPTS} membership walks`);
+		this.name = 'MembershipUnsettledError';
+	}
+}
 
 interface CachedMembership {
 	readonly version: string;
@@ -70,6 +101,7 @@ export async function loadCurrentUids(
 	signal?: AbortSignal
 ): Promise<readonly number[]> {
 	for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+		if (attempt > 0) await backoff(attempt, signal);
 		signal?.throwIfAborted();
 		const cached = cache.get(folderId);
 		const head = await convex.query(fn.folderMembershipPage, {
@@ -96,9 +128,24 @@ export async function loadCurrentUids(
 			return uids;
 		}
 	}
-	// The folder kept changing under the walk: answer from the listing, as every
-	// command did before, without caching it.
-	return await loadFolderUids(convex, folderId, signal);
+	throw new MembershipUnsettledError(folderId);
+}
+
+/** Sleep before walk `attempt` (1-based retry count), or throw once `signal` aborts. */
+function backoff(attempt: number, signal?: AbortSignal): Promise<void> {
+	const full = RETRY_BASE_MS * 2 ** (attempt - 1);
+	const ms = full / 2 + Math.random() * (full / 2);
+	return new Promise((resolve, reject) => {
+		const onAbort = () => {
+			clearTimeout(timer);
+			reject(signal!.reason);
+		};
+		const timer = setTimeout(() => {
+			signal?.removeEventListener('abort', onAbort);
+			resolve();
+		}, ms);
+		signal?.addEventListener('abort', onAbort, { once: true });
+	});
 }
 
 /**

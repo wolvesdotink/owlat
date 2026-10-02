@@ -148,6 +148,7 @@ const FEATURE_STUBS = Object.fromEntries(
 		'PreferencesYourData',
 		'ProfileSyncBanner',
 		'SystemContainerHealthCard',
+		'SystemImapServersCard',
 		'SystemLlmSpendCard',
 		'SystemPortChecksCard',
 		'SystemUpdateProgress',

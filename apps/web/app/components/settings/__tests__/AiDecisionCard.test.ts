@@ -7,7 +7,10 @@ beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 });
 
-function mountCard(featureState: 'loading' | 'error' | 'enabled' | 'disabled') {
+function mountCard(
+	featureState: 'loading' | 'error' | 'enabled' | 'disabled',
+	overrides: Record<string, unknown> = {}
+) {
 	return mount(AiDecisionCard, {
 		props: {
 			enabled: true,
@@ -37,6 +40,7 @@ function mountCard(featureState: 'loading' | 'error' | 'enabled' | 'disabled') {
 			isSaving: false,
 			canTest: true,
 			featureState,
+			...overrides,
 		},
 		global: {
 			plugins: [createTestI18n()],
@@ -54,7 +58,10 @@ function mountCard(featureState: 'loading' | 'error' | 'enabled' | 'disabled') {
 				UiSwitch: true,
 				Icon: true,
 				SettingsAiKeyField: true,
-				SettingsAiModelPicker: true,
+				SettingsAiModelPicker: {
+					props: ['hint'],
+					template: '<div data-test="model-picker">{{ hint }}</div>',
+				},
 			},
 		},
 	});
@@ -94,5 +101,40 @@ describe('decision feature status', () => {
 		});
 		expect(wrapper.get('button').element.disabled).toBe(true);
 		expect(wrapper.text()).not.toContain('the key, the endpoint and the model version all work');
+	});
+});
+
+describe('the local engine', () => {
+	const local = {
+		kind: 'local',
+		requiresKey: false,
+		meta: {
+			kind: 'local',
+			label: 'shared.aiProviders.decision.providers.local.label',
+			hint: 'shared.aiProviders.decision.providers.local.hint',
+			requiresKey: false,
+			calibrated: false,
+			isLocal: true,
+			defaultBaseUrl: 'http://decision-local:8080',
+			defaultModel: 'fastino/GLiNER2.5-multi-Decide',
+			curatedModels: [],
+		},
+		storedKeySet: false,
+		modelChoice: 'fastino/GLiNER2.5-multi-Decide',
+	};
+
+	it('shows its model and address but asks for no key', () => {
+		const wrapper = mountCard('enabled', local);
+		expect(wrapper.findComponent({ name: 'SettingsAiKeyField' }).exists()).toBe(false);
+		expect(wrapper.get('[data-test="model-picker"]').text()).toContain('DECISION_LOCAL_MODEL');
+		expect(wrapper.html()).toContain('label="Engine address"');
+		// No vendor key, so no "get a key" link either.
+		expect(wrapper.text()).not.toContain('Get a key');
+	});
+
+	it('tests the engine, not a key', async () => {
+		const wrapper = mountCard('enabled', { ...local, testState: { status: 'ok' } });
+		expect(wrapper.get('button').text()).toBe('Test local engine');
+		expect(wrapper.text()).toContain('The service is running and the model is loaded.');
 	});
 });

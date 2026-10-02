@@ -192,7 +192,9 @@ describe('0046 backfill', () => {
 		const run = internal.migrations['0046_split_hot_rows'].run;
 		expect(await t.action(run, {})).toEqual({
 			featureFlagSettings: true,
-			counters: 4,
+			// Every key but the existing `contacts` row, `imapLegacy` included: a
+			// family added after the split gets an empty row.
+			counters: 5,
 			mailboxUsage: 0,
 		});
 		const read = <K extends 'contacts' | 'sends' | 'mtaHealth' | 'deliveryTest'>(key: K) =>

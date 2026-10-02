@@ -196,6 +196,8 @@ const HAND_RUN_ENTRIES: Readonly<Record<string, string>> = {
 		'the operator view of an account erasure’s progress and last error (`convex run`)',
 	'auth/erasure/lifecycle.ts#retry':
 		'the operator retry of a failed account erasure, ahead of the daily re-arm (`convex run`)',
+	'mail/imap/serverRegistry.ts#status':
+		'the operator view of which IMAP server releases reported, before a contract step (`convex run`)',
 };
 const isHandRun = (module: string): boolean =>
 	HAND_RUN_PREFIXES.some((prefix) => module.startsWith(prefix));

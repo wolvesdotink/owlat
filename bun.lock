@@ -87,6 +87,10 @@
         "vitest": "catalog:",
       },
     },
+    "apps/decision-local": {
+      "name": "@owlat/decision-local",
+      "version": "0.6.7",
+    },
     "apps/desktop": {
       "name": "@owlat/desktop",
       "version": "0.6.7",
@@ -1191,6 +1195,8 @@
     "@owlat/code-worker": ["@owlat/code-worker@workspace:apps/code-worker"],
 
     "@owlat/convex-fn-proxy": ["@owlat/convex-fn-proxy@workspace:apps/convex-fn-proxy"],
+
+    "@owlat/decision-local": ["@owlat/decision-local@workspace:apps/decision-local"],
 
     "@owlat/desktop": ["@owlat/desktop@workspace:apps/desktop"],
 

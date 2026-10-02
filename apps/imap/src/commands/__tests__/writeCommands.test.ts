@@ -16,6 +16,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { IMAP_WIRE_VERSION } from '@owlat/shared/imapWire';
 import { expungeModule } from '../expunge/index.js';
 import { copyModule } from '../copy/index.js';
 import { storeModule } from '../store/index.js';
@@ -97,15 +98,32 @@ function mockConvex(): MockConvex {
 	return { query: vi.fn(), mutation: vi.fn(), action: vi.fn() };
 }
 
+/** The folder UIDs 1..5 (`SELECTED.totalCount`), as SELECT left the client's view. */
+const FOLDER_UIDS = [1, 2, 3, 4, 5];
+
+/**
+ * A SELECTed state with a sequence view, and a backend whose membership read
+ * answers `uids`: what an EXPUNGE reads to bring the view up to date first.
+ */
+function viewState(convex: MockConvex, uids: number[] = FOLDER_UIDS): ConnectionState {
+	convex.query.mockResolvedValue({
+		version: 's1:1',
+		isReady: true,
+		blocks: [uids],
+		nextFirstUid: null,
+	});
+	return selectedState({ totalCount: uids.length, view: { uids: [...uids] } });
+}
+
 describe('EXPUNGE — descending order + \\Deleted-only + modseq bump (RFC 3501 §6.4.3)', () => {
 	it('emits * n EXPUNGE in strictly DESCENDING sequence order', async () => {
 		const convex = mockConvex();
-		// Convex returns ascending sequence numbers; the module must reverse them.
-		convex.mutation.mockResolvedValue({ sequenceNumbers: [2, 4, 5], modseq: 9 });
+		// The UIDs arrive in any order; they are numbered against the view, highest first.
+		convex.mutation.mockResolvedValue({ uids: [2, 4, 5], modseq: 9 });
 		const { deps } = makeDeps(convex);
 		const parsed = expungeModule.parseArgs([]);
 		expect(parsed.ok).toBe(true);
-		const { start, lines } = startArgs(deps, selectedState(), argsOf(parsed), 'EXPUNGE');
+		const { start, lines } = startArgs(deps, viewState(convex), argsOf(parsed), 'EXPUNGE');
 		await expungeModule.start(start).completion;
 
 		const expunges = lines.filter((l) => l.endsWith('EXPUNGE'));
@@ -115,10 +133,10 @@ describe('EXPUNGE — descending order + \\Deleted-only + modseq bump (RFC 3501 
 
 	it('delegates the \\Deleted-only filter to the convex mutation (no client-side uidSet for bare EXPUNGE)', async () => {
 		const convex = mockConvex();
-		convex.mutation.mockResolvedValue({ sequenceNumbers: [], modseq: 8 });
+		convex.mutation.mockResolvedValue({ uids: [], modseq: 8 });
 		const { deps } = makeDeps(convex);
 		const parsed = expungeModule.parseArgs([]);
-		const { start } = startArgs(deps, selectedState(), argsOf(parsed), 'EXPUNGE');
+		const { start } = startArgs(deps, viewState(convex), argsOf(parsed), 'EXPUNGE');
 		await expungeModule.start(start).completion;
 
 		// Bare EXPUNGE sends no uidSet — the convex side scans \Deleted only.
@@ -130,10 +148,10 @@ describe('EXPUNGE — descending order + \\Deleted-only + modseq bump (RFC 3501 
 
 	it('commits the bumped modseq + decremented totalCount onto SelectedState', async () => {
 		const convex = mockConvex();
-		convex.mutation.mockResolvedValue({ sequenceNumbers: [1, 2], modseq: 12 });
+		convex.mutation.mockResolvedValue({ uids: [2, 1], modseq: 12 });
 		const { deps, committed } = makeDeps(convex);
 		const parsed = expungeModule.parseArgs([]);
-		const { start } = startArgs(deps, selectedState(), argsOf(parsed), 'EXPUNGE');
+		const { start } = startArgs(deps, viewState(convex), argsOf(parsed), 'EXPUNGE');
 		await expungeModule.start(start).completion;
 
 		expect(committed).toHaveLength(1);
@@ -141,22 +159,19 @@ describe('EXPUNGE — descending order + \\Deleted-only + modseq bump (RFC 3501 
 		expect(committed[0]!.selected!.totalCount).toBe(SELECTED.totalCount - 2);
 	});
 
-	it('drains bounded Convex pages and threads the keyset + sequence cursor', async () => {
+	it('drains bounded Convex pages and threads the keyset cursor', async () => {
 		const convex = mockConvex();
 		convex.mutation
-			.mockResolvedValueOnce({
-				sequenceNumbers: [250, 220],
-				modseq: 8,
-				done: false,
-				beforeUid: 151,
-				nextSequenceNumber: 150,
-			})
-			.mockResolvedValueOnce({ sequenceNumbers: [149], modseq: 9, done: true });
+			.mockResolvedValueOnce({ uids: [250, 220], modseq: 8, done: false, beforeUid: 151 })
+			.mockResolvedValueOnce({ uids: [149], modseq: 9, done: true, beforeUid: 101 });
 		const { deps, committed } = makeDeps(convex);
 		const parsed = expungeModule.parseArgs([]);
 		const { start, lines } = startArgs(
 			deps,
-			selectedState({ totalCount: 250 }),
+			viewState(
+				convex,
+				Array.from({ length: 250 }, (_, i) => i + 1)
+			),
 			argsOf(parsed),
 			'EXPUNGE'
 		);
@@ -164,9 +179,11 @@ describe('EXPUNGE — descending order + \\Deleted-only + modseq bump (RFC 3501 
 		await expungeModule.start(start).completion;
 
 		expect(convex.mutation).toHaveBeenCalledTimes(2);
-		expect(convex.mutation.mock.calls[1]![1]).toMatchObject({
+		expect(convex.mutation.mock.calls[1]![1]).toEqual({
+			folderId: 'f1',
+			uidSet: undefined,
 			beforeUid: 151,
-			nextSequenceNumber: 150,
+			imapWireVersion: IMAP_WIRE_VERSION,
 		});
 		expect(lines.filter((line) => line.endsWith('EXPUNGE'))).toEqual([
 			'* 250 EXPUNGE',
@@ -228,7 +245,7 @@ describe('UIDPLUS — UID EXPUNGE honors the UID set (RFC 4315 §2.1)', () => {
 		convex.query
 			.mockResolvedValueOnce(null) // folderMembershipPage: not maintained
 			.mockResolvedValueOnce({ uids: [5, 6, 7, 8, 9], nextUid: null }); // listFolderUidsPage
-		convex.mutation.mockResolvedValue({ sequenceNumbers: [3], modseq: 13 });
+		convex.mutation.mockResolvedValue({ uids: [7], modseq: 13 });
 		const { deps } = makeDeps(convex);
 
 		const parsed = uidModule.parseArgs(['EXPUNGE', '5,7:8']);
@@ -241,15 +258,16 @@ describe('UIDPLUS — UID EXPUNGE honors the UID set (RFC 4315 §2.1)', () => {
 			expect.anything(),
 			expect.objectContaining({ folderId: 'f1', uidSet: [5, 7, 8] })
 		);
-		expect(lines.pop()).toBe('a1 OK UID EXPUNGE completed');
+		// No view (a state built by hand): UID 7 is numbered in the folder as read.
+		expect(lines).toEqual(['* 3 EXPUNGE', 'a1 OK UID EXPUNGE completed']);
 	});
 
 	it('UID EXPUNGE with no UID set falls back to a whole-folder \\Deleted sweep', async () => {
 		const convex = mockConvex();
-		convex.mutation.mockResolvedValue({ sequenceNumbers: [], modseq: 8 });
+		convex.mutation.mockResolvedValue({ uids: [], modseq: 8 });
 		const { deps } = makeDeps(convex);
 		const parsed = uidModule.parseArgs(['EXPUNGE']);
-		const { start } = startArgs(deps, selectedState(), argsOf(parsed), 'UID');
+		const { start } = startArgs(deps, viewState(convex), argsOf(parsed), 'UID');
 		await uidModule.start(start).completion;
 		expect(convex.mutation).toHaveBeenCalledWith(
 			expect.anything(),
@@ -455,16 +473,10 @@ describe('CONDSTORE — [MODIFIED] addresses messages the way the command did (R
 it('sends committed deletions when page two fails', async () => {
 	const convex = mockConvex();
 	convex.mutation
-		.mockResolvedValueOnce({
-			sequenceNumbers: [5],
-			modseq: 8,
-			done: false,
-			beforeUid: 5,
-			nextSequenceNumber: 4,
-		})
+		.mockResolvedValueOnce({ uids: [5], modseq: 8, done: false, beforeUid: 5 })
 		.mockRejectedValueOnce(new Error('page two failed'));
 	const { deps, committed } = makeDeps(convex);
-	const { start, lines } = startArgs(deps, selectedState(), { byUid: false }, 'EXPUNGE');
+	const { start, lines } = startArgs(deps, viewState(convex), { byUid: false }, 'EXPUNGE');
 	await expungeModule.start(start).completion;
 	expect(lines).toContain('* 5 EXPUNGE');
 	expect(committed.at(-1)?.selected?.totalCount).toBe(4);
