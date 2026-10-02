@@ -3119,12 +3119,34 @@
 			}
 		},
 		"email": {
+			"coeditNotices": {
+				"blockReplaced": "Your change to a block was replaced by {name}, who edited it at the same time.",
+				"dismiss": "Dismiss",
+				"fieldReplaced": "Your change to {field} was replaced by {name}, who edited it at the same time.",
+				"fields": {
+					"attachments": "the attachments",
+					"name": "the name",
+					"plainText": "the plain-text version",
+					"subject": "the subject",
+					"unsubscribe": "the unsubscribe setting"
+				},
+				"inHistory": "Your version is also saved in version history.",
+				"restore": "Put mine back"
+			},
 			"editorConflictDialog": {
 				"description": "It was saved somewhere else after you opened it: in another tab, on the Translations page, or through a saved block it uses. Your edits are not saved yet. Keep your version to save it over the newer one, or load the latest version and discard your edits.",
 				"keepMine": "Keep my version",
 				"languageChanged": "Its default language was changed after you opened it, so your edits belong to a different language now and cannot be saved over it. Load the latest version, then make your changes again.",
 				"loadLatest": "Load latest",
 				"title": "This email changed while you were editing"
+			},
+			"editorPresence": {
+				"label": "People editing this email",
+				"more": "{count} more",
+				"offline": "Not synced",
+				"offlineTitle": "Your latest edits have not reached the others yet. They are kept and sent again automatically.",
+				"titleEditing": "{name} is editing a block",
+				"titleViewing": "{name} has this email open"
 			},
 			"emailBuilderViewportGate": {
 				"body": "Drag-and-drop editing doesn't fit on a phone. Open this on a tablet or desktop to make changes — everything you've saved is exactly as you left it.",
@@ -3165,6 +3187,7 @@
 				"trigger": "History",
 				"triggerTitle": "Version history",
 				"triggers": {
+					"conflict": "Before an editing conflict",
 					"publish": "Published",
 					"save": "Saved",
 					"send": "Sent"
@@ -13026,6 +13049,10 @@
 			"title": "Dual-transport alignment",
 			"unknown": "We couldn't finish reading DNS for your sending domains yet, so the switchover holds where it is. This re-checks itself — nothing for you to do.",
 			"unknownDomains": "We couldn't finish reading DNS for ({domains}) yet, so the switchover holds where it is. This re-checks itself — nothing for you to do."
+		},
+		"editorPresence": {
+			"isEditing": "{name} is editing",
+			"someone": "Someone"
 		},
 		"gettingStarted": {
 			"addedContacts": {

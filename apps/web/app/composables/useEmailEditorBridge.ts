@@ -1,24 +1,18 @@
-import { ref, watch, type Ref } from 'vue';
-import {
-	provideEmailBuilderHandlers,
-	type EditorBlock,
-	type HistoryState,
-	type ImageUploadResult,
-	type SavedBlock,
+import { computed, ref, watch, type Ref } from 'vue';
+import type {
+	BuilderCollabFocus,
+	EditorBlock,
+	HistoryState,
+	ImageUploadResult,
 } from '@owlat/email-builder';
-import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
-import { getImageDimensions } from '~/utils/getImageDimensions';
-import { SurfacedOperationError } from '~/lib/operationError';
+import type { CoeditOp } from '@owlat/shared/coeditOps';
 import { versionedRef } from '~/lib/versionedRef';
 import { useEditorDirtyTracking } from './useEditorDirtyTracking';
 import { StaleDraftError } from './useEditorSaveOperation';
 import { useOperationErrorToast } from './useOperationErrorToast';
-import type { BackendOperationResult } from './useBackendOperation';
-import {
-	registerUploadedMediaReference,
-	type MediaAssetReferenceDeps,
-} from '~/utils/mediaAssetReference';
+import { provideEmailEditorHandlers } from './emailEditorHandlers';
+import type { CoeditTarget } from './useEmailCoediting';
+import { useEmailEditorCoedit, type EmailEditorCoedit } from './useEmailEditorCoedit';
 
 /**
  * Email editor bridge (module) — the app-side owner that backs the
@@ -29,97 +23,13 @@ import {
  * supply only their divergent halves — a per-surface `initialize(source)` parse
  * and `save()` serialize, plus an optional `extraWatch` list for surface-specific
  * dirty-tracked refs. The bridge never branches on which surface it serves.
+ *
+ * With `coedit`, the email is edited live together with everyone else who
+ * has it open (docs/adr/0071-email-coediting.md): the canvas follows the
+ * shared session instead of the row, other people's edits arrive block by
+ * block, and Save writes the session. A member who cannot co-edit falls back
+ * to the classic draft below.
  */
-
-// ---------------------------------------------------------------------------
-// uploadImage pipeline — a pure function of its injected mutations, so the four
-// steps, the three error modes, and the media-library side effect are testable
-// without mounting a page.
-// ---------------------------------------------------------------------------
-
-export interface UploadImageDeps extends MediaAssetReferenceDeps {
-	/** Mint a one-shot upload URL (Convex `storage.generateUploadUrl`). */
-	generateUploadUrl: () => Promise<string | null | undefined>;
-	/** Measure the image client-side for the media-library record. */
-	getImageDimensions: (file: File) => Promise<{ width: number; height: number } | null>;
-}
-
-/**
- * Build the `uploadImage` handler the EmailBuilder injects:
- * `generateUploadUrl` → POST the file → measure dimensions → `mediaAssets.create`
- * → `storage.getUrl`. Every uploaded image is auto-registered to the media
- * library (the easy-to-miss side effect).
- */
-export function createUploadImageHandler(
-	deps: UploadImageDeps
-): (file: File) => Promise<ImageUploadResult> {
-	return async (file: File): Promise<ImageUploadResult> => {
-		const uploadUrl = await deps.generateUploadUrl();
-		if (!uploadUrl) {
-			throw new Error('Failed to get upload URL');
-		}
-
-		const response = await fetch(uploadUrl, {
-			method: 'POST',
-			headers: { 'Content-Type': file.type },
-			body: file,
-		});
-
-		if (!response.ok) {
-			throw new Error('Failed to upload image');
-		}
-
-		const uploadResult = (await response.json()) as { storageId?: unknown };
-		if (typeof uploadResult.storageId !== 'string' || uploadResult.storageId.length === 0) {
-			throw new Error('Image upload did not return a storage ID');
-		}
-		const storageId = uploadResult.storageId as Id<'_storage'>;
-
-		// Auto-save to media library FIRST: `storage.getUrl` only resolves blobs
-		// backed by a `mediaAssets` row (cross-resource IDOR guard), so the asset
-		// must exist before we can mint its URL.
-		const dimensions = await deps.getImageDimensions(file);
-		const registered = await registerUploadedMediaReference(deps, {
-			storageId,
-			filename: file.name,
-			mimeType: file.type,
-			fileSize: file.size,
-			width: dimensions?.width,
-			height: dimensions?.height,
-		});
-		if (!registered.ok && registered.reason === 'media-registration-failed') {
-			throw new Error('Image upload did not create a media asset');
-		}
-		if (!registered.ok) {
-			throw new Error('Failed to get image URL');
-		}
-
-		return registered.reference;
-	};
-}
-
-/**
- * Build the `savedBlocks.save` handler from the `emailBlocks.blocks.create`
- * operation. The operation resolves `{ ok: false }` on failure (it never
- * throws), but the builder's contract is promise-shaped: it keeps its save
- * dialog open, name intact, only when the handler rejects. So a failed result
- * must become a rejection — marked as already surfaced, because the operation
- * module has toasted it.
- */
-export function createSavedBlockSaveHandler(
-	createEmailBlock: (args: {
-		name: string;
-		content: string;
-	}) => Promise<BackendOperationResult<unknown>>
-): (block: { name: string; content: EditorBlock[] }) => Promise<void> {
-	return async (block) => {
-		const created = await createEmailBlock({
-			name: block.name,
-			content: JSON.stringify(block.content),
-		});
-		if (!created.ok) throw new SurfacedOperationError('Saving the block failed');
-	};
-}
 
 /** How long a conflict choice waits for the live query to deliver the newer row. */
 const CONFLICT_CATCH_UP_MS = 5000;
@@ -143,6 +53,11 @@ export interface EmailEditorSaveBase<S> {
 	source: NonNullable<S> | null;
 	/** Its revision, for the backend's concurrent-writer check. */
 	revision: number | undefined;
+	/**
+	 * The co-editing session version this tab has seen. Pass it to the update
+	 * mutation: the server then saves the shared session, not the payload.
+	 */
+	coeditVersion?: number;
 }
 
 export interface EmailEditorBridgeOptions<S> {
@@ -172,6 +87,11 @@ export interface EmailEditorBridgeOptions<S> {
 	 * version"). When it cannot, the conflict only offers loading the latest.
 	 */
 	canKeepDraft?: (base: NonNullable<S>, latest: NonNullable<S>) => boolean;
+	/**
+	 * Co-edit this email live. `fields` are the surface's shared refs besides
+	 * name and subject, by session field name (`plainTextOverride`, ...).
+	 */
+	coedit?: { target: () => CoeditTarget | null; fields: Record<string, Ref<unknown>> };
 }
 
 /** What the bridge uses of the mounted EmailBuilder (its exposed API). */
@@ -180,6 +100,8 @@ export interface EmailBuilderHandle {
 	loadState: (state: HistoryState) => void;
 	/** Text is being typed that the blocks do not hold until the editor closes. */
 	readonly isInlineEditing?: boolean;
+	/** Apply other people's edits, keeping selection and undo history. */
+	applyRemoteOps?: (ops: CoeditOp<EditorBlock>[]) => void;
 }
 
 /** A save the backend refused because the email moved on after the draft loaded. */
@@ -228,23 +150,17 @@ export interface EmailEditorBridgeReturn {
 	keepMyVersion: () => Promise<void>;
 	loadLatestVersion: () => Promise<void>;
 	dismissConflict: () => void;
+	// Co-editing (null without `coedit`): presence, notices, live state.
+	coediting: EmailEditorCoedit | null;
+	// Joining the live session; show the editor once this is false.
+	isConnecting: Ref<boolean>;
+	// Bind to the EmailBuilder's `collab-focus` event.
+	onCollabFocus: (focus: BuilderCollabFocus) => void;
 }
 
 export function useEmailEditorBridge<S>(
 	opts: EmailEditorBridgeOptions<S>
 ): EmailEditorBridgeReturn {
-	const { t } = useI18n();
-
-	const { run: generateUploadUrl } = useBackendOperation(api.storage.generateUploadUrl, {
-		label: () => t('shared.useEmailEditorBridge.getUploadUrlOperation'),
-	});
-	const { run: createMediaAsset } = useBackendOperation(api.mediaAssets.create, {
-		label: () => t('shared.useEmailEditorBridge.saveMediaAssetOperation'),
-	});
-	const { run: createEmailBlock } = useBackendOperation(api.emailBlocks.blocks.create, {
-		label: () => t('shared.useEmailEditorBridge.saveBlockOperation'),
-	});
-
 	// Universal canvas state. The canvas emits every change to its blocks, so
 	// counting those writes stands in for deep-watching the tree.
 	const { ref: blocks, version: blocksVersion } = versionedRef<EditorBlock[]>([]);
@@ -277,8 +193,40 @@ export function useEmailEditorBridge<S>(
 	// no-ops when nothing differs, so the echo of the user's own save leaves the
 	// canvas, its selection and its undo stack alone.
 	const builderRef = ref<EmailBuilderHandle | null>(null);
-	const { hasChanges, beginSubmit, acknowledge, rebase, reload } = useEditorDirtyTracking({
-		source: opts.source,
+
+	// Co-editing: the session owns the canvas while it is live. Until it is
+	// (or once it turns out it cannot be), the classic draft below follows the row.
+	const coediting = opts.coedit
+		? useEmailEditorCoedit(
+				opts.coedit.target,
+				{
+					blocks,
+					name,
+					subject,
+					fields: opts.coedit.fields,
+					blocksVersion,
+					builder: () => builderRef.value,
+				},
+				() => {
+					const row = opts.source.value;
+					return row && opts.revision ? opts.revision(row as NonNullable<S>) : undefined;
+				}
+			)
+		: null;
+	const isLive = computed(() => coediting?.status.value === 'active');
+	const isConnecting = computed(() => coediting?.status.value === 'connecting');
+	const classicSource = computed(() =>
+		coediting && coediting.status.value !== 'unavailable' ? undefined : opts.source.value
+	) as Ref<S>;
+
+	const {
+		hasChanges: classicHasChanges,
+		beginSubmit,
+		acknowledge,
+		rebase,
+		reload,
+	} = useEditorDirtyTracking({
+		source: classicSource,
 		revision: opts.revision,
 		initialize: (source) => opts.initialize(source, ctx),
 		// Text typed into the inline editor reaches the blocks only when it
@@ -297,17 +245,33 @@ export function useEmailEditorBridge<S>(
 		},
 		watchSources: [blocks, subject, name, ...(opts.extraWatch ?? [])],
 		changeSignals: new Map([[blocks, blocksVersion]]),
-		onDirtyChange: setHasChanges,
 	});
 
-	// Media-picker plumbing.
-	const showMediaPicker = ref(false);
-	let mediaPickerCallback: ((result: ImageUploadResult) => void) | null = null;
-	const onMediaPickerSelect = (result: ImageUploadResult) => {
-		mediaPickerCallback?.(result);
-		mediaPickerCallback = null;
-		showMediaPicker.value = false;
-	};
+	// Live, the email has unsaved changes when the session does or this tab
+	// has edits still on their way. Leaving only warns when nobody else is in
+	// the editor to keep them.
+	const hasChanges = computed(() =>
+		isLive.value && coediting
+			? coediting.hasSharedChanges.value || coediting.hasUnsent.value
+			: classicHasChanges.value
+	);
+	watch(
+		() => hasChanges.value && (!isLive.value || coediting?.isAlone.value === true),
+		(guard) => setHasChanges(guard),
+		{ immediate: true }
+	);
+	// The row the session was last based on, for "keep my version".
+	let rowAtSessionBase: NonNullable<S> | null = null;
+	watch([() => opts.source.value, () => coediting?.meta.value], ([row, meta]) => {
+		if (row && meta && opts.revision?.(row as NonNullable<S>) === meta.baseRevision) {
+			rowAtSessionBase = row as NonNullable<S>;
+		}
+	});
+	// "Keep my version" over a row that moved on: the revision the save names.
+	let keepOverRevision: number | null = null;
+
+	// The handler set the builder injects, and the media picker it opens.
+	const { showMediaPicker, onMediaPickerSelect } = provideEmailEditorHandlers();
 
 	// Test-email modal.
 	const showTestEmailModal = ref(false);
@@ -316,36 +280,6 @@ export function useEmailEditorBridge<S>(
 		testEmailHtml.value = html;
 		showTestEmailModal.value = true;
 	};
-
-	// Produce the EmailBuilderHandlers the builder injects. Zero config — this is
-	// the verbatim part that was copied across the three pages.
-	provideEmailBuilderHandlers({
-		uploadImage: createUploadImageHandler({
-			generateUploadUrl: async () => {
-				const minted = await generateUploadUrl({});
-				return minted.ok ? minted.result : null;
-			},
-			getUrl: (storageId) => requireConvex().query(api.storage.getUrl, { storageId }),
-			createMediaAsset: async (asset) => {
-				const created = await createMediaAsset(asset);
-				return created.ok ? created.result : undefined;
-			},
-			getImageDimensions,
-		}),
-		pickFromMediaLibrary: (onSelect) => {
-			mediaPickerCallback = onSelect;
-			showMediaPicker.value = true;
-		},
-		savedBlocks: {
-			fetch: async (params) => {
-				const result = await requireConvex().query(api.emailBlocks.blocks.list, {
-					search: params?.search,
-				});
-				return (result ?? []) as SavedBlock[];
-			},
-			save: createSavedBlockSaveHandler(createEmailBlock),
-		},
-	});
 
 	// A stale-revision refusal: the draft stays as it is until the user picks.
 	const conflict = ref<EmailEditorConflict | null>(null);
@@ -356,13 +290,18 @@ export function useEmailEditorBridge<S>(
 	// save that lands clears dirty only if nothing was edited while it ran.
 	const save = async () => {
 		isSaving.value = true;
-		const submission = beginSubmit();
+		const live = isLive.value ? coediting : null;
+		const submission = live ? null : beginSubmit();
 		try {
-			const landed = await opts.save(ctx, {
-				source: submission.base,
-				revision: submission.revision,
-			});
-			acknowledge(submission, typeof landed === 'number' ? landed : undefined);
+			if (live) {
+				await saveSession(live);
+			} else if (submission) {
+				const landed = await opts.save(ctx, {
+					source: submission.base,
+					revision: submission.revision,
+				});
+				acknowledge(submission, typeof landed === 'number' ? landed : undefined);
+			}
 		} catch (error) {
 			if (error instanceof StaleDraftError) {
 				conflict.value = { currentRevision: error.currentRevision };
@@ -371,6 +310,21 @@ export function useEmailEditorBridge<S>(
 		} finally {
 			isSaving.value = false;
 		}
+	};
+
+	// Live: send what this tab still has, then save the shared session (the
+	// server writes the session, so nobody's edit that reached it is lost).
+	const saveSession = async (live: EmailEditorCoedit) => {
+		await live.flushNow();
+		const seen = live.seenVersion();
+		await opts.save(ctx, {
+			source: (opts.source.value as NonNullable<S> | null) ?? null,
+			revision: keepOverRevision ?? live.meta.value?.baseRevision,
+			coeditVersion: seen,
+		});
+		keepOverRevision = null;
+		// The leave guard reads the dirty flag right after this resolves.
+		if (seen !== undefined) await live.untilSaved(seen);
 	};
 
 	// A Save button handler's rejection would reach Vue's error handling and
@@ -430,14 +384,26 @@ export function useEmailEditorBridge<S>(
 	// row's revision. Another writer in between just brings the choice back. A
 	// draft that no longer fits the latest row keeps the dialog open, now only
 	// offering to load the latest.
+	// Live, the shared session is what is kept: the next save names the
+	// latest row's revision, so it goes over the change made elsewhere.
+	const canKeepLive = () => {
+		const latest = opts.source.value as NonNullable<S> | null;
+		return !rowAtSessionBase || !latest || opts.canKeepDraft?.(rowAtSessionBase, latest) !== false;
+	};
 	const keepMyVersion = () =>
 		resolveConflict((pending) => {
-			if (!pending.mustReload && rebase()) return requestSave();
+			if (!pending.mustReload && isLive.value && canKeepLive()) {
+				keepOverRevision = pending.currentRevision;
+				return requestSave();
+			}
+			if (!pending.mustReload && !isLive.value && rebase()) return requestSave();
 			conflict.value = { ...pending, mustReload: true };
 		});
 
-	// "Load latest": discard the draft and show the server's version.
-	const loadLatestVersion = () => resolveConflict(reload);
+	// "Load latest": discard the draft (live: everyone's unsaved changes) and
+	// show the server's version.
+	const loadLatestVersion = () =>
+		resolveConflict(() => (isLive.value && coediting ? coediting.resetShared() : reload()));
 
 	const dismissConflict = () => {
 		if (!isResolvingConflict.value) conflict.value = null;
@@ -466,7 +432,11 @@ export function useEmailEditorBridge<S>(
 		hasChanges,
 		showUnsavedChangesDialog,
 		isSavingBeforeLeave,
-		confirmDiscard,
+		// Leaving a live session alone without saving: the shared draft goes too.
+		confirmDiscard: () => {
+			if (isLive.value) void coediting?.resetShared();
+			confirmDiscard();
+		},
 		confirmSave,
 		cancelNavigation,
 		showMediaPicker,
@@ -482,5 +452,8 @@ export function useEmailEditorBridge<S>(
 		keepMyVersion,
 		loadLatestVersion,
 		dismissConflict,
+		coediting,
+		isConnecting,
+		onCollabFocus: (focus) => coediting?.onCollabFocus(focus),
 	};
 }
