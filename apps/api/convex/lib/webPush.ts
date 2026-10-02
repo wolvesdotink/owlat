@@ -66,26 +66,30 @@ async function hkdf(salt: Bytes, ikm: Bytes, info: Bytes, length: number): Promi
 	return new Uint8Array(bits);
 }
 
-/** An ECDH or ECDSA P-256 private key from its raw scalar plus its public point. */
+/** The JWK of a P-256 private key, from its raw scalar plus its public point. */
+function privateJwk(d: string, publicPoint: Bytes): JsonWebKey {
+	return {
+		kty: 'EC',
+		crv: 'P-256',
+		d,
+		x: bytesToBase64Url(publicPoint.slice(1, 33)),
+		y: bytesToBase64Url(publicPoint.slice(33, 65)),
+		ext: true,
+	};
+}
+
+/** An ECDH or ECDSA P-256 private key (literal algorithms, one call each). */
 async function importPrivateKey(
 	d: string,
 	publicPoint: Bytes,
 	algorithm: 'ECDH' | 'ECDSA'
 ): Promise<CryptoKey> {
-	return crypto.subtle.importKey(
-		'jwk',
-		{
-			kty: 'EC',
-			crv: 'P-256',
-			d,
-			x: bytesToBase64Url(publicPoint.slice(1, 33)),
-			y: bytesToBase64Url(publicPoint.slice(33, 65)),
-			ext: true,
-		},
-		{ name: algorithm, namedCurve: 'P-256' },
-		false,
-		algorithm === 'ECDH' ? ['deriveBits'] : ['sign']
-	);
+	const jwk = privateJwk(d, publicPoint);
+	return algorithm === 'ECDH'
+		? crypto.subtle.importKey('jwk', jwk, { name: 'ECDH', namedCurve: 'P-256' }, false, [
+				'deriveBits',
+			])
+		: crypto.subtle.importKey('jwk', jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
 }
 
 /** Test seam: the RFC example fixes the sender's ephemeral key and the salt. */
