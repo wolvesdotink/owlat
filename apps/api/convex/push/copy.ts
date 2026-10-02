@@ -103,7 +103,10 @@ const MAX_BODY = 160;
 function clip(text: string, max: number): string {
 	// Collapse whitespace first: a subject with a newline would render as two lines.
 	const flat = text.replace(/\s+/g, ' ').trim();
-	return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+	// Count code points, not UTF-16 units: a cut through an emoji's surrogate
+	// pair would leave half of it, which renders as "�".
+	const chars = Array.from(flat);
+	return chars.length > max ? `${chars.slice(0, max - 1).join('')}…` : flat;
 }
 
 function copyFor(locale: string | undefined): Copy {
