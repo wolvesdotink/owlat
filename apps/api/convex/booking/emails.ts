@@ -29,6 +29,7 @@ import { APP_LOCALE_BCP47 } from '@owlat/shared/appLocales';
 import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { attemptSystemEmail } from '../systemMail';
 import { getOptional } from '../lib/env';
+import { sanitizeEmailHeaderValue } from '../lib/inputGuards';
 import { logWarn } from '../lib/runtimeLog';
 import { renderSystemEmail } from '../lib/systemEmails';
 import { systemEmailLocale } from '../lib/systemEmailCopy';
@@ -206,7 +207,8 @@ export const send = internalAction({
 			const outcome = await attemptSystemEmail(ctx, {
 				to: mail.to,
 				from,
-				subject: mail.subject,
+				// Title and names are free text: one header line, whatever they hold.
+				subject: sanitizeEmailHeaderValue(mail.subject),
 				html: mail.html,
 				replyTo: mail.replyTo,
 				attachments,
