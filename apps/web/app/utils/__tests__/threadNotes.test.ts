@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	activeMentionQuery,
+	countNotesMentioning,
 	insertMention,
 	interleaveNotes,
 	mentionHandle,
@@ -83,5 +84,18 @@ describe('interleaveNotes', () => {
 
 	it('keeps every note when there are no messages', () => {
 		expect(interleaveNotes([], [{ createdAt: 1 }]).leading).toHaveLength(1);
+	});
+});
+
+describe('countNotesMentioning', () => {
+	it('counts the notes that mention the user, and nothing without one', () => {
+		const notes = [
+			{ mentionedUserIds: ['u_ben'] },
+			{ mentionedUserIds: [] },
+			{ mentionedUserIds: ['u_cy', 'u_ben'] },
+		];
+		expect(countNotesMentioning(notes, 'u_ben')).toBe(2);
+		expect(countNotesMentioning(notes, 'u_ada')).toBe(0);
+		expect(countNotesMentioning(notes, null)).toBe(0);
 	});
 });

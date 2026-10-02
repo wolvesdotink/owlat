@@ -72,8 +72,9 @@ defineExpose({ openNote });
 				>
 			</button>
 		</div>
+		<!-- v-show, not v-if: closing the box (or Esc) keeps what was typed. -->
 		<InboxNoteComposer
-			v-if="noteOpen"
+			v-show="noteOpen"
 			ref="composer"
 			:submit="props.notes.post"
 			:candidates-for="props.notes.candidatesFor"

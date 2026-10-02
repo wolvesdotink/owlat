@@ -130,3 +130,12 @@ export function interleaveNotes<
 	}
 	return { leading, after };
 }
+
+/** How many of `notes` mention `userId` (0 without a user). */
+export function countNotesMentioning(
+	notes: readonly { mentionedUserIds: readonly string[] }[],
+	userId: string | null | undefined
+): number {
+	if (!userId) return 0;
+	return notes.filter((note) => note.mentionedUserIds.includes(userId)).length;
+}

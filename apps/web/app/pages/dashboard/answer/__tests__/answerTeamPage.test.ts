@@ -192,7 +192,9 @@ async function mountPage() {
 				InboxComposeModeTabs: ComposeModeTabs,
 				InboxAnswerNotesPanel: defineComponent({
 					name: 'InboxAnswerNotesPanel',
-					setup: () => () => h('div', { 'data-testid': 'answer-notes-panel' }),
+					props: { active: Boolean },
+					setup: (props) => () =>
+						h('div', { 'data-testid': 'answer-notes-panel', 'data-active': String(props.active) }),
 				}),
 				AnswerTeamConversation: inert('AnswerTeamConversation'),
 				AnswerTeamReusedAnswers: inert('AnswerTeamReusedAnswers'),
@@ -242,16 +244,18 @@ describe('Answer mode for a Team inbox thread', () => {
 		noteCount.value = 2;
 		const wrapper = await mountPage();
 		expect(wrapper.get('[data-testid="compose-mode-note-count"]').text()).toBe('2');
-		expect(wrapper.find('[data-testid="answer-notes-panel"]').exists()).toBe(false);
+		// Mounted but hidden, so a half-written note survives a trip to Reply.
+		const panel = () => wrapper.get('[data-testid="answer-notes-panel"]').attributes('data-active');
+		expect(panel()).toBe('false');
 		const body = wrapper.get<HTMLTextAreaElement>('[data-testid="thread-composer-body"]');
 		await body.setValue('My own words');
 
 		await wrapper.get('[data-testid="compose-mode-note"]').trigger('click');
-		expect(wrapper.find('[data-testid="answer-notes-panel"]').exists()).toBe(true);
+		expect(panel()).toBe('true');
 		expect(wrapper.get('[data-testid="thread-composer"]').isVisible()).toBe(false);
 
 		await wrapper.get('[data-testid="compose-mode-reply"]').trigger('click');
-		expect(wrapper.find('[data-testid="answer-notes-panel"]').exists()).toBe(false);
+		expect(panel()).toBe('false');
 		expect(
 			wrapper.get<HTMLTextAreaElement>('[data-testid="thread-composer-body"]').element.value
 		).toBe('My own words');
@@ -261,7 +265,9 @@ describe('Answer mode for a Team inbox thread', () => {
 		const wrapper = await mountPage();
 		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' }));
 		await flushPromises();
-		expect(wrapper.find('[data-testid="answer-notes-panel"]').exists()).toBe(true);
+		expect(wrapper.get('[data-testid="answer-notes-panel"]').attributes('data-active')).toBe(
+			'true'
+		);
 	});
 
 	it("links the correspondent's name to their contact profile", async () => {

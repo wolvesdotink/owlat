@@ -7,16 +7,28 @@
  */
 import type { ThreadNotes } from '~/composables/useThreadNotes';
 
-defineProps<{
+const props = defineProps<{
 	notes: ThreadNotes;
 	isAdmin: boolean;
+	/** The Note tab is showing. Hidden, not unmounted, so a half-written note survives Reply. */
+	active: boolean;
 }>();
 
 const { t } = useI18n();
+
+// Switching to the tab (a click or `n`) puts the cursor in the note box.
+const composer = ref<{ focus: () => void } | null>(null);
+watch(
+	() => props.active,
+	(active) => {
+		if (active) void nextTick(() => composer.value?.focus());
+	},
+	{ immediate: true }
+);
 </script>
 
 <template>
-	<div class="flex min-h-0 flex-1 flex-col" data-testid="answer-notes-panel">
+	<div v-show="active" class="flex min-h-0 flex-1 flex-col" data-testid="answer-notes-panel">
 		<div class="min-h-0 flex-1 overflow-y-auto p-4">
 			<UiQueryBoundary
 				:loading="notes.isLoading.value && notes.notes.value.length === 0"
@@ -39,7 +51,11 @@ const { t } = useI18n();
 			</UiQueryBoundary>
 		</div>
 		<div class="shrink-0 border-t border-border-subtle p-3">
-			<InboxNoteComposer :submit="notes.post" :candidates-for="notes.candidatesFor" />
+			<InboxNoteComposer
+				ref="composer"
+				:submit="notes.post"
+				:candidates-for="notes.candidatesFor"
+			/>
 		</div>
 	</div>
 </template>

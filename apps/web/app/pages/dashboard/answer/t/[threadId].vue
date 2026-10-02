@@ -253,9 +253,8 @@ function onKeydown(event: KeyboardEvent) {
 		!isDialogOpen()
 	) {
 		event.preventDefault();
-		if (event.key.toLowerCase() === 'n') {
-			if (isAdmin.value) [tab.value, composeMode.value] = ['reply', 'note'];
-		} else view.value = view.value === 'summary' ? 'full' : 'summary';
+		if (event.key.toLowerCase() !== 'n') view.value = view.value === 'summary' ? 'full' : 'summary';
+		else if (isAdmin.value) [tab.value, composeMode.value] = ['reply', 'note'];
 	}
 }
 const aiFocus = useAnswerAiFocus();
@@ -379,11 +378,12 @@ onBeforeUnmount(() => {
 					:note-count="threadNotes.liveCount.value"
 				/>
 				<InboxAnswerNotesPanel
-					v-if="isAdmin && composeMode === 'note'"
+					v-if="isAdmin"
+					:active="composeMode === 'note'"
 					:notes="threadNotes"
 					:is-admin="isAdmin"
 				/>
-				<!-- v-show, not v-if: switching to Note keeps the reply as typed. -->
+				<!-- v-show, not v-if: switching tabs keeps the reply (and the note) as typed. -->
 				<InboxThreadComposer
 					v-if="isAdmin && reply.composerTarget.value"
 					v-show="composeMode === 'reply'"

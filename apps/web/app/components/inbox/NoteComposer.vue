@@ -62,6 +62,8 @@ function fit() {
 	const el = textarea.value;
 	if (!el) return;
 	el.style.height = 'auto';
+	// Hidden (a closed note box keeps its draft): measure again when shown.
+	if (el.scrollHeight === 0) return;
 	el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
 }
 
@@ -136,7 +138,12 @@ onMounted(() => {
 	if (props.autofocus) textarea.value?.focus();
 });
 
-defineExpose({ focus: () => textarea.value?.focus() });
+defineExpose({
+	focus: () => {
+		fit();
+		textarea.value?.focus();
+	},
+});
 </script>
 
 <template>

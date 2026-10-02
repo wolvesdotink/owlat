@@ -11,7 +11,7 @@ import {
 	pickReplyTarget,
 } from '~/utils/teamThreadReply';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
-import { interleaveNotes } from '~/utils/threadNotes';
+import { countNotesMentioning, interleaveNotes } from '~/utils/threadNotes';
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
 import { useTeamKeptReply } from '~/composables/useTeamKeptReply';
 
@@ -262,6 +262,14 @@ function hasAgentInsight(message: {
 // ── Internal notes: between the messages by time, written under the thread ──
 const threadNotes = useThreadNotes(threadId, { enabled: () => isAdmin.value });
 const noteSlots = computed(() => interleaveNotes(messages.value, threadNotes.notes.value));
+// A note mentioning me lands while I have the thread open: I have seen it, so
+// the Mentions badge must not keep counting it until the next visit.
+watch(
+	() => countNotesMentioning(threadNotes.notes.value, user.value?.id),
+	(count, before) => {
+		if (count > (before ?? 0)) markSeen();
+	}
+);
 const composeBar = ref<{ openNote: () => void } | null>(null);
 
 // "Compose email" (top bar, palette, shortcut) on a thread answers the thread.
