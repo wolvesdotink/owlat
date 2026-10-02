@@ -66,6 +66,8 @@ const props = withDefaults(
 		notice?: ReplyNotice | null;
 		/** The working draft to pre-fill with (agent's or a saved edit). */
 		draft?: string | null;
+		/** A saved reply's gaps are in that draft: they hold Send (`isDraftGapGuarded`). */
+		draftGapGuarded?: boolean;
 		/** The agent's original draft — the "before" of the edit diff. */
 		originalDraft?: string | null;
 		/** The reply's subject to pre-fill (the draft's, or "Re: …"). */
@@ -90,6 +92,7 @@ const props = withDefaults(
 		blocker: null,
 		notice: null,
 		draft: null,
+		draftGapGuarded: false,
 		originalDraft: null,
 		subject: null,
 		busy: false,
@@ -105,9 +108,9 @@ const props = withDefaults(
 
 const emit = defineEmits<{
 	/** Send `body` under `subject`. `fromDraft` = unchanged agent draft (plain approve). */
-	(e: 'send', body: string, fromDraft: boolean, subject: string): void;
-	/** Keep the edit as the working draft without sending. */
-	(e: 'save', body: string, subject: string): void;
+	(e: 'send', body: string, fromDraft: boolean, subject: string, gapGuarded: boolean): void;
+	/** Keep the edit as the working draft without sending. Both carry the gap guard. */
+	(e: 'save', body: string, subject: string, gapGuarded: boolean): void;
 	(e: 'reject'): void;
 	/** The person is typing (or stopped) — drives the "is replying" presence. */
 	(e: 'typing', active: boolean): void;
@@ -188,7 +191,8 @@ function focus() {
 
 function send() {
 	if (!canSend.value) return;
-	emit('send', body.value, hasDraft.value && !edited.value, subject.value);
+	const fromDraft = hasDraft.value && !edited.value;
+	emit('send', body.value, fromDraft, subject.value, savedReplies.gapGuarded.value);
 }
 
 function writeOwn() {
@@ -259,9 +263,8 @@ const savedReplies = useTeamComposerSavedReplies({
 	body,
 	subject: () => subject.value,
 	recipient: () => props.recipient,
-	touch: () => {
-		touched.value = true;
-	},
+	touched,
+	storedGuard: () => props.draftGapGuarded,
 });
 // An AI draft's (or a saved reply's) `[[...]]` gaps hold Send and replace the note beside it.
 const gaps = useTeamComposerGaps(body, answer, props, () => savedReplies.gapGuarded.value);
@@ -459,7 +462,7 @@ defineExpose({ focus, reset, fill, insert, snapshot, answer });
 							:has-text="!!body.trim()"
 							:can-clear="!!body"
 							@toggle-diff="diffOpen = !diffOpen"
-							@save="emit('save', body, subject)"
+							@save="emit('save', body, subject, savedReplies.gapGuarded.value)"
 							@restore="restoreDraft"
 							@write-own="writeOwn"
 							@reject="emit('reject')"

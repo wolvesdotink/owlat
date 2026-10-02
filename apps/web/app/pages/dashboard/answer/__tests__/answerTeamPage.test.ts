@@ -92,6 +92,7 @@ const presence = ref<Array<{ userId: string; mode: 'viewing' | 'replying' }>>([]
 const attachmentList = ref<unknown[]>([]);
 const suggestion = ref<unknown>(null);
 const handleApprove = vi.fn(async () => ({ ok: true, result: {} }));
+const saveDraftOnly = vi.fn(async () => ({ ok: true }));
 const noteCount = ref(0);
 const runs = new Map<string, ReturnType<typeof vi.fn>>();
 
@@ -121,7 +122,7 @@ beforeAll(() => {
 			handleApprove,
 			handleReject: vi.fn(async () => ({ ok: true })),
 			saveEditedDraft: vi.fn(async () => ({ ok: true, result: {} })),
-			saveDraftOnly: vi.fn(async () => ({ ok: true })),
+			saveDraftOnly,
 			sendFollowUp: vi.fn(async () => ({ ok: true, result: {} })),
 			cancelFollowUp: vi.fn(),
 		}),
@@ -165,6 +166,7 @@ beforeEach(() => {
 	suggestion.value = null;
 	navigateTo.mockClear();
 	handleApprove.mockClear();
+	saveDraftOnly.mockClear();
 	runs.clear();
 	noteCount.value = 0;
 });
@@ -226,6 +228,24 @@ describe('Answer mode for a Team inbox thread', () => {
 		expect(wrapper.get('[data-testid="answer-subject"]').text()).toBe('Invoice');
 		expect(wrapper.get('[data-testid="answer-identity"]').text()).toContain(
 			'Answering as Team inbox'
+		);
+	});
+
+	it('reopens a saved draft with a saved reply’s gaps still holding Send, and saves the guard again', async () => {
+		messages.value = [
+			inbound('in_1', { draftResponse: 'Order [[order number]] ships.', isDraftGapGuarded: true }),
+		];
+		const wrapper = await mountPage();
+		const body = wrapper.get<HTMLTextAreaElement>('[data-testid="thread-composer-body"]');
+		expect(body.element.value).toBe('Order [[order number]] ships.');
+		expect(wrapper.get('[data-testid="composer-send"]').attributes('disabled')).toBeDefined();
+
+		await body.setValue('Order [[order number]] ships today.');
+		await wrapper.get('[data-testid="thread-composer-save"]').trigger('click');
+		await flushPromises();
+		expect(saveDraftOnly).toHaveBeenCalledWith(
+			'in_1',
+			expect.objectContaining({ body: 'Order [[order number]] ships today.', gapGuarded: true })
 		);
 	});
 

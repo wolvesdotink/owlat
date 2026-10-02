@@ -135,7 +135,12 @@ describe('InboxThreadComposer in Answer mode', () => {
 		await body.setValue('We have refunded the invoice.');
 		await wrapper.get('[data-testid="composer-send"]').trigger('click');
 
-		expect(wrapper.emitted('send')?.[0]).toEqual(['We have refunded the invoice.', false, '']);
+		expect(wrapper.emitted('send')?.[0]).toEqual([
+			'We have refunded the invoice.',
+			false,
+			'',
+			false,
+		]);
 		expect(wrapper.get('[data-testid="composer-send"]').text()).toBe('Send reply');
 	});
 
@@ -156,7 +161,12 @@ describe('InboxThreadComposer in Answer mode', () => {
 		);
 
 		await wrapper.get('[data-testid="composer-send"]').trigger('click');
-		expect(wrapper.emitted('send')?.[0]).toEqual(['Hi Ana, here is your invoice.', true, '']);
+		expect(wrapper.emitted('send')?.[0]).toEqual([
+			'Hi Ana, here is your invoice.',
+			true,
+			'',
+			false,
+		]);
 	});
 
 	it('sends an edited draft as the person’s own text; the changes are under ⋯', async () => {
@@ -172,10 +182,10 @@ describe('InboxThreadComposer in Answer mode', () => {
 		expect(wrapper.get('[data-testid="thread-composer-diff"]').text()).toContain('Hi Ana.');
 
 		await wrapper.get('[data-testid="composer-send"]').trigger('click');
-		expect(wrapper.emitted('send')?.[0]).toEqual(['Hi Ana, sorry for the wait.', false, '']);
+		expect(wrapper.emitted('send')?.[0]).toEqual(['Hi Ana, sorry for the wait.', false, '', false]);
 
 		await wrapper.get('[data-testid="thread-composer-save"]').trigger('click');
-		expect(wrapper.emitted('save')?.[0]).toEqual(['Hi Ana, sorry for the wait.', '']);
+		expect(wrapper.emitted('save')?.[0]).toEqual(['Hi Ana, sorry for the wait.', '', false]);
 	});
 
 	it('"Write my own" clears the editor so the person can start over', async () => {
@@ -207,7 +217,7 @@ describe('InboxThreadComposer in Answer mode', () => {
 		const body = wrapper.get('[data-testid="thread-composer-body"]');
 		await body.setValue('Done.');
 		await body.trigger('keydown', { key: 'Enter', ctrlKey: true });
-		expect(wrapper.emitted('send')?.[0]).toEqual(['Done.', false, '']);
+		expect(wrapper.emitted('send')?.[0]).toEqual(['Done.', false, '', false]);
 	});
 
 	it('holds Send while a teammate is replying, and says who on the button', async () => {
@@ -255,7 +265,7 @@ describe('InboxThreadComposer in Answer mode', () => {
 		);
 		await wrapper.get('[data-testid="thread-composer-body"]').setValue('Here is the answer.');
 		await wrapper.get('[data-testid="composer-send"]').trigger('click');
-		expect(wrapper.emitted('send')?.[0]).toEqual(['Here is the answer.', false, '']);
+		expect(wrapper.emitted('send')?.[0]).toEqual(['Here is the answer.', false, '', false]);
 	});
 
 	it('marks a reply to an answered message as a follow-up', () => {
@@ -293,7 +303,7 @@ describe('InboxThreadComposer in Answer mode', () => {
 
 		await subject.setValue('Re: Invoice 1042');
 		await wrapper.get('[data-testid="composer-send"]').trigger('click');
-		expect(wrapper.emitted('send')?.[0]).toEqual(['Hi Ana.', false, 'Re: Invoice 1042']);
+		expect(wrapper.emitted('send')?.[0]).toEqual(['Hi Ana.', false, 'Re: Invoice 1042', false]);
 	});
 
 	it('focuses the editor as it opens', async () => {
@@ -540,6 +550,48 @@ describe('InboxThreadComposer and saved replies', () => {
 		api.fill('Order [[order number]] ships.', '');
 		await nextTick();
 		expect(again.get('[data-testid="composer-send"]').attributes('disabled')).toBeUndefined();
+	});
+
+	it('saves the gap guard with the working draft, and a reload of it keeps holding Send', async () => {
+		savedReplies.value = [order];
+		const wrapper = mountComposer({ draft: 'Thanks for writing.' });
+		await type(wrapper, ';order');
+		await body(wrapper).trigger('keydown', { key: 'Enter' });
+		await wrapper.get('[data-testid="thread-composer-save"]').trigger('click');
+		const [savedText, , guard] = wrapper.emitted('save')?.[0] ?? [];
+		expect(guard).toBe(true);
+
+		// A full reload: the stored draft comes back with its stored guard.
+		const reloaded = mountComposer({ draft: savedText, draftGapGuarded: true });
+		const send = reloaded.get('[data-testid="composer-send"]');
+		expect(send.attributes('disabled')).toBeDefined();
+		expect(reloaded.get('[data-testid="composer-save-state"]').text()).toBe('2 gaps left');
+
+		// Filled in, it sends, and the guard still rides along.
+		await body(reloaded).setValue('Order 4471 for Ruiz ships today.');
+		expect(send.attributes('disabled')).toBeUndefined();
+		await send.trigger('click');
+		expect(reloaded.emitted('send')?.[0]?.[3]).toBe(true);
+	});
+
+	it('takes the stored guard back with "Restore draft", and drops it for "Write my own"', async () => {
+		const gapped = 'Order [[order number]] ships today.';
+		const wrapper = mountComposer({ draft: gapped, draftGapGuarded: true });
+		const send = () => wrapper.get('[data-testid="composer-send"]').attributes('disabled');
+		expect(send()).toBeDefined();
+
+		await wrapper.get('[data-testid="thread-composer-write-own"]').trigger('click');
+		await type(wrapper, 'See [[wiki link]].');
+		expect(send()).toBeUndefined();
+
+		await wrapper.get('[data-testid="thread-composer-restore"]').trigger('click');
+		await nextTick();
+		expect(body(wrapper).element.value).toBe(gapped);
+		expect(send()).toBeDefined();
+
+		// Without a stored guard, double brackets in a saved draft are the person's own.
+		const plain = mountComposer({ draft: 'See [[wiki link]].' });
+		expect(plain.get('[data-testid="composer-send"]').attributes('disabled')).toBeUndefined();
 	});
 
 	it('offers to save what was written as a new reply', async () => {

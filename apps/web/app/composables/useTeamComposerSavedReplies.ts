@@ -9,7 +9,9 @@
  * writing.
  *
  * A reply that leaves `[[...]]` gaps marks the composer gap-guarded: its gaps
- * hold Send like an AI draft's do (`useTeamComposerGaps`).
+ * hold Send like an AI draft's do (`useTeamComposerGaps`). The guard is saved
+ * with the working draft (`isDraftGapGuarded`), and while the text is that
+ * stored draft, untouched, the stored guard is the composer's.
  */
 
 import type { Ref } from 'vue';
@@ -59,14 +61,20 @@ export function useTeamComposerSavedReplies(opts: {
 	subject: () => string;
 	recipient: () => SavedReplyRecipient | null;
 	/** The person changed the text (stops a new agent draft from re-seeding it). */
-	touch: () => void;
+	touched: Ref<boolean>;
+	/** The stored working draft's guard, which holds while the text is untouched. */
+	storedGuard: () => boolean;
 }) {
 	const { t, locale } = useI18n();
 	const { user } = useAuth();
 	const { replies, recordUse } = useComposerSavedReplies(() => null);
 
 	/** A saved reply put `[[...]]` gaps into the text: they hold Send. */
-	const gapGuarded = ref(false);
+	const gapGuarded = ref(opts.storedGuard());
+	// The text is the stored draft again (re-seeded, restored): so is the guard.
+	watch([opts.touched, opts.storedGuard], ([touched, stored]) => {
+		if (!touched) gapGuarded.value = stored;
+	});
 
 	const context = computed<SnippetVariableContext>(() => {
 		const to = opts.recipient();
@@ -101,7 +109,7 @@ export function useTeamComposerSavedReplies(opts: {
 		const text = htmlToPlainText(resolved.html, { preserveBreaks: true }).trim();
 		const value = opts.body.value;
 		opts.body.value = `${value.slice(0, range.start)}${text}${value.slice(range.end)}`;
-		opts.touch();
+		opts.touched.value = true;
 		recordUse(reply._id);
 		if (resolved.hasGaps) gapGuarded.value = true;
 		const caret = range.start + text.length;

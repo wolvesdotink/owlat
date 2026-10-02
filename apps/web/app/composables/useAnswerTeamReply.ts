@@ -96,6 +96,10 @@ export function useAnswerTeamReply(opts: {
 			: null
 	);
 	const subject = computed(() => (target.value ? replySubject(target.value) : null));
+	// A saved reply's gaps in that draft keep holding Send after a reload.
+	const draftGapGuarded = computed(
+		() => draft.value !== null && target.value?.isDraftGapGuarded === true
+	);
 	// The diff's "before" side is the AGENT's original draft (revision 0), not the
 	// latest saved text, so the first save does not destroy the agent-vs-human
 	// diff. Falls back to the working draft for messages never saved.
@@ -248,6 +252,7 @@ export function useAnswerTeamReply(opts: {
 		blocker,
 		notice,
 		draft,
+		draftGapGuarded,
 		subject,
 		originalDraft,
 		senderLabel,

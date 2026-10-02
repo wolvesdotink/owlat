@@ -34,7 +34,7 @@ import type { FileCopyPolicy } from '~/components/answer/FileAsk.vue';
 import { useAnswerQueueSession } from '~/composables/useAnswerQueueSession';
 import { useAnswerTeamReply } from '~/composables/useAnswerTeamReply';
 import { useTeamReplyAttachments } from '~/composables/useTeamReplyAttachments';
-import { useTeamKeptReply } from '~/composables/useTeamKeptReply';
+import { useKeptTeamComposer } from '~/composables/useTeamKeptReply';
 import { useOrganization } from '~/composables/useOrganization';
 import { useLocalized } from '~/composables/useLocalized';
 import { answerBackLabelKey, singleQueryValue } from '~/utils/answerMode';
@@ -180,37 +180,24 @@ function draftFromPeek() {
 
 // Text typed and not sent stays with the thread for the session, so leaving
 // and coming back never throws it away (the team reply has no autosave row).
-const keptReply = useTeamKeptReply();
-watch(composerRef, (composer) => {
-	const kept = keptReply.get(threadId.value);
-	if (composer && kept) composer.fill(kept.body, kept.subject, kept.gapGuarded);
-});
-function keepTyped() {
-	const snapshot = composerRef.value?.snapshot();
-	keptReply.set(
-		threadId.value,
-		snapshot?.touched
-			? { body: snapshot.body, subject: snapshot.subject, gapGuarded: snapshot.gapGuarded }
-			: null
-	);
-}
+const keptReply = useKeptTeamComposer(() => threadId.value, composerRef);
 
 const answerNav = useAnswerModeNav({ currentPath: () => route.path });
 const queueSession = useAnswerQueueSession();
 const backLabel = computed(() => t(answerBackLabelKey(answerNav.returnPath.value)));
 
 // However the page is left (Esc, a link, the queue moving on), keep the text.
-onBeforeUnmount(keepTyped);
+onBeforeUnmount(keptReply.keep);
 
 function leave() {
 	answerNav.leave();
 }
 
-async function onSend(body: string, fromDraft: boolean, subject: string) {
-	const sent = await reply.send({ body, subject }, fromDraft);
+async function onSend(body: string, fromDraft: boolean, subject: string, gapGuarded: boolean) {
+	const sent = await reply.send({ body, subject, gapGuarded }, fromDraft);
 	if (!sent) return;
 	composerRef.value?.reset();
-	keptReply.set(threadId.value, null);
+	keptReply.clear();
 	if (queueSession?.handleSent('sent')) return;
 	answerNav.leave();
 }
@@ -397,6 +384,7 @@ onBeforeUnmount(() => {
 					:blocker="reply.blocker.value"
 					:notice="reply.notice.value"
 					:draft="reply.draft.value"
+					:draft-gap-guarded="reply.draftGapGuarded.value"
 					:original-draft="reply.originalDraft.value"
 					:subject="reply.subject.value"
 					:busy="reply.busy.value"
@@ -407,7 +395,7 @@ onBeforeUnmount(() => {
 					:status-note="assist.statusNote.value"
 					:ask-session="!!assist.ask.session.value"
 					@send="onSend"
-					@save="(body, subject) => reply.save({ body, subject })"
+					@save="(body, subject, gapGuarded) => reply.save({ body, subject, gapGuarded })"
 					@reject="reply.reject.openReject()"
 					@typing="composerTyping = $event"
 				>
