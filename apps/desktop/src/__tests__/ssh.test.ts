@@ -17,6 +17,7 @@ import {
 	sshConnect,
 	sshAcceptHostKey,
 	sshAuthenticate,
+	sshPickKeyFile,
 	sshExecStream,
 	sshWriteFile,
 	sshDisconnect,
@@ -79,6 +80,31 @@ describe('ssh bridge', () => {
 		await sshAuthenticate('s1', 'root', auth);
 
 		expect(invokeMock).toHaveBeenCalledOnce();
+		expect(invokeMock).toHaveBeenCalledWith('ssh_authenticate', {
+			sessionId: 's1',
+			username: 'root',
+			auth,
+		});
+	});
+
+	// The webview never names a key file: it asks for the one the user picked
+	// in the native dialog, which only Rust knows.
+	it('sshPickKeyFile asks the native side to pick, with no path of its own', async () => {
+		invokeMock.mockResolvedValue('/home/u/.ssh/id_ed25519');
+		await expect(sshPickKeyFile('Choose an SSH private key')).resolves.toBe(
+			'/home/u/.ssh/id_ed25519'
+		);
+		expect(invokeMock).toHaveBeenCalledWith('ssh_pick_key_file', {
+			title: 'Choose an SSH private key',
+		});
+	});
+
+	it('sshAuthenticate uses the picked key file by reference, not by path', async () => {
+		invokeMock.mockResolvedValue(undefined);
+		const auth = { type: 'key', usePickedKeyFile: true } as const;
+
+		await sshAuthenticate('s1', 'root', auth);
+
 		expect(invokeMock).toHaveBeenCalledWith('ssh_authenticate', {
 			sessionId: 's1',
 			username: 'root',

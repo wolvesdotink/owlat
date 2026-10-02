@@ -283,27 +283,22 @@ const formatExpiryTime = (expiresAt: Date) => {
 	     as link cards are in the Settings sidebar, and workspace-wide switches
 	     (import on first login, deleting the workspace) live in Workspace → General. -->
 	<div>
-		<!-- Header -->
-		<div class="mb-6">
-			<div class="flex items-start justify-between gap-4">
-				<div class="min-w-0">
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ t('dashboard.admin.team.title') }}
-					</h1>
-					<p class="mt-1 text-text-secondary">{{ t('dashboard.admin.team.lede') }}</p>
-				</div>
-				<UiButton
-					v-if="canManageMembers"
-					class="shrink-0 whitespace-nowrap"
-					@click="inviteModal?.open()"
-				>
+		<!-- The shared header stacks the invite button under the title on a phone
+		     instead of squeezing the title beside it. -->
+		<UiPageHeader
+			class="mb-6"
+			:title="t('dashboard.admin.team.title')"
+			:description="t('dashboard.admin.team.lede')"
+		>
+			<template v-if="canManageMembers" #actions>
+				<UiButton class="whitespace-nowrap" @click="inviteModal?.open()">
 					<template #iconLeft>
 						<Icon name="lucide:user-plus" class="w-4 h-4" />
 					</template>
 					{{ t('dashboard.admin.team.inviteMember') }}
 				</UiButton>
-			</div>
-		</div>
+			</template>
+		</UiPageHeader>
 		<!-- Loading State -->
 		<DashboardDetailSkeleton
 			v-if="isLoading && members.length === 0"
@@ -427,8 +422,10 @@ const formatExpiryTime = (expiresAt: Date) => {
 					</template>
 				</UiEmptyState>
 
-				<!-- Members table -->
-				<div v-else class="overflow-x-auto">
+				<!-- Members table. `relative` makes the scroller the containing block of
+				     the actions header's absolutely positioned `sr-only` label; without
+				     it that label escaped the scroller and widened the page on a phone. -->
+				<div v-else class="relative overflow-x-auto">
 					<table class="w-full min-w-[36rem] text-sm">
 						<thead>
 							<tr

@@ -40,7 +40,7 @@ import type { CaptureResult } from 'posthog-js';
  * a handshake nonce or an invitation id). Nuxt route names: the i18n strategy
  * is `no_prefix`, so a name is stable across locales.
  */
-const PRIVATE_ROUTE_NAMES: ReadonlySet<string> = new Set([
+export const PRIVATE_ROUTE_NAMES: ReadonlySet<string> = new Set([
 	'auth-reset-password',
 	'share',
 	'unsubscribe',

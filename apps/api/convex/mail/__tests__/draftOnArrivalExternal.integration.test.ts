@@ -35,6 +35,7 @@ import type { Id } from '../../_generated/dataModel';
 import { api, internal } from '../../_generated/api';
 import { modules } from './helpers.testlib';
 import { evaluateNeedsReplyCandidate } from '../needsReplyHeuristic';
+import { SWEEP_MIN_AGE_MS } from '../needsReplyPending';
 
 // ─── Seams: session + LLM only (storage, scheduler, draft service are real) ──
 
@@ -536,5 +537,111 @@ describe('draft-on-arrival on an external-only install (postbox=false)', () => {
 		expect(queue.items).toEqual([]);
 		expect(llm.runLlmObject).not.toHaveBeenCalled();
 		expect(llm.runLlmText).not.toHaveBeenCalled();
+	});
+});
+
+// Issue #1131. A shared inbox flushed a backlog, the burst OOM-killed the
+// backend while the classifier waited on the model, and the thread stayed at
+// the heuristic flag with no draft for good.
+describe('a classify run killed after its baseline', () => {
+	it('is re-run by the sweep and ends with the model verdict and a draft', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await seedInstanceFlags(t, {
+			ai: true,
+			'mail.external': true,
+			postbox: false,
+			'postbox.aiDraft': true,
+		});
+		const { mailboxId, threadId, messageId } = await seedExternalThread(t);
+
+		vi.useFakeTimers();
+		try {
+			// What the killed run got done: the baseline, nothing after it.
+			await t.mutation(internal.mail.needsReply.applyResult, {
+				threadId,
+				expectedLatestMessageId: messageId,
+				needsReply: { messageId, source: 'heuristic', urgency: 'normal' },
+				isBaseline: true,
+			});
+			expect(await scheduledJobNames(t)).toEqual([]);
+
+			vi.setSystemTime(Date.now() + SWEEP_MIN_AGE_MS + 1000);
+			const swept = await t.mutation(internal.mail.needsReplyPending.sweepPending, {});
+			expect(swept.rescheduled).toBe(1);
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		} finally {
+			vi.useRealTimers();
+		}
+
+		await t.run(async (ctx) => {
+			const thread = (await ctx.db.get(threadId))!;
+			expect(thread.needsReply?.source).toBe('llm');
+			expect(thread.needsReplyPendingAt).toBeUndefined();
+			expect(thread.needsReplyRetryCount).toBeUndefined();
+		});
+		const names = await scheduledJobNames(t);
+		expect(names.filter((name) => name.includes('draftOnArrival'))).toHaveLength(1);
+		const queue = await t.query(api.mail.needsReply.listQueue, { mailboxId });
+		const slot = await t.query(api.mail.needsReply.getDraftSlot, {
+			threadId: queue.items[0]!.threadId,
+		});
+		expect(slot?.draft).toBe('EXTERNAL DRAFT BODY');
+	});
+});
+
+describe('draft-on-arrival with files the card still waits for', () => {
+	it('never claims the files are attached, and leaves a placeholder for them', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await seedInstanceFlags(t, {
+			ai: true,
+			'mail.external': true,
+			postbox: false,
+			'postbox.aiDraft': true,
+		});
+		const { threadId, messageId } = await seedExternalThread(t);
+		await t.run(async (ctx) => {
+			await ctx.db.patch(threadId, {
+				needsReply: {
+					messageId,
+					source: 'llm',
+					urgency: 'normal',
+					detectedAt: Date.now(),
+					clarification: {
+						isNeeded: true,
+						askedAt: Date.now(),
+						questions: [
+							{
+								id: 'clarify_0',
+								slotType: 'attachment',
+								answerKind: 'file',
+								text: 'Please provide the invoice PDFs for the four bookings',
+								attribution: 'Generated from an email from acme.test',
+							},
+						],
+					},
+				},
+			});
+		});
+		// The model ignores the instruction and writes the placeholder nowhere.
+		llm.runLlmText.mockResolvedValueOnce({
+			text: 'Hi Sam, here are your invoices.',
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
+
+		await t.action(internal.mail.ai.draftOnArrival.generateForThread, { threadId });
+
+		const placeholder = '[[Please provide the invoice PDFs for the four bookings]]';
+		const prompt = JSON.stringify(llm.runLlmText.mock.calls[0]);
+		expect(prompt).toContain('not attached yet');
+		expect(prompt).toContain(placeholder);
+		await t.run(async (ctx) => {
+			const slot = (await ctx.db.get(threadId))!.needsReply?.draftSlot;
+			expect(slot?.draft).toBe(`Hi Sam, here are your invoices.\n\n${placeholder}`);
+			// The alternatives are written without the trusted note.
+			expect(slot?.options).toBeUndefined();
+		});
 	});
 });

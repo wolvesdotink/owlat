@@ -116,7 +116,9 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 				<template #iconLeft>
 					<Icon name="lucide:share-2" class="w-4 h-4" />
 				</template>
-				{{ t('components.shareLinksPopover.share') }}
+				<!-- Icon-only below 2xl, where the builder toolbar is short of room;
+				     the label stays the accessible name. -->
+				<span class="max-2xl:sr-only">{{ t('components.shareLinksPopover.share') }}</span>
 			</UiButton>
 		</div>
 

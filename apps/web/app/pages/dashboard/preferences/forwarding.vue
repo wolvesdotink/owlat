@@ -85,10 +85,10 @@ async function confirmRemove() {
 
 		<form
 			v-if="mailboxId"
-			class="card p-4 mb-4 flex items-end gap-2"
+			class="card p-4 mb-4 flex flex-wrap items-end gap-x-2 gap-y-3"
 			@submit.prevent="handleCreate"
 		>
-			<div class="flex-1">
+			<div class="min-w-0 flex-[1_1_16rem]">
 				<label for="newaddress" class="text-sm font-medium block mb-1">
 					{{ t('dashboard.preferences.forwarding.forwardTo') }}
 				</label>
@@ -104,7 +104,7 @@ async function confirmRemove() {
 				<input v-model="keepLocal" type="checkbox" />
 				{{ t('dashboard.preferences.forwarding.keepLocalCopy') }}
 			</label>
-			<UiButton type="submit" :disabled="!newAddress.trim() || submitting">
+			<UiButton type="submit" class="ml-auto" :disabled="!newAddress.trim() || submitting">
 				{{ t('common.add') }}
 			</UiButton>
 		</form>
@@ -115,7 +115,10 @@ async function confirmRemove() {
 				<h2 class="font-semibold">{{ t('dashboard.preferences.forwarding.activeRules') }}</h2>
 			</header>
 			<div v-if="isLoading" class="p-8 flex justify-center">
-				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
+				<Icon
+					name="lucide:loader-2"
+					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
+				/>
 			</div>
 			<!-- A failed read is not an empty list (#721). -->
 			<UiQueryBoundary v-else-if="listError" :error="listError" @retry="refetchList" />

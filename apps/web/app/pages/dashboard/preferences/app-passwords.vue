@@ -87,11 +87,13 @@ const smtpHost = computed(() => imapHost.value);
 
 <template>
 	<div>
-		<header class="mb-6 flex items-center justify-between gap-4">
+		<header
+			class="mb-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+		>
 			<p class="text-text-secondary">
 				{{ t('dashboard.preferences.appPasswords.subheading') }}
 			</p>
-			<UiButton v-if="mailboxId" type="button" @click="showCreate = true">
+			<UiButton v-if="mailboxId" type="button" class="shrink-0" @click="showCreate = true">
 				<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
 				{{ t('dashboard.preferences.appPasswords.generate') }}
 			</UiButton>
@@ -103,23 +105,31 @@ const smtpHost = computed(() => imapHost.value);
 					{{ t('dashboard.preferences.appPasswords.connectionSettings') }}
 				</h2>
 			</header>
-			<dl class="px-5 py-4 grid grid-cols-3 gap-y-2 text-sm">
-				<dt class="text-text-tertiary">{{ t('dashboard.preferences.appPasswords.imapLabel') }}</dt>
-				<dd class="col-span-2 font-mono">
+			<!-- Label above value on a phone: a mono host name next to a label column
+			     does not fit 390px. -->
+			<dl
+				class="px-5 py-4 grid grid-cols-1 gap-y-0.5 text-sm sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-x-6 sm:gap-y-2"
+			>
+				<dt class="text-text-tertiary max-sm:not-first:mt-2">
+					{{ t('dashboard.preferences.appPasswords.imapLabel') }}
+				</dt>
+				<dd class="font-mono break-words">
 					{{ t('dashboard.preferences.appPasswords.imapValue', { host: imapHost }) }}
 				</dd>
-				<dt class="text-text-tertiary">{{ t('dashboard.preferences.appPasswords.smtpLabel') }}</dt>
-				<dd class="col-span-2 font-mono">
+				<dt class="text-text-tertiary max-sm:not-first:mt-2">
+					{{ t('dashboard.preferences.appPasswords.smtpLabel') }}
+				</dt>
+				<dd class="font-mono break-words">
 					{{ t('dashboard.preferences.appPasswords.smtpValue', { host: smtpHost }) }}
 				</dd>
-				<dt class="text-text-tertiary">
+				<dt class="text-text-tertiary max-sm:not-first:mt-2">
 					{{ t('dashboard.preferences.appPasswords.usernameLabel') }}
 				</dt>
-				<dd class="col-span-2 font-mono">{{ currentMailbox?.address }}</dd>
-				<dt class="text-text-tertiary">
+				<dd class="font-mono break-words">{{ currentMailbox?.address }}</dd>
+				<dt class="text-text-tertiary max-sm:not-first:mt-2">
 					{{ t('dashboard.preferences.appPasswords.passwordLabel') }}
 				</dt>
-				<dd class="col-span-2 text-text-secondary">
+				<dd class="text-text-secondary">
 					{{ t('dashboard.preferences.appPasswords.passwordHint') }}
 				</dd>
 			</dl>
@@ -130,7 +140,10 @@ const smtpHost = computed(() => imapHost.value);
 				<h2 class="font-semibold">{{ t('dashboard.preferences.appPasswords.activePasswords') }}</h2>
 			</header>
 			<div v-if="isLoading" class="p-8 flex justify-center">
-				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
+				<Icon
+					name="lucide:loader-2"
+					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
+				/>
 			</div>
 			<!-- A failed read is not an empty list (#721). -->
 			<UiQueryBoundary v-else-if="listError" :error="listError" @retry="refetchList" />
@@ -237,7 +250,11 @@ const smtpHost = computed(() => imapHost.value);
 						{{ t('common.cancel') }}
 					</UiButton>
 					<UiButton type="submit" :disabled="!newLabel.trim() || generating">
-						<Icon v-if="generating" name="lucide:loader-2" class="w-4 h-4 mr-1.5 animate-spin motion-reduce:animate-none" />
+						<Icon
+							v-if="generating"
+							name="lucide:loader-2"
+							class="w-4 h-4 mr-1.5 animate-spin motion-reduce:animate-none"
+						/>
 						{{
 							generating
 								? t('dashboard.preferences.appPasswords.generating')

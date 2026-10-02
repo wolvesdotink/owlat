@@ -18,6 +18,8 @@
  *    marketing sections use, so a long subtitle wraps like prose instead of
  *    stretching into a single thin line.
  *
+ * `#description` replaces the lead when it needs markup (an `<I18nT>` with code
+ * spans or a link); it gets the same 540px measure as the plain prop.
  * `#meta` carries the counts/dates strip detail pages hang under the lead;
  * `#actions` carries the page's buttons and stays top-aligned with the title
  * so the row does not jump when the lead wraps to two lines. Outer spacing is
@@ -43,7 +45,16 @@ const slots = useSlots();
 		<div class="min-w-0">
 			<span v-if="eyebrow" class="lp-eyebrow mb-1.5">{{ eyebrow }}</span>
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">{{ title }}</h1>
-			<p v-if="description" class="mt-1 max-w-[540px] text-sm leading-relaxed text-text-secondary">
+			<div
+				v-if="slots['description']"
+				class="mt-1 max-w-[540px] text-sm leading-relaxed text-text-secondary"
+			>
+				<slot name="description" />
+			</div>
+			<p
+				v-else-if="description"
+				class="mt-1 max-w-[540px] text-sm leading-relaxed text-text-secondary"
+			>
 				{{ description }}
 			</p>
 			<div v-if="slots['meta']" class="mt-3">
@@ -57,7 +68,7 @@ const slots = useSlots();
 		<div
 			v-if="slots['actions']"
 			data-testid="page-header-actions"
-			class="flex flex-wrap items-center gap-2 lg:max-w-[55%] lg:justify-end"
+			class="flex flex-wrap items-center gap-2 lg:max-w-[55%] lg:shrink-0 lg:justify-end"
 		>
 			<slot name="actions" />
 		</div>

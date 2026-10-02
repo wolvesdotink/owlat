@@ -50,6 +50,7 @@ const {
 	data: centerData,
 	isLoading,
 	error,
+	refetch,
 } = useOrganizationQuery(api.delivery.checklist.getCenter);
 
 const center = computed<DeliverabilityCenter | null>(() => centerData.value ?? null);
@@ -191,7 +192,15 @@ async function copyReport() {
 					</p>
 				</div>
 			</div>
-			<UiButton v-if="center" variant="ghost" size="sm" class="w-fit" @click="copyReport">
+			<!-- `shrink-0 whitespace-nowrap`: the German label ("Einrichtungsbericht
+			     kopieren") otherwise wrapped onto two lines beside the lede. -->
+			<UiButton
+				v-if="center"
+				variant="ghost"
+				size="sm"
+				class="w-fit shrink-0 whitespace-nowrap"
+				@click="copyReport"
+			>
 				<Icon
 					:name="isCopied('deliverability-report') ? 'lucide:check' : 'lucide:clipboard-copy'"
 					class="h-4 w-4"
@@ -207,6 +216,7 @@ async function copyReport() {
 		<UiQueryBoundary
 			:loading="isLoading"
 			:error="error"
+			@retry="refetch"
 			:empty="!center"
 			:error-title="t('dashboard.admin.delivery.deliverability.errorTitle')"
 			:error-message="t('dashboard.admin.delivery.deliverability.errorMessage')"

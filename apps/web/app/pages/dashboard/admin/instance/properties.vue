@@ -21,6 +21,7 @@ const {
 	data: propertiesData,
 	isLoading: propertiesLoading,
 	error: propertiesError,
+	refetch: refetchProperties,
 } = useOrganizationQuery(api.contacts.properties.listByOrganization, () => ({
 	includePendingDeletion: true,
 }));
@@ -306,29 +307,25 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 
 <template>
 	<div>
-		<!-- Header -->
-		<div class="mb-6">
-			<div class="flex items-center justify-between">
-				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ t('dashboard.admin.instance.properties.title') }}
-					</h1>
-					<p class="mt-1 text-text-secondary">
-						{{ t('dashboard.admin.instance.properties.subtitle') }}
-					</p>
-				</div>
+		<UiPageHeader
+			:title="t('dashboard.admin.instance.properties.title')"
+			:description="t('dashboard.admin.instance.properties.subtitle')"
+			class="mb-6"
+		>
+			<template #actions>
 				<UiButton @click="openCreateModal()">
 					<template #iconLeft>
 						<Icon name="lucide:plus" class="w-4 h-4" />
 					</template>
 					{{ t('dashboard.admin.instance.properties.newProperty') }}
 				</UiButton>
-			</div>
-		</div>
+			</template>
+		</UiPageHeader>
 
 		<UiQueryBoundary
 			:loading="isLoading && !propertiesData"
 			:error="propertiesError"
+			@retry="refetchProperties"
 			:error-title="t('dashboard.admin.instance.properties.errorTitle')"
 			:loading-label="t('dashboard.admin.instance.properties.loading')"
 		>

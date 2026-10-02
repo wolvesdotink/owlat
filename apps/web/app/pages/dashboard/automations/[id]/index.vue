@@ -229,7 +229,7 @@ const handleEdit = () => {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<div class="mx-auto w-full max-w-page p-6 lg:p-8">
 		<!-- A failed read is not a missing automation (#721). -->
 		<UiQueryBoundary v-if="automationError" :error="automationError" @retry="refetchAutomation" />
 
@@ -271,12 +271,9 @@ const handleEdit = () => {
 					<Icon name="lucide:arrow-left" class="w-4 h-4" />
 					{{ t('dashboard.automations.detail.index.backToAutomations') }}
 				</NuxtLink>
-				<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-					<div>
-						<div class="flex items-center gap-3">
-							<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-								{{ automation.name }}
-							</h1>
+				<UiPageHeader :title="automation.name" :description="automation.description">
+					<template #meta>
+						<div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-text-tertiary">
 							<span
 								:class="[
 									'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
@@ -286,11 +283,6 @@ const handleEdit = () => {
 								<Icon :name="getStatusBadge(automation.status).icon" class="w-3 h-3" />
 								{{ t(getStatusBadge(automation.status).label) }}
 							</span>
-						</div>
-						<p v-if="automation.description" class="mt-1 text-text-secondary">
-							{{ automation.description }}
-						</p>
-						<div class="mt-2 flex items-center gap-4 text-sm text-text-tertiary">
 							<div class="flex items-center gap-1.5">
 								<Icon :name="getTriggerDisplay(automation.triggerType).icon" class="w-4 h-4" />
 								{{ t(getTriggerDisplay(automation.triggerType).label) }}
@@ -304,12 +296,14 @@ const handleEdit = () => {
 								}}
 							</div>
 						</div>
-					</div>
-					<UiButton variant="secondary" class="gap-2" @click="handleEdit">
-						<Icon name="lucide:pencil" class="w-4 h-4" />
-						{{ t('dashboard.automations.detail.index.editAutomation') }}
-					</UiButton>
-				</div>
+					</template>
+					<template #actions>
+						<UiButton variant="secondary" class="gap-2" @click="handleEdit">
+							<Icon name="lucide:pencil" class="w-4 h-4" />
+							{{ t('dashboard.automations.detail.index.editAutomation') }}
+						</UiButton>
+					</template>
+				</UiPageHeader>
 			</div>
 
 			<!-- Stats Cards -->
@@ -377,12 +371,12 @@ const handleEdit = () => {
 				<div v-else class="space-y-4">
 					<!-- Trigger row -->
 					<div class="flex items-center gap-4">
-						<div class="w-24 shrink-0 text-right">
+						<div class="hidden sm:block w-24 shrink-0 text-right">
 							<span class="text-xs text-text-tertiary uppercase tracking-wider">
 								{{ t('dashboard.automations.detail.index.funnel.trigger') }}
 							</span>
 						</div>
-						<div class="flex-1">
+						<div class="flex-1 min-w-0">
 							<div class="flex items-center gap-3">
 								<div :class="['p-2 rounded-lg', getTriggerDisplay(automation.triggerType).bgColor]">
 									<Icon
@@ -390,7 +384,7 @@ const handleEdit = () => {
 										:class="['w-4 h-4', getTriggerDisplay(automation.triggerType).color]"
 									/>
 								</div>
-								<div class="flex-1">
+								<div class="flex-1 min-w-0">
 									<div
 										class="h-8 bg-brand/20 rounded-lg flex items-center px-4"
 										style="width: 100%"
@@ -404,29 +398,31 @@ const handleEdit = () => {
 										</span>
 									</div>
 								</div>
-								<span class="w-16 text-right text-sm text-text-secondary">100%</span>
+								<span class="w-12 sm:w-16 shrink-0 text-right text-sm text-text-secondary"
+									>100%</span
+								>
 							</div>
 						</div>
 					</div>
 
 					<!-- Connector -->
 					<div class="flex items-center gap-4">
-						<div class="w-24 shrink-0" />
+						<div class="hidden sm:block w-24 shrink-0" />
 						<div class="flex-1 flex justify-start pl-5">
 							<div class="w-0.5 h-6 bg-border-subtle" />
 						</div>
-						<div class="w-16" />
+						<div class="w-12 sm:w-16" />
 					</div>
 
 					<!-- Step rows -->
 					<template v-for="(step, index) in stepAnalytics" :key="step.stepId">
 						<div class="flex items-center gap-4">
-							<div class="w-24 shrink-0 text-right">
+							<div class="hidden sm:block w-24 shrink-0 text-right">
 								<span class="text-xs text-text-tertiary uppercase tracking-wider">
 									{{ t('dashboard.automations.detail.index.funnel.step', { number: index + 1 }) }}
 								</span>
 							</div>
-							<div class="flex-1">
+							<div class="flex-1 min-w-0">
 								<div class="flex items-center gap-3">
 									<div :class="['p-2 rounded-lg', stepAccent(step.stepType).iconBg]">
 										<Icon
@@ -434,15 +430,21 @@ const handleEdit = () => {
 											:class="['w-4 h-4', stepAccent(step.stepType).iconText]"
 										/>
 									</div>
-									<div class="flex-1">
-										<div
-											class="h-8 rounded-lg flex items-center px-4 transition-all"
-											:class="stepAccent(step.stepType).barBg"
-											:style="{
-												width: `${Math.max(getFunnelPercentage(step.stats, stats?.totalEntered || 0), 10)}%`,
-											}"
-										>
-											<span class="text-sm font-medium text-text-primary truncate">
+									<div class="flex-1 min-w-0">
+										<!-- The fill is proportional; the label spans the whole track, so
+										     a short bar no longer cuts "472 completed" down to "472 co…". -->
+										<div class="relative min-h-8 rounded-lg flex items-center">
+											<div
+												class="absolute inset-y-0 left-0 rounded-lg transition-all"
+												:class="stepAccent(step.stepType).barBg"
+												:style="{
+													width: `${Math.max(getFunnelPercentage(step.stats, stats?.totalEntered || 0), 10)}%`,
+												}"
+											/>
+											<!-- Wraps on a phone, one line from sm up. -->
+											<span
+												class="relative px-4 py-1.5 sm:py-0 text-sm font-medium text-text-primary sm:truncate"
+											>
 												{{
 													t('dashboard.automations.detail.index.funnel.stepSummary', {
 														label: getStepLabel(step.stepType, step.config),
@@ -452,12 +454,14 @@ const handleEdit = () => {
 											</span>
 										</div>
 									</div>
-									<span class="w-16 text-right text-sm text-text-secondary">
+									<span class="w-12 sm:w-16 shrink-0 text-right text-sm text-text-secondary">
 										{{ getFunnelPercentage(step.stats, stats?.totalEntered || 0) }}%
 									</span>
 								</div>
 								<!-- Step details -->
-								<div class="ml-11 mt-1 flex items-center gap-4 text-xs text-text-tertiary">
+								<div
+									class="ml-11 mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-tertiary"
+								>
 									<span v-if="step.stats.pending > 0" class="flex items-center gap-1">
 										<Icon name="lucide:clock" class="w-3 h-3" />
 										{{
@@ -491,11 +495,11 @@ const handleEdit = () => {
 
 						<!-- Connector between steps -->
 						<div v-if="index < stepAnalytics.length - 1" class="flex items-center gap-4">
-							<div class="w-24 shrink-0" />
+							<div class="hidden sm:block w-24 shrink-0" />
 							<div class="flex-1 flex justify-start pl-5">
 								<div class="w-0.5 h-6 bg-border-subtle" />
 							</div>
-							<div class="w-16" />
+							<div class="w-12 sm:w-16" />
 						</div>
 					</template>
 				</div>
@@ -503,18 +507,23 @@ const handleEdit = () => {
 
 			<!-- Contacts List -->
 			<div class="card p-0 overflow-hidden">
-				<div class="px-6 py-4 border-b border-border-subtle flex items-center justify-between">
+				<div
+					class="px-6 py-4 border-b border-border-subtle flex flex-wrap items-center justify-between gap-3"
+				>
 					<h3 class="text-lg font-medium text-text-primary">
 						{{ t('dashboard.automations.detail.index.runs.title') }}
 					</h3>
-					<!-- Status filter -->
-					<UiSegmentedControl
-						:model-value="selectedRunStatus"
-						:options="runStatusFilters"
-						size="sm"
-						:aria-label="t('dashboard.automations.detail.index.runs.statusFilterLabel')"
-						@update:model-value="selectedRunStatus = $event as RunStatusFilter"
-					/>
+					<!-- Status filter: scrolls on a phone instead of widening the page -->
+					<div class="max-w-full overflow-x-auto">
+						<UiSegmentedControl
+							:model-value="selectedRunStatus"
+							:options="runStatusFilters"
+							size="sm"
+							:aria-label="t('dashboard.automations.detail.index.runs.statusFilterLabel')"
+							class="min-w-max"
+							@update:model-value="selectedRunStatus = $event as RunStatusFilter"
+						/>
+					</div>
 				</div>
 
 				<!-- Loading -->

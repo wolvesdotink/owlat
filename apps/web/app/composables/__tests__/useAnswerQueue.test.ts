@@ -124,41 +124,73 @@ describe('useAnswerQueue', () => {
 		expect(inboxRefetch).not.toHaveBeenCalled();
 	});
 
-	it("drops a skipped source's retained error once the role or feature turns it off", () => {
-		const failure = new Error('[CONVEX Q(inbox/queries:getReviewQueue)] Server Error');
-		const reviewRefetch = vi.fn();
-		const inboxOn = ref(true);
-		vi.stubGlobal('useFeatureFlag', () => ({
-			isEnabled: (f: string) => f === 'inbox' && inboxOn.value,
-		}));
+	it('keeps the rows that loaded and names each failed source by its chip (#1099)', () => {
+		const failure = new Error('[CONVEX Q(mail/needsReply:listQueue)] Server Error');
+		const sales = { mailboxId: 'mbx_2', name: 'Sales', slot: 1 };
 		vi.stubGlobal('useInboxes', () => ({
-			ids: ref([]),
-			byId: ref(new Map()),
+			ids: ref(['mbx_1', 'mbx_2']),
+			byId: ref(new Map([['mbx_2', sales]])),
 			isLoading: ref(false),
 			error: ref(null),
 			refetch: vi.fn(),
 		}));
-		vi.stubGlobal('useConvexQueryMap', () => new Map());
-		// A subscription switched to 'skip' keeps its last error.
+		vi.stubGlobal(
+			'useConvexQueryMap',
+			() =>
+				new Map([
+					[
+						'mbx_1',
+						{
+							data: ref({ items: [{ threadId: 'thr_a', receivedAt: 1, urgency: 'normal' }] }),
+							isLoading: ref(false),
+							error: ref(null),
+							refetch: vi.fn(),
+						},
+					],
+					[
+						'mbx_2',
+						{ data: ref(undefined), isLoading: ref(false), error: ref(failure), refetch: vi.fn() },
+					],
+				])
+		);
 		vi.stubGlobal('useConvexQuery', (fn: string) => ({
 			data: ref(undefined),
 			isLoading: ref(false),
 			error: ref(fn === 'getReviewQueue' ? failure : null),
-			refetch: fn === 'getReviewQueue' ? reviewRefetch : vi.fn(),
+			refetch: vi.fn(),
 		}));
 		roleLoading.value = false;
 		role.value = 'admin';
 
 		const queue = useAnswerQueue();
-		expect(queue.error.value).toBe(failure);
+		expect(queue.items.value.map((i) => i.id)).toEqual(['mail:thr_a']);
+		expect(queue.failures.value).toEqual([
+			{ id: 'mbx_2', inbox: sales, error: failure },
+			{ id: 'team', inbox: null, error: failure },
+		]);
+	});
 
-		inboxOn.value = false;
-		expect(queue.error.value).toBeNull();
-		queue.refetch();
-		expect(reviewRefetch).not.toHaveBeenCalled();
+	it('ignores a failed inbox list while the queue is not read', () => {
+		const failure = new Error('[CONVEX Q(mail/mailbox/queries:accessible)] Server Error');
+		const reading = ref(false);
+		vi.stubGlobal('useInboxes', () => ({
+			ids: ref([]),
+			byId: ref(new Map()),
+			isLoading: ref(false),
+			error: ref(failure),
+			refetch: vi.fn(),
+		}));
+		vi.stubGlobal('useConvexQueryMap', () => new Map());
+		vi.stubGlobal('useConvexQuery', () => ({
+			data: ref(undefined),
+			isLoading: ref(false),
+			error: ref(null),
+			refetch: vi.fn(),
+		}));
 
-		inboxOn.value = true;
-		role.value = 'member';
+		const queue = useAnswerQueue({ enabled: () => reading.value });
 		expect(queue.error.value).toBeNull();
+		reading.value = true;
+		expect(queue.failures.value).toEqual([{ id: 'inboxes', inbox: null, error: failure }]);
 	});
 });

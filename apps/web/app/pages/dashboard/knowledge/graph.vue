@@ -20,27 +20,18 @@ definePageMeta({
 </script>
 
 <template>
-	<div class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-		<!-- Header -->
-		<div class="flex items-start justify-between gap-4">
-			<div class="flex items-start gap-4">
-				<div
-					class="w-12 h-12 rounded-xl bg-brand-subtle flex items-center justify-center flex-shrink-0"
-				>
-					<Icon name="lucide:share-2" class="w-6 h-6 text-brand" />
-				</div>
-				<div>
-					<h1 class="text-xl font-bold text-text-primary">{{ t('dashboard.knowledge.graph.title') }}</h1>
-					<p class="text-sm text-text-secondary mt-0.5">
-						{{ t('dashboard.knowledge.graph.subtitle') }}
-					</p>
-				</div>
-			</div>
-			<UiButton variant="secondary" to="/dashboard/knowledge" class="gap-2 flex-shrink-0">
-				<Icon name="lucide:list" class="w-4 h-4" />
-				{{ t('dashboard.knowledge.graph.listView') }}
-			</UiButton>
-		</div>
+	<div class="mx-auto w-full max-w-page p-6 lg:p-8 space-y-6">
+		<UiPageHeader
+			:title="t('dashboard.knowledge.graph.title')"
+			:description="t('dashboard.knowledge.graph.subtitle')"
+		>
+			<template #actions>
+				<UiButton variant="secondary" to="/dashboard/knowledge" class="gap-2">
+					<Icon name="lucide:list" class="w-4 h-4" />
+					{{ t('dashboard.knowledge.graph.listView') }}
+				</UiButton>
+			</template>
+		</UiPageHeader>
 
 		<KnowledgeGraphView />
 	</div>

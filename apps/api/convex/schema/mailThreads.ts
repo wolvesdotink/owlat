@@ -168,9 +168,14 @@ export const mailThreadsTables = {
 		// messages, or the manual clear mutation (mail/needsReply.ts).
 		needsReply: v.optional(needsReplyValidator),
 		// Set when inbound ingest enqueues needs-reply classification; cleared once
-		// the classify action persists a result. Backs the reconcile cron that
-		// re-schedules threads whose scheduled classification was lost.
+		// the classify action reaches a verdict or settles without one (AI off,
+		// model error). The heuristic baseline re-stamps it rather than clearing
+		// it. Backs the reconcile cron (mail/needsReplyPending.ts) that
+		// re-schedules threads whose classification was lost or died mid-run.
 		needsReplyPendingAt: v.optional(v.number()),
+		// How many times the reconcile cron has re-scheduled the pending
+		// classification; it gives up past a cap. Cleared with the marker.
+		needsReplyRetryCount: v.optional(v.number()),
 		// "Remind me if no reply" follow-up watch on a sent message (Boomerang
 		// parity, mail/followUps.ts). Armed at send time (from the draft's
 		// followUpRemindAt) or after the fact from the reader/sent list. An

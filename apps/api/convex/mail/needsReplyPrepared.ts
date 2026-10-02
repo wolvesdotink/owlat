@@ -14,6 +14,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { postboxQuery } from './_helpers';
 import { loadReadableMailbox } from './permissions';
 import { mailThreadUploadKey } from '../storage/uploads';
+import { answerFiles } from '../inbox/clarificationAnswers';
 
 /**
  * Hand an upload the thread holds for a Reply Queue answer to a draft of that
@@ -65,9 +66,9 @@ async function answeredFiles(
 	userId: string
 ): Promise<PreparedFile[]> {
 	const files: PreparedFile[] = [];
-	for (const question of flag.clarification?.questions ?? []) {
-		const file = question.answer?.file;
-		if (!file || files.some((f) => f.source === file.source && f.id === file.id)) continue;
+	const answered = (flag.clarification?.questions ?? []).flatMap((q) => answerFiles(q.answer));
+	for (const file of answered) {
+		if (files.some((f) => f.source === file.source && f.id === file.id)) continue;
 		if (file.source === 'semanticFile') {
 			const row = await ctx.db.get(file.id as Id<'semanticFiles'>);
 			if (!row?.storageId) continue;

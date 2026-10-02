@@ -22,6 +22,7 @@ const {
 	data: apps,
 	isLoading,
 	error,
+	refetch,
 } = useConvexQuery(api.connectedApps.queries.listByTeam, () => (isAdmin.value ? {} : 'skip'));
 
 // The plugins a new app can bind to, derived from the build-time composition.
@@ -189,20 +190,18 @@ function testIcon(outcome: TestResult['outcome']): string {
 
 <template>
 	<div>
-		<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					{{ t('dashboard.admin.team.connectedApps.index.title') }}
-				</h1>
-				<p class="mt-1 text-text-secondary max-w-2xl">
-					{{ t('dashboard.admin.team.connectedApps.index.intro') }}
-				</p>
-			</div>
-			<UiButton v-if="!showAdminGate" variant="primary" class="shrink-0" @click="openRegister">
-				<Icon name="lucide:plus" class="w-4 h-4" />
-				{{ t('dashboard.admin.team.connectedApps.index.connect') }}
-			</UiButton>
-		</div>
+		<UiPageHeader
+			class="mb-6"
+			:title="t('dashboard.admin.team.connectedApps.index.title')"
+			:description="t('dashboard.admin.team.connectedApps.index.intro')"
+		>
+			<template v-if="!showAdminGate" #actions>
+				<UiButton variant="primary" @click="openRegister">
+					<Icon name="lucide:plus" class="w-4 h-4" />
+					{{ t('dashboard.admin.team.connectedApps.index.connect') }}
+				</UiButton>
+			</template>
+		</UiPageHeader>
 
 		<!-- Admins-only gate: editors lack organization:manage. -->
 		<UiCard
@@ -218,7 +217,7 @@ function testIcon(outcome: TestResult['outcome']): string {
 			</p>
 		</UiCard>
 
-		<UiQueryBoundary v-else :loading="isLoading && !apps" :error="error">
+		<UiQueryBoundary v-else :loading="isLoading && !apps" :error="error" @retry="refetch">
 			<!-- Empty -->
 			<UiCard v-if="!apps || apps.length === 0">
 				<UiEmptyState
@@ -282,7 +281,10 @@ function testIcon(outcome: TestResult['outcome']): string {
 							]"
 						>
 							<template v-if="testingId === app._id">
-								<Icon name="lucide:loader-2" class="w-4 h-4 shrink-0 mt-0.5 animate-spin motion-reduce:animate-none" />
+								<Icon
+									name="lucide:loader-2"
+									class="w-4 h-4 shrink-0 mt-0.5 animate-spin motion-reduce:animate-none"
+								/>
 								<span>{{ t('dashboard.admin.team.connectedApps.index.testing') }}</span>
 							</template>
 							<template v-else-if="testResults[app._id]">

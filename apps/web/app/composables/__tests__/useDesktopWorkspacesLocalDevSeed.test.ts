@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { WorkspaceConfig, WorkspaceStoreShape } from '~/lib/desktop/workspaceTypes';
-import type * as KeychainStorageModule from '~/lib/desktop/keychainStorage';
 import { createTestI18n } from '~/__tests__/i18n';
 
 // `useDesktopWorkspaces` runs outside a component here, so `useI18n` is stubbed
@@ -22,23 +21,19 @@ vi.mock('@owlat/desktop/src/workspace', () => ({
 	loadWorkspaceStore: () => loadWorkspaceStore(),
 }));
 
-const secretGet = vi.fn(async () => 'session-blob');
+const sessionRead = vi.fn(async () => ({ value: 'session-blob', revision: 0 }));
 vi.mock('@owlat/desktop/src/keychain', () => ({
-	secretGet: (...args: unknown[]) => secretGet(...(args as [])),
-	secretSet: vi.fn(async () => {}),
-	secretDelete: vi.fn(async () => {}),
+	secretGet: vi.fn(async () => 'session-blob'),
+	sessionRead: (...args: unknown[]) => sessionRead(...(args as [])),
+	sessionWrite: vi.fn(async () => 'written'),
+	sessionReplace: vi.fn(async () => 1),
+	onSessionReplaced: vi.fn(async () => () => {}),
 }));
 
 const setActiveWorkspace = vi.fn();
 vi.mock('~/lib/desktop/activeWorkspace', () => ({
 	isDesktopRuntime: () => true,
 	setActiveWorkspace: (...args: unknown[]) => setActiveWorkspace(...args),
-}));
-
-const setActiveKeychainStorage = vi.fn();
-vi.mock('~/lib/desktop/keychainStorage', async (importOriginal) => ({
-	...(await importOriginal<typeof KeychainStorageModule>()),
-	setActiveKeychainStorage: (...args: unknown[]) => setActiveKeychainStorage(...args),
 }));
 
 vi.mock('~/lib/desktop/workspaceAccent', () => ({
@@ -100,7 +95,6 @@ describe('loadWorkspaces seedLocalDev — dev auto-connect to the local instance
 	beforeEach(() => {
 		saveWorkspaceStore.mockClear();
 		setActiveWorkspace.mockClear();
-		setActiveKeychainStorage.mockClear();
 		vi.stubGlobal('useI18n', () => ({ t }));
 		fetchMock.mockReset();
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -137,10 +131,9 @@ describe('loadWorkspaces seedLocalDev — dev auto-connect to the local instance
 		expect(setActiveWorkspace).toHaveBeenCalledWith(
 			expect.objectContaining({ id: LOCAL_DEV_WORKSPACE_ID })
 		);
-		expect(setActiveKeychainStorage).toHaveBeenCalledWith(
-			expect.objectContaining({ accountKey: `owlat-ws:${LOCAL_DEV_WORKSPACE_ID}` })
-		);
-		expect(secretGet).toHaveBeenCalledWith(`owlat-ws:${LOCAL_DEV_WORKSPACE_ID}`);
+		const { getActiveKeychainStorage } = await import('~/lib/desktop/keychainStorage');
+		expect(getActiveKeychainStorage()?.accountKey).toBe(`owlat-ws:${LOCAL_DEV_WORKSPACE_ID}`);
+		expect(sessionRead).toHaveBeenCalledWith(`owlat-ws:${LOCAL_DEV_WORKSPACE_ID}`);
 	});
 
 	it('reuses a manually-connected workspace on the same origin and refreshes its endpoints', async () => {

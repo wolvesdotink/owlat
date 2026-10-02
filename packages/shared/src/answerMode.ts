@@ -33,6 +33,12 @@ export const ASK_FILE_SOURCES = ['upload', 'semanticFile', 'mailAttachment'] as 
 export type AskFileSource = (typeof ASK_FILE_SOURCES)[number];
 
 /**
+ * Most files one Reply Queue file answer takes ("the invoices for our four
+ * bookings" is one question with several files).
+ */
+export const MAX_FILES_PER_ANSWER = 10;
+
+/**
  * Gap placeholders. When the person skips a question, the drafter writes
  * `[[attach the September invoice]]` where the missing fact goes. Send stays
  * blocked while any placeholder remains. Double brackets are rare in real mail,

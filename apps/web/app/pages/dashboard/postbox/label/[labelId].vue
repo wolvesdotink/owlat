@@ -54,7 +54,7 @@ const overCap = computed(() => labelData.value?.hasMore ?? false);
 			:error="mailboxesError"
 			@retry="refetchMailboxes"
 		>
-			<div class="flex w-full">
+			<div class="flex w-full min-w-0">
 				<aside
 					class="w-full lg:w-96 lg:flex-shrink-0 border-r border-border-subtle flex flex-col bg-bg-surface"
 				>

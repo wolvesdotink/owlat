@@ -17,8 +17,9 @@
  *      deterministic candidate flag with urgency `normal` and no askSummary.
  *
  * Trigger: `scheduleNeedsReplyClassify` on inbound webhook delivery (bounded to
- * the affected thread; the insert stamps the pending marker), plus a reconcile cron (`sweepPending`) that
- * re-schedules threads whose scheduled classification was lost.
+ * the affected thread; the insert stamps the pending marker), plus a reconcile
+ * cron (`sweepPending`, mail/needsReplyPending.ts) that re-schedules threads
+ * whose classification never reached a verdict.
  *
  * Clearing: any outbound send in the thread (draftLifecycle sent-effects),
  * archiving/trashing its messages (messageActions.move), muting it (mail/mute.ts
@@ -74,6 +75,7 @@ export async function enqueueNeedsReplyCheck(
 ): Promise<void> {
 	await ctx.db.patch(threadId, {
 		needsReplyPendingAt: Date.now(),
+		needsReplyRetryCount: undefined,
 		updatedAt: Date.now(),
 	});
 	await scheduleNeedsReplyClassify(ctx, threadId, opts);
@@ -112,6 +114,7 @@ export async function clearThreadNeedsReply(
 	await ctx.db.patch(threadId, {
 		needsReply: undefined,
 		needsReplyPendingAt: undefined,
+		needsReplyRetryCount: undefined,
 		updatedAt: Date.now(),
 	});
 }
@@ -210,7 +213,12 @@ export const getThreadContext = internalQuery({
 const needsReplyResultValidator = v.union(v.null(), v.object(needsReplyResultFields));
 
 /**
- * Persist a classification result and clear the pending marker. Stale-guarded:
+ * Persist a classification result and clear the pending marker, unless the
+ * result is the heuristic baseline written before the model looks
+ * (`isBaseline`): that keeps the thread pending, re-stamped to now, so a run
+ * that dies before its verdict (an OOM-killed backend, a restart, the action
+ * time limit) is picked up again by the reconcile sweep
+ * (mail/needsReplyPending.ts). Stale-guarded:
  * if a newer message arrived while classification was in flight
  * (thread.latestMessageId moved) the result is dropped — that ingest already
  * re-enqueued a check. When a result is set this is also the single place the
@@ -225,6 +233,8 @@ export const applyResult = internalMutation({
 		/** thread.latestMessageId observed by getThreadContext. */
 		expectedLatestMessageId: v.optional(v.id('mailMessages')),
 		needsReply: needsReplyResultValidator,
+		/** The heuristic baseline: the refinement is still to come, so stay pending. */
+		isBaseline: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		const thread = await ctx.db.get(args.threadId);
@@ -267,7 +277,9 @@ export const applyResult = internalMutation({
 							// the message (plan C8).
 							...(message ? { trigger: needsReplyTriggerOf(message) } : {}),
 						},
-			needsReplyPendingAt: undefined,
+			...(args.isBaseline
+				? { needsReplyPendingAt: Date.now() }
+				: { needsReplyPendingAt: undefined, needsReplyRetryCount: undefined }),
 			updatedAt: Date.now(),
 		});
 
@@ -280,7 +292,8 @@ export const applyResult = internalMutation({
 		// drafting off it wrote replies to PayPal notices and cold pitches the
 		// model then rejected (and a second draft for every real one once the
 		// model agreed). A heuristic flag that outlives a failed model call stays
-		// in the queue for a human, without a draft.
+		// in the queue for a human, without a draft; one whose run died before the
+		// model answered stays pending and is classified again by the sweep.
 		if (
 			resolved !== null &&
 			resolved.source === 'llm' &&
@@ -421,51 +434,14 @@ export const clear = postboxMutation({
 	},
 });
 
-/**
- * Pending markers older than this are considered lost and re-scheduled. The
- * marker clears the moment the classify action starts (its first applyResult),
- * so an old marker means a run that never STARTED, and on a busy self-hosted
- * deployment a scheduled action can wait several minutes for an action slot.
- * At five minutes the sweep read a queued run as lost and scheduled a second
- * one, which drafted twice and deepened the very backlog that delayed the
- * first. Past the ten-minute action limit plus headroom, a marker this old
- * really was lost (a restart, a dropped job).
- *
- * The Postbox clarification loop (answerClarification, getClarificationContext,
- * persistClarificationDraft) lives in the sibling `mail/ai/needsReplyClarify.ts`
- * to keep this file under the domain-file size gate.
+/*
+ * The pending-marker lifecycle (the reconcile sweep, its retry cap, settling a
+ * run that ended without a verdict) lives in the sibling
+ * `mail/needsReplyPending.ts`; the Postbox clarification loop
+ * (answerClarification, getClarificationContext, persistClarificationDraft) in
+ * `mail/ai/needsReplyClarify.ts`. Both keep this file under the domain-file
+ * size gate.
  */
-const SWEEP_MIN_AGE_MS = 15 * 60 * 1000;
-const SWEEP_BATCH = 20;
-
-/**
- * Reconcile cron: re-schedule classification for threads whose enqueued check
- * never completed (deploy restart, lost scheduled action). Bounded per tick;
- * bumping `needsReplyPendingAt` keeps a permanently-failing thread from being
- * re-picked every tick while it ages back into the window.
- */
-export const sweepPending = internalMutation({
-	args: {},
-	handler: async (ctx) => {
-		const cutoff = Date.now() - SWEEP_MIN_AGE_MS;
-		// `needsReplyPendingAt` is optional: on the index, `undefined` rows sort
-		// before every number, so lower-bound with gt(0) (same trick as the
-		// snooze sweep) to skip the never-pending majority.
-		const stale: Doc<'mailThreads'>[] = await ctx.db
-			.query('mailThreads')
-			.withIndex('by_needs_reply_pending', (q) =>
-				q.gt('needsReplyPendingAt', 0).lte('needsReplyPendingAt', cutoff)
-			)
-			.take(SWEEP_BATCH);
-		for (const thread of stale) {
-			await ctx.db.patch(thread._id, { needsReplyPendingAt: Date.now() });
-			await ctx.scheduler.runAfter(0, internal.mail.ai.needsReplyClassify.classifyThread, {
-				threadId: thread._id,
-			});
-		}
-		return { rescheduled: stale.length };
-	},
-});
 
 /**
  * Every thread in a mailbox currently carrying the needs-reply flag, newest

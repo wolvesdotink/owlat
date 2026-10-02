@@ -15,6 +15,8 @@ describe('useInbox pagination', () => {
 	let created: Array<{
 		data: Ref<unknown>;
 		isRefetching: Ref<boolean>;
+		error: Ref<Error | null>;
+		refetch: ReturnType<typeof vi.fn>;
 		args: () => unknown;
 		options: unknown;
 	}> = [];
@@ -26,6 +28,8 @@ describe('useInbox pagination', () => {
 				data: ref<unknown>(undefined),
 				isLoading: ref(false),
 				isRefetching: ref(false),
+				error: ref<Error | null>(null),
+				refetch: vi.fn(),
 				args,
 				options,
 			};
@@ -70,6 +74,27 @@ describe('useInbox pagination', () => {
 		await nextTick();
 		expect(ids(threads.value)).toEqual(['a', 'b', 'c', 'd']);
 		expect(hasMoreThreads.value).toBe(false);
+	});
+
+	it('retries only the page that failed, never reloading the whole list (#1098)', async () => {
+		const { threadsError, retryThreads, loadMoreThreads } = useInbox();
+		const { first, tail } = handles();
+
+		first.data.value = { threads: [thread('a')], nextCursor: 'c1' };
+		await nextTick();
+		loadMoreThreads();
+		tail.error.value = new Error('tail page failed');
+		expect(threadsError.value).toBe(tail.error.value);
+
+		retryThreads();
+		expect(tail.refetch).toHaveBeenCalledTimes(1);
+		expect(first.refetch).not.toHaveBeenCalled();
+
+		tail.error.value = null;
+		first.error.value = new Error('first page failed');
+		retryThreads();
+		expect(first.refetch).toHaveBeenCalledTimes(1);
+		expect(tail.refetch).toHaveBeenCalledTimes(1);
 	});
 
 	it('keeps the first page live after load more, so new threads still reach the top', async () => {

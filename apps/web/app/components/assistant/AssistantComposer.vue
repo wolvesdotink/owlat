@@ -82,80 +82,85 @@ const handleKeydown = (event: KeyboardEvent) => {
 
 <template>
 	<div class="border-t border-border-subtle bg-bg-elevated px-4 py-3">
-		<div class="flex items-end gap-2">
-			<label :for="fieldId" class="sr-only">
-				{{ t('components.assistant.assistantComposer.label') }}
-			</label>
-			<textarea
-				:id="fieldId"
-				ref="textareaRef"
-				v-model="text"
-				:placeholder="
-					disabled
-						? t('components.assistant.assistantComposer.unavailablePlaceholder')
-						: t('components.assistant.assistantComposer.placeholder')
-				"
-				:disabled="disabled"
-				:aria-describedby="hintId"
-				rows="1"
-				class="flex-1 resize-none bg-bg-surface border border-border-subtle rounded-xl px-4 py-2.5 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-60"
-				@keydown="handleKeydown"
-				@input="grow"
-			/>
-
-			<UiButton
-				v-if="streaming"
-				variant="secondary"
-				class="flex-shrink-0 w-10 h-10 p-0 rounded-xl"
-				:title="t('components.assistant.assistantComposer.stop')"
-				:aria-label="t('components.assistant.assistantComposer.stop')"
-				@click="emit('stop')"
-			>
-				<Icon name="lucide:square" class="w-4 h-4" />
-			</UiButton>
-			<!-- Send is `.btn-primary` — monochrome by design. A solid terracotta
-			     fill pinned to the bottom of a full-height pane is the most saturated
-			     thing on the screen, and this one competed with the assistant's own
-			     accents (the sparkles glyph, the user bubble). UiButton also brings
-			     the disabled state, which used to be a third recipe written by hand. -->
-			<UiButton
-				v-else
-				variant="primary"
-				:disabled="!canSend"
-				class="flex-shrink-0 w-10 h-10 p-0 rounded-xl"
-				:title="t('common.send')"
-				:aria-label="t('common.send')"
-				:aria-busy="isSending || undefined"
-				data-testid="assistant-send"
-				@click="send"
-			>
-				<Icon
-					v-if="isSending"
-					name="lucide:loader-2"
-					class="w-4 h-4 animate-spin motion-reduce:animate-none"
+		<!-- The conversation above is a max-w-3xl column; the composer shares it,
+		     so on a wide screen the field and Send stay under the messages
+		     instead of spanning the whole pane. -->
+		<div class="mx-auto max-w-3xl">
+			<div class="flex items-end gap-2">
+				<label :for="fieldId" class="sr-only">
+					{{ t('components.assistant.assistantComposer.label') }}
+				</label>
+				<textarea
+					:id="fieldId"
+					ref="textareaRef"
+					v-model="text"
+					:placeholder="
+						disabled
+							? t('components.assistant.assistantComposer.unavailablePlaceholder')
+							: t('components.assistant.assistantComposer.placeholder')
+					"
+					:disabled="disabled"
+					:aria-describedby="hintId"
+					rows="1"
+					class="flex-1 resize-none bg-bg-surface border border-border-subtle rounded-xl px-4 py-2.5 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-60"
+					@keydown="handleKeydown"
+					@input="grow"
 				/>
-				<Icon v-else name="lucide:send" class="w-4 h-4" />
-			</UiButton>
-		</div>
-		<div aria-live="polite">
-			<p
-				v-if="failed"
-				class="text-xs text-error mt-1.5 px-1 flex flex-wrap items-center gap-x-1.5"
-				data-testid="assistant-send-failed"
-			>
-				<span>{{ t('components.assistant.assistantComposer.sendFailed') }}</span>
-				<button
-					type="button"
-					class="font-medium underline underline-offset-2 rounded hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-60"
+
+				<UiButton
+					v-if="streaming"
+					variant="secondary"
+					class="flex-shrink-0 w-10 h-10 p-0 rounded-xl"
+					:title="t('components.assistant.assistantComposer.stop')"
+					:aria-label="t('components.assistant.assistantComposer.stop')"
+					@click="emit('stop')"
+				>
+					<Icon name="lucide:square" class="w-4 h-4" />
+				</UiButton>
+				<!-- Send is `.btn-primary` — monochrome by design. A solid terracotta
+				     fill pinned to the bottom of a full-height pane is the most saturated
+				     thing on the screen, and this one competed with the assistant's own
+				     accents (the sparkles glyph, the user bubble). UiButton also brings
+				     the disabled state, which used to be a third recipe written by hand. -->
+				<UiButton
+					v-else
+					variant="primary"
 					:disabled="!canSend"
+					class="flex-shrink-0 w-10 h-10 p-0 rounded-xl"
+					:title="t('common.send')"
+					:aria-label="t('common.send')"
+					:aria-busy="isSending || undefined"
+					data-testid="assistant-send"
 					@click="send"
 				>
-					{{ t('common.retry') }}
-				</button>
+					<Icon
+						v-if="isSending"
+						name="lucide:loader-2"
+						class="w-4 h-4 animate-spin motion-reduce:animate-none"
+					/>
+					<Icon v-else name="lucide:send" class="w-4 h-4" />
+				</UiButton>
+			</div>
+			<div aria-live="polite">
+				<p
+					v-if="failed"
+					class="text-xs text-error mt-1.5 px-1 flex flex-wrap items-center gap-x-1.5"
+					data-testid="assistant-send-failed"
+				>
+					<span>{{ t('components.assistant.assistantComposer.sendFailed') }}</span>
+					<button
+						type="button"
+						class="font-medium underline underline-offset-2 rounded hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-60"
+						:disabled="!canSend"
+						@click="send"
+					>
+						{{ t('common.retry') }}
+					</button>
+				</p>
+			</div>
+			<p :id="hintId" class="text-[11px] text-text-tertiary mt-1.5 px-1">
+				{{ t('components.assistant.assistantComposer.hint') }}
 			</p>
 		</div>
-		<p :id="hintId" class="text-[11px] text-text-tertiary mt-1.5 px-1">
-			{{ t('components.assistant.assistantComposer.hint') }}
-		</p>
 	</div>
 </template>

@@ -170,14 +170,11 @@ const { data: feedbackStats } = useConvexQuery(api.autonomyFeedback.getFeedbackS
 
 <template>
 	<div>
-		<div class="flex items-center gap-4 mb-8">
-			<UiIconBox icon="lucide:bot" size="xl" variant="brand" rounded="full" />
-			<UiPageHeader
-				class="flex-1"
-				:title="t('dashboard.admin.instance.aiReplies.title')"
-				:description="t('dashboard.admin.instance.aiReplies.subtitle')"
-			/>
-		</div>
+		<UiPageHeader
+			class="mb-8"
+			:title="t('dashboard.admin.instance.aiReplies.title')"
+			:description="t('dashboard.admin.instance.aiReplies.subtitle')"
+		/>
 
 		<div
 			v-if="isLoading"

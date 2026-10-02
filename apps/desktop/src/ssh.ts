@@ -19,13 +19,25 @@ export interface ConnectInfo {
 
 export type SshAuth =
 	| { type: 'password'; password: string }
-	/** Pasted key material OR a path to a key file on this machine (`~` expanded in Rust). */
-	| { type: 'key'; privateKey?: string; privateKeyPath?: string; passphrase?: string };
+	/**
+	 * Pasted key material, OR the key file the user chose with `sshPickKeyFile`.
+	 * There is no path field: Rust reads only a file the user picked natively.
+	 */
+	| { type: 'key'; privateKey?: string; usePickedKeyFile?: boolean; passphrase?: string };
 
 export type ExecEvent =
 	| { kind: 'stdout'; line: string }
 	| { kind: 'stderr'; line: string }
 	| { kind: 'exit'; code: number };
+
+/**
+ * Open the native picker to choose an SSH private key (starts in `~/.ssh`).
+ * Rust remembers the choice for `sshAuthenticate` with `usePickedKeyFile`;
+ * the returned path is for display. Null when the user cancelled.
+ */
+export function sshPickKeyFile(title?: string): Promise<string | null> {
+	return invoke<string | null>('ssh_pick_key_file', { title });
+}
 
 /** TCP-connect + SSH-handshake only (no credentials sent). */
 export function sshConnect(host: string, port?: number): Promise<ConnectInfo> {

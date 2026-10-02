@@ -172,7 +172,11 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 				<template #iconLeft>
 					<Icon name="lucide:history" class="w-4 h-4" />
 				</template>
-				{{ t('components.email.templateHistoryPanel.trigger') }}
+				<!-- Icon-only below 2xl, where the builder toolbar is short of room;
+				     the label stays the accessible name. -->
+				<span class="max-2xl:sr-only">{{
+					t('components.email.templateHistoryPanel.trigger')
+				}}</span>
 			</UiButton>
 		</div>
 

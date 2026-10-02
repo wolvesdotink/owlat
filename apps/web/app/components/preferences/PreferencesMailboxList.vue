@@ -108,9 +108,11 @@ async function handleDelete() {
 				<li
 					v-for="mb in mailboxes"
 					:key="mb._id"
-					class="px-5 py-3 flex items-center justify-between gap-3"
+					class="px-5 py-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2"
 				>
-					<div class="min-w-0">
+					<!-- Wraps the controls below the address on a phone instead of
+					     truncating the address to its first letters. -->
+					<div class="min-w-0 flex-[1_1_14rem]">
 						<p class="flex items-center gap-2 font-medium">
 							<InboxChip
 								v-if="inboxById.get(mb._id)"

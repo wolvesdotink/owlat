@@ -15,7 +15,12 @@ const { showToast } = useToast();
 
 // Recorded backup plan (operator attestation — NOT a live host reading; see
 // apps/api/convex/backups.ts for why the app can't introspect the host).
-const { data: state, isLoading, error } = useConvexQuery(api.backups.getBackupState, () => ({}));
+const {
+	data: state,
+	isLoading,
+	error,
+	refetch,
+} = useConvexQuery(api.backups.getBackupState, () => ({}));
 
 const { run: setSchedule, isLoading: savingSchedule } = useBackendOperation(
 	api.backups.setScheduleEnabled,
@@ -108,6 +113,7 @@ const recordedAtLabel = computed(() =>
 		<UiQueryBoundary
 			:loading="isLoading"
 			:error="error"
+			@retry="refetch"
 			:error-title="t('dashboard.admin.backups.loadErrorTitle')"
 		>
 			<template #loading>

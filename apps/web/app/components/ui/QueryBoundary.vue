@@ -12,9 +12,13 @@
  *
  * Pass the destructured `isLoading` / `error` straight through, plus an `empty`
  * predicate for the no-data case. The `error` branch renders `UiErrorAlert` with
- * a retry control; wire `@retry` to the composable's `refetch`, or leave it
- * unwired and the boundary falls back to reloading the page. The alert's copy
- * comes from the error's category (`queryErrorCopy`), never the raw message.
+ * a retry control; wire `@retry` to the composable's `refetch` (or, when
+ * `:error` merges several reads, to a handler that refetches the failed ones).
+ * A surface with nothing to refetch opts into a full page reload with
+ * `reload-on-retry`; `app/__tests__/queryBoundaryRetry.lint.test.ts` fails on a
+ * boundary that passes `:error` with neither. An unwired boundary still falls
+ * back to the reload at runtime. The alert's copy comes from the error's
+ * category (`queryErrorCopy`), never the raw message.
  *
  * Usage:
  *   <UiQueryBoundary :loading="isLoading" :error="error" :empty="(data ?? []).length === 0">
@@ -48,6 +52,11 @@ interface Props {
 	loadingLabel?: string;
 	/** Hide the retry control on the default error state. */
 	hideRetry?: boolean;
+	/**
+	 * Retry reloads the page instead of emitting `retry`. Only for a surface
+	 * with no read to refetch; everything else wires `@retry`.
+	 */
+	reloadOnRetry?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -58,6 +67,7 @@ const props = withDefaults(defineProps<Props>(), {
 	errorMessage: undefined,
 	loadingLabel: undefined,
 	hideRetry: false,
+	reloadOnRetry: false,
 });
 
 const { t, te, locale } = useI18n();
@@ -105,7 +115,7 @@ const displayMessage = computed(() => {
 });
 
 function handleRetry() {
-	if (hasRetryListener.value) {
+	if (hasRetryListener.value && !props.reloadOnRetry) {
 		emit('retry');
 	} else if (typeof window !== 'undefined') {
 		window.location.reload();
