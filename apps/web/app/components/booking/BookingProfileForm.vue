@@ -62,8 +62,11 @@ function seed() {
 }
 
 const form = reactive(seed());
+// Reseed only when the stored page itself changes. The settings query re-runs
+// with a fresh object whenever a meeting type is saved or toggled, and that
+// must not throw away hours the member is still editing.
 watch(
-	() => props.profile,
+	() => JSON.stringify(props.profile),
 	() => Object.assign(form, seed())
 );
 
