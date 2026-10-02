@@ -335,6 +335,10 @@ async function handleNotificationClick(notification) {
 	});
 	if (existing) {
 		await existing.focus();
+		// `Client.postMessage` (worker → page) has no targetOrigin parameter; the
+		// rule is written for `window.postMessage`. The client is same-origin by
+		// the check above.
+		// eslint-disable-next-line unicorn/require-post-message-target-origin
 		existing.postMessage({ type: 'owlat:navigate', path });
 		return;
 	}
