@@ -6950,6 +6950,163 @@
 						"title": "Wann automatisch gesendet wird"
 					}
 				},
+				"brandKit": {
+					"buttons": {
+						"paddingX": "Innenabstand seitlich",
+						"paddingY": "Innenabstand oben und unten",
+						"radius": "Eckenradius",
+						"title": "Buttons"
+					},
+					"colors": {
+						"addSwatch": "Farbfeld hinzufügen",
+						"background": "Hintergrund",
+						"backgroundHelp": "Der E-Mail-Hintergrund hinter deinen Inhalten.",
+						"link": "Link",
+						"linkHelp": "Links im Text.",
+						"pickColor": "Farbe für {label} wählen",
+						"primary": "Primärfarbe",
+						"primaryHelp": "Buttons, Aufzählungszeichen, Icons und andere Akzente.",
+						"removeSwatch": "Farbfeld {color} entfernen",
+						"secondary": "Sekundärfarbe",
+						"secondaryHelp": "Trennlinien und zweite Akzente.",
+						"subtitle": "Neue Blöcke starten in diesen Farben, und jede Farbauswahl im Editor bietet sie zuerst an.",
+						"swatchValue": "Farbfeld {n}, Hex-Wert",
+						"swatches": "Weitere Farbfelder",
+						"swatchesHelp": "Bis zu {max} weitere Farben für die Farbauswahl im Editor.",
+						"text": "Text",
+						"textHelp": "Überschriften und Fließtext.",
+						"title": "Farben"
+					},
+					"errors": {
+						"addressTooLong": "Die Anschrift ist zu lang.",
+						"buttonOutOfRange": "Eckenradius oder Innenabstand des Buttons liegt außerhalb des Bereichs.",
+						"companyNameTooLong": "Der Firmenname ist zu lang.",
+						"invalidColor": "Gib eine Hex-Farbe wie #c4785a ein.",
+						"invalidSocialUrl": "Gib eine vollständige Adresse ein, die mit https:// beginnt.",
+						"tooManySocialLinks": "Ein Markenkit hat höchstens acht Social-Media-Links.",
+						"tooManySwatches": "Ein Markenkit hat höchstens sechs weitere Farbfelder.",
+						"unknownFont": "Wähle beide Schriften aus der Liste.",
+						"widthOutOfRange": "Die E-Mail-Breite muss zwischen 400 und 800 px liegen."
+					},
+					"footer": {
+						"addSocialLink": "Social-Media-Link hinzufügen",
+						"address": "Postanschrift",
+						"addressHelp": "Viele Länder schreiben eine Postanschrift in Marketing-E-Mails vor.",
+						"companyName": "Firmenname",
+						"platform": "Plattform",
+						"removeSocialLink": "{platform}-Link entfernen",
+						"socialLinks": "Social-Media-Links",
+						"subtitle": "Deine Firmenangaben und Social-Media-Links. Neue E-Mails enden damit, und der Editor fügt sie überall ein.",
+						"title": "Fußzeile",
+						"url": "Adresse deines {platform}-Profils",
+						"urlPlaceholder": "https://",
+						"useWorkspaceName": "„{name}“ verwenden"
+					},
+					"import": {
+						"appliedToast": "Ins Markenkit übernommen. Prüfe es und speichere.",
+						"apply": "Ins Markenkit übernehmen",
+						"applying": "Wird übernommen...",
+						"back": "Andere Adresse versuchen",
+						"cancel": "Abbrechen",
+						"description": "Gib deine Website ein. Owlat liest Farben, Logo und Namen aus und schlägt dir ein Markenkit zur Prüfung vor. Gespeichert wird erst, wenn du das Markenkit speicherst.",
+						"errors": {
+							"blocked": "Diese Adresse zeigt in ein privates Netzwerk und kann nicht gelesen werden.",
+							"invalid_url": "Gib eine Website-Adresse wie example.com ein.",
+							"not_html": "Diese Adresse ist keine Webseite.",
+							"not_image": "Dieses Logo ist kein PNG-, JPEG- oder sicheres SVG-Bild.",
+							"rate_limited": "Zu viele Importe. Warte eine Minute und versuch es noch einmal.",
+							"too_large": "Diese Logodatei ist zu groß.",
+							"unreachable": "Diese Website war nicht erreichbar."
+						},
+						"fetch": "Website auslesen",
+						"fetchOperation": "Website auslesen",
+						"fetching": "Website wird ausgelesen...",
+						"logoOperation": "Logo importieren",
+						"noCandidates": "Auf dieser Seite wurde kein brauchbares Logo gefunden.",
+						"noColors": "Auf dieser Seite wurden keine Markenfarben gefunden.",
+						"noLogo": "Aktuelles Logo behalten",
+						"proposalHint": "Gefunden auf {url}. Wähle, was du übernehmen willst; vor dem Speichern kannst du alles noch ändern.",
+						"sources": {
+							"appleTouchIcon": "App-Icon",
+							"icon": "Website-Icon",
+							"logoImage": "Logo auf der Seite",
+							"ogImage": "Vorschaubild zum Teilen"
+						},
+						"title": "Von Website importieren",
+						"urlLabel": "Website",
+						"urlPlaceholder": "example.com",
+						"useColors": "Diese Farben übernehmen",
+						"useName": "„{name}“ als Firmennamen übernehmen"
+					},
+					"importButton": "Von Website importieren",
+					"layout": {
+						"emailWidth": "E-Mail-Breite",
+						"emailWidthHelp": "Maximale Breite deiner E-Mails auf dem Desktop (400–800 px). Standard sind 600 px."
+					},
+					"loading": "Markenkit wird geladen...",
+					"logo": {
+						"choose": "Aus der Mediathek wählen",
+						"dark": "Logo für den Dunkelmodus",
+						"darkHelp": "Optional. Wird stattdessen in E-Mail-Programmen gezeigt, die in den Dunkelmodus wechseln.",
+						"light": "Logo",
+						"lightHelp": "Wird auf hellem Hintergrund gezeigt.",
+						"pickerTitle": "Logo wählen",
+						"remove": "Entfernen",
+						"replace": "Ersetzen",
+						"subtitle": "Steht oben in neuen E-Mails und lässt sich im Editor einfügen. Wähle es aus der Mediathek.",
+						"title": "Logo"
+					},
+					"pageTitle": "Markenkit — Owlat",
+					"preview": {
+						"body": "So liest sich Fließtext in deinen E-Mails, und Links sehen",
+						"button": "Zur Aktion",
+						"dark": "Dunkel",
+						"frameTitle": "Vorschau-E-Mail des Markenkits",
+						"heading": "Deine Marke, in jeder E-Mail",
+						"light": "Hell",
+						"link": "so aus",
+						"subtitle": "Eine Beispiel-E-Mail in deiner Marke, so gerendert, wie sie verschickt wird.",
+						"title": "Vorschau"
+					},
+					"px": "px",
+					"resetToDefaults": "Auf Standard zurücksetzen",
+					"save": "Markenkit speichern",
+					"saveOperation": "Markenkit speichern",
+					"savedToast": "Markenkit gespeichert",
+					"saving": "Wird gespeichert...",
+					"subtitle": "Leg deine Marke einmal fest. Jede neue E-Mail startet damit, und der Editor bietet sie überall an, wo du einen Block gestaltest.",
+					"title": "Markenkit",
+					"typography": {
+						"bodyFont": "Schrift für Fließtext",
+						"fonts": {
+							"arial": "Arial",
+							"courierNew": "Courier New",
+							"georgia": "Georgia",
+							"helvetica": "Helvetica",
+							"inter": "Inter",
+							"lato": "Lato",
+							"lora": "Lora",
+							"merriweather": "Merriweather",
+							"montserrat": "Montserrat",
+							"openSans": "Open Sans",
+							"playfairDisplay": "Playfair Display",
+							"poppins": "Poppins",
+							"roboto": "Roboto",
+							"systemDefault": "Systemschrift",
+							"timesNewRoman": "Times New Roman",
+							"trebuchetMs": "Trebuchet MS",
+							"verdana": "Verdana"
+						},
+						"groupSafe": "E-Mail-sichere Schriften",
+						"groupWeb": "Webschriften",
+						"headingFont": "Schrift für Überschriften",
+						"otherFont": "Aktuelle Schrift ({stack})",
+						"subtitle": "Schriften für Überschriften und Fließtext und die Form, mit der jeder neue Button startet.",
+						"title": "Schrift und Buttons",
+						"webFontHelp": "Webschriften erscheinen in Apple Mail, iOS Mail und Thunderbird. Gmail und Outlook nutzen die E-Mail-sichere Schrift, die danach genannt ist."
+					},
+					"unsaved": "Nicht gespeichert"
+				},
 				"channels": {
 					"addChannel": "Kanal hinzufügen",
 					"addedToast": "Kanal hinzugefügt — konfiguriere ihn unten",
@@ -7045,51 +7202,6 @@
 					"save": "Speichern",
 					"savedToast": "Richtlinie für Desktop-Updates gespeichert.",
 					"title": "Desktop-App-Updates"
-				},
-				"emailTheme": {
-					"backgroundColor": "Hintergrundfarbe",
-					"backgroundColorHelp": "Die Hintergrundfarbe deines E-Mail-Textkörpers.",
-					"emailWidth": "E-Mail-Breite",
-					"emailWidthHelp": "Maximale Breite deiner E-Mail auf dem Desktop (400–800 px). Standard sind 600 px.",
-					"errors": {
-						"backgroundColor": "Bitte gib eine gültige Hex-Farbe ein (z. B. #ffffff)",
-						"primaryColor": "Bitte gib eine gültige Hex-Farbe ein (z. B. #c4785a)"
-					},
-					"fontFamily": "Schriftart",
-					"fontFamilyHelp": "Die Standardschrift für Textinhalte in deinen E-Mails.",
-					"fonts": {
-						"arial": "Arial",
-						"courierNew": "Courier New",
-						"georgia": "Georgia",
-						"helvetica": "Helvetica",
-						"systemDefault": "Systemstandard",
-						"timesNewRoman": "Times New Roman",
-						"trebuchetMs": "Trebuchet MS",
-						"verdana": "Verdana"
-					},
-					"loading": "Design-Einstellungen werden geladen...",
-					"pageTitle": "E-Mail-Design — Owlat",
-					"preview": {
-						"body": "Danke für deine Anmeldung! Wir freuen uns, dich an Bord zu haben. Freu dich auf Neuigkeiten, Tipps und exklusive Inhalte direkt in deinem Postfach.",
-						"button": "Jetzt loslegen",
-						"footer": "Du erhältst diese E-Mail, weil du dich für unseren Newsletter angemeldet hast.",
-						"heading": "Willkommen zu unserem Newsletter",
-						"note": "Dies ist eine vereinfachte Vorschau. Tatsächliche E-Mails können je nach Darstellung im E-Mail-Programm abweichen."
-					},
-					"previewSubtitle": "Sieh, wie dein Design in E-Mails wirkt",
-					"primaryColor": "Primärfarbe",
-					"primaryColorHelp": "Wird für Schaltflächen und Handlungsaufforderungen in deinen E-Mails verwendet.",
-					"px": "px",
-					"resetToDefaults": "Auf Standardwerte zurücksetzen",
-					"saveOperation": "E-Mail-Design speichern",
-					"saveTheme": "Design speichern",
-					"savedToast": "E-Mail-Design erfolgreich gespeichert",
-					"savingTheme": "Wird gespeichert...",
-					"settingsSubtitle": "Lege Farben und Schriften für deine E-Mails fest",
-					"settingsTitle": "Design-Einstellungen",
-					"subtitle": "Konfiguriere die Standardgestaltung für deine E-Mail-Vorlagen",
-					"title": "E-Mail-Design",
-					"unsaved": "Nicht gespeichert"
 				},
 				"features": {
 					"approval": {
@@ -7294,6 +7406,10 @@
 							"description": "Lege fest, ob die KI Antworten zur Prüfung entwirft, sie bei hoher Sicherheit selbst sendet oder aus bleibt.",
 							"title": "KI-Antworten"
 						},
+						"brandKit": {
+							"description": "Logo, Farben, Schriften und Fußzeile, mit denen jede E-Mail startet.",
+							"title": "Markenkit"
+						},
 						"channels": {
 							"description": "Nachrichtenkanäle, die in der gesamten Instanz verfügbar sind.",
 							"title": "Kanäle"
@@ -7301,10 +7417,6 @@
 						"desktopUpdates": {
 							"description": "Lege fest, welche Version verbundene Desktop-Apps installieren — oder halte alle zurück.",
 							"title": "Desktop-Updates"
-						},
-						"emailTheme": {
-							"description": "Standardgestaltung für Nachrichten, die dieser Workspace versendet.",
-							"title": "E-Mail-Design"
 						},
 						"features": {
 							"description": "Feingranulare Feature-Flags und Pakete für die erweiterte Konfiguration.",
@@ -12007,6 +12119,7 @@
 				"automations": "Automationen",
 				"backups": "Backups",
 				"blocks": "Blöcke",
+				"brandKit": "Markenkit",
 				"campaignSenders": "Kampagnenabsender",
 				"campaigns": "Kampagnen",
 				"cells": "Zustellungszellen",
@@ -12018,7 +12131,6 @@
 				"deliverability": "Zustellbarkeit",
 				"deliveryProvider": "Zustellungsanbieter",
 				"desktopUpdates": "Desktop-App-Updates",
-				"emailTheme": "E-Mail-Design",
 				"features": "Funktionen",
 				"failedMessages": "Fehlgeschlagene Nachrichten",
 				"files": "Dateien",

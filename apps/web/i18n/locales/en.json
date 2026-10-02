@@ -6950,6 +6950,163 @@
 						"title": "When to send automatically"
 					}
 				},
+				"brandKit": {
+					"buttons": {
+						"paddingX": "Side padding",
+						"paddingY": "Top and bottom padding",
+						"radius": "Corner radius",
+						"title": "Buttons"
+					},
+					"colors": {
+						"addSwatch": "Add swatch",
+						"background": "Background",
+						"backgroundHelp": "The email body behind your content.",
+						"link": "Link",
+						"linkHelp": "Links inside text.",
+						"pickColor": "Pick a color for {label}",
+						"primary": "Primary",
+						"primaryHelp": "Buttons, bullets, icons and other accents.",
+						"removeSwatch": "Remove swatch {color}",
+						"secondary": "Secondary",
+						"secondaryHelp": "Dividers and secondary accents.",
+						"subtitle": "New blocks start in these colors, and every color picker in the editor offers them first.",
+						"swatchValue": "Swatch {n}, hex value",
+						"swatches": "Extra swatches",
+						"swatchesHelp": "Up to {max} more colors for the editor's color pickers.",
+						"text": "Text",
+						"textHelp": "Headings and body text.",
+						"title": "Colors"
+					},
+					"errors": {
+						"addressTooLong": "The address is too long.",
+						"buttonOutOfRange": "The button radius or padding is out of range.",
+						"companyNameTooLong": "The company name is too long.",
+						"invalidColor": "Enter a hex color such as #c4785a.",
+						"invalidSocialUrl": "Enter a full address starting with https://.",
+						"tooManySocialLinks": "A brand kit has at most eight social links.",
+						"tooManySwatches": "A brand kit has at most six extra swatches.",
+						"unknownFont": "Pick both fonts from the list.",
+						"widthOutOfRange": "The email width must be between 400 and 800 px."
+					},
+					"footer": {
+						"addSocialLink": "Add social link",
+						"address": "Postal address",
+						"addressHelp": "Many countries require a postal address in marketing emails.",
+						"companyName": "Company name",
+						"platform": "Platform",
+						"removeSocialLink": "Remove the {platform} link",
+						"socialLinks": "Social links",
+						"subtitle": "Your company details and social links. New emails end with them, and the editor can insert them anywhere.",
+						"title": "Footer",
+						"url": "{platform} profile address",
+						"urlPlaceholder": "https://",
+						"useWorkspaceName": "Use “{name}”"
+					},
+					"import": {
+						"appliedToast": "Applied to the brand kit. Review it and save.",
+						"apply": "Apply to brand kit",
+						"applying": "Applying...",
+						"back": "Try another address",
+						"cancel": "Cancel",
+						"description": "Enter your website. Owlat reads its colors, logo and name and proposes a brand kit for you to review. Nothing is saved until you save the brand kit.",
+						"errors": {
+							"blocked": "That address points to a private network and cannot be read.",
+							"invalid_url": "Enter a website address such as example.com.",
+							"not_html": "That address is not a web page.",
+							"not_image": "That logo is not a PNG, JPEG or safe SVG image.",
+							"rate_limited": "Too many imports. Wait a minute and try again.",
+							"too_large": "That logo file is too large.",
+							"unreachable": "That website could not be reached."
+						},
+						"fetch": "Read website",
+						"fetchOperation": "Read website",
+						"fetching": "Reading website...",
+						"logoOperation": "Import logo",
+						"noCandidates": "No usable logo found on that page.",
+						"noColors": "No brand colors found on that page.",
+						"noLogo": "Keep the current logo",
+						"proposalHint": "Found on {url}. Choose what to use; you can still change everything before saving.",
+						"sources": {
+							"appleTouchIcon": "App icon",
+							"icon": "Site icon",
+							"logoImage": "Logo on the page",
+							"ogImage": "Sharing image"
+						},
+						"title": "Import from website",
+						"urlLabel": "Website",
+						"urlPlaceholder": "example.com",
+						"useColors": "Use these colors",
+						"useName": "Use “{name}” as the company name"
+					},
+					"importButton": "Import from website",
+					"layout": {
+						"emailWidth": "Email width",
+						"emailWidthHelp": "Maximum width of your emails on desktop (400–800 px). The default is 600 px."
+					},
+					"loading": "Loading the brand kit...",
+					"logo": {
+						"choose": "Choose from media library",
+						"dark": "Dark-mode logo",
+						"darkHelp": "Optional. Shown instead in email clients that switch to dark mode.",
+						"light": "Logo",
+						"lightHelp": "Shown on light backgrounds.",
+						"pickerTitle": "Choose a logo",
+						"remove": "Remove",
+						"replace": "Replace",
+						"subtitle": "Placed at the top of new emails and insertable from the editor. Pick it from the media library.",
+						"title": "Logo"
+					},
+					"pageTitle": "Brand kit — Owlat",
+					"preview": {
+						"body": "This is how body text reads in your emails, and links look",
+						"button": "Call to action",
+						"dark": "Dark",
+						"frameTitle": "Brand kit preview email",
+						"heading": "Your brand, in every email",
+						"light": "Light",
+						"link": "like this",
+						"subtitle": "A sample email in your brand, rendered the way it is sent.",
+						"title": "Preview"
+					},
+					"px": "px",
+					"resetToDefaults": "Reset to defaults",
+					"save": "Save brand kit",
+					"saveOperation": "Save brand kit",
+					"savedToast": "Brand kit saved",
+					"saving": "Saving...",
+					"subtitle": "Set your brand once. Every new email starts from it, and the editor offers it wherever you style a block.",
+					"title": "Brand kit",
+					"typography": {
+						"bodyFont": "Body font",
+						"fonts": {
+							"arial": "Arial",
+							"courierNew": "Courier New",
+							"georgia": "Georgia",
+							"helvetica": "Helvetica",
+							"inter": "Inter",
+							"lato": "Lato",
+							"lora": "Lora",
+							"merriweather": "Merriweather",
+							"montserrat": "Montserrat",
+							"openSans": "Open Sans",
+							"playfairDisplay": "Playfair Display",
+							"poppins": "Poppins",
+							"roboto": "Roboto",
+							"systemDefault": "System default",
+							"timesNewRoman": "Times New Roman",
+							"trebuchetMs": "Trebuchet MS",
+							"verdana": "Verdana"
+						},
+						"groupSafe": "Email-safe fonts",
+						"groupWeb": "Web fonts",
+						"headingFont": "Heading font",
+						"otherFont": "Current font ({stack})",
+						"subtitle": "Fonts for headings and body text, and the shape every new button starts with.",
+						"title": "Typography and buttons",
+						"webFontHelp": "Web fonts show in Apple Mail, iOS Mail and Thunderbird. Gmail and Outlook use the email-safe font named after them."
+					},
+					"unsaved": "Unsaved"
+				},
 				"channels": {
 					"addChannel": "Add channel",
 					"addedToast": "Channel added — configure it below",
@@ -7045,51 +7202,6 @@
 					"save": "Save",
 					"savedToast": "Desktop update policy saved.",
 					"title": "Desktop app updates"
-				},
-				"emailTheme": {
-					"backgroundColor": "Background color",
-					"backgroundColorHelp": "The background color of your email body.",
-					"emailWidth": "Email width",
-					"emailWidthHelp": "Maximum width of your email on desktop (400–800px). Default is 600px.",
-					"errors": {
-						"backgroundColor": "Please enter a valid hex color (e.g., #ffffff)",
-						"primaryColor": "Please enter a valid hex color (e.g., #c4785a)"
-					},
-					"fontFamily": "Font family",
-					"fontFamilyHelp": "The default font for text content in your emails.",
-					"fonts": {
-						"arial": "Arial",
-						"courierNew": "Courier New",
-						"georgia": "Georgia",
-						"helvetica": "Helvetica",
-						"systemDefault": "System default",
-						"timesNewRoman": "Times New Roman",
-						"trebuchetMs": "Trebuchet MS",
-						"verdana": "Verdana"
-					},
-					"loading": "Loading theme settings...",
-					"pageTitle": "Email theme — Owlat",
-					"preview": {
-						"body": "Thank you for subscribing! We're excited to have you on board. Stay tuned for updates, tips, and exclusive content delivered straight to your inbox.",
-						"button": "Get started",
-						"footer": "You're receiving this email because you signed up for our newsletter.",
-						"heading": "Welcome to our newsletter",
-						"note": "This is a simplified preview. Actual emails may vary based on email client rendering."
-					},
-					"previewSubtitle": "See how your theme looks in emails",
-					"primaryColor": "Primary color",
-					"primaryColorHelp": "Used for buttons and call-to-action elements in your emails.",
-					"px": "px",
-					"resetToDefaults": "Reset to defaults",
-					"saveOperation": "Save email theme",
-					"saveTheme": "Save theme",
-					"savedToast": "Email theme saved successfully",
-					"savingTheme": "Saving...",
-					"settingsSubtitle": "Set colors and fonts for your emails",
-					"settingsTitle": "Theme settings",
-					"subtitle": "Configure default styling for your email templates",
-					"title": "Email theme",
-					"unsaved": "Unsaved"
 				},
 				"features": {
 					"approval": {
@@ -7294,6 +7406,10 @@
 							"description": "Choose whether the AI drafts replies for review, sends them when confident, or stays off.",
 							"title": "AI replies"
 						},
+						"brandKit": {
+							"description": "Logo, colors, fonts and footer that every email starts from.",
+							"title": "Brand kit"
+						},
 						"channels": {
 							"description": "Messaging channels available across the instance.",
 							"title": "Channels"
@@ -7301,10 +7417,6 @@
 						"desktopUpdates": {
 							"description": "Choose which release connected desktop apps install, or hold them all.",
 							"title": "Desktop updates"
-						},
-						"emailTheme": {
-							"description": "Default visual styling for messages sent by this workspace.",
-							"title": "Email theme"
 						},
 						"features": {
 							"description": "Fine-grained feature flags and packs for advanced configuration.",
@@ -12007,6 +12119,7 @@
 				"automations": "Automations",
 				"backups": "Backups",
 				"blocks": "Blocks",
+				"brandKit": "Brand kit",
 				"campaignSenders": "Campaign senders",
 				"campaigns": "Campaigns",
 				"cells": "Delivery cells",
@@ -12018,7 +12131,6 @@
 				"deliverability": "Deliverability",
 				"deliveryProvider": "Delivery provider",
 				"desktopUpdates": "Desktop app updates",
-				"emailTheme": "Email theme",
 				"features": "Features",
 				"failedMessages": "Failed messages",
 				"files": "Files",

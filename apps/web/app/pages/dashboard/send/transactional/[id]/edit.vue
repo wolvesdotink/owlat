@@ -24,7 +24,7 @@ const emailId = useRouteId<'transactionalEmails'>();
 const { hasActiveOrganization } = useOrganizationContext();
 const { renderBlocksToHtml, buildHtmlTranslationsForEmail } = useEmailHtmlRendering();
 const { isFocusMode } = useFocusMode();
-const { emailTheme } = useEmailTheme();
+const { emailTheme, brand } = useEmailTheme();
 const builderFits = useEmailBuilderViewport();
 
 // Fetch transactional email data
@@ -353,6 +353,9 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 					variableType: 'data',
 					blockTypes: ['text', 'image', 'button', 'divider', 'spacer', 'columns'],
 					hideSubject: false,
+					// The theme the server renders this email with, and the brand kit.
+					theme: emailTheme,
+					brand,
 				}"
 				:is-saving="isSaving"
 				:plain-text-override="plainTextOverride"
