@@ -42,7 +42,12 @@ organization, or, when limited, only composers writing from one of those team
 inboxes (never the Team Inbox reply, which has no mailbox). Changing a shared
 reply needs `settings:manage`; everyone may insert one. A limit can only name
 live team inboxes of the organization; anything else is refused, never
-dropped, so a limit can not silently widen to "everywhere".
+dropped, so a limit can not silently widen to "everywhere". The one exception
+is an inbox the reply was already limited to and that has since been deleted:
+an edit drops it, since the editor can neither show nor untick it. The shared
+list a member who is not an admin reads holds only the replies they could
+insert. Each person and each organization can have at most 200 replies, the
+number the lists read.
 
 This narrows one old permission: a member of a team inbox could edit that
 inbox's snippets, and can no longer. The previous release's API
@@ -67,7 +72,8 @@ An unresolved variable becomes a `[[...]]` gap, the placeholder AI drafts
 already use. The composer holds Send while gaps remain once a saved reply put
 one in; in the Postbox the draft is marked `isGapGuarded`, so the server's
 `DRAFT_HAS_GAPS` check applies and survives a reload. The Team Inbox reply has
-no draft row, so there the hold is the composer's.
+no draft row, so there the hold is the composer's, kept with the reply's text
+when the person leaves the thread and comes back in the same session.
 
 ### 5. Erasure and export
 
