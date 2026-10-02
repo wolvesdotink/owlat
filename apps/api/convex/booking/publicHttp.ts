@@ -12,6 +12,12 @@
  * `<token>` on the manage routes is the guest's manage token from their mail;
  * it is hashed here and only the digest is looked up. A booking request with
  * the honeypot field filled answers like a success and books nothing.
+ *
+ * Every route keys its limit on `<ip>:<page slug or manage token>`, like the
+ * forms endpoint: while `RATE_LIMIT_TRUSTED_PROXY` is unset (the default) every
+ * caller shares the `'unknown'` IP, and an IP-only key would let one visitor
+ * close every member's page. What one page can take in total is held by the
+ * per-host limit inside `reserve` / `rescheduleByToken`.
  */
 
 import type { HttpRouter } from 'convex/server';
@@ -61,6 +67,7 @@ const getBookingPage = publicTokenEndpoint(
 		path: '/booking/page/:token',
 		method: 'GET',
 		rateLimit: 'bookingPage',
+		rateLimitKeyMode: 'ip+token',
 		cors: 'GET, OPTIONS',
 		resultMode: 'action',
 	},
@@ -87,6 +94,7 @@ const createBooking = publicTokenEndpoint(
 		path: '/booking/book/:token',
 		method: 'POST',
 		rateLimit: 'bookingCreate',
+		rateLimitKeyMode: 'ip+token',
 		cors: 'POST, OPTIONS',
 		body: 'json',
 		resultMode: 'action',
@@ -178,6 +186,7 @@ const rescheduleManagedBooking = publicTokenEndpoint(
 		path: '/booking/reschedule/:token',
 		method: 'POST',
 		rateLimit: 'bookingCreate',
+		rateLimitKeyMode: 'ip+token',
 		cors: 'POST, OPTIONS',
 		body: 'json',
 		resultMode: 'action',
