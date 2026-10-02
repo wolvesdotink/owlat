@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
 import { createTestDomain } from '../../__tests__/factories';
 import { DAY_MS } from '../../lib/constants';
@@ -18,9 +19,7 @@ import { DAY_MS } from '../../lib/constants';
 let mockRole: OrganizationRole = 'admin';
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
-		'../../lib/sessionOrganization'
-	);
+	const actual = await vi.importActual<typeof SessionOrganization>('../../lib/sessionOrganization');
 	const ctx = () => ({ userId: 'test-user', role: mockRole, activeOrganizationId: 'org-1' });
 	return {
 		...actual,

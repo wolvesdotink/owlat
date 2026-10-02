@@ -135,10 +135,10 @@ export const resolveSourceHosts = internalAction({
 		for (let i = 0; i < ips.length; i += LOOKUP_CONCURRENCY) {
 			const batch = ips.slice(i, i + LOOKUP_CONCURRENCY);
 			const names = await Promise.all(batch.map((ip) => confirmedHostName(ip)));
-			batch.forEach((ip, index) => {
+			for (const [index, ip] of batch.entries()) {
 				const host = names[index];
 				if (host) hosts.push({ ip, host });
-			});
+			}
 		}
 		if (hosts.length > 0) {
 			await ctx.runMutation(internal.domains.dmarcReports.recordSourceHosts, {
