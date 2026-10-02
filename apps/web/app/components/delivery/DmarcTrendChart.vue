@@ -7,9 +7,12 @@
  * apart without colour (red/green is the pair colour-blind readers lose). Each
  * bar names its day and both counts on hover and keyboard focus, and the same
  * numbers sit in a visually hidden table.
+ *
+ * Days are the backend's UTC day keys, so they are labelled in UTC: a local-time
+ * label would give every reader west of UTC the previous day's date.
  */
 import { trendBars } from '~/utils/dmarcReportView';
-import { formatNumber, formatShortDate } from '~/utils/formatters';
+import { formatNumber, formatUtcDayKey } from '~/utils/formatters';
 
 const props = defineProps<{
 	points: ReadonlyArray<{ date: string; messageCount: number; alignedCount: number }>;
@@ -31,13 +34,20 @@ const tooltipLeft = computed(() => {
 	return `${Math.min(88, Math.max(12, centre))}%`;
 });
 
+function countsLine(bar: { passed: number; failed: number }): string {
+	return t('components.delivery.dmarcTrendChart.tooltip', {
+		passed: formatNumber(bar.passed, locale.value),
+		failed: formatNumber(bar.failed, locale.value),
+	});
+}
+
 const firstLabel = computed(() => {
 	const first = bars.value[0];
-	return first ? formatShortDate(first.date, locale.value) : '';
+	return first ? formatUtcDayKey(first.date, locale.value) : '';
 });
 const lastLabel = computed(() => {
 	const last = bars.value[bars.value.length - 1];
-	return last ? formatShortDate(last.date, locale.value) : '';
+	return last ? formatUtcDayKey(last.date, locale.value) : '';
 });
 </script>
 
@@ -62,22 +72,17 @@ const lastLabel = computed(() => {
 				>
 					<template v-if="active">
 						<p class="font-medium text-text-primary">
-							{{ formatShortDate(active.date, locale) }}
+							{{ formatUtcDayKey(active.date, locale) }}
 						</p>
-						<p class="text-text-secondary">
-							{{
-								t('components.delivery.dmarcTrendChart.tooltip', {
-									passed: formatNumber(active.passed, locale),
-									failed: formatNumber(active.failed, locale),
-								})
-							}}
-						</p>
+						<p class="text-text-secondary">{{ countsLine(active) }}</p>
 					</template>
 				</div>
 
+				<!-- A group, not an image: its bars take keyboard focus, and an image's
+				     children are presentational. -->
 				<div
 					class="flex h-36 items-end gap-0.5 border-b border-border-subtle"
-					role="img"
+					role="group"
 					:aria-label="t('components.delivery.dmarcTrendChart.label')"
 					data-testid="dmarc-trend"
 				>
@@ -86,6 +91,8 @@ const lastLabel = computed(() => {
 						:key="bar.date"
 						class="flex h-full min-w-0 flex-1 cursor-default flex-col justify-end rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						tabindex="0"
+						:aria-label="`${formatUtcDayKey(bar.date, locale)}: ${countsLine(bar)}`"
+						data-testid="dmarc-trend-bar"
 						@mouseenter="activeIndex = index"
 						@mouseleave="activeIndex = null"
 						@focus="activeIndex = index"
@@ -137,9 +144,9 @@ const lastLabel = computed(() => {
 				</thead>
 				<tbody>
 					<tr v-for="bar in bars" :key="bar.date">
-						<th scope="row">{{ formatShortDate(bar.date, locale) }}</th>
-						<td>{{ bar.passed }}</td>
-						<td>{{ bar.failed }}</td>
+						<th scope="row">{{ formatUtcDayKey(bar.date, locale) }}</th>
+						<td>{{ formatNumber(bar.passed, locale) }}</td>
+						<td>{{ formatNumber(bar.failed, locale) }}</td>
 					</tr>
 				</tbody>
 			</table>
