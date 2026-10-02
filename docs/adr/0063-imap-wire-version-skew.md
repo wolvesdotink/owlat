@@ -73,8 +73,10 @@ dependency-free, and the api, imap and web images already copy
   backend.
 - It is never newer than the backend. A newer IMAP server waits for the
   backend instead of serving.
-- An IMAP server outside the window refuses to start, with a log line naming
-  both versions and the fix.
+- An IMAP server below the backend's minimum is refused. A server that
+  reports its version refuses to start, with a log line naming both versions
+  and the fix. Every server below the minimum, reporting or not, has its
+  logins and its calls to gated functions refused by the backend (section 5).
 
 ### 3. The handshake
 
@@ -86,8 +88,8 @@ minimum and a verdict.
 
 - Compatible: the server starts listening.
 - Older than the minimum: the server logs one operator-facing error ("update
-  the IMAP container") and exits non-zero. It never serves an unsupported
-  contract.
+  the IMAP container") and exits non-zero. It does not start serving an
+  unsupported contract.
 - The backend is older (it has no `report` function, or reports a lower wire
   version): the server logs "update the backend first" and retries with capped
   backoff (1 s doubling to 60 s), because the backend may be mid-deploy.
@@ -99,6 +101,11 @@ past it, or rolled back below it), the server stops through the normal
 shutdown path, which says BYE to every session, and exits non-zero, so its
 restart runs the handshake again. A failed report is only logged.
 
+The handshake covers servers that report, and a running one only at its next
+report: for up to 5 minutes after a backend update raises the minimum, an
+already-running server still serves. It does nothing for servers from before
+reporting. Both gaps are what the backend gates in section 5 close.
+
 ### 4. Seeing servers that never report
 
 A v0.6.7 IMAP server never calls `report`. It does call `mail/appPasswords:touch`
@@ -108,29 +115,65 @@ touch with neither is a login through a legacy IMAP server: the backend
 stamps `legacyImapSeenAt` on the `imapLegacy` row of `instanceCounters`, at
 most once an hour, so logins do not contend on one row.
 
-### 5. Operator visibility
+### 5. Backend gates
+
+`assertImapWireSupported(imapWireVersion)` (`mail/imap/serverRegistry.ts`)
+throws an `invalid_state` error when the caller is below
+`IMAP_WIRE_MIN_SUPPORTED`. A caller that sends no `imapWireVersion` counts as
+legacy (0). While the minimum is 0 it never fires.
+
+- **Login.** `mail/appPasswords:verify` calls it for IMAP logins, before the
+  password check and before any failure is recorded. An IMAP server below the
+  minimum, legacy ones included, cannot open a new session: the client gets
+  `NO`. The new IMAP server does not count that refusal against the client's
+  rate limit; a legacy server's own code does, which only delays a login that
+  is refused anyway. The gate is on `verify`, not on `touch`: the IMAP server
+  calls `touch` after it has already answered `OK` and ignores its failure.
+- **Functions about to be contracted.** A function whose IMAP contract a later
+  PR will contract takes an optional `imapWireVersion` one release ahead, and
+  the IMAP server sends it. The contracting PR calls the gate at the top of
+  the function, before any side effect, so a caller below the new minimum (an
+  open session on a legacy server, or a reporting server inside its 5-minute
+  window) gets a clean error instead of a half-applied write.
+  `mail/imap/move:expungeFolder` takes the argument and calls the gate from
+  this release on.
+
+### 6. Operator visibility
 
 - `npx convex run mail/imap/serverRegistry:status '{"days": 7}'` lists every
   server seen in the window with its release, wire version, last report and
   verdict (`current`, `supported`, `unsupported`, `ahead`), plus
-  `legacyImapSeenAt`, `oldestWireVersionSeen` and `safeToRaiseMinTo`, the
-  highest minimum that would refuse no server seen in the window (legacy
-  counting as 0).
+  `legacyImapSeenAt`, `oldestWireVersionSeen`, `newestWireVersionSeen` and
+  `safeToRaiseMinTo`, the highest minimum that would refuse no server seen in
+  the window (legacy counting as 0). The listed servers are capped at 200;
+  the summary fields are not read off that list but probed per wire version on
+  an index, so they cover every server in the window.
 - Settings → System & updates shows the same for the last 7 days, with a
   warning when a legacy, unsupported or waiting server was seen.
 - A daily cron deletes reports no server has refreshed for 30 days.
 
-### 6. How a contract step uses this
+### 7. How a contract step uses this
 
 The PR that removes a compatibility path (the first one will be
-`expungeFolder`'s `sequenceNumbers` / `nextSequenceNumber`) raises
-`IMAP_WIRE_MIN_SUPPORTED` past the releases that need it, which the policy
-allows once those releases are outside the N-1 window. It cites the status
-output of a deployment running the window's oldest IMAP release, and its
-release notes tell operators to run the status command before updating. A
-deployment that still runs an older IMAP container gets a refused start with
-a clear log line instead of an IMAP server that fails halfway through an
-EXPUNGE.
+`expungeFolder`'s `sequenceNumbers` / `nextSequenceNumber`) has these
+prerequisites:
+
+1. The function already takes `imapWireVersion` and the IMAP server already
+   sends it, in a release inside the skew window (for `expungeFolder`: from
+   this release on).
+2. The PR raises `IMAP_WIRE_MIN_SUPPORTED` past the releases that need the
+   path, which the policy allows once they are outside the N-1 window, and
+   calls the gate at the top of the changed function, before any side effect.
+3. It cites the status output of a deployment running the window's oldest
+   IMAP release, and its release notes tell operators to run the status
+   command and update their IMAP container before updating the backend.
+
+A deployment that still runs an older IMAP container after that is not
+protected from errors, but from damage. A reporting server refuses to start,
+or stops at its next report. A legacy server keeps running, and its new logins
+and its calls to the gated function are refused before they change anything.
+Its sessions that were already open can still call the functions whose
+contract did not change.
 
 ## Alternatives rejected
 
@@ -141,10 +184,9 @@ EXPUNGE.
   An integer that moves only when the contract moves is exact and cannot be
   stale.
 - **A version argument on every IMAP-called function.** Each function would
-  have to branch on it, every new function would need it, and a mismatch would
-  still surface partway through a command, after earlier writes committed.
-  One check at the handshake refuses the server before it accepts a
-  connection.
+  have to carry it whether or not its contract ever changes. Only the
+  functions about to be contracted take it (section 5); the handshake and the
+  login gate cover the rest.
 - **Warn only.** A warning in a log nobody reads leaves the failure the issue
   describes in place: an old server keeps serving and breaks after a
   contract step. Refusing to start is loud, safe and fixed by the update the
@@ -158,7 +200,11 @@ EXPUNGE.
   answers, instead of accepting logins that fail.
 - The records are per deployment. The project still cannot see self-hosted
   deployments, so the skew window is what makes a contract step safe for all
-  of them; the status command and the refused start make the window visible
-  and enforced on each.
+  of them; the status command makes the window visible on each, and the
+  handshake and the backend gates enforce it.
+- The handshake alone is not enough to remove a compatibility path: servers
+  from before reporting never take part in it, and a running server notices a
+  raised minimum only at its next report. A removal relies on the backend
+  gates and the prerequisites in section 7.
 - A contract change across the boundary now needs a wire version bump in the
   same PR. `apps/api/convex/CONVENTIONS.md` ("IMAP wire version") says when.
