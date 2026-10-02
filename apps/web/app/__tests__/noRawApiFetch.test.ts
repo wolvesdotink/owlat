@@ -33,6 +33,7 @@ const ALLOWED = new Map<string, string>([
 	['utils/storageUpload.ts', 'upload to a minted Convex storage URL'],
 	['pages/preferences.vue', 'token-authed POST to the Convex site URL (/prefs/update)'],
 	['pages/unsubscribe.vue', 'token-authed POST to the Convex site URL (/unsub)'],
+	['lib/bookingClient.ts', 'sessionless POST to the Convex site URL (/booking/*)'],
 	[
 		'composables/useTransactionalSnippets.ts',
 		'a code sample rendered for the reader, not a request',

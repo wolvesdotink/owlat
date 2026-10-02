@@ -15,11 +15,7 @@ beforeAll(() => {
 });
 
 // Tue 2026-03-03 and Thu 2026-03-05, 09:00 and 09:30 UTC.
-const SLOTS = [
-	Date.UTC(2026, 2, 3, 9, 0),
-	Date.UTC(2026, 2, 3, 9, 30),
-	Date.UTC(2026, 2, 5, 9, 0),
-];
+const SLOTS = [Date.UTC(2026, 2, 3, 9, 0), Date.UTC(2026, 2, 3, 9, 30), Date.UTC(2026, 2, 5, 9, 0)];
 
 function mountPicker(timeZone = 'UTC') {
 	return mount(BookingSlotPicker, {

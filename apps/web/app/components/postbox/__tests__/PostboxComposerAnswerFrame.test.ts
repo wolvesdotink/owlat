@@ -102,6 +102,7 @@ beforeEach(() => {
 		usePostboxCompose: () => compose,
 		usePostboxGhostGate: () => ({ ghostSuggestionsEnabled: ref(false) }),
 		useFeatureFlag: () => ({ isEnabled: () => true }),
+		useToast: () => ({ showToast: vi.fn() }),
 		useOperationErrorToast: () => ({ showOperationError: vi.fn() }),
 		usePostboxComposerSealLock: () => seal,
 		usePostboxComposerSealChips: () => ({ chipSealStates: ref([]), removeSealBlocker: vi.fn() }),

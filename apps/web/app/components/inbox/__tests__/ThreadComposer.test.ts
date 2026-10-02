@@ -14,6 +14,9 @@ beforeAll(() => {
 		// The shared Postbox footer's own lookups (send-as name, native picker).
 		useInboxes: () => ({ byId: ref(new Map()) }),
 		useNativeFilePicker: () => ({ isDesktop: ref(false), pickNativeFiles: vi.fn() }),
+		// Insert availability (booking page) in the footer's ⋯ menu.
+		useFeatureFlag: () => ({ isEnabled: () => false }),
+		useToast: () => ({ showToast: vi.fn() }),
 	});
 });
 enableAutoUnmount(afterEach);
