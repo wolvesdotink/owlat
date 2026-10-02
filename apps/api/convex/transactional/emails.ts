@@ -18,6 +18,7 @@ import {
 	publishedHtml,
 } from '../lib/publishableEmail';
 import { loadEmailTheme } from '../lib/publishableEmailRender';
+import { brandedNewEmailContent } from '../workspaces/brandKit';
 import { assertContentRevision } from '../lib/contentRevision';
 import { rendererVersionArg } from '../lib/rendererVersion';
 import { recordAuditLog } from '../lib/auditLog';
@@ -122,7 +123,11 @@ export const create = transactionalMutation({
 			name: args.name,
 			slug: args.slug,
 			subject: args.subject,
-			content: args.content,
+			// A blank email starts with the brand kit's logo and footer text. The
+			// transactional editor offers no social Block, so the links stay out.
+			content:
+				args.content ??
+				(await brandedNewEmailContent(ctx, undefined, { blockTypes: ['image', 'text'] })),
 			dataVariablesSchema: args.dataVariablesSchema,
 			defaultLanguage: args.defaultLanguage,
 			userId: session.userId,

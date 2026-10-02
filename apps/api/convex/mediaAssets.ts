@@ -6,44 +6,22 @@ import { internal } from './_generated/api';
 import { v } from 'convex/values';
 import { paginationOptsValidator, type PaginationResult } from 'convex/server';
 import type { Doc } from './_generated/dataModel';
+import { getInstanceSettings } from './lib/instanceSettings';
 import { requireOrgPermission } from './lib/sessionOrganization';
 import { getOrThrow, throwInvalidState, throwInvalidInput, throwNotFound } from './_utils/errors';
 import { isChatAttachment, assertUnregisteredMediaStorage } from './chat/attachmentAccess';
 import { consumeUpload, deleteOwnedUpload, storedFileSize } from './storage/uploads';
 import { logError } from './lib/runtimeLog';
+import { MEDIA_LIBRARY_POLICY, buildSearchableText } from './lib/mediaLibraryPolicy';
 import {
 	isExtensionAllowed,
 	isMimeTypeAllowed,
 	isExecutableExtension,
 	detectDoubleExtension,
-	mergePolicy,
-	DEFAULT_FILE_POLICY,
 	detectFileType,
 	isDangerousFileType,
 } from '@owlat/email-scanner';
 import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_FILE_MB } from '@owlat/shared/attachments';
-
-// The media library re-allows SVG on top of the scanner default (which
-// excludes it as script-capable): uploads here come from authenticated org
-// members, and assets are consumed as <img src> in emails/builder previews —
-// a context in which browsers never execute SVG scripts. Recipients are not
-// handed SVG as an openable attachment through this path.
-const MEDIA_LIBRARY_POLICY = mergePolicy({
-	allowedTypes: [...DEFAULT_FILE_POLICY.allowedTypes, 'image/svg+xml'],
-	allowedExtensions: [...DEFAULT_FILE_POLICY.allowedExtensions, '.svg'],
-});
-
-/**
- * Build searchable text from filename, alt, and tags.
- */
-function buildSearchableText(filename: string, alt?: string, tags?: string[]): string {
-	const parts: string[] = [];
-	// Split filename on common separators
-	parts.push(...filename.replace(/\.[^.]+$/, '').split(/[-_.\s]+/));
-	if (alt) parts.push(alt);
-	if (tags) parts.push(...tags);
-	return parts.filter(Boolean).join(' ').toLowerCase();
-}
 
 /**
  * List media assets for the organization (paginated).
@@ -142,7 +120,13 @@ export const countUsage = authedQuery({
 			ctx.db.query('emailBlocks').take(MEDIA_SCAN_LIMIT),
 		]);
 
-		let count = 0;
+		// The brand kit's logo is a use too: deleting it takes the logo out of
+		// every new email.
+		const brandKit = (await getInstanceSettings(ctx.db))?.brandKit;
+		let count =
+			brandKit?.logoMediaAssetId === asset._id || brandKit?.logoDarkMediaAssetId === asset._id
+				? 1
+				: 0;
 		for (const t of templates) {
 			if (t.content.includes(needle)) count++;
 		}

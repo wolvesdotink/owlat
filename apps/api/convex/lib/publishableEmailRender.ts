@@ -8,6 +8,7 @@
 
 import { renderEmailHtml, renderPlainText } from '@owlat/email-renderer';
 import type { EmailTheme } from '@owlat/shared';
+import { brandKitEmailTheme, resolveBrandKitDesign } from '@owlat/shared/brandKit';
 import type { MutationCtx } from '../_generated/server';
 import { throwInvalidInput } from '../_utils/errors';
 import { parseContentBlocks } from '../emailBlocks/module';
@@ -142,5 +143,8 @@ export async function loadEmailTheme(ctx: {
 	db: MutationCtx['db'];
 }): Promise<EmailTheme | undefined> {
 	const settings = await ctx.db.query('instanceSettings').first();
-	return settings?.emailTheme ?? undefined;
+	if (!settings?.emailTheme && !settings?.brandKit) return undefined;
+	// The brand kit's projection, the same one the editors build their theme
+	// from; without a saved kit it is the four email-theme values alone.
+	return brandKitEmailTheme(resolveBrandKitDesign(settings.emailTheme, settings.brandKit));
 }
