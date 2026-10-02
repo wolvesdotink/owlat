@@ -16,7 +16,7 @@
 
 import { convexTest, type TestConvex } from 'convex-test';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { enableFeatures } from './factories';
@@ -54,8 +54,16 @@ beforeEach(() => {
 	mockUserId = 'host-A';
 });
 
+// Every booking change queues invite mail on a real timer. Finish it inside the
+// test that queued it, so none of it runs on into the next one.
+const started: TestConvex<typeof schema>[] = [];
+afterEach(async () => {
+	for (const t of started.splice(0)) await t.finishAllScheduledFunctions(() => {});
+});
+
 async function setup(options: { flag?: boolean } = {}) {
 	const t = convexTest(schema, modules);
+	started.push(t);
 	rateLimiterTest.register(t);
 	if (options.flag !== false) await enableFeatures(t, ['calendar.booking']);
 	await t.run(async (ctx) => {
