@@ -3,6 +3,7 @@
 import { SOCIAL_PLATFORMS, type SocialPlatform } from '@owlat/shared';
 import {
 	MAX_BRAND_SOCIAL_LINKS,
+	MAX_BRAND_URL_LENGTH,
 	isBrandLinkUrl,
 	type BrandSocialLink,
 } from '@owlat/shared/brandKit';
@@ -58,6 +59,7 @@ const platformLabel = (platform: SocialPlatform) => SOCIAL_PLATFORMS[platform].l
 						:value="link.url"
 						type="url"
 						inputmode="url"
+						:maxlength="MAX_BRAND_URL_LENGTH"
 						class="input"
 						:class="link.url && !isBrandLinkUrl(link.url) && 'input-error'"
 						:placeholder="t('dashboard.admin.instance.brandKit.footer.urlPlaceholder')"

@@ -14,6 +14,8 @@ import {
 	BRAND_BUTTON_PADDING_Y_RANGE,
 	BRAND_BUTTON_RADIUS_RANGE,
 	DEFAULT_BRAND_KIT_DESIGN,
+	MAX_BRAND_ADDRESS_LENGTH,
+	MAX_BRAND_COMPANY_NAME_LENGTH,
 	brandKitDesignProblem,
 	type BrandKitDesign,
 } from '@owlat/shared/brandKit';
@@ -312,6 +314,7 @@ const buttonFields = [
 								id="brand-kit-company"
 								v-model="form.footerCompanyName"
 								:label="t('dashboard.admin.instance.brandKit.footer.companyName')"
+								:maxlength="MAX_BRAND_COMPANY_NAME_LENGTH"
 								:disabled="isSaving"
 							/>
 							<button
@@ -333,6 +336,7 @@ const buttonFields = [
 								v-model="form.footerAddress"
 								:label="t('dashboard.admin.instance.brandKit.footer.address')"
 								:rows="3"
+								:max-length="MAX_BRAND_ADDRESS_LENGTH"
 								:disabled="isSaving"
 							/>
 							<p class="mt-1 text-xs text-text-tertiary">
