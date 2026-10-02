@@ -337,6 +337,31 @@ describe('useEmailEditorBridge with co-editing', () => {
 		unmount();
 	});
 
+	it('gives up its lease when the tab is hidden', async () => {
+		const { bridge, unmount } = setup();
+		queries['sessions.get']!.value = sessionRow(1, [text('a', 'Alpha')]);
+		await settle();
+		bridge.onCollabFocus({ selectedRootId: 'a', inlineEditRootId: 'a' });
+		await settle();
+		const last = () =>
+			mutation.mock.calls.filter(([fn]) => fn === 'presence.heartbeat').at(-1)?.[1] as
+				| { leaseBlockId: string | null }
+				| undefined;
+		expect(last()?.leaseBlockId).toBe('a');
+
+		let hidden = true;
+		Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+		try {
+			document.dispatchEvent(new Event('visibilitychange'));
+			await settle();
+			expect(last()?.leaseBlockId).toBeNull();
+		} finally {
+			hidden = false;
+			Reflect.deleteProperty(document, 'hidden');
+		}
+		unmount();
+	});
+
 	it('edits the classic way when the member may not co-edit', async () => {
 		canManage = false;
 		const { bridge, unmount } = setup();

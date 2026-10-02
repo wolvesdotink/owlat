@@ -140,10 +140,28 @@ export function useEmailEditorPresence(opts: EmailEditorPresenceOptions) {
 		void beat();
 		timer = setInterval(() => void beat(), HEARTBEAT_MS);
 	};
+	/** Give up the lease now, keeping the row (the tab is still open). */
+	const release = () => {
+		const current = target.value;
+		if (!client || !current || !enabled.value || leaseBlockId.value === null) return;
+		client
+			.mutation(api.emailCoediting.presence.heartbeat, {
+				target: current,
+				clientId: opts.clientId,
+				selectedBlockId: opts.focus.value.selectedRootId,
+				leaseBlockId: null,
+			})
+			.catch(() => {
+				// The lease runs out on its own once the beats stop.
+			});
+	};
 	const onVisibilityChange = () => {
-		// Hidden: stop beating, so the lease runs out and others can edit.
-		if (isHidden()) stop();
-		else start();
+		// Hidden: let go of the block so others can edit it, and stop beating.
+		// Visible again: the next beat takes the lease back if it is still free.
+		if (isHidden()) {
+			stop();
+			release();
+		} else start();
 	};
 
 	watch(enabled, (on) => {
