@@ -163,9 +163,12 @@ const cancelRename = () => {
 	<!-- Below lg the chrome around this pane is 4rem of header bar, 2.25rem of
 	     breadcrumb strip and the 4rem the tab bar reserves at the bottom of
 	     #main-content, plus both safe areas — subtract all of it, or the page
-	     itself scrolls and the composer loads under the fold. -->
+	     itself scrolls and the composer loads under the fold. From lg the
+	     chrome is only the 4rem top bar (plus the desktop titlebar), the same
+	     sum #main-content uses; subtracting more left a dead strip under the
+	     composer. -->
 	<div
-		class="flex h-[calc(100dvh-10.25rem-1px-env(safe-area-inset-top)-env(safe-area-inset-bottom))] lg:h-[calc(100vh-4rem-3rem)]"
+		class="flex h-[calc(100dvh-10.25rem-1px-env(safe-area-inset-top)-env(safe-area-inset-bottom))] lg:h-[calc(100dvh-var(--titlebar-h,0px)-4rem)]"
 	>
 		<!-- Conversation list: a column at md, an off-canvas drawer below it -->
 		<UiRailDrawer

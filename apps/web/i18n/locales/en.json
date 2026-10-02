@@ -429,11 +429,26 @@
 		},
 		"automations": {
 			"stepEditorPanel": {
+				"conflict": {
+					"body": "This step was changed elsewhere.",
+					"keepMine": "Keep mine",
+					"useTheirs": "Use theirs"
+				},
 				"delete": "Delete step",
-				"emptyBody": "Pick a step in the workflow to change its settings.",
-				"emptyTitle": "No step selected",
-				"save": "Save changes",
 				"title": "Step settings"
+			},
+			"stepSaveFailedDialog": {
+				"body": "Your changes are still here. Retry the save, discard them, or stay on this step.",
+				"discard": "Discard",
+				"stay": "Stay",
+				"title": "This step couldn't be saved"
+			},
+			"stepSaveStatus": {
+				"conflict": "Changed elsewhere",
+				"error": "Couldn't save.",
+				"retry": "Retry",
+				"saved": "Saved",
+				"saving": "Saving…"
 			},
 			"steps": {
 				"condition": {
@@ -3368,6 +3383,10 @@
 				"alsoInPostbox": "Also in {mailbox}",
 				"alreadyAnswered": "already answered there",
 				"open": "Open in Postbox"
+			},
+			"readFailureNotice": {
+				"inboxList": "your inbox list",
+				"message": "Couldn't load {names}, so this list is incomplete."
 			}
 		},
 		"keyboardShortcutsHelp": {
@@ -4167,6 +4186,11 @@
 				"stopTrustingSender": "Block again",
 				"trackersKeptBlocked": "{count} tracking pixel kept blocked. | {count} tracking pixels kept blocked."
 			},
+			"postboxMessageNotFound": {
+				"title": "This message is no longer available",
+				"body": "It may have been deleted, moved by another mail app, or the inbox it was in is no longer shared with you.",
+				"backTo": "Back to {folder}"
+			},
 			"postboxMessageDetails": {
 				"arc": "ARC",
 				"dkim": "DKIM",
@@ -4741,7 +4765,6 @@
 				"inviteHint": "Invite them by email. They'll get an invitation naming this inbox, and it'll be in their sidebar the moment they accept.",
 				"inviteOperation": "Invite to team inbox",
 				"inviteSent": "Invitation sent to {email}. They'll land in this inbox once they accept.",
-				"loadError": "Couldn't load the member list. Please try again.",
 				"makeOwner": "Make owner",
 				"makeOwnerTitle": "Make this member the owner",
 				"member": "Member",
@@ -6059,7 +6082,8 @@
 					"full": "Full conversation"
 				},
 				"more": "More for this conversation",
-				"openInPostbox": "Open in Postbox"
+				"openInPostbox": "Open in Postbox",
+				"skipMissing": "Skip to the next item"
 			},
 			"catchUp": {
 				"title": "Catching up",
@@ -6109,7 +6133,10 @@
 				"pickDate": "Pick a date",
 				"answerAndDraft": "Answer and draft",
 				"skip": "Skip, draft with gaps",
-				"operation": "Answer the questions"
+				"operation": "Answer the questions",
+				"waitingForFiles": "Draft ready. Waiting for your files",
+				"waitingForFilesSubline": "The reply is written. Add the files they asked for and it is updated to go out with them.",
+				"attachAndUpdate": "Attach and update draft"
 			},
 			"fileAsk": {
 				"dropHere": "Drop the file here or",
@@ -6125,7 +6152,9 @@
 				"remove": "Remove {file}",
 				"tooLarge": "{filename} is larger than {mb} MB.",
 				"uploadFailed": "{filename} could not be uploaded.",
-				"unsupported": "{filename} is not a file type that can be attached here."
+				"unsupported": "{filename} is not a file type that can be attached here.",
+				"dropHereMany": "Drop the files here or",
+				"dropAnother": "Another one? Drop it here or"
 			},
 			"filePicker": {
 				"title": "Pick from files",
@@ -8739,6 +8768,7 @@
 					"activateDialog": {
 						"automation": "Automation",
 						"body": "Once activated, this automation will start running and will trigger for new contacts that match the trigger criteria.",
+						"saveFailed": "Your latest step changes couldn't be saved, so nothing was activated. Retry the save on the step, then activate again.",
 						"stepCount": "{count} step | {count} steps",
 						"steps": "Steps",
 						"title": "Activate automation?"
@@ -8769,6 +8799,17 @@
 					},
 					"pageTitle": "Edit automation — Owlat",
 					"pause": "Pause",
+					"reorder": {
+						"actions": "Step {number} actions",
+						"cancelled": "Move cancelled. Step {position} of {total}.",
+						"dropped": "Step moved to position {position} of {total}.",
+						"handle": "Move step {number}",
+						"instructions": "Press Space to pick the step up, the arrow keys to move it, Space to drop it and Escape to cancel.",
+						"moveDown": "Move down",
+						"moveUp": "Move up",
+						"pickedUp": "Picked up step {position} of {total}.",
+						"position": "Step {position} of {total}."
+					},
 					"resume": "Resume",
 					"saveDraft": "Save draft",
 					"status": {
@@ -8784,7 +8825,9 @@
 						"activated": "Automation activated",
 						"draftSaved": "Draft saved",
 						"paused": "Automation paused",
-						"resumed": "Automation resumed"
+						"resumeBlocked": "Your step changes couldn't be saved, so the automation wasn't resumed.",
+						"resumed": "Automation resumed",
+						"stepSaveFailed": "Your step changes couldn't be saved."
 					},
 					"trigger": "Trigger",
 					"validation": {
@@ -10142,7 +10185,7 @@
 				"activeAliases": "Active aliases",
 				"addAlias": "Add alias",
 				"addAliasOperation": "Add alias",
-				"aliasPlaceholder": "marcel+sales{'@'}hl.camp",
+				"aliasPlaceholder": "you+sales{'@'}example.com",
 				"empty": "No aliases yet.",
 				"noMailbox": "No mailbox configured.",
 				"pageTitle": "Aliases — Owlat",
@@ -11052,7 +11095,7 @@
 				"fieldInvalid": "Check {field} — that value is not accepted.",
 				"hostRequired": "Enter the server address.",
 				"invalidHostLabels": "Fix the customised hostnames — each label must be a valid, distinct DNS label.",
-				"keyPathRequired": "Enter the path to your private key file.",
+				"keyPathRequired": "Choose your private key file.",
 				"passwordRequired": "Enter the password.",
 				"portInvalid": "Port must be a whole number between 1 and 65535 (leave blank for {port}).",
 				"privateKeyRequired": "Paste your private key.",
@@ -11069,14 +11112,17 @@
 				"authentication": "Authentication",
 				"branch": "Branch",
 				"browse": "Browse…",
+				"chooseKeyFileTitle": "Choose an SSH private key",
 				"devInstall": "Development install",
 				"devInstallHint": "Install a branch (or a local checkout) instead of the release. The stack is built from source on the server.",
 				"host": "Server address",
 				"hostPlaceholder": "203.0.113.5 or vps.example.com",
 				"installDir": "Install directory",
+				"keyFile": "Private key file",
 				"localSource": "Local source folder (development)",
 				"localSourceHint": "Uploads this machine's checkout to the server — for testing the installer without a published repo or registry.",
 				"localSourcePlaceholder": "/path/to/your/owlat checkout (optional)",
+				"noKeyFile": "No key file chosen",
 				"passphrasePlaceholder": "Key passphrase (optional)",
 				"pasteKeyInstead": "Paste the key instead",
 				"port": "Port",
@@ -11985,7 +12031,8 @@
 				"templates": "Templates",
 				"topics": "Topics",
 				"transactional": "Transactional",
-				"webhooks": "Webhooks"
+				"webhooks": "Webhooks",
+				"knowledgeGraph": "Graph explorer"
 			},
 			"sections": {
 				"audience": "Audience",
@@ -11995,7 +12042,12 @@
 				"workspace": "Workspace",
 				"answer": "Answer queue",
 				"inboxes": "All inboxes",
-				"teamInbox": "Team inbox"
+				"teamInbox": "Team inbox",
+				"files": "Files",
+				"visualizations": "Visualizations",
+				"chat": "Chat",
+				"assistant": "Assistant",
+				"knowledge": "Knowledge"
 			}
 		},
 		"campaignAttention": {
@@ -14717,7 +14769,6 @@
 			}
 		},
 		"useAutomationStepConfig": {
-			"stepUpdated": "Step updated",
 			"updateStepOperation": "Update automation step"
 		},
 		"useAutomationSteps": {

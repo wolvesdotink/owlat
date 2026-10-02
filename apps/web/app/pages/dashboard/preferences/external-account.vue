@@ -34,7 +34,9 @@ const externalEnabled = computed(() => isEnabled('mail.external'));
 
 <template>
 	<div>
-		<header class="mb-6 flex items-start justify-between gap-4">
+		<header
+			class="mb-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+		>
 			<p class="text-text-secondary">
 				{{ t('dashboard.preferences.externalAccount.subheading') }}
 			</p>
@@ -63,7 +65,7 @@ const externalEnabled = computed(() => isEnabled('mail.external'));
 			<span class="sr-only">{{ t('common.loading') }}</span>
 		</div>
 
-		<PostboxConnectedAccountCard v-else-if="externalEnabled" />
+		<PostboxConnectedAccountCard v-else-if="externalEnabled" class="mb-6" />
 
 		<!-- Connecting outside accounts is off on this instance (the page is
 		     reachable through Postbox): say only that, so it never reads as the

@@ -20,12 +20,13 @@ vi.mock('@owlat/desktop/src/workspace', () => ({
 	loadWorkspaceStore: () => loadWorkspaceStore(),
 }));
 
-const secretGet = vi.fn(async () => 'session-blob');
-const secretSet = vi.fn(async (..._args: unknown[]) => {});
+const sessionWrite = vi.fn(async (..._args: unknown[]) => 'written' as const);
 vi.mock('@owlat/desktop/src/keychain', () => ({
-	secretGet: (...args: unknown[]) => secretGet(...(args as [])),
-	secretSet: (...args: unknown[]) => secretSet(...args),
-	secretDelete: vi.fn(async () => {}),
+	secretGet: vi.fn(async () => 'session-blob'),
+	sessionRead: vi.fn(async () => ({ value: 'session-blob', revision: 3 })),
+	sessionWrite: (...args: unknown[]) => sessionWrite(...args),
+	sessionReplace: vi.fn(async () => 1),
+	onSessionReplaced: vi.fn(async () => () => {}),
 }));
 
 const setActiveWorkspace = vi.fn();
@@ -101,9 +102,10 @@ describe('useDesktopWorkspaces.switchTo — re-seed handoff into the reloaded do
 		getActiveKeychainStorage()?.setItem('better-auth_cookie', 'refreshed');
 		assign.mockImplementation(() => {
 			// By the reload, the current workspace's entry holds that refresh.
-			expect(secretSet).toHaveBeenCalledWith(
+			expect(sessionWrite).toHaveBeenCalledWith(
 				'token-w1',
-				JSON.stringify({ 'better-auth_cookie': 'refreshed' })
+				JSON.stringify({ 'better-auth_cookie': 'refreshed' }),
+				3
 			);
 		});
 

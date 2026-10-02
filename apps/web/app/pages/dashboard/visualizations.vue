@@ -18,19 +18,16 @@ const {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
-		<!-- Header -->
-		<div class="mb-8">
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-				{{ t('dashboard.visualizations.title') }}
-			</h1>
-			<p class="text-text-secondary mt-1">
-				{{ t('dashboard.visualizations.intro') }}
-			</p>
-		</div>
+	<div class="mx-auto w-full max-w-page p-6 lg:p-8">
+		<UiPageHeader
+			:title="t('dashboard.visualizations.title')"
+			:description="t('dashboard.visualizations.intro')"
+			class="mb-8"
+		/>
 
-		<!-- Create prompt -->
-		<div class="mb-8">
+		<!-- Create prompt. A form, so it keeps a form's width: at full width the
+		     data-source select and Generate stretched across a 6K screen. -->
+		<div class="mb-8 max-w-3xl">
 			<VisualizationsVisualizationPrompt />
 		</div>
 
@@ -39,7 +36,7 @@ const {
 
 			`role="status"` + the existing loading copy as the accessible name keeps
 			the announcement the spinner block carried, while the placeholders keep
-			the two-column geometry so nothing snaps when the query lands.
+			the grid geometry so nothing snaps when the query lands.
 		-->
 		<div
 			v-if="isLoading"
@@ -47,7 +44,7 @@ const {
 			aria-busy="true"
 			:aria-label="t('dashboard.visualizations.loading')"
 			data-testid="visualizations-grid-skeleton"
-			class="grid grid-cols-1 lg:grid-cols-2 gap-4"
+			class="grid grid-cols-[repeat(auto-fill,minmax(min(28rem,100%),1fr))] gap-4"
 		>
 			<VisualizationsVisualizationCardSkeleton v-for="n in 4" :key="`viz-placeholder-${n}`" />
 		</div>
@@ -79,7 +76,7 @@ const {
 		</div>
 
 		<!-- Visualizations grid -->
-		<div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+		<div v-else class="grid grid-cols-[repeat(auto-fill,minmax(min(28rem,100%),1fr))] gap-4">
 			<VisualizationsVisualizationCard
 				v-for="viz in visualizations"
 				:key="viz._id"

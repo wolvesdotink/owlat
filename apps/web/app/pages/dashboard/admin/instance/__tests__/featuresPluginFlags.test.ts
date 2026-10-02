@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
-import { ref } from 'vue';
+import { ref, useSlots } from 'vue';
 
 vi.mock('~/plugins/plugin-composition.generated', () => ({
 	bundledPluginComposition: Object.freeze([
@@ -29,6 +29,7 @@ vi.mock('~/plugins/plugin-composition.generated', () => ({
 	]),
 }));
 
+import UiPageHeader from '@owlat/ui/components/ui/PageHeader.vue';
 import FeaturesPage from '../features.vue';
 import { expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 import { mountDashboardPage } from '~/__tests__/a11y';
@@ -45,6 +46,8 @@ let operationCall = 0;
 
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+	// UiPageHeader reads its slots through the Nuxt auto-import.
+	vi.stubGlobal('useSlots', useSlots);
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('useToast', () => ({ showToast }));
@@ -111,6 +114,7 @@ const buttonStub = {
 function mountPage() {
 	return mountDashboardPage(FeaturesPage, {
 		stubs: {
+			UiPageHeader,
 			UiQueryBoundary: passthroughStub,
 			UiCard: passthroughStub,
 			UiConfirmationDialog: confirmationStub,

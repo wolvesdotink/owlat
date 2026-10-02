@@ -105,8 +105,10 @@ const restore = async (contactId: Id<'contacts'>) => {
 			<UiButton :loading="isSaving" @click="savePolicy">{{ t('common.save') }}</UiButton>
 		</div>
 
+		<!-- min-w-0 on the columns: a grid item is otherwise as wide as its
+		     longest address, and on a phone that pushed the page sideways. -->
 		<div class="grid gap-6 lg:grid-cols-2">
-			<div>
+			<div class="min-w-0">
 				<h3 class="text-sm font-medium text-text-primary">
 					{{ t('components.audience.suppressionSunsetControls.reengagementTrack') }}
 				</h3>
@@ -124,6 +126,7 @@ const restore = async (contactId: Id<'contacts'>) => {
 						}}</span>
 						<UiButton
 							variant="ghost"
+							class="shrink-0 whitespace-nowrap"
 							@click="toggleExemption(contact.contactId, !contact.isExempt)"
 						>
 							{{
@@ -136,7 +139,7 @@ const restore = async (contactId: Id<'contacts'>) => {
 				</ul>
 			</div>
 
-			<div>
+			<div class="min-w-0">
 				<h3 class="text-sm font-medium text-text-primary">
 					{{ t('components.audience.suppressionSunsetControls.autoSuppressed') }}
 				</h3>
@@ -152,9 +155,12 @@ const restore = async (contactId: Id<'contacts'>) => {
 						<span class="truncate text-sm text-text-secondary">{{
 							contact.email ?? t('components.audience.suppressionSunsetControls.noEmail')
 						}}</span>
-						<UiButton variant="ghost" @click="restore(contact.contactId)">{{
-							t('components.audience.suppressionSunsetControls.restore')
-						}}</UiButton>
+						<UiButton
+							variant="ghost"
+							class="shrink-0 whitespace-nowrap"
+							@click="restore(contact.contactId)"
+							>{{ t('components.audience.suppressionSunsetControls.restore') }}</UiButton
+						>
 					</li>
 				</ul>
 			</div>

@@ -128,13 +128,29 @@ const isLoading = computed(() => {
 	return false;
 });
 
-// The first failed read among the list's sources. With nothing to show it
+// Every source whose read failed, keyed like the inbox chips ('inboxes' is the
+// inbox list the per-inbox reads hang off). Only the ones the current chip
+// shows count. With rows on screen a notice names them; with none, the failure
 // stands in for the empty state: a failed read is not an empty inbox (#721).
-const loadError = computed(() => {
-	if (inboxesError.value) return inboxesError.value;
-	for (const r of threadResults.values()) if (r.error.value) return r.error.value;
-	return teamError.value;
+const failures = computed(() => {
+	const out: { id: string; name: string; error: Error }[] = [];
+	if (inboxesError.value)
+		out.push({
+			id: 'inboxes',
+			name: t('components.inbox.readFailureNotice.inboxList'),
+			error: inboxesError.value,
+		});
+	for (const [mailboxId, r] of threadResults) {
+		if (!r.error.value) continue;
+		out.push({ id: mailboxId, name: inboxOf(mailboxId)?.name ?? mailboxId, error: r.error.value });
+	}
+	if (teamError.value)
+		out.push({ id: 'team', name: t('components.shell.teamInbox'), error: teamError.value });
+	return out.filter(
+		(f) => f.id === 'inboxes' || inboxFilter.value === 'all' || f.id === inboxFilter.value
+	);
 });
+const loadError = computed(() => failures.value[0]?.error ?? null);
 function retryLoad() {
 	if (inboxesError.value) refetchInboxes();
 	for (const r of threadResults.values()) if (r.error.value) r.refetch();
@@ -248,6 +264,12 @@ const SHOW_OPTIONS = [
 			</button>
 		</div>
 
+		<InboxReadFailureNotice
+			v-if="failures.length > 0 && rows.length > 0"
+			class="mt-4"
+			:names="failures.map((f) => f.name)"
+			@retry="retryLoad"
+		/>
 		<div v-if="isLoading && rows.length === 0" class="mt-4 space-y-2">
 			<UiSkeleton v-for="i in 6" :key="i" class="h-14 w-full rounded-lg" />
 		</div>

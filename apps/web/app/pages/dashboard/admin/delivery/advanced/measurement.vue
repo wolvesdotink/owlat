@@ -68,6 +68,7 @@ const {
 	data: dashboard,
 	isLoading,
 	error,
+	refetch,
 } = useOrganizationQuery(api.delivery.deliverabilityDashboard.getDeliverabilityDashboard);
 
 /** CONFIGURATION, and used for exactly one thing: naming the second arm. */
@@ -192,6 +193,7 @@ const decisionLabel = computed(() => {
 		<UiQueryBoundary
 			:loading="isLoading"
 			:error="error"
+			@retry="refetch"
 			:error-title="t('dashboard.admin.delivery.advanced.measurement.errorTitle')"
 			:error-message="t('dashboard.admin.delivery.advanced.measurement.errorMessage')"
 		>

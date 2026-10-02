@@ -347,6 +347,27 @@ export function ensureGapPlaceholders(text: string, placeholders: readonly strin
 	return `${text.trimEnd()}\n\n${missing.join('\n')}`;
 }
 
+/**
+ * {@link ensureGapPlaceholders} within a length limit: the body is cut first,
+ * leaving room for every placeholder, so a cap applied later cannot cut one
+ * off. A placeholder the cut split in half is dropped from the body and comes
+ * back whole at the end.
+ */
+export function fitGapPlaceholders(
+	text: string,
+	placeholders: readonly string[],
+	maxChars: number
+): string {
+	const complete = ensureGapPlaceholders(text, placeholders);
+	if (complete.length <= maxChars || placeholders.length === 0) return complete.slice(0, maxChars);
+	const room = maxChars - placeholders.join('\n').length - 2;
+	const cut = text
+		.slice(0, Math.max(0, room))
+		.replace(/\[\[[^\]]*\]?$/, '')
+		.trimEnd();
+	return ensureGapPlaceholders(cut, placeholders).slice(0, maxChars);
+}
+
 const MAX_INSTRUCTION_CHARS = 2000;
 
 /**

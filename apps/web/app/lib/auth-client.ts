@@ -1,11 +1,9 @@
 import { createAuthClient } from 'better-auth/vue';
-import { convexClient, crossDomainClient } from '@convex-dev/better-auth/client/plugins';
+import { convexClient } from '@convex-dev/better-auth/client/plugins';
 import { organizationClient, twoFactorClient } from 'better-auth/client/plugins';
 import { isDesktopRuntime, getActiveWorkspace } from '~/lib/desktop/activeWorkspace';
-import {
-	getActiveKeychainStorage,
-	type KeychainSessionStorage,
-} from '~/lib/desktop/keychainStorage';
+import { getActiveKeychainStorage } from '~/lib/desktop/keychainStorage';
+import { getDesktopAuthClientFactory } from '~/lib/desktop/desktopAuthClientFactory';
 
 // Web (default): auth requests are proxied to Convex via same-origin (see:
 // server/api/auth/[...].ts). Use window.location.origin on client; fall back to
@@ -21,43 +19,8 @@ function createWebAuthClient() {
 	});
 }
 
-type AuthClient = ReturnType<typeof createWebAuthClient>;
-type FetchImpl = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-
-/**
- * An auth client for one desktop workspace (Tauri). There is no local Nitro
- * proxy and cookies don't survive the `tauri://localhost` → instance
- * cross-origin hop, so it talks directly to the workspace's Convex site URL
- * (where /api/auth/* lives) and carries the session in the `Better-Auth-Cookie`
- * header via the cross-domain plugin, kept in `storage`.
- *
- * `storage` must belong to this workspace alone: the client reads the session
- * it sends from there and writes every session the server returns back into
- * it. Also used by the connect handshake for the instance being added.
- *
- * Cast to the web client's type so the ~10 consumers + `$Infer` are unchanged —
- * the desktop client is a structural superset (adds cross-domain actions).
- */
-export function createDesktopAuthClient(
-	convexSiteUrl: string,
-	storage: Pick<KeychainSessionStorage, 'getItem' | 'setItem'>,
-	fetchImpl?: FetchImpl
-): AuthClient {
-	return createAuthClient({
-		baseURL: convexSiteUrl,
-		...(fetchImpl ? { fetchOptions: { customFetchImpl: fetchImpl } } : {}),
-		plugins: [
-			convexClient(),
-			organizationClient(),
-			// No `onTwoFactorRedirect` / `twoFactorPage` on either client: the
-			// challenge is a STEP inside the login form, not a route. Configuring
-			// a redirect here would navigate away mid-submit and strand the
-			// desktop app, which has no such route to navigate to.
-			twoFactorClient(),
-			crossDomainClient({ storage }),
-		],
-	}) as unknown as AuthClient;
-}
+export type AuthClient = ReturnType<typeof createWebAuthClient>;
+export type FetchImpl = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 /**
  * Desktop with no workspace connected: there is no backend to ask. Answer every
@@ -65,11 +28,6 @@ export function createDesktopAuthClient(
  */
 const disconnectedFetch: FetchImpl = async () =>
 	new Response('null', { status: 200, headers: { 'content-type': 'application/json' } });
-
-const disconnectedStorage = {
-	getItem: () => null,
-	setItem: () => {},
-};
 
 /** A desktop client and the workspace endpoint + session it is bound to. */
 interface DesktopBinding {
@@ -91,27 +49,34 @@ let disconnectedBinding: DesktopBinding | null = null;
  * plugin runs, so nothing may be constructed at import time: the client is
  * built on the first auth call, which the boot order places after hydration.
  * Switching workspace reloads the webview, so the binding holds for the page.
+ * When another window replaces the session, the page binds a new session
+ * storage under the same client (`activeSessionStorage`), so everything
+ * subscribed to the client stays attached, and is told through
+ * `$sessionSignal`.
  * With no workspace connected (or a call before hydration) the answer is a
  * disconnected client that sends nothing; it is kept apart from the workspace
- * binding, so it cannot pin the page to "no workspace".
+ * binding, so it cannot pin the page to "no workspace". The workspace client
+ * itself is built by `lib/desktop/desktopAuthClient.ts`, which hydration loads
+ * on demand so the web app never downloads it.
  */
 function desktopClient(): DesktopBinding {
 	if (desktopBinding) return desktopBinding;
 	const workspace = getActiveWorkspace();
 	const storage = getActiveKeychainStorage();
-	if (!workspace || !storage || storage.accountKey !== workspace.tokenRef) {
+	const createActiveClient = getDesktopAuthClientFactory<AuthClient>();
+	if (!workspace || !storage || storage.accountKey !== workspace.tokenRef || !createActiveClient) {
 		disconnectedBinding ??= {
-			client: createDesktopAuthClient(
-				'http://disconnected.invalid',
-				disconnectedStorage,
-				disconnectedFetch
-			),
+			client: createAuthClient({
+				baseURL: 'http://disconnected.invalid',
+				fetchOptions: { customFetchImpl: disconnectedFetch },
+				plugins: [convexClient(), organizationClient(), twoFactorClient()],
+			}),
 			convexSiteUrl: null,
 		};
 		return disconnectedBinding;
 	}
 	desktopBinding = {
-		client: createDesktopAuthClient(workspace.convexSiteUrl, storage),
+		client: createActiveClient(workspace.convexSiteUrl),
 		convexSiteUrl: workspace.convexSiteUrl,
 	};
 	return desktopBinding;

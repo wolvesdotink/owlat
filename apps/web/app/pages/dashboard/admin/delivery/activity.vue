@@ -25,6 +25,7 @@ const {
 	timeline,
 	isLoading,
 	error,
+	refetch,
 	channelFilter,
 	channels,
 	channelIcon,
@@ -93,31 +94,29 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 
 <template>
 	<div>
-		<!-- Header -->
-		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					{{ t('dashboard.inbox.activity.title') }}
-				</h1>
-				<p class="text-text-secondary mt-1">{{ t('dashboard.inbox.activity.subtitle') }}</p>
-			</div>
-
-			<!-- The retry desk, which had no entrance at all: the failed-messages page
-			     was reachable only by typing the URL. This is the page where you come
-			     to ask what the channels have been doing, so it is where the messages
-			     that never made it belong — with a live count, like the review queue's
-			     button on the inbox list. -->
-			<UiButton
-				variant="secondary"
-				to="/dashboard/admin/delivery/failed"
-				class="gap-2"
-				:title="t('dashboard.inbox.activity.failedMessagesTitle')"
-			>
-				<Icon name="lucide:alert-triangle" class="w-4 h-4" />
-				{{ t('dashboard.inbox.activity.failedMessages') }}
-				<UiBadge v-if="failedCount" variant="error" size="sm">{{ failedCount }}</UiBadge>
-			</UiButton>
-		</div>
+		<UiPageHeader
+			class="mb-8"
+			:title="t('dashboard.inbox.activity.title')"
+			:description="t('dashboard.inbox.activity.subtitle')"
+		>
+			<template #actions>
+				<!-- The retry desk, which had no entrance at all: the failed-messages page
+				     was reachable only by typing the URL. This is the page where you come
+				     to ask what the channels have been doing, so it is where the messages
+				     that never made it belong — with a live count, like the review queue's
+				     button on the inbox list. -->
+				<UiButton
+					variant="secondary"
+					to="/dashboard/admin/delivery/failed"
+					class="gap-2"
+					:title="t('dashboard.inbox.activity.failedMessagesTitle')"
+				>
+					<Icon name="lucide:alert-triangle" class="w-4 h-4" />
+					{{ t('dashboard.inbox.activity.failedMessages') }}
+					<UiBadge v-if="failedCount" variant="error" size="sm">{{ failedCount }}</UiBadge>
+				</UiButton>
+			</template>
+		</UiPageHeader>
 
 		<!-- Channel filter pills (with per-channel health dots) -->
 		<div class="flex flex-wrap gap-2 mb-6">
@@ -162,6 +161,7 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 		<UiQueryBoundary
 			:loading="isLoading && !timeline.length"
 			:error="error"
+			@retry="refetch"
 			:empty="timeline.length === 0"
 			:error-title="t('dashboard.inbox.activity.errorTitle')"
 			:loading-label="t('dashboard.inbox.activity.loadingLabel')"

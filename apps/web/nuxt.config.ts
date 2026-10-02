@@ -410,12 +410,12 @@ export default defineNuxtConfig({
 		build: {
 			sourcemap: false,
 		},
-		// Pre-bundle the Tauri modules reached via dynamic import (`@owlat/desktop`'s
-		// SSH/dialog bridges). Without this, Vite "discovers" them mid-session — the
+		// Pre-bundle the Tauri module reached via dynamic import (`@owlat/desktop`'s
+		// SSH/dialog bridges). Without this, Vite "discovers" it mid-session — the
 		// first click on Connect triggers a re-optimize + full page reload, which
 		// wipes the wizard state and looks like a crash in the desktop webview.
 		optimizeDeps: {
-			include: ['@tauri-apps/api/core', '@tauri-apps/api/path', '@tauri-apps/plugin-dialog'],
+			include: ['@tauri-apps/api/core'],
 		},
 	},
 

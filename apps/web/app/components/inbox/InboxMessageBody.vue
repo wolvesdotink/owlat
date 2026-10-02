@@ -74,7 +74,9 @@ const isShowingExcerpt = computed(
 
 <template>
 	<div aria-live="polite" :aria-busy="isLoading">
-		<div class="text-text-secondary text-sm whitespace-pre-wrap">
+		<!-- The Postbox reader's 72ch measure, so a wide thread page does not run
+		     a line of mail across the whole screen. -->
+		<div class="max-w-[72ch] text-text-secondary text-sm whitespace-pre-wrap">
 			{{ displayText || t('dashboard.inbox.detail.noTextContent') }}
 		</div>
 		<p

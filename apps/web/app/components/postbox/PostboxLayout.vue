@@ -201,9 +201,10 @@ const { backToList, onTodayReaderClosed } = usePostboxLayoutNav({
 	activeMessageId: computed(() => props.activeMessageId),
 });
 
-// The feed behind whichever renderer is active (conversations / categories /
-// bundles). Exactly one subscribes; the rest skip.
+// The feed behind whichever renderer is active, and the read its error state shows.
 const {
+	listError,
+	retryList,
 	grouped,
 	conversationsEnabled,
 	categoriesEnabled,
@@ -218,6 +219,8 @@ const {
 	folderRole: folderRef,
 	renderer: activeListRenderer,
 	listMessages,
+	flatRead: feed,
+	showingCached,
 });
 
 // The reader's message: the list row, else its row from the thread the page
@@ -247,7 +250,7 @@ const advanceIds = computed(() =>
 
 <template>
 	<div
-		class="flex w-full"
+		class="flex w-full min-w-0"
 		:data-density="density"
 		:data-reading-pane="readingPane"
 		:style="paneStyle"
@@ -359,11 +362,7 @@ const advanceIds = computed(() =>
 										class="h-full"
 									>
 										<!-- A failed read is not an empty folder (#721); cached rows win. -->
-										<UiQueryBoundary
-											v-if="feed.error.value && !showingCached"
-											:error="feed.error.value"
-											@retry="feed.refetch"
-										/>
+										<UiQueryBoundary v-if="listError" :error="listError" @retry="retryList" />
 										<PostboxThreadCategoryList
 											v-else-if="categoriesEnabled"
 											:sections="categories.sections.value"
@@ -475,19 +474,14 @@ const advanceIds = computed(() =>
 							:advance-ids="advanceIds"
 							:folder-role="folderId ? String(folderId) : folderRole"
 						/>
-						<UiQueryBoundary
-							v-else-if="activeMessageId && activeRead.error.value"
-							:error="activeRead.error.value"
+						<PostboxReaderPlaceholder
+							v-else
+							:error="activeMessageId ? activeRead.error.value : null"
+							:not-found="!!activeMessageId && activeRead.notFound.value"
+							:folder-name="currentFolderName"
 							@retry="activeRead.refetch"
+							@back="backToList"
 						/>
-						<div v-else class="pbx-reader-swap h-full flex items-center justify-center">
-							<div class="text-center">
-								<Icon name="lucide:mail-open" class="w-12 h-12 mx-auto text-text-tertiary" />
-								<p class="mt-4 text-text-secondary">
-									{{ t('components.postbox.postboxLayout.selectMessage') }}
-								</p>
-							</div>
-						</div>
 					</section>
 				</div>
 			</div>

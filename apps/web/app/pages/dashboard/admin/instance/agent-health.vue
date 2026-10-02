@@ -107,18 +107,11 @@ const errorTrend = computed<'up' | 'down' | 'stable'>(() => {
 
 <template>
 	<div>
-		<!-- Header -->
-		<div class="flex items-center gap-4 mb-8">
-			<UiIconBox icon="lucide:activity" size="xl" variant="brand" rounded="full" />
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					{{ t('dashboard.admin.instance.agentHealth.title') }}
-				</h1>
-				<p class="text-text-secondary mt-1">
-					{{ t('dashboard.admin.instance.agentHealth.subtitle') }}
-				</p>
-			</div>
-		</div>
+		<UiPageHeader
+			:title="t('dashboard.admin.instance.agentHealth.title')"
+			:description="t('dashboard.admin.instance.agentHealth.subtitle')"
+			class="mb-8"
+		/>
 
 		<!-- A failed read shows the error: the zeros below would read as a
 		     healthy agent during an outage. -->

@@ -155,6 +155,7 @@ const FEATURE_STUBS = Object.fromEntries(
 		'UiConfirmationDialog',
 		'UiInput',
 		'UiModal',
+		'UiPageHeader',
 		'UiSegmentedControl',
 		'UiSelect',
 		'UiSkeleton',

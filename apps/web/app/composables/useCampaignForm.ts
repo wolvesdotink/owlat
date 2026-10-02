@@ -38,6 +38,7 @@ export function useCampaignForm(
 		data: campaignData,
 		isLoading: campaignLoading,
 		error: campaignError,
+		refetch: refetchCampaign,
 	} = useConvexQuery(api.campaigns.campaigns.getWithRelations, () => ({
 		campaignId: campaignId.value,
 	}));
@@ -325,6 +326,7 @@ export function useCampaignForm(
 		campaignData,
 		campaignLoading,
 		campaignError,
+		refetchCampaign,
 		emailTemplates,
 		/** Recipients: picker models, list subscriptions, derived `audience`, count. */
 		campaignAudience,

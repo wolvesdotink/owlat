@@ -38,7 +38,7 @@ definePageMeta({
 const { canManageSettings } = usePermissions();
 const { showToast } = useToast();
 
-const { policy, releases, isLoading, error, savePolicy, checkNow, isChecking } =
+const { policy, releases, isLoading, error, refetch, savePolicy, checkNow, isChecking } =
 	useDesktopUpdatePolicy();
 
 type Mode = 'latest' | 'pinned' | 'paused';
@@ -182,7 +182,7 @@ async function runCheck() {
 			:description="t('dashboard.admin.instance.desktopUpdates.intro')"
 		/>
 
-		<UiQueryBoundary :loading="isLoading && !policy" :error="error">
+		<UiQueryBoundary :loading="isLoading && !policy" :error="error" @retry="refetch">
 			<div class="space-y-6">
 				<!-- Newest cached release + the poll that fills the cache -->
 				<section class="card p-5">

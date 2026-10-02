@@ -79,7 +79,7 @@ export function useAutomationSteps(
 		return automation.value.steps.find((s) => s._id === selectedStepId.value) || null;
 	});
 
-	const stepConfig = useAutomationStepConfig(selectedStepId, automation, showToast);
+	const stepConfig = useAutomationStepConfig(selectedStepId, automation);
 
 	// ─── Description Helpers (delegated to per-kind editor modules) ────
 
@@ -135,35 +135,12 @@ export function useAutomationSteps(
 		showToast(t('shared.useAutomationSteps.stepDeleted'));
 	};
 
-	// VueDraggable binds `:model-value` one-way, so the dragged order lives only
-	// in the SortableJS `@end` event (oldIndex/newIndex) — `automation.steps` is
-	// still the un-reordered server order. Apply the move to the id list before
-	// persisting, otherwise the reorder is a silent no-op.
 	/**
-	 * Persist a drag. Resolves `false` when the new order was NOT saved (the
-	 * mutation failed and was toasted), so a caller that already shows the
-	 * dropped order can put the server's order back.
+	 * Persist a step order: the full list of step ids, first to last, exactly as
+	 * the builder shows it. Resolves `false` when it was NOT saved (the mutation
+	 * failed and was toasted), so the caller can put the server's order back.
 	 */
-	const handleDragEnd = async (event?: {
-		oldIndex?: number | null;
-		newIndex?: number | null;
-	}): Promise<boolean> => {
-		if (!automation.value?.steps) return true;
-		const oldIndex = event?.oldIndex;
-		const newIndex = event?.newIndex;
-		if (oldIndex == null || newIndex == null || oldIndex === newIndex) return true;
-		const stepOrder = automation.value.steps.map((step) => step._id);
-		if (
-			oldIndex < 0 ||
-			oldIndex >= stepOrder.length ||
-			newIndex < 0 ||
-			newIndex >= stepOrder.length
-		) {
-			return true;
-		}
-		const [moved] = stepOrder.splice(oldIndex, 1);
-		if (moved === undefined) return true;
-		stepOrder.splice(newIndex, 0, moved);
+	const persistStepOrder = async (stepOrder: Id<'automationSteps'>[]): Promise<boolean> => {
 		const result = await reorderStepsMutation({
 			automationId: automationId.value,
 			stepOrder,
@@ -229,6 +206,7 @@ export function useAutomationSteps(
 
 	return {
 		isSaving: stepConfig.isSaving,
+		stepSaveStatus: stepConfig.saveStatus,
 		isAddStepDropdownOpen,
 		addStepDropdownIndex,
 		selectedStepId,
@@ -240,11 +218,16 @@ export function useAutomationSteps(
 
 		currentConfig: stepConfig.currentConfig,
 		isCurrentConfigDirty: stepConfig.isCurrentConfigDirty,
+		hasRemoteStepChange: stepConfig.hasRemoteChange,
 
 		handleAddStep,
 		handleDeleteStep,
-		handleDragEnd,
-		handleUpdateStepConfig: stepConfig.handleUpdateStepConfig,
+		persistStepOrder,
+		requestStepSave: stepConfig.requestSave,
+		flushStepSave: stepConfig.flush,
+		discardStepChanges: stepConfig.discardChanges,
+		takeRemoteStepConfig: stepConfig.takeRemoteConfig,
+		keepLocalStepConfig: stepConfig.keepLocalConfig,
 		closeDropdowns,
 
 		parseStepConfig: stepConfig.parseStepConfig,

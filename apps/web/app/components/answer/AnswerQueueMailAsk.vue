@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import AskCard from '~/components/answer/AskCard.vue';
+import AskCard, { type AskCardAnswer } from '~/components/answer/AskCard.vue';
 import type { FileAnswerRef, FileCopyPolicy } from '~/components/answer/FileAsk.vue';
-import type { AskAnswer, AskQuestion } from '~/composables/useAnswerAskSession';
+import type { AskQuestion } from '~/composables/useAnswerAskSession';
 import { useAnswerQueueSession } from '~/composables/useAnswerQueueSession';
 import { backgroundAskAnswers } from '~/utils/backgroundAskAnswers';
 import { clarificationCardState } from '~/utils/postboxReplyQueue';
@@ -56,6 +56,16 @@ const state = computed(() => clarificationCardState(row.value?.clarification));
 const questions = computed(
 	() => (row.value?.clarification?.questions ?? []) as unknown as AskQuestion[]
 );
+// Draft-on-arrival already wrote the reply and left a placeholder where the
+// files go: the card only waits for them (issue #1131).
+const waitingForFiles = computed(() => {
+	const open = questions.value.filter((q) => !q.answer);
+	return (
+		!!row.value?.hasDraftSlot &&
+		open.length > 0 &&
+		open.every((q) => (q.answerKind ?? (q.slotType === 'attachment' ? 'file' : '')) === 'file')
+	);
+});
 
 const deferred = ref(false);
 /** A starter reply that landed after the person began writing, waiting to be asked for. */
@@ -95,7 +105,7 @@ const answerOp = useBackendOperation(api.mail.ai.needsReplyClarify.answerClarifi
 	label: () => t('components.postbox.postboxReplyFlow.operations.answer'),
 });
 const submitting = ref(false);
-async function submit(answers: AskAnswer[]) {
+async function submit(answers: AskCardAnswer[]) {
 	const current = row.value;
 	if (!current || submitting.value) return;
 	submitting.value = true;
@@ -119,6 +129,8 @@ async function submit(answers: AskAnswer[]) {
 			:mailbox-id="mailboxId"
 			:resolve-thread-file="resolveThreadFile"
 			:copy-policy="copyPolicy"
+			multiple-files
+			:waiting-for-files="waitingForFiles"
 			:skip-label="t('components.postbox.postboxClarificationCard.answerLater')"
 			@answer="submit"
 			@skip="deferred = true"

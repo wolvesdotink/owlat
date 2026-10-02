@@ -18,6 +18,7 @@ const {
 	config,
 	isLoading,
 	error,
+	refetch,
 	isSaving,
 	isTesting,
 	isLoadingModels,
@@ -139,19 +140,13 @@ watch(isDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 
 <template>
 	<div>
-		<div class="flex items-center gap-4 mb-8">
-			<UiIconBox icon="lucide:sparkles" size="xl" variant="brand" rounded="full" />
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					{{ t('dashboard.admin.instance.aiProvider.title') }}
-				</h1>
-				<p class="text-text-secondary mt-1">
-					{{ t('dashboard.admin.instance.aiProvider.subtitle') }}
-				</p>
-			</div>
-		</div>
+		<UiPageHeader
+			:title="t('dashboard.admin.instance.aiProvider.title')"
+			:description="t('dashboard.admin.instance.aiProvider.subtitle')"
+			class="mb-8"
+		/>
 
-		<UiQueryBoundary :loading="isLoading && !config" :error="error">
+		<UiQueryBoundary :loading="isLoading && !config" :error="error" @retry="refetch">
 			<!--
 				First load: a content-shaped placeholder at the geometry of the
 				provider cards below, rather than a centred spinner that blanks

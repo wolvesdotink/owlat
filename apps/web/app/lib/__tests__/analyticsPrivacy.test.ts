@@ -1,6 +1,10 @@
+import { readdir } from 'node:fs/promises';
+import { dirname, join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { CaptureResult } from 'posthog-js';
 import {
+	PRIVATE_ROUTE_NAMES,
 	isPrivateRouteName,
 	routePattern,
 	sanitizeAnalyticsEvent,
@@ -29,6 +33,34 @@ const onDashboard = at('/dashboard');
 function event(name: string, properties: Record<string, unknown>, extra = {}): CaptureResult {
 	return { uuid: 'u1', event: name, properties, ...extra };
 }
+
+const pagesDir = join(dirname(fileURLToPath(import.meta.url)), '../../pages');
+
+/** Nuxt's route name for every page file: `invite/accept.vue` is `invite-accept`. */
+async function pageRouteNames(): Promise<Set<string>> {
+	const names = new Set<string>();
+	for (const entry of await readdir(pagesDir, { recursive: true, withFileTypes: true })) {
+		if (!entry.isFile() || !entry.name.endsWith('.vue')) continue;
+		const path = relative(pagesDir, join(entry.parentPath, entry.name)).replace(/\.vue$/, '');
+		const name = path
+			.split(/[\\/]/)
+			.map((segment) => segment.replace(/[[\]]/g, ''))
+			.filter((segment, i, all) => !(segment === 'index' && i === all.length - 1))
+			.join('-');
+		names.add(name || 'index');
+	}
+	return names;
+}
+
+describe('PRIVATE_ROUTE_NAMES', () => {
+	// A renamed page would otherwise drop out of the list without a sound, and
+	// its credential would go back into analytics events.
+	it('names only pages that exist', async () => {
+		const pages = await pageRouteNames();
+		const missing = [...PRIVATE_ROUTE_NAMES].filter((name) => !pages.has(name));
+		expect(missing).toEqual([]);
+	});
+});
 
 describe('routePattern', () => {
 	it('names every parameter and drops custom regexes and modifiers', () => {

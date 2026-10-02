@@ -84,6 +84,17 @@ jobs:
         # "green" without running anything.
         uses: rharkor/caching-for-turbo@2238fae6eb9a9936f92356f54cb3660200d105e7 # v2.5.1
 
+      # The MTA's Redis integration suites (Lua scripts, Redis Cluster slot
+      # routing) run against throwaway redis:7-alpine containers and skip when
+      # the image is missing. Pull it here and set OWLAT_REQUIRE_DOCKER so a
+      # missing daemon or image fails the job instead of skipping those tests.
+      # The flag is covered by turbo's OWLAT_* globalEnv, so it reaches vitest.
+      - name: Pull Redis image for MTA integration tests
+        if: matrix.name == 'mta'
+        run: |
+          docker pull redis:7-alpine
+          echo "OWLAT_REQUIRE_DOCKER=1" >> "$GITHUB_ENV"
+
       - name: Run tests with coverage
         # The non-PR matrix is the uncached safety valve: it must execute the
         # suite against today's runner/dependencies instead of replaying a prior

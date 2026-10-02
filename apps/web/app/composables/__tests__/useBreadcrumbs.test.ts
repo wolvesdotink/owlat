@@ -321,6 +321,30 @@ describe('useBreadcrumbs', () => {
 		});
 	});
 
+	describe('collaboration surfaces', () => {
+		// These used to fall through to the slug fallback, which printed the URL
+		// word in English in every locale ("Files" on the German Dateien page).
+		it.each([
+			['/dashboard/files', ['Files']],
+			['/dashboard/files/abc123', ['Files']],
+			['/dashboard/visualizations', ['Visualizations']],
+			['/dashboard/chat', ['Chat']],
+			['/dashboard/chat/abc123', ['Chat']],
+			['/dashboard/assistant', ['Assistant']],
+			['/dashboard/knowledge', ['Knowledge']],
+			['/dashboard/knowledge/abc123', ['Knowledge']],
+			['/dashboard/knowledge/graph', ['Knowledge', 'Graph explorer']],
+		])('names %s from the route table', (route, labels) => {
+			expect(labelsFor(route)).toEqual(labels);
+			expect(trailFor(route).every((item) => item.label.startsWith('shared.'))).toBe(true);
+		});
+
+		it('links a detail page back to its list', () => {
+			expect(trailFor('/dashboard/files/abc123')[0]?.href).toBe('/dashboard/files');
+			expect(trailFor('/dashboard/knowledge/graph')[0]?.href).toBe('/dashboard/knowledge');
+		});
+	});
+
 	it('dynamic overrides still win over the route table', () => {
 		path.value = '/dashboard/admin/instance/general';
 		setDynamicBreadcrumbs([{ label: 'Custom' }]);

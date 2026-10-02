@@ -133,7 +133,7 @@ const onDeleteOpenChange = (open: boolean) => {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<div class="mx-auto w-full max-w-page p-6 lg:p-8">
 		<slot name="before-header" />
 		<UiPageHeader :title="title" :description="description" class="mb-6">
 			<template v-if="$slots['actions']" #actions>
@@ -141,7 +141,9 @@ const onDeleteOpenChange = (open: boolean) => {
 			</template>
 		</UiPageHeader>
 
-		<div class="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
+		<!-- Stacks below lg: a status strip with counts beside a 256px search does
+		     not fit a tablet row, and squeezing it clipped the strip. -->
+		<div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center">
 			<slot name="filters" />
 
 			<div class="flex-1" />
@@ -152,7 +154,7 @@ const onDeleteOpenChange = (open: boolean) => {
 					type="text"
 					:placeholder="searchPlaceholder"
 					size="sm"
-					class="w-64"
+					class="w-full sm:w-64"
 					@update:model-value="emit('update:search', String($event ?? ''))"
 				>
 					<template #iconLeft>

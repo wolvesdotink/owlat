@@ -17,6 +17,7 @@ import {
 	canonicalAnswerValue,
 	decideFileOutcome,
 	ensureGapPlaceholders,
+	fitGapPlaceholders,
 	fileRequestLabel,
 	isNotReadyAnswer,
 	monthInFileName,
@@ -275,5 +276,30 @@ describe('gaps and the trusted block', () => {
 			gapPlaceholders: [],
 		});
 		expect(block).toBe('');
+	});
+});
+
+describe('fitGapPlaceholders', () => {
+	const gaps = ['[[Provide the invoices]]'];
+
+	it('keeps every placeholder whole when the body fills the limit', () => {
+		const fitted = fitGapPlaceholders('A'.repeat(4000), gaps, 4000);
+		expect(fitted.length).toBeLessThanOrEqual(4000);
+		expect(fitted.endsWith('\n\n[[Provide the invoices]]')).toBe(true);
+	});
+
+	it('drops a placeholder the cut split and puts it back whole', () => {
+		const text = `${'A'.repeat(3980)} [[Provide the invoices]] and more text after it`;
+		const fitted = fitGapPlaceholders(text, gaps, 4000);
+		expect(fitted.length).toBeLessThanOrEqual(4000);
+		expect(fitted.match(/\[\[/g)).toHaveLength(1);
+		expect(fitted).toContain('[[Provide the invoices]]');
+	});
+
+	it('changes nothing that already fits', () => {
+		expect(fitGapPlaceholders('Hi [[Provide the invoices]]', gaps, 4000)).toBe(
+			'Hi [[Provide the invoices]]'
+		);
+		expect(fitGapPlaceholders('A'.repeat(5000), [], 4000)).toHaveLength(4000);
 	});
 });

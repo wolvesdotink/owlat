@@ -60,7 +60,9 @@ function handleStepClick(stepId: Step['id']): void {
 							: ''
 					"
 					:aria-label="
-						stepIsClickable(step.id) ? t('ui.stepIndicator.goBackTo', { step: step.label }) : undefined
+						stepIsClickable(step.id)
+							? t('ui.stepIndicator.goBackTo', { step: step.label })
+							: undefined
 					"
 					@click="handleStepClick(step.id)"
 				>
@@ -85,10 +87,13 @@ function handleStepClick(stepId: Step['id']): void {
 						/>
 						<span v-else>{{ step.number }}</span>
 					</div>
-					<!-- Step Label -->
+					<!-- Step Label. Below `sm` five labelled steps are wider than a phone,
+					     so only the current step keeps its visible label; the others stay
+					     in the accessibility tree. -->
 					<span
 						:class="[
-							'ml-3 text-sm font-medium',
+							'ml-2 whitespace-nowrap text-sm font-medium sm:ml-3',
+							getStepStatus(step.id) === 'current' ? '' : 'max-sm:sr-only',
 							getStepStatus(step.id) === 'completed'
 								? 'text-text-secondary'
 								: getStepStatus(step.id) === 'current'
@@ -103,7 +108,7 @@ function handleStepClick(stepId: Step['id']): void {
 				<div
 					v-if="index < steps.length - 1"
 					:class="[
-						'flex-1 h-0.5 mx-4',
+						'flex-1 h-0.5 mx-2 sm:mx-4',
 						isConnectorHighlighted(index) ? 'bg-text-primary/30' : 'bg-border-subtle',
 					]"
 				/>

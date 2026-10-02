@@ -368,7 +368,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<div class="mx-auto w-full max-w-page p-6 lg:p-8">
 		<!-- Back Navigation -->
 		<NuxtLink
 			to="/dashboard/inbox"
@@ -401,9 +401,10 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 
 		<!-- Thread Content -->
 		<template v-else>
-			<!-- Header -->
-			<div class="flex items-start justify-between gap-4 mb-6">
-				<div class="min-w-0">
+			<!-- Header. Wraps: next to four action buttons the subject was squeezed
+			     into a narrow column on a tablet; below 24rem it gets its own line. -->
+			<div class="mb-6 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+				<div class="min-w-0 flex-[1_1_24rem]">
 					<!-- The subject, once. Messages below don't repeat it. -->
 					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary break-words">
 						{{ thread.subject || t('dashboard.inbox.detail.noSubject') }}
@@ -483,9 +484,11 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 				@created="onChannelCreated"
 			/>
 
-			<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+			<!-- From xl the side column keeps a fixed width instead of a third of an
+			     ever wider page. -->
+			<div class="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-[minmax(0,1fr)_20rem] gap-6">
 				<!-- Messages Timeline -->
-				<div class="lg:col-span-2 space-y-4">
+				<div class="lg:col-span-2 xl:col-span-1 space-y-4">
 					<template v-for="message in messages" :key="message._id">
 						<div class="card">
 							<!-- Message Header -->

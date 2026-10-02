@@ -17,7 +17,19 @@ vi.mock('@owlat/desktop/src/compose', () => ({
 	openCompose: (...args: unknown[]) => openCompose(...args),
 }));
 
-import { handleDeepLink } from '../deepLink.client';
+let windowLabel = 'main';
+vi.mock('@tauri-apps/api/webviewWindow', () => ({
+	getCurrentWebviewWindow: () => ({ label: windowLabel }),
+}));
+
+const getInitialDeepLinks = vi.fn();
+const onDeepLink = vi.fn();
+vi.mock('@owlat/desktop/src/deeplink', () => ({
+	getInitialDeepLinks: (...args: unknown[]) => getInitialDeepLinks(...args),
+	onDeepLink: (...args: unknown[]) => onDeepLink(...args),
+}));
+
+import { handleDeepLink, setupDeepLinks } from '../deepLink.client';
 
 describe('handleDeepLink', () => {
 	let assign: ReturnType<typeof vi.fn>;
@@ -162,5 +174,35 @@ describe('handleDeepLink', () => {
 			expect(assign).not.toHaveBeenCalled();
 			expect(completeConnection).not.toHaveBeenCalled();
 		});
+	});
+});
+
+describe('setupDeepLinks', () => {
+	beforeEach(() => {
+		completeConnection.mockReset().mockResolvedValue(undefined);
+		getInitialDeepLinks.mockReset().mockResolvedValue(['owlat://auth?ott=t&state=s']);
+		onDeepLink.mockReset().mockResolvedValue(() => {});
+	});
+
+	afterEach(() => {
+		windowLabel = 'main';
+	});
+
+	it('handles launch links and subscribes to live ones in the main window', async () => {
+		windowLabel = 'main';
+		await setupDeepLinks();
+		expect(getInitialDeepLinks).toHaveBeenCalledTimes(1);
+		expect(onDeepLink).toHaveBeenCalledTimes(1);
+		expect(completeConnection).toHaveBeenCalledWith({ ott: 't', state: 's' });
+	});
+
+	// Every webview receives every link. Only one may complete a sign-in
+	// handshake, and it has to be the window whose session it replaces.
+	it('leaves deep links to the main window when booted in compose', async () => {
+		windowLabel = 'compose';
+		await setupDeepLinks();
+		expect(getInitialDeepLinks).not.toHaveBeenCalled();
+		expect(onDeepLink).not.toHaveBeenCalled();
+		expect(completeConnection).not.toHaveBeenCalled();
 	});
 });
