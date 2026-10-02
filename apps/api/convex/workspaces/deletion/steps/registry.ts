@@ -161,6 +161,8 @@ export const ORGANIZATION_DELETION_STEPS = {
 	instanceSettings: instanceSettingsStep,
 	threadPresence: makeSweepStep('threadPresence'),
 	threadReads: makeSweepStep('threadReads'),
+	threadNoteMentions: makeSweepStep('threadNoteMentions'),
+	threadNotes: makeSweepStep('threadNotes'),
 	inboxFollowUps: inboxFollowUpsStep,
 	threadCatchUps: makeSweepStep('threadCatchUps'),
 	inboxAssignmentNotices: makeSweepStep('inboxAssignmentNotices'),
