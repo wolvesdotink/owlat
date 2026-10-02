@@ -128,15 +128,11 @@ const tiles = computed(() => {
 
 <template>
 	<div>
-		<div class="mb-6 flex items-center gap-3">
-			<UiIconBox icon="lucide:file-search" size="lg" variant="brand" rounded="xl" />
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					{{ t('dashboard.admin.delivery.dmarc.title') }}
-				</h1>
-				<p class="mt-1 text-text-secondary">{{ t('dashboard.admin.delivery.dmarc.lede') }}</p>
-			</div>
-		</div>
+		<UiPageHeader
+			class="mb-6"
+			:title="t('dashboard.admin.delivery.dmarc.title')"
+			:description="t('dashboard.admin.delivery.dmarc.lede')"
+		/>
 
 		<UiQueryBoundary
 			:loading="domainsLoading && !domainsData"
