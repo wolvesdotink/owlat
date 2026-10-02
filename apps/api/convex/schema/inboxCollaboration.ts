@@ -2,9 +2,9 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 
 /**
- * Shared-inbox COLLABORATION tables — the read-side signals about people
- * rather than about mail: who has a thread open, who has seen it, and who was
- * handed one.
+ * Shared-inbox COLLABORATION tables — the signals about people rather than
+ * about mail: who has a thread open, who has seen it, who was handed one, and
+ * what the team wrote about it among themselves (internal notes).
  *
  * Split out of `schema/inbox.ts` once that file passed the ~500 LOC guideline
  * in apps/api/convex/CONVENTIONS.md. They belong together: none of them gates a
@@ -67,9 +67,17 @@ export const inboxCollaborationTables = {
 		// is the agent parking a reply because it needs a fact from this person
 		// (inbox/processingLifecycle/effects.ts `notify_clarification`). The
 		// client picks its copy by kind.
-		kind: v.optional(v.union(v.literal('assignment'), v.literal('clarification'))),
+		// `mention` is a teammate @-mentioning this person in an internal note
+		// (inbox/notes.ts); only clients that ask for it receive it
+		// (`pendingAssignments({ includeMentions: true })`), so an older tab
+		// never words a mention as an assignment.
+		kind: v.optional(
+			v.union(v.literal('assignment'), v.literal('clarification'), v.literal('mention'))
+		),
 		// The parked message, for `clarification` notices only.
 		inboundMessageId: v.optional(v.id('inboundMessages')),
+		// The note that mentioned the person, for `mention` notices only.
+		noteId: v.optional(v.id('threadNotes')),
 		// Assignee (BetterAuth user id) — who the thread was handed to.
 		userId: v.string(),
 		threadId: v.id('conversationThreads'),
@@ -81,4 +89,43 @@ export const inboxCollaborationTables = {
 	})
 		// Newest-first window of notices for one assignee.
 		.index('by_user_and_created', ['userId', 'createdAt']),
+
+	// Thread Notes - internal notes the team writes on a shared-inbox thread,
+	// shown between the messages and never sent: no outbound mail, quoted reply,
+	// forward, contact export, webhook or agent prompt reads this table (a guard
+	// test lists the modules that may). Plain text with `@handle` mentions
+	// (packages/shared/src/chatMentions.ts); `mentionedUserIds` is what the
+	// server resolved them to, limited to people who can read the Team Inbox.
+	// Edits stamp `editedAt`; a delete keeps the row as a "Note deleted"
+	// tombstone with the body and mentions cleared. Member erasure anonymizes
+	// the author; a contact's erasure deletes the notes with the thread.
+	threadNotes: defineTable({
+		threadId: v.id('conversationThreads'),
+		authorId: v.string(), // BetterAuth user id ('[deleted account]' once erased)
+		body: v.string(),
+		mentionedUserIds: v.array(v.string()),
+		createdAt: v.number(),
+		editedAt: v.optional(v.number()),
+		deletedAt: v.optional(v.number()),
+	})
+		// The thread view, oldest first.
+		.index('by_thread_and_created', ['threadId', 'createdAt'])
+		// The list's note-count chip: a thread's live (not deleted) notes.
+		.index('by_thread_and_deleted', ['threadId', 'deletedAt'])
+		// Account export and member erasure.
+		.index('by_author', ['authorId']),
+
+	// Thread Note Mentions - one row per (note, mentioned person), mirroring a
+	// live note's `mentionedUserIds` so "threads that mention me" is an index
+	// read. Rewritten when the note is edited, dropped when it is deleted.
+	threadNoteMentions: defineTable({
+		noteId: v.id('threadNotes'),
+		threadId: v.id('conversationThreads'),
+		userId: v.string(), // the mentioned person (BetterAuth user id)
+		createdAt: v.number(),
+	})
+		// The Mentions filter, newest first; also member erasure.
+		.index('by_user_and_created', ['userId', 'createdAt'])
+		// Keep in step with the note on edit and delete.
+		.index('by_note', ['noteId']),
 };

@@ -3325,12 +3325,34 @@
 			}
 		},
 		"email": {
+			"coeditNotices": {
+				"blockReplaced": "Deine Änderung an einem Block wurde von {name} ersetzt, weil ihr ihn gleichzeitig bearbeitet habt.",
+				"dismiss": "Schließen",
+				"fieldReplaced": "Deine Änderung an {field} wurde von {name} ersetzt, weil ihr gleichzeitig daran gearbeitet habt.",
+				"fields": {
+					"attachments": "den Anhängen",
+					"name": "dem Namen",
+					"plainText": "der Nur-Text-Version",
+					"subject": "dem Betreff",
+					"unsubscribe": "der Abmelde-Einstellung"
+				},
+				"inHistory": "Deine Version ist auch im Versionsverlauf gespeichert.",
+				"restore": "Meine zurückholen"
+			},
 			"editorConflictDialog": {
 				"description": "Sie wurde an anderer Stelle gespeichert, nachdem du sie geöffnet hast: in einem anderen Tab, auf der Seite „Übersetzungen“ oder über einen gespeicherten Block, den sie verwendet. Deine Änderungen sind noch nicht gespeichert. Behalte deine Version, um sie über die neuere zu speichern, oder lade die aktuelle Version und verwirf deine Änderungen.",
 				"keepMine": "Meine Version behalten",
 				"languageChanged": "Die Standardsprache dieser E-Mail wurde geändert, nachdem du sie geöffnet hast. Deine Änderungen gehören deshalb zu einer anderen Sprache und können nicht darüber gespeichert werden. Lade die aktuelle Version und nimm deine Änderungen dann erneut vor.",
 				"loadLatest": "Aktuelle Version laden",
 				"title": "Diese E-Mail wurde während deiner Bearbeitung geändert"
+			},
+			"editorPresence": {
+				"label": "Personen, die diese E-Mail bearbeiten",
+				"more": "{count} weitere",
+				"offline": "Nicht synchronisiert",
+				"offlineTitle": "Deine letzten Änderungen sind noch nicht bei den anderen angekommen. Sie bleiben erhalten und werden automatisch erneut gesendet.",
+				"titleEditing": "{name} bearbeitet gerade einen Block",
+				"titleViewing": "{name} hat diese E-Mail geöffnet"
 			},
 			"emailBuilderViewportGate": {
 				"body": "Bearbeiten per Drag-and-drop passt nicht auf ein Telefon. Öffne diese Seite auf einem Tablet oder Desktop, um Änderungen vorzunehmen – alles Gespeicherte ist genau so, wie du es verlassen hast.",
@@ -3371,6 +3393,7 @@
 				"trigger": "Verlauf",
 				"triggerTitle": "Versionsverlauf",
 				"triggers": {
+					"conflict": "Vor einem Bearbeitungskonflikt",
 					"publish": "Veröffentlicht",
 					"save": "Gespeichert",
 					"send": "Gesendet"
@@ -3518,7 +3541,9 @@
 			},
 			"inboxFilterPills": {
 				"groupLabel": "Konversationen filtern",
-				"assigneeLabel": "Nach Zuständigkeit filtern"
+				"assigneeLabel": "Nach Zuständigkeit filtern",
+				"mentions": "Erwähnungen",
+				"unreadMentions": "{count} noch nicht geöffnet"
 			},
 			"inboxMessageAttachments": {
 				"blocked": "Blockiert — in dieser Nachricht wurde Schadsoftware gefunden.",
@@ -3559,6 +3584,7 @@
 					"whatsapp": "WhatsApp"
 				},
 				"noSubject": "Kein Betreff",
+				"notes": "{count} interne Notiz | {count} interne Notizen",
 				"openThread": "Konversation öffnen",
 				"resolve": "Erledigen",
 				"snooze": "Zurückstellen",
@@ -3593,6 +3619,38 @@
 			"readFailureNotice": {
 				"inboxList": "deine Postfachliste",
 				"message": "Nicht geladen: {names}. Diese Liste ist deshalb unvollständig."
+			},
+			"notes": {
+				"add": "Notiz hinzufügen",
+				"ariaLabel": "Interne Notiz von {name}",
+				"badge": "Interne Notiz",
+				"composerLabel": "Interne Notiz",
+				"createOperation": "Notiz hinzufügen",
+				"delete": "Notiz löschen",
+				"deleteDialog": {
+					"description": "Die Notiz verschwindet für das ganze Team. An ihrer Stelle steht im Verlauf „Notiz gelöscht“.",
+					"title": "Diese Notiz löschen?"
+				},
+				"deleteOperation": "Notiz löschen",
+				"deleted": "Notiz gelöscht",
+				"edit": "Notiz bearbeiten",
+				"editLabel": "Notiz bearbeiten",
+				"edited": "(bearbeitet)",
+				"empty": "Noch keine Notizen. Notizen bleiben in Owlat: der Kunde sieht sie nie, und sie landen nie in einer Antwort.",
+				"formerTeammate": "Ehemaliges Teammitglied",
+				"mentionHint": "Mit {'@'} erwähnst du jemanden aus dem Team. Strg/⌘ + Enter fügt die Notiz hinzu.",
+				"open": "Interne Notiz hinzufügen",
+				"placeholder": "Schreib eine Notiz für dein Team. Mit {'@'} erwähnst du jemanden.",
+				"privacyHint": "Interne Notiz: nur dein Team sieht sie. Sie wird nie an den Kunden geschickt.",
+				"remaining": "Noch {count} Zeichen | Noch {count} Zeichen",
+				"save": "Speichern",
+				"tabs": {
+					"label": "Antwort oder interne Notiz",
+					"note": "Interne Notiz",
+					"reply": "Antwort"
+				},
+				"tooLong": "{count} Zeichen zu lang | {count} Zeichen zu lang",
+				"updateOperation": "Notiz speichern"
 			}
 		},
 		"keyboardShortcutsHelp": {
@@ -9817,6 +9875,7 @@
 				"assignThreadOperation": "Konversation zuweisen",
 				"empty": {
 					"me": "Dir ist derzeit nichts zugewiesen.",
+					"mentions": "Noch hat dich niemand in einer Notiz erwähnt.",
 					"open": "Keine offenen Gespräche. Posteingang leer.",
 					"resolved": "Noch keine erledigten Gespräche.",
 					"snoozed": "Nichts ist zurückgestellt. Zurückgestelltes erscheint hier wieder.",
@@ -13278,6 +13337,10 @@
 			"unknown": "Wir konnten das DNS für deine Versanddomains noch nicht vollständig lesen, deshalb bleibt die Umstellung, wo sie ist. Das wird automatisch erneut geprüft — du musst nichts tun.",
 			"unknownDomains": "Wir konnten das DNS für ({domains}) noch nicht vollständig lesen, deshalb bleibt die Umstellung, wo sie ist. Das wird automatisch erneut geprüft — du musst nichts tun."
 		},
+		"editorPresence": {
+			"isEditing": "{name} bearbeitet",
+			"someone": "Jemand"
+		},
 		"gettingStarted": {
 			"addedContacts": {
 				"cta": "Kontakte hinzufügen",
@@ -13337,6 +13400,17 @@
 					"toast": {
 						"noSubject": "Der Agent braucht deine Eingabe für eine Antwort — Kein Betreff",
 						"withSubject": "Der Agent braucht deine Eingabe für eine Antwort — {subject}"
+					}
+				},
+				"mention": {
+					"notificationBody": {
+						"noSubject": "Kein Betreff · {assignedByName} hat dich in einer Notiz erwähnt",
+						"withSubject": "{subject} · {assignedByName} hat dich in einer Notiz erwähnt"
+					},
+					"notificationTitle": "Du wurdest erwähnt",
+					"toast": {
+						"noSubject": "{assignedByName} hat dich in einer Notiz erwähnt — Kein Betreff",
+						"withSubject": "{assignedByName} hat dich in einer Notiz erwähnt — {subject}"
 					}
 				},
 				"notification": {
@@ -14548,7 +14622,8 @@
 				"draftWithAi": "Mit KI entwerfen (statt den Assistenten zu öffnen)",
 				"pickAskOption": "Eine Antwort auf der Fragekarte der KI wählen",
 				"previousQueueItem": "Vorheriger Eintrag in der Antwortliste",
-				"nextQueueItem": "Nächster Eintrag in der Antwortliste"
+				"nextQueueItem": "Nächster Eintrag in der Antwortliste",
+				"writeNote": "Interne Notiz schreiben"
 			}
 		},
 		"signatureBadge": {
@@ -15659,6 +15734,7 @@
 			"mailboxes": "Postfächer",
 			"organizationMemberships": "Workspace-Mitgliedschaften",
 			"segments": "Segmente",
+			"threadNotes": "Interne Notizen",
 			"topics": "Themen",
 			"transactionalEmails": "Transaktions-E-Mails",
 			"webhooks": "Webhooks"

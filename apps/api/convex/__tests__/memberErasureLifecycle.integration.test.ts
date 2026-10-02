@@ -306,7 +306,8 @@ describe('failure and recovery', () => {
 		// behind the walk.
 		for (let i = 0; i < 100; i++) {
 			const current = await jobOf(t, requestId);
-			if (!current || current.phase === 'chatMentions') break;
+			if (!current || current.phase === MEMBER_ERASURE_PHASES[MEMBER_ERASURE_PHASES.length - 1])
+				break;
 			await t.mutation(internal.auth.erasure.walker.tick, { jobId: job._id });
 		}
 		await t.run((ctx) =>

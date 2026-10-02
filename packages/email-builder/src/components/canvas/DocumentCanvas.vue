@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch, nextTick, inject, onMounted, onUnmounted, toRaw } from 'vue';
-import type { EditorBlock, EmailTheme, Variable, SlashCommand, BlockType } from '../../types';
+import type { EditorBlock, EmailTheme, Variable, SlashCommand, BlockType, RemoteBlockMark as RemoteMark } from '../../types';
 import type { ParentContext } from './types';
 import DocumentBlock from './DocumentBlock.vue';
+import RemoteBlockMark from './RemoteBlockMark.vue';
 import DragHandle from './DragHandle.vue';
 import BlockPlaceholder from './BlockPlaceholder.vue';
 import BlockInsertPoint from './BlockInsertPoint.vue';
@@ -29,6 +30,8 @@ const props = defineProps<{
 	variables?: Variable[];
 	/** Restrict the insertable palette to this allowlist (EmailBuilderConfig.blockTypes). Undefined = all. */
 	blockTypes?: BlockType[];
+	/** Other people on root blocks, keyed by block id (co-editing). */
+	remoteMarks?: Record<string, RemoteMark>;
 }>();
 
 const emit = defineEmits<{
@@ -382,6 +385,8 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 								v-if="!isLinkedBlockFn(block.id) || isFirstInLinkedGroup(block.id)"
 								:visible="selectedBlockId === block.id"
 							/>
+
+							<RemoteBlockMark v-if="remoteMarks?.[block.id]" :mark="remoteMarks[block.id]!" />
 
 							<!-- Block type label -->
 							<div

@@ -75,6 +75,8 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'unifiedMessages',
 	'threadPresence', // ephemeral viewer/replier signals — clear before their threads
 	'threadReads', // per-user read markers — clear before their threads
+	'threadNoteMentions', // note mention rows — before their notes
+	'threadNotes', // internal team notes — clear before their threads
 	'inboxFollowUps', // team follow-up bodies — clear before their threads
 	'threadCatchUps', // Answer mode catch-up cards (team and Postbox) — before both thread tables
 	'inboxAssignmentNotices', // per-assignee notice denormalized subjects/assigner names
@@ -169,6 +171,9 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// Campaign + template parents
 	'campaigns',
 	// Version snapshots before the templates they belong to.
+	'emailCoeditNotices', // co-editing notices, presence and live drafts — before their emails
+	'emailEditorPresence',
+	'emailCoeditSessions',
 	'emailTemplateVersions',
 	'emailTemplates',
 	'transactionalEmails',

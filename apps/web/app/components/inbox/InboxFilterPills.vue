@@ -7,6 +7,11 @@
  * takes the terracotta brand-soft treatment (weight + accent, never a large
  * fill). Counts read at most `cap` rows server-side, so a slice at the ceiling
  * shows "99+".
+ *
+ * Last, Mentions: the threads a teammate @-mentioned you on in an internal
+ * note, with how many you have not opened since. It is a view of its own, so
+ * while it is on no status tab is pressed and the assignment filter steps
+ * aside; picking a tab leaves it.
  */
 import {
 	INBOX_ASSIGNEES,
@@ -18,16 +23,29 @@ import {
 	type InboxFilterCounts,
 } from '~/utils/inboxFilters';
 
-const props = defineProps<{
-	modelValue: InboxFilter;
-	assignee: InboxAssignee;
-	counts: InboxFilterCounts | null | undefined;
-}>();
+const props = withDefaults(
+	defineProps<{
+		modelValue: InboxFilter;
+		assignee: InboxAssignee;
+		counts: InboxFilterCounts | null | undefined;
+		/** The Mentions view is on. */
+		mentions?: boolean;
+		/** Threads mentioning you that you have not opened since. */
+		unreadMentions?: number;
+	}>(),
+	{ mentions: false, unreadMentions: 0 }
+);
 
 const emit = defineEmits<{
 	'update:modelValue': [InboxFilter];
 	'update:assignee': [InboxAssignee];
+	'update:mentions': [boolean];
 }>();
+
+function pickFilter(filter: InboxFilter) {
+	emit('update:mentions', false);
+	emit('update:modelValue', filter);
+}
 
 const { t } = useI18n();
 
@@ -60,27 +78,28 @@ function displayCount(filter: InboxFilter): string | null {
 				v-for="f in INBOX_FILTERS"
 				:key="f"
 				type="button"
-				:aria-pressed="modelValue === f"
+				:aria-pressed="!mentions && modelValue === f"
 				class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
 				:class="
-					modelValue === f
+					!mentions && modelValue === f
 						? 'border-brand/30 bg-brand-soft text-brand'
 						: 'border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-surface'
 				"
-				@click="emit('update:modelValue', f)"
+				@click="pickFilter(f)"
 			>
 				<!-- The filter registry holds i18n keys, not copy (see the localization guide). -->
 				<span>{{ t(INBOX_FILTER_META[f].label) }}</span>
 				<span
 					v-if="displayCount(f) !== null"
 					class="tabular-nums text-xs"
-					:class="modelValue === f ? 'text-brand' : 'text-text-tertiary'"
+					:class="!mentions && modelValue === f ? 'text-brand' : 'text-text-tertiary'"
 				>
 					{{ displayCount(f) }}
 				</span>
 			</button>
 		</div>
 		<div
+			v-if="!mentions"
 			role="group"
 			:aria-label="t('components.inbox.inboxFilterPills.assigneeLabel')"
 			class="inline-flex items-center rounded-full bg-bg-surface p-0.5"
@@ -102,5 +121,30 @@ function displayCount(filter: InboxFilter): string | null {
 				{{ t(INBOX_ASSIGNEE_META[a].label) }}
 			</button>
 		</div>
+		<button
+			type="button"
+			:aria-pressed="mentions"
+			class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
+			:class="
+				mentions
+					? 'border-brand/30 bg-brand-soft text-brand'
+					: 'border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-surface'
+			"
+			data-testid="inbox-mentions-filter"
+			@click="emit('update:mentions', !mentions)"
+		>
+			<Icon name="lucide:at-sign" class="size-3.5" aria-hidden="true" />
+			<span>{{ t('components.inbox.inboxFilterPills.mentions') }}</span>
+			<span
+				v-if="unreadMentions > 0"
+				class="rounded-full bg-brand px-1.5 text-xs tabular-nums text-text-inverse"
+				:aria-label="
+					t('components.inbox.inboxFilterPills.unreadMentions', { count: unreadMentions })
+				"
+				data-testid="inbox-mentions-unread"
+			>
+				{{ unreadMentions }}
+			</span>
+		</button>
 	</div>
 </template>
