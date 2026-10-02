@@ -90,6 +90,7 @@ export const TENANT_TABLES = [
 	'campaignSendJobs',
 	'audienceCountJobs',
 	'campaignStatShards',
+	'sendTimeHistogramShards',
 	'campaignSenders',
 	'campaigns',
 

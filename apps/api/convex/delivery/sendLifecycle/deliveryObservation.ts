@@ -1,6 +1,7 @@
 import type { Doc } from '../../_generated/dataModel';
 import { transportOutcomeEffect, type Effect } from './effects';
 import { contactEmailOf } from './lookups';
+import { sendTimeGroupOf } from './sendTimeEffects';
 import type { EmailSendDoc, SendRef, SendStatus, TransactionalSendDoc } from './types';
 
 export interface DeliveryObservationResult {
@@ -85,6 +86,7 @@ export function reduceDeliveryObservation(
 			kind: 'campaign_stats_delivered',
 			campaignId: (send as EmailSendDoc).campaignId,
 			at,
+			...sendTimeGroupOf(send, ref),
 		});
 	}
 	effects.push({ kind: 'daily_stats_bump', field: 'delivered', at });

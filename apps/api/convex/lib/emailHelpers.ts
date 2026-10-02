@@ -37,6 +37,46 @@ function zonedParts(instant: number, timeZone: string): WallClock {
 	return out as unknown as WallClock;
 }
 
+/**
+ * One formatter per zone. Building an `Intl.DateTimeFormat` costs far more
+ * than formatting with it, and the send-time planner reads local parts for
+ * every candidate hour of every recipient.
+ */
+const weekdayFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/**
+ * Local hour (0-23), minute, second and weekday (0 = Sunday) of `instant` in
+ * `timeZone`. The zone must be valid (see `isValidTimeZone`).
+ */
+export function localTimeParts(
+	instant: number,
+	timeZone: string
+): { hour: number; minute: number; second: number; weekday: number } {
+	let formatter = weekdayFormatters.get(timeZone);
+	if (!formatter) {
+		formatter = new Intl.DateTimeFormat('en-US', {
+			timeZone,
+			year: 'numeric',
+			month: '2-digit',
+			day: '2-digit',
+			hour: '2-digit',
+			minute: '2-digit',
+			second: '2-digit',
+			hour12: false,
+		});
+		weekdayFormatters.set(timeZone, formatter);
+	}
+	const out: Record<string, number> = {};
+	for (const p of formatter.formatToParts(new Date(instant))) {
+		if (p.type !== 'literal') out[p.type] = Number(p.value);
+	}
+	const hour = out['hour'] === 24 ? 0 : (out['hour'] ?? 0);
+	const weekday = new Date(
+		Date.UTC(out['year'] ?? 1970, (out['month'] ?? 1) - 1, out['day'] ?? 1)
+	).getUTCDay();
+	return { hour, minute: out['minute'] ?? 0, second: out['second'] ?? 0, weekday };
+}
+
 /** UTC offset (ms) of `timeZone` at `instant` (zone wall-clock minus UTC). */
 function zoneOffsetMs(instant: number, timeZone: string): number {
 	const p = zonedParts(instant, timeZone);
