@@ -41,7 +41,7 @@ import { isThreadMuted } from '../lib/mailMute';
 import { loadOwnUserProfile } from '../lib/sessionOrganization';
 import { loadProfileSummary } from '../lib/userProfiles';
 import { pushEventValidator } from '../lib/validators/push';
-import { canUserReadMailbox, isPersonalMailbox } from '../mail/permissions';
+import { canUserReadMailbox, loadPersonalMailboxForUser } from '../mail/permissions';
 import { getMembership, isMailThreadDiscussion } from '../chat/_helpers';
 import { isWebPushConfigured } from './config';
 import {
@@ -121,9 +121,9 @@ async function resolveMail(
 	if (!message || message.flagSeen) return null;
 	const folder = await ctx.db.get(message.folderId);
 	if (folder?.role !== 'inbox') return null;
-	const mailbox = await ctx.db.get(message.mailboxId);
-	if (!mailbox || mailbox.status !== 'active' || mailbox.userId !== userId) return null;
-	if (!isPersonalMailbox(mailbox) || !(await hasMailFeature(ctx))) return null;
+	// Only the owner's own personal mailbox, and only while it is live.
+	const mailbox = await loadPersonalMailboxForUser(ctx, message.mailboxId, userId);
+	if (mailbox?.status !== 'active' || !(await hasMailFeature(ctx))) return null;
 	const thread = await ctx.db.get(message.threadId);
 	return {
 		payload: mailPayload(
