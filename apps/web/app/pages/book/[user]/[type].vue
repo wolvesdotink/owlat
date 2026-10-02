@@ -27,8 +27,8 @@ definePageMeta({ layout: false });
 
 const { t, locale } = useI18n();
 const route = useRoute();
-const hostSlug = computed(() => String(route.params.user ?? ''));
-const typeSlug = computed(() => String(route.params.type ?? ''));
+const hostSlug = computed(() => String(route.params['user'] ?? ''));
+const typeSlug = computed(() => String(route.params['type'] ?? ''));
 
 const timeZone = ref(browserTimeZone());
 const today = getTzParts(Date.now(), timeZone.value);

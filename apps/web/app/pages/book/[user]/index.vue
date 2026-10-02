@@ -13,7 +13,7 @@ definePageMeta({ layout: false });
 
 const { t } = useI18n();
 const route = useRoute();
-const hostSlug = computed(() => String(route.params.user ?? ''));
+const hostSlug = computed(() => String(route.params['user'] ?? ''));
 
 const page = ref<BookingPageData | null>(null);
 const reason = ref<string | null>(null);
