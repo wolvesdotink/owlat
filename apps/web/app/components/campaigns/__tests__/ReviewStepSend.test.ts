@@ -180,6 +180,7 @@ function mountStep(
 				CampaignsTestEmailModal: true,
 				CampaignsEmailBodyPreview: true,
 				CampaignsPresendChecksPanel: presendPanelStub,
+				CampaignsSendTimingOptions: true,
 				Icon: true,
 				I18nT: passthroughStub,
 			},
@@ -306,6 +307,52 @@ describe('ReviewStep send confirmation threshold', () => {
 		// undo toast is already saying it.
 		expect(toasts).toEqual(['Campaign scheduled successfully!']);
 		expect(armed).toEqual([]);
+		// One instant for everyone: no local-time hour, optimization off.
+		expect(scheduleRuns[0]).toMatchObject({
+			useRecipientTimezone: false,
+			sendTimeOptimization: null,
+		});
+	});
+
+	it('schedules "Optimized per contact" with its window, comparison group and start time', async () => {
+		const wrapper = mountStep(
+			{ audienceCount: 12408 },
+			{
+				initialSchedule: {
+					date: '2026-03-11',
+					time: '09:30',
+					recipientTimezone: false,
+					optimization: { windowHours: 12, holdoutPercent: 5 },
+				},
+			}
+		);
+		expect(wrapper.find('campaigns-send-timing-options-stub').attributes('start-at')).toBe(
+			String(new Date('2026-03-11T09:30:00').getTime())
+		);
+
+		await clickSend(wrapper);
+
+		expect(scheduleRuns).toHaveLength(1);
+		expect(scheduleRuns[0]).toMatchObject({
+			scheduledAt: new Date('2026-03-11T09:30:00').getTime(),
+			useRecipientTimezone: false,
+			scheduledHour: 9,
+			scheduledMinute: 30,
+			sendTimeOptimization: { windowHours: 12, holdoutPercent: 5 },
+		});
+		expect(toasts).toEqual(['Campaign scheduled. Each contact gets it at their usual hour.']);
+	});
+
+	it('offers optimization only outside an A/B test', () => {
+		const wrapper = mountStep(
+			{ abTestEnabled: true },
+			{
+				initialSchedule: { date: '2026-03-11', time: '09:30', recipientTimezone: false },
+			}
+		);
+		expect(wrapper.find('campaigns-send-timing-options-stub').attributes('is-ab-test')).toBe(
+			'true'
+		);
 	});
 });
 

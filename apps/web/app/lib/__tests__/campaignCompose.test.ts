@@ -57,6 +57,20 @@ describe('campaign ↔ editor round trip', () => {
 		});
 	});
 
+	it('carries an "Optimized per contact" choice there and back', () => {
+		const schedule = {
+			date: '2026-10-05',
+			time: '09:30',
+			recipientTimezone: false,
+			optimization: { windowHours: 24, holdoutPercent: 10 },
+		};
+		const back = campaignReviewPath('cmp1', schedule);
+		const query = Object.fromEntries(new URL(back, 'https://owlat.example').searchParams);
+		expect(query['sto']).toBe('24-10');
+		expect(readReviewSchedule(query)).toEqual(schedule);
+		expect(readReviewSchedule({ ...query, sto: '24' })).not.toHaveProperty('optimization');
+	});
+
 	it('reads no schedule from a plain link, and drops malformed values', () => {
 		expect(readReviewSchedule({ id: 'cmp1', step: 'review' })).toBeNull();
 		expect(readReviewSchedule({ send: 'later', date: 'tomorrow', time: '9' })).toEqual({

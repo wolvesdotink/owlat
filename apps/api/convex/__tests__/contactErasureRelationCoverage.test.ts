@@ -166,6 +166,9 @@ async function seedEveryClearingRelation(t: Harness, contactFields: Row): Promis
 			const parentId = parents.get(relation.parent);
 			if (!parentId) throw new Error(`no seeded ${relation.parent} for ${relation.table}`);
 			const id = await seeder.insert(relation.table, { [relation.field]: parentId });
+			// A descendant can parent the next level (a thread's note, then the
+			// note's mention rows): later relations hang off the first one seeded.
+			if (!parents.has(relation.table)) parents.set(relation.table, id);
 			rows.push({
 				label: `${relation.table}.${relation.field} → ${relation.parent}`,
 				id,
