@@ -378,4 +378,11 @@ describe('sending and the summary', () => {
 		expect(a.signature).not.toBe(b.signature);
 		expect(summarizePresend(run(doc('<p>no address</p>'))).signature).toBe(a.signature);
 	});
+
+	it('un-reviews a warning that got worse, but not one whose number moved', () => {
+		const signature = (kb: number) =>
+			summarizePresend(run(doc(`<p>${'x'.repeat(kb * 1024)}</p>${ADDRESS}`))).signature;
+		expect(signature(92)).toBe(signature(93));
+		expect(signature(110)).not.toBe(signature(92));
+	});
 });

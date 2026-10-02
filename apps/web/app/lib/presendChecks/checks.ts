@@ -306,9 +306,17 @@ export interface PresendSummary {
 	warnings: number;
 	blocking: number;
 	pending: number;
-	/** Changes whenever the set of warnings does, so an acknowledgement goes stale with it. */
+	/**
+	 * Changes whenever the set of warnings does, or one of them changes what it
+	 * says (near the clip limit becomes clipped, a spam score becomes a blocked
+	 * link), so an acknowledgement goes stale with it. A changed number alone (a
+	 * size, a count) does not.
+	 */
 	signature: string;
 }
+
+const summaryKey = (summary: LocalizedText) =>
+	typeof summary === 'string' ? summary : summary.key;
 
 export function summarizePresend(checks: readonly PresendCheck[]): PresendSummary {
 	const warnings = checks.filter((check) => check.status === 'warning');
@@ -318,7 +326,8 @@ export function summarizePresend(checks: readonly PresendCheck[]): PresendSummar
 		pending: checks.filter((check) => check.status === 'pending').length,
 		signature: warnings
 			.map(
-				(check) => `${check.id}:${check.items.map((item) => JSON.stringify(item.label)).join(',')}`
+				(check) =>
+					`${check.id}:${summaryKey(check.summary)}:${check.items.map((item) => JSON.stringify(item.label)).join(',')}`
 			)
 			.join('|'),
 	};
