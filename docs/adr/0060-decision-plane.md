@@ -12,6 +12,20 @@ decision 8 below, precisely so the next person does not reach for the gates. It
 extends the seam ADR-0029 describes from one dispatch module to one dispatch
 module **per plane**, with the same retry, usage-normalisation and abort shape.
 
+**Amendment (2026-10-01): a third adapter, `local`.** A GLiNER2.5 Decide
+checkpoint served by the bundled `decision-local` container answers the same
+question sets on the operator's own CPU. It changes none of the decisions
+below. It speaks the hosted wire, so the codec in decision 2 covers it
+unchanged, and the conformance suite in 2b runs it alongside the other two. It is
+keyless and stamped `calibrated: false`, so decision 8 holds: a softmax nobody
+has measured is no better input to a gate than the language model's guess. Two
+rules are new. A local origin may be an internal `http://` host, because no key
+rides it and the save path only relaxes the public-https rule when the adapter
+is both local and keyless. Its endpoint provenance is `local`, which spend
+admission prices at zero instead of failing closed like `custom`. Neither
+default moves (decision 6): an install still resolves to `llm` until someone
+picks `local`.
+
 ## Context
 
 Owlat runs two provider planes today. **LANGUAGE** is everything that writes —

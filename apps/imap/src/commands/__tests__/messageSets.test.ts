@@ -10,6 +10,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { getFunctionName } from 'convex/server';
+import { IMAP_WIRE_VERSION } from '@owlat/shared/imapWire';
 import { copyModule } from '../copy/index.js';
 import { expungeModule } from '../expunge/index.js';
 import { moveModule } from '../move/index.js';
@@ -72,11 +73,15 @@ function harness(messages: FakeMessage[]): Harness {
 		if (name.endsWith(':expungeFolder')) {
 			const filter = args['uidSet'] ? new Set(args['uidSet'] as number[]) : null;
 			const sequenceNumbers: number[] = [];
+			const uids: number[] = [];
 			for (let i = sorted.length - 1; i >= 0; i -= 1) {
 				const m = sorted[i]!;
-				if (m.deleted && (!filter || filter.has(m.uid))) sequenceNumbers.push(i + 1);
+				if (m.deleted && (!filter || filter.has(m.uid))) {
+					sequenceNumbers.push(i + 1);
+					uids.push(m.uid);
+				}
 			}
-			return { sequenceNumbers, modseq: 9, done: true };
+			return { sequenceNumbers, uids, modseq: 9, done: true };
 		}
 		if (name.endsWith(':copyMessages') || name.endsWith(':moveMessages')) {
 			const ids = args['messageIds'] as string[];
@@ -167,6 +172,12 @@ describe('UID EXPUNGE resolves its set against the folder', () => {
 		const h = harness([{ uid: 5 }, { uid: 7, deleted: true }, { uid: 9 }]);
 		await run(h, selected(3), uid, 'UID', ['EXPUNGE', '1:8']);
 		expect(h.calls('expungeFolder')[0]?.['uidSet']).toEqual([5, 7]);
+	});
+
+	it('tells the backend its wire version, so a contract change can refuse it before deleting', async () => {
+		const h = harness([{ uid: 5 }, { uid: 7, deleted: true }]);
+		await run(h, selected(2), uid, 'UID', ['EXPUNGE', '1:8']);
+		expect(h.calls('expungeFolder')[0]?.['imapWireVersion']).toBe(IMAP_WIRE_VERSION);
 	});
 
 	it('answers BAD for plain EXPUNGE with a set instead of treating it as UID EXPUNGE', async () => {

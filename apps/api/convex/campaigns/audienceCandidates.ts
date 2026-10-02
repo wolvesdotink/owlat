@@ -43,6 +43,8 @@ export interface CampaignRecipient {
 	 * Absent for a contact the scorer has not reached yet.
 	 */
 	engagementScore?: number;
+	/** `contacts.sendTimeProfile`, for the send-time planner (ADR-0068). */
+	sendTimeProfile?: Doc<'contacts'>['sendTimeProfile'];
 }
 
 /** Segment-filter shape — `frozenFilters` or the live Segment's `filters`. */
@@ -61,6 +63,7 @@ function projectRecipient(contact: Doc<'contacts'>): CampaignRecipient {
 		timezone: contact.timezone,
 		language: contact.language,
 		engagementScore: contact.engagementScore,
+		sendTimeProfile: contact.sendTimeProfile,
 	};
 }
 

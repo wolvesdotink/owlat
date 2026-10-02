@@ -271,6 +271,18 @@ export const listPersonalChatMessages = internalQuery({
 	},
 });
 
+/** Internal notes the member wrote on Team Inbox threads (deleted ones carry no text). */
+export const listPersonalThreadNotes = internalQuery({
+	args: { userId: v.string(), paginationOpts: paginationOptsValidator },
+	handler: async (ctx, args) => {
+		await requireSelf(ctx, args.userId);
+		return ctx.db
+			.query('threadNotes')
+			.withIndex('by_author', (q) => q.eq('authorId', args.userId))
+			.paginate(args.paginationOpts);
+	},
+});
+
 export const listDeliverabilityAlertRecipientStates = internalQuery({
 	args: { userId: v.string(), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
@@ -400,6 +412,9 @@ export const getPersonalExportCounts = internalQuery({
 		const chatMessages = await boundedCount(
 			ctx.db.query('chatMessages').withIndex('by_author', (q) => q.eq('authorId', args.userId))
 		);
+		const threadNotes = await boundedCount(
+			ctx.db.query('threadNotes').withIndex('by_author', (q) => q.eq('authorId', args.userId))
+		);
 		const alertStates = await boundedCount(
 			ctx.db
 				.query('deliverabilityAlertRecipients')
@@ -419,6 +434,11 @@ export const getPersonalExportCounts = internalQuery({
 				resource: 'chatMessages' as const,
 				count: chatMessages.count,
 				isCapped: chatMessages.isCapped,
+			},
+			{
+				resource: 'threadNotes' as const,
+				count: threadNotes.count,
+				isCapped: threadNotes.isCapped,
 			},
 			{
 				resource: 'deliverabilityAlertRecipientStates' as const,

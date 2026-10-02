@@ -23,16 +23,20 @@ import { getInstanceSettings } from './instanceSettings';
 
 type CounterRow = Doc<'instanceCounters'>;
 export type InstanceCounterKey = CounterRow['key'];
-type CounterField = Exclude<keyof CounterRow, '_id' | '_creationTime' | 'key' | 'updatedAt'> &
-	keyof Doc<'instanceSettings'>;
+type CounterField = Exclude<keyof CounterRow, '_id' | '_creationTime' | 'key' | 'updatedAt'>;
 
-/** The fields each row owns; also the deprecated columns it is seeded from. */
+/**
+ * The fields each row owns; also the deprecated columns it is seeded from. A
+ * family added after the split (`imapLegacy`) has no deprecated column and
+ * starts empty.
+ */
 export const INSTANCE_COUNTER_FIELDS = {
 	contacts: ['contactCount'],
 	inbox: ['inboxStats', 'openThreads'],
 	sends: ['transactionalSendCount', 'dailySendCount', 'dailySendCountResetAt'],
 	mtaHealth: ['mtaHealth'],
 	deliveryTest: ['deliveryTestLastSucceededAt'],
+	imapLegacy: ['legacyImapSeenAt'],
 } as const satisfies Record<InstanceCounterKey, readonly CounterField[]>;
 
 export type InstanceCounterFields<K extends InstanceCounterKey> = Pick<

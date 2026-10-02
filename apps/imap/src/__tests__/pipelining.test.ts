@@ -229,12 +229,16 @@ function makeBackend() {
 				case 'mail/imap/move:expungeFolder': {
 					const folder = byId(args['folderId']);
 					const sequenceNumbers: number[] = [];
+					const uids: number[] = [];
 					for (const [i, m] of folder.messages.entries()) {
-						if (m.deleted) sequenceNumbers.push(i + 1);
+						if (m.deleted) {
+							sequenceNumbers.push(i + 1);
+							uids.push(m.uid);
+						}
 					}
 					folder.messages = folder.messages.filter((m) => !m.deleted);
 					folder.modseq += 1;
-					return { sequenceNumbers, modseq: folder.modseq, done: true };
+					return { sequenceNumbers, uids, modseq: folder.modseq, done: true };
 				}
 				default:
 					return undefined;

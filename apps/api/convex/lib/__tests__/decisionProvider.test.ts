@@ -195,6 +195,37 @@ describe('decisionProvider — resolution order', () => {
 		expect(plane.clientConfig.baseUrl).toBe('https://jev.proxy.example');
 	});
 
+	it('resolves the local engine with no key, on the bundled service by default', async () => {
+		const { ctx, runAction } = makeCtx(storedRow({ decisionProviderKind: 'local' }));
+		const plane = await resolveDecisionConfig(ctx);
+		expect(plane.kind).toBe('local');
+		expect(plane.degradedFrom).toBeUndefined();
+		expect(plane.calibrated).toBe(false);
+		expect(plane.endpointProvenance).toBe('local');
+		expect(plane.modelId).toBe('fastino/GLiNER2.5-multi-Decide');
+		expect(plane.clientConfig).toEqual({});
+		// Nothing to decrypt: the local engine has no credential.
+		expect(runAction).not.toHaveBeenCalled();
+	});
+
+	it('keeps a local engine on its own origin local, never custom', async () => {
+		const { ctx } = makeCtx(
+			storedRow({ decisionProviderKind: 'local', decisionBaseUrl: 'http://10.0.0.5:8080' })
+		);
+		const plane = await resolveDecisionConfig(ctx);
+		expect(plane.kind).toBe('local');
+		expect(plane.endpointProvenance).toBe('local');
+		expect(plane.clientConfig.baseUrl).toBe('http://10.0.0.5:8080');
+	});
+
+	it('resolves DECISION_PROVIDER=local from the environment with no key at all', async () => {
+		vi.stubEnv('DECISION_PROVIDER', 'local');
+		const { ctx } = makeCtx(null);
+		const plane = await resolveDecisionConfig(ctx);
+		expect(plane.kind).toBe('local');
+		expect(plane.source).toBe('env');
+	});
+
 	it('takes the stored model over the env override over the adapter default', async () => {
 		vi.stubEnv('DECISION_MODEL', 'jev-from-env');
 		const stored = await resolveDecisionConfig(
@@ -265,6 +296,7 @@ describe('decisionProvider — degradation without a key', () => {
 
 	it('knows which kinds carry a key of their own', () => {
 		expect(decisionKindNeedsKey('typesafe')).toBe(true);
+		expect(decisionKindNeedsKey('local')).toBe(false);
 		expect(decisionKindNeedsKey('llm')).toBe(false);
 		expect(decisionEnvApiKey('llm')).toBeUndefined();
 	});
@@ -513,6 +545,35 @@ describe('aiProviderConfig — the five decision columns move in lockstep', () =
 				decisionProviderKind: 'typesafe',
 				decisionBaseUrl: 'http://169.254.169.254',
 				isDecisionKeyless: false,
+				decisionEnvelope: decisionEnvelope(),
+			})
+		).rejects.toThrow(/base URL/i);
+	});
+
+	it('lets the keyless local engine sit on an internal http origin', async () => {
+		const t = newHarness();
+		await t.mutation(internal.aiProviderConfig._persistConfig, {
+			...BASE,
+			decisionProviderKind: 'local',
+			decisionBaseUrl: 'http://decision-local:8080',
+			isDecisionKeyless: true,
+			isDecisionLocal: true,
+		});
+		const row = await t.run(async (ctx) => await ctx.db.query('aiProviderConfig').first());
+		expect(row?.decisionProviderKind).toBe('local');
+		expect(row?.decisionBaseUrl).toBe('http://decision-local:8080');
+		expect(row?.decisionSecretCiphertext).toBeUndefined();
+	});
+
+	it('does not relax the origin rule for a save that would still store a key', async () => {
+		const t = newHarness();
+		await expect(
+			t.mutation(internal.aiProviderConfig._persistConfig, {
+				...BASE,
+				decisionProviderKind: 'typesafe',
+				decisionBaseUrl: 'http://decision-local:8080',
+				isDecisionKeyless: false,
+				isDecisionLocal: true,
 				decisionEnvelope: decisionEnvelope(),
 			})
 		).rejects.toThrow(/base URL/i);

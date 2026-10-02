@@ -228,7 +228,7 @@ export function useCampaignForm(
 			campaignSubject.value = campaign.subject ?? campaign.emailTemplate?.subject ?? '';
 			archiveEnabled.value = campaign.archiveEnabled ?? flags.value['campaigns.archive'] === true;
 
-			actions.initializeSchedule(campaign.scheduledAt, campaign.useRecipientTimezone);
+			actions.initializeSchedule(campaign.scheduledAt, campaign);
 			abTest.initializeFromCampaign(campaign);
 
 			isFormInitialized.value = true;
@@ -246,7 +246,9 @@ export function useCampaignForm(
 			() => archiveEnabled.value,
 			() => actions.scheduledDate.value,
 			() => actions.scheduledTime.value,
-			() => actions.useRecipientTimezone.value,
+			() => actions.sendTiming.value.mode,
+			() => actions.sendTiming.value.windowHours,
+			() => actions.sendTiming.value.holdoutPercent,
 			() => abTest.abTestEnabled.value,
 			() => abTest.abTestType.value,
 			() => abTest.abVariantBSubject.value,
@@ -345,7 +347,7 @@ export function useCampaignForm(
 		scheduledDate: actions.scheduledDate,
 		scheduledTime: actions.scheduledTime,
 		scheduledStartAt: actions.scheduledStartAt,
-		useRecipientTimezone: actions.useRecipientTimezone,
+		sendTiming: actions.sendTiming,
 
 		// Computed
 		selectedTemplate,

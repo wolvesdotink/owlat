@@ -106,4 +106,39 @@ describe('decisionUsageRecorder', () => {
 		// The vendor's error never reaches the row.
 		expect(JSON.stringify(args)).not.toContain('HTTP');
 	});
+
+	it('marks every local-engine attempt free, whatever checkpoint answered', async () => {
+		const { ctx, runMutation } = fakeCtx();
+		const local = {
+			...ATTEMPT,
+			provider: 'local',
+			modelUsed: 'someone/custom-finetune',
+			provenance: 'local',
+			calibrated: false,
+		} as const;
+
+		await decisionUsageRecorder(ctx)(local);
+		// A failed attempt carries no provenance; the adapter that ran still says it.
+		await decisionUsageRecorder(ctx)({
+			...local,
+			outcome: 'failed',
+			usage: undefined,
+			provenance: undefined,
+			calibrated: undefined,
+			error: Object.assign(new Error('busy'), { status: 503 }),
+		});
+
+		for (const call of runMutation.mock.calls) {
+			expect((call[1] ?? {}) as Record<string, unknown>).toMatchObject({ isLocalEngine: true });
+		}
+	});
+
+	it('leaves hosted and fallback attempts untagged', async () => {
+		const { ctx, runMutation } = fakeCtx();
+		await decisionUsageRecorder(ctx)(ATTEMPT);
+		await decisionUsageRecorder(ctx)({ ...ATTEMPT, provider: 'llm', fallback: true });
+		for (const call of runMutation.mock.calls) {
+			expect(((call[1] ?? {}) as Record<string, unknown>)['isLocalEngine']).toBeUndefined();
+		}
+	});
 });

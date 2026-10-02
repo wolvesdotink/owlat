@@ -4,6 +4,7 @@ import { activityMetadataValidator, segmentFiltersValidator } from '../lib/conve
 import { contactActivityTypeValidator } from '../contactActivities/catalog';
 import { contactSourceValidator } from '../lib/validators/contacts';
 import { fieldTypeValidator } from '../lib/literalValidators';
+import { sendTimeProfileValidator } from '../lib/validators/sendTime';
 
 /**
  * Contact tables — CRM contacts + custom properties + activity timeline + relationships + segments.
@@ -89,6 +90,12 @@ export const contactTables = {
 				lastFoldedKey: v.optional(v.string()),
 			})
 		),
+		// When this contact usually reads campaign mail: a time-decayed histogram
+		// of reader opens and clicks by local hour and weekday, folded in by
+		// `analytics/sendTimeProfileSync.ts` and read by the send-time planner
+		// (`campaigns/sendTimeOptimization.ts`). Absent until the first
+		// engagement; ADR-0068.
+		sendTimeProfile: v.optional(sendTimeProfileValidator),
 		// ─── Sunset policy ──────────────────────────
 		// Where this contact sits on the sunset track, owned by
 		// `contacts/sunsetEngine.ts`. ADDITIVE and optional: absent means

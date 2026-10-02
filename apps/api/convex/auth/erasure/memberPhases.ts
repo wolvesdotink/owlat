@@ -377,3 +377,48 @@ export const eraseChatMentions: MemberPhaseRunner = async (phase): Promise<Membe
 				.take(n),
 	]),
 });
+
+/**
+ * Internal notes the member wrote on Team Inbox threads: like team chat, the
+ * thread keeps its discussion and the authorship goes ('[deleted account]').
+ * The patch moves each row out of the author index range.
+ */
+export const eraseNoteAuthorship: MemberPhaseRunner = async ({ ctx, authUserId, budget }) => ({
+	isDone: await drainEach(
+		budget,
+		(n) =>
+			ctx.db
+				.query('threadNotes')
+				.withIndex('by_author', (q) => q.eq('authorId', authUserId))
+				.take(n),
+		(note) => ctx.db.patch(note._id, { authorId: DELETED_ACCOUNT_ID })
+	),
+});
+
+/**
+ * Notes that mention the member: the mention row (their Mentions filter) goes,
+ * and the note's resolved mention list names '[deleted account]' instead. The
+ * text keeps whatever handle its author typed.
+ */
+export const eraseNoteMentions: MemberPhaseRunner = async ({ ctx, authUserId, budget }) => ({
+	isDone: await drainEach(
+		budget,
+		(n) =>
+			ctx.db
+				.query('threadNoteMentions')
+				.withIndex('by_user_and_created', (q) => q.eq('userId', authUserId))
+				.take(n),
+		async (mention) => {
+			const note = await ctx.db.get(mention.noteId);
+			if (note) {
+				budget.chargeRead(note);
+				await ctx.db.patch(note._id, {
+					mentionedUserIds: note.mentionedUserIds.map((id) =>
+						id === authUserId ? DELETED_ACCOUNT_ID : id
+					),
+				});
+			}
+			await ctx.db.delete(mention._id);
+		}
+	),
+});

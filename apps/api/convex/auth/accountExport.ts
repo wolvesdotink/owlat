@@ -462,6 +462,13 @@ export const exportUserDataPage = authedAction({
 			)) as PaginationResult<Doc<'chatMessages'>>;
 			return serializeAccountExportPage(result);
 		}
+		if (args.resource === 'threadNotes') {
+			const result = (await ctx.runQuery(
+				internal.auth.accountExportQueries.listPersonalThreadNotes,
+				{ userId: args.userId, paginationOpts }
+			)) as PaginationResult<Doc<'threadNotes'>>;
+			return serializeAccountExportPage(result);
+		}
 		const result = (await ctx.runQuery(
 			internal.auth.accountExportQueries.listDeliverabilityAlertRecipientStates,
 			{ userId: args.userId, paginationOpts }

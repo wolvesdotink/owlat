@@ -14,6 +14,7 @@
  */
 
 import { typesafeDecisionAdapter } from './typesafe';
+import { localDecisionAdapter } from './local';
 import { llmDecisionAdapter } from './llm';
 import type { DecisionProviderAdapter, DecisionProviderKind } from './types';
 
@@ -37,6 +38,7 @@ export {
 
 export const DECISION_PROVIDERS = {
 	typesafe: typesafeDecisionAdapter,
+	local: localDecisionAdapter,
 	llm: llmDecisionAdapter,
 } as const;
 

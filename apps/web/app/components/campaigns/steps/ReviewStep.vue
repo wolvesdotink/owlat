@@ -4,6 +4,8 @@ import type { Id } from '@owlat/api/dataModel';
 import { isValidEmail } from '@owlat/shared';
 import { needsSendConfirmation, SEND_UNDO_WINDOW_MS } from '~/lib/campaignSend';
 import type { ReviewSchedule } from '~/lib/campaignCompose';
+import { parseScheduledStart } from '~/lib/campaignSchedule';
+import { sendTimingFromCampaign, sendTimingScheduleArgs, type SendTiming } from '~/lib/sendTiming';
 
 type SendOption = 'now' | 'later';
 
@@ -72,7 +74,19 @@ const { t, locale } = useI18n();
 const sendOption = ref<SendOption>(props.initialSchedule ? 'later' : 'now');
 const scheduledDate = ref(props.initialSchedule?.date ?? '');
 const scheduledTime = ref(props.initialSchedule?.time ?? '');
-const useRecipientTimezone = ref(props.initialSchedule?.recipientTimezone ?? false);
+// How each recipient's delivery time is picked: one instant, their local
+// time, or optimized per contact (`~/lib/sendTiming`).
+const timing = ref<SendTiming>(
+	sendTimingFromCampaign({
+		useRecipientTimezone: props.initialSchedule?.recipientTimezone,
+		sendTimeOptimization: props.initialSchedule?.optimization,
+	})
+);
+
+/** The chosen start for the send-time preview, or null while unset or past. */
+const scheduledStartAt = computed(() =>
+	parseScheduledStart(scheduledDate.value, scheduledTime.value, Date.now())
+);
 
 const handleEditEmail = () => {
 	emit(
@@ -81,7 +95,15 @@ const handleEditEmail = () => {
 			? {
 					date: scheduledDate.value,
 					time: scheduledTime.value,
-					recipientTimezone: useRecipientTimezone.value,
+					recipientTimezone: timing.value.mode === 'local',
+					...(timing.value.mode === 'optimized'
+						? {
+								optimization: {
+									windowHours: timing.value.windowHours,
+									holdoutPercent: timing.value.holdoutPercent,
+								},
+							}
+						: {}),
 				}
 			: null
 	);
@@ -253,24 +275,22 @@ const submitSend = async () => {
 			});
 		} else {
 			const scheduledDateTime = new Date(`${scheduledDate.value}T${scheduledTime.value}`);
-			const scheduledHour = scheduledDateTime.getHours();
-			const scheduledMinute = scheduledDateTime.getMinutes();
 
 			const result = await scheduleCampaign({
 				campaignId: props.data.campaignId,
 				scheduledAt: scheduledDateTime.getTime(),
-				useRecipientTimezone: useRecipientTimezone.value,
-				scheduledHour: useRecipientTimezone.value ? scheduledHour : undefined,
-				scheduledMinute: useRecipientTimezone.value ? scheduledMinute : undefined,
+				...sendTimingScheduleArgs(timing.value, scheduledDateTime),
 			});
 			if (!result.ok) return;
 
 			showToast(
-				useRecipientTimezone.value
+				timing.value.mode === 'local'
 					? t('components.campaigns.steps.reviewStep.toast.scheduledPerTimezone', {
 							time: scheduledTime.value,
 						})
-					: t('components.campaigns.steps.reviewStep.toast.scheduled')
+					: timing.value.mode === 'optimized'
+						? t('components.campaigns.steps.reviewStep.toast.scheduledOptimized')
+						: t('components.campaigns.steps.reviewStep.toast.scheduled')
 			);
 		}
 
@@ -682,42 +702,35 @@ const variantBTemplateName = computed(() => {
 								</div>
 							</div>
 
-							<!-- Timezone Scheduling Option -->
-							<div class="mt-4">
-								<label
-									class="flex items-start gap-3 p-3 bg-bg-elevated shadow-surface-1 rounded-lg cursor-pointer hover:bg-bg-surface-hover transition-colors"
-								>
-									<input
-										v-model="useRecipientTimezone"
-										type="checkbox"
-										class="mt-0.5 w-4 h-4 text-text-primary focus:ring-brand border-border-subtle bg-bg-surface rounded"
-									/>
-									<div class="flex-1">
-										<div class="flex items-center gap-2">
-											<Icon name="lucide:globe" class="w-4 h-4 text-text-tertiary" />
-											<span class="font-medium text-text-primary text-sm">{{
-												t('components.campaigns.steps.reviewStep.recipientTimezone')
-											}}</span>
-										</div>
-										<p class="text-xs text-text-secondary mt-1">
-											{{
-												t('components.campaigns.steps.reviewStep.recipientTimezoneHint', {
-													time:
-														scheduledTime ||
-														t('components.campaigns.steps.reviewStep.scheduledTimeFallback'),
-												})
-											}}
-										</p>
-									</div>
-								</label>
-							</div>
+							<CampaignsSendTimingOptions
+								v-model="timing"
+								:time="scheduledTime"
+								:campaign-id="data.campaignId"
+								:start-at="scheduledStartAt"
+								:is-ab-test="data.abTestEnabled"
+							/>
 
 							<!-- Scheduled Time Preview -->
 							<div
 								v-if="scheduledDate && scheduledTime"
 								class="p-3 bg-bg-elevated shadow-surface-1 rounded-lg"
 							>
-								<template v-if="useRecipientTimezone">
+								<template v-if="timing.mode === 'optimized'">
+									<p class="text-sm text-text-secondary">
+										{{ t('components.campaigns.steps.reviewStep.previewHeadingOptimized') }}
+									</p>
+									<p class="font-medium text-text-primary mt-1">
+										{{ formatScheduleDate(scheduledDate, scheduledTime) }}
+									</p>
+									<p class="text-xs text-text-tertiary mt-2">
+										{{
+											t('components.campaigns.steps.reviewStep.previewOptimized', {
+												hours: timing.windowHours,
+											})
+										}}
+									</p>
+								</template>
+								<template v-else-if="timing.mode === 'local'">
 									<p class="text-sm text-text-secondary">
 										{{ t('components.campaigns.steps.reviewStep.previewHeadingAt') }}
 									</p>
