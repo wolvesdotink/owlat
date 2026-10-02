@@ -17,6 +17,7 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { enableFeatures } from './factories';
 import type * as SessionOrganization from '../lib/sessionOrganization';
+import type * as SystemMail from '../systemMail';
 
 let mockUserId = 'host-A';
 
@@ -38,7 +39,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 
 const sentMail = vi.hoisted(() => [] as { subject: string; to: string }[]);
 vi.mock('../systemMail', async (importOriginal) => ({
-	...(await importOriginal<typeof import('../systemMail')>()),
+	...(await importOriginal<typeof SystemMail>()),
 	attemptSystemEmail: vi.fn(async (_ctx: unknown, args: { subject: string; to: string }) => {
 		sentMail.push({ subject: args.subject, to: args.to });
 		return { status: 'accepted' };
