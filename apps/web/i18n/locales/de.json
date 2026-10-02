@@ -3926,7 +3926,7 @@
 			"postboxComposerSealLock": {
 				"blockedBy": "Kein Versiegelungsschlüssel für:",
 				"removeBlocker": "{address} aus dieser Nachricht entfernen",
-				"sendUnsealed": "Ungesiegelt senden…"
+				"sendUnsealed": "Unversiegelt senden…"
 			},
 			"postboxContactKeyPanel": {
 				"empty": "Owlat hat noch keinen Siegelschlüssel für {address} gefunden, deshalb wird Post an diese Adresse normal versendet.",
@@ -6211,7 +6211,8 @@
 					"lower": "Antwort absenken",
 					"shrink": "Antwort verkleinern",
 					"peek": "{name} antworten…",
-					"peekNoName": "Antwort schreiben…"
+					"peekNoName": "Antwort schreiben…",
+					"peekQuestions": "Fragen zur Antwort beantworten…"
 				},
 				"viewLabel": "Wie viel der Unterhaltung angezeigt wird",
 				"viewShortcut": "Mit T umschalten",
@@ -6262,6 +6263,8 @@
 				"title": "Eine Frage, bevor ich schreibe | {count} Fragen, bevor ich schreibe",
 				"round": "Runde {round} von {total}",
 				"subline": "Beantworte, was du kannst. Was du auslässt, wird im Entwurf als markierte Lücke eingefügt.",
+				"trust": "Aus einer E-Mail von {domain}. Owlat fragt nie nach deinem Passwort.",
+				"trustNoDomain": "Aus einer E-Mail. Owlat fragt nie nach deinem Passwort.",
 				"placeholder": {
 					"choice": "Etwas anderes …",
 					"text": "Gib deine Antwort ein …",
@@ -6274,7 +6277,10 @@
 				"operation": "Fragen beantworten",
 				"waitingForFiles": "Entwurf fertig. Wartet auf deine Dateien",
 				"waitingForFilesSubline": "Die Antwort ist geschrieben. Füge die angefragten Dateien hinzu, dann wird sie mit ihnen als Anhang angepasst.",
-				"attachAndUpdate": "Anhängen und Entwurf anpassen"
+				"attachAndUpdate": "Anhängen und Entwurf anpassen",
+				"draftGaps": "Dem Entwurf fehlt noch eine Angabe | Dem Entwurf fehlen noch {count} Angaben",
+				"draftGapsSubline": "Die Antwort unten ist schon geschrieben. Was du hier beantwortest, kommt in den Entwurf; was offen bleibt, bleibt markiert.",
+				"updateDraft": "Entwurf ergänzen"
 			},
 			"fileAsk": {
 				"dropHere": "Lege die Datei hier ab oder",

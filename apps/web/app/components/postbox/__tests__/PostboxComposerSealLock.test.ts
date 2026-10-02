@@ -8,7 +8,8 @@
  * lock can never send plaintext by itself), that keyChanged offers NO unsealed
  * escape hatch (its copy points at the thread's key-change banner), that a
  * pending state says so instead of staying blank, and that the flag gate renders
- * nothing.
+ * nothing. Compact (Answer mode): one line that opens to the same copy and
+ * controls, except a key change, which is never folded away.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -136,5 +137,39 @@ describe('PostboxComposerSealLock', () => {
 	it('names nobody when the composer passed no blockers', () => {
 		const wrapper = mountLock({ kind: 'cannotSeal', reason: 'policy_off' });
 		expect(wrapper.find('[data-testid="seal-lock-blockers"]').exists()).toBe(false);
+	});
+
+	describe('compact', () => {
+		function mountCompact(sealState: SealState, blockingRecipients: string[] = []) {
+			return mount(PostboxComposerSealLock, {
+				props: { enabled: true, sealState, blockingRecipients, compact: true },
+				global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },
+			});
+		}
+
+		it('is one line until opened, then shows the same reason, blockers and decision', async () => {
+			const wrapper = mountCompact({ kind: 'cannotSeal', reason: 'recipient_no_key' }, [
+				'nokey@b.test',
+			]);
+			const toggle = wrapper.get('[data-testid="seal-lock-toggle"]');
+			expect(toggle.text()).toBe("This message won't be sealed");
+			expect(toggle.attributes('aria-expanded')).toBe('false');
+			expect(wrapper.find('[data-testid="seal-lock-detail"]').exists()).toBe(false);
+			expect(wrapper.find('[data-testid="seal-lock-send-unsealed"]').exists()).toBe(false);
+
+			await toggle.trigger('click');
+			expect(toggle.attributes('aria-expanded')).toBe('true');
+			expect(wrapper.find('[data-testid="seal-lock-detail"]').exists()).toBe(true);
+			await wrapper.get('[data-testid="seal-lock-remove-blocker"]').trigger('click');
+			expect(wrapper.emitted('remove-recipient')).toEqual([['nokey@b.test']]);
+			await wrapper.get('[data-testid="seal-lock-send-unsealed"]').trigger('click');
+			expect(wrapper.emitted('request-unsealed')).toHaveLength(1);
+		});
+
+		it('never folds a key change away', () => {
+			const wrapper = mountCompact({ kind: 'keyChanged', addresses: ['bob@b.test'] });
+			expect(wrapper.find('[data-testid="seal-lock-toggle"]').exists()).toBe(false);
+			expect(wrapper.find('[data-testid="seal-lock-detail"]').exists()).toBe(true);
+		});
 	});
 });

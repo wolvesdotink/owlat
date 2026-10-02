@@ -19,7 +19,8 @@ import type { ThreadFile } from '~/utils/answerThreadFiles';
  * editor when it lands. "Answer later" puts the card away so the person can
  * simply write. Someone who started writing while the reply was drafted keeps
  * their text: the card then says the draft is ready and puts it in only when
- * asked.
+ * asked. An item whose reply was drafted on arrival asks only for what that
+ * draft left open, and the card says so.
  *
  * Renders nothing unless the page is the queue's current item and that item
  * carries a clarification still asking or drafting. A reply that was already
@@ -131,6 +132,7 @@ async function submit(answers: AskCardAnswer[]) {
 			:copy-policy="copyPolicy"
 			multiple-files
 			:waiting-for-files="waitingForFiles"
+			:draft-written="!!row.hasDraftSlot"
 			:skip-label="t('components.postbox.postboxClarificationCard.answerLater')"
 			@answer="submit"
 			@skip="deferred = true"

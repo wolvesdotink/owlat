@@ -42,6 +42,11 @@ const props = defineProps<{
 	counterpart?: string;
 	/** Where the correspondent's name leads (their contact profile), if anywhere. */
 	counterpartTo?: string;
+	/**
+	 * The resting sheet's row, when the reply waits on something other than
+	 * writing ("Answer the questions for this reply…"). Otherwise "Reply to …".
+	 */
+	peekText?: string;
 }>();
 
 const emit = defineEmits<{
@@ -142,11 +147,12 @@ const handleLabel = computed(() => {
 	return t(`components.answer.mode.sheet.${next}`);
 });
 
-const peekLabel = computed(() =>
-	props.counterpart
+const peekLabel = computed(() => {
+	if (props.peekText) return props.peekText;
+	return props.counterpart
 		? t('components.answer.mode.sheet.peek', { name: props.counterpart })
-		: t('components.answer.mode.sheet.peekNoName')
-);
+		: t('components.answer.mode.sheet.peekNoName');
+});
 
 /**
  * "Reply to Jonas…": raise the sheet to where the email stays in view, and put
@@ -309,9 +315,16 @@ function startReply() {
 						t('components.answer.mode.sheet.hint')
 					}}</span>
 					<div v-if="sheet.state.value === 'peek'" class="flex items-center gap-2 px-3 pb-2.5">
+						<!-- Waiting on something (peekText) it reads as the next step,
+						     not as an empty field. -->
 						<button
 							type="button"
-							class="min-w-0 flex-1 truncate rounded-md border border-border-subtle bg-bg-base px-3 py-2 text-left text-sm text-text-tertiary hover:text-text-primary"
+							class="min-w-0 flex-1 truncate rounded-md border px-3 py-2 text-left text-sm"
+							:class="
+								peekText
+									? 'border-brand/30 bg-brand/5 font-medium text-text-primary hover:bg-brand/10'
+									: 'border-border-subtle bg-bg-base text-text-tertiary hover:text-text-primary'
+							"
 							data-testid="answer-sheet-peek"
 							@click="startReply"
 						>

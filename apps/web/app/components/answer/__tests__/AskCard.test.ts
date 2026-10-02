@@ -8,7 +8,9 @@
  *     it was, is not sent again;
  *   - keys 1 to 9 pick a chip on the first open question with chips;
  *   - "Answer and draft" sends what was answered; "Skip, draft with gaps" sends
- *     the same, as a skip; a file answer goes out as a file.
+ *     the same, as a skip; a file answer goes out as a file;
+ *   - where the questions came from is said once, in the reader's language;
+ *   - a draft that is already written is named as such ("The draft needs …").
  */
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, ref } from 'vue';
@@ -28,7 +30,7 @@ beforeAll(() => {
 	});
 });
 
-const why = 'Generated from an email from example.org';
+const why = 'Generated from an email from example.org — Owlat will never ask for your password.';
 const QUESTIONS = [
 	{
 		id: 'file_request',
@@ -108,10 +110,36 @@ describe('AskCard', () => {
 			'A number or an amount…',
 			'Type your answer…',
 		]);
-		// The attribution line under every question.
-		expect(w.findAll('[data-testid="task-ask-why"]')).toHaveLength(5);
+		// Where they came from: once for the card, not under every question.
+		expect(w.findAll('[data-testid="task-ask-why"]')).toHaveLength(0);
+		expect(w.get('[data-testid="ask-trust"]').text()).toBe(
+			'Based on an email from example.org. Owlat never asks for your password.'
+		);
 		expectFullyLocalized(w);
 		w.unmount();
+	});
+
+	it('names a written draft as the one the answers go into', () => {
+		const w = mountCard({ round: undefined, draftWritten: true, questions: QUESTIONS.slice(3) });
+		expect(w.get('h2').text()).toBe('The draft needs 2 more details');
+		expect(w.text()).toContain('The reply below is written.');
+		expect(w.get('[data-testid="ask-submit"]').text()).toBe('Update the draft');
+		w.unmount();
+	});
+
+	it('says where the questions came from without a domain when they do not agree', () => {
+		const questions = [
+			{ ...QUESTIONS[3]!, attribution: 'Generated from an email from a.example — x' },
+			{ ...QUESTIONS[4]!, attribution: 'Generated from an email from b.example — x' },
+		];
+		const w = mountCard({ questions });
+		expect(w.get('[data-testid="ask-trust"]').text()).toBe(
+			'Based on an email. Owlat never asks for your password.'
+		);
+		w.unmount();
+		const bare = mountCard({ questions: questions.map((q) => ({ ...q, attribution: undefined })) });
+		expect(bare.find('[data-testid="ask-trust"]').exists()).toBe(false);
+		bare.unmount();
 	});
 
 	it('pre-picks the remembered answer and does not send it back untouched', async () => {

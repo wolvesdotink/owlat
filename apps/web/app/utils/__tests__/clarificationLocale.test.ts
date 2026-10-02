@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { canonicalOption, localizedQuestionCopy, localizedSummary } from '../clarificationLocale';
+import {
+	attributionDomain,
+	canonicalOption,
+	localizedQuestionCopy,
+	localizedSummary,
+} from '../clarificationLocale';
 
 /**
  * The reader sees a clarification question in their own language; the answer
@@ -57,5 +62,23 @@ describe('localizedSummary', () => {
 		expect(localizedSummary({ en: 'E', de: 'D' }, 'fr')).toBe('E');
 		expect(localizedSummary({ de: 'D' }, 'fr')).toBe('D');
 		expect(localizedSummary(undefined, 'de')).toBeUndefined();
+	});
+});
+
+describe('attributionDomain', () => {
+	it('reads the sender domain out of the server attribution line', () => {
+		expect(
+			attributionDomain(
+				'Generated from an email from acme.com — Owlat will never ask for your password.'
+			)
+		).toBe('acme.com');
+		expect(attributionDomain('Generated from an email from acme.com.')).toBe('acme.com');
+	});
+
+	it('is null when the line names no domain, or there is no line', () => {
+		expect(
+			attributionDomain('Generated from an email — Owlat will never ask for your password.')
+		).toBeNull();
+		expect(attributionDomain(undefined)).toBeNull();
 	});
 });

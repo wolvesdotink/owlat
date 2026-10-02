@@ -123,6 +123,9 @@ const inbox = computed(() => {
 	const id = message.value?.mailboxId;
 	return id ? (inboxById.value.get(id as never) ?? null) : null;
 });
+const answeringAs = computed(() =>
+	inbox.value ? t('components.answer.band.answeringAs', { name: inbox.value.name }) : ''
+);
 
 const tab = ref<'conversation' | 'reply'>('conversation');
 const view = ref<AnswerConversationView>('summary');
@@ -312,20 +315,21 @@ onBeforeUnmount(() => {
 			:subject="message?.subject ?? ''"
 			:message-count="messageCount"
 			:counterpart="counterpart"
+			:peek-text="queueAskVisible ? t('components.answer.mode.sheet.peekQuestions') : undefined"
 			@back="leave"
 			@start-reply="composerRef?.focusBody()"
 		>
+			<!-- Only the inbox's chip: the reply's From line and "as Ada" beside
+			     Send already say who it goes out as, in full. -->
 			<template #identity>
 				<span
 					v-if="inbox"
-					class="flex min-w-0 items-center gap-1.5 text-xs text-text-secondary"
+					class="flex min-w-0 items-center"
+					:title="`${answeringAs} · ${inbox.address}`"
 					data-testid="answer-identity"
 				>
-					<InboxChip :name="inbox.name" :slot="inbox.slot" />
-					<span class="truncate">
-						{{ t('components.answer.band.answeringAs', { name: inbox.name }) }}
-						<span class="text-text-tertiary">· {{ inbox.address }}</span>
-					</span>
+					<InboxChip :name="inbox.name" :slot="inbox.slot" aria-hidden="true" />
+					<span class="sr-only">{{ answeringAs }} · {{ inbox.address }}</span>
 				</span>
 			</template>
 			<template #queue>
@@ -341,7 +345,9 @@ onBeforeUnmount(() => {
 				/>
 			</template>
 
-			<template v-if="assist.aiEnabled.value && seed" #peek-actions>
+			<!-- Not while the queue item's own questions are up: they are the way
+			     to the draft then, and the resting row leads to them. -->
+			<template v-if="assist.aiEnabled.value && seed && !queueAskVisible" #peek-actions>
 				<AnswerPeekDraft :disabled="ask.busy.value" @draft="draftFromPeek" />
 			</template>
 
