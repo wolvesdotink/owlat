@@ -199,6 +199,10 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 				ops: batch.ops.map(serialize),
 			});
 			owner.acked(result.version);
+			// What the server stored may differ from what was sent (sanitized
+			// text) or already be someone else's later write: show that.
+			const settled = owner === sync ? owner.settle(opts.read()) : [];
+			if (settled.length > 0) opts.applyRemote(settled);
 			isOffline.value = false;
 			retryMs = RETRY_MS;
 			return true;
@@ -268,7 +272,9 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 				fields: JSON.parse(row.fields) as Record<string, unknown>,
 			},
 		};
-		const result = sync.receive(state, opts.read());
+		const local = opts.read();
+		const result = sync.receive(state, local);
+		const settled = sync.settle(local);
 		const known = sync.server ?? state;
 		meta.value = {
 			sessionId: known.sessionId,
@@ -279,8 +285,8 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 		if (result?.kind === 'hydrate') {
 			opts.hydrate(result.doc);
 			status.value = 'active';
-		} else if (result?.kind === 'merge' && result.ops.length > 0) {
-			opts.applyRemote(result.ops);
+		} else if (result?.kind === 'merge' && result.ops.length + settled.length > 0) {
+			opts.applyRemote([...result.ops, ...settled]);
 		}
 		notifyWaiters();
 		refreshUnsent();

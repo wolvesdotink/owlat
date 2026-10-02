@@ -73,10 +73,11 @@ and a comparison share (0–50 %, 10 by default). For each contact, in order:
 Candidates are the start and every local top of the hour before the window
 closes. The walker schedules the enqueue for each proposed instant; the
 enqueue then goes through the governed path like any other, so pacing, ramp
-ceilings and gates apply at that moment. When the multi-day plan imposes a day
-budget, the window ends with that UTC day, so a day's slice never spills into
-the next day's capacity. A walk resumed after its window closed gets a fresh
-window from the resume.
+ceilings and gates apply at that moment. A page resolved after part of the
+window has passed plans only into the hours still ahead. When the multi-day
+plan imposes a day budget, the window ends with that UTC day, so a day's slice
+never spills into the next day's capacity. A walk resumed after its window
+closed gets a fresh window from the resume.
 
 A/B tests cannot be optimized: spreading the test cohort over a day would
 change what the winner is measured on. The scheduling mutations refuse the
@@ -86,8 +87,12 @@ combination, and refuse it together with "send at recipient's local time".
 
 An optimized send carries `emailSends.sendTimeGroup`. Its delivered, first
 reader open and first reader click bump per-arm counters in the same shard
-write as the campaign's own counters. The report shows the two groups' open
-and click rates per delivered email and only calls a difference when a
+write as the campaign's own counters. An open or click only counts for its arm
+within 24 hours of that send going out, and the report waits until 24 hours
+after the last send (or after the window's end, whichever is later): the
+holdout goes out at the start and would otherwise have had up to a whole
+window longer to collect opens. The report shows the two groups' open and
+click rates per delivered email and only calls a difference when a
 two-proportion z-test puts it beyond chance at 95 %, and only once each group
 has 100 delivered emails. Without a comparison group it says there is nothing
 to compare. Comparing against earlier campaigns would mix the timing effect
@@ -99,9 +104,12 @@ with the content, the audience and the season.
 its latest 60 campaign sends, and rebuilds the organization histogram from the
 same events. It counts opens and clicks only from campaigns that already
 filtered automated ones (`isAutomatedOpenFiltered` /
-`isAutomatedClickFiltered`); earlier campaigns may hold proxy fetches. Profiles
-are rebuilt, not added to, so a page can be redone; a fresh pass clears the
-organization shards first.
+`isAutomatedClickFiltered`); earlier campaigns may hold proxy fetches. A send
+row does not record whether its first open came from our pixel or from a
+provider webhook, so the backfill takes `openedAt` either way, unlike live
+learning, which skips provider-reported opens. Profiles are rebuilt, not added
+to, so a page can be redone; a fresh pass clears the organization shards
+first.
 
 ## Consequences
 

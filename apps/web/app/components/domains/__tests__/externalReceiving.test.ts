@@ -338,6 +338,7 @@ describe('RecordRow — receiving branch', () => {
 		DomainsReturnPathEditor: { template: '<div />' },
 		DomainsStreamSubdomainPlanPanel: true,
 		DomainsYahooCflPanel: true,
+		DomainsDmarcReportingPanel: true,
 		DomainsDnsPropagationNote: true,
 	};
 

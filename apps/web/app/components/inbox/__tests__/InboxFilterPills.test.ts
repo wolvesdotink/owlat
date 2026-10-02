@@ -42,7 +42,14 @@ describe('InboxFilterPills', () => {
 	it('offers Mentions with the unread count, as a view of its own', async () => {
 		const wrapper = mountPills({ unreadMentions: 2 });
 		const pill = wrapper.get('[data-testid="inbox-mentions-filter"]');
-		expect(pill.text()).toBe('Mentions2');
+		expect(pill.text()).toContain('Mentions');
+		const badge = wrapper.get('[data-testid="inbox-mentions-unread"]');
+		// ARIA does not allow aria-label on a span without a role, and screen
+		// readers skip it there.
+		expect(badge.attributes('aria-label')).toBeUndefined();
+		expect(badge.get('[aria-hidden="true"]').text()).toBe('2');
+		// A screen reader hears what the number counts, not a bare "2".
+		expect(badge.get('.sr-only').text()).toBe('2 not opened yet');
 		await pill.trigger('click');
 		expect(wrapper.emitted('update:mentions')?.[0]).toEqual([true]);
 	});

@@ -8,6 +8,7 @@ import { automationTables } from './schema/automations';
 import { campaignTables } from './schema/campaigns';
 import { domainTables } from './schema/domains';
 import { relayIdentitiesTables } from './schema/relayIdentities';
+import { dmarcReportTables } from './schema/dmarcReports';
 import { contactTables } from './schema/contacts';
 import { contactErasureTables } from './schema/contactErasure';
 import { memberErasureTables } from './schema/memberErasure';
@@ -59,6 +60,7 @@ export default defineSchema({
 	...campaignTables,
 	...domainTables,
 	...relayIdentitiesTables,
+	...dmarcReportTables,
 	...contactTables,
 	...contactErasureTables,
 	...workspaceDeletionTables,

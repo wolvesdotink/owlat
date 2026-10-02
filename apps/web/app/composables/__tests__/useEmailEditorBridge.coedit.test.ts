@@ -278,6 +278,90 @@ describe('useEmailEditorBridge with co-editing', () => {
 		unmount();
 	});
 
+	it('shows the sanitized copy the server stored instead of sending its edit again', async () => {
+		const { bridge, unmount } = setup();
+		queries['sessions.get']!.value = sessionRow(1, [text('a', 'Alpha')]);
+		await settle();
+		let version = 1;
+		mutation.mockImplementation(async (fn: string, args: { ops?: { block: string }[] }) => {
+			if (fn !== 'sessions.applyOps') return { isLeaseHeld: false, heldBy: null };
+			// The server sanitizes the HTML it stores, and the subscription
+			// delivers that before the mutation resolves.
+			const sent = JSON.parse(args.ops![0]!.block) as EditorBlock;
+			const html = (sent.content as { html: string }).html.replace('<br>', '<br />');
+			version += 1;
+			queries['sessions.get']!.value = sessionRow(version, [text('a', html)]);
+			await nextTick();
+			return { version };
+		});
+
+		bridge.blocks.value = [text('a', 'Alpha<br>edited')];
+		await settle();
+		await wait(1200);
+
+		const sends = mutation.mock.calls.filter(([fn]) => fn === 'sessions.applyOps');
+		expect(sends).toHaveLength(1);
+		expect(bridge.blocks.value.map((b) => (b.content as { html: string }).html)).toEqual([
+			'Alpha<br />edited',
+		]);
+		expect(bridge.coediting?.hasUnsent.value).toBe(false);
+		unmount();
+	});
+
+	it('takes the edit lease only for its own change to the selected block', async () => {
+		const { bridge, unmount } = setup();
+		queries['sessions.get']!.value = sessionRow(1, [text('a', 'Alpha'), text('b', 'Beta')]);
+		await settle();
+		bridge.onCollabFocus({ selectedRootId: 'a', inlineEditRootId: null });
+		await settle();
+		const leases = () =>
+			mutation.mock.calls
+				.filter(([fn]) => fn === 'presence.heartbeat')
+				.map(([, args]) => (args as { leaseBlockId: string | null }).leaseBlockId);
+
+		// Someone else changes the block this tab has selected.
+		queries['sessions.get']!.value = sessionRow(2, [text('a', 'Theirs'), text('b', 'Beta')]);
+		await settle();
+		await settle();
+		expect(bridge.blocks.value.map((b) => (b.content as { html: string }).html)).toEqual([
+			'Theirs',
+			'Beta',
+		]);
+		expect(leases().every((lease) => lease === null)).toBe(true);
+
+		// This tab changes it.
+		bridge.blocks.value = [text('a', 'Mine'), text('b', 'Beta')];
+		await settle();
+		await settle();
+		expect(leases()).toContain('a');
+		unmount();
+	});
+
+	it('gives up its lease when the tab is hidden', async () => {
+		const { bridge, unmount } = setup();
+		queries['sessions.get']!.value = sessionRow(1, [text('a', 'Alpha')]);
+		await settle();
+		bridge.onCollabFocus({ selectedRootId: 'a', inlineEditRootId: 'a' });
+		await settle();
+		const last = () =>
+			mutation.mock.calls.filter(([fn]) => fn === 'presence.heartbeat').at(-1)?.[1] as
+				| { leaseBlockId: string | null }
+				| undefined;
+		expect(last()?.leaseBlockId).toBe('a');
+
+		let hidden = true;
+		Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+		try {
+			document.dispatchEvent(new Event('visibilitychange'));
+			await settle();
+			expect(last()?.leaseBlockId).toBeNull();
+		} finally {
+			hidden = false;
+			Reflect.deleteProperty(document, 'hidden');
+		}
+		unmount();
+	});
+
 	it('edits the classic way when the member may not co-edit', async () => {
 		canManage = false;
 		const { bridge, unmount } = setup();

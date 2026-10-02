@@ -2,6 +2,7 @@ import { computed, onMounted, onUnmounted, ref, watch, type Ref, type WatchSourc
 import { api } from '@owlat/api';
 import type { BuilderCollabFocus, EditorBlock, RemoteBlockMark } from '@owlat/email-builder';
 import { canonicalJson } from '@owlat/shared/canonicalJson';
+import type { CoeditOp } from '@owlat/shared/coeditOps';
 import { AVATAR_COLOR_STYLES, initialsAndColorForAddress } from '~/utils/avatar';
 import type { CoeditTarget } from './useEmailCoediting';
 
@@ -80,6 +81,19 @@ export function useEmailEditorPresence(opts: EmailEditorPresenceOptions) {
 		if (!rootId || editedRootId.value === rootId) return;
 		if (snapshotOf(rootId) !== selectedSnapshot) editedRootId.value = rootId;
 	});
+	/**
+	 * Other people's edits were applied: a change they made to the selected
+	 * block is not this tab editing it, so it becomes the new starting point.
+	 */
+	const acceptRemote = (ops: readonly CoeditOp<EditorBlock>[]) => {
+		const rootId = opts.focus.value.selectedRootId;
+		if (!rootId || editedRootId.value === rootId) return;
+		for (const op of ops) {
+			if ((op.kind === 'update' || op.kind === 'insert') && op.block.id === rootId) {
+				selectedSnapshot = canonicalJson(op.block);
+			}
+		}
+	};
 	const leaseBlockId = computed<string | null>(() => {
 		const { inlineEditRootId, selectedRootId } = opts.focus.value;
 		if (inlineEditRootId) return inlineEditRootId;
@@ -126,10 +140,28 @@ export function useEmailEditorPresence(opts: EmailEditorPresenceOptions) {
 		void beat();
 		timer = setInterval(() => void beat(), HEARTBEAT_MS);
 	};
+	/** Give up the lease now, keeping the row (the tab is still open). */
+	const release = () => {
+		const current = target.value;
+		if (!client || !current || !enabled.value || leaseBlockId.value === null) return;
+		client
+			.mutation(api.emailCoediting.presence.heartbeat, {
+				target: current,
+				clientId: opts.clientId,
+				selectedBlockId: opts.focus.value.selectedRootId,
+				leaseBlockId: null,
+			})
+			.catch(() => {
+				// The lease runs out on its own once the beats stop.
+			});
+	};
 	const onVisibilityChange = () => {
-		// Hidden: stop beating, so the lease runs out and others can edit.
-		if (isHidden()) stop();
-		else start();
+		// Hidden: let go of the block so others can edit it, and stop beating.
+		// Visible again: the next beat takes the lease back if it is still free.
+		if (isHidden()) {
+			stop();
+			release();
+		} else start();
 	};
 
 	watch(enabled, (on) => {
@@ -248,5 +280,5 @@ export function useEmailEditorPresence(opts: EmailEditorPresenceOptions) {
 		leave();
 	});
 
-	return { people, remoteMarks, leaseBlockId };
+	return { people, remoteMarks, leaseBlockId, acceptRemote };
 }

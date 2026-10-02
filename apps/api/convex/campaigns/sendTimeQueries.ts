@@ -9,8 +9,14 @@ import { internalQuery } from '../_generated/server';
 import { campaignsQuery } from './_helpers';
 import { getOrThrow, throwInvalidInput } from '../_utils/errors';
 import { COUNT_PAGE_SIZE, resolveRecipientPageImpl } from './audienceResolution';
-import { peakHour, type SendTimeHistogram } from '../analytics/sendTimeProfile';
+import {
+	evidenceAt,
+	ORGANIZATION_MIN_EVIDENCE,
+	peakHour,
+	type SendTimeHistogram,
+} from '../analytics/sendTimeProfile';
 import { readDefaultTimezone, readOrganizationHistogram } from '../analytics/sendTimeProfileSync';
+import { isValidTimeZone, localTimeParts } from '../lib/emailHelpers';
 import {
 	makeSendTimePlanner,
 	resolveSendTimeWindow,
@@ -59,11 +65,24 @@ export const previewSendTimes = campaignsQuery({
 		holdoutPercent: v.number(),
 		scheduledHour: v.optional(v.number()),
 		scheduledMinute: v.optional(v.number()),
+		// The viewer's IANA zone. Bars start on its tops of the hour, so in a
+		// zone like Asia/Kolkata a 9:00 send is not drawn in an 8:30 bar.
+		timeZone: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<SendTimePreview> => {
 		const settings = { windowHours: args.windowHours, holdoutPercent: args.holdoutPercent };
 		const error = sendTimeSettingsError(settings);
 		if (error) throwInvalidInput(error);
+		if (!Number.isFinite(args.startAt)) throwInvalidInput('The start must be a valid time');
+		const hasWallClock =
+			args.scheduledHour !== undefined &&
+			args.scheduledMinute !== undefined &&
+			Number.isInteger(args.scheduledHour) &&
+			Number.isInteger(args.scheduledMinute) &&
+			args.scheduledHour >= 0 &&
+			args.scheduledHour <= 23 &&
+			args.scheduledMinute >= 0 &&
+			args.scheduledMinute <= 59;
 
 		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
 		const window = resolveSendTimeWindow({
@@ -71,9 +90,16 @@ export const previewSendTimes = campaignsQuery({
 			windowHours: args.windowHours,
 			now: args.startAt,
 		});
-		// Buckets on whole hours, so a bar's label is the hour its sends go out
-		// in (a start at 10:25 opens with a 10:00 bucket).
-		const firstHour = Math.floor(window.startAt / HOUR_MS) * HOUR_MS;
+		// Buckets on the viewer's whole hours, so a bar's label is the hour its
+		// sends go out in (a start at 10:25 opens with a 10:00 bucket).
+		const viewerZone =
+			args.timeZone !== undefined && args.timeZone.length <= 64 && isValidTimeZone(args.timeZone)
+				? args.timeZone
+				: 'UTC';
+		const startParts = localTimeParts(window.startAt, viewerZone);
+		const firstHour =
+			Math.floor(window.startAt / 1000) * 1000 -
+			(startParts.minute * 60 + startParts.second) * 1000;
 		const hours = Array.from(
 			{ length: Math.ceil((window.endAt - firstHour) / HOUR_MS) },
 			(_, i) => ({ at: firstHour + i * HOUR_MS, count: 0 })
@@ -85,7 +111,11 @@ export const previewSendTimes = campaignsQuery({
 			holdout: 0,
 		};
 		const organization = await readOrganizationHistogram(ctx.db);
-		const organizationBestHour = peakHour(organization);
+		// Only named once the planner would use it.
+		const organizationBestHour =
+			evidenceAt(organization, args.startAt) >= ORGANIZATION_MIN_EVIDENCE
+				? peakHour(organization)
+				: null;
 		if (!campaign.audience) {
 			return { hours, sampleSize: 0, isSample: false, sources, organizationBestHour };
 		}
@@ -101,10 +131,9 @@ export const previewSendTimes = campaignsQuery({
 			window,
 			organization,
 			defaultTimezone: await readDefaultTimezone(ctx.db),
-			startWallClock:
-				args.scheduledHour !== undefined && args.scheduledMinute !== undefined
-					? { hour: args.scheduledHour, minute: args.scheduledMinute }
-					: undefined,
+			startWallClock: hasWallClock
+				? { hour: args.scheduledHour!, minute: args.scheduledMinute! }
+				: undefined,
 			// The preview judges evidence as of the start, as the walker will.
 			now: args.startAt,
 		});

@@ -7,6 +7,13 @@
  * A difference is only called when a two-proportion z-test puts it outside
  * chance at the 95% level, and only once both groups have enough delivered
  * mail; anything less reads as "no clear difference", never as a win.
+ *
+ * Equal exposure: the holdout goes out at the start and the optimized sends
+ * up to a whole window later, so comparing while sends are still landing
+ * favours the holdout. The arm counters only take an open or click within
+ * `SEND_TIME_ATTRIBUTION_MS` of the send going out (the backend's
+ * `delivery/sendLifecycle/sendTimeEffects.ts`), and the comparison waits
+ * until that much time has passed after the last send.
  */
 
 export interface SendTimeArmCounts {
@@ -28,6 +35,13 @@ export interface SendTimeMetricComparison {
 
 export type SendTimeComparison =
 	| { state: 'no_holdout'; optimized: SendTimeArmCounts }
+	| {
+			state: 'measuring';
+			optimized: SendTimeArmCounts;
+			holdout: SendTimeArmCounts;
+			/** When the comparison is due, or null while the campaign is still sending. */
+			readyAt: number | null;
+	  }
 	| { state: 'too_early'; optimized: SendTimeArmCounts; holdout: SendTimeArmCounts }
 	| {
 			state: 'ready';
@@ -38,6 +52,12 @@ export type SendTimeComparison =
 
 /** Delivered emails each group needs before a comparison is shown. */
 export const MIN_DELIVERED_PER_GROUP = 100;
+
+/**
+ * How long after a send goes out its first open or click counts for its group.
+ * Mirrors `SEND_TIME_ATTRIBUTION_MS` in the backend.
+ */
+export const SEND_TIME_ATTRIBUTION_MS = 24 * 3_600_000;
 
 /** |z| at or above this is a difference at the 95% level (two-sided). */
 const Z_95 = 1.96;
@@ -76,16 +96,36 @@ function compareMetric(
 const count = (value: number | undefined) =>
 	typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
 
-/** The comparison for a campaign's stored counters. */
-export function compareSendTimeArms(campaign: {
-	sendTimeOptimization?: { holdoutPercent: number };
-	statsSendTimeOptimizedDelivered?: number;
-	statsSendTimeOptimizedOpened?: number;
-	statsSendTimeOptimizedClicked?: number;
-	statsSendTimeHoldoutDelivered?: number;
-	statsSendTimeHoldoutOpened?: number;
-	statsSendTimeHoldoutClicked?: number;
-}): SendTimeComparison {
+interface SendTimeReportCampaign {
+	status: string;
+	sentAt?: number;
+	updatedAt?: number;
+	sendTimeOptimization?: { windowHours: number; holdoutPercent: number };
+}
+
+/**
+ * When every send has had the full attribution window: a day after the later
+ * of the window's end and the campaign's completion (its `updatedAt` once it
+ * is `sent`; a later edit only moves this later). Null while still sending.
+ */
+export function sendTimeComparisonReadyAt(campaign: SendTimeReportCampaign): number | null {
+	if (campaign.status !== 'sent' || campaign.sentAt === undefined) return null;
+	const windowEnd = campaign.sentAt + (campaign.sendTimeOptimization?.windowHours ?? 0) * 3_600_000;
+	return Math.max(windowEnd, campaign.updatedAt ?? windowEnd) + SEND_TIME_ATTRIBUTION_MS;
+}
+
+/** The comparison for a campaign's stored counters at `now`. */
+export function compareSendTimeArms(
+	campaign: SendTimeReportCampaign & {
+		statsSendTimeOptimizedDelivered?: number;
+		statsSendTimeOptimizedOpened?: number;
+		statsSendTimeOptimizedClicked?: number;
+		statsSendTimeHoldoutDelivered?: number;
+		statsSendTimeHoldoutOpened?: number;
+		statsSendTimeHoldoutClicked?: number;
+	},
+	now: number
+): SendTimeComparison {
 	const optimized = {
 		delivered: count(campaign.statsSendTimeOptimizedDelivered),
 		opened: count(campaign.statsSendTimeOptimizedOpened),
@@ -98,6 +138,10 @@ export function compareSendTimeArms(campaign: {
 	};
 	if ((campaign.sendTimeOptimization?.holdoutPercent ?? 0) === 0 && holdout.delivered === 0) {
 		return { state: 'no_holdout', optimized };
+	}
+	const readyAt = sendTimeComparisonReadyAt(campaign);
+	if (readyAt === null || now < readyAt) {
+		return { state: 'measuring', optimized, holdout, readyAt };
 	}
 	if (
 		optimized.delivered < MIN_DELIVERED_PER_GROUP ||

@@ -7,7 +7,7 @@ import {
 	type TransactionalSendDoc,
 } from '../sendLifecycle/reducers';
 import { reduceDeliveryObservation } from '../sendLifecycle/deliveryObservation';
-import { sendTimeStatDelta } from '../sendLifecycle/sendTimeEffects';
+import { SEND_TIME_ATTRIBUTION_MS, sendTimeStatDelta } from '../sendLifecycle/sendTimeEffects';
 import type { Id } from '../../_generated/dataModel';
 
 // The send-time optimization hooks on the send lifecycle (ADR-0068): which
@@ -146,6 +146,37 @@ describe('send-time comparison counters', () => {
 			campaignId: CAMPAIGN_ID,
 			at: LATER,
 			sendTimeGroup: 'optimized',
+		});
+	});
+
+	it('credits an arm only with engagement inside the attribution window', () => {
+		const send = campaignSend({ sendTimeGroup: 'holdout' });
+		const late = SENT_AT + SEND_TIME_ATTRIBUTION_MS + 60_000;
+		const opened = reduceOpened(send, { to: 'opened', at: late, agent: 'client' }, campaignRef);
+		// The campaign still counts the open, and the profile still learns from it.
+		expect(opened.effects).toContainEqual({
+			kind: 'campaign_stats_opened',
+			campaignId: CAMPAIGN_ID,
+			at: late,
+		});
+		expect(engagementEffects(opened.effects)).toHaveLength(1);
+		const clicked = reduceClicked(
+			send,
+			{ to: 'clicked', at: late, url: 'https://example.com', agent: 'client' },
+			campaignRef
+		);
+		expect(clicked.effects).toContainEqual({
+			kind: 'campaign_stats_clicked',
+			campaignId: CAMPAIGN_ID,
+			at: late,
+		});
+		const edge = SENT_AT + SEND_TIME_ATTRIBUTION_MS;
+		const onTime = reduceOpened(send, { to: 'opened', at: edge, agent: 'client' }, campaignRef);
+		expect(onTime.effects).toContainEqual({
+			kind: 'campaign_stats_opened',
+			campaignId: CAMPAIGN_ID,
+			at: edge,
+			sendTimeGroup: 'holdout',
 		});
 	});
 

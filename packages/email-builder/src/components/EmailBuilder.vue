@@ -498,6 +498,26 @@ const {
 });
 
 /**
+ * Select the Block `blockId` (a root or a nested item) and scroll it into
+ * view, switching back from a preview to the canvas first. Hosts call it to
+ * point at a Block from outside the builder (the pre-send checks' "Show me").
+ * Returns false when no Block has that id.
+ */
+function selectBlock(blockId: string): boolean {
+	const location = locateBlock(canvasBlocks.value, blockId);
+	if (!location) return false;
+	if (previewMode.value !== 'edit') previewMode.value = 'edit';
+	if (location.parent) selectNestedItem(location.root.id, blockId);
+	else handleSelectBlock(blockId);
+	nextTick(() => {
+		blockElements.value
+			.get(location.root.id)
+			?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+	});
+	return true;
+}
+
+/**
  * Apply another person's edits (co-editing). Unlike `loadState`, this keeps
  * the selection, the open inline editor and the undo history: the history
  * folds the change into every recorded state, so undo and redo keep moving
@@ -538,7 +558,7 @@ function applyRemoteOps(ops: readonly CoeditOp<EditorBlock>[]) {
 // `isInlineEditing` tells a host that text may be typed which the blocks do not
 // hold yet (the inline editor commits when it closes), so replacing the canvas
 // now would leave that text to be committed on top of whatever replaced it.
-defineExpose({ loadState, applyRemoteOps, isInlineEditing });
+defineExpose({ loadState, applyRemoteOps, isInlineEditing, selectBlock });
 
 // Co-editing focus: which root is selected and which is open in the inline
 // editor, for the host's presence outline and edit lease.

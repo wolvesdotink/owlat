@@ -38,6 +38,7 @@ const stubs = {
 	DomainsReturnPathEditor: { template: '<div />' },
 	DomainsStreamSubdomainPlanPanel: true,
 	DomainsYahooCflPanel: true,
+	DomainsDmarcReportingPanel: true,
 	DomainsDnsPropagationNote: true,
 };
 
