@@ -9,6 +9,7 @@ import { nextDailySendCount } from '../lib/sendingLimits';
 import { readInstanceCounter, writeInstanceCounter } from '../lib/instanceCounters';
 import { requireOrgMember } from '../lib/sessionOrganization';
 import { rateLimiter } from '../lib/rateLimiter';
+import { readDefaultTimezone } from '../analytics/sendTimeProfileSync';
 
 /**
  * The set of email addresses a test/preview send may target: the org's own
@@ -86,10 +87,7 @@ export const getCampaignForSending = internalQuery({
 // silently bucketing to UTC. Returns undefined when unset.
 export const getOrgTimezone = internalQuery({
 	args: {},
-	handler: async (ctx) => {
-		const settings = await ctx.db.query('instanceSettings').first();
-		return settings?.timezone ?? undefined;
-	},
+	handler: async (ctx) => await readDefaultTimezone(ctx.db),
 });
 
 /**

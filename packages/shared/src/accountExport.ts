@@ -23,6 +23,7 @@ export const ACCOUNT_EXPORT_PERSONAL_RESOURCES = [
 	'mailDrafts',
 	'externalMailAccounts',
 	'chatMessages',
+	'threadNotes',
 	'deliverabilityAlertRecipientStates',
 	'savedReplies',
 ] as const;

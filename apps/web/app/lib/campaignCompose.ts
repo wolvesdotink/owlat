@@ -14,6 +14,8 @@ export interface ReviewSchedule {
 	date: string;
 	time: string;
 	recipientTimezone: boolean;
+	/** "Optimized per contact" settings, when that delivery time was chosen. */
+	optimization?: { windowHours: number; holdoutPercent: number };
 }
 
 /** What `templateHasBody` reads off an email template row. */
@@ -41,6 +43,12 @@ export function campaignReviewPath(campaignId: string, schedule?: ReviewSchedule
 		if (schedule.date) query.set('date', schedule.date);
 		if (schedule.time) query.set('time', schedule.time);
 		if (schedule.recipientTimezone) query.set('tz', '1');
+		if (schedule.optimization) {
+			query.set(
+				'sto',
+				`${schedule.optimization.windowHours}-${schedule.optimization.holdoutPercent}`
+			);
+		}
 	}
 	return `/dashboard/campaigns/new?${query.toString()}`;
 }
@@ -70,9 +78,13 @@ export function readReviewSchedule(query: Record<string, unknown>): ReviewSchedu
 	if (first(query['send']) !== 'later') return null;
 	const date = first(query['date']);
 	const time = first(query['time']);
+	const sto = /^(\d{1,2})-(\d{1,2})$/.exec(first(query['sto']));
 	return {
 		date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '',
 		time: /^\d{2}:\d{2}$/.test(time) ? time : '',
 		recipientTimezone: first(query['tz']) === '1',
+		...(sto
+			? { optimization: { windowHours: Number(sto[1]), holdoutPercent: Number(sto[2]) } }
+			: {}),
 	};
 }

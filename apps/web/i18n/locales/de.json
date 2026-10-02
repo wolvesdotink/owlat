@@ -817,6 +817,64 @@
 				"none": "{open} geöffnet und {click} geklickt.",
 				"onPar": "{open} geöffnet und {click} geklickt — im Rahmen deines Durchschnitts."
 			},
+			"sendTimeDistribution": {
+				"chartLabel": "Erwartete Sendungen pro Stunde",
+				"noHistory": "Noch kein Verlauf. Die Sendezeiten werden aus Öffnungen und Klicks gelernt und werden mit jeder Kampagne besser.",
+				"noRecipients": "Diese Kampagne hat noch keine Empfänger.",
+				"pickStart": "Wähle Datum und Uhrzeit, um zu sehen, wann deine Kontakte die E-Mail bekommen.",
+				"sample": "Basierend auf den ersten {count} Empfängern",
+				"sends": "{count} Sendung | {count} Sendungen",
+				"sources": {
+					"contact": "{share} zu ihrer eigenen üblichen Stunde",
+					"holdout": "{share} als Vergleichsgruppe zur Startzeit",
+					"organization": "{share} zur aktivsten Stunde deines Publikums ({time})",
+					"start": "{share} zur Startzeit in ihrer eigenen Zeitzone (noch nicht genug Verlauf)"
+				},
+				"title": "Erwartete Sendungen pro Stunde"
+			},
+			"sendTimeReport": {
+				"clickRate": "Klickrate",
+				"difference": "Unterschied",
+				"holdoutColumn": "Startzeit ({count})",
+				"method": "Die Raten beziehen sich auf zugestellte E-Mails. Ein Unterschied zählt nur, wenn ein Test für zwei Anteile ihn mit 95 % Sicherheit vom Zufall unterscheidet.",
+				"metric": "Kennzahl",
+				"noHoldout": "Es gab keine Vergleichsgruppe, daher lässt sich die Wirkung der Sendezeiten nicht messen.",
+				"openRate": "Öffnungsrate",
+				"optimizedColumn": "Optimiert ({count})",
+				"points": "{change} Pkt.",
+				"stillSending": "Wird noch gesendet: Diese Zahlen ändern sich noch.",
+				"summary": "Jeder Kontakt hat die E-Mail zu seiner üblichen Stunde bekommen, innerhalb von {hours} Stunden nach dem Start.",
+				"summaryWithHoldout": "Jeder Kontakt hat die E-Mail zu seiner üblichen Stunde bekommen, innerhalb von {hours} Stunden nach dem Start. {percent} % haben sie zum Vergleich zur Startzeit bekommen.",
+				"title": "Sendezeit-Optimierung",
+				"tooEarly": "Noch zu früh für einen Vergleich. Jede Gruppe braucht {min} zugestellte E-Mails; bisher {optimized} optimiert und {holdout} zur Startzeit.",
+				"verdict": {
+					"higher": "Höher, über den Zufall hinaus",
+					"lower": "Niedriger, über den Zufall hinaus",
+					"no_difference": "Kein klarer Unterschied"
+				}
+			},
+			"sendTimingOptions": {
+				"fixed": {
+					"hint": "Alle bekommen die E-Mail um {time} in deiner Zeitzone.",
+					"title": "Für alle im selben Moment"
+				},
+				"holdoutHint": "Eine Vergleichsgruppe bekommt die E-Mail zur Startzeit, damit der Bericht zeigen kann, ob die optimierten Sendezeiten etwas bewirkt haben.",
+				"holdoutLabel": "Vergleichsgruppe",
+				"holdoutNone": "Keine",
+				"holdoutOption": "{percent} % zur Startzeit",
+				"legend": "Zustellzeit",
+				"local": {
+					"hint": "Jeder Kontakt bekommt die E-Mail um {time} in seiner eigenen Zeitzone. Kontakte ohne Zeitzone bekommen sie zu deiner gewählten Zeit.",
+					"title": "Ortszeit der Empfänger"
+				},
+				"optimized": {
+					"abTest": "Nicht für A/B-Tests verfügbar: Eine über den Tag verteilte Testgruppe würde das Ergebnis verfälschen.",
+					"hint": "Jeder Kontakt bekommt die E-Mail zu der Stunde, in der er deine E-Mails meist öffnet oder anklickt, innerhalb des Zeitfensters unten. Kontakte ohne genug Verlauf bekommen sie zur Stunde, in der dein Publikum am meisten liest, sonst zu deiner Startzeit in ihrer eigenen Zeitzone.",
+					"title": "Pro Kontakt optimiert"
+				},
+				"windowLabel": "Zeitfenster",
+				"windowOption": "Innerhalb von {hours} Stunden"
+			},
 			"steps": {
 				"contentStep": {
 					"choiceLabel": "Auswahl der E-Mail-Vorlage",
@@ -868,15 +926,14 @@
 					"previewFrameTitle": "E-Mail-Vorschau",
 					"previewHeading": "Deine Kampagne wird gesendet:",
 					"previewHeadingAt": "Deine Kampagne wird gesendet um:",
+					"previewHeadingOptimized": "Deine Kampagne startet:",
+					"previewOptimized": "Jeder Kontakt bekommt sie innerhalb von {hours} Stunden zu seiner üblichen Stunde.",
 					"previewPerTimezone": "{time} in der Zeitzone des jeweiligen Empfängers",
-					"recipientTimezone": "Zur Ortszeit des Empfängers senden",
-					"recipientTimezoneHint": "Die E-Mails werden um {time} in der Zeitzone des jeweiligen Kontakts gesendet. Kontakte ohne Zeitzone erhalten die E-Mail zu deiner gewählten Zeit.",
 					"replyTo": "Antwort an: {email}",
 					"scheduleCampaign": "Kampagne planen",
 					"scheduleLater": "Für später planen",
 					"scheduleLaterDescription": "Wähle ein Datum und eine Uhrzeit für den Versand deiner Kampagne.",
 					"scheduleOperation": "Kampagne planen",
-					"scheduledTimeFallback": "der geplanten Zeit",
 					"scheduling": "Wird geplant ...",
 					"sendCampaign": "Kampagne senden",
 					"sendConfirm": {
@@ -903,6 +960,7 @@
 					"toast": {
 						"scheduled": "Kampagne erfolgreich geplant!",
 						"scheduledPerTimezone": "Kampagne für {time} in der Zeitzone des jeweiligen Empfängers geplant!",
+						"scheduledOptimized": "Kampagne geplant. Jeder Kontakt bekommt sie zu seiner üblichen Stunde.",
 						"sending": "Die Kampagne wird jetzt gesendet!"
 					},
 					"whenToSend": "Wann senden",
@@ -3312,7 +3370,9 @@
 			},
 			"inboxFilterPills": {
 				"groupLabel": "Konversationen filtern",
-				"assigneeLabel": "Nach Zuständigkeit filtern"
+				"assigneeLabel": "Nach Zuständigkeit filtern",
+				"mentions": "Erwähnungen",
+				"unreadMentions": "{count} noch nicht geöffnet"
 			},
 			"inboxMessageAttachments": {
 				"blocked": "Blockiert — in dieser Nachricht wurde Schadsoftware gefunden.",
@@ -3353,6 +3413,7 @@
 					"whatsapp": "WhatsApp"
 				},
 				"noSubject": "Kein Betreff",
+				"notes": "{count} interne Notiz | {count} interne Notizen",
 				"openThread": "Konversation öffnen",
 				"resolve": "Erledigen",
 				"snooze": "Zurückstellen",
@@ -3387,6 +3448,38 @@
 			"readFailureNotice": {
 				"inboxList": "deine Postfachliste",
 				"message": "Nicht geladen: {names}. Diese Liste ist deshalb unvollständig."
+			},
+			"notes": {
+				"add": "Notiz hinzufügen",
+				"ariaLabel": "Interne Notiz von {name}",
+				"badge": "Interne Notiz",
+				"composerLabel": "Interne Notiz",
+				"createOperation": "Notiz hinzufügen",
+				"delete": "Notiz löschen",
+				"deleteDialog": {
+					"description": "Die Notiz verschwindet für das ganze Team. An ihrer Stelle steht im Verlauf „Notiz gelöscht“.",
+					"title": "Diese Notiz löschen?"
+				},
+				"deleteOperation": "Notiz löschen",
+				"deleted": "Notiz gelöscht",
+				"edit": "Notiz bearbeiten",
+				"editLabel": "Notiz bearbeiten",
+				"edited": "(bearbeitet)",
+				"empty": "Noch keine Notizen. Notizen bleiben in Owlat: der Kunde sieht sie nie, und sie landen nie in einer Antwort.",
+				"formerTeammate": "Ehemaliges Teammitglied",
+				"mentionHint": "Mit {'@'} erwähnst du jemanden aus dem Team. Strg/⌘ + Enter fügt die Notiz hinzu.",
+				"open": "Interne Notiz hinzufügen",
+				"placeholder": "Schreib eine Notiz für dein Team. Mit {'@'} erwähnst du jemanden.",
+				"privacyHint": "Interne Notiz: nur dein Team sieht sie. Sie wird nie an den Kunden geschickt.",
+				"remaining": "Noch {count} Zeichen | Noch {count} Zeichen",
+				"save": "Speichern",
+				"tabs": {
+					"label": "Antwort oder interne Notiz",
+					"note": "Interne Notiz",
+					"reply": "Antwort"
+				},
+				"tooLong": "{count} Zeichen zu lang | {count} Zeichen zu lang",
+				"updateOperation": "Notiz speichern"
 			}
 		},
 		"keyboardShortcutsHelp": {
@@ -5539,6 +5632,26 @@
 			"unsavedHint": "Speichere deine Änderungen, bevor du einen Freigabelink erstellst."
 		},
 		"system": {
+			"imapServersCard": {
+				"title": "IMAP-Server",
+				"intro": "IMAP-Server, die sich in den letzten 7 Tagen bei diesem Backend gemeldet haben. Aktualisiere zuerst das Backend, dann den IMAP-Container: Der IMAP-Server darf ein Release hinter dem Backend liegen, ihm aber nie voraus sein.",
+				"loading": "IMAP-Server werden geladen…",
+				"empty": "In den letzten 7 Tagen hat sich kein IMAP-Server gemeldet. Das ist zu erwarten, wenn dieses Deployment keinen IMAP-Container betreibt.",
+				"legacyWarning": "Ein IMAP-Server aus 0.6.7 oder älter hat am {date} eine Anmeldung bearbeitet. Er meldet seine Version nicht, steht deshalb nicht in der Liste und wird beim Start nicht angehalten. Aktualisiere den IMAP-Container auf das Release des Backends.",
+				"unsupportedWarning": "Ein IMAP-Server, der älter ist, als dieses Backend unterstützt, war aktiv. Das Backend lehnt seine Anmeldungen ab, und ein Server, der seine Version meldet, startet nicht, bis du den IMAP-Container aktualisierst.",
+				"aheadWarning": "Ein IMAP-Server, der neuer ist als dieses Backend, hat sich gemeldet. Er stellt erst wieder Mail bereit, wenn das Backend aktualisiert ist.",
+				"truncated": "Angezeigt werden die {count} neuesten. Die Warnungen oben berücksichtigen alle IMAP-Server der letzten 7 Tage.",
+				"host": "Hostname",
+				"version": "Version",
+				"lastSeen": "Letzte Meldung",
+				"wireVersion": "(Protokollversion {version})",
+				"verdict": {
+					"current": "Aktuell",
+					"supported": "Älter, unterstützt",
+					"unsupported": "Nicht unterstützt",
+					"ahead": "Wartet auf Backend-Update"
+				}
+			},
 			"llmSpendCard": {
 				"advisoryPaused": "Beratende KI ist pausiert; das verbleibende Budget ist für autonome Antworten reserviert.",
 				"approachingCeiling": "Obergrenze nähert sich",
@@ -9055,15 +9168,14 @@
 					"schedule": {
 						"date": "Datum",
 						"inRecipientTimezone": "{time} in der Zeitzone der jeweiligen Empfänger",
-						"recipientTimezone": "Zur lokalen Zeit der Empfänger senden",
-						"recipientTimezoneHint": "E-Mails werden um {time} in der Zeitzone des jeweiligen Kontakts gesendet. Kontakte ohne Zeitzone erhalten die E-Mail zu deiner gewählten Zeit.",
+						"optimizedWithin": "Jeder Kontakt bekommt sie innerhalb von {hours} Stunden zu seiner üblichen Stunde.",
 						"retitle": "Kampagne neu planen",
-						"theScheduledTime": "der geplanten Zeit",
 						"time": "Uhrzeit",
 						"timezoneExamples": "Zum Beispiel: {time} ET, {time} PT, {time} GMT usw.",
 						"title": "Kampagne planen",
 						"willBeSent": "Kampagne wird gesendet:",
-						"willBeSentAt": "Kampagne wird gesendet um:"
+						"willBeSentAt": "Kampagne wird gesendet um:",
+						"willStartAt": "Kampagne startet:"
 					},
 					"scheduledNotice": {
 						"cancelCampaign": "Kampagne abbrechen",
@@ -9592,6 +9704,7 @@
 				"assignThreadOperation": "Konversation zuweisen",
 				"empty": {
 					"me": "Dir ist derzeit nichts zugewiesen.",
+					"mentions": "Noch hat dich niemand in einer Notiz erwähnt.",
 					"open": "Keine offenen Gespräche. Posteingang leer.",
 					"resolved": "Noch keine erledigten Gespräche.",
 					"snoozed": "Nichts ist zurückgestellt. Zurückgestelltes erscheint hier wieder.",
@@ -13100,6 +13213,17 @@
 						"withSubject": "Der Agent braucht deine Eingabe für eine Antwort — {subject}"
 					}
 				},
+				"mention": {
+					"notificationBody": {
+						"noSubject": "Kein Betreff · {assignedByName} hat dich in einer Notiz erwähnt",
+						"withSubject": "{subject} · {assignedByName} hat dich in einer Notiz erwähnt"
+					},
+					"notificationTitle": "Du wurdest erwähnt",
+					"toast": {
+						"noSubject": "{assignedByName} hat dich in einer Notiz erwähnt — Kein Betreff",
+						"withSubject": "{assignedByName} hat dich in einer Notiz erwähnt — {subject}"
+					}
+				},
 				"notification": {
 					"body": {
 						"noSubject": "Kein Betreff · von {assignedByName}",
@@ -14366,7 +14490,8 @@
 				"pickAskOption": "Eine Antwort auf der Fragekarte der KI wählen",
 				"previousQueueItem": "Vorheriger Eintrag in der Antwortliste",
 				"nextQueueItem": "Nächster Eintrag in der Antwortliste",
-				"savedReplies": "Gespeicherte Antwort einfügen"
+				"savedReplies": "Gespeicherte Antwort einfügen",
+				"writeNote": "Interne Notiz schreiben"
 			}
 		},
 		"signatureBadge": {
@@ -14908,6 +15033,7 @@
 				"saved": "Kampagne erfolgreich gespeichert!",
 				"scheduled": "Kampagne erfolgreich geplant!",
 				"scheduledRecipientTimezone": "Kampagne für {time} in der Zeitzone der jeweiligen Empfänger geplant!",
+				"scheduledOptimized": "Kampagne geplant. Jeder Kontakt bekommt sie zu seiner üblichen Stunde.",
 				"unscheduled": "Kampagnenplanung aufgehoben. Du kannst die Kampagne jetzt bearbeiten."
 			}
 		},
@@ -15475,6 +15601,7 @@
 			"organizationMemberships": "Workspace-Mitgliedschaften",
 			"savedReplies": "Gespeicherte Antworten",
 			"segments": "Segmente",
+			"threadNotes": "Interne Notizen",
 			"topics": "Themen",
 			"transactionalEmails": "Transaktions-E-Mails",
 			"webhooks": "Webhooks"

@@ -5,6 +5,11 @@ import { audienceValidator } from '../campaigns/audience';
 import { sendStatusValidator, abVariantValidator } from '../lib/literalValidators';
 import { campaignShardedStatFields } from '../lib/validators/campaigns';
 import { sendTrackingFields } from '../lib/validators/send';
+import {
+	sendTimeGroupValidator,
+	sendTimeHistogramFields,
+	sendTimeOptimizationValidator,
+} from '../lib/validators/sendTime';
 
 /**
  * Campaign send job — the checkpoint row for one large-audience send walk
@@ -207,6 +212,12 @@ export const campaignTables = {
 		// Hour and minute for timezone-based sending (0-23 for hour, 0-59 for minute)
 		scheduledHour: v.optional(v.number()),
 		scheduledMinute: v.optional(v.number()),
+		// "Optimized per contact": each recipient is sent at the hour they
+		// usually read, within `windowHours` of the start, and `holdoutPercent`
+		// of the audience at the start for comparison. Absent = off. When set,
+		// `scheduledHour` / `scheduledMinute` carry the start's wall-clock time
+		// for the planner's last fallback. See campaigns/sendTimeOptimization.ts.
+		sendTimeOptimization: v.optional(sendTimeOptimizationValidator),
 		// AGGREGATED from emailSends — updated by sendLifecycle's effect list
 		// (`campaign_stats_sent` / `campaign_stats_failed` / `campaign_stats_*`
 		// in `delivery/sendLifecycle.ts`). statsUpdatedAt below tracks
@@ -307,6 +318,9 @@ export const campaignTables = {
 		personalizedSubject: v.optional(v.string()),
 		// A/B test variant tracking - "A" or "B" for test recipients
 		abVariant: v.optional(abVariantValidator),
+		// The send-time optimization arm this send was planned in; absent for a
+		// campaign that was not optimized.
+		sendTimeGroup: v.optional(sendTimeGroupValidator),
 		// When the row was queued. Required here, optional on `transactionalSends`.
 		queuedAt: v.number(),
 		// sentAt … deletedBy: the tracking columns shared with transactionalSends.
@@ -346,6 +360,16 @@ export const campaignTables = {
 		shardKey: v.number(),
 		...campaignShardedStatFields,
 	}).index('by_campaign_and_shard', ['campaignId', 'shardKey']),
+
+	// The organization's send-time histogram (ADR-0068): every reader open and
+	// click the contact profiles fold also lands on a RANDOM shard here, so the
+	// writes spread like campaignStatShards'. The planner sums the shards for
+	// contacts without enough history of their own. Aggregate counts only, no
+	// per-contact data.
+	sendTimeHistogramShards: defineTable({
+		shardKey: v.number(),
+		...sendTimeHistogramFields,
+	}).index('by_shard', ['shardKey']),
 
 	// Curated campaign sender addresses. A campaign may send from one of these
 	// enabled addresses; a custom (off-list) from-address is allowed only when

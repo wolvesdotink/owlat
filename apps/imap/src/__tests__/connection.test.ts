@@ -18,6 +18,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { getFunctionName } from 'convex/server';
+import { IMAP_WIRE_VERSION } from '@owlat/shared/imapWire';
 import { EventEmitter } from 'events';
 import type { Socket } from 'net';
 import { ImapConnection } from '../connection.js';
@@ -409,6 +410,21 @@ describe('ImapConnection — LOGIN', () => {
 		);
 		const touchArgs = convex.mutation.mock.calls[0]![1] as Record<string, unknown>;
 		expect(touchArgs).not.toHaveProperty('userAgent');
+	});
+
+	it('tells the backend its wire version on the LOGIN touch', async () => {
+		// Without it the backend counts the login as one through an IMAP server
+		// too old to report itself (ADR-0063).
+		const { socket, convex } = makeMocks();
+		convex.action.mockResolvedValue({
+			mailboxId: 'mb1',
+			appPasswordId: 'ap1',
+			userId: 'u1',
+			organizationId: 'org1',
+		});
+		await exec(socket, 'a001 LOGIN "alice@test" "good"');
+		const touchArgs = convex.mutation.mock.calls[0]![1] as Record<string, unknown>;
+		expect(touchArgs['imapWireVersion']).toBe(IMAP_WIRE_VERSION);
 	});
 
 	it('threads the ID client name into the LOGIN touch userAgent', async () => {

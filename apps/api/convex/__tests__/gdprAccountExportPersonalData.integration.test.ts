@@ -275,6 +275,28 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 				text: 'not my message',
 				createdAt: now,
 			});
+			const teamThreadId = await ctx.db.insert('conversationThreads', {
+				subject: 'Invoice 4471',
+				normalizedSubject: 'invoice 4471',
+				contactIdentifier: 'customer@example.com',
+				status: 'open',
+				messageCount: 1,
+				lastMessageAt: now,
+				firstMessageAt: now,
+				createdAt: now,
+			});
+			for (const [authorId, body] of [
+				['auth-user-1', 'my internal note'],
+				['someone-else', 'their internal note'],
+			] as const) {
+				await ctx.db.insert('threadNotes', {
+					threadId: teamThreadId,
+					authorId,
+					body,
+					mentionedUserIds: [],
+					createdAt: now,
+				});
+			}
 		});
 
 		const stagedContentUrls: string[] = [];
@@ -341,6 +363,9 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 		// Chat: only the caller's own authorship is exported, not others'.
 		expect(res.personalData.chatMessages).toHaveLength(1);
 		expect(res.personalData.chatMessages[0]!['text']).toBe('my chat message');
+		// Internal notes: only the ones the caller wrote.
+		expect(res.personalData.threadNotes).toHaveLength(1);
+		expect(res.personalData.threadNotes[0]!['body']).toBe('my internal note');
 		expect(res.personalData.deliverabilityAlertRecipientStates).toHaveLength(1);
 		expect(res.personalData.deliverabilityAlertRecipientStates[0]!['state']).toMatchObject({
 			userId: 'auth-user-1',
@@ -395,6 +420,7 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 		expect(res.personalData.mailDrafts).toHaveLength(0);
 		expect(res.personalData.externalMailAccounts).toHaveLength(0);
 		expect(res.personalData.chatMessages).toHaveLength(0);
+		expect(res.personalData.threadNotes).toHaveLength(0);
 		expect(res.personalData.deliverabilityAlertRecipientStates).toHaveLength(0);
 		expect(res.personalData.savedReplies).toHaveLength(0);
 	});

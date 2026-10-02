@@ -265,6 +265,7 @@ export async function exportAllUserData(
 			mailDrafts,
 			externalMailAccounts: await loadPages('externalMailAccounts'),
 			chatMessages: await loadPages('chatMessages'),
+			threadNotes: await loadPages('threadNotes'),
 			deliverabilityAlertRecipientStates: await loadPages('deliverabilityAlertRecipientStates'),
 			savedReplies: await loadPages('savedReplies'),
 		},

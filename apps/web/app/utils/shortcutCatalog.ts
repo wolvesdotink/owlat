@@ -432,6 +432,14 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 		remappable: false,
 	},
 	{
+		id: 'answer.writeNote',
+		scope: 'answer',
+		keys: ['n'],
+		labelKey: L('writeNote'),
+		groupKey: G.answer,
+		remappable: false,
+	},
+	{
 		id: 'answer.draftWithAi',
 		scope: 'answer',
 		keys: ['mod+j'],

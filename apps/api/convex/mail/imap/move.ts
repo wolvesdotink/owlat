@@ -19,6 +19,7 @@ import { recordMessageCounters } from '../messageCounters';
 import { recordFolderMembership } from '../folderMembership';
 import { copyMessageBody } from '../../lib/messageBodyStore';
 import { recordRemoteChanges, type RemoteChange } from '../external/remoteOps';
+import { assertImapWireSupported } from './serverRegistry';
 
 /**
  * COPY — clones a message into another folder of the SAME mailbox.
@@ -288,8 +289,14 @@ export const expungeFolder = internalMutation({
 		uidSet: v.optional(v.array(v.number())),
 		beforeUid: v.optional(v.number()),
 		nextSequenceNumber: v.optional(v.number()),
+		// The caller's wire version (ADR-0063). `sequenceNumbers` and
+		// `nextSequenceNumber` are the next IMAP contract to be removed; the
+		// removing PR raises the minimum, and this gate refuses an older caller
+		// before the page deletes anything.
+		imapWireVersion: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
+		assertImapWireSupported(args.imapWireVersion);
 		const folder = await ctx.db.get(args.folderId);
 		if (!folder) return { sequenceNumbers: [], modseq: 0, done: true };
 

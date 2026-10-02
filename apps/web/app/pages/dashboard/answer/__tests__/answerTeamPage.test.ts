@@ -24,6 +24,7 @@ import AnswerTeamAttachments from '~/components/answer/AnswerTeamAttachments.vue
 import AnswerTeamPresence from '~/components/answer/AnswerTeamPresence.vue';
 import AttachSuggestion from '~/components/inbox/AttachSuggestion.vue';
 import ThreadComposer from '~/components/inbox/ThreadComposer.vue';
+import ComposeModeTabs from '~/components/inbox/ComposeModeTabs.vue';
 import TeamPage from '../t/[threadId].vue';
 import { useReviewApproveUndo } from '~/composables/useReviewApproveUndo';
 
@@ -91,6 +92,7 @@ const presence = ref<Array<{ userId: string; mode: 'viewing' | 'replying' }>>([]
 const attachmentList = ref<unknown[]>([]);
 const suggestion = ref<unknown>(null);
 const handleApprove = vi.fn(async () => ({ ok: true, result: {} }));
+const noteCount = ref(0);
 const runs = new Map<string, ReturnType<typeof vi.fn>>();
 
 beforeAll(() => {
@@ -130,6 +132,7 @@ beforeAll(() => {
 		useToast: () => ({ showToast: vi.fn() }),
 		registerCommandPaletteProvider: vi.fn(),
 		useThreadPresence: () => ({ others: presence }),
+		useThreadNotes: () => ({ notes: ref([]), liveCount: noteCount }),
 		useConvexQuery: (query: unknown, args: () => unknown) => {
 			void query;
 			const a = args();
@@ -163,6 +166,7 @@ beforeEach(() => {
 	navigateTo.mockClear();
 	handleApprove.mockClear();
 	runs.clear();
+	noteCount.value = 0;
 });
 
 const passThrough = (name: string) =>
@@ -186,6 +190,13 @@ async function mountPage() {
 				AnswerTeamAttachments,
 				InboxAttachSuggestion: AttachSuggestion,
 				InboxThreadComposer: ThreadComposer,
+				InboxComposeModeTabs: ComposeModeTabs,
+				InboxAnswerNotesPanel: defineComponent({
+					name: 'InboxAnswerNotesPanel',
+					props: { active: Boolean },
+					setup: (props) => () =>
+						h('div', { 'data-testid': 'answer-notes-panel', 'data-active': String(props.active) }),
+				}),
 				AnswerTeamConversation: inert('AnswerTeamConversation'),
 				AnswerTeamReusedAnswers: inert('AnswerTeamReusedAnswers'),
 				AnswerQueueBar: inert('AnswerQueueBar'),
@@ -228,6 +239,36 @@ describe('Answer mode for a Team inbox thread', () => {
 		// Not in a queue: a send goes back where the reply started; opened with
 		// no page to return to, that is the Team inbox.
 		expect(navigateTo).toHaveBeenCalledWith('/dashboard/inbox', { replace: true });
+	});
+
+	it('puts an internal Note tab beside the reply, keeping the typed reply when switching', async () => {
+		noteCount.value = 2;
+		const wrapper = await mountPage();
+		expect(wrapper.get('[data-testid="compose-mode-note-count"]').text()).toBe('2');
+		// Mounted but hidden, so a half-written note survives a trip to Reply.
+		const panel = () => wrapper.get('[data-testid="answer-notes-panel"]').attributes('data-active');
+		expect(panel()).toBe('false');
+		const body = wrapper.get<HTMLTextAreaElement>('[data-testid="thread-composer-body"]');
+		await body.setValue('My own words');
+
+		await wrapper.get('[data-testid="compose-mode-note"]').trigger('click');
+		expect(panel()).toBe('true');
+		expect(wrapper.get('[data-testid="thread-composer"]').isVisible()).toBe(false);
+
+		await wrapper.get('[data-testid="compose-mode-reply"]').trigger('click');
+		expect(panel()).toBe('false');
+		expect(
+			wrapper.get<HTMLTextAreaElement>('[data-testid="thread-composer-body"]').element.value
+		).toBe('My own words');
+	});
+
+	it('opens the Note tab with n outside a text field', async () => {
+		const wrapper = await mountPage();
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' }));
+		await flushPromises();
+		expect(wrapper.get('[data-testid="answer-notes-panel"]').attributes('data-active')).toBe(
+			'true'
+		);
 	});
 
 	it("links the correspondent's name to their contact profile", async () => {

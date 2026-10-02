@@ -180,6 +180,7 @@ export async function writeAccountJsonExport(
 						jsonArray(accountExportRowWriters(context, 'externalMailAccounts')),
 					],
 					['chatMessages', jsonArray(accountExportRowWriters(context, 'chatMessages'))],
+					['threadNotes', jsonArray(accountExportRowWriters(context, 'threadNotes'))],
 					[
 						'deliverabilityAlertRecipientStates',
 						jsonArray(accountExportRowWriters(context, 'deliverabilityAlertRecipientStates')),

@@ -87,7 +87,8 @@ async function eraseInboundMessageDescendants(
 /**
  * Threads with the contact go with every message in them, including
  * organization replies that quote the person, with the team's follow-ups
- * written to them, and with their Answer mode catch-up cards. A follow-up
+ * written to them, with their Answer mode catch-up cards, and with the team's
+ * internal notes about them (and those notes' mention rows). A follow-up
  * still inside its undo window has its dispatch cancelled; one already
  * handed to a Send finds no row when that Send lands
  * (`inbox/followUps.ts completeSend` returns on a missing follow-up).
@@ -142,6 +143,26 @@ export const eraseConversationThreads: PhaseRunner = (phase) => {
 				(row) => ctx.db.delete(row._id)
 			);
 			if (!catchUpsGone) return false;
+			const notesGone = await drainEach(
+				budget,
+				(n) =>
+					ctx.db
+						.query('threadNotes')
+						.withIndex('by_thread_and_created', (q) => q.eq('threadId', thread._id))
+						.take(n),
+				async (note) => {
+					const mentions = await ctx.db
+						.query('threadNoteMentions')
+						.withIndex('by_note', (q) => q.eq('noteId', note._id))
+						.collect(); // bounded: one note's mentions (≤ MAX_NOTE_MENTIONS)
+					for (const mention of mentions) {
+						budget.chargeRead(mention);
+						await ctx.db.delete(mention._id);
+					}
+					await ctx.db.delete(note._id);
+				}
+			);
+			if (!notesGone) return false;
 			await purgeReplyAttachments(ctx, thread.replyAttachments, LOG_TAG, (doc) =>
 				budget.chargeRead(doc)
 			);

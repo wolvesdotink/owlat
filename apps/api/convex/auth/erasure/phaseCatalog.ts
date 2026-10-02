@@ -38,6 +38,8 @@ export const MEMBER_ERASURE_PHASES = [
 	'chatMemberships',
 	'chatMentions',
 	'savedReplyAuthorship',
+	'noteAuthorship',
+	'noteMentions',
 ] as const;
 
 export type MemberErasurePhase = (typeof MEMBER_ERASURE_PHASES)[number];
