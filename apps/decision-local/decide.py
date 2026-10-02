@@ -114,15 +114,44 @@ def clean(text: str) -> str:
     return re.sub(r"\s+", " ", out).strip()
 
 
-def _unique(names: Sequence[str]) -> list[str]:
-    """Keep cleaned names distinct: two keys that clean alike must not merge."""
-    seen: dict[str, int] = {}
+def _unique(names: Sequence[str], separator: str = " ") -> list[str]:
+    """Keep cleaned names distinct: two keys that clean alike must not merge.
+
+    A name that is already unique keeps itself, and so does the first of a
+    repeated one. Every later repeat gets the lowest free numeric suffix, checked
+    against every name in the list as well as every name already handed out, so
+    `a(b)`, `a b` and `a b 2` become `a b`, `a b 3` and `a b 2` rather than two
+    `a b 2`s that a dict would then merge into one option.
+    """
+    taken = set(names)
+    emitted: set[str] = set()
     result = []
     for name in names:
-        count = seen.get(name, 0)
-        seen[name] = count + 1
-        result.append(name if count == 0 else f"{name} {count + 1}")
+        candidate = name
+        if name in emitted:
+            n = 2
+            while f"{name}{separator}{n}" in taken or f"{name}{separator}{n}" in emitted:
+                n += 1
+            candidate = f"{name}{separator}{n}"
+        emitted.add(candidate)
+        result.append(candidate)
     return result
+
+
+def task_name(question_id: str) -> str:
+    """The model-facing head name for a question id.
+
+    GLiNER reads a head back out of its prompt by boundary-aware longest
+    match, so it refuses two heads where one is the other followed by a space
+    or a colon (`a b` beside `a b 2`). Heads therefore never contain either:
+    spaces and colons become underscores, the snake_case the model card's own
+    head names use, and with neither character present no name can be a
+    boundary prefix of another.
+    """
+    name = re.sub(r"[\s:]+", "_", clean(question_id)).strip("_")
+    if not name:
+        raise DecisionRequestError("A question id has no usable text once reserved tokens are removed.")
+    return name
 
 
 def render_state(state: Any) -> str:
@@ -265,7 +294,9 @@ def prepare(body: Any) -> Prepared:
         raise DecisionRequestError(f"At most {MAX_QUESTIONS} questions per request.")
 
     ids = list(questions.keys())
-    names = _unique([_require_text(qid, "Question id") for qid in ids])
+    for qid in ids:
+        _require_text(qid, "Question id")
+    names = _unique([task_name(qid) for qid in ids], separator="_")
     heads = [_head(qid, name, questions[qid]) for qid, name in zip(ids, names)]
     text = render_state(state)
     if not text.strip():

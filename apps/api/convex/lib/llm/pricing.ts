@@ -30,14 +30,6 @@ type Price = { prefix: string; inputPerM: number; outputPerM: number };
  */
 export const DECISION_MODEL_PRICE_PREFIX = 'jev-';
 
-/**
- * The model family the LOCAL decision engine serves (`fastino/GLiNER2.5-…`).
- * It runs on the operator's own hardware, so it is priced at an explicit zero
- * rather than left to the unknown-model default, which would bill every local
- * decision as if a mid-tier hosted model had answered it.
- */
-export const LOCAL_DECISION_MODEL_PRICE_PREFIX = 'gliner';
-
 // Ordered most-specific-first so `gpt-4o-mini` matches before `gpt-4o`.
 const PRICING: Price[] = [
 	// OpenAI
@@ -101,9 +93,6 @@ const PRICING: Price[] = [
 	// and hand the enforced ceiling a number with no relation to the bill.
 	{ prefix: 'jev-1.13.0', inputPerM: 0.042, outputPerM: 0 },
 	{ prefix: DECISION_MODEL_PRICE_PREFIX, inputPerM: 0.042, outputPerM: 0 },
-	// The local decision engine (GLiNER, on the operator's hardware). Matched by
-	// `includes`, since the ids arrive org-prefixed (`fastino/gliner2.5-…`).
-	{ prefix: LOCAL_DECISION_MODEL_PRICE_PREFIX, inputPerM: 0, outputPerM: 0 },
 ];
 
 // Conservative fallback (≈ a mid-tier model) — never price an unknown model $0.
@@ -307,7 +296,6 @@ const PROVIDER_LABELS: { prefix: string; label: string }[] = [
  * Best-effort provider-family label for a model id, so the usage dashboard can
  * read spend PER BACKEND rather than only per feature. Derivation is by id
  * shape:
- *   • a GLiNER id is the local decision engine → `Local`, whatever its shape;
  *   • a provider-prefixed id (contains `/`, e.g. `anthropic/claude-opus-4-8`)
  *     comes from the OpenRouter aggregator → `OpenRouter`;
  *   • otherwise the id's prefix maps to its native provider.
@@ -320,9 +308,6 @@ const PROVIDER_LABELS: { prefix: string; label: string }[] = [
 export function providerLabelForModel(modelUsed: string | undefined): string {
 	const id = (modelUsed ?? '').toLowerCase().trim();
 	if (!id) return 'Unknown';
-	// Before the slash rule: the local decision engine reports Hugging Face ids
-	// (`fastino/GLiNER2.5-…`), which are org-prefixed but never OpenRouter.
-	if (id.includes(LOCAL_DECISION_MODEL_PRICE_PREFIX)) return 'Local';
 	if (id.includes('/')) return 'OpenRouter';
 	const match = PROVIDER_LABELS.find((p) => id.startsWith(p.prefix));
 	return match?.label ?? 'Other';

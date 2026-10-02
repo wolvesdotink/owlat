@@ -11,7 +11,7 @@
 #   docker run --rm -v "$PWD:/w" -w /w python:3.12-slim-bookworm sh -c \
 #     'pip install -q -r requirements.in && pip freeze > requirements.txt'
 # then put the --extra-index-url line back at the top.
-FROM python:3.12-slim-bookworm
+FROM python:3.12-slim-bookworm AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -26,6 +26,17 @@ COPY requirements.txt ./
 RUN pip install -r requirements.txt
 
 COPY decide.py engine.py server.py ./
+
+# The unit tests, against the pinned gliner2 this image ships: plain-Python CI
+# skips the one that compiles real GLiNER schemas. The final stage copies the
+# marker, so an image cannot be built from code whose tests fail. No model is
+# downloaded; only the schema code runs.
+FROM base AS test
+COPY tests ./tests
+RUN python -m unittest discover -s tests && touch /app/.tests-passed
+
+FROM base
+COPY --from=test /app/.tests-passed ./
 
 RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin decision \
     && mkdir -p /models \

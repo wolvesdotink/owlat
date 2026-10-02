@@ -90,6 +90,49 @@ class PrepareTest(unittest.TestCase):
         self.assertEqual([l.key for l in head.labels], ["a(b)", "a b"])
         self.assertEqual(head.labels[0].description, "uses parens")
 
+    def test_keeps_rewritten_labels_distinct_from_labels_that_already_look_rewritten(self):
+        prepared = prepare(
+            {
+                "state": "x",
+                "questions": {
+                    "q": {
+                        "type": "choice",
+                        "instructions": "Pick one",
+                        "criteria": {"a(b)": None, "a b": None, "a b 2": None},
+                    }
+                },
+            }
+        )
+        labels = prepared.heads[0].labels
+        names = [label.name for label in labels]
+        self.assertEqual(len(set(names)), 3)
+        self.assertEqual([label.key for label in labels], ["a(b)", "a b", "a b 2"])
+        # A key that was already clean keeps its own name.
+        self.assertEqual(labels[2].name, "a b 2")
+
+    def test_gives_heads_names_no_other_head_can_shadow(self):
+        prepared = prepare(
+            {
+                "state": "x",
+                "questions": {
+                    "a(b)": {"type": "noul", "instructions": "One?"},
+                    "a b": {"type": "noul", "instructions": "Two?"},
+                    "a b 2": {"type": "noul", "instructions": "Three?"},
+                    "needs reply": {"type": "noul", "instructions": "Four?"},
+                    "needs reply: now": {"type": "noul", "instructions": "Five?"},
+                },
+            }
+        )
+        names = [head.name for head in prepared.heads]
+        self.assertEqual(len(set(names)), len(names))
+        self.assertEqual([head.question_id for head in prepared.heads][0], "a(b)")
+        # GLiNER's rule: no head may be another followed by a space or a colon.
+        for x in names:
+            self.assertNotRegex(x, r"[ :]")
+            for y in names:
+                if x != y and y.startswith(x):
+                    self.assertNotIn(y[len(x)], (" ", ":"), (x, y))
+
     def test_refuses_malformed_requests(self):
         bad = [
             None,
@@ -107,6 +150,30 @@ class PrepareTest(unittest.TestCase):
             with self.subTest(body=body):
                 with self.assertRaises(DecisionRequestError):
                     prepare(body)
+
+
+class DecideCollisionTest(unittest.TestCase):
+    def test_options_that_clean_alike_keep_their_own_probabilities(self):
+        body = {
+            "state": "s",
+            "questions": {
+                "q": {
+                    "type": "choice",
+                    "instructions": "x",
+                    "criteria": {"a(b)": None, "a b": None, "a b 2": None},
+                }
+            },
+        }
+
+        def score(text, heads):
+            head = heads[0]
+            # A distinct probability per model-facing name; a merged name would
+            # hand two caller keys the same number.
+            return {head.name: {label.name: [0.5, 0.3, 0.2][i] for i, label in enumerate(head.labels)}}, 1
+
+        answer = decide(body, score, MODEL)["answers"]["q"]
+        self.assertEqual(answer["probabilities"], {"a(b)": 0.5, "a b": 0.3, "a b 2": 0.2})
+        self.assertEqual(answer["choice"], "a(b)")
 
 
 class RenderStateTest(unittest.TestCase):

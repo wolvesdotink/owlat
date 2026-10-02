@@ -876,6 +876,10 @@ services:
       DECISION_LOCAL_MODEL: ${DECISION_LOCAL_MODEL:-}
       DECISION_LOCAL_MODEL_REVISION: ${DECISION_LOCAL_MODEL_REVISION:-}
       DECISION_LOCAL_THREADS: ${DECISION_LOCAL_THREADS:-}
+      # One forward pass runs at a time. These bound how many requests may wait
+      # for it and for how long; a request whose caller has given up never runs.
+      DECISION_LOCAL_MAX_QUEUE: ${DECISION_LOCAL_MAX_QUEUE:-}
+      DECISION_LOCAL_MAX_WAIT_SECONDS: ${DECISION_LOCAL_MAX_WAIT_SECONDS:-}
     volumes:
       - decision-local-models:/models
     read_only: true

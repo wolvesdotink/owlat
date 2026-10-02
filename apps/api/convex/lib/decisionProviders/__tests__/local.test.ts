@@ -15,6 +15,7 @@ import { DecisionWireError } from '../wire';
 import {
 	DEFAULT_LOCAL_DECISION_DEADLINE_MS,
 	DEFAULT_LOCAL_DECISION_MODEL,
+	LOCAL_DECISION_DEADLINE_HEADER,
 	LOCAL_DECISION_DEFAULT_BASE_URL,
 	LOCAL_DECISION_MODELS,
 	LocalDecisionError,
@@ -76,6 +77,10 @@ describe('localDecisionAdapter.ask', () => {
 		expect(Object.keys(sent.questions)).toEqual(['needsReply', 'category', 'urgency']);
 		// No credential of any kind rides this request.
 		expect(JSON.stringify(init.headers).toLowerCase()).not.toContain('authorization');
+		// The engine learns when we stop listening, so it can drop abandoned work.
+		expect((init.headers as Record<string, string>)[LOCAL_DECISION_DEADLINE_HEADER]).toBe(
+			String(DEFAULT_LOCAL_DECISION_DEADLINE_MS)
+		);
 
 		expect(result.answers['needsReply']).toEqual({ kind: 'noul', probability: 0.62 });
 		expect(result.answers['category']).toMatchObject({ kind: 'choice', value: 'person' });

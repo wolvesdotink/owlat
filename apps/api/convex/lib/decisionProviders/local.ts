@@ -35,8 +35,9 @@
  * service cannot turn the test button into a way of reading it.
  *
  * Retry is not decided here, as in the native adapter: errors carry their
- * status and the dispatch classifies them. 503 while the model loads is
- * retriable and carries the container's `Retry-After`.
+ * status and the dispatch classifies them. 503 while the model loads, or while
+ * the engine's bounded queue is full, is retriable and carries the container's
+ * `Retry-After`.
  */
 
 import { isRetriableLlmError } from '../llm/dispatch';
@@ -50,6 +51,9 @@ export const LOCAL_DECISION_DEFAULT_BASE_URL = 'http://decision-local:8080';
 
 /** Appended to whichever origin is configured. */
 export const LOCAL_DECISION_PATH = '/v1/decide';
+
+/** Our remaining budget in ms, so the engine never queues work we have abandoned. */
+export const LOCAL_DECISION_DEADLINE_HEADER = 'x-decision-deadline-ms';
 
 /** Lists the one checkpoint the container has loaded. */
 export const LOCAL_DECISION_MODELS_PATH = '/v1/models';
@@ -211,7 +215,14 @@ export const localDecisionAdapter: DecisionProviderAdapter<'local'> = {
 		try {
 			response = await fetcherFor(cfg)(`${originOf(cfg)}${LOCAL_DECISION_PATH}`, {
 				method: 'POST',
-				headers: { 'content-type': 'application/json', accept: 'application/json' },
+				headers: {
+					'content-type': 'application/json',
+					accept: 'application/json',
+					// The engine serves one request at a time. Telling it when we stop
+					// listening lets it drop this request from its queue instead of
+					// spending its one slot on an answer nobody will read.
+					[LOCAL_DECISION_DEADLINE_HEADER]: String(deadlineMs),
+				},
 				body: JSON.stringify({ ...(model ? { model } : {}), state: req.state, questions }),
 				redirect: 'manual',
 				signal: deadlineSignal(req, deadlineMs),

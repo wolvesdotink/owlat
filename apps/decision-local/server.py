@@ -9,14 +9,23 @@ backend is its one client.
     POST /v1/decide    the decision wire, see `decide.py`
 
 The model loads on a background thread so the container answers /health
-straight away; if the load fails the process exits and Docker restarts it. A decision asked before the model is ready gets 503 with a
-Retry-After, which the Convex dispatch treats as retriable. The first start
-downloads the checkpoint into the model volume (around 1.1 GB for the default
-model), so that can take a while; later starts read it from disk.
+straight away; if the load fails the process exits and Docker restarts it.
+A decision asked before the model is ready gets 503 with a Retry-After,
+which the Convex dispatch treats as retriable. The first start downloads the
+checkpoint into the model volume (around 1.1 GB for the default model), so
+that can take a while; later starts read it from disk.
 
 Inference runs one request at a time behind a lock. torch already spreads one
 forward pass over the CPU cores, and a second concurrent pass would only make
-both slower.
+both slower. The queue in front of that lock is BOUNDED, and so is every wait
+in it. The Convex adapter sends its remaining budget in `x-decision-deadline-ms`,
+and a request gives up its place before that budget runs out, because past it
+the caller has hung up and the answer would go nowhere. Without the bound, an
+abandoned request still ran its forward pass after its client had left, and a
+burst of retries kept the one slot busy with work nobody was waiting for. A
+full queue or an expired wait answers 503 with a short Retry-After, which the
+dispatch treats as retriable. Validation runs before a request queues, so a
+malformed one never takes a place.
 """
 
 from __future__ import annotations
@@ -25,6 +34,7 @@ import json
 import logging
 import os
 import threading
+import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
@@ -35,16 +45,78 @@ log = logging.getLogger("decision-local")
 
 MAX_BODY_BYTES = 2 * 1024 * 1024
 LOADING_RETRY_AFTER_SECONDS = 10
+BUSY_RETRY_AFTER_SECONDS = 1
+
+# The client's remaining budget for this request, in milliseconds.
+DEADLINE_HEADER = "x-decision-deadline-ms"
+# Stop waiting this long before the client's deadline: a forward pass that
+# starts with no time left finishes after the caller has gone.
+DEADLINE_MARGIN_SECONDS = 0.25
+
+
+class EngineBusy(Exception):
+    """No inference slot within the request's time. Maps to a retriable 503."""
+
+
+def _env_number(name: str, default: float) -> float:
+    raw = os.environ.get(name, "").strip()
+    try:
+        value = float(raw) if raw else default
+    except ValueError:
+        log.warning("%s=%r is not a number; using %s", name, raw, default)
+        return default
+    return value if value > 0 else default
 
 
 class EngineState:
     """The engine plus what the server needs to report about it."""
 
-    def __init__(self, engine: Any, on_load_failure: Callable[[], None] | None = None) -> None:
+    def __init__(
+        self,
+        engine: Any,
+        on_load_failure: Callable[[], None] | None = None,
+        max_queue: int | None = None,
+        max_wait_seconds: float | None = None,
+    ) -> None:
         self.engine = engine
         self.lock = threading.Lock()
         self.error: str | None = None
         self.on_load_failure = on_load_failure
+        # How many requests may wait for the slot, and for how long at most when
+        # the client named no deadline of its own.
+        self.max_queue = max_queue or int(_env_number("DECISION_LOCAL_MAX_QUEUE", 8))
+        self.max_wait_seconds = max_wait_seconds or _env_number("DECISION_LOCAL_MAX_WAIT_SECONDS", 25)
+        self._admission = threading.Lock()
+        self._waiting = 0
+
+    def run_exclusive(self, work: Callable[[], Any], deadline: float | None) -> Any:
+        """Run `work` in the single inference slot, or raise EngineBusy.
+
+        `deadline` is a `time.monotonic()` value after which the caller is no
+        longer listening. The wait ends before it, so a request whose client
+        has given up never reaches the model.
+        """
+        now = time.monotonic()
+        give_up = now + self.max_wait_seconds
+        if deadline is not None:
+            give_up = min(give_up, deadline - DEADLINE_MARGIN_SECONDS)
+        if give_up <= now:
+            raise EngineBusy("The request's deadline leaves no time to answer it.")
+        with self._admission:
+            if self._waiting >= self.max_queue:
+                raise EngineBusy(f"The engine is busy: {self._waiting} requests are already waiting.")
+            self._waiting += 1
+        try:
+            acquired = self.lock.acquire(timeout=give_up - now)
+        finally:
+            with self._admission:
+                self._waiting -= 1
+        if not acquired:
+            raise EngineBusy("The engine is busy and could not answer within the request's deadline.")
+        try:
+            return work()
+        finally:
+            self.lock.release()
 
     def load_in_background(self) -> threading.Thread:
         def run() -> None:
@@ -116,7 +188,16 @@ def make_handler(state: EngineState) -> Callable[..., BaseHTTPRequestHandler]:
                 return
             self._error(HTTPStatus.NOT_FOUND, f"No route {self.path}.")
 
+        def _deadline(self, arrived: float) -> float | None:
+            raw = self.headers.get(DEADLINE_HEADER)
+            try:
+                budget_ms = float(raw) if raw else 0
+            except ValueError:
+                return None
+            return arrived + budget_ms / 1000 if budget_ms > 0 else None
+
         def do_POST(self) -> None:  # noqa: N802
+            arrived = time.monotonic()
             if self.path != "/v1/decide":
                 self._error(HTTPStatus.NOT_FOUND, f"No route {self.path}.")
                 return
@@ -142,9 +223,22 @@ def make_handler(state: EngineState) -> Callable[..., BaseHTTPRequestHandler]:
             if not state.engine.ready:
                 self._not_ready()
                 return
+            deadline = self._deadline(arrived)
+
+            def score(text: str, heads: Any) -> Any:
+                # Validation already ran inside `decide`; only the forward pass
+                # waits for the slot.
+                return state.run_exclusive(lambda: state.engine.score(text, heads), deadline)
+
             try:
-                with state.lock:
-                    result = decide(body, state.engine.score, state.engine.model_id)
+                result = decide(body, score, state.engine.model_id)
+            except EngineBusy as exc:
+                self._error(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    str(exc),
+                    {"retry-after": str(BUSY_RETRY_AFTER_SECONDS)},
+                )
+                return
             except DecisionRequestError as exc:
                 self._error(HTTPStatus.UNPROCESSABLE_ENTITY, str(exc))
                 return

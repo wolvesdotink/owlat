@@ -30,23 +30,20 @@ import type { DecisionEndpointProvenance } from '../decisionProviders/types';
 import type { LanguageEndpointProvenance } from '../llmProviders/types';
 import {
 	DECISION_MODEL_PRICE_PREFIX,
-	LOCAL_DECISION_MODEL_PRICE_PREFIX,
 	estimateCost,
 	estimateKnownCostMicrousd,
 	type CostEstimate,
 } from '../llm/pricing';
 
 /**
- * True when a recorded model id is priced by the decision plane's rows — the
- * hosted `jev-` family or the local engine's GLiNER checkpoints. Derived from
- * the same prefixes the price rows are written from, so a new version is
- * priced, labelled and classified by one change.
+ * True when a recorded model id is priced by the decision plane's rows. Derived
+ * from the same prefix the price row and the admission aliases are written from,
+ * so a new pinned version is priced, labelled and classified by one change. The
+ * local engine has no row: its usage is free by provenance (`isLocalEngine` on
+ * the ledger row), not by model id, because it may load any checkpoint.
  */
 export function isDecisionPlaneModel(modelUsed: string | undefined): boolean {
-	const id = (modelUsed ?? '').toLowerCase();
-	return (
-		id.startsWith(DECISION_MODEL_PRICE_PREFIX) || id.includes(LOCAL_DECISION_MODEL_PRICE_PREFIX)
-	);
+	return (modelUsed ?? '').toLowerCase().startsWith(DECISION_MODEL_PRICE_PREFIX);
 }
 
 /**
