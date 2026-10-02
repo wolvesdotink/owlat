@@ -11,6 +11,7 @@ import {
 	pickReplyTarget,
 } from '~/utils/teamThreadReply';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
+import { interleaveNotes } from '~/utils/threadNotes';
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
 import { useTeamKeptReply } from '~/composables/useTeamKeptReply';
 
@@ -114,16 +115,18 @@ const assignToMe = () => {
 	const me = user.value?.id;
 	if (me) void handleAssign(me);
 };
-// `r` opens the reply in Answer mode, as the shortcut sheet promises.
+// `r` opens the reply in Answer mode, as the shortcut sheet promises; `n`
+// opens an internal note under the thread.
 function onThreadKeydown(event: KeyboardEvent) {
 	const key = event.key.toLowerCase();
-	if (key !== 'i' && key !== 'r') return;
+	if (key !== 'i' && key !== 'r' && key !== 'n') return;
 	if (event.metaKey || event.ctrlKey || event.altKey) return;
 	// Never hijack typing in an input / textarea / contenteditable.
 	if (isEditableTarget(event.target)) return;
 	event.preventDefault();
 	if (key === 'i') assignToMe();
-	else openReply();
+	else if (key === 'r') openReply();
+	else if (isAdmin.value) composeBar.value?.openNote();
 }
 onMounted(() => window.addEventListener('keydown', onThreadKeydown));
 onBeforeUnmount(() => window.removeEventListener('keydown', onThreadKeydown));
@@ -256,6 +259,11 @@ function hasAgentInsight(message: {
 		message.processingStatus === 'quarantined'
 	);
 }
+// ── Internal notes: between the messages by time, written under the thread ──
+const threadNotes = useThreadNotes(threadId, { enabled: () => isAdmin.value });
+const noteSlots = computed(() => interleaveNotes(messages.value, threadNotes.notes.value));
+const composeBar = ref<{ openNote: () => void } | null>(null);
+
 // "Compose email" (top bar, palette, shortcut) on a thread answers the thread.
 watch(useThreadReplyRequest(), () => openReply());
 
@@ -489,6 +497,12 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 			<div class="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-[minmax(0,1fr)_20rem] gap-6">
 				<!-- Messages Timeline -->
 				<div class="lg:col-span-2 xl:col-span-1 space-y-4">
+					<InboxNoteList
+						v-if="noteSlots.leading.length > 0"
+						:items="noteSlots.leading"
+						:notes="threadNotes"
+						:is-admin="isAdmin"
+					/>
 					<template v-for="message in messages" :key="message._id">
 						<div class="card">
 							<!-- Message Header -->
@@ -626,6 +640,13 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							:undoing="undoingFollowUpId === followUp._id"
 							@undo="undoFollowUp(followUp._id)"
 						/>
+						<!-- The team's internal notes written after this message. -->
+						<InboxNoteList
+							v-if="noteSlots.after.has(message._id)"
+							:items="noteSlots.after.get(message._id) ?? []"
+							:notes="threadNotes"
+							:is-admin="isAdmin"
+						/>
 					</template>
 
 					<!-- Empty messages -->
@@ -635,24 +656,19 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						:title="t('dashboard.inbox.detail.noMessages')"
 					/>
 
-					<!-- Every reply is written in Answer mode; this is the way in. -->
-					<button
-						v-if="isAdmin && replyTarget"
-						type="button"
-						class="card flex w-full items-center gap-3 text-left text-sm text-text-tertiary transition-colors duration-(--motion-fast) hover:text-text-primary"
-						data-testid="thread-reply-open"
-						@click="openReply()"
-					>
-						<Icon name="lucide:reply" class="w-4 h-4 shrink-0" />
-						<span class="min-w-0 flex-1 truncate">
-							{{ t('dashboard.inbox.detail.composer.replyTo', { name: replySenderLabel }) }}
-						</span>
-						<kbd
-							class="hidden sm:inline px-1 py-px rounded border border-border-subtle bg-bg-surface font-mono text-[10px] text-text-secondary"
-							aria-hidden="true"
-							>R</kbd
-						>
-					</button>
+					<!-- Every reply is written in Answer mode; this is the way in. Beside
+					     it, an internal note only the team sees. -->
+					<InboxThreadComposeBar
+						v-if="isAdmin"
+						ref="composeBar"
+						:notes="threadNotes"
+						:reply-label="
+							replyTarget
+								? t('dashboard.inbox.detail.composer.replyTo', { name: replySenderLabel })
+								: null
+						"
+						@reply="openReply()"
+					/>
 				</div>
 
 				<!-- Sidebar -->

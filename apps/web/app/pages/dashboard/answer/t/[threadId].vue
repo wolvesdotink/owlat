@@ -18,7 +18,8 @@
  * thread until the reply is written.
  *
  * Keys: Esc leaves (inside the editor the first Esc only blurs it), `t`
- * toggles Summary / Full conversation, Cmd/Ctrl+J focuses the reply.
+ * toggles Summary / Full conversation, `n` opens the Note tab (the team's
+ * internal notes, which never reach the reply), Cmd/Ctrl+J focuses the reply.
  */
 import type { PresencePerson } from '~/components/inbox/InboxThreadPresence.vue';
 import type { AnswerConversationView } from '~/components/answer/AnswerConversation.vue';
@@ -126,6 +127,8 @@ const composerRef = shallowRef<{
 } | null>(null);
 
 const tab = ref<'conversation' | 'reply'>('conversation');
+const composeMode = ref<'reply' | 'note'>('reply');
+const threadNotes = useThreadNotes(threadId, { enabled: () => isAdmin.value });
 const view = ref<AnswerConversationView>('summary');
 
 // Catch-up, Draft with AI, and the agent's questions
@@ -244,13 +247,15 @@ function onKeydown(event: KeyboardEvent) {
 	const plain = !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
 	if (
 		plain &&
-		(event.key === 't' || event.key === 'T') &&
+		(event.key === 't' || event.key === 'T' || event.key === 'n' || event.key === 'N') &&
 		!isEditableTarget(event.target) &&
 		!isChordPending() &&
 		!isDialogOpen()
 	) {
 		event.preventDefault();
-		view.value = view.value === 'summary' ? 'full' : 'summary';
+		if (event.key.toLowerCase() === 'n') {
+			if (isAdmin.value) [tab.value, composeMode.value] = ['reply', 'note'];
+		} else view.value = view.value === 'summary' ? 'full' : 'summary';
 	}
 }
 const aiFocus = useAnswerAiFocus();
@@ -261,6 +266,7 @@ function onChordCapture(event: KeyboardEvent) {
 	event.preventDefault();
 	event.stopPropagation();
 	tab.value = 'reply';
+	composeMode.value = 'reply';
 	if (!aiFocus.request()) composerRef.value?.focus();
 }
 onMounted(() => {
@@ -367,8 +373,20 @@ onBeforeUnmount(() => {
 			</template>
 
 			<template #composer>
+				<InboxComposeModeTabs
+					v-if="isAdmin"
+					v-model="composeMode"
+					:note-count="threadNotes.liveCount.value"
+				/>
+				<InboxAnswerNotesPanel
+					v-if="isAdmin && composeMode === 'note'"
+					:notes="threadNotes"
+					:is-admin="isAdmin"
+				/>
+				<!-- v-show, not v-if: switching to Note keeps the reply as typed. -->
 				<InboxThreadComposer
 					v-if="isAdmin && reply.composerTarget.value"
+					v-show="composeMode === 'reply'"
 					ref="composerRef"
 					:key="reply.target.value?._id"
 					:target="reply.composerTarget.value"
@@ -465,7 +483,12 @@ onBeforeUnmount(() => {
 						</UiButton>
 					</template>
 				</InboxThreadComposer>
-				<div v-else class="flex-1 space-y-3 p-4" aria-hidden="true">
+				<div
+					v-else
+					v-show="composeMode === 'reply'"
+					class="flex-1 space-y-3 p-4"
+					aria-hidden="true"
+				>
 					<UiSkeleton class="h-4 w-2/3" />
 					<UiSkeleton class="h-32 w-full" />
 				</div>
