@@ -221,11 +221,16 @@ function reset() {
 	savedReplies.gapGuarded.value = false;
 }
 
-/** Reopen with text handed back to the person (an undone follow-up). */
-function fill(text: string, nextSubject: string) {
+/**
+ * Reopen with text handed back to the person (an undone follow-up, a kept
+ * reply). `gapGuarded`: the text holds a saved reply's gaps, which keep
+ * holding Send.
+ */
+function fill(text: string, nextSubject: string, gapGuarded = false) {
 	touched.value = true;
 	body.value = text;
 	subject.value = nextSubject;
+	savedReplies.gapGuarded.value = gapGuarded;
 	focus();
 }
 
@@ -272,7 +277,12 @@ const canSend = computed(
 
 /** What the person typed, for keeping it when they leave without sending. */
 function snapshot() {
-	return { body: body.value, subject: subject.value, touched: touched.value };
+	return {
+		body: body.value,
+		subject: subject.value,
+		touched: touched.value,
+		gapGuarded: savedReplies.gapGuarded.value,
+	};
 }
 
 defineExpose({ focus, reset, fill, insert, snapshot, answer });
@@ -379,6 +389,7 @@ defineExpose({ focus, reset, fill, insert, snapshot, answer });
 						data-testid="thread-composer-body"
 						@input="onInput"
 						@keydown="onKeydown"
+						@keyup="savedReplies.handleKeyup"
 						@click="savedReplies.refreshTrigger"
 						@blur="savedReplies.dropdown.close"
 					/>

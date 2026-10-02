@@ -180,13 +180,15 @@ function draftFromPeek() {
 const keptReply = useTeamKeptReply();
 watch(composerRef, (composer) => {
 	const kept = keptReply.get(threadId.value);
-	if (composer && kept) composer.fill(kept.body, kept.subject);
+	if (composer && kept) composer.fill(kept.body, kept.subject, kept.gapGuarded);
 });
 function keepTyped() {
 	const snapshot = composerRef.value?.snapshot();
 	keptReply.set(
 		threadId.value,
-		snapshot?.touched ? { body: snapshot.body, subject: snapshot.subject } : null
+		snapshot?.touched
+			? { body: snapshot.body, subject: snapshot.subject, gapGuarded: snapshot.gapGuarded }
+			: null
 	);
 }
 

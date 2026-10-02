@@ -19,13 +19,13 @@
  */
 import { computed, nextTick, onMounted, ref, watch, type Ref } from 'vue';
 import type { EditorSnippet } from './usePostboxSnippetPicker';
+import { bodyHasQuote } from '~/utils/answerMode';
 
 /** What the composer calls on its simple editor. */
 export interface BasicEditorHandle {
 	focus: () => void;
 	insertSnippet: (snippet: EditorSnippet) => void;
 }
-import { bodyHasQuote } from '~/utils/answerMode';
 
 export function usePostboxComposerAnswerFrame(opts: {
 	/** `frame === 'answer'`; fixed for the life of the composer. */

@@ -21,7 +21,7 @@ export interface SnippetTrigger {
  * prose almost never puts it at the start of a word; `/` is what the Postbox
  * used before saved replies, and stays for the people who learned it.
  */
-const TRIGGER_CHARS = [';', '/'] as const;
+const SNIPPET_TRIGGER_CHARS: readonly string[] = [';', '/'];
 
 /**
  * Decide whether the text immediately before the caret is an active trigger: a
@@ -31,9 +31,13 @@ const TRIGGER_CHARS = [';', '/'] as const;
  *
  * Returns null for a mid-word trigger ("and/or", "x;y"), or when whitespace
  * already follows it (the token is finished, so it's literal text again).
+ * `triggers` narrows the characters (the Team inbox reply never had `/`).
  */
-export function detectSnippetTrigger(textBeforeCaret: string): SnippetTrigger | null {
-	const start = Math.max(...TRIGGER_CHARS.map((char) => textBeforeCaret.lastIndexOf(char)));
+export function detectSnippetTrigger(
+	textBeforeCaret: string,
+	triggers: readonly string[] = SNIPPET_TRIGGER_CHARS
+): SnippetTrigger | null {
+	const start = Math.max(...triggers.map((char) => textBeforeCaret.lastIndexOf(char)));
 	if (start < 0) return null;
 	const prev = start === 0 ? '' : (textBeforeCaret[start - 1] ?? '');
 	// Must be at start-of-input, start-of-line, or after whitespace.

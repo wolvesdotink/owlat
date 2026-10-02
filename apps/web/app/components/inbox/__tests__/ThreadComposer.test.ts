@@ -280,6 +280,7 @@ describe('InboxThreadComposer in Answer mode', () => {
 			body: 'The CSV has both variants.',
 			subject: 'Re: Invoice',
 			touched: true,
+			gapGuarded: false,
 		});
 	});
 
@@ -458,6 +459,9 @@ describe('InboxThreadComposer and saved replies', () => {
 		expect(wrapper.find('[role="option"]').exists()).toBe(false);
 		await type(wrapper, 'a;ref');
 		expect(wrapper.find('[role="option"]').exists()).toBe(false);
+		// `/` is only the Postbox's older trigger.
+		await type(wrapper, 'see /ref');
+		expect(wrapper.find('[role="option"]').exists()).toBe(false);
 	});
 
 	it('turns what it cannot fill into gaps that hold Send until they are filled', async () => {
@@ -496,6 +500,46 @@ describe('InboxThreadComposer and saved replies', () => {
 		expect(body(wrapper).element.value).toBe(
 			'Thanks!Order [[order number]] for [[Recipient’s last name]] ships today.'
 		);
+	});
+
+	it('replaces the ";token" at the caret, also after the caret moved without typing', async () => {
+		savedReplies.value = [refund];
+		const wrapper = mountComposer({ recipient: { firstName: 'Ana' } });
+		await type(wrapper, 'Hi ;ref');
+		expect(wrapper.find('[role="option"]').exists()).toBe(true);
+
+		// ← past the ";" closes the dropdown, so Enter is a newline again.
+		const textarea = body(wrapper);
+		textarea.element.setSelectionRange(2, 2);
+		await textarea.trigger('keyup', { key: 'ArrowLeft' });
+		expect(wrapper.find('[role="option"]').exists()).toBe(false);
+
+		// Back at the end of the token, Enter replaces exactly the token.
+		textarea.element.setSelectionRange(7, 7);
+		await textarea.trigger('keyup', { key: 'End' });
+		await textarea.trigger('keydown', { key: 'Enter' });
+		expect(textarea.element.value).toBe('Hi Hi Ana,\n\nyour refund is on its way. Mira');
+	});
+
+	it('keeps holding Send for a saved reply’s gaps when the text is put back', async () => {
+		savedReplies.value = [order];
+		const wrapper = mountComposer();
+		await type(wrapper, ';order');
+		await body(wrapper).trigger('keydown', { key: 'Enter' });
+		const kept = (wrapper.vm as unknown as { snapshot: () => Record<string, unknown> }).snapshot();
+		expect(kept).toMatchObject({ gapGuarded: true });
+
+		// The thread is opened again: the kept text goes back in with its guard.
+		const again = mountComposer();
+		const api = again.vm as unknown as {
+			fill: (body: string, subject: string, gapGuarded?: boolean) => void;
+		};
+		api.fill(String(kept['body']), '', true);
+		await nextTick();
+		expect(again.get('[data-testid="composer-send"]').attributes('disabled')).toBeDefined();
+		api.fill('Order [[order number]] ships.', '');
+		await nextTick();
+		expect(again.get('[data-testid="composer-send"]').attributes('disabled')).toBeUndefined();
 	});
 
 	it('offers to save what was written as a new reply', async () => {

@@ -43,6 +43,12 @@ export interface SavedReplyRecipient {
 	email?: string | null;
 }
 
+/**
+ * Only `;` opens the dropdown here: `/` is the Postbox's older trigger, and in
+ * plain text a path or "/s" at the end of a line would turn Enter into an insert.
+ */
+const TRIGGERS = [';'] as const;
+
 /** Where a reply goes in the text: the selection, or the `;token` it replaces. */
 type TextRange = { start: number; end: number };
 
@@ -154,7 +160,7 @@ export function useTeamComposerSavedReplies(opts: {
 		if (!el || el.selectionStart !== el.selectionEnd || replies.value.length === 0) {
 			return closeTrigger();
 		}
-		const found = detectSnippetTrigger(el.value.slice(0, el.selectionStart));
+		const found = detectSnippetTrigger(el.value.slice(0, el.selectionStart), TRIGGERS);
 		const token = found ? `${found.triggerStart}:${found.query}` : null;
 		if (!found || token === dismissed) {
 			if (!found) dismissed = null;
@@ -176,11 +182,22 @@ export function useTeamComposerSavedReplies(opts: {
 	}
 
 	function selectFromTrigger(reply: EditorSnippet) {
-		const found = trigger.value;
 		const el = opts.textarea.value;
 		closeTrigger();
+		// Read the `;token` at the caret now: the caret may have moved since the
+		// dropdown opened, and a stale start past the caret would duplicate text.
+		const found =
+			el && el.selectionStart === el.selectionEnd
+				? detectSnippetTrigger(el.value.slice(0, el.selectionStart), TRIGGERS)
+				: null;
 		if (!found || !el) return insertAtCaret(reply);
 		begin(reply, { start: found.triggerStart, end: el.selectionStart });
+	}
+
+	/** Keys that move the caret without an input event re-read the trigger. */
+	const CARET_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown']);
+	function handleKeyup(event: KeyboardEvent) {
+		if (CARET_KEYS.has(event.key)) refreshTrigger();
 	}
 
 	const footer = useComposerSavedReplyPicker({
@@ -226,5 +243,6 @@ export function useTeamComposerSavedReplies(opts: {
 		dropdown: { items, index, style, select: selectFromTrigger, close: closeTrigger },
 		refreshTrigger,
 		handleKeydown,
+		handleKeyup,
 	};
 }

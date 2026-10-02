@@ -8,6 +8,8 @@
 export interface TeamKeptReply {
 	body: string;
 	subject: string;
+	/** A saved reply put `[[...]]` gaps into the text: they still hold Send. */
+	gapGuarded?: boolean;
 }
 
 export function useTeamKeptReply() {
