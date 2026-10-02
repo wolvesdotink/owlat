@@ -1,12 +1,14 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { ConvexClient } from 'convex/browser';
-import { decideServiceWorkerAction, isOwnServiceWorker, workerUrlFor } from '~/utils/offlineShell';
+import { isOwnServiceWorker } from '~/utils/offlineShell';
+import { decideServiceWorkerAction } from '~/utils/serviceWorkerAction';
 import {
 	applicationServerKeyBytes,
 	describeDevice,
 	subscriptionMatchesKey,
 	webPushSupport,
+	workerUrlFor,
 	type WebPushSupport,
 } from '~/utils/webPush';
 

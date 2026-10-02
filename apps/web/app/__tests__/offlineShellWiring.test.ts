@@ -23,6 +23,7 @@ const nuxtConfig = readFileSync(resolve(webRoot, 'nuxt.config.ts'), 'utf8');
 const workerPath = resolve(webRoot, 'service-worker', 'sw.js');
 const worker = readFileSync(workerPath, 'utf8');
 const plugin = readFileSync(resolve(webRoot, 'app', 'plugins', 'service-worker.client.ts'), 'utf8');
+const runtime = readFileSync(resolve(webRoot, 'app', 'lib', 'serviceWorkerControl.ts'), 'utf8');
 
 describe('offline app shell wiring', () => {
 	it('serves the worker from the app root, where its scope can cover every route', () => {
@@ -30,7 +31,7 @@ describe('offline app shell wiring', () => {
 		// A worker at /sw.js controls '/' — deeper, and it could only ever answer
 		// navigations under its own directory.
 		expect(SERVICE_WORKER_URL).toBe('/sw.js');
-		expect(plugin).toContain('SERVICE_WORKER_URL');
+		expect(runtime).toContain('SERVICE_WORKER_URL');
 	});
 
 	it('is shipped through nitro.publicAssets, and NOT out of public/', () => {
