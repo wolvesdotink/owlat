@@ -75,6 +75,7 @@ export function buildOnRcptTo(config: MtaConfig, redis: Redis) {
 				}
 				return findRoute(redis, address.address, {
 					ruaAddress: config.tlsRptRua,
+					dmarcReportAddress: config.dmarcReportAddress,
 					convexSiteUrl: config.convexSiteUrl,
 					webhookSecret: config.webhookSecret,
 				})

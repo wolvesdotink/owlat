@@ -4,7 +4,8 @@
  * records the operator has to publish for it as one checklist — a summary that
  * names each record still missing, then the records grouped into sender
  * authentication (SPF, DKIM, DMARC) and bounce handling (MAIL FROM) — plus the
- * DMARC enforcement selector and the return-path editor.
+ * DMARC enforcement selector, where the domain's DMARC reports go, and the
+ * return-path editor.
  *
  * Extracted from `RecordRow.vue`, which carries the collapsed header, the
  * registering/failed states and the receiving (inbound MX) section and was over
@@ -214,6 +215,18 @@ const returnPathHost = computed(() => props.domain.returnPathHost ?? props.mailF
 					{{ t('components.domains.recordRow.dmarcPolicyHelp') }}
 				</p>
 			</div>
+
+			<!-- Where the domain's DMARC aggregate reports go, and whether the
+			     record above asks for them yet. -->
+			<DomainsDmarcReportingPanel
+				v-if="hasDmarc"
+				:domain-id="domain._id"
+				:domain="domain.domain"
+				:dmarc-policy="domain.dmarcPolicy"
+				:dmarc-subdomain-policy="domain.dmarcSubdomainPolicy"
+				:dmarc-pct="domain.dmarcPct"
+				:can-manage="canManageDomains"
+			/>
 		</div>
 
 		<!-- Bounce handling: the MAIL FROM (return-path) records. -->

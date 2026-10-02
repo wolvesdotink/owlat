@@ -88,6 +88,7 @@ describe('SendTimeDistribution', () => {
 			holdoutPercent: 10,
 			scheduledHour: start.getHours(),
 			scheduledMinute: start.getMinutes(),
+			timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
 		});
 	});
 

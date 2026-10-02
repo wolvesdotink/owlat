@@ -184,15 +184,16 @@ const slaPills = computed(() => {
 		>
 			<Icon name="lucide:at-sign" class="size-3.5" aria-hidden="true" />
 			<span>{{ t('components.inbox.inboxFilterPills.mentions') }}</span>
+			<!-- aria-label on a plain span is not announced; spell it out instead. -->
 			<span
 				v-if="unreadMentions > 0"
 				class="rounded-full bg-brand px-1.5 text-xs tabular-nums text-text-inverse"
-				:aria-label="
-					t('components.inbox.inboxFilterPills.unreadMentions', { count: unreadMentions })
-				"
 				data-testid="inbox-mentions-unread"
 			>
-				{{ unreadMentions }}
+				<span aria-hidden="true">{{ unreadMentions }}</span>
+				<span class="sr-only">{{
+					t('components.inbox.inboxFilterPills.unreadMentions', { count: unreadMentions })
+				}}</span>
 			</span>
 		</button>
 	</div>

@@ -169,6 +169,9 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// Campaign + template parents
 	'campaigns',
 	// Version snapshots before the templates they belong to.
+	'emailCoeditNotices', // co-editing notices, presence and live drafts — before their emails
+	'emailEditorPresence',
+	'emailCoeditSessions',
 	'emailTemplateVersions',
 	'emailTemplates',
 	'transactionalEmails',
@@ -228,6 +231,8 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'mixDecisions',
 	'rampStreamPresets',
 	'yahooCflEnrollments',
+	'dmarcReportRecords',
+	'dmarcReports',
 	'domains',
 	'sendingDomainMtaIdentities',
 	'sendingDomainSesIdentities',

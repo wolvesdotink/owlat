@@ -6,6 +6,7 @@
  *   `emails.update`            → trigger `save`
  *   `emails.publish`           → trigger `publish`
  *   `campaigns/send.ts` PREP   → trigger `send` (via `captureForSend`)
+ *   `emailCoediting/sessions.ts` → trigger `conflict` (a co-editor's change replaced)
  *
  * Restore is deliberately NOT a mutation here: the editor loads a snapshot into
  * its working state, where it becomes an ordinary undoable edit, and the next

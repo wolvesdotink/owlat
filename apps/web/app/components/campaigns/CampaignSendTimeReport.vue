@@ -7,10 +7,14 @@
  */
 import { compareSendTimeArms, MIN_DELIVERED_PER_GROUP } from '~/utils/sendTimeComparison';
 import type { SendTimeMetricComparison } from '~/utils/sendTimeComparison';
+import { formatDateTime } from '~/utils/formatters';
+import { useNow } from '~/composables/useNow';
 
 const props = defineProps<{
 	campaign: {
 		status: string;
+		sentAt?: number;
+		updatedAt?: number;
 		sendTimeOptimization?: { windowHours: number; holdoutPercent: number };
 		statsSendTimeOptimizedDelivered?: number;
 		statsSendTimeOptimizedOpened?: number;
@@ -24,7 +28,9 @@ const props = defineProps<{
 const { t, locale } = useI18n();
 const prefix = 'components.campaigns.sendTimeReport';
 
-const comparison = computed(() => compareSendTimeArms(props.campaign));
+// The comparison becomes due a day after the last send; a minute is plenty.
+const now = useNow({ intervalMs: 60_000 });
+const comparison = computed(() => compareSendTimeArms(props.campaign, now.value));
 const settings = computed(() => props.campaign.sendTimeOptimization);
 
 const numberFormat = computed(() => new Intl.NumberFormat(locale.value));
@@ -67,6 +73,20 @@ function verdictTone(metric: SendTimeMetricComparison): string {
 			data-state="no-holdout"
 		>
 			{{ t(`${prefix}.noHoldout`) }}
+		</p>
+
+		<p
+			v-else-if="comparison.state === 'measuring'"
+			class="mt-4 text-sm text-text-secondary"
+			data-state="measuring"
+		>
+			{{
+				comparison.readyAt === null
+					? t(`${prefix}.measuringWhileSending`)
+					: t(`${prefix}.measuring`, {
+							date: formatDateTime(comparison.readyAt, locale),
+						})
+			}}
 		</p>
 
 		<p

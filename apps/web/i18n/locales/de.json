@@ -806,6 +806,134 @@
 					"unsubscribed": "Abgemeldet"
 				}
 			},
+			"presendChecks": {
+				"acknowledged": "Du hast diese Warnungen geprüft.",
+				"contrastDark": {
+					"found": "Im Dark Mode schwer lesbar: {count}",
+					"pass": "Text bleibt im Dark Mode lesbar."
+				},
+				"contrastLight": {
+					"found": "Text unter dem WCAG-AA-Kontrast: {count}",
+					"pass": "Text und Buttons erfüllen den WCAG-AA-Kontrast."
+				},
+				"headline": {
+					"blocked": "Diese Kampagne kann noch nicht versendet werden.",
+					"checking": "Links, Bilder und Inhalt werden geprüft …",
+					"clear": "Alles in Ordnung.",
+					"warnings": "{count} Punkt solltest du dir vor dem Versand ansehen. | {count} Punkte solltest du dir vor dem Versand ansehen."
+				},
+				"imageAlt": {
+					"found": "Bilder ohne Alt-Text: {count}",
+					"pass": "Jedes Bild hat einen Alt-Text oder ist als dekorativ markiert."
+				},
+				"imageLoad": {
+					"found": "Bilder, die nicht laden oder sehr groß sind: {count}",
+					"none": "Keine gehosteten Bilder zu prüfen.",
+					"pass": "Jedes Bild lädt und hat eine vernünftige Größe ({count}).",
+					"pending": "Bilder werden geprüft …"
+				},
+				"imageWidth": {
+					"found": "Bilder ohne festgelegte Breite: {count}. Outlook zeigt sie in voller Größe.",
+					"pass": "Jedes Bild hat eine Breite."
+				},
+				"labels": {
+					"carousel": "Karussell-Block",
+					"image": "Bild-Block"
+				},
+				"linkSyntax": {
+					"found": "Links mit fehlerhafter Adresse: {count}",
+					"pass": "Jeder Link hat eine brauchbare Adresse."
+				},
+				"links": {
+					"broken": "Links, die nicht funktionieren: {count}",
+					"none": "Keine Weblinks zu prüfen.",
+					"notChecked": "Nicht verifiziert: {count} (personalisiert, oder die Website lehnt automatische Prüfungen ab).",
+					"pass": "Jeder geprüfte Link funktioniert ({count}).",
+					"pending": "Alle Links werden geprüft …",
+					"personalizedOnly": "Alle Links werden pro Empfänger personalisiert und lassen sich vorab nicht prüfen."
+				},
+				"markReviewed": "Als geprüft markieren",
+				"names": {
+					"contrastDark": "Kontrast im Dark Mode",
+					"contrastLight": "Kontrast",
+					"imageAlt": "Alt-Text",
+					"imageLoad": "Bilder",
+					"imageWidth": "Bildbreite",
+					"linkSyntax": "Link-Adressen",
+					"links": "Links",
+					"postalAddress": "Postanschrift",
+					"screening": "Inhaltsprüfung",
+					"sending": "Versand",
+					"size": "Größe",
+					"subject": "Betreffzeile",
+					"unsubscribe": "Abmeldelink"
+				},
+				"passed": "{count} Prüfung bestanden | {count} Prüfungen bestanden",
+				"postalAddress": {
+					"missing": "Wir haben keine Postanschrift gefunden. Das US-Recht (CAN-SPAM) verlangt eine in Marketing-E-Mails, und in der EU gehört sie ins Impressum. Ergänze sie in der Fußzeile.",
+					"pass": "Die E-Mail enthält eine Postanschrift."
+				},
+				"reasons": {
+					"blockedUrl": "passt auf das gesperrte Muster „{pattern}“",
+					"brokenMergeTag": "ein Platzhalter ist nicht geschlossen oder ungültig",
+					"emptyHref": "der Link hat keine Adresse",
+					"hashHref": "der Link zeigt auf „#“ und führt nirgendwohin",
+					"httpStatus": "die Website antwortet mit {status}",
+					"imageAtLeast": "über {size} MB, halte Bilder unter {limit} MB",
+					"imageLarge": "{size} MB, halte Bilder unter {limit} MB",
+					"invalidMailto": "keine gültige E-Mail-Adresse",
+					"lowContrast": "Kontrast {ratio}:1, nötig sind {required}:1",
+					"missingAlt": "kein Alt-Text",
+					"noWidth": "keine Breite festgelegt",
+					"privateAddress": "zeigt auf eine private Netzwerkadresse, die Leser nicht öffnen können",
+					"redirectLoop": "leitet zu oft weiter",
+					"relativeUrl": "keine vollständige Webadresse; beginne sie mit https://",
+					"subjectAllCaps": "Großbuchstaben wirken wie Schreien und lösen Spamfilter aus",
+					"subjectEmpty": "der Betreff ist leer",
+					"subjectLong": "{count} Zeichen; Gmail zeigt etwa {max}",
+					"timeout": "die Website hat nicht rechtzeitig geantwortet",
+					"unreachable": "die Website ist nicht erreichbar",
+					"unsupportedScheme": "Mail-Apps öffnen diese Art Link nicht"
+				},
+				"recheck": "Erneut prüfen",
+				"remoteFailed": "Diese Prüfung lässt sich gerade nicht ausführen. Versuch es mit „Erneut prüfen“.",
+				"screening": {
+					"disabled": "Die Inhaltsprüfung ist auf dem Versandserver ausgeschaltet.",
+					"pass": "Die Inhaltsprüfung des Versandservers akzeptiert diese Nachricht.",
+					"passScored": "Von der Inhaltsprüfung akzeptiert. Spam-Score {score} (abgelehnt ab {threshold}).",
+					"pending": "Die Nachricht wird geprüft …",
+					"reject": "Die Inhaltsprüfung des Versandservers würde diese Nachricht verwerfen.",
+					"rejectBlockedUrl": "Der Versandserver verwirft diese Nachricht: ein Link passt auf das gesperrte Muster „{pattern}“.",
+					"rejectEmpty": "Der Versandserver verwirft diese Nachricht: sie hat keinen Inhalt.",
+					"rejectSize": "Der Versandserver verwirft diese Nachricht: ihr HTML liegt über der Grenze von {limit} KB.",
+					"rejectSpam": "Der Versandserver verwirft diese Nachricht: Spam-Score {score}, die Grenze liegt bei {threshold}.",
+					"tooLarge": "Diese E-Mail ist zu groß für die Inhaltsprüfung.",
+					"unavailable": "Der Versandserver kann Inhalte hier nicht prüfen (kein Owlat-MTA oder eine ältere Version)."
+				},
+				"sending": {
+					"pass": "Nichts blockiert diesen Versand."
+				},
+				"showAll": "Alle {count} anzeigen",
+				"showFewer": "Weniger anzeigen",
+				"showMe": "Anzeigen",
+				"size": {
+					"clipped": "Rund {size} KB beim Empfang. Gmail kürzt Nachrichten über {limit} KB und blendet den Rest hinter „Gesamte Nachricht anzeigen“ aus, samt Abmelde-Fußzeile.",
+					"near": "Rund {size} KB beim Empfang, knapp unter Gmails Grenze von {limit} KB. Darüber blendet Gmail den Rest hinter „Gesamte Nachricht anzeigen“ aus.",
+					"pass": "Rund {size} KB beim Empfang, unter Gmails Grenze von {limit} KB."
+				},
+				"subject": {
+					"found": "Die Betreffzeile könnte dich Öffnungen oder Zustellbarkeit kosten.",
+					"pass": "Die Betreffzeile sieht gut aus."
+				},
+				"title": "Prüfungen vor dem Versand",
+				"unsubscribe": {
+					"footer": "Owlat fügt jeder Themen-Kampagne einen Abmelde- und einen Einstellungslink hinzu.",
+					"ownLink": "Die E-Mail hat einen eigenen Abmeldelink.",
+					"segmentMissing": "Segment-Kampagnen bekommen keine Abmelde-Fußzeile von Owlat, und diese E-Mail hat keinen Abmeldelink. Mail-Apps bieten trotzdem die Abmeldung per Klick an, aber die meisten Gesetze verlangen einen sichtbaren Link.",
+					"segmentNote": "Geht die E-Mail an ein Segment, braucht sie einen eigenen Abmeldelink."
+				},
+				"warningsDontBlock": "Warnungen halten den Versand nicht auf. Markiere sie als geprüft oder sende trotzdem."
+			},
 			"reportHeadline": {
 				"aboveClick": "{open} geöffnet und {click} geklickt — Klickrate über deinem Durchschnitt.",
 				"aboveOpen": "{open} geöffnet und {click} geklickt — Öffnungsrate über deinem Durchschnitt.",
@@ -836,7 +964,9 @@
 				"clickRate": "Klickrate",
 				"difference": "Unterschied",
 				"holdoutColumn": "Startzeit ({count})",
-				"method": "Die Raten beziehen sich auf zugestellte E-Mails. Ein Unterschied zählt nur, wenn ein Test für zwei Anteile ihn mit 95 % Sicherheit vom Zufall unterscheidet.",
+				"measuring": "Beide Gruppen haben nach dem Versand ihrer E-Mail einen ganzen Tag zum Öffnen und Klicken. Der Vergleich steht am {date} bereit.",
+				"measuringWhileSending": "Der Vergleich steht einen Tag nach der letzten versendeten E-Mail bereit, damit beide Gruppen gleich viel Zeit zum Öffnen und Klicken haben.",
+				"method": "Die Raten beziehen sich auf zugestellte E-Mails und zählen Öffnungen und Klicks innerhalb eines Tages nach dem Versand jeder E-Mail. Ein Unterschied zählt nur, wenn ein Test für zwei Anteile ihn mit 95 % Sicherheit vom Zufall unterscheidet.",
 				"metric": "Kennzahl",
 				"noHoldout": "Es gab keine Vergleichsgruppe, daher lässt sich die Wirkung der Sendezeiten nicht messen.",
 				"openRate": "Öffnungsrate",
@@ -930,11 +1060,13 @@
 					"previewOptimized": "Jeder Kontakt bekommt sie innerhalb von {hours} Stunden zu seiner üblichen Stunde.",
 					"previewPerTimezone": "{time} in der Zeitzone des jeweiligen Empfängers",
 					"replyTo": "Antwort an: {email}",
+					"scheduleAnyway": "Trotzdem planen",
 					"scheduleCampaign": "Kampagne planen",
 					"scheduleLater": "Für später planen",
 					"scheduleLaterDescription": "Wähle ein Datum und eine Uhrzeit für den Versand deiner Kampagne.",
 					"scheduleOperation": "Kampagne planen",
 					"scheduling": "Wird geplant ...",
+					"sendAnyway": "Trotzdem senden",
 					"sendCampaign": "Kampagne senden",
 					"sendConfirm": {
 						"cancel": "Abbrechen",
@@ -2304,6 +2436,56 @@
 				"title": "Messabdeckung",
 				"toastDisconnected": "{address} getrennt."
 			},
+			"dmarcReadiness": {
+				"body": {
+					"building": "{days} von {required} Tagen mit mindestens 99 % bestandenem DMARC. Lass die Richtlinie, wie sie ist, bis die Serie {required} Tage erreicht.",
+					"enforced": "Empfänger weisen Mails dieser Domain zurück, die DMARC nicht bestehen. Behalte die fehlgeschlagenen Quellen im Blick: Eine legitime Quelle dort bedeutet Mails, die nicht mehr ankommen.",
+					"failing": "Am letzten Tag mit Berichten haben nur {rate} der Mails DMARC bestanden. Behebe die fehlgeschlagenen Quellen unten, dann beginnt die Zählung der {required} Tage.",
+					"incomplete": "Für diese Domain kommen mehr Berichtsdaten an, als das Dashboard auf einmal lesen kann, daher ließen sich nicht alle der letzten {required} Tage vollständig prüfen. Auf Basis unvollständiger Daten empfiehlt Owlat kein p={next}.",
+					"no-data": "Empfänger haben in den letzten 30 Tagen keine Berichte für diese Domain geschickt, es gibt also noch nichts zu bewerten.",
+					"ready": "{days} Tage in Folge mit mindestens 99 % bestandenem DMARC. Wenn du jetzt p={next} veröffentlichst, sollten deine legitimen Mails nicht betroffen sein."
+				},
+				"headline": {
+					"building": "Noch nicht bereit für p={next}",
+					"enforced": "Durchgesetzt mit p=reject",
+					"failing": "Nicht bereit für p={next}: Mails schlagen noch fehl",
+					"incomplete": "Zu wenig vollständige Daten für p={next}",
+					"no-data": "Keine aktuellen Berichte",
+					"ready": "Bereit für p={next}"
+				},
+				"howToApply": "Owlat ändert die Richtlinie nie selbst. Veröffentliche diesen Eintrag bei deinem DNS-Anbieter oder erhöhe die Richtlinie an der Domain, dann zeigt Owlat dort denselben Eintrag.",
+				"openDomain": "Domain öffnen",
+				"progressLabel": "Tage mit mindestens 99 % bestandenem DMARC",
+				"recordLabel": "DMARC-Eintrag (p={next})",
+				"streak": "{days} Tage in Folge, {required} nötig"
+			},
+			"dmarcSources": {
+				"checks": "DKIM ausgerichtet {dkim} · SPF ausgerichtet {spf}",
+				"columns": {
+					"failing": "Fehlgeschlagen",
+					"messages": "Mails",
+					"passRate": "DMARC bestanden",
+					"source": "Quelle"
+				},
+				"empty": "Keine Absenderquellen in diesem Zeitraum.",
+				"ips": "IP {ips} | {count} IP-Adressen: {ips}",
+				"kind": {
+					"known": "Bekannter Absender",
+					"owlat": "Owlat",
+					"unknown": "Unbekannt"
+				},
+				"more": "Gezeigt werden die {shown} Quellen mit den meisten fehlgeschlagenen Mails, von {total}.",
+				"ownServer": "Dieser Owlat-Server",
+				"reasons": "Hinweise der Empfänger: {reasons}"
+			},
+			"dmarcTrendChart": {
+				"day": "Tag",
+				"empty": "In diesem Zeitraum noch keine Mails. Balken erscheinen, sobald Empfänger ihre täglichen Berichte schicken.",
+				"failed": "DMARC nicht bestanden",
+				"label": "Mails pro Tag, die DMARC bestanden oder nicht bestanden haben",
+				"passed": "DMARC bestanden",
+				"tooltip": "{passed} bestanden · {failed} nicht bestanden"
+			},
 			"domainDnsGuidance": {
 				"heading": "DNS für {transport}"
 			},
@@ -2849,6 +3031,29 @@
 				"trackingPreviewExample": "Deine Tracking-Links verwenden zum Beispiel {host}",
 				"useApex": "keine (Hauptdomain verwenden)"
 			},
+			"dmarcReporting": {
+				"error": "Die Einrichtung der DMARC-Berichte konnte nicht geladen werden. Lade die Seite neu, um es noch einmal zu versuchen.",
+				"external": "Berichte gehen an {rua}, eine außerhalb von Owlat festgelegte Adresse. Owlat kann sie selbst lesen, sobald der eigene Mailserver die Bounces dieser Installation verarbeitet ({variable}).",
+				"loading": "Prüfe, wohin Berichte gehen…",
+				"none": "Diese Installation fordert keine DMARC-Berichte an. Owlat liest sie selbst, wenn der eigene Mailserver die Bounces verarbeitet ({variable}); andernfalls setze {fallback} auf eine Adresse, die du im Blick hast.",
+				"openReports": "Berichte öffnen",
+				"operations": {
+					"update": "DMARC-Eintrag aktualisieren"
+				},
+				"owlat": {
+					"authorization": "Die Berichtsadresse liegt auf einer anderen Domain, deshalb muss {reportDomain} zustimmen, Berichte für diese Domain zu empfangen. Veröffentliche diesen Eintrag in der Zone von {reportDomain}:",
+					"authorizationLabel": "Berichtsfreigabe (RFC 7489)",
+					"body": "Empfänger schicken die täglichen DMARC-Berichte dieser Domain an {address}, und Owlat liest sie für dich.",
+					"lastReport": "Letzter Bericht empfangen {when}.",
+					"noReportsYet": "Noch keine Berichte. Die meisten Empfänger schicken den ersten innerhalb eines Tages, nachdem sie den Eintrag gesehen haben.",
+					"notRequested": "Der DMARC-Eintrag fordert noch keine Berichte an. Aktualisiere ihn, damit er Owlats Adresse enthält, und veröffentliche dann den neuen Wert.",
+					"update": "Berichte anfordern"
+				},
+				"title": "DMARC-Berichte",
+				"toasts": {
+					"updated": "DMARC-Eintrag aktualisiert. Veröffentliche den neuen Wert und prüfe dann die Domain."
+				}
+			},
 			"dnsChecklistSummary": {
 				"allFound": "Alle {total} Einträge gefunden — diese Domain ist eingerichtet.",
 				"copyAll": "Alle Einträge kopieren",
@@ -3177,12 +3382,34 @@
 			}
 		},
 		"email": {
+			"coeditNotices": {
+				"blockReplaced": "Deine Änderung an einem Block wurde von {name} ersetzt, weil ihr ihn gleichzeitig bearbeitet habt.",
+				"dismiss": "Schließen",
+				"fieldReplaced": "Deine Änderung an {field} wurde von {name} ersetzt, weil ihr gleichzeitig daran gearbeitet habt.",
+				"fields": {
+					"attachments": "den Anhängen",
+					"name": "dem Namen",
+					"plainText": "der Nur-Text-Version",
+					"subject": "dem Betreff",
+					"unsubscribe": "der Abmelde-Einstellung"
+				},
+				"inHistory": "Deine Version ist auch im Versionsverlauf gespeichert.",
+				"restore": "Meine zurückholen"
+			},
 			"editorConflictDialog": {
 				"description": "Sie wurde an anderer Stelle gespeichert, nachdem du sie geöffnet hast: in einem anderen Tab, auf der Seite „Übersetzungen“ oder über einen gespeicherten Block, den sie verwendet. Deine Änderungen sind noch nicht gespeichert. Behalte deine Version, um sie über die neuere zu speichern, oder lade die aktuelle Version und verwirf deine Änderungen.",
 				"keepMine": "Meine Version behalten",
 				"languageChanged": "Die Standardsprache dieser E-Mail wurde geändert, nachdem du sie geöffnet hast. Deine Änderungen gehören deshalb zu einer anderen Sprache und können nicht darüber gespeichert werden. Lade die aktuelle Version und nimm deine Änderungen dann erneut vor.",
 				"loadLatest": "Aktuelle Version laden",
 				"title": "Diese E-Mail wurde während deiner Bearbeitung geändert"
+			},
+			"editorPresence": {
+				"label": "Personen, die diese E-Mail bearbeiten",
+				"more": "{count} weitere",
+				"offline": "Nicht synchronisiert",
+				"offlineTitle": "Deine letzten Änderungen sind noch nicht bei den anderen angekommen. Sie bleiben erhalten und werden automatisch erneut gesendet.",
+				"titleEditing": "{name} bearbeitet gerade einen Block",
+				"titleViewing": "{name} hat diese E-Mail geöffnet"
 			},
 			"emailBuilderViewportGate": {
 				"body": "Bearbeiten per Drag-and-drop passt nicht auf ein Telefon. Öffne diese Seite auf einem Tablet oder Desktop, um Änderungen vorzunehmen – alles Gespeicherte ist genau so, wie du es verlassen hast.",
@@ -3223,6 +3450,7 @@
 				"trigger": "Verlauf",
 				"triggerTitle": "Versionsverlauf",
 				"triggers": {
+					"conflict": "Vor einem Bearbeitungskonflikt",
 					"publish": "Veröffentlicht",
 					"save": "Gespeichert",
 					"send": "Gesendet"
@@ -6549,6 +6777,38 @@
 						"reportCopyFailed": "Der Bericht konnte nicht kopiert werden",
 						"resolved": "Rückschritt geschlossen"
 					}
+				},
+				"dmarc": {
+					"domainLabel": "Versanddomain",
+					"empty": {
+						"description": "Empfänger schicken einen Bericht pro Tag, sobald der DMARC-Eintrag der Domain Owlats Adresse nennt. Die ersten kommen meist innerhalb eines Tages.",
+						"title": "Noch keine Berichte"
+					},
+					"lastReport": "Letzter Bericht empfangen {when}",
+					"lede": "Wer Mails im Namen deiner Domains verschickt und wie nah jede davon daran ist, alle anderen abzuweisen.",
+					"noDomains": {
+						"action": "Zu den Versanddomains",
+						"description": "Füge zuerst eine Versanddomain hinzu. Ihr DMARC-Eintrag fordert die Berichte an, auf denen diese Seite aufbaut.",
+						"title": "Keine Domain mit DMARC-Eintrag"
+					},
+					"pageTitle": "DMARC-Berichte",
+					"readinessTitle": "Bereit zum Durchsetzen?",
+					"sourcesSubtitle": "Nach Organisation gruppiert, fehlgeschlagene Quellen zuerst. Wenn eine unbekannte Quelle zu dir gehört, gib ihr SPF oder DKIM, bevor du durchsetzt.",
+					"sourcesTitle": "Absenderquellen",
+					"tiles": {
+						"failing": "DMARC nicht bestanden",
+						"failingHint": "{count} von Empfängern in Quarantäne verschoben oder abgewiesen",
+						"messages": "Mails",
+						"messagesHint": "{count} Bericht | {count} Berichte",
+						"passRate": "DMARC bestanden",
+						"passRateHint": "Ziel fürs Durchsetzen: 99 %",
+						"reportersHint": "{count} Empfänger | {count} Empfänger"
+					},
+					"title": "DMARC-Berichte",
+					"trendTitle": "Mails pro Tag",
+					"truncated": "nur die neuesten Berichte werden gezeigt",
+					"window": "{days} Tage",
+					"windowLabel": "Zeitraum"
 				},
 				"domains": {
 					"addDomain": "Domain hinzufügen",
@@ -10793,6 +11053,8 @@
 						"backToEmails": "Zurück zu den E-Mails",
 						"builderError": "Im E-Mail-Editor ist ein unerwarteter Fehler aufgetreten. Bitte lade die Seite neu — deine zuletzt gespeicherte Version ist sicher.",
 						"campaignReturnHint": "Speichere deine Änderungen und geh dann zurück, um die Kampagne zu prüfen und zu senden.",
+						"checkEmail": "E-Mail prüfen",
+						"checkEmailTitle": "E-Mail prüfen",
 						"loadError": "Diese Vorlage konnte nicht geladen werden",
 						"loading": "Vorlage wird geladen...",
 						"manageTranslations": "Übersetzungen verwalten",
@@ -12240,6 +12502,7 @@
 				"deliverability": "Zustellbarkeit",
 				"deliveryProvider": "Zustellungsanbieter",
 				"desktopUpdates": "Desktop-App-Updates",
+				"dmarcReports": "DMARC-Berichte",
 				"emailTheme": "E-Mail-Design",
 				"features": "Funktionen",
 				"failedMessages": "Fehlgeschlagene Nachrichten",
@@ -13261,6 +13524,10 @@
 			"title": "Ausrichtung beider Transportwege",
 			"unknown": "Wir konnten das DNS für deine Versanddomains noch nicht vollständig lesen, deshalb bleibt die Umstellung, wo sie ist. Das wird automatisch erneut geprüft — du musst nichts tun.",
 			"unknownDomains": "Wir konnten das DNS für ({domains}) noch nicht vollständig lesen, deshalb bleibt die Umstellung, wo sie ist. Das wird automatisch erneut geprüft — du musst nichts tun."
+		},
+		"editorPresence": {
+			"isEditing": "{name} bearbeitet",
+			"someone": "Jemand"
 		},
 		"gettingStarted": {
 			"addedContacts": {
@@ -14559,7 +14826,7 @@
 				"pickAskOption": "Eine Antwort auf der Fragekarte der KI wählen",
 				"previousQueueItem": "Vorheriger Eintrag in der Antwortliste",
 				"nextQueueItem": "Nächster Eintrag in der Antwortliste",
-				"writeNote": "Interne Notiz schreiben"
+				"writeNote": "Interne Notiz schreiben (Threads im Team-Postfach)"
 			}
 		},
 		"signatureBadge": {
