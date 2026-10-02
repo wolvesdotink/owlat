@@ -2,13 +2,18 @@ import { v } from 'convex/values';
 import { campaignsMutation } from './_helpers';
 import { internal } from '../_generated/api';
 import { requireOrgPermission } from '../lib/sessionOrganization';
-import { getOrThrow, throwInvalidState } from '../_utils/errors';
+import { getOrThrow, throwInvalidInput, throwInvalidState } from '../_utils/errors';
 import { preflightErrorData, validateReadyToSend } from './preflight';
 import { seedDefaultSenderIfNeeded } from './senders';
 import { assertTransitioned } from './lifecycle';
 import { recordAuditLog } from '../lib/auditLog';
 import type { MutationCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
+import {
+	sendTimeOptimizationValidator,
+	type SendTimeOptimizationSettings,
+} from '../lib/validators/sendTime';
+import { sendTimeSettingsError } from './sendTimeOptimization';
 
 /**
  * The pre-flight every path that puts a campaign on the clock runs: `schedule`
@@ -40,6 +45,33 @@ async function assertSchedulable(
 		throwInvalidState(preflight.message, preflightErrorData(preflight));
 	}
 }
+
+/**
+ * Refuse a send-time optimization choice the send could not honour: settings
+ * out of bounds, combined with "send at recipient's local time" (the two are
+ * alternative ways to pick the hour), or on an A/B test (spreading the cohort
+ * over a day would skew the verdict).
+ */
+function assertSendTimeOptimizationAllowed(
+	campaign: Doc<'campaigns'>,
+	settings: SendTimeOptimizationSettings | undefined,
+	useRecipientTimezone: boolean | undefined
+): void {
+	if (!settings) return;
+	const error = sendTimeSettingsError(settings);
+	if (error) throwInvalidInput(error);
+	if (useRecipientTimezone === true) {
+		throwInvalidInput(
+			"Optimized per contact cannot be combined with sending at the recipient's local time"
+		);
+	}
+	if (campaign.isABTest === true) {
+		throwInvalidState('Optimized per contact is not available for A/B tests');
+	}
+}
+
+// `null` turns optimization off on reschedule; omitted leaves it as stored.
+const sendTimeOptimizationArg = v.optional(v.union(v.null(), sendTimeOptimizationValidator));
 
 interface SchedulingOptions {
 	useRecipientTimezone?: boolean;
@@ -103,6 +135,7 @@ export const reschedule = campaignsMutation({
 		useRecipientTimezone: v.optional(v.boolean()),
 		scheduledHour: v.optional(v.number()),
 		scheduledMinute: v.optional(v.number()),
+		sendTimeOptimization: sendTimeOptimizationArg,
 	},
 	handler: async (ctx, args) => {
 		const session = await requireOrgPermission(
@@ -117,6 +150,17 @@ export const reschedule = campaignsMutation({
 			throwInvalidState('Only scheduled campaigns can be rescheduled');
 		}
 
+		// Judged on the state after this write: an omitted arg keeps the stored value.
+		const sendTimeOptimization =
+			args.sendTimeOptimization === undefined
+				? campaign.sendTimeOptimization
+				: (args.sendTimeOptimization ?? undefined);
+		assertSendTimeOptimizationAllowed(
+			campaign,
+			sendTimeOptimization,
+			args.useRecipientTimezone ?? campaign.useRecipientTimezone
+		);
+
 		// The same pre-flight as `schedule`, anchored at the new start: capacity,
 		// sender allow-list, domain verification and the future-time check.
 		await assertSchedulable(ctx, campaign, args.scheduledAt);
@@ -129,6 +173,7 @@ export const reschedule = campaignsMutation({
 		await ctx.db.patch(args.campaignId, {
 			scheduledAt: args.scheduledAt,
 			...pickSchedulingOptions(args),
+			...(args.sendTimeOptimization !== undefined ? { sendTimeOptimization } : {}),
 			updatedAt: Date.now(),
 		});
 
@@ -139,7 +184,11 @@ export const reschedule = campaignsMutation({
 			action: 'campaign.scheduled',
 			resource: 'campaign',
 			resourceId: args.campaignId,
-			details: { scheduledAt: args.scheduledAt, rescheduled: true },
+			details: {
+				scheduledAt: args.scheduledAt,
+				rescheduled: true,
+				sendTimeOptimized: sendTimeOptimization !== undefined,
+			},
 		});
 
 		const delayMs = args.scheduledAt - Date.now();
@@ -189,6 +238,7 @@ export const schedule = campaignsMutation({
 		useRecipientTimezone: v.optional(v.boolean()),
 		scheduledHour: v.optional(v.number()),
 		scheduledMinute: v.optional(v.number()),
+		sendTimeOptimization: sendTimeOptimizationArg,
 	},
 	handler: async (ctx, args) => {
 		// Deliberately NOT requireDraftCampaign: scheduling is gated on the
@@ -206,6 +256,9 @@ export const schedule = campaignsMutation({
 			throwInvalidState('Only draft campaigns can be scheduled');
 		}
 
+		const sendTimeOptimization = args.sendTimeOptimization ?? undefined;
+		assertSendTimeOptimizationAllowed(campaign, sendTimeOptimization, args.useRecipientTimezone);
+
 		await assertSchedulable(ctx, campaign, args.scheduledAt);
 
 		const outcome = await ctx.runMutation(internal.campaigns.lifecycle.transition, {
@@ -215,6 +268,7 @@ export const schedule = campaignsMutation({
 				at: Date.now(),
 				scheduledAt: args.scheduledAt,
 				...pickSchedulingOptions(args),
+				...(sendTimeOptimization ? { sendTimeOptimization } : {}),
 			},
 			userId: session.userId,
 		});

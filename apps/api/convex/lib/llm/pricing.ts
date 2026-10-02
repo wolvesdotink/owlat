@@ -199,6 +199,9 @@ const ADMISSION_MODELS = {
 	// empty rather than a copy of the language catalog. See
 	// `estimateKnownDecisionCostMicrousd` in `lib/decision/pricing.ts`.
 	'llm-backed': [],
+	// A local engine bills nothing, whatever model it loaded, so it needs no
+	// price list: `estimateKnownDecisionCostMicrousd` admits it at zero directly.
+	local: [],
 	custom: [],
 } as const satisfies Record<AdmissionProvenance, readonly AdmissionModel[]>;
 

@@ -22,6 +22,7 @@
 #   Profile name           Feature flag             Service(s) it activates
 #   ─────────────────────  ───────────────────────  ─────────────────────────
 #   ai                     ai                        ollama (optional local LLM)
+#   decision-local         (install-owned)           decision-local (GLiNER decisions)
 #   clamav                 scan.attachments          clamav
 #   inbox-codetasks        inbox.codeTasks           code-worker
 #   personal-mail          postbox                   imap
@@ -723,6 +724,47 @@ services:
       - ai
     restart: 'no'
 
+  # ── Local decision engine (optional — GLiNER on your own hardware) ──
+  # Answers the decision plane's yes/no, category and score questions with a
+  # GLiNER2.5 Decide checkpoint (default fastino/GLiNER2.5-multi-Decide), so no
+  # message text leaves the server for these judgements. Pick "Local GLiNER
+  # model" under AI provider → Decision provider, or set the Convex function env
+  # var DECISION_PROVIDER=local. CPU only; the checkpoint (~1.1 GB) downloads
+  # into the volume on first start and is read from disk afterwards.
+  #
+  # Its own profile rather than `ai`: an install that never chooses it should
+  # not pull a PyTorch image. Add `decision-local` to COMPOSE_PROFILES (the
+  # setup wizard does this when you choose it). No published port — the Convex
+  # backend reaches it as decision-local:8080 on the internal network.
+  decision-local:
+    logging: *default-logging
+    image: ghcr.io/wolvesdotink/decision-local:${OWLAT_VERSION:?OWLAT_VERSION must be set}
+    environment:
+      # Another Decide checkpoint (fastino/GLiNER2.5-Decide is English-only and
+      # scores highest there; fastino/GLiNER2.5-Decide-1B is the largest). Pick
+      # the same id on the AI provider page after changing it.
+      DECISION_LOCAL_MODEL: ${DECISION_LOCAL_MODEL:-}
+      DECISION_LOCAL_MODEL_REVISION: ${DECISION_LOCAL_MODEL_REVISION:-}
+      DECISION_LOCAL_THREADS: ${DECISION_LOCAL_THREADS:-}
+      # One forward pass runs at a time. These bound how many requests may wait
+      # for it and for how long; a request whose caller has given up never runs.
+      DECISION_LOCAL_MAX_QUEUE: ${DECISION_LOCAL_MAX_QUEUE:-}
+      DECISION_LOCAL_MAX_WAIT_SECONDS: ${DECISION_LOCAL_MAX_WAIT_SECONDS:-}
+    volumes:
+      - decision-local-models:/models
+    read_only: true
+    tmpfs:
+      - /tmp
+    # The default checkpoint needs ~2 GB resident; the 1B one about twice that.
+    mem_limit: ${DECISION_LOCAL_MEM_LIMIT:-4g}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - decision-local
+    restart: unless-stopped
+
 # ── Networks ──
 # `default` is the implicit bridge every service joins unless it opts out.
 # `code-worker` is an isolated, INTERNAL bridge (security review M4). With
@@ -752,3 +794,5 @@ volumes:
   acme-data:
   # Ollama model store (pulled models persist across restarts).
   ollama-data:
+  # GLiNER checkpoints for the local decision engine (decision-local profile).
+  decision-local-models:

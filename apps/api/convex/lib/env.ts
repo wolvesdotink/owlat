@@ -209,7 +209,7 @@ export type EnvKey =
 	// stored key wins when both are present. Unset ⇒ the plane has no credential
 	// and resolution degrades to the language plane.
 	| 'TYPESAFE_API_KEY'
-	// Which decision adapter answers: 'typesafe' or 'llm'. Consulted only when the
+	// Which decision adapter answers: 'typesafe', 'local' or 'llm'. Consulted only when the
 	// stored row names no kind; an unrecognised value is ignored rather than
 	// thrown on, so a typo degrades to today's behaviour instead of taking the
 	// inbound path down.
@@ -219,7 +219,8 @@ export type EnvKey =
 	// this pin exists to prevent).
 	| 'DECISION_MODEL'
 	// Decision API ORIGIN override, for an operator fronting the vendor with their
-	// own proxy. The endpoint path is appended by the adapter, so this is an origin
+	// own proxy, or a local engine that is not the bundled `decision-local`
+	// service. The endpoint path is appended by the adapter, so this is an origin
 	// and not a full URL. Unset ⇒ the adapter's own origin.
 	| 'DECISION_BASE_URL'
 	// Per-org dollar-spend budget for LLM calls (analytics/spendBudget.ts).

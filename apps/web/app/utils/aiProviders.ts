@@ -48,7 +48,7 @@ export type LanguageProviderKind =
 export type EmbeddingProviderKind = 'local' | 'openai' | 'google' | 'openaiCompatible';
 
 /** Decision provider kinds — mirrors `DECISION_PROVIDER_KINDS` in the backend. */
-export type DecisionProviderKind = 'typesafe' | 'llm';
+export type DecisionProviderKind = 'typesafe' | 'local' | 'llm';
 
 /**
  * A `{ value, label }` option for `UiSelect`. `label` is a message key (or a
@@ -119,6 +119,11 @@ export interface DecisionProviderMeta {
 	hint: string;
 	/** True when the operator has to supply a key of their own for this adapter. */
 	requiresKey: boolean;
+	/**
+	 * True for an engine on the operator's own server: no key, no consent (nothing
+	 * leaves the deployment), but a model and an address of its own to show.
+	 */
+	isLocal?: boolean;
 	/** True when the adapter returns probabilities calibrated across groups. */
 	calibrated: boolean;
 	/** True for the adapter we recommend — the only thing "recommended" means here. */
@@ -286,6 +291,24 @@ export const DECISION_PROVIDERS: readonly DecisionProviderMeta[] = [
 		// The pinned version first. The two aliases resolve there today and are
 		// free to move without notice, which is exactly why the default is pinned.
 		curatedModels: ['jev-1.13.0', 'jev-latest', 'jev-preview'],
+	},
+	{
+		kind: 'local',
+		label: `${K}.decision.providers.local.label`,
+		hint: `${K}.decision.providers.local.hint`,
+		requiresKey: false,
+		calibrated: false,
+		isLocal: true,
+		// The bundled `decision-local` compose service, reached on the internal network.
+		defaultBaseUrl: 'http://decision-local:8080',
+		// The newest GLiNER release (GLiNER2.5 Decide), multilingual because inbound
+		// mail is. Mirrors `DEFAULT_LOCAL_DECISION_MODEL` in the backend adapter.
+		defaultModel: 'fastino/GLiNER2.5-multi-Decide',
+		curatedModels: [
+			'fastino/GLiNER2.5-multi-Decide',
+			'fastino/GLiNER2.5-Decide',
+			'fastino/GLiNER2.5-Decide-1B',
+		],
 	},
 	{
 		kind: 'llm',

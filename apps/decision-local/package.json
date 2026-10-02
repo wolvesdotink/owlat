@@ -1,0 +1,12 @@
+{
+	"name": "@owlat/decision-local",
+	"version": "0.6.7",
+	"private": true,
+	"homepage": "https://owlat.app",
+	"license": "Apache-2.0",
+	"description": "Local decision engine: GLiNER2.5 Decide behind the decision plane's wire. Python; the tests need only the standard library.",
+	"scripts": {
+		"test": "python3 -m unittest discover -s tests",
+		"test:coverage": "python3 -m unittest discover -s tests"
+	}
+}

@@ -318,6 +318,7 @@ describe('remote commands', () => {
 			platform: 'linux/arm64',
 			profiles: [
 				'clamav',
+				'decision-local',
 				'deploy',
 				'dev',
 				'external-mail',

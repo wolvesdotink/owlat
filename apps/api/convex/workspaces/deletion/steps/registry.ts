@@ -212,6 +212,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	campaignSendJobs: makeSweepStep('campaignSendJobs'),
 	audienceCountJobs: makeSweepStep('audienceCountJobs'),
 	campaignStatShards: makeSweepStep('campaignStatShards'),
+	sendTimeHistogramShards: makeSweepStep('sendTimeHistogramShards'),
 	campaignSenders: makeSweepStep('campaignSenders'),
 	sendDailyStats: makeSweepStep('sendDailyStats'),
 	contactTopics: makeSweepStep('contactTopics'),

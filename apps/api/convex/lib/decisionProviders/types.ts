@@ -42,8 +42,10 @@ import type { AnswersFor, QuestionSet } from '../decision/questions';
 /**
  * The decision provider kinds, as a runtime tuple so both the
  * `DecisionProviderKind` type and the registry's completeness guard derive from
- * one source. Two adapters today: `typesafe` (the native decision API — one
- * model, calibrated probabilities, charged on input tokens only) and `llm`
+ * one source. Three adapters today: `typesafe` (the native decision API — one
+ * model, calibrated probabilities, charged on input tokens only), `local` (a
+ * GLiNER2.5 Decide checkpoint served by the bundled `decision-local` container:
+ * real distributions, nothing leaves the deployment, not calibrated) and `llm`
  * (the same question sets rendered onto the existing LANGUAGE plane, returning
  * degenerate probabilities and `calibrated: false`).
  *
@@ -51,7 +53,7 @@ import type { AnswersFor, QuestionSet } from '../decision/questions';
  * runs — which is what makes the plane revertible by a dropdown, and what makes
  * "no key entered" mean "exactly today's behaviour".
  */
-export const DECISION_PROVIDER_KINDS = ['typesafe', 'llm'] as const;
+export const DECISION_PROVIDER_KINDS = ['typesafe', 'local', 'llm'] as const;
 export type DecisionProviderKind = (typeof DECISION_PROVIDER_KINDS)[number];
 
 /**
@@ -68,9 +70,16 @@ export const DEFAULT_DECISION_KIND = 'llm' satisfies DecisionProviderKind;
  * identity is assigned only when the registered provider used its built-in
  * endpoint; any explicit base URL or proxy is `custom` and cannot use
  * list-price admission. `llm-backed` says the answer came off the language
- * plane, whose own provenance is tracked separately by that plane.
+ * plane, whose own provenance is tracked separately by that plane. `local` is
+ * an engine running on the operator's own hardware, which bills nothing
+ * wherever its base URL points.
  */
-export const DECISION_ENDPOINT_PROVENANCES = ['typesafe-native', 'llm-backed', 'custom'] as const;
+export const DECISION_ENDPOINT_PROVENANCES = [
+	'typesafe-native',
+	'local',
+	'llm-backed',
+	'custom',
+] as const;
 export type DecisionEndpointProvenance = (typeof DECISION_ENDPOINT_PROVENANCES)[number];
 
 /**

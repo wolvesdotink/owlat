@@ -114,6 +114,12 @@ function formatDuration(start?: number, end?: number) {
 		<!-- Container health -->
 		<SystemContainerHealthCard />
 
+		<!-- IMAP servers: which IMAP server releases call this backend, and
+		     whether it still serves them (ADR-0063). Sits under container
+		     health: the IMAP container is updated after the backend, and this
+		     is where an operator sees whether it was. -->
+		<SystemImapServersCard />
+
 		<!-- Network ports: which ports this instance's features need, and whether
 		     the host's provider actually lets them through. Sits next to container
 		     health because it answers the same question one layer down — a service
