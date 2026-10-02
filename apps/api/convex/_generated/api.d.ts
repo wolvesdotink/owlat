@@ -887,6 +887,7 @@ import type * as lib_validators_contentScan from '../lib/validators/contentScan.
 import type * as lib_validators_dashboard from '../lib/validators/dashboard.js';
 import type * as lib_validators_deliverability from '../lib/validators/deliverability.js';
 import type * as lib_validators_deliveryChecklist from '../lib/validators/deliveryChecklist.js';
+import type * as lib_validators_draftRevision from '../lib/validators/draftRevision.js';
 import type * as lib_validators_e2ee from '../lib/validators/e2ee.js';
 import type * as lib_validators_editLearning from '../lib/validators/editLearning.js';
 import type * as lib_validators_fields from '../lib/validators/fields.js';
@@ -2285,6 +2286,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/validators/dashboard': typeof lib_validators_dashboard;
 	'lib/validators/deliverability': typeof lib_validators_deliverability;
 	'lib/validators/deliveryChecklist': typeof lib_validators_deliveryChecklist;
+	'lib/validators/draftRevision': typeof lib_validators_draftRevision;
 	'lib/validators/e2ee': typeof lib_validators_e2ee;
 	'lib/validators/editLearning': typeof lib_validators_editLearning;
 	'lib/validators/fields': typeof lib_validators_fields;
