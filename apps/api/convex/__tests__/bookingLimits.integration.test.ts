@@ -9,7 +9,9 @@
  *     made-up one) does not close another member's page while every caller
  *     shares the default `'unknown'` IP, and a page or manage link spelled
  *     another way (capitals, percent escapes) does not reach the page with a
- *     bucket of its own.
+ *     bucket of its own;
+ *   - date overrides already over are dropped on save, so they never fill the
+ *     override cap.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -280,5 +282,28 @@ describe('public route spelling', () => {
 		const [row] = await t.run((ctx) => ctx.db.query('bookings').collect());
 		expect(row?.status).toBe('confirmed');
 		expect((await post(t, `/booking/cancel/${token}`, {})).status).toBe(200);
+	});
+});
+
+describe('date overrides', () => {
+	it('drops the ones already over when the page is saved', async () => {
+		const t = await setup();
+		const dateKey = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+		const past = Array.from({ length: 120 }, (_, i) => ({
+			date: dateKey(Date.now() - (i + 2) * DAY),
+			ranges: [],
+		}));
+		const upcoming = { date: dateKey(Date.now() + 3 * DAY), ranges: [] };
+		await t.mutation(api.booking.settings.saveProfile, {
+			slug: 'ada',
+			timeZone: 'UTC',
+			weeklyHours: [{ weekday: 1, startMinute: 9 * 60, endMinute: 17 * 60 }],
+			dateOverrides: [...past, upcoming],
+			minimumNoticeMinutes: 0,
+			horizonDays: 30,
+			bufferMinutes: 0,
+		});
+		const mine = await t.query(api.booking.settings.getMine, {});
+		expect(mine.profile?.dateOverrides).toEqual([upcoming]);
 	});
 });

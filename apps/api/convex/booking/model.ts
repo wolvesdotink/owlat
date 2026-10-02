@@ -10,6 +10,7 @@ import { throwInvalidInput } from '../_utils/errors';
 import { getOptional } from '../lib/env';
 import { BOOKING_LIMITS, bookingRangeProblem, isBookingDateKey } from '@owlat/shared/booking';
 import type { BookingTimeRange, BookingWeeklyRange } from '@owlat/shared/booking';
+import { getTzParts } from '@owlat/shared/ical';
 import type { AvailabilityRules, BusyInterval } from './slots';
 
 type ReadCtx = QueryCtx | MutationCtx;
@@ -106,6 +107,23 @@ export function assertAvailability(input: {
 		'horizonDays'
 	);
 	assertWholeNumber(input.bufferMinutes, 0, BOOKING_LIMITS.bufferMaxMinutes, 'bufferMinutes');
+}
+
+/**
+ * The date overrides that can still matter: a date already over in the host's
+ * zone can never hold an open time again, so it is dropped on save instead of
+ * counting toward `BOOKING_LIMITS.dateOverridesMax` forever. An unknown zone
+ * keeps the list as it is (the save refuses the zone anyway).
+ */
+export function dropPastOverrides<T extends { date: string }>(
+	overrides: readonly T[],
+	timeZone: string,
+	now: number
+): T[] {
+	if (!isKnownTimeZone(timeZone)) return [...overrides];
+	const today = getTzParts(now, timeZone);
+	const todayKey = `${today.year}-${String(today.month).padStart(2, '0')}-${String(today.day).padStart(2, '0')}`;
+	return overrides.filter((override) => override.date >= todayKey);
 }
 
 export function assertWholeNumber(value: number, min: number, max: number, field: string): void {

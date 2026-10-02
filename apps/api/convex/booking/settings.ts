@@ -17,7 +17,13 @@ import {
 import { isSafeRedirectUrl, validateStringLength } from '../lib/inputGuards';
 import { loadLiveUserProfile } from '../lib/userProfiles';
 import { BOOKING_LIMITS, isValidBookingSlug, suggestBookingSlug } from '@owlat/shared/booking';
-import { assertAvailability, assertWholeNumber, bookingPageUrl, bookingSiteUrl } from './model';
+import {
+	assertAvailability,
+	assertWholeNumber,
+	bookingPageUrl,
+	bookingSiteUrl,
+	dropPastOverrides,
+} from './model';
 
 const timeRange = v.object({ startMinute: v.number(), endMinute: v.number() });
 
@@ -104,7 +110,9 @@ export const saveProfile = bookingMutation({
 			BOOKING_LIMITS.displayNameMaxLength,
 			'displayName'
 		);
-		assertAvailability(args);
+		const now = Date.now();
+		const dateOverrides = dropPastOverrides(args.dateOverrides, args.timeZone, now);
+		assertAvailability({ ...args, dateOverrides });
 
 		const taken = await ctx.db
 			.query('bookingProfiles')
@@ -118,7 +126,6 @@ export const saveProfile = bookingMutation({
 			.query('bookingProfiles')
 			.withIndex('by_user', (q) => q.eq('userId', session.userId))
 			.first();
-		const now = Date.now();
 		const data = {
 			slug,
 			displayName,
@@ -126,7 +133,7 @@ export const saveProfile = bookingMutation({
 			weeklyHours: [...args.weeklyHours].sort(
 				(a, b) => a.weekday - b.weekday || a.startMinute - b.startMinute
 			),
-			dateOverrides: [...args.dateOverrides].sort((a, b) => a.date.localeCompare(b.date)),
+			dateOverrides: dateOverrides.sort((a, b) => a.date.localeCompare(b.date)),
 			minimumNoticeMinutes: args.minimumNoticeMinutes,
 			horizonDays: args.horizonDays,
 			bufferMinutes: args.bufferMinutes,

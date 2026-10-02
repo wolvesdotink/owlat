@@ -20,7 +20,7 @@ import {
 	weeklyToStored,
 	type FormOverride,
 } from '~/utils/bookingForm';
-import { browserTimeZone, formatDayKey, timeZoneOptions } from '~/utils/bookingSlots';
+import { browserTimeZone, formatDayKey, timeZoneOptions, zonedDateKey } from '~/utils/bookingSlots';
 
 export interface StoredBookingProfile {
 	slug: string;
@@ -86,6 +86,8 @@ const hasRangeProblem = computed(
 const canSave = computed(() => slugValid.value && !hasRangeProblem.value && !save.isLoading.value);
 
 const newOverrideDate = ref('');
+// A date already over in the page's zone can hold no open time; the save drops it.
+const todayKey = computed(() => zonedDateKey(Date.now(), form.timeZone));
 function addOverride() {
 	const date = newOverrideDate.value;
 	if (!date || form.overrides.some((entry) => entry.date === date)) return;
@@ -212,7 +214,7 @@ async function submit() {
 					<span class="mb-1 block text-text-secondary">{{
 						t('components.booking.profile.overrideDate')
 					}}</span>
-					<input v-model="newOverrideDate" type="date" class="input" />
+					<input v-model="newOverrideDate" type="date" class="input" :min="todayKey" />
 				</label>
 				<UiButton variant="secondary" :disabled="!newOverrideDate" @click="addOverride">
 					{{ t('components.booking.profile.addOverride') }}
