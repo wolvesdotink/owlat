@@ -16,6 +16,7 @@ const props = defineProps<{
 		requiredDays: number;
 		latestAlignedRate: number | null;
 		isReady: boolean;
+		isIncomplete?: boolean;
 		currentPolicy: 'none' | 'quarantine' | 'reject';
 		nextPolicy: 'none' | 'quarantine' | 'reject' | null;
 		recommendedRecord: { type: 'TXT'; host: string; value: string } | null;
@@ -39,6 +40,7 @@ const icon = computed(
 			enforced: 'lucide:shield-check',
 			building: 'lucide:hourglass',
 			failing: 'lucide:shield-alert',
+			incomplete: 'lucide:circle-dashed',
 			'no-data': 'lucide:inbox',
 		})[state.value]
 );

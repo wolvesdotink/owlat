@@ -2251,6 +2251,7 @@
 					"building": "{days} of {required} days at 99% or more passing DMARC. Keep the policy where it is until the run reaches {required} days.",
 					"enforced": "Receivers reject mail that fails DMARC for this domain. Keep an eye on failing sources: a legitimate one listed there is mail that no longer arrives.",
 					"failing": "Only {rate} of the mail on the last day with reports passed DMARC. Fix the failing sources below, then the {required}-day count starts.",
+					"incomplete": "This domain receives more report data than the dashboard can read at once, so not all of the last {required} days could be checked in full. Owlat does not recommend p={next} on partial data.",
 					"no-data": "Receivers have not sent reports for this domain in the last 30 days, so there is nothing to judge readiness on yet.",
 					"ready": "{days} days in a row at 99% or more passing DMARC. Publishing p={next} now should not affect your legitimate mail."
 				},
@@ -2258,6 +2259,7 @@
 					"building": "Not ready for p={next} yet",
 					"enforced": "Enforced at p=reject",
 					"failing": "Not ready for p={next}: mail is still failing",
+					"incomplete": "Not enough complete data to judge p={next}",
 					"no-data": "No recent reports",
 					"ready": "Ready for p={next}"
 				},

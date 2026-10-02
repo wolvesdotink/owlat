@@ -59,6 +59,20 @@ describe('DmarcReadinessPanel', () => {
 		expect(wrapper.find('[data-testid="record"]').exists()).toBe(false);
 	});
 
+	it('withholds the record when a truncated read cut the run short', () => {
+		const wrapper = mount(DmarcReadinessPanel, {
+			props: {
+				domain: 'example.com',
+				readiness: { ...readiness, streakDays: 13, isReady: false, isIncomplete: true },
+			},
+			global,
+		});
+		expect(wrapper.attributes('data-state')).toBe('incomplete');
+		expect(wrapper.text()).toContain('Not enough complete data to judge p=quarantine');
+		expect(wrapper.text()).toContain('not all of the last 14 days');
+		expect(wrapper.find('[data-testid="record"]').exists()).toBe(false);
+	});
+
 	it('says when the domain is already enforced', () => {
 		const wrapper = mount(DmarcReadinessPanel, {
 			props: {

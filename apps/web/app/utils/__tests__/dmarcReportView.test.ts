@@ -33,6 +33,12 @@ describe('readinessState', () => {
 		expect(readinessState({ ...base, isReady: true, streakDays: 14 })).toBe('ready');
 		expect(readinessState({ ...base, streakDays: 3, latestAlignedRate: 1 })).toBe('building');
 		expect(readinessState(base)).toBe('failing');
+		// A run cut short by a truncated read is neither building nor without data.
+		expect(readinessState({ ...base, isIncomplete: true, streakDays: 13 })).toBe('incomplete');
+		expect(readinessState({ ...base, isIncomplete: true, latestAlignedRate: null })).toBe(
+			'incomplete'
+		);
+		expect(readinessState({ ...base, isIncomplete: true, isReady: true })).toBe('ready');
 	});
 });
 

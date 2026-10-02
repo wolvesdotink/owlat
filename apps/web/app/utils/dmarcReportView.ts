@@ -52,7 +52,13 @@ export function sourcePassRate(source: { messageCount: number; alignedCount: num
 	return source.messageCount > 0 ? source.alignedCount / source.messageCount : null;
 }
 
-export type DmarcReadinessState = 'enforced' | 'ready' | 'building' | 'failing' | 'no-data';
+export type DmarcReadinessState =
+	| 'enforced'
+	| 'ready'
+	| 'building'
+	| 'failing'
+	| 'incomplete'
+	| 'no-data';
 
 /**
  * Where a domain stands on the way to `p=reject`:
@@ -60,17 +66,21 @@ export type DmarcReadinessState = 'enforced' | 'ready' | 'building' | 'failing' 
  * - `ready` — enough clean days, the next step is safe to publish;
  * - `building` — clean so far, but not for long enough yet;
  * - `failing` — the most recent day with reports was below the threshold;
+ * - `incomplete` — a truncated read cut the clean run short before it was
+ *   long enough, so no verdict either way;
  * - `no-data` — no reports in the readiness window.
  */
 export function readinessState(readiness: {
 	nextPolicy: string | null;
 	isReady: boolean;
+	isIncomplete?: boolean;
 	streakDays: number;
 	latestAlignedRate: number | null;
 }): DmarcReadinessState {
 	if (readiness.nextPolicy === null) return 'enforced';
-	if (readiness.latestAlignedRate === null) return 'no-data';
 	if (readiness.isReady) return 'ready';
+	if (readiness.isIncomplete) return 'incomplete';
+	if (readiness.latestAlignedRate === null) return 'no-data';
 	return readiness.streakDays > 0 ? 'building' : 'failing';
 }
 

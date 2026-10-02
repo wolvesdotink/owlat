@@ -2251,6 +2251,7 @@
 					"building": "{days} von {required} Tagen mit mindestens 99 % bestandenem DMARC. Lass die Richtlinie, wie sie ist, bis die Serie {required} Tage erreicht.",
 					"enforced": "Empfänger weisen Mails dieser Domain zurück, die DMARC nicht bestehen. Behalte die fehlgeschlagenen Quellen im Blick: Eine legitime Quelle dort bedeutet Mails, die nicht mehr ankommen.",
 					"failing": "Am letzten Tag mit Berichten haben nur {rate} der Mails DMARC bestanden. Behebe die fehlgeschlagenen Quellen unten, dann beginnt die Zählung der {required} Tage.",
+					"incomplete": "Für diese Domain kommen mehr Berichtsdaten an, als das Dashboard auf einmal lesen kann, daher ließen sich nicht alle der letzten {required} Tage vollständig prüfen. Auf Basis unvollständiger Daten empfiehlt Owlat kein p={next}.",
 					"no-data": "Empfänger haben in den letzten 30 Tagen keine Berichte für diese Domain geschickt, es gibt also noch nichts zu bewerten.",
 					"ready": "{days} Tage in Folge mit mindestens 99 % bestandenem DMARC. Wenn du jetzt p={next} veröffentlichst, sollten deine legitimen Mails nicht betroffen sein."
 				},
@@ -2258,6 +2259,7 @@
 					"building": "Noch nicht bereit für p={next}",
 					"enforced": "Durchgesetzt mit p=reject",
 					"failing": "Nicht bereit für p={next}: Mails schlagen noch fehl",
+					"incomplete": "Zu wenig vollständige Daten für p={next}",
 					"no-data": "Keine aktuellen Berichte",
 					"ready": "Bereit für p={next}"
 				},
