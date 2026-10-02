@@ -22,6 +22,9 @@
  * receives the reply as `composer`), `attachments` (the
  * files under the editor), `blocked-action` (what a blocked state offers).
  *
+ * Saved replies go in from a `;` typed into the text, the footer's picker (⌘;)
+ * or ⌘K (`useTeamComposerSavedReplies`); a reply's gaps hold Send.
+ *
  * It answers a `teamThread` composer target (`utils/composerTarget`) inside the
  * Postbox composer's frame and footer, which read the target's capabilities:
  * plain text to the sender, the same pre-send checks, no paperclip, schedule,
@@ -33,9 +36,16 @@
  */
 import PostboxComposerFooter from '~/components/postbox/PostboxComposerFooter.vue';
 import PostboxComposerShell from '~/components/postbox/PostboxComposerShell.vue';
+import PostboxSnippetPicker from '~/components/postbox/PostboxSnippetPicker.vue';
+import PostboxSnippetVariableDialog from '~/components/postbox/PostboxSnippetVariableDialog.vue';
+import ThreadComposerMenu from './ThreadComposerMenu.vue';
 import { composerPreflight, type TeamThreadComposerTarget } from '~/utils/composerTarget';
 import { useTeamComposerAnswerApi } from '~/composables/useTeamComposerAnswerApi';
 import { useTeamComposerGaps } from '~/composables/useTeamComposerGaps';
+import {
+	useTeamComposerSavedReplies,
+	type SavedReplyRecipient,
+} from '~/composables/useTeamComposerSavedReplies';
 import { useChordKeys } from '~/composables/useChordKeys';
 import {
 	REPLY_BLOCKER_KEYS,
@@ -56,6 +66,8 @@ const props = withDefaults(
 		notice?: ReplyNotice | null;
 		/** The working draft to pre-fill with (agent's or a saved edit). */
 		draft?: string | null;
+		/** A saved reply's gaps are in that draft: they hold Send (`isDraftGapGuarded`). */
+		draftGapGuarded?: boolean;
 		/** The agent's original draft — the "before" of the edit diff. */
 		originalDraft?: string | null;
 		/** The reply's subject to pre-fill (the draft's, or "Re: …"). */
@@ -73,11 +85,14 @@ const props = withDefaults(
 		statusNote?: string;
 		/** Draft with AI has a session on this thread: its `[[...]]` gaps hold Send. */
 		askSession?: boolean;
+		/** Who the reply goes to, for a saved reply's `{{contact.*}}` variables. */
+		recipient?: SavedReplyRecipient | null;
 	}>(),
 	{
 		blocker: null,
 		notice: null,
 		draft: null,
+		draftGapGuarded: false,
 		originalDraft: null,
 		subject: null,
 		busy: false,
@@ -87,14 +102,15 @@ const props = withDefaults(
 		sendHold: null,
 		statusNote: undefined,
 		askSession: false,
+		recipient: null,
 	}
 );
 
 const emit = defineEmits<{
 	/** Send `body` under `subject`. `fromDraft` = unchanged agent draft (plain approve). */
-	(e: 'send', body: string, fromDraft: boolean, subject: string): void;
-	/** Keep the edit as the working draft without sending. */
-	(e: 'save', body: string, subject: string): void;
+	(e: 'send', body: string, fromDraft: boolean, subject: string, gapGuarded: boolean): void;
+	/** Keep the edit as the working draft without sending. Both carry the gap guard. */
+	(e: 'save', body: string, subject: string, gapGuarded: boolean): void;
 	(e: 'reject'): void;
 	/** The person is typing (or stopped) — drives the "is replying" presence. */
 	(e: 'typing', active: boolean): void;
@@ -106,6 +122,7 @@ const hasDraft = computed(() => !!props.draft?.trim());
 const body = ref(props.draft ?? '');
 const subject = ref(props.subject ?? '');
 const textarea = ref<HTMLTextAreaElement | null>(null);
+const rootEl = ref<HTMLElement | null>(null);
 const subjectOpen = ref(false);
 const diffOpen = ref(false);
 
@@ -157,6 +174,7 @@ watch(
 function onInput(event: Event) {
 	touched.value = true;
 	body.value = (event.target as HTMLTextAreaElement).value;
+	savedReplies.refreshTrigger();
 }
 
 function onSubjectInput(event: Event) {
@@ -173,12 +191,14 @@ function focus() {
 
 function send() {
 	if (!canSend.value) return;
-	emit('send', body.value, hasDraft.value && !edited.value, subject.value);
+	const fromDraft = hasDraft.value && !edited.value;
+	emit('send', body.value, fromDraft, subject.value, savedReplies.gapGuarded.value);
 }
 
 function writeOwn() {
 	touched.value = true;
 	body.value = '';
+	savedReplies.gapGuarded.value = false;
 	focus();
 }
 
@@ -189,6 +209,7 @@ function restoreDraft() {
 }
 
 function onKeydown(event: KeyboardEvent) {
+	if (savedReplies.handleKeydown(event)) return;
 	if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
 		event.preventDefault();
 		send();
@@ -201,13 +222,19 @@ function reset() {
 	body.value = '';
 	subject.value = props.subject ?? '';
 	diffOpen.value = false;
+	savedReplies.gapGuarded.value = false;
 }
 
-/** Reopen with text handed back to the person (an undone follow-up). */
-function fill(text: string, nextSubject: string) {
+/**
+ * Reopen with text handed back to the person (an undone follow-up, a kept
+ * reply). `gapGuarded`: the text holds a saved reply's gaps, which keep
+ * holding Send.
+ */
+function fill(text: string, nextSubject: string, gapGuarded = false) {
 	touched.value = true;
 	body.value = text;
 	subject.value = nextSubject;
+	savedReplies.gapGuarded.value = gapGuarded;
 	focus();
 }
 
@@ -230,8 +257,17 @@ const answer = useTeamComposerAnswerApi({
 	},
 	focus,
 });
-// An AI draft's `[[...]]` gaps hold Send and replace the note beside it.
-const gaps = useTeamComposerGaps(body, answer, props);
+const savedReplies = useTeamComposerSavedReplies({
+	rootEl,
+	textarea,
+	body,
+	subject: () => subject.value,
+	recipient: () => props.recipient,
+	touched,
+	storedGuard: () => props.draftGapGuarded,
+});
+// An AI draft's (or a saved reply's) `[[...]]` gaps hold Send and replace the note beside it.
+const gaps = useTeamComposerGaps(body, answer, props, () => savedReplies.gapGuarded.value);
 const sendKeys = useChordKeys('mod+Enter');
 const canSend = computed(
 	() =>
@@ -244,17 +280,20 @@ const canSend = computed(
 
 /** What the person typed, for keeping it when they leave without sending. */
 function snapshot() {
-	return { body: body.value, subject: subject.value, touched: touched.value };
+	return {
+		body: body.value,
+		subject: subject.value,
+		touched: touched.value,
+		gapGuarded: savedReplies.gapGuarded.value,
+	};
 }
 
 defineExpose({ focus, reset, fill, insert, snapshot, answer });
-
-const menuItem =
-	'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-bg-surface disabled:opacity-50';
 </script>
 
 <template>
 	<section
+		ref="rootEl"
 		class="flex min-h-0 flex-1 flex-col"
 		data-testid="thread-composer"
 		:aria-label="t('dashboard.inbox.detail.composer.label')"
@@ -341,16 +380,35 @@ const menuItem =
 
 				<slot name="above-editor" :composer="answer" />
 
-				<!-- Plain text: the reply is escaped into HTML on the way out. -->
-				<textarea
-					ref="textarea"
-					:value="body"
-					class="min-h-48 w-full flex-1 resize-none bg-transparent text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-tertiary"
-					:aria-label="t('dashboard.inbox.detail.composer.bodyLabel')"
-					:placeholder="t('dashboard.inbox.detail.composer.placeholder')"
-					data-testid="thread-composer-body"
-					@input="onInput"
-					@keydown="onKeydown"
+				<!-- Plain text: the reply is escaped into HTML on the way out. The `;`
+				     saved-reply dropdown is anchored under the caret inside it. -->
+				<div class="relative flex min-h-48 flex-1 flex-col">
+					<textarea
+						ref="textarea"
+						:value="body"
+						class="min-h-48 w-full flex-1 resize-none bg-transparent text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-tertiary"
+						:aria-label="t('dashboard.inbox.detail.composer.bodyLabel')"
+						:placeholder="t('dashboard.inbox.detail.composer.placeholder')"
+						data-testid="thread-composer-body"
+						@input="onInput"
+						@keydown="onKeydown"
+						@keyup="savedReplies.handleKeyup"
+						@click="savedReplies.refreshTrigger"
+						@blur="savedReplies.dropdown.close"
+					/>
+					<PostboxSnippetPicker
+						v-if="savedReplies.dropdown.style.value"
+						:items="savedReplies.dropdown.items.value"
+						:active-index="savedReplies.dropdown.index.value"
+						:style="savedReplies.dropdown.style.value"
+						@select="savedReplies.dropdown.select"
+						@hover="(i) => (savedReplies.dropdown.index.value = i)"
+					/>
+				</div>
+				<PostboxSnippetVariableDialog
+					:request="savedReplies.prompt.value"
+					@submit="savedReplies.submitPrompt"
+					@cancel="savedReplies.cancelPrompt"
 				/>
 
 				<!-- What changed against the agent's original, opened from ⋯. -->
@@ -383,6 +441,7 @@ const menuItem =
 					:menu-label="t('components.answer.team.more')"
 					:preflight="preflight"
 					:last-saved-label="gaps.note.value ?? ''"
+					:saved-replies="savedReplies.footer"
 					@send="send"
 				>
 					<template #send-hint>
@@ -393,81 +452,21 @@ const menuItem =
 						>
 					</template>
 					<template #menu="{ close }">
-						<button
-							v-if="hasChanges"
-							type="button"
-							role="menuitem"
-							:class="menuItem"
-							data-testid="thread-composer-show-changes"
-							@click="(close(), (diffOpen = !diffOpen))"
-						>
-							<Icon name="lucide:git-compare" class="size-4 text-text-tertiary" />
-							{{
-								diffOpen
-									? t('components.answer.team.hideChanges')
-									: t('components.answer.team.showChanges')
-							}}
-						</button>
-						<button
-							v-if="edited"
-							type="button"
-							role="menuitem"
-							:class="menuItem"
-							:disabled="busy || !body.trim()"
-							data-testid="thread-composer-save"
-							@click="(close(), emit('save', body, subject))"
-						>
-							<Icon name="lucide:save" class="size-4 text-text-tertiary" />
-							{{ t('dashboard.inbox.detail.composer.saveDraft') }}
-						</button>
-						<button
-							v-if="edited"
-							type="button"
-							role="menuitem"
-							:class="menuItem"
-							:disabled="busy"
-							data-testid="thread-composer-restore"
-							@click="(close(), restoreDraft())"
-						>
-							<Icon name="lucide:undo-2" class="size-4 text-text-tertiary" />
-							{{ t('dashboard.inbox.detail.composer.restoreDraft') }}
-						</button>
-						<button
-							v-if="hasDraft"
-							type="button"
-							role="menuitem"
-							:class="menuItem"
-							:disabled="busy"
-							data-testid="thread-composer-write-own"
-							@click="(close(), writeOwn())"
-						>
-							<Icon name="lucide:pencil" class="size-4 text-text-tertiary" />
-							{{ t('dashboard.inbox.detail.composer.writeOwn') }}
-						</button>
-						<button
-							v-if="hasDraft"
-							type="button"
-							role="menuitem"
-							:class="[menuItem, 'text-error']"
-							:disabled="busy"
-							data-testid="thread-composer-skip"
-							@click="(close(), emit('reject'))"
-						>
-							<Icon name="lucide:trash-2" class="size-4" />
-							{{ t('components.answer.team.discardDraft') }}
-						</button>
-						<button
-							v-else
-							type="button"
-							role="menuitem"
-							:class="menuItem"
-							:disabled="busy || !body"
-							data-testid="thread-composer-clear"
-							@click="(close(), writeOwn())"
-						>
-							<Icon name="lucide:eraser" class="size-4 text-text-tertiary" />
-							{{ t('components.answer.team.clear') }}
-						</button>
+						<ThreadComposerMenu
+							:close="close"
+							:has-changes="hasChanges"
+							:diff-open="diffOpen"
+							:edited="edited"
+							:has-draft="hasDraft"
+							:busy="busy"
+							:has-text="!!body.trim()"
+							:can-clear="!!body"
+							@toggle-diff="diffOpen = !diffOpen"
+							@save="emit('save', body, subject, savedReplies.gapGuarded.value)"
+							@restore="restoreDraft"
+							@write-own="writeOwn"
+							@reject="emit('reject')"
+						/>
 					</template>
 					<template #notes>
 						<p

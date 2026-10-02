@@ -43,6 +43,7 @@ import {
 	eraseChatAuthorship,
 	eraseChatMemberships,
 	eraseChatMentions,
+	eraseSavedReplyAuthorship,
 	eraseInstanceRows,
 	eraseMemberRecords,
 	eraseNoteAuthorship,
@@ -76,6 +77,7 @@ const PHASE_RUNNERS: Record<MemberErasurePhase, MemberPhaseRunner> = {
 	chatAuthorship: eraseChatAuthorship,
 	chatMemberships: eraseChatMemberships,
 	chatMentions: eraseChatMentions,
+	savedReplyAuthorship: eraseSavedReplyAuthorship,
 	noteAuthorship: eraseNoteAuthorship,
 	noteMentions: eraseNoteMentions,
 };
@@ -189,6 +191,22 @@ export async function remainingMemberData(
 				ctx.db
 					.query('chatMessages')
 					.withIndex('by_author', (q) => q.eq('authorId', authUserId))
+					.first(),
+		],
+		[
+			'personal saved replies',
+			() =>
+				ctx.db
+					.query('mailSnippets')
+					.withIndex('by_owner', (q) => q.eq('ownerUserId', authUserId))
+					.first(),
+		],
+		[
+			'saved reply authorship',
+			() =>
+				ctx.db
+					.query('mailSnippets')
+					.withIndex('by_author', (q) => q.eq('authorUserId', authUserId))
 					.first(),
 		],
 		[

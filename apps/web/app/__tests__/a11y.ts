@@ -459,6 +459,7 @@ export function dashboardShellStubs(): Record<string, unknown> {
 			isMac: ref(false),
 			isWindows: ref(false),
 			isLinux: ref(false),
+			platform: ref('linux'),
 		}),
 		useDesktopNotifications: () => ({ isDesktop: ref(false) }),
 		useWorkspaceHotkeys: vi.fn(),

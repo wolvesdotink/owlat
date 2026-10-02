@@ -128,6 +128,13 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	),
 	desc('mailboxes', 'mailSignatures', 'mailboxId', 'delete', WITH_MAILBOX),
 	desc('mailboxes', 'mailSnippets', 'mailboxId', 'delete', WITH_MAILBOX),
+	desc(
+		'mailboxes',
+		'mailSnippets',
+		'mailboxIds[]',
+		'retain',
+		'A shared reply can only be limited to team inboxes, which an erasure never deletes.'
+	),
 	desc('mailboxes', 'mailFilters', 'mailboxId', 'delete', WITH_MAILBOX),
 	desc('mailboxes', 'mailFilterRunJobs', 'mailboxId', 'delete', 'Stopped before the mail goes.'),
 	desc('mailboxes', 'mailAliases', 'targetMailboxId', 'delete', WITH_MAILBOX),

@@ -52,7 +52,7 @@ const isPublished = computed(() => template.value?.status === 'published');
 const isChangingPublication = computed(() => isPublishing.value || isUnpublishing.value);
 
 // Organization email theme (incl. baseWidth) from the shared source.
-const { emailTheme } = useEmailTheme();
+const { emailTheme, brand } = useEmailTheme();
 
 // Personalization variables: built-in contact fields plus custom properties.
 const variables = usePersonalizationVariables();
@@ -323,6 +323,7 @@ async function handlePublicationToggle() {
 						:config="{
 							variableType: 'personalization',
 							theme: emailTheme,
+							brand,
 							showMandatoryUnsubscribeFooter: true,
 							showSettings: true,
 						}"

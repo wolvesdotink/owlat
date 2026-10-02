@@ -22,6 +22,7 @@ import {
 	POSTBOX_THREAD_COMMAND_PROVIDER_PRIORITY,
 	type CampaignSurfaceRow,
 	buildCampaignSurfaceGroups,
+	buildSavedReplyGroups,
 	buildThreadSurfaceGroups,
 } from '../commandPaletteSurfaces';
 import { POSTBOX_COMMAND_PROVIDER_PRIORITY } from '~/composables/postbox/usePostboxCommandSurface';
@@ -190,5 +191,44 @@ describe('buildThreadSurfaceGroups', () => {
 		expect(POSTBOX_THREAD_COMMAND_PROVIDER_PRIORITY).toBeLessThan(
 			POSTBOX_COMMAND_PROVIDER_PRIORITY
 		);
+	});
+});
+
+describe('the focused composer’s saved replies', () => {
+	const replies = [
+		{ _id: 'sn_1', name: 'Refund policy', shortcut: 'refund' },
+		{ _id: 'sn_2', name: 'Opening hours', shortcut: '' },
+	];
+	function groups(query = '') {
+		const onInsert = vi.fn();
+		const onSaveCurrent = vi.fn();
+		const built = buildSavedReplyGroups(
+			{ replies: () => replies, t: translate, onInsert, onSaveCurrent },
+			query
+		);
+		return { built, onInsert, onSaveCurrent };
+	}
+
+	it('lists the replies, with their shortcut, and "Save as reply" last', () => {
+		const [group] = groups().built;
+		expect(group?.heading).toBe('Saved replies');
+		expect(group?.mode).toBe('commands');
+		expect(group?.items.map((item) => [item.label, item.subtitle])).toEqual([
+			['Refund policy', ';refund'],
+			['Opening hours', undefined],
+			['Save as reply', undefined],
+		]);
+	});
+
+	it('filters by the palette query, the shortcut included', () => {
+		expect(groups('refund').built[0]?.items.map((item) => item.label)).toEqual(['Refund policy']);
+	});
+
+	it('inserts the chosen reply, or opens "Save as reply"', () => {
+		const { built, onInsert, onSaveCurrent } = groups();
+		built[0]?.items[1]?.run();
+		expect(onInsert).toHaveBeenCalledWith('sn_2');
+		built[0]?.items[2]?.run();
+		expect(onSaveCurrent).toHaveBeenCalled();
 	});
 });

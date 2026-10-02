@@ -15,6 +15,7 @@
  */
 import {
 	SNIPPET_VARIABLE_SOURCES,
+	documentedVariable,
 	snippetTokens,
 	snippetVariableSourceKey,
 	type SnippetVariable,
@@ -27,7 +28,10 @@ const variables = defineModel<SnippetVariable[]>({ required: true });
 
 const { t } = useI18n();
 
-const tokens = computed(() => snippetTokens(props.bodyHtml));
+// The documented variables (`{{contact.firstName}}`) say where they come from.
+const tokens = computed(() =>
+	snippetTokens(props.bodyHtml).filter((token) => !documentedVariable(token))
+);
 
 function declarationFor(token: string): SnippetVariable | undefined {
 	return variables.value.find((v) => v.token === token);

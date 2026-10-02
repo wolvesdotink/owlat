@@ -70,4 +70,10 @@ export interface EmailTheme {
 	darkModeLinkColor?: string;
 	/** Base content width in px (min: 400, max: 800). Affects layout, columns, and VML. */
 	baseWidth?: number;
+	/**
+	 * Stylesheet URLs of the web fonts the theme's font stacks name (the brand
+	 * kit's Google Fonts). The renderer links them when the caller passes no
+	 * `fontUrls` of its own.
+	 */
+	fontUrls?: string[];
 }

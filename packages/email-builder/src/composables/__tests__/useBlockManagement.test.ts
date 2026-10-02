@@ -32,6 +32,7 @@ const defaultTheme: Required<EmailTheme> = {
 	darkModeTextColor: '#e4e4e7',
 	darkModeLinkColor: '#93c5fd',
 	baseWidth: 600,
+	fontUrls: [],
 };
 
 function makeTextBlock(id: string): EditorBlock {

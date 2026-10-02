@@ -118,6 +118,9 @@ export const sendFollowUp = adminMutation({
 		threadId: v.id('conversationThreads'),
 		body: v.string(),
 		subject: v.string(),
+		// The composer's saved-reply gap guard: a follow-up has no stored draft
+		// to carry it, so the composer says whether its text holds one.
+		isGapGuarded: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args, session): Promise<SendFollowUpResult> => {
 		const body = args.body.trim();
@@ -145,7 +148,12 @@ export const sendFollowUp = adminMutation({
 			};
 		}
 
-		await assertNoAnswerGaps(ctx, { kind: 'teamThread', threadId: args.threadId }, { text: body });
+		await assertNoAnswerGaps(
+			ctx,
+			{ kind: 'teamThread', threadId: args.threadId },
+			{ text: body },
+			{ guarded: args.isGapGuarded === true }
+		);
 		// The composer's attachments leave with this follow-up, so the composer is
 		// free for the next one while this one waits out its undo window.
 		await assertReplyAttachmentsReady(ctx, args.threadId);

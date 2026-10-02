@@ -15,12 +15,13 @@ const emit = defineEmits<{
 const listEl = ref<HTMLElement | null>(null);
 
 // Category display order
-const categoryOrder = ['text', 'media', 'layout', 'components', 'saved'] as const;
+const categoryOrder = ['text', 'media', 'layout', 'components', 'brand', 'saved'] as const;
 const categoryLabels: Record<string, string> = {
 	text: 'Text',
 	media: 'Media',
 	layout: 'Layout',
 	components: 'Components',
+	brand: 'Brand kit',
 	saved: 'Saved',
 };
 

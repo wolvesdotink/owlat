@@ -1,5 +1,6 @@
 import { reactive, computed, ref, type ComputedRef } from 'vue';
-import type { SlashCommand, SlashMenuState, SavedBlock, BlockType } from '../types';
+import { PanelBottom, Stamp } from '@lucide/vue';
+import type { SlashCommand, SlashMenuState, SavedBlock, BlockType, BrandBlockKind } from '../types';
 import { getSlashCommands } from '../registry';
 
 export interface UseSlashCommandsReturn {
@@ -14,13 +15,35 @@ export interface UseSlashCommandsReturn {
 	confirm: () => SlashCommand | null;
 	setSavedBlocks: (blocks: SavedBlock[]) => void;
 	setAllowedBlockTypes: (types: BlockType[] | undefined) => void;
+	setBrandBlocks: (kinds: BrandBlockKind[]) => void;
 }
 
 // Virtual commands (not in registry, hand-crafted)
 const headingCommands: SlashCommand[] = [
-	{ id: 'h1', name: 'Heading 1', description: 'Large heading', icon: null, category: 'text', aliases: ['h1', 'title'] },
-	{ id: 'h2', name: 'Heading 2', description: 'Medium heading', icon: null, category: 'text', aliases: ['h2', 'subtitle'] },
-	{ id: 'h3', name: 'Heading 3', description: 'Small heading', icon: null, category: 'text', aliases: ['h3'] },
+	{
+		id: 'h1',
+		name: 'Heading 1',
+		description: 'Large heading',
+		icon: null,
+		category: 'text',
+		aliases: ['h1', 'title'],
+	},
+	{
+		id: 'h2',
+		name: 'Heading 2',
+		description: 'Medium heading',
+		icon: null,
+		category: 'text',
+		aliases: ['h2', 'subtitle'],
+	},
+	{
+		id: 'h3',
+		name: 'Heading 3',
+		description: 'Small heading',
+		icon: null,
+		category: 'text',
+		aliases: ['h3'],
+	},
 ];
 
 // Module-level ref so all useSlashCommands() instances share the same saved blocks
@@ -31,6 +54,31 @@ const savedBlocks = ref<SavedBlock[]>([]);
 // Shared at module level so every instance (EmailBuilder + each InlineTextEditor)
 // honours the host config without prop-drilling through the canvas.
 const allowedBlockTypes = ref<BlockType[] | undefined>(undefined);
+
+// The brand kit Blocks there is something to insert for (useBrandKit), shared
+// like the saved blocks so every slash menu instance offers them.
+const brandBlockKinds = ref<BrandBlockKind[]>([]);
+
+const BRAND_COMMANDS: Record<BrandBlockKind, SlashCommand> = {
+	logo: {
+		id: 'brand:logo',
+		name: 'Logo',
+		description: 'Your brand kit logo',
+		icon: Stamp,
+		category: 'brand',
+		aliases: ['brand', 'logo'],
+		brandBlock: 'logo',
+	},
+	footer: {
+		id: 'brand:footer',
+		name: 'Footer',
+		description: 'Company name, address and social links',
+		icon: PanelBottom,
+		category: 'brand',
+		aliases: ['brand', 'footer', 'address'],
+		brandBlock: 'footer',
+	},
+};
 
 const savedBlockCommands = computed<SlashCommand[]>(() => {
 	return savedBlocks.value.map((block) => ({
@@ -64,11 +112,21 @@ export function useSlashCommands(): UseSlashCommandsReturn {
 		allowedBlockTypes.value = types && types.length > 0 ? types : undefined;
 	}
 
+	function setBrandBlocks(kinds: BrandBlockKind[]) {
+		brandBlockKinds.value = kinds;
+	}
+
 	const allCommands = computed<SlashCommand[]>(() => {
 		const allowed = allowedBlockTypes.value;
 		// Heading commands all produce a `text` block, so they ride along with it.
 		const headings = !allowed || allowed.includes('text') ? headingCommands : [];
-		return [...headings, ...getSlashCommands(allowed), ...savedBlockCommands.value];
+		return [
+			...headings,
+			...getSlashCommands(allowed),
+			// Already narrowed to the allowlist by the editor (useBrandKit).
+			...brandBlockKinds.value.map((kind) => BRAND_COMMANDS[kind]),
+			...savedBlockCommands.value,
+		];
 	});
 
 	const filteredCommands = computed<SlashCommand[]>(() => {
@@ -132,5 +190,6 @@ export function useSlashCommands(): UseSlashCommandsReturn {
 		confirm,
 		setSavedBlocks,
 		setAllowedBlockTypes,
+		setBrandBlocks,
 	};
 }
