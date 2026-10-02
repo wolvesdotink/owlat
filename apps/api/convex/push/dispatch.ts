@@ -188,6 +188,7 @@ async function resolveChat(
 	let url = `/dashboard/chat/${room._id}`;
 	let roomName: string | undefined = room.kind === 'dm' ? undefined : `#${room.name}`;
 	let muted = false;
+	let isSealedThread = false;
 	if (isMailThreadDiscussion(room)) {
 		// A team discussion belongs to an email: the click opens that email, and
 		// only while this person can still read its mailbox.
@@ -196,7 +197,11 @@ async function resolveChat(
 		if (!thread || !mailbox || !thread.latestMessageId) return null;
 		if (!(await canUserReadMailbox(ctx, mailbox, userId))) return null;
 		url = `/dashboard/postbox/inbox/${thread.latestMessageId}?mailbox=${thread.mailboxId}`;
-		roomName = thread.latestSubject;
+		// A sealed (E2EE) email's subject was restored from inside the
+		// ciphertext: it never goes into a payload, not even as a room name.
+		const latest = await ctx.db.get(thread.latestMessageId);
+		isSealedThread = latest?.inboundEncryptionInfo !== undefined;
+		roomName = isSealedThread ? undefined : thread.latestSubject;
 	} else {
 		const membership = await getMembership(ctx, room._id, userId);
 		if (!membership) return null;
@@ -209,6 +214,7 @@ async function resolveChat(
 				roomId: room._id,
 				authorName: author.name?.trim() || author.email || 'Owlat',
 				roomName,
+				isSealedThread,
 				text: message.text,
 				url,
 			},

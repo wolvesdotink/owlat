@@ -39,6 +39,7 @@ interface Copy {
 	clarificationPrivate: string;
 	chatTitle: string;
 	chatMention: (author: string, room: string) => string;
+	sealedThread: string;
 	chatPrivate: string;
 	quietTitle: string;
 	quietBody: (count: number) => string;
@@ -60,6 +61,7 @@ const COPY: Record<AppLocale, Copy> = {
 		clarificationPrivate: 'The agent has a question for you',
 		chatTitle: 'New chat message',
 		chatMention: (author, room) => `${author} in ${room}`,
+		sealedThread: 'an encrypted conversation',
 		chatPrivate: 'You have a new chat message',
 		quietTitle: 'While you were away',
 		quietBody: (count) =>
@@ -82,6 +84,7 @@ const COPY: Record<AppLocale, Copy> = {
 		clarificationPrivate: 'Der Agent hat eine Frage an dich',
 		chatTitle: 'Neue Chat-Nachricht',
 		chatMention: (author, room) => `${author} in ${room}`,
+		sealedThread: 'einer verschlüsselten Konversation',
 		chatPrivate: 'Du hast eine neue Chat-Nachricht',
 		quietTitle: 'Während du weg warst',
 		quietBody: (count) =>
@@ -175,6 +178,8 @@ export interface ChatNotice {
 	authorName: string;
 	/** Channel name for a mention; absent for a direct message. */
 	roomName?: string;
+	/** A discussion of a sealed (E2EE) email: its subject is never shown. */
+	isSealedThread?: boolean;
 	text: string;
 	/** Where the click goes: the room, or the email a team discussion belongs to. */
 	url: string;
@@ -188,8 +193,9 @@ export function chatPayload(
 	const copy = copyFor(locale);
 	const tag = `chat:${notice.roomId}`;
 	if (isPrivate) return { title: copy.chatTitle, body: copy.chatPrivate, tag, url: notice.url };
-	const title = notice.roomName
-		? copy.chatMention(clip(notice.authorName, 40), clip(notice.roomName, 40))
+	const roomName = notice.isSealedThread ? copy.sealedThread : notice.roomName;
+	const title = roomName
+		? copy.chatMention(clip(notice.authorName, 40), clip(roomName, 40))
 		: notice.authorName;
 	return {
 		title: clip(title, MAX_TITLE),
