@@ -5,6 +5,7 @@ import schema from '../schema';
 import { internal } from '../_generated/api';
 import { createTestCampaign, createTestContact, createTestEmailSend } from './factories';
 import { mtaAdapter } from '../webhooks/adapters/mta';
+import { base64UrlToBytes, bytesToBase64Url } from '../lib/bytes';
 
 const enqueueAction = vi.fn().mockResolvedValue('work-1');
 vi.mock('../delivery/workpool', () => ({
@@ -265,9 +266,18 @@ describe('authenticated MTA routing re-entry', () => {
 	it('fails closed when the authenticated token is tampered', async () => {
 		const value = await fixture();
 		const args = callbackArgs(value);
+		// Tamper with the decoded bytes, not the encoded text: the last base64url
+		// character can carry padding bits, so swapping it may decode to the
+		// same bytes and leave the token valid.
+		const prefixEnd = args.token.indexOf('.') + 1;
+		const original = base64UrlToBytes(args.token.slice(prefixEnd));
+		const tampered = original.slice();
+		tampered[tampered.length - 1] = tampered[tampered.length - 1]! ^ 1;
+		const tamperedToken = `${args.token.slice(0, prefixEnd)}${bytesToBase64Url(tampered)}`;
+		expect(base64UrlToBytes(tamperedToken.slice(prefixEnd))).not.toEqual(original);
 		const result = await value.t.mutation(internal.delivery.routingReentry.consumeSnapshot, {
 			...args,
-			token: `${args.token.slice(0, -1)}${args.token.endsWith('A') ? 'B' : 'A'}`,
+			token: tamperedToken,
 		});
 		expect(result).toEqual({ disposition: 'invalid_token' });
 		expect(enqueueAction).not.toHaveBeenCalled();
