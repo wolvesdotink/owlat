@@ -181,6 +181,63 @@ describe('CoeditSync', () => {
 		expect(serverDoc).toEqual(local);
 	});
 
+	it('shows what the server stored for its write instead of sending it again', () => {
+		// The server sanitizes what it stores, so the echo of this tab's write
+		// can differ from what the tab sent.
+		const sync = start(doc([b('a'), b('b')]));
+		const local = doc([b('a', 'a<br>b'), b('b')]);
+		sync.sent(sync.outgoing(local)!);
+		const stored = doc([b('a', 'a<br />b'), b('b')]);
+		const echoed = sync.receive(server(2, stored), local);
+		expect(echoed).toEqual({ kind: 'merge', ops: [] });
+		expect(sync.settle(local)).toEqual([]);
+		sync.acked(2);
+
+		const settled = sync.settle(local);
+		expect(settled).toEqual([{ kind: 'update', block: b('a', 'a<br />b'), afterId: null }]);
+		const shown = applyCoeditOps(local, settled);
+		expect(shown).toEqual(stored);
+		expect(sync.outgoing(shown)).toBeNull();
+		expect(sync.hasUnsent(shown)).toBe(false);
+		// Once only.
+		expect(sync.settle(local)).toEqual([]);
+	});
+
+	it('shows a later write by someone else to a block it just wrote', () => {
+		const sync = start(doc([b('a')], 'S'));
+		const local = doc([b('a', 'mine')], 'Mine');
+		sync.sent(sync.outgoing(local)!);
+		// Version 2 is this tab's write, version 3 someone else's on top of it.
+		const merged = sync.receive(server(3, doc([b('a', 'theirs')], 'Theirs')), local);
+		expect(applyReceive(local, merged)).toEqual(local);
+		sync.acked(2);
+		const shown = applyCoeditOps(local, sync.settle(local));
+		expect(shown).toEqual(doc([b('a', 'theirs')], 'Theirs'));
+		expect(sync.outgoing(shown)).toBeNull();
+	});
+
+	it('keeps an edit made after the write was sent', () => {
+		const sync = start(doc([b('a')]));
+		sync.sent(sync.outgoing(doc([b('a', 'one')]))!);
+		const local = doc([b('a', 'two')]);
+		sync.receive(server(2, doc([b('a', 'ONE')])), local);
+		sync.acked(2);
+		expect(sync.settle(local)).toEqual([]);
+		expect(sync.outgoing(local)?.ops).toEqual([
+			{ op: { kind: 'update', block: b('a', 'two'), afterId: null }, baseVersion: 2 },
+		]);
+	});
+
+	it('waits for the server state that holds the acknowledged write', () => {
+		const sync = start(doc([b('a')]));
+		const local = doc([b('a', 'x ')]);
+		sync.sent(sync.outgoing(local)!);
+		sync.acked(2);
+		expect(sync.settle(local)).toEqual([]);
+		sync.receive(server(2, doc([b('a', 'x')])), local);
+		expect(sync.settle(local)).toEqual([{ kind: 'update', block: b('a', 'x'), afterId: null }]);
+	});
+
 	it('reports unsent edits', () => {
 		const sync = start(doc([b('a')]));
 		expect(sync.hasUnsent(doc([b('a')]))).toBe(false);
