@@ -2264,7 +2264,7 @@
 				"howToApply": "Owlat ändert die Richtlinie nie selbst. Veröffentliche diesen Eintrag bei deinem DNS-Anbieter oder erhöhe die Richtlinie an der Domain, dann zeigt Owlat dort denselben Eintrag.",
 				"openDomain": "Domain öffnen",
 				"progressLabel": "Tage mit mindestens 99 % bestandenem DMARC",
-				"recordLabel": "DMARC (p={next})",
+				"recordLabel": "DMARC-Eintrag (p={next})",
 				"streak": "{days} Tage in Folge, {required} nötig"
 			},
 			"dmarcSources": {
@@ -2276,7 +2276,7 @@
 					"source": "Quelle"
 				},
 				"empty": "Keine Absenderquellen in diesem Zeitraum.",
-				"ips": "IP {ips} | {count} IPs: {ips}",
+				"ips": "IP {ips} | {count} IP-Adressen: {ips}",
 				"kind": {
 					"known": "Bekannter Absender",
 					"owlat": "Owlat",
@@ -6460,7 +6460,7 @@
 					}
 				},
 				"dmarc": {
-					"domainLabel": "Domain",
+					"domainLabel": "Versanddomain",
 					"empty": {
 						"description": "Empfänger schicken einen Bericht pro Tag, sobald der DMARC-Eintrag der Domain Owlats Adresse nennt. Die ersten kommen meist innerhalb eines Tages.",
 						"title": "Noch keine Berichte"

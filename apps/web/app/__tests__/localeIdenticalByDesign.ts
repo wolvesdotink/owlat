@@ -62,6 +62,7 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'components.delivery.deliverabilitySetupValues.fields.domain',
 	'components.delivery.deliverabilitySetupValues.fields.name',
 	'components.delivery.deliverabilitySetupValues.fields.ttl',
+	'components.delivery.dmarcSources.kind.owlat',
 	'components.delivery.domainTable.authAllPass',
 	'components.delivery.independenceTrendChart.relay',
 	'components.delivery.migrationImportStep.apiKeyPlaceholder',
