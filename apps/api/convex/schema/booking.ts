@@ -84,9 +84,13 @@ export const bookingTables = {
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
-		// Busy-time reads and the upcoming list: one host's bookings by start.
+		// The export and erasure: every one of a host's bookings.
 		.index('by_user_and_start', ['userId', 'startAt'])
-		// The open-bookings-per-guest cap.
-		.index('by_user_and_guest', ['userId', 'guestEmail'])
+		// Busy-time reads and the upcoming list: one host's CONFIRMED bookings by
+		// start, so cancelled rows never crowd a bounded read.
+		.index('by_user_and_status_and_start', ['userId', 'status', 'startAt'])
+		// The open-bookings-per-guest cap: one guest's confirmed bookings that
+		// have not ended.
+		.index('by_user_and_guest_and_status_and_end', ['userId', 'guestEmail', 'status', 'endAt'])
 		.index('by_manage_token', ['manageTokenHash']),
 };

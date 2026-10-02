@@ -29,12 +29,15 @@ export const listUpcoming = bookingQuery({
 		// A meeting that started up to a day ago may still be running.
 		const rows = await ctx.db
 			.query('bookings')
-			.withIndex('by_user_and_start', (q) =>
-				q.eq('userId', session.userId).gte('startAt', now - 24 * HOUR_MS)
+			.withIndex('by_user_and_status_and_start', (q) =>
+				q
+					.eq('userId', session.userId)
+					.eq('status', 'confirmed')
+					.gte('startAt', now - 24 * HOUR_MS)
 			)
-			.take(UPCOMING_LIMIT * 3); // bounded: the list shows at most UPCOMING_LIMIT
+			.take(UPCOMING_LIMIT * 2); // bounded: the list shows at most UPCOMING_LIMIT
 		return rows
-			.filter((row) => row.status === 'confirmed' && row.endAt > now)
+			.filter((row) => row.endAt > now)
 			.slice(0, UPCOMING_LIMIT)
 			.map((row) => ({
 				_id: row._id,

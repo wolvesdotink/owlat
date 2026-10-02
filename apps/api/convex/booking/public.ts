@@ -22,7 +22,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { loadLiveUserProfile } from '../lib/userProfiles';
 import { rateLimiter } from '../lib/rateLimiter';
-import { isValidEmail, normalizeEmail } from '../lib/inputGuards';
+import { isValidEmail, normalizeEmail, sanitizeEmailHeaderValue } from '../lib/inputGuards';
 import { BOOKING_LIMITS } from '@owlat/shared/booking';
 import { randomToken } from '../lib/randomToken';
 import { hashManageToken, hostDisplayName, isKnownTimeZone, loadBusy, rulesOf } from './model';
@@ -155,7 +155,9 @@ function cleanGuest(args: {
 	guestTimeZone?: string;
 	guestLocale?: string;
 }) {
-	const guestName = args.guestName.trim();
+	// The name lands in the host's mail subject and the invite's CN: no line
+	// breaks or other control characters.
+	const guestName = sanitizeEmailHeaderValue(args.guestName.replace(/\p{Cc}+/gu, ' '));
 	const guestEmail = normalizeEmail(args.guestEmail);
 	const guestNote = args.guestNote?.trim() || undefined;
 	if (!guestName || guestName.length > BOOKING_LIMITS.guestNameMaxLength) return null;
@@ -196,13 +198,16 @@ export const reserve = internalMutation({
 		if (!guest) return { ok: false, reason: 'invalid_guest' };
 
 		const now = Date.now();
-		const existing = await ctx.db
+		const open = await ctx.db
 			.query('bookings')
-			.withIndex('by_user_and_guest', (q) =>
-				q.eq('userId', page.profile.userId).eq('guestEmail', guest.guestEmail)
+			.withIndex('by_user_and_guest_and_status_and_end', (q) =>
+				q
+					.eq('userId', page.profile.userId)
+					.eq('guestEmail', guest.guestEmail)
+					.eq('status', 'confirmed')
+					.gt('endAt', now)
 			)
-			.take(200); // bounded: one guest's bookings with one host
-		const open = existing.filter((row) => row.status === 'confirmed' && row.endAt > now);
+			.take(BOOKING_LIMITS.openBookingsPerGuest); // bounded: only the cap matters
 		if (open.length >= BOOKING_LIMITS.openBookingsPerGuest) {
 			return { ok: false, reason: 'too_many_bookings' };
 		}

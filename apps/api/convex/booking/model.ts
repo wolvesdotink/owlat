@@ -132,15 +132,16 @@ export async function loadBusy(
 	const reach = (BOOKING_LIMITS.durationMaxMinutes + args.bufferMinutes) * MINUTE_MS;
 	const rows = await ctx.db
 		.query('bookings')
-		.withIndex('by_user_and_start', (q) =>
+		.withIndex('by_user_and_status_and_start', (q) =>
 			q
 				.eq('userId', args.userId)
+				.eq('status', 'confirmed')
 				.gte('startAt', args.from - reach)
 				.lt('startAt', args.until + args.bufferMinutes * MINUTE_MS)
 		)
-		.take(2000); // bounded: one host's bookings in a window of at most a few months
+		.take(2000); // bounded: one host's confirmed bookings in a window of at most a few months
 	return rows
-		.filter((row) => row.status === 'confirmed' && row._id !== args.exclude)
+		.filter((row) => row._id !== args.exclude)
 		.map((row) => ({ start: row.startAt, end: row.endAt }));
 }
 
