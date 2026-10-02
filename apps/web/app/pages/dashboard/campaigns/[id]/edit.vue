@@ -29,6 +29,7 @@ const {
 	campaignData,
 	campaignLoading,
 	campaignError,
+	refetchCampaign,
 	emailTemplates,
 	campaignAudience,
 	audienceCount,
@@ -302,6 +303,7 @@ const shownCapacityPlan = computed(() => {
 		<UiQueryBoundary
 			:loading="campaignLoading"
 			:error="campaignError"
+			@retry="refetchCampaign"
 			:error-title="t('dashboard.campaigns.detail.edit.errorTitle')"
 			:loading-label="t('dashboard.campaigns.detail.edit.loadingLabel')"
 		>

@@ -76,6 +76,29 @@ describe('UiQueryBoundary', () => {
 		expect(onRetry).toHaveBeenCalledTimes(1);
 	});
 
+	it('reloads the page instead of emitting retry when reload-on-retry opts out', async () => {
+		const reload = vi.fn();
+		const original = window.location;
+		Object.defineProperty(window, 'location', {
+			configurable: true,
+			value: { ...original, reload },
+		});
+		try {
+			const onRetry = vi.fn();
+			const wrapper = mount(QueryBoundary, {
+				props: { loading: false, error: new Error('boom'), reloadOnRetry: true, onRetry },
+				slots,
+				global: { stubs, plugins: [createTestI18n()] },
+			});
+
+			await wrapper.find('[data-testid="retry"]').trigger('click');
+			expect(reload).toHaveBeenCalledTimes(1);
+			expect(onRetry).not.toHaveBeenCalled();
+		} finally {
+			Object.defineProperty(window, 'location', { configurable: true, value: original });
+		}
+	});
+
 	function alertText(error: Error): string {
 		return mount(QueryBoundary, {
 			props: { loading: false, error },

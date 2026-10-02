@@ -47,6 +47,7 @@ const {
 	data: liveFlags,
 	isLoading,
 	error: flagsError,
+	refetch: refetchFlags,
 } = useConvexQuery(api.workspaces.featureFlags.getFeatureFlags, {});
 const { data: deliveryConfigured } = useConvexQuery(
 	api.workspaces.featureFlags.deliveryConfigured,
@@ -272,7 +273,7 @@ async function togglePack(packKey: FeaturePackKey) {
 		     leave services out of sync until an explicit Apply (D4). -->
 		<ProfileSyncBanner :flags="resolved" class="mb-6" />
 
-		<UiQueryBoundary :loading="isLoading && !liveFlags" :error="flagsError">
+		<UiQueryBoundary :loading="isLoading && !liveFlags" :error="flagsError" @retry="refetchFlags">
 			<FeaturePackList
 				:registry="featureFlagRegistry"
 				:stored="stored"
