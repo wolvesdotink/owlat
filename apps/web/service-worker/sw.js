@@ -301,11 +301,7 @@ function appWindows() {
  */
 async function handlePush(data) {
 	const payload = parsePushPayload(data);
-	if (payload.tag !== TEST_TAG) {
-		const windows = await appWindows();
-		if (windows.some((client) => client.focused && client.visibilityState === 'visible')) return;
-	}
-	await self.registration.showNotification(payload.title, {
+	const options = {
 		body: payload.body,
 		// One notification per thread or room: a newer one replaces it and,
 		// with renotify, still alerts.
@@ -314,7 +310,47 @@ async function handlePush(data) {
 		icon: '/icons/icon-192.png',
 		badge: '/icons/icon-maskable-192.png',
 		data: { url: payload.url },
+	};
+	if (payload.tag !== TEST_TAG) {
+		const windows = await appWindows();
+		if (windows.some((client) => client.focused && client.visibilityState === 'visible')) {
+			if (await isApplePush()) await showAndDismiss(payload.title, options);
+			return;
+		}
+	}
+	await self.registration.showNotification(payload.title, options);
+}
+
+/** Apple's push service host (Safari on macOS, iOS and iPadOS home-screen apps). */
+const APPLE_PUSH_HOST = 'web.push.apple.com';
+/** Tag of the stand-in notification `showAndDismiss` closes straight away. */
+const IN_APP_TAG = 'owlat-in-app';
+
+/** Whether this registration's push subscription runs through Apple's push service. */
+async function isApplePush() {
+	try {
+		const subscription = await self.registration.pushManager.getSubscription();
+		return !!subscription && new URL(subscription.endpoint).host.endsWith(APPLE_PUSH_HOST);
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Safari allows no silent push: a push that shows no notification counts
+ * against the subscription, and after a few of them Safari revokes it. While
+ * the app is in front there, the notification is shown silently and closed at
+ * once, so the device keeps its subscription without a double alert.
+ */
+async function showAndDismiss(title, options) {
+	await self.registration.showNotification(title, {
+		...options,
+		tag: IN_APP_TAG,
+		renotify: false,
+		silent: true,
 	});
+	const shown = await self.registration.getNotifications({ tag: IN_APP_TAG });
+	for (const notification of shown) notification.close();
 }
 
 /**

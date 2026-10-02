@@ -43,8 +43,15 @@ function client(overrides: Partial<FakeClient> = {}): FakeClient {
 }
 
 function makeSelf(
-	options: { search?: string; windows?: FakeClient[]; cacheNames?: string[] } = {}
+	options: {
+		search?: string;
+		windows?: FakeClient[];
+		cacheNames?: string[];
+		/** This registration's push subscription endpoint. */
+		endpoint?: string;
+	} = {}
 ) {
+	const shown: Array<{ tag?: string; close: ReturnType<typeof vi.fn> }> = [];
 	const listeners = new Map<string, (event: unknown) => void>();
 	const cacheNames = new Set(options.cacheNames ?? []);
 	const self = {
@@ -64,14 +71,26 @@ function makeSelf(
 			matchAll: vi.fn(async () => options.windows ?? []),
 			openWindow: vi.fn(async () => null),
 		},
-		registration: { showNotification: vi.fn(async () => {}) },
+		registration: {
+			showNotification: vi.fn(async (_title: string, opts: { tag?: string }) => {
+				shown.push({ tag: opts.tag, close: vi.fn() });
+			}),
+			getNotifications: vi.fn(async (filter: { tag?: string } = {}) =>
+				shown.filter((notification) => !filter.tag || notification.tag === filter.tag)
+			),
+			pushManager: {
+				getSubscription: vi.fn(async () =>
+					options.endpoint ? { endpoint: options.endpoint } : null
+				),
+			},
+		},
 		skipWaiting: vi.fn(async () => {}),
 		addEventListener: (type: string, handler: (event: unknown) => void) => {
 			listeners.set(type, handler);
 		},
 	};
 	new Function('self', workerSource)(self);
-	return { self, listeners, cacheNames };
+	return { self, listeners, cacheNames, shown };
 }
 
 /** Fire an extendable event and wait for the work it handed to `waitUntil`. */
@@ -109,6 +128,29 @@ describe('push', () => {
 	it('stays quiet while someone is looking at Owlat — the app already shows it', async () => {
 		const { self, listeners } = makeSelf({
 			windows: [client({ focused: true, visibilityState: 'visible' })],
+		});
+		await fire(listeners, 'push', { data: pushData(MAIL) });
+		expect(self.registration.showNotification).not.toHaveBeenCalled();
+	});
+
+	it('on Safari, shows the notification silently and closes it at once — Safari revokes silent pushes', async () => {
+		const { self, listeners, shown } = makeSelf({
+			windows: [client({ focused: true, visibilityState: 'visible' })],
+			endpoint: 'https://web.push.apple.com/QGuQyavXutnMA',
+		});
+		await fire(listeners, 'push', { data: pushData(MAIL) });
+		expect(self.registration.showNotification).toHaveBeenCalledWith(
+			'Alice Example',
+			expect.objectContaining({ tag: 'owlat-in-app', silent: true, renotify: false })
+		);
+		expect(shown).toHaveLength(1);
+		expect(shown[0]!.close).toHaveBeenCalled();
+	});
+
+	it('elsewhere, a focused window means no notification at all', async () => {
+		const { self, listeners } = makeSelf({
+			windows: [client({ focused: true, visibilityState: 'visible' })],
+			endpoint: 'https://fcm.googleapis.com/fcm/send/abc',
 		});
 		await fire(listeners, 'push', { data: pushData(MAIL) });
 		expect(self.registration.showNotification).not.toHaveBeenCalled();
