@@ -7,6 +7,7 @@ import { isOutboundTlsMode, OUTBOUND_TLS_MODES, type OutboundTlsMode } from '@ow
 import { parseGenericPtrSuffixes, parseUnverifiedFcrdnsOverride } from '@owlat/shared/fcrdns';
 import { isKnownPlaceholderSecret } from '@owlat/shared/setupSecrets';
 import { normalizeVerpKey } from '@owlat/shared/verp';
+import { resolveDmarcReportAddress } from '@owlat/shared/dmarcReportAddress';
 import {
 	readIntEnv,
 	TCP_PORT_RANGE,
@@ -74,6 +75,12 @@ export interface MtaConfig extends GovernedDeliveryConfig {
 	 * Inbound reports to it are routed to the TLS-RPT system webhook. Optional.
 	 */
 	tlsRptRua?: string;
+	/**
+	 * Address Owlat reads DMARC aggregate reports at (`MTA_DMARC_REPORT_ADDRESS`,
+	 * default `dmarc-reports@<returnPathDomain>`, `off` to disable). Inbound mail
+	 * to it is routed to the DMARC report system webhook.
+	 */
+	dmarcReportAddress?: string;
 	/** IP pool configuration */
 	ipPools: IpPoolConfig;
 	/** Per-domain DKIM keys */
@@ -380,6 +387,7 @@ export function loadConfig(): MtaConfig {
 	// under the file-size gate.
 	const { daneMode, daneResolverUrl } = loadDaneConfig(optionalEnv);
 	const governedDelivery = loadGovernedDeliveryConfig(optionalEnv);
+	const returnPathDomain = requiredEnv('RETURN_PATH_DOMAIN');
 
 	return {
 		...governedDelivery,
@@ -393,7 +401,7 @@ export function loadConfig(): MtaConfig {
 		genericPtrSuffixes,
 		allowUnverifiedFcrdns,
 		ipv6Enabled: outboundIp.ipv6Enabled,
-		returnPathDomain: requiredEnv('RETURN_PATH_DOMAIN'),
+		returnPathDomain,
 		convexSiteUrl: requiredEnv('CONVEX_SITE_URL'),
 		webhookSecret: requiredEnv('MTA_WEBHOOK_SECRET'),
 		// TLS-RPT (RFC 8460) reporting address we publish in `_smtp._tls` rua=.
@@ -401,6 +409,11 @@ export function loadConfig(): MtaConfig {
 		// caught by the TLS-RPT system route and forwarded to Convex. Optional —
 		// omitted when the operator does not collect TLS reports.
 		tlsRptRua: process.env['MTA_TLSRPT_RUA'],
+		// DMARC aggregate reports (RFC 7489 §7.1) — same resolver as Convex, so the
+		// `rua=` it publishes names the address this route catches.
+		dmarcReportAddress:
+			resolveDmarcReportAddress(process.env['MTA_DMARC_REPORT_ADDRESS'], returnPathDomain) ??
+			undefined,
 		ipPools: outboundIp.ipPools,
 		dkimKeys,
 		workerConcurrency: intEnv('WORKER_CONCURRENCY', 50),

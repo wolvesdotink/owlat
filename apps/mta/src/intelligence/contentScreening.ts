@@ -7,6 +7,10 @@
 
 import type Redis from 'ioredis';
 import { extractDomainOrNull } from '@owlat/shared';
+import type {
+	MtaContentScreeningRequest,
+	MtaContentScreeningVerdict,
+} from '@owlat/mta-protocol/contentScreening';
 import { isIdentifierAligned } from '@owlat/shared/spfAlignment';
 import type { EmailJob } from '../types.js';
 import type { MtaConfig } from '../config.js';
@@ -84,6 +88,50 @@ export async function screenContent(
 }
 
 /**
+ * How {@link screenContent} would judge a draft, for the campaign pre-send
+ * check (`POST /scan/content`). Same checks, same order, same thresholds; the
+ * envelope checks a draft cannot fail on its own (sender, subject presence,
+ * DKIM alignment) are left to the send. Where the send stops at a failing
+ * check, so does this, so the verdict names the reason the send would give.
+ *
+ * Unlike the dispatch phase it reports rspamd's score even when the message
+ * passes, so the check can say how close it came.
+ */
+export async function previewScreening(
+	redis: Redis,
+	input: MtaContentScreeningRequest,
+	config: MtaConfig
+): Promise<MtaContentScreeningVerdict> {
+	const base = { enabled: config.contentScreeningEnabled, sizeLimitKb: config.contentMaxSizeKb };
+	if (!config.contentScreeningEnabled) return { ...base, verdict: 'accept' };
+
+	if (!input.html.trim()) return { ...base, verdict: 'reject', reason: 'empty_body' };
+
+	if (Buffer.byteLength(input.html, 'utf-8') > config.contentMaxSizeKb * 1024) {
+		return { ...base, verdict: 'reject', reason: 'content_too_large' };
+	}
+
+	const blockedPattern = await checkUrlBlocklist(redis, input.html);
+	if (blockedPattern) {
+		return { ...base, verdict: 'reject', reason: 'blocked_url', blockedPattern };
+	}
+
+	if (!config.rspamdUrl) return { ...base, verdict: 'accept' };
+	const scored = await scoreWithRspamd(config.rspamdUrl, {
+		from: input.from,
+		// A test send goes to the sender; there is no recipient yet.
+		to: input.from,
+		subject: input.subject,
+		body: input.html,
+	});
+	if (!scored) return { ...base, verdict: 'accept' };
+	const spam = { score: scored.score, threshold: config.rspamdRejectThreshold };
+	return scored.score >= config.rspamdRejectThreshold
+		? { ...base, verdict: 'reject', reason: 'spam_score', spam }
+		: { ...base, verdict: 'accept', spam };
+}
+
+/**
  * Check HTML content against URL blocklist in Redis
  */
 async function checkUrlBlocklist(redis: Redis, html: string): Promise<string | null> {
@@ -141,26 +189,32 @@ interface RspamdResponse {
 	symbols?: Record<string, { score: number; description?: string }>;
 }
 
+/** The headers and body rspamd scores; a header without a value is left out. */
+interface RspamdMessage {
+	from?: string;
+	to?: string;
+	subject: string;
+	body: string;
+}
+
 /**
- * Check content against rspamd HTTP API for spam scoring.
- *
- * @returns ScreeningResult if spam detected, null if content is clean
+ * Ask rspamd to score a message. Resolves `null` on any failure (non-OK status,
+ * timeout, network error): every caller fails open.
  */
-async function checkRspamd(
+async function scoreWithRspamd(
 	rspamdUrl: string,
-	job: EmailJob,
-	rejectThreshold: number
-): Promise<ScreeningResult | null> {
+	message: RspamdMessage
+): Promise<RspamdResponse | null> {
 	try {
 		// Build a minimal RFC 822 message for rspamd
-		const message = [
-			`From: ${job.from}`,
-			`To: ${job.to}`,
-			`Subject: ${job.subject}`,
+		const raw = [
+			...(message.from ? [`From: ${message.from}`] : []),
+			...(message.to ? [`To: ${message.to}`] : []),
+			`Subject: ${message.subject}`,
 			'MIME-Version: 1.0',
 			'Content-Type: text/html; charset=utf-8',
 			'',
-			job.html || job.text || '',
+			message.body,
 		].join('\r\n');
 
 		const controller = new AbortController();
@@ -172,7 +226,7 @@ async function checkRspamd(
 				headers: {
 					'Content-Type': 'message/rfc822',
 				},
-				body: message,
+				body: raw,
 				signal: controller.signal,
 			});
 
@@ -181,33 +235,7 @@ async function checkRspamd(
 				return null; // Fail open
 			}
 
-			const result = (await response.json()) as RspamdResponse;
-
-			if (result.score >= rejectThreshold) {
-				logger.warn(
-					{
-						messageId: job.messageId,
-						score: result.score,
-						threshold: rejectThreshold,
-						action: result.action,
-					},
-					'Rspamd rejected — spam score too high'
-				);
-				return {
-					allowed: false,
-					reason: `spam_score:${result.score.toFixed(1)}>${rejectThreshold}`,
-				};
-			}
-
-			// Log warning-level scores but allow through
-			if (result.action !== 'no action') {
-				logger.info(
-					{ messageId: job.messageId, score: result.score, action: result.action },
-					'Rspamd flagged content (below reject threshold)'
-				);
-			}
-
-			return null; // Content is clean
+			return (await response.json()) as RspamdResponse;
 		} finally {
 			clearTimeout(timeout);
 		}
@@ -216,4 +244,49 @@ async function checkRspamd(
 		logger.warn({ err }, 'Rspamd check failed — allowing content through');
 		return null;
 	}
+}
+
+/**
+ * Check content against rspamd HTTP API for spam scoring.
+ *
+ * @returns ScreeningResult if spam detected, null if content is clean
+ */
+async function checkRspamd(
+	rspamdUrl: string,
+	job: EmailJob,
+	rejectThreshold: number
+): Promise<ScreeningResult | null> {
+	const result = await scoreWithRspamd(rspamdUrl, {
+		from: job.from,
+		to: job.to,
+		subject: job.subject,
+		body: job.html || job.text || '',
+	});
+	if (!result) return null;
+
+	if (result.score >= rejectThreshold) {
+		logger.warn(
+			{
+				messageId: job.messageId,
+				score: result.score,
+				threshold: rejectThreshold,
+				action: result.action,
+			},
+			'Rspamd rejected — spam score too high'
+		);
+		return {
+			allowed: false,
+			reason: `spam_score:${result.score.toFixed(1)}>${rejectThreshold}`,
+		};
+	}
+
+	// Log warning-level scores but allow through
+	if (result.action !== 'no action') {
+		logger.info(
+			{ messageId: job.messageId, score: result.score, action: result.action },
+			'Rspamd flagged content (below reject threshold)'
+		);
+	}
+
+	return null; // Content is clean
 }

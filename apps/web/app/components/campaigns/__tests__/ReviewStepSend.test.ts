@@ -65,6 +65,31 @@ const confirmationDialogStub = defineComponent({
 	},
 });
 
+/**
+ * The pre-send checks' state, replaced per case. The checks themselves are
+ * pinned in `lib/presendChecks/__tests__`; here only what the step does with
+ * them matters: the panel shows, "Show me" opens the editor on the Block, and
+ * unreviewed warnings turn the send button into "Send anyway".
+ */
+const presend = {
+	checks: ref<unknown[]>([]),
+	summary: ref({ warnings: 0, blocking: 0, pending: 0, signature: '' }),
+	isChecking: ref(false),
+	run: vi.fn(),
+};
+
+const presendPanelStub = defineComponent({
+	props: { acknowledged: Boolean },
+	emits: ['acknowledge', 'showBlock', 'retry'],
+	setup(props, { emit }) {
+		return () =>
+			h('div', { class: 'presend-panel', 'data-acknowledged': String(props.acknowledged) }, [
+				h('button', { class: 'presend-ack', onClick: () => emit('acknowledge') }, 'ack'),
+				h('button', { class: 'presend-show', onClick: () => emit('showBlock', 'block-7') }, 'show'),
+			]);
+	},
+});
+
 const passthroughStub = defineComponent({
 	setup(_props, { slots }) {
 		return () => h('div', slots.default?.());
@@ -87,6 +112,10 @@ beforeEach(() => {
 	// would quietly disable the one error path this screen renders itself.
 	vi.stubGlobal('useCapacityRefusal', useCapacityRefusal);
 	vi.stubGlobal('useModal', useModal);
+	presend.checks.value = [];
+	presend.summary.value = { warnings: 0, blocking: 0, pending: 0, signature: '' };
+	presend.run.mockReset();
+	vi.stubGlobal('usePresendChecks', () => presend);
 	// The domain-verification and readiness queries: nothing blocks the send.
 	vi.stubGlobal('useOrganizationQuery', () => ({ data: ref(undefined) }));
 	vi.stubGlobal('useCampaignUndoSend', () => ({
@@ -150,6 +179,7 @@ function mountStep(
 				CampaignsSendReadinessNote: true,
 				CampaignsTestEmailModal: true,
 				CampaignsEmailBodyPreview: true,
+				CampaignsPresendChecksPanel: presendPanelStub,
 				CampaignsSendTimingOptions: true,
 				Icon: true,
 				I18nT: passthroughStub,
@@ -432,5 +462,54 @@ describe('ReviewStep email body (#1048)', () => {
 		const wrapper = mountStep({ selectedTemplate: template, emailBodyHtml: '<p>Hi</p>' });
 		await wrapper.find('[data-testid="review-edit-email"]').trigger('click');
 		expect(wrapper.emitted('editEmail')).toEqual([[null]]);
+	});
+});
+
+describe('ReviewStep pre-send checks', () => {
+	const template = { _id: 'tpl_1' as Id<'emailTemplates'>, name: 'Digest', subject: 'Hi' };
+
+	function primaryButton(wrapper: ReturnType<typeof mountStep>) {
+		return wrapper.findAll('button').at(-1)!;
+	}
+
+	it('runs the checks once the email body is known, and not for an empty one', () => {
+		mountStep({ selectedTemplate: template, emailBodyHtml: null });
+		expect(presend.run).not.toHaveBeenCalled();
+
+		const wrapper = mountStep({ selectedTemplate: template, emailBodyHtml: '<p>Hi</p>' });
+		expect(wrapper.find('.presend-panel').exists()).toBe(true);
+		expect(presend.run).toHaveBeenCalledTimes(1);
+	});
+
+	it('says "Send anyway" until the warnings are reviewed, and still sends', async () => {
+		presend.summary.value = { warnings: 2, blocking: 0, pending: 0, signature: 'size:|links:"x"' };
+		const wrapper = mountStep({ selectedTemplate: template, emailBodyHtml: '<p>Hi</p>' });
+
+		expect(primaryButton(wrapper).text()).toBe('Send anyway');
+		await wrapper.find('.presend-ack').trigger('click');
+		expect(primaryButton(wrapper).text()).toBe('Send campaign');
+		expect(wrapper.find('.presend-panel').attributes('data-acknowledged')).toBe('true');
+
+		// A new warning makes the review stale again.
+		presend.summary.value = { warnings: 3, blocking: 0, pending: 0, signature: 'other' };
+		await flushPromises();
+		expect(primaryButton(wrapper).text()).toBe('Send anyway');
+
+		await primaryButton(wrapper).trigger('click');
+		await flushPromises();
+		expect(scheduleRuns).toHaveLength(1);
+	});
+
+	it('says "Schedule anyway" for a scheduled send with open warnings', async () => {
+		presend.summary.value = { warnings: 1, blocking: 0, pending: 0, signature: 'x' };
+		const wrapper = mountStep({ selectedTemplate: template, emailBodyHtml: '<p>Hi</p>' });
+		await wrapper.findAll('input[type="radio"]')[1]!.setValue();
+		expect(primaryButton(wrapper).text()).toBe('Schedule anyway');
+	});
+
+	it('opens the editor on the Block behind a finding', async () => {
+		const wrapper = mountStep({ selectedTemplate: template, emailBodyHtml: '<p>Hi</p>' });
+		await wrapper.find('.presend-show').trigger('click');
+		expect(wrapper.emitted('editEmail')).toEqual([[null, 'block-7']]);
 	});
 });

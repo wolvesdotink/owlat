@@ -421,28 +421,30 @@ describe('scan helpers run in linear time on adversarial input', () => {
 	const fitted = (unit: string, overhead: number) =>
 		unit.repeat(Math.floor((MAX_SCAN_INPUT_CHARS - overhead) / unit.length));
 
-	// Every close below reopens all 40 formatting elements, so each character
-	// costs about 40 times the work of the other cases. It is still linear
-	// (about 230 ms per MB on a developer machine, doubling with the input),
-	// but a shared CI runner takes over 2 s, so it gets a wider budget. A
-	// quadratic scan would take minutes either way.
-	const REOPEN_BUDGET_MS = 5000;
+	// These cases go through the tree builder's repair paths (reopening
+	// formatting elements, adoption, implied end tags), so each character costs
+	// several times the work of the cases above: 80-200 ms for 5 MB on a
+	// developer machine. Shared CI runners are 8-17 times slower; "links
+	// closing links" measured 1.0-2.2 s there (#1163), and every close in the
+	// first case reopens all 40 formatting elements, which takes over 2 s. So
+	// the whole group gets a wider budget. It is still linear; a quadratic scan
+	// would take minutes either way.
+	const TREE_BUDGET_MS = 5000;
 
 	it.each([
 		[
 			'formatting elements reopened after every close',
 			`<div>${Array.from({ length: 40 }, (_, i) => `<b x${i}>`).join('')}`,
 			'</div><div>x',
-			REOPEN_BUDGET_MS,
 		],
-		['formatting elements taken out of the tree', '', '<b hidden><div>x</b>', BUDGET_MS],
-		['nested tables and cells', '', '<table><tr><td hidden><table>', BUDGET_MS],
-		['SVG content that HTML breaks out of', '', '<svg><g><p hidden>x', BUDGET_MS],
-		['headings closing headings', '', '<h1 hidden><h2>x', BUDGET_MS],
-		['links closing links', '', '<a hidden>x<a>', BUDGET_MS],
-	])('stripHiddenContent on 5 MB of %s', (_label, prefix, unit, budget) => {
+		['formatting elements taken out of the tree', '', '<b hidden><div>x</b>'],
+		['nested tables and cells', '', '<table><tr><td hidden><table>'],
+		['SVG content that HTML breaks out of', '', '<svg><g><p hidden>x'],
+		['headings closing headings', '', '<h1 hidden><h2>x'],
+		['links closing links', '', '<a hidden>x<a>'],
+	])('stripHiddenContent on 5 MB of %s', (_label, prefix, unit) => {
 		const input = prefix + repeatTo(unit);
-		expect(timed(() => stripHtml(input))).toBeLessThan(budget);
+		expect(timed(() => stripHtml(input))).toBeLessThan(TREE_BUDGET_MS);
 	});
 
 	it('stripHiddenContent on a deep stack with end tags that close nothing', () => {

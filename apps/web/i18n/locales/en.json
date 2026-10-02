@@ -806,6 +806,134 @@
 					"unsubscribed": "Unsubscribed"
 				}
 			},
+			"presendChecks": {
+				"acknowledged": "You've reviewed these warnings.",
+				"contrastDark": {
+					"found": "Hard to read in dark mode: {count}",
+					"pass": "Text stays readable in dark mode."
+				},
+				"contrastLight": {
+					"found": "Text below WCAG AA contrast: {count}",
+					"pass": "Text and buttons meet WCAG AA contrast."
+				},
+				"headline": {
+					"blocked": "This campaign can't be sent yet.",
+					"checking": "Checking links, images and content…",
+					"clear": "Everything checks out.",
+					"warnings": "{count} thing to look at before you send. | {count} things to look at before you send."
+				},
+				"imageAlt": {
+					"found": "Images without alt text: {count}",
+					"pass": "Every image has alt text or is marked decorative."
+				},
+				"imageLoad": {
+					"found": "Images that fail to load or are very large: {count}",
+					"none": "No hosted images to check.",
+					"pass": "Every image loads and is a reasonable size ({count}).",
+					"pending": "Checking images…"
+				},
+				"imageWidth": {
+					"found": "Images without a set width: {count}. Outlook shows them at full size.",
+					"pass": "Every image has a width."
+				},
+				"labels": {
+					"carousel": "Carousel block",
+					"image": "Image block"
+				},
+				"linkSyntax": {
+					"found": "Links with a bad address: {count}",
+					"pass": "Every link has a usable address."
+				},
+				"links": {
+					"broken": "Links that don't work: {count}",
+					"none": "No web links to check.",
+					"notChecked": "Not verified: {count} (personalized, or the site refused an automated check).",
+					"pass": "Every checked link works ({count}).",
+					"pending": "Checking every link…",
+					"personalizedOnly": "Every link is personalized per recipient, so none could be checked ahead of time."
+				},
+				"markReviewed": "Mark as reviewed",
+				"names": {
+					"contrastDark": "Dark mode contrast",
+					"contrastLight": "Contrast",
+					"imageAlt": "Alt text",
+					"imageLoad": "Images",
+					"imageWidth": "Image width",
+					"linkSyntax": "Link addresses",
+					"links": "Links",
+					"postalAddress": "Postal address",
+					"screening": "Content screening",
+					"sending": "Sending",
+					"size": "Size",
+					"subject": "Subject line",
+					"unsubscribe": "Unsubscribe link"
+				},
+				"passed": "{count} check passed | {count} checks passed",
+				"postalAddress": {
+					"missing": "We couldn't find a postal address. US law (CAN-SPAM) requires one in marketing email, and EU imprint rules expect one. Add it to the footer.",
+					"pass": "A postal address appears in the email."
+				},
+				"reasons": {
+					"blockedUrl": "matches the blocked pattern “{pattern}”",
+					"brokenMergeTag": "a merge tag isn't closed or isn't valid",
+					"emptyHref": "the link has no address",
+					"hashHref": "the link points to “#” and goes nowhere",
+					"httpStatus": "the site answers {status}",
+					"imageAtLeast": "over {size} MB, keep images under {limit} MB",
+					"imageLarge": "{size} MB, keep images under {limit} MB",
+					"invalidMailto": "not a valid email address",
+					"lowContrast": "contrast {ratio}:1, needs {required}:1",
+					"missingAlt": "no alt text",
+					"noWidth": "no width set",
+					"privateAddress": "points at a private network address readers can't open",
+					"redirectLoop": "redirects too many times",
+					"relativeUrl": "not a full web address; start it with https://",
+					"subjectAllCaps": "all capitals reads as shouting and trips spam filters",
+					"subjectEmpty": "the subject is empty",
+					"subjectLong": "{count} characters; Gmail shows about {max}",
+					"timeout": "the site didn't answer in time",
+					"unreachable": "the site can't be reached",
+					"unsupportedScheme": "mail apps won't open this kind of link"
+				},
+				"recheck": "Check again",
+				"remoteFailed": "Couldn't run this check right now. Try “Check again”.",
+				"screening": {
+					"disabled": "Content screening is turned off on the sending server.",
+					"pass": "The sending server's content screening accepts this message.",
+					"passScored": "Accepted by content screening. Spam score {score} (rejected at {threshold}).",
+					"pending": "Screening the message…",
+					"reject": "The sending server's content screening would drop this message.",
+					"rejectBlockedUrl": "The sending server will drop this message: a link matches the blocked pattern “{pattern}”.",
+					"rejectEmpty": "The sending server will drop this message: it has no content.",
+					"rejectSize": "The sending server will drop this message: its HTML is over the {limit} KB limit.",
+					"rejectSpam": "The sending server will drop this message: spam score {score}, the limit is {threshold}.",
+					"tooLarge": "This email is too large for the content screening to check.",
+					"unavailable": "The sending server can't screen content here (no Owlat MTA, or an older one)."
+				},
+				"sending": {
+					"pass": "Nothing blocks this send."
+				},
+				"showAll": "Show all {count}",
+				"showFewer": "Show fewer",
+				"showMe": "Show me",
+				"size": {
+					"clipped": "About {size} KB as delivered. Gmail clips messages above {limit} KB and hides the rest behind “View entire message”, unsubscribe footer included.",
+					"near": "About {size} KB as delivered, close to Gmail's {limit} KB limit. Above it, Gmail hides the rest behind “View entire message”.",
+					"pass": "About {size} KB as delivered, under Gmail's {limit} KB clipping limit."
+				},
+				"subject": {
+					"found": "The subject line may cost you opens or deliverability.",
+					"pass": "The subject line looks fine."
+				},
+				"title": "Pre-send checks",
+				"unsubscribe": {
+					"footer": "Owlat adds an unsubscribe and a preferences link to every topic campaign.",
+					"ownLink": "The email has its own unsubscribe link.",
+					"segmentMissing": "Segment campaigns don't get Owlat's unsubscribe footer, and this email has no unsubscribe link. Mail apps still offer one-click unsubscribe, but most laws expect a visible link.",
+					"segmentNote": "Sent to a segment, the email needs its own unsubscribe link."
+				},
+				"warningsDontBlock": "Warnings don't stop the send. Mark them as reviewed, or send anyway."
+			},
 			"reportHeadline": {
 				"aboveClick": "{open} opened and {click} clicked — above your average click rate.",
 				"aboveOpen": "{open} opened and {click} clicked — above your average open rate.",
@@ -932,11 +1060,13 @@
 					"previewOptimized": "Each contact gets it at their usual hour within {hours} hours.",
 					"previewPerTimezone": "{time} in each recipient's timezone",
 					"replyTo": "Reply-to: {email}",
+					"scheduleAnyway": "Schedule anyway",
 					"scheduleCampaign": "Schedule campaign",
 					"scheduleLater": "Schedule for later",
 					"scheduleLaterDescription": "Choose a specific date and time to send your campaign.",
 					"scheduleOperation": "Schedule campaign",
 					"scheduling": "Scheduling...",
+					"sendAnyway": "Send anyway",
 					"sendCampaign": "Send campaign",
 					"sendConfirm": {
 						"cancel": "Cancel",
@@ -2306,6 +2436,56 @@
 				"title": "Measurement coverage",
 				"toastDisconnected": "{address} disconnected."
 			},
+			"dmarcReadiness": {
+				"body": {
+					"building": "{days} of {required} days at 99% or more passing DMARC. Keep the policy where it is until the run reaches {required} days.",
+					"enforced": "Receivers reject mail that fails DMARC for this domain. Keep an eye on failing sources: a legitimate one listed there is mail that no longer arrives.",
+					"failing": "Only {rate} of the mail on the last day with reports passed DMARC. Fix the failing sources below, then the {required}-day count starts.",
+					"incomplete": "This domain receives more report data than the dashboard can read at once, so not all of the last {required} days could be checked in full. Owlat does not recommend p={next} on partial data.",
+					"no-data": "Receivers have not sent reports for this domain in the last 30 days, so there is nothing to judge readiness on yet.",
+					"ready": "{days} days in a row at 99% or more passing DMARC. Publishing p={next} now should not affect your legitimate mail."
+				},
+				"headline": {
+					"building": "Not ready for p={next} yet",
+					"enforced": "Enforced at p=reject",
+					"failing": "Not ready for p={next}: mail is still failing",
+					"incomplete": "Not enough complete data to judge p={next}",
+					"no-data": "No recent reports",
+					"ready": "Ready for p={next}"
+				},
+				"howToApply": "Owlat never changes the policy on its own. Publish this record at your DNS provider, or raise the policy on the domain so Owlat shows the same record there.",
+				"openDomain": "Open the domain",
+				"progressLabel": "Days at 99% or more passing DMARC",
+				"recordLabel": "DMARC (p={next})",
+				"streak": "{days} days in a row, {required} needed"
+			},
+			"dmarcSources": {
+				"checks": "DKIM aligned {dkim} · SPF aligned {spf}",
+				"columns": {
+					"failing": "Failing",
+					"messages": "Messages",
+					"passRate": "Passed DMARC",
+					"source": "Source"
+				},
+				"empty": "No sending sources in this period.",
+				"ips": "IP {ips} | {count} IPs: {ips}",
+				"kind": {
+					"known": "Known sender",
+					"owlat": "Owlat",
+					"unknown": "Unknown"
+				},
+				"more": "Showing the {shown} sources with the most failing mail, of {total}.",
+				"ownServer": "This Owlat server",
+				"reasons": "Receiver notes: {reasons}"
+			},
+			"dmarcTrendChart": {
+				"day": "Day",
+				"empty": "No mail in this period yet. Bars appear as receivers send their daily reports.",
+				"failed": "Failed DMARC",
+				"label": "Messages per day that passed or failed DMARC",
+				"passed": "Passed DMARC",
+				"tooltip": "{passed} passed · {failed} failed"
+			},
 			"domainDnsGuidance": {
 				"heading": "DNS for {transport}"
 			},
@@ -2850,6 +3030,29 @@
 				"trackingPreview": "Your tracking links will use {host}",
 				"trackingPreviewExample": "For example, your tracking links will use {host}",
 				"useApex": "none (use apex)"
+			},
+			"dmarcReporting": {
+				"error": "Couldn’t load the DMARC report setup. Reload to try again.",
+				"external": "Reports go to {rua}, an address set outside Owlat. Owlat can read them itself once its own mail server handles bounces for this install ({variable}).",
+				"loading": "Checking where reports go…",
+				"none": "This install doesn’t ask for DMARC reports. Owlat reads them itself when its own mail server handles bounces ({variable}); otherwise set {fallback} to an address you monitor.",
+				"openReports": "Open reports",
+				"operations": {
+					"update": "Update DMARC record"
+				},
+				"owlat": {
+					"authorization": "The report address is on another domain, so {reportDomain} has to agree to receive reports for this one. Publish this record in the zone of {reportDomain}:",
+					"authorizationLabel": "Report authorization (RFC 7489)",
+					"body": "Receivers send this domain’s daily DMARC reports to {address}, and Owlat reads them for you.",
+					"lastReport": "Last report received {when}.",
+					"noReportsYet": "No reports yet. Most receivers send their first one within a day of seeing the record.",
+					"notRequested": "The DMARC record doesn’t ask for reports yet. Update it to add Owlat’s address, then publish the new value.",
+					"update": "Ask for reports"
+				},
+				"title": "DMARC reports",
+				"toasts": {
+					"updated": "DMARC record updated. Publish the new value, then verify the domain."
+				}
 			},
 			"dnsChecklistSummary": {
 				"allFound": "All {total} records found — this domain is set up.",
@@ -6531,6 +6734,38 @@
 						"reportCopyFailed": "Could not copy the report",
 						"resolved": "Regression resolved"
 					}
+				},
+				"dmarc": {
+					"domainLabel": "Domain",
+					"empty": {
+						"description": "Receivers send one report a day once the domain’s DMARC record names Owlat’s address. The first ones usually arrive within a day.",
+						"title": "No reports yet"
+					},
+					"lastReport": "Last report received {when}",
+					"lede": "Who sends mail as your domains, and how close each one is to rejecting everyone else.",
+					"noDomains": {
+						"action": "Go to sending domains",
+						"description": "Add a sending domain first. Its DMARC record asks receivers for the reports this page is built from.",
+						"title": "No domain with a DMARC record"
+					},
+					"pageTitle": "DMARC reports",
+					"readinessTitle": "Ready to enforce?",
+					"sourcesSubtitle": "Grouped by organisation, failing sources first. If an unknown source is yours, give it SPF or DKIM before you enforce.",
+					"sourcesTitle": "Sending sources",
+					"tiles": {
+						"failing": "Failed DMARC",
+						"failingHint": "{count} quarantined or rejected by receivers",
+						"messages": "Messages",
+						"messagesHint": "{count} report | {count} reports",
+						"passRate": "Passed DMARC",
+						"passRateHint": "Enforcement target: 99%",
+						"reportersHint": "{count} receiver | {count} receivers"
+					},
+					"title": "DMARC reports",
+					"trendTitle": "Messages per day",
+					"truncated": "showing the most recent reports only",
+					"window": "{days} days",
+					"windowLabel": "Period"
 				},
 				"domains": {
 					"addDomain": "Add domain",
@@ -10715,6 +10950,8 @@
 						"backToEmails": "Back to emails",
 						"builderError": "The email editor hit an unexpected error. Please refresh — your last saved version is safe.",
 						"campaignReturnHint": "Save your changes, then go back to review and send the campaign.",
+						"checkEmail": "Check email",
+						"checkEmailTitle": "Check email",
 						"loadError": "Couldn't load this template",
 						"loading": "Loading template...",
 						"manageTranslations": "Manage translations",
@@ -12162,6 +12399,7 @@
 				"deliverability": "Deliverability",
 				"deliveryProvider": "Delivery provider",
 				"desktopUpdates": "Desktop app updates",
+				"dmarcReports": "DMARC reports",
 				"emailTheme": "Email theme",
 				"features": "Features",
 				"failedMessages": "Failed messages",

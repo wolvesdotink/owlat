@@ -69,10 +69,12 @@ export const resolveRoutePhase: Phase<BasePhaseCtx, CtxWithAcceptRoute> = {
 		}
 
 		// 2. Generic inbound route table — plus the TLS-RPT system route for the
-		//    operator's `_smtp._tls` rua address (RFC 8460), which delivers to a
-		//    dedicated Convex webhook rather than a user mailbox.
+		//    operator's `_smtp._tls` rua address (RFC 8460) and the DMARC report
+		//    address (RFC 7489), which deliver to dedicated Convex webhooks rather
+		//    than a user mailbox.
 		const route = await findRoute(deps.redis, rcptTo, {
 			ruaAddress: deps.config.tlsRptRua,
+			dmarcReportAddress: deps.config.dmarcReportAddress,
 			convexSiteUrl: deps.config.convexSiteUrl,
 			webhookSecret: deps.config.webhookSecret,
 		});

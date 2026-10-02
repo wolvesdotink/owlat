@@ -100,6 +100,8 @@ export interface EmailBuilderHandle {
 	loadState: (state: HistoryState) => void;
 	/** Text is being typed that the blocks do not hold until the editor closes. */
 	readonly isInlineEditing?: boolean;
+	/** Select a Block (root or nested) and scroll to it; false when it is gone. */
+	selectBlock?: (blockId: string) => boolean;
 	/** Apply other people's edits, keeping selection and undo history. */
 	applyRemoteOps?: (ops: CoeditOp<EditorBlock>[]) => void;
 }
