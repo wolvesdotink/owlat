@@ -26,6 +26,13 @@ export interface PresendSource {
 	blockedReason?: string | null;
 }
 
+/**
+ * The longest string any public Convex function takes (`lib/publicInput.ts` in
+ * the API). A longer HTML would fail the whole round trip, so it is not sent
+ * for screening; the links and images are still probed.
+ */
+const SCREENABLE_HTML_CHARS = 1024 * 1024;
+
 export function usePresendChecks(source: () => PresendSource | null) {
 	// The organization theme the email was rendered with: the contrast checks
 	// read its colours, dark-mode ones included.
@@ -52,17 +59,26 @@ export function usePresendChecks(source: () => PresendSource | null) {
 			remote.value = { status: 'failed' };
 			return;
 		}
+		const screenable = current.html.length <= SCREENABLE_HTML_CHARS;
 		try {
 			const result = await convex.action(api.emailTemplates.presendChecksActions.run, {
 				links: [...scanned.links.probes.keys()],
 				images: scanned.images,
-				screening: {
-					subject: current.subject,
-					html: current.html,
-					...(current.fromEmail ? { fromEmail: current.fromEmail } : {}),
-				},
+				...(screenable
+					? {
+							screening: {
+								subject: current.subject,
+								html: current.html,
+								...(current.fromEmail ? { fromEmail: current.fromEmail } : {}),
+							},
+						}
+					: {}),
 			});
-			if (seq === sequence) remote.value = { status: 'done', result };
+			if (seq !== sequence) return;
+			remote.value = {
+				status: 'done',
+				result: screenable ? result : { ...result, screening: { status: 'too_large' } },
+			};
 		} catch {
 			if (seq === sequence) remote.value = { status: 'failed' };
 		}

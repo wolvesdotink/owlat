@@ -907,6 +907,7 @@
 					"rejectEmpty": "Der Versandserver verwirft diese Nachricht: sie hat keinen Inhalt.",
 					"rejectSize": "Der Versandserver verwirft diese Nachricht: ihr HTML liegt über der Grenze von {limit} KB.",
 					"rejectSpam": "Der Versandserver verwirft diese Nachricht: Spam-Score {score}, die Grenze liegt bei {threshold}.",
+					"tooLarge": "Diese E-Mail ist zu groß für die Inhaltsprüfung.",
 					"unavailable": "Der Versandserver kann Inhalte hier nicht prüfen (kein Owlat-MTA oder eine ältere Version)."
 				},
 				"sending": {

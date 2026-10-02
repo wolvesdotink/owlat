@@ -178,6 +178,9 @@ function screeningCheck(input: PresendInput, scan: PresendScan): PresendCheck {
 		items: [],
 	};
 	const screening = input.remote.result.screening;
+	if (screening.status === 'too_large') {
+		return { ...base, status: 'skipped', summary: `${KEY}.screening.tooLarge` };
+	}
 	if (screening.status !== 'ready') {
 		return { ...base, status: 'skipped', summary: `${KEY}.screening.unavailable` };
 	}

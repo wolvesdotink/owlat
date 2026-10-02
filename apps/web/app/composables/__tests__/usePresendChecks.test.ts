@@ -93,6 +93,22 @@ describe('usePresendChecks', () => {
 		expect(status(presend, 'links')).toBe('skipped');
 	});
 
+	it('still probes an email too long to send for screening, and says why screening did not run', async () => {
+		const { presend } = setup({
+			html: html(`<a href="https://example.com/a">a</a><p>${'x'.repeat(1024 * 1024)}</p>`),
+		});
+		void presend.run();
+		await flushPromises();
+
+		const [, args] = action.mock.calls[0]!;
+		expect(args.screening).toBeUndefined();
+		expect(args.links).toEqual(['https://example.com/a']);
+		expect(status(presend, 'links')).toBe('pass');
+		expect(presend.checks.value.find((check) => check.id === 'screening')?.summary).toBe(
+			'components.campaigns.presendChecks.screening.tooLarge'
+		);
+	});
+
 	it('checks a new version of the email again once it has run', async () => {
 		const { source, presend } = setup();
 		void presend.run();

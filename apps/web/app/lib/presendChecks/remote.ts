@@ -44,6 +44,7 @@ export interface PresendRemoteResult {
 				};
 		  }
 		| { status: 'unavailable' }
+		| { status: 'too_large' }
 		| { status: 'not_requested' };
 }
 

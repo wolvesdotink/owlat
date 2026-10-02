@@ -299,6 +299,15 @@ describe('content screening', () => {
 		expect(find(run(doc(ADDRESS), { remote: none }), 'screening').status).toBe('skipped');
 	});
 
+	it('says an email too large to screen is too large, not that the server is missing', () => {
+		const big = find(
+			run(doc(ADDRESS), { remote: done({ screening: { status: 'too_large' } }) }),
+			'screening'
+		);
+		expect(big.status).toBe('skipped');
+		expect(words(big.summary)).toBe('This email is too large for the content screening to check.');
+	});
+
 	it('warns, never blocks, on a rejection, pointing at the blocked link', () => {
 		const html = doc(`<a href="https://bad.example/offer">Offer</a>${ADDRESS}`);
 		const blocks = [text('t1', '<p><a href="https://bad.example/offer">Offer</a></p>')];

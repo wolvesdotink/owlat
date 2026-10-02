@@ -907,6 +907,7 @@
 					"rejectEmpty": "The sending server will drop this message: it has no content.",
 					"rejectSize": "The sending server will drop this message: its HTML is over the {limit} KB limit.",
 					"rejectSpam": "The sending server will drop this message: spam score {score}, the limit is {threshold}.",
+					"tooLarge": "This email is too large for the content screening to check.",
 					"unavailable": "The sending server can't screen content here (no Owlat MTA, or an older one)."
 				},
 				"sending": {
