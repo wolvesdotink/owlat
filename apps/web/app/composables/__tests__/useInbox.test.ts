@@ -279,4 +279,18 @@ describe('useInbox pagination', () => {
 		setSort('newest');
 		expect(set).toHaveBeenCalledWith('newest');
 	});
+
+	it('falls back from a saved "due first" order while response targets are off', async () => {
+		vi.stubGlobal('useLocalStorage', () => ({ data: ref('due'), set: vi.fn() }));
+		const { sort, isSlaEnabled } = useInbox();
+		// List first page, list tail, tab counts, stats, then the SLA summary.
+		const sla = created[4]!;
+		expect(isSlaEnabled.value).toBe(false);
+		expect(sort.value).toBe('needs-attention');
+
+		sla.data.value = { isEnabled: true, overdue: 1, dueSoon: 0, cap: 100 };
+		await nextTick();
+		expect(isSlaEnabled.value).toBe(true);
+		expect(sort.value).toBe('due');
+	});
 });

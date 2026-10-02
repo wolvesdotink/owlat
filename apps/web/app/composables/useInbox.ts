@@ -1,4 +1,5 @@
 import { api } from '@owlat/api';
+import type { FunctionReturnType } from 'convex/server';
 import {
 	DEFAULT_INBOX_SORT,
 	inboxAssigneeArg,
@@ -84,17 +85,11 @@ export function useInbox(gate?: Ref<boolean>) {
 	// not rewrite the viewer's saved sort. Picking a sort drops the override.
 	const legacySort = ref<InboxSort | null>(legacyInboxSort(route.query['filter']) ?? null);
 
-	// ── Response targets (SLA): whether they are on, and the Overdue / Due soon
-	// counts beside the tabs. Owner/admin read, like the rest of the inbox.
-	const { data: slaSummary } = useConvexQuery(
-		api.inbox.sla.queries.getListSummary,
-		() => {
-			if (!subscribed()) return 'skip';
-			const assigneeArg = inboxAssigneeArg(assignee.value);
-			return assigneeArg ? { assignee: assigneeArg } : {};
-		},
-		{ keepPreviousData: true }
-	);
+	// Response targets (SLA): filled from `getListSummary` below, read here by
+	// the sort (the "due first" order exists only while targets are on).
+	const slaSummary = shallowRef<FunctionReturnType<
+		typeof api.inbox.sla.queries.getListSummary
+	> | null>(null);
 	const isSlaEnabled = computed(() => slaSummary.value?.isEnabled === true);
 
 	// A saved "due first" order falls back to the default while targets are off:
@@ -266,6 +261,19 @@ export function useInbox(gate?: Ref<boolean>) {
 	const { data: stats } = useConvexQuery(api.inbox.queries.getInboundStats, () =>
 		subscribed() ? {} : 'skip'
 	);
+
+	// ── Response targets: whether they are on, and the Overdue / Due soon counts
+	// beside the tabs, narrowed by the assignment like the tab counts.
+	const { data: slaData } = useConvexQuery(
+		api.inbox.sla.queries.getListSummary,
+		() => {
+			if (!subscribed()) return 'skip';
+			const assigneeArg = inboxAssigneeArg(assignee.value);
+			return assigneeArg ? { assignee: assigneeArg } : {};
+		},
+		{ keepPreviousData: true }
+	);
+	watch(slaData, (data) => (slaSummary.value = data ?? null), { immediate: true });
 
 	// ── Actions ──
 	const loadMoreThreads = () => {
