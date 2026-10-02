@@ -16,6 +16,8 @@ defineEmits<{ loadMore: [] }>();
 
 // Presentation SSOT (labels/icons/colours) — pulled directly so the list is
 // self-contained and the page doesn't have to thread these through as props.
+// The label getters return message keys (or a humanised fallback for an
+// unknown verb/resource), so the template passes them through `t()`.
 const {
 	getResourceIcon,
 	getResourceLabel,
@@ -76,7 +78,7 @@ const presentedLogs = computed(() =>
 							]"
 						>
 							<Icon :name="getActionIcon(entry.log.action)" class="w-3 h-3" />
-							{{ getActionLabel(entry.log.action) }}
+							{{ t(getActionLabel(entry.log.action)) }}
 						</span>
 
 						<!-- Resource Badge -->
@@ -84,7 +86,7 @@ const presentedLogs = computed(() =>
 							class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-bg-surface text-text-secondary"
 						>
 							<Icon :name="getResourceIcon(entry.log.resource)" class="w-3 h-3" />
-							{{ getResourceLabel(entry.log.resource) }}
+							{{ t(getResourceLabel(entry.log.resource)) }}
 						</span>
 					</div>
 

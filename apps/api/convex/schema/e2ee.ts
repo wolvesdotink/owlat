@@ -76,8 +76,8 @@ export const keyVaultFields = {
  * serve to the world by design — that is the whole point of key discovery.
  *
  * Instance crypto infrastructure, not per-org business data — see
- * `lib/tenantTables.ts` NON_TENANT_TABLES (classified alongside `aiProviderConfig`
- * / `tlsReports`). Written only by `e2ee/keys.ts:storeKeypair`.
+ * `lib/tenantTables.ts` NON_TENANT_TABLES, which says why a workspace deletion
+ * keeps it. Written only by `e2ee/keys.ts:storeKeypair`.
  */
 export const e2eeTables = {
 	keyVault: defineTable(keyVaultFields)

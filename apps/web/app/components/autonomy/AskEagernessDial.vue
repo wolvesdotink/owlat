@@ -16,10 +16,12 @@ type EagernessMode = 'cautious' | 'balanced' | 'confident' | 'off';
 
 const { t } = useI18n();
 
-const { data: setting, isLoading } = useConvexQuery(
-	api.inbox.askEagernessSettings.getAskEagerness,
-	() => ({})
-);
+const {
+	data: setting,
+	isLoading,
+	error: settingError,
+	refetch: refetchSetting,
+} = useConvexQuery(api.inbox.askEagernessSettings.getAskEagerness, () => ({}));
 
 const { run: setEagerness } = useBackendOperation(api.inbox.askEagernessSettings.setAskEagerness, {
 	label: () => t('components.autonomy.askEagernessDial.saveOperation'),
@@ -56,7 +58,7 @@ const selected = computed<EagernessMode>(() => setting.value?.mode ?? 'balanced'
 const isSaving = ref(false);
 
 async function choose(mode: EagernessMode) {
-	if (isSaving.value || mode === setting.value?.mode) return;
+	if (isSaving.value || setting.value === undefined || mode === setting.value?.mode) return;
 	isSaving.value = true;
 	try {
 		await setEagerness({ mode });
@@ -82,6 +84,9 @@ async function choose(mode: EagernessMode) {
 		<div v-if="isLoading" class="flex justify-center py-4">
 			<UiSpinner />
 		</div>
+
+		<!-- A failed read is not "Balanced": show the error, not the default. -->
+		<UiQueryBoundary v-else-if="settingError" :error="settingError" @retry="refetchSetting" />
 
 		<div
 			v-else

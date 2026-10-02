@@ -27,10 +27,7 @@ const {
 	isLoading: keysLoading,
 	error: keysError,
 	refetch: refetchKeys,
-} = useOrganizationQuery(
-	api.auth.apiKeys.listByTeam,
-	{ includeRevoked: true }
-);
+} = useOrganizationQuery(api.auth.apiKeys.listByTeam, { includeRevoked: true });
 
 const isLoading = computed(() => organizationLoading.value || keysLoading.value);
 
@@ -256,25 +253,21 @@ const activeKeysCount = computed(() => {
 
 <template>
 	<div>
-		<!-- Header -->
-		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					{{ t('dashboard.admin.team.api.index.title') }}
-				</h1>
-				<p class="mt-1 text-text-secondary">{{ t('dashboard.admin.team.api.index.subtitle') }}</p>
-			</div>
-			<!-- Same data-testid UiPageHeader gives its actions slot: this page
-			     hand-rolls its header, and the empty state below offers a button
-			     with the identical label, so the pair is only tellable apart by
-			     region. -->
-			<div data-testid="page-header-actions">
-				<UiButton v-if="canManage" class="gap-2" @click="openCreateModal">
+		<!-- UiPageHeader's actions region carries `data-testid="page-header-actions"`:
+		     the empty state below offers a button with the identical label, so the
+		     pair is only tellable apart by region. -->
+		<UiPageHeader
+			class="mb-6"
+			:title="t('dashboard.admin.team.api.index.title')"
+			:description="t('dashboard.admin.team.api.index.subtitle')"
+		>
+			<template v-if="canManage" #actions>
+				<UiButton class="gap-2" @click="openCreateModal">
 					<Icon name="lucide:plus" class="w-4 h-4" />
 					{{ t('dashboard.admin.team.api.index.createKey') }}
 				</UiButton>
-			</div>
-		</div>
+			</template>
+		</UiPageHeader>
 
 		<!-- Info Box -->
 		<div class="card p-4 mb-6 bg-brand-subtle/50 border-brand/20">
@@ -291,141 +284,9 @@ const activeKeysCount = computed(() => {
 			</div>
 		</div>
 
-		<!-- Rate Limiting Info -->
-		<div class="card p-0 mb-6 overflow-hidden">
-			<div class="px-6 py-4 border-b border-border-subtle bg-bg-surface/50">
-				<div class="flex items-center gap-3">
-					<Icon name="lucide:gauge" class="w-5 h-5 text-brand" />
-					<h2 class="text-sm font-semibold text-text-primary">
-						{{ t('dashboard.admin.team.api.index.rateLimit.title') }}
-					</h2>
-				</div>
-			</div>
-			<div class="p-6">
-				<div class="grid gap-6 sm:grid-cols-2">
-					<!-- Rate Limit -->
-					<div class="flex items-start gap-4">
-						<UiIconBox icon="lucide:gauge" size="sm" variant="brand" rounded="lg" />
-						<div>
-							<p class="text-sm font-medium text-text-primary">
-								{{ t('dashboard.admin.team.api.index.rateLimit.rate') }}
-							</p>
-							<p class="text-sm text-text-secondary mt-0.5">
-								{{ t('dashboard.admin.team.api.index.rateLimit.rateDescription') }}
-							</p>
-						</div>
-					</div>
-
-					<!-- Response Headers -->
-					<div class="flex items-start gap-4">
-						<UiIconBox icon="lucide:info" size="sm" variant="brand" rounded="lg" />
-						<div>
-							<p class="text-sm font-medium text-text-primary">
-								{{ t('dashboard.admin.team.api.index.rateLimit.headersTitle') }}
-							</p>
-							<p class="text-sm text-text-secondary mt-0.5">
-								{{ t('dashboard.admin.team.api.index.rateLimit.headersDescription') }}
-							</p>
-						</div>
-					</div>
-				</div>
-
-				<!-- Headers Table -->
-				<div class="mt-6 rounded-lg border border-border-subtle overflow-hidden">
-					<table class="w-full text-sm">
-						<thead>
-							<tr class="bg-bg-surface">
-								<th class="text-left px-4 py-2 text-text-secondary font-medium">
-									{{ t('dashboard.admin.team.api.index.rateLimit.headerColumn') }}
-								</th>
-								<th class="text-left px-4 py-2 text-text-secondary font-medium">
-									{{ t('common.description') }}
-								</th>
-							</tr>
-						</thead>
-						<tbody>
-							<tr class="border-t border-border-subtle">
-								<td class="px-4 py-2">
-									<code
-										class="text-xs font-mono text-brand bg-brand-subtle/50 px-1.5 py-0.5 rounded"
-										>X-RateLimit-Limit</code
-									>
-								</td>
-								<td class="px-4 py-2 text-text-secondary">
-									{{ t('dashboard.admin.team.api.index.rateLimit.limitHeader') }}
-								</td>
-							</tr>
-							<tr class="border-t border-border-subtle">
-								<td class="px-4 py-2">
-									<code
-										class="text-xs font-mono text-brand bg-brand-subtle/50 px-1.5 py-0.5 rounded"
-										>X-RateLimit-Remaining</code
-									>
-								</td>
-								<td class="px-4 py-2 text-text-secondary">
-									{{ t('dashboard.admin.team.api.index.rateLimit.remainingHeader') }}
-								</td>
-							</tr>
-							<tr class="border-t border-border-subtle">
-								<td class="px-4 py-2">
-									<code
-										class="text-xs font-mono text-brand bg-brand-subtle/50 px-1.5 py-0.5 rounded"
-										>X-RateLimit-Reset</code
-									>
-								</td>
-								<td class="px-4 py-2 text-text-secondary">
-									{{ t('dashboard.admin.team.api.index.rateLimit.resetHeader') }}
-								</td>
-							</tr>
-							<tr class="border-t border-border-subtle">
-								<td class="px-4 py-2">
-									<code class="text-xs font-mono text-warning bg-warning/10 px-1.5 py-0.5 rounded"
-										>Retry-After</code
-									>
-								</td>
-								<td class="px-4 py-2 text-text-secondary">
-									{{ t('dashboard.admin.team.api.index.rateLimit.retryAfterHeader') }}
-								</td>
-							</tr>
-						</tbody>
-					</table>
-				</div>
-
-				<!-- Usage Example -->
-				<div class="mt-4 p-4 rounded-lg bg-bg-deep border border-border-subtle">
-					<p class="text-xs text-text-tertiary mb-2">
-						{{ t('dashboard.admin.team.api.index.rateLimit.exampleHeaders') }}
-					</p>
-					<code class="text-xs font-mono text-text-secondary block leading-relaxed">
-						X-RateLimit-Limit: 10<br />
-						X-RateLimit-Remaining: 7<br />
-						X-RateLimit-Reset: 1737158400
-					</code>
-				</div>
-			</div>
-		</div>
-
-		<!-- API Documentation Link -->
-		<div class="card p-4 mb-6 flex items-center justify-between">
-			<div class="flex items-center gap-3">
-				<UiIconBox icon="lucide:book" size="sm" variant="surface" rounded="lg" />
-				<div>
-					<p class="text-sm text-text-primary font-medium">
-						{{ t('dashboard.admin.team.api.index.docs.title') }}
-					</p>
-					<p class="text-sm text-text-tertiary">
-						{{ t('dashboard.admin.team.api.index.docs.description') }}
-					</p>
-				</div>
-			</div>
-			<UiButton variant="secondary" to="/dashboard/admin/team/api/docs" class="gap-2">
-				{{ t('dashboard.admin.team.api.index.docs.view') }}
-				<Icon name="lucide:external-link" class="w-4 h-4" />
-			</UiButton>
-		</div>
-
-		<!-- Content -->
-		<div>
+		<!-- The keys lead: they are what this page manages. The rate-limit and
+		     docs reference used to sit above them, pushing the list below the fold. -->
+		<div class="mb-6">
 			<!-- Admins-only gate (editors lack organization:manage) -->
 			<div
 				v-if="showAdminGate"
@@ -491,22 +352,34 @@ const activeKeysCount = computed(() => {
 					<table class="w-full">
 						<thead>
 							<tr class="border-b border-border-subtle">
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+								<th
+									class="text-left px-4 py-3 first:pl-6 text-sm font-medium text-text-secondary whitespace-nowrap"
+								>
 									{{ t('common.name') }}
 								</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+								<th
+									class="text-left px-4 py-3 first:pl-6 text-sm font-medium text-text-secondary whitespace-nowrap"
+								>
 									{{ t('dashboard.admin.team.api.index.table.key') }}
 								</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+								<th
+									class="text-left px-4 py-3 first:pl-6 text-sm font-medium text-text-secondary whitespace-nowrap"
+								>
 									{{ t('common.status') }}
 								</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+								<th
+									class="text-left px-4 py-3 first:pl-6 text-sm font-medium text-text-secondary whitespace-nowrap"
+								>
 									{{ t('dashboard.admin.team.api.index.table.lastUsed') }}
 								</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+								<th
+									class="text-left px-4 py-3 first:pl-6 text-sm font-medium text-text-secondary whitespace-nowrap"
+								>
 									{{ t('dashboard.admin.team.api.index.table.created') }}
 								</th>
-								<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
+								<th
+									class="text-right px-4 py-3 pr-6 text-sm font-medium text-text-secondary whitespace-nowrap"
+								>
 									{{ t('common.actions') }}
 								</th>
 							</tr>
@@ -520,7 +393,7 @@ const activeKeysCount = computed(() => {
 									key.isActive ? 'hover:bg-bg-surface' : 'opacity-60 bg-bg-surface/50',
 								]"
 							>
-								<td class="px-6 py-4">
+								<td class="min-w-32 py-4 pl-6 pr-4">
 									<div v-if="renamingId === key._id" class="flex items-center gap-1">
 										<input
 											v-model="renameDraft"
@@ -546,14 +419,14 @@ const activeKeysCount = computed(() => {
 									</div>
 									<span v-else class="text-text-primary font-medium">{{ key.name }}</span>
 								</td>
-								<td class="px-6 py-4">
+								<td class="px-4 py-4 whitespace-nowrap">
 									<code
 										class="px-2 py-1 rounded bg-bg-surface text-text-secondary text-sm font-mono"
 									>
 										{{ key.keyPrefix }}...
 									</code>
 								</td>
-								<td class="px-6 py-4">
+								<td class="px-4 py-4 whitespace-nowrap">
 									<span
 										v-if="key.isActive"
 										class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-success/10 text-success"
@@ -569,7 +442,7 @@ const activeKeysCount = computed(() => {
 										{{ t('dashboard.admin.team.api.index.status.revoked') }}
 									</span>
 								</td>
-								<td class="px-6 py-4">
+								<td class="px-4 py-4 whitespace-nowrap">
 									<span
 										v-if="key.lastUsedAt"
 										class="text-text-secondary text-sm flex items-center gap-1.5"
@@ -582,10 +455,10 @@ const activeKeysCount = computed(() => {
 										t('dashboard.admin.team.api.index.neverUsed')
 									}}</span>
 								</td>
-								<td class="px-6 py-4">
+								<td class="px-4 py-4 whitespace-nowrap">
 									<span class="text-text-tertiary text-sm">{{ formatDate(key.createdAt) }}</span>
 								</td>
-								<td class="px-6 py-4">
+								<td class="py-4 pl-4 pr-6">
 									<div class="flex items-center justify-end gap-1">
 										<button
 											v-if="canManage && renamingId !== key._id"
@@ -615,6 +488,145 @@ const activeKeysCount = computed(() => {
 							</tr>
 						</tbody>
 					</table>
+				</div>
+			</div>
+		</div>
+
+		<!-- API Documentation Link -->
+		<div
+			class="card p-4 mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+		>
+			<div class="flex min-w-0 items-center gap-3">
+				<UiIconBox icon="lucide:book" size="sm" variant="surface" rounded="lg" />
+				<div>
+					<p class="text-sm text-text-primary font-medium">
+						{{ t('dashboard.admin.team.api.index.docs.title') }}
+					</p>
+					<p class="text-sm text-text-tertiary">
+						{{ t('dashboard.admin.team.api.index.docs.description') }}
+					</p>
+				</div>
+			</div>
+			<UiButton
+				variant="secondary"
+				to="/dashboard/admin/team/api/docs"
+				class="shrink-0 gap-2 self-start whitespace-nowrap sm:self-auto"
+			>
+				{{ t('dashboard.admin.team.api.index.docs.view') }}
+				<Icon name="lucide:external-link" class="w-4 h-4" />
+			</UiButton>
+		</div>
+
+		<!-- Rate Limiting Info -->
+		<div class="card p-0 mb-6 overflow-hidden">
+			<div class="px-6 py-4 border-b border-border-subtle bg-bg-surface/50">
+				<div class="flex items-center gap-3">
+					<Icon name="lucide:gauge" class="w-5 h-5 text-brand" />
+					<h2 class="text-sm font-semibold text-text-primary">
+						{{ t('dashboard.admin.team.api.index.rateLimit.title') }}
+					</h2>
+				</div>
+			</div>
+			<div class="p-6">
+				<div class="grid gap-6 sm:grid-cols-2">
+					<!-- Rate Limit -->
+					<div class="flex items-start gap-4">
+						<UiIconBox icon="lucide:gauge" size="sm" variant="brand" rounded="lg" />
+						<div>
+							<p class="text-sm font-medium text-text-primary">
+								{{ t('dashboard.admin.team.api.index.rateLimit.rate') }}
+							</p>
+							<p class="text-sm text-text-secondary mt-0.5">
+								{{ t('dashboard.admin.team.api.index.rateLimit.rateDescription') }}
+							</p>
+						</div>
+					</div>
+
+					<!-- Response Headers -->
+					<div class="flex items-start gap-4">
+						<UiIconBox icon="lucide:info" size="sm" variant="brand" rounded="lg" />
+						<div>
+							<p class="text-sm font-medium text-text-primary">
+								{{ t('dashboard.admin.team.api.index.rateLimit.headersTitle') }}
+							</p>
+							<p class="text-sm text-text-secondary mt-0.5">
+								{{ t('dashboard.admin.team.api.index.rateLimit.headersDescription') }}
+							</p>
+						</div>
+					</div>
+				</div>
+
+				<!-- Headers Table -->
+				<div class="mt-6 rounded-lg border border-border-subtle overflow-x-auto">
+					<table class="w-full text-sm">
+						<thead>
+							<tr class="bg-bg-surface">
+								<th class="text-left px-4 py-2 text-text-secondary font-medium">
+									{{ t('dashboard.admin.team.api.index.rateLimit.headerColumn') }}
+								</th>
+								<th class="text-left px-4 py-2 text-text-secondary font-medium">
+									{{ t('common.description') }}
+								</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr class="border-t border-border-subtle">
+								<td class="px-4 py-2 whitespace-nowrap">
+									<code
+										class="text-xs font-mono text-brand bg-brand-subtle/50 px-1.5 py-0.5 rounded"
+										>X-RateLimit-Limit</code
+									>
+								</td>
+								<td class="px-4 py-2 text-text-secondary">
+									{{ t('dashboard.admin.team.api.index.rateLimit.limitHeader') }}
+								</td>
+							</tr>
+							<tr class="border-t border-border-subtle">
+								<td class="px-4 py-2 whitespace-nowrap">
+									<code
+										class="text-xs font-mono text-brand bg-brand-subtle/50 px-1.5 py-0.5 rounded"
+										>X-RateLimit-Remaining</code
+									>
+								</td>
+								<td class="px-4 py-2 text-text-secondary">
+									{{ t('dashboard.admin.team.api.index.rateLimit.remainingHeader') }}
+								</td>
+							</tr>
+							<tr class="border-t border-border-subtle">
+								<td class="px-4 py-2 whitespace-nowrap">
+									<code
+										class="text-xs font-mono text-brand bg-brand-subtle/50 px-1.5 py-0.5 rounded"
+										>X-RateLimit-Reset</code
+									>
+								</td>
+								<td class="px-4 py-2 text-text-secondary">
+									{{ t('dashboard.admin.team.api.index.rateLimit.resetHeader') }}
+								</td>
+							</tr>
+							<tr class="border-t border-border-subtle">
+								<td class="px-4 py-2 whitespace-nowrap">
+									<code class="text-xs font-mono text-warning bg-warning/10 px-1.5 py-0.5 rounded"
+										>Retry-After</code
+									>
+								</td>
+								<td class="px-4 py-2 text-text-secondary">
+									{{ t('dashboard.admin.team.api.index.rateLimit.retryAfterHeader') }}
+								</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+
+				<!-- Usage Example -->
+				<div class="mt-4 p-4 rounded-lg bg-bg-deep border border-border-subtle">
+					<p class="text-xs text-text-tertiary mb-2">
+						{{ t('dashboard.admin.team.api.index.rateLimit.exampleHeaders') }}
+					</p>
+					<code class="text-xs font-mono text-text-secondary block leading-relaxed">
+						X-RateLimit-Limit: 10<br />
+						X-RateLimit-Remaining: 7<br />
+						X-RateLimit-Reset: 1737158400
+					</code>
 				</div>
 			</div>
 		</div>
@@ -703,7 +715,11 @@ const activeKeysCount = computed(() => {
 					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton type="button" class="gap-2" :disabled="isCreating" @click="handleCreate">
-					<Icon v-if="isCreating" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+					<Icon
+						v-if="isCreating"
+						name="lucide:loader-2"
+						class="w-4 h-4 animate-spin motion-reduce:animate-none"
+					/>
 					{{
 						isCreating
 							? t('dashboard.admin.team.api.index.form.creating')

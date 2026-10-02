@@ -74,7 +74,12 @@ const handleKeyDown = (event: KeyboardEvent) => {
 </script>
 
 <template>
-	<div role="tablist" class="flex bg-bg-surface rounded-lg p-1 gap-1" @keydown="handleKeyDown">
+	<!-- Scrolls instead of widening the page when the tabs outgrow a phone. -->
+	<div
+		role="tablist"
+		class="flex max-w-full gap-1 overflow-x-auto rounded-lg bg-bg-surface p-1"
+		@keydown="handleKeyDown"
+	>
 		<button
 			v-for="(tab, index) in tabs"
 			:ref="setButtonRef(index)"
@@ -86,7 +91,7 @@ const handleKeyDown = (event: KeyboardEvent) => {
 			:aria-controls="`${tabsId}-panel-${index}`"
 			:tabindex="modelValue === tab.value ? 0 : -1"
 			:class="[
-				'px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-(--motion-moderate) ease-spring',
+				'shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-(--motion-moderate) ease-spring',
 				modelValue === tab.value
 					? 'bg-bg-elevated text-text-primary shadow-sm'
 					: 'text-text-secondary hover:text-text-primary',

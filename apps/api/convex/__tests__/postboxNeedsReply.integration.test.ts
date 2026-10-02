@@ -28,6 +28,7 @@ import { api, internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
 import { normalizeQuestionKey } from '../inbox/clarificationMemoryMatch';
+import { MAX_SWEEP_RETRIES, SWEEP_MIN_AGE_MS } from '../mail/needsReplyPending';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -465,6 +466,128 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 		const thread = await getThread(t, threadId);
 		expect(thread?.needsReply).toMatchObject({ messageId, source: 'heuristic' });
 		expect(runLlmObjectMock).not.toHaveBeenCalled();
+		// A refusal would only repeat: the run settles instead of waiting for the sweep.
+		expect(thread?.needsReplyPendingAt).toBeUndefined();
+	});
+
+	// "Send us the invoices for our four bookings": every sampled reply writes
+	// "please find them attached", so a file slot always converges. It is asked
+	// anyway, and without paying for the samples when it is the only slot.
+	it('asks for a requested file without the divergence check', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['ai']);
+		const seeded = await seedMailbox(t);
+		const { threadId } = await seedThreadWithMessage(t, seeded, {
+			needsReplyPendingAt: Date.now(),
+		});
+		const usage = { promptTokens: 1, completionTokens: 1, totalTokens: 2 };
+		runLlmObjectMock
+			.mockResolvedValueOnce({
+				object: {
+					intent: 'request_for_action',
+					needsReply: true,
+					urgency: 'normal',
+					askSummary: 'Invoices for four bookings',
+					dueHint: null,
+				},
+				tokenUsage: usage,
+				modelUsed: 'm',
+			})
+			.mockResolvedValueOnce({
+				object: {
+					slots: [
+						{
+							slotType: 'attachment',
+							question: 'Please provide the invoice PDFs for the four bookings',
+							answerableFromContext: false,
+							// A file request counts whatever the extractor says here.
+							decisionRelevant: false,
+							options: [],
+						},
+					],
+				},
+				tokenUsage: usage,
+				modelUsed: 'm',
+			})
+			.mockResolvedValueOnce({ object: { translations: [] }, tokenUsage: usage, modelUsed: 'm' });
+
+		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, { threadId });
+
+		const clarification = (await getThread(t, threadId))?.needsReply?.clarification;
+		expect(clarification?.questions).toEqual([
+			expect.objectContaining({
+				slotType: 'attachment',
+				answerKind: 'file',
+				text: 'Please provide the invoice PDFs for the four bookings',
+			}),
+		]);
+		expect(runLlmTextMock).not.toHaveBeenCalled();
+	});
+
+	it('keeps the file question when the samples converge on everything', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['ai']);
+		const seeded = await seedMailbox(t);
+		const { threadId } = await seedThreadWithMessage(t, seeded, {
+			needsReplyPendingAt: Date.now(),
+		});
+		const usage = { promptTokens: 1, completionTokens: 1, totalTokens: 2 };
+		const slot = (slotType: string, question: string) => ({
+			slotType,
+			question,
+			answerableFromContext: false,
+			decisionRelevant: true,
+			options: [],
+		});
+		runLlmObjectMock
+			.mockResolvedValueOnce({
+				object: {
+					intent: 'request_for_action',
+					needsReply: true,
+					urgency: 'normal',
+					askSummary: 'Invoices',
+					dueHint: null,
+				},
+				tokenUsage: usage,
+				modelUsed: 'm',
+			})
+			.mockResolvedValueOnce({
+				object: {
+					slots: [
+						slot('decision', 'Should the invoices go to the new billing address?'),
+						slot('attachment', 'Please provide the invoice PDFs'),
+					],
+				},
+				tokenUsage: usage,
+				modelUsed: 'm',
+			})
+			// The samples agree on the decision: it is a safe assumption.
+			.mockResolvedValueOnce({
+				object: { divergentSlotIndexes: [] },
+				tokenUsage: usage,
+				modelUsed: 'm',
+			})
+			.mockResolvedValueOnce({ object: { translations: [] }, tokenUsage: usage, modelUsed: 'm' });
+		runLlmTextMock
+			.mockResolvedValueOnce({ text: 'Invoices attached.', tokenUsage: usage, modelUsed: 'm' })
+			.mockResolvedValueOnce({
+				text: 'Please find them attached.',
+				tokenUsage: usage,
+				modelUsed: 'm',
+			});
+
+		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, { threadId });
+
+		const questions = (await getThread(t, threadId))?.needsReply?.clarification?.questions;
+		expect(questions?.map((q) => q.text)).toEqual(['Please provide the invoice PDFs']);
+		// Only the decision was put to the divergence judge.
+		const judgePrompt = runLlmObjectMock.mock.calls[2]?.[0]?.prompt as string;
+		expect(judgePrompt).toContain('billing address');
+		expect(judgePrompt).not.toContain('invoice PDFs');
 	});
 
 	it('clears flag + pending for a no-reply sender without any LLM call', async () => {
@@ -785,7 +908,7 @@ describe('mail.needsReply.countQueue', () => {
 
 // ─── Reconcile sweep ─────────────────────────────────────────────────────────
 
-describe('mail.needsReply.sweepPending', () => {
+describe('mail.needsReplyPending.sweepPending', () => {
 	it('re-schedules only stale pending threads and bumps their marker', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['mail.external']);
@@ -809,7 +932,7 @@ describe('mail.needsReply.sweepPending', () => {
 		// clear the pending marker) before the assertions below run.
 		vi.useFakeTimers();
 		try {
-			const result = await t.mutation(internal.mail.needsReply.sweepPending, {});
+			const result = await t.mutation(internal.mail.needsReplyPending.sweepPending, {});
 			expect(result.rescheduled).toBe(1);
 
 			const stale = await getThread(t, staleThread);
@@ -823,5 +946,94 @@ describe('mail.needsReply.sweepPending', () => {
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+
+	// The run that died after its baseline (the backend was OOM-killed while the
+	// model was answering): the baseline left the thread pending, so the sweep
+	// classifies it again instead of leaving a `heuristic` flag for good.
+	it('keeps a thread pending after the heuristic baseline and re-schedules it', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const seeded = await seedMailbox(t);
+		const { threadId, messageId } = await seedThreadWithMessage(t, seeded, {
+			needsReplyPendingAt: Date.now() - 60_000,
+		});
+
+		vi.useFakeTimers();
+		try {
+			await t.mutation(internal.mail.needsReply.applyResult, {
+				threadId,
+				expectedLatestMessageId: messageId,
+				needsReply: { messageId, source: 'heuristic', urgency: 'normal' },
+				isBaseline: true,
+			});
+			const baseline = await getThread(t, threadId);
+			expect(baseline?.needsReply?.source).toBe('heuristic');
+			expect(baseline?.needsReplyPendingAt).toBeGreaterThanOrEqual(Date.now());
+
+			// Too early: the run may still be going.
+			expect((await t.mutation(internal.mail.needsReplyPending.sweepPending, {})).rescheduled).toBe(
+				0
+			);
+			vi.setSystemTime(Date.now() + SWEEP_MIN_AGE_MS + 1000);
+			expect((await t.mutation(internal.mail.needsReplyPending.sweepPending, {})).rescheduled).toBe(
+				1
+			);
+			expect((await getThread(t, threadId))?.needsReplyRetryCount).toBe(1);
+			const jobs = await t.run(async (ctx) =>
+				(await ctx.db.system.query('_scheduled_functions').collect()).map((job) => job.name)
+			);
+			expect(jobs).toEqual([expect.stringContaining('needsReplyClassify')]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('gives up on a thread whose run keeps dying', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const seeded = await seedMailbox(t);
+		const { threadId } = await seedThreadWithMessage(t, seeded, {
+			needsReplyPendingAt: Date.now() - SWEEP_MIN_AGE_MS - 1000,
+		});
+		await t.run(async (ctx) => {
+			await ctx.db.patch(threadId, { needsReplyRetryCount: MAX_SWEEP_RETRIES });
+		});
+
+		vi.useFakeTimers();
+		try {
+			const result = await t.mutation(internal.mail.needsReplyPending.sweepPending, {});
+			expect(result).toEqual({ rescheduled: 0, abandoned: 1 });
+			const thread = await getThread(t, threadId);
+			expect(thread?.needsReplyPendingAt).toBeUndefined();
+			expect(thread?.needsReplyRetryCount).toBeUndefined();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
+describe('mail.needsReplyPending.settlePending', () => {
+	it('clears the marker, but not one a newer message stamped', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const seeded = await seedMailbox(t);
+		const { threadId, messageId } = await seedThreadWithMessage(t, seeded, {
+			needsReplyPendingAt: Date.now(),
+		});
+		const { messageId: otherMessage } = await seedThreadWithMessage(t, seeded);
+
+		// Settled for a message that is no longer the newest: the marker is not its own.
+		await t.mutation(internal.mail.needsReplyPending.settlePending, {
+			threadId,
+			expectedLatestMessageId: otherMessage,
+		});
+		expect((await getThread(t, threadId))?.needsReplyPendingAt).toBeDefined();
+
+		await t.mutation(internal.mail.needsReplyPending.settlePending, {
+			threadId,
+			expectedLatestMessageId: messageId,
+		});
+		expect((await getThread(t, threadId))?.needsReplyPendingAt).toBeUndefined();
 	});
 });

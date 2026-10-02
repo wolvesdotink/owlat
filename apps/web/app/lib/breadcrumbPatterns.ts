@@ -227,6 +227,32 @@ export const patternConfigs: PatternConfig[] = [
 		}),
 	},
 	/**
+	 * A file, a knowledge entry, a chat room: the section crumb, linked back to
+	 * its list. The id segment was already skipped by the slug fallback, but
+	 * the section it left behind was an untranslated URL word.
+	 */
+	{
+		pattern: /^\/dashboard\/files\/([^/]+)$/,
+		getConfig: () => ({
+			section: 'shared.breadcrumbRoutes.sections.files',
+			sectionHref: '/dashboard/files',
+		}),
+	},
+	{
+		pattern: /^\/dashboard\/knowledge\/(?!graph$)([^/]+)$/,
+		getConfig: () => ({
+			section: 'shared.breadcrumbRoutes.sections.knowledge',
+			sectionHref: '/dashboard/knowledge',
+		}),
+	},
+	{
+		pattern: /^\/dashboard\/chat\/([^/]+)$/,
+		getConfig: () => ({
+			section: 'shared.breadcrumbRoutes.sections.chat',
+			sectionHref: '/dashboard/chat',
+		}),
+	},
+	/**
 	 * Every other page inside a Marketing subtree (an automation's detail, a
 	 * campaign send, a template's settings or translations) keeps the workspace
 	 * trail up to its list. Without these the slug fallback printed a bare

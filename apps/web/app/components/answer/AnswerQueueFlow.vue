@@ -46,6 +46,27 @@ function headline(item: AnswerItem): string {
 const peekLabel = computed(() => (flow.nextItem.value ? headline(flow.nextItem.value) : ''));
 
 const { chips, showChips, activeChipLabel } = useAnswerQueueChips(session);
+
+// The failed sources the active chip shows; the inbox list always counts, since
+// every inbox hangs off it. With nothing to show, the first one stands in for
+// "all clear" (#721); next to rows, a notice names them all (#1099).
+const FAILURE_LABELS: Record<string, string> = {
+	inboxes: 'components.inbox.readFailureNotice.inboxList',
+	team: 'components.shell.teamInbox',
+	chat: 'components.shell.chat.title',
+};
+const failures = computed(() =>
+	queue.failures.value.filter(
+		(f) => f.id === 'inboxes' || filter.value === 'all' || f.id === filter.value
+	)
+);
+const loadError = computed(() => failures.value[0]?.error ?? null);
+const failedNames = computed(() =>
+	failures.value.map((f) => {
+		const label = FAILURE_LABELS[f.id];
+		return f.inbox?.name ?? (label ? t(label) : f.id);
+	})
+);
 </script>
 
 <template>
@@ -85,6 +106,13 @@ const { chips, showChips, activeChipLabel } = useAnswerQueueChips(session);
 		</div>
 
 		<div
+			v-if="failures.length > 0 && (flow.active.value || source.length > 0)"
+			class="mx-auto max-w-2xl px-4 pt-4 sm:px-6"
+		>
+			<InboxReadFailureNotice :names="failedNames" @retry="queue.refetch" />
+		</div>
+
+		<div
 			v-if="(queue.isLoading.value && !flow.active.value) || leavingForAnswerMode"
 			class="mx-auto max-w-2xl space-y-3 px-6 py-10"
 		>
@@ -94,8 +122,8 @@ const { chips, showChips, activeChipLabel } = useAnswerQueueChips(session);
 
 		<!-- Nothing to show because a read failed is not "all clear" (#721). -->
 		<UiQueryBoundary
-			v-else-if="queue.error.value && !flow.active.value && source.length === 0"
-			:error="queue.error.value"
+			v-else-if="loadError && !flow.active.value && source.length === 0"
+			:error="loadError"
 			@retry="queue.refetch"
 		/>
 

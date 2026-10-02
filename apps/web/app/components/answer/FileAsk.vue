@@ -12,9 +12,12 @@
  *  - or one of the question's own options, such as "It isn't ready yet".
  *
  * The value is either a file reference or an option. The parent turns it into
- * the answer the server takes.
+ * the answer the server takes. With `multiple` (a Reply Queue question such as
+ * "the invoices for our four bookings") the value is a list of files: each
+ * pick adds one, and the drop zone stays open for the next.
  */
 import type { Id } from '@owlat/api/dataModel';
+import { MAX_FILES_PER_ANSWER } from '@owlat/shared/answerMode';
 import type { AskQuestion } from '~/composables/useAnswerAskSession';
 import { useAnswerFileUpload } from '~/composables/useAnswerFileUpload';
 import { threadFileFromDrop, type ThreadFile } from '~/utils/answerThreadFiles';
@@ -41,6 +44,7 @@ export type FileCopyPolicy = 'kept' | 'ifContact' | 'never';
 
 export type FileAskValue =
 	| { kind: 'file'; file: FileAnswerRef; keepCopy: boolean }
+	| { kind: 'files'; files: FileAnswerRef[]; keepCopy: boolean }
 	| { kind: 'option'; value: string }
 	| null;
 
@@ -56,6 +60,8 @@ const props = defineProps<{
 	disabled?: boolean;
 	/** Whether an upload is kept in Files; `kept` when omitted. */
 	copyPolicy?: FileCopyPolicy;
+	/** Take several files (the value is then `kind: 'files'`). */
+	multiple?: boolean;
 }>();
 
 const emit = defineEmits<{ 'update:modelValue': [value: FileAskValue] }>();
@@ -83,17 +89,44 @@ const optionChips = computed(() => props.options.filter((o) => !candidateLabels.
 const nearMisses = computed(() => optionChips.value.length > 0);
 
 const picked = computed(() => (props.modelValue?.kind === 'file' ? props.modelValue.file : null));
+/** Every file picked so far: the list in `multiple` mode, else the one file. */
+const pickedFiles = computed((): FileAnswerRef[] => {
+	if (props.modelValue?.kind === 'files') return props.modelValue.files;
+	return picked.value ? [picked.value] : [];
+});
+const isFull = computed(() => props.multiple && pickedFiles.value.length >= MAX_FILES_PER_ANSWER);
 const pickedOption = computed(() =>
 	props.modelValue?.kind === 'option' ? props.modelValue.value : null
 );
+const isSameFile = (a: { source: string; id: string }, b: { source: string; id: string }) =>
+	a.source === b.source && a.id === b.id;
+
+function setFiles(files: FileAnswerRef[]) {
+	emit(
+		'update:modelValue',
+		files.length > 0 ? { kind: 'files', files, keepCopy: !attachedOnly.value } : null
+	);
+}
 
 function setFile(file: FileAnswerRef) {
-	emit('update:modelValue', { kind: 'file', file, keepCopy: !attachedOnly.value });
+	if (!props.multiple) {
+		emit('update:modelValue', { kind: 'file', file, keepCopy: !attachedOnly.value });
+		return;
+	}
+	if (isFull.value || pickedFiles.value.some((f) => isSameFile(f, file))) return;
+	setFiles([...pickedFiles.value, file]);
+}
+
+function removeFile(file: FileAnswerRef) {
+	setFiles(pickedFiles.value.filter((f) => !isSameFile(f, file)));
 }
 
 watch(dontKeep, (value) => {
-	if (props.modelValue?.kind === 'file' && props.modelValue.file.source === 'upload') {
-		emit('update:modelValue', { ...props.modelValue, keepCopy: !value });
+	const current = props.modelValue;
+	if (current?.kind === 'file' && current.file.source === 'upload') {
+		emit('update:modelValue', { ...current, keepCopy: !value });
+	} else if (current?.kind === 'files' && current.files.some((f) => f.source === 'upload')) {
+		emit('update:modelValue', { ...current, keepCopy: !value });
 	}
 });
 
@@ -139,12 +172,15 @@ async function onDrop(event: DragEvent) {
 		}
 		return;
 	}
-	const file = event.dataTransfer?.files?.[0];
-	if (file) void uploadFile(file);
+	const dropped = [...(event.dataTransfer?.files ?? [])];
+	// One at a time: each upload's `setFile` reads the list the last one left.
+	for (const file of props.multiple ? dropped : dropped.slice(0, 1)) await uploadFile(file);
 }
 
 function pickCandidate(candidate: (typeof candidates.value)[number]) {
-	setFile({ source: candidate.source, id: candidate.id, filename: candidate.filename });
+	const ref = { source: candidate.source, id: candidate.id, filename: candidate.filename };
+	if (props.multiple && isPickedCandidate(candidate)) removeFile(ref);
+	else setFile(ref);
 }
 
 function pickOption(option: string) {
@@ -159,14 +195,36 @@ function onPicked(file: PickedFile) {
 }
 
 const isPickedCandidate = (candidate: { source: string; id: string }) =>
-	picked.value?.source === candidate.source && picked.value.id === candidate.id;
+	pickedFiles.value.some((f) => isSameFile(f, candidate));
 
 const busy = computed(() => uploading.value || resolving.value);
 </script>
 
 <template>
 	<div class="mt-2 space-y-2" data-testid="file-ask">
+		<ul v-if="multiple && pickedFiles.length > 0" class="space-y-1" data-testid="file-ask-files">
+			<li
+				v-for="file in pickedFiles"
+				:key="`${file.source}:${file.id}`"
+				class="flex items-center gap-2 rounded-lg border border-border-subtle px-3 py-2 text-sm"
+				data-testid="file-ask-picked"
+			>
+				<Icon name="lucide:paperclip" class="size-4 shrink-0 text-brand" aria-hidden="true" />
+				<span class="min-w-0 flex-1 truncate text-text-primary">{{ file.filename }}</span>
+				<button
+					type="button"
+					class="rounded p-0.5 text-text-tertiary hover:text-text-primary focus-visible:outline-2 focus-visible:outline-brand"
+					:aria-label="t('components.answer.fileAsk.remove', { file: file.filename })"
+					:disabled="disabled"
+					data-testid="file-ask-remove"
+					@click="removeFile(file)"
+				>
+					<Icon name="lucide:x" class="size-4" aria-hidden="true" />
+				</button>
+			</li>
+		</ul>
 		<div
+			v-if="!isFull"
 			class="rounded-lg border border-dashed px-3 py-3 text-sm transition-colors duration-(--motion-fast)"
 			:class="dragOver ? 'border-brand bg-brand/5' : 'border-border-default'"
 			data-testid="file-ask-drop"
@@ -174,7 +232,7 @@ const busy = computed(() => uploading.value || resolving.value);
 			@dragleave="dragOver = false"
 			@drop="onDrop"
 		>
-			<div v-if="picked" class="flex items-center gap-2" data-testid="file-ask-picked">
+			<div v-if="picked && !multiple" class="flex items-center gap-2" data-testid="file-ask-picked">
 				<Icon name="lucide:paperclip" class="size-4 shrink-0 text-brand" aria-hidden="true" />
 				<span class="min-w-0 flex-1 truncate text-text-primary">{{ picked.filename }}</span>
 				<button
@@ -203,7 +261,13 @@ const busy = computed(() => uploading.value || resolving.value);
 							}}
 						</template>
 						<template v-else>
-							{{ t('components.answer.fileAsk.dropHere') }}
+							{{
+								multiple && pickedFiles.length > 0
+									? t('components.answer.fileAsk.dropAnother')
+									: multiple
+										? t('components.answer.fileAsk.dropHereMany')
+										: t('components.answer.fileAsk.dropHere')
+							}}
 							<button
 								type="button"
 								class="font-medium text-brand underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-brand"
@@ -229,7 +293,9 @@ const busy = computed(() => uploading.value || resolving.value);
 		</div>
 
 		<label
-			v-if="!neverKept && (!picked || picked.source === 'upload')"
+			v-if="
+				!neverKept && (pickedFiles.length === 0 || pickedFiles.some((f) => f.source === 'upload'))
+			"
 			class="flex items-center gap-2 text-xs text-text-secondary"
 		>
 			<input
@@ -280,7 +346,7 @@ const busy = computed(() => uploading.value || resolving.value);
 			<button
 				type="button"
 				class="inline-flex items-center gap-1.5 rounded-full border border-border-subtle px-2.5 py-1 text-xs text-text-secondary hover:border-text-tertiary hover:bg-bg-surface focus-visible:outline-2 focus-visible:outline-brand"
-				:disabled="disabled"
+				:disabled="disabled || isFull"
 				data-testid="file-ask-pick-files"
 				@click="pickerOpen = true"
 			>

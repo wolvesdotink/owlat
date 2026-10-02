@@ -23,7 +23,12 @@ const { t } = useI18n();
 const { canManageOrganization } = usePermissions();
 const { showToast } = useToast();
 
-const { data: settings, isLoading } = useConvexQuery(api.workspaces.settings.get, {});
+const {
+	data: settings,
+	isLoading,
+	error: settingsError,
+	refetch: refetchSettings,
+} = useConvexQuery(api.workspaces.settings.get, {});
 const isEnabled = computed<boolean>(() => settings.value?.isBodySearchIndexingEnabled === true);
 
 // The backfill is per mailbox (it walks one mailbox's messages), so the card
@@ -61,7 +66,8 @@ const { run: cancelBackfill, isLoading: isCancelling } = useBackendOperation(
 const isConfirmingDisable = ref(false);
 
 async function onToggle(next: boolean) {
-	if (!canManageOrganization.value || next === isEnabled.value) return;
+	if (!canManageOrganization.value || settings.value === undefined) return;
+	if (next === isEnabled.value) return;
 	if (!next) {
 		isConfirmingDisable.value = true;
 		return;
@@ -125,7 +131,7 @@ async function stopBackfill() {
 			</div>
 			<UiSpinner v-if="isLoading" size="sm" />
 			<UiSwitch
-				v-else
+				v-else-if="!settingsError"
 				:model-value="isEnabled"
 				:disabled="!canManageOrganization || isSaving"
 				:label="t('components.settings.bodySearchIndexCard.title')"
@@ -133,6 +139,9 @@ async function stopBackfill() {
 				@update:model-value="onToggle"
 			/>
 		</div>
+
+		<!-- A failed read is not "off": show the error, not the default. -->
+		<UiQueryBoundary v-if="settingsError" :error="settingsError" @retry="refetchSettings" />
 
 		<!-- Existing mail. The switch only covers mail delivered from now on, and
 		     search deliberately keeps reading the snippet until this walk finishes,

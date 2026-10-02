@@ -41,11 +41,7 @@ function cycle() {
 </script>
 
 <template>
-	<button
-		:title="label"
-		:aria-label="ariaLabel"
-		@click="cycle"
-	>
+	<button :title="label" :aria-label="ariaLabel" @click="cycle">
 		<!-- lucide:monitor (System) -->
 		<svg
 			v-if="current === 'system'"

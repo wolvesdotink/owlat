@@ -50,6 +50,7 @@ const {
 	threads,
 	threadsLoading,
 	threadsError,
+	retryThreads,
 	hasMoreThreads,
 	stats,
 	loadMoreThreads,
@@ -224,17 +225,13 @@ const showOldestFirst = () => setSort('oldest-waiting');
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
-		<!-- Header -->
-		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					{{ t('dashboard.inbox.index.title') }}
-				</h1>
-				<p class="text-text-secondary mt-1">{{ t('dashboard.inbox.index.subtitle') }}</p>
-			</div>
-
-			<div class="flex items-center gap-3">
+	<div class="mx-auto w-full max-w-page p-6 lg:p-8">
+		<UiPageHeader
+			class="mb-6"
+			:title="t('dashboard.inbox.index.title')"
+			:description="t('dashboard.inbox.index.subtitle')"
+		>
+			<template #actions>
 				<!-- The one answer queue, filtered to this inbox. -->
 				<UiButton to="/dashboard/answer?in=team" class="gap-2">
 					<Icon name="lucide:check-circle" class="w-4 h-4" />
@@ -246,8 +243,8 @@ const showOldestFirst = () => setSort('oldest-waiting');
 						{{ stats.draftReady }}
 					</span>
 				</UiButton>
-			</div>
-		</div>
+			</template>
+		</UiPageHeader>
 
 		<!-- Access explainer: a non-admin on this route sees WHY it's empty and
 		     where to go instead — never a fake "no conversations" zero. -->
@@ -318,6 +315,7 @@ const showOldestFirst = () => setSort('oldest-waiting');
 			<UiQueryBoundary
 				:loading="threadsLoading && threads.length === 0"
 				:error="threadsError"
+				@retry="retryThreads"
 				:empty="visibleThreads.length === 0"
 				:error-title="t('dashboard.inbox.index.errorTitle')"
 			>

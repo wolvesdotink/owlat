@@ -2,6 +2,7 @@ import { execFileSync, spawn, type ExecFileSyncOptions } from 'node:child_proces
 import { chmodSync, chownSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
+import { readIntEnv } from './env.js';
 
 /**
  * Sandbox-execution seam for the code-worker.
@@ -24,10 +25,11 @@ import { StringDecoder } from 'node:string_decoder';
  * root purely so it can setuid to these ids; the secrets it holds (admin key,
  * GITHUB_TOKEN, LLM key) then sit behind a cross-uid kernel boundary the
  * children cannot cross via /proc/<pid>/environ or ptrace. Overridable only for
- * tests / non-default images.
+ * tests / non-default images. A malformed or non-positive override throws at
+ * import, so the worker stops at boot instead of on its first task.
  */
-export const SANDBOX_UID = Number(process.env['CODE_SANDBOX_UID'] ?? 10001);
-export const SANDBOX_GID = Number(process.env['CODE_SANDBOX_GID'] ?? 10001);
+export const SANDBOX_UID = readIntEnv(process.env, 'CODE_SANDBOX_UID', { default: 10001, min: 1 });
+export const SANDBOX_GID = readIntEnv(process.env, 'CODE_SANDBOX_GID', { default: 10001, min: 1 });
 
 /**
  * Reap every process using the dedicated sandbox uid, including setsid children.

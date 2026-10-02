@@ -6,6 +6,7 @@
 	"permissions": [
 		"allow-ssh-connect",
 		"allow-ssh-accept-host-key",
+		"allow-ssh-pick-key-file",
 		"allow-ssh-authenticate",
 		"allow-ssh-exec-stream",
 		"allow-ssh-write-file",

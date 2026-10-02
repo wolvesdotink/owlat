@@ -47,6 +47,7 @@ const {
 	data: liveFlags,
 	isLoading,
 	error: flagsError,
+	refetch: refetchFlags,
 } = useConvexQuery(api.workspaces.featureFlags.getFeatureFlags, {});
 const { data: deliveryConfigured } = useConvexQuery(
 	api.workspaces.featureFlags.deliveryConfigured,
@@ -262,21 +263,17 @@ async function togglePack(packKey: FeaturePackKey) {
 
 <template>
 	<div>
-		<!-- Header -->
-		<div class="mb-8">
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-				{{ t('dashboard.admin.instance.features.title') }}
-			</h1>
-			<p class="mt-1 text-text-secondary max-w-2xl">
-				{{ t('dashboard.admin.instance.features.subtitle') }}
-			</p>
-		</div>
+		<UiPageHeader
+			:title="t('dashboard.admin.instance.features.title')"
+			:description="t('dashboard.admin.instance.features.subtitle')"
+			class="mb-8"
+		/>
 
 		<!-- Persistent apply banner: toggles that change the docker-profile set
 		     leave services out of sync until an explicit Apply (D4). -->
 		<ProfileSyncBanner :flags="resolved" class="mb-6" />
 
-		<UiQueryBoundary :loading="isLoading && !liveFlags" :error="flagsError">
+		<UiQueryBoundary :loading="isLoading && !liveFlags" :error="flagsError" @retry="refetchFlags">
 			<FeaturePackList
 				:registry="featureFlagRegistry"
 				:stored="stored"

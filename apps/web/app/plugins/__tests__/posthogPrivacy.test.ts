@@ -206,6 +206,15 @@ describe('posthog plugin — URL privacy with the real SDK', () => {
 		expect(String(autocaptured.properties['$elements_chain'])).toContain('href="/share"');
 		// No flags request: it would carry the stored entry URL outside before_send.
 		expect(requests.some((r) => r.url.includes('/flags'))).toBe(false);
+		// Features that send the raw page URL outside before_send stay off on
+		// their own, not only because remote config is.
+		expect(posthog.config).toMatchObject({
+			disable_surveys: true,
+			disable_conversations: true,
+			disable_product_tours: true,
+			disable_web_experiments: true,
+			logs: { captureConsoleLogs: false },
+		});
 	});
 
 	it('does not start the SDK on a credential page, and starts it on the next page', async () => {

@@ -7,6 +7,7 @@ import { getConvexClient, pluginFn, type PluginTask } from './convexClient.js';
 import { chownDirToSandbox, runUntrusted, SANDBOX_OUTPUT_LIMITS } from './sandbox.js';
 import { removeWorkspace } from './taskRunner.js';
 import { log } from './log.js';
+import { PLUGIN_JOB_HEARTBEAT_DEFAULT_MS } from './env.js';
 
 /**
  * Tier-3 plugin-job runner — the generalized half of the code-worker.
@@ -26,7 +27,6 @@ import { log } from './log.js';
  */
 
 const WORKSPACE_ROOT = process.env['WORKSPACE_ROOT'] ?? '/workspace';
-const DEFAULT_HEARTBEAT_INTERVAL_MS = Number(process.env['PLUGIN_JOB_HEARTBEAT_MS'] ?? 5_000);
 
 /** A host-controlled command a job kind maps to. Never built from the payload. */
 export interface JobCommandSpec {
@@ -153,6 +153,7 @@ function clampErrorSnippet(text: string, fromEnd = false): string {
 export interface RunPluginJobDeps {
 	readonly client?: ReturnType<typeof getConvexClient>;
 	readonly spawnFn?: typeof spawn;
+	/** The worker passes the validated `PLUGIN_JOB_HEARTBEAT_MS` (see `readWorkerTimers`). */
 	readonly heartbeatIntervalMs?: number;
 	readonly prepareDir?: (dir: string) => void;
 	readonly cleanupDir?: (dir: string) => void;
@@ -178,7 +179,7 @@ function defaultPrepareDir(dir: string): void {
 export async function runPluginJob(task: PluginTask, deps: RunPluginJobDeps = {}): Promise<void> {
 	const client = deps.client ?? getConvexClient();
 	const spawnFn = deps.spawnFn ?? spawn;
-	const heartbeatIntervalMs = deps.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
+	const heartbeatIntervalMs = deps.heartbeatIntervalMs ?? PLUGIN_JOB_HEARTBEAT_DEFAULT_MS;
 	const prepareDir = deps.prepareDir ?? defaultPrepareDir;
 	const cleanupDir = deps.cleanupDir ?? removeWorkspace;
 	const workDir = path.join(WORKSPACE_ROOT, `plugin-${task.taskId}`);

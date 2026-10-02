@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
-import { ref } from 'vue';
+import { ref, useSlots } from 'vue';
 
 // Core registry only — the apply banner is registry-generic, so plugin flags
 // add nothing this file needs to prove.
@@ -9,6 +9,7 @@ vi.mock('~/plugins/plugin-composition.generated', () => ({
 	bundledPluginComposition: Object.freeze([]),
 }));
 
+import UiPageHeader from '@owlat/ui/components/ui/PageHeader.vue';
 import FeaturesPage from '../features.vue';
 import MigrationModeCard from '~/components/settings/MigrationModeCard.vue';
 import { useProfileSync } from '~/composables/useProfileSync';
@@ -75,6 +76,8 @@ let operationCall = 0;
 let harness: 'features' | 'card' = 'features';
 
 beforeAll(() => {
+	// UiPageHeader reads its slots through the Nuxt auto-import.
+	vi.stubGlobal('useSlots', useSlots);
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('useToast', () => ({ showToast }));
@@ -155,6 +158,7 @@ const toggleStub = {
 };
 
 const stubs = {
+	UiPageHeader,
 	UiQueryBoundary: passthroughStub,
 	UiCard: passthroughStub,
 	UiConfirmationDialog: confirmationStub,

@@ -206,6 +206,17 @@ describe('useConvexQuery', () => {
 			expect(data.value).toEqual({ domain: 'example.com' });
 		});
 
+		it('reports no error while skipped, even after the previous args failed', async () => {
+			const skip = ref(false);
+			const { error } = useConvexQuery(fakeQuery, () => (skip.value ? 'skip' : { teamId: '1' }));
+			mockOnErrorCallback!(new ConvexError('Query failed'));
+			expect(error.value).not.toBeNull();
+
+			skip.value = true;
+			await nextTick();
+			expect(error.value).toBeNull();
+		});
+
 		it('goes idle (isLoading=false) when args transition from valid to skip after data loaded', async () => {
 			const skip = ref(false);
 			const { data, isLoading } = useConvexQuery(fakeQuery, () =>

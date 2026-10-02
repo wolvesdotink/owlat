@@ -9,6 +9,8 @@
  * the things deleted; these cases pin both halves in each locale:
  *   - nothing in a deleting sentence names team members
  *   - the copy says members keep their accounts and memberships
+ * The sweep also removes the workspace settings and the stored API keys,
+ * the AI provider's included (#1101), so the deleting sentence names them.
  */
 import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -51,16 +53,21 @@ function deletingSentences(text: string): string[] {
 	return text.split(/(?<=\.)\s+/).filter((sentence) => /delet|remov|lösch|entfern/i.test(sentence));
 }
 
-const EXPECTED: Record<Locale, { member: RegExp; kept: string }> = {
-	en: { member: /team member/i, kept: 'Team members keep their accounts and memberships' },
+const EXPECTED: Record<Locale, { member: RegExp; kept: string; keys: string }> = {
+	en: {
+		member: /team member/i,
+		kept: 'Team members keep their accounts and memberships',
+		keys: 'workspace settings, and stored API keys, including the AI provider keys',
+	},
 	de: {
 		member: /teammitglied/i,
 		kept: 'Die Teammitglieder behalten ihre Konten und Mitgliedschaften',
+		keys: 'Workspace-Einstellungen und gespeicherte API-Schlüssel, auch die des KI-Anbieters',
 	},
 };
 
 describe.each(['en', 'de'] as const)('workspace deletion copy (%s)', (locale) => {
-	const { member, kept } = EXPECTED[locale];
+	const { member, kept, keys } = EXPECTED[locale];
 
 	it('the confirmation modal deletes the workspace data and keeps accounts', () => {
 		const text = mountModal(locale).text().replace(/\s+/g, ' ');
@@ -68,6 +75,7 @@ describe.each(['en', 'de'] as const)('workspace deletion copy (%s)', (locale) =>
 		expect(text).toContain(kept);
 		const deleting = deletingSentences(text);
 		expect(deleting.length).toBeGreaterThan(0);
+		expect(deleting.join(' ')).toContain(keys);
 		for (const sentence of deleting) expect(sentence).not.toMatch(member);
 	});
 
@@ -77,6 +85,7 @@ describe.each(['en', 'de'] as const)('workspace deletion copy (%s)', (locale) =>
 		expect(body).toContain(kept);
 		const deleting = deletingSentences(body);
 		expect(deleting.length).toBeGreaterThan(0);
+		expect(deleting.join(' ')).toContain(keys);
 		for (const sentence of deleting) expect(sentence).not.toMatch(member);
 		expect(t('dashboard.admin.team.dangerZone.subtitle')).not.toMatch(member);
 	});

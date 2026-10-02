@@ -98,7 +98,9 @@ const aiTyping = computed(
 			class="flex-shrink-0"
 		/>
 
-		<div class="flex-1 min-w-0">
+		<!-- Capped at a reading measure: on a wide screen a message otherwise ran
+		     2000px in one line, with its edit/delete actions at the far edge. -->
+		<div class="flex-1 min-w-0 max-w-3xl">
 			<div class="flex items-baseline gap-2">
 				<span class="text-sm font-semibold text-text-primary truncate">{{ displayName }}</span>
 				<span class="text-[11px] text-text-tertiary">{{ formattedTime }}</span>
@@ -186,18 +188,22 @@ const aiTyping = computed(
 		<!-- Hover actions -->
 		<div
 			v-if="!isEditing && !message.deletedAt && isOwnMessage"
-			class="opacity-0 group-hover:opacity-100 transition-opacity flex items-start gap-1"
+			class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex items-start gap-1"
 		>
 			<button
 				class="w-7 h-7 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary flex items-center justify-center"
+				type="button"
 				:title="t('common.edit')"
+				:aria-label="t('common.edit')"
 				@click="startEdit"
 			>
 				<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
 			</button>
 			<button
 				class="w-7 h-7 rounded hover:bg-bg-elevated text-text-tertiary hover:text-error flex items-center justify-center"
+				type="button"
 				:title="t('common.delete')"
+				:aria-label="t('common.delete')"
 				@click="doDelete"
 			>
 				<Icon name="lucide:trash-2" class="w-3.5 h-3.5" />

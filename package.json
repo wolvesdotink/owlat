@@ -1,6 +1,6 @@
 {
 	"name": "owlat",
-	"version": "0.6.6",
+	"version": "0.6.7",
 	"private": true,
 	"description": "Owlat — self-hosted, modular email platform: marketing campaigns, team inbox, personal mailbox, and an AI agent, gated by a single feature-flag system.",
 	"keywords": [

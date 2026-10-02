@@ -81,6 +81,36 @@ export const divergenceSchema = z.object({
 });
 
 /**
+ * Split the stage-1 slots into the two groups that reach the owner:
+ *
+ *   - `owed`: files the reply must carry and the context does not hold. Asked
+ *     without the divergence check. Every sampled reply writes "please find
+ *     the invoices attached", so the slot always converges, yet the reply is
+ *     incomplete (and claims an attachment that is not there) until the owner
+ *     supplies the file. A file the email asks for is relevant by definition,
+ *     so `decisionRelevant` is not consulted.
+ *   - `toJudge`: every other open, decision-relevant slot. Divergence is the
+ *     right test for these: a slot the samples fill the same way is a safe
+ *     assumption.
+ *
+ * Pure + exported so both runs of the check (the Reply Queue refinement and
+ * Answer mode's gap check) treat a file request the same way.
+ */
+export function splitCandidateSlots(slots: readonly ReplySlot[]): {
+	owed: ReplySlot[];
+	toJudge: ReplySlot[];
+} {
+	const owed: ReplySlot[] = [];
+	const toJudge: ReplySlot[] = [];
+	for (const slot of slots) {
+		if (slot.answerableFromContext) continue;
+		if (slot.slotType === 'attachment') owed.push(slot);
+		else if (slot.decisionRelevant) toJudge.push(slot);
+	}
+	return { owed, toJudge };
+}
+
+/**
  * Build the reply-slot extraction prompt. Pure + exported so a unit test can
  * assert the untrusted-data framing without a live model. The inbound thread is
  * untrusted DATA (SYSTEM_GUARD), delimited and never treated as instructions.
@@ -97,6 +127,9 @@ export function buildSlotPrompt(context: string): string {
 		'- answerableFromContext: true if the context ALREADY answers it\n' +
 		'- decisionRelevant: true if the answer materially changes the reply\n' +
 		'- options: up to 4 short suggested answers when the slot is multiple-choice, else an empty list\n\n' +
+		'A file the email asks for (an invoice, a contract, a photo) is an attachment ' +
+		'slot. When several files of one kind are requested (the invoices for four ' +
+		'bookings), use a single slot whose question names them all.\n\n' +
 		'Write every question and option in English, whatever language the email ' +
 		'is in; they are translated for the reader separately.\n\n' +
 		'Return an empty list when the email needs no information the recipient ' +

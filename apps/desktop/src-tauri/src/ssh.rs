@@ -12,6 +12,11 @@
 //! accepts (`ssh_accept_host_key` persists it), and only then does
 //! `ssh_authenticate` send the password / key — so a MITM cannot harvest creds.
 //!
+//! A key file is read only if the user chose it in the native picker
+//! ([`ssh_pick_key_file`]), never from a path the webview names: script running
+//! in the webview must not be able to sign in to the user's servers with
+//! `~/.ssh/id_ed25519` (the same rule `files.rs` applies to uploads).
+//!
 //! ssh2 is blocking, so every network operation runs on a blocking thread
 //! (`spawn_blocking`); long-running execs stream stdout/stderr line-by-line back
 //! through a Tauri `Channel`.
@@ -177,26 +182,55 @@ pub enum AuthInput {
     Password {
         password: String,
     },
-    /// Either pasted key material (`private_key`) or a path to a key file on
-    /// this machine (`private_key_path`, `~` expanded) — exactly one is used,
-    /// content taking precedence.
+    /// Either pasted key material (`private_key`) or the key file the user
+    /// chose with [`ssh_pick_key_file`] (`use_picked_key_file`). Pasted
+    /// material takes precedence. There is no path field: the webview cannot
+    /// name a file for this to read.
     #[serde(rename_all = "camelCase")]
     Key {
         private_key: Option<String>,
-        private_key_path: Option<String>,
+        #[serde(default)]
+        use_picked_key_file: bool,
         passphrase: Option<String>,
     },
 }
 
-/// Expand a leading `~/` to the user's home directory (macOS/Linux `HOME`,
-/// Windows `USERPROFILE`) so key paths like `~/.ssh/id_ed25519` just work.
-fn expand_tilde(path: &str) -> PathBuf {
-    if let Some(rest) = path.strip_prefix("~/") {
-        if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
-            return PathBuf::from(home).join(rest);
+/// The key file the user last chose in the native picker. Each pick replaces
+/// it; nothing else sets it.
+#[derive(Default)]
+pub struct PickedKeyFile(Mutex<Option<PathBuf>>);
+
+impl PickedKeyFile {
+    fn set(&self, path: Option<PathBuf>) {
+        if let Ok(mut slot) = self.0.lock() {
+            *slot = path;
         }
     }
-    PathBuf::from(path)
+
+    fn get(&self) -> Option<PathBuf> {
+        self.0.lock().ok().and_then(|slot| slot.clone())
+    }
+}
+
+/// Where a key comes from once the request has been checked.
+#[derive(Debug, PartialEq, Eq)]
+enum KeySource {
+    Pasted(String),
+    File(PathBuf),
+}
+
+fn resolve_key_source(
+    private_key: Option<String>,
+    use_picked_key_file: bool,
+    picked: Option<PathBuf>,
+) -> Result<KeySource, String> {
+    match (private_key, use_picked_key_file) {
+        (Some(key), _) => Ok(KeySource::Pasted(key)),
+        (None, true) => picked
+            .map(KeySource::File)
+            .ok_or_else(|| "Choose your key file first.".to_string()),
+        (None, false) => Err("Provide a private key or choose a key file.".to_string()),
+    }
 }
 
 /// Streamed line of remote output (or the final exit code).
@@ -505,15 +539,57 @@ pub fn ssh_accept_host_key(
     save_known_hosts(&path, &map)
 }
 
+/// Open the native file picker to choose an SSH private key (starting in
+/// `~/.ssh` when it exists) and remember the choice for [`ssh_authenticate`].
+/// Returns the path for display, or `None` when the user cancelled. No path
+/// parameter exists, so the webview cannot steer it at a file.
+#[command]
+pub async fn ssh_pick_key_file(
+    app: AppHandle,
+    picked: State<'_, PickedKeyFile>,
+    title: Option<String>,
+) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let ssh_dir = app
+        .path()
+        .home_dir()
+        .ok()
+        .map(|home| home.join(".ssh"))
+        .filter(|dir| dir.is_dir());
+    let dialog = app.clone();
+    let choice = tauri::async_runtime::spawn_blocking(move || {
+        let mut builder = dialog.dialog().file();
+        if let Some(title) = title {
+            builder = builder.set_title(title);
+        }
+        if let Some(dir) = ssh_dir {
+            builder = builder.set_directory(dir);
+        }
+        builder.blocking_pick_file()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let path = choice.and_then(|file| file.into_path().ok());
+    // A cancelled pick keeps the earlier choice: the form still shows it.
+    if path.is_none() {
+        return Ok(None);
+    }
+    picked.set(path.clone());
+    Ok(path.map(|p| p.to_string_lossy().into_owned()))
+}
+
 /// Authenticate the stored session with a password or private key.
 #[command]
 pub async fn ssh_authenticate(
     state: State<'_, SshState>,
+    picked: State<'_, PickedKeyFile>,
     session_id: String,
     username: String,
     auth: AuthInput,
 ) -> Result<(), String> {
     let conn = get_conn(&state, &session_id)?;
+    let picked = picked.get();
     tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
         let sess = conn
             .session
@@ -525,21 +601,19 @@ pub async fn ssh_authenticate(
                 .map_err(|e| format!("Authentication failed: {e}"))?,
             AuthInput::Key {
                 private_key,
-                private_key_path,
+                use_picked_key_file,
                 passphrase,
-            } => match (private_key, private_key_path) {
-                (Some(key), _) => sess
+            } => match resolve_key_source(private_key, use_picked_key_file, picked)? {
+                KeySource::Pasted(key) => sess
                     .userauth_pubkey_memory(&username, None, &key, passphrase.as_deref())
                     .map_err(|e| format!("Key authentication failed: {e}"))?,
-                (None, Some(path)) => {
-                    let path = expand_tilde(&path);
+                KeySource::File(path) => {
                     if !path.is_file() {
                         return Err(format!("No key file at {}.", path.display()));
                     }
                     sess.userauth_pubkey_file(&username, None, &path, passphrase.as_deref())
                         .map_err(|e| format!("Key authentication failed: {e}"))?
                 }
-                (None, None) => return Err("Provide a private key or a key file path.".to_string()),
             },
         }
         if !sess.authenticated() {
@@ -681,8 +755,8 @@ pub fn ssh_disconnect(state: State<'_, SshState>, session_id: String) -> Result<
 #[cfg(test)]
 mod tests {
     use super::{
-        base64_nopad, expand_tilde, pump_exec_output, Cancel, ExecLimits, ExecOutput, ExecStop,
-        SshConn, SshState, StreamKind,
+        base64_nopad, pump_exec_output, resolve_key_source, AuthInput, Cancel, ExecLimits,
+        ExecOutput, ExecStop, KeySource, SshConn, SshState, StreamKind,
     };
     use std::io::{ErrorKind, Read};
     use std::net::{TcpListener, TcpStream};
@@ -879,22 +953,45 @@ mod tests {
     }
 
     #[test]
-    fn expand_tilde_resolves_home_and_leaves_absolute_paths_alone() {
-        let home = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .unwrap();
+    fn a_key_file_is_only_the_one_the_user_picked() {
+        let picked = std::path::PathBuf::from("/home/u/.ssh/id_ed25519");
         assert_eq!(
-            expand_tilde("~/.ssh/id_ed25519"),
-            std::path::PathBuf::from(&home).join(".ssh/id_ed25519")
+            resolve_key_source(None, true, Some(picked.clone())),
+            Ok(KeySource::File(picked))
         );
+        // Nothing picked: no file is read, whatever the webview asks for.
+        assert!(resolve_key_source(None, true, None).is_err());
+        assert!(resolve_key_source(None, false, None).is_err());
+    }
+
+    #[test]
+    fn pasted_key_material_takes_precedence() {
         assert_eq!(
-            expand_tilde("/etc/ssh/key"),
-            std::path::PathBuf::from("/etc/ssh/key")
+            resolve_key_source(
+                Some("KEY".into()),
+                true,
+                Some(std::path::PathBuf::from("/k"))
+            ),
+            Ok(KeySource::Pasted("KEY".into()))
         );
-        // A bare `~user` form is not expanded — passed through untouched.
+    }
+
+    #[test]
+    fn an_auth_request_naming_a_key_path_does_not_name_a_file() {
+        // The removed `privateKeyPath` field is ignored, not honoured.
+        let auth: AuthInput =
+            serde_json::from_str(r#"{"type":"key","privateKeyPath":"~/.ssh/id_ed25519"}"#).unwrap();
+        let AuthInput::Key {
+            private_key,
+            use_picked_key_file,
+            ..
+        } = auth
+        else {
+            panic!("expected key auth");
+        };
         assert_eq!(
-            expand_tilde("~root/key"),
-            std::path::PathBuf::from("~root/key")
+            resolve_key_source(private_key, use_picked_key_file, None),
+            Err("Provide a private key or choose a key file.".to_string())
         );
     }
 

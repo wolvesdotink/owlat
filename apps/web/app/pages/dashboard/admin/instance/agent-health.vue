@@ -13,23 +13,38 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.admin.instance.agentHealth.pageTitle') });
 
 // Dashboard metrics query
-const { data: metrics, isLoading: metricsLoading } = useConvexQuery(
-	api.agentHealth.getDashboardMetrics,
-	() => ({})
-);
+const {
+	data: metrics,
+	isLoading: metricsLoading,
+	error: metricsError,
+	refetch: refetchMetrics,
+} = useConvexQuery(api.agentHealth.getDashboardMetrics, () => ({}));
 
-// Metric history for charts
-const { data: latencyHistory } = useConvexQuery(api.agentHealth.getMetricHistory, () => ({
+// Metric history for charts. Each chart shows its own read's error: an empty
+// chart would read as a quiet day.
+const {
+	data: latencyHistory,
+	error: latencyError,
+	refetch: refetchLatency,
+} = useConvexQuery(api.agentHealth.getMetricHistory, () => ({
 	metricType: 'processing_latency' as const,
 	hoursBack: 24,
 }));
 
-const { data: errorHistory } = useConvexQuery(api.agentHealth.getMetricHistory, () => ({
+const {
+	data: errorHistory,
+	error: errorHistoryError,
+	refetch: refetchErrorHistory,
+} = useConvexQuery(api.agentHealth.getMetricHistory, () => ({
 	metricType: 'error_rate' as const,
 	hoursBack: 24,
 }));
 
-const { data: queueHistory } = useConvexQuery(api.agentHealth.getMetricHistory, () => ({
+const {
+	data: queueHistory,
+	error: queueError,
+	refetch: refetchQueue,
+} = useConvexQuery(api.agentHealth.getMetricHistory, () => ({
 	metricType: 'queue_depth' as const,
 	hoursBack: 24,
 }));
@@ -92,30 +107,26 @@ const errorTrend = computed<'up' | 'down' | 'stable'>(() => {
 
 <template>
 	<div>
-		<!-- Header -->
-		<div class="flex items-center gap-4 mb-8">
-			<UiIconBox icon="lucide:activity" size="xl" variant="brand" rounded="full" />
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					{{ t('dashboard.admin.instance.agentHealth.title') }}
-				</h1>
-				<p class="text-text-secondary mt-1">
-					{{ t('dashboard.admin.instance.agentHealth.subtitle') }}
-				</p>
-			</div>
-		</div>
-
-		<!-- Loading State -->
-		<DashboardDetailSkeleton
-			v-if="metricsLoading"
-			:label="t('dashboard.admin.instance.agentHealth.loading')"
-			:header="false"
-			body="cards"
-			:sections="3"
-			class="max-w-5xl"
+		<UiPageHeader
+			:title="t('dashboard.admin.instance.agentHealth.title')"
+			:description="t('dashboard.admin.instance.agentHealth.subtitle')"
+			class="mb-8"
 		/>
 
-		<template v-else>
+		<!-- A failed read shows the error: the zeros below would read as a
+		     healthy agent during an outage. -->
+		<UiQueryBoundary :loading="metricsLoading" :error="metricsError" @retry="refetchMetrics">
+			<template #loading>
+				<DashboardDetailSkeleton
+					:label="t('dashboard.admin.instance.agentHealth.loading')"
+					:header="false"
+					body="cards"
+					:sections="3"
+					:delay="false"
+					class="max-w-5xl"
+				/>
+			</template>
+
 			<div class="space-y-8 max-w-5xl">
 				<!-- Section 1: Circuit Breaker Status -->
 				<section>
@@ -209,21 +220,31 @@ const errorTrend = computed<'up' | 'down' | 'stable'>(() => {
 					</div>
 					<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 						<UiCard>
+							<UiQueryBoundary v-if="latencyError" :error="latencyError" @retry="refetchLatency" />
 							<AgentMetricChart
+								v-else
 								:data="latencyChartData"
 								:label="t('dashboard.admin.instance.agentHealth.charts.latency')"
 								color="var(--color-brand)"
 							/>
 						</UiCard>
 						<UiCard>
+							<UiQueryBoundary
+								v-if="errorHistoryError"
+								:error="errorHistoryError"
+								@retry="refetchErrorHistory"
+							/>
 							<AgentMetricChart
+								v-else
 								:data="errorChartData"
 								:label="t('dashboard.admin.instance.agentHealth.charts.errorRate')"
 								color="var(--color-error)"
 							/>
 						</UiCard>
 						<UiCard class="lg:col-span-2">
+							<UiQueryBoundary v-if="queueError" :error="queueError" @retry="refetchQueue" />
 							<AgentMetricChart
+								v-else
 								:data="queueChartData"
 								:label="t('dashboard.admin.instance.agentHealth.charts.queueDepth')"
 								color="var(--color-warning)"
@@ -232,6 +253,6 @@ const errorTrend = computed<'up' | 'down' | 'stable'>(() => {
 					</div>
 				</section>
 			</div>
-		</template>
+		</UiQueryBoundary>
 	</div>
 </template>

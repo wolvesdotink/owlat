@@ -137,7 +137,7 @@ const handleExport = async () => {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<div class="mx-auto w-full max-w-page p-6 lg:p-8">
 		<!-- A failed read is not a missing segment (#721). -->
 		<UiQueryBoundary v-if="segmentError" :error="segmentError" @retry="refetchSegment" />
 
@@ -175,6 +175,7 @@ const handleExport = async () => {
 				<NuxtLink
 					to="/dashboard/audience/segments"
 					class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors mt-1"
+					:aria-label="t('dashboard.audience.segments.detail.index.notFound.action')"
 				>
 					<Icon name="lucide:arrow-left" class="w-5 h-5" />
 				</NuxtLink>

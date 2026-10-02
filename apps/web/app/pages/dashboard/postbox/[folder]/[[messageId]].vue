@@ -66,8 +66,10 @@ const showGettingStarted = computed(() => !mailboxId.value && !mailboxesLoading.
 			/>
 		</div>
 		<!-- The no-mailbox state stacks the guard's next step above the onboarding
-		     checklist and scrolls; every other state is the full-height row. -->
-		<div v-else class="flex-1" :class="showGettingStarted ? 'overflow-y-auto' : 'flex'">
+		     checklist and scrolls; every other state is the full-height row.
+		     min-w-0: without it the nowrap row snippets set this flex item's
+		     minimum width and the Postbox scrolled sideways on a phone. -->
+		<div v-else class="min-w-0 flex-1" :class="showGettingStarted ? 'overflow-y-auto' : 'flex'">
 			<PostboxMailboxGuard :mailbox-id="mailboxId" :loading="guardLoading">
 				<PostboxLayout
 					:mailbox-id="mailboxId!"

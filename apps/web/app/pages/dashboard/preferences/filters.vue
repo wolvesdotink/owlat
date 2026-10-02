@@ -208,11 +208,13 @@ async function confirmRemove() {
 
 <template>
 	<div>
-		<header class="mb-6 flex items-center justify-between gap-4">
+		<header
+			class="mb-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+		>
 			<p class="text-text-secondary">
 				{{ t('dashboard.preferences.filters.intro') }}
 			</p>
-			<UiButton v-if="mailboxId && !editor" type="button" @click="startCreate">
+			<UiButton v-if="mailboxId && !editor" type="button" class="shrink-0" @click="startCreate">
 				<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
 				{{ t('dashboard.preferences.filters.newFilter') }}
 			</UiButton>

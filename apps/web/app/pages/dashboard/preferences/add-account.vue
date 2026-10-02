@@ -30,6 +30,7 @@ const {
 	data: domainsData,
 	isLoading: domainsLoading,
 	error: domainsError,
+	refetch: refetchDomains,
 } = useConvexQuery(api.domains.domains.listVerified, () => ({}));
 const verifiedDomains = computed(() => domainsData.value ?? []);
 const { isEnabled } = useFeatureFlag();
@@ -251,7 +252,12 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 				/>
 			</div>
 
-			<UiQueryBoundary v-else :loading="domainsLoading && !domainsData" :error="domainsError">
+			<UiQueryBoundary
+				v-else
+				:loading="domainsLoading && !domainsData"
+				:error="domainsError"
+				@retry="refetchDomains"
+			>
 				<template #loading>
 					<div class="flex items-center gap-2 text-text-secondary text-sm py-4">
 						<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />

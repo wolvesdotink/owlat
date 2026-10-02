@@ -10,7 +10,17 @@ const props = defineProps<{
 	createdAt: number;
 }>();
 
-const { typeVariant, typeIcon, typeLabel, sourceIcon, sourceLabel, confidenceBgColor, formatConfidence, truncate, confidenceVariant } = useKnowledgeGraph();
+const {
+	typeVariant,
+	typeIcon,
+	typeLabel,
+	sourceIcon,
+	sourceLabel,
+	confidenceBgColor,
+	formatConfidence,
+	truncate,
+	confidenceVariant,
+} = useKnowledgeGraph();
 
 const { t, te, locale } = useI18n();
 
@@ -40,10 +50,7 @@ const hasMoreTags = computed(() => (props.tags ?? []).length > 3);
 </script>
 
 <template>
-	<NuxtLink
-		:to="`/dashboard/knowledge/${id}`"
-		class="block group"
-	>
+	<NuxtLink :to="`/dashboard/knowledge/${id}`" class="block group">
 		<div
 			class="flex items-start gap-4 p-4 rounded-xl border border-border-subtle bg-bg-elevated hover:border-brand/40 transition-colors"
 		>
@@ -64,7 +71,9 @@ const hasMoreTags = computed(() => (props.tags ?? []).length > 3);
 			<!-- Content -->
 			<div class="flex-1 min-w-0">
 				<div class="flex items-center gap-2 mb-1">
-					<h3 class="text-sm font-semibold text-text-primary truncate group-hover:text-brand transition-colors">
+					<h3
+						class="text-sm font-semibold text-text-primary truncate group-hover:text-brand transition-colors"
+					>
 						{{ title }}
 					</h3>
 					<span
@@ -86,7 +95,11 @@ const hasMoreTags = computed(() => (props.tags ?? []).length > 3);
 				</p>
 
 				<!-- Bottom row -->
-				<div class="flex items-center gap-3 mt-2.5 text-xs text-text-tertiary">
+				<!-- Wraps on a narrow card: unwrapped, the date was squeezed into a
+				     three-line stack and the source label broke mid-phrase. -->
+				<div
+					class="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2.5 text-xs text-text-tertiary"
+				>
 					<!-- Confidence -->
 					<div class="flex items-center gap-1.5">
 						<UiProgressBar
@@ -100,15 +113,15 @@ const hasMoreTags = computed(() => (props.tags ?? []).length > 3);
 					</div>
 
 					<!-- Source -->
-					<div class="flex items-center gap-1">
+					<div class="flex items-center gap-1 whitespace-nowrap">
 						<Icon :name="sourceIcon(sourceType)" class="w-3 h-3" />
 						<span>{{ sourceTypeLabel(sourceType) }}</span>
 					</div>
 
 					<!-- Tags -->
 					<template v-if="displayTags.length > 0">
-						<span class="text-border-subtle">|</span>
-						<div class="flex items-center gap-1">
+						<span class="hidden sm:inline text-border-subtle" aria-hidden="true">|</span>
+						<div class="flex flex-wrap items-center gap-1">
 							<span
 								v-for="tag in displayTags"
 								:key="tag"
@@ -116,12 +129,14 @@ const hasMoreTags = computed(() => (props.tags ?? []).length > 3);
 							>
 								{{ tag }}
 							</span>
-							<span v-if="hasMoreTags" class="text-text-tertiary">+{{ (tags ?? []).length - 3 }}</span>
+							<span v-if="hasMoreTags" class="text-text-tertiary"
+								>+{{ (tags ?? []).length - 3 }}</span
+							>
 						</div>
 					</template>
 
 					<!-- Date -->
-					<span class="ml-auto">{{ formattedDate }}</span>
+					<span class="ml-auto whitespace-nowrap">{{ formattedDate }}</span>
 				</div>
 			</div>
 		</div>

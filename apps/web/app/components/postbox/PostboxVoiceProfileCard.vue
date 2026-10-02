@@ -9,7 +9,7 @@ const props = defineProps<{
 	address: string;
 }>();
 
-const { data, isLoading } = useConvexQuery(api.mail.ai.voiceProfile.get, () => ({
+const { data, isLoading, error, refetch } = useConvexQuery(api.mail.ai.voiceProfile.get, () => ({
 	mailboxId: props.mailboxId,
 }));
 
@@ -45,6 +45,7 @@ const lastComputedLabel = computed(() => {
 });
 
 async function onToggle(event: Event) {
+	if (data.value === undefined) return;
 	const next = (event.target as HTMLInputElement).checked;
 	await setEnabled.run({ mailboxId: props.mailboxId, enabled: next });
 }
@@ -67,18 +68,21 @@ async function onRemoveAdjustment(kind: string) {
 
 <template>
 	<section class="card !p-0">
-		<header class="px-5 py-3 border-b border-border-subtle flex items-center justify-between gap-3">
-			<div class="min-w-0">
-				<h2 class="font-semibold truncate">{{ address }}</h2>
+		<header
+			class="px-5 py-3 border-b border-border-subtle flex flex-wrap items-center justify-between gap-x-3 gap-y-2"
+		>
+			<div class="min-w-0 flex-[1_1_14rem]">
+				<h2 class="font-semibold wrap-anywhere">{{ address }}</h2>
 				<p class="text-xs text-text-tertiary">
 					{{ t('components.postbox.postboxVoiceProfileCard.learnedFrom') }}
 				</p>
 			</div>
-			<label class="flex items-center gap-2 shrink-0 cursor-pointer">
+			<!-- Shown once the profile is read: before that, "off" is only the default. -->
+			<label v-if="data !== undefined" class="flex items-center gap-2 shrink-0 cursor-pointer">
 				<input
 					type="checkbox"
 					:checked="enabled"
-					:disabled="setEnabled.isLoading.value"
+					:disabled="setEnabled.isLoading.value || !!error"
 					@change="onToggle"
 				/>
 				<span class="text-sm font-medium">
@@ -88,8 +92,13 @@ async function onRemoveAdjustment(kind: string) {
 		</header>
 
 		<div v-if="isLoading" class="p-6 flex justify-center">
-			<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
+			<Icon
+				name="lucide:loader-2"
+				class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
+			/>
 		</div>
+
+		<UiQueryBoundary v-else-if="error" :error="error" @retry="refetch" />
 
 		<div v-else class="px-5 py-4 space-y-3">
 			<p v-if="!enabled" class="text-sm text-text-secondary">

@@ -119,6 +119,7 @@ export function useInbox(gate?: Ref<boolean>) {
 		isLoading: threadsLoading,
 		isRefetching: threadsRefetching,
 		error: firstPageError,
+		refetch: refetchFirstPage,
 	} = useConvexQuery(api.inbox.queries.listThreads, listArgs, { keepPreviousData: true });
 
 	type Thread = NonNullable<typeof threadsData.value>['threads'][number];
@@ -137,7 +138,11 @@ export function useInbox(gate?: Ref<boolean>) {
 	const tailCursor = ref<string | null>(null);
 	// No keepPreviousData here: a new cursor starts from a blank page, so every
 	// landed page is a fresh delivery the segment store below sees.
-	const { data: tailData, error: tailError } = useConvexQuery(api.inbox.queries.listThreads, () => {
+	const {
+		data: tailData,
+		error: tailError,
+		refetch: refetchTail,
+	} = useConvexQuery(api.inbox.queries.listThreads, () => {
 		const base = listArgs();
 		if (base === 'skip' || !tailCursor.value) return 'skip';
 		return { ...base, cursor: tailCursor.value };
@@ -219,6 +224,11 @@ export function useInbox(gate?: Ref<boolean>) {
 	// while a tail page loads there is no frontier yet.
 	const hasMoreThreads = computed(() => !threadsRefetching.value && !!frontier.value?.nextCursor);
 	const threadsError = computed(() => firstPageError.value ?? tailError.value);
+	/** Try again on `threadsError`: re-reads whichever page failed. */
+	const retryThreads = () => {
+		if (firstPageError.value) refetchFirstPage();
+		if (tailError.value) refetchTail();
+	};
 
 	// ── Filter-pill counts (bounded reads; a slice at the cap renders "99+") ──
 	// keepPreviousData: an assignee change keeps the old counts until the new ones land.
@@ -255,6 +265,7 @@ export function useInbox(gate?: Ref<boolean>) {
 		threads,
 		threadsLoading,
 		threadsError,
+		retryThreads,
 		hasMoreThreads,
 		stats,
 		// Actions

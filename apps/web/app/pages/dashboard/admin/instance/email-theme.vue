@@ -14,14 +14,14 @@ definePageMeta({
 });
 
 // Get the current user's organization
-const { hasActiveOrganization, isLoading: organizationLoading } = useOrganizationContext();
+const { hasActiveOrganization } = useOrganizationContext();
 
 // Get organization settings with real-time updates
-const { data: organizationSettings, isLoading: organizationSettingsLoading } = useOrganizationQuery(
-	api.workspaces.settings.get
-);
-
-const isLoading = computed(() => organizationLoading.value || organizationSettingsLoading.value);
+const {
+	data: organizationSettings,
+	error: organizationSettingsError,
+	refetch: refetchOrganizationSettings,
+} = useOrganizationQuery(api.workspaces.settings.get);
 
 type ThemeForm = {
 	primaryColor: string;
@@ -117,6 +117,7 @@ async function saveTheme(draft: ThemeForm): Promise<boolean> {
 // field re-emits it; the draft survives that while it holds unsaved changes.
 const {
 	form,
+	loaded,
 	isDirty: isFormDirty,
 	isSaving,
 	handleSave,
@@ -151,209 +152,232 @@ const {
 		/>
 
 		<!--
-			First load: a content-shaped placeholder at the geometry of the form
-			card and its live preview, rather than a centred spinner that blanks
-			the page and then reflows.
+			A failed read shows the error, never the form: built on the defaults,
+			a save would write them over the stored theme.
 		-->
-		<div
-			v-if="isLoading && !organizationSettings"
-			class="grid gap-8 lg:grid-cols-2"
-			role="status"
-			aria-busy="true"
-			:aria-label="t('dashboard.admin.instance.emailTheme.loading')"
+		<UiQueryBoundary
+			:loading="!loaded"
+			:error="organizationSettingsError"
+			@retry="refetchOrganizationSettings"
 		>
-			<div class="card space-y-4">
-				<UiSkeleton class="h-5 w-48" />
-				<UiSkeletonText :lines="2" size="sm" last-line-width="w-1/2" />
-				<UiSkeleton v-for="field in 4" :key="field" class="h-10 rounded-lg" />
-			</div>
-			<div class="card space-y-4">
-				<UiSkeleton class="h-5 w-32" />
-				<UiSkeleton class="h-64 rounded-lg" />
-			</div>
-		</div>
-
-		<!-- Settings Content -->
-		<div v-else class="grid gap-8 lg:grid-cols-2">
-			<!-- Settings Form -->
-			<div class="card p-0 overflow-hidden">
-				<div class="px-6 py-4 border-b border-border-subtle">
-					<div class="flex items-center gap-3">
-						<UiIconBox icon="lucide:palette" size="sm" variant="surface" rounded="lg" />
-						<div>
-							<h2 class="text-lg font-semibold text-text-primary">
-								{{ t('dashboard.admin.instance.emailTheme.settingsTitle') }}
-							</h2>
-							<p class="text-sm text-text-secondary">
-								{{ t('dashboard.admin.instance.emailTheme.settingsSubtitle') }}
-							</p>
-						</div>
+			<!--
+				First load: a content-shaped placeholder at the geometry of the form
+				card and its live preview, rather than a centred spinner that blanks
+				the page and then reflows.
+			-->
+			<template #loading>
+				<div
+					class="grid gap-8 xl:grid-cols-[minmax(0,28rem)_minmax(0,1fr)]"
+					role="status"
+					aria-busy="true"
+					:aria-label="t('dashboard.admin.instance.emailTheme.loading')"
+				>
+					<div class="card space-y-4">
+						<UiSkeleton class="h-5 w-48" />
+						<UiSkeletonText :lines="2" size="sm" last-line-width="w-1/2" />
+						<UiSkeleton v-for="field in 4" :key="field" class="h-10 rounded-lg" />
+					</div>
+					<div class="card space-y-4">
+						<UiSkeleton class="h-5 w-32" />
+						<UiSkeleton class="h-64 rounded-lg" />
 					</div>
 				</div>
+			</template>
 
-				<form class="p-6" @submit.prevent="handleSave">
-					<div class="grid gap-6">
-						<!-- Primary Color -->
-						<div>
-							<label for="primary-color" class="label flex items-center gap-2">
-								<Icon name="lucide:palette" class="w-4 h-4 text-text-tertiary" />
-								{{ t('dashboard.admin.instance.emailTheme.primaryColor') }}
-							</label>
-							<div class="flex items-center gap-3">
-								<input
-									id="primary-color-picker"
-									v-model="form.primaryColor"
-									type="color"
-									class="w-12 h-10 rounded-lg shadow-surface-1 cursor-pointer bg-transparent"
-									:disabled="isSaving"
-								/>
-								<input
-									id="primary-color"
-									v-model="form.primaryColor"
-									type="text"
-									placeholder="#c4785a"
-									:class="['input flex-1', formErrors.primaryColor && 'input-error']"
-									:disabled="isSaving"
-								/>
+			<!-- Settings Content. The page is wide (registry) so the preview column
+			     can show the email at its real width: the form keeps a fixed column
+			     and the preview takes the rest, otherwise the width slider (400–800px)
+			     moved nothing inside a ~380px half. Stacked below xl. -->
+			<div class="grid gap-8 xl:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] items-start">
+				<!-- Settings Form -->
+				<div class="card p-0 overflow-hidden">
+					<div class="px-6 py-4 border-b border-border-subtle">
+						<div class="flex items-center gap-3">
+							<UiIconBox icon="lucide:palette" size="sm" variant="surface" rounded="lg" />
+							<div>
+								<h2 class="text-lg font-semibold text-text-primary">
+									{{ t('dashboard.admin.instance.emailTheme.settingsTitle') }}
+								</h2>
+								<p class="text-sm text-text-secondary">
+									{{ t('dashboard.admin.instance.emailTheme.settingsSubtitle') }}
+								</p>
 							</div>
-							<p v-if="formErrors.primaryColor" class="mt-1 text-xs text-error">
-								{{ formErrors.primaryColor }}
-							</p>
-							<p v-else class="mt-1 text-xs text-text-tertiary">
-								{{ t('dashboard.admin.instance.emailTheme.primaryColorHelp') }}
-							</p>
 						</div>
+					</div>
 
-						<!-- Background Color -->
-						<div>
-							<label for="background-color" class="label flex items-center gap-2">
-								<Icon name="lucide:palette" class="w-4 h-4 text-text-tertiary" />
-								{{ t('dashboard.admin.instance.emailTheme.backgroundColor') }}
-							</label>
-							<div class="flex items-center gap-3">
-								<input
-									id="background-color-picker"
-									v-model="form.backgroundColor"
-									type="color"
-									class="w-12 h-10 rounded-lg shadow-surface-1 cursor-pointer bg-transparent"
-									:disabled="isSaving"
-								/>
-								<input
-									id="background-color"
-									v-model="form.backgroundColor"
-									type="text"
-									placeholder="#ffffff"
-									:class="['input flex-1', formErrors.backgroundColor && 'input-error']"
-									:disabled="isSaving"
-								/>
-							</div>
-							<p v-if="formErrors.backgroundColor" class="mt-1 text-xs text-error">
-								{{ formErrors.backgroundColor }}
-							</p>
-							<p v-else class="mt-1 text-xs text-text-tertiary">
-								{{ t('dashboard.admin.instance.emailTheme.backgroundColorHelp') }}
-							</p>
-						</div>
-
-						<!-- Font Family -->
-						<div>
-							<label for="font-family" class="label flex items-center gap-2">
-								<Icon name="lucide:type" class="w-4 h-4 text-text-tertiary" />
-								{{ t('dashboard.admin.instance.emailTheme.fontFamily') }}
-							</label>
-							<select id="font-family" v-model="form.fontFamily" class="input" :disabled="isSaving">
-								<option v-for="font in fontOptions" :key="font.value" :value="font.value">
-									{{ font.label }}
-								</option>
-							</select>
-							<p class="mt-1 text-xs text-text-tertiary">
-								{{ t('dashboard.admin.instance.emailTheme.fontFamilyHelp') }}
-							</p>
-						</div>
-
-						<!-- Email Width -->
-						<div>
-							<label for="base-width" class="label flex items-center gap-2">
-								<Icon name="lucide:move-horizontal" class="w-4 h-4 text-text-tertiary" />
-								{{ t('dashboard.admin.instance.emailTheme.emailWidth') }}
-							</label>
-							<div class="flex items-center gap-3">
-								<input
-									id="base-width"
-									v-model.number="form.baseWidth"
-									type="range"
-									min="400"
-									max="800"
-									step="10"
-									class="flex-1 accent-brand"
-									:disabled="isSaving"
-								/>
-								<div class="flex items-center gap-1">
+					<form class="p-6" @submit.prevent="handleSave">
+						<div class="grid gap-6">
+							<!-- Primary Color -->
+							<div>
+								<label for="primary-color" class="label flex items-center gap-2">
+									<Icon name="lucide:palette" class="w-4 h-4 text-text-tertiary" />
+									{{ t('dashboard.admin.instance.emailTheme.primaryColor') }}
+								</label>
+								<div class="flex items-center gap-3">
 									<input
+										id="primary-color-picker"
+										v-model="form.primaryColor"
+										type="color"
+										class="w-12 h-10 rounded-lg shadow-surface-1 cursor-pointer bg-transparent"
+										:disabled="isSaving"
+									/>
+									<input
+										id="primary-color"
+										v-model="form.primaryColor"
+										type="text"
+										placeholder="#c4785a"
+										:class="['input flex-1', formErrors.primaryColor && 'input-error']"
+										:disabled="isSaving"
+									/>
+								</div>
+								<p v-if="formErrors.primaryColor" class="mt-1 text-xs text-error">
+									{{ formErrors.primaryColor }}
+								</p>
+								<p v-else class="mt-1 text-xs text-text-tertiary">
+									{{ t('dashboard.admin.instance.emailTheme.primaryColorHelp') }}
+								</p>
+							</div>
+
+							<!-- Background Color -->
+							<div>
+								<label for="background-color" class="label flex items-center gap-2">
+									<Icon name="lucide:palette" class="w-4 h-4 text-text-tertiary" />
+									{{ t('dashboard.admin.instance.emailTheme.backgroundColor') }}
+								</label>
+								<div class="flex items-center gap-3">
+									<input
+										id="background-color-picker"
+										v-model="form.backgroundColor"
+										type="color"
+										class="w-12 h-10 rounded-lg shadow-surface-1 cursor-pointer bg-transparent"
+										:disabled="isSaving"
+									/>
+									<input
+										id="background-color"
+										v-model="form.backgroundColor"
+										type="text"
+										placeholder="#ffffff"
+										:class="['input flex-1', formErrors.backgroundColor && 'input-error']"
+										:disabled="isSaving"
+									/>
+								</div>
+								<p v-if="formErrors.backgroundColor" class="mt-1 text-xs text-error">
+									{{ formErrors.backgroundColor }}
+								</p>
+								<p v-else class="mt-1 text-xs text-text-tertiary">
+									{{ t('dashboard.admin.instance.emailTheme.backgroundColorHelp') }}
+								</p>
+							</div>
+
+							<!-- Font Family -->
+							<div>
+								<label for="font-family" class="label flex items-center gap-2">
+									<Icon name="lucide:type" class="w-4 h-4 text-text-tertiary" />
+									{{ t('dashboard.admin.instance.emailTheme.fontFamily') }}
+								</label>
+								<select
+									id="font-family"
+									v-model="form.fontFamily"
+									class="input"
+									:disabled="isSaving"
+								>
+									<option v-for="font in fontOptions" :key="font.value" :value="font.value">
+										{{ font.label }}
+									</option>
+								</select>
+								<p class="mt-1 text-xs text-text-tertiary">
+									{{ t('dashboard.admin.instance.emailTheme.fontFamilyHelp') }}
+								</p>
+							</div>
+
+							<!-- Email Width -->
+							<div>
+								<label for="base-width" class="label flex items-center gap-2">
+									<Icon name="lucide:move-horizontal" class="w-4 h-4 text-text-tertiary" />
+									{{ t('dashboard.admin.instance.emailTheme.emailWidth') }}
+								</label>
+								<div class="flex items-center gap-3">
+									<input
+										id="base-width"
 										v-model.number="form.baseWidth"
-										type="number"
+										type="range"
 										min="400"
 										max="800"
 										step="10"
-										class="input w-20 text-center"
+										class="flex-1 accent-brand"
 										:disabled="isSaving"
 									/>
-									<span class="text-sm text-text-tertiary">
-										{{ t('dashboard.admin.instance.emailTheme.px') }}
-									</span>
+									<div class="flex items-center gap-1">
+										<input
+											v-model.number="form.baseWidth"
+											type="number"
+											min="400"
+											max="800"
+											step="10"
+											class="input w-20 text-center"
+											:disabled="isSaving"
+										/>
+										<span class="text-sm text-text-tertiary">
+											{{ t('dashboard.admin.instance.emailTheme.px') }}
+										</span>
+									</div>
 								</div>
+								<p class="mt-1 text-xs text-text-tertiary">
+									{{ t('dashboard.admin.instance.emailTheme.emailWidthHelp') }}
+								</p>
 							</div>
-							<p class="mt-1 text-xs text-text-tertiary">
-								{{ t('dashboard.admin.instance.emailTheme.emailWidthHelp') }}
-							</p>
 						</div>
-					</div>
 
-					<!-- Action Buttons -->
-					<div class="flex items-center justify-between pt-6 mt-6 border-t border-border-subtle">
-						<UiButton
-							variant="ghost"
-							type="button"
-							class="gap-2"
-							:disabled="isSaving"
-							@click="resetToDefaults"
-						>
-							<Icon name="lucide:refresh-cw" class="w-4 h-4" />
-							{{ t('dashboard.admin.instance.emailTheme.resetToDefaults') }}
-						</UiButton>
-
-						<div class="flex items-center gap-3">
-							<p v-if="isFormDirty" class="text-sm text-warning flex items-center gap-2">
-								<Icon name="lucide:alert-circle" class="w-4 h-4" />
-								{{ t('dashboard.admin.instance.emailTheme.unsaved') }}
-							</p>
-
-							<UiButton type="submit" class="gap-2" :disabled="isSaving || !isFormDirty">
-								<Icon
-									v-if="isSaving"
-									name="lucide:loader-2"
-									class="w-4 h-4 animate-spin motion-reduce:animate-none"
-								/>
-								<Icon v-else name="lucide:check" class="w-4 h-4" />
-								{{
-									isSaving
-										? t('dashboard.admin.instance.emailTheme.savingTheme')
-										: t('dashboard.admin.instance.emailTheme.saveTheme')
-								}}
+						<!-- Action Buttons -->
+						<div class="flex items-center justify-between pt-6 mt-6 border-t border-border-subtle">
+							<UiButton
+								variant="ghost"
+								type="button"
+								class="gap-2"
+								:disabled="isSaving"
+								@click="resetToDefaults"
+							>
+								<Icon name="lucide:refresh-cw" class="w-4 h-4" />
+								{{ t('dashboard.admin.instance.emailTheme.resetToDefaults') }}
 							</UiButton>
-						</div>
-					</div>
-				</form>
-			</div>
 
-			<!-- Theme Preview -->
-			<EmailThemePreview
-				:primary-color="form.primaryColor"
-				:font-family="form.fontFamily"
-				:background-color="form.backgroundColor"
-				:base-width="form.baseWidth"
-			/>
-		</div>
+							<div class="flex items-center gap-3">
+								<p v-if="isFormDirty" class="text-sm text-warning flex items-center gap-2">
+									<Icon name="lucide:alert-circle" class="w-4 h-4" />
+									{{ t('dashboard.admin.instance.emailTheme.unsaved') }}
+								</p>
+
+								<UiButton
+									type="submit"
+									class="gap-2"
+									:disabled="isSaving || !isFormDirty || !loaded"
+								>
+									<Icon
+										v-if="isSaving"
+										name="lucide:loader-2"
+										class="w-4 h-4 animate-spin motion-reduce:animate-none"
+									/>
+									<Icon v-else name="lucide:check" class="w-4 h-4" />
+									{{
+										isSaving
+											? t('dashboard.admin.instance.emailTheme.savingTheme')
+											: t('dashboard.admin.instance.emailTheme.saveTheme')
+									}}
+								</UiButton>
+							</div>
+						</div>
+					</form>
+				</div>
+
+				<!-- Theme Preview -->
+				<EmailThemePreview
+					:primary-color="form.primaryColor"
+					:font-family="form.fontFamily"
+					:background-color="form.backgroundColor"
+					:base-width="form.baseWidth"
+				/>
+			</div>
+		</UiQueryBoundary>
 
 		<!-- Unsaved Changes Dialog -->
 		<UnsavedChangesDialog

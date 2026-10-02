@@ -161,14 +161,11 @@ const groups = computed(() => [
 
 <template>
 	<div>
-		<header class="mb-8">
-			<h1 class="text-3xl font-semibold text-text-primary">
-				{{ t('dashboard.admin.instance.index.title') }}
-			</h1>
-			<p class="mt-2 text-text-secondary">
-				{{ t('dashboard.admin.instance.index.subtitle') }}
-			</p>
-		</header>
+		<UiPageHeader
+			:title="t('dashboard.admin.instance.index.title')"
+			:description="t('dashboard.admin.instance.index.subtitle')"
+			class="mb-8"
+		/>
 
 		<UiCard class="mb-6">
 			<h2 class="text-lg font-semibold text-text-primary">

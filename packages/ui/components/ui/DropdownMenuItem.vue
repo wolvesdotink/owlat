@@ -43,7 +43,13 @@ const itemClasses = computed(() => {
 </script>
 
 <template>
-	<button role="menuitem" :tabindex="disabled ? -1 : 0" :class="itemClasses" :disabled="disabled" @click="handleClick">
+	<button
+		role="menuitem"
+		:tabindex="disabled ? -1 : 0"
+		:class="itemClasses"
+		:disabled="disabled"
+		@click="handleClick"
+	>
 		<Icon v-if="icon" :name="icon" class="w-4 h-4" />
 		<slot />
 	</button>

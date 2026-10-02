@@ -48,6 +48,23 @@ describe('AuditLogList hosted plugin details', () => {
 	});
 });
 
+describe('AuditLogList badges', () => {
+	it('renders the action and resource labels as copy, not as message keys', () => {
+		const entry: AuditLogEntry = {
+			...auditEntry('completed', { pluginId: 'policy-pack' }),
+			_id: 'audit-campaign' as AuditLogEntry['_id'],
+			action: 'campaign.scheduled',
+			resource: 'campaign',
+			details: { name: 'October product update' },
+		};
+		const text = mountList([entry]).text();
+
+		expect(text).toContain('Scheduled');
+		expect(text).toContain('Campaign');
+		expect(text).not.toContain('shared.useAuditLogPresentation');
+	});
+});
+
 function mountList(logs: AuditLogEntry[]) {
 	return mount(AuditLogList, {
 		props: { logs, hasMore: false },

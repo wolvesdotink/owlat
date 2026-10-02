@@ -232,6 +232,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	aiConversations: makeSweepStep('aiConversations'),
 	aiDraftStreams: makeSweepStep('aiDraftStreams'),
 	answerAskSessions: makeSweepStep('answerAskSessions'),
+	aiProviderConfig: makeSweepStep('aiProviderConfig'),
 	coalesceBatches: makeSweepStep('coalesceBatches'),
 	visualizations: makeSweepStep('visualizations'),
 	dashboardLayouts: makeSweepStep('dashboardLayouts'),
