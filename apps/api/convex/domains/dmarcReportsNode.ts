@@ -30,6 +30,7 @@ import {
 	parseDmarcReport,
 	sniffDmarcReportContainer,
 } from '@owlat/shared/dmarcReport';
+import { normalizeIpAddress } from '@owlat/shared/ipAddress';
 
 const LOOKUP_TIMEOUT_MS = 2_000;
 const LOOKUP_CONCURRENCY = 8;
@@ -119,8 +120,8 @@ async function confirmedHostName(ip: string): Promise<string | null> {
 	if (!name) return null;
 	const resolveForward = ip.includes(':') ? dns.resolve6(name) : dns.resolve4(name);
 	const addresses = await withTimeout(resolveForward);
-	const normalized = ip.toLowerCase();
-	return addresses?.some((address) => address.toLowerCase() === normalized) ? name : null;
+	const normalized = normalizeIpAddress(ip);
+	return addresses?.some((address) => normalizeIpAddress(address) === normalized) ? name : null;
 }
 
 /** Name the source IPs of a freshly stored report (best effort, bounded). */

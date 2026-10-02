@@ -125,6 +125,17 @@ describe('parseDmarcReport', () => {
 		const result = parseDmarcReport(bad);
 		expect(result.ok && result.report.records.map((r) => r.sourceIp)).toEqual(['203.0.113.10']);
 	});
+
+	it('stores source IPs in canonical form and drops malformed ones', () => {
+		const spelled = fixture
+			.replace('<source_ip>203.0.113.10</source_ip>', '<source_ip>2001:DB8:0:0::0A</source_ip>')
+			.replace('<source_ip>198.51.100.77</source_ip>', '<source_ip>1.2.3.4.5</source_ip>');
+		const result = parseDmarcReport(spelled);
+		expect(result.ok && result.report.records.map((r) => r.sourceIp)).toEqual([
+			'2001:db8::a',
+			'209.85.220.41',
+		]);
+	});
 });
 
 describe('containers', () => {

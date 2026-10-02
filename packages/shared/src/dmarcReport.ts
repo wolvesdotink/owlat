@@ -16,6 +16,7 @@
  */
 
 import { parseDmarcXml, xmlChild, xmlChildren, xmlText, type XmlElement } from './dmarcReportXml';
+import { normalizeIpAddress } from './ipAddress';
 
 // ─── Limits ─────────────────────────────────────────────────────────
 
@@ -213,8 +214,6 @@ function asDomain(value: string): string | null {
 	return lower.length <= MAX_DOMAIN_LENGTH && DOMAIN_RE.test(lower) ? lower : null;
 }
 
-const IP_RE = /^[0-9a-f:.]{2,45}$/;
-
 function parseAuthResults(parent: XmlElement | undefined, kind: 'dkim' | 'spf'): DmarcAuthResult[] {
 	const results: DmarcAuthResult[] = [];
 	for (const element of xmlChildren(parent, kind)) {
@@ -235,8 +234,12 @@ function parseAuthResults(parent: XmlElement | undefined, kind: 'dkim' | 'spf'):
 /** One `<record>` row, or null when it is unreadable or counts no messages. */
 function parseRecord(element: XmlElement): DmarcReportRecord | null {
 	const row = xmlChild(element, 'row');
-	const sourceIp = xmlText(row, 'source_ip').toLowerCase();
-	if (!IP_RE.test(sourceIp)) return null;
+	// Canonical form (RFC 5952 for IPv6), so a reporter's spelling cannot split
+	// one source in two or hide our own pool IPs, and reverse DNS compares the
+	// same string `dns.resolve6` returns.
+	const sourceIpText = xmlText(row, 'source_ip');
+	const sourceIp = sourceIpText.length <= 64 ? normalizeIpAddress(sourceIpText) : null;
+	if (!sourceIp) return null;
 	const countText = xmlText(row, 'count');
 	if (!/^\d{1,12}$/.test(countText)) return null;
 	const count = Number(countText);
