@@ -48,7 +48,7 @@ export const getPolicy = teamInboxAdminQuery({
 	},
 });
 
-/** Save the policy. Validated, audited; turning it on or off schedules the sweep in `./apply.ts`. */
+/** Save the policy. Validated, audited; schedules the sweep in `./apply.ts`. */
 export const savePolicy = teamInboxAdminMutation({
 	args: omit(inboxSlaPolicyFields, ['updatedAt']),
 	handler: async (ctx, args, session) => {
@@ -60,13 +60,12 @@ export const savePolicy = teamInboxAdminMutation({
 		if (existing) await ctx.db.patch(existing._id, { ...policy, updatedAt: now });
 		else await ctx.db.insert('inboxSlaPolicies', { ...policy, updatedAt: now });
 
-		const wasEnabled = existing?.isEnabled ?? false;
-		if (wasEnabled !== policy.isEnabled) {
-			await ctx.scheduler.runAfter(0, internal.inbox.sla.apply.applyPage, {
-				generation: now,
-				cursor: null,
-			});
-		}
+		// Every save supersedes a sweep still walking (`./apply.ts` checks the
+		// generation), so every save starts its own; re-running one is harmless.
+		await ctx.scheduler.runAfter(0, internal.inbox.sla.apply.applyPage, {
+			generation: now,
+			cursor: null,
+		});
 
 		await recordAuditLog(ctx, {
 			userId: session.userId,

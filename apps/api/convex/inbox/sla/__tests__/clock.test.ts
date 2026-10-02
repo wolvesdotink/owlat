@@ -10,6 +10,7 @@ import {
 	pauseClock,
 	resumeClock,
 	startClock,
+	startClockOnThread,
 	stopClock,
 	type SlaPolicyView,
 	type ThreadClock,
@@ -79,10 +80,40 @@ describe('clockOnReply', () => {
 		).toBe(1);
 	});
 
+	it('changes nothing when the same send is reported twice', () => {
+		const first = clockOnReply(thread({ responseDueAt: T0 + HOUR }), T0, policy);
+		expect(first.slaMetCount).toBe(1);
+		expect(clockOnReply(thread(first), T0, policy)).toEqual({});
+		// An earlier reply found later still moves the record back.
+		expect(clockOnReply(thread({ firstResponseAt: T0 }), T0 - HOUR, policy)).toMatchObject({
+			firstResponseAt: T0 - HOUR,
+		});
+	});
+
 	it('records but does not judge while targets are off', () => {
 		const patch = clockOnReply(thread({ responseDueAt: T0 - HOUR }), T0, null);
 		expect(patch.firstResponseAt).toBe(T0);
 		expect(patch.slaMissedCount).toBeUndefined();
+	});
+});
+
+describe('startClockOnThread', () => {
+	it('runs on an awake thread like startClock', () => {
+		expect(startClockOnThread(thread(), T0, T0, policy)).toEqual(startClock(thread(), T0, policy));
+	});
+
+	it('pauses straight away on a snoozed thread, with the time left from now', () => {
+		const snoozed = thread({ snoozedUntil: T0 + 10 * HOUR });
+		expect(startClockOnThread(snoozed, T0, T0, policy)).toMatchObject({
+			responseDueAt: undefined,
+			responseDueKind: 'first',
+			responseClockStartedAt: T0,
+			responsePausedRemainingMs: 2 * HOUR,
+		});
+		// Started at an arrival three hours back: already an hour overdue.
+		expect(startClockOnThread(snoozed, T0 - 3 * HOUR, T0, policy).responsePausedRemainingMs).toBe(
+			-HOUR
+		);
 	});
 });
 

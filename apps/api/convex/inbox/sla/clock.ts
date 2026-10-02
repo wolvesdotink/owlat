@@ -110,6 +110,23 @@ export function startClock(
 }
 
 /**
+ * Start a clock at `at` on a thread that may be snoozed at `now`: a snoozed
+ * thread gets the clock paused right away, with the opening time left from
+ * `now`, so it runs again when the thread wakes.
+ */
+export function startClockOnThread(
+	thread: ThreadClock,
+	at: number,
+	now: number,
+	policy: SlaPolicyView | null
+): ClockPatch {
+	const patch = startClock(thread, at, policy);
+	const isSnoozed = thread.snoozedUntil !== undefined && thread.snoozedUntil > now;
+	if (patch.responseDueAt === undefined || !isSnoozed) return patch;
+	return { ...patch, ...pauseClock({ ...thread, ...patch }, now, policy) };
+}
+
+/**
  * A customer message arrived: resume a paused clock, or start one. A message
  * reopens a resolved thread, so its resolve time no longer stands.
  */
@@ -134,6 +151,11 @@ export function clockOnReply(
 	at: number,
 	policy: SlaPolicyView | null
 ): ClockPatch {
+	// Nothing owed and the first reply already on record: a second report of
+	// the same send (channel replies are recorded twice) changes nothing.
+	if (!isClockSet(thread) && thread.firstResponseAt !== undefined && thread.firstResponseAt <= at) {
+		return {};
+	}
 	const patch: ClockPatch = {
 		...CLEARED,
 		firstResponseAt: Math.min(thread.firstResponseAt ?? at, at),
