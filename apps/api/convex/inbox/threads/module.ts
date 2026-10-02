@@ -3,8 +3,9 @@
  *
  * Owns find-or-create (email + non-email channel intake), the denormalized
  * counter maintenance (`messageCount` / `lastMessageAt`), the inbound reopen
- * policy, the `status` / `assignedTo` machine, and the `latestDraftStatus`
- * projection the Inbox processing lifecycle drives. Lifting every write to
+ * policy, the `status` / `assignedTo` machine, the `latestDraftStatus`
+ * projection the Inbox processing lifecycle drives, and the response clock
+ * (inbox/sla/clock.ts) those edges move. Lifting every write to
  * the table behind one reducer closes the channel/email reopen split, the
  * `messageCount` increment race, and the audit gap on human thread actions
  * (ADR-0032 §1–§5).
@@ -34,6 +35,8 @@ import { internal } from '../../_generated/api';
 import { recordAuditLog } from '../../lib/auditLog';
 import { applyOpenThreadDelta } from '../../lib/inboxStats';
 import { sealBodyAtWrite } from '../../lib/messageBody';
+import { loadSlaPolicy } from '../sla/policy';
+import { clockOnInbound, clockOnReply, clockOnStatus, type ClockPatch } from '../sla/clock';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -48,7 +51,9 @@ export type TransitionInput =
 	| { kind: 'inbound_activity'; occurredAt: number; preview?: string }
 	| { kind: 'status_change'; to: ConversationThreadStatus; source: ThreadWriteSource }
 	| { kind: 'assignment_change'; assignedTo?: string; source: ThreadWriteSource }
-	| { kind: 'draft_status_change'; latestDraftStatus: ThreadDraftStatus };
+	| { kind: 'draft_status_change'; latestDraftStatus: ThreadDraftStatus }
+	// A reply reached the customer: closes the response clock (inbox/sla/clock.ts).
+	| { kind: 'reply_sent'; at: number };
 
 export type TransitionOutcome =
 	| { ok: true; applied: 'transitioned' | 'noop'; threadId: Id<'conversationThreads'> }
@@ -203,6 +208,30 @@ function reduce(thread: Doc<'conversationThreads'>, input: TransitionInput): Red
 			return reduceAssignmentChange(thread, input);
 		case 'draft_status_change':
 			return reduceDraftStatusChange(thread, input);
+		case 'reply_sent':
+			// Nothing of its own: the response clock below is the whole effect.
+			return { patch: {}, effects: [], applied: 'transitioned' };
+	}
+}
+
+/**
+ * The response-clock patch (inbox/sla/clock.ts) for a transition that applied,
+ * merged into the same write so the clock moves with the edge that moved it.
+ */
+async function clockPatchFor(
+	ctx: MutationCtx,
+	thread: Doc<'conversationThreads'>,
+	input: TransitionInput
+): Promise<ClockPatch> {
+	switch (input.kind) {
+		case 'inbound_activity':
+			return clockOnInbound(thread, input.occurredAt, await loadSlaPolicy(ctx));
+		case 'status_change':
+			return clockOnStatus(thread, input.to, Date.now(), await loadSlaPolicy(ctx));
+		case 'reply_sent':
+			return clockOnReply(thread, input.at, await loadSlaPolicy(ctx));
+		default:
+			return {};
 	}
 }
 
@@ -231,8 +260,9 @@ async function applyTransition(
 	input: TransitionInput
 ): Promise<TransitionOutcome> {
 	const result = reduce(thread, input);
-	if (Object.keys(result.patch).length > 0) {
-		const patch = { ...result.patch };
+	const clock = result.applied === 'transitioned' ? await clockPatchFor(ctx, thread, input) : {};
+	if (Object.keys(result.patch).length > 0 || Object.keys(clock).length > 0) {
+		const patch = { ...result.patch, ...clock };
 		if (typeof patch.lastPreview === 'string') {
 			patch.lastPreview = await sealBodyAtWrite(patch.lastPreview);
 		}

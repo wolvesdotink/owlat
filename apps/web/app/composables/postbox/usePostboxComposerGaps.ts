@@ -98,6 +98,20 @@ export function usePostboxComposerGaps(opts: {
 		() => void nextTick(repaint)
 	);
 
+	// The editor can render a body after the tick above: a draft that opens
+	// with its text (Answer mode's prepared reply) is painted by the editor a
+	// frame or more later, and ranges taken before that point at nothing. So
+	// the DOM itself also asks for a repaint, once per frame at most.
+	let observer: MutationObserver | null = null;
+	let frame: number | null = null;
+	function schedule() {
+		if (frame !== null) return;
+		frame = requestAnimationFrame(() => {
+			frame = null;
+			repaint();
+		});
+	}
+
 	function onClick() {
 		const selection = document.getSelection();
 		const el = editor();
@@ -111,8 +125,14 @@ export function usePostboxComposerGaps(opts: {
 	onMounted(() => {
 		opts.rootEl.value?.addEventListener('click', onClick);
 		void nextTick(repaint);
+		if (opts.rootEl.value && typeof MutationObserver !== 'undefined') {
+			observer = new MutationObserver(schedule);
+			observer.observe(opts.rootEl.value, { childList: true, subtree: true, characterData: true });
+		}
 	});
 	onBeforeUnmount(() => {
+		observer?.disconnect();
+		if (frame !== null) cancelAnimationFrame(frame);
 		opts.rootEl.value?.removeEventListener('click', onClick);
 		if (rangesByComposer.delete(id)) paintAll();
 	});

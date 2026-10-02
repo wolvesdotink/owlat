@@ -41,6 +41,7 @@ automations convex/automations/
 forms convex/forms/
 ai.knowledge convex/knowledge/
 calendar.booking convex/booking/
+inbox convex/inbox/sla/
 '
 
 generate() {

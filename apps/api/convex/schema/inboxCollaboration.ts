@@ -71,8 +71,16 @@ export const inboxCollaborationTables = {
 		// (inbox/notes.ts); only clients that ask for it receive it
 		// (`pendingAssignments({ includeMentions: true })`), so an older tab
 		// never words a mention as an assignment.
+		// `sla_breach` is a reply target passing unanswered (inbox/sla/breaches.ts),
+		// where `assignedByName` carries the waiting customer; likewise only for
+		// clients that ask (`includeSlaBreaches: true`).
 		kind: v.optional(
-			v.union(v.literal('assignment'), v.literal('clarification'), v.literal('mention'))
+			v.union(
+				v.literal('assignment'),
+				v.literal('clarification'),
+				v.literal('mention'),
+				v.literal('sla_breach')
+			)
 		),
 		// The parked message, for `clarification` notices only.
 		inboundMessageId: v.optional(v.id('inboundMessages')),

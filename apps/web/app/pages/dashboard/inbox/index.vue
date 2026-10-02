@@ -3,12 +3,12 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { InboxThreadRowThread } from '~/components/inbox/InboxThreadRow.vue';
 import { useOrganization } from '~/composables/useOrganization';
-import { useNow } from '~/composables/useNow';
 import {
 	DEFAULT_INBOX_ASSIGNEE,
 	DEFAULT_INBOX_FILTER,
 	INBOX_FILTER_META,
 	INBOX_SORT_META,
+	isInboxSlaFilter,
 	nextInboxSort,
 	type InboxFilter,
 } from '~/utils/inboxFilters';
@@ -41,6 +41,9 @@ const displayRole = computed(() => {
 });
 
 const {
+	// One ticking clock for the whole list: the waiting and deadline chips age in
+	// place, in step with the Overdue / Due soon pills cut at the same clock.
+	now,
 	filter,
 	assignee,
 	mentions,
@@ -49,6 +52,8 @@ const {
 	setSort,
 	toggleSort,
 	filterCounts,
+	slaSummary,
+	isSlaEnabled,
 	threads,
 	threadsLoading,
 	threadsError,
@@ -189,11 +194,6 @@ const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard<TeamThread>
 	},
 });
 
-// One ticking clock for the whole list: the waiting chips age in place without
-// a reload, and a minute of drift is invisible on a chip that reads in hours.
-// Deriving it per row would be one interval per visible thread.
-const now = useNow({ intervalMs: 60_000 });
-
 // Empty-state copy per active tab + assignment. An assignment on an active tab
 // has its own sentence ("Nothing is assigned to you right now."); otherwise the
 // tab's. The registry holds a KEY, not a sentence — resolve it rather than
@@ -240,6 +240,10 @@ const showOldestFirst = () => setSort('oldest-waiting');
 			:description="t('dashboard.inbox.index.subtitle')"
 		>
 			<template #actions>
+				<UiButton v-if="isAdmin" to="/dashboard/inbox/analytics" variant="secondary" class="gap-2">
+					<Icon name="lucide:bar-chart-3" class="w-4 h-4" />
+					{{ t('dashboard.inbox.index.analytics') }}
+				</UiButton>
 				<!-- The one answer queue, filtered to this inbox. -->
 				<UiButton to="/dashboard/answer?in=team" class="gap-2">
 					<Icon name="lucide:check-circle" class="w-4 h-4" />
@@ -284,17 +288,20 @@ const showOldestFirst = () => setSort('oldest-waiting');
 					v-model:mentions="mentions"
 					:counts="filterCounts"
 					:unread-mentions="unreadMentions"
+					:sla="slaSummary"
 				/>
 
 				<!-- The sort chip states the CURRENT order and cycles to the next
-				     one; with three orders a toggle would have had to hide one. -->
+				     one; with three orders a toggle would have had to hide one. The
+				     Mentions view and the response-target slices keep their own order
+				     (newest mention, earliest deadline). -->
 				<button
-					v-if="!mentions"
+					v-if="!mentions && !isInboxSlaFilter(filter)"
 					type="button"
 					class="inline-flex items-center gap-1.5 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded px-1.5 py-1"
 					:title="
 						t('dashboard.inbox.index.sortSwitchTo', {
-							sort: t(INBOX_SORT_META[nextInboxSort(sort)].label),
+							sort: t(INBOX_SORT_META[nextInboxSort(sort, isSlaEnabled)].label),
 						})
 					"
 					@click="toggleSort"

@@ -121,7 +121,7 @@ const seal = usePostboxComposerSealLock(() => activeDraftId.value ?? undefined, 
 
 // Plan idea 11: which chips may show a key glyph, and what removing a named
 // blocker does. Both live in a sibling composable so this file stays focused.
-const { chipSealStates, removeSealBlocker } = usePostboxComposerSealChips(seal, {
+const { chipSealStates, lockBindings } = usePostboxComposerSealChips(seal, {
 	toAddresses,
 	ccAddresses,
 	bccAddresses,
@@ -204,11 +204,7 @@ const { sending, handleSend, guards, stale } = usePostboxComposerSendGate({
 // --- Frames. Answer mode's view state (folded envelope/quote, Coach under ⋯)
 // lives in its own composable; the draft underneath is the popup's, untouched.
 const answerFrame = props.frame === 'answer';
-const frameView = usePostboxComposerAnswerFrame({
-	active: answerFrame,
-	bodyHtml,
-	sealBlocked: () => seal.blockingRecipients.length > 0,
-});
+const frameView = usePostboxComposerAnswerFrame({ active: answerFrame, bodyHtml });
 const { envelopeRef, basicEditor, focusBody, onLineReplyAll } = frameView;
 
 // The draft id for the host's URL, popup reply → Answer mode on a saved row,
@@ -336,16 +332,9 @@ function onKeydown(event: KeyboardEvent) {
 		<PostboxComposerDraftNotice :notice="draftNotice" @retry="retryLoad" />
 		<!-- Sealed Mail (E5): honest seal-lock indicator, shown from the moment the
 		     state is being computed. Its unsealed control only REQUESTS the
-		     decision — the dialog below is the single source of plaintext consent. -->
-		<PostboxComposerSealLock
-			:enabled="seal.enabled"
-			:seal-state="seal.state"
-			:pending="seal.pending"
-			:blocking-recipients="seal.blockingRecipients"
-			:all-verified="seal.allVerified"
-			@request-unsealed="seal.requestUnsealed()"
-			@remove-recipient="removeSealBlocker"
-		/>
+		     decision — the dialog below is the single source of plaintext consent.
+		     Answer mode folds it to one line under Send (the footer's notes). -->
+		<PostboxComposerSealLock v-if="!answerFrame" v-bind="lockBindings" />
 
 		<!-- Plan idea 7: keystrokes the server row never received, after a crash.
 		     Above the editor, because it offers to replace what is in it. -->
@@ -474,7 +463,11 @@ function onKeydown(event: KeyboardEvent) {
 				@signature-change="onSignatureChange"
 				@toggle-toolbar="toggleToolbar"
 				@switch-mode="switchMode"
-			/>
+			>
+				<template v-if="answerFrame" #notes>
+					<PostboxComposerSealLock compact v-bind="lockBindings" />
+				</template>
+			</PostboxComposerFooter>
 			<!-- Every dialog that PARKS a send until the sender answers: the schedule
 			     picker, the unsealed-send decision, the stale-reply warning. Grouped
 			     in one component because they share the contract — each confirm

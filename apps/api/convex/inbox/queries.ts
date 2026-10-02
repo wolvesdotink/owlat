@@ -21,8 +21,10 @@ import {
 	pinThreadCursor,
 	threadAssigneeValidator,
 	threadFilterValidator,
+	threadSortValidator,
 	type ThreadFilter,
 } from './threadFilters';
+import { compareResponseDue, isSlaSlice, slaSliceNow } from './sla/slices';
 import { searchThreads } from './threadSearch';
 import { takeOverViewFor } from './manualReply';
 import { redactContactCapabilityFields } from '../contacts/listing';
@@ -90,18 +92,16 @@ export const listThreads = publicQuery({
 		// Assignment filter shown beside the status tabs (Anyone / Me /
 		// Unassigned). Absent = anyone. Narrows the status slice.
 		assignee: v.optional(threadAssigneeValidator),
-		// Ordering. `needs-attention` (the default view) floats drafts-ready then
-		// unassigned-unread then oldest-open to the top; `oldest-waiting` puts
-		// the longest-waiting customer first; `newest` is plain recency.
-		sort: v.optional(
-			v.union(v.literal('needs-attention'), v.literal('oldest-waiting'), v.literal('newest'))
-		),
+		// Ordering, see threadSortValidator. The response-target slices always
+		// come back earliest deadline first.
+		sort: v.optional(threadSortValidator),
 		// Free-text query over the subject and the participant address. Present =
 		// the search path: a bounded, relevance-sourced TOP-N narrowed by the same
 		// pill, single-page (see ./threadSearch). Blank behaves as absent.
 		search: v.optional(v.string()),
 		limit: v.optional(v.number()),
 		cursor: v.optional(v.string()),
+		now: v.optional(v.number()), // the list's clock, see sla/slices.ts `slaSliceNow`
 	},
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'inbox');
@@ -112,9 +112,9 @@ export const listThreads = publicQuery({
 
 		const limit = args.limit ?? 20;
 		// A later page reuses the first page's `now`: see pinThreadCursor.
-		const pinned = openThreadCursor(args.cursor, Date.now());
+		const pinned = openThreadCursor(args.cursor, slaSliceNow(args.now));
 		const now = pinned.now;
-		const sort = args.sort ?? 'newest';
+		const sort = isSlaSlice(args.filter) ? 'due' : (args.sort ?? 'newest');
 
 		// ── Search path. Relevance cannot share a cursor across two indexes, so
 		// this answers in one page and reports no continuation.
@@ -142,12 +142,11 @@ export const listThreads = publicQuery({
 		//                        shared needs-attention comparator.
 		//   - oldest-waiting  → the same ascending walk (oldest inbound activity is
 		//                        the longest wait), re-floated by the waiting rule.
+		//   - due             → ascending too (an SLA slice walks its deadline index),
+		//                        re-floated by the earliest deadline.
 		//   - newest          → most-recent activity first (desc).
 		const built = buildThreadQuery(ctx, args.filter, session.userId, now, args.assignee);
-		const order: 'asc' | 'desc' =
-			args.filter === 'snoozed' || sort === 'needs-attention' || sort === 'oldest-waiting'
-				? 'asc'
-				: 'desc';
+		const order: 'asc' | 'desc' = args.filter === 'snoozed' || sort !== 'newest' ? 'asc' : 'desc';
 		const q = built.order(order);
 
 		const result = await q.paginate({ cursor: pinned.cursor, numItems: limit });
@@ -163,6 +162,7 @@ export const listThreads = publicQuery({
 		// activity first, so this only sinks the rows that are not waiting on us
 		// (reachable through the unfiltered and assignment-indexed slices).
 		else if (sort === 'oldest-waiting') threads.sort((a, b) => compareOldestWaiting(a, b, now));
+		else if (sort === 'due') threads.sort(compareResponseDue);
 
 		return {
 			threads,
@@ -464,6 +464,8 @@ export const pendingAssignments = publicQuery({
 		limit: v.optional(v.number()),
 		/** Include `mention` notices. Absent for clients that predate them. */
 		includeMentions: v.optional(v.boolean()),
+		/** Include `sla_breach` notices; a client that predates them would word them as assignments. */
+		includeSlaBreaches: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		const session = await getBetterAuthSessionWithRole(ctx);
@@ -483,6 +485,7 @@ export const pendingAssignments = publicQuery({
 
 		return rows
 			.filter((r) => args.includeMentions || r.kind !== 'mention')
+			.filter((r) => args.includeSlaBreaches || r.kind !== 'sla_breach')
 			.map((r) => ({
 				id: r._id,
 				kind: r.kind ?? ('assignment' as const),

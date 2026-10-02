@@ -22,6 +22,7 @@ import { adminMutation } from '../lib/authedFunctions';
 import { getOrThrow, throwInvalidInput } from '../_utils/errors';
 import { recordAuditLog } from '../lib/auditLog';
 import { getMutationContext } from '../lib/sessionOrganization';
+import { snoozeClockPatch } from './sla/threadClock';
 
 /**
  * Snooze a thread until a future timestamp. Admin-only (shared inbox), audited.
@@ -33,14 +34,17 @@ export const snoozeThread = adminMutation({
 	},
 	handler: async (ctx, args) => {
 		const { userId } = await getMutationContext(ctx);
-		await getOrThrow(ctx, args.threadId, 'Thread');
-		if (args.until <= Date.now()) {
+		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
+		const now = Date.now();
+		if (args.until <= now) {
 			throwInvalidInput('Snooze time must be in the future');
 		}
 		await ctx.db.patch(args.threadId, {
 			snoozedUntil: args.until,
 			// Clear any stale "returned" marker from a prior snooze cycle.
 			snoozeReturnedAt: undefined,
+			// A snooze pauses the response clock (inbox/sla/clock.ts).
+			...(await snoozeClockPatch(ctx, thread, 'snooze', now)),
 		});
 		await recordAuditLog(ctx, {
 			userId,
@@ -70,6 +74,7 @@ export const unsnoozeThread = adminMutation({
 		await ctx.db.patch(args.threadId, {
 			snoozedUntil: undefined,
 			snoozeReturnedAt: undefined,
+			...(await snoozeClockPatch(ctx, thread, 'wake', Date.now())),
 		});
 		await recordAuditLog(ctx, {
 			userId,
@@ -104,6 +109,7 @@ export const internalSweep = internalMutation({
 			await ctx.db.patch(t._id, {
 				snoozedUntil: undefined,
 				snoozeReturnedAt: now,
+				...(await snoozeClockPatch(ctx, t, 'wake', now)),
 			});
 		}
 		return { woken: dueRows.length };

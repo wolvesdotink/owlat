@@ -13,6 +13,7 @@ import type { MutationCtx } from './_generated/server';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { requireOrgPermission, hasPermission, requirePermission } from './lib/sessionOrganization';
 import { isSharedInboxReader } from './inbox/access';
+import { transition as threadTransition } from './inbox/threads/module';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { unifiedMessageChannelValidator, outboundChannelValidator } from './lib/convexValidators';
@@ -181,6 +182,15 @@ export const recordOutbound = internalMutation({
 		if (args.status === 'sent') {
 			await stampChannelLastSuccessfulSend(ctx, args.channel, now);
 		}
+		// A message that reached the customer is a reply: it closes the thread's
+		// response clock (inbox/sla/clock.ts). A person's channel reply has no
+		// inbound message to complete, so this is the only place it is seen.
+		if (args.status === 'sent' || args.status === 'delivered') {
+			await threadTransition(ctx, {
+				threadId: args.threadId,
+				input: { kind: 'reply_sent', at: now },
+			});
+		}
 
 		return id;
 	},
@@ -291,6 +301,11 @@ export const sendChatMessage = authedMutation({
 		// Chat is terminal on insert ('delivered'), so this row IS the
 		// successful send — stamp the channel card's live signal here too.
 		await stampChannelLastSuccessfulSend(ctx, 'chat', now);
+		// A chat reply closes the thread's response clock (inbox/sla/clock.ts).
+		await threadTransition(ctx, {
+			threadId: args.threadId,
+			input: { kind: 'reply_sent', at: now },
+		});
 
 		return id;
 	},

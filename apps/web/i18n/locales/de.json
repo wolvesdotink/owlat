@@ -3748,7 +3748,8 @@
 				"groupLabel": "Konversationen filtern",
 				"assigneeLabel": "Nach Zuständigkeit filtern",
 				"mentions": "Erwähnungen",
-				"unreadMentions": "{count} noch nicht geöffnet"
+				"unreadMentions": "{count} noch nicht geöffnet",
+				"slaLabel": "Nach Antwortziel filtern"
 			},
 			"inboxMessageAttachments": {
 				"blocked": "Blockiert — in dieser Nachricht wurde Schadsoftware gefunden.",
@@ -3824,6 +3825,54 @@
 			"readFailureNotice": {
 				"inboxList": "deine Postfachliste",
 				"message": "Nicht geladen: {names}. Diese Liste ist deshalb unvollständig."
+			},
+			"inboxSlaAssigneeTable": {
+				"assignee": "Zuständig",
+				"conversations": "Konversationen",
+				"formerMember": "Ehemaliges Mitglied",
+				"hitRate": "Im Ziel",
+				"medianFirstResponse": "Erste Antwort (Median)",
+				"overdueNow": "{count} überfällig | {count} überfällig",
+				"p90FirstResponse": "Erste Antwort (90 %)",
+				"unassigned": "Nicht zugewiesen"
+			},
+			"inboxSlaPolicyForm": {
+				"addHoliday": "Tag hinzufügen",
+				"closed": "Geschlossen",
+				"closesAt": "{day} schließt um",
+				"enabledHint": "Gib jeder offenen Konversation im Team-Postfach eine Antwortfrist. Das Postfach zeigt sie an, sortiert und filtert danach und sagt der zuständigen Person Bescheid, wenn eine Frist abläuft.",
+				"enabledTitle": "Antwortziele",
+				"firstHint": "Bis das Team einmal geantwortet hat.",
+				"firstLabel": "Erste Antwort",
+				"holidayDate": "Geschlossener Tag",
+				"holidaysHint": "Feiertage und andere Tage, an denen die Uhr nicht läuft, in der Zeitzone oben.",
+				"holidaysTitle": "Geschlossene Tage",
+				"hoursTitle": "Was zählt",
+				"mode": {
+					"business": "Geschäftszeiten",
+					"businessHint": "Die Uhr läuft nur, solange das Postfach geöffnet ist, ein Ziel zählt also Öffnungszeit: 1 Tag sind 24 offene Stunden. Eine Nachricht, die nachts ankommt, wird ab der nächsten Öffnung gezählt.",
+					"calendar": "Jede Stunde",
+					"calendarHint": "Die Uhr läuft rund um die Uhr, auch am Wochenende und an Feiertagen."
+				},
+				"nextHint": "Nach jeder neuen Nachricht, sobald das Team einmal geantwortet hat.",
+				"nextLabel": "Nächste Antwort",
+				"opensAt": "{day} öffnet um",
+				"problems": {
+					"hours": "Jeder geöffnete Tag muss nach dem Öffnen schließen.",
+					"noOpenDay": "Geschäftszeiten brauchen mindestens einen geöffneten Tag.",
+					"target": "Ziele müssen zwischen 1 Minute und 30 Tagen liegen.",
+					"timeZone": "Gib eine Zeitzone wie Europe/Berlin ein."
+				},
+				"removeHoliday": "{day} entfernen",
+				"save": "Ziele speichern",
+				"targetsTitle": "Ziele",
+				"timeZone": "Zeitzone",
+				"unitLabel": "Einheit",
+				"units": {
+					"days": "Tage",
+					"hours": "Stunden",
+					"minutes": "Minuten"
+				}
 			},
 			"notes": {
 				"add": "Notiz hinzufügen",
@@ -4277,7 +4326,7 @@
 			"postboxComposerSealLock": {
 				"blockedBy": "Kein Versiegelungsschlüssel für:",
 				"removeBlocker": "{address} aus dieser Nachricht entfernen",
-				"sendUnsealed": "Ungesiegelt senden…"
+				"sendUnsealed": "Unversiegelt senden…"
 			},
 			"postboxContactKeyPanel": {
 				"empty": "Owlat hat noch keinen Siegelschlüssel für {address} gefunden, deshalb wird Post an diese Adresse normal versendet.",
@@ -6571,7 +6620,8 @@
 					"lower": "Antwort absenken",
 					"shrink": "Antwort verkleinern",
 					"peek": "{name} antworten…",
-					"peekNoName": "Antwort schreiben…"
+					"peekNoName": "Antwort schreiben…",
+					"peekQuestions": "Fragen zur Antwort beantworten…"
 				},
 				"viewLabel": "Wie viel der Unterhaltung angezeigt wird",
 				"viewShortcut": "Mit T umschalten",
@@ -6622,6 +6672,8 @@
 				"title": "Eine Frage, bevor ich schreibe | {count} Fragen, bevor ich schreibe",
 				"round": "Runde {round} von {total}",
 				"subline": "Beantworte, was du kannst. Was du auslässt, wird im Entwurf als markierte Lücke eingefügt.",
+				"trust": "Aus einer E-Mail von {domain}. Owlat fragt nie nach deinem Passwort.",
+				"trustNoDomain": "Aus einer E-Mail. Owlat fragt nie nach deinem Passwort.",
 				"placeholder": {
 					"choice": "Etwas anderes …",
 					"text": "Gib deine Antwort ein …",
@@ -6634,7 +6686,10 @@
 				"operation": "Fragen beantworten",
 				"waitingForFiles": "Entwurf fertig. Wartet auf deine Dateien",
 				"waitingForFilesSubline": "Die Antwort ist geschrieben. Füge die angefragten Dateien hinzu, dann wird sie mit ihnen als Anhang angepasst.",
-				"attachAndUpdate": "Anhängen und Entwurf anpassen"
+				"attachAndUpdate": "Anhängen und Entwurf anpassen",
+				"draftGaps": "Dem Entwurf fehlt noch eine Angabe | Dem Entwurf fehlen noch {count} Angaben",
+				"draftGapsSubline": "Die Antwort unten ist schon geschrieben. Was du hier beantwortest, kommt in den Entwurf; was offen bleibt, bleibt markiert.",
+				"updateDraft": "Entwurf ergänzen"
 			},
 			"fileAsk": {
 				"dropHere": "Lege die Datei hier ab oder",
@@ -10045,6 +10100,51 @@
 				"subtitle": "Alle Nachrichten aus E-Mail, SMS, WhatsApp und Chat",
 				"title": "Alle Aktivitäten"
 			},
+			"analytics": {
+				"adminOnly": "Antwortzeiten sehen nur Inhaber und Admins des Workspace.",
+				"assignees": {
+					"empty": "In diesem Zeitraum hat keine Konversation begonnen.",
+					"title": "Nach zuständiger Person"
+				},
+				"backToInbox": "Team-Postfach",
+				"errorTitle": "Die Antwortzeiten konnten nicht geladen werden",
+				"firstResponse": {
+					"title": "Erste Antwort pro Tag (Median)"
+				},
+				"footnote": "Zeiten sind echte Uhrzeit ab der ersten Nachricht der Kundin oder des Kunden. Tage sind UTC-Tage. Konversationen zählen bei der Person, der sie gerade zugewiesen sind.",
+				"history": {
+					"operation": "Antwortverlauf berechnen",
+					"running": "Die Antwortzeiten älterer Konversationen werden noch berechnet. Die Zahlen füllen sich in den nächsten Minuten."
+				},
+				"pageTitle": "Antwortzeiten",
+				"range": {
+					"custom": "Eigener Zeitraum",
+					"from": "Von",
+					"invalid": "Wähle ein Start- und ein Enddatum, höchstens ein Jahr auseinander.",
+					"lastDays": "Letzte {days} Tage",
+					"to": "Bis"
+				},
+				"subtitle": "Wie schnell das Team auf die Konversationen antwortet, die in diesem Zeitraum begonnen haben.",
+				"targetsLink": "Antwortziele",
+				"targetsOff": "Antwortziele sind aus, darum gibt es noch keine Trefferquote.",
+				"targetsOffLink": "Antwortziele festlegen",
+				"tiles": {
+					"conversations": "Konversationen",
+					"hitRate": "Antworten im Ziel",
+					"hitRateHint": "{met} pünktlich, {missed} zu spät",
+					"medianFirstResponse": "Erste Antwort (Median)",
+					"medianResolution": "Erledigt nach (Median)",
+					"noReplies": "Noch keine Antworten",
+					"noTargets": "Noch keine Antwort an einem Ziel gemessen",
+					"noneResolved": "Noch nichts erledigt",
+					"p90": "90 % innerhalb von {value}"
+				},
+				"title": "Antwortzeiten",
+				"truncated": "Dieser Zeitraum enthält mehr Konversationen, als eine Ansicht liest; die Zahlen decken Konversationen ab dem {date} ab.",
+				"volume": {
+					"title": "Neue Konversationen pro Tag"
+				}
+			},
 			"codeTasks": {
 				"create": "Code-Aufgabe erstellen",
 				"createOperation": "Code-Aufgabe erstellen",
@@ -10265,7 +10365,8 @@
 				"sortedBy": "Sortiert nach {sort}",
 				"sortSwitchTo": "Nach {sort} sortieren",
 				"waitingOver24h": "{count} Person wartet seit über einem Tag auf eine Antwort | {count} Personen warten seit über einem Tag auf eine Antwort",
-				"showLongestWaitFirst": "Längste Wartezeit zuerst"
+				"showLongestWaitFirst": "Längste Wartezeit zuerst",
+				"analytics": "Auswertung"
 			},
 			"quarantine": {
 				"blockDialogConfirm": "Absender blockieren",
@@ -10335,6 +10436,20 @@
 				"subtitle": "Eingehende Nachrichten, die die Sicherheitsprüfung zurückgehalten hat. Gib unbedenkliche frei oder blockiere den Absender.",
 				"title": "Quarantäne",
 				"whyHeldLabel": "Warum diese Nachricht zurückgehalten wurde"
+			},
+			"responseTargets": {
+				"adminGate": {
+					"description": "Antwortziele können Inhaber und Admins des Workspace verwalten.",
+					"title": "Nur für Admins"
+				},
+				"analyticsLink": "Antwortzeiten",
+				"errorTitle": "Die Antwortziele konnten nicht geladen werden",
+				"pageTitle": "Antwortziele",
+				"saveOperation": "Antwortziele speichern",
+				"saved": "Antwortziele gespeichert",
+				"subtitle": "Wie schnell das Team auf Konversationen im Team-Postfach antworten soll.",
+				"title": "Antwortziele",
+				"backToInbox": "Team-Postfach"
 			},
 			"updates": {
 				"blockDialogConfirm": "Absender sperren",
@@ -12703,7 +12818,9 @@
 				"topics": "Themen",
 				"transactional": "Transaktional",
 				"webhooks": "Webhooks",
-				"knowledgeGraph": "Graph-Explorer"
+				"knowledgeGraph": "Graph-Explorer",
+				"responseTargets": "Antwortziele",
+				"responseAnalytics": "Antwortzeiten"
 			},
 			"sections": {
 				"audience": "Zielgruppe",
@@ -13774,6 +13891,18 @@
 					"groupTitle": "Neue Zuweisungen",
 					"singleTitle": "Dir zugewiesen"
 				},
+				"slaBreach": {
+					"group": "{count} Konversationen haben ihr Antwortziel überschritten",
+					"notificationBody": {
+						"noSubject": "Kein Betreff · {assignedByName} wartet noch",
+						"withSubject": "{subject} · {assignedByName} wartet noch"
+					},
+					"notificationTitle": "Antwort überfällig",
+					"toast": {
+						"noSubject": "Antwort überfällig — Kein Betreff · von {assignedByName}",
+						"withSubject": "Antwort überfällig — {subject} · von {assignedByName}"
+					}
+				},
 				"toast": {
 					"group": "{count} Konversationen wurden dir zugewiesen",
 					"single": {
@@ -13796,6 +13925,14 @@
 			"resolved": {
 				"empty": "Noch keine erledigten Gespräche.",
 				"label": "Erledigt"
+			},
+			"slaDueSoon": {
+				"empty": "In der nächsten Stunde ist keine Antwort fällig.",
+				"label": "Bald fällig"
+			},
+			"slaOverdue": {
+				"empty": "Keine Antwort ist über ihrem Ziel.",
+				"label": "Überfällig"
 			},
 			"snoozed": {
 				"empty": "Nichts ist zurückgestellt. Zurückgestelltes erscheint hier wieder.",
@@ -16112,7 +16249,8 @@
 		"inboxSorts": {
 			"needsAttention": "Handlungsbedarf",
 			"oldestWaiting": "längste Wartezeit",
-			"newest": "neueste zuerst"
+			"newest": "neueste zuerst",
+			"due": "zuerst fällig"
 		},
 		"inboxWaiting": {
 			"minutes": "wartet {minutes} Min.",
@@ -16247,6 +16385,25 @@
 				"archive": "Unterhaltung archivieren",
 				"heading": "Diese Unterhaltung",
 				"reply": "Antworten"
+			}
+		},
+		"inboxSla": {
+			"dueIn": {
+				"days": "fällig in {days} T.",
+				"daysHours": "fällig in {days} T. {hours} Std.",
+				"hours": "fällig in {hours} Std.",
+				"minutes": "fällig in {minutes} Min."
+			},
+			"duration": {
+				"daysHours": "{days} T. {hours} Std.",
+				"hoursMinutes": "{hours} Std. {minutes} Min.",
+				"minutes": "{minutes} Min."
+			},
+			"overdue": {
+				"days": "überfällig {days} T.",
+				"daysHours": "überfällig {days} T. {hours} Std.",
+				"hours": "überfällig {hours} Std.",
+				"minutes": "überfällig {minutes} Min."
 			}
 		}
 	},

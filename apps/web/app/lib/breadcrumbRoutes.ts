@@ -148,6 +148,16 @@ export const routeConfigs: Record<string, RouteConfig> = {
 		section: 'shared.breadcrumbRoutes.sections.teamInbox',
 		sectionHref: '/dashboard/inbox',
 	},
+	'/dashboard/inbox/analytics': {
+		section: 'shared.breadcrumbRoutes.sections.teamInbox',
+		sectionHref: '/dashboard/inbox',
+		page: 'shared.breadcrumbRoutes.pages.responseAnalytics',
+	},
+	'/dashboard/inbox/response-targets': {
+		section: 'shared.breadcrumbRoutes.sections.teamInbox',
+		sectionHref: '/dashboard/inbox',
+		page: 'shared.breadcrumbRoutes.pages.responseTargets',
+	},
 
 	// The collaboration surfaces. Without entries here the slug fallback printed
 	// the URL ("Files", "Knowledge › Graph") in English whatever the locale.

@@ -64,3 +64,17 @@ export function localizedSummary(
 	if (!summary) return undefined;
 	return summary[locale.toLowerCase()] ?? summary['en'] ?? Object.values(summary)[0];
 }
+
+/**
+ * The sender domain inside a clarification question's attribution line.
+ *
+ * The server writes that line in English ("Generated from an email from
+ * acme.com — Owlat will never ask for your password.", see
+ * inbox/clarificationSlots.ts); a surface that says it once, in the reader's
+ * language, needs only the domain. Null when the line names none.
+ */
+export function attributionDomain(attribution: string | undefined): string | null {
+	const match = attribution?.match(/\ban email from (\S+)/i);
+	const domain = match?.[1]?.replace(/[.,;:]+$/, '');
+	return domain || null;
+}

@@ -105,7 +105,11 @@ beforeEach(() => {
 		useToast: () => ({ showToast: vi.fn() }),
 		useOperationErrorToast: () => ({ showOperationError: vi.fn() }),
 		usePostboxComposerSealLock: () => seal,
-		usePostboxComposerSealChips: () => ({ chipSealStates: ref([]), removeSealBlocker: vi.fn() }),
+		usePostboxComposerSealChips: () => ({
+			chipSealStates: ref([]),
+			removeSealBlocker: vi.fn(),
+			lockBindings: ref({ enabled: true }),
+		}),
 		usePostboxToolbarPreference: () => ({ persistentToolbar: ref(false), toggleToolbar: vi.fn() }),
 		usePostboxComposerSnippets: () => ({
 			editorSnippets: ref([]),
@@ -251,11 +255,15 @@ describe('PostboxComposer frame="answer"', () => {
 		w.unmount();
 	});
 
-	it('opens it for a recipient blocking the seal too', async () => {
+	it('keeps it folded for a recipient without a sealing key, and says so under Send', async () => {
 		seal.blockingRecipients = ['nokey@example.com'];
 		const w = mountComposer({ frame: 'answer' });
 		await nextTick();
-		expect(envelopeShown(w)).toBe(true);
+		expect(envelopeShown(w)).toBe(false);
+		const lock = w.get('footer [data-testid="PostboxComposerSealLock"]');
+		expect(lock.exists()).toBe(true);
+		// Once: not above the editor as well.
+		expect(w.findAll('[data-testid="PostboxComposerSealLock"]')).toHaveLength(1);
 		w.unmount();
 	});
 

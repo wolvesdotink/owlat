@@ -3748,7 +3748,8 @@
 				"groupLabel": "Filter threads",
 				"assigneeLabel": "Filter by assignee",
 				"mentions": "Mentions",
-				"unreadMentions": "{count} not opened yet"
+				"unreadMentions": "{count} not opened yet",
+				"slaLabel": "Filter by reply target"
 			},
 			"inboxMessageAttachments": {
 				"blocked": "Blocked — malware was found in this message.",
@@ -3824,6 +3825,54 @@
 			"readFailureNotice": {
 				"inboxList": "your inbox list",
 				"message": "Couldn't load {names}, so this list is incomplete."
+			},
+			"inboxSlaAssigneeTable": {
+				"assignee": "Assignee",
+				"conversations": "Conversations",
+				"formerMember": "Former member",
+				"hitRate": "On target",
+				"medianFirstResponse": "First response (median)",
+				"overdueNow": "{count} overdue | {count} overdue",
+				"p90FirstResponse": "First response (90%)",
+				"unassigned": "Unassigned"
+			},
+			"inboxSlaPolicyForm": {
+				"addHoliday": "Add date",
+				"closed": "Closed",
+				"closesAt": "{day} closes at",
+				"enabledHint": "Give every open Team Inbox conversation a reply deadline. The inbox shows it, sorts and filters by it, and tells the assignee when one passes.",
+				"enabledTitle": "Response targets",
+				"firstHint": "Until the team has replied once.",
+				"firstLabel": "First response",
+				"holidayDate": "Closed date",
+				"holidaysHint": "Holidays and other days the clock does not run, in the time zone above.",
+				"holidaysTitle": "Closed dates",
+				"hoursTitle": "What counts",
+				"mode": {
+					"business": "Business hours",
+					"businessHint": "The clock runs only while the inbox is open, so a target counts opening time: 1 day is 24 open hours. A message that arrives at night is due counting from the next opening.",
+					"calendar": "Every hour",
+					"calendarHint": "The clock runs around the clock, weekends and holidays included."
+				},
+				"nextHint": "After every new customer message once the team has replied.",
+				"nextLabel": "Next response",
+				"opensAt": "{day} opens at",
+				"problems": {
+					"hours": "Each open day has to close after it opens.",
+					"noOpenDay": "Business hours need at least one open day.",
+					"target": "Targets must be between 1 minute and 30 days.",
+					"timeZone": "Enter a time zone such as Europe/Berlin."
+				},
+				"removeHoliday": "Remove {day}",
+				"save": "Save targets",
+				"targetsTitle": "Targets",
+				"timeZone": "Time zone",
+				"unitLabel": "Unit",
+				"units": {
+					"days": "days",
+					"hours": "hours",
+					"minutes": "minutes"
+				}
 			},
 			"notes": {
 				"add": "Add note",
@@ -6571,7 +6620,8 @@
 					"lower": "Lower the reply",
 					"shrink": "Make the reply smaller",
 					"peek": "Reply to {name}…",
-					"peekNoName": "Write a reply…"
+					"peekNoName": "Write a reply…",
+					"peekQuestions": "Answer the questions for this reply…"
 				},
 				"viewLabel": "How much of the conversation to show",
 				"viewShortcut": "Switch with T",
@@ -6622,6 +6672,8 @@
 				"title": "One thing before I write this | {count} things before I write this",
 				"round": "round {round} of {total}",
 				"subline": "Answer what you can. Anything you skip becomes a highlighted gap in the draft.",
+				"trust": "Based on an email from {domain}. Owlat never asks for your password.",
+				"trustNoDomain": "Based on an email. Owlat never asks for your password.",
 				"placeholder": {
 					"choice": "Something else…",
 					"text": "Type your answer…",
@@ -6634,7 +6686,10 @@
 				"operation": "Answer the questions",
 				"waitingForFiles": "Draft ready. Waiting for your files",
 				"waitingForFilesSubline": "The reply is written. Add the files they asked for and it is updated to go out with them.",
-				"attachAndUpdate": "Attach and update draft"
+				"attachAndUpdate": "Attach and update draft",
+				"draftGaps": "The draft needs one more detail | The draft needs {count} more details",
+				"draftGapsSubline": "The reply below is written. What you answer here goes into it; anything left open stays marked.",
+				"updateDraft": "Update the draft"
 			},
 			"fileAsk": {
 				"dropHere": "Drop the file here or",
@@ -10045,6 +10100,51 @@
 				"subtitle": "Every message across email, SMS, WhatsApp and chat",
 				"title": "All activity"
 			},
+			"analytics": {
+				"adminOnly": "Response analytics are available to workspace owners and admins.",
+				"assignees": {
+					"empty": "No conversations started in this range.",
+					"title": "By assignee"
+				},
+				"backToInbox": "Team Inbox",
+				"errorTitle": "Response analytics could not be loaded",
+				"firstResponse": {
+					"title": "Median first response per day"
+				},
+				"footnote": "Times are wall-clock time from the customer's first message. Days are UTC days. Conversations are grouped by their current assignee.",
+				"history": {
+					"operation": "Compute response history",
+					"running": "Response times for older conversations are still being computed. The numbers fill in over the next few minutes."
+				},
+				"pageTitle": "Response analytics",
+				"range": {
+					"custom": "Custom",
+					"from": "From",
+					"invalid": "Pick a start and an end date, at most a year apart.",
+					"lastDays": "Last {days} days",
+					"to": "To"
+				},
+				"subtitle": "How fast the team answers the conversations that started in this range.",
+				"targetsLink": "Response targets",
+				"targetsOff": "Response targets are off, so there is no hit rate yet.",
+				"targetsOffLink": "Set response targets",
+				"tiles": {
+					"conversations": "Conversations",
+					"hitRate": "Replies on target",
+					"hitRateHint": "{met} on time, {missed} late",
+					"medianFirstResponse": "First response (median)",
+					"medianResolution": "Resolution (median)",
+					"noReplies": "No replies yet",
+					"noTargets": "No reply measured against a target",
+					"noneResolved": "Nothing resolved yet",
+					"p90": "90% within {value}"
+				},
+				"title": "Response analytics",
+				"truncated": "This range holds more conversations than one view reads; the numbers cover conversations from {date} on.",
+				"volume": {
+					"title": "New conversations per day"
+				}
+			},
 			"codeTasks": {
 				"create": "Create code task",
 				"createOperation": "Create code task",
@@ -10265,7 +10365,8 @@
 				"sortedBy": "Sorted by {sort}",
 				"sortSwitchTo": "Sort by {sort}",
 				"waitingOver24h": "{count} customer has waited more than a day for an answer | {count} customers have waited more than a day for an answer",
-				"showLongestWaitFirst": "Show longest wait first"
+				"showLongestWaitFirst": "Show longest wait first",
+				"analytics": "Analytics"
 			},
 			"quarantine": {
 				"blockDialogConfirm": "Block sender",
@@ -10335,6 +10436,20 @@
 				"subtitle": "Incoming messages the safety check held back. Release the ones that are fine, or block the sender.",
 				"title": "Quarantine",
 				"whyHeldLabel": "Why this was held"
+			},
+			"responseTargets": {
+				"adminGate": {
+					"description": "Response targets can be managed by workspace owners and admins.",
+					"title": "Admins only"
+				},
+				"analyticsLink": "Response analytics",
+				"errorTitle": "Response targets could not be loaded",
+				"pageTitle": "Response targets",
+				"saveOperation": "Save response targets",
+				"saved": "Response targets saved",
+				"subtitle": "How fast the team should answer Team Inbox conversations.",
+				"title": "Response targets",
+				"backToInbox": "Team Inbox"
 			},
 			"updates": {
 				"blockDialogConfirm": "Block sender",
@@ -12703,7 +12818,9 @@
 				"topics": "Topics",
 				"transactional": "Transactional",
 				"webhooks": "Webhooks",
-				"knowledgeGraph": "Graph explorer"
+				"knowledgeGraph": "Graph explorer",
+				"responseTargets": "Response targets",
+				"responseAnalytics": "Response analytics"
 			},
 			"sections": {
 				"audience": "Audience",
@@ -13774,6 +13891,18 @@
 					"groupTitle": "New assignments",
 					"singleTitle": "Assigned to you"
 				},
+				"slaBreach": {
+					"group": "{count} conversations are past their reply target",
+					"notificationBody": {
+						"noSubject": "No subject · {assignedByName} is still waiting",
+						"withSubject": "{subject} · {assignedByName} is still waiting"
+					},
+					"notificationTitle": "Reply overdue",
+					"toast": {
+						"noSubject": "Reply overdue — No subject · from {assignedByName}",
+						"withSubject": "Reply overdue — {subject} · from {assignedByName}"
+					}
+				},
 				"toast": {
 					"group": "{count} conversations assigned to you",
 					"single": {
@@ -13796,6 +13925,14 @@
 			"resolved": {
 				"empty": "No resolved conversations yet.",
 				"label": "Resolved"
+			},
+			"slaDueSoon": {
+				"empty": "No reply is due within the next hour.",
+				"label": "Due soon"
+			},
+			"slaOverdue": {
+				"empty": "Nothing is past its reply target.",
+				"label": "Overdue"
 			},
 			"snoozed": {
 				"empty": "Nothing is snoozed. It will reappear here when it does.",
@@ -16112,7 +16249,8 @@
 		"inboxSorts": {
 			"needsAttention": "needs attention",
 			"oldestWaiting": "oldest waiting",
-			"newest": "newest first"
+			"newest": "newest first",
+			"due": "due first"
 		},
 		"inboxWaiting": {
 			"minutes": "waiting {minutes}m",
@@ -16247,6 +16385,25 @@
 				"archive": "Archive conversation",
 				"heading": "This conversation",
 				"reply": "Reply"
+			}
+		},
+		"inboxSla": {
+			"dueIn": {
+				"days": "due in {days}d",
+				"daysHours": "due in {days}d {hours}h",
+				"hours": "due in {hours}h",
+				"minutes": "due in {minutes}m"
+			},
+			"duration": {
+				"daysHours": "{days}d {hours}h",
+				"hoursMinutes": "{hours}h {minutes}m",
+				"minutes": "{minutes}m"
+			},
+			"overdue": {
+				"days": "overdue {days}d",
+				"daysHours": "overdue {days}d {hours}h",
+				"hours": "overdue {hours}h",
+				"minutes": "overdue {minutes}m"
 			}
 		}
 	},
