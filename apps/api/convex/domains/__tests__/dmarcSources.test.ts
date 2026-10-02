@@ -92,4 +92,13 @@ describe('rollUpDmarcRows', () => {
 		// The failing day 20 days back ends the streak after the clean day.
 		expect(rollup.readiness.streakDays).toBe(1);
 	});
+
+	it('judges readiness on the last 30 days whatever window is shown', () => {
+		const now = Date.UTC(2026, 9, 2, 12);
+		const rows = [row({ rangeBeginMs: now - 45 * DAY_MS, count: 10 })];
+		const wide = rollUpDmarcRows(rows, own, 90, now);
+		expect(wide.messageCount).toBe(10);
+		expect(wide.readiness).toMatchObject({ streakDays: 0, latestAlignedRate: null });
+		expect(rollUpDmarcRows(rows, own, 30, now).readiness).toEqual(wide.readiness);
+	});
 });

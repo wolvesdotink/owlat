@@ -280,6 +280,8 @@ export function rollUpDmarcRows(
 		trend,
 		sources: sources.slice(0, MAX_SOURCES),
 		sourceCount: sources.length,
-		readiness: readinessFrom(dailySeries(Math.max(windowDays, READINESS_WINDOW_DAYS))),
+		// The same 30 days whichever window is shown, so switching to 90 days
+		// neither stretches the streak nor revives a long-quiet domain.
+		readiness: readinessFrom(dailySeries(READINESS_WINDOW_DAYS)),
 	};
 }
