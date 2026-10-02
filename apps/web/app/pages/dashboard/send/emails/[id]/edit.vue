@@ -306,7 +306,10 @@ async function handlePublicationToggle() {
 								<template #iconLeft>
 									<Icon name="lucide:languages" class="w-4 h-4" />
 								</template>
-								{{ t('dashboard.send.emails.detail.edit.translations') }}
+								<!-- Icon-only below 2xl, where the toolbar is short of room. -->
+								<span class="max-2xl:sr-only">{{
+									t('dashboard.send.emails.detail.edit.translations')
+								}}</span>
 							</UiButton>
 						</template>
 					</EmailBuilder>

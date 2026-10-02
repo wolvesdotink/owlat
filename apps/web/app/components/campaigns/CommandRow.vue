@@ -187,9 +187,11 @@ const hasMetrics = computed(() => props.row.openRate != null || props.row.clickR
 					</div>
 				</div>
 
-				<!-- Primary action (attention verb / A/B results / view) + overflow -->
+				<!-- Primary action (attention verb / A/B results / view) + overflow.
+				     One fixed width from sm up, so the metric columns line up across
+				     rows whatever the verb ("Review" vs "Pick winner"). -->
 				<div
-					class="shrink-0 flex items-center justify-end gap-1"
+					class="shrink-0 flex items-center justify-end gap-1 sm:w-44"
 					@click.stop
 					@keydown.enter.stop
 					@keydown.space.stop
@@ -215,11 +217,12 @@ const hasMetrics = computed(() => props.row.openRate != null || props.row.clickR
 						<Icon name="lucide:arrow-right" class="w-4 h-4" />
 					</button>
 
-					<!-- Row overflow: Duplicate + Delete (preserved from the old list) -->
+					<!-- Row overflow: Duplicate + Delete (preserved from the old list).
+					     Touch screens never hover, so there it stays visible. -->
 					<UiDropdownMenu v-model:open="dropdownOpen">
 						<template #trigger>
 							<button
-								class="ui-hover-reveal p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
+								class="ui-hover-reveal pointer-coarse:opacity-100! pointer-coarse:pointer-events-auto! p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
 								:aria-label="t('components.campaigns.commandRow.moreActions')"
 							>
 								<Icon name="lucide:more-vertical" class="w-4 h-4" />

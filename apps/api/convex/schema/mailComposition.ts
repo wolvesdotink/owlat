@@ -97,6 +97,12 @@ export const mailCompositionTables = {
 		// client did not record a baseline) → no learning happens, exactly today's
 		// behaviour. Snapshotted ONCE and never overwritten.
 		aiDraftBaseline: v.optional(v.object({ text: v.string(), capturedAt: v.number() })),
+		// An AI text holding `[[...]]` gap placeholders went into this draft (a
+		// Reply Queue draft waiting for files, say). Such a draft has no Answer
+		// mode ask session, so this is what keeps its send guard on after a
+		// reload (mail/ai/composeDraftStore.ts assertNoAnswerGaps). Set by
+		// `drafts.update` from the AI text it records; never cleared.
+		isGapGuarded: v.optional(v.boolean()),
 
 		// Team-inbox attribution: the BetterAuth user id of the teammate who fired
 		// the send, stamped by `drafts.send` from the acting session. Copied onto

@@ -137,12 +137,16 @@ export const needsReplyClarificationQuestionValidator = v.object({
 	fileCandidates: v.optional(v.array(clarificationFileCandidateValidator)),
 	// The owner's answer — absent until answered. `source` is absent on rows
 	// written before memory answers were shown in the Postbox (read as 'user').
+	// A file answer keeps its first file in `file`; `files` lists them all when
+	// the owner gave more than one (the invoices for four bookings). Read both
+	// through `answerFiles` (inbox/clarificationAnswers.ts).
 	answer: v.optional(
 		v.object({
 			value: v.string(),
 			at: v.number(),
 			source: v.optional(v.union(v.literal('user'), v.literal('memory'))),
 			file: v.optional(clarificationFileRefValidator),
+			files: v.optional(v.array(clarificationFileRefValidator)),
 		})
 	),
 });

@@ -315,11 +315,16 @@ const OUTLOOK_RESET_STYLE =
  * block. The background stays transparent so the body sits directly on the
  * message card instead of in a second box. "Designed" mail (marketing /
  * newsletter layouts) never receives this — its own layout stays untouched.
+ *
+ * `pre` wraps: a plain-text body arrives as a `<pre style="white-space:pre-wrap">`,
+ * but the sanitizer allowlist has no `white-space`, so the inline style is
+ * stripped and every plain-text message ran off the card on one line.
  */
 function simpleMeasureStyle(quoteBorder: string, quoteText: string): string {
 	return (
 		'html,body{background:transparent;}' +
 		'body{max-width:72ch;font-size:15px;line-height:1.6;overflow-wrap:break-word;}' +
+		'pre{white-space:pre-wrap;}' +
 		'body>:first-child{margin-top:0;}body>:last-child{margin-bottom:0;}' +
 		`blockquote{margin:0.5em 0 0.5em 0.25em;padding-left:0.9em;border-left:2px solid ${quoteBorder};color:${quoteText};}`
 	);

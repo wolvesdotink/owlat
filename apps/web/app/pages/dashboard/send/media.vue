@@ -137,27 +137,24 @@ const copyUrl = async (url: string) => {
 
 <template>
 	<div
-		class="p-6 max-w-7xl mx-auto"
+		class="mx-auto w-full max-w-page p-6 lg:p-8"
 		@dragover="handleDragOver"
 		@dragleave="handleDragLeave"
 		@drop="handleDrop"
 	>
-		<!-- Header -->
-		<div class="flex items-center justify-between mb-6">
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					{{ t('dashboard.send.media.title') }}
-				</h1>
-				<p v-if="stats" class="text-sm text-text-secondary mt-1">
-					{{
-						t('dashboard.send.media.stats', {
+		<UiPageHeader
+			:title="t('dashboard.send.media.title')"
+			:description="
+				stats
+					? t('dashboard.send.media.stats', {
 							count: stats.totalCount,
 							size: formatCompactFileSize(stats.totalBytes),
 						})
-					}}
-				</p>
-			</div>
-			<div v-if="isAdmin" class="flex items-center gap-2">
+					: undefined
+			"
+			class="mb-6"
+		>
+			<template v-if="isAdmin" #actions>
 				<UiButton
 					v-if="selectedAssets.size > 0"
 					variant="outline"
@@ -184,15 +181,16 @@ const copyUrl = async (url: string) => {
 					accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml,application/pdf,video/*,audio/*"
 					@change="handleFileSelect"
 				/>
-			</div>
-		</div>
+			</template>
+		</UiPageHeader>
 
-		<!-- Filters -->
-		<div class="flex items-center gap-3 mb-6">
-			<div class="flex-1 max-w-sm">
+		<!-- Filters: wraps on phones, where search takes its own full-width line
+		     instead of being squeezed to nothing by the type chips. -->
+		<div class="flex flex-wrap items-center gap-3 mb-6">
+			<div class="w-full sm:w-auto sm:flex-1 sm:max-w-sm">
 				<UiInput v-model="searchQuery" :placeholder="t('dashboard.send.media.searchPlaceholder')" />
 			</div>
-			<div class="flex items-center gap-1.5">
+			<div class="flex flex-wrap items-center gap-1.5">
 				<button
 					v-for="opt in typeFilterOptions"
 					:key="opt.value"
@@ -283,7 +281,10 @@ const copyUrl = async (url: string) => {
 		</div>
 
 		<!-- Asset grid -->
-		<div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+		<div
+			v-else
+			class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-4"
+		>
 			<div
 				v-for="asset in assets"
 				:key="asset._id"
@@ -295,7 +296,7 @@ const copyUrl = async (url: string) => {
 				<div v-if="isAdmin" class="absolute top-2 left-2 z-10">
 					<UiCheckbox
 						:model-value="selectedAssets.has(asset._id)"
-						class="opacity-0 group-hover:opacity-100 transition-opacity"
+						class="opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity"
 						:class="{ '!opacity-100': selectedAssets.has(asset._id) }"
 						@update:model-value="toggleSelect(asset._id)"
 						@click.stop

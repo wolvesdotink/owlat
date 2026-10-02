@@ -24,8 +24,12 @@ const { t } = useI18n();
 		<p role="status" class="sr-only">{{ t('dashboard.inbox.detail.loading') }}</p>
 
 		<!-- Header -->
-		<div class="flex items-start justify-between gap-4 mb-6">
-			<div v-if="preview" class="min-w-0" data-testid="thread-detail-skeleton-preview">
+		<div class="mb-6 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+			<div
+				v-if="preview"
+				class="min-w-0 flex-[1_1_24rem]"
+				data-testid="thread-detail-skeleton-preview"
+			>
 				<!-- A placeholder, so not the page's h1: the loaded header owns that. -->
 				<p
 					class="text-2xl font-medium tracking-[-0.02em] text-text-primary break-words"
@@ -64,9 +68,12 @@ const { t } = useI18n();
 			</div>
 		</div>
 
-		<div class="grid grid-cols-1 lg:grid-cols-3 gap-6" aria-hidden="true">
+		<div
+			class="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-[minmax(0,1fr)_20rem] gap-6"
+			aria-hidden="true"
+		>
 			<!-- Messages -->
-			<div class="lg:col-span-2 space-y-4">
+			<div class="lg:col-span-2 xl:col-span-1 space-y-4">
 				<div v-for="i in 2" :key="i" class="card">
 					<div class="flex items-center gap-3 mb-4">
 						<UiSkeleton circle class="h-8 w-8 shrink-0" />

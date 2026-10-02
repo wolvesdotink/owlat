@@ -23,6 +23,9 @@ import {
 	enableFeatures,
 } from '../../__tests__/factories';
 import { expectScheduledFailure } from '../../__tests__/helpers/scheduledFailures';
+import { findDraftGaps } from '@owlat/shared/answerMode';
+import { fitGapPlaceholders } from '../ai/composeDraftPolicy';
+import { MAX_CLARIFICATION_DRAFT_CHARS } from '../../inbox/clarificationAnswers';
 
 const sessionMocks = vi.hoisted(() => ({
 	userId: 'user-A',
@@ -409,6 +412,95 @@ describe('mail.needsReplyClarify.answerClarification — Answer mode', () => {
 			answers: [{ question: 'Which invoice should I attach?', answer: 'invoice-2026-08.pdf' }],
 		});
 		expect(draftContext?.fileNotes).toContain('"invoice-2026-08.pdf" will be attached');
+	});
+
+	// "Send us the invoices for our four bookings": one question, several files.
+	it('stores several files on one answer and tells the draft about each', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const threadId = await seedThreadWithClarification(t, 'user-A', [fileQuestion]);
+		const { mailboxId, messageId } = await threadRefs(t, threadId);
+		const first = await insertAttachment(t, mailboxId, messageId);
+		const second = await t.run(async (ctx) =>
+			ctx.db.insert('mailAttachments', {
+				mailboxId,
+				messageId,
+				filename: 'invoice-2026-09.pdf',
+				contentType: 'application/pdf',
+				size: 91_000,
+				receivedAt: Date.now(),
+				fromAddress: 'ann@acme.com',
+				partIndex: '3',
+			})
+		);
+
+		await t.mutation(api.mail.ai.needsReplyClarify.answerClarification, {
+			threadId,
+			answers: [
+				{
+					questionId: 'clarify_1',
+					files: [
+						{ source: 'mailAttachment', id: first, filename: 'a.pdf' },
+						{ source: 'mailAttachment', id: second, filename: 'b.pdf' },
+					],
+				},
+			],
+		});
+
+		await t.run(async (ctx) => {
+			const answer = (await ctx.db.get(threadId))!.needsReply!.clarification!.questions[0]!.answer;
+			expect(answer).toMatchObject({
+				value: 'invoice-2026-08.pdf, invoice-2026-09.pdf',
+				file: { source: 'mailAttachment', id: first, filename: 'invoice-2026-08.pdf' },
+				files: [
+					{ source: 'mailAttachment', id: first, filename: 'invoice-2026-08.pdf' },
+					{ source: 'mailAttachment', id: second, filename: 'invoice-2026-09.pdf' },
+				],
+			});
+		});
+		const draftContext = await t.query(internal.mail.ai.needsReplyClarify.getClarificationContext, {
+			threadId,
+		});
+		expect(draftContext?.fileNotes).toContain('"invoice-2026-08.pdf" will be attached');
+		expect(draftContext?.fileNotes).toContain('"invoice-2026-09.pdf" will be attached');
+		expect(draftContext?.fileGaps).toEqual([]);
+	});
+
+	it('leaves a placeholder for a file question answered around', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const threadId = await seedThreadWithClarification(t, 'user-A', [
+			fileQuestion,
+			{ id: 'clarify_2', slotType: 'decision', text: 'Invoice monthly?', attribution: ATTRIBUTION },
+		]);
+
+		await t.mutation(api.mail.ai.needsReplyClarify.answerClarification, {
+			threadId,
+			answers: [{ questionId: 'clarify_2', value: 'Yes' }],
+		});
+
+		const draftContext = await t.query(internal.mail.ai.needsReplyClarify.getClarificationContext, {
+			threadId,
+		});
+		expect(draftContext?.fileGaps).toEqual(['[[Which invoice should I attach]]']);
+	});
+
+	it('stores a long starter reply with its file placeholder whole', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const threadId = await seedThreadWithClarification(t, 'user-A', [fileQuestion]);
+		const gap = '[[Provide the invoices]]';
+
+		await t.mutation(internal.mail.ai.needsReplyClarify.persistClarificationDraft, {
+			threadId,
+			draft: fitGapPlaceholders('A'.repeat(4000), [gap], MAX_CLARIFICATION_DRAFT_CHARS),
+		});
+
+		const stored = await t.run(
+			async (ctx) => (await ctx.db.get(threadId))!.needsReply!.clarification!.draft!
+		);
+		expect(stored.length).toBeLessThanOrEqual(MAX_CLARIFICATION_DRAFT_CHARS);
+		expect(findDraftGaps(stored).map((g) => g.label)).toEqual(['Provide the invoices']);
 	});
 
 	it("refuses another person's mail attachment and a file on a non-file question", async () => {

@@ -18,6 +18,7 @@ export interface EmittedAskAnswer {
 	questionId: string;
 	value?: string;
 	file?: { source: 'upload' | 'semanticFile' | 'mailAttachment'; id: string; filename: string };
+	files?: { source: 'upload' | 'semanticFile' | 'mailAttachment'; id: string; filename: string }[];
 	keepCopy?: boolean;
 }
 

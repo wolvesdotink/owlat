@@ -224,6 +224,19 @@ describe('createConvexSubscription', () => {
 		expect(sub.isLoading.value).toBe(false);
 	});
 
+	it('drops the error of args it no longer reads when it switches to skip', async () => {
+		const ready = ref(true);
+		const sub = scope.run(() => subscribeTo(() => (ready.value ? { id: 1 } : 'skip')))!;
+		sub.fail('ArgumentValidationError: bad args');
+		expect(sub.error.value).not.toBeNull();
+
+		ready.value = false;
+		await nextTick();
+		expect(sub.error.value).toBeNull();
+		expect(sub.isLoading.value).toBe(true);
+		expect(sub.isRefetching.value).toBe(false);
+	});
+
 	it('releases a transiently failed subscription and reopens it in the background', () => {
 		vi.useFakeTimers();
 		try {

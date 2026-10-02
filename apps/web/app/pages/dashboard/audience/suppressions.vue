@@ -180,7 +180,7 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<div class="mx-auto w-full max-w-page p-6 lg:p-8">
 		<!-- Header -->
 		<AudienceTabs />
 		<div class="mb-6">
@@ -231,7 +231,7 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 							<h3 class="font-medium text-text-primary mb-1">
 								{{ t('dashboard.audience.suppressions.info.title') }}
 							</h3>
-							<p class="text-sm text-text-secondary">
+							<p class="text-sm text-text-secondary max-w-prose">
 								{{ t('dashboard.audience.suppressions.info.body') }}
 							</p>
 						</div>

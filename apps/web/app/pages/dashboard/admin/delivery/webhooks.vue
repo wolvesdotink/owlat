@@ -175,21 +175,18 @@ async function handleGuardSave() {
 
 <template>
 	<div>
-		<!-- Header -->
-		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					{{ t('dashboard.admin.delivery.webhooks.title') }}
-				</h1>
-				<p class="mt-1 text-text-secondary">
-					{{ t('dashboard.admin.delivery.webhooks.lede') }}
-				</p>
-			</div>
-			<UiButton class="gap-2" @click="openCreateModal">
-				<Icon name="lucide:plus" class="w-4 h-4" />
-				{{ t('dashboard.admin.delivery.webhooks.create') }}
-			</UiButton>
-		</div>
+		<UiPageHeader
+			class="mb-6"
+			:title="t('dashboard.admin.delivery.webhooks.title')"
+			:description="t('dashboard.admin.delivery.webhooks.lede')"
+		>
+			<template #actions>
+				<UiButton class="gap-2" @click="openCreateModal">
+					<Icon name="lucide:plus" class="w-4 h-4" />
+					{{ t('dashboard.admin.delivery.webhooks.create') }}
+				</UiButton>
+			</template>
+		</UiPageHeader>
 
 		<!-- Info Box -->
 		<div class="card p-4 mb-6 bg-brand-subtle/50 border-brand/20">

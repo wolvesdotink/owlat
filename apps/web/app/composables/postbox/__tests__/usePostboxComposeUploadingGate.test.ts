@@ -77,7 +77,7 @@ beforeEach(() => {
 	identitiesData = ref([]);
 
 	vi.stubGlobal('useConvexQuery', (fn: unknown) => {
-		if (fn === 'drafts.get') return { data: hydrateData };
+		if (fn === 'drafts.get') return { data: hydrateData, error: ref(null) };
 		if (fn === 'signatures.list') return { data: signaturesData };
 		if (fn === 'identities.list') return { data: identitiesData };
 		return { data: ref(undefined) };
@@ -146,5 +146,35 @@ describe('usePostboxCompose — send blocked while uploading', () => {
 		const result = await composer.send();
 		expect(sendRun).toHaveBeenCalledOnce();
 		expect(result).toEqual({ undoToken: 'tok', sendAt: 123 });
+	});
+});
+
+// Issue #1131 review: a Reply Queue draft the AI left gaps in has no ask
+// session, and after a reload the composer's in-memory AI draft is gone. The
+// row's `isGapGuarded` is what keeps its gaps holding Send.
+describe('usePostboxCompose — a reopened draft the AI left gaps in', () => {
+	it('restores the gap guard from the saved row', async () => {
+		const usePostboxCompose = await loadComposable();
+		const composer = effectScope().run(() =>
+			usePostboxCompose({ mailboxId: 'mbx-1' as never, draftId: 'draft-1' as never })
+		)!;
+		expect(composer.isGapGuarded.value).toBe(false);
+		hydrateData.value = {
+			state: 'draft',
+			bodyHtml: '<p>Hi Jana, [[Provide the invoices]]</p>',
+			isGapGuarded: true,
+		};
+		await nextTick();
+		expect(composer.isGapGuarded.value).toBe(true);
+	});
+
+	it('stays off for a draft the AI never left gaps in', async () => {
+		const usePostboxCompose = await loadComposable();
+		const composer = effectScope().run(() =>
+			usePostboxCompose({ mailboxId: 'mbx-1' as never, draftId: 'draft-1' as never })
+		)!;
+		hydrateData.value = { state: 'draft', bodyHtml: '<p>See [[wiki link]]</p>' };
+		await nextTick();
+		expect(composer.isGapGuarded.value).toBe(false);
 	});
 });

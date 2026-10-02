@@ -3,8 +3,8 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { answerCounts } from '~/composables/useAnswerQueue';
 import { answerItemMatches } from '~/utils/answerQueue';
-import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
+import { useWorkbenchKeyboard } from '~/composables/useWorkbenchKeyboard';
 import type { TodayChange, TodayLine, TodaySource } from '~/utils/todayDigest';
 import { TODAY_PEEK, peekKey, threadHref } from '~/utils/todayPeek';
 import {
@@ -292,40 +292,19 @@ function replyAnywayFromPeek(source: TodaySource) {
 }
 
 // ── Keyboard: j/k between lines, Enter opens, d done, r reply anyway ───────
-function onKeydown(event: KeyboardEvent) {
-	if (route.query['peek'] || event.metaKey || event.ctrlKey || event.altKey) return;
-	if (isEditableTarget(event.target)) return;
-	const all = Array.from(document.querySelectorAll<HTMLElement>('[data-today-key]'));
-	if (all.length === 0) return;
-	const active = document.activeElement?.closest<HTMLElement>('[data-today-key]') ?? null;
-	const index = active ? all.indexOf(active) : -1;
-	if (event.key === 'j' || event.key === 'k') {
-		event.preventDefault();
-		const next = event.key === 'j' ? Math.min(all.length - 1, index + 1) : Math.max(0, index - 1);
-		all[next]?.focus();
-		return;
-	}
-	if (!active) return;
-	const line = allLines.value.find((l) => l.key === active.dataset['todayKey']);
-	if (!line) return;
-	if (event.key === 'Enter') {
-		event.preventDefault();
-		openPeek(line.sources);
-	} else if (event.key === 'd') {
-		event.preventDefault();
-		all[index + 1]?.focus();
-		void doneLine(line);
-	} else if (event.key === 'r' && 'inboundMessageId' in line && line.inboundMessageId) {
-		event.preventDefault();
-		void replyAnyway(line);
-	}
-}
-onMounted(() => window.addEventListener('keydown', onKeydown));
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
+useWorkbenchKeyboard({
+	lines: () => allLines.value,
+	peekOpen: () => !!route.query['peek'],
+	open: (line) => openPeek(line.sources),
+	done: (line) => void doneLine(line),
+	replyAnyway: (line) => void replyAnyway(line),
+});
 </script>
 
 <template>
-	<div class="mx-auto w-full max-w-4xl px-6 pb-16 pt-8 lg:px-10">
+	<div class="mx-auto w-full max-w-4xl px-6 pb-16 pt-8 lg:px-10 2xl:max-w-page">
+		<!-- One reading column up to 2xl; from there the page grows to the shared
+		     page cap and the panel below splits into two columns. -->
 		<header>
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 				<I18nT
@@ -424,9 +403,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 				:key="scope"
 				role="tabpanel"
 				:aria-labelledby="`workbench-tab-${scope}`"
-				class="pt-6"
+				class="pt-6 2xl:grid 2xl:grid-cols-[minmax(0,1fr)_24rem] 2xl:grid-rows-[auto_1fr] 2xl:items-start 2xl:gap-x-8"
 			>
+				<!-- From 2xl the inbox summary and "Filed away" sit in a side column
+				     beside what needs doing (answer, what changed, updates). The DOM
+				     order stays the single-column reading order. -->
 				<TodayScopeHeader
+					class="2xl:col-start-2 2xl:row-start-1"
 					:name="scopeName"
 					:slot="inbox?.slot ?? null"
 					:address="inbox?.address ?? null"
@@ -446,7 +429,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 					@mark-seen="markAllSeen"
 				/>
 
-				<div class="mt-4">
+				<div class="mt-4 2xl:col-start-1 2xl:row-span-2 2xl:row-start-1 2xl:mt-0">
 					<TodayAnswerCard
 						:items="scopedAnswer"
 						:counts="scopedCounts"
@@ -454,28 +437,32 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 						:queue-href="answerHref"
 						:inbox-name="scopeName"
 					/>
-				</div>
 
-				<TodayChanges
-					:changes="model.changed"
-					:hidden="model.changedHidden"
-					:more-href="moreHref"
-					@done="doneLine"
-				/>
+					<TodayChanges
+						:changes="model.changed"
+						:hidden="model.changedHidden"
+						:more-href="moreHref"
+						@done="doneLine"
+					/>
 
-				<div v-if="workbench.isLoading.value && !hasAnything" class="mt-8 space-y-2">
-					<UiSkeleton class="h-3 w-24" />
-					<UiSkeleton class="h-24 w-full rounded-xl" />
-				</div>
-				<template v-else>
+					<div v-if="workbench.isLoading.value && !hasAnything" class="mt-8 space-y-2">
+						<UiSkeleton class="h-3 w-24" />
+						<UiSkeleton class="h-24 w-full rounded-xl" />
+					</div>
 					<TodayUpdates
+						v-else
 						:model="model"
 						:more-href="moreHref"
 						@done="doneLine"
 						@reply-anyway="replyAnyway"
 					/>
-					<TodayFiledAway :model="model" :scope="scope" />
-				</template>
+				</div>
+				<TodayFiledAway
+					v-if="!(workbench.isLoading.value && !hasAnything)"
+					class="2xl:col-start-2 2xl:row-start-2"
+					:model="model"
+					:scope="scope"
+				/>
 			</div>
 		</template>
 

@@ -47,6 +47,8 @@ const availableChannelKinds = computed(() =>
 );
 
 const addMenuOpen = ref(false);
+// UiPageHeader puts its actions on the title row from lg (1024px) up.
+const isLgViewport = useMediaQuery('(min-width: 1024px)');
 const addingChannel = ref(false);
 
 const { run: addChannelConfig } = useBackendOperation(api.unifiedMessages.updateChannelConfig, {
@@ -93,61 +95,46 @@ const handleChannelError = (message: string) => {
 
 <template>
 	<div>
-		<!-- Header -->
-		<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
-			<div class="flex items-center gap-4">
-				<UiIconBox icon="lucide:radio" size="xl" variant="brand" rounded="full" />
-				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ t('dashboard.admin.instance.channels.title') }}
-					</h1>
-					<I18nT
-						keypath="dashboard.admin.instance.channels.subtitle"
-						tag="p"
-						scope="global"
-						class="text-text-secondary mt-1 max-w-xl"
-					>
-						<template #transportLink>
-							<NuxtLink
-								to="/dashboard/admin/delivery/transport"
-								class="text-brand hover:underline"
-								>{{ t('dashboard.admin.instance.channels.subtitleTransportLink') }}</NuxtLink
-							>
-						</template>
-						<template #domainLink>
-							<NuxtLink to="/dashboard/admin/delivery/domains" class="text-brand hover:underline">{{
-								t('dashboard.admin.instance.channels.subtitleDomainLink')
-							}}</NuxtLink>
-						</template>
-					</I18nT>
-				</div>
-			</div>
+		<UiPageHeader :title="t('dashboard.admin.instance.channels.title')" class="mb-8">
+			<template #description>
+				<I18nT keypath="dashboard.admin.instance.channels.subtitle" tag="p" scope="global">
+					<template #transportLink>
+						<NuxtLink to="/dashboard/admin/delivery/transport" class="text-brand hover:underline">{{
+							t('dashboard.admin.instance.channels.subtitleTransportLink')
+						}}</NuxtLink>
+					</template>
+					<template #domainLink>
+						<NuxtLink to="/dashboard/admin/delivery/domains" class="text-brand hover:underline">{{
+							t('dashboard.admin.instance.channels.subtitleDomainLink')
+						}}</NuxtLink>
+					</template>
+				</I18nT>
+			</template>
 
-			<!-- Add channel (admin-only) -->
-			<UiDropdownMenu
-				v-if="canManageChannels && availableChannelKinds.length"
-				v-model:open="addMenuOpen"
-				position="right"
-				class="shrink-0"
-			>
-				<template #trigger>
-					<UiButton variant="secondary" :loading="addingChannel">
-						<template #iconLeft>
-							<Icon name="lucide:plus" class="w-4 h-4" />
-						</template>
-						{{ t('dashboard.admin.instance.channels.addChannel') }}
-					</UiButton>
-				</template>
-				<UiDropdownMenuItem
-					v-for="option in availableChannelKinds"
-					:key="option.kind"
-					:icon="option.icon"
-					@click="addChannel(option.kind)"
-				>
-					{{ localized(option.label) }}
-				</UiDropdownMenuItem>
-			</UiDropdownMenu>
-		</div>
+			<!-- Add channel (admin-only). Below lg the header actions wrap under
+			     the title at the left edge, where a right-aligned menu would open
+			     off-screen, so it aligns left there. -->
+			<template v-if="canManageChannels && availableChannelKinds.length" #actions>
+				<UiDropdownMenu v-model:open="addMenuOpen" :position="isLgViewport ? 'right' : 'left'">
+					<template #trigger>
+						<UiButton variant="secondary" :loading="addingChannel">
+							<template #iconLeft>
+								<Icon name="lucide:plus" class="w-4 h-4" />
+							</template>
+							{{ t('dashboard.admin.instance.channels.addChannel') }}
+						</UiButton>
+					</template>
+					<UiDropdownMenuItem
+						v-for="option in availableChannelKinds"
+						:key="option.kind"
+						:icon="option.icon"
+						@click="addChannel(option.kind)"
+					>
+						{{ localized(option.label) }}
+					</UiDropdownMenuItem>
+				</UiDropdownMenu>
+			</template>
+		</UiPageHeader>
 
 		<!-- First-load skeleton (shaped like the channel list) -->
 		<div v-if="isLoading && !channels" class="card overflow-hidden">
@@ -158,9 +145,11 @@ const handleChannelError = (message: string) => {
 		<UiQueryBoundary v-else-if="channelsError" :error="channelsError" @retry="refetchChannels" />
 
 		<template v-else>
-			<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+			<!-- The page is wide (registry): list and sidebar sit side by side once
+			     the content area has room for both, and stack below that. -->
+			<div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
 				<!-- Main content: channel list -->
-				<div class="lg:col-span-2 space-y-4">
+				<div class="xl:col-span-2 space-y-4">
 					<!-- Channel Cards -->
 					<ChannelsChannelConfigCard
 						v-for="channel in channels"
@@ -198,8 +187,8 @@ const handleChannelError = (message: string) => {
 					</UiCard>
 				</div>
 
-				<!-- Sidebar -->
-				<div class="space-y-4">
+				<!-- Sidebar: two columns under the list while stacked -->
+				<div class="grid gap-4 content-start items-start md:grid-cols-2 xl:grid-cols-1">
 					<!-- Channel Overview -->
 					<UiCard>
 						<div class="flex items-center gap-3 mb-4">

@@ -258,10 +258,12 @@ export function createConvexSubscription<Args, Update>(
 		// There is no pending request, so only stay in the loading state if
 		// nothing was ever delivered (initial skip, waiting for real args). Once a
 		// value has loaded, a transition to skip is idle: never leave
-		// isLoading=true with no request in flight.
+		// isLoading=true with no request in flight. A failure belongs to the args
+		// that produced it: a skipped query reads nothing, so nothing has failed.
 		if (args === 'skip') {
 			isLoading.value = !options.hasData();
 			isRefetching.value = false;
+			error.value = null;
 			return;
 		}
 

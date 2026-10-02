@@ -309,6 +309,7 @@ async function changePreset(
 		<UiQueryBoundary
 			:loading="isLoading"
 			:error="error"
+			@retry="refetch"
 			:error-title="t('dashboard.admin.delivery.advanced.controls.errorTitle')"
 			:error-message="t('dashboard.admin.delivery.advanced.controls.errorMessage')"
 		>

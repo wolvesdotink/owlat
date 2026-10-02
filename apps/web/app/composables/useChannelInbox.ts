@@ -38,6 +38,7 @@ export function useChannelInbox(limit = 50) {
 		data: messages,
 		isLoading,
 		error,
+		refetch,
 	} = useConvexQuery(api.unifiedMessages.listRecent, () => ({
 		...(channelFilter.value ? { channel: channelFilter.value } : {}),
 		limit,
@@ -89,6 +90,7 @@ export function useChannelInbox(limit = 50) {
 		timeline,
 		isLoading,
 		error,
+		refetch,
 		channelFilter,
 		channels: UNIFIED_TIMELINE_CHANNELS,
 		channelIcon,

@@ -59,27 +59,26 @@ const formatCreatedAt = (createdAt: number) =>
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
-		<!-- Header -->
-		<div class="flex items-center justify-between mb-6">
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					{{ t('dashboard.files.index.title') }}
-				</h1>
-				<p class="text-text-secondary mt-1 text-sm">
-					{{ t('dashboard.files.index.subtitle') }}
-				</p>
-			</div>
-			<UiButton v-if="isAdmin" @click="showUploadModal = true">
-				<Icon name="lucide:upload" class="w-4 h-4 mr-2" />
-				{{ t('common.upload') }}
-			</UiButton>
-		</div>
+	<div class="mx-auto w-full max-w-page p-6 lg:p-8">
+		<UiPageHeader
+			:title="t('dashboard.files.index.title')"
+			:description="t('dashboard.files.index.subtitle')"
+			class="mb-6"
+		>
+			<template v-if="isAdmin" #actions>
+				<UiButton @click="showUploadModal = true">
+					<Icon name="lucide:upload" class="w-4 h-4 mr-2" />
+					{{ t('common.upload') }}
+				</UiButton>
+			</template>
+		</UiPageHeader>
 
-		<!-- Filters bar -->
-		<div class="flex items-center gap-3 mb-6">
+		<!-- Filters bar. Wraps below sm: the search takes its own row and the
+		     source chips scroll sideways instead of pushing the view toggle (and
+		     the page) off the right edge of a phone. -->
+		<div class="flex flex-wrap items-center gap-3 mb-6">
 			<!-- Search -->
-			<div class="flex-1 max-w-sm">
+			<div class="w-full sm:w-auto sm:flex-1 sm:max-w-sm">
 				<div class="relative">
 					<Icon
 						name="lucide:search"
@@ -90,17 +89,19 @@ const formatCreatedAt = (createdAt: number) =>
 						type="text"
 						class="input input-sm pl-9"
 						:placeholder="t('dashboard.files.index.searchPlaceholder')"
+						:aria-label="t('dashboard.files.index.searchPlaceholder')"
 					/>
 				</div>
 			</div>
 
 			<!-- Source filter -->
-			<div class="flex items-center gap-1.5">
+			<div class="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto sm:flex-none">
 				<button
 					v-for="opt in sourceFilterOptions"
 					:key="String(opt.value)"
 					type="button"
-					class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-xs font-medium rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
+					:aria-pressed="sourceFilter === opt.value"
 					:class="
 						sourceFilter === opt.value
 							? 'bg-brand/10 border-brand text-brand'
@@ -114,8 +115,11 @@ const formatCreatedAt = (createdAt: number) =>
 			</div>
 
 			<!-- View toggle -->
-			<div class="flex items-center border border-border-subtle rounded-lg overflow-hidden ml-auto">
+			<div
+				class="flex shrink-0 items-center border border-border-subtle rounded-lg overflow-hidden ml-auto"
+			>
 				<button
+					type="button"
 					class="p-2 transition-colors hover:bg-bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
 					:class="
 						viewMode === 'grid'
@@ -123,11 +127,14 @@ const formatCreatedAt = (createdAt: number) =>
 							: 'text-text-tertiary hover:text-text-primary'
 					"
 					:title="t('dashboard.files.index.gridView')"
+					:aria-label="t('dashboard.files.index.gridView')"
+					:aria-pressed="viewMode === 'grid'"
 					@click="viewMode = 'grid'"
 				>
 					<Icon name="lucide:layout-grid" class="w-4 h-4" />
 				</button>
 				<button
+					type="button"
 					class="p-2 transition-colors hover:bg-bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
 					:class="
 						viewMode === 'list'
@@ -135,6 +142,8 @@ const formatCreatedAt = (createdAt: number) =>
 							: 'text-text-tertiary hover:text-text-primary'
 					"
 					:title="t('dashboard.files.index.listView')"
+					:aria-label="t('dashboard.files.index.listView')"
+					:aria-pressed="viewMode === 'list'"
 					@click="viewMode = 'list'"
 				>
 					<Icon name="lucide:list" class="w-4 h-4" />
@@ -186,7 +195,7 @@ const formatCreatedAt = (createdAt: number) =>
 			<!-- Grid view -->
 			<div
 				v-else-if="viewMode === 'grid'"
-				class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+				class="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-4"
 			>
 				<FilesFileCard
 					v-for="file in files"
@@ -204,7 +213,7 @@ const formatCreatedAt = (createdAt: number) =>
 			</div>
 
 			<!-- List view -->
-			<div v-else class="bg-bg-elevated shadow-surface-1 rounded-(--radius-card) overflow-hidden">
+			<div v-else class="bg-bg-elevated shadow-surface-1 rounded-(--radius-card) overflow-x-auto">
 				<table class="w-full">
 					<thead>
 						<tr class="border-b border-border-subtle">
@@ -214,7 +223,7 @@ const formatCreatedAt = (createdAt: number) =>
 								{{ t('common.name') }}
 							</th>
 							<th
-								class="text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-4 py-3"
+								class="hidden md:table-cell text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-4 py-3"
 							>
 								{{ t('dashboard.files.index.columns.type') }}
 							</th>
@@ -224,7 +233,7 @@ const formatCreatedAt = (createdAt: number) =>
 								{{ t('dashboard.files.index.columns.size') }}
 							</th>
 							<th
-								class="text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-4 py-3"
+								class="hidden sm:table-cell text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-4 py-3"
 							>
 								{{ t('dashboard.files.index.columns.source') }}
 							</th>
@@ -258,20 +267,33 @@ const formatCreatedAt = (createdAt: number) =>
 										"
 										class="w-5 h-5 text-text-tertiary flex-shrink-0"
 									/>
-									<span class="text-sm font-medium text-text-primary truncate max-w-xs">
+									<!-- The row is clickable for the pointer; the link is the
+									     keyboard (and middle-click) way in. -->
+									<NuxtLink
+										:to="`/dashboard/files/${file._id}`"
+										class="text-sm font-medium text-text-primary truncate max-w-xs rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+										@click.stop
+									>
 										{{ file.title || file.filename }}
-									</span>
+									</NuxtLink>
 								</div>
 							</td>
+							<!-- The raw subtype can be 50 characters of OOXML
+							     (vnd.openxmlformats-officedocument…); cap it so it does
+							     not squeeze size and date onto two lines. -->
+							<td class="hidden md:table-cell px-4 py-3">
+								<span
+									class="block max-w-[12rem] truncate text-sm text-text-secondary"
+									:title="file.mimeType"
+									>{{ file.mimeType.split('/').pop() }}</span
+								>
+							</td>
 							<td class="px-4 py-3">
-								<span class="text-sm text-text-secondary">{{
-									file.mimeType.split('/').pop()
+								<span class="whitespace-nowrap text-sm text-text-secondary">{{
+									formatSize(file.fileSize)
 								}}</span>
 							</td>
-							<td class="px-4 py-3">
-								<span class="text-sm text-text-secondary">{{ formatSize(file.fileSize) }}</span>
-							</td>
-							<td class="px-4 py-3">
+							<td class="hidden sm:table-cell px-4 py-3">
 								<span
 									class="inline-flex items-center gap-1 px-2 py-0.5 text-2xs font-medium rounded-full"
 									:class="{
@@ -284,7 +306,7 @@ const formatCreatedAt = (createdAt: number) =>
 								</span>
 							</td>
 							<td class="px-4 py-3">
-								<span class="text-sm text-text-secondary">
+								<span class="whitespace-nowrap text-sm text-text-secondary">
 									{{ formatCreatedAt(file.createdAt) }}
 								</span>
 							</td>

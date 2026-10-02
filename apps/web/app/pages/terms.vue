@@ -10,11 +10,14 @@ const operatorName = workspaceDisplayName(config);
 
 <template>
 	<div class="min-h-screen bg-bg-deep flex flex-col">
-		<!-- Navigation -->
-		<nav class="flex items-center justify-between px-6 py-4 lg:px-12">
-			<NuxtLink to="/" class="font-display text-2xl text-text-primary">Owlat</NuxtLink>
-			<UiButton variant="ghost" to="/auth/login">{{ t('terms.signIn') }}</UiButton>
-		</nav>
+		<!-- Navigation: same gutters and width as the article, so the logo and "Sign in" frame
+		     the text instead of sitting at the far edges of a wide screen. -->
+		<div class="px-6 lg:px-12">
+			<nav class="mx-auto flex max-w-3xl items-center justify-between py-4">
+				<NuxtLink to="/" class="font-display text-2xl text-text-primary">Owlat</NuxtLink>
+				<UiButton variant="ghost" to="/auth/login">{{ t('terms.signIn') }}</UiButton>
+			</nav>
+		</div>
 
 		<!-- Content -->
 		<main class="flex-1 px-6 py-12 lg:px-12">

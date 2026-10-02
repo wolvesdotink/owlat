@@ -21,6 +21,18 @@ export type AnswerItem =
 	| { id: string; source: 'mention'; at: number; mention: MentionEntry };
 
 /**
+ * A queue source whose read failed. `id` is the filter chip it belongs to (a
+ * mailbox id, `team`, `chat`), or `inboxes` for the inbox list every mail read
+ * hangs off.
+ */
+export interface AnswerQueueFailure {
+	id: string;
+	/** The failed inbox, for a mail source. */
+	inbox: InboxIdentity<Id<'mailboxes'>> | null;
+	error: Error;
+}
+
+/**
  * Everything waiting on the viewer's answer, in one ranked list:
  * reply-queue rows from every inbox they read, the team inbox's agent drafts
  * (owners/admins with the team inbox on) and unread chat mentions (where chat
@@ -114,21 +126,27 @@ export function useAnswerQueue(opts: { enabled?: () => boolean } = {}) {
 
 	const counts = computed(() => answerCounts(items.value));
 
-	// The first source whose read failed. A queue with nothing in it and a
-	// failed source is not "all clear" (#721); Try again re-reads the failed ones.
-	// Only the sources the list reads count: a query switched to 'skip' keeps
-	// its last error, so a team review that failed before the inbox feature
-	// went off (or the viewer lost admin) would report an error nothing can
-	// clear.
+	// Every source whose read failed, keyed like the filter chips. A queue with
+	// nothing in it and a failed source is not "all clear" (#721); one with rows
+	// names what is missing from it (#1099). Try again re-reads the failed ones.
+	// The inbox list only counts while the queue is read: unlike the others it
+	// is not skipped when the queue is idle.
 	const sources = () => [
-		...(reading.value ? [inboxRead] : []),
-		...mailResults.values(),
-		...(teamEnabled.value ? [review] : []),
-		...(chatEnabled.value ? [mentions] : []),
+		...(reading.value ? [{ id: 'inboxes', read: inboxRead }] : []),
+		...[...mailResults].map(([id, read]) => ({ id, read })),
+		{ id: 'team', read: review },
+		{ id: 'chat', read: mentions },
 	];
-	const error = computed(() => sources().find((s) => s.error.value)?.error.value ?? null);
+	const failures = computed<AnswerQueueFailure[]>(() =>
+		sources().flatMap(({ id, read }) => {
+			const error = read.error.value;
+			if (!error) return [];
+			return [{ id, inbox: byId.value.get(id as Id<'mailboxes'>) ?? null, error }];
+		})
+	);
+	const error = computed(() => failures.value[0]?.error ?? null);
 	const refetch = () => {
-		for (const s of sources()) if (s.error.value) s.refetch();
+		for (const { read } of sources()) if (read.error.value) read.refetch();
 	};
 
 	return {
@@ -137,6 +155,7 @@ export function useAnswerQueue(opts: { enabled?: () => boolean } = {}) {
 		counts,
 		isLoading,
 		error,
+		failures,
 		refetch,
 		teamEnabled,
 		chatEnabled,

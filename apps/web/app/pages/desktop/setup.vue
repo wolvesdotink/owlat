@@ -93,9 +93,11 @@ const port = ref('22');
 const username = ref('root');
 const authMethod = ref<'key' | 'password'>('key');
 const password = ref('');
-// Key auth: point at a key file (read natively, `~` expanded) or paste the key.
+// Key auth: choose a key file in the native picker, or paste the key. The
+// path is display only: the native side reads the file the user picked, never
+// one this page names.
 const keySource = ref<'file' | 'paste'>('file');
-const keyPath = ref('~/.ssh/id_ed25519');
+const keyPath = ref('');
 const privateKey = ref('');
 const passphrase = ref('');
 const installDir = ref('/opt/owlat');
@@ -157,11 +159,11 @@ function normalizeLocalPath(input: string): string {
 	return input.trim().replace(/\\ /g, ' ');
 }
 
-/** Native file picker for the key path (starts in ~/.ssh). */
+/** Native file picker for the key file (starts in ~/.ssh). */
 async function browseKeyFile() {
 	try {
-		const mod = await import('@owlat/desktop/src/dialog');
-		const picked = await mod.pickSshKeyFile();
+		const mod = await import('@owlat/desktop/src/ssh');
+		const picked = await mod.sshPickKeyFile(t('desktop.setup.fields.chooseKeyFileTitle'));
 		if (picked) keyPath.value = picked;
 	} catch {
 		// Not running inside Tauri.
@@ -175,7 +177,7 @@ async function onConnect() {
 		return (connectError.value = t('desktop.setup.errors.usernameRequired'));
 	if (authMethod.value === 'password' && !password.value)
 		return (connectError.value = t('desktop.setup.errors.passwordRequired'));
-	if (authMethod.value === 'key' && keySource.value === 'file' && !keyPath.value.trim())
+	if (authMethod.value === 'key' && keySource.value === 'file' && !keyPath.value)
 		return (connectError.value = t('desktop.setup.errors.keyPathRequired'));
 	if (authMethod.value === 'key' && keySource.value === 'paste' && !privateKey.value.trim())
 		return (connectError.value = t('desktop.setup.errors.privateKeyRequired'));
@@ -185,7 +187,7 @@ async function onConnect() {
 			? keySource.value === 'file'
 				? ({
 						type: 'key',
-						privateKeyPath: keyPath.value.trim(),
+						usePickedKeyFile: true,
 						passphrase: passphrase.value || undefined,
 					} as const)
 				: ({
@@ -644,10 +646,13 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							<template v-if="authMethod === 'key'">
 								<div v-if="keySource === 'file'" class="flex gap-2">
 									<input
-										v-model="keyPath"
-										:class="[inputClass, 'font-mono text-xs']"
-										placeholder="~/.ssh/id_ed25519"
+										:value="keyPath"
+										readonly
+										:class="[inputClass, 'cursor-pointer', keyPath && 'font-mono text-xs']"
+										:placeholder="t('desktop.setup.fields.noKeyFile')"
+										:aria-label="t('desktop.setup.fields.keyFile')"
 										:disabled="busy"
+										@click="browseKeyFile"
 									/>
 									<UiButton
 										variant="outline"

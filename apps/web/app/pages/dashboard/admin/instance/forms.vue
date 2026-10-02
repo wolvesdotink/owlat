@@ -97,23 +97,18 @@ watch([isAddDirty, isEditDirty], ([add, edit]) => setHasChanges(add || edit), { 
 
 <template>
 	<div>
-		<!-- Header -->
-		<div class="mb-6">
-			<div class="flex items-center justify-between">
-				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ t('dashboard.admin.instance.forms.title') }}
-					</h1>
-					<p class="mt-1 text-text-secondary">
-						{{ t('dashboard.admin.instance.forms.subtitle') }}
-					</p>
-				</div>
+		<UiPageHeader
+			:title="t('dashboard.admin.instance.forms.title')"
+			:description="t('dashboard.admin.instance.forms.subtitle')"
+			class="mb-6"
+		>
+			<template #actions>
 				<UiButton class="gap-2" @click="isAddModalOpen = true">
 					<Icon name="lucide:plus" class="w-4 h-4" />
 					{{ t('dashboard.admin.instance.forms.newForm') }}
 				</UiButton>
-			</div>
-		</div>
+			</template>
+		</UiPageHeader>
 
 		<!--
 			First load: a content-shaped placeholder at the geometry of the form

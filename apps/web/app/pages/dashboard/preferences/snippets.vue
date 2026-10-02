@@ -100,7 +100,9 @@ async function confirmRemove() {
 
 <template>
 	<div>
-		<header class="mb-6 flex items-center justify-between gap-4">
+		<header
+			class="mb-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+		>
 			<I18nT
 				keypath="dashboard.preferences.snippets.intro"
 				tag="p"
@@ -110,7 +112,7 @@ async function confirmRemove() {
 				<template #slashKey><code>/</code></template>
 				<template #firstNameToken><code v-text="firstNamePlaceholder" /></template>
 			</I18nT>
-			<UiButton v-if="mailboxId && !editor" type="button" @click="startCreate">
+			<UiButton v-if="mailboxId && !editor" type="button" class="shrink-0" @click="startCreate">
 				<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
 				{{ t('dashboard.preferences.snippets.newSnippet') }}
 			</UiButton>

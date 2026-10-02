@@ -57,17 +57,17 @@ const durationOptions = computed(() =>
 			<!-- Enable A/B Test Toggle -->
 			<div
 				:class="[
-					'flex items-center justify-between p-4 border rounded-lg cursor-pointer transition-colors',
+					'flex items-center justify-between gap-4 p-4 border rounded-lg cursor-pointer transition-colors',
 					abTestEnabled
 						? 'border-brand bg-brand/5'
 						: 'border-border-subtle hover:border-border-default',
 				]"
 				@click="abTestEnabled = !abTestEnabled"
 			>
-				<div class="flex items-center gap-3">
+				<div class="flex min-w-0 items-center gap-3">
 					<div
 						:class="[
-							'p-2 rounded-lg',
+							'p-2 rounded-lg shrink-0',
 							abTestEnabled ? 'bg-brand/20 text-brand' : 'bg-bg-surface text-text-tertiary',
 						]"
 					>
@@ -86,7 +86,7 @@ const durationOptions = computed(() =>
 				<UiSwitch
 					:model-value="abTestEnabled"
 					:label="t('components.campaigns.abTestConfig.enableSwitchLabel')"
-					class="pointer-events-none"
+					class="pointer-events-none shrink-0"
 					tabindex="-1"
 				/>
 			</div>

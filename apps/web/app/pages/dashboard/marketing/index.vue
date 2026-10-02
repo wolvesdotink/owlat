@@ -84,7 +84,7 @@ function handleNewCampaign() {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<div class="mx-auto w-full max-w-page p-6 lg:p-8">
 		<UiPageHeader :title="t('dashboard.marketing.title')" class="mb-8">
 			<template #actions>
 				<button

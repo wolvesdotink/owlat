@@ -139,23 +139,16 @@ async function confirmPurge() {
 
 <template>
 	<div class="space-y-6">
-		<!-- Header -->
-		<div class="flex items-start justify-between gap-4">
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					{{ t('dashboard.admin.team.inboxes.title') }}
-				</h1>
-				<I18nT
-					keypath="dashboard.admin.team.inboxes.intro"
-					tag="p"
-					scope="global"
-					class="mt-1 text-text-secondary"
-				>
+		<!-- The shared header: with up to three actions (and German labels) a
+		     hand-rolled row squeezed the title and intro into a ~90px column. -->
+		<UiPageHeader :title="t('dashboard.admin.team.inboxes.title')">
+			<template #description>
+				<I18nT keypath="dashboard.admin.team.inboxes.intro" tag="p" scope="global">
 					<template #supportAddress><code>support@</code></template>
 					<template #salesAddress><code>sales@</code></template>
 				</I18nT>
-			</div>
-			<div v-if="!showAdminGate" class="mt-9 flex shrink-0 items-center gap-2">
+			</template>
+			<template v-if="!showAdminGate" #actions>
 				<UiButton
 					v-if="sealedMailEnabled"
 					variant="secondary"
@@ -178,8 +171,8 @@ async function confirmPurge() {
 					<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
 					{{ t('dashboard.admin.team.inboxes.newInbox') }}
 				</UiButton>
-			</div>
-		</div>
+			</template>
+		</UiPageHeader>
 
 		<!-- Admins-only gate -->
 		<div

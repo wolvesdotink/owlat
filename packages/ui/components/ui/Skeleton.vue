@@ -21,7 +21,7 @@ withDefaults(
 		/** Render as a circle (avatar placeholder) instead of a rounded bar. */
 		circle?: boolean;
 	}>(),
-	{ circle: false },
+	{ circle: false }
 );
 </script>
 

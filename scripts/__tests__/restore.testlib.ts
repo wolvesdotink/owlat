@@ -328,6 +328,23 @@ export async function makeHost(composeFile = COMPOSE_FILE): Promise<Host> {
 	};
 }
 
+/** The timestamp `stubDate` makes backup.sh and restore.sh name their files with. */
+export const FIXED_STAMP = '20260101-000000';
+
+/**
+ * Pins the second-resolution timestamp both scripts name their outputs by, so
+ * a test can put a file at that name first. Every other `date` call runs as
+ * usual.
+ */
+export async function stubDate(host: Host): Promise<void> {
+	const stub = join(host.root, 'bin', 'date');
+	await writeFile(
+		stub,
+		`#!/usr/bin/env bash\nif [[ "$*" == *"%Y%m%d-%H%M%S"* ]]; then echo ${FIXED_STAMP}; else exec /bin/date "$@"; fi\n`
+	);
+	await chmod(stub, 0o755);
+}
+
 export interface Install extends Host {
 	readonly archive: string;
 	/** The directory of this install's live `owlat_<suffix>` volume. */

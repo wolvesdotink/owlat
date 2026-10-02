@@ -157,7 +157,7 @@ const {
 		-->
 		<div
 			v-if="isLoading && !organizationSettings"
-			class="grid gap-8 lg:grid-cols-2"
+			class="grid gap-8 xl:grid-cols-[minmax(0,28rem)_minmax(0,1fr)]"
 			role="status"
 			aria-busy="true"
 			:aria-label="t('dashboard.admin.instance.emailTheme.loading')"
@@ -173,8 +173,11 @@ const {
 			</div>
 		</div>
 
-		<!-- Settings Content -->
-		<div v-else class="grid gap-8 lg:grid-cols-2">
+		<!-- Settings Content. The page is wide (registry) so the preview column
+		     can show the email at its real width: the form keeps a fixed column
+		     and the preview takes the rest, otherwise the width slider (400–800px)
+		     moved nothing inside a ~380px half. Stacked below xl. -->
+		<div v-else class="grid gap-8 xl:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] items-start">
 			<!-- Settings Form -->
 			<div class="card p-0 overflow-hidden">
 				<div class="px-6 py-4 border-b border-border-subtle">

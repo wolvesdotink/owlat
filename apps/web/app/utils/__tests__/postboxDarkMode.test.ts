@@ -224,6 +224,12 @@ describe('buildBaseStyle', () => {
 		}
 	});
 
+	it('simple mail wraps <pre> (the sanitizer strips the inline white-space of a text body)', () => {
+		for (const scheme of ['light', 'dark'] as const) {
+			expect(buildBaseStyle(scheme, 'simple')).toContain('pre{white-space:pre-wrap;}');
+		}
+	});
+
 	it('designed mail keeps its own canvas (no measure cap, no transparency)', () => {
 		expect(buildBaseStyle('light', 'designed')).toBe(buildBaseStyle('light'));
 		expect(buildBaseStyle('dark', 'designed')).toBe(buildBaseStyle('dark'));
