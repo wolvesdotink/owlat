@@ -44,6 +44,8 @@ export const selectModule: ImapCommandModule<SelectArgs> = {
 
 				const result = await deps.convex.query(fn.selectFolder, {
 					folderId: target._id,
+					// The current backend never counts; a v0.6.7 backend still does
+					// unless told not to, reading every message below the first unseen.
 					skipFirstUnseenSeq: true,
 				});
 

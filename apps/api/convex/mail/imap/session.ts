@@ -33,12 +33,18 @@ export const listFolders = internalQuery({
 	},
 });
 
-/** SELECT response — returns folder metadata and the message count
- *  required for `* {n} EXISTS / RECENT / OK [UNSEEN]`.
+/** SELECT response — returns folder metadata and the first unseen message
+ *  for `* {n} EXISTS / RECENT / OK [UNSEEN]`.
  *
- *  `skipFirstUnseenSeq`: the caller numbers `firstUnseenUid` itself (the IMAP
- *  server does, against the sequence view it already holds), so the count of
- *  every message below it is not read. */
+ *  `[UNSEEN n]` is a sequence number (RFC 3501 §7.1), which the IMAP server
+ *  works out from `firstUnseenUid` against the sequence view it already holds.
+ *  This used to count every message below the first unseen one as well, a
+ *  `.collect()` of up to the whole folder, for an IMAP server that did not
+ *  pass `skipFirstUnseenSeq`. It no longer does. The argument is still
+ *  accepted, and ignored, because every IMAP server since v0.6.7 sends it. A
+ *  v0.6.6 server, which read the count, leaves `[UNSEEN n]` out of its SELECT
+ *  reply until its container is updated (RFC 3501 §6.3.1: the client then
+ *  finds the first unseen message with SEARCH). */
 export const selectFolder = internalQuery({
 	args: { folderId: v.id('mailFolders'), skipFirstUnseenSeq: v.optional(v.boolean()) },
 	handler: async (ctx, args) => {
@@ -54,20 +60,6 @@ export const selectFolder = internalQuery({
 			.withIndex('by_folder_and_seen', (q) => q.eq('folderId', args.folderId).eq('flagSeen', false))
 			.order('asc')
 			.first();
-		// RFC 3501 §7.1: `* OK [UNSEEN n]` reports the *message sequence
-		// number* of the first unseen message, not its UID. The sequence
-		// number is the 1-based position by UID ascending, i.e. one more
-		// than the count of messages with a smaller UID.
-		let firstUnseenSeq: number | undefined;
-		if (firstUnseen && args.skipFirstUnseenSeq !== true) {
-			const earlier = await ctx.db
-				.query('mailMessages')
-				.withIndex('by_folder_and_uid', (q) =>
-					q.eq('folderId', args.folderId).lt('uid', firstUnseen.uid)
-				)
-				.collect(); // bounded: one folder's messages in a UID range
-			firstUnseenSeq = earlier.length + 1;
-		}
 		return {
 			folder: {
 				_id: folder._id,
@@ -80,7 +72,6 @@ export const selectFolder = internalQuery({
 				unseenCount: folder.unseenCount,
 			},
 			firstUnseenUid: firstUnseen?.uid,
-			firstUnseenSeq,
 		};
 	},
 });

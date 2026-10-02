@@ -9,8 +9,8 @@
  *
  * The EXPUNGE and MOVE cases run twice: once with the session's sequence view
  * (`SelectedState.view`, set by SELECT), which numbers each expunge against what
- * the client was told, and once without it (a state built by hand), which falls
- * back to the folder's own numbering.
+ * the client was told, and once without it (a state built by hand), which
+ * numbers against the folder as the command read it.
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -46,10 +46,7 @@ interface Row {
 interface FakeOptions {
 	/** Fail the n-th (1-based) call to this mutation. */
 	readonly failCall?: { readonly name: string; readonly call: number };
-	/**
-	 * Model an older backend: its last EXPUNGE page carries no cursor and its
-	 * pages carry no `uids`, so the sequence numbers come from the folder.
-	 */
+	/** Model a v0.6.7 backend: its last EXPUNGE page carries no cursor. */
 	readonly legacyExpungeCursor?: boolean;
 }
 
@@ -126,7 +123,7 @@ function fakeBackend(rows: Row[], options: FakeOptions = {}) {
 			}
 			const done = page.length < 100;
 			if (options.legacyExpungeCursor && done) {
-				return { sequenceNumbers, modseq: 9, done };
+				return { sequenceNumbers, uids, modseq: 9, done };
 			}
 			return {
 				sequenceNumbers,
