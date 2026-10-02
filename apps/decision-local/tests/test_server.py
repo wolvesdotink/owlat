@@ -9,7 +9,7 @@ from http.server import ThreadingHTTPServer
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from server import DEADLINE_HEADER, EngineState, make_handler  # noqa: E402
+from server import DEADLINE_HEADER, ClientGone, EngineState, make_handler  # noqa: E402
 
 MODEL = "fastino/GLiNER2.5-multi-Decide"
 
@@ -66,6 +66,14 @@ class ServerTest(unittest.TestCase):
             return response.status, json.loads(response.read()), response.headers
         finally:
             connection.close()
+
+    def wait_for(self, condition, timeout=2.0):
+        until = time.monotonic() + timeout
+        while time.monotonic() < until:
+            if condition():
+                return True
+            time.sleep(0.02)
+        return condition()
 
     def hold_slot(self, port, engine):
         """Start one request that occupies the inference slot until released."""
@@ -132,6 +140,40 @@ class ServerTest(unittest.TestCase):
         time.sleep(0.2)
         # Only the request that held the slot ever scored.
         self.assertEqual(engine.calls, 1)
+
+    def test_a_request_whose_client_disconnects_early_leaves_the_queue_and_never_runs(self):
+        gate = threading.Event()
+        engine = FakeEngine(gate=gate)
+        base = self.start(engine)
+        holder = self.hold_slot(base, engine)
+        # A long deadline, so only the disconnect can explain the request leaving.
+        connection = http.client.HTTPConnection("127.0.0.1", base, timeout=10)
+        connection.request(
+            "POST",
+            "/v1/decide",
+            body=json.dumps(DECIDE_BODY).encode(),
+            headers={"content-type": "application/json", DEADLINE_HEADER: "30000"},
+        )
+        self.assertTrue(self.wait_for(lambda: self.state._waiting == 1))
+        time.sleep(0.1)
+        connection.close()
+        # It gives up its place within a poll or two, long before the deadline.
+        self.assertTrue(self.wait_for(lambda: self.state._waiting == 0, timeout=1))
+        gate.set()
+        holder.join(5)
+        time.sleep(0.2)
+        self.assertEqual(engine.calls, 1)
+
+    def test_a_client_gone_when_the_slot_frees_never_reaches_the_model(self):
+        state = EngineState(FakeEngine())
+        ran = []
+        with self.assertRaises(ClientGone):
+            state.run_exclusive(lambda: ran.append(1), None, lambda: True)
+        self.assertEqual(ran, [])
+        self.assertEqual(state._waiting, 0)
+        # The slot was handed back.
+        self.assertTrue(state.lock.acquire(blocking=False))
+        state.lock.release()
 
     def test_a_full_queue_turns_the_next_request_away(self):
         gate = threading.Event()

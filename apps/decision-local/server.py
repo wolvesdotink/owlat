@@ -20,7 +20,9 @@ forward pass over the CPU cores, and a second concurrent pass would only make
 both slower. The queue in front of that lock is BOUNDED, and so is every wait
 in it. The Convex adapter sends its remaining budget in `x-decision-deadline-ms`,
 and a request gives up its place before that budget runs out, because past it
-the caller has hung up and the answer would go nowhere. Without the bound, an
+the caller has hung up and the answer would go nowhere. A caller that cancels
+before its deadline closes the connection, and a queued request notices that
+on its next poll of the lock and leaves. Without the bound, an
 abandoned request still ran its forward pass after its client had left, and a
 burst of retries kept the one slot busy with work nobody was waiting for. A
 full queue or an expired wait answers 503 with a short Retry-After, which the
@@ -33,6 +35,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import select
+import socket
 import threading
 import time
 from http import HTTPStatus
@@ -54,8 +58,34 @@ DEADLINE_HEADER = "x-decision-deadline-ms"
 DEADLINE_MARGIN_SECONDS = 0.25
 
 
+# How often a queued request looks up from the lock to check its client is
+# still there. Short enough that a cancelled request frees its place promptly.
+DISCONNECT_POLL_SECONDS = 0.1
+
+
 class EngineBusy(Exception):
     """No inference slot within the request's time. Maps to a retriable 503."""
+
+
+class ClientGone(Exception):
+    """The caller hung up while its request waited. Nobody is left to answer."""
+
+
+def client_disconnected(sock: socket.socket) -> bool:
+    """True once the peer has closed the connection.
+
+    The request body has been read in full, so a readable socket means one of
+    two things. Either the peer closed it (a zero-byte peek) or it sent more
+    bytes, which only a pipelining client does and which mean it is still
+    there. Peeking leaves those bytes for the next request.
+    """
+    try:
+        readable, _, _ = select.select([sock], [], [], 0)
+        if not readable:
+            return False
+        return sock.recv(1, socket.MSG_PEEK) == b""
+    except (OSError, ValueError):
+        return True
 
 
 def _env_number(name: str, default: float) -> float:
@@ -89,12 +119,21 @@ class EngineState:
         self._admission = threading.Lock()
         self._waiting = 0
 
-    def run_exclusive(self, work: Callable[[], Any], deadline: float | None) -> Any:
+    def run_exclusive(
+        self,
+        work: Callable[[], Any],
+        deadline: float | None,
+        is_gone: Callable[[], bool] | None = None,
+    ) -> Any:
         """Run `work` in the single inference slot, or raise EngineBusy.
 
         `deadline` is a `time.monotonic()` value after which the caller is no
         longer listening. The wait ends before it, so a request whose client
-        has given up never reaches the model.
+        has given up never reaches the model. A caller can also give up EARLY,
+        by cancelling (the adapter's abort signal closes the socket long before
+        the deadline). `is_gone` reports that, and it is checked on every poll
+        of the lock and once more after the slot is won. A cancelled request
+        therefore leaves the queue within one poll and never runs the model.
         """
         now = time.monotonic()
         give_up = now + self.max_wait_seconds
@@ -107,13 +146,23 @@ class EngineState:
                 raise EngineBusy(f"The engine is busy: {self._waiting} requests are already waiting.")
             self._waiting += 1
         try:
-            acquired = self.lock.acquire(timeout=give_up - now)
+            while True:
+                if is_gone is not None and is_gone():
+                    raise ClientGone()
+                remaining = give_up - time.monotonic()
+                if remaining <= 0:
+                    raise EngineBusy(
+                        "The engine is busy and could not answer within the request's deadline."
+                    )
+                if self.lock.acquire(timeout=min(DISCONNECT_POLL_SECONDS, remaining)):
+                    break
         finally:
             with self._admission:
                 self._waiting -= 1
-        if not acquired:
-            raise EngineBusy("The engine is busy and could not answer within the request's deadline.")
         try:
+            # The slot may have come free just as the caller left.
+            if is_gone is not None and is_gone():
+                raise ClientGone()
             return work()
         finally:
             self.lock.release()
@@ -228,10 +277,19 @@ def make_handler(state: EngineState) -> Callable[..., BaseHTTPRequestHandler]:
             def score(text: str, heads: Any) -> Any:
                 # Validation already ran inside `decide`; only the forward pass
                 # waits for the slot.
-                return state.run_exclusive(lambda: state.engine.score(text, heads), deadline)
+                return state.run_exclusive(
+                    lambda: state.engine.score(text, heads),
+                    deadline,
+                    lambda: client_disconnected(self.connection),
+                )
 
             try:
                 result = decide(body, score, state.engine.model_id)
+            except ClientGone:
+                # Nobody to answer. Drop the connection instead of writing to it.
+                self.close_connection = True
+                log.info("%s dropped a request whose client disconnected", self.address_string())
+                return
             except EngineBusy as exc:
                 self._error(
                     HTTPStatus.SERVICE_UNAVAILABLE,
