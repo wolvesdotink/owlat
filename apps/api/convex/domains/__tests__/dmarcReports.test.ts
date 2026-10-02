@@ -248,6 +248,78 @@ describe('getDomainSummary', () => {
 		});
 	});
 
+	it('withholds readiness when a truncated read cuts into the streak', async () => {
+		// Thirteen clean days of 1,200 rows, then a fourteenth day of 4,500 clean
+		// rows and, earlier that day, one row of 100,000 failing messages. Read
+		// newest first, both the row cap and the byte budget stop inside day 14,
+		// before the failing row.
+		const t = convexTest(schema, modules);
+		const domainId = await seedDomain(t);
+		const now = Date.now();
+		const dayStart = (daysAgo: number) => Math.floor((now - daysAgo * DAY_MS) / DAY_MS) * DAY_MS;
+		await t.run(async (ctx) => {
+			const base = {
+				policyDomain: 'example.com',
+				sourceIp: '203.0.113.10',
+				count: 1,
+				disposition: 'none' as const,
+				isDkimAligned: true,
+				isSpfAligned: true,
+				headerFrom: 'example.com',
+				dkimResults: [],
+				spfResults: [],
+				overrideReasons: [],
+			};
+			for (let day = 1; day <= 14; day++) {
+				const rangeBeginMs = dayStart(day) + 12 * 60 * 60 * 1000;
+				const reportDocId = await ctx.db.insert('dmarcReports', {
+					reporterOrgName: 'Receiver',
+					reportId: `r-${day}`,
+					policyDomain: 'example.com',
+					rangeBeginMs,
+					rangeEndMs: rangeBeginMs + 3_600_000,
+					messageCount: 0,
+					alignedCount: 0,
+					recordCount: 0,
+					receivedAt: now,
+				});
+				for (let i = 0; i < (day === 14 ? 4_500 : 1_200); i++) {
+					await ctx.db.insert('dmarcReportRecords', { ...base, reportDocId, rangeBeginMs });
+				}
+			}
+			const reportDocId = await ctx.db.insert('dmarcReports', {
+				reporterOrgName: 'Receiver',
+				reportId: 'r-14-early',
+				policyDomain: 'example.com',
+				rangeBeginMs: dayStart(14),
+				rangeEndMs: dayStart(14) + 3_600_000,
+				messageCount: 100_000,
+				alignedCount: 0,
+				recordCount: 1,
+				receivedAt: now,
+			});
+			await ctx.db.insert('dmarcReportRecords', {
+				...base,
+				reportDocId,
+				rangeBeginMs: dayStart(14),
+				sourceIp: '198.51.100.77',
+				count: 100_000,
+				isDkimAligned: false,
+				isSpfAligned: false,
+			});
+		});
+
+		const summary = await t
+			.withIdentity(identity)
+			.query(api.domains.dmarcReports.getDomainSummary, { domainId, windowDays: 30 });
+		expect(summary.isTruncated).toBe(true);
+		expect(summary.readiness).toMatchObject({
+			streakDays: 13,
+			isReady: false,
+			isIncomplete: true,
+		});
+	}, 120_000);
+
 	it('stops reading rows at the byte budget and says the view is truncated', async () => {
 		const t = convexTest(schema, modules);
 		await seedDomain(t);
@@ -259,20 +331,36 @@ describe('getDomainSummary', () => {
 		const read = (limits: { maxRows: number; maxBytes: number }) =>
 			t.run(async (ctx) => {
 				const result = await readSummaryRows(ctx, 'example.com', 0, limits);
-				return { count: result.rows.length, isTruncated: result.isTruncated };
+				return {
+					count: result.rows.length,
+					isTruncated: result.isTruncated,
+					omitted: result.firstOmittedRangeBeginMs,
+				};
 			});
 		expect(await read({ maxRows: 100, maxBytes: 1024 * 1024 })).toEqual({
 			count: 9,
 			isTruncated: false,
+			omitted: null,
 		});
 		// Roughly two rows' worth of bytes: the newest rows are kept, the rest cut.
 		const { count, isTruncated } = await read({ maxRows: 100, maxBytes: 1_200 });
 		expect(isTruncated).toBe(true);
 		expect(count).toBeGreaterThan(0);
 		expect(count).toBeLessThan(9);
+		// Three rows a report, newest first: the first row left out belongs to the
+		// report two days back, so that day is where the complete days end.
+		const dayTwo = await t.run(async (ctx) =>
+			ctx.db
+				.query('dmarcReports')
+				.withIndex('by_reporter_report_id', (q) =>
+					q.eq('reporterOrgName', 'google.com').eq('reportId', 'r-2')
+				)
+				.first()
+		);
 		expect(await read({ maxRows: 4, maxBytes: 1024 * 1024 })).toEqual({
 			count: 4,
 			isTruncated: true,
+			omitted: dayTwo?.rangeBeginMs,
 		});
 	});
 

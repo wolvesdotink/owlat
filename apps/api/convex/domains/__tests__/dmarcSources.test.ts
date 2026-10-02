@@ -76,6 +76,26 @@ describe('readinessFrom', () => {
 		expect(readinessFrom(trend).isReady).toBe(true);
 		expect(readinessFrom([]).latestAlignedRate).toBeNull();
 	});
+
+	it('stops unjudged at the first day whose rows were not all read', () => {
+		const trend = Array.from({ length: READY_STREAK_DAYS + 2 }, (_, i) => ({
+			date: `2026-09-${String(i + 1).padStart(2, '0')}`,
+			messageCount: 10,
+			alignedCount: 10,
+		}));
+		// Days 1 to 3 are incomplete: thirteen complete clean days remain.
+		const readiness = readinessFrom(trend, '2026-09-03');
+		expect(readiness).toMatchObject({ streakDays: 13, isReady: false, isIncomplete: true });
+		expect(readinessFrom(trend)).toMatchObject({ isReady: true, isIncomplete: false });
+		// A failing complete day ends the run before the cut: nothing incomplete about it.
+		const failing = trend.map((point) =>
+			point.date === '2026-09-10' ? { ...point, alignedCount: 0 } : point
+		);
+		expect(readinessFrom(failing, '2026-09-03')).toMatchObject({
+			streakDays: 6,
+			isIncomplete: false,
+		});
+	});
 });
 
 describe('rollUpDmarcRows', () => {
@@ -100,5 +120,21 @@ describe('rollUpDmarcRows', () => {
 		expect(wide.messageCount).toBe(10);
 		expect(wide.readiness).toMatchObject({ streakDays: 0, latestAlignedRate: null });
 		expect(rollUpDmarcRows(rows, own, 30, now).readiness).toEqual(wide.readiness);
+	});
+
+	it('leaves the day of the first omitted row and older ones out of readiness', () => {
+		const now = Date.UTC(2026, 9, 2, 12);
+		const rows = Array.from({ length: READY_STREAK_DAYS }, (_, i) =>
+			row({ rangeBeginMs: now - (i + 1) * DAY_MS })
+		);
+		// The read stopped inside the oldest day: its failing rows were never seen.
+		const omitted = now - READY_STREAK_DAYS * DAY_MS - 60_000;
+		const truncated = rollUpDmarcRows(rows, own, 30, now, omitted);
+		expect(truncated.readiness).toMatchObject({
+			streakDays: READY_STREAK_DAYS - 1,
+			isReady: false,
+			isIncomplete: true,
+		});
+		expect(rollUpDmarcRows(rows, own, 30, now).readiness.isReady).toBe(true);
 	});
 });

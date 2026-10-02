@@ -303,7 +303,8 @@ function nextPolicy(policy: DmarcPolicy): DmarcPolicy | null {
  * A domain's report rows since `since`, newest first, until either the row cap
  * or the byte budget is reached. Sizes are estimated from the JSON encoding,
  * which tracks what Convex counts closely enough for a budget well under its
- * limit.
+ * limit. A truncated read names the range start of the first row it left out,
+ * which marks where the complete days end.
  */
 export async function readSummaryRows(
 	ctx: QueryCtx,
@@ -313,7 +314,11 @@ export async function readSummaryRows(
 		maxRows: MAX_ROWS_PER_SUMMARY,
 		maxBytes: MAX_ROW_BYTES_PER_SUMMARY,
 	}
-): Promise<{ rows: Doc<'dmarcReportRecords'>[]; isTruncated: boolean }> {
+): Promise<{
+	rows: Doc<'dmarcReportRecords'>[];
+	isTruncated: boolean;
+	firstOmittedRangeBeginMs: number | null;
+}> {
 	const rows: Doc<'dmarcReportRecords'>[] = [];
 	let bytes = 0;
 	for await (const row of ctx.db
@@ -324,11 +329,11 @@ export async function readSummaryRows(
 		.order('desc')) {
 		bytes += JSON.stringify(row).length;
 		if (rows.length >= limits.maxRows || bytes > limits.maxBytes) {
-			return { rows, isTruncated: true };
+			return { rows, isTruncated: true, firstOmittedRangeBeginMs: row.rangeBeginMs };
 		}
 		rows.push(row);
 	}
-	return { rows, isTruncated: false };
+	return { rows, isTruncated: false, firstOmittedRangeBeginMs: null };
 }
 
 /**
@@ -358,7 +363,15 @@ export const getDomainSummary = adminQuery({
 			readSummaryRows(ctx, domain.domain, since),
 		]);
 		const reports = matchedReports.slice(0, MAX_REPORTS_PER_SUMMARY);
-		const rollup = rollUpDmarcRows(rowRead.rows, ownInfrastructure(), windowDays, now);
+		// Readiness only counts days whose rows were all read: on a truncated
+		// read, the left-out rows could be the very mail that fails.
+		const rollup = rollUpDmarcRows(
+			rowRead.rows,
+			ownInfrastructure(),
+			windowDays,
+			now,
+			rowRead.firstOmittedRangeBeginMs
+		);
 
 		const currentPolicy = domain.dmarcPolicy ?? DEFAULT_DMARC_POLICY;
 		const next = nextPolicy(currentPolicy);

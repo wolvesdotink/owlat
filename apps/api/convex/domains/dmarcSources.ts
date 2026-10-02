@@ -153,6 +153,11 @@ export interface DmarcReadiness {
 	/** Rate of the most recent day with reports, or null when there is none. */
 	latestAlignedRate: number | null;
 	isReady: boolean;
+	/**
+	 * The run reached a day whose rows were not all read (a truncated view), so
+	 * it stops there uncounted: the streak may be longer, but cannot be shown.
+	 */
+	isIncomplete: boolean;
 }
 
 export interface DmarcRollup {
@@ -174,13 +179,26 @@ function isAligned(row: DmarcSourceRow): boolean {
  * Days in a row, newest first, whose mail passed DMARC at or above the
  * threshold. Days without any report are skipped rather than counted or
  * breaking the run: receivers do not report every day for a quiet domain.
+ *
+ * `incompleteThrough` is the newest UTC day whose rows were only partly read
+ * (or not at all); that day and every older one end the run unjudged, because
+ * the rows left out could be exactly the failing mail.
  */
-export function readinessFrom(trend: readonly DmarcDailyPoint[]): DmarcReadiness {
+export function readinessFrom(
+	trend: readonly DmarcDailyPoint[],
+	incompleteThrough: string | null = null
+): DmarcReadiness {
 	let streakDays = 0;
 	let latestAlignedRate: number | null = null;
+	let isIncomplete = false;
 	for (let i = trend.length - 1; i >= 0; i--) {
 		const point = trend[i];
-		if (!point || point.messageCount === 0) continue;
+		if (!point) continue;
+		if (incompleteThrough !== null && point.date <= incompleteThrough) {
+			isIncomplete = true;
+			break;
+		}
+		if (point.messageCount === 0) continue;
 		const rate = point.alignedCount / point.messageCount;
 		latestAlignedRate ??= rate;
 		if (rate < READY_ALIGNED_RATE) break;
@@ -191,19 +209,23 @@ export function readinessFrom(trend: readonly DmarcDailyPoint[]): DmarcReadiness
 		requiredDays: READY_STREAK_DAYS,
 		latestAlignedRate,
 		isReady: streakDays >= READY_STREAK_DAYS,
+		isIncomplete,
 	};
 }
 
 /**
  * Fold stored rows into the dashboard roll-up for a window ending at `now`.
  * `rows` should span at least {@link READINESS_WINDOW_DAYS}, so the readiness
- * streak does not shrink to a short display window.
+ * streak does not shrink to a short display window. When the read stopped
+ * early, `firstOmittedRangeBeginMs` is the range start of the newest row left
+ * out: rows are read newest first, so its day and older ones are incomplete.
  */
 export function rollUpDmarcRows(
 	rows: readonly DmarcSourceRow[],
 	own: OwnInfrastructure,
 	windowDays: number,
-	now: number
+	now: number,
+	firstOmittedRangeBeginMs: number | null = null
 ): DmarcRollup {
 	const cutoff = now - windowDays * DAY_MS;
 	const messagesByDay = new Map<string, number>();
@@ -282,6 +304,9 @@ export function rollUpDmarcRows(
 		sourceCount: sources.length,
 		// The same 30 days whichever window is shown, so switching to 90 days
 		// neither stretches the streak nor revives a long-quiet domain.
-		readiness: readinessFrom(dailySeries(READINESS_WINDOW_DAYS)),
+		readiness: readinessFrom(
+			dailySeries(READINESS_WINDOW_DAYS),
+			firstOmittedRangeBeginMs === null ? null : utcDayKey(firstOmittedRangeBeginMs)
+		),
 	};
 }
