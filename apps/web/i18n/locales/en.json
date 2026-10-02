@@ -6854,6 +6854,14 @@
 					},
 					"loading": "Loading AI settings…",
 					"pageTitle": "AI provider — Owlat",
+					"remove": {
+						"button": "Remove configuration",
+						"confirm": "Remove configuration",
+						"confirmBody": "The stored API keys are deleted and can't be recovered. AI falls back to the deployment's environment variables, or turns off if none are set. If the environment uses a different embedding model, re-index your knowledge afterwards.",
+						"confirmTitle": "Remove the AI provider configuration?",
+						"description": "Deletes the settings and API keys stored on this page. AI then uses the deployment's environment variables, or turns off if none are set.",
+						"title": "Remove provider configuration"
+					},
 					"save": "Save AI provider",
 					"saveFirstTest": "Save first, then test.",
 					"subtitle": "Choose the AI backend every AI feature uses. Pick a hosted provider and paste a key, or point at a model you host yourself.",
@@ -14606,6 +14614,8 @@
 			"modelsEmpty": "No models returned — keep using a custom id.",
 			"modelsLoadFailed": "Could not load models.",
 			"modelsUnsupported": "This provider does not support listing models.",
+			"removeOperation": "Remove AI provider configuration",
+			"removed": "AI provider configuration removed",
 			"saveOperation": "Save AI provider",
 			"saved": "AI provider saved",
 			"testFailed": "Connection test failed.",

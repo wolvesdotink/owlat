@@ -7,6 +7,8 @@
  *     appears in a query result.
  *   • admin gating: a non-admin write is rejected.
  *   • an audit-log row is written on save.
+ *   • removeConfig: admin-only, deletes the row and its keys, audits without a
+ *     secret, and is a no-op when nothing is stored.
  *   • local providers save with NO key.
  *   • testConnection ok / err paths (adapter mocked; real crypto round-trip).
  *
@@ -22,6 +24,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
 import { api } from '../_generated/api';
+import { hasStoredAiProviderConfig } from '../lib/aiNotConfigured';
 
 vi.stubEnv('INSTANCE_SECRET', 'test-instance-secret-value-for-aes-256-gcm-kdf');
 
@@ -42,6 +45,13 @@ vi.mock('../lib/sessionOrganization', async () => {
 			return { userId: sessionMocks.session.userId, role: sessionMocks.session.role };
 		}),
 		requireOrgPermission: vi.fn().mockImplementation(async () => {
+			const s = sessionMocks.session;
+			if (!s) throw new Error('Not authenticated');
+			if (s.role !== 'owner' && s.role !== 'admin') throw new Error('forbidden');
+			return { userId: s.userId, role: s.role };
+		}),
+		// The `adminMutation` floor (removeConfig) resolves through this one.
+		requireAdminContext: vi.fn().mockImplementation(async () => {
 			const s = sessionMocks.session;
 			if (!s) throw new Error('Not authenticated');
 			if (s.role !== 'owner' && s.role !== 'admin') throw new Error('forbidden');
@@ -327,6 +337,88 @@ describe('aiProviderConfig.saveConfig + getConfig', () => {
 		const serialized = JSON.stringify(result);
 		expect(serialized).not.toContain('sk-embed-secret-key-9999');
 		expect(serialized).not.toContain(row?.embeddingSecretCiphertext ?? '__nope__');
+	});
+});
+
+describe('aiProviderConfig.removeConfig', () => {
+	/** Both planes hosted, so the row holds two encrypted keys. */
+	async function saveHostedConfig(t: ReturnType<typeof setup>) {
+		await t.action(api.aiProviderConfigActions.saveConfig, {
+			languageProviderKind: 'anthropic',
+			apiKey: 'sk-ant-secret-key-1234',
+			embeddingProviderKind: 'openai',
+			embeddingModel: 'text-embedding-3-small',
+			embeddingApiKey: 'sk-embed-secret-key-9999',
+		});
+	}
+
+	const removalLogs = (t: ReturnType<typeof setup>) =>
+		t.run((ctx) =>
+			ctx.db
+				.query('auditLogs')
+				.withIndex('by_action', (q) => q.eq('action', 'ai_provider_config.removed'))
+				.collect()
+		);
+
+	it('refuses a non-admin and keeps the row', async () => {
+		const t = setup();
+		await saveHostedConfig(t);
+		sessionMocks.session = { userId: 'editor-user', role: 'editor' };
+
+		await expect(t.mutation(api.aiProviderConfig.removeConfig, {})).rejects.toThrow(/forbidden/i);
+
+		const row = await t.run((ctx) => ctx.db.query('aiProviderConfig').first());
+		expect(row?.secretCiphertext).toBeTruthy();
+		expect(await removalLogs(t)).toHaveLength(0);
+	});
+
+	it('deletes the row and its keys and audits the removal without a secret', async () => {
+		const t = setup();
+		await saveHostedConfig(t);
+		const row = await t.run((ctx) => ctx.db.query('aiProviderConfig').first());
+		if (!row) throw new Error('unreachable');
+
+		const result = await t.mutation(api.aiProviderConfig.removeConfig, {});
+		expect(result).toEqual({ removed: true });
+
+		expect(await t.query(api.aiProviderConfig.getConfig, {})).toEqual({ configured: false });
+		expect(await t.run((ctx) => hasStoredAiProviderConfig(ctx.db))).toBe(false);
+
+		const logs = await removalLogs(t);
+		expect(logs).toHaveLength(1);
+		expect(logs[0]!.resource).toBe('ai_provider_config');
+		expect(logs[0]!.resourceId).toBe(row._id);
+		expect(logs[0]!.userId).toBe('test-admin');
+		expect(JSON.parse(logs[0]!.detailsBlob ?? '{}')).toEqual({
+			languageProviderKind: 'anthropic',
+			embeddingProviderKind: 'openai',
+			isLanguageKeySet: true,
+			isEmbeddingKeySet: true,
+			isDecisionKeySet: false,
+		});
+		// No key, preview or ciphertext reaches the audit trail.
+		for (const secret of [
+			'sk-ant-secret-key-1234',
+			'sk-embed-secret-key-9999',
+			row.keyPreview!,
+			row.embeddingKeyPreview!,
+			row.secretCiphertext!,
+			row.embeddingSecretCiphertext!,
+		]) {
+			expect(logs[0]!.detailsBlob ?? '').not.toContain(secret);
+		}
+	});
+
+	it('does nothing, without error, when no config is stored', async () => {
+		const t = setup();
+
+		expect(await t.mutation(api.aiProviderConfig.removeConfig, {})).toEqual({ removed: false });
+		// A second removal after a real one is the same no-op.
+		await saveHostedConfig(t);
+		await t.mutation(api.aiProviderConfig.removeConfig, {});
+		expect(await t.mutation(api.aiProviderConfig.removeConfig, {})).toEqual({ removed: false });
+
+		expect(await removalLogs(t)).toHaveLength(1);
 	});
 });
 

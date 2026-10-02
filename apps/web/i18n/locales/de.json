@@ -6854,6 +6854,14 @@
 					},
 					"loading": "KI-Einstellungen werden geladen…",
 					"pageTitle": "KI-Anbieter — Owlat",
+					"remove": {
+						"button": "Konfiguration entfernen",
+						"confirm": "Konfiguration entfernen",
+						"confirmBody": "Die gespeicherten API-Schlüssel werden gelöscht und lassen sich nicht wiederherstellen. Die KI nutzt dann die Umgebungsvariablen des Deployments oder ist aus, wenn dort nichts gesetzt ist. Verwendet die Umgebung ein anderes Embedding-Modell, indiziere dein Wissen danach neu.",
+						"confirmTitle": "KI-Anbieterkonfiguration entfernen?",
+						"description": "Löscht die auf dieser Seite gespeicherten Einstellungen und API-Schlüssel. Die KI nutzt dann die Umgebungsvariablen des Deployments oder ist aus, wenn dort nichts gesetzt ist.",
+						"title": "Anbieterkonfiguration entfernen"
+					},
 					"save": "KI-Anbieter speichern",
 					"saveFirstTest": "Zuerst speichern, dann testen.",
 					"subtitle": "Wähle das KI-Backend, das jede KI-Funktion nutzt. Entscheide dich für einen gehosteten Anbieter und füge einen Schlüssel ein, oder verweise auf ein Modell, das du selbst betreibst.",
@@ -14606,6 +14614,8 @@
 			"modelsEmpty": "Keine Modelle zurückgegeben — verwende weiterhin eine eigene ID.",
 			"modelsLoadFailed": "Modelle konnten nicht geladen werden.",
 			"modelsUnsupported": "Dieser Anbieter unterstützt das Auflisten von Modellen nicht.",
+			"removeOperation": "KI-Anbieterkonfiguration entfernen",
+			"removed": "KI-Anbieterkonfiguration entfernt",
 			"saveOperation": "KI-Anbieter speichern",
 			"saved": "KI-Anbieter gespeichert",
 			"testFailed": "Verbindungstest fehlgeschlagen.",

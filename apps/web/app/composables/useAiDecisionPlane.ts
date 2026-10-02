@@ -79,7 +79,7 @@ export interface UseAiDecisionPlaneOptions {
 export function useAiDecisionPlane(options: UseAiDecisionPlaneOptions) {
 	const decisionOptions = decisionProviderOptions();
 
-	const decisionForm = reactive({
+	const initialDecisionForm = () => ({
 		/**
 		 * `SETUP_DEFAULT_DECISION_KIND` reaches exactly one install: a brand-new
 		 * one, which has no stored row for {@link hydrateDecision} to overwrite it
@@ -93,6 +93,7 @@ export function useAiDecisionPlane(options: UseAiDecisionPlaneOptions) {
 		apiKey: '',
 		isFallbackEnabled: false,
 	});
+	const decisionForm = reactive(initialDecisionForm());
 
 	/** The card's master switch. Off is the whole plane's resting state. */
 	const decisionEnabled = ref(false);
@@ -230,6 +231,21 @@ export function useAiDecisionPlane(options: UseAiDecisionPlaneOptions) {
 		hydrating.value = false;
 	}
 
+	/** Bumped by {@link resetDecision}, so a test started before it is dropped. */
+	let resetGeneration = 0;
+
+	/** Back to a brand-new install's card, once the stored config is removed. */
+	function resetDecision() {
+		resetGeneration += 1;
+		hydrating.value = true;
+		Object.assign(decisionForm, initialDecisionForm());
+		decisionEnabled.value = false;
+		decisionConsent.value = false;
+		decisionError.value = null;
+		decisionTestState.value = { status: 'idle' };
+		hydrating.value = false;
+	}
+
 	/**
 	 * The decision arguments for `saveConfig`, or `{}` — which is the answer for
 	 * every install that never opted in, and the reason this card cannot change
@@ -270,7 +286,10 @@ export function useAiDecisionPlane(options: UseAiDecisionPlaneOptions) {
 	 */
 	async function handleDecisionTest() {
 		decisionTestState.value = testConnectionReducer(decisionTestState.value, { type: 'start' });
+		const generation = resetGeneration;
 		const result = await options.runTest({ plane: 'decision' });
+		// The stored config was removed while the test ran.
+		if (generation !== resetGeneration) return;
 		if (!result.ok) {
 			// The operation layer already toasted the fault; reflect it inline too.
 			decisionTestState.value = testConnectionReducer(decisionTestState.value, {
@@ -309,6 +328,7 @@ export function useAiDecisionPlane(options: UseAiDecisionPlaneOptions) {
 		decisionFallbackSurfaces: DECISION_FALLBACK_SURFACES,
 		decisionThresholds: DECISION_THRESHOLDS,
 		hydrateDecision,
+		resetDecision,
 		decisionSaveArgs,
 		decisionSaveBlocked,
 		afterDecisionSave,

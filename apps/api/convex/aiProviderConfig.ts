@@ -12,6 +12,8 @@
  *                          action after it has encrypted the plaintext key.
  *             _getConfigRow — the full row INCL. ciphertext, for the Node test
  *                          action to decrypt. Internal only.
+ *   Admin:    removeConfig — deletes the row, keys included, so resolution falls
+ *                          back to the env `LLM_*` settings (or to no AI).
  *
  * Crypto + the plaintext-key path live in the sibling `'use node'` file
  * `aiProviderConfigActions.ts` (saveConfig / testConnection). Env `LLM_*`
@@ -35,7 +37,7 @@ import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { internal } from './_generated/api';
 import { isEnvAiProviderConfigured } from './lib/aiNotConfigured';
-import { authedQuery } from './lib/authedFunctions';
+import { adminMutation, authedQuery } from './lib/authedFunctions';
 import { requireOrgPermission } from './lib/sessionOrganization';
 import { recordAuditLog } from './lib/auditLog';
 import { throwInvalidInput } from './_utils/errors';
@@ -442,4 +444,46 @@ export const _persistConfig = internalMutation({
 export const _getConfigRow = internalQuery({
 	args: {},
 	handler: async (ctx) => await getSingleton(ctx),
+});
+
+/**
+ * Delete the org-singleton config, stored keys included. Without a row every
+ * plane resolves through the deployment's env `LLM_*` / `DECISION_*` settings,
+ * or reports AI as not configured when those are unset. Running AI isolates
+ * notice within their 30 s row recheck (`lib/llmProviders/storedConfigCache`),
+ * whose fingerprint moves from the row to `'env'` and drops the cached keys.
+ *
+ * Nothing to delete is not an error: a second click, or a second admin who got
+ * there first, ends in the same state.
+ *
+ * No semantic reprocessing is scheduled: files keep the metadata they already
+ * have, and with the env fallback unset there is nothing to reprocess with.
+ */
+export const removeConfig = adminMutation({
+	args: {},
+	handler: async (ctx, _args, session): Promise<{ removed: boolean }> => {
+		const existing = await getSingleton(ctx);
+		if (!existing) return { removed: false };
+
+		await ctx.db.delete(existing._id);
+
+		await recordAuditLog(ctx, {
+			userId: session.userId,
+			action: 'ai_provider_config.removed',
+			resource: 'ai_provider_config',
+			resourceId: existing._id,
+			// Which planes held a key and which providers they named. Never the key,
+			// its preview or the ciphertext.
+			detailsBlob: JSON.stringify({
+				languageProviderKind: existing.languageProviderKind,
+				embeddingProviderKind: existing.embeddingProviderKind,
+				decisionProviderKind: existing.decisionProviderKind,
+				isLanguageKeySet: existing.secretCiphertext !== undefined,
+				isEmbeddingKeySet: existing.embeddingSecretCiphertext !== undefined,
+				isDecisionKeySet: existing.decisionSecretCiphertext !== undefined,
+			}),
+		});
+
+		return { removed: true };
+	},
 });

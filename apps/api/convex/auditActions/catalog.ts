@@ -131,6 +131,8 @@ export const AUDIT_ACTION_LITERALS = [
 	// Pluggable AI providers — admin save of the per-org language/embedding
 	// backend config (bring-your-own-key). Fired by aiProviderConfig.
 	action('ai_provider_config.updated'),
+	// The admin removed the stored config and its keys; AI falls back to the env.
+	action('ai_provider_config.removed'),
 	action('team_member.invited'),
 	action('team_member.removed'),
 	action('team_member.role_changed'),
