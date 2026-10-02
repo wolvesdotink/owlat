@@ -154,7 +154,7 @@ function save() {
 					v-model="form.timeZone"
 					type="text"
 					list="sla-time-zones"
-					class="input w-full mt-1"
+					class="input w-full max-w-sm mt-1 block"
 					autocomplete="off"
 				/>
 				<datalist id="sla-time-zones">
@@ -174,7 +174,7 @@ function save() {
 							<input
 								v-model="row.start"
 								type="time"
-								class="input"
+								class="input w-36"
 								:aria-label="
 									t('components.inbox.inboxSlaPolicyForm.opensAt', { day: weekdayLabel(row.day) })
 								"
@@ -183,7 +183,7 @@ function save() {
 							<input
 								v-model="row.end"
 								type="time"
-								class="input"
+								class="input w-36"
 								:aria-label="
 									t('components.inbox.inboxSlaPolicyForm.closesAt', { day: weekdayLabel(row.day) })
 								"
@@ -206,10 +206,16 @@ function save() {
 						<input
 							v-model="newHoliday"
 							type="date"
-							class="input"
+							class="input w-48"
 							:aria-label="t('components.inbox.inboxSlaPolicyForm.holidayDate')"
 						/>
-						<UiButton variant="secondary" size="sm" :disabled="!newHoliday" @click="addHoliday">
+						<UiButton
+							variant="secondary"
+							size="sm"
+							class="whitespace-nowrap"
+							:disabled="!newHoliday"
+							@click="addHoliday"
+						>
 							{{ t('components.inbox.inboxSlaPolicyForm.addHoliday') }}
 						</UiButton>
 					</div>

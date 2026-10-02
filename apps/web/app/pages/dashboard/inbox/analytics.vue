@@ -14,6 +14,7 @@ import { api } from '@owlat/api';
 import { formatNumber, formatPercentage, formatUtcDayKey, formatDate } from '~/utils/formatters';
 import {
 	INBOX_ANALYTICS_PRESETS,
+	inboxAnalyticsLabelStep,
 	inboxAnalyticsRange,
 	inboxSlaDurationLabel,
 	type InboxAnalyticsPreset,
@@ -152,7 +153,9 @@ const firstResponseSeries = computed(() =>
 	)
 );
 const formatMinutes = (minutes: number) => duration(minutes * 60_000);
-const labelEvery = computed(() => Math.max(1, Math.ceil(volumeSeries.value.length / 8)));
+// About eight day labels. UiBars always labels the last bar too, so pick a step
+// that keeps the last regular label at least half a step away from it.
+const labelEvery = computed(() => inboxAnalyticsLabelStep(volumeSeries.value.length));
 </script>
 
 <template>

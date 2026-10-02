@@ -9,6 +9,7 @@ import {
 	DEFAULT_INBOX_FILTER,
 	INBOX_FILTER_META,
 	INBOX_SORT_META,
+	isInboxSlaFilter,
 	nextInboxSort,
 	type InboxFilter,
 } from '~/utils/inboxFilters';
@@ -284,8 +285,10 @@ const showOldestFirst = () => setSort('oldest-waiting');
 				/>
 
 				<!-- The sort chip states the CURRENT order and cycles to the next
-				     one; with three orders a toggle would have had to hide one. -->
+				     one; with three orders a toggle would have had to hide one. The
+				     response-target slices always list the earliest deadline first. -->
 				<button
+					v-if="!isInboxSlaFilter(filter)"
 					type="button"
 					class="inline-flex items-center gap-1.5 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded px-1.5 py-1"
 					:title="

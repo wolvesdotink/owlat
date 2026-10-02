@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	INBOX_SLA_DUE_SOON_MS,
+	inboxAnalyticsLabelStep,
 	inboxAnalyticsRange,
 	inboxSlaChip,
 	inboxSlaDurationLabel,
@@ -84,6 +85,17 @@ describe('inboxAnalyticsRange', () => {
 		expect(inboxAnalyticsRange('custom', { from: '2026-02-01', to: '2026-01-01' }, now)).toBeNull();
 		expect(inboxAnalyticsRange('custom', { from: '', to: '2026-01-01' }, now)).toBeNull();
 		expect(inboxAnalyticsRange('custom', { from: '2024-01-01', to: '2026-01-01' }, now)).toBeNull();
+	});
+});
+
+describe('inboxAnalyticsLabelStep', () => {
+	it('keeps the last regular label clear of the final one', () => {
+		for (const count of [7, 30, 90, 31, 366]) {
+			const step = inboxAnalyticsLabelStep(count);
+			const tail = (count - 1) % step;
+			expect(tail === 0 || tail >= step / 2).toBe(true);
+		}
+		expect(inboxAnalyticsLabelStep(7)).toBe(1);
 	});
 });
 

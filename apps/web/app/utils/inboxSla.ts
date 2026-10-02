@@ -102,3 +102,16 @@ export function inboxAnalyticsRange(
 	if ((to - from) / DAY + 1 > INBOX_ANALYTICS_MAX_DAYS) return null;
 	return { fromDay: custom.from, toDay: custom.to };
 }
+
+/**
+ * The x-label step for a daily bar chart of `count` days: about eight labels,
+ * and never a regular label right beside the always-shown last one.
+ */
+export function inboxAnalyticsLabelStep(count: number): number {
+	const base = Math.max(1, Math.ceil(count / 8));
+	for (let step = base; step <= base * 2; step++) {
+		const tail = (count - 1) % step;
+		if (tail === 0 || tail >= step / 2) return step;
+	}
+	return base;
+}
