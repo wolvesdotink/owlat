@@ -6,7 +6,8 @@
  * the two ideas and had a tab that was a subset of another. The active tab
  * takes the terracotta brand-soft treatment (weight + accent, never a large
  * fill). Counts read at most `cap` rows server-side, so a slice at the ceiling
- * shows "99+".
+ * shows "99+". While response targets are on, two more pills follow the tabs:
+ * Overdue and Due soon (a reply deadline passed / passes within the hour).
  *
  * Last, Mentions: the threads a teammate @-mentioned you on in an internal
  * note, with how many you have not opened since. It is a view of its own, so
@@ -18,6 +19,7 @@ import {
 	INBOX_ASSIGNEE_META,
 	INBOX_FILTERS,
 	INBOX_FILTER_META,
+	INBOX_SLA_FILTERS,
 	type InboxAssignee,
 	type InboxFilter,
 	type InboxFilterCounts,
@@ -32,6 +34,8 @@ const props = withDefaults(
 		mentions?: boolean;
 		/** Threads mentioning you that you have not opened since. */
 		unreadMentions?: number;
+		/** Response-target counts; absent or off hides the two highlight pills. */
+		sla?: { isEnabled: boolean; overdue: number; dueSoon: number; cap: number } | null;
 	}>(),
 	{ mentions: false, unreadMentions: 0 }
 );
@@ -57,7 +61,7 @@ const { t } = useI18n();
  * the query, a cached response) would otherwise render the literal
  * "undefined" beside the pill's label.
  */
-function displayCount(filter: InboxFilter): string | null {
+function displayCount(filter: (typeof INBOX_FILTERS)[number]): string | null {
 	const counts = props.counts;
 	if (!counts) return null;
 	const value = counts[filter];
@@ -65,6 +69,21 @@ function displayCount(filter: InboxFilter): string | null {
 	if (value >= counts.cap) return `${counts.cap - 1}+`;
 	return String(value);
 }
+
+const slaPills = computed(() => {
+	const sla = props.sla;
+	if (!sla?.isEnabled) return [];
+	const capped = (value: number) => (value >= sla.cap ? `${sla.cap - 1}+` : String(value));
+	return INBOX_SLA_FILTERS.map((f) => {
+		const value = f === 'sla-overdue' ? sla.overdue : sla.dueSoon;
+		return {
+			filter: f,
+			count: capped(value),
+			// The tone marks a slice that has something in it; the label carries the meaning.
+			dotClass: value === 0 ? 'bg-border-strong' : f === 'sla-overdue' ? 'bg-error' : 'bg-warning',
+		};
+	});
+});
 </script>
 
 <template>
@@ -95,6 +114,36 @@ function displayCount(filter: InboxFilter): string | null {
 					:class="!mentions && modelValue === f ? 'text-brand' : 'text-text-tertiary'"
 				>
 					{{ displayCount(f) }}
+				</span>
+			</button>
+		</div>
+		<div
+			v-if="slaPills.length > 0"
+			role="group"
+			:aria-label="t('components.inbox.inboxFilterPills.slaLabel')"
+			class="flex flex-wrap items-center gap-2"
+			data-testid="inbox-sla-filters"
+		>
+			<button
+				v-for="pill in slaPills"
+				:key="pill.filter"
+				type="button"
+				:aria-pressed="!mentions && modelValue === pill.filter"
+				class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
+				:class="
+					!mentions && modelValue === pill.filter
+						? 'border-brand/30 bg-brand-soft text-brand'
+						: 'border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-surface'
+				"
+				@click="pickFilter(pill.filter)"
+			>
+				<span class="w-1.5 h-1.5 rounded-full" :class="pill.dotClass" aria-hidden="true" />
+				<span>{{ t(INBOX_FILTER_META[pill.filter].label) }}</span>
+				<span
+					class="tabular-nums text-xs"
+					:class="!mentions && modelValue === pill.filter ? 'text-brand' : 'text-text-tertiary'"
+				>
+					{{ pill.count }}
 				</span>
 			</button>
 		</div>

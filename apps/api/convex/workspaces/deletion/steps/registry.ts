@@ -182,6 +182,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	autonomySuggestions: makeSweepStep('autonomySuggestions'),
 	handlingRules: makeSweepStep('handlingRules'),
 	askEagernessSettings: makeSweepStep('askEagernessSettings'),
+	inboxSlaPolicies: makeSweepStep('inboxSlaPolicies'),
 	clarificationAskLog: makeSweepStep('clarificationAskLog'),
 	clarificationMemory: makeSweepStep('clarificationMemory'),
 	agentShadowDecisions: makeSweepStep('agentShadowDecisions'),

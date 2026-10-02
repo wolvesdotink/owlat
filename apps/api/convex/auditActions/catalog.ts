@@ -128,6 +128,8 @@ export const AUDIT_ACTION_LITERALS = [
 	// An operator ended a workspace deletion before it completed, lifting its
 	// write fence (workspaces/deletion/walker.ts `abort`).
 	action('settings.workspace_deletion_aborted'),
+	// Team Inbox response targets (SLA) saved: inbox/sla/policy.ts.
+	action('settings.inbox_sla_updated'),
 	// Pluggable AI providers — admin save of the per-org language/embedding
 	// backend config (bring-your-own-key). Fired by aiProviderConfig.
 	action('ai_provider_config.updated'),

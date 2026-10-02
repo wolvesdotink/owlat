@@ -108,15 +108,15 @@ describe('inbox sort cycle', () => {
 		expect(resolveInboxSort(7)).toBe(DEFAULT_INBOX_SORT);
 	});
 
-	it('cycles through every order and wraps', () => {
+	it('cycles through every order and wraps (due included while response targets are on)', () => {
 		let sort = DEFAULT_INBOX_SORT;
 		const seen = [sort];
 		for (let step = 0; step < INBOX_SORTS.length - 1; step++) {
-			sort = nextInboxSort(sort);
+			sort = nextInboxSort(sort, true);
 			seen.push(sort);
 		}
 		expect(new Set(seen).size).toBe(INBOX_SORTS.length);
-		expect(nextInboxSort(sort)).toBe(DEFAULT_INBOX_SORT);
+		expect(nextInboxSort(sort, true)).toBe(DEFAULT_INBOX_SORT);
 	});
 
 	it('offers the waiting order, so newest can no longer bury the oldest thread', () => {

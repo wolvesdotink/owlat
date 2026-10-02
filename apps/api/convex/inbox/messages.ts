@@ -20,6 +20,7 @@ import { internal } from '../_generated/api';
 import { createContact } from '../contacts/creation';
 import { recordContactActivity } from '../contactActivities/writer';
 import { findOrCreateForEmail } from './threads/module';
+import { releaseClockIfNothingOwed } from './sla/threadClock';
 import { buildMessagePreview } from '../lib/textPreview';
 import { applyInboxStatsDelta } from '../lib/inboxStats';
 import { isFeatureEnabled } from '../lib/featureFlags';
@@ -245,6 +246,10 @@ export const receiveMessage = internalMutation({
 			inboundSignerFingerprint: args.inboundSignerFingerprint,
 		});
 		await applyInboxStatsDelta(ctx, null, 'received');
+		// A quarantined arrival needs no reply, but the thread write above started
+		// a response clock for it (inbox/sla/clock.ts); it never passes through the
+		// lifecycle edge that would stop it.
+		if (isInfected) await releaseClockIfNothingOwed(ctx, threadId, inboundMessageId);
 
 		// ── Capture post-send OUTCOME signal (graduated-autonomy learning) ──
 		// If this inbound message is a REPLY on a thread whose prior message the

@@ -13,7 +13,14 @@
  */
 export const INBOX_FILTERS = ['open', 'waiting', 'snoozed', 'resolved'] as const;
 
-export type InboxFilter = (typeof INBOX_FILTERS)[number];
+/**
+ * The response-target highlights, shown beside the tabs while targets are on:
+ * threads whose reply deadline has passed, and those due within the hour. The
+ * slugs are the backend's `listThreads` filter values.
+ */
+export const INBOX_SLA_FILTERS = ['sla-overdue', 'sla-due-soon'] as const;
+
+export type InboxFilter = (typeof INBOX_FILTERS)[number] | (typeof INBOX_SLA_FILTERS)[number];
 
 export const DEFAULT_INBOX_FILTER: InboxFilter = 'open';
 
@@ -37,7 +44,7 @@ export const INBOX_ASSIGNEE_META: Record<InboxAssignee, { label: string }> = {
  * first (the one metric a shared inbox exists to manage); `newest` is plain
  * recency, which by construction buries the oldest neglected thread.
  */
-export const INBOX_SORTS = ['needs-attention', 'oldest-waiting', 'newest'] as const;
+export const INBOX_SORTS = ['needs-attention', 'oldest-waiting', 'due', 'newest'] as const;
 
 export type InboxSort = (typeof INBOX_SORTS)[number];
 export const DEFAULT_INBOX_SORT: InboxSort = 'needs-attention';
@@ -53,6 +60,7 @@ export const INBOX_SORT_META: Record<InboxSort, { label: string; icon: string }>
 		icon: 'lucide:sparkles',
 	},
 	'oldest-waiting': { label: 'shared.inboxSorts.oldestWaiting', icon: 'lucide:timer' },
+	due: { label: 'shared.inboxSorts.due', icon: 'lucide:alarm-clock' },
 	newest: { label: 'shared.inboxSorts.newest', icon: 'lucide:arrow-down-wide-narrow' },
 };
 
@@ -65,12 +73,19 @@ export function resolveInboxSort(value: unknown): InboxSort {
 
 /**
  * The sort a tap on the chip moves to. A cycle rather than a toggle now that
- * there are three: the chip states its current order, so the next one only has
- * to be predictable, and wrapping keeps every order one, two or three taps away.
+ * there are several: the chip states its current order, so the next one only
+ * has to be predictable, and wrapping keeps every order a few taps away. The
+ * `due` order is in the cycle only while response targets are on.
  */
-export function nextInboxSort(current: InboxSort): InboxSort {
-	const index = INBOX_SORTS.indexOf(resolveInboxSort(current));
-	return INBOX_SORTS[(index + 1) % INBOX_SORTS.length]!;
+export function nextInboxSort(current: InboxSort, isDueAvailable = false): InboxSort {
+	const sorts = availableInboxSorts(isDueAvailable);
+	const index = sorts.indexOf(resolveInboxSort(current));
+	return sorts[(index + 1) % sorts.length]!;
+}
+
+/** The orders the chip offers: `due` only while response targets are on. */
+export function availableInboxSorts(isDueAvailable: boolean): readonly InboxSort[] {
+	return isDueAvailable ? INBOX_SORTS : INBOX_SORTS.filter((sort) => sort !== 'due');
 }
 
 /**
@@ -92,10 +107,27 @@ export const INBOX_FILTER_META: Record<InboxFilter, { label: string; empty: stri
 		label: 'shared.inboxFilters.resolved.label',
 		empty: 'shared.inboxFilters.resolved.empty',
 	},
+	'sla-overdue': {
+		label: 'shared.inboxFilters.slaOverdue.label',
+		empty: 'shared.inboxFilters.slaOverdue.empty',
+	},
+	'sla-due-soon': {
+		label: 'shared.inboxFilters.slaDueSoon.label',
+		empty: 'shared.inboxFilters.slaDueSoon.empty',
+	},
 };
 
 function isInboxFilter(value: unknown): value is InboxFilter {
-	return typeof value === 'string' && (INBOX_FILTERS as readonly string[]).includes(value);
+	return (
+		typeof value === 'string' &&
+		((INBOX_FILTERS as readonly string[]).includes(value) ||
+			(INBOX_SLA_FILTERS as readonly string[]).includes(value))
+	);
+}
+
+/** Is this one of the response-target highlights rather than a status tab? */
+export function isInboxSlaFilter(filter: InboxFilter): boolean {
+	return (INBOX_SLA_FILTERS as readonly string[]).includes(filter);
 }
 
 /**

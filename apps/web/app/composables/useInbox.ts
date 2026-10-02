@@ -1,9 +1,12 @@
 import { api } from '@owlat/api';
+import type { FunctionReturnType } from 'convex/server';
 import {
+	DEFAULT_INBOX_FILTER,
 	DEFAULT_INBOX_SORT,
 	inboxAssigneeArg,
 	inboxAssigneeToQuery,
 	inboxFilterToQuery,
+	isInboxSlaFilter,
 	legacyInboxSort,
 	nextInboxSort,
 	parseInboxAssignee,
@@ -14,9 +17,13 @@ import {
 	type InboxFilter,
 	type InboxSort,
 } from '~/utils/inboxFilters';
+import { inboxSlaSliceHolds } from '~/utils/inboxSla';
 import { rememberTeamThreadPreviews } from '~/utils/teamThreadPreviews';
+import { useNow } from '~/composables/useNow';
 
 const SORT_STORAGE_KEY = 'inbox-thread-sort';
+/** How often the list's clock ticks: a minute, the finest unit a chip shows. */
+export const INBOX_CLOCK_INTERVAL_MS = 60_000;
 
 /**
  * The shared-inbox read surface. `gate` (optional) implements the
@@ -31,6 +38,13 @@ export function useInbox(gate?: Ref<boolean>) {
 	const route = useRoute();
 	const router = useRouter();
 	const subscribed = () => !gate || gate.value;
+
+	// ── The list's clock. A deadline passing writes nothing, so the Overdue / Due
+	// soon counts and slices, cut at the server's time, would never re-run on
+	// their own: a thread due at 10:00 seen at 08:00 would not join Due soon at
+	// 09:00. Both reads take this clock as an argument instead, and each tick
+	// re-runs them. The row chips read it too, so a chip and its pill agree.
+	const now = useNow({ intervalMs: INBOX_CLOCK_INTERVAL_MS });
 
 	// ── Filter state, mirrored in the URL (`?filter=` status tab, `?assignee=`) ──
 	// Reads seed from the current query; writes replace the query (shareable,
@@ -100,13 +114,26 @@ export function useInbox(gate?: Ref<boolean>) {
 	// first". That order holds for this view only: following an old link must
 	// not rewrite the viewer's saved sort. Picking a sort drops the override.
 	const legacySort = ref<InboxSort | null>(legacyInboxSort(route.query['filter']) ?? null);
-	const sort = computed<InboxSort>(() => legacySort.value ?? resolveInboxSort(storedSort.value));
+
+	// Response targets (SLA): filled from `getListSummary` below, read here by
+	// the sort (the "due first" order exists only while targets are on).
+	const slaSummary = shallowRef<FunctionReturnType<
+		typeof api.inbox.sla.queries.getListSummary
+	> | null>(null);
+	const isSlaEnabled = computed(() => slaSummary.value?.isEnabled === true);
+
+	// A saved "due first" order falls back to the default while targets are off:
+	// without deadlines it would only repeat "oldest waiting" under another name.
+	const sort = computed<InboxSort>(() => {
+		const chosen = legacySort.value ?? resolveInboxSort(storedSort.value);
+		return chosen === 'due' && !isSlaEnabled.value ? DEFAULT_INBOX_SORT : chosen;
+	});
 	const setSort = (next: InboxSort) => {
 		legacySort.value = null;
 		setStoredSort(next);
 	};
 	const toggleSort = () => {
-		setSort(nextInboxSort(sort.value));
+		setSort(nextInboxSort(sort.value, isSlaEnabled.value));
 	};
 
 	// ── Thread list (keyset pagination; the args pick the backend index) ──
@@ -121,7 +148,7 @@ export function useInbox(gate?: Ref<boolean>) {
 	// keepPreviousData on the first page: a filter, assignee or sort change
 	// keeps the rows on screen until the new first page lands, instead of
 	// blanking the list to its skeleton.
-	const listArgs = () => {
+	const viewArgs = () => {
 		if (!subscribed() || mentions.value) return 'skip' as const;
 		const assigneeArg = inboxAssigneeArg(assignee.value);
 		return {
@@ -131,13 +158,22 @@ export function useInbox(gate?: Ref<boolean>) {
 			limit: 25,
 		};
 	};
+	// The first page of an Overdue / Due soon slice carries the clock, so it
+	// re-runs every tick. Tail pages do not: their cursor pins the time the
+	// first page was cut at, and a tick must not reload them. `tailRowsFor`
+	// below holds their rows to the current clock instead.
+	const firstPageArgs = () => {
+		const base = viewArgs();
+		if (base === 'skip' || !isInboxSlaFilter(base.filter)) return base;
+		return { ...base, now: now.value };
+	};
 	const {
 		data: threadsData,
 		isLoading: threadsLoading,
 		isRefetching: threadsRefetching,
 		error: firstPageError,
 		refetch: refetchFirstPage,
-	} = useConvexQuery(api.inbox.queries.listThreads, listArgs, { keepPreviousData: true });
+	} = useConvexQuery(api.inbox.queries.listThreads, firstPageArgs, { keepPreviousData: true });
 
 	type Thread = NonNullable<typeof threadsData.value>['threads'][number];
 
@@ -160,7 +196,7 @@ export function useInbox(gate?: Ref<boolean>) {
 		error: tailError,
 		refetch: refetchTail,
 	} = useConvexQuery(api.inbox.queries.listThreads, () => {
-		const base = listArgs();
+		const base = viewArgs();
 		if (base === 'skip' || !tailCursor.value) return 'skip';
 		return { ...base, cursor: tailCursor.value };
 	});
@@ -185,6 +221,16 @@ export function useInbox(gate?: Ref<boolean>) {
 		{ flush: 'sync' }
 	);
 
+	// The tail rows a view shows. An Overdue / Due soon tail page was cut at the
+	// clock its cursor pinned, and a tick does not reload it, so its rows are
+	// held to the slice at the current clock: a deadline that passed drops out
+	// of Due soon below the first page too.
+	const tailRowsFor = (view: InboxFilter): Thread[] => {
+		const rows = [...tailSegments.value.values()].flat();
+		if (view !== 'sla-overdue' && view !== 'sla-due-soon') return rows;
+		return rows.filter((row) => inboxSlaSliceHolds(row, view, now.value));
+	};
+
 	// The rows below the first page when the view changed. They stay under the
 	// retained first page until the new first page lands, so switching a filter
 	// from deep in the list does not shrink it to one page and back.
@@ -202,10 +248,10 @@ export function useInbox(gate?: Ref<boolean>) {
 	// synchronously, before the queries re-subscribe.
 	watch(
 		[filter, assignee, sort],
-		() => {
+		(_next, [previousFilter]) => {
 			// A second change before the first view landed keeps what is on screen.
 			const onScreen = threadsRefetching.value ? retainedTail.value : [];
-			retainedTail.value = [...onScreen, ...[...tailSegments.value.values()].flat()];
+			retainedTail.value = [...onScreen, ...tailRowsFor(previousFilter)];
 			tailCursor.value = null;
 			tailSegments.value = new Map();
 		},
@@ -227,7 +273,7 @@ export function useInbox(gate?: Ref<boolean>) {
 		};
 		push(threadsData.value?.threads ?? []);
 		if (threadsRefetching.value) push(retainedTail.value);
-		for (const rows of tailSegments.value.values()) push(rows);
+		push(tailRowsFor(filter.value));
 		return out;
 	});
 
@@ -271,6 +317,31 @@ export function useInbox(gate?: Ref<boolean>) {
 		subscribed() ? {} : 'skip'
 	);
 
+	// ── Response targets: whether they are on, and the Overdue / Due soon counts
+	// beside the tabs, narrowed by the assignment like the tab counts and cut at
+	// the list's clock.
+	const { data: slaData } = useConvexQuery(
+		api.inbox.sla.queries.getListSummary,
+		() => {
+			if (!subscribed()) return 'skip';
+			const assigneeArg = inboxAssigneeArg(assignee.value);
+			return { ...(assigneeArg ? { assignee: assigneeArg } : {}), now: now.value };
+		},
+		{ keepPreviousData: true }
+	);
+	watch(
+		slaData,
+		(data) => {
+			slaSummary.value = data ?? null;
+			// Targets off: the Overdue / Due soon pills are gone, so a view still on
+			// one (an old link, a breach notice) returns to the default tab.
+			if (data && !data.isEnabled && isInboxSlaFilter(filter.value)) {
+				filter.value = DEFAULT_INBOX_FILTER;
+			}
+		},
+		{ immediate: true }
+	);
+
 	// The Mentions view: one page, newest mention first (inbox/noteMentions.ts).
 	const {
 		data: mentionData,
@@ -297,6 +368,7 @@ export function useInbox(gate?: Ref<boolean>) {
 
 	return {
 		// State
+		now,
 		filter,
 		assignee,
 		mentions,
@@ -305,6 +377,8 @@ export function useInbox(gate?: Ref<boolean>) {
 		setSort,
 		toggleSort,
 		filterCounts,
+		slaSummary,
+		isSlaEnabled,
 		threads,
 		threadsLoading: computed(() => (mentions.value ? mentionsLoading.value : threadsLoading.value)),
 		threadsError,

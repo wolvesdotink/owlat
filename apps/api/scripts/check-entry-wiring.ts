@@ -157,6 +157,8 @@ const EXPECTED_BUILDERS: readonly string[] = [
 	'query',
 	'savedReplyMutation',
 	'savedReplyQuery',
+	'teamInboxAdminMutation',
+	'teamInboxAdminQuery',
 	'transactionalMutation',
 	'transactionalQuery',
 ];

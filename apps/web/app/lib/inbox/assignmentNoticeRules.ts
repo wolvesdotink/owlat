@@ -13,7 +13,7 @@
  * isolation (mirrors lib/desktop/notificationRules.ts).
  */
 
-export type AssignmentNoticeKind = 'assignment' | 'clarification' | 'mention';
+export type AssignmentNoticeKind = 'assignment' | 'clarification' | 'mention' | 'sla_breach';
 
 export interface AssignmentNotice {
 	/** Notice row id — the de-dup key. */
@@ -25,6 +25,9 @@ export interface AssignmentNotice {
 	 * someone is waiting on, so each one gets its own line. `mention` (a
 	 * teammate @-mentioned this person in an internal note) is not coalesced
 	 * either, for the same reason, and it opens on the note (`noteId`).
+	 * `sla_breach` is a reply target passing unanswered (`assignedByName` is
+	 * then the customer); breaches coalesce among themselves, apart from
+	 * assignments.
 	 */
 	kind?: AssignmentNoticeKind;
 	threadId: string;
@@ -54,7 +57,16 @@ export function planAssignmentNotices(
 	seen: ReadonlySet<string>,
 	windowMs: number = ASSIGNMENT_COALESCE_WINDOW_MS
 ): AssignmentNoticePlan[] {
-	const fresh = notices.filter((n) => !seen.has(n.id)).sort((a, b) => a.createdAt - b.createdAt);
+	const unseen = notices.filter((n) => !seen.has(n.id));
+	const breaches = unseen.filter((n) => n.kind === 'sla_breach');
+	const others = unseen.filter((n) => n.kind !== 'sla_breach');
+	// A sweep flags overdue threads in one burst: one line for the burst, not
+	// one per thread, and never folded into an assignment group.
+	return [...planRuns(others, windowMs), ...planRuns(breaches, windowMs)];
+}
+
+function planRuns(notices: AssignmentNotice[], windowMs: number): AssignmentNoticePlan[] {
+	const fresh = [...notices].sort((a, b) => a.createdAt - b.createdAt);
 
 	const plans: AssignmentNoticePlan[] = [];
 	let run: AssignmentNotice[] = [];
@@ -118,11 +130,17 @@ export function assignmentNoticeHref(notice: AssignmentNotice): string {
 	return notice.kind === 'mention' && notice.noteId ? `${thread}#note-${notice.noteId}` : thread;
 }
 
-/** In-app toast copy for a single assignment (or a clarification ask, or a mention). */
+/** In-app toast copy for a single assignment (or a clarification ask, a mention or a breach). */
 export function assignmentToastMessage(notice: AssignmentNotice): AssignmentMessage {
 	if (notice.kind === 'mention') {
 		return {
 			key: noticeKey(notice, 'shared.inbox.assignmentNoticeRules.mention.toast'),
+			params: noticeParams(notice),
+		};
+	}
+	if (notice.kind === 'sla_breach') {
+		return {
+			key: noticeKey(notice, 'shared.inbox.assignmentNoticeRules.slaBreach.toast'),
 			params: noticeParams(notice),
 		};
 	}
@@ -138,12 +156,18 @@ export function assignmentToastMessage(notice: AssignmentNotice): AssignmentMess
 	};
 }
 
-/** In-app toast copy for a coalesced burst. */
-export function assignmentGroupToastMessage(count: number): AssignmentMessage {
+/** In-app toast copy for a coalesced burst (of assignments, or of breaches). */
+export function assignmentGroupToastMessage(
+	count: number,
+	kind?: AssignmentNoticeKind
+): AssignmentMessage {
+	if (kind === 'sla_breach') {
+		return { key: 'shared.inbox.assignmentNoticeRules.slaBreach.group', params: { count } };
+	}
 	return { key: 'shared.inbox.assignmentNoticeRules.toast.group', params: { count } };
 }
 
-/** Desktop notification title + body for a single assignment (or a clarification ask, or a mention). */
+/** Desktop notification title + body for a single assignment (or a clarification ask, a mention or a breach). */
 export function assignmentNotificationParts(notice: AssignmentNotice): {
 	title: AssignmentMessage;
 	body: AssignmentMessage;
@@ -153,6 +177,15 @@ export function assignmentNotificationParts(notice: AssignmentNotice): {
 			title: { key: 'shared.inbox.assignmentNoticeRules.mention.notificationTitle' },
 			body: {
 				key: noticeKey(notice, 'shared.inbox.assignmentNoticeRules.mention.notificationBody'),
+				params: noticeParams(notice),
+			},
+		};
+	}
+	if (notice.kind === 'sla_breach') {
+		return {
+			title: { key: 'shared.inbox.assignmentNoticeRules.slaBreach.notificationTitle' },
+			body: {
+				key: noticeKey(notice, 'shared.inbox.assignmentNoticeRules.slaBreach.notificationBody'),
 				params: noticeParams(notice),
 			},
 		};
@@ -176,12 +209,20 @@ export function assignmentNotificationParts(notice: AssignmentNotice): {
 }
 
 /** Desktop notification title + body for a coalesced burst. */
-export function assignmentGroupNotificationParts(count: number): {
+export function assignmentGroupNotificationParts(
+	count: number,
+	kind?: AssignmentNoticeKind
+): {
 	title: AssignmentMessage;
 	body: AssignmentMessage;
 } {
 	return {
-		title: { key: 'shared.inbox.assignmentNoticeRules.notification.groupTitle' },
-		body: assignmentGroupToastMessage(count),
+		title: {
+			key:
+				kind === 'sla_breach'
+					? 'shared.inbox.assignmentNoticeRules.slaBreach.notificationTitle'
+					: 'shared.inbox.assignmentNoticeRules.notification.groupTitle',
+		},
+		body: assignmentGroupToastMessage(count, kind),
 	};
 }
