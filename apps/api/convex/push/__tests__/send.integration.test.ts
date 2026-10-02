@@ -4,12 +4,10 @@
  * prunes the device, 201 stamps it, anything else leaves it alone.
  */
 
-import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { enableFeatures } from '../../__tests__/factories';
-import { VAPID_ENV, seedDevice, seedMailbox, seedMessage } from './pushFixtures';
+import { VAPID_ENV, pushHarness, seedDevice, seedMailbox, seedMessage } from './pushFixtures';
 
 const guard = vi.hoisted(() => ({
 	calls: [] as Array<{ url: string; init: Record<string, unknown> }>,
@@ -48,7 +46,7 @@ afterEach(() => {
 
 describe('push.send.deliver', () => {
 	it('posts one encrypted message per device and prunes the ones that are gone', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules);
 		await enableFeatures(t, ['postbox']);
 		const { mailboxId, inboxId } = await seedMailbox(t, 'user-a');
 		const { messageId } = await seedMessage(t, { mailboxId, folderId: inboxId });
@@ -83,7 +81,7 @@ describe('push.send.deliver', () => {
 	});
 
 	it('keeps a device when its push service is only having a bad moment', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules);
 		const device = await seedDevice(t, 'user-a');
 		guard.statusFor = () => 503;
 		await t.action(internal.push.send.deliver, {
@@ -97,7 +95,7 @@ describe('push.send.deliver', () => {
 	});
 
 	it('sends nothing when the VAPID keys are gone', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules);
 		const device = await seedDevice(t, 'user-a');
 		vi.stubEnv('VAPID_PUBLIC_KEY', '');
 		await t.action(internal.push.send.deliver, {

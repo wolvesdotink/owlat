@@ -7,9 +7,8 @@
  * and a push service's 404/410 prunes the device.
  */
 
-import { convexTest } from 'convex-test';
+import type { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { enableFeatures } from '../../__tests__/factories';
 import { enqueuePush } from '../events';
@@ -17,10 +16,12 @@ import { runPostInsertInboundEffects } from '../../mail/deliveryPipeline/afterIn
 import { insertRoomMessage } from '../../chat/messageInsert';
 import {
 	VAPID_ENV,
+	pushHarness,
 	quietWindowAroundNow,
 	seedDevice,
 	seedMailbox,
 	seedMessage,
+	setMemberRole,
 } from './pushFixtures';
 
 // Sibling `push/*` modules glob in as `../foo.ts`; convex-test resolves function
@@ -73,7 +74,7 @@ async function mailSetup(t: T, options: Partial<Parameters<typeof seedMessage>[1
 
 describe('push.dispatch mail', () => {
 	it('notifies every device with the sender and subject, collapsing per thread', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules);
 		const { messageId, threadId, mailboxId } = await mailSetup(t);
 		await seedDevice(t, USER);
 		const deliveries = await prepare(t, { kind: 'mail', messageId });
@@ -89,7 +90,7 @@ describe('push.dispatch mail', () => {
 	});
 
 	it('says only "New mail" when notifications are private, and in the person’s language', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules);
 		const { messageId } = await mailSetup(t);
 		await setSettings(t, { isHidePreviewOn: true });
 		await t.run(async (ctx) => {
@@ -109,7 +110,7 @@ describe('push.dispatch mail', () => {
 	});
 
 	it('never shows anything from a sealed message', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules);
 		const { messageId } = await mailSetup(t, {
 			message: { inboundEncryptionInfo: { isSealed: true, isDecrypted: false } },
 		});
@@ -118,27 +119,27 @@ describe('push.dispatch mail', () => {
 	});
 
 	it('stays silent for read mail, muted threads, "Nothing" and out-of-scope categories', async () => {
-		const read = convexTest(schema, modules);
+		const read = await pushHarness(modules);
 		const seen = await mailSetup(read, { message: { flagSeen: true } });
 		expect(await prepare(read, { kind: 'mail', messageId: seen.messageId })).toEqual([]);
 
-		const muted = convexTest(schema, modules);
+		const muted = await pushHarness(modules);
 		const mutedMail = await mailSetup(muted, { thread: { mutedAt: Date.now() } });
 		expect(await prepare(muted, { kind: 'mail', messageId: mutedMail.messageId })).toEqual([]);
 
-		const nothing = convexTest(schema, modules);
+		const nothing = await pushHarness(modules);
 		const quietMail = await mailSetup(nothing);
 		await setSettings(nothing, { notifyAbout: 'nothing' });
 		expect(await prepare(nothing, { kind: 'mail', messageId: quietMail.messageId })).toEqual([]);
 
-		const people = convexTest(schema, modules);
+		const people = await pushHarness(modules);
 		const newsletter = await mailSetup(people, { category: 'newsletter' });
 		await setSettings(people, { notifyAbout: 'people-important' });
 		expect(await prepare(people, { kind: 'mail', messageId: newsletter.messageId })).toEqual([]);
 	});
 
 	it('lets a "notify me when they reply" thread through the people-only scope', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules);
 		const { messageId } = await mailSetup(t, {
 			category: 'newsletter',
 			thread: { notifyOnReplyAt: Date.now() },
@@ -148,7 +149,7 @@ describe('push.dispatch mail', () => {
 	});
 
 	it('ignores shared mailboxes, other people’s mailboxes and a disabled mail feature', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules);
 		await enableFeatures(t, ['postbox']);
 		await seedDevice(t, USER);
 		const shared = await seedMailbox(t, USER, 'shared');
@@ -161,7 +162,7 @@ describe('push.dispatch mail', () => {
 		const otherMail = await seedMessage(t, { mailboxId: other.mailboxId, folderId: other.inboxId });
 		expect(await prepare(t, { kind: 'mail', messageId: otherMail.messageId })).toEqual([]);
 
-		const off = convexTest(schema, modules);
+		const off = await pushHarness(modules);
 		const { mailboxId, inboxId } = await seedMailbox(off, USER);
 		const mail = await seedMessage(off, { mailboxId, folderId: inboxId });
 		await seedDevice(off, USER);
@@ -169,7 +170,7 @@ describe('push.dispatch mail', () => {
 	});
 
 	it('holds mail back in quiet hours and sends one summary when they end', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules);
 		const { messageId, deviceId } = await mailSetup(t);
 		await setSettings(t, { quietHours: quietWindowAroundNow() });
 		expect(await prepare(t, { kind: 'mail', messageId })).toEqual([]);
@@ -208,13 +209,31 @@ describe('push.dispatch mail', () => {
 	});
 
 	it('evaluates quiet hours on each device’s own clock', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules);
 		const { messageId } = await mailSetup(t, {});
 		await setSettings(t, { quietHours: quietWindowAroundNow() });
 		// The fixture device is on UTC (inside the window); this one is 14 hours ahead.
 		await seedDevice(t, USER, { timeZone: 'Pacific/Kiritimati' });
 		const deliveries = await prepare(t, { kind: 'mail', messageId });
 		expect(deliveries).toHaveLength(1);
+	});
+
+	it('stops notifying someone removed from the organization, summary included', async () => {
+		const t = await pushHarness(modules);
+		const { messageId, deviceId } = await mailSetup(t);
+		await setSettings(t, { quietHours: quietWindowAroundNow() });
+		expect(await prepare(t, { kind: 'mail', messageId })).toEqual([]);
+		await t.run(async (ctx) => {
+			const row = await ctx.db.query('mailUserSettings').first();
+			await ctx.db.patch(row!._id, { quietHours: { ...quietWindowAroundNow(), enabled: false } });
+		});
+		await setMemberRole(t, USER, null);
+		expect(await prepare(t, { kind: 'mail', messageId })).toEqual([]);
+		expect(
+			await t.mutation(internal.push.dispatch.takeQuietSummary, { subscriptionId: deviceId })
+		).toBeNull();
+		const cleared = await t.run((ctx) => ctx.db.get(deviceId));
+		expect(cleared?.quietDeferredCount).toBeUndefined();
 	});
 });
 
@@ -245,7 +264,7 @@ describe('push.dispatch assignment', () => {
 	}
 
 	it('notifies the assignee, outside quiet hours too, as the desktop does', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules);
 		await enableFeatures(t, ['inbox']);
 		await seedDevice(t, USER);
 		await setSettings(t, { quietHours: quietWindowAroundNow() });
@@ -260,7 +279,7 @@ describe('push.dispatch assignment', () => {
 	});
 
 	it('words a clarification ask as a question, and respects "Nothing"', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules);
 		await enableFeatures(t, ['inbox']);
 		await seedDevice(t, USER);
 		const { noticeId } = await seedNotice(t, 'clarification');
@@ -271,13 +290,28 @@ describe('push.dispatch assignment', () => {
 	});
 
 	it('stays silent when the shared inbox is switched off or the notice is someone else’s', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules);
 		await seedDevice(t, USER);
 		const { noticeId } = await seedNotice(t);
 		expect(await prepare(t, { kind: 'assignment', noticeId })).toEqual([]);
 		await enableFeatures(t, ['inbox']);
 		await seedDevice(t, 'user-b');
 		expect(await prepare(t, { kind: 'assignment', noticeId }, 'user-b')).toEqual([]);
+	});
+
+	it('rechecks the assignee’s access: a demoted or removed member gets nothing', async () => {
+		const t = await pushHarness(modules);
+		await enableFeatures(t, ['inbox']);
+		await seedDevice(t, USER);
+		const { noticeId } = await seedNotice(t);
+		expect(await prepare(t, { kind: 'assignment', noticeId })).toHaveLength(1);
+		// An editor does not read the shared inbox, as `pendingAssignments` says.
+		await setMemberRole(t, USER, 'editor');
+		expect(await prepare(t, { kind: 'assignment', noticeId })).toEqual([]);
+		await setMemberRole(t, USER, 'owner');
+		expect(await prepare(t, { kind: 'assignment', noticeId })).toHaveLength(1);
+		await setMemberRole(t, USER, null);
+		expect(await prepare(t, { kind: 'assignment', noticeId })).toEqual([]);
 	});
 });
 
@@ -324,7 +358,7 @@ describe('push.dispatch chat', () => {
 	}
 
 	it('notifies a DM with the author and text, and links the room', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules);
 		await enableFeatures(t, ['chat']);
 		await seedDevice(t, USER);
 		const { roomId, messageId } = await seedDm(t);
@@ -340,8 +374,17 @@ describe('push.dispatch chat', () => {
 		expect(await prepare(t, { kind: 'chat', messageId, reason: 'dm' }, 'user-b')).toEqual([]);
 	});
 
+	it('stays silent for a DM partner who has left the organization', async () => {
+		const t = await pushHarness(modules);
+		await enableFeatures(t, ['chat']);
+		await seedDevice(t, USER);
+		const { messageId } = await seedDm(t);
+		await setMemberRole(t, USER, null);
+		expect(await prepare(t, { kind: 'chat', messageId, reason: 'dm' })).toEqual([]);
+	});
+
 	it('honours a muted room, private notifications and the chat flag', async () => {
-		const muted = convexTest(schema, modules);
+		const muted = await pushHarness(modules);
 		await enableFeatures(muted, ['chat']);
 		await seedDevice(muted, USER);
 		const mutedDm = await seedDm(muted, { mutedUntil: Date.now() + 3_600_000 });
@@ -349,7 +392,7 @@ describe('push.dispatch chat', () => {
 			await prepare(muted, { kind: 'chat', messageId: mutedDm.messageId, reason: 'dm' })
 		).toEqual([]);
 
-		const quiet = convexTest(schema, modules);
+		const quiet = await pushHarness(modules);
 		await enableFeatures(quiet, ['chat']);
 		await seedDevice(quiet, USER);
 		await setSettings(quiet, { isHidePreviewOn: true });
@@ -364,7 +407,7 @@ describe('push.dispatch chat', () => {
 			body: 'You have a new chat message',
 		});
 
-		const off = convexTest(schema, modules);
+		const off = await pushHarness(modules);
 		await seedDevice(off, USER);
 		const offDm = await seedDm(off);
 		expect(await prepare(off, { kind: 'chat', messageId: offDm.messageId, reason: 'dm' })).toEqual(
@@ -375,7 +418,7 @@ describe('push.dispatch chat', () => {
 
 describe('push.dispatch outcomes and producers', () => {
 	it('prunes a device the push service no longer knows and stamps a delivered one', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules);
 		const gone = await seedDevice(t, USER);
 		const fine = await seedDevice(t, USER);
 		const flaky = await seedDevice(t, USER);
@@ -393,7 +436,7 @@ describe('push.dispatch outcomes and producers', () => {
 	});
 
 	it('only schedules a push when keys are set and the person has a device', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules);
 		const { mailboxId, inboxId } = await seedMailbox(t, USER);
 		const { messageId } = await seedMessage(t, { mailboxId, folderId: inboxId });
 		await t.run((ctx) => enqueuePush(ctx, USER, { kind: 'mail', messageId }));
@@ -412,7 +455,7 @@ describe('push.dispatch outcomes and producers', () => {
 	}
 
 	it('mail delivery asks for a push for live inbox mail in a personal mailbox', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules);
 		await seedDevice(t, USER);
 		const { mailboxId, inboxId } = await seedMailbox(t, USER);
 		const { messageId } = await seedMessage(t, { mailboxId, folderId: inboxId });
@@ -425,7 +468,7 @@ describe('push.dispatch outcomes and producers', () => {
 		]);
 
 		// A backfill is history, not news.
-		const history = convexTest(schema, modules);
+		const history = await pushHarness(modules);
 		await seedDevice(history, USER);
 		const box = await seedMailbox(history, USER);
 		const old = await seedMessage(history, { mailboxId: box.mailboxId, folderId: box.inboxId });
@@ -441,7 +484,7 @@ describe('push.dispatch outcomes and producers', () => {
 	});
 
 	it('a direct message asks for a push for every other participant', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules);
 		await seedDevice(t, USER);
 		await seedDevice(t, 'user-b');
 		const { room, membership } = await t.run(async (ctx) => {

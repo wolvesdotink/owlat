@@ -18,7 +18,10 @@
  *
  * Every event is re-read here rather than trusted from the producer: a message
  * read, deleted or moved before the job runs does not notify, and a surface
- * whose feature flag was switched off does not either.
+ * whose feature flag was switched off does not either. So is the person's
+ * access: someone removed from the organization since the event gets nothing,
+ * and an assignment reaches only a current shared-inbox reader (an assignee
+ * demoted meanwhile no longer sees the thread in the app either).
  */
 
 import { v } from 'convex/values';
@@ -34,15 +37,20 @@ import {
 } from '@owlat/shared/notificationRules';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
-import { internal } from '../_generated/api';
+import { components, internal } from '../_generated/api';
 import { internalMutation } from '../lib/writeFence';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { isThreadMuted } from '../lib/mailMute';
-import { loadOwnUserProfile } from '../lib/sessionOrganization';
+import {
+	getSingletonOrganizationId,
+	loadOwnUserProfile,
+	type OrganizationRole,
+} from '../lib/sessionOrganization';
 import { loadProfileSummary } from '../lib/userProfiles';
 import { pushEventValidator } from '../lib/validators/push';
 import { canUserReadMailbox, loadPersonalMailboxForUser } from '../mail/permissions';
 import { getMembership, isMailThreadDiscussion } from '../chat/_helpers';
+import { isSharedInboxReader } from '../inbox/access';
 import { isWebPushConfigured } from './config';
 import {
 	assignmentPayload,
@@ -107,6 +115,19 @@ async function loadPreferences(ctx: MutationCtx, userId: string): Promise<Prefer
 	};
 }
 
+/** The person's role in this instance's organization now; null once they have left it. */
+async function loadCurrentRole(ctx: MutationCtx, userId: string): Promise<OrganizationRole | null> {
+	const organizationId = await getSingletonOrganizationId(ctx);
+	const member = (await ctx.runQuery(components.betterAuth.adapter.findOne, {
+		model: 'member',
+		where: [
+			{ field: 'organizationId', value: organizationId },
+			{ field: 'userId', value: userId },
+		],
+	})) as { role?: string } | null;
+	return (member?.role ?? null) as OrganizationRole | null;
+}
+
 async function hasMailFeature(ctx: MutationCtx): Promise<boolean> {
 	return (await isFeatureEnabled(ctx, 'postbox')) || (await isFeatureEnabled(ctx, 'mail.external'));
 }
@@ -152,10 +173,14 @@ async function resolveAssignment(
 	ctx: MutationCtx,
 	userId: string,
 	noticeId: Id<'inboxAssignmentNotices'>,
-	prefs: Preferences
+	prefs: Preferences,
+	role: OrganizationRole
 ): Promise<Resolved | null> {
 	const notice = await ctx.db.get(noticeId);
 	if (!notice || notice.userId !== userId) return null;
+	// The notice was authorized when it was written; the thread is shown only to
+	// whoever reads the shared inbox now, as `inbox.queries.pendingAssignments`.
+	if (!isSharedInboxReader({ role })) return null;
 	if (!(await isFeatureEnabled(ctx, 'inbox'))) return null;
 	return {
 		payload: assignmentPayload(
@@ -231,13 +256,14 @@ async function resolveEvent(
 	ctx: MutationCtx,
 	userId: string,
 	event: PushEvent,
-	prefs: Preferences
+	prefs: Preferences,
+	role: OrganizationRole
 ): Promise<Resolved | null> {
 	switch (event.kind) {
 		case 'mail':
 			return resolveMail(ctx, userId, event.messageId, prefs);
 		case 'assignment':
-			return resolveAssignment(ctx, userId, event.noticeId, prefs);
+			return resolveAssignment(ctx, userId, event.noticeId, prefs, role);
 		case 'chat':
 			return resolveChat(ctx, userId, event.messageId, prefs);
 		case 'test':
@@ -308,8 +334,12 @@ export const prepareDelivery = internalMutation({
 				: subscriptions;
 		if (targets.length === 0) return [];
 
+		// Every surface behind these events is for current members only.
+		const role = await loadCurrentRole(ctx, userId);
+		if (!role) return [];
+
 		const prefs = await loadPreferences(ctx, userId);
-		const resolved = await resolveEvent(ctx, userId, event, prefs);
+		const resolved = await resolveEvent(ctx, userId, event, prefs, role);
 		if (!resolved) return [];
 
 		const now = Date.now();
@@ -355,7 +385,11 @@ export const takeQuietSummary = internalMutation({
 		const subscription = await ctx.db.get(subscriptionId);
 		if (!subscription) return null;
 		const count = subscription.quietDeferredCount ?? 0;
-		if (count === 0 || !isWebPushConfigured()) {
+		if (
+			count === 0 ||
+			!isWebPushConfigured() ||
+			!(await loadCurrentRole(ctx, subscription.userId))
+		) {
 			await ctx.db.patch(subscriptionId, {
 				quietDeferredCount: undefined,
 				quietSummaryAt: undefined,

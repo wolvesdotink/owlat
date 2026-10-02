@@ -1,12 +1,58 @@
 /**
- * Shared seeding for the Web Push integration tests: a personal mailbox with
- * an inbox, an unread message in its own thread, and a registered device.
+ * Shared seeding for the Web Push integration tests: the organization the
+ * recipients belong to, a personal mailbox with an inbox, an unread message in
+ * its own thread, and a registered device.
  */
 
-import type { convexTest } from 'convex-test';
+import { convexTest } from 'convex-test';
+import schema from '../../schema';
+import betterAuthSchema from '../../betterAuth/schema';
+import { components } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
+import { betterAuthModules } from '../../__tests__/testModules';
+import { _resetSingletonOrgCacheForTests } from '../../lib/sessionOrganization';
 
 type T = ReturnType<typeof convexTest>;
+type Role = 'owner' | 'admin' | 'editor';
+
+/**
+ * A harness whose organization has these members, so the sender's
+ * current-access check sees them. `user-a` and `user-b` are admins by default.
+ */
+export async function pushHarness(
+	modules: Record<string, () => Promise<unknown>>,
+	members: Record<string, Role> = { 'user-a': 'admin', 'user-b': 'admin' }
+): Promise<T> {
+	_resetSingletonOrgCacheForTests();
+	const t = convexTest(schema, modules);
+	t.registerComponent('betterAuth', betterAuthSchema, betterAuthModules);
+	const org = (await t.mutation(components.betterAuth.adapter.create, {
+		input: { model: 'organization', data: { name: 'Acme', slug: 'acme', createdAt: Date.now() } },
+	} as never)) as { _id: string };
+	for (const [userId, role] of Object.entries(members)) {
+		await t.mutation(components.betterAuth.adapter.create, {
+			input: {
+				model: 'member',
+				data: { organizationId: org._id, userId, role, createdAt: Date.now() },
+			},
+		} as never);
+	}
+	return t;
+}
+
+/** Change a member's role, or remove them from the organization (`null`). */
+export async function setMemberRole(t: T, userId: string, role: Role | null): Promise<void> {
+	const where = [{ field: 'userId', value: userId }];
+	if (role === null) {
+		await t.mutation(components.betterAuth.adapter.deleteOne, {
+			input: { model: 'member', where },
+		} as never);
+		return;
+	}
+	await t.mutation(components.betterAuth.adapter.updateOne, {
+		input: { model: 'member', where, update: { role } },
+	} as never);
+}
 
 /** A real RFC 8291 user-agent key pair, so the sender could actually encrypt to it. */
 export const DEVICE_KEYS = {

@@ -5,13 +5,12 @@
  * the ciphertext.
  */
 
-import { convexTest } from 'convex-test';
+import type { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { enableFeatures } from '../../__tests__/factories';
-import { VAPID_ENV, seedDevice, seedMailbox, seedMessage } from './pushFixtures';
+import { VAPID_ENV, pushHarness, seedDevice, seedMailbox, seedMessage } from './pushFixtures';
 
 // Sibling `push/*` modules glob in as `../foo.ts`; convex-test resolves function
 // paths from the convex root, so re-root them to `../../push/foo.ts`.
@@ -97,7 +96,7 @@ async function prepareMention(t: T, messageId: Id<'chatMessages'>) {
 
 describe('push.dispatch chat in an email discussion', () => {
 	it('names the email and opens it on click', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules);
 		const seeded = await seedDiscussion(t, { sealed: false });
 		const [payload] = await prepareMention(t, seeded.chatMessageId);
 		expect(payload).toEqual({
@@ -109,7 +108,7 @@ describe('push.dispatch chat in an email discussion', () => {
 	});
 
 	it('never shows the subject of a sealed email', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules);
 		const seeded = await seedDiscussion(t, { sealed: true });
 		const [payload] = await prepareMention(t, seeded.chatMessageId);
 		expect(payload.title).toBe('Grace Hopper in an encrypted conversation');
