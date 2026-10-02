@@ -21,6 +21,7 @@ import { loadEmailTheme } from '../lib/publishableEmailRender';
 import { assertContentRevision } from '../lib/contentRevision';
 import { rendererVersionArg } from '../lib/rendererVersion';
 import { recordAuditLog } from '../lib/auditLog';
+import { loadCoeditSave, markCoeditSaved } from '../emailCoediting/save';
 
 // Data variable type for schema definition
 export type DataVariableType = 'string' | 'number' | 'boolean' | 'date';
@@ -184,13 +185,23 @@ export const update = transactionalMutation({
 		// The `contentRevision` the caller's payload was built on. When given, the
 		// write is refused with `conflict` if the row has moved on since.
 		expectedContentRevision: v.optional(v.number()),
+		// The co-editing session version the caller has seen. When given and the
+		// email has a live session, the session's draft is saved instead of the
+		// payload's blocks and shared fields (emailCoediting/save.ts).
+		coeditVersion: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, rawArgs) => {
 		const session = await requireOrgPermission(
 			ctx,
 			'templates:manage',
 			'Only owners and admins can update transactional emails'
 		);
+		const coedit = await loadCoeditSave(
+			ctx,
+			{ type: 'transactionalEmail', id: rawArgs.id },
+			rawArgs.coeditVersion
+		);
+		const args = coedit ? { ...rawArgs, ...coedit.overrides } : rawArgs;
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 
 		assertEditableForPublishableChange(email, 'Transactional email', args.forceWhilePublished);
@@ -231,6 +242,7 @@ export const update = transactionalMutation({
 		};
 
 		await ctx.db.patch(args.id, updates);
+		if (coedit) await markCoeditSaved(ctx, coedit, updates.contentRevision);
 
 		const changedFields = Object.keys(updates).filter(
 			(k) => k !== 'updatedAt' && k !== 'contentRevision'

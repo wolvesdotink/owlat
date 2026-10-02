@@ -47,6 +47,7 @@ const TRIGGER_LABEL_KEYS: Record<VersionSummary['trigger'], string> = {
 	save: 'components.email.templateHistoryPanel.triggers.save',
 	publish: 'components.email.templateHistoryPanel.triggers.publish',
 	send: 'components.email.templateHistoryPanel.triggers.send',
+	conflict: 'components.email.templateHistoryPanel.triggers.conflict',
 };
 
 const triggerLabel = (trigger: VersionSummary['trigger']) => t(TRIGGER_LABEL_KEYS[trigger]);
@@ -58,6 +59,7 @@ const TRIGGER_ICONS: Record<VersionSummary['trigger'], string> = {
 	save: 'lucide:save',
 	publish: 'lucide:globe',
 	send: 'lucide:send',
+	conflict: 'lucide:git-merge',
 };
 
 // ── Preview ────────────────────────────────────────────────────────────────

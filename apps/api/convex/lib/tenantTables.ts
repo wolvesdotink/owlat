@@ -80,6 +80,10 @@ export const TENANT_TABLES = [
 	'formEndpoints',
 
 	// ── Templates & content ──
+	// Live co-editing state of an email (ephemeral); goes before the emails.
+	'emailCoeditNotices',
+	'emailEditorPresence',
+	'emailCoeditSessions',
 	// Snapshot history holds full copies of the template bodies, so it is the
 	// same tenant business data and wipes with (and before) its parent.
 	'emailTemplateVersions',
