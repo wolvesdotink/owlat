@@ -4258,7 +4258,7 @@
 				"quietHours": {
 					"days": "On these days",
 					"from": "From",
-					"hint": "Hold desktop notifications during this window and roll them into one summary when it ends. Threads you asked to be alerted about still come through.",
+					"hint": "Hold notifications during this window and roll them into one summary when it ends. Threads you asked to be alerted about still come through.",
 					"label": "Quiet hours",
 					"noDays": "Pick at least one day — quiet hours do nothing until you do.",
 					"overnight": "Overnight window: it ends the following morning.",

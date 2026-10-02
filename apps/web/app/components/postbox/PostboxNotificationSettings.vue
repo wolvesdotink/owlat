@@ -68,7 +68,10 @@ function onNotifyAboutChange(event: Event) {
 			</h2>
 		</header>
 		<PostboxNotificationPermission v-if="isDesktopSurface" />
-		<div class="px-5 py-4 flex items-center justify-between gap-4">
+		<!-- Stacks on a phone: the browser copy of this card is reachable there. -->
+		<div
+			class="px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4"
+		>
 			<div class="min-w-0">
 				<label for="postbox-notify-about" class="font-medium text-sm block">
 					{{ t('components.postbox.postboxNotificationSettings.notifyAbout.label') }}
@@ -79,7 +82,7 @@ function onNotifyAboutChange(event: Event) {
 			</div>
 			<select
 				id="postbox-notify-about"
-				class="input w-64 shrink-0"
+				class="input w-full sm:w-64 shrink-0"
 				:value="notifyAbout"
 				:disabled="isSaving"
 				@change="onNotifyAboutChange"

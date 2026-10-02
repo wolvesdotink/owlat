@@ -4258,7 +4258,7 @@
 				"quietHours": {
 					"days": "An diesen Tagen",
 					"from": "Von",
-					"hint": "Hält Desktop-Benachrichtigungen in diesem Zeitraum zurück und fasst sie am Ende zu einer Zusammenfassung zusammen. Unterhaltungen, für die du einen Hinweis angefordert hast, kommen weiterhin durch.",
+					"hint": "Hält Benachrichtigungen in diesem Zeitraum zurück und fasst sie am Ende zu einer Zusammenfassung zusammen. Unterhaltungen, für die du einen Hinweis angefordert hast, kommen weiterhin durch.",
 					"label": "Ruhezeiten",
 					"noDays": "Wähle mindestens einen Tag — bis dahin bewirken die Ruhezeiten nichts.",
 					"overnight": "Zeitraum über Nacht: Er endet am folgenden Morgen.",
