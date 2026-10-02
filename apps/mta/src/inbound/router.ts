@@ -44,10 +44,22 @@ const TLS_RPT_SYSTEM_ROUTE_ID = '__system:tls-rpt__';
 /** Convex webhook path the TLS-RPT system route delivers to. */
 const TLS_RPT_WEBHOOK_PATH = '/webhooks/mta-tls-report';
 
-/** Config the inbound pipeline threads through to recognise the rua address. */
+// ─── DMARC aggregate-report system route (RFC 7489 §7.1) ────────────
+
+/** Synthetic id for the DMARC report-address system route. */
+const DMARC_REPORT_SYSTEM_ROUTE_ID = '__system:dmarc-report__';
+/** Convex webhook path the DMARC report system route delivers to. */
+const DMARC_REPORT_WEBHOOK_PATH = '/webhooks/mta-dmarc-report';
+
+/** Config the inbound pipeline threads through to recognise the report addresses. */
 export interface TlsRptSystemRouteConfig {
 	/** The operator's `_smtp._tls` `rua=` value (mailto: URI or bare address). */
 	ruaAddress?: string;
+	/**
+	 * The address Owlat reads DMARC aggregate reports at, already resolved by
+	 * `resolveDmarcReportAddress` (bare lowercase `local@domain`).
+	 */
+	dmarcReportAddress?: string;
 	/** Convex deployment site URL, e.g. `https://acme.convex.site`. */
 	convexSiteUrl: string;
 	/** Shared MTA webhook secret used to HMAC-sign the forward. */
@@ -82,14 +94,23 @@ function buildTlsRptSystemRoute(
 	config: TlsRptSystemRouteConfig,
 	parsedRua: string | null
 ): InboundRoute {
+	return buildSystemRoute(config, parsedRua, TLS_RPT_SYSTEM_ROUTE_ID, TLS_RPT_WEBHOOK_PATH);
+}
+
+function buildSystemRoute(
+	config: TlsRptSystemRouteConfig,
+	parsedAddress: string | null,
+	id: string,
+	webhookPath: string
+): InboundRoute {
 	const base = config.convexSiteUrl.replace(/\/+$/, '');
-	const atIndex = parsedRua ? parsedRua.lastIndexOf('@') : -1;
+	const atIndex = parsedAddress ? parsedAddress.lastIndexOf('@') : -1;
 	return {
-		id: TLS_RPT_SYSTEM_ROUTE_ID,
-		domain: parsedRua && atIndex >= 0 ? parsedRua.slice(atIndex + 1) : '',
-		address: parsedRua && atIndex >= 0 ? parsedRua.slice(0, atIndex) : '',
+		id,
+		domain: parsedAddress && atIndex >= 0 ? parsedAddress.slice(atIndex + 1) : '',
+		address: parsedAddress && atIndex >= 0 ? parsedAddress.slice(0, atIndex) : '',
 		mode: 'endpoint',
-		endpointUrl: `${base}${TLS_RPT_WEBHOOK_PATH}`,
+		endpointUrl: `${base}${webhookPath}`,
 		systemSecret: config.webhookSecret,
 		createdAt: 0,
 	};
@@ -119,6 +140,17 @@ export async function findRoute(
 	const ruaAddress = parseRuaAddress(system?.ruaAddress);
 	if (system && ruaAddress && parsed.address.toLowerCase() === ruaAddress) {
 		return buildTlsRptSystemRoute(system, ruaAddress);
+	}
+	// System route: Owlat's DMARC report address delivers to the report parser,
+	// never a mailbox, for the same reason.
+	const dmarcReportAddress = system?.dmarcReportAddress?.toLowerCase();
+	if (system && dmarcReportAddress && parsed.address.toLowerCase() === dmarcReportAddress) {
+		return buildSystemRoute(
+			system,
+			dmarcReportAddress,
+			DMARC_REPORT_SYSTEM_ROUTE_ID,
+			DMARC_REPORT_WEBHOOK_PATH
+		);
 	}
 
 	// Try exact match first

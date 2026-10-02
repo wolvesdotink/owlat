@@ -93,6 +93,49 @@ describe('router', () => {
 		});
 	});
 
+	describe('DMARC report system route', () => {
+		const system = {
+			dmarcReportAddress: 'dmarc-reports@bounces.example.com',
+			convexSiteUrl: 'https://acme.convex.site/',
+			webhookSecret: 'secret',
+		};
+
+		it('routes the report address to the signed DMARC webhook', async () => {
+			const route = await findRoute(redis, 'DMARC-Reports@Bounces.Example.com', system);
+			expect(route).toMatchObject({
+				id: '__system:dmarc-report__',
+				domain: 'bounces.example.com',
+				address: 'dmarc-reports',
+				mode: 'endpoint',
+				endpointUrl: 'https://acme.convex.site/webhooks/mta-dmarc-report',
+				systemSecret: 'secret',
+			});
+		});
+
+		it('cannot be shadowed by a stored route for the same address', async () => {
+			await createRoute(redis, {
+				domain: 'bounces.example.com',
+				address: '*',
+				mode: 'hold',
+			});
+			const route = await findRoute(redis, 'dmarc-reports@bounces.example.com', system);
+			expect(route?.id).toBe('__system:dmarc-report__');
+		});
+
+		it('leaves other addresses on the report domain to the route table', async () => {
+			const route = await findRoute(redis, 'postmaster@bounces.example.com', system);
+			expect(route).toBeNull();
+		});
+
+		it('keeps the TLS-RPT route separate', async () => {
+			const route = await findRoute(redis, 'tls@example.com', {
+				...system,
+				ruaAddress: 'mailto:tls@example.com',
+			});
+			expect(route?.endpointUrl).toBe('https://acme.convex.site/webhooks/mta-tls-report');
+		});
+	});
+
 	describe('removeRoute', () => {
 		it('removes route and returns true', async () => {
 			await createRoute(redis, {
