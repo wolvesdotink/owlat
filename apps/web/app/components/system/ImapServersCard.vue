@@ -20,7 +20,18 @@ type Verdict = 'current' | 'supported' | 'unsupported' | 'ahead';
 
 const servers = computed(() => status.value?.servers ?? []);
 const isLegacyInWindow = computed(() => status.value?.isLegacyInWindow === true);
-const hasVerdict = (verdict: Verdict) => servers.value.some((s) => s.verdict === verdict);
+// From the summary, which covers every server in the window (a legacy login
+// counting as wire 0); the list is capped.
+const hasUnsupported = computed(() => {
+	const oldest = status.value?.oldestWireVersionSeen;
+	if (oldest === null || oldest === undefined) return false;
+	return oldest < status.value!.minSupportedWireVersion;
+});
+const hasAhead = computed(() => {
+	const newest = status.value?.newestWireVersionSeen;
+	if (newest === null || newest === undefined) return false;
+	return newest > status.value!.backendWireVersion;
+});
 
 const VERDICT_CLASS: Record<Verdict, { pill: string; dot: string }> = {
 	current: { pill: 'bg-success/10 text-success', dot: 'bg-success' },
@@ -48,7 +59,7 @@ const VERDICT_CLASS: Record<Verdict, { pill: string; dot: string }> = {
 
 		<template v-else>
 			<div
-				v-if="isLegacyInWindow || hasVerdict('unsupported') || hasVerdict('ahead')"
+				v-if="isLegacyInWindow || hasUnsupported || hasAhead"
 				class="mb-4 space-y-2"
 				role="status"
 			>
@@ -68,7 +79,7 @@ const VERDICT_CLASS: Record<Verdict, { pill: string; dot: string }> = {
 					}}
 				</p>
 				<p
-					v-if="hasVerdict('unsupported')"
+					v-if="hasUnsupported"
 					class="flex items-start gap-2 rounded-lg border border-error/40 bg-error/5 p-3 text-caption text-text-primary"
 				>
 					<Icon
@@ -79,7 +90,7 @@ const VERDICT_CLASS: Record<Verdict, { pill: string; dot: string }> = {
 					{{ t('components.system.imapServersCard.unsupportedWarning') }}
 				</p>
 				<p
-					v-if="hasVerdict('ahead')"
+					v-if="hasAhead"
 					class="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/5 p-3 text-caption text-text-primary"
 				>
 					<Icon
@@ -148,6 +159,9 @@ const VERDICT_CLASS: Record<Verdict, { pill: string; dot: string }> = {
 						</tr>
 					</tbody>
 				</table>
+				<p v-if="status.isListTruncated" class="mt-2 text-caption text-text-tertiary">
+					{{ t('components.system.imapServersCard.truncated', { count: servers.length }) }}
+				</p>
 			</div>
 		</template>
 	</div>

@@ -27,16 +27,29 @@ type Server = {
 
 const T0 = Date.UTC(2026, 9, 1, 12);
 
-function status(overrides: { servers?: Server[]; legacyImapSeenAt?: number | null } = {}) {
+function status(
+	overrides: {
+		servers?: Server[];
+		legacyImapSeenAt?: number | null;
+		minSupportedWireVersion?: number;
+		isListTruncated?: boolean;
+	} = {}
+) {
 	const legacyImapSeenAt = overrides.legacyImapSeenAt ?? null;
+	const servers = overrides.servers ?? [];
+	// The summary as the backend computes it: over every server, legacy as 0.
+	const wires = servers.map((s) => s.wireVersion);
+	if (legacyImapSeenAt !== null) wires.push(0);
 	return {
 		backendWireVersion: 1,
-		minSupportedWireVersion: 0,
+		minSupportedWireVersion: overrides.minSupportedWireVersion ?? 0,
 		windowDays: 7,
-		servers: overrides.servers ?? [],
+		servers,
+		isListTruncated: overrides.isListTruncated ?? false,
 		legacyImapSeenAt,
 		isLegacyInWindow: legacyImapSeenAt !== null,
-		oldestWireVersionSeen: null,
+		oldestWireVersionSeen: wires.length ? Math.min(...wires) : null,
+		newestWireVersionSeen: servers.length ? Math.max(...servers.map((s) => s.wireVersion)) : null,
 		safeToRaiseMinTo: 1,
 	};
 }
@@ -87,11 +100,13 @@ describe('ImapServersCard', () => {
 	});
 
 	it('warns when a server the backend no longer serves reported', () => {
-		const { wrapper } = mountCard(status({ servers: [server('old', 'unsupported', 0)] }));
+		const { wrapper } = mountCard(
+			status({ servers: [server('old', 'unsupported', 0)], minSupportedWireVersion: 1 })
+		);
 
 		expect(wrapper.text()).toContain('Not supported');
 		expect(wrapper.find('[role="status"]').text()).toContain(
-			'It does not start until you update the IMAP container.'
+			'The backend refuses its logins, and a server that reports its version does not start'
 		);
 	});
 
@@ -107,10 +122,26 @@ describe('ImapServersCard', () => {
 		const { wrapper } = mountCard(status({ legacyImapSeenAt: T0 }));
 
 		expect(wrapper.find('[role="status"]').text()).toContain(
-			'An IMAP server from before version reporting (0.6.7 or older) handled a login'
+			'An IMAP server from 0.6.7 or older handled a login'
 		);
 		// The legacy server never reports, so the table stays empty under the warning.
 		expect(wrapper.text()).toContain('No IMAP server reported in the last 7 days.');
+		expectFullyLocalized(wrapper);
+	});
+
+	it('warns from the summary even when the old server is beyond the listed rows', () => {
+		const data = status({
+			servers: [server('new', 'current', 1)],
+			minSupportedWireVersion: 1,
+			isListTruncated: true,
+		});
+		// The listed rows are all current; the summary still saw an older server.
+		const { wrapper } = mountCard({ ...data, oldestWireVersionSeen: 0 });
+
+		expect(wrapper.find('[role="status"]').text()).toContain(
+			'An IMAP server older than this backend supports was seen.'
+		);
+		expect(wrapper.text()).toContain('Showing the 1 most recent.');
 		expectFullyLocalized(wrapper);
 	});
 

@@ -5541,12 +5541,13 @@
 		"system": {
 			"imapServersCard": {
 				"title": "IMAP servers",
-				"intro": "IMAP servers that reported to this backend in the last 7 days. Update the backend first, then the IMAP container: the IMAP server may run one release behind the backend, never ahead of it, and one outside that window does not start.",
+				"intro": "IMAP servers that reported to this backend in the last 7 days. Update the backend first, then the IMAP container: the IMAP server may run one release behind the backend, never ahead of it.",
 				"loading": "Loading IMAP servers…",
 				"empty": "No IMAP server reported in the last 7 days. That is expected when this deployment does not run the IMAP container.",
-				"legacyWarning": "An IMAP server from before version reporting (0.6.7 or older) handled a login on {date}. Update the IMAP container to the backend's release.",
-				"unsupportedWarning": "An IMAP server older than this backend supports reported in. It does not start until you update the IMAP container.",
+				"legacyWarning": "An IMAP server from 0.6.7 or older handled a login on {date}. It does not report its version, so it is not listed and is not stopped at startup. Update the IMAP container to the backend's release.",
+				"unsupportedWarning": "An IMAP server older than this backend supports was seen. The backend refuses its logins, and a server that reports its version does not start, until you update the IMAP container.",
 				"aheadWarning": "An IMAP server newer than this backend reported in. It does not serve mail until the backend is updated.",
+				"truncated": "Showing the {count} most recent. The warnings above cover every IMAP server in the last 7 days.",
 				"host": "Host",
 				"version": "Release",
 				"lastSeen": "Last report",
