@@ -84,8 +84,11 @@ async function bookingRequest<T>(
 	segment: string,
 	options: { query?: Query; body?: unknown } = {}
 ): Promise<PublicTokenResult<T>> {
+	// The routes answer only to a page slug spelled as stored (lowercase), so
+	// `/book/Ada` typed by hand still finds the page.
+	const canonical = route === 'page' || route === 'book' ? segment.toLowerCase() : segment;
 	const url = new URL(
-		`${useRuntimeConfig().public.convexSiteUrl}/booking/${route}/${encodeURIComponent(segment)}`
+		`${useRuntimeConfig().public.convexSiteUrl}/booking/${route}/${encodeURIComponent(canonical)}`
 	);
 	for (const [key, value] of Object.entries(options.query ?? {})) {
 		if (value !== undefined && value !== '') url.searchParams.set(key, String(value));
