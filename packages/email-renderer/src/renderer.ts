@@ -62,7 +62,9 @@ const createContext = (options: RenderOptions = {}): RenderContext => {
 		title: options.title ?? '',
 		breakpoint: px(options.breakpoint, 480),
 		direction: options.direction ?? 'ltr',
-		fontUrls: options.fontUrls ?? [],
+		// A theme names the web fonts its stacks need (the brand kit); explicit
+		// render options win.
+		fontUrls: options.fontUrls ?? options.theme?.fontUrls ?? [],
 		customCss: options.customCss ?? '',
 		variableValues: options.variableValues ?? {},
 		lang: options.lang ?? 'en',
