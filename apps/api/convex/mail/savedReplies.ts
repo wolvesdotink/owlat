@@ -15,8 +15,9 @@ import { mailSnippetVariableValidator } from '../lib/validators/mailContent';
 import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { savedReplyMutation, savedReplyQuery } from './_helpers';
-import { requireMailboxAccess } from './permissions';
+import { createMailboxAccessGate, requireMailboxAccess } from './permissions';
 import {
+	assertSavedReplyRoom,
 	canManageSavedReply,
 	canUseSavedReply,
 	loadPersonalSavedReplies,
@@ -88,19 +89,31 @@ export const listMine = savedReplyQuery({
 });
 
 /**
- * The organization's shared replies, for the admin page. Every member may read
- * them (they insert them anyway); `canManage` says whether this caller may
- * change them.
+ * The organization's shared replies, for the admin page. `canManage` says
+ * whether this caller may change them. A member who may not sees the ones
+ * they can insert anyway: those not limited to team inboxes, and those
+ * limited to a team inbox they write in.
  */
 // all-members: every member inserts shared replies; changing them needs settings:manage.
 export const listShared = savedReplyQuery({
 	args: {},
-	handler: async (ctx, _args, session) => ({
-		canManage: hasPermission(session.role, 'settings:manage'),
-		replies: dedupe(await loadSharedSavedReplies(ctx, session.activeOrganizationId, 'all')).map(
-			toView
-		),
-	}),
+	handler: async (ctx, _args, session) => {
+		const canManage = hasPermission(session.role, 'settings:manage');
+		const all = dedupe(await loadSharedSavedReplies(ctx, session.activeOrganizationId, 'all'));
+		if (canManage) return { canManage, replies: all.map(toView) };
+		const access = createMailboxAccessGate(ctx, session);
+		const visible: ScopedSavedReply[] = [];
+		for (const reply of all) {
+			if (reply.scope.kind !== 'shared') continue;
+			let usable = reply.scope.mailboxIds.length === 0;
+			for (const id of reply.scope.mailboxIds) {
+				if (usable) break;
+				usable = (await access(id)).ok;
+			}
+			if (usable) visible.push(reply);
+		}
+		return { canManage, replies: visible.map(toView) };
+	},
 });
 
 const editableFields = {
@@ -129,6 +142,7 @@ export const create = savedReplyMutation({
 		};
 		// authz: a personal reply is the caller's own; a shared one needs settings:manage.
 		if (args.scope === 'personal') {
+			await assertSavedReplyRoom(ctx, { kind: 'personal', ownerUserId: session.userId });
 			return ctx.db.insert('mailSnippets', {
 				...content,
 				...scopeFields({ kind: 'personal', ownerUserId: session.userId }),
@@ -138,6 +152,10 @@ export const create = savedReplyMutation({
 			hasPermission(session.role, 'settings:manage'),
 			'Only admins can add shared replies'
 		);
+		await assertSavedReplyRoom(ctx, {
+			kind: 'shared',
+			organizationId: session.activeOrganizationId,
+		});
 		const mailboxIds = await validateRestriction(
 			ctx,
 			args.mailboxIds ?? [],
@@ -171,7 +189,12 @@ export const update = savedReplyMutation({
 			scope.kind === 'shared' && args.mailboxIds !== undefined
 				? {
 						...scope,
-						mailboxIds: await validateRestriction(ctx, args.mailboxIds, scope.organizationId),
+						mailboxIds: await validateRestriction(
+							ctx,
+							args.mailboxIds,
+							scope.organizationId,
+							scope.mailboxIds
+						),
 					}
 				: scope;
 		const patch: Record<string, unknown> = { updatedAt: Date.now(), ...scopeFields(next) };

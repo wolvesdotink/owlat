@@ -198,19 +198,25 @@ export function canUseSavedReply(
  * The team inboxes a shared reply may be restricted to: live shared mailboxes
  * of the caller's organization, deduplicated. Anything else is refused rather
  * than dropped, so an admin never saves a restriction that silently means
- * "everywhere".
+ * "everywhere". The one exception is `current`, the restriction the row
+ * already has: an inbox in it that has since been deleted is dropped, because
+ * the editor cannot show (or untick) a deleted inbox and an edit would
+ * otherwise be refused forever.
  */
 export async function validateRestriction(
 	ctx: Pick<QueryCtx, 'db'>,
 	mailboxIds: readonly Id<'mailboxes'>[],
-	organizationId: string
+	organizationId: string,
+	current: readonly Id<'mailboxes'>[] = []
 ): Promise<Id<'mailboxes'>[]> {
 	const unique = [...new Set(mailboxIds)];
 	if (unique.length > RESTRICTION_MAX_MAILBOXES) {
 		throwInvalidInput(`A reply can be limited to at most ${RESTRICTION_MAX_MAILBOXES} inboxes`);
 	}
+	const kept: Id<'mailboxes'>[] = [];
 	for (const id of unique) {
 		const mailbox = await ctx.db.get(id);
+		if ((!mailbox || mailbox.status === 'deleted') && current.includes(id)) continue;
 		if (
 			!mailbox ||
 			mailbox.scope !== 'shared' ||
@@ -219,8 +225,35 @@ export async function validateRestriction(
 		) {
 			throwInvalidInput('A reply can only be limited to team inboxes of this organization');
 		}
+		kept.push(id);
 	}
-	return unique;
+	return kept;
+}
+
+/**
+ * Refuse a new reply once its owner (personal) or organization (shared) has
+ * as many as the lists read: one more would exist but show nowhere, not even
+ * on the page that deletes it.
+ */
+export async function assertSavedReplyRoom(
+	ctx: Pick<QueryCtx, 'db'>,
+	scope: { kind: 'personal'; ownerUserId: string } | { kind: 'shared'; organizationId: string }
+): Promise<void> {
+	const rows =
+		scope.kind === 'personal'
+			? await ctx.db
+					.query('mailSnippets')
+					.withIndex('by_owner', (q) => q.eq('ownerUserId', scope.ownerUserId))
+					.take(SAVED_REPLY_LIST_CAP)
+			: await ctx.db
+					.query('mailSnippets')
+					.withIndex('by_organization_and_scope', (q) =>
+						q.eq('organizationId', scope.organizationId).eq('scope', 'shared')
+					)
+					.take(SAVED_REPLY_LIST_CAP);
+	if (rows.length >= SAVED_REPLY_LIST_CAP) {
+		throwInvalidInput(`There can be at most ${SAVED_REPLY_LIST_CAP} saved replies here`);
+	}
 }
 
 /** The scope fields a write stores for `scope` (a legacy row gets them on its first edit). */

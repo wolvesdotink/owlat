@@ -238,6 +238,112 @@ describe('shared saved replies', () => {
 		as('user-C');
 		expect(names(await composer())).toEqual(['Support only']);
 	});
+
+	it('list for a member only the shared ones they could insert', async () => {
+		const t = await harness();
+		const support = await seedMailbox(t, 'admin-1', { scope: 'shared', members: ['user-A'] });
+		const hr = await seedMailbox(t, 'admin-1', { scope: 'shared' });
+		as('admin-1', 'admin');
+		const reply = (name: string, mailboxIds: Id<'mailboxes'>[]) =>
+			t.mutation(api.mail.savedReplies.create, {
+				scope: 'shared',
+				name,
+				shortcut: '',
+				bodyHtml: '<p>x</p>',
+				mailboxIds,
+			});
+		await reply('Everywhere', []);
+		await reply('Support', [support]);
+		await reply('HR', [hr]);
+		await reply('Support or HR', [support, hr]);
+		expect(names((await t.query(api.mail.savedReplies.listShared, {})).replies)).toEqual([
+			'Everywhere',
+			'HR',
+			'Support',
+			'Support or HR',
+		]);
+
+		as('user-A');
+		expect(names((await t.query(api.mail.savedReplies.listShared, {})).replies)).toEqual([
+			'Everywhere',
+			'Support',
+			'Support or HR',
+		]);
+		as('user-C');
+		expect(names((await t.query(api.mail.savedReplies.listShared, {})).replies)).toEqual([
+			'Everywhere',
+		]);
+	});
+
+	it('stay editable when an inbox they are limited to is deleted', async () => {
+		const t = await harness();
+		const support = await seedMailbox(t, 'admin-1', { scope: 'shared' });
+		const sales = await seedMailbox(t, 'admin-1', { scope: 'shared' });
+		const gone = await seedMailbox(t, 'admin-1', { scope: 'shared' });
+		as('admin-1', 'admin');
+		const id = await t.mutation(api.mail.savedReplies.create, {
+			scope: 'shared',
+			name: 'Limited',
+			shortcut: '',
+			bodyHtml: '<p>x</p>',
+			mailboxIds: [support, gone],
+		});
+		await t.run((ctx) => ctx.db.patch(gone, { status: 'deleted' }));
+
+		// The editor sends back the restriction it was given, deleted inbox and all.
+		await t.mutation(api.mail.savedReplies.update, {
+			replyId: id,
+			name: 'Still limited',
+			mailboxIds: [support, gone],
+		});
+		const [row] = (await t.query(api.mail.savedReplies.listShared, {})).replies;
+		expect(row?.name).toBe('Still limited');
+		expect(row?.mailboxIds).toEqual([support]);
+
+		// A deleted inbox the reply was not limited to is still refused.
+		await t.run((ctx) => ctx.db.patch(sales, { status: 'deleted' }));
+		await expect(
+			t.mutation(api.mail.savedReplies.update, { replyId: id, mailboxIds: [support, sales] })
+		).rejects.toThrow();
+	});
+});
+
+describe('how many replies there can be', () => {
+	it('refuses one more than the lists show, per person and per organization', async () => {
+		const t = await harness();
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 200; i++) {
+				await ctx.db.insert('mailSnippets', {
+					scope: 'personal',
+					ownerUserId: 'user-A',
+					name: `Mine ${i}`,
+					shortcut: '',
+					bodyHtml: '<p>x</p>',
+					createdAt: i,
+					updatedAt: i,
+				});
+				await ctx.db.insert('mailSnippets', {
+					scope: 'shared',
+					organizationId: 'org-1',
+					name: `Ours ${i}`,
+					shortcut: '',
+					bodyHtml: '<p>x</p>',
+					createdAt: i,
+					updatedAt: i,
+				});
+			}
+		});
+		const one = { name: 'One more', shortcut: '', bodyHtml: '<p>x</p>' };
+		await expect(
+			t.mutation(api.mail.savedReplies.create, { scope: 'personal', ...one })
+		).rejects.toThrow(/at most 200/);
+		as('admin-1', 'admin');
+		await expect(
+			t.mutation(api.mail.savedReplies.create, { scope: 'shared', ...one })
+		).rejects.toThrow(/at most 200/);
+		// Another person still has room.
+		await t.mutation(api.mail.savedReplies.create, { scope: 'personal', ...one });
+	});
 });
 
 describe('rows written before saved replies', () => {
