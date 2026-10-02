@@ -2,6 +2,7 @@
 import { useAnswerQueueSession } from '~/composables/useAnswerQueueSession';
 import { useAnswerQueueChips } from '~/composables/useAnswerQueueChips';
 import { useAnswerMailActions } from '~/composables/useAnswerMailActions';
+import { useAnswerLayout } from '~/composables/useAnswerSheet';
 import { isDialogOpen } from '~/utils/dialogOpen';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { isChordPending } from '~/utils/shortcutScope';
@@ -77,6 +78,9 @@ function confirmSnooze(until: number) {
 
 const { chips } = useAnswerQueueChips(session);
 
+// A phone's top bar is one line: the menu keeps its icon, and the subject the room.
+const layout = useAnswerLayout();
+
 function onKeydown(event: KeyboardEvent) {
 	if (!visible.value || !session) return;
 	if (event.defaultPrevented || isImeComposing(event)) return;
@@ -147,7 +151,7 @@ const menuItem =
 
 		<PostboxOverflowMenu
 			:label="t('components.answer.queueBar.menu')"
-			:trigger-text="t('components.answer.queueBar.inQueue')"
+			:trigger-text="layout === 'phone' ? undefined : t('components.answer.queueBar.inQueue')"
 			icon="lucide:list-checks"
 			align="right"
 		>

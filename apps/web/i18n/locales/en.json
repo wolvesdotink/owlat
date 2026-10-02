@@ -6414,7 +6414,8 @@
 					"lower": "Lower the reply",
 					"shrink": "Make the reply smaller",
 					"peek": "Reply to {name}…",
-					"peekNoName": "Write a reply…"
+					"peekNoName": "Write a reply…",
+					"peekQuestions": "Answer the questions for this reply…"
 				},
 				"viewLabel": "How much of the conversation to show",
 				"viewShortcut": "Switch with T",
@@ -6465,6 +6466,8 @@
 				"title": "One thing before I write this | {count} things before I write this",
 				"round": "round {round} of {total}",
 				"subline": "Answer what you can. Anything you skip becomes a highlighted gap in the draft.",
+				"trust": "Based on an email from {domain}. Owlat never asks for your password.",
+				"trustNoDomain": "Based on an email. Owlat never asks for your password.",
 				"placeholder": {
 					"choice": "Something else…",
 					"text": "Type your answer…",
@@ -6477,7 +6480,10 @@
 				"operation": "Answer the questions",
 				"waitingForFiles": "Draft ready. Waiting for your files",
 				"waitingForFilesSubline": "The reply is written. Add the files they asked for and it is updated to go out with them.",
-				"attachAndUpdate": "Attach and update draft"
+				"attachAndUpdate": "Attach and update draft",
+				"draftGaps": "The draft needs one more detail | The draft needs {count} more details",
+				"draftGapsSubline": "The reply below is written. What you answer here goes into it; anything left open stays marked.",
+				"updateDraft": "Update the draft"
 			},
 			"fileAsk": {
 				"dropHere": "Drop the file here or",

@@ -3,9 +3,10 @@
  * An AI draft's `[[...]]` gaps (composables/postbox/usePostboxComposerGaps):
  *   - counted in what was written only (a quoted `[[...]]` is someone else's);
  *   - found as ranges in the editor's text, the quote left out, for the paint;
- *   - a click inside one selects all of it, so typing replaces it.
+ *   - a click inside one selects all of it, so typing replaces it;
+ *   - painted when the editor renders the body late, not only on a body change.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick, ref } from 'vue';
 import { mount } from '@vue/test-utils';
 
@@ -81,5 +82,37 @@ describe('usePostboxComposerGaps', () => {
 		w.element.querySelector('p')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 		expect(selection.toString()).toBe('[[the PO]]');
 		w.unmount();
+	});
+
+	it('paints a body the editor renders after the body changed', async () => {
+		const registry = new Map<string, { ranges: Range[] }>();
+		vi.stubGlobal('CSS', { highlights: registry });
+		vi.stubGlobal(
+			'Highlight',
+			class {
+				ranges: Range[];
+				constructor(...ranges: Range[]) {
+					this.ranges = ranges;
+				}
+			}
+		);
+		const bodyHtml = ref('<p>Send [[the PO]] today</p>');
+		const Host = defineComponent({
+			setup() {
+				const rootEl = ref<HTMLElement | null>(null);
+				usePostboxComposerGaps({ rootEl, bodyHtml });
+				// The editor is still empty when the composable first looks.
+				return () => h('div', { ref: rootEl }, [h('div', { contenteditable: 'true' })]);
+			},
+		});
+		const w = mount(Host, { attachTo: document.body });
+		await nextTick();
+		expect(registry.has('owlat-draft-gap')).toBe(false);
+
+		w.element.querySelector('[contenteditable]')!.innerHTML = '<p>Send [[the PO]] today</p>';
+		await vi.waitFor(() => expect(registry.get('owlat-draft-gap')?.ranges).toHaveLength(1));
+		expect(registry.get('owlat-draft-gap')!.ranges[0]!.toString()).toBe('[[the PO]]');
+		w.unmount();
+		vi.unstubAllGlobals();
 	});
 });

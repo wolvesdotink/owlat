@@ -15,7 +15,9 @@
  *     Bcc alike, because the blocker set is derived from all three together.
  *
  * Extracted from PostboxComposer.vue to keep that surface focused (and under
- * the file-size cap) — the composer just spreads the returned pair.
+ * the file-size cap) — the composer just spreads what is returned, including
+ * `lockBindings`: the seal lock's props and requests in one object, because
+ * the frame decides where the lock goes (above the editor, or under Send).
  */
 
 import { computed, type Ref } from 'vue';
@@ -28,6 +30,10 @@ interface SealFacade {
 	enabled: boolean;
 	state: SealState | null;
 	recipients: RecipientSealView[];
+	pending: boolean;
+	blockingRecipients: string[];
+	allVerified: boolean;
+	requestUnsealed: () => boolean;
 }
 
 export function usePostboxComposerSealChips(
@@ -50,5 +56,16 @@ export function usePostboxComposerSealChips(
 		fields.bccAddresses.value = without(fields.bccAddresses.value);
 	}
 
-	return { chipSealStates, removeSealBlocker };
+	// `v-bind` on PostboxComposerSealLock: its props, and its two requests.
+	const lockBindings = computed(() => ({
+		enabled: seal.enabled,
+		sealState: seal.state,
+		pending: seal.pending,
+		blockingRecipients: seal.blockingRecipients,
+		allVerified: seal.allVerified,
+		onRequestUnsealed: () => void seal.requestUnsealed(),
+		onRemoveRecipient: removeSealBlocker,
+	}));
+
+	return { chipSealStates, removeSealBlocker, lockBindings };
 }

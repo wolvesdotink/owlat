@@ -214,6 +214,22 @@ describe('AnswerModeFrame on a phone', () => {
 		expect(w.find('[data-testid="draft-ai"]').exists()).toBe(true);
 		expect(w.get('[data-testid="answer-sheet-peek"]').text()).toBe('Write a reply…');
 	});
+
+	it('says what the reply waits on when the page names it', () => {
+		setWidth(390);
+		const w = mount(AnswerModeFrame, {
+			props: {
+				backLabel: 'Inbox',
+				subject: 'Hi',
+				counterpart: 'Jonas',
+				peekText: 'Answer the questions for this reply…',
+			},
+			global: { plugins: [createTestI18n()] },
+		});
+		expect(w.get('[data-testid="answer-sheet-peek"]').text()).toBe(
+			'Answer the questions for this reply…'
+		);
+	});
 });
 
 describe('AnswerModeFrame sheet handle', () => {

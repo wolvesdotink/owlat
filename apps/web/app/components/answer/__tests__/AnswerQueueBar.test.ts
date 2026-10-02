@@ -3,7 +3,8 @@
  * The Answer queue in Answer mode's top bar: "2 of 3 ‹ ›", `[` / `]` browse
  * without finishing anything, `e` archives a Postbox item and `h` snoozes it
  * (both finish the item and move on), and the bar is absent when the page is
- * not part of a queue.
+ * not part of a queue. On a phone the menu is its icon alone, so the subject
+ * keeps the room in the one-line bar.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
@@ -91,10 +92,29 @@ function mountBar() {
 			stubs: {
 				Icon: true,
 				PostboxSnoozeDialog: snoozeStub,
-				PostboxOverflowMenu: { template: '<div><slot :close="() => {}" /></div>' },
+				PostboxOverflowMenu: {
+					props: ['triggerText'],
+					template:
+						'<div><span data-testid="menu-trigger-text">{{ triggerText }}</span><slot :close="() => {}" /></div>',
+				},
 			},
 		},
 	});
+}
+
+function setWidth(width: number) {
+	window.matchMedia = ((query: string) => {
+		const max = /max-width:\s*([\d.]+)px/.exec(query);
+		const min = /min-width:\s*([\d.]+)px/.exec(query);
+		const matches =
+			(max ? width <= Number(max[1]) : true) && (min ? width >= Number(min[1]) : true);
+		return {
+			matches,
+			media: query,
+			addEventListener: () => {},
+			removeEventListener: () => {},
+		} as unknown as MediaQueryList;
+	}) as typeof window.matchMedia;
 }
 
 function press(key: string) {
@@ -105,6 +125,13 @@ describe('AnswerQueueBar', () => {
 	it('shows the position in the queue', () => {
 		const wrapper = mountBar();
 		expect(wrapper.get('[data-testid="answer-queue-position"]').text()).toBe('2 of 3');
+	});
+
+	it('names the menu beside its icon, except on a phone', () => {
+		setWidth(1440);
+		expect(mountBar().get('[data-testid="menu-trigger-text"]').text()).toBe('in Answer queue');
+		setWidth(390);
+		expect(mountBar().get('[data-testid="menu-trigger-text"]').text()).toBe('');
 	});
 
 	it('renders nothing outside a queue', () => {
