@@ -58,13 +58,18 @@ export const instanceHotRowTables = {
 	//                   Delivery surfaces can report infrastructure readiness.
 	//   - deliveryTest: deliveryTestLastSucceededAt, the last successful
 	//                   Settings → Delivery test send (send-path-verified signal).
+	//   - imapLegacy:   legacyImapSeenAt, the last login through an IMAP server
+	//                   too old to report its version (v0.6.7 and older;
+	//                   `mail/appPasswords.touch`), written at most hourly.
+	//                   Read by `mail/imap/serverRegistry` (ADR-0063).
 	instanceCounters: defineTable({
 		key: v.union(
 			v.literal('contacts'),
 			v.literal('inbox'),
 			v.literal('sends'),
 			v.literal('mtaHealth'),
-			v.literal('deliveryTest')
+			v.literal('deliveryTest'),
+			v.literal('imapLegacy')
 		),
 		contactCount: v.optional(v.number()),
 		inboxStats: v.optional(inboxStatsValidator),
@@ -74,6 +79,7 @@ export const instanceHotRowTables = {
 		dailySendCountResetAt: v.optional(v.number()),
 		mtaHealth: v.optional(mtaHealthSnapshotValidator),
 		deliveryTestLastSucceededAt: v.optional(v.number()),
+		legacyImapSeenAt: v.optional(v.number()),
 		updatedAt: v.number(),
 	}).index('by_key', ['key']),
 };

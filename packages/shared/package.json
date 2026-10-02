@@ -382,6 +382,10 @@
 			"types": "./src/semver.ts",
 			"import": "./src/semver.ts"
 		},
+		"./imapWire": {
+			"types": "./src/imapWire.ts",
+			"import": "./src/imapWire.ts"
+		},
 		"./releaseArtifacts": {
 			"types": "./src/releaseArtifacts.ts",
 			"import": "./src/releaseArtifacts.ts"
