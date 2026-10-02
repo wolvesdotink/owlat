@@ -48,3 +48,14 @@ export const postboxMutation = featureGatedAny(authedMutation, POSTBOX_FEATURE_F
  * "Draft with AI" on its threads.
  */
 export const answerModeQuery = featureGatedAny(authedQuery, [...POSTBOX_FEATURE_FLAGS, 'inbox']);
+
+/**
+ * Saved replies serve both composers as well, the Postbox's and the Team
+ * inbox's (`mail/savedReplies.ts`), so a team-only instance has them on its
+ * threads. Who sees which reply is decided per row in the handler.
+ */
+export const savedReplyQuery = featureGatedAny(authedQuery, [...POSTBOX_FEATURE_FLAGS, 'inbox']);
+export const savedReplyMutation = featureGatedAny(authedMutation, [
+	...POSTBOX_FEATURE_FLAGS,
+	'inbox',
+]);

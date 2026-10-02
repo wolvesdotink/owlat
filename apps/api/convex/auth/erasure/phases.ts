@@ -43,6 +43,7 @@ import {
 	eraseChatAuthorship,
 	eraseChatMemberships,
 	eraseChatMentions,
+	eraseSavedReplyAuthorship,
 	eraseInstanceRows,
 	eraseMemberRecords,
 	eraseSharedMemberships,
@@ -74,6 +75,7 @@ const PHASE_RUNNERS: Record<MemberErasurePhase, MemberPhaseRunner> = {
 	chatAuthorship: eraseChatAuthorship,
 	chatMemberships: eraseChatMemberships,
 	chatMentions: eraseChatMentions,
+	savedReplyAuthorship: eraseSavedReplyAuthorship,
 };
 
 export const FIRST_MEMBER_ERASURE_PHASE: MemberErasurePhase = MEMBER_ERASURE_PHASES[0];

@@ -20,6 +20,7 @@ import type * as lib_repeatedBlockIds from '../lib/repeatedBlockIds.js';
 import type * as migrations_0057_withdraw_opted_out_confirmation_tokens from '../migrations/0057_withdraw_opted_out_confirmation_tokens.js';
 import type * as lib_migrationLedger from '../lib/migrationLedger.js';
 import type * as schema_migrationRuns from '../schema/migrationRuns.js';
+import type * as migrations_0060_saved_reply_scopes from '../migrations/0060_saved_reply_scopes.js';
 import type * as migrations_0054_backfill_folder_membership from '../migrations/0054_backfill_folder_membership.js';
 import type * as maintenance_folderMembershipBackfill from '../maintenance/folderMembershipBackfill.js';
 import type * as mail_folderMembership from '../mail/folderMembership.js';
@@ -1078,6 +1079,8 @@ import type * as mail_postboxOutboundAudit from '../mail/postboxOutboundAudit.js
 import type * as mail_postboxOutboundLifecycle from '../mail/postboxOutboundLifecycle.js';
 import type * as mail_replyOptions from '../mail/replyOptions.js';
 import type * as mail_rfc822 from '../mail/rfc822.js';
+import type * as mail_savedReplies from '../mail/savedReplies.js';
+import type * as mail_savedReplyRules from '../mail/savedReplyRules.js';
 import type * as mail_savedSearches from '../mail/savedSearches.js';
 import type * as mail_searchBody from '../mail/searchBody.js';
 import type * as mail_sealPolicy from '../mail/sealPolicy.js';
@@ -1413,6 +1416,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0057_withdraw_opted_out_confirmation_tokens': typeof migrations_0057_withdraw_opted_out_confirmation_tokens;
 	'lib/migrationLedger': typeof lib_migrationLedger;
 	'schema/migrationRuns': typeof schema_migrationRuns;
+	'migrations/0060_saved_reply_scopes': typeof migrations_0060_saved_reply_scopes;
 	'migrations/0054_backfill_folder_membership': typeof migrations_0054_backfill_folder_membership;
 	'maintenance/folderMembershipBackfill': typeof maintenance_folderMembershipBackfill;
 	'mail/folderMembership': typeof mail_folderMembership;
@@ -2461,6 +2465,8 @@ declare const fullApi: ApiFromModules<{
 	'mail/postboxOutboundLifecycle': typeof mail_postboxOutboundLifecycle;
 	'mail/replyOptions': typeof mail_replyOptions;
 	'mail/rfc822': typeof mail_rfc822;
+	'mail/savedReplies': typeof mail_savedReplies;
+	'mail/savedReplyRules': typeof mail_savedReplyRules;
 	'mail/savedSearches': typeof mail_savedSearches;
 	'mail/searchBody': typeof mail_searchBody;
 	'mail/sealPolicy': typeof mail_sealPolicy;

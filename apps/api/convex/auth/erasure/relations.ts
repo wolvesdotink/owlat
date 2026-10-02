@@ -211,6 +211,13 @@ export const MEMBER_RELATIONS: readonly MemberRelation[] = [
 		'Another member’s unread marker; the message it points at is anonymized.'
 	),
 	rel('chatRooms', 'createdBy', 'retain', ORG_ATTRIBUTION),
+	rel('mailSnippets', 'ownerUserId', 'delete', 'The member’s personal saved replies.'),
+	rel(
+		'mailSnippets',
+		'authorUserId',
+		'anonymize',
+		'Shared saved replies are the organization’s and stay; the authorship is cleared.'
+	),
 	rel(
 		'deliverabilityAlertRecipients',
 		'userId',
