@@ -26,7 +26,10 @@ import type {
 	EmailTheme,
 	VariableType,
 	BrandBlockKind,
+	RemoteBlockMark,
+	BuilderCollabFocus,
 } from '../types';
+import { applyCoeditOps, type CoeditOp } from '@owlat/shared/coeditOps';
 import type { ParentContext } from './canvas/types';
 
 // Composables (kept from original)
@@ -63,6 +66,7 @@ import { htmlToBlocks } from '../utils/htmlToBlocks';
 import { generateId } from '../utils/id';
 import { fillPreviewVariables } from '../utils/variables';
 import { setByPath } from '../utils/propertyPath';
+import { plainClone } from '../utils/plainClone';
 import { defaultTheme } from '../defaults';
 import { getBlock, getContainerItemTypes, getColumnItemTypes } from '../registry';
 
@@ -107,6 +111,11 @@ const props = defineProps<{
 	plainTextOverride?: string;
 	/** Whether this host persists a plain-text override. */
 	allowPlainTextOverride?: boolean;
+	/**
+	 * Other people on root blocks, keyed by root block id (co-editing). A
+	 * locked block cannot be selected or edited here.
+	 */
+	remoteMarks?: Record<string, RemoteBlockMark>;
 }>();
 
 const emit = defineEmits<{
@@ -120,6 +129,7 @@ const emit = defineEmits<{
 	(e: 'send-test', html: string): void;
 	(e: 'create-variable', variable: { key: string; type?: string }): void;
 	(e: 'update:plainTextOverride', value: string): void;
+	(e: 'collab-focus', value: BuilderCollabFocus): void;
 }>();
 
 // ---------------------------------------------------------------------------
@@ -337,7 +347,18 @@ const activeLinkedBlockName = computed<string | null>(() => {
  */
 function isEditable(blockId: string): boolean {
 	const location = locateBlock(canvasBlocks.value, blockId, selectedRootId.value);
-	return !!location && !isLinkedBlock(location.root.id);
+	return !!location && !isLinkedBlock(location.root.id) && !isLockedRoot(location.root.id);
+}
+
+/** Someone else holds this root block (co-editing): hands off here. */
+function isLockedRoot(rootId: string): boolean {
+	return props.remoteMarks?.[rootId]?.isLocked === true;
+}
+
+/** Select a root block, unless someone else holds it. */
+function selectRoot(blockId: string) {
+	if (isLockedRoot(blockId)) return;
+	handleSelectBlock(blockId);
 }
 
 /**
@@ -347,7 +368,7 @@ function isEditable(blockId: string): boolean {
  */
 function selectNestedItem(scopeId: string, itemId: string, element?: HTMLElement) {
 	const location = locateWithin(canvasBlocks.value, scopeId, itemId);
-	if (!location?.parent) return;
+	if (!location?.parent || isLockedRoot(location.root.id)) return;
 	if (isLinkedBlock(location.root.id)) {
 		handleSelectBlock(location.root.id);
 		return;
@@ -391,6 +412,7 @@ const {
 	undo,
 	redo,
 	commitPending: commitPendingHistory,
+	absorb: absorbHistory,
 } = useHistory(canvasBlocks, formName, formSubject, {
 	blocksVersion,
 });
@@ -475,10 +497,75 @@ const {
 	onDeleteBlock: handleDeleteInlineEditedBlock,
 });
 
+/**
+ * Apply another person's edits (co-editing). Unlike `loadState`, this keeps
+ * the selection, the open inline editor and the undo history: the history
+ * folds the change into every recorded state, so undo and redo keep moving
+ * through this editor's own steps only. A selection whose block was deleted
+ * is cleared.
+ */
+function applyRemoteOps(ops: readonly CoeditOp<EditorBlock>[]) {
+	if (ops.length === 0) return;
+	const transformWith =
+		(applied: readonly CoeditOp<EditorBlock>[]) =>
+		(state: HistoryState): HistoryState => {
+			const next = applyCoeditOps(
+				{ blocks: state.blocks, fields: { name: state.name, subject: state.subject } },
+				applied
+			);
+			return {
+				blocks: next.blocks as EditorBlock[],
+				name: String(next.fields['name'] ?? state.name),
+				subject: String(next.fields['subject'] ?? state.subject),
+			};
+		};
+	// The canvas edits some blocks in place, so it and the history each get
+	// their own copy of the incoming blocks, and the caller keeps its own.
+	const copy = () => plainClone(ops) as CoeditOp<EditorBlock>[];
+	absorbHistory(transformWith(copy()));
+	const next = transformWith(copy())({
+		blocks: canvasBlocks.value,
+		name: formName.value,
+		subject: formSubject.value,
+	});
+	if (next.blocks !== canvasBlocks.value) canvasBlocks.value = next.blocks;
+	formName.value = next.name;
+	formSubject.value = next.subject;
+	const rootId = selectedRootId.value;
+	if (rootId && !canvasBlocks.value.some((block) => block.id === rootId)) clearSelection();
+}
+
 // `isInlineEditing` tells a host that text may be typed which the blocks do not
 // hold yet (the inline editor commits when it closes), so replacing the canvas
 // now would leave that text to be committed on top of whatever replaced it.
-defineExpose({ loadState, isInlineEditing });
+defineExpose({ loadState, applyRemoteOps, isInlineEditing });
+
+// Co-editing focus: which root is selected and which is open in the inline
+// editor, for the host's presence outline and edit lease.
+const inlineEditRootId = computed(() =>
+	inlineEditBlockId.value
+		? (locateBlock(canvasBlocks.value, inlineEditBlockId.value, selectedRootId.value)?.root.id ??
+			null)
+		: null
+);
+watch(
+	[() => selectedRootId.value ?? null, inlineEditRootId],
+	([selected, editing]) => {
+		emit('collab-focus', { selectedRootId: selected, inlineEditRootId: editing });
+	},
+	{ immediate: true }
+);
+
+// Someone else took the block selected here (they started editing it first):
+// let go of it, unless its text is open here, which then commits as the later
+// write and the other person is told their change was replaced.
+watch(
+	() => props.remoteMarks,
+	() => {
+		const rootId = selectedRootId.value;
+		if (rootId && isLockedRoot(rootId) && inlineEditRootId.value !== rootId) clearSelection();
+	}
+);
 
 // Saved block picker
 const {
@@ -1052,8 +1139,9 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 				:inline-edit-block-id="inlineEditBlockId"
 				:variables="variables"
 				:block-types="allowedBlockTypes"
+				:remote-marks="remoteMarks"
 				@update:blocks="canvasBlocks = $event"
-				@select="handleSelectBlock"
+				@select="selectRoot"
 				@select-nested="handleSelectNested"
 				@clear-selection="clearSelection"
 				@update-children="handleUpdateChildren"

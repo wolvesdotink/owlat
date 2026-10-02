@@ -74,6 +74,8 @@ export type {
 	SlashCommand,
 	SlashMenuState,
 	EmailBuilderBrand,
+	RemoteBlockMark,
+	BuilderCollabFocus,
 } from './types';
 
 // Utilities

@@ -105,6 +105,28 @@ export interface EmailBuilderProps {
 }
 
 /**
+ * Another person's presence on one root block, drawn as a coloured outline
+ * with a name label (co-editing, docs/adr/0071-email-coediting.md). The host
+ * resolves names and builds the label text.
+ */
+export interface RemoteBlockMark {
+	/** Shown on the block, e.g. "Alex" or "Alex is editing". */
+	label: string;
+	/** Outline and label colour (any CSS colour). */
+	color: string;
+	/** Someone else holds the block: it cannot be selected or edited here. */
+	isLocked: boolean;
+}
+
+/** What this editor is focused on, for the host's presence and edit leases. */
+export interface BuilderCollabFocus {
+	/** Root of the current selection, or null. */
+	selectedRootId: string | null;
+	/** Root of the block open in the inline text editor, or null. */
+	inlineEditRootId: string | null;
+}
+
+/**
  * Email builder emits
  */
 export interface EmailBuilderEmits {

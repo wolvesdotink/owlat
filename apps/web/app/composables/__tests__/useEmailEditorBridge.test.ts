@@ -28,11 +28,8 @@ vi.mock('vue-router', () => ({
 }));
 
 import { ref, nextTick } from 'vue';
-import {
-	createSavedBlockSaveHandler,
-	createUploadImageHandler,
-	useEmailEditorBridge,
-} from '../useEmailEditorBridge';
+import { createSavedBlockSaveHandler, createUploadImageHandler } from '../emailEditorHandlers';
+import { useEmailEditorBridge } from '../useEmailEditorBridge';
 import { useUnsavedChanges } from '../useUnsavedChanges';
 import { SurfacedOperationError } from '~/lib/operationError';
 import { withSetup } from '~/__tests__/withSetup';

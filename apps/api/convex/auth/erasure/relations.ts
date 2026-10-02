@@ -163,6 +163,13 @@ export const MEMBER_RELATIONS: readonly MemberRelation[] = [
 	rel('mailThreadVisits', 'userId', 'delete', 'Reading history.'),
 	rel('todayStates', 'userId', 'delete', 'Personal Today state.'),
 	rel('threadPresence', 'userId', 'delete', 'Live presence.'),
+	rel('emailEditorPresence', 'userId', 'delete', 'Live email-editor presence.'),
+	rel(
+		'emailCoeditNotices',
+		'replacedBy',
+		'delete',
+		'A transient co-editing notice naming who replaced a change; it has no use once that person is gone.'
+	),
 	rel('threadReads', 'userId', 'delete', 'Read markers.'),
 	rel('inboxAssignmentNotices', 'userId', 'delete', 'Notices addressed to the member.'),
 	rel('dashboardLayouts', 'userId', 'delete', 'Personal layout.'),
@@ -204,6 +211,19 @@ export const MEMBER_RELATIONS: readonly MemberRelation[] = [
 	),
 	rel('chatRoomMembers', 'memberId', 'delete', 'Room memberships.'),
 	rel('chatMentions', 'mentionedMemberId', 'delete', 'The member’s unread mentions.'),
+	rel(
+		'threadNotes',
+		'authorId',
+		'anonymize',
+		'Internal notes stay so the Team Inbox thread keeps its discussion; the authorship goes.'
+	),
+	rel(
+		'threadNotes',
+		'mentionedUserIds[]',
+		'anonymize',
+		'Another member’s note; the resolved mention of the member becomes [deleted account].'
+	),
+	rel('threadNoteMentions', 'userId', 'delete', 'The member’s Mentions filter entries.'),
 	rel(
 		'chatMentions',
 		'mentioningMemberId',

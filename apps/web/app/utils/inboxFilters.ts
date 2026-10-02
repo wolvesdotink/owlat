@@ -136,6 +136,12 @@ export function parseInboxAssignee(rawAssignee: unknown, rawFilter?: unknown): I
 	return (typeof legacy === 'string' && LEGACY_FILTERS[legacy]?.assignee) || DEFAULT_INBOX_ASSIGNEE;
 }
 
+/** Whether `?mentions=` asks for the Mentions view (`1` or `true`). */
+export function parseInboxMentions(raw: unknown): boolean {
+	const value = firstValue(raw);
+	return value === '1' || value === 'true';
+}
+
 /** The sort a legacy `?filter=` slug implies, if any (`waiting-24h` → oldest waiting). */
 export function legacyInboxSort(rawFilter: unknown): InboxSort | undefined {
 	const legacy = firstValue(rawFilter);

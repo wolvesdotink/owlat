@@ -54,6 +54,13 @@ export interface UseHistoryReturn {
 	clearHistory: () => void;
 	/** Record an edit still waiting out the debounce now, instead of when the timer fires. */
 	commitPending: () => void;
+	/**
+	 * Fold a change someone else made into every recorded state, then let the
+	 * caller apply it to the live refs without that becoming an undo step.
+	 * Undo and redo afterwards move only through this editor's own edits and
+	 * keep the other person's change (see `absorb` below).
+	 */
+	absorb: (transform: (state: HistoryState) => HistoryState) => void;
 	/** Number of committed entries. */
 	historyLength: ComputedRef<number>;
 	currentIndex: Ref<number>;
@@ -311,6 +318,36 @@ export function useHistory(
 		}
 	};
 
+	// A collaborator's change arrived. Rewriting every recorded state with it
+	// keeps undo/redo on this editor's own steps: stepping back restores a state
+	// that already holds the other person's change, so it is never undone from
+	// here. The entries become checkpoints (a delta's patches were computed
+	// against the state before the change and no longer apply to it); the
+	// transform shares untouched blocks between them.
+	const absorb = (transform: (state: HistoryState) => HistoryState) => {
+		commitPending();
+		let state: HistoryState | null = null;
+		entries.value = entries.value.map((entry) => {
+			if (entry.type === 'checkpoint') {
+				state = entry.state;
+			} else if (state) {
+				state = deepClone(state);
+				applyPatch(state, entry.patches);
+			}
+			return { type: 'checkpoint', state: transform(state as HistoryState) };
+		});
+		if (previousState) previousState = transform(previousState);
+		invalidateCache();
+		// The caller writes the transformed state into the live refs next; the
+		// watcher must not record that as an edit of this editor.
+		isNavigating.value = true;
+		if (navigatingTimer) clearTimeout(navigatingTimer);
+		navigatingTimer = setTimeout(() => {
+			navigatingTimer = null;
+			isNavigating.value = false;
+		}, 0);
+	};
+
 	// Clear history
 	const clearHistory = () => {
 		// The current state becomes the only entry, which already includes any
@@ -358,6 +395,7 @@ export function useHistory(
 		redo,
 		clearHistory,
 		commitPending,
+		absorb,
 		historyLength,
 		currentIndex,
 	};

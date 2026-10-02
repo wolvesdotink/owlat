@@ -71,4 +71,6 @@ export type {
 	SlashMenuState,
 	EmailBuilderBrand,
 	BrandBlockKind,
+	RemoteBlockMark,
+	BuilderCollabFocus,
 } from './editor';

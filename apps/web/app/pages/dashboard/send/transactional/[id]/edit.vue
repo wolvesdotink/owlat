@@ -150,10 +150,17 @@ const {
 	keepMyVersion,
 	loadLatestVersion,
 	dismissConflict,
+	coediting,
+	isConnecting,
+	onCollabFocus,
 } = useEmailEditorBridge({
 	source: email,
 	revision: (row) => row.contentRevision ?? 0,
 	extraWatch: [attachments, showUnsubscribe, plainTextOverride],
+	coedit: {
+		target: () => ({ type: 'transactionalEmail', id: emailId.value }),
+		fields: { attachments, showUnsubscribe, plainTextOverride },
+	},
 	canKeepDraft: sameDefaultLanguage,
 	initialize: (e, ctx) => {
 		ctx.name.value = e.name;
@@ -194,7 +201,8 @@ const {
 			},
 			renderOptions: { theme: emailTheme.value, variableType: 'data' },
 			commit: async (payload) =>
-				(await commitEmail({ id, ...payload, ...surfaceFields })).contentRevision,
+				(await commitEmail({ id, ...payload, ...surfaceFields, coeditVersion: base.coeditVersion }))
+					.contentRevision,
 		});
 	},
 });
@@ -300,7 +308,7 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 		"
 	>
 		<UiQueryBoundary
-			:loading="emailLoading"
+			:loading="emailLoading || isConnecting"
 			:error="emailError"
 			:error-title="t('dashboard.send.transactional.detail.edit.loadError')"
 			@retry="refetchEmail"
@@ -360,13 +368,20 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 				:is-saving="isSaving"
 				:plain-text-override="plainTextOverride"
 				:allow-plain-text-override="true"
+				:remote-marks="coediting?.remoteMarks.value"
 				@update:plain-text-override="plainTextOverride = $event"
+				@collab-focus="onCollabFocus"
 				@save="requestSave"
 				@back="handleBack"
 				@send-test="handleSendTest"
 				@create-variable="handleCreateVariable"
 			>
 				<template #toolbar-actions>
+					<EmailEditorPresence
+						v-if="coediting"
+						:people="coediting.people.value"
+						:is-offline="coediting.isOffline.value"
+					/>
 					<TransactionalEditorToolbarActions
 						:email-id="emailId"
 						:is-published="isPublished"
@@ -440,6 +455,13 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 			@close="cancelNavigation"
 			@discard="confirmDiscard"
 			@save="confirmSave"
+		/>
+
+		<EmailCoeditNotices
+			v-if="coediting"
+			:notices="coediting.notices.value"
+			@restore="coediting.restoreNotice"
+			@dismiss="coediting.dismissNotice"
 		/>
 
 		<EmailEditorConflictDialog

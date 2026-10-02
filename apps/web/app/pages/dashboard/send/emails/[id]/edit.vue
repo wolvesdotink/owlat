@@ -86,10 +86,18 @@ const {
 	keepMyVersion,
 	loadLatestVersion,
 	dismissConflict,
+	coediting,
+	isConnecting,
+	onCollabFocus,
 } = useEmailEditorBridge({
 	source: template,
 	revision: (row) => row.contentRevision ?? 0,
 	extraWatch: [plainTextOverride],
+	// Everyone with the template open edits it together (campaign content too).
+	coedit: {
+		target: () => ({ type: 'emailTemplate', id: templateId.value }),
+		fields: { plainTextOverride },
+	},
 	canKeepDraft: sameDefaultLanguage,
 	initialize: (t, ctx) => {
 		ctx.name.value = t.name;
@@ -116,7 +124,8 @@ const {
 			},
 			renderOptions: { theme: emailTheme.value, variableType: 'personalization' },
 			commit: async (payload) =>
-				(await commitTemplate({ templateId: id, ...payload })).contentRevision,
+				(await commitTemplate({ templateId: id, ...payload, coeditVersion: base.coeditVersion }))
+					.contentRevision,
 		});
 	},
 });
@@ -214,7 +223,7 @@ async function handlePublicationToggle() {
 
 		<div class="min-h-0 flex-1">
 			<UiQueryBoundary
-				:loading="templateLoading"
+				:loading="templateLoading || isConnecting"
 				:error="templateError"
 				:error-title="t('dashboard.send.emails.detail.edit.loadError')"
 				@retry="refetchTemplate"
@@ -274,7 +283,9 @@ async function handlePublicationToggle() {
 						:is-saving="isSaving"
 						:plain-text-override="plainTextOverride"
 						:allow-plain-text-override="true"
+						:remote-marks="coediting?.remoteMarks.value"
 						@update:plain-text-override="plainTextOverride = $event"
+						@collab-focus="onCollabFocus"
 						@save="requestSave"
 						@back="handleBack"
 						@settings="handleSettings"
@@ -282,6 +293,11 @@ async function handlePublicationToggle() {
 					>
 						<!-- Toolbar actions -->
 						<template #toolbar-actions>
+							<EmailEditorPresence
+								v-if="coediting"
+								:people="coediting.people.value"
+								:is-offline="coediting.isOffline.value"
+							/>
 							<EmailTemplatePublishButton
 								:is-published="isPublished"
 								:has-changes="hasChanges"
@@ -332,6 +348,14 @@ async function handlePublicationToggle() {
 			@close="cancelNavigation"
 			@discard="confirmDiscard"
 			@save="confirmSave"
+		/>
+
+		<EmailCoeditNotices
+			v-if="coediting"
+			:notices="coediting.notices.value"
+			has-version-history
+			@restore="coediting.restoreNotice"
+			@dismiss="coediting.dismissNotice"
 		/>
 
 		<EmailEditorConflictDialog

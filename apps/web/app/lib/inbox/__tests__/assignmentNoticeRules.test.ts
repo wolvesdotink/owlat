@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
 	assignmentGroupToastMessage,
+	assignmentNoticeHref,
 	assignmentNotificationParts,
 	assignmentToastMessage,
 	planAssignmentNotices,
@@ -116,5 +117,36 @@ describe('clarification notices', () => {
 		expect(render(assignmentToastMessage(n))).toBe(
 			'Assigned to you — Where is my order? · from Ada'
 		);
+	});
+});
+
+describe('mention notices', () => {
+	it('never coalesces a mention into an assignment burst', () => {
+		const plans = planAssignmentNotices(
+			[
+				notice({ id: 'a', createdAt: 1_000 }),
+				notice({ id: 'm', kind: 'mention', noteId: 'n1', createdAt: 1_010 }),
+				notice({ id: 'b', createdAt: 1_020 }),
+			],
+			new Set()
+		);
+		expect(plans.map((p) => p.kind)).toEqual(['single', 'single', 'single']);
+	});
+
+	it('says who mentioned the person and on which thread', () => {
+		const m = notice({ id: 'm', kind: 'mention', noteId: 'n1' });
+		expect(render(assignmentToastMessage(m))).toBe(
+			'Ada mentioned you in a note — Where is my order?'
+		);
+		const parts = assignmentNotificationParts(m);
+		expect(render(parts.title)).toBe('You were mentioned');
+		expect(render(parts.body)).toBe('Where is my order? · Ada mentioned you in a note');
+	});
+
+	it('opens a mention on its note and anything else on the thread', () => {
+		expect(assignmentNoticeHref(notice({ id: 'm', kind: 'mention', noteId: 'n1' }))).toBe(
+			'/dashboard/inbox/thread-m#note-n1'
+		);
+		expect(assignmentNoticeHref(notice({ id: 'a' }))).toBe('/dashboard/inbox/thread-a');
 	});
 });
