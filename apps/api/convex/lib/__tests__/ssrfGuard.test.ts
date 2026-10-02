@@ -184,6 +184,40 @@ describe('fetchGuarded typed refusals', () => {
 	});
 });
 
+describe('fetchGuarded with maxRedirects', () => {
+	afterEach(() => vi.unstubAllGlobals());
+
+	const redirect = (location: string) =>
+		({ status: 301, headers: new Headers({ location }), body: null }) as unknown as Response;
+
+	it('follows a redirect to another public address', async () => {
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce(redirect('/home'))
+			.mockResolvedValueOnce({ status: 200, headers: new Headers(), body: null });
+		vi.stubGlobal('fetch', fetchMock);
+		const res = await fetchGuarded('https://8.8.8.8/', { maxRedirects: 2 });
+		expect(res.status).toBe(200);
+		expect(fetchMock.mock.calls[1]![0]).toBe('https://8.8.8.8/home');
+	});
+
+	it('checks every hop: a redirect into a private network is refused', async () => {
+		const fetchMock = vi.fn().mockResolvedValueOnce(redirect('https://10.0.0.1/admin'));
+		vi.stubGlobal('fetch', fetchMock);
+		await expect(fetchGuarded('https://8.8.8.8/', { maxRedirects: 3 })).rejects.toBeInstanceOf(
+			SsrfBlockedError
+		);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	it('refuses the redirect after the last allowed hop', async () => {
+		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(redirect('https://8.8.4.4/')));
+		await expect(fetchGuarded('https://8.8.8.8/', { maxRedirects: 2 })).rejects.toBeInstanceOf(
+			RedirectRefusedError
+		);
+	});
+});
+
 describe('ssrfLookup (connect-time DNS-rebinding guard)', () => {
 	it('passes through public addresses unchanged', async () => {
 		const addrs: LookupAddress[] = [{ address: '93.184.216.34', family: 4 }];

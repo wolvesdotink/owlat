@@ -334,9 +334,9 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 		area: 'features',
 	},
 	{
-		id: 'emailTheme',
-		path: `${ADMIN_ROOT}/instance/email-theme`,
-		titleKey: label('emailTheme'),
+		id: 'brandKit',
+		path: `${ADMIN_ROOT}/instance/brand-kit`,
+		titleKey: label('brandKit'),
 		icon: 'lucide:palette',
 		area: 'features',
 		wide: true,

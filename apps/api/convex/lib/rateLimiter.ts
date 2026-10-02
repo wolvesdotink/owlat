@@ -272,6 +272,16 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 20,
 	},
 
+	// Brand kit "Import from website": each call fetches an admin-named site
+	// (and a few of its stylesheets, or one image) through the SSRF guard. Cap
+	// per user so the button cannot be turned into a fetch loop.
+	brandKitImport: {
+		kind: 'token bucket',
+		rate: 10,
+		period: MINUTE,
+		capacity: 15,
+	},
+
 	// Direct-to-storage upload URL minting (media library, chat attachments).
 	// The minted blob is inert until a gated mutation references it, but an
 	// unbounded mint loop still fills `_storage` with orphaned bytes the

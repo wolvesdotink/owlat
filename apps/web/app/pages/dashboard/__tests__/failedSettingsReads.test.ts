@@ -16,6 +16,7 @@ import { defineComponent, nextTick, ref, type Component, type Ref } from 'vue';
 import { flushPromises, type VueWrapper } from '@vue/test-utils';
 import { api } from '@owlat/api';
 import { DEFAULT_TRUSTED_ARC_FORWARDERS } from '@owlat/shared/arcTrust';
+import { resolveBrandKitDesign } from '@owlat/shared/brandKit';
 import { installNuxtStubs, mountDashboardPage } from '~/__tests__/a11y';
 import { i18nStubs } from '~/__tests__/i18n';
 
@@ -109,24 +110,34 @@ interface FormCase {
 
 const FORMS: FormCase[] = [
 	{
-		name: 'email theme',
-		load: () => import('../admin/instance/email-theme.vue'),
-		edits: [['#base-width', '640']],
+		name: 'brand kit',
+		load: () => import('../admin/instance/brand-kit.vue'),
+		edits: [
+			['#brand-kit-width', '640'],
+			['[data-testid="ui-input"]', 'Northwind'],
+		],
 		recover: () =>
-			answer(api.workspaces.settings.get, {
-				emailTheme: {
-					primaryColor: '#112233',
-					fontFamily: 'Georgia, serif',
-					backgroundColor: '#fafafa',
-					baseWidth: 560,
-				},
+			answer(api.workspaces.brandKit.get, {
+				design: resolveBrandKitDesign(
+					{
+						primaryColor: '#112233',
+						fontFamily: 'Georgia, serif',
+						backgroundColor: '#fafafa',
+						baseWidth: 560,
+					},
+					{ footerCompanyName: 'Stored Company' }
+				),
+				logos: { light: null, dark: null },
 			}),
 		showsStored: (wrapper) => {
-			expect((wrapper.find('#primary-color').element as HTMLInputElement).value).toBe('#112233');
-			expect((wrapper.find('#font-family').element as HTMLSelectElement).value).toBe(
-				'Georgia, serif'
+			expect((wrapper.find('#brand-kit-width').element as HTMLInputElement).value).toBe('560');
+			expect((wrapper.find('[data-testid="ui-input"]').element as HTMLInputElement).value).toBe(
+				'Stored Company'
 			);
 		},
+		stubs: () => ({
+			useOrganizationContext: () => ({ organization: ref(null) }),
+		}),
 	},
 	{
 		name: 'AI replies',
@@ -260,7 +271,14 @@ function mountForm(Page: Component): VueWrapper {
 			AutonomyFeedbackStatsCard: true,
 			AutonomyLearningControls: true,
 			AutonomyWorkingHours: true,
-			EmailThemePreview: true,
+			BrandKitLogoPicker: true,
+			BrandKitColorField: true,
+			BrandKitSwatches: true,
+			BrandKitFontSelect: true,
+			BrandKitSocialLinks: true,
+			BrandKitPreview: true,
+			BrandKitImportDialog: true,
+			UiTextarea: true,
 			DashboardListSkeleton: true,
 			DeliveryReferenceRelayNotice: true,
 			DeliveryRelayDomainStatus: true,

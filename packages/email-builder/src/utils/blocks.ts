@@ -30,8 +30,19 @@ export const createDefaultContent = (
 ): BlockContent => {
 	const def = getBlock(type);
 	if (!def) throw new Error(`Unknown block type: ${type}`);
-	return def.createDefault({ ...defaultTheme, ...theme });
+	const mergedTheme = { ...defaultTheme, ...theme };
+	return withThemeBlockDefaults(type, def.createDefault(mergedTheme), mergedTheme);
 };
+
+/**
+ * Lay the theme's per-type defaults (`blockDefaults`, set by the brand kit)
+ * over a new Block's content, so a Block starts in the brand's colours and
+ * button style. The default theme has none, so without a kit nothing changes.
+ */
+function withThemeBlockDefaults<C>(type: BlockType, content: C, theme: EmailTheme): C {
+	const overlay = theme.blockDefaults?.[type];
+	return overlay ? { ...content, ...overlay } : content;
+}
 
 /**
  * Create default content for a column-context block.
@@ -50,7 +61,7 @@ export const createDefaultColumnItemContent = (
 	if (!def.canBeInColumn) throw new Error(`Block "${type}" cannot be used inside a column`);
 	const mergedTheme = { ...defaultTheme, ...theme };
 	const factory = def.createDefaultColumnItem ?? def.createDefault;
-	return factory(mergedTheme) as ColumnItem['content'];
+	return withThemeBlockDefaults(type, factory(mergedTheme), mergedTheme) as ColumnItem['content'];
 };
 
 /**

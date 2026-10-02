@@ -46,7 +46,7 @@ export const sidebarConfig: SidebarGroup[] = [
 			{ label: 'Email Templates', to: '/guide/email-templates' },
 			{ label: 'Saved Blocks', to: '/guide/saved-blocks' },
 			{ label: 'Media Library', to: '/guide/media-library' },
-			{ label: 'Email Theme', to: '/guide/email-theme' },
+			{ label: 'Brand Kit', to: '/guide/email-theme' },
 			{ label: 'Translations', to: '/guide/translations' },
 			{ label: 'Share Links', to: '/guide/share-links' },
 		],

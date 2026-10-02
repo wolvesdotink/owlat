@@ -295,13 +295,18 @@ export class RedirectRefusedError extends FetchGuardError {}
  *      attacker-controlled public host could 30x-redirect to an internal
  *      target, defeating the up-front check (the redirect-bypass).
  *
- * Throws on a disallowed destination, a redirect, or a network error.
+ * `maxRedirects` (default 0) lets a caller that fetches ordinary websites
+ * follow that many redirects. Each hop goes through steps 1–3 again, so a
+ * redirect to an internal address is refused like a direct request to it.
+ *
+ * Throws on a disallowed destination, a redirect beyond `maxRedirects`, or a
+ * network error.
  */
 export async function fetchGuarded(
 	urlStr: string,
-	init: RequestInit & { protocols?: string[] } = {}
+	init: RequestInit & { protocols?: string[]; maxRedirects?: number } = {}
 ): Promise<Response> {
-	const { protocols, ...requestInit } = init;
+	const { protocols, maxRedirects = 0, ...requestInit } = init;
 	const check = await validatePublicUrl(urlStr, { protocols });
 	if (!check.ok) {
 		const message = `Blocked fetch of "${urlStr}": ${check.error}`;
@@ -311,8 +316,14 @@ export async function fetchGuarded(
 	}
 	const res = await fetchWithGuardedDispatcher(urlStr, { ...requestInit, redirect: 'manual' });
 	if (res.status >= 300 && res.status < 400) {
+		const location = res.headers.get('location');
+		if (maxRedirects > 0 && location) {
+			await res.body?.cancel();
+			const next = new URL(location, urlStr).toString();
+			return fetchGuarded(next, { ...init, maxRedirects: maxRedirects - 1 });
+		}
 		throw new RedirectRefusedError(
-			`Blocked fetch of "${urlStr}": refusing to follow redirect (to ${res.headers.get('location') ?? 'unknown'}) — possible SSRF`
+			`Blocked fetch of "${urlStr}": refusing to follow redirect (to ${location ?? 'unknown'}) — possible SSRF`
 		);
 	}
 	return res;
