@@ -154,6 +154,7 @@ describe('the admin rail', () => {
 			'/dashboard/admin/delivery/domains',
 			'/dashboard/admin/delivery/transport',
 			'/dashboard/admin/delivery/deliverability',
+			'/dashboard/admin/delivery/dmarc',
 			'/dashboard/admin/delivery/webhooks',
 			'/dashboard/admin/delivery/provider-routing',
 			'/dashboard/admin/delivery/quarantine',

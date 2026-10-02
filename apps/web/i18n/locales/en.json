@@ -2246,6 +2246,54 @@
 				"title": "Measurement coverage",
 				"toastDisconnected": "{address} disconnected."
 			},
+			"dmarcReadiness": {
+				"body": {
+					"building": "{days} of {required} days at 99% or more passing DMARC. Keep the policy where it is until the run reaches {required} days.",
+					"enforced": "Receivers reject mail that fails DMARC for this domain. Keep an eye on failing sources: a legitimate one listed there is mail that no longer arrives.",
+					"failing": "Only {rate} of the mail on the last day with reports passed DMARC. Fix the failing sources below, then the {required}-day count starts.",
+					"no-data": "Receivers have not sent reports for this domain in the last 30 days, so there is nothing to judge readiness on yet.",
+					"ready": "{days} days in a row at 99% or more passing DMARC. Publishing p={next} now should not affect your legitimate mail."
+				},
+				"headline": {
+					"building": "Not ready for p={next} yet",
+					"enforced": "Enforced at p=reject",
+					"failing": "Not ready for p={next}: mail is still failing",
+					"no-data": "No recent reports",
+					"ready": "Ready for p={next}"
+				},
+				"howToApply": "Owlat never changes the policy on its own. Publish this record at your DNS provider, or raise the policy on the domain so Owlat shows the same record there.",
+				"openDomain": "Open the domain",
+				"progressLabel": "Days at 99% or more passing DMARC",
+				"recordLabel": "DMARC (p={next})",
+				"streak": "{days} days in a row, {required} needed"
+			},
+			"dmarcSources": {
+				"checks": "DKIM aligned {dkim} · SPF aligned {spf}",
+				"columns": {
+					"failing": "Failing",
+					"messages": "Messages",
+					"passRate": "Passed DMARC",
+					"source": "Source"
+				},
+				"empty": "No sending sources in this period.",
+				"ips": "IP {ips} | {count} IPs: {ips}",
+				"kind": {
+					"known": "Known sender",
+					"owlat": "Owlat",
+					"unknown": "Unknown"
+				},
+				"more": "Showing the {shown} sources with the most failing mail, of {total}.",
+				"ownServer": "This Owlat server",
+				"reasons": "Receiver notes: {reasons}"
+			},
+			"dmarcTrendChart": {
+				"day": "Day",
+				"empty": "No mail in this period yet. Bars appear as receivers send their daily reports.",
+				"failed": "Failed DMARC",
+				"label": "Messages per day that passed or failed DMARC",
+				"passed": "Passed DMARC",
+				"tooltip": "{passed} passed · {failed} failed"
+			},
 			"domainDnsGuidance": {
 				"heading": "DNS for {transport}"
 			},
@@ -2790,6 +2838,29 @@
 				"trackingPreview": "Your tracking links will use {host}",
 				"trackingPreviewExample": "For example, your tracking links will use {host}",
 				"useApex": "none (use apex)"
+			},
+			"dmarcReporting": {
+				"error": "Couldn’t load the DMARC report setup. Reload to try again.",
+				"external": "Reports go to {rua}, an address set outside Owlat. Owlat can read them itself once its own mail server handles bounces for this install ({variable}).",
+				"loading": "Checking where reports go…",
+				"none": "This install doesn’t ask for DMARC reports. Owlat reads them itself when its own mail server handles bounces ({variable}); otherwise set {fallback} to an address you monitor.",
+				"openReports": "Open reports",
+				"operations": {
+					"update": "Update DMARC record"
+				},
+				"owlat": {
+					"authorization": "The report address is on another domain, so {reportDomain} has to agree to receive reports for this one. Publish this record in the zone of {reportDomain}:",
+					"authorizationLabel": "Report authorization (RFC 7489)",
+					"body": "Receivers send this domain’s daily DMARC reports to {address}, and Owlat reads them for you.",
+					"lastReport": "Last report received {when}.",
+					"noReportsYet": "No reports yet. Most receivers send their first one within a day of seeing the record.",
+					"notRequested": "The DMARC record doesn’t ask for reports yet. Update it to add Owlat’s address, then publish the new value.",
+					"update": "Ask for reports"
+				},
+				"title": "DMARC reports",
+				"toasts": {
+					"updated": "DMARC record updated. Publish the new value, then verify the domain."
+				}
 			},
 			"dnsChecklistSummary": {
 				"allFound": "All {total} records found — this domain is set up.",
@@ -6387,6 +6458,38 @@
 						"reportCopyFailed": "Could not copy the report",
 						"resolved": "Regression resolved"
 					}
+				},
+				"dmarc": {
+					"domainLabel": "Domain",
+					"empty": {
+						"description": "Receivers send one report a day once the domain’s DMARC record names Owlat’s address. The first ones usually arrive within a day.",
+						"title": "No reports yet"
+					},
+					"lastReport": "Last report received {when}",
+					"lede": "Who sends mail as your domains, and how close each one is to rejecting everyone else.",
+					"noDomains": {
+						"action": "Go to sending domains",
+						"description": "Add a sending domain first. Its DMARC record asks receivers for the reports this page is built from.",
+						"title": "No domain with a DMARC record"
+					},
+					"pageTitle": "DMARC reports",
+					"readinessTitle": "Ready to enforce?",
+					"sourcesSubtitle": "Grouped by organisation, failing sources first. If an unknown source is yours, give it SPF or DKIM before you enforce.",
+					"sourcesTitle": "Sending sources",
+					"tiles": {
+						"failing": "Failed DMARC",
+						"failingHint": "{count} quarantined or rejected by receivers",
+						"messages": "Messages",
+						"messagesHint": "{count} report | {count} reports",
+						"passRate": "Passed DMARC",
+						"passRateHint": "Enforcement target: 99%",
+						"reportersHint": "{count} receiver | {count} receivers"
+					},
+					"title": "DMARC reports",
+					"trendTitle": "Messages per day",
+					"truncated": "showing the most recent reports only",
+					"window": "{days} days",
+					"windowLabel": "Period"
 				},
 				"domains": {
 					"addDomain": "Add domain",
@@ -12007,6 +12110,7 @@
 				"deliverability": "Deliverability",
 				"deliveryProvider": "Delivery provider",
 				"desktopUpdates": "Desktop app updates",
+				"dmarcReports": "DMARC reports",
 				"emailTheme": "Email theme",
 				"features": "Features",
 				"failedMessages": "Failed messages",

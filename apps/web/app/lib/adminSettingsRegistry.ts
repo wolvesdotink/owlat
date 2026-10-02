@@ -214,6 +214,15 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 		area: 'delivery',
 	},
 	{
+		// Who sends as each sending domain, from the DMARC aggregate reports
+		// receivers mail to Owlat's report address.
+		id: 'dmarcReports',
+		path: `${ADMIN_ROOT}/delivery/dmarc`,
+		titleKey: label('dmarcReports'),
+		icon: 'lucide:file-search',
+		area: 'delivery',
+	},
+	{
 		id: 'webhooks',
 		path: `${ADMIN_ROOT}/delivery/webhooks`,
 		titleKey: label('webhooks'),

@@ -2246,6 +2246,54 @@
 				"title": "Messabdeckung",
 				"toastDisconnected": "{address} getrennt."
 			},
+			"dmarcReadiness": {
+				"body": {
+					"building": "{days} von {required} Tagen mit mindestens 99 % bestandenem DMARC. Lass die Richtlinie, wie sie ist, bis die Serie {required} Tage erreicht.",
+					"enforced": "Empfänger weisen Mails dieser Domain zurück, die DMARC nicht bestehen. Behalte die fehlgeschlagenen Quellen im Blick: Eine legitime Quelle dort bedeutet Mails, die nicht mehr ankommen.",
+					"failing": "Am letzten Tag mit Berichten haben nur {rate} der Mails DMARC bestanden. Behebe die fehlgeschlagenen Quellen unten, dann beginnt die Zählung der {required} Tage.",
+					"no-data": "Empfänger haben in den letzten 30 Tagen keine Berichte für diese Domain geschickt, es gibt also noch nichts zu bewerten.",
+					"ready": "{days} Tage in Folge mit mindestens 99 % bestandenem DMARC. Wenn du jetzt p={next} veröffentlichst, sollten deine legitimen Mails nicht betroffen sein."
+				},
+				"headline": {
+					"building": "Noch nicht bereit für p={next}",
+					"enforced": "Durchgesetzt mit p=reject",
+					"failing": "Nicht bereit für p={next}: Mails schlagen noch fehl",
+					"no-data": "Keine aktuellen Berichte",
+					"ready": "Bereit für p={next}"
+				},
+				"howToApply": "Owlat ändert die Richtlinie nie selbst. Veröffentliche diesen Eintrag bei deinem DNS-Anbieter oder erhöhe die Richtlinie an der Domain, dann zeigt Owlat dort denselben Eintrag.",
+				"openDomain": "Domain öffnen",
+				"progressLabel": "Tage mit mindestens 99 % bestandenem DMARC",
+				"recordLabel": "DMARC (p={next})",
+				"streak": "{days} Tage in Folge, {required} nötig"
+			},
+			"dmarcSources": {
+				"checks": "DKIM ausgerichtet {dkim} · SPF ausgerichtet {spf}",
+				"columns": {
+					"failing": "Fehlgeschlagen",
+					"messages": "Mails",
+					"passRate": "DMARC bestanden",
+					"source": "Quelle"
+				},
+				"empty": "Keine Absenderquellen in diesem Zeitraum.",
+				"ips": "IP {ips} | {count} IPs: {ips}",
+				"kind": {
+					"known": "Bekannter Absender",
+					"owlat": "Owlat",
+					"unknown": "Unbekannt"
+				},
+				"more": "Gezeigt werden die {shown} Quellen mit den meisten fehlgeschlagenen Mails, von {total}.",
+				"ownServer": "Dieser Owlat-Server",
+				"reasons": "Hinweise der Empfänger: {reasons}"
+			},
+			"dmarcTrendChart": {
+				"day": "Tag",
+				"empty": "In diesem Zeitraum noch keine Mails. Balken erscheinen, sobald Empfänger ihre täglichen Berichte schicken.",
+				"failed": "DMARC nicht bestanden",
+				"label": "Mails pro Tag, die DMARC bestanden oder nicht bestanden haben",
+				"passed": "DMARC bestanden",
+				"tooltip": "{passed} bestanden · {failed} nicht bestanden"
+			},
 			"domainDnsGuidance": {
 				"heading": "DNS für {transport}"
 			},
@@ -2790,6 +2838,29 @@
 				"trackingPreview": "Deine Tracking-Links verwenden {host}",
 				"trackingPreviewExample": "Deine Tracking-Links verwenden zum Beispiel {host}",
 				"useApex": "keine (Hauptdomain verwenden)"
+			},
+			"dmarcReporting": {
+				"error": "Die Einrichtung der DMARC-Berichte konnte nicht geladen werden. Lade die Seite neu, um es noch einmal zu versuchen.",
+				"external": "Berichte gehen an {rua}, eine außerhalb von Owlat festgelegte Adresse. Owlat kann sie selbst lesen, sobald der eigene Mailserver die Bounces dieser Installation verarbeitet ({variable}).",
+				"loading": "Prüfe, wohin Berichte gehen…",
+				"none": "Diese Installation fordert keine DMARC-Berichte an. Owlat liest sie selbst, wenn der eigene Mailserver die Bounces verarbeitet ({variable}); andernfalls setze {fallback} auf eine Adresse, die du im Blick hast.",
+				"openReports": "Berichte öffnen",
+				"operations": {
+					"update": "DMARC-Eintrag aktualisieren"
+				},
+				"owlat": {
+					"authorization": "Die Berichtsadresse liegt auf einer anderen Domain, deshalb muss {reportDomain} zustimmen, Berichte für diese Domain zu empfangen. Veröffentliche diesen Eintrag in der Zone von {reportDomain}:",
+					"authorizationLabel": "Berichtsfreigabe (RFC 7489)",
+					"body": "Empfänger schicken die täglichen DMARC-Berichte dieser Domain an {address}, und Owlat liest sie für dich.",
+					"lastReport": "Letzter Bericht empfangen {when}.",
+					"noReportsYet": "Noch keine Berichte. Die meisten Empfänger schicken den ersten innerhalb eines Tages, nachdem sie den Eintrag gesehen haben.",
+					"notRequested": "Der DMARC-Eintrag fordert noch keine Berichte an. Aktualisiere ihn, damit er Owlats Adresse enthält, und veröffentliche dann den neuen Wert.",
+					"update": "Berichte anfordern"
+				},
+				"title": "DMARC-Berichte",
+				"toasts": {
+					"updated": "DMARC-Eintrag aktualisiert. Veröffentliche den neuen Wert und prüfe dann die Domain."
+				}
 			},
 			"dnsChecklistSummary": {
 				"allFound": "Alle {total} Einträge gefunden — diese Domain ist eingerichtet.",
@@ -6387,6 +6458,38 @@
 						"reportCopyFailed": "Der Bericht konnte nicht kopiert werden",
 						"resolved": "Rückschritt geschlossen"
 					}
+				},
+				"dmarc": {
+					"domainLabel": "Domain",
+					"empty": {
+						"description": "Empfänger schicken einen Bericht pro Tag, sobald der DMARC-Eintrag der Domain Owlats Adresse nennt. Die ersten kommen meist innerhalb eines Tages.",
+						"title": "Noch keine Berichte"
+					},
+					"lastReport": "Letzter Bericht empfangen {when}",
+					"lede": "Wer Mails im Namen deiner Domains verschickt und wie nah jede davon daran ist, alle anderen abzuweisen.",
+					"noDomains": {
+						"action": "Zu den Versanddomains",
+						"description": "Füge zuerst eine Versanddomain hinzu. Ihr DMARC-Eintrag fordert die Berichte an, auf denen diese Seite aufbaut.",
+						"title": "Keine Domain mit DMARC-Eintrag"
+					},
+					"pageTitle": "DMARC-Berichte",
+					"readinessTitle": "Bereit zum Durchsetzen?",
+					"sourcesSubtitle": "Nach Organisation gruppiert, fehlgeschlagene Quellen zuerst. Wenn eine unbekannte Quelle zu dir gehört, gib ihr SPF oder DKIM, bevor du durchsetzt.",
+					"sourcesTitle": "Absenderquellen",
+					"tiles": {
+						"failing": "DMARC nicht bestanden",
+						"failingHint": "{count} von Empfängern in Quarantäne verschoben oder abgewiesen",
+						"messages": "Mails",
+						"messagesHint": "{count} Bericht | {count} Berichte",
+						"passRate": "DMARC bestanden",
+						"passRateHint": "Ziel fürs Durchsetzen: 99 %",
+						"reportersHint": "{count} Empfänger | {count} Empfänger"
+					},
+					"title": "DMARC-Berichte",
+					"trendTitle": "Mails pro Tag",
+					"truncated": "nur die neuesten Berichte werden gezeigt",
+					"window": "{days} Tage",
+					"windowLabel": "Zeitraum"
 				},
 				"domains": {
 					"addDomain": "Domain hinzufügen",
@@ -12007,6 +12110,7 @@
 				"deliverability": "Zustellbarkeit",
 				"deliveryProvider": "Zustellungsanbieter",
 				"desktopUpdates": "Desktop-App-Updates",
+				"dmarcReports": "DMARC-Berichte",
 				"emailTheme": "E-Mail-Design",
 				"features": "Funktionen",
 				"failedMessages": "Fehlgeschlagene Nachrichten",
