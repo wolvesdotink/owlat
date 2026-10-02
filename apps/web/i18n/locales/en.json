@@ -3413,7 +3413,7 @@
 				"hoursTitle": "What counts",
 				"mode": {
 					"business": "Business hours",
-					"businessHint": "The clock runs only while the inbox is open. A message that arrives at night is due counting from the next opening.",
+					"businessHint": "The clock runs only while the inbox is open, so a target counts opening time: 1 day is 24 open hours. A message that arrives at night is due counting from the next opening.",
 					"calendar": "Every hour",
 					"calendarHint": "The clock runs around the clock, weekends and holidays included."
 				},

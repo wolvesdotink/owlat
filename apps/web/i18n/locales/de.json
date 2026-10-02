@@ -3413,7 +3413,7 @@
 				"hoursTitle": "Was zählt",
 				"mode": {
 					"business": "Geschäftszeiten",
-					"businessHint": "Die Uhr läuft nur, solange das Postfach geöffnet ist. Eine Nachricht, die nachts ankommt, wird ab der nächsten Öffnung gezählt.",
+					"businessHint": "Die Uhr läuft nur, solange das Postfach geöffnet ist, ein Ziel zählt also Öffnungszeit: 1 Tag sind 24 offene Stunden. Eine Nachricht, die nachts ankommt, wird ab der nächsten Öffnung gezählt.",
 					"calendar": "Jede Stunde",
 					"calendarHint": "Die Uhr läuft rund um die Uhr, auch am Wochenende und an Feiertagen."
 				},
