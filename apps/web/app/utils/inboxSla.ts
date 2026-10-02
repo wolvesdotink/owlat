@@ -52,6 +52,23 @@ export function inboxSlaChip(
 }
 
 /**
+ * Whether a thread is still in the Overdue / Due soon slice at `now`.
+ *
+ * MIRRORS the time half of `threadMatchesSlaSlice` in
+ * apps/api/convex/inbox/sla/slices.ts. A tail page keeps the clock its cursor
+ * pinned, so the list holds its rows to this at the current clock.
+ */
+export function inboxSlaSliceHolds(
+	thread: { responseDueAt?: number | null },
+	slice: 'sla-overdue' | 'sla-due-soon',
+	now: number
+): boolean {
+	const due = thread.responseDueAt;
+	if (due === undefined || due === null) return false;
+	return slice === 'sla-overdue' ? due <= now : due > now && due <= now + INBOX_SLA_DUE_SOON_MS;
+}
+
+/**
  * A measured duration for the analytics page, one unit finer than the row
  * chip: "45m", "2h 13m", "3d 4h". Minutes round, so a median of 59.6 minutes
  * reads "1h 0m" rather than "59m".

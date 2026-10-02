@@ -9,6 +9,7 @@ import {
 	inboxAnalyticsRange,
 	inboxSlaChip,
 	inboxSlaDurationLabel,
+	inboxSlaSliceHolds,
 } from '../inboxSla';
 import {
 	clockToMinutes,
@@ -52,6 +53,24 @@ describe('inboxSlaChip', () => {
 			key: 'shared.inboxSla.overdue.daysHours',
 			params: { days: 1, hours: 3 },
 		});
+	});
+});
+
+describe('inboxSlaSliceHolds', () => {
+	const now = 1_000_000_000;
+
+	it('cuts the slices like the backend', () => {
+		// apps/api/convex/inbox/sla/slices.ts threadMatchesSlaSlice
+		expect(inboxSlaSliceHolds({ responseDueAt: now }, 'sla-overdue', now)).toBe(true);
+		expect(inboxSlaSliceHolds({ responseDueAt: now + 1 }, 'sla-overdue', now)).toBe(false);
+		expect(inboxSlaSliceHolds({ responseDueAt: now }, 'sla-due-soon', now)).toBe(false);
+		expect(inboxSlaSliceHolds({ responseDueAt: now + HOUR }, 'sla-due-soon', now)).toBe(true);
+		expect(inboxSlaSliceHolds({ responseDueAt: now + HOUR + 1 }, 'sla-due-soon', now)).toBe(false);
+	});
+
+	it('holds no thread without a running deadline', () => {
+		expect(inboxSlaSliceHolds({}, 'sla-overdue', now)).toBe(false);
+		expect(inboxSlaSliceHolds({ responseDueAt: null }, 'sla-due-soon', now)).toBe(false);
 	});
 });
 

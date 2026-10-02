@@ -342,6 +342,90 @@ describe('useInbox pagination', () => {
 		}
 	});
 
+	it('drops a tail row whose deadline passed, without reloading the tail', async () => {
+		vi.useFakeTimers();
+		const scope = effectScope();
+		try {
+			const nine = Date.parse('2026-10-02T09:00:00Z');
+			const ten = nine + 60 * 60_000;
+			vi.setSystemTime(nine);
+			vi.stubGlobal('useRoute', () => ({ query: { filter: 'sla-due-soon' } }));
+			const inbox = scope.run(() => useInbox())!;
+			const { first, tail } = handles();
+			const dueAtTen = (id: string) => ({ ...thread(id), responseDueAt: ten });
+
+			// 09:00: two Due soon pages, every thread due at 10:00.
+			first.data.value = { threads: [dueAtTen('head')], nextCursor: 'c1' };
+			await nextTick();
+			inbox.loadMoreThreads();
+			tail.data.value = { threads: [dueAtTen('tail')], nextCursor: 'c2' };
+			await nextTick();
+			expect(ids(inbox.threads.value)).toEqual(['head', 'tail']);
+			const tailArgs = computed(() => tail.args());
+			const pinnedTailArgs = tailArgs.value;
+
+			// 10:01: the refreshed first page, cut at the new clock, is empty. The
+			// tail page, pinned at 09:00, must not keep its expired row on screen.
+			vi.advanceTimersByTime(61 * 60_000);
+			expect(first.args()).toMatchObject({ now: nine + 61 * 60_000 });
+			first.data.value = { threads: [], nextCursor: null };
+			await nextTick();
+			expect(ids(inbox.threads.value)).toEqual([]);
+
+			// A tick does not re-read the tail, and paging deeper still works: a
+			// later page continues the 09:00 cut and is held to 10:01 as well.
+			expect(tailArgs.value).toEqual(pinnedTailArgs);
+			expect(inbox.hasMoreThreads.value).toBe(true);
+			inbox.loadMoreThreads();
+			expect(tail.args()).toMatchObject({ cursor: 'c2' });
+			tail.data.value = { threads: [dueAtTen('deeper')], nextCursor: null };
+			await nextTick();
+			expect(ids(inbox.threads.value)).toEqual([]);
+			expect(inbox.hasMoreThreads.value).toBe(false);
+		} finally {
+			scope.stop();
+			vi.useRealTimers();
+		}
+	});
+
+	it('does not bring an expired tail row back while another assignment loads', async () => {
+		vi.useFakeTimers();
+		const scope = effectScope();
+		try {
+			const nine = Date.parse('2026-10-02T09:00:00Z');
+			const due = (id: string, minutes: number) => ({
+				...thread(id),
+				responseDueAt: nine + minutes * 60_000,
+			});
+			vi.setSystemTime(nine);
+			vi.stubGlobal('useRoute', () => ({ query: { filter: 'sla-due-soon' } }));
+			const inbox = scope.run(() => useInbox())!;
+			const { first, tail } = handles();
+
+			first.data.value = { threads: [due('head', 30)], nextCursor: 'c1' };
+			await nextTick();
+			inbox.loadMoreThreads();
+			tail.data.value = { threads: [due('gone', 40), due('kept', 50)], nextCursor: null };
+			await nextTick();
+
+			// 09:45: "gone" is past its deadline; the refreshed first page holds "kept".
+			vi.advanceTimersByTime(45 * 60_000);
+			first.data.value = { threads: [due('kept', 50)], nextCursor: null };
+			await nextTick();
+			expect(ids(inbox.threads.value)).toEqual(['kept']);
+
+			// Switching to "Me" keeps the rows on screen until its first page lands,
+			// and only those: the expired row stays gone.
+			inbox.assignee.value = 'me';
+			first.isRefetching.value = true;
+			await nextTick();
+			expect(ids(inbox.threads.value)).toEqual(['kept']);
+		} finally {
+			scope.stop();
+			vi.useRealTimers();
+		}
+	});
+
 	it('keeps the clock off the other tabs, so a tick does not reload them', () => {
 		const { filter } = useInbox();
 		expect(created[0]!.args()).not.toHaveProperty('now');

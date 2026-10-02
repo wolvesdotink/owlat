@@ -17,6 +17,7 @@ import {
 	type InboxFilter,
 	type InboxSort,
 } from '~/utils/inboxFilters';
+import { inboxSlaSliceHolds } from '~/utils/inboxSla';
 import { rememberTeamThreadPreviews } from '~/utils/teamThreadPreviews';
 import { useNow } from '~/composables/useNow';
 
@@ -160,7 +161,8 @@ export function useInbox(gate?: Ref<boolean>) {
 	};
 	// The first page of an Overdue / Due soon slice carries the clock, so it
 	// re-runs every tick. Tail pages do not: their cursor pins the time the
-	// first page was cut at, and a tick must not reload them.
+	// first page was cut at, and a tick must not reload them. `tailRowsFor`
+	// below holds their rows to the current clock instead.
 	const firstPageArgs = () => {
 		const base = viewArgs();
 		if (base === 'skip' || !isInboxSlaFilter(base.filter)) return base;
@@ -220,6 +222,16 @@ export function useInbox(gate?: Ref<boolean>) {
 		{ flush: 'sync' }
 	);
 
+	// The tail rows a view shows. An Overdue / Due soon tail page was cut at the
+	// clock its cursor pinned, and a tick does not reload it, so its rows are
+	// held to the slice at the current clock: a deadline that passed drops out
+	// of Due soon below the first page too.
+	const tailRowsFor = (view: InboxFilter): Thread[] => {
+		const rows = [...tailSegments.value.values()].flat();
+		if (view !== 'sla-overdue' && view !== 'sla-due-soon') return rows;
+		return rows.filter((row) => inboxSlaSliceHolds(row, view, now.value));
+	};
+
 	// The rows below the first page when the view changed. They stay under the
 	// retained first page until the new first page lands, so switching a filter
 	// from deep in the list does not shrink it to one page and back.
@@ -237,10 +249,10 @@ export function useInbox(gate?: Ref<boolean>) {
 	// synchronously, before the queries re-subscribe.
 	watch(
 		[filter, assignee, sort],
-		() => {
+		(_next, [previousFilter]) => {
 			// A second change before the first view landed keeps what is on screen.
 			const onScreen = threadsRefetching.value ? retainedTail.value : [];
-			retainedTail.value = [...onScreen, ...[...tailSegments.value.values()].flat()];
+			retainedTail.value = [...onScreen, ...tailRowsFor(previousFilter)];
 			tailCursor.value = null;
 			tailSegments.value = new Map();
 		},
@@ -262,7 +274,7 @@ export function useInbox(gate?: Ref<boolean>) {
 		};
 		push(threadsData.value?.threads ?? []);
 		if (threadsRefetching.value) push(retainedTail.value);
-		for (const rows of tailSegments.value.values()) push(rows);
+		push(tailRowsFor(filter.value));
 		return out;
 	});
 
