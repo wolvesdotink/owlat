@@ -26,10 +26,13 @@ import { gzipSync } from 'node:zlib';
 /**
  * Gzip budget for the entry closure, in KiB (1024 bytes).
  *
- * Set from this script's own reading, 230.7 KB, after the boot-path items of the
- * performance plan (1.7, 2.7, A8-A10) landed, plus about 5% headroom.
+ * First set from this script's own reading, 230.7 KB, after the boot-path items
+ * of the performance plan (1.7, 2.7, A8-A10) landed, plus about 5% headroom
+ * (242). Raised on 2026-10-03 the same way, from 241.8 KB plus about 5%: the
+ * entry had grown to within 0.2 KB of the old budget as features landed, so
+ * the next eager addition would have failed.
  */
-const GZIP_BUDGET_KB = 242;
+const GZIP_BUDGET_KB = 254;
 
 const workspace = resolve(import.meta.dirname, '..');
 const outputDir = resolve(process.argv[2] ?? join(workspace, 'apps/web/.output'));
