@@ -80,8 +80,8 @@ const knownStructureDrift = {
 		},
 	},
 	'1.guide/34.code-tasks.md': {
-		en: { headings: '22223333322', fences: [], tables: ['8x3', '8x2', '16x2'] },
-		de: { headings: '22223333322', fences: [], tables: ['8x3', '8x2', '13x2'] },
+		en: { headings: '22223333322', fences: [], tables: ['8x3', '8x2', '17x2'] },
+		de: { headings: '22223333322', fences: [], tables: ['8x3', '8x2', '14x2'] },
 	},
 	'1.guide/52.secure-email.md': {
 		en: { headings: '223222333333222', fences: [], tables: ['6x3', '8x3'] },
