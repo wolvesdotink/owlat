@@ -164,8 +164,7 @@ export function localClockIn(timeZone: string | undefined, at: number): LocalClo
 /** True when `timeZone` is an IANA zone this runtime can evaluate. */
 export function isValidTimeZone(timeZone: string): boolean {
 	try {
-		new Intl.DateTimeFormat('en-US', { timeZone });
-		return true;
+		return new Intl.DateTimeFormat('en-US', { timeZone }).resolvedOptions().timeZone !== '';
 	} catch {
 		return false;
 	}
