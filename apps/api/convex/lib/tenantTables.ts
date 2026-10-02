@@ -80,6 +80,10 @@ export const TENANT_TABLES = [
 	'formEndpoints',
 
 	// ── Templates & content ──
+	// Live co-editing state of an email (ephemeral); goes before the emails.
+	'emailCoeditNotices',
+	'emailEditorPresence',
+	'emailCoeditSessions',
 	// Snapshot history holds full copies of the template bodies, so it is the
 	// same tenant business data and wipes with (and before) its parent.
 	'emailTemplateVersions',
@@ -101,6 +105,10 @@ export const TENANT_TABLES = [
 	// ── Sending domains & deliverability ──
 	'sendingDomainMtaIdentities',
 	'yahooCflEnrollments',
+	// DMARC aggregate reports about the org's sending domains: who sends as
+	// them, from which IPs. Rows before their report.
+	'dmarcReportRecords',
+	'dmarcReports',
 	'sendingDomainSesIdentities',
 	// The generic per-provider relay identity that succeeds the two
 	// frozen siblings above. Org-scoped sending-domain state — a wipe must not

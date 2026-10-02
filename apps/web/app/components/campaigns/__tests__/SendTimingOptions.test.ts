@@ -88,6 +88,15 @@ describe('SendTimingOptions', () => {
 		expect(optimized.text()).toContain('Not available for A/B tests');
 	});
 
+	it('falls back to one instant when the campaign becomes an A/B test', async () => {
+		const wrapper = mountOptions(defaultSendTiming('optimized'));
+		expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+		await wrapper.setProps({ isAbTest: true });
+		expect(wrapper.emitted('update:modelValue')).toEqual([
+			[{ mode: 'fixed', windowHours: 24, holdoutPercent: 10 }],
+		]);
+	});
+
 	it('shows an empty clock while no time is picked', () => {
 		const wrapper = mountOptions(defaultSendTiming('local'), { time: '' });
 		expect(wrapper.text()).toContain('at --:-- in their own time zone');

@@ -57,10 +57,41 @@ describe('send-time settings', () => {
 });
 
 describe('send-time window', () => {
-	it('opens when the campaign started sending', () => {
-		expect(
-			resolveSendTimeWindow({ sentAt: START, windowHours: 24, now: START + 5 * 60_000 })
-		).toEqual({ startAt: START, endAt: START + 24 * HOUR });
+	it('closes a window after the campaign started sending', () => {
+		expect(resolveSendTimeWindow({ sentAt: START, windowHours: 24, now: START })).toEqual({
+			startAt: START,
+			endAt: START + 24 * HOUR,
+		});
+	});
+
+	it('never opens in the past for a page resolved later', () => {
+		const now = START + 5 * 60_000;
+		expect(resolveSendTimeWindow({ sentAt: START, windowHours: 24, now })).toEqual({
+			startAt: now,
+			endAt: START + 24 * HOUR,
+		});
+	});
+
+	it('plans a day-budget slice resumed the next day only into hours still ahead', () => {
+		// Started 08:00 Berlin with a 72 h window; the day-2 slice resumes at
+		// midnight UTC. Without the clamp, a contact whose best hour fell on day 1
+		// would get an instant in the past and be sent at once.
+		const resume = Date.UTC(2026, 2, 12);
+		const window = resolveSendTimeWindow({
+			sentAt: START,
+			windowHours: 72,
+			now: resume,
+			dayBudgetEndsAt: Date.UTC(2026, 2, 13),
+		});
+		expect(window).toEqual({ startAt: resume, endAt: Date.UTC(2026, 2, 13) });
+		const plan = makeSendTimePlanner(input({ window, now: resume }));
+		const planned = plan({
+			_id: 'c1',
+			timezone: 'Europe/Berlin',
+			sendTimeProfile: { ...habit(9, 6), timeZone: 'Europe/Berlin' },
+		});
+		expect(planned.at).toBeGreaterThanOrEqual(resume);
+		expect(localTimeParts(planned.at, 'Europe/Berlin').hour).toBe(9);
 	});
 
 	it('starts over from now when a walk outlives its window', () => {

@@ -330,7 +330,7 @@ export function reduceOpened(
 			kind: 'campaign_stats_opened',
 			campaignId: (send as EmailSendDoc).campaignId,
 			at: args.at,
-			...sendTimeGroupOf(send, ref),
+			...sendTimeGroupOf(send, ref, args.at),
 		});
 		effects.push(...sendTimeEngagementEffects(send, ref, 'open', args.at, args.agent));
 	}
@@ -436,7 +436,7 @@ export function reduceClicked(
 			kind: 'campaign_stats_clicked',
 			campaignId: (send as EmailSendDoc).campaignId,
 			at: args.at,
-			...sendTimeGroupOf(send, ref),
+			...sendTimeGroupOf(send, ref, args.at),
 		});
 		effects.push(...sendTimeEngagementEffects(send, ref, 'click', args.at));
 	}

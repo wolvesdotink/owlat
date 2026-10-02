@@ -8,6 +8,7 @@ import { automationTables } from './schema/automations';
 import { campaignTables } from './schema/campaigns';
 import { domainTables } from './schema/domains';
 import { relayIdentitiesTables } from './schema/relayIdentities';
+import { dmarcReportTables } from './schema/dmarcReports';
 import { contactTables } from './schema/contacts';
 import { contactErasureTables } from './schema/contactErasure';
 import { memberErasureTables } from './schema/memberErasure';
@@ -44,6 +45,7 @@ import { todayTables } from './schema/today';
 import { counterTables } from './schema/counters';
 import { answerCatchUpTables } from './schema/answerCatchUp';
 import { migrationRunTables } from './schema/migrationRuns';
+import { emailCoeditingTables } from './schema/emailCoediting';
 import { imapServerTables } from './schema/imapServers';
 
 // Note: Team invites are now handled by BetterAuth organization plugin's invitation table
@@ -58,6 +60,7 @@ export default defineSchema({
 	...campaignTables,
 	...domainTables,
 	...relayIdentitiesTables,
+	...dmarcReportTables,
 	...contactTables,
 	...contactErasureTables,
 	...workspaceDeletionTables,
@@ -94,5 +97,6 @@ export default defineSchema({
 	...counterTables,
 	...answerCatchUpTables,
 	...migrationRunTables,
+	...emailCoeditingTables,
 	...imapServerTables,
 });

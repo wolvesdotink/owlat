@@ -30,6 +30,10 @@
 			"types": "./src/blockTree.ts",
 			"import": "./src/blockTree.ts"
 		},
+		"./coeditOps": {
+			"types": "./src/coeditOps.ts",
+			"import": "./src/coeditOps.ts"
+		},
 		"./answerMode": {
 			"types": "./src/answerMode.ts",
 			"import": "./src/answerMode.ts"
@@ -429,6 +433,14 @@
 		"./dnsZone": {
 			"types": "./src/dnsZone.ts",
 			"import": "./src/dnsZone.ts"
+		},
+		"./dmarcReport": {
+			"types": "./src/dmarcReport.ts",
+			"import": "./src/dmarcReport.ts"
+		},
+		"./dmarcReportAddress": {
+			"types": "./src/dmarcReportAddress.ts",
+			"import": "./src/dmarcReportAddress.ts"
 		},
 		"./logRedaction": {
 			"types": "./src/logRedaction.ts",

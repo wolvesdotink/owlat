@@ -39,6 +39,10 @@
 			"types": "./src/dnsblAccess.ts",
 			"import": "./src/dnsblAccess.ts"
 		},
+		"./contentScreening": {
+			"types": "./src/contentScreening.ts",
+			"import": "./src/contentScreening.ts"
+		},
 		"./signature": {
 			"types": "./src/signature.ts",
 			"import": "./src/signature.ts"

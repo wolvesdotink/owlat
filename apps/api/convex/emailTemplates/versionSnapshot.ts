@@ -5,7 +5,7 @@
  * The editor's undo stack (`packages/email-builder` `useHistory` +
  * `utils/deltaHistory`) is session-scoped: it dies with the tab. This table is
  * the durable sibling — one snapshot per meaningful event (save / publish /
- * campaign send) of the exact same serialized shape the editor round-trips
+ * campaign send / co-editing conflict) of the exact same serialized shape the editor round-trips
  * (`{ blocks, name, subject }`, with `blocks` as the `EditorBlock[]` JSON
  * string already stored in `emailTemplates.content`), so a restore can be fed
  * straight back into the editor refs and become an ordinary undoable edit.
@@ -30,7 +30,7 @@ export const VERSION_HISTORY_LIMIT = 50;
 export const VERSION_PRUNE_BATCH = 25;
 
 /** What caused a snapshot to be taken. */
-export type TemplateVersionTrigger = 'save' | 'publish' | 'send';
+export type TemplateVersionTrigger = 'save' | 'publish' | 'send' | 'conflict';
 
 /** The template fields a snapshot preserves. */
 interface TemplateVersionSource {

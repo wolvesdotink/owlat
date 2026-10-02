@@ -73,6 +73,8 @@ export type {
 	PreviewMode,
 	SlashCommand,
 	SlashMenuState,
+	RemoteBlockMark,
+	BuilderCollabFocus,
 } from './types';
 
 // Utilities

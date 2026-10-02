@@ -20,8 +20,8 @@
  * `__tests__/adminSettingsRegistry.test.ts`, which also globs
  * `pages/dashboard/admin/` and fails when a page on disk has no entry.
  */
-import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
-import type { AdminEntry, AdminEnvironment, AdminGate } from './adminSettingsTypes';
+import { anyFlag, flag, platformOnly, rampStarted, withPlugins } from './adminSettingsGates';
+import type { AdminEntry, AdminEnvironment } from './adminSettingsTypes';
 
 export {
 	ADMIN_AREAS,
@@ -34,18 +34,6 @@ export {
 
 /** Where the Workspace settings tree lives. Everything under it is registry-owned. */
 export const ADMIN_ROOT = '/dashboard/admin';
-
-const flag =
-	(key: FeatureFlagKey): AdminGate =>
-	(env) =>
-		env.isFeatureEnabled(key);
-const anyFlag =
-	(...keys: readonly FeatureFlagKey[]): AdminGate =>
-	(env) =>
-		keys.some((key) => env.isFeatureEnabled(key));
-const platformOnly: AdminGate = (env) => env.isPlatformAdmin;
-const withPlugins: AdminGate = (env) => env.hasPlugins;
-const rampStarted: AdminGate = (env) => env.hasRampStarted;
 
 /** Breadcrumb page label, by its key leaf. Keeps the table below readable. */
 const label = (leaf: string) => `shared.breadcrumbRoutes.pages.${leaf}`;
@@ -157,6 +145,15 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 		path: `${ADMIN_ROOT}/delivery/deliverability`,
 		titleKey: label('deliverability'),
 		icon: 'lucide:shield-check',
+		area: 'delivery',
+	},
+	{
+		// Who sends as each sending domain, from the DMARC aggregate reports
+		// receivers mail to Owlat's report address.
+		id: 'dmarcReports',
+		path: `${ADMIN_ROOT}/delivery/dmarc`,
+		titleKey: label('dmarcReports'),
+		icon: 'lucide:file-search',
 		area: 'delivery',
 	},
 	{
