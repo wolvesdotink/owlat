@@ -45,9 +45,13 @@ export function campaignReviewPath(campaignId: string, schedule?: ReviewSchedule
 	return `/dashboard/campaigns/new?${query.toString()}`;
 }
 
-/** The email editor for a template, set to come back to `returnTo`. */
-export function emailEditorPath(templateId: string, returnTo: string): string {
-	return `/dashboard/send/emails/${templateId}/edit?returnTo=${encodeURIComponent(returnTo)}`;
+/**
+ * The email editor for a template, set to come back to `returnTo`, optionally
+ * opening with one Block selected (the pre-send checks' "Show me").
+ */
+export function emailEditorPath(templateId: string, returnTo: string, blockId?: string): string {
+	const block = blockId ? `&block=${encodeURIComponent(blockId)}` : '';
+	return `/dashboard/send/emails/${templateId}/edit?returnTo=${encodeURIComponent(returnTo)}${block}`;
 }
 
 /**
