@@ -4541,8 +4541,8 @@
 				"unbound": "Not set"
 			},
 			"postboxSnippetPicker": {
-				"empty": "No matching snippets",
-				"listLabel": "Snippets"
+				"empty": "No matching saved replies",
+				"listLabel": "Saved replies"
 			},
 			"postboxSnoozeDialog": {
 				"confirm": "Snooze",
@@ -4976,7 +4976,7 @@
 			"postboxSnippetVariableDialog": {
 				"description": "“{name}” needs a few details before it goes in.",
 				"insert": "Insert",
-				"title": "Fill in the snippet"
+				"title": "Fill in the saved reply"
 			},
 			"postboxSnippetVariableEditor": {
 				"automatic": "Work it out automatically",
@@ -8175,6 +8175,15 @@
 				"roles": {
 					"title": "What each role can do"
 				},
+				"savedReplies": {
+					"adminGate": {
+						"description": "Ask an owner or admin of this workspace to add or change one. You can still insert them in any composer.",
+						"title": "Only admins manage shared replies"
+					},
+					"intro": "Answers the whole team can insert with {triggerKey} and a shortcut, or from the picker beside Send. Limit one to some team inboxes to keep it where it belongs.",
+					"pageTitle": "Saved replies — Owlat",
+					"title": "Saved replies"
+				},
 				"senders": {
 					"addModal": {
 						"displayNameHelp": "Shown to recipients as the sender name. Optional.",
@@ -10112,7 +10121,7 @@
 				"emailChangeRequested": "Check your inbox to confirm the change",
 				"emailInvalid": "Enter a valid email address",
 				"emailUnchanged": "That is already your login email",
-				"exportBody": "You can export your data at any time. The export includes your profile information, your personal mailbox and mail, drafts, connected external accounts, your chat messages, and your team memberships. For teams where you are an owner or admin, it also includes contacts, campaigns, automations, and other associated data.",
+				"exportBody": "You can export your data at any time. The export includes your profile information, your personal mailbox and mail, drafts, connected external accounts, your chat messages, your saved replies, and your team memberships. For teams where you are an owner or admin, it also includes contacts, campaigns, automations, and other associated data.",
 				"exportCsvAction": "Export CSV",
 				"exportCsvDescription": "CSV format for easy import into spreadsheets or other email tools.",
 				"exportCsvFailed": "Failed to export contacts",
@@ -10453,19 +10462,10 @@
 				"yourSignatures": "Your signatures"
 			},
 			"snippets": {
-				"bodyPlaceholder": "Hi {firstName}, thanks for reaching out…",
-				"deleteConfirm": "Delete snippet",
-				"deleteDescription": "This snippet will be removed. This action cannot be undone.",
-				"deleteTitle": "Delete snippet?",
-				"empty": "No snippets yet.",
-				"intro": "Canned responses you can drop into a message. In the composer, type {slashKey} at the start of a line to pick one. Use {firstNameToken} to greet the recipient by name.",
-				"namePlaceholder": "Snippet name (e.g. Thanks)",
-				"newSnippet": "New snippet",
-				"noMailbox": "No mailbox configured.",
-				"pageTitle": "Snippets — Owlat",
-				"saveChanges": "Save changes",
-				"shortcutPlaceholder": "shortcut",
-				"yourSnippets": "Your snippets"
+				"intro": "Answers you write again and again, ready in two keystrokes. In any composer, type {triggerKey} and the shortcut, or pick one with the button beside Send. Only you see the ones here.",
+				"pageTitle": "Saved replies — Owlat",
+				"sharedHint": "Replies for the whole team are on",
+				"sharedLink": "Team → Saved replies"
 			},
 			"vacation": {
 				"defaultBody": "I'm away from email and will respond when I return.",
@@ -12040,6 +12040,7 @@
 				"providerRouting": "Provider routing",
 				"sealedMail": "Sealed mail",
 				"quarantine": "Quarantine",
+				"savedReplies": "Saved replies",
 				"segments": "Segments",
 				"sendingDomains": "Sending domains",
 				"subscriptions": "Subscriptions",
@@ -13551,11 +13552,6 @@
 				"deleteSignature": "Delete signature",
 				"saveSignature": "Save signature"
 			},
-			"usePostboxSnippets": {
-				"createSnippet": "Create snippet",
-				"deleteSnippet": "Delete snippet",
-				"saveSnippet": "Save snippet"
-			},
 			"usePostboxThreadCategories": {
 				"options": {
 					"newsletter": "Newsletter",
@@ -13601,10 +13597,14 @@
 					"date": "Today’s date",
 					"prompt": "Ask me when inserting",
 					"recipientCompany": "Recipient’s company",
+					"recipientEmail": "Recipient’s email address",
 					"recipientFirstName": "Recipient’s first name",
 					"recipientFullName": "Recipient’s full name",
+					"recipientLastName": "Recipient’s last name",
 					"senderEmail": "My From address",
-					"senderName": "My name"
+					"senderFirstName": "My first name",
+					"senderName": "My name",
+					"threadSubject": "Conversation subject"
 				}
 			},
 			"useArchiveImport": {
@@ -13925,6 +13925,68 @@
 				"summary": "Sealed — sender verified"
 			}
 		},
+		"savedReplies": {
+			"fields": {
+				"limit": "Limit to team inboxes",
+				"limitHint": "Leave them all unchecked to offer it in every composer, the Team inbox included.",
+				"name": "Name",
+				"namePlaceholder": "e.g. Refund policy",
+				"noTeamInboxes": "There are no team inboxes yet.",
+				"scope": "Who can use it",
+				"shortcut": "Shortcut",
+				"shortcutPlaceholder": "refund",
+				"text": "Text",
+				"textPlaceholder": "Write the reply…"
+			},
+			"help": {
+				"gaps": "Write {example} for anything you fill in by hand each time. Send waits until every gap is filled.",
+				"title": "Variables and gaps",
+				"variables": "These fill in when you insert the reply. One without a value becomes a gap to fill in before sending."
+			},
+			"library": {
+				"deleteDescription": {
+					"personal": "It is removed from your picker. This cannot be undone.",
+					"shared": "It is removed from everyone’s picker. This cannot be undone."
+				},
+				"deleteTitle": "Delete this saved reply?",
+				"empty": {
+					"personal": "No saved replies yet. Add one here, or save one from a composer.",
+					"shared": "No shared replies yet."
+				},
+				"limitedTo": "Only in {inboxes}",
+				"neverUsed": "Not used yet",
+				"new": "New saved reply",
+				"unknownInbox": "a deleted inbox",
+				"used": "Used once · {when} | Used {count} times · last used {when}"
+			},
+			"operations": {
+				"create": "Save reply",
+				"recordUse": "Count reply use",
+				"remove": "Delete reply",
+				"save": "Update reply"
+			},
+			"paletteHeading": "Saved replies",
+			"picker": {
+				"button": "Saved replies",
+				"empty": "No saved replies yet. Save one from this composer, or add them under My settings → Saved replies.",
+				"manage": "Manage saved replies",
+				"noMatch": "No saved reply matches.",
+				"search": "Search saved replies",
+				"title": "Insert a saved reply"
+			},
+			"saveChanges": "Save changes",
+			"saveCurrent": "Save as reply",
+			"saveDialog": {
+				"emptyText": "Write something first.",
+				"save": "Save reply",
+				"title": "Save as reply"
+			},
+			"scopes": {
+				"personal": "Only me",
+				"shared": "Everyone in the team"
+			},
+			"sharedBadge": "Shared"
+		},
 		"sendReadiness": {
 			"audienceFits": "Your audience of {audience} fits in today's capacity.",
 			"capacity": {
@@ -14054,9 +14116,9 @@
 					"keywords": "sign-off, footer, disclaimer"
 				},
 				"snippets": {
-					"title": "Snippets",
-					"description": "Canned responses via slash",
-					"keywords": "canned responses, boilerplate, shortcuts"
+					"title": "Saved replies",
+					"description": "Your reusable answers for every composer",
+					"keywords": "snippets, canned responses, templates, macros, boilerplate, shortcuts"
 				},
 				"writingVoice": {
 					"title": "Writing voice",
@@ -14303,7 +14365,8 @@
 				"draftWithAi": "Draft with AI (instead of opening the Assistant)",
 				"pickAskOption": "Pick an answer on the AI’s question card",
 				"previousQueueItem": "Previous item in the Answer queue",
-				"nextQueueItem": "Next item in the Answer queue"
+				"nextQueueItem": "Next item in the Answer queue",
+				"savedReplies": "Insert a saved reply"
 			}
 		},
 		"signatureBadge": {
@@ -15410,6 +15473,7 @@
 			"mailMessages": "Messages",
 			"mailboxes": "Mailboxes",
 			"organizationMemberships": "Workspace memberships",
+			"savedReplies": "Saved replies",
 			"segments": "Segments",
 			"topics": "Topics",
 			"transactionalEmails": "Transactional emails",

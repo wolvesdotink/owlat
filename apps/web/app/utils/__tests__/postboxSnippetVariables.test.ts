@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
 	SNIPPET_VARIABLE_SOURCES,
+	documentedVariable,
 	promptedSnippetVariables,
 	resolveSnippetBody,
 	snippetTokens,
 	snippetVariableSourceKey,
 	type SnippetVariable,
 } from '../postboxSnippetVariables';
-import { preflightDraft } from '../postboxPreflight';
 import { createTestI18n } from '~/__tests__/i18n';
 
 const { t } = createTestI18n().global;
@@ -102,20 +102,45 @@ describe('resolveSnippetBody', () => {
 	});
 
 	/**
-	 * The load-bearing half of idea 13: an unfilled variable is left as its
-	 * literal token, which is exactly the shape the composer's preflight (idea 6)
-	 * already flags beside Send. A `[token]` marker would have shipped silently.
+	 * The load-bearing policy: a variable with no value becomes a `[[...]]` gap,
+	 * the placeholder the composer highlights and holds Send for, so a missing
+	 * name can never go out as a raw `{{token}}`.
 	 */
-	it('leaves an unresolved token standing, where the preflight catches it', () => {
-		const { html, unresolved } = resolveSnippetBody('<p>Hi {{firstName}},</p>', { context: {} });
-		expect(html).toBe('<p>Hi {{firstName}},</p>');
-		expect(unresolved).toEqual(['firstName']);
-
-		const findings = preflightDraft({ subject: 'Hello', bodyHtml: html });
-		expect(findings.map((f) => f.id)).toContain('unfilledVariable');
-		expect(findings.find((f) => f.id === 'unfilledVariable')?.params).toMatchObject({
-			name: 'firstName',
+	it('turns an unresolved variable into a gap', () => {
+		const { html, unresolved, hasGaps } = resolveSnippetBody('<p>Hi {{firstName}},</p>', {
+			context: {},
 		});
+		expect(html).toBe('<p>Hi [[firstName]],</p>');
+		expect(unresolved).toEqual(['firstName']);
+		expect(hasGaps).toBe(true);
+	});
+
+	it('names the gap after its source when the caller labels it', () => {
+		const { html } = resolveSnippetBody('<p>Hi {{contact.firstName}},</p>', {
+			context: {},
+			gapLabel: (token, source) => `${source ?? 'none'}/${token}`,
+		});
+		expect(html).toBe('<p>Hi [[recipientFirstName/contact.firstName]],</p>');
+	});
+
+	it('names an unanswered prompt’s gap after its question', () => {
+		const declared: SnippetVariable[] = [{ token: 'ticket', source: 'prompt', label: 'Ticket' }];
+		const { html } = resolveSnippetBody('Ref {{ticket}}', { declared, context });
+		expect(html).toBe('Ref [[Ticket]]');
+	});
+
+	it('keeps the free gaps a reply carries, and reports them', () => {
+		const { html, unresolved, hasGaps } = resolveSnippetBody(
+			'<p>Hi {{firstName}}, your order [[order number]] ships today.</p>',
+			{ context }
+		);
+		expect(html).toBe('<p>Hi Ines, your order [[order number]] ships today.</p>');
+		expect(unresolved).toEqual([]);
+		expect(hasGaps).toBe(true);
+	});
+
+	it('has no gaps when everything resolves', () => {
+		expect(resolveSnippetBody('<p>Hi {{firstName}}</p>', { context }).hasGaps).toBe(false);
 	});
 
 	it('reports each unresolved token once, however often it appears', () => {
@@ -138,5 +163,46 @@ describe('promptedSnippetVariables', () => {
 
 	it('asks nothing once the tokens are edited out of the body', () => {
 		expect(promptedSnippetVariables('<p>Hi there</p>', declared)).toEqual([]);
+	});
+});
+
+describe('documented variables', () => {
+	const full = {
+		...context,
+		recipientLastName: 'Weber',
+		recipientEmail: 'ines@northwind.example',
+		senderFirstName: 'Ada',
+		threadSubject: 'Invoice 4471',
+	};
+
+	it('resolves every documented name, spaced or not', () => {
+		const body =
+			'{{contact.firstName}}|{{ contact.lastName }}|{{contact.email}}|{{me.firstName}}|{{me.name}}|{{thread.subject}}|{{today}}';
+		expect(resolveSnippetBody(body, { context: full }).html).toBe(
+			'Ines|Weber|ines@northwind.example|Ada|Ada Lovelace|Invoice 4471|27.08.2026'
+		);
+	});
+
+	it('keeps an inline fallback on a dotted name', () => {
+		expect(resolveSnippetBody("Hi {{contact.firstName|'there'}}", { context: {} }).html).toBe(
+			'Hi there'
+		);
+	});
+
+	it('writes an unknown dotted name back as it was typed in its gap', () => {
+		const { html, unresolved } = resolveSnippetBody('{{contact.shoeSize}}', { context: full });
+		expect(html).toBe('[[contact.shoeSize]]');
+		expect(unresolved).toEqual(['contact.shoeSize']);
+	});
+
+	it('tells the documented names apart from tokens that need declaring', () => {
+		expect(documentedVariable('contact_firstName')).toBe('contact.firstName');
+		expect(documentedVariable('today')).toBe('today');
+		expect(documentedVariable('ticket')).toBeNull();
+	});
+
+	it('escapes a gap label like any other inserted text', () => {
+		const { html } = resolveSnippetBody('{{x}}', { context: {}, gapLabel: () => '<b>' });
+		expect(html).toBe('[[&lt;b&gt;]]');
 	});
 });

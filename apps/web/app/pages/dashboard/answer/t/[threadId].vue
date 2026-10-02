@@ -373,6 +373,7 @@ onBeforeUnmount(() => {
 					:key="reply.target.value?._id"
 					:target="reply.composerTarget.value"
 					:sender-label="reply.senderLabel.value"
+					:recipient="reply.recipient.value"
 					:blocker="reply.blocker.value"
 					:notice="reply.notice.value"
 					:draft="reply.draft.value"

@@ -145,6 +145,15 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 		gate: anyFlag('postbox', 'mail.external'),
 	},
 	{
+		id: 'savedReplies',
+		path: `${ADMIN_ROOT}/team/saved-replies`,
+		titleKey: label('savedReplies'),
+		icon: 'lucide:message-square-quote',
+		area: 'team',
+		// Same set the page's `requiresAnyFeature` names.
+		gate: anyFlag('postbox', 'mail.external', 'inbox'),
+	},
+	{
 		id: 'senders',
 		path: `${ADMIN_ROOT}/team/senders`,
 		titleKey: label('campaignSenders'),

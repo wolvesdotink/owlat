@@ -20,6 +20,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { AskAnswer } from '~/composables/useAnswerAskSession';
 import { backgroundAskAnswers } from '~/utils/backgroundAskAnswers';
+import { extractEmailAddress } from '~/utils/emailAddress';
 import type { TeamThreadComposerTarget } from '~/utils/composerTarget';
 import {
 	hasAgentDraft,
@@ -111,6 +112,14 @@ export function useAnswerTeamReply(opts: {
 			return name || c.email || '';
 		}
 		return target.value?.from ?? '';
+	});
+
+	// What a saved reply's `{{contact.*}}` variables resolve from.
+	const recipient = computed(() => {
+		const c = contact.value;
+		if (c) return { firstName: c.firstName, lastName: c.lastName, email: c.email };
+		const from = target.value?.from;
+		return from ? { email: extractEmailAddress(from) } : null;
 	});
 
 	const composerTarget = computed<TeamThreadComposerTarget | null>(() =>
@@ -242,6 +251,7 @@ export function useAnswerTeamReply(opts: {
 		subject,
 		originalDraft,
 		senderLabel,
+		recipient,
 		composerTarget,
 		busy: composer.busy,
 		send: composer.send,

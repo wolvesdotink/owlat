@@ -378,6 +378,15 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 		groupKey: G.compose,
 		remappable: false,
 	},
+	{
+		// Both composers bind it themselves (useComposerSavedReplyPicker).
+		id: 'composer.savedReplies',
+		scope: 'composer',
+		keys: ['mod+;'],
+		labelKey: L('savedReplies'),
+		groupKey: G.compose,
+		remappable: false,
+	},
 
 	// --- Review lists (the Team inbox Updates page) --------------------------
 	{
