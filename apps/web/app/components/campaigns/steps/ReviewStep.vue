@@ -190,9 +190,9 @@ const sendBlockedReason = computed(() => {
 
 // PRE-SEND CHECKS on the email as it will go out: size, links, images,
 // contrast, the MTA's content screening, the unsubscribe and postal-address
-// rules. They run on arrival and again whenever a save changes the HTML. Only
-// the refusal above blocks; every check warns, and the send button says "Send
-// anyway" until the current warnings are marked as reviewed.
+// rules. They run on arrival and again whenever the HTML, subject or sender
+// changes. Only the refusal above blocks; every check warns, and the send
+// button says "Send anyway" until the current warnings are marked as reviewed.
 const presendSource = computed(() => {
 	const html = props.data.emailBodyHtml;
 	if (!html) return null;

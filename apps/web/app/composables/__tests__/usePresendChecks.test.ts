@@ -6,13 +6,19 @@
  *     the HTML and the sender;
  *   - a newer run wins over an older one still in flight, and a failure reads
  *     as "could not run", not as a pass;
- *   - once run, a new version of the HTML is checked again by itself.
+ *   - once run, a change to anything the screening reads (the HTML, the
+ *     subject, the sender) retires the old answers at once and is checked
+ *     again by itself once the input settles.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, ref } from 'vue';
 import { flushPromises } from '@vue/test-utils';
 import { DEFAULT_EMAIL_THEME } from '@owlat/shared/emailDefaults';
-import { usePresendChecks, type PresendSource } from '../usePresendChecks';
+import {
+	PRESEND_RECHECK_DELAY_MS,
+	usePresendChecks,
+	type PresendSource,
+} from '../usePresendChecks';
 
 vi.mock('@owlat/api', () => ({
 	api: { emailTemplates: { presendChecksActions: { run: 'presend.run' } } },
@@ -30,6 +36,10 @@ beforeEach(() => {
 	action.mockReset().mockResolvedValue(RESULT);
 	vi.stubGlobal('useConvex', () => ({ action }));
 	vi.stubGlobal('useEmailTheme', () => ({ emailTheme: ref(DEFAULT_EMAIL_THEME) }));
+});
+
+afterEach(() => {
+	vi.useRealTimers();
 });
 
 const html = (body: string) => `<html><body>${body}</body></html>`;
@@ -110,6 +120,7 @@ describe('usePresendChecks', () => {
 	});
 
 	it('checks a new version of the email again once it has run', async () => {
+		vi.useFakeTimers();
 		const { source, presend } = setup();
 		void presend.run();
 		await flushPromises();
@@ -117,7 +128,72 @@ describe('usePresendChecks', () => {
 
 		source.value = { ...source.value, html: html('<p>Changed</p>') };
 		await nextTick();
+		expect(presend.isChecking.value).toBe(true);
+		await vi.advanceTimersByTimeAsync(PRESEND_RECHECK_DELAY_MS);
 		await flushPromises();
 		expect(action).toHaveBeenCalledTimes(2);
+	});
+
+	const SPAM = {
+		...RESULT,
+		screening: {
+			status: 'ready',
+			verdict: {
+				enabled: true,
+				verdict: 'reject',
+				reason: 'spam_score',
+				sizeLimitKb: 10_240,
+				spam: { score: 9, threshold: 5 },
+			},
+		},
+	};
+
+	it.each([
+		['subject', { subject: 'A calmer subject' }],
+		['sender', { fromEmail: 'hello@example.com' }],
+	] as const)(
+		'retires the screening verdict when only the %s changes, and screens the new one',
+		async (_, change) => {
+			vi.useFakeTimers();
+			action.mockResolvedValueOnce(SPAM).mockResolvedValueOnce(RESULT);
+			const { source, presend } = setup();
+			void presend.run();
+			await flushPromises();
+			expect(status(presend, 'screening')).toBe('warning');
+
+			source.value = { ...source.value, ...change };
+			await nextTick();
+			// The old verdict answered for another message: it is gone at once.
+			expect(status(presend, 'screening')).toBe('pending');
+			expect(presend.isChecking.value).toBe(true);
+
+			// Every keystroke would be one run; the new input is screened once it settles.
+			source.value = { ...source.value, ...change };
+			await vi.advanceTimersByTimeAsync(PRESEND_RECHECK_DELAY_MS);
+			await flushPromises();
+			expect(action).toHaveBeenCalledTimes(2);
+			expect(action.mock.calls[1]![1].screening).toMatchObject(change);
+			expect(status(presend, 'screening')).toBe('skipped');
+		}
+	);
+
+	it('drops an answer for inputs that changed while it was in flight', async () => {
+		vi.useFakeTimers();
+		let resolveFirst: (value: unknown) => void = () => {};
+		action.mockImplementationOnce(() => new Promise((resolve) => (resolveFirst = resolve)));
+		const { source, presend } = setup();
+		void presend.run();
+		await flushPromises();
+
+		source.value = { ...source.value, subject: 'Changed while screening' };
+		await nextTick();
+		resolveFirst(SPAM);
+		await flushPromises();
+		expect(status(presend, 'screening')).toBe('pending');
+
+		await vi.advanceTimersByTimeAsync(PRESEND_RECHECK_DELAY_MS);
+		await flushPromises();
+		expect(action).toHaveBeenCalledTimes(2);
+		expect(status(presend, 'screening')).toBe('skipped');
 	});
 });

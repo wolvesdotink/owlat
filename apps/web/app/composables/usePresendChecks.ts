@@ -3,7 +3,8 @@
  * the browser runs on the HTML and Blocks (instantly, on every change of the
  * source) and the server round trip for links, images and the MTA's content
  * screening (`emailTemplates.presendChecksActions.run`), which runs when
- * `run()` is called and again whenever the HTML changes after that.
+ * `run()` is called and again whenever what it sent changes after that: the
+ * HTML, the subject or the sender.
  *
  * Shared by the campaign Review step (which runs it on arrival) and the email
  * editor's "Check email" (which runs it on demand, on the unsaved canvas).
@@ -33,14 +34,36 @@ export interface PresendSource {
  */
 const SCREENABLE_HTML_CHARS = 1024 * 1024;
 
+/**
+ * How long the inputs must stay put before a change is checked again. The
+ * campaign wizard keeps the Review step alive while the subject is typed on
+ * another step, and a run per keystroke would spend the user's rate limit.
+ */
+export const PRESEND_RECHECK_DELAY_MS = 800;
+
+/** Everything the server round trip reads: the probes come from the HTML. */
+type RemoteInputs = Pick<PresendSource, 'html' | 'subject' | 'fromEmail'>;
+
+const remoteInputs = ({ html, subject, fromEmail }: PresendSource): RemoteInputs => ({
+	html,
+	subject,
+	fromEmail,
+});
+
+const sameInputs = (a: RemoteInputs, b: RemoteInputs) =>
+	a.html === b.html && a.subject === b.subject && a.fromEmail === b.fromEmail;
+
 export function usePresendChecks(source: () => PresendSource | null) {
 	// The organization theme the email was rendered with: the contrast checks
 	// read its colours, dark-mode ones included.
 	const { emailTheme } = useEmailTheme();
 	const remote = shallowRef<PresendRemote>({ status: 'pending' });
-	/** The HTML the last `run()` was asked for; `null` until the first run. */
-	const ranFor = ref<string | null>(null);
+	/** What the last `run()` sent; `null` until the first run. */
+	let ranFor: RemoteInputs | null = null;
+	const hasRun = ref(false);
 	let sequence = 0;
+	let recheck: ReturnType<typeof setTimeout> | undefined;
+	if (getCurrentScope()) onScopeDispose(() => clearTimeout(recheck));
 
 	const scan = computed(() => {
 		const current = source();
@@ -51,8 +74,10 @@ export function usePresendChecks(source: () => PresendSource | null) {
 		const current = source();
 		const scanned = scan.value;
 		if (!current || !scanned) return;
+		clearTimeout(recheck);
 		const seq = ++sequence;
-		ranFor.value = current.html;
+		ranFor = remoteInputs(current);
+		hasRun.value = true;
 		remote.value = { status: 'pending' };
 		const convex = useConvex();
 		if (!convex) {
@@ -84,12 +109,22 @@ export function usePresendChecks(source: () => PresendSource | null) {
 		}
 	}
 
-	// Once checked, a new version of the email (a save landing, a re-render) is
-	// checked again rather than judged against the old answers.
+	// Once checked, a new version of the email (a save landing, a re-render, an
+	// edited subject or sender) retires the old answers at once, so no verdict
+	// is shown for a message that is no longer the one going out, and is checked
+	// again once it stops changing.
 	watch(
-		() => source()?.html,
-		(html) => {
-			if (ranFor.value !== null && html !== undefined && html !== ranFor.value) void run();
+		() => {
+			const current = source();
+			return current ? [current.html, current.subject, current.fromEmail] : null;
+		},
+		() => {
+			const current = source();
+			if (!ranFor || !current || sameInputs(remoteInputs(current), ranFor)) return;
+			++sequence; // a run still in flight answers for the old inputs
+			remote.value = { status: 'pending' };
+			clearTimeout(recheck);
+			recheck = setTimeout(() => void run(), PRESEND_RECHECK_DELAY_MS);
 		}
 	);
 
@@ -110,7 +145,7 @@ export function usePresendChecks(source: () => PresendSource | null) {
 	});
 
 	const summary = computed(() => summarizePresend(checks.value));
-	const isChecking = computed(() => remote.value.status === 'pending' && ranFor.value !== null);
+	const isChecking = computed(() => remote.value.status === 'pending' && hasRun.value);
 
 	return { checks, summary, isChecking, run };
 }
