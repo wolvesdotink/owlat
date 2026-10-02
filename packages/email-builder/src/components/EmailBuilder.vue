@@ -419,14 +419,27 @@ const {
 
 // Brand kit: swatches for the colour pickers, the logo and footer Blocks, and
 // the "Apply brand kit" restyle (one undoable step).
-const { isBrandConfigured, insertableBrandBlocks, brandBlocksFor, applyBrand } = useBrandKit({
-	brand: computed(() => props.config?.brand),
-	theme,
-	allowedBlockTypes,
-	canvasBlocks,
-	commitPendingHistory: () => commitPendingHistory(),
-});
+const { isBrandConfigured, insertableBrandBlocks, brandBlocksFor, heldRootCount, applyBrand } =
+	useBrandKit({
+		brand: computed(() => props.config?.brand),
+		theme,
+		allowedBlockTypes,
+		canvasBlocks,
+		commitPendingHistory: () => commitPendingHistory(),
+		isRootHeld: isLockedRoot,
+	});
 const showApplyBrandConfirm = ref(false);
+const applyBrandDescription = computed(() => {
+	const base =
+		'Colors, fonts and button styles across this email change to your brand kit. Text, images and links stay as they are, and you can undo it.';
+	const held = heldRootCount.value;
+	if (held === 0) return base;
+	const left =
+		held === 1
+			? 'The block someone else is editing, marked with a lock, stays unchanged'
+			: `The ${held} blocks others are editing, marked with a lock, stay unchanged`;
+	return `${base} ${left}; apply again once they are done.`;
+});
 
 function confirmApplyBrand() {
 	showApplyBrandConfirm.value = false;
@@ -1309,7 +1322,7 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 		<UiConfirmationDialog
 			:open="showApplyBrandConfirm"
 			title="Apply brand kit?"
-			description="Colors, fonts and button styles across this email change to your brand kit. Text, images and links stay as they are, and you can undo it."
+			:description="applyBrandDescription"
 			confirm-text="Apply brand kit"
 			cancel-text="Cancel"
 			@confirm="confirmApplyBrand"

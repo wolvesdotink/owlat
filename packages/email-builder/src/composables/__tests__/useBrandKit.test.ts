@@ -39,7 +39,9 @@ const brand: EmailBuilderBrand = {
 	},
 };
 
-function setup(options: { brand?: EmailBuilderBrand; allowed?: BlockType[] } = {}) {
+function setup(
+	options: { brand?: EmailBuilderBrand; allowed?: BlockType[]; held?: string[] } = {}
+) {
 	const canvasBlocks = ref<EditorBlock[]>([]);
 	const commitPendingHistory = vi.fn();
 	let api!: UseBrandKitReturn;
@@ -51,6 +53,7 @@ function setup(options: { brand?: EmailBuilderBrand; allowed?: BlockType[] } = {
 				allowedBlockTypes: computed(() => options.allowed),
 				canvasBlocks,
 				commitPendingHistory,
+				isRootHeld: (rootId) => options.held?.includes(rootId) ?? false,
 			});
 			return () => h(ColorField, { value: '#0f766e', label: 'Fill' });
 		},
@@ -117,6 +120,24 @@ describe('useBrandKit', () => {
 			backgroundColor: '#0f766e',
 			borderRadius: 20,
 		});
+		wrapper.unmount();
+	});
+
+	it('leaves a root someone else holds as it is', () => {
+		const { wrapper, api, canvasBlocks } = setup({ brand, held: ['held'] });
+		const text = (id: string): EditorBlock => ({
+			id,
+			type: 'text',
+			content: { ...createDefaultContent('text'), textColor: '#333333' } as TextBlockContent,
+		});
+		const held = text('held');
+		const heldBefore = structuredClone(held);
+		canvasBlocks.value = [held, text('free')];
+		expect(api.heldRootCount.value).toBe(1);
+		expect(api.applyBrand()).toBe(1);
+		expect(canvasBlocks.value.map((b) => b.id)).toEqual(['held', 'free']);
+		expect(canvasBlocks.value[0]).toStrictEqual(heldBefore);
+		expect(canvasBlocks.value[1]!.content).toMatchObject({ textColor: '#1f2937' });
 		wrapper.unmount();
 	});
 

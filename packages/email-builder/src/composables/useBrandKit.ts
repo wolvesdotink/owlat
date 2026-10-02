@@ -21,6 +21,8 @@ export interface UseBrandKitOptions {
 	canvasBlocks: Ref<EditorBlock[]>;
 	/** Commit an edit still inside the history debounce, so a restyle is its own undo step. */
 	commitPendingHistory: () => void;
+	/** Someone else holds this root Block (co-editing); the restyle leaves it alone. */
+	isRootHeld: (rootId: string) => boolean;
 }
 
 export interface UseBrandKitReturn {
@@ -30,6 +32,8 @@ export interface UseBrandKitReturn {
 	insertableBrandBlocks: ComputedRef<BrandBlockKind[]>;
 	/** Fresh Blocks for the logo or the footer; `[]` when the kit has none. */
 	brandBlocksFor: (kind: BrandBlockKind) => EditorBlock[];
+	/** Root Blocks someone else holds, which "Apply brand kit" leaves unchanged. */
+	heldRootCount: ComputedRef<number>;
 	/** Restyle the whole email with the kit as one undoable step; returns the Blocks changed. */
 	applyBrand: () => number;
 }
@@ -40,7 +44,8 @@ export interface UseBrandKitReturn {
  * kit's web fonts loaded into the page so the canvas draws text in them.
  */
 export function useBrandKit(options: UseBrandKitOptions): UseBrandKitReturn {
-	const { brand, theme, allowedBlockTypes, canvasBlocks, commitPendingHistory } = options;
+	const { brand, theme, allowedBlockTypes, canvasBlocks, commitPendingHistory, isRootHeld } =
+		options;
 
 	const isBrandConfigured = computed(() => brand.value?.design.isConfigured === true);
 
@@ -63,12 +68,25 @@ export function useBrandKit(options: UseBrandKitOptions): UseBrandKitReturn {
 		(['logo', 'footer'] as const).filter((kind) => brandBlocksFor(kind).length > 0)
 	);
 
+	// Linked Blocks are left alone by the restyle anyway, so they are not counted.
+	const heldRootCount = computed(
+		() => canvasBlocks.value.filter((block) => !block.savedBlockRef && isRootHeld(block.id)).length
+	);
+
 	function applyBrand(): number {
 		const kit = brand.value;
 		if (!kit?.design.isConfigured) return 0;
 		commitPendingHistory();
-		const result = applyBrandKit(canvasBlocks.value, kit.design);
-		if (result.changedCount > 0) canvasBlocks.value = result.blocks;
+		// A root someone else holds keeps its content, children included: an
+		// edit lease is honoured by every write from this editor.
+		const blocks = canvasBlocks.value;
+		const result = applyBrandKit(
+			blocks.filter((block) => !isRootHeld(block.id)),
+			kit.design
+		);
+		if (result.changedCount === 0) return 0;
+		const restyled = new Map(result.blocks.map((block) => [block.id, block]));
+		canvasBlocks.value = blocks.map((block) => restyled.get(block.id) ?? block);
 		return result.changedCount;
 	}
 
@@ -97,5 +115,5 @@ export function useBrandKit(options: UseBrandKitOptions): UseBrandKitReturn {
 		onScopeDispose(clearFontLinks);
 	}
 
-	return { isBrandConfigured, insertableBrandBlocks, brandBlocksFor, applyBrand };
+	return { isBrandConfigured, insertableBrandBlocks, brandBlocksFor, heldRootCount, applyBrand };
 }
