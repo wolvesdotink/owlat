@@ -104,8 +104,8 @@ export function isWellFormedHistogram(
 
 export function emptyHistogram(asOf: number): SendTimeHistogram {
 	return {
-		hours: new Array<number>(HOURS_PER_DAY).fill(0),
-		days: new Array<number>(DAYS_PER_WEEK).fill(0),
+		hours: Array.from({ length: HOURS_PER_DAY }, () => 0),
+		days: Array.from({ length: DAYS_PER_WEEK }, () => 0),
 		total: 0,
 		asOf,
 	};

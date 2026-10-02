@@ -24,7 +24,7 @@ function fold(events: SendTimeEngagement[]): SendTimeHistogram {
 
 function close(a: number[], b: number[]) {
 	expect(a).toHaveLength(b.length);
-	a.forEach((x, i) => expect(x).toBeCloseTo(b[i]!, 9));
+	for (const [i, x] of a.entries()) expect(x).toBeCloseTo(b[i]!, 9);
 }
 
 describe('send-time profile', () => {

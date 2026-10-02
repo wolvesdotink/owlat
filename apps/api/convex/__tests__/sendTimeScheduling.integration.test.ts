@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import type * as SessionOrganization from '../lib/sessionOrganization';
 import {
 	createTestCampaign,
 	createTestCampaignSender,
@@ -27,9 +28,7 @@ const sessionMock = vi.hoisted(() => ({
 }));
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
-		'../lib/sessionOrganization'
-	);
+	const actual = await vi.importActual<typeof SessionOrganization>('../lib/sessionOrganization');
 	const { realPermissionGate } = await import('./helpers/permissionGateMock');
 	const gate = realPermissionGate(actual, () => sessionMock.user.role);
 	return {
