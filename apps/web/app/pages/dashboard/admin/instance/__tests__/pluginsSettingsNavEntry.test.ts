@@ -9,7 +9,7 @@
  * orphaned-settings signal.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ref } from 'vue';
+import { ref, useSlots } from 'vue';
 
 vi.mock('~/plugins/plugin-composition.generated', () => ({
 	bundledPluginComposition: Object.freeze([]),
@@ -19,6 +19,7 @@ vi.mock('~/plugins/plugin-composition.generated', () => ({
 // module resolution) into this page test; the page only needs the dialog shell.
 vi.mock('@owlat/email-builder', () => ({ UnsavedChangesDialog: { template: '<div />' } }));
 
+import UiPageHeader from '@owlat/ui/components/ui/PageHeader.vue';
 import SettingsIndexPage from '../index.vue';
 import { expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 import { mountDashboardPage } from '~/__tests__/a11y';
@@ -29,6 +30,8 @@ beforeEach(() => {
 	overview.value = { plugins: [], orphaned: [] };
 
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+	// UiPageHeader reads its slots through the Nuxt auto-import.
+	vi.stubGlobal('useSlots', useSlots);
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('useOrganizationContext', () => ({
@@ -75,6 +78,7 @@ const nuxtLinkStub = {
 function mountPage() {
 	return mountDashboardPage(SettingsIndexPage, {
 		stubs: {
+			UiPageHeader,
 			UiQueryBoundary: passthroughStub,
 			UiCard: passthroughStub,
 			UiDisclosure: passthroughStub,

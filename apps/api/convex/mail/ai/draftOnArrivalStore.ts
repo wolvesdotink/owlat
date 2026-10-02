@@ -19,6 +19,7 @@ import { NEEDS_REPLY_CONTEXT_MESSAGES } from '../needsReply';
 import { isFromMailboxOwner } from '../needsReplyHeuristic';
 import { buildThreadTranscript, DRAFT_ON_ARRIVAL } from './transcript';
 import { withStoredInlineBodies } from '../../lib/messageBodyStore';
+import { openFileGaps } from '../../inbox/clarificationAnswers';
 
 /**
  * Load everything the draft-on-arrival action needs for one thread, or `null`
@@ -102,6 +103,9 @@ export const loadForDraft = internalQuery({
 			// shared draft block's vocabulary in the action.
 			isBulk: trigger.unsubscribe !== undefined,
 			clarificationQuestions,
+			// Files the clarification card is still waiting for: the draft leaves a
+			// placeholder for them instead of claiming they are attached.
+			fileGaps: flag.clarification ? openFileGaps(flag.clarification.questions) : [],
 		};
 	},
 });

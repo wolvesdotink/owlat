@@ -200,4 +200,56 @@ describe('FileAsk', () => {
 		});
 		expect(lastValue(w)).toMatchObject({ kind: 'file', file: { id: 'sf_9' } });
 	});
+
+	describe('several files (a Reply Queue question)', () => {
+		const a = { source: 'upload', id: 'st_a', filename: 'a.pdf' };
+		const b = { source: 'upload', id: 'st_b', filename: 'b.pdf' };
+
+		it('adds each upload to the list and keeps the drop zone open for the next', async () => {
+			pickAnswerFile.mockResolvedValue(new File(['%PDF'], 'b.pdf', { type: 'application/pdf' }));
+			upload.mockResolvedValue({ storageId: 'st_b', filename: 'b.pdf', size: 4 });
+			const w = mountAsk({
+				multiple: true,
+				modelValue: { kind: 'files', files: [a], keepCopy: true },
+			});
+			expect(w.findAll('[data-testid="file-ask-picked"]')).toHaveLength(1);
+			expect(w.text()).toContain('Another one? Drop it here or');
+			await w.get('[data-testid="file-ask-choose"]').trigger('click');
+			await flushPromises();
+			expect(lastValue(w)).toEqual({ kind: 'files', files: [a, b], keepCopy: true });
+			expectFullyLocalized(w);
+		});
+
+		it('removes one file, and a candidate toggles in and out', async () => {
+			const w = mountAsk({
+				multiple: true,
+				modelValue: { kind: 'files', files: [a, b], keepCopy: true },
+			});
+			await w.findAll('[data-testid="file-ask-remove"]')[0]!.trigger('click');
+			expect(lastValue(w)).toEqual({ kind: 'files', files: [b], keepCopy: true });
+
+			const candidate = {
+				source: 'semanticFile',
+				id: 'sf_1',
+				filename: 'invoice-2026-08-brightpath.pdf',
+			};
+			await w.setProps({ modelValue: { kind: 'files', files: [b], keepCopy: true } });
+			await w.get('[data-testid="file-ask-candidate"]').trigger('click');
+			expect(lastValue(w)).toEqual({ kind: 'files', files: [b, candidate], keepCopy: true });
+			await w.setProps({ modelValue: { kind: 'files', files: [b, candidate], keepCopy: true } });
+			await w.get('[data-testid="file-ask-candidate"]').trigger('click');
+			expect(lastValue(w)).toEqual({ kind: 'files', files: [b], keepCopy: true });
+		});
+
+		it('closes the drop zone once the answer holds as many files as it takes', () => {
+			const files = Array.from({ length: 10 }, (_, i) => ({
+				source: 'upload',
+				id: `st_${i}`,
+				filename: `${i}.pdf`,
+			}));
+			const w = mountAsk({ multiple: true, modelValue: { kind: 'files', files, keepCopy: true } });
+			expect(w.find('[data-testid="file-ask-drop"]').exists()).toBe(false);
+			expect(w.get('[data-testid="file-ask-pick-files"]').attributes('disabled')).toBeDefined();
+		});
+	});
 });

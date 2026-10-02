@@ -10,7 +10,11 @@
  *      finishes (no LLM spend).
  *   2. Candidate → persists the deterministic flag FIRST (source `heuristic`,
  *      urgency `normal`), so a crash or LLM failure anywhere after this point
- *      still leaves the baseline signal (fail-soft).
+ *      still leaves the baseline signal (fail-soft). The baseline keeps the
+ *      thread pending: a run that dies before the verdict (an OOM-killed
+ *      backend, a restart) is classified again by the reconcile sweep, while
+ *      a run that fails on purpose (gate refusal, model error) settles it
+ *      (mail/needsReplyPending.ts).
  *   3. LLM refinement on the cheap "summarize" tier, behind the same aiGate
  *      as the user-triggered Postbox AI (feature flag + rate limit). The
  *      thread body is attacker-controlled inbound mail, so it is framed as
@@ -48,6 +52,7 @@ import {
 	buildCandidatePrompt,
 	buildDivergencePrompt,
 	sanitizeClarificationQuestions,
+	splitCandidateSlots,
 	DIVERGENCE_SAMPLES,
 	MIN_SAMPLES_FOR_JUDGMENT,
 	type ReplySlot,
@@ -121,6 +126,8 @@ export const classifyThread = internalAction({
 
 		// Persist the deterministic candidate first — the LLM pass below is a
 		// refinement, and any failure in it must leave this baseline in place.
+		// The thread stays pending until the refinement ends: if this run is
+		// killed before then, the reconcile sweep runs it again.
 		await ctx.runMutation(internal.mail.needsReply.applyResult, {
 			threadId: args.threadId,
 			expectedLatestMessageId: context.latestMessageId,
@@ -129,8 +136,10 @@ export const classifyThread = internalAction({
 				source: 'heuristic',
 				urgency: 'normal',
 			},
+			isBaseline: true,
 		});
 
+		let hasVerdict = false;
 		try {
 			// Same gate as the user-triggered Postbox AI: `ai` feature flag +
 			// rate limit. Throws when disabled/limited → deterministic flag stays.
@@ -222,6 +231,7 @@ export const classifyThread = internalAction({
 							}
 						: null,
 				});
+				hasVerdict = true;
 			} catch (err) {
 				logError(
 					'[needsReplyClassify] applyResult failed:',
@@ -231,6 +241,16 @@ export const classifyThread = internalAction({
 		} catch {
 			// Fail-soft (AI disabled, rate-limited, provider down, bad output):
 			// the deterministic candidate flag persisted above stands.
+		}
+
+		// Every outcome this run saw end without a verdict would only repeat on a
+		// retry, so it ends the attempt here. Only a run that never gets this far
+		// (killed, timed out) is left pending for the sweep.
+		if (!hasVerdict) {
+			await ctx.runMutation(internal.mail.needsReplyPending.settlePending, {
+				threadId: args.threadId,
+				expectedLatestMessageId: context.latestMessageId,
+			});
 		}
 	},
 });
@@ -254,14 +274,17 @@ type ClarificationFlag = Omit<
  * REUSES the shared slot taxonomy + prompt module (inbox/clarificationSlots.ts)
  * that the inbound agent `clarify` step uses — no fork. Two stages:
  *   1. cheap-tier slot extraction (the 'summarize' tier) → candidate
- *      slots that are BOTH unanswerable from context AND decision-relevant.
+ *      slots that are BOTH unanswerable from context AND decision-relevant,
+ *      plus every file the reply must carry that the context lacks.
  *   2. capable-tier divergence confirmation (the 'draft' tier), run ONLY
- *      when stage 1 flagged a candidate: sample a few independent replies and
- *      keep only the slots they genuinely disagree on. A converging slot is a
- *      safe assumption and is dropped.
+ *      when stage 1 flagged a non-file candidate: sample a few independent
+ *      replies and keep only the slots they genuinely disagree on. A
+ *      converging slot is a safe assumption and is dropped. A file request
+ *      skips this stage (splitCandidateSlots): the samples all "attach" it.
  * Every survivor is deterministically sanitized (credential/OTP solicitations
  * dropped, attributed to the sender). FAIL-SOFT: any error returns undefined so
- * the needs-reply refinement is never downgraded by a clarification failure.
+ * the needs-reply refinement is never downgraded by a clarification failure;
+ * a failed divergence stage still asks for the files.
  */
 export async function refineClarification(
 	ctx: SpendCtx,
@@ -282,54 +305,15 @@ export async function refineClarification(
 			slotsResult.modelUsed
 		);
 
-		const candidateSlots: ReplySlot[] = [];
-		for (const slot of slotsResult.object.slots) {
-			if (!slot.answerableFromContext && slot.decisionRelevant) candidateSlots.push(slot);
-		}
-		if (candidateSlots.length === 0) return undefined;
+		const { owed, toJudge } = splitCandidateSlots(slotsResult.object.slots);
+		if (owed.length === 0 && toJudge.length === 0) return undefined;
 
-		// Stage 2 — capable-tier divergence confirmation (only reached because a
-		// candidate was flagged). Sample independent replies; a slot they diverge
-		// on is a genuine open question.
-		const drafts: string[] = [];
-		for (let i = 0; i < DIVERGENCE_SAMPLES; i++) {
-			try {
-				const draft = await runLlmText({
-					model: await resolveLanguageModel(ctx, 'draft'),
-					prompt: buildCandidatePrompt(opts.transcript),
-					temperature: 0.9,
-				});
-				if (draft.text.trim().length > 0) {
-					drafts.push(draft.text);
-					await recordLlmSpend(ctx, 'postbox_clarify_diverge', draft.tokenUsage, draft.modelUsed);
-				}
-			} catch {
-				// One failed sample doesn't abort the check — judge on the rest.
-			}
-		}
-		// Can't judge divergence with too few samples → don't invent questions.
-		if (drafts.length < MIN_SAMPLES_FOR_JUDGMENT) return undefined;
-
-		const divergenceResult = await runLlmObject({
-			model: await resolveLanguageModel(ctx, 'draft'),
-			schema: divergenceSchema,
-			prompt: buildDivergencePrompt(candidateSlots, drafts),
-			temperature: 0.1,
-		});
-		await recordLlmSpend(
-			ctx,
-			'postbox_clarify_diverge',
-			divergenceResult.tokenUsage,
-			divergenceResult.modelUsed
-		);
-
-		const divergent = new Set(divergenceResult.object.divergentSlotIndexes);
-		const raw = [];
-		for (let i = 0; i < candidateSlots.length; i++) {
-			if (!divergent.has(i)) continue;
-			const slot = candidateSlots[i]!;
-			raw.push({ slotType: slot.slotType, text: slot.question, options: slot.options });
-		}
+		// Files first: they are what the reply cannot go out without.
+		const raw = [...owed, ...(await divergentSlots(ctx, opts.transcript, toJudge))].map((slot) => ({
+			slotType: slot.slotType,
+			text: slot.question,
+			options: slot.options,
+		}));
 		if (raw.length === 0) return undefined;
 
 		// Deterministic safety filter: drop credential/OTP solicitations, attribute
@@ -356,6 +340,56 @@ export async function refineClarification(
 		return { isNeeded: true, questions: localized.questions, askedAt: Date.now() };
 	} catch {
 		return undefined;
+	}
+}
+
+/**
+ * Stage 2 of {@link refineClarification}: sample independent replies on the
+ * capable tier and keep the candidate slots they genuinely disagree on. Empty
+ * when there is nothing to judge, too few samples came back to judge at all
+ * (don't invent questions), or the judgment failed.
+ */
+async function divergentSlots(
+	ctx: SpendCtx,
+	transcript: string,
+	candidates: readonly ReplySlot[]
+): Promise<ReplySlot[]> {
+	if (candidates.length === 0) return [];
+	try {
+		const drafts: string[] = [];
+		for (let i = 0; i < DIVERGENCE_SAMPLES; i++) {
+			try {
+				const draft = await runLlmText({
+					model: await resolveLanguageModel(ctx, 'draft'),
+					prompt: buildCandidatePrompt(transcript),
+					temperature: 0.9,
+				});
+				if (draft.text.trim().length > 0) {
+					drafts.push(draft.text);
+					await recordLlmSpend(ctx, 'postbox_clarify_diverge', draft.tokenUsage, draft.modelUsed);
+				}
+			} catch {
+				// One failed sample doesn't abort the check — judge on the rest.
+			}
+		}
+		if (drafts.length < MIN_SAMPLES_FOR_JUDGMENT) return [];
+
+		const divergenceResult = await runLlmObject({
+			model: await resolveLanguageModel(ctx, 'draft'),
+			schema: divergenceSchema,
+			prompt: buildDivergencePrompt([...candidates], drafts),
+			temperature: 0.1,
+		});
+		await recordLlmSpend(
+			ctx,
+			'postbox_clarify_diverge',
+			divergenceResult.tokenUsage,
+			divergenceResult.modelUsed
+		);
+		const divergent = new Set(divergenceResult.object.divergentSlotIndexes);
+		return candidates.filter((_, index) => divergent.has(index));
+	} catch {
+		return [];
 	}
 }
 

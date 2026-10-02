@@ -26,11 +26,14 @@ import { getOrThrow, throwForbidden, throwInvalidInput, throwNotFound } from '..
 import { requireMailboxAccess } from '../permissions';
 import { NEEDS_REPLY_CONTEXT_MESSAGES } from '../needsReply';
 import { captureStandingAnswers } from '../../inbox/clarificationMemory';
-import { buildFileAnswerNotes, isFileQuestion } from '../../inbox/clarificationAnswers';
+import { MAX_FILES_PER_ANSWER } from '@owlat/shared/answerMode';
 import {
-	resolveClarificationFile,
-	type ClarificationFileRef,
-} from '../../inbox/clarificationFileAnswer';
+	MAX_CLARIFICATION_DRAFT_CHARS,
+	buildFileAnswerNotes,
+	isFileQuestion,
+	openFileGaps,
+} from '../../inbox/clarificationAnswers';
+import { resolveClarificationFile } from '../../inbox/clarificationFileAnswer';
 import { findContactByIdentifier } from '../../contacts/resolution';
 import { canSaveAnswerToFiles } from '../../lib/answerFileToFiles';
 import { consumeUpload, mailThreadUploadKey } from '../../storage/uploads';
@@ -59,11 +62,13 @@ export const answerClarification = postboxMutation({
 		answers: v.array(
 			v.object({
 				questionId: v.string(),
-				// Required unless `file` is given (then it defaults to the filename).
+				// Required unless a file is given (then it defaults to the filenames).
 				value: v.optional(v.string()),
 				// 'memory' when the owner kept a remembered ("last time") answer.
 				source: v.optional(v.union(v.literal('user'), v.literal('memory'))),
 				file: v.optional(clarificationFileRefValidator),
+				// Several files for one question (the invoices for four bookings).
+				files: v.optional(v.array(clarificationFileRefValidator)),
 				// Uploads only: false keeps the upload out of Files; the browser's
 				// MIME type for the upload.
 				keepCopy: v.optional(v.boolean()),
@@ -114,26 +119,44 @@ export const answerClarification = postboxMutation({
 				questions.push(q);
 				continue;
 			}
-			const fileRef: ClarificationFileRef | undefined = provided.file;
-			if (fileRef && !isFileQuestion(q)) throwInvalidInput('This question does not take a file');
-			const resolved = fileRef
-				? await resolveClarificationFile(ctx, session, fileRef, {
-						keepCopy: provided.keepCopy,
-						mimeType: provided.mimeType,
-						contactId: senderContactId,
-					})
-				: undefined;
-			// A bare upload is held by the thread until a draft of it takes the
-			// file over, so it does not expire with its receipt in the meantime.
-			if (resolved?.ref.source === 'upload') {
-				await consumeUpload(
-					ctx,
-					resolved.ref.id as Id<'_storage'>,
-					session,
-					mailThreadUploadKey(args.threadId)
-				);
+			// The same file twice would be noted twice, and a second claim of one
+			// upload is refused, so each file counts once.
+			const fileRefs = [
+				...new Map(
+					(provided.files ?? (provided.file ? [provided.file] : [])).map((f) => [
+						`${f.source}:${f.id}`,
+						f,
+					])
+				).values(),
+			];
+			if (fileRefs.length > 0 && !isFileQuestion(q)) {
+				throwInvalidInput('This question does not take a file');
 			}
-			const value = provided.value ?? resolved?.ref.filename;
+			if (fileRefs.length > MAX_FILES_PER_ANSWER) {
+				throwInvalidInput(`An answer takes at most ${MAX_FILES_PER_ANSWER} files`);
+			}
+			const refs = [];
+			for (const fileRef of fileRefs) {
+				const resolved = await resolveClarificationFile(ctx, session, fileRef, {
+					keepCopy: provided.keepCopy,
+					// The browser's type belongs to a single upload.
+					mimeType: fileRefs.length === 1 ? provided.mimeType : undefined,
+					contactId: senderContactId,
+				});
+				// A bare upload is held by the thread until a draft of it takes the
+				// file over, so it does not expire with its receipt in the meantime.
+				if (resolved.ref.source === 'upload') {
+					await consumeUpload(
+						ctx,
+						resolved.ref.id as Id<'_storage'>,
+						session,
+						mailThreadUploadKey(args.threadId)
+					);
+				}
+				refs.push(resolved.ref);
+			}
+			const value =
+				provided.value ?? (refs.length > 0 ? refs.map((r) => r.filename).join(', ') : undefined);
 			if (value === undefined) throwInvalidInput('An answer needs a value or a file');
 			questions.push({
 				...q,
@@ -141,7 +164,8 @@ export const answerClarification = postboxMutation({
 					value: value.slice(0, 2000),
 					at: now,
 					source: provided.source ?? ('user' as const),
-					...(resolved ? { file: resolved.ref } : {}),
+					...(refs[0] ? { file: refs[0] } : {}),
+					...(refs.length > 1 ? { files: refs } : {}),
 				},
 			});
 		}
@@ -258,6 +282,8 @@ export const getClarificationContext = internalQuery({
 			// No draft exists yet: the web attaches the files when it applies the
 			// prepared reply (needsReplyPrepared.getPreparedDraft), so say "will be".
 			fileNotes: buildFileAnswerNotes(clarification.questions, 'pending'),
+			// File questions left open: the draft leaves a placeholder for them.
+			fileGaps: openFileGaps(clarification.questions),
 			answeredSlotTypes,
 		};
 	},
@@ -290,7 +316,10 @@ export const persistClarificationDraft = internalMutation({
 		await ctx.db.patch(args.threadId, {
 			needsReply: {
 				...flag,
-				clarification: { ...clarification, draft: args.draft.slice(0, 4000) },
+				clarification: {
+					...clarification,
+					draft: args.draft.slice(0, MAX_CLARIFICATION_DRAFT_CHARS),
+				},
 			},
 			updatedAt: Date.now(),
 		});

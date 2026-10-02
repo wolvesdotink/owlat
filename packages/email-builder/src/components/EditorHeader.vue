@@ -68,11 +68,15 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 </script>
 
 <template>
+	<!--
+		The left cluster (back + name) gives way first: its inputs truncate so the
+		right cluster, whose Save must stay reachable, keeps its natural width.
+	-->
 	<div
-		class="shrink-0 h-14 border-b border-border-subtle bg-bg-base flex items-center justify-between px-4"
+		class="shrink-0 h-14 border-b border-border-subtle bg-bg-base flex items-center justify-between gap-3 px-4"
 		style="box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15)"
 	>
-		<div class="flex items-center gap-4">
+		<div class="flex min-w-0 flex-1 items-center gap-2 lg:gap-4">
 			<UiButton
 				variant="ghost"
 				class="!px-2 !py-2"
@@ -83,12 +87,12 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 				<ArrowLeft class="w-5 h-5" aria-hidden="true" />
 			</UiButton>
 
-			<div class="flex flex-col">
+			<div class="flex min-w-0 flex-1 flex-col">
 				<input
 					:value="name"
 					type="text"
 					:aria-label="config?.mode === 'block' ? 'Block name' : 'Template name'"
-					class="bg-transparent text-text-primary font-medium text-sm focus:outline-none border-b border-transparent hover:border-border-strong focus:border-brand transition-colors px-1 -mx-1"
+					class="w-full min-w-0 truncate bg-transparent text-text-primary font-medium text-sm focus:outline-none border-b border-transparent hover:border-border-strong focus:border-brand transition-colors px-1 -mx-1"
 					:placeholder="config?.mode === 'block' ? 'Block name' : 'Template name'"
 					@input="emit('update:name', ($event.target as HTMLInputElement).value)"
 				/>
@@ -97,14 +101,14 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 					:value="subject"
 					type="text"
 					aria-label="Email subject line"
-					class="bg-transparent text-text-secondary text-xs focus:outline-none border-b border-transparent hover:border-border-strong focus:border-brand transition-colors px-1 -mx-1 mt-0.5"
+					class="w-full min-w-0 truncate bg-transparent text-text-secondary text-xs focus:outline-none border-b border-transparent hover:border-border-strong focus:border-brand transition-colors px-1 -mx-1 mt-0.5"
 					placeholder="Email subject line"
 					@input="emit('update:subject', ($event.target as HTMLInputElement).value)"
 				/>
 			</div>
 		</div>
 
-		<div class="flex items-center gap-3">
+		<div class="flex shrink-0 items-center gap-2 xl:gap-3">
 			<!-- Preview Mode Toggle -->
 			<UiSegmentedControl
 				:model-value="previewMode"
@@ -116,7 +120,10 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 					Edit
 				</template>
 				<template #option-preview>
-					<Loader2 v-if="isGeneratingHtml" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+					<Loader2
+						v-if="isGeneratingHtml"
+						class="w-4 h-4 animate-spin motion-reduce:animate-none"
+					/>
 					<Eye v-else class="w-4 h-4" />
 					Preview
 				</template>
@@ -159,10 +166,11 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 				</UiButton>
 			</div>
 
-			<!-- Keyboard shortcuts help -->
+			<!-- Keyboard shortcuts help. Tablets (below lg) rarely have a keyboard,
+			     and the slot is short of room there; `?` still opens the sheet. -->
 			<UiButton
 				variant="ghost"
-				class="!px-2 !py-2"
+				class="!px-2 !py-2 max-lg:!hidden"
 				title="Keyboard shortcuts (?)"
 				aria-label="Keyboard shortcuts"
 				@click="emit('show-shortcuts')"

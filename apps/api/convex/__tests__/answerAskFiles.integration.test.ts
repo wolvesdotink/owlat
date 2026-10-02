@@ -648,6 +648,59 @@ describe('sending a draft with gaps', () => {
 		expect(sent.undoToken).toEqual(expect.any(String));
 	});
 
+	// Issue #1131 review: a Reply Queue draft waiting for files has no ask
+	// session. The AI text it went in with is what keeps it from sending, and
+	// that is on the row, so a reload (the client's in-memory AI draft gone)
+	// changes nothing.
+	it('refuses a saved Reply Queue draft whose AI text left a gap, without an ask session', async () => {
+		const t = await makeT();
+		const { draftId } = await replyDraft(t);
+		const gap = 'Hi Jana, here they are. [[Provide the invoices]]';
+		await t.mutation(api.mail.drafts.update, {
+			draftId,
+			bodyHtml: `<p>${gap}</p>`,
+			bodyText: gap,
+			aiBaseline: gap,
+		});
+
+		// Reopened: the row says the AI wrote gaps into it.
+		expect((await t.query(api.mail.drafts.get, { draftId }))?.isGapGuarded).toBe(true);
+		await expect(t.mutation(api.mail.drafts.send, { draftId })).rejects.toMatchObject({
+			data: { category: 'invalid_state', data: { code: 'DRAFT_HAS_GAPS' } },
+		});
+
+		const filled = 'Hi Jana, the invoices are attached.';
+		await t.mutation(api.mail.drafts.update, {
+			draftId,
+			bodyHtml: `<p>${filled}</p>`,
+			bodyText: filled,
+		});
+		const sent = await t.mutation(api.mail.drafts.send, { draftId });
+		expect(sent.undoToken).toEqual(expect.any(String));
+	});
+
+	it('guards a draft once a later AI text leaves a gap, though its baseline had none', async () => {
+		const t = await makeT();
+		const { draftId } = await replyDraft(t);
+		await t.mutation(api.mail.drafts.update, { draftId, aiBaseline: 'Hi Jana, thanks.' });
+		expect((await draftRow(t, draftId)).isGapGuarded).toBeUndefined();
+
+		const gap = 'Hi Jana, [[Provide the invoices]]';
+		await t.mutation(api.mail.drafts.update, {
+			draftId,
+			bodyHtml: `<p>${gap}</p>`,
+			bodyText: gap,
+			aiBaseline: gap,
+		});
+		const row = await draftRow(t, draftId);
+		expect(row.isGapGuarded).toBe(true);
+		// The edit-learning baseline still holds the first AI text.
+		expect(row.aiDraftBaseline?.text).toBe('Hi Jana, thanks.');
+		await expect(t.mutation(api.mail.drafts.send, { draftId })).rejects.toMatchObject({
+			data: { category: 'invalid_state', data: { code: 'DRAFT_HAS_GAPS' } },
+		});
+	});
+
 	it('discarding a draft drops its ask sessions', async () => {
 		const t = await makeT();
 		const { target, draftId } = await replyDraft(t);

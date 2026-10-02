@@ -170,20 +170,26 @@ const rowActions = computed<TemplateRowAction<EmailRow>[]>(() => [
 			</p>
 		</template>
 
+		<!-- Four statuses with counts are wider than a phone: the strip scrolls
+		     sideways at its natural width instead of widening the page. -->
 		<template #filters>
-			<UiSegmentedControl
-				:model-value="selectedStatus"
-				:options="statusFilters"
-				:aria-label="t('dashboard.send.transactional.index.statusFilterLabel')"
-				@update:model-value="selectedStatus = $event as StatusFilter"
-			>
-				<template v-for="filter in statusFilters" :key="filter.value" #[`option-${filter.value}`]>
-					{{ filter.label }}
-					<span v-if="statusCount(filter.value) !== undefined" class="text-text-tertiary">
-						({{ statusCount(filter.value) }})
-					</span>
-				</template>
-			</UiSegmentedControl>
+			<div class="max-w-full overflow-x-auto">
+				<UiSegmentedControl
+					:model-value="selectedStatus"
+					:options="statusFilters"
+					:aria-label="t('dashboard.send.transactional.index.statusFilterLabel')"
+					fit="content"
+					class="min-w-max"
+					@update:model-value="selectedStatus = $event as StatusFilter"
+				>
+					<template v-for="filter in statusFilters" :key="filter.value" #[`option-${filter.value}`]>
+						{{ filter.label }}
+						<span v-if="statusCount(filter.value) !== undefined" class="text-text-tertiary">
+							({{ statusCount(filter.value) }})
+						</span>
+					</template>
+				</UiSegmentedControl>
+			</div>
 		</template>
 
 		<template v-if="canManage" #empty-action>

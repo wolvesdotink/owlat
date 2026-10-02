@@ -436,32 +436,36 @@ onUnmounted(stopPolling);
 				</RestartProgress>
 			</div>
 
-			<footer
-				class="mt-8 flex flex-wrap items-start justify-between gap-4 border-t border-border-subtle pt-6"
-			>
-				<UiButton variant="ghost" :disabled="phase !== 'idle'" @click="router.push('/setup/admin')">
-					<template #iconLeft><Icon name="lucide:arrow-left" class="w-4 h-4 mr-2" /></template>
-					{{ t('common.back') }}
-				</UiButton>
-				<div class="flex flex-col items-end gap-3">
-					<p
-						v-if="phase === 'idle' && blockers.length"
-						id="launch-blockers"
-						class="text-right text-sm text-text-secondary"
-						data-testid="launch-blockers"
+			<!-- The blocker hint gets its own line above the buttons, so Back and
+			     Launch share one row like every other step's Back and Next. -->
+			<footer class="mt-8 space-y-4 border-t border-border-subtle pt-6">
+				<p
+					v-if="phase === 'idle' && blockers.length"
+					id="launch-blockers"
+					class="text-sm text-text-secondary sm:text-right"
+					data-testid="launch-blockers"
+				>
+					{{ t('setup.review.blockersLeft', blockers.length) }}
+					<template v-for="(blocker, i) in blockers" :key="blocker.id"
+						><template v-if="i > 0">, </template
+						><a
+							:href="blocker.to"
+							class="link"
+							:data-testid="`launch-blocker-${blocker.id}`"
+							@click.prevent="goToBlocker(blocker.to)"
+							>{{ t(blocker.message) }}</a
+						></template
 					>
-						{{ t('setup.review.blockersLeft', blockers.length) }}
-						<template v-for="(blocker, i) in blockers" :key="blocker.id"
-							><template v-if="i > 0">, </template
-							><a
-								:href="blocker.to"
-								class="link"
-								:data-testid="`launch-blocker-${blocker.id}`"
-								@click.prevent="goToBlocker(blocker.to)"
-								>{{ t(blocker.message) }}</a
-							></template
-						>
-					</p>
+				</p>
+				<div class="flex items-center justify-between gap-4">
+					<UiButton
+						variant="ghost"
+						:disabled="phase !== 'idle'"
+						@click="router.push('/setup/admin')"
+					>
+						<template #iconLeft><Icon name="lucide:arrow-left" class="w-4 h-4 mr-2" /></template>
+						{{ t('common.back') }}
+					</UiButton>
 					<UiButton
 						:loading="phase === 'applying'"
 						:disabled="phase !== 'idle' || !canLaunch"

@@ -29,7 +29,12 @@ import {
 	runSharedDraft,
 } from '../../agent/shared/draftService';
 import { buildRecallKnowledgeTool, MAX_RECALL_CALLS } from '../../agent/steps/draft/recall';
-import { joinConfirmedBlocks } from '../../inbox/clarificationAnswers';
+import {
+	MAX_CLARIFICATION_DRAFT_CHARS,
+	buildOpenFileNote,
+	joinConfirmedBlocks,
+} from '../../inbox/clarificationAnswers';
+import { fitGapPlaceholders } from './composeDraftPolicy';
 import {
 	measureDraftDelta,
 	predictedAskValue,
@@ -82,7 +87,8 @@ export async function draftClarificationReply(
 			buildConfirmedContext({
 				questions: context.answers.map((a) => ({ text: a.question, answer: { value: a.answer } })),
 			}),
-			context.fileNotes
+			context.fileNotes,
+			buildOpenFileNote(context.fileGaps)
 		);
 
 		// Contact-scoped recall, the same isolation gate as the team draft step:
@@ -113,8 +119,10 @@ export async function draftClarificationReply(
 		});
 		await recordLlmSpend(ctx, 'postbox_clarify_draft', result.tokenUsage, result.modelUsed);
 
-		const draft = result.draftBody.trim();
-		if (draft.length === 0) return;
+		const body = result.draftBody.trim();
+		if (body.length === 0) return;
+		// Fitted to the card's limit here, so the stored cut never drops a placeholder.
+		const draft = fitGapPlaceholders(body, context.fileGaps, MAX_CLARIFICATION_DRAFT_CHARS);
 
 		await ctx.runMutation(internal.mail.ai.needsReplyClarify.persistClarificationDraft, {
 			threadId: args.threadId,

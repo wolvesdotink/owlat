@@ -11,6 +11,7 @@ import KnowledgeIndex from '../index.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { installNuxtStubs, queryResult } from '~/__tests__/a11y';
 import QueryBoundary from '~/components/ui/QueryBoundary.vue';
+import UiPageHeader from '@owlat/ui/components/ui/PageHeader.vue';
 import {
 	ENTRY_TYPES,
 	TYPE_CONFIG,
@@ -46,7 +47,7 @@ function render(): VueWrapper {
 	return mount(KnowledgeIndex, {
 		global: {
 			plugins: [createTestI18n()],
-			components: { UiQueryBoundary: QueryBoundary },
+			components: { UiQueryBoundary: QueryBoundary, UiPageHeader },
 			stubs: {
 				Icon: true,
 				NuxtLink: { template: '<a><slot /></a>' },

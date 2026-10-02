@@ -317,6 +317,7 @@ async function handleDuplicate(id: Id<'campaigns'>) {
 					:model-value="selectedPill"
 					:options="pills"
 					:aria-label="t('dashboard.campaigns.index.statusFilterLabel')"
+					fit="content"
 					class="min-w-max"
 					@update:model-value="selectedPill = $event as PillKey"
 				>

@@ -241,40 +241,46 @@ const handleBack = () => {
 
 <template>
 	<div class="h-[calc(100dvh-var(--titlebar-h,0px)-64px)] flex flex-col bg-bg-base">
-		<!-- Header -->
-		<div
-			class="shrink-0 h-14 border-b border-border-subtle bg-bg-elevated flex items-center justify-between px-4"
-		>
-			<div class="flex items-center gap-4">
-				<button
-					class="p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors"
-					@click="handleBack"
-					:aria-label="t('common.back')"
-				>
-					<Icon name="lucide:arrow-left" class="w-5 h-5" />
-				</button>
+		<!-- Header. Its content sits in the same centred column as the form,
+		     so Save stays next to what it saves on a wide screen. -->
+		<div class="shrink-0 h-14 border-b border-border-subtle bg-bg-elevated px-4">
+			<div class="mx-auto flex h-full w-full max-w-3xl items-center justify-between gap-3">
+				<div class="flex min-w-0 items-center gap-2 sm:gap-4">
+					<button
+						class="shrink-0 p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors"
+						@click="handleBack"
+						:aria-label="t('common.back')"
+					>
+						<Icon name="lucide:arrow-left" class="w-5 h-5" />
+					</button>
 
-				<div class="flex items-center gap-2">
-					<Icon name="lucide:settings" class="w-5 h-5 text-text-tertiary" />
-					<span class="text-text-primary font-medium">{{
-						t('dashboard.send.emails.detail.settings.title')
-					}}</span>
+					<div class="flex min-w-0 items-center gap-2">
+						<Icon
+							name="lucide:settings"
+							class="w-5 h-5 shrink-0 text-text-tertiary max-sm:hidden"
+						/>
+						<span class="truncate text-text-primary font-medium">{{
+							t('dashboard.send.emails.detail.settings.title')
+						}}</span>
+					</div>
 				</div>
-			</div>
 
-			<div class="flex items-center gap-3">
-				<span v-if="hasChanges" class="text-sm text-warning flex items-center gap-1.5">
-					<Icon name="lucide:alert-circle" class="w-4 h-4" />
-					{{ t('dashboard.send.emails.detail.settings.unsavedChanges') }}
-				</span>
-				<UiButton :loading="isSaving" :disabled="!hasChanges" @click="handleSave">
-					<template #iconLeft>
-						<Icon v-if="!isSaving" name="lucide:check" class="w-4 h-4" />
-					</template>
-					{{
-						isSaving ? t('common.saving') : t('dashboard.send.emails.detail.settings.saveChanges')
-					}}
-				</UiButton>
+				<div class="flex shrink-0 items-center gap-3">
+					<span v-if="hasChanges" class="text-sm text-warning flex items-center gap-1.5">
+						<Icon name="lucide:alert-circle" class="w-4 h-4" />
+						<span class="max-sm:sr-only">{{
+							t('dashboard.send.emails.detail.settings.unsavedChanges')
+						}}</span>
+					</span>
+					<UiButton :loading="isSaving" :disabled="!hasChanges" @click="handleSave">
+						<template #iconLeft>
+							<Icon v-if="!isSaving" name="lucide:check" class="w-4 h-4" />
+						</template>
+						{{
+							isSaving ? t('common.saving') : t('dashboard.send.emails.detail.settings.saveChanges')
+						}}
+					</UiButton>
+				</div>
 			</div>
 		</div>
 

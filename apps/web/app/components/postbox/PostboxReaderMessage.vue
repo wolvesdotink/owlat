@@ -186,9 +186,12 @@ const renderToggleLabel = computed(() =>
 				     fit one line, and the chip (never shrinking) ran off the card's
 				     edge. The chip's group keeps to the right on the line it wraps
 				     to, so its popover (anchored right) opens inside the card. From
-				     `sm` up the row stays one line and the sender shrinks instead. -->
+				     `sm` up the row stays one line and the sender shrinks instead,
+				     unless the reader pane (an `@container`) is itself under 32rem:
+				     beside the list on a 1280px laptop the address otherwise broke
+				     every few letters. -->
 				<div
-					class="flex items-baseline justify-between gap-x-3 gap-y-1 max-sm:flex-wrap"
+					class="flex items-baseline justify-between gap-x-3 gap-y-1 max-sm:flex-wrap @max-lg:flex-wrap"
 					data-testid="reader-message-sender-row"
 				>
 					<!-- Plan idea 45: the sender line was a text label. It now opens

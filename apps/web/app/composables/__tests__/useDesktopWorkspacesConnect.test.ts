@@ -14,13 +14,16 @@ vi.mock('@owlat/desktop/src/workspace', () => ({
 	loadWorkspaceStore: () => loadWorkspaceStore(),
 }));
 
-const secretGet = vi.fn(async (..._a: unknown[]): Promise<string | null> => null);
-const secretSet = vi.fn(async (..._a: unknown[]) => {});
-const secretDelete = vi.fn(async (..._a: unknown[]) => {});
+type Entry = { value: string | null; revision: number } | null;
+const sessionRead = vi.fn(async (..._a: unknown[]): Promise<Entry> => null);
+const sessionWrite = vi.fn(async (..._a: unknown[]) => 'written' as const);
+const sessionReplace = vi.fn(async (..._a: unknown[]) => 1);
 vi.mock('@owlat/desktop/src/keychain', () => ({
-	secretGet: (...a: unknown[]) => secretGet(...a),
-	secretSet: (...a: unknown[]) => secretSet(...(a as [])),
-	secretDelete: (...a: unknown[]) => secretDelete(...(a as [])),
+	secretGet: vi.fn(async () => null),
+	sessionRead: (...a: unknown[]) => sessionRead(...a),
+	sessionWrite: (...a: unknown[]) => sessionWrite(...a),
+	sessionReplace: (...a: unknown[]) => sessionReplace(...a),
+	onSessionReplaced: vi.fn(async () => () => {}),
 }));
 
 const openExternal = vi.fn(async () => {});
@@ -125,8 +128,9 @@ beforeEach(() => {
 	});
 	loadWorkspaceStore.mockResolvedValue({ workspaces: [], activeWorkspaceId: null });
 	saveWorkspaceStore.mockResolvedValue(undefined);
-	secretGet.mockResolvedValue(null);
-	secretSet.mockResolvedValue(undefined);
+	sessionRead.mockResolvedValue(null);
+	sessionWrite.mockResolvedValue('written');
+	sessionReplace.mockResolvedValue(1);
 	getSession.mockResolvedValue({ data: { user: { id: 'user-1' } } });
 	authFetch.mockResolvedValue({ data: {}, error: null });
 });
@@ -196,7 +200,7 @@ describe('completeConnection — a failed handshake leaves nothing behind', () =
 			workspaces: [workspaceConfig('ws-active', 'https://active.test')],
 			activeWorkspaceId: 'ws-active',
 		});
-		secretGet.mockResolvedValue('{"better-auth_cookie":"active"}');
+		sessionRead.mockResolvedValue({ value: '{"better-auth_cookie":"active"}', revision: 0 });
 		const mod = await freshModule();
 		await mod.loadWorkspaces();
 		const active = mod.getActiveKeychainStorage();
@@ -207,8 +211,8 @@ describe('completeConnection — a failed handshake leaves nothing behind', () =
 
 		expect(mod.getActiveKeychainStorage()).toBe(active);
 		expect(active?.getItem('better-auth_cookie')).toBe('active');
-		expect(secretSet).not.toHaveBeenCalled();
-		expect(secretDelete).not.toHaveBeenCalled();
+		expect(sessionWrite).not.toHaveBeenCalled();
+		expect(sessionReplace).not.toHaveBeenCalled();
 	});
 
 	// A re-auth of an already-connected server reuses its id, so its keychain
@@ -240,7 +244,7 @@ describe('completeConnection — a failed handshake leaves nothing behind', () =
 
 		await expect(mod.completeConnection({ ott: 'tok', state })).rejects.toThrow();
 
-		expect(secretDelete).not.toHaveBeenCalled();
+		expect(sessionReplace).not.toHaveBeenCalled();
 	});
 });
 
@@ -260,7 +264,7 @@ describe('completeConnection — the happy path', () => {
 			siteUrl: 'https://acme.test',
 		});
 		expect(persisted.activeWorkspaceId).toBe(persisted.workspaces[0]?.id);
-		expect(secretSet).toHaveBeenCalled();
+		expect(sessionReplace).toHaveBeenCalled();
 		expect(assign).toHaveBeenCalledWith('/dashboard');
 	});
 
@@ -316,7 +320,9 @@ describe('completeConnection — the keychain handover', () => {
 		await mod.completeConnection({ ott: 'tok', state });
 		await new Promise((resolve) => setTimeout(resolve, 300));
 
-		const writes = secretSet.mock.calls.filter(([key]) => key === 'owlat-ws:ws-existing');
+		const writes = [...sessionWrite.mock.calls, ...sessionReplace.mock.calls].filter(
+			([key]) => key === 'owlat-ws:ws-existing'
+		);
 		expect(writes).toHaveLength(1);
 		expect(writes[0]?.[1]).not.toContain('older');
 		expect(assign).toHaveBeenCalledWith('/dashboard');
@@ -335,15 +341,16 @@ describe('completeConnection — the keychain handover', () => {
 		const state = await beginConnect(mod);
 		mod.getActiveKeychainStorage()?.setItem('better-auth_cookie', 'refreshed');
 		assign.mockImplementation(() => {
-			expect(secretSet).toHaveBeenCalledWith(
+			expect(sessionWrite).toHaveBeenCalledWith(
 				'owlat-ws:ws-other',
-				JSON.stringify({ 'better-auth_cookie': 'refreshed' })
+				JSON.stringify({ 'better-auth_cookie': 'refreshed' }),
+				0
 			);
 		});
 
 		await mod.completeConnection({ ott: 'tok', state });
 
-		const newEntry = secretSet.mock.calls.find(([key]) => key !== 'owlat-ws:ws-other');
+		const newEntry = sessionReplace.mock.calls.find(([key]) => key !== 'owlat-ws:ws-other');
 		expect(newEntry?.[1]).not.toContain('refreshed');
 		expect(assign).toHaveBeenCalledTimes(1);
 	});
@@ -360,9 +367,9 @@ describe('completeConnection — the keychain handover', () => {
 
 		expect(mod.useDesktopWorkspaces().workspaces.value).toEqual([]);
 		expect(mod.useDesktopWorkspaces().activeId.value).toBeNull();
-		const written = secretSet.mock.calls[0]?.[0];
+		const written = sessionReplace.mock.calls[0]?.[0];
 		expect(written).toMatch(/^owlat-ws:/);
-		expect(secretDelete).toHaveBeenCalledWith(written);
+		expect(sessionReplace).toHaveBeenLastCalledWith(written, null);
 		expect(assign).not.toHaveBeenCalled();
 	});
 });

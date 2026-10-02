@@ -16,10 +16,11 @@
 import { authClient } from '~/lib/auth-client';
 import { isDesktopRuntime, setActiveWorkspace } from '~/lib/desktop/activeWorkspace';
 import {
-	createKeychainStorage,
+	bindActiveSession,
 	getActiveKeychainStorage,
-	setActiveKeychainStorage,
+	rebindActiveSession,
 } from '~/lib/desktop/keychainStorage';
+import { setDesktopAuthClientFactory } from '~/lib/desktop/desktopAuthClientFactory';
 import {
 	type WorkspaceAccent,
 	type WorkspaceStoreShape,
@@ -38,7 +39,7 @@ import {
 import {
 	activeId,
 	keychain,
-	makePersister,
+	makeSessionPersistence,
 	persistStore,
 	store,
 	workspaces,
@@ -192,9 +193,18 @@ export async function loadWorkspaces(options?: {
 	setActiveWorkspace(active);
 
 	if (active) {
-		const { secretGet } = await keychain();
-		const blob = await secretGet(active.tokenRef);
-		setActiveKeychainStorage(createKeychainStorage(active.tokenRef, blob, makePersister()));
+		const { sessionRead, onSessionReplaced } = await keychain();
+		const entry = await sessionRead(active.tokenRef);
+		bindActiveSession(active.tokenRef, entry, makeSessionPersistence());
+		// The workspace's auth client is desktop-only code; load it now, before
+		// the first auth call, and leave it out of the web app's entry bundle.
+		const { createActiveDesktopAuthClient } = await import('~/lib/desktop/desktopAuthClient');
+		setDesktopAuthClientFactory(createActiveDesktopAuthClient);
+		// Another window signed in to this workspace again or removed it: retire
+		// the session this window holds and bind the one it left.
+		void onSessionReplaced((account, revision) => {
+			void rebindActiveSession(account, revision);
+		}).catch(() => {});
 	}
 }
 
@@ -275,8 +285,12 @@ async function removeWorkspace(id: string): Promise<void> {
 	const { wipePostboxOfflineReadCache } =
 		await import('~/composables/postbox/usePostboxOfflineCache');
 	await wipePostboxOfflineReadCache();
-	const { secretDelete } = await keychain();
-	await secretDelete(workspaceTokenRef(id));
+	// Through the session ledger, so no window still holding the session can
+	// write it back after the entry is gone.
+	const { sessionReplace } = await keychain();
+	await sessionReplace(workspaceTokenRef(id), null).catch((e: unknown) => {
+		console.warn('[desktop] removing the workspace session failed:', e);
+	});
 
 	workspaces.value = workspaces.value.filter((w) => w.id !== id);
 	if (wasActive) activeId.value = workspaces.value[0]?.id ?? null;

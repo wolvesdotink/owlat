@@ -37,6 +37,7 @@ const {
 	data: organizationSettings,
 	isLoading: organizationSettingsLoading,
 	error: organizationSettingsError,
+	refetch: refetchOrganizationSettings,
 } = useOrganizationQuery(api.workspaces.settings.get);
 
 // Verified sending domains — used to warn when the Default From Email's domain
@@ -216,6 +217,7 @@ const timezones = computed(() => instanceTimezoneSelectOptions(t));
 		<UiQueryBoundary
 			:loading="isLoading && !organizationSettings"
 			:error="organizationSettingsError"
+			@retry="refetchOrganizationSettings"
 		>
 			<template #loading>
 				<DashboardDetailSkeleton
@@ -243,7 +245,10 @@ const timezones = computed(() => instanceTimezoneSelectOptions(t));
 				     word twice. Straight into the fields, like Features and Webhooks. -->
 				<UiCard padding="none" overflow="hidden">
 					<form class="p-6" @submit.prevent="handleSave">
-						<div class="grid gap-6 max-w-2xl">
+						<!-- No inner cap: the shell's reading width already bounds the
+						     card, and a narrower grid left the section divider and the
+						     archive switch short of the Save row's edge. -->
+						<div class="grid gap-6">
 							<!-- Team Name -->
 							<UiInput
 								v-model="form.name"
@@ -341,8 +346,8 @@ const timezones = computed(() => instanceTimezoneSelectOptions(t));
 							</div>
 
 							<!-- Campaign Archives Default -->
-							<div class="flex items-center justify-between py-2">
-								<div>
+							<div class="flex items-center justify-between gap-4 py-2">
+								<div class="min-w-0">
 									<p class="text-sm font-medium text-text-primary">
 										{{ t('dashboard.admin.instance.general.archives') }}
 									</p>

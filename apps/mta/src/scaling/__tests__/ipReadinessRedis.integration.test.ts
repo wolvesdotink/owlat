@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import Redis from 'ioredis';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { dockerRedisAvailable } from '../../__tests__/helpers/redisCluster.js';
 import type { MtaConfig } from '../../config.js';
 import { queueConvexWebhook } from '../../webhooks/convexNotifier.js';
 import {
@@ -19,20 +20,7 @@ vi.mock('../../webhooks/convexNotifier.js', () => ({
 	queueConvexWebhook: vi.fn().mockResolvedValue('outbox-id'),
 }));
 
-function dockerAvailable(): boolean {
-	try {
-		execFileSync('docker', ['info'], { stdio: 'ignore', timeout: 5_000 });
-		execFileSync('docker', ['image', 'inspect', 'redis:7-alpine'], {
-			stdio: 'ignore',
-			timeout: 5_000,
-		});
-		return true;
-	} catch {
-		return false;
-	}
-}
-
-describe.runIf(dockerAvailable())('IP readiness atomicity on standalone Redis', () => {
+describe.runIf(dockerRedisAvailable())('IP readiness atomicity on standalone Redis', () => {
 	const port = 19_000 + Math.floor(Math.random() * 1_000);
 	const container = `owlat-ip-readiness-${randomUUID().slice(0, 8)}`;
 	const ip = '2001:db8::10';

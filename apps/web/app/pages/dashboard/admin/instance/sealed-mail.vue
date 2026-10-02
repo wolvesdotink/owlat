@@ -154,14 +154,10 @@ async function runReSeal() {
 
 <template>
 	<div class="space-y-6">
-		<div>
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-				{{ t('dashboard.admin.instance.sealedMail.title') }}
-			</h1>
-			<p class="mt-1 text-text-secondary">
-				{{ t('dashboard.admin.instance.sealedMail.intro') }}
-			</p>
-		</div>
+		<UiPageHeader
+			:title="t('dashboard.admin.instance.sealedMail.title')"
+			:description="t('dashboard.admin.instance.sealedMail.intro')"
+		/>
 
 		<div v-if="!hasActiveOrganization" class="card text-text-secondary">
 			{{ t('dashboard.admin.instance.sealedMail.noWorkspace') }}
@@ -238,7 +234,7 @@ async function runReSeal() {
 							autocomplete="off"
 							:placeholder="t('dashboard.admin.instance.sealedMail.recoveryKit.addressPlaceholder')"
 							data-testid="recovery-kit.result-address"
-							class="input input-sm min-w-0 flex-1"
+							class="input input-sm min-w-48 flex-1"
 						/>
 						<UiButton
 							variant="secondary"

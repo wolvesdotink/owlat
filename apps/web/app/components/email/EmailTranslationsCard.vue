@@ -84,12 +84,14 @@ const removeLanguage = (langCode: string) => {
 
 <template>
 	<UiCard>
-		<div class="flex items-center justify-between mb-6">
-			<div class="flex items-center gap-3">
-				<div class="p-2 rounded-lg bg-brand/10 flex items-center justify-center">
+		<!-- Wraps on phones: "Add language" drops under the title rather than
+		     squeezing the description into a narrow column. -->
+		<div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+			<div class="flex min-w-0 flex-1 basis-64 items-center gap-3">
+				<div class="p-2 shrink-0 rounded-lg bg-brand/10 flex items-center justify-center">
 					<Icon name="lucide:languages" class="w-5 h-5 text-brand" />
 				</div>
-				<div>
+				<div class="min-w-0">
 					<h2 class="text-lg font-semibold text-text-primary">
 						{{ t('dashboard.send.emails.detail.settings.translations.title') }}
 					</h2>

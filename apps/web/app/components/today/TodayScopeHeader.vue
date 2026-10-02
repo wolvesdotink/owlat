@@ -76,8 +76,10 @@ const tiles = computed(() => [
 </script>
 
 <template>
+	<!-- A size container: the stat tiles follow the card's own width, so they
+	     stay two across when the Workbench puts this card in its side column. -->
 	<section
-		class="rounded-2xl border border-border-subtle bg-bg-elevated px-5 py-4"
+		class="@container rounded-2xl border border-border-subtle bg-bg-elevated px-5 py-4"
 		aria-labelledby="workbench-scope-name"
 	>
 		<div class="flex flex-wrap items-start gap-3">
@@ -115,7 +117,7 @@ const tiles = computed(() => [
 
 		<ul
 			class="mt-4 grid grid-cols-2 gap-2"
-			:class="['', '', 'sm:grid-cols-2', 'sm:grid-cols-3', 'sm:grid-cols-4'][tiles.length]"
+			:class="['', '', '@lg:grid-cols-2', '@lg:grid-cols-3', '@lg:grid-cols-4'][tiles.length]"
 		>
 			<li v-for="tile in tiles" :key="tile.id">
 				<a
