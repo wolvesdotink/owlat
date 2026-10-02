@@ -7,6 +7,7 @@ export { renderPlainText, resolvePlainText, hasPlainTextOverride } from './plain
 export { renderDraftBodies } from './draftBodies';
 export type { DraftBodies, DraftBodySource, RenderDraftBodiesOptions } from './draftBodies';
 export { validateBlocks, ValidationError } from './validator';
+export { getContrastRatio } from './validators';
 export { inlineCss } from './inliner';
 export {
 	registerBlock,

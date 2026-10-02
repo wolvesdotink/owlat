@@ -209,6 +209,9 @@ services:
       # value to use the host's resolver instead.
       DNSBL_RESOLVER: ${DNSBL_RESOLVER-dns-resolver:5335}
       RETURN_PATH_DOMAIN: ${RETURN_PATH_DOMAIN:-bounces.localhost}
+      # DMARC report address (default dmarc-reports@<RETURN_PATH_DOMAIN>, `off`
+      # to disable). Must match the backend's MTA_DMARC_REPORT_ADDRESS.
+      MTA_DMARC_REPORT_ADDRESS: ${MTA_DMARC_REPORT_ADDRESS:-}
       BOUNCE_VERP_KEY: ${BOUNCE_VERP_KEY:?BOUNCE_VERP_KEY is required}
       CONVEX_SITE_URL: http://convex:3211
       MTA_WEBHOOK_SECRET: ${MTA_WEBHOOK_SECRET}

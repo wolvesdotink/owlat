@@ -8,6 +8,7 @@ import {
 } from '@owlat/email-builder';
 import { api } from '@owlat/api';
 import { campaignReturnTarget } from '~/lib/campaignCompose';
+import type { PresendSource } from '~/composables/usePresendChecks';
 
 const { t } = useI18n();
 
@@ -143,6 +144,52 @@ const handleRestoreVersion = (state: HistoryState) => {
 	subject.value = state.subject;
 	builderRef.value?.loadState(state);
 };
+
+// "Check email": the campaign pre-send checks on the canvas as it is now,
+// saved or not. The HTML is rendered once per click (the canvas keeps moving
+// while the dialog is open, the snapshot does not); "Show me" closes the
+// dialog and selects the Block in place.
+const { renderBlocksToHtml } = useEmailHtmlRendering();
+const presendSnapshot = shallowRef<PresendSource | null>(null);
+const isPresendOpen = ref(false);
+const {
+	checks: presendChecks,
+	summary: presendSummary,
+	isChecking: isPresendChecking,
+	run: runPresendChecks,
+} = usePresendChecks(() => presendSnapshot.value);
+
+function checkEmail() {
+	const snapshot = JSON.parse(JSON.stringify(blocks.value)) as typeof blocks.value;
+	presendSnapshot.value = {
+		html: renderBlocksToHtml(snapshot, {
+			theme: emailTheme.value,
+			variableType: 'personalization',
+		}),
+		blocks: snapshot,
+		subject: subject.value,
+	};
+	isPresendOpen.value = true;
+	void runPresendChecks();
+}
+
+function showPresendBlock(blockId: string) {
+	isPresendOpen.value = false;
+	builderRef.value?.selectBlock?.(blockId);
+}
+
+// Opened from "Show me" on the campaign Review step (`?block=`): select that
+// Block once the canvas holds it.
+const pendingBlock = ref(typeof route.query['block'] === 'string' ? route.query['block'] : null);
+watch(
+	[builderRef, blocks],
+	() => {
+		const blockId = pendingBlock.value;
+		if (!blockId || !builderRef.value || blocks.value.length === 0) return;
+		if (builderRef.value.selectBlock?.(blockId)) pendingBlock.value = null;
+	},
+	{ flush: 'post' }
+);
 
 // Opened from the campaign wizard (`?returnTo=`), every way back leads to that
 // campaign instead of the email list, so the draft picks up where it left off.
@@ -316,6 +363,21 @@ async function handlePublicationToggle() {
 							<UiButton
 								variant="outline"
 								size="sm"
+								:title="t('dashboard.send.emails.detail.edit.checkEmail')"
+								data-testid="editor-check-email"
+								@click="checkEmail"
+							>
+								<template #iconLeft>
+									<Icon name="lucide:list-checks" class="w-4 h-4" />
+								</template>
+								<!-- Icon-only below 2xl, where the toolbar is short of room. -->
+								<span class="max-2xl:sr-only">{{
+									t('dashboard.send.emails.detail.edit.checkEmail')
+								}}</span>
+							</UiButton>
+							<UiButton
+								variant="outline"
+								size="sm"
 								:title="t('dashboard.send.emails.detail.edit.manageTranslations')"
 								@click="handleTranslations"
 							>
@@ -365,6 +427,21 @@ async function handlePublicationToggle() {
 			@load="loadLatestVersion"
 			@close="dismissConflict"
 		/>
+
+		<UiModal
+			v-model:open="isPresendOpen"
+			size="2xl"
+			:title="t('dashboard.send.emails.detail.edit.checkEmailTitle')"
+		>
+			<CampaignsPresendChecksPanel
+				embedded
+				:checks="presendChecks"
+				:summary="presendSummary"
+				:is-checking="isPresendChecking"
+				@retry="checkEmail"
+				@show-block="showPresendBlock"
+			/>
+		</UiModal>
 
 		<!-- Send Test Email Modal -->
 		<LazySendTestEmailModal

@@ -78,6 +78,16 @@ function update(patch: Partial<SendTiming>) {
 function selectMode(mode: SendTimingMode) {
 	update({ mode });
 }
+
+// Turning on an A/B test after picking "Optimized per contact" would leave a
+// disabled choice selected that scheduling refuses; fall back to one instant.
+watch(
+	() => props.isAbTest === true && props.modelValue.mode === 'optimized',
+	(isBlocked) => {
+		if (isBlocked) selectMode('fixed');
+	},
+	{ immediate: true }
+);
 </script>
 
 <template>

@@ -82,6 +82,10 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'EHLO_HOSTNAME',
 	'MTA_SPF_INCLUDE',
 	'MTA_DMARC_RUA',
+	// The address Owlat reads DMARC reports at (default dmarc-reports@ on the
+	// return-path domain; `off` disables it). The MTA routes it, the backend
+	// writes it into the `_dmarc` record, so both must hold the same value.
+	'MTA_DMARC_REPORT_ADDRESS',
 	'MTA_TLSRPT_RUA',
 	// Outbound TLS floor (opportunistic | require | require-verified) — pushed so
 	// the backend can surface the current mode in the transport editor and avoid a

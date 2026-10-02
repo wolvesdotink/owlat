@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { buildShortcutSheet } from '../shortcutRegistry';
 import { SHORTCUT_CATALOG } from '../shortcutCatalog';
 import { resetShortcutScopes, resolveActiveChord, shortcutBindings } from '../shortcutScope';
+import { createTestI18n } from '~/__tests__/i18n';
 
 /**
  * Answer mode's keys are bound by its pages, but the "?" sheet only knows the
@@ -36,5 +37,13 @@ describe('answer scope', () => {
 		]);
 		const ids = groups.flatMap((g) => g.items.map((i) => i.id));
 		expect(ids).not.toContain('global.close');
+	});
+
+	it('says where the note key works, since personal mail has no notes', () => {
+		// Both Answer pages claim the `answer` scope, so the sheet lists `n` on a
+		// personal message too, where it does nothing.
+		const note = SHORTCUT_CATALOG.find((entry) => entry.id === 'answer.writeNote');
+		const { t } = createTestI18n().global;
+		expect(t(note!.labelKey)).toBe('Write an internal note (Team inbox threads)');
 	});
 });

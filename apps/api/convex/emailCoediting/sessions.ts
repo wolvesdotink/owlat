@@ -19,7 +19,7 @@
 
 import { v } from 'convex/values';
 import type { MutationCtx } from '../_generated/server';
-import { throwConflict, throwInvalidInput } from '../_utils/errors';
+import { throwConflict, throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { currentContentRevision } from '../lib/contentRevision';
 import { assertFeatureEnabled } from '../lib/featureFlags';
@@ -222,6 +222,15 @@ export const applyOps = authedMutation({
 		requirePermission(hasPermission(session.role, 'templates:manage'), EDIT_DENIED);
 		if (args.clientId.length === 0 || args.clientId.length > MAX_COEDIT_ID_LENGTH) {
 			throwInvalidInput('The editor id is not valid.');
+		}
+		// Writes are attributed to the tab, so a tab id another member's
+		// presence names is not the caller's to write under (`presence.ts`).
+		const tab = await ctx.db
+			.query('emailEditorPresence')
+			.withIndex('by_client', (q) => q.eq('clientId', args.clientId))
+			.first();
+		if (tab && tab.userId !== session.userId) {
+			throwForbidden('This editor belongs to someone else.');
 		}
 		await loadTarget(ctx, args.target);
 		const live = await findSession(ctx, args.target);

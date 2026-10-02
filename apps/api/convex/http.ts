@@ -28,6 +28,7 @@ import { serveSealedBlob } from './mail/sealedBlobHttp';
 import { serveAttachmentShare } from './mail/attachmentShareHttp';
 import { handleVerifyCredential } from './mail/authHttp';
 import { handleTlsReportWebhook } from './domains/tlsReportsHttp';
+import { handleDmarcReportWebhook } from './domains/dmarcReportsHttp';
 import {
 	handleSmsWebhook,
 	handleWhatsAppWebhook,
@@ -251,6 +252,14 @@ http.route({
 	path: '/webhooks/mta-tls-report',
 	method: 'POST',
 	handler: handleTlsReportWebhook,
+});
+
+// POST /webhooks/mta-dmarc-report - inbound DMARC aggregate (RUA) reports
+// forwarded from the MTA's system inbound route for Owlat's report address
+http.route({
+	path: '/webhooks/mta-dmarc-report',
+	method: 'POST',
+	handler: handleDmarcReportWebhook,
 });
 
 // GET /sealed-blob - decrypt-serving proxy for sealed storage blobs (Sealed

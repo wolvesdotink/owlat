@@ -13,10 +13,19 @@ vi.mock('@owlat/email-scanner/clamav', () => ({
 	})),
 }));
 
+import Redis from 'ioredis-mock';
+import type RealRedis from 'ioredis';
 import { createScanRoutes } from '../scan.js';
 import type { MtaConfig } from '../../config.js';
+import { addToUrlBlocklist } from '../../intelligence/contentScreening.js';
 
-const config = { apiKey: 'master-key' } as MtaConfig;
+const config = {
+	apiKey: 'master-key',
+	contentScreeningEnabled: true,
+	contentMaxSizeKb: 500,
+	rspamdRejectThreshold: 15,
+} as MtaConfig;
+const redis = new Redis() as unknown as RealRedis;
 
 /** The fields the scan and health responses carry. */
 interface ScanBody {
@@ -28,7 +37,7 @@ interface ScanBody {
 }
 
 function post(body: RequestInit['body'], headers: Record<string, string> = {}) {
-	const app = createScanRoutes(config);
+	const app = createScanRoutes(config, redis);
 	return app.request('/attachment', {
 		method: 'POST',
 		headers: { Authorization: 'Bearer master-key', 'X-Filename': 'doc.pdf', ...headers },
@@ -45,7 +54,7 @@ beforeEach(() => {
 
 describe('POST /scan/attachment', () => {
 	it('rejects a missing bearer token with 401', async () => {
-		const app = createScanRoutes(config);
+		const app = createScanRoutes(config, redis);
 		const res = await app.request('/attachment', { method: 'POST', body: pdfBytes });
 		expect(res.status).toBe(401);
 	});
@@ -56,7 +65,7 @@ describe('POST /scan/attachment', () => {
 	});
 
 	it('rejects a missing X-Filename header with 400', async () => {
-		const app = createScanRoutes(config);
+		const app = createScanRoutes(config, redis);
 		const res = await app.request('/attachment', {
 			method: 'POST',
 			headers: { Authorization: 'Bearer master-key' },
@@ -171,7 +180,7 @@ describe('POST /scan/attachment', () => {
 
 describe('GET /scan/health', () => {
 	it('requires auth and reports ClamAV status', async () => {
-		const app = createScanRoutes(config);
+		const app = createScanRoutes(config, redis);
 		const unauthed = await app.request('/health');
 		expect(unauthed.status).toBe(401);
 
@@ -181,5 +190,67 @@ describe('GET /scan/health', () => {
 		expect(res.status).toBe(200);
 		const json = (await res.json()) as ScanBody;
 		expect(json.clamav).toMatchObject({ healthy: true, pingOk: true });
+	});
+});
+
+describe('POST /scan/content', () => {
+	function postContent(body: unknown, headers: Record<string, string> = {}) {
+		const app = createScanRoutes(config, redis);
+		return app.request('/content', {
+			method: 'POST',
+			headers: {
+				Authorization: 'Bearer master-key',
+				'Content-Type': 'application/json',
+				...headers,
+			},
+			body: typeof body === 'string' ? body : JSON.stringify(body),
+		});
+	}
+
+	beforeEach(async () => {
+		await redis.flushall();
+	});
+
+	it('requires the master key', async () => {
+		const res = await postContent({ subject: 'Hi', html: '<p>Hi</p>' }, { Authorization: '' });
+		expect(res.status).toBe(401);
+	});
+
+	it('answers the verdict the send would get', async () => {
+		const res = await postContent({ subject: 'Hi', html: '<p>Hello there</p>' });
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ enabled: true, verdict: 'accept', sizeLimitKb: 500 });
+	});
+
+	it('names the blocklist pattern a link matched', async () => {
+		await addToUrlBlocklist(redis, 'bad.example');
+		const res = await postContent({
+			subject: 'Hi',
+			html: '<a href="https://bad.example/offer">Offer</a>',
+		});
+		expect(await res.json()).toEqual({
+			enabled: true,
+			verdict: 'reject',
+			reason: 'blocked_url',
+			blockedPattern: 'bad.example',
+			sizeLimitKb: 500,
+		});
+	});
+
+	it('refuses a body that is not a screening request', async () => {
+		expect((await postContent('not json')).status).toBe(400);
+		expect((await postContent({ subject: 'Hi' })).status).toBe(400);
+		expect(
+			(await postContent({ subject: 'Hi\r\nBcc: x@example.com', html: '<p>x</p>' })).status
+		).toBe(400);
+		expect((await postContent({ subject: 'Hi', html: '<p>x</p>', from: 42 })).status).toBe(400);
+	});
+
+	it('refuses an oversized body with 413 before parsing it', async () => {
+		const res = await postContent(
+			{ subject: 'Hi', html: 'x'.repeat(10) },
+			{ 'Content-Length': String(5 * 1024 * 1024) }
+		);
+		expect(res.status).toBe(413);
 	});
 });

@@ -48,6 +48,11 @@ hand: it diffs the last server state against what the canvas shows, so
 nothing is queued and a lost or repeated send heals itself
 (`apps/web/app/lib/coeditSync.ts`, a differential sync). One batch is in
 flight per tab, and the next waits until the session state includes it.
+The server stores blocks sanitized (text HTML, numeric styles), so what it
+holds can differ from what was sent. Once a batch is acknowledged, the tab
+takes the server's copy of every block or field it wrote and has not changed
+since. Without that step the difference would look like an unsent edit and
+the tab would send it again on every round.
 
 Incoming states are merged by re-applying the tab's unsent edits on top; the
 difference is other people's edits, which the builder applies through

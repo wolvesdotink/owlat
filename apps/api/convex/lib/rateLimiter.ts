@@ -209,6 +209,17 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 40,
 	},
 
+	// Campaign pre-send checks (`emailTemplates/presendChecksActions.run`). One
+	// run probes up to 300 links and images on outside hosts and screens the
+	// message through the MTA, so cap per user: the Review step runs once per
+	// visit and "Check email" once per click, well inside this.
+	presendChecks: {
+		kind: 'token bucket',
+		rate: 6,
+		period: MINUTE,
+		capacity: 12,
+	},
+
 	// Admin "Test connection" probes on the AI-providers settings page. Each hit
 	// decrypts the stored key and (for local providers) makes an outbound
 	// reachability request, so cap per-user to stop a tight loop from turning the

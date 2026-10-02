@@ -96,6 +96,7 @@ export function useEmailEditorCoedit(
 				setField(op.field, op.value);
 			}
 		}
+		presence.acceptRemote(ops);
 	};
 
 	// Every local edit: a block write, or a change to any shared field.

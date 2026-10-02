@@ -34,6 +34,8 @@ const {
 		holdoutPercent: props.holdoutPercent,
 		scheduledHour: start.getHours(),
 		scheduledMinute: start.getMinutes(),
+		// The bars are labelled in this zone, so they start on its hours.
+		timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
 	};
 });
 

@@ -212,12 +212,15 @@ const initialReviewSchedule = readReviewSchedule(route.query);
 
 const openEmailEditor = async (
 	templateId: Id<'emailTemplates'> | undefined,
-	schedule: ReviewSchedule | null = null
+	schedule: ReviewSchedule | null = null,
+	blockId?: string
 ) => {
 	const id = campaignId.value;
 	if (!id || !templateId) return;
 	setHasChanges(false);
-	const failure = await router.push(emailEditorPath(templateId, campaignReviewPath(id, schedule)));
+	const failure = await router.push(
+		emailEditorPath(templateId, campaignReviewPath(id, schedule), blockId)
+	);
 	if (failure) setHasChanges(hasWizardProgress.value);
 };
 
@@ -272,6 +275,8 @@ const reviewData = computed(() => {
 				: templateHasBody(persistedTemplate.value)
 					? persistedTemplate.value!.htmlContent!
 					: null,
+		emailContent: persistedTemplate.value?.content,
+		audienceKind: setup?.audience?.kind ?? c?.audience?.kind,
 		abTestEnabled: setup?.abTestEnabled ?? !!cfg,
 		abTestType: setup?.abTestType ?? cfg?.testType ?? 'subject',
 		abVariantBSubject: setup?.abVariantBSubject ?? cfg?.variantBSubject ?? '',
@@ -352,7 +357,10 @@ const reviewData = computed(() => {
 					@edit-step="handleEditStep"
 					@complete="handleComplete"
 					@retry-templates="refetchEmailTemplates"
-					@edit-email="(schedule) => openEmailEditor(campaignDetails?.emailTemplateId, schedule)"
+					@edit-email="
+						(schedule, blockId) =>
+							openEmailEditor(campaignDetails?.emailTemplateId, schedule, blockId)
+					"
 				/>
 			</KeepAlive>
 		</div>

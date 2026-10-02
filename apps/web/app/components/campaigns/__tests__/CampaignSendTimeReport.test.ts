@@ -11,11 +11,17 @@ import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18
 
 Object.assign(globalThis, i18nStubs);
 
+const DAY = 24 * 3_600_000;
+
+// Sent a week ago and finished at the end of its window, so the comparison is due.
 function mountCard(campaign: Record<string, unknown>) {
+	const sentAt = Date.now() - 7 * DAY;
 	return mount(CampaignSendTimeReport, {
 		props: {
 			campaign: {
 				status: 'sent',
+				sentAt,
+				updatedAt: sentAt + DAY,
 				sendTimeOptimization: { windowHours: 24, holdoutPercent: 10 },
 				...campaign,
 			},
@@ -34,15 +40,36 @@ describe('CampaignSendTimeReport', () => {
 
 	it('waits for enough delivered mail in both groups', () => {
 		const wrapper = mountCard({
-			status: 'sending',
 			statsSendTimeOptimizedDelivered: 900,
 			statsSendTimeHoldoutDelivered: 40,
 		});
 		expect(wrapper.find('[data-state="too-early"]').text()).toContain(
 			'so far 900 optimized and 40 at the start time'
 		);
-		expect(wrapper.text()).toContain('Still sending');
 		expectFullyLocalized(wrapper);
+	});
+
+	it('calls nothing while sends are still landing, even with lopsided counts', () => {
+		const counts = {
+			statsSendTimeOptimizedDelivered: 2000,
+			statsSendTimeOptimizedOpened: 200,
+			statsSendTimeHoldoutDelivered: 2000,
+			statsSendTimeHoldoutOpened: 700,
+		};
+		const sending = mountCard({ ...counts, status: 'sending' });
+		expect(sending.find('[data-state="measuring"]').text()).toContain(
+			'a day after the last email goes out'
+		);
+		expect(sending.find('[data-metric]').exists()).toBe(false);
+		expect(sending.text()).toContain('Still sending');
+		expectFullyLocalized(sending);
+
+		const justSent = mountCard({ ...counts, sentAt: Date.now() - DAY, updatedAt: Date.now() });
+		expect(justSent.find('[data-state="measuring"]').text()).toContain(
+			'The comparison is ready on'
+		);
+		expect(justSent.find('[data-metric]').exists()).toBe(false);
+		expectFullyLocalized(justSent);
 	});
 
 	it('has nothing to compare without a comparison group', () => {

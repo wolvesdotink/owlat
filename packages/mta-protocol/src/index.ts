@@ -4,8 +4,9 @@
  * Five conversations, each declared exactly once here and imported by BOTH
  * ends: the send intake (`send.ts`), the last-mile routing decision
  * (`routingDecision.ts`), the IP-reputation snapshot (`ipReputation.ts`), the
- * webhook events the MTA reports outcomes with (`webhookEvent.ts`) and the
- * blocklist-access setting (`dnsblAccess.ts`, subpath only). Every MTA -> API
+ * webhook events the MTA reports outcomes with (`webhookEvent.ts`), the
+ * blocklist-access setting (`dnsblAccess.ts`, subpath only) and the pre-send
+ * content-screening preview (`contentScreening.ts`, subpath only). Every MTA -> API
  * request carries the signature header pair from `signature.ts`, signed by the
  * MTA with `signer.ts` (both subpath only; the signer is Node-only).
  *

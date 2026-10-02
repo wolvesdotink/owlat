@@ -4,6 +4,7 @@ import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
 import {
 	screenContent,
+	previewScreening,
 	addToUrlBlocklist,
 	removeFromUrlBlocklist,
 	getUrlBlocklist,
@@ -220,6 +221,74 @@ describe('contentScreening', () => {
 			expect(list).toContain('bad1.com');
 			expect(list).toContain('bad2.com');
 			expect(list).toContain('bad3.com');
+		});
+	});
+
+	describe('previewScreening', () => {
+		afterEach(() => {
+			vi.unstubAllGlobals();
+		});
+
+		it('accepts without screening when screening is off', async () => {
+			const off = { ...config, contentScreeningEnabled: false };
+			expect(await previewScreening(redis, { subject: 'Hi', html: '' }, off)).toEqual({
+				enabled: false,
+				verdict: 'accept',
+				sizeLimitKb: 500,
+			});
+		});
+
+		it('rejects an empty body and an oversized one, like the send', async () => {
+			expect(await previewScreening(redis, { subject: 'Hi', html: '  ' }, config)).toMatchObject({
+				verdict: 'reject',
+				reason: 'empty_body',
+			});
+			const small = { ...config, contentMaxSizeKb: 1 };
+			expect(
+				await previewScreening(redis, { subject: 'Hi', html: 'x'.repeat(2048) }, small)
+			).toMatchObject({ verdict: 'reject', reason: 'content_too_large', sizeLimitKb: 1 });
+		});
+
+		it('reports the rspamd score even when the message passes', async () => {
+			const fetchMock = vi
+				.fn()
+				.mockResolvedValue(
+					new Response(JSON.stringify({ score: 4.5, required_score: 15, action: 'no action' }))
+				);
+			vi.stubGlobal('fetch', fetchMock);
+			const scored = { ...config, rspamdUrl: 'http://rspamd:11333' };
+			const verdict = await previewScreening(
+				redis,
+				{ from: 'news@example.com', subject: 'Hi', html: '<p>Hello</p>' },
+				scored
+			);
+			expect(verdict).toEqual({
+				enabled: true,
+				verdict: 'accept',
+				sizeLimitKb: 500,
+				spam: { score: 4.5, threshold: 15 },
+			});
+			const sent = String(fetchMock.mock.calls[0]?.[1]?.body);
+			expect(sent).toContain('From: news@example.com');
+			expect(sent).toContain('Subject: Hi');
+		});
+
+		it('rejects at the threshold and fails open when rspamd is down', async () => {
+			const scored = { ...config, rspamdUrl: 'http://rspamd:11333' };
+			vi.stubGlobal(
+				'fetch',
+				vi.fn().mockResolvedValue(new Response(JSON.stringify({ score: 15, action: 'reject' })))
+			);
+			expect(
+				await previewScreening(redis, { subject: 'Hi', html: '<p>x</p>' }, scored)
+			).toMatchObject({ verdict: 'reject', reason: 'spam_score', spam: { score: 15 } });
+
+			vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('down')));
+			expect(await previewScreening(redis, { subject: 'Hi', html: '<p>x</p>' }, scored)).toEqual({
+				enabled: true,
+				verdict: 'accept',
+				sizeLimitKb: 500,
+			});
 		});
 	});
 });

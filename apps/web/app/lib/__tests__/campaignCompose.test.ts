@@ -34,6 +34,14 @@ describe('campaign ↔ editor round trip', () => {
 		);
 	});
 
+	it('opens the editor on one Block when a pre-send finding points at it', () => {
+		const back = campaignReviewPath('cmp1');
+		const path = emailEditorPath('tpl1', back, 'block/7');
+		const query = new URL(path, 'https://owlat.example').searchParams;
+		expect(query.get('block')).toBe('block/7');
+		expect(query.get('returnTo')).toBe(back);
+	});
+
 	it('carries a pending schedule there and back', () => {
 		const back = campaignReviewPath('cmp1', {
 			date: '2026-10-05',

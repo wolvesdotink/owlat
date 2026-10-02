@@ -96,6 +96,24 @@ describe('default DMARC record across provider adapters', () => {
 		vi.stubEnv('MTA_DMARC_RUA', ' mailto:a@owlat.com ');
 		expect(dmarcRuaFromEnv()).toBe('mailto:a@owlat.com');
 	});
+
+	it("puts Owlat's own report address first once it can read reports", () => {
+		vi.stubEnv('MTA_RETURN_PATH_DOMAIN', 'bounces.owlat.com');
+		// No webhook secret: the forward could never be accepted, so no address.
+		vi.stubEnv('MTA_WEBHOOK_SECRET', '');
+		expect(dmarcRuaFromEnv()).toBeUndefined();
+		vi.stubEnv('MTA_WEBHOOK_SECRET', 'secret');
+		expect(dmarcRuaFromEnv()).toBe('mailto:dmarc-reports@bounces.owlat.com');
+		vi.stubEnv('MTA_DMARC_RUA', 'mailto:a@elsewhere.example');
+		expect(dmarcRuaFromEnv()).toBe(
+			'mailto:dmarc-reports@bounces.owlat.com,mailto:a@elsewhere.example'
+		);
+		vi.stubEnv('MTA_DMARC_RUA', 'mailto:dmarc-reports@bounces.owlat.com');
+		expect(dmarcRuaFromEnv()).toBe('mailto:dmarc-reports@bounces.owlat.com');
+		vi.stubEnv('MTA_DMARC_REPORT_ADDRESS', 'off');
+		vi.stubEnv('MTA_DMARC_RUA', '');
+		expect(dmarcRuaFromEnv()).toBeUndefined();
+	});
 });
 
 describe('relay apex SPF strings', () => {

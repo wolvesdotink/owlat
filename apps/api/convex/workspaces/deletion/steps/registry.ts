@@ -155,6 +155,8 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mixDecisions: makeSweepStep('mixDecisions'),
 	rampStreamPresets: makeSweepStep('rampStreamPresets'),
 	yahooCflEnrollments: makeSweepStep('yahooCflEnrollments'),
+	dmarcReportRecords: makeSweepStep('dmarcReportRecords'),
+	dmarcReports: makeSweepStep('dmarcReports'),
 	domains: domainsStep,
 	onboardingProgress: makeSweepStep('onboardingProgress'),
 	invitationResends: makeSweepStep('invitationResends'),
