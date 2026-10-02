@@ -27,6 +27,7 @@ import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/erro
 import { mailAppPasswordScopeValidator } from '../lib/literalValidators';
 import { bytesToHex } from '../lib/bytes';
 import { constantTimeEqual } from '../lib/crypto';
+import { assertImapWireSupported, noteLegacyImapLogin } from './imap/serverRegistry';
 
 const PBKDF2_ITERATIONS = 100_000;
 const SALT_BYTES = 16;
@@ -208,6 +209,9 @@ export const verify = internalAction({
 		// The logging-in client's IP (the IMAP peer, or the SMTP peer the MTA
 		// forwarded), keyed per client by the shared auth-failure table.
 		ip: v.optional(v.string()),
+		// The IMAP server's wire version (ADR-0063); absent from IMAP servers
+		// that predate reporting and from SMTP submission.
+		imapWireVersion: v.optional(v.number()),
 	},
 	handler: async (
 		ctx,
@@ -218,6 +222,11 @@ export const verify = internalAction({
 		userId: string;
 		organizationId: string;
 	} | null> => {
+		// An IMAP server the backend no longer serves cannot open a session,
+		// whether or not it reports: refused before the password is checked, so
+		// the refusal is never counted as a failed login here.
+		if (args.scope === 'imap') assertImapWireSupported(args.imapWireVersion);
+
 		const lowerAddress = args.address.toLowerCase();
 
 		// Cross-protocol throttle, per address and per client IP, for IMAP and
@@ -307,14 +316,27 @@ export const _candidatesByAddressAndPrefix = internalQuery({
 	},
 });
 
-/** Update lastUsedAt/IP/UA after a successful auth (debounced by caller). */
+/**
+ * Update lastUsedAt/IP/UA after a successful auth (debounced by caller).
+ *
+ * Two callers: the IMAP server after LOGIN, and the SMTP submission webhook
+ * (`mail/authHttp.ts`, `channel: 'smtp'`). An IMAP server from wire version 1
+ * on passes `imapWireVersion`; a call with neither comes from an IMAP server
+ * too old to report itself (v0.6.7 and older), which the IMAP server registry
+ * records (ADR-0063).
+ */
 export const touch = internalMutation({
 	args: {
 		appPasswordId: v.id('mailAppPasswords'),
 		ip: v.optional(v.string()),
 		userAgent: v.optional(v.string()),
+		imapWireVersion: v.optional(v.number()),
+		channel: v.optional(v.literal('smtp')),
 	},
 	handler: async (ctx, args) => {
+		if (args.imapWireVersion === undefined && args.channel === undefined) {
+			await noteLegacyImapLogin(ctx);
+		}
 		const row = await ctx.db.get(args.appPasswordId);
 		if (!row || row.revokedAt) return;
 		await ctx.db.patch(args.appPasswordId, {

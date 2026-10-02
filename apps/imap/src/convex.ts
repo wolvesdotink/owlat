@@ -59,7 +59,6 @@ export interface SelectFolderResult {
 		readonly unseenCount: number;
 	};
 	readonly firstUnseenUid?: number;
-	readonly firstUnseenSeq?: number;
 }
 
 /** The counters IDLE polls to notice a change. */
@@ -126,15 +125,25 @@ export interface CopyMoveResult {
 	readonly pairs: ReadonlyArray<{ sourceUid: number; targetUid: number }>;
 }
 
-/** One committed EXPUNGE page, plus the cursor to the next one. */
+/**
+ * One committed EXPUNGE page, plus the cursor to the next one. The backend also
+ * returns `sequenceNumbers` and `nextSequenceNumber` for an IMAP server older
+ * than the sequence view; this one numbers `uids` against the view instead.
+ */
 export interface ExpungeResult {
-	readonly sequenceNumbers: number[];
-	/** The same messages by UID, same order. Absent from a backend older than #927's. */
-	readonly uids?: number[];
+	/** The expunged messages by UID, highest first. */
+	readonly uids: number[];
 	readonly modseq: number;
 	readonly done?: boolean;
 	readonly beforeUid?: number;
-	readonly nextSequenceNumber?: number;
+}
+
+/** The wire-version handshake (`mail/imap/serverRegistry:report`, ADR-0063). */
+export interface ImapServerReportResult {
+	readonly backendWireVersion: number;
+	readonly minSupportedWireVersion: number;
+	readonly compatible: boolean;
+	readonly reason?: string;
 }
 
 /** APPEND: what `[APPENDUID …]` reports. */
@@ -202,14 +211,31 @@ type AppendArgs = {
 export const fn = {
 	verifyAppPassword: makeFunctionReference<
 		'action',
-		{ address: string; password: string; scope: 'imap' | 'smtp'; ip?: string },
+		{
+			address: string;
+			password: string;
+			scope: 'imap' | 'smtp';
+			ip?: string;
+			imapWireVersion?: number;
+		},
 		VerifyAppPasswordResult | null
 	>('mail/appPasswords:verify'),
 	touchAppPassword: makeFunctionReference<
 		'mutation',
-		{ appPasswordId: string; ip?: string; userAgent?: string },
+		{ appPasswordId: string; ip?: string; userAgent?: string; imapWireVersion?: number },
 		null
 	>('mail/appPasswords:touch'),
+	reportServer: makeFunctionReference<
+		'mutation',
+		{
+			instanceId: string;
+			hostLabel: string;
+			owlatVersion: string;
+			wireVersion: number;
+			startedAt: number;
+		},
+		ImapServerReportResult
+	>('mail/imap/serverRegistry:report'),
 	listFolders: makeFunctionReference<'query', { mailboxId: string }, FolderRow[]>(
 		'mail/imap/session:listFolders'
 	),
@@ -267,7 +293,7 @@ export const fn = {
 	),
 	expungeFolder: makeFunctionReference<
 		'mutation',
-		{ folderId: string; uidSet?: number[]; beforeUid?: number; nextSequenceNumber?: number },
+		{ folderId: string; uidSet?: number[]; beforeUid?: number; imapWireVersion?: number },
 		ExpungeResult
 	>('mail/imap/move:expungeFolder'),
 	discardCopies: makeFunctionReference<

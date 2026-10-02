@@ -52,6 +52,8 @@ export type OrganizationDeletionTable =
 	| 'unsubscribeLatencyBuckets'
 	| 'threadPresence'
 	| 'threadReads'
+	| 'threadNoteMentions'
+	| 'threadNotes'
 	| 'inboxFollowUps'
 	| 'threadCatchUps'
 	| 'inboxAssignmentNotices'
@@ -181,6 +183,7 @@ export type OrganizationDeletionTable =
 	| 'campaignSendJobs'
 	| 'audienceCountJobs'
 	| 'campaignStatShards'
+	| 'sendTimeHistogramShards'
 	| 'campaignSenders'
 	| 'sendDailyStats'
 	| 'contactTopics'
@@ -263,6 +266,8 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('unsubscribeLatencyBuckets'),
 	v.literal('threadPresence'),
 	v.literal('threadReads'),
+	v.literal('threadNoteMentions'),
+	v.literal('threadNotes'),
 	v.literal('inboxFollowUps'),
 	v.literal('threadCatchUps'),
 	v.literal('inboxAssignmentNotices'),
@@ -392,6 +397,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('campaignSendJobs'),
 	v.literal('audienceCountJobs'),
 	v.literal('campaignStatShards'),
+	v.literal('sendTimeHistogramShards'),
 	v.literal('campaignSenders'),
 	v.literal('sendDailyStats'),
 	v.literal('contactTopics'),

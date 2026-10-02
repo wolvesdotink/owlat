@@ -3,6 +3,12 @@ import { api } from '@owlat/api';
 import type { Id, Doc } from '@owlat/api/dataModel';
 import { parseScheduledStart } from '~/lib/campaignSchedule';
 import { SEND_UNDO_WINDOW_MS } from '~/lib/campaignSend';
+import {
+	defaultSendTiming,
+	sendTimingFromCampaign,
+	sendTimingScheduleArgs,
+	type SendTiming,
+} from '~/lib/sendTiming';
 import { useCapacityRefusal } from './useCapacityRefusal';
 import type { useCampaignABTest } from './useCampaignABTest';
 
@@ -88,10 +94,10 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 	// Schedule state
 	const scheduledDate = ref('');
 	const scheduledTime = ref('');
-	// When enabled, the campaign is staggered so each recipient receives it at the
-	// chosen wall-clock time in their own timezone (mirrors the wizard Review step).
-	// Honored by both the draft `schedule` and the `reschedule` path.
-	const useRecipientTimezone = ref(false);
+	// How each recipient's delivery time is picked: one instant, the chosen
+	// wall-clock time in their own timezone, or optimized per contact (mirrors
+	// the wizard Review step). Honored by both `schedule` and `reschedule`.
+	const sendTiming = ref<SendTiming>(defaultSendTiming());
 
 	/**
 	 * The chosen send start as epoch ms for the capacity PREVIEW, or `null` when
@@ -111,15 +117,18 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		parseScheduledStart(scheduledDate.value, scheduledTime.value, Date.now())
 	);
 
-	const initializeSchedule = (scheduledAt: number | undefined, recipientTimezone?: boolean) => {
+	const initializeSchedule = (
+		scheduledAt: number | undefined,
+		timing: Parameters<typeof sendTimingFromCampaign>[0] = {}
+	) => {
 		if (scheduledAt) {
 			const date = new Date(scheduledAt);
 			scheduledDate.value = date.toISOString().slice(0, 10);
 			scheduledTime.value = date.toTimeString().slice(0, 5);
 		}
-		// Seed the toggle from the campaign so rescheduling a timezone-staggered
-		// campaign keeps the option on (and lets the user turn it off).
-		useRecipientTimezone.value = recipientTimezone ?? false;
+		// Seed the choice from the campaign so rescheduling keeps the delivery
+		// time it was scheduled with (and lets the user change it).
+		sendTiming.value = sendTimingFromCampaign(timing);
 	};
 
 	// Save campaign. Returns whether the save (fields + A/B test) fully
@@ -225,6 +234,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		// Only the wall-clock hour/minute is read off this Date; the persisted
 		// instant is `startsAt` itself.
 		const scheduledDateTime = new Date(startsAt);
+		const timingArgs = sendTimingScheduleArgs(sendTiming.value, scheduledDateTime);
 
 		isSaving.value = true;
 		saveError.value = '';
@@ -238,11 +248,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 						await scheduleCampaign({
 							campaignId: campaignId.value,
 							scheduledAt: scheduledDateTime.getTime(),
-							useRecipientTimezone: useRecipientTimezone.value,
-							scheduledHour: useRecipientTimezone.value ? scheduledDateTime.getHours() : undefined,
-							scheduledMinute: useRecipientTimezone.value
-								? scheduledDateTime.getMinutes()
-								: undefined,
+							...timingArgs,
 						})
 					).ok
 				) {
@@ -254,11 +260,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 						await rescheduleCampaign({
 							campaignId: campaignId.value,
 							scheduledAt: scheduledDateTime.getTime(),
-							useRecipientTimezone: useRecipientTimezone.value,
-							scheduledHour: useRecipientTimezone.value ? scheduledDateTime.getHours() : undefined,
-							scheduledMinute: useRecipientTimezone.value
-								? scheduledDateTime.getMinutes()
-								: undefined,
+							...timingArgs,
 						})
 					).ok
 				) {
@@ -267,11 +269,13 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 			}
 
 			showToast(
-				useRecipientTimezone.value
+				sendTiming.value.mode === 'local'
 					? t('shared.useCampaignActions.toasts.scheduledRecipientTimezone', {
 							time: scheduledTime.value,
 						})
-					: t('shared.useCampaignActions.toasts.scheduled')
+					: sendTiming.value.mode === 'optimized'
+						? t('shared.useCampaignActions.toasts.scheduledOptimized')
+						: t('shared.useCampaignActions.toasts.scheduled')
 			);
 
 			onSaved?.();
@@ -351,7 +355,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		scheduledDate,
 		scheduledTime,
 		scheduledStartAt,
-		useRecipientTimezone,
+		sendTiming,
 		initializeSchedule,
 		handleSave,
 		handleSendNow,

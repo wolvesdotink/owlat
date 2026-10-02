@@ -45,6 +45,7 @@ import { counterTables } from './schema/counters';
 import { answerCatchUpTables } from './schema/answerCatchUp';
 import { migrationRunTables } from './schema/migrationRuns';
 import { emailCoeditingTables } from './schema/emailCoediting';
+import { imapServerTables } from './schema/imapServers';
 
 // Note: Team invites are now handled by BetterAuth organization plugin's invitation table
 
@@ -95,4 +96,5 @@ export default defineSchema({
 	...answerCatchUpTables,
 	...migrationRunTables,
 	...emailCoeditingTables,
+	...imapServerTables,
 });

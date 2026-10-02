@@ -19,6 +19,7 @@ import { recordMessageCounters } from '../messageCounters';
 import { recordFolderMembership } from '../folderMembership';
 import { copyMessageBody } from '../../lib/messageBodyStore';
 import { recordRemoteChanges, type RemoteChange } from '../external/remoteOps';
+import { assertImapWireSupported } from './serverRegistry';
 
 /**
  * COPY — clones a message into another folder of the SAME mailbox.
@@ -288,8 +289,14 @@ export const expungeFolder = internalMutation({
 		uidSet: v.optional(v.array(v.number())),
 		beforeUid: v.optional(v.number()),
 		nextSequenceNumber: v.optional(v.number()),
+		// The caller's wire version (ADR-0063). `sequenceNumbers` and
+		// `nextSequenceNumber` are the next IMAP contract to be removed; the
+		// removing PR raises the minimum, and this gate refuses an older caller
+		// before the page deletes anything.
+		imapWireVersion: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
+		assertImapWireSupported(args.imapWireVersion);
 		const folder = await ctx.db.get(args.folderId);
 		if (!folder) return { sequenceNumbers: [], modseq: 0, done: true };
 
@@ -366,8 +373,13 @@ export const expungeFolder = internalMutation({
 
 		const done = page.length < batchSize;
 		return {
-			// This page was walked in descending UID/sequence order. The IMAP bridge
-			// aggregates pages in that same order and can emit the values directly.
+			// This page was walked in descending UID/sequence order. A v0.6.6 IMAP
+			// server emits these directly, and its `* n EXPUNGE` lines are the only
+			// way its client learns of the deletions, so they stay while such a
+			// server can still run against this backend (the containers update
+			// after `convex deploy`). Later servers number `uids` against their
+			// client's sequence view and no longer send `nextSequenceNumber`, so
+			// for them these count from the folder's total and go unread.
 			sequenceNumbers: expungedSequences,
 			// The same messages by UID, in the same order. The IMAP server numbers
 			// them against the sequence view its client holds, which can differ from

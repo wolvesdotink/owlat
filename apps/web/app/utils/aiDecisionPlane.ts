@@ -129,13 +129,20 @@ export function shouldSendDecisionConfig(state: DecisionFormSnapshot): boolean {
  *
  *  • `languageBacked` — the selected adapter is the language model, which
  *    returns degenerate probabilities and is stamped `calibrated: false`.
+ *  • `localUncalibrated` — the local engine returns a real distribution, but
+ *    one nobody has calibrated, so it is stamped `calibrated: false` too.
  *  • `keyMissing`     — a keyed adapter is selected with no key we can see, so
  *    resolution degrades to the language plane (unless the deployment supplies
  *    one through its environment, which a query cannot tell us).
  *  • `breakerOpen`    — the plane has been failing and the breaker has cut it.
  *  • `testFailed`     — the last key test came back with an error.
  */
-export type DecisionDegradedReason = 'languageBacked' | 'keyMissing' | 'breakerOpen' | 'testFailed';
+export type DecisionDegradedReason =
+	| 'languageBacked'
+	| 'localUncalibrated'
+	| 'keyMissing'
+	| 'breakerOpen'
+	| 'testFailed';
 
 /** What the card needs to know to decide the two questions below. */
 export interface DecisionHealthInput {
@@ -155,7 +162,8 @@ export interface DecisionHealthInput {
 export function decisionDegradedReasons(input: DecisionHealthInput): DecisionDegradedReason[] {
 	const reasons: DecisionDegradedReason[] = [];
 	const meta = decisionProviderMeta(input.kind);
-	if (meta?.calibrated !== true) reasons.push('languageBacked');
+	if (meta?.calibrated !== true)
+		reasons.push(meta?.isLocal ? 'localUncalibrated' : 'languageBacked');
 	else if (!input.hasStoredKey) reasons.push('keyMissing');
 	if (input.breakerOpen === true) reasons.push('breakerOpen');
 	if (input.lastTestFailed === true) reasons.push('testFailed');

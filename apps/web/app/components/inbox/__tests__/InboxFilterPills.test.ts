@@ -14,9 +14,9 @@ beforeAll(() => {
  */
 const counts = { open: 4, waiting: 2, snoozed: 1, resolved: 120, waitingOver24h: 1, cap: 100 };
 
-function mountPills() {
+function mountPills(extra: Record<string, unknown> = {}) {
 	return mount(InboxFilterPills, {
-		props: { modelValue: 'open', assignee: 'anyone', counts },
+		props: { modelValue: 'open', assignee: 'anyone', counts, ...extra },
 		global: { plugins: [createTestI18n()] },
 	});
 }
@@ -37,5 +37,23 @@ describe('InboxFilterPills', () => {
 		await assignee.findAll('button')[1]!.trigger('click');
 		expect(wrapper.emitted('update:assignee')?.[0]).toEqual(['me']);
 		expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+	});
+
+	it('offers Mentions with the unread count, as a view of its own', async () => {
+		const wrapper = mountPills({ unreadMentions: 2 });
+		const pill = wrapper.get('[data-testid="inbox-mentions-filter"]');
+		expect(pill.text()).toBe('Mentions2');
+		await pill.trigger('click');
+		expect(wrapper.emitted('update:mentions')?.[0]).toEqual([true]);
+	});
+
+	it('while Mentions is on, presses no tab, hides assignment, and a tab leaves it', async () => {
+		const wrapper = mountPills({ mentions: true });
+		const tabs = wrapper.get('[role="group"]').findAll('button');
+		expect(tabs.every((tab) => tab.attributes('aria-pressed') === 'false')).toBe(true);
+		expect(wrapper.find('[data-testid="inbox-assignee-filter"]').exists()).toBe(false);
+		await tabs[1]!.trigger('click');
+		expect(wrapper.emitted('update:mentions')?.[0]).toEqual([false]);
+		expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['waiting']);
 	});
 });

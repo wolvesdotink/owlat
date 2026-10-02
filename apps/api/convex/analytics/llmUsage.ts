@@ -44,6 +44,8 @@ export interface LlmUsageTags {
 	readonly isCalibrated?: boolean;
 	/** Upstream pushed back: 429, or 529 (their overload code). */
 	readonly isThrottled?: boolean;
+	/** Ran on the operator's own hardware: priced at zero and labelled `Local`. */
+	readonly isLocalEngine?: boolean;
 }
 
 /**
@@ -63,6 +65,7 @@ export const record = internalMutation({
 		isFallback: v.optional(v.boolean()),
 		isCalibrated: v.optional(v.boolean()),
 		isThrottled: v.optional(v.boolean()),
+		isLocalEngine: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		const tags: LlmUsageTags = {
@@ -71,6 +74,7 @@ export const record = internalMutation({
 			isFallback: args.isFallback,
 			isCalibrated: args.isCalibrated,
 			isThrottled: args.isThrottled,
+			isLocalEngine: args.isLocalEngine,
 		};
 		const usage = args.tokenUsage;
 		if (!usage && args.plane === undefined) return;
@@ -103,13 +107,15 @@ export async function insertLlmUsage(
 		promptTokens: tokenUsage.promptTokens,
 		completionTokens: tokenUsage.completionTokens,
 		totalTokens: tokenUsage.totalTokens,
-		costUsd: estimateCostUsd(modelUsed, tokenUsage),
+		// A local engine bills nothing, whatever its model id would price at.
+		costUsd: tags?.isLocalEngine === true ? 0 : estimateCostUsd(modelUsed, tokenUsage),
 		createdAt: Date.now(),
 		plane: tags?.plane,
 		requestId: tags?.requestId,
 		isFallback: tags?.isFallback,
 		isCalibrated: tags?.isCalibrated,
 		isThrottled: tags?.isThrottled,
+		isLocalEngine: tags?.isLocalEngine,
 	});
 }
 
@@ -175,6 +181,7 @@ export async function recordDecisionSpend(
 		isFallback: tags.isFallback,
 		isCalibrated: tags.isCalibrated,
 		isThrottled: tags.isThrottled,
+		isLocalEngine: tags.isLocalEngine,
 	});
 }
 
@@ -248,8 +255,9 @@ export const getSpendByFeature = adminQuery({
  * admin who switches or splits providers reads spend per backend (OpenAI vs
  * Anthropic vs a local model vs OpenRouter) — complementing the per-feature
  * view above. The provider is derived from each row's recorded model id
- * ({@link providerLabelForModel}); no schema column is needed, so this works for
- * every historical row too.
+ * ({@link providerLabelForModel}), so it works for every historical row too —
+ * except for a row the local engine answered, which says so itself
+ * (`isLocalEngine`) because its model id may be anything at all.
  */
 export const getSpendByProvider = adminQuery({
 	args: {
@@ -259,7 +267,9 @@ export const getSpendByProvider = adminQuery({
 		const hoursBack = readHoursBack(args.hoursBack);
 		const organizationId = await activeLlmOrganizationId(ctx);
 		const events = await recentUsageEvents(ctx, hoursBack, organizationId);
-		const { groups, totalCostUsd } = groupSpend(events, (e) => providerLabelForModel(e.modelUsed));
+		const { groups, totalCostUsd } = groupSpend(events, (e) =>
+			e.isLocalEngine === true ? 'Local' : providerLabelForModel(e.modelUsed)
+		);
 		const providers = groups.map(({ key, ...totals }) => ({ provider: key, ...totals }));
 		return { providers, totalCostUsd, hoursBack };
 	},

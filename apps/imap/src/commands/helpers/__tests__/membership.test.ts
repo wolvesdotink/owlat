@@ -7,7 +7,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getFunctionName } from 'convex/server';
 import type { ConvexClient } from '../../../convex.js';
-import { forgetCachedMemberships, loadCurrentUids } from '../membership.js';
+import {
+	forgetCachedMemberships,
+	loadCurrentUids,
+	MembershipUnsettledError,
+} from '../membership.js';
 import { membershipDelta } from '../sequenceView.js';
 
 // convex/server declares AnyFunctionReference without exporting it.
@@ -130,15 +134,62 @@ describe('loadCurrentUids', () => {
 		expect(f.counts.membership).toBe(calls + 1);
 	});
 
-	it('answers from the listing when the folder never holds still', async () => {
+	it('retries a torn walk after a backoff until the folder holds still', async () => {
+		vi.useFakeTimers();
+		try {
+			const f = folder(range(1, 50), 'ready', 4, 3);
+			let pages = 0;
+			f.setBeforeRead((name) => {
+				if (!name.endsWith(':folderMembershipPage')) return;
+				pages += 1;
+				// A delivery lands between the two pages of each of the first three walks.
+				if (pages <= 6 && pages % 2 === 0) f.change(range(1, 50 + pages / 2));
+			});
+			const read = loadCurrentUids(f.convex, 'f1');
+			await vi.runAllTimersAsync();
+			expect(await read).toEqual(range(1, 53));
+			expect(f.counts.listing).toBe(0);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('fails instead of answering from the listing when the folder never holds still', async () => {
+		vi.useFakeTimers();
+		try {
+			const f = folder(range(1, 50), 'ready', 4, 3);
+			let n = 0;
+			f.setBeforeRead((name) => {
+				if (name.endsWith(':folderMembershipPage')) f.change(range(1, 50 + (n += 1)));
+			});
+			const read = loadCurrentUids(f.convex, 'f1');
+			const failed = expect(read).rejects.toBeInstanceOf(MembershipUnsettledError);
+			await vi.runAllTimersAsync();
+			await failed;
+			// Six walks of two pages each, and not one full-document listing.
+			expect(f.counts).toMatchObject({ membership: 12, listing: 0, listed: 0 });
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('stops waiting between walks once the command is aborted', async () => {
 		const f = folder(range(1, 50), 'ready', 4, 3);
-		let n = 0;
+		const controller = new AbortController();
+		let pages = 0;
 		f.setBeforeRead((name) => {
-			if (name.endsWith(':folderMembershipPage')) f.change(range(1, 50 + (n += 1)));
+			if (!name.endsWith(':folderMembershipPage')) return;
+			pages += 1;
+			if (pages === 2) {
+				f.change(range(1, 51));
+				// The connection goes while the read waits to walk again.
+				setTimeout(() => controller.abort(new Error('connection closed')), 0);
+			}
 		});
-		const uids = await loadCurrentUids(f.convex, 'f1');
-		expect(uids.length).toBeGreaterThanOrEqual(50);
-		expect(f.counts.listing).toBe(1);
+		await expect(loadCurrentUids(f.convex, 'f1', controller.signal)).rejects.toThrow(
+			'connection closed'
+		);
+		expect(f.counts.membership).toBe(2);
 	});
 
 	it('mid-backfill, caches a listing only if the version held across its pages', async () => {

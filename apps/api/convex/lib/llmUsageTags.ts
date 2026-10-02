@@ -4,7 +4,7 @@
  * the way `tokenUsageValidator` is — a row shape and the code that fills it
  * should not be able to drift apart.
  *
- * All five are optional and none is indexed, which is the whole design:
+ * All six are optional and none is indexed, which is the whole design:
  *
  *   • every row written before the decision plane existed is language-plane
  *     spend, so an absent `plane` READS AS `language` and nothing migrates;
@@ -55,4 +55,11 @@ export const llmUsageTagFields = {
 	isCalibrated: v.optional(v.boolean()),
 	/** Upstream pushed back: 429, or 529 (their overload code). */
 	isThrottled: v.optional(v.boolean()),
+	/**
+	 * The attempt ran on an engine on the operator's own hardware (the local
+	 * decision adapter). Such a row costs nothing and files under `Local`,
+	 * whatever checkpoint answered: the model id cannot say where a model ran,
+	 * and an operator's own fine-tune has an id no price table will ever know.
+	 */
+	isLocalEngine: v.optional(v.boolean()),
 };

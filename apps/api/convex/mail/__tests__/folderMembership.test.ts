@@ -687,6 +687,7 @@ describe('membership follows folders and IMAP results', () => {
 		});
 		const result = await w.t.mutation(internal.mail.imap.move.expungeFolder, { folderId });
 		expect(result.uids).toEqual([4, 2]);
+		// Still returned for a v0.6.6 IMAP server, which numbers from them.
 		expect(result.sequenceNumbers).toEqual([4, 2]);
 	});
 
@@ -721,18 +722,24 @@ describe('membership follows folders and IMAP results', () => {
 		expect(left).toEqual({ state: null, blocks: [] });
 	});
 
-	it('selectFolder leaves the first-unseen count out when asked to', async () => {
+	it('selectFolder returns the first unseen UID and never counts the messages below it', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedMailbox(t);
 		const folderId = await seedFolder(t, mailboxId, 'inbox');
-		await seedMessage(t, mailboxId, { subject: 'one' });
-		const counted = await t.query(internal.mail.imap.session.selectFolder, { folderId });
-		expect(counted?.firstUnseenSeq).toBe(1);
-		const skipped = await t.query(internal.mail.imap.session.selectFolder, {
-			folderId,
-			skipFirstUnseenSeq: true,
+		const ids = [
+			await seedMessage(t, mailboxId, { subject: 'one', flagSeen: true }),
+			await seedMessage(t, mailboxId, { subject: 'two', flagSeen: true }),
+			await seedMessage(t, mailboxId, { subject: 'three' }),
+		];
+		await t.run(async (ctx) => {
+			for (const [i, id] of ids.entries()) await ctx.db.patch(id, { uid: i + 1 });
 		});
-		expect(skipped?.firstUnseenUid).toBe(1);
-		expect(skipped?.firstUnseenSeq).toBeUndefined();
+		// A v0.6.6 IMAP server sends no flag; every later one sends it. Both are
+		// accepted, and neither gets a count: the server numbers the UID itself.
+		for (const args of [{ folderId }, { folderId, skipFirstUnseenSeq: true }]) {
+			const result = await t.query(internal.mail.imap.session.selectFolder, args);
+			expect(result?.firstUnseenUid).toBe(3);
+			expect(result).not.toHaveProperty('firstUnseenSeq');
+		}
 	});
 });

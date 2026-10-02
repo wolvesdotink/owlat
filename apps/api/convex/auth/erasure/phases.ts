@@ -45,6 +45,8 @@ import {
 	eraseChatMentions,
 	eraseInstanceRows,
 	eraseMemberRecords,
+	eraseNoteAuthorship,
+	eraseNoteMentions,
 	eraseSharedMemberships,
 } from './memberPhases';
 import type { MemberPhaseRunner } from './phaseKit';
@@ -74,6 +76,8 @@ const PHASE_RUNNERS: Record<MemberErasurePhase, MemberPhaseRunner> = {
 	chatAuthorship: eraseChatAuthorship,
 	chatMemberships: eraseChatMemberships,
 	chatMentions: eraseChatMentions,
+	noteAuthorship: eraseNoteAuthorship,
+	noteMentions: eraseNoteMentions,
 };
 
 export const FIRST_MEMBER_ERASURE_PHASE: MemberErasurePhase = MEMBER_ERASURE_PHASES[0];
@@ -184,6 +188,14 @@ export async function remainingMemberData(
 			() =>
 				ctx.db
 					.query('chatMessages')
+					.withIndex('by_author', (q) => q.eq('authorId', authUserId))
+					.first(),
+		],
+		[
+			'threadNotes',
+			() =>
+				ctx.db
+					.query('threadNotes')
 					.withIndex('by_author', (q) => q.eq('authorId', authUserId))
 					.first(),
 		],
