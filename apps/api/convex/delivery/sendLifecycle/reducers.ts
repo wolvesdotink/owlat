@@ -3,6 +3,7 @@ import { automatedOpenReason } from '../automatedOpens';
 import { automatedClickReason } from '../automatedClicks';
 import { transportOutcomeEffect, type Effect } from './effects';
 import { contactEmailOf, nonCampaignActivityProvenance } from './lookups';
+import { sendTimeEngagementEffects, sendTimeGroupOf } from './sendTimeEffects';
 import type {
 	EmailSendDoc,
 	ReducerResult,
@@ -329,7 +330,9 @@ export function reduceOpened(
 			kind: 'campaign_stats_opened',
 			campaignId: (send as EmailSendDoc).campaignId,
 			at: args.at,
+			...sendTimeGroupOf(send, ref),
 		});
+		effects.push(...sendTimeEngagementEffects(send, ref, 'open', args.at, args.agent));
 	}
 	if (isFirstOpen) {
 		// Unique opens — drives the dashboard openRate denominator.
@@ -433,7 +436,9 @@ export function reduceClicked(
 			kind: 'campaign_stats_clicked',
 			campaignId: (send as EmailSendDoc).campaignId,
 			at: args.at,
+			...sendTimeGroupOf(send, ref),
 		});
+		effects.push(...sendTimeEngagementEffects(send, ref, 'click', args.at));
 	}
 	if (isFirstClick) {
 		// Unique clicks — drives the dashboard clickRate denominator.

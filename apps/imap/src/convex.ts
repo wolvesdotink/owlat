@@ -138,6 +138,14 @@ export interface ExpungeResult {
 	readonly beforeUid?: number;
 }
 
+/** The wire-version handshake (`mail/imap/serverRegistry:report`, ADR-0063). */
+export interface ImapServerReportResult {
+	readonly backendWireVersion: number;
+	readonly minSupportedWireVersion: number;
+	readonly compatible: boolean;
+	readonly reason?: string;
+}
+
 /** APPEND: what `[APPENDUID …]` reports. */
 export interface AppendResult {
 	readonly messageId: string;
@@ -203,14 +211,31 @@ type AppendArgs = {
 export const fn = {
 	verifyAppPassword: makeFunctionReference<
 		'action',
-		{ address: string; password: string; scope: 'imap' | 'smtp'; ip?: string },
+		{
+			address: string;
+			password: string;
+			scope: 'imap' | 'smtp';
+			ip?: string;
+			imapWireVersion?: number;
+		},
 		VerifyAppPasswordResult | null
 	>('mail/appPasswords:verify'),
 	touchAppPassword: makeFunctionReference<
 		'mutation',
-		{ appPasswordId: string; ip?: string; userAgent?: string },
+		{ appPasswordId: string; ip?: string; userAgent?: string; imapWireVersion?: number },
 		null
 	>('mail/appPasswords:touch'),
+	reportServer: makeFunctionReference<
+		'mutation',
+		{
+			instanceId: string;
+			hostLabel: string;
+			owlatVersion: string;
+			wireVersion: number;
+			startedAt: number;
+		},
+		ImapServerReportResult
+	>('mail/imap/serverRegistry:report'),
 	listFolders: makeFunctionReference<'query', { mailboxId: string }, FolderRow[]>(
 		'mail/imap/session:listFolders'
 	),
@@ -268,7 +293,7 @@ export const fn = {
 	),
 	expungeFolder: makeFunctionReference<
 		'mutation',
-		{ folderId: string; uidSet?: number[]; beforeUid?: number },
+		{ folderId: string; uidSet?: number[]; beforeUid?: number; imapWireVersion?: number },
 		ExpungeResult
 	>('mail/imap/move:expungeFolder'),
 	discardCopies: makeFunctionReference<

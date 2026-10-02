@@ -7,6 +7,7 @@ import CampaignAutomatedEngagementNote from '~/components/campaigns/CampaignAuto
 import CampaignFunnel from '~/components/campaigns/CampaignFunnel.vue';
 import CampaignReportHeadline from '~/components/campaigns/CampaignReportHeadline.vue';
 import CampaignReportComparison from '~/components/campaigns/CampaignReportComparison.vue';
+import CampaignSendTimeReport from '~/components/campaigns/CampaignSendTimeReport.vue';
 import { selectPreviousComparable } from '~/utils/campaignReport';
 import { formatNumber } from '~/utils/formatters';
 
@@ -494,6 +495,13 @@ const loadPrevClicked = () => {
 						@select-winner="handleSelectWinner"
 					/>
 				</div>
+
+				<!-- Send-time optimization: optimized contacts against the comparison group -->
+				<CampaignSendTimeReport
+					v-if="campaign.sendTimeOptimization && hasSendStarted"
+					class="mb-8"
+					:campaign="campaign"
+				/>
 
 				<!-- Opens Timeline -->
 				<div class="card p-4 sm:p-6 mb-8">

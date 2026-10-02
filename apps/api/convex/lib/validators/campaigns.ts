@@ -19,6 +19,10 @@ import { v } from 'convex/values';
  *   followed. Those requests never count into `statsClicked`; a later reader
  *   click of the same send still does, so the two can overlap. See
  *   `delivery/automatedClicks.ts`.
+ * - `statsSendTime{Optimized,Holdout}{Delivered,Opened,Clicked}`: the same
+ *   delivered / reader-opened / reader-clicked counts split by the send-time
+ *   optimization arm (`emailSends.sendTimeGroup`), for the report's
+ *   comparison. Zero unless the campaign was optimized.
  */
 export const CAMPAIGN_SHARDED_STAT_FIELDS = [
 	'statsSent',
@@ -31,6 +35,12 @@ export const CAMPAIGN_SHARDED_STAT_FIELDS = [
 	'statsBounced',
 	'statsHardBounced',
 	'statsSoftBounced',
+	'statsSendTimeOptimizedDelivered',
+	'statsSendTimeOptimizedOpened',
+	'statsSendTimeOptimizedClicked',
+	'statsSendTimeHoldoutDelivered',
+	'statsSendTimeHoldoutOpened',
+	'statsSendTimeHoldoutClicked',
 ] as const;
 
 export type CampaignStatField = (typeof CAMPAIGN_SHARDED_STAT_FIELDS)[number];
