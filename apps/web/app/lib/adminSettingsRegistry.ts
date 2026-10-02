@@ -20,39 +20,20 @@
  * `__tests__/adminSettingsRegistry.test.ts`, which also globs
  * `pages/dashboard/admin/` and fails when a page on disk has no entry.
  */
-import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
+import {
+	anyFlag,
+	flag,
+	platformOnly,
+	rampStarted,
+	withPlugins,
+	type AdminEnvironment,
+	type AdminGate,
+} from './adminSettingsGates';
+
+export type { AdminEnvironment, AdminGate } from './adminSettingsGates';
 
 /** Where the Workspace settings tree lives. Everything under it is registry-owned. */
 export const ADMIN_ROOT = '/dashboard/admin';
-
-/**
- * The ambient inputs an admin gate reads. Role is deliberately absent: the whole
- * tree already sits behind the `admin` route middleware, so a gate here answers
- * "does this deployment have this page" rather than "may this person open it".
- */
-export interface AdminEnvironment {
-	isFeatureEnabled(flag: FeatureFlagKey): boolean;
-	/** Deployment-level tooling (operator console, system, backups). */
-	isPlatformAdmin: boolean;
-	/** This build ships at least one plugin that has settings. */
-	hasPlugins: boolean;
-	/** The delivery ramp has taken over a cell (now, or within decision retention). */
-	hasRampStarted: boolean;
-}
-
-export type AdminGate = (env: AdminEnvironment) => boolean;
-
-const flag =
-	(key: FeatureFlagKey): AdminGate =>
-	(env) =>
-		env.isFeatureEnabled(key);
-const anyFlag =
-	(...keys: readonly FeatureFlagKey[]): AdminGate =>
-	(env) =>
-		keys.some((key) => env.isFeatureEnabled(key));
-const platformOnly: AdminGate = (env) => env.isPlatformAdmin;
-const withPlugins: AdminGate = (env) => env.hasPlugins;
-const rampStarted: AdminGate = (env) => env.hasRampStarted;
 
 /** The groups the rail renders as eyebrows, in this order. */
 export type AdminAreaKey = 'overview' | 'team' | 'delivery' | 'ai' | 'features' | 'system';
@@ -211,6 +192,15 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 		path: `${ADMIN_ROOT}/delivery/deliverability`,
 		titleKey: label('deliverability'),
 		icon: 'lucide:shield-check',
+		area: 'delivery',
+	},
+	{
+		// Who sends as each sending domain, from the DMARC aggregate reports
+		// receivers mail to Owlat's report address.
+		id: 'dmarcReports',
+		path: `${ADMIN_ROOT}/delivery/dmarc`,
+		titleKey: label('dmarcReports'),
+		icon: 'lucide:file-search',
 		area: 'delivery',
 	},
 	{

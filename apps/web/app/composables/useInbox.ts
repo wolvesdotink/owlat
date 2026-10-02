@@ -51,13 +51,6 @@ export function useInbox(gate?: Ref<boolean>) {
 			if (next !== mentions.value) mentions.value = next;
 		}
 	);
-	watch(mentions, (on) => {
-		if (parseInboxMentions(route.query['mentions']) === on) return;
-		const query = { ...route.query };
-		if (on) query['mentions'] = '1';
-		else delete query['mentions'];
-		void router.replace({ query });
-	});
 
 	watch(
 		() => [route.query['filter'], route.query['assignee']] as const,
@@ -68,20 +61,26 @@ export function useInbox(gate?: Ref<boolean>) {
 			if (nextAssignee !== assignee.value) assignee.value = nextAssignee;
 		}
 	);
-	watch([filter, assignee], ([nextFilter, nextAssignee]) => {
+	// One writer for all three keys: picking a status tab from the Mentions
+	// view changes `mentions` and `filter` in the same tick, and two separate
+	// `router.replace` calls would each start from the not-yet-updated query, so
+	// the second would put back what the first removed.
+	watch([filter, assignee, mentions], ([nextFilter, nextAssignee, nextMentions]) => {
 		const desired = {
 			filter: inboxFilterToQuery(nextFilter),
 			assignee: inboxAssigneeToQuery(nextAssignee),
+			mentions: nextMentions ? '1' : undefined,
 		};
 		const first = (raw: unknown) => (Array.isArray(raw) ? raw[0] : raw) ?? undefined;
 		if (
 			first(route.query['filter']) === desired.filter &&
-			first(route.query['assignee']) === desired.assignee
+			first(route.query['assignee']) === desired.assignee &&
+			parseInboxMentions(route.query['mentions']) === nextMentions
 		) {
 			return;
 		}
 		const query = { ...route.query };
-		for (const key of ['filter', 'assignee'] as const) {
+		for (const key of ['filter', 'assignee', 'mentions'] as const) {
 			const value = desired[key];
 			if (value === undefined) delete query[key];
 			else query[key] = value;

@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { isValidEmail } from '@owlat/shared';
 import { needsSendConfirmation, SEND_UNDO_WINDOW_MS } from '~/lib/campaignSend';
 import type { ReviewSchedule } from '~/lib/campaignCompose';
+import { readStoredBlocks } from '~/lib/presendChecks/blockLocator';
 import { parseScheduledStart } from '~/lib/campaignSchedule';
 import { sendTimingFromCampaign, sendTimingScheduleArgs, type SendTiming } from '~/lib/sendTiming';
 
@@ -36,6 +37,10 @@ interface CampaignData {
 	 * blocks the send), `undefined` while that is not known.
 	 */
 	emailBodyHtml?: string | null;
+	/** The attached email's stored Blocks (JSON), for the pre-send checks' "Show me". */
+	emailContent?: string;
+	/** Topic campaigns get the unsubscribe footer; segment campaigns do not. */
+	audienceKind?: 'topic' | 'segment';
 	// A/B Test data
 	abTestEnabled: boolean;
 	abTestType: 'subject' | 'content';
@@ -62,8 +67,11 @@ const emit = defineEmits<{
 	editStep: [step: string];
 	complete: [];
 	retryTemplates: [];
-	/** Open the email editor; the schedule comes back with the return link. */
-	editEmail: [schedule: ReviewSchedule | null];
+	/**
+	 * Open the email editor; the schedule comes back with the return link. With
+	 * a Block id the editor opens with that Block selected (pre-send "Show me").
+	 */
+	editEmail: [schedule: ReviewSchedule | null, blockId?: string];
 }>();
 
 const router = useRouter();
@@ -88,9 +96,8 @@ const scheduledStartAt = computed(() =>
 	parseScheduledStart(scheduledDate.value, scheduledTime.value, Date.now())
 );
 
-const handleEditEmail = () => {
-	emit(
-		'editEmail',
+const handleEditEmail = (blockId?: string) => {
+	const schedule =
 		sendOption.value === 'later'
 			? {
 					date: scheduledDate.value,
@@ -105,8 +112,9 @@ const handleEditEmail = () => {
 							}
 						: {}),
 				}
-			: null
-	);
+			: null;
+	if (blockId) emit('editEmail', schedule, blockId);
+	else emit('editEmail', schedule);
 };
 
 // Test email modal
@@ -201,6 +209,43 @@ const sendBlockedReason = computed(() => {
 
 	return null;
 });
+
+// PRE-SEND CHECKS on the email as it will go out: size, links, images,
+// contrast, the MTA's content screening, the unsubscribe and postal-address
+// rules. They run on arrival and again whenever the HTML, subject or sender
+// changes. Only the refusal above blocks; every check warns, and the send
+// button says "Send anyway" until the current warnings are marked as reviewed.
+const presendSource = computed(() => {
+	const html = props.data.emailBodyHtml;
+	if (!html) return null;
+	return {
+		html,
+		blocks: readStoredBlocks(props.data.emailContent),
+		subject: props.data.campaignSubject,
+		fromEmail: props.data.fromEmail.trim(),
+		...(props.data.audienceKind ? { audienceKind: props.data.audienceKind } : {}),
+		blockedReason: sendBlockedReason.value,
+	};
+});
+const {
+	checks: presendChecks,
+	summary: presendSummary,
+	isChecking: isPresendChecking,
+	run: runPresendChecks,
+} = usePresendChecks(() => presendSource.value);
+watch(
+	() => presendSource.value !== null,
+	(ready) => {
+		if (ready) void runPresendChecks();
+	},
+	{ immediate: true }
+);
+/** The warnings the sender marked as reviewed; a new warning un-reviews them. */
+const reviewedWarnings = ref<string | null>(null);
+const warningsReviewed = computed(
+	() =>
+		presendSummary.value.warnings === 0 || reviewedWarnings.value === presendSummary.value.signature
+);
 
 // Get min date for scheduling
 const getMinScheduleDateTime = () => {
@@ -492,7 +537,7 @@ const variantBTemplateName = computed(() => {
 							size="sm"
 							class="mt-3"
 							data-testid="review-edit-email"
-							@click="handleEditEmail"
+							@click="handleEditEmail()"
 						>
 							<template #iconLeft><Icon name="lucide:pen-line" class="w-4 h-4" /></template>
 							{{ t('components.campaigns.steps.reviewStep.editEmail') }}
@@ -572,6 +617,18 @@ const variantBTemplateName = computed(() => {
 				</div>
 			</div>
 		</div>
+
+		<CampaignsPresendChecksPanel
+			v-if="presendSource"
+			:checks="presendChecks"
+			:summary="presendSummary"
+			:is-checking="isPresendChecking"
+			acknowledgeable
+			:acknowledged="warningsReviewed"
+			@retry="runPresendChecks"
+			@acknowledge="reviewedWarnings = presendSummary.signature"
+			@show-block="handleEditEmail"
+		/>
 
 		<!--
 			Test Email Section — ABOVE the send controls, because sending a test is
@@ -785,9 +842,13 @@ const variantBTemplateName = computed(() => {
 						? sendOption === 'now'
 							? t('components.campaigns.steps.reviewStep.sending')
 							: t('components.campaigns.steps.reviewStep.scheduling')
-						: sendOption === 'now'
-							? t('components.campaigns.steps.reviewStep.sendCampaign')
-							: t('components.campaigns.steps.reviewStep.scheduleCampaign')
+						: !warningsReviewed
+							? sendOption === 'now'
+								? t('components.campaigns.steps.reviewStep.sendAnyway')
+								: t('components.campaigns.steps.reviewStep.scheduleAnyway')
+							: sendOption === 'now'
+								? t('components.campaigns.steps.reviewStep.sendCampaign')
+								: t('components.campaigns.steps.reviewStep.scheduleCampaign')
 				}}
 			</UiButton>
 		</div>

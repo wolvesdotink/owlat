@@ -107,6 +107,11 @@ export type EnvKey =
 	// Unset ⇒ no `rua=` tag (Owlat does not provision a per-customer
 	// `dmarc@<domain>` mailbox, so reports would otherwise go unread).
 	| 'MTA_DMARC_RUA'
+	// The address Owlat reads DMARC aggregate reports at, routed by the MTA to
+	// `/webhooks/mta-dmarc-report`. Unset ⇒ `dmarc-reports@<MTA_RETURN_PATH_DOMAIN>`;
+	// `off` ⇒ no address (records fall back to MTA_DMARC_RUA alone). Resolved by
+	// `@owlat/shared/dmarcReportAddress`, the same resolver the MTA uses.
+	| 'MTA_DMARC_REPORT_ADDRESS'
 	// BIMI — OPTIONAL IN EVERY SENSE. The domain wizard offers a BIMI
 	// record only once the domain's DMARC is at `p=quarantine` or stricter, and
 	// only once a logo is known; unset ⇒ the wizard states that BIMI exists and

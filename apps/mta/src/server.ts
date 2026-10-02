@@ -142,8 +142,9 @@ export function createApp(
 	// IP reputation dashboard (master-key protected internally)
 	app.route('/ip-reputation', createIpReputationRoutes(redis, config));
 
-	// Attachment scanning (ClamAV + file type validation, master-key protected)
-	app.route('/scan', createScanRoutes(config));
+	// Attachment scanning (ClamAV + file type validation) and the content
+	// screening preview (master-key protected)
+	app.route('/scan', createScanRoutes(config, redis));
 
 	// Root endpoint
 	app.get('/', (c) =>

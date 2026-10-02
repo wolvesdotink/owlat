@@ -1,3 +1,4 @@
+import { canonicalJson } from '@owlat/shared/canonicalJson';
 import {
 	MAX_COEDIT_OPS_PER_BATCH,
 	applyCoeditOps,
@@ -35,6 +36,13 @@ import {
  * the edit lease, or opened the inline text editor, whose text reaches the
  * blocks only when it closes).
  *
+ * The server may store a write differently from how it was sent (it sanitizes
+ * text HTML and normalizes numeric styles), or someone may overwrite it right
+ * after. Once this tab's write is acknowledged, `settle` makes the canvas show
+ * what the server holds for it, unless the tab changed it again meanwhile;
+ * otherwise the difference would read as an unsent edit and go out again, and
+ * again.
+ *
  * Pure: no Vue, no Convex. `useEmailCoediting` wires it to both.
  */
 
@@ -60,6 +68,31 @@ export interface CoeditOutgoing<B extends CoeditBlock> {
 	baseVersion: number;
 }
 
+/** What `key` holds in `doc`: a root block, a field value, or undefined. */
+function valueAt<B extends CoeditBlock>(doc: CoeditDocument<B>, key: CoeditKey): unknown {
+	if (key.startsWith('field:')) return doc.fields[key.slice('field:'.length)];
+	const id = key.slice('block:'.length);
+	return doc.blocks.find((block) => block.id === id);
+}
+
+/** What an operation writes at its key (undefined for a delete). */
+function writtenValue<B extends CoeditBlock>(op: CoeditOp<B>): unknown {
+	switch (op.kind) {
+		case 'insert':
+		case 'update':
+			return op.block;
+		case 'field':
+			return op.value;
+		default:
+			return undefined;
+	}
+}
+
+/** A value frozen as text (the canvas edits some blocks in place); null for nothing. */
+function snapshot(value: unknown): string | null {
+	return value === undefined ? null : canonicalJson(value);
+}
+
 export class CoeditSync<B extends CoeditBlock> {
 	private shadow: CoeditServerState<B> | null = null;
 	/** Per pending key, the version the tab saw it at before editing it. */
@@ -68,6 +101,10 @@ export class CoeditSync<B extends CoeditBlock> {
 	private isInFlight = false;
 	private sentKeys: CoeditKey[] = [];
 	private sentTo: string | null = null;
+	/** What the batch in flight wrote, per key (`snapshot`). */
+	private sentValues = new Map<CoeditKey, string | null>();
+	/** The last acknowledged batch: the version it produced and what it wrote. */
+	private landed: { version: number; values: Map<CoeditKey, string | null> } | null = null;
 	/** No send until the shadow reaches this version (it holds the last send). */
 	private awaitVersion = 0;
 	private adoptNext = false;
@@ -148,9 +185,14 @@ export class CoeditSync<B extends CoeditBlock> {
 	sent(batch: { sessionId: string; ops: readonly CoeditOutgoing<B>[] }): void {
 		this.isInFlight = true;
 		this.sentTo = batch.sessionId;
-		this.sentKeys = batch.ops
-			.map(({ op }) => coeditOpKey(op))
-			.filter((key): key is CoeditKey => key !== null);
+		this.sentKeys = [];
+		this.sentValues = new Map();
+		for (const { op } of batch.ops) {
+			const key = coeditOpKey(op);
+			if (key === null) continue;
+			this.sentKeys.push(key);
+			this.sentValues.set(key, snapshot(writtenValue(op)));
+		}
 	}
 
 	/** The server applied the batch as `version`. */
@@ -160,10 +202,13 @@ export class CoeditSync<B extends CoeditBlock> {
 		this.sentTo = null;
 		// A batch that went to a session this tab has since left says nothing
 		// about the new one's versions.
+		const values = this.sentValues;
+		this.sentValues = new Map();
 		if (!isCurrentSession) {
 			this.sentKeys = [];
 			return;
 		}
+		this.landed = { version, values };
 		this.awaitVersion = Math.max(this.awaitVersion, version);
 		// Further edits to these keys build on this tab's own write.
 		for (const key of this.sentKeys) {
@@ -177,6 +222,43 @@ export class CoeditSync<B extends CoeditBlock> {
 		this.isInFlight = false;
 		this.sentTo = null;
 		this.sentKeys = [];
+		this.sentValues = new Map();
+	}
+
+	/**
+	 * Once the server state includes the last acknowledged batch: the
+	 * operations that make the canvas (`local`) show what the server stored for
+	 * each key that batch wrote, where that differs from what was sent and the
+	 * tab has not changed the key since. Apply them like other people's edits.
+	 * Empty until the server state has caught up, and after that once.
+	 */
+	settle(local: CoeditDocument<B>): CoeditOp<B>[] {
+		const shadow = this.shadow;
+		const landed = this.landed;
+		if (shadow === null || landed === null || shadow.version < landed.version) return [];
+		this.landed = null;
+		const ops: CoeditOp<B>[] = [];
+		for (const [key, sent] of landed.values) {
+			if (snapshot(valueAt(local, key)) !== sent) continue;
+			const stored = valueAt(shadow.doc, key);
+			if (snapshot(stored) === sent) continue;
+			this.pendingBase.delete(key);
+			if (key.startsWith('field:')) {
+				if (stored !== undefined) {
+					ops.push({ kind: 'field', field: key.slice('field:'.length), value: stored });
+				}
+				continue;
+			}
+			const blockId = key.slice('block:'.length);
+			if (stored === undefined) {
+				ops.push({ kind: 'delete', blockId });
+				continue;
+			}
+			const at = shadow.doc.blocks.findIndex((block) => block.id === blockId);
+			const afterId = at > 0 ? shadow.doc.blocks[at - 1]!.id : null;
+			ops.push({ kind: 'update', block: stored as B, afterId });
+		}
+		return ops;
 	}
 
 	/** Hold the version `key` was seen at from now until `unpin`. */
@@ -202,6 +284,7 @@ export class CoeditSync<B extends CoeditBlock> {
 	private reset(next: CoeditServerState<B>): void {
 		this.shadow = next;
 		this.pendingBase.clear();
+		this.landed = null;
 		for (const key of this.pins.keys()) this.pins.set(key, next.version);
 		this.awaitVersion = 0;
 	}

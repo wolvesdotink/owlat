@@ -265,6 +265,28 @@ describe('sessions.applyOps', () => {
 		).toHaveLength(1);
 	});
 
+	it("refuses a batch sent under another member's tab id", async () => {
+		as('user-a');
+		const t = convexTest(schema, modules);
+		const { target } = await openTemplate(t);
+		await t.mutation(api.emailCoediting.presence.heartbeat, { target, clientId: 'tab-1' });
+
+		// Written as tab-1, the change would never be reported to tab-1 as replaced.
+		as('user-b');
+		const data = await operationError(
+			t.mutation(api.emailCoediting.sessions.applyOps, {
+				target,
+				clientId: 'tab-1',
+				ops: [update(block('a', 'Theirs'), 1)],
+			})
+		);
+		expect(data.category).toBe('forbidden');
+		expect(blocksOf(await t.query(api.emailCoediting.sessions.get, { target }))[0]).toEqual([
+			'a',
+			'Alpha',
+		]);
+	});
+
 	it('refuses a batch that would make the session too large, fields included', async () => {
 		as('user-a');
 		const t = convexTest(schema, modules);
