@@ -43,6 +43,8 @@ const displayRole = computed(() => {
 const {
 	filter,
 	assignee,
+	mentions,
+	unreadMentions,
 	sort,
 	setSort,
 	toggleSort,
@@ -82,8 +84,9 @@ const ACTIVE_WORK_FILTERS = new Set<InboxFilter>(['open', 'waiting']);
 // row and a successful one is undoable for ~8s.
 const { visible: visibleThreads, run: runTriage } = useInboxTriage(threads as Ref<TeamThread[]>);
 
-// The assignee-avatar presence ring, read for the shown rows only.
+// The assignee-avatar presence ring and the note chip, read for the shown rows only.
 const isAssigneePresent = useInboxAssigneePresence(visibleThreads);
+const noteCountOf = useInboxNoteCounts(visibleThreads);
 
 // Org members for the row hover assignee picker (Me / members / Unassign).
 const { members, fetchMembers } = useOrganization();
@@ -175,7 +178,7 @@ async function onSnoozeConfirm(timestamp: number) {
 
 // ── List keyboard: j/k move, Enter opens, i assigns-to-me. Shares the Postbox
 // listbox composable so the conventions match. Reset focus on filter/sort. ──
-const listKey = computed(() => `${filter.value}:${assignee.value}:${sort.value}`);
+const listKey = computed(() => `${filter.value}:${assignee.value}:${sort.value}:${mentions.value}`);
 const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard<TeamThread>({
 	items: visibleThreads,
 	resetKey: listKey,
@@ -196,6 +199,7 @@ const now = useNow({ intervalMs: 60_000 });
 // tab's. The registry holds a KEY, not a sentence — resolve it rather than
 // rendering `shared.inboxFilters.…` at a person.
 const emptyMessage = computed(() => {
+	if (mentions.value) return t('dashboard.inbox.index.empty.mentions');
 	if (assignee.value !== DEFAULT_INBOX_ASSIGNEE && ACTIVE_WORK_FILTERS.has(filter.value)) {
 		return t(`dashboard.inbox.index.empty.${assignee.value}`);
 	}
@@ -207,9 +211,13 @@ const emptyMessage = computed(() => {
 // state — the empty state says so and offers the way back rather than a dead
 // end. The default view (Open, anyone) running empty is inbox zero: good news.
 const isFiltered = computed(
-	() => filter.value !== DEFAULT_INBOX_FILTER || assignee.value !== DEFAULT_INBOX_ASSIGNEE
+	() =>
+		mentions.value ||
+		filter.value !== DEFAULT_INBOX_FILTER ||
+		assignee.value !== DEFAULT_INBOX_ASSIGNEE
 );
 function clearFilters() {
+	mentions.value = false;
 	filter.value = DEFAULT_INBOX_FILTER;
 	assignee.value = DEFAULT_INBOX_ASSIGNEE;
 }
@@ -218,7 +226,7 @@ function clearFilters() {
 // customers have waited on us for more than a day, and a one-tap switch to the
 // order that puts them first.
 const waitingOver24h = computed(() => {
-	if (filter.value !== 'open') return 0;
+	if (filter.value !== 'open' || mentions.value) return 0;
 	return filterCounts.value?.waitingOver24h ?? 0;
 });
 const showOldestFirst = () => setSort('oldest-waiting');
@@ -270,11 +278,18 @@ const showOldestFirst = () => setSort('oldest-waiting');
 		<template v-else>
 			<!-- Filter pills (live counts) + needs-attention sort chip -->
 			<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
-				<InboxFilterPills v-model="filter" v-model:assignee="assignee" :counts="filterCounts" />
+				<InboxFilterPills
+					v-model="filter"
+					v-model:assignee="assignee"
+					v-model:mentions="mentions"
+					:counts="filterCounts"
+					:unread-mentions="unreadMentions"
+				/>
 
 				<!-- The sort chip states the CURRENT order and cycles to the next
 				     one; with three orders a toggle would have had to hide one. -->
 				<button
+					v-if="!mentions"
 					type="button"
 					class="inline-flex items-center gap-1.5 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded px-1.5 py-1"
 					:title="
@@ -358,6 +373,7 @@ const showOldestFirst = () => setSort('oldest-waiting');
 							:can-manage="isAdmin"
 							:now="now"
 							:assignee-present="isAssigneePresent(thread._id)"
+							:note-count="noteCountOf(thread._id)"
 							@assign="assignTo(thread, $event)"
 							@resolve="resolveThread(thread)"
 							@snooze="openSnooze(thread)"

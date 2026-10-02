@@ -29,6 +29,7 @@ import { useFormModal } from '~/composables/useFormModal';
 import { useFormValidation } from '~/composables/useFormValidation';
 import { useInbox } from '~/composables/useInbox';
 import { useInboxAssigneePresence } from '~/composables/useInboxAssigneePresence';
+import { useInboxNoteCounts } from '~/composables/useInboxNoteCounts';
 import { useInboxTriage } from '~/composables/useInboxTriage';
 import { useConfirmModal, useModal } from '~/composables/useModal';
 
@@ -182,6 +183,7 @@ describe('Try again on a failed read refetches it (#1098)', () => {
 			useFormValidation,
 			useInbox,
 			useInboxAssigneePresence,
+			useInboxNoteCounts,
 			useInboxTriage,
 			useModal,
 			usePostboxListKeyboard,

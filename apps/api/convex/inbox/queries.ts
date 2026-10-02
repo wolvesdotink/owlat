@@ -44,7 +44,7 @@ import { openInboundMessageRow, openInboundMessageRows } from '../lib/messageBod
  * admin's list, including the shell sidebar's. The Team Inbox page asks
  * `inbox/presence.ts` `presentAssignees` for its visible rows instead.
  */
-async function enrichThreadRows(
+export async function enrichThreadRows(
 	ctx: QueryCtx,
 	rows: ReadonlyArray<Doc<'conversationThreads'>>,
 	viewerId: string
@@ -462,6 +462,8 @@ export const pendingAssignments = publicQuery({
 		sinceMs: v.optional(v.number()),
 		/** Max notices to return. Defaults to 20. */
 		limit: v.optional(v.number()),
+		/** Include `mention` notices. Absent for clients that predate them. */
+		includeMentions: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		const session = await getBetterAuthSessionWithRole(ctx);
@@ -479,14 +481,17 @@ export const pendingAssignments = publicQuery({
 			.order('desc')
 			.take(limit);
 
-		return rows.map((r) => ({
-			id: r._id,
-			kind: r.kind ?? ('assignment' as const),
-			threadId: r.threadId,
-			inboundMessageId: r.inboundMessageId,
-			subject: r.subject,
-			assignedByName: r.assignedByName,
-			createdAt: r.createdAt,
-		}));
+		return rows
+			.filter((r) => args.includeMentions || r.kind !== 'mention')
+			.map((r) => ({
+				id: r._id,
+				kind: r.kind ?? ('assignment' as const),
+				threadId: r.threadId,
+				inboundMessageId: r.inboundMessageId,
+				noteId: r.noteId,
+				subject: r.subject,
+				assignedByName: r.assignedByName,
+				createdAt: r.createdAt,
+			}));
 	},
 });

@@ -28,6 +28,7 @@ describe('answer scope', () => {
 		expect(answer?.items.map((i) => i.id)).toEqual([
 			'answer.leave',
 			'answer.toggleView',
+			'answer.writeNote',
 			'answer.draftWithAi',
 			'answer.pickAskOption',
 			'answer.previousItem',

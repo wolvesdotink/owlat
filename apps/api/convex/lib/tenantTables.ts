@@ -152,6 +152,8 @@ export const TENANT_TABLES = [
 	'inboxAssignmentNotices',
 	'threadPresence',
 	'threadReads',
+	'threadNoteMentions',
+	'threadNotes',
 	'inboxFollowUps',
 	// Answer mode catch-up cards of team and Postbox threads: derived from the
 	// mail, so they go before the threads they summarise.

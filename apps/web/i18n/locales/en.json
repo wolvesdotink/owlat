@@ -3370,7 +3370,9 @@
 			},
 			"inboxFilterPills": {
 				"groupLabel": "Filter threads",
-				"assigneeLabel": "Filter by assignee"
+				"assigneeLabel": "Filter by assignee",
+				"mentions": "Mentions",
+				"unreadMentions": "{count} not opened yet"
 			},
 			"inboxMessageAttachments": {
 				"blocked": "Blocked — malware was found in this message.",
@@ -3411,6 +3413,7 @@
 					"whatsapp": "WhatsApp"
 				},
 				"noSubject": "No subject",
+				"notes": "{count} internal note | {count} internal notes",
 				"openThread": "Open thread",
 				"resolve": "Resolve",
 				"snooze": "Snooze",
@@ -3445,6 +3448,38 @@
 			"readFailureNotice": {
 				"inboxList": "your inbox list",
 				"message": "Couldn't load {names}, so this list is incomplete."
+			},
+			"notes": {
+				"add": "Add note",
+				"ariaLabel": "Internal note from {name}",
+				"badge": "Internal note",
+				"composerLabel": "Internal note",
+				"createOperation": "Add the note",
+				"delete": "Delete note",
+				"deleteDialog": {
+					"description": "The note is removed for everyone on the team. Its place in the thread will read “Note deleted”.",
+					"title": "Delete this note?"
+				},
+				"deleteOperation": "Delete the note",
+				"deleted": "Note deleted",
+				"edit": "Edit note",
+				"editLabel": "Edit note",
+				"edited": "(edited)",
+				"empty": "No notes yet. Notes stay inside Owlat: the customer never sees them, and they never go into a reply.",
+				"formerTeammate": "Former teammate",
+				"mentionHint": "Type {'@'} to mention a teammate. Ctrl/⌘ + Enter adds the note.",
+				"open": "Add internal note",
+				"placeholder": "Write a note for your team. Type {'@'} to mention someone.",
+				"privacyHint": "Internal note: only your team sees this. It is never sent to the customer.",
+				"remaining": "{count} character left | {count} characters left",
+				"save": "Save",
+				"tabs": {
+					"label": "Reply or internal note",
+					"note": "Internal note",
+					"reply": "Reply"
+				},
+				"tooLong": "{count} character too long | {count} characters too long",
+				"updateOperation": "Save the note"
 			}
 		},
 		"keyboardShortcutsHelp": {
@@ -9660,6 +9695,7 @@
 				"assignThreadOperation": "Assign thread",
 				"empty": {
 					"me": "Nothing is assigned to you right now.",
+					"mentions": "Nobody has mentioned you in a note yet.",
 					"open": "No open conversations. Inbox zero.",
 					"resolved": "No resolved conversations yet.",
 					"snoozed": "Nothing is snoozed. It will reappear here when it does.",
@@ -13176,6 +13212,17 @@
 						"withSubject": "The agent needs your input to reply — {subject}"
 					}
 				},
+				"mention": {
+					"notificationBody": {
+						"noSubject": "No subject · {assignedByName} mentioned you in a note",
+						"withSubject": "{subject} · {assignedByName} mentioned you in a note"
+					},
+					"notificationTitle": "You were mentioned",
+					"toast": {
+						"noSubject": "{assignedByName} mentioned you in a note — No subject",
+						"withSubject": "{assignedByName} mentioned you in a note — {subject}"
+					}
+				},
 				"notification": {
 					"body": {
 						"noSubject": "No subject · from {assignedByName}",
@@ -14380,7 +14427,8 @@
 				"draftWithAi": "Draft with AI (instead of opening the Assistant)",
 				"pickAskOption": "Pick an answer on the AI’s question card",
 				"previousQueueItem": "Previous item in the Answer queue",
-				"nextQueueItem": "Next item in the Answer queue"
+				"nextQueueItem": "Next item in the Answer queue",
+				"writeNote": "Write an internal note"
 			}
 		},
 		"signatureBadge": {
@@ -15489,6 +15537,7 @@
 			"mailboxes": "Mailboxes",
 			"organizationMemberships": "Workspace memberships",
 			"segments": "Segments",
+			"threadNotes": "Internal notes",
 			"topics": "Topics",
 			"transactionalEmails": "Transactional emails",
 			"webhooks": "Webhooks"
