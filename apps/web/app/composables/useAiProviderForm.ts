@@ -217,11 +217,51 @@ export function useAiProviderForm() {
 		{ deep: true, flush: 'sync' }
 	);
 
+	/**
+	 * Bumped whenever the stored config changes or goes away. A model list or
+	 * connection test answers for the config it was started against, so a reply
+	 * that comes back under a newer generation is dropped rather than painted
+	 * onto a form that now describes another provider.
+	 */
+	let configGeneration = 0;
+	/** Whether the form currently shows a stored row (vs. a fresh install's defaults). */
+	let showsStoredConfig = false;
+
+	/**
+	 * Back to what a brand-new install shows, once the stored row is gone —
+	 * whether this tab removed it or another one did.
+	 */
+	function resetToUnconfigured() {
+		configGeneration += 1;
+		showsStoredConfig = false;
+		hydrating.value = true;
+		Object.assign(form, initialForm());
+		hydrating.value = false;
+		languageError.value = null;
+		embeddingError.value = null;
+		showLanguageBaseUrl.value = false;
+		showHostedEmbedder.value = false;
+		testState.value = { status: 'idle' };
+		liveModels.value = [];
+		liveModelsError.value = null;
+		decision.resetDecision();
+		isDirty.value = false;
+	}
+
 	/** Seed the form from stored config. A custom (non-curated) model id round-trips
 	 * as its own select option (see `modelOptions`), so choice = the stored id. */
 	function hydrate() {
 		const c = config.value;
-		if (!c || !c.configured) return;
+		if (!c) return;
+		if (!c.configured) {
+			// The row this form was showing has been removed (here or in another
+			// tab). A page that never had a row keeps its edits: nothing changed
+			// under it.
+			if (showsStoredConfig) resetToUnconfigured();
+			return;
+		}
+		configGeneration += 1;
+		showsStoredConfig = true;
 		hydrating.value = true;
 		isDirty.value = false;
 		form.languageProviderKind = c.languageProviderKind ?? 'openai';
@@ -325,7 +365,10 @@ export function useAiProviderForm() {
 	 */
 	async function handleLoadModels() {
 		liveModelsError.value = null;
+		const generation = configGeneration;
 		const result = await runListModels({});
+		// The config was replaced or removed while the list was in flight.
+		if (generation !== configGeneration) return;
 		if (!result.ok) {
 			liveModelsError.value = t('shared.useAiProviderForm.modelsLoadFailed');
 			return;
@@ -346,32 +389,23 @@ export function useAiProviderForm() {
 
 	/**
 	 * Delete the stored config and its keys, then show the form a brand-new
-	 * install sees. `hydrate` ignores `{ configured: false }`, so the reset is
-	 * explicit rather than left to the config subscription. Resolves `true` once
-	 * the row is gone, so the page knows to close its confirmation dialog.
+	 * install sees. The reset runs here as well as from the subscription, so it
+	 * does not depend on which of the two lands first. Resolves `true` once the
+	 * row is gone, so the page knows to close its confirmation dialog.
 	 */
 	async function handleRemove(): Promise<boolean> {
 		const result = await runRemove({});
 		if (!result.ok) return false;
-		hydrating.value = true;
-		Object.assign(form, initialForm());
-		hydrating.value = false;
-		languageError.value = null;
-		embeddingError.value = null;
-		showLanguageBaseUrl.value = false;
-		showHostedEmbedder.value = false;
-		testState.value = { status: 'idle' };
-		liveModels.value = [];
-		liveModelsError.value = null;
-		decision.resetDecision();
-		isDirty.value = false;
+		resetToUnconfigured();
 		showToast(t('shared.useAiProviderForm.removed'));
 		return true;
 	}
 
 	async function handleTest() {
 		testState.value = testConnectionReducer(testState.value, { type: 'start' });
+		const generation = configGeneration;
 		const result = await runTest({});
+		if (generation !== configGeneration) return;
 		if (!result.ok) {
 			// The operation layer already toasted the fault; reflect it inline too.
 			testState.value = testConnectionReducer(testState.value, {

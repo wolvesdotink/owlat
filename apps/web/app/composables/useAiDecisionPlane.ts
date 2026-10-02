@@ -231,8 +231,12 @@ export function useAiDecisionPlane(options: UseAiDecisionPlaneOptions) {
 		hydrating.value = false;
 	}
 
+	/** Bumped by {@link resetDecision}, so a test started before it is dropped. */
+	let resetGeneration = 0;
+
 	/** Back to a brand-new install's card, once the stored config is removed. */
 	function resetDecision() {
+		resetGeneration += 1;
 		hydrating.value = true;
 		Object.assign(decisionForm, initialDecisionForm());
 		decisionEnabled.value = false;
@@ -282,7 +286,10 @@ export function useAiDecisionPlane(options: UseAiDecisionPlaneOptions) {
 	 */
 	async function handleDecisionTest() {
 		decisionTestState.value = testConnectionReducer(decisionTestState.value, { type: 'start' });
+		const generation = resetGeneration;
 		const result = await options.runTest({ plane: 'decision' });
+		// The stored config was removed while the test ran.
+		if (generation !== resetGeneration) return;
 		if (!result.ok) {
 			// The operation layer already toasted the fault; reflect it inline too.
 			decisionTestState.value = testConnectionReducer(decisionTestState.value, {
