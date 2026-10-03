@@ -4,6 +4,7 @@
  * the ordering contract is unit-testable.
  */
 
+import type { ClarificationOrigin } from '~/utils/clarificationLocale';
 import type { LocalizedText } from '~/utils/localizedText';
 
 export type ReplyQueueUrgency = 'high' | 'normal' | 'low';
@@ -30,8 +31,10 @@ export interface ReplyQueueClarificationQuestion {
 	id: string;
 	slotType: string;
 	text: string;
-	/** Provenance + "Owlat will never ask for your password" promise. */
+	/** Provenance + "Owlat will never ask for your password" promise (legacy English). */
 	attribution: string;
+	/** Structured provenance the card's trust line is worded from (utils/clarificationLocale). */
+	origin?: ClarificationOrigin;
 	/** Suggested scoped answers rendered as one-tap chips (multiple choice). */
 	options?: string[];
 	/** Per-locale renderings of text + options (see utils/clarificationLocale). */

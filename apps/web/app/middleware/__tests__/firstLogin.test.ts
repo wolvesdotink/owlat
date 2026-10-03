@@ -22,7 +22,7 @@ import {
 	route,
 	signIn,
 	type Redirect,
-} from './harness';
+} from '~/__tests__/middlewareHarness';
 
 vi.mock('~/lib/auth-client', () => authClientMock());
 

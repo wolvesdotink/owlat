@@ -35,6 +35,8 @@ import type {
 export type AskQuestion = Infer<typeof needsReplyClarificationQuestionValidator>;
 export type AskFileRef = Infer<typeof clarificationFileRefValidator>;
 export type AskFileCandidate = Infer<typeof clarificationFileCandidateValidator>;
+/** Where a question came from; `origin` is absent on questions stored before it existed. */
+export type AskProvenance = Pick<AskQuestion, 'attribution' | 'origin'>;
 
 /** Question ids the drafter assigns itself (slot questions are `clarify_N`). */
 export const FILE_QUESTION_ID = 'file_request';
@@ -252,7 +254,7 @@ export function fileRequestLabel(query: string): string {
 export function buildFileQuestion(
 	outcome: Exclude<FileOutcome, { kind: 'attach' }>,
 	label: string,
-	attribution: string
+	provenance: AskProvenance
 ): AskQuestion | null {
 	const text =
 		outcome.kind === 'choose'
@@ -264,7 +266,7 @@ export function buildFileQuestion(
 		id: FILE_QUESTION_ID,
 		slotType: 'attachment',
 		text,
-		attribution,
+		...provenanceOf(provenance),
 		answerKind: 'file',
 		...(outcome.kind === 'missing' ? { options: [NOT_READY_OPTION] } : {}),
 		...(candidates.length > 0 ? { fileCandidates: candidates.map(toFileCandidate) } : {}),
@@ -278,7 +280,7 @@ export function buildFileQuestion(
  */
 export function buildFollowUpQuestion(
 	label: string,
-	attribution: string,
+	provenance: AskProvenance,
 	now: number,
 	timeZone?: string
 ): AskQuestion {
@@ -286,10 +288,15 @@ export function buildFollowUpQuestion(
 		id: FOLLOW_UP_QUESTION_ID,
 		slotType: 'date_time',
 		text: `When can you send "${label}"?`,
-		attribution,
+		...provenanceOf(provenance),
 		answerKind: 'date',
 		options: ['Tomorrow', weekdayAfter(now, 2, timeZone)],
 	};
+}
+
+/** The provenance fields of a new question, leaving out an absent `origin`. */
+function provenanceOf({ attribution, origin }: AskProvenance): AskProvenance {
+	return origin ? { attribution, origin } : { attribution };
 }
 
 /**

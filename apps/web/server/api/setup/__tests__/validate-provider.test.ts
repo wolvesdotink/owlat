@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { installNitroGlobals, requestEvent } from '../../../utils/__tests__/nitro';
+import { installNitroGlobals, requestEvent } from '../../../__tests__/nitro';
 
 /**
  * `POST /api/setup/validate-provider` keeps its own gate (setup mode plus the

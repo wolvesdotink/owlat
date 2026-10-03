@@ -1183,20 +1183,25 @@ the body text and the parsed strings (about 27 MiB). Both stay inside
   organization deletion walker and the dev reset.
 - The claim is unconditional since issue #1076. v0.6.7 gated it on an
   optional `uploadsPending` argument so that a v0.6.6 shell still running
-  across that deploy, which registers nothing, could dispatch. Dispatch
-  still accepts `uploadsPending: true` and ignores it: the v0.6.7 shell
-  passes it, a request of that release in flight during the upgrade calls
-  the newly deployed mutation, and Convex refuses an argument the
-  validator does not list. The shell of this release also keeps passing
-  the ignored flag, so a backend rolled back to v0.6.7, whose dispatch
-  claims only when the flag is set, still claims the uploads this shell
-  registered; without it the pending rows would survive the queued Send
-  and the expiry sweep would delete its bytes. The next release removes
-  both the shell's flag and the validator field. An operator going
-  straight from v0.6.6 sees a v0.6.6 request that had already stored a
-  base64 attachment when the deploy landed refused with an error the
-  client can retry; its blob is left behind, as v0.6.6 left one behind
-  on any failure.
+  across that deploy, which registers nothing, could dispatch. The flag
+  is retired over three releases, because Convex refuses an argument the
+  validator does not list and a request in flight during an upgrade calls
+  the newly deployed mutation:
+  - v0.6.8 claims unconditionally and accepts `uploadsPending: true`
+    without reading it. Its shell still sends the flag, so a backend
+    rolled back to v0.6.7, whose dispatch claims only when the flag is
+    set, still claims the uploads that shell registered.
+  - The release after v0.6.8 stops sending the flag. Dispatch still
+    accepts it for the v0.6.8 shells in flight during the upgrade. A
+    rollback to v0.6.8 is safe without it, since that dispatch claims
+    unconditionally.
+  - The release after that removes the argument from the validator.
+
+  An operator going straight from v0.6.6 sees a v0.6.6 request that had
+  already stored a base64 attachment when the deploy landed refused with
+  an error the client can retry; its blob is left behind, as v0.6.6 left
+  one behind on any failure.
+
 - The SDKs already enforced 10 attachments and 10 MiB decoded. Both now
   compute the decoded size exactly (they used to round up and refuse a
   file of exactly 10 MiB the API accepts).

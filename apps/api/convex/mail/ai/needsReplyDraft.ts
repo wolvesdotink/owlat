@@ -32,6 +32,7 @@ import { buildRecallKnowledgeTool, MAX_RECALL_CALLS } from '../../agent/steps/dr
 import {
 	MAX_CLARIFICATION_DRAFT_CHARS,
 	buildOpenFileNote,
+	buildOpenQuestionNote,
 	joinConfirmedBlocks,
 } from '../../inbox/clarificationAnswers';
 import { fitGapPlaceholders } from './composeDraftPolicy';
@@ -88,7 +89,8 @@ export async function draftClarificationReply(
 				questions: context.answers.map((a) => ({ text: a.question, answer: { value: a.answer } })),
 			}),
 			context.fileNotes,
-			buildOpenFileNote(context.fileGaps)
+			buildOpenFileNote(context.fileGaps),
+			buildOpenQuestionNote(context.questionGaps)
 		);
 
 		// Contact-scoped recall, the same isolation gate as the team draft step:
@@ -122,7 +124,11 @@ export async function draftClarificationReply(
 		const body = result.draftBody.trim();
 		if (body.length === 0) return;
 		// Fitted to the card's limit here, so the stored cut never drops a placeholder.
-		const draft = fitGapPlaceholders(body, context.fileGaps, MAX_CLARIFICATION_DRAFT_CHARS);
+		const draft = fitGapPlaceholders(
+			body,
+			[...context.fileGaps, ...context.questionGaps],
+			MAX_CLARIFICATION_DRAFT_CHARS
+		);
 
 		await ctx.runMutation(internal.mail.ai.needsReplyClarify.persistClarificationDraft, {
 			threadId: args.threadId,
@@ -151,6 +157,7 @@ export async function draftClarificationReply(
 								toneInstruction: TONE_INSTRUCTION,
 								signatureInstruction: '',
 								voiceSection,
+								hasRecallTool: false,
 							}),
 							classification: CLASSIFICATION,
 							context: context.transcript,

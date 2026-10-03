@@ -3,7 +3,7 @@ import {
 	type CoreSendProviderCatalogEntry,
 } from '@owlat/shared/sendProviderCatalog';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { installNitroGlobals } from './nitro';
+import { installNitroGlobals } from '../../__tests__/nitro';
 
 const { validators } = vi.hoisted(() => ({
 	validators: {

@@ -226,6 +226,21 @@ pass "every service is running"
 wait_for_web || fail "web does not answer after the update"
 pass "web answers at $TO"
 
+# Convex functions read OWLAT_VERSION from the deployment, not from `.env`;
+# the convex-deploy command sets it after a successful deploy. A TO whose
+# deploy image predates that command leaves it where it was, so it is only
+# checked when TO's image runs the command.
+to_deploy_image="$(grep -m1 -oE 'ghcr.io/[a-z0-9-]+/convex-deploy:[^[:space:]]+' docker-compose.yml)"
+if [[ "$(docker image inspect --format '{{json .Config.Cmd}}' "$to_deploy_image" 2>/dev/null || true)" == *owlat-convex-deploy* ]]; then
+	backend_version="$(docker compose --profile deploy run --rm -T convex-deploy \
+		sh -c 'convex env get OWLAT_VERSION </dev/null' 2>/dev/null | tail -n1)" ||
+		fail "could not read OWLAT_VERSION from the Convex deployment"
+	[[ "$backend_version" == "$TO" ]] || fail "the Convex deployment reports OWLAT_VERSION=$backend_version, not $TO"
+	pass "the Convex deployment reports OWLAT_VERSION=$TO"
+else
+	echo "  ($TO's convex-deploy image does not set the deployment's OWLAT_VERSION)"
+fi
+
 health="$(docker run --rm --network "$network" curlimages/curl:8.10.1 -fsS --retry 10 --retry-all-errors \
 	-H "x-instance-secret: $INSTANCE_SECRET" http://updater:3200/health)"
 if [[ -n "${UPDATER_IMAGE:-}" ]]; then

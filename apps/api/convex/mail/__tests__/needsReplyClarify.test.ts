@@ -82,6 +82,18 @@ describe('sanitizeClarificationQuestions', () => {
 		expect(out[0]!.options).toEqual(['Yes', 'No']);
 		expect(out[0]!.attribution).toContain('acme.com');
 		expect(out[0]!.attribution).toMatch(/never ask for your password/i);
+		expect(out[0]!.origin).toEqual({ kind: 'email', senderDomain: 'acme.com' });
+	});
+
+	it('stores the provenance without a domain when the sender address has none', () => {
+		const [question] = sanitizeClarificationQuestions(
+			[{ slotType: 'decision', text: 'Which date works?' }],
+			''
+		);
+		expect(question!.origin).toEqual({ kind: 'email' });
+		expect(question!.attribution).toBe(
+			'Generated from an email — Owlat will never ask for your password.'
+		);
 	});
 
 	it('flags credential-shaped text', () => {
@@ -104,6 +116,7 @@ describe('refineClarification', () => {
 		expect(result!.questions[0]!.text).toBe('Should we approve the refund?');
 		expect(result!.questions[0]!.options).toEqual(['Yes', 'No']);
 		expect(result!.questions[0]!.attribution).toContain('acme.com');
+		expect(result!.questions[0]!.origin).toEqual({ kind: 'email', senderDomain: 'acme.com' });
 		// The divergence stage was actually reached (3 candidate samples).
 		expect(mocks.runLlmText).toHaveBeenCalledTimes(3);
 	});
@@ -156,6 +169,40 @@ describe('refineClarification', () => {
 			)
 			.mockResolvedValueOnce(objectResult({ divergentSlotIndexes: [0] }));
 		expect(await refineClarification(ctx, opts)).toBeUndefined();
+	});
+
+	it('retries the translation for a question the first pass left in English', async () => {
+		const dateSlot = {
+			...decisionSlot,
+			slotType: 'date_time' as const,
+			question: 'When?',
+			options: [],
+		};
+		mocks.runLlmObject
+			.mockResolvedValueOnce(objectResult({ slots: [decisionSlot, dateSlot] }))
+			.mockResolvedValueOnce(objectResult({ divergentSlotIndexes: [0, 1] }))
+			// First translation pass covers only one of the two questions.
+			.mockImplementationOnce(async (call: { prompt: string }) => {
+				const id = /id "([^"]+)": Should we approve/.exec(call.prompt)![1]!;
+				return objectResult({
+					translations: [
+						{ questionId: id, locale: 'de', text: 'Erstatten?', options: ['Ja', 'Nein'] },
+					],
+				});
+			})
+			.mockImplementationOnce(async (call: { prompt: string }) => {
+				const id = /id "([^"]+)": When\?/.exec(call.prompt)![1]!;
+				return objectResult({
+					translations: [{ questionId: id, locale: 'de-DE', text: 'Wann?', options: [] }],
+				});
+			});
+
+		const result = await refineClarification(ctx, opts);
+		expect(mocks.runLlmObject).toHaveBeenCalledTimes(4);
+		expect(result!.questions.map((q) => q.translations?.[0]?.text)).toEqual([
+			'Erstatten?',
+			'Wann?',
+		]);
 	});
 
 	it('fails soft to undefined when the model throws', async () => {

@@ -23,7 +23,7 @@ import TransportEditor from '../TransportEditor.vue';
 import RampConfirmDialog from '../RampConfirmDialog.vue';
 import { independenceSummary } from './rampFixtures';
 import type { IndependenceSummary } from '~/utils/deliverabilityIndependenceCopy';
-import { wizardStubs } from './wizardHarness';
+import { wizardStubs } from '~/__tests__/transportWizardHarness';
 
 const summary: Ref<IndependenceSummary | undefined> = ref(independenceSummary());
 const summaryError: Ref<Error | null> = ref(null);

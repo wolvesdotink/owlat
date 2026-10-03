@@ -115,10 +115,10 @@ export const dispatch = internalMutation({
 		// Accepted and IGNORED. Every `storageId` above must be a pending upload
 		// the caller registered (`transactional/pendingUploads.ts`), and this
 		// transaction always claims them. The validator refuses an unknown
-		// field, and two callers still pass `true`: a v0.6.7 shell still running
-		// across the deploy, and this release's shell, which keeps sending it so
-		// a rollback to the v0.6.7 dispatch (claims only when set) stays safe.
-		// Remove it here and in `attachmentIntake.ts` in the next release.
+		// field, and a v0.6.8 shell still running across the deploy passes
+		// `true`. This release's shell no longer sends it: the v0.6.8 dispatch a
+		// rollback would restore claims without it. Remove in the release after
+		// the one that stopped sending it (issue #1076).
 		uploadsPending: v.optional(v.literal(true)),
 	},
 	handler: async (ctx, args): Promise<DispatchOutcome> => {

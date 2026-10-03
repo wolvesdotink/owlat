@@ -26,7 +26,7 @@ import {
 	openWizard,
 	wizardStubs,
 	type WizardWrapper,
-} from './wizardHarness';
+} from '~/__tests__/transportWizardHarness';
 
 beforeEach(() => {
 	vi.stubGlobal(

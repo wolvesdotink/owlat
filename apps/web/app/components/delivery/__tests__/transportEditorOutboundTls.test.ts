@@ -21,7 +21,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import TransportEditor from '../TransportEditor.vue';
 import { independenceSummary } from './rampFixtures';
-import { wizardStubs } from './wizardHarness';
+import { wizardStubs } from '~/__tests__/transportWizardHarness';
 import { expectFullyLocalized } from '~/__tests__/i18n';
 
 const fetchMock = vi.fn();
