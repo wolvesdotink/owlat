@@ -227,7 +227,8 @@ describe('start', () => {
 			answerKind: 'file',
 			options: [NOT_READY_OPTION],
 		});
-		expect(file!.attribution).toContain('example.org');
+		// No legacy English sentence on new questions (#1186).
+		expect(file).not.toHaveProperty('attribution');
 		// The stored session carries the structured provenance the web words.
 		expect(file!.origin).toEqual({ kind: 'email', senderDomain: 'example.org' });
 		expect(po!.origin).toEqual(file!.origin);

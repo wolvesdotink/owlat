@@ -68,11 +68,13 @@ export function localizedSummary(
 /**
  * The sender domain inside a clarification question's legacy attribution line.
  *
- * The server writes that line in English ("Generated from an email from
- * acme.com — Owlat will never ask for your password.", see
- * inbox/clarificationSlots.ts). Questions stored before `origin` existed carry
- * only this line, so the trust line reads the domain out of it. Null when the
- * line names none.
+ * The server used to write that line in English ("Generated from an email
+ * from acme.com — Owlat will never ask for your password."); it writes `origin`
+ * instead now. Questions stored before `origin` existed carry only this line,
+ * so the trust line reads the domain out of it. Null when the line names none.
+ * The backend's migration 0066 converts them to `origin`, parsing the line the
+ * same way (inbox/clarificationSlots.ts legacyAttributionOrigin); remove this
+ * in the release that drops `attribution` from the schema.
  */
 export function attributionDomain(attribution: string | undefined): string | null {
 	const match = attribution?.match(/\ban email from (\S+)/i);

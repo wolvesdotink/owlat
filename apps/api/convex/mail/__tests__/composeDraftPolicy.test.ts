@@ -106,7 +106,7 @@ describe('ranking and the three file outcomes', () => {
 		expect(question.id).toBe(FILE_QUESTION_ID);
 		expect(question.text).toContain("couldn't find it");
 		expect(question.origin).toEqual({ kind: 'email', senderDomain: 'northwind.example' });
-		expect(question.attribution).toBe(PROVENANCE.attribution);
+		expect(question).not.toHaveProperty('attribution');
 		expect(question.options).toEqual([NOT_READY_OPTION]);
 		expect(question.fileCandidates).toEqual([
 			expect.objectContaining({ id: 'aug', note: 'August', source: 'semanticFile' }),
@@ -158,10 +158,34 @@ describe('round 2', () => {
 		expect(q.origin).toEqual({ kind: 'email', senderDomain: 'northwind.example' });
 	});
 
-	it('carries a file question stored before `origin` over without inventing one', () => {
-		const q = buildFollowUpQuestion('invoice', { attribution: 'legacy' }, WED_2026_09_30);
-		expect(q.attribution).toBe('legacy');
+	it('stores no legacy sentence on the follow-up question', () => {
+		const q = buildFollowUpQuestion('invoice', PROVENANCE, WED_2026_09_30);
+		expect(q).not.toHaveProperty('attribution');
+	});
+
+	it('reads the origin of a file question stored before `origin` from its sentence', () => {
+		const legacy = {
+			attribution:
+				'Generated from an email from acme.com — Owlat will never ask for your password.',
+		};
+		const q = buildFollowUpQuestion('invoice', legacy, WED_2026_09_30);
+		expect(q.origin).toEqual({ kind: 'email', senderDomain: 'acme.com' });
+		expect(q).not.toHaveProperty('attribution');
+	});
+
+	it('keeps a stored origin over the legacy sentence', () => {
+		const q = buildFollowUpQuestion(
+			'invoice',
+			{ attribution: 'Generated from an email from stale.example', origin: { kind: 'email' } },
+			WED_2026_09_30
+		);
+		expect(q.origin).toEqual({ kind: 'email' });
+	});
+
+	it('invents no provenance for a question that has none', () => {
+		const q = buildFollowUpQuestion('invoice', {}, WED_2026_09_30);
 		expect(q).not.toHaveProperty('origin');
+		expect(q).not.toHaveProperty('attribution');
 	});
 
 	it('resolves the follow-up date to the morning of that day', () => {

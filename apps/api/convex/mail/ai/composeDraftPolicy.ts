@@ -21,7 +21,7 @@
 import type { Infer } from 'convex/values';
 import { formatDraftGap } from '@owlat/shared/answerMode';
 import { pickAttachmentSuggestion, MATCH_FLOOR } from '../../inbox/attachmentMatch';
-import { isCredentialSolicitation } from '../../inbox/clarificationSlots';
+import { isCredentialSolicitation, legacyAttributionOrigin } from '../../inbox/clarificationSlots';
 import { detectInjection } from '../../agent/steps/security_scan/patterns';
 import { formatPromisedDay, weekdayAfter } from './composeDraftDates';
 import { NOT_READY_OPTION } from '../../inbox/clarificationAnswers';
@@ -35,7 +35,11 @@ import type {
 export type AskQuestion = Infer<typeof needsReplyClarificationQuestionValidator>;
 export type AskFileRef = Infer<typeof clarificationFileRefValidator>;
 export type AskFileCandidate = Infer<typeof clarificationFileCandidateValidator>;
-/** Where a question came from; `origin` is absent on questions stored before it existed. */
+/**
+ * Where a question came from: a fresh provenance, or the stored question a
+ * follow-up copies it from. A question stored before `origin` existed carries
+ * only the legacy `attribution` sentence, which is read but never written.
+ */
 export type AskProvenance = Pick<AskQuestion, 'attribution' | 'origin'>;
 
 /** Question ids the drafter assigns itself (slot questions are `clarify_N`). */
@@ -294,9 +298,14 @@ export function buildFollowUpQuestion(
 	};
 }
 
-/** The provenance fields of a new question, leaving out an absent `origin`. */
-function provenanceOf({ attribution, origin }: AskProvenance): AskProvenance {
-	return origin ? { attribution, origin } : { attribution };
+/**
+ * The provenance fields of a new question: only `origin`, taken from a legacy
+ * question's `attribution` sentence when that is all it has (a session stored
+ * before `origin` existed, not yet converted by migration 0066).
+ */
+function provenanceOf({ attribution, origin }: AskProvenance): Pick<AskQuestion, 'origin'> {
+	const resolved = origin ?? legacyAttributionOrigin(attribution);
+	return resolved ? { origin: resolved } : {};
 }
 
 /**

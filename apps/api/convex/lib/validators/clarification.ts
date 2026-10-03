@@ -123,7 +123,7 @@ export const clarificationOriginValidator = v.object({
  * One Reply Queue clarification question (`mailThreads.needsReply.clarification`).
  * The Postbox-native loop: a sibling of `clarificationQuestionValidator` above,
  * which serves the inbound agent's `pendingClarification` instead. Differs in
- * `attribution` (always present) and an answer that carries no `source`.
+ * its provenance (`origin`) and an answer that carries no `source`.
  */
 export const needsReplyClarificationQuestionValidator = v.object({
 	// Stable id matching an incoming answer back to its question.
@@ -132,12 +132,14 @@ export const needsReplyClarificationQuestionValidator = v.object({
 	slotType: v.string(),
 	// The question shown to the owner.
 	text: v.string(),
-	// Provenance + "Owlat will never ask for your password" promise, as one
-	// English sentence. Still written for clients that predate `origin`.
-	attribution: v.string(),
+	// LEGACY, no longer written: provenance + "Owlat will never ask for your
+	// password" promise as one English sentence. Present only on questions
+	// stored before `origin` existed; the web reads the domain out of it for
+	// those, and migration 0066 (backfill_clarification_origin) converts them to
+	// `origin`. Drop the field, and the web fallback, once 0066 has completed.
+	attribution: v.optional(v.string()),
 	// Structured provenance; the web builds the localized trust line from it.
-	// Absent on questions written before it existed: the web then reads the
-	// domain out of `attribution`.
+	// Written on every new question. Absent only on legacy questions above.
 	origin: v.optional(clarificationOriginValidator),
 	// Suggested scoped answers rendered as one-tap chips (multiple
 	// choice); absent for a free-text-only slot.

@@ -206,28 +206,39 @@ function senderDomain(fromAddress: string): string | undefined {
 export type ClarificationOrigin = Infer<typeof clarificationOriginValidator>;
 
 /**
- * A question's provenance in both stored forms: the structured `origin` the
- * web words in the reader's language, and the legacy English `attribution`
- * sentence older clients still render.
+ * A question's provenance: the structured `origin` the web words in the
+ * reader's language, together with the standing promise that Owlat never asks
+ * for a password (that promise lives in the web's locale files).
  */
 export interface QuestionProvenance {
-	attribution: string;
 	origin: ClarificationOrigin;
 }
 
 /**
  * The provenance of a question derived from an email from `fromAddress`, so
- * the owner always knows it came from an untrusted email. The legacy sentence
- * carries the standing promise that Owlat will never ask for a secret; the web
- * keeps that promise in its locale files instead.
+ * the owner always knows it came from an untrusted email.
  */
 export function emailProvenance(fromAddress: string): QuestionProvenance {
 	const domain = senderDomain(fromAddress);
-	const source = domain ? `an email from ${domain}` : 'an email';
-	return {
-		attribution: `Generated from ${source} — Owlat will never ask for your password.`,
-		origin: domain ? { kind: 'email', senderDomain: domain } : { kind: 'email' },
-	};
+	return { origin: domain ? { kind: 'email', senderDomain: domain } : { kind: 'email' } };
+}
+
+/**
+ * The `origin` a question stored before `origin` existed implies, read from its
+ * legacy English `attribution` sentence ("Generated from an email from
+ * acme.com — Owlat will never ask for your password."). Reads the domain the
+ * way the web's fallback does (utils/clarificationLocale.ts attributionDomain),
+ * so a converted question shows the same trust line. Undefined for an absent
+ * or empty sentence, which the web shows no line for either.
+ *
+ * Remove with `attribution` itself, once migration 0066 has run everywhere.
+ */
+export function legacyAttributionOrigin(
+	attribution: string | undefined
+): ClarificationOrigin | undefined {
+	if (!attribution) return undefined;
+	const domain = attribution.match(/\ban email from (\S+)/i)?.[1]?.replace(/[.,;:]+$/, '');
+	return domain ? { kind: 'email', senderDomain: domain } : { kind: 'email' };
 }
 
 interface SanitizedClarificationQuestion {
@@ -235,8 +246,6 @@ interface SanitizedClarificationQuestion {
 	slotType: string;
 	text: string;
 	options?: string[];
-	/** Provenance + safety line for the card (legacy English sentence). */
-	attribution: string;
 	/** Structured provenance the web builds the localized trust line from. */
 	origin: ClarificationOrigin;
 }
@@ -258,7 +267,8 @@ const MAX_OPTIONS = 4;
  *   - drop any credential / OTP solicitation (question text OR any option),
  *   - drop blank questions,
  *   - bound lengths and option counts,
- *   - attribute every survivor to the sender (never-asks-for-password promise),
+ *   - attribute every survivor to the sender (`origin`; the web adds the
+ *     never-asks-for-password promise),
  *   - assign stable ids and cap the total at {@link MAX_QUESTIONS}.
  *
  * Pure + exported so the credential-drop behaviour unit-tests without a model.
@@ -267,7 +277,7 @@ export function sanitizeClarificationQuestions(
 	raw: RawClarificationQuestion[],
 	fromAddress: string
 ): SanitizedClarificationQuestion[] {
-	const { attribution, origin } = emailProvenance(fromAddress);
+	const { origin } = emailProvenance(fromAddress);
 	const out: SanitizedClarificationQuestion[] = [];
 	for (const q of raw) {
 		const text = (q.text ?? '').trim().slice(0, MAX_CLARIFICATION_QUESTION_CHARS);
@@ -285,7 +295,6 @@ export function sanitizeClarificationQuestions(
 			slotType: q.slotType,
 			text,
 			options: options.length > 0 ? options : undefined,
-			attribution,
 			origin,
 		});
 		if (out.length >= MAX_QUESTIONS) break;

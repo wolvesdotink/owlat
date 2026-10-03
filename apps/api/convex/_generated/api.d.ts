@@ -21,6 +21,7 @@ import type * as lib_repeatedBlockIds from '../lib/repeatedBlockIds.js';
 import type * as migrations_0057_withdraw_opted_out_confirmation_tokens from '../migrations/0057_withdraw_opted_out_confirmation_tokens.js';
 import type * as migrations_0064_backfill_send_time_profiles from '../migrations/0064_backfill_send_time_profiles.js';
 import type * as migrations_0065_backfill_thread_response_metrics from '../migrations/0065_backfill_thread_response_metrics.js';
+import type * as migrations_0066_backfill_clarification_origin from '../migrations/0066_backfill_clarification_origin.js';
 import type * as lib_migrationLedger from '../lib/migrationLedger.js';
 import type * as schema_migrationRuns from '../schema/migrationRuns.js';
 import type * as migrations_0060_saved_reply_scopes from '../migrations/0060_saved_reply_scopes.js';
@@ -1492,6 +1493,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0057_withdraw_opted_out_confirmation_tokens': typeof migrations_0057_withdraw_opted_out_confirmation_tokens;
 	'migrations/0064_backfill_send_time_profiles': typeof migrations_0064_backfill_send_time_profiles;
 	'migrations/0065_backfill_thread_response_metrics': typeof migrations_0065_backfill_thread_response_metrics;
+	'migrations/0066_backfill_clarification_origin': typeof migrations_0066_backfill_clarification_origin;
 	'lib/migrationLedger': typeof lib_migrationLedger;
 	'schema/migrationRuns': typeof schema_migrationRuns;
 	'migrations/0060_saved_reply_scopes': typeof migrations_0060_saved_reply_scopes;
