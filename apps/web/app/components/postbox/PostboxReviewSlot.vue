@@ -54,17 +54,6 @@ const draftText = computed(() => props.draftSlot.draft.trim());
 				{{ t('components.postbox.postboxReviewSlot.draftReady') }}
 			</span>
 			<InboxTrustChip data-testid="review-slot-confidence" :trust="trust" />
-			<span
-				v-if="draftSlot.options && draftSlot.options.length > 1"
-				class="text-[10px] text-text-tertiary"
-				data-testid="review-slot-options"
-			>
-				{{
-					t('components.postbox.postboxReviewSlot.optionCount', {
-						count: draftSlot.options.length,
-					})
-				}}
-			</span>
 		</div>
 
 		<TaskAsk

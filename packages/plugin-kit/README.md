@@ -60,9 +60,9 @@ the core lifecycle graph.
 Draft strategies declare `draft:strategy`, a static module, and a bounded
 timeout. They receive a copied/frozen draft input plus host-mediated LLM access;
 LLM use separately requires `llm:invoke` and a budget. A strategy returns only a
-draft body. Owlat keeps injection scanning, self-check, review options,
-persistence, autonomy, and sending outside the plugin, and falls back to the
-built-in `default` strategy on denial, timeout, failure, or invalid output.
+draft body. Owlat keeps injection scanning, self-check, persistence, autonomy,
+and sending outside the plugin, and falls back to the built-in `default`
+strategy on denial, timeout, failure, or invalid output.
 
 Autonomy gates use the existing `sendGates` contribution bucket and require
 the exact `send:gate` capability. They receive only a bounded, frozen mail and

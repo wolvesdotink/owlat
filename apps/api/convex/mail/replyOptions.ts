@@ -1,81 +1,42 @@
 'use node';
 
 /**
- * Shared reply-options generator.
+ * Reply-options generator for the Postbox "suggested replies" path
+ * (mail/ai/assist.suggestReplies), via {@link streamReplyOptions}. A person is
+ * watching a spinner here and the options are 1–2 sentences, so it runs on the
+ * fast tier and streams: the model writes a numbered list,
+ * {@link parseReplyOptionsText} turns the text so far into options, and the
+ * throttled flusher writes them into the caller's owner-private
+ * `aiDraftStreams` buffer. The client renders each option as it arrives
+ * instead of waiting 5–20 s for the whole object.
  *
- * Two entry points, one cap and one parser:
- *   - {@link generateReplyOptions}: one capable-tier `runLlmObject` pass. The
- *     inbound agent's `draft` step (via agent/shared/draftService) uses it to
- *     offer the reviewer 2–3 full alternative drafts; nobody waits on it.
- *   - {@link streamReplyOptions}: the Postbox "suggested replies" path
- *     (mail/ai/assist.suggestReplies). A person is watching a spinner here and
- *     the options are 1–2 sentences, so it runs on the fast tier and streams:
- *     the model writes a numbered list, {@link parseReplyOptionsText} turns the
- *     text so far into options, and the throttled flusher writes them into the
- *     caller's owner-private `aiDraftStreams` buffer. The client renders each
- *     option as it arrives instead of waiting 5–20 s for the whole object.
+ * The draft service no longer asks for full alternative drafts (#1200): no
+ * screen let a reviewer pick one.
  *
  * Precomputing options during draft-on-arrival was the other way to hide the
  * latency. It was not taken: draft-on-arrival already prepares one full draft
  * for the mail that needs it, and generating options for every arrival would
  * spend tokens on mail nobody asks about.
  *
- * Callers own their prompt framing (the inbound thread body is untrusted DATA in
- * both) and their own spend accounting.
+ * The caller owns its prompt framing (the inbound thread body is untrusted
+ * DATA) and its own spend accounting.
  */
 
-import { z } from 'zod';
 import type { ActionCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { resolveLanguageModel } from '../lib/llmProvider';
-import { runLlmObject, runLlmStream } from '../lib/llm/dispatch';
+import { runLlmStream } from '../lib/llm/dispatch';
 import { createThrottledStreamFlusher } from '../lib/llm/streamFlusher';
 import type { TokenUsage } from '../agent/steps/types';
 
 /** Hard cap on how many reply variants we ever surface. */
 export const MAX_REPLY_OPTIONS = 3;
 
-/** Structured output: up to {@link MAX_REPLY_OPTIONS} short reply variants. */
-const replyOptionsSchema = z.object({
-	replies: z.array(z.string()).max(MAX_REPLY_OPTIONS),
-});
-
 interface ReplyOptionsResult {
 	replies: string[];
 	tokenUsage: TokenUsage | undefined;
 	modelUsed: string | undefined;
-}
-
-/**
- * Run one capable-tier `runLlmObject` pass that returns up to
- * {@link MAX_REPLY_OPTIONS} distinct reply variants for the given prompt.
- * Returns the trimmed replies plus the token usage + model id so the caller can
- * record spend under its own event name. Does NOT record spend or catch errors
- * itself — the caller decides fail-soft behaviour.
- */
-export async function generateReplyOptions(
-	ctx: ActionCtx,
-	args: {
-		prompt: string;
-		temperature?: number;
-		abortSignal?: AbortSignal;
-		maxAttempts?: number;
-	}
-): Promise<ReplyOptionsResult> {
-	const { object, tokenUsage, modelUsed } = await runLlmObject({
-		model: await resolveLanguageModel(ctx, 'draft'),
-		schema: replyOptionsSchema,
-		prompt: args.prompt,
-		temperature: args.temperature ?? 0.7,
-		...(args.abortSignal ? { abortSignal: args.abortSignal } : {}),
-		...(args.maxAttempts === undefined ? {} : { maxAttempts: args.maxAttempts }),
-	});
-	return {
-		replies: object.replies.slice(0, MAX_REPLY_OPTIONS),
-		tokenUsage,
-		modelUsed,
-	};
 }
 
 // ─── Streamed options ────────────────────────────────────────────────────────
@@ -161,7 +122,7 @@ export function encodeReplyOptions(replies: string[]): string {
  * call still streams internally but writes nothing.
  *
  * Throws on a model failure (after settling the buffer `error`); spend is left
- * to the caller, as with {@link generateReplyOptions}.
+ * to the caller.
  */
 export async function streamReplyOptions(
 	ctx: ActionCtx,
