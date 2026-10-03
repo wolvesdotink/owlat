@@ -16070,6 +16070,7 @@
 		},
 		"useReviewQueue": {
 			"approveDraft": "Entwurf freigeben",
+			"draftHasGaps": "In diesem Entwurf ist noch 1 Lücke offen: füll das [[...]] aus oder lösch es, bevor du ihn sendest. | In diesem Entwurf sind noch {count} Lücken offen: füll jedes [[...]] aus oder lösch es, bevor du ihn sendest.",
 			"rejectDraft": "Entwurf ablehnen",
 			"saveReply": "Antwort speichern",
 			"undoApproval": "Genehmigung rückgängig machen"

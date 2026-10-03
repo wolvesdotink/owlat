@@ -36,9 +36,7 @@ import {
 	clarificationFileRefValidator,
 	needsReplyClarificationQuestionValidator,
 } from '../../lib/validators/clarification';
-import { hasDraftGaps } from '@owlat/shared/answerMode';
-import { htmlToPlainText } from '@owlat/shared/html';
-import { splitQuotedHtml, splitQuotedText } from '@owlat/shared/quotedText';
+import { authoredDraftHasGaps, type DraftBody } from '../../agent/shared/draftGaps';
 import { throwForbidden, throwInvalidState, throwNotFound } from '../../_utils/errors';
 import {
 	FILE_QUESTION_ID,
@@ -232,12 +230,6 @@ export const sweepStaleSessions = internalMutation({
 	},
 });
 
-/** A reply body as a send path has it: HTML (Postbox) and/or plain text. */
-interface DraftBody {
-	html?: string | undefined;
-	text?: string | undefined;
-}
-
 /**
  * Whether the AI wrote into this target (the send guards' trigger): someone
  * started "Draft with AI" on it, or an AI text with gaps went into the draft
@@ -260,30 +252,25 @@ async function isAiDraftedTarget(ctx: QueryCtx, target: AnswerAskTarget): Promis
  * recipient, so a send is refused (`DRAFT_HAS_GAPS`) until the person fills or
  * deletes it. Only a target the AI wrote into is checked (an ask session, or
  * a draft an AI text with gaps went into), or a text a saved reply left gaps in
- * (`opts.guarded`: the Team inbox's stored `isDraftGapGuarded`, or the
- * follow-up composer's guard): double brackets in hand-written mail are not
- * ours to block. Every send path of both composers runs this
- * (`mail/draftSend.ts`, the team inbox's approve and follow-up).
+ * (`opts.guarded`: the Team inbox's stored `isDraftGapGuarded`, which an agent
+ * draft with gaps carries too, or the follow-up composer's guard): double
+ * brackets in hand-written mail are not ours to block. Every send path of both
+ * composers runs this (`mail/draftSend.ts`, the team inbox's approve and
+ * follow-up). A `null` target (a team message with no thread) is checked only
+ * when guarded.
  *
- * Only the authored part is checked: a `[[...]]` in the quoted original belongs
- * to the mail being answered, and the composer neither highlights nor counts
- * it. The split is the shared quote-aware one (`@owlat/shared/quotedText`) the
- * composer's gap count uses (web `freshDraftGaps`); the HTML decides when there
- * is HTML, since the plain text is derived from it and may not mark the quote.
- * The saved and sent body keep the quote either way.
+ * Only the authored part is checked (`authoredDraftHasGaps`): a `[[...]]` in
+ * the quoted original belongs to the mail being answered. The saved and sent
+ * body keep the quote either way.
  */
 export async function assertNoAnswerGaps(
 	ctx: QueryCtx,
-	target: AnswerAskTarget,
+	target: AnswerAskTarget | null,
 	body: DraftBody | (() => Promise<DraftBody>),
 	opts: { guarded?: boolean } = {}
 ): Promise<void> {
-	if (!opts.guarded && !(await isAiDraftedTarget(ctx, target))) return;
-	const { html, text } = typeof body === 'function' ? await body() : body;
-	const authored = html?.trim()
-		? htmlToPlainText(splitQuotedHtml(html).fresh)
-		: splitQuotedText(text ?? '').fresh;
-	if (hasDraftGaps(authored)) {
+	if (!opts.guarded && (target === null || !(await isAiDraftedTarget(ctx, target)))) return;
+	if (authoredDraftHasGaps(typeof body === 'function' ? await body() : body)) {
 		throwInvalidState('Fill in the highlighted gaps before sending', { code: 'DRAFT_HAS_GAPS' });
 	}
 }

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createTestI18n } from '~/__tests__/i18n';
 import { useReviewQueue } from '../useReviewQueue';
 import { queryResult } from '~/__tests__/queryStubs';
+import type { OperationError } from '@owlat/shared/operationError';
 
 // The queue is stood up outside a component here, so `useI18n` is stubbed with
 // the real catalog's `t` — the operation labels stay the English an admin reads.
@@ -21,16 +22,26 @@ describe('useReviewQueue', () => {
 	// One mock run() per useBackendOperation call, in call order:
 	// 0 = approveDraft, 1 = rejectDraft, 2 = editDraft, 3 = undoAutoSend.
 	let runs: Array<ReturnType<typeof vi.fn>>;
+	// The options each operation was built with, in the same order.
+	let ops: Array<{ onError?: (op: OperationError) => boolean }>;
+	let showToast: ReturnType<typeof vi.fn>;
 
 	beforeEach(() => {
 		runs = [];
+		ops = [];
+		showToast = vi.fn();
 		vi.stubGlobal('useI18n', () => ({ t }));
+		vi.stubGlobal('useToast', () => ({ showToast }));
 		vi.stubGlobal('useConvexQuery', () => queryResult(undefined));
-		vi.stubGlobal('useBackendOperation', () => {
-			const run = vi.fn().mockResolvedValue({ ok: true, result: { success: true } });
-			runs.push(run);
-			return { run };
-		});
+		vi.stubGlobal(
+			'useBackendOperation',
+			(_fn: unknown, opts: { onError?: (op: OperationError) => boolean }) => {
+				const run = vi.fn().mockResolvedValue({ ok: true, result: { success: true } });
+				runs.push(run);
+				ops.push(opts);
+				return { run };
+			}
+		);
 	});
 
 	const approveRun = () => runs[0]!;
@@ -187,6 +198,69 @@ describe('useReviewQueue', () => {
 			const { reviewItems } = useReviewQueue();
 
 			expect(reviewItems.value?.map((it) => it.message._id)).toEqual(['a', 'b']);
+		});
+	});
+
+	// #1185: the agent's `[[...]]` gaps are stored gap-guarded, so Approve is
+	// refused (DRAFT_HAS_GAPS) until they are filled. The queue card says so in
+	// its own words, counting the gaps, instead of a generic failure toast.
+	describe('a draft with gaps left', () => {
+		const gapRefusal: OperationError = {
+			category: 'invalid_state',
+			message: 'Fill in the highlighted gaps before sending',
+			data: { code: 'DRAFT_HAS_GAPS' },
+		};
+		const approveOnError = () => ops[0]!.onError!;
+
+		/** The approve run fails the way `useBackendOperation` does: onError first. */
+		function refuseApprove() {
+			approveRun().mockImplementationOnce(async () => {
+				approveOnError()(gapRefusal);
+				return { ok: false };
+			});
+		}
+
+		it('names how many gaps the agent draft still has', async () => {
+			vi.stubGlobal('useConvexQuery', () =>
+				queryResult([
+					{
+						message: {
+							_id: 'msg_1',
+							draftResponse: 'Your refund of [[amount]] lands by [[date]].',
+						},
+					},
+				])
+			);
+			const { onApprove } = useReviewQueue();
+			refuseApprove();
+
+			const result = await onApprove('msg_1' as never);
+
+			expect(result).toEqual({ ok: false });
+			expect(showToast).toHaveBeenCalledWith(
+				'This draft still has 2 gaps: fill in or delete each [[...]] before you send it.',
+				'error'
+			);
+		});
+
+		it('counts the picked option’s gaps', async () => {
+			const { approveOption } = useReviewQueue();
+			refuseApprove();
+
+			await approveOption('msg_1' as never, 'It ships on [[date]].', 'It ships soon.');
+
+			expect(showToast).toHaveBeenCalledWith(
+				'This draft still has 1 gap: fill in or delete the [[...]] before you send it.',
+				'error'
+			);
+		});
+
+		it('leaves every other failure to the generic handling', () => {
+			useReviewQueue();
+			expect(approveOnError()({ category: 'invalid_state', message: 'No draft to approve' })).toBe(
+				false
+			);
+			expect(showToast).not.toHaveBeenCalled();
 		});
 	});
 

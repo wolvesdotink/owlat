@@ -24,6 +24,7 @@ import {
 } from '../lib/convexValidators';
 import { attachmentSuggestionsValidator } from '../lib/validators/attachment';
 import { contextTierValidator } from '../lib/literalValidators';
+import { authoredDraftHasGaps } from '../agent/shared/draftGaps';
 
 /**
  * Record the context-tier metadata onto an inboundMessage without
@@ -91,7 +92,8 @@ export const recordAgentDecision = internalMutation({
  * changing its processingStatus. Used by the `draft` Agent step
  * (module) after its execute completes (still in `drafting` state).
  * The next step (`route`) reads the stored fields to make its routing
- * decision.
+ * decision. A draft with `[[...]]` placeholders is stored gap-guarded
+ * (`isDraftGapGuarded`), so a reviewer's Approve cannot send them.
  */
 export const recordDraftOutput = internalMutation({
 	args: {
@@ -119,6 +121,13 @@ export const recordDraftOutput = internalMutation({
 		await ctx.db.patch(args.inboundMessageId, {
 			draftResponse: args.draftResponse,
 			draftSubject: args.draftSubject,
+			// A `[[...]]` placeholder marks a fact the agent did not have. Stored as
+			// the gap guard, so the composer highlights and counts it and
+			// `approveDraft` refuses to send it (DRAFT_HAS_GAPS) until it is filled.
+			// The offered variants count too: picking one keeps the guard as it is.
+			isDraftGapGuarded: [args.draftResponse, ...(args.draftOptions ?? [])].some((text) =>
+				authoredDraftHasGaps({ text })
+			),
 			confidenceScore: args.confidenceScore,
 			...(args.draftQuality ? { draftQuality: args.draftQuality } : {}),
 			...(args.draftOptions ? { draftOptions: args.draftOptions } : {}),

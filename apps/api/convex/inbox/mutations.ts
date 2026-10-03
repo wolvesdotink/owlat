@@ -52,13 +52,15 @@ export const approveDraft = adminMutation({
 		// The composer's attachments ride the send (`replyAttachments.intakeAgentReply`
 		// takes them when it fires): never send while one is still being copied.
 		await assertReplyAttachmentsReady(ctx, message.threadId);
-		// Nor with an Answer mode gap placeholder left in the text, the AI's or a
-		// saved reply's (`isDraftGapGuarded`, stored with the working draft).
-		if (message.threadId) {
-			const target = { kind: 'teamThread' as const, threadId: message.threadId };
-			const guarded = message.isDraftGapGuarded === true;
-			await assertNoAnswerGaps(ctx, target, { text: message.draftResponse }, { guarded });
-		}
+		// Nor with an Answer mode gap placeholder left in the text: the AI's, the
+		// agent's or a saved reply's (`isDraftGapGuarded`, stored with the working
+		// draft by `stepOutputs.recordDraftOutput` and the composer's saves).
+		await assertNoAnswerGaps(
+			ctx,
+			message.threadId ? { kind: 'teamThread', threadId: message.threadId } : null,
+			{ text: message.draftResponse },
+			{ guarded: message.isDraftGapGuarded === true }
+		);
 
 		// Resolve the human-approve undo window from the singleton agentConfig
 		// (default 15s, clamped 0–120s; 0 = the legacy immediate send) and thread

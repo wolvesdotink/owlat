@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { findDraftGaps } from '@owlat/shared/answerMode';
-import { markReviewerNotes } from '../draftGaps';
+import { authoredDraftHasGaps, markReviewerNotes } from '../draftGaps';
 
 describe('markReviewerNotes', () => {
 	it('turns the notes from the production draft into gaps the send guard counts', () => {
@@ -79,5 +79,26 @@ describe('markReviewerNotes', () => {
 	it('keeps a long note to the placeholder limit the send guard matches', () => {
 		const marked = markReviewerNotes(`[Bitte prüfen: ${'x'.repeat(300)}]`);
 		expect(findDraftGaps(marked)).toHaveLength(1);
+	});
+});
+
+describe('authoredDraftHasGaps', () => {
+	it('counts a gap in what was written, not in the quoted original', () => {
+		expect(authoredDraftHasGaps({ text: 'Your refund of [[amount]] is on its way.' })).toBe(true);
+		expect(authoredDraftHasGaps({ text: 'Thanks.\n\n> Please check [[ticket 12]].' })).toBe(false);
+		expect(authoredDraftHasGaps({ text: 'Thanks, see [1].' })).toBe(false);
+		expect(authoredDraftHasGaps({})).toBe(false);
+	});
+
+	it('reads the HTML when there is HTML', () => {
+		expect(authoredDraftHasGaps({ html: '<p>Ships on [[date]].</p>', text: 'Ships soon.' })).toBe(
+			true
+		);
+		expect(
+			authoredDraftHasGaps({
+				html: '<p>Thanks.</p><blockquote>Check [[ticket 12]]</blockquote>',
+				text: 'Thanks. Check [[ticket 12]]',
+			})
+		).toBe(false);
 	});
 });

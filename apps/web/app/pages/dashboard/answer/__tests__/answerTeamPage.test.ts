@@ -249,6 +249,26 @@ describe('Answer mode for a Team inbox thread', () => {
 		);
 	});
 
+	it('holds Send and counts the gaps of an agent draft stored gap-guarded until they are filled', async () => {
+		// As `stepOutputs.recordDraftOutput` stores an agent draft with a gap: no
+		// saved revision, no Draft with AI session, only the stored guard.
+		messages.value = [
+			inbound('in_1', {
+				draftResponse: 'Hi Ana, the refund of [[refund amount]] is on its way.',
+				isDraftGapGuarded: true,
+			}),
+		];
+		const wrapper = await mountPage();
+		const send = () => wrapper.get('[data-testid="composer-send"]');
+		expect(send().attributes('disabled')).toBeDefined();
+		expect(wrapper.get('[data-testid="composer-save-state"]').text()).toBe('1 gap left');
+
+		await wrapper
+			.get<HTMLTextAreaElement>('[data-testid="thread-composer-body"]')
+			.setValue('Hi Ana, the refund of 42 EUR is on its way.');
+		expect(send().attributes('disabled')).toBeUndefined();
+	});
+
 	it('opens the agent draft in the editor, and Send approves it unchanged', async () => {
 		const wrapper = await mountPage();
 		const body = wrapper.get<HTMLTextAreaElement>('[data-testid="thread-composer-body"]');

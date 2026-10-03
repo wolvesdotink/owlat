@@ -16070,6 +16070,7 @@
 		},
 		"useReviewQueue": {
 			"approveDraft": "Approve draft",
+			"draftHasGaps": "This draft still has 1 gap: fill in or delete the [[...]] before you send it. | This draft still has {count} gaps: fill in or delete each [[...]] before you send it.",
 			"rejectDraft": "Reject draft",
 			"saveReply": "Save reply",
 			"undoApproval": "Undo approval"
