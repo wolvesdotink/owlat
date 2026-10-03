@@ -94,8 +94,9 @@ jobs:
             curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/docker-compose-${{ needs.resolve.outputs.version }}.yml -o docker-compose.yml
             curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/docker-compose-${{ needs.resolve.outputs.version }}.yml.sha256 -o docker-compose.yml.sha256
             sha256sum -c <(sed "s|docker-compose-${{ needs.resolve.outputs.version }}.yml|docker-compose.yml|" docker-compose.yml.sha256)
-            docker compose pull && docker compose up -d
+            docker compose pull
             docker compose --profile deploy run --rm convex-deploy
+            docker compose up -d
             ```
 
             ### Desktop app

@@ -115,8 +115,11 @@ cat > "$TMP" <<EOF
 #   curl -fsSL https://github.com/wolvesdotink/owlat/releases/download/v${VERSION}/docker-compose-${VERSION}.yml \\
 #     -o docker-compose.yml
 #   docker compose pull
-#   docker compose up -d
 #   docker compose --profile deploy run --rm convex-deploy
+#   docker compose up -d
+#
+# Deploy the functions before "up -d", as the updater does: the new
+# containers may call functions the previous release does not have.
 # ═══════════════════════════════════════════════════════════════════════════════
 
 EOF
