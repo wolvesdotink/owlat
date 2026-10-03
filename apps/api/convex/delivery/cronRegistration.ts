@@ -260,4 +260,27 @@ export function registerDeliveryCrons(crons: Crons): void {
 		internal.delivery.seedScheduledProbe.sweepScheduledSeedProbes,
 		{}
 	);
+
+	// Send completions that threw (#1195): replay the recorded outcomes whose
+	// backoff ran out, purge the ones resolved a month ago, and end the queued
+	// Sends no completion or webhook can reach any more. Each tick with nothing
+	// to do is one index range read.
+	crons.interval(
+		'replay failed send completions',
+		{ minutes: 10 },
+		internal.delivery.sendCompletionFailures.replayDueCompletionFailures,
+		{}
+	);
+	crons.interval(
+		'purge resolved send completion failures',
+		{ hours: 24 },
+		internal.delivery.sendCompletionFailures.purgeResolvedCompletionFailures,
+		{}
+	);
+	crons.interval(
+		'sweep stuck queued sends',
+		{ hours: 1 },
+		internal.delivery.stuckSendSweep.sweepStuckQueuedSends,
+		{}
+	);
 }

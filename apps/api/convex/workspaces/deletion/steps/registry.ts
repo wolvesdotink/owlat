@@ -71,6 +71,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailMessageParts: mailMessagePartsStep,
 	mailDrafts: mailDraftsStep,
 	transactionalPendingUploads: transactionalPendingUploadsStep,
+	sendCompletionFailures: makeSweepStep('sendCompletionFailures'),
 	transactionalSends: transactionalSendsStep,
 	emailSends: makeSweepStep('emailSends'),
 	agentActions: makeSweepStep('agentActions'),

@@ -203,6 +203,10 @@ const HAND_RUN_ENTRIES: Readonly<Record<string, string>> = {
 		'the operator retry of a failed account erasure, ahead of the daily re-arm (`convex run`)',
 	'mail/imap/serverRegistry.ts#status':
 		'the operator view of which IMAP server releases reported, before a contract step (`convex run`)',
+	'delivery/sendCompletionFailures.ts#status':
+		'the operator view of recorded send completions that threw and their last error (`convex run`)',
+	'delivery/sendCompletionFailures.ts#reopenExhaustedCompletionFailures':
+		'the operator hand-back of exhausted completion records to the replay cron after a fix (`convex run`)',
 };
 const isHandRun = (module: string): boolean =>
 	HAND_RUN_PREFIXES.some((prefix) => module.startsWith(prefix));

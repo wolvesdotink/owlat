@@ -13,6 +13,8 @@ import { clampRetryAfterMs, LOCAL_DEFER_MS, RETRY_AFTER_MIN_MS } from '../lib/se
 import { enqueueGovernedSend } from './governedEnqueue';
 import { recordDeferralOutcome } from './deferralOutcome';
 import { envelopeInputValidator, retryStateValidator } from './workerEnvelope';
+import { countableSendRefValidator } from '../lib/validators/send';
+import { recordCompletionFailure } from './sendCompletionFailures';
 import { isSendWorkerOutcome, type SendWorkerOutcome } from './workerOutcome';
 import type { MarketingIneligibility } from '../lib/marketingEligibility';
 
@@ -45,13 +47,7 @@ import type { MarketingIneligibility } from '../lib/marketingEligibility';
 // workpool results to SendRef + transition.
 // ============================================================================
 
-const sendRefValidator = v.union(
-	v.object({ kind: v.literal('campaign'), id: v.id('emailSends') }),
-	v.object({
-		kind: v.literal('transactional'),
-		id: v.id('transactionalSends'),
-	})
-);
+const sendRefValidator = countableSendRefValidator;
 
 /** The countable Send this callback is bound to (a probe never gets one). */
 type SendCompletionRef = Infer<typeof sendRefValidator>;
@@ -106,8 +102,37 @@ function describeUnreadableResult(value: unknown): string {
 	return `kind=${kind} keys=[${Object.keys(record).sort().join(',')}]`;
 }
 
+const completionArgs = vOnCompleteArgs(v.object({ sendRef: sendRefValidator }));
+
+/**
+ * The workpool's `onComplete` for every governed send.
+ *
+ * A SHELL THAT CANNOT LOSE THE RESULT (#1195). The workpool keeps no record of
+ * an `onComplete` that throws: it retries once, logs, and deletes the work, and
+ * with it the only copy of a direct provider's message id. So the completion
+ * runs as a nested mutation, whose writes roll back on their own when it
+ * throws, and a throw is caught here and recorded instead: the provider
+ * identity goes onto the still-queued Send and the outcome into
+ * `sendCompletionFailures`, both in this outer transaction, which commits.
+ * `delivery/sendCompletionFailures.ts` replays the record.
+ */
 export const completeSend = internalMutation({
-	args: vOnCompleteArgs(v.object({ sendRef: sendRefValidator })),
+	args: completionArgs,
+	handler: async (ctx, args) => {
+		try {
+			await ctx.runMutation(internal.delivery.sendCompletion.applyCompletion, args);
+		} catch (error) {
+			await recordCompletionFailure(ctx, args, error);
+		}
+	},
+});
+
+/**
+ * Translate one worker outcome into the Send's lifecycle. Called by
+ * `completeSend` and by a completion-failure replay, never by the workpool.
+ */
+export const applyCompletion = internalMutation({
+	args: completionArgs,
 	handler: async (ctx, { workId, result, context }) => {
 		const { sendRef } = context;
 		const now = Date.now();

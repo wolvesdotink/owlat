@@ -66,6 +66,9 @@ export const TENANT_TABLES = [
 	// Attachment bytes a transactional API request stored but no Send claimed
 	// yet; the step frees each blob with its row.
 	'transactionalPendingUploads',
+	// Recorded send completions that threw (#1195): a pointer at a Send plus the
+	// worker outcome, which can carry the rendered message. Before both send tables.
+	'sendCompletionFailures',
 	'transactionalSends',
 	'transactionalEmails',
 

@@ -19,6 +19,7 @@ import { instanceHotRowTables } from './schema/instanceHotRows';
 import { templateTables } from './schema/templates';
 import { alignmentTables } from './schema/alignment';
 import { sendAssignmentTables } from './schema/sendAssignments';
+import { sendCompletionFailureTables } from './schema/sendCompletionFailures';
 import { smtpResponseCategoryTables } from './schema/smtpResponseCategories';
 import { transportOutcomeTables } from './schema/transportOutcomes';
 import { deliveryTables } from './schema/delivery';
@@ -76,6 +77,7 @@ export default defineSchema({
 	...seedPlacementTables,
 	...alignmentTables,
 	...sendAssignmentTables,
+	...sendCompletionFailureTables,
 	...smtpResponseCategoryTables,
 	...transportOutcomeTables,
 	...inboxTables,

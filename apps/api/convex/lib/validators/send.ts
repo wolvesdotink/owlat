@@ -6,6 +6,15 @@ import { bounceTypeValidator } from '../literalValidators';
  * (schema/campaigns.ts) and `transactionalSends` (schema/templates.ts).
  */
 
+/**
+ * A countable Send: the row a worker completion, a lifecycle transition or a
+ * completion-failure record names. A seed probe is not one.
+ */
+export const countableSendRefValidator = v.union(
+	v.object({ kind: v.literal('campaign'), id: v.id('emailSends') }),
+	v.object({ kind: v.literal('transactional'), id: v.id('transactionalSends') })
+);
+
 /** One tracked-link click on a send (`clickedLinks`). */
 const linkClickValidator = v.object({
 	url: v.string(),
