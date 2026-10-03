@@ -2,32 +2,97 @@
  * Page-side control of the offline app shell service worker (plan idea 49).
  *
  * The worker itself lives in `service-worker/sw.js` (a plain classic script,
- * shipped as a public asset). This module holds the page's pure helpers ABOUT
- * it, testable without a browser:
+ * shipped as a public asset). This module holds the two decisions the app makes
+ * ABOUT it, kept pure so they are testable without a browser:
  *
- *   - `decideServiceWorkerAction` (in `~/utils/serviceWorkerAction`, the only
- *     piece the boot path imports) — register, actively unregister, or do
+ *   - {@link decideServiceWorkerAction} — register, actively unregister, or do
  *     nothing. "Unregister" is the load-bearing branch: a worker installed by a
  *     production visit outlives the flag that installed it, so turning the kill
  *     switch off (or opening the dev server on the same origin) must REMOVE the
  *     installed worker, not merely skip registration.
- *   - {@link isOwnServiceWorker} — which registrations teardown may touch.
  *   - {@link clearShellCaches} — drop every `owlat-shell-*` CacheStorage entry.
  *     The page shares CacheStorage with the worker, so the teardown needs no
  *     message plumbing and works even when the worker is already gone.
  *
  * No mail is ever in these caches (the worker bypasses `/api/**` and every
  * cross-origin request); the offline MAIL cache is `postboxOfflineStore.ts`.
- * The push-only variant of the worker is `~/utils/webPush`.
  */
-
-import { decideServiceWorkerAction, type ServiceWorkerEnv } from './serviceWorkerAction';
 
 /** Scope-root URL of the worker script, as served from `nitro.publicAssets`. */
 export const SERVICE_WORKER_URL = '/sw.js';
 
+/**
+ * The same script in push-only mode: no fetch handling and no caches, only Web
+ * Push notifications. Used wherever the offline shell must not run (the kill
+ * switch, the dev server) but this browser has push turned on — a push
+ * subscription belongs to the worker registration, so tearing the worker down
+ * would silently end it.
+ */
+export const PUSH_ONLY_WORKER_URL = '/sw.js?shell=off';
+
+/**
+ * Which script a registration should run: the full shell where the shell is
+ * allowed, push-only everywhere else.
+ */
+export function workerUrlFor(action: ServiceWorkerAction): string {
+	return action === 'register' ? SERVICE_WORKER_URL : PUSH_ONLY_WORKER_URL;
+}
+
+/**
+ * What boot does with a worker this origin already installed when the shell
+ * must not run: keep it (downgraded to push-only) while it carries a push
+ * subscription, unregister it otherwise.
+ */
+export function teardownActionFor(hasPushSubscription: boolean): 'downgrade' | 'unregister' {
+	return hasPushSubscription ? 'downgrade' : 'unregister';
+}
+
+/** The message a notification click posts to an open window (see `sw.js`). */
+export interface NavigateMessage {
+	type: 'owlat:navigate';
+	path: string;
+}
+
+/** The in-app path a worker message asks for, or null when it is not one of ours. */
+export function navigatePathFrom(data: unknown): string | null {
+	if (!data || typeof data !== 'object') return null;
+	const message = data as Partial<NavigateMessage>;
+	if (message.type !== 'owlat:navigate' || typeof message.path !== 'string') return null;
+	const { path } = message;
+	// `/\host` parses as `//host`: only a plain same-origin path is routed.
+	return path.startsWith('/') && !path.startsWith('//') && !path.includes('\\') ? path : null;
+}
+
 /** Cache-name prefix owned by the worker — mirrored from `service-worker/sw.js`. */
 export const SHELL_CACHE_PREFIX = 'owlat-shell-';
+
+/** What the client plugin should do on boot. */
+export type ServiceWorkerAction = 'register' | 'unregister' | 'skip';
+
+export interface ServiceWorkerEnv {
+	/** `'serviceWorker' in navigator` — false in unsupported or non-secure contexts. */
+	supported: boolean;
+	/** `runtimeConfig.public.isDesktopBuild` — the Tauri bundle never registers. */
+	isDesktopBuild: boolean;
+	/** `import.meta.dev` — a worker in front of HMR serves yesterday's bundle. */
+	isDev: boolean;
+	/** `runtimeConfig.public.offlineShell` — the operator kill switch. */
+	enabled: boolean;
+}
+
+/**
+ * Decide what to do with the offline shell worker.
+ *
+ * `skip` only when service workers are unavailable — there is nothing to
+ * register and nothing that could have been registered. Every other "off"
+ * reason returns `unregister`, so a previously installed worker is torn down
+ * instead of quietly surviving the setting that disabled it.
+ */
+export function decideServiceWorkerAction(env: ServiceWorkerEnv): ServiceWorkerAction {
+	if (!env.supported) return 'skip';
+	if (env.isDesktopBuild || env.isDev || !env.enabled) return 'unregister';
+	return 'register';
+}
 
 /** The three slots a registration can hold its script in, in install order. */
 export interface ServiceWorkerLike {

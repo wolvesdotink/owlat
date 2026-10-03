@@ -1,18 +1,17 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
+	PUSH_ONLY_WORKER_URL,
 	SERVICE_WORKER_URL,
 	SHELL_CACHE_PREFIX,
 	clearShellCaches,
+	decideServiceWorkerAction,
 	describeShellStatus,
 	isOwnServiceWorker,
-} from '../offlineShell';
-import { decideServiceWorkerAction, type ServiceWorkerEnv } from '../serviceWorkerAction';
-import {
-	PUSH_ONLY_WORKER_URL,
 	navigatePathFrom,
 	teardownActionFor,
 	workerUrlFor,
-} from '../webPush';
+	type ServiceWorkerEnv,
+} from '../offlineShell';
 import { createTestI18n } from '~/__tests__/i18n';
 
 /** The status registry hands back keys; this is the render boundary. */
