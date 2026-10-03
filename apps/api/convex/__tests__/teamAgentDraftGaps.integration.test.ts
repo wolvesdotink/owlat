@@ -182,7 +182,7 @@ describe('an agent draft with [[...]] gaps in the team inbox', () => {
 		await agentDrafts(t, messageId, filled, [filled, gapped]);
 		expect(await guardOf(t, messageId)).toBe(true);
 
-		// The review queue's option pick: edit to the variant, then approve.
+		// Writing the variant over the draft: edit to it, then approve.
 		await t.mutation(api.inbox.mutations.editDraft, {
 			inboundMessageId: messageId,
 			draftResponse: gapped,
@@ -214,5 +214,185 @@ describe('an agent draft with [[...]] gaps in the team inbox', () => {
 		expect(message?.processingStatus).toBe('draft_ready');
 		expect(message?.draftResponse).toBeUndefined();
 		expect(message?.isDraftGapGuarded).toBeUndefined();
+	});
+});
+
+// #1196: `draftOptions` are the variants of one agent draft. Left behind when the
+// draft changed, they described a text nobody saw, and the Answer queue card
+// approved `draftOptions[0]` over a reviewer's saved edit.
+describe("an agent draft's variants", () => {
+	const variant = 'Hi Jonas, the refund is on its way.';
+	const edited = 'Hi Jonas, I have sent the refund of 42 EUR today. Best, Ada';
+
+	// The whole row comes back: a bare `undefined` from `t.run` arrives as null.
+	const optionsOf = async (t: Harness, id: Id<'inboundMessages'>) =>
+		(await t.run((ctx) => ctx.db.get(id)))?.draftOptions;
+
+	it('are dropped when a reviewer saves an edit', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seedMessage(t);
+		await agentDrafts(t, messageId, filled, [filled, variant]);
+		expect(await optionsOf(t, messageId)).toEqual([filled, variant]);
+
+		await t.mutation(api.inbox.draftRevisions.saveDraftRevision, {
+			inboundMessageId: messageId,
+			draftResponse: edited,
+		});
+
+		expect(await optionsOf(t, messageId)).toBeUndefined();
+	});
+
+	it('are dropped by an edit through editDraft too', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seedMessage(t);
+		await agentDrafts(t, messageId, filled, [filled, variant]);
+
+		await t.mutation(api.inbox.mutations.editDraft, {
+			inboundMessageId: messageId,
+			draftResponse: edited,
+		});
+
+		expect(await optionsOf(t, messageId)).toBeUndefined();
+		// Approve sends the edit, the text the reviewer saved.
+		expect((await approve(t, messageId)).success).toBe(true);
+		const message = await t.run((ctx) => ctx.db.get(messageId));
+		expect(message?.draftResponse).toBe(edited);
+	});
+
+	it('are dropped when the agent drafts again without variants', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seedMessage(t);
+		await agentDrafts(t, messageId, filled, [filled, variant]);
+		await agentDrafts(t, messageId, 'Hi Jonas, the refund went out today.');
+
+		expect(await optionsOf(t, messageId)).toBeUndefined();
+	});
+
+	it('leave nothing gapped to approve after a re-draft without gaps', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seedMessage(t);
+		await agentDrafts(t, messageId, gapped, [gapped, `${variant} [[date]]`]);
+		await agentDrafts(t, messageId, filled);
+
+		const message = await t.run((ctx) => ctx.db.get(messageId));
+		expect(message?.isDraftGapGuarded).toBe(false);
+		expect(message?.draftOptions).toBeUndefined();
+		const stored = [message?.draftResponse ?? '', ...(message?.draftOptions ?? [])];
+		expect(stored.filter((text) => text.includes('[['))).toEqual([]);
+		expect((await approve(t, messageId)).success).toBe(true);
+	});
+
+	it("stay through the route step's hand-off of the same draft, and go with a different one", async () => {
+		const t = convexTest(schema, modules);
+		const kept = await seedMessage(t);
+		await t.mutation(internal.inbox.stepOutputs.recordDraftOutput, {
+			inboundMessageId: kept,
+			draftResponse: filled,
+			draftSubject: 'Re: Refund',
+			confidenceScore: 0.5,
+			draftOptions: [filled, gapped],
+		});
+		await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: kept,
+			input: { to: 'draft_ready', at: Date.now(), draftResponse: filled },
+		});
+		expect(await optionsOf(t, kept)).toEqual([filled, gapped]);
+		// The gapped variant still counts for the guard, as when it was stored.
+		expect(await guardOf(t, kept)).toBe(true);
+
+		const replaced = await seedMessage(t);
+		await t.mutation(internal.inbox.stepOutputs.recordDraftOutput, {
+			inboundMessageId: replaced,
+			draftResponse: filled,
+			draftSubject: 'Re: Refund',
+			confidenceScore: 0.5,
+			draftOptions: [filled, gapped],
+		});
+		await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: replaced,
+			input: { to: 'draft_ready', at: Date.now(), draftResponse: variant },
+		});
+		expect(await optionsOf(t, replaced)).toBeUndefined();
+		expect(await guardOf(t, replaced)).toBe(false);
+	});
+
+	it('are dropped when a person reopens a rejected message', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seedMessage(t, {
+			status: 'rejected',
+			fields: { draftResponse: filled, draftOptions: [filled, gapped], isDraftGapGuarded: true },
+		});
+
+		await t.mutation(api.inbox.manualReply.takeOverReply, { inboundMessageId: messageId });
+
+		const message = await t.run((ctx) => ctx.db.get(messageId));
+		expect(message?.processingStatus).toBe('draft_ready');
+		expect(message?.draftResponse).toBeUndefined();
+		expect(message?.draftOptions).toBeUndefined();
+	});
+});
+
+// Rolling deploy (#1196): a tab still on the previous web build approves
+// `draftOptions[0]` over the shown draft whenever there are two or more, by
+// `editDraft` then `approveDraft`. A row stored before the fix can hold a clean
+// draft, stale gapped variants and a `false` guard.
+describe('a row stored before the variants were cleared', () => {
+	const staleGapped = `${gapped}\n`;
+	const variant = 'Hi Jonas, the refund is on its way.';
+
+	async function seedLegacyRow(t: Harness, draftOptions: string[]) {
+		return seedMessage(t, {
+			status: 'draft_ready',
+			fields: { draftResponse: filled, draftOptions, isDraftGapGuarded: false },
+		});
+	}
+
+	const queueRow = async (t: Harness, id: Id<'inboundMessages'>) => {
+		const queue = await t.query(api.inbox.queries.getReviewQueue, {});
+		return queue.find((entry) => entry.message._id === id)?.message;
+	};
+
+	it('reaches the review queue without the variants of a draft it no longer shows', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seedLegacyRow(t, [staleGapped, variant]);
+
+		const row = await queueRow(t, messageId);
+		expect(row?.draftResponse).toBe(filled);
+		expect(row?.draftOptions).toBeUndefined();
+	});
+
+	it('still reaches the queue with the variants of the draft it shows', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seedLegacyRow(t, [filled, variant]);
+
+		expect((await queueRow(t, messageId))?.draftOptions).toEqual([filled, variant]);
+	});
+
+	it("refuses the old card's write of a gapped variant, then Approve", async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seedLegacyRow(t, [staleGapped, variant]);
+
+		// The old `approveOption`: the variant, trimmed, written over the draft.
+		await t.mutation(api.inbox.mutations.editDraft, {
+			inboundMessageId: messageId,
+			draftResponse: staleGapped.trim(),
+		});
+
+		expect(await guardOf(t, messageId)).toBe(true);
+		await expect(approve(t, messageId)).rejects.toMatchObject(refused);
+	});
+
+	it("keeps the client's guard for a person's own edit that matches no variant", async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seedLegacyRow(t, [staleGapped, variant]);
+
+		await t.mutation(api.inbox.mutations.editDraft, {
+			inboundMessageId: messageId,
+			draftResponse: 'Hi Jonas, your [[order]] ticket is closed and the refund is on its way.',
+			isGapGuarded: false,
+		});
+
+		expect(await guardOf(t, messageId)).toBe(false);
+		expect((await approve(t, messageId)).success).toBe(true);
 	});
 });

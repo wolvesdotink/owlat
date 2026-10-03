@@ -45,8 +45,7 @@ const categoryLabel = computed(() => {
 
 const collisionText = useLocalized();
 
-const { needsReply, onApprove, approveOption, onReject, undoApprove, composeAndSend } =
-	useReviewQueue();
+const { needsReply, onApprove, onReject, undoApprove, composeAndSend } = useReviewQueue();
 const message = computed(() => props.entry.message);
 const draftless = computed(() => needsReply(message.value));
 
@@ -113,11 +112,9 @@ async function approve() {
 	busy.value = true;
 	try {
 		const m = message.value;
-		const options = m.draftOptions;
-		const result =
-			options && options.length > 1
-				? await approveOption(m._id, options[0]!, m.draftResponse)
-				: await onApprove(m._id);
+		// The text on the card is the text that goes out: a reviewer's saved edit
+		// included, whatever variants the agent once offered.
+		const result = await onApprove(m._id);
 		if (!result.ok) return;
 		if (isReplyCollision(result.result)) {
 			showToast(
@@ -272,12 +269,6 @@ const secondaryButton =
 					<p class="text-xs font-medium text-brand uppercase tracking-wider">
 						{{ t('components.agentTasks.reviewFocusFlow.draftReady') }}
 					</p>
-					<span
-						v-if="(message.draftOptions?.length ?? 0) > 1"
-						class="text-[10px] text-text-tertiary"
-					>
-						· {{ t('components.agentTasks.reviewFocusFlow.pickAnotherOption') }}
-					</span>
 				</div>
 				<p class="text-text-primary text-sm whitespace-pre-wrap">{{ message.draftResponse }}</p>
 			</div>
