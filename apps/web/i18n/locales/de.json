@@ -326,7 +326,6 @@
 				"noSubject": "(kein Betreff)",
 				"noTextContent": "(Kein Textinhalt)",
 				"openThread": "Konversation öffnen",
-				"pickAnotherOption": "In der Konversation bearbeiten, um eine andere Option zu wählen",
 				"reject": "Ablehnen",
 				"replyPlaceholder": "Schreibe deine Antwort…",
 				"sendReply": "Antwort senden",
@@ -3743,10 +3742,6 @@
 				"groundedIn": "Basiert auf:",
 				"heldBecause": "Zurückgehalten, weil:",
 				"sentBecause": "Gesendet, weil:"
-			},
-			"draftOptions": {
-				"groupLabel": "Entwurfsoptionen",
-				"heading": "Agenten-Entwurf — bitte auswählen"
 			},
 			"inboxFilterPills": {
 				"groupLabel": "Konversationen filtern",

@@ -105,9 +105,9 @@ export const recordDraftOutput = internalMutation({
 		// classifier confidenceScore. Optional: absent when the self-check
 		// LLM call failed (the route step then treats quality as unknown/LOW).
 		draftQuality: v.optional(draftQualityValidator),
-		// Optional 2–3 pickable draft variants offered at the review gate (only
-		// on low-confidence / low-quality cases). `draftOptions[0]` mirrors
-		// `draftResponse`. Absent on the normal single-draft path.
+		// Optional 2–3 draft variants of this run (only on low-confidence /
+		// low-quality cases). `draftOptions[0]` mirrors `draftResponse`. Absent on
+		// the normal single-draft path, which clears any earlier run's variants.
 		draftOptions: v.optional(v.array(v.string())),
 		// Advisory attachment suggestion (see lib/validators/attachment.ts). Absent unless
 		// the inbound asked for a document and a contact-scoped file matched.
@@ -124,13 +124,16 @@ export const recordDraftOutput = internalMutation({
 			// A `[[...]]` placeholder marks a fact the agent did not have. Stored as
 			// the gap guard, so the composer highlights and counts it and
 			// `approveDraft` refuses to send it (DRAFT_HAS_GAPS) until it is filled.
-			// The offered variants count too: picking one keeps the guard as it is.
+			// The variants count too: writing one over the draft through
+			// `editDraft` keeps the guard as it is.
 			isDraftGapGuarded: [args.draftResponse, ...(args.draftOptions ?? [])].some((text) =>
 				authoredDraftHasGaps({ text })
 			),
 			confidenceScore: args.confidenceScore,
 			...(args.draftQuality ? { draftQuality: args.draftQuality } : {}),
-			...(args.draftOptions ? { draftOptions: args.draftOptions } : {}),
+			// The variants belong to this draft. A run without them drops the ones
+			// an earlier run left, which no longer match the draft or its guard.
+			draftOptions: args.draftOptions?.length ? args.draftOptions : undefined,
 			...(args.attachmentSuggestions ? { attachmentSuggestions: args.attachmentSuggestions } : {}),
 		});
 	},

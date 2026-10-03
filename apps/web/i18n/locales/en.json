@@ -326,7 +326,6 @@
 				"noSubject": "(no subject)",
 				"noTextContent": "(No text content)",
 				"openThread": "Open thread",
-				"pickAnotherOption": "Edit in thread to pick another option",
 				"reject": "Reject",
 				"replyPlaceholder": "Type your reply…",
 				"sendReply": "Send reply",
@@ -3743,10 +3742,6 @@
 				"groundedIn": "Grounded in:",
 				"heldBecause": "Held because:",
 				"sentBecause": "Sent because:"
-			},
-			"draftOptions": {
-				"groupLabel": "Draft options",
-				"heading": "Agent draft — pick one"
 			},
 			"inboxFilterPills": {
 				"groupLabel": "Filter threads",

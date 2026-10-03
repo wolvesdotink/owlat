@@ -50,6 +50,9 @@ export function draftDiffersFromAgentOriginal(message: Doc<'inboundMessages'>): 
  * the duplicate append but still stamps `draftSavedAt` and patches the
  * subject. Records NO autonomy feedback.
  *
+ * Any agent variants (`draftOptions`) are dropped: they were offered against
+ * the agent's draft, and this save replaces it.
+ *
  * `gapGuarded` is the composer's saved-reply gap guard for this text
  * (`isDraftGapGuarded`): stored with it, so its `[[...]]` gaps still hold Send
  * after a reload and `approveDraft` refuses them. Omitted = left as it was.
@@ -90,6 +93,9 @@ export async function appendDraftRevision(
 		draftRevisions: revisions,
 		draftSavedAt: now,
 		...(args.gapGuarded !== undefined ? { isDraftGapGuarded: args.gapGuarded } : {}),
+		// The agent's variants were alternatives to the agent's draft. Once a
+		// person writes the working draft they describe a text nobody sees.
+		draftOptions: undefined,
 		// Kept as the honest differs-from-agent-original bit so the existing
 		// `clarification_unedited_send` outcome discrimination stays accurate:
 		// a save reverting to the agent's exact text counts as unedited.

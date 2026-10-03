@@ -131,49 +131,6 @@ describe('useReviewQueue', () => {
 		});
 	});
 
-	describe('approveOption', () => {
-		const messageId = 'msg_1' as never;
-		const primary = 'Your order shipped Friday.';
-
-		it('approves directly when the picked option IS the current default draft', async () => {
-			const { approveOption } = useReviewQueue();
-			const result = await approveOption(messageId, primary, primary);
-			// No edit — the default draft is already persisted.
-			expect(editRun()).not.toHaveBeenCalled();
-			expect(approveRun()).toHaveBeenCalledWith({ inboundMessageId: messageId });
-			expect(result).toEqual({ ok: true, result: { success: true } });
-		});
-
-		it('persists a DIFFERENT picked option via editDraft then approves', async () => {
-			const { approveOption } = useReviewQueue();
-			const result = await approveOption(messageId, '  A more cautious reply.  ', primary);
-			// The picked variant is written (trimmed) then sent — the pick is a
-			// preference signal recorded by editDraft.
-			expect(editRun()).toHaveBeenCalledWith({
-				inboundMessageId: messageId,
-				draftResponse: 'A more cautious reply.',
-			});
-			expect(approveRun()).toHaveBeenCalledWith({ inboundMessageId: messageId });
-			expect(result).toEqual({ ok: true, result: { success: true } });
-		});
-
-		it('does not approve when persisting the picked option fails', async () => {
-			const { approveOption } = useReviewQueue();
-			editRun().mockResolvedValueOnce({ ok: false });
-			const result = await approveOption(messageId, 'A different reply.', primary);
-			expect(result).toEqual({ ok: false });
-			expect(approveRun()).not.toHaveBeenCalled();
-		});
-
-		it('refuses an empty pick (never touches the backend)', async () => {
-			const { approveOption } = useReviewQueue();
-			const result = await approveOption(messageId, '   ', primary);
-			expect(result).toEqual({ ok: false });
-			expect(editRun()).not.toHaveBeenCalled();
-			expect(approveRun()).not.toHaveBeenCalled();
-		});
-	});
-
 	// Piece D1': saved drafts ("Saved · edited by you") float to the top of the
 	// queue, most recently saved first; the rest keep the server's order.
 	describe('saved-first sort bump', () => {
@@ -243,27 +200,21 @@ describe('useReviewQueue', () => {
 			);
 		});
 
-		it('counts the picked option’s gaps', async () => {
-			const { approveOption } = useReviewQueue();
-			refuseApprove();
-
-			await approveOption('msg_1' as never, 'It ships on [[date]].', 'It ships soon.');
-
-			expect(showToast).toHaveBeenCalledWith(
-				'This draft still has 1 gap: fill in or delete the [[...]] before you send it.',
-				'error'
-			);
-		});
-
 		it('leaves a [[...]] in the quoted original out of the count', async () => {
-			const { approveOption } = useReviewQueue();
+			vi.stubGlobal('useConvexQuery', () =>
+				queryResult([
+					{
+						message: {
+							_id: 'msg_1',
+							draftResponse: 'It ships on [[date]].\n> Can you quote ticket [[ticket]]?',
+						},
+					},
+				])
+			);
+			const { onApprove } = useReviewQueue();
 			refuseApprove();
 
-			await approveOption(
-				'msg_1' as never,
-				'It ships on [[date]].\n> Can you quote ticket [[ticket]]?',
-				'It ships soon.'
-			);
+			await onApprove('msg_1' as never);
 
 			expect(showToast).toHaveBeenCalledWith(
 				'This draft still has 1 gap: fill in or delete the [[...]] before you send it.',

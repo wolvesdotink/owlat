@@ -190,10 +190,12 @@ export const inboxTables = {
 		// Optional alternative drafts offered at the review gate (concise /
 		// hedged / detailed). Present ONLY on lower-confidence / low-quality
 		// cases, where the `draft` step spends one extra generation to give the
-		// reviewer 2–3 pickable variants. `draftOptions[0]` is always the
+		// reviewer 2–3 variants. `draftOptions[0]` is always the
 		// self-checked primary draft (== `draftResponse`); the rest are
 		// alternatives. Absent on the normal single-draft path and whenever the
-		// options generation fails (fail-soft to the single draft).
+		// options generation fails (fail-soft to the single draft). They belong
+		// to that one agent draft: a saved edit, a re-draft without variants and
+		// a reopen all clear them.
 		draftOptions: v.optional(v.array(v.string())),
 		// Advisory attachment suggestion the `draft` step computed when the inbound
 		// asks for a document ("can you send X" / "see attached") and a
