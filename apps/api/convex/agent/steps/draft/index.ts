@@ -32,24 +32,15 @@ import {
 } from './sanitize';
 import {
 	buildConfirmedContext,
-	buildDraftOptionsPrompt,
 	buildSelfCheckPrompt,
 	draftQualitySchema,
 	runSharedDraft,
-	shouldOfferDraftOptions,
 	type DraftQuality,
 } from '../../shared/draftService';
 
 // Re-exported from the shared draft service so existing imports (and unit tests)
 // that reached into this step keep resolving after the extraction.
-export {
-	buildConfirmedContext,
-	buildDraftOptionsPrompt,
-	buildSelfCheckPrompt,
-	draftQualitySchema,
-	shouldOfferDraftOptions,
-	type DraftQuality,
-};
+export { buildConfirmedContext, buildSelfCheckPrompt, draftQualitySchema, type DraftQuality };
 
 export type DraftInput = {
 	inboundMessageId: Id<'inboundMessages'>;
@@ -86,13 +77,6 @@ type DraftOutput = {
 	confidence: number;
 	/** Draft-quality self-check (null when the check failed / was unknown). */
 	draftQuality: DraftQuality | null;
-	/**
-	 * Alternative pickable drafts offered at the review gate (present only on
-	 * low-confidence / low-quality cases; `draftOptions[0]` == `draftResponse`).
-	 * Empty on the normal single-draft path and whenever options generation
-	 * failed (fail-soft to the single draft).
-	 */
-	draftOptions: string[];
 };
 
 export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
@@ -182,47 +166,43 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 
 		// THE shared draft pipeline (agent/shared/draftService.ts): context
 		// injection re-scan → primary generation (with the recall tool) → draft
-		// self-check → gated multi-option review drafts. Personal Postbox
-		// (mail/ai/draftOnArrival.ts) runs the exact same service so both surfaces
-		// produce identical output for the same inbound message.
-		const { draftBody, draftQuality, draftOptions, tokenUsage, modelUsed } = await runSharedDraft(
-			ctx,
-			{
-				surface: 'organization',
-				resolveModel: () =>
-					resolveLanguageModelForClassifiedDraft(ctx, {
-						category: safeCategory,
-						intent: safeIntent,
-						priority: safePriority,
-						confidence: input.classification.confidence,
-					}),
-				audience: 'an organization',
-				styleReference: "the organization's",
-				context: input.context,
-				confirmedContext: input.confirmedContext,
-				stanceGuidance,
-				classification: {
+		// self-check. Personal Postbox (mail/ai/draftOnArrival.ts) runs the exact
+		// same service so both surfaces produce identical output for the same
+		// inbound message.
+		const { draftBody, draftQuality, tokenUsage, modelUsed } = await runSharedDraft(ctx, {
+			surface: 'organization',
+			resolveModel: () =>
+				resolveLanguageModelForClassifiedDraft(ctx, {
 					category: safeCategory,
 					intent: safeIntent,
-					sentiment: safeSentiment,
 					priority: safePriority,
-				},
-				toneInstruction,
-				signatureInstruction,
-				voiceSection,
-				confidence: input.classification.confidence,
-				// Allow a couple of fetch-more round-trips beyond the recall cap so the
-				// model can act on what it fetched, then still produce the final draft.
-				tools: { recallKnowledge },
-				maxSteps: MAX_RECALL_CALLS + 2,
-				spendLabels: { selfCheck: 'agent_draft_selfcheck', options: 'agent_draft_options' },
-				replyLanguage,
-				strategyScope: {
-					...(message?.contactId ? { contactId: message.contactId } : {}),
-					classification: safeCategory,
-				},
-			}
-		);
+					confidence: input.classification.confidence,
+				}),
+			audience: 'an organization',
+			styleReference: "the organization's",
+			context: input.context,
+			confirmedContext: input.confirmedContext,
+			stanceGuidance,
+			classification: {
+				category: safeCategory,
+				intent: safeIntent,
+				sentiment: safeSentiment,
+				priority: safePriority,
+			},
+			toneInstruction,
+			signatureInstruction,
+			voiceSection,
+			// Allow a couple of fetch-more round-trips beyond the recall cap so the
+			// model can act on what it fetched, then still produce the final draft.
+			tools: { recallKnowledge },
+			maxSteps: MAX_RECALL_CALLS + 2,
+			spendLabels: { selfCheck: 'agent_draft_selfcheck' },
+			replyLanguage,
+			strategyScope: {
+				...(message?.contactId ? { contactId: message.contactId } : {}),
+				classification: safeCategory,
+			},
+		});
 
 		// Compose the reply subject from the original (fetched above).
 		const replySubject = buildReplySubject(message?.subject);
@@ -236,7 +216,6 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 			draftSubject: replySubject,
 			confidenceScore: input.classification.confidence,
 			...(draftQuality ? { draftQuality } : {}),
-			...(draftOptions.length > 0 ? { draftOptions } : {}),
 			...(await draftAttachmentPatch(
 				ctx,
 				input.context,
@@ -253,7 +232,6 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 				category: input.classification.category,
 				confidence: input.classification.confidence,
 				draftQuality,
-				draftOptions,
 			},
 			tokenUsage,
 			modelUsed,

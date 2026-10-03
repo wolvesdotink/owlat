@@ -108,27 +108,15 @@ export async function generateDraftOnArrival(
 				'\n\nTone: match the owner’s natural, personal style — warm and direct, not corporate.',
 			signatureInstruction: '',
 			voiceSection,
-			// Personal mail has no classifier confidence; run review-first so the
-			// shared service offers alternative drafts. The confidence SHOWN is the
-			// quality self-check score (below), not this gating value.
-			confidence: 0.5,
-			spendLabels: {
-				selfCheck: 'postbox_draft_selfcheck',
-				options: 'postbox_draft_options',
-			},
+			spendLabels: { selfCheck: 'postbox_draft_selfcheck' },
 			strategyScope: { mailboxId: loaded.mailboxId, classification: 'other' },
 		});
 
-		// The primary generation is the costliest call on this path, and it was
-		// the one call that recorded no spend: usage showed the self-check and
-		// options labels but never the draft itself.
+		// The primary generation is the costliest call on this path; it records
+		// spend under its own label, next to the self-check's.
 		await recordLlmSpend(ctx, 'postbox_draft', result.tokenUsage, result.modelUsed);
 
 		if (result.draftBody.trim().length === 0) return; // nothing usable
-		// The alternatives are written without the trusted block, so with files
-		// or answers outstanding they could say "attached" or guess the missing
-		// fact; only the primary draft is kept.
-		const options = gaps.length === 0 ? result.draftOptions : [];
 
 		await ctx.runMutation(internal.mail.ai.draftOnArrivalStore.persistDraftSlot, {
 			threadId: args.threadId,
@@ -139,7 +127,6 @@ export async function generateDraftOnArrival(
 			// quality shows a deliberately low value so review-first reads right.
 			confidence: result.draftQuality?.score ?? UNKNOWN_QUALITY_CONFIDENCE,
 			...(result.draftQuality ? { quality: result.draftQuality } : {}),
-			...(options.length > 0 ? { options } : {}),
 		});
 	} catch (err) {
 		// Injection re-scan / LLM error → no slot; the thread still shows for

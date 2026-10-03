@@ -128,6 +128,9 @@ export const persistDraftSlot = internalMutation({
 		draftSubject: v.optional(v.string()),
 		confidence: v.number(),
 		quality: v.optional(draftQualityValidator),
+		// Deprecated (#1200), accepted and ignored: an action started before the
+		// deploy that stopped generating variants may still pass them. Remove
+		// in the release after.
 		options: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, args) => {
@@ -144,7 +147,6 @@ export const persistDraftSlot = internalMutation({
 					...(args.draftSubject ? { draftSubject: args.draftSubject } : {}),
 					confidence: args.confidence,
 					...(args.quality ? { quality: args.quality } : {}),
-					...(args.options && args.options.length > 0 ? { options: args.options } : {}),
 					generatedAt: Date.now(),
 				},
 			},

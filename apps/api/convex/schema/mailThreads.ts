@@ -72,7 +72,7 @@ export const needsReplyValidator = v.object({
 	// plain needs-reply row still renders).
 	draftSlot: v.optional(
 		v.object({
-			// The pre-generated reply body (option 0 == this string).
+			// The pre-generated reply body.
 			draft: v.string(),
 			// Reply subject (Re: …) composed from the trigger message.
 			draftSubject: v.optional(v.string()),
@@ -82,8 +82,9 @@ export const needsReplyValidator = v.object({
 			// Draft-quality self-check (completeness/grounding/tone). Absent
 			// when the self-check failed → shown as "unverified" in review.
 			quality: v.optional(draftQualityValidator),
-			// Alternative pickable drafts (present only on low-confidence /
-			// low-quality cases; options[0] == draft). Absent otherwise.
+			// Legacy: alternative drafts (options[0] == draft). Nothing writes
+			// them since #1200 and `getDraftSlot` no longer returns them; kept
+			// optional so older slots validate. Drop in a contract step.
 			options: v.optional(v.array(v.string())),
 			// When the slot was generated (advisory; freshness display).
 			generatedAt: v.number(),

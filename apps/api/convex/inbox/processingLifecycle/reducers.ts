@@ -220,12 +220,10 @@ function reduceDraftReady(
 	if (input.classification) patch['classification'] = input.classification;
 	if (input.draftResponse !== undefined) {
 		patch['draftResponse'] = input.draftResponse;
-		// Variants stay only while they are this draft's (`draftOptions[0]` is the
-		// draft). The `[[...]]` gap guard counts them, as `recordDraftOutput` does.
-		const kept = message.draftOptions?.[0] === input.draftResponse ? message.draftOptions : [];
-		if (kept.length === 0) patch['draftOptions'] = undefined;
-		const texts = [input.draftResponse, ...kept];
-		patch['isDraftGapGuarded'] = texts.some((text) => authoredDraftHasGaps({ text }));
+		// The `[[...]]` gap guard describes the text a reviewer can send. Variants
+		// a legacy row still carries are dropped: no screen offers them (#1200).
+		patch['draftOptions'] = undefined;
+		patch['isDraftGapGuarded'] = authoredDraftHasGaps({ text: input.draftResponse });
 	}
 	if (input.draftSubject !== undefined) patch['draftSubject'] = input.draftSubject;
 	if (input.confidenceScore !== undefined) patch['confidenceScore'] = input.confidenceScore;
