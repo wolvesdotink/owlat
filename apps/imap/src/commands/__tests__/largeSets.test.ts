@@ -134,16 +134,19 @@ function fakeBackend(rows: Row[], options: FakeOptions = {}) {
 		}
 		if (name === 'copyMessages' || name === 'moveMessages') {
 			const pairs = (args['messageIds'] as string[]).map((id) => {
+				const sourceUid = uidOf(id);
 				const targetUid = targetUidNext++;
-				target.push({ uid: targetUid, from: uidOf(id) });
-				if (name === 'moveMessages') {
-					folder.splice(
-						folder.findIndex((r) => r.uid === uidOf(id)),
-						1
-					);
-				}
-				return { sourceUid: uidOf(id), targetUid };
+				target.push({ uid: targetUid, from: sourceUid });
+				return { sourceUid, targetUid };
 			});
+			if (name === 'moveMessages') {
+				// One pass over the folder per batch, not one per message: a
+				// per-message search made the 20,000-message cases time out under
+				// coverage.
+				const moved = new Set(pairs.map((p) => p.sourceUid));
+				const kept = folder.filter((r) => !moved.has(r.uid));
+				folder.splice(0, folder.length, ...kept);
+			}
 			return { uidValidity: 7, pairs };
 		}
 		if (name === 'discardCopies') {
