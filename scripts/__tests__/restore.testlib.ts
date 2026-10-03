@@ -86,7 +86,9 @@ if [[ -n "\${FAKE_DOCKER_FAIL_AFTER:-}" && "$line" =~ $FAKE_DOCKER_FAIL_AFTER ]]
 	fail_after=1
 fi
 if [[ -n "\${FAKE_DOCKER_HANG:-}" && "$line" =~ $FAKE_DOCKER_HANG && ! -e "$FAKE_DOCKER_ROOT/hanging" ]]; then
-	touch "$FAKE_DOCKER_ROOT/hanging"
+	# A builtin, not touch: a SIGINT landing while a child exits counts as handled
+	# by the child, and this shell would go on into the sleep instead of dying.
+	: > "$FAKE_DOCKER_ROOT/hanging"
 	sleep 30
 fi
 vols="$FAKE_DOCKER_ROOT/volumes"
@@ -427,7 +429,15 @@ export async function makeInstall(
 				await new Promise((resolve) => setTimeout(resolve, 20));
 			}
 			process.kill(-(child.pid ?? 0), signal);
+			// A signal the script sat on fails here, with its output, not at the test timeout.
+			let stuck = false;
+			const watchdog = setTimeout(() => {
+				stuck = true;
+				process.kill(-(child.pid ?? 0), 'SIGKILL');
+			}, 10_000);
 			const code = await exited;
+			clearTimeout(watchdog);
+			if (stuck) throw new Error(`still running 10 s after ${signal}:\n${out}`);
 			return { code, out, calls: await host.calls() };
 		},
 		run: (env = {}, flags = []) => host.script(RESTORE, ['--yes', ...flags, archive], env),
