@@ -1,7 +1,10 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { webhookPayloadValidator } from '../lib/convexValidators';
-import { bounceTypeValidator } from '../lib/literalValidators';
+import {
+	bounceTypeValidator,
+	unresolvedFeedbackSuppressionValidator,
+} from '../lib/literalValidators';
 import { webhookEventValidator, subscribableWebhookEventValidator } from '../webhooks/events';
 
 /**
@@ -231,6 +234,10 @@ export const webhookTables = {
 		// Normalized complainer address, when the provider named one. Bounce
 		// events carry none.
 		recipient: v.optional(v.string()),
+		// The live contact that address (or one of its aliases) belonged to when
+		// the row was stored, so the contact erasure finds the row by id even
+		// after the alias identities are gone.
+		contactId: v.optional(v.id('contacts')),
 		bounceType: v.optional(bounceTypeValidator),
 		// Clamped diagnostic, replayed onto the Send. Dropped once the row
 		// resolves: a DSN text can quote the address, and bounces have no
@@ -241,8 +248,8 @@ export const webhookTables = {
 		deliveryDomain: v.optional(v.string()),
 		// When the provider says the event happened; replayed as the transition time.
 		at: v.number(),
-		// A complaint whose address went on the blocklist when it arrived.
-		isSuppressed: v.boolean(),
+		// What happened to the named address when the event arrived, and why.
+		suppression: unresolvedFeedbackSuppressionValidator,
 		// Provider redeliveries of the same event bump these instead of adding rows.
 		occurrences: v.number(),
 		firstSeenAt: v.number(),
@@ -261,5 +268,6 @@ export const webhookTables = {
 		.index('by_status_and_next_replay', ['status', 'nextReplayAt'])
 		.index('by_status_and_first_seen', ['status', 'firstSeenAt'])
 		.index('by_first_seen', ['firstSeenAt'])
-		.index('by_recipient', ['recipient']),
+		.index('by_recipient', ['recipient'])
+		.index('by_contact', ['contactId']),
 };

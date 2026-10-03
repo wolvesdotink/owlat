@@ -44,6 +44,9 @@ import {
 /** Sends scrubbed per page of the paginated send phases, before the byte bound. */
 const SCRUB_PAGE = 128;
 
+/** Identities read when collecting a contact's addresses; a contact has a handful. */
+const MAX_ADDRESSES_PER_CONTACT = 100;
+
 /**
  * Prefixed to a saved cursor when the page read from it came back cut short
  * (`SplitRequired`): the next transaction reads the same page again from that
@@ -82,6 +85,47 @@ const eraseAutomationRuns: PhaseRunner = async ({ ctx, contactId, budget }) => {
 		budget.chargeRows(progress.rowsTouched);
 	}
 	return NOT_DONE;
+};
+
+/**
+ * Bounces and complaints that matched no Send (#1194). A row is linked to the
+ * contact its address resolved to when it was stored; rows stored before that
+ * address belonged to a contact are found by address instead, through the
+ * contact's own email and every email identity it still has. The phase runs
+ * before the identities go; at soft-delete they are already gone, and the
+ * contact link covers the aliases.
+ */
+const eraseUnresolvedFeedback: PhaseRunner = async (phase) => {
+	const { ctx, contactId, budget } = phase;
+	const linked = await deleteAll(phase, (n) =>
+		ctx.db
+			.query('unresolvedFeedback')
+			.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+			.take(n)
+	);
+	if (!linked) return NOT_DONE;
+	const contact = await ctx.db.get(contactId);
+	if (contact) budget.chargeRead(contact);
+	const identities = await ctx.db
+		.query('contactIdentities')
+		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+		.take(MAX_ADDRESSES_PER_CONTACT);
+	const addresses = new Set<string>();
+	if (contact?.email) addresses.add(normalizeEmail(contact.email));
+	for (const identity of identities) {
+		budget.chargeRead(identity);
+		if (identity.channel === 'email') addresses.add(normalizeEmail(identity.identifier));
+	}
+	for (const address of addresses) {
+		const isDone = await deleteAll(phase, (n) =>
+			ctx.db
+				.query('unresolvedFeedback')
+				.withIndex('by_recipient', (q) => q.eq('recipient', address))
+				.take(n)
+		);
+		if (!isDone) return NOT_DONE;
+	}
+	return DONE;
 };
 
 type SendTable = 'emailSends' | 'transactionalSends';
@@ -200,6 +244,7 @@ const PHASE_RUNNERS: Record<ContactErasurePhase, PhaseRunner> = {
 			.withIndex('by_contact', (q) => q.eq('contactId', contactId))
 			.take(n)
 	),
+	unresolvedFeedback: eraseUnresolvedFeedback,
 	contactIdentities: deleteByIndex(({ ctx, contactId }, n) =>
 		ctx.db
 			.query('contactIdentities')
@@ -261,24 +306,6 @@ const PHASE_RUNNERS: Record<ContactErasurePhase, PhaseRunner> = {
 			}
 		),
 	}),
-	// Bounces and complaints that matched no Send (#1194) name the complainer by
-	// address only: there is no contact id on the row to follow. The contact's
-	// own address is the one an erasure can know; the identities that could name
-	// another one were deleted at soft-delete time.
-	unresolvedFeedback: async (phase) => {
-		const contact = await phase.ctx.db.get(phase.contactId);
-		if (!contact?.email) return DONE;
-		phase.budget.chargeRead(contact);
-		const address = normalizeEmail(contact.email);
-		return {
-			isDone: await deleteAll(phase, (n) =>
-				phase.ctx.db
-					.query('unresolvedFeedback')
-					.withIndex('by_recipient', (q) => q.eq('recipient', address))
-					.take(n)
-			),
-		};
-	},
 };
 
 export const FIRST_ERASURE_PHASE: ContactErasurePhase = CONTACT_ERASURE_PHASES[0];

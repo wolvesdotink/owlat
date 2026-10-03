@@ -13,12 +13,17 @@ import type { TestConvex } from 'convex-test';
 import type schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { createTestCampaign, createTestContact, createTestEmailSend } from './factories';
+import {
+	createTestCampaign,
+	createTestContact,
+	createTestContactIdentity,
+	createTestEmailSend,
+} from './factories';
 import { newHarness } from './testModules';
 import { dispatchInboundEvent } from '../webhooks/dispatcher';
 import type { ActionCtx } from '../_generated/server';
 import type { InboundEvent } from '../webhooks/types';
-import { permanentlyDeleteContactWithRelations } from '../lib/contactMutations';
+import { permanentlyDeleteContactWithRelations, softDeleteContact } from '../lib/contactMutations';
 import { AUTOMATIC_REPLAY_ATTEMPTS, RETENTION_MS } from '../webhooks/unresolvedFeedback';
 
 type T = TestConvex<typeof schema>;
@@ -115,7 +120,7 @@ describe('storing unresolved feedback', () => {
 			providerType: 'ses',
 			bounceType: 'hard',
 			bounceMessage: 'smtp; 550 5.1.1 user unknown',
-			isSuppressed: false,
+			suppression: 'not_applicable',
 			status: 'open',
 			occurrences: 1,
 			replayAttempts: 0,
@@ -124,13 +129,14 @@ describe('storing unresolved feedback', () => {
 		expect(await t.run(async (ctx) => await ctx.db.query('blockedEmails').collect())).toEqual([]);
 	});
 
-	it('suppresses an unknown-id complaint that passes the provenance rule, and stores it', async () => {
+	it('blocks the complainer of an unknown-id complaint attributed to this deployment, and stores it', async () => {
 		const t = newHarness();
 		await dispatch(t, {
 			kind: 'email.complained',
-			providerMessageId: 'ses-ghost',
+			providerMessageId: 'mta-ghost',
 			recipient: 'Complainer@Example.com',
-			providerType: 'ses',
+			providerType: 'mta',
+			deliveryDomain: 'production',
 			at: Date.now(),
 		});
 
@@ -139,7 +145,30 @@ describe('storing unresolved feedback', () => {
 			expect.objectContaining({
 				kind: 'complaint',
 				recipient: 'complainer@example.com',
-				isSuppressed: true,
+				suppression: 'suppressed',
+			}),
+		]);
+	});
+
+	it('stores but blocks no one for a foreign or unattributed complaint', async () => {
+		// Another deployment's mail, reported through a shared SES account: the
+		// signature is genuine, the id matches nothing here, and nothing in the
+		// event proves this deployment sent it.
+		const t = newHarness();
+		await dispatch(t, {
+			kind: 'email.complained',
+			providerMessageId: 'ses-foreign',
+			recipient: 'someone@example.com',
+			providerType: 'ses',
+			at: Date.now(),
+		});
+
+		expect(await blockedReason(t, 'someone@example.com')).toBeNull();
+		expect(await rows(t)).toEqual([
+			expect.objectContaining({
+				kind: 'complaint',
+				recipient: 'someone@example.com',
+				suppression: 'unattributed',
 			}),
 		]);
 	});
@@ -161,7 +190,7 @@ describe('storing unresolved feedback', () => {
 				kind: 'complaint',
 				recipient: 'preview@example.com',
 				deliveryDomain: 'member_test',
-				isSuppressed: false,
+				suppression: 'unattributed',
 			}),
 		]);
 	});
@@ -267,6 +296,66 @@ describe('replaying unresolved feedback', () => {
 		expect((await rows(t))[0]).toMatchObject({ status: 'resolved', resolution: 'replayed' });
 	});
 
+	it('a hard bounce escalates a stored soft one, and the replay applies the hard bounce', async () => {
+		const t = newHarness();
+		const softAt = Date.now();
+		await dispatch(t, {
+			...orphanBounce('ses-escalate'),
+			bounceType: 'soft',
+			bounceMessage: '452 mailbox full',
+			at: softAt,
+		});
+		vi.advanceTimersByTime(MINUTE);
+		const hardAt = Date.now();
+		await dispatch(t, { ...orphanBounce('ses-escalate'), at: hardAt });
+		// A later soft bounce never downgrades it again.
+		await dispatch(t, {
+			...orphanBounce('ses-escalate'),
+			bounceType: 'soft',
+			bounceMessage: '421 try later',
+			at: hardAt + MINUTE,
+		});
+
+		const [row, ...rest] = await rows(t);
+		expect(rest).toHaveLength(0);
+		expect(row).toMatchObject({
+			bounceType: 'hard',
+			bounceMessage: 'smtp; 550 5.1.1 user unknown',
+			at: hardAt,
+			occurrences: 3,
+		});
+
+		const { sendId, email } = await seedSentSend(t, 'ses-escalate');
+		await t.mutation(internal.webhooks.unresolvedFeedback.replay, { feedbackId: row!._id });
+
+		expect(await t.run(async (ctx) => await ctx.db.get(sendId))).toMatchObject({
+			status: 'bounced',
+			bounceType: 'hard',
+		});
+		// The hard bounce's own suppression happened.
+		expect(await blockedReason(t, email)).toBe('bounced');
+	});
+
+	it('schedules every automatic replay from when the row was first seen', async () => {
+		const t = newHarness();
+		const firstSeenAt = Date.now();
+		await dispatch(t, orphanBounce('ses-schedule'));
+		const deadlines = [10 * MINUTE, 60 * MINUTE, 6 * 60 * MINUTE, DAY].map(
+			(offset) => firstSeenAt + offset
+		);
+
+		expect((await rows(t))[0]?.nextReplayAt).toBe(deadlines[0]);
+		for (let attempt = 1; attempt <= AUTOMATIC_REPLAY_ATTEMPTS; attempt++) {
+			// Each tick lands a little late, the way a 10-minute cron does.
+			vi.setSystemTime(deadlines[attempt - 1]! + 7 * MINUTE);
+			await t.mutation(internal.webhooks.unresolvedFeedback.replayDue, {});
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+			const [row] = await rows(t);
+			expect(row?.replayAttempts).toBe(attempt);
+			expect(row?.nextReplayAt).toBe(deadlines[attempt]);
+		}
+	});
+
 	it('replayOpen walks every open row', async () => {
 		const t = newHarness();
 		for (const id of ['a', 'b', 'c']) await dispatch(t, orphanBounce(`ses-${id}`));
@@ -287,22 +376,31 @@ describe('counting, retention and erasure', () => {
 		await dispatch(t, orphanBounce('ses-1'));
 		await dispatch(t, {
 			kind: 'email.complained',
-			providerMessageId: 'ses-2',
+			providerMessageId: 'mta-2',
 			recipient: 'c@example.com',
+			providerType: 'mta',
+			deliveryDomain: 'production',
+			at: Date.now(),
+		});
+		await dispatch(t, {
+			kind: 'email.complained',
+			providerMessageId: 'ses-3',
+			recipient: 'd@example.com',
 			providerType: 'ses',
 			at: Date.now(),
 		});
 
 		const status = await t.query(internal.webhooks.unresolvedFeedback.status, {});
 		expect(status.last30Days).toEqual({
-			total: 2,
+			total: 3,
 			bounces: 1,
-			complaints: 1,
+			complaints: 2,
 			suppressed: 1,
-			open: 2,
+			unattributed: 1,
+			open: 3,
 			isCapped: false,
 		});
-		expect(status.openCount).toBe(2);
+		expect(status.openCount).toBe(3);
 		expect(JSON.stringify(status)).not.toContain('c@example.com');
 	});
 
@@ -366,5 +464,77 @@ describe('counting, retention and erasure', () => {
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
 
 		expect(await rows(t)).toEqual([]);
+	});
+
+	describe('alias addresses', () => {
+		/** A live contact with a primary address and a second email identity. */
+		async function seedContactWithAlias(t: T) {
+			return await t.run(async (ctx) => {
+				const contactId = await ctx.db.insert(
+					'contacts',
+					createTestContact({ email: 'primary@example.com' })
+				);
+				for (const [identifier, isPrimary] of [
+					['primary@example.com', true],
+					['alias@example.com', false],
+				] as const) {
+					await ctx.db.insert(
+						'contactIdentities',
+						createTestContactIdentity({ contactId, identifier, isPrimary })
+					);
+				}
+				return contactId;
+			});
+		}
+
+		const aliasComplaint = (providerMessageId: string): InboundEvent => ({
+			kind: 'email.complained',
+			providerMessageId,
+			recipient: 'Alias@example.com',
+			providerType: 'ses',
+			at: Date.now(),
+		});
+
+		it('links a row naming an alias to its contact', async () => {
+			const t = newHarness();
+			const contactId = await seedContactWithAlias(t);
+			await dispatch(t, aliasComplaint('ses-alias'));
+			expect((await rows(t))[0]).toMatchObject({ recipient: 'alias@example.com', contactId });
+		});
+
+		it('the inline erasure deletes rows naming an alias, linked or not', async () => {
+			const t = newHarness();
+			// Stored before the alias belonged to anyone: no contact link.
+			await dispatch(t, aliasComplaint('ses-before'));
+			const contactId = await seedContactWithAlias(t);
+			await dispatch(t, aliasComplaint('ses-after'));
+			const stored = await rows(t);
+			expect(stored.map((r) => r.contactId ?? null)).toEqual([null, contactId]);
+
+			await t.run(async (ctx) => await permanentlyDeleteContactWithRelations(ctx, contactId));
+
+			expect(await rows(t)).toEqual([]);
+		});
+
+		it('the erasure walker deletes rows naming an alias after soft-delete dropped the identities', async () => {
+			const t = newHarness();
+			const contactId = await seedContactWithAlias(t);
+			await dispatch(t, aliasComplaint('ses-walk-alias'));
+			await t.run(async (ctx) => {
+				await softDeleteContact(ctx, contactId, 'test');
+				await ctx.db.patch(contactId, { deletedAt: Date.now() - 40 * DAY });
+				expect(
+					await ctx.db
+						.query('contactIdentities')
+						.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+						.collect()
+				).toEqual([]);
+			});
+
+			await t.mutation(internal.contacts.contacts.cleanupSoftDeletedContacts, {});
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+			expect(await rows(t)).toEqual([]);
+		});
 	});
 });

@@ -1126,7 +1126,7 @@ describe('dispatchInboundEvent — unresolved-bounce observability', () => {
 				bounceType: 'hard',
 				providerMessageId: 'msg-orphan',
 				at: 3000,
-				isSuppressed: false,
+				suppression: 'not_applicable',
 			},
 		});
 		// …and still emits the observable log signal.
@@ -1211,9 +1211,10 @@ describe('dispatchInboundEvent — unresolved-bounce observability', () => {
 });
 
 /**
- * #1194 — a complaint whose Message-ID matches no send. The provider may still
- * name the complainer, and the address then goes on the blocklist under the
- * same provenance rule as a redacted complaint; the complaint is stored either way.
+ * #1194 — a complaint whose Message-ID matches no send. The complaint is stored
+ * either way; the address it names is blocked only when the event PROVES this
+ * deployment sent the mail (the MTA's VERP-backed production tag). A provider's
+ * signature proves the provider, not which deployment's mail it was about.
  */
 describe('dispatchInboundEvent — complaint whose Message-ID matches no send', () => {
 	const SEND_NOT_FOUND = { ok: false, reason: 'send_not_found' } as const;
@@ -1225,33 +1226,8 @@ describe('dispatchInboundEvent — complaint whose Message-ID matches no send', 
 		return harness.runMutationCalls;
 	}
 
-	it('suppresses the named complainer from an untagged source and stores the complaint', async () => {
+	it('blocks the complainer when the event is attributed to this deployment', async () => {
 		const calls = await dispatchUnresolved({
-			kind: 'email.complained',
-			providerMessageId: 'mandrill-ghost',
-			recipient: 'complainer@example.com',
-			providerType: 'mandrill',
-			at: 4000,
-		});
-
-		expect(calls.map((c) => c.ref)).toEqual([
-			ref(internal.delivery.sendLifecycle.transitionByProviderMessageId),
-			ref(internal.blockedEmails.addFromEvent),
-			ref(internal.webhooks.unresolvedFeedback.record),
-		]);
-		expect(calls[1]?.args).toEqual({ email: 'complainer@example.com', reason: 'complained' });
-		expect(calls[2]?.args).toEqual({
-			kind: 'complaint',
-			recipient: 'complainer@example.com',
-			providerMessageId: 'mandrill-ghost',
-			providerType: 'mandrill',
-			at: 4000,
-			isSuppressed: true,
-		});
-	});
-
-	it('suppresses a tagged source only when it shows the production tag', async () => {
-		const production = await dispatchUnresolved({
 			kind: 'email.complained',
 			providerMessageId: 'mta-ghost',
 			recipient: 'complainer@example.com',
@@ -1259,8 +1235,47 @@ describe('dispatchInboundEvent — complaint whose Message-ID matches no send', 
 			deliveryDomain: 'production',
 			at: 4000,
 		});
-		expect(production.map((c) => c.ref)).toContain(ref(internal.blockedEmails.addFromEvent));
 
+		expect(calls.map((c) => c.ref)).toEqual([
+			ref(internal.delivery.sendLifecycle.transitionMtaByProviderMessageId),
+			ref(internal.blockedEmails.addFromEvent),
+			ref(internal.webhooks.unresolvedFeedback.record),
+		]);
+		expect(calls[1]?.args).toEqual({ email: 'complainer@example.com', reason: 'complained' });
+		expect(calls[2]?.args).toEqual({
+			kind: 'complaint',
+			recipient: 'complainer@example.com',
+			providerMessageId: 'mta-ghost',
+			providerType: 'mta',
+			deliveryDomain: 'production',
+			at: 4000,
+			suppression: 'suppressed',
+		});
+	});
+
+	it.each(['ses', 'resend', 'mandrill'])(
+		'stores but never blocks a %s complaint: the provider echoes no deployment marker',
+		async (providerType) => {
+			const calls = await dispatchUnresolved({
+				kind: 'email.complained',
+				providerMessageId: `${providerType}-ghost`,
+				recipient: 'complainer@example.com',
+				providerType,
+				at: 4000,
+			});
+
+			expect(calls.map((c) => c.ref)).toEqual([
+				ref(internal.delivery.sendLifecycle.transitionByProviderMessageId),
+				ref(internal.webhooks.unresolvedFeedback.record),
+			]);
+			expect(calls[1]?.args).toMatchObject({
+				recipient: 'complainer@example.com',
+				suppression: 'unattributed',
+			});
+		}
+	);
+
+	it('stores but never blocks a tagged source that does not show the production tag', async () => {
 		const preview = await dispatchUnresolved({
 			kind: 'email.complained',
 			providerMessageId: 'mta-ghost',
@@ -1272,15 +1287,16 @@ describe('dispatchInboundEvent — complaint whose Message-ID matches no send', 
 		expect(preview.map((c) => c.ref)).not.toContain(ref(internal.blockedEmails.addFromEvent));
 		expect(preview[preview.length - 1]).toEqual({
 			ref: ref(internal.webhooks.unresolvedFeedback.record),
-			args: expect.objectContaining({ isSuppressed: false, deliveryDomain: 'member_test' }),
+			args: expect.objectContaining({ suppression: 'unattributed', deliveryDomain: 'member_test' }),
 		});
 	});
 
-	it('never suppresses for a source it cannot identify, but still stores the complaint', async () => {
+	it('stores but never blocks for a source it cannot identify', async () => {
 		const calls = await dispatchUnresolved({
 			kind: 'email.complained',
 			providerMessageId: 'ghost',
 			recipient: 'complainer@example.com',
+			deliveryDomain: 'production',
 			at: 4000,
 		});
 
@@ -1288,10 +1304,18 @@ describe('dispatchInboundEvent — complaint whose Message-ID matches no send', 
 			ref(internal.delivery.sendLifecycle.transitionByProviderMessageId),
 			ref(internal.webhooks.unresolvedFeedback.record),
 		]);
-		expect(calls[1]?.args).toMatchObject({
-			isSuppressed: false,
-			recipient: 'complainer@example.com',
+		expect(calls[1]?.args).toMatchObject({ suppression: 'unattributed' });
+	});
+
+	it('records a complaint that names nobody as such', async () => {
+		const calls = await dispatchUnresolved({
+			kind: 'email.complained',
+			providerMessageId: 'mta-ghost',
+			providerType: 'mta',
+			deliveryDomain: 'production',
+			at: 4000,
 		});
+		expect(calls[calls.length - 1]?.args).toMatchObject({ suppression: 'no_recipient' });
 	});
 
 	it('ignores the named complainer when the Message-ID resolves', async () => {

@@ -146,6 +146,12 @@ export const CONTACT_RELATIONS: readonly ErasureRelation[] = [
 		why: 'An Answer mode ask session quotes the person’s mail and holds the owner’s answers about them; its draft stream goes with it.',
 	},
 	{
+		table: 'unresolvedFeedback',
+		field: 'contactId',
+		action: 'delete',
+		why: 'A bounce or complaint that matched no Send names the person’s address; the row is the person’s data. Rows stored before the address had a contact are deleted by address in the same phase.',
+	},
+	{
 		table: 'clarificationMemory',
 		field: 'contactId',
 		action: 'delete',

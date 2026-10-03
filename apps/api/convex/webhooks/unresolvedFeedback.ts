@@ -4,7 +4,12 @@ import type { Doc } from '../_generated/dataModel';
 import { internalQuery, type DatabaseReader, type MutationCtx } from '../_generated/server';
 import { adminQuery } from '../lib/authedFunctions';
 import { normalizeEmail } from '../lib/inputGuards';
-import { bounceTypeValidator } from '../lib/literalValidators';
+import {
+	bounceTypeValidator,
+	unresolvedFeedbackSuppressionValidator,
+	type UnresolvedFeedbackSuppression,
+} from '../lib/literalValidators';
+import { findContactByIdentifier } from '../contacts/resolution';
 import { logError } from '../lib/runtimeLog';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { internalMutation } from '../lib/writeFence';
@@ -36,7 +41,7 @@ type FeedbackRow = Doc<'unresolvedFeedback'>;
 type ReplayResult = 'replayed' | 'refused' | 'unmatched' | 'failed' | 'skipped';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-/** Automatic replays after the row is first stored: 10 min, 1 h, 6 h, 24 h. */
+/** Automatic replays, as offsets from when the row was first stored: 10 min, 1 h, 6 h, 24 h. */
 const REPLAY_DELAYS_MS = [10 * 60 * 1000, 60 * 60 * 1000, 6 * 60 * 60 * 1000, DAY_MS] as const;
 export const AUTOMATIC_REPLAY_ATTEMPTS = REPLAY_DELAYS_MS.length;
 export const RETENTION_MS = 90 * DAY_MS;
@@ -53,16 +58,43 @@ function clamp(text: string, max: number): string {
 	return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
-/** The delay before automatic replay `attempt` (0-based), or none once they are spent. */
-function nextReplayAt(now: number, attempt: number): number | undefined {
-	const delay = REPLAY_DELAYS_MS[attempt];
-	return delay === undefined ? undefined : now + delay;
+/**
+ * When automatic replay `attempt` (0-based) is due, counted from when the row
+ * was first seen rather than from the previous attempt, so the schedule is the
+ * documented 10 min / 1 h / 6 h / 24 h after arrival. None once they are spent.
+ */
+function nextReplayAt(firstSeenAt: number, attempt: number): number | undefined {
+	const offset = REPLAY_DELAYS_MS[attempt];
+	return offset === undefined ? undefined : firstSeenAt + offset;
+}
+
+/** Most telling first: a merged row keeps the strongest outcome any copy had. */
+const SUPPRESSION_RANK: Record<UnresolvedFeedbackSuppression, number> = {
+	suppressed: 3,
+	unattributed: 2,
+	no_recipient: 1,
+	not_applicable: 0,
+};
+
+function strongerSuppression(
+	a: UnresolvedFeedbackSuppression,
+	b: UnresolvedFeedbackSuppression
+): UnresolvedFeedbackSuppression {
+	return SUPPRESSION_RANK[b] > SUPPRESSION_RANK[a] ? b : a;
 }
 
 /**
  * Store one unresolved signal. A provider redelivering the same event bumps
  * the row it already has, so a retried webhook never adds a second row and
  * the table holds at most one row per message id and kind.
+ *
+ * A BOUNCE ONLY ESCALATES. A hard bounce arriving for an id whose open row
+ * holds a soft one replaces the type, diagnostic and event time, so the replay
+ * applies the hard bounce (and its suppression) once the Send turns up. A soft
+ * bounce never downgrades a hard one.
+ *
+ * The named address is linked to the live contact it belongs to, through any
+ * of its email identities, so erasing that contact finds the row by id.
  */
 export const record = internalMutation({
 	args: {
@@ -74,12 +106,18 @@ export const record = internalMutation({
 		bounceMessage: v.optional(v.string()),
 		deliveryDomain: v.optional(v.string()),
 		at: v.number(),
-		isSuppressed: v.boolean(),
+		suppression: unresolvedFeedbackSuppressionValidator,
 	},
 	handler: async (ctx, args) => {
 		const now = Date.now();
 		const recipient = args.recipient
 			? clamp(normalizeEmail(args.recipient), RECIPIENT_MAX_LENGTH)
+			: undefined;
+		const contactId = recipient
+			? (await findContactByIdentifier(ctx, 'email', recipient))?.contact._id
+			: undefined;
+		const bounceMessage = args.bounceMessage
+			? clamp(args.bounceMessage, BOUNCE_MESSAGE_MAX_LENGTH)
 			: undefined;
 		const existing = await ctx.db
 			.query('unresolvedFeedback')
@@ -88,11 +126,15 @@ export const record = internalMutation({
 			)
 			.first();
 		if (existing) {
+			const escalates =
+				existing.status === 'open' && existing.bounceType === 'soft' && args.bounceType === 'hard';
 			await ctx.db.patch(existing._id, {
 				occurrences: existing.occurrences + 1,
 				lastSeenAt: now,
-				isSuppressed: existing.isSuppressed || args.isSuppressed,
+				suppression: strongerSuppression(existing.suppression, args.suppression),
 				...(recipient && !existing.recipient ? { recipient } : {}),
+				...(contactId && !existing.contactId ? { contactId } : {}),
+				...(escalates ? { bounceType: 'hard' as const, bounceMessage, at: args.at } : {}),
 			});
 			return existing._id;
 		}
@@ -101,13 +143,12 @@ export const record = internalMutation({
 			providerMessageId: args.providerMessageId,
 			...(args.providerType ? { providerType: args.providerType } : {}),
 			...(recipient ? { recipient } : {}),
+			...(contactId ? { contactId } : {}),
 			...(args.bounceType ? { bounceType: args.bounceType } : {}),
-			...(args.bounceMessage
-				? { bounceMessage: clamp(args.bounceMessage, BOUNCE_MESSAGE_MAX_LENGTH) }
-				: {}),
+			...(bounceMessage ? { bounceMessage } : {}),
 			...(args.deliveryDomain ? { deliveryDomain: args.deliveryDomain } : {}),
 			at: args.at,
-			isSuppressed: args.isSuppressed,
+			suppression: args.suppression,
 			occurrences: 1,
 			firstSeenAt: now,
 			lastSeenAt: now,
@@ -184,7 +225,7 @@ export const replay = internalMutation({
 			const replayAttempts = row.replayAttempts + 1;
 			await ctx.db.patch(row._id, {
 				replayAttempts,
-				nextReplayAt: nextReplayAt(now, replayAttempts),
+				nextReplayAt: nextReplayAt(row.firstSeenAt, replayAttempts),
 			});
 		}
 		return outcome ? 'unmatched' : 'failed';
@@ -263,6 +304,7 @@ interface WindowCounts {
 	bounces: number;
 	complaints: number;
 	suppressed: number;
+	unattributed: number;
 	open: number;
 	isCapped: boolean;
 }
@@ -277,7 +319,8 @@ async function countSince(ctx: { db: DatabaseReader }, since: number): Promise<W
 		total: counted.length,
 		bounces: counted.filter((row) => row.kind === 'bounce').length,
 		complaints: counted.filter((row) => row.kind === 'complaint').length,
-		suppressed: counted.filter((row) => row.isSuppressed).length,
+		suppressed: counted.filter((row) => row.suppression === 'suppressed').length,
+		unattributed: counted.filter((row) => row.suppression === 'unattributed').length,
 		open: counted.filter((row) => row.status === 'open').length,
 		isCapped: rows.length > COUNT_LIMIT,
 	};
@@ -315,7 +358,7 @@ export const status = internalQuery({
 				kind: row.kind,
 				providerMessageId: row.providerMessageId,
 				providerType: row.providerType ?? null,
-				isSuppressed: row.isSuppressed,
+				suppression: row.suppression,
 				occurrences: row.occurrences,
 				replayAttempts: row.replayAttempts,
 				firstSeenAt: row.firstSeenAt,

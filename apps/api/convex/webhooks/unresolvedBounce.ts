@@ -10,6 +10,7 @@
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import type { TransitionOutcome } from '../delivery/sendLifecycle';
+import type { UnresolvedFeedbackSuppression } from '../lib/literalValidators';
 import { logError, logWarn } from '../lib/runtimeLog';
 import type { InboundEventOf } from './types';
 
@@ -49,7 +50,7 @@ type UnresolvedEvent =
 export async function recordUnresolvedFeedback(
 	ctx: ActionCtx,
 	e: UnresolvedEvent,
-	options: { isSuppressed: boolean } = { isSuppressed: false }
+	options: { suppression: UnresolvedFeedbackSuppression } = { suppression: 'not_applicable' }
 ): Promise<void> {
 	logWarn(
 		`[Webhook Dispatcher] unresolved_bounce: ${e.kind} for providerMessageId ` +
@@ -72,7 +73,7 @@ export async function recordUnresolvedFeedback(
 			...signal,
 			providerMessageId: e.providerMessageId,
 			at: e.at,
-			isSuppressed: options.isSuppressed,
+			suppression: options.suppression,
 			...(e.providerType ? { providerType: e.providerType } : {}),
 			...(e.deliveryDomain ? { deliveryDomain: e.deliveryDomain } : {}),
 		});

@@ -416,7 +416,9 @@ describe('Mandrill event mapping (D10 table)', () => {
 		expect(blocked?.reason).toBe('complained');
 	});
 
-	it('`spam` for an id that matches no send still blocklists the complainer and keeps the complaint (#1194)', async () => {
+	// A shared Mandrill account or webhook delivers other deployments' feedback
+	// too, and Mandrill echoes no marker of ours, so the address is not blocked.
+	it('`spam` for an id that matches no send keeps the complaint but blocks no one (#1194)', async () => {
 		const t = setupTest();
 		const email = 'complainer@example.com';
 		const res = await postBatch(t, [event('spam', { _id: 'm-unknown', email })]);
@@ -429,7 +431,7 @@ describe('Mandrill event mapping (D10 table)', () => {
 					.withIndex('by_email', (q) => q.eq('email', email))
 					.first()
 		);
-		expect(blocked?.reason).toBe('complained');
+		expect(blocked).toBeNull();
 		const stored = await t.run(
 			async (ctx: { db: DatabaseWriter }) => await ctx.db.query('unresolvedFeedback').collect()
 		);
@@ -439,7 +441,7 @@ describe('Mandrill event mapping (D10 table)', () => {
 				providerMessageId: 'm-unknown',
 				providerType: 'mandrill',
 				recipient: email,
-				isSuppressed: true,
+				suppression: 'unattributed',
 				status: 'open',
 			}),
 		]);
