@@ -51,8 +51,9 @@ fields (#1145).
 ### 1. One integer contract version, shared by both sides
 
 `@owlat/shared/imapWire` holds `IMAP_WIRE_VERSION` (the contract this build
-speaks, 1 to start with) and `IMAP_WIRE_MIN_SUPPORTED` (the oldest IMAP
-contract the backend still serves, 0 today). IMAP servers from before
+speaks) and `IMAP_WIRE_MIN_SUPPORTED` (the oldest IMAP contract the backend
+still serves). At introduction they were 1 and 0; the module lists the
+current values and what each version means. IMAP servers from before
 reporting (v0.6.7 and older) count as wire version 0. The module is
 dependency-free, and the api, imap and web images already copy
 `packages/shared`.
@@ -102,8 +103,9 @@ shutdown path, which says BYE to every session, and exits non-zero, so its
 restart runs the handshake again. A failed report is only logged.
 
 The handshake covers servers that report, and a running one only at its next
-report: for up to 5 minutes after a backend update raises the minimum, an
-already-running server still serves. It does nothing for servers from before
+successful report: after a backend update raises the minimum, an
+already-running server still serves for up to 5 minutes, and longer while its
+reports fail. It does nothing for servers from before
 reporting. Both gaps are what the backend gates in section 5 close.
 
 ### 4. Seeing servers that never report
@@ -154,7 +156,7 @@ legacy (0). While the minimum is 0 it never fires.
 
 ### 7. How a contract step uses this
 
-The PR that removes a compatibility path (the first one will be
+The PR that removes a compatibility path (the first one was
 `expungeFolder`'s `sequenceNumbers` / `nextSequenceNumber`) has these
 prerequisites:
 
@@ -168,9 +170,18 @@ prerequisites:
    IMAP release, and its release notes tell operators to run the status
    command and update their IMAP container before updating the backend.
 
+One exception to 1 and 2: a function with no side effect (a query) may drop
+an argument without a gate. A caller below the new minimum that still sends
+the argument fails Convex argument validation, an error as clean as the
+gate's, and on a read it changes nothing. A gate there would cost a release
+ahead and protect nothing more, and until every server in the window sends
+`imapWireVersion` it would count the current server as legacy and refuse it.
+The first case is `mail/imap/session:selectFolder`'s `skipFirstUnseenSeq`,
+dropped when the minimum went to 2 (#1212).
+
 A deployment that still runs an older IMAP container after that is not
 protected from errors, but from damage. A reporting server refuses to start,
-or stops at its next report. A legacy server keeps running, and its new logins
+or stops at its next successful report. A legacy server keeps running, and its new logins
 and its calls to the gated function are refused before they change anything.
 Its sessions that were already open can still call the functions whose
 contract did not change.
