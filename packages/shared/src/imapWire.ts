@@ -49,11 +49,11 @@
 export const IMAP_WIRE_VERSION = 2;
 
 /**
- * The oldest IMAP server contract the backend still serves: 1, the release
- * one behind (v0.6.8). Raising it to 2 lets `selectFolder` drop
- * `skipFirstUnseenSeq`, which only wire 1 still sends.
+ * The oldest IMAP server contract the backend still serves: 2, the release
+ * one behind. Wire 1 (v0.6.8) is refused: it still sends `selectFolder`'s
+ * `skipFirstUnseenSeq`, which the backend no longer accepts.
  */
-export const IMAP_WIRE_MIN_SUPPORTED = 1;
+export const IMAP_WIRE_MIN_SUPPORTED = 2;
 
 /** What an IMAP server that never reports (v0.6.7 and older) counts as. */
 export const IMAP_WIRE_LEGACY = 0;

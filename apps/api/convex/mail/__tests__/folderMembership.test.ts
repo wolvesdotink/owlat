@@ -743,12 +743,22 @@ describe('membership follows folders and IMAP results', () => {
 		await t.run(async (ctx) => {
 			for (const [i, id] of ids.entries()) await ctx.db.patch(id, { uid: i + 1 });
 		});
-		// A v0.6.6 IMAP server sends no flag; every later one sends it. Both are
-		// accepted, and neither gets a count: the server numbers the UID itself.
-		for (const args of [{ folderId }, { folderId, skipFirstUnseenSeq: true }]) {
-			const result = await t.query(internal.mail.imap.session.selectFolder, args);
-			expect(result?.firstUnseenUid).toBe(3);
-			expect(result).not.toHaveProperty('firstUnseenSeq');
-		}
+		// No count: the IMAP server numbers the UID against its own view.
+		const result = await t.query(internal.mail.imap.session.selectFolder, { folderId });
+		expect(result?.firstUnseenUid).toBe(3);
+		expect(result).not.toHaveProperty('firstUnseenSeq');
+	});
+
+	it('selectFolder rejects the skipFirstUnseenSeq a refused wire 1 IMAP server sends', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t);
+		const folderId = await seedFolder(t, mailboxId, 'inbox');
+		// v0.6.8 (wire 1) is below IMAP_WIRE_MIN_SUPPORTED: its logins are refused,
+		// and a session it opened earlier gets an argument error on SELECT, which
+		// as a read changes nothing.
+		const wire1Args = { folderId, skipFirstUnseenSeq: true };
+		await expect(t.query(internal.mail.imap.session.selectFolder, wire1Args)).rejects.toThrow(
+			/skipFirstUnseenSeq/
+		);
 	});
 });

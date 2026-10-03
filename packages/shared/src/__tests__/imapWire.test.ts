@@ -15,10 +15,10 @@ describe('imapWireVerdict', () => {
 		expect(imapWireVerdict(4, 3, 2)).toBe('ahead');
 	});
 
-	it('serves the release one behind and refuses the servers from before reporting', () => {
+	it('serves the current contract and refuses wire 1 and the servers from before reporting', () => {
 		// v0.6.8 speaks 1; v0.6.7 and older never report and count as legacy.
-		expect(IMAP_WIRE_MIN_SUPPORTED).toBe(1);
-		expect(imapWireVerdict(1)).toBe('supported');
+		expect(IMAP_WIRE_MIN_SUPPORTED).toBe(2);
+		expect(imapWireVerdict(1)).toBe('unsupported');
 		expect(imapWireVerdict(IMAP_WIRE_LEGACY)).toBe('unsupported');
 		expect(imapWireVerdict(IMAP_WIRE_VERSION)).toBe('current');
 	});

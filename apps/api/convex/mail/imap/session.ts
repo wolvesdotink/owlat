@@ -38,13 +38,14 @@ export const listFolders = internalQuery({
  *
  *  `[UNSEEN n]` is a sequence number (RFC 3501 §7.1), which the IMAP server
  *  works out from `firstUnseenUid` against the sequence view it already holds.
- *  This used to count every message below the first unseen one as well, a
- *  `.collect()` of up to the whole folder, for an IMAP server that did not
- *  pass `skipFirstUnseenSeq`. It no longer does. The argument is accepted and
- *  ignored only because a wire 1 IMAP server (v0.6.8) still sends it; the
- *  current one does not. It can go once `IMAP_WIRE_MIN_SUPPORTED` is 2. */
+ *
+ *  No `imapWireVersion` gate: wire 1 (v0.6.8), the last IMAP server to send
+ *  the removed `skipFirstUnseenSeq`, fails argument validation here instead.
+ *  This is a read, so that error changes nothing, and wire 1 is below
+ *  `IMAP_WIRE_MIN_SUPPORTED`: its logins are refused and it stops at its next
+ *  report (ADR-0063). */
 export const selectFolder = internalQuery({
-	args: { folderId: v.id('mailFolders'), skipFirstUnseenSeq: v.optional(v.boolean()) },
+	args: { folderId: v.id('mailFolders') },
 	handler: async (ctx, args) => {
 		const folder = await ctx.db.get(args.folderId);
 		if (!folder) return null;
