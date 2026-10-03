@@ -2,6 +2,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { OperationError } from '@owlat/shared/operationError';
 import { findDraftGaps } from '@owlat/shared/answerMode';
+import { splitQuotedText } from '@owlat/shared/quotedText';
 import { isDraftGapsRefusal } from '~/utils/answerDraft';
 
 /**
@@ -43,12 +44,14 @@ export function useReviewQueue() {
 
 	// An agent draft with a `[[...]]` gap left is refused (DRAFT_HAS_GAPS). Say
 	// so, counting the gaps in the text that was about to go out, rather than
-	// the server's composer wording: the queue card highlights nothing.
+	// the server's composer wording: the queue card highlights nothing. Only the
+	// written part counts, as on the server: a `[[...]]` in the quoted original
+	// belongs to the mail being answered.
 	const { showToast } = useToast();
 	let outgoingText = '';
 	const claimGapRefusal = (op: OperationError): boolean => {
 		if (!isDraftGapsRefusal(op)) return false;
-		const count = Math.max(1, findDraftGaps(outgoingText).length);
+		const count = Math.max(1, findDraftGaps(splitQuotedText(outgoingText).fresh).length);
 		showToast(t('shared.useReviewQueue.draftHasGaps', { count }, count), 'error');
 		return true;
 	};

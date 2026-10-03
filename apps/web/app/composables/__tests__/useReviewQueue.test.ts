@@ -255,6 +255,22 @@ describe('useReviewQueue', () => {
 			);
 		});
 
+		it('leaves a [[...]] in the quoted original out of the count', async () => {
+			const { approveOption } = useReviewQueue();
+			refuseApprove();
+
+			await approveOption(
+				'msg_1' as never,
+				'It ships on [[date]].\n> Can you quote ticket [[ticket]]?',
+				'It ships soon.'
+			);
+
+			expect(showToast).toHaveBeenCalledWith(
+				'This draft still has 1 gap: fill in or delete the [[...]] before you send it.',
+				'error'
+			);
+		});
+
 		it('leaves every other failure to the generic handling', () => {
 			useReviewQueue();
 			expect(approveOnError()({ category: 'invalid_state', message: 'No draft to approve' })).toBe(
