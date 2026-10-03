@@ -1,7 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+const mocks = vi.hoisted(() => ({ runLlmObject: vi.fn() }));
+vi.mock('../../lib/llm/dispatch', () => ({ runLlmObject: mocks.runLlmObject }));
+
 import {
 	buildLocalizePrompt,
 	mergeTranslations,
+	missingTranslationPairs,
+	normalizeTargetLocale,
 	translationTargets,
 	localizeQuestions,
 } from '../clarificationLocalize';
@@ -53,19 +59,52 @@ describe('mergeTranslations', () => {
 		]);
 	});
 
-	it('drops unknown ids, unwanted locales, blank text and mismatched option counts', () => {
+	it('drops unknown ids, unwanted locales and blank text', () => {
 		const merged = mergeTranslations(
 			questions,
 			[
 				{ questionId: 'nope', locale: 'de', text: 'x', options: [] },
 				{ questionId: 'q0', locale: 'fr', text: 'x', options: ['Oui', 'Non'] },
 				{ questionId: 'q0', locale: 'de', text: '   ', options: ['Ja', 'Nein'] },
-				{ questionId: 'q0', locale: 'de', text: 'Only one option', options: ['Ja'] },
 			],
 			['de']
 		);
 		expect(merged[0]?.translations).toBeUndefined();
 		expect(merged[1]?.translations).toBeUndefined();
+	});
+
+	it('keeps the translated text when only the option count is wrong', () => {
+		const merged = mergeTranslations(
+			questions,
+			[{ questionId: 'q0', locale: 'de', text: '45 Tage gewähren?', options: ['Ja'] }],
+			['de']
+		);
+		// No `options`: the UI falls back to the canonical chips.
+		expect(merged[0]?.translations).toEqual([{ locale: 'de', text: '45 Tage gewähren?' }]);
+	});
+
+	it('keeps the translated text when a translated chip is blank', () => {
+		const merged = mergeTranslations(
+			questions,
+			[{ questionId: 'q0', locale: 'de', text: '45 Tage gewähren?', options: ['Ja', ' '] }],
+			['de']
+		);
+		expect(merged[0]?.translations).toEqual([{ locale: 'de', text: '45 Tage gewähren?' }]);
+	});
+
+	it('accepts region variants of a locale and quoted question ids', () => {
+		const merged = mergeTranslations(
+			questions,
+			[
+				{ questionId: '"q0"', locale: 'de-DE', text: '45 Tage gewähren?', options: ['Ja', 'Nein'] },
+				{ questionId: ' q1 ', locale: 'de_de', text: 'Gibt es eine Gebühr?', options: [] },
+			],
+			['de']
+		);
+		expect(merged[0]?.translations).toEqual([
+			{ locale: 'de', text: '45 Tage gewähren?', options: ['Ja', 'Nein'] },
+		]);
+		expect(merged[1]?.translations).toEqual([{ locale: 'de', text: 'Gibt es eine Gebühr?' }]);
 	});
 
 	it('never lets a translation turn into a credential solicitation', () => {
@@ -94,7 +133,129 @@ describe('mergeTranslations', () => {
 	});
 });
 
+describe('normalizeTargetLocale', () => {
+	it('maps codes, region variants and language names onto a wanted code', () => {
+		expect(normalizeTargetLocale('de', ['de'])).toBe('de');
+		expect(normalizeTargetLocale(' DE ', ['de'])).toBe('de');
+		expect(normalizeTargetLocale('de-DE', ['de'])).toBe('de');
+		expect(normalizeTargetLocale('de_de', ['de'])).toBe('de');
+		expect(normalizeTargetLocale('German', ['de'])).toBe('de');
+		expect(normalizeTargetLocale('Deutsch', ['de'])).toBe('de');
+	});
+
+	it('rejects locales that were not asked for', () => {
+		expect(normalizeTargetLocale('fr', ['de'])).toBeUndefined();
+		expect(normalizeTargetLocale('French', ['de'])).toBeUndefined();
+		expect(normalizeTargetLocale('', ['de'])).toBeUndefined();
+	});
+});
+
+describe('missingTranslationPairs', () => {
+	it('lists every (question, locale) pair without a translation', () => {
+		expect(
+			missingTranslationPairs(
+				[
+					{ id: 'q0', text: 'a', translations: [{ locale: 'de', text: 'A' }] },
+					{ id: 'q1', text: 'b' },
+				],
+				['de', 'fr']
+			)
+		).toEqual([
+			{ questionId: 'q0', locale: 'fr' },
+			{ questionId: 'q1', locale: 'de' },
+			{ questionId: 'q1', locale: 'fr' },
+		]);
+	});
+});
+
+function objectResult(translations: unknown[], totalTokens = 10) {
+	return {
+		object: { translations },
+		tokenUsage: { promptTokens: totalTokens / 2, completionTokens: totalTokens / 2, totalTokens },
+		modelUsed: 'mock-model',
+	};
+}
+
 describe('localizeQuestions', () => {
+	let warn: ReturnType<typeof vi.spyOn>;
+	beforeEach(() => {
+		mocks.runLlmObject.mockReset();
+		warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+	});
+	afterEach(() => {
+		warn.mockRestore();
+	});
+
+	it('makes one call when the first pass covers every question', async () => {
+		mocks.runLlmObject.mockResolvedValueOnce(
+			objectResult([
+				{ questionId: 'q0', locale: 'de', text: '45 Tage gewähren?', options: ['Ja', 'Nein'] },
+				{ questionId: 'q1', locale: 'de', text: 'Gibt es eine Gebühr?', options: [] },
+			])
+		);
+		const result = await localizeQuestions({} as never, questions, ['en', 'de']);
+		expect(mocks.runLlmObject).toHaveBeenCalledTimes(1);
+		expect(result.questions.every((q) => q.translations?.length === 1)).toBe(true);
+		expect(warn).not.toHaveBeenCalled();
+	});
+
+	it('retries once for just the missing question and merges the result', async () => {
+		mocks.runLlmObject
+			.mockResolvedValueOnce(
+				objectResult([
+					{ questionId: 'q0', locale: 'de', text: '45 Tage gewähren?', options: ['Ja', 'Nein'] },
+				])
+			)
+			.mockResolvedValueOnce(
+				objectResult(
+					[
+						{ questionId: 'q1', locale: 'de', text: 'Gibt es eine Gebühr?', options: [] },
+						// A pair the first pass already filled is never overwritten.
+						{ questionId: 'q0', locale: 'de', text: 'Andere Fassung', options: [] },
+					],
+					4
+				)
+			);
+		const result = await localizeQuestions({} as never, questions, ['en', 'de']);
+		expect(mocks.runLlmObject).toHaveBeenCalledTimes(2);
+		const retryPrompt = mocks.runLlmObject.mock.calls[1]![0].prompt as string;
+		expect(retryPrompt).toContain('id "q1"');
+		expect(retryPrompt).not.toContain('id "q0"');
+		expect(result.questions[0]?.translations).toEqual([
+			{ locale: 'de', text: '45 Tage gewähren?', options: ['Ja', 'Nein'] },
+		]);
+		expect(result.questions[1]?.translations).toEqual([
+			{ locale: 'de', text: 'Gibt es eine Gebühr?' },
+		]);
+		expect(result.tokenUsage?.totalTokens).toBe(14);
+		expect(warn).not.toHaveBeenCalled();
+	});
+
+	it('keeps the first pass and logs only a count when the retry fails', async () => {
+		mocks.runLlmObject
+			.mockResolvedValueOnce(
+				objectResult([
+					{ questionId: 'q0', locale: 'de', text: '45 Tage gewähren?', options: ['Ja', 'Nein'] },
+				])
+			)
+			.mockRejectedValueOnce(new Error('model unavailable'));
+		const result = await localizeQuestions({} as never, questions, ['en', 'de']);
+		expect(mocks.runLlmObject).toHaveBeenCalledTimes(2);
+		expect(result.questions[0]?.translations).toHaveLength(1);
+		expect(result.questions[1]?.translations).toBeUndefined();
+		expect(warn).toHaveBeenCalledTimes(1);
+		const line = String(warn.mock.calls[0]![0]);
+		expect(line).toContain('1 of 2');
+		expect(line).not.toContain('late fee');
+	});
+
+	it('returns the questions unchanged when the first call fails', async () => {
+		mocks.runLlmObject.mockRejectedValueOnce(new Error('model unavailable'));
+		const result = await localizeQuestions({} as never, questions, ['en', 'de']);
+		expect(mocks.runLlmObject).toHaveBeenCalledTimes(1);
+		expect(result.questions).toEqual(questions);
+	});
+
 	it('returns the questions unchanged when there is nothing to translate into', async () => {
 		const model = {} as never;
 		const result = await localizeQuestions(model, questions, ['en']);

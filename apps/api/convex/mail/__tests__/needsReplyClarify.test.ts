@@ -158,6 +158,40 @@ describe('refineClarification', () => {
 		expect(await refineClarification(ctx, opts)).toBeUndefined();
 	});
 
+	it('retries the translation for a question the first pass left in English', async () => {
+		const dateSlot = {
+			...decisionSlot,
+			slotType: 'date_time' as const,
+			question: 'When?',
+			options: [],
+		};
+		mocks.runLlmObject
+			.mockResolvedValueOnce(objectResult({ slots: [decisionSlot, dateSlot] }))
+			.mockResolvedValueOnce(objectResult({ divergentSlotIndexes: [0, 1] }))
+			// First translation pass covers only one of the two questions.
+			.mockImplementationOnce(async (call: { prompt: string }) => {
+				const id = /id "([^"]+)": Should we approve/.exec(call.prompt)![1]!;
+				return objectResult({
+					translations: [
+						{ questionId: id, locale: 'de', text: 'Erstatten?', options: ['Ja', 'Nein'] },
+					],
+				});
+			})
+			.mockImplementationOnce(async (call: { prompt: string }) => {
+				const id = /id "([^"]+)": When\?/.exec(call.prompt)![1]!;
+				return objectResult({
+					translations: [{ questionId: id, locale: 'de-DE', text: 'Wann?', options: [] }],
+				});
+			});
+
+		const result = await refineClarification(ctx, opts);
+		expect(mocks.runLlmObject).toHaveBeenCalledTimes(4);
+		expect(result!.questions.map((q) => q.translations?.[0]?.text)).toEqual([
+			'Erstatten?',
+			'Wann?',
+		]);
+	});
+
 	it('fails soft to undefined when the model throws', async () => {
 		mocks.runLlmObject.mockRejectedValueOnce(new Error('provider down'));
 		expect(await refineClarification(ctx, opts)).toBeUndefined();
