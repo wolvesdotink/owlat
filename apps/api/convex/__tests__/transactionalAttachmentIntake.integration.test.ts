@@ -389,24 +389,27 @@ describe('transactional pending uploads — release, claim and expiry', () => {
 		expect(await pendingRows(t)).toHaveLength(0);
 	});
 
-	it('dispatch still accepts the uploadsPending flag a v0.6.8 shell sends, and ignores it', async () => {
+	it('dispatch refuses the retired uploadsPending flag before writing anything', async () => {
 		const t = setupTest();
 		const slug = await seedSendable(t);
 		const storageId = await storeBlob(t);
 		await t.mutation(internal.transactional.pendingUploads.register, { storageId });
 
-		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
-			...dispatchArgs(slug, [storageId]),
-			uploadsPending: true,
-		});
+		await expect(
+			t.mutation(internal.transactional.dispatch.dispatch, {
+				...dispatchArgs(slug, [storageId]),
+				// @ts-expect-error -- the argument was removed (issue #1076)
+				uploadsPending: true,
+			})
+		).rejects.toThrow(/uploadsPending/);
 
-		expect(outcome.ok).toBe(true);
-		expect(await pendingRows(t)).toHaveLength(0);
+		expect(await sendRows(t)).toHaveLength(0);
+		expect(await templateSendCount(t, slug)).toBe(0);
+		// Nothing claimed it, so the shell's release or the sweep still can.
+		expect((await pendingRows(t)).map((row) => row.storageId)).toEqual([storageId]);
 	});
 
 	it('the blob of a Send this handler queued survives the expiry sweep', async () => {
-		// This handler no longer sends `uploadsPending`. The v0.6.8 dispatch a
-		// rollback would restore claims without it, as this release's does.
 		vi.useFakeTimers({ toFake: ['Date'] });
 		const t = setupTest();
 		const slug = await seedSendable(t);

@@ -1181,26 +1181,27 @@ the body text and the parsed strings (about 27 MiB). Both stay inside
 - `transactionalPendingUploads` is a new table: additive, no migration.
   It is tenant data (`TENANT_TABLES`), wiped with its blobs by the
   organization deletion walker and the dev reset.
-- The claim is unconditional since issue #1076. v0.6.7 gated it on an
-  optional `uploadsPending` argument so that a v0.6.6 shell still running
-  across that deploy, which registers nothing, could dispatch. The flag
-  is retired over three releases, because Convex refuses an argument the
-  validator does not list and a request in flight during an upgrade calls
-  the newly deployed mutation:
-  - v0.6.8 claims unconditionally and accepts `uploadsPending: true`
-    without reading it. Its shell still sends the flag, so a backend
-    rolled back to v0.6.7, whose dispatch claims only when the flag is
-    set, still claims the uploads that shell registered.
-  - The release after v0.6.8 stops sending the flag. Dispatch still
-    accepts it for the v0.6.8 shells in flight during the upgrade. A
-    rollback to v0.6.8 is safe without it, since that dispatch claims
-    unconditionally.
-  - The release after that removes the argument from the validator.
+- The claim is unconditional, and `dispatch` takes no argument that
+  turns it on or off (issue #1076). A caller that stores an attachment
+  without registering a pending row is refused.
 
-  An operator going straight from v0.6.6 sees a v0.6.6 request that had
-  already stored a base64 attachment when the deploy landed refused with
-  an error the client can retry; its blob is left behind, as v0.6.6 left
-  one behind on any failure.
+  History: v0.6.7 gated the claim on an optional `uploadsPending`
+  argument so that a v0.6.6 shell still running across that deploy,
+  which registers nothing, could dispatch. The argument was retired over
+  three releases, because Convex refuses an argument the validator does
+  not list and a request in flight during an upgrade calls the newly
+  deployed mutation. v0.6.8 claimed unconditionally and ignored the
+  argument, while its shell kept sending it for a rollback to v0.6.7. The
+  release after v0.6.8 stopped sending it. The release after that
+  removed it from the validator.
+
+  A deployment that skips the middle release and upgrades straight from
+  v0.6.8 sees the transactional requests in flight during the deploy
+  refused with a 500 the client can retry: their v0.6.8 shell still
+  sends the argument. Nothing is written, and the shell releases the
+  blobs it had stored. One going straight from v0.6.6 sees a v0.6.6
+  request that had already stored a base64 attachment refused the same
+  way; its blob is left behind, as v0.6.6 left one behind on any failure.
 
 - The SDKs already enforced 10 attachments and 10 MiB decoded. Both now
   compute the decoded size exactly (they used to round up and refuse a
