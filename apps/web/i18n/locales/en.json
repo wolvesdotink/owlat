@@ -297,6 +297,10 @@
 			"clarificationQuestions": {
 				"questionCounter": "Question {index} of {total}"
 			},
+			"clarificationTrustLine": {
+				"trust": "Based on an email from {domain}. Owlat never asks for your password.",
+				"trustNoDomain": "Based on an email. Owlat never asks for your password."
+			},
 			"reviewApproveUndoToast": {
 				"approved": "Approved",
 				"sendingIn": "{what} — sending in {seconds}s",
@@ -6715,8 +6719,6 @@
 				"title": "One thing before I write this | {count} things before I write this",
 				"round": "round {round} of {total}",
 				"subline": "Answer what you can. Anything you skip becomes a highlighted gap in the draft.",
-				"trust": "Based on an email from {domain}. Owlat never asks for your password.",
-				"trustNoDomain": "Based on an email. Owlat never asks for your password.",
 				"placeholder": {
 					"choice": "Something else…",
 					"text": "Type your answer…",

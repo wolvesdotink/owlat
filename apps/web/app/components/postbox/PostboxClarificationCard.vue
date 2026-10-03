@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import ClarificationQuestions from '~/components/agent-tasks/ClarificationQuestions.vue';
+import ClarificationTrustLine from '~/components/agent-tasks/ClarificationTrustLine.vue';
 import TaskActions from '~/components/agent-tasks/TaskActions.vue';
 import TaskAsk from '~/components/agent-tasks/TaskAsk.vue';
 import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
@@ -16,10 +17,11 @@ import type { ClarificationAnswer } from '~/utils/clarificationAnswers';
  * Options/Actions) so it renders identically to its Review Queue siblings.
  *
  * When the AI decided a good reply is missing a fact only the owner can supply,
- * the thread carries `clarification.questions`. Each question renders with its
- * sender attribution (the WHY line), single-select option chips and a free-text
- * box (the shared ClarificationQuestions list, where one answer is enough), so
- * the owner can resolve it without opening the thread. Answering flips
+ * the thread carries `clarification.questions`. Each question renders with
+ * single-select option chips and a free-text box (the shared
+ * ClarificationQuestions list, where one answer is enough), under them one
+ * trust line names the sender's domain, so the owner can resolve it without
+ * opening the thread. Answering flips
  * the card: 'asking' → 'drafting' (starter reply generating) → 'ready' ("Draft
  * ready", open the composer prefilled).
  *
@@ -140,6 +142,7 @@ function onCardKeydown(event: KeyboardEvent) {
 						@primary="submit"
 						@skip="emit('done')"
 					/>
+					<ClarificationTrustLine class="mt-2" :questions="questions" />
 				</template>
 			</ClarificationQuestions>
 		</template>
