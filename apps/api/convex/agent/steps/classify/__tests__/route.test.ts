@@ -197,6 +197,15 @@ describe('buildClassifyPrompt', () => {
 		expect(prompt).toContain('ISO 639-1');
 		expect(prompt).toContain('en, de');
 	});
+
+	it('writes the German summary to the recipient with "du"', () => {
+		const prompt = buildClassifyPrompt('mail', ['en', 'de']);
+		expect(prompt).toContain('In "de" (German): Address the reader informally with lowercase "du"');
+		expect(prompt.indexOf('lowercase "du"')).toBeLessThan(
+			prompt.indexOf('<untrusted_email_content>')
+		);
+		expect(buildClassifyPrompt('mail', ['en'])).not.toContain('"du"');
+	});
 });
 
 describe('sanitizeSummaries', () => {

@@ -971,6 +971,7 @@ import type * as mail_ai_draftOnArrival from '../mail/ai/draftOnArrival.js';
 import type * as mail_ai_draftOnArrivalStore from '../mail/ai/draftOnArrivalStore.js';
 import type * as mail_ai_editLearning from '../mail/ai/editLearning.js';
 import type * as mail_ai_gate from '../mail/ai/gate.js';
+import type * as mail_ai_interfaceLanguage from '../mail/ai/interfaceLanguage.js';
 import type * as mail_ai_needsReplyClarify from '../mail/ai/needsReplyClarify.js';
 import type * as mail_ai_needsReplyClassify from '../mail/ai/needsReplyClassify.js';
 import type * as mail_ai_needsReplyDraft from '../mail/ai/needsReplyDraft.js';
@@ -2428,6 +2429,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/ai/draftOnArrivalStore': typeof mail_ai_draftOnArrivalStore;
 	'mail/ai/editLearning': typeof mail_ai_editLearning;
 	'mail/ai/gate': typeof mail_ai_gate;
+	'mail/ai/interfaceLanguage': typeof mail_ai_interfaceLanguage;
 	'mail/ai/needsReplyClarify': typeof mail_ai_needsReplyClarify;
 	'mail/ai/needsReplyClassify': typeof mail_ai_needsReplyClassify;
 	'mail/ai/needsReplyDraft': typeof mail_ai_needsReplyDraft;
