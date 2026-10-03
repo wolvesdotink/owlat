@@ -20,6 +20,8 @@ import type { MutationCtx } from '../_generated/server';
 import { adminMutation } from '../lib/authedFunctions';
 import { recordAuditLog } from '../lib/auditLog';
 import { getOrThrow } from '../_utils/errors';
+import { authoredDraftHasGaps } from '../agent/shared/draftGaps';
+import { isStoredVariant } from '../lib/draftVariants';
 
 /** `savedBy` marker for the seeded revision-0 agent original. */
 const AGENT_REVISION_AUTHOR = 'agent';
@@ -51,7 +53,8 @@ export function draftDiffersFromAgentOriginal(message: Doc<'inboundMessages'>): 
  * subject. Records NO autonomy feedback.
  *
  * Any agent variants (`draftOptions`) are dropped: they were offered against
- * the agent's draft, and this save replaces it.
+ * the agent's draft, and this save replaces it. A saved text that IS one of
+ * them is stored gap-guarded when it holds a `[[...]]` gap.
  *
  * `gapGuarded` is the composer's saved-reply gap guard for this text
  * (`isDraftGapGuarded`): stored with it, so its `[[...]]` gaps still hold Send
@@ -76,6 +79,13 @@ export async function appendDraftRevision(
 		});
 	}
 
+	// Saving one of the agent's variants (picked, or copied) saves agent text,
+	// so its `[[...]]` gaps hold the send as the agent's draft's do. A person's
+	// own typed brackets keep whatever guard the client sent.
+	const variantGapped =
+		isStoredVariant(message, args.text) && authoredDraftHasGaps({ text: args.text });
+	const gapGuarded = variantGapped || args.gapGuarded;
+
 	const effectiveSubject = args.subject ?? message.draftSubject;
 	const latest = revisions[revisions.length - 1];
 	if (latest?.text.trim() !== args.text.trim()) {
@@ -92,7 +102,7 @@ export async function appendDraftRevision(
 		...(args.subject !== undefined ? { draftSubject: args.subject } : {}),
 		draftRevisions: revisions,
 		draftSavedAt: now,
-		...(args.gapGuarded !== undefined ? { isDraftGapGuarded: args.gapGuarded } : {}),
+		...(gapGuarded !== undefined ? { isDraftGapGuarded: gapGuarded } : {}),
 		// The agent's variants were alternatives to the agent's draft. Once a
 		// person writes the working draft they describe a text nobody sees.
 		draftOptions: undefined,

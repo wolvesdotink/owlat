@@ -31,6 +31,7 @@ import { isSealedBytesAtRest } from './atRestBodies';
 import { getOptional } from './env';
 import { readSealedBlobBytes, type BlobGet } from './sealedBlob';
 import { deleteBlobQuietly, type BlobStorage } from './storageBlobs';
+import { withShownDraftVariants, type DraftVariantFields } from './draftVariants';
 
 /** The body columns of an `inboundMessages` row. `null` is tolerated so a
  * projection that carries a part as `string | null` passes through unchanged. */
@@ -129,10 +130,14 @@ export async function openInboundMessageBody(
  *
  * Only keys the row actually HAS are rewritten, so an absent column never
  * starts travelling as a present `undefined`.
+ *
+ * The agent's draft variants leave only with the draft they belong to
+ * (`draftVariants.withShownDraftVariants`).
  */
-export async function openInboundMessageRow<T extends InboundMessageBodyFields>(
-	row: T
-): Promise<T> {
+export async function openInboundMessageRow<
+	T extends InboundMessageBodyFields & DraftVariantFields,
+>(stored: T): Promise<T> {
+	const row = withShownDraftVariants(stored);
 	if (row.textBody == null && row.htmlBody == null && row.bodyExcerpt == null) return row;
 	const [text, html, excerpt] = await Promise.all([
 		openOptional(row.textBody),
@@ -148,9 +153,9 @@ export async function openInboundMessageRow<T extends InboundMessageBodyFields>(
 }
 
 /** {@link openInboundMessageRow} over a page of rows, preserving order. */
-export async function openInboundMessageRows<T extends InboundMessageBodyFields>(
-	rows: T[]
-): Promise<T[]> {
+export async function openInboundMessageRows<
+	T extends InboundMessageBodyFields & DraftVariantFields,
+>(rows: T[]): Promise<T[]> {
 	return Promise.all(rows.map((row) => openInboundMessageRow(row)));
 }
 
