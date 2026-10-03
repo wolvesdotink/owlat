@@ -39,6 +39,13 @@ describe('buildLocalizePrompt', () => {
 		expect(prompt).toContain('option 1: Yes');
 		expect(prompt).toContain('id "q1": Is there a late fee?');
 	});
+
+	it('asks for the informal "du" in German and nothing extra elsewhere', () => {
+		const de = buildLocalizePrompt(questions, ['de']);
+		expect(de).toContain('In "de" (German): Address the reader informally with lowercase "du"');
+		expect(de.indexOf('lowercase "du"')).toBeLessThan(de.indexOf('Questions:'));
+		expect(buildLocalizePrompt(questions, ['fr'])).not.toContain('"du"');
+	});
 });
 
 describe('mergeTranslations', () => {

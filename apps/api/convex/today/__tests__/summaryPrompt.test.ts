@@ -17,6 +17,16 @@ describe('today summary prompt', () => {
 		expect(prompt).toContain('# New since then (untrusted data)\nnew');
 	});
 
+	it('addresses a German reader with "du" and leaves English alone', () => {
+		const input = { guard: 'G.', isFollowUp: false, earlier: '', latest: 'mail' };
+		const de = todaySummaryPrompt({ ...input, locale: 'de' }).system;
+		expect(de).toContain('lowercase "du"');
+		expect(de).toContain('Never address the reader as "Sie"');
+		const en = todaySummaryPrompt({ ...input, locale: 'en' }).system;
+		expect(en).toContain('written in English.');
+		expect(en).not.toContain('"du"');
+	});
+
 	it('keeps one clean sentence out of whatever the model returns', () => {
 		expect(cleanTodaySentence('- Harbor Design sent the files.\n- Also a logo.')).toBe(
 			'Harbor Design sent the files.'

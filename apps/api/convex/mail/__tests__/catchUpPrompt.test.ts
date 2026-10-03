@@ -53,6 +53,16 @@ describe('buildCatchUpPrompt', () => {
 		);
 	});
 
+	it('writes German asks to the reader with "du", never "Sie"', () => {
+		const de = buildCatchUpPrompt({ transcript: 't', mode: 'asksOnly', locale: 'de' });
+		expect(de).toContain('lowercase "du"');
+		expect(de).toContain('not "Bestätigen Sie den Termin"');
+		expect(de.indexOf('lowercase "du"')).toBeLessThan(de.indexOf('<untrusted_email_content>'));
+		expect(buildCatchUpPrompt({ transcript: 't', mode: 'full', locale: 'en' })).not.toContain(
+			'"du"'
+		);
+	});
+
 	it('switches the retelling off for an asks-only call', () => {
 		const prompt = buildCatchUpPrompt({ transcript: 't', mode: 'asksOnly', locale: 'en' });
 		expect(prompt).toContain('sentences: return an empty list');
