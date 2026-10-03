@@ -25,6 +25,7 @@ import {
 import { attachmentSuggestionsValidator } from '../lib/validators/attachment';
 import { contextTierValidator } from '../lib/literalValidators';
 import { authoredDraftHasGaps } from '../agent/shared/draftGaps';
+import { NO_SAVED_EDITS } from './processingLifecycle/draftFields';
 
 /**
  * Record the context-tier metadata onto an inboundMessage without
@@ -93,7 +94,8 @@ export const recordAgentDecision = internalMutation({
  * (module) after its execute completes (still in `drafting` state).
  * The next step (`route`) reads the stored fields to make its routing
  * decision. A draft with `[[...]]` placeholders is stored gap-guarded
- * (`isDraftGapGuarded`), so a reviewer's Approve cannot send them.
+ * (`isDraftGapGuarded`), so a reviewer's Approve cannot send them. A new
+ * draft starts without the saved edits of the one it replaces.
  */
 export const recordDraftOutput = internalMutation({
 	args: {
@@ -135,6 +137,10 @@ export const recordDraftOutput = internalMutation({
 			// an earlier run left, which no longer match the draft or its guard.
 			draftOptions: args.draftOptions?.length ? args.draftOptions : undefined,
 			...(args.attachmentSuggestions ? { attachmentSuggestions: args.attachmentSuggestions } : {}),
+			// Edits a person saved over an earlier draft (a Retry after a failed
+			// send re-drafts) are not edits of this one: the next save seeds this
+			// draft as revision 0.
+			...NO_SAVED_EDITS,
 		});
 	},
 });

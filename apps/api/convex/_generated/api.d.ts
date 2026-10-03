@@ -669,6 +669,7 @@ import type * as inbox_notes from '../inbox/notes.js';
 import type * as inbox_presence from '../inbox/presence.js';
 import type * as inbox_processingLifecycle from '../inbox/processingLifecycle.js';
 import type * as inbox_processingLifecycle_autoSendCancel from '../inbox/processingLifecycle/autoSendCancel.js';
+import type * as inbox_processingLifecycle_draftFields from '../inbox/processingLifecycle/draftFields.js';
 import type * as inbox_processingLifecycle_effects from '../inbox/processingLifecycle/effects.js';
 import type * as inbox_processingLifecycle_reducers from '../inbox/processingLifecycle/reducers.js';
 import type * as inbox_processingLifecycle_takeover from '../inbox/processingLifecycle/takeover.js';
@@ -2133,6 +2134,7 @@ declare const fullApi: ApiFromModules<{
 	'inbox/presence': typeof inbox_presence;
 	'inbox/processingLifecycle': typeof inbox_processingLifecycle;
 	'inbox/processingLifecycle/autoSendCancel': typeof inbox_processingLifecycle_autoSendCancel;
+	'inbox/processingLifecycle/draftFields': typeof inbox_processingLifecycle_draftFields;
 	'inbox/processingLifecycle/effects': typeof inbox_processingLifecycle_effects;
 	'inbox/processingLifecycle/reducers': typeof inbox_processingLifecycle_reducers;
 	'inbox/processingLifecycle/takeover': typeof inbox_processingLifecycle_takeover;
