@@ -483,6 +483,7 @@ import type * as delivery_sendEngagement from '../delivery/sendEngagement.js';
 import type * as delivery_sendLifecycle from '../delivery/sendLifecycle.js';
 import type * as delivery_sendLifecycle_deliveryObservation from '../delivery/sendLifecycle/deliveryObservation.js';
 import type * as delivery_sendLifecycle_effects from '../delivery/sendLifecycle/effects.js';
+import type * as delivery_sendLifecycle_engagementActivity from '../delivery/sendLifecycle/engagementActivity.js';
 import type * as delivery_sendLifecycle_feedbackReducers from '../delivery/sendLifecycle/feedbackReducers.js';
 import type * as delivery_sendLifecycle_lookups from '../delivery/sendLifecycle/lookups.js';
 import type * as delivery_sendLifecycle_outcomeAccounting from '../delivery/sendLifecycle/outcomeAccounting.js';
@@ -1942,6 +1943,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/sendLifecycle': typeof delivery_sendLifecycle;
 	'delivery/sendLifecycle/deliveryObservation': typeof delivery_sendLifecycle_deliveryObservation;
 	'delivery/sendLifecycle/effects': typeof delivery_sendLifecycle_effects;
+	'delivery/sendLifecycle/engagementActivity': typeof delivery_sendLifecycle_engagementActivity;
 	'delivery/sendLifecycle/feedbackReducers': typeof delivery_sendLifecycle_feedbackReducers;
 	'delivery/sendLifecycle/lookups': typeof delivery_sendLifecycle_lookups;
 	'delivery/sendLifecycle/outcomeAccounting': typeof delivery_sendLifecycle_outcomeAccounting;

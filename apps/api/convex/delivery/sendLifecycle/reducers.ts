@@ -2,6 +2,7 @@ import { defineLifecycle, type LifecycleEdgeSpec, type LifecycleGraph } from '..
 import { automatedOpenReason } from '../automatedOpens';
 import { automatedClickReason } from '../automatedClicks';
 import { transportOutcomeEffect, type Effect } from './effects';
+import { readerEngagementActivity } from './engagementActivity';
 import { contactEmailOf, nonCampaignActivityProvenance } from './lookups';
 import { sendTimeEngagementEffects, sendTimeGroupOf } from './sendTimeEffects';
 import type {
@@ -354,6 +355,7 @@ export function reduceOpened(
 				input: { email: contactEmailOf(send), at: args.at },
 			},
 		});
+		effects.push(...readerEngagementActivity(send, ref, args));
 	}
 
 	return {
@@ -446,6 +448,7 @@ export function reduceClicked(
 		// Unique clicks here too — same reasoning as `reduceOpened`: the per-cell
 		// outcome counter must agree with the dashboard counter beside it.
 		effects.push(transportOutcomeEffect(ref, 'clicked', args.at));
+		effects.push(...readerEngagementActivity(send, ref, args));
 	}
 
 	// Customer webhook — every click, not just the first: each carries its own
