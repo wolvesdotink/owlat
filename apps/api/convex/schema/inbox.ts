@@ -281,7 +281,9 @@ export const inboxTables = {
 		// (`savedBy` = the saving user's id). Revision 0 is immutable — the
 		// review diff renders against it, and the approve-time `'edited'`
 		// autonomy signal compares the sent text to it. Absent until a human
-		// saves.
+		// saves; cleared with `draftSavedAt` and `isDraftEdited` when the agent
+		// writes a new draft or a reopen drops the draft
+		// (inbox/processingLifecycle/draftFields.ts).
 		draftRevisions: v.optional(v.array(draftRevisionValidator)),
 		// Stamped on every save-without-approving (and every revision-appending
 		// edit). Drives the review queue's "Saved · edited by you" chip and its
