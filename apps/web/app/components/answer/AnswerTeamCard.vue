@@ -18,6 +18,7 @@ import {
 } from '~/utils/replyCollision';
 import { escalationTrustLabel, trustLabel, type TrustLabel } from '~/utils/trustLabel';
 import type { AnswerCardControls } from '~/utils/answerCard';
+import { authoredTextGaps, draftTextGapSegments } from '~/utils/answerDraft';
 
 type ReviewEntry = FunctionReturnType<typeof api.inbox.queries.getReviewQueue>[number];
 
@@ -27,6 +28,11 @@ type ReviewEntry = FunctionReturnType<typeof api.inbox.queries.getReviewQueue>[n
  * answers inline. Everything the team Review Queue did survives — the
  * countdown undo on approve, the soft hold while a teammate is replying, the
  * honest "already handled" when someone got there first.
+ *
+ * An agent draft's `[[...]]` gaps are marked. While the draft is gap-guarded
+ * Approve is held (the server refuses it, DRAFT_HAS_GAPS) and the card offers
+ * the way to fill them: Answer mode on the thread, or, for an item with no
+ * thread, the draft opened for editing on the card.
  *
  * Keyboard on the focused card: a = approve, x = reject, Enter = the primary
  * action, s = skip. Inert while typing.
@@ -75,6 +81,55 @@ const { showToast } = useToast();
 const busy = ref(false);
 const composeBody = ref('');
 
+// The draft's `[[...]]` gaps, in the written part only, as `approveDraft`
+// counts them. They hold Approve while the draft is stored gap-guarded. A
+// backend that predates the guard stores none: an unsaved draft there is the
+// agent's own text, so its gaps hold too; a saved edit is the reviewer's.
+const draftSegments = computed(() => draftTextGapSegments(message.value.draftResponse ?? ''));
+const draftGapCount = computed(() => draftSegments.value.filter((s) => s.gap).length);
+const gapHeld = computed(
+	() =>
+		!draftless.value &&
+		draftGapCount.value > 0 &&
+		(message.value.isDraftGapGuarded ?? message.value.draftSavedAt === undefined)
+);
+const gapReason = computed(() =>
+	t(
+		props.entry.thread
+			? 'components.agentTasks.reviewFocusFlow.gapsHeldThread'
+			: 'components.agentTasks.reviewFocusFlow.gapsHeldHere',
+		{ count: draftGapCount.value },
+		draftGapCount.value
+	)
+);
+
+// No thread, so no Answer mode: the gaps are filled on the card, and the text
+// goes out the way a draftless reply does (`composeAndSend`).
+const filling = ref(false);
+const fillField = ref<HTMLTextAreaElement | null>(null);
+const fillGapCount = computed(() =>
+	filling.value ? authoredTextGaps(composeBody.value).length : 0
+);
+const fillReason = computed(() =>
+	t(
+		'components.postbox.postboxComposerFooter.gapsLeft',
+		{ count: fillGapCount.value },
+		fillGapCount.value
+	)
+);
+async function startFill() {
+	composeBody.value = message.value.draftResponse ?? '';
+	filling.value = true;
+	await nextTick();
+	const first = authoredTextGaps(composeBody.value)[0];
+	fillField.value?.focus();
+	if (first) fillField.value?.setSelectionRange(first.start, first.end);
+}
+function cancelFill() {
+	filling.value = false;
+	composeBody.value = '';
+}
+
 const trust = computed<TrustLabel>(() =>
 	draftless.value
 		? escalationTrustLabel()
@@ -108,7 +163,7 @@ function handledAlreadyHandled(result: unknown): boolean {
 }
 
 async function approve() {
-	if (busy.value || isHeld.value) return;
+	if (busy.value || isHeld.value || gapHeld.value) return;
 	busy.value = true;
 	try {
 		const m = message.value;
@@ -153,7 +208,7 @@ async function reject() {
 
 async function sendReply() {
 	const body = composeBody.value;
-	if (busy.value || isHeld.value || body.trim().length === 0) return;
+	if (busy.value || isHeld.value || fillGapCount.value > 0 || body.trim().length === 0) return;
 	busy.value = true;
 	try {
 		const result = await composeAndSend(message.value._id, body);
@@ -167,6 +222,7 @@ async function sendReply() {
 		}
 		if (handledAlreadyHandled(result.result)) return;
 		composeBody.value = '';
+		filling.value = false;
 		showToast(t('components.agentTasks.reviewFocusFlow.toasts.replySent'));
 		props.controls.complete('sent');
 	} finally {
@@ -184,7 +240,7 @@ function onKeydown(event: KeyboardEvent) {
 	if (isEditableTarget(event.target)) return;
 	const action = resolveReviewFocusKey(event.key, {
 		currentKind: draftless.value ? 'reply' : 'draft_review',
-		needsReply: draftless.value,
+		needsReply: draftless.value || filling.value,
 	});
 	if (!action) return;
 	event.preventDefault();
@@ -198,6 +254,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 
 const secondaryButton =
 	'inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)';
+// The way to fill the gaps leads while they hold Approve.
+const primaryButton =
+	'inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded bg-brand text-text-inverse hover:bg-brand/90 transition-colors duration-(--motion-fast)';
 </script>
 
 <template>
@@ -261,6 +320,34 @@ const secondaryButton =
 			</TaskActions>
 		</template>
 
+		<!-- Agent draft with its gaps filled on the card (no thread to edit it in) -->
+		<template v-else-if="filling">
+			<textarea
+				ref="fillField"
+				v-model="composeBody"
+				rows="8"
+				class="input w-full text-sm resize-y mb-4"
+				data-testid="team-card-fill"
+			/>
+			<TaskActions
+				:primary-label="t('components.agentTasks.reviewFocusFlow.sendReply')"
+				primary-icon="lucide:send"
+				:primary-disabled="busy || !composeBody.trim()"
+				:primary-loading="busy"
+				:held="isHeld || fillGapCount > 0"
+				:held-reason="heldReason ?? fillReason"
+				:skip-label="t('components.agentTasks.reviewFocusFlow.reject')"
+				skip-destructive
+				:skip-disabled="busy"
+				@primary="sendReply"
+				@skip="reject"
+			>
+				<button type="button" :class="secondaryButton" :disabled="busy" @click="cancelFill">
+					{{ t('common.cancel') }}
+				</button>
+			</TaskActions>
+		</template>
+
 		<!-- Agent draft awaiting approval -->
 		<template v-else>
 			<div class="bg-brand-subtle/30 rounded-lg p-4 mb-4">
@@ -270,7 +357,16 @@ const secondaryButton =
 						{{ t('components.agentTasks.reviewFocusFlow.draftReady') }}
 					</p>
 				</div>
-				<p class="text-text-primary text-sm whitespace-pre-wrap">{{ message.draftResponse }}</p>
+				<p class="text-text-primary text-sm whitespace-pre-wrap" data-testid="team-card-draft">
+					<template v-for="(segment, i) in draftSegments" :key="i"
+						><mark
+							v-if="segment.gap"
+							class="owlat-draft-gap rounded-sm"
+							data-testid="team-card-gap"
+							>{{ segment.text }}</mark
+						><template v-else>{{ segment.text }}</template></template
+					>
+				</p>
 			</div>
 			<InboxDecisionRationale :grounding-sources="message.groundingSources" class="mb-4" />
 			<TaskActions
@@ -278,18 +374,38 @@ const secondaryButton =
 				primary-icon="lucide:check"
 				:primary-disabled="busy"
 				:primary-loading="busy"
-				:held="isHeld"
-				:held-reason="heldReason"
+				:quiet="gapHeld"
+				:held="isHeld || gapHeld"
+				:held-reason="heldReason ?? (gapHeld ? gapReason : undefined)"
 				:skip-label="t('components.agentTasks.reviewFocusFlow.reject')"
 				skip-destructive
 				:skip-disabled="busy"
-				:hints="[{ keys: ['a'], label: t('components.agentTasks.reviewFocusFlow.reviewAndSend') }]"
+				:hints="
+					gapHeld
+						? undefined
+						: [{ keys: ['a'], label: t('components.agentTasks.reviewFocusFlow.reviewAndSend') }]
+				"
 				@primary="approve"
 				@skip="reject"
 			>
-				<button v-if="entry.thread" type="button" :class="secondaryButton" @click="openThread">
+				<button
+					v-if="entry.thread"
+					type="button"
+					:class="gapHeld ? primaryButton : secondaryButton"
+					@click="openThread"
+				>
 					<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
 					{{ t('components.agentTasks.reviewFocusFlow.editInThread') }}
+				</button>
+				<button
+					v-else-if="gapHeld"
+					type="button"
+					:class="primaryButton"
+					data-testid="team-card-fill-gaps"
+					@click="startFill"
+				>
+					<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
+					{{ t('components.agentTasks.reviewFocusFlow.fillGaps') }}
 				</button>
 			</TaskActions>
 		</template>

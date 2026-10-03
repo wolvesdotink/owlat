@@ -335,6 +335,9 @@
 					"title": "Alles erledigt!"
 				},
 				"escalatedBecause": "Eskaliert, weil: {reason}",
+				"fillGaps": "Lücken ausfüllen",
+				"gapsHeldHere": "In diesem Entwurf ist noch 1 Lücke offen. Füll sie aus, bevor du ihn sendest. | In diesem Entwurf sind noch {count} Lücken offen. Füll sie aus, bevor du ihn sendest.",
+				"gapsHeldThread": "In diesem Entwurf ist noch 1 Lücke offen. Füll sie in der Konversation aus, bevor du ihn sendest. | In diesem Entwurf sind noch {count} Lücken offen. Füll sie in der Konversation aus, bevor du ihn sendest.",
 				"heldBecause": "Zurückgehalten, weil: {reason}",
 				"noSubject": "(kein Betreff)",
 				"noTextContent": "(Kein Textinhalt)",

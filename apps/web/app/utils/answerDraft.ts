@@ -14,6 +14,7 @@
 import { escapeHtmlWithBreaks } from '@owlat/shared/html';
 import { findDraftGaps, type DraftGap } from '@owlat/shared/answerMode';
 import type { OperationError } from '@owlat/shared/operationError';
+import { splitQuotedText } from '@owlat/shared/quotedText';
 import { draftTextParts } from '~/utils/postboxDraftText';
 
 /** The start of the seeded tail: the signature block or the quoted original. */
@@ -61,6 +62,31 @@ export function freshDraftGaps(bodyHtml: string): DraftGap[] {
 export function freshDraftText(bodyHtml: string): string {
 	const { fresh } = splitAnswerBody(bodyHtml);
 	return draftTextParts(fresh).fresh;
+}
+
+/**
+ * The gap placeholders in the written part of a plain-text draft (a Team inbox
+ * draft is plain text), as the server's `authoredDraftHasGaps` reads it: a
+ * `[[...]]` in the quoted original belongs to the mail being answered.
+ */
+export function authoredTextGaps(text: string): DraftGap[] {
+	return findDraftGaps(splitQuotedText(text).fresh);
+}
+
+/**
+ * A plain-text draft cut at its written gaps, for showing them marked. The
+ * written part is a prefix of the text, so the offsets hold for all of it.
+ */
+export function draftTextGapSegments(text: string): Array<{ text: string; gap: boolean }> {
+	const segments: Array<{ text: string; gap: boolean }> = [];
+	let at = 0;
+	for (const gap of authoredTextGaps(text)) {
+		if (gap.start > at) segments.push({ text: text.slice(at, gap.start), gap: false });
+		segments.push({ text: text.slice(gap.start, gap.end), gap: true });
+		at = gap.end;
+	}
+	if (at < text.length) segments.push({ text: text.slice(at), gap: false });
+	return segments;
 }
 
 /** The typed code `drafts.send` refuses with while a placeholder is left. */
