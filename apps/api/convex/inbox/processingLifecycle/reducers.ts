@@ -16,8 +16,7 @@
 
 import type { Doc, Id } from '../../_generated/dataModel';
 import { defineLifecycle } from '../../lib/lifecycle';
-import { CLEARS_DRAFT_ON_TAKEOVER } from './takeover';
-import { authoredDraftHasGaps } from '../../agent/shared/draftGaps';
+import { draftReadyDraftPatch } from './draftFields';
 import type {
 	Effect,
 	InputFor,
@@ -218,25 +217,8 @@ function reduceDraftReady(
 		);
 	}
 	if (input.classification) patch['classification'] = input.classification;
-	if (input.draftResponse !== undefined) {
-		patch['draftResponse'] = input.draftResponse;
-		// The `[[...]]` gap guard describes the text a reviewer can send. Variants
-		// a legacy row still carries are dropped: no screen offers them (#1200).
-		patch['draftOptions'] = undefined;
-		patch['isDraftGapGuarded'] = authoredDraftHasGaps({ text: input.draftResponse });
-	}
-	if (input.draftSubject !== undefined) patch['draftSubject'] = input.draftSubject;
+	Object.assign(patch, draftReadyDraftPatch(message, input));
 	if (input.confidenceScore !== undefined) patch['confidenceScore'] = input.confidenceScore;
-	// A person reopening a closed message writes the reply themselves. The draft
-	// it still carries was thrown out (rejected) or never used (archived); left
-	// in place it would come back as a live, approvable agent draft. Its gap
-	// guard goes with it: the person's own double brackets are their text.
-	if (input.manualTakeover === true && CLEARS_DRAFT_ON_TAKEOVER.has(message.processingStatus)) {
-		patch['draftResponse'] = undefined;
-		patch['draftSubject'] = undefined;
-		patch['draftOptions'] = undefined;
-		patch['isDraftGapGuarded'] = undefined;
-	}
 	// Writing the reply instead of answering the agent: its questions are moot.
 	if (input.manualTakeover === true && message.processingStatus === 'awaiting_clarification') {
 		patch['pendingClarification'] = undefined;
