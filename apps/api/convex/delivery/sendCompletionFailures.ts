@@ -1,15 +1,18 @@
-import { type Infer, v } from 'convex/values';
+import { ConvexError, type Infer, v } from 'convex/values';
 import type { WorkId } from '@convex-dev/workpool';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
+import { isTransactionLimitError } from '../lib/convexLimitErrors';
 import { logError, logWarn } from '../lib/runtimeLog';
 import type { countableSendRefValidator } from '../lib/validators/send';
-import type {
-	parkedFeedbackTransitionValidator,
-	workpoolRunResultValidator,
-} from '../schema/sendCompletionFailures';
+import type { workpoolRunResultValidator } from '../schema/sendCompletionFailures';
+import {
+	orderParkedFeedback,
+	parkFeedbackOnRecordedCompletion,
+	unresolvedCompletionFailures,
+} from './sendCompletionFeedback';
 import { isSendWorkerOutcome } from './workerOutcome';
 
 // ============================================================================
@@ -20,26 +23,22 @@ import { isSendWorkerOutcome } from './workerOutcome';
 // record:
 //   - the replay cron re-runs the stored completion with a capped backoff, so a
 //     deployed fix drains the backlog on its own;
-//   - a provider webhook for a Send with an open record replays it first
-//     (`replayRecordedCompletion`); when that replay fails too, a terminal or
-//     delivery event is PARKED on the record (`parkFeedbackOnRecordedCompletion`)
-//     and applied right after the completion once a replay succeeds, so an early
-//     bounce is never lost to the `queued` state;
-//   - contact erasure deletes a Send's records when it scrubs the Send
-//     (`deleteCompletionFailuresForSend`);
+//   - both provider-id entry points of the Send lifecycle go through
+//     `applyProviderFeedback`: it replays an open record first, and when that
+//     replay fails too, parks a terminal or delivery event on the record
+//     (`./sendCompletionFeedback`) for the replay to apply after the completion;
+//   - contact erasure deletes a contact's records in a phase of its own;
 //   - operators read and re-open records in `./sendCompletionFailureAdmin`.
 //
 // NOTHING HERE CAN DOUBLE-COUNT. A replay re-runs the same completion, and every
 // arm of it either goes through the Send lifecycle (which reports a repeat as a
 // duplicate or refuses it, never applies it twice) or checks that the Send is
 // still `queued` first. A record whose Send has already left `queued` only
-// applies the events parked on it, then resolves as `superseded`. A parked event
-// is stored once even when the provider re-delivers it.
+// applies the events parked on it, then resolves as `superseded`.
 // ============================================================================
 
 type CountableSendRef = Infer<typeof countableSendRefValidator>;
 type RunResult = Infer<typeof workpoolRunResultValidator>;
-type ParkedTransition = Infer<typeof parkedFeedbackTransitionValidator>;
 type FailureRow = Doc<'sendCompletionFailures'>;
 
 /** The arguments the workpool hands `completeSend`. */
@@ -54,30 +53,40 @@ export const REPLAY_MAX_ATTEMPTS = 10;
 const REPLAY_BASE_DELAY_MS = 10 * 60 * 1000;
 const REPLAY_MAX_DELAY_MS = 6 * 60 * 60 * 1000;
 const REPLAY_BATCH_SIZE = 25;
-const ERROR_TEXT_MAX_LENGTH = 500;
-/** A provider re-delivers a handful of events per message, not dozens. */
-const PARKED_FEEDBACK_LIMIT = 20;
 
 /** 10 min, 20, 40 … capped at 6 h: about a day and a half over the whole cap. */
 function replayDelayMs(attempts: number): number {
 	return Math.min(REPLAY_BASE_DELAY_MS * 2 ** attempts, REPLAY_MAX_DELAY_MS);
 }
 
-const EMAIL_ADDRESS = /[^\s@"'<>(),;:[\]]+@[^\s@"'<>(),;:[\]]+/g;
-
 /**
- * What of an error is kept on the record. A Convex validation error quotes the
- * whole document it refused after its first line, and that document can carry
- * the recipient, their name and the message, so only the first line is kept,
- * with anything shaped like an address redacted.
+ * The diagnostic code stored for an error, never its text. A Convex validation
+ * error quotes the whole document it refused, and the first line alone can
+ * carry a name or a subject. An operator who needs the message runs
+ * `applyRecordedCompletion` by hand: the CLI shows the error and nothing is
+ * written.
  */
-export function storableErrorText(error: unknown): string {
+export function completionErrorCode(error: unknown): string {
+	if (error instanceof ConvexError) {
+		const data: unknown = error.data;
+		const code =
+			typeof data === 'object' && data !== null ? (data as Record<string, unknown>)['code'] : null;
+		return typeof code === 'string' && /^[a-z_]{1,40}$/i.test(code)
+			? `CONVEX_ERROR_${code.toUpperCase()}`
+			: 'CONVEX_ERROR';
+	}
 	const message = error instanceof Error ? error.message : String(error);
-	const firstLine = (message.split('\n').find((line) => line.trim() !== '') ?? '').trim();
-	const redacted = firstLine.replace(EMAIL_ADDRESS, '[address]');
-	return redacted.length > ERROR_TEXT_MAX_LENGTH
-		? `${redacted.slice(0, ERROR_TEXT_MAX_LENGTH)}…`
-		: redacted;
+	if (/does not match the schema|validator|ValidationError/i.test(message)) {
+		return 'CONVEX_VALIDATION';
+	}
+	if (isTransactionLimitError(message)) return 'TRANSACTION_LIMIT';
+	if (message.includes('conflicts with the Send provider identity')) {
+		return 'MTA_IDENTITY_CONFLICT';
+	}
+	if (message.startsWith('Unhandled send worker outcome')) return 'UNHANDLED_WORKER_OUTCOME';
+	if (error instanceof TypeError) return 'TYPE_ERROR';
+	if (error instanceof RangeError) return 'RANGE_ERROR';
+	return 'UNKNOWN';
 }
 
 /** The readable part of a run result, kept after the payload is dropped. */
@@ -125,7 +134,7 @@ export async function recordCompletionFailure(
 	const now = Date.now();
 	const { sendRef } = args.context;
 	const summary = summarize(args.result);
-	const lastError = storableErrorText(error);
+	const lastError = completionErrorCode(error);
 	const send = await ctx.db.get(sendRef.id);
 
 	if (!send || send.deletedAt !== undefined) {
@@ -171,6 +180,7 @@ export async function recordCompletionFailure(
 		failureId = await ctx.db.insert('sendCompletionFailures', {
 			...summary,
 			sendRef,
+			contactId: send.contactId,
 			workId: args.workId,
 			result: args.result,
 			status: 'open',
@@ -194,7 +204,8 @@ async function resolveRow(
 	ctx: MutationCtx,
 	row: FailureRow,
 	resolution: 'replayed' | 'superseded',
-	now: number
+	now: number,
+	feedbackRefusals: FailureRow['feedbackRefusals']
 ): Promise<void> {
 	await ctx.db.patch(row._id, {
 		status: 'resolved',
@@ -203,34 +214,22 @@ async function resolveRow(
 		result: undefined,
 		pendingFeedback: undefined,
 		nextReplayAt: undefined,
+		...(feedbackRefusals?.length ? { feedbackRefusals } : {}),
 	});
 }
-
-async function rowsForSend(
-	ctx: MutationCtx,
-	sendId: CountableSendRef['id']
-): Promise<FailureRow[]> {
-	return await ctx.db
-		.query('sendCompletionFailures')
-		.withIndex('by_send', (q) => q.eq('sendRef.id', sendId))
-		.take(10);
-}
-
-const unresolved = (rows: FailureRow[]): FailureRow[] =>
-	rows.filter((row) => row.status !== 'resolved');
 
 /**
  * Before a provider event is applied to a `queued` Send, replay any completion
  * recorded for it, so the event lands on the state the provider already
  * reported. Never throws: a replay that fails again leaves the record as it was.
  */
-export async function replayRecordedCompletion(
+async function replayRecordedCompletion(
 	ctx: MutationCtx,
 	sendRef: CountableSendRef
 ): Promise<void> {
 	const send = await ctx.db.get(sendRef.id);
 	if (send?.status !== 'queued') return;
-	for (const row of unresolved(await rowsForSend(ctx, sendRef.id))) {
+	for (const row of await unresolvedCompletionFailures(ctx, sendRef.id)) {
 		try {
 			await ctx.runMutation(internal.delivery.sendCompletionFailures.replayCompletionFailure, {
 				failureId: row._id,
@@ -242,82 +241,40 @@ export async function replayRecordedCompletion(
 	}
 }
 
-function isParkable(transition: { to: string }): transition is ParkedTransition {
-	return (
-		transition.to === 'bounced' ||
-		transition.to === 'complained' ||
-		transition.to === 'delivered' ||
-		transition.to === 'failed'
-	);
-}
-
-/** A provider re-delivery: same edge, same event time, same bounce class. */
-function isSameEvent(a: ParkedTransition, b: ParkedTransition): boolean {
-	if (a.to !== b.to || a.at !== b.at) return false;
-	return a.to !== 'bounced' || b.to !== 'bounced' || a.bounceType === b.bounceType;
-}
-
 /**
- * Keep a provider event the lifecycle just refused because the Send is still
- * `queued` behind an unrecorded completion. The replay applies it after the
- * completion. Returns whether it was kept.
- *
- * WHY PARK INSTEAD OF ANSWERING 5xx. A retryable answer would ask the provider
- * to hold the event for us, and providers differ: SNS gives an HTTP endpoint a
- * few retries over minutes, while a fix may take a day; Mandrill and Svix batch
- * several events in one delivery, so the whole batch would come back and the
- * non-idempotent opens and clicks in it would count twice. Parking keeps the
- * event in our own database for exactly as long as the record lives.
+ * Apply provider feedback to a Send that may have a recorded completion: replay
+ * the record first, apply the event through `apply` (the entry point's own
+ * lifecycle call, with its own identity and edge rules), and park the event on
+ * the record if the lifecycle still refuses it against `queued`.
  */
-export async function parkFeedbackOnRecordedCompletion(
+export async function applyProviderFeedback<Outcome extends { ok: boolean }>(
 	ctx: MutationCtx,
 	sendRef: CountableSendRef,
-	transition: { to: string }
-): Promise<boolean> {
-	if (!isParkable(transition)) return false;
-	const send = await ctx.db.get(sendRef.id);
-	if (send?.status !== 'queued') return false;
-	const row = unresolved(await rowsForSend(ctx, sendRef.id))[0];
-	if (!row) return false;
-	const parked = row.pendingFeedback ?? [];
-	if (parked.some((event) => isSameEvent(event.transition, transition))) return true;
-	if (parked.length >= PARKED_FEEDBACK_LIMIT) {
-		logWarn('[SendCompletion] Parked provider events full; event dropped', {
-			failureId: row._id,
-			edge: transition.to,
-		});
-		return false;
-	}
-	await ctx.db.patch(row._id, {
-		pendingFeedback: [...parked, { transition, receivedAt: Date.now() }],
-	});
-	return true;
+	transition: { to: string },
+	apply: () => Promise<Outcome>
+): Promise<Outcome> {
+	await replayRecordedCompletion(ctx, sendRef);
+	const outcome = await apply();
+	if (!outcome.ok) await parkFeedbackOnRecordedCompletion(ctx, sendRef, transition);
+	return outcome;
 }
 
-/**
- * Contact erasure: delete every record of a Send it scrubs. Returns the deleted
- * rows so the caller can charge them to its budget.
- */
-export async function deleteCompletionFailuresForSend(
-	ctx: MutationCtx,
-	sendId: CountableSendRef['id']
-): Promise<FailureRow[]> {
-	const rows = await rowsForSend(ctx, sendId);
-	for (const row of rows) await ctx.db.delete(row._id);
-	return rows;
-}
+const refusalValidator = v.object({ to: v.string(), at: v.number(), reason: v.string() });
 
 /**
  * Run one record as a single nested unit: the completion (when the Send is
- * still `queued`), then the provider events parked on it, oldest first. Any
- * throw rolls all of it back, so a record never resolves with its events
- * applied to only half of what the provider reported.
+ * still `queued`), then the provider events parked on it in provider-time
+ * order. Any throw rolls all of it back, so a record never resolves with its
+ * events applied to only part of what the provider reported. An event the
+ * lifecycle refuses (a soft bounce stamped after a complaint, say) is returned
+ * as a refusal for the record to keep.
  */
 export const applyRecordedCompletion = internalMutation({
 	args: { failureId: v.id('sendCompletionFailures') },
+	returns: v.array(refusalValidator),
 	handler: async (ctx, { failureId }) => {
 		const row = await ctx.db.get(failureId);
-		if (!row) return;
+		if (!row) return [];
 		const send = await ctx.db.get(row.sendRef.id);
 		if (send?.status === 'queued' && row.result) {
 			await ctx.runMutation(internal.delivery.sendCompletion.applyCompletion, {
@@ -326,12 +283,20 @@ export const applyRecordedCompletion = internalMutation({
 				context: { sendRef: row.sendRef },
 			});
 		}
-		for (const event of row.pendingFeedback ?? []) {
-			await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
+		const refusals: Array<Infer<typeof refusalValidator>> = [];
+		for (const { transition } of orderParkedFeedback(row.pendingFeedback ?? [])) {
+			const outcome = await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
 				send: row.sendRef,
-				transition: event.transition,
+				transition,
 			});
+			if (!outcome.ok) {
+				refusals.push({ to: transition.to, at: transition.at, reason: outcome.reason });
+			}
 		}
+		// Applied: an operator running this by hand to see an error must not
+		// leave the events for the next replay to apply a second time.
+		if (row.pendingFeedback?.length) await ctx.db.patch(row._id, { pendingFeedback: undefined });
+		return refusals;
 	},
 });
 
@@ -372,22 +337,24 @@ export const replayCompletionFailure = internalMutation({
 		const isQueued = send?.status === 'queued';
 		// Settled elsewhere (a webhook, an operator) with nothing parked: done.
 		if (!send || (!isQueued && !row.pendingFeedback?.length)) {
-			await resolveRow(ctx, row, 'superseded', now);
+			await resolveRow(ctx, row, 'superseded', now, undefined);
 			return 'superseded';
 		}
 		if (isQueued && !row.result) {
 			await ctx.db.patch(row._id, {
 				status: 'exhausted',
 				nextReplayAt: undefined,
-				lastError: 'No stored result to replay',
+				lastError: 'NO_STORED_RESULT',
 			});
 			return 'failed';
 		}
 
+		let refusals: FailureRow['feedbackRefusals'];
 		try {
-			await ctx.runMutation(internal.delivery.sendCompletionFailures.applyRecordedCompletion, {
-				failureId,
-			});
+			refusals = await ctx.runMutation(
+				internal.delivery.sendCompletionFailures.applyRecordedCompletion,
+				{ failureId }
+			);
 		} catch (error) {
 			const replayAttempts = trigger === 'cron' ? row.replayAttempts + 1 : row.replayAttempts;
 			const schedule =
@@ -399,14 +366,20 @@ export const replayCompletionFailure = internalMutation({
 			await ctx.db.patch(row._id, {
 				...schedule,
 				replayAttempts,
-				lastError: storableErrorText(error),
+				lastError: completionErrorCode(error),
 				lastFailedAt: now,
 			});
 			logWarn('[SendCompletion] Replay failed', { failureId, trigger, replayAttempts });
 			return 'failed';
 		}
+		if (refusals?.length) {
+			logWarn('[SendCompletion] Parked provider events refused on replay', {
+				failureId,
+				refused: refusals.length,
+			});
+		}
 		const resolution = isQueued ? 'replayed' : 'superseded';
-		await resolveRow(ctx, row, resolution, now);
+		await resolveRow(ctx, row, resolution, now, refusals);
 		return resolution;
 	},
 });

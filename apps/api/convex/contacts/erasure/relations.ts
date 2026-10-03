@@ -116,6 +116,12 @@ export const CONTACT_RELATIONS: readonly ErasureRelation[] = [
 		why: 'Kept for delivery statistics, but soft-deleted and scrubbed of the address and the request-supplied template variables.',
 	},
 	{
+		table: 'sendCompletionFailures',
+		field: 'contactId',
+		action: 'delete',
+		why: 'A recorded send completion can hold the recipient, their name and the message (#1195).',
+	},
+	{
 		table: 'conversationThreads',
 		field: 'contactId',
 		action: 'delete',
@@ -425,41 +431,19 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 		action: 'delete',
 		why: 'Graph edges into a deleted entry.',
 	},
-	{
+	...[
+		'godNodes[].entryId',
+		'surprisingConnections[].fromEntryId',
+		'surprisingConnections[].toEntryId',
+		'crossContactLinks[].fromEntryId',
+		'crossContactLinks[].toEntryId',
+	].map((field): DescendantRelation => ({
 		parent: 'knowledgeEntries',
 		table: 'knowledgeGraphStats',
-		field: 'godNodes[].entryId',
+		field,
 		action: 'retain',
 		why: 'A derived graph snapshot, rebuilt from the live graph by the recompute cron.',
-	},
-	{
-		parent: 'knowledgeEntries',
-		table: 'knowledgeGraphStats',
-		field: 'surprisingConnections[].fromEntryId',
-		action: 'retain',
-		why: 'A derived graph snapshot, rebuilt from the live graph by the recompute cron.',
-	},
-	{
-		parent: 'knowledgeEntries',
-		table: 'knowledgeGraphStats',
-		field: 'surprisingConnections[].toEntryId',
-		action: 'retain',
-		why: 'A derived graph snapshot, rebuilt from the live graph by the recompute cron.',
-	},
-	{
-		parent: 'knowledgeEntries',
-		table: 'knowledgeGraphStats',
-		field: 'crossContactLinks[].fromEntryId',
-		action: 'retain',
-		why: 'A derived graph snapshot, rebuilt from the live graph by the recompute cron.',
-	},
-	{
-		parent: 'knowledgeEntries',
-		table: 'knowledgeGraphStats',
-		field: 'crossContactLinks[].toEntryId',
-		action: 'retain',
-		why: 'A derived graph snapshot, rebuilt from the live graph by the recompute cron.',
-	},
+	})),
 
 	// ── semanticFiles (deleted when a sole-contact inbound capture) ──
 	{

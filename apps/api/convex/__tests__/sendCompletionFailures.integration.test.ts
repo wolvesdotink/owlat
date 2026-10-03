@@ -10,14 +10,22 @@
  * and records that go with an erased contact and age out.
  */
 
-import { convexTest, type TestConvex } from 'convex-test';
+import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkId } from '@convex-dev/workpool';
 import schema from '../schema';
 import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
-import { createTestCampaign, createTestContact, createTestEmailSend } from './factories';
-import { REPLAY_MAX_ATTEMPTS, storableErrorText } from '../delivery/sendCompletionFailures';
+import {
+	acceptedCompletion,
+	DAY,
+	expiredDeferral,
+	failureRows,
+	insertResolvedRecords,
+	setupQueuedSend,
+	statsSent,
+	type T,
+} from './helpers/sendCompletionFailures';
+import { completionErrorCode, REPLAY_MAX_ATTEMPTS } from '../delivery/sendCompletionFailures';
 import { PURGE_BATCH_SIZE } from '../delivery/sendCompletionFailureAdmin';
 import { permanentlyDeleteContactWithRelations } from '../lib/contactMutations';
 import type * as EffectsModule from '../delivery/sendLifecycle/effects';
@@ -37,8 +45,6 @@ vi.mock('../delivery/sendLifecycle/effects', async (importOriginal) => {
 });
 
 const modules = import.meta.glob('../**/*.*s');
-const DAY = 24 * 60 * 60 * 1000;
-type T = TestConvex<typeof schema>;
 
 beforeEach(() => {
 	fault.isArmed = false;
@@ -46,62 +52,6 @@ beforeEach(() => {
 afterEach(() => {
 	vi.useRealTimers();
 });
-
-function acceptedCompletion(
-	sendId: Id<'emailSends'>,
-	providerMessageId: string,
-	options: { workId?: string; isCustodyHandoff?: boolean; providerType?: string } = {}
-) {
-	return {
-		workId: (options.workId ?? `work-${sendId}`) as WorkId,
-		result: {
-			kind: 'success' as const,
-			returnValue: {
-				kind: 'accepted',
-				providerMessageId,
-				providerType: options.providerType ?? 'ses',
-				sendLatencyMs: 12,
-				isCustodyHandoff: options.isCustodyHandoff ?? false,
-			},
-		},
-		context: { sendRef: { kind: 'campaign' as const, id: sendId } },
-	};
-}
-
-async function setupQueuedSend(
-	t: T,
-	overrides: Record<string, unknown> = {}
-): Promise<{ campaignId: Id<'campaigns'>; sendId: Id<'emailSends'> }> {
-	return await t.run(async (ctx) => {
-		const campaignId = await ctx.db.insert('campaigns', createTestCampaign({ status: 'sending' }));
-		const contactId = await ctx.db.insert('contacts', createTestContact());
-		const sendId = await ctx.db.insert(
-			'emailSends',
-			createTestEmailSend({
-				campaignId,
-				contactId,
-				status: 'queued',
-				providerMessageId: undefined,
-				...overrides,
-			})
-		);
-		return { campaignId, sendId };
-	});
-}
-
-async function failureRows(t: T) {
-	return await t.run(async (ctx) => await ctx.db.query('sendCompletionFailures').collect());
-}
-
-async function statsSent(t: T, campaignId: Id<'campaigns'>): Promise<number> {
-	return await t.run(async (ctx) => {
-		const shards = await ctx.db
-			.query('campaignStatShards')
-			.withIndex('by_campaign_and_shard', (q) => q.eq('campaignId', campaignId))
-			.collect();
-		return shards.reduce((sum, shard) => sum + (shard.statsSent ?? 0), 0);
-	});
-}
 
 describe('completeSend when the lifecycle throws', () => {
 	it('keeps the provider id on the queued Send and records the outcome', async () => {
@@ -128,7 +78,7 @@ describe('completeSend when the lifecycle throws', () => {
 			outcomeKind: 'accepted',
 			providerMessageId: 'ses-1',
 			replayAttempts: 0,
-			lastError: expect.stringContaining('simulated lifecycle effect failure'),
+			lastError: 'UNKNOWN',
 		});
 		expect(row?.result).toMatchObject({ kind: 'success', returnValue: { kind: 'accepted' } });
 	});
@@ -223,7 +173,7 @@ describe('completeSend when the lifecycle throws', () => {
 		expect((await failureRows(t))[0]).toMatchObject({
 			status: 'open',
 			providerMessageId: 'mta-other',
-			lastError: expect.stringContaining('conflicts with the Send provider identity'),
+			lastError: 'MTA_IDENTITY_CONFLICT',
 		});
 	});
 
@@ -333,42 +283,13 @@ describe('replaying a recorded completion', () => {
 });
 
 describe('contact erasure', () => {
-	function deferral(sendId: Id<'emailSends'>, contactId: Id<'contacts'>, email: string) {
-		return {
-			workId: `defer-${sendId}` as WorkId,
-			context: { sendRef: { kind: 'campaign' as const, id: sendId } },
-			result: {
-				kind: 'success' as const,
-				returnValue: {
-					kind: 'deferred',
-					deferralOrigin: 'local',
-					retryAfterMs: 60_000,
-					envelopeInput: {
-						kind: 'campaign',
-						to: email,
-						from: 'sender@example.com',
-						template: { subject: 'Private details', htmlContent: '<p>Private details</p>' },
-						contactInfo: { contactId, email, firstName: 'Private name' },
-						emailSendId: sendId,
-					},
-					// Past the delivery deadline, so the arm terminalizes and the fault throws.
-					retryState: {
-						attempt: 1,
-						startedAt: Date.now() - 5 * DAY,
-						idempotencyKey: `send_${sendId}`,
-					},
-				},
-			},
-		};
-	}
-
 	async function recordDeferralFailure(t: T) {
 		const { sendId } = await setupQueuedSend(t);
 		const send = (await t.run((ctx) => ctx.db.get(sendId)))!;
 		fault.isArmed = true;
 		await t.mutation(
 			internal.delivery.sendCompletion.completeSend,
-			deferral(sendId, send.contactId, send.contactEmail)
+			expiredDeferral(sendId, send.contactId, send.contactEmail)
 		);
 		fault.isArmed = false;
 		expect(JSON.stringify(await failureRows(t))).toContain(send.contactEmail);
@@ -390,7 +311,28 @@ describe('contact erasure', () => {
 		fault.isArmed = true;
 		await t.mutation(
 			internal.delivery.sendCompletion.completeSend,
-			deferral(sendId, contactId, email)
+			expiredDeferral(sendId, contactId, email)
+		);
+		expect(await failureRows(t)).toHaveLength(0);
+	});
+
+	it('deletes every record of a Send, behind resolved history and across work ids', async () => {
+		const t = convexTest(schema, modules);
+		const { sendId } = await setupQueuedSend(t);
+		const send = (await t.run((ctx) => ctx.db.get(sendId)))!;
+		await insertResolvedRecords(t, sendId, 10);
+		fault.isArmed = true;
+		for (let i = 0; i < 11; i++) {
+			await t.mutation(
+				internal.delivery.sendCompletion.completeSend,
+				expiredDeferral(sendId, send.contactId, send.contactEmail, `defer-${i}`)
+			);
+		}
+		fault.isArmed = false;
+		expect(await failureRows(t)).toHaveLength(21);
+
+		await t.run((ctx) =>
+			permanentlyDeleteContactWithRelations(ctx, send.contactId, { decrementCount: false })
 		);
 		expect(await failureRows(t)).toHaveLength(0);
 	});
@@ -451,12 +393,17 @@ describe('record retention', () => {
 	});
 });
 
-describe('stored error text', () => {
-	it('keeps the first line only, with addresses redacted', () => {
-		const error = new Error(
-			'Failed to insert into contactActivities for erase-me@example.com\n\nObject: {email: "erase-me@example.com", firstName: "Private"}'
+describe('stored error code', () => {
+	it('stores a fixed code, never the message text', () => {
+		const validation = new Error(
+			'Failed to insert or update a document in table "contactActivities" because it does not match the schema: Object {firstName: "Private name", subject: "Private message"}'
 		);
-		const text = storableErrorText(error);
-		expect(text).toBe('Failed to insert into contactActivities for [address]');
+		expect(completionErrorCode(validation)).toBe('CONVEX_VALIDATION');
+		expect(
+			completionErrorCode(
+				new Error('Invalid document {firstName:"Private name", htmlContent:"Private message"}')
+			)
+		).toBe('UNKNOWN');
+		expect(completionErrorCode(new TypeError('x of Private name'))).toBe('TYPE_ERROR');
 	});
 });

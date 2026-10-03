@@ -40,10 +40,7 @@ import {
 import { withoutTestSendEffects } from './sendLifecycle/types';
 import { refuse } from '../lib/lifecycle';
 import { finalizeSendSource } from './sendLifecycle/sourceFinalization';
-import {
-	parkFeedbackOnRecordedCompletion,
-	replayRecordedCompletion,
-} from './sendCompletionFailures';
+import { applyProviderFeedback } from './sendCompletionFailures';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { bounceTypeValidator } from '../lib/literalValidators';
 import { openAgentValidator } from './automatedOpens';
@@ -360,13 +357,11 @@ export const transitionByProviderMessageId = internalMutation({
 		const ref = await resolveProviderMessageId(ctx, args.providerMessageId);
 		if (!ref) return { ok: false, reason: 'send_not_found' };
 		// A Send whose completion threw is still `queued` with this id stamped on
-		// it. Replay that completion first, so the event lands on the state the
-		// provider already reported; if it still cannot replay, park a terminal
-		// event on the record for the replay to apply (#1195).
-		await replayRecordedCompletion(ctx, ref);
-		const outcome = await dispatch(ctx, ref, args.transition);
-		if (!outcome.ok) await parkFeedbackOnRecordedCompletion(ctx, ref, args.transition);
-		return outcome;
+		// it: replay the completion first, and park the event if it still cannot
+		// land (#1195).
+		return await applyProviderFeedback(ctx, ref, args.transition, () =>
+			dispatch(ctx, ref, args.transition)
+		);
 	},
 });
 
@@ -416,7 +411,13 @@ export const bindMtaProviderIdentity = internalMutation({
  * legitimately go `queued → bounced` without an intervening `sent`.
  */
 export const transitionMtaByProviderMessageId = internalMutation({
-	args: { providerMessageId: v.string(), transition: transitionInputValidator },
+	args: {
+		providerMessageId: v.string(),
+		transition: transitionInputValidator,
+		// Set by the send completion's own terminal call, which must not replay
+		// the record it is itself being replayed from.
+		isCompletionCall: v.optional(v.boolean()),
+	},
 	handler: async (ctx, args): Promise<TransitionOutcome> => {
 		const ref = await resolveProviderMessageId(ctx, args.providerMessageId);
 		if (!ref) return { ok: false, reason: 'send_not_found' };
@@ -424,9 +425,16 @@ export const transitionMtaByProviderMessageId = internalMutation({
 		if (!send || send.providerMessageId !== args.providerMessageId) {
 			return { ok: false, reason: 'send_not_found' };
 		}
-		return await dispatch(ctx, ref, args.transition, {
-			allowQueuedMtaTerminal: send.providerType === OWN_ARM_TRANSPORT_KIND,
-		});
+		const apply = async () =>
+			await dispatch(ctx, ref, args.transition, {
+				// Read after any replay: the completion may have moved the row.
+				allowQueuedMtaTerminal: (await loadSend(ctx, ref))?.providerType === OWN_ARM_TRANSPORT_KIND,
+			});
+		if (args.isCompletionCall === true) return await apply();
+		// An SMTP relay's DSN reaches our own bounce server and lands here, so a
+		// relay Send whose completion threw needs the same replay and parking as
+		// the provider webhooks (#1195).
+		return await applyProviderFeedback(ctx, ref, args.transition, apply);
 	},
 });
 

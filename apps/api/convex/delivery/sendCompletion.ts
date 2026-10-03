@@ -257,6 +257,7 @@ export const applyCompletion = internalMutation({
 					return;
 				}
 				await ctx.runMutation(internal.delivery.sendLifecycle.transitionMtaByProviderMessageId, {
+					isCompletionCall: true,
 					providerMessageId: outcome.providerMessageId,
 					transition: {
 						to: 'failed',

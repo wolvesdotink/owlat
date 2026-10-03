@@ -66,13 +66,16 @@ export const sendCompletionFailureStatusValidator = v.union(
  * completion that failed. A deferral's outcome includes its envelope (the
  * recipient and the rendered message), so the payload is dropped as soon as the
  * row resolves; the summary columns stay for the audit trail. Contact erasure
- * deletes a Send's rows when it scrubs the Send, and no row is written for a
+ * deletes a contact's rows in a phase of its own, and no row is written for a
  * Send that is already soft-deleted. Resolved rows are purged 30 days after
  * their last failure, exhausted ones after 90.
  */
 export const sendCompletionFailureTables = {
 	sendCompletionFailures: defineTable({
 		sendRef: countableSendRefValidator,
+		// The Send's contact, copied when the row is written, so contact erasure
+		// finds every row by index (`contacts/erasure/phases.ts`).
+		contactId: v.optional(v.id('contacts')),
 		// The workpool work id the completion belonged to: a second `onComplete`
 		// for the same work updates this row instead of adding another.
 		workId: v.string(),
@@ -85,11 +88,18 @@ export const sendCompletionFailureTables = {
 		providerType: v.optional(v.string()),
 		status: sendCompletionFailureStatusValidator,
 		resolution: v.optional(v.union(v.literal('replayed'), v.literal('superseded'))),
-		// The latest error: its first line, addresses redacted, clamped.
+		// A fixed diagnostic code for the latest error (`CONVEX_VALIDATION`,
+		// `MTA_IDENTITY_CONFLICT`, `UNKNOWN`, …), never its message text: a
+		// validation error quotes the document it refused.
 		lastError: v.string(),
-		// Provider events that arrived before the completion could be replayed.
+		// Provider events that arrived before the completion could be replayed,
+		// at most one per kind (`delivery/sendCompletionFeedback.ts`).
 		pendingFeedback: v.optional(
 			v.array(v.object({ transition: parkedFeedbackTransitionValidator, receivedAt: v.number() }))
+		),
+		// Parked events the lifecycle refused when the replay applied them.
+		feedbackRefusals: v.optional(
+			v.array(v.object({ to: v.string(), at: v.number(), reason: v.string() }))
 		),
 		// Cron replays only; a webhook or operator replay does not spend the cap.
 		replayAttempts: v.number(),
@@ -101,5 +111,6 @@ export const sendCompletionFailureTables = {
 		.index('by_status_and_next_replay', ['status', 'nextReplayAt'])
 		.index('by_status_and_last_failed_at', ['status', 'lastFailedAt'])
 		.index('by_work_id', ['workId'])
-		.index('by_send', ['sendRef.id']),
+		.index('by_send_and_status', ['sendRef.id', 'status'])
+		.index('by_contact', ['contactId']),
 };

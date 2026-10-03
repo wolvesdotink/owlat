@@ -19,7 +19,6 @@ import type { Doc, Id, TableNames } from '../../_generated/dataModel';
 import { decrementContactCount } from '../../lib/contactCountHelpers';
 import { recordContactGrowth } from '../growthCounters';
 import { deleteAutomationRun } from '../../automations/runDeletion';
-import { deleteCompletionFailuresForSend } from '../../delivery/sendCompletionFailures';
 import type { ErasureBudget } from './budget';
 import { CONTACT_ERASURE_PHASES, type ContactErasurePhase } from './phaseCatalog';
 import {
@@ -116,12 +115,7 @@ function scrubSends<T extends SendTable>(table: T, scrub: () => Partial<Doc<T>>)
 			ctx.db.query(sendTable).withIndex('by_contact', (q) => q.eq('contactId', contactId));
 		const scrubOne = async (send: Doc<SendTable>): Promise<void> => {
 			budget.charge(send);
-			if (isErasedSend(send)) return;
-			await ctx.db.patch(send._id, scrub() as never);
-			// A recorded completion that threw can hold the recipient, their name and
-			// the message (#1195). It goes with the scrub; once the Send is
-			// soft-deleted, a late completion records nothing for it.
-			for (const row of await deleteCompletionFailuresForSend(ctx, send._id)) budget.charge(row);
+			if (!isErasedSend(send)) await ctx.db.patch(send._id, scrub() as never);
 		};
 		if (mode === 'inline') {
 			for await (const send of query()) await scrubOne(send);
@@ -239,6 +233,15 @@ const PHASE_RUNNERS: Record<ContactErasurePhase, PhaseRunner> = {
 		// order details). Erasure must drop them too, not just the address.
 		dataVariables: undefined,
 	})),
+	// A recorded completion can hold the recipient, their name and the message
+	// (#1195). The sends are soft-deleted by now, and a completion for a
+	// soft-deleted Send records nothing, so none comes back behind the walk.
+	sendCompletionFailures: deleteByIndex(({ ctx, contactId }, n) =>
+		ctx.db
+			.query('sendCompletionFailures')
+			.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+			.take(n)
+	),
 	conversationThreads: eraseConversationThreads,
 	unifiedMessages: eraseUnifiedMessages,
 	inboundMessages: eraseInboundMessages,

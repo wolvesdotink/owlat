@@ -469,6 +469,7 @@ import type * as delivery_sendAssignments from '../delivery/sendAssignments.js';
 import type * as delivery_sendCompletion from '../delivery/sendCompletion.js';
 import type * as delivery_sendCompletionFailureAdmin from '../delivery/sendCompletionFailureAdmin.js';
 import type * as delivery_sendCompletionFailures from '../delivery/sendCompletionFailures.js';
+import type * as delivery_sendCompletionFeedback from '../delivery/sendCompletionFeedback.js';
 import type * as delivery_sendComposition_archive_snapshot_index from '../delivery/sendComposition/archive_snapshot/index.js';
 import type * as delivery_sendComposition_automation_index from '../delivery/sendComposition/automation/index.js';
 import type * as delivery_sendComposition_campaign_index from '../delivery/sendComposition/campaign/index.js';
@@ -1934,6 +1935,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/sendCompletion': typeof delivery_sendCompletion;
 	'delivery/sendCompletionFailureAdmin': typeof delivery_sendCompletionFailureAdmin;
 	'delivery/sendCompletionFailures': typeof delivery_sendCompletionFailures;
+	'delivery/sendCompletionFeedback': typeof delivery_sendCompletionFeedback;
 	'delivery/sendComposition/archive_snapshot/index': typeof delivery_sendComposition_archive_snapshot_index;
 	'delivery/sendComposition/automation/index': typeof delivery_sendComposition_automation_index;
 	'delivery/sendComposition/campaign/index': typeof delivery_sendComposition_campaign_index;
