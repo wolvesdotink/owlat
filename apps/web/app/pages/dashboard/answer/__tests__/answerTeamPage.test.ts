@@ -269,6 +269,26 @@ describe('Answer mode for a Team inbox thread', () => {
 		expect(send().attributes('disabled')).toBeUndefined();
 	});
 
+	it('counts only the written gaps of a gap-guarded agent draft, not those in the quoted mail', async () => {
+		// The server's guard ignores the quoted original (`authoredDraftHasGaps`),
+		// so a `[[...]]` the customer wrote must not keep Send held.
+		messages.value = [
+			inbound('in_1', {
+				draftResponse:
+					'Hi Ana, the refund of [[refund amount]] is on its way.\n> Can you check [[ticket 12]]?',
+				isDraftGapGuarded: true,
+			}),
+		];
+		const wrapper = await mountPage();
+		const send = () => wrapper.get('[data-testid="composer-send"]');
+		expect(wrapper.get('[data-testid="composer-save-state"]').text()).toBe('1 gap left');
+
+		await wrapper
+			.get<HTMLTextAreaElement>('[data-testid="thread-composer-body"]')
+			.setValue('Hi Ana, the refund of 42 EUR is on its way.\n> Can you check [[ticket 12]]?');
+		expect(send().attributes('disabled')).toBeUndefined();
+	});
+
 	it('opens the agent draft in the editor, and Send approves it unchanged', async () => {
 		const wrapper = await mountPage();
 		const body = wrapper.get<HTMLTextAreaElement>('[data-testid="thread-composer-body"]');
