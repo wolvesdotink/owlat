@@ -6,7 +6,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { generateSetupToken } from '@owlat/shared/setupToken';
 import { requireSetupToken } from '../setupToken';
-import { installNitroGlobals, requestEvent } from './nitro';
+import { installNitroGlobals, requestEvent } from '../../__tests__/nitro';
 
 const TOKEN = generateSetupToken();
 const ENV_KEY = 'OWLAT_SETUP_TOKEN';

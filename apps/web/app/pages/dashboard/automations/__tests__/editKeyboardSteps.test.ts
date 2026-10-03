@@ -9,7 +9,11 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
-import { mountEditPage, stubEditPage, type EditPageWrapper } from './editPageHarness';
+import {
+	mountEditPage,
+	stubEditPage,
+	type EditPageWrapper,
+} from '~/__tests__/automationEditPageHarness';
 
 const titles = (wrapper: EditPageWrapper) => wrapper.findAll('[data-step-title]');
 const handle = (wrapper: EditPageWrapper, id: string) => wrapper.get(`[data-step-handle="${id}"]`);

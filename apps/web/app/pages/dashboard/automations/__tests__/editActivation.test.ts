@@ -8,7 +8,11 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
-import { buttonByText as button, mountEditPage, stubEditPage } from './editPageHarness';
+import {
+	buttonByText as button,
+	mountEditPage,
+	stubEditPage,
+} from '~/__tests__/automationEditPageHarness';
 
 describe('activation waits for the open step to be saved', () => {
 	beforeEach(() => {

@@ -5,7 +5,7 @@
  * sheet, and what it covers leaves the tab order until it closes.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mountEditPage, stubEditPage } from './editPageHarness';
+import { mountEditPage, stubEditPage } from '~/__tests__/automationEditPageHarness';
 
 const canvas = (wrapper: Awaited<ReturnType<typeof mountEditPage>>) =>
 	wrapper.get('[data-testid="automation-step"]').element.closest('[class*="overflow-y-auto"]')!;

@@ -38,7 +38,7 @@ import {
 	openWizard,
 	stubDoh,
 	type WizardProps,
-} from './wizardHarness';
+} from '~/__tests__/transportWizardHarness';
 
 // The real probe, wrapped so ONE case can make it throw. Everything else runs
 // the shipped gather + evaluator against the DNS fixture.
