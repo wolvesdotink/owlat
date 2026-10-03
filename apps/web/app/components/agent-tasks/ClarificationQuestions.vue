@@ -14,6 +14,8 @@ import {
 /**
  * The question list of a clarification loop: each question in the reader's
  * language, its option chips and a free-text box (TaskAsk + TaskOptions).
+ * Where the questions came from is the surface's one ClarificationTrustLine,
+ * not a line under each question.
  * Both surfaces render it: the Postbox "Needs your input" card and the
  * team-inbox thread page.
  *
@@ -52,18 +54,12 @@ const props = withDefaults(
 		placeholder?: string;
 		/** data-testid prefix: `<prefix>-question`, `<prefix>-chip`, `<prefix>-input`. */
 		testIdPrefix?: string;
-		/**
-		 * Leave each question's attribution line out: the surface says where the
-		 * questions came from once, for all of them (Answer mode's ask card).
-		 */
-		hideAttribution?: boolean;
 	}>(),
 	{
 		submitting: false,
 		numbered: false,
 		placeholder: undefined,
 		testIdPrefix: 'clarification',
-		hideAttribution: false,
 	}
 );
 
@@ -145,10 +141,7 @@ defineExpose({ pickIndex, submit, setValue });
 					})
 				}}
 			</p>
-			<TaskAsk
-				:ask="copyFor(question).text"
-				:why="hideAttribution ? undefined : question.attribution"
-			/>
+			<TaskAsk :ask="copyFor(question).text" />
 			<slot
 				name="answer"
 				:question="question"

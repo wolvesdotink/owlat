@@ -6,7 +6,12 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { RouteLocationNormalized } from 'vue-router';
-import { authClientMock, loadMiddleware, route, type Redirect } from './harness';
+import {
+	authClientMock,
+	loadMiddleware,
+	route,
+	type Redirect,
+} from '~/__tests__/middlewareHarness';
 
 vi.mock('~/lib/auth-client', () => authClientMock());
 

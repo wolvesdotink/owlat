@@ -12,7 +12,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
 import { buildProviderEnv } from '~/composables/useSetupWizard';
 import { validateEmailStep } from '~/composables/setupWizardValidation';
-import { buttonByText, fillCredentials, mountWizard, openWizard } from './wizardHarness';
+import {
+	buttonByText,
+	fillCredentials,
+	mountWizard,
+	openWizard,
+} from '~/__tests__/transportWizardHarness';
 
 const KEY = 'md-9f3c2b7a41';
 

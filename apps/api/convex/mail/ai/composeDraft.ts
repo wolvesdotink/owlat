@@ -353,7 +353,7 @@ async function applyAnswers(
 		const label = session.fileRequest?.label ?? 'the requested file';
 		const [followUpQuestion] = await localizeForOwner(
 			ctx,
-			[buildFollowUpQuestion(label, file.attribution, now, timeZone)],
+			[buildFollowUpQuestion(label, file, now, timeZone)],
 			session.locale
 		);
 		questions.push(followUpQuestion!);

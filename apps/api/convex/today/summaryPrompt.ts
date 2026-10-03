@@ -3,7 +3,7 @@
  * Convex, no model) so the framing and the clean-up are unit-testable.
  */
 
-const LANGUAGE_NAMES: Record<string, string> = { en: 'English', de: 'German' };
+import { interfaceLanguageName, interfaceRegisterRule } from '../mail/ai/interfaceLanguage';
 
 /** Longest sentence Today will show; anything longer is cut at a word. */
 export const TODAY_SENTENCE_MAX = 180;
@@ -15,14 +15,15 @@ export function todaySummaryPrompt(input: {
 	earlier: string;
 	latest: string;
 }): { system: string; prompt: string } {
-	const language = LANGUAGE_NAMES[input.locale] ?? 'English';
+	const language = interfaceLanguageName(input.locale);
+	const register = interfaceRegisterRule(input.locale);
 	const task = input.isFollowUp
 		? 'Say in ONE plain sentence what changed in this conversation with the newest messages, compared with what the reader already knew.'
 		: 'Say in ONE plain sentence what this email tells the reader.';
 	const system =
 		`${input.guard} ${task} Name who said it (the sender's name or organisation). ` +
-		`At most 25 words, written in ${language}. No preamble, no quotes, no bullet points, ` +
-		`no advice to the reader.`;
+		`At most 25 words, written in ${language}. ${register ? `${register} ` : ''}` +
+		`No preamble, no quotes, no bullet points, no advice to the reader.`;
 	const prompt = input.isFollowUp
 		? `# What the reader already saw (untrusted data)\n${input.earlier.slice(0, 4000)}\n\n` +
 			`# New since then (untrusted data)\n${input.latest.slice(0, 6000)}`

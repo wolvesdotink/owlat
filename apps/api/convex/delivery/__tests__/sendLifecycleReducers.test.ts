@@ -348,6 +348,8 @@ describe('reduceOpened — automated opens', () => {
 			'daily_stats_bump',
 			'transport_outcome',
 			'customer_webhook',
+			// The reader open becomes the contact's `email_opened` activity.
+			'contact_activity',
 		]);
 	});
 
@@ -454,6 +456,8 @@ describe('reduceClicked — automated clicks', () => {
 			'send_time_engagement',
 			'daily_stats_bump',
 			'transport_outcome',
+			// The reader click becomes the contact's `email_clicked` activity.
+			'contact_activity',
 			'customer_webhook',
 		]);
 	});
@@ -464,5 +468,148 @@ describe('reduceClicked — automated clicks', () => {
 
 		expect(result.patch['clickedAt']).toBe(SENT_AT + 1);
 		expect(result.patch['automatedClickedAt']).toBeUndefined();
+	});
+});
+
+describe('reader opens and clicks become contact activities', () => {
+	const SENT_AT = 1_000_000;
+	const READER_AT = SENT_AT + 3_600_000;
+	const activitiesOf = (effects: ReadonlyArray<{ kind: string }>) =>
+		effects.filter((e) => e.kind === 'contact_activity');
+
+	it('emits email_opened with the campaign and subject on the first reader open', () => {
+		const send = campaignSend({
+			status: 'delivered',
+			sentAt: SENT_AT,
+			personalizedSubject: 'Hello Jane',
+		});
+		const result = reduceOpened(
+			send,
+			{ to: 'opened', at: READER_AT, agent: 'client' },
+			campaignRef
+		);
+
+		expect(activitiesOf(result.effects)).toEqual([
+			{
+				kind: 'contact_activity',
+				literal: 'email_opened',
+				contactId: CONTACT_ID,
+				metadata: { campaignId: CAMPAIGN_ID, emailSubject: 'Hello Jane' },
+				occurredAt: READER_AT,
+			},
+		]);
+	});
+
+	it.each(['apple_proxy', 'scanner'] as const)(
+		'emits nothing for an automated (%s) open',
+		(agent) => {
+			const send = campaignSend({ status: 'delivered', sentAt: SENT_AT });
+			const result = reduceOpened(send, { to: 'opened', at: READER_AT, agent }, campaignRef);
+
+			expect(activitiesOf(result.effects)).toEqual([]);
+		}
+	);
+
+	it('emits nothing for a client fetch inside the prefetch window', () => {
+		const send = campaignSend({ status: 'delivered', sentAt: SENT_AT });
+		const result = reduceOpened(
+			send,
+			{ to: 'opened', at: SENT_AT + 1_000, agent: 'client' },
+			campaignRef
+		);
+
+		expect(activitiesOf(result.effects)).toEqual([]);
+	});
+
+	it('emits nothing when the same email is opened again', () => {
+		const send = campaignSend({
+			status: 'opened',
+			sentAt: SENT_AT,
+			openedAt: READER_AT,
+			openCount: 1,
+		});
+		const result = reduceOpened(
+			send,
+			{ to: 'opened', at: READER_AT + 60_000, agent: 'client' },
+			campaignRef
+		);
+
+		expect(result.patch).toEqual({ openCount: 2 });
+		expect(activitiesOf(result.effects)).toEqual([]);
+	});
+
+	it('emits email_clicked with the link on the first reader click, not on later ones', () => {
+		const url = 'https://example.com/pricing';
+		const send = campaignSend({ status: 'opened', sentAt: SENT_AT, openedAt: READER_AT });
+		const first = reduceClicked(
+			send,
+			{ to: 'clicked', at: READER_AT + 5_000, url, agent: 'client' },
+			campaignRef
+		);
+
+		expect(activitiesOf(first.effects)).toEqual([
+			{
+				kind: 'contact_activity',
+				literal: 'email_clicked',
+				contactId: CONTACT_ID,
+				metadata: { campaignId: CAMPAIGN_ID, linkUrl: url },
+				occurredAt: READER_AT + 5_000,
+			},
+		]);
+
+		const again = reduceClicked(
+			campaignSend({
+				status: 'clicked',
+				sentAt: SENT_AT,
+				clickedAt: READER_AT + 5_000,
+				clickedLinks: [{ url, clickedAt: READER_AT + 5_000 }],
+			}),
+			{ to: 'clicked', at: READER_AT + 60_000, url: 'https://example.com/other', agent: 'client' },
+			campaignRef
+		);
+		expect(activitiesOf(again.effects)).toEqual([]);
+	});
+
+	it('emits nothing for a scanner click', () => {
+		const send = campaignSend({ status: 'delivered', sentAt: SENT_AT });
+		const result = reduceClicked(
+			send,
+			{ to: 'clicked', at: READER_AT, url: 'https://example.com/a', agent: 'scanner' },
+			campaignRef
+		);
+
+		expect(activitiesOf(result.effects)).toEqual([]);
+	});
+
+	it('emits email_opened for a transactional send with its subject and no campaign', () => {
+		const ref: SendRef = { kind: 'transactional', id: TEST_SEND_ID };
+		const send = testSend({
+			kind: 'transactional',
+			status: 'delivered',
+			sentAt: SENT_AT,
+			subject: 'Your receipt',
+		} as Partial<TransactionalSendDoc>);
+		const result = reduceOpened(send, { to: 'opened', at: READER_AT, agent: 'client' }, ref);
+
+		expect(activitiesOf(result.effects)).toEqual([
+			{
+				kind: 'contact_activity',
+				literal: 'email_opened',
+				contactId: CONTACT_ID,
+				metadata: { emailSubject: 'Your receipt' },
+				occurredAt: READER_AT,
+			},
+		]);
+	});
+
+	it('emits nothing for a send without a contact', () => {
+		const send = campaignSend({ status: 'delivered', sentAt: SENT_AT, contactId: undefined });
+		const result = reduceOpened(
+			send,
+			{ to: 'opened', at: READER_AT, agent: 'client' },
+			campaignRef
+		);
+
+		expect(activitiesOf(result.effects)).toEqual([]);
 	});
 });

@@ -5,8 +5,8 @@
  *
  * Built on the clarification question list both background loops use
  * (`ClarificationQuestions`: the reader's language, the remembered answer
- * pre-picked with its "last time" tag, the attribution line under each
- * question). What this card adds is one input per answer kind:
+ * pre-picked with its "last time" tag). What this card adds is one input per
+ * answer kind:
  *
  *  - choice: chips (keys 1 to 9 pick on the first open question) plus
  *    "Something else..." as free text;
@@ -29,18 +29,19 @@
  * The card is the one thing the person has to do before the reply can go,
  * so it reads as a card, not as another strip of the composer. Where the
  * questions came from is said once, under them, in the reader's language
- * (each question's attribution names the same email).
+ * (`ClarificationTrustLine`).
  */
 import type { Id } from '@owlat/api/dataModel';
 import { MAX_ASK_ROUNDS } from '@owlat/shared/answerMode';
 import ClarificationQuestions from '~/components/agent-tasks/ClarificationQuestions.vue';
+import ClarificationTrustLine from '~/components/agent-tasks/ClarificationTrustLine.vue';
 import TaskOptions from '~/components/agent-tasks/TaskOptions.vue';
 import type { AskAnswer, AskQuestion } from '~/composables/useAnswerAskSession';
 import {
 	collectClarificationAnswers,
 	type ClarificationAnswer,
 } from '~/utils/clarificationAnswers';
-import { attributionDomain, localizedQuestionCopy } from '~/utils/clarificationLocale';
+import { localizedQuestionCopy } from '~/utils/clarificationLocale';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { isDialogOpen } from '~/utils/dialogOpen';
 import type { ThreadFile } from '~/utils/answerThreadFiles';
@@ -211,17 +212,6 @@ const subline = computed(() => {
 	if (props.draftWritten) return t('components.answer.askCard.draftGapsSubline');
 	return t('components.answer.askCard.subline');
 });
-
-/** "Based on an email from acme.com", once for the card, when the questions say so. */
-const trustLine = computed(() => {
-	const attributed = props.questions.filter((q) => q.attribution);
-	if (attributed.length === 0) return null;
-	const domains = new Set(attributed.map((q) => attributionDomain(q.attribution)));
-	const [domain] = domains;
-	return domains.size === 1 && domain
-		? t('components.answer.askCard.trust', { domain })
-		: t('components.answer.askCard.trustNoDomain');
-});
 </script>
 
 <template>
@@ -238,7 +228,6 @@ const trustLine = computed(() => {
 			:require-all="requireAll"
 			:submitting="submitting"
 			test-id-prefix="ask"
-			hide-attribution
 			@submit="onSubmit"
 		>
 			<template #header>
@@ -333,14 +322,7 @@ const trustLine = computed(() => {
 						{{ skipLabel ?? t('components.answer.askCard.skip') }}
 					</UiButton>
 				</div>
-				<p
-					v-if="trustLine"
-					class="mt-3 flex items-start gap-1.5 text-2xs text-text-tertiary"
-					data-testid="ask-trust"
-				>
-					<Icon name="lucide:shield-check" class="mt-px size-3 shrink-0" aria-hidden="true" />
-					<span>{{ trustLine }}</span>
-				</p>
+				<ClarificationTrustLine class="mt-3" :questions="questions" test-id="ask-trust" />
 			</template>
 		</ClarificationQuestions>
 	</section>

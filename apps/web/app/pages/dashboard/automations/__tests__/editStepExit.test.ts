@@ -8,7 +8,12 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
-import { buttonByText, mountEditPage, stubEditPage, type EditPageWrapper } from './editPageHarness';
+import {
+	buttonByText,
+	mountEditPage,
+	stubEditPage,
+	type EditPageWrapper,
+} from '~/__tests__/automationEditPageHarness';
 
 const panel = (wrapper: EditPageWrapper) =>
 	wrapper.findComponent({ name: 'AutomationsStepEditorPanel' });

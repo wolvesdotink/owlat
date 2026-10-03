@@ -37,9 +37,11 @@ import {
 	buildDivergencePrompt,
 	buildSlotPrompt,
 	divergenceSchema,
+	emailProvenance,
 	replySlotsSchema,
 	sanitizeClarificationQuestions,
 	splitCandidateSlots,
+	type QuestionProvenance,
 	type ReplySlot,
 } from '../../inbox/clarificationSlots';
 import {
@@ -90,14 +92,9 @@ export interface GapCheckResult {
 	fileRequest?: { questionId: string; label: string };
 }
 
-/** The attribution line the safety filter gives questions from this sender. */
-export function attributionFor(counterpartAddress: string | undefined): string {
-	return (
-		sanitizeClarificationQuestions(
-			[{ slotType: 'attachment', text: 'attribution' }],
-			counterpartAddress ?? ''
-		)[0]?.attribution ?? ''
-	);
+/** The provenance the safety filter gives questions from this sender. */
+export function attributionFor(counterpartAddress: string | undefined): QuestionProvenance {
+	return emailProvenance(counterpartAddress ?? '');
 }
 
 /**
@@ -225,7 +222,7 @@ export async function runGapCheck(ctx: ActionCtx, input: GapCheckInput): Promise
 	}
 	slots = slots.filter((slot) => slot.slotType !== 'attachment');
 
-	const attribution = attributionFor(input.counterpartAddress);
+	const provenance = attributionFor(input.counterpartAddress);
 	const questions: AskQuestion[] = [];
 	let autoAttach: RankedFile | undefined;
 	let fileRequest: GapCheckResult['fileRequest'];
@@ -242,7 +239,7 @@ export async function runGapCheck(ctx: ActionCtx, input: GapCheckInput): Promise
 		if (outcome.kind === 'attach') {
 			autoAttach = outcome.file;
 		} else {
-			const question = buildFileQuestion(outcome, label, attribution);
+			const question = buildFileQuestion(outcome, label, provenance);
 			if (question) questions.push(question);
 			else fileRequest = undefined;
 		}

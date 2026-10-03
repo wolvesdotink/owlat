@@ -79,13 +79,33 @@ describe('PostboxClarificationCard', () => {
 		const wrapper = mountCard(makeItem());
 		expect(wrapper.text()).toContain('Needs your input');
 		expect(wrapper.text()).toContain('Should we approve the refund?');
-		expect(wrapper.text()).toContain('never ask for your password');
+		// No English sentence under the question: one trust line for the card.
+		expect(wrapper.text()).not.toContain('Generated from an email');
+		expect(wrapper.find('[data-testid="task-ask-why"]').exists()).toBe(false);
+		expect(wrapper.get('[data-testid="clarification-trust"]').text()).toBe(
+			'Based on an email from acme.com. Owlat never asks for your password.'
+		);
 		const chips = wrapper.findAll('[data-testid="clarification-chip"]');
 		// Chips carry a numeric kbd affordance (1–9 picks a chip) + the option text.
 		expect(chips).toHaveLength(2);
 		expect(chips[0]!.text()).toContain('Yes');
 		expect(chips[1]!.text()).toContain('No');
 		expect(wrapper.find('[data-testid="clarification-input"]').exists()).toBe(true);
+	});
+
+	it('says where the questions came from once, from the stored origin', () => {
+		const item = makeItem();
+		const [first] = item.clarification!.questions;
+		item.clarification!.questions = [
+			{ ...first!, origin: { kind: 'email', senderDomain: 'acme.com' } },
+			{ ...first!, id: 'clarify_1', origin: { kind: 'email', senderDomain: 'acme.com' } },
+		];
+		const wrapper = mountCard(item);
+		const lines = wrapper.findAll('[data-testid="clarification-trust"]');
+		expect(lines).toHaveLength(1);
+		expect(lines[0]!.text()).toBe(
+			'Based on an email from acme.com. Owlat never asks for your password.'
+		);
 	});
 
 	it('emits the picked chip answer to the parent', async () => {

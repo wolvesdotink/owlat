@@ -26,7 +26,11 @@ import { buildReplySubject } from '../../lib/emailAddress';
 import { logError } from '../../lib/runtimeLog';
 import { recordLlmSpend } from '../../analytics/llmUsage';
 import { buildConfirmedContext, runSharedDraft } from '../../agent/shared/draftService';
-import { buildOpenFileNote, joinConfirmedBlocks } from '../../inbox/clarificationAnswers';
+import {
+	buildOpenFileNote,
+	buildOpenQuestionNote,
+	joinConfirmedBlocks,
+} from '../../inbox/clarificationAnswers';
 import { ensureGapPlaceholders } from './composeDraftPolicy';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 
@@ -71,14 +75,17 @@ export async function generateDraftOnArrival(
 	);
 
 	// Owner-confirmed clarification facts (trusted; rendered outside the
-	// untrusted tags by the shared service), and the files the clarification
-	// card still waits for, which the draft must not claim to attach.
+	// untrusted tags by the shared service), the files the clarification card
+	// still waits for, which the draft must not claim to attach, and the
+	// questions still open, whose facts the draft must not guess.
 	const confirmedContext = joinConfirmedBlocks(
 		buildConfirmedContext(
 			loaded.clarificationQuestions ? { questions: loaded.clarificationQuestions } : undefined
 		),
-		buildOpenFileNote(loaded.fileGaps)
+		buildOpenFileNote(loaded.fileGaps),
+		buildOpenQuestionNote(loaded.questionGaps)
 	);
+	const gaps = [...loaded.fileGaps, ...loaded.questionGaps];
 
 	try {
 		const result = await runSharedDraft(ctx, {
@@ -119,13 +126,14 @@ export async function generateDraftOnArrival(
 
 		if (result.draftBody.trim().length === 0) return; // nothing usable
 		// The alternatives are written without the trusted block, so with files
-		// outstanding they could say "attached"; only the primary draft is kept.
-		const options = loaded.fileGaps.length === 0 ? result.draftOptions : [];
+		// or answers outstanding they could say "attached" or guess the missing
+		// fact; only the primary draft is kept.
+		const options = gaps.length === 0 ? result.draftOptions : [];
 
 		await ctx.runMutation(internal.mail.ai.draftOnArrivalStore.persistDraftSlot, {
 			threadId: args.threadId,
 			triggerMessageId: loaded.triggerMessageId,
-			draft: ensureGapPlaceholders(result.draftBody, loaded.fileGaps),
+			draft: ensureGapPlaceholders(result.draftBody, gaps),
 			draftSubject: buildReplySubject(loaded.triggerSubject),
 			// Surface the quality self-check score as the confidence; unknown
 			// quality shows a deliberately low value so review-first reads right.

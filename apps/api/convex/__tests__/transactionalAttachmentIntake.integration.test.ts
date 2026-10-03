@@ -22,8 +22,6 @@ import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import type * as GovernedEnqueue from '../delivery/governedEnqueue';
-import type * as Dispatch from '../transactional/dispatch';
-import type * as PendingUploads from '../transactional/pendingUploads';
 import type { MutationCtx } from '../_generated/server';
 import {
 	claimPendingUploads,
@@ -59,34 +57,6 @@ vi.mock('../delivery/governedEnqueue', async (importOriginal) => {
 	};
 });
 
-// Rollback model: the v0.6.7 dispatch differs from this release's only in
-// claiming the pending uploads when called with `uploadsPending: true` and
-// skipping the claim otherwise (`git diff v0.6.7 --
-// apps/api/convex/transactional/dispatch.ts`). While `active`, dispatch
-// records the flag it was called with and the claim inside it is gated on it.
-const previousDispatch = vi.hoisted(() => ({ active: false, uploadsPending: false }));
-vi.mock('../transactional/dispatch', async (importOriginal) => {
-	const actual = await importOriginal<typeof Dispatch>();
-	type Handler = (ctx: unknown, args: { uploadsPending?: boolean }) => Promise<unknown>;
-	const registered = actual.dispatch as unknown as { _handler: Handler };
-	const handler = registered._handler;
-	registered._handler = async (ctx, args) => {
-		previousDispatch.uploadsPending = args.uploadsPending === true;
-		return await handler(ctx, args);
-	};
-	return { ...actual };
-});
-vi.mock('../transactional/pendingUploads', async (importOriginal) => {
-	const actual = await importOriginal<typeof PendingUploads>();
-	return {
-		...actual,
-		claimPendingUploads: async (...args: Parameters<typeof actual.claimPendingUploads>) => {
-			if (previousDispatch.active && !previousDispatch.uploadsPending) return;
-			await actual.claimPendingUploads(...args);
-		},
-	};
-});
-
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
 	Object.entries(allModules).filter(
@@ -118,8 +88,6 @@ beforeEach(() => {
 	delete process.env['SITE_URL'];
 	process.env['OWLAT_DEV_MODE'] = 'true';
 	enqueueFault.fail = false;
-	previousDispatch.active = false;
-	previousDispatch.uploadsPending = false;
 });
 afterEach(() => {
 	process.env = { ...SAVED_ENV };
@@ -421,7 +389,7 @@ describe('transactional pending uploads — release, claim and expiry', () => {
 		expect(await pendingRows(t)).toHaveLength(0);
 	});
 
-	it('dispatch still accepts the uploadsPending flag a v0.6.7 shell sends, and ignores it', async () => {
+	it('dispatch still accepts the uploadsPending flag a v0.6.8 shell sends, and ignores it', async () => {
 		const t = setupTest();
 		const slug = await seedSendable(t);
 		const storageId = await storeBlob(t);
@@ -436,11 +404,12 @@ describe('transactional pending uploads — release, claim and expiry', () => {
 		expect(await pendingRows(t)).toHaveLength(0);
 	});
 
-	it('a backend rolled back to the v0.6.7 dispatch still claims what this handler registered', async () => {
+	it('the blob of a Send this handler queued survives the expiry sweep', async () => {
+		// This handler no longer sends `uploadsPending`. The v0.6.8 dispatch a
+		// rollback would restore claims without it, as this release's does.
 		vi.useFakeTimers({ toFake: ['Date'] });
 		const t = setupTest();
 		const slug = await seedSendable(t);
-		previousDispatch.active = true;
 
 		const res = await sendTransactional(t, {
 			slug,
@@ -454,28 +423,9 @@ describe('transactional pending uploads — release, claim and expiry', () => {
 		const [send] = await sendRows(t);
 		expect(send?.attachmentStorageIds).toEqual([blob]);
 		expect(await pendingRows(t)).toHaveLength(0);
-		// Past the pending-row expiry, the sweep finds nothing of the Send's.
 		vi.setSystemTime(Date.now() + PENDING_UPLOAD_TTL_MS + 1);
 		await t.mutation(internal.transactional.pendingUploads.sweepExpired, {});
 		expect(await storedBlobs(t)).toEqual([blob]);
-	});
-
-	it('the v0.6.7 dispatch model leaves an upload pending when called without the flag', async () => {
-		const t = setupTest();
-		const slug = await seedSendable(t);
-		const storageId = await storeBlob(t);
-		await t.mutation(internal.transactional.pendingUploads.register, { storageId });
-		previousDispatch.active = true;
-
-		const outcome = await t.mutation(
-			internal.transactional.dispatch.dispatch,
-			dispatchArgs(slug, [storageId])
-		);
-
-		expect(outcome.ok).toBe(true);
-		// The row still holds deletion authority over the queued Send's blob:
-		// why the handler keeps sending the flag during the compatibility release.
-		expect((await pendingRows(t)).map((row) => row.storageId)).toEqual([storageId]);
 	});
 
 	it('the expiry sweep frees abandoned uploads and leaves fresh ones', async () => {

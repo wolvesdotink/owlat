@@ -56,7 +56,7 @@ import { buildProviderEnv, type EmailStepDraft } from '../useSetupWizard';
 import { RELAY_PROVIDER_OPTIONS, useRelayCredentialDraft } from '../useRelayCredentialDraft';
 import { mount } from '@vue/test-utils';
 import TransportCredentialFields from '../../components/delivery/TransportCredentialFields.vue';
-import { wizardStubs } from '../../components/delivery/__tests__/wizardHarness';
+import { wizardStubs } from '~/__tests__/transportWizardHarness';
 import { transportDnsGuidance } from '../../utils/transportDnsGuidance';
 
 /** The real catalog's `t`, for the keys the pure modules answer with. */

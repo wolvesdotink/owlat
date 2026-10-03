@@ -11,7 +11,7 @@ import { ConvexHttpClient } from 'convex/browser';
 import { getFunctionName } from 'convex/server';
 import { api } from '@owlat/api';
 import { requireOrgAdmin } from '../requireOrgAdmin';
-import { installNitroGlobals, requestEvent } from './nitro';
+import { installNitroGlobals, requestEvent } from '../../__tests__/nitro';
 
 const COOKIE = 'better-auth.session_token=abc123';
 const fetchMock = vi.fn<typeof fetch>();

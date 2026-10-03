@@ -1,6 +1,7 @@
 import { internal } from '../../../_generated/api';
 import type { Doc, Id } from '../../../_generated/dataModel';
 import type { ActionCtx } from '../../../_generated/server';
+import { hasDraftGaps } from '@owlat/shared/answerMode';
 import { detectSecretLeak } from '../../../lib/secretLeakScan';
 import { isWithinWorkingHours } from '../../../lib/workingHours';
 import { deriveAuthenticatedRecipient } from '../../referenceMonitor';
@@ -138,6 +139,14 @@ const outboundDlpGate: CoreAutoSendGate = messageGate('outbound_dlp', (message) 
 		: safe();
 });
 
+// A `[[...]]` placeholder marks a fact the draft does not have
+// (agent/shared/draftGaps.ts); sending it would ship the marker.
+const draftGapsGate: CoreAutoSendGate = messageGate('draft_gaps', (message) =>
+	hasDraftGaps(message.draftResponse ?? '')
+		? unsafe('Draft still has a placeholder for a missing fact; routing to human review.')
+		: safe()
+);
+
 const handlingRulesGate: CoreAutoSendGate = Object.freeze({
 	id: 'handling_rules',
 	async evaluate({ action, inboundMessageId }: AutoSendGateContext) {
@@ -169,6 +178,7 @@ const CORE_FINAL_AUTO_SEND_GATES = Object.freeze([
 	recipientLockGate,
 	outboundInjectionGate,
 	outboundDlpGate,
+	draftGapsGate,
 	handlingRulesGate,
 ]);
 

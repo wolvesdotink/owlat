@@ -115,6 +115,13 @@ ENV OWLAT_VERSION=${OWLAT_VERSION} \
     OWLAT_GIT_SHA=${OWLAT_GIT_SHA} \
     OWLAT_BUILD_DATE=${OWLAT_BUILD_DATE}
 
+# Deploys, then sets OWLAT_VERSION on the deployment to the version above, so
+# the backend reports the release it runs after every update, not only the one
+# setup wrote (docker/convex-deploy.sh). The env-var push in
+# apps/setup-cli/src/lib/convexDeploy.ts overrides this command with its own
+# `sh -c` script.
+COPY --chmod=755 docker/convex-deploy.sh /usr/local/bin/owlat-convex-deploy
+
 WORKDIR /app/apps/api
 
-CMD ["sh", "-c", "convex deploy --url $CONVEX_SELF_HOSTED_URL --admin-key $CONVEX_SELF_HOSTED_ADMIN_KEY"]
+CMD ["owlat-convex-deploy"]

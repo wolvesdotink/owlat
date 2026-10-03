@@ -156,34 +156,51 @@ export const MAX_CLARIFICATION_DRAFT_CHARS = 4000;
 const MAX_GAP_LABEL_CHARS = 80;
 
 /**
+ * The `[[...]]` placeholder for an open question. The label is the question,
+ * which the model wrote from the email: one that reads like an injection falls
+ * back to `fallback`.
+ */
+function openGapFor(text: string, fallback: string): string {
+	const label = text
+		.replace(/\s+/g, ' ')
+		.replace(/\?+\s*$/, '')
+		.trim()
+		.slice(0, MAX_GAP_LABEL_CHARS)
+		.trim();
+	const safe = label.length > 0 && !detectInjection(label).detected;
+	return formatDraftGap(safe ? label : fallback);
+}
+
+type OpenGapQuestion = {
+	slotType: string;
+	text: string;
+	answerKind?: AskAnswerKind | undefined;
+	answer?: unknown;
+};
+
+/**
  * The `[[...]]` placeholder for each file question still waiting on the owner,
  * in question order. A reply drafted before the files arrive writes these where
  * the files would be handed over, so it never claims an attachment that is not
  * there, and the composer's send guard holds the reply until they are filled.
- * The label is the question, which the model wrote from the email: one that
- * reads like an injection falls back to a neutral label.
  */
-export function openFileGaps(
-	questions: ReadonlyArray<{
-		slotType: string;
-		text: string;
-		answerKind?: AskAnswerKind | undefined;
-		answer?: unknown;
-	}>
-): string[] {
-	const gaps: string[] = [];
-	for (const q of questions) {
-		if (!isFileQuestion(q) || q.answer !== undefined) continue;
-		const label = q.text
-			.replace(/\s+/g, ' ')
-			.replace(/\?+\s*$/, '')
-			.trim()
-			.slice(0, MAX_GAP_LABEL_CHARS)
-			.trim();
-		const safe = label.length > 0 && !detectInjection(label).detected;
-		gaps.push(formatDraftGap(safe ? label : 'attach the requested files'));
-	}
-	return gaps;
+export function openFileGaps(questions: ReadonlyArray<OpenGapQuestion>): string[] {
+	return questions
+		.filter((q) => isFileQuestion(q) && q.answer === undefined)
+		.map((q) => openGapFor(q.text, 'attach the requested files'));
+}
+
+/**
+ * The `[[...]]` placeholder for each other question still waiting on the
+ * owner, in question order: a reply drafted while the card is open (or after
+ * the owner skipped a question) marks the missing fact the same way Answer
+ * mode does, so the send guard holds it instead of the model inventing its own
+ * reviewer note.
+ */
+export function openQuestionGaps(questions: ReadonlyArray<OpenGapQuestion>): string[] {
+	return questions
+		.filter((q) => !isFileQuestion(q) && q.answer === undefined)
+		.map((q) => openGapFor(q.text, 'add the missing detail'));
 }
 
 /**
@@ -193,6 +210,15 @@ export function openFileGaps(
 export function buildOpenFileNote(gaps: readonly string[]): string {
 	if (gaps.length === 0) return '';
 	return `- The files the sender asked for are not attached yet; the owner will add them. Do not say anything is attached or enclosed. Where the reply would hand them over, write this placeholder exactly as given: ${gaps.join(' ')}`;
+}
+
+/**
+ * The trusted line telling the drafter about {@link openQuestionGaps}. '' when
+ * every question is answered.
+ */
+export function buildOpenQuestionNote(gaps: readonly string[]): string {
+	if (gaps.length === 0) return '';
+	return `- The owner has not answered these questions yet, so these facts are still missing. Do not guess them. Where each one belongs, write its placeholder exactly as given: ${gaps.join(' ')}`;
 }
 
 /** Join two confirmed-facts blocks, skipping empty ones. */

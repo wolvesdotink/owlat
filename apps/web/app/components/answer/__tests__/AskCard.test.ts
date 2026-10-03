@@ -158,6 +158,15 @@ describe('AskCard', () => {
 		bare.unmount();
 	});
 
+	it('words the trust line from the stored origin', () => {
+		const origin = { kind: 'email' as const, senderDomain: 'acme.com' };
+		const w = mountCard({ questions: QUESTIONS.map((q) => ({ ...q, origin })) });
+		expect(w.get('[data-testid="ask-trust"]').text()).toBe(
+			'Based on an email from acme.com. Owlat never asks for your password.'
+		);
+		w.unmount();
+	});
+
 	it('pre-picks the remembered answer and does not send it back untouched', async () => {
 		const w = mountCard();
 		expect(w.find('[data-testid="task-option-remembered"]').exists()).toBe(true);

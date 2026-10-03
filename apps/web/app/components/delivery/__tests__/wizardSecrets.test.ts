@@ -14,7 +14,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
 import { REDACTED_PLACEHOLDER, redactSecrets } from '~/utils/transportWizard';
-import { buttonByText, fillCredentials, mountWizard, openWizard } from './wizardHarness';
+import {
+	buttonByText,
+	fillCredentials,
+	mountWizard,
+	openWizard,
+} from '~/__tests__/transportWizardHarness';
 
 const SECRET = 're_live_9f3c2b7a41';
 
