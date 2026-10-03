@@ -206,11 +206,6 @@ export async function uploadAndDispatch(
 		outcome = await ctx.runMutation(internal.transactional.dispatch.dispatch, {
 			...request,
 			attachmentRefs: uploadResult.refs,
-			// Ignored by this release's dispatch, which always claims. Sent for
-			// one release so a backend rolled back to v0.6.7, whose dispatch
-			// claims only when this is set, still claims what this shell
-			// registered. Remove it here and in the validator in the next release.
-			uploadsPending: true,
 		});
 	} catch (err) {
 		// Also covers a dispatch whose outcome is unknown: a claimed upload has
