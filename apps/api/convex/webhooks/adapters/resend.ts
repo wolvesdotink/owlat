@@ -127,8 +127,20 @@ export const resendAdapter: InboundParser<'resend'> = {
 					...(bounceMessage ? { bounceMessage } : {}),
 				};
 			}
-			case 'email.complained':
-				return { kind: 'email.complained', providerMessageId, at };
+			case 'email.complained': {
+				// The complainer is named when the message had exactly one recipient,
+				// so a complaint whose id matches no send can still reach the blocklist
+				// by address (#1194). `providerType` lets the dispatcher apply the
+				// provenance rule for an untagged source rather than an unknown one.
+				const to = payload.data.to ?? [];
+				return {
+					kind: 'email.complained',
+					providerMessageId,
+					at,
+					providerType: 'resend',
+					...(to.length === 1 && to[0] ? { recipient: to[0] } : {}),
+				};
+			}
 			// Other Resend events are acknowledged but not consumed today; see
 			// module docstring.
 			default:

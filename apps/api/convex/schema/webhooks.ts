@@ -1,6 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { webhookPayloadValidator } from '../lib/convexValidators';
+import { bounceTypeValidator } from '../lib/literalValidators';
 import { webhookEventValidator, subscribableWebhookEventValidator } from '../webhooks/events';
 
 /**
@@ -214,4 +215,51 @@ export const webhookTables = {
 	})
 		.index('by_event_id', ['eventId'])
 		.index('by_expires_at', ['expiresAt']),
+
+	// Bounces and complaints whose provider message id matched no Send (#1194).
+	// The dispatcher used to log these and drop them; a row here lets an
+	// operator count them and replay them once the id resolves (a late
+	// completion, a repair that writes the id back). `webhooks/unresolvedFeedback.ts`
+	// owns the table: one row per (message id, kind), replayed by a cron with a
+	// short backoff, deleted 90 days after it was first seen, and erased with a
+	// contact whose address it names.
+	unresolvedFeedback: defineTable({
+		kind: v.union(v.literal('bounce'), v.literal('complaint')),
+		providerMessageId: v.string(),
+		// The adapter's `providerType`; `mta` replays through the MTA resolver.
+		providerType: v.optional(v.string()),
+		// Normalized complainer address, when the provider named one. Bounce
+		// events carry none.
+		recipient: v.optional(v.string()),
+		bounceType: v.optional(bounceTypeValidator),
+		// Clamped diagnostic, replayed onto the Send. Dropped once the row
+		// resolves: a DSN text can quote the address, and bounces have no
+		// `recipient` for the contact erasure to find them by.
+		bounceMessage: v.optional(v.string()),
+		// The feedback-provenance tag the event carried, if any. A string, not
+		// the shared literal union, so a newer MTA's value is still stored.
+		deliveryDomain: v.optional(v.string()),
+		// When the provider says the event happened; replayed as the transition time.
+		at: v.number(),
+		// A complaint whose address went on the blocklist when it arrived.
+		isSuppressed: v.boolean(),
+		// Provider redeliveries of the same event bump these instead of adding rows.
+		occurrences: v.number(),
+		firstSeenAt: v.number(),
+		lastSeenAt: v.number(),
+		status: v.union(v.literal('open'), v.literal('resolved')),
+		// `replayed`: the Send lifecycle applied the event. `refused`: the id
+		// resolves now, but the lifecycle refused the edge (a terminal Send).
+		resolution: v.optional(v.union(v.literal('replayed'), v.literal('refused'))),
+		resolvedAt: v.optional(v.number()),
+		// Automatic replays spent; an operator replay does not count.
+		replayAttempts: v.number(),
+		// Absent once the automatic replays are spent or the row resolved.
+		nextReplayAt: v.optional(v.number()),
+	})
+		.index('by_message_id_and_kind', ['providerMessageId', 'kind'])
+		.index('by_status_and_next_replay', ['status', 'nextReplayAt'])
+		.index('by_status_and_first_seen', ['status', 'firstSeenAt'])
+		.index('by_first_seen', ['firstSeenAt'])
+		.index('by_recipient', ['recipient']),
 };

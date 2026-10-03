@@ -150,6 +150,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'webhookDeliveryLogs',
 	'mtaCampaignAlertReceipts',
 	'webhookPayloads',
+	'unresolvedFeedback',
 	'webhooks',
 	'formSubmissions',
 	'formEndpoints',

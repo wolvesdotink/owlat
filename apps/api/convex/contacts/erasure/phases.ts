@@ -17,6 +17,7 @@
 import type { MutationCtx } from '../../_generated/server';
 import type { Doc, Id, TableNames } from '../../_generated/dataModel';
 import { decrementContactCount } from '../../lib/contactCountHelpers';
+import { normalizeEmail } from '../../lib/inputGuards';
 import { recordContactGrowth } from '../growthCounters';
 import { deleteAutomationRun } from '../../automations/runDeletion';
 import type { ErasureBudget } from './budget';
@@ -260,6 +261,24 @@ const PHASE_RUNNERS: Record<ContactErasurePhase, PhaseRunner> = {
 			}
 		),
 	}),
+	// Bounces and complaints that matched no Send (#1194) name the complainer by
+	// address only: there is no contact id on the row to follow. The contact's
+	// own address is the one an erasure can know; the identities that could name
+	// another one were deleted at soft-delete time.
+	unresolvedFeedback: async (phase) => {
+		const contact = await phase.ctx.db.get(phase.contactId);
+		if (!contact?.email) return DONE;
+		phase.budget.chargeRead(contact);
+		const address = normalizeEmail(contact.email);
+		return {
+			isDone: await deleteAll(phase, (n) =>
+				phase.ctx.db
+					.query('unresolvedFeedback')
+					.withIndex('by_recipient', (q) => q.eq('recipient', address))
+					.take(n)
+			),
+		};
+	},
 };
 
 export const FIRST_ERASURE_PHASE: ContactErasurePhase = CONTACT_ERASURE_PHASES[0];

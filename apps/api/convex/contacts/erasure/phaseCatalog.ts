@@ -24,6 +24,8 @@ export const CONTACT_ERASURE_PHASES = [
 	'knowledge',
 	'semanticFiles',
 	'answerAskSessions',
+	// Keyed by address, not by contact id (#1194), so it reads the contact row.
+	'unresolvedFeedback',
 ] as const;
 
 export type ContactErasurePhase = (typeof CONTACT_ERASURE_PHASES)[number];

@@ -73,6 +73,9 @@ export const TENANT_TABLES = [
 	'mtaCampaignAlertReceipts',
 	'webhookDeliveryLogs',
 	'webhookPayloads',
+	// Bounces and complaints that matched no Send (#1194): message ids and
+	// complainer addresses, kept for counting and replay.
+	'unresolvedFeedback',
 	'webhooks',
 
 	// ── Forms ──

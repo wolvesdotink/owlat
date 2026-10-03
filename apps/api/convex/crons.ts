@@ -166,6 +166,15 @@ crons.interval(
 	{}
 );
 
+// Retry bounces and complaints that matched no Send (#1194) while their id may
+// still turn up; one index range read when nothing is due.
+crons.interval(
+	'replay unresolved feedback',
+	{ minutes: 10 },
+	internal.webhooks.unresolvedFeedback.replayDue,
+	{}
+);
+
 // Retention schedules live beside their maintenance functions.
 registerRetentionCrons(crons);
 crons.interval(

@@ -7112,6 +7112,13 @@
 						"loading": "Loading delivery-rate history",
 						"subtitle": "Share of sent mail that was delivered, daily",
 						"title": "Delivery rate"
+					},
+					"unresolvedFeedback": {
+						"bounced": "{count} bounced",
+						"complained": "{count} complained",
+						"open": "{count} still unmatched",
+						"summary": "Bounces and complaints with no matching send (30 days): {total} · {breakdown}",
+						"suppressed": "{count} blocked by address"
 					}
 				},
 				"migrate": {
