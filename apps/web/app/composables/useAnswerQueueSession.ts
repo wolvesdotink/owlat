@@ -34,7 +34,7 @@ import {
 	opensInAnswerMode,
 	parseAnswerFilter,
 } from '~/utils/answerQueue';
-import type { TaskFlowOrderKey } from '~/utils/taskFlow';
+import type { TaskFlowOrderKey, TaskFlowOutcome } from '~/utils/taskFlow';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 
 const QUEUE_PAGE = '/dashboard/answer';
@@ -169,7 +169,7 @@ export function createAnswerQueueSession() {
 		{ immediate: true }
 	);
 
-	function complete(outcome: string, inverse?: () => Promise<void> | void) {
+	function complete(outcome: TaskFlowOutcome, inverse?: () => Promise<void> | void) {
 		const id = flow.currentId.value;
 		if (!id) return;
 		flow.complete(id, { outcome, ...(inverse ? { inverse } : {}) });
@@ -214,7 +214,7 @@ export function createAnswerQueueSession() {
 	 * (the item is done and the queue moved on); false when the page is not
 	 * part of a queue and should leave the way it always does.
 	 */
-	function handleSent(outcome = 'replied'): boolean {
+	function handleSent(outcome: TaskFlowOutcome = 'replied'): boolean {
 		if (!engaged.value || !flow.active.value) return false;
 		if (isCurrentRoute.value) complete(outcome);
 		else syncRoute();

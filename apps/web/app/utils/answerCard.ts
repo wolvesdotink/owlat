@@ -6,13 +6,13 @@
  * Keeps each card free of the flow's bookkeeping and lets one flow host every
  * source (Postbox mail, team-inbox drafts, chat mentions).
  */
-import type { TaskFlowKind } from './taskFlow';
+import type { TaskFlowKind, TaskFlowOutcome } from './taskFlow';
 import type { ReplyQueueItem } from './postboxReplyQueue';
 import { replyQueueSection } from './postboxReplyQueue';
 
 export interface AnswerCardControls {
 	/** Finish the card with an outcome (tallied); `inverse` makes it undoable. */
-	complete(outcome: string, inverse?: () => Promise<void> | void): void;
+	complete(outcome: TaskFlowOutcome, inverse?: () => Promise<void> | void): void;
 	/** Move past the card without an outcome (it left the queue elsewhere). */
 	skip(): void;
 	/** Undo THIS card's completion (the approve toast's own Undo). */
