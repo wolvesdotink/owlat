@@ -285,9 +285,10 @@ export const inboxTables = {
 		// edit). Drives the review queue's "Saved · edited by you" chip and its
 		// saved-first sort bump. The row stays `draft_ready` — no status change.
 		draftSavedAt: v.optional(v.number()),
-		// A saved reply left `[[...]]` gaps in the working draft: they hold Send, and
-		// `approveDraft` refuses them (DRAFT_HAS_GAPS) until filled. Written by the
-		// composer's saves (`draftRevisions.appendDraftRevision`).
+		// A saved reply or the agent left `[[...]]` gaps in the working draft: they
+		// hold Send, and `approveDraft` refuses them (DRAFT_HAS_GAPS) until filled.
+		// Written by the composer's saves (`draftRevisions.appendDraftRevision`)
+		// and with the agent's draft (`stepOutputs.recordDraftOutput`).
 		isDraftGapGuarded: v.optional(v.boolean()),
 		// Error tracking
 		errorMessage: v.optional(v.string()),

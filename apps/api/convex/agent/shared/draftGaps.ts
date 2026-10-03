@@ -12,8 +12,9 @@
  * Pure (no ctx, no 'use node').
  */
 
-import { formatDraftGap } from '@owlat/shared/answerMode';
-import { splitQuotedText } from '@owlat/shared/quotedText';
+import { formatDraftGap, hasDraftGaps } from '@owlat/shared/answerMode';
+import { htmlToPlainText } from '@owlat/shared/html';
+import { splitQuotedHtml, splitQuotedText } from '@owlat/shared/quotedText';
 
 /**
  * The system-prompt paragraph on missing facts. The recallKnowledge sentence
@@ -83,4 +84,29 @@ export function markReviewerNotes(text: string): string {
 	const split = splitQuotedText(text);
 	const fresh = split.fresh.split('\n').map(markLine).join('\n');
 	return split.hasQuote ? `${fresh}\n${split.quoted}` : fresh;
+}
+
+/** A reply body as a send path has it: HTML (Postbox) and/or plain text. */
+export interface DraftBody {
+	html?: string | undefined;
+	text?: string | undefined;
+}
+
+/**
+ * Whether the authored part of a reply still holds a `[[...]]` placeholder.
+ * A placeholder in the quoted original belongs to the mail being answered,
+ * and the composer neither highlights nor counts it. The split is the shared
+ * quote-aware one (`@owlat/shared/quotedText`) the composer's gap count uses
+ * (web `freshDraftGaps`). The HTML decides when there is HTML, since the plain
+ * text is derived from it and may not mark the quote.
+ *
+ * The send guard (`mail/ai/composeDraftStore.assertNoAnswerGaps`) refuses on
+ * it, and the Team inbox stores it with an agent draft
+ * (`inbox/stepOutputs.recordDraftOutput`) as `isDraftGapGuarded`.
+ */
+export function authoredDraftHasGaps({ html, text }: DraftBody): boolean {
+	const authored = html?.trim()
+		? htmlToPlainText(splitQuotedHtml(html).fresh)
+		: splitQuotedText(text ?? '').fresh;
+	return hasDraftGaps(authored);
 }

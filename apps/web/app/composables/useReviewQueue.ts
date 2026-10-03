@@ -1,5 +1,9 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { OperationError } from '@owlat/shared/operationError';
+import { findDraftGaps } from '@owlat/shared/answerMode';
+import { splitQuotedText } from '@owlat/shared/quotedText';
+import { isDraftGapsRefusal } from '~/utils/answerDraft';
 
 /**
  * Review Queue wiring for the shared-inbox approval page.
@@ -38,8 +42,23 @@ export function useReviewQueue() {
 		return [...saved, ...items.filter((it) => it.message.draftSavedAt === undefined)];
 	});
 
+	// An agent draft with a `[[...]]` gap left is refused (DRAFT_HAS_GAPS). Say
+	// so, counting the gaps in the text that was about to go out, rather than
+	// the server's composer wording: the queue card highlights nothing. Only the
+	// written part counts, as on the server: a `[[...]]` in the quoted original
+	// belongs to the mail being answered.
+	const { showToast } = useToast();
+	let outgoingText = '';
+	const claimGapRefusal = (op: OperationError): boolean => {
+		if (!isDraftGapsRefusal(op)) return false;
+		const count = Math.max(1, findDraftGaps(splitQuotedText(outgoingText).fresh).length);
+		showToast(t('shared.useReviewQueue.draftHasGaps', { count }, count), 'error');
+		return true;
+	};
+
 	const { run: approveDraft } = useBackendOperation(api.inbox.mutations.approveDraft, {
 		label: () => t('shared.useReviewQueue.approveDraft'),
+		onError: claimGapRefusal,
 	});
 	const { run: rejectDraft } = useBackendOperation(api.inbox.mutations.rejectDraft, {
 		label: () => t('shared.useReviewQueue.rejectDraft'),
@@ -63,6 +82,8 @@ export function useReviewQueue() {
 	};
 
 	const onApprove = async (messageId: Id<'inboundMessages'>) => {
+		outgoingText =
+			rawReviewItems.value?.find((it) => it.message._id === messageId)?.message.draftResponse ?? '';
 		return await approveDraft({ inboundMessageId: messageId });
 	};
 
@@ -82,6 +103,7 @@ export function useReviewQueue() {
 	) => {
 		const text = chosenText.trim();
 		if (text.length === 0) return { ok: false } as const;
+		outgoingText = text;
 		if (text === (currentDraft ?? '').trim()) {
 			return await approveDraft({ inboundMessageId: messageId });
 		}
@@ -122,6 +144,7 @@ export function useReviewQueue() {
 	) => {
 		const text = body.trim();
 		if (text.length === 0) return { ok: false } as const;
+		outgoingText = text;
 
 		const edited = await editDraft({
 			inboundMessageId: messageId,

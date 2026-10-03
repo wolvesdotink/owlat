@@ -2,6 +2,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { OperationError } from '@owlat/shared/operationError';
 import { findDraftGaps } from '@owlat/shared/answerMode';
+import { splitQuotedText } from '@owlat/shared/quotedText';
 import type { TeamThreadReply } from '~/utils/teamThreadReply';
 import { isDraftGapsRefusal } from '~/utils/answerDraft';
 
@@ -11,11 +12,12 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 
 	// A reply drafted with AI that still has a `[[...]]` gap is refused
 	// (DRAFT_HAS_GAPS); say it the way the composer does, counting the gaps in
-	// the text that was about to go out.
+	// the written part of the text that was about to go out (the server ignores
+	// a `[[...]]` in the quoted original, too).
 	let outgoingText = '';
 	const claimGapRefusal = (op: OperationError): boolean => {
 		if (!isDraftGapsRefusal(op)) return false;
-		const count = Math.max(1, findDraftGaps(outgoingText).length);
+		const count = Math.max(1, findDraftGaps(splitQuotedText(outgoingText).fresh).length);
 		showToast(t('components.postbox.postboxComposerFooter.gapsLeft', { count }, count), 'error');
 		return true;
 	};
