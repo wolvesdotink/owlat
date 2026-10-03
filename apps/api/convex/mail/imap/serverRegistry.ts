@@ -11,8 +11,9 @@
  * - `pruneStale`: the daily cron that drops reports older than 30 days.
  *
  * IMAP servers from before reporting (v0.6.7 and older) are noticed through
- * their logins instead: `mail/appPasswords.touch` without `imapWireVersion`
- * calls {@link noteLegacyImapLogin}.
+ * their logins instead: `mail/appPasswords.verify` refuses an IMAP login
+ * without `imapWireVersion` and calls {@link noteLegacyLogin} first, and
+ * `mail/appPasswords.touch` without one calls {@link noteLegacyImapLogin}.
  */
 
 import { v } from 'convex/values';
@@ -97,6 +98,18 @@ export async function noteLegacyImapLogin(
 	}
 	await writeInstanceCounter(ctx, 'imapLegacy', { legacyImapSeenAt: now }, now);
 }
+
+/**
+ * {@link noteLegacyImapLogin} for `mail/appPasswords:verify`, an action. Since
+ * the backend stopped serving wire 0, a pre-reporting IMAP server's logins are
+ * refused there and never reach `touch`; this keeps them on the status page.
+ */
+export const noteLegacyLogin = internalMutation({
+	args: {},
+	handler: async (ctx) => {
+		await noteLegacyImapLogin(ctx);
+	},
+});
 
 export const report = internalMutation({
 	args: {

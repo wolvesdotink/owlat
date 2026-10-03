@@ -272,13 +272,13 @@ export const discardCopies = internalMutation({
  * EXPUNGE — permanently delete all `\Deleted`-flagged messages in a
  * folder. UID EXPUNGE narrows to a UID set.
  *
- * Returns one bounded page of deleted message-sequence numbers (1-based) plus
- * a keyset cursor so the IMAP server can drain the folder without placing every
- * row in one Convex transaction.
+ * Returns the UIDs one bounded page deleted plus a keyset cursor, so the IMAP
+ * server can drain the folder without placing every row in one Convex
+ * transaction. The IMAP server numbers the UIDs against the sequence view its
+ * client holds; the backend returns no sequence numbers.
  *
  * With a `uidSet` the walk stops at the set's lowest UID: nothing below it can
- * be expunged, and every sequence number above it is already counted. That is
- * what lets the IMAP server send a large UID set in chunks (Convex caps an
+ * be expunged. That is what lets the IMAP server send a large UID set in chunks (Convex caps an
  * array argument at 8,192 elements): it sends the highest UIDs first and threads
  * the returned cursor into the call for the next, lower chunk. The cursor is
  * returned on the last page too, for that reason.
@@ -288,23 +288,19 @@ export const expungeFolder = internalMutation({
 		folderId: v.id('mailFolders'),
 		uidSet: v.optional(v.array(v.number())),
 		beforeUid: v.optional(v.number()),
-		nextSequenceNumber: v.optional(v.number()),
-		// The caller's wire version (ADR-0063). `sequenceNumbers` and
-		// `nextSequenceNumber` are the next IMAP contract to be removed; the
-		// removing PR raises the minimum, and this gate refuses an older caller
+		// The caller's wire version (ADR-0063). An IMAP server from v0.6.7 or
+		// older (wire 0, sends none) numbered its `* n EXPUNGE` lines from the
+		// `sequenceNumbers` this used to return, and paged on
+		// `nextSequenceNumber`. Both are gone, so such a server is refused here,
 		// before the page deletes anything.
 		imapWireVersion: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		assertImapWireSupported(args.imapWireVersion);
 		const folder = await ctx.db.get(args.folderId);
-		if (!folder) return { sequenceNumbers: [], modseq: 0, done: true };
+		if (!folder) return { uids: [], modseq: 0, done: true };
 
-		// Keyset-walk from the highest UID down. Sequence numbers are positions in
-		// the folder view that existed when EXPUNGE started, so the caller threads
-		// the next sequence alongside the UID cursor while each transaction stays
-		// bounded. Descending order also keeps later sequence numbers stable as this
-		// page deletes rows above them.
+		// Keyset-walk from the highest UID down, one bounded page per call.
 		const batchSize = 100;
 		let lowestUid: number | undefined;
 		for (const uid of args.uidSet ?? []) {
@@ -319,10 +315,8 @@ export const expungeFolder = internalMutation({
 			})
 			.order('desc')
 			.take(batchSize);
-		let sequenceNumber = args.nextSequenceNumber ?? folder.totalCount;
 
 		const uidFilter = args.uidSet ? new Set(args.uidSet) : null;
-		const expungedSequences: number[] = [];
 		const expungedUids: number[] = [];
 		const touchedThreads = new Set<Id<'mailThreads'>>();
 		const remote: RemoteChange[] = [];
@@ -331,11 +325,9 @@ export const expungeFolder = internalMutation({
 		let bytesRemoved = 0;
 
 		for (const m of page) {
-			const currentSequence = sequenceNumber--;
 			if (!m.flagDeleted) continue;
 			if (uidFilter && !uidFilter.has(m.uid)) continue;
 
-			expungedSequences.push(currentSequence);
 			expungedUids.push(m.uid);
 			totalRemoved += 1;
 			if (!m.flagSeen) unseenRemoved += 1;
@@ -373,22 +365,13 @@ export const expungeFolder = internalMutation({
 
 		const done = page.length < batchSize;
 		return {
-			// This page was walked in descending UID/sequence order. A v0.6.6 IMAP
-			// server emits these directly, and its `* n EXPUNGE` lines are the only
-			// way its client learns of the deletions, so they stay while such a
-			// server can still run against this backend (the containers update
-			// after `convex deploy`). Later servers number `uids` against their
-			// client's sequence view and no longer send `nextSequenceNumber`, so
-			// for them these count from the folder's total and go unread.
-			sequenceNumbers: expungedSequences,
-			// The same messages by UID, in the same order. The IMAP server numbers
-			// them against the sequence view its client holds, which can differ from
-			// the folder's current order (another session's unannounced EXPUNGE).
+			// Highest first. The IMAP server numbers them against the sequence view
+			// its client holds, which can differ from the folder's current order
+			// (another session's unannounced EXPUNGE).
 			uids: expungedUids,
 			modseq: newModseq,
 			done,
 			beforeUid: page.length > 0 ? page[page.length - 1]!.uid : args.beforeUid,
-			nextSequenceNumber: sequenceNumber,
 		};
 	},
 });

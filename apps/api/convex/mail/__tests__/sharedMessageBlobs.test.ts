@@ -20,6 +20,7 @@ import { internal } from '../../_generated/api';
 import schema from '../../schema';
 import { purgeMessageRow } from '../messagePurge';
 import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
+import { IMAP_WIRE_VERSION } from '@owlat/shared/imapWire';
 
 type Test = TestConvex<typeof schema>;
 
@@ -163,14 +164,20 @@ describe('storage blobs shared by an IMAP COPY', () => {
 			await ctx.db.patch(s.messageId, { flagDeleted: true });
 		});
 
-		await t.mutation(internal.mail.imap.move.expungeFolder, { folderId: s.archiveId });
+		await t.mutation(internal.mail.imap.move.expungeFolder, {
+			folderId: s.archiveId,
+			imapWireVersion: IMAP_WIRE_VERSION,
+		});
 
 		expect(await t.run(async (ctx) => ctx.db.get(copy._id))).toBeNull();
 		expect(await t.run(async (ctx) => ctx.db.get(s.messageId))).not.toBeNull();
 		expect(await blobExists(t, s.rawStorageId)).toBe(true);
 		expect(await blobExists(t, s.textBodyStorageId)).toBe(true);
 
-		await t.mutation(internal.mail.imap.move.expungeFolder, { folderId: s.inboxId });
+		await t.mutation(internal.mail.imap.move.expungeFolder, {
+			folderId: s.inboxId,
+			imapWireVersion: IMAP_WIRE_VERSION,
+		});
 
 		expect(await blobExists(t, s.rawStorageId)).toBe(false);
 		// EXPUNGE used to delete the raw blob only, leaking both body blobs.

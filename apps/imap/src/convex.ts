@@ -126,9 +126,8 @@ export interface CopyMoveResult {
 }
 
 /**
- * One committed EXPUNGE page, plus the cursor to the next one. The backend also
- * returns `sequenceNumbers` and `nextSequenceNumber` for an IMAP server older
- * than the sequence view; this one numbers `uids` against the view instead.
+ * One committed EXPUNGE page, plus the cursor to the next one. The IMAP server
+ * numbers `uids` against its client's sequence view.
  */
 export interface ExpungeResult {
 	/** The expunged messages by UID, highest first. */
@@ -239,11 +238,9 @@ export const fn = {
 	listFolders: makeFunctionReference<'query', { mailboxId: string }, FolderRow[]>(
 		'mail/imap/session:listFolders'
 	),
-	selectFolder: makeFunctionReference<
-		'query',
-		{ folderId: string; skipFirstUnseenSeq?: boolean },
-		SelectFolderResult | null
-	>('mail/imap/session:selectFolder'),
+	selectFolder: makeFunctionReference<'query', { folderId: string }, SelectFolderResult | null>(
+		'mail/imap/session:selectFolder'
+	),
 	fetchEnvelopes: makeFunctionReference<'query', UidWindowArgs, EnvelopePage>(
 		'mail/imap/fetch:fetchEnvelopes'
 	),

@@ -189,7 +189,6 @@ function backend(initialUids: number[], mode: Mode = 'ready') {
 			if (name.endsWith(':expungeFolder')) {
 				const id = args['folderId'] as string;
 				const uidSet = args['uidSet'] as number[] | undefined;
-				const before = sorted(id).map((m) => m.uid);
 				const gone = sorted(id)
 					.filter((m) => m.deleted && (!uidSet || uidSet.includes(m.uid)))
 					.map((m) => m.uid)
@@ -200,8 +199,6 @@ function backend(initialUids: number[], mode: Mode = 'ready') {
 				);
 				if (gone.length > 0) revision += 1;
 				return {
-					// The folder's own numbering, which the server must not trust blindly.
-					sequenceNumbers: gone.map((uid) => before.indexOf(uid) + 1),
 					uids: gone,
 					modseq: 3,
 					done: true,
@@ -401,8 +398,9 @@ describe('cross-session EXPUNGE cannot retarget a sequence number (#927)', () =>
 		b.mutation.mockImplementation(
 			async (ref: AnyFunctionReference, args: Record<string, unknown>) => {
 				const out = (await real(ref, args)) as Record<string, unknown>;
-				// Counted from a stored total that drifted: a server that read these
-				// would announce a message the client does not have.
+				// The fields the backend returned up to wire 1, counted from a stored
+				// total that drifted: a server that read these would announce a
+				// message the client does not have.
 				out['sequenceNumbers'] = [99];
 				out['nextSequenceNumber'] = 98;
 				return out;
@@ -414,6 +412,7 @@ describe('cross-session EXPUNGE cannot retarget a sequence number (#927)', () =>
 		const expunge = b.mutation.mock.calls.find(([ref]) =>
 			getFunctionName(ref as AnyFunctionReference).endsWith(':expungeFolder')
 		)!;
+		// The backend no longer accepts it (wire 2).
 		expect(expunge[1]).not.toHaveProperty('nextSequenceNumber');
 		expect(await a.run('a3 NOOP')).toEqual(['a3 OK NOOP completed']);
 	});

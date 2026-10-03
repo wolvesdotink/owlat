@@ -31,6 +31,7 @@ import {
 	startFolderMembership,
 } from '../folderMembership';
 import { isCountedPosition } from '../../lib/counters';
+import { IMAP_WIRE_VERSION } from '@owlat/shared/imapWire';
 
 type Test = TestConvex<typeof schema>;
 type RunCtx = Parameters<Parameters<Test['run']>[0]>[0];
@@ -212,7 +213,10 @@ async function randomOp(w: World, r: Rng): Promise<void> {
 				flags: ['\\Deleted'],
 				mode: 'add',
 			});
-			await t.mutation(internal.mail.imap.move.expungeFolder, { folderId: m.folderId });
+			await t.mutation(internal.mail.imap.move.expungeFolder, {
+				folderId: m.folderId,
+				imapWireVersion: IMAP_WIRE_VERSION,
+			});
 			return;
 		case 6:
 			// A flag write changes no membership: the revision must not move.
@@ -675,7 +679,7 @@ describe('resetFolderMembership', () => {
 });
 
 describe('membership follows folders and IMAP results', () => {
-	it('expungeFolder reports the expunged UIDs beside their sequence numbers', async () => {
+	it('expungeFolder reports the expunged UIDs and no sequence numbers', async () => {
 		const w = await setup();
 		const folderId = w.folderIds[0]!;
 		for (let i = 0; i < 4; i++) await w.t.run((ctx) => deliver(ctx, w, folderId));
@@ -685,10 +689,15 @@ describe('membership follows folders and IMAP results', () => {
 			flags: ['\\Deleted'],
 			mode: 'add',
 		});
-		const result = await w.t.mutation(internal.mail.imap.move.expungeFolder, { folderId });
+		const result = await w.t.mutation(internal.mail.imap.move.expungeFolder, {
+			folderId,
+			imapWireVersion: IMAP_WIRE_VERSION,
+		});
 		expect(result.uids).toEqual([4, 2]);
-		// Still returned for a v0.6.6 IMAP server, which numbers from them.
-		expect(result.sequenceNumbers).toEqual([4, 2]);
+		// The IMAP server numbers `uids` against its client's view; the numbers
+		// counted from the folder's total went with wire 0 (v0.6.7 and older).
+		expect(result).not.toHaveProperty('sequenceNumbers');
+		expect(result).not.toHaveProperty('nextSequenceNumber');
 	});
 
 	it('deleting a folder drops its membership', async () => {

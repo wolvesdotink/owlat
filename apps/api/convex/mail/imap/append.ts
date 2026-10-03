@@ -60,11 +60,6 @@ export const appendMessage = internalMutation({
 		ccAddresses: v.array(v.string()),
 		bccAddresses: v.array(v.string()),
 		subject: v.string(),
-		/**
-		 * Ignored: the snippet is derived here from the bodies. Accepted for one
-		 * release so an older IMAP server still validates; drop it after that.
-		 */
-		snippet: v.optional(v.string()),
 		htmlBodyInline: v.optional(v.string()),
 		textBodyInline: v.optional(v.string()),
 		internalDate: v.optional(v.number()),
