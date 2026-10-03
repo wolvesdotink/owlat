@@ -77,10 +77,16 @@ export const updateStepResultValidator = v.array(
 	})
 );
 
-// Activity metadata (contactActivities)
+// Activity metadata (contactActivities). Must accept every field a per-literal
+// module schema (`contactActivities/<literal>/index.ts`) declares, or inserts
+// carrying that field throw and roll back the writing mutation;
+// `contactActivities/__tests__/metadataValidatorDrift.test.ts` enforces it.
 export const activityMetadataValidator = v.object({
 	campaignId: v.optional(v.string()),
 	transactionalEmailId: v.optional(v.string()),
+	// Provenance for automation sends (email_sent / email_bounced /
+	// email_complained), alongside the transactional and campaign ids.
+	automationId: v.optional(v.string()),
 	emailSubject: v.optional(v.string()),
 	emailType: v.optional(v.string()),
 	linkUrl: v.optional(v.string()),
