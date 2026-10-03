@@ -317,17 +317,23 @@ jobs:
         with:
           bun-version-file: package.json
 
-      - name: Check the web entry bundle budget
+      # The same copy also feeds the test-code check: the server's traced
+      # package.json and the client manifest must name no test package, test
+      # route or vitest module (#1172).
+      - name: Check the web entry bundle budget and test code
         if: matrix.name == 'web'
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/web-output"
-          mkdir -p "$out/server/chunks/routes" "$out/public"
+          mkdir -p "$out/server/chunks/routes" "$out/server/chunks/virtual" "$out/public"
           cid=$(docker create "owlat-ci-${{ matrix.name }}:${{ github.sha }}")
           trap 'docker rm "$cid" >/dev/null' EXIT
           docker cp "$cid:/app/server/chunks/routes/renderer.mjs" "$out/server/chunks/routes/"
+          docker cp "$cid:/app/server/chunks/virtual/precomputed.mjs" "$out/server/chunks/virtual/"
+          docker cp "$cid:/app/server/package.json" "$out/server/"
           docker cp "$cid:/app/public/_nuxt" "$out/public/"
           bun scripts/check-bundle-budget.ts "$out"
+          bun scripts/check-web-build-test-code.ts "$out"
 
       - name: Smoke-test packaged Node runtime
         if: matrix.runtimeSmoke == true
