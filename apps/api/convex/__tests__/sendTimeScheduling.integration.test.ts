@@ -331,7 +331,14 @@ describe('the predicted distribution', () => {
 
 	it('uses the organization histogram for contacts without history once it has enough', async () => {
 		const t = setupTest();
-		const startAt = Date.now() + 24 * HOUR;
+		// Tomorrow 00:00 UTC, so 14:00 on the start's weekday is inside the
+		// 24-hour window whatever time the test runs.
+		const tomorrow = new Date(Date.now() + 24 * HOUR);
+		const startAt = Date.UTC(
+			tomorrow.getUTCFullYear(),
+			tomorrow.getUTCMonth(),
+			tomorrow.getUTCDate()
+		);
 		const { campaignId } = await seedCampaign(t, {}, [{ timezone: 'UTC' }, { timezone: 'UTC' }]);
 		await t.run(async (ctx) => {
 			await ctx.db.insert('sendTimeHistogramShards', {
