@@ -8,7 +8,8 @@
  * does not know, and the member would never be offered the welcome again.
  *
  * A failed stamp is retried with backoff (#1203). Once the retries are spent the
- * page says so quietly and offers to try again; nothing is blocked.
+ * page says so quietly and offers to try again; nothing is blocked. Leaving the
+ * page or a change of member ends the run, so nothing more is sent for it.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
@@ -30,6 +31,7 @@ const PAST_ANY_BACKOFF = 20_000;
 
 vi.mock('~/lib/runtimeLog', () => ({ logWarn: vi.fn(), logError: vi.fn() }));
 const state = new Map<string, { value: unknown }>();
+let currentUser = ref<{ id: string; name: string } | null>(null);
 
 beforeEach(() => {
 	localStorage.clear();
@@ -40,7 +42,8 @@ beforeEach(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
-	vi.stubGlobal('useAuth', () => ({ user: ref({ id: USER_ID, name: 'Ada Lovelace' }) }));
+	currentUser = ref({ id: USER_ID, name: 'Ada Lovelace' });
+	vi.stubGlobal('useAuth', () => ({ user: currentUser }));
 	vi.stubGlobal('useOrganizationContext', () => ({ organization: ref({ name: 'Acme' }) }));
 	vi.stubGlobal('useNuxtApp', () => ({ $convex: { mutation } }));
 	vi.stubGlobal('useConvexQuery', () => ({
@@ -202,5 +205,72 @@ describe('/welcome — the welcomed cache', () => {
 		mountPage();
 
 		expect(state.get('first-login-resolved')?.value).toBe(true);
+	});
+});
+
+describe('/welcome — the stamp run ends with the page and the member', () => {
+	it('sends nothing when the page unmounts during the auth wait', async () => {
+		vi.useFakeTimers();
+		markConvexAuthPending();
+		mutation.mockResolvedValue(null);
+
+		const wrapper = mountPage();
+		await vi.advanceTimersByTimeAsync(0);
+		wrapper.unmount();
+
+		reportConvexAuth(true);
+		await vi.advanceTimersByTimeAsync(PAST_ANY_BACKOFF);
+		expect(mutation).not.toHaveBeenCalled();
+		expect(localStorage.getItem(CACHE_KEY)).toBeNull();
+	});
+
+	it('stops retrying when the page unmounts after a failed attempt', async () => {
+		vi.useFakeTimers();
+		mutation.mockRejectedValue(new Error('Server Error'));
+
+		const wrapper = mountPage();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(mutation).toHaveBeenCalledTimes(1);
+
+		wrapper.unmount();
+		await vi.advanceTimersByTimeAsync(PAST_ANY_BACKOFF * (TRANSIENT_RETRY_LIMIT + 1));
+		expect(mutation).toHaveBeenCalledTimes(1);
+	});
+
+	it("aborts the previous member's run when another member signs in", async () => {
+		vi.useFakeTimers();
+		mutation.mockImplementation(async (_fn, args) => {
+			if ((args as { userId: string }).userId === USER_ID) throw new Error('Forbidden');
+			return null;
+		});
+
+		const wrapper = mountPage();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(mutation).toHaveBeenCalledTimes(1);
+
+		currentUser.value = { id: 'user-2', name: 'Grace Hopper' };
+		await vi.advanceTimersByTimeAsync(PAST_ANY_BACKOFF * (TRANSIENT_RETRY_LIMIT + 1));
+
+		// No retry under the old id; the member now on the screen is stamped once.
+		const ids = mutation.mock.calls.map(([, args]) => (args as { userId: string }).userId);
+		expect(ids).toEqual([USER_ID, 'user-2']);
+		expect(localStorage.getItem('owlat:welcomed:user-2')).toBe('1');
+		expect(localStorage.getItem(CACHE_KEY)).toBeNull();
+		expect(wrapper.find('[data-testid="welcome-stamp-failed"]').exists()).toBe(false);
+	});
+
+	it('aborts on sign-out and sends nothing more', async () => {
+		vi.useFakeTimers();
+		markConvexAuthPending();
+		mutation.mockResolvedValue(null);
+
+		mountPage();
+		await vi.advanceTimersByTimeAsync(0);
+		currentUser.value = null;
+		await vi.advanceTimersByTimeAsync(0);
+
+		reportConvexAuth(true);
+		await vi.advanceTimersByTimeAsync(PAST_ANY_BACKOFF);
+		expect(mutation).not.toHaveBeenCalled();
 	});
 });

@@ -2,7 +2,8 @@
 /**
  * The welcome stamp (#1203): a failed `markWelcomed` is retried with the
  * first-login middleware's bounded backoff, never sent while the Convex client
- * is anonymous, logged with its cause, and cached only after a commit.
+ * is anonymous, logged with its cause, and cached only after a commit. The
+ * caller's AbortSignal ends the run: nothing is sent after it fires.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TRANSIENT_RETRY_LIMIT } from '~/lib/queryRetry';
@@ -19,8 +20,8 @@ const PAST_ANY_WAIT = 20_000;
 async function load() {
 	vi.resetModules();
 	const auth = await import('../convexAuthReady');
-	const { stampWelcomed, WELCOME_STAMP_AUTH_WAIT_MS } = await import('../welcomeStamp');
-	return { auth, stampWelcomed, WELCOME_STAMP_AUTH_WAIT_MS };
+	const stamp = await import('../welcomeStamp');
+	return { auth, ...stamp };
 }
 
 beforeEach(() => {
@@ -40,7 +41,7 @@ describe('stampWelcomed', () => {
 		auth.reportConvexAuth(true);
 		const send = vi.fn().mockResolvedValue(null);
 
-		await expect(stampWelcomed({ userId: USER_ID, send })).resolves.toBe(true);
+		await expect(stampWelcomed({ userId: USER_ID, send })).resolves.toBe('saved');
 		expect(send).toHaveBeenCalledOnce();
 		expect(localStorage.getItem(CACHE_KEY)).toBe('1');
 		expect(logWarn).not.toHaveBeenCalled();
@@ -63,7 +64,7 @@ describe('stampWelcomed', () => {
 		expect(send).toHaveBeenCalledOnce();
 
 		await vi.advanceTimersByTimeAsync(PAST_ANY_WAIT);
-		await expect(result).resolves.toBe(true);
+		await expect(result).resolves.toBe('saved');
 		expect(send).toHaveBeenCalledTimes(2);
 		expect(localStorage.getItem(CACHE_KEY)).toBe('1');
 	});
@@ -77,7 +78,7 @@ describe('stampWelcomed', () => {
 		const result = stampWelcomed({ userId: USER_ID, send });
 		await vi.advanceTimersByTimeAsync(PAST_ANY_WAIT * (TRANSIENT_RETRY_LIMIT + 1));
 
-		await expect(result).resolves.toBe(false);
+		await expect(result).resolves.toBe('failed');
 		expect(send).toHaveBeenCalledTimes(TRANSIENT_RETRY_LIMIT + 1);
 		expect(localStorage.getItem(CACHE_KEY)).toBeNull();
 		expect(logWarn).toHaveBeenCalledTimes(TRANSIENT_RETRY_LIMIT + 1);
@@ -100,7 +101,7 @@ describe('stampWelcomed', () => {
 		auth.reportConvexAuth(true);
 		await vi.advanceTimersByTimeAsync(0);
 
-		await expect(result).resolves.toBe(true);
+		await expect(result).resolves.toBe('saved');
 		expect(send).toHaveBeenCalledOnce();
 		expect(localStorage.getItem(CACHE_KEY)).toBe('1');
 	});
@@ -115,10 +116,99 @@ describe('stampWelcomed', () => {
 			(WELCOME_STAMP_AUTH_WAIT_MS + PAST_ANY_WAIT) * (TRANSIENT_RETRY_LIMIT + 1)
 		);
 
-		await expect(result).resolves.toBe(false);
+		await expect(result).resolves.toBe('failed');
 		expect(send).not.toHaveBeenCalled();
 		expect(localStorage.getItem(CACHE_KEY)).toBeNull();
 		expect(logWarn).toHaveBeenCalledWith(expect.stringContaining('not sent'));
 		expect(logError).toHaveBeenCalledOnce();
+	});
+
+	it('counts a send that never answers as a failed attempt and retries', async () => {
+		const { auth, stampWelcomed, WELCOME_STAMP_SEND_DEADLINE_MS } = await load();
+		auth.reportConvexAuth(true);
+		const send = vi
+			.fn()
+			.mockReturnValueOnce(new Promise(() => {}))
+			.mockResolvedValueOnce(null);
+
+		const result = stampWelcomed({ userId: USER_ID, send });
+		await vi.advanceTimersByTimeAsync(WELCOME_STAMP_SEND_DEADLINE_MS - 1);
+		expect(send).toHaveBeenCalledOnce();
+
+		await vi.advanceTimersByTimeAsync(1 + PAST_ANY_WAIT);
+		await expect(result).resolves.toBe('saved');
+		expect(send).toHaveBeenCalledTimes(2);
+		expect(logWarn).toHaveBeenCalledWith(
+			expect.stringContaining('attempt 1/'),
+			expect.objectContaining({ message: expect.stringContaining('did not answer') })
+		);
+	});
+});
+
+describe('stampWelcomed, aborted by its caller', () => {
+	it('sends nothing when aborted during the auth wait, even if auth lands later', async () => {
+		const { auth, stampWelcomed } = await load();
+		auth.markConvexAuthPending();
+		const send = vi.fn().mockResolvedValue(null);
+		const run = new AbortController();
+
+		const result = stampWelcomed({ userId: USER_ID, send, signal: run.signal });
+		await vi.advanceTimersByTimeAsync(1_000);
+		run.abort();
+		await expect(result).resolves.toBe('aborted');
+
+		auth.reportConvexAuth(true);
+		await vi.advanceTimersByTimeAsync(PAST_ANY_WAIT);
+		expect(send).not.toHaveBeenCalled();
+		expect(localStorage.getItem(CACHE_KEY)).toBeNull();
+		expect(logError).not.toHaveBeenCalled();
+		// The wait's timer went with it: nothing is left to fire.
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it('stops after the current attempt when aborted during the backoff', async () => {
+		const { auth, stampWelcomed } = await load();
+		auth.reportConvexAuth(true);
+		const send = vi.fn().mockRejectedValue(new Error('Server Error'));
+		const run = new AbortController();
+
+		const result = stampWelcomed({ userId: USER_ID, send, signal: run.signal });
+		await vi.advanceTimersByTimeAsync(0);
+		expect(send).toHaveBeenCalledOnce();
+
+		run.abort();
+		await expect(result).resolves.toBe('aborted');
+		await vi.advanceTimersByTimeAsync(PAST_ANY_WAIT * (TRANSIENT_RETRY_LIMIT + 1));
+		expect(send).toHaveBeenCalledOnce();
+		expect(vi.getTimerCount()).toBe(0);
+		expect(logError).not.toHaveBeenCalled();
+	});
+
+	it('does not retry a send that fails after the abort', async () => {
+		const { auth, stampWelcomed } = await load();
+		auth.reportConvexAuth(true);
+		let fail!: (error: Error) => void;
+		const send = vi.fn().mockReturnValueOnce(new Promise((_, reject) => (fail = reject)));
+		const run = new AbortController();
+
+		const result = stampWelcomed({ userId: USER_ID, send, signal: run.signal });
+		await vi.advanceTimersByTimeAsync(0);
+		run.abort();
+		fail(new Error('Forbidden'));
+
+		await expect(result).resolves.toBe('aborted');
+		await vi.advanceTimersByTimeAsync(PAST_ANY_WAIT);
+		expect(send).toHaveBeenCalledOnce();
+	});
+
+	it('sends nothing when the signal is already aborted', async () => {
+		const { auth, stampWelcomed } = await load();
+		auth.reportConvexAuth(true);
+		const send = vi.fn().mockResolvedValue(null);
+
+		await expect(
+			stampWelcomed({ userId: USER_ID, send, signal: AbortSignal.abort() })
+		).resolves.toBe('aborted');
+		expect(send).not.toHaveBeenCalled();
 	});
 });

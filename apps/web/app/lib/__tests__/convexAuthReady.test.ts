@@ -148,4 +148,26 @@ describe('waiting for an authenticated client', () => {
 		await vi.advanceTimersByTimeAsync(0);
 		expect(authenticated).toHaveBeenCalledWith(true);
 	});
+
+	it('stops waiting when the caller aborts, and drops its waiter and timer', async () => {
+		const auth = await load();
+		const run = new AbortController();
+		const settled = vi.fn();
+		void auth.whenConvexAuthenticated(5_000, run.signal).then(settled);
+
+		run.abort();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(settled).toHaveBeenCalledWith(false);
+		expect(vi.getTimerCount()).toBe(0);
+
+		auth.reportConvexAuth(true);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(settled).toHaveBeenCalledOnce();
+	});
+
+	it('answers false at once for an already-aborted signal', async () => {
+		const auth = await load();
+		auth.reportConvexAuth(true);
+		await expect(auth.whenConvexAuthenticated(5_000, AbortSignal.abort())).resolves.toBe(false);
+	});
 });

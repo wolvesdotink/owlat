@@ -128,6 +128,18 @@ jobs:
           # and its page has no form without an invite link.
           CONVEX_TEST_INSTANCE_SECRET: ${{ secrets.CONVEX_TEST_INSTANCE_SECRET }}
 
+      # The report is a public artifact, and log masking does not reach inside
+      # it. A failed setup keeps its trace, which records request headers, so
+      # check that no secret made it in. On a hit the report is deleted (the
+      # upload below then finds nothing) and the job fails.
+      - name: Check the Playwright report for secrets
+        if: always()
+        working-directory: apps/web
+        env:
+          CONVEX_TEST_INSTANCE_SECRET: ${{ secrets.CONVEX_TEST_INSTANCE_SECRET }}
+          CONVEX_TEST_ADMIN_KEY: ${{ secrets.CONVEX_TEST_ADMIN_KEY }}
+        run: bun e2e/scan-report-secrets.ts playwright-report CONVEX_TEST_INSTANCE_SECRET CONVEX_TEST_ADMIN_KEY
+
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

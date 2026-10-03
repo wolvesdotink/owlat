@@ -62,24 +62,53 @@ firstLoginResolved.value = true;
 // If every attempt fails, nothing is blocked: the member can carry on, and the
 // only cost is seeing this screen again next session. A quiet note says so and
 // offers to try again.
+//
+// The run belongs to this page and to the member it started for. Leaving the
+// page, or a different member signing in, aborts it so nothing more is sent;
+// the member now on the screen gets a run of their own.
 const stamping = ref(false);
 const stampGaveUp = ref(false);
+let stampRun: AbortController | null = null;
+
+function abortStamp(): void {
+	stampRun?.abort();
+	stampRun = null;
+	stamping.value = false;
+}
 
 async function stamp(): Promise<void> {
 	const userId = user.value?.id;
 	if (!userId || !$convex) return;
+	abortStamp();
+	const run = new AbortController();
+	stampRun = run;
 	stamping.value = true;
-	const saved = await stampWelcomed({
+	const result = await stampWelcomed({
 		userId,
 		send: () => $convex.mutation(api.auth.userOnboarding.markWelcomed, { userId }),
+		signal: run.signal,
 	});
+	if (result === 'aborted' || stampRun !== run) return;
+	stampRun = null;
 	stamping.value = false;
-	stampGaveUp.value = !saved;
+	stampGaveUp.value = result === 'failed';
 }
 
 onMounted(() => {
 	void stamp();
 });
+
+watch(
+	() => user.value?.id,
+	(userId, previous) => {
+		if (userId === previous) return;
+		abortStamp();
+		stampGaveUp.value = false;
+		if (userId) void stamp();
+	}
+);
+
+onBeforeUnmount(abortStamp);
 </script>
 
 <template>

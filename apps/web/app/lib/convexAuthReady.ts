@@ -33,21 +33,29 @@ export function reportConvexAuth(isAuthenticated: boolean): void {
 
 /**
  * Wait for an auth report that `accept`s, up to `timeoutMs`. Resolves the
- * accepted report's answer, or `false` on timeout. Never rejects.
+ * accepted report's answer, or `false` on timeout or when `signal` aborts; the
+ * waiter and its timer are removed either way. Never rejects.
  */
-function waitForReport(timeoutMs: number, accept: (authenticated: boolean) => boolean) {
+function waitForReport(
+	timeoutMs: number,
+	accept: (authenticated: boolean) => boolean,
+	signal?: AbortSignal
+) {
 	return new Promise<boolean>((resolve) => {
-		const settle = (authenticated: boolean) => {
-			if (!accept(authenticated)) return;
+		if (signal?.aborted) return resolve(false);
+		const finish = (answer: boolean) => {
 			clearTimeout(timer);
 			waiters.delete(settle);
-			resolve(authenticated);
+			signal?.removeEventListener('abort', onAbort);
+			resolve(answer);
 		};
-		const timer = setTimeout(() => {
-			waiters.delete(settle);
-			resolve(false);
-		}, timeoutMs);
+		const settle = (authenticated: boolean) => {
+			if (accept(authenticated)) finish(authenticated);
+		};
+		const onAbort = () => finish(false);
+		const timer = setTimeout(() => finish(false), timeoutMs);
 		waiters.add(settle);
+		signal?.addEventListener('abort', onAbort, { once: true });
 	});
 }
 
@@ -66,12 +74,17 @@ export function whenConvexAuthSettled(timeoutMs = 10_000): Promise<boolean> {
  * otherwise on the next report that says so. Unlike {@link whenConvexAuthSettled}
  * a failed report does not end the wait, because the client may install a new
  * token (a session signal re-runs `setAuth`) and succeed with it. Resolves
- * `false` if no authenticated report arrives within `timeoutMs`. Never rejects.
+ * `false` if no authenticated report arrives within `timeoutMs`, or as soon as
+ * `signal` aborts (the caller went away). Never rejects.
  *
  * For a one-shot call that must not run as an anonymous caller and can afford
  * to wait for the next token, such as the welcome stamp.
  */
-export function whenConvexAuthenticated(timeoutMs = 10_000): Promise<boolean> {
+export function whenConvexAuthenticated(
+	timeoutMs = 10_000,
+	signal?: AbortSignal
+): Promise<boolean> {
+	if (signal?.aborted) return Promise.resolve(false);
 	if (state === 'authenticated') return Promise.resolve(true);
-	return waitForReport(timeoutMs, (authenticated) => authenticated);
+	return waitForReport(timeoutMs, (authenticated) => authenticated, signal);
 }
