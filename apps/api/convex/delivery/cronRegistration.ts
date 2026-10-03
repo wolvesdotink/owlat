@@ -262,9 +262,8 @@ export function registerDeliveryCrons(crons: Crons): void {
 	);
 
 	// Send completions that threw (#1195): replay the recorded outcomes whose
-	// backoff ran out, purge the ones resolved a month ago, and end the queued
-	// Sends no completion or webhook can reach any more. Each tick with nothing
-	// to do is one index range read.
+	// backoff ran out, and delete old records (resolved after 30 days, exhausted
+	// after 90). Each tick with nothing to do is one index range read.
 	crons.interval(
 		'replay failed send completions',
 		{ minutes: 10 },
@@ -272,15 +271,9 @@ export function registerDeliveryCrons(crons: Crons): void {
 		{}
 	);
 	crons.interval(
-		'purge resolved send completion failures',
+		'purge send completion failures',
 		{ hours: 24 },
-		internal.delivery.sendCompletionFailures.purgeResolvedCompletionFailures,
-		{}
-	);
-	crons.interval(
-		'sweep stuck queued sends',
-		{ hours: 1 },
-		internal.delivery.stuckSendSweep.sweepStuckQueuedSends,
+		internal.delivery.sendCompletionFailureAdmin.purgeCompletionFailures,
 		{}
 	);
 }

@@ -2,11 +2,14 @@ import { type Infer, v } from 'convex/values';
 import type { WorkId } from '@convex-dev/workpool';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
-import { internalQuery, type MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { logError, logWarn } from '../lib/runtimeLog';
 import type { countableSendRefValidator } from '../lib/validators/send';
-import type { workpoolRunResultValidator } from '../schema/sendCompletionFailures';
+import type {
+	parkedFeedbackTransitionValidator,
+	workpoolRunResultValidator,
+} from '../schema/sendCompletionFailures';
 import { isSendWorkerOutcome } from './workerOutcome';
 
 // ============================================================================
@@ -18,21 +21,25 @@ import { isSendWorkerOutcome } from './workerOutcome';
 //   - the replay cron re-runs the stored completion with a capped backoff, so a
 //     deployed fix drains the backlog on its own;
 //   - a provider webhook for a Send with an open record replays it first
-//     (`replayRecordedCompletion`), so the event lands on the state the
-//     provider already reported instead of being refused against `queued`;
-//   - operators read `status` and replay or re-open rows through
-//     `npx convex run` (apps/docs "Platform operations").
+//     (`replayRecordedCompletion`); when that replay fails too, a terminal or
+//     delivery event is PARKED on the record (`parkFeedbackOnRecordedCompletion`)
+//     and applied right after the completion once a replay succeeds, so an early
+//     bounce is never lost to the `queued` state;
+//   - contact erasure deletes a Send's records when it scrubs the Send
+//     (`deleteCompletionFailuresForSend`);
+//   - operators read and re-open records in `./sendCompletionFailureAdmin`.
 //
 // NOTHING HERE CAN DOUBLE-COUNT. A replay re-runs the same completion, and every
 // arm of it either goes through the Send lifecycle (which reports a repeat as a
 // duplicate or refuses it, never applies it twice) or checks that the Send is
-// still `queued` first. A record whose Send has already left `queued` (a
-// webhook, the stuck-send sweep, an operator) is resolved as `superseded`
-// without replaying anything.
+// still `queued` first. A record whose Send has already left `queued` only
+// applies the events parked on it, then resolves as `superseded`. A parked event
+// is stored once even when the provider re-delivers it.
 // ============================================================================
 
 type CountableSendRef = Infer<typeof countableSendRefValidator>;
 type RunResult = Infer<typeof workpoolRunResultValidator>;
+type ParkedTransition = Infer<typeof parkedFeedbackTransitionValidator>;
 type FailureRow = Doc<'sendCompletionFailures'>;
 
 /** The arguments the workpool hands `completeSend`. */
@@ -47,20 +54,30 @@ export const REPLAY_MAX_ATTEMPTS = 10;
 const REPLAY_BASE_DELAY_MS = 10 * 60 * 1000;
 const REPLAY_MAX_DELAY_MS = 6 * 60 * 60 * 1000;
 const REPLAY_BATCH_SIZE = 25;
-const RESOLVED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
-const PURGE_BATCH_SIZE = 200;
-const ERROR_TEXT_MAX_LENGTH = 2000;
-const STATUS_COUNT_LIMIT = 1000;
-const STATUS_SAMPLE_SIZE = 20;
+const ERROR_TEXT_MAX_LENGTH = 500;
+/** A provider re-delivers a handful of events per message, not dozens. */
+const PARKED_FEEDBACK_LIMIT = 20;
 
 /** 10 min, 20, 40 … capped at 6 h: about a day and a half over the whole cap. */
 function replayDelayMs(attempts: number): number {
 	return Math.min(REPLAY_BASE_DELAY_MS * 2 ** attempts, REPLAY_MAX_DELAY_MS);
 }
 
-function errorText(error: unknown): string {
-	const text = error instanceof Error ? error.message : String(error);
-	return text.length > ERROR_TEXT_MAX_LENGTH ? `${text.slice(0, ERROR_TEXT_MAX_LENGTH)}…` : text;
+const EMAIL_ADDRESS = /[^\s@"'<>(),;:[\]]+@[^\s@"'<>(),;:[\]]+/g;
+
+/**
+ * What of an error is kept on the record. A Convex validation error quotes the
+ * whole document it refused after its first line, and that document can carry
+ * the recipient, their name and the message, so only the first line is kept,
+ * with anything shaped like an address redacted.
+ */
+export function storableErrorText(error: unknown): string {
+	const message = error instanceof Error ? error.message : String(error);
+	const firstLine = (message.split('\n').find((line) => line.trim() !== '') ?? '').trim();
+	const redacted = firstLine.replace(EMAIL_ADDRESS, '[address]');
+	return redacted.length > ERROR_TEXT_MAX_LENGTH
+		? `${redacted.slice(0, ERROR_TEXT_MAX_LENGTH)}…`
+		: redacted;
 }
 
 /** The readable part of a run result, kept after the payload is dropped. */
@@ -96,7 +113,9 @@ function summarize(result: RunResult): {
  * arm refuses, and the record keeps both for an operator to read.
  *
  * Then the record, one per work id: a second `onComplete` for the same work
- * updates the row it already has.
+ * updates the row it already has. A Send that is gone or soft-deleted (contact
+ * erasure scrubs and soft-deletes it) gets no record: the stored outcome would
+ * put the erased recipient back on disk.
  */
 export async function recordCompletionFailure(
 	ctx: MutationCtx,
@@ -106,16 +125,29 @@ export async function recordCompletionFailure(
 	const now = Date.now();
 	const { sendRef } = args.context;
 	const summary = summarize(args.result);
-	const lastError = errorText(error);
+	const lastError = storableErrorText(error);
+	const send = await ctx.db.get(sendRef.id);
 
-	if (summary.outcomeKind === 'accepted' && summary.providerMessageId) {
-		const send = await ctx.db.get(sendRef.id);
-		if (send && send.status === 'queued' && !send.providerMessageId) {
-			await ctx.db.patch(sendRef.id, {
-				providerMessageId: summary.providerMessageId,
-				providerType: summary.providerType,
-			});
-		}
+	if (!send || send.deletedAt !== undefined) {
+		logError('[SendCompletion] Completion failed for a deleted Send; nothing recorded', {
+			workId: args.workId,
+			sendKind: sendRef.kind,
+			sendId: sendRef.id,
+			outcomeKind: summary.outcomeKind,
+		});
+		return;
+	}
+
+	if (
+		summary.outcomeKind === 'accepted' &&
+		summary.providerMessageId &&
+		send.status === 'queued' &&
+		!send.providerMessageId
+	) {
+		await ctx.db.patch(sendRef.id, {
+			providerMessageId: summary.providerMessageId,
+			providerType: summary.providerType,
+		});
 	}
 
 	const existing = await ctx.db
@@ -149,8 +181,6 @@ export async function recordCompletionFailure(
 			nextReplayAt: now + replayDelayMs(0),
 		});
 	}
-	// The error text stays in the row: a validator error quotes the document it
-	// refused, and that can carry a recipient address.
 	logError('[SendCompletion] Completion failed; outcome recorded for replay', {
 		failureId,
 		workId: args.workId,
@@ -171,27 +201,28 @@ async function resolveRow(
 		resolution,
 		resolvedAt: now,
 		result: undefined,
+		pendingFeedback: undefined,
 		nextReplayAt: undefined,
 	});
 }
 
-async function unresolvedRowsForSend(
+async function rowsForSend(
 	ctx: MutationCtx,
 	sendId: CountableSendRef['id']
 ): Promise<FailureRow[]> {
-	const rows = await ctx.db
+	return await ctx.db
 		.query('sendCompletionFailures')
 		.withIndex('by_send', (q) => q.eq('sendRef.id', sendId))
 		.take(10);
-	return rows.filter((row) => row.status !== 'resolved');
 }
+
+const unresolved = (rows: FailureRow[]): FailureRow[] =>
+	rows.filter((row) => row.status !== 'resolved');
 
 /**
  * Before a provider event is applied to a `queued` Send, replay any completion
- * recorded for it. A bounce that arrives while the record waits would otherwise
- * be refused (`queued → bounced` is not an edge) and lost. Never throws: a
- * replay that fails again leaves the record as it was and the event goes on to
- * the lifecycle, which decides as before.
+ * recorded for it, so the event lands on the state the provider already
+ * reported. Never throws: a replay that fails again leaves the record as it was.
  */
 export async function replayRecordedCompletion(
 	ctx: MutationCtx,
@@ -199,7 +230,7 @@ export async function replayRecordedCompletion(
 ): Promise<void> {
 	const send = await ctx.db.get(sendRef.id);
 	if (send?.status !== 'queued') return;
-	for (const row of await unresolvedRowsForSend(ctx, sendRef.id)) {
+	for (const row of unresolved(await rowsForSend(ctx, sendRef.id))) {
 		try {
 			await ctx.runMutation(internal.delivery.sendCompletionFailures.replayCompletionFailure, {
 				failureId: row._id,
@@ -211,16 +242,98 @@ export async function replayRecordedCompletion(
 	}
 }
 
-/** The stuck-send sweep closed this Send itself; its records have nothing left to replay. */
-export async function supersedeCompletionFailures(
-	ctx: MutationCtx,
-	sendId: CountableSendRef['id'],
-	now: number
-): Promise<void> {
-	for (const row of await unresolvedRowsForSend(ctx, sendId)) {
-		await resolveRow(ctx, row, 'superseded', now);
-	}
+function isParkable(transition: { to: string }): transition is ParkedTransition {
+	return (
+		transition.to === 'bounced' ||
+		transition.to === 'complained' ||
+		transition.to === 'delivered' ||
+		transition.to === 'failed'
+	);
 }
+
+/** A provider re-delivery: same edge, same event time, same bounce class. */
+function isSameEvent(a: ParkedTransition, b: ParkedTransition): boolean {
+	if (a.to !== b.to || a.at !== b.at) return false;
+	return a.to !== 'bounced' || b.to !== 'bounced' || a.bounceType === b.bounceType;
+}
+
+/**
+ * Keep a provider event the lifecycle just refused because the Send is still
+ * `queued` behind an unrecorded completion. The replay applies it after the
+ * completion. Returns whether it was kept.
+ *
+ * WHY PARK INSTEAD OF ANSWERING 5xx. A retryable answer would ask the provider
+ * to hold the event for us, and providers differ: SNS gives an HTTP endpoint a
+ * few retries over minutes, while a fix may take a day; Mandrill and Svix batch
+ * several events in one delivery, so the whole batch would come back and the
+ * non-idempotent opens and clicks in it would count twice. Parking keeps the
+ * event in our own database for exactly as long as the record lives.
+ */
+export async function parkFeedbackOnRecordedCompletion(
+	ctx: MutationCtx,
+	sendRef: CountableSendRef,
+	transition: { to: string }
+): Promise<boolean> {
+	if (!isParkable(transition)) return false;
+	const send = await ctx.db.get(sendRef.id);
+	if (send?.status !== 'queued') return false;
+	const row = unresolved(await rowsForSend(ctx, sendRef.id))[0];
+	if (!row) return false;
+	const parked = row.pendingFeedback ?? [];
+	if (parked.some((event) => isSameEvent(event.transition, transition))) return true;
+	if (parked.length >= PARKED_FEEDBACK_LIMIT) {
+		logWarn('[SendCompletion] Parked provider events full; event dropped', {
+			failureId: row._id,
+			edge: transition.to,
+		});
+		return false;
+	}
+	await ctx.db.patch(row._id, {
+		pendingFeedback: [...parked, { transition, receivedAt: Date.now() }],
+	});
+	return true;
+}
+
+/**
+ * Contact erasure: delete every record of a Send it scrubs. Returns the deleted
+ * rows so the caller can charge them to its budget.
+ */
+export async function deleteCompletionFailuresForSend(
+	ctx: MutationCtx,
+	sendId: CountableSendRef['id']
+): Promise<FailureRow[]> {
+	const rows = await rowsForSend(ctx, sendId);
+	for (const row of rows) await ctx.db.delete(row._id);
+	return rows;
+}
+
+/**
+ * Run one record as a single nested unit: the completion (when the Send is
+ * still `queued`), then the provider events parked on it, oldest first. Any
+ * throw rolls all of it back, so a record never resolves with its events
+ * applied to only half of what the provider reported.
+ */
+export const applyRecordedCompletion = internalMutation({
+	args: { failureId: v.id('sendCompletionFailures') },
+	handler: async (ctx, { failureId }) => {
+		const row = await ctx.db.get(failureId);
+		if (!row) return;
+		const send = await ctx.db.get(row.sendRef.id);
+		if (send?.status === 'queued' && row.result) {
+			await ctx.runMutation(internal.delivery.sendCompletion.applyCompletion, {
+				workId: row.workId as WorkId,
+				result: row.result,
+				context: { sendRef: row.sendRef },
+			});
+		}
+		for (const event of row.pendingFeedback ?? []) {
+			await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
+				send: row.sendRef,
+				transition: event.transition,
+			});
+		}
+	},
+});
 
 const replayTriggerValidator = v.union(
 	v.literal('cron'),
@@ -256,11 +369,13 @@ export const replayCompletionFailure = internalMutation({
 		}
 
 		const send = await ctx.db.get(row.sendRef.id);
-		if (!send || send.status !== 'queued') {
+		const isQueued = send?.status === 'queued';
+		// Settled elsewhere (a webhook, an operator) with nothing parked: done.
+		if (!send || (!isQueued && !row.pendingFeedback?.length)) {
 			await resolveRow(ctx, row, 'superseded', now);
 			return 'superseded';
 		}
-		if (!row.result) {
+		if (isQueued && !row.result) {
 			await ctx.db.patch(row._id, {
 				status: 'exhausted',
 				nextReplayAt: undefined,
@@ -270,10 +385,8 @@ export const replayCompletionFailure = internalMutation({
 		}
 
 		try {
-			await ctx.runMutation(internal.delivery.sendCompletion.applyCompletion, {
-				workId: row.workId as WorkId,
-				result: row.result,
-				context: { sendRef: row.sendRef },
+			await ctx.runMutation(internal.delivery.sendCompletionFailures.applyRecordedCompletion, {
+				failureId,
 			});
 		} catch (error) {
 			const replayAttempts = trigger === 'cron' ? row.replayAttempts + 1 : row.replayAttempts;
@@ -286,14 +399,15 @@ export const replayCompletionFailure = internalMutation({
 			await ctx.db.patch(row._id, {
 				...schedule,
 				replayAttempts,
-				lastError: errorText(error),
+				lastError: storableErrorText(error),
 				lastFailedAt: now,
 			});
 			logWarn('[SendCompletion] Replay failed', { failureId, trigger, replayAttempts });
 			return 'failed';
 		}
-		await resolveRow(ctx, row, 'replayed', now);
-		return 'replayed';
+		const resolution = isQueued ? 'replayed' : 'superseded';
+		await resolveRow(ctx, row, resolution, now);
+		return resolution;
 	},
 });
 
@@ -316,84 +430,5 @@ export const replayDueCompletionFailures = internalMutation({
 			);
 		}
 		return { scheduled: due.length };
-	},
-});
-
-/** Cron: delete records resolved more than 30 days ago. */
-export const purgeResolvedCompletionFailures = internalMutation({
-	args: {},
-	handler: async (ctx) => {
-		const cutoff = Date.now() - RESOLVED_RETENTION_MS;
-		const rows = await ctx.db
-			.query('sendCompletionFailures')
-			.withIndex('by_status_and_resolved_at', (q) =>
-				q.eq('status', 'resolved').lt('resolvedAt', cutoff)
-			)
-			.take(PURGE_BATCH_SIZE);
-		for (const row of rows) await ctx.db.delete(row._id);
-		return { deleted: rows.length };
-	},
-});
-
-/**
- * Operator: hand `exhausted` records back to the replay cron with a fresh
- * attempt budget, after the fault behind them is fixed. One record by id, or
- * up to 100 per call.
- */
-export const reopenExhaustedCompletionFailures = internalMutation({
-	args: { failureId: v.optional(v.id('sendCompletionFailures')) },
-	handler: async (ctx, args) => {
-		const now = Date.now();
-		const rows = args.failureId
-			? [await ctx.db.get(args.failureId)].filter(
-					(row): row is FailureRow => row?.status === 'exhausted'
-				)
-			: await ctx.db
-					.query('sendCompletionFailures')
-					.withIndex('by_status_and_next_replay', (q) => q.eq('status', 'exhausted'))
-					.take(100);
-		for (const row of rows) {
-			await ctx.db.patch(row._id, { status: 'open', replayAttempts: 0, nextReplayAt: now });
-		}
-		return { reopened: rows.length };
-	},
-});
-
-/**
- * Operator: how many completions are waiting, and the oldest of them.
- * `npx convex run delivery/sendCompletionFailures:status`. Counts stop at 1000.
- */
-export const status = internalQuery({
-	args: {},
-	handler: async (ctx) => {
-		const unresolved = async (state: 'open' | 'exhausted') =>
-			await ctx.db
-				.query('sendCompletionFailures')
-				.withIndex('by_status_and_next_replay', (q) => q.eq('status', state))
-				.take(STATUS_COUNT_LIMIT);
-		const open = await unresolved('open');
-		const exhausted = await unresolved('exhausted');
-		const pending = [...exhausted, ...open];
-		return {
-			open: open.length,
-			exhausted: exhausted.length,
-			oldestFailedAt: pending.reduce<number | null>(
-				(oldest, row) =>
-					oldest === null ? row.firstFailedAt : Math.min(oldest, row.firstFailedAt),
-				null
-			),
-			sample: pending.slice(0, STATUS_SAMPLE_SIZE).map((row) => ({
-				failureId: row._id,
-				status: row.status,
-				sendKind: row.sendRef.kind,
-				sendId: row.sendRef.id,
-				outcomeKind: row.outcomeKind,
-				providerMessageId: row.providerMessageId ?? null,
-				replayAttempts: row.replayAttempts,
-				firstFailedAt: row.firstFailedAt,
-				nextReplayAt: row.nextReplayAt ?? null,
-				lastError: row.lastError,
-			})),
-		};
 	},
 });

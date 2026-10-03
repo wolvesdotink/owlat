@@ -40,7 +40,10 @@ import {
 import { withoutTestSendEffects } from './sendLifecycle/types';
 import { refuse } from '../lib/lifecycle';
 import { finalizeSendSource } from './sendLifecycle/sourceFinalization';
-import { replayRecordedCompletion } from './sendCompletionFailures';
+import {
+	parkFeedbackOnRecordedCompletion,
+	replayRecordedCompletion,
+} from './sendCompletionFailures';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { bounceTypeValidator } from '../lib/literalValidators';
 import { openAgentValidator } from './automatedOpens';
@@ -358,9 +361,12 @@ export const transitionByProviderMessageId = internalMutation({
 		if (!ref) return { ok: false, reason: 'send_not_found' };
 		// A Send whose completion threw is still `queued` with this id stamped on
 		// it. Replay that completion first, so the event lands on the state the
-		// provider already reported (#1195).
+		// provider already reported; if it still cannot replay, park a terminal
+		// event on the record for the replay to apply (#1195).
 		await replayRecordedCompletion(ctx, ref);
-		return await dispatch(ctx, ref, args.transition);
+		const outcome = await dispatch(ctx, ref, args.transition);
+		if (!outcome.ok) await parkFeedbackOnRecordedCompletion(ctx, ref, args.transition);
+		return outcome;
 	},
 });
 

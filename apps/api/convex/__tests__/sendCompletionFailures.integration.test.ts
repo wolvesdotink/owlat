@@ -6,7 +6,8 @@
  * the Send lifecycle throw inside the completion, the way #1184 did in
  * production, and pin what survives: the provider id on the queued Send, a
  * `sendCompletionFailures` row holding the outcome, a replay that moves the Send
- * exactly once, and the sweep that ends a queued Send no completion reached.
+ * exactly once, a provider event that arrives early and is applied after it,
+ * and records that go with an erased contact and age out.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -16,8 +17,9 @@ import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { createTestCampaign, createTestContact, createTestEmailSend } from './factories';
-import { REPLAY_MAX_ATTEMPTS } from '../delivery/sendCompletionFailures';
-import { STUCK_SEND_AGE_MS, STUCK_SEND_ERROR_CODE } from '../delivery/stuckSendSweep';
+import { REPLAY_MAX_ATTEMPTS, storableErrorText } from '../delivery/sendCompletionFailures';
+import { PURGE_BATCH_SIZE } from '../delivery/sendCompletionFailureAdmin';
+import { permanentlyDeleteContactWithRelations } from '../lib/contactMutations';
 import type * as EffectsModule from '../delivery/sendLifecycle/effects';
 
 // The fault: every lifecycle effect run throws while armed, as the activity
@@ -35,6 +37,7 @@ vi.mock('../delivery/sendLifecycle/effects', async (importOriginal) => {
 });
 
 const modules = import.meta.glob('../**/*.*s');
+const DAY = 24 * 60 * 60 * 1000;
 type T = TestConvex<typeof schema>;
 
 beforeEach(() => {
@@ -130,41 +133,75 @@ describe('completeSend when the lifecycle throws', () => {
 		expect(row?.result).toMatchObject({ kind: 'success', returnValue: { kind: 'accepted' } });
 	});
 
-	it('lets a bounce webhook resolve the Send and land once the fault is gone', async () => {
+	it('keeps an early bounce through a failed replay and applies it once the replay succeeds', async () => {
 		const t = convexTest(schema, modules);
 		const { campaignId, sendId } = await setupQueuedSend(t);
+		const contactEmail = (await t.run((ctx) => ctx.db.get(sendId)))!.contactEmail;
 		fault.isArmed = true;
 		await t.mutation(
 			internal.delivery.sendCompletion.completeSend,
 			acceptedCompletion(sendId, 'ses-2')
 		);
 
+		// Still faulty: the webhook finds the Send, its replay fails again and
+		// spends no cron attempt, and the lifecycle refuses the bounce against
+		// `queued`. The bounce is parked on the record, once, even when the
+		// provider delivers it twice.
 		const bounce = {
 			providerMessageId: 'ses-2',
 			transition: { to: 'bounced' as const, at: Date.now(), bounceType: 'hard' as const },
 		};
-		// Still faulty: the webhook finds the Send, the replay fails again and
-		// spends no cron attempt, and the record stays open.
 		const early = await t.mutation(
 			internal.delivery.sendLifecycle.transitionByProviderMessageId,
 			bounce
 		);
+		expect(early).toMatchObject({ ok: false });
 		expect(early).not.toEqual({ ok: false, reason: 'send_not_found' });
-		expect((await failureRows(t))[0]).toMatchObject({ status: 'open', replayAttempts: 0 });
+		await t.mutation(internal.delivery.sendLifecycle.transitionByProviderMessageId, bounce);
+		const [parked] = await failureRows(t);
+		expect(parked).toMatchObject({ status: 'open', replayAttempts: 0 });
+		expect(parked?.pendingFeedback).toHaveLength(1);
 
+		// The fault is fixed and the replay runs. The bounce is never sent again.
 		fault.isArmed = false;
-		const late = await t.mutation(
-			internal.delivery.sendLifecycle.transitionByProviderMessageId,
-			bounce
-		);
-		expect(late).toMatchObject({ ok: true, from: 'sent', to: 'bounced' });
+		expect(
+			await t.mutation(internal.delivery.sendCompletionFailures.replayCompletionFailure, {
+				failureId: parked!._id,
+			})
+		).toBe('replayed');
+
 		expect((await t.run((ctx) => ctx.db.get(sendId)))?.status).toBe('bounced');
 		expect(await statsSent(t, campaignId)).toBe(1);
-		expect((await failureRows(t))[0]).toMatchObject({
-			status: 'resolved',
-			resolution: 'replayed',
+		const blocked = await t.run((ctx) =>
+			ctx.db
+				.query('blockedEmails')
+				.withIndex('by_email', (q) => q.eq('email', contactEmail))
+				.first()
+		);
+		expect(blocked).not.toBeNull();
+		const [resolved] = await failureRows(t);
+		expect(resolved).toMatchObject({ status: 'resolved', resolution: 'replayed' });
+		expect(resolved?.result).toBeUndefined();
+		expect(resolved?.pendingFeedback).toBeUndefined();
+	});
+
+	it('replays the completion before a provider event that arrives after the fix', async () => {
+		const t = convexTest(schema, modules);
+		const { campaignId, sendId } = await setupQueuedSend(t);
+		fault.isArmed = true;
+		await t.mutation(
+			internal.delivery.sendCompletion.completeSend,
+			acceptedCompletion(sendId, 'ses-2b')
+		);
+		fault.isArmed = false;
+
+		const late = await t.mutation(internal.delivery.sendLifecycle.transitionByProviderMessageId, {
+			providerMessageId: 'ses-2b',
+			transition: { to: 'bounced', at: Date.now(), bounceType: 'hard' },
 		});
-		expect((await failureRows(t))[0]?.result).toBeUndefined();
+		expect(late).toMatchObject({ ok: true, from: 'sent', to: 'bounced' });
+		expect(await statsSent(t, campaignId)).toBe(1);
+		expect((await failureRows(t))[0]).toMatchObject({ status: 'resolved' });
 	});
 
 	it('records an MTA identity conflict instead of losing it', async () => {
@@ -275,13 +312,13 @@ describe('replaying a recorded completion', () => {
 		vi.setSystemTime(Date.now() + 7 * 60 * 60 * 1000);
 		expect(await t.mutation(replay, { failureId, trigger: 'cron' })).toBe('skipped');
 
-		const status = await t.query(internal.delivery.sendCompletionFailures.status, {});
+		const status = await t.query(internal.delivery.sendCompletionFailureAdmin.status, {});
 		expect(status).toMatchObject({ open: 0, exhausted: 1 });
 		expect(status.sample[0]).toMatchObject({ sendId, providerMessageId: 'ses-5' });
 
 		fault.isArmed = false;
 		await t.mutation(
-			internal.delivery.sendCompletionFailures.reopenExhaustedCompletionFailures,
+			internal.delivery.sendCompletionFailureAdmin.reopenExhaustedCompletionFailures,
 			{}
 		);
 		const scheduled = await t.mutation(
@@ -295,26 +332,131 @@ describe('replaying a recorded completion', () => {
 	});
 });
 
-describe('stuck queued Send sweep', () => {
-	it('ends a queued Send with no provider id past the deadline so its campaign completes', async () => {
-		vi.useFakeTimers({ toFake: ['Date'] });
+describe('contact erasure', () => {
+	function deferral(sendId: Id<'emailSends'>, contactId: Id<'contacts'>, email: string) {
+		return {
+			workId: `defer-${sendId}` as WorkId,
+			context: { sendRef: { kind: 'campaign' as const, id: sendId } },
+			result: {
+				kind: 'success' as const,
+				returnValue: {
+					kind: 'deferred',
+					deferralOrigin: 'local',
+					retryAfterMs: 60_000,
+					envelopeInput: {
+						kind: 'campaign',
+						to: email,
+						from: 'sender@example.com',
+						template: { subject: 'Private details', htmlContent: '<p>Private details</p>' },
+						contactInfo: { contactId, email, firstName: 'Private name' },
+						emailSendId: sendId,
+					},
+					// Past the delivery deadline, so the arm terminalizes and the fault throws.
+					retryState: {
+						attempt: 1,
+						startedAt: Date.now() - 5 * DAY,
+						idempotencyKey: `send_${sendId}`,
+					},
+				},
+			},
+		};
+	}
+
+	async function recordDeferralFailure(t: T) {
+		const { sendId } = await setupQueuedSend(t);
+		const send = (await t.run((ctx) => ctx.db.get(sendId)))!;
+		fault.isArmed = true;
+		await t.mutation(
+			internal.delivery.sendCompletion.completeSend,
+			deferral(sendId, send.contactId, send.contactEmail)
+		);
+		fault.isArmed = false;
+		expect(JSON.stringify(await failureRows(t))).toContain(send.contactEmail);
+		return { sendId, contactId: send.contactId, email: send.contactEmail };
+	}
+
+	it('deletes the records of a Send the inline erasure scrubs', async () => {
 		const t = convexTest(schema, modules);
-		const stuck = await setupQueuedSend(t);
-		const waiting = await setupQueuedSend(t, { providerMessageId: 'ses-waiting' });
+		const { sendId, contactId, email } = await recordDeferralFailure(t);
 
-		vi.setSystemTime(Date.now() + STUCK_SEND_AGE_MS - 60_000);
-		const young = await setupQueuedSend(t);
-		vi.setSystemTime(Date.now() + 2 * 60_000);
+		await t.run((ctx) =>
+			permanentlyDeleteContactWithRelations(ctx, contactId, { decrementCount: false })
+		);
 
-		await t.mutation(internal.delivery.stuckSendSweep.sweepStuckQueuedSends, {});
+		expect((await t.run((ctx) => ctx.db.get(sendId)))?.contactEmail).toBe('[erased]');
+		expect(await failureRows(t)).toHaveLength(0);
+
+		// A late `onComplete` for the erased Send records nothing.
+		fault.isArmed = true;
+		await t.mutation(
+			internal.delivery.sendCompletion.completeSend,
+			deferral(sendId, contactId, email)
+		);
+		expect(await failureRows(t)).toHaveLength(0);
+	});
+
+	it('deletes the records of a Send the erasure walker scrubs', async () => {
+		const t = convexTest(schema, modules);
+		const { contactId } = await recordDeferralFailure(t);
+		await t.run((ctx) => ctx.db.patch(contactId, { deletedAt: Date.now() - 31 * DAY }));
+
+		await t.mutation(internal.contacts.contacts.cleanupSoftDeletedContacts, {});
+		const job = await t.run((ctx) =>
+			ctx.db
+				.query('contactErasureJobs')
+				.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+				.first()
+		);
+		for (let i = 0; i < 20; i++) {
+			if ((await t.mutation(internal.contacts.erasure.walker.tick, { jobId: job!._id })) !== 'more')
+				break;
+		}
+		expect(await t.run((ctx) => ctx.db.get(contactId))).toBeNull();
+		expect(await failureRows(t)).toHaveLength(0);
+	});
+});
+
+describe('record retention', () => {
+	it('drains a purge backlog larger than one batch, keeping recent and open records', async () => {
+		const t = convexTest(schema, modules);
+		const { sendId } = await setupQueuedSend(t);
+		const now = Date.now();
+		const row = (status: 'resolved' | 'exhausted' | 'open', lastFailedAt: number, i: number) => ({
+			sendRef: { kind: 'campaign' as const, id: sendId },
+			workId: `${status}-${lastFailedAt}-${i}`,
+			status,
+			outcomeKind: 'accepted',
+			lastError: 'old error',
+			replayAttempts: 0,
+			firstFailedAt: lastFailedAt,
+			lastFailedAt,
+		});
+		await t.run(async (ctx) => {
+			for (let i = 0; i < PURGE_BATCH_SIZE + 1; i++) {
+				await ctx.db.insert('sendCompletionFailures', row('resolved', now - 31 * DAY, i));
+			}
+			await ctx.db.insert('sendCompletionFailures', row('exhausted', now - 91 * DAY, 0));
+			await ctx.db.insert('sendCompletionFailures', row('exhausted', now - 31 * DAY, 0));
+			await ctx.db.insert('sendCompletionFailures', row('resolved', now - DAY, 0));
+			await ctx.db.insert('sendCompletionFailures', row('open', now - 91 * DAY, 0));
+		});
+
+		await t.mutation(internal.delivery.sendCompletionFailureAdmin.purgeCompletionFailures, {});
 		await t.finishAllScheduledFunctions(() => {});
 
-		expect(await t.run((ctx) => ctx.db.get(stuck.sendId))).toMatchObject({
-			status: 'failed',
-			errorCode: STUCK_SEND_ERROR_CODE,
-		});
-		expect((await t.run((ctx) => ctx.db.get(stuck.campaignId)))?.status).toBe('sent');
-		expect((await t.run((ctx) => ctx.db.get(waiting.sendId)))?.status).toBe('queued');
-		expect((await t.run((ctx) => ctx.db.get(young.sendId)))?.status).toBe('queued');
+		const left = (await failureRows(t)).map(
+			(r) => `${r.status}:${Math.round((now - r.lastFailedAt) / DAY)}`
+		);
+		expect(left.sort()).toEqual(['exhausted:31', 'open:91', 'resolved:1']);
+	});
+});
+
+describe('stored error text', () => {
+	it('keeps the first line only, with addresses redacted', () => {
+		const error = new Error(
+			'Failed to insert into contactActivities for erase-me@example.com\n\nObject: {email: "erase-me@example.com", firstName: "Private"}'
+		);
+		const text = storableErrorText(error);
+		expect(text).toBe('Failed to insert into contactActivities for [address]');
 	});
 });

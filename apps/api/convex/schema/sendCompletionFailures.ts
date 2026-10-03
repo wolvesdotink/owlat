@@ -1,5 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { bounceTypeValidator } from '../lib/literalValidators';
 import { countableSendRefValidator } from '../lib/validators/send';
 
 /**
@@ -13,6 +14,33 @@ export const workpoolRunResultValidator = v.union(
 	v.object({ kind: v.literal('success'), returnValue: v.any() }),
 	v.object({ kind: v.literal('failed'), error: v.string() }),
 	v.object({ kind: v.literal('canceled') })
+);
+
+/**
+ * Provider feedback that arrived while the completion was still unrecorded.
+ *
+ * The Send is `queued` until its completion replays, and the lifecycle refuses
+ * a terminal provider event against `queued` (`queued -> bounced` is not an
+ * edge). Rather than drop the event, the webhook path parks it here and the
+ * replay applies it right after the completion, in the same transaction. Only
+ * the terminal and delivery transitions are parked: opens and clicks are
+ * engagement counters a provider does not hold back for us.
+ */
+export const parkedFeedbackTransitionValidator = v.union(
+	v.object({
+		to: v.literal('bounced'),
+		at: v.number(),
+		bounceType: bounceTypeValidator,
+		bounceMessage: v.optional(v.string()),
+	}),
+	v.object({ to: v.literal('complained'), at: v.number() }),
+	v.object({ to: v.literal('delivered'), at: v.number() }),
+	v.object({
+		to: v.literal('failed'),
+		at: v.number(),
+		errorMessage: v.string(),
+		errorCode: v.string(),
+	})
 );
 
 export const sendCompletionFailureStatusValidator = v.union(
@@ -32,12 +60,15 @@ export const sendCompletionFailureStatusValidator = v.union(
  * provider's message id exists) is gone. `delivery/sendCompletion.ts` catches
  * that failure and writes one row here instead, in the same transaction that
  * stamps the provider identity onto the still-queued Send. Rows are replayed by
- * `delivery/sendCompletionFailures.ts` and purged 30 days after they resolve.
+ * `delivery/sendCompletionFailures.ts`.
  *
  * `result` carries the worker outcome verbatim, so a replay runs exactly the
  * completion that failed. A deferral's outcome includes its envelope (the
  * recipient and the rendered message), so the payload is dropped as soon as the
- * row resolves; the summary columns stay for the audit trail.
+ * row resolves; the summary columns stay for the audit trail. Contact erasure
+ * deletes a Send's rows when it scrubs the Send, and no row is written for a
+ * Send that is already soft-deleted. Resolved rows are purged 30 days after
+ * their last failure, exhausted ones after 90.
  */
 export const sendCompletionFailureTables = {
 	sendCompletionFailures: defineTable({
@@ -54,8 +85,12 @@ export const sendCompletionFailureTables = {
 		providerType: v.optional(v.string()),
 		status: sendCompletionFailureStatusValidator,
 		resolution: v.optional(v.union(v.literal('replayed'), v.literal('superseded'))),
-		// The latest error, clamped.
+		// The latest error: its first line, addresses redacted, clamped.
 		lastError: v.string(),
+		// Provider events that arrived before the completion could be replayed.
+		pendingFeedback: v.optional(
+			v.array(v.object({ transition: parkedFeedbackTransitionValidator, receivedAt: v.number() }))
+		),
 		// Cron replays only; a webhook or operator replay does not spend the cap.
 		replayAttempts: v.number(),
 		firstFailedAt: v.number(),
@@ -64,7 +99,7 @@ export const sendCompletionFailureTables = {
 		resolvedAt: v.optional(v.number()),
 	})
 		.index('by_status_and_next_replay', ['status', 'nextReplayAt'])
-		.index('by_status_and_resolved_at', ['status', 'resolvedAt'])
+		.index('by_status_and_last_failed_at', ['status', 'lastFailedAt'])
 		.index('by_work_id', ['workId'])
 		.index('by_send', ['sendRef.id']),
 };

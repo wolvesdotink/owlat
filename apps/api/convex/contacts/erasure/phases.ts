@@ -19,6 +19,7 @@ import type { Doc, Id, TableNames } from '../../_generated/dataModel';
 import { decrementContactCount } from '../../lib/contactCountHelpers';
 import { recordContactGrowth } from '../growthCounters';
 import { deleteAutomationRun } from '../../automations/runDeletion';
+import { deleteCompletionFailuresForSend } from '../../delivery/sendCompletionFailures';
 import type { ErasureBudget } from './budget';
 import { CONTACT_ERASURE_PHASES, type ContactErasurePhase } from './phaseCatalog';
 import {
@@ -115,7 +116,12 @@ function scrubSends<T extends SendTable>(table: T, scrub: () => Partial<Doc<T>>)
 			ctx.db.query(sendTable).withIndex('by_contact', (q) => q.eq('contactId', contactId));
 		const scrubOne = async (send: Doc<SendTable>): Promise<void> => {
 			budget.charge(send);
-			if (!isErasedSend(send)) await ctx.db.patch(send._id, scrub() as never);
+			if (isErasedSend(send)) return;
+			await ctx.db.patch(send._id, scrub() as never);
+			// A recorded completion that threw can hold the recipient, their name and
+			// the message (#1195). It goes with the scrub; once the Send is
+			// soft-deleted, a late completion records nothing for it.
+			for (const row of await deleteCompletionFailuresForSend(ctx, send._id)) budget.charge(row);
 		};
 		if (mode === 'inline') {
 			for await (const send of query()) await scrubOne(send);
