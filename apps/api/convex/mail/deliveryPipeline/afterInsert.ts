@@ -18,10 +18,12 @@ import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { clearNeedsReplyOnOwnerReply, scheduleNeedsReplyClassify } from '../needsReply';
 import { isFromMailboxOwner } from '../needsReplyHeuristic';
+import { isPersonalMailbox } from '../permissions';
 import { enqueueCategoryCheck } from '../categoryArrival';
 import { clearThreadFollowUp } from '../followUps';
 import { clearSnoozeUntilReplyForThread } from '../snooze';
 import { shouldExtractLiveMessage } from '../liveKnowledge';
+import { enqueuePush } from '../../push/events';
 import { queuesNeedsReplyCheck, type InboundOrigin } from './insert';
 
 export type { InboundOrigin };
@@ -51,6 +53,9 @@ const NOT_A_REPLY_ROLES: ReadonlySet<string> = new Set(['spam', 'trash', 'sent',
  *   - Knowledge extraction, under the same conditions (`../liveKnowledge`).
  *     A backfill is history, which a mailbox import's indexing sweep covers.
  *   - The owner's own reply settles the thread's Reply Queue row.
+ *   - Web Push to the owner of a personal mailbox, for live unread mail from
+ *     someone else that stayed in the inbox (`../../push/`). Whether it
+ *     actually notifies — scope, mute, quiet hours — is the sender's call.
  */
 export async function runPostInsertInboundEffects(
 	ctx: MutationCtx,
@@ -82,6 +87,14 @@ export async function runPostInsertInboundEffects(
 	if (isLive && !(folder.role !== undefined && NOT_A_REPLY_ROLES.has(folder.role))) {
 		const mailbox = await ctx.db.get(delivered.mailboxId);
 		if (mailbox && !isFromMailboxOwner(delivered, mailbox.address)) {
+			if (
+				folder.role === 'inbox' &&
+				delivered.folderId === folder._id &&
+				!delivered.flagSeen &&
+				isPersonalMailbox(mailbox)
+			) {
+				await enqueuePush(ctx, mailbox.userId, { kind: 'mail', messageId });
+			}
 			await clearThreadFollowUp(ctx, delivered.threadId);
 			await clearSnoozeUntilReplyForThread(ctx, delivered.threadId, Date.now());
 			if (

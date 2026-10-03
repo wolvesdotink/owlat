@@ -308,6 +308,9 @@ export const TENANT_TABLES = [
 	// ── Dashboard & visualizations ──
 	'visualizations',
 	'dashboardLayouts',
+	// Web Push devices of the workspace's members (push/): their keys would
+	// otherwise keep a capability to notify people who are no longer here.
+	'pushSubscriptions',
 
 	// ── Files & media (junction before parent) ──
 	'mediaAssets',

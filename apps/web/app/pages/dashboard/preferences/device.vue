@@ -11,8 +11,8 @@
  * `/desktop/settings` is a redirect.
  *
  * Every section self-hides (the pattern `PostboxOfflineSettings` already used):
- * a browser sees only the offline cache, the desktop app sees the lot, and the
- * page itself is gated out of the registry when neither applies. The section
+ * a browser sees push notifications and the offline cache, the desktop app sees
+ * the lot, and the page itself is gated out of the registry when neither applies. The section
  * `id`s are the settings registry's control anchors, so a palette deep link
  * ("notify me about", "launch at login") lands on the right card.
  */
@@ -66,6 +66,10 @@ async function confirmRemoveWorkspace() {
 		<p class="mb-6 text-text-secondary">
 			{{ t('dashboard.preferences.device.intro') }}
 		</p>
+
+		<!-- Web Push: this browser or installed web app. Hides itself on the
+		     desktop app and while the server has no VAPID keys. -->
+		<PreferencesWebPush v-if="!isDesktop" />
 
 		<!-- Offline read cache: device-local, never synced. Any browser. -->
 		<div v-if="hasMail" id="offline" class="scroll-mt-6">

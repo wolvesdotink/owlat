@@ -262,6 +262,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'coalesceBatches',
 	'visualizations',
 	'dashboardLayouts',
+	'pushSubscriptions',
 	'connectedApps',
 	'pluginStorageEntries',
 	'pluginStorageUsage',

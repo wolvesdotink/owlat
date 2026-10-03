@@ -17,19 +17,26 @@
  * without mounting the Convex-backed settings query.
  */
 
-export type PostboxNotifyAbout = 'everything' | 'people-important' | 'nothing';
+import {
+	defaultNotifyAbout,
+	NOTIFY_ABOUT_OPTIONS,
+	resolveNotifyAbout,
+	type NotifyAbout,
+} from '@owlat/shared/notificationRules';
+
+/*
+ * The scope vocabulary and its normalisation live in
+ * `@owlat/shared/notificationRules`, because the server-sent Web Push applies
+ * the same rule (apps/api/convex/push/). These are the web app's names for it.
+ */
+export type PostboxNotifyAbout = NotifyAbout;
 
 /**
  * Every scope, in the order a picker offers them. VALUES ONLY — a label pinned
  * here would be English forever: the extracted surfaces resolve their labels
- * through the message catalog, and a surface that isn't extracted yet keeps its
- * English copy next to the rest of its own hardcoded copy.
+ * through the message catalog.
  */
-export const POSTBOX_NOTIFY_ABOUT_OPTIONS: readonly PostboxNotifyAbout[] = [
-	'everything',
-	'people-important',
-	'nothing',
-];
+export const POSTBOX_NOTIFY_ABOUT_OPTIONS: readonly PostboxNotifyAbout[] = NOTIFY_ABOUT_OPTIONS;
 
 /**
  * Default scope. Once smart categories exist we prefer the quieter
@@ -37,7 +44,7 @@ export const POSTBOX_NOTIFY_ABOUT_OPTIONS: readonly PostboxNotifyAbout[] = [
  * defaults to 'everything' so a fresh install still surfaces new mail.
  */
 export function defaultPostboxNotifyAbout(categoriesLive: boolean): PostboxNotifyAbout {
-	return categoriesLive ? 'people-important' : 'everything';
+	return defaultNotifyAbout(categoriesLive);
 }
 
 /** Normalise a stored/unknown value to a valid scope, defaulting safely. */
@@ -45,8 +52,5 @@ export function resolvePostboxNotifyAbout(
 	value: string | undefined | null,
 	categoriesLive: boolean
 ): PostboxNotifyAbout {
-	if (value === 'everything' || value === 'people-important' || value === 'nothing') {
-		return value;
-	}
-	return defaultPostboxNotifyAbout(categoriesLive);
+	return resolveNotifyAbout(value, categoriesLive);
 }

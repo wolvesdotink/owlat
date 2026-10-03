@@ -13,7 +13,7 @@
  * `crypto.getRandomValues` — stable across the Bun and Node runtimes.
  */
 
-import { webcrypto } from 'node:crypto';
+import { generateKeyPairSync, webcrypto } from 'node:crypto';
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
@@ -82,6 +82,24 @@ export function generateHexSecret(byteLength = 32): string {
 }
 
 /**
+ * Generate a Web Push VAPID key pair (RFC 8292): an ECDSA P-256 key whose
+ * public half is the uncompressed point (65 bytes) and whose private half is
+ * the raw 32-byte scalar, both base64url without padding — the encoding
+ * browsers take as `applicationServerKey` and the push sender in
+ * `apps/api/convex/lib/webPush.ts` imports.
+ */
+function generateVapidKeyPair(): { publicKey: string; privateKey: string } {
+	const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+	const jwk = privateKey.export({ format: 'jwk' });
+	const x = Buffer.from(jwk.x ?? '', 'base64url');
+	const y = Buffer.from(jwk.y ?? '', 'base64url');
+	return {
+		publicKey: Buffer.concat([Buffer.from([0x04]), x, y]).toString('base64url'),
+		privateKey: jwk.d ?? '',
+	};
+}
+
+/**
  * Generate the full set of secrets a fresh install needs, in one call.
  * Missing keys in the existing env are filled in; provided keys are preserved
  * (idempotent). The single source of truth for setup-time secret formats,
@@ -130,6 +148,14 @@ export function ensureSecrets(existing: Record<string, string>): Record<string, 
 		if (!out[key] || (key === 'BOUNCE_VERP_KEY' && isKnownPlaceholderSecret(out[key]))) {
 			out[key] = gen();
 		}
+	}
+	// Web Push signs with a key PAIR, so the two halves are generated together
+	// and only when both are absent: half a pair is an operator's hand edit,
+	// and replacing the other half would silently break every subscribed device.
+	if (!out['VAPID_PUBLIC_KEY'] && !out['VAPID_PRIVATE_KEY']) {
+		const vapid = generateVapidKeyPair();
+		out['VAPID_PUBLIC_KEY'] = vapid.publicKey;
+		out['VAPID_PRIVATE_KEY'] = vapid.privateKey;
 	}
 	return out;
 }

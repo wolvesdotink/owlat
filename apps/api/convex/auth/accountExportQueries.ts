@@ -441,6 +441,9 @@ export const getPersonalExportCounts = internalQuery({
 		const bookings = await boundedCount(
 			ctx.db.query('bookings').withIndex('by_user_and_start', (q) => q.eq('userId', args.userId))
 		);
+		const pushDevices = await boundedCount(
+			ctx.db.query('pushSubscriptions').withIndex('by_user', (q) => q.eq('userId', args.userId))
+		);
 
 		return [
 			{ resource: 'mailboxes' as const, count: mailboxes.length, isCapped: false },
@@ -472,6 +475,11 @@ export const getPersonalExportCounts = internalQuery({
 				resource: 'savedReplies' as const,
 				count: savedReplies.count,
 				isCapped: savedReplies.isCapped,
+			},
+			{
+				resource: 'pushSubscriptions' as const,
+				count: pushDevices.count,
+				isCapped: pushDevices.isCapped,
 			},
 		];
 	},

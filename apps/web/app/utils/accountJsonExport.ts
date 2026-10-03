@@ -188,6 +188,7 @@ export async function writeAccountJsonExport(
 					['bookingPages', jsonArray(accountExportRowWriters(context, 'bookingPages'))],
 					['bookings', jsonArray(accountExportRowWriters(context, 'bookings'))],
 					['savedReplies', jsonArray(accountExportRowWriters(context, 'savedReplies'))],
+					['pushSubscriptions', jsonArray(accountExportRowWriters(context, 'pushSubscriptions'))],
 				]),
 			],
 		]);

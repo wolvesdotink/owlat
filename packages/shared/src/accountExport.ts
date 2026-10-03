@@ -28,6 +28,7 @@ export const ACCOUNT_EXPORT_PERSONAL_RESOURCES = [
 	'bookingPages',
 	'bookings',
 	'savedReplies',
+	'pushSubscriptions',
 ] as const;
 
 export type AccountExportPersonalResource = (typeof ACCOUNT_EXPORT_PERSONAL_RESOURCES)[number];

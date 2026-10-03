@@ -20,6 +20,7 @@ import { recordAutonomyFeedback, resolveReplyCollisionHold } from './decisionFee
 import { appendDraftRevision } from './draftRevisions';
 import { assertReplyAttachmentsReady } from './replyAttachmentStore';
 import { assertNoAnswerGaps } from '../mail/ai/composeDraftStore';
+import { enqueuePush } from '../push/events';
 
 /**
  * Approve an agent-generated draft for sending.
@@ -264,13 +265,15 @@ export const assignThread = adminMutation({
 			const thread = await ctx.db.get(args.threadId);
 			const actorProfile = await loadProfileSummary(ctx, actorId);
 			const assignedByName = actorProfile.name?.trim() || actorProfile.email || 'A teammate';
-			await ctx.db.insert('inboxAssignmentNotices', {
+			const noticeId = await ctx.db.insert('inboxAssignmentNotices', {
 				userId: args.assignedTo,
 				threadId: args.threadId,
 				subject: thread?.subject ?? 'No subject',
 				assignedByName,
 				createdAt: Date.now(),
 			});
+			// …and on their phone or closed browser, when they turned Web Push on.
+			await enqueuePush(ctx, args.assignedTo, { kind: 'assignment', noticeId });
 		}
 
 		return { success: true };

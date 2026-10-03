@@ -7,8 +7,9 @@
  * in `~/lib/desktop/notificationRules` beside the rest of the toast matrix.
  *
  * The two minute fields are minutes past LOCAL midnight (0..1439), not an
- * instant: "quiet from 22:00" means 22:00 on the device the user is looking at,
- * which is why the window is evaluated client-side rather than by the server.
+ * instant: "quiet from 22:00" means 22:00 on the device the user is looking at.
+ * The desktop evaluates it against its own clock; Web Push evaluates it on the
+ * server against the time zone each subscribed device reported.
  * A window whose end is at or before its start wraps midnight (22:00 → 07:00).
  * `days` is the weekday mask the window STARTS on (0 = Sunday .. 6 = Saturday,
  * matching `Date.getDay()`), so a Friday-night window still covers Saturday's
@@ -18,29 +19,31 @@
  * quiet hours off keeps the window the user configured.
  */
 
-export interface PostboxQuietHours {
-	enabled: boolean;
-	/** Minutes past local midnight, 0..1439. */
-	startMinute: number;
-	/** Minutes past local midnight, 0..1439. */
-	endMinute: number;
-	/** Weekdays the window starts on, 0 = Sunday .. 6 = Saturday. */
-	days: number[];
-}
+import {
+	clampMinuteOfDay as clampSharedMinuteOfDay,
+	isQuietHoursArmed as isSharedQuietHoursArmed,
+	MINUTES_PER_DAY as SHARED_MINUTES_PER_DAY,
+	QUIET_HOURS_DEFAULT,
+	resolveQuietHours,
+	type QuietHours,
+} from '@owlat/shared/notificationRules';
 
-export const MINUTES_PER_DAY = 24 * 60;
+/*
+ * The window's shape, its normalisation and the "can it ever fire" check live
+ * in `@owlat/shared/notificationRules`, because the server-sent Web Push
+ * evaluates the same window (apps/api/convex/push/). This module keeps the web
+ * names plus the `<input type="time">` conversions only a form needs.
+ */
+export type PostboxQuietHours = QuietHours;
+
+export const MINUTES_PER_DAY = SHARED_MINUTES_PER_DAY;
 
 /**
  * What an unset preference reads as: OFF, with a sensible 22:00–07:00 every-day
  * window pre-filled so the first toggle does something useful. Because
  * `enabled` is false, an unset row is exactly today's behaviour.
  */
-export const POSTBOX_QUIET_HOURS_DEFAULT: PostboxQuietHours = {
-	enabled: false,
-	startMinute: 22 * 60,
-	endMinute: 7 * 60,
-	days: [0, 1, 2, 3, 4, 5, 6],
-};
+export const POSTBOX_QUIET_HOURS_DEFAULT: PostboxQuietHours = QUIET_HOURS_DEFAULT;
 
 /**
  * Weekday values in the order a Monday-first picker renders them. VALUES ONLY —
@@ -50,8 +53,7 @@ export const POSTBOX_WEEKDAY_ORDER: readonly number[] = [1, 2, 3, 4, 5, 6, 0];
 
 /** Clamp any number to a valid minute of the day, rounding to whole minutes. */
 export function clampMinuteOfDay(value: number): number {
-	if (!Number.isFinite(value)) return 0;
-	return Math.min(MINUTES_PER_DAY - 1, Math.max(0, Math.round(value)));
+	return clampSharedMinuteOfDay(value);
 }
 
 /** Minutes past midnight → the `HH:MM` an `<input type="time">` speaks. */
@@ -74,27 +76,7 @@ export function parseMinuteOfDay(value: string): number | null {
 
 /** Normalise a stored/unknown value to a usable window, defaulting safely. */
 export function resolvePostboxQuietHours(value: unknown): PostboxQuietHours {
-	if (!value || typeof value !== 'object') return POSTBOX_QUIET_HOURS_DEFAULT;
-	const raw = value as Partial<PostboxQuietHours>;
-	const days = Array.isArray(raw.days)
-		? // Dedupe + sort so the mask is order-independent and a stray 9 from a
-			// future client can't make a window "quiet" on a day that doesn't exist.
-			[...new Set(raw.days.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort(
-				(a, b) => a - b
-			)
-		: POSTBOX_QUIET_HOURS_DEFAULT.days;
-	return {
-		enabled: raw.enabled === true,
-		startMinute: clampMinuteOfDay(
-			typeof raw.startMinute === 'number'
-				? raw.startMinute
-				: POSTBOX_QUIET_HOURS_DEFAULT.startMinute
-		),
-		endMinute: clampMinuteOfDay(
-			typeof raw.endMinute === 'number' ? raw.endMinute : POSTBOX_QUIET_HOURS_DEFAULT.endMinute
-		),
-		days,
-	};
+	return resolveQuietHours(value);
 }
 
 /**
@@ -104,5 +86,5 @@ export function resolvePostboxQuietHours(value: unknown): PostboxQuietHours {
  * pretending it is armed.
  */
 export function isQuietHoursArmed(q: PostboxQuietHours): boolean {
-	return q.enabled && q.days.length > 0 && q.startMinute !== q.endMinute;
+	return isSharedQuietHoursArmed(q);
 }

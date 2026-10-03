@@ -48,6 +48,10 @@ const flag =
 export const hasMail: SettingsGate = (env) =>
 	env.isFeatureEnabled('postbox') || env.isFeatureEnabled('mail.external');
 const desktopOnly: SettingsGate = (env) => env.isDesktop;
+const browserOnly: SettingsGate = (env) => !env.isDesktop;
+/** Something on this instance can send a Web Push: mail, the shared inbox or chat. */
+const hasPushSource: SettingsGate = (env) =>
+	hasMail(env) || env.isFeatureEnabled('inbox') || env.isFeatureEnabled('chat');
 const all =
 	(...gates: readonly SettingsGate[]): SettingsGate =>
 	(env) =>
@@ -253,11 +257,12 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 		path: `${SETTINGS_ROOT}/device`,
 		icon: 'lucide:monitor',
 		section: 'device',
-		// Everything on this page is device-local: the offline read cache (any
-		// browser) plus the desktop app's own switches. Each section self-hides,
-		// and the page disappears entirely on an instance with neither.
-		gate: any(desktopOnly, hasMail),
+		// Everything on this page is device-local: Web Push and the offline read
+		// cache (any browser) plus the desktop app's own switches. Each section
+		// self-hides, and the page disappears entirely on an instance with none.
+		gate: any(desktopOnly, hasMail, all(browserOnly, hasPushSource)),
 		controls: [
+			control('pushNotifications', 'push', all(browserOnly, hasPushSource)),
 			control('offlineCache', 'offline', hasMail),
 			control('notifyAbout', 'notifications', all(desktopOnly, hasMail)),
 			control('quietHours', 'notifications', all(desktopOnly, hasMail)),

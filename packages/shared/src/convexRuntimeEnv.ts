@@ -239,6 +239,13 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'GOOGLE_OAUTH_CLIENT_ID',
 	'GOOGLE_OAUTH_CLIENT_SECRET',
 	'CALENDAR_TIMEZONE',
+	// Web Push VAPID key pair + contact subject, read by the push sender
+	// (apps/api/convex/push/) via getOptional(). Left in the compose `.env`
+	// alone, the deployment would never see the keys and the Preferences card
+	// would stay hidden.
+	'VAPID_PUBLIC_KEY',
+	'VAPID_PRIVATE_KEY',
+	'VAPID_SUBJECT',
 	// Microsoft SNDS "Automated Data Access" feed URLs, read at Convex function
 	// runtime by the SNDS poller via getOptional(). Without the push a self-hoster
 	// who sets it in .env would find getOptional('SNDS_DATA_FEED_URLS') always

@@ -181,6 +181,7 @@ export const MEMBER_RELATIONS: readonly MemberRelation[] = [
 	rel('threadReads', 'userId', 'delete', 'Read markers.'),
 	rel('inboxAssignmentNotices', 'userId', 'delete', 'Notices addressed to the member.'),
 	rel('dashboardLayouts', 'userId', 'delete', 'Personal layout.'),
+	rel('pushSubscriptions', 'userId', 'delete', 'The member’s Web Push devices and their keys.'),
 	rel(
 		'accountExportSessions',
 		'userId',

@@ -258,6 +258,10 @@
 			"types": "./src/appLocales.ts",
 			"import": "./src/appLocales.ts"
 		},
+		"./notificationRules": {
+			"types": "./src/notificationRules.ts",
+			"import": "./src/notificationRules.ts"
+		},
 		"./emailDefaults": {
 			"types": "./src/emailDefaults.ts",
 			"import": "./src/emailDefaults.ts"

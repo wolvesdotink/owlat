@@ -165,6 +165,15 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 30,
 	},
 
+	// "Send a test notification" in Preferences → This device (push/). Each one
+	// is an outbound request to a push service; a handful a minute is plenty for
+	// someone checking that their phone rings.
+	pushTestPerUser: {
+		kind: 'fixed window',
+		rate: 5,
+		period: MINUTE,
+	},
+
 	// User-triggered AI assistant / @assistant-in-chat turns. Each turn spends a
 	// capable-tier streaming LLM call plus tool round-trips, so cap per-user to
 	// stop a tight send loop from draining the LLM budget while leaving normal

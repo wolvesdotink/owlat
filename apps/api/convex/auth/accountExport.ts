@@ -478,6 +478,11 @@ export const exportUserDataPage = authedAction({
 			)) as PaginationResult<Record<string, unknown>>;
 			return serializeAccountExportPage(result);
 		}
+		if (args.resource === 'pushSubscriptions') {
+			const query = internal.auth.accountExportPushQueries.listPersonalPushSubscriptions;
+			const result = await ctx.runQuery(query, { userId: args.userId, paginationOpts });
+			return serializeAccountExportPage(result as PaginationResult<Record<string, unknown>>);
+		}
 		if (args.resource === 'threadNotes') {
 			const result = (await ctx.runQuery(
 				internal.auth.accountExportQueries.listPersonalThreadNotes,

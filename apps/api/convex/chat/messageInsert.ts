@@ -25,6 +25,10 @@ import {
 	isMailThreadDiscussion,
 } from './_helpers';
 import { resolveMentionsToMemberIds } from './mentions';
+import { enqueuePush } from '../push/events';
+
+/** A DM is a handful of people; past this many it is a channel in all but name. */
+const MAX_DM_PUSH_RECIPIENTS = 50;
 
 /**
  * Keep only the mentioned people who can read the room. Without this an
@@ -61,6 +65,7 @@ async function filterMentionableMembers(
 /**
  * Insert a human message into `room` and run its side effects:
  *  - a chatMentions row per resolved, room-readable @-mention (never the author)
+ *  - a Web Push for each mention and, in a DM, for every other participant
  *  - bumps chatRooms.lastMessageAt / messageCount
  *  - moves the author's chatRoomMembers.lastReadAt, when they have a row
  *    (mail-thread discussions have none)
@@ -105,6 +110,19 @@ export async function insertRoomMessage(
 			mentioningMemberId: authorId,
 			createdAt: now,
 		});
+		await enqueuePush(ctx, mentionedMemberId, { kind: 'chat', messageId, reason: 'mention' });
+	}
+
+	// A direct message is addressed to everyone else in it, mentioned or not.
+	if (room.kind === 'dm') {
+		const members = await ctx.db
+			.query('chatRoomMembers')
+			.withIndex('by_room', (q) => q.eq('roomId', room._id))
+			.take(MAX_DM_PUSH_RECIPIENTS);
+		for (const member of members) {
+			if (member.memberId === authorId || mentions.includes(member.memberId)) continue;
+			await enqueuePush(ctx, member.memberId, { kind: 'chat', messageId, reason: 'dm' });
+		}
 	}
 
 	// AGGREGATED: this module is the only writer of these fields.
