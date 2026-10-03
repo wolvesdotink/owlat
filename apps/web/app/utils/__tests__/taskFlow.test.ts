@@ -4,6 +4,8 @@ import {
 	formatTaskFlowEstimate,
 	orderTaskFlow,
 	summarizeTaskFlow,
+	TASK_FLOW_OUTCOMES,
+	taskFlowOutcome,
 	taskFlowKindRank,
 	type TaskFlowKind,
 	type TaskFlowOrderKey,
@@ -164,21 +166,59 @@ describe('estimateTaskFlowSeconds / formatTaskFlowEstimate', () => {
 	});
 });
 
+const outcomeKey = (outcome: string) => `components.agentTasks.agentTaskFlow.outcome.${outcome}`;
+
 describe('summarizeTaskFlow', () => {
-	it('joins non-zero tallies with a middot', () => {
+	it('carries one catalog key and count per outcome, in first-seen order (#1187)', () => {
 		expect(
 			summarizeTaskFlow([
-				{ label: 'answered', count: 3 },
+				{ label: 'replied', count: 3 },
 				{ label: 'approved', count: 2 },
 			])
-		).toBe('3 answered · 2 approved');
+		).toEqual([
+			{ key: outcomeKey('replied'), params: { count: 3 } },
+			{ key: outcomeKey('approved'), params: { count: 2 } },
+		]);
 	});
 	it('drops zero-count entries', () => {
 		expect(
 			summarizeTaskFlow([
-				{ label: 'answered', count: 0 },
+				{ label: 'replied', count: 0 },
 				{ label: 'approved', count: 1 },
 			])
-		).toBe('1 approved');
+		).toEqual([{ key: outcomeKey('approved'), params: { count: 1 } }]);
+		expect(summarizeTaskFlow([])).toEqual([]);
+	});
+	it('merges outcomes without copy of their own into completed', () => {
+		expect(
+			summarizeTaskFlow([
+				{ label: 'handled', count: 1 },
+				{ label: 'sent', count: 2 },
+				{ label: 'completed', count: 1 },
+				{ label: 'done', count: 2 },
+			])
+		).toEqual([
+			{ key: outcomeKey('completed'), params: { count: 4 } },
+			{ key: outcomeKey('sent'), params: { count: 2 } },
+		]);
+	});
+	it('has English and German copy for every outcome', () => {
+		const lookup = (catalog: unknown, key: string): unknown =>
+			key
+				.split('.')
+				.reduce<unknown>((node, part) => (node as Record<string, unknown>)?.[part], catalog);
+		for (const outcome of TASK_FLOW_OUTCOMES) {
+			for (const catalog of [en, de]) {
+				expect(lookup(catalog, outcomeKey(outcome))).toMatch(/\{count\}/);
+			}
+		}
+	});
+});
+
+describe('taskFlowOutcome', () => {
+	it('keeps a known outcome and maps anything else to completed', () => {
+		expect(taskFlowOutcome('archived')).toBe('archived');
+		expect(taskFlowOutcome('handled')).toBe('completed');
+		expect(taskFlowOutcome(undefined)).toBe('completed');
 	});
 });
