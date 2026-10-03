@@ -228,6 +228,9 @@ describe('start', () => {
 			options: [NOT_READY_OPTION],
 		});
 		expect(file!.attribution).toContain('example.org');
+		// The stored session carries the structured provenance the web words.
+		expect(file!.origin).toEqual({ kind: 'email', senderDomain: 'example.org' });
+		expect(po!.origin).toEqual(file!.origin);
 		expect(po).toMatchObject({ answerKind: 'choice', answer: { value: 'Yes', source: 'memory' } });
 		expect(payment).toMatchObject({ answerKind: 'date' });
 		expect(payment!.answer).toBeUndefined();

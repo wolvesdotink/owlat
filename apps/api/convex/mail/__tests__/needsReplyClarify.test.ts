@@ -82,6 +82,18 @@ describe('sanitizeClarificationQuestions', () => {
 		expect(out[0]!.options).toEqual(['Yes', 'No']);
 		expect(out[0]!.attribution).toContain('acme.com');
 		expect(out[0]!.attribution).toMatch(/never ask for your password/i);
+		expect(out[0]!.origin).toEqual({ kind: 'email', senderDomain: 'acme.com' });
+	});
+
+	it('stores the provenance without a domain when the sender address has none', () => {
+		const [question] = sanitizeClarificationQuestions(
+			[{ slotType: 'decision', text: 'Which date works?' }],
+			''
+		);
+		expect(question!.origin).toEqual({ kind: 'email' });
+		expect(question!.attribution).toBe(
+			'Generated from an email — Owlat will never ask for your password.'
+		);
 	});
 
 	it('flags credential-shaped text', () => {
@@ -104,6 +116,7 @@ describe('refineClarification', () => {
 		expect(result!.questions[0]!.text).toBe('Should we approve the refund?');
 		expect(result!.questions[0]!.options).toEqual(['Yes', 'No']);
 		expect(result!.questions[0]!.attribution).toContain('acme.com');
+		expect(result!.questions[0]!.origin).toEqual({ kind: 'email', senderDomain: 'acme.com' });
 		// The divergence stage was actually reached (3 candidate samples).
 		expect(mocks.runLlmText).toHaveBeenCalledTimes(3);
 	});

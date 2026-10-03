@@ -110,6 +110,16 @@ export const pendingClarificationValidator = v.object({
 });
 
 /**
+ * Where a question came from, for the trust line the web words in the reader's
+ * language ("Based on an email from acme.com. Owlat never asks for your
+ * password."). `senderDomain` is absent when the sender address has none.
+ */
+export const clarificationOriginValidator = v.object({
+	kind: v.literal('email'),
+	senderDomain: v.optional(v.string()),
+});
+
+/**
  * One Reply Queue clarification question (`mailThreads.needsReply.clarification`).
  * The Postbox-native loop: a sibling of `clarificationQuestionValidator` above,
  * which serves the inbound agent's `pendingClarification` instead. Differs in
@@ -122,8 +132,13 @@ export const needsReplyClarificationQuestionValidator = v.object({
 	slotType: v.string(),
 	// The question shown to the owner.
 	text: v.string(),
-	// Provenance + "Owlat will never ask for your password" promise.
+	// Provenance + "Owlat will never ask for your password" promise, as one
+	// English sentence. Still written for clients that predate `origin`.
 	attribution: v.string(),
+	// Structured provenance; the web builds the localized trust line from it.
+	// Absent on questions written before it existed: the web then reads the
+	// domain out of `attribution`.
+	origin: v.optional(clarificationOriginValidator),
 	// Suggested scoped answers rendered as one-tap chips (multiple
 	// choice); absent for a free-text-only slot.
 	options: v.optional(v.array(v.string())),
