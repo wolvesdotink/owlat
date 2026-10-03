@@ -19,7 +19,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AlignmentCheckId } from '@owlat/shared/deliverabilityAlignment';
 import { runAlignmentProbe } from '~/utils/transportAlignmentProbe';
 import { alignmentFindings, type WizardFinding } from '~/utils/transportWizard';
-import { ALIGNED_DNS, OWN_ARM, referenceArm, stubDoh, type TxtFixture } from './wizardHarness';
+import {
+	ALIGNED_DNS,
+	OWN_ARM,
+	referenceArm,
+	stubDoh,
+	type TxtFixture,
+} from '~/__tests__/transportWizardHarness';
 
 async function probe(
 	dns: TxtFixture,

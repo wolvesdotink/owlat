@@ -7,7 +7,12 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
-import { armsFixture, buttonByText, mountWizard, type WizardWrapper } from './wizardHarness';
+import {
+	armsFixture,
+	buttonByText,
+	mountWizard,
+	type WizardWrapper,
+} from '~/__tests__/transportWizardHarness';
 
 let wrapper: WizardWrapper | null = null;
 

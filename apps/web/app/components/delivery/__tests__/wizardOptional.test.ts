@@ -18,7 +18,7 @@ import {
 	skippingWizardImpact,
 } from '~/utils/transportWizard';
 import { deriveDeliveryReadiness, type ReadinessInput } from '~/utils/deliveryReadiness';
-import { buttonByText, localized, mountWizard } from './wizardHarness';
+import { buttonByText, localized, mountWizard } from '~/__tests__/transportWizardHarness';
 
 /** Words that would turn an offer into a chore. None may appear on the card. */
 const NAG_VOCABULARY = [

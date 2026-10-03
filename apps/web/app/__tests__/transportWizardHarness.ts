@@ -22,7 +22,7 @@ import type {
 import type { ReturnPathCapabilityValue } from '~/utils/transportWizard';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { resolveLocalized, type LocalizedText } from '~/utils/localizedText';
-import TransportConnectionWizard from '../TransportConnectionWizard.vue';
+import TransportConnectionWizard from '~/components/delivery/TransportConnectionWizard.vue';
 
 /**
  * THE REAL MESSAGE CATALOG, FOR EVERY SUITE THAT MOUNTS THROUGH THIS HARNESS.

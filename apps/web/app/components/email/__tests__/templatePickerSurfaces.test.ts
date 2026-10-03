@@ -18,7 +18,7 @@ import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
 import { useEmailTemplateById } from '~/composables/useEmailTemplateById';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { queryResult } from '~/__tests__/queryStubs';
-import { createTemplateServer, makeTemplates } from './templateServer';
+import { createTemplateServer, makeTemplates } from '~/__tests__/templateServer';
 
 const TEMPLATES = makeTemplates(150);
 

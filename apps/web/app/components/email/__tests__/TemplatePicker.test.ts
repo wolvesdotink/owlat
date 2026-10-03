@@ -14,7 +14,7 @@ import TemplatePicker from '../TemplatePicker.vue';
 import TemplateStatusBadge from '~/components/send/TemplateStatusBadge.vue';
 import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
-import { createTemplateServer, makeTemplates, type Template } from './templateServer';
+import { createTemplateServer, makeTemplates, type Template } from '~/__tests__/templateServer';
 
 const PAGE_SIZE = 25;
 const TEMPLATES = makeTemplates(150);

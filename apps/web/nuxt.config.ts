@@ -30,6 +30,13 @@ export default defineNuxtConfig({
 		compatibilityVersion: 4,
 	},
 
+	// Test helpers live in `__tests__/` folders next to the code they test, and
+	// Nuxt's default ignore only covers `*.test.*`/`*.spec.*` files: a helper
+	// under `pages/` became a route, one under `components/` a component.
+	// Nitro's route scan reads this list too (its `utils/` scan does not, see
+	// `nitro.imports` below).
+	ignore: ['**/__tests__/**'],
+
 	// NuxtLink prefetches on hover/focus, not on visibility (scripts/deliveryTuning.ts).
 	experimental: { defaults: { nuxtLink: NUXT_LINK_DEFAULTS } },
 
@@ -55,6 +62,12 @@ export default defineNuxtConfig({
 		rollupConfig: {
 			external: ['papaparse'],
 		},
+		// Every file under `server/utils/` is a server auto-import, and an external
+		// one imports (vitest, from a test helper) gets traced into
+		// `.output/server/node_modules` even when tree-shaking drops the code.
+		// This scan reads neither `ignore` nor `imports.exclude` (that one only
+		// filters which files get imports injected), so the filter goes here.
+		imports: { dirsScanOptions: { fileFilter: (file) => !/[\\/]__tests__[\\/]/.test(file) } },
 	},
 
 	modules: ['nuxt-security', '@nuxtjs/color-mode', '@nuxt/fonts', '@nuxt/icon', ...I18N_MODULES],

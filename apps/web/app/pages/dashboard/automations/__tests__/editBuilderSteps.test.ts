@@ -13,7 +13,7 @@ import { mount } from '@vue/test-utils';
 import { computed, ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { queryResult, paginatedResult } from '~/__tests__/queryStubs';
-import { dropdownStubs } from './editPageHarness';
+import { dropdownStubs } from '~/__tests__/automationEditPageHarness';
 
 Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 

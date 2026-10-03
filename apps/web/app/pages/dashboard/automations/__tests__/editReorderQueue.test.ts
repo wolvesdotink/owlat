@@ -18,7 +18,7 @@ import {
 	stubEditPage,
 	type EditPageWrapper,
 	type HarnessStep,
-} from './editPageHarness';
+} from '~/__tests__/automationEditPageHarness';
 
 type HeldSave = { stepOrder: string[]; settle: (ok: boolean) => void };
 type HeldAdd = { insertAtIndex?: number; settle: () => Promise<void> };

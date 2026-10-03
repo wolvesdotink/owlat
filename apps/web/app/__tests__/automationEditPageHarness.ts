@@ -117,7 +117,7 @@ export const dropdownStubs = {
 };
 
 export async function mountEditPage(stubs: Record<string, unknown> = {}) {
-	const Page = (await import('../[id]/edit.vue')).default;
+	const Page = (await import('~/pages/dashboard/automations/[id]/edit.vue')).default;
 	return mount(Page as never, {
 		attachTo: document.body,
 		global: {

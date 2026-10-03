@@ -9,7 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConvexHttpClient } from 'convex/browser';
 import { authedConvexClient, mapGateError } from '../authedConvexClient';
-import { installNitroGlobals, requestEvent } from './nitro';
+import { installNitroGlobals, requestEvent } from '../../__tests__/nitro';
 
 const CONVEX_URL = 'https://convex.example.com';
 const SITE_URL = 'https://owlat.example';

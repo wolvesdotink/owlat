@@ -23,7 +23,7 @@ import {
 	type TransportCredentialValues,
 } from '~/composables/setupWizardCredentials';
 import type { SmtpPreset } from '~/composables/useSetupWizard';
-import { localized, wizardStubs } from './wizardHarness';
+import { localized, wizardStubs } from '~/__tests__/transportWizardHarness';
 import { expectFullyLocalized } from '~/__tests__/i18n';
 
 /**
