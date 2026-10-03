@@ -283,6 +283,8 @@
 				"back": "Previous",
 				"backTitle": "Previous open task (←)",
 				"estimateLeft": "{estimate} left",
+				"estimateMinutes": "about {n} min",
+				"estimateSeconds": "about {n} sec",
 				"exit": "Exit",
 				"exitTitle": "Exit (Esc)",
 				"newCount": "+{count} new",

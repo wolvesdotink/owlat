@@ -29,7 +29,9 @@ const { queue, flow, filter, source } = session;
 
 const setFilter = (next: string) => session.setFilter(next);
 const current = computed(() => flow.current.value);
-const estimateLabel = computed(() => formatTaskFlowEstimate(flow.remainingSeconds.value));
+const estimateLabel = computed(() =>
+	localized(formatTaskFlowEstimate(flow.remainingSeconds.value))
+);
 // The current item is on its way to Answer mode: hold the skeleton rather than
 // flashing its card for a frame.
 const leavingForAnswerMode = computed(

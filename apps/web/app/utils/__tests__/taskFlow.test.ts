@@ -8,6 +8,8 @@ import {
 	type TaskFlowKind,
 	type TaskFlowOrderKey,
 } from '../taskFlow';
+import en from '~~/i18n/locales/en.json';
+import de from '~~/i18n/locales/de.json';
 
 interface Task {
 	id: string;
@@ -123,10 +125,42 @@ describe('estimateTaskFlowSeconds / formatTaskFlowEstimate', () => {
 		const b = estimateTaskFlowSeconds(['question', 'question']);
 		expect(b).toBe(a * 2);
 	});
-	it('formats minutes above 90s and seconds below', () => {
-		expect(formatTaskFlowEstimate(0)).toBe('');
-		expect(formatTaskFlowEstimate(45)).toMatch(/sec$/);
-		expect(formatTaskFlowEstimate(240)).toBe('about 4 min');
+	it('carries a catalog key and its count, never English words (#1187)', () => {
+		expect(formatTaskFlowEstimate(0)).toBeNull();
+		expect(formatTaskFlowEstimate(-5)).toBeNull();
+		// Under 90s: seconds, rounded to the nearest 15 and never below 1.
+		expect(formatTaskFlowEstimate(45)).toEqual({
+			key: 'components.agentTasks.agentTaskFlow.estimateSeconds',
+			params: { n: 45 },
+		});
+		expect(formatTaskFlowEstimate(5)).toEqual({
+			key: 'components.agentTasks.agentTaskFlow.estimateSeconds',
+			params: { n: 1 },
+		});
+		expect(formatTaskFlowEstimate(80)).toEqual({
+			key: 'components.agentTasks.agentTaskFlow.estimateSeconds',
+			params: { n: 75 },
+		});
+		// From 90s: whole minutes.
+		expect(formatTaskFlowEstimate(90)).toEqual({
+			key: 'components.agentTasks.agentTaskFlow.estimateMinutes',
+			params: { n: 2 },
+		});
+		expect(formatTaskFlowEstimate(240)).toEqual({
+			key: 'components.agentTasks.agentTaskFlow.estimateMinutes',
+			params: { n: 4 },
+		});
+	});
+
+	it('names keys the English and German catalogs carry', () => {
+		const lookup = (catalog: unknown, key: string): unknown =>
+			key
+				.split('.')
+				.reduce<unknown>((node, part) => (node as Record<string, unknown>)?.[part], catalog);
+		for (const seconds of [45, 240]) {
+			const { key } = formatTaskFlowEstimate(seconds) as { key: string };
+			for (const catalog of [en, de]) expect(lookup(catalog, key)).toMatch(/\{n\}/);
+		}
 	});
 });
 

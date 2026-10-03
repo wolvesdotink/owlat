@@ -283,6 +283,8 @@
 				"back": "Zurück",
 				"backTitle": "Vorherige offene Aufgabe (←)",
 				"estimateLeft": "noch {estimate}",
+				"estimateMinutes": "etwa {n} Min.",
+				"estimateSeconds": "etwa {n} Sek.",
 				"exit": "Beenden",
 				"exitTitle": "Beenden (Esc)",
 				"newCount": "+{count} neu",

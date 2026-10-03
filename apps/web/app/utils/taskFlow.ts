@@ -6,6 +6,7 @@
  * Review Queue stay separate flows over the same helpers).
  */
 
+import type { LocalizedText } from './localizedText';
 import { type BuiltInTaskFlowKind, taskCardRegistry } from './taskCardRegistry';
 
 /**
@@ -109,11 +110,24 @@ export function estimateTaskFlowSeconds(kinds: readonly TaskFlowKind[]): number 
 	return kinds.reduce((total, kind) => total + taskCardRegistry.estimateSeconds(kind), 0);
 }
 
-/** Human "about 4 min" / "about 40 sec" label for a remaining-seconds budget. */
-export function formatTaskFlowEstimate(seconds: number): string {
-	if (seconds <= 0) return '';
-	if (seconds < 90) return `about ${Math.max(1, Math.round(seconds / 15) * 15)} sec`;
-	return `about ${Math.round(seconds / 60)} min`;
+/**
+ * The remaining-time label ("about 40 sec" / "about 4 min") for a seconds
+ * budget, as a catalog key and its count: under 90s it rounds to the nearest 15 seconds, above that to whole
+ * minutes. Null when nothing is left. The caller translates it (`useLocalized`),
+ * since this module has no locale.
+ */
+export function formatTaskFlowEstimate(seconds: number): LocalizedText | null {
+	if (seconds <= 0) return null;
+	if (seconds < 90) {
+		return {
+			key: 'components.agentTasks.agentTaskFlow.estimateSeconds',
+			params: { n: Math.max(1, Math.round(seconds / 15) * 15) },
+		};
+	}
+	return {
+		key: 'components.agentTasks.agentTaskFlow.estimateMinutes',
+		params: { n: Math.round(seconds / 60) },
+	};
 }
 
 /** One tallied outcome for the end-state summary, e.g. { label: 'answered', count: 3 }. */
