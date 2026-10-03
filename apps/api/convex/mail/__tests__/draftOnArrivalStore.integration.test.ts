@@ -122,3 +122,48 @@ describe('loadForDraft only answers incoming mail', () => {
 		).toBeNull();
 	});
 });
+
+describe('loadForDraft hands the drafter the open clarification questions', () => {
+	it('returns a placeholder for every open question, file and non-file', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId } = await seedThread(
+			t,
+			[{ from: CUSTOMER, body: 'When can you deliver, and can you send the invoice?' }],
+			0
+		);
+		await t.run(async (ctx) => {
+			const thread = await ctx.db.get(threadId);
+			await ctx.db.patch(threadId, {
+				needsReply: {
+					...thread!.needsReply!,
+					clarification: {
+						isNeeded: true,
+						askedAt: Date.now(),
+						questions: [
+							{
+								id: 'q1',
+								slotType: 'date_time',
+								text: 'Which delivery date can you offer?',
+								attribution: 'Chris asked',
+							},
+							{
+								id: 'q2',
+								slotType: 'attachment',
+								text: 'Which invoice should go out?',
+								attribution: 'Chris asked',
+								answerKind: 'file',
+							},
+						],
+					},
+				},
+			});
+		});
+
+		const loaded = await t.query(internal.mail.ai.draftOnArrivalStore.loadForDraft, { threadId });
+
+		// The card is not answered yet: no confirmed facts, only placeholders.
+		expect(loaded?.clarificationQuestions).toBeUndefined();
+		expect(loaded?.questionGaps).toEqual(['[[Which delivery date can you offer]]']);
+		expect(loaded?.fileGaps).toEqual(['[[Which invoice should go out]]']);
+	});
+});

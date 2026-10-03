@@ -268,6 +268,7 @@ describe('buildDraftSystemPrompt — audience seam', () => {
 			toneInstruction: '',
 			signatureInstruction: '',
 			voiceSection: '',
+			hasRecallTool: true,
 		});
 		expect(org).toContain('draft email replies for an organization');
 		expect(org).toContain("Match the organization's communication style");
@@ -279,8 +280,75 @@ describe('buildDraftSystemPrompt — audience seam', () => {
 			toneInstruction: '',
 			signatureInstruction: '',
 			voiceSection: '',
+			hasRecallTool: false,
 		});
 		expect(personal).toContain('draft email replies for the mailbox owner');
 		expect(personal).toContain('untrusted email content delimited by');
+	});
+
+	it('names the [[...]] placeholder as the one way to mark a missing fact', () => {
+		const args = {
+			audience: 'the mailbox owner',
+			styleReference: "the owner's",
+			toneInstruction: '',
+			signatureInstruction: '',
+			voiceSection: '',
+		};
+		for (const hasRecallTool of [true, false]) {
+			const prompt = buildDraftSystemPrompt({ ...args, hasRecallTool });
+			expect(prompt).toContain('[[short description of\nwhat is missing]]');
+			expect(prompt).toContain('no notes in\nsingle brackets');
+			expect(prompt).not.toContain('leave the rest for a human reviewer');
+		}
+	});
+
+	it('only mentions recallKnowledge when the call passes that tool', () => {
+		const args = {
+			audience: 'the mailbox owner',
+			styleReference: "the owner's",
+			toneInstruction: '',
+			signatureInstruction: '',
+			voiceSection: '',
+		};
+		expect(buildDraftSystemPrompt({ ...args, hasRecallTool: true })).toContain('recallKnowledge');
+		expect(buildDraftSystemPrompt({ ...args, hasRecallTool: false })).not.toContain(
+			'recallKnowledge'
+		);
+	});
+});
+
+describe('runSharedDraft — reviewer notes become placeholders', () => {
+	it('rewrites a single-bracket note in the primary draft and the options', async () => {
+		runLlmTextMock.mockResolvedValueOnce({
+			text: 'Hallo Sam,\n\n[Bitte prüfen: Betrag von 67 € bestätigen]\n\nViele Grüße',
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
+		generateReplyOptionsMock.mockResolvedValueOnce({
+			replies: ['Kurz: [TODO Datum eintragen]', 'Ausführlich [1] bleibt.'],
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
+		const out = await runSharedDraft(fakeCtx, baseParams({ confidence: 0.5 }));
+		expect(out.draftBody).toBe(
+			'Hallo Sam,\n\n[[Bitte prüfen: Betrag von 67 € bestätigen]]\n\nViele Grüße'
+		);
+		expect(out.draftOptions).toEqual([
+			out.draftBody,
+			'Kurz: [[TODO Datum eintragen]]',
+			'Ausführlich [1] bleibt.',
+		]);
+	});
+
+	it('passes the tool flag through to the prompt the default strategy builds', async () => {
+		await runSharedDraft(fakeCtx, baseParams());
+		const plain = runLlmTextMock.mock.calls[0]![0] as { messages: { content: unknown }[] };
+		expect(JSON.stringify(plain.messages[0]!.content)).not.toContain('recallKnowledge');
+
+		await runSharedDraft(fakeCtx, baseParams({ tools: { recallKnowledge: {} as never } }));
+		const tooled = runLlmTextWithToolsMock.mock.calls[0]![0] as {
+			messages: { content: unknown }[];
+		};
+		expect(JSON.stringify(tooled.messages[0]!.content)).toContain('recallKnowledge');
 	});
 });

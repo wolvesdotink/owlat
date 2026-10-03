@@ -125,6 +125,7 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 			signatureInstruction: input.signatureInstruction,
 			voiceSection: input.voiceSection,
 			replyLanguage: safeLanguage(input.language),
+			hasRecallTool: true,
 		}),
 		classification: {
 			category: 'other',

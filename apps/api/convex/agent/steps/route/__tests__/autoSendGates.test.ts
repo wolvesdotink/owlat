@@ -93,6 +93,7 @@ describe('ordered core auto-send gate registry', () => {
 			'recipient_lock',
 			'outbound_injection',
 			'outbound_dlp',
+			'draft_gaps',
 			'handling_rules',
 		]);
 		expect(Object.isFrozen(PRE_AUTONOMY_GATE_IDS)).toBe(true);
@@ -340,6 +341,18 @@ describe('ordered core auto-send gate registry', () => {
 					rules: restrictiveRules,
 				},
 				reason: 'credential pattern',
+				calls: ['getMessage', 'getBudgetStatus', 'getAgentConfig'],
+			},
+			{
+				id: 'draft_gaps',
+				fixture: {
+					message: {
+						...cleanMessage,
+						draftResponse: 'Your refund of [[refund amount]] is on its way.',
+					},
+					rules: restrictiveRules,
+				},
+				reason: 'placeholder for a missing fact',
 				calls: ['getMessage', 'getBudgetStatus', 'getAgentConfig'],
 			},
 			{
