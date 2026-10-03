@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/mail-sync",
-	"version": "0.6.7",
+	"version": "0.6.8",
 	"private": true,
 	"description": "Owlat mail-sync worker. Connects out to users' external IMAP/SMTP accounts: syncs inbound mail in near-real-time (IMAP IDLE) and relays outbound sends.",
 	"homepage": "https://owlat.app",

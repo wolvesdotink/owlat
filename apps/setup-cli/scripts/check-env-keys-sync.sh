@@ -29,7 +29,8 @@ extract() {
 }
 
 # EnvKey union members: from `export type EnvKey =` to the terminating `;`.
-envkeys=$(awk '/export type EnvKey =/{f=1} f{print} f&&/;[[:space:]]*$/{exit}' "$ENV_TS" | extract)
+# Comments are stripped first so a comment line ending in `;` cannot end it.
+envkeys=$(awk '{sub(/\/\/.*/, "")} /export type EnvKey =/{f=1} f{print} f&&/;[[:space:]]*$/{exit}' "$ENV_TS" | extract)
 
 # Runtime push list members: from `CONVEX_RUNTIME_ENV_KEYS = [` to `] as const;`.
 runtime=$(awk '/CONVEX_RUNTIME_ENV_KEYS = \[/{f=1} f{print} f&&/\] as const;/{exit}' "$DEPLOY_TS" | extract)
