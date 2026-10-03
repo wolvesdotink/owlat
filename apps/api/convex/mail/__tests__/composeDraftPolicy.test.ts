@@ -28,6 +28,9 @@ import {
 	type AskQuestion,
 } from '../ai/composeDraftPolicy';
 import { normalizeTimeZone, resolveFollowUpAt } from '../ai/composeDraftDates';
+import { emailProvenance } from '../../inbox/clarificationSlots';
+
+const PROVENANCE = emailProvenance('ines@northwind.example');
 
 function found(overrides: Partial<FoundFile> & { id: string; filename: string }): FoundFile {
 	return {
@@ -82,7 +85,7 @@ describe('ranking and the three file outcomes', () => {
 		const question = buildFileQuestion(
 			outcome as Exclude<typeof outcome, { kind: 'attach' }>,
 			'september invoice',
-			'Generated from an email from example.com'
+			PROVENANCE
 		);
 		expect(question?.answerKind).toBe('file');
 		expect(question?.options).toBeUndefined();
@@ -98,10 +101,12 @@ describe('ranking and the three file outcomes', () => {
 		const question = buildFileQuestion(
 			outcome as Exclude<typeof outcome, { kind: 'attach' }>,
 			'september invoice',
-			'attribution'
+			PROVENANCE
 		)!;
 		expect(question.id).toBe(FILE_QUESTION_ID);
 		expect(question.text).toContain("couldn't find it");
+		expect(question.origin).toEqual({ kind: 'email', senderDomain: 'northwind.example' });
+		expect(question.attribution).toBe(PROVENANCE.attribution);
 		expect(question.options).toEqual([NOT_READY_OPTION]);
 		expect(question.fileCandidates).toEqual([
 			expect.objectContaining({ id: 'aug', note: 'August', source: 'semanticFile' }),
@@ -120,7 +125,7 @@ describe('ranking and the three file outcomes', () => {
 		const question = buildFileQuestion(
 			{ kind: 'missing', near: [] },
 			fileRequestLabel('password list'),
-			'attribution'
+			PROVENANCE
 		);
 		expect(question).toBeNull();
 	});
@@ -146,10 +151,17 @@ describe('round 2', () => {
 	const WED_2026_09_30 = Date.UTC(2026, 8, 30, 14, 0);
 
 	it('asks when the file can be sent, with tomorrow and the day after by name', () => {
-		const q = buildFollowUpQuestion('september invoice', 'attribution', WED_2026_09_30);
+		const q = buildFollowUpQuestion('september invoice', PROVENANCE, WED_2026_09_30);
 		expect(q.id).toBe(FOLLOW_UP_QUESTION_ID);
 		expect(q.answerKind).toBe('date');
 		expect(q.options).toEqual(['Tomorrow', 'Friday']);
+		expect(q.origin).toEqual({ kind: 'email', senderDomain: 'northwind.example' });
+	});
+
+	it('carries a file question stored before `origin` over without inventing one', () => {
+		const q = buildFollowUpQuestion('invoice', { attribution: 'legacy' }, WED_2026_09_30);
+		expect(q.attribution).toBe('legacy');
+		expect(q).not.toHaveProperty('origin');
 	});
 
 	it('resolves the follow-up date to the morning of that day', () => {
@@ -182,7 +194,7 @@ describe('round 2', () => {
 			Date.UTC(2026, 9, 26, 8)
 		);
 		expect(
-			buildFollowUpQuestion('invoice', 'attribution', lateWednesdayUtc, 'Europe/Berlin').options
+			buildFollowUpQuestion('invoice', PROVENANCE, lateWednesdayUtc, 'Europe/Berlin').options
 		).toEqual(['Tomorrow', 'Saturday']);
 	});
 

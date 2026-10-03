@@ -19,7 +19,9 @@
  */
 
 import { z } from 'zod';
+import type { Infer } from 'convex/values';
 import { SYSTEM_GUARD } from '../mail/ai/promptGuards';
+import type { clarificationOriginValidator } from '../lib/validators/clarification';
 
 /** How many candidate replies to sample for the divergence check. */
 export const DIVERGENCE_SAMPLES = 3;
@@ -200,15 +202,32 @@ function senderDomain(fromAddress: string): string | undefined {
 	return domain.length > 0 ? domain : undefined;
 }
 
+/** Where a question came from (`origin` on the stored question). */
+export type ClarificationOrigin = Infer<typeof clarificationOriginValidator>;
+
 /**
- * Build the trust attribution shown under each question so the owner always
- * knows a question was DERIVED from an untrusted email, plus the standing
- * promise that Owlat will never ask for a secret.
+ * A question's provenance in both stored forms: the structured `origin` the
+ * web words in the reader's language, and the legacy English `attribution`
+ * sentence older clients still render.
  */
-function attributeQuestion(fromAddress: string): string {
+export interface QuestionProvenance {
+	attribution: string;
+	origin: ClarificationOrigin;
+}
+
+/**
+ * The provenance of a question derived from an email from `fromAddress`, so
+ * the owner always knows it came from an untrusted email. The legacy sentence
+ * carries the standing promise that Owlat will never ask for a secret; the web
+ * keeps that promise in its locale files instead.
+ */
+export function emailProvenance(fromAddress: string): QuestionProvenance {
 	const domain = senderDomain(fromAddress);
-	const origin = domain ? `an email from ${domain}` : 'an email';
-	return `Generated from ${origin} — Owlat will never ask for your password.`;
+	const source = domain ? `an email from ${domain}` : 'an email';
+	return {
+		attribution: `Generated from ${source} — Owlat will never ask for your password.`,
+		origin: domain ? { kind: 'email', senderDomain: domain } : { kind: 'email' },
+	};
 }
 
 interface SanitizedClarificationQuestion {
@@ -216,8 +235,10 @@ interface SanitizedClarificationQuestion {
 	slotType: string;
 	text: string;
 	options?: string[];
-	/** Provenance + safety line for the card. */
+	/** Provenance + safety line for the card (legacy English sentence). */
 	attribution: string;
+	/** Structured provenance the web builds the localized trust line from. */
+	origin: ClarificationOrigin;
 }
 
 /** A raw generated question before the safety filter. */
@@ -246,7 +267,7 @@ export function sanitizeClarificationQuestions(
 	raw: RawClarificationQuestion[],
 	fromAddress: string
 ): SanitizedClarificationQuestion[] {
-	const attribution = attributeQuestion(fromAddress);
+	const { attribution, origin } = emailProvenance(fromAddress);
 	const out: SanitizedClarificationQuestion[] = [];
 	for (const q of raw) {
 		const text = (q.text ?? '').trim().slice(0, MAX_CLARIFICATION_QUESTION_CHARS);
@@ -265,6 +286,7 @@ export function sanitizeClarificationQuestions(
 			text,
 			options: options.length > 0 ? options : undefined,
 			attribution,
+			origin,
 		});
 		if (out.length >= MAX_QUESTIONS) break;
 	}

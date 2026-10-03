@@ -66,15 +66,49 @@ export function localizedSummary(
 }
 
 /**
- * The sender domain inside a clarification question's attribution line.
+ * The sender domain inside a clarification question's legacy attribution line.
  *
  * The server writes that line in English ("Generated from an email from
  * acme.com — Owlat will never ask for your password.", see
- * inbox/clarificationSlots.ts); a surface that says it once, in the reader's
- * language, needs only the domain. Null when the line names none.
+ * inbox/clarificationSlots.ts). Questions stored before `origin` existed carry
+ * only this line, so the trust line reads the domain out of it. Null when the
+ * line names none.
  */
 export function attributionDomain(attribution: string | undefined): string | null {
 	const match = attribution?.match(/\ban email from (\S+)/i);
 	const domain = match?.[1]?.replace(/[.,;:]+$/, '');
 	return domain || null;
+}
+
+/** Where a question came from, as the server stores it (`origin`). */
+export interface ClarificationOrigin {
+	kind: 'email';
+	senderDomain?: string | undefined;
+}
+
+/** The provenance fields of a stored clarification question. */
+export interface ClarificationProvenance {
+	/** Legacy English sentence; the only provenance on older questions. */
+	attribution?: string | undefined;
+	origin?: ClarificationOrigin | undefined;
+}
+
+/**
+ * What the card's one trust line says: null when no question says where it
+ * came from, else the sender domain they all share (null when they name none
+ * or do not agree). `origin` wins; a question stored before it falls back to
+ * the domain in its legacy attribution line.
+ */
+export function clarificationTrust(
+	questions: readonly ClarificationProvenance[]
+): { domain: string | null } | null {
+	const sourced = questions.filter((q) => q.origin || q.attribution);
+	if (sourced.length === 0) return null;
+	const domains = new Set(
+		sourced.map((q) =>
+			q.origin ? (q.origin.senderDomain ?? null) : attributionDomain(q.attribution)
+		)
+	);
+	const [domain] = domains;
+	return { domain: domains.size === 1 && domain ? domain : null };
 }

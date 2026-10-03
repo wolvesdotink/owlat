@@ -18,8 +18,6 @@ export type ClarificationAnswerSource = 'user' | 'memory';
 /** A clarification question as both surfaces carry it. */
 export interface ClarificationQuestionInput extends LocalizableClarificationQuestion {
 	id: string;
-	/** The WHY line (Postbox only: provenance + the "never your password" promise). */
-	attribution?: string | undefined;
 	/**
 	 * The stored answer. On team-inbox messages answer-memory writes one with
 	 * `source: 'memory'` before the person sees the card; Postbox answers carry

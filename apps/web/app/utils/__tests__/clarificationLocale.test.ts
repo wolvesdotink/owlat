@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	attributionDomain,
 	canonicalOption,
+	clarificationTrust,
 	localizedQuestionCopy,
 	localizedSummary,
 } from '../clarificationLocale';
@@ -80,5 +81,54 @@ describe('attributionDomain', () => {
 			attributionDomain('Generated from an email — Owlat will never ask for your password.')
 		).toBeNull();
 		expect(attributionDomain(undefined)).toBeNull();
+	});
+});
+
+describe('clarificationTrust', () => {
+	const legacy = (domain?: string) =>
+		`Generated from ${domain ? `an email from ${domain}` : 'an email'} — Owlat will never ask for your password.`;
+
+	it('names the domain from the stored origin, not the English sentence', () => {
+		expect(
+			clarificationTrust([
+				{
+					attribution: legacy('stale.example'),
+					origin: { kind: 'email', senderDomain: 'acme.com' },
+				},
+			])
+		).toEqual({ domain: 'acme.com' });
+	});
+
+	it('names no domain when the origin has none, even if the sentence does', () => {
+		expect(
+			clarificationTrust([{ attribution: legacy('acme.com'), origin: { kind: 'email' } }])
+		).toEqual({ domain: null });
+	});
+
+	it('reads the domain out of the legacy sentence for questions stored before origin', () => {
+		expect(clarificationTrust([{ attribution: legacy('acme.com') }])).toEqual({
+			domain: 'acme.com',
+		});
+		expect(clarificationTrust([{ attribution: legacy() }])).toEqual({ domain: null });
+	});
+
+	it('names one domain only when every question agrees', () => {
+		expect(
+			clarificationTrust([
+				{ origin: { kind: 'email', senderDomain: 'acme.com' } },
+				{ attribution: legacy('acme.com') },
+			])
+		).toEqual({ domain: 'acme.com' });
+		expect(
+			clarificationTrust([
+				{ origin: { kind: 'email', senderDomain: 'acme.com' } },
+				{ origin: { kind: 'email', senderDomain: 'other.example' } },
+			])
+		).toEqual({ domain: null });
+	});
+
+	it('is null when no question says where it came from', () => {
+		expect(clarificationTrust([{}, { attribution: '' }])).toBeNull();
+		expect(clarificationTrust([])).toBeNull();
 	});
 });

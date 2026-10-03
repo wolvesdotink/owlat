@@ -297,6 +297,10 @@
 			"clarificationQuestions": {
 				"questionCounter": "Frage {index} von {total}"
 			},
+			"clarificationTrustLine": {
+				"trust": "Aus einer E-Mail von {domain}. Owlat fragt nie nach deinem Passwort.",
+				"trustNoDomain": "Aus einer E-Mail. Owlat fragt nie nach deinem Passwort."
+			},
 			"reviewApproveUndoToast": {
 				"approved": "Genehmigt",
 				"sendingIn": "{what} — wird in {seconds} s gesendet",
@@ -6715,8 +6719,6 @@
 				"title": "Eine Frage, bevor ich schreibe | {count} Fragen, bevor ich schreibe",
 				"round": "Runde {round} von {total}",
 				"subline": "Beantworte, was du kannst. Was du auslässt, wird im Entwurf als markierte Lücke eingefügt.",
-				"trust": "Aus einer E-Mail von {domain}. Owlat fragt nie nach deinem Passwort.",
-				"trustNoDomain": "Aus einer E-Mail. Owlat fragt nie nach deinem Passwort.",
 				"placeholder": {
 					"choice": "Etwas anderes …",
 					"text": "Gib deine Antwort ein …",
