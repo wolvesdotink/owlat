@@ -113,10 +113,15 @@ cat > "$TMP" <<EOF
 # to v${VERSION}. You can also apply it manually:
 #
 #   curl -fsSL https://github.com/wolvesdotink/owlat/releases/download/v${VERSION}/docker-compose-${VERSION}.yml \\
-#     -o docker-compose.yml
-#   docker compose pull
+#     -o docker-compose.yml &&
+#   docker compose pull &&
+#   docker compose --profile deploy run --rm convex-deploy &&
 #   docker compose up -d
-#   docker compose --profile deploy run --rm convex-deploy
+#
+# Deploy the functions before "up -d", as the updater does: the new
+# containers may call functions the previous release does not have. The
+# "&&" stops the commands at the first one that fails, so a failed deploy
+# never reaches "up -d".
 # ═══════════════════════════════════════════════════════════════════════════════
 
 EOF
