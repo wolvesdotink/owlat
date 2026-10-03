@@ -5,9 +5,12 @@
  * wrote into this reply, the thread has a Draft with AI session, or a saved
  * reply left gaps (`guarded`); brackets a person typed are their own text. The
  * note beside Send then says how many are left, in place of the host's note.
+ * Only the written part counts, as on the server (`authoredDraftHasGaps`): a
+ * `[[...]]` in the quoted original belongs to the mail being answered.
  */
 import type { Ref } from 'vue';
 import { findDraftGaps } from '@owlat/shared/answerMode';
+import { splitQuotedText } from '@owlat/shared/quotedText';
 
 export function useTeamComposerGaps(
 	body: Readonly<Ref<string>>,
@@ -16,7 +19,7 @@ export function useTeamComposerGaps(
 	guarded: () => boolean = () => false
 ) {
 	const { t } = useI18n();
-	const gapCount = computed(() => findDraftGaps(body.value).length);
+	const gapCount = computed(() => findDraftGaps(splitQuotedText(body.value).fresh).length);
 	const hold = computed(
 		() =>
 			gapCount.value > 0 &&

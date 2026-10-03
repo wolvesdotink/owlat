@@ -59,6 +59,16 @@ describe('useThreadDetail', () => {
 			expect(showToast).toHaveBeenCalledWith('2 gaps left', 'error');
 		});
 
+		it('leaves a [[...]] in the quoted original out of the count', async () => {
+			const detail = useThreadDetail(threadId);
+			await detail.saveEditedDraft(messageId, {
+				body: 'Attached [[the invoice]].\n> Please quote [[ticket 12]].',
+				subject: '',
+			});
+			expect(onErrors[0]!(refusal)).toBe(true);
+			expect(showToast).toHaveBeenCalledWith('1 gap left', 'error');
+		});
+
 		it('claims the refusal on a follow-up too, and leaves other failures alone', async () => {
 			const detail = useThreadDetail(threadId);
 			await detail.sendFollowUp({ body: 'Here it is: [[link]]', subject: 'Re: x' });
