@@ -48,6 +48,7 @@ function context(overrides: Record<string, unknown> = {}) {
 		answers: [{ question: 'Is the PO number on it?', answer: 'Yes, it is on it' }],
 		fileNotes: '- The file "invoice-09.pdf" is attached to this reply; mention it naturally.',
 		fileGaps: [],
+		questionGaps: [],
 		answeredSlotTypes: ['factual_lookup'],
 		...overrides,
 	};
@@ -132,6 +133,20 @@ describe('draftClarificationReply', () => {
 
 		const params = mocks.runSharedDraft.mock.calls[0]![1];
 		expect(params.confirmedContext).toContain('not attached yet');
+		expect(params.confirmedContext).toContain(gap);
+		const persisted = mutations.find((m) => m.name.includes('persistClarificationDraft'));
+		expect(persisted?.args['draft']).toBe(
+			`Hi, here is the September invoice, PO included.\n\n${gap}`
+		);
+	});
+
+	it('leaves a placeholder for a question the owner skipped', async () => {
+		const gap = '[[Which delivery date works for you]]';
+		const { ctx, mutations } = makeCtx({ context: context({ questionGaps: [gap] }) });
+		await draftClarificationReply(ctx, { threadId });
+
+		const params = mocks.runSharedDraft.mock.calls[0]![1];
+		expect(params.confirmedContext).toContain('has not answered these questions yet');
 		expect(params.confirmedContext).toContain(gap);
 		const persisted = mutations.find((m) => m.name.includes('persistClarificationDraft'));
 		expect(persisted?.args['draft']).toBe(

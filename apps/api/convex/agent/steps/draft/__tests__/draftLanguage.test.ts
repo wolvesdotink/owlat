@@ -37,6 +37,7 @@ describe('draft prompts carry the language rule', () => {
 		toneInstruction: '',
 		signatureInstruction: '',
 		voiceSection: '',
+		hasRecallTool: true,
 	};
 
 	it('in the primary system prompt', () => {

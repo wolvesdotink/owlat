@@ -32,6 +32,7 @@ import {
 	buildFileAnswerNotes,
 	isFileQuestion,
 	openFileGaps,
+	openQuestionGaps,
 } from '../../inbox/clarificationAnswers';
 import { resolveClarificationFile } from '../../inbox/clarificationFileAnswer';
 import { findContactByIdentifier } from '../../contacts/resolution';
@@ -284,6 +285,8 @@ export const getClarificationContext = internalQuery({
 			fileNotes: buildFileAnswerNotes(clarification.questions, 'pending'),
 			// File questions left open: the draft leaves a placeholder for them.
 			fileGaps: openFileGaps(clarification.questions),
+			// Questions the owner skipped: the draft marks each missing fact.
+			questionGaps: openQuestionGaps(clarification.questions),
 			answeredSlotTypes,
 		};
 	},

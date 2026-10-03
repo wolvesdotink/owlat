@@ -47,6 +47,7 @@ vi.mock('../replyOptions', () => ({
 }));
 vi.mock('../../analytics/llmUsage', () => ({ recordLlmSpend: vi.fn(async () => {}) }));
 
+import { findDraftGaps } from '@owlat/shared/answerMode';
 import { generateDraftOnArrival } from '../ai/draftOnArrival';
 import { recordLlmSpend } from '../../analytics/llmUsage';
 
@@ -63,6 +64,7 @@ function makeLoaded(over: Record<string, unknown> = {}) {
 		isBulk: false,
 		clarificationQuestions: undefined,
 		fileGaps: [],
+		questionGaps: [],
 		...over,
 	};
 }
@@ -142,6 +144,40 @@ describe('generateDraftOnArrival', () => {
 			mailboxId: 'mbx1',
 			classification: 'other',
 		});
+	});
+
+	it('leaves a placeholder for an open clarification question, even when the model drops it', async () => {
+		const gap = '[[Which delivery date works for you]]';
+		const h = makeCtx({ loaded: makeLoaded({ questionGaps: [gap] }) });
+		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
+
+		// The drafter is told about the open question, with its placeholder.
+		const call = runLlmTextMock.mock.calls[0]![0] as { messages: { content: unknown }[] };
+		const user = String(call.messages[call.messages.length - 1]!.content);
+		expect(user).toContain('has not answered these questions yet');
+		expect(user).toContain(gap);
+		// The model dropped it; the stored draft still carries it, and the
+		// alternatives (written without the trusted block) are not kept.
+		const slot = h.persisted[0]!;
+		expect(slot.draft).toBe(`PERSONAL DRAFT BODY\n\n${gap}`);
+		expect(findDraftGaps(slot.draft).map((g) => g.label)).toEqual([
+			'Which delivery date works for you',
+		]);
+		expect(slot.options).toBeUndefined();
+	});
+
+	it('stores a reviewer note the model wrote as a gap the send guard counts', async () => {
+		runLlmTextMock.mockResolvedValueOnce({
+			text: 'Hallo Sam,\n\n[Bitte prüfen: x]\n\nViele Grüße',
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
+		const h = makeCtx({ loaded: makeLoaded() });
+		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
+
+		const slot = h.persisted[0]!;
+		expect(slot.draft).toBe('Hallo Sam,\n\n[[Bitte prüfen: x]]\n\nViele Grüße');
+		expect(findDraftGaps(slot.draft).map((g) => g.label)).toEqual(['Bitte prüfen: x']);
 	});
 
 	it('FAIL-SOFT: LLM generation error → no slot persisted (thread still shows for reply)', async () => {

@@ -19,7 +19,7 @@ import { NEEDS_REPLY_CONTEXT_MESSAGES } from '../needsReply';
 import { isFromMailboxOwner } from '../needsReplyHeuristic';
 import { buildThreadTranscript, DRAFT_ON_ARRIVAL } from './transcript';
 import { withStoredInlineBodies } from '../../lib/messageBodyStore';
-import { openFileGaps } from '../../inbox/clarificationAnswers';
+import { openFileGaps, openQuestionGaps } from '../../inbox/clarificationAnswers';
 
 /**
  * Load everything the draft-on-arrival action needs for one thread, or `null`
@@ -106,6 +106,10 @@ export const loadForDraft = internalQuery({
 			// Files the clarification card is still waiting for: the draft leaves a
 			// placeholder for them instead of claiming they are attached.
 			fileGaps: flag.clarification ? openFileGaps(flag.clarification.questions) : [],
+			// The other questions still open (the card is not answered yet, or the
+			// owner skipped one): the draft marks each missing fact with its
+			// placeholder, which the send guard counts.
+			questionGaps: flag.clarification ? openQuestionGaps(flag.clarification.questions) : [],
 		};
 	},
 });
