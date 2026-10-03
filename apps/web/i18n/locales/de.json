@@ -283,6 +283,8 @@
 				"back": "Zurück",
 				"backTitle": "Vorherige offene Aufgabe (←)",
 				"estimateLeft": "noch {estimate}",
+				"estimateMinutes": "etwa {n} Min.",
+				"estimateSeconds": "etwa {n} Sek.",
 				"exit": "Beenden",
 				"exitTitle": "Beenden (Esc)",
 				"newCount": "+{count} neu",
@@ -290,6 +292,17 @@
 				"next": "Weiter",
 				"nextLabel": "Als Nächstes:",
 				"nextTitle": "Nächste offene Aufgabe (→)",
+				"outcome": {
+					"replied": "{count} beantwortet",
+					"sent": "{count} gesendet",
+					"approved": "{count} freigegeben",
+					"rejected": "{count} abgelehnt",
+					"opened": "{count} geöffnet",
+					"cleared": "{count} erledigt",
+					"archived": "{count} archiviert",
+					"snoozed": "{count} zurückgestellt",
+					"completed": "{count} abgeschlossen"
+				},
 				"progress": "{position} von {total}",
 				"undo": "Rückgängig",
 				"undoTitle": "Letzte Aktion rückgängig machen (⌘Z)"
