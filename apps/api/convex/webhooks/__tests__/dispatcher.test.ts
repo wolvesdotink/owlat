@@ -1270,7 +1270,7 @@ describe('dispatchInboundEvent — complaint whose Message-ID matches no send', 
 			at: 4000,
 		});
 		expect(preview.map((c) => c.ref)).not.toContain(ref(internal.blockedEmails.addFromEvent));
-		expect(preview.at(-1)).toEqual({
+		expect(preview[preview.length - 1]).toEqual({
 			ref: ref(internal.webhooks.unresolvedFeedback.record),
 			args: expect.objectContaining({ isSuppressed: false, deliveryDomain: 'member_test' }),
 		});
