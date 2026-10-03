@@ -98,6 +98,10 @@ onMounted(() => {
 	void stamp();
 });
 
+// `flush: 'sync'`: the abort must land in the same tick as the change. With the
+// default pre-flush timing, an auth report and a sign-out in one tick let the
+// old run's continuation (a microtask) send under the old id before the
+// watcher ran.
 watch(
 	() => user.value?.id,
 	(userId, previous) => {
@@ -105,7 +109,8 @@ watch(
 		abortStamp();
 		stampGaveUp.value = false;
 		if (userId) void stamp();
-	}
+	},
+	{ flush: 'sync' }
 );
 
 onBeforeUnmount(abortStamp);

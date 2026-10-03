@@ -29,11 +29,27 @@ import { writeWelcomedCache } from '~/lib/welcomedCache';
 export const WELCOME_STAMP_AUTH_WAIT_MS = 10_000;
 
 /**
- * How long one send may take before the attempt counts as failed. A Convex
- * mutation runs for at most a second; this covers a slow round trip, and keeps a
- * send that never answers from holding the whole run open.
+ * How long one send may take before the attempt counts as failed. Convex stops
+ * a mutation after a second of execution, so this is queueing on a busy
+ * deployment and a WebSocket reconnect, not work. It keeps a send that never
+ * answers from holding the run open, and keeps the whole run short enough for
+ * the E2E setup to wait it out (see {@link welcomeStampWorstCaseMs}).
  */
-export const WELCOME_STAMP_SEND_DEADLINE_MS = 15_000;
+export const WELCOME_STAMP_SEND_DEADLINE_MS = 10_000;
+
+/**
+ * The longest a run can take before it settles: every attempt waiting out the
+ * auth wait and the send deadline, plus every backoff at its longest. The E2E
+ * setup waits at least this long for the stamp (e2e/timing.ts).
+ */
+export function welcomeStampWorstCaseMs(): number {
+	const attempts = TRANSIENT_RETRY_LIMIT + 1;
+	let backoffs = 0;
+	for (let attempt = 0; attempt < TRANSIENT_RETRY_LIMIT; attempt++) {
+		backoffs += transientRetryDelay(attempt, () => 1);
+	}
+	return attempts * (WELCOME_STAMP_AUTH_WAIT_MS + WELCOME_STAMP_SEND_DEADLINE_MS) + backoffs;
+}
 
 export type WelcomeStampResult = 'saved' | 'failed' | 'aborted';
 

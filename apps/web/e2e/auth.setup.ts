@@ -1,6 +1,7 @@
 import { test as setup, expect } from '@playwright/test';
 import { testUser } from './fixtures/test-data';
 import { seedAdmin } from './seedAdmin';
+import { SETUP_BEFORE_STAMP_MS, WELCOME_STAMP_SETTLE_MS } from './timing';
 import { STORAGE_STATE } from './storage-state';
 
 /** The browser console of the setup run, attached to the report afterwards. */
@@ -36,8 +37,10 @@ setup.afterEach(async () => {
 setup('bootstrap the instance and save auth state', async ({ page }) => {
 	// Sign-in, the background first-login check and the welcome stamp are three
 	// round trips to a cold hosted deployment on top of the seed; the suite's
-	// 45 s default leaves no headroom for that.
-	setup.setTimeout(90_000);
+	// 45 s default leaves no headroom for that. The stamp's share is its own
+	// worst-case recovery time (see timing.ts); a run that commits on the first
+	// try uses a second or two of it.
+	setup.setTimeout(SETUP_BEFORE_STAMP_MS + WELCOME_STAMP_SETTLE_MS);
 
 	const started = Date.now();
 	const stamp = () => `+${((Date.now() - started) / 1000).toFixed(1)}s`;
@@ -96,7 +99,24 @@ setup('bootstrap the instance and save auth state', async ({ page }) => {
 		// and leaving cannot bounce back here. The seeded owner has no mailbox, so
 		// the screen shows the "no mailbox yet" surface, which has no exit link of
 		// its own: navigate the way a member would, by opening the dashboard.
-		await expect.poll(welcomedCached, { timeout: 20_000 }).toBe(true);
+		//
+		// The stamp retries a failure, so wait until it settles: committed (the
+		// cache entry) or given up (the page's retry note). Giving up fails here
+		// at once, rather than after the timeout, and the attached
+		// browser-console.txt has every attempt and its cause.
+		const stampOutcome = async () => {
+			if (await welcomedCached()) return 'saved';
+			const gaveUp = await page
+				.getByTestId('welcome-stamp-failed')
+				.isVisible()
+				.catch(() => false);
+			return gaveUp ? 'gave-up' : 'pending';
+		};
+		await expect.poll(stampOutcome, { timeout: WELCOME_STAMP_SETTLE_MS }).not.toBe('pending');
+		expect(
+			await stampOutcome(),
+			'welcome.vue gave up on markWelcomed; see browser-console.txt in the report'
+		).toBe('saved');
 		await page.goto('/dashboard');
 	}
 

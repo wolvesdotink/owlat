@@ -8,14 +8,18 @@
  * The archives are built here in the zip layout Playwright writes (local
  * headers, central directory, deflate or stored members).
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { deflateRawSync } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { findSecretsInReport, readZipEntries } from '../scanReportSecrets';
+import { findSecretsInReport, findingId, readZipEntries, secretForms } from '../scanReportSecrets';
 
 const SECRET = { label: 'CONVEX_TEST_INSTANCE_SECRET', value: 'dummy-instance-secret-4f1c' };
+/** Punctuation that every encoding treats differently. */
+const PUNCTUATED = { label: 'PUNCTUATED', value: 'dummy-review/value+with=punctuation' };
+const CLI = resolve(__dirname, '../scan-report-secrets.ts');
 
 /** A zip archive; the reader ignores CRCs, so they are left at zero. */
 function makeZip(files: Record<string, string | Buffer>, method: 0 | 8 = 8): Buffer {
@@ -174,5 +178,161 @@ describe('readZipEntries', () => {
 				['b/c', 'beta'],
 			]);
 		}
+	});
+});
+
+describe('findSecretsInReport, encoded forms', () => {
+	const found = (content: string) => {
+		writeFileSync(join(report, 'data', 'console.txt'), content);
+		return findSecretsInReport(report, [PUNCTUATED]).map((finding) => finding.label);
+	};
+	const bytes = Buffer.from(PUNCTUATED.value);
+
+	it.each([
+		['base64', bytes.toString('base64')],
+		['base64url', bytes.toString('base64url')],
+		[
+			'base64 at offset 1 in a longer value',
+			Buffer.from(`u:${PUNCTUATED.value}`).toString('base64'),
+		],
+		[
+			'base64 at offset 2 in a longer value',
+			Buffer.from(`us:${PUNCTUATED.value}`).toString('base64'),
+		],
+		[
+			'base64 at offset 0 in a longer value',
+			Buffer.from(`use:${PUNCTUATED.value}!`).toString('base64'),
+		],
+		['URL-encoded', encodeURIComponent(PUNCTUATED.value)],
+		['URL-encoded, lowercase hex', encodeURIComponent(PUNCTUATED.value).toLowerCase()],
+		['JSON with an escaped slash', PUNCTUATED.value.replaceAll('/', '\\/')],
+		[
+			'\\u-escaped',
+			[...PUNCTUATED.value]
+				.map((c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)
+				.join(''),
+		],
+		[
+			'\\u-escaped, uppercase hex',
+			[...PUNCTUATED.value]
+				.map((c) => `\\u${c.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}`)
+				.join(''),
+		],
+	])('finds the secret %s', (_form, content) => {
+		expect(found(`before ${content} after`)).toEqual([PUNCTUATED.label]);
+	});
+
+	it('does not match a fragment of the secret', () => {
+		expect(found(PUNCTUATED.value.slice(1))).toEqual([]);
+		expect(found(PUNCTUATED.value.slice(0, -1))).toEqual([]);
+		expect(found(Buffer.from(PUNCTUATED.value.slice(0, 12)).toString('base64'))).toEqual([]);
+	});
+
+	it('matches only whole encodings, each long enough not to occur by chance', () => {
+		for (const form of secretForms(PUNCTUATED.value)) {
+			expect(form.length).toBeGreaterThanOrEqual(PUNCTUATED.value.length - 2);
+		}
+		// A short secret keeps its whole encodings but no base64 cores.
+		expect(secretForms('abc').map(String)).not.toContain('YW');
+	});
+
+	it('finds the secret in a file name and in an archive member name', () => {
+		writeFileSync(join(report, 'data', `${encodeURIComponent(PUNCTUATED.value)}.txt`), 'x');
+		writeFileSync(
+			join(report, 'data', 'trace.zip'),
+			makeZip({ [`resources/${bytes.toString('base64url')}`]: 'x' })
+		);
+
+		const findings = findSecretsInReport(report, [PUNCTUATED]);
+		expect(findings).toContainEqual({
+			file: join('data', `${encodeURIComponent(PUNCTUATED.value)}.txt`),
+			label: PUNCTUATED.label,
+		});
+		expect(findings).toContainEqual({
+			file: `${join('data', 'trace.zip')}!resources/${bytes.toString('base64url')}`,
+			label: PUNCTUATED.label,
+		});
+	});
+});
+
+describe('findSecretsInReport, failing closed', () => {
+	it('flags a .zip that lacks the zip signature', () => {
+		const archive = makeZip({ 'trace.network': 'x' });
+		archive.write('BROK', 0);
+		writeFileSync(join(report, 'data', 'trace.zip'), archive);
+
+		expect(findSecretsInReport(report, [SECRET])).toEqual([
+			{ file: join('data', 'trace.zip'), label: 'unreadable' },
+		]);
+	});
+
+	it('flags a symlink, dangling or not, and still reports the readable files', () => {
+		writeFileSync(join(report, 'data', 'console.txt'), SECRET.value);
+		symlinkSync('missing', join(report, 'data', 'dangling'));
+		symlinkSync(join(report, 'data', 'console.txt'), join(report, 'data', 'linked'));
+
+		expect(findSecretsInReport(report, [SECRET])).toEqual(
+			expect.arrayContaining([
+				{ file: join('data', 'console.txt'), label: SECRET.label },
+				{ file: join('data', 'dangling'), label: 'unreadable' },
+				{ file: join('data', 'linked'), label: 'unreadable' },
+			])
+		);
+	});
+
+	it('flags archives nested past the depth it reads', () => {
+		let archive = makeZip({ 'trace.network': 'x' });
+		for (let level = 0; level < 3; level++) archive = makeZip({ 'inner.zip': archive });
+		writeFileSync(join(report, 'data', 'outer.zip'), archive);
+
+		expect(findSecretsInReport(report, [SECRET])).toEqual([
+			expect.objectContaining({ label: 'unreadable' }),
+		]);
+	});
+});
+
+describe('scan-report-secrets CLI', () => {
+	const run = (env: Record<string, string>) =>
+		spawnSync('bun', [CLI, report, SECRET.label, PUNCTUATED.label], {
+			env: { ...process.env, ...env },
+			encoding: 'utf8',
+		});
+
+	it('keeps a clean report and exits 0', () => {
+		writeFileSync(join(report, 'data', 'console.txt'), 'clean');
+
+		const result = run({ [SECRET.label]: SECRET.value });
+		expect(result.status).toBe(0);
+		expect(existsSync(report)).toBe(true);
+	});
+
+	it('deletes the report and fails when a readable file holds a secret next to one it cannot read', () => {
+		writeFileSync(join(report, 'data', 'console.txt'), SECRET.value);
+		symlinkSync('missing', join(report, 'data', 'dangling'));
+
+		const result = run({ [SECRET.label]: SECRET.value });
+		expect(result.status).toBe(1);
+		expect(existsSync(report)).toBe(false);
+	});
+
+	it('deletes a report it cannot read at all', () => {
+		symlinkSync('missing', join(report, 'data', 'dangling'));
+
+		const result = run({ [SECRET.label]: SECRET.value });
+		expect(result.status).toBe(1);
+		expect(existsSync(report)).toBe(false);
+	});
+
+	it('never prints a path, which may itself carry an encoded secret', () => {
+		const encoded = Buffer.from(PUNCTUATED.value).toString('base64url');
+		const file = join('data', `${encoded}.txt`);
+		writeFileSync(join(report, file), PUNCTUATED.value);
+
+		const result = run({ [PUNCTUATED.label]: PUNCTUATED.value });
+		const output = `${result.stdout}${result.stderr}`;
+		expect(result.status).toBe(1);
+		expect(output).not.toContain(encoded);
+		expect(output).not.toContain(PUNCTUATED.value);
+		expect(output).toContain(findingId(file));
 	});
 });

@@ -273,4 +273,23 @@ describe('/welcome — the stamp run ends with the page and the member', () => {
 		await vi.advanceTimersByTimeAsync(PAST_ANY_BACKOFF);
 		expect(mutation).not.toHaveBeenCalled();
 	});
+
+	it('sends nothing under the old id when the member changes before Vue flushes its watchers', async () => {
+		vi.useFakeTimers();
+		markConvexAuthPending();
+		mutation.mockResolvedValue(null);
+
+		const wrapper = mountPage();
+		await vi.advanceTimersByTimeAsync(0);
+
+		// Auth lands and the member signs out in the same tick: the stamp's
+		// continuation is queued as a microtask, ahead of a pre-flush watcher.
+		reportConvexAuth(true);
+		currentUser.value = null;
+		markConvexAuthPending();
+		await vi.advanceTimersByTimeAsync(0);
+		wrapper.unmount();
+
+		expect(mutation).not.toHaveBeenCalled();
+	});
 });

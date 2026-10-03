@@ -1,5 +1,6 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { createHash } from 'node:crypto';
 import { inflateRawSync } from 'node:zlib';
 
 /**
@@ -13,11 +14,19 @@ import { inflateRawSync } from 'node:zlib';
  *
  * Secrets can sit in three places in an HTML report: plain files (attachments
  * such as `browser-console.txt`), trace archives (`data/*.zip`), and the report
- * data that `index.html` embeds as a base64 zip. All three are searched. A zip
- * that cannot be read counts as a finding: an unreadable archive is one nobody
- * has checked.
+ * data that `index.html` embeds as a base64 zip. All three are searched, and so
+ * are file and archive member names. Each secret is matched whole, in the forms
+ * a report can carry it in: raw, JSON-escaped, `\u`-escaped, URL-encoded and
+ * base64 (see {@link secretForms}).
  *
- * Findings name the file and the secret's label, never its value.
+ * The scan fails closed. Anything it cannot read counts as a finding: an archive
+ * it cannot open, a `.zip` without the zip signature, a symlink or other
+ * non-regular file, a file or directory that errors on read. Such a report is
+ * one nobody has checked.
+ *
+ * Findings carry the path and the secret's label, never its value. A path can
+ * hold an encoded secret too, so callers must not print it either
+ * ({@link findingId}).
  */
 
 export interface SecretFinding {
@@ -77,29 +86,82 @@ export function readZipEntries(zip: Buffer): Array<{ name: string; data: Buffer 
 	return entries;
 }
 
-/** The byte patterns a secret can appear as: raw, and as escaped inside a JSON string. */
-function patternsFor(secret: NamedSecret): Buffer[] {
-	const raw = Buffer.from(secret.value);
-	const escaped = Buffer.from(JSON.stringify(secret.value).slice(1, -1));
-	return raw.equals(escaped) ? [raw] : [raw, escaped];
+/** Shortest base64 core worth matching; shorter would match by chance. */
+const MIN_FORM_LENGTH = 8;
+
+/** The base64 characters fully determined by `value` when it starts `offset` bytes into a stream. */
+function base64Core(value: Buffer, offset: number, alphabet: 'base64' | 'base64url'): string {
+	const encoded = Buffer.concat([Buffer.alloc(offset), value]).toString(alphabet);
+	const first = Math.ceil((offset * 8) / 6);
+	const last = Math.floor(((offset + value.length) * 8) / 6);
+	return encoded.slice(first, last);
 }
 
-function scanBuffer(
-	data: Buffer,
-	file: string,
-	secrets: NamedSecret[],
-	findings: SecretFinding[],
-	depth: number
-): void {
-	for (const secret of secrets) {
-		if (patternsFor(secret).some((pattern) => data.includes(pattern))) {
-			findings.push({ file, label: secret.label });
+/**
+ * Every form of `value` the scan matches, each a whole encoding of the secret:
+ *
+ * - raw;
+ * - JSON-escaped, with and without `\/` for a slash, and fully `\u`-escaped
+ *   in lower- and uppercase hex;
+ * - URL-encoded (`encodeURIComponent`), in upper- and lowercase hex;
+ * - base64 and base64url, at each of the three byte alignments a value can
+ *   have inside a longer encoded stream (the characters that depend only on
+ *   the secret's own bytes).
+ *
+ * A fragment of a secret is never matched: that would flag unrelated text.
+ */
+export function secretForms(value: string): Buffer[] {
+	const forms = new Set<string>([value]);
+	const json = JSON.stringify(value).slice(1, -1);
+	forms.add(json);
+	forms.add(json.replaceAll('/', '\\/'));
+	const units = Array.from({ length: value.length }, (_, index) => value.charCodeAt(index));
+	const unicode = units.map((unit) => `\\u${unit.toString(16).padStart(4, '0')}`).join('');
+	forms.add(unicode);
+	forms.add(unicode.replaceAll(/[a-f]/g, (hex) => hex.toUpperCase()));
+	const url = encodeURIComponent(value);
+	forms.add(url);
+	forms.add(url.replaceAll(/%[0-9A-F]{2}/g, (escape) => escape.toLowerCase()));
+	const bytes = Buffer.from(value);
+	for (const alphabet of ['base64', 'base64url'] as const) {
+		forms.add(bytes.toString(alphabet));
+		for (const offset of [0, 1, 2]) {
+			// A core drops the edge characters, so on a very short secret it could
+			// be short enough to occur by chance.
+			const core = base64Core(bytes, offset, alphabet);
+			if (core.length >= MIN_FORM_LENGTH) forms.add(core);
 		}
 	}
+	return [...forms].map((form) => Buffer.from(form));
+}
+
+/** A stable, printable id for a finding's path that reveals nothing of it. */
+export function findingId(file: string): string {
+	return createHash('sha256').update(file).digest('hex').slice(0, 12);
+}
+
+interface Scan {
+	secrets: Array<{ label: string; forms: Buffer[] }>;
+	findings: SecretFinding[];
+}
+
+function matchSecrets(data: Buffer, file: string, scan: Scan): void {
+	for (const secret of scan.secrets) {
+		if (secret.forms.some((form) => data.includes(form))) {
+			scan.findings.push({ file, label: secret.label });
+		}
+	}
+}
+
+function scanBuffer(data: Buffer, file: string, name: string, scan: Scan, depth: number): void {
+	matchSecrets(Buffer.from(name), file, scan);
+	matchSecrets(data, file, scan);
 
 	const zips: Array<{ file: string; data: Buffer }> = [];
-	if (data.subarray(0, 4).equals(ZIP_MAGIC)) zips.push({ file, data });
-	if (file.endsWith('.html')) {
+	const looksLikeZip = data.subarray(0, 4).equals(ZIP_MAGIC);
+	if (looksLikeZip) zips.push({ file, data });
+	else if (name.toLowerCase().endsWith('.zip')) scan.findings.push({ file, label: 'unreadable' });
+	if (name.toLowerCase().endsWith('.html')) {
 		let index = 0;
 		for (const match of data.toString('latin1').matchAll(EMBEDDED_ZIP)) {
 			zips.push({ file: `${file}#embedded-${index++}`, data: Buffer.from(match[1]!, 'base64') });
@@ -108,27 +170,49 @@ function scanBuffer(
 
 	for (const zip of zips) {
 		if (depth >= MAX_ZIP_DEPTH) {
-			findings.push({ file: zip.file, label: 'unreadable' });
+			scan.findings.push({ file: zip.file, label: 'unreadable' });
 			continue;
 		}
 		let entries: Array<{ name: string; data: Buffer }>;
 		try {
 			entries = readZipEntries(zip.data);
 		} catch {
-			findings.push({ file: zip.file, label: 'unreadable' });
+			scan.findings.push({ file: zip.file, label: 'unreadable' });
 			continue;
 		}
 		for (const entry of entries) {
-			scanBuffer(entry.data, `${zip.file}!${entry.name}`, secrets, findings, depth + 1);
+			scanBuffer(entry.data, `${zip.file}!${entry.name}`, entry.name, scan, depth + 1);
 		}
 	}
 }
 
-function listFiles(dir: string): string[] {
-	return readdirSync(dir).flatMap((name) => {
+/** Walk `dir` without following links; anything that is not a readable regular file is a finding. */
+function scanDirectory(root: string, dir: string, scan: Scan): void {
+	let names: string[];
+	try {
+		names = readdirSync(dir);
+	} catch {
+		scan.findings.push({ file: relative(root, dir) || '.', label: 'unreadable' });
+		return;
+	}
+	for (const name of names) {
 		const path = join(dir, name);
-		return statSync(path).isDirectory() ? listFiles(path) : [path];
-	});
+		const file = relative(root, path);
+		try {
+			const stat = lstatSync(path);
+			if (stat.isDirectory()) {
+				matchSecrets(Buffer.from(name), file, scan);
+				scanDirectory(root, path, scan);
+			} else if (stat.isFile()) {
+				scanBuffer(readFileSync(path), file, name, scan, 0);
+			} else {
+				matchSecrets(Buffer.from(name), file, scan);
+				scan.findings.push({ file, label: 'unreadable' });
+			}
+		} catch {
+			scan.findings.push({ file, label: 'unreadable' });
+		}
+	}
 }
 
 /**
@@ -139,9 +223,10 @@ function listFiles(dir: string): string[] {
 export function findSecretsInReport(dir: string, secrets: NamedSecret[]): SecretFinding[] {
 	const present = secrets.filter((secret) => secret.value.length > 0);
 	if (present.length === 0) return [];
-	const findings: SecretFinding[] = [];
-	for (const path of listFiles(dir)) {
-		scanBuffer(readFileSync(path), relative(dir, path), present, findings, 0);
-	}
-	return findings;
+	const scan: Scan = {
+		secrets: present.map((secret) => ({ label: secret.label, forms: secretForms(secret.value) })),
+		findings: [],
+	};
+	scanDirectory(dir, dir, scan);
+	return scan.findings;
 }
