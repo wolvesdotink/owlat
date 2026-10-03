@@ -1,6 +1,6 @@
 name: Bug report
 description: Report a problem with Owlat
-labels: ["bug"]
+labels: ["bug", "needs-triage"]
 body:
   - type: markdown
     attributes:
