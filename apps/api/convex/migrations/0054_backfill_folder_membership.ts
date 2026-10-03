@@ -11,6 +11,16 @@
  *   npx convex run migrations/0054_backfill_folder_membership:run
  *   npx convex run migrations/0054_backfill_folder_membership:status
  *
+ * RUNS BY ITSELF: a cron calls {@link ensure} every 10 minutes (crons.ts,
+ * "ensure folder membership backfill"). It starts the pass on a
+ * deployment that never ran it and resumes one whose ledger row has not moved
+ * for {@link RESUME_AFTER_MS}, so every deployment reaches `completed` without
+ * an operator step, and a pass whose chain died is picked up again. Until then
+ * the IMAP server lists every unready folder in full documents on each
+ * command; leaving that to a hand-run step left it in place indefinitely
+ * wherever nobody ran it (#927). Running `run` by hand still works and only
+ * starts it sooner.
+ *
  * DURABLE AND RESUMABLE: progress and completion live in the migration ledger
  * (`migrationRuns` row `0054_backfill_folder_membership`, lib/migrationLedger.ts).
  * `run` schedules the first page of the folder pass; each page starts the
@@ -66,6 +76,14 @@ const STALLED_MS = 10 * 60_000;
 
 /** The ledger `mode` of a rebuild pass. */
 const REBUILD = 'rebuild';
+
+/**
+ * A running pass whose ledger row has not moved for this long is resumed by
+ * {@link ensure}. The folder pass writes the row on every page, and `finish`
+ * does not write it while it polls, so a pass waiting on its walks is resumed
+ * (cheaply: the folder pass is already at its end) at most once per period.
+ */
+const RESUME_AFTER_MS = 60 * 60_000;
 
 async function currentRun(ctx: MutationCtx, generation: number): Promise<MigrationRun | null> {
 	const run = await readMigrationRun(ctx, MIGRATION);
@@ -173,10 +191,7 @@ export const finish = internalMutation({
  */
 export const run = internalMutation({
 	args: { restart: v.optional(v.boolean()), rebuild: v.optional(v.boolean()) },
-	handler: async (
-		ctx,
-		args
-	): Promise<{ started: boolean; generation?: number; reason?: string }> => {
+	handler: async (ctx, args): Promise<BeginResult> => {
 		const rebuild = args.rebuild === true;
 		if (args.restart === true && !rebuild) {
 			const existing = await readMigrationRun(ctx, MIGRATION);
@@ -188,27 +203,60 @@ export const run = internalMutation({
 				};
 			}
 		}
-		const begun = await beginMigrationRun(ctx, {
-			migration: MIGRATION,
-			introducedIn: INTRODUCED_IN,
-			restart: args.restart === true || rebuild,
-			...(rebuild ? { mode: REBUILD } : {}),
-		});
-		if (!begun) {
-			return { started: false, reason: 'Already completed; pass restart to run it again' };
-		}
-		await ctx.scheduler.runAfter(
-			0,
-			internal.migrations['0054_backfill_folder_membership'].startPage,
-			{ cursor: begun.cursor ?? null, generation: begun.generation }
-		);
-		logInfo('migration.0054_backfill_folder_membership.started', {
-			generation: begun.generation,
-			isRebuild: begun.mode === REBUILD,
-		});
-		return { started: true, generation: begun.generation };
+		return await begin(ctx, { restart: args.restart === true || rebuild, rebuild });
 	},
 });
+
+/**
+ * The cron's entry (see the header): start the pass if it never ran, resume it
+ * if its ledger row has been still for {@link RESUME_AFTER_MS}, and otherwise
+ * do nothing. A resume keeps the recorded mode, so an interrupted rebuild goes
+ * on rebuilding. Never restarts a completed pass and never starts a rebuild of
+ * its own. Once the pass has completed, a call costs one indexed read.
+ */
+export const ensure = internalMutation({
+	args: {},
+	handler: async (ctx): Promise<BeginResult> => {
+		const existing = await readMigrationRun(ctx, MIGRATION);
+		if (existing?.status === 'completed') return { started: false };
+		if (existing && existing.updatedAt > Date.now() - RESUME_AFTER_MS) return { started: false };
+		return await begin(ctx, { restart: false, rebuild: false });
+	},
+});
+
+interface BeginResult {
+	started: boolean;
+	generation?: number;
+	reason?: string;
+}
+
+async function begin(
+	ctx: MutationCtx,
+	options: { restart: boolean; rebuild: boolean }
+): Promise<BeginResult> {
+	const begun = await beginMigrationRun(ctx, {
+		migration: MIGRATION,
+		introducedIn: INTRODUCED_IN,
+		restart: options.restart,
+		...(options.rebuild ? { mode: REBUILD } : {}),
+	});
+	if (!begun) {
+		return { started: false, reason: 'Already completed; pass restart to run it again' };
+	}
+	await ctx.scheduler.runAfter(
+		0,
+		internal.migrations['0054_backfill_folder_membership'].startPage,
+		{
+			cursor: begun.cursor ?? null,
+			generation: begun.generation,
+		}
+	);
+	logInfo('migration.0054_backfill_folder_membership.started', {
+		generation: begun.generation,
+		isRebuild: begun.mode === REBUILD,
+	});
+	return { started: true, generation: begun.generation };
+}
 
 /** The ledger row, and how many folders are ready and still walking (first 5,000). */
 export const status = internalQuery({
