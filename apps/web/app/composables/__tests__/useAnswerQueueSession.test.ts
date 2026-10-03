@@ -168,7 +168,7 @@ describe('the Answer queue opens Answer mode', () => {
 		expect(navigateTo).toHaveBeenLastCalledWith('/dashboard/answer/m/msg_a?queue=all', {
 			replace: true,
 		});
-		expect(session.flow.summary.value).not.toBe('');
+		expect(session.flow.summary.value).not.toEqual([]);
 
 		expect(session.handleSent()).toBe(true);
 		// The mention has no Answer mode: back to the queue page, which shows its card.
@@ -213,7 +213,7 @@ describe('the Answer queue opens Answer mode', () => {
 		session.back();
 		expect(route.path).toBe('/dashboard/answer/m/msg_a');
 		expect(session.flow.canUndo.value).toBe(false);
-		expect(session.flow.summary.value).toBe('');
+		expect(session.flow.summary.value).toEqual([]);
 	});
 
 	it('finishing the last item shows the done state on the queue page and moves the watermark', async () => {
@@ -293,7 +293,7 @@ describe('filters and entry points', () => {
 		expect(session.isCurrentRoute.value).toBe(false);
 		expect(session.handleSent()).toBe(true);
 		expect(route.path).toBe('/dashboard/answer/m/msg_a');
-		expect(session.flow.summary.value).toBe('');
+		expect(session.flow.summary.value).toEqual([]);
 	});
 
 	it('an Answer mode page opened outside the queue never reads it', async () => {
