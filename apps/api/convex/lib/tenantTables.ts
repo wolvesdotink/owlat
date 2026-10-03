@@ -193,6 +193,7 @@ export const TENANT_TABLES = [
 	'handlingRules',
 	'autonomySuggestions',
 	'askEagernessSettings',
+	'inboxSlaPolicies',
 	'clarificationAskLog',
 	'clarificationMemory',
 	'agentShadowDecisions',
@@ -249,6 +250,11 @@ export const TENANT_TABLES = [
 	'mailThreadVisits',
 	'todayStates',
 	'todayThreadSummaries',
+	// Booking page: a member's page, meeting types and the bookings guests made
+	// (children first).
+	'bookings',
+	'bookingMeetingTypes',
+	'bookingProfiles',
 	'mailAuditLog',
 	'mailAuthFailures',
 	'mailboxMigrations',

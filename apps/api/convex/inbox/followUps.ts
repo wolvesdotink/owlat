@@ -37,6 +37,7 @@ import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { isOutboundChannel } from '../lib/convexValidators';
 import { getOrThrow, throwInvalidInput, throwInvalidState } from '../_utils/errors';
 import { mirrorEmailSendWrite } from '../unifiedMessages';
+import { transition as threadTransition } from './threads/module';
 import { buildThreadingHeaders, extractRecipient } from '../agent/replyEnvelope';
 import { replyBodyToHtml } from '@owlat/shared/html';
 import type {
@@ -117,6 +118,9 @@ export const sendFollowUp = adminMutation({
 		threadId: v.id('conversationThreads'),
 		body: v.string(),
 		subject: v.string(),
+		// The composer's saved-reply gap guard: a follow-up has no stored draft
+		// to carry it, so the composer says whether its text holds one.
+		isGapGuarded: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args, session): Promise<SendFollowUpResult> => {
 		const body = args.body.trim();
@@ -144,7 +148,12 @@ export const sendFollowUp = adminMutation({
 			};
 		}
 
-		await assertNoAnswerGaps(ctx, { kind: 'teamThread', threadId: args.threadId }, { text: body });
+		await assertNoAnswerGaps(
+			ctx,
+			{ kind: 'teamThread', threadId: args.threadId },
+			{ text: body },
+			{ guarded: args.isGapGuarded === true }
+		);
 		// The composer's attachments leave with this follow-up, so the composer is
 		// free for the next one while this one waits out its undo window.
 		await assertReplyAttachmentsReady(ctx, args.threadId);
@@ -314,6 +323,11 @@ export const completeSend = internalMutation({
 		}
 		const moved = await transitionFollowUp(ctx, followUp, 'sent', { sentAt: args.outcome.at });
 		if (!moved) return;
+		// A follow-up is a reply too: it closes the thread's response clock.
+		await threadTransition(ctx, {
+			threadId: followUp.threadId,
+			input: { kind: 'reply_sent', at: args.outcome.at },
+		});
 		try {
 			const thread = await ctx.db.get(followUp.threadId);
 			if (thread?.contactId) {

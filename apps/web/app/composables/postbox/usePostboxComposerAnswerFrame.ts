@@ -7,8 +7,10 @@
  *  - the envelope collapses to one line ("To Jonas · From Ada · Re: …") and
  *    opens on click, or by itself the moment something in it needs attention
  *    (a first-time recipient, a From that leaves the team inbox or will fail
- *    authentication, a recipient blocking the seal). It never closes by
- *    itself again: a warning that flickers away is worse than one that stays;
+ *    authentication). It never closes by itself again: a warning that
+ *    flickers away is worse than one that stays. A recipient without a sealing
+ *    key is not such a thing: most people have none, the seal line under Send
+ *    says so and offers to remove them, and Send asks before an unsealed send;
  *  - the quoted original is folded out of the editor. It is still IN the body
  *    (so the draft row, the mirror and the sent MIME carry it byte for byte as
  *    before); a class on the editor's wrapper only hides it, and "Show quoted
@@ -18,14 +20,19 @@
  * In the popup frame all three are simply "open", which is today's composer.
  */
 import { computed, nextTick, onMounted, ref, watch, type Ref } from 'vue';
+import type { EditorSnippet } from './usePostboxSnippetPicker';
 import { bodyHasQuote } from '~/utils/answerMode';
+
+/** What the composer calls on its simple editor. */
+export interface BasicEditorHandle {
+	focus: () => void;
+	insertSnippet: (snippet: EditorSnippet) => void;
+}
 
 export function usePostboxComposerAnswerFrame(opts: {
 	/** `frame === 'answer'`; fixed for the life of the composer. */
 	active: boolean;
 	bodyHtml: Ref<string>;
-	/** A recipient blocks sealing: the envelope is where that chip is. */
-	sealBlocked: () => boolean;
 }) {
 	const envelopeOpen = ref(!opts.active);
 	const quoteFolded = ref(opts.active);
@@ -35,7 +42,7 @@ export function usePostboxComposerAnswerFrame(opts: {
 	const envelopeAttention = ref(false);
 
 	watch(
-		() => envelopeAttention.value || opts.sealBlocked(),
+		envelopeAttention,
 		(needsAttention) => {
 			if (needsAttention) envelopeOpen.value = true;
 		},
@@ -44,9 +51,10 @@ export function usePostboxComposerAnswerFrame(opts: {
 
 	// Template refs the composer binds: the envelope (its reply-all switch) and
 	// the body editor, focused on mount in Answer mode, which only ever opens on
-	// an explicit reply, so this never steals focus on load.
+	// an explicit reply, so this never steals focus on load (and handed a saved
+	// reply picked outside its text).
 	const envelopeRef = ref<{ switchToReplyAll: () => void } | null>(null);
-	const basicEditor = ref<{ focus: () => void } | null>(null);
+	const basicEditor = ref<BasicEditorHandle | null>(null);
 	function focusBody() {
 		basicEditor.value?.focus();
 	}

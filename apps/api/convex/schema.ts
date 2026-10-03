@@ -26,6 +26,7 @@ import { seedPlacementTables } from './schema/seedPlacement';
 import { inboxTables } from './schema/inbox';
 import { inboxCollaborationTables } from './schema/inboxCollaboration';
 import { inboxFollowUpTables } from './schema/inboxFollowUps';
+import { inboxSlaTables } from './schema/inboxSla';
 import { autonomyTables } from './schema/autonomy';
 import { askEagernessTables } from './schema/askEagerness';
 import { knowledgeTables } from './schema/knowledge';
@@ -45,6 +46,7 @@ import { todayTables } from './schema/today';
 import { counterTables } from './schema/counters';
 import { answerCatchUpTables } from './schema/answerCatchUp';
 import { migrationRunTables } from './schema/migrationRuns';
+import { bookingTables } from './schema/booking';
 import { pushSubscriptionTables } from './schema/pushSubscriptions';
 import { emailCoeditingTables } from './schema/emailCoediting';
 import { imapServerTables } from './schema/imapServers';
@@ -79,6 +81,7 @@ export default defineSchema({
 	...inboxTables,
 	...inboxCollaborationTables,
 	...inboxFollowUpTables,
+	...inboxSlaTables,
 	...autonomyTables,
 	...askEagernessTables,
 	...knowledgeTables,
@@ -98,6 +101,7 @@ export default defineSchema({
 	...counterTables,
 	...answerCatchUpTables,
 	...migrationRunTables,
+	...bookingTables,
 	...pushSubscriptionTables,
 	...emailCoeditingTables,
 	...imapServerTables,

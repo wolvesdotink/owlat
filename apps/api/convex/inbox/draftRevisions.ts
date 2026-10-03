@@ -49,11 +49,15 @@ export function draftDiffersFromAgentOriginal(message: Doc<'inboundMessages'>): 
  * fake "agent original". A save whose text matches the latest revision skips
  * the duplicate append but still stamps `draftSavedAt` and patches the
  * subject. Records NO autonomy feedback.
+ *
+ * `gapGuarded` is the composer's saved-reply gap guard for this text
+ * (`isDraftGapGuarded`): stored with it, so its `[[...]]` gaps still hold Send
+ * after a reload and `approveDraft` refuses them. Omitted = left as it was.
  */
 export async function appendDraftRevision(
 	ctx: MutationCtx,
 	message: Doc<'inboundMessages'>,
-	args: { text: string; subject?: string; savedBy: string }
+	args: { text: string; subject?: string; savedBy: string; gapGuarded?: boolean }
 ): Promise<void> {
 	const now = Date.now();
 	const revisions = [...(message.draftRevisions ?? [])];
@@ -85,6 +89,7 @@ export async function appendDraftRevision(
 		...(args.subject !== undefined ? { draftSubject: args.subject } : {}),
 		draftRevisions: revisions,
 		draftSavedAt: now,
+		...(args.gapGuarded !== undefined ? { isDraftGapGuarded: args.gapGuarded } : {}),
 		// Kept as the honest differs-from-agent-original bit so the existing
 		// `clarification_unedited_send` outcome discrimination stays accurate:
 		// a save reverting to the agent's exact text counts as unedited.
@@ -106,6 +111,8 @@ export const saveDraftRevision = adminMutation({
 		inboundMessageId: v.id('inboundMessages'),
 		draftResponse: v.string(),
 		draftSubject: v.optional(v.string()),
+		// The composer's saved-reply gap guard (see `appendDraftRevision`).
+		isGapGuarded: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args, session) => {
 		const message = await getOrThrow(ctx, args.inboundMessageId, 'Message');
@@ -114,6 +121,7 @@ export const saveDraftRevision = adminMutation({
 			text: args.draftResponse,
 			...(args.draftSubject !== undefined ? { subject: args.draftSubject } : {}),
 			savedBy: session.userId,
+			gapGuarded: args.isGapGuarded,
 		});
 
 		await recordAuditLog(ctx, {

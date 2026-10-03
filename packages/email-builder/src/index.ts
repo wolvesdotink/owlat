@@ -73,6 +73,7 @@ export type {
 	PreviewMode,
 	SlashCommand,
 	SlashMenuState,
+	EmailBuilderBrand,
 	RemoteBlockMark,
 	BuilderCollabFocus,
 } from './types';

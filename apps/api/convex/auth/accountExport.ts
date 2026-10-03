@@ -455,6 +455,13 @@ export const exportUserDataPage = authedAction({
 			)) as PaginationResult<Record<string, unknown>>;
 			return serializeAccountExportPage(result);
 		}
+		if (args.resource === 'savedReplies') {
+			const result = (await ctx.runQuery(
+				internal.auth.accountExportQueries.listPersonalSavedReplies,
+				{ userId: args.userId, paginationOpts }
+			)) as PaginationResult<Doc<'mailSnippets'>>;
+			return serializeAccountExportPage(result);
+		}
 		if (args.resource === 'chatMessages') {
 			const result = (await ctx.runQuery(
 				internal.auth.accountExportQueries.listPersonalChatMessages,
@@ -462,12 +469,19 @@ export const exportUserDataPage = authedAction({
 			)) as PaginationResult<Doc<'chatMessages'>>;
 			return serializeAccountExportPage(result);
 		}
-		if (args.resource === 'pushSubscriptions') {
+		if (args.resource === 'bookingPages' || args.resource === 'bookings') {
 			const result = (await ctx.runQuery(
-				internal.auth.accountExportQueries.listPersonalPushSubscriptions,
+				args.resource === 'bookings'
+					? internal.auth.accountExportBookingQueries.listBookings
+					: internal.auth.accountExportBookingQueries.listBookingPages,
 				{ userId: args.userId, paginationOpts }
 			)) as PaginationResult<Record<string, unknown>>;
 			return serializeAccountExportPage(result);
+		}
+		if (args.resource === 'pushSubscriptions') {
+			const query = internal.auth.accountExportPushQueries.listPersonalPushSubscriptions;
+			const result = await ctx.runQuery(query, { userId: args.userId, paginationOpts });
+			return serializeAccountExportPage(result as PaginationResult<Record<string, unknown>>);
 		}
 		if (args.resource === 'threadNotes') {
 			const result = (await ctx.runQuery(

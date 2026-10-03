@@ -79,9 +79,9 @@ const groups = computed(() => [
 		icon: 'lucide:toggle-right',
 	},
 	{
-		title: t('dashboard.admin.instance.index.groups.emailTheme.title'),
-		description: t('dashboard.admin.instance.index.groups.emailTheme.description'),
-		href: '/dashboard/admin/instance/email-theme',
+		title: t('dashboard.admin.instance.index.groups.brandKit.title'),
+		description: t('dashboard.admin.instance.index.groups.brandKit.description'),
+		href: '/dashboard/admin/instance/brand-kit',
 		icon: 'lucide:palette',
 	},
 	{

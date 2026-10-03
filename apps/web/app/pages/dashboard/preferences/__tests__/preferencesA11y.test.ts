@@ -29,6 +29,7 @@ import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
 import { useFormModal } from '~/composables/useFormModal';
 import { useFormValidation } from '~/composables/useFormValidation';
 import { useLocalStorage } from '~/composables/useLocalStorage';
+import { useCopyToClipboard } from '~/composables/useCopyToClipboard';
 import PreferencesLayout from '~/layouts/preferences.vue';
 
 // The layout reads the bundled-plugin list (for the Settings nav's workspace
@@ -96,6 +97,7 @@ beforeEach(() => {
 		// label-to-control bindings under audit are built out of their state.
 		useClickOutside,
 		useClickOutsideSelector: useClickOutside,
+		useCopyToClipboard,
 		useDebouncedSearch,
 		useFormModal,
 		useFormValidation,
@@ -145,13 +147,6 @@ beforeEach(() => {
 		usePostboxSignatures: () => ({
 			signatures: ref([]),
 			defaultSignature: ref(null),
-			isLoading: ref(false),
-			create: vi.fn(),
-			update: vi.fn(),
-			remove: vi.fn(),
-		}),
-		usePostboxSnippets: () => ({
-			snippets: ref([]),
 			isLoading: ref(false),
 			create: vi.fn(),
 			update: vi.fn(),

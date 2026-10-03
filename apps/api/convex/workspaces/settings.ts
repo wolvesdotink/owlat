@@ -5,7 +5,9 @@
  * `isInboundTlsRequired`, `updatedAt`). Sibling of
  * **Feature flags (module)** (which owns the `featureFlags` map),
  * **Abuse status (module)** (which owns the abuse-status columns),
- * **Workspace branding (module)** (`branding.ts`, which owns the logo columns), and
+ * **Workspace branding (module)** (`branding.ts`, which owns the logo columns),
+ * **Brand kit (module)** (`brandKit.ts`, which owns `brandKit` and writes
+ * `emailTheme` with it), and
  * the **Organization deletion (module)** walker scheduled by `remove`.
  *
  * Four entry points:
@@ -31,6 +33,7 @@ import { MAX_TRUSTED_ARC_FORWARDERS, sanitizeTrustedForwarders } from '@owlat/sh
 import { sealPolicyValidator } from '../mail/sealPolicy';
 import { beginSearchBodyPurge, stopSearchBodyPurge } from '../mail/_bodySearchLifecycle';
 import { mtaStsModeValidator } from '../lib/convexValidators';
+import { emailThemeValidator } from '../lib/validators/brandKit';
 import { inboundRawRetentionDaysValidator } from '../lib/literalValidators';
 import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
@@ -102,14 +105,10 @@ export const update = authedMutation({
 		// arbitrary horizon to range-guard, and the field flows through the patch
 		// and audit-diff below unchanged.
 		inboundRawRetentionDays: v.optional(inboundRawRetentionDaysValidator),
-		emailTheme: v.optional(
-			v.object({
-				primaryColor: v.string(),
-				fontFamily: v.string(),
-				backgroundColor: v.string(),
-				baseWidth: v.optional(v.number()),
-			})
-		),
+		// The brand kit page writes the theme through `workspaces/brandKit.ts`
+		// now. Kept for a previous release's settings tab that is still open;
+		// remove after the release that follows the brand kit's.
+		emailTheme: v.optional(emailThemeValidator),
 	},
 	handler: async (ctx, args) => {
 		const session = await requireOrgPermission(

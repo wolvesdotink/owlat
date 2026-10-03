@@ -20,6 +20,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { AskAnswer } from '~/composables/useAnswerAskSession';
 import { backgroundAskAnswers } from '~/utils/backgroundAskAnswers';
+import { extractEmailAddress } from '~/utils/emailAddress';
 import type { TeamThreadComposerTarget } from '~/utils/composerTarget';
 import {
 	hasAgentDraft,
@@ -95,6 +96,10 @@ export function useAnswerTeamReply(opts: {
 			: null
 	);
 	const subject = computed(() => (target.value ? replySubject(target.value) : null));
+	// A saved reply's gaps in that draft keep holding Send after a reload.
+	const draftGapGuarded = computed(
+		() => draft.value !== null && target.value?.isDraftGapGuarded === true
+	);
 	// The diff's "before" side is the AGENT's original draft (revision 0), not the
 	// latest saved text, so the first save does not destroy the agent-vs-human
 	// diff. Falls back to the working draft for messages never saved.
@@ -111,6 +116,14 @@ export function useAnswerTeamReply(opts: {
 			return name || c.email || '';
 		}
 		return target.value?.from ?? '';
+	});
+
+	// What a saved reply's `{{contact.*}}` variables resolve from.
+	const recipient = computed(() => {
+		const c = contact.value;
+		if (c) return { firstName: c.firstName, lastName: c.lastName, email: c.email };
+		const from = target.value?.from;
+		return from ? { email: extractEmailAddress(from) } : null;
 	});
 
 	const composerTarget = computed<TeamThreadComposerTarget | null>(() =>
@@ -239,9 +252,11 @@ export function useAnswerTeamReply(opts: {
 		blocker,
 		notice,
 		draft,
+		draftGapGuarded,
 		subject,
 		originalDraft,
 		senderLabel,
+		recipient,
 		composerTarget,
 		busy: composer.busy,
 		send: composer.send,

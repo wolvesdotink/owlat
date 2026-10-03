@@ -271,29 +271,15 @@ export const listPersonalChatMessages = internalQuery({
 	},
 });
 
-/**
- * The member's Web Push devices: label and timestamps only. The endpoint and
- * the two keys are a live capability to notify this person, so they stay out
- * of a file that is meant to be downloaded and kept.
- */
-export const listPersonalPushSubscriptions = internalQuery({
+/** The member's personal saved replies (shared ones are the organization's). */
+export const listPersonalSavedReplies = internalQuery({
 	args: { userId: v.string(), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
 		await requireSelf(ctx, args.userId);
-		const result = await ctx.db
-			.query('pushSubscriptions')
-			.withIndex('by_user', (q) => q.eq('userId', args.userId))
+		return ctx.db
+			.query('mailSnippets')
+			.withIndex('by_owner', (q) => q.eq('ownerUserId', args.userId))
 			.paginate(args.paginationOpts);
-		return {
-			...result,
-			page: result.page.map((row) => ({
-				_id: row._id,
-				label: row.label,
-				timeZone: row.timeZone,
-				createdAt: row.createdAt,
-				lastSuccessAt: row.lastSuccessAt,
-			})),
-		};
 	},
 });
 
@@ -438,6 +424,9 @@ export const getPersonalExportCounts = internalQuery({
 		const chatMessages = await boundedCount(
 			ctx.db.query('chatMessages').withIndex('by_author', (q) => q.eq('authorId', args.userId))
 		);
+		const savedReplies = await boundedCount(
+			ctx.db.query('mailSnippets').withIndex('by_owner', (q) => q.eq('ownerUserId', args.userId))
+		);
 		const threadNotes = await boundedCount(
 			ctx.db.query('threadNotes').withIndex('by_author', (q) => q.eq('authorId', args.userId))
 		);
@@ -445,6 +434,12 @@ export const getPersonalExportCounts = internalQuery({
 			ctx.db
 				.query('deliverabilityAlertRecipients')
 				.withIndex('by_user', (q) => q.eq('userId', args.userId))
+		);
+		const bookingPages = await boundedCount(
+			ctx.db.query('bookingProfiles').withIndex('by_user', (q) => q.eq('userId', args.userId))
+		);
+		const bookings = await boundedCount(
+			ctx.db.query('bookings').withIndex('by_user_and_start', (q) => q.eq('userId', args.userId))
 		);
 		const pushDevices = await boundedCount(
 			ctx.db.query('pushSubscriptions').withIndex('by_user', (q) => q.eq('userId', args.userId))
@@ -473,6 +468,13 @@ export const getPersonalExportCounts = internalQuery({
 				resource: 'deliverabilityAlertRecipientStates' as const,
 				count: alertStates.count,
 				isCapped: alertStates.isCapped,
+			},
+			{ resource: 'bookingPages' as const, ...bookingPages },
+			{ resource: 'bookings' as const, ...bookings },
+			{
+				resource: 'savedReplies' as const,
+				count: savedReplies.count,
+				isCapped: savedReplies.isCapped,
 			},
 			{
 				resource: 'pushSubscriptions' as const,

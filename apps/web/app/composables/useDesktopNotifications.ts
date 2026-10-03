@@ -186,12 +186,13 @@ export function useDesktopNotifications() {
 		isDesktop.value ? {} : 'skip'
 	);
 
-	// "Assigned to you" notices (and note @-mentions) for the current user. Runs
-	// in EVERY session (not desktop-gated) so the in-app toast lands in the
-	// browser too; the desktop notification path is gated below. Empty for
-	// non-admins server-side.
+	// "Assigned to you" notices (and note @-mentions and passed reply targets)
+	// for the current user. Runs in EVERY session (not desktop-gated) so the
+	// in-app toast lands in the browser too; the desktop notification path is
+	// gated below. Empty for non-admins server-side.
 	const { data: assignmentData } = useConvexQuery(api.inbox.queries.pendingAssignments, () => ({
 		includeMentions: true,
+		includeSlaBreaches: true,
 	}));
 	const seenAssignmentIds = new Set<string>();
 	let loadedAssignmentsOnce = false;
@@ -434,14 +435,20 @@ export function useDesktopNotifications() {
 						}
 					}
 				} else {
-					showToast(localize(assignmentGroupToastMessage(plan.count)), 'success', {
+					const kind = plan.sample.kind;
+					showToast(localize(assignmentGroupToastMessage(plan.count, kind)), 'success', {
 						action: {
 							label: t('common.open'),
-							onAction: () => void navigateTo('/dashboard/inbox?assignee=me'),
+							onAction: () =>
+								void navigateTo(
+									kind === 'sla_breach'
+										? '/dashboard/inbox?filter=sla-overdue'
+										: '/dashboard/inbox?assignee=me'
+								),
 						},
 					});
 					if (notif) {
-						const parts = assignmentGroupNotificationParts(plan.count);
+						const parts = assignmentGroupNotificationParts(plan.count, kind);
 						try {
 							await notif.sendDesktopNotification(localize(parts.title), localize(parts.body));
 						} catch {

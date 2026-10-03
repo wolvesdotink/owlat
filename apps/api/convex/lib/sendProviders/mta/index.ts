@@ -38,6 +38,7 @@ import {
 	type SystemMailExtrasInput,
 } from '../types';
 import { clampRetryAfterMs, LOCAL_DEFER_MS } from '../errors';
+import { bytesToBase64 } from '../../bytes';
 import { sendProviderCatalogEntry } from '../catalog';
 import { transportEnvOptional } from '../transportEnv';
 import { sendTransportEnvName, type SendTransportRecord } from '../transports';
@@ -274,6 +275,17 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 			deliveryDomain: extras?.deliveryDomain,
 			routingLease: extras?.routingLease,
 			allowWarmupOverflow: extras?.allowWarmupOverflow,
+			// Only the system intake takes files (a booking's `.ics`); the tenant
+			// intake refuses a body that carries them, so they are never sent there.
+			...(extras?.intakePath === 'system' && params.attachments?.length
+				? {
+						attachments: params.attachments.map((attachment) => ({
+							filename: attachment.filename,
+							contentType: attachment.contentType ?? 'application/octet-stream',
+							contentBase64: bytesToBase64(attachment.content),
+						})),
+					}
+				: {}),
 		};
 
 		const normalizedUrl = baseUrl.replace(/\/$/, '');

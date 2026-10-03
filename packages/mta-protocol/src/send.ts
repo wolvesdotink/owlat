@@ -44,6 +44,18 @@ export interface MtaRoutingReentry {
 	};
 }
 
+/**
+ * One file on a `/send/system` message (a booking's `.ics` invite). The bytes
+ * are base64 so the job survives JSON through Redis, the shape the MTA's own
+ * internally generated mail already uses.
+ */
+export interface MtaSendAttachment {
+	filename: string;
+	/** Full MIME type, parameters included (`text/calendar; method=REQUEST`). */
+	contentType: string;
+	contentBase64: string;
+}
+
 /** The POST body of `/send`, `/send/postbox` and `/send/system`. */
 export interface MtaSendRequest {
 	messageId: string;
@@ -57,6 +69,11 @@ export interface MtaSendRequest {
 	text?: string;
 	/** Postbox-only complete PGP/MIME bytes, base64-encoded. */
 	sealedMimeBase64?: string;
+	/**
+	 * System-intake only: small files the message carries. `/send` and
+	 * `/send/postbox` refuse a body that sets it.
+	 */
+	attachments?: MtaSendAttachment[];
 	/** AMP4Email body — delivered as a `text/x-amp-html` alternative part. */
 	amp?: string;
 	replyTo?: string;

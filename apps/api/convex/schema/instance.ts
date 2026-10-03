@@ -18,6 +18,7 @@ import {
 	inboundRawRetentionDaysValidator,
 	successOrFailedValidator,
 } from '../lib/literalValidators';
+import { brandKitValidator, emailThemeValidator } from '../lib/validators/brandKit';
 
 /**
  * The non-secret MTA health snapshot `delivery/mtaHealth` stores on
@@ -104,15 +105,13 @@ export const instanceTables = {
 		// (admins included) — the curated list is the safe default. The
 		// verified-domain hard gate still applies in both branches.
 		isCustomCampaignSendersAllowed: v.optional(v.boolean()),
-		// Email theme settings
-		emailTheme: v.optional(
-			v.object({
-				primaryColor: v.string(), // Main brand color (e.g., button backgrounds)
-				fontFamily: v.string(), // Font for email content
-				backgroundColor: v.string(), // Email body background color
-				baseWidth: v.optional(v.number()), // Base content width in px (default: 600)
-			})
-		),
+		// Email theme settings: the brand kit's primary colour, body font,
+		// background and width. Written by `workspaces/brandKit.ts`.
+		emailTheme: v.optional(emailThemeValidator),
+		// The rest of the brand kit (secondary, text and link colours, swatches,
+		// heading font, button style, logo, footer). Unset until an admin saves
+		// the brand kit; written only by `workspaces/brandKit.ts`.
+		brandKit: v.optional(brandKitValidator),
 		// Workspace logo, shown on the public pages (sign-in, unsubscribe,
 		// preferences, invitations) instead of the Owlat mark. Written only by
 		// `workspaces/branding.ts`. The dark variant is optional: without it the

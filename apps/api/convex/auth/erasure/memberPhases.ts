@@ -52,7 +52,9 @@ export const eraseInstanceRows: MemberPhaseRunner = async ({ ctx, authUserId, bu
  * queues (they carry the email, name and a free-text note), Today state and
  * the thread-visit log (reading history), mail settings, dashboard layout,
  * inbox presence, read markers and assignment notices, OAuth handshakes in
- * flight, leftover draft-revise buffers, mailbox moves, and mailbox
+ * flight, leftover draft-revise buffers, mailbox moves, the booking page with
+ * its meeting types and every booking guests made on it, personal saved
+ * replies, and mailbox
  * reservations the member accepted but the domain never activated (the
  * activation sweep would otherwise provision a mailbox for the erased id).
  */
@@ -138,6 +140,26 @@ export const eraseMemberRecords: MemberPhaseRunner = async (phase) => {
 			ctx.db
 				.query('mailboxMoves')
 				.withIndex('by_user', (q) => q.eq('userId', uid))
+				.take(n),
+		(n) =>
+			ctx.db
+				.query('bookings')
+				.withIndex('by_user_and_start', (q) => q.eq('userId', uid))
+				.take(n),
+		(n) =>
+			ctx.db
+				.query('bookingMeetingTypes')
+				.withIndex('by_user_and_slug', (q) => q.eq('userId', uid))
+				.take(n),
+		(n) =>
+			ctx.db
+				.query('bookingProfiles')
+				.withIndex('by_user', (q) => q.eq('userId', uid))
+				.take(n),
+		(n) =>
+			ctx.db
+				.query('mailSnippets')
+				.withIndex('by_owner', (q) => q.eq('ownerUserId', uid))
 				.take(n),
 	]);
 	if (!isEmpty) return { isDone: false };
@@ -391,6 +413,27 @@ export const eraseChatMentions: MemberPhaseRunner = async (phase): Promise<Membe
 				.withIndex('by_mentioned_unread', (q) => q.eq('mentionedMemberId', phase.authUserId))
 				.take(n),
 	]),
+});
+
+/**
+ * Shared saved replies the member wrote stay with the organization; who wrote
+ * them goes. The patch moves each row out of the author index range, so the
+ * range drains like a delete.
+ */
+export const eraseSavedReplyAuthorship: MemberPhaseRunner = async ({
+	ctx,
+	authUserId,
+	budget,
+}) => ({
+	isDone: await drainEach(
+		budget,
+		(n) =>
+			ctx.db
+				.query('mailSnippets')
+				.withIndex('by_author', (q) => q.eq('authorUserId', authUserId))
+				.take(n),
+		(reply) => ctx.db.patch(reply._id, { authorUserId: undefined })
+	),
 });
 
 /**

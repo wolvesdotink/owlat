@@ -52,12 +52,18 @@ const props = withDefaults(
 		placeholder?: string;
 		/** data-testid prefix: `<prefix>-question`, `<prefix>-chip`, `<prefix>-input`. */
 		testIdPrefix?: string;
+		/**
+		 * Leave each question's attribution line out: the surface says where the
+		 * questions came from once, for all of them (Answer mode's ask card).
+		 */
+		hideAttribution?: boolean;
 	}>(),
 	{
 		submitting: false,
 		numbered: false,
 		placeholder: undefined,
 		testIdPrefix: 'clarification',
+		hideAttribution: false,
 	}
 );
 
@@ -139,7 +145,10 @@ defineExpose({ pickIndex, submit, setValue });
 					})
 				}}
 			</p>
-			<TaskAsk :ask="copyFor(question).text" :why="question.attribution" />
+			<TaskAsk
+				:ask="copyFor(question).text"
+				:why="hideAttribution ? undefined : question.attribution"
+			/>
 			<slot
 				name="answer"
 				:question="question"

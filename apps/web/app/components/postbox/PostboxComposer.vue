@@ -59,6 +59,7 @@ const { showOperationError } = useOperationErrorToast();
 // The seed names the target; the shell and footer read its capabilities.
 const target = mailboxComposerTarget(props.seed);
 
+const compose = usePostboxCompose(props.seed);
 const {
 	draftId: activeDraftId,
 	toAddresses,
@@ -102,7 +103,7 @@ const {
 	flush,
 	send,
 	discard,
-} = usePostboxCompose(props.seed);
+} = compose;
 
 // Inline ghost-text autocomplete: gated by the `ai` flag AND the per-user
 // toggle; the subject line is the bounded thread context for the prompt.
@@ -120,7 +121,7 @@ const seal = usePostboxComposerSealLock(() => activeDraftId.value ?? undefined, 
 
 // Plan idea 11: which chips may show a key glyph, and what removing a named
 // blocker does. Both live in a sibling composable so this file stays focused.
-const { chipSealStates, removeSealBlocker } = usePostboxComposerSealChips(seal, {
+const { chipSealStates, lockBindings } = usePostboxComposerSealChips(seal, {
 	toAddresses,
 	ccAddresses,
 	bccAddresses,
@@ -130,17 +131,6 @@ const { chipSealStates, removeSealBlocker } = usePostboxComposerSealChips(seal, 
 // on selection); the footer "Aa" affordance flips back to the classic persistent
 // toolbar and persists the choice per user.
 const { persistentToolbar, toggleToolbar } = usePostboxToolbarPreference();
-
-// Canned responses ("/" slash-trigger); inert when the mailbox has no snippets.
-// The third argument is what a snippet's sender-identity variables resolve to.
-const { editorSnippets, snippetVariableContext } = usePostboxComposerSnippets(
-	() => props.seed.mailboxId ?? null,
-	() => toAddresses.value[0],
-	() => ({
-		name: availableIdentities.value.find((i) => i.address === fromAddress.value)?.label,
-		email: fromAddress.value,
-	})
-);
 
 async function onFromChange(address: string) {
 	try {
@@ -214,11 +204,7 @@ const { sending, handleSend, guards, stale } = usePostboxComposerSendGate({
 // --- Frames. Answer mode's view state (folded envelope/quote, Coach under ⋯)
 // lives in its own composable; the draft underneath is the popup's, untouched.
 const answerFrame = props.frame === 'answer';
-const frameView = usePostboxComposerAnswerFrame({
-	active: answerFrame,
-	bodyHtml,
-	sealBlocked: () => seal.blockingRecipients.length > 0,
-});
+const frameView = usePostboxComposerAnswerFrame({ active: answerFrame, bodyHtml });
 const { envelopeRef, basicEditor, focusBody, onLineReplyAll } = frameView;
 
 // The draft id for the host's URL, popup reply → Answer mode on a saved row,
@@ -241,6 +227,8 @@ const { rootEl, bindRoot, dragActive, onDragOver, onDragLeave, onDrop, onPaste }
 
 // An AI draft's `[[...]]` gaps hold Send back until they are filled.
 const { gapCount } = usePostboxComposerGaps({ rootEl, bodyHtml });
+// Saved replies: the `;` trigger, the footer picker (⌘;), ⌘K while typing here, "Save as reply".
+const savedReplies = usePostboxComposerSnippets(props.seed, compose, { rootEl, basicEditor });
 const { answerApi, footerStatus, gapsHoldSend } = usePostboxComposerAnswerApi({
 	bodyHtml,
 	attachments,
@@ -277,6 +265,10 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 	},
 	onMinimize: () => emit('minimize'),
 });
+// ⌘; (the saved-reply picker) first, then the composer's own keys.
+function onKeydown(event: KeyboardEvent) {
+	if (!savedReplies.footer.handleKeydown(event)) onComposerKeydown(event);
+}
 </script>
 
 <template>
@@ -288,7 +280,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 		@dragleave="onDragLeave"
 		@drop="onDrop"
 		@paste="onPaste"
-		@keydown.capture="onComposerKeydown"
+		@keydown.capture="onKeydown"
 	>
 		<template v-if="!answerFrame" #header>
 			<PostboxComposerHeader
@@ -340,16 +332,9 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 		<PostboxComposerDraftNotice :notice="draftNotice" @retry="retryLoad" />
 		<!-- Sealed Mail (E5): honest seal-lock indicator, shown from the moment the
 		     state is being computed. Its unsealed control only REQUESTS the
-		     decision — the dialog below is the single source of plaintext consent. -->
-		<PostboxComposerSealLock
-			:enabled="seal.enabled"
-			:seal-state="seal.state"
-			:pending="seal.pending"
-			:blocking-recipients="seal.blockingRecipients"
-			:all-verified="seal.allVerified"
-			@request-unsealed="seal.requestUnsealed()"
-			@remove-recipient="removeSealBlocker"
-		/>
+		     decision — the dialog below is the single source of plaintext consent.
+		     Answer mode folds it to one line under Send (the footer's notes). -->
+		<PostboxComposerSealLock v-if="!answerFrame" v-bind="lockBindings" />
 
 		<!-- Plan idea 7: keystrokes the server row never received, after a crash.
 		     Above the editor, because it offers to replace what is in it. -->
@@ -397,8 +382,8 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 				:inline-images-enabled="true"
 				:embed-image="addInlineImage"
 				:on-remove-embedded-image="removeInlineImage"
-				:snippets="editorSnippets"
-				:snippet-variable-context="snippetVariableContext"
+				:snippets="savedReplies.editorSnippets.value"
+				:snippet-insert="savedReplies.snippetInsert.value"
 			/>
 			<EmailBuilder
 				v-else
@@ -458,7 +443,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 				:composer-mode="composerMode"
 				:body-pending="bodyPending"
 				:subject="subject"
-				:body-html="bodyHtml"
+				v-model:body-html="bodyHtml"
 				:body-blocks="bodyBlocks"
 				:persistent-toolbar="persistentToolbar"
 				:preflight="guards.preflight"
@@ -468,6 +453,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 				:quote-folded="frameView.quoteFolded.value"
 				:advisory-available="aiRewriteEnabled"
 				:advisory-open="frameView.advisoryOpen.value"
+				:saved-replies="savedReplies.footer"
 				@send="handleSend()"
 				@toggle-quote="frameView.toggleQuote()"
 				@toggle-advisory="frameView.toggleAdvisory()"
@@ -477,7 +463,11 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 				@signature-change="onSignatureChange"
 				@toggle-toolbar="toggleToolbar"
 				@switch-mode="switchMode"
-			/>
+			>
+				<template v-if="answerFrame" #notes>
+					<PostboxComposerSealLock compact v-bind="lockBindings" />
+				</template>
+			</PostboxComposerFooter>
 			<!-- Every dialog that PARKS a send until the sender answers: the schedule
 			     picker, the unsealed-send decision, the stale-reply warning. Grouped
 			     in one component because they share the contract — each confirm

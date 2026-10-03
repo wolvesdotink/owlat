@@ -291,13 +291,19 @@ function fmtUtc(d: Date): string {
 	);
 }
 
-/** Escape a TEXT property value per RFC 5545 §3.3.11 (\, ;, ,, newlines). */
+/**
+ * Escape a TEXT property value per RFC 5545 §3.3.11 (\, ;, ,, newlines). Every
+ * line break (CRLF, a lone CR or a lone LF) becomes `\n` and the other control
+ * characters TEXT does not allow are dropped, so free text cannot end its
+ * content line and start a property of its own.
+ */
 function escapeText(value: string): string {
 	return value
 		.replace(/\\/g, '\\\\')
 		.replace(/;/g, '\\;')
 		.replace(/,/g, '\\,')
-		.replace(/\r?\n/g, '\\n');
+		.replace(/\r\n|\r|\n/g, '\\n')
+		.replace(/\p{Cc}/gu, (char) => (char === '\t' ? char : ''));
 }
 
 /** Strip CR/LF so an address can't smuggle in extra content lines. */
@@ -333,4 +339,107 @@ export function buildReplyICalendar(
 		'END:VCALENDAR',
 	].filter(Boolean);
 	return `${lines.join('\r\n')}\r\n`;
+}
+
+/** A person on an invite (ORGANIZER or ATTENDEE). */
+export interface ICalPerson {
+	name?: string;
+	email: string;
+}
+
+/** The event an invite, an update or a cancellation describes. */
+export interface ICalEventInput {
+	/** `REQUEST` invites or updates (same UID, higher SEQUENCE); `CANCEL` withdraws. */
+	method: 'REQUEST' | 'CANCEL';
+	uid: string;
+	sequence: number;
+	start: Date;
+	end: Date;
+	summary: string;
+	description?: string;
+	location?: string;
+	url?: string;
+	organizer: ICalPerson;
+	attendees: ICalPerson[];
+	/** DTSTAMP. Injected so this module stays environment-pure. */
+	now: Date;
+}
+
+/**
+ * Quote a CN parameter value; DQUOTE and control characters are not allowed
+ * inside it (RFC 5545 §3.1, §3.2).
+ */
+function paramValue(value: string): string {
+	return `"${value.replace(/"|\p{Cc}/gu, '').trim()}"`;
+}
+
+function calAddress(prefix: string, person: ICalPerson, extra = ''): string {
+	const cn = person.name?.trim() ? `;CN=${paramValue(person.name)}` : '';
+	return `${prefix}${cn}${extra}:mailto:${sanitizeAddress(person.email)}`;
+}
+
+/**
+ * Fold a content line at 75 octets (RFC 5545 §3.1): CRLF + one space before
+ * each continuation. Splits on code points so a multi-byte character is never
+ * cut in half.
+ */
+function foldLine(line: string): string {
+	const encoder = new TextEncoder();
+	const out: string[] = [];
+	let current = '';
+	let size = 0;
+	for (const char of line) {
+		const bytes = encoder.encode(char).length;
+		const limit = out.length === 0 ? 75 : 74;
+		if (size + bytes > limit) {
+			out.push(current);
+			current = '';
+			size = 0;
+		}
+		current += char;
+		size += bytes;
+	}
+	out.push(current);
+	return out.join('\r\n ');
+}
+
+/**
+ * Build a METHOD:REQUEST or METHOD:CANCEL VCALENDAR (RFC 5545 + iTIP, RFC 5546)
+ * for one timed event. Times are written in UTC, so no VTIMEZONE is needed and
+ * every client shows them in its own zone. A cancellation carries the same UID
+ * with a higher SEQUENCE and STATUS:CANCELLED, which is what calendar clients
+ * match to remove the event.
+ */
+export function buildEventICalendar(event: ICalEventInput): string {
+	const cancelled = event.method === 'CANCEL';
+	const lines = [
+		'BEGIN:VCALENDAR',
+		'VERSION:2.0',
+		'PRODID:-//Owlat//Booking//EN',
+		'CALSCALE:GREGORIAN',
+		`METHOD:${event.method}`,
+		'BEGIN:VEVENT',
+		`UID:${escapeText(event.uid)}`,
+		`DTSTAMP:${fmtUtc(event.now)}`,
+		`SEQUENCE:${event.sequence}`,
+		`DTSTART:${fmtUtc(event.start)}`,
+		`DTEND:${fmtUtc(event.end)}`,
+		`SUMMARY:${escapeText(event.summary)}`,
+		event.description ? `DESCRIPTION:${escapeText(event.description)}` : '',
+		event.location ? `LOCATION:${escapeText(event.location)}` : '',
+		event.url ? `URL:${sanitizeAddress(event.url)}` : '',
+		calAddress('ORGANIZER', event.organizer),
+		...event.attendees.map((attendee) =>
+			calAddress(
+				'ATTENDEE',
+				attendee,
+				cancelled ? '' : ';ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE'
+			)
+		),
+		`STATUS:${cancelled ? 'CANCELLED' : 'CONFIRMED'}`,
+		'TRANSP:OPAQUE',
+		'END:VEVENT',
+		'END:VCALENDAR',
+	].filter(Boolean);
+	return `${lines.map(foldLine).join('\r\n')}\r\n`;
 }

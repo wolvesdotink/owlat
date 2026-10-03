@@ -22,7 +22,9 @@ const publicRateLimitTypeValidator = v.union(
 	v.literal('webhookIngestion'),
 	v.literal('adminSeed'),
 	v.literal('instanceSecret'),
-	v.literal('uploadServiceSecret')
+	v.literal('uploadServiceSecret'),
+	v.literal('bookingPage'),
+	v.literal('bookingCreate')
 );
 export type PublicRateLimitType = Infer<typeof publicRateLimitTypeValidator>;
 

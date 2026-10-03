@@ -39,6 +39,9 @@ beforeAll(() => {
 		// auto-import, so it has to exist as a global for their setup.
 		useI18n: i18nStubs.useI18n,
 		useInboxes: () => ({ byId: ref(new Map()) }),
+		// Insert availability (booking page) in the footer's ⋯ menu.
+		useFeatureFlag: () => ({ isEnabled: () => false }),
+		useToast: () => ({ showToast: vi.fn() }),
 	});
 });
 

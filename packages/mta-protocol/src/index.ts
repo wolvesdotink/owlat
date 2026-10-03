@@ -40,6 +40,7 @@
 export type {
 	MtaRoutingReentry,
 	MtaSendAccepted,
+	MtaSendAttachment,
 	MtaSendErrorCode,
 	MtaSendRefused,
 	MtaSendRequest,

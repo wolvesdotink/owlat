@@ -32,7 +32,7 @@ const preferencesPages = join(here, '../../pages/dashboard/preferences');
 
 const FULL: SettingsEnvironment = { isFeatureEnabled: () => true, isDesktop: true };
 const NO_MAIL: SettingsEnvironment = {
-	isFeatureEnabled: (flag) => flag !== 'postbox' && flag !== 'mail.external',
+	isFeatureEnabled: (flag) => flag !== 'postbox' && flag !== 'mail.external' && flag !== 'inbox',
 	isDesktop: false,
 };
 /** Nothing on the instance could ever send a Web Push: no mail, shared inbox or chat. */
@@ -137,16 +137,35 @@ describe('gates', () => {
 	it('keeps a no-mail instance on the pages that are not about mail', () => {
 		expect(visibleSettingsEntries(NO_PUSH_SOURCE).map((entry) => entry.id)).toEqual([
 			'overview',
+			'booking',
 			'account',
 			'security',
 		]);
 		// Chat and the shared inbox still push, and push lives on the device page.
 		expect(visibleSettingsEntries(NO_MAIL).map((entry) => entry.id)).toEqual([
 			'overview',
+			'booking',
 			'account',
 			'security',
 			'device',
 		]);
+	});
+
+	it('shows the booking page only while its flag is on', () => {
+		const noBooking: SettingsEnvironment = {
+			isFeatureEnabled: (flag) => flag !== 'calendar.booking',
+			isDesktop: false,
+		};
+		expect(visibleSettingsEntries(noBooking).map((entry) => entry.id)).not.toContain('booking');
+		expect(visibleSettingsEntries(WEB_WITH_MAIL).map((entry) => entry.id)).toContain('booking');
+	});
+
+	it('keeps saved replies on a Team-inbox-only instance (its composer uses them)', () => {
+		const teamInboxOnly: SettingsEnvironment = {
+			isFeatureEnabled: (flag) => flag !== 'postbox' && flag !== 'mail.external',
+			isDesktop: false,
+		};
+		expect(visibleSettingsEntries(teamInboxOnly).map((entry) => entry.id)).toContain('snippets');
 	});
 
 	it('hides the writing voice when AI is off but mail is on', () => {

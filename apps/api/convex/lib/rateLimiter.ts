@@ -281,6 +281,16 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 20,
 	},
 
+	// Brand kit "Import from website": each call fetches an admin-named site
+	// (and a few of its stylesheets, or one image) through the SSRF guard. Cap
+	// per user so the button cannot be turned into a fetch loop.
+	brandKitImport: {
+		kind: 'token bucket',
+		rate: 10,
+		period: MINUTE,
+		capacity: 15,
+	},
+
 	// Direct-to-storage upload URL minting (media library, chat attachments).
 	// The minted blob is inert until a gated mutation references it, but an
 	// unbounded mint loop still fills `_storage` with orphaned bytes the
@@ -291,5 +301,30 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		rate: 20,
 		period: MINUTE,
 		capacity: 40,
+	},
+
+	// The public booking page (`/booking/*`, see booking/publicHttp.ts), keyed
+	// per IP and page (a manage link per IP and token). Reads (the page and its
+	// open times, a guest's manage link) are cheap. A booking sends two emails,
+	// so it is held to a few per IP and page, and per HOST as well: a
+	// rotating-IP flood can fill one person's calendar or mail a stranger list
+	// only that fast.
+	bookingPage: {
+		kind: 'token bucket',
+		rate: 60,
+		period: MINUTE,
+		capacity: 120,
+	},
+	bookingCreate: {
+		kind: 'token bucket',
+		rate: 10,
+		period: HOUR,
+		capacity: 5,
+	},
+	bookingPerHost: {
+		kind: 'token bucket',
+		rate: 30,
+		period: HOUR,
+		capacity: 20,
 	},
 });

@@ -164,6 +164,12 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 		gate: hasMail,
 		controls: [control('shortcuts', 'shortcuts', hasMail)],
 	}),
+	entry('booking', {
+		path: `${SETTINGS_ROOT}/booking`,
+		icon: 'lucide:calendar-check',
+		section: 'general',
+		gate: flag('calendar.booking'),
+	}),
 	entry('filters', {
 		path: `${SETTINGS_ROOT}/filters`,
 		icon: 'lucide:list-filter',
@@ -196,9 +202,10 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 	}),
 	entry('snippets', {
 		path: `${SETTINGS_ROOT}/snippets`,
-		icon: 'lucide:text-quote',
+		icon: 'lucide:message-square-quote',
 		section: 'mail',
-		gate: hasMail,
+		// Saved replies serve the Team inbox's composer too.
+		gate: any(hasMail, flag('inbox')),
 	}),
 	entry('writingVoice', {
 		path: `${SETTINGS_ROOT}/writing-voice`,

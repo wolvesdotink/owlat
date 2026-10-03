@@ -58,7 +58,7 @@ const guardedPages = {
 const settingsFormPages = {
 	'admin/instance/ai-replies.vue': read('admin/instance/ai-replies.vue'),
 	'admin/instance/desktop-updates.vue': read('admin/instance/desktop-updates.vue'),
-	'admin/instance/email-theme.vue': read('admin/instance/email-theme.vue'),
+	'admin/instance/brand-kit.vue': read('admin/instance/brand-kit.vue'),
 	'admin/instance/general.vue': read('admin/instance/general.vue'),
 };
 

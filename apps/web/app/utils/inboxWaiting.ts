@@ -100,15 +100,23 @@ export interface InboxWaitingLabel {
  * is noise.
  */
 export function inboxWaitingLabel(waitedMs: number): InboxWaitingLabel {
-	const base = 'shared.inboxWaiting';
-	if (waitedMs < HOUR) {
-		return { key: `${base}.minutes`, params: { minutes: Math.floor(waitedMs / MINUTE) } };
+	return inboxDurationLabel('shared.inboxWaiting', waitedMs);
+}
+
+/**
+ * The same four sentence shapes under any catalog `base` that defines
+ * `minutes` / `hours` / `days` / `daysHours` — the response-target chip
+ * (utils/inboxSla.ts) words its deadlines with it.
+ */
+export function inboxDurationLabel(base: string, ms: number): InboxWaitingLabel {
+	if (ms < HOUR) {
+		return { key: `${base}.minutes`, params: { minutes: Math.floor(ms / MINUTE) } };
 	}
-	if (waitedMs < DAY) {
-		return { key: `${base}.hours`, params: { hours: Math.floor(waitedMs / HOUR) } };
+	if (ms < DAY) {
+		return { key: `${base}.hours`, params: { hours: Math.floor(ms / HOUR) } };
 	}
-	const days = Math.floor(waitedMs / DAY);
-	const hours = Math.floor((waitedMs % DAY) / HOUR);
+	const days = Math.floor(ms / DAY);
+	const hours = Math.floor((ms % DAY) / HOUR);
 	return hours === 0
 		? { key: `${base}.days`, params: { days } }
 		: { key: `${base}.daysHours`, params: { days, hours } };

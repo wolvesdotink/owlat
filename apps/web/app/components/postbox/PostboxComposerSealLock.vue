@@ -30,6 +30,13 @@
  * Every string it renders comes from the pure derivation, whose honesty audit is
  * a unit test. When the flag is off the parent passes `enabled=false` and the
  * lock renders nothing.
+ *
+ * `compact` (Answer mode, under Send): the lock is one quiet line, its summary,
+ * and the explanation, the keyless recipients and the unsealed control open
+ * from it. Most mail goes to people without a sealing key, so the full
+ * explanation on every reply only buries the reply; the Send button still asks
+ * before anything goes out unsealed. A key change (the warning tone) is never
+ * folded away: it opens on its own.
  */
 import { useLocalized } from '~/composables/useLocalized';
 import { deriveComposerLock, type SealState } from '~/utils/sealComposer';
@@ -56,8 +63,10 @@ const props = withDefaults(
 		 * message seals or whether Send is allowed.
 		 */
 		allVerified?: boolean;
+		/** One line whose details open on demand (see above). */
+		compact?: boolean;
 	}>(),
-	{ pending: false, blockingRecipients: () => [], allVerified: false }
+	{ pending: false, blockingRecipients: () => [], allVerified: false, compact: false }
 );
 
 const emit = defineEmits<{
@@ -84,13 +93,41 @@ const lock = computed(() =>
 const toneClasses = computed(() =>
 	lock.value ? SEAL_TONE_CLASSES[lock.value.tone] : SEAL_TONE_CLASSES.muted
 );
+
+// Compact: the details are opened by hand, except a warning, which shows itself.
+const opened = ref(false);
+const detailsShown = computed(() => !props.compact || opened.value || lock.value?.tone === 'warn');
+/** A checking lock has nothing to open yet. */
+const foldable = computed(
+	() => props.compact && lock.value?.kind !== 'checking' && lock.value?.tone !== 'warn'
+);
+const detailsId = useId();
 </script>
 
 <template>
 	<!-- Owns its own horizontal padding: the composer renders it unwrapped so the
 	     flag-off / nothing-to-say case leaves no empty row. -->
-	<div v-if="lock" class="mt-2 px-3" data-testid="seal-lock">
+	<div v-if="lock" :class="compact ? undefined : 'mt-2 px-3'" data-testid="seal-lock">
+		<button
+			v-if="foldable"
+			type="button"
+			class="inline-flex items-center gap-1.5 rounded text-xs text-text-tertiary hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+			:aria-expanded="opened"
+			:aria-controls="detailsId"
+			data-testid="seal-lock-toggle"
+			@click="opened = !opened"
+		>
+			<Icon :name="lock.icon" class="w-3.5 h-3.5" :class="toneClasses.icon" />
+			<span data-testid="seal-lock-summary">{{ localize(lock.summary) }}</span>
+			<Icon
+				name="lucide:chevron-down"
+				class="w-3 h-3 transition-transform motion-reduce:transition-none"
+				:class="{ 'rotate-180': opened }"
+				aria-hidden="true"
+			/>
+		</button>
 		<div
+			v-else
 			class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs border"
 			:class="toneClasses.chip"
 		>
@@ -104,42 +141,44 @@ const toneClasses = computed(() =>
 			/>
 			<span data-testid="seal-lock-summary">{{ localize(lock.summary) }}</span>
 		</div>
-		<p class="mt-1.5 text-xs text-text-secondary max-w-prose" data-testid="seal-lock-detail">
-			{{ localize(lock.detail) }}
-		</p>
-		<!-- Plan idea 11: who is blocking encryption, and the one edit that can
+		<div v-if="detailsShown" :id="detailsId">
+			<p class="mt-1.5 text-xs text-text-secondary max-w-prose" data-testid="seal-lock-detail">
+				{{ localize(lock.detail) }}
+			</p>
+			<!-- Plan idea 11: who is blocking encryption, and the one edit that can
 		     change the answer. Shown above the plaintext control so removing a
 		     keyless recipient reads as the alternative it is. -->
-		<div
-			v-if="blockingRecipients.length > 0"
-			class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs"
-			data-testid="seal-lock-blockers"
-		>
-			<span class="text-text-secondary">
-				{{ t('components.postbox.postboxComposerSealLock.blockedBy') }}
-			</span>
-			<button
-				v-for="address in blockingRecipients"
-				:key="address"
-				type="button"
-				class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-border-subtle text-text-secondary hover:bg-bg-elevated focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-				data-testid="seal-lock-remove-blocker"
-				:aria-label="t('components.postbox.postboxComposerSealLock.removeBlocker', { address })"
-				@click="emit('remove-recipient', address)"
+			<div
+				v-if="blockingRecipients.length > 0"
+				class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs"
+				data-testid="seal-lock-blockers"
 			>
-				{{ address }}
-				<Icon name="lucide:x" class="w-3 h-3" />
-			</button>
-		</div>
-		<div v-if="lock.allowSendUnsealed" class="mt-1.5 flex flex-wrap items-center gap-2">
-			<button
-				type="button"
-				class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs border border-border-subtle text-text-secondary hover:bg-bg-elevated focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-				data-testid="seal-lock-send-unsealed"
-				@click="emit('request-unsealed')"
-			>
-				{{ t('components.postbox.postboxComposerSealLock.sendUnsealed') }}
-			</button>
+				<span class="text-text-secondary">
+					{{ t('components.postbox.postboxComposerSealLock.blockedBy') }}
+				</span>
+				<button
+					v-for="address in blockingRecipients"
+					:key="address"
+					type="button"
+					class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-border-subtle text-text-secondary hover:bg-bg-elevated focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+					data-testid="seal-lock-remove-blocker"
+					:aria-label="t('components.postbox.postboxComposerSealLock.removeBlocker', { address })"
+					@click="emit('remove-recipient', address)"
+				>
+					{{ address }}
+					<Icon name="lucide:x" class="w-3 h-3" />
+				</button>
+			</div>
+			<div v-if="lock.allowSendUnsealed" class="mt-1.5 flex flex-wrap items-center gap-2">
+				<button
+					type="button"
+					class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs border border-border-subtle text-text-secondary hover:bg-bg-elevated focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+					data-testid="seal-lock-send-unsealed"
+					@click="emit('request-unsealed')"
+				>
+					{{ t('components.postbox.postboxComposerSealLock.sendUnsealed') }}
+				</button>
+			</div>
 		</div>
 	</div>
 </template>

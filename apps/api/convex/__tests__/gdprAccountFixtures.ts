@@ -267,6 +267,9 @@ export async function exportAllUserData(
 			chatMessages: await loadPages('chatMessages'),
 			threadNotes: await loadPages('threadNotes'),
 			deliverabilityAlertRecipientStates: await loadPages('deliverabilityAlertRecipientStates'),
+			bookingPages: await loadPages('bookingPages'),
+			bookings: await loadPages('bookings'),
+			savedReplies: await loadPages('savedReplies'),
 		},
 	};
 }

@@ -122,6 +122,9 @@ const PROPER_PHRASES = [
 	'WhatsApp Business',
 	'Times New Roman',
 	'Courier New',
+	// Brand kit web fonts (Google Fonts family names)
+	'Open Sans',
+	'Playfair Display',
 ];
 
 /** Keys whose values are example data or names, not UI copy. */

@@ -38,6 +38,7 @@ export type CoreFeatureFlagKey =
 	| 'postbox'
 	| 'postbox.aiDraft'
 	| 'mail.external'
+	| 'calendar.booking'
 	// AI
 	| 'ai'
 	| 'ai.agent'
@@ -271,6 +272,18 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 		// Features page badges the flag "needs config", and `owlat-setup env --show`
 		// / `doctor` name the two missing variables.
 		requiredEnvVars: ['MAIL_SYNC_API_URL', 'MAIL_SYNC_API_KEY'],
+	},
+	// A personal booking page per member (/book/<you>/<meeting>) and "Insert
+	// availability" in the composer. Runs inside the Convex backend; the invites
+	// go out through the system mail transport, so it needs no mailbox and no
+	// extra service.
+	'calendar.booking': {
+		key: 'calendar.booking',
+		category: 'receiving',
+		label: 'Booking page',
+		description:
+			'Give each member a public page where people pick a meeting time, and insert your open times into an email.',
+		default: false,
 	},
 
 	ai: {
@@ -961,7 +974,7 @@ export const FEATURE_PACKS: Record<FeaturePackKey, FeaturePack> = {
 		key: 'emailClient',
 		label: 'Email client',
 		description: 'Inbox, chat, and personal mail (Postbox) as one bundle.',
-		flags: ['inbox', 'chat', 'postbox'],
+		flags: ['inbox', 'chat', 'postbox', 'calendar.booking'],
 	},
 	marketing: {
 		key: 'marketing',

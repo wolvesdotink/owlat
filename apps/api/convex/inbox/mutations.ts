@@ -52,10 +52,12 @@ export const approveDraft = adminMutation({
 		// The composer's attachments ride the send (`replyAttachments.intakeAgentReply`
 		// takes them when it fires): never send while one is still being copied.
 		await assertReplyAttachmentsReady(ctx, message.threadId);
-		// Nor with an Answer mode gap placeholder left in the text.
+		// Nor with an Answer mode gap placeholder left in the text, the AI's or a
+		// saved reply's (`isDraftGapGuarded`, stored with the working draft).
 		if (message.threadId) {
 			const target = { kind: 'teamThread' as const, threadId: message.threadId };
-			await assertNoAnswerGaps(ctx, target, { text: message.draftResponse });
+			const guarded = message.isDraftGapGuarded === true;
+			await assertNoAnswerGaps(ctx, target, { text: message.draftResponse }, { guarded });
 		}
 
 		// Resolve the human-approve undo window from the singleton agentConfig
@@ -200,6 +202,8 @@ export const editDraft = adminMutation({
 		inboundMessageId: v.id('inboundMessages'),
 		draftResponse: v.string(),
 		draftSubject: v.optional(v.string()),
+		// The composer's saved-reply gap guard (draftRevisions.appendDraftRevision).
+		isGapGuarded: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		const { userId } = await getMutationContext(ctx);
@@ -210,6 +214,7 @@ export const editDraft = adminMutation({
 			text: args.draftResponse,
 			...(args.draftSubject ? { subject: args.draftSubject } : {}),
 			savedBy: userId,
+			gapGuarded: args.isGapGuarded,
 		});
 
 		await recordAuditLog(ctx, {

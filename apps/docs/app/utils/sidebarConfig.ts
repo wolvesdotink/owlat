@@ -46,7 +46,7 @@ export const sidebarConfig: SidebarGroup[] = [
 			{ label: 'Email Templates', to: '/guide/email-templates' },
 			{ label: 'Saved Blocks', to: '/guide/saved-blocks' },
 			{ label: 'Media Library', to: '/guide/media-library' },
-			{ label: 'Email Theme', to: '/guide/email-theme' },
+			{ label: 'Brand Kit', to: '/guide/email-theme' },
 			{ label: 'Translations', to: '/guide/translations' },
 			{ label: 'Share Links', to: '/guide/share-links' },
 		],
@@ -117,6 +117,7 @@ export const sidebarConfig: SidebarGroup[] = [
 		items: [
 			{ label: 'Connect your AI', to: '/guide/connect-your-ai' },
 			{ label: 'Team Inbox', to: '/guide/team-inbox' },
+			{ label: 'Saved Replies', to: '/guide/saved-replies' },
 			{ label: 'AI Agent & Autonomy', to: '/guide/ai-agent' },
 			{ label: 'AI Dashboards', to: '/guide/ai-agent#visualization-agent-adaptive-dashboards' },
 			{ label: 'Code Tasks', to: '/guide/code-tasks' },

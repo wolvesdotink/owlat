@@ -422,6 +422,42 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 		expect(res.personalData.chatMessages).toHaveLength(0);
 		expect(res.personalData.threadNotes).toHaveLength(0);
 		expect(res.personalData.deliverabilityAlertRecipientStates).toHaveLength(0);
+		expect(res.personalData.savedReplies).toHaveLength(0);
+	});
+
+	it('includes the caller’s personal saved replies, not shared or other members’ ones', async () => {
+		const t = newHarness();
+		await seedProfile(t, 'auth-user-1');
+		await t.run(async (ctx) => {
+			const row = (name: string) => ({
+				name,
+				shortcut: '',
+				bodyHtml: `<p>${name}</p>`,
+				createdAt: 1,
+				updatedAt: 1,
+			});
+			await ctx.db.insert('mailSnippets', {
+				...row('mine'),
+				scope: 'personal',
+				ownerUserId: 'auth-user-1',
+			});
+			await ctx.db.insert('mailSnippets', {
+				...row('theirs'),
+				scope: 'personal',
+				ownerUserId: 'auth-user-2',
+			});
+			await ctx.db.insert('mailSnippets', {
+				...row('team'),
+				scope: 'shared',
+				organizationId: 'org-x',
+				authorUserId: 'auth-user-1',
+			});
+		});
+
+		const res = await exportAllUserData(t, 'auth-user-1');
+		expect(res.personalData.savedReplies.map((r) => r['name'])).toEqual(['mine']);
+		const plan = await t.action(api.auth.accountExport.getExportPlan, { userId: 'auth-user-1' });
+		expect(plan.personal.find((entry) => entry.resource === 'savedReplies')?.count).toBe(1);
 	});
 
 	it('paginates recipient history beyond one export page without truncation', async () => {

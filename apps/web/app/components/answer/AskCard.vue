@@ -22,7 +22,14 @@
  * A Reply Queue item can arrive with its draft already written and only the
  * files it promises still missing (`waitingForFiles`): the card then says so
  * instead of asking before it writes, and its file questions take several
- * files (`multipleFiles`).
+ * files (`multipleFiles`). When other facts are missing from a written draft
+ * (`draftWritten`), the card says the answers go into that draft rather than
+ * promising to write one.
+ *
+ * The card is the one thing the person has to do before the reply can go,
+ * so it reads as a card, not as another strip of the composer. Where the
+ * questions came from is said once, under them, in the reader's language
+ * (each question's attribution names the same email).
  */
 import type { Id } from '@owlat/api/dataModel';
 import { MAX_ASK_ROUNDS } from '@owlat/shared/answerMode';
@@ -33,7 +40,7 @@ import {
 	collectClarificationAnswers,
 	type ClarificationAnswer,
 } from '~/utils/clarificationAnswers';
-import { localizedQuestionCopy } from '~/utils/clarificationLocale';
+import { attributionDomain, localizedQuestionCopy } from '~/utils/clarificationLocale';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { isDialogOpen } from '~/utils/dialogOpen';
 import type { ThreadFile } from '~/utils/answerThreadFiles';
@@ -68,6 +75,8 @@ const props = withDefaults(
 		multipleFiles?: boolean;
 		/** The draft is written; only files are still open. Changes the header. */
 		waitingForFiles?: boolean;
+		/** The draft is written and still has gaps these questions fill. */
+		draftWritten?: boolean;
 	}>(),
 	{
 		requireAll: false,
@@ -167,13 +176,58 @@ function onKeydown(event: KeyboardEvent) {
 onMounted(() => window.addEventListener('keydown', onKeydown));
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 
+const FOCUSABLE =
+	'input:not([type="hidden"]):not(:disabled), textarea:not(:disabled), button:not(:disabled)';
+
+/**
+ * Put the focus where the answering starts: the first control of the first
+ * question still open (a remembered answer counts as answered), or "Answer and
+ * draft" once every question has one. Synchronous, so a tap that calls it
+ * raises the phone's keyboard. False when there is nothing to focus.
+ */
+function focusFirstOpen(): boolean {
+	const open = props.questions.findIndex((q) => !(values[q.id] ?? q.answer?.value ?? '').trim());
+	const rows = rootEl.value?.querySelectorAll<HTMLElement>('[data-testid="ask-question"]');
+	const target =
+		open >= 0
+			? rows?.[open]?.querySelector<HTMLElement>(FOCUSABLE)
+			: rootEl.value?.querySelector<HTMLElement>('[data-testid="ask-submit"]:not(:disabled)');
+	if (!target) return false;
+	target.focus();
+	return true;
+}
+defineExpose({ focusFirstOpen });
+
 const titleId = useId();
+
+const title = computed(() => {
+	const count = props.questions.length;
+	if (props.waitingForFiles) return t('components.answer.askCard.waitingForFiles');
+	if (props.draftWritten) return t('components.answer.askCard.draftGaps', { count }, count);
+	return t('components.answer.askCard.title', { count }, count);
+});
+const subline = computed(() => {
+	if (props.waitingForFiles) return t('components.answer.askCard.waitingForFilesSubline');
+	if (props.draftWritten) return t('components.answer.askCard.draftGapsSubline');
+	return t('components.answer.askCard.subline');
+});
+
+/** "Based on an email from acme.com", once for the card, when the questions say so. */
+const trustLine = computed(() => {
+	const attributed = props.questions.filter((q) => q.attribution);
+	if (attributed.length === 0) return null;
+	const domains = new Set(attributed.map((q) => attributionDomain(q.attribution)));
+	const [domain] = domains;
+	return domains.size === 1 && domain
+		? t('components.answer.askCard.trust', { domain })
+		: t('components.answer.askCard.trustNoDomain');
+});
 </script>
 
 <template>
 	<section
 		ref="rootEl"
-		class="border-b border-border-subtle bg-bg-base/40 px-3 py-3"
+		class="m-3 rounded-xl border border-brand/30 bg-brand/5 p-4"
 		:aria-labelledby="titleId"
 		:aria-busy="submitting"
 		data-testid="ask-card"
@@ -184,21 +238,14 @@ const titleId = useId();
 			:require-all="requireAll"
 			:submitting="submitting"
 			test-id-prefix="ask"
+			hide-attribution
 			@submit="onSubmit"
 		>
 			<template #header>
 				<div class="flex flex-wrap items-baseline gap-x-2">
 					<Icon name="lucide:sparkles" class="size-3.5 self-center text-brand" aria-hidden="true" />
 					<h2 :id="titleId" class="text-sm font-semibold text-text-primary">
-						{{
-							waitingForFiles
-								? t('components.answer.askCard.waitingForFiles')
-								: t(
-										'components.answer.askCard.title',
-										{ count: questions.length },
-										questions.length
-									)
-						}}
+						{{ title }}
 					</h2>
 					<span
 						v-if="round !== undefined"
@@ -208,13 +255,7 @@ const titleId = useId();
 						{{ t('components.answer.askCard.round', { round, total: MAX_ASK_ROUNDS }) }}
 					</span>
 				</div>
-				<p class="mt-0.5 text-xs text-text-secondary">
-					{{
-						waitingForFiles
-							? t('components.answer.askCard.waitingForFilesSubline')
-							: t('components.answer.askCard.subline')
-					}}
-				</p>
+				<p class="mt-0.5 text-xs text-text-secondary">{{ subline }}</p>
 			</template>
 
 			<template #answer="{ question, copy, remembered, value, setValue }">
@@ -259,7 +300,7 @@ const titleId = useId();
 			</template>
 
 			<template #actions="{ canSubmit, submit }">
-				<div class="mt-3 flex flex-wrap items-center gap-2">
+				<div class="mt-4 flex flex-wrap items-center gap-2">
 					<UiButton
 						type="button"
 						size="sm"
@@ -276,7 +317,9 @@ const titleId = useId();
 						{{
 							waitingForFiles
 								? t('components.answer.askCard.attachAndUpdate')
-								: t('components.answer.askCard.answerAndDraft')
+								: draftWritten
+									? t('components.answer.askCard.updateDraft')
+									: t('components.answer.askCard.answerAndDraft')
 						}}
 					</UiButton>
 					<UiButton
@@ -290,6 +333,14 @@ const titleId = useId();
 						{{ skipLabel ?? t('components.answer.askCard.skip') }}
 					</UiButton>
 				</div>
+				<p
+					v-if="trustLine"
+					class="mt-3 flex items-start gap-1.5 text-2xs text-text-tertiary"
+					data-testid="ask-trust"
+				>
+					<Icon name="lucide:shield-check" class="mt-px size-3 shrink-0" aria-hidden="true" />
+					<span>{{ trustLine }}</span>
+				</p>
 			</template>
 		</ClarificationQuestions>
 	</section>

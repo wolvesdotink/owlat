@@ -163,3 +163,53 @@ export function buildThreadSurfaceGroups(deps: ThreadSurfaceDeps, query: string)
 		},
 	];
 }
+
+// ── Saved replies of the focused composer ───────────────────────────────────
+
+/**
+ * Registry id PREFIX of the saved-reply provider: every mounted composer (the
+ * popup stack, Answer mode, a Team inbox reply) registers its own, and only
+ * the one the person was last typing in contributes.
+ */
+export const SAVED_REPLY_COMMAND_PROVIDER_ID_PREFIX = 'surface:saved-replies';
+
+/** Consulted before the open conversation's verbs: the composer has the focus. */
+export const SAVED_REPLY_COMMAND_PROVIDER_PRIORITY = 1;
+
+/** How many replies the group lists; the composer's own picker has them all. */
+const SAVED_REPLY_GROUP_CAP = 8;
+
+export interface SavedReplySurfaceDeps {
+	/** The replies, already in the picker's order (most used first). */
+	replies: () => { _id: string; name: string; shortcut: string }[];
+	t: (key: string) => string;
+	onInsert: (replyId: string) => void;
+	onSaveCurrent: () => void;
+}
+
+/** "Insert saved reply" rows for the focused composer, plus "Save as reply". Pure. */
+export function buildSavedReplyGroups(deps: SavedReplySurfaceDeps, query: string): PaletteGroup[] {
+	const items: PaletteItem[] = deps.replies().map((reply) => ({
+		id: `saved-reply:${reply._id}`,
+		label: reply.name,
+		...(reply.shortcut ? { subtitle: `;${reply.shortcut}` } : {}),
+		icon: 'lucide:message-square-quote',
+		run: () => deps.onInsert(reply._id),
+	}));
+	items.push({
+		id: 'saved-reply:save-current',
+		label: deps.t('shared.savedReplies.saveCurrent'),
+		icon: 'lucide:bookmark-plus',
+		run: deps.onSaveCurrent,
+	});
+	return [
+		{
+			key: 'saved-replies',
+			heading: deps.t('shared.savedReplies.paletteHeading'),
+			order: 0,
+			cap: SAVED_REPLY_GROUP_CAP,
+			mode: 'commands',
+			items: filterItems(items, query),
+		},
+	];
+}
