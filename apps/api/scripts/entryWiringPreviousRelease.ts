@@ -37,10 +37,6 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'domains/lifecycle.ts#reconcileReturnPathAfterRegistration': 'old registration actions mid-run',
 	'domains/lifecycle.ts#recordReturnPathPushResult': 'old return-path push actions mid-run',
 	'domains/lifecycle.ts#recordDkimRotation': 'old webhook dispatcher actions mid-run',
-	'mail/imap/fetch.ts#fetchRawStorageId':
-		'the previous IMAP server, until its container is replaced',
-	'mail/imap/fetch.ts#getRawStorageUrl':
-		'the previous IMAP server, until its container is replaced',
 	'workspaces/deletion/walker.ts#start': 'deletion starts queued before the deploy',
 	'workspaces/deletion/walker.ts#runStep': 'the previous walker chain, mid-deletion',
 	'mail/mailbox/messages.ts#getMessageBody':

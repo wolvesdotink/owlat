@@ -17,6 +17,7 @@ import schema from '../../schema';
 import { purgeMessageRow } from '../messagePurge';
 import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
 import { readMailboxUsage } from '../mailboxUsage';
+import { IMAP_WIRE_VERSION } from '@owlat/shared/imapWire';
 
 type Test = TestConvex<typeof schema>;
 
@@ -67,7 +68,10 @@ describe('mailbox usedBytes across IMAP COPY', () => {
 			await ctx.db.patch(copy._id, { flagDeleted: true });
 			return copy._id;
 		});
-		await t.mutation(internal.mail.imap.move.expungeFolder, { folderId: archiveId });
+		await t.mutation(internal.mail.imap.move.expungeFolder, {
+			folderId: archiveId,
+			imapWireVersion: IMAP_WIRE_VERSION,
+		});
 		expect(await t.run(async (ctx) => ctx.db.get(copyId))).toBeNull();
 		expect(await usedBytes(t, mailboxId)).toBe(rawSize);
 

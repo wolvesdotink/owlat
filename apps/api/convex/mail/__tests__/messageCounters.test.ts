@@ -37,6 +37,7 @@ import {
 	sectionUnreadScope,
 	startEmptyMailboxCounters,
 } from '../messageCounters';
+import { IMAP_WIRE_VERSION } from '@owlat/shared/imapWire';
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
@@ -209,7 +210,10 @@ async function randomOp(w: World, r: Rng): Promise<void> {
 				flags: ['\\Deleted'],
 				mode: 'add',
 			});
-			await t.mutation(internal.mail.imap.move.expungeFolder, { folderId: m.folderId });
+			await t.mutation(internal.mail.imap.move.expungeFolder, {
+				folderId: m.folderId,
+				imapWireVersion: IMAP_WIRE_VERSION,
+			});
 			return;
 		case 11:
 			await t.mutation(api.mail.labels.toggleOnThread, {

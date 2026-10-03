@@ -410,6 +410,29 @@ describe('the wire gate (backend at wire 3, serving 2 and newer)', () => {
 		await expect(login({ scope: 'smtp' })).resolves.toBeNull();
 	});
 
+	it('records a refused login from a server too old to report as a legacy login', async () => {
+		const t = harness();
+		rateLimiterTest.register(t);
+		const login = (imapWireVersion?: number) =>
+			t.action(internal.mail.appPasswords.verify, {
+				address: 'alice@example.com',
+				password: 'wrong-password',
+				scope: 'imap',
+				...(imapWireVersion === undefined ? {} : { imapWireVersion }),
+			});
+
+		// A reporting server below the minimum is on the status page already.
+		await expect(login(1)).rejects.toThrow(/wire version 1/);
+		expect(await legacySeenAt(t)).toBeNull();
+
+		// One that never reports no longer reaches `touch`; the refusal records it.
+		await expect(login()).rejects.toThrow(/Update the IMAP container/);
+		expect(await legacySeenAt(t)).toBe(T0);
+		const status = await t.query(internal.mail.imap.serverRegistry.status, {});
+		expect(status.isLegacyInWindow).toBe(true);
+		expect(status.safeToRaiseMinTo).toBe(0);
+	});
+
 	it('refuses an EXPUNGE page from a server below the minimum before deleting anything', async () => {
 		const t = harness();
 		const mailboxId = await seedMailbox(t);

@@ -202,11 +202,11 @@ describe('mail.mailbox.messages.getMessageBody', () => {
 			messageId: sealedMessageId,
 		});
 		expect(sealedBody?.htmlUrl).toBeNull();
-		expect(
-			await t.action(internal.mail.imap.fetch.getRawStorageUrl, {
-				storageId: sealedStorageId,
-			})
-		).toBeNull();
+		await t.run((ctx) => ctx.db.patch(sealedMessageId, { rawStorageId: sealedStorageId }));
+		const [sealedRaw] = await t.action(internal.mail.imap.fetch.getRawStorageUrls, {
+			messageIds: [sealedMessageId],
+		});
+		expect(sealedRaw?.url).toBeNull();
 
 		const legacyStorageId = await t.run((ctx) =>
 			ctx.storage.store(new Blob(['<p>legacy</p>'], { type: 'text/html' }))
@@ -218,11 +218,11 @@ describe('mail.mailbox.messages.getMessageBody', () => {
 			messageId: legacyMessageId,
 		});
 		expect(legacyBody?.htmlUrl).toBeTruthy();
-		expect(
-			await t.action(internal.mail.imap.fetch.getRawStorageUrl, {
-				storageId: legacyStorageId,
-			})
-		).toBeTruthy();
+		await t.run((ctx) => ctx.db.patch(legacyMessageId, { rawStorageId: legacyStorageId }));
+		const [legacyRaw] = await t.action(internal.mail.imap.fetch.getRawStorageUrls, {
+			messageIds: [legacyMessageId],
+		});
+		expect(legacyRaw?.url).toBeTruthy();
 	});
 
 	it('mints raw URLs for a batch of messages in one call (IMAP FETCH, plan 3.6)', async () => {

@@ -46,8 +46,6 @@ interface Row {
 interface FakeOptions {
 	/** Fail the n-th (1-based) call to this mutation. */
 	readonly failCall?: { readonly name: string; readonly call: number };
-	/** Model a v0.6.7 backend: its last EXPUNGE page carries no cursor. */
-	readonly legacyExpungeCursor?: boolean;
 }
 
 function fakeBackend(rows: Row[], options: FakeOptions = {}) {
@@ -107,31 +105,21 @@ function fakeBackend(rows: Row[], options: FakeOptions = {}) {
 			const filter = args['uidSet'] ? new Set(args['uidSet'] as number[]) : null;
 			const floor = filter ? Math.min(...filter) : -Infinity;
 			const before = (args['beforeUid'] as number | undefined) ?? Infinity;
-			let seq = (args['nextSequenceNumber'] as number | undefined) ?? folder.length;
 			const page = folder
-				.filter((r) => r.uid < before && r.uid >= (options.legacyExpungeCursor ? -Infinity : floor))
+				.filter((r) => r.uid < before && r.uid >= floor)
 				.reverse()
 				.slice(0, 100);
-			const sequenceNumbers: number[] = [];
 			const uids: number[] = [];
 			for (const r of page) {
-				const current = seq--;
 				if (!r.deleted || (filter && !filter.has(r.uid))) continue;
-				sequenceNumbers.push(current);
 				uids.push(r.uid);
 				folder.splice(folder.indexOf(r), 1);
 			}
-			const done = page.length < 100;
-			if (options.legacyExpungeCursor && done) {
-				return { sequenceNumbers, uids, modseq: 9, done };
-			}
 			return {
-				sequenceNumbers,
 				uids,
 				modseq: 9,
-				done,
+				done: page.length < 100,
 				beforeUid: page.length > 0 ? page[page.length - 1]!.uid : args['beforeUid'],
-				nextSequenceNumber: seq,
 			};
 		}
 		if (name === 'storeFlags') {
@@ -295,19 +283,6 @@ describe.each(VIEW_MODES)('UID EXPUNGE over a large folder, $mode', ({ withView 
 		expect(lines.at(-1)).toBe('a1 OK UID EXPUNGE completed');
 		expect(applyExpunges(view, lines)).toEqual(b.folder.map((r) => r.uid));
 		expect(b.folder.every((r) => !r.deleted)).toBe(true);
-		expectViewInStep(state, b.folder);
-	});
-
-	it('restarts each batch from the top when the backend returns no final cursor', async () => {
-		const rows = range(LARGE, (i) => ({ uid: i + 1, deleted: i % 2 === 0 }));
-		const b = fakeBackend(rows, { legacyExpungeCursor: true });
-		const view = rows.map((r) => r.uid);
-		const state = selectedFor(rows, withView);
-		const lines = await run(b.deps, state, uid, 'UID', ['EXPUNGE', '1:*']);
-
-		expect(lines.at(-1)).toBe('a1 OK UID EXPUNGE completed');
-		expect(applyExpunges(view, lines)).toEqual(b.folder.map((r) => r.uid));
-		expect(b.folder).toHaveLength(LARGE / 2);
 		expectViewInStep(state, b.folder);
 	});
 });

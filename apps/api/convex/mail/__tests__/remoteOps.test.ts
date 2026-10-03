@@ -24,6 +24,7 @@ import type { Id } from '../../_generated/dataModel';
 import { api, internal } from '../../_generated/api';
 import { MAX_REMOTE_OP_ATTEMPTS } from '../external/remoteOps';
 import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
+import { IMAP_WIRE_VERSION } from '@owlat/shared/imapWire';
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
@@ -201,7 +202,10 @@ describe('recording local changes on an external mailbox', () => {
 			flags: ['\\Deleted'],
 			mode: 'add',
 		});
-		await t.mutation(internal.mail.imap.move.expungeFolder, { folderId: folders.inbox });
+		await t.mutation(internal.mail.imap.move.expungeFolder, {
+			folderId: folders.inbox,
+			imapWireVersion: IMAP_WIRE_VERSION,
+		});
 
 		expect(await queued(t)).toEqual([
 			{

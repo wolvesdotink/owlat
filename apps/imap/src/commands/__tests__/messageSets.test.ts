@@ -72,16 +72,12 @@ function harness(messages: FakeMessage[]): Harness {
 		const name = getFunctionName(ref);
 		if (name.endsWith(':expungeFolder')) {
 			const filter = args['uidSet'] ? new Set(args['uidSet'] as number[]) : null;
-			const sequenceNumbers: number[] = [];
 			const uids: number[] = [];
 			for (let i = sorted.length - 1; i >= 0; i -= 1) {
 				const m = sorted[i]!;
-				if (m.deleted && (!filter || filter.has(m.uid))) {
-					sequenceNumbers.push(i + 1);
-					uids.push(m.uid);
-				}
+				if (m.deleted && (!filter || filter.has(m.uid))) uids.push(m.uid);
 			}
-			return { sequenceNumbers, uids, modseq: 9, done: true };
+			return { uids, modseq: 9, done: true };
 		}
 		if (name.endsWith(':copyMessages') || name.endsWith(':moveMessages')) {
 			const ids = args['messageIds'] as string[];

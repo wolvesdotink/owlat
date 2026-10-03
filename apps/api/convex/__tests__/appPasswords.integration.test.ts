@@ -30,6 +30,7 @@ import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { enableFeatures } from './factories';
+import { IMAP_WIRE_VERSION } from '@owlat/shared/imapWire';
 
 // Mutable session the mock resolves to. Tests flip role / userId / org to
 // exercise owner-vs-admin-vs-editor and ownership boundaries.
@@ -332,6 +333,7 @@ describe('appPasswords.verify', () => {
 			address: f.address,
 			password: f.cleartext,
 			scope: 'imap',
+			imapWireVersion: IMAP_WIRE_VERSION,
 		});
 
 		expect(res).not.toBeNull();
@@ -339,6 +341,23 @@ describe('appPasswords.verify', () => {
 		expect(res!.appPasswordId).toBe(f.appPasswordId);
 		expect(res!.userId).toBe(f.userId);
 		expect(res!.organizationId).toBe(f.organizationId);
+	});
+
+	it('refuses an IMAP login through a server from v0.6.7 or older and serves v0.6.8', async () => {
+		const t = await setupTest();
+		const f = await provision(t);
+		const login = (imapWireVersion?: number) =>
+			t.action(internal.mail.appPasswords.verify, {
+				address: f.address,
+				password: f.cleartext,
+				scope: 'imap',
+				...(imapWireVersion === undefined ? {} : { imapWireVersion }),
+			});
+
+		// No wire version: an IMAP server too old to report (wire 0).
+		await expect(login()).rejects.toThrow(/Update the IMAP container/);
+		// v0.6.8 speaks wire 1, the release the backend still serves.
+		expect(await login(1)).not.toBeNull();
 	});
 
 	it('resolves correctly for the smtp scope as well', async () => {
@@ -362,6 +381,7 @@ describe('appPasswords.verify', () => {
 			address: 'MailBox@Example.COM',
 			password: f.cleartext,
 			scope: 'imap',
+			imapWireVersion: IMAP_WIRE_VERSION,
 		});
 		expect(res).not.toBeNull();
 		expect(res!.mailboxId).toBe(f.mailboxId);
@@ -377,6 +397,7 @@ describe('appPasswords.verify', () => {
 			address: f.address,
 			password: f.cleartext.slice(0, 4) + 'ZZZZZZZZZZZZ',
 			scope: 'imap',
+			imapWireVersion: IMAP_WIRE_VERSION,
 		});
 		expect(res).toBeNull();
 	});
@@ -389,6 +410,7 @@ describe('appPasswords.verify', () => {
 			address: f.address,
 			password: 'lowercasebogus99',
 			scope: 'imap',
+			imapWireVersion: IMAP_WIRE_VERSION,
 		});
 		expect(res).toBeNull();
 	});
@@ -401,6 +423,7 @@ describe('appPasswords.verify', () => {
 			address: 'nobody@example.com',
 			password: f.cleartext,
 			scope: 'imap',
+			imapWireVersion: IMAP_WIRE_VERSION,
 		});
 		expect(res).toBeNull();
 	});
@@ -422,6 +445,7 @@ describe('appPasswords.verify', () => {
 			address: f.address,
 			password: f.cleartext,
 			scope: 'imap',
+			imapWireVersion: IMAP_WIRE_VERSION,
 		});
 		expect(imap).not.toBeNull();
 	});
@@ -437,6 +461,7 @@ describe('appPasswords.verify', () => {
 			address: f.address,
 			password: f.cleartext,
 			scope: 'imap',
+			imapWireVersion: IMAP_WIRE_VERSION,
 		});
 		expect(res).toBeNull();
 	});
@@ -453,6 +478,7 @@ describe('appPasswords.verify', () => {
 			address: f.address,
 			password: f.cleartext,
 			scope: 'imap',
+			imapWireVersion: IMAP_WIRE_VERSION,
 		});
 		expect(res).toBeNull();
 	});
@@ -474,6 +500,7 @@ describe('appPasswords.verify', () => {
 				password: f.cleartext,
 				scope,
 				ip: '203.0.113.7',
+				...(scope === 'imap' ? { imapWireVersion: IMAP_WIRE_VERSION } : {}),
 			});
 			expect(res).toBeNull();
 		}
@@ -504,6 +531,7 @@ describe('appPasswords.verify', () => {
 			address: f.address,
 			password: f.cleartext,
 			scope: 'imap',
+			imapWireVersion: IMAP_WIRE_VERSION,
 		});
 		expect(res).toBeNull();
 	});
@@ -520,6 +548,7 @@ describe('appPasswords.verify', () => {
 			address: f.address,
 			password: f.cleartext.slice(0, 4) + 'WRONGWRONGWRO',
 			scope: 'imap',
+			imapWireVersion: IMAP_WIRE_VERSION,
 			ip: '203.0.113.7',
 		});
 

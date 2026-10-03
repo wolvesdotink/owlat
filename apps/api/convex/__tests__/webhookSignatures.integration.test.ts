@@ -282,7 +282,7 @@ describe('handleVerifyCredential (/webhooks/mta-verify-credential)', () => {
 	const VERIFY_BODY = JSON.stringify({
 		address: 'user@example.com',
 		password: 'app-pw',
-		scope: 'imap',
+		scope: 'smtp',
 	});
 
 	function signedHeaders(ts: number, body: string, sigHex: string) {

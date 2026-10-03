@@ -34,11 +34,26 @@
  * Dependency-free on purpose: the api, imap and web images all read it.
  */
 
-/** The contract this build speaks. Version 0 is the release before reporting (v0.6.7 and older). */
-export const IMAP_WIRE_VERSION = 1;
+/**
+ * The contract this build speaks.
+ *
+ * - 0: the releases before reporting (v0.6.7 and older).
+ * - 1: v0.6.8. Reports its version, numbers EXPUNGE from `uids` and never
+ *   reads `expungeFolder`'s `sequenceNumbers` / `nextSequenceNumber`.
+ * - 2: `expungeFolder` no longer returns `sequenceNumbers` /
+ *   `nextSequenceNumber` or accepts `nextSequenceNumber`, and the IMAP server
+ *   no longer sends `selectFolder`'s `skipFirstUnseenSeq`. The paths only
+ *   wire 0 used are gone too: `appendMessage`'s `snippet`,
+ *   `fetchRawStorageId` and `getRawStorageUrl`.
+ */
+export const IMAP_WIRE_VERSION = 2;
 
-/** The oldest IMAP server contract the backend still serves. */
-export const IMAP_WIRE_MIN_SUPPORTED = 0;
+/**
+ * The oldest IMAP server contract the backend still serves: 1, the release
+ * one behind (v0.6.8). Raising it to 2 lets `selectFolder` drop
+ * `skipFirstUnseenSeq`, which only wire 1 still sends.
+ */
+export const IMAP_WIRE_MIN_SUPPORTED = 1;
 
 /** What an IMAP server that never reports (v0.6.7 and older) counts as. */
 export const IMAP_WIRE_LEGACY = 0;

@@ -219,7 +219,7 @@ describe('PR-58 true sequence numbers', () => {
 	it('SELECT emits [UNSEEN seq] for the first-unseen sequence number', async () => {
 		const lines: string[] = [];
 		const convex = {
-			query: vi.fn(async (fnRef: AnyFunctionReference) => {
+			query: vi.fn(async (fnRef: AnyFunctionReference, _args?: Record<string, unknown>) => {
 				const ref = getFunctionName(fnRef);
 				if (ref.endsWith(':listFolders')) {
 					return [{ _id: 'f1', name: 'INBOX', role: 'inbox' }];
@@ -239,8 +239,7 @@ describe('PR-58 true sequence numbers', () => {
 							unseenCount: 2,
 						},
 						// First unseen is UID 9, which sits at sequence number 2. The
-						// server numbers it against its own view; it asks the backend
-						// not to count (`skipFirstUnseenSeq`), so no firstUnseenSeq.
+						// server numbers it against its own view.
 						firstUnseenUid: 9,
 					};
 				}
@@ -262,9 +261,11 @@ describe('PR-58 true sequence numbers', () => {
 		await session.completion;
 		const unseen = lines.find((l) => l.includes('[UNSEEN'));
 		expect(unseen).toBe('* OK [UNSEEN 2] First unseen');
-		expect(convex.query).toHaveBeenCalledWith(
-			expect.anything(),
-			expect.objectContaining({ folderId: 'f1', skipFirstUnseenSeq: true })
-		);
+		// No backend this server runs against counts any more (wire 2), so it no
+		// longer sends `skipFirstUnseenSeq`.
+		const select = convex.query.mock.calls.find(([ref]) =>
+			getFunctionName(ref).endsWith(':selectFolder')
+		)!;
+		expect(select[1]).toEqual({ folderId: 'f1' });
 	});
 });

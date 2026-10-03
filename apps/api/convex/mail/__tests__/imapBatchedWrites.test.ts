@@ -15,6 +15,7 @@ import type { Id } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
 import schema from '../../schema';
 import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
+import { IMAP_WIRE_VERSION } from '@owlat/shared/imapWire';
 
 type Test = TestConvex<typeof schema>;
 
@@ -54,20 +55,20 @@ describe('expungeFolder with a UID set', () => {
 		const first = await t.mutation(internal.mail.imap.move.expungeFolder, {
 			folderId: inboxId,
 			uidSet: [4, 5],
+			imapWireVersion: IMAP_WIRE_VERSION,
 		});
-		expect(first.sequenceNumbers).toEqual([5, 4]);
+		expect(first.uids).toEqual([5, 4]);
 		expect(first.done).toBe(true);
-		// The walk ended at UID 4; UIDs 1-3 are still at positions 1-3.
+		// The walk ended at UID 4; UIDs 1-3 are still there.
 		expect(first.beforeUid).toBe(4);
-		expect(first.nextSequenceNumber).toBe(3);
 
 		const second = await t.mutation(internal.mail.imap.move.expungeFolder, {
 			folderId: inboxId,
 			uidSet: [1, 2],
 			beforeUid: first.beforeUid,
-			nextSequenceNumber: first.nextSequenceNumber,
+			imapWireVersion: IMAP_WIRE_VERSION,
 		});
-		expect(second.sequenceNumbers).toEqual([2, 1]);
+		expect(second.uids).toEqual([2, 1]);
 		expect(await folderUids(t, inboxId)).toEqual([3]);
 	});
 
@@ -75,10 +76,45 @@ describe('expungeFolder with a UID set', () => {
 		const t = convexTest(schema, modules);
 		const { inboxId } = await seedInbox(t, [1, 2, 3]);
 
-		const result = await t.mutation(internal.mail.imap.move.expungeFolder, { folderId: inboxId });
-		expect(result.sequenceNumbers).toEqual([3, 2, 1]);
+		const result = await t.mutation(internal.mail.imap.move.expungeFolder, {
+			folderId: inboxId,
+			imapWireVersion: IMAP_WIRE_VERSION,
+		});
+		expect(result.uids).toEqual([3, 2, 1]);
 		expect(result.done).toBe(true);
 		expect(await folderUids(t, inboxId)).toEqual([]);
+	});
+
+	it('serves a v0.6.8 IMAP server and refuses an older one before deleting', async () => {
+		const t = convexTest(schema, modules);
+		const { inboxId } = await seedInbox(t, [1, 2]);
+
+		// v0.6.7 and older send no wire version and paged on the removed
+		// `nextSequenceNumber`; nothing is deleted for them.
+		await expect(
+			t.mutation(internal.mail.imap.move.expungeFolder, { folderId: inboxId })
+		).rejects.toThrow(/Update the IMAP container/);
+		expect(await folderUids(t, inboxId)).toEqual([1, 2]);
+
+		// v0.6.8 speaks wire 1 and only ever read `uids`.
+		const result = await t.mutation(internal.mail.imap.move.expungeFolder, {
+			folderId: inboxId,
+			imapWireVersion: 1,
+		});
+		expect(result.uids).toEqual([2, 1]);
+		expect(await folderUids(t, inboxId)).toEqual([]);
+	});
+
+	it('answers a folder that is gone with an empty page', async () => {
+		const t = convexTest(schema, modules);
+		const { inboxId } = await seedInbox(t, [1]);
+		await t.run((ctx) => ctx.db.delete(inboxId));
+
+		const result = await t.mutation(internal.mail.imap.move.expungeFolder, {
+			folderId: inboxId,
+			imapWireVersion: IMAP_WIRE_VERSION,
+		});
+		expect(result).toEqual({ uids: [], modseq: 0, done: true });
 	});
 });
 

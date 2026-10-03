@@ -2,8 +2,9 @@
  * IMAP APPEND derives the snippet from the bodies it stores, with the same
  * `buildSnippet` the delivery pipeline uses. The IMAP server used to send its
  * own snippet, built from raw MIME, so an APPENDed multipart message showed
- * boundary lines as its preview. A snippet an older IMAP server still sends is
- * accepted and ignored.
+ * boundary lines as its preview. Only IMAP servers from v0.6.3 and older sent
+ * one, and the backend no longer serves them (wire version 0), so the argument
+ * is gone.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -28,7 +29,7 @@ async function setup(): Promise<{
 }
 
 async function appendAndRead(
-	bodies: { textBodyInline?: string; htmlBodyInline?: string; snippet?: string },
+	bodies: { textBodyInline?: string; htmlBodyInline?: string },
 	messageId: string
 ): Promise<{ snippet: string; latestSnippet: string | undefined }> {
 	const { t, sentId, rawStorageId } = await setup();
@@ -52,12 +53,11 @@ async function appendAndRead(
 }
 
 describe('mail/imap/append:appendMessage snippet', () => {
-	it('builds the snippet from the text body and ignores a client snippet', async () => {
+	it('builds the snippet from the text body', async () => {
 		const row = await appendAndRead(
 			{
 				textBodyInline: '  See you at the meeting.  ',
 				htmlBodyInline: '<p>ignored while text exists</p>',
-				snippet: '--boundary-123 Content-Type: text/plain',
 			},
 			'text@owlat.test'
 		);
@@ -77,5 +77,23 @@ describe('mail/imap/append:appendMessage snippet', () => {
 	it('stores an empty snippet when the message has no body', async () => {
 		const row = await appendAndRead({}, 'empty@owlat.test');
 		expect(row.snippet).toBe('');
+	});
+
+	it('no longer accepts a client snippet', async () => {
+		const { t, sentId, rawStorageId } = await setup();
+		await expect(
+			t.mutation(internal.mail.imap.append.appendMessage, {
+				folderId: sentId,
+				rawStorageId,
+				rawSize: 3,
+				rfc822MessageId: 'client-snippet@owlat.test',
+				fromAddress: ME,
+				toAddresses: ['alice@example.com'],
+				ccAddresses: [],
+				bccAddresses: [],
+				subject: 'Plan',
+				snippet: '--boundary-123 Content-Type: text/plain',
+			} as never)
+		).rejects.toThrow(/snippet/);
 	});
 });

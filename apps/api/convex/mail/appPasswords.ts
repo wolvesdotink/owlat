@@ -225,7 +225,18 @@ export const verify = internalAction({
 		// An IMAP server the backend no longer serves cannot open a session,
 		// whether or not it reports: refused before the password is checked, so
 		// the refusal is never counted as a failed login here.
-		if (args.scope === 'imap') assertImapWireSupported(args.imapWireVersion);
+		if (args.scope === 'imap') {
+			try {
+				assertImapWireSupported(args.imapWireVersion);
+			} catch (err) {
+				// A server too old to report never reaches `touch` now, so its
+				// refused logins are its only trace on the status page.
+				if (args.imapWireVersion === undefined) {
+					await ctx.runMutation(internal.mail.imap.serverRegistry.noteLegacyLogin, {});
+				}
+				throw err;
+			}
+		}
 
 		const lowerAddress = args.address.toLowerCase();
 

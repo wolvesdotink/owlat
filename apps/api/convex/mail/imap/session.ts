@@ -40,11 +40,9 @@ export const listFolders = internalQuery({
  *  works out from `firstUnseenUid` against the sequence view it already holds.
  *  This used to count every message below the first unseen one as well, a
  *  `.collect()` of up to the whole folder, for an IMAP server that did not
- *  pass `skipFirstUnseenSeq`. It no longer does. The argument is still
- *  accepted, and ignored, because every IMAP server since v0.6.7 sends it. A
- *  v0.6.6 server, which read the count, leaves `[UNSEEN n]` out of its SELECT
- *  reply until its container is updated (RFC 3501 §6.3.1: the client then
- *  finds the first unseen message with SEARCH). */
+ *  pass `skipFirstUnseenSeq`. It no longer does. The argument is accepted and
+ *  ignored only because a wire 1 IMAP server (v0.6.8) still sends it; the
+ *  current one does not. It can go once `IMAP_WIRE_MIN_SUPPORTED` is 2. */
 export const selectFolder = internalQuery({
 	args: { folderId: v.id('mailFolders'), skipFirstUnseenSeq: v.optional(v.boolean()) },
 	handler: async (ctx, args) => {

@@ -296,38 +296,6 @@ export const folderMembershipPage = internalQuery({
 	},
 });
 
-/** For `FETCH RFC822` / `BODY[]` — IMAP server uses the storage id to
- *  stream the raw .eml from Convex storage. Superseded by the batched
- *  {@link getRawStorageUrls}; kept one release for the previous IMAP server. */
-export const fetchRawStorageId = internalQuery({
-	args: { messageId: v.id('mailMessages') },
-	handler: async (ctx, args) => {
-		const m = await ctx.db.get(args.messageId);
-		if (!m) return null;
-		return {
-			storageId: m.rawStorageId,
-			rawSize: m.rawSize,
-			internalDate: m.internalDate,
-			folderId: m.folderId,
-			uid: m.uid,
-		};
-	},
-});
-
-/** Resolve a time-limited download URL for a stored raw RFC822 message.
- *  Consumed by the IMAP server's FETCH (apps/imap) to stream message bodies —
- *  storage URLs can only be minted inside a Convex function (there is no
- *  client-addressable `_storage` module to call from ConvexHttpClient).
- *  Superseded by the batched {@link getRawStorageUrls}; kept one release for
- *  the previous IMAP server. */
-export const getRawStorageUrl = internalAction({
-	args: { storageId: v.id('_storage') },
-	// E8b: the raw `.eml` is sealed at rest, so hand the IMAP server a
-	// decrypt-serving proxy URL — its `FETCH RFC822` stream then receives the
-	// plaintext RFC822 bytes, unchanged from the bare storage URL it used before.
-	handler: async (ctx, args) => sealedBlobUrl(ctx.storage, args.storageId, 'message/rfc822'),
-});
-
 /**
  * Most messages one {@link getRawStorageUrls} call resolves. The IMAP server
  * asks in chunks of this size (apps/imap `RAW_URL_BATCH`), so a `FETCH 1:*
@@ -335,7 +303,7 @@ export const getRawStorageUrl = internalAction({
  */
 export const MAX_RAW_URL_BATCH = 100;
 
-/** Batch form of {@link fetchRawStorageId}: where each message's raw bytes live. */
+/** Where each message's raw bytes live, for {@link getRawStorageUrls}. */
 export const fetchRawStorageIds = internalQuery({
 	args: { messageIds: v.array(v.id('mailMessages')) },
 	handler: async (ctx, args) => {
