@@ -26,8 +26,29 @@ export function markConvexAuthPending(): void {
 /** The Convex client's `setAuth` onChange: the server accepted the token, or auth failed. */
 export function reportConvexAuth(isAuthenticated: boolean): void {
 	state = isAuthenticated ? 'authenticated' : 'unauthenticated';
-	// Each waiter removes itself; deleting the visited entry is safe mid-iteration.
+	// A waiter removes itself once it accepts a report; deleting the visited
+	// entry is safe mid-iteration.
 	for (const settle of waiters) settle(isAuthenticated);
+}
+
+/**
+ * Wait for an auth report that `accept`s, up to `timeoutMs`. Resolves the
+ * accepted report's answer, or `false` on timeout. Never rejects.
+ */
+function waitForReport(timeoutMs: number, accept: (authenticated: boolean) => boolean) {
+	return new Promise<boolean>((resolve) => {
+		const settle = (authenticated: boolean) => {
+			if (!accept(authenticated)) return;
+			clearTimeout(timer);
+			waiters.delete(settle);
+			resolve(authenticated);
+		};
+		const timer = setTimeout(() => {
+			waiters.delete(settle);
+			resolve(false);
+		}, timeoutMs);
+		waiters.add(settle);
+	});
 }
 
 /**
@@ -37,13 +58,20 @@ export function reportConvexAuth(isAuthenticated: boolean): void {
  */
 export function whenConvexAuthSettled(timeoutMs = 10_000): Promise<boolean> {
 	if (state !== 'pending') return Promise.resolve(state === 'authenticated');
-	return new Promise((resolve) => {
-		const settle = (authenticated: boolean) => {
-			clearTimeout(timer);
-			waiters.delete(settle);
-			resolve(authenticated);
-		};
-		const timer = setTimeout(() => settle(false), timeoutMs);
-		waiters.add(settle);
-	});
+	return waitForReport(timeoutMs, () => true);
+}
+
+/**
+ * Resolves `true` once the client is authenticated: at once if it already is,
+ * otherwise on the next report that says so. Unlike {@link whenConvexAuthSettled}
+ * a failed report does not end the wait, because the client may install a new
+ * token (a session signal re-runs `setAuth`) and succeed with it. Resolves
+ * `false` if no authenticated report arrives within `timeoutMs`. Never rejects.
+ *
+ * For a one-shot call that must not run as an anonymous caller and can afford
+ * to wait for the next token, such as the welcome stamp.
+ */
+export function whenConvexAuthenticated(timeoutMs = 10_000): Promise<boolean> {
+	if (state === 'authenticated') return Promise.resolve(true);
+	return waitForReport(timeoutMs, (authenticated) => authenticated);
 }

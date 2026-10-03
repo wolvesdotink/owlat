@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { whenConvexAuthSettled } from '~/lib/convexAuthReady';
-import { writeWelcomedCache } from '~/lib/welcomedCache';
+import { stampWelcomed } from '~/lib/welcomeStamp';
 
 /**
  * First-login welcome screen.
@@ -54,26 +53,32 @@ const firstName = computed<string>(() => {
 const firstLoginResolved = useState('first-login-resolved', () => false);
 firstLoginResolved.value = true;
 
-// Record that this member has now seen the welcome — best-effort and idempotent,
-// so a failure here simply means the middleware may route them once more in a
-// LATER session; it must never surface an error on the welcome screen itself.
-// Only a committed stamp is cached on this device: the cache lets the next
-// session skip the first-login query, so it must never claim a stamp the server
-// does not have.
-onMounted(async () => {
+// Record that this member has now seen the welcome. Idempotent, and retried a
+// few times with backoff (see ~/lib/welcomeStamp), because straight after
+// sign-in the client may still be re-authenticating. Only a committed stamp is
+// cached on this device: the cache lets the next session skip the first-login
+// query, so it must never claim a stamp the server does not have.
+//
+// If every attempt fails, nothing is blocked: the member can carry on, and the
+// only cost is seeing this screen again next session. A quiet note says so and
+// offers to try again.
+const stamping = ref(false);
+const stampGaveUp = ref(false);
+
+async function stamp(): Promise<void> {
 	const userId = user.value?.id;
 	if (!userId || !$convex) return;
-	// Reached straight from sign-in, the client may still be installing the
-	// session's token; `markWelcomed` asserts the caller. The result does not
-	// gate the call: if auth never settles the mutation fails and is caught.
-	await whenConvexAuthSettled();
-	try {
-		await $convex.mutation(api.auth.userOnboarding.markWelcomed, { userId });
-	} catch {
-		// Non-fatal — see above.
-		return;
-	}
-	writeWelcomedCache(userId);
+	stamping.value = true;
+	const saved = await stampWelcomed({
+		userId,
+		send: () => $convex.mutation(api.auth.userOnboarding.markWelcomed, { userId }),
+	});
+	stamping.value = false;
+	stampGaveUp.value = !saved;
+}
+
+onMounted(() => {
+	void stamp();
 });
 </script>
 
@@ -154,6 +159,23 @@ onMounted(async () => {
 					<OnboardingFreshStart />
 				</template>
 			</div>
+
+			<p
+				v-if="stampGaveUp"
+				role="status"
+				class="mt-4 text-center text-xs text-text-tertiary"
+				data-testid="welcome-stamp-failed"
+			>
+				{{ t('welcome.stamp.failed') }}
+				<button
+					type="button"
+					class="ml-1 text-text-secondary underline underline-offset-2 transition-colors hover:text-text-primary disabled:no-underline disabled:opacity-60"
+					:disabled="stamping"
+					@click="stamp"
+				>
+					{{ stamping ? t('welcome.stamp.retrying') : t('welcome.stamp.retry') }}
+				</button>
+			</p>
 		</div>
 	</div>
 </template>

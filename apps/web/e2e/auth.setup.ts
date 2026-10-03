@@ -3,6 +3,18 @@ import { hashPassword } from '@owlat/shared/passwordHash';
 import { testUser } from './fixtures/test-data';
 import { STORAGE_STATE } from './storage-state';
 
+/** The browser console of the setup run, attached to the report afterwards. */
+const consoleLines: string[] = [];
+
+setup.afterEach(async () => {
+	// Attached on success too: a passing run's console is the baseline a failing
+	// one is read against (welcome.vue logs every failed `markWelcomed` attempt).
+	await setup.info().attach('browser-console.txt', {
+		body: consoleLines.join('\n') || '(no console output)',
+		contentType: 'text/plain',
+	});
+});
+
 /**
  * Bootstrap the instance and sign in, once, for every other spec.
  *
@@ -21,6 +33,15 @@ setup('bootstrap the instance and save auth state', async ({ page, request }) =>
 	// round trips to a cold hosted deployment on top of the seed; the suite's
 	// 45 s default leaves no headroom for that.
 	setup.setTimeout(90_000);
+
+	const started = Date.now();
+	const stamp = () => `+${((Date.now() - started) / 1000).toFixed(1)}s`;
+	page.on('console', (message) => {
+		consoleLines.push(`${stamp()} [${message.type()}] ${message.text()}`);
+	});
+	page.on('pageerror', (error) => {
+		consoleLines.push(`${stamp()} [pageerror] ${error.stack ?? error.message}`);
+	});
 
 	const owner = testUser();
 	const siteUrl = process.env['NUXT_PUBLIC_CONVEX_SITE_URL'];
