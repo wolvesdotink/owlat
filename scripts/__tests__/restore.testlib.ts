@@ -54,7 +54,8 @@ export const COMPOSE_WITHOUT_NAME = COMPOSE_FILE.replace('name: owlat\n', '');
  * FAKE_DOCKER_PS_FILTER   regex; `docker ps` prints FAKE_DOCKER_PS only for a
  *                         matching call (one project's containers running)
  * FAKE_DOCKER_HANG        regex; the first matching call writes "$FAKE_DOCKER_ROOT/hanging"
- *                         and then blocks (a step the operator interrupts)
+ *                         and then blocks without doing its work (a step the
+ *                         operator interrupts)
  * FAKE_DOCKER_SERVICES    what `docker compose ps --services` prints
  * FAKE_COMPOSE_DISCOVERED_NAME  project name Compose resolves whenever it finds
  *                         the files itself (no -f): a resolution the restore
@@ -86,10 +87,11 @@ if [[ -n "\${FAKE_DOCKER_FAIL_AFTER:-}" && "$line" =~ $FAKE_DOCKER_FAIL_AFTER ]]
 	fail_after=1
 fi
 if [[ -n "\${FAKE_DOCKER_HANG:-}" && "$line" =~ $FAKE_DOCKER_HANG && ! -e "$FAKE_DOCKER_ROOT/hanging" ]]; then
-	# A builtin, not touch: a SIGINT landing while a child exits counts as handled
-	# by the child, and this shell would go on into the sleep instead of dying.
+	# No child between the marker and the block: a SIGINT landing while touch exits
+	# counts as handled by it, and one landing during a fork can miss the new
+	# sleep. exec makes this process the sleep, so the call never does its work.
 	: > "$FAKE_DOCKER_ROOT/hanging"
-	sleep 30
+	exec sleep 30
 fi
 vols="$FAKE_DOCKER_ROOT/volumes"
 case "$1" in
@@ -432,8 +434,12 @@ export async function makeInstall(
 			// A signal the script sat on fails here, with its output, not at the test timeout.
 			let stuck = false;
 			const watchdog = setTimeout(() => {
-				stuck = true;
-				process.kill(-(child.pid ?? 0), 'SIGKILL');
+				try {
+					process.kill(-(child.pid ?? 0), 'SIGKILL');
+					stuck = true;
+				} catch {
+					// ESRCH: the whole group already exited and its close event is due.
+				}
 			}, 10_000);
 			const code = await exited;
 			clearTimeout(watchdog);
