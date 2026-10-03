@@ -253,7 +253,7 @@ separates their data-only catalog from Node modules and namespaces each kind.
 Selection is contact, then mailbox, then classification, then `default`.
 
 Only primary generation is replaceable. The host retains assembled-context
-injection scanning, quality self-check, review options, persistence, routing,
+injection scanning, quality self-check, review options (removed by #1200), persistence, routing,
 autonomy, and sending. Modules receive a frozen bounded projection and optional
 attributed/budgeted LLM service, never a Convex context. Last-moment denial,
 timeout, failure, malformed/oversized/injection-like output, and stale selection
