@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { parseMarkdown } from '@nuxtjs/mdc/runtime';
+import { PARALLEL_GATE_TIMEOUT_MS } from '../../../vitest.timeouts';
 
 /**
  * Every in-site link with a `#fragment` lands on a heading its target page has.
@@ -54,23 +55,56 @@ function walk(node: Node, visit: (node: Node) => void): void {
 	for (const child of node.children ?? []) walk(child, visit);
 }
 
-type Page = { file: string; route: string; ids: Set<string>; targets: string[] };
+type Source = { file: string; route: string; markdown: string };
+type Parsed = { ids: Set<string>; targets: string[] };
 
-async function readPage(root: string, path: string): Promise<Page> {
-	const file = relative(root, path);
-	const parsed = await parseMarkdown(readFileSync(path, 'utf8'));
+function readSources(root: string): Source[] {
+	return markdownFiles(root).map((path) => {
+		const file = relative(root, path);
+		return { file, route: routeOf(file), markdown: readFileSync(path, 'utf8') };
+	});
+}
+
+/**
+ * One page through the site's parser: every element id, and every in-site
+ * `href`/`to` with a fragment.
+ *
+ * `parseMarkdown` builds a fresh processor per call, and that is required: a
+ * reused `createMarkdownParser` keeps one heading slugger across files, so the
+ * second page's "Next steps" comes out as `#next-steps-1`.
+ */
+async function parse(markdown: string): Promise<Parsed> {
+	const parsed = await parseMarkdown(markdown);
 	const ids = new Set<string>();
 	const targets: string[] = [];
 	walk(parsed.body as Node, (node) => {
 		const { id, href, to } = node.props ?? {};
 		if (typeof id === 'string') ids.add(id);
 		for (const target of [href, to]) {
-			if (typeof target === 'string' && /^[/#]/.test(target) && !target.startsWith('//')) {
-				targets.push(target);
+			if (typeof target === 'string' && /^[/#]/.test(target) && target.includes('#')) {
+				if (!target.startsWith('//')) targets.push(target);
 			}
 		}
 	});
-	return { file, route: routeOf(file), ids, targets };
+	return { ids, targets };
+}
+
+/**
+ * Whether a page can hold a fragment link at all. Every way of writing one
+ * (`[x](/a#b)`, a `[r]: /a#b` definition, `href="…#b"`, `{to="…#b"}`) puts a
+ * literal `#` in the source, so once the heading markers are removed, a page
+ * with no `#` left has none. It is a cheap superset, not a parser: code
+ * comments and the like still count, and the parse decides.
+ */
+function mayHoldFragmentLink(markdown: string): boolean {
+	return markdown.replace(/^#{1,6}\s/gm, '').includes('#');
+}
+
+/** The route and decoded heading id a link on `fromRoute` points at. */
+function resolveTarget(fromRoute: string, target: string): { route: string; anchor: string } {
+	const [path = '', fragment = ''] = target.split('#', 2);
+	const route = path === '' ? fromRoute : path.replace(/\/$/, '') || '/';
+	return { route, anchor: decodeURIComponent(fragment) };
 }
 
 describe('routeOf', () => {
@@ -84,36 +118,52 @@ describe('routeOf', () => {
 });
 
 describe.each(LOCALES)('anchor links (%s)', (locale) => {
-	const root = resolve(CONTENT_ROOT, locale);
-	let pages: Page[] = [];
-	let idsByRoute = new Map<string, Set<string>>();
+	let sources: Source[] = [];
+	let links: { file: string; route: string; target: string }[] = [];
+	const parsedByRoute = new Map<string, Parsed>();
 
+	// Parsing is the whole cost of this suite, and it is CPU-bound, so running
+	// pages concurrently would not help. Parsing every page took about 4 s per
+	// locale on a dev machine and about 10 s under the V8 coverage CI collects,
+	// and CI's shared runner hit the 10 s hook limit. So only the pages that
+	// matter are parsed: the ones that can hold a fragment link (about half),
+	// then the pages those links point at. That brings it to about 3 s, or 8 s
+	// with coverage. The hook also gets the shared parallel-gate budget
+	// (vitest.timeouts.ts), because the cost is fixed and grows with the docs.
 	beforeAll(async () => {
-		pages = await Promise.all(markdownFiles(root).map((path) => readPage(root, path)));
-		idsByRoute = new Map(pages.map((page) => [page.route, page.ids]));
-	});
+		sources = readSources(resolve(CONTENT_ROOT, locale));
+		const parseAll = async (pages: Source[]) => {
+			for (const page of pages) parsedByRoute.set(page.route, await parse(page.markdown));
+		};
+
+		const linking = sources.filter((page) => mayHoldFragmentLink(page.markdown));
+		await parseAll(linking);
+		links = linking.flatMap((page) =>
+			parsedByRoute
+				.get(page.route)!
+				.targets.map((target) => ({ file: page.file, route: page.route, target }))
+		);
+
+		const wanted = new Set(links.map((link) => resolveTarget(link.route, link.target).route));
+		await parseAll(
+			sources.filter((page) => wanted.has(page.route) && !parsedByRoute.has(page.route))
+		);
+	}, PARALLEL_GATE_TIMEOUT_MS);
 
 	it('finds the pages and their links', () => {
-		expect(pages.length).toBeGreaterThan(100);
+		expect(sources.length).toBeGreaterThan(100);
 		// A parser change that stopped surfacing links would otherwise pass the
 		// check below with nothing to check.
-		const fragments = pages.flatMap((page) => page.targets.filter((t) => t.includes('#')));
-		expect(fragments.length).toBeGreaterThan(100);
+		expect(links.length).toBeGreaterThan(100);
 	});
 
 	it('point at a heading the target page has', () => {
-		const broken = pages.flatMap((page) =>
-			page.targets
-				.filter((target) => target.includes('#'))
-				.flatMap((target) => {
-					const [path = '', fragment = ''] = target.split('#', 2);
-					const route = path === '' ? page.route : path.replace(/\/$/, '') || '/';
-					const ids = idsByRoute.get(route);
-					const anchor = decodeURIComponent(fragment);
-					if (ids?.has(anchor)) return [];
-					return [`${page.file} -> ${target}${ids ? '' : ' (no such page)'}`];
-				})
-		);
+		const broken = links.flatMap(({ file, route: fromRoute, target }) => {
+			const { route, anchor } = resolveTarget(fromRoute, target);
+			const ids = parsedByRoute.get(route)?.ids;
+			if (ids?.has(anchor)) return [];
+			return [`${file} -> ${target}${ids ? '' : ' (no such page)'}`];
+		});
 		expect(broken).toEqual([]);
 	});
 });
