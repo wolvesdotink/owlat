@@ -385,6 +385,7 @@ describe('counting, retention and privacy', () => {
 			complaints: 2,
 			suppressed: 1,
 			unattributed: 1,
+			withoutMessageId: 0,
 			open: 3,
 			isCapped: false,
 		});
@@ -447,5 +448,96 @@ describe('counting, retention and privacy', () => {
 		const [row] = await rows(t);
 		expect(row?.suppression).toBe('suppressed');
 		expect(JSON.stringify(row).toLowerCase()).not.toContain(address);
+	});
+});
+
+// #1227: a complaint with no message id (RFC 5965 redaction) blocks an address
+// on the same proof as one whose id matches no send.
+describe('complaints that arrive without a message id', () => {
+	const redacted = (
+		event: Omit<InboundEventOf<'email.complained'>, 'kind' | 'at'>
+	): InboundEventOf<'email.complained'> => ({ kind: 'email.complained', at: Date.now(), ...event });
+
+	it('counts an unattributed one, blocks no one and keeps no address', async () => {
+		// Another deployment's mail, reported through a shared SES account with
+		// the Message-ID missing: a genuine signature, and no proof of the sender.
+		const t = newHarness();
+		const address = 'shared.account@example.com';
+		await dispatch(t, redacted({ recipient: address, providerType: 'ses' }));
+
+		expect(await blockedReason(t, address)).toBeNull();
+		const [row, ...rest] = await rows(t);
+		expect(rest).toHaveLength(0);
+		expect(row).toMatchObject({
+			kind: 'complaint',
+			providerType: 'ses',
+			suppression: 'unattributed',
+			status: 'resolved',
+			resolution: 'no_message_id',
+			occurrences: 1,
+		});
+		expect(row?.providerMessageId).toBeUndefined();
+		expect(row?.nextReplayAt).toBeUndefined();
+		expect(JSON.stringify(row).toLowerCase()).not.toContain('example.com');
+	});
+
+	it('blocks an attributed one at receive time and stores nothing', async () => {
+		const t = newHarness();
+		await dispatch(
+			t,
+			redacted({
+				recipient: 'Attributed@Example.com',
+				providerType: 'mta',
+				deliveryDomain: 'production',
+			})
+		);
+
+		expect(await blockedReason(t, 'attributed@example.com')).toBe('complained');
+		expect(await rows(t)).toEqual([]);
+	});
+
+	it('is counted but never replayed or left in the open backlog', async () => {
+		const t = newHarness();
+		await dispatch(t, redacted({ recipient: 'a@example.com', providerType: 'resend' }));
+		await dispatch(t, redacted({ recipient: 'b@example.com', providerType: 'resend' }));
+		await dispatch(t, orphanBounce('ses-open'));
+		const [first] = await rows(t);
+
+		expect(
+			await t.mutation(internal.webhooks.unresolvedFeedback.replay, { feedbackId: first!._id })
+		).toBe('skipped');
+		await t.mutation(internal.webhooks.unresolvedFeedback.replayOpen, {});
+		vi.advanceTimersByTime(2 * DAY);
+		await t.mutation(internal.webhooks.unresolvedFeedback.replayDue, {});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const status = await t.query(internal.webhooks.unresolvedFeedback.status, {});
+		expect(status.last30Days).toMatchObject({
+			total: 3,
+			complaints: 2,
+			unattributed: 2,
+			withoutMessageId: 2,
+			open: 1,
+		});
+		expect(status.openCount).toBe(1);
+		expect(status.sample.map((r) => r.providerMessageId)).toEqual(['ses-open']);
+		for (const row of (await rows(t)).filter((r) => r.kind === 'complaint')) {
+			expect(row).toMatchObject({ status: 'resolved', replayAttempts: 0 });
+		}
+	});
+
+	it('an operator can delete them before redeploying an older schema', async () => {
+		const t = newHarness();
+		await dispatch(t, redacted({ recipient: 'a@example.com', providerType: 'resend' }));
+		await dispatch(t, redacted({ recipient: 'b@example.com', providerType: 'ses' }));
+		await dispatch(t, orphanBounce('ses-kept'));
+
+		expect(
+			await t.mutation(internal.webhooks.unresolvedFeedback.deleteWithoutMessageId, {})
+		).toEqual({ deleted: 2 });
+		expect((await rows(t)).map((r) => r.providerMessageId)).toEqual(['ses-kept']);
+		expect(
+			await t.mutation(internal.webhooks.unresolvedFeedback.deleteWithoutMessageId, {})
+		).toEqual({ deleted: 0 });
 	});
 });
