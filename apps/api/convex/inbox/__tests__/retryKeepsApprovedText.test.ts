@@ -172,7 +172,7 @@ describe('Retry after a failed send of an approved reply', () => {
 		expect(message.pendingAutoSend?.sendAt).toBeTypeOf('number');
 		expect(await pipelineRuns(t)).toEqual([]);
 		const queued = await sends(t);
-		expect(queued.at(-1)?.args).toEqual({ inboundMessageId: id, autonomous: false });
+		expect(queued[queued.length - 1]?.args).toEqual({ inboundMessageId: id, autonomous: false });
 		expect(result).toEqual({ success: true, retried: 'resend' });
 	});
 
