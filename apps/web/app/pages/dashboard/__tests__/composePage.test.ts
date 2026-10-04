@@ -281,6 +281,9 @@ describe('compose page — naming the draft in the URL', () => {
 		expect(replace).not.toHaveBeenCalled();
 		expect(record(key)!.seed?.prefillSubject).toBe('Edited offline');
 
+		// The save lands: the row now holds the offline text.
+		const saved = fields({ subject: 'Edited offline', bodyHtml: '<p>Newer text</p>' });
+		snap = { fields: saved, present: [], base: saved, draftId: 'draft-7' as never, ready: true };
 		flushResult = { ok: true, result: 'draft-7' };
 		composer(wrapper).vm.$emit('saved');
 		await flushPromises();

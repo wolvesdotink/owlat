@@ -14,10 +14,12 @@
  */
 
 import {
+	copyMatches,
 	isBlankMirrorFields,
 	isMirrorCopyExpired,
 	mirrorFieldsEqual,
 	mirrorFieldsOfLegacy,
+	type MirrorFieldName,
 	type MirrorFields,
 } from './postboxDraftMirror';
 import type {
@@ -32,8 +34,12 @@ export interface MirrorOffer {
 	source: { kind: 'v2'; record: MirrorCopyRecord } | { kind: 'legacy'; record: LegacyMirrorRecord };
 	fields: MirrorFields;
 	base: MirrorFields | null;
+	/** Only these fields are restored (a partial copy); absent means all. */
+	present?: MirrorFieldName[];
 	/** Client clock, for "from 14:32". */
 	savedAt: number;
+	/** Other copies holding the same text: resolving the offer resolves them too. */
+	twins?: MirrorCopyRecord[];
 }
 
 export interface MirrorScan {
@@ -55,6 +61,20 @@ export interface MirrorScan {
 	stillCurrent: () => boolean;
 }
 
+function offerOf(record: MirrorCopyRecord): MirrorOffer {
+	return {
+		source: { kind: 'v2', record },
+		fields: record.copy.fields,
+		base: record.copy.base,
+		...(record.copy.present ? { present: record.copy.present } : {}),
+		savedAt: record.copy.savedAt,
+	};
+}
+
+function sameMask(a?: readonly string[], b?: readonly string[]): boolean {
+	return (a ?? []).join() === (b ?? []).join();
+}
+
 /** Every copy this composer may offer; cleans up what is safe to on the way. */
 export async function scanMirrorOffers(
 	store: PostboxDraftMirrorStore,
@@ -74,23 +94,32 @@ export async function scanMirrorOffers(
 			await store.removeIfUnchanged(record.key, record.copy, scan.stillCurrent);
 			continue;
 		}
-		if (row && mirrorFieldsEqual(record.copy.fields, row)) {
+		if (row && copyMatches(record.copy, row)) {
 			// Already on the server (G1a), judged against the row as it is NOW.
 			await store.removeIfUnchanged(record.key, record.copy, () => {
 				const latest = scan.latestRow();
-				return (
-					scan.stillCurrent() && latest !== null && mirrorFieldsEqual(record.copy.fields, latest)
-				);
+				return scan.stillCurrent() && latest !== null && copyMatches(record.copy, latest);
 			});
 			continue;
 		}
-		if (mirrorFieldsEqual(record.copy.fields, scan.onScreen())) continue;
-		candidates.push({
-			source: { kind: 'v2', record },
-			fields: record.copy.fields,
-			base: record.copy.base,
-			savedAt: record.copy.savedAt,
-		});
+		if (copyMatches(record.copy, scan.onScreen())) continue;
+		// The same text in several copies (a parked one and a tab's live one) is
+		// one offer: the newest stands for it, the others ride along as twins.
+		const same = candidates.find(
+			(c) =>
+				c.source.kind === 'v2' &&
+				sameMask(c.present, record.copy.present) &&
+				copyMatches(record.copy, c.fields)
+		);
+		if (same?.source.kind === 'v2') {
+			const [newer, older] =
+				record.copy.savedAt > same.savedAt
+					? [record, same.source.record]
+					: [same.source.record, record];
+			Object.assign(same, offerOf(newer), { twins: [...(same.twins ?? []), older] });
+			continue;
+		}
+		candidates.push(offerOf(record));
 	}
 
 	const legacyIds =

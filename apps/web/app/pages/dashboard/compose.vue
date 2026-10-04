@@ -145,6 +145,8 @@ async function confirmSaved(): Promise<void> {
 				confirmAgain = false;
 				const saved = await composerRef.value?.flush();
 				if (saved?.ok && saved.result) {
+					// The row the save produced reaches the composer on the next tick.
+					await nextTick();
 					request.savedAcknowledged(saved.result);
 					nameDraftInUrl(saved.result);
 				}

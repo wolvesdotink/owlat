@@ -771,6 +771,36 @@ describe('restore', () => {
 		c.close();
 	});
 
+	it('restores only the fields a partial copy holds', async () => {
+		const { c } = await withOffer(
+			copyOf(
+				{ subject: 'Typed before the row loaded', toAddresses: [], bodyHtml: '' },
+				{ present: ['subject'] }
+			)
+		);
+		expect(await c.mirror.restore()).toEqual({ status: 'restored' });
+		await settle();
+		expect(c.refs.subject.value).toBe('Typed before the row loaded');
+		// The placeholders it never had do not replace the row's real fields.
+		expect(c.refs.toAddresses.value).toEqual(ROW.toAddresses);
+		expect(c.refs.bodyHtml.value).toBe(ROW.bodyHtml);
+		c.close();
+	});
+
+	it('resolves twins: the same text in two copies is offered once and kept once', async () => {
+		const a = seed(DRAFT, 'tabA', copyOf({ subject: 'Same text' }, { savedAt: NOW - 90_000 }));
+		const b = seed(DRAFT, 'parked-x', copyOf({ subject: 'Same text' }, { savedAt: NOW - 30_000 }));
+		const c = openComposer();
+		await settle();
+		expect(c.mirror.offer?.source).toMatchObject({ record: { key: b } });
+		await c.mirror.keep();
+		await settle();
+		expect(driver.map.has(a)).toBe(false);
+		expect(driver.map.has(b)).toBe(false);
+		expect(c.mirror.offer).toBeNull();
+		c.close();
+	});
+
 	it.each([
 		['differs from the row', { ...ROW, subject: 'An older save' }],
 		['is unknown', null],

@@ -37,6 +37,7 @@
 import { nextTick, ref, type Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 import {
+	MIRROR_FIELD_NAMES,
 	isBlankMirrorFields,
 	mirrorFieldEqual,
 	mirrorFieldsEqual,
@@ -318,22 +319,20 @@ export function usePostboxComposePageRequest(options: {
 		for (const name of parked.present) {
 			(fields as unknown as Record<string, unknown>)[name] = parked.fields[name];
 		}
-		const existing = await store.list(ns, String(draftId));
-		if (!existing.some((record) => mirrorFieldsEqual(record.copy.fields, fields))) {
-			const copy: MirrorCopy = {
-				v: 2,
-				fields,
-				base: parked.base,
-				savedAt: parked.parkedAt,
-				draftId: String(draftId),
-				inReplyTo: request.seed?.inReplyToMessageId
-					? String(request.seed.inReplyToMessageId)
-					: null,
-			};
-			const key = mirrorCopyKey(ns, String(draftId), `parked-${source.id}`, 'live');
-			// Not stored (no device storage): the record keeps it for the next open.
-			if (!(await store.write(key, copy))) return;
-		}
+		// Always its own immutable slot: another session's copy of the same text
+		// can be replaced at any moment, so it does not hold this one (the scan
+		// offers identical copies once).
+		const copy: MirrorCopy = {
+			v: 2,
+			fields,
+			base: parked.base,
+			savedAt: parked.parkedAt,
+			draftId: String(draftId),
+			inReplyTo: request.seed?.inReplyToMessageId ? String(request.seed.inReplyToMessageId) : null,
+		};
+		const key = mirrorCopyKey(ns, String(draftId), `parked-${source.id}`, 'live');
+		// Not stored (no device storage): the record keeps it for the next open.
+		if (!(await store.write(key, copy))) return;
 		change((current) => withoutSources(current, [source.id]));
 		void composer.value?.rescanMirror();
 	}
@@ -365,23 +364,26 @@ export function usePostboxComposePageRequest(options: {
 	}
 
 	/**
-	 * A save acknowledged what the editor holds. Simple-mode saves leave the
-	 * stored blocks alone, so a merged snapshot whose blocks differ from the row
-	 * is not held by one.
+	 * A flush succeeded. That proves the row exists, not that it holds the
+	 * editor's text (a scheduled or pending row is never written), so the open's
+	 * text and merged snapshots are dropped only when the latest observed row
+	 * equals what they carry.
 	 */
 	function savedAcknowledged(draftId: Id<'mailDrafts'>) {
 		const snap = composer.value?.parkable();
-		change((request) => ({ ...request, draftId, seed: withoutSeedText(request.seed) }));
-		if (
-			merged.every(
-				(source) =>
-					snap?.fields.composerMode === 'full' ||
-					!source.present.includes('bodyBlocks') ||
-					source.fields.bodyBlocks === null ||
-					source.fields.bodyBlocks === source.base?.bodyBlocks
-			)
-		) {
-			dropMerged();
+		const row = snap?.base ?? null;
+		const editorSaved = !!snap && row !== null && mirrorFieldsEqual(snap.fields, row);
+		change((request) => ({
+			...request,
+			draftId,
+			seed: editorSaved ? withoutSeedText(request.seed) : request.seed,
+		}));
+		const held = merged.filter((source) => row !== null && equalsRow(source, row));
+		if (editorSaved || held.length === merged.length) dropMerged();
+		else if (held.length > 0) {
+			const ids = held.map((source) => source.id);
+			merged = merged.filter((source) => !ids.includes(source.id));
+			change((request) => withoutSources(request, ids));
 		}
 	}
 
@@ -451,6 +453,8 @@ export function usePostboxComposePageRequest(options: {
 				savedAt: parked.parkedAt,
 				draftId: null,
 				inReplyTo,
+				// Only the supplied fields are real (the rest were never loaded).
+				...(parked.present.length < MIRROR_FIELD_NAMES.length ? { present: parked.present } : {}),
 			};
 			const key = mirrorCopyKey(ns, provisionalDraftKey(sessionId), sessionId, 'live');
 			if (await store.write(key, copy))

@@ -288,8 +288,8 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 
 	async function removeSource(current: MirrorOffer): Promise<boolean> {
 		if (current.source.kind === 'legacy') return store.removeLegacy(current.source.record);
-		const { record } = current.source;
-		return store.removeIfUnchanged(record.key, record.copy);
+		for (const twin of current.twins ?? []) await store.removeIfUnchanged(twin.key, twin.copy);
+		return store.removeIfUnchanged(current.source.record.key, current.source.record.copy);
 	}
 
 	function waitForLoadedRow(): Promise<MirrorFields | null> {
@@ -393,7 +393,7 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 					: { status: 'aborted', reason: 'unavailable' };
 			}
 
-			sources.touched.applying(() => applyMirrorFields(sources, current.fields));
+			sources.touched.applying(() => applyMirrorFields(sources, current.fields, current.present));
 			const restored = capture();
 			const write: RestoredWrite = {
 				toAddresses: restored.fields.toAddresses,

@@ -151,14 +151,16 @@ export function usePostboxComposeHydration(
 		if (!keep('bccAddresses')) fields.bccAddresses.value = draft.bccAddresses ?? [];
 		if (!keep('subject')) fields.subject.value = draft.subject ?? '';
 		if (!keep('bodyHtml')) fields.bodyHtml.value = draft.bodyHtml ?? '';
-		if (!keep('composerMode') && draft.composerMode) {
-			fields.composerMode.value = draft.composerMode;
-		}
-		if (!keep('bodyBlocks') && draft.bodyBlocks) {
+		// Absent means the defaults a new row has (simple, no blocks), so an
+		// untouched field never keeps a value the row does not hold.
+		if (!keep('composerMode')) fields.composerMode.value = draft.composerMode ?? 'simple';
+		if (!keep('bodyBlocks')) {
 			try {
-				fields.bodyBlocks.value = JSON.parse(draft.bodyBlocks) as EditorBlock[];
+				fields.bodyBlocks.value = draft.bodyBlocks
+					? (JSON.parse(draft.bodyBlocks) as EditorBlock[])
+					: [];
 			} catch {
-				// Leave empty on malformed JSON.
+				fields.bodyBlocks.value = [];
 			}
 		}
 		// Not part of the autosaved snapshot (each has its own targeted write),

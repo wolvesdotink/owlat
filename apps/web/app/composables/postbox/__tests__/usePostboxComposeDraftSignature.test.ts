@@ -206,4 +206,31 @@ describe('usePostboxCompose — reopened-draft signature race', () => {
 		await nextTick();
 		expect(composer.subject.value).toBe('Newer saved subject');
 	});
+
+	it('drops seeded blocks and mode a nonce reopen finds absent on the row', async () => {
+		vi.stubGlobal('useBackendOperation', (fn: unknown) => ({
+			run:
+				fn === 'drafts.create'
+					? vi.fn(async () => ({
+							ok: true,
+							result: { draftId: 'draft-7', toAddresses: [], subject: '', existing: true },
+						}))
+					: vi.fn(async () => undefined),
+		}));
+		const usePostboxCompose = await loadComposable();
+		const composer = effectScope().run(() =>
+			usePostboxCompose({
+				mailboxId: 'mbx-1' as never,
+				requestNonce: 'nonce-1',
+				prefillComposerMode: 'full',
+				prefillBodyBlocks: [{ id: 'b1', type: 'text', content: 'Parked' }] as never,
+			})
+		)!;
+		await composer.ensureDraft();
+		// A row created but never updated: no mode, no blocks.
+		hydrateData.value = { subject: '', bodyHtml: '', state: 'draft' };
+		await nextTick();
+		expect(composer.composerMode.value).toBe('simple');
+		expect(composer.bodyBlocks.value).toEqual([]);
+	});
 });

@@ -68,6 +68,11 @@ export interface MirrorCopy {
 	draftId: string | null;
 	/** The message a reply answers, so a fresh reply only offers its own copies. */
 	inReplyTo: string | null;
+	/**
+	 * The fields that are real, when not all are: text parked before its row
+	 * loaded. Only these are compared and restored; absent means all.
+	 */
+	present?: MirrorFieldName[];
 }
 
 /** A mirror entry written before v2 (one shared slot per draft key). */
@@ -241,6 +246,16 @@ export function mirrorFieldEqual(name: MirrorFieldName, a: MirrorFields, b: Mirr
 		default:
 			return a[name] === b[name];
 	}
+}
+
+/** Does a (possibly partial) copy carry `fields`' text on every field it holds? */
+export function copyMatches(
+	copy: { fields: MirrorFields; present?: readonly MirrorFieldName[] },
+	fields: MirrorFields
+): boolean {
+	return (copy.present ?? MIRROR_FIELD_NAMES).every((name) =>
+		mirrorFieldEqual(name, copy.fields, fields)
+	);
 }
 
 /** Do two field sets carry the same message? */
