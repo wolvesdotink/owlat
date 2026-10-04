@@ -196,7 +196,7 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 			// model can act on what it fetched, then still produce the final draft.
 			tools: { recallKnowledge },
 			maxSteps: MAX_RECALL_CALLS + 2,
-			spendLabels: { selfCheck: 'agent_draft_selfcheck' },
+			spendLabels: { draft: 'agent_draft', selfCheck: 'agent_draft_selfcheck' },
 			replyLanguage,
 			strategyScope: {
 				...(message?.contactId ? { contactId: message.contactId } : {}),

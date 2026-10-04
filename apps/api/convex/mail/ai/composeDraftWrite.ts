@@ -32,6 +32,7 @@ import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmStream } from '../../lib/llm/dispatch';
 import { stripLeakedToolMarkup, visibleDraftStreamText } from '../../lib/llm/toolMarkup';
 import { addTokenUsage } from '../../lib/llm/tokenUsage';
+import type { TokenUsage } from '../../agent/steps/types';
 import { createThrottledStreamFlusher } from '../../lib/llm/streamFlusher';
 import { recordLlmSpend } from '../../analytics/llmUsage';
 import { logError } from '../../lib/runtimeLog';
@@ -155,6 +156,15 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 				text: visibleDraftStreamText(text),
 			}),
 	});
+	// Usage of finished attempts not yet in the ledger, settled on every exit:
+	// a retry that throws must not lose the attempt before it.
+	let spent: TokenUsage | undefined;
+	let spentModel: string | undefined;
+	const settleSpend = async (): Promise<void> => {
+		const usage = spent;
+		spent = undefined;
+		await recordLlmSpend(ctx, 'postbox_answer_draft', usage, spentModel);
+	};
 	try {
 		const model = await resolveLanguageModel(ctx, 'draft');
 		const streamDraft = (withTools: boolean) =>
@@ -177,9 +187,14 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 				temperature: 0.4,
 				abortSignal: stream.signal,
 				onTextDelta: stream.onText,
+				// The text before the call was just dropped: clear it from the
+				// editor now, not at the next throttled write.
+				onToolCall: () => stream.flush(true),
 			});
 		let result = await streamDraft(true);
 		let draft = stripLeakedToolMarkup(result.text);
+		spent = result.tokenUsage;
+		spentModel = result.modelUsed;
 		let tokenUsage = result.tokenUsage;
 		if (draft.kind === 'unusable' && !result.aborted && !stream.stopRequested) {
 			// Typed-out tool markup, not a reply. Clear the editor and write the
@@ -189,10 +204,12 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 			result = await streamDraft(false);
 			draft = stripLeakedToolMarkup(result.text);
 			tokenUsage = addTokenUsage(tokenUsage, result.tokenUsage);
+			spent = tokenUsage;
+			spentModel = result.modelUsed;
 		}
 		if (draft.kind === 'unusable') {
 			logError('[composeDraft] draft was tool-call markup:', draft.reason);
-			await recordLlmSpend(ctx, 'postbox_answer_draft', tokenUsage, result.modelUsed);
+			await settleSpend();
 			await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
 				streamId,
 				text: '',
@@ -212,7 +229,7 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 			model: result.modelUsed,
 			tokenUsage,
 		});
-		await recordLlmSpend(ctx, 'postbox_answer_draft', tokenUsage, result.modelUsed);
+		await settleSpend();
 		await ctx.runMutation(internal.mail.ai.composeDraftStore.updateSession, {
 			sessionId: input.sessionId,
 			status: 'ready',
@@ -222,6 +239,7 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 			'[composeDraft] drafting failed:',
 			error instanceof Error ? error.message.split('\n', 1)[0] : 'non-Error thrown'
 		);
+		await settleSpend().catch(() => undefined);
 		await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
 			streamId,
 			text: visibleDraftStreamText(stream.text).trim(),

@@ -32,14 +32,13 @@ import {
 	runLlmTextWithTools,
 	type LlmTextResult,
 } from '../../lib/llm/dispatch';
-import { stripLeakedToolMarkup } from '../../lib/llm/toolMarkup';
-import { addTokenUsage } from '../../lib/llm/tokenUsage';
+import { withoutToolMarkup } from './draftMarkup';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { buildReplyLanguageInstruction } from './replyLanguage';
 
 export { buildReplyLanguageInstruction } from './replyLanguage';
 import { recordLlmSpend } from '../../analytics/llmUsage';
-import { logError, logWarn } from '../../lib/runtimeLog';
+import { logError } from '../../lib/runtimeLog';
 import { detectInjection, INJECTION_CONFIDENCE_THRESHOLD } from '../steps/security_scan/patterns';
 import type { ActionCtx } from '../../_generated/server';
 import { runSelectedDraftStrategy } from './draftStrategyRunner';
@@ -308,8 +307,14 @@ export type SharedDraftParams = Readonly<{
 	/** Max agentic steps when a tool set is supplied. */
 	maxSteps?: number;
 	temperature?: number;
-	/** Per-surface analytics labels so spend is attributable to the right surface. */
-	spendLabels: Readonly<{ selfCheck: string }>;
+	/**
+	 * Per-surface analytics labels so spend is attributable to the right surface.
+	 * `draft` labels the primary generation when it is recorded here: only the
+	 * attempts of a run that ends in a throw after its markup retry, since a
+	 * throw carries no usage back. A successful run returns its usage and the
+	 * caller records it, as before.
+	 */
+	spendLabels: Readonly<{ draft: string; selfCheck: string }>;
 	/**
 	 * ISO 639-1 code of the inbound's language (the classifier's `language`,
 	 * already allowlisted by the caller). The reply is always written in the
@@ -331,40 +336,6 @@ export type SharedDraftResult = Readonly<{
 	tokenUsage: LlmTextResult['tokenUsage'];
 	modelUsed: LlmTextResult['modelUsed'];
 }>;
-
-type PrimaryDraft = Readonly<{
-	draftBody: string;
-	tokenUsage: LlmTextResult['tokenUsage'];
-	modelUsed: LlmTextResult['modelUsed'];
-}>;
-
-/**
- * The primary draft without tool-call markup the model typed into it (#1254,
- * lib/llm/toolMarkup.ts). A leading markup prefix is cut. A draft with markup
- * after the reply started, or with nothing after the prefix, is generated once
- * more without tools, by a prompt that names none, since that is what invites
- * a typed-out call. When that one is unusable as well the generation throws:
- * every caller already treats a throw as "no draft" (Reply Queue, Postbox) or
- * as a failed step that a person picks up (Team Inbox). Markup is never kept.
- */
-async function withoutToolMarkup(
-	primary: PrimaryDraft,
-	retryWithoutTools: () => Promise<LlmTextResult>
-): Promise<PrimaryDraft> {
-	const first = stripLeakedToolMarkup(primary.draftBody);
-	if (first.kind !== 'unusable') return { ...primary, draftBody: first.text };
-	logWarn('[sharedDraft] draft was tool-call markup; retrying without tools:', first.reason);
-	const retry = await retryWithoutTools();
-	const second = stripLeakedToolMarkup(retry.text);
-	if (second.kind === 'unusable') {
-		throw new Error(`Draft generation returned tool-call markup (${second.reason}).`);
-	}
-	return {
-		draftBody: second.text,
-		tokenUsage: addTokenUsage(primary.tokenUsage, retry.tokenUsage),
-		modelUsed: retry.modelUsed ?? primary.modelUsed,
-	};
-}
 
 /**
  * THE shared draft pipeline both surfaces run: defense-in-depth injection
@@ -407,7 +378,24 @@ export async function runSharedDraft(
 		},
 		() => runDefaultDraftStrategy(params, true)
 	);
-	const primary = await withoutToolMarkup(selected, () => runDefaultDraftStrategy(params, false));
+	const primary = await withoutToolMarkup(
+		selected,
+		() => runDefaultDraftStrategy(params, false),
+		async (attempts) => {
+			for (const attempt of attempts) {
+				try {
+					await recordLlmSpend(
+						ctx,
+						params.spendLabels.draft,
+						attempt.tokenUsage,
+						attempt.modelUsed
+					);
+				} catch {
+					// ignore — spend accounting is advisory
+				}
+			}
+		}
+	);
 	// A reviewer note the model wrote anyway becomes a placeholder the send
 	// guard counts (agent/shared/draftGaps.ts).
 	const draftBody = markReviewerNotes(primary.draftBody);

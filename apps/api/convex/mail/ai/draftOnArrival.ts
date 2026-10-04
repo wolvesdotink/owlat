@@ -108,7 +108,7 @@ export async function generateDraftOnArrival(
 				'\n\nTone: match the owner’s natural, personal style — warm and direct, not corporate.',
 			signatureInstruction: '',
 			voiceSection,
-			spendLabels: { selfCheck: 'postbox_draft_selfcheck' },
+			spendLabels: { draft: 'postbox_draft', selfCheck: 'postbox_draft_selfcheck' },
 			strategyScope: { mailboxId: loaded.mailboxId, classification: 'other' },
 		});
 

@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
 	runLlmTextWithTools: vi.fn(),
 	runLlmText: vi.fn(),
 	runLlmObject: vi.fn(),
+	sampleDelta: false,
 }));
 
 vi.mock('../../lib/llm/dispatch', () => ({
@@ -33,10 +34,11 @@ vi.mock('../ai/voiceGuidance', () => ({
 }));
 vi.mock('../../inbox/askEagerness', async (importActual) => ({
 	...(await importActual<typeof AskEagerness>()),
-	shouldSampleDraftDelta: () => false,
+	shouldSampleDraftDelta: () => mocks.sampleDelta,
 }));
 
 import { draftClarificationReply } from '../ai/needsReplyDraft';
+import { recordLlmSpend } from '../../analytics/llmUsage';
 import type { Id } from '../../_generated/dataModel';
 
 const threadId = 'thread_1' as Id<'mailThreads'>;
@@ -47,8 +49,15 @@ const MARKUP =
 	'</invoke>\n\n' +
 	'<function_results>\n{"results":[]}\n</function_results>';
 
-function text(value: string) {
-	return { text: value, tokenUsage: undefined, modelUsed: 'mock-model' };
+function text(value: string, tokens?: number) {
+	return {
+		text: value,
+		tokenUsage:
+			tokens === undefined
+				? undefined
+				: { promptTokens: tokens, completionTokens: tokens, totalTokens: 2 * tokens },
+		modelUsed: 'mock-model',
+	};
 }
 
 function makeCtx() {
@@ -89,6 +98,8 @@ beforeEach(() => {
 	mocks.runLlmTextWithTools.mockReset();
 	mocks.runLlmText.mockReset();
 	mocks.runLlmObject.mockReset();
+	vi.mocked(recordLlmSpend).mockClear();
+	mocks.sampleDelta = false;
 	mocks.runLlmObject.mockResolvedValue({
 		object: { score: 0.8, complete: true, grounded: true, flags: [] },
 		tokenUsage: undefined,
@@ -121,5 +132,48 @@ describe('draftClarificationReply — leaked tool-call markup', () => {
 		await draftClarificationReply(ctx, { threadId });
 		expect(storedDraft(mutations)).toBeUndefined();
 		expect(JSON.stringify(mutations)).not.toContain('<invoke');
+	});
+
+	it('retries a draft cut off inside a tool tag, and stores the retry', async () => {
+		mocks.runLlmTextWithTools.mockResolvedValueOnce(
+			text('Hi John,\n<invoke name="recallKnowledge"')
+		);
+		mocks.runLlmText.mockResolvedValueOnce(text(REPLY));
+		const { ctx, mutations } = makeCtx();
+		await draftClarificationReply(ctx, { threadId });
+		expect(storedDraft(mutations)).toBe(REPLY);
+	});
+
+	it('records the spend of both rejected generations', async () => {
+		mocks.runLlmTextWithTools.mockResolvedValueOnce(text(`Hi John,\n\n${MARKUP}\nBest`, 10));
+		mocks.runLlmText.mockResolvedValueOnce(text(MARKUP, 4));
+		const { ctx } = makeCtx();
+		await draftClarificationReply(ctx, { threadId });
+		const draftRows = vi
+			.mocked(recordLlmSpend)
+			.mock.calls.filter(([, label]) => label === 'postbox_clarify_draft');
+		expect(draftRows.map(([, , usage]) => usage?.totalTokens)).toEqual([20, 8]);
+	});
+
+	it('measures the comparison draft without its markup prefix', async () => {
+		mocks.sampleDelta = true;
+		mocks.runLlmTextWithTools.mockResolvedValueOnce(text(REPLY));
+		mocks.runLlmText.mockResolvedValueOnce(text(MARKUP + REPLY));
+		const { ctx, mutations } = makeCtx();
+		await draftClarificationReply(ctx, { threadId });
+		const logged = mutations.find((m) => m.name.includes('recordClarificationAsk'))?.args;
+		expect(logged).toMatchObject({ isDraftChanged: false, draftDivergence: 0 });
+	});
+
+	it('logs no comparison when the comparison draft is markup', async () => {
+		mocks.sampleDelta = true;
+		mocks.runLlmTextWithTools.mockResolvedValueOnce(text(REPLY));
+		mocks.runLlmText.mockResolvedValueOnce(text(`Hi,\n${MARKUP}`));
+		const { ctx, mutations } = makeCtx();
+		await draftClarificationReply(ctx, { threadId });
+		const logged = mutations.find((m) => m.name.includes('recordClarificationAsk'))?.args;
+		expect(logged).toBeDefined();
+		expect(logged?.['isDraftChanged']).toBeUndefined();
+		expect(logged?.['draftDivergence']).toBeUndefined();
 	});
 });

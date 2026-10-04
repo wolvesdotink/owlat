@@ -39,6 +39,7 @@ vi.mock('../../agent/steps/draft/recall', () => ({
 }));
 
 import { writeAnswerDraft } from '../ai/composeDraftWrite';
+import { recordLlmSpend } from '../../analytics/llmUsage';
 import type { Id } from '../../_generated/dataModel';
 
 type StreamOpts = Parameters<typeof DispatchModule.runLlmStream>[0];
@@ -66,6 +67,31 @@ function streams(text: string) {
 			modelUsed: 'm',
 			finishReason: 'stop',
 			aborted: false,
+		};
+	};
+}
+
+/** A mocked stream that delivers exactly these chunks, then ends as told. */
+function chunks(
+	parts: readonly string[],
+	end: { aborted?: boolean; tokens?: number; throws?: boolean } = {}
+) {
+	return async (opts: StreamOpts) => {
+		let full = '';
+		for (const part of parts) {
+			full += part;
+			await opts.onTextDelta?.(full, part);
+		}
+		if (end.throws) throw new Error('provider error');
+		return {
+			text: full,
+			tokenUsage:
+				end.tokens === undefined
+					? undefined
+					: { promptTokens: end.tokens, completionTokens: end.tokens, totalTokens: 2 * end.tokens },
+			modelUsed: 'm',
+			finishReason: end.aborted ? undefined : 'stop',
+			aborted: end.aborted ?? false,
 		};
 	};
 }
@@ -119,6 +145,7 @@ beforeEach(() => {
 	mocks.runLlmStream.mockReset();
 	mocks.runLlmStream.mockImplementation(mocks.actualRunLlmStream);
 	mocks.recallExecute.mockClear();
+	vi.mocked(recordLlmSpend).mockClear();
 	mocks.model = 'mock-model';
 });
 afterEach(() => {
@@ -189,6 +216,110 @@ describe('writeAnswerDraft — leaked tool-call markup', () => {
 		expect(cleared).toBeGreaterThan(0);
 		for (const text of shown.slice(cleared)) expect(REPLY.startsWith(text)).toBe(true);
 		expect(shown[shown.length - 1]).toBe(REPLY);
+		expect(finals).toEqual([expect.objectContaining({ text: REPLY, status: 'complete' })]);
+	});
+});
+
+describe('writeAnswerDraft — chunk boundaries, unfinished tags, spend', () => {
+	it('holds a container tag split across chunks, with space before its >', async () => {
+		mocks.runLlmStream.mockImplementationOnce(
+			chunks(['<function_calls ', '>{}</function_calls>', REPLY])
+		);
+		const { ctx, shown, finals } = makeCtx();
+		await write(ctx);
+		expect(shown).toEqual(['', '', REPLY]);
+		expect(finals).toEqual([expect.objectContaining({ text: REPLY, status: 'complete' })]);
+	});
+
+	it('never shows markup wherever a chunk boundary falls', async () => {
+		const full = `${MARKUP}\n${REPLY}`;
+		for (let at = 0; at <= full.length; at += 1) {
+			mocks.runLlmStream.mockImplementationOnce(chunks([full.slice(0, at), full.slice(at)]));
+			const { ctx, shown, finals } = makeCtx();
+			await write(ctx);
+			for (const text of shown) expect(REPLY.startsWith(text), `split at ${at}`).toBe(true);
+			expect(finals).toEqual([expect.objectContaining({ text: REPLY, status: 'complete' })]);
+		}
+	});
+
+	it('stores no part of an unfinished tag when the provider fails mid-stream', async () => {
+		mocks.runLlmStream.mockImplementationOnce(chunks(['<function_calls '], { throws: true }));
+		const { ctx, shown, finals, sessions } = makeCtx();
+		await write(ctx);
+		expect(shown).toEqual(['']);
+		expect(finals).toEqual([
+			expect.objectContaining({ text: '', status: 'error', errorMessage: 'draft_failed' }),
+		]);
+		expect(sessions).toEqual([expect.objectContaining({ status: 'error' })]);
+	});
+
+	it('retries a draft cut off inside a tool tag instead of finalizing it', async () => {
+		mocks.runLlmStream
+			.mockImplementationOnce(chunks(['Hi John,\n\n', '<invoke name="recallKnowledge"']))
+			.mockImplementationOnce(chunks([REPLY]));
+		const { ctx, shown, finals, sessions } = makeCtx();
+		await write(ctx);
+		for (const text of shown) expect(text).not.toMatch(MARKUP_SHAPE);
+		expect(mocks.runLlmStream).toHaveBeenCalledTimes(2);
+		expect(finals).toEqual([expect.objectContaining({ text: REPLY, status: 'complete' })]);
+		expect(sessions).toEqual([expect.objectContaining({ status: 'ready' })]);
+	});
+
+	it('fails a stopped draft that ends inside a tool tag, without a retry', async () => {
+		mocks.runLlmStream.mockImplementationOnce(
+			chunks(['<invoke name="recallKnowledge"'], { aborted: true })
+		);
+		const { ctx, finals, sessions } = makeCtx();
+		await write(ctx);
+		expect(mocks.runLlmStream).toHaveBeenCalledTimes(1);
+		expect(finals).toEqual([expect.objectContaining({ text: '', status: 'error' })]);
+		expect(sessions).toEqual([expect.objectContaining({ status: 'error' })]);
+	});
+
+	it('records the first attempt when the retry throws', async () => {
+		mocks.runLlmStream
+			.mockImplementationOnce(chunks([`Hi,\n${MARKUP}`], { tokens: 7 }))
+			.mockImplementationOnce(chunks(['Hi'], { throws: true }));
+		const { ctx, finals } = makeCtx();
+		await write(ctx);
+		expect(finals).toEqual([expect.objectContaining({ status: 'error' })]);
+		expect(recordLlmSpend).toHaveBeenCalledTimes(1);
+		expect(recordLlmSpend).toHaveBeenCalledWith(
+			ctx,
+			'postbox_answer_draft',
+			{ promptTokens: 7, completionTokens: 7, totalTokens: 14 },
+			'm'
+		);
+	});
+
+	it('records both attempts once when both are markup', async () => {
+		mocks.runLlmStream
+			.mockImplementationOnce(chunks([`Hi,\n${MARKUP}`], { tokens: 7 }))
+			.mockImplementationOnce(chunks([MARKUP], { tokens: 3 }));
+		const { ctx } = makeCtx();
+		await write(ctx);
+		expect(recordLlmSpend).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(recordLlmSpend).mock.calls[0]![2]).toEqual({
+			promptTokens: 10,
+			completionTokens: 10,
+			totalTokens: 20,
+		});
+	});
+
+	it('clears narration at the tool call even while writes are throttled', async () => {
+		vi.spyOn(Date, 'now').mockReturnValue(5_000_000);
+		mocks.model = scriptedStreamModel([
+			{
+				text: ['Let me check ', 'availability for those dates.'],
+				toolCall: { toolName: 'recallKnowledge', input: { query: 'availability' } },
+			},
+			{ text: [REPLY] },
+		]);
+		const { ctx, shown, finals } = makeCtx();
+		await write(ctx);
+		// The first write goes out, every later delta is inside the interval:
+		// only the forced write at the tool call reaches the buffer.
+		expect(shown).toEqual(['Let me check ', '']);
 		expect(finals).toEqual([expect.objectContaining({ text: REPLY, status: 'complete' })]);
 	});
 });
