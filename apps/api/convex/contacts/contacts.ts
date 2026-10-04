@@ -13,6 +13,7 @@ import { contactCreateSourceValidator } from '../lib/validators/contacts';
 import { applyContactEdit, createContactStrict } from './contactEdit';
 import { startContactCountReconcile } from './countReconcile';
 import { softDeleteContact } from '../lib/contactMutations';
+import { findLiveContactByEmail } from '../lib/contactHelpers';
 import { eraseContactNow } from './erasure/walker';
 import { sweepContactRetention } from './erasure/retention';
 import { recordAuditLog } from '../lib/auditLog';
@@ -421,11 +422,7 @@ export const getByEmailForTeam = internalQuery({
 		// and disagree with the soft-delete contract (and break
 		// createContactIfNotExists in the events/API path, which expects an
 		// erased contact to read as absent and be recreatable).
-		return await ctx.db
-			.query('contacts')
-			.withIndex('by_email', (q) => q.eq('email', normalizeEmail(args.email)))
-			.filter((q) => q.eq(q.field('deletedAt'), undefined))
-			.first();
+		return await findLiveContactByEmail(ctx, args.email);
 	},
 });
 

@@ -10,6 +10,7 @@
 import type { MutationCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
 import { recordContactGrowth } from '../../contacts/growthCounters';
+import { findLiveContactByEmail } from '../../lib/contactHelpers';
 import { SEED_TAG, type LoadResult, type Loader } from './types';
 
 type Source = 'api' | 'import' | 'form' | 'transactional' | 'inbound';
@@ -32,10 +33,7 @@ async function load(ctx: MutationCtx, rawRecords: unknown[]): Promise<LoadResult
 	const now = Date.now();
 
 	for (const rec of records) {
-		const existing = await ctx.db
-			.query('contacts')
-			.withIndex('by_email', (q) => q.eq('email', rec.email))
-			.first();
+		const existing = await findLiveContactByEmail(ctx, rec.email);
 		if (existing) {
 			ids[rec.slug] = existing._id;
 			skipped++;

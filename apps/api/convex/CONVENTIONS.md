@@ -991,9 +991,10 @@ Rules:
 - User-initiated deletes mark the row (`softDeleteContact` etc.) — never
   hard-delete from a user-facing mutation.
 - All list / search / lookup queries MUST filter `deletedAt === undefined`
-  (use `notSoftDeleted` from `lib/queryHelpers.ts` or the indexed
-  `.filter((q) => q.eq(q.field('deletedAt'), undefined))`). Repository
-  helpers like `getContactOrThrow` already filter; prefer them at read sites.
+  (the indexed `.filter((q) => q.eq(q.field('deletedAt'), undefined))`, or
+  the `by_deleted_at*` indexes). A contact looked up by email goes through
+  `findLiveContactByEmail` in `lib/contactHelpers.ts`: a soft-deleted row
+  keeps its email and sorts before the contact that replaced it.
 - A daily cron (`cleanupSoftDeletedContacts`) selects rows whose
   `deletedAt < now - 30 days` through an index range and hands each to the
   contact erasure walker (`contacts/erasure/walker.ts`): a persisted

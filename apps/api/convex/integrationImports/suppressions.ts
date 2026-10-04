@@ -49,6 +49,7 @@ import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { findBlockedByEmail } from '../blockedEmails/lookup';
+import { findLiveContactByEmail } from '../lib/contactHelpers';
 import { isValidEmail, normalizeEmail } from '../lib/inputGuards';
 import { recordAuditLog } from '../lib/auditLog';
 import {
@@ -116,13 +117,10 @@ export const applySuppressionBatch = internalMutation({
 				// off that would report "nothing changed" for a run that just opted a
 				// thousand people out.
 				//
-				// The lookup mirrors `processUnsubscribeByEmail`'s own join exactly,
-				// deliberately: a stricter one here would count a different set of
-				// addresses than the one the writer acts on.
-				const contact = await ctx.db
-					.query('contacts')
-					.withIndex('by_email', (q) => q.eq('email', email))
-					.first();
+				// The lookup is `processUnsubscribeByEmail`'s own join
+				// (`findLiveContactByEmail`), deliberately: a different one here would
+				// count a different set of addresses than the one the writer acts on.
+				const contact = await findLiveContactByEmail(ctx, email);
 				const wasOptedOut = contact?.unsubscribedAt !== undefined;
 
 				const result = await ctx.runMutation(
