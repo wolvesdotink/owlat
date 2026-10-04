@@ -150,4 +150,123 @@ describe('usePostboxCompose — reopened-draft signature race', () => {
 		expect(composer.bodyHtml.value).toContain('data-postbox-signature');
 		expect(composer.activeSignatureId.value).toBe('sig-1');
 	});
+
+	it('lets a saved draft a request nonce reopens win over the auto-prepended signature', async () => {
+		const createRun = vi.fn(async () => ({
+			ok: true,
+			result: { draftId: 'draft-7', toAddresses: [], subject: '', state: 'draft', existing: true },
+		}));
+		vi.stubGlobal('useBackendOperation', (fn: unknown) => ({
+			run: fn === 'drafts.create' ? createRun : vi.fn(async () => undefined),
+		}));
+		const usePostboxCompose = await loadComposable();
+		// A remount of a compose request: no draft id yet, only its nonce.
+		const composer = effectScope().run(() =>
+			usePostboxCompose({ mailboxId: 'mbx-1' as never, requestNonce: 'nonce-1' })
+		)!;
+		signaturesData.value = [DEFAULT_SIGNATURE];
+		await nextTick();
+		expect(composer.bodyHtml.value).toContain('Regards, Alice');
+
+		// The nonce names a saved full-mode draft: it is reopened and merged.
+		await composer.ensureDraft();
+		hydrateData.value = {
+			bodyHtml: '<p>SAVED DRAFT BODY</p>',
+			bodyBlocks: '[]',
+			composerMode: 'full',
+			state: 'draft',
+		};
+		await nextTick();
+
+		expect(createRun).toHaveBeenCalledWith(expect.objectContaining({ requestNonce: 'nonce-1' }));
+		expect(composer.bodyHtml.value).toBe('<p>SAVED DRAFT BODY</p>');
+		expect(composer.composerMode.value).toBe('full');
+	});
+
+	it('keeps seeded text from winning over the row a nonce reopens', async () => {
+		vi.stubGlobal('useBackendOperation', (fn: unknown) => ({
+			run:
+				fn === 'drafts.create'
+					? vi.fn(async () => ({
+							ok: true,
+							result: { draftId: 'draft-7', toAddresses: [], subject: '', existing: true },
+						}))
+					: vi.fn(async () => undefined),
+		}));
+		const usePostboxCompose = await loadComposable();
+		const composer = effectScope().run(() =>
+			usePostboxCompose({
+				mailboxId: 'mbx-1' as never,
+				requestNonce: 'nonce-1',
+				prefillSubject: 'Older parked subject',
+			})
+		)!;
+		await composer.ensureDraft();
+		hydrateData.value = { subject: 'Newer saved subject', bodyHtml: '', state: 'draft' };
+		await nextTick();
+		expect(composer.subject.value).toBe('Newer saved subject');
+	});
+
+	it('drops seeded blocks and mode a nonce reopen finds absent on the row', async () => {
+		vi.stubGlobal('useBackendOperation', (fn: unknown) => ({
+			run:
+				fn === 'drafts.create'
+					? vi.fn(async () => ({
+							ok: true,
+							result: { draftId: 'draft-7', toAddresses: [], subject: '', existing: true },
+						}))
+					: vi.fn(async () => undefined),
+		}));
+		const usePostboxCompose = await loadComposable();
+		const composer = effectScope().run(() =>
+			usePostboxCompose({
+				mailboxId: 'mbx-1' as never,
+				requestNonce: 'nonce-1',
+				prefillComposerMode: 'full',
+				prefillBodyBlocks: [{ id: 'b1', type: 'text', content: 'Parked' }] as never,
+			})
+		)!;
+		await composer.ensureDraft();
+		// A row created but never updated: no mode, no blocks.
+		hydrateData.value = { subject: '', bodyHtml: '', state: 'draft' };
+		await nextTick();
+		expect(composer.composerMode.value).toBe('simple');
+		expect(composer.bodyBlocks.value).toEqual([]);
+	});
+
+	it('saves exactly the text a beforeReady merge put on screen, blocks included', async () => {
+		const updateRun = vi.fn(async () => ({ ok: true, result: { savedAt: 1 } }));
+		vi.stubGlobal('useBackendOperation', (fn: unknown) => ({
+			run: fn === 'drafts.update' ? updateRun : vi.fn(async () => undefined),
+		}));
+		const usePostboxCompose = await loadComposable();
+		let persisted: Promise<{ ok: boolean }> | null = null;
+		effectScope().run(() =>
+			usePostboxCompose(
+				{ mailboxId: 'mbx-1' as never, draftId: 'draft-42' as never },
+				{
+					beforeReady: (row, context) => {
+						context.merge({ ...row, subject: 'Merged back' }, ['subject']);
+						persisted = context.persist();
+					},
+				}
+			)
+		)!;
+		hydrateData.value = {
+			subject: 'Saved',
+			bodyHtml: '<p>Body</p>',
+			bodyBlocks: '[]',
+			state: 'draft',
+		};
+		await nextTick();
+		expect(await persisted).toMatchObject({ ok: true });
+		expect(updateRun).toHaveBeenCalledWith(
+			expect.objectContaining({
+				draftId: 'draft-42',
+				subject: 'Merged back',
+				bodyHtml: '<p>Body</p>',
+				bodyBlocks: '[]',
+			})
+		);
+	});
 });

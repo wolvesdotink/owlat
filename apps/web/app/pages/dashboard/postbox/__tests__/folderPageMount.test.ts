@@ -117,7 +117,6 @@ async function mountAt(meta: RouteMeta, path: string): Promise<Router> {
 			components: {
 				PostboxLayout: PostboxLayoutStub,
 				PostboxMailboxGuard: passThrough('PostboxMailboxGuard'),
-				PostboxComposerStack: empty('PostboxComposerStack'),
 				DashboardGettingStarted: empty('DashboardGettingStarted'),
 				UiErrorAlert: empty('UiErrorAlert'),
 			},

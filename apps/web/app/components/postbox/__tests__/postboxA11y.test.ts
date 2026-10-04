@@ -46,7 +46,6 @@ import PostboxReaderMessageCard from '../PostboxReaderMessage.vue';
 import PostboxComposer from '../PostboxComposer.vue';
 import PostboxComposerEnvelope from '../PostboxComposerEnvelope.vue';
 import PostboxComposerFooter from '../PostboxComposerFooter.vue';
-import PostboxComposerHeader from '../PostboxComposerHeader.vue';
 import PostboxBasicEditor from '../PostboxBasicEditor.vue';
 
 // The generated Convex `api` object only ever reaches the stubbed query and
@@ -279,10 +278,9 @@ describe('postbox composer — accessibility', () => {
 	it('has no axe violations on a blank draft', async () => {
 		const violations = await auditA11y(PostboxComposer, {
 			// The composer's own template is a wrapper; every control a person
-			// touches lives in the header, the envelope, the body and the footer,
-			// so those four are registered rather than left unresolved.
+			// touches lives in the envelope, the body and the footer, so those
+			// three are registered rather than left unresolved.
 			...withCatalog({
-				PostboxComposerHeader,
 				PostboxComposerEnvelope,
 				PostboxBasicEditor,
 				PostboxComposerFooter,

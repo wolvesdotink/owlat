@@ -21,19 +21,19 @@ vi.mock('@owlat/api', () => {
 	return { api: anyPath };
 });
 
-const stackOpen = vi.fn();
+const composeOpen = vi.fn();
 const oneClickRun = vi.fn();
 const windowOpen = vi.fn();
 
 beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
-	vi.stubGlobal('usePostboxComposerStack', () => ({ open: stackOpen }));
+	vi.stubGlobal('usePostboxComposeNav', () => ({ open: composeOpen }));
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
 	vi.stubGlobal('useBackendOperation', () => ({ run: oneClickRun, isLoading: ref(false) }));
 });
 
 beforeEach(() => {
-	stackOpen.mockReset();
+	composeOpen.mockReset();
 	oneClickRun.mockReset();
 	windowOpen.mockReset();
 	vi.spyOn(window, 'open').mockImplementation(windowOpen);
@@ -63,7 +63,7 @@ describe('PostboxUnsubscribeChip', () => {
 		await wrapper.get('button').trigger('click');
 		await flushPromises();
 
-		expect(stackOpen).toHaveBeenCalledWith({
+		expect(composeOpen).toHaveBeenCalledWith({
 			mailboxId: 'mbx-1',
 			prefillTo: ['unsub@list.example'],
 			prefillSubject: 'unsubscribe',
@@ -79,7 +79,7 @@ describe('PostboxUnsubscribeChip', () => {
 		await wrapper.get('button').trigger('click');
 		await flushPromises();
 
-		expect(stackOpen).toHaveBeenCalledWith(
+		expect(composeOpen).toHaveBeenCalledWith(
 			expect.objectContaining({
 				prefillTo: ['unsub@evil.test'],
 				prefillSubject: 'Unsubscribe',
@@ -97,7 +97,7 @@ describe('PostboxUnsubscribeChip', () => {
 		await wrapper.get('button').trigger('click');
 		await flushPromises();
 
-		expect(stackOpen).not.toHaveBeenCalled();
+		expect(composeOpen).not.toHaveBeenCalled();
 		expect(windowOpen).toHaveBeenCalledWith(
 			'https://list.example/unsub',
 			'_blank',

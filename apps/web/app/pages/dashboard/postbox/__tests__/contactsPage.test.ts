@@ -43,7 +43,7 @@ beforeAll(() => {
 			isLoading: ref(false),
 		}),
 		usePostboxContacts: () => ({ contacts, isLoading: ref(false), save, remove }),
-		usePostboxComposerStack: () => ({ open: composerOpen }),
+		usePostboxComposeNav: () => ({ open: composerOpen }),
 		useToast: () => ({ showToast }),
 	});
 });
@@ -75,7 +75,6 @@ function mountPage() {
 			Icon: iconStub,
 			UiModal: modalStub,
 			PostboxMailboxGuard: passthrough('PostboxMailboxGuard'),
-			PostboxComposerStack: passthrough('PostboxComposerStack'),
 		},
 	});
 	return wrapper;

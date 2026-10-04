@@ -101,7 +101,6 @@ function mountPage(page: Component) {
 			PostboxFilesPanel: marker('PostboxFilesPanel'),
 			PostboxSubscriptionsPanel: marker('PostboxSubscriptionsPanel'),
 			PostboxLayout: marker('PostboxLayout'),
-			PostboxComposerStack: marker('PostboxComposerStack'),
 			DashboardGettingStarted: marker('DashboardGettingStarted'),
 			UiErrorAlert: marker('UiErrorAlert'),
 		},

@@ -17,7 +17,10 @@
  *    text" in the footer brings it back for people who trim quotes;
  *  - Coach and Revise move under the footer's ⋯ and open on demand.
  *
- * In the popup frame all three are simply "open", which is today's composer.
+ * The page frame (`frame="page"`, the full-page composer for new mail) keeps
+ * the envelope open, since there is no thread to fill it in from, shows any
+ * quoted text (a forward as new mail), and puts the caret in To when nobody is
+ * addressed yet. Coach and Revise sit under ⋯ in both frames.
  */
 import { computed, nextTick, onMounted, ref, watch, type Ref } from 'vue';
 import type { EditorSnippet } from './usePostboxSnippetPicker';
@@ -30,13 +33,16 @@ export interface BasicEditorHandle {
 }
 
 export function usePostboxComposerAnswerFrame(opts: {
-	/** `frame === 'answer'`; fixed for the life of the composer. */
-	active: boolean;
+	/** Where the composer is mounted; fixed for the life of the composer. */
+	frame: 'page' | 'answer';
 	bodyHtml: Ref<string>;
+	/** Whether the draft is addressed yet (the page frame focuses To if not). */
+	hasRecipients: () => boolean;
 }) {
-	const envelopeOpen = ref(!opts.active);
-	const quoteFolded = ref(opts.active);
-	const advisoryOpen = ref(!opts.active);
+	const answer = opts.frame === 'answer';
+	const envelopeOpen = ref(!answer);
+	const quoteFolded = ref(answer);
+	const advisoryOpen = ref(false);
 	const hasQuote = computed(() => bodyHasQuote(opts.bodyHtml.value));
 	/** What the envelope itself reports (see its `attention` event). */
 	const envelopeAttention = ref(false);
@@ -49,17 +55,20 @@ export function usePostboxComposerAnswerFrame(opts: {
 		{ immediate: true }
 	);
 
-	// Template refs the composer binds: the envelope (its reply-all switch) and
-	// the body editor, focused on mount in Answer mode, which only ever opens on
-	// an explicit reply, so this never steals focus on load (and handed a saved
-	// reply picked outside its text).
-	const envelopeRef = ref<{ switchToReplyAll: () => void } | null>(null);
+	// Template refs the composer binds: the envelope (its reply-all switch, its
+	// To field) and the body editor. Both frames only ever open on an explicit
+	// act (a reply, Compose), so focusing on mount never steals focus on load:
+	// Answer mode lands in the body, a new message in To until it has someone.
+	const envelopeRef = ref<{ switchToReplyAll: () => void; focusTo: () => void } | null>(null);
 	const basicEditor = ref<BasicEditorHandle | null>(null);
 	function focusBody() {
 		basicEditor.value?.focus();
 	}
 	onMounted(() => {
-		if (opts.active) void nextTick(focusBody);
+		void nextTick(() => {
+			if (answer || opts.hasRecipients()) focusBody();
+			else envelopeRef.value?.focusTo();
+		});
 	});
 
 	function openEnvelope() {

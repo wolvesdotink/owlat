@@ -83,6 +83,5 @@ const showGettingStarted = computed(() => !mailboxId.value && !mailboxesLoading.
 				<DashboardGettingStarted :user-id="userId" personal-only class="text-left" />
 			</div>
 		</div>
-		<PostboxComposerStack />
 	</div>
 </template>

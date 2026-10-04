@@ -1051,6 +1051,7 @@ import type * as mail_draftLifecycle_effects from '../mail/draftLifecycle/effect
 import type * as mail_draftLifecycle_reducers from '../mail/draftLifecycle/reducers.js';
 import type * as mail_draftLifecycle_types from '../mail/draftLifecycle/types.js';
 import type * as mail_draftQueries from '../mail/draftQueries.js';
+import type * as mail_draftRequestNonces from '../mail/draftRequestNonces.js';
 import type * as mail_draftSend from '../mail/draftSend.js';
 import type * as mail_draftStreamStore from '../mail/draftStreamStore.js';
 import type * as mail_drafts from '../mail/drafts.js';
@@ -2536,6 +2537,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/draftLifecycle/reducers': typeof mail_draftLifecycle_reducers;
 	'mail/draftLifecycle/types': typeof mail_draftLifecycle_types;
 	'mail/draftQueries': typeof mail_draftQueries;
+	'mail/draftRequestNonces': typeof mail_draftRequestNonces;
 	'mail/draftSend': typeof mail_draftSend;
 	'mail/draftStreamStore': typeof mail_draftStreamStore;
 	'mail/drafts': typeof mail_drafts;

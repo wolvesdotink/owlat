@@ -163,6 +163,8 @@ const showSuggestions = ref(false);
 const highlightIdx = ref(0);
 const inputEl = ref<HTMLInputElement | null>(null);
 
+defineExpose({ focus: () => inputEl.value?.focus() });
+
 // Debounce the prefix so each keystroke doesn't re-subscribe the autocomplete
 // query (and re-scan contacts on the backend).
 const debouncedPrefix = ref('');
@@ -316,15 +318,6 @@ function onBlur() {
 						:aria-label="sealGlyphTitle(sealGlyphs.get(addr)!)"
 					/>
 					{{ addr }}
-					<!-- Named, not just glyphed: with several chips the sender has to
-					     read who is keyless without hovering each one. -->
-					<span
-						v-if="sealGlyphs.get(addr)!.kind === 'noKey'"
-						class="text-text-tertiary"
-						data-testid="postbox-chip-no-key"
-					>
-						· {{ t('components.postbox.postboxRecipientField.noSealingKey') }}
-					</span>
 				</template>
 				<template v-else>{{ addr }}</template>
 				<!-- Plan idea 5: never written to this address before. A cue, not a

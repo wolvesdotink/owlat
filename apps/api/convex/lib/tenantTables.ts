@@ -224,6 +224,7 @@ export const TENANT_TABLES = [
 	// blob by `deleteMessageRowAndBlobs`; listed so an orphan still wipes.
 	'mailMessageParts',
 	'mailThreads',
+	'mailDraftRequestNonces',
 	'mailDrafts',
 	'mailLabels',
 	'mailVoiceProfiles',

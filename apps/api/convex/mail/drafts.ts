@@ -43,6 +43,12 @@ import { cancelPendingSendHandler, cancelScheduledSendHandler, sendHandler } fro
 import { copyExistingIntoDraft } from './attachExisting';
 import { existingAttachmentSourceValidator } from '../lib/existingAttachments';
 import { deleteAskSessionsForDraft } from './ai/composeDraftStore';
+import {
+	bindRequestNonce,
+	existingDraftResult,
+	findRequestDraft,
+	type CreateDraftResult,
+} from './draftRequestNonces';
 
 /** Queue bounded, cache-aware discovery whenever a draft's recipients change. */
 async function scheduleRecipientDiscovery(ctx: MutationCtx, addresses: string[]): Promise<void> {
@@ -77,20 +83,22 @@ export const create = postboxMutation({
 		// draft the first attempt already created instead of forking a
 		// duplicate (and, downstream, a duplicate send).
 		clientNonce: v.optional(v.string()),
+		// The full-page composer's per-request creation nonce (its `?c=`). A
+		// remount of the same request that creates again gets the draft the
+		// first call made, and, once that draft is sent or discarded, learns it
+		// is gone (`missing`) instead of creating a second one.
+		requestNonce: v.optional(v.string()),
 	},
-	handler: async (
-		ctx,
-		args
-	): Promise<{
-		draftId: Id<'mailDrafts'>;
-		inReplySubject?: string;
-		inReplyFrom?: string;
-		/** True when `clientNonce` matched a draft a previous call already created. */
-		existing?: boolean;
-	}> => {
+	handler: async (ctx, args): Promise<CreateDraftResult> => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
 		const mailbox = owned.mailbox;
+		const now = Date.now();
+
+		if (args.requestNonce !== undefined) {
+			const known = await findRequestDraft(ctx, args.mailboxId, args.requestNonce, now);
+			if (known) return known;
+		}
 
 		if (args.clientNonce !== undefined) {
 			// Nonces are client-chosen, so another mailbox may already hold this one.
@@ -104,12 +112,9 @@ export const create = postboxMutation({
 				.withIndex('by_client_nonce', (q) => q.eq('clientNonce', args.clientNonce))
 				.collect(); // bounded: drafts sharing one client nonce (typically 0–1)
 			const match = matches.find((m) => m.mailboxId === args.mailboxId);
-			if (match) {
-				return { draftId: match._id, existing: true };
-			}
+			if (match) return existingDraftResult(match);
 		}
 
-		const now = Date.now();
 		let threadId: Id<'mailThreads'> | undefined;
 		let inReplySubject: string | undefined;
 		let inReplyFrom: string | undefined;
@@ -147,7 +152,11 @@ export const create = postboxMutation({
 		});
 		await scheduleRecipientDiscovery(ctx, toAddresses);
 
-		return { draftId, inReplySubject, inReplyFrom };
+		if (args.requestNonce !== undefined) {
+			await bindRequestNonce(ctx, args.mailboxId, args.requestNonce, draftId, now);
+		}
+
+		return { draftId, toAddresses, subject, inReplySubject, inReplyFrom };
 	},
 });
 

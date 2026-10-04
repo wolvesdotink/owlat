@@ -69,6 +69,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailMessageBodies: makeSweepStep('mailMessageBodies'),
 	mailMessages: mailMessagesStep,
 	mailMessageParts: mailMessagePartsStep,
+	mailDraftRequestNonces: makeSweepStep('mailDraftRequestNonces'),
 	mailDrafts: mailDraftsStep,
 	transactionalPendingUploads: transactionalPendingUploadsStep,
 	// A payload is at most 32 KiB, read twice by its delete: 50 per transaction

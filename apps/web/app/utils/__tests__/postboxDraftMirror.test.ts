@@ -1,248 +1,394 @@
-import { describe, it, expect } from 'vitest';
+/**
+ * The pure half of the composer's device draft mirror ("keep and ask").
+ *
+ * What these cases protect:
+ *   - LIKE-FOR-LIKE COMPARISON. A copy is only ever removed without asking when
+ *     its fields equal the latest observed row (G1). That only works if the
+ *     composer snapshot (`mirrorFieldsOf`) and the row (`mirrorFieldsOfRow`)
+ *     normalize the same message to the same value: same defaults hydration
+ *     renders, blank HTML treated alike, blocks serialized one way.
+ *   - NOTHING IS "BLANK" OR "EQUAL" THAT A PERSON WOULD MISS. A reminder alone
+ *     is a difference and is content.
+ *   - RESTORE ASKS whenever the row is not provably the one the copy was taken
+ *     against (G2), and never compares clocks with the server.
+ *   - STORED-VALUE IDENTITY (`sameStoredValue`) tolerates what IndexedDB's
+ *     structured clone changes (key order, dropped `undefined`) and nothing else,
+ *     because conditional deletes are keyed on it.
+ */
+import { describe, expect, it } from 'vitest';
 import {
-	draftMirrorFieldsEqual,
-	isBlankDraftFields,
-	reconcileDraftMirror,
-	type DraftMirrorEntry,
-	type DraftMirrorFields,
+	MIRROR_RETENTION_MS,
+	canonicalBlocks,
+	isBlankHtml,
+	isBlankMirrorFields,
+	isMirrorCopyExpired,
+	mirrorFieldEqual,
+	mirrorFieldsEqual,
+	mirrorFieldsOf,
+	mirrorFieldsOfLegacy,
+	mirrorFieldsOfRow,
+	pickNewest,
+	restoreNeedsConfirmation,
+	sameStoredValue,
+	type LegacyMirrorEntry,
+	type MirrorFieldSources,
+	type MirrorFields,
 } from '../postboxDraftMirror';
-import { PostboxDraftMirrorStore } from '../postboxDraftMirrorStore';
-import type { OfflineKvDriver } from '../postboxOfflineStore';
+import type { DraftComposerMode } from '../postboxDraftFields';
 
-function fields(over: Partial<DraftMirrorFields> = {}): DraftMirrorFields {
+const BLOCKS = [
+	{ id: 'b1', type: 'heading', content: 'Invoice 4471' },
+	{ id: 'b2', type: 'text', content: 'Hi Ines,' },
+];
+
+interface ComposerState {
+	toAddresses: string[];
+	ccAddresses: string[];
+	bccAddresses: string[];
+	subject: string;
+	bodyHtml: string;
+	bodyBlocks: unknown[];
+	composerMode: DraftComposerMode;
+	followUpRemindAt: number | null;
+}
+
+/** The composer's refs, as plain `{ value }` boxes. */
+function refs(over: Partial<ComposerState> = {}): MirrorFieldSources {
+	const state: ComposerState = {
+		toAddresses: ['ines@northwind.studio'],
+		ccAddresses: [],
+		bccAddresses: [],
+		subject: 'Invoice 4471',
+		bodyHtml: '<p>Hi Ines,</p>',
+		bodyBlocks: [],
+		composerMode: 'simple',
+		followUpRemindAt: null,
+		...over,
+	};
+	return {
+		toAddresses: { value: state.toAddresses },
+		ccAddresses: { value: state.ccAddresses },
+		bccAddresses: { value: state.bccAddresses },
+		subject: { value: state.subject },
+		bodyHtml: { value: state.bodyHtml },
+		bodyBlocks: { value: state.bodyBlocks },
+		composerMode: { value: state.composerMode },
+		followUpRemindAt: { value: state.followUpRemindAt },
+	};
+}
+
+function fields(over: Partial<MirrorFields> = {}): MirrorFields {
 	return {
 		toAddresses: ['ines@northwind.studio'],
 		ccAddresses: [],
 		bccAddresses: [],
 		subject: 'Invoice 4471',
 		bodyHtml: '<p>Hi Ines,</p>',
+		bodyBlocks: '[]',
 		composerMode: 'simple',
+		followUpRemindAt: null,
 		...over,
 	};
 }
 
-function mirror(over: Partial<DraftMirrorEntry> = {}): DraftMirrorEntry {
-	return { fields: fields(), savedAt: 1_000, serverEditedAt: 500, ...over };
-}
+const EMPTY: MirrorFields = fields({
+	toAddresses: [],
+	subject: '',
+	bodyHtml: '',
+});
 
-/** Minimal in-memory driver standing in for IndexedDB. */
-function memoryDriver(): OfflineKvDriver & { map: Map<string, unknown> } {
-	const map = new Map<string, unknown>();
-	return {
-		map,
-		async get<T>(key: string) {
-			return map.get(key) as T | undefined;
-		},
-		async set(key, value) {
-			map.set(key, JSON.parse(JSON.stringify(value)));
-		},
-		async delete(key) {
-			map.delete(key);
-		},
-		async keys() {
-			return [...map.keys()];
-		},
-		async clear() {
-			map.clear();
-		},
-	};
-}
-
-describe('draftMirrorFieldsEqual', () => {
-	it('ignores key order and treats an absent bodyBlocks as an empty one', () => {
-		const a: DraftMirrorFields = {
-			composerMode: 'simple',
-			bodyHtml: '<p>Hi</p>',
-			subject: 'S',
+describe('mirrorFieldsOf vs mirrorFieldsOfRow', () => {
+	it('normalizes a simple-mode composer and its saved row to equal fields', () => {
+		const composer = mirrorFieldsOf(refs({ ccAddresses: ['ops@northwind.studio'] }));
+		const row = mirrorFieldsOfRow({
+			toAddresses: ['ines@northwind.studio'],
+			ccAddresses: ['ops@northwind.studio'],
 			bccAddresses: [],
-			ccAddresses: [],
-			toAddresses: ['a@b.c'],
-		};
-		const b = fields({ subject: 'S', bodyHtml: '<p>Hi</p>', toAddresses: ['a@b.c'] });
-		expect(draftMirrorFieldsEqual(a, b)).toBe(true);
-		expect(draftMirrorFieldsEqual(a, { ...b, bodyBlocks: undefined })).toBe(true);
-	});
-
-	it('sees a changed recipient, subject or body', () => {
-		const base = fields();
-		expect(draftMirrorFieldsEqual(base, fields({ subject: 'Invoice 4472' }))).toBe(false);
-		expect(draftMirrorFieldsEqual(base, fields({ toAddresses: [] }))).toBe(false);
-		expect(draftMirrorFieldsEqual(base, fields({ bodyHtml: '<p>Hi Ines, one more</p>' }))).toBe(
-			false
-		);
-	});
-});
-
-describe('isBlankDraftFields', () => {
-	it('treats an empty contenteditable as blank', () => {
-		const blank = fields({ toAddresses: [], subject: '  ', bodyHtml: '<p><br></p>' });
-		expect(isBlankDraftFields(blank)).toBe(true);
-		expect(isBlankDraftFields(fields({ toAddresses: [], subject: '', bodyHtml: '' }))).toBe(true);
-	});
-
-	it('is not blank once anything real is typed', () => {
-		expect(isBlankDraftFields(fields({ toAddresses: [], subject: '', bodyHtml: '<p>a</p>' }))).toBe(
-			false
-		);
-		expect(isBlankDraftFields(fields({ subject: '', bodyHtml: '' }))).toBe(false);
-	});
-});
-
-describe('reconcileDraftMirror', () => {
-	it('offers nothing when there is no mirror', () => {
-		expect(reconcileDraftMirror({ mirror: null, serverEditedAt: 10, serverFields: fields() })).toBe(
-			'none'
-		);
-	});
-
-	it('offers a mirror of a composition that never reached the server', () => {
-		expect(
-			reconcileDraftMirror({ mirror: mirror(), serverEditedAt: null, serverFields: null })
-		).toBe('restore');
-	});
-
-	it('offers nothing for a mirror of a blank composer', () => {
-		const blank = mirror({ fields: fields({ toAddresses: [], subject: '', bodyHtml: '<br>' }) });
-		expect(reconcileDraftMirror({ mirror: blank, serverEditedAt: null, serverFields: null })).toBe(
-			'none'
-		);
-	});
-
-	it('offers the mirror when it holds text the server row never received', () => {
-		expect(
-			reconcileDraftMirror({
-				mirror: mirror({ serverEditedAt: 500 }),
-				serverEditedAt: 500,
-				serverFields: fields({ bodyHtml: '<p>Hi</p>' }),
-			})
-		).toBe('restore');
-	});
-
-	it('offers nothing once the server row already matches the mirror', () => {
-		expect(
-			reconcileDraftMirror({
-				mirror: mirror({ serverEditedAt: 500 }),
-				serverEditedAt: 500,
-				serverFields: fields(),
-			})
-		).toBe('none');
-	});
-
-	it('lets a server row saved AFTER the mirror win, however the clocks disagree', () => {
-		// The mirror was taken against lastEditedAt=500; the row has since moved
-		// to 900 (another tab, another device). Its `savedAt` is far in the future
-		// of both, and must not matter.
-		expect(
-			reconcileDraftMirror({
-				mirror: mirror({ serverEditedAt: 500, savedAt: 9_999_999 }),
-				serverEditedAt: 900,
-				serverFields: fields({ bodyHtml: '<p>Newer, from the other tab</p>' }),
-			})
-		).toBe('none');
-	});
-
-	it('still offers a mirror whose client clock runs behind the server', () => {
-		// savedAt (client) is older than every server stamp — irrelevant, because
-		// the reconcile only ever compares server clock to server clock.
-		expect(
-			reconcileDraftMirror({
-				mirror: mirror({ serverEditedAt: 500, savedAt: 1 }),
-				serverEditedAt: 500,
-				serverFields: fields({ subject: 'Invoice 4471 (saved)' }),
-			})
-		).toBe('restore');
-	});
-});
-
-describe('PostboxDraftMirrorStore', () => {
-	it('round-trips a mirror per mailbox namespace', async () => {
-		const store = new PostboxDraftMirrorStore(memoryDriver());
-		await store.save('mbx1', 'draft1', mirror());
-		expect(await store.load('mbx1', 'draft1')).toMatchObject({
-			fields: { subject: 'Invoice 4471' },
+			subject: 'Invoice 4471',
+			bodyHtml: '<p>Hi Ines,</p>',
+			composerMode: 'simple',
 		});
-		// A different mailbox on the same device sees nothing.
-		expect(await store.load('mbx2', 'draft1')).toBeNull();
+		expect(composer).toEqual(row);
+		expect(mirrorFieldsEqual(composer, row)).toBe(true);
 	});
 
-	it('clears a mirror without blocking the next one', async () => {
-		const store = new PostboxDraftMirrorStore(memoryDriver());
-		await store.save('mbx1', 'draft1', mirror());
-		await store.clear('mbx1', 'draft1');
-		expect(await store.load('mbx1', 'draft1')).toBeNull();
-		expect(await store.save('mbx1', 'draft1', mirror({ savedAt: 2_000 }))).toBe(true);
-		expect(await store.load('mbx1', 'draft1')).toMatchObject({ savedAt: 2_000 });
+	it('normalizes a full-mode composer and its saved row (blocks as stored JSON) to equal fields', () => {
+		const composer = mirrorFieldsOf(
+			refs({ composerMode: 'full', bodyBlocks: BLOCKS, followUpRemindAt: 1_700_000_000_000 })
+		);
+		const row = mirrorFieldsOfRow({
+			toAddresses: ['ines@northwind.studio'],
+			subject: 'Invoice 4471',
+			bodyHtml: '<p>Hi Ines,</p>',
+			bodyBlocks: JSON.stringify(BLOCKS),
+			composerMode: 'full',
+			followUpRemindAt: 1_700_000_000_000,
+		});
+		expect(composer).toEqual(row);
+		expect(composer.bodyBlocks).toBe(canonicalBlocks(BLOCKS));
 	});
 
-	it('never resurrects a discarded draft, even from a write already in flight', async () => {
-		const store = new PostboxDraftMirrorStore(memoryDriver());
-		await store.save('mbx1', 'draft1', mirror());
-		await store.discard('mbx1', 'draft1');
-		// The debounced write that was scheduled before Discard now lands.
-		expect(await store.save('mbx1', 'draft1', mirror({ savedAt: 2_000 }))).toBe(false);
-		expect(await store.load('mbx1', 'draft1')).toBeNull();
+	it('defaults absent row fields the way hydration renders them', () => {
+		expect(mirrorFieldsOfRow({})).toEqual({
+			toAddresses: [],
+			ccAddresses: [],
+			bccAddresses: [],
+			subject: '',
+			bodyHtml: '',
+			bodyBlocks: '[]',
+			composerMode: 'simple',
+			followUpRemindAt: null,
+		});
+		// A freshly mounted, untouched composer is the same message as an empty row.
+		expect(mirrorFieldsOf(refs({ toAddresses: [], subject: '', bodyHtml: '' }))).toEqual(
+			mirrorFieldsOfRow({})
+		);
 	});
 
-	it('refuses a discarded key in a fresh session too, via the stored tombstone', async () => {
-		const driver = memoryDriver();
-		const first = new PostboxDraftMirrorStore(driver);
-		await first.save('mbx1', 'draft1', mirror());
-		await first.discard('mbx1', 'draft1');
-		// A new store instance (new tab / next page load) over the same data: the
-		// write the discarding tab had debounced may only land now.
-		const next = new PostboxDraftMirrorStore(driver);
-		expect(await next.load('mbx1', 'draft1')).toBeNull();
+	it('re-serializes the row blocks, so formatting of the stored JSON does not matter', () => {
+		const pretty = JSON.stringify(BLOCKS, null, 2);
+		expect(mirrorFieldsOfRow({ bodyBlocks: pretty }).bodyBlocks).toBe(canonicalBlocks(BLOCKS));
 	});
 
-	it('consumes the tombstone, so the NEXT composition on that key mirrors again', async () => {
-		// The provisional keys are shared: one Discard of a blank compose must not
-		// cost every later compose its crash recovery.
-		const store = new PostboxDraftMirrorStore(memoryDriver());
-		await store.save('mbx1', 'new', mirror());
-		await store.discard('mbx1', 'new');
-
-		// The next composer opens on the same key and reads first — that read is
-		// what retires the tombstone.
-		expect(await store.load('mbx1', 'new')).toBeNull();
-		expect(await store.save('mbx1', 'new', mirror({ savedAt: 3_000 }))).toBe(true);
-		expect(await store.load('mbx1', 'new')).toMatchObject({ savedAt: 3_000 });
+	it('treats an empty or unparsable stored blocks string as no blocks', () => {
+		expect(mirrorFieldsOfRow({ bodyBlocks: '' }).bodyBlocks).toBe('[]');
+		expect(mirrorFieldsOfRow({ bodyBlocks: '{not json' }).bodyBlocks).toBe('[]');
 	});
 
-	it('consumes the tombstone across sessions as well', async () => {
-		const driver = memoryDriver();
-		await new PostboxDraftMirrorStore(driver).discard('mbx1', 'new');
-
-		const second = new PostboxDraftMirrorStore(driver);
-		expect(await second.load('mbx1', 'new')).toBeNull();
-		expect(await second.save('mbx1', 'new', mirror({ savedAt: 4_000 }))).toBe(true);
-
-		// …and the marker is gone from the device, not merely ignored in memory.
-		const third = new PostboxDraftMirrorStore(driver);
-		expect(await third.load('mbx1', 'new')).toMatchObject({ savedAt: 4_000 });
+	// An editor that rebuilds a block in another key order has not changed it.
+	it('ignores the key order inside blocks', () => {
+		const reordered = BLOCKS.map(({ id, type, content }) => ({ content, type, id }));
+		expect(mirrorFieldsOf(refs({ bodyBlocks: reordered })).bodyBlocks).toBe(
+			mirrorFieldsOfRow({ bodyBlocks: JSON.stringify(BLOCKS) }).bodyBlocks
+		);
 	});
 
-	it('evicts the oldest mirrors past the cap', async () => {
-		const driver = memoryDriver();
-		const store = new PostboxDraftMirrorStore(driver);
-		for (let i = 0; i < 25; i++) await store.save('mbx1', `draft${i}`, mirror());
-		expect(await store.load('mbx1', 'draft0')).toBeNull();
-		expect(await store.load('mbx1', 'draft24')).not.toBeNull();
-		const mirrorKeys = [...driver.map.keys()].filter((k) => k.startsWith('draft-mirror:'));
-		expect(mirrorKeys).toHaveLength(20);
+	it('copies the address lists, so later composer edits cannot reach into a snapshot', () => {
+		const sources = refs();
+		const snapshot = mirrorFieldsOf(sources);
+		sources.toAddresses.value.push('late@northwind.studio');
+		expect(snapshot.toAddresses).toEqual(['ines@northwind.studio']);
+	});
+});
+
+describe('isBlankHtml', () => {
+	it.each([
+		'',
+		'   ',
+		'<p></p>',
+		'<p><br></p>',
+		'<div><br/></div>',
+		'<p>&nbsp;</p>',
+		'<p class="x"> </p>',
+	])('treats %j as an empty editor', (html) => {
+		expect(isBlankHtml(html)).toBe(true);
 	});
 
-	it('degrades silently when the device refuses every write', async () => {
-		const throwing: OfflineKvDriver = {
-			get: async () => undefined,
-			set: async () => {
-				throw new Error('QuotaExceededError');
-			},
-			delete: async () => {},
-			keys: async () => [],
-			clear: async () => {},
+	it.each(['<p>a</p>', 'plain text', '<p><img src="cid:logo"></p>', '<hr>'])(
+		'treats %j as content',
+		(html) => {
+			expect(isBlankHtml(html)).toBe(false);
+		}
+	);
+});
+
+describe('mirrorFieldEqual / mirrorFieldsEqual', () => {
+	it("treats the empty editor's `<p></p>` and the row's '' as the same body", () => {
+		expect(
+			mirrorFieldEqual('bodyHtml', fields({ bodyHtml: '<p></p>' }), fields({ bodyHtml: '' }))
+		).toBe(true);
+		expect(mirrorFieldsEqual(fields({ bodyHtml: '<p><br></p>' }), fields({ bodyHtml: '' }))).toBe(
+			true
+		);
+	});
+
+	it('sees a changed recipient (order included), subject, body or mode', () => {
+		const base = fields({ toAddresses: ['a@x.test', 'b@x.test'] });
+		expect(mirrorFieldsEqual(base, { ...base, toAddresses: ['b@x.test', 'a@x.test'] })).toBe(false);
+		expect(mirrorFieldsEqual(base, { ...base, bccAddresses: ['c@x.test'] })).toBe(false);
+		expect(mirrorFieldsEqual(base, { ...base, subject: 'Invoice 4472' })).toBe(false);
+		expect(mirrorFieldsEqual(base, { ...base, bodyHtml: '<p>Hi Ines, one more</p>' })).toBe(false);
+		expect(mirrorFieldsEqual(base, { ...base, composerMode: 'full' })).toBe(false);
+	});
+
+	it('treats a changed follow-up reminder as a difference', () => {
+		expect(mirrorFieldsEqual(fields(), fields({ followUpRemindAt: 1_700_000_000_000 }))).toBe(
+			false
+		);
+		expect(
+			mirrorFieldEqual(
+				'followUpRemindAt',
+				fields({ followUpRemindAt: 1 }),
+				fields({ followUpRemindAt: 2 })
+			)
+		).toBe(false);
+	});
+
+	it('treats different blocks as a difference', () => {
+		expect(mirrorFieldsEqual(fields({ bodyBlocks: canonicalBlocks(BLOCKS) }), fields())).toBe(
+			false
+		);
+	});
+
+	it('lets unknown (legacy, null) blocks match any blocks on either side', () => {
+		const legacy = fields({ bodyBlocks: null });
+		const withBlocks = fields({ bodyBlocks: canonicalBlocks(BLOCKS) });
+		expect(mirrorFieldEqual('bodyBlocks', legacy, withBlocks)).toBe(true);
+		expect(mirrorFieldEqual('bodyBlocks', withBlocks, legacy)).toBe(true);
+		expect(mirrorFieldsEqual(legacy, withBlocks)).toBe(true);
+		// The wildcard covers blocks only: the rest still has to agree.
+		expect(mirrorFieldsEqual(legacy, { ...withBlocks, subject: 'Other' })).toBe(false);
+	});
+});
+
+describe('isBlankMirrorFields', () => {
+	it('is blank for an untouched composer, including an empty contenteditable', () => {
+		expect(isBlankMirrorFields(EMPTY)).toBe(true);
+		expect(isBlankMirrorFields({ ...EMPTY, subject: '   ', bodyHtml: '<p><br></p>' })).toBe(true);
+		expect(isBlankMirrorFields({ ...EMPTY, bodyBlocks: null })).toBe(true);
+	});
+
+	it('is not blank with only a follow-up reminder set', () => {
+		expect(isBlankMirrorFields({ ...EMPTY, followUpRemindAt: 1_700_000_000_000 })).toBe(false);
+	});
+
+	it('is not blank with only blocks, only a recipient, or only a subject', () => {
+		expect(isBlankMirrorFields({ ...EMPTY, bodyBlocks: canonicalBlocks(BLOCKS) })).toBe(false);
+		expect(isBlankMirrorFields({ ...EMPTY, ccAddresses: ['ops@x.test'] })).toBe(false);
+		expect(isBlankMirrorFields({ ...EMPTY, subject: 'Hi' })).toBe(false);
+	});
+});
+
+describe('restoreNeedsConfirmation', () => {
+	const row = fields();
+
+	it('never asks when there is no row to overwrite', () => {
+		expect(restoreNeedsConfirmation({ base: null }, null)).toBe(false);
+		expect(restoreNeedsConfirmation({ base: fields({ subject: 'Old' }) }, null)).toBe(false);
+	});
+
+	it('asks when the copy recorded no row (legacy, or written before the row existed)', () => {
+		expect(restoreNeedsConfirmation({ base: null }, row)).toBe(true);
+	});
+
+	it('does not ask when the row is still the one the copy was taken against', () => {
+		expect(restoreNeedsConfirmation({ base: fields({ bodyHtml: '<p>Hi Ines,</p>' }) }, row)).toBe(
+			false
+		);
+	});
+
+	it('asks when the row changed since the copy was taken (text saved elsewhere)', () => {
+		expect(
+			restoreNeedsConfirmation(
+				{ base: row },
+				fields({ bodyHtml: '<p>Newer, from the other tab</p>' })
+			)
+		).toBe(true);
+		expect(restoreNeedsConfirmation({ base: row }, fields({ followUpRemindAt: 5 }))).toBe(true);
+	});
+});
+
+describe('isMirrorCopyExpired', () => {
+	const now = 1_800_000_000_000;
+
+	it('keeps a copy exactly at the retention boundary and expires it one millisecond later', () => {
+		expect(isMirrorCopyExpired(now - MIRROR_RETENTION_MS, now)).toBe(false);
+		expect(isMirrorCopyExpired(now - MIRROR_RETENTION_MS - 1, now)).toBe(true);
+	});
+
+	it('keeps a fresh copy, and one stamped in the future by a skewed clock', () => {
+		expect(isMirrorCopyExpired(now - 1_000, now)).toBe(false);
+		expect(isMirrorCopyExpired(now + 60_000, now)).toBe(false);
+	});
+});
+
+describe('pickNewest', () => {
+	it('returns null for no candidates', () => {
+		expect(pickNewest([])).toBeNull();
+	});
+
+	it('returns the newest copy', () => {
+		const picked = pickNewest([
+			{ id: 'a', savedAt: 10 },
+			{ id: 'b', savedAt: 30 },
+			{ id: 'c', savedAt: 20 },
+		]);
+		expect(picked?.id).toBe('b');
+	});
+
+	it('keeps the first of a tie', () => {
+		const picked = pickNewest([
+			{ id: 'first', savedAt: 30 },
+			{ id: 'second', savedAt: 30 },
+		]);
+		expect(picked?.id).toBe('first');
+	});
+});
+
+describe('sameStoredValue', () => {
+	it('ignores key order at every depth', () => {
+		expect(
+			sameStoredValue({ a: 1, b: { c: [1, 2], d: 'x' } }, { b: { d: 'x', c: [1, 2] }, a: 1 })
+		).toBe(true);
+	});
+
+	it('ignores properties that are undefined (structured clone may drop them)', () => {
+		expect(sameStoredValue({ a: 1, b: undefined }, { a: 1 })).toBe(true);
+	});
+
+	it('sees changed values, array order, and null vs missing', () => {
+		expect(sameStoredValue({ a: 1 }, { a: 2 })).toBe(false);
+		expect(sameStoredValue({ a: [1, 2] }, { a: [2, 1] })).toBe(false);
+		expect(sameStoredValue({ a: null }, {})).toBe(false);
+		expect(sameStoredValue(undefined, { a: 1 })).toBe(false);
+	});
+
+	it('matches a stored copy against its structured clone', () => {
+		const copy = {
+			v: 2,
+			fields: fields({ bodyBlocks: canonicalBlocks(BLOCKS) }),
+			base: null,
+			savedAt: 1,
+			draftId: 'd1',
+			inReplyTo: null,
 		};
-		const store = new PostboxDraftMirrorStore(throwing);
-		await expect(store.save('mbx1', 'draft1', mirror())).resolves.toBe(false);
-		await expect(store.load('mbx1', 'draft1')).resolves.toBeNull();
+		expect(sameStoredValue(structuredClone(copy), copy)).toBe(true);
+	});
+});
+
+describe('mirrorFieldsOfLegacy', () => {
+	function legacy(over: Partial<LegacyMirrorEntry['fields']> = {}): LegacyMirrorEntry {
+		return {
+			fields: {
+				toAddresses: ['ines@northwind.studio'],
+				ccAddresses: [],
+				bccAddresses: [],
+				subject: 'Invoice 4471',
+				bodyHtml: '<p>Hi Ines,</p>',
+				composerMode: 'simple',
+				...over,
+			},
+			savedAt: 1_000,
+			serverEditedAt: 500,
+		};
+	}
+
+	it('records blocks as unknown (null) when the v1 entry never stored them', () => {
+		const converted = mirrorFieldsOfLegacy(legacy());
+		expect(converted.bodyBlocks).toBeNull();
+		expect(converted.followUpRemindAt).toBeNull();
+		expect(converted).toEqual({ ...fields(), bodyBlocks: null });
+	});
+
+	it('normalizes blocks the v1 entry did record (full mode), like the row', () => {
+		const converted = mirrorFieldsOfLegacy(
+			legacy({ composerMode: 'full', bodyBlocks: JSON.stringify(BLOCKS, null, 2) })
+		);
+		expect(converted.bodyBlocks).toBe(canonicalBlocks(BLOCKS));
+		expect(converted.composerMode).toBe('full');
+	});
+
+	it('keeps a recorded reminder', () => {
+		expect(mirrorFieldsOfLegacy(legacy({ followUpRemindAt: 42 })).followUpRemindAt).toBe(42);
 	});
 });

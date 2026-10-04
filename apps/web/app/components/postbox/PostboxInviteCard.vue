@@ -22,7 +22,7 @@ const props = defineProps<{
 
 const { t, locale } = useI18n();
 
-const stack = usePostboxComposerStack();
+const composeNav = usePostboxComposeNav();
 const { stash } = usePostboxPendingAttachments();
 
 const event = ref<ICalEvent | null>(null);
@@ -98,7 +98,7 @@ function rsvp(status: Partstat) {
 	const suffix =
 		status === 'ACCEPTED' ? 'Accepted' : status === 'DECLINED' ? 'Declined' : 'Tentative';
 	const summary = e.summary ?? t('components.postbox.postboxInviteCard.fallbackSummary');
-	stack.open({
+	void composeNav.open({
 		mailboxId: props.mailboxId as Id<'mailboxes'>,
 		prefillTo: [e.organizer.email],
 		prefillSubject: t(`components.postbox.postboxInviteCard.reply.subject${suffix}`, { summary }),

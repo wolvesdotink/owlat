@@ -35,7 +35,7 @@ const NEW_CONTACT_ROUTE = {
 
 export function useQuickCreate() {
 	const route = useRoute();
-	const stack = usePostboxComposerStack();
+	const composeNav = usePostboxComposeNav();
 	const { activeMailboxId, setActiveMailboxId } = usePostboxActiveMailbox();
 	const threadReplyRequest = useThreadReplyRequest();
 
@@ -81,7 +81,7 @@ export function useQuickCreate() {
 	}
 
 	/**
-	 * Open a real composer over the current page. With no mailbox at all it
+	 * Open the composer page, addressed by the current page. With no mailbox at all it
 	 * lands on the Postbox, where `PostboxMailboxGuard` explains why there is
 	 * nothing to compose from instead of a silently dead keystroke.
 	 */
@@ -100,7 +100,7 @@ export function useQuickCreate() {
 			await navigateTo(POSTBOX_COMPOSE_ROUTE);
 			return;
 		}
-		stack.open(prefillTo.length > 0 ? { mailboxId, prefillTo } : { mailboxId });
+		await composeNav.open(prefillTo.length > 0 ? { mailboxId, prefillTo } : { mailboxId });
 	}
 
 	/** Open the contacts list with its Add contact dialog already up. */

@@ -55,11 +55,16 @@ describe('deriveComposerLock', () => {
 		expect(render(lock.detail)).toContain('bob@b.test and carol@c.test');
 	});
 
-	it('cannotSeal: muted tone, and sending unsealed is an EXPLICIT act', () => {
+	it('cannotSeal: muted tone, and ordinary mail to a keyless recipient is no decision', () => {
 		const lock = deriveComposerLock({ kind: 'cannotSeal', reason: 'recipient_no_key' });
 		expect(lock.kind).toBe('cannotSeal');
 		expect(t(lock.summary)).toBe("This message won't be sealed");
 		expect(lock.tone).toBe('muted');
+		expect(lock.allowSendUnsealed).toBe(false);
+	});
+
+	it('cannotSeal(no_signing_key): sealing was within reach, so unsealed is an EXPLICIT act', () => {
+		const lock = deriveComposerLock({ kind: 'cannotSeal', reason: 'no_signing_key' });
 		expect(lock.allowSendUnsealed).toBe(true);
 	});
 
@@ -151,17 +156,20 @@ describe('deriveComposerLock', () => {
 });
 
 describe('sealSendBlock', () => {
-	it('fails closed while state is loading and on an ordinary cannotSeal send', () => {
+	it('fails closed while state is loading', () => {
 		expect(sealSendBlock(true, null, false)).toBe('checking');
-		expect(sealSendBlock(true, { kind: 'cannotSeal', reason: 'recipient_no_key' }, false)).toBe(
-			'needs_unsealed_consent'
-		);
 	});
 
-	it('allows only the explicit unsealed action for cannotSeal', () => {
-		expect(
-			sealSendBlock(true, { kind: 'cannotSeal', reason: 'recipient_no_key' }, true)
-		).toBeNull();
+	it('lets ordinary mail to keyless recipients through without a prompt', () => {
+		for (const reason of ['recipient_no_key', 'policy_off', 'policy_ask', 'flag_off'] as const) {
+			expect(sealSendBlock(true, { kind: 'cannotSeal', reason }, false)).toBeNull();
+		}
+	});
+
+	it('asks before a send that could have been sealed goes out in plaintext', () => {
+		const unsigned: SealState = { kind: 'cannotSeal', reason: 'no_signing_key' };
+		expect(sealSendBlock(true, unsigned, false)).toBe('needs_unsealed_consent');
+		expect(sealSendBlock(true, unsigned, true)).toBeNull();
 	});
 
 	it('never bypasses keyChanged and stays inert when the feature is off', () => {
@@ -174,14 +182,7 @@ describe('sealSendBlock', () => {
 describe('deriveUnsealedPrompt', () => {
 	// Every reason the sender can act on states WHY it won't be sealed and WHAT
 	// sending anyway means — the decision is never presented without its cost.
-	const DECIDABLE: SealSkipReason[] = [
-		'policy_off',
-		'policy_ask',
-		'recipient_no_key',
-		'no_signing_key',
-		'flag_off',
-		'key_changed',
-	];
+	const DECIDABLE: SealSkipReason[] = ['no_signing_key', 'key_changed'];
 
 	it.each(DECIDABLE)(
 		'cannotSeal(%s) offers a proceed-or-cancel prompt with the reason',
@@ -204,15 +205,9 @@ describe('deriveUnsealedPrompt', () => {
 			t(deriveUnsealedPrompt({ kind: 'cannotSeal', reason })!.description).split(
 				' Owlat will send'
 			)[0];
-		expect(describeReason('policy_off')).toBe('Sealed mail is turned off for your workspace.');
-		expect(describeReason('recipient_no_key')).toBe(
-			"Some of your recipients can't receive sealed mail yet."
-		);
 		expect(describeReason('no_signing_key')).toBe(
 			"The address you're sending from doesn't have a sealing key yet."
 		);
-		expect(describeReason('policy_ask')).toBe('Your workspace is set to ask before sealing.');
-		expect(describeReason('flag_off')).toBe('Sealed mail is not available on this instance yet.');
 		expect(describeReason('key_changed')).toBe("A recipient's key changed and still needs review.");
 	});
 
@@ -221,6 +216,7 @@ describe('deriveUnsealedPrompt', () => {
 		expect(deriveUnsealedPrompt({ kind: 'willSeal' })).toBeNull();
 		expect(deriveUnsealedPrompt({ kind: 'keyChanged', addresses: ['bob@b.test'] })).toBeNull();
 		expect(deriveUnsealedPrompt({ kind: 'cannotSeal', reason: 'no_recipients' })).toBeNull();
+		expect(deriveUnsealedPrompt({ kind: 'cannotSeal', reason: 'recipient_no_key' })).toBeNull();
 	});
 
 	it('mirrors allowSendUnsealed exactly — every offered control has a prompt behind it', () => {

@@ -8,16 +8,30 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { effectScope, nextTick, ref } from 'vue';
 import { usePostboxComposeAutosave } from '../usePostboxComposeAutosave';
+import { usePostboxComposeTouched } from '../usePostboxComposeTouched';
 
 function setup(draftId: string | null = null) {
-	const createRun = vi.fn(async () => ({ ok: true, result: { draftId: 'draft-new' } }));
+	const createRun = vi.fn(async () => ({
+		ok: true,
+		result: { draftId: 'draft-new', toAddresses: ['jonas@example.com'], subject: 'Re: Invoice' },
+	}));
 	const updateRun = vi.fn(async () => ({ ok: true, result: { savedAt: 1 } }));
-	const bodyHtml = ref(
-		'<div class="gmail_quote"><blockquote>Could you send the invoice?</blockquote></div>'
-	);
-	const subject = ref('Re: Invoice');
+	const fields = {
+		toAddresses: ref(['jonas@example.com']),
+		ccAddresses: ref<string[]>([]),
+		bccAddresses: ref<string[]>([]),
+		subject: ref('Re: Invoice'),
+		bodyHtml: ref(
+			'<div class="gmail_quote"><blockquote>Could you send the invoice?</blockquote></div>'
+		),
+		bodyBlocks: ref([]),
+		composerMode: ref<'simple' | 'full'>('simple'),
+		followUpRemindAt: ref<number | null>(null),
+	};
 	const scope = effectScope();
-	scope.run(() =>
+	scope.run(() => {
+		// A reply's seed: the envelope and the quote.
+		const touched = usePostboxComposeTouched(fields, ['toAddresses', 'subject', 'bodyHtml']);
 		usePostboxComposeAutosave({
 			mailboxId: 'mbx-1' as never,
 			inReplyToMessageId: 'msg-1' as never,
@@ -27,19 +41,15 @@ function setup(draftId: string | null = null) {
 			ensuring: ref(false),
 			isSaving: ref(false),
 			lastSavedAt: ref(null),
-			toAddresses: ref(['jonas@example.com']),
-			ccAddresses: ref([]),
-			bccAddresses: ref([]),
-			subject,
-			bodyHtml,
-			bodyBlocks: ref([]),
-			composerMode: ref('simple'),
-			followUpRemindAt: ref(null),
+			touched,
+			onReopenExisting: () => {},
+			onGone: () => {},
+			...fields,
 			createDraft: { run: createRun } as never,
 			updateDraft: { run: updateRun } as never,
-		})
-	);
-	return { scope, bodyHtml, subject, createRun, updateRun };
+		});
+	});
+	return { scope, bodyHtml: fields.bodyHtml, subject: fields.subject, createRun, updateRun };
 }
 
 beforeEach(() => vi.useFakeTimers());

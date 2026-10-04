@@ -53,13 +53,6 @@ export const OFFLINE_BODIES_CAP = 200;
  */
 export const OFFLINE_BODY_MAX_BYTES = 512 * 1024;
 
-const DB_NAME = 'owlat-postbox-offline';
-const STORE_NAME = 'kv';
-// v2 adds the `outbox:{ns}` key family. Outbox items live in the SAME `kv`
-// object store as the cache — a new key prefix, not a new store — so the
-// upgrade is purely a version bump; see {@link upgradeOfflineDb}.
-export const DB_VERSION = 2;
-
 // Every cache key is namespaced so one account's cached inbox rows and message
 // bodies can NEVER be served to a different identity on a shared device
 // (desktop multi-workspace rail, or a shared browser profile). For the read
@@ -88,14 +81,12 @@ import {
 export { OUTBOX_CLAIM_TTL_MS, isOutboxClaimLive };
 export type { OfflineComposeAttachmentRef, OfflineComposePayload, OfflineOutboxItem };
 
-/** Minimal async key/value contract the store is built on. */
-export interface OfflineKvDriver {
-	get<T>(key: string): Promise<T | undefined>;
-	set(key: string, value: unknown): Promise<void>;
-	delete(key: string): Promise<void>;
-	keys(): Promise<string[]>;
-	clear(): Promise<void>;
-}
+import { getOfflineKvDriver, type OfflineKvDriver } from './postboxOfflineKvDriver';
+
+// The driver lives in postboxOfflineKvDriver.ts (file-size ratchet); these
+// re-exports keep every existing import path stable.
+export { DB_VERSION, getOfflineKvDriver, upgradeOfflineDb } from './postboxOfflineKvDriver';
+export type { OfflineKvDriver } from './postboxOfflineKvDriver';
 
 /** A cached, post-sanitize message body. */
 export interface OfflineBodyEntry {
@@ -393,79 +384,7 @@ function newOutboxId(): string {
 	return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
-/**
- * Schema upgrade for the offline DB. Exported so the v1→v2 path is testable
- * without a real IndexedDB.
- *
- * v1 → v2 introduces the `outbox:{ns}` key family INSIDE the existing `kv`
- * object store — a new key prefix, not a new store. The upgrade must therefore
- * only ever create the store when it is missing (a fresh install); it must
- * never delete or recreate an existing store, which would drop a v1 device's
- * cached rows and bodies.
- */
-export function upgradeOfflineDb(
-	db: Pick<IDBDatabase, 'objectStoreNames' | 'createObjectStore'>,
-	storeName: string = STORE_NAME
-): void {
-	if (!db.objectStoreNames.contains(storeName)) db.createObjectStore(storeName);
-}
-
-/**
- * Real IndexedDB-backed driver. Returns `null` when IndexedDB is unavailable
- * (SSR, privacy mode, or an old engine) so callers can no-op cleanly.
- */
-function createIndexedDbDriver(
-	dbName: string = DB_NAME,
-	storeName: string = STORE_NAME
-): OfflineKvDriver | null {
-	if (typeof indexedDB === 'undefined') return null;
-
-	let dbPromise: Promise<IDBDatabase> | null = null;
-	function openDb(): Promise<IDBDatabase> {
-		if (dbPromise) return dbPromise;
-		dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
-			const req = indexedDB.open(dbName, DB_VERSION);
-			req.onupgradeneeded = () => {
-				upgradeOfflineDb(req.result, storeName);
-			};
-			req.onsuccess = () => resolve(req.result);
-			req.onerror = () => reject(req.error ?? new Error('IndexedDB open failed'));
-		});
-		return dbPromise;
-	}
-
-	function tx<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest): Promise<T> {
-		return openDb().then(
-			(db) =>
-				new Promise<T>((resolve, reject) => {
-					const transaction = db.transaction(storeName, mode);
-					const request = run(transaction.objectStore(storeName));
-					request.onsuccess = () => resolve(request.result as T);
-					request.onerror = () => reject(request.error ?? new Error('IndexedDB request failed'));
-				})
-		);
-	}
-
-	return {
-		get: <T>(key: string) => tx<T | undefined>('readonly', (s) => s.get(key)),
-		set: (key, value) => tx<void>('readwrite', (s) => s.put(value, key)),
-		delete: (key) => tx<void>('readwrite', (s) => s.delete(key)),
-		keys: () =>
-			tx<string[]>('readonly', (s) => s.getAllKeys() as IDBRequest).then(
-				(k) => (k as unknown as string[]) ?? []
-			),
-		clear: () => tx<void>('readwrite', (s) => s.clear()),
-	};
-}
-
 let singleton: PostboxOfflineStore | null = null;
-let sharedDriver: OfflineKvDriver | null = null;
-
-/** The one driver this session; shared with `postboxDraftMirrorStore.ts`. */
-export function getOfflineKvDriver(): OfflineKvDriver {
-	sharedDriver ??= createIndexedDbDriver() ?? createNoopDriver();
-	return sharedDriver;
-}
 
 /**
  * The shared Postbox offline store for this session, backed by real IndexedDB.
@@ -476,15 +395,4 @@ export function getPostboxOfflineStore(): PostboxOfflineStore {
 	if (singleton) return singleton;
 	singleton = new PostboxOfflineStore(getOfflineKvDriver());
 	return singleton;
-}
-
-/** A driver that stores nothing — used when IndexedDB is unavailable. */
-function createNoopDriver(): OfflineKvDriver {
-	return {
-		get: async () => undefined,
-		set: async () => {},
-		delete: async () => {},
-		keys: async () => [],
-		clear: async () => {},
-	};
 }

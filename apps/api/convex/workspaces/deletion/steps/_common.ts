@@ -35,6 +35,7 @@ export type OrganizationDeletionTable =
 	| 'mailMessageBodies'
 	| 'mailMessages'
 	| 'mailMessageParts'
+	| 'mailDraftRequestNonces'
 	| 'mailDrafts'
 	| 'transactionalPendingUploads'
 	| 'sendCompletionFailurePayloads'
@@ -259,6 +260,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailMessageBodies'),
 	v.literal('mailMessages'),
 	v.literal('mailMessageParts'),
+	v.literal('mailDraftRequestNonces'),
 	v.literal('mailDrafts'),
 	v.literal('transactionalPendingUploads'),
 	v.literal('sendCompletionFailurePayloads'),

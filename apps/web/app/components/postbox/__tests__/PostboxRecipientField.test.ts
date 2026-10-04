@@ -174,10 +174,9 @@ describe('PostboxRecipientField — per-recipient seal state (plan idea 11)', ()
 		});
 		const chips = wrapper.findAll('[draggable="true"]');
 		expect(chips[0]?.find('[data-testid="postbox-chip-seal-sealed"]').exists()).toBe(true);
-		expect(chips[0]?.find('[data-testid="postbox-chip-no-key"]').exists()).toBe(false);
-		// The keyless one is named in words, not only glyphed.
+		// Keyless is the common case: a glyph with a tooltip, no extra words.
 		expect(chips[1]?.find('[data-testid="postbox-chip-seal-noKey"]').exists()).toBe(true);
-		expect(chips[1]?.text()).toContain('no key');
+		expect(chips[1]?.text()).not.toContain('no key');
 	});
 
 	it('matches a chip to its verdict regardless of the case it was typed in', () => {
@@ -190,7 +189,6 @@ describe('PostboxRecipientField — per-recipient seal state (plan idea 11)', ()
 
 	it('says nothing about sealing when the composer passed no verdicts', () => {
 		const wrapper = mountField({ modelValue: ['ines@northwind.studio'] });
-		expect(wrapper.find('[data-testid="postbox-chip-no-key"]').exists()).toBe(false);
 		expect(wrapper.html()).not.toContain('postbox-chip-seal');
 		// …and the address itself is still rendered.
 		expect(wrapper.get('[draggable="true"]').text()).toContain('ines@northwind.studio');

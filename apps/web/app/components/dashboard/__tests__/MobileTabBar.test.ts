@@ -6,7 +6,7 @@
  * slots have to follow the same flags the drawer does (a Mail tab pointing at a
  * surface this instance does not run is a 404 one thumb away), and the bar has
  * to get out of the way of anything that owns the bottom of the screen — a
- * composer, a dialog, a sheet — or it becomes a row of invisible tap targets
+ * dialog, a sheet — or it becomes a row of invisible tap targets
  * over someone else's buttons.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -19,7 +19,6 @@ import { buildNavigationSections } from '~/lib/dashboardNavigation';
 
 let flags: readonly FeatureFlagKey[] | 'all';
 let path: string;
-let activeComposerId: ReturnType<typeof ref<string | null>>;
 let railDrawerOpen: ReturnType<typeof ref<boolean>>;
 let actions: Array<{ id: string; label: string; icon: string; run: () => void }>;
 let answerCount: ReturnType<typeof ref<number>>;
@@ -59,7 +58,6 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 beforeEach(() => {
 	flags = 'all';
 	path = '/dashboard';
-	activeComposerId = ref<string | null>(null);
 	railDrawerOpen = ref(false);
 	answerCount = ref(0);
 	actions = [
@@ -77,7 +75,6 @@ beforeEach(() => {
 		isEnabled: (flag: FeatureFlagKey) => flags === 'all' || flags.includes(flag),
 	}));
 	vi.stubGlobal('useQuickCreateMenu', () => ({ actions: computed(() => actions) }));
-	vi.stubGlobal('usePostboxComposerStack', () => ({ activeComposerId }));
 	vi.stubGlobal('useRailDrawer', () => ({ isOpen: railDrawerOpen, setOpen: vi.fn() }));
 	vi.stubGlobal('useAnswerQueueCount', () => ({ count: answerCount }));
 	vi.stubGlobal('useDashboardNavigation', () => ({
@@ -183,13 +180,6 @@ describe('More (#778)', () => {
 describe('getting out of the way', () => {
 	it('is on screen on an ordinary page', () => {
 		expect(mountBar().find('[data-testid="mobile-tab-bar"]').exists()).toBe(true);
-	});
-
-	it('leaves while a composer is open', async () => {
-		const bar = mountBar();
-		activeComposerId.value = 'cmp_1';
-		await nextTick();
-		expect(bar.find('[data-testid="mobile-tab-bar"]').exists()).toBe(false);
 	});
 
 	it('leaves while any dialog is up', async () => {

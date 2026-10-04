@@ -86,7 +86,7 @@ beforeEach(() => {
 
 	vi.stubGlobal('useConvexQuery', (fn: unknown) => {
 		if (fn === 'settings.get') return { data: settingsData, isLoading: ref(false) };
-		return { data: ref(undefined), isLoading: ref(false) };
+		return { data: ref(undefined), error: ref(null), isLoading: ref(false) };
 	});
 	sendRun = vi.fn(async () => ({ ok: true, result: { undoToken: 'tok', sendAt: 1 } }));
 	vi.stubGlobal('useI18n', () => i18n.global);
@@ -94,7 +94,10 @@ beforeEach(() => {
 		if (fn === 'drafts.send') return { run: sendRun, isLoading: ref(false) };
 		if (fn === 'drafts.create')
 			return {
-				run: vi.fn(async () => ({ ok: true, result: { draftId: 'draft-new' } })),
+				run: vi.fn(async () => ({
+					ok: true,
+					result: { draftId: 'draft-new', toAddresses: [], subject: '' },
+				})),
 				isLoading: ref(false),
 			};
 		return { run: vi.fn(async () => ({ ok: true, result: {} })), isLoading: ref(false) };

@@ -5,7 +5,7 @@
  * the (Convex-backed) composer component:
  * - Cmd/Ctrl+Enter        → send (same guarded path as the Send button)
  * - Cmd/Ctrl+Shift+Enter  → open the schedule-send dialog
- * - Escape                → minimize the popup composer, but ONLY when no
+ * - Escape                → hand Esc to the composer's host, but ONLY when no
  *                           inner overlay (schedule dialog, recipient
  *                           autocomplete, native select dropdown) is open —
  *                           the overlay gets to close first.
@@ -23,14 +23,11 @@ export interface ComposerKeyContext {
 	overlayOpen: boolean;
 }
 
-type KeyEventLike = Pick<
-	KeyboardEvent,
-	'key' | 'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey'
->;
+type KeyEventLike = Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey'>;
 
 export function resolveComposerKeyAction(
 	event: KeyEventLike,
-	ctx: ComposerKeyContext,
+	ctx: ComposerKeyContext
 ): ComposerKeyAction | null {
 	const mod = event.metaKey || event.ctrlKey;
 

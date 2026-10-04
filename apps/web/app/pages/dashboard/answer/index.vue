@@ -18,6 +18,5 @@ definePageMeta({ layout: 'dashboard', middleware: 'auth' });
 	<div class="min-h-full bg-bg-base">
 		<h1 class="sr-only">{{ t('dashboard.answer.pageTitle') }}</h1>
 		<AnswerQueueFlow />
-		<PostboxComposerStack />
 	</div>
 </template>

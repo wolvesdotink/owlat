@@ -37,7 +37,7 @@ const {
 	remove,
 } = usePostboxContacts(mailboxId);
 type MailContact = (typeof contacts.value)[number];
-const stack = usePostboxComposerStack();
+const composeNav = usePostboxComposeNav();
 const { showToast } = useToast();
 
 // The filter runs on a short debounce: a fast typist re-filtering (and
@@ -140,7 +140,7 @@ async function removeContact(c: MailContact) {
 
 function composeTo(email: string) {
 	if (!mailboxId.value) return;
-	stack.open({ mailboxId: mailboxId.value, prefillTo: [email] });
+	void composeNav.open({ mailboxId: mailboxId.value, prefillTo: [email] });
 }
 
 function initial(c: { displayName?: string; email: string }) {
@@ -328,6 +328,5 @@ function initial(c: { displayName?: string; email: string }) {
 			</form>
 		</UiModal>
 
-		<PostboxComposerStack />
 	</div>
 </template>

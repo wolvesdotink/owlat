@@ -1,13 +1,13 @@
 // @vitest-environment happy-dom
 /**
- * PostboxComposerGuards — the three pre-send warning surfaces, rendered.
+ * PostboxComposerGuards — the two pre-send warning dialogs, rendered.
  *
  * The composable's suite proves the DECISIONS; this one proves the copy a
  * sender actually reads: every message resolves out of the real `en` catalog
  * (a keypath typo would render `components.postbox.…` at them), the attachment
  * dialog quotes the phrase that fired, the alignment dialog speaks the
- * transport's own reason, and the first-time line is one line with two ways out
- * — never a modal.
+ * transport's own reason. A first-time recipient is only a cue on its chip
+ * (PostboxRecipientField), never a line that parks the send.
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -39,7 +39,6 @@ function mountGuards(over: Partial<Record<string, unknown>> = {}) {
 		attachmentHint: null,
 		alignment: gate(),
 		attachment: gate(),
-		firstTime: gate(),
 		blockSend: vi.fn(),
 		...over,
 	} as unknown as ComposerGuards;
@@ -99,32 +98,9 @@ describe('PostboxComposerGuards — attachment dialog (idea 15)', () => {
 });
 
 describe('PostboxComposerGuards — first-time recipients (idea 5)', () => {
-	it('is one dismissible line, not a dialog', () => {
-		const { wrapper, guards } = mountGuards({
-			firstTime: gate(true),
-			firstTimeAddresses: ['stranger@acme-corp.io'],
-		});
-		const line = wrapper.get('[data-testid="postbox-first-time-confirm"]');
-		expect(line.text()).toContain('First time writing to stranger@acme-corp.io');
-
-		const buttons = line.findAll('button');
-		expect(buttons).toHaveLength(2);
-		buttons[0]!.trigger('click');
-		buttons[1]!.trigger('click');
-		expect(guards.firstTime.confirm).toHaveBeenCalledOnce();
-		expect(guards.firstTime.dismiss).toHaveBeenCalledOnce();
-	});
-
-	it('lists every stranger, and nothing when there are none', () => {
-		const { wrapper } = mountGuards({
-			firstTime: gate(true),
-			firstTimeAddresses: ['a@x.test', 'b@y.test'],
-		});
-		expect(wrapper.get('[data-testid="postbox-first-time-confirm"]').text()).toContain(
-			'a@x.test, b@y.test'
-		);
-
-		const quiet = mountGuards().wrapper;
-		expect(quiet.find('[data-testid="postbox-first-time-confirm"]').exists()).toBe(false);
+	it('renders no inline confirm: a stranger never parks the send', () => {
+		const { wrapper } = mountGuards({ firstTimeAddresses: ['stranger@acme-corp.io'] });
+		expect(wrapper.find('[data-testid="postbox-first-time-confirm"]').exists()).toBe(false);
+		expect(wrapper.text()).not.toContain('First time writing to');
 	});
 });

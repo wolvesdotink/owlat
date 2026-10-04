@@ -396,10 +396,43 @@ describe('mail/draftLifecycle · getSealState (three composer states)', () => {
 	it('cannotSeal when a recipient has no usable key', async () => {
 		const t = convexTest(schema, modules);
 		await seedSettings(t);
+		await seedRecipient(t, 'nokey@x.test', 'notFound');
 		const draftId = await insertDraft(t, ['nokey@x.test']);
 		expect(await t.query(internal.mail.draftLifecycle.getSealState, { draftId })).toEqual({
 			kind: 'cannotSeal',
 			reason: 'recipient_no_key',
+		});
+	});
+
+	it('treats an expired "no key" answer like a pending lookup for a signer-less draft', async () => {
+		const t = convexTest(schema, modules);
+		await seedSettings(t);
+		await t.run(async (ctx) => {
+			const past = Date.now() - 1000;
+			await ctx.db.insert('recipientKeys', {
+				address: 'stale@x.test',
+				domain: 'x.test',
+				outcome: 'notFound',
+				expiresAt: past,
+				discoveredAt: past - 60_000,
+				updatedAt: past,
+			});
+		});
+		const draftId = await insertDraft(t, ['stale@x.test']);
+		expect(await t.query(internal.mail.draftLifecycle.getSealState, { draftId })).toEqual({
+			kind: 'cannotSeal',
+			reason: 'no_signing_key',
+		});
+	});
+
+	it('asks (no_signing_key) while a signer-less draft waits on a recipient lookup', async () => {
+		// Not looked up yet: dispatch looks the recipient up and may find a key.
+		const t = convexTest(schema, modules);
+		await seedSettings(t);
+		const draftId = await insertDraft(t, ['pending@x.test']);
+		expect(await t.query(internal.mail.draftLifecycle.getSealState, { draftId })).toEqual({
+			kind: 'cannotSeal',
+			reason: 'no_signing_key',
 		});
 	});
 

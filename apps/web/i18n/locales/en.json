@@ -4239,13 +4239,11 @@
 				"bodyPlaceholder": "Write your message…",
 				"composerName": "Postbox compose {timestamp}",
 				"dropHint": "Drop to attach · drop in text to embed",
-				"minimize": "Minimize",
 				"newMessage": "New message",
 				"savedAt": "Saved {time}",
 				"scheduledFor": "Scheduled for {datetime}",
 				"unschedule": "Unschedule to edit",
-				"uploadingToast": "Waiting for attachments to finish uploading…",
-				"openInAnswerMode": "Open in Answer mode"
+				"uploadingToast": "Waiting for attachments to finish uploading…"
 			},
 			"postboxComposerAttachments": {
 				"cancel": "Cancel {filename}",
@@ -4259,10 +4257,6 @@
 				"share": "Share {filename} as a link instead",
 				"shareTitle": "Share as link instead",
 				"sizeOf": "{used} of {budget}"
-			},
-			"postboxComposerDock": {
-				"draft": "Draft",
-				"reopen": "Reopen: {subject}"
 			},
 			"postboxComposerEnvelope": {
 				"alsoInclude": "Also include {names}",
@@ -4309,11 +4303,6 @@
 					"mentionDescription": "Your message says “{phrase}”, but nothing is attached. Send anyway?",
 					"mentionTitle": "Attachment missing?"
 				},
-				"firstTime": {
-					"body": "First time writing to {addresses}. | First time writing to {addresses}.",
-					"keepEditing": "Keep editing",
-					"send": "Send anyway"
-				},
 				"keepEditing": "Keep editing",
 				"sendAnyway": "Send anyway"
 			},
@@ -4322,10 +4311,6 @@
 				"hideToolbar": "Hide formatting toolbar (show on selection)",
 				"returnToWriting": "Return to writing",
 				"showToolbar": "Show formatting toolbar"
-			},
-			"postboxComposerPopup": {
-				"dialogLabel": "Compose message",
-				"resizeHandle": "Drag to resize"
 			},
 			"postboxComposerPreflightChip": {
 				"summary": "{count} check: {details} | {count} checks: {details}"
@@ -4891,7 +4876,6 @@
 				"firstTimeTitle": "You have never written to {address} before",
 				"fixIt": "Fix it",
 				"keepAsTyped": "Keep as typed",
-				"noSealingKey": "no key",
 				"outsideDomain": "outside {domain}",
 				"placeholder": "recipient{'@'}example.com",
 				"removeRecipient": "Remove {address}"
@@ -5467,9 +5451,14 @@
 				"localTimeHint": "Your local time, give or take a few minutes."
 			},
 			"postboxDraftRestoreBar": {
+				"backupFailed": "Your current text couldn't be backed up on this device, so nothing was replaced.",
+				"confirm": "Replace with unsaved changes",
+				"confirmBody": "This draft was saved again after these changes were made on this device. Restoring replaces the saved version; your current text is backed up on this device first.",
+				"confirmTitle": "Replace the saved draft?",
 				"dismiss": "Keep saved version",
 				"message": "Unsaved changes from {time} were recovered from this device.",
-				"restore": "Restore unsaved changes"
+				"restore": "Restore unsaved changes",
+				"unavailable": "The draft isn't available right now. Try again in a moment."
 			},
 			"postboxComposerDraftNotice": {
 				"loadFailed": "This draft couldn't be loaded. Nothing has been saved over it; changes you make now are kept and added once it loads.",
@@ -6791,7 +6780,9 @@
 		"loadingMailbox": "Loading mailbox…",
 		"noMailbox": "No mailbox is configured for this workspace.",
 		"pageTitle": "Compose — Owlat",
-		"sentNotice": "Your message is on its way. This window closes when the time to undo it runs out."
+		"requestExpired": "This message is no longer open here. If it was saved, you'll find it in Drafts.",
+		"sentNotice": "Your message is on its way. This window closes when the time to undo it runs out.",
+		"startNew": "Start a new message"
 	},
 	"dashboard": {
 		"admin": {
@@ -14392,8 +14383,7 @@
 			},
 			"usePostboxComposerSealLock": {
 				"checking": "Checking whether this message can be sealed…",
-				"keyChanged": "Review and confirm the changed recipient key before sending.",
-				"noRecipients": "Add a recipient to see whether this message can be sealed."
+				"keyChanged": "Review and confirm the changed recipient key before sending."
 			},
 			"usePostboxContacts": {
 				"removeContact": "Remove contact",
@@ -14768,13 +14758,8 @@
 			"unsealedPrompt": {
 				"cancel": "Keep editing",
 				"confirm": "Send unsealed",
-				"flagOff": "Sealed mail is not available on this instance yet. Owlat will send it as ordinary email, which the mail servers it passes through can read.",
 				"keyChanged": "A recipient's key changed and still needs review. Owlat will send it as ordinary email, which the mail servers it passes through can read.",
-				"noRecipients": "This message has no recipients yet. Owlat will send it as ordinary email, which the mail servers it passes through can read.",
 				"noSigningKey": "The address you're sending from doesn't have a sealing key yet. Owlat will send it as ordinary email, which the mail servers it passes through can read.",
-				"policyAsk": "Your workspace is set to ask before sealing. Owlat will send it as ordinary email, which the mail servers it passes through can read.",
-				"policyOff": "Sealed mail is turned off for your workspace. Owlat will send it as ordinary email, which the mail servers it passes through can read.",
-				"recipientNoKey": "Some of your recipients can't receive sealed mail yet. Owlat will send it as ordinary email, which the mail servers it passes through can read.",
 				"title": "Send this message unsealed?"
 			},
 			"willSeal": {

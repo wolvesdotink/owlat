@@ -53,7 +53,7 @@ const loadRawEml = vi.fn(async (_id: string) => RAW_EML as string | null);
 
 beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
-	vi.stubGlobal('usePostboxComposerStack', () => ({ open: vi.fn() }));
+	vi.stubGlobal('usePostboxComposeNav', () => ({ open: vi.fn() }));
 	vi.stubGlobal('usePostboxPendingAttachments', () => ({ stash: vi.fn() }));
 	vi.stubGlobal('loadRawEml', (id: string) => loadRawEml(id));
 	vi.stubGlobal('requireConvex', () => ({ action: () => calendarAnswer() }));

@@ -42,7 +42,7 @@ beforeEach(() => {
 	vi.stubGlobal('useUiSound', () => ({ playSend: () => {} }));
 	vi.stubGlobal('usePostboxUndoSend', usePostboxUndoSend);
 	vi.stubGlobal('isQueuedSendToken', isQueuedSendToken);
-	vi.stubGlobal('usePostboxComposerStack', () => ({ open: (spec: unknown) => opened.push(spec) }));
+	vi.stubGlobal('usePostboxComposeNav', () => ({ open: (spec: unknown) => opened.push(spec) }));
 	vi.stubGlobal('usePostboxOfflineOutbox', () => ({
 		undoQueuedSend: async (token: string) => {
 			unqueued.push(token);

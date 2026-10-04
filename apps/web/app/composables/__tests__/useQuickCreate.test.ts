@@ -4,8 +4,8 @@
  * "Compose" navigating to the inbox list and "New contact" navigating to the
  * contacts list both LOOK like they work: the URL changes, a plausible page
  * appears, and nothing is created. That is exactly the regression a rendering
- * test would miss, so this suite asserts the effects instead: a composer lands
- * in the shared stack, addressed to a real mailbox, and the contacts page is
+ * test would miss, so this suite asserts the effects instead: the compose page
+ * opens addressed to a real mailbox, and the contacts page is
  * asked for its Add dialog by query.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -46,7 +46,7 @@ beforeEach(() => {
 			return path;
 		},
 	}));
-	vi.stubGlobal('usePostboxComposerStack', () => ({
+	vi.stubGlobal('usePostboxComposeNav', () => ({
 		open: (spec: Record<string, unknown>) => {
 			opened.push(spec);
 			return 'cmp_test';

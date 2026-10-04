@@ -1,33 +1,22 @@
 <script setup lang="ts">
 /**
- * The app-wide composer overlay: the Postbox's floating composer stack, mounted
- * by the dashboard shell so "Compose email" opens over whatever page you are on
- * instead of navigating to the mailbox.
+ * The app-wide undo-send toast. A send leaves the page it was written on (the
+ * compose page, Answer mode), so the countdown that can still take it back
+ * lives with the dashboard shell, over whatever page comes next.
  *
- * Pages that mount their own stack (the Postbox reader pages and the Answer
- * queue) keep it; on those routes this host renders nothing, so a composer is
- * never drawn twice. The stack's state is shared `useState`, so an open
- * composer survives moving between the two hosts.
- *
- * The stack is the whole composer (editor, attachments, preview-as-sent and
- * the email renderer behind it), so it is loaded and mounted only once a
- * composer opens, or an undo-send window does (a reply sent from Answer mode
- * arms the toast without ever opening a popup). After that it
- * stays mounted, so closing the last composer keeps its toast and transitions.
+ * The toast carries the cancel mutation and the offline outbox behind it, so it
+ * is loaded and mounted only once an undo-send window opens; after that it
+ * stays mounted, so its transitions run.
  */
-import { pageHostsComposerStack } from '~/lib/composeContext';
-import { usePostboxComposerStack } from '~/composables/postbox/usePostboxComposerStack';
 import { usePostboxUndoSendVisible } from '~/composables/postbox/usePostboxUndoSend';
 import { useMountOnFirst } from '~/composables/useMountOnFirst';
 
-const route = useRoute();
-const pageHostsStack = computed(() => pageHostsComposerStack(route.path));
-
-const { state: composers } = usePostboxComposerStack();
 const undoSendVisible = usePostboxUndoSendVisible();
-const stackNeeded = useMountOnFirst(() => composers.value.length > 0 || undoSendVisible.value);
+const toastNeeded = useMountOnFirst(() => undoSendVisible.value);
 </script>
 
 <template>
-	<LazyPostboxComposerStack v-if="stackNeeded && !pageHostsStack" />
+	<Teleport v-if="toastNeeded" to="body">
+		<LazyPostboxUndoSendToast />
+	</Teleport>
 </template>
