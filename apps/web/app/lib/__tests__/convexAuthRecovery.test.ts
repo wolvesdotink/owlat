@@ -76,19 +76,21 @@ describe('createConvexAuthRecovery', () => {
 		expect(onGiveUp).toHaveBeenCalledOnce();
 	});
 
-	it('resume re-installs only once the budget is spent, and keeps the notice until auth works', () => {
+	/** Fail every attempt of a streak; `false` once it is given up. */
+	function spend(recovery: ReturnType<typeof setup>['recovery'], attempts = 3) {
+		for (let i = 0; i < attempts; i++) {
+			recovery.retry('unreachable');
+			vi.advanceTimersByTime(60_000);
+		}
+		return recovery.retry('unreachable');
+	}
+
+	it('resume re-installs only after a streak was given up, and keeps the notice until auth works', () => {
 		const { recovery, reinstall, onGiveUp, onRecovered } = setup();
 		recovery.resume();
 		expect(reinstall).not.toHaveBeenCalled();
 
-		const spend = () => {
-			for (let i = 0; i < 3; i++) {
-				recovery.retry('unreachable');
-				vi.advanceTimersByTime(60_000);
-			}
-			return recovery.retry('unreachable');
-		};
-		expect(spend()).toBe(false);
+		expect(spend(recovery)).toBe(false);
 		expect(reinstall).toHaveBeenCalledTimes(3);
 
 		recovery.resume();
@@ -97,11 +99,56 @@ describe('createConvexAuthRecovery', () => {
 		expect(onRecovered).not.toHaveBeenCalled();
 
 		// The resumed streak fails as well: bounded again, reported only once.
-		expect(spend()).toBe(false);
+		expect(spend(recovery)).toBe(false);
 		expect(reinstall).toHaveBeenCalledTimes(7);
 		expect(onGiveUp).toHaveBeenCalledOnce();
 
 		recovery.reset();
 		expect(onRecovered).toHaveBeenCalledOnce();
+	});
+
+	it('resumes once per streak: a spent resumed streak is not re-armed', () => {
+		const { recovery, reinstall } = setup();
+		spend(recovery);
+		recovery.resume();
+		spend(recovery);
+		const before = reinstall.mock.calls.length;
+
+		recovery.resume();
+		recovery.resume();
+		vi.advanceTimersByTime(60_000);
+		expect(reinstall).toHaveBeenCalledTimes(before);
+	});
+
+	it('does not resume while a re-install is still scheduled', () => {
+		const { recovery, reinstall } = setup();
+		spend(recovery);
+		recovery.resume();
+		// The resumed streak's last retry is scheduled but has not run yet.
+		recovery.retry('unreachable');
+		vi.advanceTimersByTime(60_000);
+		recovery.retry('unreachable');
+		vi.advanceTimersByTime(60_000);
+		recovery.retry('unreachable');
+		const before = reinstall.mock.calls.length;
+
+		recovery.resume();
+		expect(reinstall).toHaveBeenCalledTimes(before);
+		vi.advanceTimersByTime(60_000);
+		expect(reinstall).toHaveBeenCalledTimes(before + 1);
+		expect(recovery.retry('unreachable')).toBe(false);
+	});
+
+	it('gives the resume back on reset', () => {
+		const { recovery, reinstall } = setup();
+		spend(recovery);
+		recovery.resume();
+		spend(recovery);
+		recovery.reset();
+
+		spend(recovery);
+		const before = reinstall.mock.calls.length;
+		recovery.resume();
+		expect(reinstall).toHaveBeenCalledTimes(before + 1);
 	});
 });

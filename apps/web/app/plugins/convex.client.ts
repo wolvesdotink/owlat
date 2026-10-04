@@ -114,11 +114,19 @@ export default defineNuxtPlugin((nuxtApp) => {
 		// keep re-running unauthenticated: every gated query throws
 		// "Not authenticated" server-side and the UI just sits on dead spinners.
 		// Typical trigger: a (dev) backend reset that orphans the stored session.
-		let recovering = false;
+		//
+		// `generation` moves on every session signal and every successful auth. A
+		// check started under an older generation drops its answer: the identity
+		// it asked about is gone, or auth already works again, and acting on it
+		// would re-install over healthy auth. One check runs per generation, so a
+		// stale check still in flight never swallows the new identity's loss.
+		let generation = 0;
+		let checkingGeneration: number | null = null;
 		let staleSessionNotifies = 0;
 		const handleAuthLoss = async () => {
-			if (recovering) return;
-			recovering = true;
+			const ownGeneration = generation;
+			if (checkingGeneration === ownGeneration) return;
+			checkingGeneration = ownGeneration;
 			try {
 				// The token request got no answer (offline, timeout, 5xx): that says
 				// nothing about the session, so try again without asking for it.
@@ -126,9 +134,17 @@ export default defineNuxtPlugin((nuxtApp) => {
 					recovery.retry('unreachable');
 					return;
 				}
-				const { data, error } = await authClient.getSession({
-					query: { disableCookieCache: true },
-				});
+				let session: Awaited<ReturnType<typeof authClient.getSession>>;
+				try {
+					session = await authClient.getSession({ query: { disableCookieCache: true } });
+				} catch {
+					// better-auth rejects on a network or CORS failure instead of
+					// returning an error: the session may be fine, so try again later.
+					if (ownGeneration === generation) recovery.retry('unreachable');
+					return;
+				}
+				if (ownGeneration !== generation) return;
+				const { data, error } = session;
 				if (data) {
 					// The session is alive yet no token was accepted: a flaky server, or
 					// an auth config problem (issuer/JWKS mismatch) that the retries run
@@ -137,8 +153,8 @@ export default defineNuxtPlugin((nuxtApp) => {
 					recovery.retry('rejected');
 					return;
 				}
-				// The session check itself failed (offline): the session may be fine
-				// and the offline cache is the point. Try again later.
+				// The session check got an error answer (a 5xx, a rate limit): the
+				// session may be fine and the offline cache is the point. Try again later.
 				if (error && error.status !== 401 && error.status !== 403) {
 					recovery.retry('unreachable');
 					return;
@@ -148,6 +164,8 @@ export default defineNuxtPlugin((nuxtApp) => {
 				// nobody signed out. Forget what sign-out forgets, or the cached mail of
 				// the person who was here stays on this device.
 				await forgetSignedOutDevice();
+				// Someone signed in while the cache was wiped: leave the new session be.
+				if (ownGeneration !== generation) return;
 
 				// The stored session is dead. Flip the client-side session state so
 				// gated queries unsubscribe and the app reflects signed-out. Only
@@ -181,12 +199,13 @@ export default defineNuxtPlugin((nuxtApp) => {
 					);
 				}
 			} finally {
-				recovering = false;
+				if (checkingGeneration === ownGeneration) checkingGeneration = null;
 			}
 		};
 		const onAuthChange = (isAuthenticated: boolean) => {
 			reportConvexAuth(isAuthenticated);
 			if (isAuthenticated) {
+				generation++;
 				staleSessionNotifies = 0;
 				recovery.reset();
 				return;
@@ -203,7 +222,9 @@ export default defineNuxtPlugin((nuxtApp) => {
 			authClient.$store.listen('$sessionSignal', () => {
 				resetSharedConvexSubscriptions();
 				resetConvexAuthTokenCache();
-				// A new identity gets a fresh retry budget and no stale reinstall.
+				// A new identity gets a fresh retry budget, no stale reinstall, and no
+				// answer from a session check made for the previous one.
+				generation++;
 				recovery.reset();
 				installAuth();
 			});

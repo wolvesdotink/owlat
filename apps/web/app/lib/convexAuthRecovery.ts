@@ -50,8 +50,9 @@ export interface ConvexAuthRecovery {
 	 */
 	reset(): void;
 	/**
-	 * Try again now, with a fresh budget, if every attempt is spent (for example
-	 * when the browser comes back online). Does nothing otherwise.
+	 * Try again now, with a fresh budget, once a streak was given up (for example
+	 * when the browser comes back online). Allowed once until the next
+	 * {@link ConvexAuthRecovery.reset}, and never while a re-install is scheduled.
 	 */
 	resume(): void;
 }
@@ -69,6 +70,8 @@ export function createConvexAuthRecovery(options: ConvexAuthRecoveryOptions): Co
 	let attempts = 0;
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	let gaveUp = false;
+	/** The one extra streak `resume` may start; given back only by `reset`. */
+	let resumed = false;
 
 	const cancel = () => {
 		if (timer !== null) clearTimeout(timer);
@@ -78,6 +81,7 @@ export function createConvexAuthRecovery(options: ConvexAuthRecoveryOptions): Co
 	const reset = () => {
 		cancel();
 		attempts = 0;
+		resumed = false;
 		if (gaveUp) {
 			gaveUp = false;
 			options.onRecovered?.();
@@ -108,10 +112,12 @@ export function createConvexAuthRecovery(options: ConvexAuthRecoveryOptions): Co
 		},
 		reset,
 		resume() {
-			// Only once the budget is spent, so a burst of events cannot stack
-			// streaks. `gaveUp` stays set: the notice stays up until auth works,
-			// and a resumed streak that fails too does not report again.
-			if (!gaveUp || attempts < maxAttempts) return;
+			// Once per streak, only after it was given up and with nothing still
+			// scheduled, so repeated events cannot stack or chain streaks. `gaveUp`
+			// stays set: the notice stays up until auth works, and a resumed streak
+			// that fails too does not report again.
+			if (!gaveUp || resumed || timer !== null) return;
+			resumed = true;
 			attempts = 0;
 			options.reinstall();
 		},

@@ -218,11 +218,12 @@ describe('convex plugin: re-installs auth after a failure while the session is v
 		expect(toast.remove).toHaveBeenCalledWith('toast-1');
 	});
 
-	it('retries a failed session check instead of signing the tab out', async () => {
+	it('retries a session check that rejected on the network instead of signing out', async () => {
 		fetchMock.mockImplementationOnce(async () => status(401));
 		fetchMock.mockImplementationOnce(async () => status(401));
 		fetchMock.mockImplementation(async () => tokenResponse());
-		auth.session = { data: null, error: { status: 0, message: 'Failed to fetch' } };
+		// better-auth rejects on a fetch or CORS failure; it does not return an error.
+		getSession.mockRejectedValueOnce(new TypeError('Failed to fetch'));
 		const ready = await bootPlugin();
 		expect(getSession).toHaveBeenCalledOnce();
 
@@ -233,6 +234,69 @@ describe('convex plugin: re-installs auth after a failure while the session is v
 		await expect(ready.whenConvexAuthSettled()).resolves.toBe(true);
 		expect(notify).not.toHaveBeenCalled();
 		expect(navigateTo).not.toHaveBeenCalled();
+	});
+
+	it('retries a session check that answered with a server error', async () => {
+		fetchMock.mockImplementationOnce(async () => status(401));
+		fetchMock.mockImplementationOnce(async () => status(401));
+		fetchMock.mockImplementation(async () => tokenResponse());
+		auth.session = { data: null, error: { status: 503, statusText: 'Service Unavailable' } };
+		const ready = await bootPlugin();
+
+		await vi.advanceTimersByTimeAsync(1_000);
+		await settle();
+
+		expect(convex.installs).toBe(2);
+		await expect(ready.whenConvexAuthSettled()).resolves.toBe(true);
+		expect(navigateTo).not.toHaveBeenCalled();
+	});
+
+	it('drops a session check answered after a session signal re-authenticated', async () => {
+		let answer!: (value: typeof auth.session) => void;
+		getSession.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					answer = resolve;
+				})
+		);
+		fetchMock.mockImplementation(async () => tokenResponse());
+		convex.serverRejects = true;
+		await bootPlugin();
+
+		convex.serverRejects = false;
+		for (const listener of auth.listeners) listener();
+		await settle();
+		expect(convex.installs).toBe(2);
+
+		// The old identity's check answers late: auth already works, so nothing more.
+		answer({ data: { session: {} }, error: null });
+		await settle();
+		await vi.advanceTimersByTimeAsync(60_000);
+		expect(convex.installs).toBe(2);
+	});
+
+	it('still checks the new identity while a stale session check is in flight', async () => {
+		let answer!: (value: typeof auth.session) => void;
+		getSession.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					answer = resolve;
+				})
+		);
+		fetchMock.mockImplementation(async () => tokenResponse());
+		convex.serverRejects = true;
+		await bootPlugin();
+
+		for (const listener of auth.listeners) listener();
+		await settle();
+		expect(getSession).toHaveBeenCalledTimes(2);
+
+		answer({ data: { session: {} }, error: null });
+		await settle();
+		// Only the new identity's check schedules: one re-install at 1 s, not two.
+		await vi.advanceTimersByTimeAsync(1_000);
+		await settle();
+		expect(convex.installs).toBe(3);
 	});
 
 	it('takes the sign-out path and schedules nothing when the session is gone', async () => {
