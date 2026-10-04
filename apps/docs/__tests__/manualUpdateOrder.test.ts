@@ -55,8 +55,23 @@ interface Recipe {
 	script: () => string;
 }
 
-const releaseNotes = () =>
-	section(read('.github/workflows/release.yml'), /Manual upgrade/, /```\s*$/m);
+/**
+ * The release body as `release.yml` publishes it: `scripts/release-body.ts`
+ * builds it from CHANGELOG.md, here for the newest released version.
+ */
+function releaseBody(): string {
+	const version = /^## \[(\d+\.\d+\.\d+[^\]]*)\]/m.exec(read('CHANGELOG.md'))?.[1];
+	expect(version, 'no released version in CHANGELOG.md').toBeDefined();
+	const result = spawnSync(
+		'bun',
+		['scripts/release-body.ts', version!, '--repo', 'wolvesdotink/owlat'],
+		{ cwd: REPO_ROOT, encoding: 'utf8', timeout: 10_000 }
+	);
+	expect(result.status, result.stderr).toBe(0);
+	return result.stdout;
+}
+
+const releaseNotes = () => section(releaseBody(), /^### Manual upgrade/m, /```\s*$/m);
 const composeHeader = () =>
 	section(read('scripts/gen-release-compose.sh'), /apply it manually/, /^EOF$/m);
 
@@ -68,8 +83,7 @@ const UPDATES: Recipe[] = [
 	{
 		name: 'release notes',
 		text: releaseNotes,
-		// The workflow fills in `${{ … }}` before it publishes the notes.
-		script: () => fence(releaseNotes()).replace(/\$\{\{[^}]*\}\}/g, '1.2.3'),
+		script: () => fence(releaseNotes()),
 	},
 	{
 		name: 'release compose header',
