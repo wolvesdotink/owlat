@@ -160,7 +160,7 @@ async function confirmSaved(): Promise<void> {
 
 // A save landed: text merged back from an earlier leave may be held now.
 function onSaved() {
-	void request.settleMerged();
+	request.settleMerged();
 	void confirmSaved();
 }
 

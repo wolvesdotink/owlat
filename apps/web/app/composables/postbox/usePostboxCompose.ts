@@ -299,7 +299,8 @@ export function usePostboxCompose(seed: ComposerSeed, options: ComposeOptions = 
 			isGapGuarded,
 		},
 		touched,
-		options.beforeReady
+		options.beforeReady,
+		(snapshot) => autosave.persistRestored(snapshot)
 	);
 
 	// Plan idea 7: mirror these exact fields on-device between server autosaves,

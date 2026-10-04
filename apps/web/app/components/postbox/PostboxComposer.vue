@@ -263,8 +263,6 @@ defineExpose({
 	flush,
 	answer: answerApi,
 	snapshot,
-	/** Write what is on screen to the device mirror now; true once it is held. */
-	mirrorNow: () => draftMirror.writeNow(),
 	/** Look for device copies again (the compose page stored one). */
 	rescanMirror: () => draftMirror.rescan(),
 	/** What the compose page parks when it is left. */

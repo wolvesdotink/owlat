@@ -445,13 +445,6 @@ describe('PostboxComposer frame="page" (new mail)', () => {
 		w.unmount();
 	});
 
-	it('writes the device mirror on its host’s request', () => {
-		const w = mountComposer({ frame: 'page', seed: { mailboxId: 'mbx_1' } });
-		(w.vm as unknown as { mirrorNow: () => void }).mirrorNow();
-		expect(compose.draftMirror.writeNow).toHaveBeenCalledOnce();
-		w.unmount();
-	});
-
 	it('tells the host the subject, for its page title', async () => {
 		const w = mountComposer({ frame: 'page', seed: { mailboxId: 'mbx_1' } });
 		compose.subject.value = 'Quarterly numbers';

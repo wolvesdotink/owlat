@@ -127,17 +127,14 @@ function readySnap(
 interface FakeComposer extends ComposePageComposer {
 	snap: ParkableSnapshot;
 	create: (id: string) => void;
-	held: boolean;
 }
 
 function fakeComposer(snap: ParkableSnapshot): FakeComposer {
 	const listeners: ((id: never) => void)[] = [];
 	const composer: FakeComposer = {
 		snap,
-		held: true,
 		flush: vi.fn(async () => ({ ok: true as const, result: composer.snap.draftId })),
 		parkable: vi.fn(() => composer.snap),
-		mirrorNow: vi.fn(async () => composer.held),
 		rescanMirror: vi.fn(async () => {}),
 		onCreated: vi.fn((listener) => {
 			listeners.push(listener as (id: never) => void);
@@ -174,7 +171,11 @@ function mountPage(
 }
 
 const record = (key: string): ComposeRequest | null => usePostboxComposeNav().read(key);
-const mergeAll = () => ({ merge: vi.fn(() => true) });
+/** A merge context: merges everything; its exact-snapshot save succeeds when `saved`. */
+const mergeAll = (saved = false) => ({
+	merge: vi.fn(() => true),
+	persist: vi.fn(async () => ({ ok: saved })),
+});
 
 function source(overrides: Partial<RecoverySource>): RecoverySource {
 	return {
@@ -625,6 +626,8 @@ describe('G4: leaving a composer that has not loaded its row', () => {
 			savedAt: parked.parkedAt,
 			draftId: 'draft-1',
 			inReplyTo: null,
+			// Only the subject is real; the body shown is the row's, never restored.
+			present: ['subject'],
 		});
 		expect(record(key)!.current).toBeUndefined();
 		expect(b.fake.rescanMirror).toHaveBeenCalledOnce();
@@ -651,28 +654,42 @@ describe('G4: returning to text parked against a row', () => {
 		return { key, parked: record(key)!.current! };
 	}
 
-	it('merges it when the row is unchanged, and drops it once the mirror holds it', async () => {
+	it('merges it when the row is unchanged, and drops it once its own save lands', async () => {
 		const row = fields({ subject: 'Saved' });
 		const { key, parked } = leaveEdited(row, { subject: 'Edited' });
 		expect(parked).toMatchObject({ base: row, present: ALL });
 
 		const b = mountPage(key, readySnap({ subject: 'Edited' }, { draftId: D1, base: row }));
-		const context = mergeAll();
+		const context = mergeAll(true);
 		b.page.beforeReady(row, context);
 		expect(context.merge).toHaveBeenCalledWith(parked.fields, parked.present);
-		// Held only once the mirror wrote it.
+		// Exactly the merged text is saved, ahead of any later edit.
+		expect(context.persist).toHaveBeenCalledOnce();
 		expect(record(key)!.current?.id).toBe(parked.id);
 		await flushPromises();
-		expect(b.fake.mirrorNow).toHaveBeenCalledOnce();
 		expect(record(key)!.current).toBeUndefined();
 		expect(driver.data.size).toBe(0);
 	});
 
-	it('keeps a merged snapshot when the mirror could not hold it', async () => {
+	it('keeps a merged snapshot edited further and saved as other text (G1)', async () => {
+		mirrorStore = new PostboxDraftMirrorStore(memoryDriver(false));
+		const row = fields({ subject: 'Saved' });
+		const { key, parked } = leaveEdited(row, { subject: 'S' });
+		const b = mountPage(key, readySnap({ subject: 'S' }, { draftId: D1, base: row }));
+		// Its own save fails; the person types on and T is saved.
+		b.page.beforeReady(row, mergeAll(false));
+		await flushPromises();
+		const rowT = fields({ subject: 'T' });
+		b.fake.snap = readySnap({ subject: 'T' }, { draftId: D1, base: rowT });
+		b.page.savedAcknowledged(D1);
+		b.page.settleMerged();
+		expect(record(key)!.current?.id).toBe(parked.id);
+	});
+
+	it('keeps a merged snapshot when its own save failed', async () => {
 		const row = fields({ subject: 'Saved' });
 		const { key, parked } = leaveEdited(row, { subject: 'Edited' });
 		const b = mountPage(key, readySnap({ subject: 'Edited' }, { draftId: D1, base: row }));
-		b.fake.held = false;
 		b.page.beforeReady(row, mergeAll());
 		await flushPromises();
 		expect(record(key)!.current?.id).toBe(parked.id);
@@ -682,7 +699,6 @@ describe('G4: returning to text parked against a row', () => {
 		const row = fields({ subject: 'Saved' });
 		const { key, parked } = leaveEdited(row, { subject: 'Edited' });
 		const b = mountPage(key, readySnap({ subject: 'Edited' }, { draftId: D1, base: row }));
-		b.fake.held = false;
 		b.page.beforeReady(row, mergeAll());
 		await flushPromises();
 		expect(record(key)!.current?.id).toBe(parked.id);
@@ -691,7 +707,7 @@ describe('G4: returning to text parked against a row', () => {
 			{ subject: 'Edited' },
 			{ draftId: D1, base: fields({ subject: 'Edited' }) }
 		);
-		await b.page.settleMerged();
+		b.page.settleMerged();
 		expect(record(key)!.current).toBeUndefined();
 	});
 
@@ -700,7 +716,6 @@ describe('G4: returning to text parked against a row', () => {
 		const edited = { subject: 'Edited', bodyBlocks: '[{"b":1}]', composerMode: 'full' as const };
 		const { key } = leaveEdited(row, edited);
 		const b = mountPage(key, readySnap(edited, { draftId: D1, base: row }));
-		b.fake.held = false;
 		b.page.beforeReady(row, mergeAll());
 		await flushPromises();
 		// The full-mode save landed: the row now holds the editor's text.
@@ -716,7 +731,6 @@ describe('G4: returning to text parked against a row', () => {
 			key,
 			readySnap({ subject: 'Edited', bodyBlocks: '[{"b":1}]' }, { draftId: D1, base: row })
 		);
-		b.fake.held = false;
 		b.page.beforeReady(row, mergeAll());
 		await flushPromises();
 		// The simple-mode save stored the text but left the row's blocks alone.
@@ -735,7 +749,6 @@ describe('G4: returning to text parked against a row', () => {
 		const row = fields({ subject: 'Saved A' });
 		const { key, parked } = leaveEdited(row, { subject: 'Unsaved B' });
 		const b = mountPage(key, readySnap({ subject: 'Unsaved B' }, { draftId: D1, base: row }));
-		b.fake.held = false;
 		b.page.beforeReady(row, mergeAll());
 		await flushPromises();
 		// Scheduled elsewhere: flush reports the id without writing; the row is still A.
@@ -747,7 +760,6 @@ describe('G4: returning to text parked against a row', () => {
 		const row = fields({ subject: 'Saved' });
 		const { key } = leaveEdited(row, { subject: 'Edited' });
 		const b = mountPage(key, readySnap({ subject: 'Edited' }, { draftId: D1, base: row }));
-		b.fake.held = false;
 		b.page.beforeReady(row, mergeAll());
 		await flushPromises();
 		b.fake.snap = readySnap(
@@ -779,12 +791,16 @@ describe('G4: returning to text parked against a row', () => {
 		const row = fields({ subject: 'Saved' });
 		const { key, parked } = leaveEdited(row, { subject: 'Edited' });
 		const b = mountPage(key, readySnap({}, { draftId: D1, base: row }));
-		b.page.beforeReady(row, { merge: vi.fn(() => false) });
+		const context = {
+			merge: vi.fn(() => false),
+			persist: vi.fn(async () => ({ ok: false })),
+		};
+		b.page.beforeReady(row, context);
 		await flushPromises();
 		expect(driver.data.has(mirrorCopyKey('mbx-1', 'draft-1', `parked-${parked.id}`, 'live'))).toBe(
 			true
 		);
-		expect(b.fake.mirrorNow).not.toHaveBeenCalled();
+		expect(context.persist).not.toHaveBeenCalled();
 	});
 
 	it('records the reply it answers on the stored copy', async () => {
@@ -882,7 +898,7 @@ describe('G4: returning to text parked against a row', () => {
 		});
 		nav.update(key, mountId, (req) => ({ ...req, sources: [older], current: newer }));
 		const b = mountPage(key, readySnap({}, { draftId: D1, base: row }));
-		const context = mergeAll();
+		const context = mergeAll(true);
 		b.page.beforeReady(row, context);
 		// The newest (current) is merged; the older one becomes a device copy.
 		expect(context.merge).toHaveBeenCalledOnce();

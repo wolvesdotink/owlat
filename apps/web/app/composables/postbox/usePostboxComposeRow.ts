@@ -20,6 +20,7 @@ import {
 	type MirrorFields,
 } from '~/utils/postboxDraftMirror';
 import type { ComposerMode, ComposerSeed } from './usePostboxCompose';
+import type { RestoredWrite } from './usePostboxComposeMirrorTypes';
 import type { ComposerAttachment } from './usePostboxComposeAttachments';
 import {
 	usePostboxComposeHydration,
@@ -71,6 +72,12 @@ export interface BeforeReadyContext {
 	 * this mount to a different value (the person's newer edit stays).
 	 */
 	merge: (fields: MirrorFields, names: readonly MirrorFieldName[]) => boolean;
+	/**
+	 * Queue a save of exactly what the editor holds now (as Restore does), ahead
+	 * of any later edit: what a merge put on screen is acknowledged as such, not
+	 * as whatever the person typed after it.
+	 */
+	persist: () => Promise<{ ok: boolean }>;
 }
 
 /**
@@ -120,7 +127,8 @@ export function usePostboxComposeRow(
 	initialHydration: Ref<InitialHydrationState>,
 	fields: RowFields,
 	touched: ComposeTouched,
-	beforeReady?: BeforeReady
+	beforeReady?: BeforeReady,
+	persistRestored?: (snapshot: RestoredWrite) => Promise<{ ok: boolean }>
 ) {
 	// Shallow: each answer is a fresh plain snapshot, stored on-device as is
 	// (IndexedDB cannot clone a reactive proxy).
@@ -142,8 +150,16 @@ export function usePostboxComposeRow(
 		touched,
 		shouldMerge: () => mergeRow.value,
 		latestRow,
-		beforeReady: beforeReady ? (rowFields) => beforeReady(rowFields, { merge }) : undefined,
+		beforeReady: beforeReady
+			? (rowFields) => beforeReady(rowFields, { merge, persist })
+			: undefined,
 	});
+
+	function persist(): Promise<{ ok: boolean }> {
+		const now = mirrorFieldsOf(fields);
+		if (!persistRestored) return Promise.resolve({ ok: false });
+		return persistRestored({ ...now, bodyBlocks: now.bodyBlocks ?? '[]' });
+	}
 
 	/** What to park on a leave, read synchronously from the refs. */
 	function parkable(): ParkableSnapshot {

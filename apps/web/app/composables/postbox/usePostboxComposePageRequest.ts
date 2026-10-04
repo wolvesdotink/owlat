@@ -34,7 +34,7 @@
  * to the request), but never overwrites what a newer mount of it wrote.
  */
 
-import { nextTick, ref, type Ref } from 'vue';
+import { ref, type Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 import {
 	MIRROR_FIELD_NAMES,
@@ -67,7 +67,6 @@ import type { SettleOutcome } from './usePostboxComposeAutosave';
 export interface ComposePageComposer {
 	flush: () => Promise<SettleOutcome<Id<'mailDrafts'> | null>>;
 	parkable: () => ParkableSnapshot;
-	mirrorNow: () => Promise<boolean>;
 	rescanMirror: () => Promise<void>;
 	onCreated: (listener: (id: Id<'mailDrafts'>) => void) => () => void;
 }
@@ -145,22 +144,12 @@ export function parkLeave(
 	request: ComposeRequest,
 	snap: ParkableSnapshot,
 	mountId: string,
-	now: number,
-	/** Snapshots this mount merged into the editor: a whole-editor park holds them. */
-	merged: readonly string[] = []
+	now: number
 ): ComposeRequest {
-	const sources = snap.ready
-		? request.sources.filter((source) => !merged.includes(source.id))
-		: [...request.sources];
+	const sources = [...request.sources];
 	// An earlier mount's unresolved snapshot is kept on its own; this mount's
 	// own earlier park (a `pagehide` before a bfcache return) is replaced.
-	if (
-		request.current &&
-		request.current.mountId !== mountId &&
-		!(snap.ready && merged.includes(request.current.id))
-	) {
-		sources.push(request.current);
-	}
+	if (request.current && request.current.mountId !== mountId) sources.push(request.current);
 	const saved = snap.base !== null && equalsRow(snap, snap.base);
 	const empty =
 		snap.present.length === 0 ||
@@ -290,6 +279,10 @@ export function usePostboxComposePageRequest(options: {
 				context.merge(source.fields, source.present)
 			) {
 				merged = [source];
+				// Exactly the merged text, saved ahead of any later edit.
+				void context.persist().then((saved) => {
+					if (saved.ok) dropMerged([source.id]);
+				});
 			} else {
 				toImport.push(source);
 			}
@@ -299,8 +292,6 @@ export function usePostboxComposePageRequest(options: {
 		if (draftId) {
 			for (const source of toImport) void importAsCopy(source, row, draftId, request);
 		}
-		// The merged text: held once the mirror has written it (ready by then).
-		if (merged.length > 0) void nextTick(() => settleMerged());
 	}
 
 	async function importAsCopy(
@@ -329,6 +320,9 @@ export function usePostboxComposePageRequest(options: {
 			savedAt: parked.parkedAt,
 			draftId: String(draftId),
 			inReplyTo: request.seed?.inReplyToMessageId ? String(request.seed.inReplyToMessageId) : null,
+			// Partial (parked before its row loaded): only the typed fields are
+			// real; the rest only show the row as it was, never to be restored.
+			...(parked.present.length < MIRROR_FIELD_NAMES.length ? { present: parked.present } : {}),
 		};
 		const key = mirrorCopyKey(ns, String(draftId), `parked-${source.id}`, 'live');
 		// Not stored (no device storage): the record keeps it for the next open.
@@ -338,28 +332,19 @@ export function usePostboxComposePageRequest(options: {
 	}
 
 	/**
-	 * Drop merged snapshots once something else holds them: the device mirror
-	 * wrote the editor, or the latest row already equals them. Runs a tick after
-	 * the merge and again on every save, so neither a failed device write nor a
-	 * composer that was not mounted yet leaves them behind for good.
+	 * Drop merged snapshots the latest row already equals (runs on every save).
+	 * Anything else stays until its own save is acknowledged: the editor moving
+	 * on past it, or the mirror holding the editor, does not hold it.
 	 */
-	async function settleMerged() {
-		const mounted = composer.value;
-		if (merged.length === 0 || !mounted) return;
-		// Rowless text is held by the mirror only once the row is known not to
-		// be an older one; until then a save or the row itself decides.
-		if (!merged.some((source) => source.rowless) && (await mounted.mirrorNow())) {
-			dropMerged();
-			return;
-		}
-		const row = mounted.parkable().base;
-		if (row && merged.every((source) => equalsRow(source, row))) dropMerged();
+	function settleMerged() {
+		const row = composer.value?.parkable().base ?? null;
+		if (!row) return;
+		dropMerged(merged.filter((source) => equalsRow(source, row)).map((source) => source.id));
 	}
 
-	function dropMerged() {
-		if (merged.length === 0) return;
-		const ids = merged.map((source) => source.id);
-		merged = [];
+	function dropMerged(ids: readonly string[]) {
+		if (ids.length === 0) return;
+		merged = merged.filter((source) => !ids.includes(source.id));
 		change((request) => withoutSources(request, ids));
 	}
 
@@ -378,13 +363,7 @@ export function usePostboxComposePageRequest(options: {
 			draftId,
 			seed: editorSaved ? withoutSeedText(request.seed) : request.seed,
 		}));
-		const held = merged.filter((source) => row !== null && equalsRow(source, row));
-		if (editorSaved || held.length === merged.length) dropMerged();
-		else if (held.length > 0) {
-			const ids = held.map((source) => source.id);
-			merged = merged.filter((source) => !ids.includes(source.id));
-			change((request) => withoutSources(request, ids));
-		}
+		settleMerged();
 	}
 
 	/**
@@ -404,8 +383,7 @@ export function usePostboxComposePageRequest(options: {
 		const mounted = composer.value;
 		if (finished || !own || !mounted) return;
 		const snap = mounted.parkable();
-		const mergedIds = merged.map((source) => source.id);
-		change((request) => parkLeave(request, snap, own.mountId, Date.now(), mergedIds));
+		change((request) => parkLeave(request, snap, own.mountId, Date.now()));
 	}
 
 	/**

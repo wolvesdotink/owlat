@@ -233,4 +233,40 @@ describe('usePostboxCompose — reopened-draft signature race', () => {
 		expect(composer.composerMode.value).toBe('simple');
 		expect(composer.bodyBlocks.value).toEqual([]);
 	});
+
+	it('saves exactly the text a beforeReady merge put on screen, blocks included', async () => {
+		const updateRun = vi.fn(async () => ({ ok: true, result: { savedAt: 1 } }));
+		vi.stubGlobal('useBackendOperation', (fn: unknown) => ({
+			run: fn === 'drafts.update' ? updateRun : vi.fn(async () => undefined),
+		}));
+		const usePostboxCompose = await loadComposable();
+		let persisted: Promise<{ ok: boolean }> | null = null;
+		effectScope().run(() =>
+			usePostboxCompose(
+				{ mailboxId: 'mbx-1' as never, draftId: 'draft-42' as never },
+				{
+					beforeReady: (row, context) => {
+						context.merge({ ...row, subject: 'Merged back' }, ['subject']);
+						persisted = context.persist();
+					},
+				}
+			)
+		)!;
+		hydrateData.value = {
+			subject: 'Saved',
+			bodyHtml: '<p>Body</p>',
+			bodyBlocks: '[]',
+			state: 'draft',
+		};
+		await nextTick();
+		expect(await persisted).toMatchObject({ ok: true });
+		expect(updateRun).toHaveBeenCalledWith(
+			expect.objectContaining({
+				draftId: 'draft-42',
+				subject: 'Merged back',
+				bodyHtml: '<p>Body</p>',
+				bodyBlocks: '[]',
+			})
+		);
+	});
 });
