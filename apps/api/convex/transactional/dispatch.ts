@@ -111,15 +111,9 @@ export const dispatch = internalMutation({
 		email: v.string(),
 		dataVariables: v.optional(v.record(v.string(), jsonPrimitiveValue)),
 		language: v.optional(v.string()),
+		// Every `storageId` must be a pending upload the caller registered
+		// (`transactional/pendingUploads.ts`); this transaction always claims it.
 		attachmentRefs: v.optional(v.array(attachmentRefValidator)),
-		// Accepted and IGNORED. Every `storageId` above must be a pending upload
-		// the caller registered (`transactional/pendingUploads.ts`), and this
-		// transaction always claims them. The validator refuses an unknown
-		// field, and a v0.6.8 shell still running across the deploy passes
-		// `true`. This release's shell no longer sends it: the v0.6.8 dispatch a
-		// rollback would restore claims without it. Remove in the release after
-		// the one that stopped sending it (issue #1076).
-		uploadsPending: v.optional(v.literal(true)),
 	},
 	handler: async (ctx, args): Promise<DispatchOutcome> => {
 		// 1. The shared pre-row gate sequence: abuse → provider-ready →
