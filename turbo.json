@@ -29,6 +29,64 @@
 			"dependsOn": ["^build"]
 		},
 		"lint": {},
+		// A lint task that reads files outside its own package needs an override
+		// listing them: turbo hashes only the package directory by default, so an
+		// edit to an outside file alone replays the cached (remote, CI-shared)
+		// result. #1219 dropped the last web caller of an api query, CI replayed a
+		// green api lint, and main broke. When a lint script starts reading a new
+		// outside path, add it here; scripts/__tests__/turbo-lint-inputs.test.ts
+		// pins the current set.
+		"@owlat/api#lint": {
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				// check-entry-wiring.ts: callers of every public Convex entry, read
+				// from every production .ts/.vue file under apps/ and packages/.
+				// check-kind-literal-custody.ts and check-transport-outcome-wiring.ts
+				// also import @owlat/shared at run time.
+				"$TURBO_ROOT$/apps/**/*.{ts,vue}",
+				"$TURBO_ROOT$/packages/**/*.{ts,vue}",
+				"$TURBO_ROOT$/packages/*/package.json",
+				// check-ramp-matrix-workflow.sh
+				"$TURBO_ROOT$/.github/workflows/test.yml",
+				// check-env-docs.sh and check-dmarc-docs.sh
+				"$TURBO_ROOT$/apps/docs/content/en/3.developer/8.environment-variables.md",
+				"$TURBO_ROOT$/apps/docs/content/en/3.developer/6.email-system.md",
+				// the baseline checks exec the shared ratchet runner
+				"$TURBO_ROOT$/scripts/ratchet.sh",
+				// Root globs bypass .gitignore, so drop generated trees by hand (the
+				// same directories apps/api/scripts/lib/sourceGraph.ts never walks).
+				// Keep the package-relative `**/` form: turbo matches excludes against
+				// the cleaned path (`../web/.nuxt/…`), which `$TURBO_ROOT$/**` misses.
+				"!**/node_modules/**",
+				"!**/.nuxt/**",
+				"!**/.output/**",
+				"!**/dist/**",
+				"!**/build/**",
+				"!**/coverage/**"
+			]
+		},
+		"@owlat/web#lint": {
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				// check-dead-tokens.sh and check-icon-names.sh scan the UI layer
+				"$TURBO_ROOT$/packages/ui/**",
+				// check-localized-text.sh execs the shared ratchet runner
+				"$TURBO_ROOT$/scripts/ratchet.sh",
+				// generated trees, as for @owlat/api#lint above
+				"!**/node_modules/**",
+				"!**/.nuxt/**",
+				"!**/dist/**",
+				"!**/coverage/**"
+			]
+		},
+		"@owlat/setup-cli#lint": {
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				// check-env-keys-sync.sh compares these two lists
+				"$TURBO_ROOT$/apps/api/convex/lib/env.ts",
+				"$TURBO_ROOT$/packages/shared/src/convexRuntimeEnv.ts"
+			]
+		},
 		"lint:fix": {},
 		"codegen": {
 			"cache": false

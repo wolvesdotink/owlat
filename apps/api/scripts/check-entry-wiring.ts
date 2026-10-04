@@ -50,7 +50,8 @@ const { check, expectEmpty, report } = createChecker();
 // mention in prose is no caller.
 const CONVEX_SOURCES = sourceMap(convexRoot, productionModules(convexRoot));
 // Every client of this backend, not just the web app: apps/** and packages/**
-// minus convex/ itself.
+// minus convex/ itself. These files live outside apps/api, so turbo.json's
+// `@owlat/api#lint` inputs list them; widen that glob if this walk widens.
 const CLIENT_SOURCES = sourceMap(
 	repoRoot,
 	['apps', 'packages']
