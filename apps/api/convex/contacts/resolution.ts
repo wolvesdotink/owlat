@@ -35,6 +35,7 @@ import { throwAlreadyExists } from '../_utils/errors';
 import { buildSearchableText } from '../lib/queryHelpers';
 import type { ContactSource } from '../lib/validators/contacts';
 import { recordContactGrowth } from './growthCounters';
+import { linkUnresolvedFeedbackToContact } from '../webhooks/unresolvedFeedbackLinks';
 
 // ============================================================
 // Types
@@ -307,6 +308,10 @@ export async function changeContactEmail(
 		throwAlreadyExists(`A contact with this email already exists: ${email}`);
 	}
 
+	// The old address stops naming this contact: link the unresolved feedback
+	// stored under it first, so erasing the contact still finds it (#1194).
+	if (contact.email) await linkUnresolvedFeedbackToContact(ctx, contact._id, contact.email);
+
 	const identities = await ctx.db
 		.query('contactIdentities')
 		.withIndex('by_contact', (q) => q.eq('contactId', contact._id))
@@ -375,6 +380,11 @@ export async function deleteIdentitiesForContact(
 		.collect(); // bounded: one contact's identities
 
 	for (const identity of identities) {
+		// Once the identity is gone the erasure cannot find unresolved feedback
+		// by this address, so link it to the contact while it is known (#1194).
+		if (identity.channel === 'email') {
+			await linkUnresolvedFeedbackToContact(ctx, contactId, identity.identifier);
+		}
 		await ctx.db.delete(identity._id);
 	}
 }

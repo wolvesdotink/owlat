@@ -17,7 +17,7 @@
 import type { MutationCtx } from '../../_generated/server';
 import type { Doc, Id, TableNames } from '../../_generated/dataModel';
 import { decrementContactCount } from '../../lib/contactCountHelpers';
-import { normalizeEmail } from '../../lib/inputGuards';
+import { deleteUnresolvedFeedbackForAddress } from '../../webhooks/unresolvedFeedbackLinks';
 import { recordContactGrowth } from '../growthCounters';
 import { deleteAutomationRun } from '../../automations/runDeletion';
 import type { ErasureBudget } from './budget';
@@ -43,9 +43,6 @@ import {
 
 /** Sends scrubbed per page of the paginated send phases, before the byte bound. */
 const SCRUB_PAGE = 128;
-
-/** Identities read when collecting a contact's addresses; a contact has a handful. */
-const MAX_ADDRESSES_PER_CONTACT = 100;
 
 /**
  * Prefixed to a saved cursor when the page read from it came back cut short
@@ -88,12 +85,11 @@ const eraseAutomationRuns: PhaseRunner = async ({ ctx, contactId, budget }) => {
 };
 
 /**
- * Bounces and complaints that matched no Send (#1194). A row is linked to the
- * contact its address resolved to when it was stored; rows stored before that
- * address belonged to a contact are found by address instead, through the
- * contact's own email and every email identity it still has. The phase runs
- * before the identities go; at soft-delete they are already gone, and the
- * contact link covers the aliases.
+ * Bounces and complaints that matched no Send (#1194), by the contact link and
+ * by the contact's own address. Rows naming an email identity go with that
+ * identity in `eraseIdentities`, however many identities there are; at
+ * soft-delete the identities are removed, and their unlinked rows linked to
+ * the contact first (`linkUnresolvedFeedbackToContact`).
  */
 const eraseUnresolvedFeedback: PhaseRunner = async (phase) => {
 	const { ctx, contactId, budget } = phase;
@@ -106,26 +102,46 @@ const eraseUnresolvedFeedback: PhaseRunner = async (phase) => {
 	if (!linked) return NOT_DONE;
 	const contact = await ctx.db.get(contactId);
 	if (contact) budget.chargeRead(contact);
-	const identities = await ctx.db
-		.query('contactIdentities')
-		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.take(MAX_ADDRESSES_PER_CONTACT);
-	const addresses = new Set<string>();
-	if (contact?.email) addresses.add(normalizeEmail(contact.email));
-	for (const identity of identities) {
-		budget.chargeRead(identity);
-		if (identity.channel === 'email') addresses.add(normalizeEmail(identity.identifier));
-	}
-	for (const address of addresses) {
-		const isDone = await deleteAll(phase, (n) =>
+	const address = contact?.email;
+	if (!address) return DONE;
+	return { isDone: await deleteFeedbackNaming(phase, address) };
+};
+
+/** Delete the rows naming `address` while the budget lasts; whether none is left. */
+function deleteFeedbackNaming({ ctx, budget }: PhaseContext, address: string): Promise<boolean> {
+	// The reader deletes what it reads, so the range shrinks to nothing.
+	return drainEach(
+		budget,
+		(n) => deleteUnresolvedFeedbackForAddress(ctx, address, n),
+		async () => {}
+	);
+}
+
+/**
+ * Delete the contact's identities, each email identity's unresolved feedback
+ * first. Bounded and resumable like every other phase: an identity whose
+ * feedback the budget could not finish stays, so the next transaction comes
+ * back to it, and the walk covers every identity whatever their number.
+ */
+const eraseIdentities: PhaseRunner = async (phase) => {
+	const { ctx, contactId, budget } = phase;
+	const drained = await drainEach(
+		budget,
+		(n) =>
 			ctx.db
-				.query('unresolvedFeedback')
-				.withIndex('by_recipient', (q) => q.eq('recipient', address))
-				.take(n)
-		);
-		if (!isDone) return NOT_DONE;
-	}
-	return DONE;
+				.query('contactIdentities')
+				.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+				.take(n),
+		async (identity) => {
+			if (identity.channel === 'email') {
+				const isClear = await deleteFeedbackNaming(phase, identity.identifier);
+				if (!isClear || budget.isExhausted) return;
+			}
+			await ctx.db.delete(identity._id);
+		}
+	);
+	// A batch that ran out of budget mid-way left identities behind.
+	return { isDone: drained && !budget.isExhausted };
 };
 
 type SendTable = 'emailSends' | 'transactionalSends';
@@ -245,12 +261,7 @@ const PHASE_RUNNERS: Record<ContactErasurePhase, PhaseRunner> = {
 			.take(n)
 	),
 	unresolvedFeedback: eraseUnresolvedFeedback,
-	contactIdentities: deleteByIndex(({ ctx, contactId }, n) =>
-		ctx.db
-			.query('contactIdentities')
-			.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-			.take(n)
-	),
+	contactIdentities: eraseIdentities,
 	relationshipsFrom: deleteByIndex(({ ctx, contactId }, n) =>
 		ctx.db
 			.query('contactRelationships')

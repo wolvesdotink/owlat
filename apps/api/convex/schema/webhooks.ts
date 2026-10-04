@@ -268,6 +268,7 @@ export const webhookTables = {
 		.index('by_status_and_next_replay', ['status', 'nextReplayAt'])
 		.index('by_status_and_first_seen', ['status', 'firstSeenAt'])
 		.index('by_first_seen', ['firstSeenAt'])
-		.index('by_recipient', ['recipient'])
+		// Erasure by address; the contact column picks out the unlinked rows.
+		.index('by_recipient_and_contact', ['recipient', 'contactId'])
 		.index('by_contact', ['contactId']),
 };
