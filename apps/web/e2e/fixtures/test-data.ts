@@ -15,8 +15,11 @@ export interface TestUser {
  * as the owner it created.
  *
  * Credentials are fixed rather than minted per run: the workflow wipes the
- * deployment before each run, so there is nothing to collide with, and a failed
- * run leaves an account someone can actually log into to look around.
+ * deployment before each run, so there is nothing to collide with. It wipes it
+ * again when the run ends (reset-deployment.ts), so the account, and with it
+ * this public password, exists only while a run is in progress. A per-run
+ * password would add little: Playwright prints filled values in the report's
+ * step titles, so it would have to be hidden from the report as well.
  */
 const OWNER: TestUser = {
 	name: 'E2E Owner',

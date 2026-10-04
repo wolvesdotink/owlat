@@ -58,4 +58,25 @@ describe('seedAdmin', () => {
 		await expect(failure).rejects.toThrow(/returned 403: \{"error":"forbidden"\}/);
 		await expect(failure).rejects.not.toThrow(SECRET);
 	});
+
+	it('throws without the host when the deployment cannot be reached (#1222)', async () => {
+		// The cause names the host, and the error ends up in the public report,
+		// whose scan deletes a report that names the deployment.
+		const cause = Object.assign(new Error('getaddrinfo ENOTFOUND site.example.invalid'), {
+			code: 'ENOTFOUND',
+		});
+		const failure = seedAdmin({
+			siteUrl: 'https://site.example.invalid',
+			instanceSecret: SECRET,
+			owner: testUser(),
+			fetchImpl: vi.fn<typeof fetch>().mockRejectedValue(new TypeError('fetch failed', { cause })),
+		});
+
+		await expect(failure).rejects.toThrow(
+			'POST /seed/admin did not reach the deployment (ENOTFOUND).'
+		);
+		const error = (await failure.catch((caught: unknown) => caught)) as Error;
+		expect(error.cause).toBeUndefined();
+		expect(String(error.stack)).not.toContain('site.example.invalid');
+	});
 });
