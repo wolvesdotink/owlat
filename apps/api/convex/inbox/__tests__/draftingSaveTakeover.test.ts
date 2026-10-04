@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
+import type { MutationCtx } from '../../_generated/server';
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
@@ -38,11 +39,7 @@ const inboxGlob = Object.fromEntries(
 );
 const modules = Object.fromEntries(
 	Object.entries({ ...rootGlob, ...inboxGlob }).filter(
-		([path]) =>
-			!path.includes('agent/walker') &&
-			!path.includes('agent/steps/') &&
-			!path.includes('knowledgeExtraction') &&
-			!path.includes('llmProvider')
+		([path]) => !path.includes('knowledgeExtraction') && !path.includes('llmProvider')
 	)
 );
 
@@ -83,15 +80,23 @@ async function seed(t: Harness, fields: Record<string, unknown>) {
 			...fields,
 		})) as Id<'inboundMessages'>;
 		// The draft step still in flight.
-		const draftActionId = await ctx.db.insert('agentActions', {
-			inboundMessageId: messageId,
-			actionType: 'draft',
-			status: 'running',
-			retryCount: 0,
-			startedAt: Date.now(),
-			createdAt: Date.now(),
-		});
+		const draftActionId = await insertRunningAction(ctx, messageId, 'draft');
 		return { messageId, draftActionId };
+	});
+}
+
+function insertRunningAction(
+	ctx: MutationCtx,
+	inboundMessageId: Id<'inboundMessages'>,
+	actionType: 'draft' | 'route'
+) {
+	return ctx.db.insert('agentActions', {
+		inboundMessageId,
+		actionType,
+		status: 'running',
+		retryCount: 0,
+		startedAt: Date.now(),
+		createdAt: Date.now(),
 	});
 }
 
@@ -106,8 +111,12 @@ const save = (t: Harness, via: SaveMutation, id: Id<'inboundMessages'>, text: st
 			})
 		: t.mutation(api.inbox.mutations.editDraft, { inboundMessageId: id, draftResponse: text });
 
-/** The draft step finishing: its draft output, then its walker transition. */
-async function agentDraftLands(
+/**
+ * The draft step finishing the way the walker runs it: `execute` writes its
+ * output through `recordDraftOutput`, the step routes `in_state`, and the
+ * walker closes the action with `recordStepEnd` before it schedules `route`.
+ */
+async function draftStepFinishes(
 	t: Harness,
 	id: Id<'inboundMessages'>,
 	draftActionId: Id<'agentActions'>
@@ -118,16 +127,30 @@ async function agentDraftLands(
 		draftSubject: 'Re: Refund',
 		confidenceScore: 0.95,
 	});
-	return t.mutation(internal.inbox.processingLifecycle.transition, {
-		inboundMessageId: id,
-		input: {
-			to: 'draft_ready',
-			at: Date.now(),
-			completedActionId: draftActionId,
-			draftResponse: AGENT_DRAFT,
-		},
+	await t.mutation(internal.inbox.processingLifecycle.recordStepEnd, {
+		actionId: draftActionId,
+		output: JSON.stringify({ draftResponse: AGENT_DRAFT }),
 	});
 }
+
+/** The `route` step the draft step hands off to, run by the real walker. */
+const routeStepRuns = (t: Harness, id: Id<'inboundMessages'>) =>
+	t.action(internal.agent.walker.runStep, {
+		inboundMessageId: id,
+		kind: 'route',
+		input: { inboundMessageId: id, confidence: 0.95, category: 'support' },
+	});
+
+/** What the pipeline did after the save: its actions and pending walker runs. */
+const pipelineTrace = (t: Harness, id: Id<'inboundMessages'>) =>
+	t.run(async (ctx) => ({
+		actions: (await ctx.db.query('agentActions').collect())
+			.filter((a) => a.inboundMessageId === id)
+			.map((a) => a.actionType),
+		walkerRuns: (await ctx.db.system.query('_scheduled_functions').collect()).filter(
+			(f) => f.name.includes('walker') && f.state.kind === 'pending'
+		).length,
+	}));
 
 const takeoverAudits = (t: Harness) =>
 	t.run(async (ctx) =>
@@ -145,9 +168,9 @@ describe.each<SaveMutation>(['saveDraftRevision', 'editDraft'])(
 
 			await save(t, via, messageId, HUMAN_REPLY);
 			await save(t, via, messageId, HUMAN_REPLY_2);
-			const outcome = await agentDraftLands(t, messageId, draftActionId);
+			await draftStepFinishes(t, messageId, draftActionId);
+			await routeStepRuns(t, messageId);
 
-			expect(outcome).toMatchObject({ ok: false, reason: 'taken_over' });
 			const message = await getMessage(t, messageId);
 			expect(message.processingStatus).toBe('draft_ready');
 			expect(message.manualTakeoverAt).toBeTypeOf('number');
@@ -157,26 +180,37 @@ describe.each<SaveMutation>(['saveDraftRevision', 'editDraft'])(
 				['reviewer-1', HUMAN_REPLY_2],
 			]);
 			expect(message.draftSavedAt).toBeTypeOf('number');
-			const action = await t.run(async (ctx) => (await ctx.db.get(draftActionId))!);
-			expect(action.status).toBe('abandoned');
+			// Route stood down before it began: no route action, no decision, and
+			// the walker scheduled nothing further.
+			expect(message.agentDecision).toBeUndefined();
+			expect(await pipelineTrace(t, messageId)).toEqual({ actions: ['draft'], walkerRuns: 0 });
 			expect(await takeoverAudits(t)).toEqual([{ from: 'drafting', via: 'save' }]);
 		});
 
-		it('keeps an edit of an agent draft that was recorded before the save', async () => {
+		it('keeps an edit of an agent draft against the route step in flight', async () => {
 			const t = convexTest(schema, modules);
-			// The draft step wrote its output; the route step has not run yet.
+			// The draft step wrote its output and the route step is running.
 			const { messageId } = await seed(t, {
 				draftResponse: AGENT_DRAFT,
 				draftSubject: 'Re: Refund',
 			});
+			const routeActionId = await t.run((ctx) => insertRunningAction(ctx, messageId, 'route'));
 
 			await save(t, via, messageId, HUMAN_REPLY);
+			// The route step's auto-send transition lands after the save.
 			const autoSend = await t.mutation(internal.inbox.processingLifecycle.transition, {
 				inboundMessageId: messageId,
-				input: { to: 'approved', at: Date.now(), source: 'auto' },
+				input: {
+					to: 'approved',
+					at: Date.now(),
+					source: 'auto',
+					completedActionId: routeActionId,
+				},
 			});
 
 			expect(autoSend).toMatchObject({ ok: false, reason: 'taken_over' });
+			const routeAction = await t.run(async (ctx) => (await ctx.db.get(routeActionId))!);
+			expect(routeAction.status).toBe('abandoned');
 			const message = await getMessage(t, messageId);
 			expect(message.processingStatus).toBe('draft_ready');
 			expect(message.draftResponse).toBe(HUMAN_REPLY);
@@ -255,9 +289,15 @@ describe('a re-draft with no human save during it', () => {
 			isDraftEdited: true,
 		});
 
-		const outcome = await agentDraftLands(t, messageId, draftActionId);
+		await draftStepFinishes(t, messageId, draftActionId);
+		// The route step holds the draft for review (the walker's transition).
+		const routeActionId = await t.run((ctx) => insertRunningAction(ctx, messageId, 'route'));
+		const held = await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: messageId,
+			input: { to: 'draft_ready', at: Date.now(), completedActionId: routeActionId },
+		});
 
-		expect(outcome).toMatchObject({ ok: true });
+		expect(held).toMatchObject({ ok: true });
 		const message = await getMessage(t, messageId);
 		expect(message.processingStatus).toBe('draft_ready');
 		expect(message.manualTakeoverAt).toBeUndefined();
