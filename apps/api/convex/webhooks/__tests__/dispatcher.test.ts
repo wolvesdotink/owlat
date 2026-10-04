@@ -38,6 +38,7 @@ vi.mock('../../_generated/api', () => {
 
 import { internal } from '../../_generated/api';
 import { dispatchInboundEvent } from '../dispatcher';
+import { bounceStatusCodeOf } from '../unresolvedBounce';
 import type { InboundEvent } from '../types';
 import type { ActionCtx } from '../../_generated/server';
 
@@ -1113,11 +1114,23 @@ describe('dispatchInboundEvent — unresolved-bounce observability', () => {
 		await dispatchInboundEvent(ctx, event);
 
 		// The transition was still attempted (we don't drop the event)…
-		expect(runMutationCalls).toHaveLength(1);
+		expect(runMutationCalls).toHaveLength(2);
 		expect(runMutationCalls[0]?.ref).toBe(
 			ref(internal.delivery.sendLifecycle.transitionByProviderMessageId)
 		);
-		// …but the no-row outcome now emits an observable signal rather than a no-op.
+		// …and the no-row outcome is stored for replay (#1194), never suppressed:
+		// a bounce names no address, and a soft one says nothing about it anyway…
+		expect(runMutationCalls[1]).toEqual({
+			ref: ref(internal.webhooks.unresolvedFeedback.record),
+			args: {
+				kind: 'bounce',
+				bounceType: 'hard',
+				providerMessageId: 'msg-orphan',
+				at: 3000,
+				suppression: 'not_applicable',
+			},
+		});
+		// …and still emits the observable log signal.
 		const messages = warnMessages();
 		expect(messages.some((m) => m.includes('unresolved_bounce'))).toBe(true);
 		expect(messages.some((m) => m.includes('email.bounced'))).toBe(true);
@@ -1139,6 +1152,25 @@ describe('dispatchInboundEvent — unresolved-bounce observability', () => {
 		expect(messages.some((m) => m.includes('unresolved_bounce'))).toBe(true);
 		expect(messages.some((m) => m.includes('email.complained'))).toBe(true);
 		expect(messages.some((m) => m.includes('msg-ghost'))).toBe(true);
+	});
+
+	it('acknowledges the webhook when the unresolved feedback cannot be stored', async () => {
+		const { ctx } = makeCtx();
+		let call = 0;
+		(ctx.runMutation as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+			call += 1;
+			if (call === 1) return SEND_NOT_FOUND;
+			throw new Error('write refused');
+		});
+		const event: InboundEvent = {
+			kind: 'email.bounced',
+			providerMessageId: 'msg-orphan',
+			at: 3000,
+			bounceType: 'soft',
+		};
+
+		await expect(dispatchInboundEvent(ctx, event)).resolves.toBeUndefined();
+		expect(call).toBe(2);
 	});
 
 	it('does NOT emit an unresolved_bounce signal when the Send row is found', async () => {
@@ -1176,6 +1208,145 @@ describe('dispatchInboundEvent — unresolved-bounce observability', () => {
 		await dispatchInboundEvent(ctx, event);
 
 		expect(warnMessages().some((m) => m.includes('unresolved_bounce'))).toBe(false);
+	});
+});
+
+/**
+ * #1194 — a complaint whose Message-ID matches no send. The complaint is stored
+ * either way; the address it names is blocked only when the event PROVES this
+ * deployment sent the mail (the MTA's VERP-backed production tag). A provider's
+ * signature proves the provider, not which deployment's mail it was about.
+ */
+describe('dispatchInboundEvent — complaint whose Message-ID matches no send', () => {
+	const SEND_NOT_FOUND = { ok: false, reason: 'send_not_found' } as const;
+
+	async function dispatchUnresolved(event: InboundEvent) {
+		const harness = makeCtx();
+		harness.nextRunMutationReturns(SEND_NOT_FOUND);
+		await dispatchInboundEvent(harness.ctx, event);
+		return harness.runMutationCalls;
+	}
+
+	it('blocks the complainer when the event is attributed to this deployment', async () => {
+		const calls = await dispatchUnresolved({
+			kind: 'email.complained',
+			providerMessageId: 'mta-ghost',
+			recipient: 'complainer@example.com',
+			providerType: 'mta',
+			deliveryDomain: 'production',
+			at: 4000,
+		});
+
+		expect(calls.map((c) => c.ref)).toEqual([
+			ref(internal.delivery.sendLifecycle.transitionMtaByProviderMessageId),
+			ref(internal.blockedEmails.addFromEvent),
+			ref(internal.webhooks.unresolvedFeedback.record),
+		]);
+		expect(calls[1]?.args).toEqual({ email: 'complainer@example.com', reason: 'complained' });
+		// The address was used at receive time; the record carries none.
+		expect(calls[2]?.args).toEqual({
+			kind: 'complaint',
+			providerMessageId: 'mta-ghost',
+			providerType: 'mta',
+			deliveryDomain: 'production',
+			at: 4000,
+			suppression: 'suppressed',
+		});
+	});
+
+	it.each(['ses', 'resend', 'mandrill'])(
+		'stores but never blocks a %s complaint: the provider echoes no deployment marker',
+		async (providerType) => {
+			const calls = await dispatchUnresolved({
+				kind: 'email.complained',
+				providerMessageId: `${providerType}-ghost`,
+				recipient: 'complainer@example.com',
+				providerType,
+				at: 4000,
+			});
+
+			expect(calls.map((c) => c.ref)).toEqual([
+				ref(internal.delivery.sendLifecycle.transitionByProviderMessageId),
+				ref(internal.webhooks.unresolvedFeedback.record),
+			]);
+			expect(calls[1]?.args).toMatchObject({ suppression: 'unattributed' });
+			expect(JSON.stringify(calls[1]?.args)).not.toContain('complainer@example.com');
+		}
+	);
+
+	it('stores but never blocks a tagged source that does not show the production tag', async () => {
+		const preview = await dispatchUnresolved({
+			kind: 'email.complained',
+			providerMessageId: 'mta-ghost',
+			recipient: 'complainer@example.com',
+			providerType: 'mta',
+			deliveryDomain: 'member_test',
+			at: 4000,
+		});
+		expect(preview.map((c) => c.ref)).not.toContain(ref(internal.blockedEmails.addFromEvent));
+		expect(preview[preview.length - 1]).toEqual({
+			ref: ref(internal.webhooks.unresolvedFeedback.record),
+			args: expect.objectContaining({ suppression: 'unattributed', deliveryDomain: 'member_test' }),
+		});
+	});
+
+	it('stores but never blocks for a source it cannot identify', async () => {
+		const calls = await dispatchUnresolved({
+			kind: 'email.complained',
+			providerMessageId: 'ghost',
+			recipient: 'complainer@example.com',
+			deliveryDomain: 'production',
+			at: 4000,
+		});
+
+		expect(calls.map((c) => c.ref)).toEqual([
+			ref(internal.delivery.sendLifecycle.transitionByProviderMessageId),
+			ref(internal.webhooks.unresolvedFeedback.record),
+		]);
+		expect(calls[1]?.args).toMatchObject({ suppression: 'unattributed' });
+	});
+
+	it('records a complaint that names nobody as such', async () => {
+		const calls = await dispatchUnresolved({
+			kind: 'email.complained',
+			providerMessageId: 'mta-ghost',
+			providerType: 'mta',
+			deliveryDomain: 'production',
+			at: 4000,
+		});
+		expect(calls[calls.length - 1]?.args).toMatchObject({ suppression: 'no_recipient' });
+	});
+
+	it('ignores the named complainer when the Message-ID resolves', async () => {
+		const harness = makeCtx();
+		harness.nextRunMutationReturns({
+			ok: true,
+			applied: 'transitioned',
+			from: 'sent',
+			to: 'complained',
+			contactEmail: 'c@x.com',
+		});
+		await dispatchInboundEvent(harness.ctx, {
+			kind: 'email.complained',
+			providerMessageId: 'known',
+			recipient: 'someone-else@example.com',
+			providerType: 'mandrill',
+			at: 4000,
+		});
+
+		expect(harness.runMutationCalls.map((c) => c.ref)).toEqual([
+			ref(internal.delivery.sendLifecycle.transitionByProviderMessageId),
+		]);
+	});
+});
+
+describe('bounceStatusCodeOf — the only part of a diagnostic that is stored', () => {
+	it.each([
+		['smtp; 550 5.1.1 <someone@example.com>: user unknown', '5.1.1'],
+		['452 mailbox full for someone@example.com', '452'],
+		['user someone@example.com unknown', null],
+	])('%s → %s', (diagnostic, code) => {
+		expect(bounceStatusCodeOf(diagnostic)).toBe(code);
 	});
 });
 

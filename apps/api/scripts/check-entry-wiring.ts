@@ -197,6 +197,8 @@ const HAND_RUN_PREFIXES: readonly string[] = ['migrations/'];
 const HAND_RUN_ENTRIES: Readonly<Record<string, string>> = {
 	'workspaces/deletion/walker.ts#abort':
 		'the operator exit for a workspace deletion that cannot finish (`convex run`)',
+	'webhooks/unresolvedFeedback.ts#status':
+		'the operator count of bounces and complaints that matched no send, with a sample (`convex run`)',
 	'auth/erasure/lifecycle.ts#status':
 		'the operator view of an account erasure’s progress and last error (`convex run`)',
 	'auth/erasure/lifecycle.ts#retry':
