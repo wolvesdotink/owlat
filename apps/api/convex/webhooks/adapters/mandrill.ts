@@ -53,8 +53,8 @@ import {
 	urlAndSortedParamsSigningBase,
 } from '../security';
 import { classifyBounceMessage } from '@owlat/shared/bounceClassification';
-import type { InboundBatchParser } from '../pipeline';
 import { ownSubaccountItems } from './mandrillSubaccount';
+import type { InboundBatchParser } from '../pipeline';
 import type { InboundEvent, ProviderSuppression, ProviderSuppressionReason } from '../types';
 
 /** Wire value written onto reconciled Send rows and read by the dispatcher. */
