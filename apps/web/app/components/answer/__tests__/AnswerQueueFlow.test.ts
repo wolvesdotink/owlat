@@ -223,4 +223,12 @@ describe('AnswerQueueFlow done screen', () => {
 		const leaked = [...words(german.text())].filter((word) => english.has(word));
 		expect(leaked).toEqual([]);
 	});
+
+	// UiIconBox is a block-level box, so the text-center around it does not move
+	// it: without mx-auto the check sat at the column's left edge (#1187).
+	it('centres the check icon above the title', () => {
+		const icon = renderDone('en').findComponent({ name: 'UiIconBox' });
+		expect(icon.attributes('icon')).toBe('lucide:check-circle-2');
+		expect(icon.classes()).toContain('mx-auto');
+	});
 });
