@@ -26,8 +26,9 @@ import {
 // that crosses it), then looks up the completion-failure records of the first
 // 10 rows (at most 2 x 10 x 8 KiB each). Worst case: 3 MiB + 1.6 MiB = 4.6 MiB
 // against the 16 MiB transaction limit. A longer range is counted by calling
-// again with `continueCursor`. `failUnanchoredLostSends` reads nothing itself:
-// it schedules the sweep's own pages (see `./stuckSendSweep`).
+// again with `continueCursor` and the first page's `asOf`.
+// `failUnanchoredLostSends` reads only its two lease rows and schedules the
+// sweep's own pages (see `./stuckSendSweep`).
 // ============================================================================
 
 const STATUS_PAGE_SIZE = 100;
@@ -52,17 +53,26 @@ const statusTables = { campaign: 'emailSends', transactional: 'transactionalSend
  *   `failUnanchoredLostSends` may fail.
  *
  * `counted` covers this page only. When `isDone` is false, pass
- * `continueCursor` as `cursor` to count the next page; the page stops early
- * when its rows are large.
+ * `continueCursor` as `cursor` AND the first page's `asOf` back to count the
+ * next page; the page stops early when its rows are large. Every page of one
+ * count is judged as of that one instant: a Convex cursor only resumes the
+ * query it came from, and the range's cutoff is part of that query, so a
+ * continuation that recomputed it from the clock would be refused.
  */
 export const status = internalQuery({
 	args: {
 		kind: v.union(v.literal('campaign'), v.literal('transactional')),
 		range: v.union(v.literal('due'), v.literal('unanchored')),
 		cursor: v.optional(v.string()),
+		// The instant the first page was read, returned by it. Required with
+		// `cursor`.
+		asOf: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const now = Date.now();
+		if (args.cursor !== undefined && args.asOf === undefined) {
+			throw new Error('A continuation needs the asOf its first page returned.');
+		}
+		const now = args.asOf ?? Date.now();
 		const table: SweepTable = statusTables[args.kind];
 		const mode = args.range === 'due' ? 'deadline' : 'unanchored';
 		const cutoff = mode === 'deadline' ? deadlineSweepCutoff(now) : now;
@@ -76,6 +86,7 @@ export const status = internalQuery({
 		return {
 			kind: args.kind,
 			range: args.range,
+			asOf: now,
 			counted: rows.length,
 			isDone: page.isDone,
 			continueCursor: page.isDone ? null : page.continueCursor,
@@ -119,7 +130,9 @@ export const failUnanchoredLostSends = internalMutation({
 				`createdBefore must be at least ${UNANCHORED_MIN_AGE_MS / 86_400_000} days in the past (at most ${latest}).`
 			);
 		}
-		await startLostSendPasses(ctx, 'unanchored', createdBefore);
+		// The operator's word wins: a running unanchored pass is taken over and
+		// stops at its next page.
+		await startLostSendPasses(ctx, 'unanchored', createdBefore, { isTakeover: true });
 		logInfo('[LostSendSweep] Operator started the unanchored pass', { createdBefore });
 		return { isStarted: true, createdBefore };
 	},

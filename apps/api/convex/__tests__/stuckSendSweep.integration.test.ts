@@ -16,8 +16,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { createTestCampaign, createTestContact, createTestEmailSend } from './factories';
 import { DAY, type T } from './helpers/sendCompletionFailures';
+import {
+	at,
+	drainSweep,
+	getSend,
+	holdLease,
+	HOUR,
+	queuedCampaignSend,
+	queuedTransactionalSend,
+	runCron,
+	T0,
+} from './helpers/stuckSendSweep';
 import { expectScheduledFailure } from './helpers/scheduledFailures';
 import {
 	LOST_SEND_ERROR_CODE,
@@ -51,8 +61,6 @@ vi.mock('../delivery/sendLifecycle/effects', async (importOriginal) => {
 });
 
 const modules = import.meta.glob('../**/*.*s');
-const HOUR = 60 * 60 * 1000;
-const T0 = Date.UTC(2026, 5, 1, 12, 0, 0);
 
 beforeEach(() => {
 	vi.useFakeTimers({ now: T0 });
@@ -64,44 +72,6 @@ afterEach(() => {
 	vi.useRealTimers();
 	vi.unstubAllEnvs();
 });
-
-function at(ms: number): void {
-	vi.setSystemTime(ms);
-}
-
-async function queuedCampaignSend(
-	t: T,
-	overrides: Record<string, unknown> = {}
-): Promise<{ campaignId: Id<'campaigns'>; sendId: Id<'emailSends'> }> {
-	return await t.run(async (ctx) => {
-		const campaignId = await ctx.db.insert('campaigns', createTestCampaign({ status: 'sending' }));
-		const contactId = await ctx.db.insert('contacts', createTestContact());
-		const sendId = await ctx.db.insert(
-			'emailSends',
-			createTestEmailSend({
-				campaignId,
-				contactId,
-				status: 'queued',
-				providerMessageId: undefined,
-				queuedAt: Date.now(),
-				...overrides,
-			})
-		);
-		return { campaignId, sendId };
-	});
-}
-
-async function queuedTransactionalSend(t: T): Promise<Id<'transactionalSends'>> {
-	return await t.run(
-		async (ctx) =>
-			await ctx.db.insert('transactionalSends', {
-				kind: 'transactional',
-				email: 'person@example.com',
-				status: 'queued',
-				queuedAt: Date.now(),
-			})
-	);
-}
 
 /** One governed attempt passing the dispatch boundary, as the worker does it. */
 async function attempt(
@@ -126,20 +96,6 @@ async function attempt(
 		},
 		retryState: { attempt: attemptNumber, startedAt, idempotencyKey: `send_${sendId}` },
 	});
-}
-
-async function getSend(t: T, sendId: Id<'emailSends'> | Id<'transactionalSends'>) {
-	return await t.run(async (ctx) => await ctx.db.get(sendId));
-}
-
-/** Run the cron and every page it schedules. */
-async function runCron(t: T): Promise<void> {
-	await t.mutation(internal.delivery.stuckSendSweep.sweepLostSends, {});
-	await drainSweep(t);
-}
-
-async function drainSweep(t: T): Promise<void> {
-	await t.finishAllScheduledFunctions(vi.runAllTimers);
 }
 
 describe('the first-attempt record', () => {
@@ -346,14 +302,16 @@ describe('the cron sweep', () => {
 		const live = (await queuedCampaignSend(t, { firstAttemptAt: T0 + 5 * DAY })).sendId;
 
 		at(T0 + 6 * DAY);
+		await holdLease(t, 'emailSends:deadline', 1, T0 + 6 * DAY);
 		const first = await t.mutation(internal.delivery.stuckSendSweep.sweepLostSendPage, {
 			table: 'emailSends',
 			mode: 'deadline',
 			cutoff: T0 + DAY,
 			cursor: null,
+			generation: 1,
 		});
-		expect(first.scheduled).toBe(SWEEP_PAGE_SIZE);
-		expect(first.isDone).toBe(false);
+		// The first page is all records waiting for an operator: no call for any.
+		expect(first).toMatchObject({ scheduled: 0, skipped: SWEEP_PAGE_SIZE, isDone: false });
 
 		await runCron(t);
 		for (const id of lost) expect((await getSend(t, id))?.status).toBe('failed');

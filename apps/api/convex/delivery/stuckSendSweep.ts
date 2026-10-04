@@ -50,20 +50,35 @@ import { unresolvedCompletionFailures } from './sendCompletionFeedback';
 // skips are passed over rather than read again. The page only reads; each
 // candidate is judged and failed in a transaction of its own (`failLostSend`,
 // scheduled), so a Send whose lifecycle throws (the #1184 fault) rolls back
-// alone and the next pass tries it again. Worst case per transaction:
-//   - a page: 2 MiB, plus the one row that crosses the budget (up to 1 MiB),
-//     so 3 MiB; and 25 scheduled calls of a few hundred bytes each.
-//   - `failLostSend`: the Send row is read five times (this judgment, then the
-//     lifecycle transition's own loads and its patch), so 5 MiB at the
-//     document limit, plus its completion-failure records (at most
-//     2 x 10 x 8 KiB = 160 KiB) and the lifecycle's small reads (a campaign
-//     stat shard, the send's source row). The live completion runs the same
-//     transition on the same row, so this is no more than any completion of
-//     that Send already costs.
-//   Measured with Sends of about 0.95 MiB: a page and a `status` page fit under
-//   3 MiB, `failLostSend` under 5 MiB (it fails at 4.5 MiB).
-// `__tests__/stuckSendSweepLimits.integration.test.ts` runs every path with
-// near-1 MiB Sends under a 6 MiB read limit.
+// alone and the next pass tries it again.
+//
+// ONE PASS AT A TIME. Each pass kind (table x mode) holds a lease row
+// (`lostSendSweepLeases`) while its chain runs. The hourly cron skips a table
+// whose previous pass is still scheduling, so passes never overlap and each
+// candidate gets at most one `failLostSend` per pass; a page also skips Sends
+// with an unresolved completion-failure record, which can sit in the range
+// for as long as the record waits for an operator.
+//
+// WORST CASE PER TRANSACTION, every document at the 1 MiB maximum:
+//   - cron tick / operator pass: two lease rows (a few hundred bytes each).
+//   - a page: its lease row, 2 MiB of candidates plus the one row that crosses
+//     the budget (1 MiB), and two first-row record lookups per candidate (at
+//     most 25 x 2 x 8 KiB = 400 KiB): about 3.4 MiB.
+//   - `failLostSend` for a transactional Send: the Send read three times (this
+//     judgment, then the lifecycle's load and its patch), plus its records (at
+//     most 2 x 10 x 8 KiB = 160 KiB) and small source rows: about 3.2 MiB.
+//   - `failLostSend` for a campaign Send: the same three reads, then campaign
+//     reconciliation (`campaigns/lifecycle.ts:tryCompleteCampaign`) reads the
+//     campaign, its send job, one other Send of the campaign and either a
+//     second one still queued or, when the campaign completes, the campaign
+//     again for its patch. Seven documents plus records, a stat shard, a
+//     listing counter and an audit row: about 7.3 MiB. The live completion runs
+//     the same transition on the same rows, so a sweep costs no more than any
+//     completion of that Send.
+// Measured with ~0.95 MiB documents (`__tests__/stuckSendSweepLimits`): a page
+// and a `status` page fit under 3 MiB; `failLostSend` under 3 MiB for a
+// transactional Send and under 6.75 MiB (failing at 6.5 MiB) for a campaign
+// Send whose campaign, send job and sibling Sends are all that large.
 // ============================================================================
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -242,11 +257,70 @@ function refFor(table: SweepTable, send: SendRow) {
 		: { kind: 'transactional' as const, id: send._id as Doc<'transactionalSends'>['_id'] };
 }
 
+/** Whether a Send has an open or exhausted completion-failure record (2 reads). */
+async function hasUnresolvedCompletionFailure(
+	ctx: Pick<QueryCtx, 'db'>,
+	sendId: SendRow['_id']
+): Promise<boolean> {
+	for (const status of ['open', 'exhausted'] as const) {
+		const row = await ctx.db
+			.query('sendCompletionFailures')
+			.withIndex('by_send_and_status', (q) => q.eq('sendRef.id', sendId).eq('status', status))
+			.first();
+		if (row) return true;
+	}
+	return false;
+}
+
+/**
+ * A pass whose pages have not stamped its lease for this long has died (a page
+ * threw, or a workspace deletion cancelled it) and may be taken over. Pages
+ * follow each other with no delay, so a live pass stamps it every few seconds.
+ */
+export const LOST_SEND_LEASE_STALE_MS = 2 * HOUR_MS;
+
+const passKey = (table: SweepTable, mode: SweepMode) => `${table}:${mode}`;
+
+async function readLease(ctx: Pick<QueryCtx, 'db'>, table: SweepTable, mode: SweepMode) {
+	return await ctx.db
+		.query('lostSendSweepLeases')
+		.withIndex('by_pass', (q) => q.eq('pass', passKey(table, mode)))
+		.unique();
+}
+
+/**
+ * Claim the lease for one pass and return its generation, or `null` when a
+ * live pass of the same kind holds it and this is not a takeover.
+ */
+async function claimLostSendPass(
+	ctx: Pick<MutationCtx, 'db'>,
+	table: SweepTable,
+	mode: SweepMode,
+	cutoff: number,
+	isTakeover: boolean
+): Promise<number | null> {
+	const now = Date.now();
+	const lease = await readLease(ctx, table, mode);
+	if (lease?.isActive && !isTakeover && now - lease.heartbeatAt < LOST_SEND_LEASE_STALE_MS) {
+		return null;
+	}
+	const generation = (lease?.generation ?? 0) + 1;
+	const fields = { generation, isActive: true, cutoff, startedAt: now, heartbeatAt: now };
+	if (lease) await ctx.db.patch(lease._id, fields);
+	else await ctx.db.insert('lostSendSweepLeases', { pass: passKey(table, mode), ...fields });
+	return generation;
+}
+
 /**
  * One page of one pass over one table, then the next page by cursor until the
  * range is done. The cutoff is fixed for the whole pass so the cursor stays
  * valid. The page only reads the candidates and schedules `failLostSend` for
- * each, which judges the row again as it is then.
+ * each, which judges the row again as it is then. A Send with an unresolved
+ * completion-failure record gets no call: it can stay in the range for as long
+ * as that record waits for an operator.
+ *
+ * The page runs only while its pass holds the lease (`generation`), so a pass
+ * that was taken over stops here, and it stamps the lease on the way.
  */
 export const sweepLostSendPage = internalMutation({
 	args: {
@@ -254,66 +328,97 @@ export const sweepLostSendPage = internalMutation({
 		mode: sweepModeValidator,
 		cutoff: v.number(),
 		cursor: v.union(v.string(), v.null()),
+		generation: v.number(),
 	},
 	handler: async (ctx, args) => {
+		const lease = await readLease(ctx, args.table, args.mode);
+		if (!lease?.isActive || lease.generation !== args.generation) {
+			return { scheduled: 0, skipped: 0, isDone: true, isSuperseded: true };
+		}
 		const page = await lostSendCandidates(ctx, args.table, args.mode, args.cutoff).paginate({
 			numItems: SWEEP_PAGE_SIZE,
 			cursor: args.cursor,
 			maximumBytesRead: LOST_SEND_PAGE_MAX_BYTES,
 		});
+		let scheduled = 0;
+		let skipped = 0;
 		for (const send of page.page) {
+			if (await hasUnresolvedCompletionFailure(ctx, send._id)) {
+				skipped += 1;
+				continue;
+			}
 			await ctx.scheduler.runAfter(0, internal.delivery.stuckSendSweep.failLostSend, {
 				sendRef: refFor(args.table, send),
 				mode: args.mode,
 				cutoff: args.cutoff,
 			});
+			scheduled += 1;
 		}
-		if (page.page.length > 0) {
+		if (scheduled > 0) {
 			logInfo('[LostSendSweep] Page scheduled', {
 				table: args.table,
 				mode: args.mode,
-				candidates: page.page.length,
+				candidates: scheduled,
+				skipped,
 			});
 		}
+		await ctx.db.patch(lease._id, { heartbeatAt: Date.now(), isActive: !page.isDone });
 		if (!page.isDone) {
 			await ctx.scheduler.runAfter(0, internal.delivery.stuckSendSweep.sweepLostSendPage, {
 				...args,
 				cursor: page.continueCursor,
 			});
 		}
-		return { scheduled: page.page.length, isDone: page.isDone };
+		return { scheduled, skipped, isDone: page.isDone, isSuperseded: false };
 	},
 });
 
 /**
- * Start one pass over both send tables, each in its own chain: a transaction
- * may run only one paginated query.
+ * Start one pass over each send table, each in its own chain (a transaction
+ * may run only one paginated query) and each under its lease. The cron skips a
+ * table whose previous pass of the same mode is still running; the operator's
+ * pass takes the lease over, which stops a running chain at its next page.
  */
 export async function startLostSendPasses(
-	ctx: Pick<MutationCtx, 'scheduler'>,
+	ctx: Pick<MutationCtx, 'db' | 'scheduler'>,
 	mode: SweepMode,
-	cutoff: number
-): Promise<void> {
+	cutoff: number,
+	options: { isTakeover: boolean }
+): Promise<{ started: SweepTable[]; busy: SweepTable[] }> {
+	const started: SweepTable[] = [];
+	const busy: SweepTable[] = [];
 	for (const table of ['emailSends', 'transactionalSends'] as const) {
+		const generation = await claimLostSendPass(ctx, table, mode, cutoff, options.isTakeover);
+		if (generation === null) {
+			busy.push(table);
+			continue;
+		}
 		await ctx.scheduler.runAfter(0, internal.delivery.stuckSendSweep.sweepLostSendPage, {
 			table,
 			mode,
 			cutoff,
 			cursor: null,
+			generation,
 		});
+		started.push(table);
 	}
+	return { started, busy };
 }
 
 /**
  * Cron: fail the Sends first attempted more than the delivery window plus the
  * grace ago that still have no completion, no provider id and no open
- * completion-failure record. A tick with nothing due is two index range reads.
+ * completion-failure record. A tick with nothing due is two lease reads, two
+ * lease writes and two index range reads.
  */
 export const sweepLostSends = internalMutation({
 	args: {},
 	handler: async (ctx) => {
 		const cutoff = deadlineSweepCutoff(Date.now());
-		await startLostSendPasses(ctx, 'deadline', cutoff);
-		return { cutoff };
+		const passes = await startLostSendPasses(ctx, 'deadline', cutoff, { isTakeover: false });
+		if (passes.busy.length > 0) {
+			logInfo('[LostSendSweep] Previous pass still running; not started', { tables: passes.busy });
+		}
+		return { cutoff, ...passes };
 	},
 });

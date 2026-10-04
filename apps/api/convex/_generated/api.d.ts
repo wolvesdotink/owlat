@@ -1299,6 +1299,7 @@ import type * as schema_instanceHotRows from '../schema/instanceHotRows.js';
 import type * as schema_integrations from '../schema/integrations.js';
 import type * as schema_knowledge from '../schema/knowledge.js';
 import type * as schema_knowledgeCommitmentFacets from '../schema/knowledgeCommitmentFacets.js';
+import type * as schema_lostSendSweep from '../schema/lostSendSweep.js';
 import type * as schema_mail from '../schema/mail.js';
 import type * as schema_mailAccounts from '../schema/mailAccounts.js';
 import type * as schema_mailAi from '../schema/mailAi.js';
@@ -2770,6 +2771,7 @@ declare const fullApi: ApiFromModules<{
 	'schema/integrations': typeof schema_integrations;
 	'schema/knowledge': typeof schema_knowledge;
 	'schema/knowledgeCommitmentFacets': typeof schema_knowledgeCommitmentFacets;
+	'schema/lostSendSweep': typeof schema_lostSendSweep;
 	'schema/mail': typeof schema_mail;
 	'schema/mailAccounts': typeof schema_mailAccounts;
 	'schema/mailAi': typeof schema_mailAi;

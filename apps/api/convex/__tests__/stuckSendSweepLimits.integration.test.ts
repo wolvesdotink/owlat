@@ -15,7 +15,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { createTestCampaign, createTestContact, createTestEmailSend } from './factories';
+import {
+	createTestCampaign,
+	createTestContact,
+	createTestEmailSend,
+	createTestTopic,
+} from './factories';
 import { DAY, type T } from './helpers/sendCompletionFailures';
 import { UNANCHORED_MIN_AGE_MS } from '../delivery/stuckSendSweep';
 
@@ -116,23 +121,73 @@ describe('the lost-send sweep with Sends near the document size limit', () => {
 			for (const range of ['due', 'unanchored'] as const) {
 				let counted = 0;
 				let pages = 0;
-				let cursor: string | undefined;
+				let next: { cursor: string; asOf: number } | undefined;
 				for (;;) {
 					const page = await t.query(internal.delivery.stuckSendSweepAdmin.status, {
 						kind,
 						range,
-						...(cursor !== undefined ? { cursor } : {}),
+						...next,
 					});
 					counted += page.counted;
 					pages += 1;
 					if (page.isDone || page.continueCursor === null) break;
-					cursor = page.continueCursor;
+					next = { cursor: page.continueCursor, asOf: page.asOf };
 				}
 				expect(counted, `${kind} ${range}`).toBe(PER_RANGE);
 				// The byte budget, not the 100-row page size, ended each page.
 				expect(pages, `${kind} ${range}`).toBeGreaterThan(1);
 			}
 		}
+	});
+
+	it("status keeps the first page's cutoff on every continuation", async () => {
+		// A Convex cursor resumes only the query it came from, and the range's
+		// cutoff is part of that query. convex-test does not check that, so this
+		// pins it by what the range returns: a row that only enters the range
+		// after the first page must not be counted by a continuation.
+		const t = harness();
+		await fill(t);
+		const asOf = T0 + 30 * DAY;
+		vi.setSystemTime(asOf);
+		const first = await t.query(internal.delivery.stuckSendSweepAdmin.status, {
+			kind: 'transactional',
+			range: 'unanchored',
+		});
+		expect(first.asOf).toBe(asOf);
+		expect(first.isDone).toBe(false);
+
+		// An hour later a new Send is queued, still with no first attempt.
+		vi.setSystemTime(asOf + 60 * 60 * 1000);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('transactionalSends', {
+				kind: 'transactional',
+				email: 'later@example.com',
+				status: 'queued',
+				queuedAt: Date.now(),
+			});
+		});
+		let counted = first.counted;
+		let next = { cursor: first.continueCursor ?? '', asOf: first.asOf };
+		for (;;) {
+			const page = await t.query(internal.delivery.stuckSendSweepAdmin.status, {
+				kind: 'transactional',
+				range: 'unanchored',
+				...next,
+			});
+			expect(page.asOf).toBe(asOf);
+			counted += page.counted;
+			if (page.isDone || page.continueCursor === null) break;
+			next = { cursor: page.continueCursor, asOf: page.asOf };
+		}
+		expect(counted).toBe(PER_RANGE);
+
+		await expect(
+			t.query(internal.delivery.stuckSendSweepAdmin.status, {
+				kind: 'transactional',
+				range: 'unanchored',
+				cursor: first.continueCursor ?? '',
+			})
+		).rejects.toThrow(/asOf/u);
 	});
 
 	it('the cron fails every due Send inside the read limit', async () => {
@@ -163,5 +218,64 @@ describe('the lost-send sweep with Sends near the document size limit', () => {
 		expect(new Set(await statuses(t, [...rows.campaignDue, ...rows.transactionalDue]))).toEqual(
 			new Set(['queued'])
 		);
+	});
+
+	it('fails a campaign Send whose campaign, send job and siblings are all near the limit', async () => {
+		// The heaviest `failLostSend`: campaign reconciliation reads the campaign,
+		// its send job and two other Sends (a terminal one, and one still queued),
+		// or re-reads the campaign to complete it. Seven ~0.95 MiB documents.
+		for (const hasQueuedSibling of [true, false]) {
+			const t = convexTest({
+				schema,
+				modules,
+				transactionLimits: { bytesRead: 8 * MiB },
+			}) as T;
+			const sendId = await t
+				.run(async (ctx) => {
+					const campaignId = await ctx.db.insert(
+						'campaigns',
+						createTestCampaign({ status: 'sending', archiveHtmlContent: 'h'.repeat(LARGE) })
+					);
+					const contactId = await ctx.db.insert('contacts', createTestContact());
+					const topicId = await ctx.db.insert('topics', createTestTopic());
+					await ctx.db.insert('campaignSendJobs', {
+						campaignId,
+						phase: 'done',
+						cursor: 'c'.repeat(LARGE),
+						audience: { kind: 'topic', topicId },
+						enqueuedCount: 3,
+						totalCandidates: 3,
+						startedAt: T0,
+						updatedAt: T0,
+					});
+					return { campaignId, contactId };
+				})
+				.then(async ({ campaignId, contactId }) => {
+					const big = (overrides: Record<string, unknown>) =>
+						t.run(
+							async (ctx) =>
+								await ctx.db.insert(
+									'emailSends',
+									createTestEmailSend({
+										campaignId,
+										contactId,
+										personalizedSubject: 's'.repeat(LARGE),
+										...overrides,
+									})
+								)
+						);
+					await big({ status: 'sent' });
+					if (hasQueuedSibling) await big({ status: 'queued', providerMessageId: 'mta-1' });
+					return await big({ status: 'queued', providerMessageId: undefined, firstAttemptAt: T0 });
+				});
+			vi.setSystemTime(T0 + 30 * DAY);
+			const result = await t.mutation(internal.delivery.stuckSendSweep.failLostSend, {
+				sendRef: { kind: 'campaign', id: sendId },
+				mode: 'deadline',
+				cutoff: T0 + 1,
+			});
+			expect(result.isFailed, `queued sibling: ${hasQueuedSibling}`).toBe(true);
+			vi.setSystemTime(T0);
+		}
 	});
 });
