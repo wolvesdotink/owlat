@@ -362,6 +362,14 @@ export const sweepLostSendPage = internalMutation({
 				skipped,
 			});
 		}
+		// The lease ends with the page chain, not with the `failLostSend` calls it
+		// scheduled. When the scheduler is backed up, the next pass (or a
+		// takeover) can schedule a second call for a Send whose first one has not
+		// run yet: at most one more per pass per Send. That is redundant work,
+		// never a second outcome. Each call judges the row again in its own
+		// transaction, so the first fails the Send and every later one finds it
+		// no longer `queued` and writes nothing
+		// (`__tests__/stuckSendSweepPasses.integration.test.ts` pins this).
 		await ctx.db.patch(lease._id, { heartbeatAt: Date.now(), isActive: !page.isDone });
 		if (!page.isDone) {
 			await ctx.scheduler.runAfter(0, internal.delivery.stuckSendSweep.sweepLostSendPage, {

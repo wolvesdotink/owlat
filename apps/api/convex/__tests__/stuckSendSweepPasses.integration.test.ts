@@ -11,7 +11,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
-import { DAY } from './helpers/sendCompletionFailures';
+import { DAY, statsSent, type T } from './helpers/sendCompletionFailures';
 import {
 	at,
 	drainSweep,
@@ -20,6 +20,7 @@ import {
 	HOUR,
 	pendingPages,
 	queuedCampaignSend,
+	queuedTransactionalSend,
 	runCron,
 	T0,
 } from './helpers/stuckSendSweep';
@@ -105,5 +106,88 @@ describe('one pass at a time', () => {
 			['emailSends', 3],
 			['transactionalSends', 1],
 		]);
+	});
+});
+
+/** Every application table's rows, to show a call wrote nothing at all. */
+async function snapshot(t: T): Promise<string> {
+	return await t.run(async (ctx) => {
+		const tables: Record<string, unknown[]> = {};
+		for (const name of Object.keys(schema.tables).sort()) {
+			tables[name] = await ctx.db.query(name as keyof typeof schema.tables).collect();
+		}
+		return JSON.stringify(tables);
+	});
+}
+
+async function statsFailed(t: T, campaignId: string): Promise<number> {
+	return await t.run(async (ctx) => {
+		const shards = await ctx.db.query('campaignStatShards').collect();
+		return shards
+			.filter((shard) => shard.campaignId === campaignId)
+			.reduce((sum, shard) => sum + (shard.statsFailed ?? 0), 0);
+	});
+}
+
+describe('a Send scheduled twice (a backed-up scheduler across passes)', () => {
+	// The lease ends with a pass's page chain, not with the calls it scheduled,
+	// so a later pass can schedule a second call for a Send whose first has not
+	// run. The second must be redundant work and nothing more.
+	it('fails a campaign Send once: one status change, one failed count, one completion', async () => {
+		const t = convexTest(schema, modules);
+		const { campaignId, sendId } = await queuedCampaignSend(t, { firstAttemptAt: T0 });
+		at(T0 + 6 * DAY);
+		const call = {
+			sendRef: { kind: 'campaign' as const, id: sendId },
+			mode: 'deadline' as const,
+			cutoff: T0 + DAY,
+		};
+		await t.run(async (ctx) => {
+			await ctx.scheduler.runAfter(0, internal.delivery.stuckSendSweep.failLostSend, call);
+			await ctx.scheduler.runAfter(0, internal.delivery.stuckSendSweep.failLostSend, call);
+		});
+		await drainSweep(t);
+
+		const send = await getSend(t, sendId);
+		expect(send).toMatchObject({ status: 'failed', errorCode: 'SEND_COMPLETION_LOST' });
+		expect(await statsFailed(t, campaignId)).toBe(1);
+		expect(await statsSent(t, campaignId)).toBe(0);
+		const campaign = await t.run(async (ctx) => await ctx.db.get(campaignId));
+		expect(campaign?.status).toBe('sent');
+
+		// A third call, the shape of the next pass's duplicate, writes nothing:
+		// no status, counter, listing count, audit row or campaign change.
+		const before = await snapshot(t);
+		const again = await t.mutation(internal.delivery.stuckSendSweep.failLostSend, call);
+		expect(again).toEqual({ isFailed: false, reason: 'not_queued' });
+		await drainSweep(t);
+		expect(await snapshot(t)).toBe(before);
+	});
+
+	it('fails a transactional Send once, and the duplicate writes nothing', async () => {
+		const t = convexTest(schema, modules);
+		const sendId = await queuedTransactionalSend(t);
+		await t.run(async (ctx) => {
+			await ctx.db.patch(sendId, { firstAttemptAt: T0 });
+		});
+		at(T0 + 6 * DAY);
+		const call = {
+			sendRef: { kind: 'transactional' as const, id: sendId },
+			mode: 'deadline' as const,
+			cutoff: T0 + DAY,
+		};
+		await t.run(async (ctx) => {
+			await ctx.scheduler.runAfter(0, internal.delivery.stuckSendSweep.failLostSend, call);
+			await ctx.scheduler.runAfter(0, internal.delivery.stuckSendSweep.failLostSend, call);
+		});
+		await drainSweep(t);
+		const failed = await getSend(t, sendId);
+		expect(failed).toMatchObject({ status: 'failed', errorCode: 'SEND_COMPLETION_LOST' });
+
+		const before = await snapshot(t);
+		const again = await t.mutation(internal.delivery.stuckSendSweep.failLostSend, call);
+		expect(again).toEqual({ isFailed: false, reason: 'not_queued' });
+		await drainSweep(t);
+		expect(await snapshot(t)).toBe(before);
 	});
 });
