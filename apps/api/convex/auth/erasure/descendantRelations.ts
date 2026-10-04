@@ -99,6 +99,13 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	desc('mailboxes', 'mailDrafts', 'mailboxId', 'delete', 'Drafts, with their attachment files.'),
 	desc(
 		'mailboxes',
+		'mailDraftRequestNonces',
+		'mailboxId',
+		'delete',
+		'Compose-request bindings: a nonce and a draft id, nothing typed.'
+	),
+	desc(
+		'mailboxes',
 		'mailDrafts',
 		'sendAsMailboxId',
 		'retain',
@@ -262,6 +269,13 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	desc('mailLabels', 'mailLabels', 'parentId', 'delete', SAME_MAILBOX),
 	desc('mailLabels', 'mailFilters', 'actions[].labelId', 'delete', SAME_MAILBOX),
 	desc('mailDrafts', 'mailAttachmentShares', 'sourceDraftId', 'delete', SAME_MAILBOX),
+	desc(
+		'mailDrafts',
+		'mailDraftRequestNonces',
+		'draftId',
+		'retain',
+		'Outlives its draft on purpose, so a retried create learns the draft is gone instead of making another; goes with the mailbox.'
+	),
 	desc(
 		'mailDrafts',
 		'answerAskSessions',

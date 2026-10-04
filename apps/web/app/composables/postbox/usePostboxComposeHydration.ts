@@ -1,29 +1,32 @@
 /**
- * Hydrate the composer from a saved draft row (reopen / continue editing /
- * after an undo-send). Split out of usePostboxCompose so that composable stays
- * under the file-size cap; it is only ever set up when the compose seed carries
- * a `draftId`, so a fresh compose never subscribes to `drafts.get`.
+ * The composer's view of its draft row: hydration of a reopened draft, and a
+ * live observation of the row for as long as the composer has one.
  *
- * The composer stays editable while `drafts.get` is in flight, which makes the
- * first answer a MERGE, not an assignment (#896). Every field the user changed
- * before it arrived is recorded as touched, by name — an empty value is not a
- * marker, because clearing a field is an edit too — and keeps the user's value;
- * every other field takes the row's. Until then the state stays 'loading' (or
- * 'error' when the read failed), and the autosave and send paths refuse to
- * write the snapshot, which would carry empty stand-ins for everything not yet
- * loaded. A read that answers "no such row" for longer than a short grace
- * becomes 'missing' and keeps refusing them; only a row that shows up after
- * all (access restored) is merged and unlocks them.
+ * Subscribes to `drafts.get` whenever the composer has a draft id (a reopened
+ * draft, a row created during this mount, or a request nonce that turned out
+ * to name an existing row). Two jobs:
+ *
+ *   - MERGE (reopen only): the composer stays editable while `drafts.get` is
+ *     in flight, which makes the first answer a merge, not an assignment
+ *     (#896). Every field the person changed before it arrived is touched (the
+ *     shared tracker, `usePostboxComposeTouched`) and keeps their value; every
+ *     other field takes the row's. Until then the state stays 'loading' (or
+ *     'error' when the read failed), and autosave and send refuse to write a
+ *     snapshot full of empty stand-ins. A read that answers "no such row" for
+ *     longer than a short grace becomes 'missing'.
+ *   - OBSERVE (always): `latestRow` follows every answer, normalized for the
+ *     device mirror, and the row's lifecycle (state, scheduled time) stays
+ *     current after the merge, so a remote schedule or delete is seen.
  */
 
-import type { Ref, WatchStopHandle } from 'vue';
+import type { Ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
 import type { ComposerMode } from './usePostboxCompose';
 import type { ComposerAttachment } from './usePostboxComposeAttachments';
-import { composeDraftFields } from '~/utils/postboxDraftFields';
-import type { DraftMirrorFields } from '~/utils/postboxDraftMirror';
+import { mirrorFieldsOfRow, type MirrorFields } from '~/utils/postboxDraftMirror';
+import type { ComposeTouched } from './usePostboxComposeTouched';
 
 /**
  * Whether a reopened draft's row has reached the composer yet. 'missing' means
@@ -68,34 +71,40 @@ interface ComposeHydrationTargets {
 	isGapGuarded: Ref<boolean>;
 }
 
-/** The fields autosave writes as one snapshot; each is merged on its own. */
-const TRACKED_DRAFT_FIELDS = [
-	'toAddresses',
-	'ccAddresses',
-	'bccAddresses',
-	'subject',
-	'bodyHtml',
-	'bodyBlocks',
-	'composerMode',
-	'followUpRemindAt',
-] as const;
-export type TrackedDraftField = (typeof TRACKED_DRAFT_FIELDS)[number];
+/**
+ * The composer's latest knowledge of its row: not yet known (no id, or the
+ * read has not answered), confirmed gone, or loaded.
+ */
+export type LatestDraftRow =
+	| { status: 'unknown' }
+	| { status: 'missing' }
+	| {
+			status: 'loaded';
+			fields: MirrorFields;
+			state: 'draft' | 'pending_send' | 'scheduled';
+			lastEditedAt: number | null;
+	  };
 
 interface HydrationOptions {
 	/** Owned by the composer: autosave and send read it too. */
 	state: Ref<InitialHydrationState>;
+	/** The shared touched-field tracker; the merge keeps touched fields. */
+	touched: ComposeTouched;
 	/**
-	 * Fields the seed filled in for this reopened draft. They count as touched:
-	 * a host seeds a reopened draft only with content newer than the row (the
-	 * live fields of a promoted inline reply, an offline-queued send brought
-	 * back by undo), so the row must not replace them.
+	 * Whether the first loaded row is merged into the editor: a reopened draft,
+	 * or a nonce that named an existing row. A row created during this mount is
+	 * only observed (the editor already holds what it was created from).
 	 */
-	seeded: readonly TrackedDraftField[];
+	shouldMerge: () => boolean;
+	/** Receives every answer, normalized. */
+	latestRow: Ref<LatestDraftRow>;
 	/**
-	 * Receives the row exactly as the server returned it, before seeded or
-	 * touched fields are laid over it: the device mirror reconciles against it.
+	 * Runs after the merge and before the state turns 'ready': the compose page
+	 * decides here whether text it parked on an earlier leave is applied or
+	 * offered (it must not be autosaved over the row before that decision).
+	 * Applying fields there is the caller's business (outside `applying`).
 	 */
-	serverSnapshot?: Ref<DraftMirrorFields | null>;
+	beforeReady?: (row: MirrorFields) => void;
 }
 
 type DraftRow = {
@@ -120,64 +129,18 @@ type DraftRow = {
 	}>;
 };
 
-/**
- * The row's own draft fields, serialised exactly as the composer snapshots its
- * live fields (`composeDraftFields`), so the mirror compares like with like.
- */
-export function serverFieldsOf(draft: DraftRow): DraftMirrorFields {
-	let blocks: unknown[] = [];
-	if (draft.bodyBlocks) {
-		try {
-			blocks = JSON.parse(draft.bodyBlocks) as unknown[];
-		} catch {
-			// Malformed on the row: compare as empty, like hydration renders it.
-		}
-	}
-	return {
-		...composeDraftFields({
-			toAddresses: { value: draft.toAddresses ?? [] },
-			ccAddresses: { value: draft.ccAddresses ?? [] },
-			bccAddresses: { value: draft.bccAddresses ?? [] },
-			subject: { value: draft.subject ?? '' },
-			bodyHtml: { value: draft.bodyHtml ?? '' },
-			bodyBlocks: { value: blocks },
-			composerMode: { value: draft.composerMode ?? 'simple' },
-		}),
-		followUpRemindAt: draft.followUpRemindAt ?? null,
-	};
-}
-
 export function usePostboxComposeHydration(
-	draftId: Id<'mailDrafts'>,
+	draftId: Readonly<Ref<Id<'mailDrafts'> | null>>,
 	fields: ComposeHydrationTargets,
 	options: HydrationOptions
 ) {
-	const { state } = options;
-	const hydrateQuery = useConvexQuery(api.mail.drafts.get, () => ({ draftId }));
-	const touched = new Set<TrackedDraftField>(options.seeded);
-	let applying = false;
-
-	// Synchronous, so an edit is recorded before anything else can react to it.
-	const stopTracking: WatchStopHandle[] = TRACKED_DRAFT_FIELDS.map((name) =>
-		watch(
-			fields[name],
-			() => {
-				if (applying || state.value === 'ready') return;
-				touched.add(name);
-				// Body text is judged in the mode it was typed in: letting the row's
-				// mode win would hide a simple-mode edit behind a full-mode design
-				// (or the reverse). The row's other body stays in `bodyBlocks` /
-				// `bodyHtml`, one mode switch away, and is not overwritten — a
-				// simple-mode save leaves `bodyBlocks` alone on the server.
-				if (name === 'bodyHtml' || name === 'bodyBlocks') touched.add('composerMode');
-			},
-			{ deep: true, flush: 'sync' }
-		)
+	const { state, touched, latestRow } = options;
+	const hydrateQuery = useConvexQuery(api.mail.drafts.get, () =>
+		draftId.value ? { draftId: draftId.value } : ('skip' as const)
 	);
 
 	function apply(draft: DraftRow) {
-		if (options.serverSnapshot) options.serverSnapshot.value = serverFieldsOf(draft);
-		const keep = (name: TrackedDraftField) => touched.has(name);
+		const keep = (name: Parameters<ComposeTouched['isTouched']>[0]) => touched.isTouched(name);
 		fields.draftState.value = draft.state ?? 'draft';
 		if (draft.lastEditedAt) fields.lastSavedAt.value = draft.lastEditedAt;
 		fields.scheduledSendAt.value = draft.scheduledSendAt ?? null;
@@ -221,36 +184,51 @@ export function usePostboxComposeHydration(
 	onScopeDispose(clearMissingTimer);
 
 	watch(
-		[() => hydrateQuery.data.value, () => hydrateQuery.error.value],
-		([d, error]) => {
-			if (state.value === 'ready') return;
+		[() => draftId.value, () => hydrateQuery.data.value, () => hydrateQuery.error.value],
+		([id, d, error]) => {
+			if (!id) {
+				clearMissingTimer();
+				latestRow.value = { status: 'unknown' };
+				return;
+			}
 			if (error && !d) {
 				clearMissingTimer();
-				state.value = 'error';
+				latestRow.value = { status: 'unknown' };
+				if (state.value !== 'ready' && options.shouldMerge()) state.value = 'error';
 				return;
 			}
 			if (d === null) {
-				// Still waiting until the answer has stood for the grace period.
-				if (state.value === 'missing' || missingTimer) return;
-				state.value = 'loading';
+				// "No such row" counts only once it has stood for the grace period.
+				if (missingTimer || latestRow.value.status === 'missing') return;
+				if (state.value !== 'ready' && options.shouldMerge()) state.value = 'loading';
 				missingTimer = setTimeout(() => {
 					missingTimer = null;
-					if (state.value === 'loading') state.value = 'missing';
+					latestRow.value = { status: 'missing' };
+					if (state.value === 'loading' && options.shouldMerge()) state.value = 'missing';
 				}, DRAFT_MISSING_GRACE_MS);
 				return;
 			}
 			clearMissingTimer();
 			if (!d) {
-				state.value = 'loading';
+				if (state.value !== 'ready' && options.shouldMerge()) state.value = 'loading';
 				return;
 			}
-			applying = true;
-			try {
-				apply(d as DraftRow);
-			} finally {
-				applying = false;
+			const row = d as DraftRow;
+			const rowFields = mirrorFieldsOfRow(row);
+			latestRow.value = {
+				status: 'loaded',
+				fields: rowFields,
+				state: row.state ?? 'draft',
+				lastEditedAt: row.lastEditedAt ?? null,
+			};
+			if (state.value === 'ready' || !options.shouldMerge()) {
+				// Lifecycle stays current after the merge (a remote schedule).
+				fields.draftState.value = row.state ?? 'draft';
+				fields.scheduledSendAt.value = row.scheduledSendAt ?? null;
+				return;
 			}
-			for (const stop of stopTracking) stop();
+			touched.applying(() => apply(row));
+			options.beforeReady?.(rowFields);
 			state.value = 'ready';
 		},
 		{ immediate: true }

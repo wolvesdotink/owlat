@@ -5451,9 +5451,14 @@
 				"localTimeHint": "Your local time, give or take a few minutes."
 			},
 			"postboxDraftRestoreBar": {
+				"backupFailed": "Your current text couldn't be backed up on this device, so nothing was replaced.",
+				"confirm": "Replace with unsaved changes",
+				"confirmBody": "This draft was saved again after these changes were made on this device. Restoring replaces the saved version; your current text is backed up on this device first.",
+				"confirmTitle": "Replace the saved draft?",
 				"dismiss": "Keep saved version",
 				"message": "Unsaved changes from {time} were recovered from this device.",
-				"restore": "Restore unsaved changes"
+				"restore": "Restore unsaved changes",
+				"unavailable": "The draft isn't available right now. Try again in a moment."
 			},
 			"postboxComposerDraftNotice": {
 				"loadFailed": "This draft couldn't be loaded. Nothing has been saved over it; changes you make now are kept and added once it loads.",
@@ -6775,7 +6780,9 @@
 		"loadingMailbox": "Loading mailbox…",
 		"noMailbox": "No mailbox is configured for this workspace.",
 		"pageTitle": "Compose — Owlat",
-		"sentNotice": "Your message is on its way. This window closes when the time to undo it runs out."
+		"requestExpired": "This message is no longer open here. If it was saved, you'll find it in Drafts.",
+		"sentNotice": "Your message is on its way. This window closes when the time to undo it runs out.",
+		"startNew": "Start a new message"
 	},
 	"dashboard": {
 		"admin": {

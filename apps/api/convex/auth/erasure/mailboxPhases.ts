@@ -374,6 +374,11 @@ export const eraseMailboxRecords: MemberPhaseRunner = (phase) =>
 					.take(n),
 			(n) =>
 				ctx.db
+					.query('mailDraftRequestNonces')
+					.withIndex('by_mailbox_and_created', (q) => q.eq('mailboxId', id))
+					.take(n),
+			(n) =>
+				ctx.db
 					.query('mailForwarding')
 					.withIndex('by_mailbox', (q) => q.eq('mailboxId', id))
 					.take(n),

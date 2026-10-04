@@ -68,9 +68,12 @@ describe('PostboxComposerShell: one scroll region, the footer pinned outside it'
 	});
 
 	it('puts the envelope above the region and the footer below it, outside', () => {
-		const order = elementsOf(root).map((c) =>
-			c === region ? 'region' : c.tag === 'slot' ? attr(c, 'name') : c.tag
-		);
+		// The envelope and footer slots sit in `contents` wrappers (the lock).
+		const unwrap = (c: Node) =>
+			c.tag === 'div' && attr(c, 'class') === 'contents' ? elementsOf(c)[0]! : c;
+		const order = elementsOf(root)
+			.map(unwrap)
+			.map((c) => (c === region ? 'region' : c.tag === 'slot' ? attr(c, 'name') : c.tag));
 		expect(order.filter((n) => n !== 'div')).toEqual(['header', 'envelope', 'region', 'footer']);
 	});
 });

@@ -137,6 +137,19 @@ export const mailCompositionTables = {
 		.index('by_undo_token', ['undoToken'])
 		.index('by_client_nonce', ['clientNonce']),
 
+	// One row per compose request (the full-page composer's `?c=`): which draft
+	// its creation nonce made. Kept after the draft itself is sent or
+	// discarded, so a remount of the same request learns that its draft is gone
+	// instead of creating a second one. Pruned after 14 days by `drafts.create`.
+	mailDraftRequestNonces: defineTable({
+		mailboxId: v.id('mailboxes'),
+		requestNonce: v.string(),
+		draftId: v.id('mailDrafts'),
+		createdAt: v.number(),
+	})
+		.index('by_mailbox_and_nonce', ['mailboxId', 'requestNonce'])
+		.index('by_mailbox_and_created', ['mailboxId', 'createdAt']),
+
 	// Audit log of mailbox-level events (delivery, IMAP login, etc.)
 
 	mailAttachments: defineTable({

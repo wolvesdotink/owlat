@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import type { ComposerMode, ComposerSeed } from '~/composables/postbox/usePostboxCompose';
+import type { BeforeReady } from '~/composables/postbox/usePostboxComposeRow';
 import { SIMPLE_BLOCK_TYPES } from '~/composables/postbox/postboxBlockTypes';
 import { usePostboxComposerAnswerFrame } from '~/composables/postbox/usePostboxComposerAnswerFrame';
 import { usePostboxComposerAnswerApi } from '~/composables/postbox/usePostboxComposerAnswerApi';
@@ -37,6 +38,8 @@ const props = defineProps<{
 	askSession?: boolean;
 	/** Names the thread knows by address, for the folded envelope ("To Jonas Berg"). */
 	recipientNames?: Record<string, string>;
+	/** The compose page: apply or offer text it parked on an earlier leave. */
+	beforeReady?: BeforeReady;
 }>();
 
 const emit = defineEmits<{
@@ -64,7 +67,7 @@ const { showOperationError } = useOperationErrorToast();
 // The seed names the target; the shell and footer read its capabilities.
 const target = mailboxComposerTarget(props.seed);
 
-const compose = usePostboxCompose(props.seed);
+const compose = usePostboxCompose(props.seed, { beforeReady: props.beforeReady });
 const {
 	draftId: activeDraftId,
 	toAddresses,
@@ -260,8 +263,14 @@ defineExpose({
 	flush,
 	answer: answerApi,
 	snapshot,
-	/** Write what is on screen to the device mirror now (the compose page, leaving). */
+	/** Write what is on screen to the device mirror now; true once it is held. */
 	mirrorNow: () => draftMirror.writeNow(),
+	/** Look for device copies again (the compose page stored one). */
+	rescanMirror: () => draftMirror.rescan(),
+	/** What the compose page parks when it is left. */
+	parkable: compose.parkable,
+	/** Hear about the draft row once it exists, even after unmount. */
+	onCreated: compose.onCreated,
 });
 
 // Cmd/Ctrl+Enter send, +Shift schedule, Esc minimize — bound on the composer
@@ -289,6 +298,7 @@ function onKeydown(event: KeyboardEvent) {
 		:ref="bindRoot"
 		:target="target"
 		:drag-active="dragActive"
+		:locked="draftMirror.busy"
 		@dragover="onDragOver"
 		@dragleave="onDragLeave"
 		@drop="onDrop"
@@ -335,11 +345,7 @@ function onKeydown(event: KeyboardEvent) {
 
 		<!-- Plan idea 7: keystrokes the server row never received, after a crash.
 		     Above the editor, because it offers to replace what is in it. -->
-		<PostboxDraftRestoreBar
-			:entry="draftMirror.restorable"
-			@restore="draftMirror.restore"
-			@dismiss="draftMirror.dismiss"
-		/>
+		<PostboxDraftRestoreBar :mirror="draftMirror" :read-only="isScheduled" />
 
 		<!-- A scheduled draft is read-only until it is taken back; the banner owns
 		     both the "goes out at" line and the unschedule control. -->
@@ -352,9 +358,12 @@ function onKeydown(event: KeyboardEvent) {
 		<!-- Answer mode's AI bar / ask card (filled by the page). -->
 		<slot name="above-editor" :composer="answerApi" />
 
+		<!-- Locked while a Restore replaces the fields (as are envelope and footer). -->
 		<div
 			class="min-h-24 flex-1 overflow-hidden"
 			:class="{ 'pbx-quote-folded': frameView.quoteFolded.value && frameView.hasQuote.value }"
+			:inert="draftMirror.busy"
+			:aria-busy="draftMirror.busy || undefined"
 			data-testid="composer-body"
 		>
 			<!-- Withheld until a reopened draft's body loads (see usePostboxCompose). -->
@@ -399,6 +408,7 @@ function onKeydown(event: KeyboardEvent) {
 		</div>
 
 		<PostboxComposerAttachments
+			:inert="draftMirror.busy"
 			:attachments="attachments"
 			:uploads="uploads"
 			:meter="attachmentSizeMeter"
@@ -415,6 +425,7 @@ function onKeydown(event: KeyboardEvent) {
 		     revise. Advisory only — never sends; hidden when AI is off / draft empty. -->
 		<PostboxComposerAdvisory
 			v-if="frameView.advisoryOpen.value"
+			:inert="draftMirror.busy"
 			v-model:body-html="bodyHtml"
 			:ai-enabled="aiRewriteEnabled"
 			:mailbox-id="seed.mailboxId"

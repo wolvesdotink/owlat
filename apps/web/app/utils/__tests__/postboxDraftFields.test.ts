@@ -1,11 +1,13 @@
 /**
- * One draft-field snapshot for autosave, the on-device mirror and the offline
- * send payload (issue #864, finding 14).
+ * One draft-field snapshot for autosave and the offline send payload, and the
+ * device mirror reading the same message (issue #864, finding 14).
  *
- * The mirror's restore offer compares its stored snapshot with the server row,
- * so the three copies of these fields used to have to agree by comment. The
- * cases below run the real composables on one set of refs and check that what
- * each of them writes is the same snapshot, not three that happen to match.
+ * Autosave and the offline payload write `composeDraftFields` itself. The
+ * mirror records every field in every mode (blocks included, so a simple-mode
+ * copy can be compared like for like), and what matters is that the row a save
+ * leaves behind reads back EQUAL to the mirror's copy: otherwise every saved
+ * composition would be offered back as "unsaved changes" on the next open.
+ * The cases below run the real composables on one set of refs.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { effectScope, nextTick, ref, type EffectScope } from 'vue';
@@ -13,7 +15,12 @@ import type { EditorBlock } from '@owlat/email-builder';
 import { composeDraftFields, type DraftComposerMode } from '../postboxDraftFields';
 import { PostboxDraftMirrorStore } from '../postboxDraftMirrorStore';
 import type * as DraftMirrorStoreModule from '../postboxDraftMirrorStore';
-import type { DraftMirrorEntry } from '../postboxDraftMirror';
+import {
+	canonicalBlocks,
+	mirrorFieldsEqual,
+	mirrorFieldsOfRow,
+	type MirrorCopy,
+} from '../postboxDraftMirror';
 import type { OfflineComposePayload, OfflineKvDriver } from '../postboxOfflineStore';
 import { usePostboxComposeAutosave } from '~/composables/postbox/usePostboxComposeAutosave';
 import {
@@ -21,6 +28,8 @@ import {
 	usePostboxComposeMirror,
 } from '~/composables/postbox/usePostboxComposeMirror';
 import { usePostboxComposeOfflineSend } from '~/composables/postbox/usePostboxComposeOfflineSend';
+import { usePostboxComposeTouched } from '~/composables/postbox/usePostboxComposeTouched';
+import type { LatestDraftRow } from '~/composables/postbox/usePostboxComposeHydration';
 
 const BLOCKS = [{ id: 'b1', type: 'text', content: 'Hi' }] as unknown as EditorBlock[];
 
@@ -56,6 +65,7 @@ describe('composeDraftFields', () => {
 function memoryDriver(): OfflineKvDriver {
 	const map = new Map<string, unknown>();
 	return {
+		persistent: true,
 		async get<T>(key: string) {
 			return map.get(key) as T | undefined;
 		},
@@ -80,7 +90,7 @@ vi.mock('~/utils/postboxDraftMirrorStore', async (importActual) => {
 	return { ...actual, getPostboxDraftMirrorStore: () => store };
 });
 
-describe('autosave, mirror and offline payload share one snapshot', () => {
+describe('autosave and offline payload share one snapshot; the mirror reads it back equal', () => {
 	let driver: OfflineKvDriver;
 	let scope: EffectScope;
 
@@ -111,29 +121,30 @@ describe('autosave, mirror and offline payload share one snapshot', () => {
 
 		const { autosave, queueOffline } = scope.run(() => {
 			const common = { mailboxId: 'mbx-1' as never, draftId: draftId as never, ...refs };
+			const touched = usePostboxComposeTouched({ ...refs, followUpRemindAt }, []);
 			const autosave = usePostboxComposeAutosave({
 				...common,
 				draftState: ref('draft'),
 				initialHydration: ref('ready'),
 				ensuring: ref(false),
 				isSaving: ref(false),
-				// Kept null so the mirror's "server caught up" clear does not run
-				// before the test reads the entry back.
 				lastSavedAt: ref(null),
-				rowCreatedAt: ref(null),
+				touched,
+				onReopenExisting: () => {},
+				onGone: () => {},
 				followUpRemindAt,
 				createDraft: { run: vi.fn() } as never,
 				updateDraft: { run: updateRun } as never,
 			});
 			usePostboxComposeMirror({
 				...common,
-				seedDraftId: 'draft-1' as never,
-				// The loaded row: the mirror reconciles once, then mirrors. Its own
-				// ref, so autosave's save does not read as "server caught up".
-				lastSavedAt: ref(100),
-				ready: () => true,
-				followUpRemindAt,
+				ready: ref(true),
 				draftState: ref('draft'),
+				// The row is not observed in this test, so the copy is kept.
+				latestRow: ref<LatestDraftRow>({ status: 'unknown' }),
+				touched,
+				followUpRemindAt,
+				autosave,
 			});
 			const queueOffline = usePostboxComposeOfflineSend({
 				...common,
@@ -147,8 +158,6 @@ describe('autosave, mirror and offline payload share one snapshot', () => {
 			return { autosave, queueOffline };
 		})!;
 
-		// The mirror's reconcile reads the store first; it writes only after.
-		await vi.advanceTimersByTimeAsync(0);
 		// One edit wakes both debounced writers.
 		refs.subject.value = 'Quarterly numbers (final)';
 		await nextTick();
@@ -156,7 +165,8 @@ describe('autosave, mirror and offline payload share one snapshot', () => {
 		await autosave.flush();
 		await queueOffline();
 
-		const mirrored = await driver.get<DraftMirrorEntry>('draft-mirror:mbx-1:draft-1');
+		const key = (await driver.keys()).find((k) => k.endsWith(':live'))!;
+		const mirrored = await driver.get<MirrorCopy>(key);
 		return {
 			saved: updateRun.mock.calls.at(-1)![0],
 			mirrored: mirrored!.fields,
@@ -167,18 +177,24 @@ describe('autosave, mirror and offline payload share one snapshot', () => {
 	it.each(['simple', 'full'] as const)('in %s mode', async (mode) => {
 		const { saved, mirrored, queued } = await captureAll(mode);
 
-		// The mirror stores exactly the autosave args on every key it has.
-		const shared = Object.fromEntries(Object.keys(mirrored).map((key) => [key, saved[key]]));
-		expect(mirrored).toEqual(shared);
+		// The row the save leaves behind (a simple-mode save keeps the stored
+		// blocks, which are the composer's) reads back equal to the mirror.
+		const row = mirrorFieldsOfRow({
+			...(saved as Record<string, never>),
+			bodyBlocks: (saved['bodyBlocks'] as string | undefined) ?? JSON.stringify(BLOCKS),
+		});
+		expect(mirrorFieldsEqual(mirrored, row)).toBe(true);
 		expect(mirrored.subject).toBe('Quarterly numbers (final)');
+		expect(mirrored.bodyBlocks).toBe(canonicalBlocks(BLOCKS));
 
 		// The reminder too: a reminder set just before a failed save is as much
 		// unsaved work as the text.
 		expect(saved['followUpRemindAt']).toBe(1_700_000_000_000);
 		expect(mirrored.followUpRemindAt).toBe(1_700_000_000_000);
 
-		// The offline payload carries the same snapshot plus its replay extras.
-		expect(queued).toMatchObject(mirrored);
+		// The offline payload carries autosave's snapshot plus its replay extras.
+		const { draftId: _id, ...wire } = saved;
+		expect(queued).toMatchObject(wire);
 		expect(queued).toMatchObject({
 			mailboxId: 'mbx-1',
 			draftId: 'draft-1',

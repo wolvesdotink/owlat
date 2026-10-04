@@ -19,6 +19,11 @@ const props = defineProps<{
 	target: ComposerTarget;
 	/** Files are being dragged over the composer. */
 	dragActive?: boolean;
+	/**
+	 * Nothing in the envelope or footer takes input (the host's body does the
+	 * same): a Restore is replacing the composer's fields right now.
+	 */
+	locked?: boolean;
 }>();
 
 const { t } = useI18n();
@@ -37,10 +42,14 @@ const capabilities = computed(() => composerTargetCapabilities(props.target));
 			</span>
 		</div>
 		<slot name="header" />
-		<slot name="envelope" />
+		<div class="contents" :inert="locked">
+			<slot name="envelope" />
+		</div>
 		<div class="flex min-h-0 flex-1 flex-col overflow-y-auto" data-testid="composer-scroll">
 			<slot />
 		</div>
-		<slot name="footer" :capabilities="capabilities" />
+		<div class="contents" :inert="locked">
+			<slot name="footer" :capabilities="capabilities" />
+		</div>
 	</div>
 </template>

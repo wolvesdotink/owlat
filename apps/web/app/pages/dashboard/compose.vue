@@ -5,31 +5,30 @@
  * the envelope open and no conversation beside it. It replaced the floating
  * popup in the corner.
  *
- *   /dashboard/compose?c=<key>                         a seed parked by usePostboxComposeNav
- *   /dashboard/compose?c=<key>&mailbox=<id>&draft=<id> a saved draft
- *   /dashboard/compose?to=…&cc=…&subject=…             a plain prefill (a link, a contact)
+ *   /dashboard/compose?c=<key>                         a compose request (usePostboxComposeNav)
+ *   /dashboard/compose?c=<key>&mailbox=<id>&draft=<id> …that has a saved draft
+ *   /dashboard/compose?to=…&cc=…&subject=…             a plain link: given a request first
  *
  * `c` names the compose request and keys the page, so a second open while this
- * one is on screen remounts the editor (the first draft saves on the way out).
+ * one is on screen remounts the editor. A URL without one (a link, a contact)
+ * is given a request before any composer mounts, so every composer here has a
+ * request nonce and a remount reaches the same row. An unknown or expired `c`
+ * says so rather than starting a second composition under the same name.
  *
- * The URL names the draft (`&draft=`, replacing the seed or prefill) only once
- * the composer confirms the text it was opened with reached the server, so a
- * reload before that still lands on the unsaved text, not on an older copy of
- * the row. Leaving before that point binds the request to its draft row and
- * writes what is on screen to the device mirror; a return opens the row and the
- * mirror offers anything the server never received ("Restore unsaved
- * changes"). Nothing runs after the page is gone. Esc or "← Inbox" goes back to the page it came from; the
- * draft stays saved in Drafts. A send leaves too, and the shell's undo toast
- * keeps counting down over the page underneath.
+ * Unsaved text and the request record (parking on a leave, resolving parked
+ * text on a return) are `usePostboxComposePageRequest`'s. The URL names the
+ * draft (`&draft=`) once the text the request was opened with is confirmed
+ * saved. Esc or "← Inbox" goes back to the page it came from; the draft stays
+ * saved in Drafts. A send leaves too, and the shell's undo toast keeps counting
+ * down over the page underneath.
  */
 import { splitMailtoAddressList } from '@owlat/shared/mailto';
 import type { Id } from '@owlat/api/dataModel';
-import type { BackendOperationResult } from '~/composables/useBackendOperation';
+import { composePageKey, type ComposeSpec } from '~/composables/postbox/usePostboxComposeNav';
 import {
-	composePageKey,
-	seedCarriesText,
-	type ComposeSpec,
-} from '~/composables/postbox/usePostboxComposeNav';
+	usePostboxComposePageRequest,
+	type ComposePageComposer,
+} from '~/composables/postbox/usePostboxComposePageRequest';
 import { useKeyboardInset } from '~/composables/useKeyboardInset';
 import { answerBackLabelKey, singleQueryValue } from '~/utils/answerMode';
 import { isDialogOpen } from '~/utils/dialogOpen';
@@ -61,6 +60,8 @@ const returnPath =
 const backLabel = computed(() => t(answerBackLabelKey(returnPath ?? FALLBACK_RETURN)));
 
 const requestKey = singleQueryValue(route.query['c']);
+const urlMailbox = singleQueryValue(route.query['mailbox']) as Id<'mailboxes'> | null;
+const urlDraft = singleQueryValue(route.query['draft']) as Id<'mailDrafts'> | null;
 
 /** The prefill a plain link carries in its query, or null when it has none. */
 function queryPrefill(): Partial<ComposeSpec> | null {
@@ -77,68 +78,63 @@ function queryPrefill(): Partial<ComposeSpec> | null {
 	return Object.values(prefill).some((value) => value !== undefined) ? prefill : null;
 }
 
-/** The seed the URL names, or null until the mailbox it needs has loaded. */
-function resolveSeed(): ComposeSpec | null {
-	const parked = requestKey ? nav.seedFor(requestKey) : null;
-	if (parked) return parked;
-	const mailboxId = (singleQueryValue(route.query['mailbox']) ?? currentMailbox.value?._id) as
-		| Id<'mailboxes'>
-		| undefined;
-	if (!mailboxId) return null;
-	const draftId = singleQueryValue(route.query['draft']);
-	if (draftId) return { mailboxId, draftId: draftId as Id<'mailDrafts'> };
-	return { mailboxId, ...queryPrefill() };
+const composerRef = ref<ComposePageComposer | null>(null);
+const request = usePostboxComposePageRequest({ nav, composer: composerRef });
+const { seed } = request;
+
+if (requestKey) {
+	request.openRequest(
+		requestKey,
+		urlMailbox && urlDraft ? { mailboxId: urlMailbox, draftId: urlDraft } : undefined
+	);
+} else {
+	// A plain link: give it a request once the mailbox it needs is known. The
+	// rewrite changes the page key, so the page mounts again under it.
+	const stop = watchEffect(() => {
+		const mailboxId = urlMailbox ?? currentMailbox.value?._id;
+		if (!mailboxId) return;
+		queueMicrotask(() => stop());
+		const spec: ComposeSpec = urlDraft
+			? { mailboxId, draftId: urlDraft }
+			: { mailboxId, ...queryPrefill() };
+		const key = nav.create(spec);
+		void router.replace({
+			query: { c: key, ...(urlDraft ? { mailbox: mailboxId, draft: urlDraft } : {}) },
+		});
+	});
 }
 
-// The composer reads its seed once: resolve it the first time it can be, then
-// keep it, so the URL rewrite after the text is saved does not rebuild it.
-const seed = ref<ComposeSpec | null>(null);
-watchEffect(() => {
-	if (!seed.value) seed.value = resolveSeed();
+watch(composerRef, (mounted) => {
+	if (mounted) request.bindComposer(mounted);
 });
-
-// The URL carries text the server may not hold yet (a parked seed, a prefill):
-// it only gives way to `&draft=` once that text is confirmed saved.
-const openedWith = requestKey ? nav.seedFor(requestKey) : null;
-let urlCarriesText = (!!openedWith && seedCarriesText(openedWith)) || queryPrefill() !== null;
-
-const composerRef = ref<{
-	flush: () => Promise<BackendOperationResult<Id<'mailDrafts'> | null>>;
-	snapshot: () => { draftId: Id<'mailDrafts'> | null };
-	mirrorNow: () => void;
-} | null>(null);
 
 // Set as the page goes: a save still in flight then must not touch the URL,
 // which by now belongs to whatever page came next.
 let closed = false;
+const isClosed = () => closed;
 
+/** Name the draft in the URL (only the request this page shows). */
 function nameDraftInUrl(draftId: Id<'mailDrafts'>) {
-	if (!seed.value || closed) return;
-	if (requestKey) nav.forget(requestKey);
-	const alreadyNamed = singleQueryValue(route.query['draft']) === draftId && !urlCarriesText;
-	urlCarriesText = false;
-	if (alreadyNamed) return;
-	// Only the request this page shows: never rewrite another page's URL.
+	const own = request.state.value;
+	if (closed || own.status !== 'ready' || !seed.value) return;
 	const current = router.currentRoute.value;
-	if (singleQueryValue(current.query['c']) !== requestKey) return;
+	if (singleQueryValue(current.query['c']) !== own.key) return;
+	if (singleQueryValue(current.query['draft']) === draftId) return;
 	void router.replace({
-		query: {
-			...(requestKey ? { c: requestKey } : {}),
-			mailbox: seed.value.mailboxId,
-			draft: draftId,
-		},
+		query: { c: own.key, mailbox: seed.value.mailboxId, draft: draftId },
 	});
 }
 
 let confirming: Promise<void> | null = null;
 let confirmAgain = false;
 /**
- * Ask the composer to save what is on screen; name the draft once it has. A
- * request that arrives mid-save runs once more afterwards, so a later save is
- * never dropped behind an earlier, failed one.
+ * While the request still carries text the server may not hold, ask the
+ * composer to save what is on screen; once it has, the request drops that text
+ * and the URL names the draft. A request that arrives mid-save runs once more
+ * afterwards, so a later save is never dropped behind an earlier, failed one.
  */
 async function confirmSaved(): Promise<void> {
-	if (!urlCarriesText || closed || !composerRef.value) return;
+	if (closed || !composerRef.value || !request.carriesText()) return;
 	if (confirming) {
 		confirmAgain = true;
 		return confirming;
@@ -148,8 +144,11 @@ async function confirmSaved(): Promise<void> {
 			do {
 				confirmAgain = false;
 				const saved = await composerRef.value?.flush();
-				if (saved?.ok && saved.result) nameDraftInUrl(saved.result);
-			} while (confirmAgain && urlCarriesText && !closed);
+				if (saved?.ok && saved.result) {
+					request.savedAcknowledged(saved.result);
+					nameDraftInUrl(saved.result);
+				}
+			} while (confirmAgain && request.carriesText() && !isClosed());
 		} finally {
 			confirming = null;
 		}
@@ -157,36 +156,26 @@ async function confirmSaved(): Promise<void> {
 	return confirming;
 }
 
-/**
- * Leaving while the URL still carries text the server may not hold. Once the
- * text has a row, the request is bound to that row (a return opens it, never
- * the older seed) and what is on screen goes to the device mirror, which offers
- * back whatever the server never received; a save that lands after this leaves
- * the row newer than the mirror, and the mirror stands aside. With no row yet
- * the parked seed is the only copy, so it stays. Synchronous: nothing of this
- * page runs once it is gone.
- */
-function settleOnLeave() {
-	closed = true;
-	const composer = composerRef.value;
-	if (finished || !urlCarriesText || !requestKey || !composer || !seed.value) return;
-	const draftId = composer.snapshot().draftId;
-	if (!draftId) return;
-	composer.mirrorNow();
-	nav.bindDraft(requestKey, seed.value.mailboxId, draftId);
-}
-
-// Sent or discarded: the composition is over, and nothing is left to settle.
-let finished = false;
-function finish() {
-	finished = true;
-	if (requestKey) nav.forget(requestKey);
-	leave();
+// A save landed: text merged back from an earlier leave may be held now.
+function onSaved() {
+	void request.settleMerged();
+	void confirmSaved();
 }
 
 function onDraftId(draftId: Id<'mailDrafts'>) {
-	if (urlCarriesText) void confirmSaved();
+	if (request.carriesText()) void confirmSaved();
 	else nameDraftInUrl(draftId);
+}
+
+// Sent or discarded: the composition is over, and nothing is left to park.
+function finish() {
+	request.finish();
+	leave();
+}
+
+function startNew() {
+	const mailboxId = currentMailbox.value?._id;
+	if (mailboxId) void nav.open({ mailboxId });
 }
 
 const subject = ref('');
@@ -216,10 +205,20 @@ function onComposerEsc() {
 	if (active instanceof HTMLElement) active.blur();
 }
 
-onMounted(() => window.addEventListener('keydown', onKeydown));
+// A tab closed or reloaded never unmounts the page: park on `pagehide` too.
+function onPageHide() {
+	request.parkOnLeave();
+}
+
+onMounted(() => {
+	window.addEventListener('keydown', onKeydown);
+	window.addEventListener('pagehide', onPageHide);
+});
 onBeforeUnmount(() => {
 	window.removeEventListener('keydown', onKeydown);
-	settleOnLeave();
+	window.removeEventListener('pagehide', onPageHide);
+	closed = true;
+	request.parkOnLeave();
 });
 
 // The on-screen keyboard shrinks the visual viewport but not `100dvh`: leave it
@@ -271,15 +270,26 @@ const frameStyle = computed(() => ({
 					class="min-h-0 flex-1"
 					frame="page"
 					:seed="seed"
+					:before-ready="request.beforeReady"
 					:reply-all-recipients="seed.replyAllRecipients"
 					@draft-id="onDraftId"
-					@saved="confirmSaved"
+					@saved="onSaved"
 					@subject="subject = $event"
 					@sent="finish"
 					@discarded="finish"
 					@minimize="onComposerEsc"
 				/>
-				<div v-else-if="isLoading" class="flex-1 space-y-3 p-4" aria-hidden="true">
+				<div
+					v-else-if="request.state.value.status === 'expired'"
+					class="m-auto flex flex-col items-center gap-3 p-6 text-center"
+					data-testid="compose-expired"
+				>
+					<p class="text-sm text-text-secondary">{{ t('compose.requestExpired') }}</p>
+					<UiButton size="sm" type="button" :disabled="!currentMailbox" @click="startNew">
+						{{ t('compose.startNew') }}
+					</UiButton>
+				</div>
+				<div v-else-if="isLoading || (!requestKey && currentMailbox)" class="flex-1 space-y-3 p-4" aria-hidden="true">
 					<UiSkeleton class="h-4 w-2/3" />
 					<UiSkeleton class="h-32 w-full" />
 				</div>
