@@ -417,3 +417,28 @@ describe('writeAnswerDraft — backticks around and inside a call (third and fou
 		expect(finals).toEqual([expect.objectContaining({ text: REPLY, status: 'complete' })]);
 	});
 });
+
+describe('writeAnswerDraft — a stream that fails after a paid tool step (#1256)', () => {
+	it('records the finished step once, with the real stream', async () => {
+		// One scripted step that calls the tool; the stream fails asking for step 2.
+		mocks.model = scriptedStreamModel([
+			{
+				text: ['Let me check.'],
+				toolCall: { toolName: 'recallKnowledge', input: { query: 'availability' } },
+			},
+		]);
+		const { ctx, finals, sessions } = makeCtx();
+		await write(ctx);
+
+		expect(finals).toEqual([expect.objectContaining({ status: 'error' })]);
+		expect(sessions).toEqual([expect.objectContaining({ status: 'error' })]);
+		expect(vi.mocked(recordLlmSpend).mock.calls).toEqual([
+			[
+				ctx,
+				'postbox_answer_draft',
+				{ promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+				'scripted-model',
+			],
+		]);
+	});
+});

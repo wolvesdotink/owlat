@@ -197,6 +197,11 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 			tools: { recallKnowledge },
 			maxSteps: MAX_RECALL_CALLS + 2,
 			spendLabels: { draft: 'agent_draft', selfCheck: 'agent_draft_selfcheck' },
+			// A successful draft's usage goes back through the step result onto its
+			// agentActions row (the cost-by-step view), not the ledger. A draft that
+			// throws fails the step with no usage, so the service records that
+			// spend in the ledger under `agent_draft` instead.
+			successfulDraftSpend: 'caller',
 			replyLanguage,
 			strategyScope: {
 				...(message?.contactId ? { contactId: message.contactId } : {}),

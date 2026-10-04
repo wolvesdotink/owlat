@@ -812,6 +812,7 @@ import type * as lib_literalUnion from '../lib/literalUnion.js';
 import type * as lib_literalValidators from '../lib/literalValidators.js';
 import type * as lib_llm_complexity from '../lib/llm/complexity.js';
 import type * as lib_llm_dispatch from '../lib/llm/dispatch.js';
+import type * as lib_llm_partialUsage from '../lib/llm/partialUsage.js';
 import type * as lib_llm_pricing from '../lib/llm/pricing.js';
 import type * as lib_llm_promptCache from '../lib/llm/promptCache.js';
 import type * as lib_llm_retryPolicy from '../lib/llm/retryPolicy.js';
@@ -2296,6 +2297,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/literalValidators': typeof lib_literalValidators;
 	'lib/llm/complexity': typeof lib_llm_complexity;
 	'lib/llm/dispatch': typeof lib_llm_dispatch;
+	'lib/llm/partialUsage': typeof lib_llm_partialUsage;
 	'lib/llm/pricing': typeof lib_llm_pricing;
 	'lib/llm/promptCache': typeof lib_llm_promptCache;
 	'lib/llm/retryPolicy': typeof lib_llm_retryPolicy;

@@ -32,6 +32,7 @@ import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmStream } from '../../lib/llm/dispatch';
 import { stripLeakedToolMarkup, visibleDraftStreamText } from '../../lib/llm/toolMarkup';
 import { addTokenUsage } from '../../lib/llm/tokenUsage';
+import { partialUsageOf } from '../../lib/llm/partialUsage';
 import type { TokenUsage } from '../../agent/steps/types';
 import { createThrottledStreamFlusher } from '../../lib/llm/streamFlusher';
 import { recordLlmSpend } from '../../analytics/llmUsage';
@@ -157,7 +158,8 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 			}),
 	});
 	// Usage of finished attempts not yet in the ledger, settled on every exit:
-	// a retry that throws must not lose the attempt before it.
+	// a retry that throws must not lose the attempt before it, and a stream
+	// that fails after a finished tool step carries that step's usage (#1256).
 	let spent: TokenUsage | undefined;
 	let spentModel: string | undefined;
 	const settleSpend = async (): Promise<void> => {
@@ -239,6 +241,11 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 			'[composeDraft] drafting failed:',
 			error instanceof Error ? error.message.split('\n', 1)[0] : 'non-Error thrown'
 		);
+		const partial = partialUsageOf(error);
+		if (partial) {
+			spent = addTokenUsage(spent, partial.tokenUsage);
+			spentModel = partial.modelUsed ?? spentModel;
+		}
 		await settleSpend().catch(() => undefined);
 		await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
 			streamId,

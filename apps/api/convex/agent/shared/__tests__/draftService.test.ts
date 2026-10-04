@@ -54,6 +54,7 @@ vi.mock('../draftStrategyHost', () => ({
 }));
 
 import { recordLlmSpend } from '../../../analytics/llmUsage';
+import { LlmPartialUsageError } from '../../../lib/llm/partialUsage';
 import {
 	runSharedDraft,
 	buildDraftMessages,
@@ -81,6 +82,7 @@ function baseParams(overrides: Partial<SharedDraftParams> = {}): SharedDraftPara
 		signatureInstruction: '',
 		voiceSection: '',
 		spendLabels: { draft: 'dr', selfCheck: 'sc' },
+		successfulDraftSpend: 'caller',
 		...overrides,
 	};
 }
@@ -504,5 +506,89 @@ describe('runSharedDraft — an inline tool-call block (second review)', () => {
 		);
 		expect(out.draftBody).toBe(reply);
 		expect(runLlmTextMock).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('runSharedDraft — the spend of every outcome, recorded once (#1256)', () => {
+	const REPLY = 'Hi John,\n\nThanks for getting in touch.\n\nBest,\nAda';
+	const usage = (n: number) => ({ promptTokens: n, completionTokens: n, totalTokens: 2 * n });
+	const tooled = (successfulDraftSpend: 'ledger' | 'caller') =>
+		baseParams({ tools: { recallKnowledge: {} as never }, successfulDraftSpend });
+	const draftSpend = () =>
+		vi.mocked(recordLlmSpend).mock.calls.filter(([, label]) => label === 'dr');
+	/** A tool loop that paid for a step, then the provider failed. */
+	const failedAfterToolStep = () =>
+		new LlmPartialUsageError(new Error('provider down'), usage(6) as never, 'model-a');
+
+	it.each(['ledger', 'caller'] as const)(
+		'records the paid steps of a tool loop that throws, once (%s)',
+		async (mode) => {
+			const error = failedAfterToolStep();
+			runLlmTextWithToolsMock.mockRejectedValueOnce(error);
+			await expect(runSharedDraft(fakeCtx, tooled(mode))).rejects.toBe(error);
+			expect(draftSpend()).toEqual([[fakeCtx, 'dr', usage(6), 'model-a']]);
+			expect(runLlmObjectMock).not.toHaveBeenCalled();
+		}
+	);
+
+	it('records nothing for a failure that carries no usage', async () => {
+		runLlmTextWithToolsMock.mockRejectedValueOnce(new Error('401 unauthorized'));
+		await expect(runSharedDraft(fakeCtx, tooled('ledger'))).rejects.toThrow('401');
+		expect(draftSpend()).toEqual([]);
+	});
+
+	it('records a successful draft once when the service owns its spend', async () => {
+		runLlmTextWithToolsMock.mockResolvedValueOnce({
+			text: REPLY,
+			tokenUsage: usage(9) as never,
+			modelUsed: 'model-a',
+		});
+		const out = await runSharedDraft(fakeCtx, tooled('ledger'));
+		expect(out.tokenUsage).toEqual(usage(9));
+		expect(draftSpend()).toEqual([[fakeCtx, 'dr', usage(9), 'model-a']]);
+	});
+
+	it('records a draft rescued by the markup retry once, with both attempts', async () => {
+		runLlmTextWithToolsMock.mockResolvedValueOnce({
+			text: 'Hi,\n<tool_call>{}</tool_call>',
+			tokenUsage: usage(10) as never,
+			modelUsed: 'model-a',
+		});
+		runLlmTextMock.mockResolvedValueOnce({
+			text: REPLY,
+			tokenUsage: usage(4) as never,
+			modelUsed: 'model-b',
+		});
+		await runSharedDraft(fakeCtx, tooled('ledger'));
+		expect(draftSpend()).toEqual([[fakeCtx, 'dr', usage(14), 'model-b']]);
+	});
+
+	it('still records each rejected attempt once when both are markup', async () => {
+		runLlmTextWithToolsMock.mockResolvedValueOnce({
+			text: '<invoke name="recallKnowledge"',
+			tokenUsage: usage(10) as never,
+			modelUsed: 'model-a',
+		});
+		runLlmTextMock.mockResolvedValueOnce({
+			text: 'Hi,\n<tool_call>{}</tool_call>',
+			tokenUsage: usage(4) as never,
+			modelUsed: 'model-b',
+		});
+		await expect(runSharedDraft(fakeCtx, tooled('ledger'))).rejects.toThrow(/tool-call markup/);
+		expect(draftSpend()).toEqual([
+			[fakeCtx, 'dr', usage(10), 'model-a'],
+			[fakeCtx, 'dr', usage(4), 'model-b'],
+		]);
+	});
+
+	it('keeps the draft when the ledger write fails', async () => {
+		vi.mocked(recordLlmSpend).mockRejectedValueOnce(new Error('ledger down'));
+		runLlmTextWithToolsMock.mockResolvedValueOnce({
+			text: REPLY,
+			tokenUsage: usage(9) as never,
+			modelUsed: 'model-a',
+		});
+		const out = await runSharedDraft(fakeCtx, tooled('ledger'));
+		expect(out.draftBody).toBe(REPLY);
 	});
 });
