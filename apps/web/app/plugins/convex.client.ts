@@ -1,7 +1,13 @@
 import { ConvexClient } from 'convex/browser';
 import { authClient } from '~/lib/auth-client';
-import { getConvexAuthToken, resetConvexAuthTokenCache } from '~/lib/convex-auth';
+import {
+	getConvexAuthToken,
+	lastConvexTokenFailure,
+	resetConvexAuthTokenCache,
+} from '~/lib/convex-auth';
 import { markConvexAuthPending, reportConvexAuth } from '~/lib/convexAuthReady';
+import { createConvexAuthRecovery, type ConvexAuthFailure } from '~/lib/convexAuthRecovery';
+import { useToast } from '@owlat/ui/composables/useToast';
 import { isDesktopRuntime, getActiveWorkspace } from '~/lib/desktop/activeWorkspace';
 import { logWarn } from '~/lib/runtimeLog';
 import { clearCachedFeatureFlags } from '~/lib/featureFlagCache';
@@ -27,7 +33,7 @@ async function forgetSignedOutDevice(): Promise<void> {
 	}
 }
 
-export default defineNuxtPlugin(() => {
+export default defineNuxtPlugin((nuxtApp) => {
 	const config = useRuntimeConfig();
 	// Desktop builds bake no Convex URL — it comes from the active workspace,
 	// seeded by the boot plugin (0.desktop-workspace.client.ts) that runs before
@@ -64,6 +70,43 @@ export default defineNuxtPlugin(() => {
 			return getConvexAuthToken(forceRefreshToken);
 		};
 
+		const installAuth = () => {
+			markConvexAuthPending();
+			client.setAuth(authCallback, onAuthChange);
+		};
+
+		// After a definitive failure the Convex client drops its auth config, and
+		// nothing fetches a token again until `setAuth` runs anew. While the
+		// session may still be fine, re-install it with a bounded backoff
+		// (lib/convexAuthRecovery.ts); when every attempt fails, say so on screen.
+		let lostToastId: string | null = null;
+		const recovery = createConvexAuthRecovery({
+			reinstall: () => {
+				resetConvexAuthTokenCache();
+				installAuth();
+			},
+			onGiveUp: (failure: ConvexAuthFailure) => {
+				logWarn(
+					failure === 'rejected'
+						? 'Convex auth failed while the session is still valid — check auth config.'
+						: 'Convex auth failed: the token endpoint could not be reached.'
+				);
+				const t = (key: string) => (nuxtApp.$i18n as { t: (key: string) => string }).t(key);
+				const { showToast } = useToast();
+				lostToastId = showToast(t('shared.convexAuth.lost'), 'error', {
+					durationMs: 0,
+					action: { label: t('shared.convexAuth.reload'), onAction: () => location.reload() },
+					onDismiss: () => {
+						lostToastId = null;
+					},
+				});
+			},
+			onRecovered: () => {
+				if (lostToastId) useToast().removeToast(lostToastId);
+			},
+		});
+		window.addEventListener('online', () => recovery.resume());
+
 		// Definitive auth-loss handler (`setAuth`'s onChange). The Convex client
 		// calls it with `false` when it gives up authenticating — the token fetch
 		// returned null or the server rejected the JWT. Without it, subscriptions
@@ -77,21 +120,34 @@ export default defineNuxtPlugin(() => {
 			if (recovering) return;
 			recovering = true;
 			try {
+				// The token request got no answer (offline, timeout, 5xx): that says
+				// nothing about the session, so try again without asking for it.
+				if (lastConvexTokenFailure() === 'unreachable') {
+					recovery.retry('unreachable');
+					return;
+				}
 				const { data, error } = await authClient.getSession({
 					query: { disableCookieCache: true },
 				});
 				if (data) {
-					// The session is genuinely alive yet Convex rejected it — an auth
-					// config problem (issuer/JWKS mismatch), not a stale session.
-					// Flipping session state would sign the user out for nothing.
-					logWarn('Convex auth failed while the session is still valid — check auth config.');
+					// The session is alive yet no token was accepted: a flaky server, or
+					// an auth config problem (issuer/JWKS mismatch) that the retries run
+					// into until they give up. Flipping session state would sign the user
+					// out for nothing.
+					recovery.retry('rejected');
 					return;
 				}
+				// The session check itself failed (offline): the session may be fine
+				// and the offline cache is the point. Try again later.
+				if (error && error.status !== 401 && error.status !== 403) {
+					recovery.retry('unreachable');
+					return;
+				}
+				recovery.reset();
 				// The server says there is no session: it expired or was revoked, and
 				// nobody signed out. Forget what sign-out forgets, or the cached mail of
-				// the person who was here stays on this device. Not on a failed request
-				// (offline), where the session may be fine and the cache is the point.
-				if (!error) await forgetSignedOutDevice();
+				// the person who was here stays on this device.
+				await forgetSignedOutDevice();
 
 				// The stored session is dead. Flip the client-side session state so
 				// gated queries unsubscribe and the app reflects signed-out. Only
@@ -132,13 +188,13 @@ export default defineNuxtPlugin(() => {
 			reportConvexAuth(isAuthenticated);
 			if (isAuthenticated) {
 				staleSessionNotifies = 0;
+				recovery.reset();
 				return;
 			}
 			resetSharedConvexSubscriptions();
 			void handleAuthLoss();
 		};
-		markConvexAuthPending();
-		client.setAuth(authCallback, onAuthChange);
+		installAuth();
 
 		if (!authListenerRegistered) {
 			authListenerRegistered = true;
@@ -147,8 +203,9 @@ export default defineNuxtPlugin(() => {
 			authClient.$store.listen('$sessionSignal', () => {
 				resetSharedConvexSubscriptions();
 				resetConvexAuthTokenCache();
-				markConvexAuthPending();
-				client.setAuth(authCallback, onAuthChange);
+				// A new identity gets a fresh retry budget and no stale reinstall.
+				recovery.reset();
+				installAuth();
 			});
 		}
 	};
