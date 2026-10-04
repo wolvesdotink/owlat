@@ -13,13 +13,11 @@ import { recordAuditLog } from '../lib/auditLog';
 import { isLiveOrgMember, loadProfileSummary } from '../lib/userProfiles';
 import { transition as threadTransition } from './threads/module';
 import type { CancelAutoSendOutcome, TransitionOutcome } from './processingLifecycle';
-import { resolveHumanApproveUndoDelayMs } from './processingLifecycle/effects';
 import { getOrThrow, throwNotFound, throwInvalidState } from '../_utils/errors';
 import { extractEmail } from '../lib/emailAddress';
 import { recordAutonomyFeedback, resolveReplyCollisionHold } from './decisionFeedback';
 import { appendDraftRevision } from './draftRevisions';
-import { assertReplyAttachmentsReady } from './replyAttachmentStore';
-import { assertNoAnswerGaps } from '../mail/ai/composeDraftStore';
+import { assertDraftSendable, humanApproveUndoDelayMs, retryFailed } from './retryFailed';
 import { enqueuePush } from '../push/events';
 
 /**
@@ -50,24 +48,14 @@ export const approveDraft = adminMutation({
 		}
 
 		// The composer's attachments ride the send (`replyAttachments.intakeAgentReply`
-		// takes them when it fires): never send while one is still being copied.
-		await assertReplyAttachmentsReady(ctx, message.threadId);
-		// Nor with an Answer mode gap placeholder left in the text: the AI's, the
-		// agent's or a saved reply's (`isDraftGapGuarded`, stored with the working
-		// draft by `stepOutputs.recordDraftOutput` and the composer's saves).
-		await assertNoAnswerGaps(
-			ctx,
-			message.threadId ? { kind: 'teamThread', threadId: message.threadId } : null,
-			{ text: message.draftResponse },
-			{ guarded: message.isDraftGapGuarded === true }
-		);
+		// takes them when it fires): never send while one is still being copied,
+		// nor with an Answer mode gap placeholder left in the text.
+		await assertDraftSendable(ctx, message);
 
-		// Resolve the human-approve undo window from the singleton agentConfig
-		// (default 15s, clamped 0–120s; 0 = the legacy immediate send) and thread
-		// it into the lifecycle, which schedules the delayed send with the same
-		// cancellable `pendingAutoSend` marker autonomous sends use.
-		const configs = await ctx.db.query('agentConfig').take(1);
-		const undoDelayMs = resolveHumanApproveUndoDelayMs(configs[0]?.humanApproveUndoDelayMs);
+		// Thread the human-approve undo window into the lifecycle, which schedules
+		// the delayed send with the same cancellable `pendingAutoSend` marker
+		// autonomous sends use.
+		const undoDelayMs = await humanApproveUndoDelayMs(ctx);
 
 		const approvedAt = Date.now();
 		const transitioned: TransitionOutcome = await ctx.runMutation(
@@ -358,16 +346,13 @@ export const releaseFromQuarantine = adminMutation({
 });
 
 /**
- * Manually re-enqueue a permanently-failed message for reprocessing.
- *
- * `processingStatus === 'failed'` is terminal once the cron auto-retries
- * (`processingLifecycle.retryFailedActions`, max 3) are exhausted — at which
- * point the message is invisible to the workflow. This is the operator-facing
- * counterpart to that cron: it routes the `failed → received` edge through the
- * lifecycle with the existing `cron_retry` source (clearing `errorMessage`,
- * re-kicking the pipeline from `security_scan`), and resets the most recent
- * failed `agentAction` to pending so the retried step has a clean row — exactly
- * what `retryFailedActions` does per message.
+ * Retry a failed message, by where it failed (#1220, `./retryFailed.ts`): a
+ * failed send of a reply a person approved is sent again, a person's reply
+ * goes back to review, and only a message nobody touched re-runs the agent
+ * pipeline. The operator-facing counterpart to the retry cron
+ * (`processingLifecycle.retryFailedActions`), which only ever re-runs the
+ * agent for a message nobody touched. Arguments unchanged; `retried` (the plan
+ * taken) is new in the result.
  */
 export const retryFailedMessage = adminMutation({
 	args: {
@@ -381,40 +366,17 @@ export const retryFailedMessage = adminMutation({
 			throwInvalidState('Message has not failed');
 		}
 
-		// Reset the most recent failed agentAction (if any) alongside the status
-		// reset, mirroring the cron's per-message behaviour. A message only
-		// reaches terminal `processingStatus === 'failed'` once its step retries
-		// are exhausted, at which point the step row is `abandoned` (the terminal
-		// twin of `failed`) — so match either so the operator retry still resets
-		// the offending step to a clean `pending`.
-		const failedAction = (
-			await ctx.db
-				.query('agentActions')
-				.withIndex('by_inbound_message', (q) => q.eq('inboundMessageId', args.inboundMessageId))
-				.collect()
-		) // bounded: one message's pipeline actions (~1 per step)
-			.filter((a) => a.status === 'failed' || a.status === 'abandoned')
-			.sort((a, b) => b.createdAt - a.createdAt)[0];
-
-		await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
-			inboundMessageId: args.inboundMessageId,
-			input: {
-				to: 'received',
-				at: Date.now(),
-				source: 'cron_retry',
-				userId,
-				...(failedAction ? { resetActionId: failedAction._id } : {}),
-			},
-		});
+		const retried = await retryFailed(ctx, message, userId);
 
 		await recordAuditLog(ctx, {
 			userId,
 			action: 'inbound.retried',
 			resource: 'inbound_message',
 			resourceId: args.inboundMessageId,
+			details: { plan: retried },
 		});
 
-		return { success: true };
+		return { success: true, retried };
 	},
 });
 

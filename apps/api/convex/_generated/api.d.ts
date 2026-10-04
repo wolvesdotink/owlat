@@ -675,6 +675,7 @@ import type * as inbox_processingLifecycle from '../inbox/processingLifecycle.js
 import type * as inbox_processingLifecycle_autoSendCancel from '../inbox/processingLifecycle/autoSendCancel.js';
 import type * as inbox_processingLifecycle_draftFields from '../inbox/processingLifecycle/draftFields.js';
 import type * as inbox_processingLifecycle_effects from '../inbox/processingLifecycle/effects.js';
+import type * as inbox_processingLifecycle_failure from '../inbox/processingLifecycle/failure.js';
 import type * as inbox_processingLifecycle_reducers from '../inbox/processingLifecycle/reducers.js';
 import type * as inbox_processingLifecycle_takeover from '../inbox/processingLifecycle/takeover.js';
 import type * as inbox_processingLifecycle_types from '../inbox/processingLifecycle/types.js';
@@ -684,6 +685,7 @@ import type * as inbox_reads from '../inbox/reads.js';
 import type * as inbox_receiveInbound from '../inbox/receiveInbound.js';
 import type * as inbox_replyAttachmentStore from '../inbox/replyAttachmentStore.js';
 import type * as inbox_replyAttachments from '../inbox/replyAttachments.js';
+import type * as inbox_retryFailed from '../inbox/retryFailed.js';
 import type * as inbox_snooze from '../inbox/snooze.js';
 import type * as inbox_stepOutputs from '../inbox/stepOutputs.js';
 import type * as inbox_threadFilters from '../inbox/threadFilters.js';
@@ -2147,6 +2149,7 @@ declare const fullApi: ApiFromModules<{
 	'inbox/processingLifecycle/autoSendCancel': typeof inbox_processingLifecycle_autoSendCancel;
 	'inbox/processingLifecycle/draftFields': typeof inbox_processingLifecycle_draftFields;
 	'inbox/processingLifecycle/effects': typeof inbox_processingLifecycle_effects;
+	'inbox/processingLifecycle/failure': typeof inbox_processingLifecycle_failure;
 	'inbox/processingLifecycle/reducers': typeof inbox_processingLifecycle_reducers;
 	'inbox/processingLifecycle/takeover': typeof inbox_processingLifecycle_takeover;
 	'inbox/processingLifecycle/types': typeof inbox_processingLifecycle_types;
@@ -2156,6 +2159,7 @@ declare const fullApi: ApiFromModules<{
 	'inbox/receiveInbound': typeof inbox_receiveInbound;
 	'inbox/replyAttachmentStore': typeof inbox_replyAttachmentStore;
 	'inbox/replyAttachments': typeof inbox_replyAttachments;
+	'inbox/retryFailed': typeof inbox_retryFailed;
 	'inbox/snooze': typeof inbox_snooze;
 	'inbox/stepOutputs': typeof inbox_stepOutputs;
 	'inbox/threadFilters': typeof inbox_threadFilters;

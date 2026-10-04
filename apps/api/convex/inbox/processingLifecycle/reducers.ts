@@ -17,6 +17,7 @@
 import type { Doc, Id } from '../../_generated/dataModel';
 import { defineLifecycle } from '../../lib/lifecycle';
 import { draftReadyDraftPatch } from './draftFields';
+import { failedStageFor, leaveFailedParts } from './failure';
 import type {
 	Effect,
 	InputFor,
@@ -90,9 +91,12 @@ export const PROCESSING_LIFECYCLE = defineLifecycle<ProcessingStatus>(
 		// reply themselves (inbox/manualReply.ts).
 		rejected: ['draft_ready'],
 		archived: ['draft_ready'],
-		// `received` is the retry; `draft_ready` is a person writing the reply
-		// the agent failed to (inbox/manualReply.ts).
-		failed: ['received', 'draft_ready'],
+		// `received` is the agent's retry; `draft_ready` is a person writing the
+		// reply the agent failed to (inbox/manualReply.ts), or a Retry returning
+		// a person's reply to review; `approved` is a Retry sending a person's
+		// approved reply again (#1220). Only a person takes `approved` from here
+		// (`refusedAsNotAPerson`).
+		failed: ['received', 'draft_ready', 'approved'],
 	},
 	{ reportsTerminalRefusals: true }
 );
@@ -111,7 +115,7 @@ export function isClosedStatus(status: ProcessingStatus): boolean {
 
 // The takeover predicates live in `./takeover.ts`; re-exported so the
 // dispatcher and tests keep one import surface.
-export { isPipelineInput, requiresManualTakeover } from './takeover';
+export { isPipelineInput, refusedAsNotAPerson, requiresManualTakeover } from './takeover';
 
 // `to: 'failed'` can come from any open source; checked separately.
 export function canFail(from: ProcessingStatus): boolean {
@@ -402,11 +406,11 @@ function reduceReceived(
 	return { patch, effects };
 }
 
-function reduceFailed(
-	_message: Doc<'inboundMessages'>,
-	input: InputFor<'failed'>
-): TransitionParts {
-	const patch: Record<string, unknown> = { errorMessage: input.errorMessage };
+function reduceFailed(message: Doc<'inboundMessages'>, input: InputFor<'failed'>): TransitionParts {
+	const patch: Record<string, unknown> = {
+		errorMessage: input.errorMessage,
+		failedStage: failedStageFor(message),
+	};
 	const effects: Effect[] = [];
 	if (input.failingActionId) {
 		effects.push({
@@ -474,6 +478,7 @@ export function reduce(message: Doc<'inboundMessages'>, input: TransitionInput):
 	}
 
 	const parts = buildTransition(message, input);
-	Object.assign(patch, parts.patch);
-	return { patch, effects: parts.effects, applied: 'transitioned' };
+	const leaving = leaveFailedParts(message, input);
+	Object.assign(patch, leaving.patch, parts.patch);
+	return { patch, effects: [...parts.effects, ...leaving.effects], applied: 'transitioned' };
 }
