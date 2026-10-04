@@ -18,6 +18,7 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { createTestCampaign, createTestContact, createTestEmailSend } from './factories';
 import { DAY, type T } from './helpers/sendCompletionFailures';
+import { expectScheduledFailure } from './helpers/scheduledFailures';
 import {
 	LOST_SEND_ERROR_CODE,
 	SWEEP_PAGE_SIZE,
@@ -285,9 +286,12 @@ describe('the cron sweep', () => {
 		await runCron(t);
 		expect((await getSend(t, sendId))?.status).toBe('queued');
 
-		const status = await t.query(internal.delivery.stuckSendSweepAdmin.status, {});
-		expect(status.campaign.due).toBe(1);
-		expect(status.campaign.dueSample[0]).toMatchObject({
+		const status = await t.query(internal.delivery.stuckSendSweepAdmin.status, {
+			kind: 'campaign',
+			range: 'due',
+		});
+		expect(status).toMatchObject({ counted: 1, isDone: true });
+		expect(status.sample[0]).toMatchObject({
 			sendId,
 			hasOpenCompletionFailure: true,
 			sweepableAt: T0 + 5 * DAY,
@@ -299,8 +303,16 @@ describe('the cron sweep', () => {
 		const { sendId } = await queuedCampaignSend(t);
 		at(T0 + 60 * DAY);
 		// The deadline range does not even read it (an absent field sorts first).
-		const status = await t.query(internal.delivery.stuckSendSweepAdmin.status, {});
-		expect(status.campaign).toMatchObject({ due: 0, unanchored: 1, pastMinimumAge: 1 });
+		const due = await t.query(internal.delivery.stuckSendSweepAdmin.status, {
+			kind: 'campaign',
+			range: 'due',
+		});
+		expect(due.counted).toBe(0);
+		const unanchored = await t.query(internal.delivery.stuckSendSweepAdmin.status, {
+			kind: 'campaign',
+			range: 'unanchored',
+		});
+		expect(unanchored).toMatchObject({ counted: 1, pastMinimumAge: 1 });
 		await runCron(t);
 		expect((await getSend(t, sendId))?.status).toBe('queued');
 	});
@@ -340,7 +352,7 @@ describe('the cron sweep', () => {
 			cutoff: T0 + DAY,
 			cursor: null,
 		});
-		expect(first.failed + first.skipped + first.errors).toBe(SWEEP_PAGE_SIZE);
+		expect(first.scheduled).toBe(SWEEP_PAGE_SIZE);
 		expect(first.isDone).toBe(false);
 
 		await runCron(t);
@@ -349,11 +361,13 @@ describe('the cron sweep', () => {
 		expect((await getSend(t, live))?.status).toBe('queued');
 	});
 
-	it('fails the other Sends of a page when one throws', async () => {
+	it('fails the other Sends of a page when one throws, and retries it next pass', async () => {
 		const t = convexTest(schema, modules);
 		const bad = await queuedCampaignSend(t, { firstAttemptAt: T0 });
 		const good = await queuedCampaignSend(t, { firstAttemptAt: T0 + 1 });
 		fault.campaignId = bad.campaignId;
+		// The bad Send's own scheduled `failLostSend` throws and rolls back.
+		expectScheduledFailure('delivery/stuckSendSweep:failLostSend');
 		at(T0 + 6 * DAY);
 		await runCron(t);
 		expect((await getSend(t, bad.sendId))?.status).toBe('queued');
@@ -387,9 +401,12 @@ describe('the operator pass for rows without a first-attempt record', () => {
 		const recent = (await queuedCampaignSend(t)).sendId;
 
 		at(T0 + 30 * DAY);
-		const before = await t.query(internal.delivery.stuckSendSweepAdmin.status, {});
-		expect(before.campaign).toMatchObject({ unanchored: 2, pastMinimumAge: 1, due: 0 });
-		expect(Math.floor(before.campaign.oldestUnanchoredCreatedAt ?? 0)).toBe(T0);
+		const before = await t.query(internal.delivery.stuckSendSweepAdmin.status, {
+			kind: 'campaign',
+			range: 'unanchored',
+		});
+		expect(before).toMatchObject({ counted: 2, pastMinimumAge: 1 });
+		expect(Math.floor(before.sample[0]?.createdAt ?? 0)).toBe(T0);
 
 		await t.mutation(internal.delivery.stuckSendSweepAdmin.failUnanchoredLostSends, {
 			createdBefore: T0 + 30 * DAY - UNANCHORED_MIN_AGE_MS,

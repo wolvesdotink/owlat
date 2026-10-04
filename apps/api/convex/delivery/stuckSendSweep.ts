@@ -4,7 +4,7 @@ import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
-import { logError, logInfo } from '../lib/runtimeLog';
+import { logInfo } from '../lib/runtimeLog';
 import { countableSendRefValidator } from '../lib/validators/send';
 import { MAX_SEND_TIME_WINDOW_HOURS } from '../campaigns/sendTimeOptimization';
 import { unresolvedCompletionFailures } from './sendCompletionFeedback';
@@ -41,12 +41,29 @@ import { unresolvedCompletionFailures } from './sendCompletionFeedback';
 //     `stuckSendSweepAdmin:failUnanchoredLostSends` fails them on an operator's
 //     word, only once they are older than `UNANCHORED_MIN_AGE_MS`.
 //
-// BOUNDED. Both passes read one index range
+// BOUNDED BY BYTES, NOT ONLY ROWS. A Send row can be as large as a Convex
+// document (1 MiB: a transactional Send carries its data variables), and a
+// transaction may read 16 MiB. Both passes read one index range
 // (`by_status_provider_first_attempt`: queued, no provider id, by first
-// attempt), one page of `SWEEP_PAGE_SIZE` per transaction, continued by cursor,
-// so rows it skips are passed over rather than read again. Each Send is failed
-// in a nested mutation: one that throws rolls back alone and the page carries
-// on (the #1184 fault was exactly a throwing lifecycle effect).
+// attempt) a page at a time, at most `SWEEP_PAGE_SIZE` rows and
+// `LOST_SEND_PAGE_MAX_BYTES` (2 MiB) per page, continued by cursor so rows it
+// skips are passed over rather than read again. The page only reads; each
+// candidate is judged and failed in a transaction of its own (`failLostSend`,
+// scheduled), so a Send whose lifecycle throws (the #1184 fault) rolls back
+// alone and the next pass tries it again. Worst case per transaction:
+//   - a page: 2 MiB, plus the one row that crosses the budget (up to 1 MiB),
+//     so 3 MiB; and 25 scheduled calls of a few hundred bytes each.
+//   - `failLostSend`: the Send row is read five times (this judgment, then the
+//     lifecycle transition's own loads and its patch), so 5 MiB at the
+//     document limit, plus its completion-failure records (at most
+//     2 x 10 x 8 KiB = 160 KiB) and the lifecycle's small reads (a campaign
+//     stat shard, the send's source row). The live completion runs the same
+//     transition on the same row, so this is no more than any completion of
+//     that Send already costs.
+//   Measured with Sends of about 0.95 MiB: a page and a `status` page fit under
+//   3 MiB, `failLostSend` under 5 MiB (it fails at 4.5 MiB).
+// `__tests__/stuckSendSweepLimits.integration.test.ts` runs every path with
+// near-1 MiB Sends under a 6 MiB read limit.
 // ============================================================================
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -69,8 +86,14 @@ const LOST_SEND_MESSAGE =
 const UNANCHORED_LOST_SEND_MESSAGE =
 	'Closed by an operator: no completion reached this send and it predates first-attempt tracking; the message may or may not have been delivered';
 
-/** Sends per sweep transaction; each is failed in its own nested mutation. */
+/** Rows per sweep page; each candidate is then failed in its own transaction. */
 export const SWEEP_PAGE_SIZE = 25;
+
+/**
+ * Bytes a sweep or `status` page may read before it stops early. The read can
+ * overshoot by the one row that crosses it, at most a document (1 MiB).
+ */
+export const LOST_SEND_PAGE_MAX_BYTES = 2 * 1024 * 1024;
 
 export const sweepTableValidator = v.union(
 	v.literal('emailSends'),
@@ -178,8 +201,10 @@ export async function judgeLostSend(
 }
 
 /**
- * Fail one Send if it is still lost. Run nested by the page, so a throw rolls
- * back this Send alone. Returns why it was left alone otherwise.
+ * Fail one Send if it is still lost, in its own transaction (scheduled by the
+ * page). Returns why it was left alone otherwise. A lifecycle that throws
+ * rolls this Send back and fails the scheduled call, which Convex logs; the
+ * Send stays `queued` and the next pass tries it again.
  */
 export const failLostSend = internalMutation({
 	args: {
@@ -220,7 +245,8 @@ function refFor(table: SweepTable, send: SendRow) {
 /**
  * One page of one pass over one table, then the next page by cursor until the
  * range is done. The cutoff is fixed for the whole pass so the cursor stays
- * valid; each Send is judged again at its turn.
+ * valid. The page only reads the candidates and schedules `failLostSend` for
+ * each, which judges the row again as it is then.
  */
 export const sweepLostSendPage = internalMutation({
 	args: {
@@ -233,36 +259,20 @@ export const sweepLostSendPage = internalMutation({
 		const page = await lostSendCandidates(ctx, args.table, args.mode, args.cutoff).paginate({
 			numItems: SWEEP_PAGE_SIZE,
 			cursor: args.cursor,
+			maximumBytesRead: LOST_SEND_PAGE_MAX_BYTES,
 		});
-		let failed = 0;
-		let skipped = 0;
-		let errors = 0;
 		for (const send of page.page) {
-			const sendRef = refFor(args.table, send);
-			try {
-				const result = await ctx.runMutation(internal.delivery.stuckSendSweep.failLostSend, {
-					sendRef,
-					mode: args.mode,
-					cutoff: args.cutoff,
-				});
-				if (result.isFailed) failed += 1;
-				else skipped += 1;
-			} catch {
-				// Rolled back on its own; the next pass tries again.
-				errors += 1;
-				logError('[LostSendSweep] Could not fail a lost send', {
-					sendKind: sendRef.kind,
-					sendId: sendRef.id,
-				});
-			}
+			await ctx.scheduler.runAfter(0, internal.delivery.stuckSendSweep.failLostSend, {
+				sendRef: refFor(args.table, send),
+				mode: args.mode,
+				cutoff: args.cutoff,
+			});
 		}
-		if (failed > 0 || errors > 0) {
-			logInfo('[LostSendSweep] Page swept', {
+		if (page.page.length > 0) {
+			logInfo('[LostSendSweep] Page scheduled', {
 				table: args.table,
 				mode: args.mode,
-				failed,
-				skipped,
-				errors,
+				candidates: page.page.length,
 			});
 		}
 		if (!page.isDone) {
@@ -271,7 +281,7 @@ export const sweepLostSendPage = internalMutation({
 				cursor: page.continueCursor,
 			});
 		}
-		return { failed, skipped, errors, isDone: page.isDone };
+		return { scheduled: page.page.length, isDone: page.isDone };
 	},
 });
 

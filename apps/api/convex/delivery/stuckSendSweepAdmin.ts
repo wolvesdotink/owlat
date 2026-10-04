@@ -6,6 +6,7 @@ import { logInfo } from '../lib/runtimeLog';
 import { unresolvedCompletionFailures } from './sendCompletionFeedback';
 import {
 	deadlineSweepCutoff,
+	LOST_SEND_PAGE_MAX_BYTES,
 	lostSendCandidates,
 	startLostSendPasses,
 	sweepableAt,
@@ -19,39 +20,71 @@ import {
 // queue and fails the Sends the cron cannot judge (apps/docs "Platform
 // operations").
 //
-// READ BUDGET. `status` reads at most 2 tables x 2 ranges x 101 queued Sends
-// and one `sendCompletionFailures` lookup (two ranges of 10) per sampled row.
-// A queued Send row is small (a transactional one carries its data variables),
-// well under the 16 MiB transaction limit at that count.
+// READ BUDGET. A Send row can be a whole Convex document (1 MiB), so
+// `status` reads one range of one table per call, one page of at most 100 rows
+// and `LOST_SEND_PAGE_MAX_BYTES` (2 MiB, overshooting by at most the one row
+// that crosses it), then looks up the completion-failure records of the first
+// 10 rows (at most 2 x 10 x 8 KiB each). Worst case: 3 MiB + 1.6 MiB = 4.6 MiB
+// against the 16 MiB transaction limit. A longer range is counted by calling
+// again with `continueCursor`. `failUnanchoredLostSends` reads nothing itself:
+// it schedules the sweep's own pages (see `./stuckSendSweep`).
 // ============================================================================
 
-const STATUS_COUNT_LIMIT = 100;
+const STATUS_PAGE_SIZE = 100;
 const STATUS_SAMPLE_SIZE = 10;
 
 type SendRow = Doc<'emailSends'> | Doc<'transactionalSends'>;
 
+const statusTables = { campaign: 'emailSends', transactional: 'transactionalSends' } as const;
+
 /**
- * Operator: what the lost-send sweep sees, per send table.
- * `npx convex run delivery/stuckSendSweepAdmin:status`. Counts stop at 100
- * (`isCountCapped`).
+ * Operator: what the lost-send sweep sees in one range of one send table.
+ * `npx convex run delivery/stuckSendSweepAdmin:status '{"kind": "campaign", "range": "due"}'`
+ * (`kind`: `campaign` or `transactional`; `range`: `due` or `unanchored`).
  *
  * - `due`: Sends the next cron tick fails (first attempt past the deadline plus
- *   the grace). A sampled row with `hasOpenCompletionFailure` is left to
- *   `sendCompletionFailureAdmin` instead.
+ *   the grace), oldest first attempt first. A sampled row with
+ *   `hasOpenCompletionFailure` is left to `sendCompletionFailureAdmin` instead.
  * - `unanchored`: queued Sends with no provider id and no recorded first
  *   attempt, oldest first. Most are simply waiting for their first attempt
  *   (a scheduled or send-time-optimized campaign); the cron never touches them.
  *   `pastMinimumAge` counts those older than `UNANCHORED_MIN_AGE_MS`, which
  *   `failUnanchoredLostSends` may fail.
+ *
+ * `counted` covers this page only. When `isDone` is false, pass
+ * `continueCursor` as `cursor` to count the next page; the page stops early
+ * when its rows are large.
  */
 export const status = internalQuery({
-	args: {},
-	handler: async (ctx) => {
+	args: {
+		kind: v.union(v.literal('campaign'), v.literal('transactional')),
+		range: v.union(v.literal('due'), v.literal('unanchored')),
+		cursor: v.optional(v.string()),
+	},
+	handler: async (ctx, args) => {
 		const now = Date.now();
-		const deadlineCutoff = deadlineSweepCutoff(now);
+		const table: SweepTable = statusTables[args.kind];
+		const mode = args.range === 'due' ? 'deadline' : 'unanchored';
+		const cutoff = mode === 'deadline' ? deadlineSweepCutoff(now) : now;
+		const page = await lostSendCandidates(ctx, table, mode, cutoff).paginate({
+			numItems: STATUS_PAGE_SIZE,
+			cursor: args.cursor ?? null,
+			maximumBytesRead: LOST_SEND_PAGE_MAX_BYTES,
+		});
+		const rows: SendRow[] = page.page;
 		const unanchoredFloor = now - UNANCHORED_MIN_AGE_MS;
-		const sample = async (rows: SendRow[]) =>
-			await Promise.all(
+		return {
+			kind: args.kind,
+			range: args.range,
+			counted: rows.length,
+			isDone: page.isDone,
+			continueCursor: page.isDone ? null : page.continueCursor,
+			pastMinimumAge:
+				args.range === 'unanchored'
+					? rows.filter((row) => row._creationTime <= unanchoredFloor).length
+					: null,
+			unanchoredMinimumAgeMs: UNANCHORED_MIN_AGE_MS,
+			sample: await Promise.all(
 				rows.slice(0, STATUS_SAMPLE_SIZE).map(async (row) => ({
 					sendId: row._id,
 					createdAt: row._creationTime,
@@ -59,30 +92,7 @@ export const status = internalQuery({
 					sweepableAt: row.firstAttemptAt === undefined ? null : sweepableAt(row.firstAttemptAt),
 					hasOpenCompletionFailure: (await unresolvedCompletionFailures(ctx, row._id)).length > 0,
 				}))
-			);
-		const table = async (name: SweepTable) => {
-			const due = await lostSendCandidates(ctx, name, 'deadline', deadlineCutoff).take(
-				STATUS_COUNT_LIMIT + 1
-			);
-			const unanchored = await lostSendCandidates(ctx, name, 'unanchored', now).take(
-				STATUS_COUNT_LIMIT + 1
-			);
-			return {
-				due: Math.min(due.length, STATUS_COUNT_LIMIT),
-				unanchored: Math.min(unanchored.length, STATUS_COUNT_LIMIT),
-				pastMinimumAge: unanchored
-					.slice(0, STATUS_COUNT_LIMIT)
-					.filter((row) => row._creationTime <= unanchoredFloor).length,
-				isCountCapped: due.length > STATUS_COUNT_LIMIT || unanchored.length > STATUS_COUNT_LIMIT,
-				oldestUnanchoredCreatedAt: unanchored[0]?._creationTime ?? null,
-				dueSample: await sample(due),
-				unanchoredSample: await sample(unanchored),
-			};
-		};
-		return {
-			unanchoredMinimumAgeMs: UNANCHORED_MIN_AGE_MS,
-			campaign: await table('emailSends'),
-			transactional: await table('transactionalSends'),
+			),
 		};
 	},
 });
