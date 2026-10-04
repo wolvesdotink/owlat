@@ -149,23 +149,31 @@ describe('e2e.yml', () => {
 });
 
 describe('e2e.yml time budget', () => {
-	const minutes = (value: string | undefined) => Number(value);
-	const text = readFileSync(WORKFLOW, 'utf8');
-	const job = minutes(/^ {4}timeout-minutes: (\d+)$/m.exec(text)?.[1]);
-	const tests = steps.find(named('Run E2E tests'))!;
-	const endReset = steps.find(named("End the run's sessions on the test deployment"))!;
+	/**
+	 * Allowance for what no step cap bounds: job setup and the actions' pre and
+	 * post steps, which together take well under a minute on a normal run.
+	 */
+	const OVERHEAD_MINUTES = 5;
+	const job = Number(/^ {4}timeout-minutes: (\d+)$/m.exec(readFileSync(WORKFLOW, 'utf8'))?.[1]);
+	const cap = (step: Step) => Number(step['timeout-minutes']);
 
-	it('caps the tests and the end-of-run reset', () => {
-		expect(minutes(tests['timeout-minutes'])).toBe(30);
-		// Above the script's own deadline, so the script reports its own failure.
-		expect(minutes(endReset['timeout-minutes']) * 60_000).toBeGreaterThan(RESET_DEADLINE_MS);
+	it('caps every step', () => {
+		const uncapped = steps.filter((step) => !(cap(step) > 0)).map((step) => step.name ?? step.uses);
+		expect(uncapped).toEqual([]);
 	});
 
-	it('leaves the job room for the reset after the longest possible test step', () => {
-		const afterTests = minutes(endReset['timeout-minutes']) + 2; // + scan and upload
-		const beforeTests = job - minutes(tests['timeout-minutes']) - afterTests;
-		// Setup through browser install takes 2-4 minutes on a normal run.
-		expect(beforeTests).toBeGreaterThanOrEqual(15);
+	it('caps the job above the sum of its steps, so a step cap always fires first', () => {
+		// Whatever step hangs, it fails on its own cap with every later step's
+		// cap still inside the job's, the end-of-run reset included.
+		const total = steps.reduce((sum, step) => sum + cap(step), 0);
+		expect(job).toBeGreaterThan(0);
+		expect(job).toBeGreaterThanOrEqual(total + OVERHEAD_MINUTES);
+	});
+
+	it('caps each reset above the script deadline, so the script reports its own failure', () => {
+		const resets = steps.filter((step) => step.run === RESET);
+		expect(resets).toHaveLength(2);
+		for (const reset of resets) expect(cap(reset) * 60_000).toBeGreaterThan(RESET_DEADLINE_MS);
 	});
 });
 
