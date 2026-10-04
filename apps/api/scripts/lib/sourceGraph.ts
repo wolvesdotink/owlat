@@ -16,7 +16,8 @@ import { dirname, join, relative } from 'node:path';
 /**
  * Directories no walk enters. Tests are the fabricated callers these checks
  * exist to see past, `_generated` names every function without calling one,
- * and the rest are dependencies or build output (copies of the source).
+ * and the rest are dependencies, build output (copies of the source) or
+ * turbo's per-package log directory.
  * `.well-known` is a live Nuxt route directory, so only these names are
  * skipped, never every dot-prefixed directory.
  */
@@ -29,6 +30,7 @@ export const SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set([
 	'.output',
 	'build',
 	'coverage',
+	'.turbo',
 ]);
 
 /** `*.test.ts` / `*.spec.ts`: a test file outside a `__tests__` folder. */

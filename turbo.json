@@ -61,18 +61,18 @@
 				"$TURBO_ROOT$/apps/docs/content/en/3.developer/6.email-system.md",
 				// the baseline checks exec the shared ratchet runner
 				"$TURBO_ROOT$/scripts/ratchet.sh",
-				// Root globs bypass .gitignore, so drop generated trees by hand: the
-				// directories apps/api/scripts/lib/sourceGraph.ts never walks, plus
-				// turbo's own per-package log directory, which every run rewrites.
-				// Keep the package-relative `**/` form: turbo matches excludes against
-				// the cleaned path (`../web/.nuxt/…`), which `$TURBO_ROOT$/**` misses.
+				// Root globs bypass .gitignore, so drop generated output by hand:
+				// node_modules and .nuxt anywhere, and build, dist, .output, coverage
+				// and .turbo (turbo's own log, rewritten by every run) only at a
+				// package root. A nested source directory with one of those names
+				// stays hashed. turbo matches excludes against the cleaned relative
+				// path, so sibling apps need the `../*/` form (`$TURBO_ROOT$/apps/*/`
+				// silently misses `../web/…`); packages keep `$TURBO_ROOT$`.
 				"!**/node_modules/**",
 				"!**/.nuxt/**",
-				"!**/.output/**",
-				"!**/dist/**",
-				"!**/build/**",
-				"!**/coverage/**",
-				"!**/.turbo/**"
+				"!{build,dist,.output,coverage,.turbo}/**",
+				"!../*/{build,dist,.output,coverage,.turbo}/**",
+				"!$TURBO_ROOT$/packages/*/{build,dist,.output,coverage,.turbo}/**"
 			]
 		},
 		"@owlat/web#lint": {
@@ -83,15 +83,12 @@
 				"$TURBO_ROOT$/packages/ui/**",
 				// check-localized-text.sh execs the shared ratchet runner
 				"$TURBO_ROOT$/scripts/ratchet.sh",
-				// generated trees, as for @owlat/api#lint above (both scanners skip
-				// the same directories)
+				// generated output, as for @owlat/api#lint above; both scanners skip
+				// the same paths (apps/web/scripts/lib/output-roots.sh)
 				"!**/node_modules/**",
 				"!**/.nuxt/**",
-				"!**/.output/**",
-				"!**/dist/**",
-				"!**/build/**",
-				"!**/coverage/**",
-				"!**/.turbo/**"
+				"!{build,dist,.output,coverage,.turbo}/**",
+				"!$TURBO_ROOT$/packages/ui/{build,dist,.output,coverage,.turbo}/**"
 			]
 		},
 		"@owlat/setup-cli#lint": {

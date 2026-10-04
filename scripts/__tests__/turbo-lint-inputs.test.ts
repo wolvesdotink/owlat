@@ -23,22 +23,29 @@ import { beforeAll, describe, expect, it } from 'vitest';
 const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
 /**
- * Generated trees. Every lint scanner that walks a directory outside its
- * package skips these, and turbo.json excludes them from the root-level globs
- * (which, unlike the default inputs, do not honour .gitignore).
+ * Generated output, as every lint scanner that walks a directory outside its
+ * package defines it and as turbo.json excludes it from the root-level globs
+ * (which, unlike the default inputs, do not honour .gitignore): node_modules
+ * and .nuxt anywhere, the output directories only at a package root. A nested
+ * source directory that shares an output name (components/build/) is source.
  */
-const GENERATED_DIRECTORIES = new Set([
-	'node_modules',
-	'.nuxt',
-	'.output',
-	'dist',
-	'build',
-	'coverage',
-	'.turbo',
-]);
-const GENERATED_PATH = new RegExp(
-	`(^|/)(${[...GENERATED_DIRECTORIES].map((name) => name.replace('.', '\\.')).join('|')})/`
-);
+const GENERATED_ANYWHERE = new Set(['node_modules', '.nuxt']);
+const PACKAGE_OUTPUT = new Set(['build', 'dist', '.output', 'coverage', '.turbo']);
+
+const isPackageRoot = (directory: string): boolean =>
+	existsSync(join(REPOSITORY_ROOT, directory, 'package.json'));
+
+/** Is the repo-relative `file` inside generated output? */
+function isGenerated(file: string): boolean {
+	const parts = file.split('/');
+	return parts
+		.slice(0, -1)
+		.some(
+			(part, index) =>
+				GENERATED_ANYWHERE.has(part) ||
+				(PACKAGE_OUTPUT.has(part) && isPackageRoot(parts.slice(0, index).join('/') || '.'))
+		);
+}
 
 interface DryRunTask {
 	readonly taskId: string;
@@ -88,13 +95,16 @@ function lintTask(packageName: string): LintTask {
 	return task;
 }
 
-/** Every file under `directory` (repo-relative) except the generated trees. */
+/** Every file under `directory` (repo-relative) outside generated output. */
 function walk(directory: string): string[] {
 	const found: string[] = [];
 	for (const entry of readdirSync(join(REPOSITORY_ROOT, directory), { withFileTypes: true })) {
 		const path = join(directory, entry.name);
 		if (entry.isDirectory()) {
-			if (!GENERATED_DIRECTORIES.has(entry.name)) found.push(...walk(path));
+			const generated =
+				GENERATED_ANYWHERE.has(entry.name) ||
+				(PACKAGE_OUTPUT.has(entry.name) && isPackageRoot(directory));
+			if (!generated) found.push(...walk(path));
 		} else if (entry.isFile()) {
 			found.push(path);
 		}
@@ -105,6 +115,100 @@ function walk(directory: string): string[] {
 function missingFrom(files: ReadonlySet<string>, read: readonly string[]): string[] {
 	return read.filter((file) => !files.has(file));
 }
+
+/**
+ * The shell word starting at `start`, with its quotes removed: quoting and
+ * nested `$(…)` are followed, so `"$(dirname "$0")/lib/x.sh"` is one word.
+ */
+function shellWord(text: string, start: number): string {
+	let word = '';
+	let quote: string | undefined;
+	let depth = 0;
+	for (let index = start; index < text.length; index++) {
+		const char = text[index]!;
+		if (depth > 0) {
+			word += char;
+			if (char === '(') depth++;
+			else if (char === ')') depth--;
+		} else if (quote === "'") {
+			if (char === "'") quote = undefined;
+			else word += char;
+		} else if (char === '$' && text[index + 1] === '(') {
+			word += '$(';
+			depth = 1;
+			index++;
+		} else if (quote === '"') {
+			if (char === '"') quote = undefined;
+			else word += char;
+		} else if (char === '"' || char === "'") {
+			quote = char;
+		} else if (/[\s;&|)]/.test(char)) {
+			break;
+		} else {
+			word += char;
+		}
+	}
+	return word;
+}
+
+/** The argument of every `source x` / `. x` in command position. */
+function sourcedArguments(source: string): string[] {
+	return [...source.matchAll(/(?:^|;|&&|\|\||\bthen|\bdo)[ \t]*(?:source|\.)[ \t]+/gm)].map(
+		(match) => shellWord(source, match.index + match[0].length)
+	);
+}
+
+const SCRIPT_DIRECTORY = /^\$\(dirname "\$(?:0|\{BASH_SOURCE\[0\]\})"\)\//;
+const REPOSITORY_ROOT_VARIABLE = /^\$\{?(?:repo_root|ROOT)\}?\//;
+
+/**
+ * A sourced path as the scripts write it, repo-relative: relative to the
+ * script's own directory, to the repo root, or else to the package (every lint
+ * script runs there). Undefined when it depends on any other variable.
+ */
+function resolveSourced(argument: string, script: string, directory: string): string | undefined {
+	const resolved = SCRIPT_DIRECTORY.test(argument)
+		? join(dirname(script), argument.replace(SCRIPT_DIRECTORY, ''))
+		: REPOSITORY_ROOT_VARIABLE.test(argument)
+			? argument.replace(REPOSITORY_ROOT_VARIABLE, '')
+			: join(directory, argument);
+	return resolved.includes('$') ? undefined : normalize(resolved);
+}
+
+describe('sourced helper parsing', () => {
+	const script = 'apps/api/scripts/check-x.sh';
+	const resolve = (text: string): (string | undefined)[] =>
+		sourcedArguments(text).map((argument) => resolveSourced(argument, script, 'apps/api'));
+
+	it('reads a quoted path with a nested command substitution as one word', () => {
+		expect(resolve('source "$(dirname "$0")/lib/convex-builders.sh"\n')).toEqual([
+			'apps/api/scripts/lib/convex-builders.sh',
+		]);
+		expect(resolve('. "$(dirname "${BASH_SOURCE[0]}")/lib/a.sh"\n')).toEqual([
+			'apps/api/scripts/lib/a.sh',
+		]);
+	});
+
+	it('reads the unquoted form', () => {
+		expect(resolve('source $(dirname "$0")/lib/convex-builders.sh\n')).toEqual([
+			'apps/api/scripts/lib/convex-builders.sh',
+		]);
+	});
+
+	it('reads the literal `.` form, relative to the package or the repo root', () => {
+		expect(resolve('. scripts/lib/convex-builders.sh\n')).toEqual([
+			'apps/api/scripts/lib/convex-builders.sh',
+		]);
+		expect(resolve('if true; then . "$repo_root/scripts/ratchet.sh"; fi\n')).toEqual([
+			'scripts/ratchet.sh',
+		]);
+	});
+
+	it('ignores a `.` that is an argument, and flags a path it cannot resolve', () => {
+		expect(resolve('find . -name \'*.sh\'\ncd "$(dirname "$0")/.."\n')).toEqual([]);
+		expect(resolve('source "$HOME/lib.sh"\n')).toEqual([undefined]);
+	});
+});
 
 describe('workspace lint task inputs', () => {
 	it('hash every client file check-entry-wiring.ts reads', async () => {
@@ -162,10 +266,7 @@ describe('workspace lint task inputs', () => {
 
 	it('leave generated trees out, so a build, nuxt prepare or turbo log cannot move a hash', () => {
 		for (const [packageName, { files }] of lintTasks) {
-			expect(
-				[...files].filter((file) => GENERATED_PATH.test(file)),
-				packageName
-			).toEqual([]);
+			expect([...files].filter(isGenerated), packageName).toEqual([]);
 		}
 	});
 
@@ -174,7 +275,7 @@ describe('workspace lint task inputs', () => {
 		// A path literal that escapes the package (`../…`) or starts at the repo
 		// root (`$repo_root/…`, `$ROOT/…`) is an outside read. A file literal must
 		// be an input; a directory literal must contribute every file under it
-		// outside the generated trees, a superset of what any scanner reads.
+		// outside generated output, a superset of what any scanner reads.
 		const missing: string[] = [];
 		const unresolved: string[] = [];
 		for (const [packageName, { directory, files }] of lintTasks) {
@@ -185,18 +286,6 @@ describe('workspace lint task inputs', () => {
 				...(manifest.scripts?.['lint'] ?? '').matchAll(/\bbash (scripts\/[\w./-]+\.sh)/g),
 			].map((match) => join(directory, match[1]!));
 			const seen = new Set<string>();
-			// A sourced path as the scripts write it: relative to the package (every
-			// lint script runs there), to the script's own directory, or to the root.
-			const resolveSourced = (path: string, script: string): string | undefined => {
-				const resolved = path.startsWith('$(dirname "$0")/')
-					? join(dirname(script), path.slice('$(dirname "$0")/'.length))
-					: /^\$\{?(?:repo_root|ROOT)\}?\//.test(path)
-						? path.replace(/^\$\{?(?:repo_root|ROOT)\}?\//, '')
-						: join(directory, path);
-				return resolved.includes('$') || !existsSync(join(REPOSITORY_ROOT, resolved))
-					? undefined
-					: normalize(resolved);
-			};
 			while (queue.length > 0) {
 				const script = queue.shift()!;
 				if (seen.has(script)) continue;
@@ -205,16 +294,17 @@ describe('workspace lint task inputs', () => {
 					.split('\n')
 					.filter((line) => !/^\s*#/.test(line))
 					.join('\n');
-				for (const [, sourced] of source.matchAll(
-					/(?:^|;|&&|\|\||\bthen|\bdo)\s*(?:source|\.)\s+"?([^\s";]+)"?/gm
-				)) {
-					const path = resolveSourced(sourced!, script);
-					if (path === undefined) unresolved.push(`${packageName}: ${script} sources ${sourced}`);
-					else queue.push(path);
+				for (const sourced of sourcedArguments(source)) {
+					const path = resolveSourced(sourced, script, directory);
+					if (path === undefined || !existsSync(join(REPOSITORY_ROOT, path))) {
+						unresolved.push(`${packageName}: ${script} sources ${sourced}`);
+					} else {
+						queue.push(path);
+					}
 				}
 				// `$(dirname "$0")/…` is relative to the script; a bare `../…` to the
 				// package, where every lint script runs.
-				const scriptRelative = /\$\(dirname "\$(?:0|\{BASH_SOURCE\[0\]\})"\)\/([\w.@/-]+)/g;
+				const scriptRelative = new RegExp(`${SCRIPT_DIRECTORY.source.slice(1)}([\\w.@/-]+)`, 'g');
 				const literals = [
 					...[...source.matchAll(scriptRelative)].map((match) =>
 						normalize(join(dirname(script), match[1]!))

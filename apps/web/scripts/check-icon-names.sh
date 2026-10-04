@@ -23,6 +23,7 @@
 # this script cd's to apps/web first.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+. scripts/lib/output-roots.sh
 
 # Resolved through node rather than a hard-coded path: the collection is a
 # workspace dependency and the package manager decides where it is hoisted to.
@@ -58,14 +59,14 @@ SCANNED_EXT='vue|jsx|tsx|ts|md|mdc|mdx|yml|yaml'
 
 # TESTS ARE NOT MARKUP. A name in a spec renders nothing, so it can neither
 # reach a user as an empty box nor fail to — and the assertions that pin these
-# very rules quote a deliberately broken name by construction. Generated trees
-# are skipped too; turbo.json's @owlat/web#lint inputs exclude the same set.
+# very rules quote a deliberately broken name by construction. Generated output
+# is skipped too: node_modules and .nuxt anywhere, the other output directories
+# only at a package root (scripts/lib/output-roots.sh).
 mapfile -t hits < <(
 	grep -rHnoE --binary-files=without-match \
-		--exclude-dir=node_modules --exclude-dir=.nuxt --exclude-dir=.output --exclude-dir=dist \
-		--exclude-dir=build --exclude-dir=coverage --exclude-dir=.turbo \
+		--exclude-dir=node_modules --exclude-dir=.nuxt \
 		--exclude-dir=__tests__ --exclude='*.test.ts' --exclude='*.spec.ts' \
-		'\blucide:[a-z0-9-]+' "${roots[@]}" 2>/dev/null | sort -u
+		'\blucide:[a-z0-9-]+' "${roots[@]}" 2>/dev/null | drop_output_roots "${roots[@]}" | sort -u
 )
 
 fail=0
