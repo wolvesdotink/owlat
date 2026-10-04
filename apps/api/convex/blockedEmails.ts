@@ -404,6 +404,8 @@ export const addFromEvent = internalMutation({
 		 * When the provider observed this, for a provider-reported event. A
 		 * re-add older than an operator's removal of the address is refused
 		 * (returns null), so a late or replayed event cannot undo it (#1228).
+		 * See `wasRemovedByOperatorSince` for the tie rule and the cases it
+		 * refuses without proof.
 		 */
 		eventAt: v.optional(v.number()),
 	},

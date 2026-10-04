@@ -27,7 +27,8 @@ import {
 	createTestEmailSend,
 	createTestTopic,
 } from '../../__tests__/factories';
-import { mandrillReplayKey, mapMandrillEvent } from '../adapters/mandrill';
+import { MAX_EVENTS_PER_BATCH, mandrillReplayKey, mapMandrillEvent } from '../adapters/mandrill';
+import { AUDIT_LOG_RETENTION_MS } from '../../lib/constants';
 import { INBOUND_REPLAY_WINDOW_MS } from '../types';
 import { dispatchOnce, IN_FLIGHT_LEASE_MS, InboundEventInFlightError } from '../inboundEventClaims';
 import type * as SessionOrganization from '../../lib/sessionOrganization';
@@ -223,17 +224,143 @@ describe('a reject never undoes an operator removal it predates', () => {
 		expect(await blockRows(t, 'mine@example.com')).toHaveLength(1);
 	});
 
-	it('suppresses nobody for a reject older than the replay window, but fails the Send', async () => {
+	it('still mirrors a reject older than the dedupe window when nobody removed the address', async () => {
 		const t = setupTest();
-		const email = 'stale@example.com';
-		const { sendId } = await seedSend(t, 'm-stale', email);
+		const email = 'manual-replay@example.com';
+		await seedSend(t, 'm-week-old', email);
 
-		await postBatch(t, [reject('m-stale', email, INBOUND_REPLAY_WINDOW_MS + MINUTE)]);
+		// A failed batch an operator replays by hand a week later.
+		await postBatch(t, [reject('m-week-old', email, INBOUND_REPLAY_WINDOW_MS + MINUTE)]);
+
+		expect(await blockRows(t, email)).toHaveLength(1);
+		expect(await claimRows(t)).toHaveLength(0);
+	});
+
+	it('refuses a re-add from a reject older than the audit retention, but fails the Send', async () => {
+		const t = setupTest();
+		const email = 'ancient@example.com';
+		const { sendId } = await seedSend(t, 'm-ancient', email);
+
+		// Removals that old are purged, so their absence proves nothing.
+		await postBatch(t, [reject('m-ancient', email, AUDIT_LOG_RETENTION_MS + MINUTE)]);
 
 		expect(await blockRows(t, email)).toHaveLength(0);
 		const send = await t.run(async (ctx: { db: DatabaseWriter }) => await ctx.db.get(sendId));
 		expect(send?.status).toBe('failed');
-		expect(await claimRows(t)).toHaveLength(0);
+	});
+
+	it('treats a sunset restore from the Remove button as an operator removal', async () => {
+		const t = setupTest();
+		const email = 'sunset@example.com';
+		const blockedEmailId = await t.run(async (ctx: { db: DatabaseWriter }) => {
+			await ctx.db.insert('contacts', createTestContact({ email, sunsetStage: 'suppressed' }));
+			return await ctx.db.insert('blockedEmails', {
+				email,
+				reason: 'unengaged',
+				createdAt: Date.now() - 60 * MINUTE,
+			});
+		});
+		await t.withIdentity(operator).mutation(api.blockedEmails.remove, { blockedEmailId });
+		expect(await blockRows(t, email)).toHaveLength(0);
+
+		await seedSend(t, 'm-sunset', email);
+		await postBatch(t, [reject('m-sunset', email, 2 * MINUTE)]);
+
+		expect(await blockRows(t, email)).toHaveLength(0);
+	});
+});
+
+// ═══ the same-second rule ══════════════════════════════════════════════════
+//
+// Mandrill stamps whole seconds, Owlat millis. An event stamped T0 happened in
+// [T0, T0 + 1 s), so anything in that second counts as BEFORE the event and
+// only the next second counts as after it.
+
+const T0 = Date.UTC(2026, 9, 4, 12, 0, 0);
+
+describe('a tie inside the event second goes to the event', () => {
+	let clock: ReturnType<typeof vi.spyOn> | undefined;
+	beforeEach(() => {
+		clock = vi.spyOn(Date, 'now').mockReturnValue(T0 + 10_000);
+	});
+	afterEach(() => clock?.mockRestore());
+
+	async function contactWith(
+		t: Harness,
+		email: string,
+		fields: { addedAt?: number; doiConfirmedAt?: number }
+	) {
+		return await t.run(async (ctx: { db: DatabaseWriter }) => {
+			const contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email,
+					...(fields.doiConfirmedAt !== undefined
+						? { doiStatus: 'confirmed' as const, doiConfirmedAt: fields.doiConfirmedAt }
+						: {}),
+				})
+			);
+			const topicId = await ctx.db.insert('topics', createTestTopic());
+			await ctx.db.insert('contactTopics', {
+				contactId,
+				topicId,
+				addedAt: fields.addedAt ?? T0 - 60_000,
+			});
+			return contactId;
+		});
+	}
+
+	const unsubAt = (t: Harness, email: string) =>
+		t.mutation(internal.delivery.unsubscribeQueries.processUnsubscribeByEmail, {
+			email,
+			eventAt: T0,
+		});
+
+	it.each([
+		['a subscription', { addedAt: T0 + 100 }],
+		['a subscription at the last millisecond', { addedAt: T0 + 999 }],
+		['a DOI confirmation', { doiConfirmedAt: T0 + 100 }],
+	])('unsubscribes after %s in the same second', async (_label, fields) => {
+		const t = setupTest();
+		const contactId = await contactWith(t, 'tie@example.com', fields);
+
+		expect(await unsubAt(t, 'tie@example.com')).not.toHaveProperty('skipped');
+		const contact = await t.run(async (ctx: { db: DatabaseWriter }) => await ctx.db.get(contactId));
+		expect(contact?.unsubscribedAt).toBeDefined();
+	});
+
+	it.each([
+		['a subscription', { addedAt: T0 + 1000 }],
+		['a DOI confirmation', { doiConfirmedAt: T0 + 1000 }],
+	])('keeps %s from the next second', async (_label, fields) => {
+		const t = setupTest();
+		await contactWith(t, 'next@example.com', fields);
+
+		expect(await unsubAt(t, 'next@example.com')).toEqual({
+			success: true,
+			skipped: 'resubscribed_after_event',
+		});
+	});
+
+	it('re-adds after a removal in the same second, and not after one in the next', async () => {
+		const t = setupTest();
+		for (const [email, removedAt] of [
+			['same-second@example.com', T0 + 500],
+			['next-second@example.com', T0 + 1000],
+		] as const) {
+			await blockNow(t, email);
+			clock?.mockReturnValue(removedAt);
+			await removeByOperator(t, email);
+			clock?.mockReturnValue(T0 + 10_000);
+			await t.mutation(internal.blockedEmails.addFromEvent, {
+				email,
+				reason: 'bounced',
+				eventAt: T0,
+			});
+		}
+
+		expect(await blockRows(t, 'same-second@example.com')).toHaveLength(1);
+		expect(await blockRows(t, 'next-second@example.com')).toHaveLength(0);
 	});
 });
 
@@ -351,16 +478,21 @@ describe('an unsub never undoes a re-subscribe it predates', () => {
 		expect(state.topicIds).toEqual([]);
 	});
 
-	it('drops an unsub older than the replay window', async () => {
+	it('applies an unsub older than the dedupe window under the same guard', async () => {
 		const t = setupTest();
-		const email = 'old-unsub@example.com';
-		const { contactId, topicId } = await seedSubscribed(t, email, 3 * INBOUND_REPLAY_WINDOW_MS);
+		const left = await seedSubscribed(t, 'left@example.com', 3 * INBOUND_REPLAY_WINDOW_MS);
+		const back = await seedSubscribed(t, 'back@example.com', 0);
+		const age = INBOUND_REPLAY_WINDOW_MS + MINUTE;
 
-		await postBatch(t, [unsub('m-old', email, INBOUND_REPLAY_WINDOW_MS + MINUTE)]);
+		await postBatch(t, [
+			unsub('m-old-left', 'left@example.com', age),
+			unsub('m-old-back', 'back@example.com', age),
+		]);
 
-		expect(await subscriptionState(t, contactId)).toEqual({
+		expect((await subscriptionState(t, left.contactId)).topicIds).toEqual([]);
+		expect(await subscriptionState(t, back.contactId)).toEqual({
 			unsubscribedAt: undefined,
-			topicIds: [topicId],
+			topicIds: [back.topicId],
 		});
 	});
 });
@@ -417,6 +549,15 @@ describe('mandrillReplayKey', () => {
 		).toBeUndefined();
 	});
 
+	it("refuses a batch over Mandrill's documented 1,000 events", async () => {
+		const t = setupTest();
+		const events = Array.from({ length: MAX_EVENTS_PER_BATCH + 1 }, (_, i) =>
+			event('open', { _id: `m-${i}` })
+		);
+		expect((await postBatch(t, events)).status).toBe(400);
+		expect((await postBatch(t, events.slice(1))).status).toBe(200);
+	});
+
 	it('maps an unstamped unsub to nothing and an unstamped reject without its suppression', () => {
 		expect(mapMandrillEvent({ event: 'unsub', msg: { _id: 'a1', email: 'x@example.com' } })).toBe(
 			null
@@ -468,7 +609,9 @@ describe('inbound event claims', () => {
 	it('fails a copy retryably while its twin is still in flight, then takes over a dead lease', async () => {
 		const t = setupTest();
 		const g = guard();
-		expect(await t.mutation(internal.webhooks.inboundEventClaims.claim, g)).toBe('claimed');
+		expect(await t.mutation(internal.webhooks.inboundEventClaims.claim, g)).toMatchObject({
+			result: 'claimed',
+		});
 
 		await expect(dispatchOnce(actionCtx(t), g, async () => 'x')).rejects.toBeInstanceOf(
 			InboundEventInFlightError
@@ -481,30 +624,146 @@ describe('inbound event claims', () => {
 		expect(await dispatchOnce(actionCtx(t), g, async () => 'taken over')).toBe('taken over');
 	});
 
-	it('stays bounded: claims expire one window after their event and are swept', async () => {
+	it('outlasts the longest action: the lease is longer than the 30-minute V8 action limit', () => {
+		expect(IN_FLIGHT_LEASE_MS).toBeGreaterThan(30 * MINUTE);
+	});
+
+	it("does not let a taken-over worker release or complete its successor's claim", async () => {
 		const t = setupTest();
-		const old = Date.now() - INBOUND_REPLAY_WINDOW_MS - MINUTE;
-		for (let i = 0; i < 5; i++) {
-			await t.mutation(internal.webhooks.inboundEventClaims.claim, {
-				replayKey: `mandrill:spam:old${i}:1`,
-				eventAt: old,
+		const clock = vi.spyOn(Date, 'now').mockReturnValue(T0);
+		try {
+			const g = { replayKey: 'mandrill:spam:live:1', eventAt: T0 };
+			let entered!: () => void;
+			const inside = new Promise<void>((resolve) => (entered = resolve));
+			let fail!: (err: Error) => void;
+			const gate = new Promise<void>((_, reject) => (fail = reject));
+			const a = dispatchOnce(actionCtx(t), g, async () => {
+				entered();
+				await gate;
 			});
+			const aFailed = expect(a).rejects.toThrow('A failed');
+			await inside;
+
+			clock.mockReturnValue(T0 + IN_FLIGHT_LEASE_MS + 1);
+			const b = await t.mutation(internal.webhooks.inboundEventClaims.claim, g);
+			expect(b).toMatchObject({ result: 'claimed' });
+			fail(new Error('A failed'));
+			await aFailed;
+
+			// A's release did not erase B's claim...
+			expect(await t.mutation(internal.webhooks.inboundEventClaims.claim, g)).toEqual({
+				result: 'duplicate_in_flight',
+			});
+			// ...and a stale token cannot complete it either.
+			await t.mutation(internal.webhooks.inboundEventClaims.complete, {
+				replayKey: g.replayKey,
+				token: 'not-the-owner',
+			});
+			expect((await claimRows(t))[0]?.status).toBe('in_flight');
+		} finally {
+			clock.mockRestore();
 		}
+	});
+
+	it('stays exclusive when the event window closes while the claim is in flight', async () => {
+		const t = setupTest();
+		const clock = vi.spyOn(Date, 'now').mockReturnValue(T0);
+		try {
+			// Both copies were parsed while the event was fresh, a second before the
+			// window closed; the second dispatches after it.
+			const g = {
+				replayKey: 'mandrill:spam:edge:1',
+				eventAt: T0 - INBOUND_REPLAY_WINDOW_MS + 1000,
+			};
+			let applied = 0;
+			let entered!: () => void;
+			const inside = new Promise<void>((resolve) => (entered = resolve));
+			let finish!: () => void;
+			const gate = new Promise<void>((resolve) => (finish = resolve));
+			const a = dispatchOnce(actionCtx(t), g, async () => {
+				applied++;
+				entered();
+				await gate;
+			});
+			await inside;
+
+			clock.mockReturnValue(T0 + 1500);
+			await expect(
+				dispatchOnce(actionCtx(t), g, async () => {
+					applied++;
+				})
+			).rejects.toBeInstanceOf(InboundEventInFlightError);
+			finish();
+			await a;
+
+			// And once A completed, a late copy is a duplicate, not a fresh claim.
+			clock.mockReturnValue(T0 + IN_FLIGHT_LEASE_MS - 1000);
+			expect(
+				await dispatchOnce(actionCtx(t), g, async () => {
+					applied++;
+				})
+			).toBeUndefined();
+			expect(applied).toBe(1);
+		} finally {
+			clock.mockRestore();
+		}
+	});
+
+	it('stays bounded: expired claims are swept, never one a live run holds', async () => {
+		const t = setupTest();
+		const now = Date.now();
+		const expiredAt = now - MINUTE;
+		await t.run(async (ctx: { db: DatabaseWriter }) => {
+			for (let i = 0; i < 3; i++) {
+				await ctx.db.insert('inboundEventClaims', {
+					replayKey: `mandrill:spam:done${i}:1`,
+					token: `t${i}`,
+					eventAt: expiredAt - INBOUND_REPLAY_WINDOW_MS - IN_FLIGHT_LEASE_MS,
+					claimedAt: expiredAt - IN_FLIGHT_LEASE_MS,
+					expiresAt: expiredAt,
+					status: 'completed',
+				});
+			}
+			await ctx.db.insert('inboundEventClaims', {
+				replayKey: 'mandrill:spam:abandoned:1',
+				token: 'dead',
+				eventAt: expiredAt - INBOUND_REPLAY_WINDOW_MS,
+				claimedAt: now - IN_FLIGHT_LEASE_MS - 1,
+				expiresAt: expiredAt,
+				status: 'in_flight',
+			});
+			await ctx.db.insert('inboundEventClaims', {
+				replayKey: 'mandrill:spam:running:1',
+				token: 'live',
+				eventAt: expiredAt - INBOUND_REPLAY_WINDOW_MS,
+				claimedAt: now - MINUTE,
+				expiresAt: expiredAt,
+				status: 'in_flight',
+			});
+		});
+
+		// The claim hot path sweeps what it may before inserting its own row.
 		await t.mutation(internal.webhooks.inboundEventClaims.claim, guard());
-		// The hot path swept the expired rows it found before inserting.
-		expect((await claimRows(t)).map((row) => row.replayKey)).toEqual(['mandrill:unsub:m1:1']);
+		expect((await claimRows(t)).map((row) => row.replayKey).sort()).toEqual([
+			'mandrill:spam:running:1',
+			'mandrill:unsub:m1:1',
+		]);
 
 		await t.run(async (ctx: { db: DatabaseWriter }) => {
 			await ctx.db.insert('inboundEventClaims', {
 				replayKey: 'mandrill:spam:left-behind:1',
-				eventAt: old,
-				claimedAt: old,
-				expiresAt: old + INBOUND_REPLAY_WINDOW_MS,
+				token: 'old',
+				eventAt: expiredAt - INBOUND_REPLAY_WINDOW_MS - IN_FLIGHT_LEASE_MS,
+				claimedAt: expiredAt - IN_FLIGHT_LEASE_MS,
+				expiresAt: expiredAt,
 				status: 'completed',
 			});
 		});
 		const swept = await t.mutation(internal.webhooks.inboundEventClaims.cleanupExpired, {});
 		expect(swept.deletedCount).toBe(1);
-		expect((await claimRows(t)).map((row) => row.replayKey)).toEqual(['mandrill:unsub:m1:1']);
+		expect((await claimRows(t)).map((row) => row.replayKey).sort()).toEqual([
+			'mandrill:spam:running:1',
+			'mandrill:unsub:m1:1',
+		]);
 	});
 });

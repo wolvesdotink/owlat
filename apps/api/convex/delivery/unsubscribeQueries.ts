@@ -5,6 +5,7 @@ import { internal } from '../_generated/api';
 import { publicQuery } from '../lib/authedFunctions';
 import type { Doc, Id } from '../_generated/dataModel';
 import { normalizeEmail } from '../lib/inputGuards';
+import { afterEventSecond } from '../lib/clock';
 import type { UnsubscribeOutcome } from '../topics/subscription';
 import { resolveWorkspaceLogo, type WorkspaceLogo } from '../workspaces/branding';
 
@@ -202,8 +203,9 @@ export const processUnsubscribeByEmail = internalMutation({
  *    memberships that existed when they left are still removed, so the
  *    unsubscribe they asked for is honoured for everything it covered.
  *
- * Millisecond `addedAt` against Mandrill's whole-second `ts`: a subscribe in
- * the same second as the event counts as before it, the side that unsubscribes.
+ * Millisecond `addedAt` and `doiConfirmedAt` against Mandrill's whole-second
+ * `ts` are compared through `afterEventSecond`: a subscribe or a confirmation in
+ * the event's own second counts as before it, the side that unsubscribes.
  */
 async function applyRelayUnsubscribe(
 	ctx: MutationCtx,
@@ -211,16 +213,17 @@ async function applyRelayUnsubscribe(
 	eventAt: number
 ): Promise<ProcessUnsubscribeResult | RelayUnsubscribeSkipped> {
 	const skipped: RelayUnsubscribeSkipped = { success: true, skipped: 'resubscribed_after_event' };
-	if (contact.doiConfirmedAt !== undefined && contact.doiConfirmedAt > eventAt) return skipped;
+	const later = afterEventSecond(eventAt);
+	if (contact.doiConfirmedAt !== undefined && contact.doiConfirmedAt >= later) return skipped;
 	const memberships = await ctx.db
 		.query('contactTopics')
 		.withIndex('by_contact', (q) => q.eq('contactId', contact._id))
 		.collect(); // bounded: one contact's topic memberships
-	if (!memberships.some((membership) => membership.addedAt > eventAt)) {
+	if (!memberships.some((membership) => membership.addedAt >= later)) {
 		return await applyPublicUnsubscribe(ctx, { contactId: contact._id });
 	}
 	const coveredTopicIds = memberships
-		.filter((membership) => membership.addedAt <= eventAt)
+		.filter((membership) => membership.addedAt < later)
 		.map((membership) => membership.topicId);
 	if (coveredTopicIds.length === 0) return skipped;
 	return await applyPublicUnsubscribe(ctx, { contactId: contact._id, topicIds: coveredTopicIds });

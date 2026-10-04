@@ -181,10 +181,14 @@ export const webhookTables = {
 	// released on failure); see `webhooks/inboundEventClaims.ts`.
 	//
 	// Bounded by construction: an adapter stamps a key only on an event younger
-	// than `INBOUND_REPLAY_WINDOW_MS`, so a row expires that long after its event
-	// (`expiresAt`) and is swept by the claim hot path and an hourly cron.
+	// than `INBOUND_REPLAY_WINDOW_MS`, so a row expires that window plus one
+	// in-flight lease after its event (`expiresAt`) and is swept by the claim hot
+	// path and an hourly cron, never while a live run still holds it.
 	inboundEventClaims: defineTable({
 		replayKey: v.string(),
+		// Random per claim; `complete` and `release` require it, so a worker whose
+		// claim was taken over cannot touch its successor's.
+		token: v.string(),
 		eventAt: v.number(),
 		claimedAt: v.number(),
 		expiresAt: v.number(),

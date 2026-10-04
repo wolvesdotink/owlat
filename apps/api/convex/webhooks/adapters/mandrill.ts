@@ -42,26 +42,19 @@
  * `webhookUrlValidationProbe` from `../providerFeedbackHttp.ts`; the empty batch
  * parses to zero events and the pipeline acknowledges it without dispatching.
  *
- * REPLAY (#1228). The lifecycle reducers make most redeliveries harmless, but
- * two events act on an ADDRESS whatever the Send's state: `reject` mirrors a
- * suppression into the blocklist and `unsub` unsubscribes a contact. Replayed
- * after an operator unblocked the address, or after the contact re-subscribed,
- * either one undoes a human decision. So for `reject`, `unsub` and `spam`:
- *
- *  - the adapter derives a `replayKey` from `msg._id`, the event name and `ts`
- *    (no address in it) and the dispatcher claims it, so a key is applied once;
- *  - an event older than `INBOUND_REPLAY_WINDOW_MS` (24 h) gets no key and acts
- *    on no address: a `reject` still fails its Send but suppresses nobody, an
- *    `unsub` is dropped. Mandrill re-attempts a failed batch up to 20 times at
- *    15–25 minute intervals (about eight hours) and then gives up, so a genuine
- *    delivery is never that old. An event with no `ts` (Mandrill always sends
- *    one) or one stamped in the future is treated the same way. An `unsub`
- *    naming no message id stays accepted, as the one event keyed by address,
- *    but gets no key: the re-subscribe guard below is what protects it;
- *  - the host additionally refuses a re-add older than an operator's removal
+ * REPLAY (#1228). `reject` (a blocklist mirror) and `unsub` act on an ADDRESS
+ * whatever the Send's state, so a replay could undo an operator's unblock or a
+ * contact's re-subscribe. For `reject`, `unsub` and `spam`:
+ *  - the host refuses a re-add older than an operator's removal
  *    (`blockedEmails.addFromEvent`) and an unsubscribe older than a re-subscribe
- *    (`processUnsubscribeByEmail`), which covers a first delivery that arrives
- *    late, after the operator acted.
+ *    (`processUnsubscribeByEmail`), at any event age. That is the protection;
+ *  - an event younger than `INBOUND_REPLAY_WINDOW_MS` (7 days) carries a
+ *    `replayKey` (`msg._id`, event name, `ts`; no address) that the dispatcher
+ *    claims, so it is applied once. An older one, such as a failed batch an
+ *    operator replays by hand, relies on the guards alone;
+ *  - an event with no `ts` or a future one cannot be ordered against those
+ *    guards: its `reject` fails the Send but suppresses nobody, its `unsub` is
+ *    dropped. A batch over Mandrill's documented 1,000 events is refused.
  *
  * https://mailchimp.com/developer/transactional/guides/track-respond-activity-webhooks/
  */
@@ -87,6 +80,9 @@ const MANDRILL_PROVIDER_TYPE = 'mandrill';
 
 /** The form field Mandrill posts its JSON batch in. */
 const EVENTS_PARAM = 'mandrill_events';
+
+/** Mandrill's documented maximum for `mandrill_events`. */
+export const MAX_EVENTS_PER_BATCH = 1000;
 
 /**
  * One item of `mandrill_events`. Every field is optional on purpose: the array
@@ -308,32 +304,32 @@ const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 const MESSAGE_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
 /**
- * Whether Mandrill stamped the event recently enough for it to act on an
- * ADDRESS: within `INBOUND_REPLAY_WINDOW_MS` and not from the future. An event
- * with no `ts` cannot show it, and gets the same answer as a stale one.
+ * Whether the event can be ordered against an operator's decision, which an
+ * ADDRESS-keyed effect requires: Mandrill stamped it, and not in the future. An
+ * unstamped event would read as "now" and beat every earlier decision.
  */
-function isFreshEvent(item: MandrillEventItem, now: number): boolean {
+function isOrderable(item: MandrillEventItem, now: number): boolean {
 	const at = providerInstantOf(item);
-	return at !== undefined && at >= now - INBOUND_REPLAY_WINDOW_MS && at <= now + MAX_FUTURE_SKEW_MS;
+	return at !== undefined && at <= now + MAX_FUTURE_SKEW_MS;
 }
 
 /**
- * The replay identity of one event, or undefined when it cannot have one.
- *
- * `<event>:<msg._id>:<ts>` is as close to an event id as Mandrill offers: one
- * message reports one `reject`, one `unsub` and one `spam` at a given second.
- * It holds no address. Undefined for an event that is not fresh (see
- * `isFreshEvent`) or names no usable message id.
+ * The replay identity of one event: `<event>:<msg._id>:<ts>`, as close to an
+ * event id as Mandrill offers, with no address in it. Undefined for an event
+ * that is not orderable, is older than `INBOUND_REPLAY_WINDOW_MS`, or names no
+ * usable message id.
  */
 export function mandrillReplayKey(
 	item: MandrillEventItem,
 	now: number = Date.now()
 ): string | undefined {
 	const id = item.msg?._id;
-	if (!item.event || !id || !MESSAGE_ID_PATTERN.test(id) || !isFreshEvent(item, now)) {
+	const at = providerInstantOf(item);
+	if (!item.event || !id || !MESSAGE_ID_PATTERN.test(id) || !isOrderable(item, now)) {
 		return undefined;
 	}
-	return `mandrill:${item.event}:${id}:${providerInstantOf(item)}`;
+	if (at === undefined || at < now - INBOUND_REPLAY_WINDOW_MS) return undefined;
+	return `mandrill:${item.event}:${id}:${at}`;
 }
 
 /**
@@ -403,10 +399,9 @@ export function mapMandrillEvent(item: MandrillEventItem): InboundEvent | null {
 		case 'unsub': {
 			// The one event keyed by ADDRESS rather than by send: Mandrill's
 			// unsubscribe surface reports who left, and the dispatcher joins that
-			// to a Contact and replays the public one-click path. It is not
-			// idempotent once the contact has re-subscribed, so a stale or
-			// unstamped one is dropped (#1228).
-			if (!recipient || !isFreshEvent(item, Date.now())) return null;
+			// to a Contact and replays the public one-click path. It is ordered
+			// against a later re-subscribe, so an unstamped one is dropped (#1228).
+			if (!recipient || !isOrderable(item, Date.now())) return null;
 			const replayKey = mandrillReplayKey(item);
 			return {
 				kind: 'email.unsubscribed',
@@ -431,12 +426,12 @@ export function mapMandrillEvent(item: MandrillEventItem): InboundEvent | null {
 			// person, which is how those reasons suppress nobody.
 			//
 			// The suppression acts on an address whatever the Send's state, so it
-			// rides only on a fresh event (#1228). A stale reject still fails its
-			// Send, which is idempotent on its own.
+			// rides only on an orderable event (#1228). An unstamped reject still
+			// fails its Send, which is idempotent on its own.
 			if (!providerMessageId) return null;
 			const errorCode = mandrillRejectCode(item.msg?.reject_reason);
 			const replayKey = mandrillReplayKey(item);
-			const suppression = isFreshEvent(item, Date.now())
+			const suppression = isOrderable(item, Date.now())
 				? mandrillRejectSuppression(errorCode)
 				: undefined;
 			return {
@@ -475,6 +470,9 @@ export function parseMandrillBatch(rawBody: string): InboundEvent[] {
 	const parsed: unknown = JSON.parse(raw);
 	if (!Array.isArray(parsed)) {
 		throw new Error('Mandrill mandrill_events is not an array');
+	}
+	if (parsed.length > MAX_EVENTS_PER_BATCH) {
+		throw new Error(`Mandrill batch exceeds ${MAX_EVENTS_PER_BATCH} events`);
 	}
 	const events: InboundEvent[] = [];
 	for (const item of parsed as MandrillEventItem[]) {
