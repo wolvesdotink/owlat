@@ -177,6 +177,7 @@ function unwrapListItems(source: string): string {
 	let inFence = false;
 	let inItem = false;
 	for (const line of source.split('\n')) {
+		const wasInFence = inFence;
 		if (/^\s*```/.test(line)) inFence = !inFence;
 		if (
 			!inFence &&
@@ -188,7 +189,12 @@ function unwrapListItems(source: string): string {
 			out[out.length - 1] += ` ${line.trim()}`;
 			continue;
 		}
-		inItem = !inFence && LIST_ITEM.test(line);
+		const startsBlock = !wasInFence && BLOCK_START.test(line);
+		// A blank line before a block start, so the shared parser cannot read a
+		// `- - -` rule right under a bullet as one more bullet.
+		if (startsBlock && (out.at(-1) ?? '').trim() !== '') out.push('');
+		// `- - -` is a rule, not a bullet, though it matches both.
+		inItem = !inFence && !startsBlock && LIST_ITEM.test(line);
 		out.push(line);
 	}
 	return out.join('\n');

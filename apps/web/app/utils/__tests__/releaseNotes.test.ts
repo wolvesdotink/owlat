@@ -201,6 +201,17 @@ compose up\` that dies mid-way leaves the old containers stopped. (#742)
 		]);
 	});
 
+	it('never treats a spaced rule as a bullet that absorbs the next lines', () => {
+		for (const rule of ['- - -', '* * *']) {
+			const parsed = parseReleaseNotes(
+				`### Fixed\n\n- **One fix.** Done.\n${rule}\nA closing paragraph.\n\n${rule}\nAnother line.\n`
+			);
+			expect(parsed.groups.map((g) => [g.kind, g.items.map(text)])).toEqual([
+				['fixed', ['One fix. Done.']],
+			]);
+		}
+	});
+
 	it('joins wrapped paragraphs and leaves code blocks alone', () => {
 		expect(notes.summary.map((b) => (b.type === 'paragraph' ? text(b.inlines) : ''))).toEqual([
 			'Three fixes to things that had gone visibly wrong: message bodies rendering as ciphertext, and a failed update.',
