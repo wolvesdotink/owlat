@@ -1436,7 +1436,6 @@ import type * as webhooks_security from '../webhooks/security.js';
 import type * as webhooks_types from '../webhooks/types.js';
 import type * as webhooks_unresolvedBounce from '../webhooks/unresolvedBounce.js';
 import type * as webhooks_unresolvedFeedback from '../webhooks/unresolvedFeedback.js';
-import type * as webhooks_unresolvedFeedbackLinks from '../webhooks/unresolvedFeedbackLinks.js';
 import type * as webhooks_workspaceDeletionAck from '../webhooks/workspaceDeletionAck.js';
 import type * as webhooks_yahooCflObservation from '../webhooks/yahooCflObservation.js';
 import type * as workspaces_abuseGate from '../workspaces/abuseGate.js';
@@ -2900,7 +2899,6 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/types': typeof webhooks_types;
 	'webhooks/unresolvedBounce': typeof webhooks_unresolvedBounce;
 	'webhooks/unresolvedFeedback': typeof webhooks_unresolvedFeedback;
-	'webhooks/unresolvedFeedbackLinks': typeof webhooks_unresolvedFeedbackLinks;
 	'webhooks/workspaceDeletionAck': typeof webhooks_workspaceDeletionAck;
 	'webhooks/yahooCflObservation': typeof webhooks_yahooCflObservation;
 	'workspaces/abuseGate': typeof workspaces_abuseGate;

@@ -17,7 +17,6 @@
 import type { MutationCtx } from '../../_generated/server';
 import type { Doc, Id, TableNames } from '../../_generated/dataModel';
 import { decrementContactCount } from '../../lib/contactCountHelpers';
-import { deleteUnresolvedFeedbackForAddress } from '../../webhooks/unresolvedFeedbackLinks';
 import { recordContactGrowth } from '../growthCounters';
 import { deleteAutomationRun } from '../../automations/runDeletion';
 import type { ErasureBudget } from './budget';
@@ -82,66 +81,6 @@ const eraseAutomationRuns: PhaseRunner = async ({ ctx, contactId, budget }) => {
 		budget.chargeRows(progress.rowsTouched);
 	}
 	return NOT_DONE;
-};
-
-/**
- * Bounces and complaints that matched no Send (#1194), by the contact link and
- * by the contact's own address. Rows naming an email identity go with that
- * identity in `eraseIdentities`, however many identities there are; at
- * soft-delete the identities are removed, and their unlinked rows linked to
- * the contact first (`linkUnresolvedFeedbackToContact`).
- */
-const eraseUnresolvedFeedback: PhaseRunner = async (phase) => {
-	const { ctx, contactId, budget } = phase;
-	const linked = await deleteAll(phase, (n) =>
-		ctx.db
-			.query('unresolvedFeedback')
-			.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-			.take(n)
-	);
-	if (!linked) return NOT_DONE;
-	const contact = await ctx.db.get(contactId);
-	if (contact) budget.chargeRead(contact);
-	const address = contact?.email;
-	if (!address) return DONE;
-	return { isDone: await deleteFeedbackNaming(phase, address) };
-};
-
-/** Delete the rows naming `address` while the budget lasts; whether none is left. */
-function deleteFeedbackNaming({ ctx, budget }: PhaseContext, address: string): Promise<boolean> {
-	// The reader deletes what it reads, so the range shrinks to nothing.
-	return drainEach(
-		budget,
-		(n) => deleteUnresolvedFeedbackForAddress(ctx, address, n),
-		async () => {}
-	);
-}
-
-/**
- * Delete the contact's identities, each email identity's unresolved feedback
- * first. Bounded and resumable like every other phase: an identity whose
- * feedback the budget could not finish stays, so the next transaction comes
- * back to it, and the walk covers every identity whatever their number.
- */
-const eraseIdentities: PhaseRunner = async (phase) => {
-	const { ctx, contactId, budget } = phase;
-	const drained = await drainEach(
-		budget,
-		(n) =>
-			ctx.db
-				.query('contactIdentities')
-				.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-				.take(n),
-		async (identity) => {
-			if (identity.channel === 'email') {
-				const isClear = await deleteFeedbackNaming(phase, identity.identifier);
-				if (!isClear || budget.isExhausted) return;
-			}
-			await ctx.db.delete(identity._id);
-		}
-	);
-	// A batch that ran out of budget mid-way left identities behind.
-	return { isDone: drained && !budget.isExhausted };
 };
 
 type SendTable = 'emailSends' | 'transactionalSends';
@@ -260,8 +199,12 @@ const PHASE_RUNNERS: Record<ContactErasurePhase, PhaseRunner> = {
 			.withIndex('by_contact', (q) => q.eq('contactId', contactId))
 			.take(n)
 	),
-	unresolvedFeedback: eraseUnresolvedFeedback,
-	contactIdentities: eraseIdentities,
+	contactIdentities: deleteByIndex(({ ctx, contactId }, n) =>
+		ctx.db
+			.query('contactIdentities')
+			.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+			.take(n)
+	),
 	relationshipsFrom: deleteByIndex(({ ctx, contactId }, n) =>
 		ctx.db
 			.query('contactRelationships')

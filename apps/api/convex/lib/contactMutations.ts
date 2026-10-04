@@ -30,9 +30,6 @@ const CONTACT_REPOINT_TABLES = [
 	'inboundMessages',
 	'unifiedMessages',
 	'conversationThreads',
-	// Bounces and complaints that matched no Send, linked to the contact whose
-	// address they name (#1194); the survivor's erasure must find them.
-	'unresolvedFeedback',
 ] as const;
 
 /**

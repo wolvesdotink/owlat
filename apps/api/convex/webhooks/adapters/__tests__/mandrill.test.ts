@@ -440,7 +440,6 @@ describe('Mandrill event mapping (D10 table)', () => {
 				kind: 'complaint',
 				providerMessageId: 'm-unknown',
 				providerType: 'mandrill',
-				recipient: email,
 				suppression: 'unattributed',
 				status: 'open',
 			}),

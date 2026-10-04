@@ -1,12 +1,14 @@
 /**
- * Contact erasure relation policy — the declared fate of every row that points at a contact when
- * it is permanently deleted, and of every row that points at something the erasure deletes.
+ * Contact erasure relation policy — the declared fate of every row that points
+ * at a contact when that contact is permanently deleted, and of every row that
+ * points at something the erasure deletes.
  *
- * Pure data. The cascade itself is the phases in `phases.ts` and `contentPhases.ts`; this file
- * is the contract they implement. `__tests__/contactErasureRelationCoverage.test.ts` seeds a
- * row for every `delete`/`unlink` relation and checks both erasure drivers clear it, and
- * `__tests__/contactErasureRelations.test.ts` walks the schema so a new relation cannot land
- * without a declaration here:
+ * Pure data. The cascade itself is the phases in `phases.ts` and
+ * `contentPhases.ts`; this file is the contract they implement.
+ * `__tests__/contactErasureRelationCoverage.test.ts` seeds a row for every
+ * `delete`/`unlink` relation and checks both erasure drivers clear it, and
+ * `__tests__/contactErasureRelations.test.ts` walks the schema so a new
+ * relation cannot land without a declaration here:
  *
  *   - every `v.id('contacts')` field anywhere in the schema (including nested
  *     and array fields) must appear in `CONTACT_RELATIONS`, and
@@ -22,15 +24,16 @@
  *   - `retain` — the row stays as it is. `why` must say why that is lawful and
  *     safe, or name the gap honestly when it is not handled yet.
  *
- * INDEPENDENTLY PROMOTED ORGANIZATION KNOWLEDGE IS RETAINED. An admin promoting a learned
- * clarification answer (`inbox/clarificationMemory.ts` `promoteClarificationMemory`) clears its
- * `contactId`: the row stops being a fact about the person and becomes a standing answer for
- * every sender. The erasure finds rows through their contact reference, so a promoted answer is
- * out of its reach by construction and survives. The same holds for knowledge entries that
- * carry no contact link. This is a separate policy from the one below, and it is why a
- * contact-scoped answer must be DELETED rather than unlinked: an absent `contactId` means
- * organization-wide scope, so clearing the reference would silently promote the erased person's
- * answer to everyone.
+ * INDEPENDENTLY PROMOTED ORGANIZATION KNOWLEDGE IS RETAINED. An admin promoting
+ * a learned clarification answer (`inbox/clarificationMemory.ts`
+ * `promoteClarificationMemory`) clears its `contactId`: the row stops being a
+ * fact about the person and becomes a standing answer for every sender. The
+ * erasure finds rows through their contact reference, so a promoted answer is
+ * out of its reach by construction and survives. The same holds for knowledge
+ * entries that carry no contact link. This is a separate policy from the one
+ * below, and it is why a contact-scoped answer must be DELETED rather than
+ * unlinked: an absent `contactId` means organization-wide scope, so clearing
+ * the reference would silently promote the erased person's answer to everyone.
  */
 
 import type { TableNames } from '../../_generated/dataModel';
@@ -141,12 +144,6 @@ export const CONTACT_RELATIONS: readonly ErasureRelation[] = [
 		field: 'contactId',
 		action: 'delete',
 		why: 'An Answer mode ask session quotes the person’s mail and holds the owner’s answers about them; its draft stream goes with it.',
-	},
-	{
-		table: 'unresolvedFeedback',
-		field: 'contactId',
-		action: 'delete',
-		why: 'A bounce or complaint that matched no Send names the person’s address; the row is the person’s data. Rows stored before the address had a contact are deleted by address in the same phase.',
 	},
 	{
 		table: 'clarificationMemory',

@@ -43,6 +43,11 @@ type UnresolvedEvent =
  *  - the event is stored in `unresolvedFeedback`, where an operator can count
  *    it and a replay can apply it once the id resolves.
  *
+ * WHAT IS STORED HOLDS NO PERSONAL DATA. Not the complainer's address (the
+ * complaint handler has already used it, from the event in memory) and not the
+ * remote server's diagnostic, which often quotes the recipient: only the SMTP
+ * status code read out of it (`bounceStatusCodeOf`).
+ *
  * NEVER THROWS. A store that fails is logged and the webhook is acknowledged,
  * as it was before this table existed: a provider batch must not be retried
  * forever, and held up behind it, because of the bookkeeping.
@@ -57,17 +62,16 @@ export async function recordUnresolvedFeedback(
 			`${e.providerMessageId} resolved to no Send row (at=${e.at}). Stored in ` +
 			`unresolvedFeedback for replay — measure-unattributable-feedback.`
 	);
+	const bounceStatusCode =
+		e.kind === 'email.bounced' && e.bounceMessage ? bounceStatusCodeOf(e.bounceMessage) : null;
 	const signal =
 		e.kind === 'email.bounced'
 			? {
 					kind: 'bounce' as const,
 					bounceType: e.bounceType,
-					...(e.bounceMessage ? { bounceMessage: e.bounceMessage } : {}),
+					...(bounceStatusCode ? { bounceStatusCode } : {}),
 				}
-			: {
-					kind: 'complaint' as const,
-					...(e.recipient ? { recipient: e.recipient } : {}),
-				};
+			: { kind: 'complaint' as const };
 	try {
 		await ctx.runMutation(internal.webhooks.unresolvedFeedback.record, {
 			...signal,
@@ -79,11 +83,24 @@ export async function recordUnresolvedFeedback(
 		});
 	} catch (error) {
 		// The error text is not logged: a validator error quotes the document it
-		// refused, and this one can carry the complainer's address.
+		// refused.
 		logError('[Webhook Dispatcher] unresolved feedback could not be stored', {
 			kind: e.kind,
 			providerMessageId: e.providerMessageId,
 			errorName: error instanceof Error ? error.name : typeof error,
 		});
 	}
+}
+
+/** RFC 3463 enhanced status code (`5.1.1`), then a basic reply code (`550`). */
+const ENHANCED_STATUS = /\b([245]\.\d{1,3}\.\d{1,3})\b/;
+const BASIC_STATUS = /\b([245]\d\d)\b/;
+
+/**
+ * The SMTP status code in a bounce diagnostic, or null. The only part of the
+ * diagnostic that is kept: the rest is the remote server's free text, which
+ * routinely quotes the recipient's address.
+ */
+export function bounceStatusCodeOf(diagnostic: string): string | null {
+	return ENHANCED_STATUS.exec(diagnostic)?.[1] ?? BASIC_STATUS.exec(diagnostic)?.[1] ?? null;
 }

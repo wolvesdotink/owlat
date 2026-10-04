@@ -11,11 +11,6 @@ export const CONTACT_ERASURE_PHASES = [
 	'contactTopics',
 	'contactPropertyValues',
 	'contactActivities',
-	// Bounces and complaints that matched no Send (#1194). Before the identities,
-	// because a row can name any of the contact's email addresses. Inserting a
-	// phase strands nothing: a saved job resumes by name, and the walker's final
-	// re-check runs every deleting phase again.
-	'unresolvedFeedback',
 	'contactIdentities',
 	'relationshipsFrom',
 	'relationshipsTo',

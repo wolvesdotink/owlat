@@ -224,31 +224,28 @@ export const webhookTables = {
 	// operator count them and replay them once the id resolves (a late
 	// completion, a repair that writes the id back). `webhooks/unresolvedFeedback.ts`
 	// owns the table: one row per (message id, kind), replayed by a cron with a
-	// short backoff, deleted 90 days after it was first seen, and erased with a
-	// contact whose address it names.
+	// short backoff and deleted 90 days after it was first seen.
+	//
+	// NO PERSONAL DATA. The recipient's address is not stored, and neither is the
+	// remote server's free-text diagnostic (it often quotes the address). A
+	// replay resolves by message id and the Send carries its own recipient; an
+	// attributed complaint blocks its address at receive time, from the event in
+	// memory. So the contact erasure has nothing to find here.
 	unresolvedFeedback: defineTable({
 		kind: v.union(v.literal('bounce'), v.literal('complaint')),
 		providerMessageId: v.string(),
 		// The adapter's `providerType`; `mta` replays through the MTA resolver.
 		providerType: v.optional(v.string()),
-		// Normalized complainer address, when the provider named one. Bounce
-		// events carry none.
-		recipient: v.optional(v.string()),
-		// The live contact that address (or one of its aliases) belonged to when
-		// the row was stored, so the contact erasure finds the row by id even
-		// after the alias identities are gone.
-		contactId: v.optional(v.id('contacts')),
 		bounceType: v.optional(bounceTypeValidator),
-		// Clamped diagnostic, replayed onto the Send. Dropped once the row
-		// resolves: a DSN text can quote the address, and bounces have no
-		// `recipient` for the contact erasure to find them by.
-		bounceMessage: v.optional(v.string()),
+		// The SMTP status code read out of the diagnostic (`5.1.1`, or `550`),
+		// never the diagnostic text itself.
+		bounceStatusCode: v.optional(v.string()),
 		// The feedback-provenance tag the event carried, if any. A string, not
 		// the shared literal union, so a newer MTA's value is still stored.
 		deliveryDomain: v.optional(v.string()),
 		// When the provider says the event happened; replayed as the transition time.
 		at: v.number(),
-		// What happened to the named address when the event arrived, and why.
+		// What happened to the address the event named when it arrived, and why.
 		suppression: unresolvedFeedbackSuppressionValidator,
 		// Provider redeliveries of the same event bump these instead of adding rows.
 		occurrences: v.number(),
@@ -267,8 +264,5 @@ export const webhookTables = {
 		.index('by_message_id_and_kind', ['providerMessageId', 'kind'])
 		.index('by_status_and_next_replay', ['status', 'nextReplayAt'])
 		.index('by_status_and_first_seen', ['status', 'firstSeenAt'])
-		.index('by_first_seen', ['firstSeenAt'])
-		// Erasure by address; the contact column picks out the unlinked rows.
-		.index('by_recipient_and_contact', ['recipient', 'contactId'])
-		.index('by_contact', ['contactId']),
+		.index('by_first_seen', ['firstSeenAt']),
 };

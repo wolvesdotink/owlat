@@ -18,7 +18,6 @@ import { mergeContactRelations } from '../lib/contactMutations';
 import { decrementContactCount } from '../lib/contactCountHelpers';
 import { recordAuditLog } from '../lib/auditLog';
 import { redactContactCapabilityFields, type PublicContact } from './listing';
-import { linkUnresolvedFeedbackToContact } from '../webhooks/unresolvedFeedbackLinks';
 
 // ============================================================
 // Queries
@@ -179,12 +178,6 @@ export const removeIdentity = authedMutation({
 			'Only owners and admins can manage contacts'
 		);
 
-		const identity = await ctx.db.get(args.identityId);
-		// Unresolved feedback stored under this address stays reachable by the
-		// contact's erasure once the address is gone (#1194).
-		if (identity?.channel === 'email') {
-			await linkUnresolvedFeedbackToContact(ctx, identity.contactId, identity.identifier);
-		}
 		await ctx.db.delete(args.identityId);
 	},
 });

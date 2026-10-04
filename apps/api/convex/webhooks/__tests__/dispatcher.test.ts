@@ -38,6 +38,7 @@ vi.mock('../../_generated/api', () => {
 
 import { internal } from '../../_generated/api';
 import { dispatchInboundEvent } from '../dispatcher';
+import { bounceStatusCodeOf } from '../unresolvedBounce';
 import type { InboundEvent } from '../types';
 import type { ActionCtx } from '../../_generated/server';
 
@@ -1242,9 +1243,9 @@ describe('dispatchInboundEvent — complaint whose Message-ID matches no send', 
 			ref(internal.webhooks.unresolvedFeedback.record),
 		]);
 		expect(calls[1]?.args).toEqual({ email: 'complainer@example.com', reason: 'complained' });
+		// The address was used at receive time; the record carries none.
 		expect(calls[2]?.args).toEqual({
 			kind: 'complaint',
-			recipient: 'complainer@example.com',
 			providerMessageId: 'mta-ghost',
 			providerType: 'mta',
 			deliveryDomain: 'production',
@@ -1268,10 +1269,8 @@ describe('dispatchInboundEvent — complaint whose Message-ID matches no send', 
 				ref(internal.delivery.sendLifecycle.transitionByProviderMessageId),
 				ref(internal.webhooks.unresolvedFeedback.record),
 			]);
-			expect(calls[1]?.args).toMatchObject({
-				recipient: 'complainer@example.com',
-				suppression: 'unattributed',
-			});
+			expect(calls[1]?.args).toMatchObject({ suppression: 'unattributed' });
+			expect(JSON.stringify(calls[1]?.args)).not.toContain('complainer@example.com');
 		}
 	);
 
@@ -1338,6 +1337,16 @@ describe('dispatchInboundEvent — complaint whose Message-ID matches no send', 
 		expect(harness.runMutationCalls.map((c) => c.ref)).toEqual([
 			ref(internal.delivery.sendLifecycle.transitionByProviderMessageId),
 		]);
+	});
+});
+
+describe('bounceStatusCodeOf — the only part of a diagnostic that is stored', () => {
+	it.each([
+		['smtp; 550 5.1.1 <someone@example.com>: user unknown', '5.1.1'],
+		['452 mailbox full for someone@example.com', '452'],
+		['user someone@example.com unknown', null],
+	])('%s → %s', (diagnostic, code) => {
+		expect(bounceStatusCodeOf(diagnostic)).toBe(code);
 	});
 });
 

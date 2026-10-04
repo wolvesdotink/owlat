@@ -3,13 +3,11 @@ import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { internalQuery, type DatabaseReader, type MutationCtx } from '../_generated/server';
 import { adminQuery } from '../lib/authedFunctions';
-import { normalizeEmail } from '../lib/inputGuards';
 import {
 	bounceTypeValidator,
 	unresolvedFeedbackSuppressionValidator,
 	type UnresolvedFeedbackSuppression,
 } from '../lib/literalValidators';
-import { findContactByIdentifier } from '../contacts/resolution';
 import { logError } from '../lib/runtimeLog';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { internalMutation } from '../lib/writeFence';
@@ -51,11 +49,11 @@ const COUNT_LIMIT = 1000;
 const REPLAY_BATCH_SIZE = 100;
 const PURGE_BATCH_SIZE = 200;
 const SAMPLE_SIZE = 20;
-const BOUNCE_MESSAGE_MAX_LENGTH = 1000;
-const RECIPIENT_MAX_LENGTH = 320;
+/** Provider type, delivery-domain tag and status code are short tokens. */
+const TOKEN_MAX_LENGTH = 64;
 
 function clamp(text: string, max: number): string {
-	return text.length > max ? `${text.slice(0, max)}…` : text;
+	return text.length > max ? text.slice(0, max) : text;
 }
 
 /**
@@ -89,35 +87,29 @@ function strongerSuppression(
  * the table holds at most one row per message id and kind.
  *
  * A BOUNCE ONLY ESCALATES. A hard bounce arriving for an id whose open row
- * holds a soft one replaces the type, diagnostic and event time, so the replay
+ * holds a soft one replaces the type, status code and event time, so the replay
  * applies the hard bounce (and its suppression) once the Send turns up. A soft
  * bounce never downgrades a hard one.
  *
- * The named address is linked to the live contact it belongs to, through any
- * of its email identities, so erasing that contact finds the row by id.
+ * NO ADDRESS REACHES THIS FUNCTION. The caller passes the suppression outcome
+ * and the status code it read out of the diagnostic, never the recipient or
+ * the diagnostic text, so neither is in the row nor in this call's arguments.
  */
 export const record = internalMutation({
 	args: {
 		kind: v.union(v.literal('bounce'), v.literal('complaint')),
 		providerMessageId: v.string(),
 		providerType: v.optional(v.string()),
-		recipient: v.optional(v.string()),
 		bounceType: v.optional(bounceTypeValidator),
-		bounceMessage: v.optional(v.string()),
+		bounceStatusCode: v.optional(v.string()),
 		deliveryDomain: v.optional(v.string()),
 		at: v.number(),
 		suppression: unresolvedFeedbackSuppressionValidator,
 	},
 	handler: async (ctx, args) => {
 		const now = Date.now();
-		const recipient = args.recipient
-			? clamp(normalizeEmail(args.recipient), RECIPIENT_MAX_LENGTH)
-			: undefined;
-		const contactId = recipient
-			? (await findContactByIdentifier(ctx, 'email', recipient))?.contact._id
-			: undefined;
-		const bounceMessage = args.bounceMessage
-			? clamp(args.bounceMessage, BOUNCE_MESSAGE_MAX_LENGTH)
+		const bounceStatusCode = args.bounceStatusCode
+			? clamp(args.bounceStatusCode, TOKEN_MAX_LENGTH)
 			: undefined;
 		const existing = await ctx.db
 			.query('unresolvedFeedback')
@@ -132,21 +124,19 @@ export const record = internalMutation({
 				occurrences: existing.occurrences + 1,
 				lastSeenAt: now,
 				suppression: strongerSuppression(existing.suppression, args.suppression),
-				...(recipient && !existing.recipient ? { recipient } : {}),
-				...(contactId && !existing.contactId ? { contactId } : {}),
-				...(escalates ? { bounceType: 'hard' as const, bounceMessage, at: args.at } : {}),
+				...(escalates ? { bounceType: 'hard' as const, bounceStatusCode, at: args.at } : {}),
 			});
 			return existing._id;
 		}
 		return await ctx.db.insert('unresolvedFeedback', {
 			kind: args.kind,
 			providerMessageId: args.providerMessageId,
-			...(args.providerType ? { providerType: args.providerType } : {}),
-			...(recipient ? { recipient } : {}),
-			...(contactId ? { contactId } : {}),
+			...(args.providerType ? { providerType: clamp(args.providerType, TOKEN_MAX_LENGTH) } : {}),
 			...(args.bounceType ? { bounceType: args.bounceType } : {}),
-			...(bounceMessage ? { bounceMessage } : {}),
-			...(args.deliveryDomain ? { deliveryDomain: args.deliveryDomain } : {}),
+			...(bounceStatusCode ? { bounceStatusCode } : {}),
+			...(args.deliveryDomain
+				? { deliveryDomain: clamp(args.deliveryDomain, TOKEN_MAX_LENGTH) }
+				: {}),
 			at: args.at,
 			suppression: args.suppression,
 			occurrences: 1,
@@ -171,7 +161,8 @@ async function transitionFor(ctx: MutationCtx, row: FeedbackRow): Promise<Transi
 					to: 'bounced' as const,
 					at: row.at,
 					bounceType: row.bounceType ?? ('soft' as const),
-					...(row.bounceMessage ? { bounceMessage: row.bounceMessage } : {}),
+					// The status code stands in for the diagnostic, which is not kept.
+					...(row.bounceStatusCode ? { bounceMessage: row.bounceStatusCode } : {}),
 				}
 			: { to: 'complained' as const, at: row.at };
 	return (await ctx.runMutation(resolver, {
@@ -217,7 +208,6 @@ export const replay = internalMutation({
 				resolution: outcome.ok ? 'replayed' : 'refused',
 				resolvedAt: now,
 				nextReplayAt: undefined,
-				bounceMessage: undefined,
 			});
 			return outcome.ok ? 'replayed' : 'refused';
 		}

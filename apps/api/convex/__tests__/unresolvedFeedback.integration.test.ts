@@ -4,8 +4,7 @@
  * They used to be logged and dropped. These tests pin what happens to them now:
  * one stored row per event, a replay that applies the ordinary transition once
  * the id resolves and then never again, automatic replays that stop, a purge
- * at the retention horizon, an operator count, and erasure with the contact
- * whose address a row names.
+ * at the retention horizon, an operator count, and rows that hold no address.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,17 +12,11 @@ import type { TestConvex } from 'convex-test';
 import type schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import {
-	createTestCampaign,
-	createTestContact,
-	createTestContactIdentity,
-	createTestEmailSend,
-} from './factories';
+import { createTestCampaign, createTestContact, createTestEmailSend } from './factories';
 import { newHarness } from './testModules';
 import { dispatchInboundEvent } from '../webhooks/dispatcher';
 import type { ActionCtx } from '../_generated/server';
 import type { InboundEvent, InboundEventOf } from '../webhooks/types';
-import { permanentlyDeleteContactWithRelations, softDeleteContact } from '../lib/contactMutations';
 import { AUTOMATIC_REPLAY_ATTEMPTS, RETENTION_MS } from '../webhooks/unresolvedFeedback';
 
 type T = TestConvex<typeof schema>;
@@ -119,13 +112,12 @@ describe('storing unresolved feedback', () => {
 			providerMessageId: 'ses-ghost',
 			providerType: 'ses',
 			bounceType: 'hard',
-			bounceMessage: 'smtp; 550 5.1.1 user unknown',
+			bounceStatusCode: '5.1.1',
 			suppression: 'not_applicable',
 			status: 'open',
 			occurrences: 1,
 			replayAttempts: 0,
 		});
-		expect(row?.recipient).toBeUndefined();
 		expect(await t.run(async (ctx) => await ctx.db.query('blockedEmails').collect())).toEqual([]);
 	});
 
@@ -144,7 +136,6 @@ describe('storing unresolved feedback', () => {
 		expect(await rows(t)).toEqual([
 			expect.objectContaining({
 				kind: 'complaint',
-				recipient: 'complainer@example.com',
 				suppression: 'suppressed',
 			}),
 		]);
@@ -167,7 +158,6 @@ describe('storing unresolved feedback', () => {
 		expect(await rows(t)).toEqual([
 			expect.objectContaining({
 				kind: 'complaint',
-				recipient: 'someone@example.com',
 				suppression: 'unattributed',
 			}),
 		]);
@@ -188,7 +178,6 @@ describe('storing unresolved feedback', () => {
 		expect(await rows(t)).toEqual([
 			expect.objectContaining({
 				kind: 'complaint',
-				recipient: 'preview@example.com',
 				deliveryDomain: 'member_test',
 				suppression: 'unattributed',
 			}),
@@ -224,7 +213,6 @@ describe('replaying unresolved feedback', () => {
 		expect(await statsBounced(t, campaignId)).toBe(1);
 		const [resolved] = await rows(t);
 		expect(resolved).toMatchObject({ status: 'resolved', resolution: 'replayed' });
-		expect(resolved?.bounceMessage).toBeUndefined();
 		expect(resolved?.nextReplayAt).toBeUndefined();
 
 		// A second replay, by an operator or a racing cron, applies nothing.
@@ -320,7 +308,7 @@ describe('replaying unresolved feedback', () => {
 		expect(rest).toHaveLength(0);
 		expect(row).toMatchObject({
 			bounceType: 'hard',
-			bounceMessage: 'smtp; 550 5.1.1 user unknown',
+			bounceStatusCode: '5.1.1',
 			at: hardAt,
 			occurrences: 3,
 		});
@@ -370,7 +358,7 @@ describe('replaying unresolved feedback', () => {
 	});
 });
 
-describe('counting, retention and erasure', () => {
+describe('counting, retention and privacy', () => {
 	it('status counts the last 30 days without reading logs', async () => {
 		const t = newHarness();
 		await dispatch(t, orphanBounce('ses-1'));
@@ -417,124 +405,47 @@ describe('counting, retention and erasure', () => {
 		expect((await rows(t)).map((r) => r.providerMessageId)).toEqual(['ses-young']);
 	});
 
-	it('is erased with the contact whose address it names', async () => {
+	// #1194 round 3: the table keeps no personal data. A diagnostic routinely
+	// quotes the recipient; only its status code survives.
+	it('stores no field that contains the recipient address, not even from a diagnostic quoting it', async () => {
 		const t = newHarness();
-		const contactId = await t.run(
-			async (ctx) =>
-				await ctx.db.insert('contacts', createTestContact({ email: 'erase-me@example.com' }))
-		);
+		const address = 'quoted.person@example.com';
 		await dispatch(t, {
-			kind: 'email.complained',
-			providerMessageId: 'ses-erase',
-			recipient: 'Erase-Me@example.com',
-			providerType: 'ses',
-			at: Date.now(),
+			...orphanBounce('ses-quoted'),
+			bounceMessage: `smtp; 550 5.1.1 <${address}>: Recipient address rejected: User unknown`,
 		});
 		await dispatch(t, {
 			kind: 'email.complained',
-			providerMessageId: 'ses-keep',
-			recipient: 'someone-else@example.com',
+			providerMessageId: 'ses-named',
+			recipient: address,
 			providerType: 'ses',
 			at: Date.now(),
 		});
 
-		await t.run(async (ctx) => await permanentlyDeleteContactWithRelations(ctx, contactId));
-
-		expect((await rows(t)).map((r) => r.providerMessageId)).toEqual(['ses-keep']);
-	});
-
-	it('is erased by the persisted erasure walker too', async () => {
-		const t = newHarness();
-		await t.run(
-			async (ctx) =>
-				await ctx.db.insert(
-					'contacts',
-					createTestContact({ email: 'walk-me@example.com', deletedAt: Date.now() - 40 * DAY })
-				)
-		);
-		await dispatch(t, {
-			kind: 'email.complained',
-			providerMessageId: 'ses-walk',
-			recipient: 'walk-me@example.com',
-			providerType: 'ses',
-			at: Date.now(),
-		});
-
-		await t.mutation(internal.contacts.contacts.cleanupSoftDeletedContacts, {});
-		await t.finishAllScheduledFunctions(vi.runAllTimers);
-
-		expect(await rows(t)).toEqual([]);
-	});
-
-	describe('alias addresses', () => {
-		/** A live contact with a primary address and a second email identity. */
-		async function seedContactWithAlias(t: T) {
-			return await t.run(async (ctx) => {
-				const contactId = await ctx.db.insert(
-					'contacts',
-					createTestContact({ email: 'primary@example.com' })
-				);
-				for (const [identifier, isPrimary] of [
-					['primary@example.com', true],
-					['alias@example.com', false],
-				] as const) {
-					await ctx.db.insert(
-						'contactIdentities',
-						createTestContactIdentity({ contactId, identifier, isPrimary })
-					);
-				}
-				return contactId;
-			});
+		const stored = await rows(t);
+		expect(stored).toHaveLength(2);
+		expect(stored[0]?.bounceStatusCode).toBe('5.1.1');
+		for (const row of stored) {
+			expect(JSON.stringify(row).toLowerCase()).not.toContain(address);
+			expect(JSON.stringify(row).toLowerCase()).not.toContain('example.com');
 		}
+	});
 
-		const aliasComplaint = (providerMessageId: string): InboundEvent => ({
+	it('still blocks an attributed complainer at receive time without storing the address', async () => {
+		const t = newHarness();
+		const address = 'attributed.person@example.com';
+		await dispatch(t, {
 			kind: 'email.complained',
-			providerMessageId,
-			recipient: 'Alias@example.com',
-			providerType: 'ses',
+			providerMessageId: 'mta-attributed',
+			recipient: address,
+			providerType: 'mta',
+			deliveryDomain: 'production',
 			at: Date.now(),
 		});
 
-		it('links a row naming an alias to its contact', async () => {
-			const t = newHarness();
-			const contactId = await seedContactWithAlias(t);
-			await dispatch(t, aliasComplaint('ses-alias'));
-			expect((await rows(t))[0]).toMatchObject({ recipient: 'alias@example.com', contactId });
-		});
-
-		it('the inline erasure deletes rows naming an alias, linked or not', async () => {
-			const t = newHarness();
-			// Stored before the alias belonged to anyone: no contact link.
-			await dispatch(t, aliasComplaint('ses-before'));
-			const contactId = await seedContactWithAlias(t);
-			await dispatch(t, aliasComplaint('ses-after'));
-			const stored = await rows(t);
-			expect(stored.map((r) => r.contactId ?? null)).toEqual([null, contactId]);
-
-			await t.run(async (ctx) => await permanentlyDeleteContactWithRelations(ctx, contactId));
-
-			expect(await rows(t)).toEqual([]);
-		});
-
-		it('the erasure walker deletes rows naming an alias after soft-delete dropped the identities', async () => {
-			const t = newHarness();
-			const contactId = await seedContactWithAlias(t);
-			await dispatch(t, aliasComplaint('ses-walk-alias'));
-			await t.run(async (ctx) => {
-				await softDeleteContact(ctx, contactId, 'test');
-				await ctx.db.patch(contactId, { deletedAt: Date.now() - 40 * DAY });
-				expect(
-					await ctx.db
-						.query('contactIdentities')
-						.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-						.collect()
-				).toEqual([]);
-			});
-
-			await t.mutation(internal.contacts.contacts.cleanupSoftDeletedContacts, {});
-			await t.finishAllScheduledFunctions(vi.runAllTimers);
-
-			expect(await rows(t)).toEqual([]);
-		});
+		expect(await blockedReason(t, address)).toBe('complained');
+		const [row] = await rows(t);
+		expect(row?.suppression).toBe('suppressed');
+		expect(JSON.stringify(row).toLowerCase()).not.toContain(address);
 	});
 });
