@@ -4227,15 +4227,8 @@
 				"selectingAllMatching": "Wird ausgewählt…"
 			},
 			"postboxClarificationCard": {
-				"answer": "Antworten",
 				"answerLater": "Ich antworte später",
-				"cardLabel": "Deine Eingabe erforderlich: {subject}",
-				"drafting": "Deine Antwort wird entworfen…",
-				"hintLater": "Später",
-				"hintPick": "Auswählen",
-				"openDraft": "Entwurf öffnen",
-				"statusDraftReady": "Entwurf bereit",
-				"statusNeedsInput": "Deine Eingabe erforderlich"
+				"drafting": "Deine Antwort wird entworfen…"
 			},
 			"postboxCoachPanel": {
 				"clean": "Sieht gut aus — keine Auffälligkeiten gefunden.",
@@ -4913,7 +4906,6 @@
 					"summary": "{summary} in dieser Sitzung.",
 					"title": "Alles erledigt"
 				},
-				"draftReply": "Antwort entwerfen",
 				"empty": {
 					"hint": "Nichts wartet auf deine Antwort.",
 					"title": "Alles erledigt"
@@ -4929,11 +4921,7 @@
 					"snooze": "Zurückstellen"
 				},
 				"reply": "Antworten",
-				"snooze": "Zurückstellen",
-				"urgency": {
-					"high": "Dringend",
-					"low": "Niedrige Priorität"
-				}
+				"snooze": "Zurückstellen"
 			},
 			"postboxReplyGuard": {
 				"body": "Diese Nachricht stammt möglicherweise nicht wirklich von der angegebenen Person. Das ist uns aufgefallen:",
@@ -4946,10 +4934,6 @@
 				"dismissTitle": "Für diese Sitzung ausblenden",
 				"openQueue": "Antwortliste öffnen",
 				"waiting": "{count} E-Mail wartet auf deine Antwort | {count} E-Mails warten auf deine Antwort"
-			},
-			"postboxReviewSlot": {
-				"draftReady": "Entwurf bereit",
-				"reviewAndSend": "Prüfen & senden"
 			},
 			"postboxRewriteActions": {
 				"formal": "Förmlicher",
@@ -6653,9 +6637,6 @@
 				"title": "Alles erledigt",
 				"summary": "{summary} in dieser Sitzung.",
 				"body": "Deine Werkbank beginnt ab hier neu."
-			},
-			"mail": {
-				"writeOwn": "Selbst schreiben"
 			},
 			"mode": {
 				"back": "Zurück zu {page}",

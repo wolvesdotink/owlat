@@ -4227,15 +4227,8 @@
 				"selectingAllMatching": "Selecting…"
 			},
 			"postboxClarificationCard": {
-				"answer": "Answer",
 				"answerLater": "I'll answer later",
-				"cardLabel": "Needs your input: {subject}",
-				"drafting": "Drafting your reply…",
-				"hintLater": "Later",
-				"hintPick": "Pick",
-				"openDraft": "Open draft",
-				"statusDraftReady": "Draft ready",
-				"statusNeedsInput": "Needs your input"
+				"drafting": "Drafting your reply…"
 			},
 			"postboxCoachPanel": {
 				"clean": "Looks solid — no issues found.",
@@ -4913,7 +4906,6 @@
 					"summary": "{summary} this session.",
 					"title": "All caught up"
 				},
-				"draftReply": "Draft reply",
 				"empty": {
 					"hint": "Nothing is waiting on your reply.",
 					"title": "All caught up"
@@ -4929,11 +4921,7 @@
 					"snooze": "Snooze"
 				},
 				"reply": "Reply",
-				"snooze": "Snooze",
-				"urgency": {
-					"high": "Urgent",
-					"low": "Low priority"
-				}
+				"snooze": "Snooze"
 			},
 			"postboxReplyGuard": {
 				"body": "This message may not really be from who it claims. Here is what we noticed:",
@@ -4946,10 +4934,6 @@
 				"dismissTitle": "Dismiss for this session",
 				"openQueue": "Open Answer queue",
 				"waiting": "{count} email is waiting on your reply | {count} emails are waiting on your reply"
-			},
-			"postboxReviewSlot": {
-				"draftReady": "Draft ready",
-				"reviewAndSend": "Review & send"
 			},
 			"postboxRewriteActions": {
 				"formal": "More formal",
@@ -6653,9 +6637,6 @@
 				"title": "All caught up",
 				"summary": "{summary} this session.",
 				"body": "Your Workbench now starts fresh from here."
-			},
-			"mail": {
-				"writeOwn": "Write my own"
 			},
 			"mode": {
 				"back": "Back to {page}",
