@@ -107,6 +107,7 @@ const gapReason = computed(() =>
 // goes out the way a draftless reply does (`composeAndSend`).
 const filling = ref(false);
 const fillField = ref<HTMLTextAreaElement | null>(null);
+const fillReasonId = useId();
 const fillGapCount = computed(() =>
 	filling.value ? authoredTextGaps(composeBody.value).length : 0
 );
@@ -162,6 +163,39 @@ function handledAlreadyHandled(result: unknown): boolean {
 	return true;
 }
 
+/**
+ * What an approve (or a reply sent through one) came back with: a teammate's
+ * hold, a lost race, or the send, armed with its undo countdown while the
+ * server holds it back (a reply typed on the card included). True when done.
+ */
+function settleSend(
+	id: Id<'inboundMessages'>,
+	result: unknown,
+	outcome: 'approved' | 'sent',
+	sentToast: string
+): boolean {
+	if (isReplyCollision(result)) {
+		showToast(
+			collisionText(replyCollisionToast(result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
+			'error'
+		);
+		return false;
+	}
+	if (handledAlreadyHandled(result)) return false;
+	const undo = approveUndoWindow(result);
+	if (undo) {
+		armApproveUndo({
+			inboundMessageId: id,
+			sendAt: undo.sendAt,
+			onUndo: () => props.controls.undoSelf(),
+		});
+	} else {
+		showToast(t(sentToast));
+	}
+	props.controls.complete(outcome, undo ? () => undoApproveInverse(id) : undefined);
+	return true;
+}
+
 async function approve() {
 	if (busy.value || isHeld.value || gapHeld.value) return;
 	busy.value = true;
@@ -171,25 +205,12 @@ async function approve() {
 		// included, whatever variants the agent once offered.
 		const result = await onApprove(m._id);
 		if (!result.ok) return;
-		if (isReplyCollision(result.result)) {
-			showToast(
-				collisionText(replyCollisionToast(result.result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
-				'error'
-			);
-			return;
-		}
-		if (handledAlreadyHandled(result.result)) return;
-		const undo = approveUndoWindow(result.result);
-		if (undo) {
-			armApproveUndo({
-				inboundMessageId: m._id,
-				sendAt: undo.sendAt,
-				onUndo: () => props.controls.undoSelf(),
-			});
-		} else {
-			showToast(t('components.agentTasks.reviewFocusFlow.toasts.draftApproved'));
-		}
-		props.controls.complete('approved', undo ? () => undoApproveInverse(m._id) : undefined);
+		settleSend(
+			m._id,
+			result.result,
+			'approved',
+			'components.agentTasks.reviewFocusFlow.toasts.draftApproved'
+		);
 	} finally {
 		busy.value = false;
 	}
@@ -211,20 +232,20 @@ async function sendReply() {
 	if (busy.value || isHeld.value || fillGapCount.value > 0 || body.trim().length === 0) return;
 	busy.value = true;
 	try {
-		const result = await composeAndSend(message.value._id, body);
+		const id = message.value._id;
+		const result = await composeAndSend(id, body);
 		if (!result.ok) return;
-		if (isReplyCollision(result.result)) {
-			showToast(
-				collisionText(replyCollisionToast(result.result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
-				'error'
-			);
+		if (
+			!settleSend(
+				id,
+				result.result,
+				'sent',
+				'components.agentTasks.reviewFocusFlow.toasts.replySent'
+			)
+		)
 			return;
-		}
-		if (handledAlreadyHandled(result.result)) return;
 		composeBody.value = '';
 		filling.value = false;
-		showToast(t('components.agentTasks.reviewFocusFlow.toasts.replySent'));
-		props.controls.complete('sent');
 	} finally {
 		busy.value = false;
 	}
@@ -327,6 +348,8 @@ const primaryButton =
 				v-model="composeBody"
 				rows="8"
 				class="input w-full text-sm resize-y mb-4"
+				:aria-label="t('components.agentTasks.reviewFocusFlow.fillLabel')"
+				:aria-describedby="fillGapCount > 0 ? fillReasonId : undefined"
 				data-testid="team-card-fill"
 			/>
 			<TaskActions
@@ -336,6 +359,7 @@ const primaryButton =
 				:primary-loading="busy"
 				:held="isHeld || fillGapCount > 0"
 				:held-reason="heldReason ?? fillReason"
+				:held-reason-id="fillReasonId"
 				:skip-label="t('components.agentTasks.reviewFocusFlow.reject')"
 				skip-destructive
 				:skip-disabled="busy"

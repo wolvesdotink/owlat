@@ -196,6 +196,7 @@ describe('AnswerTeamCard with an agent draft that has gaps', () => {
 	beforeEach(() => {
 		vi.mocked(controls.complete).mockClear();
 		vi.mocked(controls.openAnswer).mockClear();
+		vi.mocked(controls.undoSelf).mockClear();
 	});
 
 	it('marks the written gaps, not the quoted one, and holds Approve with the count', async () => {
@@ -237,7 +238,7 @@ describe('AnswerTeamCard with an agent draft that has gaps', () => {
 		await flushPromises();
 		expect(stored.draftResponse).toBe(FILLED);
 		expect(sent).toEqual([FILLED]);
-		expect(controls.complete).toHaveBeenCalledWith('sent');
+		expect(controls.complete).toHaveBeenCalledWith('sent', undefined);
 	});
 
 	it('releases Approve once the gaps are filled elsewhere', async () => {
@@ -291,5 +292,62 @@ describe('AnswerTeamCard with an agent draft that has gaps', () => {
 		await flushPromises();
 		expect(sent).toEqual([FILLED]);
 		expect(controls.complete).toHaveBeenCalledWith('approved', undefined);
+	});
+
+	it('names the fill field and ties the gap count to it', async () => {
+		gappedEntry();
+		const wrapper = mountReal();
+		await wrapper.get('[data-testid="team-card-fill-gaps"]').trigger('click');
+		const field = wrapper.get<HTMLTextAreaElement>('[data-testid="team-card-fill"]');
+		expect(field.attributes('aria-label')).toBe('Draft to fill in');
+		const described = field.attributes('aria-describedby');
+		expect(described).toBeTruthy();
+		expect(wrapper.get(`[id="${described}"]`).text()).toBe('2 gaps left');
+
+		await field.setValue(FILLED);
+		expect(field.attributes('aria-describedby')).toBeUndefined();
+	});
+
+	it('arms the approve undo countdown for a reply filled on the card, and Undo cancels the send', async () => {
+		gappedEntry();
+		const sendAt = Date.now() + 15_000;
+		const arm = vi.fn();
+		vi.stubGlobal('useReviewApproveUndo', () => ({
+			arm,
+			state: ref({ inboundMessageId: null }),
+			dismiss: vi.fn(),
+		}));
+		vi.stubGlobal('approveUndoWindow', (r: { undo?: { sendAt: number } }) => r.undo);
+		const undoAutoSend = vi.fn(async () => ({ ok: true, result: { cancelled: true } }));
+		let built = 0;
+		vi.stubGlobal('useBackendOperation', () => {
+			const index = built++;
+			const run = vi.fn(async (args: { draftResponse?: string }) => {
+				if (index === 2 && args.draftResponse !== undefined)
+					stored.draftResponse = args.draftResponse;
+				if (index === 3) return undoAutoSend(args);
+				return {
+					ok: true,
+					result: { success: true, ...(index === 0 ? { undo: { sendAt } } : {}) },
+				};
+			});
+			return { run, isLoading: ref(false) };
+		});
+
+		const wrapper = mountReal();
+		await wrapper.get('[data-testid="team-card-fill-gaps"]').trigger('click');
+		await wrapper.get('[data-testid="team-card-fill"]').setValue(FILLED);
+		await primary(wrapper).trigger('click');
+		await flushPromises();
+
+		// The countdown toast is armed for this send, its Undo rewinds the queue...
+		expect(arm).toHaveBeenCalledWith(expect.objectContaining({ inboundMessageId: 'im_2', sendAt }));
+		arm.mock.calls[0]![0].onUndo();
+		expect(controls.undoSelf).toHaveBeenCalled();
+		// ...and the queue's undo is the true inverse: the held send is cancelled.
+		const [outcome, inverse] = vi.mocked(controls.complete).mock.calls[0]!;
+		expect(outcome).toBe('sent');
+		await inverse!();
+		expect(undoAutoSend).toHaveBeenCalledWith({ inboundMessageId: 'im_2' });
 	});
 });
