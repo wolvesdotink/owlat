@@ -68,6 +68,7 @@ import {
 	urlAndSortedParamsSigningBase,
 } from '../security';
 import { classifyBounceMessage } from '@owlat/shared/bounceClassification';
+import { mapMarkingSendingScope } from './mandrillSubaccount';
 import type { InboundBatchParser } from '../pipeline';
 import {
 	INBOUND_REPLAY_WINDOW_MS,
@@ -106,6 +107,8 @@ interface MandrillEventItem {
 		diag?: string;
 		/** Present on `reject`: which blacklist rule refused the address. */
 		reject_reason?: string;
+		/** The subaccount it was sent under; see `./mandrillSubaccount.ts`. */
+		subaccount?: string | null;
 	};
 }
 
@@ -476,12 +479,8 @@ export function parseMandrillBatch(rawBody: string): InboundEvent[] {
 	if (parsed.length > MAX_EVENTS_PER_BATCH) {
 		throw new Error(`Mandrill batch exceeds ${MAX_EVENTS_PER_BATCH} events`);
 	}
-	const events: InboundEvent[] = [];
-	for (const item of parsed as MandrillEventItem[]) {
-		const event = mapMandrillEvent(item ?? {});
-		if (event) events.push(event);
-	}
-	return events;
+	// Another subaccount's events are marked, and applied only if they match a Send of ours.
+	return mapMarkingSendingScope(parsed as MandrillEventItem[], mapMandrillEvent);
 }
 
 export const mandrillAdapter: InboundBatchParser<'mandrill'> = {

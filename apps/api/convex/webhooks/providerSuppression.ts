@@ -66,14 +66,15 @@
  * refuses the address whoever put it there, so mirroring it keeps the two arms
  * on the same population. It also cannot be gated on the Send: Mandrill refuses
  * a listed address synchronously, and a refused send stores no provider message
- * id for the webhook's `reject` to match. The remaining exposure is a provider
- * that keeps separate lists per subaccount while delivering every subaccount's
- * events to one webhook; that needs a per-deployment marker the provider echoes
- * back (Mandrill `msg.subaccount`, verified live) and is a follow-up.
+ * id for the webhook's `reject` to match. That synchronous refusal is mirrored
+ * from the send response itself ({@link recordSendResponseRefusal}). Events
+ * from another Mandrill subaccount are held back before they reach this file
+ * (`./sendingScope.ts`, #1243).
  */
 
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
+import { logError } from '../lib/runtimeLog';
 import type { InboundEventOf, ProviderSuppression, ProviderSuppressionReason } from './types';
 
 /** What the host does about one suppression reason. */
@@ -129,7 +130,8 @@ export function providerSuppressionEffect(
 async function applyProviderSuppressionFact(
 	ctx: ActionCtx,
 	fact: { providerType: string; recipient: string; at: number },
-	suppression: ProviderSuppression
+	suppression: ProviderSuppression,
+	source: 'webhook' | 'send_response' = 'webhook'
 ): Promise<void> {
 	const { providerType, recipient, at } = fact;
 	const effect = providerSuppressionEffect(suppression.reason);
@@ -147,7 +149,7 @@ async function applyProviderSuppressionFact(
 		...(effect.reason === 'bounced' ? { bounceType: effect.bounceType } : {}),
 		provenance: {
 			provider: providerType,
-			source: 'webhook' as const,
+			source,
 			// The provider's own code where it published one; otherwise the host's
 			// rendering of the reason, which is what every pre-`evidence` caller
 			// (Emailit, every plugin) has always recorded.
@@ -191,4 +193,47 @@ export async function applyFailureSuppression(
 		{ providerType: event.providerType, recipient: event.recipient, at: event.at },
 		event.suppression
 	);
+}
+
+/**
+ * Mirror the suppression a provider attached to a refusal in its own send
+ * response (#1243): a Mandrill `rejected` result off its reject list. Every
+ * caller of `sendProviderDispatch` passes its result here (the governed
+ * dispatch and system mail; `__tests__/sendResponseRefusalCallers.test.ts`
+ * fails a new caller that does not).
+ *
+ * The message is ours by construction (our key, our request), so no ownership
+ * question arises, and it is the same fact the provider's `reject` webhook
+ * would report later, applied through the same table and the same event-time
+ * guards, at the response time. It touches no Send, so completion and the
+ * lost-send sweep are unaffected, and it runs before the caller reports the
+ * failure, so a lost completion changes nothing here.
+ *
+ * NEVER THROWS. A write that fails is logged; the caller's own failure (the
+ * provider's error) is what the send reports.
+ */
+export async function recordSendResponseRefusal(
+	ctx: ActionCtx,
+	args: {
+		result: { success: boolean; suppression?: ProviderSuppression };
+		providerType: string;
+		recipient: string;
+	}
+): Promise<void> {
+	const { result, providerType, recipient } = args;
+	if (result.success || !result.suppression) return;
+	try {
+		await applyProviderSuppressionFact(
+			ctx,
+			{ providerType, recipient, at: Date.now() },
+			result.suppression,
+			'send_response'
+		);
+	} catch (error) {
+		logError('[Provider Suppression] send-response refusal could not be mirrored', {
+			providerType,
+			reason: result.suppression.reason,
+			errorName: error instanceof Error ? error.name : typeof error,
+		});
+	}
 }

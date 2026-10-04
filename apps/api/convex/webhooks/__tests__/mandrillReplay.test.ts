@@ -87,6 +87,8 @@ const SAVED_ENV = { ...process.env };
 
 beforeEach(() => {
 	process.env['MANDRILL_WEBHOOK_KEY'] = WEBHOOK_KEY;
+	// A deployment that sends through Mandrill, so its account default is in scope (#1243).
+	process.env['MANDRILL_API_KEY'] = 'mandrill-test-api-key';
 	process.env['CONVEX_SITE_URL'] = SITE_URL;
 	delete process.env['RATE_LIMIT_TRUSTED_PROXY'];
 });

@@ -277,6 +277,50 @@ describe('per-recipient response parsing', () => {
 		}
 	});
 
+	// The same table the `reject` webhook reads, so the send response and the
+	// webhook suppress on exactly the same reasons (#1243).
+	it.each([
+		['hard-bounce', { reason: 'hard_bounce', evidence: 'MANDRILL_REJECT_HARD_BOUNCE' }],
+		['spam', { reason: 'spam_complaint', evidence: 'MANDRILL_REJECT_SPAM' }],
+		['rule', { reason: 'operator_suppressed', evidence: 'MANDRILL_REJECT_RULE' }],
+		['unsub', { reason: 'unsubscribed', evidence: 'MANDRILL_REJECT_UNSUB' }],
+	])('a rejected/%s result carries the suppression its webhook would', async (reason, expected) => {
+		global.fetch = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(
+					JSON.stringify([
+						{ email: 'to@example.com', status: 'rejected', _id: 'x', reject_reason: reason },
+					]),
+					{ status: 200 }
+				)
+			) as unknown as typeof fetch;
+
+		const result = await mandrillSendProvider.sendEmail(transport(), params);
+
+		expect(result).toMatchObject({ success: false, suppression: expected });
+	});
+
+	it.each(['unsigned', 'invalid-sender', 'test-mode-limit', 'invalid'])(
+		'a sender-side rejected/%s result carries no suppression',
+		async (reason) => {
+			global.fetch = vi
+				.fn()
+				.mockResolvedValue(
+					new Response(
+						JSON.stringify([
+							{ email: 'to@example.com', status: 'rejected', _id: 'x', reject_reason: reason },
+						]),
+						{ status: 200 }
+					)
+				) as unknown as typeof fetch;
+
+			expect(await mandrillSendProvider.sendEmail(transport(), params)).not.toHaveProperty(
+				'suppression'
+			);
+		}
+	);
+
 	it('invalid is an INVALID_RECIPIENT even with no reject_reason', async () => {
 		global.fetch = vi.fn().mockResolvedValue(
 			new Response(JSON.stringify([{ email: 'nope@', status: 'invalid', _id: '' }]), {

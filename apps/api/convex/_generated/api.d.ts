@@ -880,6 +880,7 @@ import type * as lib_sendProviders_index from '../lib/sendProviders/index.js';
 import type * as lib_sendProviders_mandrill_client from '../lib/sendProviders/mandrill/client.js';
 import type * as lib_sendProviders_mandrill_errors from '../lib/sendProviders/mandrill/errors.js';
 import type * as lib_sendProviders_mandrill_index from '../lib/sendProviders/mandrill/index.js';
+import type * as lib_sendProviders_mandrill_subaccounts from '../lib/sendProviders/mandrill/subaccounts.js';
 import type * as lib_sendProviders_mta_index from '../lib/sendProviders/mta/index.js';
 import type * as lib_sendProviders_pluginEnvNamespace from '../lib/sendProviders/pluginEnvNamespace.js';
 import type * as lib_sendProviders_pluginProvider from '../lib/sendProviders/pluginProvider.js';
@@ -1396,6 +1397,7 @@ import type * as webhooks_adapters_generic from '../webhooks/adapters/generic.js
 import type * as webhooks_adapters_inboundRegistry from '../webhooks/adapters/inboundRegistry.js';
 import type * as webhooks_adapters_index from '../webhooks/adapters/index.js';
 import type * as webhooks_adapters_mandrill from '../webhooks/adapters/mandrill.js';
+import type * as webhooks_adapters_mandrillSubaccount from '../webhooks/adapters/mandrillSubaccount.js';
 import type * as webhooks_adapters_meta from '../webhooks/adapters/meta.js';
 import type * as webhooks_adapters_mta from '../webhooks/adapters/mta.js';
 import type * as webhooks_adapters_mtaEventParsers from '../webhooks/adapters/mtaEventParsers.js';
@@ -1445,6 +1447,8 @@ import type * as webhooks_providerVerifierRegistry from '../webhooks/providerVer
 import type * as webhooks_providerSuppression from '../webhooks/providerSuppression.js';
 import type * as webhooks_scheduleFanout from '../webhooks/scheduleFanout.js';
 import type * as webhooks_security from '../webhooks/security.js';
+import type * as webhooks_sendingScope from '../webhooks/sendingScope.js';
+import type * as webhooks_sendingScopeQueries from '../webhooks/sendingScopeQueries.js';
 import type * as webhooks_types from '../webhooks/types.js';
 import type * as webhooks_unresolvedBounce from '../webhooks/unresolvedBounce.js';
 import type * as webhooks_unresolvedFeedback from '../webhooks/unresolvedFeedback.js';
@@ -2355,6 +2359,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/sendProviders/mandrill/client': typeof lib_sendProviders_mandrill_client;
 	'lib/sendProviders/mandrill/errors': typeof lib_sendProviders_mandrill_errors;
 	'lib/sendProviders/mandrill/index': typeof lib_sendProviders_mandrill_index;
+	'lib/sendProviders/mandrill/subaccounts': typeof lib_sendProviders_mandrill_subaccounts;
 	'lib/sendProviders/mta/index': typeof lib_sendProviders_mta_index;
 	'lib/sendProviders/pluginEnvNamespace': typeof lib_sendProviders_pluginEnvNamespace;
 	'lib/sendProviders/pluginProvider': typeof lib_sendProviders_pluginProvider;
@@ -2871,6 +2876,7 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/adapters/inboundRegistry': typeof webhooks_adapters_inboundRegistry;
 	'webhooks/adapters/index': typeof webhooks_adapters_index;
 	'webhooks/adapters/mandrill': typeof webhooks_adapters_mandrill;
+	'webhooks/adapters/mandrillSubaccount': typeof webhooks_adapters_mandrillSubaccount;
 	'webhooks/adapters/meta': typeof webhooks_adapters_meta;
 	'webhooks/adapters/mta': typeof webhooks_adapters_mta;
 	'webhooks/adapters/mtaEventParsers': typeof webhooks_adapters_mtaEventParsers;
@@ -2920,6 +2926,8 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/providerSuppression': typeof webhooks_providerSuppression;
 	'webhooks/scheduleFanout': typeof webhooks_scheduleFanout;
 	'webhooks/security': typeof webhooks_security;
+	'webhooks/sendingScope': typeof webhooks_sendingScope;
+	'webhooks/sendingScopeQueries': typeof webhooks_sendingScopeQueries;
 	'webhooks/types': typeof webhooks_types;
 	'webhooks/unresolvedBounce': typeof webhooks_unresolvedBounce;
 	'webhooks/unresolvedFeedback': typeof webhooks_unresolvedFeedback;

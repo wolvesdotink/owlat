@@ -12,6 +12,7 @@ import { logError } from '../lib/runtimeLog';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { internalMutation } from '../lib/writeFence';
 import type { TransitionOutcome } from '../delivery/sendLifecycle';
+import { findSendByProviderMessageId, scopeRecipientHash } from './sendingScopeQueries';
 
 // ============================================================================
 // Unresolved feedback (#1194).
@@ -115,6 +116,7 @@ export const record = internalMutation({
 		deliveryDomain: v.optional(v.string()),
 		at: v.number(),
 		suppression: unresolvedFeedbackSuppressionValidator,
+		sendingScope: v.optional(v.object({ recipientHash: v.optional(v.string()) })),
 	},
 	handler: async (ctx, args) => {
 		const now = Date.now();
@@ -152,6 +154,7 @@ export const record = internalMutation({
 				: {}),
 			at: args.at,
 			suppression: args.suppression,
+			...(args.sendingScope ? { sendingScope: args.sendingScope } : {}),
 			occurrences: 1,
 			firstSeenAt: now,
 			lastSeenAt: now,
@@ -190,6 +193,25 @@ async function transitionFor(
 }
 
 /**
+ * An out-of-scope row (#1243) whose id now names a Send that is not the match
+ * the webhook was waiting for: another provider kind, or a recipient whose
+ * keyed hash differs. Refused, like a lifecycle refusal, rather than applied.
+ * No Send yet is not a mismatch; the row stays open for the next replay.
+ */
+async function isOutOfScopeMismatch(
+	ctx: MutationCtx,
+	row: FeedbackRow,
+	providerMessageId: string
+): Promise<boolean> {
+	if (!row.sendingScope) return false;
+	const send = await findSendByProviderMessageId(ctx.db, providerMessageId);
+	if (!send) return false;
+	const expected = row.sendingScope.recipientHash;
+	if (!expected || send.providerType !== row.providerType) return true;
+	return (await scopeRecipientHash(providerMessageId, send.recipient)) !== expected;
+}
+
+/**
  * Replay one stored row. `trigger` defaults to `operator`, which is what
  * `npx convex run webhooks/unresolvedFeedback:replay '{"feedbackId": "…"}'`
  * means: it replays any open row and does not spend an automatic attempt. A
@@ -208,6 +230,16 @@ export const replay = internalMutation({
 		const now = Date.now();
 		if (trigger === 'cron' && (row.nextReplayAt === undefined || row.nextReplayAt > now)) {
 			return 'skipped';
+		}
+
+		if (await isOutOfScopeMismatch(ctx, row, providerMessageId)) {
+			await ctx.db.patch(row._id, {
+				status: 'resolved',
+				resolution: 'refused',
+				resolvedAt: now,
+				nextReplayAt: undefined,
+			});
+			return 'refused';
 		}
 
 		let outcome: TransitionOutcome | null = null;

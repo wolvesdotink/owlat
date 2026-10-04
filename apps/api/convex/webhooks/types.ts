@@ -113,6 +113,16 @@ export interface ProviderSuppression {
 export const INBOUND_REPLAY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
+ * Set by an adapter on an event the provider says came from outside this
+ * deployment's sending scope (Mandrill: another subaccount, #1243). Unless it
+ * matches one of our Sends by message id, provider and `recipient`, the
+ * dispatcher lets it act on no address (`./sendingScope.ts`).
+ */
+export interface OutsideSendingScope {
+	readonly recipient?: string;
+}
+
+/**
  * Channel content payload — the customer-message shape inside a
  * `channel.received` event. JSON-serialized into `unifiedMessages.content`
  * by the dispatcher.
@@ -144,6 +154,7 @@ export type InboundEvent =
 			destinationProvider?: DestinationProviderKey;
 			primarySendingDomain?: string;
 			deliveryDomain?: DeliveryDomain;
+			outsideSendingScope?: OutsideSendingScope;
 	  }
 	| {
 			kind: 'email.delivered';
@@ -207,6 +218,7 @@ export type InboundEvent =
 			 * once. Only set on an event younger than {@link INBOUND_REPLAY_WINDOW_MS}.
 			 */
 			replayKey?: string;
+			outsideSendingScope?: OutsideSendingScope;
 	  }
 	| {
 			// Transient RELAY-side deferral (Mandrill `deferral`). The
@@ -220,6 +232,7 @@ export type InboundEvent =
 			providerType?: string;
 			/** Provider free text (Mandrill `msg.diag`), for operator logs only. */
 			reason?: string;
+			outsideSendingScope?: OutsideSendingScope;
 	  }
 	| {
 			// The recipient left through the RELAY's own unsubscribe surface
@@ -235,6 +248,7 @@ export type InboundEvent =
 			providerType?: string;
 			/** See `replayKey` on `email.failed`. */
 			replayKey?: string;
+			outsideSendingScope?: OutsideSendingScope;
 	  }
 	| {
 			// A signed provider callback reported a recipient-specific suppression.
@@ -257,6 +271,7 @@ export type InboundEvent =
 			bounceMessage?: string;
 			providerType?: string;
 			deliveryDomain?: DeliveryDomain;
+			outsideSendingScope?: OutsideSendingScope;
 	  }
 	| {
 			kind: 'email.complained';
@@ -289,6 +304,7 @@ export type InboundEvent =
 			sourceIsp?: DestinationProviderKey;
 			/** See `replayKey` on `email.failed`. */
 			replayKey?: string;
+			outsideSendingScope?: OutsideSendingScope;
 	  }
 	| {
 			kind: 'email.opened';

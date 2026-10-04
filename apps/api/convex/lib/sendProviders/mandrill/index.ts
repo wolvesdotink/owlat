@@ -50,6 +50,7 @@ import { transportEnvOptional, transportEnvRequired } from '../transportEnv';
 import type { SendTransportRecord } from '../transports';
 import { isAmbiguousPostDispatchTimeout } from '../errors';
 import { postMandrill } from './client';
+import { mandrillRejectCode, mandrillRejectSuppression } from '../../../webhooks/adapters/mandrill';
 import {
 	categorizeMandrillError,
 	parseRetryAfterMs,
@@ -172,10 +173,17 @@ function readRecipientResult(payload: unknown): EmailSendAttempt {
 
 	const reason = typeof entry.reject_reason === 'string' ? entry.reject_reason : '';
 	const detail = `${status || 'unknown'}: ${reason}`;
+	// A `rejected` result is Mandrill's reject list refusing the address, the
+	// same fact its `reject` webhook reports. Read through the webhook's own
+	// table, so a reason suppresses here exactly when it suppresses there and a
+	// sender-side reason (`unsigned`, `invalid-sender`, ...) suppresses no one.
+	const suppression =
+		status === 'rejected' ? mandrillRejectSuppression(mandrillRejectCode(reason)) : undefined;
 	return {
 		success: false,
 		errorMessage: `Mandrill ${detail.trim()}`,
 		errorCode: categorizeMandrillError(detail),
+		...(suppression ? { suppression } : {}),
 	};
 }
 
