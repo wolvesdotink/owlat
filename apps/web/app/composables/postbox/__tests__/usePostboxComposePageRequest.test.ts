@@ -268,36 +268,25 @@ describe('pure helpers', () => {
 		});
 		const withRow = source({ id: 'row', rowless: false, parkedAt: 5 });
 		// The newer one sits in `sources`, the older is `current`: order is by time.
-		const folded = foldRowless(
-			request({
-				seed: { mailboxId: MBX, prefillTo: ['a@example.com'] },
-				sources: [newer, withRow],
-				current: older,
-			})
-		);
+		const req = request({ sources: [newer, withRow], current: older });
+		const folded = foldRowless({ mailboxId: MBX, prefillTo: ['a@example.com'] }, req);
 		expect(folded.seed).toEqual({
 			mailboxId: MBX,
 			prefillTo: ['a@example.com'],
 			prefillSubject: 'newer subject',
 			prefillBodyHtml: '<p>older body</p>',
 		});
-		expect(folded.current).toBeUndefined();
-		expect(folded.sources).toEqual([withRow]);
+		expect(folded.folded.map((s) => s.id)).toEqual(['older', 'newer']);
+		// The record is not changed: they stay recovery sources.
+		expect(req.current).toBe(older);
+		expect(req.sources).toEqual([newer, withRow]);
 	});
 
-	it('foldRowless leaves a record without rowless snapshots as it is', () => {
-		const withRow = source({ id: 'row' });
-		const req = request({ current: withRow });
-		expect(foldRowless(req)).toBe(req);
-	});
-
-	it('foldRowless starts from the mailbox when there is no seed', () => {
-		const folded = foldRowless(
-			request({
-				current: source({ rowless: true, fields: fields({ subject: 's' }), present: ['subject'] }),
-			})
-		);
-		expect(folded.seed).toEqual({ mailboxId: MBX, prefillSubject: 's' });
+	it('foldRowless leaves a seed without rowless snapshots as it is', () => {
+		const seed = { mailboxId: MBX };
+		const folded = foldRowless(seed, request({ current: source({ id: 'row' }) }));
+		expect(folded.seed).toBe(seed);
+		expect(folded.folded).toEqual([]);
 	});
 
 	it('composerSeedOf adds the nonce, and drops creation work once there is a row', () => {
@@ -455,7 +444,7 @@ describe('opening a request', () => {
 });
 
 describe('G4: leaving before the composition has a row', () => {
-	it('parks the fields, and a return merges them into the seed', () => {
+	it('parks the fields, and a return shows them while keeping them as recovery sources', () => {
 		const key = usePostboxComposeNav().create({ mailboxId: MBX, prefillSubject: 'Hi' });
 		const a = mountPage(key, readySnap({ subject: 'Hi there', bodyHtml: '<p>Typed</p>' }));
 		a.unmount();
@@ -473,9 +462,50 @@ describe('G4: leaving before the composition has a row', () => {
 			prefillBodyHtml: '<p>Typed</p>',
 			requestNonce: record(key)!.requestNonce,
 		});
-		// Folded: the record holds it as seed now, not as a parked snapshot.
+		// Shown, but kept until a save holds it: the nonce may still name a row.
+		expect(record(key)!.current?.rowless).toBe(true);
+		expect(b.page.carriesText()).toBe(true);
+	});
+
+	it('offers rowless text instead of imposing it once the request has a row (G2)', async () => {
+		const key = usePostboxComposeNav().create({ mailboxId: MBX });
+		const a = mountPage(key, readySnap({ subject: 'Parked A' }));
+		a.unmount();
+		// The create lands after the leave; another writer saves newer text B.
+		a.fake.create(D1);
+		const rowB = fields({ subject: 'Newer B' });
+		const b = mountPage(key, readySnap({ subject: 'Newer B' }, { draftId: D1, base: rowB }));
+		// The seed carries the row, not the parked text.
+		expect(b.page.seed.value).toMatchObject({ draftId: D1 });
+		expect(b.page.seed.value).not.toHaveProperty('prefillSubject');
+		const context = mergeAll();
+		b.page.beforeReady(rowB, context);
+		// Never merged (no base to prove the row unchanged): stored as an offer.
+		expect(context.merge).not.toHaveBeenCalled();
+		await flushPromises();
+		const offered = [...driver.data.values()] as MirrorCopy[];
+		expect(offered.map((c) => c.fields.subject)).toEqual(['Parked A']);
+		expect(offered[0]!.base).toBeNull();
+	});
+
+	it('re-judges folded rowless text when the nonce turns out to name a row', async () => {
+		const key = usePostboxComposeNav().create({ mailboxId: MBX });
+		mountPage(key, readySnap({ subject: 'Parked A' })).unmount();
+		// No row bound yet: the return shows the parked text…
+		const b = mountPage(key, readySnap({ subject: 'Parked A' }));
+		expect(b.page.seed.value).toMatchObject({ prefillSubject: 'Parked A' });
+		// …then creation finds the existing row (newer text): it is offered.
+		b.fake.create(D1);
+		const rowB = fields({ subject: 'Newer B' });
+		b.fake.snap = readySnap({ subject: 'Newer B' }, { draftId: D1, base: rowB });
+		b.page.beforeReady(rowB, mergeAll());
+		await flushPromises();
+		expect(([...driver.data.values()] as MirrorCopy[]).map((c) => c.fields.subject)).toEqual([
+			'Parked A',
+		]);
+		// And a save does not drop it from the record as if it had been merged.
+		b.page.savedAcknowledged(D1);
 		expect(record(key)!.current).toBeUndefined();
-		expect(record(key)!.sources).toEqual([]);
 	});
 
 	it('merges every rowless snapshot, the newest over the older', () => {
@@ -531,7 +561,11 @@ describe('G4: leaving before the composition has a row', () => {
 		expect(record(key)!.current?.fields.subject).toBe('Fwd: Q3');
 
 		const b = mountPage(key, readySnap({}, { draftId: 'draft-9' }));
-		expect(b.page.seed.value).toMatchObject({ draftId: 'draft-9', prefillSubject: 'Fwd: Q3' });
+		// The whole editor was parked, so the open's text is in the snapshot,
+		// which is judged against the row instead of being imposed on it.
+		expect(b.page.seed.value).toMatchObject({ draftId: 'draft-9' });
+		expect(b.page.seed.value).not.toHaveProperty('prefillSubject');
+		expect(record(key)!.current?.rowless).toBe(true);
 		expect(b.page.seed.value).not.toHaveProperty('forwardAttachmentsFromMessageId');
 	});
 
@@ -935,6 +969,45 @@ describe('finishing', () => {
 		// A late row does not resurrect it.
 		a.fake.create('draft-1');
 		expect(record(key)).toBeNull();
+	});
+
+	it('keeps unseen parked text when a send ends the composition (G1)', async () => {
+		mirrorStore = new PostboxDraftMirrorStore(memoryDriver(false));
+		const row = fields({ subject: 'Saved A' });
+		const key = usePostboxComposeNav().create({ mailboxId: MBX, draftId: D1 });
+		mountPage(key, readySnap({ subject: 'Unsaved B' }, { draftId: D1, base: row })).unmount();
+		// Back: the row moved on to C, so B is to be offered, but storing it fails.
+		const rowC = fields({ subject: 'Newer C' });
+		const b = mountPage(key, readySnap({ subject: 'Newer C' }, { draftId: D1, base: rowC }));
+		b.page.beforeReady(rowC, mergeAll());
+		await flushPromises();
+		expect(record(key)!.sources.concat(record(key)!.current ?? [])).toHaveLength(1);
+		// C is sent: B was never shown, so it is not resolved by that.
+		b.page.finish();
+		await flushPromises();
+		const kept = record(key)!;
+		expect(
+			[...kept.sources, ...(kept.current ? [kept.current] : [])].map((s) => s.fields.subject)
+		).toEqual(['Unsaved B']);
+		expect(kept.seed).toBeUndefined();
+	});
+
+	it('moves unseen parked text to a copy the next new message offers, then forgets', async () => {
+		const row = fields({ subject: 'Saved A' });
+		const key = usePostboxComposeNav().create({ mailboxId: MBX, draftId: D1 });
+		mountPage(key, readySnap({ subject: 'Unsaved B' }, { draftId: D1, base: row })).unmount();
+		const b = mountPage(key, readySnap({ subject: 'Saved A' }, { draftId: D1, base: row }));
+		// Not judged yet (the row never loaded here): the send ends it anyway.
+		b.page.finish();
+		await flushPromises();
+		expect(record(key)).toBeNull();
+		const copies = [...driver.data.values()] as MirrorCopy[];
+		expect(copies).toHaveLength(1);
+		expect(copies[0]).toMatchObject({
+			draftId: null,
+			base: null,
+			fields: { subject: 'Unsaved B' },
+		});
 	});
 
 	it('leaves a record a newer mount owns', () => {

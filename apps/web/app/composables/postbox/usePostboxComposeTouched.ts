@@ -15,6 +15,11 @@
  *   body is judged in the mode it was typed in, so the row's mode must not
  *   switch the editor away from it. A seeded body does not (the seed names
  *   its mode explicitly when it has one).
+ * - `forgetSeeded()` drops what only the seed set: a compose request whose
+ *   nonce turns out to name an existing row reopens it, and that row was made
+ *   from the seed and may hold newer text, so only edits made during this
+ *   mount keep their value over it (text parked on an earlier leave is the
+ *   compose page's to offer, not the seed's to impose).
  * - `applying(fn)` runs server/default writes without marking anything. It is
  *   synchronous and nest-safe (a depth counter), and every watcher here is
  *   `flush: 'sync'`, so a write is attributed the moment it happens.
@@ -31,7 +36,9 @@ export function usePostboxComposeTouched(
 ) {
 	// A seed's body does not pin the mode (only an explicit seed mode does): a
 	// reopened draft's quoted HTML stays one switch away from its row's blocks.
-	const touched = new Set<TrackedComposeField>(seeded);
+	const seededSet = new Set<TrackedComposeField>(seeded);
+	const edited = new Set<TrackedComposeField>();
+	const has = (name: TrackedComposeField) => seededSet.has(name) || edited.has(name);
 	let depth = 0;
 
 	const stops: WatchStopHandle[] = MIRROR_FIELD_NAMES.map((name) =>
@@ -39,8 +46,8 @@ export function usePostboxComposeTouched(
 			fields[name],
 			() => {
 				if (depth > 0) return;
-				touched.add(name);
-				if (name === 'bodyHtml' || name === 'bodyBlocks') touched.add('composerMode');
+				edited.add(name);
+				if (name === 'bodyHtml' || name === 'bodyBlocks') edited.add('composerMode');
 			},
 			{ deep: true, flush: 'sync' }
 		)
@@ -57,9 +64,11 @@ export function usePostboxComposeTouched(
 	}
 
 	return {
-		isTouched: (name: TrackedComposeField) => touched.has(name),
+		isTouched: has,
 		/** The touched fields, in a stable order. */
-		list: (): TrackedComposeField[] => MIRROR_FIELD_NAMES.filter((name) => touched.has(name)),
+		list: (): TrackedComposeField[] => MIRROR_FIELD_NAMES.filter(has),
+		/** Only edits made during this mount stay touched (a nonce reopen). */
+		forgetSeeded: () => seededSet.clear(),
 		applying,
 		stop: () => {
 			for (const stop of stops) stop();

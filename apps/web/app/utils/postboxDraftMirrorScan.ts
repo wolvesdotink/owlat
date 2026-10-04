@@ -102,7 +102,11 @@ export async function scanMirrorOffers(
 		if (!legacy) continue;
 		const fields = mirrorFieldsOfLegacy(legacy.entry);
 		if (row && mirrorFieldsEqual(fields, row)) {
-			await store.removeLegacy(legacy);
+			// Judged against the row as it is NOW, inside the delete (G1a).
+			await store.removeLegacy(legacy, () => {
+				const latest = scan.latestRow();
+				return scan.stillCurrent() && latest !== null && mirrorFieldsEqual(fields, latest);
+			});
 			continue;
 		}
 		if (isBlankMirrorFields(fields) || mirrorFieldsEqual(fields, scan.onScreen())) continue;

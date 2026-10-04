@@ -162,8 +162,12 @@ export function usePostboxComposeRow(
 		latestRow,
 		hydration,
 		parkable,
-		/** The nonce named an existing row: merge it like a reopened draft. */
+		/**
+		 * The nonce named an existing row: merge it like a reopened draft. The
+		 * row was made from the seed, so only this mount's edits win over it.
+		 */
 		reopenExisting: () => {
+			touched.forgetSeeded();
 			mergeRow.value = true;
 			initialHydration.value = 'loading';
 		},

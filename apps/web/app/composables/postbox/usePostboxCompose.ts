@@ -348,6 +348,8 @@ export function usePostboxCompose(seed: ComposerSeed, options: ComposeOptions = 
 		bodyHtml,
 		isReopenedDraft: Boolean(seed.draftId),
 		bodyLocked: () => bodyPending.value,
+		canPrepend: () => initialHydration.value === 'ready' && !draftId.value,
+		applying: touched.applying,
 	});
 
 	// The offline queue's payload builder lives in a sibling (file-size ratchet);

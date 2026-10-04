@@ -44,7 +44,11 @@ import {
 	type MirrorFieldName,
 	type MirrorFields,
 } from '~/utils/postboxDraftMirror';
-import { getPostboxDraftMirrorStore, mirrorCopyKey } from '~/utils/postboxDraftMirrorStore';
+import {
+	getPostboxDraftMirrorStore,
+	mirrorCopyKey,
+	provisionalDraftKey,
+} from '~/utils/postboxDraftMirrorStore';
 import {
 	composeRandomId,
 	type usePostboxComposeNav,
@@ -100,19 +104,22 @@ export function seedWithParked(seed: ComposeSpec, source: RecoverySource): Compo
 	return next as unknown as ComposeSpec;
 }
 
-/** Rowless snapshots folded into the seed, oldest first (the newest wins). */
-export function foldRowless(request: ComposeRequest): ComposeRequest {
+/**
+ * The composer's seed with the request's rowless snapshots laid over it,
+ * oldest first (the newest wins), and those snapshots. Only for a request with
+ * no row yet: the record keeps them as recovery sources until something else
+ * holds the text, so a nonce that turns out to name an existing row (whose
+ * text may be newer) offers them instead of having them imposed.
+ */
+export function foldRowless(
+	seed: ComposeSpec,
+	request: ComposeRequest
+): { seed: ComposeSpec; folded: RecoverySource[] } {
 	const parked = [...request.sources, ...(request.current ? [request.current] : [])];
-	const rowless = parked.filter((source) => source.rowless).sort((a, b) => a.parkedAt - b.parkedAt);
-	if (rowless.length === 0) return request;
-	let seed: ComposeSpec = request.seed ?? { mailboxId: request.mailboxId };
-	for (const source of rowless) seed = seedWithParked(seed, source);
-	return {
-		...request,
-		seed,
-		current: request.current?.rowless ? undefined : request.current,
-		sources: request.sources.filter((source) => !source.rowless),
-	};
+	const folded = parked.filter((source) => source.rowless).sort((a, b) => a.parkedAt - b.parkedAt);
+	let next = seed;
+	for (const source of folded) next = seedWithParked(next, source);
+	return { seed: next, folded };
 }
 
 /** The seed the composer opens with. */
@@ -137,12 +144,22 @@ export function parkLeave(
 	request: ComposeRequest,
 	snap: ParkableSnapshot,
 	mountId: string,
-	now: number
+	now: number,
+	/** Snapshots this mount merged into the editor: a whole-editor park holds them. */
+	merged: readonly string[] = []
 ): ComposeRequest {
-	const sources = [...request.sources];
+	const sources = snap.ready
+		? request.sources.filter((source) => !merged.includes(source.id))
+		: [...request.sources];
 	// An earlier mount's unresolved snapshot is kept on its own; this mount's
 	// own earlier park (a `pagehide` before a bfcache return) is replaced.
-	if (request.current && request.current.mountId !== mountId) sources.push(request.current);
+	if (
+		request.current &&
+		request.current.mountId !== mountId &&
+		!(snap.ready && merged.includes(request.current.id))
+	) {
+		sources.push(request.current);
+	}
 	const saved = snap.base !== null && equalsRow(snap, snap.base);
 	const empty =
 		snap.present.length === 0 ||
@@ -220,13 +237,19 @@ export function usePostboxComposePageRequest(options: {
 			return;
 		}
 		state.value = { status: 'ready', key, mountId };
-		change((request) => foldRowless(request));
 		const request = nav.read(key);
 		if (!request) {
 			state.value = { status: 'expired' };
 			return;
 		}
-		seed.value = composerSeedOf(request);
+		if (request.draftId) {
+			// Rowless snapshots of a request with a row go through `beforeReady`.
+			seed.value = composerSeedOf(request);
+			return;
+		}
+		const { seed: folded, folded: sources } = foldRowless(composerSeedOf(request), request);
+		seed.value = folded;
+		merged = sources;
 	}
 
 	let bound = false;
@@ -245,10 +268,13 @@ export function usePostboxComposePageRequest(options: {
 		const own = owned();
 		const request = own ? nav.read(own.key) : null;
 		if (!own || !request || request.mountId !== own.mountId) return;
+		// Text folded in before the row was known was replaced by the row's
+		// (the seed does not win over an existing row): judged again below.
+		merged = [];
 		const parked = [
 			...(request.current ? [request.current] : []),
 			...[...request.sources].reverse(),
-		].filter((source) => !source.rowless);
+		];
 		if (parked.length === 0) return;
 
 		const resolved: string[] = [];
@@ -321,7 +347,9 @@ export function usePostboxComposePageRequest(options: {
 	async function settleMerged() {
 		const mounted = composer.value;
 		if (merged.length === 0 || !mounted) return;
-		if (await mounted.mirrorNow()) {
+		// Rowless text is held by the mirror only once the row is known not to
+		// be an older one; until then a save or the row itself decides.
+		if (!merged.some((source) => source.rowless) && (await mounted.mirrorNow())) {
 			dropMerged();
 			return;
 		}
@@ -357,11 +385,15 @@ export function usePostboxComposePageRequest(options: {
 		}
 	}
 
-	/** Whether the record still carries text the server may not hold. */
+	/**
+	 * Whether the request still holds text the server may not have: the open's
+	 * text, a composition with no row yet, or parked text merged into the
+	 * editor that no save has acknowledged.
+	 */
 	function carriesText(): boolean {
 		const own = owned();
 		const request = own ? nav.read(own.key) : null;
-		return !!request && (seedCarriesText(request.seed) || !request.draftId);
+		return !!request && (seedCarriesText(request.seed) || !request.draftId || merged.length > 0);
 	}
 
 	/** Park what is on screen (every unfinished leave, and `pagehide`). */
@@ -370,14 +402,62 @@ export function usePostboxComposePageRequest(options: {
 		const mounted = composer.value;
 		if (finished || !own || !mounted) return;
 		const snap = mounted.parkable();
-		change((request) => parkLeave(request, snap, own.mountId, Date.now()));
+		const mergedIds = merged.map((source) => source.id);
+		change((request) => parkLeave(request, snap, own.mountId, Date.now(), mergedIds));
 	}
 
-	/** Sent or discarded: the composition is over. */
+	/**
+	 * Sent or discarded: the composition is over. That resolves what was on
+	 * screen (this mount's own snapshots and what it merged), not snapshots
+	 * parked by earlier mounts that were never shown (their device copy could
+	 * not be stored): those move to device copies offered to the next new
+	 * message, and the record stays until each of them is stored.
+	 */
 	function finish() {
 		finished = true;
 		const own = owned();
-		if (own) nav.forget(own.key, own.mountId);
+		const request = own ? nav.read(own.key) : null;
+		if (!own || !request) return;
+		const used = new Set(merged.map((source) => source.id));
+		const unseen = [...request.sources, ...(request.current ? [request.current] : [])].filter(
+			(source) => source.mountId !== own.mountId && !used.has(source.id)
+		);
+		if (unseen.length === 0) {
+			nav.forget(own.key, own.mountId);
+			return;
+		}
+		change((current) => ({ ...withoutSources(current, [...used]), seed: undefined }));
+		void keepUnseen(own, request, unseen);
+	}
+
+	async function keepUnseen(
+		own: { key: string; mountId: string },
+		request: ComposeRequest,
+		unseen: RecoverySource[]
+	) {
+		const store = getPostboxDraftMirrorStore();
+		const ns = String(request.mailboxId);
+		const inReplyTo = request.seed?.inReplyToMessageId
+			? String(request.seed.inReplyToMessageId)
+			: null;
+		let allKept = true;
+		for (const source of unseen) {
+			const parked = JSON.parse(JSON.stringify(source)) as RecoverySource;
+			const sessionId = `parked-${parked.id}`;
+			const copy: MirrorCopy = {
+				v: 2,
+				fields: parked.fields,
+				base: null,
+				savedAt: parked.parkedAt,
+				draftId: null,
+				inReplyTo,
+			};
+			const key = mirrorCopyKey(ns, provisionalDraftKey(sessionId), sessionId, 'live');
+			if (await store.write(key, copy))
+				nav.update(own.key, own.mountId, (r) => withoutSources(r, [source.id]));
+			else allKept = false;
+		}
+		if (allKept) nav.forget(own.key, own.mountId);
 	}
 
 	return {

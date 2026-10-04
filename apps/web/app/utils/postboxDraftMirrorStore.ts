@@ -204,8 +204,11 @@ export class PostboxDraftMirrorStore {
 	}
 
 	/** Remove a resolved legacy entry and drop it from its old index. */
-	async removeLegacy(record: LegacyMirrorRecord): Promise<boolean> {
-		const removed = await this.removeIfUnchanged(record.key, record.entry);
+	async removeLegacy(
+		record: LegacyMirrorRecord,
+		alsoRequire: () => boolean = () => true
+	): Promise<boolean> {
+		const removed = await this.removeIfUnchanged(record.key, record.entry, alsoRequire);
 		if (removed) {
 			const ns = record.key.slice('draft-mirror:'.length, record.key.lastIndexOf(`:${record.id}`));
 			const index = await this.read(legacyIndexKey(ns));
