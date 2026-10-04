@@ -1191,14 +1191,14 @@ the body text and the parsed strings (about 27 MiB). Both stay inside
   three releases, because Convex refuses an argument the validator does
   not list and a request in flight during an upgrade calls the newly
   deployed mutation. v0.6.8 claimed unconditionally and ignored the
-  argument, while its shell kept sending it for a rollback to v0.6.7. The
-  release after v0.6.8 stopped sending it. The release after that
-  removed it from the validator.
+  argument, while its shell kept sending it for a rollback to v0.6.7.
+  v0.6.9 stopped sending it and still accepted it. The release after
+  v0.6.9 removed it from the validator.
 
-  A deployment that skips the middle release and upgrades straight from
-  v0.6.8 sees the transactional requests in flight during the deploy
-  refused with a 500 the client can retry: their v0.6.8 shell still
-  sends the argument. Nothing is written, and the shell releases the
+  A deployment that skips v0.6.9 and upgrades straight from v0.6.8
+  sees the transactional requests in flight during the deploy refused
+  with a 500 the client can retry: their v0.6.8 shell still sends the
+  argument. Nothing is written, and the shell releases the
   blobs it had stored. One going straight from v0.6.6 sees a v0.6.6
   request that had already stored a base64 attachment refused the same
   way; its blob is left behind, as v0.6.6 left one behind on any failure.
