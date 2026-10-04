@@ -14,6 +14,7 @@
 import { readFileSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { RESET_DEADLINE_MS } from '../resetDeployment';
 import { STORAGE_STATE } from '../storage-state';
 
 const WEB = resolve(__dirname, '../..');
@@ -25,6 +26,7 @@ interface Step {
 	if?: string;
 	uses?: string;
 	run?: string;
+	'timeout-minutes'?: string;
 	'working-directory'?: string;
 	env: Record<string, string>;
 	with: Record<string, string>;
@@ -143,6 +145,27 @@ describe('e2e.yml', () => {
 		);
 		// test-results/ holds the raw per-test output, traces included.
 		expect(JSON.stringify(steps)).not.toContain('test-results');
+	});
+});
+
+describe('e2e.yml time budget', () => {
+	const minutes = (value: string | undefined) => Number(value);
+	const text = readFileSync(WORKFLOW, 'utf8');
+	const job = minutes(/^ {4}timeout-minutes: (\d+)$/m.exec(text)?.[1]);
+	const tests = steps.find(named('Run E2E tests'))!;
+	const endReset = steps.find(named("End the run's sessions on the test deployment"))!;
+
+	it('caps the tests and the end-of-run reset', () => {
+		expect(minutes(tests['timeout-minutes'])).toBe(30);
+		// Above the script's own deadline, so the script reports its own failure.
+		expect(minutes(endReset['timeout-minutes']) * 60_000).toBeGreaterThan(RESET_DEADLINE_MS);
+	});
+
+	it('leaves the job room for the reset after the longest possible test step', () => {
+		const afterTests = minutes(endReset['timeout-minutes']) + 2; // + scan and upload
+		const beforeTests = job - minutes(tests['timeout-minutes']) - afterTests;
+		// Setup through browser install takes 2-4 minutes on a normal run.
+		expect(beforeTests).toBeGreaterThanOrEqual(15);
 	});
 });
 

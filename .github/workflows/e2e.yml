@@ -33,6 +33,18 @@ jobs:
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
+    # Budgeted so a hung step can never cost the end-of-run reset below. A run
+    # takes about 8 minutes: 2-4 for setup, build, function push and browser
+    # install, then 5-6 for the tests. The tests are capped at 30 minutes (their
+    # own build may take 10 of them, see playwright.config.ts), the reset at 7,
+    # the scan and upload need about 2. That leaves 21 minutes for everything
+    # before the tests, five times what it takes. A step that outruns its own
+    # cap just fails, and the always-run steps after it still go. Hitting the
+    # job timeout instead cancels the whole job, and cleanup after a forced
+    # cancellation is not guaranteed; the step caps keep the job well inside
+    # it. The default would be 360 minutes of a hung run holding the account
+    # open.
+    timeout-minutes: 60
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
         with:
@@ -111,6 +123,7 @@ jobs:
         run: cd apps/web && bunx playwright install chromium --with-deps
 
       - name: Run E2E tests
+        timeout-minutes: 30
         run: bun run --cwd apps/web test:e2e
         env:
           NUXT_PUBLIC_CONVEX_URL: ${{ secrets.CONVEX_TEST_URL }}
@@ -125,11 +138,15 @@ jobs:
       # seeded owner and every session row, so neither the owner's password,
       # which is fixed in this repository, nor a cookie or JWT from this run
       # authenticates afterwards. Without this the account stayed usable until
-      # the next run's reset, up to a day later. BetterAuth's cookie cache can
+      # the next run's reset, up to a day later. A transient failure is retried;
+      # one that persists fails the job. BetterAuth's cookie cache can
       # still honour a cookie for about five minutes; the report never carries
       # one (checked below).
       - name: End the run's sessions on the test deployment
         if: always() && steps.deployment-config.outcome == 'success'
+        # The script's own deadline is 5 minutes, retries included
+        # (resetDeployment.ts); this only bounds a runner that stops responding.
+        timeout-minutes: 7
         working-directory: apps/web
         env:
           CONVEX_TEST_SITE_URL: ${{ secrets.CONVEX_TEST_SITE_URL }}
