@@ -13,9 +13,13 @@ import { normalizeEmail } from './inputGuards';
  * an address without changing its creation time. An unfiltered `.first()`
  * landed on a deleted row (#1242).
  *
- * Read cost: one point read on `by_email_and_deleted_at`, which reads only the
- * live row (contact resolution refuses a second live row for an address), no
- * matter how many deleted rows share the email.
+ * Read cost: one read on `by_email_and_deleted_at` that stops at the first
+ * live row, no matter how many deleted rows share the email.
+ *
+ * Contact resolution and email edits refuse a second live contact for an
+ * address, but a legacy live contact without an identity row can still share
+ * its email with a newer one. In that case this returns the oldest live
+ * contact (ascending creation order), and only that row is acted on.
  */
 export async function findLiveContactByEmail(
 	ctx: { db: DatabaseReader },
