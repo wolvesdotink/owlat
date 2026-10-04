@@ -111,12 +111,9 @@ export async function draftClarificationReply(
 			toneInstruction: TONE_INSTRUCTION,
 			signatureInstruction: '',
 			voiceSection,
-			// The owner answered the open questions and reviews the draft in the
-			// composer; review-first alternatives have nowhere to land on the card.
-			confidence: 1,
 			tools: { recallKnowledge },
 			maxSteps: MAX_RECALL_CALLS + 2,
-			spendLabels: { selfCheck: 'postbox_clarify_selfcheck', options: 'postbox_clarify_options' },
+			spendLabels: { selfCheck: 'postbox_clarify_selfcheck' },
 			strategyScope: { mailboxId: context.mailboxId, classification: 'other' },
 		});
 		await recordLlmSpend(ctx, 'postbox_clarify_draft', result.tokenUsage, result.modelUsed);

@@ -4949,7 +4949,6 @@
 			},
 			"postboxReviewSlot": {
 				"draftReady": "Draft ready",
-				"optionCount": "{count} options",
 				"reviewAndSend": "Review & send"
 			},
 			"postboxRewriteActions": {

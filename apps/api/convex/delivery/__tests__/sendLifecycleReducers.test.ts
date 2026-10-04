@@ -613,3 +613,111 @@ describe('reader opens and clicks become contact activities', () => {
 		expect(activitiesOf(result.effects)).toEqual([]);
 	});
 });
+
+// #1189: a bounced or complained row keeps its status on a reader open or
+// click, so the first-open / first-click marker has to be written anyway, or
+// every later open would count as the first one again.
+describe('reader opens and clicks on a bounced or complained send', () => {
+	const SENT_AT = 1_000_000;
+	const FIRST_AT = SENT_AT + 3_600_000;
+	const AGAIN_AT = FIRST_AT + 60_000;
+	const FIRST_OPEN_EFFECTS = [
+		'campaign_stats_opened',
+		'send_time_engagement',
+		'daily_stats_bump',
+		'transport_outcome',
+		'customer_webhook',
+		'contact_activity',
+	];
+	const FIRST_CLICK_EFFECTS = [
+		'campaign_stats_clicked',
+		'send_time_engagement',
+		'daily_stats_bump',
+		'transport_outcome',
+		'contact_activity',
+		// `email.clicked` goes out on every click, each with its own url.
+		'customer_webhook',
+	];
+	const kindsOf = (effects: ReadonlyArray<{ kind: string }>) => effects.map((e) => e.kind);
+	const ROWS = [
+		{ label: 'hard-bounced', row: { status: 'bounced', bounceType: 'hard' } },
+		{ label: 'soft-bounced', row: { status: 'bounced', bounceType: 'soft' } },
+		{ label: 'complained', row: { status: 'complained' } },
+	] as const;
+
+	it.each(ROWS)('counts only the first reader open on a $label send', ({ row }) => {
+		const send = campaignSend({ ...row, sentAt: SENT_AT });
+		const open = { to: 'opened', at: FIRST_AT, agent: 'client' } as const;
+		const first = reduceOpened(send, open, campaignRef);
+
+		expect(first.applied).toBe('recorded');
+		expect(first.patch).toEqual({ openCount: 1, openedAt: FIRST_AT });
+		expect(kindsOf(first.effects)).toEqual(FIRST_OPEN_EFFECTS);
+
+		const reopened = { ...send, ...first.patch } as EmailSendDoc;
+		const again = reduceOpened(reopened, { ...open, at: AGAIN_AT }, campaignRef);
+
+		expect(again.applied).toBe('recorded');
+		expect(again.patch).toEqual({ openCount: 2 });
+		expect(again.effects).toEqual([]);
+	});
+
+	it.each(ROWS)('counts only the first reader click on a $label send', ({ row }) => {
+		const send = campaignSend({ ...row, sentAt: SENT_AT });
+		const click = {
+			to: 'clicked',
+			at: FIRST_AT,
+			url: 'https://example.com/a',
+			agent: 'client',
+		} as const;
+		const first = reduceClicked(send, click, campaignRef);
+
+		expect(first.applied).toBe('recorded');
+		expect(first.patch).toEqual({
+			clickedLinks: [{ url: 'https://example.com/a', clickedAt: FIRST_AT }],
+			clickedAt: FIRST_AT,
+		});
+		expect(kindsOf(first.effects)).toEqual(FIRST_CLICK_EFFECTS);
+
+		const reclicked = { ...send, ...first.patch } as EmailSendDoc;
+		const again = reduceClicked(
+			reclicked,
+			{ ...click, at: AGAIN_AT, url: 'https://example.com/b' },
+			campaignRef
+		);
+
+		expect(again.applied).toBe('recorded');
+		expect(again.patch).toEqual({
+			clickedLinks: [
+				{ url: 'https://example.com/a', clickedAt: FIRST_AT },
+				{ url: 'https://example.com/b', clickedAt: AGAIN_AT },
+			],
+		});
+		expect(kindsOf(again.effects)).toEqual(['customer_webhook']);
+	});
+
+	it('does not count an open again on a row opened before the marker was written', () => {
+		// A terminal row that took a reader open without `openedAt` carries the
+		// earlier open in `openCount` alone.
+		const send = campaignSend({ status: 'bounced', bounceType: 'soft', openCount: 2 });
+		const result = reduceOpened(send, { to: 'opened', at: AGAIN_AT, agent: 'client' }, campaignRef);
+
+		expect(result.patch).toEqual({ openCount: 3 });
+		expect(result.effects).toEqual([]);
+	});
+
+	it('does not count a click again on a row clicked before the marker was written', () => {
+		const send = campaignSend({
+			status: 'complained',
+			clickedLinks: [{ url: 'https://example.com/a', clickedAt: FIRST_AT }],
+		});
+		const result = reduceClicked(
+			send,
+			{ to: 'clicked', at: AGAIN_AT, url: 'https://example.com/b', agent: 'client' },
+			campaignRef
+		);
+
+		expect(result.patch['clickedAt']).toBeUndefined();
+		expect(kindsOf(result.effects)).toEqual(['customer_webhook']);
+	});
+});

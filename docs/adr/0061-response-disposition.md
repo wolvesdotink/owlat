@@ -87,7 +87,7 @@ that sender as spam again. The owner stays in charge of both directions.
 `runSharedDraft` accepts `replyLanguage`. The system prompt always instructs
 the model to write the entire reply, signature included, in the language the
 sender wrote in, and names the detected language when known; the alternative
-review drafts carry the same instruction. Postbox passes nothing and gets the
+review drafts carried the same instruction until #1200 removed them. Postbox passes nothing and gets the
 generic rule. Along the way the draft step's classification allowlists were
 brought back in line with the classifier's enums — they had drifted so far
 that `urgent`, `normal`, `feature_request`, `complaint` and `information` were

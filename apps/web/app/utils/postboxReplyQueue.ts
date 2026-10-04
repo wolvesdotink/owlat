@@ -72,7 +72,7 @@ export interface ReplyQueueDraftQuality {
  * needs-you row. HUMAN REVIEW ONLY — its presence never auto-sends.
  */
 export interface ReplyQueueDraftSlot {
-	/** The pre-generated reply body (options[0] === this). */
+	/** The pre-generated reply body. */
 	draft: string;
 	/** Reply subject (Re: …) composed from the trigger message. */
 	draftSubject?: string;
@@ -80,8 +80,6 @@ export interface ReplyQueueDraftSlot {
 	confidence: number;
 	/** Draft-quality self-check; absent when the check failed (shown as unverified). */
 	quality?: ReplyQueueDraftQuality;
-	/** Alternative pickable drafts (present only on low-confidence / low-quality cases). */
-	options?: string[];
 	/** When the slot was generated. */
 	generatedAt: number;
 }
