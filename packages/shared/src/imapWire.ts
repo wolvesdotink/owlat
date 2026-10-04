@@ -40,7 +40,7 @@
  * - 0: the releases before reporting (v0.6.7 and older).
  * - 1: v0.6.8. Reports its version, numbers EXPUNGE from `uids` and never
  *   reads `expungeFolder`'s `sequenceNumbers` / `nextSequenceNumber`.
- * - 2: `expungeFolder` no longer returns `sequenceNumbers` /
+ * - 2: v0.6.9 and later. `expungeFolder` no longer returns `sequenceNumbers` /
  *   `nextSequenceNumber` or accepts `nextSequenceNumber`, and the IMAP server
  *   no longer sends `selectFolder`'s `skipFirstUnseenSeq`. The paths only
  *   wire 0 used are gone too: `appendMessage`'s `snippet`,
@@ -49,9 +49,9 @@
 export const IMAP_WIRE_VERSION = 2;
 
 /**
- * The oldest IMAP server contract the backend still serves: 2, the release
- * one behind. Wire 1 (v0.6.8) is refused: it still sends `selectFolder`'s
- * `skipFirstUnseenSeq`, which the backend no longer accepts.
+ * The oldest IMAP server contract the backend still serves: 2, which v0.6.9,
+ * the release one behind, speaks. Wire 1 (v0.6.8) is refused: it still sends
+ * `selectFolder`'s `skipFirstUnseenSeq`, which the backend no longer accepts.
  */
 export const IMAP_WIRE_MIN_SUPPORTED = 2;
 
