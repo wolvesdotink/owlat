@@ -42,7 +42,7 @@ export interface InboxRetryFacts {
  * Did a person write, edit or approve this message's reply? Any of these marks
  * means the agent must not draft it again on its own.
  */
-export function holdsHumanReply(message: InboxRetryFacts): boolean {
+function holdsHumanReply(message: InboxRetryFacts): boolean {
 	return (
 		message.manualTakeoverAt !== undefined ||
 		message.draftSavedAt !== undefined ||

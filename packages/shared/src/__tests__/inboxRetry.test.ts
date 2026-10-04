@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { holdsHumanReply, inboxRetryPlan } from '../inboxRetry';
+import { inboxRetryPlan } from '../inboxRetry';
 
 describe('inboxRetryPlan', () => {
 	it('sends a failed send of a person’s approval again', () => {
@@ -36,6 +36,6 @@ describe('inboxRetryPlan', () => {
 			'redraft'
 		);
 		expect(inboxRetryPlan({})).toBe('redraft');
-		expect(holdsHumanReply({ draftRevisions: [] })).toBe(false);
+		expect(inboxRetryPlan({ draftRevisions: [] })).toBe('redraft');
 	});
 });
