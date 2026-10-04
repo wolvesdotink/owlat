@@ -12,6 +12,13 @@ bun run release:cut <version|major|minor|patch>   # bump + changelog + commit + 
 git push origin main v<X.Y.Z>
 ```
 
+The curated section is also the release's notes: `release.yml` builds the
+GitHub Release body with `scripts/release-body.ts`, which puts that section
+first and the update instructions after it, and the in-app update card shows
+the section to admins. A tag without a CHANGELOG section fails before anything
+is built. Preview the body with
+`bun scripts/release-body.ts <X.Y.Z> --repo wolvesdotink/owlat`.
+
 `release:cut` also moves the schema-compatibility guard forward: it snapshots
 HEAD's table validators as the new release into
 `apps/api/convex/__tests__/schemaCompat/previousRelease.json` and puts the
@@ -94,8 +101,9 @@ So when a release adds a new service image, expect its first run to stop at
 - add an entry to `docker/images.json` (see below). The `build-and-push` and
   `merge-manifests` matrices and the `verify-anonymous-pull` loop all read it,
   so there is no list in `_server-build.yml` to edit;
-- add it to the `**Images:**` line of the release body in `release.yml` and
-  `server-release.yml` (`bun run lint:script-tests` fails until you do);
+- add it to the `**Images:**` line of the release body in `server-release.yml`
+  (`bun run lint:script-tests` fails until you do); `release.yml` builds its
+  body with `scripts/release-body.ts`, which reads the manifest;
 - after the first release run pushes it: flip the package public, then re-run.
 
 ## The image manifest: `docker/images.json`

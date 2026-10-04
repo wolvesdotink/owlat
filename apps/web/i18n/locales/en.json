@@ -8463,15 +8463,32 @@
 					"updateBusy": "The updater is still applying another change. Try again once it has finished.",
 					"updates": {
 						"availableCurrent": "available (current: v{version})",
+						"beforeUpdate": "Before you update",
 						"checkNow": "Check now",
+						"kinds": {
+							"added": "New",
+							"breaking": "Breaking changes",
+							"changed": "Improved",
+							"docs": "Documentation",
+							"fixed": "Fixed",
+							"maintenance": "Maintenance",
+							"other": "Other changes",
+							"removed": "Removed",
+							"security": "Security"
+						},
 						"lastCheckError": "Last check had an error: {error}",
 						"latestChecked": "Latest: v{version} · Last checked {date}",
 						"neverChecked": "Click \"Check now\" to poll GitHub for the latest release.",
-						"releaseNotes": "Release notes",
+						"otherRoutes": "Prefer the command line or a manual update? The update guide covers both, and how to recover if an update fails.",
 						"released": "Released {date}",
+						"showAll": "Show all changes ({count} more)",
+						"showFewer": "Show fewer",
 						"title": "Available updates",
 						"upToDate": "You're on the latest version.",
-						"updateNow": "Update now"
+						"updateGuide": "Update guide",
+						"updateNowTo": "Update to v{version}",
+						"viewOnGithub": "Release on GitHub",
+						"whatsNew": "What's new in v{version}"
 					}
 				}
 			},

@@ -69,52 +69,29 @@ jobs:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
         with:
           egress-policy: audit
+      # The body leads with the version's curated CHANGELOG.md section (what
+      # changed, then the Upgrading note) and ends with how to update. The
+      # in-app update card renders the same body, so GitHub's generated PR
+      # list is left off: the curated section already cites every PR.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - name: Build release body
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: bun scripts/release-body.ts "$VERSION" --repo "$REPO" > "$RUNNER_TEMP/release-body.md"
       - id: create
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
-          name: "v${{ needs.resolve.outputs.version }}"
+          name: 'v${{ needs.resolve.outputs.version }}'
           tag_name: ${{ github.ref_name }}
           draft: true # published by the `publish` job once both cores succeed
           prerelease: ${{ contains(needs.resolve.outputs.version, '-') }}
-          generate_release_notes: true
-          body: |
-            ## Owlat v${{ needs.resolve.outputs.version }}
-
-            ### Self-hosted server
-
-            From the admin dashboard → **Settings → System & Updates** → "Update now", or:
-
-            ```sh
-            owlat upgrade --version ${{ needs.resolve.outputs.version }}
-            ```
-
-            Manual upgrade (fetch compose + SHA256, verify, apply):
-
-            ```sh
-            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/docker-compose-${{ needs.resolve.outputs.version }}.yml -o docker-compose.yml &&
-            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/docker-compose-${{ needs.resolve.outputs.version }}.yml.sha256 -o docker-compose.yml.sha256 &&
-            sha256sum -c <(sed "s|docker-compose-${{ needs.resolve.outputs.version }}.yml|docker-compose.yml|" docker-compose.yml.sha256) &&
-            docker compose pull &&
-            docker compose --profile deploy run --rm convex-deploy &&
-            docker compose up -d
-            ```
-
-            ### Desktop app
-
-            Download the installer for your OS from the assets below (macOS `.dmg`,
-            Windows `.msi`/`.exe`, Linux `.AppImage`/`.deb`). Existing installs
-            auto-update to this version.
-
-            ### Supply-chain verification (recommended)
-
-            ```sh
-            cosign verify ghcr.io/${{ github.repository_owner }}/web:${{ needs.resolve.outputs.version }} \
-              --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/.*@.*" \
-              --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
-            gh attestation verify docker-compose.yml --repo ${{ github.repository }}
-            ```
-
-            **Images:** `web`, `mta`, `updater`, `convex-deploy`, `imap`, `mail-sync`, `code-worker`, `convex-fn-proxy`, `setup`, `clamav`, `tinyproxy`, `unbound`, `decision-local` — all `ghcr.io/${{ github.repository_owner }}/<name>:${{ needs.resolve.outputs.version }}`
+          body_path: ${{ runner.temp }}/release-body.md
 
   server:
     name: Server images
