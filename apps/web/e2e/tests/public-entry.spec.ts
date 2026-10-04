@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { LoginPage } from '../page-objects/LoginPage';
 import { testUser } from '../fixtures/test-data';
+import { redactForReport, testDeployments } from '../reportRedaction';
 
 /**
  * Visits that start on a public page (/terms, /imprint) and then follow a link
@@ -11,26 +12,32 @@ import { testUser } from '../fixtures/test-data';
 
 const SESSION_OR_TOKEN = /\/api\/auth\/(get-session|convex\/token)/;
 
-/** Record the auth traffic of a page: session/token requests and Convex auth frames. */
+/**
+ * Record the auth traffic of a page: session/token requests and Convex auth frames.
+ *
+ * Only what the assertions need is kept, never a frame or a full URL: a failing
+ * `toEqual([])` prints the array into the public report, and an Authenticate
+ * frame carries the user's JWT.
+ */
 function watchAuth(page: Page) {
 	const authRequests: string[] = [];
 	const userAuthFrames: string[] = [];
 	const notAuthenticated: string[] = [];
 	page.on('request', (request) => {
-		if (SESSION_OR_TOKEN.test(request.url())) authRequests.push(request.url());
+		if (SESSION_OR_TOKEN.test(request.url())) authRequests.push(new URL(request.url()).pathname);
 	});
 	page.on('websocket', (socket) => {
 		socket.on('framesent', (frame) => {
 			const payload = typeof frame.payload === 'string' ? frame.payload : frame.payload.toString();
 			// The Convex client sends the user's JWT in an Authenticate message.
 			if (payload.includes('"Authenticate"') && payload.includes('"User"')) {
-				userAuthFrames.push(payload);
+				userAuthFrames.push('Authenticate (User)');
 			}
 		});
 	});
 	page.on('console', (message) => {
 		if (message.type() === 'error' && message.text().includes('Not authenticated')) {
-			notAuthenticated.push(message.text());
+			notAuthenticated.push(redactForReport(message.text(), testDeployments()));
 		}
 	});
 	return { authRequests, userAuthFrames, notAuthenticated };

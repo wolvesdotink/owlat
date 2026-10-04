@@ -24,6 +24,13 @@ import { readZipEntries, type ZipEntry } from './zipArchive';
  * non-regular file, a file or directory that errors on read. Such a report is
  * one nobody has checked.
  *
+ * Some credentials cannot be known in advance: the session cookie and the
+ * Convex JWT are minted during the run. {@link scanReport} can also refuse what
+ * carries them: any value shaped like a JWT, and any Playwright trace archive
+ * (a trace records request headers and response bodies, so it holds the
+ * session cookie, the JWT and the deployment URLs at once). The cookie values
+ * themselves come from the saved storage state ({@link storageStateSecrets}).
+ *
  * Findings carry the path and the secret's label, never its value. A path can
  * hold an encoded secret too, so callers must not print it either
  * ({@link findingId}).
@@ -40,6 +47,32 @@ export interface NamedSecret {
 	label: string;
 	value: string;
 }
+
+/** What {@link scanReport} refuses, besides the archives it cannot read. */
+export interface ReportRules {
+	/** Known values, matched in every encoding {@link secretForms} lists. */
+	secrets: NamedSecret[];
+	/** Refuse anything shaped like a JWT, whatever its value. */
+	jwts?: boolean;
+	/** Refuse Playwright trace archives and the trace viewer that serves them. */
+	traces?: boolean;
+}
+
+export const JWT_LABEL = 'JWT-shaped token';
+export const TRACE_LABEL = 'trace archive';
+
+/**
+ * A signed JWT: header and payload are base64url JSON objects, so both start
+ * `eyJ` (`{"`). The minimum lengths keep short look-alikes out; a real header
+ * and payload are far longer.
+ */
+export const JWT_PATTERN = /eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/;
+
+/**
+ * Member names only a Playwright trace has: the action log, the network log
+ * and the call stacks (`test.trace`, `0-trace.network`, `0-trace.stacks`).
+ */
+const TRACE_MEMBER = /\.(trace|network|stacks)$/;
 
 const ZIP_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 const MAX_ZIP_DEPTH = 3;
@@ -101,6 +134,8 @@ export function findingId(file: string): string {
 
 interface Scan {
 	secrets: Array<{ label: string; forms: Buffer[] }>;
+	jwts: boolean;
+	traces: boolean;
 	findings: SecretFinding[];
 }
 
@@ -109,6 +144,11 @@ function matchSecrets(data: Buffer, file: string, scan: Scan): void {
 		if (secret.forms.some((form) => data.includes(form))) {
 			scan.findings.push({ file, label: secret.label });
 		}
+	}
+	// latin1 maps every byte to one character, so the pattern sees the bytes
+	// whatever the file's encoding.
+	if (scan.jwts && JWT_PATTERN.test(data.toString('latin1'))) {
+		scan.findings.push({ file, label: JWT_LABEL });
 	}
 }
 
@@ -141,6 +181,9 @@ function scanBuffer(data: Buffer, file: string, name: string, scan: Scan, depth:
 			scan.findings.push({ file: zip.file, label: 'unreadable' });
 			continue;
 		}
+		if (scan.traces && entries.some((entry) => TRACE_MEMBER.test(entry.name))) {
+			scan.findings.push({ file: zip.file, label: TRACE_LABEL });
+		}
 		for (const entry of entries) {
 			scanBuffer(entry.data, `${zip.file}!${entry.name}`, entry.name, scan, depth + 1);
 		}
@@ -163,6 +206,11 @@ function scanDirectory(root: string, dir: string, scan: Scan): void {
 			const stat = lstatSync(path);
 			if (stat.isDirectory()) {
 				matchSecrets(Buffer.from(name), file, scan);
+				// The HTML reporter copies the viewer in only when the report has a
+				// trace, so its presence alone means one got in.
+				if (scan.traces && dir === root && name === 'trace') {
+					scan.findings.push({ file, label: TRACE_LABEL });
+				}
 				scanDirectory(root, path, scan);
 			} else if (stat.isFile()) {
 				scanBuffer(readFileSync(path), file, name, scan, 0);
@@ -177,17 +225,24 @@ function scanDirectory(root: string, dir: string, scan: Scan): void {
 }
 
 /**
- * Every place under `dir` that holds one of `secrets`, or that could not be
+ * Every place under `dir` that breaks one of `rules`, or that could not be
  * read. Empty secrets are ignored. An empty result means the directory is safe
- * to publish as far as these secrets go.
+ * to publish as far as these rules go.
  */
-export function findSecretsInReport(dir: string, secrets: NamedSecret[]): SecretFinding[] {
-	const present = secrets.filter((secret) => secret.value.length > 0);
-	if (present.length === 0) return [];
+export function scanReport(dir: string, rules: ReportRules): SecretFinding[] {
+	const present = rules.secrets.filter((secret) => secret.value.length > 0);
 	const scan: Scan = {
 		secrets: present.map((secret) => ({ label: secret.label, forms: secretForms(secret.value) })),
+		jwts: rules.jwts ?? false,
+		traces: rules.traces ?? false,
 		findings: [],
 	};
+	if (scan.secrets.length === 0 && !scan.jwts && !scan.traces) return [];
 	scanDirectory(dir, dir, scan);
 	return scan.findings;
+}
+
+/** {@link scanReport} for known values only. */
+export function findSecretsInReport(dir: string, secrets: NamedSecret[]): SecretFinding[] {
+	return scanReport(dir, { secrets });
 }

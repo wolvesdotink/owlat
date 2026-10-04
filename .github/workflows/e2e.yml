@@ -8,9 +8,9 @@ name: E2E
 # listed in CONTRIBUTING.md under "CI secrets".
 #
 # The job OWNS the test deployment for the length of a run: it wipes the data,
-# pushes this commit's functions, and only then drives the browser. Nothing on
-# that deployment survives a run, and two runs must never overlap — hence the
-# constant concurrency group below.
+# pushes this commit's functions, only then drives the browser, and wipes the
+# data again when it is done. Nothing on that deployment survives a run, and two
+# runs must never overlap — hence the constant concurrency group below.
 on:
   schedule:
     - cron: "0 4 * * *" # nightly 04:00 UTC
@@ -41,6 +41,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Check test deployment is configured
+        id: deployment-config
         env:
           CONVEX_TEST_URL: ${{ secrets.CONVEX_TEST_URL }}
           CONVEX_TEST_SITE_URL: ${{ secrets.CONVEX_TEST_SITE_URL }}
@@ -79,19 +80,11 @@ jobs:
       # warmingState, providerHealth, ...) survive the reset; a breaking change
       # to one of those still needs the deployment's volume recreated by hand.
       - name: Reset the test deployment to a blank slate
+        working-directory: apps/web
         env:
           CONVEX_TEST_SITE_URL: ${{ secrets.CONVEX_TEST_SITE_URL }}
           CONVEX_TEST_INSTANCE_SECRET: ${{ secrets.CONVEX_TEST_INSTANCE_SECRET }}
-        run: |
-          set -euo pipefail
-          code=$(curl -sS -o /tmp/dev-reset.json -w '%{http_code}' -X POST \
-            "${CONVEX_TEST_SITE_URL}/dev/reset" \
-            -H "X-Instance-Secret: ${CONVEX_TEST_INSTANCE_SECRET}" --max-time 120)
-          if [ "$code" != "200" ]; then
-            echo "::error::/dev/reset returned HTTP ${code}: $(cat /tmp/dev-reset.json)"
-            exit 1
-          fi
-          echo "Test deployment reset: $(cat /tmp/dev-reset.json)"
+        run: bun e2e/reset-deployment.ts
 
       # The suite drives the app built from THIS commit, so the backend it talks
       # to has to run this commit's functions too — otherwise a green run only
@@ -128,11 +121,28 @@ jobs:
           # and its page has no form without an invite link.
           CONVEX_TEST_INSTANCE_SECRET: ${{ secrets.CONVEX_TEST_INSTANCE_SECRET }}
 
+      # End the run's sessions, whatever happened above. The reset deletes the
+      # seeded owner and every session row, so neither the owner's password,
+      # which is fixed in this repository, nor a cookie or JWT from this run
+      # authenticates afterwards. Without this the account stayed usable until
+      # the next run's reset, up to a day later. BetterAuth's cookie cache can
+      # still honour a cookie for about five minutes; the report never carries
+      # one (checked below).
+      - name: End the run's sessions on the test deployment
+        if: always() && steps.deployment-config.outcome == 'success'
+        working-directory: apps/web
+        env:
+          CONVEX_TEST_SITE_URL: ${{ secrets.CONVEX_TEST_SITE_URL }}
+          CONVEX_TEST_INSTANCE_SECRET: ${{ secrets.CONVEX_TEST_INSTANCE_SECRET }}
+        run: bun e2e/reset-deployment.ts
+
       # The report is a public artifact, and log masking does not reach inside
-      # it. A failed setup keeps its trace, which records request headers, so
-      # check that no secret made it in. On a hit, or if the scan itself fails,
-      # the report is deleted and the job fails; the upload runs only when this
-      # step succeeded.
+      # it. CI records no trace (playwright.config.ts), but check anyway: the
+      # scan refuses any trace archive and any JWT-shaped value, and searches
+      # for the secrets below (the URLs' hosts included) and for the session
+      # cookies the setup saved. On a hit, or if the scan itself fails, the
+      # report is deleted and the job fails; the upload runs only when this step
+      # succeeded.
       - name: Check the Playwright report for secrets
         id: report-secrets
         if: always()
@@ -140,7 +150,12 @@ jobs:
         env:
           CONVEX_TEST_INSTANCE_SECRET: ${{ secrets.CONVEX_TEST_INSTANCE_SECRET }}
           CONVEX_TEST_ADMIN_KEY: ${{ secrets.CONVEX_TEST_ADMIN_KEY }}
-        run: bun e2e/scan-report-secrets.ts playwright-report CONVEX_TEST_INSTANCE_SECRET CONVEX_TEST_ADMIN_KEY
+          CONVEX_TEST_URL: ${{ secrets.CONVEX_TEST_URL }}
+          CONVEX_TEST_SITE_URL: ${{ secrets.CONVEX_TEST_SITE_URL }}
+        run: >-
+          bun e2e/scan-report-secrets.ts playwright-report
+          --storage-state e2e/.auth/user.json
+          CONVEX_TEST_INSTANCE_SECRET CONVEX_TEST_ADMIN_KEY CONVEX_TEST_URL CONVEX_TEST_SITE_URL
 
       - name: Upload Playwright report
         if: always() && steps.report-secrets.outcome == 'success'
