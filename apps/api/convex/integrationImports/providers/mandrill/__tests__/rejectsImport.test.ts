@@ -81,8 +81,10 @@ describe('mandrill rejects import — adapter', () => {
 				{ email: 'spam@example.com', reason: 'spam' },
 				{ email: 'unsub@example.com', reason: 'unsub' },
 				{ email: 'custom@example.com', reason: 'custom' },
+				// About OUR account / OUR message — never a suppression. `rejects/list`
+				// does not report `rule` today; if it ever did, it would say nothing
+				// about the address (#1249).
 				{ email: 'rule@example.com', reason: 'rule' },
-				// About OUR account / OUR message — never a suppression.
 				{ email: 'sender@example.com', reason: 'invalid-sender' },
 				{ email: 'invalid@example.com', reason: 'invalid' },
 				{ email: 'testmode@example.com', reason: 'test-mode-limit' },
@@ -111,9 +113,8 @@ describe('mandrill rejects import — adapter', () => {
 			{ email: 'spam@example.com', reason: 'complained', evidence: 'MANDRILL_REJECT_SPAM' },
 			{ email: 'unsub@example.com', reason: 'unsubscribe', evidence: 'MANDRILL_REJECT_UNSUB' },
 			{ email: 'custom@example.com', reason: 'manual', evidence: 'MANDRILL_REJECT_CUSTOM' },
-			{ email: 'rule@example.com', reason: 'manual', evidence: 'MANDRILL_REJECT_RULE' },
 		]);
-		expect(result.suppressionsSkipped).toBe(6);
+		expect(result.suppressionsSkipped).toBe(7);
 	});
 
 	it('skips entries with no address, and any entry already expired at Mandrill', async () => {

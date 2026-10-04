@@ -1,12 +1,14 @@
 /**
  * A new agent draft starts without the edits a person saved over an earlier
- * one (#1201). Path: a reviewer saves an edit and approves, the send fails,
- * Retry re-runs the pipeline and the draft step writes a fresh draft. Left in
- * place, the old `draftRevisions` / `draftSavedAt` / `isDraftEdited` made the
- * untouched draft look edited: saved-first in the queue, diffed against the old
- * draft, an `'edited'` autonomy signal on an unchanged approve, and no
- * `clarification_unedited_send`. Reopening a rejected message drops its draft
- * and, with it, the edits saved over that draft.
+ * one (#1201). Left in place, the old `draftRevisions` / `draftSavedAt` /
+ * `isDraftEdited` made the untouched draft look edited: saved-first in the
+ * queue, diffed against the old draft, an `'edited'` autonomy signal on an
+ * unchanged approve, and no `clarification_unedited_send`. Reopening a rejected
+ * message drops its draft and, with it, the edits saved over that draft.
+ *
+ * The path #1201 found, Retry after a failed send of the edit, no longer
+ * re-drafts at all: it sends the approved text again (#1220,
+ * retryKeepsApprovedText.test.ts). The re-draft below is driven directly.
  */
 
 import { convexTest } from 'convex-test';
@@ -50,8 +52,7 @@ const modules = Object.fromEntries(
 
 type Harness = ReturnType<typeof convexTest>;
 
-// Approve, Retry and the reopen schedule the send and the pipeline; none of it
-// may run here.
+// The reopen schedules work; none of it may run here.
 beforeEach(() => {
 	vi.useFakeTimers();
 });
@@ -103,18 +104,11 @@ async function feedback(t: Harness) {
 	);
 }
 
-/** Save an edit, approve it, fail the send, press Retry, and let the agent re-draft. */
-async function editApproveFailRetryRedraft(t: Harness, id: Id<'inboundMessages'>) {
+/** Save an edit, then let the agent draft the message again. */
+async function saveThenRedraft(t: Harness, id: Id<'inboundMessages'>) {
 	await save(t, id, EDIT);
-	await t.mutation(api.inbox.mutations.approveDraft, { inboundMessageId: id });
-	await t.mutation(internal.inbox.processingLifecycle.transition, {
-		inboundMessageId: id,
-		input: { to: 'failed', at: Date.now(), errorMessage: 'Sending is suspended' },
-	});
-	await t.mutation(api.inbox.mutations.retryFailedMessage, { inboundMessageId: id });
-	expect((await getMessage(t, id)).processingStatus).toBe('received');
 
-	// The re-run pipeline: scan and classify, then the draft step's write and
+	// A pipeline run reaching the draft step again: the draft step's write and
 	// the route step's hold for review.
 	await t.run((ctx) => ctx.db.patch(id, { processingStatus: 'drafting' }));
 	await t.mutation(internal.inbox.stepOutputs.recordDraftOutput, {
@@ -130,7 +124,7 @@ async function editApproveFailRetryRedraft(t: Harness, id: Id<'inboundMessages'>
 	expect(held).toMatchObject({ ok: true });
 }
 
-describe('a re-draft after a saved edit, a failed send and Retry', () => {
+describe('a re-draft after a saved edit', () => {
 	it('starts the new agent draft without the old saved edits', async () => {
 		const t = convexTest(schema, modules);
 		const id = await seed(t);
@@ -141,7 +135,7 @@ describe('a re-draft after a saved edit, a failed send and Retry', () => {
 		expect(saved.isDraftEdited).toBe(true);
 		expect(saved.draftSavedAt).toBeTypeOf('number');
 
-		await editApproveFailRetryRedraft(t, id);
+		await saveThenRedraft(t, id);
 
 		const redrafted = await getMessage(t, id);
 		expect(redrafted.processingStatus).toBe('draft_ready');
@@ -165,7 +159,7 @@ describe('a re-draft after a saved edit, a failed send and Retry', () => {
 			},
 			pendingClarification: { questions: [], askedAt: 1, answeredAt: 2 },
 		});
-		await editApproveFailRetryRedraft(t, id);
+		await saveThenRedraft(t, id);
 
 		await t.mutation(api.inbox.mutations.approveDraft, { inboundMessageId: id });
 		await t.mutation(internal.inbox.decisionFeedback.recordApprovalSignalsAtSend, {
@@ -178,7 +172,7 @@ describe('a re-draft after a saved edit, a failed send and Retry', () => {
 	it('seeds the new agent draft as revision 0 on the first save after it', async () => {
 		const t = convexTest(schema, modules);
 		const id = await seed(t);
-		await editApproveFailRetryRedraft(t, id);
+		await saveThenRedraft(t, id);
 
 		await save(t, id, 'Hi Jonas, the refund of 42 EUR left today. Best, Ada');
 

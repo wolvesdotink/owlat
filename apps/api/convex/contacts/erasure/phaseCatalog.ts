@@ -17,6 +17,9 @@ export const CONTACT_ERASURE_PHASES = [
 	'automationRuns',
 	'emailSends',
 	'transactionalSends',
+	// Recorded send completions (#1195): after the sends, so no Send the walk
+	// has scrubbed can gain a record behind it.
+	'sendCompletionFailures',
 	'conversationThreads',
 	'unifiedMessages',
 	'inboundMessages',

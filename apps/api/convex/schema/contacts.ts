@@ -157,6 +157,12 @@ export const contactTables = {
 		updatedAt: v.number(),
 	})
 		.index('by_email', ['email'])
+		// The live contact for an address (`findLiveContactByEmail`). A
+		// soft-deleted row keeps its email until erasure, so `by_email` can hold
+		// deleted rows that sort before the live one (an email edit keeps the
+		// row's creation time). With `deletedAt` in the key the lookup is one
+		// point read however many deleted rows share the address (#1242).
+		.index('by_email_and_deleted_at', ['email', 'deletedAt'])
 		.index('by_created_at', ['createdAt'])
 		.index('by_doi_confirmation_token', ['doiConfirmationToken'])
 		.index('by_deleted_at', ['deletedAt'])

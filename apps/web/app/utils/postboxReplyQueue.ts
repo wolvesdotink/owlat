@@ -57,35 +57,6 @@ export interface ReplyQueueClarification {
 	draft?: string;
 }
 
-/** Draft-quality self-check surfaced next to a draft-on-arrival slot. */
-export interface ReplyQueueDraftQuality {
-	score: number;
-	complete: boolean;
-	grounded: boolean;
-	flags: string[];
-}
-
-/**
- * Draft-on-arrival review slot (postbox.aiDraft): a reply pre-generated the
- * moment the message landed, via the SAME shared draft service the B2B agent
- * runs. Surfaced as a "Draft ready — review & send" affordance on the plain
- * needs-you row. HUMAN REVIEW ONLY — its presence never auto-sends.
- */
-export interface ReplyQueueDraftSlot {
-	/** The pre-generated reply body (options[0] === this). */
-	draft: string;
-	/** Reply subject (Re: …) composed from the trigger message. */
-	draftSubject?: string;
-	/** Confidence shown next to the draft (0..1) — the quality self-check score. */
-	confidence: number;
-	/** Draft-quality self-check; absent when the check failed (shown as unverified). */
-	quality?: ReplyQueueDraftQuality;
-	/** Alternative pickable drafts (present only on low-confidence / low-quality cases). */
-	options?: string[];
-	/** When the slot was generated. */
-	generatedAt: number;
-}
-
 export interface ReplyQueueItem {
 	/**
 	 * 'needs_reply' — an inbound message waiting on OUR reply (default).
@@ -115,16 +86,16 @@ export interface ReplyQueueItem {
 	source: 'heuristic' | 'llm';
 	/**
 	 * Clarification loop: when present, the AI decided a good reply needs a fact
-	 * only the owner can supply. Renders as a "Needs your input" card until the
-	 * owner answers, then a "Draft ready" card. Absent for a plain needs-reply.
+	 * only the owner can supply. Answer mode asks the questions in its ask card
+	 * until the owner answers, then opens the starter reply. Absent for a plain
+	 * needs-reply.
 	 */
 	clarification?: ReplyQueueClarification;
 	/**
-	 * Draft-on-arrival review slot (postbox.aiDraft): true when a reply was
-	 * pre-generated for this thread. Drives the "Draft ready — review & send"
-	 * affordance on the row. The draft itself ({@link ReplyQueueDraftSlot}) is
-	 * read by the card that shows it (`mail.needsReply.getDraftSlot`), so the
-	 * queue does not carry every row's draft.
+	 * Draft on arrival (postbox.aiDraft): true when a reply was pre-generated for
+	 * this thread. The queue then orders the row as a draft review (`mailAnswerKind`).
+	 * Answer mode reads the draft itself (`mail.needsReplyPrepared.getPreparedDraft`)
+	 * for the thread it opens, so the queue does not carry every row's draft.
 	 */
 	hasDraftSlot?: boolean;
 	fromAddress: string;

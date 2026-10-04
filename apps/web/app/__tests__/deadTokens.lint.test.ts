@@ -146,6 +146,37 @@ describe('check-dead-tokens.sh — scope', () => {
 		expect(result.errorOutput).toContain(`scan root does not exist: ${missing}`);
 	});
 
+	it('skips output directories at a package root, and only there', () => {
+		// A package (a root holding package.json) keeps generated output in build/,
+		// dist/, .output/, coverage/ and .turbo/; those are not source. The same
+		// name deeper down is an ordinary source directory and is still scanned.
+		const root = join(workDir, 'scope-package');
+		mkdirSync(root, { recursive: true });
+		writeFileSync(join(root, 'package.json'), '{}\n');
+		writeFileSync(join(root, 'Card.vue'), '<template><p class="bg-bg-surface" /></template>\n');
+		for (const output of ['build', 'dist', '.output', 'coverage', '.turbo']) {
+			mkdirSync(join(root, output), { recursive: true });
+			writeFileSync(
+				join(root, output, 'Card.vue'),
+				'<template><p class="text-primary" /></template>\n'
+			);
+		}
+		expect(runLint(root).status).toBe(0);
+
+		for (const nested of ['build', 'dist', 'coverage']) {
+			const directory = join(root, 'components', nested);
+			mkdirSync(directory, { recursive: true });
+			writeFileSync(
+				join(directory, 'Card.vue'),
+				'<template><p class="text-primary" /></template>\n'
+			);
+			const result = runLint(root);
+			expect(result.status, nested).toBe(1);
+			expect(result.output, nested).toContain(`components/${nested}/Card.vue`);
+			rmSync(directory, { recursive: true });
+		}
+	});
+
 	it('fails when one of several roots is missing, even if the others are clean', () => {
 		const clean = join(workDir, 'scope-clean');
 		mkdirSync(clean, { recursive: true });

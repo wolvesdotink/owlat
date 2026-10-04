@@ -187,15 +187,12 @@ export const inboxTables = {
 		// Agent-generated draft
 		draftResponse: v.optional(v.string()),
 		draftSubject: v.optional(v.string()),
-		// Optional alternative drafts offered at the review gate (concise /
-		// hedged / detailed). Present ONLY on lower-confidence / low-quality
-		// cases, where the `draft` step spends one extra generation to give the
-		// reviewer 2–3 variants. `draftOptions[0]` is always the
-		// self-checked primary draft (== `draftResponse`); the rest are
-		// alternatives. Absent on the normal single-draft path and whenever the
-		// options generation fails (fail-soft to the single draft). They belong
-		// to that one agent draft: a saved edit, a re-draft without variants and
-		// a reopen all clear them.
+		// Legacy: alternative drafts (concise / hedged / detailed) the `draft`
+		// step used to generate for review. `draftOptions[0]` was the primary
+		// draft (== `draftResponse`). Nothing writes them since #1200, as no
+		// screen offers a choice; a new draft, a saved edit and a reopen clear
+		// what older rows still carry. Kept optional so those rows validate;
+		// drop in a contract step.
 		draftOptions: v.optional(v.array(v.string())),
 		// Advisory attachment suggestion the `draft` step computed when the inbound
 		// asks for a document ("can you send X" / "see attached") and a
@@ -296,6 +293,11 @@ export const inboxTables = {
 		isDraftGapGuarded: v.optional(v.boolean()),
 		// Error tracking
 		errorMessage: v.optional(v.string()),
+		// Where a `failed` message failed: `send` when the approved reply could not
+		// be sent, `pipeline` for an agent step. Decides what Retry does
+		// (`@owlat/shared/inboxRetry`); cleared when the message leaves `failed`.
+		// Absent on rows that failed before the field existed.
+		failedStage: v.optional(v.union(v.literal('send'), v.literal('pipeline'))),
 		// Timestamps
 		receivedAt: v.number(),
 		processedAt: v.optional(v.number()),
@@ -347,6 +349,10 @@ export const inboxTables = {
 		createdAt: v.number(),
 	})
 		.index('by_inbound_message', ['inboundMessageId'])
+		// One message's rows in one status. A message gains a row per step per
+		// run, so "its failed rows" or "its latest failed row" must be selected
+		// by status before any limit, not filtered out of its oldest rows.
+		.index('by_inbound_message_status', ['inboundMessageId', 'status'])
 		.index('by_status', ['status']),
 
 	// Knowledge Backfill Jobs - one-time extraction of historical inbound mail,

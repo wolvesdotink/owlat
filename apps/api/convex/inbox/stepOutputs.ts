@@ -107,9 +107,9 @@ export const recordDraftOutput = internalMutation({
 		// classifier confidenceScore. Optional: absent when the self-check
 		// LLM call failed (the route step then treats quality as unknown/LOW).
 		draftQuality: v.optional(draftQualityValidator),
-		// Optional 2–3 draft variants of this run (only on low-confidence /
-		// low-quality cases). `draftOptions[0]` mirrors `draftResponse`. Absent on
-		// the normal single-draft path, which clears any earlier run's variants.
+		// Deprecated (#1200), accepted and ignored: the draft step no longer
+		// generates variants, but an action started before that deploy may still
+		// pass them. Remove in the release after.
 		draftOptions: v.optional(v.array(v.string())),
 		// Advisory attachment suggestion (see lib/validators/attachment.ts). Absent unless
 		// the inbound asked for a document and a contact-scoped file matched.
@@ -126,20 +126,16 @@ export const recordDraftOutput = internalMutation({
 			// A `[[...]]` placeholder marks a fact the agent did not have. Stored as
 			// the gap guard, so the composer highlights and counts it and
 			// `approveDraft` refuses to send it (DRAFT_HAS_GAPS) until it is filled.
-			// The variants count too: writing one over the draft through
-			// `editDraft` keeps the guard as it is.
-			isDraftGapGuarded: [args.draftResponse, ...(args.draftOptions ?? [])].some((text) =>
-				authoredDraftHasGaps({ text })
-			),
+			isDraftGapGuarded: authoredDraftHasGaps({ text: args.draftResponse }),
 			confidenceScore: args.confidenceScore,
 			...(args.draftQuality ? { draftQuality: args.draftQuality } : {}),
-			// The variants belong to this draft. A run without them drops the ones
-			// an earlier run left, which no longer match the draft or its guard.
-			draftOptions: args.draftOptions?.length ? args.draftOptions : undefined,
+			// No screen offers variants any more (#1200): a new draft drops the ones
+			// an earlier run left, which no longer match the draft.
+			draftOptions: undefined,
 			...(args.attachmentSuggestions ? { attachmentSuggestions: args.attachmentSuggestions } : {}),
-			// Edits a person saved over an earlier draft (a Retry after a failed
-			// send re-drafts) are not edits of this one: the next save seeds this
-			// draft as revision 0.
+			// Edits a person saved over an earlier draft are not edits of this
+			// one: the next save seeds this draft as revision 0. (A Retry never
+			// re-drafts over a person's reply, #1220.)
 			...NO_SAVED_EDITS,
 		});
 	},

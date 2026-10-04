@@ -66,6 +66,10 @@ export const TENANT_TABLES = [
 	// Attachment bytes a transactional API request stored but no Send claimed
 	// yet; the step frees each blob with its row.
 	'transactionalPendingUploads',
+	// Recorded send completions that threw (#1195): a pointer at a Send plus the
+	// worker outcome, which can carry the rendered message. Before both send tables.
+	'sendCompletionFailurePayloads',
+	'sendCompletionFailures',
 	'transactionalSends',
 	'transactionalEmails',
 
@@ -73,6 +77,9 @@ export const TENANT_TABLES = [
 	'mtaCampaignAlertReceipts',
 	'webhookDeliveryLogs',
 	'webhookPayloads',
+	// Bounces and complaints that matched no Send (#1194), kept for counting and
+	// replay: message ids, outcomes and replay state, no addresses.
+	'unresolvedFeedback',
 	'webhooks',
 
 	// ── Forms ──
@@ -386,6 +393,10 @@ export const NON_TENANT_TABLES = [
 	// cursor, no message content. It follows the instance switch rather than the
 	// org, and a sweep still running during a wipe must keep its fence.
 	'mailBodySearchPurges',
+	// The lost-send sweep's pass leases (#1208): which pass over which send range
+	// is running, a generation and two timestamps, no Send or contact data. A
+	// lease left behind by a wipe goes stale and is taken over by the next pass.
+	'lostSendSweepLeases',
 	// Instance infrastructure / regenerable caches — not org business data.
 	'systemUpdates',
 	// What each IMAP server reported about its release and wire contract
@@ -456,6 +467,12 @@ export const NON_TENANT_TABLES = [
 	// protocol/telemetry tables — wiping it would only make a working channel
 	// read as `awaiting_event` until the provider next spoke.
 	'pluginWebhookFeedbackActivity',
+	// Replay claims for single provider events (Mandrill, #1228): the adapter's
+	// address-free `replayKey` (event name, provider message id, timestamp) and
+	// the claim state, nothing else. Wire-protocol bookkeeping like
+	// `pluginWebhookDeliveries`, self-expiring a week after the event; wiping
+	// it early would only re-open a replay window.
+	'inboundEventClaims',
 ] as const satisfies readonly TableNames[];
 
 /**

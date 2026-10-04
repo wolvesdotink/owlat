@@ -117,7 +117,36 @@ describe('check-icon-names.sh — the file must be scanned', () => {
 
 describe('check-icon-names.sh — scope', () => {
 	it('ignores generated coverage reports', () => {
+		// Generated output sits at a package root, so the fixture is a package.
+		mkdirSync(join(workDir, 'report'), { recursive: true });
+		writeFileSync(join(workDir, 'report', 'package.json'), '{}\n');
 		expect(lintFile('report', 'coverage/Card.vue.html', 'lucide:key-round-x').status).toBe(0);
+	});
+
+	it('skips output directories at a package root, and only there', () => {
+		// A package (a root holding package.json) keeps generated output in build/,
+		// dist/, .output/, coverage/ and .turbo/; those are not source. The same
+		// name deeper down is an ordinary source directory, which the bundle's
+		// icon scan reads, so the guard reads it too.
+		const root = join(workDir, 'package-scope');
+		mkdirSync(root, { recursive: true });
+		writeFileSync(join(root, 'package.json'), '{}\n');
+		writeFileSync(join(root, 'Card.vue'), '<template><i class="lucide:mail" /></template>\n');
+		for (const output of ['build', 'dist', '.output', 'coverage', '.turbo']) {
+			mkdirSync(join(root, output), { recursive: true });
+			writeFileSync(join(root, output, 'Card.vue'), '<i class="lucide:key-round-x" />\n');
+		}
+		expect(runLint(root).status).toBe(0);
+
+		for (const nested of ['build', 'dist', 'coverage']) {
+			const directory = join(root, 'components', nested);
+			mkdirSync(directory, { recursive: true });
+			writeFileSync(join(directory, 'Card.vue'), '<i class="lucide:key-round-x" />\n');
+			const result = runLint(root);
+			expect(result.status, nested).toBe(1);
+			expect(result.output, nested).toContain(`components/${nested}/Card.vue`);
+			rmSync(directory, { recursive: true });
+		}
 	});
 
 	it('scans the shared components, not only the app', () => {

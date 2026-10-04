@@ -88,14 +88,6 @@ vi.mock('../../lib/llmProvider', () => ({
 	resolveLanguageModel: () => ({}) as never,
 	resolveLanguageModelForClassifiedDraft: () => ({}) as never,
 }));
-vi.mock('../replyOptions', () => ({
-	MAX_REPLY_OPTIONS: 3,
-	generateReplyOptions: vi.fn(async () => ({
-		replies: ['ALT ONE', 'ALT TWO'],
-		tokenUsage: undefined,
-		modelUsed: 'mock-model',
-	})),
-}));
 vi.mock('../../analytics/llmUsage', () => ({ recordLlmSpend: vi.fn(async () => {}) }));
 
 beforeEach(() => {
@@ -640,7 +632,6 @@ describe('draft-on-arrival with files the card still waits for', () => {
 		await t.run(async (ctx) => {
 			const slot = (await ctx.db.get(threadId))!.needsReply?.draftSlot;
 			expect(slot?.draft).toBe(`Hi Sam, here are your invoices.\n\n${placeholder}`);
-			// The alternatives are written without the trusted note.
 			expect(slot?.options).toBeUndefined();
 		});
 	});

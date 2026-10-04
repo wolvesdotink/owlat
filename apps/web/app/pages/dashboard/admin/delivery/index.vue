@@ -74,6 +74,11 @@ const {
 // Suppression roll-up (bounced/complained/manual/unengaged) for the summary line.
 const { data: suppressionCounts } = useOrganizationQuery(api.blockedEmails.getCountsByReason);
 
+// Bounces and complaints whose message id matched no send (#1194), last 30 days.
+const { data: unresolvedFeedback } = useOrganizationQuery(
+	api.webhooks.unresolvedFeedback.getSummary
+);
+
 const isLoading = computed(() => teamLoading.value || overviewLoading.value);
 
 // --- Header warm-up sentence ---
@@ -192,6 +197,25 @@ const suppressionParts = computed(() => {
 			})
 		);
 	return { total: number.format(c.total), breakdown: parts.join(' · ') };
+});
+
+// --- Unresolved feedback line (only when there is some) ---
+const unresolvedParts = computed(() => {
+	const c = unresolvedFeedback.value;
+	if (!c || c.total === 0) return null;
+	const number = new Intl.NumberFormat(locale.value);
+	const key = 'dashboard.admin.delivery.index.unresolvedFeedback';
+	const counts = [
+		['bounced', c.bounces],
+		['complained', c.complaints],
+		['suppressed', c.suppressed],
+		['open', c.open],
+	] as const;
+	const breakdown = counts
+		.filter(([, count]) => count > 0)
+		.map(([part, count]) => t(`${key}.${part}`, { count: number.format(count) }));
+	const total = number.format(c.total);
+	return { total: c.isCapped ? `${total}+` : total, breakdown: breakdown.join(' · ') };
 });
 
 // Verdict chip tone → semantic token classes, via the shared health tone map so
@@ -420,6 +444,29 @@ const sendingDetail = computed(() => {
 					/>
 				</span>
 			</NuxtLink>
+
+			<!-- Bounces and complaints that matched no send: counted here so nobody has
+				 to read logs to learn how many negative signals went unattributed. -->
+			<div
+				v-if="unresolvedParts"
+				class="flex items-start gap-2 px-4 py-3 rounded-lg bg-bg-surface"
+				data-testid="unresolved-feedback-summary"
+			>
+				<Icon name="lucide:mail-question" class="w-4 h-4 mt-0.5 text-text-tertiary shrink-0" />
+				<I18nT
+					keypath="dashboard.admin.delivery.index.unresolvedFeedback.summary"
+					tag="p"
+					class="text-sm text-text-secondary"
+					scope="global"
+				>
+					<template #total>
+						<span class="text-text-primary font-medium tabular-nums">{{
+							unresolvedParts.total
+						}}</span>
+					</template>
+					<template #breakdown>{{ unresolvedParts.breakdown }}</template>
+				</I18nT>
+			</div>
 		</div>
 
 		<!-- No settings found -->

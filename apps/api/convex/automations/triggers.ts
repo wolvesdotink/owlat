@@ -13,6 +13,7 @@ import { topicSubscribedTrigger } from './triggers/topic_subscribed';
 import type { FireInputFor, TriggerKind, TriggerModule, TriggerData } from './triggers/types';
 import { isCoreTriggerKind } from './triggers/catalog';
 import { createContact } from '../contacts/creation';
+import { findLiveContactByEmail } from '../lib/contactHelpers';
 import { throwNotFound } from '../_utils/errors';
 
 // ============== Module registry ==============
@@ -220,11 +221,7 @@ export const sendEvent = internalMutation({
 		// either creates a fresh Contact (when `createContactIfNotExists`)
 		// or throws "not found." The resolution module guarantees identifier
 		// reclaimability on day 1 via the identity cascade.
-		let contact: Doc<'contacts'> | null = await ctx.db
-			.query('contacts')
-			.withIndex('by_email', (q) => q.eq('email', args.email.toLowerCase()))
-			.filter((q) => q.eq(q.field('deletedAt'), undefined))
-			.first();
+		let contact: Doc<'contacts'> | null = await findLiveContactByEmail(ctx, args.email);
 
 		if (!contact && args.createContactIfNotExists) {
 			// Contact creation (module) owns the created trio (count +

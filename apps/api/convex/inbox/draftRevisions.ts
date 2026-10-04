@@ -6,7 +6,9 @@
  * original (`savedBy: 'agent'`, immutable thereafter), every later save appends
  * one entry, and `draftSavedAt` is stamped so the queue can render the
  * "Saved · edited by you" chip. The row stays `draft_ready` — saving is not a
- * status transition and records NO autonomy feedback; the `'edited'` signal
+ * status transition (except a save while the agent can still draft over it,
+ * which takes the reply over first, see `manualReply.takeOverForHumanSave`)
+ * and records NO autonomy feedback; the `'edited'` signal
  * fires once at approve time, iff the sent text differs from revision 0 (see
  * `decisionFeedback.recordApprovalSignals`).
  *
@@ -22,6 +24,7 @@ import { recordAuditLog } from '../lib/auditLog';
 import { getOrThrow } from '../_utils/errors';
 import { authoredDraftHasGaps } from '../agent/shared/draftGaps';
 import { isStoredVariant } from '../lib/draftVariants';
+import { takeOverForHumanSave } from './manualReply';
 
 /** `savedBy` marker for the seeded revision-0 agent original. */
 const AGENT_REVISION_AUTHOR = 'agent';
@@ -59,12 +62,21 @@ export function draftDiffersFromAgentOriginal(message: Doc<'inboundMessages'>): 
  * `gapGuarded` is the composer's saved-reply gap guard for this text
  * (`isDraftGapGuarded`): stored with it, so its `[[...]]` gaps still hold Send
  * after a reload and `approveDraft` refuses them. Omitted = left as it was.
+ *
+ * A save while the agent can still write its draft over this one (`drafting`,
+ * `awaiting_clarification`, `failed`) takes the reply over first, so the late
+ * agent draft cannot replace the saved text or clear its revisions (#1221,
+ * #1220).
  */
 export async function appendDraftRevision(
 	ctx: MutationCtx,
 	message: Doc<'inboundMessages'>,
 	args: { text: string; subject?: string; savedBy: string; gapGuarded?: boolean }
 ): Promise<void> {
+	// Only `processingStatus` (and the takeover fields) change here; the draft
+	// fields read from `message` below are untouched by it.
+	await takeOverForHumanSave(ctx, message, args.savedBy);
+
 	const now = Date.now();
 	const revisions = [...(message.draftRevisions ?? [])];
 

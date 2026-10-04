@@ -60,3 +60,30 @@ export async function loadContactMarketingIneligibility(
 ): Promise<MarketingIneligibility | null> {
 	return contactMarketingIneligibility(await ctx.db.get(contactId));
 }
+
+/**
+ * Whether a topic membership is still waiting for double opt-in, so the topic
+ * audience will not mail it. THE definition: the audience selector
+ * (`campaigns/audienceCandidates.ts` `selectRecipient`) excludes exactly these,
+ * and the relay unsubscribe (`delivery/unsubscribeQueries.ts`) refuses to treat
+ * them as a completed opt-in (#1228).
+ *
+ *  - The topic requires DOI and the contact has neither confirmed nor been
+ *    marked `not_required` (an admin `skipDoi` subscribe, an import attest).
+ *  - Or the membership carries `pendingDoiConfirmation`: a form forced DOI on a
+ *    topic that does not require it, and the contact has not confirmed yet.
+ */
+export function isAwaitingDoubleOptIn(
+	contact: Pick<Doc<'contacts'>, 'doiStatus'>,
+	topicRequiresDoi: boolean,
+	membershipPendingDoi: boolean | undefined
+): boolean {
+	if (
+		topicRequiresDoi &&
+		contact.doiStatus !== 'confirmed' &&
+		contact.doiStatus !== 'not_required'
+	) {
+		return true;
+	}
+	return membershipPendingDoi === true;
+}

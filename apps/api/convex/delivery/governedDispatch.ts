@@ -28,6 +28,7 @@ import {
 } from './workerEnvelope';
 import type { SendWorkerOutcome } from './workerOutcome';
 import type { Id } from '../_generated/dataModel';
+import { recordSendResponseRefusal } from '../webhooks/providerSuppression';
 
 /**
  * The durable reference this dispatch is bound to.
@@ -369,5 +370,15 @@ export async function dispatchGovernedEmail(
 		}
 	}
 
+	// A provider that refused the address off its own suppression list said so
+	// in this response; mirrored before the send fails (#1243). A seed probe's
+	// address is one of our seed mailboxes and is never suppressed.
+	if (request.sendRef.kind !== 'seedProbe') {
+		await recordSendResponseRefusal(ctx, {
+			result: dispatched.result,
+			providerType: dispatched.providerType,
+			recipient: request.to,
+		});
+	}
 	throw new Error(dispatched.result.errorMessage || 'Unknown email sending error');
 }

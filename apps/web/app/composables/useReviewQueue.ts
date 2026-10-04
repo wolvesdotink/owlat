@@ -44,7 +44,9 @@ export function useReviewQueue() {
 
 	// An agent draft with a `[[...]]` gap left is refused (DRAFT_HAS_GAPS). Say
 	// so, counting the gaps in the text that was about to go out, rather than
-	// the server's composer wording: the queue card highlights nothing. Only the
+	// the server's composer wording. The queue card already holds Approve on a
+	// guarded draft with gaps; this covers a refusal it cannot foresee, such as
+	// a thread the AI drafted into. Only the
 	// written part counts, as on the server: a `[[...]]` in the quoted original
 	// belongs to the mail being answered.
 	const { showToast } = useToast();

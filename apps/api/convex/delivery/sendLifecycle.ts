@@ -38,8 +38,10 @@ import {
 	senderDomainFor,
 } from './sendLifecycle/lookups';
 import { withoutTestSendEffects } from './sendLifecycle/types';
+import { recordsEngagementAfterFeedback } from './sendLifecycle/engagementActivity';
 import { refuse } from '../lib/lifecycle';
 import { finalizeSendSource } from './sendLifecycle/sourceFinalization';
+import { applyProviderFeedback } from './sendCompletionFailures';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { bounceTypeValidator } from '../lib/literalValidators';
 import { openAgentValidator } from './automatedOpens';
@@ -153,6 +155,12 @@ async function dispatch(
 	// denominator; persisted terminal timestamps do.
 	const isAttributableRemoteAcceptance =
 		input.to === 'delivered' && canAttributeRemoteAcceptance(send, input.at);
+	// A reader open or click on a soft-bounced or complained row is recorded as
+	// engagement without moving the status (#1225; the reducers keep the status
+	// and gate the first-open effects). A hard-bounced row stays refused. See
+	// `./sendLifecycle/engagementActivity` for why.
+	const isEngagementAfterFeedback =
+		(input.to === 'opened' || input.to === 'clicked') && recordsEngagementAfterFeedback(send);
 
 	// Self-loops: `opened` / `clicked` re-fire as counter-only `recorded`
 	// events, and `bounced → bounced` re-fire is routed to the reducer (which
@@ -161,12 +169,13 @@ async function dispatch(
 	// reducer also detects from === to and returns the duplicate outcome — so
 	// the core's self-loop allowance is exactly what this machine wants.
 	//
-	// The two sanctioned edges below are legal on grounds the graph cannot
-	// express: an MTA-bound `queued` row going terminal, and a late but
-	// attributable remote acceptance. Terminal states still get a distinct
-	// reason for observability.
+	// The three sanctioned edges below are legal on grounds the graph cannot
+	// express: an MTA-bound `queued` row going terminal, a late but
+	// attributable remote acceptance, and reader engagement after feedback.
+	// Terminal states still get a distinct reason for observability.
 	const verdict = lifecycle.classify(from, input.to, {
-		isSanctionedEdge: isBoundQueuedMtaTerminal || isAttributableRemoteAcceptance,
+		isSanctionedEdge:
+			isBoundQueuedMtaTerminal || isAttributableRemoteAcceptance || isEngagementAfterFeedback,
 	});
 	if (verdict.kind === 'refused') {
 		return refuse(verdict);
@@ -190,7 +199,8 @@ async function dispatch(
 			input.at,
 			ref,
 			deliverySenderDomain,
-			recipientContact
+			recipientContact,
+			{ keepsSoftBounceCount: isEngagementAfterFeedback }
 		);
 	}
 
@@ -355,7 +365,12 @@ export const transitionByProviderMessageId = internalMutation({
 	handler: async (ctx, args): Promise<TransitionOutcome> => {
 		const ref = await resolveProviderMessageId(ctx, args.providerMessageId);
 		if (!ref) return { ok: false, reason: 'send_not_found' };
-		return await dispatch(ctx, ref, args.transition);
+		// A Send whose completion threw is still `queued` with this id stamped on
+		// it: replay the completion first, and park the event if it still cannot
+		// land (#1195).
+		return await applyProviderFeedback(ctx, ref, args.transition, () =>
+			dispatch(ctx, ref, args.transition)
+		);
 	},
 });
 
@@ -405,7 +420,13 @@ export const bindMtaProviderIdentity = internalMutation({
  * legitimately go `queued → bounced` without an intervening `sent`.
  */
 export const transitionMtaByProviderMessageId = internalMutation({
-	args: { providerMessageId: v.string(), transition: transitionInputValidator },
+	args: {
+		providerMessageId: v.string(),
+		transition: transitionInputValidator,
+		// Set by the send completion's own terminal call, which must not replay
+		// the record it is itself being replayed from.
+		isCompletionCall: v.optional(v.boolean()),
+	},
 	handler: async (ctx, args): Promise<TransitionOutcome> => {
 		const ref = await resolveProviderMessageId(ctx, args.providerMessageId);
 		if (!ref) return { ok: false, reason: 'send_not_found' };
@@ -413,9 +434,16 @@ export const transitionMtaByProviderMessageId = internalMutation({
 		if (!send || send.providerMessageId !== args.providerMessageId) {
 			return { ok: false, reason: 'send_not_found' };
 		}
-		return await dispatch(ctx, ref, args.transition, {
-			allowQueuedMtaTerminal: send.providerType === OWN_ARM_TRANSPORT_KIND,
-		});
+		const apply = async () =>
+			await dispatch(ctx, ref, args.transition, {
+				// Read after any replay: the completion may have moved the row.
+				allowQueuedMtaTerminal: (await loadSend(ctx, ref))?.providerType === OWN_ARM_TRANSPORT_KIND,
+			});
+		if (args.isCompletionCall === true) return await apply();
+		// An SMTP relay's DSN reaches our own bounce server and lands here, so a
+		// relay Send whose completion threw needs the same replay and parking as
+		// the provider webhooks (#1195).
+		return await applyProviderFeedback(ctx, ref, args.transition, apply);
 	},
 });
 

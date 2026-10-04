@@ -20,8 +20,12 @@
  *     only if the version did not move while the pages were read (the pages
  *     are separate transactions; an unmoved version means none of them saw a
  *     membership change, so together they are one consistent listing);
- *     these two stay, because the operator runs 0054 by hand (self-hosting
- *     maintenance docs), so no release can assume it has completed;
+ *     these two are not upgrade shims that a later release can drop: the
+ *     backend starts and resumes 0054 by itself (a cron), but a folder stays
+ *     unready until its walk finishes, and a `rebuild` (the repair for blocks
+ *     found out of step) makes every folder unready again. For such a folder
+ *     the listing is the only exact answer; refusing the command instead
+ *     would break IMAP for the length of the walk;
  *   - ready: read the blocks (about 130k UIDs per query), checking that every
  *     page reports the same version; if the folder changed mid-walk, start
  *     again after a short backoff.

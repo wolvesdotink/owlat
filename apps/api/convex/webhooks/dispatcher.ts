@@ -9,9 +9,9 @@
  * inline via `isPostboxMessageId` so adapters never need to care.
  *
  * Negative-feedback events (`email.bounced` / `email.complained`) whose
- * `providerMessageId` resolves to no Send row now emit an `unresolved_bounce`
- * signal via `recordUnresolvedBounce` (`./unresolvedBounce`) instead of acking
- * silently — see that function for the rationale (M3AAWG
+ * `providerMessageId` resolves to no Send row are logged as `unresolved_bounce`
+ * and stored for replay via `recordUnresolvedFeedback` (`./unresolvedBounce`)
+ * instead of acking silently — see that function for the rationale (M3AAWG
  * measure-unattributable-feedback).
  *
  * A handler that outgrows a table entry moves to its own module and is
@@ -27,8 +27,10 @@ import type { TransitionOutcome } from '../delivery/sendLifecycle';
 import { withTimeout } from '../lib/inputGuards';
 import { logError, logWarn } from '../lib/runtimeLog';
 import { dispatchComplaint } from './complaintDispatch';
+import { dispatchOnce } from './inboundEventClaims';
 import { applyFailureSuppression, applyProviderSuppression } from './providerSuppression';
-import { recordUnresolvedBounce } from './unresolvedBounce';
+import { withinSendingScope } from './sendingScope';
+import { isSendNotFound, recordUnresolvedFeedback } from './unresolvedBounce';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import {
 	type InboundEvent,
@@ -209,7 +211,7 @@ const DISPATCH: DispatchTable = {
 				},
 			}
 		)) as TransitionOutcome;
-		recordUnresolvedBounce('email.bounced', e.providerMessageId, e.at, outcome);
+		if (isSendNotFound(outcome)) await recordUnresolvedFeedback(ctx, e);
 	},
 	'email.deferred': async (ctx, e) => {
 		// A relay holding a message it already accepted moves NO send state — the
@@ -228,8 +230,10 @@ const DISPATCH: DispatchTable = {
 		// contact join happens inside the mutation — which then replays the exact
 		// public one-click path (membership delete, opt-out stamp, campaign
 		// counter, `topic.unsubscribed` fanout, `unsubscribed` transport outcome).
+		// `eventAt` keeps a late event from undoing a later re-subscribe (#1228).
 		return await ctx.runMutation(internal.delivery.unsubscribeQueries.processUnsubscribeByEmail, {
 			email: e.recipient,
+			eventAt: e.at,
 		});
 	},
 	'email.provider_suppressed': applyProviderSuppression,
@@ -441,9 +445,18 @@ export function dispatchInboundEvent(
 ): Promise<unknown>;
 export async function dispatchInboundEvent(
 	ctx: ActionCtx,
-	event: InboundEvent,
+	inbound: InboundEvent,
 	_options?: { returnResult: true }
 ): Promise<unknown> {
+	// Out-of-scope feedback acts on no address unless it matches a Send of ours (#1243).
+	const event = await withinSendingScope(ctx, inbound);
+	if (!event) return undefined;
 	const handler = DISPATCH[event.kind] as Handler<InboundEventKind>;
-	return handler(ctx, event as InboundEventOf<InboundEventKind>);
+	const apply = () => handler(ctx, event as InboundEventOf<InboundEventKind>);
+	// An event its adapter keyed for replay (a provider with no event ids and no
+	// signed timestamp, #1228) is applied once per key.
+	if ('replayKey' in event && event.replayKey) {
+		return dispatchOnce(ctx, { replayKey: event.replayKey, eventAt: event.at }, apply);
+	}
+	return apply();
 }

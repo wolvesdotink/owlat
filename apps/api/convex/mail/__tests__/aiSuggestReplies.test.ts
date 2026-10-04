@@ -25,7 +25,6 @@ vi.mock('../../lib/llmProvider', () => ({
 
 import {
 	encodeReplyOptions,
-	generateReplyOptions,
 	parseReplyOptionsText,
 	REPLY_OPTIONS_LIST_FORMAT,
 	streamReplyOptions,
@@ -258,18 +257,5 @@ describe('streamReplyOptions', () => {
 		await expect(streamReplyOptions(ctx, { system: 's', prompt: 'p' })).rejects.toThrow(
 			'timed out'
 		);
-	});
-});
-
-describe('generateReplyOptions', () => {
-	it('keeps the capable draft tier for the inbound agent review options', async () => {
-		mocks.runLlmObject.mockResolvedValue({
-			object: { replies: ['a', 'b'] },
-			tokenUsage: USAGE,
-			modelUsed: 'capable-model',
-		});
-		const { ctx } = makeCtx();
-		await generateReplyOptions(ctx, { prompt: 'p' });
-		expect(mocks.resolveLanguageModel).toHaveBeenCalledWith(ctx, 'draft');
 	});
 });

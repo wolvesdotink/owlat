@@ -14,6 +14,7 @@ import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { countNotesMentioning, interleaveNotes } from '~/utils/threadNotes';
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
 import { useTeamKeptReply } from '~/composables/useTeamKeptReply';
+import { inboxRetryToast } from '~/utils/inboxRetry';
 
 const { t, te, locale } = useI18n();
 
@@ -331,7 +332,7 @@ const onRetry = async (messageId: Id<'inboundMessages'>) => {
 	isRetrying.value = true;
 	try {
 		const result = await handleRetry(messageId);
-		if (result.ok) showToast(t('dashboard.inbox.detail.retriedToast'));
+		if (result.ok) showToast(t(inboxRetryToast(result.result.retried)));
 	} finally {
 		isRetrying.value = false;
 	}
@@ -567,31 +568,13 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								</UiButton>
 							</div>
 
-							<!-- Failure reason + manual retry (terminal 'failed' state) -->
-							<div
+							<!-- Failure reason + a Retry that says what it does (terminal 'failed' state) -->
+							<InboxFailedNotice
 								v-if="message.processingStatus === 'failed'"
-								class="mt-4 p-3 bg-error-subtle rounded-lg"
-							>
-								<p class="text-xs text-error font-medium mb-2">
-									{{ t('dashboard.inbox.detail.processingFailed') }}
-								</p>
-								<p v-if="message.errorMessage" class="text-sm text-text-primary break-words mb-3">
-									{{ message.errorMessage }}
-								</p>
-								<p v-else class="text-sm text-text-secondary mb-3">
-									{{ t('dashboard.inbox.detail.noErrorDetail') }}
-								</p>
-								<UiButton
-									variant="secondary"
-									size="sm"
-									class="gap-1"
-									:disabled="isRetrying"
-									@click="onRetry(message._id)"
-								>
-									<Icon name="lucide:refresh-cw" class="w-3 h-3" />
-									{{ t('dashboard.inbox.detail.retryProcessing') }}
-								</UiButton>
-							</div>
+								:message="message"
+								:retrying="isRetrying"
+								@retry="onRetry(message._id)"
+							/>
 
 							<!-- The agent's questions are answered where the reply is written. -->
 							<div

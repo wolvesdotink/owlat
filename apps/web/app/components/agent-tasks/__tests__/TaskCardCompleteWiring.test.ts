@@ -93,7 +93,11 @@ describe('plugin-card complete wiring', () => {
 		await flushPromises();
 		// Advanced to the next card, and the outcome was tallied + undoable.
 		expect(flow.currentId.value).toBe('b');
-		expect(flow.summary.value).toBe('1 handled');
+		// A plugin's own outcome has no copy, so the summary counts it as completed.
+		expect(flow.tallies.value).toEqual([{ label: 'handled', count: 1 }]);
+		expect(flow.summary.value).toEqual([
+			{ key: 'components.agentTasks.agentTaskFlow.outcome.completed', params: { count: 1 } },
+		]);
 		expect(flow.canUndo.value).toBe(true);
 	});
 
@@ -105,6 +109,8 @@ describe('plugin-card complete wiring', () => {
 		await wrapper.find('[data-testid="done-bare"]').trigger('click');
 		await flushPromises();
 		expect(flow.isComplete.value).toBe(true);
-		expect(flow.summary.value).toBe('1 completed');
+		expect(flow.summary.value).toEqual([
+			{ key: 'components.agentTasks.agentTaskFlow.outcome.completed', params: { count: 1 } },
+		]);
 	});
 });
