@@ -9,9 +9,9 @@
  * inline via `isPostboxMessageId` so adapters never need to care.
  *
  * Negative-feedback events (`email.bounced` / `email.complained`) whose
- * `providerMessageId` resolves to no Send row now emit an `unresolved_bounce`
- * signal via `recordUnresolvedBounce` (`./unresolvedBounce`) instead of acking
- * silently — see that function for the rationale (M3AAWG
+ * `providerMessageId` resolves to no Send row are logged as `unresolved_bounce`
+ * and stored for replay via `recordUnresolvedFeedback` (`./unresolvedBounce`)
+ * instead of acking silently — see that function for the rationale (M3AAWG
  * measure-unattributable-feedback).
  *
  * A handler that outgrows a table entry moves to its own module and is
@@ -28,7 +28,7 @@ import { withTimeout } from '../lib/inputGuards';
 import { logError, logWarn } from '../lib/runtimeLog';
 import { dispatchComplaint } from './complaintDispatch';
 import { applyFailureSuppression, applyProviderSuppression } from './providerSuppression';
-import { recordUnresolvedBounce } from './unresolvedBounce';
+import { isSendNotFound, recordUnresolvedFeedback } from './unresolvedBounce';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import {
 	type InboundEvent,
@@ -209,7 +209,7 @@ const DISPATCH: DispatchTable = {
 				},
 			}
 		)) as TransitionOutcome;
-		recordUnresolvedBounce('email.bounced', e.providerMessageId, e.at, outcome);
+		if (isSendNotFound(outcome)) await recordUnresolvedFeedback(ctx, e);
 	},
 	'email.deferred': async (ctx, e) => {
 		// A relay holding a message it already accepted moves NO send state — the

@@ -7109,6 +7109,13 @@
 						"loading": "Zustellraten-Verlauf wird geladen",
 						"subtitle": "Anteil der versendeten Mails, die zugestellt wurden, pro Tag",
 						"title": "Zustellrate"
+					},
+					"unresolvedFeedback": {
+						"bounced": "{count} Bounces",
+						"complained": "{count} Beschwerden",
+						"open": "{count} weiterhin ohne Zuordnung",
+						"summary": "Bounces und Beschwerden ohne passende Sendung (30 Tage): {total} · {breakdown}",
+						"suppressed": "{count} per Adresse gesperrt"
 					}
 				},
 				"migrate": {
