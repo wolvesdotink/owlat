@@ -5,64 +5,21 @@
  * report can carry it (an attachment, a trace archive, the report data embedded
  * in index.html), and a clean report must pass.
  *
- * The archives are built here in the zip layout Playwright writes (local
- * headers, central directory, deflate or stored members).
+ * The archives come from `zipFixtures.ts`; the archive reader's own checks
+ * are covered in `zipArchive.test.ts`.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { deflateRawSync } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { findSecretsInReport, findingId, secretForms } from '../scanReportSecrets';
-import { readZipEntries } from '../zipArchive';
+import { endRecord, hiddenMemberZip, makeZip } from './zipFixtures';
 
 const SECRET = { label: 'CONVEX_TEST_INSTANCE_SECRET', value: 'dummy-instance-secret-4f1c' };
 /** Punctuation that every encoding treats differently. */
 const PUNCTUATED = { label: 'PUNCTUATED', value: 'dummy-review/value+with=punctuation' };
 const CLI = resolve(__dirname, '../scan-report-secrets.ts');
-
-/** A zip archive; the reader ignores CRCs, so they are left at zero. */
-function makeZip(files: Record<string, string | Buffer>, method: 0 | 8 = 8): Buffer {
-	const locals: Buffer[] = [];
-	const centrals: Buffer[] = [];
-	let offset = 0;
-	for (const [name, content] of Object.entries(files)) {
-		const raw = Buffer.isBuffer(content) ? content : Buffer.from(content);
-		const data = method === 8 ? deflateRawSync(raw) : raw;
-		const nameBytes = Buffer.from(name);
-
-		const local = Buffer.alloc(30);
-		local.writeUInt32LE(0x04034b50, 0);
-		local.writeUInt16LE(20, 4);
-		local.writeUInt16LE(method, 8);
-		local.writeUInt32LE(data.length, 18);
-		local.writeUInt32LE(raw.length, 22);
-		local.writeUInt16LE(nameBytes.length, 26);
-		locals.push(local, nameBytes, data);
-
-		const central = Buffer.alloc(46);
-		central.writeUInt32LE(0x02014b50, 0);
-		central.writeUInt16LE(20, 4);
-		central.writeUInt16LE(20, 6);
-		central.writeUInt16LE(method, 10);
-		central.writeUInt32LE(data.length, 20);
-		central.writeUInt32LE(raw.length, 24);
-		central.writeUInt16LE(nameBytes.length, 28);
-		central.writeUInt32LE(offset, 42);
-		centrals.push(central, nameBytes);
-
-		offset += local.length + nameBytes.length + data.length;
-	}
-	const directory = Buffer.concat(centrals);
-	const end = Buffer.alloc(22);
-	end.writeUInt32LE(0x06054b50, 0);
-	end.writeUInt16LE(Object.keys(files).length, 8);
-	end.writeUInt16LE(Object.keys(files).length, 10);
-	end.writeUInt32LE(directory.length, 12);
-	end.writeUInt32LE(offset, 16);
-	return Buffer.concat([...locals, directory, end]);
-}
 
 /** A trace's network log line for a request, the shape Playwright records. */
 function networkEntry(headers: Array<{ name: string; value: string }>): string {
@@ -167,18 +124,6 @@ describe('findSecretsInReport', () => {
 		writeFileSync(join(report, 'data', 'console.txt'), 'anything');
 
 		expect(findSecretsInReport(report, [{ label: 'UNSET', value: '' }])).toEqual([]);
-	});
-});
-
-describe('readZipEntries', () => {
-	it('reads deflated and stored members back', () => {
-		for (const method of [0, 8] as const) {
-			const entries = readZipEntries(makeZip({ a: 'alpha', 'b/c': 'beta' }, method));
-			expect(entries.map((entry) => [entry.name, entry.data.toString()])).toEqual([
-				['a', 'alpha'],
-				['b/c', 'beta'],
-			]);
-		}
 	});
 });
 
@@ -338,15 +283,12 @@ describe('scan-report-secrets CLI', () => {
 	});
 });
 
-/** Offset of the end-of-central-directory record in an archive `makeZip` built (no comment). */
-const endRecord = (zip: Buffer) => zip.length - 22;
-
 /** Two deflated members, the dummy secret only in the second. */
 function twoMemberZip(): Buffer {
 	return makeZip({ 'trace.trace': '{"type":"context-options"}\n', 'trace.network': SECRET.value });
 }
 
-describe('archives that misdescribe themselves', () => {
+describe('findSecretsInReport, archives that misdescribe themselves', () => {
 	it.each([0, 1])('fails closed when a two-member archive advertises %i members', (count) => {
 		const zip = twoMemberZip();
 		zip.writeUInt16LE(count, endRecord(zip) + 8);
@@ -364,73 +306,23 @@ describe('archives that misdescribe themselves', () => {
 		expect(existsSync(report)).toBe(false);
 	});
 
-	it.each([
-		[
-			'a central directory size that stops short',
-			(zip: Buffer) => {
-				const at = endRecord(zip) + 12;
-				zip.writeUInt32LE(zip.readUInt32LE(at) - 1, at);
-			},
-		],
-		[
-			'a central directory offset that skips a record',
-			(zip: Buffer) => {
-				const at = endRecord(zip) + 16;
-				zip.writeUInt32LE(zip.readUInt32LE(at) + 1, at);
-			},
-		],
-		[
-			'a declared size smaller than the member',
-			(zip: Buffer) => {
-				const directory = zip.readUInt32LE(endRecord(zip) + 16);
-				zip.writeUInt32LE(4, directory + 24);
-			},
-		],
-		[
-			'a local header that disagrees with its central record',
-			(zip: Buffer) => {
-				zip.write('X', 30);
-			},
-		],
-	])('rejects %s', (_case, corrupt) => {
-		const zip = twoMemberZip();
-		corrupt(zip);
-		expect(() => readZipEntries(zip)).toThrow(/malformed zip/);
-	});
+	it.each([false, true])(
+		'fails closed when a compressed span hides an unlisted member (descriptors: %s)',
+		(descriptors) => {
+			writeFileSync(join(report, 'data', 'trace.zip'), hiddenMemberZip(SECRET.value, descriptors));
 
-	it('rejects bytes no member accounts for', () => {
-		const zip = twoMemberZip();
-		const padded = Buffer.concat([Buffer.from('padding!'), zip]);
-		// Shift every offset so the structure still points at the right records.
-		const end = endRecord(padded);
-		padded.writeUInt32LE(padded.readUInt32LE(end + 16) + 8, end + 16);
-		let at = padded.readUInt32LE(end + 16);
-		while (at < end) {
-			padded.writeUInt32LE(padded.readUInt32LE(at + 42) + 8, at + 42);
-			at +=
-				46 +
-				padded.readUInt16LE(at + 28) +
-				padded.readUInt16LE(at + 30) +
-				padded.readUInt16LE(at + 32);
+			expect(findSecretsInReport(report, [SECRET])).toContainEqual({
+				file: join('data', 'trace.zip'),
+				label: 'unreadable',
+			});
+			const result = spawnSync('bun', [CLI, report, SECRET.label], {
+				env: { ...process.env, [SECRET.label]: SECRET.value },
+				encoding: 'utf8',
+			});
+			expect(result.status).toBe(1);
+			expect(existsSync(report)).toBe(false);
 		}
-		expect(() => readZipEntries(padded)).toThrow(/unreferenced|gap/);
-	});
-
-	it('rejects trailing bytes after the end record', () => {
-		expect(() => readZipEntries(Buffer.concat([twoMemberZip(), Buffer.from('tail')]))).toThrow(
-			/malformed zip/
-		);
-	});
-
-	it('rejects two members with the same name', () => {
-		const zip = makeZip({ a: 'first', b: SECRET.value });
-		// Rename the second member to `a` in both its headers.
-		const directory = zip.readUInt32LE(endRecord(zip) + 16);
-		const second = directory + 46 + 1;
-		zip.write('a', second + 46);
-		zip.write('a', zip.readUInt32LE(second + 42) + 30);
-		expect(() => readZipEntries(zip)).toThrow(/duplicate/);
-	});
+	);
 
 	it('still finds a stored secret in the raw bytes of an archive it cannot read', () => {
 		const zip = makeZip({ 'trace.network': SECRET.value }, 0);
