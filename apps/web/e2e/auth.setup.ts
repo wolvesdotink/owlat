@@ -3,15 +3,32 @@ import { testUser } from './fixtures/test-data';
 import { seedAdmin } from './seedAdmin';
 import { SETUP_BEFORE_STAMP_MS, WELCOME_STAMP_SETTLE_MS } from './timing';
 import { STORAGE_STATE } from './storage-state';
+import { describeRequest, redactForReport, testDeployments } from './reportRedaction';
 
-/** The browser console of the setup run, attached to the report afterwards. */
+/**
+ * The browser console and network activity of the setup run, attached to the
+ * report afterwards. CI records no trace (playwright.config.ts), so these are
+ * what is left to tell a slow deployment from a client that never
+ * authenticated (#1203). Every line is redacted as it is written: the report is
+ * public, and the deployment URLs and the Convex JWT must not reach it.
+ */
 const consoleLines: string[] = [];
+const networkLines: string[] = [];
+
+const deployments = testDeployments();
+
+/** Requests worth a line: the app's documents and API calls, not its assets. */
+const LOGGED_RESOURCE_TYPES = new Set(['document', 'fetch', 'xhr']);
 
 setup.afterEach(async () => {
 	// Attached on success too: a passing run's console is the baseline a failing
 	// one is read against (welcome.vue logs every failed `markWelcomed` attempt).
 	await setup.info().attach('browser-console.txt', {
 		body: consoleLines.join('\n') || '(no console output)',
+		contentType: 'text/plain',
+	});
+	await setup.info().attach('network.txt', {
+		body: networkLines.join('\n') || '(no requests)',
 		contentType: 'text/plain',
 	});
 });
@@ -26,10 +43,11 @@ setup.afterEach(async () => {
  * `owlat bootstrap-org` does it — `POST /seed/admin`, which writes through the
  * raw adapter and so is the one path the invite gate does not apply to.
  *
- * Nothing secret may reach the trace or the attachments: a failed setup keeps
- * its trace, and the workflow uploads both with the report. The seed call, the
- * only one that carries the instance secret, runs outside Playwright, and the
- * workflow scans the report before uploading it (scan-report-secrets.ts).
+ * Nothing secret may reach the report or a local trace: the workflow uploads
+ * the report publicly. The seed call, the only one that carries the instance
+ * secret, runs outside Playwright; the console and network log are redacted;
+ * and the workflow scans the report before uploading it
+ * (scan-report-secrets.ts).
  *
  * The workflow wipes the deployment immediately before this runs, so the seed's
  * one-shot rule ("refuses if any user exists") is satisfied.
@@ -44,11 +62,30 @@ setup('bootstrap the instance and save auth state', async ({ page }) => {
 
 	const started = Date.now();
 	const stamp = () => `+${((Date.now() - started) / 1000).toFixed(1)}s`;
-	page.on('console', (message) => {
-		consoleLines.push(`${stamp()} [${message.type()}] ${message.text()}`);
+	const log = (lines: string[], line: string) => {
+		lines.push(`${stamp()} ${redactForReport(line, deployments)}`);
+	};
+	page.on('console', (message) => log(consoleLines, `[${message.type()}] ${message.text()}`));
+	page.on('pageerror', (error) => log(consoleLines, `[pageerror] ${error.stack ?? error.message}`));
+
+	const requestLine = (method: string, url: string, outcome: string) =>
+		networkLines.push(`${stamp()} ${describeRequest({ method, url, outcome }, deployments)}`);
+	page.on('requestfinished', async (request) => {
+		if (!LOGGED_RESOURCE_TYPES.has(request.resourceType())) return;
+		const response = await request.response().catch(() => null);
+		// responseEnd is -1 when the timing is unknown.
+		const end = request.timing().responseEnd;
+		const took = end >= 0 ? ` ${Math.round(end)} ms` : '';
+		requestLine(request.method(), request.url(), `${response?.status() ?? '?'}${took}`);
 	});
-	page.on('pageerror', (error) => {
-		consoleLines.push(`${stamp()} [pageerror] ${error.stack ?? error.message}`);
+	page.on('requestfailed', (request) => {
+		if (!LOGGED_RESOURCE_TYPES.has(request.resourceType())) return;
+		requestLine(request.method(), request.url(), `failed: ${request.failure()?.errorText ?? '?'}`);
+	});
+	page.on('websocket', (socket) => {
+		requestLine('WS', socket.url(), 'open');
+		socket.on('socketerror', (error) => requestLine('WS', socket.url(), `error: ${error}`));
+		socket.on('close', () => requestLine('WS', socket.url(), 'closed'));
 	});
 
 	const owner = testUser();
@@ -63,8 +100,7 @@ setup('bootstrap the instance and save auth state', async ({ page }) => {
 	}
 
 	// Not through Playwright's `request` fixture: its requests, headers included,
-	// are recorded in the trace, and a failed setup's trace is published with the
-	// report. See seedAdmin.ts.
+	// are recorded in any trace. See seedAdmin.ts.
 	await seedAdmin({ siteUrl, instanceSecret, owner });
 
 	await page.goto('/auth/login');

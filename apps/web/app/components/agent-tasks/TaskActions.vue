@@ -116,7 +116,7 @@ const emit = defineEmits<{ (e: 'primary'): void; (e: 'skip'): void }>();
 			</span>
 		</div>
 
-		<!-- Soft-hold reason: a teammate is replying; releases on its own. -->
+		<!-- Why the primary action is held: a teammate is replying, or the draft still has gaps. -->
 		<p
 			v-if="held && heldReason"
 			:id="heldReasonId"

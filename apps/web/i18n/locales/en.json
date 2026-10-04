@@ -329,7 +329,6 @@
 					"title": "All caught up"
 				},
 				"draftReady": "Draft ready",
-				"editInThread": "Edit in thread",
 				"empty": {
 					"body": "No drafts need your review right now.",
 					"title": "All caught up!"
@@ -338,7 +337,6 @@
 				"fillGaps": "Fill in the gaps",
 				"fillLabel": "Draft to fill in",
 				"gapsHeldHere": "1 gap left in this draft. Fill it in before you send it. | {count} gaps left in this draft. Fill them in before you send it.",
-				"gapsHeldThread": "1 gap left in this draft. Fill it in the thread before you send it. | {count} gaps left in this draft. Fill them in the thread before you send it.",
 				"heldBecause": "Held because: {reason}",
 				"noSubject": "(no subject)",
 				"noTextContent": "(No text content)",
@@ -16284,6 +16282,10 @@
 				"notFound": "{count} sender had no list mail left to act on. | {count} senders had no list mail left to act on.",
 				"unsubscribed": "Unsubscribed from {count} sender. | Unsubscribed from {count} senders."
 			}
+		},
+		"convexAuth": {
+			"lost": "Your data stopped loading. Reload the page to reconnect.",
+			"reload": "Reload"
 		},
 		"format": {
 			"never": "Never",

@@ -7,14 +7,12 @@ import TaskAsk from '~/components/agent-tasks/TaskAsk.vue';
 import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 import TaskContext from '~/components/agent-tasks/TaskContext.vue';
 import { resolveReviewFocusKey } from '~/utils/taskFlowKeyboard';
-import { useOrganization } from '~/composables/useOrganization';
 import { useLocalized } from '~/composables/useLocalized';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import {
 	GENERIC_TEAMMATE_NAME,
 	isReplyCollision,
 	replyCollisionToast,
-	sendHoldReason,
 } from '~/utils/replyCollision';
 import { escalationTrustLabel, trustLabel, type TrustLabel } from '~/utils/trustLabel';
 import type { AnswerCardControls } from '~/utils/answerCard';
@@ -23,16 +21,21 @@ import { authoredTextGaps, draftTextGapSegments } from '~/utils/answerDraft';
 type ReviewEntry = FunctionReturnType<typeof api.inbox.queries.getReviewQueue>[number];
 
 /**
- * A team-inbox item as an Answer-queue card: an agent draft waiting for
- * approval (Approve & send / Reject), or a draftless escalation the reviewer
- * answers inline. Everything the team Review Queue did survives — the
- * countdown undo on approve, the soft hold while a teammate is replying, the
- * honest "already handled" when someone got there first.
+ * A team-inbox item with no thread (none stored, or it is gone) as an
+ * Answer-queue card: an agent draft waiting for approval (Approve & send /
+ * Reject), or a draftless escalation the reviewer answers inline. The
+ * countdown undo on approve and the honest "already handled" when someone got
+ * there first survive from the team Review Queue.
+ *
+ * Only a threadless item reaches this card. The queue opens every team item
+ * with a thread in Answer mode (`opensInAnswerMode`), and `AnswerQueueFlow`
+ * holds a skeleton while it goes. So the card has no thread to open, to edit
+ * in, or to watch for a teammate replying; the server still answers a
+ * collision on send, and `settleSend` says so.
  *
  * An agent draft's `[[...]]` gaps are marked. While the draft is gap-guarded
  * Approve is held (the server refuses it, DRAFT_HAS_GAPS) and the card offers
- * the way to fill them: Answer mode on the thread, or, for an item with no
- * thread, the draft opened for editing on the card.
+ * to open the draft for editing right here.
  *
  * Keyboard on the focused card: a = approve, x = reject, Enter = the primary
  * action, s = skip. Inert while typing.
@@ -55,28 +58,6 @@ const { needsReply, onApprove, onReject, undoApprove, composeAndSend } = useRevi
 const message = computed(() => props.entry.message);
 const draftless = computed(() => needsReply(message.value));
 
-// Collision soft-hold: while ANOTHER teammate is actively replying to this
-// thread, hold the send/approve button (visible, disabled-styled). The server
-// re-checks at send time.
-const { user } = useAuth();
-const { members, fetchMembers } = useOrganization();
-onMounted(() => void fetchMembers());
-const threadId = computed<Id<'conversationThreads'> | null>(() => props.entry.thread?._id ?? null);
-const { data: presenceData } = useConvexQuery(api.inbox.presence.list, () =>
-	threadId.value ? { threadId: threadId.value } : 'skip'
-);
-const heldReplier = computed(() => {
-	const uid = user.value?.id;
-	return (presenceData.value ?? []).find((r) => r.mode === 'replying' && r.userId !== uid) ?? null;
-});
-const isHeld = computed(() => heldReplier.value !== null);
-const heldReason = computed(() => {
-	if (!heldReplier.value) return undefined;
-	const m = members.value.find((x) => x.userId === heldReplier.value!.userId);
-	const name = m ? m.user.name || m.user.email : t(GENERIC_TEAMMATE_NAME);
-	return collisionText(sendHoldReason(name));
-});
-
 const { showToast } = useToast();
 const busy = ref(false);
 const composeBody = ref('');
@@ -95,9 +76,7 @@ const gapHeld = computed(
 );
 const gapReason = computed(() =>
 	t(
-		props.entry.thread
-			? 'components.agentTasks.reviewFocusFlow.gapsHeldThread'
-			: 'components.agentTasks.reviewFocusFlow.gapsHeldHere',
+		'components.agentTasks.reviewFocusFlow.gapsHeldHere',
 		{ count: draftGapCount.value },
 		draftGapCount.value
 	)
@@ -197,7 +176,7 @@ function settleSend(
 }
 
 async function approve() {
-	if (busy.value || isHeld.value || gapHeld.value) return;
+	if (busy.value || gapHeld.value) return;
 	busy.value = true;
 	try {
 		const m = message.value;
@@ -229,7 +208,7 @@ async function reject() {
 
 async function sendReply() {
 	const body = composeBody.value;
-	if (busy.value || isHeld.value || fillGapCount.value > 0 || body.trim().length === 0) return;
+	if (busy.value || fillGapCount.value > 0 || body.trim().length === 0) return;
 	busy.value = true;
 	try {
 		const id = message.value._id;
@@ -249,11 +228,6 @@ async function sendReply() {
 	} finally {
 		busy.value = false;
 	}
-}
-
-// Editing happens where every reply is written: Answer mode on the thread.
-function openThread() {
-	if (props.entry.thread) props.controls.openAnswer();
 }
 
 function onKeydown(event: KeyboardEvent) {
@@ -326,22 +300,15 @@ const primaryButton =
 				primary-icon="lucide:send"
 				:primary-disabled="busy || !composeBody.trim()"
 				:primary-loading="busy"
-				:held="isHeld"
-				:held-reason="heldReason"
 				:skip-label="t('common.dismiss')"
 				skip-destructive
 				:skip-disabled="busy"
 				@primary="sendReply"
 				@skip="reject"
-			>
-				<button v-if="entry.thread" type="button" :class="secondaryButton" @click="openThread">
-					<Icon name="lucide:external-link" class="w-3.5 h-3.5" />
-					{{ t('components.agentTasks.reviewFocusFlow.openThread') }}
-				</button>
-			</TaskActions>
+			/>
 		</template>
 
-		<!-- Agent draft with its gaps filled on the card (no thread to edit it in) -->
+		<!-- Agent draft with its gaps filled on the card -->
 		<template v-else-if="filling">
 			<textarea
 				ref="fillField"
@@ -357,8 +324,8 @@ const primaryButton =
 				primary-icon="lucide:send"
 				:primary-disabled="busy || !composeBody.trim()"
 				:primary-loading="busy"
-				:held="isHeld || fillGapCount > 0"
-				:held-reason="heldReason ?? fillReason"
+				:held="fillGapCount > 0"
+				:held-reason="fillReason"
 				:held-reason-id="fillReasonId"
 				:skip-label="t('components.agentTasks.reviewFocusFlow.reject')"
 				skip-destructive
@@ -399,8 +366,8 @@ const primaryButton =
 				:primary-disabled="busy"
 				:primary-loading="busy"
 				:quiet="gapHeld"
-				:held="isHeld || gapHeld"
-				:held-reason="heldReason ?? (gapHeld ? gapReason : undefined)"
+				:held="gapHeld"
+				:held-reason="gapHeld ? gapReason : undefined"
 				:skip-label="t('components.agentTasks.reviewFocusFlow.reject')"
 				skip-destructive
 				:skip-disabled="busy"
@@ -413,16 +380,7 @@ const primaryButton =
 				@skip="reject"
 			>
 				<button
-					v-if="entry.thread"
-					type="button"
-					:class="gapHeld ? primaryButton : secondaryButton"
-					@click="openThread"
-				>
-					<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
-					{{ t('components.agentTasks.reviewFocusFlow.editInThread') }}
-				</button>
-				<button
-					v-else-if="gapHeld"
+					v-if="gapHeld"
 					type="button"
 					:class="primaryButton"
 					data-testid="team-card-fill-gaps"
