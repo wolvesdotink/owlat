@@ -488,3 +488,21 @@ describe('runSharedDraft — unfinished markup and the spend of rejected drafts'
 		expect(draftSpend()).toEqual([]);
 	});
 });
+
+describe('runSharedDraft — an inline tool-call block (second review)', () => {
+	it('retries a draft with a complete call block inside a sentence', async () => {
+		const reply = 'Hi John,\n\nThe room is yours.';
+		runLlmTextWithToolsMock.mockResolvedValueOnce({
+			text: `Let me check. <tool_call>{"name":"recallKnowledge","arguments":{"query":"availability"}}</tool_call>${reply}`,
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
+		runLlmTextMock.mockResolvedValueOnce({ text: reply, tokenUsage: undefined, modelUsed: 'm' });
+		const out = await runSharedDraft(
+			fakeCtx,
+			baseParams({ tools: { recallKnowledge: {} as never } })
+		);
+		expect(out.draftBody).toBe(reply);
+		expect(runLlmTextMock).toHaveBeenCalledTimes(1);
+	});
+});

@@ -323,3 +323,50 @@ describe('writeAnswerDraft — chunk boundaries, unfinished tags, spend', () => 
 		expect(finals).toEqual([expect.objectContaining({ text: REPLY, status: 'complete' })]);
 	});
 });
+
+describe('writeAnswerDraft — second review cases, raw tags', () => {
+	it.each([
+		['a leading result tag split before its >', ['<result', '>{}</result>', REPLY]],
+		['a leading closer split inside its name', ['</resu', 'lt>', REPLY]],
+		[
+			'a parameter split inside its name attribute',
+			['<parameter name=', '"q">x</parameter>', REPLY],
+		],
+	])('never shows %s', async (_label, parts) => {
+		mocks.runLlmStream.mockImplementationOnce(chunks(parts));
+		const { ctx, shown, finals } = makeCtx();
+		await write(ctx);
+		for (const text of shown) expect(REPLY.startsWith(text), JSON.stringify(text)).toBe(true);
+		expect(finals).toEqual([expect.objectContaining({ text: REPLY, status: 'complete' })]);
+	});
+
+	it('stores nothing when the provider fails inside a leading tag', async () => {
+		mocks.runLlmStream.mockImplementationOnce(chunks(['<result'], { throws: true }));
+		const { ctx, finals } = makeCtx();
+		await write(ctx);
+		expect(finals).toEqual([expect.objectContaining({ text: '', status: 'error' })]);
+	});
+
+	it('retries instead of finalizing a generation that ends inside a leading tag', async () => {
+		mocks.runLlmStream
+			.mockImplementationOnce(chunks(['<result']))
+			.mockImplementationOnce(chunks([REPLY]));
+		const { ctx, finals } = makeCtx();
+		await write(ctx);
+		expect(mocks.runLlmStream).toHaveBeenCalledTimes(2);
+		expect(finals).toEqual([expect.objectContaining({ text: REPLY, status: 'complete' })]);
+	});
+
+	it('never shows an inline tool-call block and retries the draft', async () => {
+		const inline =
+			'Let me check. <tool_call>{"name":"recallKnowledge","arguments":{"query":"availability"}}</tool_call>';
+		mocks.runLlmStream
+			.mockImplementationOnce(streams(`${inline}${REPLY}`))
+			.mockImplementationOnce(streams(REPLY));
+		const { ctx, shown, finals } = makeCtx();
+		await write(ctx);
+		for (const text of shown) expect(text).not.toContain('<tool_call');
+		expect(mocks.runLlmStream).toHaveBeenCalledTimes(2);
+		expect(finals).toEqual([expect.objectContaining({ text: REPLY, status: 'complete' })]);
+	});
+});

@@ -40,6 +40,12 @@ export interface ReviseResult {
 	status: 'complete' | 'error';
 	text: string;
 	injectionFlagged: boolean;
+	/**
+	 * Why an `error` is the user's to fix. `draft_has_tool_markup`: the draft
+	 * holds tool-call text a model typed into it, which they have to remove.
+	 * Absent from a backend that predates it: the generic failure shows.
+	 */
+	errorCode?: string;
 }
 
 export interface DraftReviseDeps {
@@ -107,7 +113,11 @@ export function useDraftRevise(deps: DraftReviseDeps) {
 			const res = await deps.runRevise(streamId, { ...input, instruction });
 			if (res.status === 'error') {
 				status.value = 'error';
-				deps.onError?.(t('shared.postbox.useDraftRevise.failed'));
+				deps.onError?.(
+					res.errorCode === 'draft_has_tool_markup'
+						? t('shared.postbox.useDraftRevise.draftHasToolMarkup')
+						: t('shared.postbox.useDraftRevise.failed')
+				);
 				await cleanup();
 				return;
 			}

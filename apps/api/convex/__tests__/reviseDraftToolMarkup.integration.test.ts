@@ -116,7 +116,12 @@ describe('reviseDraft — leaked tool-call markup', () => {
 		const t = await makeT();
 		await enableFeatures(t, ['ai']);
 		const { res, buffer } = await revise(t, `Hi John,\n\n${MARKUP}\nBest`);
-		expect(res).toEqual({ text: '', injectionFlagged: false, status: 'error' });
+		expect(res).toEqual({
+			text: '',
+			injectionFlagged: false,
+			status: 'error',
+			errorCode: 'draft_has_tool_markup',
+		});
 		expect(buffer).toMatchObject({ status: 'error', text: '' });
 		expect(runLlmStream).not.toHaveBeenCalled();
 	});
@@ -153,6 +158,15 @@ describe('reviseDraft — leaked tool-call markup', () => {
 		revisesTo(`Hi John,\n\n${MARKUP}\nBest`);
 		const { res, buffer } = await revise(t, 'Sure, happy to help.');
 		expect(res).toEqual({ text: '', injectionFlagged: false, status: 'error' });
+		expect(buffer).toMatchObject({ status: 'error', text: '' });
+	});
+
+	it('settles error when the revision carries an inline tool-call block', async () => {
+		const t = await makeT();
+		await enableFeatures(t, ['ai']);
+		revisesTo(`Let me check. <tool_call>{"name":"recallKnowledge"}</tool_call>${REPLY}`);
+		const { res, buffer } = await revise(t, 'Sure, happy to help.');
+		expect(res).toMatchObject({ text: '', status: 'error' });
 		expect(buffer).toMatchObject({ status: 'error', text: '' });
 	});
 });

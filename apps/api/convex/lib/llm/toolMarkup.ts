@@ -31,30 +31,43 @@
  *   with a letter or `_`, then up to 31 letters, digits, `_`, `.` or `-`.
  * - SPACE includes newlines; each run is at most 32 characters, a name value
  *   at most 200 (no newline, `<` or `>` in it).
- * - HTML-escaped markup (`&lt;invoke name=&quot;…&quot;&gt;`) reads as the
- *   markup it escapes: the text is scanned with the entities for `<`, `>`, `"`
- *   and `'` decoded, and every cut is mapped back to the raw text.
+ *
+ * Only raw tags count. A draft is plain text, every leak seen (the issue's
+ * example, the providers' behaviour) is raw tags, and an escaped
+ * `&lt;invoke …&gt;` is not a tool call: it reads as literal entity text, like
+ * any other text a model can get wrong. Decoding entities would put a second
+ * grammar beside this one, and a split entity would then show markup while it
+ * streams.
  *
  * ## The policy
  *
- * A leading prefix (only whitespace before it) of complete tool tags, each
- * opener taken up to its closing tag, is the leaked call: it is cut and the
- * reply after it kept. After the reply starts, a reply may quote markup in
- * prose, so only a tool-shaped opener counts:
+ * - A leading prefix (only whitespace before it) of complete tool tags, each
+ *   opener taken up to its closing tag, is the leaked call: it is cut and the
+ *   reply after it kept. Any tool tag counts here, inner tags and stray
+ *   closing tags included. A text that ends inside a leading tag is
+ *   unfinished.
+ * - After the reply starts, prose can mention a tag, so what counts is a call,
+ *   not a tag name:
+ *   - `<invoke name="…">` anywhere: complete, broken once its `name`
+ *     attribute has started, or unfinished at the end. Nothing else is
+ *     written that way.
+ *   - a container block: a container opener (`<function_calls>`,
+ *     `<tool_call>`, ...) followed by its closing tag, on any line. An opener
+ *     whose closing tag never comes is unusable too: it cannot be told apart
+ *     from a generation that stopped inside the block, which the stream had
+ *     to hold back.
+ *   - a tool tag the text ends inside (`Hi John, <tool_ca`).
+ *   - A container in a code span is a mention, never a block: the text
+ *     between a run of backticks and the next run of the same length, which
+ *     covers inline `` `<tool_call>` `` and a fenced sample. So is a closing
+ *     tag on its own, an inner tag, and a container whose opener is not a
+ *     well-formed tag.
  *
- * - `<invoke name="…">` anywhere, complete or broken once its `name` attribute
- *   has started (`<invoke name="x" extra>`), or unfinished at the end;
- * - a container opener (`<function_calls>`, `<tool_call>`, ...) that starts a
- *   line, complete, broken or unfinished at the end. Inline, as in "wrap it in
- *   `<tool_call>`", it is prose;
- * - never a closing tag on its own (its opener is what counts, so
- *   `<invoke>foo</invoke>` stays a reply), and never the inner tags.
+ * So a reply may quote markup in a code span and mention tags in prose; a
+ * bare block written out in the reply, quoted or leaked, costs one retry.
  *
- * Any of those makes the draft `unusable`. A tool block quoted on its own line
- * in a code sample is therefore treated as a leak: that costs one retry, while
- * the opposite mistake sends markup to a customer.
- *
- * The lexer looks at most a few hundred characters past each `<`, so a scan is
+ * The lexer looks at most a few hundred characters past each `<`, and a check
+ * searches for at most one closing tag past the leading prefix, so a scan is
  * linear in the text length on any input.
  *
  * Pure (no ctx, no 'use node').
@@ -78,7 +91,8 @@ const NAMED_TAGS: ReadonlySet<string> = new Set(['invoke', 'parameter']);
 /** Tags that only count as markup inside a leading prefix. */
 const INNER_TAGS: ReadonlySet<string> = new Set(['parameter', 'result']);
 
-const CONTAINER_TAGS = TAG_NAMES.filter((name) => !INNER_TAGS.has(name));
+/** Tags that count after the reply starts. */
+const CALL_TAGS = TAG_NAMES.filter((name) => !INNER_TAGS.has(name));
 
 const MAX_WORD = 64;
 const MAX_SPACE = 32;
@@ -87,23 +101,6 @@ const WORD_CHAR = /[A-Za-z0-9_.:-]/;
 const NAMESPACE_SOURCE = '[A-Za-z_][A-Za-z0-9_.-]{0,31}';
 const NAMESPACE = new RegExp(`^${NAMESPACE_SOURCE}$`);
 const SPACE = /\s/;
-
-/** Entities a model or an escaping layer writes for the tag characters. */
-const ENTITIES: ReadonlyArray<readonly [string, string]> = [
-	['&lt;', '<'],
-	['&gt;', '>'],
-	['&quot;', '"'],
-	['&apos;', "'"],
-	['&#60;', '<'],
-	['&#62;', '>'],
-	['&#34;', '"'],
-	['&#39;', "'"],
-	['&#x3c;', '<'],
-	['&#x3e;', '>'],
-	['&#x22;', '"'],
-	['&#x27;', "'"],
-];
-const MAX_ENTITY = 6;
 
 type Lexed =
 	/** Not the start of a tool tag. */
@@ -290,80 +287,82 @@ function scanLeadingMarkup(text: string): LeadingMarkup {
 	return { blocks, end: index, state: 'done' };
 }
 
-/** Whether only spaces and tabs stand between `index` and the line (or body) start. */
-function startsLine(text: string, index: number, bodyStart: number): boolean {
-	let before = index - 1;
-	while (before >= bodyStart && (text[before] === ' ' || text[before] === '\t')) before -= 1;
-	return before < bodyStart || text[before] === '\n' || text[before] === '\r';
+/** A partial tag whose name so far starts one of `names` (`<tool_ca`, `</res`). */
+function startsTagName(tag: Lexed, names: readonly string[]): boolean {
+	return (
+		tag.kind === 'partial' && tag.name !== '' && names.some((name) => name.startsWith(tag.name))
+	);
 }
 
-/** The policy in the module comment, for one lexed tag after the reply started. */
-function countsInReply(tag: Lexed, isLineStart: boolean): boolean {
-	if (tag.kind === 'none' || tag.isClosing) return false;
-	if (tag.kind === 'partial' && !tag.isNameComplete) {
-		return (
-			isLineStart && tag.name !== '' && CONTAINER_TAGS.some((name) => name.startsWith(tag.name))
-		);
+/**
+ * Code spans after `from`: the text between a run of backticks and the next
+ * run of the same length (inline code, or a fenced block). An unpaired run is
+ * literal. While streaming, a run at the very end may still grow, so it pairs
+ * with nothing yet.
+ */
+function codeSpans(text: string, from: number, isFinal: boolean): Array<readonly [number, number]> {
+	const runs: Array<readonly [number, number]> = [];
+	for (let start = text.indexOf('`', from); start !== -1;) {
+		let end = start;
+		while (end < text.length && text[end] === '`') end += 1;
+		if (isFinal || end < text.length) runs.push([start, end]);
+		start = text.indexOf('`', end);
 	}
-	if (INNER_TAGS.has(tag.name)) return false;
-	if (tag.name === 'invoke') {
-		return tag.kind === 'tag' || tag.hasNameAttribute || (tag.kind === 'partial' && isLineStart);
+	const nextOfLength: number[] = new Array<number>(runs.length).fill(-1);
+	const laterOfLength = new Map<number, number>();
+	for (let run = runs.length - 1; run >= 0; run -= 1) {
+		const length = runs[run]![1] - runs[run]![0];
+		nextOfLength[run] = laterOfLength.get(length) ?? -1;
+		laterOfLength.set(length, run);
 	}
-	return isLineStart;
+	const spans: Array<readonly [number, number]> = [];
+	for (let run = 0; run < runs.length;) {
+		const closing = nextOfLength[run]!;
+		if (closing === -1) {
+			run += 1;
+			continue;
+		}
+		spans.push([runs[run]![0], runs[closing]![1]]);
+		run = closing + 1;
+	}
+	return spans;
 }
 
-/** The first tool tag in the reply that starts at `bodyStart`, or null. */
-function firstMarkupInReply(
-	text: string,
-	bodyStart: number
-): { readonly index: number; readonly isUnfinished: boolean } | null {
+type ReplyMarkup = {
+	readonly index: number;
+	readonly reason: 'embedded' | 'unclosed' | 'unfinished';
+};
+
+/** The first call in the reply that starts at `bodyStart`, by the policy above, or null. */
+function firstMarkupInReply(text: string, bodyStart: number, isFinal: boolean): ReplyMarkup | null {
+	const spans = codeSpans(text, bodyStart, isFinal);
+	let span = 0;
 	for (
 		let index = text.indexOf('<', bodyStart);
 		index !== -1;
 		index = text.indexOf('<', index + 1)
 	) {
 		const tag = lexTag(text, index);
-		if (countsInReply(tag, startsLine(text, index, bodyStart))) {
-			return { index, isUnfinished: tag.kind === 'partial' };
+		if (tag.kind === 'none' || tag.isClosing) continue;
+		if (tag.kind === 'partial' && !tag.isNameComplete) {
+			if (startsTagName(tag, CALL_TAGS)) return { index, reason: 'unfinished' };
+			continue;
 		}
+		if (tag.name === 'invoke') {
+			if (tag.kind === 'partial') return { index, reason: 'unfinished' };
+			if (tag.kind === 'tag' || tag.hasNameAttribute) return { index, reason: 'embedded' };
+			continue;
+		}
+		if (INNER_TAGS.has(tag.name) || tag.kind === 'broken') continue;
+		while (span < spans.length && spans[span]![1] <= index) span += 1;
+		if (span < spans.length && spans[span]![0] <= index) continue;
+		if (tag.kind === 'partial') return { index, reason: 'unfinished' };
+		return {
+			index,
+			reason: closingTagEnd(text, tag.name, tag.end) === -1 ? 'unclosed' : 'embedded',
+		};
 	}
 	return null;
-}
-
-interface DecodedText {
-	readonly text: string;
-	/** The raw index of a decoded index (the decoded length maps to the raw length). */
-	toRaw(index: number): number;
-}
-
-/** The text with the tag-character entities decoded, one level deep. */
-function decodeTagEntities(raw: string): DecodedText {
-	if (!raw.includes('&')) return { text: raw, toRaw: (index) => index };
-	const parts: string[] = [];
-	const offsets: number[] = [];
-	let index = 0;
-	while (index < raw.length) {
-		const candidate = raw[index] === '&' ? raw.slice(index, index + MAX_ENTITY).toLowerCase() : '';
-		const entity = candidate ? ENTITIES.find(([name]) => candidate.startsWith(name)) : undefined;
-		offsets.push(index);
-		if (entity) {
-			parts.push(entity[1]);
-			index += entity[0].length;
-		} else {
-			parts.push(raw[index]!);
-			index += 1;
-		}
-	}
-	offsets.push(raw.length);
-	return { text: parts.join(''), toRaw: (decoded) => offsets[decoded]! };
-}
-
-/** Where a trailing, unfinished tag-character entity (`&l`, `&#6`) starts, or -1. */
-function trailingEntityStart(raw: string, from: number): number {
-	const amp = raw.lastIndexOf('&');
-	if (amp < from || raw.length - amp >= MAX_ENTITY) return -1;
-	const tail = raw.slice(amp).toLowerCase();
-	return ENTITIES.some(([name]) => name.length > tail.length && name.startsWith(tail)) ? amp : -1;
 }
 
 export type ToolMarkupResult =
@@ -372,8 +371,8 @@ export type ToolMarkupResult =
 	/** A leading markup prefix was removed: the reply that followed it. */
 	| { readonly kind: 'stripped'; readonly text: string }
 	/**
-	 * Nothing to keep: a tool tag after the reply started, a tag or block the
-	 * text ends inside, or no reply after the prefix. The generation failed.
+	 * Nothing to keep: a call after the reply started, a block or tag the text
+	 * ends inside, or no reply after the prefix. The generation failed.
 	 */
 	| {
 			readonly kind: 'unusable';
@@ -385,17 +384,19 @@ export type ToolMarkupResult =
  * leading prefix and keep the reply after it, or report the draft unusable
  * (see the policy in the module comment).
  */
-export function stripLeakedToolMarkup(raw: string): ToolMarkupResult {
-	const decoded = decodeTagEntities(raw);
-	const leading = scanLeadingMarkup(decoded.text);
+export function stripLeakedToolMarkup(text: string): ToolMarkupResult {
+	const leading = scanLeadingMarkup(text);
 	if (leading.state === 'open') return { kind: 'unusable', reason: 'unclosed' };
-	if (leading.state === 'partial' && leading.blocks > 0) {
+	if (
+		leading.state === 'partial' &&
+		(leading.blocks > 0 || startsTagName(lexTag(text, leading.end), TAG_NAMES))
+	) {
 		return { kind: 'unusable', reason: 'unfinished' };
 	}
-	const markup = firstMarkupInReply(decoded.text, leading.end);
-	if (markup) return { kind: 'unusable', reason: markup.isUnfinished ? 'unfinished' : 'embedded' };
-	if (leading.blocks === 0) return { kind: 'clean', text: raw };
-	const body = raw.slice(decoded.toRaw(leading.end));
+	const markup = firstMarkupInReply(text, leading.end, true);
+	if (markup) return { kind: 'unusable', reason: markup.reason };
+	if (leading.blocks === 0) return { kind: 'clean', text };
+	const body = text.slice(leading.end);
 	return body.trim().length === 0
 		? { kind: 'unusable', reason: 'empty' }
 		: { kind: 'stripped', text: body };
@@ -404,30 +405,24 @@ export function stripLeakedToolMarkup(raw: string): ToolMarkupResult {
 /**
  * The part of a draft still being streamed that is safe to show. Nothing is
  * shown while the text is, or could still become, a leading markup prefix;
- * after it, the reply is shown without it. A tool tag after the reply started
- * freezes the text before it (the final text is then `unusable`), and a tag or
- * entity the text ends inside is held back until it is clearly not markup.
+ * after it, the reply is shown without it. A call after the reply started,
+ * including a container opener whose closing tag has not come yet, holds the
+ * text back from where it starts (the final text is then `unusable` unless a
+ * code span closes around the opener), and so does a tag the text ends
+ * inside.
  *
  * Leading whitespace is dropped; the final draft is trimmed anyway.
  */
-export function visibleDraftStreamText(raw: string): string {
-	const decoded = decodeTagEntities(raw);
-	const text = decoded.text;
+export function visibleDraftStreamText(text: string): string {
 	const leading = scanLeadingMarkup(text);
 	if (leading.state !== 'done') return '';
 	let end = text.length;
-	const markup = firstMarkupInReply(text, leading.end);
+	const markup = firstMarkupInReply(text, leading.end, false);
 	if (markup) {
 		end = markup.index;
 	} else {
 		const lastOpen = text.lastIndexOf('<');
 		if (lastOpen >= leading.end && lexTag(text, lastOpen).kind === 'partial') end = lastOpen;
 	}
-	const rawStart = decoded.toRaw(leading.end);
-	let rawEnd = decoded.toRaw(end);
-	if (rawEnd === raw.length) {
-		const entity = trailingEntityStart(raw, rawStart);
-		if (entity !== -1) rawEnd = entity;
-	}
-	return raw.slice(rawStart, rawEnd);
+	return text.slice(leading.end, end);
 }

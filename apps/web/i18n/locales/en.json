@@ -14289,6 +14289,7 @@
 				"draftGaps": "{count} gaps still need filling in, starting with “{label}”"
 			},
 			"useDraftRevise": {
+				"draftHasToolMarkup": "Your draft still contains text from an AI tool call. Remove it, then revise again.",
 				"failed": "Revise failed — your draft is unchanged."
 			},
 			"useMailMigration": {

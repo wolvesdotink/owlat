@@ -61,6 +61,9 @@ const REVISE_MAX_THREAD_CHARS = 8000;
  */
 const FLUSH_INTERVAL_MS = 120;
 
+/** `errorCode` of a revise refused because the draft holds tool-call markup. */
+const DRAFT_HAS_TOOL_MARKUP = 'draft_has_tool_markup';
+
 /**
  * Assemble the revise prompt. Pure + exported so the unit test can assert the
  * trust boundary without a live model: the user instruction is a TRUSTED
@@ -115,7 +118,17 @@ export const reviseDraft = authedAction({
 	handler: async (
 		ctx,
 		args
-	): Promise<{ text: string; injectionFlagged: boolean; status: 'complete' | 'error' }> => {
+	): Promise<{
+		text: string;
+		injectionFlagged: boolean;
+		status: 'complete' | 'error';
+		/**
+		 * Why an `error` is the user's to fix: the draft they asked to revise
+		 * holds tool-call markup. Optional and additive, so a client that does
+		 * not read it shows its generic failure, as before.
+		 */
+		errorCode?: typeof DRAFT_HAS_TOOL_MARKUP;
+	}> => {
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 		// Ownership check + reset the buffer to a clean streaming state.
 		await ctx.runMutation(internal.mail.draftStreamStore.beginDraftStream, {
@@ -137,7 +150,12 @@ export const reviseDraft = authedAction({
 				status: 'error',
 				errorMessage: 'The draft contains tool-call markup. Remove it, then try again.',
 			});
-			return { text: '', injectionFlagged: false, status: 'error' };
+			return {
+				text: '',
+				injectionFlagged: false,
+				status: 'error',
+				errorCode: DRAFT_HAS_TOOL_MARKUP,
+			};
 		}
 
 		const { system, prompt } = buildRevisePrompt({

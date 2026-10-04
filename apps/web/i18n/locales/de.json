@@ -14289,6 +14289,7 @@
 				"draftGaps": "{count} Lücken müssen noch ausgefüllt werden, zuerst „{label}“"
 			},
 			"useDraftRevise": {
+				"draftHasToolMarkup": "In deinem Entwurf steht noch Text aus einem KI-Werkzeugaufruf. Entferne ihn und überarbeite dann noch mal.",
 				"failed": "Überarbeitung fehlgeschlagen — dein Entwurf bleibt unverändert."
 			},
 			"useMailMigration": {
