@@ -313,16 +313,16 @@ export function reduceOpened(
 		return reduceAutomatedOpen(send, args, ref, from);
 	}
 
-	const openCount = (send.openCount ?? 0) + 1;
-	const isFirstOpen = !send.openedAt;
-
-	// Always record the open (counter bump) — even on terminal Send rows.
-	const patch: Record<string, unknown> = { openCount };
-
-	// Status only moves on the first open AND from a non-terminal state.
-	if (isFirstOpen && from !== 'bounced' && from !== 'complained') {
-		patch['status'] = 'opened';
+	// `openedAt` marks the first reader open whatever the status, which is how
+	// `sendEngagement.ts` reads it. A bounced or complained row gets the marker
+	// but keeps its status, so a re-open there is not a first open again
+	// (#1189). A prior `openCount` without the marker means the same. The
+	// dispatcher refuses opens on those rows today; this keeps the reducer right.
+	const isFirstOpen = !send.openedAt && !send.openCount;
+	const patch: Record<string, unknown> = { openCount: (send.openCount ?? 0) + 1 };
+	if (isFirstOpen) {
 		patch['openedAt'] = args.at;
+		if (from !== 'bounced' && from !== 'complained') patch['status'] = 'opened';
 	}
 
 	const effects: Effect[] = [];
@@ -423,13 +423,12 @@ export function reduceClicked(
 	}
 
 	const clickedLinks = [...(send.clickedLinks ?? []), { url: args.url, clickedAt: args.at }];
-	const isFirstClick = !send.clickedAt;
-
+	// First-click marker, gated like `openedAt` in `reduceOpened`.
+	const isFirstClick = !send.clickedAt && !send.clickedLinks?.length;
 	const patch: Record<string, unknown> = { clickedLinks };
-
-	if (isFirstClick && from !== 'bounced' && from !== 'complained') {
-		patch['status'] = 'clicked';
+	if (isFirstClick) {
 		patch['clickedAt'] = args.at;
+		if (from !== 'bounced' && from !== 'complained') patch['status'] = 'clicked';
 	}
 
 	const effects: Effect[] = [];

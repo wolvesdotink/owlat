@@ -11,7 +11,9 @@
  *   - No live needs-reply thread (loader null) → no slot persisted.
  *   - LLM generation error → no slot persisted (thread still shows for reply).
  *   - Happy path → exactly one persistDraftSlot with the quality score as
- *     confidence. NEVER auto-sends (there is no send call anywhere).
+ *     confidence, after two model calls (the draft and its self-check) and no
+ *     alternative-drafts call (#1200). NEVER auto-sends (there is no send call
+ *     anywhere).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -36,14 +38,6 @@ vi.mock('../../lib/llm/dispatch', () => ({
 vi.mock('../../lib/llmProvider', () => ({
 	resolveLanguageModel: () => ({}) as never,
 	resolveLanguageModelForClassifiedDraft: () => ({}) as never,
-}));
-vi.mock('../replyOptions', () => ({
-	MAX_REPLY_OPTIONS: 3,
-	generateReplyOptions: vi.fn(async () => ({
-		replies: ['ALT ONE', 'ALT TWO'],
-		tokenUsage: undefined,
-		modelUsed: 'mock-model',
-	})),
 }));
 vi.mock('../../analytics/llmUsage', () => ({ recordLlmSpend: vi.fn(async () => {}) }));
 
@@ -138,8 +132,12 @@ describe('generateDraftOnArrival', () => {
 		expect(slot.draft).toBe('PERSONAL DRAFT BODY');
 		expect(slot.confidence).toBe(0.72);
 		expect(slot.quality).toEqual({ score: 0.72, complete: true, grounded: true, flags: [] });
-		// review-first (confidence 0.5, quality < 0.8) → alternatives offered.
-		expect(slot.options?.length).toBeGreaterThanOrEqual(2);
+		// The draft and its self-check, and no alternatives: the slot has no
+		// way to offer them (#1200). The self-check scored low (0.72), the case
+		// that used to buy a third, capable-tier call on every arrival.
+		expect(runLlmTextMock).toHaveBeenCalledTimes(1);
+		expect(runLlmObjectMock).toHaveBeenCalledTimes(1);
+		expect(slot.options).toBeUndefined();
 		expect(h.runQuery).toHaveBeenCalledWith(expect.anything(), {
 			mailboxId: 'mbx1',
 			classification: 'other',
@@ -156,8 +154,7 @@ describe('generateDraftOnArrival', () => {
 		const user = String(call.messages[call.messages.length - 1]!.content);
 		expect(user).toContain('has not answered these questions yet');
 		expect(user).toContain(gap);
-		// The model dropped it; the stored draft still carries it, and the
-		// alternatives (written without the trusted block) are not kept.
+		// The model dropped it; the stored draft still carries it.
 		const slot = h.persisted[0]!;
 		expect(slot.draft).toBe(`PERSONAL DRAFT BODY\n\n${gap}`);
 		expect(findDraftGaps(slot.draft).map((g) => g.label)).toEqual([

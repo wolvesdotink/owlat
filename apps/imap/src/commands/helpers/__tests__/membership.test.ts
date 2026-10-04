@@ -78,6 +78,10 @@ function folder(initial: number[], mode: Mode, blockSize = 256, blocksPerPage = 
 		setBeforeRead(fn: (name: string) => void) {
 			beforeRead = fn;
 		},
+		/** The backend's walk moved the folder on (0054 started it, or finished it). */
+		setMode(next: Mode) {
+			mode = next;
+		},
 	};
 }
 
@@ -92,6 +96,19 @@ describe('loadCurrentUids', () => {
 		expect(await loadCurrentUids(f.convex, 'f1')).toEqual(range(1, 2500));
 		expect(await loadCurrentUids(f.convex, 'f1')).toEqual(range(1, 2500));
 		expect(f.counts).toMatchObject({ membership: 2, listing: 6, listed: 5000 });
+	});
+
+	it('stops listing an unmigrated folder once the backend has walked it', async () => {
+		const f = folder(range(1, 2500), 'none');
+		await loadCurrentUids(f.convex, 'f1');
+		f.setMode('walking');
+		await loadCurrentUids(f.convex, 'f1');
+		const listed = f.counts.listing;
+		f.setMode('ready');
+		f.change(range(1, 2501));
+		for (let i = 0; i < 3; i++)
+			expect(await loadCurrentUids(f.convex, 'f1')).toEqual(range(1, 2501));
+		expect(f.counts.listing).toBe(listed);
 	});
 
 	it('reads a ready folder from its blocks and reuses them while the version holds', async () => {
