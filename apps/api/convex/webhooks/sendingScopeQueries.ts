@@ -1,13 +1,26 @@
 /**
  * The database half of `./sendingScope.ts` (#1243): does an event from outside
  * this deployment's sending scope match one of our Sends?
+ *
+ * Matching takes three facts: the provider message id names a Send, that Send
+ * went out through the same provider kind, and it went to the address the event
+ * names. A replay of stored feedback (`./unresolvedFeedback.ts`) asks the same
+ * question later, from a salted hash of the address instead of the address.
  */
 
 import { v } from 'convex/values';
 import { internalQuery, type DatabaseReader } from '../_generated/server';
+import { hmacSha256Hex } from '../lib/crypto';
 import { normalizeEmail } from '../lib/inputGuards';
 
-async function findSendByProviderMessageId(db: DatabaseReader, providerMessageId: string) {
+/** `attributed`: one of ours. `mismatch`: the id names a Send, but not this one. */
+export type SendingScopeMatch = 'attributed' | 'mismatch' | 'no_send';
+
+/** The provider kind and recipient of the Send a provider message id names, if any. */
+export async function findSendByProviderMessageId(
+	db: DatabaseReader,
+	providerMessageId: string
+): Promise<{ providerType: string | undefined; recipient: string } | null> {
 	const campaignSend = await db
 		.query('emailSends')
 		.withIndex('by_provider_message_id', (q) => q.eq('providerMessageId', providerMessageId))
@@ -22,13 +35,31 @@ async function findSendByProviderMessageId(db: DatabaseReader, providerMessageId
 	return otherSend ? { providerType: otherSend.providerType, recipient: otherSend.email } : null;
 }
 
-/** Whether a Send of ours went out through `providerType` to `recipient` under this id. */
-export const attributesToOwnSend = internalQuery({
-	args: { providerMessageId: v.string(), providerType: v.string(), recipient: v.string() },
-	handler: async (ctx, args): Promise<boolean> => {
+/**
+ * The address an out-of-scope event named, as stored on an unresolved-feedback
+ * row: an HMAC of the normalized address keyed by the message id. Salted per
+ * message, so equal addresses do not link across rows and no precomputed table
+ * reverses it; it is compared, never read back.
+ */
+export async function scopeRecipientHash(
+	providerMessageId: string,
+	recipient: string
+): Promise<string | undefined> {
+	const normalized = normalizeEmail(recipient);
+	return normalized ? await hmacSha256Hex(providerMessageId, normalized) : undefined;
+}
+
+export const matchSendingScope = internalQuery({
+	args: {
+		providerMessageId: v.string(),
+		providerType: v.string(),
+		recipient: v.optional(v.string()),
+	},
+	handler: async (ctx, args): Promise<SendingScopeMatch> => {
 		const send = await findSendByProviderMessageId(ctx.db, args.providerMessageId);
-		if (!send || send.providerType !== args.providerType) return false;
+		if (!send) return 'no_send';
+		if (send.providerType !== args.providerType || !args.recipient) return 'mismatch';
 		const recipient = normalizeEmail(args.recipient);
-		return Boolean(recipient) && normalizeEmail(send.recipient) === recipient;
+		return recipient && normalizeEmail(send.recipient) === recipient ? 'attributed' : 'mismatch';
 	},
 });

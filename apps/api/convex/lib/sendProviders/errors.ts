@@ -59,6 +59,12 @@ export type EmailSendAttempt =
 			retryAfterMs?: number;
 			/** MTA request outcome is unknown because no HTTP response was observed. */
 			acceptanceUnknown?: true;
+			/**
+			 * The provider's id for a message it received and refused (a Mandrill
+			 * `rejected` result). Bound to the Send before it fails, so the
+			 * provider's later feedback about that refusal still finds it (#1243).
+			 */
+			providerMessageId?: string;
 	  };
 
 /**

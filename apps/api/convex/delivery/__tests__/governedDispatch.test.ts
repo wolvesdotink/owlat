@@ -663,6 +663,68 @@ describe('dispatchGovernedEmail', () => {
 });
 
 /**
+ * A REFUSED MESSAGE KEEPS ITS PROVIDER ID (#1243). Mandrill can receive a
+ * message and reject it in the same response; its later `reject` webhook names
+ * the id, and a webhook from outside the deployment's subaccounts is applied
+ * only to a Send that carries it.
+ */
+describe('a provider refusal that names a message id', () => {
+	const BIND_REJECTED = getFunctionName(
+		internal.delivery.rejectedProviderIdentity.bindRejectedProviderIdentity
+	);
+
+	beforeEach(() => {
+		resolveLastMileRouting.mockReset();
+		sendProviderDispatch.mockReset();
+		runMutation.mockClear();
+		resolveLastMileRouting.mockResolvedValue({
+			kind: 'ready',
+			providerKind: 'mandrill',
+			route: null,
+			organizationId: 'org-1',
+		});
+	});
+
+	const refusal = (extra: Record<string, unknown>) => ({
+		result: {
+			success: false,
+			errorCode: 'CONTENT_REJECTED',
+			errorMessage: 'Mandrill rejected: rule',
+			...extra,
+		},
+		providerType: 'mandrill',
+		latencyMs: 40,
+		attempts: 1,
+	});
+
+	const bindCalls = () =>
+		runMutation.mock.calls.filter(([ref]) => getFunctionName(ref) === BIND_REJECTED);
+
+	it('binds the id to the Send, then fails as before', async () => {
+		sendProviderDispatch.mockResolvedValue(refusal({ providerMessageId: 'refused-1' }));
+
+		await expect(dispatchGovernedEmail(ctx, baseRequest)).rejects.toThrow(
+			'Mandrill rejected: rule'
+		);
+
+		expect(bindCalls()).toEqual([
+			[
+				expect.anything(),
+				{ send: baseRequest.sendRef, providerMessageId: 'refused-1', providerType: 'mandrill' },
+			],
+		]);
+	});
+
+	it('binds nothing for a failure without an id', async () => {
+		sendProviderDispatch.mockResolvedValue(refusal({}));
+
+		await expect(dispatchGovernedEmail(ctx, baseRequest)).rejects.toThrow();
+
+		expect(bindCalls()).toEqual([]);
+	});
+});
+
+/**
  * THE GOVERNED BOUNDARY ASKS THE CATALOG, NOT THE KIND (plan P0.1 / D2).
  *
  * Four behaviours used to be spelled `providerKind === 'mta'` in

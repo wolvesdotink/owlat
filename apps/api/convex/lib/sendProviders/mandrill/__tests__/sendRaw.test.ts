@@ -277,6 +277,42 @@ describe('per-recipient response parsing', () => {
 		}
 	});
 
+	// Mandrill's later `reject` webhook names this id. Kept on the failure so
+	// the governed dispatch can bind it to the Send (#1243).
+	it('keeps the id of a message Mandrill received and rejected', async () => {
+		global.fetch = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(
+					JSON.stringify([
+						{
+							email: 'to@example.com',
+							status: 'rejected',
+							_id: 'refused-1',
+							reject_reason: 'rule',
+						},
+					]),
+					{ status: 200 }
+				)
+			) as unknown as typeof fetch;
+
+		const result = await mandrillSendProvider.sendEmail(transport(), params);
+
+		expect(result).toMatchObject({ success: false, providerMessageId: 'refused-1' });
+	});
+
+	it('claims no id when the refused result carries none', async () => {
+		global.fetch = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify([{ email: 'nope@', status: 'invalid', _id: '' }]), {
+				status: 200,
+			})
+		) as unknown as typeof fetch;
+
+		const result = await mandrillSendProvider.sendEmail(transport(), params);
+
+		expect(result).not.toHaveProperty('providerMessageId');
+	});
+
 	it('invalid is an INVALID_RECIPIENT even with no reject_reason', async () => {
 		global.fetch = vi.fn().mockResolvedValue(
 			new Response(JSON.stringify([{ email: 'nope@', status: 'invalid', _id: '' }]), {

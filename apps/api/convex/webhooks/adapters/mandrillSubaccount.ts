@@ -11,8 +11,8 @@
  * `ownMandrillSubaccounts` answers it: one per configured Mandrill transport,
  * read the way the send adapter reads it, with `null` standing for the
  * account's default. Every other event is still mapped, but carries
- * `outsideSendingScope`, and the dispatcher applies it only when it attributes
- * to one of our Sends (`../sendingScope.ts`). It is marked rather than dropped
+ * `outsideSendingScope`, and unless it matches one of our Sends the dispatcher
+ * lets it act on no address (`../sendingScope.ts`). It is marked rather than dropped
  * because the subaccount alone cannot prove an event foreign: a Mandrill rule
  * can move Owlat's mail into a subaccount, and mail sent before the setting
  * changed carries the old one.

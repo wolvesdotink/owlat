@@ -256,7 +256,8 @@ export const webhookTables = {
 	// `providerMessageId`. There is nothing to replay it by, so it is stored
 	// already closed (`resolution: 'no_message_id'`) and only counted.
 	//
-	// NO PERSONAL DATA. The recipient's address is not stored, and neither is the
+	// NO PERSONAL DATA. The recipient's address is not stored (an out-of-scope
+	// row keeps only a salted hash of it, see `sendingScope`), and neither is the
 	// remote server's free-text diagnostic (it often quotes the address). A
 	// replay resolves by message id and the Send carries its own recipient; an
 	// attributed complaint blocks its address at receive time, from the event in
@@ -284,7 +285,8 @@ export const webhookTables = {
 		lastSeenAt: v.number(),
 		status: v.union(v.literal('open'), v.literal('resolved')),
 		// `replayed`: the Send lifecycle applied the event. `refused`: the id
-		// resolves now, but the lifecycle refused the edge (a terminal Send).
+		// resolves now, but the lifecycle refused the edge (a terminal Send), or
+		// the Send is not the match an out-of-scope row waits for (#1243).
 		// `no_message_id`: the event carried no id, so no replay can match it.
 		resolution: v.optional(
 			v.union(v.literal('replayed'), v.literal('refused'), v.literal('no_message_id'))
@@ -294,6 +296,11 @@ export const webhookTables = {
 		replayAttempts: v.number(),
 		// Absent once the automatic replays are spent or the row resolved.
 		nextReplayAt: v.optional(v.number()),
+		// Present when the event came from outside this deployment's sending
+		// scope (#1243): a replay applies it only to a Send through the same
+		// provider kind whose recipient hashes to `recipientHash`, an HMAC of the
+		// normalized address keyed by the message id. Never read back as an address.
+		sendingScope: v.optional(v.object({ recipientHash: v.optional(v.string()) })),
 	})
 		.index('by_message_id_and_kind', ['providerMessageId', 'kind'])
 		.index('by_status_and_next_replay', ['status', 'nextReplayAt'])

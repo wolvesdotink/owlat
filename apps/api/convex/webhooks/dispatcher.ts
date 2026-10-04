@@ -29,7 +29,7 @@ import { logError, logWarn } from '../lib/runtimeLog';
 import { dispatchComplaint } from './complaintDispatch';
 import { dispatchOnce } from './inboundEventClaims';
 import { applyFailureSuppression, applyProviderSuppression } from './providerSuppression';
-import { isWithinSendingScope } from './sendingScope';
+import { withinSendingScope } from './sendingScope';
 import { isSendNotFound, recordUnresolvedFeedback } from './unresolvedBounce';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import {
@@ -445,11 +445,12 @@ export function dispatchInboundEvent(
 ): Promise<unknown>;
 export async function dispatchInboundEvent(
 	ctx: ActionCtx,
-	event: InboundEvent,
+	inbound: InboundEvent,
 	_options?: { returnResult: true }
 ): Promise<unknown> {
-	// Feedback from outside our sending scope applies only to a Send of ours (#1243).
-	if (!(await isWithinSendingScope(ctx, event))) return undefined;
+	// Out-of-scope feedback acts on no address unless it matches a Send of ours (#1243).
+	const event = await withinSendingScope(ctx, inbound);
+	if (!event) return undefined;
 	const handler = DISPATCH[event.kind] as Handler<InboundEventKind>;
 	const apply = () => handler(ctx, event as InboundEventOf<InboundEventKind>);
 	// An event its adapter keyed for replay (a provider with no event ids and no

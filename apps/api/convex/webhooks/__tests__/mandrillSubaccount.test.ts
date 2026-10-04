@@ -16,6 +16,7 @@ import { convexTest } from 'convex-test';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import schema from '../../schema';
+import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import type { DatabaseWriter } from '../../_generated/server';
 import { modules } from '../../__tests__/testModules';
@@ -376,5 +377,126 @@ describe('with only a named Mandrill transport configured', () => {
 
 		expect(await isUnsubscribed(t, 'jane@example.com')).toBe(false);
 		expect(await isUnsubscribed(t, 'eu@example.com')).toBe(true);
+	});
+});
+
+describe('feedback that arrives before its Send can be matched', () => {
+	beforeEach(() => {
+		process.env['MANDRILL_SUBACCOUNT'] = 'owlat';
+	});
+
+	/** A Send that completion has not given its provider id yet. */
+	async function seedUnboundSend(t: Harness, email: string, status: 'queued' | 'sent' = 'queued') {
+		const sendId = await seedSend(t, 'placeholder', email, 'mandrill', status);
+		await t.run(async (ctx: { db: DatabaseWriter }) => {
+			await ctx.db.patch(sendId, { providerMessageId: undefined, providerType: undefined });
+		});
+		return sendId;
+	}
+
+	const hardBounce = (id: string, email: string) =>
+		event(
+			'hard_bounce',
+			{ _id: id, email, diag: 'smtp;550 5.1.1 mailbox missing' },
+			'rule-assigned'
+		);
+
+	async function unresolvedRows(t: Harness) {
+		return await t.run(
+			async (ctx: { db: DatabaseWriter }) => await ctx.db.query('unresolvedFeedback').collect()
+		);
+	}
+
+	async function bindAndReplay(t: Harness, sendId: Id<'emailSends'>, providerMessageId: string) {
+		await t.run(async (ctx: { db: DatabaseWriter }) => {
+			await ctx.db.patch(sendId, { providerMessageId, providerType: 'mandrill', status: 'sent' });
+		});
+		const [row] = await unresolvedRows(t);
+		return await t.mutation(internal.webhooks.unresolvedFeedback.replay, { feedbackId: row!._id });
+	}
+
+	it('keeps an early out-of-scope bounce and applies it once the Send has its id', async () => {
+		const t = setupTest();
+		const sendId = await seedUnboundSend(t, 'jane@example.com');
+
+		await postBatch(t, [hardBounce('m-early', 'jane@example.com')]);
+
+		const rows = await unresolvedRows(t);
+		expect(rows).toHaveLength(1);
+		// A salted hash, never the address itself.
+		expect(rows[0]!.sendingScope?.recipientHash).toMatch(/^[0-9a-f]{64}$/);
+		expect(JSON.stringify(rows[0])).not.toContain('jane@example.com');
+
+		expect(await bindAndReplay(t, sendId, 'm-early')).toBe('replayed');
+		expect(await sendStatus(t, sendId)).toBe('bounced');
+	});
+
+	it('refuses the replay when the Send that turns up went to someone else', async () => {
+		const t = setupTest();
+		const sendId = await seedUnboundSend(t, 'owlat-recipient@example.com');
+
+		await postBatch(t, [hardBounce('m-other', 'jane@example.com')]);
+
+		expect(await bindAndReplay(t, sendId, 'm-other')).toBe('refused');
+		expect(await sendStatus(t, sendId)).toBe('sent');
+		expect(await isBlocked(t, 'owlat-recipient@example.com')).toBe(false);
+	});
+
+	it('refuses the replay when the Send went out through another provider', async () => {
+		const t = setupTest();
+		const sendId = await seedUnboundSend(t, 'jane@example.com');
+
+		await postBatch(t, [hardBounce('m-resend', 'jane@example.com')]);
+		await t.run(async (ctx: { db: DatabaseWriter }) => {
+			await ctx.db.patch(sendId, {
+				providerMessageId: 'm-resend',
+				providerType: 'resend',
+				status: 'sent',
+			});
+		});
+		const [row] = await unresolvedRows(t);
+
+		expect(
+			await t.mutation(internal.webhooks.unresolvedFeedback.replay, { feedbackId: row!._id })
+		).toBe('refused');
+		expect(await sendStatus(t, sendId)).toBe('sent');
+	});
+
+	// Mandrill refused the message in the send response; the governed dispatch
+	// bound the refused id before the completion failed the Send.
+	it('mirrors a rule-assigned reject for a Send Mandrill refused at send time', async () => {
+		const t = setupTest();
+		const sendId = await seedUnboundSend(t, 'jane@example.com');
+		const send = { kind: 'campaign' as const, id: sendId };
+
+		expect(
+			await t.mutation(internal.delivery.rejectedProviderIdentity.bindRejectedProviderIdentity, {
+				send,
+				providerMessageId: 'm-refused',
+				providerType: 'mandrill',
+			})
+		).toEqual({ isBound: true });
+		await t.run(async (ctx: { db: DatabaseWriter }) => {
+			await ctx.db.patch(sendId, { status: 'failed' });
+		});
+
+		await postBatch(t, [reject('m-refused', 'jane@example.com', 'rule-assigned')]);
+
+		expect(await isBlocked(t, 'jane@example.com')).toBe(true);
+	});
+
+	it('never rebinds a Send that already has an id or has left the queue', async () => {
+		const t = setupTest();
+		const boundId = await seedSend(t, 'm-first', 'bound@example.com');
+		const sentId = await seedUnboundSend(t, 'sent@example.com', 'sent');
+		const bind = (id: Id<'emailSends'>) =>
+			t.mutation(internal.delivery.rejectedProviderIdentity.bindRejectedProviderIdentity, {
+				send: { kind: 'campaign', id },
+				providerMessageId: 'm-second',
+				providerType: 'mandrill',
+			});
+
+		expect(await bind(boundId)).toEqual({ isBound: false });
+		expect(await bind(sentId)).toEqual({ isBound: false });
 	});
 });

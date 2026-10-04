@@ -369,5 +369,14 @@ export async function dispatchGovernedEmail(
 		}
 	}
 
+	// A message the provider received and refused keeps its id on the Send, so
+	// the provider's later report of the refusal can still find it (#1243).
+	if (dispatched.result.providerMessageId && request.sendRef.kind !== 'seedProbe') {
+		await ctx.runMutation(internal.delivery.rejectedProviderIdentity.bindRejectedProviderIdentity, {
+			send: request.sendRef,
+			providerMessageId: dispatched.result.providerMessageId,
+			providerType: dispatched.providerType,
+		});
+	}
 	throw new Error(dispatched.result.errorMessage || 'Unknown email sending error');
 }

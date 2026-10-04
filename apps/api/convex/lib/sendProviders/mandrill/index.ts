@@ -106,6 +106,9 @@ interface MandrillRecipientResult {
 /** The statuses that mean Mandrill took responsibility for the message. */
 const ACCEPTED_STATUSES: ReadonlySet<string> = new Set(['sent', 'queued', 'scheduled']);
 
+/** The statuses that mean Mandrill received the message and refused it. */
+const REFUSED_STATUSES: ReadonlySet<string> = new Set(['rejected', 'invalid']);
+
 /**
  * The `messages/send-raw` request body.
  *
@@ -172,10 +175,14 @@ function readRecipientResult(payload: unknown): EmailSendAttempt {
 
 	const reason = typeof entry.reject_reason === 'string' ? entry.reject_reason : '';
 	const detail = `${status || 'unknown'}: ${reason}`;
+	// A refused message still has an id, and Mandrill's `reject` webhook names
+	// it. Kept so that event can be matched to this Send (#1243).
+	const refusedId = typeof entry._id === 'string' && entry._id ? entry._id : undefined;
 	return {
 		success: false,
 		errorMessage: `Mandrill ${detail.trim()}`,
 		errorCode: categorizeMandrillError(detail),
+		...(refusedId && REFUSED_STATUSES.has(status) ? { providerMessageId: refusedId } : {}),
 	};
 }
 

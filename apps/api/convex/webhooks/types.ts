@@ -114,9 +114,9 @@ export const INBOUND_REPLAY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Set by an adapter on an event the provider says came from outside this
- * deployment's sending scope (Mandrill: another subaccount, #1243). The
- * dispatcher applies it only when it matches one of our Sends by message id,
- * provider and `recipient`, and drops it otherwise (`./sendingScope.ts`).
+ * deployment's sending scope (Mandrill: another subaccount, #1243). Unless it
+ * matches one of our Sends by message id, provider and `recipient`, the
+ * dispatcher lets it act on no address (`./sendingScope.ts`).
  */
 export interface OutsideSendingScope {
 	readonly recipient?: string;

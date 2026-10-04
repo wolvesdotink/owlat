@@ -12,6 +12,7 @@ import type { ActionCtx } from '../_generated/server';
 import type { TransitionOutcome } from '../delivery/sendLifecycle';
 import type { UnresolvedFeedbackSuppression } from '../lib/literalValidators';
 import { logError, logWarn } from '../lib/runtimeLog';
+import { scopeRecipientHash } from './sendingScopeQueries';
 import type { InboundEventOf } from './types';
 
 /**
@@ -46,7 +47,9 @@ type UnresolvedEvent =
  * WHAT IS STORED HOLDS NO PERSONAL DATA. Not the complainer's address (the
  * complaint handler has already used it, from the event in memory) and not the
  * remote server's diagnostic, which often quotes the recipient: only the SMTP
- * status code read out of it (`bounceStatusCodeOf`).
+ * status code read out of it (`bounceStatusCodeOf`). An event from outside the
+ * sending scope (#1243) also stores a hash of its recipient salted with the
+ * message id, which a replay compares and nothing reads back.
  *
  * NEVER THROWS. A store that fails is logged and the webhook is acknowledged,
  * as it was before this table existed: a provider batch must not be retried
@@ -115,8 +118,10 @@ async function store(
 	}
 ): Promise<void> {
 	try {
+		const sendingScope = await sendingScopeOf(e, fields.providerMessageId);
 		await ctx.runMutation(internal.webhooks.unresolvedFeedback.record, {
 			...fields,
+			...(sendingScope ? { sendingScope } : {}),
 			at: e.at,
 			...(e.providerType ? { providerType: e.providerType } : {}),
 			...(e.deliveryDomain ? { deliveryDomain: e.deliveryDomain } : {}),
@@ -130,6 +135,25 @@ async function store(
 			errorName: error instanceof Error ? error.name : typeof error,
 		});
 	}
+}
+
+/**
+ * What a replay needs to hold an out-of-scope event (#1243,
+ * `./sendingScope.ts`) to the same match the webhook could not make yet: the
+ * recipient, as a hash salted with the message id. Undefined for an in-scope
+ * event, which stores nothing about its recipient.
+ */
+async function sendingScopeOf(
+	e: InboundEventOf<'email.bounced'> | InboundEventOf<'email.complained'>,
+	providerMessageId: string | undefined
+): Promise<{ recipientHash?: string } | undefined> {
+	if (!e.outsideSendingScope) return undefined;
+	const recipient = e.outsideSendingScope.recipient;
+	const recipientHash =
+		recipient && providerMessageId
+			? await scopeRecipientHash(providerMessageId, recipient)
+			: undefined;
+	return recipientHash ? { recipientHash } : {};
 }
 
 /** RFC 3463 enhanced status code (`5.1.1`), then a basic reply code (`550`). */
