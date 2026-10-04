@@ -20,8 +20,9 @@
  *  - an event whose id names no Send acts on no address. An `unsub` is
  *    dropped. A `reject` is dropped whole: a message Mandrill refuses from its
  *    reject list is refused in the send response, which carries the same
- *    suppression and is recorded there before the send fails
- *    (`delivery/governedDispatch.ts`), so an unmatched `reject` is either
+ *    suppression and is recorded there before the send fails (every
+ *    `sendProviderDispatch` caller: `delivery/governedDispatch.ts` and
+ *    `systemMail.ts`, see `recordSendResponseRefusal`), so an unmatched `reject` is either
  *    already applied or not ours. A bounce or complaint goes down the ordinary
  *    unknown-message path (`./unresolvedBounce.ts`), which already acts on no
  *    address, and is stored with a keyed hash of the recipient so a replay,
@@ -60,8 +61,8 @@ export async function withinSendingScope(
 	// No Send carries this id. An `unsub` acts only on an address. A `reject` is
 	// dropped whole, with no lifecycle attempt: if the message was ours, Mandrill
 	// refused it in the send response, which carried the same suppression and
-	// was recorded then (`delivery/governedDispatch.ts`), and the completion
-	// failed the Send; if it was not ours, ignoring it is the fix.
+	// was recorded then (`recordSendResponseRefusal`, called by every dispatch
+	// path including system mail); if it was not ours, ignoring it is the fix.
 	if (event.kind === 'email.unsubscribed' || event.kind === 'email.failed') return null;
 	return event;
 }

@@ -36,7 +36,7 @@ import {
 	mandrillSendProvider,
 } from '../../lib/sendProviders/mandrill';
 import { deadlineSweepCutoff } from '../../delivery/stuckSendSweep';
-import { applySendResponseSuppression } from '../providerSuppression';
+import { recordSendResponseRefusal } from '../providerSuppression';
 import { ownMandrillSubaccounts } from '../../lib/sendProviders/mandrill/subaccounts';
 
 const WEBHOOK_KEY = 'mandrill-test-webhook-key';
@@ -477,7 +477,7 @@ describe('feedback that arrives before its Send can be matched', () => {
 /**
  * A REJECT MANDRILL MADE IN THE SEND RESPONSE. A `rejected` result is our own
  * request refused off the reject list, so the governed dispatch records its
- * suppression there (`applySendResponseSuppression`), without touching the
+ * suppression there (`recordSendResponseRefusal`), without touching the
  * Send. The later `reject` webhook matches no Send (a refused send stores no
  * id) and, when it comes from another subaccount, is dropped.
  */
@@ -517,11 +517,7 @@ describe('a reject Mandrill made in the send response', () => {
 						_resetMandrillConfigCacheForTests();
 					}
 					if (result.success || !result.suppression) return false;
-					await applySendResponseSuppression(
-						ctx,
-						{ providerType: 'mandrill', recipient: to, at: Date.now() },
-						result.suppression
-					);
+					await recordSendResponseRefusal(ctx, { result, providerType: 'mandrill', recipient: to });
 					return true;
 				},
 			}),
@@ -611,5 +607,89 @@ describe('a reject Mandrill made in the send response', () => {
 
 		expect(outcome).toEqual({ isFailed: true, reason: null });
 		expect(await sendStatus(t, sendId)).toBe('failed');
+	});
+});
+
+/**
+ * SYSTEM MAIL (auth, double opt-in, the delivery-settings test email) calls
+ * `sendProviderDispatch` directly, outside the governed worker. A refusal off
+ * Mandrill's reject list is mirrored there too, so the rule-assigned `reject`
+ * webhook that follows, matching no Send, can be dropped.
+ */
+describe('a reject Mandrill made in a system mail response', () => {
+	beforeEach(() => {
+		process.env['EMAIL_PROVIDER'] = 'mandrill';
+		process.env['MANDRILL_SUBACCOUNT'] = 'owlat';
+		_resetMandrillConfigCacheForTests();
+	});
+
+	async function sendSystemMailRefused(t: Harness, to: string, reason: string) {
+		const realFetch = global.fetch;
+		global.fetch = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(
+					JSON.stringify([
+						{ email: to, status: 'rejected', _id: 'system-refusal', reject_reason: reason },
+					]),
+					{ status: 200 }
+				)
+			) as unknown as typeof fetch;
+		try {
+			return await t.action(internal.systemMail.trySendSystemEmail, {
+				to,
+				from: 'sender@example.com',
+				subject: 'Confirm your subscription',
+				html: '<p>Confirm</p>',
+			});
+		} finally {
+			global.fetch = realFetch;
+			_resetMandrillConfigCacheForTests();
+		}
+	}
+
+	it('blocks the address on a hard-bounce refusal and drops the rule-assigned reject', async () => {
+		const t = setupTest();
+		await seedContact(t, 'jane@example.com');
+
+		const outcome = await sendSystemMailRefused(t, 'jane@example.com', 'hard-bounce');
+		expect(outcome).toMatchObject({ status: 'failed', provider: 'mandrill' });
+		expect(await isBlocked(t, 'jane@example.com')).toBe(true);
+
+		await postBatch(t, [reject('system-refusal', 'jane@example.com', 'rule-assigned')]);
+		const rows = await t.run(
+			async (ctx: { db: DatabaseWriter }) =>
+				await ctx.db
+					.query('blockedEmails')
+					.withIndex('by_email', (q) => q.eq('email', 'jane@example.com'))
+					.collect()
+		);
+		expect(rows).toHaveLength(1);
+	});
+
+	it('unsubscribes the contact on an unsub refusal', async () => {
+		const t = setupTest();
+		await seedContact(t, 'leaver@example.com');
+
+		await sendSystemMailRefused(t, 'leaver@example.com', 'unsub');
+		await postBatch(t, [
+			event(
+				'reject',
+				{ _id: 'system-refusal', email: 'leaver@example.com', reject_reason: 'unsub' },
+				'rule-assigned'
+			),
+		]);
+
+		expect(await isUnsubscribed(t, 'leaver@example.com')).toBe(true);
+		expect(await isBlocked(t, 'leaver@example.com')).toBe(false);
+	});
+
+	it('blocks no one on a sender-side refusal', async () => {
+		const t = setupTest();
+
+		const outcome = await sendSystemMailRefused(t, 'jane@example.com', 'unsigned');
+
+		expect(outcome).toMatchObject({ status: 'failed', provider: 'mandrill' });
+		expect(await isBlocked(t, 'jane@example.com')).toBe(false);
 	});
 });
