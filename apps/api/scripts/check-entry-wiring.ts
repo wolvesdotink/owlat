@@ -211,6 +211,10 @@ const HAND_RUN_ENTRIES: Readonly<Record<string, string>> = {
 		'the operator close of a completion record the replay cannot finish (`convex run`)',
 	'delivery/sendCompletionFailureAdmin.ts#reopenExhaustedCompletionFailures':
 		'the operator hand-back of exhausted completion records to the replay cron after a fix (`convex run`)',
+	'delivery/stuckSendSweepAdmin.ts#status':
+		'the operator view of queued sends the lost-send sweep will fail or cannot judge (`convex run`)',
+	'delivery/stuckSendSweepAdmin.ts#failUnanchoredLostSends':
+		'the operator pass over lost sends with no recorded first attempt, older than eight days (`convex run`)',
 };
 const isHandRun = (module: string): boolean =>
 	HAND_RUN_PREFIXES.some((prefix) => module.startsWith(prefix));

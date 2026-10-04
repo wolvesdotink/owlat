@@ -61,6 +61,16 @@ export const sendTrackingFields = {
 	// last-mile router defers campaign, automation and transactional mail alike.
 	// See `delivery/deferralOutcome.ts`.
 	deferralCountedDay: v.optional(v.number()),
+	// When the Send's first governed delivery attempt started: the
+	// `retryState.startedAt` its four-day delivery deadline
+	// (`governedDeliveryDeadlineAt`) is measured from. Written once, by
+	// `delivery/routingReentry.ts:issueSnapshot`, which the worker already runs
+	// on every attempt; deferrals and re-entries carry the same start and write
+	// nothing. Absent on a Send that was never attempted and on every row
+	// written before the field existed. The lost-send sweep
+	// (`delivery/stuckSendSweep.ts`) reads it, and only a Send that carries it is
+	// swept automatically.
+	firstAttemptAt: v.optional(v.number()),
 	// Link tracking for click attribution
 	clickedLinks: v.optional(v.array(linkClickValidator)),
 	// Open tracking count (may open multiple times)
