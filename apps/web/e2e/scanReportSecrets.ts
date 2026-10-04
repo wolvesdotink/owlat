@@ -1,7 +1,7 @@
+import { createHash } from 'node:crypto';
 import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { createHash } from 'node:crypto';
-import { inflateRawSync } from 'node:zlib';
+import { readZipEntries, type ZipEntry } from './zipArchive';
 
 /**
  * Find secret values in a Playwright report before CI uploads it.
@@ -41,50 +41,9 @@ export interface NamedSecret {
 	value: string;
 }
 
-const LOCAL_HEADER = 0x04034b50;
-const CENTRAL_HEADER = 0x02014b50;
-const END_OF_CENTRAL_DIRECTORY = 0x06054b50;
 const ZIP_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 const MAX_ZIP_DEPTH = 3;
 const EMBEDDED_ZIP = /data:application\/zip;base64,([A-Za-z0-9+/=]+)/g;
-
-/** The members of a zip archive, decompressed. Throws on anything it cannot read. */
-export function readZipEntries(zip: Buffer): Array<{ name: string; data: Buffer }> {
-	let end = -1;
-	for (let at = zip.length - 22; at >= Math.max(0, zip.length - 22 - 0xffff); at--) {
-		if (zip.readUInt32LE(at) === END_OF_CENTRAL_DIRECTORY) {
-			end = at;
-			break;
-		}
-	}
-	if (end < 0) throw new Error('no end-of-central-directory record');
-	const count = zip.readUInt16LE(end + 10);
-	let at = zip.readUInt32LE(end + 16);
-	if (count === 0xffff || at === 0xffffffff) throw new Error('zip64 is not supported');
-
-	const entries: Array<{ name: string; data: Buffer }> = [];
-	for (let index = 0; index < count; index++) {
-		if (zip.readUInt32LE(at) !== CENTRAL_HEADER) throw new Error('bad central directory');
-		const method = zip.readUInt16LE(at + 10);
-		const compressedSize = zip.readUInt32LE(at + 20);
-		const nameLength = zip.readUInt16LE(at + 28);
-		const extraLength = zip.readUInt16LE(at + 30);
-		const commentLength = zip.readUInt16LE(at + 32);
-		const localOffset = zip.readUInt32LE(at + 42);
-		const name = zip.toString('utf8', at + 46, at + 46 + nameLength);
-		at += 46 + nameLength + extraLength + commentLength;
-
-		if (zip.readUInt32LE(localOffset) !== LOCAL_HEADER)
-			throw new Error(`bad local header: ${name}`);
-		const dataStart =
-			localOffset + 30 + zip.readUInt16LE(localOffset + 26) + zip.readUInt16LE(localOffset + 28);
-		const raw = zip.subarray(dataStart, dataStart + compressedSize);
-		if (method === 0) entries.push({ name, data: raw });
-		else if (method === 8) entries.push({ name, data: inflateRawSync(raw) });
-		else throw new Error(`unsupported compression method ${method}: ${name}`);
-	}
-	return entries;
-}
 
 /** Shortest base64 core worth matching; shorter would match by chance. */
 const MIN_FORM_LENGTH = 8;
@@ -155,6 +114,8 @@ function matchSecrets(data: Buffer, file: string, scan: Scan): void {
 
 function scanBuffer(data: Buffer, file: string, name: string, scan: Scan, depth: number): void {
 	matchSecrets(Buffer.from(name), file, scan);
+	// For an archive this is the raw bytes, which covers stored members and
+	// names even if reading the archive fails; deflated members are read below.
 	matchSecrets(data, file, scan);
 
 	const zips: Array<{ file: string; data: Buffer }> = [];
@@ -173,7 +134,7 @@ function scanBuffer(data: Buffer, file: string, name: string, scan: Scan, depth:
 			scan.findings.push({ file: zip.file, label: 'unreadable' });
 			continue;
 		}
-		let entries: Array<{ name: string; data: Buffer }>;
+		let entries: ZipEntry[];
 		try {
 			entries = readZipEntries(zip.data);
 		} catch {

@@ -10,7 +10,8 @@
  * published either.
  *
  * Output names variables and a hashed id per finding (`findingId`), never a
- * secret's value or a path: a file name can carry an encoded secret.
+ * secret's value or any path, the report directory's own included: a name can
+ * carry an encoded secret.
  */
 import { existsSync, rmSync } from 'node:fs';
 import { findSecretsInReport, findingId, type SecretFinding } from './scanReportSecrets';
@@ -22,7 +23,7 @@ if (!dir || names.length === 0) {
 }
 
 if (!existsSync(dir)) {
-	console.info(`No report at ${dir}; nothing to scan.`);
+	console.info('No report directory; nothing to scan.');
 	process.exit(0);
 }
 
@@ -35,27 +36,27 @@ try {
 	findings = findSecretsInReport(dir, secrets);
 } catch {
 	// The error could quote a path; it is not printed.
-	console.error(`::error::Scanning ${dir} failed, so it cannot be published unchecked.`);
+	console.error('::error::Scanning the report failed, so it cannot be published unchecked.');
 	findings = [{ file: '.', label: 'unreadable' }];
 }
 
 if (findings.length === 0) {
-	console.info(`No secrets found in ${dir}.`);
+	console.info('No secrets found in the report.');
 	process.exit(0);
 }
 
 for (const [index, finding] of findings.entries()) {
 	const what = finding.label === 'unreadable' ? 'something that could not be read' : finding.label;
 	console.error(
-		`::error::${dir} finding ${index + 1}: ${what} at location ${findingId(finding.file)}`
+		`::error::Report finding ${index + 1}: ${what} at location ${findingId(finding.file)}`
 	);
 }
 try {
 	rmSync(dir, { recursive: true, force: true });
-	console.error(`Deleted ${dir} so it is not uploaded.`);
+	console.error('Deleted the report so it is not uploaded.');
 } catch {
 	console.error(
-		`::error::Could not delete ${dir}; the upload step is skipped because this one failed.`
+		'::error::Could not delete the report; the upload step is skipped because this one failed.'
 	);
 }
 process.exit(1);
