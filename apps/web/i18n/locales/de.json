@@ -329,7 +329,6 @@
 					"title": "Alles erledigt"
 				},
 				"draftReady": "Entwurf bereit",
-				"editInThread": "In Konversation bearbeiten",
 				"empty": {
 					"body": "Derzeit muss kein Entwurf von dir geprüft werden.",
 					"title": "Alles erledigt!"
@@ -338,7 +337,6 @@
 				"fillGaps": "Lücken ausfüllen",
 				"fillLabel": "Entwurf zum Ausfüllen",
 				"gapsHeldHere": "In diesem Entwurf ist noch 1 Lücke offen. Füll sie aus, bevor du ihn sendest. | In diesem Entwurf sind noch {count} Lücken offen. Füll sie aus, bevor du ihn sendest.",
-				"gapsHeldThread": "In diesem Entwurf ist noch 1 Lücke offen. Füll sie in der Konversation aus, bevor du ihn sendest. | In diesem Entwurf sind noch {count} Lücken offen. Füll sie in der Konversation aus, bevor du ihn sendest.",
 				"heldBecause": "Zurückgehalten, weil: {reason}",
 				"noSubject": "(kein Betreff)",
 				"noTextContent": "(Kein Textinhalt)",
@@ -7109,6 +7107,13 @@
 						"loading": "Zustellraten-Verlauf wird geladen",
 						"subtitle": "Anteil der versendeten Mails, die zugestellt wurden, pro Tag",
 						"title": "Zustellrate"
+					},
+					"unresolvedFeedback": {
+						"bounced": "{count} Bounces",
+						"complained": "{count} Beschwerden",
+						"open": "{count} weiterhin ohne Zuordnung",
+						"summary": "Bounces und Beschwerden ohne passende Sendung (30 Tage): {total} · {breakdown}",
+						"suppressed": "{count} per Adresse gesperrt"
 					}
 				},
 				"migrate": {
@@ -16277,6 +16282,10 @@
 				"notFound": "Bei {count} Absender gab es keine Listenpost mehr. | Bei {count} Absendern gab es keine Listenpost mehr.",
 				"unsubscribed": "Von {count} Absender abgemeldet. | Von {count} Absendern abgemeldet."
 			}
+		},
+		"convexAuth": {
+			"lost": "Deine Daten werden nicht mehr geladen. Lade die Seite neu, um die Verbindung wiederherzustellen.",
+			"reload": "Neu laden"
 		},
 		"format": {
 			"never": "Nie",

@@ -1,6 +1,20 @@
 import { defineConfig, devices } from '@playwright/test';
 import { STORAGE_STATE } from './storage-state';
 
+/**
+ * No traces in CI. The report is uploaded as an artifact of a public
+ * repository, and a trace records request headers and response bodies: the
+ * seeded owner's session cookie, the Convex JWT and the test deployment's URLs,
+ * which are repository secrets. Nothing can strip all of that from a trace
+ * reliably (the URL is in every request and in the app bundle the trace keeps),
+ * so CI does not record one. The setup project attaches a redacted browser
+ * console and network log instead (auth.setup.ts), and the scan before upload
+ * refuses any trace archive that still gets in (scan-report-secrets.ts).
+ *
+ * Locally the trace stays on: the report never leaves the machine.
+ */
+const CI = !!process.env['CI'];
+
 export default defineConfig({
 	testDir: './tests',
 	// Tests run in declaration order, one at a time (see `workers` above). The
@@ -8,8 +22,8 @@ export default defineConfig({
 	// tests interleave buys minutes and costs determinism — several selectors
 	// depend on whether a list is empty, which a sibling test decides.
 	fullyParallel: false,
-	forbidOnly: !!process.env['CI'],
-	retries: process.env['CI'] ? 1 : 0,
+	forbidOnly: CI,
+	retries: CI ? 1 : 0,
 	// ONE worker. Every test drives the same single Convex deployment — a 2-vCPU
 	// box — so parallel workers contend on the backend rather than on the runner:
 	// at two workers the sender query and a contact create both blew their
@@ -25,7 +39,7 @@ export default defineConfig({
 
 	use: {
 		baseURL: 'http://localhost:3000',
-		trace: 'on-first-retry',
+		trace: CI ? 'off' : 'on-first-retry',
 		screenshot: 'only-on-failure',
 	},
 
@@ -40,10 +54,12 @@ export default defineConfig({
 			// seed error that says nothing about the real cause.
 			retries: 0,
 			// So the global `on-first-retry` would never record a trace here, and a
-			// setup failure skips every spec that depends on it. Keep one whenever
-			// it fails: network, console and DOM are what tell a slow deployment
-			// from a Convex client that never re-authenticated (#1203).
-			use: { trace: 'retain-on-failure' },
+			// setup failure skips every spec that depends on it. Locally, keep one
+			// whenever it fails: network, console and DOM are what tell a slow
+			// deployment from a Convex client that never re-authenticated (#1203).
+			// In CI the redacted console and network log stand in for it (see
+			// the comment on `CI` above).
+			use: { trace: CI ? 'off' : 'retain-on-failure' },
 		},
 		{
 			// No `dependencies` and no storage state: this one answers "does the
@@ -78,9 +94,9 @@ export default defineConfig({
 	// the deployment URLs have to be in the environment for THIS command, not
 	// merely for the test run — .github/workflows/e2e.yml puts them there.
 	webServer: {
-		command: process.env['CI'] ? 'bun run build && bun run preview' : 'bun run dev',
+		command: CI ? 'bun run build && bun run preview' : 'bun run dev',
 		url: 'http://localhost:3000',
-		reuseExistingServer: !process.env['CI'],
-		timeout: process.env['CI'] ? 600_000 : 120_000,
+		reuseExistingServer: !CI,
+		timeout: CI ? 600_000 : 120_000,
 	},
 });

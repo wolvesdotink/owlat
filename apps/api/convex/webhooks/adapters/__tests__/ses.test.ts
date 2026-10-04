@@ -271,6 +271,37 @@ describe('sesAdapter.parseEvent', () => {
 		expect(event).toMatchObject({ kind: 'email.complained', providerMessageId: 'ses-msg-3' });
 	});
 
+	it('carries the complainer beside the message id when SES names exactly one', () => {
+		const event = sesAdapter.parseEvent(
+			notification({
+				notificationType: 'Complaint',
+				mail: { messageId: 'ses-msg-5' },
+				complaint: { complainedRecipients: [{ emailAddress: 'complainer@b.com' }] },
+			})
+		);
+		expect(event).toEqual({
+			kind: 'email.complained',
+			providerMessageId: 'ses-msg-5',
+			providerType: 'ses',
+			at: expect.any(Number),
+			recipient: 'complainer@b.com',
+		});
+	});
+
+	it('names no complainer beside the message id when SES lists several', () => {
+		const event = sesAdapter.parseEvent(
+			notification({
+				notificationType: 'Complaint',
+				mail: { messageId: 'ses-msg-6' },
+				complaint: {
+					complainedRecipients: [{ emailAddress: 'one@b.com' }, { emailAddress: 'two@b.com' }],
+				},
+			})
+		);
+		expect(event).toMatchObject({ kind: 'email.complained', providerMessageId: 'ses-msg-6' });
+		expect(event).not.toHaveProperty('recipient');
+	});
+
 	it('falls back to the complained address when the message id is absent', () => {
 		const event = sesAdapter.parseEvent(
 			notification({

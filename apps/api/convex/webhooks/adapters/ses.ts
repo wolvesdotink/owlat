@@ -383,18 +383,24 @@ export const sesAdapter: InboundAdapter<'ses'> = {
 			}
 			case 'Complaint': {
 				const complaintAt = parseTimestamp(notification.complaint?.timestamp, at);
+				const complained = notification.complaint?.complainedRecipients ?? [];
 				if (providerMessageId) {
+					// The complainer rides along when SES names exactly one, so a
+					// complaint whose Message-ID matches no send can still reach the
+					// blocklist by address (#1194). Several names cannot say who.
+					const complainer = complained.length === 1 ? complained[0]?.emailAddress : undefined;
 					return {
 						kind: 'email.complained',
 						providerMessageId,
 						providerType: 'ses',
 						at: complaintAt,
+						...(complainer ? { recipient: complainer } : {}),
 					};
 				}
 				// No recoverable Message-ID → suppress by the complained address so
 				// the complaint still reaches the blocklist (RFC 5965 §3.2 parity
 				// with the MTA path).
-				const recipient = notification.complaint?.complainedRecipients?.[0]?.emailAddress;
+				const recipient = complained[0]?.emailAddress;
 				if (recipient) {
 					return { kind: 'email.complained', recipient, providerType: 'ses', at: complaintAt };
 				}

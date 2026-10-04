@@ -37,6 +37,8 @@ export type OrganizationDeletionTable =
 	| 'mailMessageParts'
 	| 'mailDrafts'
 	| 'transactionalPendingUploads'
+	| 'sendCompletionFailurePayloads'
+	| 'sendCompletionFailures'
 	| 'transactionalSends'
 	| 'emailSends'
 	| 'agentActions'
@@ -185,6 +187,7 @@ export type OrganizationDeletionTable =
 	| 'mailboxRequests'
 	| 'accessRequests'
 	| 'webhookPayloads'
+	| 'unresolvedFeedback'
 	| 'automationStatShards'
 	| 'campaignSendJobs'
 	| 'audienceCountJobs'
@@ -258,6 +261,8 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailMessageParts'),
 	v.literal('mailDrafts'),
 	v.literal('transactionalPendingUploads'),
+	v.literal('sendCompletionFailurePayloads'),
+	v.literal('sendCompletionFailures'),
 	v.literal('transactionalSends'),
 	v.literal('emailSends'),
 	v.literal('agentActions'),
@@ -406,6 +411,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailboxRequests'),
 	v.literal('accessRequests'),
 	v.literal('webhookPayloads'),
+	v.literal('unresolvedFeedback'),
 	v.literal('automationStatShards'),
 	v.literal('campaignSendJobs'),
 	v.literal('audienceCountJobs'),

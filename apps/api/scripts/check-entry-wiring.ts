@@ -197,12 +197,20 @@ const HAND_RUN_PREFIXES: readonly string[] = ['migrations/'];
 const HAND_RUN_ENTRIES: Readonly<Record<string, string>> = {
 	'workspaces/deletion/walker.ts#abort':
 		'the operator exit for a workspace deletion that cannot finish (`convex run`)',
+	'webhooks/unresolvedFeedback.ts#status':
+		'the operator count of bounces and complaints that matched no send, with a sample (`convex run`)',
 	'auth/erasure/lifecycle.ts#status':
 		'the operator view of an account erasure’s progress and last error (`convex run`)',
 	'auth/erasure/lifecycle.ts#retry':
 		'the operator retry of a failed account erasure, ahead of the daily re-arm (`convex run`)',
 	'mail/imap/serverRegistry.ts#status':
 		'the operator view of which IMAP server releases reported, before a contract step (`convex run`)',
+	'delivery/sendCompletionFailureAdmin.ts#status':
+		'the operator view of recorded send completions that threw and their last error (`convex run`)',
+	'delivery/sendCompletionFailureAdmin.ts#closeCompletionFailure':
+		'the operator close of a completion record the replay cannot finish (`convex run`)',
+	'delivery/sendCompletionFailureAdmin.ts#reopenExhaustedCompletionFailures':
+		'the operator hand-back of exhausted completion records to the replay cron after a fix (`convex run`)',
 };
 const isHandRun = (module: string): boolean =>
 	HAND_RUN_PREFIXES.some((prefix) => module.startsWith(prefix));

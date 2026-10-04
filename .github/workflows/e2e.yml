@@ -8,9 +8,9 @@ name: E2E
 # listed in CONTRIBUTING.md under "CI secrets".
 #
 # The job OWNS the test deployment for the length of a run: it wipes the data,
-# pushes this commit's functions, and only then drives the browser. Nothing on
-# that deployment survives a run, and two runs must never overlap — hence the
-# constant concurrency group below.
+# pushes this commit's functions, only then drives the browser, and wipes the
+# data again when it is done. Nothing on that deployment survives a run, and two
+# runs must never overlap — hence the constant concurrency group below.
 on:
   schedule:
     - cron: "0 4 * * *" # nightly 04:00 UTC
@@ -33,14 +33,30 @@ jobs:
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
+    # Every step has its own cap, and the job's is above their sum, so a hung
+    # step fails on its own cap and the always-run reset after the tests still
+    # gets its time. Hitting the job timeout instead would cancel the whole job,
+    # and cleanup after a forced cancellation is not guaranteed.
+    # e2eWorkflow.test.ts holds the sum to the job cap.
+    #
+    # A whole run takes 7-9 minutes; each cap is several times its step's
+    # longest recent run, for cold caches and a slow deployment. Before the
+    # tests: 2 + 5 + 1 + 10 + 10 + 7 + 15 + 10 = 60. Tests 30 (their own build
+    # may take 10, see playwright.config.ts), reset 7, scan 5, upload 5: 107.
+    # The rest of the 120 covers job setup and the actions' pre/post steps.
+    timeout-minutes: 120
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+        timeout-minutes: 2
         with:
           egress-policy: audit
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        timeout-minutes: 5
 
       - name: Check test deployment is configured
+        id: deployment-config
+        timeout-minutes: 1
         env:
           CONVEX_TEST_URL: ${{ secrets.CONVEX_TEST_URL }}
           CONVEX_TEST_SITE_URL: ${{ secrets.CONVEX_TEST_SITE_URL }}
@@ -58,6 +74,7 @@ jobs:
           fi
 
       - uses: ./.github/actions/setup-bun
+        timeout-minutes: 10
 
       # @owlat/plugin-kit and @owlat/provider-kit (and the rest of the graph)
       # are consumed as built `dist/` entries through their package exports,
@@ -66,6 +83,7 @@ jobs:
       # so nearly every module pulls it in) and the Playwright dev server fail to
       # resolve them. The deploy image builds the same libraries first.
       - name: Build the workspace libraries the api and web import
+        timeout-minutes: 10
         run: bunx turbo build --filter='@owlat/web^...'
 
       # Reset BEFORE the push, for two reasons. Registration is invite-only once
@@ -79,19 +97,12 @@ jobs:
       # warmingState, providerHealth, ...) survive the reset; a breaking change
       # to one of those still needs the deployment's volume recreated by hand.
       - name: Reset the test deployment to a blank slate
+        timeout-minutes: 7
+        working-directory: apps/web
         env:
           CONVEX_TEST_SITE_URL: ${{ secrets.CONVEX_TEST_SITE_URL }}
           CONVEX_TEST_INSTANCE_SECRET: ${{ secrets.CONVEX_TEST_INSTANCE_SECRET }}
-        run: |
-          set -euo pipefail
-          code=$(curl -sS -o /tmp/dev-reset.json -w '%{http_code}' -X POST \
-            "${CONVEX_TEST_SITE_URL}/dev/reset" \
-            -H "X-Instance-Secret: ${CONVEX_TEST_INSTANCE_SECRET}" --max-time 120)
-          if [ "$code" != "200" ]; then
-            echo "::error::/dev/reset returned HTTP ${code}: $(cat /tmp/dev-reset.json)"
-            exit 1
-          fi
-          echo "Test deployment reset: $(cat /tmp/dev-reset.json)"
+        run: bun e2e/reset-deployment.ts
 
       # The suite drives the app built from THIS commit, so the backend it talks
       # to has to run this commit's functions too — otherwise a green run only
@@ -103,6 +114,7 @@ jobs:
       # same paths at COPY time (docker/convex-deploy.Dockerfile); here the
       # checkout is throwaway, so delete them in place.
       - name: Deploy this commit's functions to the test deployment
+        timeout-minutes: 15
         env:
           # Passed as env rather than --url/--admin-key so the key does not show
           # up in the runner's process list.
@@ -115,9 +127,11 @@ jobs:
           bunx convex deploy --yes
 
       - name: Install Playwright browsers
+        timeout-minutes: 10
         run: cd apps/web && bunx playwright install chromium --with-deps
 
       - name: Run E2E tests
+        timeout-minutes: 30
         run: bun run --cwd apps/web test:e2e
         env:
           NUXT_PUBLIC_CONVEX_URL: ${{ secrets.CONVEX_TEST_URL }}
@@ -128,22 +142,50 @@ jobs:
           # and its page has no form without an invite link.
           CONVEX_TEST_INSTANCE_SECRET: ${{ secrets.CONVEX_TEST_INSTANCE_SECRET }}
 
+      # End the run's sessions, whatever happened above. The reset deletes the
+      # seeded owner and every session row, so neither the owner's password,
+      # which is fixed in this repository, nor a cookie or JWT from this run
+      # authenticates afterwards. Without this the account stayed usable until
+      # the next run's reset, up to a day later. A transient failure is retried;
+      # one that persists fails the job. BetterAuth's cookie cache can
+      # still honour a cookie for about five minutes; the report never carries
+      # one (checked below).
+      - name: End the run's sessions on the test deployment
+        if: always() && steps.deployment-config.outcome == 'success'
+        # The script's own deadline is 5 minutes, retries included
+        # (resetDeployment.ts); this only bounds a runner that stops responding.
+        timeout-minutes: 7
+        working-directory: apps/web
+        env:
+          CONVEX_TEST_SITE_URL: ${{ secrets.CONVEX_TEST_SITE_URL }}
+          CONVEX_TEST_INSTANCE_SECRET: ${{ secrets.CONVEX_TEST_INSTANCE_SECRET }}
+        run: bun e2e/reset-deployment.ts
+
       # The report is a public artifact, and log masking does not reach inside
-      # it. A failed setup keeps its trace, which records request headers, so
-      # check that no secret made it in. On a hit, or if the scan itself fails,
-      # the report is deleted and the job fails; the upload runs only when this
-      # step succeeded.
+      # it. CI records no trace (playwright.config.ts), but check anyway: the
+      # scan refuses any trace archive and any JWT-shaped value, and searches
+      # for the secrets below (the URLs' hosts included) and for the session
+      # cookies the setup saved. On a hit, or if the scan itself fails, the
+      # report is deleted and the job fails; the upload runs only when this step
+      # succeeded.
       - name: Check the Playwright report for secrets
         id: report-secrets
         if: always()
+        timeout-minutes: 5
         working-directory: apps/web
         env:
           CONVEX_TEST_INSTANCE_SECRET: ${{ secrets.CONVEX_TEST_INSTANCE_SECRET }}
           CONVEX_TEST_ADMIN_KEY: ${{ secrets.CONVEX_TEST_ADMIN_KEY }}
-        run: bun e2e/scan-report-secrets.ts playwright-report CONVEX_TEST_INSTANCE_SECRET CONVEX_TEST_ADMIN_KEY
+          CONVEX_TEST_URL: ${{ secrets.CONVEX_TEST_URL }}
+          CONVEX_TEST_SITE_URL: ${{ secrets.CONVEX_TEST_SITE_URL }}
+        run: >-
+          bun e2e/scan-report-secrets.ts playwright-report
+          --storage-state e2e/.auth/user.json
+          CONVEX_TEST_INSTANCE_SECRET CONVEX_TEST_ADMIN_KEY CONVEX_TEST_URL CONVEX_TEST_SITE_URL
 
       - name: Upload Playwright report
         if: always() && steps.report-secrets.outcome == 'success'
+        timeout-minutes: 5
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: playwright-report
