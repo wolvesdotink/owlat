@@ -28,7 +28,78 @@
 		"typecheck": {
 			"dependsOn": ["^build"]
 		},
-		"lint": {},
+		// oxlint follows imports into the workspace packages a package depends on
+		// (import/no-cycle reads them), so a lint result depends on their sources
+		// too. The transit dependency folds each dependency package's file hash
+		// into the lint hash, as it does for `test`. Package overrides below must
+		// repeat it: a `pkg#task` entry replaces this one rather than merging.
+		"lint": {
+			"dependsOn": ["transit"]
+		},
+		// A lint task that reads files outside its own package needs an override
+		// listing them: turbo hashes only the package directory by default, so an
+		// edit to an outside file alone replays the cached (remote, CI-shared)
+		// result. #1219 dropped the last web caller of an api query, CI replayed a
+		// green api lint, and main broke. When a lint script starts reading a new
+		// outside path, add it here; scripts/__tests__/turbo-lint-inputs.test.ts
+		// pins the current set.
+		"@owlat/api#lint": {
+			"dependsOn": ["transit"],
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				// check-entry-wiring.ts: callers of every public Convex entry, read
+				// from every production .ts/.vue file under apps/ and packages/.
+				// check-kind-literal-custody.ts and check-transport-outcome-wiring.ts
+				// also import @owlat/shared at run time.
+				"$TURBO_ROOT$/apps/**/*.{ts,vue}",
+				"$TURBO_ROOT$/packages/**/*.{ts,vue}",
+				"$TURBO_ROOT$/packages/*/package.json",
+				// check-ramp-matrix-workflow.sh
+				"$TURBO_ROOT$/.github/workflows/test.yml",
+				// check-env-docs.sh and check-dmarc-docs.sh
+				"$TURBO_ROOT$/apps/docs/content/en/3.developer/8.environment-variables.md",
+				"$TURBO_ROOT$/apps/docs/content/en/3.developer/6.email-system.md",
+				// the baseline checks exec the shared ratchet runner
+				"$TURBO_ROOT$/scripts/ratchet.sh",
+				// Root globs bypass .gitignore, so drop generated output by hand:
+				// node_modules and .nuxt anywhere, and build, dist, .output, coverage
+				// and .turbo (turbo's own log, rewritten by every run) only at a
+				// package root. A nested source directory with one of those names
+				// stays hashed. turbo matches excludes against the cleaned relative
+				// path, so sibling apps need the `../*/` form (`$TURBO_ROOT$/apps/*/`
+				// silently misses `../web/…`); packages keep `$TURBO_ROOT$`.
+				"!**/node_modules/**",
+				"!**/.nuxt/**",
+				"!{build,dist,.output,coverage,.turbo}/**",
+				"!../*/{build,dist,.output,coverage,.turbo}/**",
+				"!$TURBO_ROOT$/packages/*/{build,dist,.output,coverage,.turbo}/**"
+			]
+		},
+		"@owlat/web#lint": {
+			"dependsOn": ["transit"],
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				// check-dead-tokens.sh and check-icon-names.sh scan the UI layer
+				"$TURBO_ROOT$/packages/ui/**",
+				// check-localized-text.sh execs the shared ratchet runner
+				"$TURBO_ROOT$/scripts/ratchet.sh",
+				// generated output, as for @owlat/api#lint above; both scanners skip
+				// the same paths (apps/web/scripts/lib/output-roots.sh)
+				"!**/node_modules/**",
+				"!**/.nuxt/**",
+				"!{build,dist,.output,coverage,.turbo}/**",
+				"!$TURBO_ROOT$/packages/ui/{build,dist,.output,coverage,.turbo}/**"
+			]
+		},
+		"@owlat/setup-cli#lint": {
+			"dependsOn": ["transit"],
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				// check-env-keys-sync.sh compares these two lists
+				"$TURBO_ROOT$/apps/api/convex/lib/env.ts",
+				"$TURBO_ROOT$/packages/shared/src/convexRuntimeEnv.ts"
+			]
+		},
 		"lint:fix": {},
 		"codegen": {
 			"cache": false
