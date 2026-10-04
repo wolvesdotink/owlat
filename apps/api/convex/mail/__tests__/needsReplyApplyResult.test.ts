@@ -147,8 +147,7 @@ describe('mail.needsReply.applyResult', () => {
 							id: 'clarify_0',
 							slotType: 'decision',
 							text: 'Should we approve the refund?',
-							attribution:
-								'Generated from an email from acme.com — Owlat will never ask for your password.',
+							origin: { kind: 'email', senderDomain: 'acme.com' },
 							options: ['Yes', 'No'],
 							translations: [
 								{

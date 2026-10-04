@@ -1,11 +1,16 @@
 /**
  * Migration 0066: legacy clarification questions (only the English
  * `attribution` sentence) get the `origin` the sentence implies and lose the
- * sentence, on Reply Queue threads and Answer mode sessions alike, so a later
- * release can drop the field and the web's sentence-parsing fallback.
+ * sentence, on Reply Queue threads and Answer mode sessions alike.
+ *
+ * Since #1224 the schema has no `attribution`, so the current schema cannot
+ * hold such a row and a deployment that still has one rejects the deploy. The
+ * conversion is exercised against the same tables with schema validation off,
+ * which stands in for the data a 0.6.10 deployment holds before 0066 has run.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
+import { defineSchema } from 'convex/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
@@ -16,17 +21,29 @@ import {
 	seedMailbox,
 	seedMessage,
 } from '../../mail/__tests__/helpers.testlib';
-import { legacyAttributionOrigin } from '../../inbox/clarificationSlots';
 import {
 	MIGRATION,
 	convertQuestions,
 	decodeCursor,
 	encodeCursor,
+	legacyAttributionOrigin,
 } from '../0066_backfill_clarification_origin';
 
 const migration = internal.migrations[MIGRATION];
 
-type Harness = TestConvex<typeof schema>;
+/**
+ * The current tables with schema validation off: the rows a deployment held
+ * before 0066 converted them, which the current schema no longer accepts.
+ */
+const legacySchema = defineSchema(schema.tables, { schemaValidation: false });
+
+type Harness = TestConvex<typeof legacySchema>;
+
+interface LegacyQuestion {
+	id: string;
+	attribution?: string;
+	origin?: { kind: 'email'; senderDomain?: string };
+}
 
 const legacy = (domain?: string) =>
 	`Generated from ${domain ? `an email from ${domain}` : 'an email'} — Owlat will never ask for your password.`;
@@ -100,11 +117,7 @@ async function seedLegacyThread(
 	t: Harness,
 	mailboxId: Id<'mailboxes'>,
 	subject: string,
-	questions: {
-		id: string;
-		attribution?: string;
-		origin?: { kind: 'email'; senderDomain?: string };
-	}[]
+	questions: LegacyQuestion[]
 ): Promise<Id<'mailThreads'>> {
 	const messageId = await seedMessage(t, mailboxId, { subject });
 	return t.run(async (ctx) => {
@@ -132,8 +145,17 @@ async function seedLegacyThread(
 }
 
 async function seedLegacySession(t: Harness, mailboxId: Id<'mailboxes'>, attribution: string) {
+	const now = Date.now();
+	// A stored question from before 0.6.10; the schema type no longer has the field.
+	const legacyFileQuestion = {
+		id: 'file_request',
+		slotType: 'attachment',
+		text: 'They asked for "invoice".',
+		attribution,
+		answerKind: 'file' as const,
+		answer: { value: 'It isn’t ready yet', at: now, source: 'user' as const },
+	};
 	return t.run(async (ctx) => {
-		const now = Date.now();
 		const draftId = await ctx.db.insert('mailDrafts', {
 			mailboxId,
 			toAddresses: ['ines@northwind.example'],
@@ -155,16 +177,7 @@ async function seedLegacySession(t: Harness, mailboxId: Id<'mailboxes'>, attribu
 			locale: 'en',
 			round: 1,
 			status: 'asking',
-			questions: [
-				{
-					id: 'file_request',
-					slotType: 'attachment',
-					text: 'They asked for "invoice".',
-					attribution,
-					answerKind: 'file',
-					answer: { value: 'It isn’t ready yet', at: now, source: 'user' },
-				},
-			],
+			questions: [legacyFileQuestion],
 			attachedFiles: [],
 			createdAt: now,
 			updatedAt: now,
@@ -181,7 +194,7 @@ afterEach(() => {
 
 describe('0066_backfill_clarification_origin', () => {
 	it('converts every legacy question on threads and sessions, over several pages', async () => {
-		const t = convexTest(schema, modules);
+		const t = convexTest(legacySchema, modules);
 		const mailboxId = await seedMailbox(t);
 		await seedFolder(t, mailboxId);
 		const legacyThread = await seedLegacyThread(t, mailboxId, 'legacy', [
@@ -252,5 +265,73 @@ describe('0066_backfill_clarification_origin', () => {
 
 		// Finished: a second run does nothing.
 		expect(await t.mutation(migration.run, {})).toMatchObject({ started: false });
+	});
+
+	it('converts a question stored behind the cursor on a restart', async () => {
+		// #1224 step 1: an action that started before the 0.6.10 deploy can store
+		// a question with `attribution` after the walk has passed its thread.
+		const t = convexTest(legacySchema, modules);
+		const mailboxId = await seedMailbox(t);
+		await seedFolder(t, mailboxId);
+		await t.mutation(migration.run, {});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		const late = await seedLegacyThread(t, mailboxId, 'late', [
+			{ id: 'clarify_0', attribution: legacy('acme.com') },
+		]);
+
+		expect(await t.mutation(migration.run, {})).toMatchObject({ started: false });
+		expect(await t.mutation(migration.run, { restart: true })).toMatchObject({ started: true });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(late))!.needsReply?.clarification?.questions).toEqual([
+				expect.objectContaining({ origin: { kind: 'email', senderDomain: 'acme.com' } }),
+			]);
+			const run = await ctx.db
+				.query('migrationRuns')
+				.withIndex('by_migration', (q) => q.eq('migration', MIGRATION))
+				.unique();
+			expect(run).toMatchObject({ status: 'completed', changedCount: 1 });
+		});
+	});
+});
+
+describe('the schema without `attribution` (#1224)', () => {
+	it('rejects a stored question that still has the legacy sentence', async () => {
+		// convex-test validates writes against the schema the way the deployment
+		// validates its stored rows on deploy.
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t);
+		await seedFolder(t, mailboxId);
+		await expect(
+			seedLegacyThread(t, mailboxId, 'legacy', [
+				{ id: 'clarify_0', attribution: legacy('acme.com') },
+			])
+		).rejects.toThrow(/Unexpected field `attribution`/);
+		await expect(
+			seedLegacySession(t, mailboxId, legacy('acme.com'))
+		).rejects.toThrow(/Unexpected field `attribution`/);
+	});
+
+	it('leaves nothing for a run to change once the field is gone', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t);
+		await seedFolder(t, mailboxId);
+		const current = await seedLegacyThread(t, mailboxId, 'current', [
+			{ id: 'clarify_0', origin: { kind: 'email', senderDomain: 'acme.com' } },
+		]);
+		const before = await t.run(async (ctx) => (await ctx.db.get(current))!);
+
+		await t.mutation(migration.run, { restart: true });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		await t.run(async (ctx) => {
+			expect(await ctx.db.get(current)).toEqual(before);
+			const run = await ctx.db
+				.query('migrationRuns')
+				.withIndex('by_migration', (q) => q.eq('migration', MIGRATION))
+				.unique();
+			expect(run).toMatchObject({ status: 'completed', changedCount: 0 });
+		});
 	});
 });

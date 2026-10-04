@@ -45,7 +45,7 @@ const QUESTION = {
 	slotType: 'attachment',
 	answerKind: 'file' as const,
 	text: 'They asked for "invoice for september". I couldn\'t find it in Files or earlier mail.',
-	attribution: 'Generated from an email from example.org',
+	origin: { kind: 'email' as const, senderDomain: 'example.org' },
 	options: ["It isn't ready yet"],
 	fileCandidates: [
 		{

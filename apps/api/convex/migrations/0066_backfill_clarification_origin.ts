@@ -9,14 +9,22 @@
  * structured `origin` the web words in the reader's language, and since #1186
  * nothing writes `attribution` any more. This walk converts what is left: each
  * question that still has `attribution` gets the `origin` its sentence implies
- * (inbox/clarificationSlots.ts legacyAttributionOrigin, which reads the domain
- * the way the web's fallback does), and loses the sentence. A question that
- * already has `origin` keeps it and only loses the sentence.
+ * ({@link legacyAttributionOrigin}, which reads the domain the way the web's
+ * old fallback did), and loses the sentence. A question that already has
+ * `origin` keeps it and only loses the sentence.
  *
- * Optional for the release that ships it: until it has run, the web reads the
- * domain out of the sentence, so the trust line looks the same either way. It
- * is the stepping stone for the contract step that drops `attribution` from
- * the schema and the web fallback: that step needs every row converted.
+ * REQUIRED BEFORE 0.6.11. Introduced in 0.6.10 as a stepping stone; 0.6.11
+ * (#1224) removed `attribution` from the schema, so its deploy is rejected
+ * while any stored question still has the field. Run it on 0.6.10, then once
+ * more with `'{"restart":true}'` after every action started before the 0.6.10
+ * deploy has finished (one of those can store a question with `attribution`
+ * behind the cursor), and update only once that pass has completed.
+ *
+ * On a deployment that runs the schema without `attribution`, no stored
+ * question can carry it, so a run there scans and changes nothing. The module
+ * stays so its ledger row and path stay valid (a page chain a 0.6.10 run queued
+ * still finds its function after the update), and it keeps its own parser
+ * because nothing else reads the sentence any more.
  *
  * TWO PASSES, one ledger row:
  *   1. `threads`: `mailThreads.needsReply.clarification.questions` (the Reply
@@ -37,7 +45,7 @@ import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { MutationCtx } from '../_generated/server';
 import { logInfo } from '../lib/runtimeLog';
-import { legacyAttributionOrigin, type ClarificationOrigin } from '../inbox/clarificationSlots';
+import type { ClarificationOrigin } from '../inbox/clarificationSlots';
 import {
 	beginMigrationRun,
 	isCurrentMigrationPage,
@@ -72,9 +80,29 @@ export function decodeCursor(stored: string | null | undefined): {
 	return { pass, cursor: cursor || null };
 }
 
+/**
+ * A stored question's provenance as this walk reads it. `attribution` is no
+ * longer in the schema's question type; a row stored before 0.6.10 carried it.
+ */
 interface LegacyProvenance {
 	attribution?: string | undefined;
 	origin?: ClarificationOrigin | undefined;
+}
+
+/**
+ * The `origin` a legacy `attribution` sentence implies. Reads the domain the
+ * way the web's fallback (`attributionDomain`, removed in 0.6.11) did, so a
+ * converted question shows the same trust line: a sentence naming a domain
+ * gives `{ kind: 'email', senderDomain }`, one naming none gives
+ * `{ kind: 'email' }`, and an absent or empty sentence gives no origin (the web
+ * showed no line for it either).
+ */
+export function legacyAttributionOrigin(
+	attribution: string | undefined
+): ClarificationOrigin | undefined {
+	if (!attribution) return undefined;
+	const domain = attribution.match(/\ban email from (\S+)/i)?.[1]?.replace(/[.,;:]+$/, '');
+	return domain ? { kind: 'email', senderDomain: domain } : { kind: 'email' };
 }
 
 /**

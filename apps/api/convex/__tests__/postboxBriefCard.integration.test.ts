@@ -233,7 +233,7 @@ async function seedAgentActivity(
 							id: 'q1',
 							slotType: 'fact',
 							text: 'Which PO number applies?',
-							attribution: 'Asked because Bob referenced a PO',
+							origin: { kind: 'email', senderDomain: 'example.com' },
 						},
 					],
 					askedAt: now,

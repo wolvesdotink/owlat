@@ -223,24 +223,6 @@ export function emailProvenance(fromAddress: string): QuestionProvenance {
 	return { origin: domain ? { kind: 'email', senderDomain: domain } : { kind: 'email' } };
 }
 
-/**
- * The `origin` a question stored before `origin` existed implies, read from its
- * legacy English `attribution` sentence ("Generated from an email from
- * acme.com — Owlat will never ask for your password."). Reads the domain the
- * way the web's fallback does (utils/clarificationLocale.ts attributionDomain),
- * so a converted question shows the same trust line. Undefined for an absent
- * or empty sentence, which the web shows no line for either.
- *
- * Remove with `attribution` itself, once migration 0066 has run everywhere.
- */
-export function legacyAttributionOrigin(
-	attribution: string | undefined
-): ClarificationOrigin | undefined {
-	if (!attribution) return undefined;
-	const domain = attribution.match(/\ban email from (\S+)/i)?.[1]?.replace(/[.,;:]+$/, '');
-	return domain ? { kind: 'email', senderDomain: domain } : { kind: 'email' };
-}
-
 interface SanitizedClarificationQuestion {
 	id: string;
 	slotType: string;

@@ -132,14 +132,14 @@ export const needsReplyClarificationQuestionValidator = v.object({
 	slotType: v.string(),
 	// The question shown to the owner.
 	text: v.string(),
-	// LEGACY, no longer written: provenance + "Owlat will never ask for your
-	// password" promise as one English sentence. Present only on questions
-	// stored before `origin` existed; the web reads the domain out of it for
-	// those, and migration 0066 (backfill_clarification_origin) converts them to
-	// `origin`. Drop the field, and the web fallback, once 0066 has completed.
-	attribution: v.optional(v.string()),
-	// Structured provenance; the web builds the localized trust line from it.
-	// Written on every new question. Absent only on legacy questions above.
+	// Structured provenance; the web builds the localized trust line, with the
+	// "Owlat never asks for your password" promise, from it. Written on every
+	// question. Questions stored before it existed carried an English
+	// `attribution` sentence instead; migration 0066
+	// (backfill_clarification_origin) converted those, and the field is gone
+	// from the schema (#1224), so a deployment that still holds one rejects
+	// this schema on deploy. Optional because a question with no provenance
+	// shows no trust line rather than an invented one.
 	origin: v.optional(clarificationOriginValidator),
 	// Suggested scoped answers rendered as one-tap chips (multiple
 	// choice); absent for a free-text-only slot.
