@@ -128,7 +128,9 @@ export const applySuppressionBatch = internalMutation({
 					{ email }
 				);
 				if (!result.success) counts.noContact++;
-				else if (wasOptedOut && result.alreadyUnsubscribed) counts.alreadyUnsubscribed++;
+				// No `eventAt` here, so the relay-only `skipped` outcome cannot occur.
+				else if (wasOptedOut && 'alreadyUnsubscribed' in result && result.alreadyUnsubscribed)
+					counts.alreadyUnsubscribed++;
 				else counts.unsubscribed++;
 				continue;
 			}

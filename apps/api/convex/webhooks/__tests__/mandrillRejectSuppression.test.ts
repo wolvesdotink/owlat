@@ -43,12 +43,14 @@ import {
 import { dispatchInboundEvent } from '../dispatcher';
 
 const RECIPIENT = 'blocked@example.com';
+/** A minute ago: a reject older than the replay window suppresses nobody (#1228). */
+const EVENT_TS = Math.floor(Date.now() / 1000) - 60;
 
 /** The event the real adapter produces for a reject with this reason. */
 function rejectEvent(rejectReason: string | undefined, email: string | null = RECIPIENT) {
 	const event = mapMandrillEvent({
 		event: 'reject',
-		ts: 1_770_000_000,
+		ts: EVENT_TS,
 		msg: {
 			_id: 'mandrill-msg-1',
 			...(email === null ? {} : { email }),
@@ -131,7 +133,7 @@ describe('which reject reasons are recipient truths', () => {
 		const calls = await dispatchReject('unsub');
 		expect(suppressions(calls)).toHaveLength(0);
 		expect(unsubscribes(calls)).toHaveLength(1);
-		expect(unsubscribes(calls)[0]!.args).toEqual({ email: RECIPIENT });
+		expect(unsubscribes(calls)[0]!.args).toEqual({ email: RECIPIENT, eventAt: EVENT_TS * 1000 });
 	});
 
 	// THE SENDER-SIDE REASONS. Every one of these says something about our
@@ -196,11 +198,14 @@ describe('which reject reasons are recipient truths', () => {
 	// mailable on ours.
 	it('still fails the send, suppression first', async () => {
 		const calls = await dispatchReject('hard-bounce');
+		// Inside the replay claim the reject is applied under (#1228).
 		expect(calls.map((call) => call.name)).toEqual([
+			fnName(internal.webhooks.inboundEventClaims.claim),
 			fnName(internal.blockedEmails.addFromEvent),
 			fnName(internal.delivery.sendLifecycle.transitionByProviderMessageId),
+			fnName(internal.webhooks.inboundEventClaims.complete),
 		]);
-		expect(calls[1]!.args).toMatchObject({
+		expect(calls[2]!.args).toMatchObject({
 			providerMessageId: 'mandrill-msg-1',
 			transition: { to: 'failed', errorCode: 'MANDRILL_REJECT_HARD_BOUNCE' },
 		});

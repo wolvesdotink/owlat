@@ -1,5 +1,7 @@
 import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
+import { afterEventSecond } from '../lib/clock';
+import { AUDIT_LOG_RETENTION_MS } from '../lib/constants';
 import { normalizeEmail } from '../lib/inputGuards';
 import { BLOCK_REASONS, type BlockReason } from '../lib/literalValidators';
 
@@ -61,4 +63,52 @@ export async function countBlockedByReason(
 	const byReason = Object.fromEntries(counts) as Record<BlockReason, number>;
 	const total = counts.reduce((sum, [, count]) => sum + count, 0);
 	return { total, ...byReason };
+}
+
+// Removals scanned per action per check. Each one is an operator's click, so
+// the cap is far above what the range since a provider event holds.
+const REMOVAL_SCAN_LIMIT = 500;
+
+// The two audit actions that record an operator taking an address OFF the
+// blocklist: `blockedEmails.remove` for an ordinary row, and the sunset restore
+// (reached from that same Remove button for an `unengaged` row, or from the
+// contact page), which deletes the row and writes only its own entry.
+const REMOVAL_ACTIONS = ['blocklist.removed', 'contact.sunset_restored'] as const;
+
+// Whether an operator removed `email` from the blocklist after an event the
+// provider stamped `eventAt` (#1228).
+//
+// Read from the audit entries those removals already write in the same
+// transaction as the delete, each carrying the address, so the guard needs no
+// new table and stores nothing new. "After" is `afterEventSecond`: a removal in
+// the event's own (whole) second counts as before it, the same tie rule the
+// relay unsubscribe uses.
+//
+// Two cases answer true without proof, because refusing a re-add costs nothing
+// the provider does not still enforce, while undoing an operator's decision is
+// the failure being guarded against:
+//  - an event older than the audit retention: removals that old are purged, so
+//    their absence proves nothing;
+//  - more than REMOVAL_SCAN_LIMIT removals of either kind since the event.
+export async function wasRemovedByOperatorSince(
+	ctx: QueryCtx | MutationCtx,
+	email: string,
+	eventAt: number
+): Promise<boolean> {
+	if (!(eventAt > Date.now() - AUDIT_LOG_RETENTION_MS)) return true;
+	const normalizedEmail = normalizeEmail(email);
+	const from = afterEventSecond(eventAt);
+	for (const action of REMOVAL_ACTIONS) {
+		const removals = await ctx.db
+			.query('auditLogs')
+			.withIndex('by_action_and_created_at', (q) => q.eq('action', action).gte('createdAt', from))
+			.take(REMOVAL_SCAN_LIMIT + 1);
+		if (removals.length > REMOVAL_SCAN_LIMIT) return true;
+		const removed = removals.some((entry) => {
+			const removedEmail = entry.details?.['email'];
+			return typeof removedEmail === 'string' && normalizeEmail(removedEmail) === normalizedEmail;
+		});
+		if (removed) return true;
+	}
+	return false;
 }

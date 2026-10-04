@@ -50,6 +50,26 @@
  * There is deliberately no `ignore` member: a reason that says nothing about
  * the recipient is one an adapter never mints, so it cannot arrive here and be
  * mishandled.
+ *
+ * OPERATOR DECISIONS WIN OVER OLDER PROVIDER DATA (#1228). Every write carries
+ * the event's own time. `addFromEvent` refuses a re-add older than an
+ * operator's removal of that address, and `processUnsubscribeByEmail` refuses
+ * an unsubscribe older than the contact's re-subscribe, so a late redelivery or
+ * a replay cannot undo either. A NEWER event still applies: if the provider
+ * keeps refusing the address after the operator unblocked it, that is fresh
+ * evidence, and the fix is to remove it from the provider's list too.
+ *
+ * WHY THERE IS NO OWNERSHIP GATE HERE, unlike the unresolved-complaint path
+ * (#1214, #1237). Those complaints name a message that matches no Send, which
+ * is itself evidence the mail may not be ours. A provider suppression is a fact
+ * about the provider ACCOUNT's list, and this deployment's arm on that account
+ * refuses the address whoever put it there, so mirroring it keeps the two arms
+ * on the same population. It also cannot be gated on the Send: Mandrill refuses
+ * a listed address synchronously, and a refused send stores no provider message
+ * id for the webhook's `reject` to match. The remaining exposure is a provider
+ * that keeps separate lists per subaccount while delivering every subaccount's
+ * events to one webhook; that needs a per-deployment marker the provider echoes
+ * back (Mandrill `msg.subaccount`, verified live) and is a follow-up.
  */
 
 import { internal } from '../_generated/api';
@@ -102,25 +122,28 @@ export function providerSuppressionEffect(
  *
  * The address is UNTRUSTED provider telemetry — it is acted on because the
  * SIGNED callback said this provider suppressed it, never because the field was
- * present. Both writes are idempotent per address, which is what makes a
- * redelivered batch a no-op rather than a second row or a second count.
+ * present. Both writes are idempotent per address while nothing changes, and
+ * both refuse an event older than a later operator removal or re-subscribe,
+ * which is what makes a redelivered batch a no-op even after one of those.
  */
 async function applyProviderSuppressionFact(
 	ctx: ActionCtx,
-	providerType: string,
-	recipient: string,
+	fact: { providerType: string; recipient: string; at: number },
 	suppression: ProviderSuppression
 ): Promise<void> {
+	const { providerType, recipient, at } = fact;
 	const effect = providerSuppressionEffect(suppression.reason);
 	if (effect.kind === 'unsubscribe') {
 		await ctx.runMutation(internal.delivery.unsubscribeQueries.processUnsubscribeByEmail, {
 			email: recipient,
+			eventAt: at,
 		});
 		return;
 	}
 	await ctx.runMutation(internal.blockedEmails.addFromEvent, {
 		email: recipient,
 		reason: effect.reason,
+		eventAt: at,
 		...(effect.reason === 'bounced' ? { bounceType: effect.bounceType } : {}),
 		provenance: {
 			provider: providerType,
@@ -138,7 +161,7 @@ export async function applyProviderSuppression(
 	ctx: ActionCtx,
 	event: InboundEventOf<'email.provider_suppressed'>
 ): Promise<void> {
-	await applyProviderSuppressionFact(ctx, event.providerType, event.recipient, {
+	await applyProviderSuppressionFact(ctx, event, {
 		reason: event.reason,
 		...(event.evidence ? { evidence: event.evidence } : {}),
 	});
@@ -163,5 +186,9 @@ export async function applyFailureSuppression(
 	event: InboundEventOf<'email.failed'>
 ): Promise<void> {
 	if (!event.suppression || !event.recipient || !event.providerType) return;
-	await applyProviderSuppressionFact(ctx, event.providerType, event.recipient, event.suppression);
+	await applyProviderSuppressionFact(
+		ctx,
+		{ providerType: event.providerType, recipient: event.recipient, at: event.at },
+		event.suppression
+	);
 }

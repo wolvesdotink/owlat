@@ -18,7 +18,7 @@ import { segmentFiltersValidator } from '../lib/convexValidators';
 import { logWarn } from '../lib/runtimeLog';
 import { normalizeEmail } from '../lib/inputGuards';
 import { loadSuppressionSet, loadSuppressionSetBounded } from '../lib/suppression';
-import { contactMarketingIneligibility } from '../lib/marketingEligibility';
+import { contactMarketingIneligibility, isAwaitingDoubleOptIn } from '../lib/marketingEligibility';
 import {
 	conditionsLookupReadsPerBatch,
 	conditionsLookupReadsPerContact,
@@ -104,16 +104,8 @@ export function selectRecipient(
 	if (contactMarketingIneligibility(contact) !== null) return null;
 	if (!contact.email) return null; // email-present
 	if (gate.blockedEmails.has(normalizeEmail(contact.email))) return null; // suppression
-	if (
-		gate.requiresDoi &&
-		contact.doiStatus !== 'confirmed' &&
-		contact.doiStatus !== 'not_required'
-	) {
-		return null; // DOI (topic only)
-	}
-	if (membershipPendingDoi === true) {
-		return null; // form-forced DOI on a non-DOI topic, not yet confirmed
-	}
+	// DOI (topic only), or form-forced DOI on a non-DOI topic not yet confirmed.
+	if (isAwaitingDoubleOptIn(contact, gate.requiresDoi, membershipPendingDoi)) return null;
 	return projectRecipient(contact);
 }
 
