@@ -1,15 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
 	buildDraftSystemPrompt,
-	buildDraftOptionsPrompt,
 	buildReplyLanguageInstruction,
 } from '../../../shared/draftService';
 import { safeLanguage } from '../sanitize';
 
 /**
  * The reply is written in the sender's language. These pin the instruction
- * both draft prompts carry (primary system prompt + the alternative-options
- * prompt) and the allowlist that keeps a classifier-supplied language string
+ * the draft's system prompt carries and the allowlist that keeps a classifier-supplied language string
  * out of the system role unless it is a plain language code.
  */
 
@@ -43,12 +41,6 @@ describe('draft prompts carry the language rule', () => {
 	it('in the primary system prompt', () => {
 		expect(buildDraftSystemPrompt({ ...base, replyLanguage: 'fr' })).toContain('French (fr)');
 		expect(buildDraftSystemPrompt(base)).toMatch(/language the sender wrote/i);
-	});
-
-	it('in the alternative-options prompt', () => {
-		const prompt = buildDraftOptionsPrompt({ context: 'X', voiceSection: '', replyLanguage: 'es' });
-		expect(prompt).toContain('Spanish (es)');
-		expect(prompt).toContain('<untrusted_email_content>');
 	});
 });
 
