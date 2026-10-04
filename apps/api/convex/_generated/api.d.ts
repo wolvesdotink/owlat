@@ -818,6 +818,7 @@ import type * as lib_llm_retryPolicy from '../lib/llm/retryPolicy.js';
 import type * as lib_llm_streamFlusher from '../lib/llm/streamFlusher.js';
 import type * as lib_llm_tokenUsage from '../lib/llm/tokenUsage.js';
 import type * as lib_llm_toolMarkup from '../lib/llm/toolMarkup.js';
+import type * as lib_llm_toolTagGrammar from '../lib/llm/toolTagGrammar.js';
 import type * as lib_llmProvider from '../lib/llmProvider.js';
 import type * as lib_llmProviders_anthropic from '../lib/llmProviders/anthropic.js';
 import type * as lib_llmProviders_azure from '../lib/llmProviders/azure.js';
@@ -2301,6 +2302,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/llm/streamFlusher': typeof lib_llm_streamFlusher;
 	'lib/llm/tokenUsage': typeof lib_llm_tokenUsage;
 	'lib/llm/toolMarkup': typeof lib_llm_toolMarkup;
+	'lib/llm/toolTagGrammar': typeof lib_llm_toolTagGrammar;
 	'lib/llmProvider': typeof lib_llmProvider;
 	'lib/llmProviders/anthropic': typeof lib_llmProviders_anthropic;
 	'lib/llmProviders/azure': typeof lib_llmProviders_azure;
