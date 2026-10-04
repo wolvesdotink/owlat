@@ -25,7 +25,8 @@ import {
 	createTestTransactionalEmail,
 	flushScheduled,
 } from '../../__tests__/factories';
-import { findLiveContactByEmail, LIVE_CONTACT_EMAIL_SCAN_LIMIT } from '../../lib/contactHelpers';
+import { findLiveContactByEmail } from '../../lib/contactHelpers';
+import { applyContactEdit } from '../contactEdit';
 import { contactsLoader } from '../../seedDemo/loaders/contacts';
 
 // The unsubscribe outcome recorder resolves the singleton org through the
@@ -42,6 +43,8 @@ afterEach(async () => {
 
 const EMAIL = 'jane@example.com';
 const DAY_MS = 86_400_000;
+/** More deleted rows than any fixed-size scan of `by_email` would look past. */
+const DELETED_AHEAD_OF_EDITED_CONTACT = 30;
 
 /** A soft-deleted original, then the live contact that replaced it. */
 async function seedDeletedThenLive(
@@ -109,20 +112,37 @@ describe('findLiveContactByEmail', () => {
 		});
 	});
 
-	it('reads at most LIVE_CONTACT_EMAIL_SCAN_LIMIT rows, newest first', async () => {
+	it('finds a live contact moved onto the address by an email edit, behind many deleted rows', async () => {
 		const t = convexTest(schema, modules);
-		await t.run(async (ctx) => {
-			// A live row older than a full window of deleted ones cannot happen
-			// (a second live row is refused, and deleted rows are never restored);
-			// seeding it shows where the bounded read stops.
-			await ctx.db.insert('contacts', createTestContact({ email: EMAIL }));
-			for (let i = 0; i < LIVE_CONTACT_EMAIL_SCAN_LIMIT; i++) {
+		// An edit keeps the row's creation time, so the live contact sorts BEFORE
+		// every deleted row created at the address after it.
+		const liveId = await t.run(async (ctx) => {
+			const id = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'jane.old@example.com' })
+			);
+			for (let i = 0; i < DELETED_AHEAD_OF_EDITED_CONTACT; i++) {
 				await ctx.db.insert(
 					'contacts',
 					createTestContact({ email: EMAIL, deletedAt: Date.now(), deletedBy: 'user-1' })
 				);
 			}
-			expect(await findLiveContactByEmail(ctx, EMAIL)).toBeNull();
+			await applyContactEdit(ctx, id, { email: EMAIL }, { actorUserId: 'user-1' });
+			return id;
+		});
+
+		await t.run(async (ctx) => {
+			expect((await findLiveContactByEmail(ctx, EMAIL))?._id).toBe(liveId);
+		});
+		const result = await t.mutation(
+			internal.delivery.unsubscribeQueries.processUnsubscribeByEmail,
+			{
+				email: EMAIL,
+			}
+		);
+		expect(result.success).toBe(true);
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(liveId))?.unsubscribedAt).toBeTypeOf('number');
 		});
 	});
 });
