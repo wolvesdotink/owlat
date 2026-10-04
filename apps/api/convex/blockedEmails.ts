@@ -14,6 +14,7 @@ import { getOrThrow, throwInvalidInput, throwAlreadyExists } from './_utils/erro
 import * as sm from './delivery/suppressionMirrorScheduler';
 import { recordAuditLog } from './lib/auditLog';
 import { restoreSunsetSuppression } from './contacts/sunsetRestore';
+import { findLiveContactByEmail } from './lib/contactHelpers';
 import {
 	blockedEmailReasonValidator,
 	bounceTypeValidator,
@@ -212,16 +213,12 @@ export const remove = authedMutation({
 		// its own `contact.sunset_restored` audit entry.
 		if (blockedEmail.reason === 'unengaged') {
 			// `by_email` is NOT unique and `contacts` is a soft-delete table, so the
-			// live-row filter belongs IN the query (CONVENTIONS.md): a soft-deleted
+			// lookup must skip soft-deleted rows (CONVENTIONS.md): a soft-deleted
 			// duplicate sorting first would otherwise send the operator down the
 			// plain delete below, leaving the live contact pinned at
 			// `sunsetStage: 'suppressed'` with no blocklist row behind it and the
 			// engine holding on `already_suppressed` forever.
-			const contact = await ctx.db
-				.query('contacts')
-				.withIndex('by_email', (q) => q.eq('email', blockedEmail.email))
-				.filter((q) => q.eq(q.field('deletedAt'), undefined))
-				.first();
+			const contact = await findLiveContactByEmail(ctx, blockedEmail.email);
 			if (contact !== null) {
 				const restore = await restoreSunsetSuppression(ctx, {
 					contactId: contact._id,

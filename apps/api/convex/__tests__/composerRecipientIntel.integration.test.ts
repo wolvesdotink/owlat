@@ -20,7 +20,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { enableFeatures } from './factories';
+import { createTestContact, enableFeatures } from './factories';
 
 const sessionMock = vi.hoisted(() => ({
 	user: { id: 'user-alice', role: 'editor' as 'owner' | 'admin' | 'editor', orgId: 'org-1' },
@@ -200,5 +200,37 @@ describe('mail.contacts.correspondentDomains', () => {
 
 		setUser('user-bob');
 		expect(await t.query(api.mail.contacts.correspondentDomains, { mailboxId })).toEqual([]);
+	});
+});
+
+describe('mail.contacts.recipientTimeZones', () => {
+	// A soft-deleted contact keeps its email, and `by_email` returns it before
+	// the live contact that replaced it (#1242).
+	it("reads the live contact's time zone when a deleted contact shares the address", async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const mailboxId = await seedMailbox(t, 'user-alice', 'ada@northwind.studio');
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'ines@northwind.studio',
+					timezone: 'America/New_York',
+					deletedAt: Date.now(),
+					deletedBy: 'user-alice',
+				})
+			);
+			await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'ines@northwind.studio', timezone: 'Europe/Berlin' })
+			);
+		});
+
+		expect(
+			await t.query(api.mail.contacts.recipientTimeZones, {
+				mailboxId,
+				emails: ['ines@northwind.studio'],
+			})
+		).toEqual([{ address: 'ines@northwind.studio', timeZone: 'Europe/Berlin' }]);
 	});
 });

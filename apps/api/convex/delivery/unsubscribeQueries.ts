@@ -6,6 +6,7 @@ import { publicQuery } from '../lib/authedFunctions';
 import type { Doc, Id } from '../_generated/dataModel';
 import { normalizeEmail } from '../lib/inputGuards';
 import { afterEventSecond } from '../lib/clock';
+import { findLiveContactByEmail } from '../lib/contactHelpers';
 import { isAwaitingDoubleOptIn } from '../lib/marketingEligibility';
 import type { UnsubscribeOutcome } from '../topics/subscription';
 import { resolveWorkspaceLogo, type WorkspaceLogo } from '../workspaces/branding';
@@ -179,10 +180,7 @@ export const processUnsubscribeByEmail = internalMutation({
 	handler: async (ctx, args): Promise<ProcessUnsubscribeResult | RelayUnsubscribeSkipped> => {
 		const normalized = normalizeEmail(args.email);
 		if (!normalized) return { success: false, reason: 'not_found' };
-		const contact = await ctx.db
-			.query('contacts')
-			.withIndex('by_email', (q) => q.eq('email', normalized))
-			.first();
+		const contact = await findLiveContactByEmail(ctx, normalized);
 		if (!contact) return { success: false, reason: 'not_found' };
 		if (args.eventAt === undefined) {
 			return await applyPublicUnsubscribe(ctx, { contactId: contact._id });
