@@ -815,6 +815,8 @@ import type * as lib_llm_pricing from '../lib/llm/pricing.js';
 import type * as lib_llm_promptCache from '../lib/llm/promptCache.js';
 import type * as lib_llm_retryPolicy from '../lib/llm/retryPolicy.js';
 import type * as lib_llm_streamFlusher from '../lib/llm/streamFlusher.js';
+import type * as lib_llm_tokenUsage from '../lib/llm/tokenUsage.js';
+import type * as lib_llm_toolMarkup from '../lib/llm/toolMarkup.js';
 import type * as lib_llmProvider from '../lib/llmProvider.js';
 import type * as lib_llmProviders_anthropic from '../lib/llmProviders/anthropic.js';
 import type * as lib_llmProviders_azure from '../lib/llmProviders/azure.js';
@@ -2295,6 +2297,8 @@ declare const fullApi: ApiFromModules<{
 	'lib/llm/promptCache': typeof lib_llm_promptCache;
 	'lib/llm/retryPolicy': typeof lib_llm_retryPolicy;
 	'lib/llm/streamFlusher': typeof lib_llm_streamFlusher;
+	'lib/llm/tokenUsage': typeof lib_llm_tokenUsage;
+	'lib/llm/toolMarkup': typeof lib_llm_toolMarkup;
 	'lib/llmProvider': typeof lib_llmProvider;
 	'lib/llmProviders/anthropic': typeof lib_llmProviders_anthropic;
 	'lib/llmProviders/azure': typeof lib_llmProviders_azure;

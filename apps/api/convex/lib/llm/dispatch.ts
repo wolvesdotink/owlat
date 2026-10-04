@@ -302,6 +302,15 @@ interface LlmStreamOptions {
 	temperature?: number;
 	/** Abort the stream mid-flight (user "stop generating"). */
 	abortSignal?: AbortSignal;
+	/**
+	 * Keep only the text of the final step, the way `generateText().text` does,
+	 * for a caller whose result is a document body rather than a chat
+	 * transcript. Without it, narration the model writes before a tool call
+	 * ("Let me check availability…") is joined to the reply after it. The
+	 * accumulated text is reset when a step starts and when a tool call arrives,
+	 * and `onTextDelta` then fires with the empty text so a live view drops it.
+	 */
+	finalStepOnly?: boolean;
 	/** Called for each text chunk with the FULL accumulated text and the delta. */
 	onTextDelta?: (fullText: string, delta: string) => void | Promise<void>;
 	/** Called when the model requests a tool (before it executes). */
@@ -350,14 +359,23 @@ export async function runLlmStream(opts: LlmStreamOptions): Promise<LlmStreamRes
 	let tokenUsage: TokenUsage | undefined;
 	let finishReason: string | undefined;
 	let aborted = false;
+	const resetText = async (): Promise<void> => {
+		if (!opts.finalStepOnly || text === '') return;
+		text = '';
+		await opts.onTextDelta?.(text, '');
+	};
 
 	for await (const part of result.fullStream) {
 		switch (part.type) {
+			case 'start-step':
+				await resetText();
+				break;
 			case 'text-delta':
 				text += part.text;
 				await opts.onTextDelta?.(text, part.text);
 				break;
 			case 'tool-call':
+				await resetText();
 				await opts.onToolCall?.({
 					toolCallId: part.toolCallId,
 					toolName: part.toolName,

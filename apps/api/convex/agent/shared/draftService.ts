@@ -14,8 +14,9 @@
  *
  * FAIL-SOFT is preserved end-to-end: the self-check degrades to `null` (unknown
  * quality → never auto-approve). The primary draft generation itself throws on
- * prompt-injection in the assembled context — the caller's catch turns that
- * into human review, never an auto-send.
+ * prompt-injection in the assembled context, and on a model failure or a draft
+ * that is tool-call markup twice over (#1254) — the caller's catch turns that
+ * into human review or no draft, never an auto-send.
  *
  * It makes no alternative-drafts call: no screen offers a reviewer a choice of
  * drafts, so a second capable-tier generation would be paid for and never
@@ -25,13 +26,20 @@
 import { z } from 'zod';
 import type { ToolSet, ModelMessage, LanguageModel } from 'ai';
 import { cacheableSystemMessage } from '../../lib/llm/promptCache';
-import { runLlmObject, runLlmText, runLlmTextWithTools } from '../../lib/llm/dispatch';
+import {
+	runLlmObject,
+	runLlmText,
+	runLlmTextWithTools,
+	type LlmTextResult,
+} from '../../lib/llm/dispatch';
+import { stripLeakedToolMarkup } from '../../lib/llm/toolMarkup';
+import { addTokenUsage } from '../../lib/llm/tokenUsage';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { buildReplyLanguageInstruction } from './replyLanguage';
 
 export { buildReplyLanguageInstruction } from './replyLanguage';
 import { recordLlmSpend } from '../../analytics/llmUsage';
-import { logError } from '../../lib/runtimeLog';
+import { logError, logWarn } from '../../lib/runtimeLog';
 import { detectInjection, INJECTION_CONFIDENCE_THRESHOLD } from '../steps/security_scan/patterns';
 import type { ActionCtx } from '../../_generated/server';
 import { runSelectedDraftStrategy } from './draftStrategyRunner';
@@ -320,9 +328,43 @@ export type SharedDraftParams = Readonly<{
 export type SharedDraftResult = Readonly<{
 	draftBody: string;
 	draftQuality: DraftQuality | null;
-	tokenUsage: import('../../lib/llm/dispatch').LlmTextResult['tokenUsage'];
-	modelUsed: import('../../lib/llm/dispatch').LlmTextResult['modelUsed'];
+	tokenUsage: LlmTextResult['tokenUsage'];
+	modelUsed: LlmTextResult['modelUsed'];
 }>;
+
+type PrimaryDraft = Readonly<{
+	draftBody: string;
+	tokenUsage: LlmTextResult['tokenUsage'];
+	modelUsed: LlmTextResult['modelUsed'];
+}>;
+
+/**
+ * The primary draft without tool-call markup the model typed into it (#1254,
+ * lib/llm/toolMarkup.ts). A leading markup prefix is cut. A draft with markup
+ * after the reply started, or with nothing after the prefix, is generated once
+ * more without tools, by a prompt that names none, since that is what invites
+ * a typed-out call. When that one is unusable as well the generation throws:
+ * every caller already treats a throw as "no draft" (Reply Queue, Postbox) or
+ * as a failed step that a person picks up (Team Inbox). Markup is never kept.
+ */
+async function withoutToolMarkup(
+	primary: PrimaryDraft,
+	retryWithoutTools: () => Promise<LlmTextResult>
+): Promise<PrimaryDraft> {
+	const first = stripLeakedToolMarkup(primary.draftBody);
+	if (first.kind !== 'unusable') return { ...primary, draftBody: first.text };
+	logWarn('[sharedDraft] draft was tool-call markup; retrying without tools:', first.reason);
+	const retry = await retryWithoutTools();
+	const second = stripLeakedToolMarkup(retry.text);
+	if (second.kind === 'unusable') {
+		throw new Error(`Draft generation returned tool-call markup (${second.reason}).`);
+	}
+	return {
+		draftBody: second.text,
+		tokenUsage: addTokenUsage(primary.tokenUsage, retry.tokenUsage),
+		modelUsed: retry.modelUsed ?? primary.modelUsed,
+	};
+}
 
 /**
  * THE shared draft pipeline both surfaces run: defense-in-depth injection
@@ -331,8 +373,10 @@ export type SharedDraftResult = Readonly<{
  *
  * Deterministic for identical params under a mocked dispatch, which is exactly
  * what lets the B2B agent step and personal Postbox produce IDENTICAL output for
- * the same inbound message. Throws only on prompt-injection in the assembled
- * context (caller's catch → human review); every AI sub-failure degrades softly.
+ * the same inbound message. Throws on prompt-injection in the assembled context,
+ * on a failed primary generation and on a draft that stays tool-call markup
+ * after one retry (caller's catch → human review / no draft); the self-check
+ * degrades softly.
  */
 export async function runSharedDraft(
 	ctx: ActionCtx,
@@ -348,7 +392,7 @@ export async function runSharedDraft(
 		);
 	}
 
-	const primary = await runSelectedDraftStrategy(
+	const selected = await runSelectedDraftStrategy(
 		ctx,
 		params.strategyScope,
 		{
@@ -361,8 +405,9 @@ export async function runSharedDraft(
 			signatureInstruction: params.signatureInstruction,
 			voiceSection: params.voiceSection,
 		},
-		() => runDefaultDraftStrategy(params)
+		() => runDefaultDraftStrategy(params, true)
 	);
+	const primary = await withoutToolMarkup(selected, () => runDefaultDraftStrategy(params, false));
 	// A reviewer note the model wrote anyway becomes a placeholder the send
 	// guard counts (agent/shared/draftGaps.ts).
 	const draftBody = markReviewerNotes(primary.draftBody);
@@ -383,8 +428,16 @@ export async function runSharedDraft(
 	};
 }
 
-/** Built-in `default` strategy; kept byte-for-byte equivalent to the old primary path. */
-async function runDefaultDraftStrategy(params: SharedDraftParams) {
+/**
+ * Built-in `default` strategy; kept byte-for-byte equivalent to the old primary
+ * path. `withTools: false` is the markup retry: no tool set, and a prompt that
+ * names none.
+ */
+async function runDefaultDraftStrategy(
+	params: SharedDraftParams,
+	withTools: boolean
+): Promise<LlmTextResult> {
+	const tools = withTools ? params.tools : undefined;
 	const model = await params.resolveModel();
 	const systemPrompt = buildDraftSystemPrompt({
 		audience: params.audience,
@@ -393,7 +446,7 @@ async function runDefaultDraftStrategy(params: SharedDraftParams) {
 		signatureInstruction: params.signatureInstruction,
 		voiceSection: params.voiceSection,
 		replyLanguage: params.replyLanguage,
-		hasRecallTool: params.tools?.['recallKnowledge'] !== undefined,
+		hasRecallTool: tools?.['recallKnowledge'] !== undefined,
 	});
 	const messages = buildDraftMessages({
 		systemPrompt,
@@ -404,11 +457,11 @@ async function runDefaultDraftStrategy(params: SharedDraftParams) {
 	});
 
 	const temperature = params.temperature ?? 0.4;
-	return params.tools && Object.keys(params.tools).length > 0
+	return tools && Object.keys(tools).length > 0
 		? await runLlmTextWithTools({
 				model,
 				maxSteps: params.maxSteps,
-				tools: params.tools,
+				tools,
 				messages,
 				temperature,
 			})

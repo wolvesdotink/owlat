@@ -349,3 +349,75 @@ describe('runSharedDraft — reviewer notes become placeholders', () => {
 		expect(JSON.stringify(tooled.messages[0]!.content)).toContain('recallKnowledge');
 	});
 });
+
+describe('runSharedDraft — leaked tool-call markup (#1254)', () => {
+	const REPLY = 'Hi John,\n\nThanks for getting in touch.\n\nBest,\nAda';
+	const MARKUP =
+		'<invoke name="recallKnowledge">\n' +
+		'<parameter name="query">availability 14-16 December 2026 for 2 guests</parameter>\n' +
+		'</invoke>\n\n' +
+		'<function_results>\n{"results":[]}\n</function_results>';
+	const usage = (n: number) => ({ promptTokens: n, completionTokens: n, totalTokens: 2 * n });
+	const tooled = () => baseParams({ tools: { recallKnowledge: {} as never } });
+
+	it('strips a leading markup prefix and keeps the reply, with one model call', async () => {
+		runLlmTextWithToolsMock.mockResolvedValueOnce({
+			text: MARKUP + REPLY,
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
+		const out = await runSharedDraft(fakeCtx, tooled());
+		expect(out.draftBody).toBe(REPLY);
+		expect(runLlmTextWithToolsMock).toHaveBeenCalledTimes(1);
+		expect(runLlmTextMock).not.toHaveBeenCalled();
+		// The self-check scores the reply, not the markup.
+		expect(String((runLlmObjectMock.mock.calls[0]![0] as { prompt: string }).prompt)).not.toContain(
+			'<invoke'
+		);
+	});
+
+	it('writes the draft once more without tools when markup sits inside the reply', async () => {
+		runLlmTextWithToolsMock.mockResolvedValueOnce({
+			text: `Let me check availability.\n\n${MARKUP}${REPLY}`,
+			tokenUsage: usage(10) as never,
+			modelUsed: 'mock-model',
+		});
+		runLlmTextMock.mockResolvedValueOnce({
+			text: REPLY,
+			tokenUsage: usage(4) as never,
+			modelUsed: 'mock-model',
+		});
+		const out = await runSharedDraft(fakeCtx, tooled());
+		expect(out.draftBody).toBe(REPLY);
+		expect(out.tokenUsage).toEqual(usage(14));
+		// The retry passes no tools and its prompt names none.
+		const retry = runLlmTextMock.mock.calls[0]![0] as { messages: { content: unknown }[] };
+		expect(retry).not.toHaveProperty('tools');
+		expect(JSON.stringify(retry.messages[0]!.content)).not.toContain('recallKnowledge');
+	});
+
+	it('throws when the retry is markup as well, so no draft is stored', async () => {
+		runLlmTextWithToolsMock.mockResolvedValueOnce({
+			text: `Hi John,\n\n${MARKUP}`,
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
+		runLlmTextMock.mockResolvedValueOnce({
+			text: MARKUP,
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
+		await expect(runSharedDraft(fakeCtx, tooled())).rejects.toThrow(/tool-call markup/);
+		expect(runLlmObjectMock).not.toHaveBeenCalled();
+	});
+
+	it('cleans a custom strategy draft the same way', async () => {
+		runHostedDraftStrategyMock.mockResolvedValueOnce(MARKUP + REPLY);
+		const ctx = { runQuery: vi.fn(async () => 'plugin.draft-pack.legal') };
+		const out = await runSharedDraft(
+			ctx as never,
+			baseParams({ strategyScope: { classification: 'support' } })
+		);
+		expect(out.draftBody).toBe(REPLY);
+	});
+});

@@ -19,11 +19,16 @@ import { splitQuotedHtml, splitQuotedText } from '@owlat/shared/quotedText';
 /**
  * The system-prompt paragraph on missing facts. The recallKnowledge sentence
  * only appears when the call passes that tool: a prompt that names a tool the
- * model cannot call invites it to write the call out as text.
+ * model cannot call invites it to write the call out as text. Where the tool
+ * is passed, the name stays (it is how the model ties the instruction to the
+ * tool definition), and the sentence says the call is never part of the reply
+ * (#1254): a model that cannot make a structured call there printed it, with a
+ * made-up result, above the reply. lib/llm/toolMarkup.ts removes what slips
+ * through anyway.
  */
 export function missingFactInstruction(hasRecallTool: boolean): string {
 	const fetch = hasRecallTool
-		? ' call the recallKnowledge tool to fetch it rather than guessing. If recall returns nothing relevant,'
+		? ' call the recallKnowledge tool to fetch it rather than guessing. Make that call as a tool call, never as text: the reply contains no tool calls, parameters or tool results. If recall returns nothing relevant,'
 		: '';
 	return `If you need a specific fact to answer accurately — a price, policy, date,
 order status, or a commitment we made — and it is NOT already in the provided

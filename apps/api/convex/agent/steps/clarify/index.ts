@@ -48,6 +48,7 @@
 import { internal } from '../../../_generated/api';
 import { resolveLanguageModel } from '../../../lib/llmProvider';
 import { runLlmObject, runLlmText } from '../../../lib/llm/dispatch';
+import { addTokenUsage } from '../../../lib/llm/tokenUsage';
 import type { Id } from '../../../_generated/dataModel';
 import type { Infer } from 'convex/values';
 import type { clarificationQuestionValidator } from '../../../lib/validators/clarification';
@@ -199,17 +200,6 @@ export function selectQuestions(
 	return questions;
 }
 
-/** Sum two optional token-usage records for aggregate step observability. */
-function addUsage(a: TokenUsage | undefined, b: TokenUsage | undefined): TokenUsage | undefined {
-	if (!a) return b;
-	if (!b) return a;
-	return {
-		promptTokens: a.promptTokens + b.promptTokens,
-		completionTokens: a.completionTokens + b.completionTokens,
-		totalTokens: a.totalTokens + b.totalTokens,
-	};
-}
-
 export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput> = {
 	kind: 'clarify',
 	llm: { tier: 'fast' },
@@ -291,7 +281,7 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 				prompt: buildSlotPrompt(input.context),
 				temperature: 0.2,
 			});
-			tokenUsage = addUsage(tokenUsage, slotsResult.tokenUsage);
+			tokenUsage = addTokenUsage(tokenUsage, slotsResult.tokenUsage);
 			modelUsed = slotsResult.modelUsed;
 
 			// Candidate slots: the ones we actually need to ask about — unanswerable
@@ -326,7 +316,7 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 					});
 					if (draft.text.trim().length > 0) {
 						drafts.push(draft.text);
-						tokenUsage = addUsage(tokenUsage, draft.tokenUsage);
+						tokenUsage = addTokenUsage(tokenUsage, draft.tokenUsage);
 					}
 				} catch {
 					// One failed sample doesn't abort the check — we judge on the rest.
@@ -348,7 +338,7 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 				prompt: buildDivergencePrompt(candidateSlots, drafts),
 				temperature: 0.1,
 			});
-			tokenUsage = addUsage(tokenUsage, divergenceResult.tokenUsage);
+			tokenUsage = addTokenUsage(tokenUsage, divergenceResult.tokenUsage);
 
 			const candidateQuestions = selectQuestions(
 				candidateSlots,
@@ -401,7 +391,7 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 			if (questions.length > 0) {
 				const localized = await localizeQuestions(model, questions);
 				questions = localized.questions;
-				tokenUsage = addUsage(tokenUsage, localized.tokenUsage);
+				tokenUsage = addTokenUsage(tokenUsage, localized.tokenUsage);
 			}
 
 			// Instrument only the questions we ACTUALLY ask (memory-filled ones are
