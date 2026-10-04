@@ -10491,7 +10491,7 @@
 			},
 			"retry": {
 				"sendFailed": "Sending failed",
-				"resend": {
+				"sendAgain": {
 					"action": "Send again",
 					"hint": "Sends the reply you approved, unchanged. The agent does not write a new draft.",
 					"toast": "Sending the approved reply again"

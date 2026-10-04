@@ -10491,7 +10491,7 @@
 			},
 			"retry": {
 				"sendFailed": "Senden fehlgeschlagen",
-				"resend": {
+				"sendAgain": {
 					"action": "Erneut senden",
 					"hint": "Sendet die freigegebene Antwort unverändert. Der Agent schreibt keinen neuen Entwurf.",
 					"toast": "Die freigegebene Antwort wird erneut gesendet"

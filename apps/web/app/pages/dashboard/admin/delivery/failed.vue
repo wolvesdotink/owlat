@@ -138,7 +138,7 @@ const onRetry = async (message: NonNullable<typeof failedMessages.value>[number]
 						>
 							<Icon
 								:name="
-									inboxRetryCopy(message).plan === 'resend' ? 'lucide:send' : 'lucide:refresh-cw'
+									inboxRetryCopy(message).plan === 'sendAgain' ? 'lucide:send' : 'lucide:refresh-cw'
 								"
 								class="w-3 h-3"
 							/>

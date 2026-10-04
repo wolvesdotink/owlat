@@ -7,7 +7,7 @@
  * what the button will do. Shared so the label cannot promise one thing while
  * the server does another.
  *
- * - `resend`: the send of a reply a person approved failed. The approved text
+ * - `sendAgain`: the send of a reply a person approved failed. The approved text
  *   is sent again, unchanged; the agent does not run.
  * - `review`: a person wrote, edited or approved the reply, but it cannot simply
  *   be sent again (the failure was not in the send, or the row predates the
@@ -20,7 +20,7 @@
  * person, so a failed message that holds a person's reply waits for one.
  */
 
-export type InboxRetryPlan = 'resend' | 'review' | 'redraft';
+export type InboxRetryPlan = 'sendAgain' | 'review' | 'redraft';
 
 /** The inbound-message fields the rule reads (a subset of the Convex row). */
 export interface InboxRetryFacts {
@@ -61,7 +61,7 @@ export function inboxRetryPlan(message: InboxRetryFacts): InboxRetryPlan {
 		message.approvalSource !== 'auto' &&
 		(message.draftResponse ?? '').trim() !== ''
 	) {
-		return 'resend';
+		return 'sendAgain';
 	}
 	return holdsHumanReply(message) ? 'review' : 'redraft';
 }

@@ -8,7 +8,7 @@
  * message failed now decides what Retry does (`@owlat/shared/inboxRetry`, the
  * same rule the retry cron and the Retry button's copy use):
  *
- * - `resend`: the approved text is sent again as the person's approval, with
+ * - `sendAgain`: the approved text is sent again as the person's approval, with
  *   the same checks and undo window as Approve.
  * - `review`: a person's reply goes back to `draft_ready` with its text and
  *   revisions, as a takeover, so the agent stays out of it.
@@ -72,7 +72,7 @@ async function transitionOrThrow(
 }
 
 /** Send the reply a person approved again, as that approval (`failed → approved`). */
-async function resendApproved(
+async function sendApprovedAgain(
 	ctx: MutationCtx,
 	message: Doc<'inboundMessages'>,
 	userId: string
@@ -132,8 +132,8 @@ export async function retryFailed(
 ): Promise<InboxRetryPlan> {
 	const plan = inboxRetryPlan(message);
 	switch (plan) {
-		case 'resend':
-			await resendApproved(ctx, message, userId);
+		case 'sendAgain':
+			await sendApprovedAgain(ctx, message, userId);
 			break;
 		case 'review':
 			// Back to the review queue as the person's reply: text, subject and

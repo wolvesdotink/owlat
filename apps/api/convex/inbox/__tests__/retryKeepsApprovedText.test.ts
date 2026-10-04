@@ -173,7 +173,7 @@ describe('Retry after a failed send of an approved reply', () => {
 		expect(await pipelineRuns(t)).toEqual([]);
 		const queued = await sends(t);
 		expect(queued[queued.length - 1]?.args).toEqual({ inboundMessageId: id, autonomous: false });
-		expect(result).toEqual({ success: true, retried: 'resend' });
+		expect(result).toEqual({ success: true, retried: 'sendAgain' });
 	});
 
 	it('records the failure as the send’s', async () => {
@@ -224,7 +224,7 @@ describe('Retry after a failed send of an approved reply', () => {
 			draftResponse: AGENT_DRAFT,
 		});
 		expect(await pipelineRuns(t)).toEqual([]);
-		expect(result).toMatchObject({ retried: 'resend' });
+		expect(result).toMatchObject({ retried: 'sendAgain' });
 	});
 
 	it('puts a send-failed reply a person edited afterwards back in review, not out', async () => {

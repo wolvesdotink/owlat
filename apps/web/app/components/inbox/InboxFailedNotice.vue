@@ -46,7 +46,7 @@ const copy = computed(() => inboxRetryCopy(props.message));
 				@click="emit('retry')"
 			>
 				<Icon
-					:name="copy.plan === 'resend' ? 'lucide:send' : 'lucide:refresh-cw'"
+					:name="copy.plan === 'sendAgain' ? 'lucide:send' : 'lucide:refresh-cw'"
 					class="w-3 h-3"
 				/>
 				{{ t(copy.action) }}

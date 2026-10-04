@@ -5,9 +5,9 @@ describe('inboxRetryPlan', () => {
 	it('sends a failed send of a person’s approval again', () => {
 		expect(
 			inboxRetryPlan({ failedStage: 'send', approvalSource: 'human', draftResponse: 'Hi' })
-		).toBe('resend');
+		).toBe('sendAgain');
 		// Approved before `approvalSource` existed: read as a person's.
-		expect(inboxRetryPlan({ failedStage: 'send', draftResponse: 'Hi' })).toBe('resend');
+		expect(inboxRetryPlan({ failedStage: 'send', draftResponse: 'Hi' })).toBe('sendAgain');
 	});
 
 	it('never sends again what the router approved', () => {
