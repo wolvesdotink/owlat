@@ -260,8 +260,9 @@ export type InboundEvent =
 			 * recoverable Message-ID (RFC 5965 §3.2, e.g. Gmail FBL redaction).
 			 * Beside a Message-ID, when the provider names who complained: the
 			 * dispatcher reads it only when that id matches no Send (#1194).
-			 * Either way it suppresses the address under the provenance rule in
-			 * `complaintDispatch.ts`, so the complaint still reaches the blocklist.
+			 * Either way it reaches the blocklist only when the event proves this
+			 * deployment sent the mail (`complaintDispatch.ts`, #1227); otherwise
+			 * the complaint is counted as `unattributed` and the address dropped.
 			 */
 			recipient?: string;
 			providerType?: string;

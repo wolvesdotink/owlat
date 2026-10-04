@@ -28,6 +28,11 @@ import type { TransitionOutcome } from '../delivery/sendLifecycle';
 //   - rows are deleted 90 days after they were first seen, the same horizon
 //     as the raw `webhookPayloads` they came from.
 //
+// A complaint that arrived with NO message id and no proof this deployment
+// sent the mail (#1227) is stored here too, without an id. It can never be
+// replayed, so `record` writes it already closed (`no_message_id`): it counts
+// in the 30-day numbers and never enters the replay queue or the open backlog.
+//
 // A REPLAY IS THE ORDINARY TRANSITION. It calls the same resolver the webhook
 // called, so whatever that resolver does first (a recorded send completion
 // replayed before the event, for one) happens here too, and the Send lifecycle
@@ -91,6 +96,11 @@ function strongerSuppression(
  * applies the hard bounce (and its suppression) once the Send turns up. A soft
  * bounce never downgrades a hard one.
  *
+ * A ROW WITHOUT A MESSAGE ID is a complaint the provider sent with the id
+ * redacted (#1227). Nothing identifies a redelivery of it without the address,
+ * so every call adds a row, and it is closed on arrival because no replay can
+ * ever match it.
+ *
  * NO ADDRESS REACHES THIS FUNCTION. The caller passes the suppression outcome
  * and the status code it read out of the diagnostic, never the recipient or
  * the diagnostic text, so neither is in the row nor in this call's arguments.
@@ -98,7 +108,7 @@ function strongerSuppression(
 export const record = internalMutation({
 	args: {
 		kind: v.union(v.literal('bounce'), v.literal('complaint')),
-		providerMessageId: v.string(),
+		providerMessageId: v.optional(v.string()),
 		providerType: v.optional(v.string()),
 		bounceType: v.optional(bounceTypeValidator),
 		bounceStatusCode: v.optional(v.string()),
@@ -111,12 +121,15 @@ export const record = internalMutation({
 		const bounceStatusCode = args.bounceStatusCode
 			? clamp(args.bounceStatusCode, TOKEN_MAX_LENGTH)
 			: undefined;
-		const existing = await ctx.db
-			.query('unresolvedFeedback')
-			.withIndex('by_message_id_and_kind', (q) =>
-				q.eq('providerMessageId', args.providerMessageId).eq('kind', args.kind)
-			)
-			.first();
+		const { providerMessageId } = args;
+		const existing = providerMessageId
+			? await ctx.db
+					.query('unresolvedFeedback')
+					.withIndex('by_message_id_and_kind', (q) =>
+						q.eq('providerMessageId', providerMessageId).eq('kind', args.kind)
+					)
+					.first()
+			: null;
 		if (existing) {
 			const escalates =
 				existing.status === 'open' && existing.bounceType === 'soft' && args.bounceType === 'hard';
@@ -130,7 +143,7 @@ export const record = internalMutation({
 		}
 		return await ctx.db.insert('unresolvedFeedback', {
 			kind: args.kind,
-			providerMessageId: args.providerMessageId,
+			...(providerMessageId ? { providerMessageId } : {}),
 			...(args.providerType ? { providerType: clamp(args.providerType, TOKEN_MAX_LENGTH) } : {}),
 			...(args.bounceType ? { bounceType: args.bounceType } : {}),
 			...(bounceStatusCode ? { bounceStatusCode } : {}),
@@ -142,15 +155,20 @@ export const record = internalMutation({
 			occurrences: 1,
 			firstSeenAt: now,
 			lastSeenAt: now,
-			status: 'open',
 			replayAttempts: 0,
-			nextReplayAt: nextReplayAt(now, 0),
+			...(providerMessageId
+				? { status: 'open' as const, nextReplayAt: nextReplayAt(now, 0) }
+				: { status: 'resolved' as const, resolution: 'no_message_id' as const, resolvedAt: now }),
 		});
 	},
 });
 
 /** Run the row's event through the resolver the webhook used. */
-async function transitionFor(ctx: MutationCtx, row: FeedbackRow): Promise<TransitionOutcome> {
+async function transitionFor(
+	ctx: MutationCtx,
+	row: FeedbackRow,
+	providerMessageId: string
+): Promise<TransitionOutcome> {
 	const resolver =
 		row.providerType === OWN_ARM_TRANSPORT_KIND
 			? internal.delivery.sendLifecycle.transitionMtaByProviderMessageId
@@ -166,7 +184,7 @@ async function transitionFor(ctx: MutationCtx, row: FeedbackRow): Promise<Transi
 				}
 			: { to: 'complained' as const, at: row.at };
 	return (await ctx.runMutation(resolver, {
-		providerMessageId: row.providerMessageId,
+		providerMessageId,
 		transition,
 	})) as TransitionOutcome;
 }
@@ -184,7 +202,9 @@ export const replay = internalMutation({
 	},
 	handler: async (ctx, { feedbackId, trigger = 'operator' }): Promise<ReplayResult> => {
 		const row = await ctx.db.get(feedbackId);
-		if (!row || row.status !== 'open') return 'skipped';
+		// A row without an id is stored closed; the id check is the type's guard.
+		if (!row || row.status !== 'open' || !row.providerMessageId) return 'skipped';
+		const { providerMessageId } = row;
 		const now = Date.now();
 		if (trigger === 'cron' && (row.nextReplayAt === undefined || row.nextReplayAt > now)) {
 			return 'skipped';
@@ -192,7 +212,7 @@ export const replay = internalMutation({
 
 		let outcome: TransitionOutcome | null = null;
 		try {
-			outcome = await transitionFor(ctx, row);
+			outcome = await transitionFor(ctx, row, providerMessageId);
 		} catch (error) {
 			// The nested transition rolled its own writes back. Spend the attempt
 			// below, so a transition that keeps throwing is not retried every tick.
@@ -289,12 +309,42 @@ export const purgeExpired = internalMutation({
 	},
 });
 
+/**
+ * Operator, before redeploying a release older than #1227: delete every row
+ * without a message id, because that release's schema requires one and refuses
+ * to deploy while such rows exist. They are counters with no address, and the
+ * retention purge would remove them after 90 days anyway. Walks itself batch by
+ * batch; run it again right before the redeploy, and it reports `deleted: 0`
+ * once none remain:
+ * `npx convex run webhooks/unresolvedFeedback:deleteWithoutMessageId`.
+ */
+export const deleteWithoutMessageId = internalMutation({
+	args: {},
+	handler: async (ctx) => {
+		const rows = await ctx.db
+			.query('unresolvedFeedback')
+			.withIndex('by_message_id_and_kind', (q) => q.eq('providerMessageId', undefined))
+			.take(PURGE_BATCH_SIZE);
+		for (const row of rows) await ctx.db.delete(row._id);
+		if (rows.length === PURGE_BATCH_SIZE) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.webhooks.unresolvedFeedback.deleteWithoutMessageId,
+				{}
+			);
+		}
+		return { deleted: rows.length };
+	},
+});
+
 interface WindowCounts {
 	total: number;
 	bounces: number;
 	complaints: number;
 	suppressed: number;
 	unattributed: number;
+	/** Complaints that arrived without a message id (never replayable). */
+	withoutMessageId: number;
 	open: number;
 	isCapped: boolean;
 }
@@ -311,6 +361,7 @@ async function countSince(ctx: { db: DatabaseReader }, since: number): Promise<W
 		complaints: counted.filter((row) => row.kind === 'complaint').length,
 		suppressed: counted.filter((row) => row.suppression === 'suppressed').length,
 		unattributed: counted.filter((row) => row.suppression === 'unattributed').length,
+		withoutMessageId: counted.filter((row) => row.providerMessageId === undefined).length,
 		open: counted.filter((row) => row.status === 'open').length,
 		isCapped: rows.length > COUNT_LIMIT,
 	};
@@ -346,7 +397,7 @@ export const status = internalQuery({
 			sample: open.slice(0, SAMPLE_SIZE).map((row) => ({
 				feedbackId: row._id,
 				kind: row.kind,
-				providerMessageId: row.providerMessageId,
+				providerMessageId: row.providerMessageId ?? null,
 				providerType: row.providerType ?? null,
 				suppression: row.suppression,
 				occurrences: row.occurrences,

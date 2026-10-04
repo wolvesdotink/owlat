@@ -46,7 +46,8 @@ export function reduceDeliveryObservation(
 	at: number,
 	ref: SendRef,
 	senderDomain: string | undefined,
-	recipientContact: Doc<'contacts'> | null
+	recipientContact: Doc<'contacts'> | null,
+	options: { keepsSoftBounceCount?: boolean } = {}
 ): DeliveryObservationResult {
 	if (send.deliveredAt !== undefined) {
 		return { patch: {}, effects: [], isNewObservation: false };
@@ -65,6 +66,11 @@ export function reduceDeliveryObservation(
 	// truthful denominator, but must not erase that bounce's contact penalty.
 	// A failure applies no contact penalty, so authenticated acceptance clears
 	// any soft-bounce history that predates it regardless of arrival order.
+	// `keepsSoftBounceCount` is set for an open or click on a bounced or
+	// complained row (#1225). A pixel fetch or tracked click is not
+	// authenticated, and a forwarded copy fires it too, so it must not reset the
+	// counter that escalates repeated soft bounces into a suppression. A provider
+	// acceptance stamped after a bounce is refused, and a pixel gets no more.
 	const isAcceptanceBeforeSoftBounce =
 		status === 'bounced' &&
 		send.bounceType === 'soft' &&
@@ -73,7 +79,8 @@ export function reduceDeliveryObservation(
 	if (
 		recipientContact &&
 		(recipientContact.softBounceCount ?? 0) > 0 &&
-		!isAcceptanceBeforeSoftBounce
+		!isAcceptanceBeforeSoftBounce &&
+		options.keepsSoftBounceCount !== true
 	) {
 		effects.push({
 			kind: 'contact_soft_bounce_count',

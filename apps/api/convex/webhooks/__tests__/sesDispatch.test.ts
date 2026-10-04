@@ -6,7 +6,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
  * Replays SNS fixtures through `sesAdapter.parseEvent` and then
  * `dispatchInboundEvent`, asserting SES events land on the SAME downstream
  * mutations the MTA / Resend webhooks feed (suppression + reputation via the
- * Send lifecycle, direct blocklist for a redacted complaint), and that SNS
+ * Send lifecycle; a redacted complaint is counted, not blocked), and that SNS
  * redelivery is deterministic (a duplicate delivery dispatches identically —
  * the downstream mutation is idempotent by providerMessageId). The SNS
  * subscription handshake is confirmed by a host-pinned GET.
@@ -110,7 +110,9 @@ describe('SES feedback dispatch', () => {
 		expect(runMutationCalls[0]!.args).toMatchObject({ transition: { to: 'complained' } });
 	});
 
-	it('suppresses a redacted complaint directly by address (no recoverable message id)', async () => {
+	// #1227: SES proves which provider reported the mail, not which deployment
+	// sent it, so a redacted complaint is counted and blocks no one.
+	it('counts a redacted complaint without blocking the address (no recoverable message id)', async () => {
 		const { ctx, runMutationCalls } = makeCtx();
 		await dispatchInboundEvent(
 			ctx,
@@ -122,11 +124,15 @@ describe('SES feedback dispatch', () => {
 				})
 			)
 		);
-		expect(runMutationCalls[0]!.ref).toBe('internal.blockedEmails.addFromEvent');
+		expect(runMutationCalls.map((call) => call.ref)).toEqual([
+			'internal.webhooks.unresolvedFeedback.record',
+		]);
 		expect(runMutationCalls[0]!.args).toMatchObject({
-			email: 'redacted@b.com',
-			reason: 'complained',
+			kind: 'complaint',
+			providerType: 'ses',
+			suppression: 'unattributed',
 		});
+		expect(JSON.stringify(runMutationCalls)).not.toContain('redacted@b.com');
 	});
 
 	it('dispatches a duplicate delivery deterministically (idempotent redelivery)', async () => {
