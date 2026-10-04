@@ -33,11 +33,12 @@
  *   - a well-formed container opener (`<function_calls>`,
  *     `<function_results>`, `<tool_call>`, `<tool_calls>`, `<tool_use>`,
  *     `<tool_result>`, any case or namespace), with or without a closing tag;
- *   - a tool tag the text ends inside (`Hi John, <tool_ca`).
+ *   - a call opener the text ends inside (`Hi John, <tool_ca`).
  *
  *   Prose: a closing tag on its own, an inner tag (`<parameter>`,
- *   `<result>`), a malformed opener (`<invoke>`, `<tool_call id="1">`), and
- *   anything that is not a tool tag (`<b>`, `<3`, `a < b`).
+ *   `<result>`), a fragment of either the text ends inside (`Hi <result`,
+ *   `Hi </tool_ca`), a malformed opener (`<invoke>`, `<tool_call id="1">`),
+ *   and anything that is not a tool tag (`<b>`, `<3`, `a < b`).
  *
  * The trade-off: these are email replies to customers, and one that quotes a
  * tool-call tag on purpose is very unlikely. When it happens it costs one
