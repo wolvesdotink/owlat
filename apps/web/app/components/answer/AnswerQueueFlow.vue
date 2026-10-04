@@ -202,7 +202,7 @@ const failedNames = computed(() =>
 						size="xl"
 						variant="success"
 						rounded="full"
-						class="mb-4"
+						class="mx-auto mb-4"
 					/>
 					<h2 class="font-display text-xl text-text-primary">
 						{{ t('components.answer.done.title') }}
