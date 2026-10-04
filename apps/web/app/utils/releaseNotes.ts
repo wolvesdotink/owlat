@@ -162,8 +162,33 @@ function isBoilerplate(inlines: Inline[]): boolean {
 	return first?.type === 'strong' && /^(images|full changelog)\b/i.test(first.value.trim());
 }
 
+const LIST_ITEM = /^\s*([-*+]|\d+\.)\s+/;
+const CONTINUATION = /^\s{2,}\S/;
+
+/**
+ * Joins a bullet's indented continuation lines onto the bullet. CHANGELOG.md
+ * wraps long entries, and the shared parser only reads a list item's first
+ * line — the rest would come out as a separate paragraph and be dropped here.
+ */
+function unwrapListItems(source: string): string {
+	const out: string[] = [];
+	let inFence = false;
+	let inItem = false;
+	for (const line of source.split('\n')) {
+		if (/^\s*```/.test(line)) inFence = !inFence;
+		if (!inFence && inItem && CONTINUATION.test(line) && !LIST_ITEM.test(line)) {
+			out[out.length - 1] += ` ${line.trim()}`;
+			continue;
+		}
+		inItem = !inFence && LIST_ITEM.test(line);
+		out.push(line);
+	}
+	return out.join('\n');
+}
+
 export function parseReleaseNotes(source: string): ReleaseNotes {
-	const blocks: Block[] = parseMarkdown(source.replace(/<!--[\s\S]*?-->/g, ''));
+	const cleaned = source.replace(/\r\n/g, '\n').replace(/<!--[\s\S]*?-->/g, '');
+	const blocks: Block[] = parseMarkdown(unwrapListItems(cleaned));
 	const summary: ReleaseProse[] = [];
 	const upgrading: ReleaseProse[] = [];
 	const groups = new Map<ReleaseChangeKind, Inline[][]>();

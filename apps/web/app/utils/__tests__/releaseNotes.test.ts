@@ -150,6 +150,46 @@ describe('parseReleaseNotes — generated (pre-0.6.10) body', () => {
 	});
 });
 
+describe('parseReleaseNotes — wrapped lines', () => {
+	// CHANGELOG.md wraps long entries (0.5.3 is written this way).
+	const notes =
+		parseReleaseNotes(`Three fixes to things that had gone visibly wrong: message bodies rendering as
+ciphertext, and a failed update.
+
+**Upgrading.** No schema change. A stale queue can be re-checked with
+\`convex run migrations/0045_recheck_needs_reply:run\`.
+
+### Fixed
+
+- **Message bodies are unsealed at the read boundary.** Opening a message in
+  the Postbox rendered \`atrest:1:<iv>:<ciphertext>\` instead of the mail. (#743)
+- **Only mail that wants a reply reaches the Reply Queue.** Both stages are
+  tightened.
+
+\`\`\`sh
+- not a bullet
+  nor a continuation
+\`\`\`
+`);
+
+	it("keeps a bullet's continuation lines in the bullet", () => {
+		const fixed = notes.groups.find((g) => g.kind === 'fixed')!;
+		expect(fixed.items.map(text)).toEqual([
+			'Message bodies are unsealed at the read boundary. Opening a message in the Postbox rendered atrest:1:<iv>:<ciphertext> instead of the mail. (#743)',
+			'Only mail that wants a reply reaches the Reply Queue. Both stages are tightened.',
+		]);
+		expect(fixed.items[0]).toContainEqual({ type: 'code', value: 'atrest:1:<iv>:<ciphertext>' });
+	});
+
+	it('joins wrapped paragraphs and leaves code blocks alone', () => {
+		expect(notes.summary.map((b) => (b.type === 'paragraph' ? text(b.inlines) : ''))).toEqual([
+			'Three fixes to things that had gone visibly wrong: message bodies rendering as ciphertext, and a failed update.',
+		]);
+		expect(notes.upgrading).toHaveLength(1);
+		expect(JSON.stringify(notes)).not.toContain('not a bullet');
+	});
+});
+
 describe('hasReleaseNotes', () => {
 	it('is false for a body that is only install instructions', () => {
 		expect(hasReleaseNotes(parseReleaseNotes('## Updating\n\n```sh\nowlat upgrade\n```\n'))).toBe(
