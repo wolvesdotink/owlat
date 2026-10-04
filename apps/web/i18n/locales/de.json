@@ -17143,6 +17143,11 @@
 			"title": "Meine E-Mails mitnehmen"
 		},
 		"pageTitle": "Willkommen — Owlat",
+		"stamp": {
+			"failed": "Wir konnten nicht speichern, dass du hier warst. Vielleicht siehst du diese Seite beim nächsten Mal noch einmal.",
+			"retry": "Erneut versuchen",
+			"retrying": "Wird erneut versucht…"
+		},
 		"subheading": "Hier ist die E-Mail-Zentrale deines Teams. Los geht's."
 	}
 }

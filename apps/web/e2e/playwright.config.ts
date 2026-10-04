@@ -39,6 +39,11 @@ export default defineConfig({
 			// either sign in — masking whatever broke the first — or fail with a
 			// seed error that says nothing about the real cause.
 			retries: 0,
+			// So the global `on-first-retry` would never record a trace here, and a
+			// setup failure skips every spec that depends on it. Keep one whenever
+			// it fails: network, console and DOM are what tell a slow deployment
+			// from a Convex client that never re-authenticated (#1203).
+			use: { trace: 'retain-on-failure' },
 		},
 		{
 			// No `dependencies` and no storage state: this one answers "does the

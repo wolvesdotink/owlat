@@ -17143,6 +17143,11 @@
 			"title": "Bring my email with me"
 		},
 		"pageTitle": "Welcome — Owlat",
+		"stamp": {
+			"failed": "We couldn't save that you've been here, so you may see this screen again next time.",
+			"retry": "Try again",
+			"retrying": "Trying again…"
+		},
 		"subheading": "This is your team's home for email. Let's get you in."
 	}
 }
