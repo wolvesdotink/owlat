@@ -283,6 +283,8 @@
 				"back": "Previous",
 				"backTitle": "Previous open task (←)",
 				"estimateLeft": "{estimate} left",
+				"estimateMinutes": "about {n} min",
+				"estimateSeconds": "about {n} sec",
 				"exit": "Exit",
 				"exitTitle": "Exit (Esc)",
 				"newCount": "+{count} new",
@@ -290,6 +292,17 @@
 				"next": "Next",
 				"nextLabel": "Next:",
 				"nextTitle": "Next open task (→)",
+				"outcome": {
+					"replied": "{count} replied",
+					"sent": "{count} sent",
+					"approved": "{count} approved",
+					"rejected": "{count} rejected",
+					"opened": "{count} opened",
+					"cleared": "{count} cleared",
+					"archived": "{count} archived",
+					"snoozed": "{count} snoozed",
+					"completed": "{count} completed"
+				},
 				"progress": "{position} of {total}",
 				"undo": "Undo",
 				"undoTitle": "Undo last (⌘Z)"
@@ -4932,7 +4945,6 @@
 			},
 			"postboxReviewSlot": {
 				"draftReady": "Draft ready",
-				"optionCount": "{count} options",
 				"reviewAndSend": "Review & send"
 			},
 			"postboxRewriteActions": {

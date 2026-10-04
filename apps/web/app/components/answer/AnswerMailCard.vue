@@ -11,6 +11,7 @@ import { useAnswerMailActions } from '~/composables/useAnswerMailActions';
 import { useLocalized } from '~/composables/useLocalized';
 import { isBuiltInTaskFlowKind } from '~/utils/taskCardRegistry';
 import { resolveReplyFocusKey } from '~/utils/taskFlowKeyboard';
+import { taskFlowOutcome } from '~/utils/taskFlow';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { mailAnswerKind, type AnswerCardControls } from '~/utils/answerCard';
 import {
@@ -259,7 +260,7 @@ const secondaryButton =
 		:can-open="true"
 		@skip="controls.skip()"
 		@open="openRow"
-		@complete="(outcome) => controls.complete(outcome ?? 'completed')"
+		@complete="(outcome) => controls.complete(taskFlowOutcome(outcome))"
 	/>
 
 	<PostboxSnoozeDialog

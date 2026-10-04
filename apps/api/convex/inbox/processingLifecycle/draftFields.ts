@@ -31,12 +31,10 @@ export function draftReadyDraftPatch(
 	const patch: Record<string, unknown> = {};
 	if (input.draftResponse !== undefined) {
 		patch['draftResponse'] = input.draftResponse;
-		// Variants stay only while they are this draft's (`draftOptions[0]` is the
-		// draft). The `[[...]]` gap guard counts them, as `recordDraftOutput` does.
-		const kept = message.draftOptions?.[0] === input.draftResponse ? message.draftOptions : [];
-		if (kept.length === 0) patch['draftOptions'] = undefined;
-		const texts = [input.draftResponse, ...kept];
-		patch['isDraftGapGuarded'] = texts.some((text) => authoredDraftHasGaps({ text }));
+		// The `[[...]]` gap guard describes the text a reviewer can send. Variants
+		// a legacy row still carries are dropped: no screen offers them (#1200).
+		patch['draftOptions'] = undefined;
+		patch['isDraftGapGuarded'] = authoredDraftHasGaps({ text: input.draftResponse });
 		// An agent draft that replaces a different text: the saved edits were
 		// made to that text, not to this draft.
 		if (input.draftResponse !== message.draftResponse) Object.assign(patch, NO_SAVED_EDITS);

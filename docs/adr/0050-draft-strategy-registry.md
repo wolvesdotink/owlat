@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted.
+Accepted; **amended 2026-10-04** (#1200): step 5 below, the alternative review
+drafts, is gone. No screen let a reviewer pick one, so `runSharedDraft` makes
+no options call and `SharedDraftResult` has no `draftOptions`.
 
 ## Context
 
@@ -32,7 +34,8 @@ The execution order is fixed:
 2. Resolve one configured strategy.
 3. Reauthorize and invoke a custom strategy, or fall back once to `default`.
 4. Run the host quality self-check.
-5. Generate host review options when confidence or quality requires them.
+5. Generate host review options when confidence or quality requires them. _(Removed
+   by #1200.)_
 6. Return to the existing consumer, which owns persistence and routing.
 
 Autonomy gates, review, persistence, and sending remain outside every strategy.

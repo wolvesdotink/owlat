@@ -11,6 +11,7 @@
  *     reasons (raw flag strings never render) and keeps the numeric
  *     confidence as quiet footer detail;
  *   - a slot whose self-check failed reads "Needs you" (the old Unverified);
+ *   - no option count: the slot has nothing to pick (#1200);
  *   - "Review & send" emits the draft (opens the composer — never auto-sends)
  *     and "Dismiss" emits dismiss.
  */
@@ -101,9 +102,13 @@ describe('PostboxReviewSlot', () => {
 		expect(wrapper.find('[data-testid="trust-chip"]').text()).toBe('Needs you');
 	});
 
-	it('shows the option count when alternatives were generated', () => {
-		const wrapper = mountSlot(makeSlot({ options: ['a', 'b', 'c'] }));
-		expect(wrapper.find('[data-testid="review-slot-options"]').text()).toContain('3 options');
+	it('counts no options: the slot offers none to pick, even on a legacy slot that stored some', () => {
+		// Slots written before #1200 can still carry `options`; nothing here lets
+		// the reader pick one, so no "3 options" label promises a choice.
+		const legacy = { ...makeSlot(), options: ['a', 'b', 'c'] } as ReplyQueueDraftSlot;
+		const wrapper = mountSlot(legacy);
+		expect(wrapper.find('[data-testid="review-slot-options"]').exists()).toBe(false);
+		expect(wrapper.text()).not.toContain('options');
 	});
 
 	it('emits the draft on "Review & send" (opens the composer — never sends) and dismiss', async () => {
