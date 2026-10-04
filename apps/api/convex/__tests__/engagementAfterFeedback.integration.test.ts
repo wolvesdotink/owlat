@@ -18,6 +18,8 @@ import { rollupCampaignStatsRow } from '../campaigns/statShards';
 // refuses it. None of it resets the soft-bounce counter or lifts a suppression.
 
 const modules = import.meta.glob('../**/*.*s');
+const newTest = () => convexTest(schema, modules);
+type TestConvex = ReturnType<typeof newTest>;
 
 afterEach(async () => {
 	await flushScheduled();
@@ -33,14 +35,14 @@ const READER_EVENTS = [
 ] as const;
 
 type Seeded = {
-	t: ReturnType<typeof convexTest>;
+	t: TestConvex;
 	campaignId: Id<'campaigns'>;
 	contactId: Id<'contacts'>;
 	sendId: Id<'emailSends'>;
 };
 
 async function seed(row: Record<string, unknown>): Promise<Seeded> {
-	const t = convexTest(schema, modules);
+	const t = newTest();
 	let campaignId!: Id<'campaigns'>;
 	let contactId!: Id<'contacts'>;
 	let sendId!: Id<'emailSends'>;
@@ -78,7 +80,7 @@ async function readCampaignWithStats(ctx: MutationCtx, campaignId: Id<'campaigns
 }
 
 /** The customer-webhook fanouts scheduled so far, by event literal. */
-async function fanoutEvents(t: ReturnType<typeof convexTest>): Promise<string[]> {
+async function fanoutEvents(t: TestConvex): Promise<string[]> {
 	return await t.run(async (ctx) => {
 		const jobs = await ctx.db.system.query('_scheduled_functions').collect();
 		return jobs
@@ -87,7 +89,7 @@ async function fanoutEvents(t: ReturnType<typeof convexTest>): Promise<string[]>
 	});
 }
 
-async function engagementActivities(t: ReturnType<typeof convexTest>): Promise<string[]> {
+async function engagementActivities(t: TestConvex): Promise<string[]> {
 	return await t.run(async (ctx) =>
 		(await ctx.db.query('contactActivities').collect())
 			.map((a) => a.activityType)
@@ -225,7 +227,7 @@ describe('reader engagement after a bounce or complaint (#1225)', () => {
 	});
 
 	it('records a provider-reported open on a soft-bounced transactional send', async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		let sendId!: Id<'transactionalSends'>;
 		await t.run(async (ctx) => {
 			const transactionalEmailId = await ctx.db.insert(
