@@ -80,9 +80,9 @@ describe('sanitizeClarificationQuestions', () => {
 		expect(out[0]!.text).toBe('Should we approve the refund?');
 		expect(out[0]!.id).toBe('clarify_0');
 		expect(out[0]!.options).toEqual(['Yes', 'No']);
-		expect(out[0]!.attribution).toContain('acme.com');
-		expect(out[0]!.attribution).toMatch(/never ask for your password/i);
 		expect(out[0]!.origin).toEqual({ kind: 'email', senderDomain: 'acme.com' });
+		// The legacy English sentence is no longer written (#1186).
+		expect(out[0]).not.toHaveProperty('attribution');
 	});
 
 	it('stores the provenance without a domain when the sender address has none', () => {
@@ -91,9 +91,7 @@ describe('sanitizeClarificationQuestions', () => {
 			''
 		);
 		expect(question!.origin).toEqual({ kind: 'email' });
-		expect(question!.attribution).toBe(
-			'Generated from an email — Owlat will never ask for your password.'
-		);
+		expect(question).not.toHaveProperty('attribution');
 	});
 
 	it('flags credential-shaped text', () => {
@@ -115,7 +113,7 @@ describe('refineClarification', () => {
 		expect(result!.questions).toHaveLength(1);
 		expect(result!.questions[0]!.text).toBe('Should we approve the refund?');
 		expect(result!.questions[0]!.options).toEqual(['Yes', 'No']);
-		expect(result!.questions[0]!.attribution).toContain('acme.com');
+		expect(result!.questions[0]).not.toHaveProperty('attribution');
 		expect(result!.questions[0]!.origin).toEqual({ kind: 'email', senderDomain: 'acme.com' });
 		// The divergence stage was actually reached (3 candidate samples).
 		expect(mocks.runLlmText).toHaveBeenCalledTimes(3);
