@@ -41,6 +41,15 @@ export function registerWebhookCrons(crons: Crons): void {
 		{}
 	);
 
+	// Sweep expired provider-event replay claims (#1228). Rows expire a day after
+	// their event; the claim hot path sweeps too, but only while events arrive.
+	crons.interval(
+		'cleanup provider event replay claims',
+		{ hours: 1 },
+		internal.webhooks.inboundEventClaims.cleanupExpired,
+		{}
+	);
+
 	// Clean up old raw webhook payloads weekly. webhookPayloads is written on every
 	// webhook ingest; without this cron its retention never runs and the table
 	// grows unbounded (only purged on full org deletion).

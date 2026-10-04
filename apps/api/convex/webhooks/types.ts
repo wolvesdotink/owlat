@@ -89,6 +89,22 @@ export interface ProviderSuppression {
 }
 
 /**
+ * HOW LONG A PROVIDER-DERIVED REPLAY KEY STAYS MEANINGFUL.
+ *
+ * Some providers (Mandrill) sign a request with no timestamp and give an event
+ * no id of its own, so the same signed bytes verify every time they arrive.
+ * Their adapter derives a stable `replayKey` for the events whose effect is not
+ * idempotent on its own (see `replayKey` on `email.failed`) and the host claims
+ * it before dispatch (`./inboundEventClaims.ts`), so a key is applied once.
+ *
+ * An adapter stamps a key ONLY on an event younger than this, and drops the
+ * address-keyed effect of an older one. That is what keeps the claim table
+ * small: a claim has to outlive its event by this window and no longer, because
+ * past it the same event can no longer carry a key at all.
+ */
+export const INBOUND_REPLAY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
  * Channel content payload — the customer-message shape inside a
  * `channel.received` event. JSON-serialized into `unifiedMessages.content`
  * by the dispatcher.
@@ -175,6 +191,14 @@ export type InboundEvent =
 			 * suppresses nobody either.
 			 */
 			suppression?: ProviderSuppression;
+			/**
+			 * A stable, address-free identity for this event, set by an adapter
+			 * whose provider gives events no id and signs no timestamp (Mandrill:
+			 * `mandrill:<event>:<msg._id>:<ts ms>`). The dispatcher claims it before
+			 * running the handler, so a redelivered or replayed event is applied
+			 * once. Only set on an event younger than {@link INBOUND_REPLAY_WINDOW_MS}.
+			 */
+			replayKey?: string;
 	  }
 	| {
 			// Transient RELAY-side deferral (Mandrill `deferral`). The
@@ -201,6 +225,8 @@ export type InboundEvent =
 			at: number;
 			providerMessageId?: string;
 			providerType?: string;
+			/** See `replayKey` on `email.failed`. */
+			replayKey?: string;
 	  }
 	| {
 			// A signed provider callback reported a recipient-specific suppression.
@@ -252,6 +278,8 @@ export type InboundEvent =
 			 */
 			reportedDomain?: string;
 			sourceIsp?: DestinationProviderKey;
+			/** See `replayKey` on `email.failed`. */
+			replayKey?: string;
 	  }
 	| {
 			kind: 'email.opened';

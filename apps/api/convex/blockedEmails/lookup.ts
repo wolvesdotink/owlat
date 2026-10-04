@@ -62,3 +62,33 @@ export async function countBlockedByReason(
 	const total = counts.reduce((sum, [, count]) => sum + count, 0);
 	return { total, ...byReason };
 }
+
+// Removals scanned per check. Each one is an operator clicking "Remove", so the
+// cap is far above what a window of hours holds.
+const REMOVAL_SCAN_LIMIT = 500;
+
+// Whether an operator removed `email` from the blocklist after `since` (#1228).
+//
+// Read from the `blocklist.removed` audit entries, which `blockedEmails.remove`
+// writes in the same transaction as the delete and which already carry the
+// normalized address, so the guard needs no new table and stores nothing new.
+// The scan is an index range over removals newer than `since`: a provider event
+// is at most hours old, so the range is a handful of rows. When it is not
+// (more than REMOVAL_SCAN_LIMIT removals since the event), this answers true:
+// refusing a stale re-add costs nothing the provider does not still enforce,
+// while undoing an operator's decision is the failure being guarded against.
+export async function wasRemovedByOperatorSince(
+	ctx: QueryCtx | MutationCtx,
+	email: string,
+	since: number
+): Promise<boolean> {
+	const normalizedEmail = normalizeEmail(email);
+	const removals = await ctx.db
+		.query('auditLogs')
+		.withIndex('by_action_and_created_at', (q) =>
+			q.eq('action', 'blocklist.removed').gt('createdAt', since)
+		)
+		.take(REMOVAL_SCAN_LIMIT + 1);
+	if (removals.length > REMOVAL_SCAN_LIMIT) return true;
+	return removals.some((entry) => entry.details?.['email'] === normalizedEmail);
+}

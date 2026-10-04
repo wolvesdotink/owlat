@@ -3,7 +3,7 @@ import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { publicQuery } from '../lib/authedFunctions';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import { normalizeEmail } from '../lib/inputGuards';
 import type { UnsubscribeOutcome } from '../topics/subscription';
 import { resolveWorkspaceLogo, type WorkspaceLogo } from '../workspaces/branding';
@@ -12,6 +12,9 @@ type ProcessUnsubscribeResult =
 	| { success: false; reason: 'not_found' }
 	| { success: true; alreadyUnsubscribed: true }
 	| { success: true; alreadyUnsubscribed: false; listsRemoved: number };
+
+/** A relay unsubscribe older than the contact's re-subscribe, left unapplied. */
+type RelayUnsubscribeSkipped = { success: true; skipped: 'resubscribed_after_event' };
 
 /**
  * Who is sending — for the recipient-facing pages (unsubscribe, preferences,
@@ -106,13 +109,14 @@ export const processUnsubscribe = internalMutation({
  */
 async function applyPublicUnsubscribe(
 	ctx: MutationCtx,
-	args: { contactId: Id<'contacts'>; topicId?: Id<'topics'> }
+	args: { contactId: Id<'contacts'>; topicId?: Id<'topics'>; topicIds?: Id<'topics'>[] }
 ): Promise<ProcessUnsubscribeResult> {
 	const { outcomes }: { outcomes: UnsubscribeOutcome[] } = await ctx.runMutation(
 		internal.topics.subscription.unsubscribeAllForContact,
 		{
 			contactId: args.contactId,
 			...(args.topicId ? { topicId: args.topicId } : {}),
+			...(args.topicIds ? { topicIds: args.topicIds } : {}),
 			source: 'public_email_link',
 			reason: 'unsubscribe',
 		}
@@ -163,10 +167,14 @@ async function applyPublicUnsubscribe(
  * FAIL-SOFT: an address with no contact — a suppressed one-off, or a contact
  * deleted since the send — returns `not_found` rather than throwing, so the
  * webhook acknowledges instead of asking the relay to redeliver forever.
+ *
+ * `eventAt` (#1228) is when the relay saw the person leave. The event reports
+ * what they were subscribed to THEN, so a late or replayed one must not undo a
+ * re-subscribe that came after it — see {@link applyRelayUnsubscribe}.
  */
 export const processUnsubscribeByEmail = internalMutation({
-	args: { email: v.string() },
-	handler: async (ctx, args): Promise<ProcessUnsubscribeResult> => {
+	args: { email: v.string(), eventAt: v.optional(v.number()) },
+	handler: async (ctx, args): Promise<ProcessUnsubscribeResult | RelayUnsubscribeSkipped> => {
 		const normalized = normalizeEmail(args.email);
 		if (!normalized) return { success: false, reason: 'not_found' };
 		const contact = await ctx.db
@@ -174,6 +182,46 @@ export const processUnsubscribeByEmail = internalMutation({
 			.withIndex('by_email', (q) => q.eq('email', normalized))
 			.first();
 		if (!contact) return { success: false, reason: 'not_found' };
-		return await applyPublicUnsubscribe(ctx, { contactId: contact._id });
+		if (args.eventAt === undefined) {
+			return await applyPublicUnsubscribe(ctx, { contactId: contact._id });
+		}
+		return await applyRelayUnsubscribe(ctx, contact, args.eventAt);
 	},
 });
+
+/**
+ * Apply a relay unsubscribe observed at `eventAt`, minus whatever the contact
+ * opted into after it.
+ *
+ *  - A double opt-in confirmed after the event is the contact's own, later
+ *    consent: nothing is applied.
+ *  - No membership added after the event: the ordinary global unsubscribe.
+ *  - Otherwise someone subscribed the contact again after they left. Those
+ *    later memberships stay and the global opt-out is not stamped (a later
+ *    subscribe from a source allowed to lift one would have cleared it); the
+ *    memberships that existed when they left are still removed, so the
+ *    unsubscribe they asked for is honoured for everything it covered.
+ *
+ * Millisecond `addedAt` against Mandrill's whole-second `ts`: a subscribe in
+ * the same second as the event counts as before it, the side that unsubscribes.
+ */
+async function applyRelayUnsubscribe(
+	ctx: MutationCtx,
+	contact: Doc<'contacts'>,
+	eventAt: number
+): Promise<ProcessUnsubscribeResult | RelayUnsubscribeSkipped> {
+	const skipped: RelayUnsubscribeSkipped = { success: true, skipped: 'resubscribed_after_event' };
+	if (contact.doiConfirmedAt !== undefined && contact.doiConfirmedAt > eventAt) return skipped;
+	const memberships = await ctx.db
+		.query('contactTopics')
+		.withIndex('by_contact', (q) => q.eq('contactId', contact._id))
+		.collect(); // bounded: one contact's topic memberships
+	if (!memberships.some((membership) => membership.addedAt > eventAt)) {
+		return await applyPublicUnsubscribe(ctx, { contactId: contact._id });
+	}
+	const coveredTopicIds = memberships
+		.filter((membership) => membership.addedAt <= eventAt)
+		.map((membership) => membership.topicId);
+	if (coveredTopicIds.length === 0) return skipped;
+	return await applyPublicUnsubscribe(ctx, { contactId: contact._id, topicIds: coveredTopicIds });
+}

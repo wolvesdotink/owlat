@@ -1424,6 +1424,7 @@ import type * as webhooks_events_test_index from '../webhooks/events/test/index.
 import type * as webhooks_events_topicUnsubscribed_index from '../webhooks/events/topicUnsubscribed/index.js';
 import type * as webhooks_fanout from '../webhooks/fanout.js';
 import type * as webhooks_githubHttp from '../webhooks/githubHttp.js';
+import type * as webhooks_inboundEventClaims from '../webhooks/inboundEventClaims.js';
 import type * as webhooks_inboundHttp from '../webhooks/inboundHttp.js';
 import type * as webhooks_inboundSignatureMirror from '../webhooks/inboundSignatureMirror.js';
 import type * as webhooks_mtaSignature from '../webhooks/mtaSignature.js';
@@ -2893,6 +2894,7 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/events/topicUnsubscribed/index': typeof webhooks_events_topicUnsubscribed_index;
 	'webhooks/fanout': typeof webhooks_fanout;
 	'webhooks/githubHttp': typeof webhooks_githubHttp;
+	'webhooks/inboundEventClaims': typeof webhooks_inboundEventClaims;
 	'webhooks/inboundHttp': typeof webhooks_inboundHttp;
 	'webhooks/inboundSignatureMirror': typeof webhooks_inboundSignatureMirror;
 	'webhooks/mtaSignature': typeof webhooks_mtaSignature;

@@ -24,6 +24,7 @@ import {
 	BLOCKLIST_VIEW_LIMIT,
 	countBlockedByReason,
 	findBlockedByEmail,
+	wasRemovedByOperatorSince,
 } from './blockedEmails/lookup';
 
 // Derive the polymorphic block `sourceType` from whichever source-send id was
@@ -399,6 +400,12 @@ export const addFromEvent = internalMutation({
 				evidence: v.optional(v.string()),
 			})
 		),
+		/**
+		 * When the provider observed this, for a provider-reported event. A
+		 * re-add older than an operator's removal of the address is refused
+		 * (returns null), so a late or replayed event cannot undo it (#1228).
+		 */
+		eventAt: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		const normalizedEmail = normalizeEmail(args.email);
@@ -412,6 +419,13 @@ export const addFromEvent = internalMutation({
 			// (below) no audit entry, because an audit trail records state changes
 			// and this call changed no state.
 			return existing._id;
+		}
+
+		if (
+			args.eventAt !== undefined &&
+			(await wasRemovedByOperatorSince(ctx, normalizedEmail, args.eventAt))
+		) {
+			return null;
 		}
 
 		// Create the blocked email record

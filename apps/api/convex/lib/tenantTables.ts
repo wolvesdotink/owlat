@@ -463,6 +463,12 @@ export const NON_TENANT_TABLES = [
 	// protocol/telemetry tables — wiping it would only make a working channel
 	// read as `awaiting_event` until the provider next spoke.
 	'pluginWebhookFeedbackActivity',
+	// Replay claims for single provider events (Mandrill, #1228): the adapter's
+	// address-free `replayKey` (event name, provider message id, timestamp) and
+	// the claim state, nothing else. Wire-protocol bookkeeping like
+	// `pluginWebhookDeliveries`, self-expiring within a day of the event; wiping
+	// it early would only re-open a replay window.
+	'inboundEventClaims',
 ] as const satisfies readonly TableNames[];
 
 /**
