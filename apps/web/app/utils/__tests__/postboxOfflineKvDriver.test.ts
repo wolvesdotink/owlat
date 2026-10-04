@@ -355,3 +355,13 @@ describe('stores over the IndexedDB driver', () => {
 		expect(await store.loadThreads('u:mbxA', 'inbox')).toEqual([]);
 	});
 });
+
+describe('setIfAbsent', () => {
+	it('writes only into an empty key, in one committed transaction', async () => {
+		const driver = freshDriver();
+		expect(await driver.setIfAbsent!('k', { v: 1 })).toBe(true);
+		expect(await readCommitted('k')).toEqual({ v: 1 });
+		expect(await driver.setIfAbsent!('k', { v: 2 })).toBe(false);
+		expect(await readCommitted('k')).toEqual({ v: 1 });
+	});
+});

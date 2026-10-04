@@ -1171,6 +1171,22 @@ describe('migration when the row is created', () => {
 		c.close();
 	});
 
+	it('keeps retrying a failed migration after the composer is gone', async () => {
+		const { c, session, live } = await freshWithLiveCopy();
+		driver.failSet = (key) => key.includes(':draft-7:');
+		c.created('draft-7');
+		await settle();
+		// Left before the first retry; storage recovers later.
+		c.close();
+		await vi.advanceTimersByTimeAsync(5_000);
+		await settle();
+		driver.failSet = () => false;
+		await vi.advanceTimersByTimeAsync(10_000);
+		await settle();
+		expect(stored(mirrorCopyKey(NS, 'draft-7', session, 'live'))?.draftId).toBe('draft-7');
+		expect(driver.map.has(live)).toBe(false);
+	});
+
 	it('writes unchanged text again under the draft key rather than call it held', async () => {
 		const { c, session } = await freshWithLiveCopy();
 		driver.failSet = (key) => key.includes(':draft-7:');

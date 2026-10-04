@@ -1135,6 +1135,41 @@ describe('finishing', () => {
 		});
 	});
 
+	it('keeps an older rowless snapshot a newer one hid, when a send ends it (G1)', async () => {
+		mirrorStore = new PostboxDraftMirrorStore(memoryDriver(false));
+		const nav = usePostboxComposeNav();
+		const key = nav.create({ mailboxId: MBX });
+		const mountId = nav.claim(key)!;
+		nav.update(key, mountId, (req) => ({
+			...req,
+			sources: [
+				source({
+					id: 'A',
+					rowless: true,
+					parkedAt: 1,
+					fields: fields({ subject: 'A' }),
+					present: ['subject'],
+				}),
+			],
+			current: source({
+				id: 'B',
+				rowless: true,
+				parkedAt: 2,
+				fields: fields({ subject: 'B' }),
+				present: ['subject'],
+			}),
+		}));
+		const c = mountPage(key, readySnap({ subject: 'B' }));
+		expect(c.page.seed.value).toMatchObject({ prefillSubject: 'B' });
+		c.page.finish();
+		await flushPromises();
+		// B was on screen and sent; A never showed, so it is kept.
+		const kept = record(key)!;
+		expect([...kept.sources, ...(kept.current ? [kept.current] : [])].map((x) => x.id)).toEqual([
+			'A',
+		]);
+	});
+
 	it('leaves a record a newer mount owns', () => {
 		const key = usePostboxComposeNav().create({ mailboxId: MBX });
 		const a = mountPage(key, readySnap({}));

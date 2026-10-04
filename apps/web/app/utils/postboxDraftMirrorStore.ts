@@ -228,10 +228,12 @@ export class PostboxDraftMirrorStore {
 
 	/**
 	 * Move one session's copies from `fromDraftKey` (its provisional key) to the
-	 * draft that now exists, each source deleted only after its destination
-	 * committed. A slot already written under the draft is newer (a session's
-	 * writes are ordered), so the provisional one is only dropped. True once
-	 * every slot reached the draft.
+	 * draft that now exists. A destination is never overwritten (one
+	 * transaction writes it only if absent): a slot already there is this
+	 * session's newer write (its writes are ordered), so the provisional one is
+	 * only dropped. Each source goes only after its destination is known to
+	 * hold a copy. True once every slot reached the draft; any failure, a
+	 * failed read included, leaves the rest for a retry.
 	 */
 	async migrateSession(
 		ns: string,
@@ -239,24 +241,41 @@ export class PostboxDraftMirrorStore {
 		fromDraftKey: string,
 		draftId: string
 	): Promise<boolean> {
-		let complete = true;
-		const landed = new Set(
-			(await this.list(ns, draftId))
-				.filter((record) => record.sessionId === sessionId)
-				.map((record) => record.slot)
-		);
-		for (const record of await this.list(ns, fromDraftKey)) {
-			if (record.sessionId !== sessionId) continue;
-			if (landed.has(record.slot)) {
-				await this.removeIfUnchanged(record.key, record.copy);
-				continue;
+		try {
+			const prefix = `${V2_PREFIX}${ns}:${fromDraftKey}:${sessionId}:`;
+			let complete = true;
+			for (const key of await this.driver.keys()) {
+				if (!key.startsWith(prefix)) continue;
+				const located = parseCopyKey(key);
+				const copy = await this.driver.get<unknown>(key);
+				if (!located || !isMirrorCopy(copy)) continue;
+				const destination = mirrorCopyKey(ns, draftId, sessionId, located.slot);
+				const moved: MirrorCopy = { ...copy, draftId };
+				const placed = await this.placeIfAbsent(destination, moved);
+				if (placed === 'failed') complete = false;
+				else if (!(await this.removeIfUnchanged(key, copy))) complete = false;
 			}
-			const moved: MirrorCopy = { ...record.copy, draftId };
-			if (await this.write(mirrorCopyKey(ns, draftId, sessionId, record.slot), moved)) {
-				await this.removeIfUnchanged(record.key, record.copy);
-			} else complete = false;
+			return complete;
+		} catch {
+			return false;
 		}
-		return complete;
+	}
+
+	/** Write `copy` under `key` unless something is already there. */
+	private async placeIfAbsent(
+		key: string,
+		copy: MirrorCopy
+	): Promise<'written' | 'exists' | 'failed'> {
+		if (!this.persistent) return 'failed';
+		try {
+			if (this.driver.setIfAbsent)
+				return (await this.driver.setIfAbsent(key, copy)) ? 'written' : 'exists';
+			if ((await this.driver.get<unknown>(key)) !== undefined) return 'exists';
+			await this.driver.set(key, copy);
+			return 'written';
+		} catch {
+			return 'failed';
+		}
 	}
 
 	/**

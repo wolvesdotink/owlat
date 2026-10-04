@@ -61,8 +61,9 @@ export type { ComposeMirrorSources, MirrorOffer, RestoreOutcome };
  */
 export const DRAFT_MIRROR_DEBOUNCE_MS = 400;
 
-/** How long after a failed migration it is tried again. */
+/** A failed migration is tried again after 5 s, doubling, this many times. */
 const MIGRATION_RETRY_MS = 5_000;
+const MIGRATION_RETRIES = 8;
 /** How long Restore waits for a row it just created to be observed. */
 const ROW_OBSERVE_TIMEOUT_MS = 10_000;
 
@@ -431,19 +432,24 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 	}
 
 	// ── The row arrives (even after dispose): move provisional copies onto it,
-	// retried before every write and on a timer while the composer lives, so
-	// text never stays filed under a key its draft's reopen does not read.
+	// retried before every write and on a backing-off timer that outlives the
+	// composer, so text is not left filed under a key its draft's reopen does
+	// not read (a copy that never moves is still offered to fresh compositions).
 	let migrateTo: string | null = null;
 	let retryTimer: ReturnType<typeof setTimeout> | null = null;
+	let retries = 0;
 	async function migrate(): Promise<void> {
 		if (retired || !migrateTo) return;
 		if (await store.migrateSession(ns, sessionId, provisionalDraftKey(sessionId), migrateTo)) {
 			migrateTo = null;
-		} else if (!disposed) {
-			retryTimer ??= setTimeout(() => {
-				retryTimer = null;
-				void enqueue(migrate);
-			}, MIGRATION_RETRY_MS);
+		} else if (retries < MIGRATION_RETRIES) {
+			retryTimer ??= setTimeout(
+				() => {
+					retryTimer = null;
+					void enqueue(migrate);
+				},
+				MIGRATION_RETRY_MS * 2 ** retries++
+			);
 		}
 	}
 	const stopCreated = sources.autosave.onCreated((id) => {
@@ -454,7 +460,6 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 
 	onScopeDispose(() => {
 		disposed = true;
-		if (retryTimer) clearTimeout(retryTimer);
 		if (timer) {
 			clearTimeout(timer);
 			timer = null;

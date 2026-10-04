@@ -43,6 +43,11 @@ export interface OfflineKvDriver {
 	 * refused. Optional: callers fall back to a read then a delete.
 	 */
 	deleteIf?(key: string, predicate: (current: unknown) => boolean): Promise<boolean>;
+	/**
+	 * Write `value` only if `key` holds nothing, inside ONE transaction. True
+	 * when written (committed), false when something was already there.
+	 */
+	setIfAbsent?(key: string, value: unknown): Promise<boolean>;
 }
 
 /**
@@ -135,8 +140,30 @@ export function createIndexedDbDriver(
 		);
 	}
 
+	function setIfAbsent(key: string, value: unknown): Promise<boolean> {
+		return openDb().then(
+			(db) =>
+				new Promise<boolean>((resolve, reject) => {
+					const transaction = db.transaction(storeName, 'readwrite');
+					const store = transaction.objectStore(storeName);
+					let written = false;
+					const read = store.get(key);
+					read.onsuccess = () => {
+						if (read.result !== undefined) return;
+						store.put(value, key);
+						written = true;
+					};
+					transaction.oncomplete = () => resolve(written);
+					transaction.addEventListener('abort', () =>
+						reject(transaction.error ?? new Error('IndexedDB transaction aborted'))
+					);
+				})
+		);
+	}
+
 	return {
 		persistent: true,
+		setIfAbsent,
 		get: <T>(key: string) => tx<T | undefined>('readonly', (s) => s.get(key)),
 		set: (key, value) => tx<void>('readwrite', (s) => s.put(value, key)),
 		delete: (key) => tx<void>('readwrite', (s) => s.delete(key)),
@@ -162,6 +189,7 @@ export function createNoopDriver(): OfflineKvDriver {
 	return {
 		persistent: false,
 		deleteIf: async () => false,
+		setIfAbsent: async () => false,
 		get: async () => undefined,
 		set: async () => {},
 		delete: async () => {},

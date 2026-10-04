@@ -565,3 +565,60 @@ describe('PostboxDraftMirrorStore.sweep', () => {
 		expect(driver.map.get(key)).toEqual(replacement);
 	});
 });
+
+describe('PostboxDraftMirrorStore.migrateSession', () => {
+	const from = provisionalDraftKey('s1');
+
+	it('moves every slot, removing each source after its destination holds it', async () => {
+		const driver = memoryDriver();
+		const store = new PostboxDraftMirrorStore(driver);
+		driver.map.set(mirrorCopyKey('mbx-1', from, 's1', 'live'), copy({ draftId: null }));
+		driver.map.set(mirrorCopyKey('mbx-1', from, 's1', 'pre-restore.a'), copy({ draftId: null }));
+		expect(await store.migrateSession('mbx-1', 's1', from, 'draft-7')).toBe(true);
+		expect([...driver.map.keys()].sort()).toEqual(
+			[
+				mirrorCopyKey('mbx-1', 'draft-7', 's1', 'live'),
+				mirrorCopyKey('mbx-1', 'draft-7', 's1', 'pre-restore.a'),
+			].sort()
+		);
+		expect(
+			(driver.map.get(mirrorCopyKey('mbx-1', 'draft-7', 's1', 'live')) as MirrorCopy).draftId
+		).toBe('draft-7');
+	});
+
+	it('never overwrites a newer copy already under the draft (G1)', async () => {
+		const driver = memoryDriver();
+		const store = new PostboxDraftMirrorStore(driver);
+		driver.map.set(
+			mirrorCopyKey('mbx-1', from, 's1', 'live'),
+			copy({ fields: fields({ subject: 'A' }) })
+		);
+		const dest = mirrorCopyKey('mbx-1', 'draft-7', 's1', 'live');
+		driver.map.set(dest, copy({ fields: fields({ subject: 'B, newer' }) }));
+		expect(await store.migrateSession('mbx-1', 's1', from, 'draft-7')).toBe(true);
+		expect((driver.map.get(dest) as MirrorCopy).fields.subject).toBe('B, newer');
+		expect(driver.map.has(mirrorCopyKey('mbx-1', from, 's1', 'live'))).toBe(false);
+	});
+
+	it('reports incomplete and touches nothing when a read fails', async () => {
+		const driver = memoryDriver();
+		const store = new PostboxDraftMirrorStore(driver);
+		const source = mirrorCopyKey('mbx-1', from, 's1', 'live');
+		driver.map.set(source, copy({ fields: fields({ subject: 'A' }) }));
+		const dest = mirrorCopyKey('mbx-1', 'draft-7', 's1', 'live');
+		driver.map.set(dest, copy({ fields: fields({ subject: 'B, newer' }) }));
+		const realGet = driver.get.bind(driver);
+		driver.get = async <T>(key: string) => {
+			if (key === dest) throw new Error('read failed');
+			return realGet<T>(key);
+		};
+		expect(await store.migrateSession('mbx-1', 's1', from, 'draft-7')).toBe(false);
+		expect((driver.map.get(dest) as MirrorCopy).fields.subject).toBe('B, newer');
+		expect(driver.map.has(source)).toBe(true);
+	});
+
+	it('reports incomplete when the key listing fails', async () => {
+		const store = new PostboxDraftMirrorStore(throwingDriver());
+		expect(await store.migrateSession('mbx-1', 's1', from, 'draft-7')).toBe(false);
+	});
+});
