@@ -14,8 +14,9 @@
  *
  * FAIL-SOFT is preserved end-to-end: the self-check degrades to `null` (unknown
  * quality → never auto-approve). The primary draft generation itself throws on
- * prompt-injection in the assembled context — the caller's catch turns that
- * into human review, never an auto-send.
+ * prompt-injection in the assembled context, and on a model failure or a draft
+ * that is tool-call markup twice over (#1254) — the caller's catch turns that
+ * into human review or no draft, never an auto-send.
  *
  * It makes no alternative-drafts call: no screen offers a reviewer a choice of
  * drafts, so a second capable-tier generation would be paid for and never
@@ -25,7 +26,13 @@
 import { z } from 'zod';
 import type { ToolSet, ModelMessage, LanguageModel } from 'ai';
 import { cacheableSystemMessage } from '../../lib/llm/promptCache';
-import { runLlmObject, runLlmText, runLlmTextWithTools } from '../../lib/llm/dispatch';
+import {
+	runLlmObject,
+	runLlmText,
+	runLlmTextWithTools,
+	type LlmTextResult,
+} from '../../lib/llm/dispatch';
+import { withoutToolMarkup } from './draftMarkup';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { buildReplyLanguageInstruction } from './replyLanguage';
 
@@ -300,8 +307,14 @@ export type SharedDraftParams = Readonly<{
 	/** Max agentic steps when a tool set is supplied. */
 	maxSteps?: number;
 	temperature?: number;
-	/** Per-surface analytics labels so spend is attributable to the right surface. */
-	spendLabels: Readonly<{ selfCheck: string }>;
+	/**
+	 * Per-surface analytics labels so spend is attributable to the right surface.
+	 * `draft` labels the primary generation when it is recorded here: only the
+	 * attempts of a run that ends in a throw after its markup retry, since a
+	 * throw carries no usage back. A successful run returns its usage and the
+	 * caller records it, as before.
+	 */
+	spendLabels: Readonly<{ draft: string; selfCheck: string }>;
 	/**
 	 * ISO 639-1 code of the inbound's language (the classifier's `language`,
 	 * already allowlisted by the caller). The reply is always written in the
@@ -320,8 +333,8 @@ export type SharedDraftParams = Readonly<{
 export type SharedDraftResult = Readonly<{
 	draftBody: string;
 	draftQuality: DraftQuality | null;
-	tokenUsage: import('../../lib/llm/dispatch').LlmTextResult['tokenUsage'];
-	modelUsed: import('../../lib/llm/dispatch').LlmTextResult['modelUsed'];
+	tokenUsage: LlmTextResult['tokenUsage'];
+	modelUsed: LlmTextResult['modelUsed'];
 }>;
 
 /**
@@ -331,8 +344,10 @@ export type SharedDraftResult = Readonly<{
  *
  * Deterministic for identical params under a mocked dispatch, which is exactly
  * what lets the B2B agent step and personal Postbox produce IDENTICAL output for
- * the same inbound message. Throws only on prompt-injection in the assembled
- * context (caller's catch → human review); every AI sub-failure degrades softly.
+ * the same inbound message. Throws on prompt-injection in the assembled context,
+ * on a failed primary generation and on a draft that stays tool-call markup
+ * after one retry (caller's catch → human review / no draft); the self-check
+ * degrades softly.
  */
 export async function runSharedDraft(
 	ctx: ActionCtx,
@@ -348,7 +363,7 @@ export async function runSharedDraft(
 		);
 	}
 
-	const primary = await runSelectedDraftStrategy(
+	const selected = await runSelectedDraftStrategy(
 		ctx,
 		params.strategyScope,
 		{
@@ -361,7 +376,25 @@ export async function runSharedDraft(
 			signatureInstruction: params.signatureInstruction,
 			voiceSection: params.voiceSection,
 		},
-		() => runDefaultDraftStrategy(params)
+		() => runDefaultDraftStrategy(params, true)
+	);
+	const primary = await withoutToolMarkup(
+		selected,
+		() => runDefaultDraftStrategy(params, false),
+		async (attempts) => {
+			for (const attempt of attempts) {
+				try {
+					await recordLlmSpend(
+						ctx,
+						params.spendLabels.draft,
+						attempt.tokenUsage,
+						attempt.modelUsed
+					);
+				} catch {
+					// ignore — spend accounting is advisory
+				}
+			}
+		}
 	);
 	// A reviewer note the model wrote anyway becomes a placeholder the send
 	// guard counts (agent/shared/draftGaps.ts).
@@ -383,8 +416,16 @@ export async function runSharedDraft(
 	};
 }
 
-/** Built-in `default` strategy; kept byte-for-byte equivalent to the old primary path. */
-async function runDefaultDraftStrategy(params: SharedDraftParams) {
+/**
+ * Built-in `default` strategy; kept byte-for-byte equivalent to the old primary
+ * path. `withTools: false` is the markup retry: no tool set, and a prompt that
+ * names none.
+ */
+async function runDefaultDraftStrategy(
+	params: SharedDraftParams,
+	withTools: boolean
+): Promise<LlmTextResult> {
+	const tools = withTools ? params.tools : undefined;
 	const model = await params.resolveModel();
 	const systemPrompt = buildDraftSystemPrompt({
 		audience: params.audience,
@@ -393,7 +434,7 @@ async function runDefaultDraftStrategy(params: SharedDraftParams) {
 		signatureInstruction: params.signatureInstruction,
 		voiceSection: params.voiceSection,
 		replyLanguage: params.replyLanguage,
-		hasRecallTool: params.tools?.['recallKnowledge'] !== undefined,
+		hasRecallTool: tools?.['recallKnowledge'] !== undefined,
 	});
 	const messages = buildDraftMessages({
 		systemPrompt,
@@ -404,11 +445,11 @@ async function runDefaultDraftStrategy(params: SharedDraftParams) {
 	});
 
 	const temperature = params.temperature ?? 0.4;
-	return params.tools && Object.keys(params.tools).length > 0
+	return tools && Object.keys(tools).length > 0
 		? await runLlmTextWithTools({
 				model,
 				maxSteps: params.maxSteps,
-				tools: params.tools,
+				tools,
 				messages,
 				temperature,
 			})

@@ -24,6 +24,13 @@
  * human who edits/approves/sends it; nothing here auto-sends. Any AI/gate/stream
  * failure degrades to the existing draft (the buffer settles `error`, the client
  * keeps what the human already had) and never wedges anything.
+ *
+ * Tool-call markup (#1254, lib/llm/toolMarkup.ts): a draft saved before that fix
+ * can still open with the markup a model typed instead of calling its tool.
+ * The current draft loses a leading markup prefix before it reaches the model,
+ * and a draft with markup elsewhere is refused rather than revised around it.
+ * The buffer only ever shows the part of the revision that cannot be markup,
+ * and a revision that is markup settles `error`.
  */
 
 import { v } from 'convex/values';
@@ -31,6 +38,7 @@ import { authedAction } from '../../lib/authedFunctions';
 import { internal } from '../../_generated/api';
 import { resolveLanguageModelForUserText } from '../../lib/llmProvider';
 import { runLlmStream } from '../../lib/llm/dispatch';
+import { stripLeakedToolMarkup, visibleDraftStreamText } from '../../lib/llm/toolMarkup';
 import { createThrottledStreamFlusher } from '../../lib/llm/streamFlusher';
 import { recordLlmSpend } from '../../analytics/llmUsage';
 import {
@@ -52,6 +60,9 @@ const REVISE_MAX_THREAD_CHARS = 8000;
  * composer the user is looking at, so smoothness is worth the extra writes.
  */
 const FLUSH_INTERVAL_MS = 120;
+
+/** `errorCode` of a revise refused because the draft holds tool-call markup. */
+const DRAFT_HAS_TOOL_MARKUP = 'draft_has_tool_markup';
 
 /**
  * Assemble the revise prompt. Pure + exported so the unit test can assert the
@@ -107,7 +118,17 @@ export const reviseDraft = authedAction({
 	handler: async (
 		ctx,
 		args
-	): Promise<{ text: string; injectionFlagged: boolean; status: 'complete' | 'error' }> => {
+	): Promise<{
+		text: string;
+		injectionFlagged: boolean;
+		status: 'complete' | 'error';
+		/**
+		 * Why an `error` is the user's to fix: the draft they asked to revise
+		 * holds tool-call markup. Optional and additive, so a client that does
+		 * not read it shows its generic failure, as before.
+		 */
+		errorCode?: typeof DRAFT_HAS_TOOL_MARKUP;
+	}> => {
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 		// Ownership check + reset the buffer to a clean streaming state.
 		await ctx.runMutation(internal.mail.draftStreamStore.beginDraftStream, {
@@ -121,9 +142,25 @@ export const reviseDraft = authedAction({
 			requireAccess: true,
 		});
 
+		const current = stripLeakedToolMarkup(args.currentDraft);
+		if (current.kind === 'unusable') {
+			await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
+				streamId: args.streamId,
+				text: '',
+				status: 'error',
+				errorMessage: 'The draft contains tool-call markup. Remove it, then try again.',
+			});
+			return {
+				text: '',
+				injectionFlagged: false,
+				status: 'error',
+				errorCode: DRAFT_HAS_TOOL_MARKUP,
+			};
+		}
+
 		const { system, prompt } = buildRevisePrompt({
 			instruction: args.instruction,
-			currentDraft: args.currentDraft,
+			currentDraft: current.text,
 			threadContext: args.threadContext,
 			voiceGuidance,
 		});
@@ -137,7 +174,7 @@ export const reviseDraft = authedAction({
 			patch: (text) =>
 				ctx.runMutation(internal.mail.draftStreamStore.appendDraftStream, {
 					streamId: args.streamId,
-					text,
+					text: visibleDraftStreamText(text),
 				}),
 		});
 
@@ -154,7 +191,18 @@ export const reviseDraft = authedAction({
 				onTextDelta: stream.onText,
 			});
 
-			const finalText = (result.text || stream.text).trim();
+			const revised = stripLeakedToolMarkup(result.text || stream.text);
+			if (revised.kind === 'unusable') {
+				await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
+					streamId: args.streamId,
+					text: '',
+					status: 'error',
+					errorMessage: 'The revision came back as tool-call markup. Try again.',
+				});
+				await recordLlmSpend(ctx, 'postbox_revise_draft', result.tokenUsage, result.modelUsed);
+				return { text: '', injectionFlagged: false, status: 'error' };
+			}
+			const finalText = revised.text.trim();
 			// Safety scan runs on the FINAL text ONLY (never mid-stream). Advisory:
 			// a hit flags the buffer for the human; it never blocks or auto-sends.
 			const outbound = detectInjection(finalText);
@@ -177,7 +225,7 @@ export const reviseDraft = authedAction({
 			const message = error instanceof Error ? error.message : 'Revise failed';
 			await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
 				streamId: args.streamId,
-				text: stream.text.trim(),
+				text: visibleDraftStreamText(stream.text).trim(),
 				status: 'error',
 				errorMessage: message.slice(0, 500),
 			});

@@ -153,4 +153,32 @@ describe('useDraftRevise lifecycle', () => {
 		expect(r.status.value).toBe('error');
 		expect(h.deps.onError).toHaveBeenCalledWith('Revise failed — your draft is unchanged.');
 	});
+
+	it('tells the user to remove tool-call text when the backend refuses the draft for it', async () => {
+		const h = harness();
+		const r = useDraftRevise(h.deps);
+		const p = r.start({ instruction: 'x', currentDraft: 'y' });
+		await Promise.resolve();
+		await h.resolveWith({
+			status: 'error',
+			text: '',
+			injectionFlagged: false,
+			errorCode: 'draft_has_tool_markup',
+		});
+		await p;
+		expect(r.status.value).toBe('error');
+		expect(h.deps.onError).toHaveBeenCalledWith(
+			'Your draft still contains text from an AI tool call. Remove it, then revise again.'
+		);
+	});
+
+	it('keeps the generic failure for an error code it does not know', async () => {
+		const h = harness();
+		const r = useDraftRevise(h.deps);
+		const p = r.start({ instruction: 'x', currentDraft: 'y' });
+		await Promise.resolve();
+		await h.resolveWith({ status: 'error', text: '', injectionFlagged: false, errorCode: 'other' });
+		await p;
+		expect(h.deps.onError).toHaveBeenCalledWith('Revise failed — your draft is unchanged.');
+	});
 });

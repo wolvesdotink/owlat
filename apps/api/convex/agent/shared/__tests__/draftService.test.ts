@@ -53,6 +53,7 @@ vi.mock('../draftStrategyHost', () => ({
 	runHostedDraftStrategy: (...args: unknown[]) => runHostedDraftStrategyMock(...args),
 }));
 
+import { recordLlmSpend } from '../../../analytics/llmUsage';
 import {
 	runSharedDraft,
 	buildDraftMessages,
@@ -79,17 +80,18 @@ function baseParams(overrides: Partial<SharedDraftParams> = {}): SharedDraftPara
 		toneInstruction: '\n\nTone: friendly.',
 		signatureInstruction: '',
 		voiceSection: '',
-		spendLabels: { selfCheck: 'sc' },
+		spendLabels: { draft: 'dr', selfCheck: 'sc' },
 		...overrides,
 	};
 }
 
 beforeEach(() => {
-	runLlmTextMock.mockClear();
-	runLlmTextWithToolsMock.mockClear();
+	runLlmTextMock.mockReset();
+	runLlmTextWithToolsMock.mockReset();
 	runLlmObjectMock.mockClear();
 	resolveDefaultModelMock.mockClear();
 	runHostedDraftStrategyMock.mockReset();
+	vi.mocked(recordLlmSpend).mockClear();
 	runLlmObjectMock.mockResolvedValue({
 		object: { score: 0.72, complete: true, grounded: true, flags: [] },
 		tokenUsage: undefined,
@@ -347,5 +349,160 @@ describe('runSharedDraft — reviewer notes become placeholders', () => {
 			messages: { content: unknown }[];
 		};
 		expect(JSON.stringify(tooled.messages[0]!.content)).toContain('recallKnowledge');
+	});
+});
+
+describe('runSharedDraft — leaked tool-call markup (#1254)', () => {
+	const REPLY = 'Hi John,\n\nThanks for getting in touch.\n\nBest,\nAda';
+	const MARKUP =
+		'<invoke name="recallKnowledge">\n' +
+		'<parameter name="query">availability 14-16 December 2026 for 2 guests</parameter>\n' +
+		'</invoke>\n\n' +
+		'<function_results>\n{"results":[]}\n</function_results>';
+	const usage = (n: number) => ({ promptTokens: n, completionTokens: n, totalTokens: 2 * n });
+	const tooled = () => baseParams({ tools: { recallKnowledge: {} as never } });
+
+	it('strips a leading markup prefix and keeps the reply, with one model call', async () => {
+		runLlmTextWithToolsMock.mockResolvedValueOnce({
+			text: MARKUP + REPLY,
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
+		const out = await runSharedDraft(fakeCtx, tooled());
+		expect(out.draftBody).toBe(REPLY);
+		expect(runLlmTextWithToolsMock).toHaveBeenCalledTimes(1);
+		expect(runLlmTextMock).not.toHaveBeenCalled();
+		// The self-check scores the reply, not the markup.
+		expect(String((runLlmObjectMock.mock.calls[0]![0] as { prompt: string }).prompt)).not.toContain(
+			'<invoke'
+		);
+	});
+
+	it('writes the draft once more without tools when markup sits inside the reply', async () => {
+		runLlmTextWithToolsMock.mockResolvedValueOnce({
+			text: `Let me check availability.\n\n${MARKUP}${REPLY}`,
+			tokenUsage: usage(10) as never,
+			modelUsed: 'mock-model',
+		});
+		runLlmTextMock.mockResolvedValueOnce({
+			text: REPLY,
+			tokenUsage: usage(4) as never,
+			modelUsed: 'mock-model',
+		});
+		const out = await runSharedDraft(fakeCtx, tooled());
+		expect(out.draftBody).toBe(REPLY);
+		expect(out.tokenUsage).toEqual(usage(14));
+		// The retry passes no tools and its prompt names none.
+		const retry = runLlmTextMock.mock.calls[0]![0] as { messages: { content: unknown }[] };
+		expect(retry).not.toHaveProperty('tools');
+		expect(JSON.stringify(retry.messages[0]!.content)).not.toContain('recallKnowledge');
+	});
+
+	it('throws when the retry is markup as well, so no draft is stored', async () => {
+		runLlmTextWithToolsMock.mockResolvedValueOnce({
+			text: `Hi John,\n\n${MARKUP}`,
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
+		runLlmTextMock.mockResolvedValueOnce({
+			text: MARKUP,
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
+		await expect(runSharedDraft(fakeCtx, tooled())).rejects.toThrow(/tool-call markup/);
+		expect(runLlmObjectMock).not.toHaveBeenCalled();
+	});
+
+	it('cleans a custom strategy draft the same way', async () => {
+		runHostedDraftStrategyMock.mockResolvedValueOnce(MARKUP + REPLY);
+		const ctx = { runQuery: vi.fn(async () => 'plugin.draft-pack.legal') };
+		const out = await runSharedDraft(
+			ctx as never,
+			baseParams({ strategyScope: { classification: 'support' } })
+		);
+		expect(out.draftBody).toBe(REPLY);
+	});
+});
+
+describe('runSharedDraft — unfinished markup and the spend of rejected drafts', () => {
+	const REPLY = 'Hi John,\n\nThanks for getting in touch.\n\nBest,\nAda';
+	const usage = (n: number) => ({ promptTokens: n, completionTokens: n, totalTokens: 2 * n });
+	const tooled = () => baseParams({ tools: { recallKnowledge: {} as never } });
+	const draftSpend = () =>
+		vi.mocked(recordLlmSpend).mock.calls.filter(([, label]) => label === 'dr');
+
+	it('retries a draft cut off inside a tool tag', async () => {
+		runLlmTextWithToolsMock.mockResolvedValueOnce({
+			text: 'Hi John,\n\n<invoke name="recallKnowledge"',
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
+		runLlmTextMock.mockResolvedValueOnce({ text: REPLY, tokenUsage: undefined, modelUsed: 'm' });
+		const out = await runSharedDraft(fakeCtx, tooled());
+		expect(out.draftBody).toBe(REPLY);
+		expect(runLlmTextMock).toHaveBeenCalledTimes(1);
+	});
+
+	it('records both rejected attempts under the draft label before it throws', async () => {
+		runLlmTextWithToolsMock.mockResolvedValueOnce({
+			text: '<invoke name="recallKnowledge"',
+			tokenUsage: usage(10) as never,
+			modelUsed: 'model-a',
+		});
+		runLlmTextMock.mockResolvedValueOnce({
+			text: 'Hi,\n<tool_call>{}</tool_call>',
+			tokenUsage: usage(4) as never,
+			modelUsed: 'model-b',
+		});
+		await expect(runSharedDraft(fakeCtx, tooled())).rejects.toThrow(/tool-call markup/);
+		expect(draftSpend()).toEqual([
+			[fakeCtx, 'dr', usage(10), 'model-a'],
+			[fakeCtx, 'dr', usage(4), 'model-b'],
+		]);
+	});
+
+	it('records the rejected attempt when the retry itself fails', async () => {
+		runLlmTextWithToolsMock.mockResolvedValueOnce({
+			text: '<invoke name="recallKnowledge">',
+			tokenUsage: usage(10) as never,
+			modelUsed: 'model-a',
+		});
+		runLlmTextMock.mockRejectedValueOnce(new Error('provider down'));
+		await expect(runSharedDraft(fakeCtx, tooled())).rejects.toThrow('provider down');
+		expect(draftSpend()).toEqual([[fakeCtx, 'dr', usage(10), 'model-a']]);
+	});
+
+	it('leaves the spend of a successful run to the caller', async () => {
+		runLlmTextWithToolsMock.mockResolvedValueOnce({
+			text: 'Hi,\n<tool_call>{}</tool_call>',
+			tokenUsage: usage(10) as never,
+			modelUsed: 'model-a',
+		});
+		runLlmTextMock.mockResolvedValueOnce({
+			text: REPLY,
+			tokenUsage: usage(4) as never,
+			modelUsed: 'model-b',
+		});
+		const out = await runSharedDraft(fakeCtx, tooled());
+		expect(out.tokenUsage).toEqual(usage(14));
+		expect(draftSpend()).toEqual([]);
+	});
+});
+
+describe('runSharedDraft — an inline tool-call block (second review)', () => {
+	it('retries a draft with a complete call block inside a sentence', async () => {
+		const reply = 'Hi John,\n\nThe room is yours.';
+		runLlmTextWithToolsMock.mockResolvedValueOnce({
+			text: `Let me check. <tool_call>{"name":"recallKnowledge","arguments":{"query":"availability"}}</tool_call>${reply}`,
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
+		runLlmTextMock.mockResolvedValueOnce({ text: reply, tokenUsage: undefined, modelUsed: 'm' });
+		const out = await runSharedDraft(
+			fakeCtx,
+			baseParams({ tools: { recallKnowledge: {} as never } })
+		);
+		expect(out.draftBody).toBe(reply);
+		expect(runLlmTextMock).toHaveBeenCalledTimes(1);
 	});
 });
