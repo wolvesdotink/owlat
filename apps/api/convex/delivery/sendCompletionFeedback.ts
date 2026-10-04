@@ -87,6 +87,29 @@ export function orderParkedFeedback(parked: readonly ParkedEvent[]): ParkedEvent
 	);
 }
 
+/**
+ * A provider's diagnostic text, clamped so a record row stays small: at most
+ * three slots carry text, each at most 500 characters (2 KiB of UTF-8), which
+ * keeps a record under the 8 KiB every listing path is sized on.
+ */
+const PARKED_TEXT_MAX_CHARS = 500;
+function clampParkedText(transition: ParkedTransition): ParkedTransition {
+	if (transition.to === 'bounced' && transition.bounceMessage !== undefined) {
+		return {
+			...transition,
+			bounceMessage: transition.bounceMessage.slice(0, PARKED_TEXT_MAX_CHARS),
+		};
+	}
+	if (transition.to === 'failed') {
+		return {
+			...transition,
+			errorMessage: transition.errorMessage.slice(0, PARKED_TEXT_MAX_CHARS),
+			errorCode: transition.errorCode.slice(0, 100),
+		};
+	}
+	return transition;
+}
+
 /** The open and exhausted records of one Send, through `by_send_and_status`. */
 export async function unresolvedCompletionFailures(
 	ctx: MutationCtx,
@@ -126,7 +149,7 @@ export async function parkFeedbackOnRecordedCompletion(
 	const row = (await unresolvedCompletionFailures(ctx, sendRef.id))[0];
 	if (!row) return false;
 	const next = coalesceParkedFeedback(row.pendingFeedback ?? [], {
-		transition,
+		transition: clampParkedText(transition),
 		receivedAt: Date.now(),
 	});
 	if (next) await ctx.db.patch(row._id, { pendingFeedback: next });

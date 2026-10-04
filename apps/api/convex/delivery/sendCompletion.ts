@@ -1,20 +1,16 @@
 import { type Infer, v } from 'convex/values';
 import { vOnCompleteArgs } from '@convex-dev/workpool';
-import {
-	admitGovernedRetry,
-	governedDeliveryDeadlineAt,
-	type GovernedDeadlineVerdict,
-} from '@owlat/shared';
+import { governedDeliveryDeadlineAt } from '@owlat/shared';
 import { internal } from '../_generated/api';
 import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { logError } from '../lib/runtimeLog';
-import { clampRetryAfterMs, LOCAL_DEFER_MS, RETRY_AFTER_MIN_MS } from '../lib/sendProviders/errors';
 import { enqueueGovernedSend } from './governedEnqueue';
 import { recordDeferralOutcome } from './deferralOutcome';
 import { envelopeInputValidator, retryStateValidator } from './workerEnvelope';
 import { countableSendRefValidator } from '../lib/validators/send';
 import { recordCompletionFailure } from './sendCompletionFailures';
+import { governedRetryDelayMs } from './sendRetryPlan';
 import { isSendWorkerOutcome, type SendWorkerOutcome } from './workerOutcome';
 import type { MarketingIneligibility } from '../lib/marketingEligibility';
 
@@ -51,26 +47,6 @@ const sendRefValidator = countableSendRefValidator;
 
 /** The countable Send this callback is bound to (a probe never gets one). */
 type SendCompletionRef = Infer<typeof sendRefValidator>;
-
-/**
- * How this module answers the deadline arm of the governed retry budget.
- *
- * A DIVERGENCE FROM THE OTHER CALL SITES, PRESERVED DELIBERATELY. Dispatch and
- * routing re-entry refuse a `startedAt` that lies in the future; this module has
- * always admitted one, because its comparison is a bare `now - startedAt <
- * MAX_AGE` and a negative age satisfies it. The two readings only differ under a
- * clock that moved backwards, and turning this into a refusal would terminalize
- * a send that still has its whole delivery window left — the opposite of what
- * every arm here is for. An unreadable age (`NaN`, an infinitely old start) is
- * still refused, exactly as the bare comparison refused it.
- *
- * `deadlineAt` for the parked-acceptance arms comes from
- * `governedDeliveryDeadlineAt` — the one place the instant is computed, so an
- * ambiguous send cannot outlive a deferred one.
- */
-function deadlineAdmits(verdict: GovernedDeadlineVerdict): boolean {
-	return verdict === 'ok' || verdict === 'clock_reversed';
-}
 
 /**
  * The one non-delivery this module invents rather than reports.
@@ -127,13 +103,21 @@ export const completeSend = internalMutation({
 	},
 });
 
+/** Thrown when a replay would re-enter a Send whose envelope was not stored. */
+export const ENVELOPE_NOT_STORED = 'ENVELOPE_NOT_STORED';
+
 /**
  * Translate one worker outcome into the Send's lifecycle. Called by
  * `completeSend` and by a completion-failure replay, never by the workpool.
+ *
+ * `isEnvelopeStripped` comes from a replay: a recorded outcome keeps no
+ * envelope (`./sendCompletionPayload`), because the record only replays the
+ * terminal branch. A re-entry it would still take refuses rather than send a
+ * stub.
  */
 export const applyCompletion = internalMutation({
-	args: completionArgs,
-	handler: async (ctx, { workId, result, context }) => {
+	args: { ...completionArgs.fields, isEnvelopeStripped: v.optional(v.boolean()) },
+	handler: async (ctx, { workId, result, context, isEnvelopeStripped }) => {
 		const { sendRef } = context;
 		const now = Date.now();
 
@@ -241,19 +225,14 @@ export const applyCompletion = internalMutation({
 			case 'acceptanceUnknown': {
 				const send = await ctx.db.get(sendRef.id);
 				if (!send || send.status !== 'queued') return;
-				// Only the deadline arm: this ambiguity is replayed under the SAME
-				// idempotency key, so it is not routing churn and the attempt cap has
-				// never bounded it — the cumulative deadline does, alone.
-				if (deadlineAdmits(admitGovernedRetry(outcome.retryState, now).deadline)) {
-					await ctx.scheduler.runAfter(
-						clampRetryAfterMs(outcome.retryAfterMs, RETRY_AFTER_MIN_MS),
-						internal.delivery.sendCompletion.retrySend,
-						{
-							sendRef,
-							envelopeInput: outcome.envelopeInput,
-							retryState: outcome.retryState,
-						}
-					);
+				const retryDelayMs = governedRetryDelayMs(outcome, now);
+				if (retryDelayMs !== null) {
+					if (isEnvelopeStripped === true) throw new Error(ENVELOPE_NOT_STORED);
+					await ctx.scheduler.runAfter(retryDelayMs, internal.delivery.sendCompletion.retrySend, {
+						sendRef,
+						envelopeInput: outcome.envelopeInput,
+						retryState: outcome.retryState,
+					});
 					return;
 				}
 				await ctx.runMutation(internal.delivery.sendLifecycle.transitionMtaByProviderMessageId, {
@@ -289,21 +268,15 @@ export const applyCompletion = internalMutation({
 				if (outcome.deferralOrigin === 'governed') {
 					await recordDeferralOutcome(ctx, { send: sendRef, at: now });
 				}
-				// BOTH BOUNDS. The retry state carried here is the successor's — the
-				// dispatch boundary already incremented it, and already declined to
-				// increment it for a policy hold — so admitting `attempt <= MAX` is the
-				// exact complement of the cap dispatch would refuse this same number on.
-				const budget = admitGovernedRetry(outcome.retryState, now);
-				if (budget.attempts === 'ok' && deadlineAdmits(budget.deadline)) {
-					await ctx.scheduler.runAfter(
-						clampRetryAfterMs(outcome.retryAfterMs, LOCAL_DEFER_MS),
-						internal.delivery.sendCompletion.retrySend,
-						{
-							sendRef,
-							envelopeInput: outcome.envelopeInput,
-							retryState: outcome.retryState,
-						}
-					);
+				// Both bounds, attempts and deadline (`./sendRetryPlan`).
+				const retryDelayMs = governedRetryDelayMs(outcome, now);
+				if (retryDelayMs !== null) {
+					if (isEnvelopeStripped === true) throw new Error(ENVELOPE_NOT_STORED);
+					await ctx.scheduler.runAfter(retryDelayMs, internal.delivery.sendCompletion.retrySend, {
+						sendRef,
+						envelopeInput: outcome.envelopeInput,
+						retryState: outcome.retryState,
+					});
 					return;
 				}
 				// Out of routing attempts, or past the cumulative delivery deadline.

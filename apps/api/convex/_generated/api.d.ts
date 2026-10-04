@@ -469,6 +469,7 @@ import type * as delivery_sendCompletion from '../delivery/sendCompletion.js';
 import type * as delivery_sendCompletionFailureAdmin from '../delivery/sendCompletionFailureAdmin.js';
 import type * as delivery_sendCompletionFailures from '../delivery/sendCompletionFailures.js';
 import type * as delivery_sendCompletionFeedback from '../delivery/sendCompletionFeedback.js';
+import type * as delivery_sendCompletionPayload from '../delivery/sendCompletionPayload.js';
 import type * as delivery_sendComposition_archive_snapshot_index from '../delivery/sendComposition/archive_snapshot/index.js';
 import type * as delivery_sendComposition_automation_index from '../delivery/sendComposition/automation/index.js';
 import type * as delivery_sendComposition_campaign_index from '../delivery/sendComposition/campaign/index.js';
@@ -491,6 +492,7 @@ import type * as delivery_sendLifecycle_lookups from '../delivery/sendLifecycle/
 import type * as delivery_sendLifecycle_outcomeAccounting from '../delivery/sendLifecycle/outcomeAccounting.js';
 import type * as delivery_sendLifecycle_reducers from '../delivery/sendLifecycle/reducers.js';
 import type * as delivery_sendLifecycle_types from '../delivery/sendLifecycle/types.js';
+import type * as delivery_sendRetryPlan from '../delivery/sendRetryPlan.js';
 import type * as delivery_sends from '../delivery/sends.js';
 import type * as delivery_snds from '../delivery/snds.js';
 import type * as delivery_sndsConfig from '../delivery/sndsConfig.js';
@@ -1934,6 +1936,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/sendCompletionFailureAdmin': typeof delivery_sendCompletionFailureAdmin;
 	'delivery/sendCompletionFailures': typeof delivery_sendCompletionFailures;
 	'delivery/sendCompletionFeedback': typeof delivery_sendCompletionFeedback;
+	'delivery/sendCompletionPayload': typeof delivery_sendCompletionPayload;
 	'delivery/sendComposition/archive_snapshot/index': typeof delivery_sendComposition_archive_snapshot_index;
 	'delivery/sendComposition/automation/index': typeof delivery_sendComposition_automation_index;
 	'delivery/sendComposition/campaign/index': typeof delivery_sendComposition_campaign_index;
@@ -1956,6 +1959,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/sendLifecycle/outcomeAccounting': typeof delivery_sendLifecycle_outcomeAccounting;
 	'delivery/sendLifecycle/reducers': typeof delivery_sendLifecycle_reducers;
 	'delivery/sendLifecycle/types': typeof delivery_sendLifecycle_types;
+	'delivery/sendRetryPlan': typeof delivery_sendRetryPlan;
 	'delivery/sends': typeof delivery_sends;
 	'delivery/snds': typeof delivery_snds;
 	'delivery/sndsConfig': typeof delivery_sndsConfig;

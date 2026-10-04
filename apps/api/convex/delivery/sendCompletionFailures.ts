@@ -1,10 +1,9 @@
-import { ConvexError, type Infer, v } from 'convex/values';
+import { type Infer, v } from 'convex/values';
 import type { WorkId } from '@convex-dev/workpool';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
-import { isTransactionLimitError } from '../lib/convexLimitErrors';
 import { logError, logWarn } from '../lib/runtimeLog';
 import type { countableSendRefValidator } from '../lib/validators/send';
 import type { workpoolRunResultValidator } from '../schema/sendCompletionFailures';
@@ -13,7 +12,15 @@ import {
 	parkFeedbackOnRecordedCompletion,
 	unresolvedCompletionFailures,
 } from './sendCompletionFeedback';
-import { isSendWorkerOutcome } from './workerOutcome';
+import { isSendWorkerOutcome, type SendWorkerOutcome } from './workerOutcome';
+import {
+	compactRunResult,
+	completionErrorCode,
+	type CompactResult,
+	PAYLOAD_MAX_BYTES,
+	payloadBytes,
+} from './sendCompletionPayload';
+import { governedRetryDelayMs } from './sendRetryPlan';
 
 // ============================================================================
 // Send completion failures (module) — #1195.
@@ -59,36 +66,6 @@ function replayDelayMs(attempts: number): number {
 	return Math.min(REPLAY_BASE_DELAY_MS * 2 ** attempts, REPLAY_MAX_DELAY_MS);
 }
 
-/**
- * The diagnostic code stored for an error, never its text. A Convex validation
- * error quotes the whole document it refused, and the first line alone can
- * carry a name or a subject. An operator who needs the message runs
- * `applyRecordedCompletion` by hand: the CLI shows the error and nothing is
- * written.
- */
-export function completionErrorCode(error: unknown): string {
-	if (error instanceof ConvexError) {
-		const data: unknown = error.data;
-		const code =
-			typeof data === 'object' && data !== null ? (data as Record<string, unknown>)['code'] : null;
-		return typeof code === 'string' && /^[a-z_]{1,40}$/i.test(code)
-			? `CONVEX_ERROR_${code.toUpperCase()}`
-			: 'CONVEX_ERROR';
-	}
-	const message = error instanceof Error ? error.message : String(error);
-	if (/does not match the schema|validator|ValidationError/i.test(message)) {
-		return 'CONVEX_VALIDATION';
-	}
-	if (isTransactionLimitError(message)) return 'TRANSACTION_LIMIT';
-	if (message.includes('conflicts with the Send provider identity')) {
-		return 'MTA_IDENTITY_CONFLICT';
-	}
-	if (message.startsWith('Unhandled send worker outcome')) return 'UNHANDLED_WORKER_OUTCOME';
-	if (error instanceof TypeError) return 'TYPE_ERROR';
-	if (error instanceof RangeError) return 'RANGE_ERROR';
-	return 'UNKNOWN';
-}
-
 /** The readable part of a run result, kept after the payload is dropped. */
 function summarize(result: RunResult): {
 	outcomeKind: string;
@@ -125,6 +102,16 @@ function summarize(result: RunResult): {
  * updates the row it already has. A Send that is gone or soft-deleted (contact
  * erasure scrubs and soft-deletes it) gets no record: the stored outcome would
  * put the erased recipient back on disk.
+ *
+ * Three dispositions:
+ *   - a deferral or open acceptance the arm would have RE-ENTERED: the record
+ *     re-enters the Send itself, here, through the same decision
+ *     (`./sendRetryPlan`), so the envelope travels in the scheduler as it would
+ *     have and is never stored. The record resolves as `retried`; what was lost
+ *     is the arm's side observation (a deferral count).
+ *   - a compact payload over `PAYLOAD_MAX_BYTES`: not stored; the record is
+ *     `exhausted` with `PAYLOAD_TOO_LARGE` for an operator.
+ *   - anything else: `open`, with the compact payload, for the replay cron.
  */
 export async function recordCompletionFailure(
 	ctx: MutationCtx,
@@ -163,34 +150,51 @@ export async function recordCompletionFailure(
 		.query('sendCompletionFailures')
 		.withIndex('by_work_id', (q) => q.eq('workId', args.workId))
 		.first();
+	const isSameRecord = existing !== null && existing.sendRef.id === sendRef.id;
+	const replayAttempts = isSameRecord ? existing.replayAttempts : 0;
+
+	const reentryDelayMs = send.status === 'queued' ? reentryDelay(args.result, now) : null;
+	const compact = compactRunResult(args.result);
+	const isTooLarge = payloadBytes(compact.result) > PAYLOAD_MAX_BYTES;
+	const disposition =
+		reentryDelayMs !== null
+			? ({ status: 'resolved', resolution: 'retried', resolvedAt: now } as const)
+			: isTooLarge
+				? ({ status: 'exhausted', lastError: 'PAYLOAD_TOO_LARGE' } as const)
+				: ({ status: 'open', nextReplayAt: now + replayDelayMs(replayAttempts) } as const);
+	const fields = { ...summary, lastError, lastFailedAt: now, ...disposition };
+
 	let failureId: Id<'sendCompletionFailures'>;
-	if (existing && existing.sendRef.id === sendRef.id) {
+	if (isSameRecord) {
 		failureId = existing._id;
 		await ctx.db.patch(existing._id, {
-			...summary,
-			status: 'open',
 			resolution: undefined,
 			resolvedAt: undefined,
-			lastError,
-			lastFailedAt: now,
-			nextReplayAt: now + replayDelayMs(existing.replayAttempts),
+			nextReplayAt: undefined,
+			...fields,
 		});
 	} else {
 		failureId = await ctx.db.insert('sendCompletionFailures', {
-			...summary,
 			sendRef,
 			contactId: send.contactId,
 			workId: args.workId,
-			status: 'open',
-			lastError,
 			replayAttempts: 0,
 			firstFailedAt: now,
-			lastFailedAt: now,
-			nextReplayAt: now + replayDelayMs(0),
+			...fields,
 		});
 	}
-	await storePayload(ctx, failureId, args.result);
-	logError('[SendCompletion] Completion failed; outcome recorded for replay', {
+	if (disposition.status === 'open') await storePayload(ctx, failureId, compact);
+	else await deleteCompletionFailurePayload(ctx, failureId);
+	if (reentryDelayMs !== null) {
+		const outcome = (args.result as { returnValue: RetryableOutcome }).returnValue;
+		await ctx.scheduler.runAfter(reentryDelayMs, internal.delivery.sendCompletion.retrySend, {
+			sendRef,
+			envelopeInput: outcome.envelopeInput,
+			retryState: outcome.retryState,
+		});
+	}
+	logError('[SendCompletion] Completion failed; outcome recorded', {
+		disposition: disposition.status,
 		failureId,
 		workId: args.workId,
 		sendKind: sendRef.kind,
@@ -199,7 +203,7 @@ export async function recordCompletionFailure(
 	});
 }
 
-/** The one payload row of a record, or null. Reads up to one 1 MiB document. */
+/** The one payload row of a record, or null. Reads one document of at most 32 KiB. */
 async function payloadOf(
 	ctx: MutationCtx,
 	failureId: Id<'sendCompletionFailures'>
@@ -213,11 +217,24 @@ async function payloadOf(
 async function storePayload(
 	ctx: MutationCtx,
 	failureId: Id<'sendCompletionFailures'>,
-	result: RunResult
+	{ result, isEnvelopeStripped }: CompactResult
 ): Promise<void> {
 	const existing = await payloadOf(ctx, failureId);
-	if (existing) await ctx.db.patch(existing._id, { result });
-	else await ctx.db.insert('sendCompletionFailurePayloads', { failureId, result });
+	if (existing) await ctx.db.patch(existing._id, { result, isEnvelopeStripped });
+	else {
+		await ctx.db.insert('sendCompletionFailurePayloads', { failureId, result, isEnvelopeStripped });
+	}
+}
+
+type RetryableOutcome = Extract<SendWorkerOutcome, { kind: 'deferred' | 'acceptanceUnknown' }>;
+
+/** The re-entry delay the arm would have scheduled, or null when it terminalizes. */
+function reentryDelay(result: RunResult, now: number): number | null {
+	if (result.kind !== 'success') return null;
+	const outcome: unknown = result.returnValue;
+	if (!isSendWorkerOutcome(outcome)) return null;
+	if (outcome.kind !== 'deferred' && outcome.kind !== 'acceptanceUnknown') return null;
+	return governedRetryDelayMs(outcome, now);
 }
 
 /**
@@ -233,7 +250,7 @@ export async function deleteCompletionFailurePayload(
 	return payload !== null;
 }
 
-async function resolveRow(
+export async function resolveCompletionFailure(
 	ctx: MutationCtx,
 	row: FailureRow,
 	resolution: 'replayed' | 'superseded',
@@ -262,15 +279,25 @@ async function replayRecordedCompletion(
 ): Promise<void> {
 	const send = await ctx.db.get(sendRef.id);
 	if (send?.status !== 'queued') return;
-	for (const row of await unresolvedCompletionFailures(ctx, sendRef.id)) {
-		try {
-			await ctx.runMutation(internal.delivery.sendCompletionFailures.replayCompletionFailure, {
-				failureId: row._id,
-				trigger: 'webhook',
-			});
-		} catch {
-			logError('[SendCompletion] Replay before provider event failed', { failureId: row._id });
-		}
+	// ONE record inline, so the event's own transaction reads one payload at
+	// most; any others replay in their own. A failed nested replay keeps the
+	// reads it made, which is why this is not a loop.
+	const [first, ...rest] = await unresolvedCompletionFailures(ctx, sendRef.id);
+	for (const row of rest) {
+		await ctx.scheduler.runAfter(
+			0,
+			internal.delivery.sendCompletionFailures.replayCompletionFailure,
+			{ failureId: row._id, trigger: 'webhook' }
+		);
+	}
+	if (!first) return;
+	try {
+		await ctx.runMutation(internal.delivery.sendCompletionFailures.replayCompletionFailure, {
+			failureId: first._id,
+			trigger: 'webhook',
+		});
+	} catch {
+		logError('[SendCompletion] Replay before provider event failed', { failureId: first._id });
 	}
 }
 
@@ -314,6 +341,7 @@ export const applyRecordedCompletion = internalMutation({
 			await ctx.runMutation(internal.delivery.sendCompletion.applyCompletion, {
 				workId: row.workId as WorkId,
 				result: payload.result,
+				isEnvelopeStripped: payload.isEnvelopeStripped,
 				context: { sendRef: row.sendRef },
 			});
 		}
@@ -371,7 +399,7 @@ export const replayCompletionFailure = internalMutation({
 		const isQueued = send?.status === 'queued';
 		// Settled elsewhere (a webhook, an operator) with nothing parked: done.
 		if (!send || (!isQueued && !row.pendingFeedback?.length)) {
-			await resolveRow(ctx, row, 'superseded', now, undefined);
+			await resolveCompletionFailure(ctx, row, 'superseded', now, undefined);
 			return 'superseded';
 		}
 		if (isQueued && !(await payloadOf(ctx, row._id))) {
@@ -413,7 +441,7 @@ export const replayCompletionFailure = internalMutation({
 			});
 		}
 		const resolution = isQueued ? 'replayed' : 'superseded';
-		await resolveRow(ctx, row, resolution, now, refusals);
+		await resolveCompletionFailure(ctx, row, resolution, now, refusals);
 		return resolution;
 	},
 });

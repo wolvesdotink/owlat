@@ -19,6 +19,9 @@ import type { Doc, Id, TableNames } from '../../_generated/dataModel';
 import { decrementContactCount } from '../../lib/contactCountHelpers';
 import { recordContactGrowth } from '../growthCounters';
 import { deleteAutomationRun } from '../../automations/runDeletion';
+import { internal } from '../../_generated/api';
+import { deleteCompletionFailurePayload } from '../../delivery/sendCompletionFailures';
+import { CONTACT_CLEANUP_BATCH_SIZE } from '../../delivery/sendCompletionFailureAdmin';
 import type { ErasureBudget } from './budget';
 import { CONTACT_ERASURE_PHASES, type ContactErasurePhase } from './phaseCatalog';
 import {
@@ -175,11 +178,31 @@ function scrubSends<T extends SendTable>(table: T, scrub: () => Partial<Doc<T>>)
 
 /**
  * Recorded send completions and their payloads (#1195): each record goes after
- * its payload, which can be a 1 MiB document, so the payload reads go through
- * the budget like any other child.
+ * its payload. The walker drains them through its budget like any other child.
+ * The inline driver has no budget, so it deletes one bounded batch and leaves
+ * the rest to a scheduled continuation that finds them by `contactId`; no new
+ * record can appear, because the contact's Sends are soft-deleted by now.
  */
 const eraseSendCompletionFailures: PhaseRunner = async (phase) => {
-	const { ctx, contactId, budget } = phase;
+	const { ctx, contactId, budget, mode } = phase;
+	if (mode === 'inline') {
+		const rows = await ctx.db
+			.query('sendCompletionFailures')
+			.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+			.take(CONTACT_CLEANUP_BATCH_SIZE);
+		for (const row of rows) {
+			await deleteCompletionFailurePayload(ctx, row._id);
+			await ctx.db.delete(row._id);
+		}
+		if (rows.length === CONTACT_CLEANUP_BATCH_SIZE) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.delivery.sendCompletionFailureAdmin.deleteContactCompletionFailures,
+				{ contactId }
+			);
+		}
+		return DONE;
+	}
 	return await drainParents(
 		budget,
 		() =>

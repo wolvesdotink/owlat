@@ -26,7 +26,8 @@ import {
 	statsSent,
 	type T,
 } from './helpers/sendCompletionFailures';
-import { completionErrorCode, REPLAY_MAX_ATTEMPTS } from '../delivery/sendCompletionFailures';
+import { REPLAY_MAX_ATTEMPTS } from '../delivery/sendCompletionFailures';
+import { completionErrorCode } from '../delivery/sendCompletionPayload';
 import { PURGE_BATCH_SIZE } from '../delivery/sendCompletionFailureAdmin';
 import { permanentlyDeleteContactWithRelations } from '../lib/contactMutations';
 import type * as EffectsModule from '../delivery/sendLifecycle/effects';
@@ -298,7 +299,11 @@ describe('contact erasure', () => {
 			expiredDeferral(sendId, send.contactId, send.contactEmail)
 		);
 		fault.isArmed = false;
-		expect(JSON.stringify(await payloadRows(t))).toContain(send.contactEmail);
+		// The stored outcome never holds the envelope: no recipient, no message.
+		const stored = JSON.stringify(await payloadRows(t));
+		expect(stored).not.toContain(send.contactEmail);
+		expect(stored).not.toContain('Private details');
+		expect(await failureRows(t)).toHaveLength(1);
 		return { sendId, contactId: send.contactId, email: send.contactEmail };
 	}
 

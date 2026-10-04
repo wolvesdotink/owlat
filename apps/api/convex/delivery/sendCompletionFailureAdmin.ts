@@ -3,7 +3,7 @@ import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { internalQuery } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
-import { deleteCompletionFailurePayload } from './sendCompletionFailures';
+import { deleteCompletionFailurePayload, resolveCompletionFailure } from './sendCompletionFailures';
 
 // ============================================================================
 // Send completion failures — retention and the operator surface (#1195).
@@ -12,6 +12,19 @@ import { deleteCompletionFailurePayload } from './sendCompletionFailures';
 // `./sendCompletionFailures`. This module deletes old records and gives an
 // operator `npx convex run` access to the rest (apps/docs "Platform
 // operations").
+//
+// READ BUDGET. A record row is at most ~8 KiB (summary, five parked events with
+// clamped text) and a payload at most 32 KiB (`PAYLOAD_MAX_BYTES`, checked at
+// write). A delete re-reads what it deletes, so it counts twice. Worst case per
+// transaction, against Convex's 16 MiB read limit:
+//   - purge: 100 records x 16 KiB + 50 payloads x 64 KiB = 4.8 MiB
+//   - status: 2 x 200 records x 8 KiB = 3.2 MiB
+//   - re-open: 100 records x 16 KiB = 1.6 MiB
+//   - contact cleanup: 50 x (16 + 64) KiB = 4 MiB
+//   - workspace sweep (`workspaces/deletion/steps/registry.ts`): 50 payloads x
+//     64 KiB = 3.2 MiB, 100 records x 16 KiB = 1.6 MiB
+// The replay cron reads 25 records (200 KiB), a replay one record and one
+// payload, and a provider event replays one record inline.
 // ============================================================================
 
 type FailureRow = Doc<'sendCompletionFailures'>;
@@ -19,18 +32,14 @@ type FailureRow = Doc<'sendCompletionFailures'>;
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** A resolved record holds no outcome any more; it is kept for the audit trail. */
 export const RESOLVED_RETENTION_MS = 30 * DAY_MS;
-/**
- * An exhausted record still holds the outcome an operator may want to replay,
- * so it is kept longer, but not forever: it can carry a deferral's envelope.
- */
+/** An exhausted record still holds the outcome an operator may want to replay. */
 export const EXHAUSTED_RETENTION_MS = 90 * DAY_MS;
-export const PURGE_BATCH_SIZE = 200;
-/**
- * Payloads deleted per purge transaction. Finding one reads it, and a payload
- * can be a 1 MiB document, so this keeps a transaction far below its read limit.
- */
-export const PURGE_PAYLOADS_PER_BATCH = 8;
-const STATUS_COUNT_LIMIT = 1000;
+export const PURGE_BATCH_SIZE = 100;
+/** Payloads deleted per purge transaction (see the read budget above). */
+export const PURGE_PAYLOADS_PER_BATCH = 50;
+/** Records per contact-cleanup transaction (see the read budget above). */
+export const CONTACT_CLEANUP_BATCH_SIZE = 50;
+const STATUS_COUNT_LIMIT = 200;
 const STATUS_SAMPLE_SIZE = 20;
 
 /**
@@ -103,7 +112,8 @@ export const reopenExhaustedCompletionFailures = internalMutation({
 
 /**
  * Operator: how many completions are waiting, and the oldest of them.
- * `npx convex run delivery/sendCompletionFailureAdmin:status`. Counts stop at 1000.
+ * `npx convex run delivery/sendCompletionFailureAdmin:status`. Counts stop at
+ * 200 (`isCountCapped`).
  */
 export const status = internalQuery({
 	args: {},
@@ -119,6 +129,7 @@ export const status = internalQuery({
 		return {
 			open: open.length,
 			exhausted: exhausted.length,
+			isCountCapped: open.length === STATUS_COUNT_LIMIT || exhausted.length === STATUS_COUNT_LIMIT,
 			oldestFailedAt: pending.reduce<number | null>(
 				(oldest, row) =>
 					oldest === null ? row.firstFailedAt : Math.min(oldest, row.firstFailedAt),
@@ -138,5 +149,81 @@ export const status = internalQuery({
 				lastError: row.lastError,
 			})),
 		};
+	},
+});
+
+/**
+ * Contact erasure's continuation for a contact with more records than one
+ * inline erasure deletes (`contacts/erasure/phases.ts`): a bounded batch per
+ * transaction, each record after its payload, rescheduled until none is left.
+ * The records are found by `contactId`, so it finishes after the contact row is
+ * gone, and no new record can appear: the contact's Sends are soft-deleted.
+ */
+export const deleteContactCompletionFailures = internalMutation({
+	args: { contactId: v.id('contacts') },
+	handler: async (ctx, { contactId }) => {
+		const rows = await ctx.db
+			.query('sendCompletionFailures')
+			.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+			.take(CONTACT_CLEANUP_BATCH_SIZE);
+		for (const row of rows) {
+			await deleteCompletionFailurePayload(ctx, row._id);
+			await ctx.db.delete(row._id);
+		}
+		if (rows.length === CONTACT_CLEANUP_BATCH_SIZE) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.delivery.sendCompletionFailureAdmin.deleteContactCompletionFailures,
+				{ contactId }
+			);
+		}
+		return { deleted: rows.length };
+	},
+});
+
+/**
+ * Operator: close a record the replay cannot finish, such as one stored as
+ * `PAYLOAD_TOO_LARGE` or refused with `ENVELOPE_NOT_STORED`. `sent` needs the
+ * provider id the record kept from an acceptance; `failed` ends the Send with
+ * `SEND_COMPLETION_UNRECOVERABLE`, which says the outcome is unknown. Either
+ * goes through the Send lifecycle, and only while the Send is still `queued`.
+ */
+export const closeCompletionFailure = internalMutation({
+	args: {
+		failureId: v.id('sendCompletionFailures'),
+		outcome: v.union(v.literal('sent'), v.literal('failed')),
+	},
+	handler: async (ctx, { failureId, outcome }) => {
+		const row = await ctx.db.get(failureId);
+		if (!row || row.status === 'resolved') return { closed: false, reason: 'not_open' };
+		const send = await ctx.db.get(row.sendRef.id);
+		const now = Date.now();
+		if (send?.status === 'queued') {
+			const { providerMessageId, providerType } = row;
+			if (outcome === 'sent' && !providerMessageId) {
+				return { closed: false, reason: 'no_provider_message_id' };
+			}
+			const transition =
+				providerMessageId && outcome === 'sent'
+					? {
+							to: 'sent' as const,
+							at: now,
+							providerMessageId,
+							...(providerType ? { providerType } : {}),
+						}
+					: {
+							to: 'failed' as const,
+							at: now,
+							errorMessage:
+								'Closed by an operator after its completion could not be replayed; the message may or may not have been delivered',
+							errorCode: 'SEND_COMPLETION_UNRECOVERABLE',
+						};
+			await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
+				send: row.sendRef,
+				transition,
+			});
+		}
+		await resolveCompletionFailure(ctx, row, 'superseded', now, undefined);
+		return { closed: true, reason: null };
 	},
 });
