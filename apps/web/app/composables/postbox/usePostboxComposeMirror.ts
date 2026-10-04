@@ -44,6 +44,7 @@ import {
 } from '~/utils/postboxDraftMirrorStore';
 import { holdMirrorSessionLock, liveMirrorSessions } from '~/utils/postboxDraftMirrorLocks';
 import { scanMirrorOffers } from '~/utils/postboxDraftMirrorScan';
+import { whenRowLoaded } from './usePostboxComposeHydration';
 import type {
 	ComposeMirrorSources,
 	MirrorOffer,
@@ -60,6 +61,8 @@ export type { ComposeMirrorSources, MirrorOffer, RestoreOutcome };
  */
 export const DRAFT_MIRROR_DEBOUNCE_MS = 400;
 
+/** How long after a failed migration it is tried again. */
+const MIGRATION_RETRY_MS = 5_000;
 /** How long Restore waits for a row it just created to be observed. */
 const ROW_OBSERVE_TIMEOUT_MS = 10_000;
 
@@ -76,6 +79,7 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 	let revision = 0;
 	let writtenRevision = 0;
 	let lastWritten: MirrorFields | null = null;
+	let lastWrittenKey = '';
 	let retired = false;
 	let disposed = false;
 	let timer: ReturnType<typeof setTimeout> | null = null;
@@ -117,9 +121,9 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 	function writeLive(captured: { revision: number; fields: MirrorFields }): Promise<boolean> {
 		return enqueue(async () => {
 			if (retired) return false;
+			await migrate();
 			// The key is fixed now: the row may be created while this write is out.
-			const writingUnder = draftKey();
-			const key = mirrorCopyKey(ns, writingUnder, sessionId, 'live');
+			const key = mirrorCopyKey(ns, draftKey(), sessionId, 'live');
 			const row = loadedRow();
 			const fields = captured.fields;
 			// Nothing worth keeping: an untouched empty composer, or text equal to
@@ -134,7 +138,8 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 				}
 				return removed;
 			}
-			if (lastWritten && mirrorFieldsEqual(lastWritten, fields)) {
+			// Already held, under this very key (not a provisional one left behind).
+			if (lastWritten && lastWrittenKey === key && mirrorFieldsEqual(lastWritten, fields)) {
 				writtenRevision = Math.max(writtenRevision, captured.revision);
 				return true;
 			}
@@ -149,6 +154,7 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 			const ok = await store.write(key, copy);
 			if (ok) {
 				lastWritten = fields;
+				lastWrittenKey = key;
 				writtenRevision = Math.max(writtenRevision, captured.revision);
 				void sweepAfterWrite();
 			}
@@ -287,31 +293,6 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 		return store.removeIfUnchanged(current.source.record.key, current.source.record.copy);
 	}
 
-	function waitForLoadedRow(): Promise<MirrorFields | null> {
-		const existing = loadedRow();
-		if (existing) return Promise.resolve(existing);
-		return new Promise((resolve) => {
-			const stop = watch(
-				() => sources.latestRow.value,
-				(row) => {
-					if (row.status === 'loaded') {
-						stop();
-						clearTimeout(timeout);
-						resolve(row.fields);
-					} else if (row.status === 'missing') {
-						stop();
-						clearTimeout(timeout);
-						resolve(null);
-					}
-				}
-			);
-			const timeout = setTimeout(() => {
-				stop();
-				resolve(null);
-			}, ROW_OBSERVE_TIMEOUT_MS);
-		});
-	}
-
 	/**
 	 * Restore the offered copy. Without `confirmed`, a copy whose row may have
 	 * moved on reports `needs-confirmation` and changes nothing. With it, the
@@ -329,7 +310,7 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 				const id = await sources.autosave.ensureDraft();
 				if (!id) return { status: 'aborted', reason: 'unavailable' };
 			}
-			const checkedRow = await waitForLoadedRow();
+			const checkedRow = await whenRowLoaded(sources.latestRow, ROW_OBSERVE_TIMEOUT_MS);
 			const latest = sources.latestRow.value;
 			if (
 				!checkedRow ||
@@ -449,18 +430,31 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 		});
 	}
 
-	// ── The row arrives (even after dispose): move provisional copies onto it.
+	// ── The row arrives (even after dispose): move provisional copies onto it,
+	// retried before every write and on a timer while the composer lives, so
+	// text never stays filed under a key its draft's reopen does not read.
+	let migrateTo: string | null = null;
+	let retryTimer: ReturnType<typeof setTimeout> | null = null;
+	async function migrate(): Promise<void> {
+		if (retired || !migrateTo) return;
+		if (await store.migrateSession(ns, sessionId, provisionalDraftKey(sessionId), migrateTo)) {
+			migrateTo = null;
+		} else if (!disposed) {
+			retryTimer ??= setTimeout(() => {
+				retryTimer = null;
+				void enqueue(migrate);
+			}, MIGRATION_RETRY_MS);
+		}
+	}
 	const stopCreated = sources.autosave.onCreated((id) => {
-		void enqueue(async () => {
-			if (retired) return;
-			const from = provisionalDraftKey(sessionId);
-			await store.migrateSession(ns, sessionId, from, String(id));
-		});
+		migrateTo = String(id);
+		void enqueue(migrate);
 		if (disposed) stopCreated();
 	});
 
 	onScopeDispose(() => {
 		disposed = true;
+		if (retryTimer) clearTimeout(retryTimer);
 		if (timer) {
 			clearTimeout(timer);
 			timer = null;

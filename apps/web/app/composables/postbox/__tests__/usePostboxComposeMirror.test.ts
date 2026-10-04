@@ -1151,6 +1151,39 @@ describe('migration when the row is created', () => {
 		c.close();
 	});
 
+	it('retries a failed migration, so the draft’s reopen finds the text', async () => {
+		const { c, session, live, backup } = await freshWithLiveCopy();
+		driver.failSet = (key) => key.includes(':draft-7:');
+		c.created('draft-7');
+		await settle();
+		expect(driver.map.has(live)).toBe(true);
+		// Storage recovers; nothing else happens (no edit, no save).
+		driver.failSet = () => false;
+		await vi.advanceTimersByTimeAsync(5_000);
+		await settle();
+		expect(stored(mirrorCopyKey(NS, 'draft-7', session, 'live'))).toMatchObject({
+			fields: { subject: 'Before the row exists' },
+			draftId: 'draft-7',
+		});
+		expect(driver.map.has(mirrorCopyKey(NS, 'draft-7', session, 'pre-restore.bk1'))).toBe(true);
+		expect(driver.map.has(live)).toBe(false);
+		expect(driver.map.has(backup)).toBe(false);
+		c.close();
+	});
+
+	it('writes unchanged text again under the draft key rather than call it held', async () => {
+		const { c, session } = await freshWithLiveCopy();
+		driver.failSet = (key) => key.includes(':draft-7:');
+		c.created('draft-7');
+		await settle();
+		driver.failSet = () => false;
+		expect(await c.mirror.writeNow()).toBe(true);
+		expect(stored(mirrorCopyKey(NS, 'draft-7', session, 'live'))?.fields.subject).toBe(
+			'Before the row exists'
+		);
+		c.close();
+	});
+
 	it('retires the provisional live copy a failed migration left behind', async () => {
 		const { c, live } = await freshWithLiveCopy();
 		driver.failSet = (key) => key.includes(':draft-7:');

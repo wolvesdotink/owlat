@@ -230,14 +230,16 @@ export class PostboxDraftMirrorStore {
 	 * Move one session's copies from `fromDraftKey` (its provisional key) to the
 	 * draft that now exists, each source deleted only after its destination
 	 * committed. A slot already written under the draft is newer (a session's
-	 * writes are ordered), so the provisional one is only dropped.
+	 * writes are ordered), so the provisional one is only dropped. True once
+	 * every slot reached the draft.
 	 */
 	async migrateSession(
 		ns: string,
 		sessionId: string,
 		fromDraftKey: string,
 		draftId: string
-	): Promise<void> {
+	): Promise<boolean> {
+		let complete = true;
 		const landed = new Set(
 			(await this.list(ns, draftId))
 				.filter((record) => record.sessionId === sessionId)
@@ -252,8 +254,9 @@ export class PostboxDraftMirrorStore {
 			const moved: MirrorCopy = { ...record.copy, draftId };
 			if (await this.write(mirrorCopyKey(ns, draftId, sessionId, record.slot), moved)) {
 				await this.removeIfUnchanged(record.key, record.copy);
-			}
+			} else complete = false;
 		}
+		return complete;
 	}
 
 	/**

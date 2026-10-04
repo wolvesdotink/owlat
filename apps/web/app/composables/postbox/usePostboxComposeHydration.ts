@@ -243,3 +243,27 @@ export function usePostboxComposeHydration(
 
 	return { retry };
 }
+
+/**
+ * The loaded row's fields once `latestRow` has them; null when the row is
+ * confirmed missing or nothing arrives within `timeoutMs`.
+ */
+export function whenRowLoaded(
+	latestRow: Readonly<Ref<LatestDraftRow>>,
+	timeoutMs: number
+): Promise<MirrorFields | null> {
+	const now = latestRow.value;
+	if (now.status === 'loaded') return Promise.resolve(now.fields);
+	return new Promise((resolve) => {
+		const finish = (fields: MirrorFields | null) => {
+			stop();
+			clearTimeout(timeout);
+			resolve(fields);
+		};
+		const stop = watch(latestRow, (row) => {
+			if (row.status === 'loaded') finish(row.fields);
+			else if (row.status === 'missing') finish(null);
+		});
+		const timeout = setTimeout(() => finish(null), timeoutMs);
+	});
+}
