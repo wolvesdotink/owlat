@@ -1448,6 +1448,7 @@ import type * as webhooks_providerSuppression from '../webhooks/providerSuppress
 import type * as webhooks_scheduleFanout from '../webhooks/scheduleFanout.js';
 import type * as webhooks_security from '../webhooks/security.js';
 import type * as webhooks_sendingScope from '../webhooks/sendingScope.js';
+import type * as webhooks_sendingScopeQueries from '../webhooks/sendingScopeQueries.js';
 import type * as webhooks_types from '../webhooks/types.js';
 import type * as webhooks_unresolvedBounce from '../webhooks/unresolvedBounce.js';
 import type * as webhooks_unresolvedFeedback from '../webhooks/unresolvedFeedback.js';
@@ -2926,6 +2927,7 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/scheduleFanout': typeof webhooks_scheduleFanout;
 	'webhooks/security': typeof webhooks_security;
 	'webhooks/sendingScope': typeof webhooks_sendingScope;
+	'webhooks/sendingScopeQueries': typeof webhooks_sendingScopeQueries;
 	'webhooks/types': typeof webhooks_types;
 	'webhooks/unresolvedBounce': typeof webhooks_unresolvedBounce;
 	'webhooks/unresolvedFeedback': typeof webhooks_unresolvedFeedback;
