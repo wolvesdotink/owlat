@@ -115,11 +115,6 @@ export const record = internalMutation({
 		deliveryDomain: v.optional(v.string()),
 		at: v.number(),
 		suppression: unresolvedFeedbackSuppressionValidator,
-		/**
-		 * The source gives events no id (Mandrill, #1228): a repeat with the
-		 * stored event time is the same report replayed, not a new occurrence.
-		 */
-		sameReportByEventTime: v.optional(v.literal(true)),
 	},
 	handler: async (ctx, args) => {
 		const now = Date.now();
@@ -136,7 +131,6 @@ export const record = internalMutation({
 					.first()
 			: null;
 		if (existing) {
-			if (args.sameReportByEventTime && existing.at === args.at) return existing._id;
 			const escalates =
 				existing.status === 'open' && existing.bounceType === 'soft' && args.bounceType === 'hard';
 			await ctx.db.patch(existing._id, {

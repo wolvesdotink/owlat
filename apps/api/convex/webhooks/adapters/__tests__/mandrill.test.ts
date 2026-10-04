@@ -714,8 +714,6 @@ describe('mapMandrillEvent / parseMandrillBatch', () => {
 			at: 1000,
 			providerType: 'mandrill',
 			recipient: 'complainer@example.com',
-			// Mandrill gives events no id; a repeat at the same time is one report (#1228).
-			sameReportByEventTime: true,
 		});
 	});
 

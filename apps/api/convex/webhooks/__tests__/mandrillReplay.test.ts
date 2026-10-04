@@ -485,6 +485,38 @@ describe('an unsub never undoes a re-subscribe it predates', () => {
 		expect(state.topicIds).toEqual([]);
 	});
 
+	it('honours a completed admin skipDoi opt-in on a DOI-required topic', async () => {
+		const t = setupTest();
+		const email = 'admin-opt-in@example.com';
+		const { contactId, topicId } = await t.run(async (ctx: { db: DatabaseWriter }) => ({
+			contactId: await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email,
+					doiStatus: 'not_required',
+					unsubscribedAt: Date.now() - 10 * MINUTE,
+				})
+			),
+			topicId: await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: true })),
+		}));
+		expect(
+			await t.mutation(internal.topics.subscription.subscribe, {
+				contactId,
+				topicId,
+				source: 'admin',
+				skipDoi: true,
+			})
+		).toMatchObject({ ok: true, action: 'subscribed' });
+
+		// The person left two minutes ago, before the admin's opt-in.
+		await postBatch(t, [unsub('m-admin', email, 2 * MINUTE)]);
+
+		expect(await subscriptionState(t, contactId)).toEqual({
+			unsubscribedAt: undefined,
+			topicIds: [topicId],
+		});
+	});
+
 	// Only a COMPLETED opt-in stands against an opt-out. An anonymous form can
 	// sign any address up; had the opt-out been recorded on time, that signup
 	// would have had to wait for a fresh confirmation anyway.
@@ -538,27 +570,23 @@ describe('an unsub never undoes a re-subscribe it predates', () => {
 // ═══ spam ═════════════════════════════════════════════════════════════════
 
 describe('a replayed spam event', () => {
-	it('is counted once even past the dedupe window, while a distinct report still counts', async () => {
+	// Past the window there is no key, and #1214's rule applies: every delivery
+	// of an unresolved report counts as an occurrence. The count is
+	// informational (the operator status sample) and blocks no one.
+	it('past the dedupe window counts each delivery as #1214 does, and blocks no one', async () => {
 		const t = setupTest();
 		const age = INBOUND_REPLAY_WINDOW_MS + 60 * MINUTE;
 		const old = [event('spam', { _id: 'm-old-spam', email: 'someone@example.com' }, age)];
 
 		await postBatch(t, old);
 		await postBatch(t, old);
-		const occurrences = async () =>
-			(
-				await t.run(
-					async (ctx: { db: DatabaseWriter }) => await ctx.db.query('unresolvedFeedback').collect()
-				)
-			).map((row) => row.occurrences);
-		expect(await occurrences()).toEqual([1]);
-		expect(await claimRows(t)).toHaveLength(0);
 
-		// A second report about the same message, at another time, is new.
-		await postBatch(t, [
-			event('spam', { _id: 'm-old-spam', email: 'someone@example.com' }, age - MINUTE),
-		]);
-		expect(await occurrences()).toEqual([2]);
+		const rows = await t.run(
+			async (ctx: { db: DatabaseWriter }) => await ctx.db.query('unresolvedFeedback').collect()
+		);
+		expect(rows.map((row) => row.occurrences)).toEqual([2]);
+		expect(await claimRows(t)).toHaveLength(0);
+		expect(await blockRows(t, 'someone@example.com')).toHaveLength(0);
 	});
 
 	it('is applied once: an unresolved complaint is not counted again', async () => {

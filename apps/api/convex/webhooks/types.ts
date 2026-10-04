@@ -289,13 +289,6 @@ export type InboundEvent =
 			sourceIsp?: DestinationProviderKey;
 			/** See `replayKey` on `email.failed`. */
 			replayKey?: string;
-			/**
-			 * Set by an adapter whose provider gives events no id (Mandrill): a
-			 * repeat with the same message id and event time is the same report,
-			 * so an unresolved one is not counted again as an occurrence. A replay
-			 * key dedupes recent events; this covers the older ones it cannot.
-			 */
-			sameReportByEventTime?: true;
 	  }
 	| {
 			kind: 'email.opened';

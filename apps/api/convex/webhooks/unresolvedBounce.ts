@@ -120,9 +120,6 @@ async function store(
 			at: e.at,
 			...(e.providerType ? { providerType: e.providerType } : {}),
 			...(e.deliveryDomain ? { deliveryDomain: e.deliveryDomain } : {}),
-			...(e.kind === 'email.complained' && e.sameReportByEventTime
-				? { sameReportByEventTime: true as const }
-				: {}),
 		});
 	} catch (error) {
 		// The error text is not logged: a validator error quotes the document it

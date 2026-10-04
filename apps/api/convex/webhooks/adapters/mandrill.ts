@@ -385,9 +385,9 @@ export function mapMandrillEvent(item: MandrillEventItem): InboundEvent | null {
 			if (!providerMessageId) return null;
 			// Mandrill events are per recipient, so `msg.email` is the complainer.
 			// It rides along for a complaint whose id matches no send (#1194).
-			// A replayed complaint is a lifecycle duplicate already; the key, or
-			// past its window the event time, keeps it from being counted again as
-			// unresolved feedback.
+			// A replayed complaint is a lifecycle duplicate already; inside its
+			// window the key also keeps it from being counted again as unresolved
+			// feedback.
 			const replayKey = mandrillReplayKey(item);
 			return {
 				kind: 'email.complained',
@@ -396,7 +396,6 @@ export function mapMandrillEvent(item: MandrillEventItem): InboundEvent | null {
 				providerType: MANDRILL_PROVIDER_TYPE,
 				...(recipient ? { recipient } : {}),
 				...(replayKey ? { replayKey } : {}),
-				sameReportByEventTime: true,
 			};
 		}
 		case 'unsub': {

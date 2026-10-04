@@ -6,6 +6,7 @@ import { publicQuery } from '../lib/authedFunctions';
 import type { Doc, Id } from '../_generated/dataModel';
 import { normalizeEmail } from '../lib/inputGuards';
 import { afterEventSecond } from '../lib/clock';
+import { isAwaitingDoubleOptIn } from '../lib/marketingEligibility';
 import type { UnsubscribeOutcome } from '../topics/subscription';
 import { resolveWorkspaceLogo, type WorkspaceLogo } from '../workspaces/branding';
 
@@ -238,17 +239,20 @@ async function applyRelayUnsubscribe(
 }
 
 /**
- * Whether a membership is a completed opt-in rather than a signup still waiting
- * for the contact to confirm: neither flagged as pending by a form that forced
- * double opt-in, nor on a DOI topic while the contact is unconfirmed.
+ * Whether a membership is a completed opt-in: one the topic audience would mail,
+ * as opposed to a signup still waiting for double opt-in. Decided by the
+ * audience selector's own predicate, so an admin `skipDoi` subscribe counts as
+ * completed exactly when it would be mailed.
  */
 async function isCompletedOptIn(
 	ctx: MutationCtx,
 	contact: Doc<'contacts'>,
 	membership: Doc<'contactTopics'>
 ): Promise<boolean> {
-	if (membership.pendingDoiConfirmation === true) return false;
-	if (contact.doiStatus === 'confirmed') return true;
 	const topic = await ctx.db.get(membership.topicId);
-	return topic?.requireDoubleOptIn !== true;
+	return !isAwaitingDoubleOptIn(
+		contact,
+		topic?.requireDoubleOptIn === true,
+		membership.pendingDoiConfirmation
+	);
 }
