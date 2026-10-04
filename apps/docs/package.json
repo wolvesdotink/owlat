@@ -10,7 +10,7 @@
 		"dev": "nuxt dev --port 3003",
 		"build": "nuxt generate",
 		"preview": "nuxt preview",
-		"typecheck": "nuxt typecheck",
+		"typecheck": "nuxt typecheck && tsc -p __tests__/tsconfig.json",
 		"lint": "oxlint --config ../../oxlintrc.json .",
 		"lint:fix": "oxlint --config ../../oxlintrc.json . --fix",
 		"postinstall": "nuxt prepare",
