@@ -207,20 +207,25 @@ async function moveToManualReply(
 /**
  * States in which the agent can still write its draft over a person's saved
  * reply without anyone acting: `drafting`, where the draft step is in flight,
- * and `awaiting_clarification`, which `reconcileAbandonedClarifications`
- * sends back to drafting once its questions time out. The new agent draft
- * would replace the saved text and, as a new draft, clear its revisions.
+ * `awaiting_clarification`, which `reconcileAbandonedClarifications` sends
+ * back to drafting once its questions time out, and `failed`, which the retry
+ * cron sends back through the pipeline after a step failure (#1220). The new
+ * agent draft would replace the saved text and, as a new draft, clear its
+ * revisions.
  */
 const SAVE_TAKES_OVER: ReadonlySet<Doc<'inboundMessages'>['processingStatus']> = new Set([
 	'drafting',
 	'awaiting_clarification',
+	'failed',
 ]);
 
 /**
  * A person saving a reply (`editDraft`, `saveDraftRevision`) while the agent
  * can still draft over it takes the reply over first, as Send does through
  * {@link takeOverReply}: the saved text is the reply, the late agent draft is
- * dropped, and open clarification questions are moot. Every other state is
+ * dropped, and open clarification questions are moot. On a failed message the
+ * save also ends the agent's retries, and an edit after a failed send is the
+ * new reply to review, not the text that was approved. Every other state is
  * left alone, so a save in `draft_ready` stays a plain save. Done on the
  * server, so an older web client that saves without taking over is covered.
  */

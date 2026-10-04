@@ -10318,8 +10318,6 @@
 				"requestReply": "Antwort entwerfen",
 				"requestReplyOperation": "Entwurf anfordern",
 				"replyLanguageNote": "Die Antwort wird auf {language} verfasst.",
-				"retriedToast": "Der Agent versucht es erneut",
-				"retryProcessing": "Erneut verarbeiten",
 				"reusedAnswersEyebrow": "Aus dem Gedächtnis",
 				"reusedAnswersHint": "Dieselbe Frage wurde schon einmal beantwortet, daher hat der Agent diese Antwort erneut angewendet. Bearbeite den Entwurf, wenn er anders lauten soll, oder",
 				"reusedAnswersManage": "prüfe, was Owlat sich gemerkt hat.",
@@ -10365,9 +10363,7 @@
 				"loading": "Fehlgeschlagene Nachrichten werden geladen …",
 				"noTextContent": "(Kein Textinhalt)",
 				"pageTitle": "Fehlgeschlagene Nachrichten — Owlat",
-				"retriedToast": "Nachricht wird erneut versucht",
 				"retryOperation": "Nachricht erneut verarbeiten",
-				"retryProcessing": "Erneut versuchen",
 				"subtitle": "Eingehende Nachrichten, die sich auch nach automatischen Wiederholungen nicht verarbeiten ließen. Prüfe den Grund, behebe die Ursache und versuche es dann erneut.",
 				"title": "Fehlgeschlagene Nachrichten"
 			},
@@ -10492,6 +10488,24 @@
 				"subtitle": "Wie schnell das Team auf Konversationen im Team-Postfach antworten soll.",
 				"title": "Antwortziele",
 				"backToInbox": "Team-Postfach"
+			},
+			"retry": {
+				"sendFailed": "Senden fehlgeschlagen",
+				"resend": {
+					"action": "Erneut senden",
+					"hint": "Sendet die freigegebene Antwort unverändert. Der Agent schreibt keinen neuen Entwurf.",
+					"toast": "Die freigegebene Antwort wird erneut gesendet"
+				},
+				"review": {
+					"action": "Zurück zur Prüfung",
+					"hint": "Legt die Antwort, die eine Person geschrieben hat, zurück in die Prüfung. Der Agent schreibt keinen neuen Entwurf.",
+					"toast": "Die Antwort ist zurück in der Prüfung"
+				},
+				"redraft": {
+					"action": "Erneut verarbeiten",
+					"hint": "Der Agent liest die Nachricht erneut und schreibt einen neuen Entwurf.",
+					"toast": "Der Agent versucht es erneut"
+				}
 			},
 			"updates": {
 				"blockDialogConfirm": "Absender sperren",

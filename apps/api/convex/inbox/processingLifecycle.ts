@@ -48,6 +48,7 @@ import {
 } from './processingLifecycle/types';
 import { dispatch } from './processingLifecycle/effects';
 import { MAX_RETRY_ATTEMPTS } from '../lib/constants';
+import { inboxRetryPlan } from '@owlat/shared/inboxRetry';
 import {
 	cancelPendingAutoSend,
 	cancelAutoSendReasonValidator,
@@ -190,6 +191,12 @@ export const recordStepFail = internalMutation({
 // `failedActionStatus`), NOT `failed`, so this ascending `by_status='failed'`
 // scan can't be starved by a growing head of lifetime-exhausted rows. The
 // `retryCount >= MAX_RETRY_ATTEMPTS` guard below is now belt-and-suspenders.
+//
+// The cron only re-runs the agent for a message nobody touched (the `redraft`
+// plan of `@owlat/shared/inboxRetry`, #1220). A failed message holding a
+// person's reply, saved, approved or taken over, waits for a person's Retry:
+// re-running the pipeline would clear the takeover and draft over the reply.
+// Its step row closes as `abandoned` so it stops heading the scan.
 
 export const retryFailedActions = internalMutation({
 	args: {},
@@ -205,6 +212,10 @@ export const retryFailedActions = internalMutation({
 			if (action.retryCount >= MAX_RETRY_ATTEMPTS) continue;
 			const message = await ctx.db.get(action.inboundMessageId);
 			if (!message || message.processingStatus !== 'failed') continue;
+			if (inboxRetryPlan(message) !== 'redraft') {
+				await ctx.db.patch(action._id, { status: 'abandoned', completedAt: now });
+				continue;
+			}
 
 			await dispatch(ctx, message, {
 				to: 'received',

@@ -10318,8 +10318,6 @@
 				"requestReply": "Draft a reply",
 				"requestReplyOperation": "Ask for a draft",
 				"replyLanguageNote": "The reply will be written in {language}.",
-				"retriedToast": "The agent will try again",
-				"retryProcessing": "Retry processing",
 				"reusedAnswersEyebrow": "From memory",
 				"reusedAnswersHint": "The same question was answered before, so the agent applied that answer again. Edit the draft if it should read differently, or",
 				"reusedAnswersManage": "review what Owlat remembers.",
@@ -10365,9 +10363,7 @@
 				"loading": "Loading failed messages...",
 				"noTextContent": "(No text content)",
 				"pageTitle": "Failed messages — Owlat",
-				"retriedToast": "Trying this message again",
 				"retryOperation": "Retry message",
-				"retryProcessing": "Try again",
 				"subtitle": "Incoming messages that could not be handled, even after trying again on their own. Check the reason, fix the cause, then try again.",
 				"title": "Failed messages"
 			},
@@ -10492,6 +10488,24 @@
 				"subtitle": "How fast the team should answer Team Inbox conversations.",
 				"title": "Response targets",
 				"backToInbox": "Team Inbox"
+			},
+			"retry": {
+				"sendFailed": "Sending failed",
+				"resend": {
+					"action": "Send again",
+					"hint": "Sends the reply you approved, unchanged. The agent does not write a new draft.",
+					"toast": "Sending the approved reply again"
+				},
+				"review": {
+					"action": "Back to review",
+					"hint": "Puts the reply a person wrote back in review. The agent does not write a new draft.",
+					"toast": "The reply is back in review"
+				},
+				"redraft": {
+					"action": "Retry processing",
+					"hint": "The agent reads the message again and writes a new draft.",
+					"toast": "The agent will try again"
+				}
 			},
 			"updates": {
 				"blockDialogConfirm": "Block sender",

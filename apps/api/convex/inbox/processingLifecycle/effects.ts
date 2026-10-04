@@ -32,7 +32,7 @@ import {
 	isPipelineInput,
 	PROCESSING_LIFECYCLE,
 	reduce,
-	requiresManualTakeover,
+	refusedAsNotAPerson,
 } from './reducers';
 import { enqueuePush } from '../../push/events';
 
@@ -162,6 +162,21 @@ export async function applyEffects(
 					status: 'pending' as ActionStatus,
 					errorMessage: undefined,
 				});
+				break;
+			}
+			case 'abandon_failed_actions': {
+				// bounded: one message's pipeline actions (~1 per step)
+				const actions = await ctx.db
+					.query('agentActions')
+					.withIndex('by_inbound_message', (q) => q.eq('inboundMessageId', effect.inboundMessageId))
+					.take(50);
+				for (const action of actions) {
+					if (action.status !== 'failed') continue;
+					await ctx.db.patch(action._id, {
+						status: 'abandoned' as ActionStatus,
+						completedAt: Date.now(),
+					});
+				}
 				break;
 			}
 			case 'notify_clarification': {
@@ -327,11 +342,11 @@ export async function dispatch(
 		}
 	} else if (
 		!PROCESSING_LIFECYCLE.isLegalEdge(from, input.to) ||
-		(requiresManualTakeover(from, input.to) &&
-			!(input.to === 'draft_ready' && input.manualTakeover === true))
+		refusedAsNotAPerson(from, input)
 	) {
 		// Leaving `received`, `rejected` or `archived` for `draft_ready` is a
-		// person's takeover only, never a late pipeline step.
+		// person's takeover only, never a late pipeline step; `failed → approved`
+		// is a person's Retry only, never the router.
 		// Deliberately `isLegalEdge` rather than the core's `classify`: this
 		// machine has never granted the implicit self-loop pass, and a same-state
 		// re-drive (`drafting → drafting`) must keep refusing rather than

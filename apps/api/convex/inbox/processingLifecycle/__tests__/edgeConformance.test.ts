@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { canFail, isClosedStatus, PROCESSING_LIFECYCLE, requiresManualTakeover } from '../reducers';
+import {
+	canFail,
+	isClosedStatus,
+	PROCESSING_LIFECYCLE,
+	refusedAsNotAPerson,
+	requiresManualTakeover,
+} from '../reducers';
 import type { ProcessingStatus } from '../types';
 
 const STATUSES = [
@@ -31,7 +37,7 @@ const EXPECTED_EDGES: Readonly<Record<ProcessingStatus, readonly ProcessingStatu
 	sent: [],
 	rejected: ['draft_ready'],
 	archived: ['draft_ready'],
-	failed: ['received', 'draft_ready'],
+	failed: ['received', 'draft_ready', 'approved'],
 };
 
 describe('inbox lifecycle edge conformance', () => {
@@ -65,5 +71,21 @@ describe('inbox lifecycle edge conformance', () => {
 			);
 		}
 		expect(requiresManualTakeover('received', 'security_check')).toBe(false);
+	});
+
+	it('lets only a person send a failed message again', () => {
+		const at = 1;
+		expect(refusedAsNotAPerson('failed', { to: 'approved', at, source: 'human' })).toBe(false);
+		expect(refusedAsNotAPerson('failed', { to: 'approved', at, source: 'auto' })).toBe(true);
+		expect(
+			refusedAsNotAPerson('failed', {
+				to: 'approved',
+				at,
+				source: 'human',
+				completedActionId: 'action' as never,
+			})
+		).toBe(true);
+		// The router still auto-approves from drafting.
+		expect(refusedAsNotAPerson('drafting', { to: 'approved', at, source: 'auto' })).toBe(false);
 	});
 });

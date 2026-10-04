@@ -293,6 +293,11 @@ export const inboxTables = {
 		isDraftGapGuarded: v.optional(v.boolean()),
 		// Error tracking
 		errorMessage: v.optional(v.string()),
+		// Where a `failed` message failed: `send` when the approved reply could not
+		// be sent, `pipeline` for an agent step. Decides what Retry does
+		// (`@owlat/shared/inboxRetry`); cleared when the message leaves `failed`.
+		// Absent on rows that failed before the field existed.
+		failedStage: v.optional(v.union(v.literal('send'), v.literal('pipeline'))),
 		// Timestamps
 		receivedAt: v.number(),
 		processedAt: v.optional(v.number()),
