@@ -44,12 +44,14 @@ type UnresolvedEvent =
  *  - the event is stored in `unresolvedFeedback`, where an operator can count
  *    it and a replay can apply it once the id resolves.
  *
- * WHAT IS STORED HOLDS NO PERSONAL DATA. Not the complainer's address (the
+ * WHAT IS STORED HOLDS NO PLAINTEXT ADDRESS. Not the complainer's address (the
  * complaint handler has already used it, from the event in memory) and not the
  * remote server's diagnostic, which often quotes the recipient: only the SMTP
  * status code read out of it (`bounceStatusCodeOf`). An event from outside the
- * sending scope (#1243) also stores a hash of its recipient salted with the
- * message id, which a replay compares and nothing reads back.
+ * sending scope (#1243) also stores a hash of its recipient keyed by the
+ * message id, which avoids a plaintext address but is not anonymous: a guessed
+ * address can be confirmed against it. A replay compares it; nothing reads it
+ * back.
  *
  * NEVER THROWS. A store that fails is logged and the webhook is acknowledged,
  * as it was before this table existed: a provider batch must not be retried
@@ -140,7 +142,7 @@ async function store(
 /**
  * What a replay needs to hold an out-of-scope event (#1243,
  * `./sendingScope.ts`) to the same match the webhook could not make yet: the
- * recipient, as a hash salted with the message id. Undefined for an in-scope
+ * recipient, as a hash keyed by the message id. Undefined for an in-scope
  * event, which stores nothing about its recipient.
  */
 async function sendingScopeOf(

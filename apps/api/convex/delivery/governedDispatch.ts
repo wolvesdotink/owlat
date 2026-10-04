@@ -28,6 +28,9 @@ import {
 } from './workerEnvelope';
 import type { SendWorkerOutcome } from './workerOutcome';
 import type { Id } from '../_generated/dataModel';
+import { logError } from '../lib/runtimeLog';
+import { applySendResponseSuppression } from '../webhooks/providerSuppression';
+import type { ProviderSuppression } from '../webhooks/types';
 
 /**
  * The durable reference this dispatch is bound to.
@@ -369,14 +372,38 @@ export async function dispatchGovernedEmail(
 		}
 	}
 
-	// A message the provider received and refused keeps its id on the Send, so
-	// the provider's later report of the refusal can still find it (#1243).
-	if (dispatched.result.providerMessageId && request.sendRef.kind !== 'seedProbe') {
-		await ctx.runMutation(internal.delivery.rejectedProviderIdentity.bindRejectedProviderIdentity, {
-			send: request.sendRef,
-			providerMessageId: dispatched.result.providerMessageId,
+	// A provider that refused the address off its own suppression list said so
+	// in this response; recorded before the send fails (#1243). A seed probe's
+	// address is ours and is never suppressed.
+	if (dispatched.result.suppression && request.sendRef.kind !== 'seedProbe') {
+		await recordSendResponseSuppression(ctx, {
 			providerType: dispatched.providerType,
+			recipient: request.to,
+			suppression: dispatched.result.suppression,
 		});
 	}
 	throw new Error(dispatched.result.errorMessage || 'Unknown email sending error');
+}
+
+/**
+ * Never lets the suppression write replace the send's own failure: a throw
+ * here is logged, and the caller still throws the provider's error.
+ */
+async function recordSendResponseSuppression(
+	ctx: ActionCtx,
+	args: { providerType: string; recipient: string; suppression: ProviderSuppression }
+): Promise<void> {
+	try {
+		await applySendResponseSuppression(
+			ctx,
+			{ providerType: args.providerType, recipient: args.recipient, at: Date.now() },
+			args.suppression
+		);
+	} catch (error) {
+		logError('[Governed Dispatch] provider refusal could not be mirrored', {
+			providerType: args.providerType,
+			reason: args.suppression.reason,
+			errorName: error instanceof Error ? error.name : typeof error,
+		});
+	}
 }

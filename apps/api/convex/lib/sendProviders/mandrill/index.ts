@@ -50,6 +50,7 @@ import { transportEnvOptional, transportEnvRequired } from '../transportEnv';
 import type { SendTransportRecord } from '../transports';
 import { isAmbiguousPostDispatchTimeout } from '../errors';
 import { postMandrill } from './client';
+import { mandrillRejectCode, mandrillRejectSuppression } from '../../../webhooks/adapters/mandrill';
 import {
 	categorizeMandrillError,
 	parseRetryAfterMs,
@@ -105,9 +106,6 @@ interface MandrillRecipientResult {
 
 /** The statuses that mean Mandrill took responsibility for the message. */
 const ACCEPTED_STATUSES: ReadonlySet<string> = new Set(['sent', 'queued', 'scheduled']);
-
-/** The statuses that mean Mandrill received the message and refused it. */
-const REFUSED_STATUSES: ReadonlySet<string> = new Set(['rejected', 'invalid']);
 
 /**
  * The `messages/send-raw` request body.
@@ -175,14 +173,17 @@ function readRecipientResult(payload: unknown): EmailSendAttempt {
 
 	const reason = typeof entry.reject_reason === 'string' ? entry.reject_reason : '';
 	const detail = `${status || 'unknown'}: ${reason}`;
-	// A refused message still has an id, and Mandrill's `reject` webhook names
-	// it. Kept so that event can be matched to this Send (#1243).
-	const refusedId = typeof entry._id === 'string' && entry._id ? entry._id : undefined;
+	// A `rejected` result is Mandrill's reject list refusing the address, the
+	// same fact its `reject` webhook reports. Read through the webhook's own
+	// table, so a reason suppresses here exactly when it suppresses there and a
+	// sender-side reason (`unsigned`, `invalid-sender`, ...) suppresses no one.
+	const suppression =
+		status === 'rejected' ? mandrillRejectSuppression(mandrillRejectCode(reason)) : undefined;
 	return {
 		success: false,
 		errorMessage: `Mandrill ${detail.trim()}`,
 		errorCode: categorizeMandrillError(detail),
-		...(refusedId && REFUSED_STATUSES.has(status) ? { providerMessageId: refusedId } : {}),
+		...(suppression ? { suppression } : {}),
 	};
 }
 

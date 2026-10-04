@@ -195,7 +195,7 @@ async function transitionFor(
 /**
  * An out-of-scope row (#1243) whose id now names a Send that is not the match
  * the webhook was waiting for: another provider kind, or a recipient whose
- * salted hash differs. Refused, like a lifecycle refusal, rather than applied.
+ * keyed hash differs. Refused, like a lifecycle refusal, rather than applied.
  * No Send yet is not a mismatch; the row stays open for the next replay.
  */
 async function isOutOfScopeMismatch(

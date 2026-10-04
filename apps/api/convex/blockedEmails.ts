@@ -391,8 +391,11 @@ export const addFromEvent = internalMutation({
 			v.object({
 				/** Send-provider kind the suppression came from, e.g. `mandrill`. */
 				provider: v.string(),
-				/** Ongoing feedback vs. a one-off carry-over of an existing list. */
-				source: v.union(v.literal('webhook'), v.literal('import')),
+				/**
+				 * Ongoing feedback, a provider's refusal in its own send response
+				 * (#1243), or a one-off carry-over of an existing list.
+				 */
+				source: v.union(v.literal('webhook'), v.literal('send_response'), v.literal('import')),
 				/** The provider's own reason code, e.g. `MANDRILL_REJECT_SPAM`. */
 				evidence: v.optional(v.string()),
 			})

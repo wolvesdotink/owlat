@@ -14,18 +14,29 @@
 
 import { convexTest } from 'convex-test';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { makeFunctionReference } from 'convex/server';
+import { v } from 'convex/values';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
-import type { DatabaseWriter } from '../../_generated/server';
+import { internalAction, type DatabaseWriter } from '../../_generated/server';
 import { modules } from '../../__tests__/testModules';
 import {
 	createTestCampaign,
 	createTestContact,
 	createTestEmailSend,
 } from '../../__tests__/factories';
-import { _resetSendTransportCacheForTests } from '../../lib/sendProviders/transports';
+import {
+	_resetSendTransportCacheForTests,
+	resolveSendTransport,
+} from '../../lib/sendProviders/transports';
+import {
+	_resetMandrillConfigCacheForTests,
+	mandrillSendProvider,
+} from '../../lib/sendProviders/mandrill';
+import { deadlineSweepCutoff } from '../../delivery/stuckSendSweep';
+import { applySendResponseSuppression } from '../providerSuppression';
 import { ownMandrillSubaccounts } from '../../lib/sendProviders/mandrill/subaccounts';
 
 const WEBHOOK_KEY = 'mandrill-test-webhook-key';
@@ -46,8 +57,8 @@ async function hmacSha1Base64(secret: string, data: string): Promise<string> {
 
 type Harness = ReturnType<typeof setupTest>;
 
-function setupTest() {
-	const t = convexTest(schema, modules);
+function setupTest(overrides: Record<string, () => Promise<unknown>> = {}) {
+	const t = convexTest(schema, { ...modules, ...overrides });
 	rateLimiterTest.register(t);
 	return t;
 }
@@ -461,42 +472,144 @@ describe('feedback that arrives before its Send can be matched', () => {
 		).toBe('refused');
 		expect(await sendStatus(t, sendId)).toBe('sent');
 	});
+});
 
-	// Mandrill refused the message in the send response; the governed dispatch
-	// bound the refused id before the completion failed the Send.
-	it('mirrors a rule-assigned reject for a Send Mandrill refused at send time', async () => {
-		const t = setupTest();
-		const sendId = await seedUnboundSend(t, 'jane@example.com');
-		const send = { kind: 'campaign' as const, id: sendId };
+/**
+ * A REJECT MANDRILL MADE IN THE SEND RESPONSE. A `rejected` result is our own
+ * request refused off the reject list, so the governed dispatch records its
+ * suppression there (`applySendResponseSuppression`), without touching the
+ * Send. The later `reject` webhook matches no Send (a refused send stores no
+ * id) and, when it comes from another subaccount, is dropped.
+ */
+describe('a reject Mandrill made in the send response', () => {
+	const PROBE = makeFunctionReference<'action', { reason: string; to: string }, boolean>(
+		'webhooks/sendResponseProbe:refuse'
+	);
 
-		expect(
-			await t.mutation(internal.delivery.rejectedProviderIdentity.bindRejectedProviderIdentity, {
-				send,
-				providerMessageId: 'm-refused',
-				providerType: 'mandrill',
-			})
-		).toEqual({ isBound: true });
+	/** The real send adapter against a mocked `rejected` answer, then the dispatch's write. */
+	const probeModule = {
+		'../webhooks/sendResponseProbe.ts': async () => ({
+			refuse: internalAction({
+				args: { reason: v.string(), to: v.string() },
+				handler: async (ctx, { reason, to }) => {
+					const realFetch = global.fetch;
+					global.fetch = vi
+						.fn()
+						.mockResolvedValue(
+							new Response(
+								JSON.stringify([
+									{ email: to, status: 'rejected', _id: 'refused-1', reject_reason: reason },
+								]),
+								{ status: 200 }
+							)
+						) as unknown as typeof fetch;
+					let result;
+					try {
+						result = await mandrillSendProvider.sendEmail(resolveSendTransport('mandrill'), {
+							to,
+							from: 'Owlat <sender@example.com>',
+							subject: 'Subject',
+							html: '<p>Body</p>',
+							text: 'Body',
+						});
+					} finally {
+						global.fetch = realFetch;
+						_resetMandrillConfigCacheForTests();
+					}
+					if (result.success || !result.suppression) return false;
+					await applySendResponseSuppression(
+						ctx,
+						{ providerType: 'mandrill', recipient: to, at: Date.now() },
+						result.suppression
+					);
+					return true;
+				},
+			}),
+		}),
+	};
+
+	beforeEach(() => {
+		process.env['MANDRILL_SUBACCOUNT'] = 'owlat';
+		_resetMandrillConfigCacheForTests();
+	});
+
+	it.each(['hard-bounce', 'spam', 'custom', 'rule'])(
+		'blocks the address on a %s refusal with no webhook at all',
+		async (reason) => {
+			const t = setupTest(probeModule);
+			expect(await t.action(PROBE, { reason, to: 'jane@example.com' })).toBe(true);
+			expect(await isBlocked(t, 'jane@example.com')).toBe(true);
+		}
+	);
+
+	it('unsubscribes the contact on an unsub refusal', async () => {
+		const t = setupTest(probeModule);
+		await seedContact(t, 'leaver@example.com');
+
+		await t.action(PROBE, { reason: 'unsub', to: 'leaver@example.com' });
+
+		expect(await isUnsubscribed(t, 'leaver@example.com')).toBe(true);
+		expect(await isBlocked(t, 'leaver@example.com')).toBe(false);
+	});
+
+	it.each(['unsigned', 'invalid-sender', 'test-mode-limit', 'invalid'])(
+		'blocks no one on a sender-side %s refusal',
+		async (reason) => {
+			const t = setupTest(probeModule);
+			expect(await t.action(PROBE, { reason, to: 'jane@example.com' })).toBe(false);
+			expect(await isBlocked(t, 'jane@example.com')).toBe(false);
+		}
+	);
+
+	it('ignores the later rule-assigned reject webhook, early or after the Send failed', async () => {
+		const t = setupTest(probeModule);
+		const sendId = await seedSend(t, 'placeholder', 'jane@example.com');
+		await t.run(async (ctx: { db: DatabaseWriter }) => {
+			await ctx.db.patch(sendId, { providerMessageId: undefined, providerType: undefined });
+		});
+		await t.action(PROBE, { reason: 'hard-bounce', to: 'jane@example.com' });
+
+		// Early: the Send is still queued. Late: the completion failed it.
+		await postBatch(t, [reject('refused-1', 'jane@example.com', 'rule-assigned')]);
+		expect(await sendStatus(t, sendId)).toBe('queued');
 		await t.run(async (ctx: { db: DatabaseWriter }) => {
 			await ctx.db.patch(sendId, { status: 'failed' });
 		});
+		await postBatch(t, [reject('refused-1', 'jane@example.com', 'rule-assigned')]);
 
-		await postBatch(t, [reject('m-refused', 'jane@example.com', 'rule-assigned')]);
-
-		expect(await isBlocked(t, 'jane@example.com')).toBe(true);
+		const rows = await t.run(
+			async (ctx: { db: DatabaseWriter }) =>
+				await ctx.db
+					.query('blockedEmails')
+					.withIndex('by_email', (q) => q.eq('email', 'jane@example.com'))
+					.collect()
+		);
+		expect(rows).toHaveLength(1);
+		const claims = await t.run(
+			async (ctx: { db: DatabaseWriter }) => await ctx.db.query('inboundEventClaims').collect()
+		);
+		expect(claims).toEqual([]);
 	});
 
-	it('never rebinds a Send that already has an id or has left the queue', async () => {
-		const t = setupTest();
-		const boundId = await seedSend(t, 'm-first', 'bound@example.com');
-		const sentId = await seedUnboundSend(t, 'sent@example.com', 'sent');
-		const bind = (id: Id<'emailSends'>) =>
-			t.mutation(internal.delivery.rejectedProviderIdentity.bindRejectedProviderIdentity, {
-				send: { kind: 'campaign', id },
-				providerMessageId: 'm-second',
-				providerType: 'mandrill',
+	it('leaves the Send to the lost-send sweep when its completion never lands', async () => {
+		const t = setupTest(probeModule);
+		const sendId = await seedSend(t, 'placeholder', 'jane@example.com');
+		await t.run(async (ctx: { db: DatabaseWriter }) => {
+			await ctx.db.patch(sendId, {
+				providerMessageId: undefined,
+				providerType: undefined,
+				firstAttemptAt: Date.now() - 10 * 24 * 60 * 60 * 1000,
 			});
+		});
 
-		expect(await bind(boundId)).toEqual({ isBound: false });
-		expect(await bind(sentId)).toEqual({ isBound: false });
+		await t.action(PROBE, { reason: 'hard-bounce', to: 'jane@example.com' });
+		const outcome = await t.mutation(internal.delivery.stuckSendSweep.failLostSend, {
+			sendRef: { kind: 'campaign', id: sendId },
+			mode: 'deadline',
+			cutoff: deadlineSweepCutoff(Date.now()),
+		});
+
+		expect(outcome).toEqual({ isFailed: true, reason: null });
+		expect(await sendStatus(t, sendId)).toBe('failed');
 	});
 });

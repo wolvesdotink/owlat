@@ -1,5 +1,7 @@
 /** Typed outcomes and retry policy shared by send-provider adapters. */
 
+import type { ProviderSuppression } from '../../webhooks/types';
+
 export enum EmailErrorCode {
 	/** Rate limit exceeded — retryable */
 	RATE_LIMIT = 'RATE_LIMIT',
@@ -60,11 +62,12 @@ export type EmailSendAttempt =
 			/** MTA request outcome is unknown because no HTTP response was observed. */
 			acceptanceUnknown?: true;
 			/**
-			 * The provider's id for a message it received and refused (a Mandrill
-			 * `rejected` result). Bound to the Send before it fails, so the
-			 * provider's later feedback about that refusal still finds it (#1243).
+			 * The recipient consequence the provider attached to a refusal in its
+			 * own send response (a Mandrill `rejected` result off its reject list),
+			 * minted by the adapter from the same table its webhook uses. The
+			 * governed dispatch records it before it fails the send (#1243).
 			 */
-			providerMessageId?: string;
+			suppression?: ProviderSuppression;
 	  };
 
 /**

@@ -17,12 +17,15 @@
  *    provider kind, same recipient) is applied as usual, whatever subaccount it
  *    names. People unsubscribe from old mail at any time;
  *  - an event whose id names a Send that is NOT that match is dropped;
- *  - an event whose id names no Send yet loses only its address-level effect:
- *    an `unsub` is dropped, a `reject` keeps its lifecycle half but suppresses
- *    nobody and claims no replay key. A bounce or complaint goes down the ordinary unknown-message path
- *    (`./unresolvedBounce.ts`), which already acts on no address, and is stored
- *    with a salted hash of the recipient so a replay, once the Send's id lands,
- *    checks the provider kind and the recipient again
+ *  - an event whose id names no Send acts on no address. An `unsub` is
+ *    dropped. A `reject` is dropped whole: a message Mandrill refuses from its
+ *    reject list is refused in the send response, which carries the same
+ *    suppression and is recorded there before the send fails
+ *    (`delivery/governedDispatch.ts`), so an unmatched `reject` is either
+ *    already applied or not ours. A bounce or complaint goes down the ordinary
+ *    unknown-message path (`./unresolvedBounce.ts`), which already acts on no
+ *    address, and is stored with a keyed hash of the recipient so a replay,
+ *    once the Send's id lands, checks the provider kind and the recipient again
  *    (`./unresolvedFeedback.ts`). A `send` or `deferral` for no Send moves
  *    nothing either way.
  *
@@ -54,12 +57,11 @@ export async function withinSendingScope(
 	});
 	if (match === 'attributed') return event;
 	if (match === 'mismatch') return null;
-	if (event.kind === 'email.unsubscribed') return null;
-	if (event.kind === 'email.failed') {
-		// Unclaimed as well: the lifecycle half is idempotent on its own, and a
-		// claim spent here would stop a redelivery that matches later.
-		const { suppression: _addressLevel, replayKey: _claim, ...lifecycleOnly } = event;
-		return lifecycleOnly;
-	}
+	// No Send carries this id. An `unsub` acts only on an address. A `reject` is
+	// dropped whole, with no lifecycle attempt: if the message was ours, Mandrill
+	// refused it in the send response, which carried the same suppression and
+	// was recorded then (`delivery/governedDispatch.ts`), and the completion
+	// failed the Send; if it was not ours, ignoring it is the fix.
+	if (event.kind === 'email.unsubscribed' || event.kind === 'email.failed') return null;
 	return event;
 }

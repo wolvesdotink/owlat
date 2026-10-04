@@ -66,10 +66,10 @@
  * refuses the address whoever put it there, so mirroring it keeps the two arms
  * on the same population. It also cannot be gated on the Send: Mandrill refuses
  * a listed address synchronously, and a refused send stores no provider message
- * id for the webhook's `reject` to match. The remaining exposure is a provider
- * that keeps separate lists per subaccount while delivering every subaccount's
- * events to one webhook; that needs a per-deployment marker the provider echoes
- * back (Mandrill `msg.subaccount`, verified live) and is a follow-up.
+ * id for the webhook's `reject` to match. That synchronous refusal is mirrored
+ * from the send response itself ({@link applySendResponseSuppression}). Events
+ * from another Mandrill subaccount are held back before they reach this file
+ * (`./sendingScope.ts`, #1243).
  */
 
 import { internal } from '../_generated/api';
@@ -129,7 +129,8 @@ export function providerSuppressionEffect(
 async function applyProviderSuppressionFact(
 	ctx: ActionCtx,
 	fact: { providerType: string; recipient: string; at: number },
-	suppression: ProviderSuppression
+	suppression: ProviderSuppression,
+	source: 'webhook' | 'send_response' = 'webhook'
 ): Promise<void> {
 	const { providerType, recipient, at } = fact;
 	const effect = providerSuppressionEffect(suppression.reason);
@@ -147,7 +148,7 @@ async function applyProviderSuppressionFact(
 		...(effect.reason === 'bounced' ? { bounceType: effect.bounceType } : {}),
 		provenance: {
 			provider: providerType,
-			source: 'webhook' as const,
+			source,
 			// The provider's own code where it published one; otherwise the host's
 			// rendering of the reason, which is what every pre-`evidence` caller
 			// (Emailit, every plugin) has always recorded.
@@ -191,4 +192,21 @@ export async function applyFailureSuppression(
 		{ providerType: event.providerType, recipient: event.recipient, at: event.at },
 		event.suppression
 	);
+}
+
+/**
+ * Apply the suppression a provider attached to a refusal in its own send
+ * response (#1243): a Mandrill `rejected` result off its reject list. The
+ * message is ours by construction (our key, our request), so no ownership
+ * question arises, and it is the same fact the provider's `reject` webhook
+ * would report later, applied through the same table and the same event-time
+ * guards. Recorded before the send fails, and without touching the Send, so a
+ * lost completion changes nothing here.
+ */
+export async function applySendResponseSuppression(
+	ctx: ActionCtx,
+	fact: { providerType: string; recipient: string; at: number },
+	suppression: ProviderSuppression
+): Promise<void> {
+	await applyProviderSuppressionFact(ctx, fact, suppression, 'send_response');
 }

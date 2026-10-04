@@ -454,7 +454,6 @@ import type * as delivery_ramp_setupFork from '../delivery/ramp/setupFork.js';
 import type * as delivery_rampIntegrationPresence from '../delivery/rampIntegrationPresence.js';
 import type * as delivery_rampPromotionEvidence from '../delivery/rampPromotionEvidence.js';
 import type * as delivery_rampReadCtx from '../delivery/rampReadCtx.js';
-import type * as delivery_rejectedProviderIdentity from '../delivery/rejectedProviderIdentity.js';
 import type * as delivery_relayConfiguration from '../delivery/relayConfiguration.js';
 import type * as delivery_relayReturnPath from '../delivery/relayReturnPath.js';
 import type * as delivery_relayReturnPathProbe from '../delivery/relayReturnPathProbe.js';
@@ -1937,7 +1936,6 @@ declare const fullApi: ApiFromModules<{
 	'delivery/rampIntegrationPresence': typeof delivery_rampIntegrationPresence;
 	'delivery/rampPromotionEvidence': typeof delivery_rampPromotionEvidence;
 	'delivery/rampReadCtx': typeof delivery_rampReadCtx;
-	'delivery/rejectedProviderIdentity': typeof delivery_rejectedProviderIdentity;
 	'delivery/routingReentry': typeof delivery_routingReentry;
 	'delivery/routingReentryToken': typeof delivery_routingReentryToken;
 	'delivery/nonCampaignIntake': typeof delivery_nonCampaignIntake;

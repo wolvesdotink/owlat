@@ -5,7 +5,7 @@
  * Matching takes three facts: the provider message id names a Send, that Send
  * went out through the same provider kind, and it went to the address the event
  * names. A replay of stored feedback (`./unresolvedFeedback.ts`) asks the same
- * question later, from a salted hash of the address instead of the address.
+ * question later, from a keyed hash of the address instead of the address.
  */
 
 import { v } from 'convex/values';
@@ -37,9 +37,12 @@ export async function findSendByProviderMessageId(
 
 /**
  * The address an out-of-scope event named, as stored on an unresolved-feedback
- * row: an HMAC of the normalized address keyed by the message id. Salted per
- * message, so equal addresses do not link across rows and no precomputed table
- * reverses it; it is compared, never read back.
+ * row: an HMAC of the normalized address keyed by the message id. This avoids
+ * storing the plaintext address and keeps equal addresses from linking across
+ * rows, but the key sits on the same row, so anyone who can read the row can
+ * confirm a guessed address. It is compared, never read back. Not keyed with
+ * `INSTANCE_SECRET`: rotating that secret would turn a genuine match into a
+ * refused replay.
  */
 export async function scopeRecipientHash(
 	providerMessageId: string,

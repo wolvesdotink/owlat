@@ -277,39 +277,49 @@ describe('per-recipient response parsing', () => {
 		}
 	});
 
-	// Mandrill's later `reject` webhook names this id. Kept on the failure so
-	// the governed dispatch can bind it to the Send (#1243).
-	it('keeps the id of a message Mandrill received and rejected', async () => {
-		global.fetch = vi.fn().mockResolvedValue(
-			new Response(
-				JSON.stringify([
-					{
-						email: 'to@example.com',
-						status: 'rejected',
-						_id: 'refused-1',
-						reject_reason: 'rule',
-					},
-				]),
-				{ status: 200 }
-			)
-		) as unknown as typeof fetch;
+	// The same table the `reject` webhook reads, so the send response and the
+	// webhook suppress on exactly the same reasons (#1243).
+	it.each([
+		['hard-bounce', { reason: 'hard_bounce', evidence: 'MANDRILL_REJECT_HARD_BOUNCE' }],
+		['spam', { reason: 'spam_complaint', evidence: 'MANDRILL_REJECT_SPAM' }],
+		['rule', { reason: 'operator_suppressed', evidence: 'MANDRILL_REJECT_RULE' }],
+		['unsub', { reason: 'unsubscribed', evidence: 'MANDRILL_REJECT_UNSUB' }],
+	])('a rejected/%s result carries the suppression its webhook would', async (reason, expected) => {
+		global.fetch = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(
+					JSON.stringify([
+						{ email: 'to@example.com', status: 'rejected', _id: 'x', reject_reason: reason },
+					]),
+					{ status: 200 }
+				)
+			) as unknown as typeof fetch;
 
 		const result = await mandrillSendProvider.sendEmail(transport(), params);
 
-		expect(result).toMatchObject({ success: false, providerMessageId: 'refused-1' });
+		expect(result).toMatchObject({ success: false, suppression: expected });
 	});
 
-	it('claims no id when the refused result carries none', async () => {
-		global.fetch = vi.fn().mockResolvedValue(
-			new Response(JSON.stringify([{ email: 'nope@', status: 'invalid', _id: '' }]), {
-				status: 200,
-			})
-		) as unknown as typeof fetch;
+	it.each(['unsigned', 'invalid-sender', 'test-mode-limit', 'invalid'])(
+		'a sender-side rejected/%s result carries no suppression',
+		async (reason) => {
+			global.fetch = vi
+				.fn()
+				.mockResolvedValue(
+					new Response(
+						JSON.stringify([
+							{ email: 'to@example.com', status: 'rejected', _id: 'x', reject_reason: reason },
+						]),
+						{ status: 200 }
+					)
+				) as unknown as typeof fetch;
 
-		const result = await mandrillSendProvider.sendEmail(transport(), params);
-
-		expect(result).not.toHaveProperty('providerMessageId');
-	});
+			expect(await mandrillSendProvider.sendEmail(transport(), params)).not.toHaveProperty(
+				'suppression'
+			);
+		}
+	);
 
 	it('invalid is an INVALID_RECIPIENT even with no reject_reason', async () => {
 		global.fetch = vi.fn().mockResolvedValue(
