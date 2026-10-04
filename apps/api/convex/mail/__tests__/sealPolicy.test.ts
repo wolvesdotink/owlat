@@ -148,6 +148,27 @@ describe('mail/sealPolicy · deriveSealState (three states)', () => {
 		});
 	});
 
+	it('asks (no_signing_key) while a signer-less send waits on a recipient lookup', () => {
+		// Dispatch looks the recipient up and may find a key, which would make
+		// this a send that COULD have been sealed: ask before Send, not after.
+		const pending: RecipientKeyState = { address: 'dave@d.test', outcome: 'missing' };
+		expect(deriveSealState('auto', [pending], false)).toEqual({
+			kind: 'cannotSeal',
+			reason: 'no_signing_key',
+		});
+		// A recipient known to be keyless settles it: no seal was possible.
+		const keyless: RecipientKeyState = { address: 'erin@e.test', outcome: 'notFound' };
+		expect(deriveSealState('auto', [pending, keyless], false)).toEqual({
+			kind: 'cannotSeal',
+			reason: 'recipient_no_key',
+		});
+		// With a signer the pending lookup is ordinary keyless mail for now.
+		expect(deriveSealState('auto', [pending], true)).toEqual({
+			kind: 'cannotSeal',
+			reason: 'recipient_no_key',
+		});
+	});
+
 	it('cannotSeal — policy ask never promises sealing even when keys are ready', () => {
 		// Keys present on both ends, but the org set `ask`: dispatch sends plaintext
 		// with reason `policy_ask`, so the composer must report cannotSeal, not

@@ -432,6 +432,14 @@ describe('PostboxComposer frame="page" (new mail)', () => {
 		w.unmount();
 	});
 
+	it('tells the host when the row’s saved state moves, so it can confirm', async () => {
+		const w = mountComposer({ frame: 'page', seed: { mailboxId: 'mbx_1' } });
+		compose.lastSavedAt.value = 1_700_000_000_000;
+		await nextTick();
+		expect(w.emitted('saved')).toHaveLength(1);
+		w.unmount();
+	});
+
 	it('tells the host the subject, for its page title', async () => {
 		const w = mountComposer({ frame: 'page', seed: { mailboxId: 'mbx_1' } });
 		compose.subject.value = 'Quarterly numbers';

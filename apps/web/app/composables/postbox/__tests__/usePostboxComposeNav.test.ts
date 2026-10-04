@@ -1,41 +1,63 @@
+// @vitest-environment happy-dom
 /**
  * usePostboxComposeNav: how every "open a composer" call reaches the compose
- * page. A saved draft travels in the URL; anything only in memory is parked in
- * session state under a key the page reads back.
+ * page. Each open is its own request (`?c=`); a saved draft travels in the URL,
+ * and anything only in memory is parked under the request key, in session state
+ * and in sessionStorage, so a reload before it is saved keeps it.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
-import { usePostboxComposeNav } from '../usePostboxComposeNav';
+import { composePageKey, usePostboxComposeNav } from '../usePostboxComposeNav';
 
 const navigate = vi.fn(async () => {});
+let states: Record<string, unknown>;
 
 beforeEach(() => {
 	navigate.mockClear();
-	const states: Record<string, unknown> = {};
+	states = {};
+	window.sessionStorage.clear();
 	vi.stubGlobal('navigateTo', navigate);
 	vi.stubGlobal('useState', (key: string, init: () => unknown) => (states[key] ??= ref(init())));
 });
 
+const lastTarget = () =>
+	navigate.mock.calls.at(-1)![0] as unknown as { path: string; query: Record<string, string> };
+
 describe('usePostboxComposeNav', () => {
-	it('opens a saved draft by its id, in the URL', async () => {
+	it('opens a saved draft by its id, as its own request', async () => {
 		await usePostboxComposeNav().open({ mailboxId: 'mbx-1' as never, draftId: 'draft-1' as never });
-		expect(navigate).toHaveBeenCalledWith({
-			path: '/dashboard/compose',
-			query: { mailbox: 'mbx-1', draft: 'draft-1' },
-		});
+		const target = lastTarget();
+		expect(target.path).toBe('/dashboard/compose');
+		expect(target.query).toMatchObject({ mailbox: 'mbx-1', draft: 'draft-1' });
+		expect(target.query['c']).toBeTruthy();
+	});
+
+	it('gives every open a new request key, so the page remounts', async () => {
+		const nav = usePostboxComposeNav();
+		await nav.open({ mailboxId: 'mbx-1' as never });
+		const first = lastTarget().query['c'];
+		await nav.open({ mailboxId: 'mbx-1' as never });
+		expect(lastTarget().query['c']).not.toBe(first);
+		expect(composePageKey(first)).not.toBe(composePageKey(lastTarget().query['c']));
 	});
 
 	it('parks a prefilled seed and hands it back to the page', async () => {
 		const nav = usePostboxComposeNav();
 		const spec = { mailboxId: 'mbx-1' as never, prefillTo: ['ada@example.com'] };
 		await nav.open(spec);
-
-		const [[target]] = navigate.mock.calls as unknown as [[{ query: { seed: string } }]];
-		expect(target).toMatchObject({ path: '/dashboard/compose' });
-		expect(nav.seedFor(target.query.seed)).toEqual(spec);
+		expect(nav.seedFor(lastTarget().query['c']!)).toEqual(spec);
 	});
 
-	it('has nothing for a key it never parked (a reload)', () => {
-		expect(usePostboxComposeNav().seedFor('gone')).toBeNull();
+	it('keeps a parked seed across a reload, until the page forgets it', async () => {
+		const spec = { mailboxId: 'mbx-1' as never, prefillSubject: 'Edited offline' };
+		await usePostboxComposeNav().open(spec);
+		const key = lastTarget().query['c']!;
+
+		states = {}; // a reload drops session state; sessionStorage stays
+		const afterReload = usePostboxComposeNav();
+		expect(afterReload.seedFor(key)).toEqual(spec);
+
+		afterReload.forget(key);
+		expect(afterReload.seedFor(key)).toBeNull();
 	});
 });

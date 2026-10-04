@@ -222,13 +222,15 @@ export async function sealOutboundMessage(
 		recipients: sealRecipients,
 	});
 	// First contact must get the same chance to seal as a previously-seen peer.
-	// Refresh only absent/expired cache rows, only when auto-sealing could
-	// actually proceed. Discovery is fail-soft and cache-aware; one peer's
-	// network failure becomes an honest plaintext decision, never a stuck send.
+	// Refresh only absent/expired cache rows, only under auto-sealing. This runs
+	// even when the sender has no signing key: a recipient who turns out to have
+	// a key makes this a send that COULD have been sealed (`no_signing_key`),
+	// which needs consent, rather than ordinary keyless mail. Discovery is
+	// fail-soft and cache-aware; one peer's network failure becomes an honest
+	// plaintext decision, never a stuck send.
 	if (
 		sealInputs.flagEnabled &&
 		sealInputs.policy === 'auto' &&
-		sealInputs.hasSigningKey &&
 		sealInputs.discoveryAddresses.length > 0
 	) {
 		await Promise.all(

@@ -52,6 +52,11 @@ const emit = defineEmits<{
 	(e: 'draft-id', draftId: Id<'mailDrafts'>): void;
 	/** The subject as typed, for a host that titles its page with it. */
 	(e: 'subject', subject: string): void;
+	/**
+	 * The row's saved state moved (a save landed, or the reopened row loaded).
+	 * Not proof the current text is saved; a host that needs that calls `flush`.
+	 */
+	(e: 'saved'): void;
 }>();
 
 const { t, locale } = useI18n();
@@ -223,6 +228,9 @@ const { handleDiscard, snapshot } = usePostboxComposerHandoff({
 	emitDraftId: (id) => emit('draft-id', id),
 });
 watch(subject, (value) => emit('subject', value), { immediate: true });
+watch(lastSavedAt, (at) => {
+	if (at !== null) emit('saved');
+});
 
 // Scoped OS-level file drops and clipboard attachment pastes.
 const { rootEl, bindRoot, dragActive, onDragOver, onDragLeave, onDrop, onPaste } =

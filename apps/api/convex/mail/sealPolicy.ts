@@ -272,7 +272,10 @@ export function canSendWithSealState(state: SealState, allowUnsealed: boolean): 
  *   - no recipients       → `cannotSeal('no_recipients')`
  *   - a rotated key       → `keyChanged` (surfaced ahead of a generic "no key" so
  *                           the reader sees the specific rotation warning)
- *   - any keyless recip.  → `cannotSeal('recipient_no_key')`
+ *   - any keyless recip.  → `cannotSeal('recipient_no_key')`, except under
+ *                           `auto` with no signer while the only keyless
+ *                           recipients are not looked up yet → `no_signing_key`
+ *                           (dispatch looks them up and may find a key)
  *   - no sender key        → `cannotSeal('no_signing_key')`
  *   - policy `ask`        → `cannotSeal('policy_ask')` (keys are ready, but the
  *                           org asks before sealing, so it goes out normally)
@@ -290,6 +293,14 @@ export function deriveSealState(
 	const changed = recipients.filter((r) => r.outcome === 'keyChanged').map((r) => r.address);
 	if (changed.length > 0) return { kind: 'keyChanged', addresses: changed };
 	if (!recipients.every(hasUsableSealKey)) {
+		// Without a signer, a recipient not looked up yet may still turn out to
+		// have a key; dispatch looks them up and would then need consent. Ask now,
+		// rather than bounce the draft back to the composer after Send. A recipient
+		// known to be keyless settles it: all-or-nothing, so no seal was possible.
+		const pendingOnly = recipients.every((r) => hasUsableSealKey(r) || r.outcome === 'missing');
+		if (!hasSigningKey && policy === 'auto' && pendingOnly) {
+			return { kind: 'cannotSeal', reason: 'no_signing_key' };
+		}
 		return { kind: 'cannotSeal', reason: 'recipient_no_key' };
 	}
 	if (!hasSigningKey) return { kind: 'cannotSeal', reason: 'no_signing_key' };

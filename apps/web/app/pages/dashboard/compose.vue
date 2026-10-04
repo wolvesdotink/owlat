@@ -5,18 +5,28 @@
  * the envelope open and no conversation beside it. It replaced the floating
  * popup in the corner.
  *
- *   /dashboard/compose?seed=<key>               a seed parked by usePostboxComposeNav
- *   /dashboard/compose?draft=<id>&mailbox=<id>  a saved draft
- *   /dashboard/compose?to=…&cc=…&subject=…      a plain prefill (a link, a contact)
+ *   /dashboard/compose?c=<key>                         a seed parked by usePostboxComposeNav
+ *   /dashboard/compose?c=<key>&mailbox=<id>&draft=<id> a saved draft
+ *   /dashboard/compose?to=…&cc=…&subject=…             a plain prefill (a link, a contact)
  *
- * The first autosave writes `?draft=` into the URL (replace), so a reload lands
- * on the same draft. Esc or "← Inbox" goes back to the page it came from; the
+ * `c` names the compose request and keys the page, so a second open while this
+ * one is on screen remounts the editor (the first draft saves on the way out).
+ *
+ * The URL names the draft (`&draft=`, replacing the seed or prefill) only once
+ * the composer confirms the text it was opened with reached the server, so a
+ * reload or a Back before that still lands on the unsaved text, not on an older
+ * copy of the row. Esc or "← Inbox" goes back to the page it came from; the
  * draft stays saved in Drafts. A send leaves too, and the shell's undo toast
  * keeps counting down over the page underneath.
  */
 import { splitMailtoAddressList } from '@owlat/shared/mailto';
 import type { Id } from '@owlat/api/dataModel';
-import type { ComposeSpec } from '~/composables/postbox/usePostboxComposeNav';
+import type { BackendOperationResult } from '~/composables/useBackendOperation';
+import {
+	composePageKey,
+	type ComposeSpec,
+} from '~/composables/postbox/usePostboxComposeNav';
+import { useKeyboardInset } from '~/composables/useKeyboardInset';
 import { answerBackLabelKey, singleQueryValue } from '~/utils/answerMode';
 import { isDialogOpen } from '~/utils/dialogOpen';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
@@ -28,6 +38,8 @@ definePageMeta({
 	requiresAnyFeature: ['postbox', 'mail.external'],
 	// Focus mode, like Answer mode: the shell's sidebar and header step aside.
 	answerMode: true,
+	// One page instance per compose request; the page's own URL rewrite keeps `c`.
+	key: (route) => composePageKey(route.query['c']),
 });
 
 const { t } = useI18n();
@@ -44,43 +56,86 @@ const returnPath =
 		: ((window.history.state?.back as string | null | undefined) ?? null);
 const backLabel = computed(() => t(answerBackLabelKey(returnPath ?? FALLBACK_RETURN)));
 
-/** The seed the URL names, or null until the mailbox it needs has loaded. */
-function resolveSeed(): ComposeSpec | null {
-	const parkedKey = singleQueryValue(route.query['seed']);
-	const parked = parkedKey ? nav.seedFor(parkedKey) : null;
-	if (parked) return parked;
-	const mailboxId = (singleQueryValue(route.query['mailbox']) ??
-		currentMailbox.value?._id) as Id<'mailboxes'> | undefined;
-	if (!mailboxId) return null;
-	const draftId = singleQueryValue(route.query['draft']);
-	if (draftId) return { mailboxId, draftId: draftId as Id<'mailDrafts'> };
+const requestKey = singleQueryValue(route.query['c']);
+
+/** The prefill a plain link carries in its query, or null when it has none. */
+function queryPrefill(): Partial<ComposeSpec> | null {
 	const list = (key: string) => {
 		const raw = singleQueryValue(route.query[key]);
 		return raw ? splitMailtoAddressList(raw) : undefined;
 	};
-	return {
-		mailboxId,
+	const prefill = {
 		prefillTo: list('to'),
 		prefillCc: list('cc'),
 		prefillBcc: list('bcc'),
 		prefillSubject: singleQueryValue(route.query['subject']) ?? undefined,
 	};
+	return Object.values(prefill).some((value) => value !== undefined) ? prefill : null;
+}
+
+/** The seed the URL names, or null until the mailbox it needs has loaded. */
+function resolveSeed(): ComposeSpec | null {
+	const parked = requestKey ? nav.seedFor(requestKey) : null;
+	if (parked) return parked;
+	const mailboxId = (singleQueryValue(route.query['mailbox']) ?? currentMailbox.value?._id) as
+		| Id<'mailboxes'>
+		| undefined;
+	if (!mailboxId) return null;
+	const draftId = singleQueryValue(route.query['draft']);
+	if (draftId) return { mailboxId, draftId: draftId as Id<'mailDrafts'> };
+	return { mailboxId, ...queryPrefill() };
 }
 
 // The composer reads its seed once: resolve it the first time it can be, then
-// keep it, so the URL rewrite after the first autosave does not rebuild it.
+// keep it, so the URL rewrite after the text is saved does not rebuild it.
 const seed = ref<ComposeSpec | null>(null);
 watchEffect(() => {
 	if (!seed.value) seed.value = resolveSeed();
 });
 
-const subject = ref('');
-useHead({ title: () => subject.value || t('components.postbox.postboxComposer.newMessage') });
+// The URL carries text the server may not hold yet (a parked seed, a prefill):
+// it only gives way to `&draft=` once that text is confirmed saved.
+let urlCarriesText = (!!requestKey && !!nav.seedFor(requestKey)) || queryPrefill() !== null;
+
+const composerRef = ref<{
+	flush: () => Promise<BackendOperationResult<Id<'mailDrafts'> | null>>;
+} | null>(null);
+
+function nameDraftInUrl(draftId: Id<'mailDrafts'>) {
+	if (!seed.value) return;
+	if (requestKey) nav.forget(requestKey);
+	const alreadyNamed = singleQueryValue(route.query['draft']) === draftId && !urlCarriesText;
+	urlCarriesText = false;
+	if (alreadyNamed) return;
+	void router.replace({
+		query: {
+			...(requestKey ? { c: requestKey } : {}),
+			mailbox: seed.value.mailboxId,
+			draft: draftId,
+		},
+	});
+}
+
+let confirming = false;
+/** Ask the composer to save what is on screen; name the draft once it has. */
+async function confirmSaved() {
+	if (!urlCarriesText || confirming || !composerRef.value) return;
+	confirming = true;
+	try {
+		const saved = await composerRef.value.flush();
+		if (saved.ok && saved.result) nameDraftInUrl(saved.result);
+	} finally {
+		confirming = false;
+	}
+}
 
 function onDraftId(draftId: Id<'mailDrafts'>) {
-	if (route.query['draft'] === draftId || !seed.value) return;
-	void router.replace({ query: { mailbox: seed.value.mailboxId, draft: draftId } });
+	if (urlCarriesText) void confirmSaved();
+	else nameDraftInUrl(draftId);
 }
+
+const subject = ref('');
+useHead({ title: () => subject.value || t('components.postbox.postboxComposer.newMessage') });
 
 function leave() {
 	if (returnPath) {
@@ -108,11 +163,21 @@ function onComposerEsc() {
 
 onMounted(() => window.addEventListener('keydown', onKeydown));
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
+
+// The on-screen keyboard shrinks the visual viewport but not `100dvh`: leave it
+// out of the frame, so Send stays above it, as Answer mode does.
+const keyboard = useKeyboardInset();
+const frameStyle = computed(() => ({
+	'--compose-keyboard-inset': `${keyboard.value}px`,
+	// The home indicator sits under the keyboard while one is open.
+	'--compose-bottom-inset': keyboard.value > 0 ? '0px' : 'env(safe-area-inset-bottom, 0px)',
+}));
 </script>
 
 <template>
 	<div
-		class="flex h-[calc(100dvh-var(--titlebar-h,0px))] flex-col bg-bg-base pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)]"
+		class="flex h-[calc(100dvh-var(--titlebar-h,0px)-var(--compose-keyboard-inset,0px))] flex-col bg-bg-base pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)]"
+		:style="frameStyle"
 		data-testid="compose-page"
 	>
 		<header
@@ -136,17 +201,21 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 			</h1>
 		</header>
 
-		<main class="flex min-h-0 flex-1 justify-center overflow-hidden md:px-6 md:py-6">
+		<main
+			class="flex min-h-0 flex-1 justify-center overflow-hidden pb-(--compose-bottom-inset) md:px-6 md:py-6"
+		>
 			<div
 				class="flex min-h-0 w-full max-w-3xl flex-col overflow-hidden bg-bg-elevated md:rounded-lg md:border md:border-border-subtle md:shadow-sm"
 			>
 				<PostboxComposer
 					v-if="seed"
+					ref="composerRef"
 					class="min-h-0 flex-1"
 					frame="page"
 					:seed="seed"
 					:reply-all-recipients="seed.replyAllRecipients"
 					@draft-id="onDraftId"
+					@saved="confirmSaved"
 					@subject="subject = $event"
 					@sent="leave"
 					@discarded="leave"
