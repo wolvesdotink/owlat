@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import { semverCompare } from '@owlat/shared/semver';
 import { formatDateTime } from '~/utils/formatters';
+import { hasReleaseNotes, OWLAT_REPO_URL, parseReleaseNotes } from '~/utils/releaseNotes';
 
 const { t } = useI18n();
 const { showToast } = useToast();
@@ -53,6 +54,16 @@ const updateAvailable = computed(() => {
 	if (!latest || current === 'dev' || current === 'unknown') return false;
 	return semverCompare(latest, current) > 0;
 });
+
+// What the release changes comes first; how to update follows it. Install
+// commands in the body are dropped in favour of a link to the update guide.
+const UPDATE_GUIDE_URL = 'https://docs.owlat.app/developer/self-hosting-maintenance#updating';
+const releaseNotes = computed(() => parseReleaseNotes(latestRelease.value?.releaseNotes ?? ''));
+const releaseUrl = computed(() =>
+	latestRelease.value?.latestVersion
+		? `${OWLAT_REPO_URL}/releases/tag/v${latestRelease.value.latestVersion}`
+		: null
+);
 
 // ── Update history ───────────────────────────────────────────────────────────
 
@@ -190,44 +201,91 @@ function formatDuration(start?: number, end?: number) {
 					</template>
 				</div>
 
-				<div class="flex gap-2 flex-wrap">
-					<UiButton variant="outline" size="sm" :disabled="checking" @click="checkNow">
-						<Icon
-							v-if="checking"
-							name="lucide:loader-2"
-							class="w-4 h-4 animate-spin motion-reduce:animate-none"
-						/>
-						<Icon v-else name="lucide:refresh-cw" class="w-4 h-4" />
-						{{ t('dashboard.admin.system.index.updates.checkNow') }}
-					</UiButton>
-
-					<!-- Held while a run is in flight: a second run would only get the
-					     updater's 409, after replacing the progress card with a confirm. -->
-					<UiButton
-						v-if="updateAvailable"
-						variant="primary"
-						size="sm"
-						:disabled="updateInProgress"
-						@click="startUpdate"
-					>
-						<Icon name="lucide:download" class="w-4 h-4" />
-						{{ t('dashboard.admin.system.index.updates.updateNow') }}
-					</UiButton>
-				</div>
+				<UiButton variant="outline" size="sm" :disabled="checking" @click="checkNow">
+					<Icon
+						v-if="checking"
+						name="lucide:loader-2"
+						class="w-4 h-4 animate-spin motion-reduce:animate-none"
+					/>
+					<Icon v-else name="lucide:refresh-cw" class="w-4 h-4" />
+					{{ t('dashboard.admin.system.index.updates.checkNow') }}
+				</UiButton>
 			</div>
 
-			<!-- Release notes -->
-			<details
-				v-if="updateAvailable && latestRelease?.releaseNotes"
-				class="mt-4 pt-4 border-t border-border-subtle"
-			>
-				<summary class="text-caption font-medium text-text-primary cursor-pointer hover:text-brand">
-					{{ t('dashboard.admin.system.index.updates.releaseNotes') }}
-				</summary>
-				<pre
-					class="mt-3 text-caption text-text-secondary whitespace-pre-wrap font-sans leading-relaxed"
-					>{{ latestRelease.releaseNotes }}</pre>
-			</details>
+			<template v-if="updateAvailable && latestRelease?.latestVersion">
+				<SystemReleaseNotes
+					v-if="hasReleaseNotes(releaseNotes)"
+					:notes="releaseNotes"
+					:version="latestRelease.latestVersion"
+					class="mt-6 pt-6 border-t border-border-subtle"
+				/>
+
+				<!-- How to update comes after what the update brings. -->
+				<div class="mt-6 pt-6 border-t border-border-subtle space-y-4">
+					<div
+						v-if="releaseNotes.upgrading.length"
+						class="rounded-lg border border-warning/40 bg-warning/5 p-4"
+					>
+						<div class="flex items-start gap-3">
+							<Icon
+								name="lucide:info"
+								class="w-5 h-5 text-warning shrink-0 mt-0.5"
+								aria-hidden="true"
+							/>
+							<div class="min-w-0 space-y-2 text-sm leading-relaxed text-text-secondary">
+								<h4 class="font-semibold text-text-primary">
+									{{ t('dashboard.admin.system.index.updates.beforeUpdate') }}
+								</h4>
+								<template v-for="(block, bi) in releaseNotes.upgrading" :key="bi">
+									<p v-if="block.type === 'paragraph'" class="break-words">
+										<AssistantInline :inlines="block.inlines" />
+									</p>
+									<ul v-else class="list-disc pl-5 space-y-1 break-words">
+										<li v-for="(item, ii) in block.items" :key="ii">
+											<AssistantInline :inlines="item" />
+										</li>
+									</ul>
+								</template>
+							</div>
+						</div>
+					</div>
+
+					<div class="flex items-center gap-x-4 gap-y-2 flex-wrap">
+						<!-- Held while a run is in flight: a second run would only get the
+						     updater's 409, after replacing the progress card with a confirm. -->
+						<UiButton variant="primary" size="sm" :disabled="updateInProgress" @click="startUpdate">
+							<Icon name="lucide:download" class="w-4 h-4" />
+							{{
+								t('dashboard.admin.system.index.updates.updateNowTo', {
+									version: latestRelease.latestVersion,
+								})
+							}}
+						</UiButton>
+						<a
+							:href="UPDATE_GUIDE_URL"
+							target="_blank"
+							rel="noopener"
+							class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-brand"
+						>
+							<Icon name="lucide:book-open" class="w-4 h-4" aria-hidden="true" />
+							{{ t('dashboard.admin.system.index.updates.updateGuide') }}
+						</a>
+						<a
+							v-if="releaseUrl"
+							:href="releaseUrl"
+							target="_blank"
+							rel="noopener"
+							class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-brand"
+						>
+							<Icon name="lucide:external-link" class="w-4 h-4" aria-hidden="true" />
+							{{ t('dashboard.admin.system.index.updates.viewOnGithub') }}
+						</a>
+					</div>
+					<p class="text-caption text-text-tertiary">
+						{{ t('dashboard.admin.system.index.updates.otherRoutes') }}
+					</p>
+				</div>
+			</template>
 
 			<div v-if="latestRelease?.error" class="mt-3 text-xs text-warning">
 				{{

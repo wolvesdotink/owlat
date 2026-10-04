@@ -21,7 +21,8 @@ const MANIFEST = 'docker/images.json';
 const SERVER_BUILD = '.github/workflows/_server-build.yml';
 const ROOT_COMPOSE = 'docker-compose.yml';
 const VPS_COMPOSE = 'infra/templates/docker-compose.vps.yml';
-const RELEASE_WORKFLOWS = ['.github/workflows/release.yml', '.github/workflows/server-release.yml'];
+// release.yml builds its body with scripts/release-body.ts, which reads the manifest.
+const RELEASE_WORKFLOWS = ['.github/workflows/server-release.yml'];
 
 interface ImageEntry {
 	name: string;

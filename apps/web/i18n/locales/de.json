@@ -8463,15 +8463,32 @@
 					"updateBusy": "Der Updater wendet noch eine andere Änderung an. Versuche es erneut, sobald sie abgeschlossen ist.",
 					"updates": {
 						"availableCurrent": "verfügbar (aktuell: v{version})",
+						"beforeUpdate": "Vor dem Update",
 						"checkNow": "Jetzt prüfen",
+						"kinds": {
+							"added": "Neu",
+							"breaking": "Inkompatible Änderungen",
+							"changed": "Verbessert",
+							"docs": "Dokumentation",
+							"fixed": "Behoben",
+							"maintenance": "Wartung",
+							"other": "Weitere Änderungen",
+							"removed": "Entfernt",
+							"security": "Sicherheit"
+						},
 						"lastCheckError": "Die letzte Prüfung hatte einen Fehler: {error}",
 						"latestChecked": "Neueste: v{version} · Zuletzt geprüft {date}",
 						"neverChecked": "Klicke auf „Jetzt prüfen“, um GitHub nach der neuesten Version zu fragen.",
-						"releaseNotes": "Versionshinweise",
+						"otherRoutes": "Lieber über die Kommandozeile oder manuell? Die Update-Anleitung beschreibt beides und wie du ein fehlgeschlagenes Update reparierst.",
 						"released": "Veröffentlicht {date}",
+						"showAll": "Alle Änderungen zeigen ({count} weitere)",
+						"showFewer": "Weniger zeigen",
 						"title": "Verfügbare Updates",
 						"upToDate": "Du nutzt die neueste Version.",
-						"updateNow": "Jetzt aktualisieren"
+						"updateGuide": "Update-Anleitung",
+						"updateNowTo": "Auf v{version} aktualisieren",
+						"viewOnGithub": "Release auf GitHub",
+						"whatsNew": "Neu in v{version}"
 					}
 				}
 			},
