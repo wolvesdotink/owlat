@@ -109,7 +109,11 @@ export async function dispatchComplaint(
  * plugin providers, so their complaints are recorded as `unattributed` and
  * never block an address. An unidentifiable source proves nothing either, even
  * with a production tag: the tag is only evidence from the source that writes
- * it. A member-preview or untagged MTA report is `unattributed` too.
+ * it. A member-preview MTA report is `unattributed` too. So would be an
+ * untagged MTA report, but only if one reaches this dispatcher: the live MTA
+ * drops unknown-provenance reports before notifying Convex
+ * (`applyFeedbackProvenancePolicy` in `apps/mta/src/bounce/outcome.ts`), so in
+ * practice only an older MTA that predates the tag sends one.
  */
 async function suppressAttributedComplainer(
 	ctx: ActionCtx,

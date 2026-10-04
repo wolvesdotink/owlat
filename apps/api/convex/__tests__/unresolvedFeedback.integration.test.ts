@@ -525,4 +525,19 @@ describe('complaints that arrive without a message id', () => {
 			expect(row).toMatchObject({ status: 'resolved', replayAttempts: 0 });
 		}
 	});
+
+	it('an operator can delete them before redeploying an older schema', async () => {
+		const t = newHarness();
+		await dispatch(t, redacted({ recipient: 'a@example.com', providerType: 'resend' }));
+		await dispatch(t, redacted({ recipient: 'b@example.com', providerType: 'ses' }));
+		await dispatch(t, orphanBounce('ses-kept'));
+
+		expect(
+			await t.mutation(internal.webhooks.unresolvedFeedback.deleteWithoutMessageId, {})
+		).toEqual({ deleted: 2 });
+		expect((await rows(t)).map((r) => r.providerMessageId)).toEqual(['ses-kept']);
+		expect(
+			await t.mutation(internal.webhooks.unresolvedFeedback.deleteWithoutMessageId, {})
+		).toEqual({ deleted: 0 });
+	});
 });

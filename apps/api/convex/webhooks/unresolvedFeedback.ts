@@ -309,6 +309,34 @@ export const purgeExpired = internalMutation({
 	},
 });
 
+/**
+ * Operator, before redeploying a release older than #1227: delete every row
+ * without a message id, because that release's schema requires one and refuses
+ * to deploy while such rows exist. They are counters with no address, and the
+ * retention purge would remove them after 90 days anyway. Walks itself batch by
+ * batch; run it again right before the redeploy, and it reports `deleted: 0`
+ * once none remain:
+ * `npx convex run webhooks/unresolvedFeedback:deleteWithoutMessageId`.
+ */
+export const deleteWithoutMessageId = internalMutation({
+	args: {},
+	handler: async (ctx) => {
+		const rows = await ctx.db
+			.query('unresolvedFeedback')
+			.withIndex('by_message_id_and_kind', (q) => q.eq('providerMessageId', undefined))
+			.take(PURGE_BATCH_SIZE);
+		for (const row of rows) await ctx.db.delete(row._id);
+		if (rows.length === PURGE_BATCH_SIZE) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.webhooks.unresolvedFeedback.deleteWithoutMessageId,
+				{}
+			);
+		}
+		return { deleted: rows.length };
+	},
+});
+
 interface WindowCounts {
 	total: number;
 	bounces: number;
