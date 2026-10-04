@@ -12,12 +12,11 @@
  * otherwise unsubscribe or block a contact who never opted out of, or bounced,
  * Owlat mail.
  *
- * THE RULE: an event is ours when its subaccount is one Owlat sends under. Each
- * configured Mandrill transport (the default one and every named
- * `mandrill#<key>` instance) contributes the subaccount it sends under, read
- * exactly as the send adapter reads it: the raw value, with an empty one meaning
- * "none". A transport with no subaccount sends on the account's default, whose
- * events carry none, so it contributes "none".
+ * THE RULE: an event is ours when its subaccount is one Owlat sends under, as
+ * `ownMandrillSubaccounts` answers it: one per configured Mandrill transport
+ * (the default one and every named `mandrill#<key>` instance), read the way the
+ * send adapter reads it. A transport with no subaccount sends on the account's
+ * default, whose events carry none, so it stands for events with none.
  *
  * Three consequences, each deliberate:
  *
@@ -38,8 +37,7 @@
  *    origin cannot be read is not trusted into an address-keyed effect.
  */
 
-import { listSendTransports } from '../../lib/sendProviders/transports';
-import { transportEnvOptional } from '../../lib/sendProviders/transportEnv';
+import { ownMandrillSubaccounts } from '../../lib/sendProviders/mandrill/subaccounts';
 
 /** A subaccount id, `null` for the account's default, `undefined` for unreadable. */
 type SubaccountOrigin = string | null | undefined;
@@ -51,20 +49,6 @@ function originOf(item: unknown): SubaccountOrigin {
 	const subaccount = (msg as { subaccount?: unknown }).subaccount;
 	if (subaccount === undefined || subaccount === null || subaccount === '') return null;
 	return typeof subaccount === 'string' ? subaccount : undefined;
-}
-
-/**
- * Every subaccount Owlat's Mandrill traffic is sent under, `null` meaning the
- * account's default. Resolved per batch, so an env change applies to the next
- * webhook without a redeploy.
- */
-export function ownMandrillSubaccounts(): ReadonlySet<string | null> {
-	const own = new Set<string | null>();
-	for (const transport of listSendTransports()) {
-		if (transport.kind !== 'mandrill') continue;
-		own.add(transportEnvOptional(transport, 'MANDRILL_SUBACCOUNT') || null);
-	}
-	return own;
 }
 
 /** The items of one `mandrill_events` batch that came from Owlat's own subaccounts. */

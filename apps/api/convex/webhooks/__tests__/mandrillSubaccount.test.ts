@@ -23,7 +23,7 @@ import {
 	createTestEmailSend,
 } from '../../__tests__/factories';
 import { _resetSendTransportCacheForTests } from '../../lib/sendProviders/transports';
-import { ownMandrillSubaccounts } from '../adapters/mandrillSubaccount';
+import { ownMandrillSubaccounts } from '../../lib/sendProviders/mandrill/subaccounts';
 
 const WEBHOOK_KEY = 'mandrill-test-webhook-key';
 const SITE_URL = 'https://owlat.example.convex.site';
