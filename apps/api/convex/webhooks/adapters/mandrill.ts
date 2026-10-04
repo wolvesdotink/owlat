@@ -317,11 +317,14 @@ export function mapMandrillEvent(item: MandrillEventItem): InboundEvent | null {
 		}
 		case 'spam':
 			if (!providerMessageId) return null;
+			// Mandrill events are per recipient, so `msg.email` is the complainer.
+			// It rides along for a complaint whose id matches no send (#1194).
 			return {
 				kind: 'email.complained',
 				providerMessageId,
 				at,
 				providerType: MANDRILL_PROVIDER_TYPE,
+				...(recipient ? { recipient } : {}),
 			};
 		case 'unsub':
 			// The one event keyed by ADDRESS rather than by send: Mandrill's

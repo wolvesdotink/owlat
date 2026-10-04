@@ -15,6 +15,23 @@ import { INBOUND_RAW_RETENTION_DAY_CHOICES } from '@owlat/shared/inboundRetentio
 export const completedOrFailedValidator = v.union(v.literal('completed'), v.literal('failed'));
 export const abVariantValidator = v.union(v.literal('A'), v.literal('B'));
 export const bounceTypeValidator = v.union(v.literal('hard'), v.literal('soft'));
+/**
+ * What a bounce or complaint whose message id matched no Send did to the
+ * address it named (`unresolvedFeedback.suppression`, #1194):
+ *  - `suppressed`: on the blocklist, because the event proved this deployment
+ *    sent the mail;
+ *  - `unattributed`: named an address but carried no such proof, so nothing
+ *    was blocked;
+ *  - `no_recipient`: a complaint that named nobody;
+ *  - `not_applicable`: a bounce, which never suppresses on this path.
+ */
+export const unresolvedFeedbackSuppressionValidator = v.union(
+	v.literal('suppressed'),
+	v.literal('unattributed'),
+	v.literal('no_recipient'),
+	v.literal('not_applicable')
+);
+export type UnresolvedFeedbackSuppression = Infer<typeof unresolvedFeedbackSuppressionValidator>;
 /** SPF / DKIM / DMARC result on an inbound probe; `unknown` is "not evaluated". */
 export const authResultValidator = v.union(
 	v.literal('pass'),

@@ -219,6 +219,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailboxRequests: makeSweepStep('mailboxRequests'),
 	accessRequests: makeSweepStep('accessRequests'),
 	webhookPayloads: makeSweepStep('webhookPayloads'),
+	unresolvedFeedback: makeSweepStep('unresolvedFeedback'),
 	automationStatShards: makeSweepStep('automationStatShards'),
 	campaignSendJobs: makeSweepStep('campaignSendJobs'),
 	audienceCountJobs: makeSweepStep('audienceCountJobs'),

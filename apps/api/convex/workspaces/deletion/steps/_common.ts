@@ -185,6 +185,7 @@ export type OrganizationDeletionTable =
 	| 'mailboxRequests'
 	| 'accessRequests'
 	| 'webhookPayloads'
+	| 'unresolvedFeedback'
 	| 'automationStatShards'
 	| 'campaignSendJobs'
 	| 'audienceCountJobs'
@@ -406,6 +407,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailboxRequests'),
 	v.literal('accessRequests'),
 	v.literal('webhookPayloads'),
+	v.literal('unresolvedFeedback'),
 	v.literal('automationStatShards'),
 	v.literal('campaignSendJobs'),
 	v.literal('audienceCountJobs'),

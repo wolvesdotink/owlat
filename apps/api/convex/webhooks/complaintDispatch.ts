@@ -12,11 +12,12 @@ import type { ActionCtx } from '../_generated/server';
 import { isPostboxMessageId } from '../delivery/messageIdRouting';
 import type { TransitionOutcome } from '../delivery/sendLifecycle';
 import type { InboundEventOf } from './types';
-import { recordUnresolvedBounce } from './unresolvedBounce';
+import { isSendNotFound, recordUnresolvedFeedback } from './unresolvedBounce';
 import { observeYahooCflReport } from './yahooCflObservation';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { tagsFeedbackProvenanceFor } from '../lib/sendProviders/catalog';
 import { isSendProviderKind } from '../lib/sendProviders/types';
+import type { UnresolvedFeedbackSuppression } from '../lib/literalValidators';
 
 /**
  * SUPPRESSION FIRST, bookkeeping second. A complaint must always reach the
@@ -78,7 +79,59 @@ export async function dispatchComplaint(
 				transition: { to: 'complained', at: e.at },
 			}
 		)) as TransitionOutcome;
-		recordUnresolvedBounce('email.complained', e.providerMessageId, e.at, outcome);
+		if (isSendNotFound(outcome)) {
+			// The id names no Send (#1194): the provider id was never stored, or the
+			// mail was not sent by this deployment at all. The complaint is stored
+			// for replay either way; the named address is blocked only on proof.
+			const suppression = await suppressUnresolvedComplainer(ctx, e);
+			await recordUnresolvedFeedback(
+				ctx,
+				{ ...e, providerMessageId: e.providerMessageId },
+				{ suppression }
+			);
+		}
 	}
 	await observeYahooCflReport(ctx, e);
+}
+
+/**
+ * Block the address an unresolved complaint names ONLY when the event proves
+ * this deployment sent the mail it is about.
+ *
+ * STRICTER THAN THE REDACTED BRANCH ABOVE, on purpose. A Message-ID that
+ * matches no Send is itself evidence the mail may not be ours: a provider
+ * account, webhook or SNS topic shared by several deployments delivers every
+ * tenant's feedback to each of them, and the webhook signature proves the
+ * PROVIDER sent the report, not which deployment sent the mail. Blocking on
+ * that would let one tenant's complaint permanently silence the address for
+ * another, invisibly.
+ *
+ * The one proof available today is the provenance tag our own infrastructure
+ * writes: `deliveryDomain: 'production'` from a source that declares
+ * `tagsFeedbackProvenance` (the MTA), stamped only on a report whose signed VERP
+ * token decoded, i.e. on mail this deployment's key signed. SES, Resend and
+ * Mandrill echo back no marker Owlat stamps per deployment (no message tag,
+ * metadata or header the adapters could read), so their unresolved complaints
+ * are stored as `unattributed` and never block an address. An unidentifiable
+ * source proves nothing either.
+ */
+async function suppressUnresolvedComplainer(
+	ctx: ActionCtx,
+	e: InboundEventOf<'email.complained'>
+): Promise<UnresolvedFeedbackSuppression> {
+	if (!e.recipient) return 'no_recipient';
+	if (!isAttributedToThisDeployment(e)) return 'unattributed';
+	await ctx.runMutation(internal.blockedEmails.addFromEvent, {
+		email: e.recipient,
+		reason: 'complained',
+	});
+	return 'suppressed';
+}
+
+function isAttributedToThisDeployment(e: InboundEventOf<'email.complained'>): boolean {
+	return (
+		isSendProviderKind(e.providerType) &&
+		tagsFeedbackProvenanceFor(e.providerType) &&
+		e.deliveryDomain === 'production'
+	);
 }

@@ -416,6 +416,36 @@ describe('Mandrill event mapping (D10 table)', () => {
 		expect(blocked?.reason).toBe('complained');
 	});
 
+	// A shared Mandrill account or webhook delivers other deployments' feedback
+	// too, and Mandrill echoes no marker of ours, so the address is not blocked.
+	it('`spam` for an id that matches no send keeps the complaint but blocks no one (#1194)', async () => {
+		const t = setupTest();
+		const email = 'complainer@example.com';
+		const res = await postBatch(t, [event('spam', { _id: 'm-unknown', email })]);
+
+		expect(res.status).toBe(200);
+		const blocked = await t.run(
+			async (ctx: { db: DatabaseWriter }) =>
+				await ctx.db
+					.query('blockedEmails')
+					.withIndex('by_email', (q) => q.eq('email', email))
+					.first()
+		);
+		expect(blocked).toBeNull();
+		const stored = await t.run(
+			async (ctx: { db: DatabaseWriter }) => await ctx.db.query('unresolvedFeedback').collect()
+		);
+		expect(stored).toEqual([
+			expect.objectContaining({
+				kind: 'complaint',
+				providerMessageId: 'm-unknown',
+				providerType: 'mandrill',
+				suppression: 'unattributed',
+				status: 'open',
+			}),
+		]);
+	});
+
 	it('`deferral` records the deferred transport outcome without moving the send', async () => {
 		const t = setupTest();
 		const at = Date.UTC(2026, 7, 4, 12, 0, 0);
@@ -660,6 +690,21 @@ describe('mapMandrillEvent / parseMandrillBatch', () => {
 			])
 		);
 		expect(events.map((e) => e.kind)).toEqual(['email.sent']);
+	});
+
+	it('carries the complainer on a `spam` event beside its message id', () => {
+		const mapped = mapMandrillEvent({
+			event: 'spam',
+			ts: 1,
+			msg: { _id: 'm-1', email: 'complainer@example.com' },
+		});
+		expect(mapped).toEqual({
+			kind: 'email.complained',
+			providerMessageId: 'm-1',
+			at: 1000,
+			providerType: 'mandrill',
+			recipient: 'complainer@example.com',
+		});
 	});
 
 	it('carries the richest diagnostic as the bounce message', () => {
