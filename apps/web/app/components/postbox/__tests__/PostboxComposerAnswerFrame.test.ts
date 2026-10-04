@@ -440,6 +440,19 @@ describe('PostboxComposer frame="page" (new mail)', () => {
 		w.unmount();
 	});
 
+	it('hands its host what is on screen as a seed that would reopen it', () => {
+		compose.draftId.value = 'draft_1';
+		const w = mountComposer({ frame: 'page', seed: { mailboxId: 'mbx_1' } });
+		const vm = w.vm as unknown as { composition: () => Record<string, unknown> };
+		expect(vm.composition()).toMatchObject({
+			mailboxId: 'mbx_1',
+			draftId: 'draft_1',
+			prefillTo: ['Jonas Berg <jonas@example.com>'],
+			prefillSubject: 'Re: September invoice',
+		});
+		w.unmount();
+	});
+
 	it('tells the host the subject, for its page title', async () => {
 		const w = mountComposer({ frame: 'page', seed: { mailboxId: 'mbx_1' } });
 		compose.subject.value = 'Quarterly numbers';

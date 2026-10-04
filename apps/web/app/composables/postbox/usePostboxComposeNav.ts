@@ -59,13 +59,22 @@ export function usePostboxComposeNav() {
 				query: { c: key, mailbox: spec.mailboxId, draft: spec.draftId },
 			});
 		}
+		park(key, spec);
+		return navigateTo({ path: COMPOSE_PATH, query: { c: key } });
+	}
+
+	/**
+	 * Park (or re-park) `spec` under an existing request key: the compose page
+	 * hands back what is on screen as it closes, so a Back to this request never
+	 * reopens an older copy of the text.
+	 */
+	function park(key: string, spec: ComposeSpec) {
 		seeds.value = { ...seeds.value, [key]: spec };
 		try {
 			storage()?.setItem(STORAGE_PREFIX + key, JSON.stringify(spec));
 		} catch {
 			// Quota or serialization trouble: the in-memory copy still stands.
 		}
-		return navigateTo({ path: COMPOSE_PATH, query: { c: key } });
 	}
 
 	/** The seed `open` parked under `key`, or null once it was forgotten. */
@@ -90,5 +99,5 @@ export function usePostboxComposeNav() {
 		storage()?.removeItem(STORAGE_PREFIX + key);
 	}
 
-	return { open, seedFor, forget };
+	return { open, park, seedFor, forget };
 }

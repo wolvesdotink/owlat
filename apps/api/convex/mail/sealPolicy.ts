@@ -52,6 +52,18 @@ export interface RecipientKeyState {
 	 * says so — an unverified pinned key still seals exactly as it always did.
 	 */
 	verified?: boolean;
+	/**
+	 * A cached "no key" (or other non-trusted) answer whose cache has expired:
+	 * dispatch looks the recipient up again and may find a key now, so the
+	 * composer treats it like a recipient not looked up yet. A trusted pin never
+	 * carries this; an expired pin still seals.
+	 */
+	lookupStale?: boolean;
+}
+
+/** Not answered yet, or answered so long ago that dispatch asks again. */
+function lookupPending(recipient: RecipientKeyState): boolean {
+	return recipient.outcome === 'missing' || recipient.lookupStale === true;
 }
 
 /**
@@ -274,8 +286,9 @@ export function canSendWithSealState(state: SealState, allowUnsealed: boolean): 
  *                           the reader sees the specific rotation warning)
  *   - any keyless recip.  → `cannotSeal('recipient_no_key')`, except under
  *                           `auto` with no signer while the only keyless
- *                           recipients are not looked up yet → `no_signing_key`
- *                           (dispatch looks them up and may find a key)
+ *                           recipients are not looked up yet, or their "no
+ *                           key" answer expired → `no_signing_key` (dispatch
+ *                           looks them up and may find a key)
  *   - no sender key        → `cannotSeal('no_signing_key')`
  *   - policy `ask`        → `cannotSeal('policy_ask')` (keys are ready, but the
  *                           org asks before sealing, so it goes out normally)
@@ -293,11 +306,12 @@ export function deriveSealState(
 	const changed = recipients.filter((r) => r.outcome === 'keyChanged').map((r) => r.address);
 	if (changed.length > 0) return { kind: 'keyChanged', addresses: changed };
 	if (!recipients.every(hasUsableSealKey)) {
-		// Without a signer, a recipient not looked up yet may still turn out to
-		// have a key; dispatch looks them up and would then need consent. Ask now,
+		// Without a signer, a recipient not looked up yet (or whose "no key"
+		// answer expired) may still turn out to have a key; dispatch looks them
+		// up and would then need consent. Ask now,
 		// rather than bounce the draft back to the composer after Send. A recipient
 		// known to be keyless settles it: all-or-nothing, so no seal was possible.
-		const pendingOnly = recipients.every((r) => hasUsableSealKey(r) || r.outcome === 'missing');
+		const pendingOnly = recipients.every((r) => hasUsableSealKey(r) || lookupPending(r));
 		if (!hasSigningKey && policy === 'auto' && pendingOnly) {
 			return { kind: 'cannotSeal', reason: 'no_signing_key' };
 		}

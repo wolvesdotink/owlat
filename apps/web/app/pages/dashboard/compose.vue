@@ -99,14 +99,22 @@ let urlCarriesText = (!!requestKey && !!nav.seedFor(requestKey)) || queryPrefill
 
 const composerRef = ref<{
 	flush: () => Promise<BackendOperationResult<Id<'mailDrafts'> | null>>;
+	composition: () => ComposeSpec;
 } | null>(null);
 
+// Set as the page goes: a save still in flight then must not touch the URL,
+// which by now belongs to whatever page came next.
+let closed = false;
+
 function nameDraftInUrl(draftId: Id<'mailDrafts'>) {
-	if (!seed.value) return;
+	if (!seed.value || closed) return;
 	if (requestKey) nav.forget(requestKey);
 	const alreadyNamed = singleQueryValue(route.query['draft']) === draftId && !urlCarriesText;
 	urlCarriesText = false;
 	if (alreadyNamed) return;
+	// Only the request this page shows: never rewrite another page's URL.
+	const current = router.currentRoute.value;
+	if (singleQueryValue(current.query['c']) !== requestKey) return;
 	void router.replace({
 		query: {
 			...(requestKey ? { c: requestKey } : {}),
@@ -116,17 +124,64 @@ function nameDraftInUrl(draftId: Id<'mailDrafts'>) {
 	});
 }
 
-let confirming = false;
-/** Ask the composer to save what is on screen; name the draft once it has. */
-async function confirmSaved() {
-	if (!urlCarriesText || confirming || !composerRef.value) return;
-	confirming = true;
-	try {
-		const saved = await composerRef.value.flush();
-		if (saved.ok && saved.result) nameDraftInUrl(saved.result);
-	} finally {
-		confirming = false;
+let confirming: Promise<void> | null = null;
+let confirmAgain = false;
+/**
+ * Ask the composer to save what is on screen; name the draft once it has. A
+ * request that arrives mid-save runs once more afterwards, so a later save is
+ * never dropped behind an earlier, failed one.
+ */
+async function confirmSaved(): Promise<void> {
+	if (!urlCarriesText || closed || !composerRef.value) return;
+	if (confirming) {
+		confirmAgain = true;
+		return confirming;
 	}
+	confirming = (async () => {
+		try {
+			do {
+				confirmAgain = false;
+				const saved = await composerRef.value?.flush();
+				if (saved?.ok && saved.result) nameDraftInUrl(saved.result);
+			} while (confirmAgain && urlCarriesText && !closed);
+		} finally {
+			confirming = null;
+		}
+	})();
+	return confirming;
+}
+
+/**
+ * Leaving while the URL still carries text the server may not hold: park what
+ * is on screen under this request, then save it. A Back to this request then
+ * reopens the newest text, or, once the save lands, the saved draft itself;
+ * never the older seed the page was opened with.
+ */
+function parkOnLeave() {
+	closed = true;
+	const composer = composerRef.value;
+	if (finished || !urlCarriesText || !requestKey || !composer) return;
+	const key = requestKey;
+	const onScreen: ComposeSpec = {
+		...composer.composition(),
+		...(seed.value?.replyAllRecipients
+			? { replyAllRecipients: seed.value.replyAllRecipients }
+			: {}),
+	};
+	nav.park(key, onScreen);
+	void composer.flush().then((saved) => {
+		if (saved.ok && saved.result) {
+			nav.park(key, { mailboxId: onScreen.mailboxId, draftId: saved.result });
+		}
+	});
+}
+
+// Sent or discarded: the composition is over, and nothing is left to park.
+let finished = false;
+function finish() {
+	finished = true;
+	if (requestKey) nav.forget(requestKey);
+	leave();
 }
 
 function onDraftId(draftId: Id<'mailDrafts'>) {
@@ -162,7 +217,10 @@ function onComposerEsc() {
 }
 
 onMounted(() => window.addEventListener('keydown', onKeydown));
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
+onBeforeUnmount(() => {
+	window.removeEventListener('keydown', onKeydown);
+	parkOnLeave();
+});
 
 // The on-screen keyboard shrinks the visual viewport but not `100dvh`: leave it
 // out of the frame, so Send stays above it, as Answer mode does.
@@ -217,8 +275,8 @@ const frameStyle = computed(() => ({
 					@draft-id="onDraftId"
 					@saved="confirmSaved"
 					@subject="subject = $event"
-					@sent="leave"
-					@discarded="leave"
+					@sent="finish"
+					@discarded="finish"
 					@minimize="onComposerEsc"
 				/>
 				<div v-else-if="isLoading" class="flex-1 space-y-3 p-4" aria-hidden="true">

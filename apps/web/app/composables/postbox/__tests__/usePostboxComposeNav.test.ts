@@ -60,4 +60,17 @@ describe('usePostboxComposeNav', () => {
 		afterReload.forget(key);
 		expect(afterReload.seedFor(key)).toBeNull();
 	});
+
+	it('re-parks a request with what the page had on screen', async () => {
+		const nav = usePostboxComposeNav();
+		await nav.open({ mailboxId: 'mbx-1' as never, prefillSubject: 'Old' });
+		const key = lastTarget().query['c']!;
+		nav.park(key, { mailboxId: 'mbx-1' as never, draftId: 'draft-1' as never });
+
+		states = {};
+		expect(usePostboxComposeNav().seedFor(key)).toEqual({
+			mailboxId: 'mbx-1',
+			draftId: 'draft-1',
+		});
+	});
 });

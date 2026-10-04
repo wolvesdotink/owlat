@@ -162,6 +162,16 @@ describe('mail/sealPolicy · deriveSealState (three states)', () => {
 			kind: 'cannotSeal',
 			reason: 'recipient_no_key',
 		});
+		// An expired "no key" answer is asked again at dispatch: same as pending.
+		const expired: RecipientKeyState = {
+			address: 'fay@f.test',
+			outcome: 'notFound',
+			lookupStale: true,
+		};
+		expect(deriveSealState('auto', [expired], false)).toEqual({
+			kind: 'cannotSeal',
+			reason: 'no_signing_key',
+		});
 		// With a signer the pending lookup is ordinary keyless mail for now.
 		expect(deriveSealState('auto', [pending], true)).toEqual({
 			kind: 'cannotSeal',

@@ -21,6 +21,8 @@ vi.mock('~/composables/useKeyboardInset', () => ({ useKeyboardInset: () => keybo
 
 let flushResult: { ok: boolean; result?: string };
 const flush = vi.fn(async () => flushResult);
+let onScreen: Record<string, unknown>;
+const composition = vi.fn(() => onScreen);
 
 const ComposerStub = defineComponent({
 	name: 'PostboxComposer',
@@ -31,7 +33,7 @@ const ComposerStub = defineComponent({
 	},
 	emits: ['sent', 'discarded', 'draft-id', 'saved', 'subject', 'minimize'],
 	setup(_props, { expose }) {
-		expose({ flush });
+		expose({ flush, composition });
 	},
 	template: '<div data-testid="composer" />',
 });
@@ -42,6 +44,7 @@ const replace = vi.fn(async () => {});
 const back = vi.fn();
 const navigate = vi.fn(async () => {});
 const forget = vi.fn();
+const park = vi.fn();
 const parked: Record<string, unknown> = {};
 
 beforeEach(() => {
@@ -49,7 +52,10 @@ beforeEach(() => {
 	keyboardInset.value = 0;
 	for (const key of Object.keys(parked)) delete parked[key];
 	flushResult = { ok: true, result: 'draft-1' };
-	flush.mockClear();
+	flush.mockReset();
+	flush.mockImplementation(async () => flushResult);
+	onScreen = { mailboxId: 'mbx-1' };
+	park.mockClear();
 	replace.mockClear();
 	back.mockClear();
 	navigate.mockClear();
@@ -62,7 +68,15 @@ beforeEach(() => {
 	});
 	vi.stubGlobal('navigateTo', navigate);
 	vi.stubGlobal('useRoute', () => ({ query }));
-	vi.stubGlobal('useRouter', () => ({ replace, back }));
+	vi.stubGlobal('useRouter', () => ({
+		replace,
+		back,
+		currentRoute: {
+			get value() {
+				return { query };
+			},
+		},
+	}));
 	vi.stubGlobal('usePostboxMailbox', () => ({
 		currentMailbox: ref({ _id: 'mbx-1' }),
 		isLoading: ref(false),
@@ -70,6 +84,7 @@ beforeEach(() => {
 	vi.stubGlobal('usePostboxComposeNav', () => ({
 		seedFor: (key: string) => parked[key] ?? null,
 		forget,
+		park,
 	}));
 });
 
@@ -212,5 +227,91 @@ describe('compose page — on-screen keyboard', () => {
 		expect(frame()).toContain('--compose-keyboard-inset: 320px');
 		// The home indicator sits under the keyboard while one is open.
 		expect(frame()).toContain('--compose-bottom-inset: 0px');
+	});
+});
+
+describe('compose page — leaving before the text is confirmed saved', () => {
+	const offlineUndo = () => {
+		parked['k6'] = {
+			mailboxId: 'mbx-1',
+			draftId: 'draft-7',
+			prefillSubject: 'Edited offline',
+		};
+		query = { c: 'k6' };
+	};
+
+	it('parks what is on screen, then the saved draft once the save lands', async () => {
+		offlineUndo();
+		flushResult = { ok: false };
+		const wrapper = mountPage();
+		composer(wrapper).vm.$emit('draft-id', 'draft-7');
+		await flushPromises();
+
+		// Edited further, then left inside the autosave debounce.
+		onScreen = { mailboxId: 'mbx-1', draftId: 'draft-7', prefillSubject: 'Edited again' };
+		flushResult = { ok: true, result: 'draft-7' };
+		wrapper.unmount();
+		// The newest text first, never the older seed the page opened with…
+		expect(park).toHaveBeenNthCalledWith(1, 'k6', onScreen);
+		await flushPromises();
+		// …and once the server holds it, a Back reopens the saved draft itself.
+		expect(park).toHaveBeenNthCalledWith(2, 'k6', { mailboxId: 'mbx-1', draftId: 'draft-7' });
+		// The URL now belongs to whatever page came next.
+		expect(replace).not.toHaveBeenCalled();
+	});
+
+	it('keeps the newest text parked when the save on leaving fails too', async () => {
+		offlineUndo();
+		flushResult = { ok: false };
+		const wrapper = mountPage();
+		onScreen = { mailboxId: 'mbx-1', draftId: 'draft-7', prefillSubject: 'Edited again' };
+		wrapper.unmount();
+		await flushPromises();
+		expect(park).toHaveBeenCalledTimes(1);
+		expect(park).toHaveBeenCalledWith('k6', onScreen);
+	});
+
+	it('never rewrites the URL for a save that lands after the page closed', async () => {
+		offlineUndo();
+		let land: (value: { ok: boolean; result?: string }) => void = () => {};
+		flush.mockImplementationOnce(() => new Promise((resolve) => (land = resolve)));
+		const wrapper = mountPage();
+		composer(wrapper).vm.$emit('draft-id', 'draft-7');
+		await nextTick();
+
+		// The user opens composer B meanwhile; A's save lands afterwards.
+		query = { c: 'other' };
+		wrapper.unmount();
+		land({ ok: true, result: 'draft-7' });
+		await flushPromises();
+		expect(replace).not.toHaveBeenCalled();
+	});
+
+	it('parks nothing after a send or a discard, and forgets the seed', async () => {
+		offlineUndo();
+		const wrapper = mountPage();
+		composer(wrapper).vm.$emit('sent', { scheduled: false });
+		wrapper.unmount();
+		await flushPromises();
+		expect(forget).toHaveBeenCalledWith('k6');
+		expect(park).not.toHaveBeenCalled();
+		expect(flush).not.toHaveBeenCalled();
+	});
+
+	it('confirms again when a save lands while an earlier confirmation runs', async () => {
+		offlineUndo();
+		let land: (value: { ok: boolean; result?: string }) => void = () => {};
+		flush.mockImplementationOnce(() => new Promise((resolve) => (land = resolve)));
+		const wrapper = mountPage();
+		composer(wrapper).vm.$emit('draft-id', 'draft-7');
+		await nextTick();
+		composer(wrapper).vm.$emit('saved');
+		land({ ok: false });
+		flushResult = { ok: true, result: 'draft-7' };
+		await flushPromises();
+		expect(flush).toHaveBeenCalledTimes(2);
+		expect(replace).toHaveBeenCalledWith({
+			query: { c: 'k6', mailbox: 'mbx-1', draft: 'draft-7' },
+		});
 	});
 });
