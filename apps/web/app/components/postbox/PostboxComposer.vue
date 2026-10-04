@@ -218,15 +218,11 @@ const frameView = usePostboxComposerAnswerFrame({
 const { envelopeRef, basicEditor, focusBody, onLineReplyAll } = frameView;
 
 // The draft id for the host's URL, discard, and what the host reads as it leaves.
-const { handleDiscard, snapshot, composition } = usePostboxComposerHandoff({
-	seed: props.seed,
+const { handleDiscard, snapshot } = usePostboxComposerHandoff({
 	draftId: activeDraftId,
 	toAddresses,
-	ccAddresses,
-	bccAddresses,
-	subject,
 	bodyHtml,
-	attachments,
+	attachmentCount: () => attachments.value.length,
 	discard,
 	emitDiscarded: () => emit('discarded'),
 	emitDraftId: (id) => emit('draft-id', id),
@@ -264,7 +260,8 @@ defineExpose({
 	flush,
 	answer: answerApi,
 	snapshot,
-	composition,
+	/** Write what is on screen to the device mirror now (the compose page, leaving). */
+	mirrorNow: () => draftMirror.writeNow(),
 });
 
 // Cmd/Ctrl+Enter send, +Shift schedule, Esc minimize — bound on the composer

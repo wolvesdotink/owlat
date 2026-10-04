@@ -141,6 +141,26 @@ describe('reconcileDraftMirror', () => {
 		).toBe('none');
 	});
 
+	it('offers a new draft’s mirror whose first save never landed', () => {
+		// The row exists (created, never updated), so it carries a creation time;
+		// the mirror saw no acknowledged save. Only the fields can decide.
+		expect(
+			reconcileDraftMirror({
+				mirror: mirror({ serverEditedAt: 0 }),
+				serverEditedAt: 900,
+				serverFields: fields({ subject: '', bodyHtml: '' }),
+			})
+		).toBe('restore');
+		// …and a later save that carried the same text leaves nothing to offer.
+		expect(
+			reconcileDraftMirror({
+				mirror: mirror({ serverEditedAt: 0 }),
+				serverEditedAt: 900,
+				serverFields: fields(),
+			})
+		).toBe('none');
+	});
+
 	it('still offers a mirror whose client clock runs behind the server', () => {
 		// savedAt (client) is older than every server stamp — irrelevant, because
 		// the reconcile only ever compares server clock to server clock.

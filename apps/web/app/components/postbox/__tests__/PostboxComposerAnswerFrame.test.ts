@@ -64,7 +64,12 @@ function makeCompose() {
 		removeInlineImage: vi.fn(),
 		isSaving: ref(false),
 		lastSavedAt: ref<number | null>(null),
-		draftMirror: reactive({ restorable: null, restore: vi.fn(), dismiss: vi.fn() }),
+		draftMirror: reactive({
+			restorable: null,
+			restore: vi.fn(),
+			dismiss: vi.fn(),
+			writeNow: vi.fn(),
+		}),
 		draftNotice: ref(null),
 		bodyPending: ref(false),
 		retryLoad: vi.fn(),
@@ -440,16 +445,10 @@ describe('PostboxComposer frame="page" (new mail)', () => {
 		w.unmount();
 	});
 
-	it('hands its host what is on screen as a seed that would reopen it', () => {
-		compose.draftId.value = 'draft_1';
+	it('writes the device mirror on its host’s request', () => {
 		const w = mountComposer({ frame: 'page', seed: { mailboxId: 'mbx_1' } });
-		const vm = w.vm as unknown as { composition: () => Record<string, unknown> };
-		expect(vm.composition()).toMatchObject({
-			mailboxId: 'mbx_1',
-			draftId: 'draft_1',
-			prefillTo: ['Jonas Berg <jonas@example.com>'],
-			prefillSubject: 'Re: September invoice',
-		});
+		(w.vm as unknown as { mirrorNow: () => void }).mirrorNow();
+		expect(compose.draftMirror.writeNow).toHaveBeenCalledOnce();
 		w.unmount();
 	});
 

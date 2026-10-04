@@ -14,8 +14,11 @@
  *
  * The URL names the draft (`&draft=`, replacing the seed or prefill) only once
  * the composer confirms the text it was opened with reached the server, so a
- * reload or a Back before that still lands on the unsaved text, not on an older
- * copy of the row. Esc or "← Inbox" goes back to the page it came from; the
+ * reload before that still lands on the unsaved text, not on an older copy of
+ * the row. Leaving before that point binds the request to its draft row and
+ * writes what is on screen to the device mirror; a return opens the row and the
+ * mirror offers anything the server never received ("Restore unsaved
+ * changes"). Nothing runs after the page is gone. Esc or "← Inbox" goes back to the page it came from; the
  * draft stays saved in Drafts. A send leaves too, and the shell's undo toast
  * keeps counting down over the page underneath.
  */
@@ -24,6 +27,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { BackendOperationResult } from '~/composables/useBackendOperation';
 import {
 	composePageKey,
+	seedCarriesText,
 	type ComposeSpec,
 } from '~/composables/postbox/usePostboxComposeNav';
 import { useKeyboardInset } from '~/composables/useKeyboardInset';
@@ -95,11 +99,13 @@ watchEffect(() => {
 
 // The URL carries text the server may not hold yet (a parked seed, a prefill):
 // it only gives way to `&draft=` once that text is confirmed saved.
-let urlCarriesText = (!!requestKey && !!nav.seedFor(requestKey)) || queryPrefill() !== null;
+const openedWith = requestKey ? nav.seedFor(requestKey) : null;
+let urlCarriesText = (!!openedWith && seedCarriesText(openedWith)) || queryPrefill() !== null;
 
 const composerRef = ref<{
 	flush: () => Promise<BackendOperationResult<Id<'mailDrafts'> | null>>;
-	composition: () => ComposeSpec;
+	snapshot: () => { draftId: Id<'mailDrafts'> | null };
+	mirrorNow: () => void;
 } | null>(null);
 
 // Set as the page goes: a save still in flight then must not touch the URL,
@@ -152,31 +158,25 @@ async function confirmSaved(): Promise<void> {
 }
 
 /**
- * Leaving while the URL still carries text the server may not hold: park what
- * is on screen under this request, then save it. A Back to this request then
- * reopens the newest text, or, once the save lands, the saved draft itself;
- * never the older seed the page was opened with.
+ * Leaving while the URL still carries text the server may not hold. Once the
+ * text has a row, the request is bound to that row (a return opens it, never
+ * the older seed) and what is on screen goes to the device mirror, which offers
+ * back whatever the server never received; a save that lands after this leaves
+ * the row newer than the mirror, and the mirror stands aside. With no row yet
+ * the parked seed is the only copy, so it stays. Synchronous: nothing of this
+ * page runs once it is gone.
  */
-function parkOnLeave() {
+function settleOnLeave() {
 	closed = true;
 	const composer = composerRef.value;
-	if (finished || !urlCarriesText || !requestKey || !composer) return;
-	const key = requestKey;
-	const onScreen: ComposeSpec = {
-		...composer.composition(),
-		...(seed.value?.replyAllRecipients
-			? { replyAllRecipients: seed.value.replyAllRecipients }
-			: {}),
-	};
-	nav.park(key, onScreen);
-	void composer.flush().then((saved) => {
-		if (saved.ok && saved.result) {
-			nav.park(key, { mailboxId: onScreen.mailboxId, draftId: saved.result });
-		}
-	});
+	if (finished || !urlCarriesText || !requestKey || !composer || !seed.value) return;
+	const draftId = composer.snapshot().draftId;
+	if (!draftId) return;
+	composer.mirrorNow();
+	nav.bindDraft(requestKey, seed.value.mailboxId, draftId);
 }
 
-// Sent or discarded: the composition is over, and nothing is left to park.
+// Sent or discarded: the composition is over, and nothing is left to settle.
 let finished = false;
 function finish() {
 	finished = true;
@@ -219,7 +219,7 @@ function onComposerEsc() {
 onMounted(() => window.addEventListener('keydown', onKeydown));
 onBeforeUnmount(() => {
 	window.removeEventListener('keydown', onKeydown);
-	parkOnLeave();
+	settleOnLeave();
 });
 
 // The on-screen keyboard shrinks the visual viewport but not `100dvh`: leave it

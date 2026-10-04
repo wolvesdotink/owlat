@@ -14,7 +14,10 @@
  * compares server clock to server clock:
  *
  *   - the server row moved on since the mirror was written → the server wins,
- *     the mirror is stale (another tab or device saved), offer nothing;
+ *     the mirror is stale (another tab or device saved), offer nothing. A
+ *     mirror taken before any save was acknowledged (`serverEditedAt` 0: a new
+ *     draft whose row exists but whose first save never landed) has no server
+ *     time to compare, so only the fields decide;
  *   - the mirror's fields already match the server row → nothing was lost,
  *     offer nothing;
  *   - otherwise the mirror holds keystrokes the server never received → offer
@@ -126,7 +129,13 @@ export function reconcileDraftMirror(input: DraftMirrorReconcileInput): DraftMir
 	// The row was saved AFTER this mirror was taken — by another tab, another
 	// device, or this tab's own autosave landing post-crash. The server is then
 	// strictly the better copy and the mirror is stale.
-	if (serverEditedAt !== null && serverEditedAt > mirror.serverEditedAt) return 'none';
+	// `serverEditedAt` 0 means the mirror never saw an acknowledged save, not
+	// that it predates one: a row created but never updated would otherwise
+	// always look newer and discard the only copy of what was typed.
+	const mirrorSawSave = mirror.serverEditedAt > 0;
+	if (mirrorSawSave && serverEditedAt !== null && serverEditedAt > mirror.serverEditedAt) {
+		return 'none';
+	}
 	if (draftMirrorFieldsEqual(mirror.fields, serverFields)) return 'none';
 	return 'restore';
 }

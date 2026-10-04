@@ -7,7 +7,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
-import { composePageKey, usePostboxComposeNav } from '../usePostboxComposeNav';
+import { composePageKey, seedCarriesText, usePostboxComposeNav } from '../usePostboxComposeNav';
 
 const navigate = vi.fn(async () => {});
 let states: Record<string, unknown>;
@@ -61,16 +61,24 @@ describe('usePostboxComposeNav', () => {
 		expect(afterReload.seedFor(key)).toBeNull();
 	});
 
-	it('re-parks a request with what the page had on screen', async () => {
+	it('binds a request to its draft row, in place of its seed', async () => {
 		const nav = usePostboxComposeNav();
 		await nav.open({ mailboxId: 'mbx-1' as never, prefillSubject: 'Old' });
 		const key = lastTarget().query['c']!;
-		nav.park(key, { mailboxId: 'mbx-1' as never, draftId: 'draft-1' as never });
+		nav.bindDraft(key, 'mbx-1' as never, 'draft-1' as never);
 
 		states = {};
 		expect(usePostboxComposeNav().seedFor(key)).toEqual({
 			mailboxId: 'mbx-1',
 			draftId: 'draft-1',
 		});
+	});
+
+	it('tells text from a bare pointer at a saved draft', () => {
+		expect(seedCarriesText({ mailboxId: 'm' as never, draftId: 'd' as never })).toBe(false);
+		expect(seedCarriesText({ mailboxId: 'm' as never })).toBe(true);
+		expect(
+			seedCarriesText({ mailboxId: 'm' as never, draftId: 'd' as never, prefillSubject: 'x' })
+		).toBe(true);
 	});
 });

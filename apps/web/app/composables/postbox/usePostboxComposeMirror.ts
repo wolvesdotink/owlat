@@ -7,6 +7,10 @@
  * on-device store on a much shorter debounce and, on reopen, offers them back
  * as a "Restore unsaved changes" bar.
  *
+ * A composer closed with a write still debounced writes it at once instead of
+ * dropping it, and a host that leaves before its text is confirmed saved (the
+ * compose page) can write on demand (`writeNow`).
+ *
  * Four lifecycle facts it has to get right:
  *
  *  - RECONCILE ONCE, ON OPEN. A reopened draft is reconciled the moment the
@@ -238,10 +242,25 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 	// A fresh compose has no row to wait for, so it reconciles right away.
 	if (!sources.seedDraftId) void reconcile();
 
-	onScopeDispose(() => cancelPending());
+	/**
+	 * Write now, skipping the debounce: the host is closing the composer with
+	 * text the server may not hold yet (the compose page left before its text
+	 * was confirmed saved). The next open reconciles it like any other mirror.
+	 */
+	function writeNow() {
+		cancelPending();
+		void writeMirror();
+	}
+
+	// Closing with a write still debounced: take it now rather than drop the last
+	// keystrokes. A save that lands afterwards makes the server row newer than
+	// this mirror, so the next open's reconcile sets it aside.
+	onScopeDispose(() => {
+		if (timer) writeNow();
+	});
 
 	// `reactive` (not a bag of refs) so the composer template can read
 	// `draftMirror.restorable` directly — the same facade shape
 	// `usePostboxComposerGuards` returns.
-	return reactive({ restorable, restore, dismiss, retire });
+	return reactive({ restorable, restore, dismiss, retire, writeNow });
 }

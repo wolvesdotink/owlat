@@ -12,8 +12,13 @@
  * in memory (prefilled recipients, a quoted body, the text and attachments an
  * offline undo hands back) is parked under the request key, in session state
  * and in this tab's sessionStorage, so a reload before it reaches the server
- * keeps it. The page forgets it once the composer confirms the text is saved.
+ * keeps it. It lives only until the text has a server row: the page forgets it
+ * once a save is confirmed, or, leaving before that, binds the request to the
+ * draft row (unsaved keystrokes stay in the device mirror, which offers them
+ * back on the next open). A seed never outlives the row it seeded, so it can
+ * never be replayed over newer saved text.
  */
+import type { Id } from '@owlat/api/dataModel';
 import type { ComposerSeed } from './usePostboxCompose';
 
 /** A composer seed plus, on a plain reply, the extras Reply-All would add. */
@@ -36,6 +41,14 @@ export function composePageKey(rawRequestKey: unknown): string {
 function isDraftOnly(spec: ComposeSpec): boolean {
 	const { mailboxId: _mailboxId, draftId, ...rest } = spec;
 	return !!draftId && Object.values(rest).every((value) => value === undefined);
+}
+
+/**
+ * Whether a seed carries text the server may not hold yet: anything but a bare
+ * pointer at a saved draft (a blank new message counts — it has no row yet).
+ */
+export function seedCarriesText(spec: ComposeSpec): boolean {
+	return !isDraftOnly(spec);
 }
 
 function storage(): Storage | null {
@@ -63,11 +76,6 @@ export function usePostboxComposeNav() {
 		return navigateTo({ path: COMPOSE_PATH, query: { c: key } });
 	}
 
-	/**
-	 * Park (or re-park) `spec` under an existing request key: the compose page
-	 * hands back what is on screen as it closes, so a Back to this request never
-	 * reopens an older copy of the text.
-	 */
 	function park(key: string, spec: ComposeSpec) {
 		seeds.value = { ...seeds.value, [key]: spec };
 		try {
@@ -75,6 +83,15 @@ export function usePostboxComposeNav() {
 		} catch {
 			// Quota or serialization trouble: the in-memory copy still stands.
 		}
+	}
+
+	/**
+	 * Point a request at its draft row in place of its seed: the compose page,
+	 * leaving before its text was confirmed saved, so a return to the request
+	 * opens the row (and the mirror's offer), never the older seed.
+	 */
+	function bindDraft(key: string, mailboxId: Id<'mailboxes'>, draftId: Id<'mailDrafts'>) {
+		park(key, { mailboxId, draftId });
 	}
 
 	/** The seed `open` parked under `key`, or null once it was forgotten. */
@@ -99,5 +116,5 @@ export function usePostboxComposeNav() {
 		storage()?.removeItem(STORAGE_PREFIX + key);
 	}
 
-	return { open, park, seedFor, forget };
+	return { open, bindDraft, seedFor, forget };
 }

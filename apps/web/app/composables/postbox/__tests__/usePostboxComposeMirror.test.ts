@@ -197,3 +197,70 @@ describe('usePostboxComposeMirror — retiring one composition', () => {
 		});
 	});
 });
+
+describe('usePostboxComposeMirror — closing before the server has the text', () => {
+	const ROW = 'draft-9';
+
+	it('writes a still-debounced edit when the composer closes, not drops it', async () => {
+		const composer = openComposer({ seedDraftId: ROW as never });
+		composer.subject.value = 'Saved subject';
+		composer.lastSavedAt.value = 500;
+		await vi.advanceTimersByTimeAsync(0);
+
+		composer.subject.value = 'Typed in the last 400ms';
+		await nextTick();
+		composer.close();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(await peek(ROW)).toMatchObject({
+			fields: { subject: 'Typed in the last 400ms' },
+			serverEditedAt: 500,
+		});
+	});
+
+	it('writes on demand, for a host leaving before its text is confirmed saved', async () => {
+		const composer = openComposer({ seedDraftId: ROW as never });
+		composer.subject.value = 'Edited offline';
+		composer.lastSavedAt.value = 500;
+		await vi.advanceTimersByTimeAsync(0);
+
+		composer.mirror.writeNow();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(await peek(ROW)).toMatchObject({ fields: { subject: 'Edited offline' } });
+	});
+
+	it('offers the text back when the save on leaving never landed', async () => {
+		const first = openComposer({ seedDraftId: ROW as never });
+		first.subject.value = 'Old';
+		first.lastSavedAt.value = 500;
+		await vi.advanceTimersByTimeAsync(0);
+		first.subject.value = 'Newer, never saved';
+		first.mirror.writeNow();
+		await vi.advanceTimersByTimeAsync(0);
+		first.close();
+
+		// The row is as it was: same edit time, older text.
+		const again = openComposer({ seedDraftId: ROW as never });
+		again.subject.value = 'Old';
+		again.lastSavedAt.value = 500;
+		await vi.advanceTimersByTimeAsync(0);
+		expect(again.mirror.restorable?.fields.subject).toBe('Newer, never saved');
+	});
+
+	it('stands aside when a save landed after it was written', async () => {
+		const first = openComposer({ seedDraftId: ROW as never });
+		first.subject.value = 'Old';
+		first.lastSavedAt.value = 500;
+		await vi.advanceTimersByTimeAsync(0);
+		first.subject.value = 'Newer';
+		first.mirror.writeNow();
+		await vi.advanceTimersByTimeAsync(0);
+		first.close();
+
+		// The save on leaving landed: the row is newer than the mirror.
+		const again = openComposer({ seedDraftId: ROW as never });
+		again.subject.value = 'Newer';
+		again.lastSavedAt.value = 900;
+		await vi.advanceTimersByTimeAsync(0);
+		expect(again.mirror.restorable).toBeNull();
+	});
+});

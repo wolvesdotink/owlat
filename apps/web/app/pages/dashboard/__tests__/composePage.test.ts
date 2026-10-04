@@ -21,8 +21,9 @@ vi.mock('~/composables/useKeyboardInset', () => ({ useKeyboardInset: () => keybo
 
 let flushResult: { ok: boolean; result?: string };
 const flush = vi.fn(async () => flushResult);
-let onScreen: Record<string, unknown>;
-const composition = vi.fn(() => onScreen);
+let rowId: string | null;
+const snapshot = vi.fn(() => ({ draftId: rowId }));
+const mirrorNow = vi.fn();
 
 const ComposerStub = defineComponent({
 	name: 'PostboxComposer',
@@ -33,7 +34,7 @@ const ComposerStub = defineComponent({
 	},
 	emits: ['sent', 'discarded', 'draft-id', 'saved', 'subject', 'minimize'],
 	setup(_props, { expose }) {
-		expose({ flush, composition });
+		expose({ flush, snapshot, mirrorNow });
 	},
 	template: '<div data-testid="composer" />',
 });
@@ -44,7 +45,7 @@ const replace = vi.fn(async () => {});
 const back = vi.fn();
 const navigate = vi.fn(async () => {});
 const forget = vi.fn();
-const park = vi.fn();
+const bindDraft = vi.fn();
 const parked: Record<string, unknown> = {};
 
 beforeEach(() => {
@@ -54,8 +55,9 @@ beforeEach(() => {
 	flushResult = { ok: true, result: 'draft-1' };
 	flush.mockReset();
 	flush.mockImplementation(async () => flushResult);
-	onScreen = { mailboxId: 'mbx-1' };
-	park.mockClear();
+	rowId = null;
+	mirrorNow.mockClear();
+	bindDraft.mockClear();
 	replace.mockClear();
 	back.mockClear();
 	navigate.mockClear();
@@ -84,7 +86,7 @@ beforeEach(() => {
 	vi.stubGlobal('usePostboxComposeNav', () => ({
 		seedFor: (key: string) => parked[key] ?? null,
 		forget,
-		park,
+		bindDraft,
 	}));
 });
 
@@ -240,35 +242,46 @@ describe('compose page — leaving before the text is confirmed saved', () => {
 		query = { c: 'k6' };
 	};
 
-	it('parks what is on screen, then the saved draft once the save lands', async () => {
+	it('binds the request to its row and mirrors the screen; nothing runs after', async () => {
 		offlineUndo();
 		flushResult = { ok: false };
+		rowId = 'draft-7';
 		const wrapper = mountPage();
 		composer(wrapper).vm.$emit('draft-id', 'draft-7');
 		await flushPromises();
+		flush.mockClear();
 
-		// Edited further, then left inside the autosave debounce.
-		onScreen = { mailboxId: 'mbx-1', draftId: 'draft-7', prefillSubject: 'Edited again' };
-		flushResult = { ok: true, result: 'draft-7' };
 		wrapper.unmount();
-		// The newest text first, never the older seed the page opened with…
-		expect(park).toHaveBeenNthCalledWith(1, 'k6', onScreen);
+		// A return opens the row, never the older seed; the mirror offers back
+		// whatever the server never received.
+		expect(mirrorNow).toHaveBeenCalledOnce();
+		expect(bindDraft).toHaveBeenCalledWith('k6', 'mbx-1', 'draft-7');
+		// No save of its own is started on the way out, so none can land later
+		// and overwrite anything (the composer's own debounced save still runs).
 		await flushPromises();
-		// …and once the server holds it, a Back reopens the saved draft itself.
-		expect(park).toHaveBeenNthCalledWith(2, 'k6', { mailboxId: 'mbx-1', draftId: 'draft-7' });
-		// The URL now belongs to whatever page came next.
+		expect(flush).not.toHaveBeenCalled();
 		expect(replace).not.toHaveBeenCalled();
 	});
 
-	it('keeps the newest text parked when the save on leaving fails too', async () => {
-		offlineUndo();
-		flushResult = { ok: false };
-		const wrapper = mountPage();
-		onScreen = { mailboxId: 'mbx-1', draftId: 'draft-7', prefillSubject: 'Edited again' };
-		wrapper.unmount();
-		await flushPromises();
-		expect(park).toHaveBeenCalledTimes(1);
-		expect(park).toHaveBeenCalledWith('k6', onScreen);
+	it('keeps the seed when the text never got a row: it is the only copy', () => {
+		parked['k7'] = { mailboxId: 'mbx-1', prefillSubject: 'Typed offline' };
+		query = { c: 'k7' };
+		rowId = null;
+		mountPage().unmount();
+		expect(bindDraft).not.toHaveBeenCalled();
+		expect(forget).not.toHaveBeenCalled();
+		expect(mirrorNow).not.toHaveBeenCalled();
+	});
+
+	it('settles nothing for a request already bound to its row', () => {
+		// A return to a bound request, left again before the row loaded: its
+		// empty placeholders are not text, and must not be parked as such.
+		parked['k8'] = { mailboxId: 'mbx-1', draftId: 'draft-7' };
+		query = { c: 'k8' };
+		rowId = 'draft-7';
+		mountPage().unmount();
+		expect(bindDraft).not.toHaveBeenCalled();
+		expect(mirrorNow).not.toHaveBeenCalled();
 	});
 
 	it('never rewrites the URL for a save that lands after the page closed', async () => {
@@ -287,15 +300,16 @@ describe('compose page — leaving before the text is confirmed saved', () => {
 		expect(replace).not.toHaveBeenCalled();
 	});
 
-	it('parks nothing after a send or a discard, and forgets the seed', async () => {
+	it('settles nothing after a send or a discard, and forgets the seed', async () => {
 		offlineUndo();
+		rowId = 'draft-7';
 		const wrapper = mountPage();
 		composer(wrapper).vm.$emit('sent', { scheduled: false });
 		wrapper.unmount();
 		await flushPromises();
 		expect(forget).toHaveBeenCalledWith('k6');
-		expect(park).not.toHaveBeenCalled();
-		expect(flush).not.toHaveBeenCalled();
+		expect(bindDraft).not.toHaveBeenCalled();
+		expect(mirrorNow).not.toHaveBeenCalled();
 	});
 
 	it('confirms again when a save lands while an earlier confirmation runs', async () => {

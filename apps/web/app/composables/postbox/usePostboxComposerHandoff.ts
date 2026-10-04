@@ -6,25 +6,17 @@
  *    into their URL;
  *  - discard, then tell the host;
  *  - what the host reads as it leaves: the row, who it is for, whether it
- *    holds anything, and (for the compose page, which parks it when it closes
- *    before the text is confirmed saved) everything on screen as a seed that
- *    would reopen it.
+ *    holds anything.
  */
 import { watch, type Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 import { answerDraftHasContent } from '~/utils/answerMode';
-import type { ComposerSeed } from './usePostboxCompose';
-import type { ComposerAttachment } from './usePostboxComposeAttachments';
 
 export function usePostboxComposerHandoff(opts: {
-	seed: ComposerSeed;
 	draftId: Readonly<Ref<Id<'mailDrafts'> | null | undefined>>;
 	toAddresses: Readonly<Ref<string[]>>;
-	ccAddresses: Readonly<Ref<string[]>>;
-	bccAddresses: Readonly<Ref<string[]>>;
-	subject: Readonly<Ref<string>>;
 	bodyHtml: Readonly<Ref<string>>;
-	attachments: Readonly<Ref<ComposerAttachment[]>>;
+	attachmentCount: () => number;
 	discard: () => Promise<unknown>;
 	emitDiscarded: () => void;
 	emitDraftId: (draftId: Id<'mailDrafts'>) => void;
@@ -45,26 +37,8 @@ export function usePostboxComposerHandoff(opts: {
 	const snapshot = () => ({
 		draftId: opts.draftId.value ?? null,
 		toAddresses: [...opts.toAddresses.value],
-		hasContent: answerDraftHasContent(opts.bodyHtml.value, opts.attachments.value.length),
+		hasContent: answerDraftHasContent(opts.bodyHtml.value, opts.attachmentCount()),
 	});
 
-	/** Committed attachments only; an upload still in flight has nothing to replay. */
-	function composition(): ComposerSeed {
-		const draftId = opts.draftId.value;
-		return {
-			mailboxId: opts.seed.mailboxId,
-			...(draftId ? { draftId } : {}),
-			...(opts.seed.inReplyToMessageId ? { inReplyToMessageId: opts.seed.inReplyToMessageId } : {}),
-			prefillTo: [...opts.toAddresses.value],
-			prefillCc: [...opts.ccAddresses.value],
-			prefillBcc: [...opts.bccAddresses.value],
-			prefillSubject: opts.subject.value,
-			prefillBodyHtml: opts.bodyHtml.value,
-			...(opts.attachments.value.length > 0
-				? { prefillAttachments: [...opts.attachments.value] }
-				: {}),
-		};
-	}
-
-	return { handleDiscard, snapshot, composition };
+	return { handleDiscard, snapshot };
 }
