@@ -6,6 +6,8 @@
 import { describe, it, expect } from 'vitest';
 import {
 	aiTextToHtml,
+	authoredTextGaps,
+	draftTextGapSegments,
 	freshDraftGaps,
 	freshDraftText,
 	hasOwnWriting,
@@ -89,5 +91,28 @@ describe('hasOwnWriting', () => {
 		expect(hasOwnWriting('Hi Jana,\n\nhere they are.', 'Hi Jana,\nhere they are.')).toBe(false);
 		expect(hasOwnWriting('Hi Jana, here they are. Best', 'Hi Jana, here they are.')).toBe(true);
 		expect(hasOwnWriting('My own words', null)).toBe(true);
+	});
+});
+
+describe('the gaps of a plain-text draft (a Team inbox draft)', () => {
+	const TEXT = 'Your refund of [[amount]] is out.\n> Can you check [[ticket 12]]?';
+
+	it('counts only the written part, as the server does', () => {
+		expect(authoredTextGaps(TEXT).map((g) => g.label)).toEqual(['amount']);
+	});
+
+	it('cuts the text at its written gaps and keeps every character', () => {
+		const segments = draftTextGapSegments(TEXT);
+		expect(segments).toEqual([
+			{ text: 'Your refund of ', gap: false },
+			{ text: '[[amount]]', gap: true },
+			{ text: ' is out.\n> Can you check [[ticket 12]]?', gap: false },
+		]);
+		expect(segments.map((s) => s.text).join('')).toBe(TEXT);
+		expect(draftTextGapSegments('[[a]][[b]]')).toEqual([
+			{ text: '[[a]]', gap: true },
+			{ text: '[[b]]', gap: true },
+		]);
+		expect(draftTextGapSegments('')).toEqual([]);
 	});
 });

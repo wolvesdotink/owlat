@@ -66,6 +66,7 @@
 		"autoprefixer": "^10.4.27",
 		"axe-core": "^4.13.0",
 		"cross-env": "^10.1.0",
+		"fflate": "^0.4.9",
 		"happy-dom": "catalog:",
 		"postcss": "^8.5.26",
 		"tailwindcss": "catalog:vue",

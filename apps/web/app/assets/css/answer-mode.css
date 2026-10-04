@@ -17,6 +17,16 @@
 	text-decoration-thickness: 2px;
 }
 
+/* The same mark on read-only draft text (the Answer queue's team card), where
+   the gap is its own element. A separate rule: a browser without ::highlight
+   would drop a selector list that holds it. */
+.owlat-draft-gap {
+	background-color: color-mix(in srgb, var(--color-warning) 25%, transparent);
+	color: var(--color-text-primary);
+	text-decoration: underline solid var(--color-warning);
+	text-decoration-thickness: 2px;
+}
+
 /* Answer mode keeps the quoted original in the body (the draft and the sent
    message are unchanged) and only folds it out of sight in the editor. */
 .pbx-quote-folded .postbox-basic-editor .gmail_quote {
