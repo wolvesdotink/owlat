@@ -105,15 +105,24 @@ async function redraft(
 ): Promise<void> {
 	// A message only reaches terminal `failed` once its step retries are
 	// exhausted, at which point the step row is `abandoned` (the terminal twin
-	// of `failed`), so match either.
-	const failedAction = (
-		await ctx.db
+	// of `failed`), so take the newest of either. Selected by status, newest
+	// first: a message gains a row per step per run, and its oldest rows are
+	// completed history.
+	const newest = async (status: 'failed' | 'abandoned') =>
+		ctx.db
 			.query('agentActions')
-			.withIndex('by_inbound_message', (q) => q.eq('inboundMessageId', message._id))
-			.take(50)
-	) // bounded: one message's pipeline actions (~1 per step)
-		.filter((a) => a.status === 'failed' || a.status === 'abandoned')
-		.sort((a, b) => b.createdAt - a.createdAt)[0];
+			.withIndex('by_inbound_message_status', (q) =>
+				q.eq('inboundMessageId', message._id).eq('status', status)
+			)
+			.order('desc')
+			.first();
+	const [failed, abandoned] = await Promise.all([newest('failed'), newest('abandoned')]);
+	const failedAction =
+		failed && abandoned
+			? failed.createdAt >= abandoned.createdAt
+				? failed
+				: abandoned
+			: (failed ?? abandoned);
 
 	await transitionOrThrow(ctx, message, {
 		to: 'received',

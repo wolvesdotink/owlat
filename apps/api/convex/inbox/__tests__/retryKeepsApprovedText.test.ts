@@ -370,3 +370,87 @@ describe('a message a person took over', () => {
 		expect(result).toMatchObject({ retried: 'review' });
 	});
 });
+
+/** Earlier pipeline runs: a row per step per run, all finished. */
+async function addHistory(t: Harness, id: Id<'inboundMessages'>, rows = 60) {
+	await t.run(async (ctx) => {
+		for (let i = 0; i < rows; i++) {
+			await ctx.db.insert('agentActions', {
+				inboundMessageId: id,
+				actionType: 'classify',
+				status: 'completed',
+				retryCount: 0,
+				createdAt: i,
+			});
+		}
+	});
+}
+
+const statusOf = (t: Harness, actionId: Id<'agentActions'>) =>
+	t.run(async (ctx) => (await ctx.db.get(actionId))?.status);
+
+describe('a message with a long action history', () => {
+	it('closes its newest failed step when a person saves', async () => {
+		const t = convexTest(schema, modules);
+		const id = await seed(t);
+		await addHistory(t, id);
+		const actionId = await failStep(t, id, 'drafting');
+
+		await save(t, id, EDIT);
+
+		expect((await getMessage(t, id)).processingStatus).toBe('draft_ready');
+		expect(await statusOf(t, actionId)).toBe('abandoned');
+	});
+
+	it('resets its newest failed step on a re-draft', async () => {
+		const t = convexTest(schema, modules);
+		const id = await seed(t, { draftResponse: undefined, draftSubject: undefined });
+		await addHistory(t, id);
+		const actionId = await failStep(t, id, 'classifying');
+
+		await retry(t, id);
+
+		expect((await getMessage(t, id)).processingStatus).toBe('received');
+		expect(await statusOf(t, actionId)).toBe('pending');
+	});
+});
+
+describe('the retry cron with stale failed rows at the head of its scan', () => {
+	it('retires them and still retries the message behind them', async () => {
+		const t = convexTest(schema, modules);
+		// Twenty-five failed rows whose messages moved on: taken over, or a
+		// rejected transition that closed the step.
+		const stale = await t.run(async (ctx) => {
+			const ids: Id<'agentActions'>[] = [];
+			for (let i = 0; i < 25; i++) {
+				const messageId = await ctx.db.insert('inboundMessages', {
+					messageId: `msg-stale-${i}`,
+					from: 'jonas@example.com',
+					to: 'support@owlat.app',
+					subject: 'Refund',
+					textBody: 'Where is my refund?',
+					processingStatus: 'draft_ready',
+					receivedAt: Date.now(),
+				});
+				ids.push(
+					await ctx.db.insert('agentActions', {
+						inboundMessageId: messageId,
+						actionType: 'route',
+						status: 'failed',
+						retryCount: 1,
+						createdAt: i,
+					})
+				);
+			}
+			return ids;
+		});
+		const id = await seed(t, { draftResponse: undefined, draftSubject: undefined });
+		await failStep(t, id, 'classifying');
+
+		await runRetryCron(t);
+		await runRetryCron(t);
+
+		expect((await getMessage(t, id)).processingStatus).toBe('received');
+		for (const actionId of stale) expect(await statusOf(t, actionId)).toBe('abandoned');
+	});
+});

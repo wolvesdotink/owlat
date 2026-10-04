@@ -349,6 +349,10 @@ export const inboxTables = {
 		createdAt: v.number(),
 	})
 		.index('by_inbound_message', ['inboundMessageId'])
+		// One message's rows in one status. A message gains a row per step per
+		// run, so "its failed rows" or "its latest failed row" must be selected
+		// by status before any limit, not filtered out of its oldest rows.
+		.index('by_inbound_message_status', ['inboundMessageId', 'status'])
 		.index('by_status', ['status']),
 
 	// Knowledge Backfill Jobs - one-time extraction of historical inbound mail,

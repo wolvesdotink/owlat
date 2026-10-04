@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { formatDateTime } from '~/utils/formatters';
-import { inboxRetryCopy } from '~/utils/inboxRetry';
+import { inboxRetryCopy, inboxRetryToast } from '~/utils/inboxRetry';
 
 const { t } = useI18n();
 
@@ -37,7 +37,7 @@ const onRetry = async (message: NonNullable<typeof failedMessages.value>[number]
 	try {
 		const result = await retryFailedMessage({ inboundMessageId: message._id });
 		if (!result.ok) return;
-		showToast(t(inboxRetryCopy(message, result.result.retried).toast));
+		showToast(t(inboxRetryToast(result.result.retried)));
 	} finally {
 		actionInProgress.value = null;
 	}

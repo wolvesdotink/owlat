@@ -10491,6 +10491,7 @@
 			},
 			"retry": {
 				"sendFailed": "Sending failed",
+				"started": "Retry started",
 				"sendAgain": {
 					"action": "Send again",
 					"hint": "Sends the reply you approved, unchanged. The agent does not write a new draft.",

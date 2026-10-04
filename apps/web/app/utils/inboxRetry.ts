@@ -18,16 +18,10 @@ export interface InboxRetryCopy {
 	action: string;
 	/** One line under the button saying what happens. */
 	hint: string;
-	/** The toast after Retry went through. */
-	toast: string;
 }
 
-export function inboxRetryCopy(
-	message: InboxRetryFacts,
-	/** The plan the server reports it took; wins over the local reading. */
-	taken?: InboxRetryPlan
-): InboxRetryCopy {
-	const plan = taken ?? inboxRetryPlan(message);
+export function inboxRetryCopy(message: InboxRetryFacts): InboxRetryCopy {
+	const plan = inboxRetryPlan(message);
 	return {
 		plan,
 		title:
@@ -36,6 +30,14 @@ export function inboxRetryCopy(
 				: 'dashboard.inbox.detail.processingFailed',
 		action: `dashboard.inbox.retry.${plan}.action`,
 		hint: `dashboard.inbox.retry.${plan}.hint`,
-		toast: `dashboard.inbox.retry.${plan}.toast`,
 	};
+}
+
+/**
+ * The toast after Retry went through, keyed by the plan the server reports it
+ * took. A backend from before #1220 reports none and still re-drafts every
+ * message, so the toast then stays neutral rather than guess.
+ */
+export function inboxRetryToast(taken: InboxRetryPlan | undefined): string {
+	return taken ? `dashboard.inbox.retry.${taken}.toast` : 'dashboard.inbox.retry.started';
 }

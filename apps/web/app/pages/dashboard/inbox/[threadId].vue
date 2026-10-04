@@ -14,7 +14,7 @@ import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { countNotesMentioning, interleaveNotes } from '~/utils/threadNotes';
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
 import { useTeamKeptReply } from '~/composables/useTeamKeptReply';
-import { inboxRetryCopy } from '~/utils/inboxRetry';
+import { inboxRetryToast } from '~/utils/inboxRetry';
 
 const { t, te, locale } = useI18n();
 
@@ -331,11 +331,8 @@ const onReject = async () => {
 const onRetry = async (messageId: Id<'inboundMessages'>) => {
 	isRetrying.value = true;
 	try {
-		const message = messages.value.find((m) => m._id === messageId);
 		const result = await handleRetry(messageId);
-		if (result.ok && message) {
-			showToast(t(inboxRetryCopy(message, result.result.retried).toast));
-		}
+		if (result.ok) showToast(t(inboxRetryToast(result.result.retried)));
 	} finally {
 		isRetrying.value = false;
 	}

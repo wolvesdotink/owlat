@@ -120,6 +120,38 @@ async function notifyClarification(
 	}
 }
 
+// ─── Failed step rows ───────────────────────────────────────────────────────
+
+/** Rows closed per batch, and the batches one transition may spend. */
+const ABANDON_BATCH = 100;
+const ABANDON_MAX_BATCHES = 10;
+
+/**
+ * Close a message's `failed` step rows as `abandoned` (`./failure.ts`).
+ * Selected by status through the index, so the message's completed history
+ * (a row per step per run) is never read. Each patched row leaves the index
+ * range, so the next batch reads the rest; past the cap, the retry cron
+ * retires what is left (`retryFailedActions`).
+ */
+async function abandonFailedActions(
+	ctx: MutationCtx,
+	inboundMessageId: Id<'inboundMessages'>
+): Promise<void> {
+	const now = Date.now();
+	for (let batch = 0; batch < ABANDON_MAX_BATCHES; batch++) {
+		const failed = await ctx.db
+			.query('agentActions')
+			.withIndex('by_inbound_message_status', (q) =>
+				q.eq('inboundMessageId', inboundMessageId).eq('status', 'failed')
+			)
+			.take(ABANDON_BATCH);
+		for (const action of failed) {
+			await ctx.db.patch(action._id, { status: 'abandoned' as ActionStatus, completedAt: now });
+		}
+		if (failed.length < ABANDON_BATCH) return;
+	}
+}
+
 // ─── Runner ─────────────────────────────────────────────────────────────────
 
 export async function applyEffects(
@@ -165,18 +197,7 @@ export async function applyEffects(
 				break;
 			}
 			case 'abandon_failed_actions': {
-				// bounded: one message's pipeline actions (~1 per step)
-				const actions = await ctx.db
-					.query('agentActions')
-					.withIndex('by_inbound_message', (q) => q.eq('inboundMessageId', effect.inboundMessageId))
-					.take(50);
-				for (const action of actions) {
-					if (action.status !== 'failed') continue;
-					await ctx.db.patch(action._id, {
-						status: 'abandoned' as ActionStatus,
-						completedAt: Date.now(),
-					});
-				}
+				await abandonFailedActions(ctx, effect.inboundMessageId);
 				break;
 			}
 			case 'notify_clarification': {

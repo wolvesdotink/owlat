@@ -196,7 +196,8 @@ export const recordStepFail = internalMutation({
 // plan of `@owlat/shared/inboxRetry`, #1220). A failed message holding a
 // person's reply, saved, approved or taken over, waits for a person's Retry:
 // re-running the pipeline would clear the takeover and draft over the reply.
-// Its step row closes as `abandoned` so it stops heading the scan.
+// Every row the cron will not retry closes as `abandoned`, so no leftover,
+// including rows left before this rule, can head the scan for good.
 
 export const retryFailedActions = internalMutation({
 	args: {},
@@ -209,10 +210,19 @@ export const retryFailedActions = internalMutation({
 		const now = Date.now();
 
 		for (const action of failedActions) {
-			if (action.retryCount >= MAX_RETRY_ATTEMPTS) continue;
 			const message = await ctx.db.get(action.inboundMessageId);
-			if (!message || message.processingStatus !== 'failed') continue;
-			if (inboxRetryPlan(message) !== 'redraft') {
+			// A row nothing will retry is retired rather than skipped: skipped, it
+			// stays at the head of this scan, and twenty of them stop every other
+			// retry. That is a row past its retries, a row whose message is gone
+			// or has moved on (a person took it over, a rejected transition closed
+			// the step, an older failure of a message retried since), and a row
+			// whose message holds a person's reply.
+			if (
+				action.retryCount >= MAX_RETRY_ATTEMPTS ||
+				!message ||
+				message.processingStatus !== 'failed' ||
+				inboxRetryPlan(message) !== 'redraft'
+			) {
 				await ctx.db.patch(action._id, { status: 'abandoned', completedAt: now });
 				continue;
 			}
