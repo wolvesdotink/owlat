@@ -500,6 +500,8 @@ import type * as delivery_sndsFeed from '../delivery/sndsFeed.js';
 import type * as delivery_sndsPoll from '../delivery/sndsPoll.js';
 import type * as delivery_status from '../delivery/status.js';
 import type * as delivery_statusActions from '../delivery/statusActions.js';
+import type * as delivery_stuckSendSweep from '../delivery/stuckSendSweep.js';
+import type * as delivery_stuckSendSweepAdmin from '../delivery/stuckSendSweepAdmin.js';
 import type * as delivery_suppressionMirror from '../delivery/suppressionMirror.js';
 import type * as delivery_suppressionMirrorScheduler from '../delivery/suppressionMirrorScheduler.js';
 import type * as delivery_tokenValidation from '../delivery/tokenValidation.js';
@@ -1969,6 +1971,8 @@ declare const fullApi: ApiFromModules<{
 	'delivery/sndsPoll': typeof delivery_sndsPoll;
 	'delivery/status': typeof delivery_status;
 	'delivery/statusActions': typeof delivery_statusActions;
+	'delivery/stuckSendSweep': typeof delivery_stuckSendSweep;
+	'delivery/stuckSendSweepAdmin': typeof delivery_stuckSendSweepAdmin;
 	'delivery/suppressionMirror': typeof delivery_suppressionMirror;
 	'delivery/suppressionMirrorScheduler': typeof delivery_suppressionMirrorScheduler;
 	'delivery/tokenValidation': typeof delivery_tokenValidation;
