@@ -1396,6 +1396,7 @@ import type * as webhooks_adapters_generic from '../webhooks/adapters/generic.js
 import type * as webhooks_adapters_inboundRegistry from '../webhooks/adapters/inboundRegistry.js';
 import type * as webhooks_adapters_index from '../webhooks/adapters/index.js';
 import type * as webhooks_adapters_mandrill from '../webhooks/adapters/mandrill.js';
+import type * as webhooks_adapters_mandrillSubaccount from '../webhooks/adapters/mandrillSubaccount.js';
 import type * as webhooks_adapters_meta from '../webhooks/adapters/meta.js';
 import type * as webhooks_adapters_mta from '../webhooks/adapters/mta.js';
 import type * as webhooks_adapters_mtaEventParsers from '../webhooks/adapters/mtaEventParsers.js';
@@ -2870,6 +2871,7 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/adapters/inboundRegistry': typeof webhooks_adapters_inboundRegistry;
 	'webhooks/adapters/index': typeof webhooks_adapters_index;
 	'webhooks/adapters/mandrill': typeof webhooks_adapters_mandrill;
+	'webhooks/adapters/mandrillSubaccount': typeof webhooks_adapters_mandrillSubaccount;
 	'webhooks/adapters/meta': typeof webhooks_adapters_meta;
 	'webhooks/adapters/mta': typeof webhooks_adapters_mta;
 	'webhooks/adapters/mtaEventParsers': typeof webhooks_adapters_mtaEventParsers;

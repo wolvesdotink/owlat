@@ -54,6 +54,7 @@ import {
 } from '../security';
 import { classifyBounceMessage } from '@owlat/shared/bounceClassification';
 import type { InboundBatchParser } from '../pipeline';
+import { ownSubaccountItems } from './mandrillSubaccount';
 import type { InboundEvent, ProviderSuppression, ProviderSuppressionReason } from '../types';
 
 /** Wire value written onto reconciled Send rows and read by the dispatcher. */
@@ -83,6 +84,8 @@ interface MandrillEventItem {
 		diag?: string;
 		/** Present on `reject`: which blacklist rule refused the address. */
 		reject_reason?: string;
+		/** The subaccount it was sent under; see `./mandrillSubaccount.ts`. */
+		subaccount?: string | null;
 	};
 }
 
@@ -390,7 +393,7 @@ export function parseMandrillBatch(rawBody: string): InboundEvent[] {
 		throw new Error('Mandrill mandrill_events is not an array');
 	}
 	const events: InboundEvent[] = [];
-	for (const item of parsed as MandrillEventItem[]) {
+	for (const item of ownSubaccountItems(parsed as MandrillEventItem[])) {
 		const event = mapMandrillEvent(item ?? {});
 		if (event) events.push(event);
 	}
