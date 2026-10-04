@@ -336,7 +336,11 @@ export const campaignTables = {
 		.index('by_campaign_and_variant', ['campaignId', 'abVariant'])
 		// Global status index: lets systemHealth probe the queue depth (count of
 		// 'queued' sends) with a bounded .take() instead of scanning every send.
-		.index('by_status', ['status']),
+		.index('by_status', ['status'])
+		// The lost-send sweep (`delivery/stuckSendSweep.ts`): queued Sends with no
+		// provider id, by first-attempt time, so it reads only the rows past their
+		// deadline (and, with `firstAttemptAt` absent, the never-attempted ones).
+		.index('by_status_provider_first_attempt', ['status', 'providerMessageId', 'firstAttemptAt']),
 
 	// Checkpoint rows for large-audience campaign sends (see the table comment
 	// above). One row per send walk (plain, A/B test cohort, or A/B winner
