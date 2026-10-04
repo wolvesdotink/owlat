@@ -1,6 +1,10 @@
 // @vitest-environment happy-dom
 /**
- * Approve on the Answer queue's team card sends the draft the card shows (#1196).
+ * The Answer queue's team card, which only ever shows a team item with no
+ * thread: one with a thread opens in Answer mode instead (#1226). So every
+ * entry here has `thread: null`.
+ *
+ * Approve sends the draft the card shows (#1196).
  *
  * The agent may have offered variants (`draftOptions`) for its draft. The card
  * used to approve `draftOptions[0]` whenever there were two or more, writing it
@@ -25,10 +29,6 @@ vi.mock('@owlat/api', () => {
 	return { api: anyPath };
 });
 
-vi.mock('~/composables/useOrganization', () => ({
-	useOrganization: () => ({ members: ref([]), fetchMembers: vi.fn() }),
-}));
-
 const AGENT_ORIGINAL = 'Hi Jonas, I can add two seats to your plan.';
 const AGENT_VARIANT = 'Hi Jonas, two more seats are no problem.';
 const EDITED = 'Hi Jonas, I have added two seats, effective today. Best, Ada';
@@ -37,6 +37,8 @@ const EDITED = 'Hi Jonas, I have added two seats, effective today. Best, Ada';
 let stored: { draftResponse: string };
 let sent: string[];
 let entry: Record<string, unknown>;
+/** The args of every `useConvexQuery` subscription made while mounting. */
+let subscriptions: unknown[];
 
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
@@ -61,9 +63,11 @@ beforeEach(() => {
 		thread: null,
 		contact: null,
 	};
-	vi.stubGlobal('useConvexQuery', (_query: unknown, args: () => unknown) =>
-		queryResult(args() === 'skip' ? [] : [entry])
-	);
+	subscriptions = [];
+	vi.stubGlobal('useConvexQuery', (_query: unknown, args: () => unknown) => {
+		subscriptions.push(args());
+		return queryResult(args() === 'skip' ? [] : [entry]);
+	});
 	// A small backend. The queue builds its operations in a fixed order:
 	// approveDraft, rejectDraft, editDraft, undoAutoSend.
 	let built = 0;
@@ -80,7 +84,6 @@ beforeEach(() => {
 	});
 	vi.stubGlobal('useReviewQueue', useReviewQueue);
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
-	vi.stubGlobal('useAuth', () => ({ user: ref({ id: 'user-1' }) }));
 	vi.stubGlobal('useReviewApproveUndo', () => ({
 		arm: vi.fn(),
 		state: ref({ inboundMessageId: null }),
@@ -141,6 +144,78 @@ describe('AnswerTeamCard approve, with agent variants stored', () => {
 		const wrapper = mountCard();
 		expect(wrapper.text()).not.toMatch(/option/i);
 	});
+
+	it('subscribes to the review queue and nothing else: there is no thread to watch', () => {
+		mountCard();
+		expect(subscriptions).toEqual([{ limit: 50 }]);
+	});
+});
+
+/**
+ * A draftless escalation: the agent wrote nothing, so the reviewer writes the
+ * reply on the card. It goes out through `editDraft` then `approveDraft`.
+ */
+describe('AnswerTeamCard with a draftless escalation', () => {
+	beforeEach(() => {
+		vi.mocked(controls.complete).mockClear();
+		vi.mocked(controls.openAnswer).mockClear();
+		stored = { draftResponse: '' };
+		entry = {
+			message: {
+				_id: 'im_3',
+				from: 'Lea Brandt <lea@example.com>',
+				subject: 'Contract change',
+				textBody: 'Can we move to yearly billing?',
+				processingStatus: 'draft_ready',
+			},
+			thread: null,
+			contact: null,
+		};
+	});
+
+	function mountReal() {
+		return mount(AnswerTeamCard, {
+			props: { entry: entry as never, controls },
+			attachTo: document.body,
+			global: {
+				plugins: [createTestI18n()],
+				stubs: {
+					Icon: true,
+					InboxTrustChip: true,
+					InboxDecisionRationale: true,
+					TaskContext: true,
+					TaskAsk: true,
+				},
+			},
+		});
+	}
+
+	it('offers a reply box with Send reply and Dismiss, and nothing that needs a thread', () => {
+		const wrapper = mountReal();
+		const buttons = wrapper.findAll('button').map((b) => b.text());
+		expect(buttons).toEqual(['Send reply', 'Dismiss']);
+		expect(wrapper.get('[data-testid="task-primary"]').attributes('disabled')).toBeDefined();
+		expect(wrapper.find('[data-testid="task-held-reason"]').exists()).toBe(false);
+	});
+
+	it('sends the reply typed on the card and completes the item', async () => {
+		const wrapper = mountReal();
+		await wrapper.get('textarea').setValue('Hi Lea, yes, from the next cycle.');
+		await wrapper.get('[data-testid="task-primary"]').trigger('click');
+		await flushPromises();
+		expect(stored.draftResponse).toBe('Hi Lea, yes, from the next cycle.');
+		expect(sent).toEqual(['Hi Lea, yes, from the next cycle.']);
+		expect(controls.complete).toHaveBeenCalledWith('sent', undefined);
+		expect(controls.openAnswer).not.toHaveBeenCalled();
+	});
+
+	it('Dismiss rejects the item', async () => {
+		const wrapper = mountReal();
+		await wrapper.get('[data-testid="task-skip"]').trigger('click');
+		await flushPromises();
+		expect(controls.complete).toHaveBeenCalledWith('rejected');
+		expect(sent).toEqual([]);
+	});
 });
 
 /**
@@ -155,7 +230,7 @@ describe('AnswerTeamCard with an agent draft that has gaps', () => {
 	const FILLED =
 		'Hi Ana, your refund of 42 EUR went out on 2 October.\n> Can you check [[ticket 12]]?';
 
-	function gappedEntry(message: Record<string, unknown> = {}, thread: unknown = null) {
+	function gappedEntry(message: Record<string, unknown> = {}) {
 		stored = { draftResponse: GAPPED };
 		entry = {
 			message: {
@@ -168,7 +243,7 @@ describe('AnswerTeamCard with an agent draft that has gaps', () => {
 				isDraftGapGuarded: true,
 				...message,
 			},
-			thread,
+			thread: null,
 			contact: null,
 		};
 	}
@@ -242,7 +317,7 @@ describe('AnswerTeamCard with an agent draft that has gaps', () => {
 	});
 
 	it('releases Approve once the gaps are filled elsewhere', async () => {
-		gappedEntry({}, { _id: 'th_2' });
+		gappedEntry();
 		const wrapper = mountReal();
 		expect(primary(wrapper).attributes('disabled')).toBeDefined();
 
@@ -251,19 +326,6 @@ describe('AnswerTeamCard with an agent draft that has gaps', () => {
 		expect(wrapper.findAll('[data-testid="team-card-gap"]')).toHaveLength(0);
 		expect(primary(wrapper).attributes('disabled')).toBeUndefined();
 		expect(reason(wrapper).exists()).toBe(false);
-	});
-
-	it('points a draft with a thread to Answer mode to fill the gaps', async () => {
-		gappedEntry({}, { _id: 'th_2' });
-		const wrapper = mountReal();
-		expect(reason(wrapper).text()).toBe(
-			'2 gaps left in this draft. Fill them in the thread before you send it.'
-		);
-		expect(wrapper.find('[data-testid="team-card-fill-gaps"]').exists()).toBe(false);
-
-		const edit = wrapper.findAll('button').find((b) => b.text() === 'Edit in thread');
-		await edit!.trigger('click');
-		expect(controls.openAnswer).toHaveBeenCalled();
 	});
 
 	it('holds an unsaved draft from a backend that stores no guard', () => {
