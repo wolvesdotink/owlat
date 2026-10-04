@@ -1,4 +1,4 @@
-import { ConvexError, type Infer } from 'convex/values';
+import { ConvexError, getConvexSize, type Infer, type Value } from 'convex/values';
 import { isTransactionLimitError } from '../lib/convexLimitErrors';
 import type { workpoolRunResultValidator } from '../schema/sendCompletionFailures';
 import type { WorkerEnvelopeInput } from './workerEnvelope';
@@ -114,4 +114,63 @@ export function completionErrorCode(error: unknown): string {
 	if (error instanceof TypeError) return 'TYPE_ERROR';
 	if (error instanceof RangeError) return 'RANGE_ERROR';
 	return 'UNKNOWN';
+}
+
+// ─── The record's own size ──────────────────────────────────────────────────
+//
+// THE WHOLE RECORD IS BOUNDED, not only the payload: every listing path is
+// sized on `RECORD_MAX_BYTES`. Each free-form string that reaches a record is
+// bounded where it is written: the provider id and type here, the parked
+// provider text in `./sendCompletionFeedback`, the error as a fixed code.
+
+/** A provider message id longer than this is not kept, never truncated. */
+export const PROVIDER_MESSAGE_ID_MAX_CHARS = 512;
+/** A transport kind: core or `plugin.<pluginId>.<localId>`, optionally `#instance`. */
+const PROVIDER_TYPE_PATTERN = /^[A-Za-z0-9._#:-]{1,128}$/;
+/** The most a record row may weigh, parked feedback included. */
+export const RECORD_MAX_BYTES = 8 * 1024;
+
+/** `text` cut to at most `maxBytes` of UTF-8, on a code point boundary. */
+export function clampUtf8(text: string, maxBytes: number): string {
+	const bytes = new TextEncoder().encode(text);
+	if (bytes.length <= maxBytes) return text;
+	return new TextDecoder().decode(bytes.subarray(0, maxBytes)).replace(/\uFFFD$/, '');
+}
+
+export interface CompletionSummary {
+	outcomeKind: string;
+	providerMessageId?: string;
+	providerType?: string;
+	/** The outcome named a provider id too long to keep whole. */
+	isProviderIdTooLong: boolean;
+}
+
+/**
+ * The readable part of a run result, kept on the record after the payload is
+ * gone, every string bounded. An over-long provider id is left out rather than
+ * cut: a truncated id would match nothing, or the wrong Send.
+ */
+export function summarizeRunResult(result: RunResult): CompletionSummary {
+	if (result.kind !== 'success') return { outcomeKind: result.kind, isProviderIdTooLong: false };
+	const outcome: unknown = result.returnValue;
+	if (!isSendWorkerOutcome(outcome)) {
+		return { outcomeKind: 'unreadable', isProviderIdTooLong: false };
+	}
+	const id =
+		outcome.kind === 'accepted' || outcome.kind === 'acceptanceUnknown'
+			? outcome.providerMessageId
+			: undefined;
+	const type = outcome.kind === 'accepted' ? outcome.providerType : undefined;
+	const isProviderIdTooLong = id !== undefined && id.length > PROVIDER_MESSAGE_ID_MAX_CHARS;
+	return {
+		outcomeKind: outcome.kind,
+		...(id !== undefined && !isProviderIdTooLong ? { providerMessageId: id } : {}),
+		...(type !== undefined && PROVIDER_TYPE_PATTERN.test(type) ? { providerType: type } : {}),
+		isProviderIdTooLong,
+	};
+}
+
+/** Convex's measure of a row about to be written. */
+export function recordBytes(fields: Record<string, unknown>): number {
+	return getConvexSize(fields as Value);
 }

@@ -210,15 +210,25 @@ const eraseSendCompletionFailures: PhaseRunner = async (phase) => {
 				.query('sendCompletionFailures')
 				.withIndex('by_contact', (q) => q.eq('contactId', contactId))
 				.first(),
+		// A delete reads the document again, and those bytes count against the
+		// transaction like the first read, so each delete is charged twice.
 		async (record) => {
-			const isEmpty = await deleteAll(phase, (n) =>
-				ctx.db
-					.query('sendCompletionFailurePayloads')
-					.withIndex('by_failure', (q) => q.eq('failureId', record._id))
-					.take(n)
+			const isEmpty = await drainEach(
+				budget,
+				(n) =>
+					ctx.db
+						.query('sendCompletionFailurePayloads')
+						.withIndex('by_failure', (q) => q.eq('failureId', record._id))
+						.take(n),
+				async (payload) => {
+					budget.chargeRead(payload);
+					await ctx.db.delete(payload._id);
+				}
 			);
-			if (isEmpty) await ctx.db.delete(record._id);
-			return isEmpty;
+			if (!isEmpty) return false;
+			budget.chargeRead(record);
+			await ctx.db.delete(record._id);
+			return true;
 		}
 	);
 };

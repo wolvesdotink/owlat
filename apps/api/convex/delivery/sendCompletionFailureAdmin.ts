@@ -3,7 +3,11 @@ import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { internalQuery } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
-import { deleteCompletionFailurePayload, resolveCompletionFailure } from './sendCompletionFailures';
+import {
+	applyParkedFeedback,
+	deleteCompletionFailurePayload,
+	resolveCompletionFailure,
+} from './sendCompletionFailures';
 
 // ============================================================================
 // Send completion failures — retention and the operator surface (#1195).
@@ -13,16 +17,20 @@ import { deleteCompletionFailurePayload, resolveCompletionFailure } from './send
 // operator `npx convex run` access to the rest (apps/docs "Platform
 // operations").
 //
-// READ BUDGET. A record row is at most ~8 KiB (summary, five parked events with
-// clamped text) and a payload at most 32 KiB (`PAYLOAD_MAX_BYTES`, checked at
-// write). A delete re-reads what it deletes, so it counts twice. Worst case per
-// transaction, against Convex's 16 MiB read limit:
+// READ BUDGET. A record row is at most `RECORD_MAX_BYTES` (8 KiB; every string
+// in it is bounded at write, and the largest a test can build is under 4 KiB)
+// and a payload at most `PAYLOAD_MAX_BYTES` (32 KiB). A delete re-reads what it
+// deletes, so it counts twice. Worst case per transaction, against Convex's
+// 16 MiB read limit:
 //   - purge: 100 records x 16 KiB + 50 payloads x 64 KiB = 4.8 MiB
+//     (measured: 3.2 MiB for 50 records with 31 KiB payloads)
 //   - status: 2 x 200 records x 8 KiB = 3.2 MiB
 //   - re-open: 100 records x 16 KiB = 1.6 MiB
 //   - contact cleanup: 50 x (16 + 64) KiB = 4 MiB
 //   - workspace sweep (`workspaces/deletion/steps/registry.ts`): 50 payloads x
 //     64 KiB = 3.2 MiB, 100 records x 16 KiB = 1.6 MiB
+//   - contact erasure walker: its 4 MiB byte budget, which charges each delete's
+//     re-read (measured: 3.16 MiB read for 3.17 MiB charged)
 // The replay cron reads 25 records (200 KiB), a replay one record and one
 // payload, and a provider event replays one record inline.
 // ============================================================================
@@ -187,6 +195,13 @@ export const deleteContactCompletionFailures = internalMutation({
  * provider id the record kept from an acceptance; `failed` ends the Send with
  * `SEND_COMPLETION_UNRECOVERABLE`, which says the outcome is unknown. Either
  * goes through the Send lifecycle, and only while the Send is still `queued`.
+ *
+ * Provider events parked on the record are applied right after, through the
+ * same ordered path as a replay, all in this one transaction. After `sent` a
+ * parked bounce or complaint lands as it would have; after `failed` the
+ * lifecycle refuses them (a failed Send takes no more transitions), and they
+ * are kept on the resolved record as refusals, not dropped silently. Close as
+ * `sent` when `status` shows parked events and the record kept a provider id.
  */
 export const closeCompletionFailure = internalMutation({
 	args: {
@@ -223,7 +238,8 @@ export const closeCompletionFailure = internalMutation({
 				transition,
 			});
 		}
-		await resolveCompletionFailure(ctx, row, 'superseded', now, undefined);
+		const refusals = await applyParkedFeedback(ctx, row);
+		await resolveCompletionFailure(ctx, row, 'superseded', now, refusals);
 		return { closed: true, reason: null };
 	},
 });

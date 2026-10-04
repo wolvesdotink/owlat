@@ -14,8 +14,12 @@ import {
 } from './sendCompletionFeedback';
 import { isSendWorkerOutcome, type SendWorkerOutcome } from './workerOutcome';
 import {
+	clampUtf8,
 	compactRunResult,
 	completionErrorCode,
+	RECORD_MAX_BYTES,
+	recordBytes,
+	summarizeRunResult,
 	type CompactResult,
 	PAYLOAD_MAX_BYTES,
 	payloadBytes,
@@ -66,29 +70,6 @@ function replayDelayMs(attempts: number): number {
 	return Math.min(REPLAY_BASE_DELAY_MS * 2 ** attempts, REPLAY_MAX_DELAY_MS);
 }
 
-/** The readable part of a run result, kept after the payload is dropped. */
-function summarize(result: RunResult): {
-	outcomeKind: string;
-	providerMessageId?: string;
-	providerType?: string;
-} {
-	if (result.kind !== 'success') return { outcomeKind: result.kind };
-	const outcome: unknown = result.returnValue;
-	if (!isSendWorkerOutcome(outcome)) return { outcomeKind: 'unreadable' };
-	switch (outcome.kind) {
-		case 'accepted':
-			return {
-				outcomeKind: outcome.kind,
-				providerMessageId: outcome.providerMessageId,
-				providerType: outcome.providerType,
-			};
-		case 'acceptanceUnknown':
-			return { outcomeKind: outcome.kind, providerMessageId: outcome.providerMessageId };
-		default:
-			return { outcomeKind: outcome.kind };
-	}
-}
-
 /**
  * Record a completion that threw, in the caller's (committing) transaction.
  *
@@ -120,7 +101,7 @@ export async function recordCompletionFailure(
 ): Promise<void> {
 	const now = Date.now();
 	const { sendRef } = args.context;
-	const summary = summarize(args.result);
+	const { isProviderIdTooLong, ...summary } = summarizeRunResult(args.result);
 	const lastError = completionErrorCode(error);
 	const send = await ctx.db.get(sendRef.id);
 
@@ -142,7 +123,7 @@ export async function recordCompletionFailure(
 	) {
 		await ctx.db.patch(sendRef.id, {
 			providerMessageId: summary.providerMessageId,
-			providerType: summary.providerType,
+			...(summary.providerType ? { providerType: summary.providerType } : {}),
 		});
 	}
 
@@ -155,14 +136,34 @@ export async function recordCompletionFailure(
 
 	const reentryDelayMs = send.status === 'queued' ? reentryDelay(args.result, now) : null;
 	const compact = compactRunResult(args.result);
-	const isTooLarge = payloadBytes(compact.result) > PAYLOAD_MAX_BYTES;
-	const disposition =
+	// An outcome whose payload, or whose provider id, is too large to keep whole.
+	const isTooLarge = isProviderIdTooLong || payloadBytes(compact.result) > PAYLOAD_MAX_BYTES;
+	const planned =
 		reentryDelayMs !== null
 			? ({ status: 'resolved', resolution: 'retried', resolvedAt: now } as const)
 			: isTooLarge
 				? ({ status: 'exhausted', lastError: 'PAYLOAD_TOO_LARGE' } as const)
 				: ({ status: 'open', nextReplayAt: now + replayDelayMs(replayAttempts) } as const);
-	const fields = { ...summary, lastError, lastFailedAt: now, ...disposition };
+	const planBytes = recordBytes({
+		...(isSameRecord ? existing : {}),
+		...summary,
+		lastError,
+		...planned,
+		sendRef,
+		workId: args.workId,
+	});
+	// Every string is bounded above, so this only catches a field added later:
+	// the record keeps its outcome kind and waits for an operator.
+	const isRecordTooLarge = planBytes > RECORD_MAX_BYTES;
+	const disposition = isRecordTooLarge
+		? ({ status: 'exhausted', lastError: 'PAYLOAD_TOO_LARGE' } as const)
+		: planned;
+	const fields = {
+		...(isRecordTooLarge ? { outcomeKind: summary.outcomeKind } : summary),
+		lastError,
+		lastFailedAt: now,
+		...disposition,
+	};
 
 	let failureId: Id<'sendCompletionFailures'>;
 	if (isSameRecord) {
@@ -185,7 +186,7 @@ export async function recordCompletionFailure(
 	}
 	if (disposition.status === 'open') await storePayload(ctx, failureId, compact);
 	else await deleteCompletionFailurePayload(ctx, failureId);
-	if (reentryDelayMs !== null) {
+	if (disposition.status === 'resolved' && reentryDelayMs !== null) {
 		const outcome = (args.result as { returnValue: RetryableOutcome }).returnValue;
 		await ctx.scheduler.runAfter(reentryDelayMs, internal.delivery.sendCompletion.retrySend, {
 			sendRef,
@@ -345,22 +346,37 @@ export const applyRecordedCompletion = internalMutation({
 				context: { sendRef: row.sendRef },
 			});
 		}
-		const refusals: Array<Infer<typeof refusalValidator>> = [];
-		for (const { transition } of orderParkedFeedback(row.pendingFeedback ?? [])) {
-			const outcome = await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
-				send: row.sendRef,
-				transition,
-			});
-			if (!outcome.ok) {
-				refusals.push({ to: transition.to, at: transition.at, reason: outcome.reason });
-			}
-		}
-		// Applied: an operator running this by hand to see an error must not
-		// leave the events for the next replay to apply a second time.
-		if (row.pendingFeedback?.length) await ctx.db.patch(row._id, { pendingFeedback: undefined });
-		return refusals;
+		return await applyParkedFeedback(ctx, row);
 	},
 });
+
+/**
+ * Apply a record's parked provider events in provider-time order and clear
+ * them, returning the ones the lifecycle refused. The one path for a replay
+ * and for an operator closing a record by hand: once applied, the events are
+ * gone, so nothing applies them a second time.
+ */
+export async function applyParkedFeedback(
+	ctx: MutationCtx,
+	row: FailureRow
+): Promise<Array<Infer<typeof refusalValidator>>> {
+	const refusals: Array<Infer<typeof refusalValidator>> = [];
+	for (const { transition } of orderParkedFeedback(row.pendingFeedback ?? [])) {
+		const outcome = await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
+			send: row.sendRef,
+			transition,
+		});
+		if (!outcome.ok) {
+			refusals.push({
+				to: transition.to,
+				at: transition.at,
+				reason: clampUtf8(outcome.reason, 100),
+			});
+		}
+	}
+	if (row.pendingFeedback?.length) await ctx.db.patch(row._id, { pendingFeedback: undefined });
+	return refusals;
+}
 
 const replayTriggerValidator = v.union(
 	v.literal('cron'),

@@ -3,6 +3,7 @@ import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import type { countableSendRefValidator } from '../lib/validators/send';
 import type { parkedFeedbackTransitionValidator } from '../schema/sendCompletionFailures';
+import { clampUtf8 } from './sendCompletionPayload';
 
 // ============================================================================
 // Provider feedback parked on a recorded send completion (#1195).
@@ -24,7 +25,9 @@ import type { parkedFeedbackTransitionValidator } from '../schema/sendCompletion
 //     same Send adds nothing the lifecycle would keep: soft-bounce suppression
 //     counts distinct Sends, each once. A soft bounce still hardens if a hard
 //     bounce is parked beside it.
-// At most five events, and every kind the lifecycle can act on is kept.
+// At most five events, and every kind the lifecycle can act on is kept. In
+// practice bounces and complaints are what park: a provider failure and an
+// attributable delivery are edges the lifecycle takes from `queued` itself.
 //
 // REPLAYED IN PROVIDER-TIME ORDER. Arrival order is not event order: a
 // complaint stamped after a soft bounce can reach us first. `orderParkedFeedback`
@@ -88,23 +91,25 @@ export function orderParkedFeedback(parked: readonly ParkedEvent[]): ParkedEvent
 }
 
 /**
- * A provider's diagnostic text, clamped so a record row stays small: at most
- * three slots carry text, each at most 500 characters (2 KiB of UTF-8), which
- * keeps a record under the 8 KiB every listing path is sized on.
+ * A provider's text, clamped in UTF-8 bytes so a record stays small: at most
+ * three slots carry text (two bounce messages, one failure's message and
+ * code), 400 + 100 bytes at most each, so parked feedback adds under 2 KiB to
+ * a record (`RECORD_MAX_BYTES` in `./sendCompletionPayload`).
  */
-const PARKED_TEXT_MAX_CHARS = 500;
+const PARKED_TEXT_MAX_BYTES = 400;
+const PARKED_CODE_MAX_BYTES = 100;
 function clampParkedText(transition: ParkedTransition): ParkedTransition {
 	if (transition.to === 'bounced' && transition.bounceMessage !== undefined) {
 		return {
 			...transition,
-			bounceMessage: transition.bounceMessage.slice(0, PARKED_TEXT_MAX_CHARS),
+			bounceMessage: clampUtf8(transition.bounceMessage, PARKED_TEXT_MAX_BYTES),
 		};
 	}
 	if (transition.to === 'failed') {
 		return {
 			...transition,
-			errorMessage: transition.errorMessage.slice(0, PARKED_TEXT_MAX_CHARS),
-			errorCode: transition.errorCode.slice(0, 100),
+			errorMessage: clampUtf8(transition.errorMessage, PARKED_TEXT_MAX_BYTES),
+			errorCode: clampUtf8(transition.errorCode, PARKED_CODE_MAX_BYTES),
 		};
 	}
 	return transition;
