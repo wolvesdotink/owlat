@@ -1,61 +1,64 @@
 /**
- * Which Mandrill webhook events are about Owlat's own traffic (#1243).
+ * Marking Mandrill webhook events from other subaccounts (#1243).
  *
  * A Mandrill webhook belongs to the whole ACCOUNT, so on an account shared with
  * other senders it carries every subaccount's events, each naming its origin in
  * `msg.subaccount`. `MANDRILL_SUBACCOUNT` is how an operator puts Owlat's
  * traffic in a subaccount of its own: the send path sends under it and the
- * `rejects/list` carry-over imports only its blacklist. The webhook has to draw
- * the same line, because two events act on an ADDRESS without a matching Send:
- * `unsub` unsubscribes the contact, and a `reject` blocklists the address before
- * the Send is looked up. Another subaccount's opt-out or blacklist rule would
- * otherwise unsubscribe or block a contact who never opted out of, or bounced,
- * Owlat mail.
+ * `rejects/list` carry-over imports only its blacklist.
  *
- * THE RULE: an event is ours when its subaccount is one Owlat sends under, as
- * `ownMandrillSubaccounts` answers it: one per configured Mandrill transport
- * (the default one and every named `mandrill#<key>` instance), read the way the
- * send adapter reads it. A transport with no subaccount sends on the account's
- * default, whose events carry none, so it stands for events with none.
+ * An event is IN SCOPE when its subaccount is one Owlat sends under, as
+ * `ownMandrillSubaccounts` answers it: one per configured Mandrill transport,
+ * read the way the send adapter reads it, with `null` standing for the
+ * account's default. Every other event is still mapped, but carries
+ * `outsideSendingScope`, and the dispatcher applies it only when it attributes
+ * to one of our Sends (`../sendingScope.ts`). It is marked rather than dropped
+ * because the subaccount alone cannot prove an event foreign: a Mandrill rule
+ * can move Owlat's mail into a subaccount, and mail sent before the setting
+ * changed carries the old one.
  *
- * Three consequences, each deliberate:
- *
- *  - With no subaccount configured anywhere, events that carry no subaccount are
- *    handled exactly as before, so a single-tenant account changes nothing. An
- *    event that DOES carry one cannot be about Owlat's mail, which carried none,
- *    so it is dropped too: that is the same bug for the common layout where
- *    Owlat sends on the account's default and other teams use subaccounts.
- *  - The filter covers every event kind, including events whose message id
- *    would match an Owlat Send. Mandrill message ids are unique across the
- *    account, so a foreign event can only match one if Owlat sent that message
- *    under a subaccount it no longer uses. Feedback for mail sent before an
- *    operator changes the setting is therefore ignored once it changes. The
- *    carry-over import draws the same line, and keeping the decision here, in
- *    one place before anything is dispatched, means no event kind can leak
- *    through a path that was not taught about subaccounts.
- *  - A `subaccount` that is not a string matches nothing, so an event whose
- *    origin cannot be read is not trusted into an address-keyed effect.
+ * A `subaccount` that is not a string is never in scope, so an event whose
+ * origin cannot be read is held to the same attribution.
  */
 
 import { ownMandrillSubaccounts } from '../../lib/sendProviders/mandrill/subaccounts';
+import type { InboundEvent } from '../types';
+
+interface MandrillItemOrigin {
+	msg?: { email?: unknown; subaccount?: unknown } | null;
+}
 
 /** A subaccount id, `null` for the account's default, `undefined` for unreadable. */
-type SubaccountOrigin = string | null | undefined;
-
-/** The subaccount an event came from, normalized the way the send path reads its own. */
-function originOf(item: unknown): SubaccountOrigin {
-	const msg = (item as { msg?: unknown } | null | undefined)?.msg;
+function originOf(item: MandrillItemOrigin | null | undefined): string | null | undefined {
+	const msg = item?.msg;
 	if (msg === null || typeof msg !== 'object') return null;
-	const subaccount = (msg as { subaccount?: unknown }).subaccount;
+	const subaccount = msg.subaccount;
 	if (subaccount === undefined || subaccount === null || subaccount === '') return null;
 	return typeof subaccount === 'string' ? subaccount : undefined;
 }
 
-/** The items of one `mandrill_events` batch that came from Owlat's own subaccounts. */
-export function ownSubaccountItems<T>(items: readonly T[]): T[] {
+/**
+ * Map one `mandrill_events` batch, marking every event that came from outside
+ * Owlat's own subaccounts. The mark carries `msg.email`, which attribution
+ * compares with the Send's recipient.
+ */
+export function mapMarkingSendingScope<T extends MandrillItemOrigin>(
+	items: readonly T[],
+	map: (item: T) => InboundEvent | null
+): InboundEvent[] {
 	const own = ownMandrillSubaccounts();
-	return items.filter((item) => {
+	const events: InboundEvent[] = [];
+	for (const item of items) {
+		const event = map(item ?? ({} as T));
+		if (!event) continue;
 		const origin = originOf(item);
-		return origin !== undefined && own.has(origin);
-	});
+		if (origin !== undefined && own.has(origin)) {
+			events.push(event);
+			continue;
+		}
+		const email = item?.msg?.email;
+		const recipient = typeof email === 'string' && email ? email : undefined;
+		events.push(Object.assign({}, event, { outsideSendingScope: recipient ? { recipient } : {} }));
+	}
+	return events;
 }

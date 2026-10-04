@@ -4,8 +4,9 @@
  * A Mandrill webhook carries every subaccount's events. `unsub` and `reject`
  * act on an ADDRESS without a matching Send, so on a shared account another
  * subaccount's opt-outs and blacklist rules used to unsubscribe or block Owlat
- * contacts. The webhook now draws the line `MANDRILL_SUBACCOUNT` draws for the
- * send path and the `rejects/list` import.
+ * contacts. An event from outside the subaccounts Owlat sends under is now
+ * applied only when it matches one of our Sends (message id, provider and
+ * recipient); everything else from outside is ignored.
  *
  * Every case drives the REAL route (`t.fetch('/webhooks/mandrill')`, signed the
  * way Mandrill documents) and asserts on the database.
@@ -15,6 +16,7 @@ import { convexTest } from 'convex-test';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import schema from '../../schema';
+import type { Id } from '../../_generated/dataModel';
 import type { DatabaseWriter } from '../../_generated/server';
 import { modules } from '../../__tests__/testModules';
 import {
@@ -81,6 +83,9 @@ const unsub = (id: string, email: string, subaccount?: unknown) =>
 const reject = (id: string, email: string, subaccount?: unknown) =>
 	event('reject', { _id: id, email, state: 'rejected', reject_reason: 'custom' }, subaccount);
 
+const spam = (id: string, email: string, subaccount?: unknown) =>
+	event('spam', { _id: id, email }, subaccount);
+
 async function seedContact(t: Harness, email: string) {
 	return await t.run(
 		async (ctx: { db: DatabaseWriter }) =>
@@ -88,7 +93,13 @@ async function seedContact(t: Harness, email: string) {
 	);
 }
 
-async function seedSend(t: Harness, providerMessageId: string, email: string) {
+async function seedSend(
+	t: Harness,
+	providerMessageId: string,
+	email: string,
+	providerType = 'mandrill',
+	status: 'queued' | 'sent' = 'queued'
+) {
 	return await t.run(async (ctx: { db: DatabaseWriter }) => {
 		const campaignId = await ctx.db.insert('campaigns', createTestCampaign());
 		const contactId = await ctx.db.insert('contacts', createTestContact({ email }));
@@ -98,13 +109,17 @@ async function seedSend(t: Harness, providerMessageId: string, email: string) {
 				campaignId,
 				contactId,
 				contactEmail: email,
-				status: 'queued',
-				providerType: 'mandrill',
+				status,
+				providerType,
 				providerMessageId,
 				sentAt: Date.now(),
 			})
 		);
 	});
+}
+
+async function sendStatus(t: Harness, sendId: Id<'emailSends'>) {
+	return await t.run(async (ctx: { db: DatabaseWriter }) => (await ctx.db.get(sendId))?.status);
 }
 
 async function isUnsubscribed(t: Harness, email: string): Promise<boolean> {
@@ -132,6 +147,7 @@ const SAVED_ENV = { ...process.env };
 beforeEach(() => {
 	process.env['MANDRILL_WEBHOOK_KEY'] = WEBHOOK_KEY;
 	process.env['CONVEX_SITE_URL'] = SITE_URL;
+	process.env['MANDRILL_API_KEY'] = 'mandrill-primary-key';
 	delete process.env['MANDRILL_SUBACCOUNT'];
 	delete process.env['SEND_TRANSPORT_INSTANCES'];
 	delete process.env['RATE_LIMIT_TRUSTED_PROXY'];
@@ -204,18 +220,52 @@ describe('with MANDRILL_SUBACCOUNT set', () => {
 		expect(send?.status).toBe('failed');
 	});
 
-	// The filter runs before any Send lookup. A foreign event can only match an
-	// Owlat Send by id if Owlat sent that message under a subaccount it no longer
-	// uses, and the import ignores that subaccount's blacklist too.
-	it('ignores a foreign event even when its message id matches an Owlat Send', async () => {
+	// After the setting changed from `old-owlat` to `owlat`, people still
+	// unsubscribe from and complain about mail sent under the old one.
+	it('applies an unsub and a complaint on a matched Send from a previous subaccount', async () => {
 		const t = setupTest();
-		const sendId = await seedSend(t, 'm-shared-id', 'old@example.com');
+		await seedSend(t, 'm-old-unsub', 'leaver@example.com');
+		const complainedId = await seedSend(
+			t,
+			'm-old-spam',
+			'complainer@example.com',
+			'mandrill',
+			'sent'
+		);
 
-		await postBatch(t, [reject('m-shared-id', 'old@example.com', 'app')]);
+		await postBatch(t, [
+			unsub('m-old-unsub', 'leaver@example.com', 'old-owlat'),
+			spam('m-old-spam', 'complainer@example.com', 'old-owlat'),
+		]);
 
-		expect(await isBlocked(t, 'old@example.com')).toBe(false);
-		const send = await t.run(async (ctx: { db: DatabaseWriter }) => await ctx.db.get(sendId));
-		expect(send?.status).toBe('queued');
+		expect(await isUnsubscribed(t, 'leaver@example.com')).toBe(true);
+		expect(await isBlocked(t, 'complainer@example.com')).toBe(true);
+		expect(await sendStatus(t, complainedId)).toBe('complained');
+	});
+
+	it('ignores a foreign event whose id matches a Send to a different recipient', async () => {
+		const t = setupTest();
+		const sendId = await seedSend(t, 'm-shared-id', 'owlat-recipient@example.com');
+		await seedContact(t, 'jane@example.com');
+
+		await postBatch(t, [
+			reject('m-shared-id', 'jane@example.com', 'app'),
+			unsub('m-shared-id', 'jane@example.com', 'app'),
+		]);
+
+		expect(await isBlocked(t, 'jane@example.com')).toBe(false);
+		expect(await isUnsubscribed(t, 'jane@example.com')).toBe(false);
+		expect(await sendStatus(t, sendId)).toBe('queued');
+	});
+
+	it('ignores a foreign event whose id matches a Send another provider sent', async () => {
+		const t = setupTest();
+		const sendId = await seedSend(t, 'm-resend-id', 'jane@example.com', 'resend');
+
+		await postBatch(t, [reject('m-resend-id', 'jane@example.com', 'app')]);
+
+		expect(await isBlocked(t, 'jane@example.com')).toBe(false);
+		expect(await sendStatus(t, sendId)).toBe('queued');
 	});
 });
 
@@ -243,9 +293,24 @@ describe('with MANDRILL_SUBACCOUNT unset', () => {
 		expect(await isUnsubscribed(t, 'leaver@example.com')).toBe(true);
 	});
 
-	// Owlat's own mail then carries no subaccount, so one that names a subaccount
-	// is another sender's.
-	it('ignores unsub and reject that name a subaccount', async () => {
+	// A Mandrill rule can move Owlat's own mail into a subaccount on Mandrill's
+	// side, so a tagged event that matches one of our Sends is ours.
+	it('applies a tagged unsub and reject that match Owlat Sends', async () => {
+		const t = setupTest();
+		await seedSend(t, 'm-rule-unsub', 'leaver@example.com');
+		const rejectedId = await seedSend(t, 'm-rule-reject', 'blocked@example.com');
+
+		await postBatch(t, [
+			unsub('m-rule-unsub', 'leaver@example.com', 'rule-assigned'),
+			reject('m-rule-reject', 'blocked@example.com', 'rule-assigned'),
+		]);
+
+		expect(await isUnsubscribed(t, 'leaver@example.com')).toBe(true);
+		expect(await isBlocked(t, 'blocked@example.com')).toBe(true);
+		expect(await sendStatus(t, rejectedId)).toBe('failed');
+	});
+
+	it('ignores unsub and reject that name a subaccount and match no Send', async () => {
 		const t = setupTest();
 		await seedContact(t, 'jane@example.com');
 
@@ -284,5 +349,32 @@ describe('with a named Mandrill transport', () => {
 
 		expect(await isUnsubscribed(t, 'eu@example.com')).toBe(true);
 		expect(await isUnsubscribed(t, 'jane@example.com')).toBe(false);
+	});
+});
+
+describe('with only a named Mandrill transport configured', () => {
+	beforeEach(() => {
+		delete process.env['MANDRILL_API_KEY'];
+		process.env['SEND_TRANSPORT_INSTANCES'] = 'mandrill#eu';
+		process.env['MANDRILL_API_KEY__EU'] = 'mandrill-eu-key';
+		process.env['MANDRILL_SUBACCOUNT__EU'] = 'owlat-eu';
+	});
+
+	it('leaves the unconfigured default out of scope', () => {
+		expect([...ownMandrillSubaccounts()]).toEqual(['owlat-eu']);
+	});
+
+	it("ignores another sender's account-default unsub and applies the named subaccount's", async () => {
+		const t = setupTest();
+		await seedContact(t, 'jane@example.com');
+		await seedContact(t, 'eu@example.com');
+
+		await postBatch(t, [
+			unsub('m-default-unsub', 'jane@example.com'),
+			unsub('m-eu-unsub', 'eu@example.com', 'owlat-eu'),
+		]);
+
+		expect(await isUnsubscribed(t, 'jane@example.com')).toBe(false);
+		expect(await isUnsubscribed(t, 'eu@example.com')).toBe(true);
 	});
 });
