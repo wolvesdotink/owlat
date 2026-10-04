@@ -283,6 +283,8 @@
 				"back": "Zurück",
 				"backTitle": "Vorherige offene Aufgabe (←)",
 				"estimateLeft": "noch {estimate}",
+				"estimateMinutes": "etwa {n} Min.",
+				"estimateSeconds": "etwa {n} Sek.",
 				"exit": "Beenden",
 				"exitTitle": "Beenden (Esc)",
 				"newCount": "+{count} neu",
@@ -290,6 +292,17 @@
 				"next": "Weiter",
 				"nextLabel": "Als Nächstes:",
 				"nextTitle": "Nächste offene Aufgabe (→)",
+				"outcome": {
+					"replied": "{count} beantwortet",
+					"sent": "{count} gesendet",
+					"approved": "{count} freigegeben",
+					"rejected": "{count} abgelehnt",
+					"opened": "{count} geöffnet",
+					"cleared": "{count} erledigt",
+					"archived": "{count} archiviert",
+					"snoozed": "{count} zurückgestellt",
+					"completed": "{count} abgeschlossen"
+				},
 				"progress": "{position} von {total}",
 				"undo": "Rückgängig",
 				"undoTitle": "Letzte Aktion rückgängig machen (⌘Z)"
@@ -316,12 +329,14 @@
 					"title": "Alles erledigt"
 				},
 				"draftReady": "Entwurf bereit",
-				"editInThread": "In Konversation bearbeiten",
 				"empty": {
 					"body": "Derzeit muss kein Entwurf von dir geprüft werden.",
 					"title": "Alles erledigt!"
 				},
 				"escalatedBecause": "Eskaliert, weil: {reason}",
+				"fillGaps": "Lücken ausfüllen",
+				"fillLabel": "Entwurf zum Ausfüllen",
+				"gapsHeldHere": "In diesem Entwurf ist noch 1 Lücke offen. Füll sie aus, bevor du ihn sendest. | In diesem Entwurf sind noch {count} Lücken offen. Füll sie aus, bevor du ihn sendest.",
 				"heldBecause": "Zurückgehalten, weil: {reason}",
 				"noSubject": "(kein Betreff)",
 				"noTextContent": "(Kein Textinhalt)",
@@ -4210,15 +4225,8 @@
 				"selectingAllMatching": "Wird ausgewählt…"
 			},
 			"postboxClarificationCard": {
-				"answer": "Antworten",
 				"answerLater": "Ich antworte später",
-				"cardLabel": "Deine Eingabe erforderlich: {subject}",
-				"drafting": "Deine Antwort wird entworfen…",
-				"hintLater": "Später",
-				"hintPick": "Auswählen",
-				"openDraft": "Entwurf öffnen",
-				"statusDraftReady": "Entwurf bereit",
-				"statusNeedsInput": "Deine Eingabe erforderlich"
+				"drafting": "Deine Antwort wird entworfen…"
 			},
 			"postboxCoachPanel": {
 				"clean": "Sieht gut aus — keine Auffälligkeiten gefunden.",
@@ -4896,7 +4904,6 @@
 					"summary": "{summary} in dieser Sitzung.",
 					"title": "Alles erledigt"
 				},
-				"draftReply": "Antwort entwerfen",
 				"empty": {
 					"hint": "Nichts wartet auf deine Antwort.",
 					"title": "Alles erledigt"
@@ -4912,11 +4919,7 @@
 					"snooze": "Zurückstellen"
 				},
 				"reply": "Antworten",
-				"snooze": "Zurückstellen",
-				"urgency": {
-					"high": "Dringend",
-					"low": "Niedrige Priorität"
-				}
+				"snooze": "Zurückstellen"
 			},
 			"postboxReplyGuard": {
 				"body": "Diese Nachricht stammt möglicherweise nicht wirklich von der angegebenen Person. Das ist uns aufgefallen:",
@@ -4929,11 +4932,6 @@
 				"dismissTitle": "Für diese Sitzung ausblenden",
 				"openQueue": "Antwortliste öffnen",
 				"waiting": "{count} E-Mail wartet auf deine Antwort | {count} E-Mails warten auf deine Antwort"
-			},
-			"postboxReviewSlot": {
-				"draftReady": "Entwurf bereit",
-				"optionCount": "{count} Optionen",
-				"reviewAndSend": "Prüfen & senden"
 			},
 			"postboxRewriteActions": {
 				"formal": "Förmlicher",
@@ -6638,9 +6636,6 @@
 				"summary": "{summary} in dieser Sitzung.",
 				"body": "Deine Werkbank beginnt ab hier neu."
 			},
-			"mail": {
-				"writeOwn": "Selbst schreiben"
-			},
 			"mode": {
 				"back": "Zurück zu {page}",
 				"backTo": {
@@ -7112,6 +7107,13 @@
 						"loading": "Zustellraten-Verlauf wird geladen",
 						"subtitle": "Anteil der versendeten Mails, die zugestellt wurden, pro Tag",
 						"title": "Zustellrate"
+					},
+					"unresolvedFeedback": {
+						"bounced": "{count} Bounces",
+						"complained": "{count} Beschwerden",
+						"open": "{count} weiterhin ohne Zuordnung",
+						"summary": "Bounces und Beschwerden ohne passende Sendung (30 Tage): {total} · {breakdown}",
+						"suppressed": "{count} per Adresse gesperrt"
 					}
 				},
 				"migrate": {
@@ -10316,8 +10318,6 @@
 				"requestReply": "Antwort entwerfen",
 				"requestReplyOperation": "Entwurf anfordern",
 				"replyLanguageNote": "Die Antwort wird auf {language} verfasst.",
-				"retriedToast": "Der Agent versucht es erneut",
-				"retryProcessing": "Erneut verarbeiten",
 				"reusedAnswersEyebrow": "Aus dem Gedächtnis",
 				"reusedAnswersHint": "Dieselbe Frage wurde schon einmal beantwortet, daher hat der Agent diese Antwort erneut angewendet. Bearbeite den Entwurf, wenn er anders lauten soll, oder",
 				"reusedAnswersManage": "prüfe, was Owlat sich gemerkt hat.",
@@ -10363,9 +10363,7 @@
 				"loading": "Fehlgeschlagene Nachrichten werden geladen …",
 				"noTextContent": "(Kein Textinhalt)",
 				"pageTitle": "Fehlgeschlagene Nachrichten — Owlat",
-				"retriedToast": "Nachricht wird erneut versucht",
 				"retryOperation": "Nachricht erneut verarbeiten",
-				"retryProcessing": "Erneut versuchen",
 				"subtitle": "Eingehende Nachrichten, die sich auch nach automatischen Wiederholungen nicht verarbeiten ließen. Prüfe den Grund, behebe die Ursache und versuche es dann erneut.",
 				"title": "Fehlgeschlagene Nachrichten"
 			},
@@ -10490,6 +10488,25 @@
 				"subtitle": "Wie schnell das Team auf Konversationen im Team-Postfach antworten soll.",
 				"title": "Antwortziele",
 				"backToInbox": "Team-Postfach"
+			},
+			"retry": {
+				"sendFailed": "Senden fehlgeschlagen",
+				"started": "Erneuter Versuch läuft",
+				"sendAgain": {
+					"action": "Erneut senden",
+					"hint": "Sendet die freigegebene Antwort unverändert. Der Agent schreibt keinen neuen Entwurf.",
+					"toast": "Die freigegebene Antwort wird erneut gesendet"
+				},
+				"review": {
+					"action": "Zurück zur Prüfung",
+					"hint": "Legt die Antwort, die eine Person geschrieben hat, zurück in die Prüfung. Der Agent schreibt keinen neuen Entwurf.",
+					"toast": "Die Antwort ist zurück in der Prüfung"
+				},
+				"redraft": {
+					"action": "Erneut verarbeiten",
+					"hint": "Der Agent liest die Nachricht erneut und schreibt einen neuen Entwurf.",
+					"toast": "Der Agent versucht es erneut"
+				}
 			},
 			"updates": {
 				"blockDialogConfirm": "Absender sperren",
@@ -16281,6 +16298,10 @@
 				"unsubscribed": "Von {count} Absender abgemeldet. | Von {count} Absendern abgemeldet."
 			}
 		},
+		"convexAuth": {
+			"lost": "Deine Daten werden nicht mehr geladen. Lade die Seite neu, um die Verbindung wiederherzustellen.",
+			"reload": "Neu laden"
+		},
 		"format": {
 			"never": "Nie",
 			"invalidDate": "Ungültiges Datum",
@@ -17146,6 +17167,11 @@
 			"title": "Meine E-Mails mitnehmen"
 		},
 		"pageTitle": "Willkommen — Owlat",
+		"stamp": {
+			"failed": "Wir konnten nicht speichern, dass du hier warst. Vielleicht siehst du diese Seite beim nächsten Mal noch einmal.",
+			"retry": "Erneut versuchen",
+			"retrying": "Wird erneut versucht…"
+		},
 		"subheading": "Hier ist die E-Mail-Zentrale deines Teams. Los geht's."
 	}
 }

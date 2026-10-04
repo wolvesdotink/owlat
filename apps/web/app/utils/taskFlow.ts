@@ -6,6 +6,7 @@
  * Review Queue stay separate flows over the same helpers).
  */
 
+import type { LocalizedText } from './localizedText';
 import { type BuiltInTaskFlowKind, taskCardRegistry } from './taskCardRegistry';
 
 /**
@@ -109,26 +110,73 @@ export function estimateTaskFlowSeconds(kinds: readonly TaskFlowKind[]): number 
 	return kinds.reduce((total, kind) => total + taskCardRegistry.estimateSeconds(kind), 0);
 }
 
-/** Human "about 4 min" / "about 40 sec" label for a remaining-seconds budget. */
-export function formatTaskFlowEstimate(seconds: number): string {
-	if (seconds <= 0) return '';
-	if (seconds < 90) return `about ${Math.max(1, Math.round(seconds / 15) * 15)} sec`;
-	return `about ${Math.round(seconds / 60)} min`;
+/**
+ * The remaining-time label ("about 40 sec" / "about 4 min") for a seconds
+ * budget, as a catalog key and its count: under 90s it rounds to the nearest 15 seconds, above that to whole
+ * minutes. Null when nothing is left. The caller translates it (`useLocalized`),
+ * since this module has no locale.
+ */
+export function formatTaskFlowEstimate(seconds: number): LocalizedText | null {
+	if (seconds <= 0) return null;
+	if (seconds < 90) {
+		return {
+			key: 'components.agentTasks.agentTaskFlow.estimateSeconds',
+			params: { n: Math.max(1, Math.round(seconds / 15) * 15) },
+		};
+	}
+	return {
+		key: 'components.agentTasks.agentTaskFlow.estimateMinutes',
+		params: { n: Math.round(seconds / 60) },
+	};
 }
 
-/** One tallied outcome for the end-state summary, e.g. { label: 'answered', count: 3 }. */
+/**
+ * The outcomes a card can finish with, each a bucket in the end-state summary.
+ * A plugin card reports a free-form outcome; it is tallied as 'completed'
+ * (see `taskFlowOutcome`), since only these have copy in the catalog.
+ */
+export const TASK_FLOW_OUTCOMES = [
+	'replied',
+	'sent',
+	'approved',
+	'rejected',
+	'opened',
+	'cleared',
+	'archived',
+	'snoozed',
+	'completed',
+] as const;
+export type TaskFlowOutcome = (typeof TASK_FLOW_OUTCOMES)[number];
+
+/** `outcome` when the summary has words for it, otherwise 'completed'. */
+export function taskFlowOutcome(outcome: string | undefined): TaskFlowOutcome {
+	return (TASK_FLOW_OUTCOMES as readonly string[]).includes(outcome ?? '')
+		? (outcome as TaskFlowOutcome)
+		: 'completed';
+}
+
+/** One tallied outcome for the end-state summary, e.g. { label: 'replied', count: 3 }. */
 export interface TaskFlowTally {
 	label: string;
 	count: number;
 }
 
 /**
- * The end-state summary line, e.g. "3 answered · 2 approved". Outcomes are
- * joined in the order they were first recorded; zero-count entries drop out.
+ * The end-state summary, one catalog key per outcome with its count
+ * ("3 replied", "2 approved"); the renderer translates each part and joins
+ * them with a middot. Outcomes keep the order they were first recorded,
+ * zero-count entries drop out, and outcomes without copy of their own merge
+ * into 'completed'.
  */
-export function summarizeTaskFlow(tally: readonly TaskFlowTally[]): string {
-	return tally
-		.filter((t) => t.count > 0)
-		.map((t) => `${t.count} ${t.label}`)
-		.join(' · ');
+export function summarizeTaskFlow(tally: readonly TaskFlowTally[]): LocalizedText[] {
+	const counts = new Map<TaskFlowOutcome, number>();
+	for (const t of tally) {
+		if (t.count <= 0) continue;
+		const outcome = taskFlowOutcome(t.label);
+		counts.set(outcome, (counts.get(outcome) ?? 0) + t.count);
+	}
+	return [...counts].map(([outcome, count]) => ({
+		key: `components.agentTasks.agentTaskFlow.outcome.${outcome}`,
+		params: { count },
+	}));
 }

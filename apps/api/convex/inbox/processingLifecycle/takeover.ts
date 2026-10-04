@@ -44,3 +44,17 @@ export function isPipelineInput(input: TransitionInput): boolean {
 		('failingActionId' in input && input.failingActionId !== undefined)
 	);
 }
+
+/**
+ * Edges only a person may take, refused for anyone else: leaving a takeover-only
+ * state for `draft_ready` needs `manualTakeover`, and `failed → approved` (a
+ * Retry sending a person's approved reply again, #1220) needs a human approval
+ * that completes no agent step. The router's auto-approve arriving late on a
+ * failed message must never send from there.
+ */
+export function refusedAsNotAPerson(from: ProcessingStatus, input: TransitionInput): boolean {
+	if (requiresManualTakeover(from, input.to)) {
+		return !(input.to === 'draft_ready' && input.manualTakeover === true);
+	}
+	return from === 'failed' && input.to === 'approved' && isPipelineInput(input);
+}

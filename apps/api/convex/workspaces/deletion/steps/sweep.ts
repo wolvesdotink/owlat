@@ -12,13 +12,16 @@ import { defineStep, DEFAULT_BATCH_SIZE, type OrganizationDeletionTable } from '
  * compile-time guard in _common.ts now forces every TENANT_TABLES entry to
  * have a step, so a new table can't regrow that gap.
  */
-export function makeSweepStep<T extends OrganizationDeletionTable>(table: T) {
+export function makeSweepStep<T extends OrganizationDeletionTable>(
+	table: T,
+	batchSize: number = DEFAULT_BATCH_SIZE
+) {
 	return defineStep({
 		table,
 		async deleteBatch(ctx) {
-			const rows = await ctx.db.query(table).take(DEFAULT_BATCH_SIZE);
+			const rows = await ctx.db.query(table).take(batchSize);
 			for (const row of rows) await ctx.db.delete(row._id);
-			return { deletedCount: rows.length, hasMore: rows.length === DEFAULT_BATCH_SIZE };
+			return { deletedCount: rows.length, hasMore: rows.length === batchSize };
 		},
 	});
 }

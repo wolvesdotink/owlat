@@ -92,3 +92,19 @@ export function denseDailySeries(
 export function resolveNow(candidate: number | undefined): number {
 	return candidate !== undefined && Number.isFinite(candidate) ? candidate : Date.now();
 }
+
+/**
+ * The first instant certainly AFTER an event stamped `at`, read at whole-second
+ * precision (#1228).
+ *
+ * Mandrill stamps events in whole seconds while Owlat's own timestamps are
+ * millis, so an event stamped 12:00:00 happened somewhere in [12:00:00,
+ * 12:00:01). Every "did this happen after the event?" comparison against a
+ * provider stamp uses this bound, which settles a same-second tie IN FAVOUR OF
+ * THE EVENT: a subscribe or a removal in the event's own second counts as
+ * before it. A non-finite stamp answers `NaN`, which compares false, so nothing
+ * counts as after it and the event wins there too.
+ */
+export function afterEventSecond(at: number): number {
+	return Math.floor(at / 1000) * 1000 + 1000;
+}

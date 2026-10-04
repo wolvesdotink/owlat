@@ -47,4 +47,6 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'mail/snippets.ts#create': 'the previous snippets page, in tabs opened before the deploy',
 	'mail/snippets.ts#update': 'the previous snippets page, in tabs opened before the deploy',
 	'mail/snippets.ts#remove': 'the previous snippets page, in tabs opened before the deploy',
+	'mail/needsReply.ts#getDraftSlot':
+		'the previous Answer queue card, in tabs opened before the deploy (#1188)',
 };

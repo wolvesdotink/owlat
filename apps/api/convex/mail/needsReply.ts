@@ -405,7 +405,7 @@ export const countQueue = publicQuery({
 
 /**
  * The draft-on-arrival review slot of one flagged thread: the pre-generated
- * reply, its confidence, quality check and alternatives. The Answer card that
+ * reply, its confidence and quality check. The Answer card that
  * shows the thread reads it (plan C8); `listQueue` only says whether one
  * exists (`hasDraftSlot`), so the drafts of the rows nobody opens never travel.
  */
@@ -417,7 +417,13 @@ export const getDraftSlot = publicQuery({
 		if (!thread) return null;
 		const mailbox = await loadReadableMailbox(ctx, thread.mailboxId);
 		if (!mailbox) return null;
-		return thread.needsReply?.draftSlot ?? null;
+		const slot = thread.needsReply?.draftSlot;
+		if (!slot) return null;
+		// A slot written before #1200 can carry alternative drafts. No screen
+		// lets anyone pick one, and a web build from before then counts them as
+		// "N options", so they stay on the server.
+		const { options: _legacyOptions, ...shown } = slot;
+		return shown;
 	},
 });
 

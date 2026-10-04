@@ -86,6 +86,8 @@ const SAVED_ENV = { ...process.env };
 
 beforeEach(() => {
 	process.env['MANDRILL_WEBHOOK_KEY'] = WEBHOOK_KEY;
+	// A deployment that sends through Mandrill, so its account default is in scope (#1243).
+	process.env['MANDRILL_API_KEY'] = 'mandrill-test-api-key';
 	process.env['CONVEX_SITE_URL'] = SITE_URL;
 	delete process.env['RATE_LIMIT_TRUSTED_PROXY'];
 });
@@ -168,11 +170,15 @@ async function readSend(t: Harness, sendId: Id<'emailSends'>) {
 	return await t.run(async (ctx: { db: DatabaseWriter }) => await ctx.db.get(sendId));
 }
 
-/** A Mandrill message event, with the fields the adapter reads. */
+/**
+ * A Mandrill message event, with the fields the adapter reads. Stamped a minute
+ * ago by default: an address-keyed event older than the replay window acts on
+ * no address (#1228).
+ */
 function event(
 	name: string,
 	msg: Record<string, unknown>,
-	ts = Math.floor(Date.UTC(2026, 7, 4, 12, 0, 0) / 1000)
+	ts = Math.floor(Date.now() / 1000) - 60
 ): Record<string, unknown> {
 	return { event: name, ts, msg: { ts, ...msg } };
 }
@@ -416,6 +422,36 @@ describe('Mandrill event mapping (D10 table)', () => {
 		expect(blocked?.reason).toBe('complained');
 	});
 
+	// A shared Mandrill account or webhook delivers other deployments' feedback
+	// too, and Mandrill echoes no marker of ours, so the address is not blocked.
+	it('`spam` for an id that matches no send keeps the complaint but blocks no one (#1194)', async () => {
+		const t = setupTest();
+		const email = 'complainer@example.com';
+		const res = await postBatch(t, [event('spam', { _id: 'm-unknown', email })]);
+
+		expect(res.status).toBe(200);
+		const blocked = await t.run(
+			async (ctx: { db: DatabaseWriter }) =>
+				await ctx.db
+					.query('blockedEmails')
+					.withIndex('by_email', (q) => q.eq('email', email))
+					.first()
+		);
+		expect(blocked).toBeNull();
+		const stored = await t.run(
+			async (ctx: { db: DatabaseWriter }) => await ctx.db.query('unresolvedFeedback').collect()
+		);
+		expect(stored).toEqual([
+			expect.objectContaining({
+				kind: 'complaint',
+				providerMessageId: 'm-unknown',
+				providerType: 'mandrill',
+				suppression: 'unattributed',
+				status: 'open',
+			}),
+		]);
+	});
+
 	it('`deferral` records the deferred transport outcome without moving the send', async () => {
 		const t = setupTest();
 		const at = Date.UTC(2026, 7, 4, 12, 0, 0);
@@ -471,7 +507,13 @@ describe('Mandrill event mapping (D10 table)', () => {
 		});
 		const topicId = await t.run(async (ctx: { db: DatabaseWriter }) => {
 			const id = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
-			await ctx.db.insert('contactTopics', { contactId, topicId: id, addedAt: Date.now() });
+			// Subscribed before the event: a later membership is a re-subscribe
+			// the event must not undo (#1228).
+			await ctx.db.insert('contactTopics', {
+				contactId,
+				topicId: id,
+				addedAt: Date.now() - 60 * 60 * 1000,
+			});
 			return id;
 		});
 
@@ -662,6 +704,21 @@ describe('mapMandrillEvent / parseMandrillBatch', () => {
 		expect(events.map((e) => e.kind)).toEqual(['email.sent']);
 	});
 
+	it('carries the complainer on a `spam` event beside its message id', () => {
+		const mapped = mapMandrillEvent({
+			event: 'spam',
+			ts: 1,
+			msg: { _id: 'm-1', email: 'complainer@example.com' },
+		});
+		expect(mapped).toEqual({
+			kind: 'email.complained',
+			providerMessageId: 'm-1',
+			at: 1000,
+			providerType: 'mandrill',
+			recipient: 'complainer@example.com',
+		});
+	});
+
 	it('carries the richest diagnostic as the bounce message', () => {
 		const mapped = mapMandrillEvent({
 			event: 'soft_bounce',
@@ -686,7 +743,7 @@ describe('mapMandrillEvent / parseMandrillBatch', () => {
 	 */
 	it('joins on msg._id ALONE — never on the recipient, never on a guess', () => {
 		const richButUnjoinable = {
-			ts: 1,
+			ts: Math.floor(Date.now() / 1000),
 			msg: { email: 'subscriber@example.com', state: 'sent', sender: 'news@example.com' },
 		};
 		for (const name of ['send', 'deferral', 'hard_bounce', 'soft_bounce', 'spam', 'reject']) {

@@ -1,6 +1,6 @@
 import type { Doc } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
-import { normalizeEmail } from '../../lib/inputGuards';
+import { findLiveContactByEmail } from '../../lib/contactHelpers';
 import type { EmailSendDoc, SendRef, TransactionalSendDoc } from './types';
 
 // ─── SendStore — the only place that branches on kind to load/patch ─────────
@@ -73,12 +73,7 @@ export async function resolveRecipientContact(
 		const byId = await ctx.db.get(send.contactId);
 		if (byId) return byId;
 	}
-	const normalized = normalizeEmail(contactEmailOf(send));
-	if (!normalized) return null;
-	return await ctx.db
-		.query('contacts')
-		.withIndex('by_email', (q) => q.eq('email', normalized))
-		.first();
+	return await findLiveContactByEmail(ctx, contactEmailOf(send));
 }
 
 // ─── Non-campaign contact-activity provenance ───────────────────────────────

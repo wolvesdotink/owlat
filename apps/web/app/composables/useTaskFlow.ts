@@ -44,7 +44,7 @@ export interface UseTaskFlowOptions<T> {
 
 /** Options for completing (or skipping) the current card. */
 export interface TaskFlowCompleteOptions {
-	/** Outcome bucket for the end-state summary, e.g. 'answered' / 'approved'. */
+	/** Outcome bucket for the end-state summary, e.g. 'replied' / 'approved' (see TASK_FLOW_OUTCOMES). */
 	outcome?: string;
 	/** Inverse to run if this action is later undone (Cmd/Ctrl+Z). */
 	inverse?: () => void | Promise<void>;

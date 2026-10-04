@@ -13,6 +13,7 @@ import { postboxMutation } from './_helpers';
 import { requireMailboxAccess } from './permissions';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { normalizeEmail } from '@owlat/shared';
+import { findLiveContactByEmail } from '../lib/contactHelpers';
 import { contactFrecencyScore, isScreenedOut, senderSignalFromContact } from './ai/priorityScore';
 import { resolveScreenerEnabled } from './ai/needsReplyScoring';
 
@@ -248,11 +249,8 @@ export const recipientTimeZones = publicQuery({
 		].slice(0, KNOWN_RECIPIENT_LIMIT);
 		const found: Array<{ address: string; timeZone: string }> = [];
 		for (const email of wanted) {
-			const contact = await ctx.db
-				.query('contacts')
-				.withIndex('by_email', (q) => q.eq('email', email))
-				.first();
-			if (!contact || contact.deletedAt !== undefined) continue;
+			const contact = await findLiveContactByEmail(ctx, email);
+			if (!contact) continue;
 			const timeZone = contact.timezone?.trim();
 			if (timeZone) found.push({ address: email, timeZone });
 		}

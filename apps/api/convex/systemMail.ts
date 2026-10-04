@@ -12,6 +12,7 @@ import {
 } from './lib/sendProviders';
 import { sendProviderDispatch } from './lib/sendProviders/dispatch';
 import { defaultSendTransportId } from './lib/sendProviders/transports';
+import { recordSendResponseRefusal } from './webhooks/providerSuppression';
 import {
 	systemMailRetryDisposition,
 	type SystemMailAttemptOutcome,
@@ -156,6 +157,14 @@ export async function attemptSystemEmail(
 			buildSystemMailExtrasFor(provider, { idempotencyKey: args.idempotencyKey })
 		);
 		if (!dispatched.result.success) {
+			// Auth, double opt-in and test mail refused off the provider's reject
+			// list: the same fact a campaign refusal is, mirrored the same way
+			// before the failure is reported (#1243). Never throws.
+			await recordSendResponseRefusal(ctx, {
+				result: dispatched.result,
+				providerType: dispatched.providerType,
+				recipient: args.to,
+			});
 			return failedAttempt(
 				provider,
 				args,

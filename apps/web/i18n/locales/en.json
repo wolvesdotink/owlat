@@ -283,6 +283,8 @@
 				"back": "Previous",
 				"backTitle": "Previous open task (←)",
 				"estimateLeft": "{estimate} left",
+				"estimateMinutes": "about {n} min",
+				"estimateSeconds": "about {n} sec",
 				"exit": "Exit",
 				"exitTitle": "Exit (Esc)",
 				"newCount": "+{count} new",
@@ -290,6 +292,17 @@
 				"next": "Next",
 				"nextLabel": "Next:",
 				"nextTitle": "Next open task (→)",
+				"outcome": {
+					"replied": "{count} replied",
+					"sent": "{count} sent",
+					"approved": "{count} approved",
+					"rejected": "{count} rejected",
+					"opened": "{count} opened",
+					"cleared": "{count} cleared",
+					"archived": "{count} archived",
+					"snoozed": "{count} snoozed",
+					"completed": "{count} completed"
+				},
 				"progress": "{position} of {total}",
 				"undo": "Undo",
 				"undoTitle": "Undo last (⌘Z)"
@@ -316,12 +329,14 @@
 					"title": "All caught up"
 				},
 				"draftReady": "Draft ready",
-				"editInThread": "Edit in thread",
 				"empty": {
 					"body": "No drafts need your review right now.",
 					"title": "All caught up!"
 				},
 				"escalatedBecause": "Escalated because: {reason}",
+				"fillGaps": "Fill in the gaps",
+				"fillLabel": "Draft to fill in",
+				"gapsHeldHere": "1 gap left in this draft. Fill it in before you send it. | {count} gaps left in this draft. Fill them in before you send it.",
 				"heldBecause": "Held because: {reason}",
 				"noSubject": "(no subject)",
 				"noTextContent": "(No text content)",
@@ -4210,15 +4225,8 @@
 				"selectingAllMatching": "Selecting…"
 			},
 			"postboxClarificationCard": {
-				"answer": "Answer",
 				"answerLater": "I'll answer later",
-				"cardLabel": "Needs your input: {subject}",
-				"drafting": "Drafting your reply…",
-				"hintLater": "Later",
-				"hintPick": "Pick",
-				"openDraft": "Open draft",
-				"statusDraftReady": "Draft ready",
-				"statusNeedsInput": "Needs your input"
+				"drafting": "Drafting your reply…"
 			},
 			"postboxCoachPanel": {
 				"clean": "Looks solid — no issues found.",
@@ -4896,7 +4904,6 @@
 					"summary": "{summary} this session.",
 					"title": "All caught up"
 				},
-				"draftReply": "Draft reply",
 				"empty": {
 					"hint": "Nothing is waiting on your reply.",
 					"title": "All caught up"
@@ -4912,11 +4919,7 @@
 					"snooze": "Snooze"
 				},
 				"reply": "Reply",
-				"snooze": "Snooze",
-				"urgency": {
-					"high": "Urgent",
-					"low": "Low priority"
-				}
+				"snooze": "Snooze"
 			},
 			"postboxReplyGuard": {
 				"body": "This message may not really be from who it claims. Here is what we noticed:",
@@ -4929,11 +4932,6 @@
 				"dismissTitle": "Dismiss for this session",
 				"openQueue": "Open Answer queue",
 				"waiting": "{count} email is waiting on your reply | {count} emails are waiting on your reply"
-			},
-			"postboxReviewSlot": {
-				"draftReady": "Draft ready",
-				"optionCount": "{count} options",
-				"reviewAndSend": "Review & send"
 			},
 			"postboxRewriteActions": {
 				"formal": "More formal",
@@ -6638,9 +6636,6 @@
 				"summary": "{summary} this session.",
 				"body": "Your Workbench now starts fresh from here."
 			},
-			"mail": {
-				"writeOwn": "Write my own"
-			},
 			"mode": {
 				"back": "Back to {page}",
 				"backTo": {
@@ -7112,6 +7107,13 @@
 						"loading": "Loading delivery-rate history",
 						"subtitle": "Share of sent mail that was delivered, daily",
 						"title": "Delivery rate"
+					},
+					"unresolvedFeedback": {
+						"bounced": "{count} bounced",
+						"complained": "{count} complained",
+						"open": "{count} still unmatched",
+						"summary": "Bounces and complaints with no matching send (30 days): {total} · {breakdown}",
+						"suppressed": "{count} blocked by address"
 					}
 				},
 				"migrate": {
@@ -10316,8 +10318,6 @@
 				"requestReply": "Draft a reply",
 				"requestReplyOperation": "Ask for a draft",
 				"replyLanguageNote": "The reply will be written in {language}.",
-				"retriedToast": "The agent will try again",
-				"retryProcessing": "Retry processing",
 				"reusedAnswersEyebrow": "From memory",
 				"reusedAnswersHint": "The same question was answered before, so the agent applied that answer again. Edit the draft if it should read differently, or",
 				"reusedAnswersManage": "review what Owlat remembers.",
@@ -10363,9 +10363,7 @@
 				"loading": "Loading failed messages...",
 				"noTextContent": "(No text content)",
 				"pageTitle": "Failed messages — Owlat",
-				"retriedToast": "Trying this message again",
 				"retryOperation": "Retry message",
-				"retryProcessing": "Try again",
 				"subtitle": "Incoming messages that could not be handled, even after trying again on their own. Check the reason, fix the cause, then try again.",
 				"title": "Failed messages"
 			},
@@ -10490,6 +10488,25 @@
 				"subtitle": "How fast the team should answer Team Inbox conversations.",
 				"title": "Response targets",
 				"backToInbox": "Team Inbox"
+			},
+			"retry": {
+				"sendFailed": "Sending failed",
+				"started": "Retry started",
+				"sendAgain": {
+					"action": "Send again",
+					"hint": "Sends the reply you approved, unchanged. The agent does not write a new draft.",
+					"toast": "Sending the approved reply again"
+				},
+				"review": {
+					"action": "Back to review",
+					"hint": "Puts the reply a person wrote back in review. The agent does not write a new draft.",
+					"toast": "The reply is back in review"
+				},
+				"redraft": {
+					"action": "Retry processing",
+					"hint": "The agent reads the message again and writes a new draft.",
+					"toast": "The agent will try again"
+				}
 			},
 			"updates": {
 				"blockDialogConfirm": "Block sender",
@@ -16281,6 +16298,10 @@
 				"unsubscribed": "Unsubscribed from {count} sender. | Unsubscribed from {count} senders."
 			}
 		},
+		"convexAuth": {
+			"lost": "Your data stopped loading. Reload the page to reconnect.",
+			"reload": "Reload"
+		},
 		"format": {
 			"never": "Never",
 			"invalidDate": "Invalid date",
@@ -17146,6 +17167,11 @@
 			"title": "Bring my email with me"
 		},
 		"pageTitle": "Welcome — Owlat",
+		"stamp": {
+			"failed": "We couldn't save that you've been here, so you may see this screen again next time.",
+			"retry": "Try again",
+			"retrying": "Trying again…"
+		},
 		"subheading": "This is your team's home for email. Let's get you in."
 	}
 }

@@ -16,6 +16,8 @@ import schema from '../../schema';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
+import { makeFunctionReference } from 'convex/server';
+import crons from '../../crons';
 import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
 import { insertDeliveredMessage } from '../deliveryPipeline/insert';
 import { moveMessagesToFolder } from '../messageActions';
@@ -489,6 +491,19 @@ describe('migration 0054 backfills, resumes and rebuilds', () => {
 			return state ? `${state._id}:${state.revision}` : null;
 		});
 
+	const readLedger = (ctx: RunCtx) =>
+		ctx.db
+			.query('migrationRuns')
+			.withIndex('by_migration', (q) => q.eq('migration', '0054_backfill_folder_membership'))
+			.unique();
+	const ledger = (w: World) => w.t.run(readLedger);
+	/** Nothing has moved the ledger row for over an hour, as when its chain died. */
+	const stillForAnHour = (w: World) =>
+		w.t.run(async (ctx) => {
+			const row = (await readLedger(ctx))!;
+			await ctx.db.patch(row._id, { updatedAt: Date.now() - 61 * 60_000 });
+		});
+
 	it('walks every folder to ready, then completes its ledger row', async () => {
 		const w = await seeded();
 		expect(await runToEnd(w)).toMatchObject({ started: true });
@@ -498,13 +513,11 @@ describe('migration 0054 backfills, resumes and rebuilds', () => {
 			ready: 3,
 			walking: 0,
 		});
-		const ledger = await w.t.run((ctx) =>
-			ctx.db
-				.query('migrationRuns')
-				.withIndex('by_migration', (q) => q.eq('migration', '0054_backfill_folder_membership'))
-				.unique()
-		);
-		expect(ledger).toMatchObject({ status: 'completed', introducedIn: '0.6.7', scannedCount: 3 });
+		expect(await ledger(w)).toMatchObject({
+			status: 'completed',
+			introducedIn: '0.6.7',
+			scannedCount: 3,
+		});
 		await expectMembershipExact(w, 'after 0054');
 	});
 
@@ -571,6 +584,70 @@ describe('migration 0054 backfills, resumes and rebuilds', () => {
 		expect(await runToEnd(w, { restart: true })).toMatchObject({ started: true });
 		expect(await versionOf(w, w.folderIds[0]!)).toBe(before);
 		expect(await w.t.query(migration.status, {})).toMatchObject({ status: 'completed' });
+	});
+
+	describe('the ensure cron', () => {
+		/** The registered cron entry, called the way the scheduler calls it. */
+		const cron = (crons as unknown as { crons: Record<string, { name: string; args: unknown[] }> })
+			.crons['ensure folder membership backfill'];
+		const tick = (w: World) =>
+			w.t.mutation(
+				makeFunctionReference<'mutation', Record<string, never>, { started: boolean }>(cron!.name),
+				cron!.args[0] as Record<string, never>
+			);
+		it('starts 0054 on a deployment that never ran it, until the IMAP server stops listing', async () => {
+			expect(cron?.name).toBe('migrations/0054_backfill_folder_membership:ensure');
+			const w = await seeded();
+			// Unmigrated: the IMAP server would list every folder from mailMessages.
+			for (const folderId of w.folderIds) {
+				expect(await w.t.query(internal.mail.imap.fetch.folderMembershipPage, { folderId })).toBe(
+					null
+				);
+			}
+			expect(await tick(w)).toMatchObject({ started: true });
+			await w.t.finishAllScheduledFunctions(vi.runAllTimers);
+
+			expect(await w.t.query(migration.status, {})).toMatchObject({
+				status: 'completed',
+				ready: 3,
+				walking: 0,
+			});
+			await expectMembershipExact(w, 'after the cron');
+			for (const folderId of w.folderIds) {
+				const page = await w.t.query(internal.mail.imap.fetch.folderMembershipPage, { folderId });
+				expect(page).toMatchObject({ isReady: true });
+				expect(page?.blocks?.flat()).toHaveLength(7);
+			}
+		});
+
+		it('leaves a completed pass and a pass that is moving alone', async () => {
+			const w = await seeded();
+			await runToEnd(w);
+			const completed = await ledger(w);
+			expect(await tick(w)).toEqual({ started: false });
+			expect(await ledger(w)).toEqual(completed);
+
+			const fresh = await seeded();
+			await fresh.t.mutation(migration.run, {});
+			const moving = await ledger(fresh);
+			expect(await tick(fresh)).toEqual({ started: false });
+			// No resume: the queued chain keeps its generation.
+			expect(await ledger(fresh)).toEqual(moving);
+		});
+
+		it('resumes a pass whose ledger has been still for an hour', async () => {
+			const w = await seeded();
+			const { generation } = await w.t.mutation(migration.run, {});
+			// The chain died before its first page; nothing moved the row since.
+			await stillForAnHour(w);
+			expect(await tick(w)).toMatchObject({ started: true, generation: generation! + 1 });
+			await w.t.finishAllScheduledFunctions(vi.runAllTimers);
+			expect(await w.t.query(migration.status, {})).toMatchObject({
+				status: 'completed',
+				ready: 3,
+			});
+			await expectMembershipExact(w, 'resumed by the cron');
+		});
 	});
 
 	it('rebuild repairs a membership found out of step and moves its version', async () => {
@@ -641,6 +718,21 @@ describe('migration 0054 backfills, resumes and rebuilds', () => {
 				status: 'completed',
 				foldersStarted: 101,
 				walking: 0,
+			});
+			expect(await strayUids(w, stray)).toEqual([]);
+			expect(await versionOf(w, stray)).not.toBe(before);
+		});
+
+		it('the ensure cron resumes it as a rebuild once its ledger has been still for an hour', async () => {
+			const { w, stray, before } = await interruptedRebuild();
+			expect(await w.t.mutation(migration.ensure, {})).toEqual({ started: false });
+			await stillForAnHour(w);
+			expect(await w.t.mutation(migration.ensure, {})).toMatchObject({ started: true });
+			await w.t.finishAllScheduledFunctions(vi.runAllTimers);
+			expect(await w.t.query(migration.status, {})).toMatchObject({
+				status: 'completed',
+				isRebuild: true,
+				foldersStarted: 101,
 			});
 			expect(await strayUids(w, stray)).toEqual([]);
 			expect(await versionOf(w, stray)).not.toBe(before);

@@ -260,4 +260,32 @@ export function registerDeliveryCrons(crons: Crons): void {
 		internal.delivery.seedScheduledProbe.sweepScheduledSeedProbes,
 		{}
 	);
+
+	// Send completions that threw (#1195): replay the recorded outcomes whose
+	// backoff ran out, and delete old records (resolved after 30 days, exhausted
+	// after 90). Each tick with nothing to do is one index range read.
+	crons.interval(
+		'replay failed send completions',
+		{ minutes: 10 },
+		internal.delivery.sendCompletionFailures.replayDueCompletionFailures,
+		{}
+	);
+	crons.interval(
+		'purge send completion failures',
+		{ hours: 24 },
+		internal.delivery.sendCompletionFailureAdmin.purgeCompletionFailures,
+		{}
+	);
+
+	// Sends no completion reached (#1208): fail a queued Send with no provider
+	// id once its recorded first attempt is past the four-day delivery deadline
+	// plus a day, so its campaign can complete. Sends without a recorded first
+	// attempt are left to an operator (`delivery/stuckSendSweepAdmin.ts`). A tick
+	// with nothing due is one index range read per send table.
+	crons.interval(
+		'sweep lost sends',
+		{ hours: 1 },
+		internal.delivery.stuckSendSweep.sweepLostSends,
+		{}
+	);
 }

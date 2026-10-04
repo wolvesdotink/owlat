@@ -1,6 +1,10 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { webhookPayloadValidator } from '../lib/convexValidators';
+import {
+	bounceTypeValidator,
+	unresolvedFeedbackSuppressionValidator,
+} from '../lib/literalValidators';
 import { webhookEventValidator, subscribableWebhookEventValidator } from '../webhooks/events';
 
 /**
@@ -169,6 +173,31 @@ export const webhookTables = {
 		.index('by_delivery_digest', ['deliveryDigest'])
 		.index('by_expires_at', ['expiresAt']),
 
+	// Replay claims for single provider EVENTS whose provider gives them no id
+	// and signs no timestamp (Mandrill, #1228). One row per applied
+	// address-keyed or complaint event, keyed by the adapter's `replayKey`
+	// (`mandrill:<event>:<msg._id>:<ts ms>`): no address, no payload. Same claim
+	// protocol as `pluginWebhookDeliveries` above (in flight, then completed, and
+	// released on failure); see `webhooks/inboundEventClaims.ts`.
+	//
+	// Bounded by construction: an adapter stamps a key only on an event younger
+	// than `INBOUND_REPLAY_WINDOW_MS`, so a row expires that window plus one
+	// in-flight lease after its event (`expiresAt`) and is swept by the claim hot
+	// path and an hourly cron, never while a live run still holds it.
+	inboundEventClaims: defineTable({
+		replayKey: v.string(),
+		// Random per claim; `complete` and `release` require it, so a worker whose
+		// claim was taken over cannot touch its successor's.
+		token: v.string(),
+		eventAt: v.number(),
+		claimedAt: v.number(),
+		expiresAt: v.number(),
+		status: v.union(v.literal('in_flight'), v.literal('completed')),
+		completedAt: v.optional(v.number()),
+	})
+		.index('by_replay_key', ['replayKey'])
+		.index('by_expires_at', ['expiresAt']),
+
 	// Durable "this plugin feedback channel is alive" marker, one row per bundled
 	// transport kind, stamped when a batch finishes dispatching.
 	//
@@ -214,4 +243,69 @@ export const webhookTables = {
 	})
 		.index('by_event_id', ['eventId'])
 		.index('by_expires_at', ['expiresAt']),
+
+	// Bounces and complaints whose provider message id matched no Send (#1194).
+	// The dispatcher used to log these and drop them; a row here lets an
+	// operator count them and replay them once the id resolves (a late
+	// completion, a repair that writes the id back). `webhooks/unresolvedFeedback.ts`
+	// owns the table: one row per (message id, kind), replayed by a cron with a
+	// short backoff and deleted 90 days after it was first seen.
+	//
+	// A complaint with NO message id (RFC 5965 redaction) that carried no proof
+	// this deployment sent the mail is kept here too (#1227), with no
+	// `providerMessageId`. There is nothing to replay it by, so it is stored
+	// already closed (`resolution: 'no_message_id'`) and only counted.
+	//
+	// NO PLAINTEXT ADDRESSES. The recipient's address is not stored (an
+	// out-of-scope row keeps a hash of it keyed by the message id, see
+	// `sendingScope`; a guessed address can be confirmed against it), and neither is the
+	// remote server's free-text diagnostic (it often quotes the address). A
+	// replay resolves by message id and the Send carries its own recipient; an
+	// attributed complaint blocks its address at receive time, from the event in
+	// memory. So the contact erasure has nothing to find here.
+	unresolvedFeedback: defineTable({
+		kind: v.union(v.literal('bounce'), v.literal('complaint')),
+		// Absent only on a complaint that arrived without one (#1227).
+		providerMessageId: v.optional(v.string()),
+		// The adapter's `providerType`; `mta` replays through the MTA resolver.
+		providerType: v.optional(v.string()),
+		bounceType: v.optional(bounceTypeValidator),
+		// The SMTP status code read out of the diagnostic (`5.1.1`, or `550`),
+		// never the diagnostic text itself.
+		bounceStatusCode: v.optional(v.string()),
+		// The feedback-provenance tag the event carried, if any. A string, not
+		// the shared literal union, so a newer MTA's value is still stored.
+		deliveryDomain: v.optional(v.string()),
+		// When the provider says the event happened; replayed as the transition time.
+		at: v.number(),
+		// What happened to the address the event named when it arrived, and why.
+		suppression: unresolvedFeedbackSuppressionValidator,
+		// Provider redeliveries of the same event bump these instead of adding rows.
+		occurrences: v.number(),
+		firstSeenAt: v.number(),
+		lastSeenAt: v.number(),
+		status: v.union(v.literal('open'), v.literal('resolved')),
+		// `replayed`: the Send lifecycle applied the event. `refused`: the id
+		// resolves now, but the lifecycle refused the edge (a terminal Send), or
+		// the Send is not the match an out-of-scope row waits for (#1243).
+		// `no_message_id`: the event carried no id, so no replay can match it.
+		resolution: v.optional(
+			v.union(v.literal('replayed'), v.literal('refused'), v.literal('no_message_id'))
+		),
+		resolvedAt: v.optional(v.number()),
+		// Automatic replays spent; an operator replay does not count.
+		replayAttempts: v.number(),
+		// Absent once the automatic replays are spent or the row resolved.
+		nextReplayAt: v.optional(v.number()),
+		// Present when the event came from outside this deployment's sending
+		// scope (#1243): a replay applies it only to a Send through the same
+		// provider kind whose recipient hashes to `recipientHash`, an HMAC of the
+		// normalized address keyed by the message id. Avoids a plaintext address,
+		// but a guessed one can be confirmed against it. Compared, never read back.
+		sendingScope: v.optional(v.object({ recipientHash: v.optional(v.string()) })),
+	})
+		.index('by_message_id_and_kind', ['providerMessageId', 'kind'])
+		.index('by_status_and_next_replay', ['status', 'nextReplayAt'])
+		.index('by_status_and_first_seen', ['status', 'firstSeenAt'])
+		.index('by_first_seen', ['firstSeenAt']),
 };

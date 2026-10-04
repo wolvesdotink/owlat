@@ -395,35 +395,68 @@ describe('sendLifecycle.transition — opened/clicked', () => {
 		});
 	});
 
-	it('open after bounce records count but does not re-transition out of terminal', async () => {
-		const t = convexTest(schema, modules);
-		let sendId: Id<'emailSends'>;
-		await t.run(async (ctx) => {
-			const campaignId = await ctx.db.insert('campaigns', createTestCampaign());
-			const contactId = await ctx.db.insert('contacts', createTestContact());
-			sendId = await ctx.db.insert(
-				'emailSends',
-				createTestEmailSend({
-					campaignId,
-					contactId,
-					status: 'bounced',
-					bouncedAt: 500,
-					bounceType: 'hard',
-					contactEmail: 'bounce@example.com',
-				})
-			);
-		});
+	// An open or click on a hard-bounced row never reaches the reducer, so it
+	// records nothing and the row keeps its status. Soft-bounced and complained
+	// rows record it as engagement instead: see
+	// engagementAfterFeedback.integration.test.ts (#1225).
+	it.each([
+		{ label: 'hard-bounced', row: { status: 'bounced', bounceType: 'hard' }, reason: 'terminal' },
+	] as const)(
+		'an open or click on a $label send is refused and records nothing',
+		async ({ row, reason }) => {
+			const t = convexTest(schema, modules);
+			let campaignId: Id<'campaigns'>;
+			let sendId: Id<'emailSends'>;
+			await t.run(async (ctx) => {
+				campaignId = await ctx.db.insert(
+					'campaigns',
+					createTestCampaign({ statsOpened: 0, statsClicked: 0 })
+				);
+				const contactId = await ctx.db.insert('contacts', createTestContact());
+				sendId = await ctx.db.insert(
+					'emailSends',
+					createTestEmailSend({
+						campaignId,
+						contactId,
+						...row,
+						bouncedAt: 500,
+						contactEmail: 'bounce@example.com',
+					})
+				);
+			});
 
-		const outcome = await t.mutation(internal.delivery.sendLifecycle.transition, {
-			send: { kind: 'campaign', id: sendId! },
-			transition: { to: 'opened', at: 1000 },
-		});
+			for (const transition of [
+				{ to: 'opened', at: 1000, agent: 'client' },
+				{ to: 'opened', at: 90_000, agent: 'client' },
+				{ to: 'clicked', at: 91_000, url: 'https://example.com/a', agent: 'client' },
+				{ to: 'clicked', at: 92_000, url: 'https://example.com/b', agent: 'client' },
+			] as const) {
+				const outcome = await t.mutation(internal.delivery.sendLifecycle.transition, {
+					send: { kind: 'campaign', id: sendId! },
+					transition,
+				});
+				expect(outcome).toMatchObject({ ok: false, reason });
+			}
 
-		// open is illegal from terminal `bounced` (not in LEGAL_EDGES.bounced)
-		expect(outcome.ok).toBe(false);
-		if (outcome.ok) return;
-		expect(outcome.reason).toBe('terminal');
-	});
+			await t.run(async (ctx) => {
+				const send = await ctx.db.get(sendId!);
+				expect(send?.status).toBe(row.status);
+				expect(send?.openedAt).toBeUndefined();
+				expect(send?.openCount ?? 0).toBe(0);
+				expect(send?.clickedAt).toBeUndefined();
+				expect(send?.clickedLinks).toBeUndefined();
+				const campaign = await readCampaignWithStats(ctx, campaignId!);
+				expect(campaign?.statsOpened ?? 0).toBe(0);
+				expect(campaign?.statsClicked ?? 0).toBe(0);
+				const activities = await ctx.db.query('contactActivities').collect();
+				expect(
+					activities.filter(
+						(a) => a.activityType === 'email_opened' || a.activityType === 'email_clicked'
+					)
+				).toEqual([]);
+			});
+		}
+	);
 });
 
 // ============================================================================
