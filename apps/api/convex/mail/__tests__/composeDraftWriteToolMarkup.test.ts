@@ -370,3 +370,32 @@ describe('writeAnswerDraft — second review cases, raw tags', () => {
 		expect(finals).toEqual([expect.objectContaining({ text: REPLY, status: 'complete' })]);
 	});
 });
+
+describe('writeAnswerDraft — backticks inside a call payload (third review)', () => {
+	const strayTick =
+		'Let me check `availability. <tool_call>{"name":"recallKnowledge","arguments":{"query":"`December dates"}}</tool_call>';
+
+	it('never shows the block and retries, wherever a chunk boundary falls', async () => {
+		const full = `${strayTick}${REPLY}`;
+		for (let at = 0; at <= full.length; at += 1) {
+			mocks.runLlmStream.mockReset();
+			mocks.runLlmStream
+				.mockImplementationOnce(chunks([full.slice(0, at), full.slice(at)]))
+				.mockImplementationOnce(chunks([REPLY]));
+			const { ctx, shown, finals } = makeCtx();
+			await write(ctx);
+			for (const text of shown) expect(text, `split at ${at}`).not.toContain('<tool_call');
+			expect(mocks.runLlmStream, `split at ${at}`).toHaveBeenCalledTimes(2);
+			expect(finals).toEqual([expect.objectContaining({ text: REPLY, status: 'complete' })]);
+		}
+	});
+
+	it('keeps a fenced sample that encloses a whole block, without a retry', async () => {
+		const sample = `${REPLY}\n\n\`\`\`\n<tool_call>{"name":"x"}</tool_call>\n\`\`\``;
+		mocks.runLlmStream.mockImplementationOnce(streams(sample));
+		const { ctx, finals } = makeCtx();
+		await write(ctx);
+		expect(mocks.runLlmStream).toHaveBeenCalledTimes(1);
+		expect(finals).toEqual([expect.objectContaining({ text: sample, status: 'complete' })]);
+	});
+});

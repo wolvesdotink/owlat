@@ -24,6 +24,10 @@ const VENDOR_NS = ['ant', 'ml'].join('');
 const INLINE_BLOCK =
 	'Let me check. <tool_call>{"name":"recallKnowledge","arguments":{"query":"availability"}}</tool_call>';
 
+/** The third review's block: a stray prose backtick pairs with one inside the call's JSON. */
+const STRAY_TICK_BLOCK =
+	'Let me check `availability. <tool_call>{"name":"recallKnowledge","arguments":{"query":"`December dates"}}</tool_call>';
+
 /** Leading prefixes the stripper must cut, and the stream must never show. */
 const PREFIXES: Array<[string, string]> = [
 	['the issue example', ISSUE_PREFIX],
@@ -82,6 +86,12 @@ describe('stripLeakedToolMarkup — unusable', () => {
 			'embedded',
 		],
 		['an inline container block', `${INLINE_BLOCK}${REPLY}`, 'embedded'],
+		['a block a stray backtick pairs into', `${STRAY_TICK_BLOCK}Hi John`, 'embedded'],
+		[
+			'a block whose closer sits outside the opener span',
+			'Hi, `<tool_call>{}` </tool_call> Best',
+			'embedded',
+		],
 		[
 			'a block on its own line',
 			'Hi John,\n\n  <tool_call>\n{"name":"x"}\n</tool_call>\nBest',
@@ -142,6 +152,10 @@ describe('stripLeakedToolMarkup — prose is not markup', () => {
 		],
 		['a whole block in a code span', 'Hi,\n\nit looks like `<tool_call>{}</tool_call>` there.'],
 		[
+			'a fenced sample that encloses a whole block',
+			'Hi,\n\n```\n<function_calls>\n<invoke>x</invoke>\n</function_calls>\n```\nBest',
+		],
+		[
 			'a fenced block sample',
 			'Hi,\n\nfor example:\n```xml\n<tool_call>{"name":"x"}</tool_call>\n```\nBest',
 		],
@@ -188,6 +202,8 @@ describe('hostile input stays linear', () => {
 		['an endless attribute', `<invoke name="${'a'.repeat(200_000)}`],
 		['angle brackets', '<'.repeat(200_000)],
 		['openers in code spans', '`<tool_call>` '.repeat(20_000)],
+		['openers and closers in separate spans', '`<tool_call>` `</tool_call>` '.repeat(10_000)],
+		['blocks in code spans', '`<tool_call>{}</tool_call>` '.repeat(10_000)],
 		['unpaired backtick runs', '` `` ``` '.repeat(30_000)],
 		['near-miss container names', 'x <function_call '.repeat(20_000)],
 		['closing tags in prose', `Hi ${'</invoke '.repeat(20_000)}`],
@@ -226,11 +242,14 @@ describe('visibleDraftStreamText', () => {
 			'a block wrapped in an unclosed backtick',
 			`Let me check. \`<tool_call>{}</tool_call>${REPLY}`,
 		],
+		['a block a stray backtick pairs into', `${STRAY_TICK_BLOCK}${REPLY}`],
 	])('holds the text back from %s that starts after the reply', (_label, full) => {
 		for (const partial of everyPrefix(full)) {
 			const visible = visibleDraftStreamText(partial);
 			expect(visible, JSON.stringify(partial)).not.toMatch(/<\/?(?:invoke|tool_call|function_)/);
-			expect(full.startsWith(visible) && visible.length <= 'Let me check. `'.length).toBe(true);
+			expect(
+				full.startsWith(visible) && visible.length <= 'Let me check `availability. '.length
+			).toBe(true);
 		}
 	});
 
@@ -241,15 +260,22 @@ describe('visibleDraftStreamText', () => {
 		expect(visibleDraftStreamText('Hi John, <3 and more')).toBe('Hi John, <3 and more');
 		expect(visibleDraftStreamText('if a < b')).toBe('if a < b');
 		expect(visibleDraftStreamText('Tom &amp; Jerry')).toBe('Tom &amp; Jerry');
-		expect(visibleDraftStreamText('wrap it in `<tool_call>` tags')).toBe(
-			'wrap it in `<tool_call>` tags'
+		expect(visibleDraftStreamText('it is `<tool_call>{}</tool_call>` there')).toBe(
+			'it is `<tool_call>{}</tool_call>` there'
 		);
 	});
 
-	it('holds a container opener back until a code span closes around it', () => {
+	it('holds a container opener in a code span until the span encloses its closing tag', () => {
 		expect(visibleDraftStreamText('wrap it in `<tool_call>')).toBe('wrap it in `');
-		expect(visibleDraftStreamText('wrap it in `<tool_call>`')).toBe('wrap it in `');
-		expect(visibleDraftStreamText('wrap it in `<tool_call>` ')).toBe('wrap it in `<tool_call>` ');
+		expect(visibleDraftStreamText('wrap it in `<tool_call>` tags')).toBe('wrap it in `');
+		expect(stripLeakedToolMarkup('wrap it in `<tool_call>` tags')).toEqual({
+			kind: 'clean',
+			text: 'wrap it in `<tool_call>` tags',
+		});
+		expect(visibleDraftStreamText('see `<tool_call>{}</tool_call>`')).toBe('see `');
+		expect(visibleDraftStreamText('see `<tool_call>{}</tool_call>` ok')).toBe(
+			'see `<tool_call>{}</tool_call>` ok'
+		);
 	});
 
 	it('shows nothing while a leading block is still open or being written', () => {
