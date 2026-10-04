@@ -855,6 +855,21 @@ describe('restore', () => {
 		c.close();
 	});
 
+	it('backs up deliberately cleared fields too, a blank editor included', async () => {
+		const { c } = await withOffer(copyOf({ subject: 'Recovered' }));
+		c.refs.toAddresses.value = [];
+		c.refs.subject.value = '';
+		c.refs.bodyHtml.value = '';
+
+		expect(await c.mirror.restore()).toEqual({ status: 'restored' });
+		const backupKey = ownKeys().find((k) => /:pre-restore\.[a-z0-9]+$/.test(k));
+		expect(stored(backupKey!)).toMatchObject({
+			fields: { ...ROW, toAddresses: [], subject: '', bodyHtml: '' },
+			base: ROW,
+		});
+		c.close();
+	});
+
 	it('aborts with backup-failed when the backup cannot be written, changing nothing', async () => {
 		const { c, source } = await withOffer(copyOf({ subject: 'Recovered' }));
 		c.refs.subject.value = 'Typed, not yet saved';
@@ -1133,6 +1148,20 @@ describe('migration when the row is created', () => {
 		expect(driver.map.has(live)).toBe(true);
 		expect(driver.map.has(backup)).toBe(true);
 		expect(driver.map.has(mirrorCopyKey(NS, 'draft-7', session, 'live'))).toBe(false);
+		c.close();
+	});
+
+	it('retires the provisional live copy a failed migration left behind', async () => {
+		const { c, live } = await freshWithLiveCopy();
+		driver.failSet = (key) => key.includes(':draft-7:');
+		c.created('draft-7');
+		await settle();
+		expect(driver.map.has(live)).toBe(true);
+		// Sent: nothing of the composition may be offered to the next one.
+		driver.failSet = () => false;
+		c.mirror.retire();
+		await settle();
+		expect(driver.map.has(live)).toBe(false);
 		c.close();
 	});
 

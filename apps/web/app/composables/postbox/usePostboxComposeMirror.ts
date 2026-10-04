@@ -81,10 +81,6 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	let chain: Promise<unknown> = Promise.resolve();
 	let scanToken = 0;
-	// The draft key this session's live copy currently lives under.
-	let liveDraftKey = sources.draftId.value
-		? String(sources.draftId.value)
-		: provisionalDraftKey(sessionId);
 
 	const offer: Ref<MirrorOffer | null> = shallowRef(null);
 	/** Restore / Keep in progress: the composer locks its fields meanwhile. */
@@ -154,7 +150,6 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 			if (ok) {
 				lastWritten = fields;
 				writtenRevision = Math.max(writtenRevision, captured.revision);
-				liveDraftKey = writingUnder;
 				void sweepAfterWrite();
 			}
 			return ok;
@@ -359,10 +354,8 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 			// Set aside what the editor holds, if it is not already on the server.
 			let backupAt = revision;
 			const onScreen = capture();
-			if (
-				!mirrorFieldsEqual(onScreen.fields, checkedRow) &&
-				!isBlankMirrorFields(onScreen.fields)
-			) {
+			// Blank included: a deliberate clear is text too.
+			if (!mirrorFieldsEqual(onScreen.fields, checkedRow)) {
 				const backup: MirrorCopy = {
 					v: 2,
 					fields: onScreen.fields,
@@ -446,12 +439,13 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 			timer = null;
 		}
 		offer.value = null;
-		// Behind any write already queued, and run despite `retired`.
-		const key = () => mirrorCopyKey(ns, liveDraftKey, sessionId, 'live');
+		// Behind any write already queued, and run despite `retired`: every live
+		// key the session may own (a failed migration leaves the provisional one).
 		void enqueue(async () => {
-			await store.remove(key());
-			if (liveDraftKey !== draftKey())
-				await store.remove(mirrorCopyKey(ns, draftKey(), sessionId, 'live'));
+			await store.remove(mirrorCopyKey(ns, provisionalDraftKey(sessionId), sessionId, 'live'));
+			if (sources.draftId.value) {
+				await store.remove(mirrorCopyKey(ns, String(sources.draftId.value), sessionId, 'live'));
+			}
 		});
 	}
 
@@ -461,7 +455,6 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 			if (retired) return;
 			const from = provisionalDraftKey(sessionId);
 			await store.migrateSession(ns, sessionId, from, String(id));
-			if (liveDraftKey === from) liveDraftKey = String(id);
 		});
 		if (disposed) stopCreated();
 	});
