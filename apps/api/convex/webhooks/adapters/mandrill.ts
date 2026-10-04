@@ -52,12 +52,12 @@
  *    (no address in it) and the dispatcher claims it, so a key is applied once;
  *  - an event older than `INBOUND_REPLAY_WINDOW_MS` (24 h) gets no key and acts
  *    on no address: a `reject` still fails its Send but suppresses nobody, an
- *    `unsub` is dropped. (An `unsub` naming no message id stays accepted, as
- *    the one event keyed by address; it gets no key, and the re-subscribe guard
- *    below is what protects it.) Mandrill re-attempts a failed batch up to 20 times at
+ *    `unsub` is dropped. Mandrill re-attempts a failed batch up to 20 times at
  *    15–25 minute intervals (about eight hours) and then gives up, so a genuine
  *    delivery is never that old. An event with no `ts` (Mandrill always sends
- *    one) or one stamped in the future is treated the same way;
+ *    one) or one stamped in the future is treated the same way. An `unsub`
+ *    naming no message id stays accepted, as the one event keyed by address,
+ *    but gets no key: the re-subscribe guard below is what protects it;
  *  - the host additionally refuses a re-add older than an operator's removal
  *    (`blockedEmails.addFromEvent`) and an unsubscribe older than a re-subscribe
  *    (`processUnsubscribeByEmail`), which covers a first delivery that arrives
