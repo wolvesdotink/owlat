@@ -335,6 +335,10 @@
 					"title": "All caught up!"
 				},
 				"escalatedBecause": "Escalated because: {reason}",
+				"fillGaps": "Fill in the gaps",
+				"fillLabel": "Draft to fill in",
+				"gapsHeldHere": "1 gap left in this draft. Fill it in before you send it. | {count} gaps left in this draft. Fill them in before you send it.",
+				"gapsHeldThread": "1 gap left in this draft. Fill it in the thread before you send it. | {count} gaps left in this draft. Fill them in the thread before you send it.",
 				"heldBecause": "Held because: {reason}",
 				"noSubject": "(no subject)",
 				"noTextContent": "(No text content)",
