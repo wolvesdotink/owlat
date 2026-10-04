@@ -27,6 +27,7 @@ import type { TransitionOutcome } from '../delivery/sendLifecycle';
 import { withTimeout } from '../lib/inputGuards';
 import { logError, logWarn } from '../lib/runtimeLog';
 import { dispatchComplaint } from './complaintDispatch';
+import { dispatchOnce } from './inboundEventClaims';
 import { applyFailureSuppression, applyProviderSuppression } from './providerSuppression';
 import { isSendNotFound, recordUnresolvedFeedback } from './unresolvedBounce';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
@@ -228,8 +229,10 @@ const DISPATCH: DispatchTable = {
 		// contact join happens inside the mutation — which then replays the exact
 		// public one-click path (membership delete, opt-out stamp, campaign
 		// counter, `topic.unsubscribed` fanout, `unsubscribed` transport outcome).
+		// `eventAt` keeps a late event from undoing a later re-subscribe (#1228).
 		return await ctx.runMutation(internal.delivery.unsubscribeQueries.processUnsubscribeByEmail, {
 			email: e.recipient,
+			eventAt: e.at,
 		});
 	},
 	'email.provider_suppressed': applyProviderSuppression,
@@ -445,5 +448,11 @@ export async function dispatchInboundEvent(
 	_options?: { returnResult: true }
 ): Promise<unknown> {
 	const handler = DISPATCH[event.kind] as Handler<InboundEventKind>;
-	return handler(ctx, event as InboundEventOf<InboundEventKind>);
+	const apply = () => handler(ctx, event as InboundEventOf<InboundEventKind>);
+	// An event its adapter keyed for replay (a provider with no event ids and no
+	// signed timestamp, #1228) is applied once per key.
+	if ('replayKey' in event && event.replayKey) {
+		return dispatchOnce(ctx, { replayKey: event.replayKey, eventAt: event.at }, apply);
+	}
+	return apply();
 }

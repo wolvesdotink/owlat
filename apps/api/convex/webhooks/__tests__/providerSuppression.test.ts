@@ -125,7 +125,10 @@ describe('a provider nothing was written for expresses its whole policy as data'
 
 		expect(blocks(calls)).toHaveLength(0);
 		expect(unsubscribes(calls)).toHaveLength(1);
-		expect(unsubscribes(calls)[0]!.args).toEqual({ email: RECIPIENT });
+		expect(unsubscribes(calls)[0]!.args).toEqual({
+			email: RECIPIENT,
+			eventAt: expect.any(Number),
+		});
 	});
 
 	it('decides an effect for every member of the vocabulary', () => {

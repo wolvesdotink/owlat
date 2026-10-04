@@ -168,11 +168,15 @@ async function readSend(t: Harness, sendId: Id<'emailSends'>) {
 	return await t.run(async (ctx: { db: DatabaseWriter }) => await ctx.db.get(sendId));
 }
 
-/** A Mandrill message event, with the fields the adapter reads. */
+/**
+ * A Mandrill message event, with the fields the adapter reads. Stamped a minute
+ * ago by default: an address-keyed event older than the replay window acts on
+ * no address (#1228).
+ */
 function event(
 	name: string,
 	msg: Record<string, unknown>,
-	ts = Math.floor(Date.UTC(2026, 7, 4, 12, 0, 0) / 1000)
+	ts = Math.floor(Date.now() / 1000) - 60
 ): Record<string, unknown> {
 	return { event: name, ts, msg: { ts, ...msg } };
 }
@@ -501,7 +505,13 @@ describe('Mandrill event mapping (D10 table)', () => {
 		});
 		const topicId = await t.run(async (ctx: { db: DatabaseWriter }) => {
 			const id = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
-			await ctx.db.insert('contactTopics', { contactId, topicId: id, addedAt: Date.now() });
+			// Subscribed before the event: a later membership is a re-subscribe
+			// the event must not undo (#1228).
+			await ctx.db.insert('contactTopics', {
+				contactId,
+				topicId: id,
+				addedAt: Date.now() - 60 * 60 * 1000,
+			});
 			return id;
 		});
 
@@ -731,7 +741,7 @@ describe('mapMandrillEvent / parseMandrillBatch', () => {
 	 */
 	it('joins on msg._id ALONE — never on the recipient, never on a guess', () => {
 		const richButUnjoinable = {
-			ts: 1,
+			ts: Math.floor(Date.now() / 1000),
 			msg: { email: 'subscriber@example.com', state: 'sent', sender: 'news@example.com' },
 		};
 		for (const name of ['send', 'deferral', 'hard_bounce', 'soft_bounce', 'spam', 'reject']) {

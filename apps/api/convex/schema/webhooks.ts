@@ -173,6 +173,31 @@ export const webhookTables = {
 		.index('by_delivery_digest', ['deliveryDigest'])
 		.index('by_expires_at', ['expiresAt']),
 
+	// Replay claims for single provider EVENTS whose provider gives them no id
+	// and signs no timestamp (Mandrill, #1228). One row per applied
+	// address-keyed or complaint event, keyed by the adapter's `replayKey`
+	// (`mandrill:<event>:<msg._id>:<ts ms>`): no address, no payload. Same claim
+	// protocol as `pluginWebhookDeliveries` above (in flight, then completed, and
+	// released on failure); see `webhooks/inboundEventClaims.ts`.
+	//
+	// Bounded by construction: an adapter stamps a key only on an event younger
+	// than `INBOUND_REPLAY_WINDOW_MS`, so a row expires that window plus one
+	// in-flight lease after its event (`expiresAt`) and is swept by the claim hot
+	// path and an hourly cron, never while a live run still holds it.
+	inboundEventClaims: defineTable({
+		replayKey: v.string(),
+		// Random per claim; `complete` and `release` require it, so a worker whose
+		// claim was taken over cannot touch its successor's.
+		token: v.string(),
+		eventAt: v.number(),
+		claimedAt: v.number(),
+		expiresAt: v.number(),
+		status: v.union(v.literal('in_flight'), v.literal('completed')),
+		completedAt: v.optional(v.number()),
+	})
+		.index('by_replay_key', ['replayKey'])
+		.index('by_expires_at', ['expiresAt']),
+
 	// Durable "this plugin feedback channel is alive" marker, one row per bundled
 	// transport kind, stamped when a batch finishes dispatching.
 	//
