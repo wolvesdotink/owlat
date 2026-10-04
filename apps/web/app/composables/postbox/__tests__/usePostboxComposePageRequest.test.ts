@@ -29,6 +29,7 @@ import {
 	foldRowless,
 	parkLeave,
 	seedWithParked,
+	sourceFromSeed,
 	usePostboxComposePageRequest,
 	type ComposePageComposer,
 } from '../usePostboxComposePageRequest';
@@ -340,7 +341,7 @@ describe('pure helpers', () => {
 		expect(next.current).toMatchObject({ rowless: true, fields: fields() });
 	});
 
-	it('parkLeave keeps the seed text while the composer is not ready', () => {
+	it('parkLeave moves the seed text into the snapshot even before the row loads', () => {
 		const seed: ComposeSpec = { mailboxId: MBX, draftId: D1, prefillSubject: 'Offline' };
 		const next = parkLeave(
 			request({ seed, draftId: D1 }),
@@ -354,8 +355,35 @@ describe('pure helpers', () => {
 			'm',
 			1
 		);
-		expect(next.seed).toEqual(seed);
-		expect(next.current).toMatchObject({ present: ['subject'], base: null, rowless: false });
+		// Seeded fields are present, so the snapshot holds them: the seed must not
+		// be imposed on the row again (it is judged like any parked text).
+		expect(next.seed).toEqual({ mailboxId: MBX, draftId: D1 });
+		expect(next.current).toMatchObject({
+			present: ['subject'],
+			base: null,
+			rowless: false,
+			fields: { subject: 'Offline!' },
+		});
+	});
+
+	it('turns the open’s text into a recovery source on a later open', () => {
+		const req = request({
+			seed: {
+				mailboxId: MBX,
+				draftId: D1,
+				prefillSubject: 'Undone offline',
+				prefillTo: ['a@example.com'],
+			},
+			draftId: D1,
+		});
+		const src = sourceFromSeed(req)!;
+		expect(src).toMatchObject({
+			present: ['toAddresses', 'subject'],
+			base: null,
+			rowless: false,
+			fields: { subject: 'Undone offline', toAddresses: ['a@example.com'] },
+		});
+		expect(sourceFromSeed(request({ seed: { mailboxId: MBX } }))).toBeNull();
 	});
 
 	it('parkLeave parks nothing when nothing is present yet', () => {
@@ -987,6 +1015,50 @@ describe('G4: what a leave parks', () => {
 		mountPage(key, readySnap({}, { draftId: D1 }));
 		a.unmount();
 		expect(record(key)!.current).toBeUndefined();
+	});
+});
+
+describe('the open’s text after its first open (G2)', () => {
+	it('is offered, not imposed, when a crash kept it from being parked', async () => {
+		const key = usePostboxComposeNav().create({
+			mailboxId: MBX,
+			draftId: D1,
+			prefillSubject: 'Undone offline A',
+		});
+		// First open: the seed wins over the row (offline undo); then a crash.
+		const a = mountPage(key, readySnap({ subject: 'Undone offline A' }, { draftId: D1 }));
+		expect(a.page.seed.value).toMatchObject({ prefillSubject: 'Undone offline A' });
+		// Another session saves B; the next open does not impose A over it.
+		const b = mountPage(key, readySnap({}, { draftId: D1 }));
+		expect(b.page.seed.value).not.toHaveProperty('prefillSubject');
+		const rowB = fields({ subject: 'Saved B' });
+		b.fake.snap = readySnap({ subject: 'Saved B' }, { draftId: D1, base: rowB });
+		const context = mergeAll();
+		b.page.beforeReady(rowB, context);
+		expect(context.merge).not.toHaveBeenCalled();
+		await flushPromises();
+		const copies = [...driver.data.values()] as MirrorCopy[];
+		expect(copies.map((c) => [c.fields.subject, c.present, c.base])).toEqual([
+			['Undone offline A', ['subject'], null],
+		]);
+	});
+
+	it('is not imposed after a leave before the row loaded', async () => {
+		const key = usePostboxComposeNav().create({
+			mailboxId: MBX,
+			draftId: D1,
+			prefillSubject: 'Undone offline A',
+		});
+		mountPage(key, {
+			fields: fields({ subject: 'Undone offline A' }),
+			present: ['subject'],
+			base: null,
+			draftId: D1 as never,
+			ready: false,
+		}).unmount();
+		const b = mountPage(key, readySnap({}, { draftId: D1 }));
+		expect(b.page.seed.value).not.toHaveProperty('prefillSubject');
+		expect(record(key)!.sources.concat(record(key)!.current ?? [])).toHaveLength(1);
 	});
 });
 

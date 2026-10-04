@@ -441,11 +441,11 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 		offer.value = null;
 		// Behind any write already queued, and run despite `retired`: every live
 		// key the session may own (a failed migration leaves the provisional one).
+		// Keys fixed now: Discard clears the draft id while this waits.
+		const keys = [provisionalDraftKey(sessionId)];
+		if (sources.draftId.value) keys.push(String(sources.draftId.value));
 		void enqueue(async () => {
-			await store.remove(mirrorCopyKey(ns, provisionalDraftKey(sessionId), sessionId, 'live'));
-			if (sources.draftId.value) {
-				await store.remove(mirrorCopyKey(ns, String(sources.draftId.value), sessionId, 'live'));
-			}
+			for (const key of keys) await store.remove(mirrorCopyKey(ns, key, sessionId, 'live'));
 		});
 	}
 

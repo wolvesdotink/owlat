@@ -59,6 +59,11 @@ export interface ComposeRequest {
 	requestNonce: string;
 	draftId?: Id<'mailDrafts'>;
 	seed?: ComposeSpec;
+	/**
+	 * A mount has opened the seed. Its text wins over the row on that first
+	 * open only; a later one finds it as a recovery source instead.
+	 */
+	seedOpened?: boolean;
 	current?: RecoverySource;
 	sources: RecoverySource[];
 }

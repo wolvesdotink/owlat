@@ -38,7 +38,9 @@ import { ref, type Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 import {
 	MIRROR_FIELD_NAMES,
+	canonicalBlocks,
 	isBlankMirrorFields,
+	mirrorFieldsOfRow,
 	mirrorFieldEqual,
 	mirrorFieldsEqual,
 	type MirrorCopy,
@@ -166,10 +168,40 @@ export function parkLeave(
 					mountId,
 					parkedAt: now,
 				};
-	// Once the whole editor is parked (or saved), the open's text is in it.
-	const seed = snap.ready && (current || saved) ? withoutSeedText(request.seed) : request.seed;
+	// The open's text is in the parked snapshot (seeded fields count as
+	// present even before the row loads), or saved: from here on it is
+	// judged like any parked text, never imposed on the row again.
+	const seed = current || saved ? withoutSeedText(request.seed) : request.seed;
 	const draftId = request.draftId ?? snap.draftId ?? undefined;
 	return { ...request, seed, ...(draftId ? { draftId } : {}), current, sources };
+}
+
+/**
+ * The open's text as a recovery source: a later mount does not impose it on
+ * the row (the first open did; a crash may have kept it from being parked).
+ */
+export function sourceFromSeed(request: ComposeRequest): RecoverySource | null {
+	const seed = request.seed;
+	if (!seed || !seedCarriesText(seed)) return null;
+	const fields: MirrorFields = mirrorFieldsOfRow({});
+	const present: MirrorFieldName[] = [];
+	for (const name of MIRROR_FIELD_NAMES) {
+		const value = seed[PREFILL_KEY[name]];
+		if (value === undefined) continue;
+		present.push(name);
+		const target = fields as unknown as Record<string, unknown>;
+		if (name === 'bodyBlocks') target[name] = canonicalBlocks(value as unknown[]);
+		else target[name] = Array.isArray(value) ? [...value] : value;
+	}
+	return {
+		id: composeRandomId(),
+		fields,
+		present,
+		base: null,
+		rowless: !request.draftId,
+		mountId: 'open',
+		parkedAt: request.createdAt,
+	};
 }
 
 /** The record without the named sources. */
@@ -227,6 +259,16 @@ export function usePostboxComposePageRequest(options: {
 			return;
 		}
 		state.value = { status: 'ready', key, mountId };
+		change((current) => {
+			const fromSeed = current.seedOpened ? sourceFromSeed(current) : null;
+			return fromSeed
+				? {
+						...current,
+						seed: withoutSeedText(current.seed),
+						sources: [...current.sources, fromSeed],
+					}
+				: { ...current, seedOpened: true };
+		});
 		const request = nav.read(key);
 		if (!request) {
 			state.value = { status: 'expired' };

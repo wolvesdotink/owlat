@@ -1165,6 +1165,21 @@ describe('migration when the row is created', () => {
 		c.close();
 	});
 
+	it('retires the draft key it had when retiring began, though Discard clears the id', async () => {
+		const c = openComposer();
+		c.refs.subject.value = 'About to be discarded';
+		await settle();
+		const live = ownKey(':live')!;
+		const slow = driver.gate('delete');
+		c.mirror.retire();
+		// The server discard lands first and clears the id.
+		c.draftId.value = null;
+		slow.release();
+		await settle();
+		expect(driver.map.has(live)).toBe(false);
+		c.close();
+	});
+
 	it('still runs after the composer was disposed', async () => {
 		const c = openComposer({ draftId: null, row: { status: 'unknown' }, fields: BLANK });
 		c.refs.subject.value = 'Left before the row existed';
