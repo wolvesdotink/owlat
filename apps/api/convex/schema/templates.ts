@@ -332,5 +332,7 @@ export const templateTables = {
 		// scan of all queued sends, which unrelated volume could starve.
 		.index('by_inbound_message_status', ['inboundMessageId', 'status'])
 		// Point lookup for the automation intake's step-run idempotency key.
-		.index('by_automation_step_run', ['automationStepRunId']),
+		.index('by_automation_step_run', ['automationStepRunId'])
+		// The lost-send sweep (`delivery/stuckSendSweep.ts`); see `emailSends`.
+		.index('by_status_provider_first_attempt', ['status', 'providerMessageId', 'firstAttemptAt']),
 };

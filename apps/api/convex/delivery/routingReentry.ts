@@ -94,6 +94,17 @@ export const issueSnapshot = internalMutation({
 			) {
 				throw new Error('Routing re-entry envelope does not belong to the Send.');
 			}
+			// THE FIRST-ATTEMPT RECORD (#1208). Every governed attempt passes here
+			// with the start its delivery deadline is measured from, already
+			// admitted above (finite, not in the future). Deferrals and re-entries
+			// carry the same start, so this writes once per Send. A later start
+			// would be a fresh attempt chain, whose deadline is later too: the
+			// recorded start only ever moves forward, so the lost-send sweep can
+			// never count a Send's window from earlier than dispatch does.
+			const startedAt = args.retryState.startedAt;
+			if (send.firstAttemptAt === undefined || send.firstAttemptAt < startedAt) {
+				await ctx.db.patch(send._id, { firstAttemptAt: startedAt });
+			}
 		}
 		if (args.envelopeInput.organizationId !== args.organizationId) {
 			throw new Error('Routing re-entry envelope does not belong to the organization.');
