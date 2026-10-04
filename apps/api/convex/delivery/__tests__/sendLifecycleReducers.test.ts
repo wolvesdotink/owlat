@@ -639,20 +639,26 @@ describe('reader opens and clicks on a bounced or complained send', () => {
 		'customer_webhook',
 	];
 	const kindsOf = (effects: ReadonlyArray<{ kind: string }>) => effects.map((e) => e.kind);
+	// A complained row records the engagement but feeds nothing back into the
+	// contact: no activity row (engagement score, `hasOpened` / `hasClicked`)
+	// and no send-time profile update (#1225).
+	const CONTACT_EFFECTS = ['send_time_engagement', 'contact_activity'];
 	const ROWS = [
-		{ label: 'hard-bounced', row: { status: 'bounced', bounceType: 'hard' } },
-		{ label: 'soft-bounced', row: { status: 'bounced', bounceType: 'soft' } },
-		{ label: 'complained', row: { status: 'complained' } },
+		{ label: 'hard-bounced', row: { status: 'bounced', bounceType: 'hard' }, isComplaint: false },
+		{ label: 'soft-bounced', row: { status: 'bounced', bounceType: 'soft' }, isComplaint: false },
+		{ label: 'complained', row: { status: 'complained' }, isComplaint: true },
 	] as const;
+	const expectedKinds = (kinds: string[], isComplaint: boolean) =>
+		isComplaint ? kinds.filter((kind) => !CONTACT_EFFECTS.includes(kind)) : kinds;
 
-	it.each(ROWS)('counts only the first reader open on a $label send', ({ row }) => {
+	it.each(ROWS)('counts only the first reader open on a $label send', ({ row, isComplaint }) => {
 		const send = campaignSend({ ...row, sentAt: SENT_AT });
 		const open = { to: 'opened', at: FIRST_AT, agent: 'client' } as const;
 		const first = reduceOpened(send, open, campaignRef);
 
 		expect(first.applied).toBe('recorded');
 		expect(first.patch).toEqual({ openCount: 1, openedAt: FIRST_AT });
-		expect(kindsOf(first.effects)).toEqual(FIRST_OPEN_EFFECTS);
+		expect(kindsOf(first.effects)).toEqual(expectedKinds(FIRST_OPEN_EFFECTS, isComplaint));
 
 		const reopened = { ...send, ...first.patch } as EmailSendDoc;
 		const again = reduceOpened(reopened, { ...open, at: AGAIN_AT }, campaignRef);
@@ -662,7 +668,7 @@ describe('reader opens and clicks on a bounced or complained send', () => {
 		expect(again.effects).toEqual([]);
 	});
 
-	it.each(ROWS)('counts only the first reader click on a $label send', ({ row }) => {
+	it.each(ROWS)('counts only the first reader click on a $label send', ({ row, isComplaint }) => {
 		const send = campaignSend({ ...row, sentAt: SENT_AT });
 		const click = {
 			to: 'clicked',
@@ -677,7 +683,7 @@ describe('reader opens and clicks on a bounced or complained send', () => {
 			clickedLinks: [{ url: 'https://example.com/a', clickedAt: FIRST_AT }],
 			clickedAt: FIRST_AT,
 		});
-		expect(kindsOf(first.effects)).toEqual(FIRST_CLICK_EFFECTS);
+		expect(kindsOf(first.effects)).toEqual(expectedKinds(FIRST_CLICK_EFFECTS, isComplaint));
 
 		const reclicked = { ...send, ...first.patch } as EmailSendDoc;
 		const again = reduceClicked(
@@ -719,5 +725,58 @@ describe('reader opens and clicks on a bounced or complained send', () => {
 
 		expect(result.patch['clickedAt']).toBeUndefined();
 		expect(kindsOf(result.effects)).toEqual(['customer_webhook']);
+	});
+});
+
+// #1225: an open or click on a bounced or complained row is delivery evidence,
+// but not authenticated evidence, so it must not clear the counter that
+// escalates repeated soft bounces into a suppression.
+describe('reduceDeliveryObservation for engagement after feedback', () => {
+	const contact = {
+		_id: CONTACT_ID,
+		_creationTime: 0,
+		email: 'jane@example.com',
+		softBounceCount: 3,
+	} as unknown as Doc<'contacts'>;
+	const softBounced = campaignSend({
+		status: 'bounced',
+		bounceType: 'soft',
+		bouncedAt: 500,
+		sentAt: 100,
+	});
+	const kindsOf = (effects: ReadonlyArray<{ kind: string }>) => effects.map((e) => e.kind);
+
+	it('keeps the soft-bounce counter when asked to', () => {
+		const result = reduceDeliveryObservation(
+			softBounced,
+			1000,
+			campaignRef,
+			'example.org',
+			contact,
+			{
+				keepsSoftBounceCount: true,
+			}
+		);
+
+		expect(result.isNewObservation).toBe(true);
+		expect(result.patch).toEqual({ deliveredAt: 1000 });
+		expect(kindsOf(result.effects)).not.toContain('contact_soft_bounce_count');
+		expect(kindsOf(result.effects)).toContain('campaign_stats_delivered');
+	});
+
+	it('still clears it for other delivery evidence stamped after the bounce', () => {
+		const result = reduceDeliveryObservation(
+			softBounced,
+			1000,
+			campaignRef,
+			'example.org',
+			contact
+		);
+
+		expect(result.effects).toContainEqual({
+			kind: 'contact_soft_bounce_count',
+			contactId: CONTACT_ID,
+			count: 0,
+		});
 	});
 });
