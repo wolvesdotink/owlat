@@ -58,10 +58,12 @@ SCANNED_EXT='vue|jsx|tsx|ts|md|mdc|mdx|yml|yaml'
 
 # TESTS ARE NOT MARKUP. A name in a spec renders nothing, so it can neither
 # reach a user as an empty box nor fail to — and the assertions that pin these
-# very rules quote a deliberately broken name by construction.
+# very rules quote a deliberately broken name by construction. Generated trees
+# are skipped too; turbo.json's @owlat/web#lint inputs exclude the same set.
 mapfile -t hits < <(
 	grep -rHnoE --binary-files=without-match \
-		--exclude-dir=node_modules --exclude-dir=.nuxt --exclude-dir=dist --exclude-dir=coverage \
+		--exclude-dir=node_modules --exclude-dir=.nuxt --exclude-dir=.output --exclude-dir=dist \
+		--exclude-dir=build --exclude-dir=coverage --exclude-dir=.turbo \
 		--exclude-dir=__tests__ --exclude='*.test.ts' --exclude='*.spec.ts' \
 		'\blucide:[a-z0-9-]+' "${roots[@]}" 2>/dev/null | sort -u
 )

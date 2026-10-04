@@ -49,10 +49,13 @@ done
 
 # TESTS ARE NOT MARKUP. A class name in a spec is never compiled into anything
 # Tailwind renders, so it can neither emit CSS nor fail to — and the assertions
-# that pin these very rules quote every banned name by construction.
+# that pin these very rules quote every banned name by construction. Generated
+# trees are skipped too; turbo.json's @owlat/web#lint inputs exclude the same set.
 mapfile -t files < <(
 	find "${roots[@]}" -type f \( -name '*.vue' -o -name '*.ts' \) \
-		-not -path '*/node_modules/*' -not -path '*/__tests__/*' -not -name '*.test.ts' |
+		-not -path '*/node_modules/*' -not -path '*/.nuxt/*' -not -path '*/.output/*' \
+		-not -path '*/dist/*' -not -path '*/build/*' -not -path '*/coverage/*' -not -path '*/.turbo/*' \
+		-not -path '*/__tests__/*' -not -name '*.test.ts' |
 		sort
 )
 if [ "${#files[@]}" -eq 0 ]; then

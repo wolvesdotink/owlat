@@ -28,7 +28,14 @@
 		"typecheck": {
 			"dependsOn": ["^build"]
 		},
-		"lint": {},
+		// oxlint follows imports into the workspace packages a package depends on
+		// (import/no-cycle reads them), so a lint result depends on their sources
+		// too. The transit dependency folds each dependency package's file hash
+		// into the lint hash, as it does for `test`. Package overrides below must
+		// repeat it: a `pkg#task` entry replaces this one rather than merging.
+		"lint": {
+			"dependsOn": ["transit"]
+		},
 		// A lint task that reads files outside its own package needs an override
 		// listing them: turbo hashes only the package directory by default, so an
 		// edit to an outside file alone replays the cached (remote, CI-shared)
@@ -37,6 +44,7 @@
 		// outside path, add it here; scripts/__tests__/turbo-lint-inputs.test.ts
 		// pins the current set.
 		"@owlat/api#lint": {
+			"dependsOn": ["transit"],
 			"inputs": [
 				"$TURBO_DEFAULT$",
 				// check-entry-wiring.ts: callers of every public Convex entry, read
@@ -53,8 +61,9 @@
 				"$TURBO_ROOT$/apps/docs/content/en/3.developer/6.email-system.md",
 				// the baseline checks exec the shared ratchet runner
 				"$TURBO_ROOT$/scripts/ratchet.sh",
-				// Root globs bypass .gitignore, so drop generated trees by hand (the
-				// same directories apps/api/scripts/lib/sourceGraph.ts never walks).
+				// Root globs bypass .gitignore, so drop generated trees by hand: the
+				// directories apps/api/scripts/lib/sourceGraph.ts never walks, plus
+				// turbo's own per-package log directory, which every run rewrites.
 				// Keep the package-relative `**/` form: turbo matches excludes against
 				// the cleaned path (`../web/.nuxt/…`), which `$TURBO_ROOT$/**` misses.
 				"!**/node_modules/**",
@@ -62,24 +71,31 @@
 				"!**/.output/**",
 				"!**/dist/**",
 				"!**/build/**",
-				"!**/coverage/**"
+				"!**/coverage/**",
+				"!**/.turbo/**"
 			]
 		},
 		"@owlat/web#lint": {
+			"dependsOn": ["transit"],
 			"inputs": [
 				"$TURBO_DEFAULT$",
 				// check-dead-tokens.sh and check-icon-names.sh scan the UI layer
 				"$TURBO_ROOT$/packages/ui/**",
 				// check-localized-text.sh execs the shared ratchet runner
 				"$TURBO_ROOT$/scripts/ratchet.sh",
-				// generated trees, as for @owlat/api#lint above
+				// generated trees, as for @owlat/api#lint above (both scanners skip
+				// the same directories)
 				"!**/node_modules/**",
 				"!**/.nuxt/**",
+				"!**/.output/**",
 				"!**/dist/**",
-				"!**/coverage/**"
+				"!**/build/**",
+				"!**/coverage/**",
+				"!**/.turbo/**"
 			]
 		},
 		"@owlat/setup-cli#lint": {
+			"dependsOn": ["transit"],
 			"inputs": [
 				"$TURBO_DEFAULT$",
 				// check-env-keys-sync.sh compares these two lists
