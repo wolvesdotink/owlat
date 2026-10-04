@@ -176,4 +176,26 @@ describe('draftClarificationReply — leaked tool-call markup', () => {
 		expect(logged?.['isDraftChanged']).toBeUndefined();
 		expect(logged?.['draftDivergence']).toBeUndefined();
 	});
+
+	it.each([
+		'Let me check `availability. <tool_call>{"name":"recallKnowledge","arguments":{"query":"`December dates"}}</tool_call>',
+		'Let me check `availability. <tool_call>{"name":"recallKnowledge","arguments":{"query":"`December dates"}}',
+		'Let me check `availability. <tool_call>{"name":"recallKnowledge","arguments":{"query":"`December` dates"}}</tool_call>Hi John`',
+	])('stores the retry, never a backtick-wrapped call: %s', async (leak) => {
+		mocks.runLlmTextWithTools.mockResolvedValueOnce(text(`${leak}\n${REPLY}`));
+		mocks.runLlmText.mockResolvedValueOnce(text(REPLY));
+		const { ctx, mutations } = makeCtx();
+		await draftClarificationReply(ctx, { threadId });
+		expect(storedDraft(mutations)).toBe(REPLY);
+	});
+
+	it('stores nothing when the retry carries a backtick-wrapped call as well', async () => {
+		const leak =
+			'Let me check `availability. <tool_call>{"name":"recallKnowledge","arguments":{"query":"`December dates"}}';
+		mocks.runLlmTextWithTools.mockResolvedValueOnce(text(leak));
+		mocks.runLlmText.mockResolvedValueOnce(text(leak));
+		const { ctx, mutations } = makeCtx();
+		await draftClarificationReply(ctx, { threadId });
+		expect(storedDraft(mutations)).toBeUndefined();
+	});
 });

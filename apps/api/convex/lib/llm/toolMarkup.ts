@@ -26,33 +26,29 @@
  *   reply after it kept. Any tool tag counts here, inner tags and stray
  *   closing tags included. A text that ends inside a leading tag is
  *   unfinished.
- * - After the reply starts, prose can mention a tag, so what counts is a call,
- *   not a tag name:
- *   - `<invoke name="…">` anywhere: complete, broken once its `name`
- *     attribute has started, or unfinished at the end. Nothing else is
- *     written that way.
- *   - a container block: a container opener (`<function_calls>`,
- *     `<tool_call>`, ...) followed by its closing tag, on any line. An opener
- *     whose closing tag never comes is unusable too: it cannot be told apart
- *     from a generation that stopped inside the block, which the stream had
- *     to hold back.
+ * - After the reply starts, a tool call counts wherever it appears: inline,
+ *   on its own line, inside backticks or a fenced block.
+ *   - `<invoke name="…">`: complete, broken once its `name` attribute has
+ *     started, or unfinished at the end;
+ *   - a well-formed container opener (`<function_calls>`,
+ *     `<function_results>`, `<tool_call>`, `<tool_calls>`, `<tool_use>`,
+ *     `<tool_result>`, any case or namespace), with or without a closing tag;
  *   - a tool tag the text ends inside (`Hi John, <tool_ca`).
- *   - A code span (the text between a run of backticks and the next run of
- *     the same length: inline `` `<tool_call>` `` or a fenced sample) quotes
- *     a container in two ways only: the whole block, closing tag included,
- *     sits inside one span; or the opener sits in a span and no closing tag
- *     follows outside every span (a lone mention). A span that closes inside
- *     a block's payload never exempts it, so a stray backtick in the prose
- *     cannot pair with one in the call's JSON and hide the call.
- *   - A closing tag on its own, an inner tag, and a container whose opener is
- *     not a well-formed tag are prose too.
  *
- * So a reply may quote markup in a code span and mention tags in prose; a
- * bare block written out in the reply, quoted or leaked, costs one retry.
+ *   Prose: a closing tag on its own, an inner tag (`<parameter>`,
+ *   `<result>`), a malformed opener (`<invoke>`, `<tool_call id="1">`), and
+ *   anything that is not a tool tag (`<b>`, `<3`, `a < b`).
  *
- * The lexer looks at most a few hundred characters past each `<`, and the
- * closing-tag lookups of one scan share a forward walk per tag name, so a
- * scan is linear in the text length on any input.
+ * The trade-off: these are email replies to customers, and one that quotes a
+ * tool-call tag on purpose is very unlikely. When it happens it costs one
+ * retry, then the soft failure the surface already has, and the person writes
+ * that part themselves. Every attempt to tell such a quote from a leak (by
+ * line position, by code spans) let a real leak through, so none is made.
+ *
+ * Linear in the text length on any input: the lexer reads a bounded number of
+ * characters past each `<`, the leading scan searches forward for each
+ * leading block's closing tag and resumes after it, and the reply scan stops
+ * at the first call.
  *
  * Pure (no ctx, no 'use node').
  */
@@ -63,9 +59,7 @@ import {
 	SPACE,
 	TAG_NAMES,
 	closingTagEnd,
-	findClosingTag,
 	lexTag,
-	type ClosingTag,
 	type Lexed,
 } from './toolTagGrammar';
 
@@ -114,107 +108,13 @@ function startsTagName(tag: Lexed, names: readonly string[]): boolean {
 	);
 }
 
-type Span = readonly [number, number];
-
-/**
- * Code spans after `from`: the text between a run of backticks and the next
- * run of the same length (inline code, or a fenced block). An unpaired run is
- * literal. While streaming, a run at the very end may still grow, so it pairs
- * with nothing yet.
- */
-function codeSpans(text: string, from: number, isFinal: boolean): Span[] {
-	const runs: Array<readonly [number, number]> = [];
-	for (let start = text.indexOf('`', from); start !== -1;) {
-		let end = start;
-		while (end < text.length && text[end] === '`') end += 1;
-		if (isFinal || end < text.length) runs.push([start, end]);
-		start = text.indexOf('`', end);
-	}
-	const nextOfLength = runs.map(() => -1);
-	const laterOfLength = new Map<number, number>();
-	for (let run = runs.length - 1; run >= 0; run -= 1) {
-		const length = runs[run]![1] - runs[run]![0];
-		nextOfLength[run] = laterOfLength.get(length) ?? -1;
-		laterOfLength.set(length, run);
-	}
-	const spans: Span[] = [];
-	for (let run = 0; run < runs.length;) {
-		const closing = nextOfLength[run]!;
-		if (closing === -1) {
-			run += 1;
-			continue;
-		}
-		spans.push([runs[run]![0], runs[closing]![1]]);
-		run = closing + 1;
-	}
-	return spans;
-}
-
 type ReplyMarkup = {
 	readonly index: number;
-	readonly reason: 'embedded' | 'unclosed' | 'unfinished';
+	readonly reason: 'embedded' | 'unfinished';
 };
 
-/** The span that holds `index`, or null. Spans are sorted and disjoint. */
-function spanAt(spans: readonly Span[], index: number): Span | null {
-	let low = 0;
-	let high = spans.length - 1;
-	while (low <= high) {
-		const middle = (low + high) >> 1;
-		const span = spans[middle]!;
-		if (index < span[0]) high = middle - 1;
-		else if (index >= span[1]) low = middle + 1;
-		else return span;
-	}
-	return null;
-}
-
-/**
- * Closing-tag lookups for one scan. Each remembers its last answer per tag
- * name: a later search from at or before that answer has the same answer, so
- * the openers of one scan share a single forward walk per name and the scan
- * stays linear.
- */
-function closingTagFinder(text: string, spans: readonly Span[]) {
-	type Answer = { readonly from: number; readonly closing: ClosingTag | null };
-	const anyCache = new Map<string, Answer>();
-	const outsideCache = new Map<string, Answer>();
-	const reuse = (cache: Map<string, Answer>, name: string, from: number): Answer | undefined => {
-		const answer = cache.get(name);
-		if (!answer || from < answer.from) return undefined;
-		return answer.closing === null || from <= answer.closing.start ? answer : undefined;
-	};
-	/** The first closing tag after `from`. */
-	const first = (name: string, from: number): ClosingTag | null => {
-		const known = reuse(anyCache, name, from);
-		if (known) return known.closing;
-		const closing = findClosingTag(text, name, from);
-		anyCache.set(name, { from, closing });
-		return closing;
-	};
-	/** The first closing tag after `from` that is not inside a code span. */
-	const outside = (name: string, from: number): ClosingTag | null => {
-		const known = reuse(outsideCache, name, from);
-		if (known) return known.closing;
-		let closing = first(name, from);
-		while (closing && spanAt(spans, closing.start)) closing = first(name, closing.end);
-		outsideCache.set(name, { from, closing });
-		return closing;
-	};
-	return { first, outside };
-}
-
-/**
- * The first call in the reply that starts at `bodyStart`, by the policy above,
- * or null. A container opener inside a code span is a mention only when its
- * block cannot be a call: its first closing tag sits in the same span (the
- * whole block is quoted), or, in the final text, no closing tag follows
- * outside every span. While streaming, a closing tag can still come, so an
- * opener in a span is held unless the span already encloses its closing tag.
- */
-function firstMarkupInReply(text: string, bodyStart: number, isFinal: boolean): ReplyMarkup | null {
-	const spans = codeSpans(text, bodyStart, isFinal);
-	const closings = closingTagFinder(text, spans);
+/** The first tool call in the reply that starts at `bodyStart` (see the policy), or null. */
+function firstMarkupInReply(text: string, bodyStart: number): ReplyMarkup | null {
 	for (
 		let index = text.indexOf('<', bodyStart);
 		index !== -1;
@@ -232,19 +132,7 @@ function firstMarkupInReply(text: string, bodyStart: number, isFinal: boolean): 
 			continue;
 		}
 		if (INNER_TAGS.has(tag.name) || tag.kind === 'broken') continue;
-		if (tag.kind === 'partial') return { index, reason: 'unfinished' };
-		const span = spanAt(spans, index);
-		if (span) {
-			const closing = closings.first(tag.name, tag.end);
-			if (closing && closing.end <= span[1]) continue;
-			if (!isFinal) return { index, reason: 'unclosed' };
-			if (closings.outside(tag.name, tag.end)) return { index, reason: 'embedded' };
-			continue;
-		}
-		return {
-			index,
-			reason: closingTagEnd(text, tag.name, tag.end) === -1 ? 'unclosed' : 'embedded',
-		};
+		return { index, reason: tag.kind === 'partial' ? 'unfinished' : 'embedded' };
 	}
 	return null;
 }
@@ -277,7 +165,7 @@ export function stripLeakedToolMarkup(text: string): ToolMarkupResult {
 	) {
 		return { kind: 'unusable', reason: 'unfinished' };
 	}
-	const markup = firstMarkupInReply(text, leading.end, true);
+	const markup = firstMarkupInReply(text, leading.end);
 	if (markup) return { kind: 'unusable', reason: markup.reason };
 	if (leading.blocks === 0) return { kind: 'clean', text };
 	const body = text.slice(leading.end);
@@ -289,11 +177,10 @@ export function stripLeakedToolMarkup(text: string): ToolMarkupResult {
 /**
  * The part of a draft still being streamed that is safe to show. Nothing is
  * shown while the text is, or could still become, a leading markup prefix;
- * after it, the reply is shown without it. A call after the reply started,
- * including a container opener whose closing tag has not come yet, holds the
- * text back from where it starts, and so does a tag the text ends inside. An
- * opener in a code span is held too until the span is seen to enclose its
- * closing tag: a lone mention shows only in the final text.
+ * after it, the reply is shown without it. A tool call after the reply
+ * started holds the text back from where it starts (the final text is then
+ * `unusable`), and so does a tag the text ends inside until it is clearly not
+ * a tool tag.
  *
  * Leading whitespace is dropped; the final draft is trimmed anyway.
  */
@@ -301,7 +188,7 @@ export function visibleDraftStreamText(text: string): string {
 	const leading = scanLeadingMarkup(text);
 	if (leading.state !== 'done') return '';
 	let end = text.length;
-	const markup = firstMarkupInReply(text, leading.end, false);
+	const markup = firstMarkupInReply(text, leading.end);
 	if (markup) {
 		end = markup.index;
 	} else {

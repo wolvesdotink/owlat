@@ -191,25 +191,13 @@ export function lexTag(text: string, at: number): Lexed {
 
 const closingTagPatterns = new Map<string, RegExp>();
 
-export interface ClosingTag {
-	readonly start: number;
-	/** Index just past the `>`. */
-	readonly end: number;
-}
-
-/** The first `</name>` (any namespace, any case) at or after `from`, or null. */
-export function findClosingTag(text: string, name: string, from: number): ClosingTag | null {
+/** Index just past the first `</name>` (any namespace, any case) at or after `from`, or -1. */
+export function closingTagEnd(text: string, name: string, from: number): number {
 	let pattern = closingTagPatterns.get(name);
 	if (!pattern) {
 		pattern = new RegExp(`</(?:${NAMESPACE_SOURCE}:)?${name}\\s{0,${MAX_SPACE}}>`, 'gi');
 		closingTagPatterns.set(name, pattern);
 	}
 	pattern.lastIndex = from;
-	const match = pattern.exec(text);
-	return match ? { start: match.index, end: pattern.lastIndex } : null;
-}
-
-/** Index just past the first `</name>` at or after `from`, or -1. */
-export function closingTagEnd(text: string, name: string, from: number): number {
-	return findClosingTag(text, name, from)?.end ?? -1;
+	return pattern.exec(text) ? pattern.lastIndex : -1;
 }

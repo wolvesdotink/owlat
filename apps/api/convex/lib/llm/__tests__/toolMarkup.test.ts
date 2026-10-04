@@ -28,6 +28,12 @@ const INLINE_BLOCK =
 const STRAY_TICK_BLOCK =
 	'Let me check `availability. <tool_call>{"name":"recallKnowledge","arguments":{"query":"`December dates"}}</tool_call>';
 
+/** The fourth review's blocks: a stray backtick pairs into the payload, closer or none. */
+const PAYLOAD_TICK_UNCLOSED =
+	'Let me check `availability. <tool_call>{"name":"recallKnowledge","arguments":{"query":"`December dates"}}';
+const PAYLOAD_TICK_SPAN =
+	'Let me check `availability. <tool_call>{"name":"recallKnowledge","arguments":{"query":"`December` dates"}}</tool_call>Hi John`';
+
 /** Leading prefixes the stripper must cut, and the stream must never show. */
 const PREFIXES: Array<[string, string]> = [
 	['the issue example', ISSUE_PREFIX],
@@ -113,15 +119,43 @@ describe('stripLeakedToolMarkup — unusable', () => {
 			'Hi,\n<invoke name="recallKnowledge" id="1">\nBest',
 			'embedded',
 		],
+		['a stray backtick and an unclosed block', PAYLOAD_TICK_UNCLOSED, 'embedded'],
+		['a stray backtick and a backtick-wrapped closer', PAYLOAD_TICK_SPAN, 'embedded'],
 		[
 			'a container opener that never closes',
 			'Hi John,\n<tool_call>{"name":"recallKnowledge"',
-			'unclosed',
+			'embedded',
 		],
 		[
-			'a container opener mentioned outside a code span',
+			'a container opener mentioned in prose',
 			'Hi,\n\nwrap each call in <tool_call> tags.',
-			'unclosed',
+			'embedded',
+		],
+		// Quotes in code count too (the trade-off in the module comment).
+		[
+			'a container mentioned in a code span',
+			'Hi,\n\nwrap it in `<tool_call>`, then send it.',
+			'embedded',
+		],
+		[
+			'an opener and closer in code spans',
+			'Hi,\n\nwrap each call in `<tool_call>` and `</tool_call>` tags.',
+			'embedded',
+		],
+		[
+			'a whole block in a code span',
+			'Hi,\n\nit looks like `<tool_call>{}</tool_call>` there.',
+			'embedded',
+		],
+		[
+			'a fenced sample that encloses a whole block',
+			'Hi,\n\n```\n<function_calls>\n<invoke>x</invoke>\n</function_calls>\n```\nBest',
+			'embedded',
+		],
+		[
+			'a fenced block sample',
+			'Hi,\n\nfor example:\n```xml\n<tool_call>{"name":"x"}</tool_call>\n```\nBest',
+			'embedded',
 		],
 		[
 			'a block that never closes',
@@ -145,21 +179,8 @@ describe('stripLeakedToolMarkup — unusable', () => {
 
 describe('stripLeakedToolMarkup — prose is not markup', () => {
 	it.each([
-		['a container mentioned in a code span', 'Hi,\n\nwrap it in `<tool_call>`, then send it.'],
-		[
-			'an opener and closer in code spans',
-			'Hi,\n\nwrap each call in `<tool_call>` and `</tool_call>` tags.',
-		],
-		['a whole block in a code span', 'Hi,\n\nit looks like `<tool_call>{}</tool_call>` there.'],
-		[
-			'a fenced sample that encloses a whole block',
-			'Hi,\n\n```\n<function_calls>\n<invoke>x</invoke>\n</function_calls>\n```\nBest',
-		],
-		[
-			'a fenced block sample',
-			'Hi,\n\nfor example:\n```xml\n<tool_call>{"name":"x"}</tool_call>\n```\nBest',
-		],
 		['a closing tag on its own', `${REPLY}\n</function_calls>`],
+		['a lone closing tool_call tag', 'Hi,\n\nthat ends with </tool_call> as usual.'],
 		['a broken container opener', 'Hi,\n<tool_call id="1">{}</tool_call>\nBest'],
 		[
 			'a bare <parameter> in a code sample',
@@ -243,6 +264,8 @@ describe('visibleDraftStreamText', () => {
 			`Let me check. \`<tool_call>{}</tool_call>${REPLY}`,
 		],
 		['a block a stray backtick pairs into', `${STRAY_TICK_BLOCK}${REPLY}`],
+		['a stray backtick and an unclosed block', `${PAYLOAD_TICK_UNCLOSED}\n${REPLY}`],
+		['a stray backtick and a backtick-wrapped closer', `${PAYLOAD_TICK_SPAN}${REPLY}`],
 	])('holds the text back from %s that starts after the reply', (_label, full) => {
 		for (const partial of everyPrefix(full)) {
 			const visible = visibleDraftStreamText(partial);
@@ -260,22 +283,13 @@ describe('visibleDraftStreamText', () => {
 		expect(visibleDraftStreamText('Hi John, <3 and more')).toBe('Hi John, <3 and more');
 		expect(visibleDraftStreamText('if a < b')).toBe('if a < b');
 		expect(visibleDraftStreamText('Tom &amp; Jerry')).toBe('Tom &amp; Jerry');
-		expect(visibleDraftStreamText('it is `<tool_call>{}</tool_call>` there')).toBe(
-			'it is `<tool_call>{}</tool_call>` there'
-		);
+		expect(visibleDraftStreamText('a lone </tool_call> closer')).toBe('a lone </tool_call> closer');
 	});
 
-	it('holds a container opener in a code span until the span encloses its closing tag', () => {
-		expect(visibleDraftStreamText('wrap it in `<tool_call>')).toBe('wrap it in `');
+	it('holds back a container opener wherever it sits, backticks included', () => {
 		expect(visibleDraftStreamText('wrap it in `<tool_call>` tags')).toBe('wrap it in `');
-		expect(stripLeakedToolMarkup('wrap it in `<tool_call>` tags')).toEqual({
-			kind: 'clean',
-			text: 'wrap it in `<tool_call>` tags',
-		});
-		expect(visibleDraftStreamText('see `<tool_call>{}</tool_call>`')).toBe('see `');
-		expect(visibleDraftStreamText('see `<tool_call>{}</tool_call>` ok')).toBe(
-			'see `<tool_call>{}</tool_call>` ok'
-		);
+		expect(visibleDraftStreamText('see `<tool_call>{}</tool_call>` ok')).toBe('see `');
+		expect(visibleDraftStreamText('```\n<function_calls>\n```\nok')).toBe('```\n');
 	});
 
 	it('shows nothing while a leading block is still open or being written', () => {

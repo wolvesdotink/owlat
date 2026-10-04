@@ -371,31 +371,49 @@ describe('writeAnswerDraft — second review cases, raw tags', () => {
 	});
 });
 
-describe('writeAnswerDraft — backticks inside a call payload (third review)', () => {
-	const strayTick =
-		'Let me check `availability. <tool_call>{"name":"recallKnowledge","arguments":{"query":"`December dates"}}</tool_call>';
+describe('writeAnswerDraft — backticks around and inside a call (third and fourth review)', () => {
+	const cases: Array<[string, string]> = [
+		[
+			'a stray backtick pairing into the payload',
+			'Let me check `availability. <tool_call>{"name":"recallKnowledge","arguments":{"query":"`December dates"}}</tool_call>',
+		],
+		[
+			'a stray backtick and a block with no closer',
+			'Let me check `availability. <tool_call>{"name":"recallKnowledge","arguments":{"query":"`December dates"}}\n',
+		],
+		[
+			'a stray backtick and a backtick-wrapped closer',
+			'Let me check `availability. <tool_call>{"name":"recallKnowledge","arguments":{"query":"`December` dates"}}</tool_call>Hi John`',
+		],
+	];
 
-	it('never shows the block and retries, wherever a chunk boundary falls', async () => {
-		const full = `${strayTick}${REPLY}`;
-		for (let at = 0; at <= full.length; at += 1) {
-			mocks.runLlmStream.mockReset();
-			mocks.runLlmStream
-				.mockImplementationOnce(chunks([full.slice(0, at), full.slice(at)]))
-				.mockImplementationOnce(chunks([REPLY]));
-			const { ctx, shown, finals } = makeCtx();
-			await write(ctx);
-			for (const text of shown) expect(text, `split at ${at}`).not.toContain('<tool_call');
-			expect(mocks.runLlmStream, `split at ${at}`).toHaveBeenCalledTimes(2);
-			expect(finals).toEqual([expect.objectContaining({ text: REPLY, status: 'complete' })]);
+	it.each(cases)(
+		'never shows %s and retries, wherever a chunk boundary falls',
+		async (_label, leak) => {
+			const full = `${leak}${REPLY}`;
+			for (let at = 0; at <= full.length; at += 1) {
+				mocks.runLlmStream.mockReset();
+				mocks.runLlmStream
+					.mockImplementationOnce(chunks([full.slice(0, at), full.slice(at)]))
+					.mockImplementationOnce(chunks([REPLY]));
+				const { ctx, shown, finals } = makeCtx();
+				await write(ctx);
+				for (const text of shown) expect(text, `split at ${at}`).not.toContain('<tool_call');
+				expect(mocks.runLlmStream, `split at ${at}`).toHaveBeenCalledTimes(2);
+				expect(finals).toEqual([expect.objectContaining({ text: REPLY, status: 'complete' })]);
+			}
 		}
-	});
+	);
 
-	it('keeps a fenced sample that encloses a whole block, without a retry', async () => {
+	it('retries a fenced sample that quotes a whole block (the trade-off)', async () => {
 		const sample = `${REPLY}\n\n\`\`\`\n<tool_call>{"name":"x"}</tool_call>\n\`\`\``;
-		mocks.runLlmStream.mockImplementationOnce(streams(sample));
-		const { ctx, finals } = makeCtx();
+		mocks.runLlmStream
+			.mockImplementationOnce(streams(sample))
+			.mockImplementationOnce(streams(REPLY));
+		const { ctx, shown, finals } = makeCtx();
 		await write(ctx);
-		expect(mocks.runLlmStream).toHaveBeenCalledTimes(1);
-		expect(finals).toEqual([expect.objectContaining({ text: sample, status: 'complete' })]);
+		for (const text of shown) expect(text).not.toContain('<tool_call');
+		expect(mocks.runLlmStream).toHaveBeenCalledTimes(2);
+		expect(finals).toEqual([expect.objectContaining({ text: REPLY, status: 'complete' })]);
 	});
 });
