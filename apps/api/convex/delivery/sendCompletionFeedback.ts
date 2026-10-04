@@ -1,6 +1,6 @@
 import type { Infer } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
-import type { MutationCtx } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { countableSendRefValidator } from '../lib/validators/send';
 import type { parkedFeedbackTransitionValidator } from '../schema/sendCompletionFailures';
 import { clampUtf8 } from './sendCompletionPayload';
@@ -117,7 +117,7 @@ function clampParkedText(transition: ParkedTransition): ParkedTransition {
 
 /** The open and exhausted records of one Send, through `by_send_and_status`. */
 export async function unresolvedCompletionFailures(
-	ctx: MutationCtx,
+	ctx: Pick<QueryCtx, 'db'>,
 	sendId: CountableSendRef['id']
 ): Promise<FailureRow[]> {
 	const rows: FailureRow[] = [];
