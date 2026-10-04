@@ -27,12 +27,16 @@
  * It never answers a message whose security scan is still running or whose
  * classification is still in progress — the scan-finished check alone is not
  * enough, the `ai.agent` flag is read here too.
+ *
+ * Saving a reply takes the message over too wherever the agent could still
+ * write its draft over the saved text with nobody acting
+ * ({@link takeOverForHumanSave}).
  */
 
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
-import type { QueryCtx } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { adminMutation } from '../lib/authedFunctions';
 import { recordAuditLog } from '../lib/auditLog';
 import { isFeatureEnabled } from '../lib/featureFlags';
@@ -165,23 +169,66 @@ export const takeOverReply = adminMutation({
 		});
 		if (refusal) throwInvalidState(refusal);
 
-		const outcome: TransitionOutcome = await ctx.runMutation(
-			internal.inbox.processingLifecycle.transition,
-			{
-				inboundMessageId: args.inboundMessageId,
-				input: { to: 'draft_ready', at: Date.now(), manualTakeover: true },
-			}
-		);
-		if (!outcome.ok) throwInvalidState('This message cannot take a manual reply right now');
-
-		await recordAuditLog(ctx, {
-			userId: session.userId,
-			action: 'inbound.reply_taken_over',
-			resource: 'inbound_message',
-			resourceId: args.inboundMessageId,
-			details: { from: message.processingStatus },
-		});
+		await moveToManualReply(ctx, message, session.userId);
 
 		return { success: true as const };
 	},
 });
+
+/**
+ * Move `message` to `draft_ready` as a person's reply (`manualTakeoverAt`), so
+ * the walker stops and a step still in flight has its late draft, auto-send or
+ * failure refused (`processingLifecycle/effects.ts`). Audited as a takeover.
+ */
+async function moveToManualReply(
+	ctx: MutationCtx,
+	message: Doc<'inboundMessages'>,
+	userId: string,
+	via?: 'save'
+): Promise<void> {
+	const outcome: TransitionOutcome = await ctx.runMutation(
+		internal.inbox.processingLifecycle.transition,
+		{
+			inboundMessageId: message._id,
+			input: { to: 'draft_ready', at: Date.now(), manualTakeover: true },
+		}
+	);
+	if (!outcome.ok) throwInvalidState('This message cannot take a manual reply right now');
+
+	await recordAuditLog(ctx, {
+		userId,
+		action: 'inbound.reply_taken_over',
+		resource: 'inbound_message',
+		resourceId: message._id,
+		details: { from: message.processingStatus, ...(via ? { via } : {}) },
+	});
+}
+
+/**
+ * States in which the agent can still write its draft over a person's saved
+ * reply without anyone acting: `drafting`, where the draft step is in flight,
+ * and `awaiting_clarification`, which `reconcileAbandonedClarifications`
+ * sends back to drafting once its questions time out. The new agent draft
+ * would replace the saved text and, as a new draft, clear its revisions.
+ */
+const SAVE_TAKES_OVER: ReadonlySet<Doc<'inboundMessages'>['processingStatus']> = new Set([
+	'drafting',
+	'awaiting_clarification',
+]);
+
+/**
+ * A person saving a reply (`editDraft`, `saveDraftRevision`) while the agent
+ * can still draft over it takes the reply over first, as Send does through
+ * {@link takeOverReply}: the saved text is the reply, the late agent draft is
+ * dropped, and open clarification questions are moot. Every other state is
+ * left alone, so a save in `draft_ready` stays a plain save. Done on the
+ * server, so an older web client that saves without taking over is covered.
+ */
+export async function takeOverForHumanSave(
+	ctx: MutationCtx,
+	message: Doc<'inboundMessages'>,
+	userId: string
+): Promise<void> {
+	if (!SAVE_TAKES_OVER.has(message.processingStatus)) return;
+	await moveToManualReply(ctx, message, userId, 'save');
+}
