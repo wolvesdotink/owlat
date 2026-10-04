@@ -408,4 +408,46 @@ describe('the delivery hub page', () => {
 		expect(wrapper.text()).toContain('Collecting history');
 		wrapper.unmount();
 	});
+
+	// #1194: bounces and complaints whose message id matched no send are counted
+	// on the hub, so an operator does not have to read logs to learn of them.
+	it('counts the bounces and complaints that matched no send', () => {
+		stubHubQueries([
+			[
+				api.webhooks.unresolvedFeedback.getSummary,
+				{
+					data: {
+						total: 1200,
+						bounces: 9,
+						complaints: 5,
+						suppressed: 3,
+						open: 0,
+						isCapped: true,
+					},
+				},
+			],
+		]);
+		const wrapper = mount(DeliveryHubPage, { global: hubOptions });
+
+		const line = wrapper.find('[data-testid="unresolved-feedback-summary"]');
+		expect(line.text()).toContain('1,200+');
+		expect(line.text()).toContain('9 bounced · 5 complained · 3 blocked by address');
+		expect(line.text()).not.toContain('still unmatched');
+		wrapper.unmount();
+	});
+
+	it('shows no unresolved-feedback line when there is none', () => {
+		stubHubQueries([
+			[
+				api.webhooks.unresolvedFeedback.getSummary,
+				{
+					data: { total: 0, bounces: 0, complaints: 0, suppressed: 0, open: 0, isCapped: false },
+				},
+			],
+		]);
+		const wrapper = mount(DeliveryHubPage, { global: hubOptions });
+
+		expect(wrapper.find('[data-testid="unresolved-feedback-summary"]').exists()).toBe(false);
+		wrapper.unmount();
+	});
 });

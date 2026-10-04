@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { classifyResendBounce, verifySvixHeaders } from '../resend';
+import { classifyResendBounce, resendAdapter, verifySvixHeaders } from '../resend';
 
 describe('classifyResendBounce', () => {
 	it('classifies user-unknown patterns as hard', () => {
@@ -165,5 +165,37 @@ describe('verifySvixHeaders', () => {
 			now
 		);
 		expect(ok).toBe(false);
+	});
+});
+
+describe('resendAdapter.parseEvent — complaints', () => {
+	function complaint(to: string[]): string {
+		return JSON.stringify({
+			type: 'email.complained',
+			created_at: '2026-07-10T00:00:00.000Z',
+			data: {
+				created_at: '2026-07-10T00:00:00.000Z',
+				email_id: 're-msg-1',
+				from: 'news@owlat.example',
+				to,
+				subject: 'Hello',
+			},
+		});
+	}
+
+	it('names the provider and carries the complainer when the message had one recipient', () => {
+		expect(resendAdapter.parseEvent(complaint(['complainer@example.com']))).toEqual({
+			kind: 'email.complained',
+			providerMessageId: 're-msg-1',
+			at: Date.parse('2026-07-10T00:00:00.000Z'),
+			providerType: 'resend',
+			recipient: 'complainer@example.com',
+		});
+	});
+
+	it('names no complainer when the message had several recipients', () => {
+		const event = resendAdapter.parseEvent(complaint(['one@example.com', 'two@example.com']));
+		expect(event).toMatchObject({ kind: 'email.complained', providerType: 'resend' });
+		expect(event).not.toHaveProperty('recipient');
 	});
 });

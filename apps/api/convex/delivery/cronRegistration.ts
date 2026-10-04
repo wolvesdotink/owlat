@@ -260,4 +260,20 @@ export function registerDeliveryCrons(crons: Crons): void {
 		internal.delivery.seedScheduledProbe.sweepScheduledSeedProbes,
 		{}
 	);
+
+	// Send completions that threw (#1195): replay the recorded outcomes whose
+	// backoff ran out, and delete old records (resolved after 30 days, exhausted
+	// after 90). Each tick with nothing to do is one index range read.
+	crons.interval(
+		'replay failed send completions',
+		{ minutes: 10 },
+		internal.delivery.sendCompletionFailures.replayDueCompletionFailures,
+		{}
+	);
+	crons.interval(
+		'purge send completion failures',
+		{ hours: 24 },
+		internal.delivery.sendCompletionFailureAdmin.purgeCompletionFailures,
+		{}
+	);
 }

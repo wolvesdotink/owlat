@@ -66,6 +66,10 @@ export const TENANT_TABLES = [
 	// Attachment bytes a transactional API request stored but no Send claimed
 	// yet; the step frees each blob with its row.
 	'transactionalPendingUploads',
+	// Recorded send completions that threw (#1195): a pointer at a Send plus the
+	// worker outcome, which can carry the rendered message. Before both send tables.
+	'sendCompletionFailurePayloads',
+	'sendCompletionFailures',
 	'transactionalSends',
 	'transactionalEmails',
 
@@ -73,6 +77,9 @@ export const TENANT_TABLES = [
 	'mtaCampaignAlertReceipts',
 	'webhookDeliveryLogs',
 	'webhookPayloads',
+	// Bounces and complaints that matched no Send (#1194), kept for counting and
+	// replay: message ids, outcomes and replay state, no addresses.
+	'unresolvedFeedback',
 	'webhooks',
 
 	// ── Forms ──
