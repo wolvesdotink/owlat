@@ -27,6 +27,7 @@ function setup(draftId: string | null = null) {
 			ensuring: ref(false),
 			isSaving: ref(false),
 			lastSavedAt: ref(null),
+			rowCreatedAt: ref(null),
 			toAddresses: ref(['jonas@example.com']),
 			ccAddresses: ref([]),
 			bccAddresses: ref([]),

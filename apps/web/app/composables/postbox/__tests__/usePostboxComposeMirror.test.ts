@@ -32,7 +32,9 @@ function memoryDriver(): OfflineKvDriver {
 			return map.get(key) as T | undefined;
 		},
 		async set(key, value) {
-			map.set(key, JSON.parse(JSON.stringify(value)));
+			// structuredClone, like IndexedDB: a reactive proxy is refused, which a
+			// JSON round trip would quietly accept.
+			map.set(key, structuredClone(value));
 		},
 		async delete(key) {
 			map.delete(key);
@@ -81,6 +83,8 @@ function openComposer(over: Partial<ComposeMirrorSources> = {}): Composer {
 		bodyHtml,
 		bodyBlocks: ref([] as EditorBlock[]),
 		composerMode: ref('simple'),
+		followUpRemindAt: ref(null),
+		ready: () => true,
 		...over,
 	};
 	const scope = effectScope();
@@ -262,5 +266,174 @@ describe('usePostboxComposeMirror — closing before the server has the text', (
 		again.lastSavedAt.value = 900;
 		await vi.advanceTimersByTimeAsync(0);
 		expect(again.mirror.restorable).toBeNull();
+	});
+});
+
+describe('usePostboxComposeMirror — only real text, never over a recovery copy', () => {
+	const ROW = 'draft-11';
+	const savedEntry = (subject: string, serverEditedAt = 500) =>
+		store.save(MAILBOX, ROW, {
+			fields: {
+				toAddresses: ['ines@northwind.studio'],
+				ccAddresses: [],
+				bccAddresses: [],
+				subject,
+				bodyHtml: '<p>Unsaved body</p>',
+				composerMode: 'simple',
+			},
+			savedAt: 1_000,
+			serverEditedAt,
+		});
+
+	it('writes nothing before the row has loaded: its fields are placeholders', async () => {
+		const composer = openComposer({ seedDraftId: ROW as never, ready: () => false });
+		composer.subject.value = 'Typed while loading';
+		await nextTick();
+		composer.mirror.writeNow();
+		composer.close();
+		await vi.advanceTimersByTimeAsync(DRAFT_MIRROR_DEBOUNCE_MS);
+		expect(await peek(ROW)).toBeNull();
+	});
+
+	it('keeps an open restore offer’s entry when the composer closes untouched', async () => {
+		await savedEntry('Unsaved subject');
+		const composer = openComposer({ seedDraftId: ROW as never });
+		// Loading the row moves the fields (and arms a write of the older text).
+		composer.toAddresses.value = ['ines@northwind.studio'];
+		composer.subject.value = 'Saved subject';
+		composer.bodyHtml.value = '<p>Saved body</p>';
+		composer.lastSavedAt.value = 500;
+		await vi.advanceTimersByTimeAsync(0);
+		expect(composer.mirror.restorable).not.toBeNull();
+
+		composer.close();
+		await vi.advanceTimersByTimeAsync(DRAFT_MIRROR_DEBOUNCE_MS);
+		expect((await peek(ROW))?.fields.subject).toBe('Unsaved subject');
+	});
+
+	it('keeps an open offer’s entry when a save of other text lands', async () => {
+		await savedEntry('Unsaved subject');
+		const composer = openComposer({ seedDraftId: ROW as never });
+		composer.subject.value = 'Saved subject';
+		composer.lastSavedAt.value = 500;
+		await vi.advanceTimersByTimeAsync(0);
+		expect(composer.mirror.restorable).not.toBeNull();
+
+		composer.lastSavedAt.value = 800; // some save, not of the offered text
+		await vi.advanceTimersByTimeAsync(0);
+		expect((await peek(ROW))?.fields.subject).toBe('Unsaved subject');
+	});
+
+	it('moves an open offer to the new row time when a save only re-sent the row', async () => {
+		// The composer re-saves a loaded row; that moves the row's edit time but
+		// not its text. A reopen must still offer the recovery copy.
+		await savedEntry('Unsaved subject');
+		const loadedRow = {
+			toAddresses: ['ines@northwind.studio'],
+			ccAddresses: [],
+			bccAddresses: [],
+			subject: 'Saved subject',
+			bodyHtml: '<p>Saved body</p>',
+			composerMode: 'simple' as const,
+			followUpRemindAt: null,
+		};
+		const composer = openComposer({ seedDraftId: ROW as never, serverSnapshot: ref(loadedRow) });
+		composer.toAddresses.value = ['ines@northwind.studio'];
+		composer.subject.value = 'Saved subject';
+		composer.bodyHtml.value = '<p>Saved body</p>';
+		composer.lastSavedAt.value = 500;
+		await vi.advanceTimersByTimeAsync(0);
+		composer.lastSavedAt.value = 800;
+		await vi.advanceTimersByTimeAsync(0);
+		composer.close();
+		expect(await peek(ROW)).toMatchObject({
+			fields: { subject: 'Unsaved subject' },
+			serverEditedAt: 800,
+		});
+
+		const again = openComposer({ seedDraftId: ROW as never, serverSnapshot: ref(loadedRow) });
+		again.toAddresses.value = ['ines@northwind.studio'];
+		again.subject.value = 'Saved subject';
+		again.bodyHtml.value = '<p>Saved body</p>';
+		again.lastSavedAt.value = 800;
+		await vi.advanceTimersByTimeAsync(0);
+		expect(again.mirror.restorable?.fields.subject).toBe('Unsaved subject');
+	});
+
+	it('leaves an open offer behind a save of new edits', async () => {
+		await savedEntry('Unsaved subject');
+		const loadedRow = {
+			toAddresses: ['ines@northwind.studio'],
+			ccAddresses: [],
+			bccAddresses: [],
+			subject: 'Saved subject',
+			bodyHtml: '<p>Saved body</p>',
+			composerMode: 'simple' as const,
+			followUpRemindAt: null,
+		};
+		const composer = openComposer({ seedDraftId: ROW as never, serverSnapshot: ref(loadedRow) });
+		composer.toAddresses.value = ['ines@northwind.studio'];
+		composer.subject.value = 'Saved subject';
+		composer.bodyHtml.value = '<p>Saved body</p>';
+		composer.lastSavedAt.value = 500;
+		await vi.advanceTimersByTimeAsync(0);
+		composer.subject.value = 'Typed instead of restoring';
+		composer.lastSavedAt.value = 800;
+		await vi.advanceTimersByTimeAsync(0);
+		expect(await peek(ROW)).toMatchObject({ serverEditedAt: 500 });
+	});
+
+	it('reconciles against the row as loaded, not the editor’s merged fields', async () => {
+		// Offline undo: the editor keeps the seeded text, which the mirror also
+		// holds; the server row still has the old text. Nothing was saved, so
+		// the mirror must survive, not be dropped as "already on the server".
+		await savedEntry('Edited offline');
+		const serverSnapshot = ref({
+			toAddresses: ['ines@northwind.studio'],
+			ccAddresses: [],
+			bccAddresses: [],
+			subject: 'Old',
+			bodyHtml: '<p>Old body</p>',
+			composerMode: 'simple' as const,
+			followUpRemindAt: null,
+		});
+		const composer = openComposer({ seedDraftId: ROW as never, serverSnapshot });
+		composer.toAddresses.value = ['ines@northwind.studio'];
+		composer.subject.value = 'Edited offline';
+		composer.bodyHtml.value = '<p>Unsaved body</p>';
+		composer.lastSavedAt.value = 500;
+		await vi.advanceTimersByTimeAsync(0);
+		expect(composer.mirror.restorable?.fields.subject).toBe('Edited offline');
+	});
+
+	it('records a new row’s creation time as its baseline until a save lands', async () => {
+		const draftId = ref<string | null>(null);
+		const rowCreatedAt = ref<number | null>(null);
+		const composer = openComposer({ draftId: draftId as never, rowCreatedAt });
+		await vi.advanceTimersByTimeAsync(0); // fresh compose reconciles at once
+		draftId.value = ROW;
+		rowCreatedAt.value = 900;
+		composer.subject.value = 'First save failed';
+		await settle();
+		expect(await peek(ROW)).toMatchObject({ serverEditedAt: 900 });
+	});
+
+	it('mirrors and restores the follow-up reminder', async () => {
+		const followUpRemindAt = ref<number | null>(null);
+		const first = openComposer({ seedDraftId: ROW as never, followUpRemindAt });
+		first.subject.value = 'Saved subject';
+		first.lastSavedAt.value = 500;
+		await vi.advanceTimersByTimeAsync(0);
+		followUpRemindAt.value = 7_000;
+		await settle();
+		first.close();
+
+		const reminder = ref<number | null>(null);
+		const again = openComposer({ seedDraftId: ROW as never, followUpRemindAt: reminder });
+		again.subject.value = 'Saved subject';
+		again.lastSavedAt.value = 500;
+		await vi.advanceTimersByTimeAsync(0);
+		again.mirror.restore();
+		expect(reminder.value).toBe(7_000);
 	});
 });

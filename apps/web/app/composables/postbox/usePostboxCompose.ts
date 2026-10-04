@@ -23,6 +23,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
 import type { MailboxComposerTarget } from '~/utils/composerTarget';
+import type { DraftMirrorFields } from '~/utils/postboxDraftMirror';
 import { postboxUndoSendDelayMsArg } from '~/utils/postboxUndoSendWindow';
 import { freshDraftGaps, isDraftGapsRefusal } from '~/utils/answerDraft';
 import {
@@ -90,6 +91,10 @@ export function usePostboxCompose(seed: ComposerSeed) {
 	const ensuring = ref(false);
 	const isSaving = ref(false);
 	const lastSavedAt = ref<number | null>(null);
+	// Server clocks the device mirror reads: a new row's creation time (its
+	// baseline until a save is confirmed) and the row exactly as loaded.
+	const rowCreatedAt = ref<number | null>(null);
+	const serverSnapshot = ref<DraftMirrorFields | null>(null);
 
 	const toAddresses = ref<string[]>(seed.prefillTo ?? []);
 	const ccAddresses = ref<string[]>(seed.prefillCc ?? []);
@@ -192,6 +197,7 @@ export function usePostboxCompose(seed: ComposerSeed) {
 		ensuring,
 		isSaving,
 		lastSavedAt,
+		rowCreatedAt,
 		toAddresses,
 		ccAddresses,
 		bccAddresses,
@@ -271,7 +277,7 @@ export function usePostboxCompose(seed: ComposerSeed) {
 					lastSavedAt,
 					isGapGuarded,
 				},
-				{ state: initialHydration, seeded }
+				{ state: initialHydration, seeded, serverSnapshot }
 			)
 		: null;
 
@@ -283,6 +289,9 @@ export function usePostboxCompose(seed: ComposerSeed) {
 		inReplyToMessageId: seed.inReplyToMessageId,
 		draftId,
 		lastSavedAt,
+		rowCreatedAt,
+		serverSnapshot,
+		ready: () => initialHydration.value === 'ready',
 		draftState,
 		toAddresses,
 		ccAddresses,
@@ -291,6 +300,7 @@ export function usePostboxCompose(seed: ComposerSeed) {
 		bodyHtml,
 		bodyBlocks,
 		composerMode,
+		followUpRemindAt,
 	});
 
 	// Send-as identities for this mailbox: the mailbox's own allowed-from set

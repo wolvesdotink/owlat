@@ -40,6 +40,7 @@ import { reactive, ref, watch, onScopeDispose, type Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
 import {
+	draftMirrorFieldsEqual,
 	isBlankDraftFields,
 	reconcileDraftMirror,
 	type DraftMirrorEntry,
@@ -65,6 +66,21 @@ export interface ComposeMirrorSources {
 	draftId: Ref<Id<'mailDrafts'> | null>;
 	/** Server clock: when the row was last saved. Drives the reconcile. */
 	lastSavedAt: Ref<number | null>;
+	/**
+	 * Server clock: when a new draft's row was created (`drafts.create`). The
+	 * baseline a mirror records while no save has been confirmed yet, so a
+	 * reopen can still tell an untouched row from one saved since.
+	 */
+	rowCreatedAt?: Ref<number | null>;
+	/**
+	 * The row exactly as the server returned it on load, before an offline
+	 * undo's text or edits typed while loading were laid over it. Reconcile
+	 * compares the mirror with THIS, not with the merged editor fields.
+	 */
+	serverSnapshot?: Ref<DraftMirrorFields | null>;
+	/** The composer holds the loaded row (or never had one to load). */
+	ready: () => boolean;
+	followUpRemindAt: Ref<number | null>;
 	/** Mirroring pauses while the row is read-only (scheduled / pending send). */
 	draftState: Ref<'draft' | 'pending_send' | 'scheduled'>;
 	toAddresses: Ref<string[]>;
@@ -93,12 +109,15 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 	let activeKey = sources.seedDraftId ? String(sources.seedDraftId) : provisionalKey;
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	let reconciled = false;
+	// The reconcile has read the stored entry and decided. Until then a write
+	// would replace that entry before anyone saw it.
+	let settled = false;
 
 	// The canonical draft snapshot (`composeDraftFields`), the same fields and
 	// serialisation autosave persists, so the restore offer compares like with
-	// like. It deliberately has no `followUpRemindAt` (see postboxDraftFields).
+	// like, plus the reminder autosave sends beside them.
 	function snapshot(): DraftMirrorFields {
-		return composeDraftFields(sources);
+		return { ...composeDraftFields(sources), followUpRemindAt: sources.followUpRemindAt.value };
 	}
 
 	function cancelPending() {
@@ -110,6 +129,12 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 
 	async function writeMirror() {
 		if (sources.draftState.value !== 'draft') return;
+		// Not before the row has loaded: the fields are placeholders then, and
+		// a restore of them would blank the saved recipients and body. Not while
+		// an offer is open either: that entry is the recovery copy, and loading
+		// the row (which moves the fields) must not write the older server text
+		// over it. It stays until Restore or Keep saved version.
+		if (!sources.ready() || !settled || restorable.value) return;
 		const fields = snapshot();
 		// A blank composer is not work; mirroring it would only leave an entry the
 		// next open has to reconcile away for nothing.
@@ -117,7 +142,7 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 		await store.save(namespace, activeKey, {
 			fields,
 			savedAt: Date.now(),
-			serverEditedAt: sources.lastSavedAt.value ?? 0,
+			serverEditedAt: sources.lastSavedAt.value ?? sources.rowCreatedAt?.value ?? 0,
 		});
 	}
 
@@ -125,20 +150,47 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 	async function reconcile() {
 		if (reconciled) return;
 		reconciled = true;
-		// Captured BEFORE the await: for a reopened draft these are the values
-		// hydration just wrote, i.e. the server's own copy.
-		const serverFields = sources.seedDraftId ? snapshot() : null;
+		// Captured BEFORE the await: the row as the server returned it. The
+		// editor fields are not that when hydration kept an offline undo's text
+		// or an edit typed while loading, so they are only the fallback.
+		const serverFields = sources.seedDraftId ? (sources.serverSnapshot?.value ?? snapshot()) : null;
 		const key = activeKey;
-		const mirror = await store.load(namespace, key);
-		const verdict = reconcileDraftMirror({
-			mirror,
-			serverEditedAt: sources.lastSavedAt.value,
-			serverFields,
-		});
-		if (verdict === 'restore') restorable.value = mirror;
-		// A mirror the server has already caught up with is dead weight; drop it
-		// rather than re-reading it on every future open of this draft.
-		else if (mirror) await store.clear(namespace, key);
+		try {
+			const mirror = await store.load(namespace, key);
+			const verdict = reconcileDraftMirror({
+				mirror,
+				serverEditedAt: sources.lastSavedAt.value,
+				serverFields,
+			});
+			if (verdict === 'restore') restorable.value = mirror;
+			// A mirror the server has already caught up with is dead weight; drop
+			// it rather than re-reading it on every future open of this draft.
+			else if (mirror) await store.clear(namespace, key);
+		} finally {
+			settled = true;
+		}
+	}
+
+	/**
+	 * A save landed while the offer is still open. That entry is not what was
+	 * saved, so it stays until Restore or Keep saved version. When the save only
+	 * carried the row's own text back (the composer re-saves a loaded row), the
+	 * row is no newer than the entry in substance, so the entry moves to the new
+	 * row time: a reopen still offers it. A save of new edits leaves it as it
+	 * was; the row is then genuinely newer, and the next reopen sets it aside.
+	 */
+	async function keepOffer(savedAt: number) {
+		const entry = restorable.value;
+		const loaded = sources.serverSnapshot?.value;
+		if (!entry || !loaded || !draftMirrorFieldsEqual(snapshot(), loaded)) return;
+		// A plain copy: the offer sits in a ref, and IndexedDB cannot store the
+		// reactive proxy the ref hands back (the store would drop the write).
+		const rebased: DraftMirrorEntry = {
+			...(JSON.parse(JSON.stringify(entry)) as DraftMirrorEntry),
+			serverEditedAt: savedAt,
+		};
+		restorable.value = rebased;
+		await store.save(namespace, activeKey, rebased);
 	}
 
 	/**
@@ -156,6 +208,7 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 		sources.subject.value = f.subject;
 		sources.bodyHtml.value = f.bodyHtml;
 		sources.composerMode.value = f.composerMode;
+		if (f.followUpRemindAt !== undefined) sources.followUpRemindAt.value = f.followUpRemindAt;
 		if (f.bodyBlocks) {
 			try {
 				sources.bodyBlocks.value = JSON.parse(f.bodyBlocks) as EditorBlock[];
@@ -195,6 +248,7 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 			sources.bodyHtml,
 			sources.bodyBlocks,
 			sources.composerMode,
+			sources.followUpRemindAt,
 		],
 		() => {
 			if (sources.draftState.value !== 'draft') return;
@@ -215,6 +269,7 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 		(savedAt) => {
 			if (savedAt === null) return;
 			if (!reconciled) void reconcile();
+			else if (restorable.value) void keepOffer(savedAt);
 			else {
 				cancelPending();
 				void store.clear(namespace, activeKey);

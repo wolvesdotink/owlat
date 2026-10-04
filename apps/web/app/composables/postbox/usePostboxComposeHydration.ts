@@ -22,6 +22,8 @@ import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
 import type { ComposerMode } from './usePostboxCompose';
 import type { ComposerAttachment } from './usePostboxComposeAttachments';
+import { composeDraftFields } from '~/utils/postboxDraftFields';
+import type { DraftMirrorFields } from '~/utils/postboxDraftMirror';
 
 /**
  * Whether a reopened draft's row has reached the composer yet. 'missing' means
@@ -89,6 +91,11 @@ interface HydrationOptions {
 	 * back by undo), so the row must not replace them.
 	 */
 	seeded: readonly TrackedDraftField[];
+	/**
+	 * Receives the row exactly as the server returned it, before seeded or
+	 * touched fields are laid over it: the device mirror reconciles against it.
+	 */
+	serverSnapshot?: Ref<DraftMirrorFields | null>;
 }
 
 type DraftRow = {
@@ -112,6 +119,33 @@ type DraftRow = {
 		size: number;
 	}>;
 };
+
+/**
+ * The row's own draft fields, serialised exactly as the composer snapshots its
+ * live fields (`composeDraftFields`), so the mirror compares like with like.
+ */
+export function serverFieldsOf(draft: DraftRow): DraftMirrorFields {
+	let blocks: unknown[] = [];
+	if (draft.bodyBlocks) {
+		try {
+			blocks = JSON.parse(draft.bodyBlocks) as unknown[];
+		} catch {
+			// Malformed on the row: compare as empty, like hydration renders it.
+		}
+	}
+	return {
+		...composeDraftFields({
+			toAddresses: { value: draft.toAddresses ?? [] },
+			ccAddresses: { value: draft.ccAddresses ?? [] },
+			bccAddresses: { value: draft.bccAddresses ?? [] },
+			subject: { value: draft.subject ?? '' },
+			bodyHtml: { value: draft.bodyHtml ?? '' },
+			bodyBlocks: { value: blocks },
+			composerMode: { value: draft.composerMode ?? 'simple' },
+		}),
+		followUpRemindAt: draft.followUpRemindAt ?? null,
+	};
+}
 
 export function usePostboxComposeHydration(
 	draftId: Id<'mailDrafts'>,
@@ -142,6 +176,7 @@ export function usePostboxComposeHydration(
 	);
 
 	function apply(draft: DraftRow) {
+		if (options.serverSnapshot) options.serverSnapshot.value = serverFieldsOf(draft);
 		const keep = (name: TrackedDraftField) => touched.has(name);
 		fields.draftState.value = draft.state ?? 'draft';
 		if (draft.lastEditedAt) fields.lastSavedAt.value = draft.lastEditedAt;

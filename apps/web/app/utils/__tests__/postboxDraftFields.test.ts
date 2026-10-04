@@ -120,6 +120,7 @@ describe('autosave, mirror and offline payload share one snapshot', () => {
 				// Kept null so the mirror's "server caught up" clear does not run
 				// before the test reads the entry back.
 				lastSavedAt: ref(null),
+				rowCreatedAt: ref(null),
 				followUpRemindAt,
 				createDraft: { run: vi.fn() } as never,
 				updateDraft: { run: updateRun } as never,
@@ -127,7 +128,11 @@ describe('autosave, mirror and offline payload share one snapshot', () => {
 			usePostboxComposeMirror({
 				...common,
 				seedDraftId: 'draft-1' as never,
-				lastSavedAt: ref(null),
+				// The loaded row: the mirror reconciles once, then mirrors. Its own
+				// ref, so autosave's save does not read as "server caught up".
+				lastSavedAt: ref(100),
+				ready: () => true,
+				followUpRemindAt,
 				draftState: ref('draft'),
 			});
 			const queueOffline = usePostboxComposeOfflineSend({
@@ -142,6 +147,8 @@ describe('autosave, mirror and offline payload share one snapshot', () => {
 			return { autosave, queueOffline };
 		})!;
 
+		// The mirror's reconcile reads the store first; it writes only after.
+		await vi.advanceTimersByTimeAsync(0);
 		// One edit wakes both debounced writers.
 		refs.subject.value = 'Quarterly numbers (final)';
 		await nextTick();
@@ -165,9 +172,10 @@ describe('autosave, mirror and offline payload share one snapshot', () => {
 		expect(mirrored).toEqual(shared);
 		expect(mirrored.subject).toBe('Quarterly numbers (final)');
 
-		// The one deliberate difference: the mirror has no reminder.
+		// The reminder too: a reminder set just before a failed save is as much
+		// unsaved work as the text.
 		expect(saved['followUpRemindAt']).toBe(1_700_000_000_000);
-		expect('followUpRemindAt' in mirrored).toBe(false);
+		expect(mirrored.followUpRemindAt).toBe(1_700_000_000_000);
 
 		// The offline payload carries the same snapshot plus its replay extras.
 		expect(queued).toMatchObject(mirrored);

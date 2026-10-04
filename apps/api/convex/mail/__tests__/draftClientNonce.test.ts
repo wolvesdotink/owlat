@@ -65,6 +65,10 @@ describe('drafts.create clientNonce idempotency', () => {
 			const rows = await ctx.db.query('mailDrafts').collect();
 			expect(rows).toHaveLength(1);
 			expect(rows[0]!.clientNonce).toBe('outbox-item-1');
+			// The row's server time comes back both times: the composer's device
+			// mirror records it as its baseline until a save is confirmed.
+			expect(first.lastEditedAt).toBe(rows[0]!.lastEditedAt);
+			expect(second.lastEditedAt).toBe(rows[0]!.lastEditedAt);
 		});
 	});
 

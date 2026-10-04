@@ -234,6 +234,12 @@ describe('usePostboxCompose — nothing is written before the row loads (#896)',
 });
 
 describe('usePostboxCompose — early edits merge over the loaded row (#896)', () => {
+	it('still saves a seeded composition over the loaded row', async () => {
+		await openComposer({ draftId: 'draft-1' as never, prefillSubject: 'Edited offline' });
+		await hydrate();
+		expect(lastUpdate()).toMatchObject({ subject: 'Edited offline' });
+	});
+
 	it('keeps touched recipients and fills the untouched ones from the row', async () => {
 		const composer = await openComposer();
 		composer.toAddresses.value = ['new@example.com'];

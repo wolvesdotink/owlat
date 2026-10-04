@@ -141,24 +141,43 @@ describe('reconcileDraftMirror', () => {
 		).toBe('none');
 	});
 
-	it('offers a new draft’s mirror whose first save never landed', () => {
-		// The row exists (created, never updated), so it carries a creation time;
-		// the mirror saw no acknowledged save. Only the fields can decide.
+	it('decides a new draft’s mirror against the row’s creation time', () => {
+		// The first save never landed; the mirror recorded the row's creation
+		// time (900). An untouched row is the same row: offer the text.
 		expect(
 			reconcileDraftMirror({
-				mirror: mirror({ serverEditedAt: 0 }),
+				mirror: mirror({ serverEditedAt: 900 }),
 				serverEditedAt: 900,
 				serverFields: fields({ subject: '', bodyHtml: '' }),
 			})
 		).toBe('restore');
-		// …and a later save that carried the same text leaves nothing to offer.
+		// Another tab saved after it: the server holds newer text, so stand aside.
 		expect(
 			reconcileDraftMirror({
-				mirror: mirror({ serverEditedAt: 0 }),
-				serverEditedAt: 900,
-				serverFields: fields(),
+				mirror: mirror({ serverEditedAt: 900 }),
+				serverEditedAt: 1_200,
+				serverFields: fields({ subject: 'Newer, from the other tab' }),
 			})
 		).toBe('none');
+	});
+
+	it('reads an empty editor body and an empty row body as the same message', () => {
+		expect(draftMirrorFieldsEqual(fields({ bodyHtml: '<p></p>' }), fields({ bodyHtml: '' }))).toBe(
+			true
+		);
+		expect(
+			draftMirrorFieldsEqual(fields({ bodyHtml: '<p>Hi</p>' }), fields({ bodyHtml: '' }))
+		).toBe(false);
+	});
+
+	it('counts a changed follow-up reminder as unsaved work', () => {
+		expect(
+			reconcileDraftMirror({
+				mirror: mirror({ fields: fields({ followUpRemindAt: 5_000 }) }),
+				serverEditedAt: 500,
+				serverFields: fields({ followUpRemindAt: null }),
+			})
+		).toBe('restore');
 	});
 
 	it('still offers a mirror whose client clock runs behind the server', () => {

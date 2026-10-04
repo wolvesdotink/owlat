@@ -83,6 +83,12 @@ export const create = postboxMutation({
 		args
 	): Promise<{
 		draftId: Id<'mailDrafts'>;
+		/**
+		 * The row's `lastEditedAt` (server clock). The composer's device mirror
+		 * records it as the row it was taken against until a save is confirmed,
+		 * so a reopen can tell a row nobody touched since from one saved later.
+		 */
+		lastEditedAt?: number;
 		inReplySubject?: string;
 		inReplyFrom?: string;
 		/** True when `clientNonce` matched a draft a previous call already created. */
@@ -105,7 +111,7 @@ export const create = postboxMutation({
 				.collect(); // bounded: drafts sharing one client nonce (typically 0–1)
 			const match = matches.find((m) => m.mailboxId === args.mailboxId);
 			if (match) {
-				return { draftId: match._id, existing: true };
+				return { draftId: match._id, lastEditedAt: match.lastEditedAt, existing: true };
 			}
 		}
 
@@ -147,7 +153,7 @@ export const create = postboxMutation({
 		});
 		await scheduleRecipientDiscovery(ctx, toAddresses);
 
-		return { draftId, inReplySubject, inReplyFrom };
+		return { draftId, lastEditedAt: now, inReplySubject, inReplyFrom };
 	},
 });
 

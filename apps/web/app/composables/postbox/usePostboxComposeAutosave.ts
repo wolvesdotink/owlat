@@ -63,6 +63,8 @@ interface AutosaveOptions {
 	ensuring: Ref<boolean>;
 	isSaving: Ref<boolean>;
 	lastSavedAt: Ref<number | null>;
+	/** Set from `drafts.create`: the new row's server time, for the mirror. */
+	rowCreatedAt: Ref<number | null>;
 	toAddresses: Ref<string[]>;
 	ccAddresses: Ref<string[]>;
 	bccAddresses: Ref<string[]>;
@@ -116,6 +118,7 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 			});
 			if (!result.ok) return null;
 			draftId.value = result.result.draftId as Id<'mailDrafts'>;
+			opts.rowCreatedAt.value = result.result.lastEditedAt ?? null;
 			if (result.result.inReplySubject && !subject.value) {
 				subject.value = result.result.inReplySubject.match(/^re\s*:\s*/i)
 					? result.result.inReplySubject

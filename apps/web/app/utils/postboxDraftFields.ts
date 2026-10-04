@@ -4,10 +4,9 @@
  *
  *  - Autosave (`usePostboxComposeAutosave`) spreads it into `drafts.update` and
  *    adds `followUpRemindAt`.
- *  - The on-device mirror (`usePostboxComposeMirror`) stores exactly this. It
- *    deliberately leaves `followUpRemindAt` out: the mirror is for what a
- *    person types, and a lost reminder costs one click to set again, while
- *    carrying it would add a field to every restore comparison.
+ *  - The on-device mirror (`usePostboxComposeMirror`) stores exactly this,
+ *    plus `followUpRemindAt`, like autosave: a reminder set just before a save
+ *    failed is as much unsaved work as the text.
  *  - The offline send (`usePostboxComposeOfflineSend`) spreads it into the
  *    queued payload and adds the references a replay needs: mailbox, draft,
  *    reply target, From, reminder, attachments and the send options.

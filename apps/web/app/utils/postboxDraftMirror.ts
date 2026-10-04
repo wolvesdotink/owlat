@@ -14,10 +14,7 @@
  * compares server clock to server clock:
  *
  *   - the server row moved on since the mirror was written → the server wins,
- *     the mirror is stale (another tab or device saved), offer nothing. A
- *     mirror taken before any save was acknowledged (`serverEditedAt` 0: a new
- *     draft whose row exists but whose first save never landed) has no server
- *     time to compare, so only the fields decide;
+ *     the mirror is stale (another tab or device saved), offer nothing;
  *   - the mirror's fields already match the server row → nothing was lost,
  *     offer nothing;
  *   - otherwise the mirror holds keystrokes the server never received → offer
@@ -41,8 +38,12 @@ import type { DraftFields } from './postboxDraftFields';
  * been committed to a draft row server-side, so restoring a list of storage ids
  * from a local mirror could only ever re-attach files the server already has
  * (or, worse, ids it no longer has). The mirror is for keystrokes.
+ *
+ * Plus the follow-up reminder: autosave carries it beside the draft fields,
+ * and a reminder set just before a save failed is as much unsaved work as the
+ * text. Optional, so entries written before it existed still read.
  */
-export type DraftMirrorFields = DraftFields;
+export type DraftMirrorFields = DraftFields & { followUpRemindAt?: number | null };
 
 /** One stored mirror: the fields, when they were taken, against which row. */
 export interface DraftMirrorEntry {
@@ -51,8 +52,10 @@ export interface DraftMirrorEntry {
 	savedAt: number;
 	/**
 	 * The server's `lastEditedAt` for this draft as the mirroring tab last knew
-	 * it, or 0 for a composition that never had a server row. Reconcile compares
-	 * this against the row's CURRENT `lastEditedAt` — both server clock.
+	 * it: the last confirmed save, the loaded row's, or, for a new draft whose
+	 * first save never landed, the row's creation time (`drafts.create` returns
+	 * it). 0 only for a composition that never had a server row. Reconcile
+	 * compares this against the row's CURRENT `lastEditedAt` — both server clock.
 	 */
 	serverEditedAt: number;
 }
@@ -82,9 +85,11 @@ export function draftMirrorFieldsEqual(a: DraftMirrorFields, b: DraftMirrorField
 		sameList(a.ccAddresses, b.ccAddresses) &&
 		sameList(a.bccAddresses, b.bccAddresses) &&
 		a.subject === b.subject &&
-		a.bodyHtml === b.bodyHtml &&
+		// An empty editor writes `<p></p>` where the row holds '': the same message.
+		(a.bodyHtml === b.bodyHtml || (isBlankHtml(a.bodyHtml) && isBlankHtml(b.bodyHtml))) &&
 		(a.bodyBlocks ?? '') === (b.bodyBlocks ?? '') &&
-		a.composerMode === b.composerMode
+		a.composerMode === b.composerMode &&
+		(a.followUpRemindAt ?? null) === (b.followUpRemindAt ?? null)
 	);
 }
 
@@ -129,13 +134,7 @@ export function reconcileDraftMirror(input: DraftMirrorReconcileInput): DraftMir
 	// The row was saved AFTER this mirror was taken — by another tab, another
 	// device, or this tab's own autosave landing post-crash. The server is then
 	// strictly the better copy and the mirror is stale.
-	// `serverEditedAt` 0 means the mirror never saw an acknowledged save, not
-	// that it predates one: a row created but never updated would otherwise
-	// always look newer and discard the only copy of what was typed.
-	const mirrorSawSave = mirror.serverEditedAt > 0;
-	if (mirrorSawSave && serverEditedAt !== null && serverEditedAt > mirror.serverEditedAt) {
-		return 'none';
-	}
+	if (serverEditedAt !== null && serverEditedAt > mirror.serverEditedAt) return 'none';
 	if (draftMirrorFieldsEqual(mirror.fields, serverFields)) return 'none';
 	return 'restore';
 }
