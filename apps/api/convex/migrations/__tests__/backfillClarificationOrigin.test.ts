@@ -308,9 +308,9 @@ describe('the schema without `attribution` (#1224)', () => {
 				{ id: 'clarify_0', attribution: legacy('acme.com') },
 			])
 		).rejects.toThrow(/Unexpected field `attribution`/);
-		await expect(
-			seedLegacySession(t, mailboxId, legacy('acme.com'))
-		).rejects.toThrow(/Unexpected field `attribution`/);
+		await expect(seedLegacySession(t, mailboxId, legacy('acme.com'))).rejects.toThrow(
+			/Unexpected field `attribution`/
+		);
 	});
 
 	it('leaves nothing for a run to change once the field is gone', async () => {
