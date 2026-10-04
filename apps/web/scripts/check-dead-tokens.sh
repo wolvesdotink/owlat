@@ -20,6 +20,7 @@
 # this script cd's to apps/web first.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+. scripts/lib/output-roots.sh
 
 TOKENS_CSS="../../packages/ui/assets/css/tokens.css"
 if [ ! -f "$TOKENS_CSS" ]; then
@@ -49,11 +50,14 @@ done
 
 # TESTS ARE NOT MARKUP. A class name in a spec is never compiled into anything
 # Tailwind renders, so it can neither emit CSS nor fail to — and the assertions
-# that pin these very rules quote every banned name by construction.
+# that pin these very rules quote every banned name by construction. Generated
+# output is skipped too: node_modules and .nuxt anywhere, the other output
+# directories only at a package root (scripts/lib/output-roots.sh).
 mapfile -t files < <(
 	find "${roots[@]}" -type f \( -name '*.vue' -o -name '*.ts' \) \
-		-not -path '*/node_modules/*' -not -path '*/__tests__/*' -not -name '*.test.ts' |
-		sort
+		-not -path '*/node_modules/*' -not -path '*/.nuxt/*' \
+		-not -path '*/__tests__/*' -not -name '*.test.ts' |
+		drop_output_roots "${roots[@]}" | sort
 )
 if [ "${#files[@]}" -eq 0 ]; then
 	echo "✗ no .vue/.ts files under: ${roots[*]}" >&2
