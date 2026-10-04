@@ -165,6 +165,15 @@ ciphertext, and a failed update.
   the Postbox rendered \`atrest:1:<iv>:<ciphertext>\` instead of the mail. (#743)
 - **Only mail that wants a reply reaches the Reply Queue.** Both stages are
   tightened.
+- **A failed update restarts the stack instead of leaving it dark.** Compose recreate is "create new, stop old, start new", so a \`docker
+compose up\` that dies mid-way leaves the old containers stopped. (#742)
+
+### Documentation
+
+- Every anchor link is checked.
+### Changed
+- **Indented continuation.**
+  Still the same bullet.
 
 \`\`\`sh
 - not a bullet
@@ -177,8 +186,19 @@ ciphertext, and a failed update.
 		expect(fixed.items.map(text)).toEqual([
 			'Message bodies are unsealed at the read boundary. Opening a message in the Postbox rendered atrest:1:<iv>:<ciphertext> instead of the mail. (#743)',
 			'Only mail that wants a reply reaches the Reply Queue. Both stages are tightened.',
+			'A failed update restarts the stack instead of leaving it dark. Compose recreate is "create new, stop old, start new", so a docker compose up that dies mid-way leaves the old containers stopped. (#742)',
 		]);
+		expect(fixed.items[2]).toContainEqual({ type: 'code', value: 'docker compose up' });
 		expect(fixed.items[0]).toContainEqual({ type: 'code', value: 'atrest:1:<iv>:<ciphertext>' });
+	});
+
+	it('stops a bullet at a heading, even without a blank line', () => {
+		expect(notes.groups.find((g) => g.kind === 'docs')!.items.map(text)).toEqual([
+			'Every anchor link is checked.',
+		]);
+		expect(notes.groups.find((g) => g.kind === 'changed')!.items.map(text)).toEqual([
+			'Indented continuation. Still the same bullet.',
+		]);
 	});
 
 	it('joins wrapped paragraphs and leaves code blocks alone', () => {

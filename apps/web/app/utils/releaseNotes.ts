@@ -163,12 +163,14 @@ function isBoilerplate(inlines: Inline[]): boolean {
 }
 
 const LIST_ITEM = /^\s*([-*+]|\d+\.)\s+/;
-const CONTINUATION = /^\s{2,}\S/;
+/** Lines that start a block of their own, so they never continue a bullet. */
+const BLOCK_START = /^\s*(#{1,6}\s|>|```|([-*_])(\s*\2){2,}\s*$)/;
 
 /**
- * Joins a bullet's indented continuation lines onto the bullet. CHANGELOG.md
- * wraps long entries, and the shared parser only reads a list item's first
- * line — the rest would come out as a separate paragraph and be dropped here.
+ * Joins a bullet's continuation lines onto the bullet, indented or not, up to
+ * the next blank line, bullet or block. CHANGELOG.md wraps long entries, and
+ * the shared parser only reads a list item's first line — the rest would come
+ * out as a separate paragraph and be dropped here.
  */
 function unwrapListItems(source: string): string {
 	const out: string[] = [];
@@ -176,7 +178,13 @@ function unwrapListItems(source: string): string {
 	let inItem = false;
 	for (const line of source.split('\n')) {
 		if (/^\s*```/.test(line)) inFence = !inFence;
-		if (!inFence && inItem && CONTINUATION.test(line) && !LIST_ITEM.test(line)) {
+		if (
+			!inFence &&
+			inItem &&
+			line.trim() !== '' &&
+			!LIST_ITEM.test(line) &&
+			!BLOCK_START.test(line)
+		) {
 			out[out.length - 1] += ` ${line.trim()}`;
 			continue;
 		}
