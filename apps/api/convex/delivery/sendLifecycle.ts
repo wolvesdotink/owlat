@@ -38,6 +38,7 @@ import {
 	senderDomainFor,
 } from './sendLifecycle/lookups';
 import { withoutTestSendEffects } from './sendLifecycle/types';
+import { recordsEngagementAfterFeedback } from './sendLifecycle/engagementActivity';
 import { refuse } from '../lib/lifecycle';
 import { finalizeSendSource } from './sendLifecycle/sourceFinalization';
 import { applyProviderFeedback } from './sendCompletionFailures';
@@ -154,6 +155,12 @@ async function dispatch(
 	// denominator; persisted terminal timestamps do.
 	const isAttributableRemoteAcceptance =
 		input.to === 'delivered' && canAttributeRemoteAcceptance(send, input.at);
+	// A reader open or click on a soft-bounced or complained row is recorded as
+	// engagement without moving the status (#1225; the reducers keep the status
+	// and gate the first-open effects). A hard-bounced row stays refused. See
+	// `./sendLifecycle/engagementActivity` for why.
+	const isEngagementAfterFeedback =
+		(input.to === 'opened' || input.to === 'clicked') && recordsEngagementAfterFeedback(send);
 
 	// Self-loops: `opened` / `clicked` re-fire as counter-only `recorded`
 	// events, and `bounced → bounced` re-fire is routed to the reducer (which
@@ -162,12 +169,13 @@ async function dispatch(
 	// reducer also detects from === to and returns the duplicate outcome — so
 	// the core's self-loop allowance is exactly what this machine wants.
 	//
-	// The two sanctioned edges below are legal on grounds the graph cannot
-	// express: an MTA-bound `queued` row going terminal, and a late but
-	// attributable remote acceptance. Terminal states still get a distinct
-	// reason for observability.
+	// The three sanctioned edges below are legal on grounds the graph cannot
+	// express: an MTA-bound `queued` row going terminal, a late but
+	// attributable remote acceptance, and reader engagement after feedback.
+	// Terminal states still get a distinct reason for observability.
 	const verdict = lifecycle.classify(from, input.to, {
-		isSanctionedEdge: isBoundQueuedMtaTerminal || isAttributableRemoteAcceptance,
+		isSanctionedEdge:
+			isBoundQueuedMtaTerminal || isAttributableRemoteAcceptance || isEngagementAfterFeedback,
 	});
 	if (verdict.kind === 'refused') {
 		return refuse(verdict);
@@ -191,7 +199,8 @@ async function dispatch(
 			input.at,
 			ref,
 			deliverySenderDomain,
-			recipientContact
+			recipientContact,
+			{ keepsSoftBounceCount: isEngagementAfterFeedback }
 		);
 	}
 

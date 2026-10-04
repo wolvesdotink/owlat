@@ -395,19 +395,12 @@ describe('sendLifecycle.transition — opened/clicked', () => {
 		});
 	});
 
-	// An open or click on a bounced or complained row never reaches the reducer:
-	// the lifecycle graph has no `opened`/`clicked` edge out of those states. So
-	// a re-open there records nothing at all, and the row keeps its status. The
-	// reducer's own first-open gate for these rows is covered in
-	// sendLifecycleReducers.test.ts, in case this gate is ever relaxed (#1189).
+	// An open or click on a hard-bounced row never reaches the reducer, so it
+	// records nothing and the row keeps its status. Soft-bounced and complained
+	// rows record it as engagement instead: see
+	// engagementAfterFeedback.integration.test.ts (#1225).
 	it.each([
 		{ label: 'hard-bounced', row: { status: 'bounced', bounceType: 'hard' }, reason: 'terminal' },
-		{
-			label: 'soft-bounced',
-			row: { status: 'bounced', bounceType: 'soft' },
-			reason: 'illegal_edge',
-		},
-		{ label: 'complained', row: { status: 'complained' }, reason: 'terminal' },
 	] as const)(
 		'an open or click on a $label send is refused and records nothing',
 		async ({ row, reason }) => {
