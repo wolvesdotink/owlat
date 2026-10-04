@@ -466,7 +466,7 @@ export const NON_TENANT_TABLES = [
 	// Replay claims for single provider events (Mandrill, #1228): the adapter's
 	// address-free `replayKey` (event name, provider message id, timestamp) and
 	// the claim state, nothing else. Wire-protocol bookkeeping like
-	// `pluginWebhookDeliveries`, self-expiring within a day of the event; wiping
+	// `pluginWebhookDeliveries`, self-expiring a week after the event; wiping
 	// it early would only re-open a replay window.
 	'inboundEventClaims',
 ] as const satisfies readonly TableNames[];
