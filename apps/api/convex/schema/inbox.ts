@@ -293,6 +293,11 @@ export const inboxTables = {
 		isDraftGapGuarded: v.optional(v.boolean()),
 		// Error tracking
 		errorMessage: v.optional(v.string()),
+		// Where a `failed` message failed: `send` when the approved reply could not
+		// be sent, `pipeline` for an agent step. Decides what Retry does
+		// (`@owlat/shared/inboxRetry`); cleared when the message leaves `failed`.
+		// Absent on rows that failed before the field existed.
+		failedStage: v.optional(v.union(v.literal('send'), v.literal('pipeline'))),
 		// Timestamps
 		receivedAt: v.number(),
 		processedAt: v.optional(v.number()),
@@ -344,6 +349,10 @@ export const inboxTables = {
 		createdAt: v.number(),
 	})
 		.index('by_inbound_message', ['inboundMessageId'])
+		// One message's rows in one status. A message gains a row per step per
+		// run, so "its failed rows" or "its latest failed row" must be selected
+		// by status before any limit, not filtered out of its oldest rows.
+		.index('by_inbound_message_status', ['inboundMessageId', 'status'])
 		.index('by_status', ['status']),
 
 	// Knowledge Backfill Jobs - one-time extraction of historical inbound mail,

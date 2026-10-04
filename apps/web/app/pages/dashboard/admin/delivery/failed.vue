@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
 import { formatDateTime } from '~/utils/formatters';
+import { inboxRetryCopy, inboxRetryToast } from '~/utils/inboxRetry';
 
 const { t } = useI18n();
 
@@ -21,7 +21,8 @@ const {
 	refetch,
 } = useConvexQuery(api.inbox.queries.getFailed, () => ({ limit: 50 }));
 
-// Manual re-enqueue
+// Retry: sends a person's approved reply again, returns a person's reply to
+// review, or has the agent draft again (`inboxRetryCopy`, #1220).
 const { run: retryFailedMessage } = useBackendOperation(api.inbox.mutations.retryFailedMessage, {
 	label: () => t('dashboard.inbox.failed.retryOperation'),
 });
@@ -31,12 +32,12 @@ const actionInProgress = ref<string | null>(null);
 const { showToast } = useToast();
 const { isAdmin } = usePermissions();
 
-const onRetry = async (messageId: Id<'inboundMessages'>) => {
-	actionInProgress.value = messageId;
+const onRetry = async (message: NonNullable<typeof failedMessages.value>[number]) => {
+	actionInProgress.value = message._id;
 	try {
-		const result = await retryFailedMessage({ inboundMessageId: messageId });
+		const result = await retryFailedMessage({ inboundMessageId: message._id });
 		if (!result.ok) return;
-		showToast(t('dashboard.inbox.failed.retriedToast'));
+		showToast(t(inboxRetryToast(result.result.retried)));
 	} finally {
 		actionInProgress.value = null;
 	}
@@ -124,17 +125,26 @@ const onRetry = async (messageId: Id<'inboundMessages'>) => {
 					</p>
 
 					<!-- Actions -->
-					<div v-if="isAdmin" class="flex items-center gap-2 border-t border-border-subtle pt-4">
+					<div
+						v-if="isAdmin"
+						class="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border-subtle pt-4"
+					>
 						<UiButton
 							variant="secondary"
 							size="sm"
 							class="gap-1"
 							:disabled="actionInProgress === message._id"
-							@click="onRetry(message._id)"
+							@click="onRetry(message)"
 						>
-							<Icon name="lucide:refresh-cw" class="w-3 h-3" />
-							{{ t('dashboard.inbox.failed.retryProcessing') }}
+							<Icon
+								:name="
+									inboxRetryCopy(message).plan === 'sendAgain' ? 'lucide:send' : 'lucide:refresh-cw'
+								"
+								class="w-3 h-3"
+							/>
+							{{ t(inboxRetryCopy(message).action) }}
 						</UiButton>
+						<p class="text-xs text-text-secondary">{{ t(inboxRetryCopy(message).hint) }}</p>
 					</div>
 				</div>
 			</div>

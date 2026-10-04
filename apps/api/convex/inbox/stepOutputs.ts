@@ -133,9 +133,9 @@ export const recordDraftOutput = internalMutation({
 			// an earlier run left, which no longer match the draft.
 			draftOptions: undefined,
 			...(args.attachmentSuggestions ? { attachmentSuggestions: args.attachmentSuggestions } : {}),
-			// Edits a person saved over an earlier draft (a Retry after a failed
-			// send re-drafts) are not edits of this one: the next save seeds this
-			// draft as revision 0.
+			// Edits a person saved over an earlier draft are not edits of this
+			// one: the next save seeds this draft as revision 0. (A Retry never
+			// re-drafts over a person's reply, #1220.)
 			...NO_SAVED_EDITS,
 		});
 	},

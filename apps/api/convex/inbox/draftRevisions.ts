@@ -64,8 +64,9 @@ export function draftDiffersFromAgentOriginal(message: Doc<'inboundMessages'>): 
  * after a reload and `approveDraft` refuses them. Omitted = left as it was.
  *
  * A save while the agent can still write its draft over this one (`drafting`,
- * `awaiting_clarification`) takes the reply over first, so the late agent
- * draft cannot replace the saved text or clear its revisions (#1221).
+ * `awaiting_clarification`, `failed`) takes the reply over first, so the late
+ * agent draft cannot replace the saved text or clear its revisions (#1221,
+ * #1220).
  */
 export async function appendDraftRevision(
 	ctx: MutationCtx,
