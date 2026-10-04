@@ -308,7 +308,7 @@ function codeSpans(text: string, from: number, isFinal: boolean): Array<readonly
 		if (isFinal || end < text.length) runs.push([start, end]);
 		start = text.indexOf('`', end);
 	}
-	const nextOfLength: number[] = new Array<number>(runs.length).fill(-1);
+	const nextOfLength = runs.map(() => -1);
 	const laterOfLength = new Map<number, number>();
 	for (let run = runs.length - 1; run >= 0; run -= 1) {
 		const length = runs[run]![1] - runs[run]![0];
