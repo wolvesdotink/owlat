@@ -33,11 +33,15 @@ export const MANDRILL_SEND_TIMEOUT_MESSAGE = 'Mandrill send timed out';
  * text taxonomy below rather than being silently bucketed.
  *
  *  - Recipient-side (the address is unmailable or on Mandrill's reject list):
- *    `hard-bounce`, `soft-bounce`, `invalid`, `unsub`, `custom`. All terminal;
- *    The reject-list ones are mirrored into `blockedEmails`.
+ *    `hard-bounce`, `soft-bounce`, `invalid`, `unsub`, `custom`, `spam`. All
+ *    terminal; the reject-list ones are mirrored into `blockedEmails`. `spam` is
+ *    a denylist entry left by the recipient's complaint (one of the five entry
+ *    types `rejects/list` reports), not a verdict on the message's content.
  *  - Sender-side: `unsigned` (the From domain is not SPF/DKIM-configured in the
  *    Mandrill account) and `invalid-sender`.
- *  - Content/policy: `spam`, `rule` (an account rejection rule fired).
+ *  - Content/policy: `rule`, an account rules-engine "reject message" action.
+ *    A rule can match the subject, sender, tags, template or API key, so it is
+ *    not a fact about the recipient and suppresses no one (#1249).
  *  - Quota: `test-mode-limit` — a test key's send allowance, which is a rate
  *    limit in every sense that matters to the dispatch loop.
  */
@@ -47,9 +51,9 @@ const REJECT_REASON_CODES: Readonly<Record<string, EmailErrorCode>> = Object.fre
 	invalid: EmailErrorCode.INVALID_RECIPIENT,
 	unsub: EmailErrorCode.INVALID_RECIPIENT,
 	custom: EmailErrorCode.INVALID_RECIPIENT,
+	spam: EmailErrorCode.INVALID_RECIPIENT,
 	unsigned: EmailErrorCode.INVALID_SENDER,
 	'invalid-sender': EmailErrorCode.INVALID_SENDER,
-	spam: EmailErrorCode.CONTENT_REJECTED,
 	rule: EmailErrorCode.CONTENT_REJECTED,
 	'test-mode-limit': EmailErrorCode.RATE_LIMIT,
 });

@@ -250,7 +250,7 @@ describe('per-recipient response parsing', () => {
 		['soft-bounce', EmailErrorCode.INVALID_RECIPIENT],
 		['unsub', EmailErrorCode.INVALID_RECIPIENT],
 		['custom', EmailErrorCode.INVALID_RECIPIENT],
-		['spam', EmailErrorCode.CONTENT_REJECTED],
+		['spam', EmailErrorCode.INVALID_RECIPIENT],
 		['rule', EmailErrorCode.CONTENT_REJECTED],
 		['unsigned', EmailErrorCode.INVALID_SENDER],
 		['invalid-sender', EmailErrorCode.INVALID_SENDER],
@@ -282,7 +282,6 @@ describe('per-recipient response parsing', () => {
 	it.each([
 		['hard-bounce', { reason: 'hard_bounce', evidence: 'MANDRILL_REJECT_HARD_BOUNCE' }],
 		['spam', { reason: 'spam_complaint', evidence: 'MANDRILL_REJECT_SPAM' }],
-		['rule', { reason: 'operator_suppressed', evidence: 'MANDRILL_REJECT_RULE' }],
 		['unsub', { reason: 'unsubscribed', evidence: 'MANDRILL_REJECT_UNSUB' }],
 	])('a rejected/%s result carries the suppression its webhook would', async (reason, expected) => {
 		global.fetch = vi
@@ -301,8 +300,10 @@ describe('per-recipient response parsing', () => {
 		expect(result).toMatchObject({ success: false, suppression: expected });
 	});
 
-	it.each(['unsigned', 'invalid-sender', 'test-mode-limit', 'invalid'])(
-		'a sender-side rejected/%s result carries no suppression',
+	// `rule` is a rules-engine action on the MESSAGE, which may match its
+	// subject or sender, so it says nothing about the address (#1249).
+	it.each(['unsigned', 'invalid-sender', 'test-mode-limit', 'invalid', 'rule'])(
+		'a rejected/%s result (sender-side or a rule) carries no suppression',
 		async (reason) => {
 			global.fetch = vi
 				.fn()

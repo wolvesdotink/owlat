@@ -370,8 +370,10 @@ export const isBlockedInternal = internalQuery({
 // Three additive widenings serve that, all optional so every shipped
 // caller is untouched:
 //   - `reason` accepts `'manual'`, the class an operator-curated blacklist
-//     entry belongs to (Mandrill `custom` / `rule`). The schema union has
-//     always had it; only this validator was narrower.
+//     entry belongs to (Mandrill `custom`). The schema union has always had
+//     it; only this validator was narrower. A Mandrill `rule` reject blocks no
+//     one (#1249); rows it wrote before that carry `MANDRILL_REJECT_RULE` as
+//     the evidence of their `blocklist.provider_suppressed` audit entry.
 //   - `bounceType` is carried through to the row AND to the MTA mirror, where
 //     it decides permanent (`hard_bounce`) vs. expiring (`manual`) backstop
 //     entries — a soft-bounce suppression that mirrored as hard would be

@@ -107,6 +107,9 @@ describe('which reject reasons are recipient truths', () => {
 		});
 	});
 
+	// A `spam` reject is the denylist entry a complaint left (Mandrill adds an
+	// address when its complaint comes back through a feedback loop), so it is
+	// recipient truth and keeps blocking (#1249).
 	it('suppresses a spam reject as a complaint, not a bounce', async () => {
 		const calls = await dispatchReject('spam');
 		expect(suppressions(calls)[0]!.args).toMatchObject({ reason: 'complained' });
@@ -115,11 +118,11 @@ describe('which reject reasons are recipient truths', () => {
 		expect(suppressions(calls)[0]!.args['bounceType']).toBeUndefined();
 	});
 
-	// An operator (or an account rule) put this address on the list by hand. That
-	// is a human decision, and `manual` is the reason class that says so on the
-	// suppression screen and expires at the MTA backstop.
-	it.each(['custom', 'rule'])('records an operator-curated %s entry as manual', async (reason) => {
-		const calls = await dispatchReject(reason);
+	// An operator put this address on the list by hand. That is a human
+	// decision, and `manual` is the reason class that says so on the suppression
+	// screen and expires at the MTA backstop.
+	it('records an operator-curated custom entry as manual', async () => {
+		const calls = await dispatchReject('custom');
 		expect(suppressions(calls)[0]!.args).toMatchObject({ reason: 'manual' });
 		expect(suppressions(calls)[0]!.args['bounceType']).toBeUndefined();
 	});
@@ -138,14 +141,20 @@ describe('which reject reasons are recipient truths', () => {
 
 	// THE SENDER-SIDE REASONS. Every one of these says something about our
 	// account, our sending domain or our message — none of them about the person.
-	it.each(['invalid-sender', 'invalid', 'test-mode-limit', 'unsigned', 'some-future-reason'])(
-		'suppresses nobody on a %s reject',
-		async (reason) => {
-			const calls = await dispatchReject(reason);
-			expect(suppressions(calls)).toHaveLength(0);
-			expect(unsubscribes(calls)).toHaveLength(0);
-		}
-	);
+	// `rule` is one of them: a rules-engine rule can match the subject, sender,
+	// tags, template or API key, and writes nothing to the denylist (#1249).
+	it.each([
+		'invalid-sender',
+		'invalid',
+		'test-mode-limit',
+		'unsigned',
+		'rule',
+		'some-future-reason',
+	])('suppresses nobody on a %s reject', async (reason) => {
+		const calls = await dispatchReject(reason);
+		expect(suppressions(calls)).toHaveLength(0);
+		expect(unsubscribes(calls)).toHaveLength(0);
+	});
 
 	it('suppresses nobody on a reject that names no reason at all', async () => {
 		expect(suppressions(await dispatchReject(undefined))).toHaveLength(0);
