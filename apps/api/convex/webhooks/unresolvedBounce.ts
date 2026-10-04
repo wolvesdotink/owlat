@@ -72,12 +72,52 @@ export async function recordUnresolvedFeedback(
 					...(bounceStatusCode ? { bounceStatusCode } : {}),
 				}
 			: { kind: 'complaint' as const };
+	await store(ctx, e, {
+		...signal,
+		providerMessageId: e.providerMessageId,
+		suppression: options.suppression,
+	});
+}
+
+/**
+ * Keep a complaint that arrived WITHOUT a message id and did not prove this
+ * deployment sent the mail, so it blocked no one (#1227). Without this row the
+ * complaint would vanish: there is no Send to move and no address to keep.
+ *
+ * Same privacy and never-throws rules as {@link recordUnresolvedFeedback}: the
+ * address stays in the caller's memory, and only the provider type, the
+ * provenance tag and the time are stored. The row has no message id, so it is
+ * counted but never replayed.
+ */
+export async function recordUnattributedComplaint(
+	ctx: ActionCtx,
+	e: InboundEventOf<'email.complained'>
+): Promise<void> {
+	logWarn(
+		`[Webhook Dispatcher] unattributed_complaint: email.complained with no provider ` +
+			`message id from ${e.providerType ?? 'an unidentified source'} (at=${e.at}) ` +
+			`carried no proof this deployment sent the mail; nothing was blocked. Counted ` +
+			`in unresolvedFeedback.`
+	);
+	await store(ctx, e, { kind: 'complaint', suppression: 'unattributed' });
+}
+
+/** The `record` call both entry points share. Logs and swallows a failure. */
+async function store(
+	ctx: ActionCtx,
+	e: InboundEventOf<'email.bounced'> | InboundEventOf<'email.complained'>,
+	fields: {
+		kind: 'bounce' | 'complaint';
+		suppression: UnresolvedFeedbackSuppression;
+		providerMessageId?: string;
+		bounceType?: 'hard' | 'soft';
+		bounceStatusCode?: string;
+	}
+): Promise<void> {
 	try {
 		await ctx.runMutation(internal.webhooks.unresolvedFeedback.record, {
-			...signal,
-			providerMessageId: e.providerMessageId,
+			...fields,
 			at: e.at,
-			suppression: options.suppression,
 			...(e.providerType ? { providerType: e.providerType } : {}),
 			...(e.deliveryDomain ? { deliveryDomain: e.deliveryDomain } : {}),
 		});
@@ -86,7 +126,7 @@ export async function recordUnresolvedFeedback(
 		// refused.
 		logError('[Webhook Dispatcher] unresolved feedback could not be stored', {
 			kind: e.kind,
-			providerMessageId: e.providerMessageId,
+			providerMessageId: fields.providerMessageId ?? null,
 			errorName: error instanceof Error ? error.name : typeof error,
 		});
 	}

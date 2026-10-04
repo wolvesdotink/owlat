@@ -394,15 +394,16 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 	});
 
 	// PR-13: a complaint with no recoverable Message-ID (Gmail FBL redaction)
-	// still carries the recipient (RFC 5965 §3.2). The dispatcher suppresses by
-	// email directly — never routing through the send lifecycle (no send to
-	// transition) and never dropping the complaint.
-	it('routes a recipient-only email.complained to blockedEmails.addFromEvent', async () => {
+	// still carries the recipient (RFC 5965 §3.2). An attributed one is
+	// suppressed by email directly, never routed through the send lifecycle (no
+	// send to transition).
+	it('routes an attributed recipient-only email.complained to blockedEmails.addFromEvent', async () => {
 		const { ctx, runMutationCalls } = makeCtx();
 		const event: InboundEvent = {
 			kind: 'email.complained',
 			recipient: 'victim@example.com',
 			at: 4000,
+			providerType: 'mta',
 			deliveryDomain: 'production',
 		};
 
@@ -420,16 +421,23 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 	it.each([
 		{ name: 'member preview', deliveryDomain: 'member_test' as const },
 		{ name: 'unknown provenance', deliveryDomain: undefined },
-	])('does not suppress a redacted recipient for $name', async ({ deliveryDomain }) => {
-		const { ctx, runMutationCalls } = makeCtx();
-		await dispatchInboundEvent(ctx, {
-			kind: 'email.complained',
-			recipient: 'victim@example.com',
-			at: 4000,
-			...(deliveryDomain ? { deliveryDomain } : {}),
-		});
-		expect(runMutationCalls).toHaveLength(0);
-	});
+	])(
+		'does not suppress a redacted recipient for $name, only counts it',
+		async ({ deliveryDomain }) => {
+			const { ctx, runMutationCalls } = makeCtx();
+			await dispatchInboundEvent(ctx, {
+				kind: 'email.complained',
+				recipient: 'victim@example.com',
+				at: 4000,
+				providerType: 'mta',
+				...(deliveryDomain ? { deliveryDomain } : {}),
+			});
+			expect(runMutationCalls.map((c) => c.ref)).toEqual([
+				ref(internal.webhooks.unresolvedFeedback.record),
+			]);
+			expect(runMutationCalls[0]?.args).toMatchObject({ suppression: 'unattributed' });
+		}
+	);
 
 	it('no-ops an email.complained that carries neither a Message-ID nor a recipient', async () => {
 		const { ctx, runMutationCalls } = makeCtx();
@@ -1449,6 +1457,8 @@ describe('dispatchInboundEvent — Yahoo CFL report observation', () => {
 		kind: 'email.complained',
 		recipient: 'complainer@yahoo.com',
 		at: 7000,
+		// Yahoo CFL reports reach Owlat through its own MTA, which tags them.
+		providerType: 'mta',
 		deliveryDomain: 'production',
 		reportedDomain: 'mail.owlat.test',
 		sourceIsp: 'yahoo',

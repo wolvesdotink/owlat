@@ -1,21 +1,26 @@
 {
+	// Type-checks the docs tests and everything they import; run by the
+	// workspace's `typecheck` script after `nuxt typecheck`, whose generated
+	// config covers app/** but not __tests__/.
+	//
+	// Some tests import app code that leans on Nuxt auto-imports
+	// (`useDocsContent.ts` calls Nuxt Content's `queryCollection`). The two
+	// generated files below declare those globals and the collection types,
+	// exactly as the app build sees them, so they come from `nuxt prepare`
+	// (postinstall, and the first step of `nuxt typecheck`), never from a
+	// hand-written stub. They type every auto-importable composable, which is
+	// browser code, hence the DOM libs.
 	"compilerOptions": {
 		"target": "ES2022",
 		"module": "ESNext",
 		"moduleResolution": "bundler",
-		"lib": [
-			"ES2022"
-		],
+		"lib": ["ES2022", "DOM", "DOM.Iterable"],
 		"strict": true,
 		"esModuleInterop": true,
 		"skipLibCheck": true,
-		"types": [
-			"node",
-			"vitest/globals"
-		],
+		"noEmit": true,
+		"types": ["node", "vitest/globals"],
 		"resolveJsonModule": true
 	},
-	"include": [
-		"**/*.ts"
-	]
+	"include": ["**/*.ts", "../.nuxt/types/imports.d.ts", "../.nuxt/content/types.d.ts"]
 }

@@ -235,20 +235,20 @@ export type IdempotencyKeyDeduplication = boolean;
  * mail"; on an event from a third-party ESP's webhook it is simply absent,
  * because nothing of ours touched that report.
  *
- * Its consumer is the recipient-only complaint (RFC 5965 §3.2 — the FBL
- * redacted the Message-ID, so there is no send to transition and the address is
- * all we have). A tagged source must show `production` before we blocklist the
- * address; an UNtagged source has no tag to show, so requiring one would drop
- * every redacted complaint it ever sends — a complainer who stays mailable,
- * which is the outcome an FBL exists to prevent. That is what the shipped
- * `providerType === 'ses'` special case bought, for one provider, by name.
+ * Its consumer is the complaint that names no Send: a recipient-only one
+ * (RFC 5965 §3.2 — the FBL redacted the Message-ID) or one whose id matches no
+ * Send. The address is all we have, and `production` from a source that
+ * declares this capability is the one proof that THIS deployment sent the mail,
+ * so it is the only thing that blocklists the address (#1194, #1227). An
+ * untagged source's complaint is counted as `unattributed` instead: a provider
+ * account shared by several deployments delivers every tenant's feedback to
+ * each of them, so its webhook proves who reported the mail, not who sent it.
  *
  * Absent ⇒ `false` — "we do not stamp this transport's feedback" — which is
  * both the fail-closed reading and simply true of every transport that is not
  * ours: the tag is written by our own MTA, on the way out of our own
- * infrastructure. A handler that cannot identify the SOURCE at all is a
- * different question and is not answered here (see
- * `webhooks/complaintDispatch.ts`, which requires the tag in that case).
+ * infrastructure. A source that cannot be identified at all proves nothing
+ * either (see `webhooks/complaintDispatch.ts`).
  */
 export type FeedbackProvenanceTagging = boolean;
 
@@ -434,10 +434,9 @@ export type CoreSendProviderCatalogEntry = SendProviderCatalogEntryShape & {
 	readonly deduplicatesOnIdempotencyKey: IdempotencyKeyDeduplication;
 	/**
 	 * Also required here, and also not part of the pair: a kind we write
-	 * ourselves knows whether we stamp its feedback. A core kind coasting on the
-	 * `false` default would have every redacted complaint it reports suppressed
-	 * without provenance — or, if it IS ours and declares nothing, every such
-	 * complaint dropped.
+	 * ourselves knows whether we stamp its feedback. If it IS ours and coasted on
+	 * the `false` default, every redacted complaint it reports would be counted
+	 * as unattributed instead of reaching the blocklist.
 	 */
 	readonly tagsFeedbackProvenance: FeedbackProvenanceTagging;
 } & (
