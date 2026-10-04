@@ -92,6 +92,10 @@ export async function failureRows(t: T) {
 	return await t.run(async (ctx) => await ctx.db.query('sendCompletionFailures').collect());
 }
 
+export async function payloadRows(t: T) {
+	return await t.run(async (ctx) => await ctx.db.query('sendCompletionFailurePayloads').collect());
+}
+
 /** Resolved history for one Send, the shape earlier failures leave behind. */
 export async function insertResolvedRecords(
 	t: T,

@@ -445,6 +445,15 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 		why: 'A derived graph snapshot, rebuilt from the live graph by the recompute cron.',
 	})),
 
+	// ── sendCompletionFailures ──
+	{
+		parent: 'sendCompletionFailures',
+		table: 'sendCompletionFailurePayloads',
+		field: 'failureId',
+		action: 'delete',
+		why: 'The worker outcome of the record: the recipient, their name and the message.',
+	},
+
 	// ── semanticFiles (deleted when a sole-contact inbound capture) ──
 	{
 		parent: 'semanticFiles',

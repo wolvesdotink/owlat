@@ -68,6 +68,7 @@ export const TENANT_TABLES = [
 	'transactionalPendingUploads',
 	// Recorded send completions that threw (#1195): a pointer at a Send plus the
 	// worker outcome, which can carry the rendered message. Before both send tables.
+	'sendCompletionFailurePayloads',
 	'sendCompletionFailures',
 	'transactionalSends',
 	'transactionalEmails',

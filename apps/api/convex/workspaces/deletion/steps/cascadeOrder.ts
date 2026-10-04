@@ -52,6 +52,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// Unclaimed transactional attachment uploads own their blobs outright.
 	'transactionalPendingUploads',
 	// Recorded completions point at Sends of both tables; cleared before either.
+	'sendCompletionFailurePayloads',
 	'sendCompletionFailures',
 	'transactionalSends',
 

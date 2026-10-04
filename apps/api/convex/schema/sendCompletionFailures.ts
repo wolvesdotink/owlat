@@ -62,13 +62,17 @@ export const sendCompletionFailureStatusValidator = v.union(
  * stamps the provider identity onto the still-queued Send. Rows are replayed by
  * `delivery/sendCompletionFailures.ts`.
  *
- * `result` carries the worker outcome verbatim, so a replay runs exactly the
- * completion that failed. A deferral's outcome includes its envelope (the
- * recipient and the rendered message), so the payload is dropped as soon as the
- * row resolves; the summary columns stay for the audit trail. Contact erasure
- * deletes a contact's rows in a phase of its own, and no row is written for a
- * Send that is already soft-deleted. Resolved rows are purged 30 days after
- * their last failure, exhausted ones after 90.
+ * The row itself is small metadata. The worker outcome, which a replay runs
+ * verbatim, lives in `sendCompletionFailurePayloads`, one row per record: a
+ * deferral's outcome carries the envelope (the recipient and the rendered
+ * message, up to the 1 MiB document limit), and every path that lists records
+ * (the replay cron, retention, operator reads, workspace deletion) must stay
+ * inside a transaction's read limit however many there are. Only the replay of
+ * one record loads its payload. The payload is deleted as soon as the record
+ * resolves; the summary columns stay for the audit trail. Contact erasure
+ * deletes a contact's records and their payloads in a phase of its own, and no
+ * record is written for a Send that is already soft-deleted. Resolved records
+ * are purged 30 days after their last failure, exhausted ones after 90.
  */
 export const sendCompletionFailureTables = {
 	sendCompletionFailures: defineTable({
@@ -79,8 +83,7 @@ export const sendCompletionFailureTables = {
 		// The workpool work id the completion belonged to: a second `onComplete`
 		// for the same work updates this row instead of adding another.
 		workId: v.string(),
-		result: v.optional(workpoolRunResultValidator),
-		// Summary, kept after `result` is dropped. `outcomeKind` is the worker
+		// Summary of the outcome in the payload row. `outcomeKind` is the worker
 		// outcome's `kind`, or the run result's `failed` / `canceled`, or
 		// `unreadable` for a value no worker build produces.
 		outcomeKind: v.string(),
@@ -113,4 +116,11 @@ export const sendCompletionFailureTables = {
 		.index('by_work_id', ['workId'])
 		.index('by_send_and_status', ['sendRef.id', 'status'])
 		.index('by_contact', ['contactId']),
+
+	// The worker outcome of one record, exactly as the workpool handed it over.
+	// Read only by that record's replay; deleted when it resolves or is purged.
+	sendCompletionFailurePayloads: defineTable({
+		failureId: v.id('sendCompletionFailures'),
+		result: workpoolRunResultValidator,
+	}).index('by_failure', ['failureId']),
 };

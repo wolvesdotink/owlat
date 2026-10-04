@@ -26,6 +26,7 @@ import {
 	NOT_DONE,
 	deleteAll,
 	drainEach,
+	drainParents,
 	type ErasureMode,
 	type PhaseContext,
 	type PhaseOutcome,
@@ -172,6 +173,33 @@ function scrubSends<T extends SendTable>(table: T, scrub: () => Partial<Doc<T>>)
 	};
 }
 
+/**
+ * Recorded send completions and their payloads (#1195): each record goes after
+ * its payload, which can be a 1 MiB document, so the payload reads go through
+ * the budget like any other child.
+ */
+const eraseSendCompletionFailures: PhaseRunner = async (phase) => {
+	const { ctx, contactId, budget } = phase;
+	return await drainParents(
+		budget,
+		() =>
+			ctx.db
+				.query('sendCompletionFailures')
+				.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+				.first(),
+		async (record) => {
+			const isEmpty = await deleteAll(phase, (n) =>
+				ctx.db
+					.query('sendCompletionFailurePayloads')
+					.withIndex('by_failure', (q) => q.eq('failureId', record._id))
+					.take(n)
+			);
+			if (isEmpty) await ctx.db.delete(record._id);
+			return isEmpty;
+		}
+	);
+};
+
 const PHASE_RUNNERS: Record<ContactErasurePhase, PhaseRunner> = {
 	// Learned clarification answers: deleted, never unlinked — an absent
 	// contactId is the org-wide scope. Promoted answers have none already.
@@ -236,12 +264,7 @@ const PHASE_RUNNERS: Record<ContactErasurePhase, PhaseRunner> = {
 	// A recorded completion can hold the recipient, their name and the message
 	// (#1195). The sends are soft-deleted by now, and a completion for a
 	// soft-deleted Send records nothing, so none comes back behind the walk.
-	sendCompletionFailures: deleteByIndex(({ ctx, contactId }, n) =>
-		ctx.db
-			.query('sendCompletionFailures')
-			.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-			.take(n)
-	),
+	sendCompletionFailures: eraseSendCompletionFailures,
 	conversationThreads: eraseConversationThreads,
 	unifiedMessages: eraseUnifiedMessages,
 	inboundMessages: eraseInboundMessages,

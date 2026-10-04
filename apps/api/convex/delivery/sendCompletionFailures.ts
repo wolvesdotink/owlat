@@ -168,7 +168,6 @@ export async function recordCompletionFailure(
 		failureId = existing._id;
 		await ctx.db.patch(existing._id, {
 			...summary,
-			result: args.result,
 			status: 'open',
 			resolution: undefined,
 			resolvedAt: undefined,
@@ -182,7 +181,6 @@ export async function recordCompletionFailure(
 			sendRef,
 			contactId: send.contactId,
 			workId: args.workId,
-			result: args.result,
 			status: 'open',
 			lastError,
 			replayAttempts: 0,
@@ -191,6 +189,7 @@ export async function recordCompletionFailure(
 			nextReplayAt: now + replayDelayMs(0),
 		});
 	}
+	await storePayload(ctx, failureId, args.result);
 	logError('[SendCompletion] Completion failed; outcome recorded for replay', {
 		failureId,
 		workId: args.workId,
@@ -200,6 +199,40 @@ export async function recordCompletionFailure(
 	});
 }
 
+/** The one payload row of a record, or null. Reads up to one 1 MiB document. */
+async function payloadOf(
+	ctx: MutationCtx,
+	failureId: Id<'sendCompletionFailures'>
+): Promise<Doc<'sendCompletionFailurePayloads'> | null> {
+	return await ctx.db
+		.query('sendCompletionFailurePayloads')
+		.withIndex('by_failure', (q) => q.eq('failureId', failureId))
+		.first();
+}
+
+async function storePayload(
+	ctx: MutationCtx,
+	failureId: Id<'sendCompletionFailures'>,
+	result: RunResult
+): Promise<void> {
+	const existing = await payloadOf(ctx, failureId);
+	if (existing) await ctx.db.patch(existing._id, { result });
+	else await ctx.db.insert('sendCompletionFailurePayloads', { failureId, result });
+}
+
+/**
+ * Delete a record's payload; returns whether there was one. A record has at
+ * most one, so this reads at most one document.
+ */
+export async function deleteCompletionFailurePayload(
+	ctx: MutationCtx,
+	failureId: Id<'sendCompletionFailures'>
+): Promise<boolean> {
+	const payload = await payloadOf(ctx, failureId);
+	if (payload) await ctx.db.delete(payload._id);
+	return payload !== null;
+}
+
 async function resolveRow(
 	ctx: MutationCtx,
 	row: FailureRow,
@@ -207,11 +240,11 @@ async function resolveRow(
 	now: number,
 	feedbackRefusals: FailureRow['feedbackRefusals']
 ): Promise<void> {
+	await deleteCompletionFailurePayload(ctx, row._id);
 	await ctx.db.patch(row._id, {
 		status: 'resolved',
 		resolution,
 		resolvedAt: now,
-		result: undefined,
 		pendingFeedback: undefined,
 		nextReplayAt: undefined,
 		...(feedbackRefusals?.length ? { feedbackRefusals } : {}),
@@ -276,10 +309,11 @@ export const applyRecordedCompletion = internalMutation({
 		const row = await ctx.db.get(failureId);
 		if (!row) return [];
 		const send = await ctx.db.get(row.sendRef.id);
-		if (send?.status === 'queued' && row.result) {
+		const payload = send?.status === 'queued' ? await payloadOf(ctx, row._id) : null;
+		if (payload) {
 			await ctx.runMutation(internal.delivery.sendCompletion.applyCompletion, {
 				workId: row.workId as WorkId,
-				result: row.result,
+				result: payload.result,
 				context: { sendRef: row.sendRef },
 			});
 		}
@@ -340,7 +374,7 @@ export const replayCompletionFailure = internalMutation({
 			await resolveRow(ctx, row, 'superseded', now, undefined);
 			return 'superseded';
 		}
-		if (isQueued && !row.result) {
+		if (isQueued && !(await payloadOf(ctx, row._id))) {
 			await ctx.db.patch(row._id, {
 				status: 'exhausted',
 				nextReplayAt: undefined,

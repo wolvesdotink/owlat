@@ -20,6 +20,7 @@ import {
 	DAY,
 	expiredDeferral,
 	failureRows,
+	payloadRows,
 	insertResolvedRecords,
 	setupQueuedSend,
 	statsSent,
@@ -80,7 +81,12 @@ describe('completeSend when the lifecycle throws', () => {
 			replayAttempts: 0,
 			lastError: 'UNKNOWN',
 		});
-		expect(row?.result).toMatchObject({ kind: 'success', returnValue: { kind: 'accepted' } });
+		const [payload, ...otherPayloads] = await payloadRows(t);
+		expect(otherPayloads).toHaveLength(0);
+		expect(payload).toMatchObject({
+			failureId: row?._id,
+			result: { kind: 'success', returnValue: { kind: 'accepted' } },
+		});
 	});
 
 	it('keeps an early bounce through a failed replay and applies it once the replay succeeds', async () => {
@@ -131,7 +137,7 @@ describe('completeSend when the lifecycle throws', () => {
 		expect(blocked).not.toBeNull();
 		const [resolved] = await failureRows(t);
 		expect(resolved).toMatchObject({ status: 'resolved', resolution: 'replayed' });
-		expect(resolved?.result).toBeUndefined();
+		expect(await payloadRows(t)).toHaveLength(0);
 		expect(resolved?.pendingFeedback).toBeUndefined();
 	});
 
@@ -292,7 +298,7 @@ describe('contact erasure', () => {
 			expiredDeferral(sendId, send.contactId, send.contactEmail)
 		);
 		fault.isArmed = false;
-		expect(JSON.stringify(await failureRows(t))).toContain(send.contactEmail);
+		expect(JSON.stringify(await payloadRows(t))).toContain(send.contactEmail);
 		return { sendId, contactId: send.contactId, email: send.contactEmail };
 	}
 
@@ -306,6 +312,7 @@ describe('contact erasure', () => {
 
 		expect((await t.run((ctx) => ctx.db.get(sendId)))?.contactEmail).toBe('[erased]');
 		expect(await failureRows(t)).toHaveLength(0);
+		expect(await payloadRows(t)).toHaveLength(0);
 
 		// A late `onComplete` for the erased Send records nothing.
 		fault.isArmed = true;
@@ -314,6 +321,7 @@ describe('contact erasure', () => {
 			expiredDeferral(sendId, contactId, email)
 		);
 		expect(await failureRows(t)).toHaveLength(0);
+		expect(await payloadRows(t)).toHaveLength(0);
 	});
 
 	it('deletes every record of a Send, behind resolved history and across work ids', async () => {
@@ -335,6 +343,7 @@ describe('contact erasure', () => {
 			permanentlyDeleteContactWithRelations(ctx, send.contactId, { decrementCount: false })
 		);
 		expect(await failureRows(t)).toHaveLength(0);
+		expect(await payloadRows(t)).toHaveLength(0);
 	});
 
 	it('deletes the records of a Send the erasure walker scrubs', async () => {
@@ -355,6 +364,7 @@ describe('contact erasure', () => {
 		}
 		expect(await t.run((ctx) => ctx.db.get(contactId))).toBeNull();
 		expect(await failureRows(t)).toHaveLength(0);
+		expect(await payloadRows(t)).toHaveLength(0);
 	});
 });
 

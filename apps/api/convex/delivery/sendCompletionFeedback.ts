@@ -20,10 +20,10 @@ import type { parkedFeedbackTransitionValidator } from '../schema/sendCompletion
 //   - hard bounce, complaint, delivery: the EARLIEST. Each is terminal or
 //     one-shot evidence, and the lifecycle would treat a later repeat as a
 //     duplicate anyway.
-//   - soft bounce, provider failure: the LATEST. A repeated soft bounce only
-//     bumps a counter the lifecycle keeps per Send, and that counter loses the
-//     repeats here: the coalescing is the price of a bounded buffer. A soft
-//     bounce still hardens if a hard bounce is parked beside it.
+//   - soft bounce, provider failure: the LATEST. A repeated soft bounce for the
+//     same Send adds nothing the lifecycle would keep: soft-bounce suppression
+//     counts distinct Sends, each once. A soft bounce still hardens if a hard
+//     bounce is parked beside it.
 // At most five events, and every kind the lifecycle can act on is kept.
 //
 // REPLAYED IN PROVIDER-TIME ORDER. Arrival order is not event order: a

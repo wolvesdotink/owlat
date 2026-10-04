@@ -3,6 +3,7 @@ import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { internalQuery } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
+import { deleteCompletionFailurePayload } from './sendCompletionFailures';
 
 // ============================================================================
 // Send completion failures — retention and the operator surface (#1195).
@@ -24,13 +25,19 @@ export const RESOLVED_RETENTION_MS = 30 * DAY_MS;
  */
 export const EXHAUSTED_RETENTION_MS = 90 * DAY_MS;
 export const PURGE_BATCH_SIZE = 200;
+/**
+ * Payloads deleted per purge transaction. Finding one reads it, and a payload
+ * can be a 1 MiB document, so this keeps a transaction far below its read limit.
+ */
+export const PURGE_PAYLOADS_PER_BATCH = 8;
 const STATUS_COUNT_LIMIT = 1000;
 const STATUS_SAMPLE_SIZE = 20;
 
 /**
  * Cron: delete resolved records 30 days and exhausted ones 90 days after their
- * last failure. One bounded batch per transaction; a full batch schedules the
- * next, so a backlog drains in one tick.
+ * last failure, with their payloads. One bounded batch per transaction, by
+ * rows and by payloads; a full batch schedules the next, so a backlog drains in
+ * one tick.
  */
 export const purgeCompletionFailures = internalMutation({
 	args: {},
@@ -41,6 +48,8 @@ export const purgeCompletionFailures = internalMutation({
 			['exhausted', EXHAUSTED_RETENTION_MS],
 		] as const;
 		let deleted = 0;
+		let payloads = 0;
+		let isFull = false;
 		for (const [status, retentionMs] of retention) {
 			const rows = await ctx.db
 				.query('sendCompletionFailures')
@@ -48,11 +57,16 @@ export const purgeCompletionFailures = internalMutation({
 					q.eq('status', status).lt('lastFailedAt', now - retentionMs)
 				)
 				.take(PURGE_BATCH_SIZE - deleted);
-			for (const row of rows) await ctx.db.delete(row._id);
-			deleted += rows.length;
-			if (deleted >= PURGE_BATCH_SIZE) break;
+			for (const row of rows) {
+				if (await deleteCompletionFailurePayload(ctx, row._id)) payloads += 1;
+				await ctx.db.delete(row._id);
+				deleted += 1;
+				if (payloads >= PURGE_PAYLOADS_PER_BATCH) break;
+			}
+			isFull = deleted >= PURGE_BATCH_SIZE || payloads >= PURGE_PAYLOADS_PER_BATCH;
+			if (isFull) break;
 		}
-		if (deleted >= PURGE_BATCH_SIZE) {
+		if (isFull) {
 			await ctx.scheduler.runAfter(
 				0,
 				internal.delivery.sendCompletionFailureAdmin.purgeCompletionFailures,

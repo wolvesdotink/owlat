@@ -71,6 +71,9 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailMessageParts: mailMessagePartsStep,
 	mailDrafts: mailDraftsStep,
 	transactionalPendingUploads: transactionalPendingUploadsStep,
+	// A payload can be a 1 MiB document: eight per transaction stays far inside
+	// the read limit.
+	sendCompletionFailurePayloads: makeSweepStep('sendCompletionFailurePayloads', 8),
 	sendCompletionFailures: makeSweepStep('sendCompletionFailures'),
 	transactionalSends: transactionalSendsStep,
 	emailSends: makeSweepStep('emailSends'),
