@@ -276,4 +276,16 @@ export function registerDeliveryCrons(crons: Crons): void {
 		internal.delivery.sendCompletionFailureAdmin.purgeCompletionFailures,
 		{}
 	);
+
+	// Sends no completion reached (#1208): fail a queued Send with no provider
+	// id once its recorded first attempt is past the four-day delivery deadline
+	// plus a day, so its campaign can complete. Sends without a recorded first
+	// attempt are left to an operator (`delivery/stuckSendSweepAdmin.ts`). A tick
+	// with nothing due is one index range read per send table.
+	crons.interval(
+		'sweep lost sends',
+		{ hours: 1 },
+		internal.delivery.stuckSendSweep.sweepLostSends,
+		{}
+	);
 }
