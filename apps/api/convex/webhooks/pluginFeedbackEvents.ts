@@ -111,9 +111,11 @@ function parseEvent(input: unknown, providerType: string): InboundEvent {
 			};
 		case 'complained': {
 			// The one event that may arrive with an address and no message id:
-			// RFC 5965 §3.2 redaction is routine, and the dispatcher suppresses by
-			// address in that case. It must still carry ONE of the two, or it names
-			// nothing and could only be recorded against a guess.
+			// RFC 5965 §3.2 redaction is routine. The dispatcher does not block that
+			// address (a plugin's report cannot prove this deployment sent the
+			// mail) but counts it as unattributed (#1227). It must still carry ONE
+			// of the two, or it names nothing and could only be recorded against a
+			// guess.
 			const providerMessageId = optionalText('providerMessageId', event['providerMessageId']);
 			if ('providerMessageId' in providerMessageId) {
 				assertUnreservedMessageId(providerMessageId['providerMessageId']!);

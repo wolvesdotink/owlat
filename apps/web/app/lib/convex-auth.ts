@@ -13,6 +13,24 @@ let inflightRequest: Promise<string | null> | null = null;
  */
 let warmupRequest: Promise<string | null> | null = null;
 
+/**
+ * Why the last token fetch came back without a token. The Convex client only
+ * sees `null` either way; the plugin's auth-loss handler reads this to tell a
+ * session the server turned away from a request that never got an answer.
+ *
+ * - `no-session`: the server answered and has no session for us (401/403, a 200
+ *   without a token, or a desktop with no workspace to ask);
+ * - `unreachable`: no usable answer (network error, timeout, 5xx, a body that is
+ *   not JSON), which says nothing about the session.
+ */
+export type ConvexTokenFailure = 'no-session' | 'unreachable';
+let lastFailure: ConvexTokenFailure | null = null;
+
+/** Why the most recent token fetch failed, or `null` if it produced a token. */
+export function lastConvexTokenFailure(): ConvexTokenFailure | null {
+	return lastFailure;
+}
+
 const REFRESH_BUFFER_MS = 60_000;
 
 /**
@@ -59,40 +77,42 @@ function clearCachedToken() {
 	tokenExpiresAt = 0;
 }
 
+function fail(reason: ConvexTokenFailure): null {
+	clearCachedToken();
+	lastFailure = reason;
+	return null;
+}
+
 export function resetConvexAuthTokenCache() {
 	clearCachedToken();
 	inflightRequest = null;
 	warmupRequest = null;
+	lastFailure = null;
 }
 
 async function fetchToken(): Promise<string | null> {
 	try {
 		const request = buildTokenRequest();
-		if (!request) {
-			clearCachedToken();
-			return null;
-		}
+		if (!request) return fail('no-session');
 		const response = await fetch(request.url, request.init);
 
 		if (!response.ok) {
-			clearCachedToken();
-			return null;
+			return fail(
+				response.status === 401 || response.status === 403 ? 'no-session' : 'unreachable'
+			);
 		}
 
 		const data = (await response.json()) as { token?: string | null };
 		const token = data.token ?? null;
 
-		if (!token) {
-			clearCachedToken();
-			return null;
-		}
+		if (!token) return fail('no-session');
 
 		cachedToken = token;
 		tokenExpiresAt = getTokenExpiry(token);
+		lastFailure = null;
 		return token;
 	} catch {
-		clearCachedToken();
-		return null;
+		return fail('unreachable');
 	}
 }
 

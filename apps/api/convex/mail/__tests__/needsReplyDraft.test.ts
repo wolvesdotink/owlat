@@ -87,7 +87,6 @@ beforeEach(() => {
 	mocks.runSharedDraft.mockResolvedValue({
 		draftBody: '  Hi, here is the September invoice, PO included.  ',
 		draftQuality: { score: 0.9, complete: true, grounded: true, flags: [] },
-		draftOptions: [],
 		tokenUsage: undefined,
 		modelUsed: 'mock-model',
 	});
@@ -159,7 +158,6 @@ describe('draftClarificationReply', () => {
 		mocks.runSharedDraft.mockResolvedValueOnce({
 			draftBody: 'A'.repeat(4000),
 			draftQuality: undefined,
-			draftOptions: [],
 			tokenUsage: undefined,
 			modelUsed: 'mock-model',
 		});

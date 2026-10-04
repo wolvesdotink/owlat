@@ -30,6 +30,7 @@ const CONTACT_REPOINT_TABLES = [
 	'inboundMessages',
 	'unifiedMessages',
 	'conversationThreads',
+	'sendCompletionFailures',
 ] as const;
 
 /**

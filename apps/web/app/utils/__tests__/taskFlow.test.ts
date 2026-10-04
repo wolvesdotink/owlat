@@ -4,10 +4,14 @@ import {
 	formatTaskFlowEstimate,
 	orderTaskFlow,
 	summarizeTaskFlow,
+	TASK_FLOW_OUTCOMES,
+	taskFlowOutcome,
 	taskFlowKindRank,
 	type TaskFlowKind,
 	type TaskFlowOrderKey,
 } from '../taskFlow';
+import en from '~~/i18n/locales/en.json';
+import de from '~~/i18n/locales/de.json';
 
 interface Task {
 	id: string;
@@ -123,28 +127,98 @@ describe('estimateTaskFlowSeconds / formatTaskFlowEstimate', () => {
 		const b = estimateTaskFlowSeconds(['question', 'question']);
 		expect(b).toBe(a * 2);
 	});
-	it('formats minutes above 90s and seconds below', () => {
-		expect(formatTaskFlowEstimate(0)).toBe('');
-		expect(formatTaskFlowEstimate(45)).toMatch(/sec$/);
-		expect(formatTaskFlowEstimate(240)).toBe('about 4 min');
+	it('carries a catalog key and its count, never English words (#1187)', () => {
+		expect(formatTaskFlowEstimate(0)).toBeNull();
+		expect(formatTaskFlowEstimate(-5)).toBeNull();
+		// Under 90s: seconds, rounded to the nearest 15 and never below 1.
+		expect(formatTaskFlowEstimate(45)).toEqual({
+			key: 'components.agentTasks.agentTaskFlow.estimateSeconds',
+			params: { n: 45 },
+		});
+		expect(formatTaskFlowEstimate(5)).toEqual({
+			key: 'components.agentTasks.agentTaskFlow.estimateSeconds',
+			params: { n: 1 },
+		});
+		expect(formatTaskFlowEstimate(80)).toEqual({
+			key: 'components.agentTasks.agentTaskFlow.estimateSeconds',
+			params: { n: 75 },
+		});
+		// From 90s: whole minutes.
+		expect(formatTaskFlowEstimate(90)).toEqual({
+			key: 'components.agentTasks.agentTaskFlow.estimateMinutes',
+			params: { n: 2 },
+		});
+		expect(formatTaskFlowEstimate(240)).toEqual({
+			key: 'components.agentTasks.agentTaskFlow.estimateMinutes',
+			params: { n: 4 },
+		});
+	});
+
+	it('names keys the English and German catalogs carry', () => {
+		const lookup = (catalog: unknown, key: string): unknown =>
+			key
+				.split('.')
+				.reduce<unknown>((node, part) => (node as Record<string, unknown>)?.[part], catalog);
+		for (const seconds of [45, 240]) {
+			const { key } = formatTaskFlowEstimate(seconds) as { key: string };
+			for (const catalog of [en, de]) expect(lookup(catalog, key)).toMatch(/\{n\}/);
+		}
 	});
 });
 
+const outcomeKey = (outcome: string) => `components.agentTasks.agentTaskFlow.outcome.${outcome}`;
+
 describe('summarizeTaskFlow', () => {
-	it('joins non-zero tallies with a middot', () => {
+	it('carries one catalog key and count per outcome, in first-seen order (#1187)', () => {
 		expect(
 			summarizeTaskFlow([
-				{ label: 'answered', count: 3 },
+				{ label: 'replied', count: 3 },
 				{ label: 'approved', count: 2 },
 			])
-		).toBe('3 answered · 2 approved');
+		).toEqual([
+			{ key: outcomeKey('replied'), params: { count: 3 } },
+			{ key: outcomeKey('approved'), params: { count: 2 } },
+		]);
 	});
 	it('drops zero-count entries', () => {
 		expect(
 			summarizeTaskFlow([
-				{ label: 'answered', count: 0 },
+				{ label: 'replied', count: 0 },
 				{ label: 'approved', count: 1 },
 			])
-		).toBe('1 approved');
+		).toEqual([{ key: outcomeKey('approved'), params: { count: 1 } }]);
+		expect(summarizeTaskFlow([])).toEqual([]);
+	});
+	it('merges outcomes without copy of their own into completed', () => {
+		expect(
+			summarizeTaskFlow([
+				{ label: 'handled', count: 1 },
+				{ label: 'sent', count: 2 },
+				{ label: 'completed', count: 1 },
+				{ label: 'done', count: 2 },
+			])
+		).toEqual([
+			{ key: outcomeKey('completed'), params: { count: 4 } },
+			{ key: outcomeKey('sent'), params: { count: 2 } },
+		]);
+	});
+	it('has English and German copy for every outcome', () => {
+		const lookup = (catalog: unknown, key: string): unknown =>
+			key
+				.split('.')
+				.reduce<unknown>((node, part) => (node as Record<string, unknown>)?.[part], catalog);
+		for (const outcome of TASK_FLOW_OUTCOMES) {
+			for (const catalog of [en, de]) {
+				expect(lookup(catalog, outcomeKey(outcome))).toMatch(/\{count\}/);
+			}
+		}
+	});
+});
+
+describe('taskFlowOutcome', () => {
+	it('keeps a known outcome and maps anything else to completed', () => {
+		expect(taskFlowOutcome('archived')).toBe('archived');
+		expect(taskFlowOutcome('handled')).toBe('completed');
+		expect(taskFlowOutcome(undefined)).toBe('completed');
 	});
 });

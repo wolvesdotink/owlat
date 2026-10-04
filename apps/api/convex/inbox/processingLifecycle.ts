@@ -48,6 +48,7 @@ import {
 } from './processingLifecycle/types';
 import { dispatch } from './processingLifecycle/effects';
 import { MAX_RETRY_ATTEMPTS } from '../lib/constants';
+import { inboxRetryPlan } from '@owlat/shared/inboxRetry';
 import {
 	cancelPendingAutoSend,
 	cancelAutoSendReasonValidator,
@@ -190,6 +191,13 @@ export const recordStepFail = internalMutation({
 // `failedActionStatus`), NOT `failed`, so this ascending `by_status='failed'`
 // scan can't be starved by a growing head of lifetime-exhausted rows. The
 // `retryCount >= MAX_RETRY_ATTEMPTS` guard below is now belt-and-suspenders.
+//
+// The cron only re-runs the agent for a message nobody touched (the `redraft`
+// plan of `@owlat/shared/inboxRetry`, #1220). A failed message holding a
+// person's reply, saved, approved or taken over, waits for a person's Retry:
+// re-running the pipeline would clear the takeover and draft over the reply.
+// Every row the cron will not retry closes as `abandoned`, so no leftover,
+// including rows left before this rule, can head the scan for good.
 
 export const retryFailedActions = internalMutation({
 	args: {},
@@ -202,9 +210,22 @@ export const retryFailedActions = internalMutation({
 		const now = Date.now();
 
 		for (const action of failedActions) {
-			if (action.retryCount >= MAX_RETRY_ATTEMPTS) continue;
 			const message = await ctx.db.get(action.inboundMessageId);
-			if (!message || message.processingStatus !== 'failed') continue;
+			// A row nothing will retry is retired rather than skipped: skipped, it
+			// stays at the head of this scan, and twenty of them stop every other
+			// retry. That is a row past its retries, a row whose message is gone
+			// or has moved on (a person took it over, a rejected transition closed
+			// the step, an older failure of a message retried since), and a row
+			// whose message holds a person's reply.
+			if (
+				action.retryCount >= MAX_RETRY_ATTEMPTS ||
+				!message ||
+				message.processingStatus !== 'failed' ||
+				inboxRetryPlan(message) !== 'redraft'
+			) {
+				await ctx.db.patch(action._id, { status: 'abandoned', completedAt: now });
+				continue;
+			}
 
 			await dispatch(ctx, message, {
 				to: 'received',

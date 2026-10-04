@@ -241,7 +241,7 @@ const knownStructureDrift = {
 			],
 		},
 		de: {
-			headings: '23333311111113113113111111111143111111134333223343433344343233233323312222233332',
+			headings: '233333111111131131131111111111431111111343333223343433344343233233323312222233332',
 			fences: [
 				'sh',
 				'plain',
@@ -284,6 +284,7 @@ const knownStructureDrift = {
 				'4x2',
 				'4x2',
 				'5x2',
+				'5x3',
 				'6x2',
 				'32x3',
 				'8x5',
@@ -334,10 +335,6 @@ const knownSymbolDrift = {
 	'3.developer/38.dnsbl-delisting.md': { enOnly: [], deOnly: ['POST /ip-audit/run'] },
 	'3.developer/8.environment-variables.md': {
 		enOnly: [
-			'CODE_WORKER_CONVEX_KEY',
-			'CODE_WORKER_PROXY_TOKEN',
-			'HTTPS_PROXY',
-			'HTTP_PROXY',
 			'NUXT_PUBLIC_DEPLOYMENT_MODE',
 			'NUXT_PUBLIC_OWLAT_VERSION',
 			'REQUIRE_EMAIL_VERIFICATION',

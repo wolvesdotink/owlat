@@ -14,6 +14,7 @@ import { getOrThrow, throwInvalidInput, throwAlreadyExists } from './_utils/erro
 import * as sm from './delivery/suppressionMirrorScheduler';
 import { recordAuditLog } from './lib/auditLog';
 import { restoreSunsetSuppression } from './contacts/sunsetRestore';
+import { findLiveContactByEmail } from './lib/contactHelpers';
 import {
 	blockedEmailReasonValidator,
 	bounceTypeValidator,
@@ -24,6 +25,7 @@ import {
 	BLOCKLIST_VIEW_LIMIT,
 	countBlockedByReason,
 	findBlockedByEmail,
+	wasRemovedByOperatorSince,
 } from './blockedEmails/lookup';
 
 // Derive the polymorphic block `sourceType` from whichever source-send id was
@@ -211,16 +213,12 @@ export const remove = authedMutation({
 		// its own `contact.sunset_restored` audit entry.
 		if (blockedEmail.reason === 'unengaged') {
 			// `by_email` is NOT unique and `contacts` is a soft-delete table, so the
-			// live-row filter belongs IN the query (CONVENTIONS.md): a soft-deleted
+			// lookup must skip soft-deleted rows (CONVENTIONS.md): a soft-deleted
 			// duplicate sorting first would otherwise send the operator down the
 			// plain delete below, leaving the live contact pinned at
 			// `sunsetStage: 'suppressed'` with no blocklist row behind it and the
 			// engine holding on `already_suppressed` forever.
-			const contact = await ctx.db
-				.query('contacts')
-				.withIndex('by_email', (q) => q.eq('email', blockedEmail.email))
-				.filter((q) => q.eq(q.field('deletedAt'), undefined))
-				.first();
+			const contact = await findLiveContactByEmail(ctx, blockedEmail.email);
 			if (contact !== null) {
 				const restore = await restoreSunsetSuppression(ctx, {
 					contactId: contact._id,
@@ -372,8 +370,11 @@ export const isBlockedInternal = internalQuery({
 // Three additive widenings serve that, all optional so every shipped
 // caller is untouched:
 //   - `reason` accepts `'manual'`, the class an operator-curated blacklist
-//     entry belongs to (Mandrill `custom` / `rule`). The schema union has
-//     always had it; only this validator was narrower.
+//     entry belongs to (Mandrill `custom`). The schema union has always had
+//     it; only this validator was narrower. A Mandrill `rule` reject blocks no
+//     one (#1249); rows it wrote before that carry `MANDRILL_REJECT_RULE` as
+//     the evidence of their `blocklist.provider_suppressed` audit entry, for
+//     as long as audit retention keeps that entry (30 days).
 //   - `bounceType` is carried through to the row AND to the MTA mirror, where
 //     it decides permanent (`hard_bounce`) vs. expiring (`manual`) backstop
 //     entries — a soft-bounce suppression that mirrored as hard would be
@@ -393,12 +394,23 @@ export const addFromEvent = internalMutation({
 			v.object({
 				/** Send-provider kind the suppression came from, e.g. `mandrill`. */
 				provider: v.string(),
-				/** Ongoing feedback vs. a one-off carry-over of an existing list. */
-				source: v.union(v.literal('webhook'), v.literal('import')),
+				/**
+				 * Ongoing feedback, a provider's refusal in its own send response
+				 * (#1243), or a one-off carry-over of an existing list.
+				 */
+				source: v.union(v.literal('webhook'), v.literal('send_response'), v.literal('import')),
 				/** The provider's own reason code, e.g. `MANDRILL_REJECT_SPAM`. */
 				evidence: v.optional(v.string()),
 			})
 		),
+		/**
+		 * When the provider observed this, for a provider-reported event. A
+		 * re-add older than an operator's removal of the address is refused
+		 * (returns null), so a late or replayed event cannot undo it (#1228).
+		 * See `wasRemovedByOperatorSince` for the tie rule and the cases it
+		 * refuses without proof.
+		 */
+		eventAt: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		const normalizedEmail = normalizeEmail(args.email);
@@ -412,6 +424,13 @@ export const addFromEvent = internalMutation({
 			// (below) no audit entry, because an audit trail records state changes
 			// and this call changed no state.
 			return existing._id;
+		}
+
+		if (
+			args.eventAt !== undefined &&
+			(await wasRemovedByOperatorSince(ctx, normalizedEmail, args.eventAt))
+		) {
+			return null;
 		}
 
 		// Create the blocked email record

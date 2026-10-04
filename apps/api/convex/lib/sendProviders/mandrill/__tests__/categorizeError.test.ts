@@ -30,11 +30,12 @@ describe('per-recipient reject reasons', () => {
 		['rejected: invalid', EmailErrorCode.INVALID_RECIPIENT],
 		['rejected: unsub', EmailErrorCode.INVALID_RECIPIENT],
 		['rejected: custom', EmailErrorCode.INVALID_RECIPIENT],
+		// A denylist entry the recipient's complaint left, not a content verdict.
+		['rejected: spam', EmailErrorCode.INVALID_RECIPIENT],
 		// Sender-side — the From domain is not set up in the Mandrill account.
 		['rejected: unsigned', EmailErrorCode.INVALID_SENDER],
 		['rejected: invalid-sender', EmailErrorCode.INVALID_SENDER],
-		// Content / policy.
-		['rejected: spam', EmailErrorCode.CONTENT_REJECTED],
+		// Policy: an account rules-engine rule, which may match the message alone.
 		['rejected: rule', EmailErrorCode.CONTENT_REJECTED],
 		// A test key's allowance is a rate limit in every sense the loop cares about.
 		['rejected: test-mode-limit', EmailErrorCode.RATE_LIMIT],

@@ -316,7 +316,8 @@ describe('mtaAdapter.parseEvent', () => {
 		});
 	});
 
-	it('prefers the Message-ID over the recipient when both are present', () => {
+	it('attributes by Message-ID and carries the recipient when both are present', () => {
+		// The dispatcher reads the address only when the id matches no send (#1194).
 		const event = mtaAdapter.parseEvent(
 			JSON.stringify({
 				event: 'complained',
@@ -330,6 +331,7 @@ describe('mtaAdapter.parseEvent', () => {
 			providerMessageId: 'msg_2',
 			at: 1700000000000,
 			providerType: 'mta',
+			recipient: 'victim@example.com',
 		});
 	});
 

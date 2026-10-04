@@ -172,11 +172,13 @@ export const MTA_EVENT_PARSERS = {
 			...(payload.sourceIsp ? { sourceIsp: payload.sourceIsp } : {}),
 		};
 		if (payload.messageId) {
+			// The recipient rides along for an id that matches no send (#1194).
 			return {
 				kind: 'email.complained',
 				providerMessageId: payload.messageId,
 				at: payload.timestamp,
 				providerType: 'mta',
+				...(payload.recipient ? { recipient: payload.recipient } : {}),
 				...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
 				...fblReportProvenance,
 			};

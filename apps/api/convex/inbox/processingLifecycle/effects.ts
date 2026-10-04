@@ -32,7 +32,7 @@ import {
 	isPipelineInput,
 	PROCESSING_LIFECYCLE,
 	reduce,
-	requiresManualTakeover,
+	refusedAsNotAPerson,
 } from './reducers';
 import { enqueuePush } from '../../push/events';
 
@@ -120,6 +120,38 @@ async function notifyClarification(
 	}
 }
 
+// ─── Failed step rows ───────────────────────────────────────────────────────
+
+/** Rows closed per batch, and the batches one transition may spend. */
+const ABANDON_BATCH = 100;
+const ABANDON_MAX_BATCHES = 10;
+
+/**
+ * Close a message's `failed` step rows as `abandoned` (`./failure.ts`).
+ * Selected by status through the index, so the message's completed history
+ * (a row per step per run) is never read. Each patched row leaves the index
+ * range, so the next batch reads the rest; past the cap, the retry cron
+ * retires what is left (`retryFailedActions`).
+ */
+async function abandonFailedActions(
+	ctx: MutationCtx,
+	inboundMessageId: Id<'inboundMessages'>
+): Promise<void> {
+	const now = Date.now();
+	for (let batch = 0; batch < ABANDON_MAX_BATCHES; batch++) {
+		const failed = await ctx.db
+			.query('agentActions')
+			.withIndex('by_inbound_message_status', (q) =>
+				q.eq('inboundMessageId', inboundMessageId).eq('status', 'failed')
+			)
+			.take(ABANDON_BATCH);
+		for (const action of failed) {
+			await ctx.db.patch(action._id, { status: 'abandoned' as ActionStatus, completedAt: now });
+		}
+		if (failed.length < ABANDON_BATCH) return;
+	}
+}
+
 // ─── Runner ─────────────────────────────────────────────────────────────────
 
 export async function applyEffects(
@@ -162,6 +194,10 @@ export async function applyEffects(
 					status: 'pending' as ActionStatus,
 					errorMessage: undefined,
 				});
+				break;
+			}
+			case 'abandon_failed_actions': {
+				await abandonFailedActions(ctx, effect.inboundMessageId);
 				break;
 			}
 			case 'notify_clarification': {
@@ -327,11 +363,11 @@ export async function dispatch(
 		}
 	} else if (
 		!PROCESSING_LIFECYCLE.isLegalEdge(from, input.to) ||
-		(requiresManualTakeover(from, input.to) &&
-			!(input.to === 'draft_ready' && input.manualTakeover === true))
+		refusedAsNotAPerson(from, input)
 	) {
 		// Leaving `received`, `rejected` or `archived` for `draft_ready` is a
-		// person's takeover only, never a late pipeline step.
+		// person's takeover only, never a late pipeline step; `failed → approved`
+		// is a person's Retry only, never the router.
 		// Deliberately `isLegalEdge` rather than the core's `classify`: this
 		// machine has never granted the implicit self-loop pass, and a same-state
 		// re-drive (`drafting → drafting`) must keep refusing rather than

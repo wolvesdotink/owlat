@@ -358,6 +358,12 @@ export type Effect =
 			actionId: Id<'agentActions'>;
 	  }
 	| {
+			// A person moved a failed message on: close its failed step rows as
+			// `abandoned` (`./failure.ts`).
+			kind: 'abandon_failed_actions';
+			inboundMessageId: Id<'inboundMessages'>;
+	  }
+	| {
 			kind: 'set_thread_draft_status';
 			threadId: Id<'conversationThreads'>;
 			draftStatus: 'pending' | 'approved' | 'rejected' | 'sent';

@@ -29,7 +29,10 @@ const { queue, flow, filter, source } = session;
 
 const setFilter = (next: string) => session.setFilter(next);
 const current = computed(() => flow.current.value);
-const estimateLabel = computed(() => formatTaskFlowEstimate(flow.remainingSeconds.value));
+const estimateLabel = computed(() =>
+	localized(formatTaskFlowEstimate(flow.remainingSeconds.value))
+);
+const summary = computed(() => flow.summary.value.map(localized).join(' · '));
 // The current item is on its way to Answer mode: hold the skeleton rather than
 // flashing its card for a frame.
 const leavingForAnswerMode = computed(
@@ -199,13 +202,13 @@ const failedNames = computed(() =>
 						size="xl"
 						variant="success"
 						rounded="full"
-						class="mb-4"
+						class="mx-auto mb-4"
 					/>
 					<h2 class="font-display text-xl text-text-primary">
 						{{ t('components.answer.done.title') }}
 					</h2>
-					<p v-if="flow.summary.value" class="mt-1.5 text-sm text-text-secondary">
-						{{ t('components.answer.done.summary', { summary: flow.summary.value }) }}
+					<p v-if="summary" class="mt-1.5 text-sm text-text-secondary">
+						{{ t('components.answer.done.summary', { summary }) }}
 					</p>
 					<p class="mt-1 text-xs text-text-tertiary">{{ t('components.answer.done.body') }}</p>
 					<div class="mt-6 flex items-center justify-center gap-2">

@@ -169,8 +169,9 @@ export const mandrillProvider: IntegrationImportProviderModule<'mandrill'> = {
 			const suppression = mandrillRejectSuppression(evidence);
 			// No suppression is every reason that describes OUR account, OUR sending
 			// domain or OUR message — `invalid-sender`, `invalid`, `test-mode-limit`,
-			// `unsigned` — plus any reason Mandrill adds after this was written. A new
-			// reason cannot start suppressing addresses by surprise.
+			// `unsigned`, a rules-engine `rule` (#1249) — plus any reason Mandrill
+			// adds after this was written. A new reason cannot start suppressing
+			// addresses by surprise.
 			if (!suppression) {
 				suppressionsSkipped++;
 				continue;

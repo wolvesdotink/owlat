@@ -28,6 +28,8 @@ withDefaults(
 		held?: boolean;
 		/** Plain-language reason shown under the row while `held`. */
 		heldReason?: string;
+		/** The reason's element id, for a field it describes (`aria-describedby`). */
+		heldReasonId?: string;
 		/**
 		 * Render the primary as a secondary button — when the card already offers
 		 * a stronger next step (a prepared draft's "Review & send"), one accent.
@@ -47,6 +49,7 @@ withDefaults(
 		skipDestructive: false,
 		held: false,
 		heldReason: undefined,
+		heldReasonId: undefined,
 		hints: undefined,
 		quiet: false,
 	}
@@ -113,9 +116,10 @@ const emit = defineEmits<{ (e: 'primary'): void; (e: 'skip'): void }>();
 			</span>
 		</div>
 
-		<!-- Soft-hold reason: a teammate is replying; releases on its own. -->
+		<!-- Why the primary action is held: a teammate is replying, or the draft still has gaps. -->
 		<p
 			v-if="held && heldReason"
+			:id="heldReasonId"
 			class="inline-flex items-center gap-1.5 text-[11px] text-text-tertiary"
 			data-testid="task-held-reason"
 			role="status"

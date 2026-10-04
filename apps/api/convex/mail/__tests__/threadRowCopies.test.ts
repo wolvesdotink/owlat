@@ -349,6 +349,18 @@ describe('Reply Queue trigger copy', () => {
 		vi.mocked(getBetterAuthSessionWithRole).mockResolvedValueOnce(null);
 		expect(await t.query(api.mail.needsReply.getDraftSlot, { threadId })).toBeNull();
 	});
+
+	it('getDraftSlot leaves out the alternatives a legacy slot still stores (#1200)', async () => {
+		const { t, mailboxId } = await setup();
+		const { threadId } = await flagged(t, mailboxId);
+		const flag = (await thread(t, threadId)).needsReply!;
+		const shown = { draft: 'DRAFT BODY', confidence: 0.7, generatedAt: 1 };
+		// Written before #1200; a web build from then counts these as "3 options".
+		const draftSlot = { ...shown, options: ['DRAFT BODY', 'ALT ONE', 'ALT TWO'] };
+		await patchThread(t, threadId, { needsReply: { ...flag, draftSlot } });
+
+		expect(await t.query(api.mail.needsReply.getDraftSlot, { threadId })).toEqual(shown);
+	});
 });
 
 describe('migration 0047', () => {

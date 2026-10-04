@@ -10,6 +10,8 @@
  * read boundary hands out only the shown draft's variants: such a client then
  * approves the text it shows.
  *
+ * Since #1200 nothing writes variants: this serves rows stored before that.
+ *
  * Pure (no ctx, no imports).
  */
 
@@ -20,8 +22,7 @@ export interface DraftVariantFields {
 
 /**
  * The stored variants when they are the shown draft's, else none. Compared
- * exactly, as the `draft_ready` reducer does when it decides whether a draft
- * keeps its variants.
+ * exactly: `draftOptions[0]` was written as the draft itself.
  */
 export function variantsOfShownDraft(row: DraftVariantFields): string[] {
 	const options = row.draftOptions ?? [];

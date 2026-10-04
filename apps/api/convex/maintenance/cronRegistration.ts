@@ -45,6 +45,14 @@ export function registerRetentionCrons(crons: ReturnType<typeof cronJobs>): void
 		internal.mail.ai.composeDraftStore.sweepStaleSessions,
 		{}
 	);
+	// Bounces and complaints that matched no Send (webhooks/unresolvedFeedback.ts),
+	// 90 days after they were first seen: the raw payloads' horizon.
+	crons.interval(
+		'retention: unresolved feedback',
+		{ hours: 24 },
+		internal.webhooks.unresolvedFeedback.purgeExpired,
+		{}
+	);
 	// DMARC aggregate reports (domains/dmarcReports.ts) and their rows, 90 days.
 	crons.interval(
 		'retention: dmarc reports',

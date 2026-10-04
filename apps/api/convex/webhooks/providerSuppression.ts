@@ -35,10 +35,12 @@
  *    same class an FBL report earns, and with NO bounce classification: sending
  *    one would make the MTA mirror describe a spam report as a mailbox failure.
  *  - `recipient_rejected` / `recipient_blacklisted` / `operator_suppressed` —
- *    the provider (or an operator, or an account rule) put the address on a
- *    list. That is a decision rather than an observation, so it maps to
- *    `manual`: the one reason whose MTA mirror expires and whose presence on
- *    the suppression screen reads as "someone put this here".
+ *    the provider (or an operator) put the address on a list. That is a
+ *    decision rather than an observation, so it maps to `manual`: the one
+ *    reason whose MTA mirror expires and whose presence on the suppression
+ *    screen reads as "someone put this here". A rule that refused one message
+ *    is not a list entry: it can match the subject or the sender, so an
+ *    adapter mints nothing for it (Mandrill `rule`, #1249).
  *  - `unsubscribed` — the person left. Owlat has a whole consent path for that
  *    (membership delete, opt-out stamp, campaign counter, webhook fanout); a
  *    blocklist row would record the outcome while skipping the accounting, so
@@ -50,10 +52,31 @@
  * There is deliberately no `ignore` member: a reason that says nothing about
  * the recipient is one an adapter never mints, so it cannot arrive here and be
  * mishandled.
+ *
+ * OPERATOR DECISIONS WIN OVER OLDER PROVIDER DATA (#1228). Every write carries
+ * the event's own time. `addFromEvent` refuses a re-add older than an
+ * operator's removal of that address, and `processUnsubscribeByEmail` refuses
+ * an unsubscribe older than the contact's re-subscribe, so a late redelivery or
+ * a replay cannot undo either. A NEWER event still applies: if the provider
+ * keeps refusing the address after the operator unblocked it, that is fresh
+ * evidence, and the fix is to remove it from the provider's list too.
+ *
+ * WHY THERE IS NO OWNERSHIP GATE HERE, unlike the unresolved-complaint path
+ * (#1214, #1237). Those complaints name a message that matches no Send, which
+ * is itself evidence the mail may not be ours. A provider suppression is a fact
+ * about the provider ACCOUNT's list, and this deployment's arm on that account
+ * refuses the address whoever put it there, so mirroring it keeps the two arms
+ * on the same population. It also cannot be gated on the Send: Mandrill refuses
+ * a listed address synchronously, and a refused send stores no provider message
+ * id for the webhook's `reject` to match. That synchronous refusal is mirrored
+ * from the send response itself ({@link recordSendResponseRefusal}). Events
+ * from another Mandrill subaccount are held back before they reach this file
+ * (`./sendingScope.ts`, #1243).
  */
 
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
+import { logError } from '../lib/runtimeLog';
 import type { InboundEventOf, ProviderSuppression, ProviderSuppressionReason } from './types';
 
 /** What the host does about one suppression reason. */
@@ -102,29 +125,33 @@ export function providerSuppressionEffect(
  *
  * The address is UNTRUSTED provider telemetry — it is acted on because the
  * SIGNED callback said this provider suppressed it, never because the field was
- * present. Both writes are idempotent per address, which is what makes a
- * redelivered batch a no-op rather than a second row or a second count.
+ * present. Both writes are idempotent per address while nothing changes, and
+ * both refuse an event older than a later operator removal or re-subscribe,
+ * which is what makes a redelivered batch a no-op even after one of those.
  */
 async function applyProviderSuppressionFact(
 	ctx: ActionCtx,
-	providerType: string,
-	recipient: string,
-	suppression: ProviderSuppression
+	fact: { providerType: string; recipient: string; at: number },
+	suppression: ProviderSuppression,
+	source: 'webhook' | 'send_response' = 'webhook'
 ): Promise<void> {
+	const { providerType, recipient, at } = fact;
 	const effect = providerSuppressionEffect(suppression.reason);
 	if (effect.kind === 'unsubscribe') {
 		await ctx.runMutation(internal.delivery.unsubscribeQueries.processUnsubscribeByEmail, {
 			email: recipient,
+			eventAt: at,
 		});
 		return;
 	}
 	await ctx.runMutation(internal.blockedEmails.addFromEvent, {
 		email: recipient,
 		reason: effect.reason,
+		eventAt: at,
 		...(effect.reason === 'bounced' ? { bounceType: effect.bounceType } : {}),
 		provenance: {
 			provider: providerType,
-			source: 'webhook' as const,
+			source,
 			// The provider's own code where it published one; otherwise the host's
 			// rendering of the reason, which is what every pre-`evidence` caller
 			// (Emailit, every plugin) has always recorded.
@@ -138,7 +165,7 @@ export async function applyProviderSuppression(
 	ctx: ActionCtx,
 	event: InboundEventOf<'email.provider_suppressed'>
 ): Promise<void> {
-	await applyProviderSuppressionFact(ctx, event.providerType, event.recipient, {
+	await applyProviderSuppressionFact(ctx, event, {
 		reason: event.reason,
 		...(event.evidence ? { evidence: event.evidence } : {}),
 	});
@@ -163,5 +190,52 @@ export async function applyFailureSuppression(
 	event: InboundEventOf<'email.failed'>
 ): Promise<void> {
 	if (!event.suppression || !event.recipient || !event.providerType) return;
-	await applyProviderSuppressionFact(ctx, event.providerType, event.recipient, event.suppression);
+	await applyProviderSuppressionFact(
+		ctx,
+		{ providerType: event.providerType, recipient: event.recipient, at: event.at },
+		event.suppression
+	);
+}
+
+/**
+ * Mirror the suppression a provider attached to a refusal in its own send
+ * response (#1243): a Mandrill `rejected` result off its reject list. Every
+ * caller of `sendProviderDispatch` passes its result here (the governed
+ * dispatch and system mail; `__tests__/sendResponseRefusalCallers.test.ts`
+ * fails a new caller that does not).
+ *
+ * The message is ours by construction (our key, our request), so no ownership
+ * question arises, and it is the same fact the provider's `reject` webhook
+ * would report later, applied through the same table and the same event-time
+ * guards, at the response time. It touches no Send, so completion and the
+ * lost-send sweep are unaffected, and it runs before the caller reports the
+ * failure, so a lost completion changes nothing here.
+ *
+ * NEVER THROWS. A write that fails is logged; the caller's own failure (the
+ * provider's error) is what the send reports.
+ */
+export async function recordSendResponseRefusal(
+	ctx: ActionCtx,
+	args: {
+		result: { success: boolean; suppression?: ProviderSuppression };
+		providerType: string;
+		recipient: string;
+	}
+): Promise<void> {
+	const { result, providerType, recipient } = args;
+	if (result.success || !result.suppression) return;
+	try {
+		await applyProviderSuppressionFact(
+			ctx,
+			{ providerType, recipient, at: Date.now() },
+			result.suppression,
+			'send_response'
+		);
+	} catch (error) {
+		logError('[Provider Suppression] send-response refusal could not be mirrored', {
+			providerType,
+			reason: result.suppression.reason,
+			errorName: error instanceof Error ? error.name : typeof error,
+		});
+	}
 }

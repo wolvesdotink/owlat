@@ -6,6 +6,7 @@ import { registerBundledPluginCrons } from './plugins/cronRegistration';
 import { registerContactHygieneCrons } from './contacts/crons';
 import { registerTeamInboxCrons } from './inbox/cronRegistration';
 import { registerSeedPlacementCrons } from './analytics/cronRegistration';
+import { registerWebhookCrons } from './webhooks/cronRegistration';
 
 const crons = cronJobs();
 
@@ -121,50 +122,13 @@ crons.interval(
 	{}
 );
 
-// Clean up old webhook delivery logs weekly
-// Removes logs older than 30 days to prevent unbounded growth
-crons.interval('cleanup webhook logs', { hours: 168 }, internal.webhooks.cleanup.cleanupOldLogs);
-
-// Re-issue outbound webhook attempts that were lost (the scheduler job failed or
-// vanished before recording an outcome), so no delivery sits in pending/retrying
-// forever. Bounded batches; see webhooks/deliveryReconciler.ts.
-crons.interval(
-	'reconcile overdue webhook deliveries',
-	{ minutes: 5 },
-	internal.webhooks.deliveryReconciler.reconcileOverdueDeliveries,
-	{}
-);
+// Webhook crons (outbound delivery logs and reconciliation, raw payload and
+// replay-claim retention, unresolved bounce/complaint replay) live beside the
+// functions they schedule.
+registerWebhookCrons(crons);
 // Seed-placement probe ledger housekeeping, registered from the analytics
 // domain sibling next to the functions it schedules.
 registerSeedPlacementCrons(crons);
-crons.interval(
-	'cleanup MTA campaign alert receipts',
-	{ hours: 24 },
-	internal.webhooks.cleanup.cleanupCampaignAlertReceipts,
-	{}
-);
-
-// Sweep expired bundled-plugin replay claims. The claim mutation ages
-// its own table out on the hot path, but only while deliveries keep arriving:
-// disabling a plugin or a provider going quiet strands whatever the last sweep
-// left. Rows expire within the signature contract's tolerance (≤ 15 minutes), so
-// a daily pass leaves nothing behind for long.
-crons.interval(
-	'cleanup plugin webhook replay claims',
-	{ hours: 24 },
-	internal.webhooks.cleanup.cleanupPluginWebhookDeliveries,
-	{}
-);
-
-// Clean up old raw webhook payloads weekly. webhookPayloads is written on every
-// webhook ingest; without this cron its retention never runs and the table
-// grows unbounded (only purged on full org deletion).
-crons.interval(
-	'cleanup webhook payloads',
-	{ hours: 168 },
-	internal.webhooks.payloads.cleanupOldPayloads,
-	{}
-);
 
 // Retention schedules live beside their maintenance functions.
 registerRetentionCrons(crons);
@@ -471,6 +435,16 @@ crons.interval(
 	'desktop-releases-refresh',
 	{ hours: 6 },
 	internal.desktop.updates.refreshReleases,
+	{}
+);
+
+// IMAP folder membership backfill (#927): start migration 0054 on a deployment
+// that never ran it, and resume one whose chain died, so every deployment stops
+// listing whole folders for the IMAP server. One indexed read once completed.
+crons.interval(
+	'ensure folder membership backfill',
+	{ minutes: 10 },
+	internal.migrations['0054_backfill_folder_membership'].ensure,
 	{}
 );
 

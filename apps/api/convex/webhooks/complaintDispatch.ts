@@ -12,55 +12,57 @@ import type { ActionCtx } from '../_generated/server';
 import { isPostboxMessageId } from '../delivery/messageIdRouting';
 import type { TransitionOutcome } from '../delivery/sendLifecycle';
 import type { InboundEventOf } from './types';
-import { recordUnresolvedBounce } from './unresolvedBounce';
+import {
+	isSendNotFound,
+	recordUnattributedComplaint,
+	recordUnresolvedFeedback,
+} from './unresolvedBounce';
 import { observeYahooCflReport } from './yahooCflObservation';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { tagsFeedbackProvenanceFor } from '../lib/sendProviders/catalog';
 import { isSendProviderKind } from '../lib/sendProviders/types';
+import type { UnresolvedFeedbackSuppression } from '../lib/literalValidators';
 
 /**
- * SUPPRESSION FIRST, bookkeeping second. A complaint must always reach the
- * blocklist, so the two attribution branches run to completion before the
- * feedback-loop observation is even attempted.
+ * SUPPRESSION FIRST, bookkeeping second. A complaint that proves this
+ * deployment sent the mail must always reach the blocklist, so both attribution
+ * branches run to completion before the feedback-loop observation is even
+ * attempted.
+ *
+ * ONE ATTRIBUTION RULE FOR EVERY COMPLAINT THAT NAMES NO SEND (#1194, #1227).
+ * A complaint that resolves to a Send moves that Send, whose recipient is the
+ * address to block. A complaint that names no Send, because its Message-ID was
+ * redacted (RFC 5965 §3.2, e.g. Gmail) or matches nothing here, carries only an
+ * address, and the address is blocked only when the event proves THIS
+ * deployment sent the mail ({@link suppressAttributedComplainer}).
+ *
+ * WHY, AND WHAT IT COSTS. The webhook signature proves the PROVIDER sent the
+ * report, not which deployment sent the mail. A provider account, webhook or
+ * SNS topic shared by several deployments (staging and production, two teams;
+ * Owlat runs one organization per deployment) delivers every tenant's feedback
+ * to each of them, so blocking on it lets one deployment's complaint silently
+ * and permanently stop mail to that address in another. The redacted branch
+ * used to block for any source that does not tag its feedback (SES, Resend,
+ * Mandrill, Emailit, plugin providers), which left the branch with the LEAST
+ * evidence suppressing more readily than the unknown-id branch. It now applies
+ * the same rule. The cost lands on single-deployment setups: an untagged
+ * provider's redacted complaint is counted (`unresolvedFeedback`,
+ * `suppression: 'unattributed'`, no address) instead of blocking. In practice
+ * that is a plugin provider's address-only complaint or SES's fallback when
+ * `mail.messageId` is missing: Resend, Mandrill and Emailit always key on their
+ * own id, and the MTA tags its reports. A per-deployment marker the providers
+ * echo back (SES message tags, `X-MC-Metadata`, Resend tags) would let both
+ * branches block again; that is the long-term fix.
  */
 export async function dispatchComplaint(
 	ctx: ActionCtx,
 	e: InboundEventOf<'email.complained'>
 ): Promise<void> {
-	// Recipient-only complaint (RFC 5965 §3.2): the FBL redacted the
-	// original Message-ID (e.g. Gmail), so there's no send to transition.
-	// Suppress the complainer directly by email — a complaint must always
-	// reach the blocklist, never evaporate into a metric.
-	//
-	// ASK WHETHER THE SOURCE TAGS ITS FEEDBACK, don't name the provider. This
-	// used to read `e.providerType === 'ses' || e.deliveryDomain === 'production'`
-	// — SES by name, for a property SES shares with every third-party ESP: nobody
-	// annotates their webhook with our `deliveryDomain`, because that tag is
-	// written on the way out of our own infrastructure and nothing else. So a
-	// byte-identical redacted complaint from Mandrill, an SMTP relay's FBL or a
-	// plugin ESP was DROPPED, and the complainer stayed mailable.
-	//
-	// Both directions are load-bearing. A tagged source must show `production`:
-	// the tag's one writer stamps it only on an exactly-VERP-attributed report
-	// and drops the effect list on `unknown` provenance, so it is the evidence
-	// that this complaint is about real production mail rather than member-preview
-	// mail or an unattributed guess. An untagged source has no tag to show, so
-	// requiring one would suppress nothing it ever reports.
-	//
-	// A SOURCE WE CANNOT IDENTIFY is neither, and requires the tag. An event with
-	// no `providerType` (or one naming a kind this deployment does not have)
-	// carries no evidence about who observed it, and blocklisting an address on
-	// an unattributable report is the one error here that is invisible and
-	// permanent — the recipient simply stops receiving mail.
 	if (!e.providerMessageId) {
-		const source = isSendProviderKind(e.providerType) ? e.providerType : null;
-		const needsProvenanceTag = source === null || tagsFeedbackProvenanceFor(source);
-		if (e.recipient && (!needsProvenanceTag || e.deliveryDomain === 'production')) {
-			await ctx.runMutation(internal.blockedEmails.addFromEvent, {
-				email: e.recipient,
-				reason: 'complained',
-			});
-		}
+		// Recipient-only complaint: no Send to transition and no id to replay by.
+		// An unattributed one is still counted, so it does not simply vanish.
+		const suppression = await suppressAttributedComplainer(ctx, e);
+		if (suppression === 'unattributed') await recordUnattributedComplaint(ctx, e);
 	} else if (isPostboxMessageId(e.providerMessageId)) {
 		// SHIPPED SHORT-CIRCUIT, PRESERVED. A postbox-attributed complaint is not a
 		// campaign send, so the shipped handler returned here without doing anything
@@ -78,7 +80,58 @@ export async function dispatchComplaint(
 				transition: { to: 'complained', at: e.at },
 			}
 		)) as TransitionOutcome;
-		recordUnresolvedBounce('email.complained', e.providerMessageId, e.at, outcome);
+		if (isSendNotFound(outcome)) {
+			// The id names no Send (#1194): the provider id was never stored, or the
+			// mail was not sent by this deployment at all. The complaint is stored
+			// for replay either way; the named address is blocked only on proof.
+			const suppression = await suppressAttributedComplainer(ctx, e);
+			await recordUnresolvedFeedback(
+				ctx,
+				{ ...e, providerMessageId: e.providerMessageId },
+				{ suppression }
+			);
+		}
 	}
 	await observeYahooCflReport(ctx, e);
+}
+
+/**
+ * Block the address a complaint names ONLY when the event proves this
+ * deployment sent the mail it is about. Used for every complaint that names no
+ * Send: a redacted Message-ID and one that matches nothing here alike.
+ *
+ * The one proof available today is the provenance tag our own infrastructure
+ * writes: `deliveryDomain: 'production'` from a source that declares
+ * `tagsFeedbackProvenance` (the MTA), stamped only on a report whose signed VERP
+ * token decoded, i.e. on mail this deployment's key signed. SES, Resend and
+ * Mandrill echo back no marker Owlat stamps per deployment (no message tag,
+ * metadata or header the adapters could read), and neither do Emailit or the
+ * plugin providers, so their complaints are recorded as `unattributed` and
+ * never block an address. An unidentifiable source proves nothing either, even
+ * with a production tag: the tag is only evidence from the source that writes
+ * it. A member-preview MTA report is `unattributed` too. So would be an
+ * untagged MTA report, but only if one reaches this dispatcher: the live MTA
+ * drops unknown-provenance reports before notifying Convex
+ * (`applyFeedbackProvenancePolicy` in `apps/mta/src/bounce/outcome.ts`), so in
+ * practice only an older MTA that predates the tag sends one.
+ */
+async function suppressAttributedComplainer(
+	ctx: ActionCtx,
+	e: InboundEventOf<'email.complained'>
+): Promise<UnresolvedFeedbackSuppression> {
+	if (!e.recipient) return 'no_recipient';
+	if (!isAttributedToThisDeployment(e)) return 'unattributed';
+	await ctx.runMutation(internal.blockedEmails.addFromEvent, {
+		email: e.recipient,
+		reason: 'complained',
+	});
+	return 'suppressed';
+}
+
+function isAttributedToThisDeployment(e: InboundEventOf<'email.complained'>): boolean {
+	return (
+		isSendProviderKind(e.providerType) &&
+		tagsFeedbackProvenanceFor(e.providerType) &&
+		e.deliveryDomain === 'production'
+	);
 }

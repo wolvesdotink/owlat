@@ -663,6 +663,170 @@ describe('dispatchGovernedEmail', () => {
 });
 
 /**
+ * A PROVIDER REFUSAL CARRYING A SUPPRESSION (#1243). Mandrill refuses an
+ * address off its reject list in the send response itself; the refusal is
+ * mirrored there, before the send fails, and the Send is left alone.
+ */
+describe('a provider refusal that carries a suppression', () => {
+	const ADD_BLOCK = getFunctionName(internal.blockedEmails.addFromEvent);
+	const UNSUBSCRIBE = getFunctionName(
+		internal.delivery.unsubscribeQueries.processUnsubscribeByEmail
+	);
+
+	beforeEach(() => {
+		resolveLastMileRouting.mockReset();
+		sendProviderDispatch.mockReset();
+		runMutation.mockClear();
+		resolveLastMileRouting.mockResolvedValue({
+			kind: 'ready',
+			providerKind: 'mandrill',
+			route: null,
+			organizationId: 'org-1',
+		});
+	});
+
+	const refusal = (extra: Record<string, unknown>) => ({
+		result: {
+			success: false,
+			errorCode: 'INVALID_RECIPIENT',
+			errorMessage: 'Mandrill rejected: hard-bounce',
+			...extra,
+		},
+		providerType: 'mandrill',
+		latencyMs: 40,
+		attempts: 1,
+	});
+
+	const callsTo = (name: string) =>
+		runMutation.mock.calls.filter(([ref]) => getFunctionName(ref) === name);
+
+	it('blocks the recipient, then fails the send as before', async () => {
+		sendProviderDispatch.mockResolvedValue(
+			refusal({ suppression: { reason: 'hard_bounce', evidence: 'MANDRILL_REJECT_HARD_BOUNCE' } })
+		);
+
+		await expect(dispatchGovernedEmail(ctx, baseRequest)).rejects.toThrow(
+			'Mandrill rejected: hard-bounce'
+		);
+
+		expect(callsTo(ADD_BLOCK)).toEqual([
+			[
+				expect.anything(),
+				{
+					email: 'recipient@example.com',
+					reason: 'bounced',
+					bounceType: 'hard',
+					eventAt: expect.any(Number),
+					provenance: {
+						provider: 'mandrill',
+						source: 'send_response',
+						evidence: 'MANDRILL_REJECT_HARD_BOUNCE',
+					},
+				},
+			],
+		]);
+	});
+
+	it('routes an unsub refusal through the consent path', async () => {
+		sendProviderDispatch.mockResolvedValue(
+			refusal({ suppression: { reason: 'unsubscribed', evidence: 'MANDRILL_REJECT_UNSUB' } })
+		);
+
+		await expect(dispatchGovernedEmail(ctx, baseRequest)).rejects.toThrow();
+
+		expect(callsTo(UNSUBSCRIBE)).toEqual([
+			[expect.anything(), { email: 'recipient@example.com', eventAt: expect.any(Number) }],
+		]);
+		expect(callsTo(ADD_BLOCK)).toEqual([]);
+	});
+
+	it('writes nothing for a refusal without a suppression, or for a seed probe', async () => {
+		sendProviderDispatch.mockResolvedValue(refusal({}));
+		await expect(dispatchGovernedEmail(ctx, baseRequest)).rejects.toThrow();
+
+		sendProviderDispatch.mockResolvedValue(
+			refusal({ suppression: { reason: 'hard_bounce', evidence: 'MANDRILL_REJECT_HARD_BOUNCE' } })
+		);
+		await expect(
+			dispatchGovernedEmail(ctx, {
+				...baseRequest,
+				sendRef: { kind: 'seedProbe' as const, id: 'probe-1' as never },
+			})
+		).rejects.toThrow();
+
+		expect(callsTo(ADD_BLOCK)).toEqual([]);
+		expect(callsTo(UNSUBSCRIBE)).toEqual([]);
+	});
+
+	// Through the REAL adapter's answer: the only write is the suppression. The
+	// Send keeps no provider id, so a lost completion still reaches the
+	// lost-send sweep exactly as before.
+	it('writes only the suppression for a real Mandrill rejection, never the Send', async () => {
+		vi.stubEnv('MANDRILL_API_KEY', 'mandrill-test-key');
+		const realFetch = global.fetch;
+		global.fetch = vi.fn().mockResolvedValue(
+			new Response(
+				JSON.stringify([
+					{
+						email: 'recipient@example.com',
+						status: 'rejected',
+						_id: 'refused-1',
+						reject_reason: 'hard-bounce',
+					},
+				]),
+				{ status: 200 }
+			)
+		) as unknown as typeof fetch;
+		const { mandrillSendProvider, _resetMandrillConfigCacheForTests } =
+			await import('../../lib/sendProviders/mandrill');
+		const { resolveSendTransport } = await import('../../lib/sendProviders/transports');
+		let result;
+		try {
+			result = await mandrillSendProvider.sendEmail(resolveSendTransport('mandrill'), {
+				to: 'recipient@example.com',
+				from: 'sender@example.com',
+				subject: 'Subject',
+				html: '<p>Body</p>',
+				text: 'Body',
+			});
+		} finally {
+			global.fetch = realFetch;
+			_resetMandrillConfigCacheForTests();
+			vi.unstubAllEnvs();
+		}
+		sendProviderDispatch.mockResolvedValue({
+			result,
+			providerType: 'mandrill',
+			latencyMs: 40,
+			attempts: 1,
+		});
+
+		await expect(dispatchGovernedEmail(ctx, baseRequest)).rejects.toThrow();
+
+		expect(runMutation.mock.calls.map(([ref]) => getFunctionName(ref))).toEqual([
+			getFunctionName(internal.delivery.routingReentry.issueSnapshot),
+			ADD_BLOCK,
+		]);
+	});
+
+	it("still throws the provider's error when the suppression write fails", async () => {
+		sendProviderDispatch.mockResolvedValue(
+			refusal({ suppression: { reason: 'hard_bounce', evidence: 'MANDRILL_REJECT_HARD_BOUNCE' } })
+		);
+		runMutation.mockImplementation(async (ref) => {
+			if (getFunctionName(ref) === ADD_BLOCK) throw new Error('fenced');
+			return { token: 'reentry-token', expiresAt: Date.now() };
+		});
+
+		await expect(dispatchGovernedEmail(ctx, baseRequest)).rejects.toThrow(
+			'Mandrill rejected: hard-bounce'
+		);
+		runMutation.mockReset();
+		runMutation.mockResolvedValue({ token: 'reentry-token', expiresAt: Date.now() });
+	});
+});
+
+/**
  * THE GOVERNED BOUNDARY ASKS THE CATALOG, NOT THE KIND (plan P0.1 / D2).
  *
  * Four behaviours used to be spelled `providerKind === 'mta'` in

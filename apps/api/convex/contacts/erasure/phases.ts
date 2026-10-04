@@ -19,6 +19,9 @@ import type { Doc, Id, TableNames } from '../../_generated/dataModel';
 import { decrementContactCount } from '../../lib/contactCountHelpers';
 import { recordContactGrowth } from '../growthCounters';
 import { deleteAutomationRun } from '../../automations/runDeletion';
+import { internal } from '../../_generated/api';
+import { deleteCompletionFailurePayload } from '../../delivery/sendCompletionFailures';
+import { CONTACT_CLEANUP_BATCH_SIZE } from '../../delivery/sendCompletionFailureAdmin';
 import type { ErasureBudget } from './budget';
 import { CONTACT_ERASURE_PHASES, type ContactErasurePhase } from './phaseCatalog';
 import {
@@ -26,6 +29,7 @@ import {
 	NOT_DONE,
 	deleteAll,
 	drainEach,
+	drainParents,
 	type ErasureMode,
 	type PhaseContext,
 	type PhaseOutcome,
@@ -172,6 +176,63 @@ function scrubSends<T extends SendTable>(table: T, scrub: () => Partial<Doc<T>>)
 	};
 }
 
+/**
+ * Recorded send completions and their payloads (#1195): each record goes after
+ * its payload. The walker drains them through its budget like any other child.
+ * The inline driver has no budget, so it deletes one bounded batch and leaves
+ * the rest to a scheduled continuation that finds them by `contactId`; no new
+ * record can appear, because the contact's Sends are soft-deleted by now.
+ */
+const eraseSendCompletionFailures: PhaseRunner = async (phase) => {
+	const { ctx, contactId, budget, mode } = phase;
+	if (mode === 'inline') {
+		const rows = await ctx.db
+			.query('sendCompletionFailures')
+			.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+			.take(CONTACT_CLEANUP_BATCH_SIZE);
+		for (const row of rows) {
+			await deleteCompletionFailurePayload(ctx, row._id);
+			await ctx.db.delete(row._id);
+		}
+		if (rows.length === CONTACT_CLEANUP_BATCH_SIZE) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.delivery.sendCompletionFailureAdmin.deleteContactCompletionFailures,
+				{ contactId }
+			);
+		}
+		return DONE;
+	}
+	return await drainParents(
+		budget,
+		() =>
+			ctx.db
+				.query('sendCompletionFailures')
+				.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+				.first(),
+		// A delete reads the document again, and those bytes count against the
+		// transaction like the first read, so each delete is charged twice.
+		async (record) => {
+			const isEmpty = await drainEach(
+				budget,
+				(n) =>
+					ctx.db
+						.query('sendCompletionFailurePayloads')
+						.withIndex('by_failure', (q) => q.eq('failureId', record._id))
+						.take(n),
+				async (payload) => {
+					budget.chargeRead(payload);
+					await ctx.db.delete(payload._id);
+				}
+			);
+			if (!isEmpty) return false;
+			budget.chargeRead(record);
+			await ctx.db.delete(record._id);
+			return true;
+		}
+	);
+};
+
 const PHASE_RUNNERS: Record<ContactErasurePhase, PhaseRunner> = {
 	// Learned clarification answers: deleted, never unlinked — an absent
 	// contactId is the org-wide scope. Promoted answers have none already.
@@ -233,6 +294,10 @@ const PHASE_RUNNERS: Record<ContactErasurePhase, PhaseRunner> = {
 		// order details). Erasure must drop them too, not just the address.
 		dataVariables: undefined,
 	})),
+	// A recorded completion can hold the recipient, their name and the message
+	// (#1195). The sends are soft-deleted by now, and a completion for a
+	// soft-deleted Send records nothing, so none comes back behind the walk.
+	sendCompletionFailures: eraseSendCompletionFailures,
 	conversationThreads: eraseConversationThreads,
 	unifiedMessages: eraseUnifiedMessages,
 	inboundMessages: eraseInboundMessages,
