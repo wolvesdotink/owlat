@@ -38,8 +38,10 @@ export type PluginWebhookFeedbackKind = (typeof PLUGIN_WEBHOOK_FEEDBACK_KINDS)[n
  *
  * `providerMessageId` is the id the transport's own `send` returned, which is
  * how the host joins the event to a Send. A complaint may instead carry only
- * `recipient` (RFC 5965 §3.2 redaction is routine), and the host suppresses by
- * address in that case — the one place an address alone is enough.
+ * `recipient` (RFC 5965 §3.2 redaction is routine). The host does not block
+ * that address: a plugin's webhook cannot prove which deployment sent the mail,
+ * so the complaint is counted as unattributed and the address is not stored.
+ * Return the message id whenever the provider gives one.
  *
  * Every field is re-validated by the host before it is trusted: plugin output is
  * untrusted input, exactly as a send attempt's result is.

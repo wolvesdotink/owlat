@@ -226,6 +226,11 @@ export const webhookTables = {
 	// owns the table: one row per (message id, kind), replayed by a cron with a
 	// short backoff and deleted 90 days after it was first seen.
 	//
+	// A complaint with NO message id (RFC 5965 redaction) that carried no proof
+	// this deployment sent the mail is kept here too (#1227), with no
+	// `providerMessageId`. There is nothing to replay it by, so it is stored
+	// already closed (`resolution: 'no_message_id'`) and only counted.
+	//
 	// NO PERSONAL DATA. The recipient's address is not stored, and neither is the
 	// remote server's free-text diagnostic (it often quotes the address). A
 	// replay resolves by message id and the Send carries its own recipient; an
@@ -233,7 +238,8 @@ export const webhookTables = {
 	// memory. So the contact erasure has nothing to find here.
 	unresolvedFeedback: defineTable({
 		kind: v.union(v.literal('bounce'), v.literal('complaint')),
-		providerMessageId: v.string(),
+		// Absent only on a complaint that arrived without one (#1227).
+		providerMessageId: v.optional(v.string()),
 		// The adapter's `providerType`; `mta` replays through the MTA resolver.
 		providerType: v.optional(v.string()),
 		bounceType: v.optional(bounceTypeValidator),
@@ -254,7 +260,10 @@ export const webhookTables = {
 		status: v.union(v.literal('open'), v.literal('resolved')),
 		// `replayed`: the Send lifecycle applied the event. `refused`: the id
 		// resolves now, but the lifecycle refused the edge (a terminal Send).
-		resolution: v.optional(v.union(v.literal('replayed'), v.literal('refused'))),
+		// `no_message_id`: the event carried no id, so no replay can match it.
+		resolution: v.optional(
+			v.union(v.literal('replayed'), v.literal('refused'), v.literal('no_message_id'))
+		),
 		resolvedAt: v.optional(v.number()),
 		// Automatic replays spent; an operator replay does not count.
 		replayAttempts: v.number(),

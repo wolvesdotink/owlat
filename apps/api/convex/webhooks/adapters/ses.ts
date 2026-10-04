@@ -397,9 +397,10 @@ export const sesAdapter: InboundAdapter<'ses'> = {
 						...(complainer ? { recipient: complainer } : {}),
 					};
 				}
-				// No recoverable Message-ID → suppress by the complained address so
-				// the complaint still reaches the blocklist (RFC 5965 §3.2 parity
-				// with the MTA path).
+				// No recoverable Message-ID → pass the complained address on (RFC
+				// 5965 §3.2 parity with the MTA path). SES carries no proof of which
+				// deployment sent the mail, so the dispatcher counts it as
+				// unattributed rather than blocking it (#1227).
 				const recipient = complained[0]?.emailAddress;
 				if (recipient) {
 					return { kind: 'email.complained', recipient, providerType: 'ses', at: complaintAt };
