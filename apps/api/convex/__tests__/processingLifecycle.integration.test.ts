@@ -811,7 +811,9 @@ describe('processingLifecycle.retryFailedActions', () => {
 		expect(walkerStarts.length).toBe(1);
 	});
 
-	it('skips actions at max retries (>= 3)', async () => {
+	// A legacy `failed` row past its retries is not retried, and it is retired
+	// to `abandoned` so it cannot head the scan (#1220).
+	it('retires actions at max retries (>= 3) without retrying them', async () => {
 		const t = convexTest(schema, modules);
 		const messageId = await createMessage(t, { processingStatus: 'failed' });
 		const actionId = await t.run(async (ctx) => {
@@ -830,7 +832,7 @@ describe('processingLifecycle.retryFailedActions', () => {
 			const m = await ctx.db.get(messageId);
 			expect(m?.processingStatus).toBe('failed');
 			const action = await ctx.db.get(actionId);
-			expect(action?.status).toBe('failed');
+			expect(action?.status).toBe('abandoned');
 		});
 	});
 
