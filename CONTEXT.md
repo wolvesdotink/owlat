@@ -2530,6 +2530,15 @@ complained`); a repeat soft bounce on the same Send is a `recorded`/`duplicate`
 no-op. `complained → bounced` and a later bounce off a hard-bounced row are
 refused / no-ops.
 
+A reader open or click on a soft-bounced or complained Send is recorded
+without a status change: the first one sets `openedAt` / `clickedAt`. The
+campaign's open and click counts and the `email.opened` webhook are unique per
+Send, while `email.clicked` fires on every click with its own URL, as on any
+other Send. On a complained Send it writes no contact activity and does not
+feed the send-time profile, so a complaint is never offset by engagement. On a
+hard-bounced Send it is refused. None of these opens or clicks resets
+`contacts.softBounceCount` or lifts a suppression.
+
 A SOFT bounce is not on its own a reason to suppress (the address may recover),
 but a chronically-4xx recipient is escalated to the blocklist after
 `SOFT_BOUNCE_SUPPRESSION_THRESHOLD` (5) soft bounces. The count is tracked

@@ -29,6 +29,15 @@ export function decodeQpHexEscapes(s: string): string {
 }
 
 /**
+ * A charset label as the `TextDecoder` in scope types it. The label is whatever
+ * the sender wrote and the constructor is what validates it (an unknown one
+ * throws, and the caller falls back to utf-8), but Bun's global typings narrow
+ * the parameter to the labels Bun supports. Deriving the type keeps the cast
+ * honest under Node's `string` and Bun's union alike.
+ */
+type DecoderLabel = ConstructorParameters<typeof TextDecoder>[0];
+
+/**
  * Decode RFC 2047 encoded-words (`=?charset?B|Q?payload?=`), honoring the
  * DECLARED charset. Falls back utf-8 → raw payload when the charset is
  * unknown. `@owlat/shared/mailMime` re-exports this exact function.
@@ -48,7 +57,7 @@ export function decodeEncodedWords(s: string): string {
 				for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i) & 0xff;
 				const cs = charset.toLowerCase() === 'utf8' ? 'utf-8' : charset;
 				try {
-					return new TextDecoder(cs).decode(bytes);
+					return new TextDecoder(cs as DecoderLabel).decode(bytes);
 				} catch {
 					return new TextDecoder('utf-8').decode(bytes);
 				}
