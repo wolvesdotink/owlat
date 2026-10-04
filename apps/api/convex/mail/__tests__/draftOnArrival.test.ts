@@ -44,6 +44,7 @@ vi.mock('../../analytics/llmUsage', () => ({ recordLlmSpend: vi.fn(async () => {
 import { findDraftGaps } from '@owlat/shared/answerMode';
 import { generateDraftOnArrival } from '../ai/draftOnArrival';
 import { recordLlmSpend } from '../../analytics/llmUsage';
+import { LlmPartialUsageError } from '../../lib/llm/partialUsage';
 
 type Persisted = { draft: string; confidence: number; quality?: unknown; options?: string[] };
 
@@ -122,6 +123,24 @@ describe('generateDraftOnArrival', () => {
 		const h = makeCtx({ loaded: makeLoaded() });
 		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
 		expect(recordLlmSpend).toHaveBeenCalledWith(h.ctx, 'postbox_draft', usage, 'mock-model');
+		// Once: the shared service records it, the caller no longer does (#1256).
+		expect(
+			vi.mocked(recordLlmSpend).mock.calls.filter(([, label]) => label === 'postbox_draft')
+		).toHaveLength(1);
+	});
+
+	it('records the spend of a generation that fails after a paid step (#1256)', async () => {
+		const usage = { promptTokens: 6, completionTokens: 3, totalTokens: 9 };
+		runLlmTextMock.mockRejectedValueOnce(
+			new LlmPartialUsageError(new Error('provider down'), usage, 'mock-model')
+		);
+		vi.mocked(recordLlmSpend).mockClear();
+		const h = makeCtx({ loaded: makeLoaded() });
+		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
+		expect(h.persisted).toHaveLength(0);
+		expect(vi.mocked(recordLlmSpend).mock.calls).toEqual([
+			[h.ctx, 'postbox_draft', usage, 'mock-model'],
+		]);
 	});
 
 	it('happy path: persists exactly one review slot with the quality score as confidence', async () => {

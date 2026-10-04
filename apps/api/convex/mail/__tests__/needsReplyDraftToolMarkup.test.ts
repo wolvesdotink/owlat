@@ -39,6 +39,7 @@ vi.mock('../../inbox/askEagerness', async (importActual) => ({
 
 import { draftClarificationReply } from '../ai/needsReplyDraft';
 import { recordLlmSpend } from '../../analytics/llmUsage';
+import { LlmPartialUsageError } from '../../lib/llm/partialUsage';
 import type { Id } from '../../_generated/dataModel';
 
 const threadId = 'thread_1' as Id<'mailThreads'>;
@@ -197,5 +198,29 @@ describe('draftClarificationReply — leaked tool-call markup', () => {
 		const { ctx, mutations } = makeCtx();
 		await draftClarificationReply(ctx, { threadId });
 		expect(storedDraft(mutations)).toBeUndefined();
+	});
+});
+
+describe('draftClarificationReply — the draft spend, recorded once (#1256)', () => {
+	const draftRows = () =>
+		vi.mocked(recordLlmSpend).mock.calls.filter(([, label]) => label === 'postbox_clarify_draft');
+
+	it('records the paid tool steps of a draft that fails partway', async () => {
+		const usage = { promptTokens: 6, completionTokens: 3, totalTokens: 9 };
+		mocks.runLlmTextWithTools.mockRejectedValueOnce(
+			new LlmPartialUsageError(new Error('provider down'), usage, 'mock-model')
+		);
+		const { ctx, mutations } = makeCtx();
+		await draftClarificationReply(ctx, { threadId });
+		expect(storedDraft(mutations)).toBeUndefined();
+		expect(draftRows()).toEqual([[ctx, 'postbox_clarify_draft', usage, 'mock-model']]);
+	});
+
+	it('records a successful draft exactly once', async () => {
+		mocks.runLlmTextWithTools.mockResolvedValueOnce(text(REPLY, 5));
+		const { ctx, mutations } = makeCtx();
+		await draftClarificationReply(ctx, { threadId });
+		expect(storedDraft(mutations)).toBe(REPLY);
+		expect(draftRows().map(([, , usage]) => usage?.totalTokens)).toEqual([10]);
 	});
 });

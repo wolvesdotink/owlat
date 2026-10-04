@@ -16,7 +16,8 @@
  * quality → never auto-approve). The primary draft generation itself throws on
  * prompt-injection in the assembled context, and on a model failure or a draft
  * that is tool-call markup twice over (#1254) — the caller's catch turns that
- * into human review or no draft, never an auto-send.
+ * into human review or no draft, never an auto-send. What the run already
+ * spent is recorded before it throws (#1256).
  *
  * It makes no alternative-drafts call: no screen offers a reviewer a choice of
  * drafts, so a second capable-tier generation would be paid for and never
@@ -32,7 +33,8 @@ import {
 	runLlmTextWithTools,
 	type LlmTextResult,
 } from '../../lib/llm/dispatch';
-import { withoutToolMarkup } from './draftMarkup';
+import { partialUsageOf } from '../../lib/llm/partialUsage';
+import { withoutToolMarkup, type PrimaryDraft } from './draftMarkup';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { buildReplyLanguageInstruction } from './replyLanguage';
 
@@ -309,12 +311,19 @@ export type SharedDraftParams = Readonly<{
 	temperature?: number;
 	/**
 	 * Per-surface analytics labels so spend is attributable to the right surface.
-	 * `draft` labels the primary generation when it is recorded here: only the
-	 * attempts of a run that ends in a throw after its markup retry, since a
-	 * throw carries no usage back. A successful run returns its usage and the
-	 * caller records it, as before.
+	 * `draft` labels the primary generation, `selfCheck` the quality check.
 	 */
 	spendLabels: Readonly<{ draft: string; selfCheck: string }>;
+	/**
+	 * Who records a SUCCESSFUL primary generation. `'ledger'`: this service
+	 * writes it to the usage ledger under `spendLabels.draft` (Postbox surfaces,
+	 * whose only spend record that is). `'caller'`: it is only returned; the
+	 * Team Inbox step hands it to the walker, which stores it on the step's
+	 * `agentActions` row for the cost-by-step view and keeps it out of the
+	 * ledger, as before. A run that throws after paid calls has no result to
+	 * return, so its spend is always recorded here, under `spendLabels.draft`.
+	 */
+	successfulDraftSpend: 'ledger' | 'caller';
 	/**
 	 * ISO 639-1 code of the inbound's language (the classifier's `language`,
 	 * already allowlisted by the caller). The reply is always written in the
@@ -363,39 +372,40 @@ export async function runSharedDraft(
 		);
 	}
 
-	const selected = await runSelectedDraftStrategy(
-		ctx,
-		params.strategyScope,
-		{
-			audience: params.surface,
-			context: params.context,
-			confirmedContext: params.confirmedContext,
-			stanceGuidance: params.stanceGuidance,
-			classification: params.classification,
-			toneInstruction: params.toneInstruction,
-			signatureInstruction: params.signatureInstruction,
-			voiceSection: params.voiceSection,
-		},
-		() => runDefaultDraftStrategy(params, true)
-	);
+	// Every paid primary generation is recorded exactly once, on every outcome:
+	// a throw carrying the usage of finished tool steps (lib/llm/partialUsage.ts),
+	// the rejected attempts of the markup gate (./draftMarkup.ts), or the
+	// successful draft when this service owns its spend.
+	const recordDraftSpend = (attempts: ReadonlyArray<Omit<PrimaryDraft, 'draftBody'>>) =>
+		recordAdvisorySpend(ctx, params.spendLabels.draft, attempts);
+	let selected: PrimaryDraft;
+	try {
+		selected = await runSelectedDraftStrategy(
+			ctx,
+			params.strategyScope,
+			{
+				audience: params.surface,
+				context: params.context,
+				confirmedContext: params.confirmedContext,
+				stanceGuidance: params.stanceGuidance,
+				classification: params.classification,
+				toneInstruction: params.toneInstruction,
+				signatureInstruction: params.signatureInstruction,
+				voiceSection: params.voiceSection,
+			},
+			() => runDefaultDraftStrategy(params, true)
+		);
+	} catch (error) {
+		const partial = partialUsageOf(error);
+		if (partial) await recordDraftSpend([partial]);
+		throw error;
+	}
 	const primary = await withoutToolMarkup(
 		selected,
 		() => runDefaultDraftStrategy(params, false),
-		async (attempts) => {
-			for (const attempt of attempts) {
-				try {
-					await recordLlmSpend(
-						ctx,
-						params.spendLabels.draft,
-						attempt.tokenUsage,
-						attempt.modelUsed
-					);
-				} catch {
-					// ignore — spend accounting is advisory
-				}
-			}
-		}
+		recordDraftSpend
 	);
+	if (params.successfulDraftSpend === 'ledger') await recordDraftSpend([primary]);
 	// A reviewer note the model wrote anyway becomes a placeholder the send
 	// guard counts (agent/shared/draftGaps.ts).
 	const draftBody = markReviewerNotes(primary.draftBody);
@@ -414,6 +424,21 @@ export async function runSharedDraft(
 		tokenUsage: primary.tokenUsage,
 		modelUsed: primary.modelUsed,
 	};
+}
+
+/** Record each attempt's spend; a failed ledger write never fails the draft. */
+async function recordAdvisorySpend(
+	ctx: SpendCtx,
+	label: string,
+	attempts: ReadonlyArray<Omit<PrimaryDraft, 'draftBody'>>
+): Promise<void> {
+	for (const attempt of attempts) {
+		try {
+			await recordLlmSpend(ctx, label, attempt.tokenUsage, attempt.modelUsed);
+		} catch {
+			// ignore — spend accounting is advisory
+		}
+	}
 }
 
 /**

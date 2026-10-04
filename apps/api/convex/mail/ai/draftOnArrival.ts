@@ -24,7 +24,6 @@ import type { Id } from '../../_generated/dataModel';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { buildReplySubject } from '../../lib/emailAddress';
 import { logError } from '../../lib/runtimeLog';
-import { recordLlmSpend } from '../../analytics/llmUsage';
 import { buildConfirmedContext, runSharedDraft } from '../../agent/shared/draftService';
 import {
 	buildOpenFileNote,
@@ -108,13 +107,13 @@ export async function generateDraftOnArrival(
 				'\n\nTone: match the owner’s natural, personal style — warm and direct, not corporate.',
 			signatureInstruction: '',
 			voiceSection,
+			// The primary generation is the costliest call on this path; the
+			// service records it under its own label, next to the self-check's,
+			// on success and on a throw.
 			spendLabels: { draft: 'postbox_draft', selfCheck: 'postbox_draft_selfcheck' },
+			successfulDraftSpend: 'ledger',
 			strategyScope: { mailboxId: loaded.mailboxId, classification: 'other' },
 		});
-
-		// The primary generation is the costliest call on this path; it records
-		// spend under its own label, next to the self-check's.
-		await recordLlmSpend(ctx, 'postbox_draft', result.tokenUsage, result.modelUsed);
 
 		if (result.draftBody.trim().length === 0) return; // nothing usable
 

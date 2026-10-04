@@ -114,10 +114,11 @@ export async function draftClarificationReply(
 			voiceSection,
 			tools: { recallKnowledge },
 			maxSteps: MAX_RECALL_CALLS + 2,
+			// The service records the draft's spend, on success and on a throw.
 			spendLabels: { draft: 'postbox_clarify_draft', selfCheck: 'postbox_clarify_selfcheck' },
+			successfulDraftSpend: 'ledger',
 			strategyScope: { mailboxId: context.mailboxId, classification: 'other' },
 		});
-		await recordLlmSpend(ctx, 'postbox_clarify_draft', result.tokenUsage, result.modelUsed);
 
 		const body = result.draftBody.trim();
 		if (body.length === 0) return;
