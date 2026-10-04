@@ -19,7 +19,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
-import type { ActionCtx, DatabaseWriter } from '../../_generated/server';
+import { internalAction, type ActionCtx, type DatabaseWriter } from '../../_generated/server';
 import { modules } from '../../__tests__/testModules';
 import {
 	createTestCampaign,
@@ -95,11 +95,18 @@ afterEach(() => {
 	process.env = { ...SAVED_ENV };
 });
 
-function setupTest() {
-	const t = convexTest(schema, modules);
+function setupTest(overrides: Record<string, () => Promise<unknown>> = {}) {
+	const t = convexTest(schema, { ...modules, ...overrides });
 	rateLimiterTest.register(t);
 	return t;
 }
+
+/** The DOI confirmation email a pending signup schedules, sent nowhere. */
+const quietConfirmationEmail = {
+	'../confirmationEmail.ts': async () => ({
+		sendConfirmationEmail: internalAction({ handler: async () => null }),
+	}),
+};
 
 type Harness = ReturnType<typeof setupTest>;
 
@@ -300,7 +307,7 @@ describe('a tie inside the event second goes to the event', () => {
 						: {}),
 				})
 			);
-			const topicId = await ctx.db.insert('topics', createTestTopic());
+			const topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
 			await ctx.db.insert('contactTopics', {
 				contactId,
 				topicId,
@@ -478,6 +485,37 @@ describe('an unsub never undoes a re-subscribe it predates', () => {
 		expect(state.topicIds).toEqual([]);
 	});
 
+	// Only a COMPLETED opt-in stands against an opt-out. An anonymous form can
+	// sign any address up; had the opt-out been recorded on time, that signup
+	// would have had to wait for a fresh confirmation anyway.
+	it.each([
+		['a form that forced double opt-in', false],
+		['a topic that requires double opt-in', true],
+	])('is not defeated by an unconfirmed signup from %s', async (_label, topicRequiresDoi) => {
+		const t = setupTest(quietConfirmationEmail);
+		const email = 'pending@example.com';
+		const { contactId } = await seedSubscribed(t, email, 30 * MINUTE);
+		const pendingTopicId = await t.run(
+			async (ctx: { db: DatabaseWriter }) =>
+				await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: topicRequiresDoi }))
+		);
+		const signup = await t.mutation(internal.topics.subscription.subscribe, {
+			contactId,
+			topicId: pendingTopicId,
+			source: 'form',
+			forceDoi: true,
+			siteUrl: 'https://owlat.example',
+		});
+		expect(signup).toMatchObject({ action: 'pending_doi' });
+
+		// The person left two minutes ago, before the signup; the event arrives now.
+		await postBatch(t, [unsub('m-pending', email, 2 * MINUTE)]);
+
+		const state = await subscriptionState(t, contactId);
+		expect(state.unsubscribedAt).toBeDefined();
+		expect(state.topicIds).toEqual([]);
+	});
+
 	it('applies an unsub older than the dedupe window under the same guard', async () => {
 		const t = setupTest();
 		const left = await seedSubscribed(t, 'left@example.com', 3 * INBOUND_REPLAY_WINDOW_MS);
@@ -500,6 +538,29 @@ describe('an unsub never undoes a re-subscribe it predates', () => {
 // ═══ spam ═════════════════════════════════════════════════════════════════
 
 describe('a replayed spam event', () => {
+	it('is counted once even past the dedupe window, while a distinct report still counts', async () => {
+		const t = setupTest();
+		const age = INBOUND_REPLAY_WINDOW_MS + 60 * MINUTE;
+		const old = [event('spam', { _id: 'm-old-spam', email: 'someone@example.com' }, age)];
+
+		await postBatch(t, old);
+		await postBatch(t, old);
+		const occurrences = async () =>
+			(
+				await t.run(
+					async (ctx: { db: DatabaseWriter }) => await ctx.db.query('unresolvedFeedback').collect()
+				)
+			).map((row) => row.occurrences);
+		expect(await occurrences()).toEqual([1]);
+		expect(await claimRows(t)).toHaveLength(0);
+
+		// A second report about the same message, at another time, is new.
+		await postBatch(t, [
+			event('spam', { _id: 'm-old-spam', email: 'someone@example.com' }, age - MINUTE),
+		]);
+		expect(await occurrences()).toEqual([2]);
+	});
+
 	it('is applied once: an unresolved complaint is not counted again', async () => {
 		const t = setupTest();
 		const batch = [event('spam', { _id: 'm-not-ours', email: 'someone@example.com' })];
@@ -547,6 +608,19 @@ describe('mandrillReplayKey', () => {
 		expect(
 			mandrillReplayKey({ event: 'reject', ts, msg: { _id: 'not an id@example.com' } }, now)
 		).toBeUndefined();
+	});
+
+	it('accepts a few seconds of clock skew and refuses a ts more than five minutes ahead', () => {
+		const item = (aheadMs: number) => ({
+			event: 'unsub',
+			ts: Math.floor((Date.now() + aheadMs) / 1000),
+			msg: { _id: 'skew1', email: 'skew@example.com' },
+		});
+		expect(mapMandrillEvent(item(2000))).toMatchObject({
+			kind: 'email.unsubscribed',
+			replayKey: expect.any(String),
+		});
+		expect(mapMandrillEvent(item(5 * MINUTE + 5000))).toBeNull();
 	});
 
 	it("refuses a batch over Mandrill's documented 1,000 events", async () => {

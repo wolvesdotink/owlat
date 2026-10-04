@@ -52,9 +52,10 @@
  *    `replayKey` (`msg._id`, event name, `ts`; no address) that the dispatcher
  *    claims, so it is applied once. An older one, such as a failed batch an
  *    operator replays by hand, relies on the guards alone;
- *  - an event with no `ts` or a future one cannot be ordered against those
- *    guards: its `reject` fails the Send but suppresses nobody, its `unsub` is
- *    dropped. A batch over Mandrill's documented 1,000 events is refused.
+ *  - a `reject` or `unsub` with no `ts`, or one more than five minutes ahead,
+ *    cannot be ordered against those guards: the `reject` fails the Send but
+ *    suppresses nobody, the `unsub` is dropped. A batch over Mandrill's
+ *    documented 1,000 events is refused.
  *
  * https://mailchimp.com/developer/transactional/guides/track-respond-activity-webhooks/
  */
@@ -384,8 +385,9 @@ export function mapMandrillEvent(item: MandrillEventItem): InboundEvent | null {
 			if (!providerMessageId) return null;
 			// Mandrill events are per recipient, so `msg.email` is the complainer.
 			// It rides along for a complaint whose id matches no send (#1194).
-			// A replayed complaint is a lifecycle duplicate already; the key also
-			// keeps it from being counted again as unresolved feedback.
+			// A replayed complaint is a lifecycle duplicate already; the key, or
+			// past its window the event time, keeps it from being counted again as
+			// unresolved feedback.
 			const replayKey = mandrillReplayKey(item);
 			return {
 				kind: 'email.complained',
@@ -394,6 +396,7 @@ export function mapMandrillEvent(item: MandrillEventItem): InboundEvent | null {
 				providerType: MANDRILL_PROVIDER_TYPE,
 				...(recipient ? { recipient } : {}),
 				...(replayKey ? { replayKey } : {}),
+				sameReportByEventTime: true,
 			};
 		}
 		case 'unsub': {

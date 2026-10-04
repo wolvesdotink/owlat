@@ -192,16 +192,20 @@ export const processUnsubscribeByEmail = internalMutation({
 
 /**
  * Apply a relay unsubscribe observed at `eventAt`, minus whatever the contact
- * opted into after it.
+ * COMPLETED an opt-in to after it.
  *
  *  - A double opt-in confirmed after the event is the contact's own, later
  *    consent: nothing is applied.
- *  - No membership added after the event: the ordinary global unsubscribe.
- *  - Otherwise someone subscribed the contact again after they left. Those
- *    later memberships stay and the global opt-out is not stamped (a later
- *    subscribe from a source allowed to lift one would have cleared it); the
- *    memberships that existed when they left are still removed, so the
- *    unsubscribe they asked for is honoured for everything it covered.
+ *  - No completed membership added after the event: the ordinary global
+ *    unsubscribe, which also removes a signup still waiting for confirmation.
+ *    Only a completed opt-in may stand against an opt-out: an anonymous form
+ *    can create a pending membership for any address, and had the opt-out been
+ *    recorded on time that signup would have had to wait for a fresh
+ *    confirmation anyway. The person can sign up again.
+ *  - Otherwise the contact was subscribed again, with a completed opt-in, after
+ *    they left. Those memberships stay and the global opt-out is not stamped (a
+ *    subscribe allowed to complete over an opt-out lifts it); everything else,
+ *    including pending signups, is removed.
  *
  * Millisecond `addedAt` and `doiConfirmedAt` against Mandrill's whole-second
  * `ts` are compared through `afterEventSecond`: a subscribe or a confirmation in
@@ -219,12 +223,32 @@ async function applyRelayUnsubscribe(
 		.query('contactTopics')
 		.withIndex('by_contact', (q) => q.eq('contactId', contact._id))
 		.collect(); // bounded: one contact's topic memberships
-	if (!memberships.some((membership) => membership.addedAt >= later)) {
-		return await applyPublicUnsubscribe(ctx, { contactId: contact._id });
+	const kept = new Set<Id<'contactTopics'>>();
+	for (const membership of memberships) {
+		if (membership.addedAt >= later && (await isCompletedOptIn(ctx, contact, membership))) {
+			kept.add(membership._id);
+		}
 	}
-	const coveredTopicIds = memberships
-		.filter((membership) => membership.addedAt < later)
+	if (kept.size === 0) return await applyPublicUnsubscribe(ctx, { contactId: contact._id });
+	const removedTopicIds = memberships
+		.filter((membership) => !kept.has(membership._id))
 		.map((membership) => membership.topicId);
-	if (coveredTopicIds.length === 0) return skipped;
-	return await applyPublicUnsubscribe(ctx, { contactId: contact._id, topicIds: coveredTopicIds });
+	if (removedTopicIds.length === 0) return skipped;
+	return await applyPublicUnsubscribe(ctx, { contactId: contact._id, topicIds: removedTopicIds });
+}
+
+/**
+ * Whether a membership is a completed opt-in rather than a signup still waiting
+ * for the contact to confirm: neither flagged as pending by a form that forced
+ * double opt-in, nor on a DOI topic while the contact is unconfirmed.
+ */
+async function isCompletedOptIn(
+	ctx: MutationCtx,
+	contact: Doc<'contacts'>,
+	membership: Doc<'contactTopics'>
+): Promise<boolean> {
+	if (membership.pendingDoiConfirmation === true) return false;
+	if (contact.doiStatus === 'confirmed') return true;
+	const topic = await ctx.db.get(membership.topicId);
+	return topic?.requireDoubleOptIn !== true;
 }
