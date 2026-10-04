@@ -7,7 +7,13 @@ import { packageCoverage } from '../../vitest.shared';
 export default defineConfig({
 	plugins: [vue()],
 	test: {
-		include: ['app/**/__tests__/**/*.test.ts', 'server/**/__tests__/**/*.test.ts'],
+		include: [
+			'app/**/__tests__/**/*.test.ts',
+			'server/**/__tests__/**/*.test.ts',
+			// Node-side helpers of the Playwright suite (the seed call, the report
+			// secret scan), not the browser specs themselves.
+			'e2e/**/__tests__/**/*.test.ts',
+		],
 		environment: 'happy-dom',
 		setupFiles: ['app/__tests__/setup.ts'],
 		// Composable specs reload the composable under test with `vi.resetModules()`

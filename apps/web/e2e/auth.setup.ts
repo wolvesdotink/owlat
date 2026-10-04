@@ -1,7 +1,20 @@
 import { test as setup, expect } from '@playwright/test';
-import { hashPassword } from '@owlat/shared/passwordHash';
 import { testUser } from './fixtures/test-data';
+import { seedAdmin } from './seedAdmin';
+import { SETUP_BEFORE_STAMP_MS, WELCOME_STAMP_SETTLE_MS } from './timing';
 import { STORAGE_STATE } from './storage-state';
+
+/** The browser console of the setup run, attached to the report afterwards. */
+const consoleLines: string[] = [];
+
+setup.afterEach(async () => {
+	// Attached on success too: a passing run's console is the baseline a failing
+	// one is read against (welcome.vue logs every failed `markWelcomed` attempt).
+	await setup.info().attach('browser-console.txt', {
+		body: consoleLines.join('\n') || '(no console output)',
+		contentType: 'text/plain',
+	});
+});
 
 /**
  * Bootstrap the instance and sign in, once, for every other spec.
@@ -13,14 +26,30 @@ import { STORAGE_STATE } from './storage-state';
  * `owlat bootstrap-org` does it — `POST /seed/admin`, which writes through the
  * raw adapter and so is the one path the invite gate does not apply to.
  *
+ * Nothing secret may reach the trace or the attachments: a failed setup keeps
+ * its trace, and the workflow uploads both with the report. The seed call, the
+ * only one that carries the instance secret, runs outside Playwright, and the
+ * workflow scans the report before uploading it (scan-report-secrets.ts).
+ *
  * The workflow wipes the deployment immediately before this runs, so the seed's
  * one-shot rule ("refuses if any user exists") is satisfied.
  */
-setup('bootstrap the instance and save auth state', async ({ page, request }) => {
+setup('bootstrap the instance and save auth state', async ({ page }) => {
 	// Sign-in, the background first-login check and the welcome stamp are three
 	// round trips to a cold hosted deployment on top of the seed; the suite's
-	// 45 s default leaves no headroom for that.
-	setup.setTimeout(90_000);
+	// 45 s default leaves no headroom for that. The stamp's share is its own
+	// worst-case recovery time (see timing.ts); a run that commits on the first
+	// try uses a second or two of it.
+	setup.setTimeout(SETUP_BEFORE_STAMP_MS + WELCOME_STAMP_SETTLE_MS);
+
+	const started = Date.now();
+	const stamp = () => `+${((Date.now() - started) / 1000).toFixed(1)}s`;
+	page.on('console', (message) => {
+		consoleLines.push(`${stamp()} [${message.type()}] ${message.text()}`);
+	});
+	page.on('pageerror', (error) => {
+		consoleLines.push(`${stamp()} [pageerror] ${error.stack ?? error.message}`);
+	});
 
 	const owner = testUser();
 	const siteUrl = process.env['NUXT_PUBLIC_CONVEX_SITE_URL'];
@@ -33,26 +62,10 @@ setup('bootstrap the instance and save auth state', async ({ page, request }) =>
 		);
 	}
 
-	const seeded = await request.post(`${siteUrl}/seed/admin`, {
-		headers: { 'X-Instance-Secret': instanceSecret, 'Content-Type': 'application/json' },
-		data: {
-			email: owner.email,
-			name: owner.name,
-			// Same scrypt parameters the setup CLI uses; the endpoint stores the
-			// hash verbatim, so anything else is unreadable to BetterAuth.
-			passwordHash: await hashPassword(owner.password),
-		},
-	});
-
-	// 409 = already bootstrapped. Signing in still proves the account works, and
-	// failing here would turn "the reset did not run" into a confusing seed error
-	// instead of the login error that names it.
-	if (!seeded.ok() && seeded.status() !== 409) {
-		throw new Error(
-			`POST /seed/admin returned ${seeded.status()}: ${await seeded.text()}. The deployment must ` +
-				'be reset (POST /dev/reset) before the suite runs.'
-		);
-	}
+	// Not through Playwright's `request` fixture: its requests, headers included,
+	// are recorded in the trace, and a failed setup's trace is published with the
+	// report. See seedAdmin.ts.
+	await seedAdmin({ siteUrl, instanceSecret, owner });
 
 	await page.goto('/auth/login');
 	await page.getByLabel('Email').fill(owner.email);
@@ -86,7 +99,24 @@ setup('bootstrap the instance and save auth state', async ({ page, request }) =>
 		// and leaving cannot bounce back here. The seeded owner has no mailbox, so
 		// the screen shows the "no mailbox yet" surface, which has no exit link of
 		// its own: navigate the way a member would, by opening the dashboard.
-		await expect.poll(welcomedCached, { timeout: 20_000 }).toBe(true);
+		//
+		// The stamp retries a failure, so wait until it settles: committed (the
+		// cache entry) or given up (the page's retry note). Giving up fails here
+		// at once, rather than after the timeout, and the attached
+		// browser-console.txt has every attempt and its cause.
+		const stampOutcome = async () => {
+			if (await welcomedCached()) return 'saved';
+			const gaveUp = await page
+				.getByTestId('welcome-stamp-failed')
+				.isVisible()
+				.catch(() => false);
+			return gaveUp ? 'gave-up' : 'pending';
+		};
+		await expect.poll(stampOutcome, { timeout: WELCOME_STAMP_SETTLE_MS }).not.toBe('pending');
+		expect(
+			await stampOutcome(),
+			'welcome.vue gave up on markWelcomed; see browser-console.txt in the report'
+		).toBe('saved');
 		await page.goto('/dashboard');
 	}
 
