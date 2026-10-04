@@ -10,8 +10,8 @@
  *     beside a name would imply an encryption that is not going to happen, so
  *     the chips are handed nothing and stay silent.
  *   - Removing a named blocker is a RECIPIENT-LIST EDIT, not a consent path.
- *     The server recomputes the seal state from the shorter list; plaintext
- *     still requires the unsealed prompt. It drops the address from To, Cc and
+ *     The server recomputes the seal state from the shorter list. It drops the
+ *     address from To, Cc and
  *     Bcc alike, because the blocker set is derived from all three together.
  *
  * Extracted from PostboxComposer.vue to keep that surface focused (and under

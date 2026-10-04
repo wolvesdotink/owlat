@@ -3,12 +3,15 @@
  * The composer's two frames (plan §04). The same composer, the same draft;
  * only what shows by default differs:
  *
- *   popup   — title bar (with "Open in Answer mode" on a reply), the full
- *             envelope, Coach and Revise under the editor: today's composer;
- *   answer  — no title bar, the envelope folded to one line that opens on
- *             click or when something in it needs attention, the quoted
- *             original folded out of the editor (still in the body, so the
- *             sent message is unchanged), Coach and Revise on demand.
+ *   page    — the full-page composer for new mail: the full envelope, To
+ *             focused until someone is addressed, any quote in view;
+ *   answer  — the envelope folded to one line that opens on click or when
+ *             something in it needs attention, the quoted original folded out
+ *             of the editor (still in the body, so the sent message is
+ *             unchanged).
+ *
+ * Neither has a title bar; both keep Coach and Revise under ⋯ and the seal
+ * line under Send.
  *
  * usePostboxCompose is replaced by plain refs: what is under test is the
  * frame, not the draft pipeline (which has its own suites).
@@ -154,19 +157,14 @@ beforeEach(() => {
 
 /** The envelope: a stub that can raise the attention flag like the real one. */
 const switchToReplyAll = vi.fn();
+const focusTo = vi.fn();
 const EnvelopeStub = defineComponent({
 	name: 'PostboxComposerEnvelope',
 	emits: ['attention', 'apply-reply-all', 'from-change'],
 	setup(_p, { expose }) {
-		expose({ switchToReplyAll });
+		expose({ switchToReplyAll, focusTo });
 		return () => h('div', { 'data-testid': 'full-envelope' });
 	},
-});
-const HeaderStub = defineComponent({
-	name: 'PostboxComposerHeader',
-	props: { subject: String, canMaximise: Boolean, maximising: Boolean },
-	emits: ['maximise', 'minimize', 'discard'],
-	setup: () => () => h('header', { 'data-testid': 'title-bar' }),
 });
 const EditorStub = defineComponent({
 	name: 'PostboxBasicEditor',
@@ -187,7 +185,6 @@ function mountComposer(props: Record<string, unknown>, slots: Record<string, unk
 		global: {
 			plugins: [createTestI18n()],
 			components: {
-				PostboxComposerHeader: HeaderStub,
 				PostboxComposerEnvelope: EnvelopeStub,
 				PostboxComposerEnvelopeLine,
 				PostboxComposerFooter,
@@ -219,7 +216,6 @@ const envelopeShown = (w: ReturnType<typeof mountComposer>) =>
 describe('PostboxComposer frame="answer"', () => {
 	it('folds the envelope to one line, and opens it on click', async () => {
 		const w = mountComposer({ frame: 'answer' });
-		expect(w.find('[data-testid="title-bar"]').exists()).toBe(false);
 		const line = w.get('[data-testid="composer-envelope-line"]');
 		expect(line.text()).toContain('To Jonas Berg');
 		// The identity's label, not its address.
@@ -413,51 +409,34 @@ describe('PostboxComposer frame="answer"', () => {
 	});
 });
 
-describe('PostboxComposer frame="popup"', () => {
-	it("is today's composer: title bar, full envelope, quote in view, Coach inline", () => {
-		const w = mountComposer({});
-		expect(w.find('[data-testid="title-bar"]').exists()).toBe(true);
+describe('PostboxComposer frame="page" (new mail)', () => {
+	it('shows the full envelope and any quote, with Coach under ⋯', () => {
+		const w = mountComposer({ frame: 'page', seed: { mailboxId: 'mbx_1' } });
 		expect(w.find('[data-testid="composer-envelope-line"]').exists()).toBe(false);
 		expect(envelopeShown(w)).toBe(true);
 		expect(w.get('.postbox-basic-editor').element.parentElement!.classList).not.toContain(
 			'pbx-quote-folded'
 		);
-		expect(w.find('[data-testid="PostboxComposerAdvisory"]').exists()).toBe(true);
-		expect(w.find('[data-testid="composer-toggle-quote"]').exists()).toBe(false);
+		expect(w.find('[data-testid="PostboxComposerAdvisory"]').exists()).toBe(false);
+		expect(w.find('[data-testid="composer-toggle-advisory"]').exists()).toBe(true);
+		expect(w.get('[data-testid="composer-footer-row"]').classes()).toContain('flex-wrap');
 		w.unmount();
 	});
 
-	it('keeps the popup footer on one line, as before', () => {
-		const w = mountComposer({});
-		expect(w.get('[data-testid="composer-footer-row"]').classes()).not.toContain('flex-wrap');
+	it('puts the caret in To while nobody is addressed', async () => {
+		focusTo.mockClear();
+		compose.toAddresses.value = [];
+		const w = mountComposer({ frame: 'page', seed: { mailboxId: 'mbx_1' } });
+		await nextTick();
+		expect(focusTo).toHaveBeenCalledOnce();
 		w.unmount();
 	});
 
-	it('offers "Open in Answer mode" on a reply, saving the draft first', async () => {
-		const w = mountComposer({});
-		expect(w.getComponent(HeaderStub).props('canMaximise')).toBe(true);
-		w.getComponent(HeaderStub).vm.$emit('maximise');
+	it('tells the host the subject, for its page title', async () => {
+		const w = mountComposer({ frame: 'page', seed: { mailboxId: 'mbx_1' } });
+		compose.subject.value = 'Quarterly numbers';
 		await nextTick();
-		await nextTick();
-		expect(flush).toHaveBeenCalledTimes(1);
-		expect(w.emitted('maximise')?.[0]).toEqual(['draft_1']);
-		w.unmount();
-	});
-
-	it('stays in the popup when the save before Answer mode did not land', async () => {
-		flush.mockResolvedValueOnce({ ok: false } as never);
-		const w = mountComposer({});
-		w.getComponent(HeaderStub).vm.$emit('maximise');
-		await nextTick();
-		await nextTick();
-		expect(flush).toHaveBeenCalledTimes(1);
-		expect(w.emitted('maximise')).toBeUndefined();
-		w.unmount();
-	});
-
-	it('offers no Answer mode for a new email', () => {
-		const w = mountComposer({ seed: { mailboxId: 'mbx_1' } });
-		expect(w.getComponent(HeaderStub).props('canMaximise')).toBe(false);
+		expect(w.emitted('subject')?.at(-1)).toEqual(['Quarterly numbers']);
 		w.unmount();
 	});
 });

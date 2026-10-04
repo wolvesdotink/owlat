@@ -149,7 +149,6 @@ function mountPage() {
 			NuxtLink: nuxtLinkStub,
 			UiButton: buttonStub,
 			PostboxMailboxGuard: passthrough('PostboxMailboxGuard'),
-			PostboxComposerStack: passthrough('PostboxComposerStack'),
 		},
 		stubs: {
 			Icon: true,

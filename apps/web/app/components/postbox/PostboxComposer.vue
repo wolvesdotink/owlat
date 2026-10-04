@@ -24,13 +24,13 @@ const props = defineProps<{
 	 */
 	replyAllRecipients?: string[];
 	/**
-	 * Where the composer is mounted. `popup` (default) is the floating stack's
-	 * window. `answer` is Answer mode's composer column: no title bar, the
-	 * envelope folded to one line, the quote folded out of the editor, Coach
-	 * and Revise under ⋯, and the body focused on mount (Answer mode only
-	 * opens on an explicit reply, so this never steals focus on load).
+	 * Where the composer is mounted. `page` (default) is the full-page composer
+	 * for new mail: the envelope open and To focused until someone is addressed.
+	 * `answer` is Answer mode's composer column: the envelope folded to one
+	 * line, the quote folded out of the editor and the body focused on mount.
+	 * Both put Coach and Revise under ⋯ and the seal line under Send.
 	 */
-	frame?: 'popup' | 'answer';
+	frame?: 'page' | 'answer';
 	/** Answer mode's line for the footer's save-state spot ("2 of 3 asks covered"). */
 	statusNote?: string;
 	/** The draft has an Answer mode ask session: its `[[...]]` gaps hold Send. */
@@ -46,12 +46,12 @@ const emit = defineEmits<{
 	 */
 	(e: 'sent', outcome: { scheduled: boolean }): void;
 	(e: 'discarded'): void;
-	/** Popup: Esc / Minimize. Answer frame: Esc from inside the composer. */
+	/** Esc from inside the composer; the host decides what it means. */
 	(e: 'minimize'): void;
-	/** Popup reply: continue in Answer mode; the draft row is saved first. */
-	(e: 'maximise', draftId: Id<'mailDrafts'>): void;
 	/** The draft row exists (created by the first autosave, or reopened). */
 	(e: 'draft-id', draftId: Id<'mailDrafts'>): void;
+	/** The subject as typed, for a host that titles its page with it. */
+	(e: 'subject', subject: string): void;
 }>();
 
 const { t, locale } = useI18n();
@@ -201,25 +201,28 @@ const { sending, handleSend, guards, stale } = usePostboxComposerSendGate({
 	onSent: (outcome) => emit('sent', outcome),
 });
 
-// --- Frames. Answer mode's view state (folded envelope/quote, Coach under ⋯)
-// lives in its own composable; the draft underneath is the popup's, untouched.
-const answerFrame = props.frame === 'answer';
-const frameView = usePostboxComposerAnswerFrame({ active: answerFrame, bodyHtml });
+// --- Frames. The view state (folded envelope/quote, Coach under ⋯, what is
+// focused on mount) lives in its own composable; the draft underneath is the
+// same in both frames.
+const frameView = usePostboxComposerAnswerFrame({
+	frame: props.frame ?? 'page',
+	bodyHtml,
+	hasRecipients: () =>
+		toAddresses.value.length + ccAddresses.value.length + bccAddresses.value.length > 0,
+});
 const { envelopeRef, basicEditor, focusBody, onLineReplyAll } = frameView;
 
-// The draft id for the host's URL, popup reply → Answer mode on a saved row,
-// discard, and what the host reads as it leaves.
-const { maximising, handleMaximise, handleDiscard, snapshot } = usePostboxComposerHandoff({
+// The draft id for the host's URL, discard, and what the host reads as it leaves.
+const { handleDiscard, snapshot } = usePostboxComposerHandoff({
 	draftId: activeDraftId,
 	toAddresses,
 	bodyHtml,
 	attachmentCount: () => attachments.value.length,
-	flush,
 	discard,
 	emitDiscarded: () => emit('discarded'),
 	emitDraftId: (id) => emit('draft-id', id),
-	emitMaximise: (id) => emit('maximise', id),
 });
+watch(subject, (value) => emit('subject', value), { immediate: true });
 
 // Scoped OS-level file drops and clipboard attachment pastes.
 const { rootEl, bindRoot, dragActive, onDragOver, onDragLeave, onDrop, onPaste } =
@@ -282,17 +285,6 @@ function onKeydown(event: KeyboardEvent) {
 		@paste="onPaste"
 		@keydown.capture="onKeydown"
 	>
-		<template v-if="!answerFrame" #header>
-			<PostboxComposerHeader
-				:subject="subject"
-				:can-maximise="!!seed.inReplyToMessageId"
-				:maximising="maximising"
-				@maximise="handleMaximise"
-				@minimize="emit('minimize')"
-				@discard="handleDiscard"
-			/>
-		</template>
-
 		<template #envelope>
 			<PostboxComposerEnvelopeLine
 				v-if="!frameView.envelopeOpen.value"
@@ -330,11 +322,6 @@ function onKeydown(event: KeyboardEvent) {
 		<!-- The shell's scroll region: the strips keep their height (the draft
 		     notice leads), the body keeps at least 6rem. -->
 		<PostboxComposerDraftNotice :notice="draftNotice" @retry="retryLoad" />
-		<!-- Sealed Mail (E5): honest seal-lock indicator, shown from the moment the
-		     state is being computed. Its unsealed control only REQUESTS the
-		     decision — the dialog below is the single source of plaintext consent.
-		     Answer mode folds it to one line under Send (the footer's notes). -->
-		<PostboxComposerSealLock v-if="!answerFrame" v-bind="lockBindings" />
 
 		<!-- Plan idea 7: keystrokes the server row never received, after a crash.
 		     Above the editor, because it offers to replace what is in it. -->
@@ -448,7 +435,6 @@ function onKeydown(event: KeyboardEvent) {
 				:persistent-toolbar="persistentToolbar"
 				:preflight="guards.preflight"
 				:last-saved-label="footerStatus"
-				:frame="frame"
 				:has-quote="frameView.hasQuote.value"
 				:quote-folded="frameView.quoteFolded.value"
 				:advisory-available="aiRewriteEnabled"
@@ -464,7 +450,10 @@ function onKeydown(event: KeyboardEvent) {
 				@toggle-toolbar="toggleToolbar"
 				@switch-mode="switchMode"
 			>
-				<template v-if="answerFrame" #notes>
+				<!-- Sealed Mail (E5): one honest line under Send, shown from the moment
+				     the state is being computed. Its unsealed control only REQUESTS
+				     the decision; the dialog below is the single source of consent. -->
+				<template #notes>
 					<PostboxComposerSealLock compact v-bind="lockBindings" />
 				</template>
 			</PostboxComposerFooter>

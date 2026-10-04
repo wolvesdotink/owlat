@@ -237,14 +237,29 @@ export type SealState =
 	| { kind: 'cannotSeal'; reason: SealSkipReason };
 
 /**
+ * Whether a plaintext send for this reason needs the sender's explicit consent.
+ *
+ * Mail to people without a sealing key (nearly everyone) is ordinary email, not
+ * a downgrade: it goes out as it always has, and the composer's seal line says
+ * so. Asking about it on every Send taught people to click through the prompt
+ * and, when they missed it, left Send looking broken. Consent stays for the two
+ * cases where sealing was within reach and something dropped it: the sender's
+ * own signing key is missing, or a recipient's key changed.
+ */
+export function unsealedSendNeedsConsent(reason: SealSkipReason): boolean {
+	return reason === 'no_signing_key' || reason === 'key_changed';
+}
+
+/**
  * Sending permission for a feature-enabled draft. A key change is never
- * bypassable; every other plaintext outcome requires the distinct explicit
- * consent action rendered by the composer.
+ * bypassable; a plaintext outcome that needs consent
+ * ({@link unsealedSendNeedsConsent}) requires the distinct explicit consent
+ * action rendered by the composer; any other plaintext outcome sends normally.
  */
 export function canSendWithSealState(state: SealState, allowUnsealed: boolean): boolean {
 	if (state.kind === 'willSeal') return true;
 	if (state.kind === 'keyChanged') return false;
-	return allowUnsealed;
+	return allowUnsealed || !unsealedSendNeedsConsent(state.reason);
 }
 
 /**

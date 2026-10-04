@@ -1,15 +1,11 @@
 // @vitest-environment happy-dom
 /**
- * The composer footer's follow-up ("remind me if no reply") picker is opened
- * from inside the ⋯ overflow panel, but the dialog itself must be rendered by
- * the footer.
- *
- * Why it matters: the panel is `v-if`-ed, and the dialog teleports to <body>, so
- * the very first click inside the dialog is "outside" the panel. If the dialog
- * were owned by the slot, that click would close the panel and unmount the open
- * dialog mid-interaction. These tests use the real PostboxOverflowMenu,
- * PostboxComposerFollowUp and useClickOutside, with a teleporting dialog stand-in
- * that reports whether it is still mounted.
+ * The composer footer's follow-up ("remind me if no reply") chip sits on the
+ * footer row, and the picker dialog it opens is rendered by the footer itself,
+ * so nothing that closes around the chip (the ⋯ panel beside it) can unmount
+ * the dialog mid-interaction. These tests use the real PostboxOverflowMenu,
+ * PostboxComposerFollowUp and useClickOutside, with a teleporting dialog
+ * stand-in that reports whether it is still mounted.
  */
 import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
@@ -112,54 +108,44 @@ afterEach(() => {
 
 const clickOn = (el: Element) => el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
-/** Open ⋯, then the follow-up picker from inside it. */
-async function openPickerFromMenu(w: VueWrapper) {
-	await w.get('button[aria-label="More compose options"]').trigger('click');
+/** Open the follow-up picker from its chip on the footer row. */
+async function openPicker(w: VueWrapper) {
 	await w.get('button[aria-label="Remind me if no reply"]').trigger('click');
 	expect(document.querySelector('.follow-up-dialog')).not.toBeNull();
 }
 
 describe('PostboxComposerFooter follow-up picker', () => {
-	it('opens the picker from the overflow menu', async () => {
+	it('opens the picker from the chip on the footer row, not from ⋯', async () => {
 		const w = mountFooter();
-		await openPickerFromMenu(w);
-		expect(w.find('[role="menu"]').exists()).toBe(true);
+		await openPicker(w);
+		expect(w.find('[role="menu"]').exists()).toBe(false);
 	});
 
-	it('keeps the dialog mounted when the menu closes on the dialog click', async () => {
+	it('keeps the dialog mounted when ⋯ opens and closes beside it', async () => {
 		const w = mountFooter();
-		await openPickerFromMenu(w);
-
-		// A click inside the teleported dialog is outside the ⋯ panel.
-		const preset = document.querySelector('.preset') as HTMLElement;
-		clickOn(preset);
+		await openPicker(w);
+		await w.get('button[aria-label="More compose options"]').trigger('click');
+		clickOn(document.body);
 		await w.vm.$nextTick();
 
 		expect(w.find('[role="menu"]').exists()).toBe(false);
 		expect(document.querySelector('.follow-up-dialog')).not.toBeNull();
 	});
 
-	it('still delivers the picked deadline after the menu has closed', async () => {
+	it('delivers the picked deadline', async () => {
 		const w = mountFooter();
-		await openPickerFromMenu(w);
-
-		// Close the menu first (click elsewhere in the footer's page), then pick.
-		clickOn(document.body);
-		await w.vm.$nextTick();
-		expect(w.find('[role="menu"]').exists()).toBe(false);
+		await openPicker(w);
 
 		const preset = document.querySelector('.preset') as HTMLElement;
-		expect(preset).not.toBeNull();
 		clickOn(preset);
 		await w.vm.$nextTick();
 
 		expect(w.emitted('update:followUpRemindAt')).toEqual([[1_700_000_000_000]]);
 	});
 
-	it('clears an armed reminder from the menu without opening the picker', async () => {
+	it('clears an armed reminder from its chip without opening the picker', async () => {
 		const w = mountFooter();
 		await w.setProps({ followUpRemindAt: 1_700_000_000_000 });
-		await w.get('button[aria-label="More compose options"]').trigger('click');
 
 		await w.get('button[aria-pressed="true"]').trigger('click');
 

@@ -8,6 +8,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	allRecipientsVerified,
 	canSendWithSealState,
+	unsealedSendNeedsConsent,
 	decideSeal,
 	deriveSealState,
 	toRecipientSealViews,
@@ -159,17 +160,20 @@ describe('mail/sealPolicy · deriveSealState (three states)', () => {
 });
 
 describe('mail/sealPolicy · explicit plaintext consent', () => {
-	it('allows normal Send only when the message will seal', () => {
+	it('sends ordinary mail to keyless recipients without a consent step', () => {
 		expect(canSendWithSealState({ kind: 'willSeal' }, false)).toBe(true);
-		expect(canSendWithSealState({ kind: 'cannotSeal', reason: 'recipient_no_key' }, false)).toBe(
-			false
-		);
+		for (const reason of ['recipient_no_key', 'policy_off', 'policy_ask', 'flag_off'] as const) {
+			expect(canSendWithSealState({ kind: 'cannotSeal', reason }, false)).toBe(true);
+			expect(unsealedSendNeedsConsent(reason)).toBe(false);
+		}
 	});
 
-	it('allows cannotSeal only through the explicit unsealed action', () => {
-		expect(canSendWithSealState({ kind: 'cannotSeal', reason: 'recipient_no_key' }, true)).toBe(
-			true
-		);
+	it('asks before a send that could have been sealed goes out in plaintext', () => {
+		const unsigned: SealState = { kind: 'cannotSeal', reason: 'no_signing_key' };
+		expect(unsealedSendNeedsConsent('no_signing_key')).toBe(true);
+		expect(unsealedSendNeedsConsent('key_changed')).toBe(true);
+		expect(canSendWithSealState(unsigned, false)).toBe(false);
+		expect(canSendWithSealState(unsigned, true)).toBe(true);
 	});
 
 	it('never allows an unsigned key change, even with an override', () => {

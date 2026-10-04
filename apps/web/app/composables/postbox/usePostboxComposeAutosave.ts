@@ -11,8 +11,8 @@
  * write and each wants something different, so each gets a verb instead of the
  * handle:
  *
- *  - `flush()`        — write now, then tell me the id (a popup reply moving
- *                       to Answer mode must reopen the SAME row).
+ *  - `flush()`        — write now, then tell me the id (Answer mode left with
+ *                       something typed, an ask session that needs the row).
  *  - `settlePendingSave()` — send: a debounced write must land BEFORE the send
  *                       mutation reads the row, or the message goes out a
  *                       keystroke stale.
@@ -235,9 +235,8 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 
 	/**
 	 * Save now and return the draft id (creating the row if it doesn't exist
-	 * yet). Used when a popup reply moves to Answer mode (which reopens the SAME
-	 * draft with nothing lost), when Answer mode is left with something typed in
-	 * the last debounce window, and when an ask session needs the row. Nothing
+	 * yet). Used when Answer mode is left with something typed in the last
+	 * debounce window, and when an ask session needs the row. Nothing
 	 * is lost only when the save landed, so a failure is `ok: false` and the
 	 * caller stays put.
 	 */
@@ -274,8 +273,8 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 		if (state === 'ready') schedulePersist();
 	});
 
-	// A composer that goes away with a debounced write still armed (a popup
-	// docked, Answer mode left by the browser's Back within 1.5 s) saves it now:
+	// A composer that goes away with a debounced write still armed (the compose
+	// page or Answer mode left by the browser's Back within 1.5 s) saves it now:
 	// the edit exists nowhere else (the crash mirror is keyed by the row). The
 	// one timer that is dropped is a row-less composer's that holds nothing the
 	// person wrote (a signature or a hydration re-arm, say): saving it would

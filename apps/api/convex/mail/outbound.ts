@@ -26,6 +26,7 @@ import { internal } from '../_generated/api';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { storeSealedBlob } from '../lib/sealedBlob';
 import { getMtaConfig } from './mtaClient';
+import { unsealedSendNeedsConsent } from './sealPolicy';
 import type { TransitionOutcome as DraftTransitionOutcome } from './draftLifecycle/types';
 import type { DraftRow } from './rfc822';
 import {
@@ -102,9 +103,15 @@ export const dispatchDraft = internalAction({
 			raw
 		);
 		// Consent is checked again after discovery and crypto because either can
-		// change during the undo window. Never silently downgrade a normal Send to
-		// plaintext; return the draft to the composer for an explicit choice.
-		if (isFlagEnabled && !encryptionInfo.isSealed && !draft.isUnsealedSendAllowed) {
+		// change during the undo window. Never silently downgrade a Send that
+		// could have been sealed; return the draft to the composer for an
+		// explicit choice. Ordinary mail to keyless recipients needs none.
+		if (
+			isFlagEnabled &&
+			!encryptionInfo.isSealed &&
+			unsealedSendNeedsConsent(encryptionInfo.reason) &&
+			!draft.isUnsealedSendAllowed
+		) {
 			logError(
 				`[Outbound] Refusing unsealed dispatch for draft ${args.draftId}: explicit consent missing`
 			);

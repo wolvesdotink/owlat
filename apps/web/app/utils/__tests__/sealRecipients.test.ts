@@ -186,10 +186,11 @@ describe('no-silent-downgrade guarantee', () => {
 		];
 		for (const state of states) {
 			const lock = deriveComposerLock(state);
-			// Plaintext is offered by exactly the same states as before, and never
+			// Plaintext is a decision only where sealing was within reach, and never
 			// as a side effect of a recipient being named or removed.
 			expect(lock.allowSendUnsealed).toBe(
-				state?.kind === 'cannotSeal' && state.reason !== 'no_recipients'
+				state?.kind === 'cannotSeal' &&
+					(state.reason === 'no_signing_key' || state.reason === 'key_changed')
 			);
 			// A lock that offers the control still has a prompt behind it.
 			expect(!!deriveUnsealedPrompt(state)).toBe(lock.allowSendUnsealed);

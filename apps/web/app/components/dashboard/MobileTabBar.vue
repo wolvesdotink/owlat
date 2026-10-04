@@ -11,8 +11,7 @@ import { mobileMoreDestinations } from '~/lib/mobileMoreDestinations';
  * split button uses, so the phone offers the same verbs as the desktop under
  * the same permission and flag gates.
  *
- * It hides while anything else owns the bottom of the screen — a composer, a
- * dialog, its own create sheet, a page's rail drawer, or the navigation drawer
+ * It hides while anything else owns the bottom of the screen — a dialog, its own create sheet, a page's rail drawer, or the navigation drawer
  * it opens: a fixed bar over a sheet is a tap target the person cannot see they
  * are hitting, and at z-(--z-header) the bar outranks every one of those
  * overlays, so "stays visible" reads as "paints over them".
@@ -38,7 +37,6 @@ const { t } = useI18n();
 const route = useRoute();
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const { actions } = useQuickCreateMenu();
-const { activeComposerId } = usePostboxComposerStack();
 // A page's conversation rail (UiRailDrawer) while it is off-canvas-open. Not a
 // prop like `navigationOpen`, because that drawer belongs to the page rather
 // than to the shell that mounts this bar.
@@ -149,7 +147,6 @@ onMounted(() => {
  */
 const isVisible = computed(
 	() =>
-		activeComposerId.value === null &&
 		!hasDialog.value &&
 		!isSheetOpen.value &&
 		!isMoreOpen.value &&

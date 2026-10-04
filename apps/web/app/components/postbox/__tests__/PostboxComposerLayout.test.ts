@@ -82,11 +82,7 @@ describe('PostboxComposer in the shell', () => {
 	it('leads with the draft notice and keeps the strips at their natural height', () => {
 		expect(content[0]!.tag).toBe('PostboxComposerDraftNotice');
 		expect(content.map((c) => c.tag)).toEqual(
-			expect.arrayContaining([
-				'PostboxComposerSealLock',
-				'PostboxDraftRestoreBar',
-				'PostboxComposerScheduledBanner',
-			])
+			expect.arrayContaining(['PostboxDraftRestoreBar', 'PostboxComposerScheduledBanner'])
 		);
 		// No nested scroller or shrink wrapper that could squeeze them.
 		expect(byTestId(shell, 'composer-status-strips')).toBeNull();

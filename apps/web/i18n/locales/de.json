@@ -4239,13 +4239,11 @@
 				"bodyPlaceholder": "Schreibe deine Nachricht…",
 				"composerName": "Postbox-Entwurf {timestamp}",
 				"dropHint": "Zum Anhängen ablegen · in den Text ziehen zum Einbetten",
-				"minimize": "Minimieren",
 				"newMessage": "Neue Nachricht",
 				"savedAt": "Gespeichert {time}",
 				"scheduledFor": "Geplant für {datetime}",
 				"unschedule": "Planung aufheben zum Bearbeiten",
-				"uploadingToast": "Warten, bis die Anhänge vollständig hochgeladen sind…",
-				"openInAnswerMode": "Im Antwortmodus öffnen"
+				"uploadingToast": "Warten, bis die Anhänge vollständig hochgeladen sind…"
 			},
 			"postboxComposerAttachments": {
 				"cancel": "{filename} abbrechen",
@@ -4259,10 +4257,6 @@
 				"share": "{filename} stattdessen als Link teilen",
 				"shareTitle": "Stattdessen als Link teilen",
 				"sizeOf": "{used} von {budget}"
-			},
-			"postboxComposerDock": {
-				"draft": "Entwurf",
-				"reopen": "Erneut öffnen: {subject}"
 			},
 			"postboxComposerEnvelope": {
 				"alsoInclude": "{names} ebenfalls einbeziehen",
@@ -4309,11 +4303,6 @@
 					"mentionDescription": "Deine Nachricht sagt „{phrase}“, aber es hängt nichts an. Trotzdem senden?",
 					"mentionTitle": "Anhang vergessen?"
 				},
-				"firstTime": {
-					"body": "Zum ersten Mal an {addresses}. | Zum ersten Mal an {addresses}.",
-					"keepEditing": "Weiter bearbeiten",
-					"send": "Trotzdem senden"
-				},
 				"keepEditing": "Weiter bearbeiten",
 				"sendAnyway": "Trotzdem senden"
 			},
@@ -4322,10 +4311,6 @@
 				"hideToolbar": "Formatierungsleiste ausblenden (bei Auswahl anzeigen)",
 				"returnToWriting": "Zurück zum Schreiben",
 				"showToolbar": "Formatierungsleiste anzeigen"
-			},
-			"postboxComposerPopup": {
-				"dialogLabel": "Nachricht verfassen",
-				"resizeHandle": "Zum Ändern der Größe ziehen"
 			},
 			"postboxComposerPreflightChip": {
 				"summary": "{count} Hinweis: {details} | {count} Hinweise: {details}"
@@ -4891,7 +4876,6 @@
 				"firstTimeTitle": "Du hast {address} noch nie geschrieben",
 				"fixIt": "Korrigieren",
 				"keepAsTyped": "So lassen",
-				"noSealingKey": "kein Schlüssel",
 				"outsideDomain": "außerhalb von {domain}",
 				"placeholder": "empfaenger{'@'}beispiel.de",
 				"removeRecipient": "{address} entfernen"
@@ -14374,8 +14358,7 @@
 			},
 			"usePostboxComposerSealLock": {
 				"checking": "Es wird geprüft, ob diese Nachricht versiegelt werden kann…",
-				"keyChanged": "Prüfe und bestätige den geänderten Empfängerschlüssel, bevor du sendest.",
-				"noRecipients": "Füge einen Empfänger hinzu, um zu sehen, ob diese Nachricht versiegelt werden kann."
+				"keyChanged": "Prüfe und bestätige den geänderten Empfängerschlüssel, bevor du sendest."
 			},
 			"usePostboxContacts": {
 				"removeContact": "Kontakt entfernen",
@@ -14750,13 +14733,8 @@
 			"unsealedPrompt": {
 				"cancel": "Weiter bearbeiten",
 				"confirm": "Unversiegelt senden",
-				"flagOff": "Versiegelte Post ist auf dieser Instanz noch nicht verfügbar. Owlat sendet sie als gewöhnliche E-Mail, die die Mailserver auf ihrem Weg mitlesen können.",
 				"keyChanged": "Der Schlüssel eines Empfängers hat sich geändert und muss noch geprüft werden. Owlat sendet sie als gewöhnliche E-Mail, die die Mailserver auf ihrem Weg mitlesen können.",
-				"noRecipients": "Diese Nachricht hat noch keine Empfänger. Owlat sendet sie als gewöhnliche E-Mail, die die Mailserver auf ihrem Weg mitlesen können.",
 				"noSigningKey": "Die Adresse, von der du sendest, hat noch keinen Versiegelungsschlüssel. Owlat sendet sie als gewöhnliche E-Mail, die die Mailserver auf ihrem Weg mitlesen können.",
-				"policyAsk": "Dein Workspace fragt vor dem Versiegeln nach. Owlat sendet sie als gewöhnliche E-Mail, die die Mailserver auf ihrem Weg mitlesen können.",
-				"policyOff": "Versiegelte Post ist für deinen Workspace deaktiviert. Owlat sendet sie als gewöhnliche E-Mail, die die Mailserver auf ihrem Weg mitlesen können.",
-				"recipientNoKey": "Einige deiner Empfänger können noch keine versiegelte Post empfangen. Owlat sendet sie als gewöhnliche E-Mail, die die Mailserver auf ihrem Weg mitlesen können.",
 				"title": "Diese Nachricht unversiegelt senden?"
 			},
 			"willSeal": {

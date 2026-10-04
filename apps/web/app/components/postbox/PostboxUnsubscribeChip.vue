@@ -26,7 +26,7 @@ const props = defineProps<{
 
 const { t } = useI18n();
 
-const stack = usePostboxComposerStack();
+const composeNav = usePostboxComposeNav();
 const { showToast } = useToast();
 
 const oneClickOp = useBackendOperation(api.mail.unsubscribe.performOneClick, {
@@ -74,7 +74,7 @@ async function onClick() {
 	if (target.mailtoUrl) {
 		const mailto = parseMailto(target.mailtoUrl);
 		if (mailto && mailto.to.length > 0) {
-			stack.open({
+			void composeNav.open({
 				mailboxId: props.mailboxId as Id<'mailboxes'>,
 				prefillTo: mailto.to,
 				prefillSubject: mailto.subject ?? 'Unsubscribe',

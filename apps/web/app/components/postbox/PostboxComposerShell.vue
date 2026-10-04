@@ -2,7 +2,7 @@
 /**
  * The frame every composer renders in, whatever it writes to (#812): the
  * mailbox composer (`PostboxComposer`) and the Team inbox reply
- * (`InboxThreadComposer`). Top to bottom: the title bar (popup only), the
+ * (`InboxThreadComposer`). Top to bottom: an optional header, the
  * envelope, one scroll region holding everything between the envelope and the
  * footer (the strips keep their height, the body keeps at least 6rem), and the
  * footer, pinned outside it so Send never scrolls away.

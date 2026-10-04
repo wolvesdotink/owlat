@@ -57,7 +57,7 @@ export type SendAsIdentity = FunctionReturnType<
 
 /**
  * The one-time seed a composer opens with: the one declaration every host
- * writes (the popup stack's ComposerSpec, Answer mode's seed, the
+ * writes (the compose page's ComposeSpec, Answer mode's seed, the
  * desktop compose window) and PostboxComposer hands over whole.
  *
  * Where it writes is a mailbox composer target (`utils/composerTarget`): the

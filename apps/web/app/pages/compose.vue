@@ -22,7 +22,6 @@ definePageMeta({
 
 const route = useRoute();
 const { currentMailbox, isLoading } = usePostboxMailbox();
-const stack = usePostboxComposerStack();
 
 const querySeed = computed<ComposerSeed | null>(() => {
 	const mailbox = currentMailbox.value;
@@ -71,22 +70,21 @@ function onExpired() {
 }
 
 /**
- * Undo reopens the recovered draft on the composer stack (PostboxUndoSendToast
- * does that for every host). This window renders no stack, so it takes that
- * composer over as its own. Nothing on the stack means the undo came too late
- * and the message went out: close as if the window had expired.
+ * Undo hands the recovered draft back through `reopen`: this window takes it
+ * over as its own composer. An undo that hands nothing back came too late and
+ * the message went out: close as if the window had expired.
  */
-function onUndone() {
-	const stacked = stack.state.value;
-	const reopened = stacked[stacked.length - 1];
-	if (!reopened) {
-		void closeWindow();
-		return;
-	}
-	stack.close(reopened.id);
-	reopenedSeed.value = reopened;
+let reopenedByUndo = false;
+function onReopen(spec: ComposerSeed) {
+	reopenedByUndo = true;
+	reopenedSeed.value = spec;
 	composerKey.value += 1;
 	sent.value = false;
+}
+
+function onUndone() {
+	if (!reopenedByUndo) void closeWindow();
+	reopenedByUndo = false;
 }
 </script>
 
@@ -109,6 +107,6 @@ function onUndone() {
 			{{ t('compose.loadingMailbox') }}
 		</p>
 		<p v-else class="text-sm text-text-secondary">{{ t('compose.noMailbox') }}</p>
-		<PostboxUndoSendToast @expired="onExpired" @undone="onUndone" />
+		<PostboxUndoSendToast :reopen="onReopen" @expired="onExpired" @undone="onUndone" />
 	</div>
 </template>

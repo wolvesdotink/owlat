@@ -7,9 +7,10 @@
  * The honesty audit is a test, not a vibe: every string this can render maps 1:1
  * to a `sealState` the backend actually computed. `willSeal` is the ONLY state
  * that promises encryption; every other state explains, in plain language, why
- * the message would go out unsealed — and for `cannotSeal` sending unsealed is a
- * DECISION: the sender is asked to proceed or cancel (`deriveUnsealedPrompt`)
- * before a single plaintext message leaves, never a silent downgrade.
+ * the message would go out unsealed. When sealing was within reach and something
+ * dropped it (`unsealedSendNeedsConsent`), sending unsealed is a DECISION: the
+ * sender is asked to proceed or cancel (`deriveUnsealedPrompt`) before a single
+ * plaintext message leaves, never a silent downgrade.
  *
  * These derivations are module scope, so they never call `useI18n`: every copy
  * field they hand back is a catalog KEY (or a `{ key, params }` pair where the
@@ -44,6 +45,17 @@ export type SealState =
 
 export type SealSendBlock = 'checking' | 'needs_unsealed_consent' | 'key_changed' | null;
 
+/**
+ * Whether a plaintext send for this reason needs the sender's explicit consent.
+ * Mirrors `unsealedSendNeedsConsent` in `mail/sealPolicy.ts`: mail to people
+ * without a sealing key is ordinary email and sends as such; only a send that
+ * could have been sealed (the sender's own signing key is missing, or a key
+ * changed) asks first.
+ */
+export function unsealedSendNeedsConsent(reason: SealSkipReason): boolean {
+	return reason === 'no_signing_key' || reason === 'key_changed';
+}
+
 /** Pure mirror of the server send gate, used by button, shortcut and scheduler paths. */
 export function sealSendBlock(
 	enabled: boolean,
@@ -54,6 +66,7 @@ export function sealSendBlock(
 	if (!state) return 'checking';
 	if (state.kind === 'willSeal') return null;
 	if (state.kind === 'keyChanged') return 'key_changed';
+	if (!unsealedSendNeedsConsent(state.reason)) return null;
 	return allowUnsealed ? null : 'needs_unsealed_consent';
 }
 
@@ -198,8 +211,9 @@ export function deriveComposerLock(
 				detail: cannotSealDetail(state.reason),
 				tone: 'muted',
 				icon: 'lucide:lock-open',
-				// Nothing to decide until there is someone to send to.
-				allowSendUnsealed: state.reason !== 'no_recipients',
+				// Only a send that could have been sealed is a decision; ordinary
+				// mail to keyless recipients just goes out.
+				allowSendUnsealed: unsealedSendNeedsConsent(state.reason),
 			};
 	}
 }
@@ -224,39 +238,29 @@ export interface UnsealedSendPrompt {
 /**
  * The per-reason prompt message. Each one states why this draft can't be sealed
  * AND what sending anyway costs, so the decision is never presented without its
- * consequence.
+ * consequence. Only the reasons that need consent ever reach a prompt.
  */
-function unsealedPromptDescription(reason: SealSkipReason): string {
-	switch (reason) {
-		case 'policy_off':
-			return 'shared.sealComposer.unsealedPrompt.policyOff';
-		case 'recipient_no_key':
-			return 'shared.sealComposer.unsealedPrompt.recipientNoKey';
-		case 'no_recipients':
-			return 'shared.sealComposer.unsealedPrompt.noRecipients';
-		case 'no_signing_key':
-			return 'shared.sealComposer.unsealedPrompt.noSigningKey';
-		case 'policy_ask':
-			return 'shared.sealComposer.unsealedPrompt.policyAsk';
-		case 'flag_off':
-			return 'shared.sealComposer.unsealedPrompt.flagOff';
-		case 'key_changed':
-			return 'shared.sealComposer.unsealedPrompt.keyChanged';
-	}
+function unsealedPromptDescription(reason: 'no_signing_key' | 'key_changed'): string {
+	return reason === 'no_signing_key'
+		? 'shared.sealComposer.unsealedPrompt.noSigningKey'
+		: 'shared.sealComposer.unsealedPrompt.keyChanged';
 }
 
 /**
  * Derive the unsealed-send confirmation prompt for a seal state, or `null` when
  * plaintext is not the sender's to choose: `willSeal` needs no decision,
  * `keyChanged` must be resolved on the thread first (never bypassable), and
- * `no_recipients` has no send to confirm. Mirrors `allowSendUnsealed` exactly, so
+ * ordinary mail to keyless recipients just sends (`unsealedSendNeedsConsent`).
+ * Mirrors `allowSendUnsealed` exactly, so
  * a lock that offers the control always has a prompt behind it.
  */
 export function deriveUnsealedPrompt(state: SealState | null): UnsealedSendPrompt | null {
-	if (!state || state.kind !== 'cannotSeal' || state.reason === 'no_recipients') return null;
+	if (!state || state.kind !== 'cannotSeal') return null;
+	const { reason } = state;
+	if (reason !== 'no_signing_key' && reason !== 'key_changed') return null;
 	return {
 		title: 'shared.sealComposer.unsealedPrompt.title',
-		description: unsealedPromptDescription(state.reason),
+		description: unsealedPromptDescription(reason),
 		confirmLabel: 'shared.sealComposer.unsealedPrompt.confirm',
 		cancelLabel: 'shared.sealComposer.unsealedPrompt.cancel',
 	};

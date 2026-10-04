@@ -2,7 +2,7 @@
  * The composer's confidence layer: everything the client can tell you about a
  * send BEFORE it happens, computed deterministically and with the `ai` flag off.
  *
- * Four checks live here, in the order they interrupt a send:
+ * Four checks live here; the first two can interrupt a send:
  *
  *   1. ALIGNMENT (plan idea 3) — the From-picker already knows this identity's
  *      domain is unverified or its transport misaligned, i.e. that the message
@@ -13,18 +13,18 @@
  *      the shared themed dialog instead of a native `window.confirm`.
  *   3. FIRST-TIME RECIPIENTS (idea 5) — an address this mailbox has never
  *      written to, which is how an autocomplete mis-pick leaves the building.
- *      A one-line inline confirm, not a modal.
+ *      A cue on the recipient's chip, never a gate: as an inline confirm it
+ *      parked Send behind a line people did not notice, so Send looked broken.
  *   4. PREFLIGHT (idea 6) — empty subject, leftover `[TODO]`, unfilled
  *      `{{firstName}}`, link text that disagrees with its href. Advisory only:
  *      a quiet chip beside Send, never an interruption.
  *
  * WARNING BUDGET. Interruptions are the scarce resource: only the two
  * irreversible mistakes (a send that will fail, a message missing its
- * attachment) get the replay-confirm dialog. Everything else is a chip or an
- * inline line, and every gate asks ONCE per composer — acknowledged means
- * acknowledged.
+ * attachment) get the replay-confirm dialog. Everything else is a chip, and
+ * every gate asks ONCE per composer — acknowledged means acknowledged.
  *
- * All four gates use the established `blockSend(opts)` + `onConfirm` replay
+ * Both gates use the established `blockSend(opts)` + `onConfirm` replay
  * contract (see usePostboxStaleReplyGuard / usePostboxComposerSealLock): the
  * composer calls `blockSend`, returns early if it is true, and the guard
  * replays the exact send — scheduled time and all — once the user decides.
@@ -167,17 +167,15 @@ export function usePostboxComposerGuards(
 
 	const alignmentGate = createReplayGate(options.onConfirm);
 	const attachmentGate = createReplayGate(options.onConfirm);
-	const firstTimeGate = createReplayGate(options.onConfirm);
 
 	/**
 	 * The composer's confidence gate: true when this send must pause. Ordered
-	 * worst-first, and each gate asks once — a send that trips two of them walks
+	 * worst-first, and each gate asks once — a send that trips both walks
 	 * through them one replay at a time.
 	 */
 	function blockSend(opts?: GuardSendOptions): boolean {
 		if (alignmentGate.block(alignmentWarning.value !== null, opts)) return true;
-		if (attachmentGate.block(attachmentHint.value !== null, opts)) return true;
-		return firstTimeGate.block(firstTimeAddresses.value.length > 0, opts);
+		return attachmentGate.block(attachmentHint.value !== null, opts);
 	}
 
 	// `reactive` (not a bag of refs) so a template can read `guards.preflight`
@@ -190,7 +188,6 @@ export function usePostboxComposerGuards(
 		attachmentHint,
 		alignment: alignmentGate,
 		attachment: attachmentGate,
-		firstTime: firstTimeGate,
 		blockSend,
 	});
 }

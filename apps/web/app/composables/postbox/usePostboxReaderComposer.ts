@@ -18,7 +18,7 @@ type ReaderComposerMessage = ReplyForwardSource & { mailboxId: string; threadId?
 /**
  * The reply / reply-all / forward verbs of the thread reader. Every one of
  * them opens Answer mode (plan decision 2: every reply, no inline box); only
- * the delivery strip's resend, which is not a reply, still opens a popup.
+ * the delivery strip's resend, which is not a reply, opens the compose page.
  *
  * `getMessage` returns the currently open message; `latestMessage` /
  * `ownAddresses` / `replyDefault` are the reader's live derived state, passed in
@@ -41,7 +41,7 @@ export function usePostboxReaderComposer(opts: {
 	const { getMessage, latestMessage, ownAddresses, replyDefault } = opts;
 	const guardReply = opts.guardReply ?? ((run: () => void) => run());
 	const { t } = useI18n();
-	const stack = usePostboxComposerStack();
+	const composeNav = usePostboxComposeNav();
 	const answerNav = useAnswerModeNav();
 	const pendingLead = useAnswerPendingLead();
 
@@ -115,12 +115,14 @@ export function usePostboxReaderComposer(opts: {
 	/**
 	 * Open a composer that resends `source` to `addresses` only — the delivery
 	 * strip's "resend to the failed recipient" action (plan idea 1). Not a
-	 * reply, so it stays a popup. A call with no addresses is a no-op.
+	 * reply, so it opens the compose page. A call with no addresses is a no-op.
 	 */
 	async function openResend(source: ReplyForwardSource, addresses: string[]) {
 		if (addresses.length === 0) return;
 		const target = await resolveBodyFields(source);
-		stack.open(buildResendSpec(getMessage().mailboxId as Id<'mailboxes'>, target, addresses));
+		void composeNav.open(
+			buildResendSpec(getMessage().mailboxId as Id<'mailboxes'>, target, addresses)
+		);
 	}
 
 	// Keyboard entry points (`r` / `a` / `f`, the ⌘K bridge): against the

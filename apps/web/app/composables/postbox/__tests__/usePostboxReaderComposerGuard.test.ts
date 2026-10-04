@@ -9,7 +9,7 @@
  *   - an AI-suggested body is saved into a new draft first, and Answer mode
  *     opens on that draft (`?draft=`); if the draft cannot be created, the
  *     body waits in session state for Answer mode to pick up;
- *   - the resend (not a reply) still opens a popup.
+ *   - the resend (not a reply) opens the compose page.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref, computed, effectScope } from 'vue';
@@ -21,7 +21,7 @@ let createResult: { ok: boolean; result?: { draftId: string } };
 const mutations: Array<{ op: string; args: unknown }> = [];
 
 vi.stubGlobal('useI18n', () => ({ t: (key: string) => key }));
-vi.stubGlobal('usePostboxComposerStack', () => ({ open: composerOpen }));
+vi.stubGlobal('usePostboxComposeNav', () => ({ open: composerOpen }));
 vi.stubGlobal('useState', (key: string, init: () => unknown) => {
 	if (!state.has(key)) state.set(key, ref(init()));
 	return state.get(key);
@@ -162,7 +162,7 @@ describe('usePostboxReaderComposer', () => {
 		expect(useAnswerPendingLead().take('msg_1')).toBe('Tuesday works');
 	});
 
-	it('keeps the resend (not a reply) in a popup', async () => {
+	it('opens the resend (not a reply) on the compose page', async () => {
 		const { openResend } = makeComposer((run) => run());
 		await openResend(message, ['bounced@example.com']);
 		expect(composerOpen).toHaveBeenCalledWith({

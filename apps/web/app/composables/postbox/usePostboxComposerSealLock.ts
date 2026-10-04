@@ -114,7 +114,8 @@ export function usePostboxComposerSealLock(
 	 * The composer's seal gate: true when this send must not proceed as asked.
 	 * Mirrors the server's own gate (`sealSendBlock`) and always leaves the sender
 	 * with something to do — wait for the check, resolve the key change on the
-	 * thread, or answer the unsealed prompt.
+	 * thread, or answer the unsealed prompt. Ordinary mail to keyless recipients
+	 * is not blocked at all.
 	 */
 	async function blockSend(opts?: SealGateSendOptions): Promise<boolean> {
 		const block = sealSendBlock(
@@ -128,9 +129,8 @@ export function usePostboxComposerSealLock(
 			showToast(t('shared.postbox.usePostboxComposerSealLock.checking'));
 		} else if (block === 'key_changed') {
 			showToast(t('shared.postbox.usePostboxComposerSealLock.keyChanged'));
-		} else if (!requestUnsealed(opts)) {
-			// No prompt exists only when there is nothing to decide yet (no recipients).
-			showToast(t('shared.postbox.usePostboxComposerSealLock.noRecipients'));
+		} else {
+			requestUnsealed(opts);
 		}
 		return true;
 	}

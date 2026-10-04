@@ -16,7 +16,7 @@ import sanitizeHtml from 'sanitize-html';
 import type { Id } from '@owlat/api/dataModel';
 import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import { escapeHtml, escapeHtmlWithBreaks } from '@owlat/shared/html';
-import type { ComposerSpec } from '~/composables/postbox/usePostboxComposerStack';
+import type { ComposeSpec } from '~/composables/postbox/usePostboxComposeNav';
 import { consumeResolvedPostboxMessageBody } from './postboxBodyResolver';
 
 // The quote-boundary splitters are shared with the Convex server (voice-profile
@@ -112,7 +112,7 @@ export function buildReplySpec(
 	mailboxId: Id<'mailboxes'>,
 	target: ReplyQuoteTarget,
 	leadText = ''
-): Omit<ComposerSpec, 'id' | 'minimized'> {
+): ComposeSpec {
 	const lead = leadText ? `<p>${escapeHtmlWithBreaks(leadText)}</p>` : '';
 	return {
 		mailboxId,
@@ -146,7 +146,7 @@ export function buildResendSpec(
 	mailboxId: Id<'mailboxes'>,
 	target: ReplyQuoteTarget,
 	toAddresses: string[]
-): Omit<ComposerSpec, 'id' | 'minimized'> {
+): ComposeSpec {
 	return {
 		mailboxId,
 		prefillTo: toAddresses,

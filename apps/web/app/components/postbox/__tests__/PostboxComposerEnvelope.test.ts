@@ -279,15 +279,18 @@ describe('PostboxComposerEnvelope — attention (Answer mode opens its folded en
 		expect(wrapper.emitted('attention')?.at(-1)).toEqual([true]);
 	});
 
-	it('asks for attention while a first-time recipient waits for a confirm', async () => {
-		const guards = { ...quietGuards, firstTime: { open: false } } as unknown as ComposerGuards;
+	it('does not ask for attention over a first-time recipient: the chip says it', () => {
 		const wrapper = mount(PostboxComposerEnvelope, {
 			...mountOpts,
-			props: { ...baseProps, guards, availableIdentities: [identity({ address: 'ada@acme.com' })] },
+			props: {
+				...baseProps,
+				guards: {
+					...quietGuards,
+					firstTimeAddresses: ['stranger@acme-corp.io'],
+				} as unknown as ComposerGuards,
+				availableIdentities: [identity({ address: 'ada@acme.com' })],
+			},
 		});
-		await wrapper.setProps({
-			guards: { ...quietGuards, firstTime: { open: true } } as unknown as ComposerGuards,
-		});
-		expect(wrapper.emitted('attention')?.at(-1)).toEqual([true]);
+		expect(wrapper.emitted('attention')?.at(-1)).toEqual([false]);
 	});
 });

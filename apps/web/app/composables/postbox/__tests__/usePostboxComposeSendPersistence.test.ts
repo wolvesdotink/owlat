@@ -1,5 +1,5 @@
 /**
- * Send and the move to Answer mode stand on an acknowledged save of the CURRENT snapshot
+ * Send stands on an acknowledged save of the CURRENT snapshot
  * (#895).
  *
  * `drafts.send` takes only a draft id and reads the stored row, so a save that
@@ -12,7 +12,7 @@
  * connection hands the current composition to the offline outbox instead.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { effectScope, nextTick, reactive, ref, type Ref } from 'vue';
+import { effectScope, nextTick, reactive, ref } from 'vue';
 import { createTestI18n } from '~/__tests__/i18n';
 import { queryResult } from '~/__tests__/queryStubs';
 import { isSurfacedOperationError } from '~/lib/operationError';
@@ -439,52 +439,5 @@ describe('usePostboxCompose — flush() reports whether it saved (#895)', () => 
 
 		expect(result).toEqual({ ok: true, result: 'draft-1' });
 		expect(lastUpdate()).toMatchObject({ toAddresses: ['new@example.com'] });
-	});
-
-	it('keeps a popup reply in its popup when the flush before Answer mode did not save', async () => {
-		const { usePostboxComposerHandoff } = await import('../usePostboxComposerHandoff');
-		const emitMaximise = vi.fn();
-		const flush = vi.fn(async () => ({ ok: false as const }));
-		const handoff = effectScope().run(() =>
-			usePostboxComposerHandoff({
-				draftId: ref(null),
-				toAddresses: ref([]),
-				bodyHtml: ref(''),
-				attachmentCount: () => 0,
-				flush,
-				discard: async () => {},
-				emitDiscarded: () => {},
-				emitDraftId: () => {},
-				emitMaximise,
-			})
-		)!;
-
-		await handoff.handleMaximise();
-
-		expect(flush).toHaveBeenCalledOnce();
-		expect(emitMaximise).not.toHaveBeenCalled();
-		expect((handoff.maximising as Ref<boolean>).value).toBe(false);
-	});
-
-	it('moves a popup reply to Answer mode on the saved row', async () => {
-		const { usePostboxComposerHandoff } = await import('../usePostboxComposerHandoff');
-		const emitMaximise = vi.fn();
-		const handoff = effectScope().run(() =>
-			usePostboxComposerHandoff({
-				draftId: ref(null),
-				toAddresses: ref([]),
-				bodyHtml: ref(''),
-				attachmentCount: () => 0,
-				flush: async () => ({ ok: true as const, result: 'draft-1' as never }),
-				discard: async () => {},
-				emitDiscarded: () => {},
-				emitDraftId: () => {},
-				emitMaximise,
-			})
-		)!;
-
-		await handoff.handleMaximise();
-
-		expect(emitMaximise).toHaveBeenCalledWith('draft-1');
 	});
 });
