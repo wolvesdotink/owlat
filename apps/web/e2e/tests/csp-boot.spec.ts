@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { redactForReport, testDeployments } from '../reportRedaction';
 
 /**
  * The app mounts in a real browser under the real CSP.
@@ -28,8 +29,11 @@ test.describe('app shell', () => {
 			});
 		});
 
+		// Redacted: a failing assertion prints both lists into the public report,
+		// and a blocked request or a boot error can name the deployment.
+		const deployments = testDeployments();
 		const pageErrors: string[] = [];
-		page.on('pageerror', (error) => pageErrors.push(error.message));
+		page.on('pageerror', (error) => pageErrors.push(redactForReport(error.message, deployments)));
 
 		const response = await page.goto('/auth/login');
 		expect(response?.status()).toBe(200);
@@ -38,9 +42,11 @@ test.describe('app shell', () => {
 		// once Vue takes over.
 		await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible({ timeout: 30_000 });
 
-		const violations = await page.evaluate(
-			() => (window as unknown as { __cspViolations: string[] }).__cspViolations
-		);
+		const violations = (
+			await page.evaluate(
+				() => (window as unknown as { __cspViolations: string[] }).__cspViolations
+			)
+		).map((violation) => redactForReport(violation, deployments));
 		expect(violations, 'the deployment CSP blocked something the app needs').toEqual([]);
 		expect(pageErrors, 'the app threw while booting').toEqual([]);
 	});

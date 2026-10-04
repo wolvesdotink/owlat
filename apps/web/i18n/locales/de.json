@@ -16283,6 +16283,10 @@
 				"unsubscribed": "Von {count} Absender abgemeldet. | Von {count} Absendern abgemeldet."
 			}
 		},
+		"convexAuth": {
+			"lost": "Deine Daten werden nicht mehr geladen. Lade die Seite neu, um die Verbindung wiederherzustellen.",
+			"reload": "Neu laden"
+		},
 		"format": {
 			"never": "Nie",
 			"invalidDate": "Ungültiges Datum",

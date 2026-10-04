@@ -46,6 +46,7 @@ vi.mock('~/lib/auth-client', () => ({
 }));
 vi.mock('~/lib/convex-auth', () => ({
 	getConvexAuthToken,
+	lastConvexTokenFailure: () => null,
 	resetConvexAuthTokenCache: vi.fn(),
 }));
 vi.mock('~/lib/desktop/activeWorkspace', () => ({
