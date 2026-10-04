@@ -22,7 +22,7 @@ import {
 import { newHarness } from './testModules';
 import { dispatchInboundEvent } from '../webhooks/dispatcher';
 import type { ActionCtx } from '../_generated/server';
-import type { InboundEvent } from '../webhooks/types';
+import type { InboundEvent, InboundEventOf } from '../webhooks/types';
 import { permanentlyDeleteContactWithRelations, softDeleteContact } from '../lib/contactMutations';
 import { AUTOMATIC_REPLAY_ATTEMPTS, RETENTION_MS } from '../webhooks/unresolvedFeedback';
 
@@ -98,7 +98,7 @@ async function statsBounced(t: T, campaignId: Id<'campaigns'>): Promise<number> 
 	});
 }
 
-const orphanBounce = (providerMessageId: string): InboundEvent => ({
+const orphanBounce = (providerMessageId: string): InboundEventOf<'email.bounced'> => ({
 	kind: 'email.bounced',
 	providerMessageId,
 	at: Date.now(),
