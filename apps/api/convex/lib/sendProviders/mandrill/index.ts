@@ -173,10 +173,11 @@ function readRecipientResult(payload: unknown): EmailSendAttempt {
 
 	const reason = typeof entry.reject_reason === 'string' ? entry.reject_reason : '';
 	const detail = `${status || 'unknown'}: ${reason}`;
-	// A `rejected` result is Mandrill's reject list refusing the address, the
-	// same fact its `reject` webhook reports. Read through the webhook's own
-	// table, so a reason suppresses here exactly when it suppresses there and a
-	// sender-side reason (`unsigned`, `invalid-sender`, ...) suppresses no one.
+	// A `rejected` result is the same refusal its `reject` webhook reports. Read
+	// through the webhook's own table, so a reason suppresses here exactly when
+	// it suppresses there: a denylist reason does, while a sender-side reason
+	// (`unsigned`, `invalid-sender`, ...) or a rules-engine `rule` (#1249)
+	// fails the send and suppresses no one.
 	const suppression =
 		status === 'rejected' ? mandrillRejectSuppression(mandrillRejectCode(reason)) : undefined;
 	return {

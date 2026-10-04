@@ -35,10 +35,12 @@
  *    same class an FBL report earns, and with NO bounce classification: sending
  *    one would make the MTA mirror describe a spam report as a mailbox failure.
  *  - `recipient_rejected` / `recipient_blacklisted` / `operator_suppressed` —
- *    the provider (or an operator, or an account rule) put the address on a
- *    list. That is a decision rather than an observation, so it maps to
- *    `manual`: the one reason whose MTA mirror expires and whose presence on
- *    the suppression screen reads as "someone put this here".
+ *    the provider (or an operator) put the address on a list. That is a
+ *    decision rather than an observation, so it maps to `manual`: the one
+ *    reason whose MTA mirror expires and whose presence on the suppression
+ *    screen reads as "someone put this here". A rule that refused one message
+ *    is not a list entry: it can match the subject or the sender, so an
+ *    adapter mints nothing for it (Mandrill `rule`, #1249).
  *  - `unsubscribed` — the person left. Owlat has a whole consent path for that
  *    (membership delete, opt-out stamp, campaign counter, webhook fanout); a
  *    blocklist row would record the outcome while skipping the accounting, so

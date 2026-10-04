@@ -197,27 +197,33 @@ export const MANDRILL_REJECT_CODE_PREFIX = 'MANDRILL_REJECT';
  * WHICH REJECT REASONS ARE RECIPIENT TRUTHS — Mandrill's policy, in Mandrill's
  * own adapter, translated into the host's closed suppression vocabulary.
  *
- * A reject is Mandrill's OWN blacklist refusing an address before the message
- * ever reaches a receiver, and it reports ten reasons on one field. Only some of
- * them say anything about the mailbox:
+ * A reject is Mandrill refusing a message before it reaches a receiver, on one
+ * of ten reasons. Only the denylist's own entry types say anything about the
+ * mailbox (`rejects/list` reports exactly hard-bounce, soft-bounce, spam, unsub
+ * and custom):
  *
  *  - `hard-bounce` / `soft-bounce` / bare `bounce` — the address itself failed,
  *    repeatedly enough for Mandrill to stop trying. A bare `bounce` carries no
  *    hard/soft qualifier and is read at the strongest reading the event
  *    supports: Mandrill refused to send at all.
- *  - `spam` — this person complained.
- *  - `custom` / `rule` — an OPERATOR (or an account rule) curated this address
- *    onto the blacklist by hand. A human decision, not an observation.
+ *  - `spam` — this person complained. Mandrill denylists an address when its
+ *    complaint comes back through an ISP feedback loop; a `spam` reject is that
+ *    entry refusing it, not a verdict on the message's content.
+ *  - `custom` — an OPERATOR put this address on the denylist by hand. A human
+ *    decision, not an observation.
  *  - `unsub` — the person unsubscribed. That is a consent fact with a whole
  *    accounting path of its own, which the host routes it to; the adapter also
  *    maps a first-class `unsub` EVENT there, and the two meeting on one address
  *    is a no-op because the mutation behind them is idempotent.
- *  - `invalid-sender`, `invalid`, `test-mode-limit`, `unsigned`, AND ANY FUTURE
- *    REASON — these describe OUR account, OUR sending domain or OUR message,
- *    not the recipient. They are absent from this table, so they mint no
- *    suppression: the send row moves to `failed` and nothing else happens.
- *    Suppressing on them would let a misconfigured sending domain permanently
- *    blocklist an entire audience one send at a time.
+ *  - `rule`, `invalid-sender`, `invalid`, `test-mode-limit`, `unsigned`, AND
+ *    ANY FUTURE REASON — these describe OUR account, OUR sending domain, OUR
+ *    message or OUR account's rules, not the recipient. They are absent from
+ *    this table, so they mint no suppression: the send row moves to `failed`
+ *    and nothing else happens. Suppressing on them would let a misconfigured
+ *    sending domain, or one rules-engine rule on a subject, sender, tag,
+ *    template or API key, permanently blocklist an entire audience one send at
+ *    a time (#1249). A `rule` reject writes nothing to the denylist, and the
+ *    event does not say which rule fired or what it matched.
  *
  * WHAT OWLAT DOES about each of these members — which blocklist reason, which
  * bounce classification, which mirror lifetime — is NOT decided here. That is
@@ -237,7 +243,6 @@ const REJECT_SUPPRESSION_REASONS: Readonly<Record<string, ProviderSuppressionRea
 	BOUNCE: 'hard_bounce',
 	SPAM: 'spam_complaint',
 	CUSTOM: 'operator_suppressed',
-	RULE: 'operator_suppressed',
 	UNSUB: 'unsubscribed',
 };
 
@@ -418,17 +423,17 @@ export function mapMandrillEvent(item: MandrillEventItem): InboundEvent | null {
 			};
 		}
 		case 'reject': {
-			// Mandrill's OWN blacklist refused the address before sending. Terminal
-			// and non-bounce, so it takes the `email.failed` edge: the send row
-			// leaves "sending" without a bounce's reputation penalty.
+			// Mandrill refused the message before sending, off its denylist or for a
+			// reason of ours (a rule, the sender). Terminal and non-bounce, so it takes
+			// the `email.failed` edge without a bounce's reputation penalty.
 			//
 			// The recipient half of that same fact — Mandrill's blacklist holds
 			// this address, which the own arm has to mirror or the two arms stop
 			// mailing the same population — is minted HERE, as a normalized
 			// `suppression`, because deciding what `reject_reason: 'custom'` means is
 			// knowing Mandrill. What the host DOES with it is the host's table.
-			// Absent for every reason that describes our account rather than the
-			// person, which is how those reasons suppress nobody.
+			// Absent for every reason about our account, our message or our rules
+			// rather than the person (`rule` included), so those suppress nobody.
 			//
 			// The suppression acts on an address whatever the Send's state, so it
 			// rides only on an orderable event (#1228). An unstamped reject still

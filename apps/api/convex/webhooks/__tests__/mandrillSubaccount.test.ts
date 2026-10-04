@@ -529,7 +529,7 @@ describe('a reject Mandrill made in the send response', () => {
 		_resetMandrillConfigCacheForTests();
 	});
 
-	it.each(['hard-bounce', 'spam', 'custom', 'rule'])(
+	it.each(['hard-bounce', 'spam', 'custom'])(
 		'blocks the address on a %s refusal with no webhook at all',
 		async (reason) => {
 			const t = setupTest(probeModule);
@@ -548,8 +548,8 @@ describe('a reject Mandrill made in the send response', () => {
 		expect(await isBlocked(t, 'leaver@example.com')).toBe(false);
 	});
 
-	it.each(['unsigned', 'invalid-sender', 'test-mode-limit', 'invalid'])(
-		'blocks no one on a sender-side %s refusal',
+	it.each(['unsigned', 'invalid-sender', 'test-mode-limit', 'invalid', 'rule'])(
+		'blocks no one on a %s refusal (sender-side or a rule)',
 		async (reason) => {
 			const t = setupTest(probeModule);
 			expect(await t.action(PROBE, { reason, to: 'jane@example.com' })).toBe(false);
