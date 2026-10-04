@@ -30,11 +30,10 @@ import {
 import { mandrillReplayKey, mapMandrillEvent } from '../adapters/mandrill';
 import { INBOUND_REPLAY_WINDOW_MS } from '../types';
 import { dispatchOnce, IN_FLIGHT_LEASE_MS, InboundEventInFlightError } from '../inboundEventClaims';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
-		'../../lib/sessionOrganization'
-	);
+	const actual = await vi.importActual<typeof SessionOrganization>('../../lib/sessionOrganization');
 	const session = () => ({ userId: 'operator-1', role: 'admin' as const });
 	return {
 		...actual,
