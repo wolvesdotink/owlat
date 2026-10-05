@@ -17,7 +17,7 @@
     },
     "apps/api": {
       "name": "@owlat/api",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "dependencies": {
         "@ai-sdk/anthropic": "catalog:ai",
         "@ai-sdk/azure": "catalog:ai",
@@ -62,7 +62,7 @@
     },
     "apps/code-worker": {
       "name": "@owlat/code-worker",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "dependencies": {
         "@octokit/rest": "^22.0.1",
         "@owlat/plugin-kit": "workspace:*",
@@ -78,7 +78,7 @@
     },
     "apps/convex-fn-proxy": {
       "name": "@owlat/convex-fn-proxy",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "devDependencies": {
         "@types/node": "catalog:",
         "convex": "catalog:convex",
@@ -89,11 +89,11 @@
     },
     "apps/decision-local": {
       "name": "@owlat/decision-local",
-      "version": "0.6.9",
+      "version": "0.6.10",
     },
     "apps/desktop": {
       "name": "@owlat/desktop",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "dependencies": {
         "@tauri-apps/api": "^2.11.1",
         "@tauri-apps/plugin-autostart": "^2.5.1",
@@ -112,7 +112,7 @@
     },
     "apps/docs": {
       "name": "@owlat/docs",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "dependencies": {
         "@takumi-rs/core": "^2.7.1",
         "nuxt": "catalog:vue",
@@ -136,7 +136,7 @@
     },
     "apps/imap": {
       "name": "@owlat/imap",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "dependencies": {
         "@owlat/mail-message": "workspace:*",
         "@owlat/shared": "workspace:*",
@@ -155,7 +155,7 @@
     },
     "apps/mail-sync": {
       "name": "@owlat/mail-sync",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "dependencies": {
         "@hono/node-server": "^2.1.0",
         "@owlat/mail-message": "workspace:*",
@@ -195,7 +195,7 @@
     },
     "apps/mta": {
       "name": "@owlat/mta",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "dependencies": {
         "@hono/node-server": "^2.1.0",
         "@owlat/email-scanner": "workspace:*",
@@ -226,7 +226,7 @@
     },
     "apps/setup-cli": {
       "name": "@owlat/setup-cli",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "bin": {
         "owlat-setup": "./src/index.ts",
       },
@@ -247,7 +247,7 @@
     },
     "apps/updater": {
       "name": "@owlat/updater",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "dependencies": {
         "@owlat/shared": "workspace:*",
       },
@@ -260,7 +260,7 @@
     },
     "apps/web": {
       "name": "@owlat/web",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "dependencies": {
         "@convex-dev/better-auth": "catalog:convex",
         "@nuxtjs/color-mode": "catalog:vue",
@@ -375,7 +375,7 @@
     },
     "packages/email-builder": {
       "name": "@owlat/email-builder",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "dependencies": {
         "@owlat/email-renderer": "workspace:*",
         "@owlat/plugin-host": "workspace:*",
@@ -401,7 +401,7 @@
     },
     "packages/email-renderer": {
       "name": "@owlat/email-renderer",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "dependencies": {
         "@owlat/shared": "workspace:*",
         "sanitize-html": "^2.17.6",
@@ -416,7 +416,7 @@
     },
     "packages/email-scanner": {
       "name": "@owlat/email-scanner",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "dependencies": {
         "@owlat/shared": "workspace:*",
       },
@@ -429,7 +429,7 @@
     },
     "packages/mail-auth": {
       "name": "@owlat/mail-auth",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "dependencies": {
         "@owlat/mail-canon": "workspace:*",
         "@owlat/shared": "workspace:*",
@@ -445,7 +445,7 @@
     },
     "packages/mail-canon": {
       "name": "@owlat/mail-canon",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "devDependencies": {
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
@@ -456,7 +456,7 @@
     },
     "packages/mail-message": {
       "name": "@owlat/mail-message",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "dependencies": {
         "@owlat/mail-canon": "workspace:*",
       },
@@ -474,7 +474,7 @@
     },
     "packages/mta-protocol": {
       "name": "@owlat/mta-protocol",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "dependencies": {
         "@owlat/shared": "workspace:*",
       },
@@ -487,7 +487,7 @@
     },
     "packages/plugin-cli": {
       "name": "@owlat/plugin-cli",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "bin": {
         "owlat-plugins": "./src/index.ts",
       },
@@ -505,7 +505,7 @@
     },
     "packages/plugin-codegen": {
       "name": "@owlat/plugin-codegen",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "dependencies": {
         "@owlat/plugin-host": "workspace:*",
         "@owlat/plugin-kit": "workspace:*",
@@ -524,7 +524,7 @@
     },
     "packages/plugin-host": {
       "name": "@owlat/plugin-host",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "dependencies": {
         "@owlat/plugin-kit": "workspace:*",
         "@owlat/shared": "workspace:*",
@@ -538,7 +538,7 @@
     },
     "packages/plugin-kit": {
       "name": "@owlat/plugin-kit",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "dependencies": {
         "@owlat/provider-kit": "workspace:*",
       },
@@ -552,7 +552,7 @@
     },
     "packages/provider-kit": {
       "name": "@owlat/provider-kit",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "devDependencies": {
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
@@ -563,7 +563,7 @@
     },
     "packages/sdk-js": {
       "name": "@owlat/sdk-js",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "devDependencies": {
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
@@ -574,7 +574,7 @@
     },
     "packages/shared": {
       "name": "@owlat/shared",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "dependencies": {
         "@owlat/mail-message": "workspace:*",
         "tldts": "^7.0.30",
@@ -595,7 +595,7 @@
     },
     "packages/smtp-client": {
       "name": "@owlat/smtp-client",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "dependencies": {
         "@owlat/shared": "workspace:*",
       },
@@ -610,7 +610,7 @@
     },
     "packages/smtp-listener": {
       "name": "@owlat/smtp-listener",
-      "version": "0.6.9",
+      "version": "0.6.10",
       "dependencies": {
         "@owlat/shared": "workspace:*",
       },
