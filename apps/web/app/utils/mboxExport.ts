@@ -7,17 +7,19 @@
  * JSON account export streams through). At no point does a whole mailbox exist
  * in a variable: peak memory is one message.
  *
- * Bytes are decoded as latin1 — one char per byte — exactly as `loadRawEml`
- * decodes a single message for the reader. A message is MIME, not text: parts
- * carry their own charsets and attachments are arbitrary bytes, so decoding the
- * container as UTF-8 would mangle everything the archive is for.
+ * The archive is bytes from end to end: each message is fetched as bytes,
+ * quoted by `serializeMboxEntry` without being decoded, and written to the sink
+ * as bytes. A message is MIME, not text: parts carry their own charsets and
+ * attachments are arbitrary bytes, so writing it as a string (which the file
+ * stream encodes as UTF-8) grew every byte at or above 0x80 into two or three
+ * and mangled everything the archive is for (#1280).
  */
 
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { serializeMboxEntry } from '@owlat/shared/mboxArchive';
 import type { ConvexClient } from 'convex/browser';
-import type { TextChunkSink } from './incrementalJsonSerializer';
+import type { ByteChunkSink } from './incrementalJsonDownload';
 
 /** Live counters for the progress readout while an export runs. */
 export interface MboxExportProgress {
@@ -29,10 +31,10 @@ export function mboxExportFilename(now: Date): string {
 	return `owlat-mail-${now.toISOString().slice(0, 10)}.mbox`;
 }
 
-async function fetchRawMessage(url: string): Promise<string> {
+async function fetchRawMessage(url: string): Promise<Uint8Array> {
 	const response = await fetch(url);
 	if (!response.ok) throw new Error('Could not download a message for the mail archive');
-	return new TextDecoder('latin1').decode(new Uint8Array(await response.arrayBuffer()));
+	return new Uint8Array(await response.arrayBuffer());
 }
 
 /**
@@ -44,7 +46,7 @@ async function fetchRawMessage(url: string): Promise<string> {
 export async function writeMailboxMboxExport(
 	client: ConvexClient,
 	mailboxId: Id<'mailboxes'>,
-	sink: TextChunkSink,
+	sink: ByteChunkSink,
 	onProgress?: (progress: MboxExportProgress) => void
 ): Promise<number> {
 	let messages = 0;
