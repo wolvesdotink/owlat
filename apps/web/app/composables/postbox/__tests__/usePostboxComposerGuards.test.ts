@@ -152,28 +152,16 @@ describe('usePostboxComposerGuards — attachment (idea 15)', () => {
 });
 
 describe('usePostboxComposerGuards — first-time recipients (idea 5)', () => {
-	it('names the strangers and replays the send when confirmed', () => {
+	it('names the strangers for their chips, and never parks the send', () => {
 		knownData.value = ['ines@northwind.studio'];
 		const { guards, confirmed } = mountGuards({
 			recipients: ['ines@northwind.studio', 'stranger@acme-corp.io'],
 		});
 
 		expect(guards.firstTimeAddresses).toEqual(['stranger@acme-corp.io']);
-		expect(guards.blockSend()).toBe(true);
-		guards.firstTime.confirm();
-		expect(confirmed).toEqual([undefined]);
-	});
-
-	it('dismissing settles the cue without sending anything', () => {
-		knownData.value = [];
-		const { guards, confirmed } = mountGuards({ recipients: ['stranger@acme-corp.io'] });
-
-		expect(guards.blockSend()).toBe(true);
-		guards.firstTime.dismiss();
-		expect(confirmed).toEqual([]);
-		expect(guards.firstTime.open).toBe(false);
-		// Settled: the sender read it, so the next attempt goes straight out.
+		// A cue, not a gate: an inline confirm here left Send looking broken.
 		expect(guards.blockSend()).toBe(false);
+		expect(confirmed).toEqual([]);
 	});
 
 	it('stays silent while the mailbox has not answered', () => {
@@ -203,10 +191,7 @@ describe('usePostboxComposerGuards — ordering and the advisory chip', () => {
 		expect(guards.attachment.open).toBe(true);
 		guards.attachment.confirm();
 
-		expect(guards.blockSend()).toBe(true);
-		expect(guards.firstTime.open).toBe(true);
-		guards.firstTime.confirm();
-
+		// The stranger among the recipients is a chip cue, not a third gate.
 		expect(guards.blockSend()).toBe(false);
 	});
 

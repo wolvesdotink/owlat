@@ -85,21 +85,25 @@ describe('expungeFolder with a UID set', () => {
 		expect(await folderUids(t, inboxId)).toEqual([]);
 	});
 
-	it('serves a v0.6.8 IMAP server and refuses an older one before deleting', async () => {
+	it('refuses a v0.6.8 or older IMAP server before deleting and serves wire 2', async () => {
 		const t = convexTest(schema, modules);
 		const { inboxId } = await seedInbox(t, [1, 2]);
 
 		// v0.6.7 and older send no wire version and paged on the removed
-		// `nextSequenceNumber`; nothing is deleted for them.
+		// `nextSequenceNumber`; v0.6.8 speaks wire 1, which the backend no
+		// longer serves. Nothing is deleted for either.
 		await expect(
 			t.mutation(internal.mail.imap.move.expungeFolder, { folderId: inboxId })
 		).rejects.toThrow(/Update the IMAP container/);
+		await expect(
+			t.mutation(internal.mail.imap.move.expungeFolder, { folderId: inboxId, imapWireVersion: 1 })
+		).rejects.toThrow(/wire version 1/);
 		expect(await folderUids(t, inboxId)).toEqual([1, 2]);
 
-		// v0.6.8 speaks wire 1 and only ever read `uids`.
+		// Wire 2, the release one behind, is served.
 		const result = await t.mutation(internal.mail.imap.move.expungeFolder, {
 			folderId: inboxId,
-			imapWireVersion: 1,
+			imapWireVersion: 2,
 		});
 		expect(result.uids).toEqual([2, 1]);
 		expect(await folderUids(t, inboxId)).toEqual([]);

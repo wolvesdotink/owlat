@@ -27,6 +27,8 @@ import {
 import type { z } from 'zod';
 import type { TokenUsage } from '../../agent/steps/types';
 import { withLlmRetry } from './retryPolicy';
+import { withPartialUsage } from './partialUsage';
+import { addTokenUsage } from './tokenUsage';
 
 export { MAX_LLM_ATTEMPTS, errorStatus, isRetriableLlmError, retryAfterMs } from './retryPolicy';
 
@@ -202,24 +204,35 @@ type LlmTextWithToolsOptions = {
  * one-shot helpers. Use this (not {@link runLlmStream}) when you want a bounded
  * fetch-more loop but do NOT need token streaming to a user — e.g. the draft
  * step's `recallKnowledge` loop.
+ *
+ * Usage is the sum of every step that finished, in every attempt: the SDK's
+ * `usage` is the last step's only, and a retried attempt paid for the steps it
+ * finished before it failed. When the loop fails after a finished step, the
+ * error is an `LlmPartialUsageError` carrying that usage (#1256).
  */
 export async function runLlmTextWithTools(opts: LlmTextWithToolsOptions): Promise<LlmTextResult> {
-	const dispatched = await withLlmRetry(() =>
-		generateText({
-			model: opts.model,
-			messages: opts.messages,
-			tools: opts.tools,
-			stopWhen: stepCountIs(opts.maxSteps ?? DEFAULT_MAX_TOOL_STEPS),
-			temperature: opts.temperature,
-			maxRetries: SDK_MAX_RETRIES,
-		})
-	);
-	const { text, usage } = dispatched.value;
-	return {
-		text,
-		tokenUsage: normalizeUsage(usage),
-		modelUsed: typeof opts.model === 'string' ? opts.model : opts.model.modelId,
-	};
+	const modelUsed = typeof opts.model === 'string' ? opts.model : opts.model.modelId;
+	let spent: TokenUsage | undefined;
+	let dispatched;
+	try {
+		dispatched = await withLlmRetry(() =>
+			generateText({
+				model: opts.model,
+				messages: opts.messages,
+				tools: opts.tools,
+				stopWhen: stepCountIs(opts.maxSteps ?? DEFAULT_MAX_TOOL_STEPS),
+				temperature: opts.temperature,
+				maxRetries: SDK_MAX_RETRIES,
+				onStepFinish: (step) => {
+					spent = addTokenUsage(spent, normalizeUsage(step.usage));
+				},
+			})
+		);
+	} catch (error) {
+		throw withPartialUsage(error, spent, modelUsed);
+	}
+	const { text, totalUsage } = dispatched.value;
+	return { text, tokenUsage: spent ?? normalizeUsage(totalUsage), modelUsed };
 }
 
 export interface LlmObjectOptions<S extends z.ZodTypeAny> {
@@ -302,6 +315,15 @@ interface LlmStreamOptions {
 	temperature?: number;
 	/** Abort the stream mid-flight (user "stop generating"). */
 	abortSignal?: AbortSignal;
+	/**
+	 * Keep only the text of the final step, the way `generateText().text` does,
+	 * for a caller whose result is a document body rather than a chat
+	 * transcript. Without it, narration the model writes before a tool call
+	 * ("Let me check availability…") is joined to the reply after it. The
+	 * accumulated text is reset when a step starts and when a tool call arrives,
+	 * and `onTextDelta` then fires with the empty text so a live view drops it.
+	 */
+	finalStepOnly?: boolean;
 	/** Called for each text chunk with the FULL accumulated text and the delta. */
 	onTextDelta?: (fullText: string, delta: string) => void | Promise<void>;
 	/** Called when the model requests a tool (before it executes). */
@@ -321,6 +343,17 @@ interface LlmStreamResult {
 	aborted: boolean;
 }
 
+/** A stream part's usage; a missing total is the sum of its two halves. */
+function streamUsage(u: NonNullable<RawUsage>): TokenUsage {
+	const input = u.inputTokens ?? 0;
+	const output = u.outputTokens ?? 0;
+	return {
+		promptTokens: input,
+		completionTokens: output,
+		totalTokens: u.totalTokens ?? input + output,
+	};
+}
+
 /**
  * Streaming, tool-calling counterpart to {@link runLlmText} — the single seam
  * the AI assistant + @assistant-in-chat engine drives. Consumes the AI SDK
@@ -333,7 +366,10 @@ interface LlmStreamResult {
  * The SDK's default retry is kept here on purpose: it only re-sends the opening
  * request, before any token exists, and it is the stream's only retry.
  * Stream errors surface as a thrown error (after any prior text deltas were
- * delivered) for the caller to persist as a `error`/`stopped` message.
+ * delivered) for the caller to persist as a `error`/`stopped` message. A
+ * failure after a finished step throws an `LlmPartialUsageError` carrying the
+ * usage of the finished steps, and an aborted stream returns that usage
+ * (#1256): those steps were billed either way.
  */
 export async function runLlmStream(opts: LlmStreamOptions): Promise<LlmStreamResult> {
 	const result = streamText({
@@ -346,64 +382,69 @@ export async function runLlmStream(opts: LlmStreamOptions): Promise<LlmStreamRes
 		...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),
 	});
 
+	const modelUsed = typeof opts.model === 'string' ? opts.model : opts.model.modelId;
 	let text = '';
 	let tokenUsage: TokenUsage | undefined;
+	// Finished steps only; the `finish` part's total replaces it on a natural end.
+	let stepsSpent: TokenUsage | undefined;
 	let finishReason: string | undefined;
 	let aborted = false;
+	const resetText = async (): Promise<void> => {
+		if (!opts.finalStepOnly || text === '') return;
+		text = '';
+		await opts.onTextDelta?.(text, '');
+	};
 
-	for await (const part of result.fullStream) {
-		switch (part.type) {
-			case 'text-delta':
-				text += part.text;
-				await opts.onTextDelta?.(text, part.text);
-				break;
-			case 'tool-call':
-				await opts.onToolCall?.({
-					toolCallId: part.toolCallId,
-					toolName: part.toolName,
-					input: part.input,
-				});
-				break;
-			case 'tool-result':
-				await opts.onToolResult?.({
-					toolCallId: part.toolCallId,
-					toolName: part.toolName,
-					output: part.output,
-				});
-				break;
-			case 'tool-error':
-				await opts.onToolError?.({
-					toolCallId: part.toolCallId,
-					toolName: part.toolName,
-					error: part.error,
-				});
-				break;
-			case 'finish': {
-				finishReason = part.finishReason;
-				const u = part.totalUsage;
-				const input = u.inputTokens ?? 0;
-				const output = u.outputTokens ?? 0;
-				tokenUsage = {
-					promptTokens: input,
-					completionTokens: output,
-					totalTokens: u.totalTokens ?? input + output,
-				};
-				break;
+	try {
+		for await (const part of result.fullStream) {
+			switch (part.type) {
+				case 'start-step':
+					await resetText();
+					break;
+				case 'text-delta':
+					text += part.text;
+					await opts.onTextDelta?.(text, part.text);
+					break;
+				case 'tool-call':
+					await resetText();
+					await opts.onToolCall?.({
+						toolCallId: part.toolCallId,
+						toolName: part.toolName,
+						input: part.input,
+					});
+					break;
+				case 'tool-result':
+					await opts.onToolResult?.({
+						toolCallId: part.toolCallId,
+						toolName: part.toolName,
+						output: part.output,
+					});
+					break;
+				case 'tool-error':
+					await opts.onToolError?.({
+						toolCallId: part.toolCallId,
+						toolName: part.toolName,
+						error: part.error,
+					});
+					break;
+				case 'finish-step':
+					stepsSpent = addTokenUsage(stepsSpent, streamUsage(part.usage));
+					break;
+				case 'finish':
+					finishReason = part.finishReason;
+					tokenUsage = streamUsage(part.totalUsage);
+					break;
+				case 'abort':
+					aborted = true;
+					break;
+				case 'error':
+					// Surface the failure once any preceding text has been delivered.
+					throw part.error;
 			}
-			case 'abort':
-				aborted = true;
-				break;
-			case 'error':
-				// Surface the failure once any preceding text has been delivered.
-				throw part.error;
 		}
+	} catch (error) {
+		throw withPartialUsage(error, stepsSpent, modelUsed);
 	}
 
-	return {
-		text,
-		tokenUsage,
-		modelUsed: typeof opts.model === 'string' ? opts.model : opts.model.modelId,
-		finishReason,
-		aborted,
-	};
+	return { text, tokenUsage: tokenUsage ?? stepsSpent, modelUsed, finishReason, aborted };
 }

@@ -31,7 +31,7 @@ import { runSampleData } from './commands/sampleData';
 import { runReset } from './commands/reset';
 import { cliOptionsFromArgv } from './lib/argv';
 
-const VERSION = '0.6.9'; // x-release-version (kept in sync by scripts/release.ts)
+const VERSION = '0.6.10'; // x-release-version (kept in sync by scripts/release.ts)
 
 function help(): void {
 	console.log(`Owlat Setup CLI v${VERSION}

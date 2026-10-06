@@ -73,8 +73,16 @@ describe('usePostboxComposerSealLock', () => {
 		expect(confirmed).toEqual([]);
 	});
 
-	it('parks an unsealable send and asks before anything goes out in plaintext', async () => {
+	it('lets ordinary mail to keyless recipients through without a prompt', async () => {
 		answer({ kind: 'cannotSeal', reason: 'recipient_no_key' });
+		const { seal, confirmed } = mountGate();
+		expect(await seal.blockSend()).toBe(false);
+		expect(seal.confirmOpen).toBe(false);
+		expect(confirmed).toEqual([]);
+	});
+
+	it('parks a send that could have been sealed and asks before it goes out in plaintext', async () => {
+		answer({ kind: 'cannotSeal', reason: 'no_signing_key' });
 		const { seal, confirmed } = mountGate();
 		expect(await seal.blockSend({ scheduledSendAt: 1234 })).toBe(true);
 		// Blocked, prompted, and nothing sent yet.
@@ -91,7 +99,7 @@ describe('usePostboxComposerSealLock', () => {
 	});
 
 	it('cancelling sends nothing and forgets the attempt, so the next try asks again', async () => {
-		answer({ kind: 'cannotSeal', reason: 'policy_ask' });
+		answer({ kind: 'cannotSeal', reason: 'no_signing_key' });
 		const { seal, confirmed } = mountGate();
 		await seal.blockSend({ scheduledSendAt: 999 });
 		seal.setConfirmOpen(false);
@@ -125,9 +133,8 @@ describe('usePostboxComposerSealLock', () => {
 	it('with no recipients there is nothing to decide, so no prompt opens', async () => {
 		answer({ kind: 'cannotSeal', reason: 'no_recipients' });
 		const { seal } = mountGate();
-		expect(await seal.blockSend()).toBe(true);
+		expect(await seal.blockSend()).toBe(false);
 		expect(seal.confirmOpen).toBe(false);
-		expect(toasts).toEqual(['Add a recipient to see whether this message can be sealed.']);
 	});
 
 	it('names the keyless recipients as the blockers, and nobody else', async () => {

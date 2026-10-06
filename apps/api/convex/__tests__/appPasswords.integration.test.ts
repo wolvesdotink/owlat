@@ -343,7 +343,7 @@ describe('appPasswords.verify', () => {
 		expect(res!.organizationId).toBe(f.organizationId);
 	});
 
-	it('refuses an IMAP login through a server from v0.6.7 or older and serves v0.6.8', async () => {
+	it('refuses an IMAP login through a server from v0.6.8 or older and serves wire 2', async () => {
 		const t = await setupTest();
 		const f = await provision(t);
 		const login = (imapWireVersion?: number) =>
@@ -356,8 +356,11 @@ describe('appPasswords.verify', () => {
 
 		// No wire version: an IMAP server too old to report (wire 0).
 		await expect(login()).rejects.toThrow(/Update the IMAP container/);
-		// v0.6.8 speaks wire 1, the release the backend still serves.
-		expect(await login(1)).not.toBeNull();
+		// v0.6.8 speaks wire 1, which the backend no longer serves, even with
+		// the right password.
+		await expect(login(1)).rejects.toThrow(/wire version 1/);
+		// Wire 2, the release one behind, is served.
+		expect(await login(2)).not.toBeNull();
 	});
 
 	it('resolves correctly for the smtp scope as well', async () => {

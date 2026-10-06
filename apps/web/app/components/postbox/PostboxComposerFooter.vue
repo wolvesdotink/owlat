@@ -51,16 +51,10 @@ const props = defineProps<{
 	lastSavedLabel: string;
 	/** The identity Send goes out as — named beside the button ("Send · as Support"). */
 	sendAs?: { mailboxId: string; label: string } | null;
-	/**
-	 * Answer mode's footer (plan §04): Send, attach, schedule, the follow-up
-	 * chip, ⋯ and the save state on one row; Coach/Revise and Discard live in ⋯,
-	 * and "Show quoted text" unfolds the quote the editor keeps out of the way.
-	 */
-	frame?: 'popup' | 'answer';
-	/** The body carries a quoted original (answer frame: offer to show it). */
+	/** The body carries a quoted original ("Show quoted text" unfolds it). */
 	hasQuote?: boolean;
 	quoteFolded?: boolean;
-	/** Coach and Revise are available (AI on) — answer frame lists them in ⋯. */
+	/** Coach and Revise are available (AI on) — listed in ⋯. */
 	advisoryAvailable?: boolean;
 	advisoryOpen?: boolean;
 	/** The composer's saved replies (picker button, "Save as reply"). */
@@ -90,7 +84,6 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 
-const answerFrame = computed(() => props.frame === 'answer');
 const availability = usePostboxInsertAvailability(bodyHtml);
 // The rich body's tools (Preview as sent, editor mode, toolbar) and the draft
 // row's own Discard only exist where the target writes an HTML draft row.
@@ -153,13 +146,13 @@ function onPickFiles(event: Event) {
 
 <template>
 	<footer class="px-3 py-2 border-t border-border-subtle flex flex-col gap-1.5">
-		<!-- Answer mode's row carries schedule and the follow-up chip too, and
-		     does not fit a phone (or the narrowest split column) beside "Show
-		     quoted text" and the status: the status group wraps to its own line,
-		     right-aligned, instead of the buttons painting over it. -->
+		<!-- Send, attach, schedule, the follow-up chip, ⋯ and the save state on
+		     one row (plan §04). It does not fit a phone (or the narrowest split
+		     column) beside "Show quoted text" and the status: the status group
+		     wraps to its own line, right-aligned, instead of the buttons painting
+		     over it. Coach/Revise and Discard live in ⋯. -->
 		<div
-			class="flex items-center justify-between gap-x-2 gap-y-1 min-w-0"
-			:class="{ 'flex-wrap': answerFrame }"
+			class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 min-w-0"
 			data-testid="composer-footer-row"
 		>
 			<div class="flex items-center gap-2 min-w-0">
@@ -217,29 +210,26 @@ function onPickFiles(event: Event) {
 					/>
 				</template>
 				<SavedReplyComposerTools v-if="savedReplies" :api="savedReplies" />
-				<!-- Answer mode has the room: schedule and the follow-up chip sit on
-				     the row itself instead of behind ⋯. -->
-				<template v-if="answerFrame">
-					<UiButton
-						v-if="capabilities.schedule"
-						variant="ghost"
-						type="button"
-						class="shrink-0"
-						:title="scheduleShortcutHint"
-						:aria-label="t('components.postbox.postboxComposerFooter.scheduleSend')"
-						:disabled="!canSend || sending || isScheduled"
-						data-testid="composer-schedule"
-						@click="emit('schedule')"
-					>
-						<Icon name="lucide:clock" class="w-4 h-4" />
-					</UiButton>
-					<PostboxComposerFollowUp
-						v-if="capabilities.replyReminder"
-						v-model:remind-at="followUpRemindAt"
-						v-model:picker-open="followUpPickerOpen"
-						:disabled="isScheduled"
-					/>
-				</template>
+				<!-- Schedule and the follow-up chip sit on the row itself. -->
+				<UiButton
+					v-if="capabilities.schedule"
+					variant="ghost"
+					type="button"
+					class="shrink-0"
+					:title="scheduleShortcutHint"
+					:aria-label="t('components.postbox.postboxComposerFooter.scheduleSend')"
+					:disabled="!canSend || sending || isScheduled"
+					data-testid="composer-schedule"
+					@click="emit('schedule')"
+				>
+					<Icon name="lucide:clock" class="w-4 h-4" />
+				</UiButton>
+				<PostboxComposerFollowUp
+					v-if="capabilities.replyReminder"
+					v-model:remind-at="followUpRemindAt"
+					v-model:picker-open="followUpPickerOpen"
+					:disabled="isScheduled"
+				/>
 				<!-- Secondary controls collapse behind ⋯ to keep the footer
 			     lean; the schedule shortcut (Cmd/Ctrl+Shift+Enter) still works. -->
 				<PostboxOverflowMenu
@@ -249,13 +239,6 @@ function onPickFiles(event: Event) {
 				>
 					<template #default="{ close }">
 						<slot name="menu" :close="close" />
-						<div v-if="!answerFrame && capabilities.replyReminder" class="px-3 py-1.5">
-							<PostboxComposerFollowUp
-								v-model:remind-at="followUpRemindAt"
-								v-model:picker-open="followUpPickerOpen"
-								:disabled="isScheduled"
-							/>
-						</div>
 						<label
 							v-if="showSignaturePicker && capabilities.signatures"
 							class="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary"
@@ -308,60 +291,41 @@ function onPickFiles(event: Event) {
 								{{ t('components.postbox.postboxInsertAvailability.menuItem') }}
 							</button>
 						</template>
-						<template v-if="!answerFrame && capabilities.schedule">
-							<div class="border-t border-border-subtle my-1" />
-							<button
-								type="button"
-								role="menuitem"
-								class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface disabled:opacity-50"
-								:title="scheduleShortcutHint"
-								:disabled="!canSend || sending || isScheduled"
-								@click="
-									emit('schedule');
-									close();
-								"
-							>
-								<Icon name="lucide:clock" class="w-4 h-4 text-text-tertiary" />
-								{{ t('components.postbox.postboxComposerFooter.scheduleSend') }}
-							</button>
-						</template>
-						<!-- Answer mode: Coach and Revise leave the editor's way and wait
-						     here; Discard has no title bar to live in. -->
-						<template v-if="answerFrame">
-							<button
-								v-if="advisoryAvailable"
-								type="button"
-								role="menuitem"
-								class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
-								:aria-pressed="advisoryOpen"
-								data-testid="composer-toggle-advisory"
-								@click="
-									emit('toggle-advisory');
-									close();
-								"
-							>
-								<Icon name="lucide:sparkles" class="w-4 h-4 text-text-tertiary" />
-								{{
-									advisoryOpen
-										? t('components.postbox.postboxComposerFooter.hideCoach')
-										: t('components.postbox.postboxComposerFooter.showCoach')
-								}}
-							</button>
-							<button
-								v-if="draftRow"
-								type="button"
-								role="menuitem"
-								class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
-								data-testid="composer-discard"
-								@click="
-									emit('discard');
-									close();
-								"
-							>
-								<Icon name="lucide:trash-2" class="w-4 h-4 text-text-tertiary" />
-								{{ t('components.postbox.postboxComposerFooter.discardDraft') }}
-							</button>
-						</template>
+						<!-- Coach and Revise leave the editor's way and wait here;
+						     Discard has no title bar to live in. -->
+						<button
+							v-if="advisoryAvailable"
+							type="button"
+							role="menuitem"
+							class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
+							:aria-pressed="advisoryOpen"
+							data-testid="composer-toggle-advisory"
+							@click="
+								emit('toggle-advisory');
+								close();
+							"
+						>
+							<Icon name="lucide:sparkles" class="w-4 h-4 text-text-tertiary" />
+							{{
+								advisoryOpen
+									? t('components.postbox.postboxComposerFooter.hideCoach')
+									: t('components.postbox.postboxComposerFooter.showCoach')
+							}}
+						</button>
+						<button
+							v-if="draftRow"
+							type="button"
+							role="menuitem"
+							class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
+							data-testid="composer-discard"
+							@click="
+								emit('discard');
+								close();
+							"
+						>
+							<Icon name="lucide:trash-2" class="w-4 h-4 text-text-tertiary" />
+							{{ t('components.postbox.postboxComposerFooter.discardDraft') }}
+						</button>
 						<template v-if="richBody">
 							<div class="border-t border-border-subtle my-1" />
 							<div class="px-3 py-1.5">
@@ -397,7 +361,7 @@ function onPickFiles(event: Event) {
 			</div>
 			<div class="ml-auto flex shrink-0 items-center gap-3 text-xs text-text-tertiary">
 				<button
-					v-if="answerFrame && hasQuote"
+					v-if="hasQuote"
 					type="button"
 					class="hover:text-text-primary hover:underline"
 					:aria-pressed="!quoteFolded"

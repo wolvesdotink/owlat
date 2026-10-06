@@ -388,7 +388,6 @@ async function confirmSave() {
 				</section>
 			</div>
 		</PostboxMailboxGuard>
-		<PostboxComposerStack />
 		<PostboxShortcutHelp />
 	</div>
 </template>

@@ -65,6 +65,9 @@ describe('drafts.create clientNonce idempotency', () => {
 			const rows = await ctx.db.query('mailDrafts').collect();
 			expect(rows).toHaveLength(1);
 			expect(rows[0]!.clientNonce).toBe('outbox-item-1');
+			// The envelope comes back both times (the existing row's on a retry).
+			expect(second.toAddresses).toEqual(rows[0]!.toAddresses);
+			expect(second.subject).toBe(rows[0]!.subject);
 		});
 	});
 

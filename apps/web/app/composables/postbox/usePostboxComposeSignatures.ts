@@ -28,6 +28,13 @@ export function usePostboxComposeSignatures(opts: {
 	 * would become the whole body and replace the saved one.
 	 */
 	bodyLocked?: () => boolean;
+	/**
+	 * Whether the default may be prepended now: the composer is ready and has
+	 * no row (a compose request's nonce may still reveal a saved one).
+	 */
+	canPrepend?: () => boolean;
+	/** Runs the prepend as a default, not an edit (the shared touched tracker). */
+	applying?: <T>(fn: () => T) => T;
 }) {
 	// Signatures for this mailbox. The default is auto-prepended to a fresh
 	// draft; the composer toolbar lets the user pick a different one per
@@ -58,17 +65,20 @@ export function usePostboxComposeSignatures(opts: {
 	// later persists the signature OVER the saved draft (silent data loss). So we
 	// only auto-prepend for a brand-new compose, never when reopening a draft.
 	let signaturePrepended = opts.isReopenedDraft;
+	const applying = opts.applying ?? (<T>(fn: () => T) => fn());
 	watch(
-		() => signatures.value,
-		(sigs) => {
-			if (signaturePrepended) return;
+		[() => signatures.value, () => opts.canPrepend?.() ?? true],
+		([sigs, allowed]) => {
+			if (signaturePrepended || !allowed) return;
 			if (sigs.length === 0) return;
 			signaturePrepended = true;
 			const def = sigs.find((s) => s.isDefault);
 			if (!def) return;
 			// Only prepend if the body is still empty / unedited.
 			if (opts.bodyHtml.value.trim().length > 0) return;
-			opts.bodyHtml.value = `${wrapSignatureBlock(def.html)}`;
+			applying(() => {
+				opts.bodyHtml.value = `${wrapSignatureBlock(def.html)}`;
+			});
 			activeSignatureId.value = def._id;
 		},
 		{ immediate: true }

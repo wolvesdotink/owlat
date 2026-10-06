@@ -4239,13 +4239,11 @@
 				"bodyPlaceholder": "Schreibe deine Nachricht…",
 				"composerName": "Postbox-Entwurf {timestamp}",
 				"dropHint": "Zum Anhängen ablegen · in den Text ziehen zum Einbetten",
-				"minimize": "Minimieren",
 				"newMessage": "Neue Nachricht",
 				"savedAt": "Gespeichert {time}",
 				"scheduledFor": "Geplant für {datetime}",
 				"unschedule": "Planung aufheben zum Bearbeiten",
-				"uploadingToast": "Warten, bis die Anhänge vollständig hochgeladen sind…",
-				"openInAnswerMode": "Im Antwortmodus öffnen"
+				"uploadingToast": "Warten, bis die Anhänge vollständig hochgeladen sind…"
 			},
 			"postboxComposerAttachments": {
 				"cancel": "{filename} abbrechen",
@@ -4259,10 +4257,6 @@
 				"share": "{filename} stattdessen als Link teilen",
 				"shareTitle": "Stattdessen als Link teilen",
 				"sizeOf": "{used} von {budget}"
-			},
-			"postboxComposerDock": {
-				"draft": "Entwurf",
-				"reopen": "Erneut öffnen: {subject}"
 			},
 			"postboxComposerEnvelope": {
 				"alsoInclude": "{names} ebenfalls einbeziehen",
@@ -4309,11 +4303,6 @@
 					"mentionDescription": "Deine Nachricht sagt „{phrase}“, aber es hängt nichts an. Trotzdem senden?",
 					"mentionTitle": "Anhang vergessen?"
 				},
-				"firstTime": {
-					"body": "Zum ersten Mal an {addresses}. | Zum ersten Mal an {addresses}.",
-					"keepEditing": "Weiter bearbeiten",
-					"send": "Trotzdem senden"
-				},
 				"keepEditing": "Weiter bearbeiten",
 				"sendAnyway": "Trotzdem senden"
 			},
@@ -4322,10 +4311,6 @@
 				"hideToolbar": "Formatierungsleiste ausblenden (bei Auswahl anzeigen)",
 				"returnToWriting": "Zurück zum Schreiben",
 				"showToolbar": "Formatierungsleiste anzeigen"
-			},
-			"postboxComposerPopup": {
-				"dialogLabel": "Nachricht verfassen",
-				"resizeHandle": "Zum Ändern der Größe ziehen"
 			},
 			"postboxComposerPreflightChip": {
 				"summary": "{count} Hinweis: {details} | {count} Hinweise: {details}"
@@ -4891,7 +4876,6 @@
 				"firstTimeTitle": "Du hast {address} noch nie geschrieben",
 				"fixIt": "Korrigieren",
 				"keepAsTyped": "So lassen",
-				"noSealingKey": "kein Schlüssel",
 				"outsideDomain": "außerhalb von {domain}",
 				"placeholder": "empfaenger{'@'}beispiel.de",
 				"removeRecipient": "{address} entfernen"
@@ -5467,9 +5451,14 @@
 				"localTimeHint": "Deine Ortszeit, auf ein paar Minuten genau."
 			},
 			"postboxDraftRestoreBar": {
+				"backupFailed": "Dein aktueller Text konnte auf diesem Gerät nicht gesichert werden, deshalb wurde nichts ersetzt.",
+				"confirm": "Durch ungespeicherte Änderungen ersetzen",
+				"confirmBody": "Dieser Entwurf wurde erneut gespeichert, nachdem diese Änderungen auf diesem Gerät gemacht wurden. Beim Wiederherstellen wird die gespeicherte Fassung ersetzt; dein aktueller Text wird vorher auf diesem Gerät gesichert.",
+				"confirmTitle": "Gespeicherten Entwurf ersetzen?",
 				"dismiss": "Gespeicherte Fassung behalten",
 				"message": "Ungespeicherte Änderungen von {time} wurden auf diesem Gerät gefunden.",
-				"restore": "Ungespeicherte Änderungen wiederherstellen"
+				"restore": "Ungespeicherte Änderungen wiederherstellen",
+				"unavailable": "Der Entwurf ist gerade nicht verfügbar. Versuche es gleich noch einmal."
 			},
 			"postboxComposerDraftNotice": {
 				"loadFailed": "Dieser Entwurf konnte nicht geladen werden. Er wurde nicht überschrieben; Änderungen, die du jetzt vornimmst, bleiben erhalten und werden übernommen, sobald er geladen ist.",
@@ -6791,7 +6780,9 @@
 		"loadingMailbox": "Postfach wird geladen…",
 		"noMailbox": "Für diesen Workspace ist kein Postfach konfiguriert.",
 		"pageTitle": "Verfassen — Owlat",
-		"sentNotice": "Deine Nachricht ist unterwegs. Dieses Fenster schließt sich, sobald die Zeit zum Rückgängigmachen abgelaufen ist."
+		"requestExpired": "Diese Nachricht ist hier nicht mehr geöffnet. Wurde sie gespeichert, findest du sie unter Entwürfe.",
+		"sentNotice": "Deine Nachricht ist unterwegs. Dieses Fenster schließt sich, sobald die Zeit zum Rückgängigmachen abgelaufen ist.",
+		"startNew": "Neue Nachricht beginnen"
 	},
 	"dashboard": {
 		"admin": {
@@ -8463,15 +8454,32 @@
 					"updateBusy": "Der Updater wendet noch eine andere Änderung an. Versuche es erneut, sobald sie abgeschlossen ist.",
 					"updates": {
 						"availableCurrent": "verfügbar (aktuell: v{version})",
+						"beforeUpdate": "Vor dem Update",
 						"checkNow": "Jetzt prüfen",
+						"kinds": {
+							"added": "Neu",
+							"breaking": "Inkompatible Änderungen",
+							"changed": "Verbessert",
+							"docs": "Dokumentation",
+							"fixed": "Behoben",
+							"maintenance": "Wartung",
+							"other": "Weitere Änderungen",
+							"removed": "Entfernt",
+							"security": "Sicherheit"
+						},
 						"lastCheckError": "Die letzte Prüfung hatte einen Fehler: {error}",
 						"latestChecked": "Neueste: v{version} · Zuletzt geprüft {date}",
 						"neverChecked": "Klicke auf „Jetzt prüfen“, um GitHub nach der neuesten Version zu fragen.",
-						"releaseNotes": "Versionshinweise",
+						"otherRoutes": "Lieber über die Kommandozeile oder manuell? Die Update-Anleitung beschreibt beides und wie du ein fehlgeschlagenes Update reparierst.",
 						"released": "Veröffentlicht {date}",
+						"showAll": "Alle Änderungen zeigen ({count} weitere)",
+						"showFewer": "Weniger zeigen",
 						"title": "Verfügbare Updates",
 						"upToDate": "Du nutzt die neueste Version.",
-						"updateNow": "Jetzt aktualisieren"
+						"updateGuide": "Update-Anleitung",
+						"updateNowTo": "Auf v{version} aktualisieren",
+						"viewOnGithub": "Release auf GitHub",
+						"whatsNew": "Neu in v{version}"
 					}
 				}
 			},
@@ -14272,6 +14280,7 @@
 				"draftGaps": "{count} Lücken müssen noch ausgefüllt werden, zuerst „{label}“"
 			},
 			"useDraftRevise": {
+				"draftHasToolMarkup": "In deinem Entwurf steht noch Text aus einem KI-Werkzeugaufruf. Entferne ihn und überarbeite dann noch mal.",
 				"failed": "Überarbeitung fehlgeschlagen — dein Entwurf bleibt unverändert."
 			},
 			"useMailMigration": {
@@ -14374,8 +14383,7 @@
 			},
 			"usePostboxComposerSealLock": {
 				"checking": "Es wird geprüft, ob diese Nachricht versiegelt werden kann…",
-				"keyChanged": "Prüfe und bestätige den geänderten Empfängerschlüssel, bevor du sendest.",
-				"noRecipients": "Füge einen Empfänger hinzu, um zu sehen, ob diese Nachricht versiegelt werden kann."
+				"keyChanged": "Prüfe und bestätige den geänderten Empfängerschlüssel, bevor du sendest."
 			},
 			"usePostboxContacts": {
 				"removeContact": "Kontakt entfernen",
@@ -14750,13 +14758,8 @@
 			"unsealedPrompt": {
 				"cancel": "Weiter bearbeiten",
 				"confirm": "Unversiegelt senden",
-				"flagOff": "Versiegelte Post ist auf dieser Instanz noch nicht verfügbar. Owlat sendet sie als gewöhnliche E-Mail, die die Mailserver auf ihrem Weg mitlesen können.",
 				"keyChanged": "Der Schlüssel eines Empfängers hat sich geändert und muss noch geprüft werden. Owlat sendet sie als gewöhnliche E-Mail, die die Mailserver auf ihrem Weg mitlesen können.",
-				"noRecipients": "Diese Nachricht hat noch keine Empfänger. Owlat sendet sie als gewöhnliche E-Mail, die die Mailserver auf ihrem Weg mitlesen können.",
 				"noSigningKey": "Die Adresse, von der du sendest, hat noch keinen Versiegelungsschlüssel. Owlat sendet sie als gewöhnliche E-Mail, die die Mailserver auf ihrem Weg mitlesen können.",
-				"policyAsk": "Dein Workspace fragt vor dem Versiegeln nach. Owlat sendet sie als gewöhnliche E-Mail, die die Mailserver auf ihrem Weg mitlesen können.",
-				"policyOff": "Versiegelte Post ist für deinen Workspace deaktiviert. Owlat sendet sie als gewöhnliche E-Mail, die die Mailserver auf ihrem Weg mitlesen können.",
-				"recipientNoKey": "Einige deiner Empfänger können noch keine versiegelte Post empfangen. Owlat sendet sie als gewöhnliche E-Mail, die die Mailserver auf ihrem Weg mitlesen können.",
 				"title": "Diese Nachricht unversiegelt senden?"
 			},
 			"willSeal": {

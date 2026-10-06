@@ -3,7 +3,8 @@
  * PostboxComposerSealLock — the composer's honest seal-lock (Sealed Mail E5).
  *
  * Covers the seal states with VERBATIM copy (the honesty audit), that a
- * cannotSeal draft exposes an explicit "Send unsealed…" control which only
+ * cannotSeal draft that could have been sealed (no signing key) exposes an
+ * explicit "Send unsealed…" control which only
  * REQUESTS the decision (the parent's proceed-or-cancel dialog takes it, so the
  * lock can never send plaintext by itself), that keyChanged offers NO unsealed
  * escape hatch (its copy points at the thread's key-change banner), that a
@@ -64,7 +65,7 @@ describe('PostboxComposerSealLock', () => {
 		expect(wrapper.find('[data-testid="seal-lock-send-unsealed"]').exists()).toBe(false);
 	});
 
-	it('cannotSeal: verbatim summary and an EXPLICIT request for the unsealed decision', async () => {
+	it('cannotSeal: verbatim summary, and no decision for ordinary mail to keyless recipients', () => {
 		const wrapper = mountLock({ kind: 'cannotSeal', reason: 'recipient_no_key' });
 		expect(wrapper.find('[data-testid="seal-lock-summary"]').text()).toBe(
 			"This message won't be sealed"
@@ -72,6 +73,11 @@ describe('PostboxComposerSealLock', () => {
 		expect(wrapper.find('[data-testid="seal-lock-detail"]').text()).toBe(
 			"Some of your recipients can't receive sealed mail yet, so this message will be sent normally."
 		);
+		expect(wrapper.find('[data-testid="seal-lock-send-unsealed"]').exists()).toBe(false);
+	});
+
+	it('cannotSeal(no_signing_key): an EXPLICIT request for the unsealed decision', async () => {
+		const wrapper = mountLock({ kind: 'cannotSeal', reason: 'no_signing_key' });
 		const btn = wrapper.find('[data-testid="seal-lock-send-unsealed"]');
 		expect(btn.exists()).toBe(true);
 		// The ellipsis is the promise that a decision follows, not an immediate send.
@@ -127,13 +133,6 @@ describe('PostboxComposerSealLock', () => {
 		expect(wrapper.emitted('request-unsealed')).toBeUndefined();
 	});
 
-	it('still offers the unsealed decision alongside the blockers, unchanged', () => {
-		const wrapper = mountLock({ kind: 'cannotSeal', reason: 'recipient_no_key' }, true, false, [
-			'jonas@acme.test',
-		]);
-		expect(wrapper.find('[data-testid="seal-lock-send-unsealed"]').exists()).toBe(true);
-	});
-
 	it('names nobody when the composer passed no blockers', () => {
 		const wrapper = mountLock({ kind: 'cannotSeal', reason: 'policy_off' });
 		expect(wrapper.find('[data-testid="seal-lock-blockers"]').exists()).toBe(false);
@@ -147,7 +146,7 @@ describe('PostboxComposerSealLock', () => {
 			});
 		}
 
-		it('is one line until opened, then shows the same reason, blockers and decision', async () => {
+		it('is one line until opened, then shows the same reason and blockers', async () => {
 			const wrapper = mountCompact({ kind: 'cannotSeal', reason: 'recipient_no_key' }, [
 				'nokey@b.test',
 			]);
@@ -162,6 +161,12 @@ describe('PostboxComposerSealLock', () => {
 			expect(wrapper.find('[data-testid="seal-lock-detail"]').exists()).toBe(true);
 			await wrapper.get('[data-testid="seal-lock-remove-blocker"]').trigger('click');
 			expect(wrapper.emitted('remove-recipient')).toEqual([['nokey@b.test']]);
+			expect(wrapper.find('[data-testid="seal-lock-send-unsealed"]').exists()).toBe(false);
+		});
+
+		it('offers the decision when sealing was within reach', async () => {
+			const wrapper = mountCompact({ kind: 'cannotSeal', reason: 'no_signing_key' });
+			await wrapper.get('[data-testid="seal-lock-toggle"]').trigger('click');
 			await wrapper.get('[data-testid="seal-lock-send-unsealed"]').trigger('click');
 			expect(wrapper.emitted('request-unsealed')).toHaveLength(1);
 		});

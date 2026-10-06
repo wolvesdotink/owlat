@@ -7,7 +7,7 @@
  * it once the window runs out, and takes back the draft an Undo recovers.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { defineComponent, nextTick, ref, type Ref } from 'vue';
+import { defineComponent, nextTick, ref } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 
 import ComposePage from '../compose.vue';
@@ -25,19 +25,13 @@ const ComposerStub = defineComponent({
 
 const ToastStub = defineComponent({
 	name: 'PostboxUndoSendToast',
+	props: { reopen: { type: Function, default: undefined } },
 	emits: ['expired', 'undone'],
 	template: '<div data-testid="toast" />',
 });
 
-let stackState: Ref<Array<Record<string, unknown>>>;
-const stackClose = vi.fn((id: string) => {
-	stackState.value = stackState.value.filter((c) => c['id'] !== id);
-});
-
 beforeEach(() => {
 	closeComposeWindow.mockClear();
-	stackClose.mockClear();
-	stackState = ref([]);
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useHead', () => {});
 	vi.stubGlobal('definePageMeta', () => {});
@@ -48,7 +42,6 @@ beforeEach(() => {
 		currentMailbox: ref({ _id: 'mbx-1' }),
 		isLoading: ref(false),
 	}));
-	vi.stubGlobal('usePostboxComposerStack', () => ({ state: stackState, close: stackClose }));
 });
 
 function mountPage() {
@@ -92,12 +85,12 @@ describe('desktop compose window', () => {
 		wrapper.getComponent(ComposerStub).vm.$emit('sent', { scheduled: false });
 		await nextTick();
 
-		// PostboxUndoSendToast reopens the draft on the stack, then emits.
-		stackState.value = [{ id: 'cmp-1', minimized: false, mailboxId: 'mbx-1', draftId: 'draft-9' }];
+		// PostboxUndoSendToast hands the recovered draft to `reopen`, then emits.
+		const reopen = wrapper.getComponent(ToastStub).props('reopen') as (spec: unknown) => void;
+		reopen({ mailboxId: 'mbx-1', draftId: 'draft-9' });
 		wrapper.getComponent(ToastStub).vm.$emit('undone');
 		await flushPromises();
 
-		expect(stackClose).toHaveBeenCalledWith('cmp-1');
 		expect(wrapper.getComponent(ComposerStub).props('seed')).toMatchObject({
 			mailboxId: 'mbx-1',
 			draftId: 'draft-9',

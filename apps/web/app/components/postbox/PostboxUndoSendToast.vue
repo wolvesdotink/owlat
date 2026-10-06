@@ -3,6 +3,15 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import UiUndoCountdownToast from '~/components/ui/UndoCountdownToast.vue';
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
+import type { ComposeSpec } from '~/composables/postbox/usePostboxComposeNav';
+
+const props = defineProps<{
+	/**
+	 * Where an undone new message goes back into an editor. Default: the
+	 * compose page. The desktop compose window takes it over in place instead.
+	 */
+	reopen?: (spec: ComposeSpec) => void;
+}>();
 
 const emit = defineEmits<{
 	/** The window ran out without an undo: the message is on its way. */
@@ -14,7 +23,7 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 const { state, dismiss, runUndo } = usePostboxUndoSend();
-const stack = usePostboxComposerStack();
+const composeNav = usePostboxComposeNav();
 const answerNav = useAnswerModeNav();
 // Offline-queued sends arm this toast with a synthetic `outbox:` token;
 // undo for those un-queues on-device instead of asking the server to
@@ -29,6 +38,11 @@ const cancelPending = useBackendOperation(api.mail.drafts.cancelPendingSend, {
 const isQueued = computed(
 	() => !!state.value.undoToken && isQueuedSendToken(state.value.undoToken)
 );
+
+function reopen(spec: ComposeSpec) {
+	if (props.reopen) props.reopen(spec);
+	else void composeNav.open(spec);
+}
 
 function message(seconds: number): string {
 	return isQueued.value
@@ -49,7 +63,7 @@ async function undoSend({ undoToken, mailboxId, replyToMessageId }: typeof state
 		// claimed or already sent) — the composable said so.
 		const item = await offlineOutbox.undoQueuedSend(undoToken);
 		if (item && mailboxId) {
-			stack.open({
+			reopen({
 				mailboxId,
 				...(item.payload.draftId ? { draftId: item.payload.draftId as Id<'mailDrafts'> } : {}),
 				prefillTo: item.payload.toAddresses,
@@ -67,11 +81,11 @@ async function undoSend({ undoToken, mailboxId, replyToMessageId }: typeof state
 	}
 	const result = await cancelPending.run({ undoToken });
 	// Reopen the recovered draft so the user lands back in the editor: a reply
-	// in Answer mode, where replies are written; anything else in a popup.
+	// in Answer mode, where replies are written; anything else in the composer.
 	if (result.ok && result.result.ok && mailboxId) {
 		const draftId = result.result.draftId as Id<'mailDrafts'>;
 		if (replyToMessageId) void answerNav.open(replyToMessageId, { draftId });
-		else stack.open({ mailboxId, draftId });
+		else reopen({ mailboxId, draftId });
 	}
 }
 

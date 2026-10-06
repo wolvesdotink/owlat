@@ -68,9 +68,12 @@ describe('PostboxComposerShell: one scroll region, the footer pinned outside it'
 	});
 
 	it('puts the envelope above the region and the footer below it, outside', () => {
-		const order = elementsOf(root).map((c) =>
-			c === region ? 'region' : c.tag === 'slot' ? attr(c, 'name') : c.tag
-		);
+		// The envelope and footer slots sit in `contents` wrappers (the lock).
+		const unwrap = (c: Node) =>
+			c.tag === 'div' && attr(c, 'class') === 'contents' ? elementsOf(c)[0]! : c;
+		const order = elementsOf(root)
+			.map(unwrap)
+			.map((c) => (c === region ? 'region' : c.tag === 'slot' ? attr(c, 'name') : c.tag));
 		expect(order.filter((n) => n !== 'div')).toEqual(['header', 'envelope', 'region', 'footer']);
 	});
 });
@@ -82,11 +85,7 @@ describe('PostboxComposer in the shell', () => {
 	it('leads with the draft notice and keeps the strips at their natural height', () => {
 		expect(content[0]!.tag).toBe('PostboxComposerDraftNotice');
 		expect(content.map((c) => c.tag)).toEqual(
-			expect.arrayContaining([
-				'PostboxComposerSealLock',
-				'PostboxDraftRestoreBar',
-				'PostboxComposerScheduledBanner',
-			])
+			expect.arrayContaining(['PostboxDraftRestoreBar', 'PostboxComposerScheduledBanner'])
 		);
 		// No nested scroller or shrink wrapper that could squeeze them.
 		expect(byTestId(shell, 'composer-status-strips')).toBeNull();

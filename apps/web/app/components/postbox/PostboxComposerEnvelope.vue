@@ -56,8 +56,7 @@ const emit = defineEmits<{
 	(e: 'apply-reply-all'): void;
 	/**
 	 * Something here needs to be seen (Answer mode opens its folded envelope):
-	 * a first-time recipient, a From leaving the team inbox, an identity that
-	 * will fail authentication.
+	 * a From leaving the team inbox, an identity that will fail authentication.
 	 */
 	(e: 'attention', needsAttention: boolean): void;
 }>();
@@ -175,13 +174,14 @@ function switchToReplyAll() {
 	emit('apply-reply-all');
 }
 
-defineExpose({ switchToReplyAll });
+const toField = ref<{ focus: () => void } | null>(null);
+
+defineExpose({ switchToReplyAll, focusTo: () => toField.value?.focus() });
 
 watch(
 	() =>
 		isLeavingTeamInbox.value ||
-		(selectedAuth.value !== null && selectedAuth.value.tone !== 'success') ||
-		props.guards.firstTime?.open === true,
+		(selectedAuth.value !== null && selectedAuth.value.tone !== 'success'),
 	(needsAttention) => emit('attention', needsAttention),
 	{ immediate: true }
 );
@@ -291,6 +291,7 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 			<!-- flex-1: without it the field is only as wide as its chips, and
 			     Cc/Bcc floated mid-row instead of sitting at the right edge. -->
 			<PostboxRecipientField
+				ref="toField"
 				v-model="toAddresses"
 				class="flex-1 min-w-0"
 				:mailbox-id="mailboxId"
@@ -371,9 +372,8 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 			:seal-states="sealStates"
 			@move="moveRecipient($event, 'bcc')"
 		/>
-		<!-- Pre-send confidence (plan ideas 3, 5, 15): the first-time-recipient
-		     line and the two replay-confirm dialogs, mounted with the fields they
-		     are about. -->
+		<!-- Pre-send confidence (plan ideas 3, 15): the two replay-confirm
+		     dialogs, mounted with the fields they are about. -->
 		<PostboxComposerGuards :guards="guards" />
 		<div class="flex items-baseline gap-2">
 			<label for="subject" class="text-text-tertiary w-12">{{

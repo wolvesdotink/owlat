@@ -39,6 +39,7 @@ export async function loadRecipientKeyStates(
 ): Promise<RecipientKeyState[]> {
 	const seen = new Set<string>();
 	const recipients: RecipientKeyState[] = [];
+	const now = Date.now();
 	for (const raw of addresses) {
 		const address = normalizeEmail(raw);
 		if (seen.has(address)) continue;
@@ -61,6 +62,9 @@ export async function loadRecipientKeyStates(
 			...(row.outcome === 'trusted' && row.pinnedPublicKeyArmored
 				? { pinnedPublicKeyArmored: row.pinnedPublicKeyArmored }
 				: {}),
+			// Dispatch re-runs discovery for an expired row (loadDiscoveryAddresses);
+			// a non-trusted answer may change, a pin keeps sealing meanwhile.
+			...(row.outcome !== 'trusted' && row.expiresAt <= now ? { lookupStale: true } : {}),
 		});
 	}
 	return recipients;
@@ -138,6 +142,9 @@ export const getOutboundSealInputs = internalQuery({
 				// Human verification (plan idea 54) — display only; the dispatch seal
 				// decision never reads it.
 				verified: v.optional(v.boolean()),
+				// An expired non-trusted answer; the composer state reads it,
+				// dispatch refreshes the row first (`discoveryAddresses`).
+				lookupStale: v.optional(v.boolean()),
 			})
 		),
 	}),

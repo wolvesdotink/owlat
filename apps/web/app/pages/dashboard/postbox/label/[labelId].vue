@@ -89,7 +89,6 @@ const overCap = computed(() => labelData.value?.hasMore ?? false);
 				</section>
 			</div>
 		</PostboxMailboxGuard>
-		<PostboxComposerStack />
 		<PostboxShortcutHelp />
 	</div>
 </template>

@@ -15,7 +15,7 @@ const { t } = useI18n();
 // The list is its own row renderer: one minute clock for every draft's age.
 const formatTimestamp = usePostboxThreadTimestamp(usePostboxListNow());
 
-const stack = usePostboxComposerStack();
+const composeNav = usePostboxComposeNav();
 
 const { data, isLoading } = useConvexQuery(api.mail.drafts.listForMailbox, () => ({
 	mailboxId: props.mailboxId,
@@ -23,14 +23,14 @@ const { data, isLoading } = useConvexQuery(api.mail.drafts.listForMailbox, () =>
 const drafts = computed(() => data.value ?? []);
 
 // A reply draft is continued where replies are written (Answer mode, on the
-// message it answers); a new email or a forward reopens in a popup.
+// message it answers); a new email or a forward reopens on the compose page.
 const answerNav = useAnswerModeNav();
 function openDraft(draft: { _id: string; inReplyToMessageId?: string }) {
 	if (draft.inReplyToMessageId) {
 		void answerNav.open(draft.inReplyToMessageId, { draftId: draft._id });
 		return;
 	}
-	stack.open({ mailboxId: props.mailboxId, draftId: draft._id as Id<'mailDrafts'> });
+	void composeNav.open({ mailboxId: props.mailboxId, draftId: draft._id as Id<'mailDrafts'> });
 }
 
 function preview(bodyHtml: string | undefined): string {

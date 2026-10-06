@@ -168,7 +168,7 @@ export function buildThreadSurfaceGroups(deps: ThreadSurfaceDeps, query: string)
 
 /**
  * Registry id PREFIX of the saved-reply provider: every mounted composer (the
- * popup stack, Answer mode, a Team inbox reply) registers its own, and only
+ * compose page, Answer mode, a Team inbox reply) registers its own, and only
  * the one the person was last typing in contributes.
  */
 export const SAVED_REPLY_COMMAND_PROVIDER_ID_PREFIX = 'surface:saved-replies';

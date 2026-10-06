@@ -433,7 +433,6 @@ defineExpose({ focus, reset, fill, insert, snapshot, answer });
 			<template #footer="{ capabilities }">
 				<PostboxComposerFooter
 					:capabilities="capabilities"
-					frame="answer"
 					:can-send="canSend"
 					:sending="busy"
 					:send-label="sendLabel"

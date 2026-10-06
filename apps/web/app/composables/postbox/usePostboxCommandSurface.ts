@@ -41,7 +41,7 @@ export const matchPostboxRoute = routePrefixMatcher('/dashboard/postbox');
  */
 export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 	const { t } = useI18n();
-	const composerStack = usePostboxComposerStack();
+	const composeNav = usePostboxComposeNav();
 	const { isDesktop: isDesktopSurface } = useDesktopContext();
 	// Accessible mailboxes → palette "switch mailbox" entries (personal when
 	// there's a choice, plus every team inbox). Reactive so entries appear the
@@ -71,7 +71,7 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 						label: t('shared.postbox.usePostboxCommandSurface.items.compose'),
 						hint: 'c',
 						icon: 'lucide:pencil',
-						run: () => composerStack.open({ mailboxId: mailboxId.value }),
+						run: () => void composeNav.open({ mailboxId: mailboxId.value }),
 					},
 					{
 						id: 'postbox:reply-all',

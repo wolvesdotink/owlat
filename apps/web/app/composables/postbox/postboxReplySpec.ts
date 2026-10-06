@@ -11,7 +11,7 @@ import { extractEmailAddress } from '~/utils/emailAddress';
 import { deriveReplyAllExtras } from '~/utils/recipientHints';
 import { resolvePrimaryReplyKind, type PostboxReplyDefaultMode } from '~/utils/postboxReplyDefault';
 import type { AnswerModeKind } from '~/utils/answerMode';
-import type { ComposerSpec } from './usePostboxComposerStack';
+import type { ComposeSpec } from './usePostboxComposeNav';
 import { buildForwardedBody, buildReplySpec, resolveBodyFields } from './usePostboxQuotedText';
 
 /** The reply/forward source shape the composer quotes from. */
@@ -27,8 +27,8 @@ export type ReplyForwardSource = {
 	textBodyInline?: string;
 };
 
-/** A seed for the composer: the stack's spec without its bookkeeping. */
-export type ReplyComposeSeed = Omit<ComposerSpec, 'id' | 'minimized'>;
+/** A seed for the composer. */
+export type ReplyComposeSeed = ComposeSpec;
 
 type RecipientFields = { fromAddress: string; toAddresses: string[]; ccAddresses: string[] };
 

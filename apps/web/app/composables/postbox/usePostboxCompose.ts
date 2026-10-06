@@ -30,12 +30,13 @@ import {
 	type ComposerAttachment,
 } from './usePostboxComposeAttachments';
 import { usePostboxComposeAutosave } from './usePostboxComposeAutosave';
-import {
-	usePostboxComposeHydration,
-	type InitialHydrationState,
-	type TrackedDraftField,
-} from './usePostboxComposeHydration';
+import type { InitialHydrationState } from './usePostboxComposeHydration';
 import { usePostboxComposeMirror } from './usePostboxComposeMirror';
+import {
+	usePostboxComposeRow,
+	usePostboxComposeSeedTouched,
+	type BeforeReady,
+} from './usePostboxComposeRow';
 import { usePostboxComposeOfflineSend } from './usePostboxComposeOfflineSend';
 import { createSendNetworkClaim, usePostboxComposeSend } from './usePostboxComposeSend';
 import { usePostboxComposeSignatures } from './usePostboxComposeSignatures';
@@ -57,7 +58,7 @@ export type SendAsIdentity = FunctionReturnType<
 
 /**
  * The one-time seed a composer opens with: the one declaration every host
- * writes (the popup stack's ComposerSpec, Answer mode's seed, the
+ * writes (the compose page's ComposeSpec, Answer mode's seed, the
  * desktop compose window) and PostboxComposer hands over whole.
  *
  * Where it writes is a mailbox composer target (`utils/composerTarget`): the
@@ -82,9 +83,24 @@ export interface ComposerSeed extends Omit<MailboxComposerTarget, 'kind'> {
 	forwardAttachmentsFromMessageId?: Id<'mailMessages'>;
 	/** Attach a transient generated file (key into usePostboxPendingAttachments). */
 	attachPendingKey?: string;
+	/** Full-mode blocks, the editor mode and the reminder, for a seed carrying a whole composition. */
+	prefillBodyBlocks?: EditorBlock[];
+	prefillComposerMode?: ComposerMode;
+	prefillFollowUpRemindAt?: number | null;
+	/**
+	 * The compose request's creation nonce (the compose page's `?c=`): a remount
+	 * of the same request gets the same row back instead of creating another.
+	 */
+	requestNonce?: string;
 }
 
-export function usePostboxCompose(seed: ComposerSeed) {
+/** Options a host passes beside the seed. */
+export interface ComposeOptions {
+	/** The compose page applies or offers text it parked on a leave. */
+	beforeReady?: BeforeReady;
+}
+
+export function usePostboxCompose(seed: ComposerSeed, options: ComposeOptions = {}) {
 	const { t } = useI18n();
 	const draftId = ref<Id<'mailDrafts'> | null>(seed.draftId ?? null);
 	const ensuring = ref(false);
@@ -97,8 +113,8 @@ export function usePostboxCompose(seed: ComposerSeed) {
 	const subject = ref<string>(seed.prefillSubject ?? '');
 	// A reply/forward seeds the quoted original here; the user types above it.
 	const bodyHtml = ref<string>(seed.prefillBodyHtml ?? '');
-	const bodyBlocks = ref<EditorBlock[]>([]); // EditorBlock[] in 'full' mode
-	const composerMode = ref<ComposerMode>('simple');
+	const bodyBlocks = ref<EditorBlock[]>(seed.prefillBodyBlocks ?? []); // used in 'full' mode
+	const composerMode = ref<ComposerMode>(seed.prefillComposerMode ?? 'simple');
 	const fromAddress = ref<string>('');
 	// Lifecycle state of the saved row. A reopened draft can be 'scheduled'
 	// (a future send the user wants to review). While scheduled, autosave is
@@ -109,7 +125,7 @@ export function usePostboxCompose(seed: ComposerSeed) {
 	const isScheduled = computed(() => draftState.value === 'scheduled');
 	// "Remind me if no reply by…" — persisted on the draft and carried onto the
 	// sent thread as a follow-up watch (mail/followUps.ts). null = off.
-	const followUpRemindAt = ref<number | null>(null);
+	const followUpRemindAt = ref<number | null>(seed.prefillFollowUpRemindAt ?? null);
 	// The AI left `[[...]]` gaps in this draft before (from the saved row).
 	const isGapGuarded = ref(false);
 	// A reopened draft's fields start empty and fill in when `drafts.get`
@@ -181,6 +197,19 @@ export function usePostboxCompose(seed: ComposerSeed) {
 		label: () => t('shared.postbox.usePostboxCompose.cancelScheduledOperation'),
 	});
 
+	// Which fields the person set during this mount (shared by hydration, row
+	// creation, the mirror's Restore and the compose page's parking).
+	const touched = usePostboxComposeSeedTouched(seed, {
+		toAddresses,
+		ccAddresses,
+		bccAddresses,
+		subject,
+		bodyHtml,
+		bodyBlocks,
+		composerMode,
+		followUpRemindAt,
+	});
+
 	// Draft row creation + the 1.5s-debounced autosave live in a sibling
 	// composable. Everything below drives the SAME row through `ensureDraft`.
 	const autosave = usePostboxComposeAutosave({
@@ -192,6 +221,12 @@ export function usePostboxCompose(seed: ComposerSeed) {
 		ensuring,
 		isSaving,
 		lastSavedAt,
+		touched,
+		requestNonce: seed.requestNonce,
+		onReopenExisting: () => row.reopenExisting(),
+		onGone: () => {
+			initialHydration.value = 'missing';
+		},
 		toAddresses,
 		ccAddresses,
 		bccAddresses,
@@ -241,49 +276,43 @@ export function usePostboxCompose(seed: ComposerSeed) {
 	// re-send reuses the row the files already live on.
 	if (seed.prefillAttachments?.length) attachments.value = [...seed.prefillAttachments];
 
-	// Reopen an existing draft: hydrate the editor fields from the saved row.
-	// Fields the seed filled in are newer than the row and win the merge.
-	const seeded = (
-		[
-			['toAddresses', seed.prefillTo],
-			['ccAddresses', seed.prefillCc],
-			['bccAddresses', seed.prefillBcc],
-			['subject', seed.prefillSubject],
-			['bodyHtml', seed.prefillBodyHtml],
-		] as const
-	).flatMap(([name, value]): TrackedDraftField[] => (value === undefined ? [] : [name]));
-	const hydration = seed.draftId
-		? usePostboxComposeHydration(
-				seed.draftId,
-				{
-					toAddresses,
-					ccAddresses,
-					bccAddresses,
-					subject,
-					bodyHtml,
-					bodyBlocks,
-					fromAddress,
-					composerMode,
-					draftState,
-					scheduledSendAt,
-					followUpRemindAt,
-					attachments,
-					lastSavedAt,
-					isGapGuarded,
-				},
-				{ state: initialHydration, seeded }
-			)
-		: null;
+	// The row: a reopened draft is merged into the editor, and every row the
+	// composer has is observed for as long as it is open (lifecycle, mirror).
+	const row = usePostboxComposeRow(
+		seed,
+		draftId,
+		initialHydration,
+		{
+			toAddresses,
+			ccAddresses,
+			bccAddresses,
+			subject,
+			bodyHtml,
+			bodyBlocks,
+			fromAddress,
+			composerMode,
+			draftState,
+			scheduledSendAt,
+			followUpRemindAt,
+			attachments,
+			lastSavedAt,
+			isGapGuarded,
+		},
+		touched,
+		options.beforeReady,
+		(snapshot) => autosave.persistRestored(snapshot)
+	);
 
 	// Plan idea 7: mirror these exact fields on-device between server autosaves,
-	// and offer them back when a crash left the server row behind.
+	// and offer them back when a crash or a failed save left the row behind.
 	const draftMirror = usePostboxComposeMirror({
 		mailboxId: seed.mailboxId,
-		seedDraftId: seed.draftId,
-		inReplyToMessageId: seed.inReplyToMessageId,
 		draftId,
-		lastSavedAt,
+		inReplyToMessageId: seed.inReplyToMessageId,
+		ready: computed(() => initialHydration.value === 'ready'),
 		draftState,
+		latestRow: row.latestRow,
+		touched,
 		toAddresses,
 		ccAddresses,
 		bccAddresses,
@@ -291,6 +320,8 @@ export function usePostboxCompose(seed: ComposerSeed) {
 		bodyHtml,
 		bodyBlocks,
 		composerMode,
+		followUpRemindAt,
+		autosave,
 	});
 
 	// Send-as identities for this mailbox: the mailbox's own allowed-from set
@@ -318,6 +349,8 @@ export function usePostboxCompose(seed: ComposerSeed) {
 		bodyHtml,
 		isReopenedDraft: Boolean(seed.draftId),
 		bodyLocked: () => bodyPending.value,
+		canPrepend: () => initialHydration.value === 'ready' && !draftId.value,
+		applying: touched.applying,
 	});
 
 	// The offline queue's payload builder lives in a sibling (file-size ratchet);
@@ -448,7 +481,9 @@ export function usePostboxCompose(seed: ComposerSeed) {
 		draftMirror,
 		draftNotice,
 		bodyPending,
-		retryLoad: () => hydration?.retry(),
+		retryLoad: () => row.hydration.retry(),
+		parkable: row.parkable,
+		onCreated: autosave.onCreated,
 		isGapGuarded,
 		canSend,
 		isScheduled,

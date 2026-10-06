@@ -44,21 +44,21 @@ function mountDialog(sealState: SealState | null, open = true) {
 
 describe('PostboxComposerSealConfirmDialog', () => {
 	it('states the reason and what unsealed delivery means, and offers both answers', () => {
-		const wrapper = mountDialog({ kind: 'cannotSeal', reason: 'recipient_no_key' });
+		const wrapper = mountDialog({ kind: 'cannotSeal', reason: 'no_signing_key' });
 		expect(wrapper.find('[data-testid="dialog-title"]').text()).toBe('Send this message unsealed?');
 		expect(wrapper.find('[data-testid="dialog-description"]').text()).toBe(
-			"Some of your recipients can't receive sealed mail yet. Owlat will send it as ordinary email, which the mail servers it passes through can read."
+			"The address you're sending from doesn't have a sealing key yet. Owlat will send it as ordinary email, which the mail servers it passes through can read."
 		);
 		expect(wrapper.find('[data-testid="dialog-confirm"]').text()).toBe('Send unsealed');
 		expect(wrapper.find('[data-testid="dialog-cancel"]').text()).toBe('Keep editing');
 	});
 
 	it('proceeding emits confirm; cancelling closes without confirming', async () => {
-		const wrapper = mountDialog({ kind: 'cannotSeal', reason: 'policy_ask' });
+		const wrapper = mountDialog({ kind: 'cannotSeal', reason: 'no_signing_key' });
 		await wrapper.find('[data-testid="dialog-confirm"]').trigger('click');
 		expect(wrapper.emitted('confirm')).toHaveLength(1);
 
-		const cancelled = mountDialog({ kind: 'cannotSeal', reason: 'policy_ask' });
+		const cancelled = mountDialog({ kind: 'cannotSeal', reason: 'no_signing_key' });
 		await cancelled.find('[data-testid="dialog-cancel"]').trigger('click');
 		expect(cancelled.emitted('confirm')).toBeUndefined();
 		expect(cancelled.emitted('update:open')).toEqual([[false]]);
@@ -70,6 +70,8 @@ describe('PostboxComposerSealConfirmDialog', () => {
 			{ kind: 'willSeal' },
 			{ kind: 'keyChanged', addresses: ['bob@b.test'] },
 			{ kind: 'cannotSeal', reason: 'no_recipients' },
+			// Ordinary mail to someone without a key just sends.
+			{ kind: 'cannotSeal', reason: 'recipient_no_key' },
 		];
 		for (const state of noPrompt) {
 			expect(mountDialog(state).find('[data-testid="dialog"]').exists()).toBe(false);
@@ -77,7 +79,7 @@ describe('PostboxComposerSealConfirmDialog', () => {
 	});
 
 	it('renders nothing until the parent opens it', () => {
-		const wrapper = mountDialog({ kind: 'cannotSeal', reason: 'recipient_no_key' }, false);
+		const wrapper = mountDialog({ kind: 'cannotSeal', reason: 'no_signing_key' }, false);
 		expect(wrapper.find('[data-testid="dialog"]').exists()).toBe(false);
 	});
 });

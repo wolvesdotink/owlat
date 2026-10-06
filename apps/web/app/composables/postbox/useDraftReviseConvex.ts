@@ -68,6 +68,7 @@ export function useDraftReviseConvex(opts: DraftReviseConvexOptions) {
 				status: res?.status ?? 'error',
 				text: res?.text ?? '',
 				injectionFlagged: res?.injectionFlagged ?? false,
+				...(res?.errorCode ? { errorCode: res.errorCode } : {}),
 			};
 		},
 		deleteStream: async (streamId: string) => {

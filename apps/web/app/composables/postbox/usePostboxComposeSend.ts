@@ -191,9 +191,9 @@ export function usePostboxComposeSend(o: ComposeSendOptions) {
 	}
 
 	/**
-	 * Save the current snapshot and hand back the row id, for a popup reply
-	 * moving to Answer mode (which reopens the SAME row), Answer mode's own
-	 * saves, and the seal re-check.
+	 * Save the current snapshot and hand back the row id, for Answer mode's own
+	 * saves, the compose page's URL (it names the draft only once the text the
+	 * page was opened with is saved) and the seal re-check.
 	 * `ok: false` means nothing may be assumed saved; the reason is on screen.
 	 */
 	async function flush(): Promise<BackendOperationResult<Id<'mailDrafts'> | null>> {

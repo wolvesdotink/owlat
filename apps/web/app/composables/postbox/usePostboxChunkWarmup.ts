@@ -41,14 +41,13 @@ function defaultIdleScheduler(cb: () => void): void {
 }
 
 /**
- * Default chunks to warm, each mounted lazily by the dashboard shell: the
- * command palette (the Postbox `/` search opens it) and the composer stack the
- * shell mounts when a composer opens (`ShellComposerOverlay`). NOT the
- * EmailBuilder.
+ * Default chunks to warm: the command palette (the Postbox `/` search opens
+ * it, mounted lazily by the dashboard shell) and the compose page Compose
+ * navigates to. NOT the EmailBuilder.
  */
 const DEFAULT_LOADERS: ChunkLoader[] = [
 	() => import('~/components/AppCommandPalette.vue'),
-	() => import('~/components/postbox/PostboxComposerStack.vue'),
+	() => import('~/pages/dashboard/compose.vue'),
 ];
 
 export function usePostboxChunkWarmup(options?: {

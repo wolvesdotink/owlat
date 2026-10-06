@@ -2,7 +2,7 @@
  * Transient hand-off for an attachment the app generates (e.g. an iCalendar
  * RSVP REPLY) and wants the next-opened composer to attach. The composer reads
  * it by key on mount and clears it. Plain string content (serializable), so it
- * survives the ComposerSpec hop through useState.
+ * survives the ComposeSpec hop through useState.
  */
 export interface PendingAttachment {
 	filename: string;

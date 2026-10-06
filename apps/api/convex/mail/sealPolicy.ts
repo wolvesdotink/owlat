@@ -52,6 +52,18 @@ export interface RecipientKeyState {
 	 * says so — an unverified pinned key still seals exactly as it always did.
 	 */
 	verified?: boolean;
+	/**
+	 * A cached "no key" (or other non-trusted) answer whose cache has expired:
+	 * dispatch looks the recipient up again and may find a key now, so the
+	 * composer treats it like a recipient not looked up yet. A trusted pin never
+	 * carries this; an expired pin still seals.
+	 */
+	lookupStale?: boolean;
+}
+
+/** Not answered yet, or answered so long ago that dispatch asks again. */
+function lookupPending(recipient: RecipientKeyState): boolean {
+	return recipient.outcome === 'missing' || recipient.lookupStale === true;
 }
 
 /**
@@ -237,14 +249,29 @@ export type SealState =
 	| { kind: 'cannotSeal'; reason: SealSkipReason };
 
 /**
+ * Whether a plaintext send for this reason needs the sender's explicit consent.
+ *
+ * Mail to people without a sealing key (nearly everyone) is ordinary email, not
+ * a downgrade: it goes out as it always has, and the composer's seal line says
+ * so. Asking about it on every Send taught people to click through the prompt
+ * and, when they missed it, left Send looking broken. Consent stays for the two
+ * cases where sealing was within reach and something dropped it: the sender's
+ * own signing key is missing, or a recipient's key changed.
+ */
+export function unsealedSendNeedsConsent(reason: SealSkipReason): boolean {
+	return reason === 'no_signing_key' || reason === 'key_changed';
+}
+
+/**
  * Sending permission for a feature-enabled draft. A key change is never
- * bypassable; every other plaintext outcome requires the distinct explicit
- * consent action rendered by the composer.
+ * bypassable; a plaintext outcome that needs consent
+ * ({@link unsealedSendNeedsConsent}) requires the distinct explicit consent
+ * action rendered by the composer; any other plaintext outcome sends normally.
  */
 export function canSendWithSealState(state: SealState, allowUnsealed: boolean): boolean {
 	if (state.kind === 'willSeal') return true;
 	if (state.kind === 'keyChanged') return false;
-	return allowUnsealed;
+	return allowUnsealed || !unsealedSendNeedsConsent(state.reason);
 }
 
 /**
@@ -257,7 +284,11 @@ export function canSendWithSealState(state: SealState, allowUnsealed: boolean): 
  *   - no recipients       → `cannotSeal('no_recipients')`
  *   - a rotated key       → `keyChanged` (surfaced ahead of a generic "no key" so
  *                           the reader sees the specific rotation warning)
- *   - any keyless recip.  → `cannotSeal('recipient_no_key')`
+ *   - any keyless recip.  → `cannotSeal('recipient_no_key')`, except under
+ *                           `auto` with no signer while the only keyless
+ *                           recipients are not looked up yet, or their "no
+ *                           key" answer expired → `no_signing_key` (dispatch
+ *                           looks them up and may find a key)
  *   - no sender key        → `cannotSeal('no_signing_key')`
  *   - policy `ask`        → `cannotSeal('policy_ask')` (keys are ready, but the
  *                           org asks before sealing, so it goes out normally)
@@ -275,6 +306,15 @@ export function deriveSealState(
 	const changed = recipients.filter((r) => r.outcome === 'keyChanged').map((r) => r.address);
 	if (changed.length > 0) return { kind: 'keyChanged', addresses: changed };
 	if (!recipients.every(hasUsableSealKey)) {
+		// Without a signer, a recipient not looked up yet (or whose "no key"
+		// answer expired) may still turn out to have a key; dispatch looks them
+		// up and would then need consent. Ask now,
+		// rather than bounce the draft back to the composer after Send. A recipient
+		// known to be keyless settles it: all-or-nothing, so no seal was possible.
+		const pendingOnly = recipients.every((r) => hasUsableSealKey(r) || lookupPending(r));
+		if (!hasSigningKey && policy === 'auto' && pendingOnly) {
+			return { kind: 'cannotSeal', reason: 'no_signing_key' };
+		}
 		return { kind: 'cannotSeal', reason: 'recipient_no_key' };
 	}
 	if (!hasSigningKey) return { kind: 'cannotSeal', reason: 'no_signing_key' };

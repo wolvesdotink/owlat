@@ -3,7 +3,7 @@
  * Cmd/Ctrl+Enter send, Cmd/Ctrl+Shift+Enter schedule, Esc minimize.
  *
  * The returned handler is meant to be bound on the composer ROOT element with
- * `@keydown.capture` — NOT globally — so each stacked popup composer only
+ * `@keydown.capture` — NOT globally — so each mounted composer only
  * handles its own keys.
  */
 

@@ -20,6 +20,7 @@ import type { ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmText } from '../../lib/llm/dispatch';
+import { stripLeakedToolMarkup } from '../../lib/llm/toolMarkup';
 import { recordLlmSpend } from '../../analytics/llmUsage';
 import { logError } from '../../lib/runtimeLog';
 import {
@@ -113,10 +114,11 @@ export async function draftClarificationReply(
 			voiceSection,
 			tools: { recallKnowledge },
 			maxSteps: MAX_RECALL_CALLS + 2,
-			spendLabels: { selfCheck: 'postbox_clarify_selfcheck' },
+			// The service records the draft's spend, on success and on a throw.
+			spendLabels: { draft: 'postbox_clarify_draft', selfCheck: 'postbox_clarify_selfcheck' },
+			successfulDraftSpend: 'ledger',
 			strategyScope: { mailboxId: context.mailboxId, classification: 'other' },
 		});
-		await recordLlmSpend(ctx, 'postbox_clarify_draft', result.tokenUsage, result.modelUsed);
 
 		const body = result.draftBody.trim();
 		if (body.length === 0) return;
@@ -167,9 +169,14 @@ export async function draftClarificationReply(
 						baseline.tokenUsage,
 						baseline.modelUsed
 					);
-					const delta = measureDraftDelta(draft, baseline.text.trim());
-					isDraftChanged = delta.changed;
-					draftDivergence = delta.divergence;
+					// The comparison draft goes through the same markup check as the
+					// real one (#1254); markup would read as divergence it is not.
+					const baselineDraft = stripLeakedToolMarkup(baseline.text);
+					if (baselineDraft.kind !== 'unusable') {
+						const delta = measureDraftDelta(draft, baselineDraft.text.trim());
+						isDraftChanged = delta.changed;
+						draftDivergence = delta.divergence;
+					}
 				} catch {
 					// Sampling is best-effort; log the ask without the delta.
 				}
