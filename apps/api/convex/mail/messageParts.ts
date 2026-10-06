@@ -14,7 +14,10 @@
  * `@owlat/shared/mailMime.extractAttachments` / `extractFirstPartByType`, the
  * functions the web reader runs over the raw `.eml`, and {@link pickStoredPart}
  * is `extractAttachmentAt`'s selection over the stored list. So the part served
- * here is byte for byte the part the fallback would have extracted.
+ * here is byte for byte the part the fallback would have extracted. The
+ * calendar leaf is the one exception: it is stored as text, decoded from the
+ * charset it declares and re-encoded as UTF-8, which is what its stored
+ * content type says and what the fallback's `decodePartText` reads.
  *
  * KEYED BY THE RAW BLOB. IMAP COPY spreads one `rawStorageId` over several
  * rows, and the parts are a function of those bytes, so the copies share them
@@ -26,7 +29,11 @@
  */
 
 import type { Infer } from 'convex/values';
-import { extractFirstPartByType, type ExtractedAttachment } from '@owlat/shared/mailMime';
+import {
+	decodePartText,
+	extractFirstPartByType,
+	type ExtractedAttachment,
+} from '@owlat/shared/mailMime';
 import type { MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { storeSealedBlob, type BlobStore } from '../lib/sealedBlob';
@@ -120,8 +127,13 @@ export async function stageMessageParts(
 			});
 		}
 		const calendar = extractFirstPartByType(rawBinary, 'text/calendar');
+		// Transcoded, not relabelled: an invite declaring iso-8859-1 or
+		// windows-1252 would otherwise be read back as broken UTF-8 (#1299).
 		const calendarStorageId = calendar
-			? await store(calendar.bytes, 'text/calendar; charset=utf-8')
+			? await store(
+					new TextEncoder().encode(decodePartText(calendar)),
+					'text/calendar; charset=utf-8'
+				)
 			: undefined;
 		return {
 			status: tooMany ? 'too_many_parts' : 'stored',

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	binaryStringToBytes,
 	bytesToBinaryString,
+	decodePartText,
 	extractAttachments,
 	extractAttachmentAt,
 	extractFirstPartByType,
@@ -86,6 +87,64 @@ const RAW = [
 	'--OUTER--',
 	'',
 ].join('\n');
+
+describe('decodePartText (#1299)', () => {
+	/** An inline invite whose body is the given bytes, 8-bit, under `contentType`. */
+	function invite(contentType: string, body: number[]): string {
+		return [
+			'Content-Type: multipart/alternative; boundary="b"',
+			'',
+			'--b',
+			`Content-Type: ${contentType}`,
+			'Content-Transfer-Encoding: 8bit',
+			'',
+			bytesToBinaryString(new Uint8Array(body)),
+			'--b--',
+		].join('\r\n');
+	}
+	const ascii = (s: string) => [...s].map((c) => c.charCodeAt(0));
+
+	it('reads an ISO-8859-1 part under its charset', () => {
+		const raw = invite('text/calendar; method=REQUEST; charset=iso-8859-1', [
+			...ascii('SUMMARY:Besprechung '),
+			0xfc,
+			...ascii('ber Q4'),
+		]);
+		expect(decodePartText(extractFirstPartByType(raw, 'text/calendar')!)).toBe(
+			'SUMMARY:Besprechung über Q4'
+		);
+	});
+
+	it('reads a windows-1252 part, including its 0x80-0x9F range', () => {
+		const raw = invite('text/calendar; charset=windows-1252', [
+			...ascii('SUMMARY:Budget '),
+			0x80,
+			...ascii(' 100 '),
+			0x96,
+			...ascii(' Q4'),
+		]);
+		expect(decodePartText(extractFirstPartByType(raw, 'text/calendar')!)).toBe(
+			'SUMMARY:Budget € 100 – Q4'
+		);
+	});
+
+	it('reads a Shift_JIS part under its charset', () => {
+		// 会議 is 0x89EF 0x8B63 in Shift_JIS.
+		const raw = invite('text/calendar; charset=Shift_JIS', [
+			...ascii('SUMMARY:'),
+			0x89,
+			0xef,
+			0x8b,
+			0x63,
+		]);
+		expect(decodePartText(extractFirstPartByType(raw, 'text/calendar')!)).toBe('SUMMARY:会議');
+	});
+
+	it('reads a part that declares no charset as UTF-8, the iCalendar default', () => {
+		const raw = invite('text/calendar', [...new TextEncoder().encode('SUMMARY:Grüße')]);
+		expect(decodePartText(extractFirstPartByType(raw, 'text/calendar')!)).toBe('SUMMARY:Grüße');
+	});
+});
 
 describe('extractAttachments', () => {
 	it('returns only attachment leaves, in document order, decoded', () => {
