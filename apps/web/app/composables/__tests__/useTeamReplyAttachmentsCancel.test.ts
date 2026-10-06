@@ -45,6 +45,8 @@ interface Entry {
 const serverList = ref<Entry[]>([]);
 let releaseAdd: () => void;
 let removeOp: ReturnType<typeof vi.fn>;
+/** A teammate's edit that lands on the server just before our remove does. */
+let teammateEdit: (() => void) | null;
 
 const view = (entries: Omit<Entry, 'index'>[]): Entry[] =>
 	entries.map((entry, index) => ({ ...entry, index }));
@@ -52,8 +54,15 @@ const view = (entries: Omit<Entry, 'index'>[]): Entry[] =>
 beforeEach(() => {
 	// A teammate's file is already on the thread.
 	serverList.value = view([{ id: 'e_theirs', filename: 'terms.pdf', size: 10, status: 'ready' }]);
+	teammateEdit = null;
+	// The server's `remove`: by id when one is sent, else by position.
 	removeOp = vi.fn(async (args: { index: number; id?: string }) => {
-		serverList.value = view(serverList.value.filter((entry) => entry.id !== args.id));
+		teammateEdit?.();
+		serverList.value = view(
+			serverList.value.filter((entry, at) =>
+				args.id !== undefined ? entry.id !== args.id : at !== args.index
+			)
+		);
 		return { ok: true, result: serverList.value };
 	});
 	const ops: Record<string, (args: never) => Promise<unknown>> = {
@@ -107,5 +116,28 @@ describe('useTeamReplyAttachments: cancel while the file attaches', () => {
 		expect(files.attachments.value.map((entry) => entry.filename)).toEqual(['terms.pdf']);
 		expect(files.uploads.value).toEqual([]);
 		expect(files.block.value).toBeNull();
+	});
+});
+
+describe('useTeamReplyAttachments: remove', () => {
+	it('removes the file the person picked even when a teammate shifted the list first', async () => {
+		serverList.value = view([
+			{ id: 'e_terms', filename: 'terms.pdf', size: 10, status: 'ready' },
+			{ id: 'e_quote', filename: 'quote.pdf', size: 10, status: 'ready' },
+			{ id: 'e_salary', filename: 'salary.xlsx', size: 10, status: 'ready' },
+		]);
+		const { useTeamReplyAttachments } = await import('../useTeamReplyAttachments');
+		const files = withSetup(() => useTeamReplyAttachments(() => 'th_1' as never)).result;
+		expect(files.attachments.value[1]!.filename).toBe('quote.pdf');
+
+		// The person removes quote.pdf (shown at index 1); before that reaches the
+		// server, a teammate removes terms.pdf, so salary.xlsx moves to index 1.
+		teammateEdit = () => {
+			serverList.value = view(serverList.value.filter((entry) => entry.id !== 'e_terms'));
+		};
+		expect(await files.remove(1)).toBe(true);
+
+		expect(removeOp).toHaveBeenCalledWith({ threadId: 'th_1', index: 1, id: 'e_quote' });
+		expect(serverList.value.map((entry) => entry.filename)).toEqual(['salary.xlsx']);
 	});
 });

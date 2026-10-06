@@ -196,10 +196,15 @@ export function useTeamReplyAttachments(
 		return result.ok;
 	}
 
+	/**
+	 * Remove the file shown at `index`. Its id goes along, so a teammate's edit
+	 * that shifts the list before this lands cannot make it take another file.
+	 */
 	async function remove(index: number) {
 		const thread = threadId();
 		if (!thread) return false;
-		const result = await removeOp.run({ threadId: thread, index });
+		const id = attachments.value[index]?.id;
+		const result = await removeOp.run({ threadId: thread, index, ...(id ? { id } : {}) });
 		if (result.ok) written.value = result.result;
 		return result.ok;
 	}
