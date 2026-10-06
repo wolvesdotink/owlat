@@ -41,6 +41,9 @@ import { runLlmStream } from '../../lib/llm/dispatch';
 import { stripLeakedToolMarkup, visibleDraftStreamText } from '../../lib/llm/toolMarkup';
 import { createThrottledStreamFlusher } from '../../lib/llm/streamFlusher';
 import { recordLlmSpend } from '../../analytics/llmUsage';
+import type { TokenUsage } from '../../agent/steps/types';
+import type { ActionCtx } from '../../_generated/server';
+import { logWarn } from '../../lib/runtimeLog';
 import {
 	detectInjection,
 	INJECTION_CONFIDENCE_THRESHOLD,
@@ -48,6 +51,23 @@ import {
 import { SYSTEM_GUARD } from './promptGuards';
 import { draftSurfaceValidator } from '../../lib/literalValidators';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
+
+/**
+ * Record a revision's spend after its buffer has settled. A failed ledger write
+ * is logged, never thrown: the catch below would otherwise settle a finished
+ * revision as `error`.
+ */
+async function recordReviseSpend(
+	ctx: ActionCtx,
+	tokenUsage: TokenUsage | undefined,
+	modelUsed: string | undefined
+): Promise<void> {
+	try {
+		await recordLlmSpend(ctx, 'postbox_revise_draft', tokenUsage, modelUsed);
+	} catch (error) {
+		logWarn('[reviseDraft] spend not recorded:', error);
+	}
+}
 
 /** Bound each untrusted-ish / trusted input that reaches the model. */
 const REVISE_MAX_INSTRUCTION_CHARS = 2000;
@@ -199,7 +219,7 @@ export const reviseDraft = authedAction({
 					status: 'error',
 					errorMessage: 'The revision came back as tool-call markup. Try again.',
 				});
-				await recordLlmSpend(ctx, 'postbox_revise_draft', result.tokenUsage, result.modelUsed);
+				await recordReviseSpend(ctx, result.tokenUsage, result.modelUsed);
 				return { text: '', injectionFlagged: false, status: 'error' };
 			}
 			const finalText = revised.text.trim();
@@ -217,7 +237,7 @@ export const reviseDraft = authedAction({
 				model: result.modelUsed,
 				tokenUsage: result.tokenUsage,
 			});
-			await recordLlmSpend(ctx, 'postbox_revise_draft', result.tokenUsage, result.modelUsed);
+			await recordReviseSpend(ctx, result.tokenUsage, result.modelUsed);
 			return { text: finalText, injectionFlagged, status: 'complete' };
 		} catch (error) {
 			// FAIL-SOFT: settle the buffer as errored; the client keeps whatever

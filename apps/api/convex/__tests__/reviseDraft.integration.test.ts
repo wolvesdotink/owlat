@@ -5,6 +5,8 @@ import schema from '../schema';
 import { api } from '../_generated/api';
 import { enableFeatures } from './factories';
 import { runLlmStream } from '../lib/llm/dispatch';
+import { recordLlmSpend } from '../analytics/llmUsage';
+import type * as LlmUsageModule from '../analytics/llmUsage';
 
 /**
  * Whole-draft REVISE-by-instruction (mail/ai/reviseDraft.reviseDraft): the action
@@ -53,6 +55,12 @@ vi.mock('../lib/llm/dispatch', async () => {
 	return { ...actual, runLlmStream: vi.fn() };
 });
 
+// The ledger helper, real by default; a test makes one write throw.
+vi.mock('../analytics/llmUsage', async () => {
+	const actual = await vi.importActual<typeof LlmUsageModule>('../analytics/llmUsage');
+	return { ...actual, recordLlmSpend: vi.fn(actual.recordLlmSpend) };
+});
+
 async function makeT() {
 	const t = convexTest(schema, modules);
 	await enableFeatures(t, ['mail.external']);
@@ -63,6 +71,7 @@ async function makeT() {
 beforeEach(() => {
 	sess.user = { userId: 'user-a', role: 'owner' };
 	vi.mocked(runLlmStream).mockReset();
+	vi.mocked(recordLlmSpend).mockClear();
 });
 
 describe('reviseDraft — streaming', () => {
@@ -144,6 +153,40 @@ describe('reviseDraft — streaming', () => {
 		expect(res.injectionFlagged).toBe(true);
 		const buffer = await t.query(api.mail.draftStreamStore.getDraftStream, { streamId });
 		expect(buffer?.injectionFlagged).toBe(true);
+	});
+
+	it('settles a finished revision complete when the spend write throws', async () => {
+		const t = await makeT();
+		await enableFeatures(t, ['ai']);
+
+		vi.mocked(runLlmStream).mockImplementation(async (opts) => {
+			await opts.onTextDelta?.('Shorter now.', 'Shorter now.');
+			return {
+				text: 'Shorter now.',
+				tokenUsage: { promptTokens: 10, completionTokens: 3, totalTokens: 13 },
+				modelUsed: 'test-model',
+				finishReason: 'stop',
+				aborted: false,
+			};
+		});
+		vi.mocked(recordLlmSpend).mockRejectedValueOnce(new Error('ledger unavailable'));
+
+		const streamId = await t.mutation(api.mail.draftStreamStore.createDraftStream, {
+			surface: 'compose',
+		});
+		const res = await t.action(api.mail.ai.reviseDraft.reviseDraft, {
+			streamId,
+			instruction: 'make it shorter',
+			currentDraft: 'A much longer draft than it needs to be.',
+			surface: 'compose',
+		});
+
+		expect(res).toMatchObject({ status: 'complete', text: 'Shorter now.' });
+		const buffer = await t.query(api.mail.draftStreamStore.getDraftStream, { streamId });
+		expect(buffer?.status).toBe('complete');
+		expect(buffer?.text).toBe('Shorter now.');
+		expect(buffer?.errorMessage).toBeFalsy();
+		expect(recordLlmSpend).toHaveBeenCalledTimes(1);
 	});
 
 	it('fails soft: a stream error settles the buffer as error and never throws to the caller', async () => {

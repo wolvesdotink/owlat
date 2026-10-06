@@ -192,7 +192,7 @@ async function seedFlaggedThread(
 							id: 'q1',
 							slotType: 'date',
 							text: 'Which date?',
-							attribution: 'Asked by chris@example.com',
+							origin: { kind: 'email', senderDomain: 'example.com' },
 							answer: { value: 'March 3', at: Date.now() },
 						},
 					],

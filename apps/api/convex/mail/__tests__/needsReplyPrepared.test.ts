@@ -142,7 +142,7 @@ describe('mail.needsReplyPrepared.getPreparedDraft', () => {
 				id: `q-${id}`,
 				slotType: 'attachment',
 				text: 'Which file?',
-				attribution: 'a',
+				origin: { kind: 'email' as const },
 				answerKind: 'file' as const,
 				answer: { value: filename, at: Date.now(), file: { source, id, filename } },
 			});

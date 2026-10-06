@@ -31,11 +31,6 @@ export interface ReplyQueueClarificationQuestion {
 	id: string;
 	slotType: string;
 	text: string;
-	/**
-	 * Legacy English provenance sentence. No longer written; present only on
-	 * questions stored before `origin` existed (utils/clarificationLocale).
-	 */
-	attribution?: string;
 	/** Structured provenance the card's trust line is worded from (utils/clarificationLocale). */
 	origin?: ClarificationOrigin;
 	/** Suggested scoped answers rendered as one-tap chips (multiple choice). */

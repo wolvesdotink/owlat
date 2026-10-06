@@ -147,8 +147,7 @@ describe('mail.needsReply.applyResult', () => {
 							id: 'clarify_0',
 							slotType: 'decision',
 							text: 'Should we approve the refund?',
-							attribution:
-								'Generated from an email from acme.com — Owlat will never ask for your password.',
+							origin: { kind: 'email', senderDomain: 'acme.com' },
 							options: ['Yes', 'No'],
 							translations: [
 								{
@@ -183,6 +182,46 @@ describe('mail.needsReply.applyResult', () => {
 				},
 			]);
 			expect(thread?.needsReplyPendingAt).toBeUndefined();
+		});
+	});
+
+	it("stores a 0.6.10 caller's questions without the legacy attribution sentence (#1224)", async () => {
+		// N-1 shim: a 0.6.10 classifier may still send a question it read before
+		// migration 0066 converted it. The argument accepts the sentence and the
+		// write drops it, so the strict stored schema never sees it.
+		const t = convexTest(schema, modules);
+		const { threadId, messageId } = await seedThread(t);
+		const question = {
+			id: 'clarify_0',
+			slotType: 'decision',
+			text: 'Should we approve the refund?',
+			origin: { kind: 'email' as const, senderDomain: 'acme.com' },
+		};
+
+		await t.mutation(internal.mail.needsReply.applyResult, {
+			threadId,
+			expectedLatestMessageId: messageId,
+			needsReply: {
+				messageId,
+				source: 'heuristic',
+				urgency: 'normal',
+				clarification: {
+					isNeeded: true,
+					questions: [
+						{
+							...question,
+							attribution:
+								'Generated from an email from acme.com — Owlat will never ask for your password.',
+						},
+					],
+					askedAt: 1,
+				},
+			},
+		});
+
+		await t.run(async (ctx) => {
+			const flag = (await ctx.db.get(threadId))?.needsReply;
+			expect(flag?.clarification?.questions).toEqual([question]);
 		});
 	});
 
