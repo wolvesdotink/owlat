@@ -4,7 +4,12 @@
  * Pasting or dropping an image INTO the contenteditable body inserts a visible
  * `<img src="blob:…" data-inline-cid="X">` at the caret; the bytes upload through
  * the composer's attachment path (marked as an inline part with a Content-ID),
- * and the send path later rewrites the `blob:` src to `cid:<contentId>`.
+ * and the send path later rewrites the image to `cid:<contentId>`.
+ *
+ * That `blob:` preview dies with the tab, so the draft stores the image without
+ * a `src` (`serializeComposerBody`) and `fillSources()` puts one back after
+ * every write of the body: this session's preview, else the URL of the row's
+ * inline part (`sources`, #1285), which is what a reopened draft shows.
  *
  * Deleting the image from the body (select + Backspace) drops the pending inline
  * part: `reconcile()` diffs the tracked content-IDs against what's still in the
@@ -14,24 +19,32 @@
  * so the editor component stays under the file-size ratchet and the caret
  * insertion / reconcile logic can be reasoned about in isolation.
  */
-import type { Ref } from 'vue';
+import { watch, type Ref } from 'vue';
+import { fillInlineImageSources } from '~/utils/postboxInlineImageSrc';
 
 export interface InlineImagesOptions {
 	editorRef: Ref<HTMLElement | null>;
 	/** True when pasting/dropping images should embed inline (off for signatures). */
 	enabled: () => boolean;
 	/** Upload an image → contentId + ephemeral preview URL to insert, or null on failure. */
-	embedImage: () => ((file: File) => Promise<{ contentId: string; previewUrl: string } | null>) | undefined;
+	embedImage: () =>
+		| ((file: File) => Promise<{ contentId: string; previewUrl: string } | null>)
+		| undefined;
 	/** Called with the contentId of an inline image removed from the body. */
 	onRemoveEmbeddedImage: () => ((contentId: string) => void) | undefined;
 	/** Re-emit + re-sync the draft after an insertion. */
 	emitContent: () => void;
+	/** Display URLs of the inline parts already on the draft row, by Content-ID. */
+	sources?: () => ReadonlyMap<string, string> | undefined;
 }
 
 export function usePostboxInlineImages(opts: InlineImagesOptions) {
 	// Tracks which inline content-IDs currently live in the editor so a deletion
 	// (the user selects the <img> and hits Backspace) can drop the pending part.
 	const knownInlineCids = new Set<string>();
+	// This session's preview URL per inserted image, for when the body is
+	// written again (the stored form has no src) before the row's URL is known.
+	const previews = new Map<string, string>();
 
 	function active(): boolean {
 		return opts.enabled() && !!opts.embedImage();
@@ -59,6 +72,7 @@ export function usePostboxInlineImages(opts: InlineImagesOptions) {
 			range.selectNodeContents(el);
 			range.collapse(false);
 		}
+		previews.set(contentId, previewUrl);
 		range.insertNode(img);
 		range.setStartAfter(img);
 		range.collapse(true);
@@ -101,6 +115,18 @@ export function usePostboxInlineImages(opts: InlineImagesOptions) {
 	}
 
 	/**
+	 * Give every inline image in the body a src to show: the row part's URL
+	 * once known (it outlives the tab), else this session's preview.
+	 */
+	function fillSources() {
+		const el = opts.editorRef.value;
+		if (!el) return;
+		const stored = opts.sources?.();
+		fillInlineImageSources(el, (cid) => stored?.get(cid) ?? previews.get(cid));
+	}
+	watch(() => opts.sources?.(), fillSources);
+
+	/**
 	 * Handle a paste: if inline images are enabled and the clipboard carries
 	 * image files, embed them and return true (caller should not paste text).
 	 */
@@ -129,5 +155,5 @@ export function usePostboxInlineImages(opts: InlineImagesOptions) {
 		return true;
 	}
 
-	return { handlePaste, handleDrop, reconcile };
+	return { handlePaste, handleDrop, reconcile, fillSources };
 }

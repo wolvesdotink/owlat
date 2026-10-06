@@ -10,7 +10,7 @@
  * plain ref pointing at a contenteditable in happy-dom.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { ref } from 'vue';
+import { nextTick, ref } from 'vue';
 import { usePostboxInlineImages } from '../usePostboxInlineImages';
 
 function imageFile(name = 'a.png'): File {
@@ -22,7 +22,10 @@ function setup(overrides: Partial<Parameters<typeof usePostboxInlineImages>[0]> 
 	el.contentEditable = 'true';
 	document.body.appendChild(el);
 	const editorRef = ref<HTMLElement | null>(el);
-	const embed = vi.fn(async (f: File) => ({ contentId: `cid-${f.name}`, previewUrl: `blob:${f.name}` }));
+	const embed = vi.fn(async (f: File) => ({
+		contentId: `cid-${f.name}`,
+		previewUrl: `blob:${f.name}`,
+	}));
 	const onRemove = vi.fn();
 	const emitContent = vi.fn();
 	const api = usePostboxInlineImages({
@@ -101,6 +104,36 @@ describe('usePostboxInlineImages', () => {
 		} as unknown as ClipboardEvent;
 		expect(api.handlePaste(event)).toBe(false);
 		expect(embed).not.toHaveBeenCalled();
+	});
+
+	it("gives a pasted image its preview back after the body is written again, until the row's URL is known", async () => {
+		const sources = ref<ReadonlyMap<string, string>>(new Map());
+		const { el, api } = setup({ sources: () => sources.value });
+		const event = {
+			clipboardData: { files: [imageFile('shot.png')] },
+			preventDefault: vi.fn(),
+			stopPropagation: vi.fn(),
+		} as unknown as ClipboardEvent;
+		api.handlePaste(event);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		// An external write puts back the stored form, which has no src (#1285).
+		el.innerHTML = '<p><img data-inline-cid="cid-shot.png"></p>';
+		api.fillSources();
+		expect(el.querySelector('img')?.getAttribute('src')).toBe('blob:shot.png');
+
+		// The row part's URL outlives the tab, so it wins once it arrives.
+		sources.value = new Map([['cid-shot.png', 'https://storage.owlat.example/shot']]);
+		await nextTick();
+		expect(el.querySelector('img')?.getAttribute('src')).toBe('https://storage.owlat.example/shot');
+	});
+
+	it('leaves an image it has no URL for as it is', () => {
+		const { el, api } = setup({ sources: () => new Map([['other', 'https://x.example/o']]) });
+		el.innerHTML = '<p><img src="blob:dead" data-inline-cid="unknown"></p>';
+		api.fillSources();
+		expect(el.querySelector('img')?.getAttribute('src')).toBe('blob:dead');
 	});
 
 	it('reconcile prunes the pending part when its <img> is removed from the DOM', async () => {

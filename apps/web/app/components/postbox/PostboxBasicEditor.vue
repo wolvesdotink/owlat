@@ -67,6 +67,11 @@ const props = defineProps<{
 	embedImage?: (file: File) => Promise<{ contentId: string; previewUrl: string } | null>;
 	/** Called with the contentId of an inline image removed from the body. */
 	onRemoveEmbeddedImage?: (contentId: string) => void;
+	/**
+	 * Display URLs of the inline images already on the draft, by Content-ID. The
+	 * saved body keeps no src for them, so a reopened draft shows them from here.
+	 */
+	inlineImageSources?: ReadonlyMap<string, string>;
 	/** Enable the `:shortcode:` emoji picker + ASCII-smiley conversion (opt-in). */
 	emojiShortcodesEnabled?: boolean;
 	/**
@@ -102,6 +107,8 @@ const { isEmpty, activeMarks, syncActiveMarks, emitContent } = usePostboxEditorD
 	// `richText` is defined just below; the getter defers the read past its TDZ.
 	readActiveMarks: () => richText.readActiveMarks(),
 	emit: (value) => emit('update:modelValue', value),
+	// The stored body has no src for an inline image; put one back.
+	onWritten: () => inlineImages.fillSources(),
 });
 
 const richText = useRichText({
@@ -231,6 +238,7 @@ const inlineImages = usePostboxInlineImages({
 	embedImage: () => props.embedImage,
 	onRemoveEmbeddedImage: () => props.onRemoveEmbeddedImage,
 	emitContent,
+	sources: () => props.inlineImageSources,
 });
 
 // `:shortcode:` emoji picker; logic in composable. The sibling ASCII-smiley

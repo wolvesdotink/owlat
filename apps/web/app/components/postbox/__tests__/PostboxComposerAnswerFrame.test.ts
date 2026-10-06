@@ -157,8 +157,16 @@ beforeEach(() => {
 		useNativeFilePicker: () => ({ isDesktop: ref(false), pickNativeFiles: vi.fn() }),
 		useInboxes: () => ({ byId: ref(new Map()) }),
 		useBackendOperation: () => ({ run: vi.fn(async () => ({ ok: true })), isLoading: ref(false) }),
+		usePostboxDraftInlineImages: (draftId: unknown, bodyHtml: unknown) => {
+			inlineImageArgs = [draftId, bodyHtml];
+			return inlineImageSources;
+		},
 	});
 });
+
+/** What the composer's inline-image lookup was handed, and what it answers. */
+let inlineImageArgs: unknown[] = [];
+const inlineImageSources = ref(new Map([['chart@owlat.inline', 'https://storage.example/c']]));
 
 /** The envelope: a stub that can raise the attention flag like the real one. */
 const switchToReplyAll = vi.fn();
@@ -173,7 +181,7 @@ const EnvelopeStub = defineComponent({
 });
 const EditorStub = defineComponent({
 	name: 'PostboxBasicEditor',
-	props: ['modelValue'],
+	props: ['modelValue', 'inlineImageSources'],
 	setup(props, { expose }) {
 		expose({ focus: vi.fn() });
 		return () => h('div', { class: 'postbox-basic-editor', innerHTML: props.modelValue });
@@ -442,6 +450,14 @@ describe('PostboxComposer frame="page" (new mail)', () => {
 		compose.lastSavedAt.value = 1_700_000_000_000;
 		await nextTick();
 		expect(w.emitted('saved')).toHaveLength(1);
+		w.unmount();
+	});
+
+	it("hands the editor the URLs of the draft's inline images (#1285)", () => {
+		const w = mountComposer({ frame: 'page', seed: { mailboxId: 'mbx_1' } });
+		expect(inlineImageArgs[0]).toBe(compose.draftId);
+		expect(inlineImageArgs[1]).toBe(compose.bodyHtml);
+		expect(w.getComponent(EditorStub).props('inlineImageSources')).toBe(inlineImageSources.value);
 		w.unmount();
 	});
 

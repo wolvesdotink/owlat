@@ -112,6 +112,7 @@ const {
 	send,
 	discard,
 } = compose;
+const inlineImageSources = usePostboxDraftInlineImages(activeDraftId, bodyHtml);
 
 // Inline ghost-text autocomplete: gated by the `ai` flag AND the per-user
 // toggle; the subject line is the bounded thread context for the prompt.
@@ -386,6 +387,7 @@ function onKeydown(event: KeyboardEvent) {
 				:inline-images-enabled="true"
 				:embed-image="addInlineImage"
 				:on-remove-embedded-image="removeInlineImage"
+				:inline-image-sources="inlineImageSources"
 				:snippets="savedReplies.editorSnippets.value"
 				:snippet-insert="savedReplies.snippetInsert.value"
 			/>
