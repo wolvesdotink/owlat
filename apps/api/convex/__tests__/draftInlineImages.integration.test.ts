@@ -228,6 +228,9 @@ describe('mail.draftInlineImages.urls', () => {
 		expect(urls[0]!.url).not.toBe(storageUrl);
 		expect(Number(url.searchParams.get('exp'))).toBeGreaterThan(Date.now());
 		expect(Number(url.searchParams.get('exp'))).toBeLessThanOrEqual(Date.now() + HOUR);
+		// The lifetime on the server's clock, which the client schedules renewal from.
+		expect(urls[0]!.expiresInMs).toBeGreaterThan(HOUR - 60_000);
+		expect(urls[0]!.expiresInMs).toBeLessThanOrEqual(HOUR);
 
 		const res = await fetchUrl(t, urls[0]!.url);
 		expect(res.status).toBe(200);

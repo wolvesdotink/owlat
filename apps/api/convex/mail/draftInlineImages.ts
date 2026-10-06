@@ -27,6 +27,23 @@ import { requireMailboxAccess } from './permissions';
 export interface DraftInlineImageUrl {
 	contentId: string;
 	url: string;
+	/**
+	 * How long the URL stays valid, measured on the server's clock at minting.
+	 * The client schedules renewal from this rather than from the `exp` in the
+	 * URL, so a client clock that is off cannot push renewal past the expiry.
+	 * Absent for a URL that does not expire.
+	 */
+	expiresInMs?: number;
+}
+
+/** The `exp` a `/sealed-blob` URL carries, or null for a URL that has none. */
+function expiryOf(url: string): number | null {
+	try {
+		const exp = Number(new URL(url).searchParams.get('exp'));
+		return Number.isFinite(exp) && exp > 0 ? exp : null;
+	} catch {
+		return null;
+	}
 }
 
 interface ReadableInlineImage {
@@ -74,10 +91,17 @@ export const urls = publicAction({
 		);
 		const urls: DraftInlineImageUrl[] = [];
 		for (const part of parts) {
+			const mintedAt = Date.now();
 			const url = await sealedBlobUrl(ctx.storage, part.storageId, part.contentType, {
 				cacheable: true,
 			});
-			if (url) urls.push({ contentId: part.contentId, url });
+			if (!url) continue;
+			const exp = expiryOf(url);
+			urls.push(
+				exp === null
+					? { contentId: part.contentId, url }
+					: { contentId: part.contentId, url, expiresInMs: Math.max(0, exp - mintedAt) }
+			);
 		}
 		return urls;
 	},
