@@ -22,6 +22,10 @@
 			"types": "./src/parse/body.ts",
 			"import": "./src/parse/body.ts"
 		},
+		"./parse/charset": {
+			"types": "./src/parse/charset.ts",
+			"import": "./src/parse/charset.ts"
+		},
 		"./parse/binaryString": {
 			"types": "./src/parse/binaryString.ts",
 			"import": "./src/parse/binaryString.ts"
