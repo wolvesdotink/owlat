@@ -9,9 +9,9 @@
  * (mail-sync ingest, the MTA inbound route) use to record each attachment's
  * `partIndex`, so a stored index always addresses the same leaf here.
  *
- * Attachment leaves are returned in document order. Input should be a binary
- * string (one char per byte, e.g. `new TextDecoder('latin1').decode(bytes)`) so
- * binary parts survive.
+ * Attachment leaves are returned in document order. Input must be a binary
+ * string (one char per byte, from {@link bytesToBinaryString}) so binary parts
+ * survive; `TextDecoder('latin1')` is windows-1252 and changes 0x80-0x9F.
  */
 
 // Directional subpaths only: `/parse/body` pulls in the header, content-type and
@@ -30,8 +30,9 @@ import {
 	type MimeNode,
 } from '@owlat/mail-message/parse/body';
 import { decodeLocated, decodedLength, locateMimeTree } from '@owlat/mail-message/parse/locate';
+import { bytesToBinaryString, binaryStringToBytes } from '@owlat/mail-message/parse/binaryString';
 
-export { decodeEncodedWords };
+export { decodeEncodedWords, bytesToBinaryString, binaryStringToBytes };
 
 export interface ExtractedAttachment {
 	filename: string;

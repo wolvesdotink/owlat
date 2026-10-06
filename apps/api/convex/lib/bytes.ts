@@ -13,29 +13,19 @@
  * both runtimes, so nothing here has to know which one it is in.
  */
 
-/**
- * `String.fromCharCode` takes its arguments on the stack, so a whole multi-MB
- * message would overflow it. Convert in chunks well under any engine's limit.
- */
-const BINARY_STRING_CHUNK = 0x8000;
+import { bytesToBinaryString } from '@owlat/mail-message/parse/binaryString';
 
 /** One encoder for the module — constructing one per call is not free. */
 const ENCODER = new TextEncoder();
 
 /**
- * The bytes as a binary ("latin1") string — one character per byte.
- *
- * This is the shape `atob`/`btoa` speak, and the shape the MIME walker in
- * `@owlat/shared/mailMime` wants so that binary attachment parts survive being
- * handed around as a string.
+ * The bytes as a binary ("latin1") string — one character per byte, exactly
+ * (unlike `TextDecoder('latin1')`, which is windows-1252). This is the shape
+ * `atob`/`btoa` speak, and the shape the MIME walker in `@owlat/shared/mailMime`
+ * wants so that binary attachment parts survive being handed around as a
+ * string. The one implementation lives in `@owlat/mail-message`.
  */
-export function bytesToBinaryString(bytes: Uint8Array): string {
-	let binary = '';
-	for (let offset = 0; offset < bytes.length; offset += BINARY_STRING_CHUNK) {
-		binary += String.fromCharCode(...bytes.subarray(offset, offset + BINARY_STRING_CHUNK));
-	}
-	return binary;
-}
+export { bytesToBinaryString };
 
 /** Standard PADDED base64 of `bytes` — the `Buffer#toString('base64')` shape. */
 export function bytesToBase64(bytes: Uint8Array | ArrayBuffer): string {

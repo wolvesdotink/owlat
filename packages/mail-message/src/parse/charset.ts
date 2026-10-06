@@ -16,6 +16,8 @@
  * corrected cases are pinned in `charset.matrix.test.ts`.
  */
 
+import { bytesToBinaryString } from './binaryString';
+
 /**
  * Legacy/label → canonical `TextDecoder` encoding. Only labels that need
  * normalization are listed; a label already understood by `TextDecoder` is
@@ -90,13 +92,6 @@ export function normalizeCharset(label: string | undefined): string {
 	return CHARSET_ALIASES[effective] ?? effective;
 }
 
-/** Byte-preserving latin1 decode: each byte 0x00–0xFF → U+0000–U+00FF. */
-function latin1Decode(bytes: Uint8Array): string {
-	let out = '';
-	for (let i = 0; i < bytes.length; i++) out += String.fromCharCode(bytes[i]! & 0xff);
-	return out;
-}
-
 /**
  * Decode `bytes` under `label` via a non-fatal `TextDecoder` (malformed
  * sequences become U+FFFD, never a throw). If `TextDecoder` cannot be built for
@@ -106,7 +101,7 @@ function decodeWithLabel(label: string, bytes: Uint8Array): string {
 	try {
 		return new TextDecoder(label, { fatal: false, ignoreBOM: false }).decode(bytes);
 	} catch {
-		return latin1Decode(bytes);
+		return bytesToBinaryString(bytes);
 	}
 }
 

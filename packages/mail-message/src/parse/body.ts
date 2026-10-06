@@ -1,7 +1,7 @@
 /**
  * MIME part-tree assembly: parse a raw RFC 822 message (carried as a binary
- * string — one char per byte, e.g. `new TextDecoder('latin1').decode(bytes)`)
- * into a tree of {@link MimeNode}s, then flatten it into the `text` / `html`
+ * string — one char per byte, from `bytesToBinaryString` in `./binaryString`;
+ * never `TextDecoder('latin1')`, which is windows-1252) into a tree of {@link MimeNode}s, then flatten it into the `text` / `html`
  * bodies mailparser exposes.
  *
  * The tree walker is the single traversal shared with `attachments.ts` so the

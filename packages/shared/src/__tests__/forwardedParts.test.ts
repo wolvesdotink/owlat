@@ -1,25 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync, globSync } from 'node:fs';
 import { join } from 'node:path';
-import { extractAttachments, locateForwardedParts } from '../mailMime';
-import { isAttachmentPart, walkLeaves } from '@owlat/mail-message/parse/body';
-import { locateMimeTree } from '@owlat/mail-message/parse/locate';
-
-/** The part indexes whose raw bodies hold bytes in 0x80-0x9F. */
-function c1Bodies(raw: Uint8Array): Set<string> {
-	const { root, bodies } = locateMimeTree(raw);
-	const found = new Set<string>();
-	let index = 0;
-	walkLeaves(root, (leaf) => {
-		if (!isAttachmentPart(leaf)) return;
-		const body = bodies.get(leaf);
-		if (body && raw.subarray(body.start, body.end).some((b) => b >= 0x80 && b <= 0x9f)) {
-			found.add(String(index));
-		}
-		index++;
-	});
-	return found;
-}
+import { bytesToBinaryString, extractAttachments, locateForwardedParts } from '../mailMime';
 
 /** The forward's parts of a binary-string message, each decoded. */
 function forwardedParts(text: string) {
@@ -151,25 +133,18 @@ describe('locateForwardedParts (#1257): what a forward carries, picked from the 
 		expect(files.length).toBeGreaterThan(50);
 		for (const file of files) {
 			const raw = new Uint8Array(readFileSync(join(root, file)));
-			const text = new TextDecoder('latin1').decode(raw);
+			const text = bytesToBinaryString(raw);
 			const expected = extractAttachments(text).flatMap((part, index) =>
 				part.disposition === 'attachment'
 					? [{ partIndex: String(index), filename: part.filename, bytes: [...part.bytes] }]
 					: []
 			);
-			// A body holding bytes in 0x80-0x9F decodes differently on the string
-			// path (windows-1252); only that body's length is compared.
-			const c1 = c1Bodies(raw);
 			const actual = locateForwardedParts(raw).parts.map(({ partIndex, filename, decode }) => ({
 				partIndex,
 				filename,
 				bytes: [...decode()],
 			}));
-			const comparable = (parts: typeof actual) =>
-				parts.map((part) =>
-					c1.has(part.partIndex) ? { ...part, bytes: part.bytes.length } : part
-				);
-			expect(comparable(actual), file).toEqual(comparable(expected));
+			expect(actual, file).toEqual(expected);
 		}
 	});
 });

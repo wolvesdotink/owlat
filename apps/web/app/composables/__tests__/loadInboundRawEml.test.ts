@@ -4,8 +4,9 @@
  * reader can extract an attachment out of it client-side.
  *
  * Proven here:
- *   - a successful fetch returns the body decoded latin1, so binary parts
- *     survive the trip through a string
+ *   - a successful fetch returns the body as a binary string (one char per
+ *     byte, exactly), so binary and 8-bit parts survive the trip through a
+ *     string
  *   - a second call for the same message does NOT re-issue the action
  *   - a null URL — the fail-closed case when the instance has a key but no
  *     proxy origin, or when the bytes were swept — resolves to null instead of
@@ -19,7 +20,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { getFunctionName } from 'convex/server';
 import { api } from '@owlat/api';
-import { extractAttachmentAt } from '@owlat/shared/mailMime';
+import { extractAttachmentAt, extractFirstPartByType } from '@owlat/shared/mailMime';
 
 import { loadInboundRawEml } from '../loadInboundRawEml';
 
@@ -154,5 +155,41 @@ describe('loadInboundRawEml', () => {
 		expect(part!.filename).toBe('b.txt');
 		// The trailing 0xFF is the point: a UTF-8 decode would have replaced it.
 		expect(Array.from(part!.bytes)).toEqual([0x73, 0x65, 0x63, 0x6f, 0x6e, 0x64, 0xff]);
+	});
+
+	it('keeps bytes 0x80-0x9F of an 8-bit or binary part exactly (#1279)', async () => {
+		// `TextDecoder('latin1')` is windows-1252: 0x80 became U+20AC, and the
+		// extractor's low byte of that is 0xAC.
+		const binary = [0x00, 0x41, 0x80, 0x99, 0x9f, 0xa0, 0xff];
+		const encoder = new TextEncoder();
+		const message = Uint8Array.from([
+			...encoder.encode(
+				[
+					'Content-Type: multipart/mixed; boundary="b"',
+					'',
+					'--b',
+					'Content-Type: text/plain; charset=utf-8',
+					'Content-Transfer-Encoding: 8bit',
+					'',
+					'Price — “quoted” 5€',
+					'--b',
+					'Content-Type: application/octet-stream; name="blob.bin"',
+					'Content-Disposition: attachment; filename="blob.bin"',
+					'Content-Transfer-Encoding: binary',
+					'',
+					'',
+				].join('\r\n')
+			),
+			...binary,
+			...encoder.encode('\r\n--b--\r\n'),
+		]);
+		fetchBody = async () => message.buffer;
+
+		const body = await loadInboundRawEml('msg_binary');
+
+		expect(Array.from(body!, (c) => c.charCodeAt(0))).toEqual([...message]);
+		expect(Array.from(extractAttachmentAt(body!, '0', 'blob.bin')!.bytes)).toEqual(binary);
+		const text = extractFirstPartByType(body!, 'text/plain')!;
+		expect(new TextDecoder().decode(text.bytes)).toBe('Price — “quoted” 5€');
 	});
 });
