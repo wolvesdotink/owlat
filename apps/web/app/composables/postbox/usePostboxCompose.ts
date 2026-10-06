@@ -80,8 +80,9 @@ export interface ComposerSeed extends Omit<MailboxComposerTarget, 'kind'> {
 	 * payload (usePostboxOfflineOutbox).
 	 */
 	prefillAttachments?: ComposerAttachment[];
-	/** Clone this message's attachments onto the new draft (Forward). */
+	/** Forward: the new row owes this message's parts (those named, else every file part). */
 	forwardAttachmentsFromMessageId?: Id<'mailMessages'>;
+	forwardAttachmentParts?: Array<{ partIndex: string; filename: string }>;
 	/** Attach a file the app generated (an RSVP reply); the new row owes it until then. */
 	attachGenerated?: GeneratedAttachment;
 	/** Full-mode blocks, the editor mode and the reminder, for a seed carrying a whole composition. */
@@ -397,8 +398,7 @@ export function usePostboxCompose(seed: ComposerSeed, options: ComposeOptions = 
 
 	const canSend = computed(() => {
 		// Never let a send fire while an attachment is still on its way to the row
-		// (an upload in flight, or a file the open expects that is not there yet):
-		// the send would silently drop it from the outgoing message.
+		// (an upload in flight, a file the draft owes): it would go out without it.
 		if (isUploading.value) return false;
 		// A reopened draft that has not loaded would send (or queue) a snapshot
 		// of empty stand-ins; the draft notice says why Send is waiting.

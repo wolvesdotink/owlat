@@ -12,13 +12,19 @@
  *
  *  - `drafts.create` writes the owed list in the mutation that creates the row,
  *    so no draft exists without it. A generated file is stored whole (it cannot
- *    be made again, so it is bounded); a forward names the message and part.
+ *    be made again, so it is bounded); a forward names the message and each
+ *    part (`isForwardedPart` picks them). A forwarded message that is already
+ *    gone still owes its parts; they stay unreadable until removed.
  *  - `fulfil` (any tab, any number of times) copies each owed file onto the
- *    draft on the server. `bindExpected` settles one key exactly once: a second
- *    copy of a settled or removed key is refused and its blob deleted.
- *  - `remove` is the person taking a file out: the key is settled as removed,
- *    and a copy that already landed for it is removed with it, so a copy still
- *    in flight has nothing to come back to.
+ *    draft on the server. Each copy is receipted as an unclaimed upload the
+ *    moment it is stored (`stageCopy`), so one that is never bound is deleted
+ *    by the upload sweep. `bindExpected` settles one key exactly once by
+ *    binding that receipt; a second copy of a settled or removed key is
+ *    refused and dropped.
+ *  - Taking a file out settles it as removed, on every path: `remove` here
+ *    (which also takes out a copy that already landed), `drafts.removeAttachment`
+ *    and share-as-link (`withoutAttachment`). A copy still in flight then has
+ *    nothing to come back to.
  *  - `drafts.send` refuses while a file is owed (`DRAFT_ATTACHMENTS_OWED`).
  *
  * A file that cannot be copied (its message is gone or not readable by this
@@ -31,15 +37,27 @@ import { internalQuery, type ActionCtx, type MutationCtx } from '../_generated/s
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
-import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { authedAction } from '../lib/authedFunctions';
 import { postboxMutation } from './_helpers';
 import { requireMailboxAccess } from './permissions';
 import { assertStateIs } from './draftLifecycle/reducers';
 import { pickStoredPart } from './messageParts';
-import { deleteOwnedUpload, storedFileSize } from '../storage/uploads';
+import {
+	consumeUpload,
+	deleteOwnedUpload,
+	dropUnclaimedUpload,
+	stageServerUpload,
+	storedFileSize,
+} from '../storage/uploads';
 import { getMutationContext } from '../lib/sessionOrganization';
 import { openMessageBody, sealBodyAtWrite } from '../lib/messageBody';
+import { openStoredInlineBody } from '../lib/messageBodyStore';
+import {
+	ATTACHMENT_COMPOSE_LIMITS,
+	MAX_ATTACHMENT_BYTES,
+	isForwardedPart,
+	referencedContentIds,
+} from '@owlat/shared/attachments';
 import {
 	type existingAttachmentBytesValidator,
 	readExistingAttachmentBytes,
@@ -54,56 +72,97 @@ type ExpectedAttachment = Infer<typeof mailDraftExpectedAttachmentValidator>;
 type ExpectedAttachmentRequest = Infer<typeof expectedAttachmentRequestValidator>;
 type ExistingAttachmentBytes = Infer<typeof existingAttachmentBytesValidator>;
 
-/** A generated file is kept whole on the row while it is owed. An RSVP is a few KB. */
-export const MAX_GENERATED_ATTACHMENT_CHARS = 64 * 1024;
-/** Owed files one draft may list (a forward of a message with very many parts). */
-const MAX_EXPECTED_ATTACHMENTS = 50;
+/** A generated file is kept whole on the row while it is owed (UTF-8 bytes). An RSVP is a few KB. */
+export const MAX_GENERATED_ATTACHMENT_BYTES = 64 * 1024;
+/**
+ * Owed files one draft may list. The MIME parser keeps at most 1000 parts of a
+ * message, and an entry is a few hundred bytes (its filename capped at 255), so
+ * the list stays far below the row size limit. Past it the open is refused
+ * whole, never cut short.
+ */
+const MAX_EXPECTED_ATTACHMENTS = 1000;
+/** The part key of a forward whose message was gone before its parts were known. */
+const WHOLE_MESSAGE_PART = '';
 
 /** Why an owed file was not attached this time; it stays owed. */
 export type FulfilFailure = 'unreadable' | 'tooLarge' | 'tooMany' | 'totalTooLarge' | 'failed';
 
+/** One forwarded part the draft owes. */
+function forwardEntry(
+	messageId: Id<'mailMessages'>,
+	part: { partIndex: string; filename: string; contentType?: string; size?: number }
+): ExpectedAttachment {
+	return {
+		key: `forward:${messageId}:${part.partIndex}`,
+		filename: part.filename.slice(0, 255),
+		contentType: part.contentType ?? 'application/octet-stream',
+		size: part.size ?? 0,
+		source: { kind: 'forward', messageId, partIndex: part.partIndex },
+		state: 'owed',
+	};
+}
+
 /**
- * The owed list for a new draft. A forward lists the message's file parts (not
- * the inline images its body shows); the caller must be able to read it.
+ * The parts a forward owes. The composer names them (it picks with
+ * `isForwardedPart` against the whole body, which may live in a blob a
+ * mutation cannot read); without that, the same rule runs here against the
+ * inline body. A message that is gone still owes what was asked for, as
+ * unreadable entries: the person sees them and removes them, the forward is
+ * never sent short without a word.
  */
+async function forwardEntries(
+	ctx: MutationCtx,
+	request: Extract<ExpectedAttachmentRequest, { kind: 'forward' }>
+): Promise<ExpectedAttachment[]> {
+	const message = await ctx.db.get(request.messageId);
+	if (!message) {
+		const asked = request.parts ?? [{ partIndex: WHOLE_MESSAGE_PART, filename: 'attachments' }];
+		return asked.map((part) => forwardEntry(request.messageId, part));
+	}
+	const readable = await requireMailboxAccess(ctx, message.mailboxId);
+	if (!readable.ok) throwForbidden('Message not accessible');
+	if (request.parts) {
+		return request.parts.map((asked) => {
+			const known = message.attachments.find((part) => part.partIndex === asked.partIndex);
+			return forwardEntry(message._id, known ?? asked);
+		});
+	}
+	const { html } = await openStoredInlineBody(ctx.db, message);
+	const referenced = referencedContentIds(html ?? '');
+	return message.attachments
+		.filter((part) => isForwardedPart(part, referenced))
+		.map((part) => forwardEntry(message._id, part));
+}
+
+/** The owed list for a new draft; the caller must be able to read a forwarded message. */
 export async function expectedAttachmentsFor(
 	ctx: MutationCtx,
 	requests: readonly ExpectedAttachmentRequest[]
 ): Promise<ExpectedAttachment[]> {
 	const owed: ExpectedAttachment[] = [];
 	for (const [index, request] of requests.entries()) {
-		if (request.kind === 'generated') {
-			if (request.content.length > MAX_GENERATED_ATTACHMENT_CHARS) {
-				throwInvalidInput('The generated attachment is too large');
-			}
-			owed.push({
-				key: `generated:${index}`,
-				filename: request.filename.slice(0, 255),
-				contentType: request.contentType,
-				size: new TextEncoder().encode(request.content).byteLength,
-				// Sealed at rest like the draft's body: an RSVP names the event.
-				source: { kind: 'generated', content: await sealBodyAtWrite(request.content) },
-				state: 'owed',
-			});
+		if (request.kind === 'forward') {
+			owed.push(...(await forwardEntries(ctx, request)));
 			continue;
 		}
-		const message = await ctx.db.get(request.messageId);
-		if (!message) continue;
-		const readable = await requireMailboxAccess(ctx, message.mailboxId);
-		if (!readable.ok) throwForbidden('Message not accessible');
-		for (const part of message.attachments) {
-			if (part.contentId) continue;
-			owed.push({
-				key: `forward:${message._id}:${part.partIndex}`,
-				filename: part.filename.slice(0, 255),
-				contentType: part.contentType,
-				size: part.size,
-				source: { kind: 'forward', messageId: message._id, partIndex: part.partIndex },
-				state: 'owed',
-			});
+		const size = new TextEncoder().encode(request.content).byteLength;
+		if (size > MAX_GENERATED_ATTACHMENT_BYTES) {
+			throwInvalidInput('The generated attachment is too large');
 		}
+		owed.push({
+			key: `generated:${index}`,
+			filename: request.filename.slice(0, 255),
+			contentType: request.contentType,
+			size,
+			// Sealed at rest like the draft's body: an RSVP names the event.
+			source: { kind: 'generated', content: await sealBodyAtWrite(request.content) },
+			state: 'owed',
+		});
 	}
-	return owed.slice(0, MAX_EXPECTED_ATTACHMENTS);
+	if (owed.length > MAX_EXPECTED_ATTACHMENTS) {
+		throwInvalidInput('This message has too many attachments to forward');
+	}
+	return owed;
 }
 
 /** `drafts.send`: nothing may go out while the draft still owes a file. */
@@ -135,6 +194,28 @@ function settled(
 		state,
 		storageId,
 		source: entry.source.kind === 'generated' ? { kind: 'generated' } : entry.source,
+	};
+}
+
+/**
+ * The draft without one attachment: every path that takes a file out (remove,
+ * share as a link) also settles an owed file that blob carried as removed, so
+ * no tab shows it again and nothing attaches it again.
+ */
+export function withoutAttachment(
+	draft: Pick<Doc<'mailDrafts'>, 'attachments' | 'expectedAttachments'>,
+	storageId: Id<'_storage'>
+): Pick<Doc<'mailDrafts'>, 'attachments' | 'expectedAttachments'> {
+	const entries = draft.expectedAttachments;
+	return {
+		attachments: draft.attachments.filter((a) => a.storageId !== storageId),
+		...(entries?.some((e) => e.storageId === storageId)
+			? {
+					expectedAttachments: entries.map((e) =>
+						e.storageId === storageId ? settled(e, 'removed') : e
+					),
+				}
+			: {}),
 	};
 }
 
@@ -206,6 +287,26 @@ export const owedFiles = internalQuery({
 });
 
 /**
+ * Receipt a copy right after it is stored, as an unclaimed upload: if it is
+ * never bound (the action dies, deleting a losing copy fails), the upload
+ * sweep deletes it like any upload nobody attached.
+ */
+export const stageCopy = internalMutation({
+	args: { storageId: v.id('_storage') },
+	handler: async (ctx, args) => {
+		await stageServerUpload(ctx, args.storageId, await getMutationContext(ctx));
+	},
+});
+
+/** Delete a copy that was not bound (it lost, or a limit refused it), with its receipt. */
+export const dropCopy = internalMutation({
+	args: { storageId: v.id('_storage') },
+	handler: async (ctx, args) => {
+		await dropUnclaimedUpload(ctx, args.storageId);
+	},
+});
+
+/**
  * Put a copied blob on the draft for one owed key, exactly once. `taken` means
  * the key was already settled (another tab attached it, or the person removed
  * it): the caller deletes the blob. A compose limit leaves the key owed.
@@ -237,15 +338,10 @@ export const bindExpected = internalMutation({
 		) {
 			return { outcome: 'totalTooLarge' };
 		}
-		// Bound to the draft like an upload, so discard and send free it.
+		// The staged receipt binds to the draft like an upload, so discard and
+		// send free it.
 		const session = await getMutationContext(ctx);
-		await ctx.db.insert('storageUploads', {
-			userId: session.userId,
-			organizationId: session.activeOrganizationId,
-			status: 'bound',
-			storageId: args.storageId,
-			resourceKey: `mailDrafts:${args.draftId}`,
-		});
+		await consumeUpload(ctx, args.storageId, session, `mailDrafts:${args.draftId}`);
 		await ctx.db.patch(args.draftId, {
 			attachments: [
 				...draft.attachments,
@@ -300,6 +396,14 @@ export async function fulfilExpectedAttachments(
 		const storageId = await ctx.storage.store(
 			new Blob([bytes as BlobPart], { type: file.contentType })
 		);
+		try {
+			await ctx.runMutation(internal.mail.draftExpectedAttachments.stageCopy, { storageId });
+		} catch {
+			// Not receipted, so nothing else would find it: delete it now.
+			await ctx.storage.delete(storageId);
+			failed.push({ key: file.key, filename: file.filename, reason: 'failed' });
+			continue;
+		}
 		let outcome: 'bound' | 'taken' | 'tooLarge' | 'tooMany' | 'totalTooLarge' | 'failed';
 		try {
 			({ outcome } = await ctx.runMutation(internal.mail.draftExpectedAttachments.bindExpected, {
@@ -311,7 +415,10 @@ export async function fulfilExpectedAttachments(
 			outcome = 'failed';
 		}
 		if (outcome === 'bound') continue;
-		await ctx.storage.delete(storageId);
+		// The receipt stays until this lands; failing that, the upload sweep takes it.
+		await ctx
+			.runMutation(internal.mail.draftExpectedAttachments.dropCopy, { storageId })
+			.catch(() => undefined);
 		if (outcome !== 'taken')
 			failed.push({ key: file.key, filename: file.filename, reason: outcome });
 	}
@@ -344,16 +451,21 @@ export const remove = postboxMutation({
 		const entry = entries.find((e) => e.key === args.key);
 		if (!entry || entry.state === 'removed') return { ok: true };
 		const landed = entry.storageId;
+		if (landed) {
+			// It already landed: take it out the way the attachment chip does.
+			await ctx.db.patch(args.draftId, {
+				...withoutAttachment(draft, landed),
+				lastEditedAt: Date.now(),
+			});
+			if (draft.attachments.some((a) => a.storageId === landed)) {
+				await deleteOwnedUpload(ctx, landed, `mailDrafts:${args.draftId}`);
+			}
+			return { ok: true };
+		}
 		await ctx.db.patch(args.draftId, {
-			attachments: landed
-				? draft.attachments.filter((a) => a.storageId !== landed)
-				: draft.attachments,
 			expectedAttachments: entries.map((e) => (e.key === args.key ? settled(e, 'removed') : e)),
 			lastEditedAt: Date.now(),
 		});
-		if (landed && draft.attachments.some((a) => a.storageId === landed)) {
-			await deleteOwnedUpload(ctx, landed, `mailDrafts:${args.draftId}`);
-		}
 		return { ok: true };
 	},
 });

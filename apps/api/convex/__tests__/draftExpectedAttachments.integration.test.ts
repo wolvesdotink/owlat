@@ -83,6 +83,7 @@ async function forwardSource(t: Harness, mailboxId: Id<'mailboxes'>, stored = tr
 	await seedFolder(t, mailboxId, 'inbox');
 	const messageId = await seedMessage(t, mailboxId, {
 		subject: 'Q3 numbers',
+		htmlBodyInline: '<p>Numbers attached.</p><img src="cid:logo@x">',
 		attachments: [
 			{ filename: 'numbers.pdf', contentType: 'application/pdf', size: 12, partIndex: '0' },
 			{
@@ -214,6 +215,47 @@ describe('a draft owes its expected attachments', () => {
 		expect(await t.run(async (ctx) => (await ctx.storage.get(landed)) !== null)).toBe(false);
 	});
 
+	it('owes a forward its files, also one with a Content-ID the body does not show', async () => {
+		const t = convexTest();
+		const mailboxId = await seedMailbox(t);
+		await seedFolder(t, mailboxId, 'inbox');
+		const messageId = await seedMessage(t, mailboxId, {
+			htmlBodyInline: '<p>See the invoice.</p><img src="cid:logo@x">',
+			attachments: [
+				{
+					filename: 'invoice.pdf',
+					contentType: 'application/pdf',
+					size: 9,
+					partIndex: '0',
+					contentId: '<invoice@x>',
+				},
+				{
+					filename: 'logo.png',
+					contentType: 'image/png',
+					size: 4,
+					partIndex: '1',
+					contentId: '<logo@x>',
+				},
+			],
+		});
+		// The composer names the parts it picked; without that, the server picks the same way.
+		const named = await t.mutation(api.mail.drafts.create, {
+			mailboxId,
+			expectedAttachments: [
+				{ kind: 'forward', messageId, parts: [{ partIndex: '0', filename: 'invoice.pdf' }] },
+			],
+		});
+		const derived = await t.mutation(api.mail.drafts.create, {
+			mailboxId,
+			expectedAttachments: [{ kind: 'forward', messageId }],
+		});
+		for (const { draftId } of [named, derived]) {
+			expect((await row(t, draftId))?.expectedAttachments?.map((e) => e.filename)).toEqual([
+				'invoice.pdf',
+			]);
+		}
+	});
+
 	it('owes a forward its file parts, not its inline images, and copies them on the server', async () => {
 		const t = convexTest();
 		const mailboxId = await seedMailbox(t);
@@ -278,6 +320,133 @@ describe('a draft owes its expected attachments', () => {
 		expect((await row(t, draftId))?.expectedAttachments?.[0]?.state).toBe('owed');
 	});
 
+	it('still owes the files of a forwarded message that was deleted before the draft existed', async () => {
+		const t = convexTest();
+		const mailboxId = await seedMailbox(t);
+		const messageId = await forwardSource(t, mailboxId);
+		await t.run((ctx) => ctx.db.delete(messageId));
+		const { draftId } = await t.mutation(api.mail.drafts.create, {
+			mailboxId,
+			expectedAttachments: [
+				{ kind: 'forward', messageId, parts: [{ partIndex: '0', filename: 'numbers.pdf' }] },
+			],
+		});
+		expect(await t.action(api.mail.draftExpectedAttachments.fulfil, { draftId })).toEqual({
+			failed: [{ key: `forward:${messageId}:0`, filename: 'numbers.pdf', reason: 'unreadable' }],
+		});
+		expect(await sendError(t, draftId)).toMatch(/still being added/);
+		await t.mutation(api.mail.draftExpectedAttachments.remove, {
+			draftId,
+			key: `forward:${messageId}:0`,
+		});
+		expect(await sendError(t, draftId)).not.toMatch(/still being added/);
+	});
+
+	it('owes every forwarded part: what a compose limit refuses stays owed, never cut', async () => {
+		const t = convexTest();
+		const mailboxId = await seedMailbox(t);
+		await seedFolder(t, mailboxId, 'inbox');
+		const count = ATTACHMENT_COMPOSE_LIMITS.maxCount + 2;
+		const parts = Array.from({ length: count }, (_, i) => ({
+			filename: `part-${i}.txt`,
+			contentType: 'text/plain',
+			size: 2,
+			partIndex: String(i),
+		}));
+		const messageId = await seedMessage(t, mailboxId, { attachments: parts });
+		await t.run(async (ctx) => {
+			const message = (await ctx.db.get(messageId))!;
+			const stored = [];
+			for (const part of parts) {
+				const storageId = await ctx.storage.store(new Blob([`p${part.partIndex}`]));
+				stored.push({ ...part, storageId });
+			}
+			await ctx.db.insert('mailMessageParts', {
+				rawStorageId: message.rawStorageId,
+				status: 'stored',
+				parts: stored.map(({ partIndex: _p, ...rest }) => rest),
+				createdAt: Date.now(),
+			});
+		});
+		const { draftId } = await t.mutation(api.mail.drafts.create, {
+			mailboxId,
+			expectedAttachments: [{ kind: 'forward', messageId }],
+		});
+		expect((await row(t, draftId))?.expectedAttachments).toHaveLength(count);
+		const { failed } = await t.action(api.mail.draftExpectedAttachments.fulfil, { draftId });
+		expect(failed.map((f) => f.reason)).toEqual(['tooMany', 'tooMany']);
+		const draft = (await row(t, draftId))!;
+		expect(draft.attachments).toHaveLength(ATTACHMENT_COMPOSE_LIMITS.maxCount);
+		expect(draft.expectedAttachments?.filter((e) => e.state === 'owed')).toHaveLength(2);
+	});
+
+	it('refuses an open owing more parts than any message can hold, whole', async () => {
+		const t = convexTest();
+		const mailboxId = await seedMailbox(t);
+		await seedFolder(t, mailboxId, 'inbox');
+		const messageId = await seedMessage(t, mailboxId);
+		const parts = Array.from({ length: 1001 }, (_, i) => ({
+			partIndex: String(i),
+			filename: `p${i}`,
+		}));
+		await expect(
+			t.mutation(api.mail.drafts.create, {
+				mailboxId,
+				expectedAttachments: [{ kind: 'forward', messageId, parts }],
+			})
+		).rejects.toThrow(/too many attachments/);
+	});
+
+	it('settles an attached file as removed when its chip is removed like any attachment', async () => {
+		const t = convexTest();
+		const { draftId } = await rsvpDraft(t);
+		await t.action(api.mail.draftExpectedAttachments.fulfil, { draftId });
+		const landed = (await row(t, draftId))!.attachments[0]!.storageId;
+		await t.mutation(api.mail.drafts.removeAttachment, { draftId, storageId: landed });
+		const draft = (await row(t, draftId))!;
+		expect(draft.attachments).toEqual([]);
+		expect(draft.expectedAttachments?.[0]?.state).toBe('removed');
+		// Nothing brings it back.
+		await t.action(api.mail.draftExpectedAttachments.fulfil, { draftId });
+		expect((await row(t, draftId))!.attachments).toEqual([]);
+	});
+
+	it('receipts each server copy, so one that is never bound is swept like an unclaimed upload', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			const t = convexTest();
+			const { draftId } = await rsvpDraft(t);
+			// The action stored and staged a copy, then died before binding it.
+			const orphan = await t.run((ctx) => ctx.storage.store(new Blob(['orphan'])));
+			await t.mutation(internal.mail.draftExpectedAttachments.stageCopy, { storageId: orphan });
+			// A normal fulfil binds its own copy through the same receipt.
+			await t.action(api.mail.draftExpectedAttachments.fulfil, { draftId });
+			const bound = (await row(t, draftId))!.attachments[0]!.storageId;
+			const receipt = (storageId: Id<'_storage'>) =>
+				t.run((ctx) =>
+					ctx.db
+						.query('storageUploads')
+						.withIndex('by_storage', (q) => q.eq('storageId', storageId))
+						.unique()
+				);
+			expect(await receipt(bound)).toMatchObject({
+				status: 'bound',
+				resourceKey: `mailDrafts:${draftId}`,
+			});
+			expect(await receipt(orphan)).toMatchObject({ status: 'uploaded' });
+
+			vi.setSystemTime(Date.now() + 2 * 60 * 60 * 1000);
+			await t.mutation(internal.storage.uploads.cleanup, {});
+			const exists = (storageId: Id<'_storage'>) =>
+				t.run(async (ctx) => (await ctx.storage.get(storageId)) !== null);
+			expect(await exists(orphan)).toBe(false);
+			expect(await receipt(orphan)).toBeNull();
+			expect(await exists(bound)).toBe(true);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it('refuses a forward of a message the caller cannot read, and an oversized generated file', async () => {
 		const t = convexTest();
 		const mailboxId = await seedMailbox(t);
@@ -299,6 +468,18 @@ describe('a draft owes its expected attachments', () => {
 				expectedAttachments: [{ ...RSVP, content: 'x'.repeat(64 * 1024 + 1) }],
 			})
 		).rejects.toThrow(/too large/);
+		// The bound is UTF-8 bytes: 64 Ki characters of `é` are 128 KiB.
+		await expect(
+			t.mutation(api.mail.drafts.create, {
+				mailboxId,
+				expectedAttachments: [{ ...RSVP, content: 'é'.repeat(64 * 1024) }],
+			})
+		).rejects.toThrow(/too large/);
+		const fits = await t.mutation(api.mail.drafts.create, {
+			mailboxId,
+			expectedAttachments: [{ ...RSVP, content: 'é'.repeat(32 * 1024) }],
+		});
+		expect((await row(t, fits.draftId))?.expectedAttachments?.[0]?.size).toBe(64 * 1024);
 	});
 
 	it('owes nothing for a draft created without the argument (the previous web app)', async () => {

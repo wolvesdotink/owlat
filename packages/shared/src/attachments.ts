@@ -62,3 +62,37 @@ export const MAX_LIBRARY_FILE_BYTES = 50 * 1024 * 1024;
 
 /** The library file ceiling expressed in whole MB, for user-facing copy. */
 export const MAX_LIBRARY_FILE_MB = MAX_LIBRARY_FILE_BYTES / 1024 / 1024;
+
+/** A Content-ID compared the way a `cid:` reference names it: no angle brackets, any case. */
+function normalizeContentId(id: string): string {
+	return id.trim().replace(/^<|>$/g, '').toLowerCase();
+}
+
+/** The Content-IDs an HTML body shows inline through `cid:` references. */
+export function referencedContentIds(html: string): Set<string> {
+	const ids = new Set<string>();
+	for (const match of html.matchAll(/cid:([^"'\s)>]+)/gi)) {
+		let id = match[1] ?? '';
+		try {
+			id = decodeURIComponent(id);
+		} catch {
+			// A malformed escape names the id as written.
+		}
+		ids.add(normalizeContentId(id));
+	}
+	return ids;
+}
+
+/**
+ * Whether a received part is a file a forward carries: a part marked as an
+ * attachment always is, and so is any other part except an inline image the
+ * body shows (a `Content-ID` its HTML references). The composer picks a
+ * forward's parts with this; the draft then owes exactly those.
+ */
+export function isForwardedPart(
+	part: { contentId?: string; disposition?: string },
+	referenced: ReadonlySet<string>
+): boolean {
+	if (part.disposition === 'attachment') return true;
+	return !part.contentId || !referenced.has(normalizeContentId(part.contentId));
+}

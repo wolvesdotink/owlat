@@ -136,10 +136,14 @@ function owedFor(requests: Array<Record<string, unknown>>): Owed[] {
 			];
 		}
 		const messageId = request['messageId'] as keyof typeof FORWARDED;
-		return FORWARDED[messageId]
-			.filter((part) => !('contentId' in part))
-			.map((part, i) => ({
-				key: `forward:${messageId}:${i}`,
+		const named = request['parts'] as { partIndex: string }[] | undefined;
+		const parts = FORWARDED[messageId].map((part, i) => ({ ...part, partIndex: String(i) }));
+		return parts
+			.filter((part) =>
+				named ? named.some((n) => n.partIndex === part.partIndex) : !('contentId' in part)
+			)
+			.map((part) => ({
+				key: `forward:${messageId}:${part.partIndex}`,
 				filename: part.filename,
 				contentType: part.contentType,
 				size: part.size,
@@ -203,7 +207,19 @@ const operations: Record<string, (args: never) => Promise<unknown>> = {
 	'expected.remove': async (args: { key: string }) => {
 		const entry = row!.expectedAttachments!.find((e) => e.key === args.key)!;
 		row!.attachments = row!.attachments.filter((a) => a.storageId !== entry.storageId);
+		// As the server settles it: removed, without the blob it pointed at.
 		entry.state = 'removed';
+		delete entry.storageId;
+		publish();
+		return { ok: true, result: { ok: true } };
+	},
+	'drafts.removeAttachment': async (args: { storageId: string }) => {
+		row!.attachments = row!.attachments.filter((a) => a.storageId !== args.storageId);
+		for (const entry of row!.expectedAttachments ?? []) {
+			if (entry.storageId !== args.storageId) continue;
+			entry.state = 'removed';
+			delete entry.storageId;
+		}
 		publish();
 		return { ok: true, result: { ok: true } };
 	},
@@ -425,6 +441,28 @@ describe('compose page — files the draft owes, across reloads and tabs (#1257)
 			expect(tab.uploads.value).toEqual([]);
 			expect(tab.canSend.value).toBe(true);
 		}
+	});
+
+	it('drops a file another tab removed, so no tab offers what the send would not carry', async () => {
+		const { first } = await acceptInvite();
+		const tabA = current();
+		first.resolve();
+		await flushPromises();
+		secondTab();
+		await flushPromises();
+		const tabB = current();
+		for (const tab of [tabA, tabB]) expect(names(tab.attachments.value)).toEqual(['reply.ics']);
+
+		// Tab B takes it out with the ordinary attachment chip.
+		await tabB.removeAttachment(tabB.attachments.value[0]!.storageId);
+		await flushPromises();
+		expect(row!.expectedAttachments?.[0]).toMatchObject({ state: 'removed' });
+		for (const tab of [tabA, tabB]) {
+			expect(tab.attachments.value).toEqual([]);
+			expect(tab.uploads.value).toEqual([]);
+		}
+		// Nothing asks for it again.
+		expect(fulfils).toBe(1);
 	});
 
 	it('keeps a forwarded file owed while it cannot be read, with Retry', async () => {

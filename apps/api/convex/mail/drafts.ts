@@ -43,7 +43,7 @@ import { cancelPendingSendHandler, cancelScheduledSendHandler, sendHandler } fro
 import { copyExistingIntoDraft } from './attachExisting';
 import { existingAttachmentSourceValidator } from '../lib/existingAttachments';
 import { deleteAskSessionsForDraft } from './ai/composeDraftStore';
-import { expectedAttachmentsFor } from './draftExpectedAttachments';
+import { expectedAttachmentsFor, withoutAttachment } from './draftExpectedAttachments';
 import { expectedAttachmentRequestValidator } from '../lib/validators/mailContent';
 import {
 	bindRequestNonce,
@@ -380,7 +380,7 @@ export const removeAttachment = postboxMutation({
 
 		const toDelete = draft.attachments.find((a) => a.storageId === args.storageId);
 		await ctx.db.patch(args.draftId, {
-			attachments: draft.attachments.filter((a) => a.storageId !== args.storageId),
+			...withoutAttachment(draft, args.storageId),
 			lastEditedAt: Date.now(),
 		});
 		if (toDelete) {

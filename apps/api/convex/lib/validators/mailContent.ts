@@ -122,7 +122,13 @@ export const expectedAttachmentRequestValidator = v.union(
 		contentType: v.string(),
 		content: v.string(),
 	}),
-	v.object({ kind: v.literal('forward'), messageId: v.id('mailMessages') })
+	v.object({
+		kind: v.literal('forward'),
+		messageId: v.id('mailMessages'),
+		// The parts to carry, as the composer picked them (all file parts when
+		// absent); named so a message deleted meanwhile still owes them.
+		parts: v.optional(v.array(v.object({ partIndex: v.string(), filename: v.string() }))),
+	})
 );
 
 /**

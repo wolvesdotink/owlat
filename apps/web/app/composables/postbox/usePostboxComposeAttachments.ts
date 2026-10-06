@@ -107,7 +107,10 @@ export function usePostboxComposeAttachments(opts: {
 		},
 		onCommitted: (a, thumbUrl) => {
 			if (thumbUrl) thumbUrls.set(a.storageId, thumbUrl);
-			attachments.value = [...attachments.value, a];
+			// The row may have shown it already (usePostboxComposeExpected).
+			if (!attachments.value.some((shown) => shown.storageId === a.storageId)) {
+				attachments.value = [...attachments.value, a];
+			}
 		},
 	});
 

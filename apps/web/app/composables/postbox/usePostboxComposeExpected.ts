@@ -5,14 +5,16 @@
  * the draft agrees on what is still owed:
  *
  *  - an open that carries such files creates the row at once, asking it to owe
- *    them (`drafts.create`'s `expectedAttachments`); a forward asks only when
- *    its message has file parts;
+ *    them (`drafts.create`'s `expectedAttachments`); a forward names the parts
+ *    `isForwardedPart` picks (`forwardAttachmentsSeed`);
  *  - whenever the row owes a file this mount has not tried yet (a reload, a
  *    second tab, another member's open), the server is asked to copy it on
  *    (`fulfil`). Any number of tabs may ask at once: each file lands once;
  *  - an owed file shows as an attachment chip that is still attaching, or has
  *    failed with Retry and Remove. Remove takes it out on the server, and a
  *    copy still in flight cannot bring it back;
+ *  - the attachment chips follow the row's attachment list, so a file attached
+ *    or taken out in another tab shows the same here;
  *  - `pending` holds Send while anything is owed (the server refuses the send
  *    too), and while a row the open asked to owe something has not answered.
  */
@@ -43,11 +45,18 @@ const CHIP_PREFIX = 'expected:';
 export function expectedAttachmentRequests(seed: {
 	attachGenerated?: GeneratedAttachment;
 	forwardAttachmentsFromMessageId?: Id<'mailMessages'>;
+	forwardAttachmentParts?: Array<{ partIndex: string; filename: string }>;
 }): ExpectedAttachmentRequest[] {
 	return [
 		...(seed.attachGenerated ? [{ kind: 'generated' as const, ...seed.attachGenerated }] : []),
 		...(seed.forwardAttachmentsFromMessageId
-			? [{ kind: 'forward' as const, messageId: seed.forwardAttachmentsFromMessageId }]
+			? [
+					{
+						kind: 'forward' as const,
+						messageId: seed.forwardAttachmentsFromMessageId,
+						...(seed.forwardAttachmentParts ? { parts: seed.forwardAttachmentParts } : {}),
+					},
+				]
 			: []),
 	];
 }
@@ -61,7 +70,7 @@ interface OwedView {
 	storageId?: string;
 }
 interface RowView {
-	attachments?: ComposerAttachment[];
+	attachments?: Array<ComposerAttachment & { isInline?: boolean }>;
 	expectedAttachments?: OwedView[];
 }
 type Failure = 'unreadable' | 'tooLarge' | 'tooMany' | 'totalTooLarge' | 'failed';
@@ -154,28 +163,28 @@ export function usePostboxComposeExpected(opts: {
 		{ immediate: true }
 	);
 
-	// A file attached (or removed) by the server, possibly from another tab:
-	// the chips follow the row. Only after a reopened row has been merged, which
-	// fills the list from the row once.
+	// The chips follow the row: a file the server attached or took out (for this
+	// tab, another tab, another member) shows the same everywhere, so no tab
+	// offers a file the send would not carry. Only once a reopened row has been
+	// merged, which fills the list from the row the first time.
 	watch(
 		[row, opts.rowState],
 		([current, state]) => {
-			if (!current || state !== 'ready') return;
-			let next = opts.attachments.value;
-			for (const entry of current.expectedAttachments ?? []) {
-				if (!entry.storageId) continue;
-				const shown = next.some((a) => a.storageId === entry.storageId);
-				if (entry.state === 'attached' && !shown) {
-					const landed = current.attachments?.find((a) => a.storageId === entry.storageId);
-					if (landed) {
-						const { storageId, filename, contentType, size } = landed;
-						next = [...next, { storageId, filename, contentType, size }];
-					}
-				} else if (entry.state === 'removed' && shown) {
-					next = next.filter((a) => a.storageId !== entry.storageId);
-				}
+			if (!current?.attachments || state !== 'ready') return;
+			const onRow = new Set(current.attachments.map((a) => a.storageId));
+			const shown = new Set(opts.attachments.value.map((a) => a.storageId));
+			const kept = opts.attachments.value.filter((a) => onRow.has(a.storageId));
+			const added = current.attachments
+				.filter((a) => !a.isInline && !shown.has(a.storageId))
+				.map(({ storageId, filename, contentType, size }) => ({
+					storageId,
+					filename,
+					contentType,
+					size,
+				}));
+			if (kept.length < opts.attachments.value.length || added.length > 0) {
+				opts.attachments.value = [...kept, ...added];
 			}
-			if (next !== opts.attachments.value) opts.attachments.value = next;
 		},
 		{ immediate: true }
 	);
