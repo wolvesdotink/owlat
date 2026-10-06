@@ -289,6 +289,44 @@ describe('archive import', () => {
 		expect(messages[0]?.folderRole).toBe('archive');
 	});
 
+	it('decodes a raw UTF-8 subject and filename (RFC 6532)', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailboxWithFolders(t);
+		// The string is stored as its UTF-8 bytes, so the headers carry raw UTF-8.
+		const eml = [
+			'From: Jörg Müller <sender@isp.example>',
+			'To: me@owlat.test',
+			'Subject: Grüße aus Köln, voilà',
+			'Message-ID: <utf8@x>',
+			'MIME-Version: 1.0',
+			'Content-Type: multipart/mixed; boundary="b"',
+			'',
+			'--b',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'Hallo',
+			'--b',
+			'Content-Type: application/pdf',
+			'Content-Disposition: attachment; filename="Rechnung März.pdf"',
+			'Content-Transfer-Encoding: base64',
+			'',
+			'JVBERi0=',
+			'--b--',
+			'',
+		].join('\n');
+
+		await importArchive(t, mailboxId, eml, 'eml');
+
+		await t.run(async (ctx) => {
+			const row = await ctx.db
+				.query('mailMessages')
+				.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', mailboxId))
+				.first();
+			expect(row?.subject).toBe('Grüße aus Köln, voilà');
+			expect(row?.attachments.map((a) => a.filename)).toEqual(['Rechnung März.pdf']);
+		});
+	});
+
 	it('keeps an 8-bit message byte for byte: stored raw, body and attachment (#1279)', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedMailboxWithFolders(t);

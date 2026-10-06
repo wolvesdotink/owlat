@@ -13,7 +13,13 @@
  * pipeline's partial `ParsedMail` mocks.
  */
 
-import { parseStructuredHeader, type StructuredHeader, type MessageHeaders } from './headers';
+import {
+	headerBytesToText,
+	parseStructuredHeader,
+	type StructuredHeader,
+	type MessageHeaders,
+} from './headers';
+import { assertBinaryString } from './binaryString';
 import { parseDate } from './date';
 import { parseAddressObject, parseAddressObjects, type AddressObject } from './address';
 import { parseMimeTree, assembleBody } from './body';
@@ -50,7 +56,10 @@ export type ParsedHeaderValue =
  * load-bearing `false` sentinel when the message has no HTML part.
  */
 export interface ParsedMessage {
-	/** Decoded `Subject:` (RFC 2047), or `undefined` when absent. */
+	/**
+	 * Decoded `Subject:` as one line (raw UTF-8 and RFC 2047 decoded, control
+	 * characters collapsed), or `undefined` when absent.
+	 */
 	subject: string | undefined;
 	/** `Message-ID` WITH angle brackets, or `undefined`. */
 	messageId: string | undefined;
@@ -128,14 +137,16 @@ const SINGLE_ADDRESS_HEADERS = new Set(['from', 'sender', 'reply-to', 'return-pa
 
 /**
  * The header values to parse for an address field: the LAST occurrence only for
- * mailparser's single-valued keys, every occurrence otherwise.
+ * mailparser's single-valued keys, every occurrence otherwise. Each value is
+ * read as text first (RFC 6532 UTF-8), so a raw 8-bit display name or address
+ * is not parsed as one char per byte.
  */
 function addressValues(headers: MessageHeaders, name: string): string[] {
 	if (SINGLE_ADDRESS_HEADERS.has(name)) {
 		const last = headers.last(name);
-		return last === undefined ? [] : [last];
+		return last === undefined ? [] : [headerBytesToText(last)];
 	}
-	return headers.getAll(name);
+	return headers.getAll(name).map(headerBytesToText);
 }
 
 /** Header names stored as structured `{ value, params }` in `headers`. */
@@ -153,11 +164,17 @@ function parseReferences(raw: string): string | string[] | undefined {
 
 /**
  * Parse a raw RFC 822 message into the {@link ParsedMessage} consumed-field
- * contract. `raw` may be a `Buffer` (decoded as latin1 — one char per byte, the
- * binary-string convention the MIME walker expects) or an already-binary
- * string.
+ * contract. `raw` is the message's bytes: a `Buffer` (read as latin1, one char
+ * per byte, the binary-string convention the MIME walker expects) or a binary
+ * string from `bytesToBinaryString`. Both parse the same.
+ *
+ * A string is never decoded text. Raw UTF-8 headers (RFC 6532) and 8-bit parts
+ * are decoded from their bytes here, so a string that was already decoded
+ * would be decoded twice; one holding a char above U+00FF, which no byte can
+ * be, throws a `RangeError` rather than parse wrong.
  */
 export function parseMessage(raw: string | Buffer): ParsedMessage {
+	if (typeof raw === 'string') assertBinaryString(raw);
 	const binary = typeof raw === 'string' ? raw : raw.toString('latin1');
 	const tree = parseMimeTree(binary);
 	const headers = tree.headers;
