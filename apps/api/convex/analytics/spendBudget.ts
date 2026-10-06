@@ -3,8 +3,16 @@
  * when the org's daily/monthly budget is exhausted.
  *
  * Single-org-per-deployment (see `lib/sessionOrganization.ts`), so "per-org"
- * here is the deployment-wide `llmUsageEvents` ledger already written by every
- * priced LLM call (`analytics/llmUsage.ts`) and priced by `lib/llm/pricing.ts`.
+ * here is the deployment-wide `llmUsageEvents` ledger (`analytics/llmUsage.ts`),
+ * priced by `lib/llm/pricing.ts`. The ledger is the single source of truth for
+ * money: features that call a language or decision model write one row per
+ * billed call there, including each call of the Team Inbox agent pipeline
+ * (guard, quarantined extraction, classify, clarify, draft and its self-check,
+ * outcome sentiment; `agent/shared/agentSpend.ts`). The per-step
+ * `agentActions.tokenUsage` the walker stores is a reporting view and is never
+ * summed here (#1259). Embedding calls write no row, so they are outside the
+ * ceiling.
+ *
  * Rate limits elsewhere are per-CALL-COUNT token buckets and `estimateCost`
  * only feeds a read-only dashboard, so nothing today caps DOLLARS — an org (or
  * a prompt-injected auto-reply loop) can run up unbounded spend. This module
