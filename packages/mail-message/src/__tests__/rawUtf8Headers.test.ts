@@ -187,6 +187,45 @@ describe('legacy 8-bit headers', () => {
 	});
 });
 
+describe('byte-order marks in a header', () => {
+	/** A message whose Subject, From name and filename are `bytes`. */
+	function bomMessage(bytes: number[]): Buffer {
+		const value = Buffer.from(bytes);
+		return Buffer.concat([
+			Buffer.from('Subject: '),
+			value,
+			Buffer.from('\r\nFrom: "'),
+			value,
+			Buffer.from(
+				'" <a@example.com>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary="B"\r\n\r\n--B\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; filename="'
+			),
+			value,
+			Buffer.from('"\r\nContent-Transfer-Encoding: base64\r\n\r\nJVBERi0=\r\n--B--\r\n'),
+		]);
+	}
+
+	it.each([
+		['FF FE (UTF-16LE)', [0xff, 0xfe, 0x41, 0x42], 'ÿþAB'],
+		['FE FF (UTF-16BE)', [0xfe, 0xff, 0x41, 0x42], 'þÿAB'],
+		['EF BB BF before bytes that are not UTF-8', [0xef, 0xbb, 0xbf, 0x41, 0xe9], 'ï»¿Aé'],
+	])('does not let a %s mark pick the encoding', (_mark, bytes, text) => {
+		const raw = bomMessage(bytes);
+		const parsed = parseMessage(raw);
+		expect(parsed.subject).toBe(text);
+		expect(firstFrom(raw)?.name).toBe(text);
+		expect(parsed.attachments[0]?.filename).toBe(text);
+	});
+
+	it('keeps a UTF-8 mark as U+FEFF, which trimming the subject, name and filename removes', () => {
+		const bytes = [0xef, 0xbb, 0xbf, 0x41, 0xc3, 0xa9];
+		expect(headerBytesToText(bytesToBinaryString(Uint8Array.from(bytes)))).toBe('\ufeffAé');
+		const raw = bomMessage(bytes);
+		expect(parseMessage(raw).subject).toBe('Aé');
+		expect(firstFrom(raw)?.name).toBe('Aé');
+		expect(parseMessage(raw).attachments[0]?.filename).toBe('Aé');
+	});
+});
+
 describe('RFC 2047 encoded words', () => {
 	it('still decodes them, across a fold', () => {
 		const parsed = parseMessage(

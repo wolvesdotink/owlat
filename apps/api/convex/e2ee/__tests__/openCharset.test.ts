@@ -293,6 +293,24 @@ describe('e2ee/open · protected headers decode (#1284)', () => {
 		expect(restored.subject).toBe('Grüße, 5€');
 	});
 
+	it.each([
+		['FF FE', [0xff, 0xfe, 0x41, 0x42], 'ÿþAB'],
+		['FE FF', [0xfe, 0xff, 0x41, 0x42], 'þÿAB'],
+		['EF BB BF before bytes that are not UTF-8', [0xef, 0xbb, 0xbf, 0x41, 0xe9], 'ï»¿Aé'],
+	])(
+		'does not let a %s mark in a protected subject pick the encoding',
+		async (_mark, bytes, text) => {
+			// No space after the colon, so the mark is the value's first byte.
+			const inner = Buffer.concat([
+				Buffer.from('Subject:'),
+				Buffer.from(bytes),
+				Buffer.from('\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nx'),
+			]);
+			const restored = await roundTrip(new Uint8Array(inner));
+			expect(restored.subject).toBe(text);
+		}
+	);
+
 	it('unfolds a folded raw UTF-8 subject', async () => {
 		const restored = await roundTrip(body('Subject: Grüße aus\r\n dem Café, voilà'));
 		expect(restored.subject).toBe('Grüße aus dem Café, voilà');

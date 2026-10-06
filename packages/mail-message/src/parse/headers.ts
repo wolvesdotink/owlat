@@ -8,7 +8,6 @@
 
 import { parseContentType, type ContentType } from './contentType';
 import { binaryStringToBytes } from './binaryString';
-import { decodeCharset } from './charset';
 
 /**
  * Collapse RFC 5322 folding whitespace: a CRLF (or bare LF) followed by at
@@ -104,6 +103,13 @@ const NOT_A_BYTE = /[\u0100-\uffff]/;
  * bytes are decoded first, so that unfolding, trimming and the encoded words
  * all see characters rather than bytes.
  *
+ * A byte-order mark means nothing in a header. It is never sniffed, so it
+ * cannot switch the encoding, and it is never dropped: a leading `EF BB BF`
+ * comes back as U+FEFF in valid UTF-8 and as `ï»¿` under windows-1252, and
+ * `FF FE` or `FE FF` as `ÿþ` or `þÿ`. (`String#trim`, which the subject, a
+ * display name and a filename param each meet later, removes a U+FEFF left at
+ * either end.)
+ *
  * Never trim or `\s`-match the binary string before this: `String#trim`
  * treats the byte 0xA0, the last byte of `à` or `Р`, as whitespace.
  */
@@ -111,9 +117,15 @@ export function headerBytesToText(value: string): string {
 	if (!NON_ASCII.test(value) || NOT_A_BYTE.test(value)) return value;
 	const bytes = binaryStringToBytes(value);
 	try {
-		return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+		return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
 	} catch {
-		return decodeCharset(bytes, 'windows-1252');
+		// Not UTF-8. A runtime without a windows-1252 decoder keeps the bytes
+		// as latin1, which the binary string already is.
+		try {
+			return new TextDecoder('windows-1252').decode(bytes);
+		} catch {
+			return value;
+		}
 	}
 }
 
