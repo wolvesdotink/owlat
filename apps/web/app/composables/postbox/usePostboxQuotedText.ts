@@ -75,6 +75,8 @@ export function buildQuotedReply(msg: QuoteSource): string {
 export interface ReplyQuoteTarget extends QuoteSource {
 	_id: string;
 	subject: string;
+	/** Its parts: a resend copies the ones that are not inline images. */
+	attachments?: ReadonlyArray<{ contentId?: string }>;
 }
 
 /**
@@ -152,8 +154,18 @@ export function buildResendSpec(
 		prefillTo: toAddresses,
 		prefillSubject: target.subject,
 		prefillBodyHtml: originalAsHtml(target),
-		forwardAttachmentsFromMessageId: target._id as Id<'mailMessages'>,
+		...(forwardsFiles(target)
+			? { forwardAttachmentsFromMessageId: target._id as Id<'mailMessages'> }
+			: {}),
 	};
+}
+
+/**
+ * Whether forwarding (or resending) `message` copies files onto the new draft:
+ * it has a part that is not an inline image. Unknown counts as yes.
+ */
+export function forwardsFiles(message: { attachments?: ReadonlyArray<{ contentId?: string }> }) {
+	return message.attachments === undefined || message.attachments.some((a) => !a.contentId);
 }
 
 /** A "Forwarded message" header block followed by the original body. */

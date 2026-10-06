@@ -43,6 +43,8 @@ import { cancelPendingSendHandler, cancelScheduledSendHandler, sendHandler } fro
 import { copyExistingIntoDraft } from './attachExisting';
 import { existingAttachmentSourceValidator } from '../lib/existingAttachments';
 import { deleteAskSessionsForDraft } from './ai/composeDraftStore';
+import { expectedAttachmentsFor } from './draftExpectedAttachments';
+import { expectedAttachmentRequestValidator } from '../lib/validators/mailContent';
 import {
 	bindRequestNonce,
 	existingDraftResult,
@@ -88,6 +90,10 @@ export const create = postboxMutation({
 		// first call made, and, once that draft is sent or discarded, learns it
 		// is gone (`missing`) instead of creating a second one.
 		requestNonce: v.optional(v.string()),
+		// Files the new draft owes until they are attached (an RSVP's `.ics`, a
+		// forward's attachments): written with the row, so no draft exists
+		// without them (mail/draftExpectedAttachments.ts).
+		expectedAttachments: v.optional(v.array(expectedAttachmentRequestValidator)),
 	},
 	handler: async (ctx, args): Promise<CreateDraftResult> => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
@@ -151,6 +157,10 @@ export const create = postboxMutation({
 			clientNonce: args.clientNonce,
 		});
 		await scheduleRecipientDiscovery(ctx, toAddresses);
+		if (args.expectedAttachments?.length) {
+			const expectedAttachments = await expectedAttachmentsFor(ctx, args.expectedAttachments);
+			if (expectedAttachments.length > 0) await ctx.db.patch(draftId, { expectedAttachments });
+		}
 
 		if (args.requestNonce !== undefined) {
 			await bindRequestNonce(ctx, args.mailboxId, args.requestNonce, draftId, now);
@@ -295,10 +305,6 @@ export const addAttachment = postboxMutation({
 		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) throwForbidden('Draft not accessible');
 		assertStateIs(draft, 'draft');
-		// The same upload sent again: a composer that reloaded while its first
-		// attach was in flight cannot tell whether it landed (#1257). It did, so
-		// nothing is added twice.
-		if (draft.attachments.some((a) => a.storageId === args.storageId)) return { ok: true };
 		// An upload answered on the Reply Queue is held by the thread until a
 		// draft of it takes it over; any other is the caller's fresh upload.
 		const isTakenFromThread = await claimThreadAnswerUpload(

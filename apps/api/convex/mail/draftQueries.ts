@@ -5,6 +5,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { openMailDraftBody } from '../lib/messageBody';
 import { requireMailboxAccess } from './permissions';
+import { expectedAttachmentsView } from './draftExpectedAttachments';
 import { getMailSyncConfig, getMtaConfig } from './mtaClient';
 import { resolveMailboxTransport } from './outboundTransport';
 import { hasActiveSigningKey, loadRecipientKeyStates } from './outboundQueries';
@@ -41,7 +42,9 @@ export async function getDraftHandler(ctx: QueryCtx, args: { draftId: Id<'mailDr
 	if (!draft) return null;
 	const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 	if (!owned.ok) return null;
-	return await openMailDraftBody(draft);
+	const opened = await openMailDraftBody(draft);
+	if (!draft.expectedAttachments) return opened;
+	return { ...opened, expectedAttachments: expectedAttachmentsView(draft.expectedAttachments) };
 }
 
 /**

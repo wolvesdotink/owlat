@@ -1,285 +1,224 @@
 /**
- * The composer's side of its expected attachments (the record is
- * `usePostboxExpectedAttachments`'): what the open asked it to attach, and what
- * a reopened draft still owes from an earlier mount (#1257).
+ * The composer's view of the files its draft owes (#1257): an RSVP's generated
+ * `.ics`, a forward's attachments. The draft row is the record
+ * (`mail/draftExpectedAttachments.ts` on the server), so every tab that shows
+ * the draft agrees on what is still owed:
  *
- *  - An open that carries a generated file or a forward records them on the
- *    draft the moment its row exists (in the same step that the compose page
- *    drops them from its request), then uploads them. A forward reads the
- *    message first: one with nothing to copy creates no row.
- *  - Once the row has loaded, each file still pending is resolved exactly
- *    once: on the row already (done); its recorded upload attached again (it
- *    may have landed after the page went; the server takes a repeat as done);
- *    otherwise uploaded again from its source.
- *  - `pending` holds Send until every expected file is on the row, has been
- *    removed by the person, or was refused by a compose limit. A failed upload
- *    keeps its chip (retry or remove) and keeps holding Send.
- *
- * Split out of `usePostboxComposeAttachments` for the file-size ratchet; the
- * transport (upload chips, the attach mutation) stays there.
+ *  - an open that carries such files creates the row at once, asking it to owe
+ *    them (`drafts.create`'s `expectedAttachments`); a forward asks only when
+ *    its message has file parts;
+ *  - whenever the row owes a file this mount has not tried yet (a reload, a
+ *    second tab, another member's open), the server is asked to copy it on
+ *    (`fulfil`). Any number of tabs may ask at once: each file lands once;
+ *  - an owed file shows as an attachment chip that is still attaching, or has
+ *    failed with Retry and Remove. Remove takes it out on the server, and a
+ *    copy still in flight cannot bring it back;
+ *  - `pending` holds Send while anything is owed (the server refuses the send
+ *    too), and while a row the open asked to owe something has not answered.
  */
-import { computed, onMounted, ref, shallowRef, watch, type Ref } from 'vue';
+import { computed, onMounted, ref, watch, type Ref } from 'vue';
+import type { FunctionArgs } from 'convex/server';
+import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import type { ComposerAttachment } from './usePostboxComposeAttachments';
 import type { InitialHydrationState } from './usePostboxComposeHydration';
-import { composeRandomId } from './usePostboxComposeNav';
-import {
-	expectedRecordOpen,
-	usePostboxExpectedAttachments,
-	type ExpectedFile,
-	type ExpectedRecord,
-	type ExpectedSource,
-} from './usePostboxExpectedAttachments';
+import type { UploadChip } from './postboxAttachmentUploads';
 
-/** Where a tracked upload's file sits in its draft's record. */
-interface Slot {
-	draftId: string;
-	entry: number;
-	file: number;
+/** A file the app made for the composer to attach (plain text, a few KB). */
+export interface GeneratedAttachment {
+	filename: string;
+	contentType: string;
+	content: string;
 }
+
+export type ExpectedAttachmentRequest = NonNullable<
+	FunctionArgs<typeof api.mail.drafts.create>['expectedAttachments']
+>[number];
+
+/** The chip id an owed file shows under, beside the upload chips. */
+const CHIP_PREFIX = 'expected:';
+
+/** What a seed asks its new row to owe. */
+export function expectedAttachmentRequests(seed: {
+	attachGenerated?: GeneratedAttachment;
+	forwardAttachmentsFromMessageId?: Id<'mailMessages'>;
+}): ExpectedAttachmentRequest[] {
+	return [
+		...(seed.attachGenerated ? [{ kind: 'generated' as const, ...seed.attachGenerated }] : []),
+		...(seed.forwardAttachmentsFromMessageId
+			? [{ kind: 'forward' as const, messageId: seed.forwardAttachmentsFromMessageId }]
+			: []),
+	];
+}
+
+interface OwedView {
+	key: string;
+	filename: string;
+	contentType: string;
+	size: number;
+	state: 'owed' | 'attached' | 'removed';
+	storageId?: string;
+}
+interface RowView {
+	attachments?: ComposerAttachment[];
+	expectedAttachments?: OwedView[];
+}
+type Failure = 'unreadable' | 'tooLarge' | 'tooMany' | 'totalTooLarge' | 'failed';
 
 export function usePostboxComposeExpected(opts: {
 	draftId: Readonly<Ref<Id<'mailDrafts'> | null>>;
-	/** What the open asked to attach (its creation-time instructions). */
-	sources: ExpectedSource[];
+	/** What the open asked the new row to owe. */
+	requests: ExpectedAttachmentRequest[];
 	ensureDraft: () => Promise<Id<'mailDrafts'> | null>;
-	onCreated?: (listener: (id: Id<'mailDrafts'>) => void) => () => void;
-	/** Whether a reopened row has reached the composer. */
+	/** Whether a reopened row has been merged into the composer. */
 	rowState: () => InitialHydrationState;
-	/** The committed attachments (the row's, once it has loaded). */
+	/** The committed attachments the composer shows. */
 	attachments: Ref<ComposerAttachment[]>;
-	/** The compose limits: the files that may be uploaded (refusals are toasted). */
-	admit: (files: File[]) => File[];
-	/** Start an upload chip per file; returns their ids, in order. */
-	upload: (files: File[]) => string[];
-	/** Attach an upload that may already be on the row; false when it was not taken. */
-	reattach: (attachment: ComposerAttachment) => Promise<boolean>;
-	/** A forwarded message's attachment files, or null when it cannot be read. */
-	loadForward: (messageId: Id<'mailMessages'>) => Promise<File[] | null>;
 }) {
-	const store = usePostboxExpectedAttachments();
-	const mount = composeRandomId();
-	const { sources } = opts;
-
-	// Upload chips carrying an expected file, by chip id.
-	const tracked = shallowRef<Record<string, Slot>>({});
-	// Between the open (or a reopen that owes files) and the uploads starting.
-	const resolving = ref(
-		sources.length > 0 ||
-			(!!opts.draftId.value && expectedRecordOpen(store.read(opts.draftId.value)))
+	const { t, locale } = useI18n();
+	const { showToast } = useToast();
+	const rowQuery = useConvexQuery(api.mail.drafts.get, () =>
+		opts.draftId.value ? { draftId: opts.draftId.value } : ('skip' as const)
 	);
-	const pending = computed(() => resolving.value || Object.keys(tracked.value).length > 0);
+	const row = computed(() => rowQuery.data.value as RowView | null | undefined);
+	const owed = computed(() =>
+		(row.value?.expectedAttachments ?? []).filter((entry) => entry.state === 'owed')
+	);
 
-	// The record is written in the same step the row is created (and the compose
-	// page drops the instructions from its request), so no moment holds neither.
-	if (sources.length > 0) opts.onCreated?.((id) => store.begin(String(id), sources));
-
-	const forwardLoads = new Map<string, Promise<File[] | null>>();
-	function filesOf(source: ExpectedSource): Promise<File[] | null> {
-		if (source.kind === 'generated') {
-			const { content, filename, contentType } = source.attachment;
-			return Promise.resolve([new File([content], filename, { type: contentType })]);
-		}
-		let load = forwardLoads.get(source.messageId);
-		if (!load) {
-			load = opts.loadForward(source.messageId).catch(() => null);
-			forwardLoads.set(source.messageId, load);
-		}
-		return load;
-	}
-
-	const describe = (file: File): ExpectedFile => ({
-		filename: file.name,
-		contentType: file.type || 'application/octet-stream',
-		size: file.size,
-		state: 'pending',
+	const fulfilOp = useBackendOperation(api.mail.draftExpectedAttachments.fulfil, {
+		label: () => t('shared.postbox.usePostboxComposeAttachments.attachOperation'),
+		type: 'action',
+		announce: false,
+	});
+	const removeOp = useBackendOperation(api.mail.draftExpectedAttachments.remove, {
+		label: () => t('shared.postbox.usePostboxComposeAttachments.removeOperation'),
 	});
 
-	function change(draftId: string, fn: (record: ExpectedRecord) => ExpectedRecord): boolean {
-		return store.update(draftId, mount, fn);
+	const failed = ref<Record<string, Failure>>({});
+	const fulfilling = ref(false);
+	// Keys this mount asked the server for: a failure is not retried on its own.
+	const tried = new Set<string>();
+
+	const pending = computed(
+		() =>
+			owed.value.length > 0 ||
+			(opts.requests.length > 0 && (!opts.draftId.value || row.value === undefined))
+	);
+
+	const formatMb = (bytes: number) =>
+		new Intl.NumberFormat(locale.value).format(bytes / 1024 / 1024);
+	function explain(filename: string, reason: Failure) {
+		const base = 'shared.postbox.usePostboxComposeAttachments';
+		const message =
+			reason === 'tooLarge'
+				? t(`${base}.tooLarge`, { filename, max: formatMb(MAX_ATTACHMENT_BYTES) })
+				: reason === 'tooMany'
+					? t(`${base}.tooManyFiles`, { count: ATTACHMENT_COMPOSE_LIMITS.maxCount })
+					: reason === 'totalTooLarge'
+						? t(`${base}.totalTooLarge`, { max: formatMb(ATTACHMENT_COMPOSE_LIMITS.maxTotalBytes) })
+						: t(`${base}.uploadFailed`, { filename });
+		showToast(message, 'error');
 	}
 
-	function patchFile(slot: Slot, patch: Partial<ExpectedFile>): boolean {
-		return change(slot.draftId, (record) => ({
-			...record,
-			entries: record.entries.map((entry, e) =>
-				e !== slot.entry || !entry.files
-					? entry
-					: {
-							...entry,
-							files: entry.files.map((file, f) => (f === slot.file ? { ...file, ...patch } : file)),
-						}
-			),
-		}));
-	}
-
-	const onRow = (storageId: string) =>
-		opts.attachments.value.some((a) => a.storageId === storageId);
-
-	/** Resolves true once the row has loaded, false when it never will. */
-	function rowReady(): Promise<boolean> {
-		return new Promise((resolve) => {
-			const stop = watch(
-				opts.rowState,
-				(state) => {
-					if (state !== 'ready' && state !== 'missing') return;
-					queueMicrotask(() => stop());
-					resolve(state === 'ready');
-				},
-				{ immediate: true }
-			);
-		});
-	}
-
-	let resumedFor: string | null = null;
-	async function resume(draftId: string) {
-		resumedFor = draftId;
-		store.begin(draftId, sources);
-		if (!expectedRecordOpen(store.read(draftId))) {
-			resolving.value = false;
-			return;
-		}
-		resolving.value = true;
+	async function fulfil() {
+		const draftId = opts.draftId.value;
+		if (!draftId || fulfilling.value) return;
+		const asked = owed.value.map((entry) => entry.key);
+		for (const key of asked) tried.add(key);
+		fulfilling.value = true;
 		try {
-			if (!(await rowReady()) || opts.draftId.value !== draftId) return;
-			const record = store.claim(draftId, mount);
-			if (!record || record.settled) return;
-
-			const toUpload: {
-				slot: Slot;
-				want: ExpectedFile;
-				bytes: File | null;
-				source: ExpectedSource;
-			}[] = [];
-			for (const [e, entry] of record.entries.entries()) {
-				let files = entry.files;
-				let read: File[] | null = null;
-				if (files === null) {
-					read = (await filesOf(entry.source)) ?? [];
-					const described = read.map(describe);
-					if (!change(draftId, (r) => withEntryFiles(r, e, described))) return;
-					files = described;
-				}
-				for (const [f, file] of files.entries()) {
-					if (file.state !== 'pending') continue;
-					const slot = { draftId, entry: e, file: f };
-					if (await resolvedOnRow(slot, file)) continue;
-					toUpload.push({ slot, want: file, bytes: read?.[f] ?? null, source: entry.source });
+			const result = await fulfilOp.run({ draftId });
+			const next: Record<string, Failure> = {};
+			if (!result.ok) {
+				for (const key of asked) next[key] = 'failed';
+			} else {
+				for (const miss of result.result.failed) {
+					next[miss.key] = miss.reason;
+					explain(miss.filename, miss.reason);
 				}
 			}
-
-			// Upload again what is not on the row, from its source.
-			const files: File[] = [];
-			const slots: Slot[] = [];
-			for (const item of toUpload) {
-				const bytes = item.bytes ?? (await filesOf(item.source))?.[item.slot.file] ?? null;
-				if (!bytes || bytes.name !== item.want.filename || bytes.size !== item.want.size) {
-					// The source no longer gives this file: it cannot be attached.
-					patchFile(item.slot, { state: 'dropped' });
-					continue;
-				}
-				files.push(bytes);
-				slots.push(item.slot);
-			}
-			if (files.length === 0 || opts.draftId.value !== draftId) return;
-			const admitted = opts.admit(files);
-			const chipIds = opts.upload(admitted);
-			const next = { ...tracked.value };
-			for (const [k, file] of files.entries()) {
-				const at = admitted.indexOf(file);
-				if (at < 0) patchFile(slots[k]!, { state: 'dropped' });
-				else next[chipIds[at]!] = slots[k]!;
-			}
-			tracked.value = next;
+			failed.value = next;
 		} finally {
-			if (resumedFor === draftId) resolving.value = false;
+			fulfilling.value = false;
 		}
+		if (owed.value.some((entry) => !tried.has(entry.key))) void fulfil();
 	}
 
-	/**
-	 * Settle one pending file without uploading it, when it is (or can be put)
-	 * on the row: its recorded upload is there, or attaching it again lands.
-	 */
-	async function resolvedOnRow(slot: Slot, file: ExpectedFile): Promise<boolean> {
-		const { storageId } = file;
-		if (!storageId) return false;
-		if (!onRow(storageId)) {
-			const attachment: ComposerAttachment = {
-				storageId,
-				filename: file.filename,
-				contentType: file.contentType,
-				size: file.size,
-			};
-			// A server before the repeat-is-done rule refuses an upload it holds,
-			// so a refusal is looked up on the row before uploading again.
-			if (!(await opts.reattach(attachment)) && !onRow(storageId)) {
-				patchFile(slot, { storageId: undefined });
-				return false;
+	watch(
+		[() => owed.value.map((entry) => entry.key).join('\n'), opts.draftId, opts.rowState],
+		() => {
+			if (opts.rowState() !== 'ready') return;
+			if (owed.value.some((entry) => !tried.has(entry.key))) void fulfil();
+		},
+		{ immediate: true }
+	);
+
+	// A file attached (or removed) by the server, possibly from another tab:
+	// the chips follow the row. Only after a reopened row has been merged, which
+	// fills the list from the row once.
+	watch(
+		[row, opts.rowState],
+		([current, state]) => {
+			if (!current || state !== 'ready') return;
+			let next = opts.attachments.value;
+			for (const entry of current.expectedAttachments ?? []) {
+				if (!entry.storageId) continue;
+				const shown = next.some((a) => a.storageId === entry.storageId);
+				if (entry.state === 'attached' && !shown) {
+					const landed = current.attachments?.find((a) => a.storageId === entry.storageId);
+					if (landed) {
+						const { storageId, filename, contentType, size } = landed;
+						next = [...next, { storageId, filename, contentType, size }];
+					}
+				} else if (entry.state === 'removed' && shown) {
+					next = next.filter((a) => a.storageId !== entry.storageId);
+				}
 			}
-			if (!onRow(storageId)) opts.attachments.value = [...opts.attachments.value, attachment];
-		}
-		patchFile(slot, { state: 'done' });
-		return true;
-	}
+			if (next !== opts.attachments.value) opts.attachments.value = next;
+		},
+		{ immediate: true }
+	);
 
-	/** Open with instructions and no row: make the row (a forward only when it copies something). */
-	async function create() {
-		if (sources.every((source) => source.kind === 'forward')) {
-			const lists = await Promise.all(sources.map(filesOf));
-			if (lists.every((list) => !list || list.length === 0)) {
-				// Nothing to copy; a row made meanwhile records (and settles) that.
-				if (!opts.draftId.value) resolving.value = false;
-				return;
-			}
-		}
-		// The row's id starts the uploads (below); a failed create keeps Send held.
-		await opts.ensureDraft();
-	}
-
+	// An open that carries files makes its row now, so the server owes them.
 	onMounted(() => {
-		watch(
-			opts.draftId,
-			(id) => {
-				if (id && resumedFor !== id) void resume(id);
-			},
-			{ immediate: true }
-		);
-		if (!opts.draftId.value && sources.length > 0) void create();
+		if (opts.requests.length > 0 && !opts.draftId.value) void opts.ensureDraft();
 	});
 
-	function take(chipId: string): Slot | null {
-		const slot = tracked.value[chipId];
-		if (!slot) return null;
-		const { [chipId]: _taken, ...rest } = tracked.value;
-		tracked.value = rest;
-		return slot;
-	}
+	const chips = computed<UploadChip[]>(() =>
+		owed.value.map((entry) => ({
+			id: CHIP_PREFIX + entry.key,
+			filename: entry.filename,
+			contentType: entry.contentType,
+			size: entry.size,
+			status: failed.value[entry.key] && !fulfilling.value ? 'failed' : 'uploading',
+			progress: 0,
+			indeterminate: true,
+			thumbUrl: null,
+		}))
+	);
+
+	const keyOf = (chipId: string) =>
+		chipId.startsWith(CHIP_PREFIX) ? chipId.slice(CHIP_PREFIX.length) : null;
 
 	return {
 		pending,
-		/**
-		 * An upload finished and is about to be attached: record it first. False
-		 * when another mount has taken the draft over (it must not be attached).
-		 */
-		beforeAttach(chipId: string, storageId: string): boolean {
-			const slot = tracked.value[chipId];
-			return slot ? patchFile(slot, { storageId }) : true;
+		chips,
+		/** Handles a chip id of an owed file; false for any other chip. */
+		remove(chipId: string): boolean {
+			const key = keyOf(chipId);
+			const draftId = opts.draftId.value;
+			if (key === null) return false;
+			if (draftId) void removeOp.run({ draftId, key });
+			return true;
 		},
-		committed(chipId: string) {
-			const slot = take(chipId);
-			if (slot) patchFile(slot, { state: 'done' });
+		retry(chipId: string): boolean {
+			const key = keyOf(chipId);
+			if (key === null) return false;
+			const { [key]: _retried, ...rest } = failed.value;
+			failed.value = rest;
+			void fulfil();
+			return true;
 		},
-		/** The person removed the chip: this file is no longer expected. */
-		dismissed(chipId: string) {
-			const slot = take(chipId);
-			if (slot) patchFile(slot, { state: 'dropped' });
-		},
-	};
-}
-
-function withEntryFiles(record: ExpectedRecord, entry: number, files: ExpectedFile[]) {
-	return {
-		...record,
-		entries: record.entries.map((e, i) => (i === entry ? { ...e, files } : e)),
 	};
 }

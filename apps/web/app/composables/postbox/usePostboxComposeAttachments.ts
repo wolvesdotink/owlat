@@ -1,23 +1,24 @@
 /**
- * Attachment machinery for the compose draft: upload/remove, a generated file
- * the open hands over (e.g. an iCalendar RSVP reply) and forward-cloning the
- * original message's attachments; the last two are expected attachments that
- * survive a reload until they are on the row (usePostboxComposeExpected). Split
- * out of usePostboxCompose so each file stays a readable size; it operates on
- * the same draft via the parent's ensureDraft/draftId.
+ * Attachment machinery for the compose draft: upload/remove, and the files the
+ * draft owes (an iCalendar RSVP reply, a forward's attachments), which the
+ * server copies on and which show as chips beside the uploads
+ * (usePostboxComposeExpected). Split out of usePostboxCompose so each file
+ * stays a readable size; it operates on the same draft via the parent's
+ * ensureDraft/draftId.
  */
 
 import type { Ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
-import { extractAttachments } from '@owlat/shared/mailMime';
 import { downscaleImageFile } from './postboxInlineImage';
 import { attachmentMeter } from './postboxAttachmentMeter';
 import { createAttachmentUploads, xhrPutFile } from './postboxAttachmentUploads';
 import type { InitialHydrationState } from './usePostboxComposeHydration';
-import { usePostboxComposeExpected } from './usePostboxComposeExpected';
-import type { ExpectedSource, GeneratedAttachment } from './usePostboxExpectedAttachments';
+import {
+	usePostboxComposeExpected,
+	type ExpectedAttachmentRequest,
+} from './usePostboxComposeExpected';
 import { appendShareLinkBlock, shareLinkBlockHtml } from '~/utils/postboxShareLink';
 
 // Per-file attachment ceiling for user-facing copy, derived from the shared cap
@@ -50,13 +51,9 @@ export function usePostboxComposeAttachments(opts: {
 	 * leave a link-only body that replaces the saved one.
 	 */
 	bodyLocked?: () => boolean;
-	/** Attach a file the app generated (e.g. an iCalendar RSVP reply). */
-	attachGenerated?: GeneratedAttachment;
-	/** Forward: clone the original message's attachments onto this draft. */
-	forwardAttachmentsFromMessageId?: Id<'mailMessages'>;
-	/** Hear about the row once it exists (the expected attachments are recorded on it). */
-	onCreated?: (listener: (id: Id<'mailDrafts'>) => void) => () => void;
-	/** Whether a reopened row has loaded (its attachments are known then). */
+	/** What the open asked the new row to owe (a generated file, a forward's files). */
+	expectedAttachments?: ExpectedAttachmentRequest[];
+	/** Whether a reopened row has been merged (its attachments are shown then). */
 	rowState?: () => InitialHydrationState;
 }) {
 	const { t, locale } = useI18n();
@@ -65,13 +62,6 @@ export function usePostboxComposeAttachments(opts: {
 	});
 	const addAttachmentOp = useBackendOperation(api.mail.drafts.addAttachment, {
 		label: () => t('shared.postbox.usePostboxComposeAttachments.attachOperation'),
-	});
-	// Attaching an upload again after a reload: refused when it cannot be taken,
-	// which only means it is uploaded once more, so nothing is surfaced.
-	const reattachOp = useBackendOperation(api.mail.drafts.addAttachment, {
-		label: () => t('shared.postbox.usePostboxComposeAttachments.attachOperation'),
-		onError: () => true,
-		announce: false,
 	});
 	const removeAttachmentOp = useBackendOperation(api.mail.drafts.removeAttachment, {
 		label: () => t('shared.postbox.usePostboxComposeAttachments.removeOperation'),
@@ -101,11 +91,9 @@ export function usePostboxComposeAttachments(opts: {
 			return minted.ok ? minted.result : null;
 		},
 		putFile: xhrPutFile,
-		attach: async (a, chipId) => {
+		attach: async (a) => {
 			const draftIdVal = opts.draftId.value;
 			if (!draftIdVal) return false;
-			// An expected file is recorded before its attach is sent.
-			if (!expected.beforeAttach(chipId, a.storageId)) return false;
 			// addAttachment returns its own `{ ok }`; a failed operation is the
 			// envelope's `ok: false` and never reaches it.
 			const result = await addAttachmentOp.run({
@@ -117,47 +105,22 @@ export function usePostboxComposeAttachments(opts: {
 			});
 			return result.ok && result.result.ok;
 		},
-		onCommitted: (a, thumbUrl, chipId) => {
+		onCommitted: (a, thumbUrl) => {
 			if (thumbUrl) thumbUrls.set(a.storageId, thumbUrl);
 			attachments.value = [...attachments.value, a];
-			expected.committed(chipId);
 		},
-		onDismissed: (chipId) => expected.dismissed(chipId),
 	});
 
-	const expectedSources: ExpectedSource[] = [
-		...(opts.attachGenerated
-			? [{ kind: 'generated' as const, attachment: opts.attachGenerated }]
-			: []),
-		...(opts.forwardAttachmentsFromMessageId
-			? [{ kind: 'forward' as const, messageId: opts.forwardAttachmentsFromMessageId }]
-			: []),
-	];
+	// The files the draft owes show as chips beside the uploads, and hold Send.
 	const expected = usePostboxComposeExpected({
 		draftId: opts.draftId,
-		sources: expectedSources,
+		requests: opts.expectedAttachments ?? [],
 		ensureDraft: opts.ensureDraft,
-		onCreated: opts.onCreated,
 		rowState: opts.rowState ?? (() => 'ready'),
 		attachments,
-		admit,
-		upload: (files) => uploader.addFiles(files),
-		reattach: async (a) => {
-			const draftIdVal = opts.draftId.value;
-			if (!draftIdVal) return false;
-			const result = await reattachOp.run({
-				draftId: draftIdVal,
-				storageId: a.storageId as Id<'_storage'>,
-				filename: a.filename,
-				contentType: a.contentType,
-				size: a.size,
-			});
-			return result.ok && result.result.ok;
-		},
-		loadForward: loadForwardedFiles,
 	});
+	const uploads = computed(() => [...uploader.uploads.value, ...expected.chips.value]);
 
-	// Send waits for uploads in flight, and for expected files not yet on the row.
 	const isUploading = computed(
 		() => uploader.isUploading.value || uploadingCount.value > 0 || expected.pending.value
 	);
@@ -165,7 +128,7 @@ export function usePostboxComposeAttachments(opts: {
 	// Total-size meter across committed + in-flight attachments.
 	const attachmentSizeMeter = computed(() => {
 		const committed = attachments.value.reduce((sum, a) => sum + a.size, 0);
-		const inflight = uploader.uploads.value.reduce((sum, c) => sum + c.size, 0);
+		const inflight = uploads.value.reduce((sum, c) => sum + c.size, 0);
 		return attachmentMeter(committed + inflight);
 	});
 
@@ -187,19 +150,13 @@ export function usePostboxComposeAttachments(opts: {
 	async function addFiles(files: File[] | FileList) {
 		const id = await opts.ensureDraft();
 		if (!id) return;
-		const accepted = admit(Array.from(files));
-		if (accepted.length > 0) uploader.addFiles(accepted);
-	}
-
-	/** The files that pass the per-message limits, in order; each refusal is toasted. */
-	function admit(files: File[]): File[] {
 		// Existing footprint: committed attachments + still-uploading chips.
-		let currentCount = attachments.value.length + uploader.uploads.value.length;
+		let currentCount = attachments.value.length + uploads.value.length;
 		let currentBytes =
 			attachments.value.reduce((sum, a) => sum + a.size, 0) +
-			uploader.uploads.value.reduce((sum, c) => sum + c.size, 0);
+			uploads.value.reduce((sum, c) => sum + c.size, 0);
 		const accepted: File[] = [];
-		for (const file of files) {
+		for (const file of Array.from(files)) {
 			if (file.size > MAX_ATTACHMENT_BYTES) {
 				showToast(
 					t('shared.postbox.usePostboxComposeAttachments.tooLarge', {
@@ -232,7 +189,7 @@ export function usePostboxComposeAttachments(opts: {
 			currentCount += 1;
 			currentBytes += file.size;
 		}
-		return accepted;
+		if (accepted.length > 0) uploader.addFiles(accepted);
 	}
 
 	// Inline body images: their bytes live in the SAME draft attachment store as
@@ -417,7 +374,7 @@ export function usePostboxComposeAttachments(opts: {
 
 	return {
 		attachments,
-		uploads: uploader.uploads,
+		uploads,
 		isUploading,
 		attachmentSizeMeter,
 		thumbUrlFor,
@@ -425,26 +382,13 @@ export function usePostboxComposeAttachments(opts: {
 		removeAttachment,
 		shareAsLink,
 		isSharing: shareAttachmentOp.isLoading,
-		cancelUpload: uploader.cancel,
-		retryUpload: uploader.retry,
+		cancelUpload: (id: string) => {
+			if (!expected.remove(id)) uploader.cancel(id);
+		},
+		retryUpload: (id: string) => {
+			if (!expected.retry(id)) uploader.retry(id);
+		},
 		addInlineImage,
 		removeInlineImage,
 	};
-}
-
-/**
- * Forward: the original message's attachments, read from its raw .eml and
- * extracted client-side (they go through the normal upload path). Null when
- * the message cannot be read; the forward still works without them.
- */
-async function loadForwardedFiles(messageId: Id<'mailMessages'>): Promise<File[] | null> {
-	try {
-		const bin = await loadRawEml(messageId);
-		if (!bin) return null;
-		return extractAttachments(bin)
-			.filter((a) => a.disposition === 'attachment')
-			.map((a) => new File([a.bytes as BlobPart], a.filename, { type: a.contentType }));
-	} catch {
-		return null;
-	}
 }

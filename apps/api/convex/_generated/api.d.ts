@@ -1048,6 +1048,7 @@ import type * as mail_deliveryPipeline_routing from '../mail/deliveryPipeline/ro
 import type * as mail_deliveryPipeline_scan from '../mail/deliveryPipeline/scan.js';
 import type * as mail_deliveryPipeline_threading from '../mail/deliveryPipeline/threading.js';
 import type * as mail_deliveryHooks from '../mail/deliveryHooks.js';
+import type * as mail_draftExpectedAttachments from '../mail/draftExpectedAttachments.js';
 import type * as mail_draftLifecycle from '../mail/draftLifecycle.js';
 import type * as mail_draftLifecycle_effects from '../mail/draftLifecycle/effects.js';
 import type * as mail_draftLifecycle_reducers from '../mail/draftLifecycle/reducers.js';
@@ -2536,6 +2537,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/deliveryPipeline/scan': typeof mail_deliveryPipeline_scan;
 	'mail/deliveryPipeline/threading': typeof mail_deliveryPipeline_threading;
 	'mail/deliveryHooks': typeof mail_deliveryHooks;
+	'mail/draftExpectedAttachments': typeof mail_draftExpectedAttachments;
 	'mail/draftLifecycle': typeof mail_draftLifecycle;
 	'mail/draftLifecycle/effects': typeof mail_draftLifecycle_effects;
 	'mail/draftLifecycle/reducers': typeof mail_draftLifecycle_reducers;

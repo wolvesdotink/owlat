@@ -218,17 +218,6 @@ describe('server-recorded upload ownership', () => {
 		expect(await t.run(async (ctx) => (await ctx.storage.get(storageId)) !== null)).toBe(false);
 	});
 
-	it('treats attaching an upload the draft already holds again as done, not as a second part', async () => {
-		const t = convexTest(schema, modules);
-		const { draftId } = await draft(t);
-		const storageId = await uploaded(t);
-		await attach(t, draftId, storageId);
-		// A composer that reloaded mid-attach sends the same upload once more.
-		await expect(attach(t, draftId, storageId)).resolves.toEqual({ ok: true });
-		const row = await t.run((ctx) => ctx.db.get(draftId));
-		expect(row?.attachments.map((a) => a.storageId)).toEqual([storageId]);
-	});
-
 	it('does not delete legacy or inherited blobs on draft removal or discard', async () => {
 		const t = convexTest(schema, modules);
 		const storageId = await t.run((ctx) => ctx.storage.store(new Blob(['shared original'])));

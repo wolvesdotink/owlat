@@ -31,6 +31,7 @@ vi.mock('@owlat/api', () => ({
 				addAttachment: 'drafts.addAttachment',
 				removeAttachment: 'drafts.removeAttachment',
 			},
+			draftExpectedAttachments: { fulfil: 'expected.fulfil', remove: 'expected.remove' },
 			attachmentSharesActions: {
 				shareDraftAttachment: 'attachmentSharesActions.shareDraftAttachment',
 			},
@@ -61,8 +62,8 @@ beforeEach(() => {
 
 	vi.stubGlobal('useI18n', () => i18n.global);
 	vi.stubGlobal('useToast', () => ({ showToast }));
-	vi.stubGlobal('useState', (_key: string, init: () => unknown) => ref(init()));
 	vi.stubGlobal('useConvex', () => null);
+	vi.stubGlobal('useConvexQuery', () => ({ data: ref(undefined) }));
 	// Nuxt auto-imports these into the composable; the real ones, so the block's
 	// meta line is the string a recipient would actually read.
 	vi.stubGlobal('formatCompactFileSize', formatCompactFileSize);

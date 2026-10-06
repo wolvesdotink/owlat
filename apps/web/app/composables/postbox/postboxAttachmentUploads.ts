@@ -55,14 +55,12 @@ export interface UploadTransport {
 		cbs: UploadProgressCbs
 	) => Promise<string>;
 	/** Attach the uploaded storageId to the draft; false = server refused. */
-	attach: (a: CommittedAttachment, chipId: string) => Promise<boolean>;
+	attach: (a: CommittedAttachment) => Promise<boolean>;
 }
 
 export interface AttachmentUploadsDeps extends UploadTransport {
 	/** Called when an upload fully commits; parent appends to `attachments`. */
-	onCommitted: (a: CommittedAttachment, thumbUrl: string | null, chipId: string) => void;
-	/** Called when the person cancels or dismisses a chip (it will not be attached). */
-	onDismissed?: (chipId: string) => void;
+	onCommitted: (a: CommittedAttachment, thumbUrl: string | null) => void;
 	/** Create an object URL for an image File (defaults to URL.createObjectURL). */
 	createThumb?: (file: File) => string | null;
 	/** Revoke an object URL (defaults to URL.revokeObjectURL). */
@@ -139,7 +137,7 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 				contentType,
 				size: file.size,
 			};
-			const ok = await deps.attach(attachment, id);
+			const ok = await deps.attach(attachment);
 			if (!ok) {
 				patch(id, { status: 'failed', indeterminate: false });
 				return;
@@ -151,7 +149,7 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 			uploads.value = uploads.value.filter((c) => c.id !== id);
 			files.delete(id);
 			controllers.delete(id);
-			deps.onCommitted(attachment, thumbUrl, id);
+			deps.onCommitted(attachment, thumbUrl);
 		} catch (err) {
 			if (isAbortError(err)) {
 				// Cancelled by the user: remove the chip entirely.
@@ -164,12 +162,10 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 		}
 	}
 
-	/** Begin uploading each file as its own chip; returns the chip ids, in order. */
-	function addFiles(list: File[]): string[] {
-		const ids: string[] = [];
+	/** Begin uploading each file as its own chip. */
+	function addFiles(list: File[]) {
 		for (const file of list) {
 			const id = nextChipId();
-			ids.push(id);
 			files.set(id, file);
 			uploads.value = [
 				...uploads.value,
@@ -186,7 +182,6 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 			];
 			void run(id);
 		}
-		return ids;
 	}
 
 	/** Cancel an in-flight upload (aborts the request) or dismiss a failed one. */
@@ -197,10 +192,7 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 			// ignores the signal: drop it here too.
 			controller.abort();
 		}
-		if (uploads.value.some((c) => c.id === id)) {
-			forget(id);
-			deps.onDismissed?.(id);
-		}
+		if (uploads.value.some((c) => c.id === id)) forget(id);
 	}
 
 	/** Retry a failed upload with the original File. */

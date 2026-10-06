@@ -30,7 +30,7 @@ import {
 	type ComposerAttachment,
 } from './usePostboxComposeAttachments';
 import { usePostboxComposeAutosave } from './usePostboxComposeAutosave';
-import type { GeneratedAttachment } from './usePostboxExpectedAttachments';
+import { expectedAttachmentRequests, type GeneratedAttachment } from './usePostboxComposeExpected';
 import type { InitialHydrationState } from './usePostboxComposeHydration';
 import { usePostboxComposeMirror } from './usePostboxComposeMirror';
 import {
@@ -82,7 +82,7 @@ export interface ComposerSeed extends Omit<MailboxComposerTarget, 'kind'> {
 	prefillAttachments?: ComposerAttachment[];
 	/** Clone this message's attachments onto the new draft (Forward). */
 	forwardAttachmentsFromMessageId?: Id<'mailMessages'>;
-	/** Attach a file the app generated (an RSVP reply); kept until it is on the row. */
+	/** Attach a file the app generated (an RSVP reply); the new row owes it until then. */
 	attachGenerated?: GeneratedAttachment;
 	/** Full-mode blocks, the editor mode and the reminder, for a seed carrying a whole composition. */
 	prefillBodyBlocks?: EditorBlock[];
@@ -211,6 +211,7 @@ export function usePostboxCompose(seed: ComposerSeed, options: ComposeOptions = 
 		followUpRemindAt,
 	});
 
+	const expectedAttachments = expectedAttachmentRequests(seed);
 	// Draft row creation + the 1.5s-debounced autosave live in a sibling
 	// composable. Everything below drives the SAME row through `ensureDraft`.
 	const autosave = usePostboxComposeAutosave({
@@ -224,6 +225,7 @@ export function usePostboxCompose(seed: ComposerSeed, options: ComposeOptions = 
 		lastSavedAt,
 		touched,
 		requestNonce: seed.requestNonce,
+		expectedAttachments,
 		onReopenExisting: () => row.reopenExisting(),
 		onGone: () => {
 			initialHydration.value = 'missing';
@@ -264,9 +266,7 @@ export function usePostboxCompose(seed: ComposerSeed, options: ComposeOptions = 
 		// recipient with no way to reach it.
 		bodyHtml,
 		bodyLocked: () => bodyPending.value,
-		attachGenerated: seed.attachGenerated,
-		forwardAttachmentsFromMessageId: seed.forwardAttachmentsFromMessageId,
-		onCreated: autosave.onCreated,
+		expectedAttachments,
 		rowState: () => initialHydration.value,
 	});
 

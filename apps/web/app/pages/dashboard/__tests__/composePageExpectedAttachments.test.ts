@@ -1,20 +1,22 @@
 // @vitest-environment happy-dom
 /**
- * #1257: an attachment the open asked for (an RSVP's generated `reply.ics`, a
- * forward's copied files) that is still uploading when the page reloads.
+ * #1257: a file the open asked for (an RSVP's generated `reply.ics`, a
+ * forward's attachments) that is not on the draft yet when the page reloads,
+ * or when the draft is open in a second tab.
  *
- * The compose page names the draft in its URL once the text is saved, and a
- * reload then reopens that draft. These cases run the real compose page, the
- * real compose request record and the real composer state machine
- * (`usePostboxCompose`) against a small in-memory server: a draft row, the
- * upload transport and `drafts.addAttachment`. A reload is the page unmounting
- * with the tab's memory (session state) gone and its sessionStorage kept.
+ * The draft row owes such files until they are attached, so these cases run
+ * the real compose page, the real compose request and the real composer
+ * (`usePostboxCompose`) against a small in-memory server that keeps that debt
+ * the way `mail/draftExpectedAttachments.ts` does: written with the row, each
+ * key attached once (`fulfil`), removed for good (`remove`). A tab is a page
+ * mount with its own session state; a reload unmounts the page and drops it.
  *
- *   - the RSVP still uploading at the reload is uploaded again, and Send waits
- *     for it;
- *   - an attach that was in flight at the reload and lands (before or after
- *     the reopened page looks) leaves exactly one `reply.ics`;
- *   - a forward re-copies only the file that had not reached the row.
+ *   - the RSVP still being copied at the reload is attached after it, and Send
+ *     waits for it;
+ *   - a second tab with no compose request at all sees the same debt, and two
+ *     tabs asking at once leave one `reply.ics`;
+ *   - a forwarded file that cannot be read stays owed, with Retry;
+ *   - removing the chip while its copy is in flight keeps it out.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, ref, watch, type Ref } from 'vue';
@@ -24,9 +26,6 @@ import ComposePage from '../compose.vue';
 import { usePostboxComposeNav, type ComposeSpec } from '~/composables/postbox/usePostboxComposeNav';
 import { usePostboxCompose } from '~/composables/postbox/usePostboxCompose';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
-import type * as Uploads from '~/composables/postbox/postboxAttachmentUploads';
-
-type UploadsModule = typeof Uploads;
 
 vi.mock('@owlat/api', () => ({
 	api: {
@@ -44,6 +43,7 @@ vi.mock('@owlat/api', () => ({
 				addAttachment: 'drafts.addAttachment',
 				removeAttachment: 'drafts.removeAttachment',
 			},
+			draftExpectedAttachments: { fulfil: 'expected.fulfil', remove: 'expected.remove' },
 			attachmentSharesActions: { shareDraftAttachment: 'shares.shareDraftAttachment' },
 			identities: {
 				listForOwnedMailbox: 'identities.list',
@@ -59,32 +59,25 @@ vi.mock('~/composables/postbox/usePostboxUndoSend', () => ({
 	usePostboxUndoSend: () => ({ arm: () => {} }),
 }));
 
-// The upload's bytes go out over XHR; each one is held until the case lets it finish.
-type Deferred<T> = { promise: Promise<T>; resolve: (value: T) => void };
-function deferred<T>(): Deferred<T> {
-	let resolve!: (value: T) => void;
-	const promise = new Promise<T>((r) => {
+type Deferred = { promise: Promise<void>; resolve: () => void };
+function deferred(): Deferred {
+	let resolve!: () => void;
+	const promise = new Promise<void>((r) => {
 		resolve = r;
 	});
 	return { promise, resolve };
 }
-const puts: { file: File; done: Deferred<string> }[] = [];
-vi.mock('~/composables/postbox/postboxAttachmentUploads', async (importOriginal) => ({
-	...(await importOriginal<UploadsModule>()),
-	xhrPutFile: (_url: string, file: File) => {
-		const done = deferred<string>();
-		puts.push({ file, done });
-		return done.promise;
-	},
-}));
 
-// ── The server: one draft row ──────────────────────────────────────────────
+// ── The server: one draft row and the files it owes ────────────────────────
 
-interface RowAttachment {
-	storageId: string;
+interface Owed {
+	key: string;
 	filename: string;
 	contentType: string;
 	size: number;
+	source: { kind: 'generated'; content?: string } | { kind: 'forward'; messageId: string };
+	state: 'owed' | 'attached' | 'removed';
+	storageId?: string;
 }
 interface Row {
 	toAddresses: string[];
@@ -93,39 +86,78 @@ interface Row {
 	composerMode: 'simple';
 	state: 'draft';
 	lastEditedAt: number;
-	attachments: RowAttachment[];
+	attachments: { storageId: string; filename: string; contentType: string; size: number }[];
+	expectedAttachments?: Owed[];
 }
 const DRAFT = 'draft-1';
+const FORWARDED = {
+	'msg-7': [
+		{ filename: 'numbers.pdf', contentType: 'application/pdf', size: 12 },
+		{ filename: 'logo.png', contentType: 'image/png', size: 4, contentId: 'logo@x' },
+	],
+};
 let row: Row | null;
 let rowNonce: string | null;
 let hydrate: Ref<unknown>;
-/** Every `drafts.addAttachment` the server received, in order. */
-let attachCalls: RowAttachment[];
-/** When set, the next attach is held at the server's door until released. */
-let holdNextAttach: Deferred<void> | null;
-/** When set, the next attach lands but its answer never reaches the page (it reloaded). */
-let loseNextAnswer: boolean;
+let blobs: number;
+/** Every `fulfil` the server received, in order. */
+let fulfils: number;
+/** Held `fulfil` calls: each waits at the server's door until released. */
+let holdFulfil: Deferred[];
+let forwardReadable: boolean;
 
 function publish() {
-	hydrate.value = row ? JSON.parse(JSON.stringify(row)) : null;
+	// `drafts.get` leaves a generated file's text on the server.
+	hydrate.value = row
+		? JSON.parse(
+				JSON.stringify({
+					...row,
+					expectedAttachments: row.expectedAttachments?.map((e) =>
+						e.source.kind === 'generated' ? { ...e, source: { kind: 'generated' } } : e
+					),
+				})
+			)
+		: null;
 }
 
-function serverAttach(args: RowAttachment & { draftId: string }) {
-	const { draftId: _draftId, ...attachment } = args;
-	attachCalls.push(attachment);
-	// The repeat-is-done rule: an upload the draft already holds is not added again.
-	if (!row!.attachments.some((a) => a.storageId === attachment.storageId)) {
-		row!.attachments = [...row!.attachments, attachment];
-	}
-	publish();
-	return { ok: true, result: { ok: true } };
+function owedFor(requests: Array<Record<string, unknown>>): Owed[] {
+	return requests.flatMap((request, index): Owed[] => {
+		if (request['kind'] === 'generated') {
+			const content = request['content'] as string;
+			return [
+				{
+					key: `generated:${index}`,
+					filename: request['filename'] as string,
+					contentType: request['contentType'] as string,
+					size: content.length,
+					source: { kind: 'generated', content },
+					state: 'owed',
+				},
+			];
+		}
+		const messageId = request['messageId'] as keyof typeof FORWARDED;
+		return FORWARDED[messageId]
+			.filter((part) => !('contentId' in part))
+			.map((part, i) => ({
+				key: `forward:${messageId}:${i}`,
+				filename: part.filename,
+				contentType: part.contentType,
+				size: part.size,
+				source: { kind: 'forward', messageId },
+				state: 'owed',
+			}));
+	});
 }
 
 const operations: Record<string, (args: never) => Promise<unknown>> = {
-	'drafts.create': async (args: { requestNonce?: string }) => {
+	'drafts.create': async (args: {
+		requestNonce?: string;
+		expectedAttachments?: Array<Record<string, unknown>>;
+	}) => {
 		if (row && args.requestNonce && args.requestNonce === rowNonce) {
 			return { ok: true, result: { draftId: DRAFT, existing: true } };
 		}
+		const owed = owedFor(args.expectedAttachments ?? []);
 		row = {
 			toAddresses: [],
 			subject: '',
@@ -134,6 +166,7 @@ const operations: Record<string, (args: never) => Promise<unknown>> = {
 			state: 'draft',
 			lastEditedAt: Date.now(),
 			attachments: [],
+			...(owed.length ? { expectedAttachments: owed } : {}),
 		};
 		rowNonce = args.requestNonce ?? null;
 		publish();
@@ -145,15 +178,34 @@ const operations: Record<string, (args: never) => Promise<unknown>> = {
 		publish();
 		return { ok: true, result: { savedAt: row.lastEditedAt } };
 	},
-	'storage.generateUploadUrl': async () => ({ ok: true, result: 'https://upload.example/u' }),
-	'drafts.addAttachment': async (args: RowAttachment & { draftId: string }) => {
-		const held = holdNextAttach;
-		holdNextAttach = null;
-		if (held) await held.promise;
-		const lost = loseNextAnswer;
-		loseNextAnswer = false;
-		const answer = serverAttach(args);
-		return lost ? new Promise(() => {}) : answer;
+	'expected.fulfil': async () => {
+		fulfils += 1;
+		const gate = holdFulfil.shift();
+		if (gate) await gate.promise;
+		const failed = [];
+		for (const entry of row!.expectedAttachments ?? []) {
+			// Settled meanwhile (another tab, a removal): this copy is dropped.
+			if (entry.state !== 'owed') continue;
+			if (entry.source.kind === 'forward' && !forwardReadable) {
+				failed.push({ key: entry.key, filename: entry.filename, reason: 'unreadable' });
+				continue;
+			}
+			blobs += 1;
+			const storageId = `blob-${blobs}`;
+			const { filename, contentType, size } = entry;
+			row!.attachments = [...row!.attachments, { storageId, filename, contentType, size }];
+			entry.state = 'attached';
+			entry.storageId = storageId;
+		}
+		publish();
+		return { ok: true, result: { failed } };
+	},
+	'expected.remove': async (args: { key: string }) => {
+		const entry = row!.expectedAttachments!.find((e) => e.key === args.key)!;
+		row!.attachments = row!.attachments.filter((a) => a.storageId !== entry.storageId);
+		entry.state = 'removed';
+		publish();
+		return { ok: true, result: { ok: true } };
 	},
 };
 
@@ -194,24 +246,23 @@ const Composer = defineComponent({
 let query: Record<string, string>;
 let states: Record<string, unknown>;
 const replace = vi.fn(async (_to: unknown) => {});
-let rawEml: string | null;
+const showToast = vi.fn();
 
 enableAutoUnmount(afterEach);
 
 beforeEach(() => {
-	vi.useRealTimers();
 	row = null;
 	rowNonce = null;
 	hydrate = ref(undefined);
-	attachCalls = [];
-	holdNextAttach = null;
-	loseNextAnswer = false;
-	puts.length = 0;
+	blobs = 0;
+	fulfils = 0;
+	holdFulfil = [];
+	forwardReadable = true;
 	composers = [];
 	query = {};
 	states = {};
-	rawEml = null;
 	replace.mockClear();
+	showToast.mockClear();
 	window.sessionStorage.clear();
 	window.history.replaceState({ back: '/dashboard/postbox/inbox' }, '');
 
@@ -250,12 +301,8 @@ beforeEach(() => {
 	vi.stubGlobal('useDesktopContext', () => ({ isDesktop: ref(false) }));
 	vi.stubGlobal('useAuth', () => ({ user: ref({ id: 'user-test' }) }));
 	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => false }));
-	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
+	vi.stubGlobal('useToast', () => ({ showToast }));
 	vi.stubGlobal('useConvex', () => null);
-	vi.stubGlobal(
-		'loadRawEml',
-		vi.fn(async () => rawEml)
-	);
 });
 
 function mountPage() {
@@ -281,7 +328,7 @@ function lastUrl(): Record<string, string> {
 	return target.query;
 }
 
-/** The tab reloads: memory is gone, sessionStorage and the URL stay. */
+/** The tab reloads: its memory is gone; sessionStorage and the URL stay. */
 function reload(page: ReturnType<typeof mountPage>) {
 	page.unmount();
 	states = {};
@@ -289,10 +336,17 @@ function reload(page: ReturnType<typeof mountPage>) {
 	return mountPage();
 }
 
+/** Another tab opens the draft's URL: no memory and none of this tab's storage. */
+function secondTab() {
+	states = {};
+	window.sessionStorage.clear();
+	query = { c: 'a0b1c2d3e4f5a6b7c8d9e0f1', mailbox: 'mbx-1', draft: DRAFT };
+	return mountPage();
+}
+
 const names = (list: { filename: string }[]) => list.map((a) => a.filename);
 
-const RSVP: ComposeSpec = {
-	mailboxId: 'mbx-1' as never,
+const RSVP: Partial<ComposeSpec> = {
 	prefillTo: ['bob@example.com'],
 	prefillSubject: 'Accepted: Quarterly planning',
 	prefillBodyHtml: '<p>I accepted Quarterly planning.</p>',
@@ -303,118 +357,79 @@ const RSVP: ComposeSpec = {
 	},
 };
 
-/** Accept an invite; the text is saved and the URL names the draft while reply.ics uploads. */
+/** Accept an invite while the server is slow to copy reply.ics on. */
 async function acceptInvite() {
+	const first = deferred();
+	holdFulfil.push(first);
 	const key = open(RSVP);
 	const page = mountPage();
 	await flushPromises();
-	expect(names(puts.map((p) => ({ filename: p.file.name })))).toEqual(['reply.ics']);
+	// The row owes reply.ics from the moment it exists, and the composer asked for it.
+	expect(row!.expectedAttachments?.map((e) => [e.filename, e.state])).toEqual([
+		['reply.ics', 'owed'],
+	]);
+	expect(fulfils).toBe(1);
+	// The text is saved and the URL names the draft; reply.ics is still on its way.
 	expect(lastUrl()).toEqual({ c: key, mailbox: 'mbx-1', draft: DRAFT });
 	expect(row!.bodyHtml).toContain('Quarterly planning');
-	expect(row!.attachments).toEqual([]);
+	expect(names(current().uploads.value)).toEqual(['reply.ics']);
 	expect(current().canSend.value).toBe(false);
-	return page;
+	return { page, first };
 }
 
-describe('compose page — an expected attachment across a reload (#1257)', () => {
-	it('uploads the RSVP again when the reload came before its upload finished', async () => {
-		const page = await acceptInvite();
+describe('compose page — files the draft owes, across reloads and tabs (#1257)', () => {
+	it('attaches the RSVP after a reload that came before it was on the draft', async () => {
+		const { page, first } = await acceptInvite();
 
-		const again = reload(page);
+		reload(page);
 		await flushPromises();
 		const composer = current();
 		expect(composer.draftId.value).toBe(DRAFT);
 		expect(composer.bodyHtml.value).toContain('Quarterly planning');
-		// The reopened draft re-attaches reply.ics, and Send waits for it.
-		expect(puts).toHaveLength(2);
-		expect(names(composer.uploads.value)).toEqual(['reply.ics']);
-		expect(composer.isUploading.value).toBe(true);
-		expect(composer.canSend.value).toBe(false);
-
-		puts[1]!.done.resolve('sid-2');
-		await flushPromises();
-		expect(names(row!.attachments)).toEqual(['reply.ics']);
+		// The reopened draft asked again; the server put reply.ics on.
+		expect(fulfils).toBe(2);
 		expect(names(composer.attachments.value)).toEqual(['reply.ics']);
+		expect(composer.uploads.value).toEqual([]);
 		expect(composer.canSend.value).toBe(true);
-		again.unmount();
 
-		// Settled: a later reopen attaches nothing more.
-		states = {};
-		mountPage();
-		await flushPromises();
-		expect(puts).toHaveLength(2);
-		expect(attachCalls).toHaveLength(1);
-		expect(names(current().attachments.value)).toEqual(['reply.ics']);
-		expect(current().canSend.value).toBe(true);
-	});
-
-	it('leaves one reply.ics when the attach in flight at the reload had landed', async () => {
-		const page = await acceptInvite();
-		// The attach lands, but the page reloads before its answer comes back.
-		loseNextAnswer = true;
-		puts[0]!.done.resolve('sid-1');
+		// The first tab's request, still in flight, lands on a settled key.
+		first.resolve();
 		await flushPromises();
 		expect(names(row!.attachments)).toEqual(['reply.ics']);
-		expect(names(current().attachments.value)).toEqual([]);
-
-		reload(page);
-		await flushPromises();
-		expect(puts).toHaveLength(1);
-		expect(attachCalls).toHaveLength(1);
-		expect(names(current().attachments.value)).toEqual(['reply.ics']);
-		expect(current().canSend.value).toBe(true);
+		expect(blobs).toBe(1);
 	});
 
-	it('leaves one reply.ics when that attach lands only after the reopened page looked', async () => {
-		const page = await acceptInvite();
-		holdNextAttach = deferred();
-		const lateAttach = holdNextAttach;
-		puts[0]!.done.resolve('sid-1');
-		await flushPromises();
+	it('shows a second tab the same debt, and two tabs asking leave one reply.ics', async () => {
+		const { first } = await acceptInvite();
+		const tabA = current();
 
-		reload(page);
+		// Tab B has no compose request and no storage: only the URL and the row.
+		const second = deferred();
+		holdFulfil.push(second);
+		secondTab();
 		await flushPromises();
-		// The reopened page found no reply.ics on the row, so it attached the
-		// recorded upload again instead of uploading a second copy.
-		expect(puts).toHaveLength(1);
-		expect(attachCalls.map((a) => a.storageId)).toEqual(['sid-1']);
-		expect(names(current().attachments.value)).toEqual(['reply.ics']);
+		const tabB = current();
+		expect(tabB).not.toBe(tabA);
+		expect(names(tabB.uploads.value)).toEqual(['reply.ics']);
+		expect(tabB.canSend.value).toBe(false);
 
-		// Then the first attach reaches the server.
-		lateAttach.resolve();
+		second.resolve();
 		await flushPromises();
-		expect(attachCalls.map((a) => a.storageId)).toEqual(['sid-1', 'sid-1']);
+		first.resolve();
+		await flushPromises();
 		expect(names(row!.attachments)).toEqual(['reply.ics']);
-		expect(names(current().attachments.value)).toEqual(['reply.ics']);
-		expect(current().canSend.value).toBe(true);
+		expect(blobs).toBe(1);
+		// Both tabs show the one copy, and both may send.
+		for (const tab of [tabA, tabB]) {
+			expect(names(tab.attachments.value)).toEqual(['reply.ics']);
+			expect(tab.uploads.value).toEqual([]);
+			expect(tab.canSend.value).toBe(true);
+		}
 	});
 
-	it('re-copies only the forwarded file that had not reached the row', async () => {
-		rawEml = [
-			'From: carol@example.com',
-			'Subject: Q3 numbers',
-			'MIME-Version: 1.0',
-			'Content-Type: multipart/mixed; boundary="b1"',
-			'',
-			'--b1',
-			'Content-Type: text/plain',
-			'',
-			'See attached.',
-			'--b1',
-			'Content-Type: application/pdf',
-			'Content-Disposition: attachment; filename="numbers.pdf"',
-			'Content-Transfer-Encoding: base64',
-			'',
-			'JVBERi0xLjQK',
-			'--b1',
-			'Content-Type: text/plain',
-			'Content-Disposition: attachment; filename="notes.txt"',
-			'',
-			'remember the totals',
-			'--b1--',
-			'',
-		].join('\r\n');
-		const key = open({
+	it('keeps a forwarded file owed while it cannot be read, with Retry', async () => {
+		forwardReadable = false;
+		open({
 			prefillTo: ['dave@example.com'],
 			prefillSubject: 'Fwd: Q3 numbers',
 			prefillBodyHtml: '<p>FYI</p>',
@@ -422,39 +437,43 @@ describe('compose page — an expected attachment across a reload (#1257)', () =
 		});
 		const page = mountPage();
 		await flushPromises();
-		expect(names(puts.map((p) => ({ filename: p.file.name })))).toEqual([
-			'numbers.pdf',
-			'notes.txt',
+		// Only the file part is owed, not the inline logo.
+		expect(row!.expectedAttachments?.map((e) => e.filename)).toEqual(['numbers.pdf']);
+		expect(current().uploads.value.map((c) => [c.filename, c.status])).toEqual([
+			['numbers.pdf', 'failed'],
 		]);
-		expect(lastUrl()).toEqual({ c: key, mailbox: 'mbx-1', draft: DRAFT });
-		puts[0]!.done.resolve('sid-pdf');
-		await flushPromises();
-		expect(names(row!.attachments)).toEqual(['numbers.pdf']);
+		expect(showToast).toHaveBeenCalledWith(expect.stringContaining('numbers.pdf'), 'error');
+		expect(current().canSend.value).toBe(false);
 
+		// A reload while it is still unreadable keeps it owed.
 		reload(page);
 		await flushPromises();
-		expect(puts).toHaveLength(3);
-		expect(puts[2]!.file.name).toBe('notes.txt');
+		expect(current().uploads.value.map((c) => c.status)).toEqual(['failed']);
 		expect(current().canSend.value).toBe(false);
-		puts[2]!.done.resolve('sid-notes');
+
+		forwardReadable = true;
+		current().retryUpload(current().uploads.value[0]!.id);
 		await flushPromises();
-		expect(names(row!.attachments)).toEqual(['numbers.pdf', 'notes.txt']);
-		expect(names(current().attachments.value)).toEqual(['numbers.pdf', 'notes.txt']);
-		expect(attachCalls).toHaveLength(2);
+		expect(names(current().attachments.value)).toEqual(['numbers.pdf']);
 		expect(current().canSend.value).toBe(true);
 	});
 
-	it('lets the person drop an expected file: removing its chip is not undone by a reload', async () => {
-		const page = await acceptInvite();
-		const chip = current().uploads.value[0]!;
-		current().cancelUpload(chip.id);
+	it('keeps a file out once its chip is removed, even when its copy was in flight', async () => {
+		const { page, first } = await acceptInvite();
+		current().cancelUpload(current().uploads.value[0]!.id);
 		await flushPromises();
+		expect(row!.expectedAttachments?.[0]?.state).toBe('removed');
+		expect(current().uploads.value).toEqual([]);
 		expect(current().canSend.value).toBe(true);
+
+		first.resolve();
+		await flushPromises();
+		expect(row!.attachments).toEqual([]);
+		expect(current().attachments.value).toEqual([]);
 
 		reload(page);
 		await flushPromises();
-		expect(puts).toHaveLength(1);
-		expect(current().uploads.value).toEqual([]);
+		expect(current().attachments.value).toEqual([]);
 		expect(current().canSend.value).toBe(true);
 	});
 });

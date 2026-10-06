@@ -101,8 +101,8 @@ function rsvp(status: Partstat) {
 		prefillBodyHtml: `<p>${t(`components.postbox.postboxInviteCard.reply.body${suffix}`, {
 			summary: `<strong>${escapeHtml(e.summary ?? '')}</strong>`,
 		})}</p>`,
-		// Plain text in the compose request, so a reload before the draft holds
-		// it attaches it all the same.
+		// Plain text: the compose request keeps it until the draft row exists,
+		// and the row owes it from then on, so a reload never loses it.
 		attachGenerated: {
 			filename: 'reply.ics',
 			contentType: 'text/calendar; method=REPLY; charset=utf-8',

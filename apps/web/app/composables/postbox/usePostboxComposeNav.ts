@@ -102,8 +102,8 @@ const TEXT_KEYS = [
 	'prefillFollowUpRemindAt',
 ] as const satisfies readonly (keyof ComposeSpec)[];
 /**
- * Acted on when the row is created; from then on the draft's expected
- * attachments carry what they still owe (usePostboxExpectedAttachments).
+ * Acted on when the row is created; from then on the row owes the files they
+ * asked for (usePostboxComposeExpected).
  */
 const CREATION_KEYS = ['forwardAttachmentsFromMessageId', 'attachGenerated'] as const;
 
