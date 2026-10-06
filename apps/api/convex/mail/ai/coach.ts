@@ -24,6 +24,7 @@ import {
 	type DraftQuality,
 } from '../../agent/steps/draft/index';
 import { scheduleLlmSpend } from '../../analytics/llmUsage';
+import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
 import { gatedInParallel, readThreadMessages } from './gate';
 import { buildThreadTranscript, THREAD_SUMMARY } from './transcript';
 
@@ -148,16 +149,21 @@ export const coachDraft = authedAction({
 			if (thread && thread.messages.length > 0) {
 				context = await buildThreadTranscript(thread.messages, THREAD_SUMMARY);
 			}
-			const { object, tokenUsage, modelUsed } = await runLlmObject({
-				model,
-				schema: draftQualitySchema,
-				prompt: buildSelfCheckPrompt({
-					context,
-					draft: draft.slice(0, COACH_MAX_DRAFT_CHARS),
+			const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
+				ctx,
+				'postbox_coach_draft',
+				runLlmObject({
+					model,
+					schema: draftQualitySchema,
+					prompt: buildSelfCheckPrompt({
+						context,
+						draft: draft.slice(0, COACH_MAX_DRAFT_CHARS),
+					}),
+					temperature: 0.1,
+					...interactiveLlmPolicy('reply'),
 				}),
-				temperature: 0.1,
-				...interactiveLlmPolicy('reply'),
-			});
+				scheduleLlmSpend
+			);
 			// Best-effort spend accounting — never let it break the coach.
 			try {
 				await scheduleLlmSpend(ctx, 'postbox_coach_draft', tokenUsage, modelUsed);

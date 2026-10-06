@@ -26,6 +26,7 @@ import { internal } from '../_generated/api';
 import { resolveLanguageModel } from '../lib/llmProvider';
 import { runLlmObject } from '../lib/llm/dispatch';
 import { recordLlmSpend } from '../analytics/llmUsage';
+import { recordSpendOnFailure } from '../analytics/failedLlmSpend';
 import { throwInvalidInput } from '../_utils/errors';
 
 /** The compiled rule shape the model must return. */
@@ -143,12 +144,16 @@ export const compile = authedAction({
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 
 		const model = await resolveLanguageModel(ctx, 'classify'); // cheap tier — this is a light extraction
-		const { object, tokenUsage, modelUsed } = await runLlmObject({
-			model,
-			schema: compiledRuleSchema,
-			prompt: buildCompilePrompt(instruction),
-			temperature: 0,
-		});
+		const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
+			ctx,
+			'handling_rule_compile',
+			runLlmObject({
+				model,
+				schema: compiledRuleSchema,
+				prompt: buildCompilePrompt(instruction),
+				temperature: 0,
+			})
+		);
 		await recordLlmSpend(ctx, 'handling_rule_compile', tokenUsage, modelUsed);
 
 		// Bound the compiled facets defensively (the model output is structured but

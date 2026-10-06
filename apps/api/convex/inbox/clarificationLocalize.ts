@@ -227,8 +227,8 @@ function sumUsage(
  * or nothing to translate into, returns the questions unchanged, and a failed
  * retry keeps what the first call produced. A gap that survives the retry is
  * logged as a count only (the questions come from mail). Reports the summed
- * usage of the calls it made, a failed call's billed usage included, so the
- * caller can fold it into its own accounting.
+ * usage of the calls it made so the caller can fold it into its own accounting,
+ * including what a failed call was billed for (#1260).
  */
 export async function localizeQuestions<Q extends LocalizableQuestion>(
 	model: LanguageModel,
@@ -257,7 +257,13 @@ export async function localizeQuestions<Q extends LocalizableQuestion>(
 		tokenUsage = first.tokenUsage;
 		modelUsed = first.modelUsed;
 	} catch (error) {
-		return { questions: questions.map((q) => ({ ...q })), ...partialUsageOf(error) };
+		// A completion that failed the schema was still billed.
+		const billed = partialUsageOf(error);
+		return {
+			questions: questions.map((q) => ({ ...q })),
+			tokenUsage: billed?.tokenUsage,
+			modelUsed: billed?.modelUsed,
+		};
 	}
 
 	const missing = missingTranslationPairs(merged, targets);
@@ -283,9 +289,9 @@ export async function localizeQuestions<Q extends LocalizableQuestion>(
 		modelUsed = modelUsed ?? retry.modelUsed;
 	} catch (error) {
 		// Keep the first pass; the gap is logged below.
-		const partial = partialUsageOf(error);
-		tokenUsage = sumUsage(tokenUsage, partial?.tokenUsage);
-		modelUsed = modelUsed ?? partial?.modelUsed;
+		const billed = partialUsageOf(error);
+		tokenUsage = sumUsage(tokenUsage, billed?.tokenUsage);
+		modelUsed = modelUsed ?? billed?.modelUsed;
 	}
 
 	const stillMissing = missingTranslationPairs(merged, targets).length;

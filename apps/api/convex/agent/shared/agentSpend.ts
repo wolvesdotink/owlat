@@ -16,7 +16,7 @@
  */
 
 import { recordLlmSpend } from '../../analytics/llmUsage';
-import { partialUsageOf } from '../../lib/llm/partialUsage';
+import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
 import type { TokenUsage } from '../steps/types';
 
 type SpendCtx = Parameters<typeof recordLlmSpend>[0];
@@ -33,35 +33,19 @@ export type AgentSpendFeature =
 	| 'agent_clarify';
 
 /**
- * Run one model call and record what it billed: its usage when it returns, the
- * usage a failed run carries (`partialUsageOf`) when it throws. The error is
- * rethrown unchanged, so the caller's fail-soft handling sees what it saw
- * before. A failed ledger write never fails the call.
+ * Run one model call and record what it billed: its usage when it returns, and
+ * the usage a failed run carries when it throws (`recordSpendOnFailure`, which
+ * rethrows the provider's original error, so nothing above can record the same
+ * usage again). A failed ledger write never fails the call.
  */
 export async function meterAgentCall<
 	R extends { readonly tokenUsage?: TokenUsage; readonly modelUsed?: string },
 >(ctx: SpendCtx, feature: AgentSpendFeature, call: () => Promise<R>): Promise<R> {
-	let result: R;
+	const result = await recordSpendOnFailure(ctx, feature, call());
 	try {
-		result = await call();
-	} catch (error) {
-		const partial = partialUsageOf(error);
-		if (partial) await recordAgentSpend(ctx, feature, partial.tokenUsage, partial.modelUsed);
-		throw error;
-	}
-	await recordAgentSpend(ctx, feature, result.tokenUsage, result.modelUsed);
-	return result;
-}
-
-async function recordAgentSpend(
-	ctx: SpendCtx,
-	feature: AgentSpendFeature,
-	tokenUsage: TokenUsage | undefined,
-	modelUsed: string | undefined
-): Promise<void> {
-	try {
-		await recordLlmSpend(ctx, feature, tokenUsage, modelUsed);
+		await recordLlmSpend(ctx, feature, result.tokenUsage, result.modelUsed);
 	} catch {
 		// ignore — a lost row under-counts; failing the step over it would drop mail
 	}
+	return result;
 }

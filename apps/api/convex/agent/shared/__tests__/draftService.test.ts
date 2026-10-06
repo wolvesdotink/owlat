@@ -571,3 +571,48 @@ describe('runSharedDraft — the spend of every outcome, recorded once (#1256)',
 		expect(out.draftBody).toBe(REPLY);
 	});
 });
+
+describe('runSharedDraft — the spend of a failed self-check (#1260)', () => {
+	const REPLY = 'Hi John,\n\nThanks for getting in touch.\n\nBest,\nAda';
+	const usage = (n: number) => ({ promptTokens: n, completionTokens: n, totalTokens: 2 * n });
+	const selfCheckSpend = () =>
+		vi.mocked(recordLlmSpend).mock.calls.filter(([, label]) => label === 'sc');
+
+	beforeEach(() => {
+		runLlmTextMock.mockResolvedValue({ text: REPLY, tokenUsage: undefined, modelUsed: 'm' });
+	});
+
+	it('records the billed attempts of a self-check that never fitted the schema, once', async () => {
+		const schemaFailure = new Error('No object generated: response did not match schema.');
+		runLlmObjectMock.mockRejectedValueOnce(
+			new LlmPartialUsageError(schemaFailure, usage(12) as never, 'cheap-model')
+		);
+
+		const out = await runSharedDraft(fakeCtx, baseParams());
+
+		expect(out.draftQuality).toBeNull();
+		expect(selfCheckSpend()).toEqual([[fakeCtx, 'sc', usage(12), 'cheap-model']]);
+	});
+
+	it('records nothing for a self-check failure that was never billed', async () => {
+		runLlmObjectMock.mockRejectedValueOnce(new Error('401 unauthorized'));
+
+		const out = await runSharedDraft(fakeCtx, baseParams());
+
+		expect(out.draftQuality).toBeNull();
+		expect(selfCheckSpend()).toEqual([]);
+	});
+
+	it('records a passing self-check once', async () => {
+		runLlmObjectMock.mockResolvedValueOnce({
+			object: { score: 0.9, complete: true, grounded: true, flags: [] },
+			tokenUsage: usage(5) as never,
+			modelUsed: 'cheap-model',
+		});
+
+		const out = await runSharedDraft(fakeCtx, baseParams());
+
+		expect(out.draftQuality?.score).toBe(0.9);
+		expect(selfCheckSpend()).toEqual([[fakeCtx, 'sc', usage(5), 'cheap-model']]);
+	});
+});

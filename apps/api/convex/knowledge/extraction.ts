@@ -22,6 +22,7 @@ import { resolveLanguageModel, resolveEmbeddingModel, toIndexVector } from '../l
 import { logError, logInfo } from '../lib/runtimeLog';
 import { runLlmObject } from '../lib/llm/dispatch';
 import { recordLlmSpend } from '../analytics/llmUsage';
+import { recordSpendOnFailure } from '../analytics/failedLlmSpend';
 import { ENTRY_TYPES } from '../schema/knowledge';
 import { normalizeForHash } from '../lib/knowledgeEdges';
 import { detectInjection, detectSmuggling } from '../agent/steps/security_scan/patterns';
@@ -181,10 +182,13 @@ export const extractFromMessage = internalAction({
 				object: extraction,
 				tokenUsage,
 				modelUsed,
-			} = await runLlmObject({
-				model,
-				schema: extractionSchema,
-				prompt: `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
+			} = await recordSpendOnFailure(
+				ctx,
+				'knowledge_extract_message',
+				runLlmObject({
+					model,
+					schema: extractionSchema,
+					prompt: `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
 
 From: ${message.from}
 Subject: ${message.subject}
@@ -201,9 +205,10 @@ Extract any:
 - Action Items: commitments or tasks mentioned
 
 Only extract knowledge you are confident about. Skip trivial greetings or small talk.`,
-				temperature: 0.1,
-				abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
-			});
+					temperature: 0.1,
+					abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
+				})
+			);
 			logInfo('[knowledge.extract] llm call', { tokenUsage, modelUsed });
 			await recordLlmSpend(ctx, 'knowledge_extract_message', tokenUsage, modelUsed);
 
@@ -267,10 +272,13 @@ export const extractFromFile = internalAction({
 				object: extraction,
 				tokenUsage,
 				modelUsed,
-			} = await runLlmObject({
-				model,
-				schema: extractionSchema,
-				prompt: `Extract organizational knowledge from this document. Only extract information that would be useful for future reference.
+			} = await recordSpendOnFailure(
+				ctx,
+				'knowledge_extract_file',
+				runLlmObject({
+					model,
+					schema: extractionSchema,
+					prompt: `Extract organizational knowledge from this document. Only extract information that would be useful for future reference.
 
 Filename: ${file.filename}
 Title: ${file.title ?? file.filename}
@@ -278,9 +286,10 @@ ${file.summary ? `Summary: ${file.summary}\n` : ''}Content:
 ${textContent}
 
 Extract any facts, decisions, events, preferences, goals, relationships, or action items. Skip boilerplate and formatting noise.`,
-				temperature: 0.1,
-				abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
-			});
+					temperature: 0.1,
+					abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
+				})
+			);
 			logInfo('[knowledge.extractFile] llm call', { tokenUsage, modelUsed });
 			await recordLlmSpend(ctx, 'knowledge_extract_file', tokenUsage, modelUsed);
 
@@ -357,10 +366,13 @@ export const extractFromMailMessage = internalAction({
 				object: extraction,
 				tokenUsage,
 				modelUsed,
-			} = await runLlmObject({
-				model,
-				schema: extractionSchema,
-				prompt: `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
+			} = await recordSpendOnFailure(
+				ctx,
+				'knowledge_extract_mail',
+				runLlmObject({
+					model,
+					schema: extractionSchema,
+					prompt: `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
 
 From: ${msg.fromName ? `${msg.fromName} <${msg.fromAddress}>` : msg.fromAddress}
 Subject: ${msg.subject}
@@ -377,9 +389,10 @@ Extract any:
 - Action Items: commitments or tasks mentioned
 
 Only extract knowledge you are confident about. Skip trivial greetings or small talk.`,
-				temperature: 0.1,
-				abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
-			});
+					temperature: 0.1,
+					abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
+				})
+			);
 			logInfo('[knowledge.extractMail] llm call', { tokenUsage, modelUsed });
 			await recordLlmSpend(ctx, 'knowledge_extract_mail', tokenUsage, modelUsed);
 

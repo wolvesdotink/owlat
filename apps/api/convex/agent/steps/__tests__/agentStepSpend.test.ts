@@ -177,7 +177,9 @@ describe('classify', () => {
 		mocks.runLlmObject.mockRejectedValueOnce(error);
 		const { ctx, ledger } = classifyCtx();
 
-		await expect(classifyStep.execute(ctx, input)).rejects.toBe(error);
+		// The walker gets the provider's own error, which carries no usage left
+		// for anything above to record again.
+		await expect(classifyStep.execute(ctx, input)).rejects.toBe(error.cause);
 		expect(ledger).toEqual([
 			{ feature: 'agent_classify', tokenUsage: usage(6), modelUsed: 'model-x' },
 		]);
