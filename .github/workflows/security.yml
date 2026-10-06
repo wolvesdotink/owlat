@@ -64,6 +64,24 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # A local rule that fails to parse is dropped with a logged error and the
+      # scan still exits 0 (`--error` fails on findings only), so check that
+      # every rule in .semgrep.yml loads, and that the webhook rule reports
+      # what its test file says, before scanning. `--strict` is not an option
+      # here: it also fails on .vue files Semgrep cannot parse.
+      - name: Validate local rules
+        run: semgrep scan --validate --config .semgrep.yml
+
+      # One `--test` run per file: `--test` pairs one config file with one
+      # target file.
+      - name: Test local rules
+        run: |
+          set -e
+          for f in .semgrep/tests/*.ts .semgrep/tests/read-forms/*.ts; do
+            echo "== $f"
+            semgrep --test --config .semgrep.yml "$f"
+          done
+
       # Bundled rulesets cover the OWASP top 10 classes most relevant to
       # this stack (XSS, SSRF, prototype-pollution, hardcoded-secrets).
       # The local rules in .semgrep.yml add Owlat-specific patterns —
