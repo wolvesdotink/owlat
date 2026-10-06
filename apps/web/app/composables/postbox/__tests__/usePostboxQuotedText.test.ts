@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-	buildQuotedReply,
-	buildForwardedBody,
-	forwardAttachmentsSeed,
-} from '../usePostboxQuotedText';
+import { buildQuotedReply, buildForwardedBody } from '../usePostboxQuotedText';
 
 const base = {
 	fromAddress: 'sara@example.com',
@@ -47,44 +43,5 @@ describe('buildForwardedBody', () => {
 		expect(out).toContain('Subject: Lunch?');
 		expect(out).toContain('To: me@example.com, team@example.com');
 		expect(out).toContain('<p>original</p>');
-	});
-});
-
-describe('forwardAttachmentsSeed (#1257)', () => {
-	const html = '<p>See the invoice.</p><img src="cid:logo@x">';
-
-	it('names every file part, also one with a Content-ID the body does not show', () => {
-		const seed = forwardAttachmentsSeed({
-			_id: 'msg-1',
-			htmlBodyInline: html,
-			attachments: [
-				{ filename: 'invoice.pdf', partIndex: '0', contentId: '<invoice@x>' },
-				{ filename: 'logo.png', partIndex: '1', contentId: '<logo@x>' },
-				{ filename: 'notes.txt', partIndex: '2' },
-			],
-		});
-		expect(seed).toEqual({
-			forwardAttachmentsFromMessageId: 'msg-1',
-			forwardAttachmentParts: [
-				{ partIndex: '0', filename: 'invoice.pdf' },
-				{ partIndex: '2', filename: 'notes.txt' },
-			],
-		});
-	});
-
-	it('asks for nothing when the only parts are images the body shows', () => {
-		expect(
-			forwardAttachmentsSeed({
-				_id: 'msg-1',
-				htmlBodyInline: html,
-				attachments: [{ filename: 'logo.png', partIndex: '1', contentId: '<logo@x>' }],
-			})
-		).toEqual({});
-	});
-
-	it('leaves the pick to the server when the part list is unknown', () => {
-		expect(forwardAttachmentsSeed({ _id: 'msg-1' })).toEqual({
-			forwardAttachmentsFromMessageId: 'msg-1',
-		});
 	});
 });

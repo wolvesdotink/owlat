@@ -14362,6 +14362,7 @@
 			},
 			"usePostboxComposeAttachments": {
 				"attachOperation": "Datei anhängen",
+				"forwardedAttachments": "Anhänge der weitergeleiteten Nachricht",
 				"prepareUploadOperation": "Upload vorbereiten",
 				"removeOperation": "Anhang entfernen",
 				"shareBlockHeading": "Geteilte Datei",

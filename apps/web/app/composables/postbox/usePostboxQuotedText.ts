@@ -16,7 +16,6 @@ import sanitizeHtml from 'sanitize-html';
 import type { Id } from '@owlat/api/dataModel';
 import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import { escapeHtml, escapeHtmlWithBreaks } from '@owlat/shared/html';
-import { isForwardedPart, referencedContentIds } from '@owlat/shared/attachments';
 import type { ComposeSpec } from '~/composables/postbox/usePostboxComposeNav';
 import { consumeResolvedPostboxMessageBody } from './postboxBodyResolver';
 
@@ -76,8 +75,6 @@ export function buildQuotedReply(msg: QuoteSource): string {
 export interface ReplyQuoteTarget extends QuoteSource {
 	_id: string;
 	subject: string;
-	/** Its parts: a resend copies the ones `isForwardedPart` picks. */
-	attachments?: ForwardableParts;
 }
 
 /**
@@ -155,39 +152,8 @@ export function buildResendSpec(
 		prefillTo: toAddresses,
 		prefillSubject: target.subject,
 		prefillBodyHtml: originalAsHtml(target),
-		...forwardAttachmentsSeed(target),
+		forwardAttachmentsFromMessageId: target._id as Id<'mailMessages'>,
 	};
-}
-
-/** A received message's parts, as the reader has them. */
-export type ForwardableParts = ReadonlyArray<{
-	filename: string;
-	partIndex?: string;
-	contentId?: string;
-}>;
-
-/**
- * What a forward (or resend) of `message` asks its draft to owe: the parts
- * `isForwardedPart` picks against its whole body (the server owes exactly
- * those). Nothing when it picks none; with no part list at hand, the message
- * alone, and the server picks the same way.
- */
-export function forwardAttachmentsSeed(message: {
-	_id: string;
-	htmlBodyInline?: string;
-	attachments?: ForwardableParts;
-}): Pick<ComposeSpec, 'forwardAttachmentsFromMessageId' | 'forwardAttachmentParts'> {
-	const messageId = message._id as Id<'mailMessages'>;
-	if (!message.attachments) return { forwardAttachmentsFromMessageId: messageId };
-	const referenced = referencedContentIds(message.htmlBodyInline ?? '');
-	const parts = message.attachments.flatMap((part, index) =>
-		isForwardedPart(part, referenced)
-			? [{ partIndex: part.partIndex ?? String(index), filename: part.filename }]
-			: []
-	);
-	return parts.length > 0
-		? { forwardAttachmentsFromMessageId: messageId, forwardAttachmentParts: parts }
-		: {};
 }
 
 /** A "Forwarded message" header block followed by the original body. */

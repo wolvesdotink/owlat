@@ -14362,6 +14362,7 @@
 			},
 			"usePostboxComposeAttachments": {
 				"attachOperation": "Attach file",
+				"forwardedAttachments": "Attachments of the forwarded message",
 				"prepareUploadOperation": "Prepare upload",
 				"removeOperation": "Remove attachment",
 				"shareBlockHeading": "Shared file",

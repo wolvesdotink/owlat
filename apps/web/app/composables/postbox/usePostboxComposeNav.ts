@@ -105,11 +105,7 @@ const TEXT_KEYS = [
  * Acted on when the row is created; from then on the row owes the files they
  * asked for (usePostboxComposeExpected).
  */
-const CREATION_KEYS = [
-	'forwardAttachmentsFromMessageId',
-	'forwardAttachmentParts',
-	'attachGenerated',
-] as const;
+const CREATION_KEYS = ['forwardAttachmentsFromMessageId', 'attachGenerated'] as const;
 
 /** Whether a seed carries text the server may not hold yet. */
 export function seedCarriesText(seed: ComposeSpec | undefined): boolean {

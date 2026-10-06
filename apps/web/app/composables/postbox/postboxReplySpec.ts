@@ -12,13 +12,7 @@ import { deriveReplyAllExtras } from '~/utils/recipientHints';
 import { resolvePrimaryReplyKind, type PostboxReplyDefaultMode } from '~/utils/postboxReplyDefault';
 import type { AnswerModeKind } from '~/utils/answerMode';
 import type { ComposeSpec } from './usePostboxComposeNav';
-import {
-	buildForwardedBody,
-	buildReplySpec,
-	forwardAttachmentsSeed,
-	resolveBodyFields,
-	type ForwardableParts,
-} from './usePostboxQuotedText';
+import { buildForwardedBody, buildReplySpec, resolveBodyFields } from './usePostboxQuotedText';
 
 /** The reply/forward source shape the composer quotes from. */
 export type ReplyForwardSource = {
@@ -31,8 +25,6 @@ export type ReplyForwardSource = {
 	receivedAt: number;
 	htmlBodyInline?: string;
 	textBodyInline?: string;
-	/** Its parts: a forward copies the ones `isForwardedPart` picks. */
-	attachments?: ForwardableParts;
 };
 
 /** A seed for the composer. */
@@ -83,7 +75,7 @@ export async function buildReplyComposeSeed(
 				? target.subject
 				: `Fwd: ${target.subject}`,
 			prefillBodyHtml: buildForwardedBody(target),
-			...forwardAttachmentsSeed(target),
+			forwardAttachmentsFromMessageId: target._id as Id<'mailMessages'>,
 		};
 	}
 	const spec: ReplyComposeSeed = buildReplySpec(ctx.mailboxId, target, ctx.leadText);

@@ -5,8 +5,9 @@
  * the draft agrees on what is still owed:
  *
  *  - an open that carries such files creates the row at once, asking it to owe
- *    them (`drafts.create`'s `expectedAttachments`); a forward names the parts
- *    `isForwardedPart` picks (`forwardAttachmentsSeed`);
+ *    them (`drafts.create`'s `expectedAttachments`); a forward first reads its
+ *    raw message and names the parts whose disposition is `attachment`, as
+ *    forwarding always picked them (no parts, no row);
  *  - whenever the row owes a file this mount has not tried yet (a reload, a
  *    second tab, another member's open), the server is asked to copy it on
  *    (`fulfil`). Any number of tabs may ask at once: each file lands once;
@@ -23,6 +24,7 @@ import type { FunctionArgs } from 'convex/server';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
+import { forwardedParts } from '@owlat/shared/mailMime';
 import type { ComposerAttachment } from './usePostboxComposeAttachments';
 import type { InitialHydrationState } from './usePostboxComposeHydration';
 import type { UploadChip } from './postboxAttachmentUploads';
@@ -45,20 +47,28 @@ const CHIP_PREFIX = 'expected:';
 export function expectedAttachmentRequests(seed: {
 	attachGenerated?: GeneratedAttachment;
 	forwardAttachmentsFromMessageId?: Id<'mailMessages'>;
-	forwardAttachmentParts?: Array<{ partIndex: string; filename: string }>;
 }): ExpectedAttachmentRequest[] {
 	return [
 		...(seed.attachGenerated ? [{ kind: 'generated' as const, ...seed.attachGenerated }] : []),
 		...(seed.forwardAttachmentsFromMessageId
-			? [
-					{
-						kind: 'forward' as const,
-						messageId: seed.forwardAttachmentsFromMessageId,
-						...(seed.forwardAttachmentParts ? { parts: seed.forwardAttachmentParts } : {}),
-					},
-				]
+			? [{ kind: 'forward' as const, messageId: seed.forwardAttachmentsFromMessageId }]
 			: []),
 	];
+}
+
+type ForwardParts = Array<{ partIndex: string; filename: string }>;
+
+/**
+ * The parts a forward of `messageId` carries, picked from its raw message by
+ * Content-Disposition as forwarding always did; null when it cannot be read.
+ */
+async function readForwardParts(messageId: Id<'mailMessages'>): Promise<ForwardParts | null> {
+	try {
+		const raw = await loadRawEml(messageId);
+		return raw ? forwardedParts(raw) : null;
+	} catch {
+		return null;
+	}
 }
 
 interface OwedView {
@@ -68,6 +78,7 @@ interface OwedView {
 	size: number;
 	state: 'owed' | 'attached' | 'removed';
 	storageId?: string;
+	isPlaceholder?: boolean;
 }
 interface RowView {
 	attachments?: Array<ComposerAttachment & { isInline?: boolean }>;
@@ -77,8 +88,14 @@ type Failure = 'unreadable' | 'tooLarge' | 'tooMany' | 'totalTooLarge' | 'failed
 
 export function usePostboxComposeExpected(opts: {
 	draftId: Readonly<Ref<Id<'mailDrafts'> | null>>;
-	/** What the open asked the new row to owe. */
-	requests: ExpectedAttachmentRequest[];
+	/**
+	 * What the open asks the new row to owe. A forward's parts are named here
+	 * once its raw message is read; a row made before that leaves the pick to
+	 * the server.
+	 */
+	requests: Ref<ExpectedAttachmentRequest[]>;
+	/** A forward's parts from its raw message (tests replace the download). */
+	readForwardParts?: (messageId: Id<'mailMessages'>) => Promise<ForwardParts | null>;
 	ensureDraft: () => Promise<Id<'mailDrafts'> | null>;
 	/** Whether a reopened row has been merged into the composer. */
 	rowState: () => InitialHydrationState;
@@ -112,11 +129,17 @@ export function usePostboxComposeExpected(opts: {
 	const pending = computed(
 		() =>
 			owed.value.length > 0 ||
-			(opts.requests.length > 0 && (!opts.draftId.value || row.value === undefined))
+			(opts.requests.value.length > 0 && (!opts.draftId.value || row.value === undefined))
 	);
 
 	const formatMb = (bytes: number) =>
 		new Intl.NumberFormat(locale.value).format(bytes / 1024 / 1024);
+	/** What a chip and a toast call an owed file. */
+	const nameOf = (entry: Pick<OwedView, 'filename' | 'isPlaceholder'>) =>
+		entry.isPlaceholder
+			? t('shared.postbox.usePostboxComposeAttachments.forwardedAttachments')
+			: entry.filename;
+
 	function explain(filename: string, reason: Failure) {
 		const base = 'shared.postbox.usePostboxComposeAttachments';
 		const message =
@@ -144,7 +167,8 @@ export function usePostboxComposeExpected(opts: {
 			} else {
 				for (const miss of result.result.failed) {
 					next[miss.key] = miss.reason;
-					explain(miss.filename, miss.reason);
+					const entry = owed.value.find((e) => e.key === miss.key);
+					explain(entry ? nameOf(entry) : miss.filename, miss.reason);
 				}
 			}
 			failed.value = next;
@@ -190,14 +214,32 @@ export function usePostboxComposeExpected(opts: {
 	);
 
 	// An open that carries files makes its row now, so the server owes them.
-	onMounted(() => {
-		if (opts.requests.length > 0 && !opts.draftId.value) void opts.ensureDraft();
+	// A forward first names its parts from the raw message (or, unreadable,
+	// leaves the pick to the server); nothing named means nothing to carry.
+	async function nameForwardParts() {
+		const read = opts.readForwardParts ?? readForwardParts;
+		const next: ExpectedAttachmentRequest[] = [];
+		for (const request of opts.requests.value) {
+			if (request.kind !== 'forward' || request.parts) {
+				next.push(request);
+				continue;
+			}
+			const parts = await read(request.messageId);
+			if (parts === null) next.push(request);
+			else if (parts.length > 0) next.push({ ...request, parts });
+		}
+		opts.requests.value = next;
+	}
+	onMounted(async () => {
+		if (opts.requests.value.length === 0 || opts.draftId.value) return;
+		await nameForwardParts();
+		if (opts.requests.value.length > 0 && !opts.draftId.value) void opts.ensureDraft();
 	});
 
 	const chips = computed<UploadChip[]>(() =>
 		owed.value.map((entry) => ({
 			id: CHIP_PREFIX + entry.key,
-			filename: entry.filename,
+			filename: nameOf(entry),
 			contentType: entry.contentType,
 			size: entry.size,
 			status: failed.value[entry.key] && !fulfilling.value ? 'failed' : 'uploading',

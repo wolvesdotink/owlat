@@ -80,9 +80,8 @@ export interface ComposerSeed extends Omit<MailboxComposerTarget, 'kind'> {
 	 * payload (usePostboxOfflineOutbox).
 	 */
 	prefillAttachments?: ComposerAttachment[];
-	/** Forward: the new row owes this message's parts (those named, else every file part). */
+	/** Forward: the new row owes this message's attachments (usePostboxComposeExpected). */
 	forwardAttachmentsFromMessageId?: Id<'mailMessages'>;
-	forwardAttachmentParts?: Array<{ partIndex: string; filename: string }>;
 	/** Attach a file the app generated (an RSVP reply); the new row owes it until then. */
 	attachGenerated?: GeneratedAttachment;
 	/** Full-mode blocks, the editor mode and the reminder, for a seed carrying a whole composition. */
@@ -212,7 +211,7 @@ export function usePostboxCompose(seed: ComposerSeed, options: ComposeOptions = 
 		followUpRemindAt,
 	});
 
-	const expectedAttachments = expectedAttachmentRequests(seed);
+	const expectedAttachments = ref(expectedAttachmentRequests(seed));
 	// Draft row creation + the 1.5s-debounced autosave live in a sibling
 	// composable. Everything below drives the SAME row through `ensureDraft`.
 	const autosave = usePostboxComposeAutosave({

@@ -19,6 +19,7 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
+import { forwardedParts } from '@owlat/shared/mailMime';
 import { seedFolder, seedMailbox, seedMessage } from '../mail/__tests__/helpers.testlib';
 
 const session = vi.hoisted(() => ({
@@ -55,6 +56,52 @@ const RSVP = {
 	contentType: 'text/calendar; method=REPLY; charset=utf-8',
 	content: ICS,
 };
+
+/**
+ * A received message as a client sends it: a PDF that is a real attachment but
+ * also carries a Content-ID (linked from the body with `href="cid:"`), a photo
+ * marked as an attachment though the body also shows it, and an inline logo.
+ */
+const INVOICE_EML = [
+	'From: billing@example.com',
+	'Subject: Invoice',
+	'MIME-Version: 1.0',
+	'Content-Type: multipart/mixed; boundary="mix"',
+	'',
+	'--mix',
+	'Content-Type: multipart/related; boundary="rel"',
+	'',
+	'--rel',
+	'Content-Type: text/html; charset=utf-8',
+	'',
+	'<p>Your <a href="cid:invoice@example.com">invoice</a>.</p><img src="cid:photo@example.com"><img src="cid:logo@example.com">',
+	'--rel',
+	'Content-Type: application/pdf; name="invoice.pdf"',
+	'Content-ID: <invoice@example.com>',
+	'Content-Disposition: attachment; filename="invoice.pdf"',
+	'Content-Transfer-Encoding: base64',
+	'',
+	Buffer.from('%PDF-1.4').toString('base64'),
+	'--rel',
+	'Content-Type: image/png; name="photo.png"',
+	'Content-ID: <photo@example.com>',
+	'Content-Disposition: attachment; filename="photo.png"',
+	'Content-Transfer-Encoding: base64',
+	'',
+	Buffer.from('photo').toString('base64'),
+	'--rel',
+	'Content-Type: image/png; name="logo.png"',
+	'Content-ID: <logo@example.com>',
+	'Content-Disposition: inline; filename="logo.png"',
+	'Content-Transfer-Encoding: base64',
+	'',
+	Buffer.from('logo').toString('base64'),
+	'--rel--',
+	'--mix--',
+	'',
+].join('\r\n');
+const INVOICE_HTML =
+	'<p>Your <a href="cid:invoice@example.com">invoice</a>.</p><img src="cid:photo@example.com"><img src="cid:logo@example.com">';
 
 async function rsvpDraft(t: Harness) {
 	const mailboxId = await seedMailbox(t);
@@ -215,45 +262,85 @@ describe('a draft owes its expected attachments', () => {
 		expect(await t.run(async (ctx) => (await ctx.storage.get(landed)) !== null)).toBe(false);
 	});
 
-	it('owes a forward its files, also one with a Content-ID the body does not show', async () => {
+	it('forwards a raw message the way the composer names it: files by disposition, Content-ID or not', async () => {
 		const t = convexTest();
 		const mailboxId = await seedMailbox(t);
 		await seedFolder(t, mailboxId, 'inbox');
+		// What delivery records for this raw message: no disposition, only Content-IDs.
 		const messageId = await seedMessage(t, mailboxId, {
-			htmlBodyInline: '<p>See the invoice.</p><img src="cid:logo@x">',
+			htmlBodyInline: INVOICE_HTML,
 			attachments: [
 				{
 					filename: 'invoice.pdf',
 					contentType: 'application/pdf',
 					size: 9,
 					partIndex: '0',
-					contentId: '<invoice@x>',
+					contentId: '<invoice@example.com>',
+				},
+				{
+					filename: 'photo.png',
+					contentType: 'image/png',
+					size: 5,
+					partIndex: '1',
+					contentId: '<photo@example.com>',
 				},
 				{
 					filename: 'logo.png',
 					contentType: 'image/png',
 					size: 4,
-					partIndex: '1',
-					contentId: '<logo@x>',
+					partIndex: '2',
+					contentId: '<logo@example.com>',
 				},
 			],
 		});
-		// The composer names the parts it picked; without that, the server picks the same way.
-		const named = await t.mutation(api.mail.drafts.create, {
-			mailboxId,
-			expectedAttachments: [
-				{ kind: 'forward', messageId, parts: [{ partIndex: '0', filename: 'invoice.pdf' }] },
-			],
+		await t.run(async (ctx) => {
+			const rawStorageId = await ctx.storage.store(new Blob([INVOICE_EML]));
+			await ctx.db.patch(messageId, { rawStorageId });
 		});
+		// The composer reads the raw message and names the parts marked as attachments.
+		const parts = forwardedParts(INVOICE_EML);
+		expect(parts).toEqual([
+			{ partIndex: '0', filename: 'invoice.pdf' },
+			{ partIndex: '1', filename: 'photo.png' },
+		]);
+		const { draftId } = await t.mutation(api.mail.drafts.create, {
+			mailboxId,
+			expectedAttachments: [{ kind: 'forward', messageId, parts }],
+		});
+		expect(await t.action(api.mail.draftExpectedAttachments.fulfil, { draftId })).toEqual({
+			failed: [],
+		});
+		const draft = (await row(t, draftId))!;
+		expect(draft.attachments.map((a) => a.filename)).toEqual(['invoice.pdf', 'photo.png']);
+		const pdf = await t.run(async (ctx) =>
+			(await ctx.storage.get(draft.attachments[0]!.storageId))!.text()
+		);
+		expect(pdf).toBe('%PDF-1.4');
+
+		// Without named parts the row decides: only the image the body shows stays out.
 		const derived = await t.mutation(api.mail.drafts.create, {
 			mailboxId,
 			expectedAttachments: [{ kind: 'forward', messageId }],
 		});
-		for (const { draftId } of [named, derived]) {
-			expect((await row(t, draftId))?.expectedAttachments?.map((e) => e.filename)).toEqual([
-				'invoice.pdf',
-			]);
-		}
+		expect((await row(t, derived.draftId))?.expectedAttachments?.map((e) => e.filename)).toEqual([
+			'invoice.pdf',
+		]);
+	});
+
+	it('owes a placeholder for a deleted forward whose parts were never named', async () => {
+		const t = convexTest();
+		const mailboxId = await seedMailbox(t);
+		const messageId = await forwardSource(t, mailboxId);
+		await t.run((ctx) => ctx.db.delete(messageId));
+		const { draftId } = await t.mutation(api.mail.drafts.create, {
+			mailboxId,
+			expectedAttachments: [{ kind: 'forward', messageId }],
+		});
+		const entries = (await t.query(api.mail.drafts.get, { draftId }))?.expectedAttachments;
+		expect(entries).toEqual([
+			expect.objectContaining({ filename: '', isPlaceholder: true, state: 'owed' }),
+		]);
+		expect(await sendError(t, draftId)).toMatch(/still being added/);
 	});
 
 	it('owes a forward its file parts, not its inline images, and copies them on the server', async () => {

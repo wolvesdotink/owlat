@@ -68,31 +68,44 @@ function normalizeContentId(id: string): string {
 	return id.trim().replace(/^<|>$/g, '').toLowerCase();
 }
 
-/** The Content-IDs an HTML body shows inline through `cid:` references. */
-export function referencedContentIds(html: string): Set<string> {
+/**
+ * The Content-IDs an HTML body shows as images: `cid:` in an `<img src>`. A
+ * `cid:` link (`<a href="cid:…">`) points at a file, it does not show one.
+ * Scans tag by tag (no backtracking over the body).
+ */
+export function inlineImageContentIds(html: string): Set<string> {
 	const ids = new Set<string>();
-	for (const match of html.matchAll(/cid:([^"'\s)>]+)/gi)) {
-		let id = match[1] ?? '';
-		try {
-			id = decodeURIComponent(id);
-		} catch {
-			// A malformed escape names the id as written.
+	const lower = html.toLowerCase();
+	let at = lower.indexOf('<img');
+	while (at !== -1) {
+		const end = lower.indexOf('>', at);
+		if (end === -1) break;
+		const src = /\ssrc\s*=\s*["']?\s*cid:([^"'\s>]+)/i.exec(html.slice(at, end));
+		if (src?.[1]) {
+			let id = src[1];
+			try {
+				id = decodeURIComponent(id);
+			} catch {
+				// A malformed escape names the id as written.
+			}
+			ids.add(normalizeContentId(id));
 		}
-		ids.add(normalizeContentId(id));
+		at = lower.indexOf('<img', end);
 	}
 	return ids;
 }
 
 /**
- * Whether a received part is a file a forward carries: a part marked as an
- * attachment always is, and so is any other part except an inline image the
- * body shows (a `Content-ID` its HTML references). The composer picks a
- * forward's parts with this; the draft then owes exactly those.
+ * Whether a received part is a file a forward carries, judged from what a
+ * message row records (no Content-Disposition): every part except an image the
+ * body shows inline. Errs towards carrying: a part this cannot place is
+ * forwarded, never dropped. The composer, which parses the raw message, picks
+ * by disposition instead and names its parts.
  */
 export function isForwardedPart(
-	part: { contentId?: string; disposition?: string },
-	referenced: ReadonlySet<string>
+	part: { contentType: string; contentId?: string },
+	inlineImages: ReadonlySet<string>
 ): boolean {
-	if (part.disposition === 'attachment') return true;
-	return !part.contentId || !referenced.has(normalizeContentId(part.contentId));
+	if (!part.contentId || !part.contentType.toLowerCase().startsWith('image/')) return true;
+	return !inlineImages.has(normalizeContentId(part.contentId));
 }

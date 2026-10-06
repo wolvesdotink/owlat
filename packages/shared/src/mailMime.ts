@@ -128,3 +128,14 @@ export function extractAttachmentAt(
 	}
 	return Number.isInteger(idx) && idx >= 0 && idx < all.length ? all[idx]! : null;
 }
+
+/**
+ * The parts a forward of this raw message carries: those whose
+ * Content-Disposition is `attachment`, named by their document-order index
+ * (the `partIndex` a message row and {@link extractAttachmentAt} use).
+ */
+export function forwardedParts(rawEml: string): Array<{ partIndex: string; filename: string }> {
+	return extractAttachments(rawEml).flatMap((part, index) =>
+		part.disposition === 'attachment' ? [{ partIndex: String(index), filename: part.filename }] : []
+	);
+}

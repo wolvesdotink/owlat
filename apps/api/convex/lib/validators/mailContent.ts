@@ -112,6 +112,9 @@ export const mailDraftExpectedAttachmentValidator = v.object({
 	),
 	state: v.union(v.literal('owed'), v.literal('attached'), v.literal('removed')),
 	storageId: v.optional(v.id('_storage')),
+	// Stands for a forwarded message's files whose names were never known (the
+	// message was gone first): no filename, the composer shows its own label.
+	isPlaceholder: v.optional(v.boolean()),
 });
 
 /** What `drafts.create` is asked to owe: a generated file, or a message's attachments. */
@@ -125,8 +128,9 @@ export const expectedAttachmentRequestValidator = v.union(
 	v.object({
 		kind: v.literal('forward'),
 		messageId: v.id('mailMessages'),
-		// The parts to carry, as the composer picked them (all file parts when
-		// absent); named so a message deleted meanwhile still owes them.
+		// The parts to carry, as the composer picked them from the raw message
+		// (Content-Disposition `attachment`); named so a message deleted meanwhile
+		// still owes them. Absent: the server picks from the message row.
 		parts: v.optional(v.array(v.object({ partIndex: v.string(), filename: v.string() }))),
 	})
 );

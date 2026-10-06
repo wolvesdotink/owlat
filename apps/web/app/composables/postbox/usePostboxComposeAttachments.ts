@@ -52,7 +52,7 @@ export function usePostboxComposeAttachments(opts: {
 	 */
 	bodyLocked?: () => boolean;
 	/** What the open asked the new row to owe (a generated file, a forward's files). */
-	expectedAttachments?: ExpectedAttachmentRequest[];
+	expectedAttachments?: Ref<ExpectedAttachmentRequest[]>;
 	/** Whether a reopened row has been merged (its attachments are shown then). */
 	rowState?: () => InitialHydrationState;
 }) {
@@ -117,7 +117,7 @@ export function usePostboxComposeAttachments(opts: {
 	// The files the draft owes show as chips beside the uploads, and hold Send.
 	const expected = usePostboxComposeExpected({
 		draftId: opts.draftId,
-		requests: opts.expectedAttachments ?? [],
+		requests: opts.expectedAttachments ?? ref([]),
 		ensureDraft: opts.ensureDraft,
 		rowState: opts.rowState ?? (() => 'ready'),
 		attachments,

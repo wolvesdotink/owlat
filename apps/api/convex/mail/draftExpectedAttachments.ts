@@ -13,8 +13,8 @@
  *  - `drafts.create` writes the owed list in the mutation that creates the row,
  *    so no draft exists without it. A generated file is stored whole (it cannot
  *    be made again, so it is bounded); a forward names the message and each
- *    part (`isForwardedPart` picks them). A forwarded message that is already
- *    gone still owes its parts; they stay unreadable until removed.
+ *    part (`forwardEntries`). A forwarded message that is already gone still
+ *    owes its parts; they stay unreadable until removed.
  *  - `fulfil` (any tab, any number of times) copies each owed file onto the
  *    draft on the server. Each copy is receipted as an unclaimed upload the
  *    moment it is stored (`stageCopy`), so one that is never bound is deleted
@@ -56,7 +56,7 @@ import {
 	ATTACHMENT_COMPOSE_LIMITS,
 	MAX_ATTACHMENT_BYTES,
 	isForwardedPart,
-	referencedContentIds,
+	inlineImageContentIds,
 } from '@owlat/shared/attachments';
 import {
 	type existingAttachmentBytesValidator,
@@ -103,12 +103,18 @@ function forwardEntry(
 }
 
 /**
- * The parts a forward owes. The composer names them (it picks with
- * `isForwardedPart` against the whole body, which may live in a blob a
- * mutation cannot read); without that, the same rule runs here against the
- * inline body. A message that is gone still owes what was asked for, as
- * unreadable entries: the person sees them and removes them, the forward is
- * never sent short without a word.
+ * The parts a forward owes.
+ *
+ *  - The composer names them: it parses the raw message and picks the parts
+ *    whose Content-Disposition is `attachment`, as forwarding always did. Each
+ *    named part is looked up on the message (by part index and filename, then
+ *    filename, then index: the parser that recorded the row may number parts
+ *    differently); one the message does not list is still owed, and copying it
+ *    reports it unreadable, so nothing named is dropped without a word.
+ *  - Unnamed (a composer that could not read the raw message), the row decides
+ *    with `isForwardedPart`: everything but an image the inline body shows.
+ *  - A message that is gone still owes what was asked for, as unreadable
+ *    entries; with nothing named, one placeholder the composer labels.
  */
 async function forwardEntries(
 	ctx: MutationCtx,
@@ -116,21 +122,30 @@ async function forwardEntries(
 ): Promise<ExpectedAttachment[]> {
 	const message = await ctx.db.get(request.messageId);
 	if (!message) {
-		const asked = request.parts ?? [{ partIndex: WHOLE_MESSAGE_PART, filename: 'attachments' }];
-		return asked.map((part) => forwardEntry(request.messageId, part));
+		if (request.parts) return request.parts.map((part) => forwardEntry(request.messageId, part));
+		return [
+			{
+				...forwardEntry(request.messageId, { partIndex: WHOLE_MESSAGE_PART, filename: '' }),
+				isPlaceholder: true,
+			},
+		];
 	}
 	const readable = await requireMailboxAccess(ctx, message.mailboxId);
 	if (!readable.ok) throwForbidden('Message not accessible');
 	if (request.parts) {
+		const listed = message.attachments;
 		return request.parts.map((asked) => {
-			const known = message.attachments.find((part) => part.partIndex === asked.partIndex);
+			const known =
+				listed.find((p) => p.partIndex === asked.partIndex && p.filename === asked.filename) ??
+				listed.find((p) => p.filename === asked.filename) ??
+				listed.find((p) => p.partIndex === asked.partIndex);
 			return forwardEntry(message._id, known ?? asked);
 		});
 	}
 	const { html } = await openStoredInlineBody(ctx.db, message);
-	const referenced = referencedContentIds(html ?? '');
+	const inlineImages = inlineImageContentIds(html ?? '');
 	return message.attachments
-		.filter((part) => isForwardedPart(part, referenced))
+		.filter((part) => isForwardedPart(part, inlineImages))
 		.map((part) => forwardEntry(message._id, part));
 }
 
