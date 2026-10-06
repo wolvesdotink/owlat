@@ -1,15 +1,18 @@
 /**
- * Fetch a message's raw `.eml` (signed URL) and decode it binary-safely
- * (latin1, one char per byte) so the `@owlat/shared/mailMime` extractor can
- * pull parts out of it.
+ * Fetch a message's raw `.eml` (signed URL) and turn it into a binary string
+ * (one char per byte, exactly) so the `@owlat/shared/mailMime` extractor can
+ * pull parts out of it. Not `TextDecoder('latin1')`: that is windows-1252 and
+ * changes bytes 0x80-0x9F, so an 8-bit or binary part came out wrong (#1279).
  *
  * Parametrized over the URL-minting call, because that is the ONLY thing the
  * two readers differ on: Postbox mints through
  * `api.mail.mailbox.messages.getMessageRawUrl` with a `mailMessages` id, the
  * team inbox through `api.inbox.rawMessage.getInboundMessageRawUrl` with an
- * `inboundMessages` id. Everything else — the latin1 decode and the bounded
+ * `inboundMessages` id. Everything else — the byte-exact decode and the bounded
  * per-message cache — was copied once and would have been copied again.
  */
+
+import { bytesToBinaryString } from '@owlat/shared/mailMime';
 
 /** How many messages' raw bodies stay cached at a time. */
 const CACHE_LIMIT = 3;
@@ -39,7 +42,7 @@ export function createRawEmlLoader(
 		// Thrown instead, so the rejection is what the cache drops.
 		if (!res.ok) throw new Error(`raw .eml fetch failed: ${res.status}`);
 		const buf = await res.arrayBuffer();
-		return new TextDecoder('latin1').decode(new Uint8Array(buf));
+		return bytesToBinaryString(new Uint8Array(buf));
 	}
 
 	return function loadRaw(messageId: string): Promise<string | null> {

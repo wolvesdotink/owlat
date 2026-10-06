@@ -26,9 +26,9 @@ import {
 	MAX_HEADER_BYTES,
 	MAX_PART_HEADER_BYTES,
 } from '../parse/locate';
+import { bytesToBinaryString } from '../parse/binaryString';
 
 const ROOT = join(import.meta.dirname, '../../../..');
-const latin1 = new TextDecoder('latin1');
 
 interface LeafView {
 	type: string;
@@ -39,13 +39,8 @@ interface LeafView {
 	bytes: number[] | number;
 }
 
-/** True when the string path's windows-1252 view changes these bytes. */
-function hasC1(bytes: Uint8Array): boolean {
-	return bytes.some((b) => b >= 0x80 && b <= 0x9f);
-}
-
 function stringView(raw: Uint8Array): { leaves: LeafView[]; truncated: boolean } {
-	const { root, truncated } = parseMimeTreeWithBounds(latin1.decode(raw));
+	const { root, truncated } = parseMimeTreeWithBounds(bytesToBinaryString(raw));
 	const leaves: LeafView[] = [];
 	walkLeaves(root, (leaf) => {
 		const encoding = leaf.headers.last('content-transfer-encoding');
@@ -55,15 +50,9 @@ function stringView(raw: Uint8Array): { leaves: LeafView[]; truncated: boolean }
 	return { leaves, truncated };
 }
 
-function byteView(raw: Uint8Array): {
-	leaves: LeafView[];
-	truncated: boolean;
-	/** Per leaf: its raw body holds bytes the string path maps through windows-1252. */
-	c1: boolean[];
-} {
+function byteView(raw: Uint8Array): { leaves: LeafView[]; truncated: boolean } {
 	const { root, bodies, truncated } = locateMimeTree(raw);
 	const leaves: LeafView[] = [];
-	const c1: boolean[] = [];
 	walkLeaves(root, (leaf) => {
 		const encoding = leaf.headers.last('content-transfer-encoding');
 		const body = bodies.get(leaf)!;
@@ -71,9 +60,8 @@ function byteView(raw: Uint8Array): {
 		const bytes = decodeLocated(raw, body, encoding, length);
 		expect(bytes.length).toBe(length);
 		leaves.push({ ...describeLeaf(leaf), encoding, bytes: [...bytes] });
-		c1.push(hasC1(raw.subarray(body.start, body.end)));
 	});
-	return { leaves, truncated, c1 };
+	return { leaves, truncated };
 }
 
 function describeLeaf(leaf: MimeNode) {
@@ -86,18 +74,7 @@ function describeLeaf(leaf: MimeNode) {
 }
 
 function expectSame(raw: Uint8Array) {
-	const byString = stringView(raw);
-	const { c1, ...byBytes } = byteView(raw);
-	// A body holding 8-bit bytes in 0x80-0x9F: the string path maps them through
-	// windows-1252, so only that body's decoded length is compared; every other
-	// leaf, and every header, exactly.
-	const comparable = (view: typeof byString) => ({
-		...view,
-		leaves: view.leaves.map((leaf, i) =>
-			c1[i] && Array.isArray(leaf.bytes) ? { ...leaf, bytes: leaf.bytes.length } : leaf
-		),
-	});
-	expect(comparable(byBytes)).toEqual(comparable(byString));
+	expect(byteView(raw)).toEqual(stringView(raw));
 }
 
 const bytes = (text: string) => Uint8Array.from(text, (c) => c.charCodeAt(0) & 0xff);
@@ -244,8 +221,13 @@ const BUILT: Record<string, string> = {
 		`X-Big: ${'h'.repeat(200 * 1024)}`,
 		...pdf(`h${i}.pdf`, 'aA=='),
 	]),
-	'8-bit bytes the string path maps through windows-1252': flat(1, () =>
-		pdf('c1.bin', '\u0080\u0099 ÿ', '8bit')
+	// Bytes 0x80-0x9F, which a windows-1252 decode (`TextDecoder('latin1')`)
+	// changes: both paths must keep them exactly, in bodies and in headers.
+	'8-bit bytes in 0x80-0x9F': flat(1, () => pdf('c1.bin', '\u0080\u0099 ÿ', '8bit')),
+	'8-bit bytes in 0x80-0x9F in a header and a binary body': flat(2, (i) =>
+		i === 0
+			? pdf('\u0080\u009f.bin', '\u0000A\u0080\u0099\u009f ÿ', 'binary')
+			: pdf('clean.pdf', 'Y2xlYW4=')
 	),
 };
 
@@ -278,7 +260,7 @@ describe('locateMimeTree: the same leaves, verdicts and bytes as the string walk
 	});
 
 	it('copies 8-bit bytes exactly', () => {
-		const raw = bytes(BUILT['8-bit bytes the string path maps through windows-1252']!);
+		const raw = bytes(BUILT['8-bit bytes in 0x80-0x9F']!);
 		const { root, bodies } = locateMimeTree(raw);
 		const leaf = root.children[0]!;
 		const body = bodies.get(leaf)!;
@@ -286,15 +268,11 @@ describe('locateMimeTree: the same leaves, verdicts and bytes as the string walk
 		expect([...out]).toEqual([0x80, 0x99, 0xa0, 0xff]);
 	});
 
-	it('keeps exact comparisons for the other leaves of a message with 8-bit bytes', () => {
-		const raw = bytes(
-			flat(2, (i) =>
-				i === 0 ? pdf('c1.bin', '\u0080\u0099', '8bit') : pdf('clean.pdf', 'Y2xlYW4=')
-			)
-		);
-		const { c1, leaves } = byteView(raw);
-		expect(c1).toEqual([true, false]);
-		expect(leaves[1]?.bytes).toEqual([...new TextEncoder().encode('clean')]);
+	it('hands the string walker the same 8-bit header and body bytes', () => {
+		const raw = bytes(BUILT['8-bit bytes in 0x80-0x9F in a header and a binary body']!);
+		const { leaves } = stringView(raw);
+		expect(leaves[0]?.filename).toBe('\u0080\u009f.bin');
+		expect(leaves[0]?.bytes).toEqual([0x00, 0x41, 0x80, 0x99, 0x9f, 0xa0, 0xff]);
 	});
 
 	it('stops earlier than the string walker on header floods, as truncated', () => {

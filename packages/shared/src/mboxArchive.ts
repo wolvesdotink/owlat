@@ -11,17 +11,21 @@
  *    resumable: the job row stores the offset of the last message it committed,
  *    and a later run re-opens the archive and starts the splitter there.
  *  - {@link serializeMboxEntry} writes one message back out with its `From_`
- *    separator line and mboxrd quoting.
+ *    separator line and mboxrd quoting, bytes in and bytes out.
  *
- * OFFSETS ARE BYTES, and the caller keeps them honest by decoding the archive
- * as latin1 (one char per byte), exactly as `loadRawEml` already decodes a
- * single `.eml`. Decoding as UTF-8 would collapse multi-byte sequences into one
- * char and every recorded offset would drift.
+ * OFFSETS ARE BYTES, and the caller keeps them honest by handing the splitter
+ * binary strings (one char per byte, `bytesToBinaryString` from
+ * `@owlat/mail-message/parse/binaryString`), exactly as `loadRawEml` turns a
+ * single `.eml` into one. Decoding as UTF-8 would collapse multi-byte sequences
+ * into one char and every recorded offset would drift; `TextDecoder('latin1')`
+ * is windows-1252 and changes bytes 0x80-0x9F.
  *
  * Quoting is mboxrd (`From ` → `>From `, `>From ` → `>>From `), which is the
  * only variant that round-trips: mboxo cannot distinguish a body line that was
  * quoted from one that was always `>From `.
  */
+
+import { binaryStringToBytes, bytesToBinaryString } from '@owlat/mail-message/parse/binaryString';
 
 /**
  * Largest archive one import job accepts, in bytes.
@@ -126,13 +130,26 @@ function unquoteMboxBody(raw: string): string {
  * One message ready to append to an archive: the `From_` line, the quoted
  * message, and the blank line that separates it from the next entry. Always
  * ends with `\n\n` so entries concatenate without the caller thinking about it.
+ *
+ * Bytes in, bytes out: the message is quoted as a binary string and written
+ * back byte for byte, so an 8-bit body or a binary part leaves exactly as it
+ * was stored. The `From_` line is text and goes out as UTF-8.
  */
 export function serializeMboxEntry(
-	raw: string,
+	raw: Uint8Array,
 	options: { address?: string; receivedAt: number }
-): string {
-	const body = quoteMboxBody(raw.endsWith('\n') ? raw : `${raw}\n`);
-	return `${mboxFromLine(options.address, options.receivedAt)}\n${body}\n`;
+): Uint8Array<ArrayBuffer> {
+	const message = bytesToBinaryString(raw);
+	const body = binaryStringToBytes(
+		`${quoteMboxBody(message.endsWith('\n') ? message : `${message}\n`)}\n`
+	);
+	const fromLine = new TextEncoder().encode(
+		`${mboxFromLine(options.address, options.receivedAt)}\n`
+	);
+	const entry = new Uint8Array(fromLine.length + body.length);
+	entry.set(fromLine);
+	entry.set(body, fromLine.length);
+	return entry;
 }
 
 /** A message cut out of an archive, with the byte range it occupied. */
@@ -173,7 +190,7 @@ function trimEntryTail(body: string): string {
 /**
  * Incremental mbox reader.
  *
- * Feed it latin1-decoded chunks in order; it returns every entry it can close.
+ * Feed it binary-string chunks (one char per byte) in order; it returns every entry it can close.
  * An entry is only closed once the NEXT boundary (or {@link flush}) is seen, so
  * a message split across two chunks is never truncated. `pendingOffset` is the
  * offset of the entry currently being accumulated — a caller that commits after

@@ -9,9 +9,12 @@
  * about the filename, the decoding or the failure toast.
  *
  * The bytes come from the same signed-URL path the attachment extractor uses,
- * decoded latin1 (one char per byte). Fail-soft: a missing raw blob or a thrown
+ * as a binary string (one char per byte) turned back into exactly the bytes
+ * that were fetched. Fail-soft: a missing raw blob or a thrown
  * fetch both end in the same toast rather than a spinner that stops.
  */
+import { binaryStringToBytes } from '@owlat/shared/mailMime';
+
 export function usePostboxOriginalEml() {
 	const { t } = useI18n();
 	const { showToast } = useToast();
@@ -26,9 +29,9 @@ export function usePostboxOriginalEml() {
 				showToast(t('components.postbox.postboxMessageDetails.downloadFailed'), 'error');
 				return;
 			}
-			const bytes = new Uint8Array(raw.length);
-			for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i) & 0xff;
-			const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'message/rfc822' }));
+			const url = URL.createObjectURL(
+				new Blob([binaryStringToBytes(raw)], { type: 'message/rfc822' })
+			);
 			const a = document.createElement('a');
 			a.href = url;
 			a.download = 'message.eml';

@@ -16,9 +16,11 @@
  * re-reads only from there — and since inserts dedup on Message-ID, re-reading
  * the tail of a committed batch inserts nothing twice.
  *
- * The archive is decoded as latin1 (one char per byte) exactly as `loadRawEml`
- * decodes a single `.eml`: the parser wants the binary-safe form, and it is what
- * keeps a byte offset a byte offset.
+ * The archive is read as a binary string (one char per byte, exactly) as
+ * `loadRawEml` reads a single `.eml`: the parser wants the binary-safe form, it
+ * is what keeps a byte offset a byte offset, and it turns back into the very
+ * bytes of the archive for the stored raw message. Not `TextDecoder('latin1')`,
+ * which is windows-1252 and changed bytes 0x80-0x9F (#1279).
  *
  * `'use node'` because the parse side of `@owlat/mail-message` hands attachment
  * bytes back as a `Buffer`.
@@ -26,6 +28,7 @@
 
 import { v } from 'convex/values';
 import { parseMessage, type AddressObject } from '@owlat/mail-message';
+import { binaryStringToBytes, bytesToBinaryString } from '@owlat/mail-message/parse/binaryString';
 import { MboxSplitter, type MboxEntry } from '@owlat/shared/mboxArchive';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
@@ -80,15 +83,6 @@ function headerText(headers: Map<string, unknown>, name: string): string | undef
 	return undefined;
 }
 
-/** latin1 bytes of a binary-safe string (the inverse of the decode above). */
-function latin1Bytes(value: string): Uint8Array {
-	const bytes = new Uint8Array(value.length);
-	for (let index = 0; index < value.length; index++) {
-		bytes[index] = value.charCodeAt(index) & 0xff;
-	}
-	return bytes;
-}
-
 /**
  * Parse one archive entry and hand it to the insert mutation.
  *
@@ -108,7 +102,7 @@ async function ingestEntry(
 		return { imported: false, skipped: true, labelsCreated: 0 };
 	}
 
-	const rawBytes = latin1Bytes(entry.raw);
+	const rawBytes = binaryStringToBytes(entry.raw);
 	const rawStorageId: Id<'_storage'> = await storeSealedBlob(
 		ctx.storage,
 		rawBytes,
@@ -199,7 +193,6 @@ export const runChunk = internalAction({
 			return;
 		}
 		const bytes = new Uint8Array(await blob.arrayBuffer());
-		const decoder = new TextDecoder('latin1');
 
 		let imported = 0;
 		let skipped = 0;
@@ -223,7 +216,7 @@ export const runChunk = internalAction({
 				if (cursor < bytes.length) {
 					await consume([
 						{
-							raw: decoder.decode(bytes.subarray(cursor)),
+							raw: bytesToBinaryString(bytes.subarray(cursor)),
 							envelopeSender: '',
 							startOffset: cursor,
 							endOffset: bytes.length,
@@ -244,7 +237,7 @@ export const runChunk = internalAction({
 						read - resumeFrom >= RUN_BYTE_BUDGET || imported + skipped >= RUN_MESSAGE_BUDGET;
 					if (canCommitForward && budgetSpent) break;
 					const end = Math.min(bytes.length, read + WINDOW_BYTES);
-					const entries = splitter.push(decoder.decode(bytes.subarray(read, end)));
+					const entries = splitter.push(bytesToBinaryString(bytes.subarray(read, end)));
 					read = end;
 					await consume(entries);
 				}

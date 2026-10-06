@@ -17,9 +17,9 @@
  * same header-block rule, delimiter matching (outermost container first,
  * trailing spaces and tabs ignored), part and depth bounds (`truncated`), and
  * `message/*` / top-level bodies kept verbatim while every other nested body is
- * CRLF -> LF normalized before decoding. Header blocks and delimiter lines are
- * decoded with the same `TextDecoder('latin1')` the string callers use, so
- * `parseHeaders` sees the same text. The nodes are {@link MimeNode}s (with an
+ * CRLF -> LF normalized before decoding. Header blocks and delimiter lines
+ * become the same binary string (`./binaryString`) the string callers hand the
+ * walker, so `parseHeaders` sees the same text. The nodes are {@link MimeNode}s (with an
  * empty `rawBody`), so `walkLeaves`, `isAttachmentPart`, `partFilename` and
  * `partDisposition` apply unchanged and leaf order, and with it every
  * `partIndex`, is the walker's. `locate.test.ts` holds the two to the same
@@ -38,12 +38,11 @@
  * DECODING. {@link decodedLength} counts a body's decoded size without
  * allocating, so a caller can refuse a part over its limit before decoding it;
  * {@link decodeLocated} then decodes into an array of exactly that size.
- * Unlike the string path, 8-bit bytes are copied exactly (the string path maps
- * 0x80-0x9F through windows-1252 before taking the low byte).
  */
 
 import { parseHeaders, getRawParam } from './headers';
 import { MAX_DEPTH, MAX_MIME_PARTS, type MimeNode } from './body';
+import { bytesToBinaryString } from './binaryString';
 
 /** Largest header block of one part that is read (larger: the tree is truncated). */
 export const MAX_PART_HEADER_BYTES = 256 * 1024;
@@ -84,12 +83,10 @@ interface PartFrame {
 	container: Container | null;
 }
 
-const latin1 = new TextDecoder('latin1');
-
 /** Locate the parts of a raw message (its bytes); see the module comment. */
 export function locateMimeTree(raw: Uint8Array): LocatedTree {
 	const n = raw.length;
-	const text = (start: number, end: number) => latin1.decode(raw.subarray(start, end));
+	const text = (start: number, end: number) => bytesToBinaryString(raw.subarray(start, end));
 	const bodies = new WeakMap<MimeNode, LocatedBody>();
 	const budget = { remainingParts: MAX_MIME_PARTS, truncated: false };
 	let headerBytesLeft = MAX_HEADER_BYTES;
@@ -460,7 +457,7 @@ export function decodedLength(
 /**
  * Decode a located body into a byte array of exactly `length` bytes (from
  * {@link decodedLength}), byte for byte what `transferDecode` returns for the
- * same body (8-bit content aside, see the module comment).
+ * same body.
  */
 export function decodeLocated(
 	raw: Uint8Array,

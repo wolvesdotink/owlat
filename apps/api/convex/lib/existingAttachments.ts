@@ -28,6 +28,7 @@ import type { QueryCtx } from '../_generated/server';
 import type { MutationSessionContext } from './sessionOrganization';
 import { readSealedBlobBytes, type BlobGet } from './sealedBlob';
 import { requireMailboxAccess } from '../mail/permissions';
+import { bytesToBinaryString } from './bytes';
 import { pickStoredPart } from '../mail/messageParts';
 import { throwForbidden, throwInvalidState, throwNotFound } from '../_utils/errors';
 
@@ -139,8 +140,8 @@ export async function readExistingAttachmentBytes(
 		case 'rawEml': {
 			const raw = await readSealedBlobBytes(storage, bytes.rawStorageId);
 			if (!raw) return null;
-			// One char per byte, so binary parts survive the MIME walk.
-			const eml = new TextDecoder('latin1').decode(raw);
+			// One char per byte, exactly, so binary parts survive the MIME walk.
+			const eml = bytesToBinaryString(raw);
 			return extractAttachmentAt(eml, bytes.partIndex, bytes.filename)?.bytes ?? null;
 		}
 	}
