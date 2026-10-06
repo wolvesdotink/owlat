@@ -73,7 +73,7 @@ const bodyHtml = defineModel<string>('bodyHtml', { default: '' });
 const emit = defineEmits<{
 	(e: 'send'): void;
 	(e: 'schedule'): void;
-	(e: 'add-files', files: FileList | File[]): void;
+	(e: 'add-files', files: File[]): void;
 	(e: 'signature-change', event: Event): void;
 	(e: 'toggle-toolbar'): void;
 	(e: 'switch-mode', mode: ComposerMode): void;
@@ -137,10 +137,14 @@ async function onAttachClick() {
 	fileInput.value?.click();
 }
 
+// Copy the files out before resetting the input: `input.files` is a live
+// list that Chrome empties when the value is reset, and the composer reads it
+// only after awaiting the draft row.
 function onPickFiles(event: Event) {
 	const target = event.target as HTMLInputElement;
-	if (target.files) emit('add-files', target.files);
+	const files = Array.from(target.files ?? []);
 	target.value = '';
+	if (files.length > 0) emit('add-files', files);
 }
 </script>
 
