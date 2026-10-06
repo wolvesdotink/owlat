@@ -46,7 +46,7 @@ function harness(overrides: Partial<AttachmentUploadsDeps> = {}) {
 		}),
 		attach: vi.fn(async () => true),
 		onCommitted: vi.fn((a: CommittedAttachment, thumb: string | null) =>
-			committed.push({ a, thumb })
+			committed.push({ a, thumb }),
 		),
 		createThumb: () => null,
 		revokeThumb: vi.fn(),
@@ -79,7 +79,7 @@ describe('createAttachmentUploads state machine', () => {
 		await tick(); // attach resolves -> commit
 
 		expect(deps.attach).toHaveBeenCalledWith(
-			expect.objectContaining({ storageId: 'storage_1', filename: 'report.pdf', size: 1000 })
+			expect.objectContaining({ storageId: 'storage_1', filename: 'report.pdf', size: 1000 }),
 		);
 		expect(committed).toHaveLength(1);
 		expect(committed[0]!.a.storageId).toBe('storage_1');
@@ -141,7 +141,7 @@ describe('createAttachmentUploads state machine', () => {
 						aborted = true;
 						reject(new DOMException('aborted', 'AbortError'));
 					});
-				})
+				}),
 		);
 		const { uploader, committed } = harness({ putFile });
 		uploader.addFiles([makeFile('big.zip', 999)]);
@@ -166,9 +166,9 @@ describe('createAttachmentUploads state machine', () => {
 				(_u, _f, _c, { signal }: UploadProgressCbs) =>
 					new Promise<string>((_, reject) => {
 						signal.addEventListener('abort', () =>
-							reject(new DOMException('aborted', 'AbortError'))
+							reject(new DOMException('aborted', 'AbortError')),
 						);
-					})
+					}),
 			),
 		});
 		uploader.addFiles([makeFile('pic.png', 500, 'image/png')]);

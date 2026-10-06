@@ -52,7 +52,7 @@ export interface UploadTransport {
 		url: string,
 		file: File,
 		contentType: string,
-		cbs: UploadProgressCbs
+		cbs: UploadProgressCbs,
 	) => Promise<string>;
 	/** Attach the uploaded storageId to the draft; false = server refused. */
 	attach: (a: CommittedAttachment) => Promise<boolean>;
@@ -78,14 +78,17 @@ function isImage(type: string): boolean {
 }
 
 function isAbortError(err: unknown): boolean {
-	return err instanceof DOMException
-		? err.name === 'AbortError'
-		: !!err && typeof err === 'object' && (err as { name?: string }).name === 'AbortError';
+	return (
+		err instanceof DOMException
+			? err.name === 'AbortError'
+			: !!err && typeof err === 'object' && (err as { name?: string }).name === 'AbortError'
+	);
 }
 
 export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 	const createThumb =
-		deps.createThumb ?? ((file: File) => (isImage(file.type) ? URL.createObjectURL(file) : null));
+		deps.createThumb ??
+		((file: File) => (isImage(file.type) ? URL.createObjectURL(file) : null));
 	const revokeThumb = deps.revokeThumb ?? ((url: string) => URL.revokeObjectURL(url));
 
 	const uploads = ref<UploadChip[]>([]);
@@ -225,7 +228,7 @@ export function xhrPutFile(
 	url: string,
 	file: File,
 	contentType: string,
-	{ onProgress, signal }: UploadProgressCbs
+	{ onProgress, signal }: UploadProgressCbs,
 ): Promise<string> {
 	return new Promise<string>((resolve, reject) => {
 		const xhr = new XMLHttpRequest();
