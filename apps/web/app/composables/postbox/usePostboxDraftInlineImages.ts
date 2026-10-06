@@ -30,12 +30,18 @@
  * would hide an overdue wake. Each request first waits for Convex auth, so it
  * never asks as an anonymous caller.
  *
- * Opening another draft starts over: the URLs are cleared, and the answer of a
- * request still in flight for the previous draft is dropped.
+ * The answer names its composition (`scope`): an id made here, once. The
+ * composer is one composition (every host keys it per compose request, message
+ * or window), and it keys the editor by this id, so the id survives the draft
+ * getting its first row id and never moves under a mounted editor. Should the
+ * composer's draft change to another row anyway, the request state starts
+ * over: the URLs are cleared, and the answer of a request still in flight for
+ * the previous row is dropped.
  */
 
 import { computed, onScopeDispose, shallowRef, watch, type Ref } from 'vue';
 import type { InlineImageSources } from './usePostboxInlineImages';
+import { composeRandomId } from './usePostboxComposeNav';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { whenConvexAuthenticated } from '~/lib/convexAuthReady';
@@ -80,7 +86,7 @@ export function usePostboxDraftInlineImages(
 	const whenAuthenticated = options.whenAuthenticated ?? whenConvexAuthenticated;
 	const now = options.now ?? Date.now;
 	const urls = shallowRef<ReadonlyMap<string, string>>(new Map());
-	const scope = shallowRef<string | null>(null);
+	const composition = composeRandomId();
 	const contentIds = computed(() => inlineContentIds(bodyHtml.value));
 
 	// The state of the current draft. `generation` changes with the draft (and
@@ -181,7 +187,6 @@ export function usePostboxDraftInlineImages(
 		nextAttemptAt = 0;
 		failureCount = 0;
 		urls.value = new Map();
-		scope.value = draftId.value;
 	}
 
 	watch(
@@ -209,5 +214,5 @@ export function usePostboxDraftInlineImages(
 		}
 	});
 
-	return computed<InlineImageSources>(() => ({ scope: scope.value, urls: urls.value }));
+	return computed<InlineImageSources>(() => ({ scope: composition, urls: urls.value }));
 }

@@ -10,7 +10,7 @@
  * plain ref pointing at a contenteditable in happy-dom.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { nextTick, ref } from 'vue';
+import { effectScope, nextTick, ref } from 'vue';
 import { usePostboxInlineImages } from '../usePostboxInlineImages';
 
 function imageFile(name = 'a.png'): File {
@@ -107,7 +107,7 @@ describe('usePostboxInlineImages', () => {
 	});
 
 	it("gives a pasted image its preview back after the body is written again, until the row's URL is known", async () => {
-		const sources = ref({ scope: 'draft_a', urls: new Map<string, string>() });
+		const sources = ref({ scope: 'composition_a', urls: new Map<string, string>() });
 		const { el, api } = setup({ sources: () => sources.value });
 		const event = {
 			clipboardData: { files: [imageFile('shot.png')] },
@@ -125,7 +125,7 @@ describe('usePostboxInlineImages', () => {
 
 		// The row part's URL outlives the tab, so it wins once it arrives.
 		sources.value = {
-			scope: 'draft_a',
+			scope: 'composition_a',
 			urls: new Map([['cid-shot.png', 'https://storage.owlat.example/shot']]),
 		};
 		await nextTick();
@@ -133,7 +133,7 @@ describe('usePostboxInlineImages', () => {
 	});
 
 	it("drops this draft's paste previews and URLs when another draft opens in the editor", async () => {
-		const sources = ref({ scope: 'draft_a', urls: new Map<string, string>() });
+		const sources = ref({ scope: 'composition_a', urls: new Map<string, string>() });
 		const { el, api } = setup({ sources: () => sources.value });
 		api.handlePaste({
 			clipboardData: { files: [imageFile('shot.png')] },
@@ -144,7 +144,7 @@ describe('usePostboxInlineImages', () => {
 		await Promise.resolve();
 		expect(el.querySelector('img')?.getAttribute('src')).toBe('blob:shot.png');
 
-		sources.value = { scope: 'draft_b', urls: new Map() };
+		sources.value = { scope: 'composition_b', urls: new Map() };
 		await nextTick();
 		expect(el.querySelector('img')?.hasAttribute('src')).toBe(false);
 		// Written again (the stored form), it stays without one.
@@ -153,13 +153,45 @@ describe('usePostboxInlineImages', () => {
 		expect(el.querySelector('img')?.hasAttribute('src')).toBe(false);
 	});
 
-	it('leaves an image it has no URL for as it is', () => {
+	it('takes any src it cannot vouch for off an image, a dead blob: included', () => {
 		const { el, api } = setup({
-			sources: () => ({ scope: 'draft_a', urls: new Map([['other', 'https://x.example/o']]) }),
+			sources: () => ({
+				scope: 'composition_a',
+				urls: new Map([['other', 'https://x.example/o']]),
+			}),
 		});
-		el.innerHTML = '<p><img src="blob:dead" data-inline-cid="unknown"></p>';
+		el.innerHTML =
+			'<p><img src="blob:dead" data-inline-cid="unknown"></p>' +
+			'<p><img src="https://elsewhere.example/i.png" data-inline-cid="also-unknown"></p>' +
+			'<p><img src="https://example.com/logo.png"></p>';
 		api.fillSources();
-		expect(el.querySelector('img')?.getAttribute('src')).toBe('blob:dead');
+		const imgs = el.querySelectorAll('img');
+		expect(imgs[0]!.hasAttribute('src')).toBe(false);
+		expect(imgs[1]!.hasAttribute('src')).toBe(false);
+		// Not an inline image: not this rule's business.
+		expect(imgs[2]!.getAttribute('src')).toBe('https://example.com/logo.png');
+	});
+
+	it('drops a paste whose upload ends after the editor went away, and takes its part back off', async () => {
+		let finish!: (r: { contentId: string; previewUrl: string }) => void;
+		const embed = vi.fn(
+			() => new Promise<{ contentId: string; previewUrl: string }>((r) => (finish = r))
+		);
+		const scope = effectScope();
+		const { el, onRemove, emitContent, api } = scope.run(() => setup({ embedImage: () => embed }))!;
+		api.handlePaste({
+			clipboardData: { files: [imageFile('late.png')] },
+			preventDefault: vi.fn(),
+			stopPropagation: vi.fn(),
+		} as unknown as ClipboardEvent);
+		scope.stop();
+		finish({ contentId: 'cid-late', previewUrl: 'blob:late' });
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(el.querySelector('img')).toBeNull();
+		expect(emitContent).not.toHaveBeenCalled();
+		expect(onRemove).toHaveBeenCalledWith('cid-late');
 	});
 
 	it('reconcile prunes the pending part when its <img> is removed from the DOM', async () => {

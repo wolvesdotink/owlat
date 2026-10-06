@@ -384,17 +384,27 @@ describe('usePostboxDraftInlineImages', () => {
 		expect(mint.mock.calls.length - 1).toBeGreaterThanOrEqual(1);
 	});
 
-	it('names the draft its URLs belong to', async () => {
+	it('names one composition, which outlives the draft getting its first id', async () => {
 		const { draft, sources } = setup(
-			DRAFT,
+			null,
 			IMAGE_BODY,
 			vi.fn(async () => [part(1)])
 		);
+		const composition = sources.value.scope;
+		expect(composition).toMatch(/^[0-9a-f]{24}$/);
+
+		draft.value = DRAFT;
 		await settle();
-		expect(sources.value.scope).toBe(DRAFT);
-		draft.value = 'draft_2' as Id<'mailDrafts'>;
-		await nextTick();
-		expect(sources.value.scope).toBe('draft_2');
+		expect(sources.value.scope).toBe(composition);
+		expect(sources.value.urls.get(CID)).toContain('id=s1&');
+
+		// Another instance is another composition.
+		const other = setup(
+			DRAFT,
+			IMAGE_BODY,
+			vi.fn(async () => [part(2)])
+		);
+		expect(other.sources.value.scope).not.toBe(composition);
 	});
 
 	it('does not renew a URL that carries no lifetime', async () => {

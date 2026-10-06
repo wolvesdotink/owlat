@@ -166,7 +166,10 @@ beforeEach(() => {
 
 /** What the composer's inline-image lookup was handed, and what it answers. */
 let inlineImageArgs: unknown[] = [];
-const inlineImageSources = ref(new Map([['chart@owlat.inline', 'https://storage.example/c']]));
+const inlineImageSources = ref({
+	scope: 'composition-1',
+	urls: new Map([['chart@owlat.inline', 'https://storage.example/c']]),
+});
 
 /** The envelope: a stub that can raise the attention flag like the real one. */
 const switchToReplyAll = vi.fn();
@@ -457,7 +460,10 @@ describe('PostboxComposer frame="page" (new mail)', () => {
 		const w = mountComposer({ frame: 'page', seed: { mailboxId: 'mbx_1' } });
 		expect(inlineImageArgs[0]).toBe(compose.draftId);
 		expect(inlineImageArgs[1]).toBe(compose.bodyHtml);
-		expect(w.getComponent(EditorStub).props('inlineImageSources')).toBe(inlineImageSources.value);
+		const editor = w.getComponent(EditorStub);
+		expect(editor.props('inlineImageSources')).toBe(inlineImageSources.value);
+		// Keyed by the composition: another one always gets a fresh editor.
+		expect(editor.vm.$.vnode.key).toBe('composition-1');
 		w.unmount();
 	});
 

@@ -9,10 +9,15 @@
  * That `blob:` preview dies with the tab, so the draft stores the image without
  * a `src` (`serializeComposerBody`) and `fillSources()` puts one back after
  * every write of the body: this session's preview, else the URL of the row's
- * inline part (`sources`, #1285), which is what a reopened draft shows. A URL
- * that is withdrawn (another draft opened in the same editor, a part no longer
- * on the row) comes off the image again, and so do this draft's previews when
- * another draft opens.
+ * inline part (`sources`, #1285), which is what a reopened draft shows. An
+ * image with neither has no src at all (a dead `blob:` from an older body
+ * included) until its URL arrives.
+ *
+ * All of it belongs to one composition (`sources.scope`). The composer keys
+ * the editor by it, so another composition always gets a fresh editor; should
+ * the scope change under a mounted one anyway, the previews are dropped, and a
+ * paste whose upload was still running is dropped too, as it is on unmount: it
+ * is not inserted, and its part is taken off the draft it was attached to.
  *
  * Deleting the image from the body (select + Backspace) drops the pending inline
  * part: `reconcile()` diffs the tracked content-IDs against what's still in the
@@ -22,7 +27,7 @@
  * so the editor component stays under the file-size ratchet and the caret
  * insertion / reconcile logic can be reasoned about in isolation.
  */
-import { watch, type Ref } from 'vue';
+import { getCurrentScope, onScopeDispose, watch, type Ref } from 'vue';
 import { fillInlineImageSources } from '~/utils/postboxInlineImageSrc';
 
 export interface InlineImagesOptions {
@@ -41,9 +46,9 @@ export interface InlineImagesOptions {
 	sources?: () => InlineImageSources | undefined;
 }
 
-/** The URLs of one draft's inline parts, by Content-ID; `scope` names the draft. */
+/** The URLs of one composition's inline parts, by Content-ID; `scope` names the composition. */
 export interface InlineImageSources {
-	scope: string | null;
+	scope: string;
 	urls: ReadonlyMap<string, string>;
 }
 
@@ -54,10 +59,11 @@ export function usePostboxInlineImages(opts: InlineImagesOptions) {
 	// This session's preview URL per inserted image, for when the body is
 	// written again (the stored form has no src) before the row's URL is known.
 	const previews = new Map<string, string>();
-	// Every URL this editor put on an image, so one that is withdrawn can come off.
-	const applied = new Set<string>();
-	// The draft the previews belong to.
+	// The composition the previews belong to, and a counter that moves when it
+	// changes or the editor goes away: a paste started before then is dropped.
 	let scope: string | null = null;
+	let generation = 0;
+	if (getCurrentScope()) onScopeDispose(() => (generation += 1));
 
 	function active(): boolean {
 		return opts.enabled() && !!opts.embedImage();
@@ -86,7 +92,6 @@ export function usePostboxInlineImages(opts: InlineImagesOptions) {
 			range.collapse(false);
 		}
 		previews.set(contentId, previewUrl);
-		applied.add(previewUrl);
 		range.insertNode(img);
 		range.setStartAfter(img);
 		range.collapse(true);
@@ -99,8 +104,14 @@ export function usePostboxInlineImages(opts: InlineImagesOptions) {
 	async function embedImageFiles(files: File[]) {
 		const embed = opts.embedImage();
 		if (!opts.enabled() || !embed) return;
+		const mine = generation;
 		for (const file of files) {
 			const result = await embed(file);
+			if (mine !== generation) {
+				// Another composition (or none) since: not this body's image.
+				if (result) opts.onRemoveEmbeddedImage()?.(result.contentId);
+				continue;
+			}
 			if (result) insertImageAtCaret(result.previewUrl, result.contentId);
 		}
 	}
@@ -129,19 +140,22 @@ export function usePostboxInlineImages(opts: InlineImagesOptions) {
 	}
 
 	/**
-	 * Give every inline image in the body a src to show: the row part's URL
-	 * once known (it outlives the tab), else this session's preview.
+	 * Give every inline image in the body its src: the row part's URL once known
+	 * (it outlives the tab), else this composition's own preview, else none.
 	 */
 	function fillSources() {
 		const stored = opts.sources?.();
-		// Another draft in this editor: the previous one's previews are not its own.
-		// (A new draft getting its first id is the same draft.)
 		const nextScope = stored?.scope ?? null;
-		if (scope !== null && nextScope !== null && nextScope !== scope) previews.clear();
-		if (nextScope !== null) scope = nextScope;
+		if (nextScope !== scope) {
+			if (scope !== null) {
+				previews.clear();
+				generation += 1;
+			}
+			scope = nextScope;
+		}
 		const el = opts.editorRef.value;
-		if (!el) return;
-		fillInlineImageSources(el, (cid) => stored?.urls.get(cid) ?? previews.get(cid), applied);
+		if (!el || !opts.enabled()) return;
+		fillInlineImageSources(el, (cid) => stored?.urls.get(cid) ?? previews.get(cid));
 	}
 	watch(() => opts.sources?.(), fillSources, { immediate: true });
 

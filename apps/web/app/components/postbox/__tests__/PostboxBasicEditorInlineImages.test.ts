@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { nextTick, onBeforeMount, onBeforeUnmount } from 'vue';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
@@ -71,6 +71,14 @@ const editorOf = (w: ReturnType<typeof mountEditor>) =>
 const imageSrc = (w: ReturnType<typeof mountEditor>) =>
 	editorOf(w).querySelector(`img[data-inline-cid="${CID}"]`)?.getAttribute('src') ?? null;
 
+/** Paste an image file into the editor, the way the browser's paste event carries it. */
+function paste(w: ReturnType<typeof mountEditor>, name: string) {
+	const event = new Event('paste', { bubbles: true, cancelable: true });
+	const file = new File([new Uint8Array([1, 2, 3])], name, { type: 'image/png' });
+	Object.defineProperty(event, 'clipboardData', { value: { files: [file] } });
+	editorOf(w).dispatchEvent(event);
+}
+
 /** Type at the end of the body, as the input event the editor listens to. */
 async function typeAtEnd(w: ReturnType<typeof mountEditor>, text: string) {
 	editorOf(w).querySelector('p')!.append(text);
@@ -86,7 +94,7 @@ describe('PostboxBasicEditor: inline images of a reopened draft', () => {
 	it("shows the image from the row part's URL", () => {
 		const w = mountEditor({
 			modelValue: STORED,
-			inlineImageSources: sourcesOf('draft_a', ROW_URL),
+			inlineImageSources: sourcesOf('composition_a', ROW_URL),
 		});
 		expect(imageSrc(w)).toBe(ROW_URL);
 		w.unmount();
@@ -95,7 +103,7 @@ describe('PostboxBasicEditor: inline images of a reopened draft', () => {
 	it('replaces the dead blob: src of a body saved before #1285', () => {
 		const w = mountEditor({
 			modelValue: STORED_BEFORE_1285,
-			inlineImageSources: sourcesOf('draft_a', ROW_URL),
+			inlineImageSources: sourcesOf('composition_a', ROW_URL),
 		});
 		expect(imageSrc(w)).toBe(ROW_URL);
 		w.unmount();
@@ -103,9 +111,10 @@ describe('PostboxBasicEditor: inline images of a reopened draft', () => {
 
 	it('fills the image in when the URLs arrive after the body', async () => {
 		const w = mountEditor({ modelValue: STORED_BEFORE_1285 });
-		expect(imageSrc(w)).toBe(DEAD_BLOB);
+		// The dead blob: is not shown meanwhile: the image is unresolved.
+		expect(imageSrc(w)).toBeNull();
 
-		await w.setProps({ inlineImageSources: sourcesOf('draft_a', ROW_URL) });
+		await w.setProps({ inlineImageSources: sourcesOf('composition_a', ROW_URL) });
 		expect(imageSrc(w)).toBe(ROW_URL);
 		w.unmount();
 	});
@@ -113,39 +122,129 @@ describe('PostboxBasicEditor: inline images of a reopened draft', () => {
 	it('moves the image to a renewed URL before the old one expires', async () => {
 		const w = mountEditor({
 			modelValue: STORED,
-			inlineImageSources: sourcesOf('draft_a', ROW_URL),
+			inlineImageSources: sourcesOf('composition_a', ROW_URL),
 		});
 		const renewed = `${ROW_URL}?exp=2`;
-		await w.setProps({ inlineImageSources: sourcesOf('draft_a', renewed) });
+		await w.setProps({ inlineImageSources: sourcesOf('composition_a', renewed) });
 		expect(imageSrc(w)).toBe(renewed);
 		w.unmount();
 	});
 
-	it("takes draft A's URL off the image when the editor moves on to draft B", async () => {
+	it("takes draft A's URL off the image when the editor moves on to composition B", async () => {
 		const w = mountEditor({
 			modelValue: STORED,
-			inlineImageSources: sourcesOf('draft_a', ROW_URL),
+			inlineImageSources: sourcesOf('composition_a', ROW_URL),
 		});
 		expect(imageSrc(w)).toBe(ROW_URL);
 
 		// Same saved HTML, same Content-ID; B's lookup has not answered yet.
-		await w.setProps({ inlineImageSources: sourcesOf('draft_b') });
+		await w.setProps({ inlineImageSources: sourcesOf('composition_b') });
 		expect(imageSrc(w)).toBeNull();
 		// Nor once it answers with nothing.
-		await w.setProps({ inlineImageSources: { scope: 'draft_b', urls: new Map() } });
+		await w.setProps({ inlineImageSources: { scope: 'composition_b', urls: new Map() } });
 		expect(imageSrc(w)).toBeNull();
 		// The saved body was never touched by any of it.
 		await typeAtEnd(w, ' Thanks!');
 		expect(lastEmitted(w)).not.toContain('src=');
 
 		const B_URL = `${ROW_URL}&draft=b`;
-		await w.setProps({ inlineImageSources: sourcesOf('draft_b', B_URL) });
+		await w.setProps({ inlineImageSources: sourcesOf('composition_b', B_URL) });
 		expect(imageSrc(w)).toBe(B_URL);
 		w.unmount();
 	});
 
+	it('does not insert a paste whose upload started in A into B, and takes its part off A', async () => {
+		let finish!: (r: { contentId: string; previewUrl: string }) => void;
+		const embedImage = vi.fn(
+			() => new Promise<{ contentId: string; previewUrl: string }>((r) => (finish = r))
+		);
+		const onRemoveEmbeddedImage = vi.fn();
+		const w = mountEditor({
+			modelValue: '<p>Hello</p>',
+			inlineImageSources: sourcesOf('composition_a'),
+			embedImage,
+			onRemoveEmbeddedImage,
+		});
+		paste(w, 'chart.png');
+		expect(embedImage).toHaveBeenCalledOnce();
+
+		await w.setProps({ inlineImageSources: sourcesOf('composition_b') });
+		const emittedBefore = (w.emitted('update:modelValue') ?? []).length;
+		finish({ contentId: 'late@owlat.inline', previewUrl: 'blob:late' });
+		await flushPromises();
+
+		expect(editorOf(w).querySelector('img')).toBeNull();
+		expect((w.emitted('update:modelValue') ?? []).length).toBe(emittedBefore);
+		expect(onRemoveEmbeddedImage).toHaveBeenCalledWith('late@owlat.inline');
+		w.unmount();
+	});
+
+	it('shows no preview of A in an unsaved B, nor of B in an unsaved C', async () => {
+		let n = 0;
+		const embedImage = vi.fn(async () => ({
+			contentId: `p${++n}@owlat.inline`,
+			previewUrl: `blob:preview-${n}`,
+		}));
+		const w = mountEditor({
+			modelValue: '<p>Hello</p>',
+			inlineImageSources: sourcesOf('composition_a'),
+			embedImage,
+		});
+		paste(w, 'a.png');
+		await flushPromises();
+		const srcs = () => [...editorOf(w).querySelectorAll('img')].map((i) => i.getAttribute('src'));
+		expect(srcs()).toEqual(['blob:preview-1']);
+
+		await w.setProps({ inlineImageSources: sourcesOf('composition_b') });
+		expect(srcs()).toEqual([null]);
+		paste(w, 'b.png');
+		await flushPromises();
+		expect(srcs()).toContain('blob:preview-2');
+
+		await w.setProps({ inlineImageSources: sourcesOf('composition_c') });
+		expect(srcs().every((src) => src === null)).toBe(true);
+		w.unmount();
+	});
+
+	it('takes an inherited src off when nothing resolves it, through a share-link append', async () => {
+		const inherited = `<p><img src="https://elsewhere.example/i.png" data-inline-cid="${CID}"></p>`;
+		const w = mountEditor({
+			modelValue: inherited,
+			inlineImageSources: sourcesOf('composition_a'),
+		});
+		expect(imageSrc(w)).toBeNull();
+
+		await w.setProps({ modelValue: `${inherited}<p>Link: report.pdf</p>` });
+		expect(editorOf(w).textContent).toContain('Link: report.pdf');
+		expect(imageSrc(w)).toBeNull();
+		w.unmount();
+	});
+
+	it('keeps a paste preview when the composition gets its first draft id', async () => {
+		const embedImage = vi.fn(async () => ({ contentId: CID, previewUrl: 'blob:fresh' }));
+		const w = mountEditor({
+			modelValue: '<p>Hello</p>',
+			inlineImageSources: sourcesOf('composition_a'),
+			embedImage,
+		});
+		paste(w, 'a.png');
+		await flushPromises();
+		expect(imageSrc(w)).toBe('blob:fresh');
+
+		// The draft row now exists: same composition, a fresh (still empty) URL map.
+		await w.setProps({ inlineImageSources: sourcesOf('composition_a') });
+		expect(imageSrc(w)).toBe('blob:fresh');
+		// Its row URL then takes over.
+		await w.setProps({ inlineImageSources: sourcesOf('composition_a', ROW_URL) });
+		expect(imageSrc(w)).toBe(ROW_URL);
+		w.unmount();
+	});
+
 	it('fills it in for a draft the body reaches only after mount (hydration)', async () => {
-		const w = mountEditor({ modelValue: '', inlineImageSources: sourcesOf('draft_a', ROW_URL) });
+		const w = mountEditor({
+			modelValue: '',
+			inlineImageSources: sourcesOf('composition_a', ROW_URL),
+		});
 		await w.setProps({ modelValue: STORED_BEFORE_1285 });
 		expect(imageSrc(w)).toBe(ROW_URL);
 		w.unmount();
@@ -154,7 +253,7 @@ describe('PostboxBasicEditor: inline images of a reopened draft', () => {
 	it('never saves a src for the image, whatever it shows', async () => {
 		const w = mountEditor({
 			modelValue: STORED_BEFORE_1285,
-			inlineImageSources: sourcesOf('draft_a', ROW_URL),
+			inlineImageSources: sourcesOf('composition_a', ROW_URL),
 		});
 		await typeAtEnd(w, ' Thanks!');
 
@@ -184,7 +283,7 @@ describe('PostboxBasicEditor: inline images of a reopened draft', () => {
 	it('keeps showing the image when the body is written from outside (a share link)', async () => {
 		const w = mountEditor({
 			modelValue: STORED,
-			inlineImageSources: sourcesOf('draft_a', ROW_URL),
+			inlineImageSources: sourcesOf('composition_a', ROW_URL),
 		});
 		await typeAtEnd(w, ' Thanks!');
 		await w.setProps({ modelValue: lastEmitted(w)! });

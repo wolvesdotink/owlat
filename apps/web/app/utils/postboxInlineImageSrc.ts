@@ -24,25 +24,19 @@ export function serializeComposerBody(root: HTMLElement): string {
 }
 
 /**
- * Point every inline image at the URL `resolve` knows for its Content-ID, and
- * record it in `applied`. An image `resolve` knows nothing about loses a src
- * that came from `applied` (a URL withdrawn, such as another draft's), and
- * keeps any other (a dead `blob:` an older client saved) until one is known.
+ * The one rule for an inline image's src: the URL `resolve` gives for its
+ * Content-ID, or none at all. Whatever src it had before (another draft's URL,
+ * a dead `blob:` an older client saved) never survives a fill, so an image
+ * shows as unresolved until its own URL is known.
  */
 export function fillInlineImageSources(
 	root: HTMLElement,
-	resolve: (contentId: string) => string | undefined,
-	applied: Set<string>
+	resolve: (contentId: string) => string | undefined
 ): void {
 	for (const img of root.querySelectorAll(INLINE_IMAGE)) {
 		const contentId = img.getAttribute('data-inline-cid');
 		const url = contentId ? resolve(contentId) : undefined;
-		const current = img.getAttribute('src');
-		if (url) {
-			applied.add(url);
-			if (current !== url) img.setAttribute('src', url);
-		} else if (current !== null && applied.has(current)) {
-			img.removeAttribute('src');
-		}
+		if (!url) img.removeAttribute('src');
+		else if (img.getAttribute('src') !== url) img.setAttribute('src', url);
 	}
 }
