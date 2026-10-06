@@ -23,6 +23,7 @@ import { reactive, ref } from 'vue';
 import { withSetup } from '~/__tests__/withSetup';
 import { createTestI18n } from '~/__tests__/i18n';
 import { queryResult } from '~/__tests__/queryStubs';
+import { isInlineImageReferenced, rewriteInlineImageCids } from '@owlat/shared/inlineImages';
 import type * as Uploads from '../postboxAttachmentUploads';
 import type { ComposerSeed } from '../usePostboxCompose';
 
@@ -100,6 +101,9 @@ const LOGO: RowAttachment = {
 	isInline: true,
 	contentId: 'logo@owlat.inline',
 };
+/** A body showing LOGO the way the Simple editor stores an embedded image. */
+const LOGO_BODY =
+	'<p>Attached.</p><p><img src="blob:http://localhost/preview" data-inline-cid="logo@owlat.inline"></p>';
 
 /** The stored draft as the server holds it. */
 let row: {
@@ -118,8 +122,8 @@ let rowAnswered: boolean;
 let holdAttach: boolean;
 let releaseAttach: () => void;
 let removeAttachment: ReturnType<typeof vi.fn>;
-/** The row's attachments when `drafts.send` was called: what the message carries. */
-let sentWith: RowAttachment[] | null;
+/** The row when `drafts.send` was called: the server builds the message from it. */
+let sentRow: { bodyHtml: string; attachments: RowAttachment[] } | null;
 
 /** A Convex query update: the subscription sees the row before any mutation resolves. */
 function publish() {
@@ -138,7 +142,7 @@ beforeEach(() => {
 	};
 	rowAnswered = false;
 	holdAttach = false;
-	sentWith = null;
+	sentRow = null;
 	draftQuery = queryResult<unknown>(undefined);
 
 	const addAttachment = (args: RowAttachment) => {
@@ -169,9 +173,14 @@ beforeEach(() => {
 		'storage.generateUploadUrl': async () => ({ ok: true, result: 'https://upload.example' }),
 		'drafts.addAttachment': addAttachment as never,
 		'drafts.removeAttachment': removeAttachment as never,
-		'drafts.update': async () => ({ ok: true, result: { savedAt: 200 } }),
+		'drafts.update': async (args: { bodyHtml?: string }) => {
+			if (typeof args.bodyHtml === 'string') row.bodyHtml = args.bodyHtml;
+			return { ok: true, result: { savedAt: 200 } };
+		},
 		'drafts.send': async () => {
-			sentWith = row.attachments.map((a) => ({ ...a }));
+			sentRow = JSON.parse(
+				JSON.stringify({ bodyHtml: row.bodyHtml, attachments: row.attachments })
+			);
 			return { ok: true, result: { undoToken: 'tok', sendAt: 1 } };
 		},
 	};
@@ -212,6 +221,20 @@ async function rowLoads() {
 
 const shown = (composer: Awaited<ReturnType<typeof reopen>>) =>
 	composer.attachments.value.map((a) => a.filename).sort();
+
+/**
+ * The parts the message carries: the pick `bufferDraftAttachments`
+ * (`mail/outbound/build.ts`) makes from the row, through the same shared
+ * helpers. Files always go; an inline image only while the body shows it. The
+ * web app cannot import `apps/api`; `outboundInlineParts.test.ts` there runs
+ * the real function on this row.
+ */
+function outboundParts(sent: NonNullable<typeof sentRow>): string[] {
+	const { referencedCids } = rewriteInlineImageCids(sent.bodyHtml);
+	return sent.attachments
+		.filter((a) => !a.isInline || isInlineImageReferenced(referencedCids, a.contentId))
+		.map((a) => a.filename);
+}
 
 const notes = () => new File(['notes'], 'notes.txt', { type: 'text/plain' });
 
@@ -338,7 +361,8 @@ describe('usePostboxCompose: a reopened draft never shows an inline body image a
 		expect(row.attachments).toEqual([LOGO, SCHEDULE]);
 	});
 
-	it('still sends the inline image: it stays on the row the send is built from', async () => {
+	it('still sends the inline image: the row keeps it and the body still shows it', async () => {
+		row.bodyHtml = LOGO_BODY;
 		row.attachments = [CONTRACT, LOGO];
 		const composer = await reopen();
 		await rowLoads();
@@ -346,7 +370,22 @@ describe('usePostboxCompose: a reopened draft never shows an inline body image a
 
 		await composer.send();
 
-		expect(sentWith).toEqual([CONTRACT, LOGO]);
+		expect(sentRow).not.toBeNull();
+		expect(sentRow!.attachments).toEqual([CONTRACT, LOGO]);
+		expect(outboundParts(sentRow!)).toEqual(['contract.pdf', 'logo.png']);
+	});
+
+	it('holds Send for a draft whose only content is an inline image, as a new one does', async () => {
+		row.subject = '';
+		row.bodyHtml =
+			'<p><img src="blob:http://localhost/preview" data-inline-cid="logo@owlat.inline"></p>';
+		row.attachments = [LOGO];
+		const composer = await reopen();
+		await rowLoads();
+
+		expect(composer.draftNotice.value).toBeNull();
+		expect(composer.attachments.value).toEqual([]);
+		expect(composer.canSend.value).toBe(false);
 	});
 
 	it('leaves the inline image out of the list hydration fills, before the chips follow the row', async () => {
