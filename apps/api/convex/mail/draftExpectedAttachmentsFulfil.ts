@@ -4,37 +4,40 @@
  * `fulfil`: copy every file a draft owes onto it (#1257; the debt itself is
  * `draftExpectedAttachments.ts`). Safe to run from any number of tabs at once.
  *
- * A forward is read once, from its raw message: `forwardedParts` picks the
- * parts (the disposition rule forwarding has always used), the debt is
+ * A forward is read once, from its raw message: `locateForwardedParts` picks
+ * the parts (the disposition rule forwarding has always used), the debt is
  * expanded into one entry per picked part keyed by its raw part index, and
  * each part's bytes come from that same parse. Selection and copying use one
  * source and one identity; nothing is matched against the message row's
- * attachment list.
+ * attachment list. A walk the MIME bounds cut short (parts, depth) is not
+ * expanded (`messageTooComplex`): the parts past the cut were never seen.
  *
- * MEMORY. A raw message is held as bytes and as a binary string while it is
- * walked, and the parts a forward carries are decoded (the rest are not), so a
- * read peaks at a few times the message's size. A Node action has room for
- * any message the MX and IMAP APPEND accept (10 and 50 MiB); past
- * `MAX_FORWARD_RAW_BYTES` the message is not read at all and the forward stays
- * owed as `messageTooLarge`. A walk the MIME bounds cut short (parts, depth)
- * is not expanded either (`messageTooComplex`): the parts past the cut were
- * never seen, so expanding would drop them without a word.
+ * MEMORY. The message is never turned into a string. It is read as bytes
+ * (the stored blob, then its unsealed copy; the sealed one is released when
+ * the read returns), its parts are located by byte searches, and only the
+ * parts a forward carries are decoded, one at a time, each straight into an
+ * array of its exact decoded size, which is counted first: a part over the
+ * per-file limit is never decoded (`tooLarge`). So a read holds about twice
+ * the message while it is unsealed, then the message plus one part and the
+ * copy `storage.store` makes of it. Past `MAX_FORWARD_RAW_BYTES` (the IMAP
+ * APPEND limit, the largest message any path stores) the message is not read
+ * at all and the forward stays owed as `messageTooLarge`.
+ * `packages/shared/src/__tests__/forwardMemory.test.ts` measures this path in
+ * separate Node processes: at most about 285 MiB of a Node action's 512.
  */
 
 import { v } from 'convex/values';
 import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
-import { forwardedParts, type ExtractedAttachment } from '@owlat/shared/mailMime';
+import { MAX_ATTACHMENT_BYTES, MAX_FORWARD_RAW_BYTES } from '@owlat/shared/attachments';
+import { locateForwardedParts, type LocatedForwardedPart } from '@owlat/shared/mailMime';
 import { authedAction } from '../lib/authedFunctions';
 import { readSealedBlobBytes } from '../lib/sealedBlob';
 import { forwardPartKey, type FulfilFailure, type OwedWork } from './draftExpectedAttachments';
 
 type Failed = Array<{ key: string; filename: string; reason: FulfilFailure }>;
 
-/** Largest raw message a forward is read from (see MEMORY above). */
-export const MAX_FORWARD_RAW_BYTES = 64 * 1024 * 1024;
 type Ctx = Pick<ActionCtx, 'runQuery' | 'runMutation' | 'storage'>;
 
 /**
@@ -45,31 +48,35 @@ async function readForwardedParts(
 	ctx: Ctx,
 	job: Extract<OwedWork, { kind: 'forward' }>
 ): Promise<
-	| { parts: Map<string, ExtractedAttachment>; truncated: boolean }
+	| { parts: Map<string, LocatedForwardedPart>; truncated: boolean }
 	| { failure: 'messageTooLarge' | 'unreadable' }
 > {
 	if (job.rawSize > MAX_FORWARD_RAW_BYTES) return { failure: 'messageTooLarge' };
 	const raw = await readSealedBlobBytes(ctx.storage, job.rawStorageId).catch(() => null);
 	if (!raw) return { failure: 'unreadable' };
-	// One char per byte, so binary parts survive the MIME walk.
-	const read = forwardedParts(new TextDecoder('latin1').decode(raw));
+	const read = locateForwardedParts(raw);
 	return {
-		parts: new Map(read.parts.map(({ partIndex, part }) => [partIndex, part])),
+		parts: new Map(read.parts.map((part) => [part.partIndex, part])),
 		truncated: read.truncated,
 	};
 }
 
-/** Store, receipt and bind one copy; the reason it stays owed, or null once bound. */
+/**
+ * Decode (only within the per-file limit), store, receipt and bind one copy;
+ * the reason it stays owed, or null once bound. The decoded bytes live only
+ * for this call.
+ */
 async function copyOn(
 	ctx: Ctx,
 	draftId: Id<'mailDrafts'>,
 	key: string,
-	bytes: Uint8Array,
-	contentType: string
+	file: { size: number; contentType: string; decode: () => Uint8Array }
 ): Promise<FulfilFailure | null> {
-	if (bytes.byteLength === 0) return 'unreadable';
-	if (bytes.byteLength > MAX_ATTACHMENT_BYTES) return 'tooLarge';
-	const storageId = await ctx.storage.store(new Blob([bytes as BlobPart], { type: contentType }));
+	if (file.size === 0) return 'unreadable';
+	if (file.size > MAX_ATTACHMENT_BYTES) return 'tooLarge';
+	const storageId = await ctx.storage.store(
+		new Blob([file.decode() as BlobPart], { type: file.contentType })
+	);
 	try {
 		await ctx.runMutation(internal.mail.draftExpectedAttachments.stageCopy, { storageId });
 	} catch {
@@ -124,7 +131,7 @@ async function fulfilForward(
 				partIndex,
 				filename: part.filename,
 				contentType: part.contentType,
-				size: part.bytes.byteLength,
+				size: part.size,
 			})),
 		});
 		if (expanded.outcome === 'tooMany') {
@@ -136,9 +143,7 @@ async function fulfilForward(
 	for (const partIndex of owed) {
 		const key = forwardPartKey(job.messageId, partIndex);
 		const part = parts.get(partIndex);
-		const reason = part
-			? await copyOn(ctx, draftId, key, part.bytes, part.contentType)
-			: 'unreadable';
+		const reason = part ? await copyOn(ctx, draftId, key, part) : 'unreadable';
 		if (reason) failed.push({ key, filename: part?.filename ?? '', reason });
 	}
 }
@@ -161,7 +166,11 @@ export async function fulfilExpectedAttachments(
 			failed.push({ key: job.key, filename: job.filename, reason: 'unreadable' });
 		} else if (job.kind === 'generated') {
 			const bytes = new TextEncoder().encode(job.content);
-			const reason = await copyOn(ctx, args.draftId, job.key, bytes, job.contentType);
+			const reason = await copyOn(ctx, args.draftId, job.key, {
+				size: bytes.byteLength,
+				contentType: job.contentType,
+				decode: () => bytes,
+			});
 			if (reason) failed.push({ key: job.key, filename: job.filename, reason });
 		} else {
 			await fulfilForward(ctx, args.draftId, job, failed);

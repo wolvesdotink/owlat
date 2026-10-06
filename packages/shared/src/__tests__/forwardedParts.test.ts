@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { forwardedParts } from '../mailMime';
+import { readFileSync, globSync } from 'node:fs';
+import { join } from 'node:path';
+import { extractAttachments, forwardedParts } from '../mailMime';
 
 function leaf(type: string, headers: string[], body: string): string {
 	return [`Content-Type: ${type}`, ...headers, '', body].join('\r\n');
@@ -106,5 +108,29 @@ describe('forwardedParts (#1257): what a forward carries, picked from the raw me
 		const read = forwardedParts(['MIME-Version: 1.0', body].join('\r\n'));
 		expect(read.truncated).toBe(true);
 		expect(read.parts).toEqual([]);
+	});
+
+	it('picks what the string walker picks, across the repository corpus', () => {
+		const root = join(import.meta.dirname, '../../../..');
+		const files = globSync('**/*.eml', {
+			cwd: root,
+			exclude: (name) => name === 'node_modules' || name === '.git',
+		});
+		expect(files.length).toBeGreaterThan(50);
+		for (const file of files) {
+			const text = new TextDecoder('latin1').decode(readFileSync(join(root, file)));
+			if ([...text].some((c) => c.charCodeAt(0) > 0xff)) continue; // windows-1252 C1 bytes
+			const expected = extractAttachments(text).flatMap((part, index) =>
+				part.disposition === 'attachment'
+					? [{ partIndex: String(index), filename: part.filename, bytes: [...part.bytes] }]
+					: []
+			);
+			const actual = forwardedParts(text).parts.map(({ partIndex, part }) => ({
+				partIndex,
+				filename: part.filename,
+				bytes: [...part.bytes],
+			}));
+			expect(actual, file).toEqual(expected);
+		}
 	});
 });

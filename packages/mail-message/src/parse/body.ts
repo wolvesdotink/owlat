@@ -21,7 +21,7 @@ import { type ContentType } from './contentType';
 import { decodeCharset } from './charset';
 
 /** Hard ceiling on multipart nesting depth; beyond it a node is left as a leaf. */
-const MAX_DEPTH = 100;
+export const MAX_DEPTH = 100;
 
 /**
  * Hard ceiling on descendant MIME parts in one message. The top-level RFC 822

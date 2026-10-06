@@ -22,6 +22,10 @@
 			"types": "./src/parse/body.ts",
 			"import": "./src/parse/body.ts"
 		},
+		"./parse/locate": {
+			"types": "./src/parse/locate.ts",
+			"import": "./src/parse/locate.ts"
+		},
 		"./parse/attachments": {
 			"types": "./src/parse/attachments.ts",
 			"import": "./src/parse/attachments.ts"
