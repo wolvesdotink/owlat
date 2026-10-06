@@ -91,9 +91,21 @@ jobs:
       # `secret`/`apiKey` identifier, every non-trivial regex) and its real
       # signal is already covered by p/javascript + p/security-audit + p/secrets.
       # Test fixtures, docs examples, and templates are excluded via .semgrepignore.
+      #
+      # `--jobs 1`: Semgrep stops taint analysis of a function after 0.2 s of
+      # process CPU time (not configurable). With parallel jobs every worker's
+      # CPU time counts against that budget, so functions timed out at random
+      # and their findings went missing. One job gives each function the full
+      # budget. The scan runs through check-semgrep-timeouts.sh, which adds
+      # `--time --json-output`, reports fixpoint timeouts and scan errors in
+      # the log and the job summary (Semgrep's exit code ignores both), and
+      # fails on fixpoint timeouts. A scan whose only problem is fixpoint
+      # timeouts is re-run once; findings fail at once.
       - name: Semgrep scan
         run: >-
+          bash scripts/check-semgrep-timeouts.sh --scan "$RUNNER_TEMP" --
           semgrep scan --error
+          --jobs 1
           --config p/javascript
           --config p/typescript
           --config p/nodejs
