@@ -9,6 +9,7 @@
  */
 
 import * as openpgp from 'openpgp';
+import { binaryStringToBytes, bytesToBinaryString } from '@owlat/shared/mailMime';
 
 /** A canonical text/plain first part (headers + body) with CRLF line endings. */
 export function signedFirstPart(body: string): string {
@@ -132,14 +133,98 @@ export async function clearsign(text: string, privateKeyArmored: string): Promis
 	})) as string;
 }
 
-/** Compose a plain text/plain message whose body is a clearsigned block. */
+/**
+ * Clearsign raw OCTETS, as a mailer that sends ISO-8859-1 (or any charset) does
+ * and as `gpg --clearsign` does: a text-mode signature over the canonical text
+ * (trailing blanks stripped, CRLF line ends, RFC 4880 §7.1) hashed as the bytes
+ * themselves. Returns the armor block as a binary string, LF line ends.
+ * openpgp.js's own clearsign hashes its text as UTF-8, so it cannot make this.
+ */
+export async function clearsignOctets(
+	octets: Uint8Array,
+	privateKeyArmored: string
+): Promise<string> {
+	const lines = bytesToBinaryString(octets)
+		.split(/\r?\n/)
+		.map((line) => line.replace(/[ \t\r]+$/, ''));
+	const message = await openpgp.createMessage({ binary: binaryStringToBytes(lines.join('\r\n')) });
+	// openpgp.js makes a text-mode signature (what a cleartext signature is) only
+	// over a literal it has read as text; reading it leaves its bytes as they are.
+	message.getText();
+	const signature = await openpgp.sign({
+		message,
+		signingKeys: await openpgp.readPrivateKey({ armoredKey: privateKeyArmored }),
+		detached: true,
+		format: 'object',
+	});
+	const hash = openpgp.enums.read(openpgp.enums.hash, signature.packets[0]!.hashAlgorithm!);
+	return [
+		'-----BEGIN PGP SIGNED MESSAGE-----',
+		`Hash: ${hash.toUpperCase()}`,
+		'',
+		...lines.map((line) => (line.startsWith('-') ? `- ${line}` : line)),
+		signature.armor().trim(),
+	].join('\n');
+}
+
+/** How {@link composeClearsignedMessage} transmits the body. */
+export type ClearsignedBodyEncoding = '8bit' | 'quoted-printable' | 'base64';
+
+/** A binary-string body as `encoding` transmits it, CRLF line ends. */
+function encodeBody(body: string, encoding: ClearsignedBodyEncoding): string[] {
+	const crlf = body.replace(/\r?\n/g, '\r\n');
+	if (encoding === 'base64') {
+		return (
+			Buffer.from(crlf, 'latin1')
+				.toString('base64')
+				.match(/.{1,76}/g) ?? []
+		);
+	}
+	if (encoding === 'quoted-printable') {
+		// RFC 2045 §6.7: `=`, 8-bit octets and a trailing blank are escaped, and a
+		// line longer than 76 columns is broken with a soft `=` line break.
+		return crlf.split('\r\n').flatMap((line) => {
+			const escaped = line
+				.replace(
+					/[=\x80-\xff]/g,
+					(c) => `=${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}`
+				)
+				.replace(
+					/[ \t]$/,
+					(c) => `=${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}`
+				);
+			const out: string[] = [];
+			let rest = escaped;
+			while (rest.length > 76) {
+				// Never split an `=XX` escape.
+				let cut = 75;
+				const eq = rest.lastIndexOf('=', cut - 1);
+				if (eq > cut - 3) cut = eq;
+				out.push(`${rest.slice(0, cut)}=`);
+				rest = rest.slice(cut);
+			}
+			out.push(rest);
+			return out;
+		});
+	}
+	return crlf.split('\r\n');
+}
+
+/**
+ * Compose a plain text/plain message whose body is a clearsigned block. The
+ * armor may be a binary string (8-bit octets, {@link clearsignOctets}); the
+ * message it returns is one too, so send it with `Buffer.from(raw, 'latin1')`.
+ */
 export function composeClearsignedMessage(args: {
 	from: string;
 	to: string;
 	subject: string;
 	clearsignArmor: string;
 	messageId: string;
+	charset?: string;
+	encoding?: ClearsignedBodyEncoding;
 }): string {
+	const encoding = args.encoding;
 	return [
 		`Message-ID: ${args.messageId}`,
 		'Date: Sun, 16 Aug 2026 09:00:00 +0000',
@@ -147,9 +232,12 @@ export function composeClearsignedMessage(args: {
 		`To: ${args.to}`,
 		`Subject: ${args.subject}`,
 		'MIME-Version: 1.0',
-		'Content-Type: text/plain; charset=utf-8',
+		`Content-Type: text/plain; charset=${args.charset ?? 'utf-8'}`,
+		...(encoding ? [`Content-Transfer-Encoding: ${encoding}`] : []),
 		'',
-		...args.clearsignArmor.trim().split('\n'),
+		...(encoding
+			? encodeBody(args.clearsignArmor.trim(), encoding)
+			: args.clearsignArmor.trim().split('\n')),
 		'',
 	].join('\r\n');
 }

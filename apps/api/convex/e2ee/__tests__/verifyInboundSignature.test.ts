@@ -12,6 +12,9 @@
  *   - key not found                  → invalid, keySource 'not_found'
  *   - key CHANGED (pin conflict)     → refusal, failure 'key_changed'
  *   - malformed signature part       → failure 'malformed_signature'
+ * Clearsigned bodies are verified over the octets that were signed (#1300):
+ * 8-bit UTF-8, 8-bit ISO-8859-1, quoted-printable and base64 bodies all verify,
+ * and a changed octet or a body re-encoded in another charset does not.
  * Plus the WKD-first ladder: `skipManifest` discovery never touches the
  * instance manifest (D9), while the sealed path's default still does.
  */
@@ -32,7 +35,9 @@ import {
 } from './sealedMailTestHelpers';
 import {
 	clearsign,
+	clearsignOctets,
 	composeClearsignedMessage,
+	type ClearsignedBodyEncoding,
 	composeSignedPgpMime,
 	detachedSign,
 	signedFirstPart,
@@ -56,9 +61,9 @@ async function composeDetached(privateKeyArmored: string): Promise<string> {
 	});
 }
 
-async function runVerify(t: T, raw: string) {
+async function runVerify(t: T, raw: string, rawEncoding: BufferEncoding = 'utf8') {
 	return await t.action(internal.e2ee.verifyInboundSignature.forInbound, {
-		rawBytesBase64: Buffer.from(raw, 'utf8').toString('base64'),
+		rawBytesBase64: Buffer.from(raw, rawEncoding).toString('base64'),
 		from: SENDER,
 	});
 }
@@ -218,6 +223,151 @@ describe('e2ee.verifyInboundSignature.forInbound — verdict matrix', () => {
 		const t = convexTest(schema, modules);
 		const raw = 'From: a@b.c\r\nSubject: plain\r\n\r\nJust text.\r\n';
 		expect(await runVerify(t, raw)).toEqual({ isSigned: false });
+	});
+});
+
+describe('clearsigned bodies verify over the octets that were signed (#1300)', () => {
+	const GREETING = 'Grüße aus Köln,\nund ein Gruß an Jürgen.\n\n-- \nAlice';
+	// A line well past 76 columns, so a quoted-printable body soft-breaks it.
+	const LONG = `${'Größenordnung äöü '.repeat(8)}Ende`;
+	const latin1 = (text: string) => new Uint8Array(Buffer.from(text, 'latin1'));
+	const utf8 = (text: string) => new Uint8Array(Buffer.from(text, 'utf8'));
+
+	const VERIFIED = (fingerprint: string) => ({
+		isSigned: true,
+		info: {
+			isSigned: true,
+			isSignatureValid: true,
+			signerFingerprint: fingerprint,
+			keySource: 'pinned',
+		},
+	});
+	const NOT_VERIFIED = {
+		isSigned: true,
+		info: { isSigned: true, isSignatureValid: false, keySource: 'pinned' },
+	};
+
+	async function signedMessage(args: {
+		octets: Uint8Array;
+		privateKeyArmored: string;
+		charset: string;
+		encoding: ClearsignedBodyEncoding;
+		tamper?: (armor: string) => string;
+	}): Promise<string> {
+		const armor = await clearsignOctets(args.octets, args.privateKeyArmored);
+		return composeClearsignedMessage({
+			from: SENDER,
+			to: RECIPIENT,
+			subject: 'clearsigned',
+			clearsignArmor: args.tamper ? args.tamper(armor) : armor,
+			messageId: '<clearsigned-octets@sender.test>',
+			charset: args.charset,
+			encoding: args.encoding,
+		});
+	}
+
+	const cases: Array<[string, Uint8Array, string, ClearsignedBodyEncoding]> = [
+		['8-bit UTF-8', utf8(GREETING), 'utf-8', '8bit'],
+		['8-bit ISO-8859-1', latin1(GREETING), 'iso-8859-1', '8bit'],
+		['quoted-printable UTF-8', utf8(`${GREETING}\n${LONG}`), 'utf-8', 'quoted-printable'],
+		[
+			'quoted-printable ISO-8859-1',
+			latin1(`${GREETING}\n${LONG}`),
+			'iso-8859-1',
+			'quoted-printable',
+		],
+		['base64 UTF-8', utf8(GREETING), 'utf-8', 'base64'],
+	];
+
+	it.each(cases)('a %s body verifies', async (_label, octets, charset, encoding) => {
+		const t = convexTest(schema, modules);
+		const sender = await generateTestKeypair(SENDER);
+		await pinSender(t, sender.publicKeyArmored);
+
+		const raw = await signedMessage({
+			octets,
+			privateKeyArmored: sender.privateKeyArmored,
+			charset,
+			encoding,
+		});
+		expect(await runVerify(t, raw, 'latin1')).toEqual(VERIFIED(sender.fingerprint));
+	});
+
+	it.each(cases)(
+		'a %s body with one octet changed does not verify',
+		async (_label, octets, charset, encoding) => {
+			const t = convexTest(schema, modules);
+			const sender = await generateTestKeypair(SENDER);
+			await pinSender(t, sender.publicKeyArmored);
+
+			// Köln → Kölm: the last octet of a word inside the signed text.
+			const raw = await signedMessage({
+				octets,
+				privateKeyArmored: sender.privateKeyArmored,
+				charset,
+				encoding,
+				tamper: (armor) => armor.replace('ln,', 'lm,'),
+			});
+			expect(await runVerify(t, raw, 'latin1')).toEqual(NOT_VERIFIED);
+		}
+	);
+
+	it('an ISO-8859-1 body with a non-ASCII octet changed does not verify', async () => {
+		const t = convexTest(schema, modules);
+		const sender = await generateTestKeypair(SENDER);
+		await pinSender(t, sender.publicKeyArmored);
+
+		// ü (0xFC) → ý (0xFD): only the 8-bit octet differs.
+		const raw = await signedMessage({
+			octets: latin1(GREETING),
+			privateKeyArmored: sender.privateKeyArmored,
+			charset: 'iso-8859-1',
+			encoding: '8bit',
+			tamper: (armor) => armor.replace('Gr\xfc\xdfe', 'Gr\xfd\xdfe'),
+		});
+		expect(await runVerify(t, raw, 'latin1')).toEqual(NOT_VERIFIED);
+	});
+
+	it('the same text re-encoded in another charset, under that label, does not verify', async () => {
+		const t = convexTest(schema, modules);
+		const sender = await generateTestKeypair(SENDER);
+		await pinSender(t, sender.publicKeyArmored);
+
+		// Signed as UTF-8 octets; a relay transcodes the body to ISO-8859-1 and
+		// relabels it. The text reads the same, the signed octets are gone.
+		const armor = await clearsignOctets(utf8(GREETING), sender.privateKeyArmored);
+		const transcoded = Buffer.from(
+			Buffer.from(armor, 'latin1').toString('utf8'),
+			'latin1'
+		).toString('latin1');
+		expect(transcoded).not.toBe(armor);
+		for (const encoding of ['8bit', 'quoted-printable', 'base64'] as const) {
+			const raw = composeClearsignedMessage({
+				from: SENDER,
+				to: RECIPIENT,
+				subject: 'clearsigned',
+				clearsignArmor: transcoded,
+				messageId: '<clearsigned-transcoded@sender.test>',
+				charset: 'iso-8859-1',
+				encoding,
+			});
+			expect(await runVerify(t, raw, 'latin1')).toEqual(NOT_VERIFIED);
+		}
+	});
+
+	it('a base64 body is recognised as clearsigned at all', async () => {
+		const t = convexTest(schema, modules);
+		const sender = await generateTestKeypair(SENDER);
+		await pinSender(t, sender.publicKeyArmored);
+
+		const raw = await signedMessage({
+			octets: utf8(GREETING),
+			privateKeyArmored: sender.privateKeyArmored,
+			charset: 'utf-8',
+			encoding: 'base64',
+		});
+		expect(raw).not.toContain('BEGIN PGP SIGNED MESSAGE');
+		expect((await runVerify(t, raw, 'latin1')).isSigned).toBe(true);
 	});
 });
 

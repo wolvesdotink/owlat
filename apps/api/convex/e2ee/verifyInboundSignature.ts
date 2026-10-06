@@ -8,7 +8,7 @@
  * or an inline clearsigned body) gets its signature verified at ingest:
  *
  *   extraction (`@owlat/mail-canon` byte-exact RFC 3156 first part, or the
- *   clearsigned armor straight from the body)
+ *   clearsigned armor from the transfer-decoded body octets)
  *     → sender-key resolution (`e2ee/senderKey.ts`, the TOFU ladder sealed
  *       mail also uses, run WKD-first: the instance-manifest fetch is skipped)
  *     → the detached-verify primitive (`manifest.ts:verifyManifest`'s shape)
@@ -30,10 +30,11 @@ import * as openpgp from 'openpgp';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { extractRfc3156SignedPart } from '@owlat/mail-canon';
 import {
+	clearsignedBody,
 	extractClearsignedBlock,
-	isClearsigned,
 	isSignedPgpMime,
 } from '@owlat/shared/secureMessage';
+import { binaryStringToBytes, bytesToBinaryString } from '@owlat/shared/mailMime';
 import { resolveSenderVerificationKey } from './senderKey';
 import { inboundSignatureInfoValidator, type InboundSignatureInfo } from './inboundSignature';
 
@@ -92,16 +93,23 @@ export async function verifyDetachedSignature(
 }
 
 /**
- * Verify an inline CLEARSIGNED body (RFC 4880 §7) against a public key. The
- * armor block is pulled straight out of the raw text — clearsigned mail
- * carries its signature inline, so there is no MIME part to extract. Never
- * throws.
+ * Verify an inline CLEARSIGNED body (RFC 4880 §7) against a public key. `body`
+ * is the text the armor block sits in as a BINARY string, one char per byte
+ * ({@link clearsignedBody}), so the signed octets are hashed as sent whatever
+ * their charset. Never throws.
+ *
+ * openpgp.js reads the armor (dash-unescaping, the `Hash:` header check) but
+ * hashes a cleartext message's text as UTF-8, which only matches a UTF-8 body.
+ * So the signature is checked as a detached one over the signed text's own
+ * bytes instead: openpgp.js's canonical form of it (trailing blanks stripped,
+ * CRLF line ends, RFC 4880 §7.1) taken back to octets. A text-mode signature
+ * over a binary message hashes exactly those octets.
  */
 export async function verifyClearsignedBody(
-	raw: string,
+	body: string,
 	publicKeyArmored: string
 ): Promise<VerifyAttempt> {
-	const block = extractClearsignedBlock(raw);
+	const block = extractClearsignedBlock(body);
 	if (!block) return { verified: false, malformed: true };
 	let cleartext: Awaited<ReturnType<typeof openpgp.readCleartextMessage>>;
 	try {
@@ -110,9 +118,13 @@ export async function verifyClearsignedBody(
 		return { verified: false, malformed: true };
 	}
 	try {
+		const signedBytes = binaryStringToBytes(cleartext.getText().replace(/\n/g, '\r\n'));
+		// Public on openpgp.js's CleartextMessage, missing from its typings.
+		const { signature } = cleartext as unknown as { signature: openpgp.Signature };
 		const verificationKey = await openpgp.readKey({ armoredKey: publicKeyArmored });
 		const verification = await openpgp.verify({
-			message: cleartext,
+			message: await openpgp.createMessage({ binary: signedBytes }),
+			signature,
 			verificationKeys: verificationKey,
 		});
 		for (const sig of verification.signatures) {
@@ -155,15 +167,17 @@ export const forInbound = internalAction({
 	returns: verifyResultValidator,
 	handler: async (ctx, args): Promise<Infer<typeof verifyResultValidator>> => {
 		const rawBytes = Buffer.from(args.rawBytesBase64, 'base64');
-		const raw = rawBytes.toString('utf8');
+		// One char per byte: the structural gates only read ASCII, and the
+		// clearsigned text must reach the verifier as the octets that were signed.
+		const raw = bytesToBinaryString(rawBytes);
 		const detached = isSignedPgpMime(raw);
-		const clearsigned = !detached && isClearsigned(raw);
-		if (!detached && !clearsigned) return { isSigned: false as const };
+		const clearsigned = detached ? null : clearsignedBody(raw);
+		if (!detached && clearsigned === null) return { isSigned: false as const };
 
 		try {
 			return {
 				isSigned: true as const,
-				info: await verify(ctx, rawBytes, raw, detached, args.from),
+				info: await verify(ctx, rawBytes, clearsigned, args.from),
 			};
 		} catch {
 			// The verifier itself failed — record honestly, never block delivery.
@@ -180,12 +194,15 @@ export const forInbound = internalAction({
 	},
 });
 
-/** The verification core: resolve the key, verify, build the honest record. */
+/**
+ * The verification core: resolve the key, verify, build the honest record.
+ * `clearsigned` is the clearsigned body ({@link clearsignedBody}), or null for
+ * RFC 3156 `multipart/signed`.
+ */
 async function verify(
 	ctx: ActionCtx,
 	rawBytes: Buffer,
-	raw: string,
-	detached: boolean,
+	clearsigned: string | null,
 	from: string
 ): Promise<InboundSignatureInfo> {
 	// WKD-first: an arbitrary PGP sender is rarely an Owlat instance, so the
@@ -201,7 +218,7 @@ async function verify(
 	}
 
 	let attempt: VerifyAttempt;
-	if (detached) {
+	if (clearsigned === null) {
 		const parts = extractRfc3156SignedPart(rawBytes);
 		attempt = parts
 			? await verifyDetachedSignature(
@@ -211,7 +228,7 @@ async function verify(
 				)
 			: { verified: false, malformed: true };
 	} else {
-		attempt = await verifyClearsignedBody(raw, resolved.publicKeyArmored);
+		attempt = await verifyClearsignedBody(clearsigned, resolved.publicKeyArmored);
 	}
 
 	if (attempt.verified) {
