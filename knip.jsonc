@@ -348,6 +348,8 @@
 	// barrel-imports tokens/dark/light/...), so every stylesheet is a false
 	// positive. The gate targets orphaned TypeScript/Vue code — the documented
 	// failure mode (speculative seams, zero-caller modules), not stylesheets.
+	// .semgrep/tests/ holds Semgrep rule-test targets: read by `semgrep --test`
+	// (security.yml), never imported.
 	"ignore": [
 		"**/_generated/**",
 		"**/.nuxt/**",
@@ -357,6 +359,7 @@
 		"**/*.css",
 		"fixtures/**",
 		"packages/sdk-java/**",
+		".semgrep/tests/**",
 	],
 	"ignoreBinaries": ["convex", "tauri", "playwright", "docker", "cargo"],
 	"ignoreWorkspaces": ["packages/sdk-java"],

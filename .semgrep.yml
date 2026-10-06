@@ -68,11 +68,11 @@ rules:
           })
     paths:
       include:
-        - "apps/api/convex/**/*.ts"
+        - "/apps/api/convex/**/*.ts"
       exclude:
-        - "apps/api/convex/_generated/**"
-        - "apps/api/convex/**/*test*.ts"
-        - "apps/api/convex/**/__tests__/**"
+        - "/apps/api/convex/_generated/**"
+        - "/apps/api/convex/**/*test*.ts"
+        - "/apps/api/convex/**/__tests__/**"
 
   # ────────────────────────────────────────────────────────────────────
   # navigateTo / window.location.href with a route-query value that
@@ -98,9 +98,21 @@ rules:
       - pattern-not: safeRedirect($X, $Y)
 
   # ────────────────────────────────────────────────────────────────────
-  # Webhook handlers that read a signature header but never call a known
-  # verification function (HMAC compare). Catches future regressions of
-  # the C2 unverified-signature class.
+  # Webhook handlers that read a signature header and check only that it
+  # is present, never verifying it. Catches future regressions of the C2
+  # unverified-signature class.
+  #
+  # A read counts as verified when the enclosing function (declaration,
+  # expression, arrow or method, including an `httpAction(async (ctx,
+  # request) => { ... })` body) calls a verifier anywhere: a `verify*`
+  # function or method (verifyGithubSignature, verifyTwilioRequest,
+  # verifyMetaSignature, verifySvixHeaders, adapter.verifySignature,
+  # crypto.subtle.verify, ...) or a constant-time compare
+  # (constantTimeEqual, secretMatches, timingSafeEqual). Header names are
+  # matched as string literals, case-insensitively, on "signature".
+  #
+  # Tests: .semgrep/tests/webhook-signature-presence-only.ts, run with
+  # `semgrep --test --config .semgrep.yml <that file>` (security.yml does).
   # ────────────────────────────────────────────────────────────────────
   - id: webhook-signature-presence-only
     severity: ERROR
@@ -111,30 +123,43 @@ rules:
       helpers (webhooks/adapters/resend.ts verifySvixHeaders,
       webhooks/adapters/twilio.ts verifyTwilioRequest,
       webhooks/adapters/meta.ts verifyMetaSignature, or the constant-time
-      HMAC compare in webhooks/security.ts that mail/authHttp.ts uses)
-      to actually validate the signature.
+      compare in lib/crypto.ts, constantTimeEqual / secretMatches) to
+      actually validate the signature.
     patterns:
       - pattern-either:
           - pattern: |
-              $SIG = $REQ.headers.get('x-twilio-signature')
+              $SIG = $REQ.headers.get($HEADER)
               ...
-              if (!$SIG) { ... }
+              if (<... !$SIG ...>) $THEN
           - pattern: |
-              $SIG = $REQ.headers.get('x-hub-signature-256')
+              $SIG = $REQ.headers.get($HEADER)
               ...
-              if (!$SIG) { ... }
-      - pattern-not-inside: |
-          $X = $FN(...) {
-            ...
-            crypto.subtle.sign(...)
-            ...
-          }
-      - pattern-not-inside: |
-          $X = $FN(...) {
-            ...
-            constantTimeEqual(...)
-            ...
-          }
+              if (<... $SIG == null ...>) $THEN
+          - pattern: |
+              $SIG = $REQ.headers.get($HEADER)
+              ...
+              if (<... $SIG === null ...>) $THEN
+      - metavariable-regex:
+          metavariable: $HEADER
+          regex: (?i)^['"`][^'"`]*signature[^'"`]*['"`]$
+      - pattern-not-inside:
+          patterns:
+            - pattern-either:
+                - pattern: |
+                    function $FN(...) { ... <... $VERIFY(...) ...>; ... }
+                - pattern: |
+                    function (...) { ... <... $VERIFY(...) ...>; ... }
+                - pattern: |
+                    (...) => { ... <... $VERIFY(...) ...>; ... }
+                - pattern: |
+                    function $FN(...) { ... <... $OBJ.$VERIFY(...) ...>; ... }
+                - pattern: |
+                    function (...) { ... <... $OBJ.$VERIFY(...) ...>; ... }
+                - pattern: |
+                    (...) => { ... <... $OBJ.$VERIFY(...) ...>; ... }
+            - metavariable-regex:
+                metavariable: $VERIFY
+                regex: ^(verify\w*|constantTimeEqual|secretMatches|timingSafeEqual)$
     paths:
       include:
-        - "apps/api/convex/**/*.ts"
+        - "/apps/api/convex/**/*.ts"
