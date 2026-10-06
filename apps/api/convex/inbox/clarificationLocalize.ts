@@ -30,6 +30,7 @@ import { z } from 'zod';
 import type { LanguageModel } from 'ai';
 import { APP_LOCALES } from '../lib/convexValidators';
 import { runLlmObject, type LlmTextResult } from '../lib/llm/dispatch';
+import { partialUsageOf } from '../lib/llm/partialUsage';
 import { isCredentialSolicitation } from './clarificationSlots';
 import { interfaceRegisterRules } from '../mail/ai/interfaceLanguage';
 
@@ -226,7 +227,8 @@ function sumUsage(
  * or nothing to translate into, returns the questions unchanged, and a failed
  * retry keeps what the first call produced. A gap that survives the retry is
  * logged as a count only (the questions come from mail). Reports the summed
- * usage of the calls it made so the caller can fold it into its own accounting.
+ * usage of the calls it made so the caller can fold it into its own accounting,
+ * including what a failed call was billed for (#1260).
  */
 export async function localizeQuestions<Q extends LocalizableQuestion>(
 	model: LanguageModel,
@@ -254,8 +256,14 @@ export async function localizeQuestions<Q extends LocalizableQuestion>(
 		merged = mergeTranslations(questions, first.object.translations, targets);
 		tokenUsage = first.tokenUsage;
 		modelUsed = first.modelUsed;
-	} catch {
-		return { questions: questions.map((q) => ({ ...q })) };
+	} catch (error) {
+		// A completion that failed the schema was still billed.
+		const billed = partialUsageOf(error);
+		return {
+			questions: questions.map((q) => ({ ...q })),
+			tokenUsage: billed?.tokenUsage,
+			modelUsed: billed?.modelUsed,
+		};
 	}
 
 	const missing = missingTranslationPairs(merged, targets);
@@ -279,8 +287,11 @@ export async function localizeQuestions<Q extends LocalizableQuestion>(
 		);
 		tokenUsage = sumUsage(tokenUsage, retry.tokenUsage);
 		modelUsed = modelUsed ?? retry.modelUsed;
-	} catch {
+	} catch (error) {
 		// Keep the first pass; the gap is logged below.
+		const billed = partialUsageOf(error);
+		tokenUsage = sumUsage(tokenUsage, billed?.tokenUsage);
+		modelUsed = modelUsed ?? billed?.modelUsed;
 	}
 
 	const stillMissing = missingTranslationPairs(merged, targets).length;

@@ -17,6 +17,7 @@
 import {
 	generateObject,
 	generateText,
+	NoObjectGeneratedError,
 	streamText,
 	stepCountIs,
 	wrapLanguageModel,
@@ -257,27 +258,61 @@ export interface LlmObjectResult<S extends z.ZodTypeAny> {
 	modelUsed: string | undefined;
 }
 
+/**
+ * The usage a failed `generateObject` call was billed for. A completion that
+ * did not parse, did not match the schema or held no text throws
+ * `NoObjectGeneratedError` with the usage of the call that returned it; every
+ * other failure (a provider rejection, a network error, an abort) has none.
+ */
+function billedUsageOf(error: unknown): TokenUsage | undefined {
+	return NoObjectGeneratedError.isInstance(error) ? normalizeUsage(error.usage) : undefined;
+}
+
+/**
+ * One structured-output call: `generateObject` behind the shared retry policy.
+ *
+ * Usage is the sum of every attempt the provider billed (#1260). A completion
+ * that fails the schema is paid for and then retried like any other failure, so
+ * a success after two schema failures returns the usage of all three calls.
+ * When the call fails for good after a billed attempt, the error is an
+ * `LlmPartialUsageError` carrying that usage, with the last error as its cause
+ * and message; a failure before any attempt was billed rethrows the original
+ * error as is.
+ */
 export async function runLlmObject<S extends z.ZodTypeAny>(
 	opts: LlmObjectOptions<S>
 ): Promise<LlmObjectResult<S>> {
-	const dispatched = await withLlmRetry(
-		() =>
-			generateObject({
-				model: opts.model,
-				schema: opts.schema,
-				prompt: opts.prompt,
-				temperature: opts.temperature,
-				maxRetries: SDK_MAX_RETRIES,
-				...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),
-			}),
-		opts.abortSignal,
-		opts.maxAttempts
-	);
+	const modelUsed = typeof opts.model === 'string' ? opts.model : opts.model.modelId;
+	let spent: TokenUsage | undefined;
+	let dispatched;
+	try {
+		dispatched = await withLlmRetry(
+			async () => {
+				try {
+					return await generateObject({
+						model: opts.model,
+						schema: opts.schema,
+						prompt: opts.prompt,
+						temperature: opts.temperature,
+						maxRetries: SDK_MAX_RETRIES,
+						...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),
+					});
+				} catch (error) {
+					spent = addTokenUsage(spent, billedUsageOf(error));
+					throw error;
+				}
+			},
+			opts.abortSignal,
+			opts.maxAttempts
+		);
+	} catch (error) {
+		throw withPartialUsage(error, spent, modelUsed);
+	}
 	const { object, usage } = dispatched.value;
 	return {
 		object: object as z.infer<S>,
-		tokenUsage: normalizeUsage(usage),
-		modelUsed: typeof opts.model === 'string' ? opts.model : opts.model.modelId,
+		tokenUsage: addTokenUsage(spent, normalizeUsage(usage)),
+		modelUsed,
 	};
 }
 

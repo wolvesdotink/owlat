@@ -40,6 +40,7 @@ import { buildReplyLanguageInstruction } from './replyLanguage';
 
 export { buildReplyLanguageInstruction } from './replyLanguage';
 import { recordLlmSpend } from '../../analytics/llmUsage';
+import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
 import { logError } from '../../lib/runtimeLog';
 import { detectInjection, INJECTION_CONFIDENCE_THRESHOLD } from '../steps/security_scan/patterns';
 import type { ActionCtx } from '../../_generated/server';
@@ -125,12 +126,16 @@ export async function runDraftSelfCheck(
 ): Promise<DraftQuality | null> {
 	try {
 		const model = await resolveLanguageModel(ctx, 'classify'); // cheap / fast tier
-		const { object, tokenUsage, modelUsed } = await runLlmObject({
-			model,
-			schema: draftQualitySchema,
-			prompt: buildSelfCheckPrompt({ context: args.context, draft: args.draft }),
-			temperature: 0.1,
-		});
+		const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
+			ctx,
+			args.spendLabel,
+			runLlmObject({
+				model,
+				schema: draftQualitySchema,
+				prompt: buildSelfCheckPrompt({ context: args.context, draft: args.draft }),
+				temperature: 0.1,
+			})
+		);
 		try {
 			await recordLlmSpend(ctx, args.spendLabel, tokenUsage, modelUsed);
 		} catch {

@@ -24,6 +24,7 @@ import { internal } from '../../_generated/api';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmObject } from '../../lib/llm/dispatch';
 import { recordLlmSpend } from '../../analytics/llmUsage';
+import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
 import { clampDescription, dueHintToTimestamp } from '../commitments';
 import { messageDirectionValidator } from '../../lib/literalValidators';
 
@@ -66,20 +67,24 @@ export const extractCommitment = internalAction({
 					? `The sender is the mailbox owner (${context.ownerAddress}). Extract the single most concrete PROMISE the owner makes about something THEY will do (e.g. "I'll send the report Friday").`
 					: `The mailbox owner is ${context.ownerAddress}. Extract the single most concrete DEADLINE the sender imposes on the owner (e.g. "please reply by Friday").`;
 
-			const { object, tokenUsage, modelUsed } = await runLlmObject({
-				model: await resolveLanguageModel(ctx, 'summarize'),
-				schema: commitmentSchema,
-				prompt:
-					`${SYSTEM_GUARD}\n\n${who} Set hasCommitment=false when the message states ` +
-					`no such commitment. Give a one-line description (<= 160 chars), a dueDate ` +
-					`as an ISO date (YYYY-MM-DD) ONLY when a concrete date is stated (else null), ` +
-					`and the verbatim duePhrase as written (else null).\n\n` +
-					`Message:\n\nSubject: ${context.subject}\n${context.body}`.slice(
-						0,
-						MAX_TRANSCRIPT_CHARS + 200
-					),
-				temperature: 0,
-			});
+			const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
+				ctx,
+				'postbox_commitment',
+				runLlmObject({
+					model: await resolveLanguageModel(ctx, 'summarize'),
+					schema: commitmentSchema,
+					prompt:
+						`${SYSTEM_GUARD}\n\n${who} Set hasCommitment=false when the message states ` +
+						`no such commitment. Give a one-line description (<= 160 chars), a dueDate ` +
+						`as an ISO date (YYYY-MM-DD) ONLY when a concrete date is stated (else null), ` +
+						`and the verbatim duePhrase as written (else null).\n\n` +
+						`Message:\n\nSubject: ${context.subject}\n${context.body}`.slice(
+							0,
+							MAX_TRANSCRIPT_CHARS + 200
+						),
+					temperature: 0,
+				})
+			);
 			await recordLlmSpend(ctx, 'postbox_commitment', tokenUsage, modelUsed);
 
 			if (!object.hasCommitment) return;

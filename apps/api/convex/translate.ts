@@ -7,6 +7,7 @@ import { internal } from './_generated/api';
 import { logInfo } from './lib/runtimeLog';
 import { runLlmObject } from './lib/llm/dispatch';
 import { recordLlmSpend } from './analytics/llmUsage';
+import { recordSpendOnFailure } from './analytics/failedLlmSpend';
 import { resolveLanguageModel } from './lib/llmProvider';
 import { requireAuthenticatedIdentity } from './lib/sessionOrganization';
 import { throwInvalidInput } from './_utils/errors';
@@ -89,12 +90,16 @@ export const translateBatch = authedAction({
 		// dispatch). generateObject validates the shape, so a malformed response
 		// throws through runLlmObject's normal path instead of silently yielding
 		// zero translations the way the old fence-stripping parser did.
-		const { object, tokenUsage, modelUsed } = await runLlmObject({
-			model: await resolveLanguageModel(ctx, 'summarize'), // Translation is a fast-tier task
-			schema: translationSchema,
-			prompt,
-			temperature: 0.3,
-		});
+		const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
+			ctx,
+			'translate',
+			runLlmObject({
+				model: await resolveLanguageModel(ctx, 'summarize'), // Translation is a fast-tier task
+				schema: translationSchema,
+				prompt,
+				temperature: 0.3,
+			})
+		);
 		logInfo('[translate] llm call', { tokenUsage, modelUsed });
 		await recordLlmSpend(ctx, 'translate', tokenUsage, modelUsed);
 
