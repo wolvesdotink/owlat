@@ -73,9 +73,9 @@ export function formatInternalDate(ts: number): string {
 }
 
 /**
- * An IMAP `string` (RFC 3501 §4.3) for an envelope field. Text fields go
- * through {@link imapHeaderText} first, so a literal here is the fallback for
- * values that are not text, such as a non-ASCII address. A quoted string
+ * An IMAP `string` (RFC 3501 §4.3) for an envelope field. Fields go through
+ * {@link imapHeaderText} or {@link imapToken} first, so a literal here is the
+ * fallback for what those leave, such as a non-ASCII address. A quoted string
  * holds only 7-bit chars other than CR and LF, so a value with CR, LF or any
  * non-ASCII char is sent as a literal, `{n}` CRLF then the n octets. The
  * response is written as UTF-8, so n is the value's UTF-8 length. NUL is
@@ -91,24 +91,47 @@ export function imapString(s: string | undefined): string {
 }
 
 /**
+ * An RFC 2047 encoded word, matched as loosely as a decoder (ours,
+ * `decodeEncodedWords`, or a client's) recognizes one.
+ */
+const ENCODED_WORD = /=\?[^?]+\?[bBqQ]\?[^?]*\?=/;
+
+/**
  * An ENVELOPE text field: the subject or a display name. Clients rebuild
  * message headers from these, so control characters become a space; a stored
  * value may hold any. Non-ASCII text goes out as RFC 2047 encoded words, which
  * name their charset (a raw 8-bit string carries none, RFC 3501 §4.3.1), and
- * the ASCII result as a quoted string. Address parts and message ids are not
- * text and go through {@link imapString} as they are.
+ * the ASCII result as a quoted string. ASCII text that itself reads as an
+ * encoded word is encoded too, or a client would decode the stored, already
+ * decoded text a second time. Address parts and message ids are not text and
+ * go through {@link imapToken}.
  */
 export function imapHeaderText(s: string | undefined): string {
 	if (s == null) return 'NIL';
 	const line = collapseControlChars(s);
-	return imapString(/[\u0080-\uffff]/.test(line) ? encodeWords(line).join(' ') : line);
+	const encode = /[\u0080-\uffff]/.test(line) || ENCODED_WORD.test(line);
+	return imapString(encode ? encodeWords(line).join(' ') : line);
+}
+
+// eslint-disable-next-line no-control-regex -- matching control characters is the point
+const CONTROL_CHAR = /[\u0000-\u001f\u007f]/g;
+
+/**
+ * An ENVELOPE field that is not text: the date, an address's mailbox or host,
+ * a message id. None of them can hold a control character, and a client
+ * copies them into the headers it rebuilds, so any control character (TAB
+ * included) is dropped. They are never RFC 2047 encoded; a non-ASCII address
+ * part still falls back to a literal in {@link imapString}.
+ */
+export function imapToken(s: string | undefined): string {
+	return s == null ? 'NIL' : imapString(s.replace(CONTROL_CHAR, ''));
 }
 
 export function imapAddrList(addrs: ReadonlyArray<{ name?: string; address: string }>): string {
 	if (addrs.length === 0) return 'NIL';
 	const parts = addrs.map((a) => {
 		const [user, host] = a.address.split('@');
-		return `(${imapHeaderText(a.name)} NIL ${imapString(user ?? a.address)} ${imapString(host ?? '')})`;
+		return `(${imapHeaderText(a.name)} NIL ${imapToken(user ?? a.address)} ${imapToken(host ?? '')})`;
 	});
 	return `(${parts.join(' ')})`;
 }
@@ -122,7 +145,7 @@ export function formatEnvelope(m: FetchEnvelope): string {
 	const to = imapAddrList(m.toAddresses.map((a) => ({ address: a })));
 	const cc = imapAddrList(m.ccAddresses.map((a) => ({ address: a })));
 	const bcc = imapAddrList(m.bccAddresses.map((a) => ({ address: a })));
-	const inReplyTo = m.inReplyTo ? imapString(`<${m.inReplyTo}>`) : 'NIL';
-	const messageId = imapString(`<${m.rfc822MessageId}>`);
-	return `(${imapString(date)} ${subject} ${from} ${sender} ${replyTo} ${to} ${cc} ${bcc} ${inReplyTo} ${messageId})`;
+	const inReplyTo = m.inReplyTo ? imapToken(`<${m.inReplyTo}>`) : 'NIL';
+	const messageId = imapToken(`<${m.rfc822MessageId}>`);
+	return `(${imapToken(date)} ${subject} ${from} ${sender} ${replyTo} ${to} ${cc} ${bcc} ${inReplyTo} ${messageId})`;
 }

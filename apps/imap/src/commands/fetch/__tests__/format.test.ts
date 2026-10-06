@@ -227,6 +227,47 @@ describe('formatEnvelope', () => {
 		expect(splitEnvelopeFields(out)[2]).toBe('(("Jane Doe" NIL "jane" "example.com"))');
 	});
 
+	it('encodes a subject and name whose own text reads as an encoded word', () => {
+		// The stored values are already decoded; a client must show them as they are.
+		const subject = '=?UTF-8?Q?Caf=C3=A9?=';
+		const fromName = 'Jane =?ISO-8859-1?B?SuRuZQ==?= "J" Doe';
+		const fields = readEnvelope(formatEnvelope(envelope({ subject, fromName })));
+		expect(fields[1]).not.toBe(subject);
+		expect(decodeHeaderValue(fields[1] as string)).toBe(subject);
+
+		const parsed = parseMessage(rebuildHeaders(fields));
+		expect(parsed.subject).toBe(subject);
+		expect(parsed.from).toMatchObject({ value: [{ name: fromName, address: 'jane@example.com' }] });
+	});
+
+	it.each([
+		['In-Reply-To', { inReplyTo: 'parent@example.com>\r\nBcc: extra@example.com\r\n\r\nrest' }],
+		['Message-ID', { rfc822MessageId: 'mid-1@example.com>\r\nBcc: extra@example.com\r\n\r\nrest' }],
+	])('keeps rebuilt headers intact when a stored %s holds CR/LF', (_field, overrides) => {
+		const fields = readEnvelope(formatEnvelope(envelope(overrides)));
+		const parsed = parseMessage(rebuildHeaders(fields));
+		expect(parsed.headers.has('bcc')).toBe(false);
+		expect(parsed.subject).toBe('Hello');
+		expect(parsed.from).toMatchObject({ value: [{ address: 'jane@example.com' }] });
+		expect(parsed.to).toMatchObject({ value: [{ address: 'bob@example.com' }] });
+		expect(parsed.text).toBe('body');
+		expect(fields[8] ?? fields[9]).toMatch(/^[\x20-\x7e]+$/);
+	});
+
+	it('drops control characters from ids and address parts without encoding them', () => {
+		const out = formatEnvelope(
+			envelope({
+				rfc822MessageId: 'mid\t-1@example.com',
+				inReplyTo: 'par\u0000ent@example.com\u007f',
+				toAddresses: ['bo\r\nb@exa\u0001mple.com'],
+			})
+		);
+		const fields = readEnvelope(out);
+		expect(fields[5]).toEqual([[null, null, 'bob', 'example.com']]);
+		expect(fields[8]).toBe('<parent@example.com>');
+		expect(fields[9]).toBe('<mid-1@example.com>');
+	});
+
 	it('sends a non-ASCII address part as a literal, never as an encoded word', () => {
 		const out = formatEnvelope(envelope({ toAddresses: ['jürgen@example.com'] }));
 		expect(out).toContain('(NIL NIL {7}\r\njürgen "example.com")');
@@ -348,15 +389,35 @@ function readEnvelope(response: string): ImapValue[] {
 	return value as ImapValue[];
 }
 
-/** A header block built from ENVELOPE fields, the way a client rebuilds one. */
+/** A display name made only of RFC 2047 encoded words. */
+const ENCODED_PHRASE = /^=\?[^?\s]+\?[bBqQ]\?[^?\s]*\?=(?: =\?[^?\s]+\?[bBqQ]\?[^?\s]*\?=)*$/;
+
+/**
+ * A display name as an RFC 5322 phrase: encoded words stay an unquoted phrase
+ * (RFC 2047 §5 does not allow them inside a quoted string), anything else
+ * becomes a quoted string with `"` and `\` escaped.
+ */
+function phrase(name: string): string {
+	return ENCODED_PHRASE.test(name) ? name : `"${name.replace(/[\\"]/g, '\\$&')}"`;
+}
+
+/**
+ * A header block built from ENVELOPE fields, the way a client rebuilds one:
+ * the id headers first, so a value that broke out of its line would push
+ * From and To into the body.
+ */
 function rebuildHeaders(fields: ImapValue[]): string {
-	const [date, subject, from, , , to] = fields;
+	const [date, subject, from, , , to, , , inReplyTo, messageId] = fields;
 	const addresses = (list: ImapValue): string =>
 		(list as ImapValue[][])
-			.map(([name, , user, host]) => (name ? `"${name}" <${user}@${host}>` : `${user}@${host}`))
+			.map(([name, , user, host]) =>
+				name ? `${phrase(name as string)} <${user}@${host}>` : `${user}@${host}`
+			)
 			.join(', ');
 	return [
 		`Date: ${date}`,
+		`Message-ID: ${messageId}`,
+		...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`] : []),
 		`Subject: ${subject}`,
 		`From: ${addresses(from!)}`,
 		`To: ${addresses(to!)}`,
