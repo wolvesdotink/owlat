@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
 import { withSetup } from '~/__tests__/withSetup';
 import { createTestI18n } from '~/__tests__/i18n';
+import type * as Uploads from '~/composables/postbox/postboxAttachmentUploads';
 
 /**
  * #1273 in the Team inbox reply composer: cancelling an upload while
@@ -28,7 +29,7 @@ vi.mock('@owlat/api', () => ({
 }));
 
 vi.mock('~/composables/postbox/postboxAttachmentUploads', async (importActual) => ({
-	...(await importActual<typeof import('~/composables/postbox/postboxAttachmentUploads')>()),
+	...(await importActual<typeof Uploads>()),
 	xhrPutFile: vi.fn(async () => 'storage_salary'),
 }));
 

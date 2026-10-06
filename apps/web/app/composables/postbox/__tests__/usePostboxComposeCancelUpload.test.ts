@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
 import { withSetup } from '~/__tests__/withSetup';
 import { createTestI18n } from '~/__tests__/i18n';
+import type * as Uploads from '../postboxAttachmentUploads';
 
 /**
  * #1273: cancelling an upload chip while `drafts.addAttachment` runs. The
@@ -28,7 +29,7 @@ vi.mock('@owlat/api', () => ({
 
 // The real state machine; only the XHR is replaced (the bytes are stored at once).
 vi.mock('../postboxAttachmentUploads', async (importActual) => ({
-	...(await importActual<typeof import('../postboxAttachmentUploads')>()),
+	...(await importActual<typeof Uploads>()),
 	xhrPutFile: vi.fn(async () => 'storage_salary'),
 }));
 
