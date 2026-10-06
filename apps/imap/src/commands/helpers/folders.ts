@@ -6,6 +6,7 @@
  */
 
 import { fn, type ConvexClient, type FolderRow } from '../../convex.js';
+import { mailboxNameFromClient } from './mailboxName.js';
 
 /** Every folder of a mailbox (`mail/imap/session:listFolders`). */
 export async function listFolders(convex: ConvexClient, mailboxId: string): Promise<FolderRow[]> {
@@ -13,9 +14,10 @@ export async function listFolders(convex: ConvexClient, mailboxId: string): Prom
 }
 
 /**
- * Resolve a client-supplied mailbox name. Case-insensitive match by
- * name; `INBOX` (any case) also falls back to whichever folder has
- * `role: 'inbox'`. Returns null when no match exists.
+ * Resolve a client-supplied mailbox name. The name is decoded from
+ * modified UTF-7 first (see `mailboxNameFromClient`), then matched by
+ * name, case-insensitively; `INBOX` (any case) also falls back to
+ * whichever folder has `role: 'inbox'`. Returns null when no match exists.
  */
 export async function resolveFolderByName(
 	convex: ConvexClient,
@@ -23,7 +25,7 @@ export async function resolveFolderByName(
 	name: string
 ): Promise<FolderRow | null> {
 	const folders = await listFolders(convex, mailboxId);
-	const lower = name.toLowerCase();
+	const lower = mailboxNameFromClient(name).toLowerCase();
 	const direct = folders.find((f) => f.name.toLowerCase() === lower);
 	if (direct) return direct;
 	if (lower === 'inbox') {

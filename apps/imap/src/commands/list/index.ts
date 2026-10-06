@@ -4,6 +4,7 @@ import { listFolders } from '../helpers/folders.js';
 import { flagsForFolder } from '../helpers/folderFlags.js';
 import { logger } from '../../logger.js';
 import { serverFailure } from '../helpers/replies.js';
+import { imapMailboxName } from '../helpers/mailboxName.js';
 
 interface ListArgs {
 	readonly reference: string;
@@ -36,8 +37,7 @@ export const listModule: ImapCommandModule<ListArgs> = {
 				for (const f of folders) {
 					if (verb === 'LSUB' && !f.subscribed) continue;
 					const flags = flagsForFolder(f.role);
-					const quoted = `"${f.name.replace(/"/g, '\\"')}"`;
-					send(`* ${verb} (${flags}) "/" ${quoted}`);
+					send(`* ${verb} (${flags}) "/" ${imapMailboxName(f.name)}`);
 				}
 				send(`${tag} OK ${verb} completed`);
 			} catch (err) {

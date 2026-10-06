@@ -10,6 +10,7 @@
 
 import { encodeWords } from '@owlat/mail-message/compose/headers';
 import { collapseControlChars } from '@owlat/mail-message/parse/headers';
+import { imapString } from '../helpers/imapString.js';
 
 export interface FetchEnvelope {
 	readonly _id: string;
@@ -70,24 +71,6 @@ export function formatInternalDate(ts: number): string {
 	const year = d.getUTCFullYear();
 	const time = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
 	return `${day}-${mon}-${year} ${time} +0000`;
-}
-
-/**
- * An IMAP `string` (RFC 3501 §4.3) for an envelope field. Fields go through
- * {@link imapHeaderText}, {@link imapId} or {@link imapAddrList} first, so a
- * literal here is the fallback for what those leave, such as a non-ASCII
- * address. A quoted string holds only 7-bit chars other than CR and LF, so a
- * value with CR, LF or any non-ASCII char is sent as a literal, `{n}` CRLF
- * then the n octets. The response is written as UTF-8, so n is the value's
- * UTF-8 length. NUL is allowed in neither form, so a value holding one is
- * `NIL`; nothing is deleted from it.
- */
-export function imapString(s: string | undefined): string {
-	if (s == null || s.includes('\0')) return 'NIL';
-	if (/[\r\n\u0080-\uffff]/.test(s)) {
-		return `{${Buffer.byteLength(s, 'utf8')}}\r\n${s}`;
-	}
-	return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
 /**

@@ -2,12 +2,12 @@ import { describe, it, expect } from 'vitest';
 import {
 	formatFlags,
 	formatInternalDate,
-	imapString,
 	imapAddrList,
 	formatEnvelope,
 	splitAddrSpec,
 	type FetchEnvelope,
 } from '../format.js';
+import { imapString } from '../../helpers/imapString.js';
 import { parseMessage } from '@owlat/mail-message';
 import { decodeHeaderValue } from '@owlat/mail-message/parse/headers';
 
