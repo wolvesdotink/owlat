@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
 	createAttachmentUploads,
+	xhrPutFile,
 	type AttachmentUploadsDeps,
 	type CommittedAttachment,
 	type UploadProgressCbs,
@@ -45,8 +46,9 @@ function harness(overrides: Partial<AttachmentUploadsDeps> = {}) {
 			return d.promise;
 		}),
 		attach: vi.fn(async () => true),
+		detach: vi.fn(async () => true),
 		onCommitted: vi.fn((a: CommittedAttachment, thumb: string | null) =>
-			committed.push({ a, thumb }),
+			committed.push({ a, thumb })
 		),
 		createThumb: () => null,
 		revokeThumb: vi.fn(),
@@ -79,7 +81,7 @@ describe('createAttachmentUploads state machine', () => {
 		await tick(); // attach resolves -> commit
 
 		expect(deps.attach).toHaveBeenCalledWith(
-			expect.objectContaining({ storageId: 'storage_1', filename: 'report.pdf', size: 1000 }),
+			expect.objectContaining({ storageId: 'storage_1', filename: 'report.pdf', size: 1000 })
 		);
 		expect(committed).toHaveLength(1);
 		expect(committed[0]!.a.storageId).toBe('storage_1');
@@ -141,7 +143,7 @@ describe('createAttachmentUploads state machine', () => {
 						aborted = true;
 						reject(new DOMException('aborted', 'AbortError'));
 					});
-				}),
+				})
 		);
 		const { uploader, committed } = harness({ putFile });
 		uploader.addFiles([makeFile('big.zip', 999)]);
@@ -166,9 +168,9 @@ describe('createAttachmentUploads state machine', () => {
 				(_u, _f, _c, { signal }: UploadProgressCbs) =>
 					new Promise<string>((_, reject) => {
 						signal.addEventListener('abort', () =>
-							reject(new DOMException('aborted', 'AbortError')),
+							reject(new DOMException('aborted', 'AbortError'))
 						);
-					}),
+					})
 			),
 		});
 		uploader.addFiles([makeFile('pic.png', 500, 'image/png')]);
@@ -193,5 +195,139 @@ describe('createAttachmentUploads state machine', () => {
 		expect(committed[0]!.thumb).toBe('blob:keep');
 		// Ownership transferred to the parent; the uploader must NOT revoke it.
 		expect(revokeThumb).not.toHaveBeenCalled();
+	});
+
+	describe('cancel after the request is past the abort (#1273)', () => {
+		/** An upload whose bytes are stored and whose attach call is in flight. */
+		async function attaching(overrides: Partial<AttachmentUploadsDeps> = {}) {
+			const attachCall = deferred<boolean>();
+			const h = harness({ attach: vi.fn(() => attachCall.promise), ...overrides });
+			h.uploader.addFiles([makeFile('salary.xlsx', 4096, 'application/vnd.ms-excel')]);
+			await tick();
+			h.puts[0]!.deferred.resolve('storage_salary');
+			await tick();
+			expect(h.deps.attach).toHaveBeenCalledOnce();
+			return { ...h, attachCall, id: h.uploader.uploads.value[0]!.id };
+		}
+
+		it('takes a file whose attach commits after the cancel back off the draft', async () => {
+			const detachCall = deferred<boolean>();
+			const detach = vi.fn(() => detachCall.promise);
+			const { uploader, attachCall, committed, id } = await attaching({ detach });
+
+			uploader.cancel(id);
+			expect(uploader.uploads.value).toHaveLength(0);
+			// The attach may still land, so Send waits.
+			expect(uploader.isUploading.value).toBe(true);
+
+			attachCall.resolve(true);
+			await tick();
+			expect(detach).toHaveBeenCalledWith(
+				expect.objectContaining({ storageId: 'storage_salary', filename: 'salary.xlsx' })
+			);
+			expect(uploader.isUploading.value).toBe(true);
+
+			detachCall.resolve(true);
+			await tick();
+			expect(committed).toHaveLength(0);
+			expect(uploader.uploads.value).toHaveLength(0);
+			expect(uploader.isUploading.value).toBe(false);
+		});
+
+		it('has nothing to undo when the server refused the attach', async () => {
+			const { uploader, deps, attachCall, committed, id } = await attaching();
+			uploader.cancel(id);
+			attachCall.resolve(false);
+			await tick();
+			expect(deps.detach).not.toHaveBeenCalled();
+			expect(committed).toHaveLength(0);
+			expect(uploader.uploads.value).toHaveLength(0);
+			expect(uploader.isUploading.value).toBe(false);
+		});
+
+		it('settles quietly when the attach call fails after the cancel', async () => {
+			const { uploader, deps, attachCall, committed, id } = await attaching();
+			uploader.cancel(id);
+			attachCall.reject(new Error('offline'));
+			await tick();
+			expect(deps.detach).not.toHaveBeenCalled();
+			expect(committed).toHaveLength(0);
+			expect(uploader.uploads.value).toHaveLength(0);
+			expect(uploader.isUploading.value).toBe(false);
+		});
+
+		it('shows the file again when it cannot be taken off, so the row matches the draft', async () => {
+			const { uploader, attachCall, committed, id } = await attaching({
+				detach: vi.fn(async () => {
+					throw new Error('offline');
+				}),
+			});
+			uploader.cancel(id);
+			attachCall.resolve(true);
+			await tick();
+			expect(committed).toHaveLength(1);
+			expect(committed[0]!.a.storageId).toBe('storage_salary');
+			expect(committed[0]!.thumb).toBeNull();
+			expect(uploader.isUploading.value).toBe(false);
+		});
+
+		it('does not attach a file whose transport ignored the abort', async () => {
+			const { uploader, deps, puts } = harness();
+			uploader.addFiles([makeFile('a.txt', 10)]);
+			await tick();
+			uploader.cancel(uploader.uploads.value[0]!.id);
+			puts[0]!.deferred.resolve('storage_late');
+			await tick();
+			expect(deps.attach).not.toHaveBeenCalled();
+			expect(uploader.isUploading.value).toBe(false);
+		});
+
+		it('a cancel while the upload URL is minted settles the run', async () => {
+			const urlCall = deferred<string | null>();
+			const { uploader, deps } = harness({ generateUploadUrl: vi.fn(() => urlCall.promise) });
+			uploader.addFiles([makeFile('a.txt', 10)]);
+			uploader.cancel(uploader.uploads.value[0]!.id);
+			expect(uploader.uploads.value).toHaveLength(0);
+			expect(uploader.isUploading.value).toBe(true);
+
+			urlCall.resolve('https://upload.example');
+			await tick();
+			expect(deps.putFile).not.toHaveBeenCalled();
+			expect(uploader.isUploading.value).toBe(false);
+		});
+	});
+});
+
+describe('xhrPutFile', () => {
+	it('rejects with an AbortError when the signal was aborted before the request went out', async () => {
+		const opened = vi.fn();
+		class FakeXhr {
+			upload = {};
+			open = opened;
+			setRequestHeader() {}
+			abort() {}
+			send() {}
+		}
+		const realXhr = globalThis.XMLHttpRequest;
+		globalThis.XMLHttpRequest = FakeXhr as unknown as typeof XMLHttpRequest;
+		try {
+			const controller = new AbortController();
+			controller.abort();
+			const put = xhrPutFile('https://upload.example', makeFile('a.txt', 10), 'text/plain', {
+				signal: controller.signal,
+				onProgress: () => {},
+			});
+			const settled = await Promise.race([
+				put.then(
+					() => 'resolved',
+					(err: unknown) => (err as { name?: string }).name
+				),
+				new Promise<string>((r) => setTimeout(() => r('pending'), 50)),
+			]);
+			expect(settled).toBe('AbortError');
+			expect(opened).not.toHaveBeenCalled();
+		} finally {
+			globalThis.XMLHttpRequest = realXhr;
+		}
 	});
 });
