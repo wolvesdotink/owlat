@@ -209,6 +209,13 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	desc('mailMessages', 'mailDrafts', 'inReplyToMessageId', 'delete', SAME_MAILBOX),
 	desc(
 		'mailMessages',
+		'mailDrafts',
+		'expectedAttachments[].source.messageId',
+		'retain',
+		'A forward still owing the message’s files: drafts in the personal mailbox are deleted with it; a draft elsewhere keeps a dangling id, which fulfil reports as unreadable until the person removes the file.'
+	),
+	desc(
+		'mailMessages',
 		'mailAttachments',
 		'messageId',
 		'delete',

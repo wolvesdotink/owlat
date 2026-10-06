@@ -39,8 +39,9 @@ import { assertStateIs } from './draftLifecycle/reducers';
 import { pickStoredPart } from './messageParts';
 import { deleteOwnedUpload, storedFileSize } from '../storage/uploads';
 import { getMutationContext } from '../lib/sessionOrganization';
+import { openMessageBody, sealBodyAtWrite } from '../lib/messageBody';
 import {
-	existingAttachmentBytesValidator,
+	type existingAttachmentBytesValidator,
 	readExistingAttachmentBytes,
 } from '../lib/existingAttachments';
 import type {
@@ -80,7 +81,8 @@ export async function expectedAttachmentsFor(
 				filename: request.filename.slice(0, 255),
 				contentType: request.contentType,
 				size: new TextEncoder().encode(request.content).byteLength,
-				source: { kind: 'generated', content: request.content },
+				// Sealed at rest like the draft's body: an RSVP names the event.
+				source: { kind: 'generated', content: await sealBodyAtWrite(request.content) },
 				state: 'owed',
 			});
 			continue;
@@ -169,7 +171,7 @@ export const owedFiles = internalQuery({
 						key,
 						filename,
 						contentType,
-						bytes: { kind: 'text', content: source.content },
+						bytes: { kind: 'text', content: await openMessageBody(source.content) },
 					});
 				continue;
 			}

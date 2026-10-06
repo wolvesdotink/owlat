@@ -160,6 +160,25 @@ describe('a draft owes its expected attachments', () => {
 		expect(await sendError(t, draftId)).not.toMatch(/still being added/);
 	});
 
+	it('keeps the generated text sealed at rest and attaches the plaintext', async () => {
+		vi.stubEnv('INSTANCE_SECRET', 'test-instance-secret');
+		try {
+			const t = convexTest();
+			const { draftId } = await rsvpDraft(t);
+			const stored = (await row(t, draftId))?.expectedAttachments?.[0]?.source;
+			expect(stored).toMatchObject({ kind: 'generated' });
+			expect(JSON.stringify(stored)).not.toContain('METHOD:REPLY');
+			await t.action(api.mail.draftExpectedAttachments.fulfil, { draftId });
+			const draft = (await row(t, draftId))!;
+			const text = await t.run(async (ctx) =>
+				(await ctx.storage.get(draft.attachments[0]!.storageId))!.text()
+			);
+			expect(text).toBe(ICS);
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+
 	it('refuses a copy that lands after the person removed the file', async () => {
 		const t = convexTest();
 		const { draftId } = await rsvpDraft(t);
@@ -244,7 +263,10 @@ describe('a draft owes its expected attachments', () => {
 			const draft = (await ctx.db.get(draftId))!;
 			await ctx.db.patch(draftId, {
 				attachments: Array.from({ length: ATTACHMENT_COMPOSE_LIMITS.maxCount }, (_, i) => ({
-					...{ storageId: filler, filename: `f${i}`, contentType: 'text/plain', size: 1 },
+					storageId: filler,
+					filename: `f${i}`,
+					contentType: 'text/plain',
+					size: 1,
 					isInline: false,
 				})),
 				expectedAttachments: draft.expectedAttachments,
