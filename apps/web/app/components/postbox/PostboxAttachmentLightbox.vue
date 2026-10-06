@@ -60,6 +60,17 @@ function revokeObjectUrl() {
 	}
 }
 
+/**
+ * A PDF goes into `<object>`, which renders by the type the blob carries, not
+ * by its own `type` attribute. That type comes from the part's header or the
+ * proxy response, so it is pinned to `application/pdf` here: the object only
+ * ever hosts the PDF viewer, never a same-origin HTML document.
+ */
+function asPreviewBlob(att: LightboxAttachment, blob: Blob): Blob {
+	if (att.contentType !== 'application/pdf' || blob.type === 'application/pdf') return blob;
+	return new Blob([blob], { type: 'application/pdf' });
+}
+
 // Guards against out-of-order resolution when the user navigates faster than
 // parts extract: only the latest request may publish its URL.
 let loadToken = 0;
@@ -74,7 +85,7 @@ async function loadActivePart() {
 	try {
 		const blob = await props.loadPart(att);
 		if (token !== loadToken) return;
-		if (blob) objectUrl.value = URL.createObjectURL(blob);
+		if (blob) objectUrl.value = URL.createObjectURL(asPreviewBlob(att, blob));
 		else loadFailed.value = true;
 	} catch {
 		// Extraction failure degrades to the in-overlay error state; the

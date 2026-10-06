@@ -51,6 +51,64 @@ test.describe('app shell', () => {
 		expect(pageErrors, 'the app threw while booting').toEqual([]);
 	});
 
+	test('lets the page show the blob: images and PDF it creates itself', async ({ page }) => {
+		// The attachment lightbox, chip thumbnails, pasted-image previews and the
+		// upload size probes all load `URL.createObjectURL` output. Under a policy
+		// without `blob:` the browser refuses them with nothing thrown (#1292), so
+		// this loads one of each the way those surfaces do and reads the outcome.
+		await page.addInitScript(() => {
+			(window as unknown as { __cspViolations: string[] }).__cspViolations = [];
+			document.addEventListener('securitypolicyviolation', (event) => {
+				(window as unknown as { __cspViolations: string[] }).__cspViolations.push(
+					`${event.violatedDirective} :: ${event.blockedURI || 'inline'}`
+				);
+			});
+		});
+		await page.goto('/auth/login');
+		await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible({ timeout: 30_000 });
+
+		const imageLoaded = await page.evaluate(async () => {
+			const canvas = document.createElement('canvas');
+			canvas.width = 4;
+			canvas.height = 3;
+			const png = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+			if (!png) return false;
+			const url = URL.createObjectURL(png);
+			const img = new Image();
+			const loaded = await new Promise<boolean>((resolve) => {
+				img.addEventListener('load', () =>
+					resolve(img.naturalWidth === 4 && img.naturalHeight === 3)
+				);
+				img.addEventListener('error', () => resolve(false));
+				img.src = url;
+			});
+			URL.revokeObjectURL(url);
+			return loaded;
+		});
+		expect(imageLoaded, 'a blob: image did not load').toBe(true);
+
+		await page.evaluate(() => {
+			const pdf = new Blob(['%PDF-1.4\n%%EOF\n'], { type: 'application/pdf' });
+			const object = document.createElement('object');
+			object.type = 'application/pdf';
+			object.data = URL.createObjectURL(pdf);
+			object.width = '200';
+			object.height = '200';
+			document.body.appendChild(object);
+		});
+		// A refused object reports its violation as it starts to load; give it
+		// the moment that takes.
+		await page.waitForTimeout(1_000);
+
+		const violations = await page.evaluate(
+			() => (window as unknown as { __cspViolations: string[] }).__cspViolations
+		);
+		expect(
+			violations.filter((violation) => violation.includes(':: blob')),
+			'the deployment CSP refused a blob: URL the app created'
+		).toEqual([]);
+	});
+
 	test('serves a CSP whose nonce matches the shell it sends', async ({ request }) => {
 		// Pins the two halves against each other, so this keeps failing the day
 		// Nuxt changes which inline scripts the shell carries: nonce mode is only
