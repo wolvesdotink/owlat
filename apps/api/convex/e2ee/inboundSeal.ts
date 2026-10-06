@@ -1,7 +1,7 @@
 /**
  * Inbound Sealed-Mail — the PURE decision + parsing core of decrypt-on-ingest.
  *
- * NO `ctx`, NO db, NO network, NO `openpgp` — plain strings in, plain data out —
+ * NO `ctx`, NO db, NO network, NO `openpgp` — strings/bytes in, plain data out —
  * so the detection + protected-header restoration is fully unit-testable without
  * keys. The one thing this module can NOT do is the actual OpenPGP decrypt +
  * signature verify; that lives in the `'use node'` sibling `e2ee/open.ts`, which
@@ -20,7 +20,14 @@
 
 import { v } from 'convex/values';
 import { classifyRawSecureMessage, isEncryptedClass } from '@owlat/shared/secureMessage';
-import { extractFirstPartByType } from '@owlat/shared/mailMime';
+import {
+	binaryStringToBytes,
+	bytesToBinaryString,
+	extractFirstPartByType,
+	type ExtractedAttachment,
+} from '@owlat/shared/mailMime';
+import { decodeCharset } from '@owlat/mail-message/parse/charset';
+import { decodeHeaderValue } from '@owlat/mail-message/parse/headers';
 import { findRawHeader, parseRawHeaderFields } from '@owlat/mail-canon/rawMessage';
 
 /**
@@ -106,9 +113,17 @@ interface RestoredMessage {
  * (the real Subject + body travel INSIDE the ciphertext).
  * Handles single-part `text/plain` / `text/html` and multipart bodies alike via
  * the shared MIME leaf extractor (which decodes transfer-encodings). Pure.
+ *
+ * Takes the decrypted BYTES. The extractor reads a binary string (one char per
+ * byte), so every part comes out byte-exact and is then decoded under its own
+ * declared charset. Decoding the whole message as UTF-8 first turned each
+ * multi-byte character of an 8-bit part into one char, of which the extractor
+ * kept only the low byte (#1284).
  */
-export function parseInnerMessage(innerMime: string): RestoredMessage {
-	const normalized = innerMime.replace(/\r\n/g, '\n');
+export function parseInnerMessage(innerMime: Uint8Array): RestoredMessage {
+	const bytes = withoutUtf8Bom(innerMime);
+	const binary = bytesToBinaryString(bytes);
+	const normalized = binary.replace(/\r\n/g, '\n');
 	const blankAt = normalized.indexOf('\n\n');
 	const headerBlock = blankAt >= 0 ? normalized.slice(0, blankAt) : normalized;
 
@@ -119,20 +134,50 @@ export function parseInnerMessage(innerMime: string): RestoredMessage {
 	// paragraph as "headers" (or, with no blank line at all, yield an empty body),
 	// silently losing the decrypted content.
 	if (!hasMimeHeaderBlock(headerBlock)) {
-		// Return the ORIGINAL bytes (not the CR-stripped `normalized` copy) so the
-		// restored text is byte-equal to the decrypted payload.
-		return innerMime.length > 0 ? { text: innerMime } : {};
+		// Decode the ORIGINAL bytes (not the CR-stripped `normalized` copy) so the
+		// restored text is the decrypted payload exactly. An OpenPGP text literal
+		// is UTF-8 (RFC 9580 §5.9).
+		return bytes.length > 0 ? { text: decodeUtf8(bytes) } : {};
 	}
 
 	const subject = findRawHeader(parseRawHeaderFields(headerBlock), 'subject');
-	const textPart = extractFirstPartByType(innerMime, 'text/plain');
-	const htmlPart = extractFirstPartByType(innerMime, 'text/html');
+	const textPart = extractFirstPartByType(binary, 'text/plain');
+	const htmlPart = extractFirstPartByType(binary, 'text/html');
 
 	const result: RestoredMessage = {};
-	if (subject !== undefined) result.subject = subject;
-	if (textPart) result.text = decodeUtf8(textPart.bytes);
-	if (htmlPart) result.html = decodeUtf8(htmlPart.bytes);
+	if (subject !== undefined) result.subject = decodeProtectedHeader(subject);
+	if (textPart) result.text = decodePartText(textPart);
+	if (htmlPart) result.html = decodePartText(htmlPart);
 	return result;
+}
+
+/**
+ * A part's text under the charset it declares. A part that declares none is
+ * read as UTF-8, as every inner part was before #1284, rather than under the
+ * RFC 2045 us-ascii default.
+ */
+function decodePartText(part: ExtractedAttachment): string {
+	return decodeCharset(part.bytes, part.charset ?? 'utf-8');
+}
+
+/**
+ * A protected header's value (a binary string) as text: raw 8-bit bytes are
+ * UTF-8 (RFC 6532), then RFC 2047 encoded words are decoded under their own
+ * charset.
+ */
+function decodeProtectedHeader(rawValue: string): string {
+	return decodeHeaderValue(decodeUtf8(binaryStringToBytes(rawValue)));
+}
+
+/**
+ * The bytes without a leading UTF-8 byte-order mark. Decoding the whole inner
+ * message as UTF-8 used to drop one silently, and a BOM left in front of the
+ * first header line would hide that header from the parser.
+ */
+function withoutUtf8Bom(bytes: Uint8Array): Uint8Array {
+	return bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf
+		? bytes.subarray(3)
+		: bytes;
 }
 
 /**
@@ -162,7 +207,7 @@ function hasMimeHeaderBlock(headerBlock: string): boolean {
 	return /^(?:content-type|mime-version):/im.test(headerBlock);
 }
 
-/** Decode part bytes as UTF-8 (best-effort; never throws on malformed input). */
-export function decodeUtf8(bytes: Uint8Array): string {
+/** Decode bytes as UTF-8 (best-effort; never throws on malformed input). */
+function decodeUtf8(bytes: Uint8Array): string {
 	return new TextDecoder('utf-8').decode(bytes);
 }

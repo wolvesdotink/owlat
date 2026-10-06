@@ -125,3 +125,8 @@ export function bodyOf(mime: string): string {
 	const i = mime.indexOf('\r\n\r\n');
 	return i >= 0 ? mime.slice(i + 4) : mime;
 }
+
+/** Decrypted inner-message bytes as UTF-8 text, for assertions on ASCII/UTF-8 fixtures. */
+export function utf8Text(bytes: Uint8Array): string {
+	return new TextDecoder('utf-8').decode(bytes);
+}
