@@ -102,14 +102,24 @@ rules:
   # is present, never verifying it. Catches future regressions of the C2
   # unverified-signature class.
   #
-  # A read counts as verified when the enclosing function (declaration,
-  # expression, arrow or method, including an `httpAction(async (ctx,
-  # request) => { ... })` body) calls a verifier anywhere: a `verify*`
-  # function or method (verifyGithubSignature, verifyTwilioRequest,
-  # verifyMetaSignature, verifySvixHeaders, adapter.verifySignature,
-  # crypto.subtle.verify, ...) or a constant-time compare
-  # (constantTimeEqual, secretMatches, timingSafeEqual). Header names are
-  # matched as string literals, case-insensitively, on "signature".
+  # A header read is a `$X.get('...')` or `$X['...']` whose string-literal
+  # name contains "signature" (case-insensitive), followed by a presence
+  # check. It counts as verified only when, later in the SAME block as the
+  # read, the header value (or a value derived from it) goes into a
+  # verifier whose result decides the request:
+  #   - an awaited `verify*` function or method (verifyGithubSignature,
+  #     verifyTwilioRequest, verifyMetaSignature, verifySvixHeaders,
+  #     crypto.subtle.verify, ...; every one of them is async), or a
+  #     constant-time compare (constantTimeEqual, secretMatches,
+  #     timingSafeEqual);
+  #   - inside an `if` condition, assigned to a variable an `if` then
+  #     tests, or returned.
+  # A verification nested in a branch, a try block or a callback does not
+  # count (it may not run), and neither does a verifier given some other
+  # value, an unawaited verify* call or a result nobody tests.
+  #
+  # Known limits: a header name held in a constant, and a header value
+  # passed out of the function to be verified elsewhere, are not seen.
   #
   # Tests: .semgrep/tests/webhook-signature-presence-only.ts, run with
   # `semgrep --test --config .semgrep.yml <that file>` (security.yml does).
@@ -119,26 +129,45 @@ rules:
     languages: [typescript]
     message: |
       This handler reads a signature header but appears to only check it
-      exists, never compares it. Use one of the existing verification
-      helpers (webhooks/adapters/resend.ts verifySvixHeaders,
-      webhooks/adapters/twilio.ts verifyTwilioRequest,
+      exists, never compares it. In the same block, pass the header value
+      to one of the existing verification helpers (webhooks/adapters/resend.ts
+      verifySvixHeaders, webhooks/adapters/twilio.ts verifyTwilioRequest,
       webhooks/adapters/meta.ts verifyMetaSignature, or the constant-time
-      compare in lib/crypto.ts, constantTimeEqual / secretMatches) to
-      actually validate the signature.
+      compare in lib/crypto.ts, constantTimeEqual / secretMatches), await
+      it, and reject the request when it fails.
+    options:
+      # `...` stays in the block it starts in, so a verification nested in a
+      # branch, try block or callback does not exempt the read.
+      go_deeper_stmt: false
+      # `<... $SIG ...>` also matches a value derived from the header, e.g.
+      # `const provided = signature.slice(7)`.
+      symbolic_propagation: true
     patterns:
       - pattern-either:
           - pattern: |
-              $SIG = $REQ.headers.get($HEADER)
+              $SIG = $HEADERS.get($HEADER)
               ...
               if (<... !$SIG ...>) $THEN
           - pattern: |
-              $SIG = $REQ.headers.get($HEADER)
+              $SIG = $HEADERS.get($HEADER)
               ...
               if (<... $SIG == null ...>) $THEN
           - pattern: |
-              $SIG = $REQ.headers.get($HEADER)
+              $SIG = $HEADERS.get($HEADER)
               ...
               if (<... $SIG === null ...>) $THEN
+          - pattern: |
+              $SIG = $HEADERS[$HEADER]
+              ...
+              if (<... !$SIG ...>) $THEN
+          - pattern: |
+              $SIG = $HEADERS[$HEADER]
+              ...
+              if (<... $SIG == null ...>) $THEN
+          - pattern: |
+              $SIG = $HEADERS[$HEADER]
+              ...
+              if (<... $SIG === undefined ...>) $THEN
       - metavariable-regex:
           metavariable: $HEADER
           regex: (?i)^['"`][^'"`]*signature[^'"`]*['"`]$
@@ -146,20 +175,42 @@ rules:
           patterns:
             - pattern-either:
                 - pattern: |
-                    function $FN(...) { ... <... $VERIFY(...) ...>; ... }
+                    $SIG = $READ
+                    ...
+                    if (<... await $VERIFY(..., <... $SIG ...>, ...) ...>) $GATED
                 - pattern: |
-                    function (...) { ... <... $VERIFY(...) ...>; ... }
+                    $SIG = $READ
+                    ...
+                    $OK = await $VERIFY(..., <... $SIG ...>, ...);
+                    ...
+                    if (<... $OK ...>) $GATED
                 - pattern: |
-                    (...) => { ... <... $VERIFY(...) ...>; ... }
-                - pattern: |
-                    function $FN(...) { ... <... $OBJ.$VERIFY(...) ...>; ... }
-                - pattern: |
-                    function (...) { ... <... $OBJ.$VERIFY(...) ...>; ... }
-                - pattern: |
-                    (...) => { ... <... $OBJ.$VERIFY(...) ...>; ... }
+                    $SIG = $READ
+                    ...
+                    return await $VERIFY(..., <... $SIG ...>, ...);
             - metavariable-regex:
                 metavariable: $VERIFY
-                regex: ^(verify\w*|constantTimeEqual|secretMatches|timingSafeEqual)$
+                regex: ^([\w$]+\.)*verify\w*$
+      - pattern-not-inside:
+          patterns:
+            - pattern-either:
+                - pattern: |
+                    $SIG = $READ
+                    ...
+                    if (<... $COMPARE(..., <... $SIG ...>, ...) ...>) $GATED
+                - pattern: |
+                    $SIG = $READ
+                    ...
+                    $OK = $COMPARE(..., <... $SIG ...>, ...);
+                    ...
+                    if (<... $OK ...>) $GATED
+                - pattern: |
+                    $SIG = $READ
+                    ...
+                    return $COMPARE(..., <... $SIG ...>, ...);
+            - metavariable-regex:
+                metavariable: $COMPARE
+                regex: ^([\w$]+\.)*(constantTimeEqual|secretMatches|timingSafeEqual)$
     paths:
       include:
         - "/apps/api/convex/**/*.ts"

@@ -7,7 +7,8 @@
 //   semgrep --test --config .semgrep.yml .semgrep/tests/webhook-signature-presence-only.ts
 //
 // The verifying shapes copy the real handlers: webhooks/githubHttp.ts,
-// webhooks/adapters/twilio.ts and webhooks/adapters/meta.ts.
+// webhooks/adapters/twilio.ts, webhooks/adapters/meta.ts and the Svix arm of
+// plugins/inboundSignature.ts.
 
 // ── Presence-only: the header is read and checked, never verified ──────
 
@@ -66,7 +67,106 @@ export const providerPresenceOnly = {
 	},
 };
 
-// ── Inline verification: an HMAC compared in the handler itself ─────────
+export function nodeBracketPresenceOnly(req: IncomingMessage): number {
+	// ruleid: webhook-signature-presence-only
+	const signature = req.headers['x-hub-signature-256'];
+	if (signature === undefined) return 401;
+	return 200;
+}
+
+export async function detachedGetPresenceOnly(delivery: Delivery) {
+	const { headers } = delivery;
+	// ruleid: webhook-signature-presence-only
+	const signature = headers.get('svix-signature');
+	if (signature === null || signature === '') return { ok: false };
+	return { ok: true };
+}
+
+// ── A verifier is called, but not on the header, or its result is unused ──
+
+export const verifiesSomethingElse = httpAction(async (ctx, request) => {
+	// ruleid: webhook-signature-presence-only
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return new Response('Missing signature', { status: 401 });
+	if (!(await verifyUser(request.headers.get('authorization')))) {
+		return new Response('Unauthorized', { status: 401 });
+	}
+	return new Response('OK', { status: 200 });
+});
+
+export const verifierGetsOtherValue = httpAction(async (ctx, request) => {
+	// ruleid: webhook-signature-presence-only
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return new Response('Missing signature', { status: 401 });
+	const rawBody = await request.text();
+	if (!(await verifyGithubSignature(rawBody, request.headers.get('x-github-event'), secret))) {
+		return new Response('Invalid signature', { status: 401 });
+	}
+	return new Response('OK', { status: 200 });
+});
+
+export const unawaitedVerifier = httpAction(async (ctx, request) => {
+	// ruleid: webhook-signature-presence-only
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return new Response('Missing signature', { status: 401 });
+	const rawBody = await request.text();
+	// A Promise is always truthy, so this never rejects.
+	if (!verifyGithubSignature(rawBody, signature, secret)) {
+		return new Response('Invalid signature', { status: 401 });
+	}
+	return new Response('OK', { status: 200 });
+});
+
+export const unusedNestedVerifier = httpAction(async (ctx, request) => {
+	// ruleid: webhook-signature-presence-only
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return new Response('Missing signature', { status: 401 });
+	const rawBody = await request.text();
+	const check = async () => {
+		if (!(await verifyGithubSignature(rawBody, signature, secret))) {
+			throw new Error('Invalid signature');
+		}
+	};
+	return new Response('OK', { status: 200 });
+});
+
+export async function resultNeverTested(request: Request, rawBody: string) {
+	// ruleid: webhook-signature-presence-only
+	const signature = request.headers.get('x-twilio-signature');
+	if (!signature) return new Response('Missing signature', { status: 401 });
+	const valid = await verifyTwilioRequest(request.url, rawBody, signature, authToken);
+	return new Response('OK', { status: 200 });
+}
+
+// A verification nested in a branch or a try block may not run, so it does
+// not count.
+export async function verifiedOnlyInBranch(request: Request, rawBody: string) {
+	// ruleid: webhook-signature-presence-only
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return new Response('Missing signature', { status: 401 });
+	if (strictMode) {
+		if (!(await verifyMetaSignature(rawBody, signature, appSecret))) {
+			return new Response('Invalid signature', { status: 401 });
+		}
+	}
+	return new Response('OK', { status: 200 });
+}
+
+export async function verifiedOnlyInTry(request: Request, rawBody: string) {
+	// ruleid: webhook-signature-presence-only
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return new Response('Missing signature', { status: 401 });
+	try {
+		if (!(await verifyMetaSignature(rawBody, signature, appSecret))) {
+			return new Response('Invalid signature', { status: 401 });
+		}
+	} catch {
+		// swallowed: the request goes on unverified
+	}
+	return new Response('OK', { status: 200 });
+}
+
+// ── Inline verification: a compare in the handler itself ────────────────
 
 export const githubInline = httpAction(async (ctx, request) => {
 	// ok: webhook-signature-presence-only
@@ -82,19 +182,14 @@ export const githubInline = httpAction(async (ctx, request) => {
 	return new Response('OK', { status: 200 });
 });
 
-export async function twilioInline(request: Request, rawBody: string): Promise<Response> {
+// The compare takes a value derived from the header, through a variable.
+export async function derivedInline(request: Request, rawBody: string): Promise<Response> {
 	// ok: webhook-signature-presence-only
-	const signature = request.headers.get('x-twilio-signature');
-	if (!signature) {
-		return new Response('Missing X-Twilio-Signature header', { status: 401 });
-	}
-	try {
-		const expected = await hmacSha1Base64(authToken, rawBody);
-		const valid = secretMatches(signature, expected);
-		if (!valid) return new Response('Invalid signature', { status: 401 });
-	} catch {
-		return new Response('Unverifiable', { status: 401 });
-	}
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return new Response('Missing signature', { status: 401 });
+	const provided = signature.slice('sha256='.length);
+	const valid = secretMatches(provided, await hmacSha256Hex(secret, rawBody));
+	if (!valid) return new Response('Invalid signature', { status: 401 });
 	return new Response('OK', { status: 200 });
 }
 
@@ -103,10 +198,19 @@ export const webCryptoInline = async (request: Request, key: CryptoKey, rawBody:
 	const sig = request.headers.get('x-hub-signature-256');
 	if (!sig) return new Response('Missing signature', { status: 401 });
 	const ok = await crypto.subtle.verify('HMAC', key, hexToBytes(sig), encode(rawBody));
-	return new Response(ok ? 'OK' : 'Invalid', { status: ok ? 200 : 401 });
+	if (!ok) return new Response('Invalid signature', { status: 401 });
+	return new Response('OK', { status: 200 });
 };
 
-// ── Helper verification: the shape of the three real handlers ──────────
+export function nodeBracketInline(req: IncomingMessage, expected: Buffer): number {
+	// ok: webhook-signature-presence-only
+	const signature = req.headers['x-hub-signature-256'];
+	if (!signature) return 401;
+	if (!crypto.timingSafeEqual(Buffer.from(signature), expected)) return 401;
+	return 200;
+}
+
+// ── Helper verification: the shape of the real handlers ─────────────────
 
 export const handleGithubWebhook = httpAction(async (ctx, request) => {
 	// ok: webhook-signature-presence-only
@@ -114,7 +218,12 @@ export const handleGithubWebhook = httpAction(async (ctx, request) => {
 	if (!signature) {
 		return new Response('Missing X-Hub-Signature-256 header', { status: 401 });
 	}
-	const rawBody = await readBodyText(request, 5 * 1024 * 1024);
+	let rawBody: string;
+	try {
+		rawBody = await readBodyText(request, 5 * 1024 * 1024);
+	} catch (error) {
+		return new Response('Unreadable body', { status: 400 });
+	}
 	if (!(await verifyGithubSignature(rawBody, signature, secret))) {
 		return new Response('Invalid GitHub signature', { status: 401 });
 	}
@@ -168,13 +277,44 @@ export const metaAdapter: InboundAdapter = {
 	},
 };
 
-// A method call on a verifier object counts too.
+export async function verifyPluginSvixDelivery(delivery: Delivery, contract: Contract) {
+	const { headers, nowMs } = delivery;
+	const id = headers.get('svix-id');
+	const timestamp = headers.get('svix-timestamp');
+	// ok: webhook-signature-presence-only
+	const signature = headers.get('svix-signature');
+	if (id === null || id === '' || signature === null || signature === '') {
+		return { ok: false, status: 401, reason: 'Missing inbound signature' };
+	}
+	const verified = await verifySvixHeaders(
+		delivery.rawBody,
+		id,
+		timestamp,
+		signature,
+		contract.secret,
+		Math.floor(nowMs / 1000)
+	);
+	if (!verified) {
+		return { ok: false, status: 401, reason: 'Inbound signature mismatch' };
+	}
+	return { ok: true };
+}
+
+// A method call on a verifier object, and a returned verdict, count too.
 export async function registryVerified(request: Request, rawBody: string, verifier: Verifier) {
 	// ok: webhook-signature-presence-only
 	const signature = request.headers.get('x-provider-signature');
 	if (!signature) return new Response('Missing signature', { status: 401 });
 	const result = await verifier.verifyRequest(rawBody, signature);
-	return new Response(result.ok ? 'OK' : 'Invalid', { status: result.ok ? 200 : 401 });
+	if (!result.ok) return new Response('Invalid signature', { status: 401 });
+	return new Response('OK', { status: 200 });
+}
+
+export async function returnsVerdict(request: Request, rawBody: string): Promise<boolean> {
+	// ok: webhook-signature-presence-only
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return false;
+	return await verifyGithubSignature(rawBody, signature, secret);
 }
 
 // Reading a non-signature header and checking presence is not this rule's concern.
