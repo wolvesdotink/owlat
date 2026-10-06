@@ -98,28 +98,39 @@ rules:
       - pattern-not: safeRedirect($X, $Y)
 
   # ────────────────────────────────────────────────────────────────────
-  # Webhook handlers that read a signature header and check only that it
-  # is present, never verifying it. Catches future regressions of the C2
-  # unverified-signature class.
+  # Webhook handlers that read a signature header and never verify it.
+  # Catches future regressions of the C2 unverified-signature class.
   #
-  # A header read is a `$X.get('...')` or `$X['...']` whose string-literal
+  # This is a syntactic guardrail, not a proof. It checks that the header
+  # value reaches a verifier whose result is used; it cannot show that the
+  # result actually decides whether the request is accepted.
+  #
+  # Reported: a `$X.get('...')` or `$X['...']` read whose string-literal
   # name contains "signature" (case-insensitive), followed by a presence
-  # check. It counts as verified only when, later in the SAME block as the
-  # read, the header value (or a value derived from it) goes into a
-  # verifier whose result decides the request:
+  # check, unless the same function (anywhere in its own control flow,
+  # including `if`/`else` branches and `try` blocks, but not inside a
+  # nested function or callback) passes the header value, or a value
+  # derived from it, to
   #   - an awaited `verify*` function or method (verifyGithubSignature,
   #     verifyTwilioRequest, verifyMetaSignature, verifySvixHeaders,
-  #     crypto.subtle.verify, ...; every one of them is async), or a
-  #     constant-time compare (constantTimeEqual, secretMatches,
-  #     timingSafeEqual);
-  #   - inside an `if` condition, assigned to a variable an `if` then
-  #     tests, or returned.
-  # A verification nested in a branch, a try block or a callback does not
-  # count (it may not run), and neither does a verifier given some other
-  # value, an unawaited verify* call or a result nobody tests.
+  #     crypto.subtle.verify, ...; they are all async), awaited directly
+  #     or through `Promise.all` / `.then`, or
+  #   - a synchronous compare: constantTimeEqual, secretMatches,
+  #     timingSafeEqual or Node's crypto.verify,
+  # and uses the verdict: in an `if` condition, a ternary, a `return`, or
+  # a variable that is read afterwards.
   #
-  # Known limits: a header name held in a constant, and a header value
-  # passed out of the function to be verified elsewhere, are not seen.
+  # So it catches: a presence-only check; a verifier given some other
+  # value; an unawaited `verify*` call; a verdict that is assigned and
+  # never read; a verifier that runs only in a nested callback.
+  #
+  # Known limits (false negatives, recorded as `todoruleid` in the test):
+  # an `if` on the verdict whose body is empty or only logs; both branches
+  # accepting; a verdict overwritten before it is read; the signature
+  # compared with itself or with a literal; a verification inside a `try`
+  # whose `catch` swallows the error. Also not seen: a header name held in
+  # a constant, and a header value passed out of the function to be
+  # verified elsewhere.
   #
   # Tests: .semgrep/tests/webhook-signature-presence-only.ts, run with
   # `semgrep --test --config .semgrep.yml <that file>` (security.yml does).
@@ -128,17 +139,16 @@ rules:
     severity: ERROR
     languages: [typescript]
     message: |
-      This handler reads a signature header but appears to only check it
-      exists, never compares it. In the same block, pass the header value
-      to one of the existing verification helpers (webhooks/adapters/resend.ts
-      verifySvixHeaders, webhooks/adapters/twilio.ts verifyTwilioRequest,
+      This handler reads a signature header and checks that it is present,
+      but the header value never reaches a verifier whose result is used.
+      Pass it to one of the existing verification helpers
+      (webhooks/adapters/resend.ts verifySvixHeaders,
+      webhooks/adapters/twilio.ts verifyTwilioRequest,
       webhooks/adapters/meta.ts verifyMetaSignature, or the constant-time
       compare in lib/crypto.ts, constantTimeEqual / secretMatches), await
-      it, and reject the request when it fails.
+      it, and reject the request when it fails. This is a syntactic check:
+      it does not prove that the verdict controls acceptance.
     options:
-      # `...` stays in the block it starts in, so a verification nested in a
-      # branch, try block or callback does not exempt the read.
-      go_deeper_stmt: false
       # `<... $SIG ...>` also matches a value derived from the header, e.g.
       # `const provided = signature.slice(7)`.
       symbolic_propagation: true
@@ -171,46 +181,99 @@ rules:
       - metavariable-regex:
           metavariable: $HEADER
           regex: (?i)^['"`][^'"`]*signature[^'"`]*['"`]$
+      # Exempt when the enclosing function's own body (nested functions
+      # excluded) uses an awaited verify* verdict on the header value.
       - pattern-not-inside:
           patterns:
             - pattern-either:
                 - pattern: |
-                    $SIG = $READ
-                    ...
-                    if (<... await $VERIFY(..., <... $SIG ...>, ...) ...>) $GATED
+                    function $FN(...) { $...BODY }
                 - pattern: |
-                    $SIG = $READ
-                    ...
-                    $OK = await $VERIFY(..., <... $SIG ...>, ...);
-                    ...
-                    if (<... $OK ...>) $GATED
+                    function (...) { $...BODY }
                 - pattern: |
-                    $SIG = $READ
-                    ...
-                    return await $VERIFY(..., <... $SIG ...>, ...);
-            - metavariable-regex:
-                metavariable: $VERIFY
-                regex: ^([\w$]+\.)*verify\w*$
+                    (...) => { $...BODY }
+            # An empty body has no range for metavariable-pattern to scan.
+            - pattern-not: |
+                function $FN(...) {}
+            - pattern-not: |
+                function (...) {}
+            - pattern-not: |
+                (...) => {}
+            - metavariable-pattern:
+                metavariable: $...BODY
+                patterns:
+                  - pattern-either:
+                      - pattern: |
+                          if (<... await <... $VERIFY(..., <... $SIG ...>, ...) ...> ...>) $GATED
+                      - pattern: |
+                          return <... await <... $VERIFY(..., <... $SIG ...>, ...) ...> ...>;
+                      - pattern: |
+                          <... await <... $VERIFY(..., <... $SIG ...>, ...) ...> ...> ? $YES : $NO
+                      - pattern: |
+                          $VERDICT = <... await <... $VERIFY(..., <... $SIG ...>, ...) ...> ...>;
+                          ...
+                          <... $VERDICT ...>;
+                      - pattern: |
+                          [..., $VERDICT, ...] = <... await <... $VERIFY(..., <... $SIG ...>, ...) ...> ...>;
+                          ...
+                          <... $VERDICT ...>;
+                  - pattern-not-inside: |
+                      function $INNER(...) { ... }
+                  - pattern-not-inside: |
+                      function (...) { ... }
+                  - pattern-not-inside: |
+                      (...) => { ... }
+                  - pattern-not-inside: |
+                      (...) => $INNEREXPR
+                  - metavariable-regex:
+                      metavariable: $VERIFY
+                      regex: ^([\w$]+\.)*verify\w*$
+      # Same, for a synchronous compare.
       - pattern-not-inside:
           patterns:
             - pattern-either:
                 - pattern: |
-                    $SIG = $READ
-                    ...
-                    if (<... $COMPARE(..., <... $SIG ...>, ...) ...>) $GATED
+                    function $FN(...) { $...BODY }
                 - pattern: |
-                    $SIG = $READ
-                    ...
-                    $OK = $COMPARE(..., <... $SIG ...>, ...);
-                    ...
-                    if (<... $OK ...>) $GATED
+                    function (...) { $...BODY }
                 - pattern: |
-                    $SIG = $READ
-                    ...
-                    return $COMPARE(..., <... $SIG ...>, ...);
-            - metavariable-regex:
-                metavariable: $COMPARE
-                regex: ^([\w$]+\.)*(constantTimeEqual|secretMatches|timingSafeEqual)$
+                    (...) => { $...BODY }
+            # An empty body has no range for metavariable-pattern to scan.
+            - pattern-not: |
+                function $FN(...) {}
+            - pattern-not: |
+                function (...) {}
+            - pattern-not: |
+                (...) => {}
+            - metavariable-pattern:
+                metavariable: $...BODY
+                patterns:
+                  - pattern-either:
+                      - pattern: |
+                          if (<... $COMPARE(..., <... $SIG ...>, ...) ...>) $GATED
+                      - pattern: |
+                          return <... $COMPARE(..., <... $SIG ...>, ...) ...>;
+                      - pattern: |
+                          <... $COMPARE(..., <... $SIG ...>, ...) ...> ? $YES : $NO
+                      - pattern: |
+                          $VERDICT = <... $COMPARE(..., <... $SIG ...>, ...) ...>;
+                          ...
+                          <... $VERDICT ...>;
+                      - pattern: |
+                          [..., $VERDICT, ...] = <... $COMPARE(..., <... $SIG ...>, ...) ...>;
+                          ...
+                          <... $VERDICT ...>;
+                  - pattern-not-inside: |
+                      function $INNER(...) { ... }
+                  - pattern-not-inside: |
+                      function (...) { ... }
+                  - pattern-not-inside: |
+                      (...) => { ... }
+                  - pattern-not-inside: |
+                      (...) => $INNEREXPR
+                  - metavariable-regex:
+                      metavariable: $COMPARE
+                      regex: ^(([\w$]+\.)*(constantTimeEqual|secretMatches|timingSafeEqual)|crypto\.verify)$
     paths:
       include:
         - "/apps/api/convex/**/*.ts"
