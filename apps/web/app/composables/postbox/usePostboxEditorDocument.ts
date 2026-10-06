@@ -12,10 +12,15 @@
  * Every value written into the element goes through the composer allowlist
  * first: the bound value can come from stored drafts and other writers, not
  * only from this editor's own emits.
+ *
+ * The emitted HTML is the stored form (`serializeComposerBody`): an inline
+ * image's display `src` stays in the element and out of the draft, and
+ * `onWritten` lets the caller fill it in after each write of `modelValue`.
  */
 import { onMounted, ref, watch, type Ref } from 'vue';
 import { EMPTY_ACTIVE_MARKS, type ActiveMarks } from '@owlat/ui/composables/useRichText';
 import { sanitizePostboxComposerHtml } from '~/utils/postboxSanitizeHtml';
+import { serializeComposerBody } from '~/utils/postboxInlineImageSrc';
 
 export function usePostboxEditorDocument(opts: {
 	editorRef: Ref<HTMLDivElement | null>;
@@ -25,6 +30,8 @@ export function usePostboxEditorDocument(opts: {
 	readActiveMarks: () => ActiveMarks;
 	/** Emits the editor's serialized HTML to the parent v-model. */
 	emit: (value: string) => void;
+	/** Runs after a `modelValue` is written into the element (mount, external write). */
+	onWritten?: () => void;
 }) {
 	const isEmpty = ref(true);
 	const activeMarks = ref<ActiveMarks>({ ...EMPTY_ACTIVE_MARKS });
@@ -79,7 +86,7 @@ export function usePostboxEditorDocument(opts: {
 	function emitContent() {
 		const el = opts.editorRef.value;
 		if (!el) return;
-		const html = el.innerHTML;
+		const html = serializeComposerBody(el);
 		if (html !== lastSynced) {
 			lastEmitted = html;
 			lastSynced = html;
@@ -114,7 +121,8 @@ export function usePostboxEditorDocument(opts: {
 			} else {
 				ensureScaffold();
 			}
-			lastSynced = el.innerHTML;
+			lastSynced = serializeComposerBody(el);
+			opts.onWritten?.();
 		}
 		syncEmptyState();
 		syncActiveMarks();
@@ -123,8 +131,9 @@ export function usePostboxEditorDocument(opts: {
 	watch(opts.modelValue, (value) => {
 		const el = opts.editorRef.value;
 		if (!el) return;
-		if (el.innerHTML === value) {
-			lastSynced = value;
+		// The element holds this value already, in either form.
+		if (el.innerHTML === value || serializeComposerBody(el) === value) {
+			lastSynced = serializeComposerBody(el);
 			return;
 		}
 		// Our own emit coming back around — the DOM is already this value (or has
@@ -135,7 +144,8 @@ export function usePostboxEditorDocument(opts: {
 		const wasFocused = document.activeElement === el;
 		el.innerHTML = value ? sanitizePostboxComposerHtml(value) : '';
 		ensureScaffold();
-		lastSynced = el.innerHTML;
+		lastSynced = serializeComposerBody(el);
+		opts.onWritten?.();
 		if (wasFocused) placeCaretAtEnd(el);
 		syncEmptyState();
 	});
