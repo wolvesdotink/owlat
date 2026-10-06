@@ -23,6 +23,7 @@ import type { Id } from '../_generated/dataModel';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import { locateForwardedParts } from '@owlat/shared/mailMime';
 import { seedFolder, seedMailbox, seedMessage } from '../mail/__tests__/helpers.testlib';
+import { storeSealedBlob } from '../lib/sealedBlob';
 
 const session = vi.hoisted(() => ({
 	userId: 'user-A',
@@ -673,5 +674,28 @@ describe('a draft owes its expected attachments', () => {
 			key: `forward:${messageId}`,
 		});
 		expect(await sendError(t, draftId)).not.toMatch(/still being added/);
+	});
+
+	it('reads a raw message sealed at rest, unsealing it as it streams', async () => {
+		vi.stubEnv('INSTANCE_SECRET', 'test-instance-secret');
+		try {
+			const t = convexTest();
+			const { messageId, draftId } = await forwardDraft(t);
+			await t.run(async (ctx) => {
+				const rawStorageId = await storeSealedBlob(
+					ctx.storage,
+					new TextEncoder().encode(INVOICE_EML),
+					'message/rfc822'
+				);
+				await ctx.db.patch(messageId, { rawStorageId });
+			});
+			expect(await fulfil(t, draftId)).toEqual({ failed: [] });
+			expect(await attachedText(t, draftId)).toEqual([
+				['invoice.pdf', '%PDF-1.4'],
+				['photo.png', 'photo'],
+			]);
+		} finally {
+			vi.unstubAllEnvs();
+		}
 	});
 });

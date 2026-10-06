@@ -25,6 +25,16 @@
  * `partIndex`, is the walker's. `locate.test.ts` holds the two to the same
  * answers.
  *
+ * HEADER BUDGETS, where the byte path stops earlier. A header block becomes a
+ * string and `parseHeaders` keeps every line of it, so a flood of headers (or
+ * a part with no blank line, whose whole segment is its header block) costs
+ * many times its size. Here a block over {@link MAX_PART_HEADER_BYTES}, or one
+ * that would take the message's header text past {@link MAX_HEADER_BYTES}, is
+ * not read: the walk goes on with empty headers from there and the tree is
+ * `truncated`, as for the part and depth bounds. The string walker has no such
+ * budget; no real message comes near it (the parity test pins both sides of
+ * the line).
+ *
  * DECODING. {@link decodedLength} counts a body's decoded size without
  * allocating, so a caller can refuse a part over its limit before decoding it;
  * {@link decodeLocated} then decodes into an array of exactly that size.
@@ -34,6 +44,11 @@
 
 import { parseHeaders, getRawParam } from './headers';
 import { MAX_DEPTH, MAX_MIME_PARTS, type MimeNode } from './body';
+
+/** Largest header block of one part that is read (larger: the tree is truncated). */
+export const MAX_PART_HEADER_BYTES = 256 * 1024;
+/** Most header text read across one message (more: the tree is truncated). */
+export const MAX_HEADER_BYTES = 1024 * 1024;
 
 /** Where a located node's body is, in the message's bytes. */
 export interface LocatedBody {
@@ -77,6 +92,10 @@ export function locateMimeTree(raw: Uint8Array): LocatedTree {
 	const text = (start: number, end: number) => latin1.decode(raw.subarray(start, end));
 	const bodies = new WeakMap<MimeNode, LocatedBody>();
 	const budget = { remainingParts: MAX_MIME_PARTS, truncated: false };
+	let headerBytesLeft = MAX_HEADER_BYTES;
+	let headersSpent = false;
+	// The longest delimiter text registered: a longer line cannot be one.
+	let longestDelimiter = 0;
 	const frames: PartFrame[] = [
 		{
 			segStart: 0,
@@ -93,6 +112,7 @@ export function locateMimeTree(raw: Uint8Array): LocatedTree {
 	let prevEnd = -1;
 
 	const register = (key: string, level: number) => {
+		longestDelimiter = Math.max(longestDelimiter, key.length);
 		const levels = delimiters.get(key);
 		if (levels) levels.push(level);
 		else delimiters.set(key, [level]);
@@ -110,7 +130,13 @@ export function locateMimeTree(raw: Uint8Array): LocatedTree {
 	};
 
 	const readHeaders = (frame: PartFrame, level: number, headerEnd: number, bodyStart: number) => {
-		const headers = parseHeaders(text(frame.segStart, headerEnd));
+		const size = Math.max(0, headerEnd - frame.segStart);
+		if (!headersSpent && (size > MAX_PART_HEADER_BYTES || size > headerBytesLeft)) {
+			headersSpent = true;
+			budget.truncated = true;
+		}
+		if (!headersSpent) headerBytesLeft -= size;
+		const headers = parseHeaders(headersSpent ? '' : text(frame.segStart, headerEnd));
 		const contentType = headers.contentType;
 		let container: Container | null = null;
 		if (contentType.value.startsWith('multipart/')) {
@@ -191,7 +217,7 @@ export function locateMimeTree(raw: Uint8Array): LocatedTree {
 			if (c !== 0x20 && c !== 0x09) break;
 			end--;
 		}
-		return text(start, end);
+		return end - start > longestDelimiter ? null : text(start, end);
 	};
 
 	let prevStart = -1;
@@ -291,78 +317,90 @@ function base64Sextets(raw: Uint8Array, body: LocatedBody): number {
 	return count;
 }
 
-/** The quoted-printable decode of the string path, as a stream of bytes. */
+/**
+ * The quoted-printable decode of the string path, as a stream of bytes, in
+ * constant memory. The string path does three passes: CRLF -> LF (a normalized
+ * body), soft line breaks (`=\r?\n`) removed, then `=HH` decoded, each left to
+ * right over the previous one's output. Here they run as one state machine: a
+ * cursor over the raw slice yields the normalized bytes, the soft-break stage
+ * reads at most three of them ahead, and the escape stage keeps a three-byte
+ * window of the soft-break stage's output.
+ */
 function eachQuotedPrintable(
 	raw: Uint8Array,
 	body: LocatedBody,
 	emit: (byte: number) => void
 ): void {
-	// Stage 1: the normalized body. Stage 2: soft line breaks (`=\r?\n`) removed.
-	// Stage 3: `=HH` decoded. Each stage reads the previous one left to right,
-	// as the string path's regex replaces do; a small window holds the lookahead.
-	const s1: number[] = [];
-	let s1Head = 0;
-	const s2: number[] = [];
-	let s2Head = 0;
-	let i = body.start;
-	const pull1 = (): boolean => {
-		while (i < body.end) {
-			const c = raw[i] as number;
-			i++;
-			if (body.normalize && c === 0x0d && i < body.end && raw[i] === 0x0a) continue;
-			s1.push(c);
-			return true;
+	const { end, normalize } = body;
+	// Stage 1: the normalized byte at `at` (-1 past the end); `after1` is where
+	// the next one starts.
+	let after1 = 0;
+	const read1 = (at: number): number => {
+		if (at >= end) return -1;
+		const c = raw[at] as number;
+		if (normalize && c === 0x0d && at + 1 < end && raw[at + 1] === 0x0a) {
+			after1 = at + 2;
+			return 0x0a;
 		}
-		return false;
+		after1 = at + 1;
+		return c;
 	};
-	const need1 = (k: number) => {
-		while (s1.length - s1Head < k) {
-			if (!pull1()) break;
-		}
-		return s1.length - s1Head >= k;
-	};
-	const pull2 = (): boolean => {
+	// Stage 2: the next byte with soft line breaks removed, or -1.
+	let cursor = body.start;
+	const next2 = (): number => {
 		for (;;) {
-			if (!need1(1)) return false;
-			const c = s1[s1Head] as number;
-			if (c === EQ && need1(2) && s1[s1Head + 1] === 0x0a) {
-				s1Head += 2;
-				continue;
+			const c = read1(cursor);
+			if (c === -1) return -1;
+			const next = after1;
+			if (c === EQ) {
+				const d = read1(next);
+				if (d === 0x0a) {
+					cursor = after1;
+					continue;
+				}
+				if (d === 0x0d && read1(after1) === 0x0a) {
+					cursor = after1;
+					continue;
+				}
 			}
-			if (c === EQ && need1(3) && s1[s1Head + 1] === 0x0d && s1[s1Head + 2] === 0x0a) {
-				s1Head += 3;
-				continue;
-			}
-			s1Head++;
-			s2.push(c);
-			if (s1Head > 4096) {
-				s1.splice(0, s1Head);
-				s1Head = 0;
-			}
-			return true;
+			cursor = next;
+			return c;
 		}
 	};
-	const need2 = (k: number) => {
-		while (s2.length - s2Head < k && pull2());
-		return s2.length - s2Head >= k;
+	// Stage 3: `=HH` over a window of up to three stage-2 bytes.
+	let w0 = -1;
+	let w1 = -1;
+	let w2 = -1;
+	let size = 0;
+	const fill = (k: number) => {
+		while (size < k) {
+			const c = next2();
+			if (c === -1) return;
+			if (size === 0) w0 = c;
+			else if (size === 1) w1 = c;
+			else w2 = c;
+			size++;
+		}
 	};
-	while (need2(1)) {
-		const c = s2[s2Head] as number;
-		if (c === EQ && need2(3)) {
-			const hi = hexValue(s2[s2Head + 1] as number);
-			const lo = hexValue(s2[s2Head + 2] as number);
-			if (hi !== -1 && lo !== -1) {
-				emit((hi << 4) | lo);
-				s2Head += 3;
-				continue;
+	for (;;) {
+		fill(1);
+		if (size === 0) return;
+		if (w0 === EQ) {
+			fill(3);
+			if (size === 3) {
+				const hi = hexValue(w1);
+				const lo = hexValue(w2);
+				if (hi !== -1 && lo !== -1) {
+					emit((hi << 4) | lo);
+					size = 0;
+					continue;
+				}
 			}
 		}
-		emit(c);
-		s2Head++;
-		if (s2Head > 4096) {
-			s2.splice(0, s2Head);
-			s2Head = 0;
-		}
+		emit(w0);
+		w0 = w1;
+		w1 = w2;
+		size--;
 	}
 }
 

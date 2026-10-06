@@ -12,18 +12,19 @@
  * attachment list. A walk the MIME bounds cut short (parts, depth) is not
  * expanded (`messageTooComplex`): the parts past the cut were never seen.
  *
- * MEMORY. The message is never turned into a string. It is read as bytes
- * (the stored blob, then its unsealed copy; the sealed one is released when
- * the read returns), its parts are located by byte searches, and only the
- * parts a forward carries are decoded, one at a time, each straight into an
+ * MEMORY. The message is never turned into a string. It is read and unsealed
+ * as it streams, into one array of its plaintext size
+ * (`readSealedBlobBytesStreaming`; the stored blob and its plaintext are the
+ * only full copies), its parts are located by byte searches within header
+ * budgets (`locateMimeTree`), and only the parts a forward carries are
+ * decoded, one at a time, in constant extra memory, each straight into an
  * array of its exact decoded size, which is counted first: a part over the
- * per-file limit is never decoded (`tooLarge`). So a read holds about twice
- * the message while it is unsealed, then the message plus one part and the
- * copy `storage.store` makes of it. Past `MAX_FORWARD_RAW_BYTES` (the IMAP
- * APPEND limit, the largest message any path stores) the message is not read
- * at all and the forward stays owed as `messageTooLarge`.
- * `packages/shared/src/__tests__/forwardMemory.test.ts` measures this path in
- * separate Node processes: at most about 285 MiB of a Node action's 512.
+ * per-file limit is never decoded (`tooLarge`). Past `MAX_FORWARD_RAW_BYTES`
+ * (the IMAP APPEND limit, the largest message any path stores) the message is
+ * not read at all and the forward stays owed as `messageTooLarge`.
+ * `convex/__tests__/forwardMemory.test.ts` measures this path in separate Node
+ * processes over adversarial messages: at most about 270 MiB of a Node
+ * action's 512.
  */
 
 import { v } from 'convex/values';
@@ -33,7 +34,8 @@ import type { Id } from '../_generated/dataModel';
 import { MAX_ATTACHMENT_BYTES, MAX_FORWARD_RAW_BYTES } from '@owlat/shared/attachments';
 import { locateForwardedParts, type LocatedForwardedPart } from '@owlat/shared/mailMime';
 import { authedAction } from '../lib/authedFunctions';
-import { readSealedBlobBytes } from '../lib/sealedBlob';
+import { readSealedBlobBytesStreaming } from '../lib/sealedBlobStream';
+import { getOptional } from '../lib/env';
 import { forwardPartKey, type FulfilFailure, type OwedWork } from './draftExpectedAttachments';
 
 type Failed = Array<{ key: string; filename: string; reason: FulfilFailure }>;
@@ -52,7 +54,11 @@ async function readForwardedParts(
 	| { failure: 'messageTooLarge' | 'unreadable' }
 > {
 	if (job.rawSize > MAX_FORWARD_RAW_BYTES) return { failure: 'messageTooLarge' };
-	const raw = await readSealedBlobBytes(ctx.storage, job.rawStorageId).catch(() => null);
+	const raw = await readSealedBlobBytesStreaming(
+		ctx.storage,
+		job.rawStorageId,
+		getOptional('INSTANCE_SECRET')
+	).catch(() => null);
 	if (!raw) return { failure: 'unreadable' };
 	const read = locateForwardedParts(raw);
 	return {

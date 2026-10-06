@@ -19,7 +19,13 @@ import {
 	MAX_MIME_PARTS,
 	type MimeNode,
 } from '../parse/body';
-import { decodeLocated, decodedLength, locateMimeTree } from '../parse/locate';
+import {
+	decodeLocated,
+	decodedLength,
+	locateMimeTree,
+	MAX_HEADER_BYTES,
+	MAX_PART_HEADER_BYTES,
+} from '../parse/locate';
 
 const ROOT = join(import.meta.dirname, '../../../..');
 const latin1 = new TextDecoder('latin1');
@@ -49,9 +55,15 @@ function stringView(raw: Uint8Array): { leaves: LeafView[]; truncated: boolean }
 	return { leaves, truncated };
 }
 
-function byteView(raw: Uint8Array): { leaves: LeafView[]; truncated: boolean } {
+function byteView(raw: Uint8Array): {
+	leaves: LeafView[];
+	truncated: boolean;
+	/** Per leaf: its raw body holds bytes the string path maps through windows-1252. */
+	c1: boolean[];
+} {
 	const { root, bodies, truncated } = locateMimeTree(raw);
 	const leaves: LeafView[] = [];
+	const c1: boolean[] = [];
 	walkLeaves(root, (leaf) => {
 		const encoding = leaf.headers.last('content-transfer-encoding');
 		const body = bodies.get(leaf)!;
@@ -59,8 +71,9 @@ function byteView(raw: Uint8Array): { leaves: LeafView[]; truncated: boolean } {
 		const bytes = decodeLocated(raw, body, encoding, length);
 		expect(bytes.length).toBe(length);
 		leaves.push({ ...describeLeaf(leaf), encoding, bytes: [...bytes] });
+		c1.push(hasC1(raw.subarray(body.start, body.end)));
 	});
-	return { leaves, truncated };
+	return { leaves, truncated, c1 };
 }
 
 function describeLeaf(leaf: MimeNode) {
@@ -74,20 +87,17 @@ function describeLeaf(leaf: MimeNode) {
 
 function expectSame(raw: Uint8Array) {
 	const byString = stringView(raw);
-	const byBytes = byteView(raw);
-	if (hasC1(raw)) {
-		// 8-bit bytes in 0x80-0x9F: the string path maps them through
-		// windows-1252; compare everything but those bodies' bytes.
-		const lengths = (view: typeof byString) =>
-			view.leaves.map((leaf) => ({
-				...leaf,
-				bytes: Array.isArray(leaf.bytes) ? leaf.bytes.length : leaf.bytes,
-			}));
-		expect(lengths(byBytes)).toEqual(lengths(byString));
-		expect(byBytes.truncated).toBe(byString.truncated);
-		return;
-	}
-	expect(byBytes).toEqual(byString);
+	const { c1, ...byBytes } = byteView(raw);
+	// A body holding 8-bit bytes in 0x80-0x9F: the string path maps them through
+	// windows-1252, so only that body's decoded length is compared; every other
+	// leaf, and every header, exactly.
+	const comparable = (view: typeof byString) => ({
+		...view,
+		leaves: view.leaves.map((leaf, i) =>
+			c1[i] && Array.isArray(leaf.bytes) ? { ...leaf, bytes: leaf.bytes.length } : leaf
+		),
+	});
+	expect(comparable(byBytes)).toEqual(comparable(byString));
 }
 
 const bytes = (text: string) => Uint8Array.from(text, (c) => c.charCodeAt(0) & 0xff);
@@ -230,6 +240,10 @@ const BUILT: Record<string, string> = {
 	'exactly the part bound': flat(MAX_MIME_PARTS, (i) => pdf(`f${i}.pdf`, 'eA==')),
 	'the depth bound, with a file past it': nested(120, pdf('deep.pdf', 'ZGVlcA==')),
 	'exactly the depth bound': nested(100, pdf('deep.pdf', 'ZGVlcA==')),
+	'header blocks within the budgets': flat(4, (i) => [
+		`X-Big: ${'h'.repeat(200 * 1024)}`,
+		...pdf(`h${i}.pdf`, 'aA=='),
+	]),
 	'8-bit bytes the string path maps through windows-1252': flat(1, () =>
 		pdf('c1.bin', '\u0080\u0099 ÿ', '8bit')
 	),
@@ -270,5 +284,37 @@ describe('locateMimeTree: the same leaves, verdicts and bytes as the string walk
 		const body = bodies.get(leaf)!;
 		const out = decodeLocated(raw, body, '8bit', decodedLength(raw, body, '8bit'));
 		expect([...out]).toEqual([0x80, 0x99, 0xa0, 0xff]);
+	});
+
+	it('keeps exact comparisons for the other leaves of a message with 8-bit bytes', () => {
+		const raw = bytes(
+			flat(2, (i) =>
+				i === 0 ? pdf('c1.bin', '\u0080\u0099', '8bit') : pdf('clean.pdf', 'Y2xlYW4=')
+			)
+		);
+		const { c1, leaves } = byteView(raw);
+		expect(c1).toEqual([true, false]);
+		expect(leaves[1]?.bytes).toEqual([...new TextEncoder().encode('clean')]);
+	});
+
+	it('stops earlier than the string walker on header floods, as truncated', () => {
+		const floods = {
+			'one part over the per-part budget': flat(1, () => [
+				`X-Big: ${'h'.repeat(MAX_PART_HEADER_BYTES)}`,
+				...pdf('a.pdf', 'aA=='),
+			]),
+			'a message over the total budget': flat(6, (i) => [
+				`X-Big: ${'h'.repeat(200 * 1024)}`,
+				...pdf(`h${i}.pdf`, 'aA=='),
+			]),
+			'headers with no blank line to end them': 'X: a\r\n'.repeat(
+				Math.ceil((MAX_HEADER_BYTES + 1) / 6)
+			),
+		};
+		for (const [name, message] of Object.entries(floods)) {
+			const raw = bytes(message);
+			expect(stringView(raw).truncated, name).toBe(false);
+			expect(locateMimeTree(raw).truncated, name).toBe(true);
+		}
 	});
 });

@@ -870,6 +870,7 @@ import type * as lib_runtimeLog from '../lib/runtimeLog.js';
 import type * as lib_validatorMatch from '../lib/validatorMatch.js';
 import type * as lib_scannerHealth from '../lib/scannerHealth.js';
 import type * as lib_sealedBlob from '../lib/sealedBlob.js';
+import type * as lib_sealedBlobStream from '../lib/sealedBlobStream.js';
 import type * as lib_secretLeakScan from '../lib/secretLeakScan.js';
 import type * as lib_sendDailyStats from '../lib/sendDailyStats.js';
 import type * as lib_sendProviders_capability from '../lib/sendProviders/capability.js';
@@ -2360,6 +2361,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/validatorMatch': typeof lib_validatorMatch;
 	'lib/scannerHealth': typeof lib_scannerHealth;
 	'lib/sealedBlob': typeof lib_sealedBlob;
+	'lib/sealedBlobStream': typeof lib_sealedBlobStream;
 	'lib/secretLeakScan': typeof lib_secretLeakScan;
 	'lib/sendDailyStats': typeof lib_sendDailyStats;
 	'lib/sendProviders/capability': typeof lib_sendProviders_capability;
