@@ -39,7 +39,6 @@ import {
 import { openPrivateKey } from './sealing';
 import { resolveSenderVerificationKey } from './senderKey';
 import {
-	decodeUtf8,
 	INBOUND_CIPHER_SUITE,
 	inboundEncryptionInfoValidator,
 	isSealedPgpMime,
@@ -50,7 +49,17 @@ import {
 
 /** The outcome of a low-level open attempt. Bytes + keys in, structured out. */
 type OpenOutcome =
-	| { status: 'opened'; innerMime: string; signatureValid: boolean; signerFingerprint?: string }
+	| {
+			status: 'opened';
+			/**
+			 * The decrypted inner message as bytes. Each MIME part declares its own
+			 * charset, so nothing decodes the whole message as one text (#1284);
+			 * {@link parseInnerMessage} reads it.
+			 */
+			innerMime: Uint8Array;
+			signatureValid: boolean;
+			signerFingerprint?: string;
+	  }
 	| { status: 'cannotDecrypt' };
 
 interface OpenParams {
@@ -88,7 +97,7 @@ export async function openSealed(params: OpenParams): Promise<OpenOutcome> {
 		}
 	}
 
-	let innerMime: string;
+	let innerMime: Uint8Array;
 	let signatureValid = false;
 	let signerFingerprint: string | undefined;
 	try {
@@ -102,7 +111,7 @@ export async function openSealed(params: OpenParams): Promise<OpenOutcome> {
 			...(verificationKey ? { verificationKeys: verificationKey } : {}),
 			format: 'binary',
 		});
-		innerMime = decodeUtf8(decrypted.data as Uint8Array);
+		innerMime = decrypted.data as Uint8Array;
 
 		// Signature verification is fail-CLOSED: only a signature that is PRESENT
 		// and verifies against the pinned key counts. An absent signature, an

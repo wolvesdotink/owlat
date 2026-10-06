@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
 	unfold,
+	collapseControlChars,
 	decodeEncodedWords,
 	decodeHeaderValue,
 	decodeRfc2231,
@@ -42,6 +43,21 @@ describe('decodeHeaderValue — folded mid-run of encoded words', () => {
 		const h = parseHeaders('Subject: =?utf-8?Q?Hello=2C?=\r\n =?utf-8?Q?_world?=');
 		expect(h.getDecoded('subject')).toBe('Hello, world');
 		expect(h.getDecoded('missing')).toBeUndefined();
+	});
+});
+
+describe('collapseControlChars', () => {
+	it('turns each run of controls, with the blanks around it, into one space', () => {
+		expect(collapseControlChars('hello \r\n\r\n x')).toBe('hello x');
+		expect(collapseControlChars('a\u0000b\u0007 \u001b c\u007f')).toBe('a b c');
+	});
+
+	it('keeps TAB, other spacing and non-ASCII text as they are', () => {
+		expect(collapseControlChars('Grüße\tà  Р 😠')).toBe('Grüße\tà  Р 😠');
+	});
+
+	it('trims the ends', () => {
+		expect(collapseControlChars('\r\n hi \n')).toBe('hi');
 	});
 });
 

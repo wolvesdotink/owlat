@@ -29,9 +29,11 @@ import { describe, it, expect } from 'vitest';
 import { sealMime } from '../seal';
 import { openSealed } from '../open';
 import { isSealedPgpMime, parseInnerMessage, INBOUND_CIPHER_SUITE } from '../inboundSeal';
-import { bodyOf, generateTestKeypair } from './sealedMailTestHelpers';
+import { bodyOf, generateTestKeypair, utf8Text } from './sealedMailTestHelpers';
 
 const CANARY = 'CANARY_INBOUND_OPEN_7c3e91';
+
+const utf8 = (text: string): Uint8Array => new TextEncoder().encode(text);
 const REAL_SUBJECT = 'Sealed quarterly figures';
 
 function sampleMessage(): string {
@@ -83,7 +85,7 @@ describe('e2ee/open · openSealed', () => {
 
 		// Card acceptance: BYTE-EQUAL body. The decrypted inner body is byte-for-byte
 		// the exact body we sealed (not merely "contains the canary").
-		expect(bodyOf(outcome.innerMime)).toBe(bodyOf(sampleMessage()));
+		expect(bodyOf(utf8Text(outcome.innerMime))).toBe(bodyOf(sampleMessage()));
 
 		const restored = parseInnerMessage(outcome.innerMime);
 		expect(restored.subject).toBe(REAL_SUBJECT);
@@ -194,7 +196,7 @@ describe('e2ee/open · openSealed', () => {
 		// decrypted (no header-swallowing), with both paragraphs intact. (Compared
 		// to `outcome.innerMime` rather than `barePayload` because OpenPGP text
 		// literals canonicalize line endings — the point is nothing is lost.)
-		expect(restored.text).toBe(outcome.innerMime);
+		expect(restored.text).toBe(utf8Text(outcome.innerMime));
 		expect(restored.text).toContain(CANARY);
 		expect(restored.text).toContain('Second paragraph');
 		expect(restored.html).toBeUndefined();
@@ -260,7 +262,9 @@ describe('e2ee/open · GnuPG interop (gpg-generated fixtures)', () => {
 
 		// BYTE-EQUAL: gpg's literal packet preserves the committed plaintext input
 		// exactly, so the recovered inner MIME is the committed input, byte for byte.
-		expect(outcome.innerMime).toBe(readGnupgFixture('inner-protected-headers.eml'));
+		expect(Buffer.from(outcome.innerMime)).toEqual(
+			readFileSync(gnupgFixturePath('inner-protected-headers.eml'))
+		);
 
 		// Protected headers restored (D4): the real subject + BOTH body branches
 		// travelled inside the ciphertext; the outer `.eml` carries only `Subject: ...`.
@@ -282,7 +286,9 @@ describe('e2ee/open · GnuPG interop (gpg-generated fixtures)', () => {
 		expect(outcome.status).toBe('opened');
 		if (outcome.status !== 'opened') return;
 		expect(outcome.signatureValid).toBe(true);
-		expect(outcome.innerMime).toBe(readGnupgFixture('inner-no-protected-headers.eml'));
+		expect(Buffer.from(outcome.innerMime)).toEqual(
+			readFileSync(gnupgFixturePath('inner-no-protected-headers.eml'))
+		);
 
 		// No protected headers inside ⇒ no restored subject (the OUTER subject stays
 		// authoritative on ingest); the body still decrypts.
@@ -343,7 +349,7 @@ describe('e2ee/inboundSeal · parseInnerMessage', () => {
 			'the single-part body',
 			'',
 		].join('\r\n');
-		const r = parseInnerMessage(inner);
+		const r = parseInnerMessage(utf8(inner));
 		expect(r.subject).toBe('Single part subject');
 		expect(r.text).toContain('the single-part body');
 		expect(r.html).toBeUndefined();
@@ -365,7 +371,7 @@ describe('e2ee/inboundSeal · parseInnerMessage', () => {
 			'--bx--',
 			'',
 		].join('\r\n');
-		const r = parseInnerMessage(inner);
+		const r = parseInnerMessage(utf8(inner));
 		expect(r.subject).toBe('Multi part subject');
 		expect(r.text).toContain('text branch');
 		expect(r.html).toContain('<b>html branch</b>');
@@ -379,7 +385,7 @@ describe('e2ee/inboundSeal · parseInnerMessage', () => {
 			'',
 			'body',
 		].join('\r\n');
-		expect(parseInnerMessage(inner).subject).toBe('a very long folded subject');
+		expect(parseInnerMessage(utf8(inner)).subject).toBe('a very long folded subject');
 	});
 
 	it("reads Subject from its own field, not another field's folded continuation", () => {
@@ -391,14 +397,14 @@ describe('e2ee/inboundSeal · parseInnerMessage', () => {
 			'',
 			'body',
 		].join('\n');
-		expect(parseInnerMessage(inner).subject).toBe('the real subject');
+		expect(parseInnerMessage(utf8(inner)).subject).toBe('the real subject');
 	});
 
 	it('returns a bare non-MIME payload verbatim as text (inline armor)', () => {
 		// No Content-Type / MIME-Version → not a MIME entity. Multi-paragraph, so a
 		// naive header/body split would swallow the first paragraph as headers.
 		const bare = 'First paragraph.\r\n\r\nSecond paragraph, no headers at all.';
-		const r = parseInnerMessage(bare);
+		const r = parseInnerMessage(utf8(bare));
 		expect(r.text).toBe(bare);
 		expect(r.subject).toBeUndefined();
 		expect(r.html).toBeUndefined();
@@ -406,7 +412,7 @@ describe('e2ee/inboundSeal · parseInnerMessage', () => {
 
 	it('returns a single-line non-MIME payload (no blank line) verbatim as text', () => {
 		const bare = 'just one line, no blank line, no headers';
-		const r = parseInnerMessage(bare);
+		const r = parseInnerMessage(utf8(bare));
 		expect(r.text).toBe(bare);
 		expect(r.subject).toBeUndefined();
 		expect(r.html).toBeUndefined();
@@ -416,7 +422,7 @@ describe('e2ee/inboundSeal · parseInnerMessage', () => {
 		// A body line that happens to look header-shaped must NOT trigger MIME
 		// parsing — only a real `Content-Type:` / `MIME-Version:` does.
 		const bare = 'Note: this is body text\r\n\r\nand more body';
-		const r = parseInnerMessage(bare);
+		const r = parseInnerMessage(utf8(bare));
 		expect(r.text).toBe(bare);
 		expect(r.subject).toBeUndefined();
 	});

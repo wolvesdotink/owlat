@@ -23,7 +23,7 @@ import {
 	groupFingerprint,
 	recoveryKitFilename,
 } from '../recoveryKit';
-import { enableSealedMail, modules } from './sealedMailTestHelpers';
+import { enableSealedMail, modules, utf8Text } from './sealedMailTestHelpers';
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
@@ -134,7 +134,7 @@ describe('e2ee/recoveryKit export -> wipe -> import round-trip', () => {
 		});
 		expect(outcome.status).toBe('opened');
 		if (outcome.status === 'opened') {
-			expect(outcome.innerMime).toContain('the sealed body');
+			expect(utf8Text(outcome.innerMime)).toContain('the sealed body');
 		}
 	});
 
@@ -180,11 +180,13 @@ describe('e2ee/recoveryKit export -> wipe -> import round-trip', () => {
 
 		const outcomeA = await openSealed({ raw: sealedToA, recipientPrivateKeysArmored });
 		expect(outcomeA.status).toBe('opened');
-		if (outcomeA.status === 'opened') expect(outcomeA.innerMime).toContain('sealed to key A');
+		if (outcomeA.status === 'opened')
+			expect(utf8Text(outcomeA.innerMime)).toContain('sealed to key A');
 
 		const outcomeB = await openSealed({ raw: sealedToB, recipientPrivateKeysArmored });
 		expect(outcomeB.status).toBe('opened');
-		if (outcomeB.status === 'opened') expect(outcomeB.innerMime).toContain('sealed to key B');
+		if (outcomeB.status === 'opened')
+			expect(utf8Text(outcomeB.innerMime)).toContain('sealed to key B');
 	});
 
 	it('rejects an import whose key does not certify the address', async () => {

@@ -39,6 +39,11 @@ export interface ExtractedAttachment {
 	contentType: string;
 	contentId?: string;
 	disposition: 'attachment' | 'inline';
+	/**
+	 * The `charset` its `Content-Type` declares, if any. `bytes` are not
+	 * charset-decoded, so a text part is read with this.
+	 */
+	charset?: string;
 	bytes: Uint8Array<ArrayBuffer>;
 }
 
@@ -52,6 +57,7 @@ function toExtracted(leaf: MimeNode, fallbackName: string): ExtractedAttachment 
 		contentType: leaf.contentType.value,
 		contentId: stripBrackets(leaf.headers.last('content-id')),
 		disposition: partDisposition(leaf),
+		charset: leaf.contentType.params['charset'],
 		bytes: transferDecode(leaf.rawBody, leaf.headers.last('content-transfer-encoding')),
 	};
 }
