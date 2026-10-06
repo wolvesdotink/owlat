@@ -874,7 +874,7 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 			new Redis() as never
 		);
 		const headerBlock = signedBytes.toString('latin1').split('\r\n\r\n')[0]!;
-		expect(headerBlock).toMatch(/^[\x00-\x7f]*$/);
+		expect(headerBlock).not.toMatch(/[\u0080-\uffff]/);
 		expect(headerBlock).toMatch(/^Subject: =\?UTF-8\?/m);
 		expect(parseMessage(signedBytes).subject).toBe(subject);
 	});
