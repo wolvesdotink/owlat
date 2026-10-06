@@ -126,6 +126,7 @@ type DraftRow = {
 		filename: string;
 		contentType: string;
 		size: number;
+		isInline?: boolean;
 	}>;
 };
 
@@ -163,18 +164,24 @@ export function usePostboxComposeHydration(
 				fields.bodyBlocks.value = [];
 			}
 		}
-		// Not part of the autosaved snapshot (each has its own targeted write),
-		// so a value already present simply stays.
+		// Not part of the autosaved snapshot (it has its own targeted write), so
+		// a value already present simply stays.
 		if (!fields.fromAddress.value && draft.fromAddress) {
 			fields.fromAddress.value = draft.fromAddress;
 		}
+		// The row's files, but never an inline body image: it renders in the
+		// body, not as a chip. A file attached while the row loaded is on the row
+		// already; usePostboxComposeExpected joins the row's other files to it
+		// once the state turns 'ready', so this only fills an empty list.
 		if (fields.attachments.value.length === 0) {
-			fields.attachments.value = (draft.attachments ?? []).map((a) => ({
-				storageId: a.storageId,
-				filename: a.filename,
-				contentType: a.contentType,
-				size: a.size,
-			}));
+			fields.attachments.value = (draft.attachments ?? [])
+				.filter((a) => !a.isInline)
+				.map((a) => ({
+					storageId: a.storageId,
+					filename: a.filename,
+					contentType: a.contentType,
+					size: a.size,
+				}));
 		}
 	}
 
