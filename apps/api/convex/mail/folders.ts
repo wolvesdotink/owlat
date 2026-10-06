@@ -67,6 +67,29 @@ const FOLDER_RELOCATE_BATCH = 256;
 
 const RESERVED_NAMES = new Set(['INBOX', 'Sent', 'Drafts', 'Trash', 'Spam', 'Archive']);
 
+/**
+ * A folder name may not hold a C0 control character or DEL. IMAP clients see
+ * the name (RFC 3501 §5.1.3), and many cannot address a folder whose name
+ * holds a line break. The IMAP server still frames an existing such name
+ * safely, such as one mirrored from a provider.
+ */
+function hasControlChar(name: string): boolean {
+	for (let i = 0; i < name.length; i++) {
+		const code = name.charCodeAt(i);
+		if (code < 0x20 || code === 0x7f) return true;
+	}
+	return false;
+}
+
+/** Trim a folder name a user typed and refuse one no folder may have. */
+function validFolderName(name: string): string {
+	const trimmed = name.trim();
+	if (!trimmed) throwInvalidInput('Folder name required');
+	if (hasControlChar(trimmed)) throwInvalidInput('Folder name cannot contain control characters');
+	if (RESERVED_NAMES.has(trimmed)) throwInvalidInput('Reserved system folder name');
+	return trimmed;
+}
+
 export const create = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
@@ -77,9 +100,7 @@ export const create = postboxMutation({
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
 
-		const trimmed = args.name.trim();
-		if (!trimmed) throwInvalidInput('Folder name required');
-		if (RESERVED_NAMES.has(trimmed)) throwInvalidInput('Reserved system folder name');
+		const trimmed = validFolderName(args.name);
 
 		const conflict = await ctx.db
 			.query('mailFolders')
@@ -124,9 +145,7 @@ export const rename = postboxMutation({
 		const owned = await requireMailboxAccess(ctx, folder.mailboxId);
 		if (!owned.ok) throwForbidden('Folder not accessible');
 
-		const trimmed = args.name.trim();
-		if (!trimmed) throwInvalidInput('Folder name required');
-		if (RESERVED_NAMES.has(trimmed)) throwInvalidInput('Reserved system folder name');
+		const trimmed = validFolderName(args.name);
 
 		const conflict = await ctx.db
 			.query('mailFolders')
