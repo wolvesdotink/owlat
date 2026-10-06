@@ -39,15 +39,21 @@ vi.mock('../postboxAttachmentUploads', async (importActual) => ({
 let draftAttachments: string[];
 let releaseAttach: () => void;
 let removeAttachment: ReturnType<typeof vi.fn>;
+/** When set, the upload URL request never answers (the connection dropped). */
+let urlHangs: boolean;
 
 beforeEach(() => {
 	draftAttachments = [];
+	urlHangs = false;
 	removeAttachment = vi.fn(async (args: { storageId: string }) => {
 		draftAttachments = draftAttachments.filter((s) => s !== args.storageId);
 		return { ok: true, result: { ok: true } };
 	});
 	const ops: Record<string, (args: never) => Promise<unknown>> = {
-		'storage.generateUploadUrl': async () => ({ ok: true, result: 'https://upload.example' }),
+		'storage.generateUploadUrl': () =>
+			urlHangs
+				? new Promise(() => {})
+				: Promise.resolve({ ok: true, result: 'https://upload.example' }),
 		// The attach commits only when the test lets it.
 		'drafts.addAttachment': (args: { storageId: string }) =>
 			new Promise((resolve) => {
@@ -101,6 +107,26 @@ describe('usePostboxComposeAttachments: cancel while the file attaches', () => {
 		});
 		expect(draftAttachments).toEqual([]);
 		expect(composer.attachments.value).toEqual([]);
+		expect(composer.uploads.value).toEqual([]);
+		expect(composer.isUploading.value).toBe(false);
+	});
+
+	it('releases Send at once for a cancel made before the attach, even offline', async () => {
+		urlHangs = true;
+		const { usePostboxComposeAttachments } = await import('../usePostboxComposeAttachments');
+		const composer = withSetup(() =>
+			usePostboxComposeAttachments({
+				ensureDraft: async () => 'draft-1' as never,
+				draftId: ref('draft-1' as never),
+			})
+		).result;
+
+		await composer.addFiles([new File(['x'], 'salary.xlsx')]);
+		await flush();
+		expect(composer.isUploading.value).toBe(true);
+
+		composer.cancelUpload(composer.uploads.value[0]!.id);
+		await flush();
 		expect(composer.uploads.value).toEqual([]);
 		expect(composer.isUploading.value).toBe(false);
 	});

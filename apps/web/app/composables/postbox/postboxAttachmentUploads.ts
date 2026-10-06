@@ -10,8 +10,10 @@
  * the point an abort reaches (the attach mutation takes no signal). The run
  * then sees its aborted signal when that step returns: it never commits the
  * file to the row, and an attach that went through anyway is undone with
- * `detach`. Until that settles `isUploading` stays true, so Send waits rather
- * than sending the file the person cancelled.
+ * `detach`. A cancel made while the attach call is in flight keeps
+ * `isUploading` true until that settles, so Send waits rather than sending the
+ * file the person cancelled. An earlier cancel holds nothing: the run stops
+ * before attaching, however long the step it is waiting on takes.
  *
  * The transport is injected (generateUploadUrl / putFile / attach / detach) so
  * the state machine is unit-testable with a mocked transport and never imports
@@ -106,12 +108,16 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 	// doesn't churn the render.
 	const files = new Map<string, File>();
 	const controllers = new Map<string, AbortController>();
-	// Cancelled uploads whose run has not finished: the attach may still land,
-	// so the draft is not settled until each one is.
-	const settling = ref(0);
+	// Chips whose attach call is in flight. A cancel before that point needs no
+	// wait: the run stops before attaching, however long its earlier step hangs.
+	const attaching = new Set<string>();
+	// Cancelled chips whose attach was already in flight: it may still land, so
+	// the draft is not settled until each run has finished (and undone it).
+	const settling = new Set<string>();
+	const settlingCount = ref(0);
 
 	const isUploading = computed(
-		() => uploads.value.some((c) => c.status === 'uploading') || settling.value > 0
+		() => uploads.value.some((c) => c.status === 'uploading') || settlingCount.value > 0
 	);
 
 	function patch(id: string, next: Partial<UploadChip>) {
@@ -157,6 +163,7 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 				contentType,
 				size: file.size,
 			};
+			attaching.add(id);
 			const ok = await deps.attach(attachment);
 			if (cancelled()) {
 				// The chip is gone, so the file must not be on the draft either.
@@ -186,7 +193,8 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 			patch(id, { status: 'failed', indeterminate: false });
 		} finally {
 			controllers.delete(id);
-			if (cancelled()) settling.value -= 1;
+			attaching.delete(id);
+			if (settling.delete(id)) settlingCount.value = settling.size;
 		}
 	}
 
@@ -227,7 +235,10 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 			// Abort -> run() stops at its next step and undoes an attach that
 			// lands anyway. Guard in case the transport ignores the signal: drop
 			// the chip here too.
-			settling.value += 1;
+			if (attaching.has(id)) {
+				settling.add(id);
+				settlingCount.value = settling.size;
+			}
 			controller.abort();
 		}
 		if (uploads.value.some((c) => c.id === id)) forget(id);

@@ -47,6 +47,8 @@ let releaseAdd: () => void;
 let removeOp: ReturnType<typeof vi.fn>;
 /** A teammate's edit that lands on the server just before our remove does. */
 let teammateEdit: (() => void) | null;
+/** When set, the upload URL request never answers (the connection dropped). */
+let urlHangs: boolean;
 
 const view = (entries: Omit<Entry, 'index'>[]): Entry[] =>
 	entries.map((entry, index) => ({ ...entry, index }));
@@ -55,6 +57,7 @@ beforeEach(() => {
 	// A teammate's file is already on the thread.
 	serverList.value = view([{ id: 'e_theirs', filename: 'terms.pdf', size: 10, status: 'ready' }]);
 	teammateEdit = null;
+	urlHangs = false;
 	// The server's `remove`: by id when one is sent, else by position.
 	removeOp = vi.fn(async (args: { index: number; id?: string }) => {
 		teammateEdit?.();
@@ -66,7 +69,10 @@ beforeEach(() => {
 		return { ok: true, result: serverList.value };
 	});
 	const ops: Record<string, (args: never) => Promise<unknown>> = {
-		'storage.generateUploadUrl': async () => ({ ok: true, result: 'https://upload.example' }),
+		'storage.generateUploadUrl': () =>
+			urlHangs
+				? new Promise(() => {})
+				: Promise.resolve({ ok: true, result: 'https://upload.example' }),
 		'replyAttachments.add': (args: { filename: string }) =>
 			new Promise((resolve) => {
 				releaseAdd = () => {
@@ -114,6 +120,23 @@ describe('useTeamReplyAttachments: cancel while the file attaches', () => {
 		expect(removeOp).toHaveBeenCalledWith({ threadId: 'th_1', index: 1, id: 'e_salary' });
 		expect(serverList.value.map((entry) => entry.filename)).toEqual(['terms.pdf']);
 		expect(files.attachments.value.map((entry) => entry.filename)).toEqual(['terms.pdf']);
+		expect(files.uploads.value).toEqual([]);
+		expect(files.block.value).toBeNull();
+	});
+});
+
+describe('useTeamReplyAttachments: cancel before the attach', () => {
+	it('releases Send at once, even while the upload URL request hangs', async () => {
+		urlHangs = true;
+		const { useTeamReplyAttachments } = await import('../useTeamReplyAttachments');
+		const files = withSetup(() => useTeamReplyAttachments(() => 'th_1' as never)).result;
+
+		files.addFiles([new File(['x'], 'salary.xlsx')]);
+		await flush();
+		expect(files.block.value).toBe('uploading');
+
+		files.cancelUpload(files.uploads.value[0]!.id);
+		await flush();
 		expect(files.uploads.value).toEqual([]);
 		expect(files.block.value).toBeNull();
 	});

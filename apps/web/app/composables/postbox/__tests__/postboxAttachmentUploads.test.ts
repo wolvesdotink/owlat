@@ -282,17 +282,67 @@ describe('createAttachmentUploads state machine', () => {
 			expect(uploader.isUploading.value).toBe(false);
 		});
 
-		it('a cancel while the upload URL is minted settles the run', async () => {
+		it('a cancel while the upload URL is minted releases Send at once and settles the run', async () => {
 			const urlCall = deferred<string | null>();
 			const { uploader, deps } = harness({ generateUploadUrl: vi.fn(() => urlCall.promise) });
 			uploader.addFiles([makeFile('a.txt', 10)]);
 			uploader.cancel(uploader.uploads.value[0]!.id);
 			expect(uploader.uploads.value).toHaveLength(0);
-			expect(uploader.isUploading.value).toBe(true);
+			// Offline, the URL request can hang until reconnect; the run stops
+			// before attaching anyway, so Send is not held for it.
+			await tick();
+			expect(uploader.isUploading.value).toBe(false);
 
 			urlCall.resolve('https://upload.example');
 			await tick();
 			expect(deps.putFile).not.toHaveBeenCalled();
+			expect(deps.attach).not.toHaveBeenCalled();
+			expect(uploader.isUploading.value).toBe(false);
+		});
+
+		it('a cancel while the bytes go out does not hold Send', async () => {
+			const { uploader, deps, puts } = harness();
+			uploader.addFiles([makeFile('a.txt', 10)]);
+			await tick();
+			// This transport ignores the abort and never settles.
+			uploader.cancel(uploader.uploads.value[0]!.id);
+			expect(uploader.isUploading.value).toBe(false);
+			puts[0]!.deferred.resolve('storage_late');
+			await tick();
+			expect(deps.attach).not.toHaveBeenCalled();
+			expect(uploader.isUploading.value).toBe(false);
+		});
+
+		it('only a cancel made during the attach holds Send, until that run settles', async () => {
+			const urlCalls: Array<Deferred<string | null>> = [];
+			const attachCall = deferred<boolean>();
+			const { uploader, deps, puts } = harness({
+				generateUploadUrl: vi.fn(() => {
+					const d = deferred<string | null>();
+					urlCalls.push(d);
+					return d.promise;
+				}),
+				attach: vi.fn(() => attachCall.promise),
+			});
+			uploader.addFiles([makeFile('early.txt', 10), makeFile('late.txt', 10)]);
+			const [early, late] = uploader.uploads.value.map((c) => c.id);
+			urlCalls[1]!.resolve('https://upload.example');
+			await tick();
+			puts[0]!.deferred.resolve('storage_late');
+			await tick();
+			expect(deps.attach).toHaveBeenCalledOnce();
+
+			uploader.cancel(early!);
+			uploader.cancel(late!);
+			expect(uploader.isUploading.value).toBe(true);
+
+			// The early run ends without having held anything; the late one still holds.
+			urlCalls[0]!.resolve('https://upload.example');
+			await tick();
+			expect(uploader.isUploading.value).toBe(true);
+
+			attachCall.resolve(false);
+			await tick();
 			expect(uploader.isUploading.value).toBe(false);
 		});
 	});
