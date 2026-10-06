@@ -47,20 +47,23 @@ function satisfies(version: string, range: string): boolean {
 
 describe('rolldown in bun.lock', () => {
 	const packages = readLockPackages();
-	const rolldownCopies = Object.entries(packages).filter(([, entry]) =>
-		entry[0].startsWith('rolldown@')
-	);
+	const entry = (key: string): LockEntry => {
+		const found = packages[key];
+		if (!found) throw new Error(`${key} is missing from bun.lock`);
+		return found;
+	};
 
 	it('resolves a single copy', () => {
-		expect(rolldownCopies.map(([key, entry]) => `${key} -> ${entry[0]}`)).toEqual([
-			`rolldown -> ${packages.rolldown![0]}`,
+		const copies = Object.entries(packages).filter(([, value]) => value[0].startsWith('rolldown@'));
+		expect(copies.map(([key, value]) => `${key} -> ${value[0]}`)).toEqual([
+			`rolldown -> ${entry('rolldown')[0]}`,
 		]);
 	});
 
 	it("satisfies nuxt's peer range and vite's dependency range", () => {
-		const version = versionOf(packages.rolldown!);
-		const nuxtRange = packages.nuxt![2].peerDependencies!.rolldown!;
-		const viteRange = packages.vite![2].dependencies!.rolldown!;
+		const version = versionOf(entry('rolldown'));
+		const nuxtRange = entry('nuxt')[2].peerDependencies?.['rolldown'] ?? '';
+		const viteRange = entry('vite')[2].dependencies?.['rolldown'] ?? '';
 		expect(satisfies(version, nuxtRange), `rolldown ${version} vs nuxt ${nuxtRange}`).toBe(true);
 		expect(satisfies(version, viteRange), `rolldown ${version} vs vite ${viteRange}`).toBe(true);
 	});
