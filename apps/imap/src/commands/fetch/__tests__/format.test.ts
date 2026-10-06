@@ -5,6 +5,7 @@ import {
 	imapString,
 	imapAddrList,
 	formatEnvelope,
+	splitAddrSpec,
 	type FetchEnvelope,
 } from '../format.js';
 import { parseMessage } from '@owlat/mail-message';
@@ -274,9 +275,17 @@ describe('formatEnvelope', () => {
 		expect(fields[5]).toEqual([[null, null, '"a\tb"', 'example.com']]);
 	});
 
-	it('takes the host after the last @, so a quoted local part with @ stays whole', () => {
-		const fields = readEnvelope(formatEnvelope(envelope({ toAddresses: ['"a@b"@example.com'] })));
-		expect(fields[5]).toEqual([[null, null, '"a@b"', 'example.com']]);
+	it.each([
+		['user@[tag:foo@bar]', 'user', '[tag:foo@bar]'],
+		['"a@b"@example.com', '"a@b"', 'example.com'],
+		['"a\\"@b"@example.com', '"a\\"@b"', 'example.com'],
+		['user@[IPv6:::1]', 'user', '[IPv6:::1]'],
+		['a@b@example.com', 'a@b', 'example.com'],
+		['no-at-sign', 'no-at-sign', ''],
+	])('splits %s at the @ outside quotes and domain literals', (address, mailbox, host) => {
+		expect(splitAddrSpec(address)).toEqual({ mailbox, host });
+		const fields = readEnvelope(formatEnvelope(envelope({ toAddresses: [address] })));
+		expect(fields[5]).toEqual([[null, null, mailbox, host]]);
 	});
 
 	it('sends NIL for an id holding a control character, never a repaired id', () => {

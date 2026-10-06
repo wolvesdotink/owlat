@@ -142,13 +142,35 @@ export function imapAddrList(addrs: ReadonlyArray<{ name?: string; address: stri
 	const parts = addrs
 		.filter((a) => !INVALID_IN_TOKEN.test(a.address))
 		.map((a) => {
-			// The host follows the last `@`; a quoted local part may hold one too.
-			const at = a.address.lastIndexOf('@');
-			const user = at === -1 ? a.address : a.address.slice(0, at);
-			const host = at === -1 ? '' : a.address.slice(at + 1);
-			return `(${imapHeaderText(a.name)} NIL ${imapString(user)} ${imapString(host)})`;
+			const { mailbox, host } = splitAddrSpec(a.address);
+			return `(${imapHeaderText(a.name)} NIL ${imapString(mailbox)} ${imapString(host)})`;
 		});
 	return parts.length === 0 ? 'NIL' : `(${parts.join(' ')})`;
+}
+
+/**
+ * An addr-spec split into mailbox and host at its separating `@`: the last
+ * one outside a quoted local part (with its `\` escapes) and outside a `[...]`
+ * domain literal, either of which may hold `@` (RFC 5322 §3.4.1). With no such
+ * `@` the whole value is the mailbox and the host is empty.
+ */
+export function splitAddrSpec(address: string): { mailbox: string; host: string } {
+	let at = -1;
+	let quoted = false;
+	let literal = false;
+	for (let i = 0; i < address.length; i++) {
+		const ch = address[i];
+		if (quoted || literal) {
+			if (ch === '\\') i += 1;
+			else if (quoted && ch === '"') quoted = false;
+			else if (literal && ch === ']') literal = false;
+		} else if (ch === '"') quoted = true;
+		else if (ch === '[') literal = true;
+		else if (ch === '@') at = i;
+	}
+	return at === -1
+		? { mailbox: address, host: '' }
+		: { mailbox: address.slice(0, at), host: address.slice(at + 1) };
 }
 
 export function formatEnvelope(m: FetchEnvelope): string {
