@@ -72,8 +72,8 @@ async function scanAttachment(filename: string, data: Buffer): Promise<void> {
  * Rewrite the draft's inline images and buffer its attachments.
  *
  * Inline body images: rewrite each `<img data-inline-cid="X">` the Simple
- * composer embedded to a `cid:X` reference (the editor kept an ephemeral
- * blob/preview URL) and learn which content-IDs the body still references.
+ * composer embedded to a `cid:X` reference (the body holds no src, or a dead
+ * session preview from an older client) and learn which content-IDs it uses.
  * This runs BEFORE rendering so the wrapped body carries the final `cid:`
  * srcs, and BEFORE buffering attachments so an inline part whose image the
  * user deleted from the body is pruned rather than shipped.
