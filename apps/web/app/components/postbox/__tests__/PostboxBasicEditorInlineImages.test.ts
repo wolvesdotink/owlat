@@ -42,6 +42,12 @@ const STORED = `<p>Chart:</p><p><img data-inline-cid="${CID}" style="max-width:1
 /** What it saved before: the session's preview as the src. */
 const STORED_BEFORE_1285 = `<p>Chart:</p><p><img src="${DEAD_BLOB}" data-inline-cid="${CID}"></p>`;
 
+/** The URLs the composer hands the editor for one draft. */
+const sourcesOf = (scope: string, url?: string) => ({
+	scope,
+	urls: new Map(url ? [[CID, url]] : []),
+});
+
 function mountEditor(props: Record<string, unknown>) {
 	return mount(PostboxBasicEditor, {
 		props: { inlineImagesEnabled: true, ...props },
@@ -78,7 +84,10 @@ const lastEmitted = (w: ReturnType<typeof mountEditor>) => {
 
 describe('PostboxBasicEditor: inline images of a reopened draft', () => {
 	it("shows the image from the row part's URL", () => {
-		const w = mountEditor({ modelValue: STORED, inlineImageSources: new Map([[CID, ROW_URL]]) });
+		const w = mountEditor({
+			modelValue: STORED,
+			inlineImageSources: sourcesOf('draft_a', ROW_URL),
+		});
 		expect(imageSrc(w)).toBe(ROW_URL);
 		w.unmount();
 	});
@@ -86,7 +95,7 @@ describe('PostboxBasicEditor: inline images of a reopened draft', () => {
 	it('replaces the dead blob: src of a body saved before #1285', () => {
 		const w = mountEditor({
 			modelValue: STORED_BEFORE_1285,
-			inlineImageSources: new Map([[CID, ROW_URL]]),
+			inlineImageSources: sourcesOf('draft_a', ROW_URL),
 		});
 		expect(imageSrc(w)).toBe(ROW_URL);
 		w.unmount();
@@ -96,21 +105,47 @@ describe('PostboxBasicEditor: inline images of a reopened draft', () => {
 		const w = mountEditor({ modelValue: STORED_BEFORE_1285 });
 		expect(imageSrc(w)).toBe(DEAD_BLOB);
 
-		await w.setProps({ inlineImageSources: new Map([[CID, ROW_URL]]) });
+		await w.setProps({ inlineImageSources: sourcesOf('draft_a', ROW_URL) });
 		expect(imageSrc(w)).toBe(ROW_URL);
 		w.unmount();
 	});
 
 	it('moves the image to a renewed URL before the old one expires', async () => {
-		const w = mountEditor({ modelValue: STORED, inlineImageSources: new Map([[CID, ROW_URL]]) });
+		const w = mountEditor({
+			modelValue: STORED,
+			inlineImageSources: sourcesOf('draft_a', ROW_URL),
+		});
 		const renewed = `${ROW_URL}?exp=2`;
-		await w.setProps({ inlineImageSources: new Map([[CID, renewed]]) });
+		await w.setProps({ inlineImageSources: sourcesOf('draft_a', renewed) });
 		expect(imageSrc(w)).toBe(renewed);
 		w.unmount();
 	});
 
+	it("takes draft A's URL off the image when the editor moves on to draft B", async () => {
+		const w = mountEditor({
+			modelValue: STORED,
+			inlineImageSources: sourcesOf('draft_a', ROW_URL),
+		});
+		expect(imageSrc(w)).toBe(ROW_URL);
+
+		// Same saved HTML, same Content-ID; B's lookup has not answered yet.
+		await w.setProps({ inlineImageSources: sourcesOf('draft_b') });
+		expect(imageSrc(w)).toBeNull();
+		// Nor once it answers with nothing.
+		await w.setProps({ inlineImageSources: { scope: 'draft_b', urls: new Map() } });
+		expect(imageSrc(w)).toBeNull();
+		// The saved body was never touched by any of it.
+		await typeAtEnd(w, ' Thanks!');
+		expect(lastEmitted(w)).not.toContain('src=');
+
+		const B_URL = `${ROW_URL}&draft=b`;
+		await w.setProps({ inlineImageSources: sourcesOf('draft_b', B_URL) });
+		expect(imageSrc(w)).toBe(B_URL);
+		w.unmount();
+	});
+
 	it('fills it in for a draft the body reaches only after mount (hydration)', async () => {
-		const w = mountEditor({ modelValue: '', inlineImageSources: new Map([[CID, ROW_URL]]) });
+		const w = mountEditor({ modelValue: '', inlineImageSources: sourcesOf('draft_a', ROW_URL) });
 		await w.setProps({ modelValue: STORED_BEFORE_1285 });
 		expect(imageSrc(w)).toBe(ROW_URL);
 		w.unmount();
@@ -119,7 +154,7 @@ describe('PostboxBasicEditor: inline images of a reopened draft', () => {
 	it('never saves a src for the image, whatever it shows', async () => {
 		const w = mountEditor({
 			modelValue: STORED_BEFORE_1285,
-			inlineImageSources: new Map([[CID, ROW_URL]]),
+			inlineImageSources: sourcesOf('draft_a', ROW_URL),
 		});
 		await typeAtEnd(w, ' Thanks!');
 
@@ -147,7 +182,10 @@ describe('PostboxBasicEditor: inline images of a reopened draft', () => {
 	});
 
 	it('keeps showing the image when the body is written from outside (a share link)', async () => {
-		const w = mountEditor({ modelValue: STORED, inlineImageSources: new Map([[CID, ROW_URL]]) });
+		const w = mountEditor({
+			modelValue: STORED,
+			inlineImageSources: sourcesOf('draft_a', ROW_URL),
+		});
 		await typeAtEnd(w, ' Thanks!');
 		await w.setProps({ modelValue: lastEmitted(w)! });
 		await w.setProps({ modelValue: `${lastEmitted(w)}<p>Link: report.pdf</p>` });

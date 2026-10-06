@@ -107,7 +107,7 @@ describe('usePostboxInlineImages', () => {
 	});
 
 	it("gives a pasted image its preview back after the body is written again, until the row's URL is known", async () => {
-		const sources = ref<ReadonlyMap<string, string>>(new Map());
+		const sources = ref({ scope: 'draft_a', urls: new Map<string, string>() });
 		const { el, api } = setup({ sources: () => sources.value });
 		const event = {
 			clipboardData: { files: [imageFile('shot.png')] },
@@ -124,13 +124,39 @@ describe('usePostboxInlineImages', () => {
 		expect(el.querySelector('img')?.getAttribute('src')).toBe('blob:shot.png');
 
 		// The row part's URL outlives the tab, so it wins once it arrives.
-		sources.value = new Map([['cid-shot.png', 'https://storage.owlat.example/shot']]);
+		sources.value = {
+			scope: 'draft_a',
+			urls: new Map([['cid-shot.png', 'https://storage.owlat.example/shot']]),
+		};
 		await nextTick();
 		expect(el.querySelector('img')?.getAttribute('src')).toBe('https://storage.owlat.example/shot');
 	});
 
+	it("drops this draft's paste previews and URLs when another draft opens in the editor", async () => {
+		const sources = ref({ scope: 'draft_a', urls: new Map<string, string>() });
+		const { el, api } = setup({ sources: () => sources.value });
+		api.handlePaste({
+			clipboardData: { files: [imageFile('shot.png')] },
+			preventDefault: vi.fn(),
+			stopPropagation: vi.fn(),
+		} as unknown as ClipboardEvent);
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(el.querySelector('img')?.getAttribute('src')).toBe('blob:shot.png');
+
+		sources.value = { scope: 'draft_b', urls: new Map() };
+		await nextTick();
+		expect(el.querySelector('img')?.hasAttribute('src')).toBe(false);
+		// Written again (the stored form), it stays without one.
+		el.innerHTML = '<p><img data-inline-cid="cid-shot.png"></p>';
+		api.fillSources();
+		expect(el.querySelector('img')?.hasAttribute('src')).toBe(false);
+	});
+
 	it('leaves an image it has no URL for as it is', () => {
-		const { el, api } = setup({ sources: () => new Map([['other', 'https://x.example/o']]) });
+		const { el, api } = setup({
+			sources: () => ({ scope: 'draft_a', urls: new Map([['other', 'https://x.example/o']]) }),
+		});
 		el.innerHTML = '<p><img src="blob:dead" data-inline-cid="unknown"></p>';
 		api.fillSources();
 		expect(el.querySelector('img')?.getAttribute('src')).toBe('blob:dead');

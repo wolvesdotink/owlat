@@ -12,10 +12,12 @@
  * the draft, the timer, the tab becoming visible or focused, a new image in the
  * body) calls `kick`, and `kick` starts at most one request:
  *
- *   - never while one is in flight (a new image kicked meanwhile asks right
- *     after it);
+ *   - never while one is in flight (images new meanwhile are asked for in one
+ *     request right after it);
  *   - otherwise only once `nextAttemptAt` has passed, except for the timer
- *     (armed to exactly that time) and a new image, which ask at once.
+ *     (armed to exactly that time) and an image never asked for in this draft,
+ *     which asks at once. Putting back an image that was there before (undo
+ *     after a delete) is not new: it waits like everything else.
  *
  * A complete answer sets `nextAttemptAt` from the lifetime the server reports
  * (`expiresInMs`, counted from when the answer arrived: five minutes early and
@@ -33,6 +35,7 @@
  */
 
 import { computed, onScopeDispose, shallowRef, watch, type Ref } from 'vue';
+import type { InlineImageSources } from './usePostboxInlineImages';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { whenConvexAuthenticated } from '~/lib/convexAuthReady';
@@ -76,14 +79,16 @@ export function usePostboxDraftInlineImages(
 	const mint = options.mint ?? defaultMint;
 	const whenAuthenticated = options.whenAuthenticated ?? whenConvexAuthenticated;
 	const now = options.now ?? Date.now;
-	const sources = shallowRef<ReadonlyMap<string, string>>(new Map());
+	const urls = shallowRef<ReadonlyMap<string, string>>(new Map());
+	const scope = shallowRef<string | null>(null);
 	const contentIds = computed(() => inlineContentIds(bodyHtml.value));
 
 	// The state of the current draft. `generation` changes with the draft (and
 	// on dispose); a request only touches the state of the generation it began in.
 	let generation = 0;
 	let inFlight = false;
-	let newImageWhileInFlight = false;
+	/** Every Content-ID a request of this draft has asked for. */
+	let requested = new Set<string>();
 	let nextAttemptAt = 0;
 	let failureCount = 0;
 	let abort = new AbortController();
@@ -101,22 +106,22 @@ export function usePostboxDraftInlineImages(
 		timer = setTimeout(() => kick('timer'), Math.max(0, nextAttemptAt - now()));
 	}
 
+	/** Whether the body holds an image no request of this draft has asked for. */
+	const hasUnaskedImage = () => contentIds.value.some((cid) => !requested.has(cid));
+
 	/** The single way a request starts. */
 	function kick(reason: KickReason) {
 		const id = draftId.value;
-		if (disposed || !id || contentIds.value.length === 0) return;
-		if (inFlight) {
-			if (reason === 'new-image') newImageWhileInFlight = true;
-			return;
-		}
-		const due = reason === 'timer' || reason === 'new-image' || now() >= nextAttemptAt;
+		if (disposed || inFlight || !id || contentIds.value.length === 0) return;
+		const due =
+			reason === 'timer' || (reason === 'new-image' && hasUnaskedImage()) || now() >= nextAttemptAt;
 		if (!due) return;
 		void request(id, generation);
 	}
 
 	async function request(id: Id<'mailDrafts'>, mine: number) {
 		inFlight = true;
-		newImageWhileInFlight = false;
+		for (const cid of contentIds.value) requested.add(cid);
 		clearTimer();
 		const { signal } = abort;
 		let answer: InlineImageUrl[] | null = null;
@@ -132,9 +137,9 @@ export function usePostboxDraftInlineImages(
 		inFlight = false;
 		const receivedAt = now();
 		if (answer) {
-			const next = new Map(sources.value);
+			const next = new Map(urls.value);
 			for (const part of answer) next.set(part.contentId, part.url);
-			sources.value = next;
+			urls.value = next;
 		}
 		const lifetimes = (answer ?? []).flatMap((part) => part.expiresInMs ?? []);
 		const renewAt =
@@ -151,8 +156,8 @@ export function usePostboxDraftInlineImages(
 			nextAttemptAt = Math.min(renewAt, receivedAt + backoff(failureCount));
 		}
 		armTimer();
-		// An image added while this was in flight was not part of what it asked.
-		if (newImageWhileInFlight) kick('new-image');
+		// Images added while this was in flight go out together, in one request.
+		kick('new-image');
 	}
 
 	/** Back from sleep or a background tab. */
@@ -172,10 +177,11 @@ export function usePostboxDraftInlineImages(
 		abort = new AbortController();
 		clearTimer();
 		inFlight = false;
-		newImageWhileInFlight = false;
+		requested = new Set();
 		nextAttemptAt = 0;
 		failureCount = 0;
-		sources.value = new Map();
+		urls.value = new Map();
+		scope.value = draftId.value;
 	}
 
 	watch(
@@ -186,10 +192,11 @@ export function usePostboxDraftInlineImages(
 		},
 		{ immediate: true }
 	);
-	watch(contentIds, (ids, previous) => {
-		const before = new Set(previous ?? []);
-		if (ids.some((cid) => !before.has(cid))) kick('new-image');
-	});
+	// Only a change in the set of images, not every keystroke.
+	watch(
+		() => contentIds.value.join('|'),
+		() => kick('new-image')
+	);
 
 	onScopeDispose(() => {
 		disposed = true;
@@ -202,5 +209,5 @@ export function usePostboxDraftInlineImages(
 		}
 	});
 
-	return sources;
+	return computed<InlineImageSources>(() => ({ scope: scope.value, urls: urls.value }));
 }

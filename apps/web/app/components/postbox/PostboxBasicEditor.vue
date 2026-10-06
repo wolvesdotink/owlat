@@ -19,7 +19,10 @@ import { usePostboxEditorDocument } from '~/composables/postbox/usePostboxEditor
 import { usePostboxGhostOverlay } from '~/composables/postbox/usePostboxGhostOverlay';
 import { usePostboxRewriteController } from '~/composables/postbox/usePostboxRewriteController';
 import { usePostboxFloatingFormatBar } from '~/composables/postbox/usePostboxFloatingFormatBar';
-import { usePostboxInlineImages } from '~/composables/postbox/usePostboxInlineImages';
+import {
+	usePostboxInlineImages,
+	type InlineImageSources,
+} from '~/composables/postbox/usePostboxInlineImages';
 import { usePostboxEmojiPicker } from '~/composables/postbox/usePostboxEmojiPicker';
 import { usePostboxEditorInput } from '~/composables/postbox/usePostboxEditorInput';
 import { matchAsciiSmiley } from '~/utils/postboxEmojiShortcodes';
@@ -71,7 +74,7 @@ const props = defineProps<{
 	 * Display URLs of the inline images already on the draft, by Content-ID. The
 	 * saved body keeps no src for them, so a reopened draft shows them from here.
 	 */
-	inlineImageSources?: ReadonlyMap<string, string>;
+	inlineImageSources?: InlineImageSources;
 	/** Enable the `:shortcode:` emoji picker + ASCII-smiley conversion (opt-in). */
 	emojiShortcodesEnabled?: boolean;
 	/**

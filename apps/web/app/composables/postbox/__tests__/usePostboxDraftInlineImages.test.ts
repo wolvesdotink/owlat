@@ -103,7 +103,7 @@ describe('usePostboxDraftInlineImages', () => {
 			vi.fn(async () => [part(1)])
 		);
 		await settle();
-		expect(sources.value.get(CID)).toContain('id=s1&');
+		expect(sources.value.urls.get(CID)).toContain('id=s1&');
 	});
 
 	it('waits for Convex auth before it asks', async () => {
@@ -119,7 +119,7 @@ describe('usePostboxDraftInlineImages', () => {
 		authenticate(true);
 		await settle();
 		expect(mint).toHaveBeenCalledTimes(1);
-		expect(sources.value.get(CID)).toContain('id=s1&');
+		expect(sources.value.urls.get(CID)).toContain('id=s1&');
 	});
 
 	it('asks again after an empty answer, with the body unchanged', async () => {
@@ -129,12 +129,12 @@ describe('usePostboxDraftInlineImages', () => {
 			.mockResolvedValue([part(2)]);
 		const { sources } = setup(DRAFT, IMAGE_BODY, mint);
 		await settle();
-		expect(sources.value.has(CID)).toBe(false);
+		expect(sources.value.urls.has(CID)).toBe(false);
 
 		await vi.advanceTimersByTimeAsync(15_000);
 		await settle();
 		expect(mint).toHaveBeenCalledTimes(2);
-		expect(sources.value.get(CID)).toContain('id=s2&');
+		expect(sources.value.urls.get(CID)).toContain('id=s2&');
 	});
 
 	it('backs off while an image stays unresolved, up to five minutes', async () => {
@@ -168,12 +168,12 @@ describe('usePostboxDraftInlineImages', () => {
 		await vi.advanceTimersByTimeAsync(50 * MIN);
 		await settle();
 		expect(mint).toHaveBeenCalledTimes(2);
-		expect(sources.value.get(CID)).toContain('id=s1&');
+		expect(sources.value.urls.get(CID)).toContain('id=s1&');
 
 		await vi.advanceTimersByTimeAsync(15_000);
 		await settle();
 		expect(mint).toHaveBeenCalledTimes(3);
-		expect(sources.value.get(CID)).toContain('id=s3&');
+		expect(sources.value.urls.get(CID)).toContain('id=s3&');
 	});
 
 	it.each([
@@ -189,7 +189,7 @@ describe('usePostboxDraftInlineImages', () => {
 		await vi.advanceTimersByTimeAsync(50 * MIN);
 		await settle();
 		expect(mint).toHaveBeenCalledTimes(2);
-		expect(sources.value.get(CID)).toContain('id=s2&');
+		expect(sources.value.urls.get(CID)).toContain('id=s2&');
 	});
 
 	it('renews at once when a tab wakes up past its renewal time', async () => {
@@ -203,7 +203,7 @@ describe('usePostboxDraftInlineImages', () => {
 		document.dispatchEvent(new Event('visibilitychange'));
 		await settle();
 		expect(mint).toHaveBeenCalledTimes(2);
-		expect(sources.value.get(CID)).toContain('id=s2&');
+		expect(sources.value.urls.get(CID)).toContain('id=s2&');
 
 		// Waking early changes nothing.
 		window.dispatchEvent(new Event('focus'));
@@ -230,7 +230,7 @@ describe('usePostboxDraftInlineImages', () => {
 
 		pending.resolve([part(2)]);
 		await settle();
-		expect(sources.value.get(CID)).toContain('id=s2&');
+		expect(sources.value.urls.get(CID)).toContain('id=s2&');
 		window.dispatchEvent(new Event('focus'));
 		await settle();
 		expect(mint).toHaveBeenCalledTimes(2);
@@ -311,15 +311,15 @@ describe('usePostboxDraftInlineImages', () => {
 		const mint = vi.fn(async (id: string) => (id === DRAFT ? [part(1)] : []));
 		const { draft, sources } = setup(DRAFT, IMAGE_BODY, mint);
 		await settle();
-		expect(sources.value.get(CID)).toContain('id=s1&');
+		expect(sources.value.urls.get(CID)).toContain('id=s1&');
 
 		draft.value = 'draft_2' as Id<'mailDrafts'>;
 		// Cleared in the pre-render flush, before B's request has even started.
 		await nextTick();
-		expect(sources.value.has(CID)).toBe(false);
+		expect(sources.value.urls.has(CID)).toBe(false);
 		await settle();
 		expect(mint).toHaveBeenLastCalledWith('draft_2');
-		expect(sources.value.has(CID)).toBe(false);
+		expect(sources.value.urls.has(CID)).toBe(false);
 	});
 
 	it("drops draft A's answer when it arrives after the switch to B", async () => {
@@ -332,7 +332,69 @@ describe('usePostboxDraftInlineImages', () => {
 		await settle();
 		forA.resolve([part(1)]);
 		await settle();
-		expect(sources.value.has(CID)).toBe(false);
+		expect(sources.value.urls.has(CID)).toBe(false);
+	});
+
+	it('does not count putting back a known image as new: undo after delete waits out the backoff', async () => {
+		const mint = vi
+			.fn()
+			.mockResolvedValueOnce([part(1)])
+			.mockRejectedValueOnce(new Error('offline'))
+			.mockResolvedValue([part(3)]);
+		const { html } = setup(DRAFT, IMAGE_BODY, mint);
+		await settle();
+		// The renewal fails: 15 s of backoff.
+		await vi.advanceTimersByTimeAsync(50 * MIN);
+		await settle();
+		expect(mint).toHaveBeenCalledTimes(2);
+
+		for (let i = 0; i < 20; i++) {
+			html.value = '<p>Deleted.</p>';
+			await settle();
+			html.value = IMAGE_BODY;
+			await settle();
+		}
+		expect(mint).toHaveBeenCalledTimes(2);
+
+		await vi.advanceTimersByTimeAsync(15_000);
+		await settle();
+		expect(mint).toHaveBeenCalledTimes(3);
+	});
+
+	it('asks for five images added in quick succession in at most two requests', async () => {
+		const pending = deferred<ReturnType<typeof part>[]>();
+		const mint = vi
+			.fn()
+			.mockResolvedValueOnce([part(1)])
+			.mockReturnValueOnce(pending.promise)
+			.mockResolvedValue([part(3)]);
+		const { html } = setup(DRAFT, IMAGE_BODY, mint);
+		await settle();
+		expect(mint).toHaveBeenCalledTimes(1);
+
+		for (let i = 1; i <= 5; i++) {
+			html.value += `<p><img data-inline-cid="new-${i}@owlat.inline"></p>`;
+			await settle();
+		}
+		pending.resolve([part(2)]);
+		await settle();
+		await vi.advanceTimersByTimeAsync(1_000);
+		await settle();
+		expect(mint.mock.calls.length - 1).toBeLessThanOrEqual(2);
+		expect(mint.mock.calls.length - 1).toBeGreaterThanOrEqual(1);
+	});
+
+	it('names the draft its URLs belong to', async () => {
+		const { draft, sources } = setup(
+			DRAFT,
+			IMAGE_BODY,
+			vi.fn(async () => [part(1)])
+		);
+		await settle();
+		expect(sources.value.scope).toBe(DRAFT);
+		draft.value = 'draft_2' as Id<'mailDrafts'>;
+		await nextTick();
+		expect(sources.value.scope).toBe('draft_2');
 	});
 
 	it('does not renew a URL that carries no lifetime', async () => {

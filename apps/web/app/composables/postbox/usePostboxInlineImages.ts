@@ -9,7 +9,10 @@
  * That `blob:` preview dies with the tab, so the draft stores the image without
  * a `src` (`serializeComposerBody`) and `fillSources()` puts one back after
  * every write of the body: this session's preview, else the URL of the row's
- * inline part (`sources`, #1285), which is what a reopened draft shows.
+ * inline part (`sources`, #1285), which is what a reopened draft shows. A URL
+ * that is withdrawn (another draft opened in the same editor, a part no longer
+ * on the row) comes off the image again, and so do this draft's previews when
+ * another draft opens.
  *
  * Deleting the image from the body (select + Backspace) drops the pending inline
  * part: `reconcile()` diffs the tracked content-IDs against what's still in the
@@ -34,8 +37,14 @@ export interface InlineImagesOptions {
 	onRemoveEmbeddedImage: () => ((contentId: string) => void) | undefined;
 	/** Re-emit + re-sync the draft after an insertion. */
 	emitContent: () => void;
-	/** Display URLs of the inline parts already on the draft row, by Content-ID. */
-	sources?: () => ReadonlyMap<string, string> | undefined;
+	/** Display URLs of the inline parts already on the draft row. */
+	sources?: () => InlineImageSources | undefined;
+}
+
+/** The URLs of one draft's inline parts, by Content-ID; `scope` names the draft. */
+export interface InlineImageSources {
+	scope: string | null;
+	urls: ReadonlyMap<string, string>;
 }
 
 export function usePostboxInlineImages(opts: InlineImagesOptions) {
@@ -45,6 +54,10 @@ export function usePostboxInlineImages(opts: InlineImagesOptions) {
 	// This session's preview URL per inserted image, for when the body is
 	// written again (the stored form has no src) before the row's URL is known.
 	const previews = new Map<string, string>();
+	// Every URL this editor put on an image, so one that is withdrawn can come off.
+	const applied = new Set<string>();
+	// The draft the previews belong to.
+	let scope: string | null = null;
 
 	function active(): boolean {
 		return opts.enabled() && !!opts.embedImage();
@@ -73,6 +86,7 @@ export function usePostboxInlineImages(opts: InlineImagesOptions) {
 			range.collapse(false);
 		}
 		previews.set(contentId, previewUrl);
+		applied.add(previewUrl);
 		range.insertNode(img);
 		range.setStartAfter(img);
 		range.collapse(true);
@@ -119,12 +133,17 @@ export function usePostboxInlineImages(opts: InlineImagesOptions) {
 	 * once known (it outlives the tab), else this session's preview.
 	 */
 	function fillSources() {
+		const stored = opts.sources?.();
+		// Another draft in this editor: the previous one's previews are not its own.
+		// (A new draft getting its first id is the same draft.)
+		const nextScope = stored?.scope ?? null;
+		if (scope !== null && nextScope !== null && nextScope !== scope) previews.clear();
+		if (nextScope !== null) scope = nextScope;
 		const el = opts.editorRef.value;
 		if (!el) return;
-		const stored = opts.sources?.();
-		fillInlineImageSources(el, (cid) => stored?.get(cid) ?? previews.get(cid));
+		fillInlineImageSources(el, (cid) => stored?.urls.get(cid) ?? previews.get(cid), applied);
 	}
-	watch(() => opts.sources?.(), fillSources);
+	watch(() => opts.sources?.(), fillSources, { immediate: true });
 
 	/**
 	 * Handle a paste: if inline images are enabled and the clipboard carries
