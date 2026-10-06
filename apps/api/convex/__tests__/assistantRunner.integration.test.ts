@@ -5,6 +5,9 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { enableFeatures } from './factories';
 import { runLlmStream } from '../lib/llm/dispatch';
+import { LlmPartialUsageError } from '../lib/llm/partialUsage';
+import { recordLlmSpend } from '../analytics/llmUsage';
+import type * as LlmUsageModule from '../analytics/llmUsage';
 
 /**
  * Conversation runner orchestration with a MOCKED LLM stream: it must drive the
@@ -45,6 +48,12 @@ vi.mock('../lib/llm/dispatch', async () => {
 	return { ...actual, runLlmStream: vi.fn() };
 });
 
+// The ledger helper, real by default; a test makes one write throw.
+vi.mock('../analytics/llmUsage', async () => {
+	const actual = await vi.importActual<typeof LlmUsageModule>('../analytics/llmUsage');
+	return { ...actual, recordLlmSpend: vi.fn(actual.recordLlmSpend) };
+});
+
 function makeT() {
 	const t = convexTest(schema, modules);
 	rateLimiterTest.register(t);
@@ -65,7 +74,25 @@ async function startTurn(t: ReturnType<typeof makeT>) {
 beforeEach(() => {
 	sess.user = { userId: 'user-a', role: 'owner' };
 	vi.mocked(runLlmStream).mockReset();
+	vi.mocked(recordLlmSpend).mockClear();
 });
+
+const STEP_USAGE = { promptTokens: 30, completionTokens: 7, totalTokens: 37 };
+
+/** A stream whose first tool step finished (and was billed) before the provider failed. */
+async function failAfterOneToolStep(opts: Parameters<typeof runLlmStream>[0]): Promise<never> {
+	await opts.onToolCall?.({
+		toolCallId: 'tc1',
+		toolName: 'searchKnowledge',
+		input: { query: 'welcome campaign' },
+	});
+	await opts.onToolResult?.({
+		toolCallId: 'tc1',
+		toolName: 'searchKnowledge',
+		output: { results: [] },
+	});
+	throw new LlmPartialUsageError(new Error('provider returned 503'), STEP_USAGE, 'test-model');
+}
 
 describe('assistant runner', () => {
 	it('streams text + tool cards to completion, persisting usage', async () => {
@@ -162,5 +189,96 @@ describe('assistant runner', () => {
 
 		const msgs = await t.query(api.assistant.conversations.listMessages, { conversationId });
 		expect(msgs.find((m) => m._id === assistantMessageId)?.status).toBe('stopped');
+	});
+
+	it('records the finished steps of a failed turn once, under the turn feature', async () => {
+		const t = makeT();
+		const { conversationId, assistantMessageId } = await startTurn(t);
+		vi.mocked(runLlmStream).mockImplementation(failAfterOneToolStep);
+
+		await t.action(internal.assistant.runner.run, {
+			conversationId,
+			assistantMessageId,
+			ownerId: 'user-a',
+		});
+
+		const msgs = await t.query(api.assistant.conversations.listMessages, { conversationId });
+		const assistant = msgs.find((m) => m._id === assistantMessageId);
+		expect(assistant?.status).toBe('error');
+		expect(assistant?.errorMessage).toContain('503');
+		const spend = await t.run(async (ctx) => ctx.db.query('llmUsageEvents').collect());
+		expect(spend).toHaveLength(1);
+		expect(spend[0]).toMatchObject({
+			feature: 'assistant_chat',
+			modelUsed: 'test-model',
+			promptTokens: 30,
+			completionTokens: 7,
+			totalTokens: 37,
+		});
+	});
+
+	it('records nothing when a failed turn carries no usage', async () => {
+		const t = makeT();
+		const { conversationId, assistantMessageId } = await startTurn(t);
+		vi.mocked(runLlmStream).mockRejectedValue(new Error('model overloaded'));
+
+		await t.action(internal.assistant.runner.run, {
+			conversationId,
+			assistantMessageId,
+			ownerId: 'user-a',
+		});
+
+		const msgs = await t.query(api.assistant.conversations.listMessages, { conversationId });
+		expect(msgs.find((m) => m._id === assistantMessageId)?.status).toBe('error');
+		const spend = await t.run(async (ctx) => ctx.db.query('llmUsageEvents').collect());
+		expect(spend).toHaveLength(0);
+	});
+
+	it('keeps the original error when the partial-spend write also fails', async () => {
+		const t = makeT();
+		const { conversationId, assistantMessageId } = await startTurn(t);
+		vi.mocked(runLlmStream).mockImplementation(failAfterOneToolStep);
+		vi.mocked(recordLlmSpend).mockRejectedValueOnce(new Error('ledger unavailable'));
+
+		await t.action(internal.assistant.runner.run, {
+			conversationId,
+			assistantMessageId,
+			ownerId: 'user-a',
+		});
+
+		const msgs = await t.query(api.assistant.conversations.listMessages, { conversationId });
+		const assistant = msgs.find((m) => m._id === assistantMessageId);
+		expect(assistant?.status).toBe('error');
+		expect(assistant?.errorMessage).toContain('503');
+		expect(assistant?.toolCalls).toHaveLength(1);
+	});
+
+	it('finalizes a finished answer as complete when the spend write throws', async () => {
+		const t = makeT();
+		const { conversationId, assistantMessageId } = await startTurn(t);
+		vi.mocked(runLlmStream).mockImplementation(async (opts) => {
+			await opts.onTextDelta?.('Done.', 'Done.');
+			return {
+				text: 'Done.',
+				tokenUsage: { promptTokens: 12, completionTokens: 8, totalTokens: 20 },
+				modelUsed: 'test-model',
+				finishReason: 'stop',
+				aborted: false,
+			};
+		});
+		vi.mocked(recordLlmSpend).mockRejectedValueOnce(new Error('ledger unavailable'));
+
+		await t.action(internal.assistant.runner.run, {
+			conversationId,
+			assistantMessageId,
+			ownerId: 'user-a',
+		});
+
+		const msgs = await t.query(api.assistant.conversations.listMessages, { conversationId });
+		const assistant = msgs.find((m) => m._id === assistantMessageId);
+		expect(assistant?.status).toBe('complete');
+		expect(assistant?.text).toBe('Done.');
+		expect(assistant?.errorMessage).toBeNull();
+		expect(recordLlmSpend).toHaveBeenCalledTimes(1);
 	});
 });
