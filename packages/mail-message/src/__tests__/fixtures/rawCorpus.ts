@@ -18,6 +18,9 @@
 
 const eml = (...lines: string[]): string => lines.join('\r\n');
 
+/** `text` as the binary string of its UTF-8 bytes. */
+const utf8Bytes = (text: string): string => Buffer.from(text, 'utf-8').toString('latin1');
+
 export interface RawFixture {
 	name: string;
 	raw: string;
@@ -508,6 +511,37 @@ export const RAW_FIXTURES: RawFixture[] = [
 			'Content-Type: text/plain',
 			'',
 			'body'
+		),
+	},
+	{
+		// RFC 6532: UTF-8 straight in the headers, unencoded, as many mailers send
+		// it. The fixture is a binary string, so these are the UTF-8 bytes. The
+		// filename stays ASCII: mailparser reads a raw UTF-8 one as latin1, so it
+		// is pinned in `rawUtf8Headers.test.ts` instead.
+		name: 'raw-utf8-headers',
+		raw: utf8Bytes(
+			eml(
+				'From: Jörg Müller <joerg@example.com>',
+				'To: Zoë <zoe@example.com>, "Bjørn, Øst" <bjorn@example.com>',
+				'Subject: Grüße aus Köln',
+				'Date: Wed, 03 Jun 2026 10:00:00 +0000',
+				'MIME-Version: 1.0',
+				'Content-Type: multipart/mixed; boundary="B"',
+				'',
+				'--B',
+				'Content-Type: text/plain; charset=utf-8',
+				'Content-Transfer-Encoding: 8bit',
+				'',
+				'Hallo aus Köln',
+				'--B',
+				'Content-Type: application/pdf; name="Rechnung.pdf"',
+				'Content-Disposition: attachment; filename="Rechnung.pdf"',
+				'Content-Transfer-Encoding: base64',
+				'',
+				'JVBERi0=',
+				'--B--',
+				''
+			)
 		),
 	},
 ];
