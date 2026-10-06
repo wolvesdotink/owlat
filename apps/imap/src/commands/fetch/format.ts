@@ -69,9 +69,20 @@ export function formatInternalDate(ts: number): string {
 	return `${day}-${mon}-${year} ${time} +0000`;
 }
 
+/**
+ * An IMAP `string` (RFC 3501 §4.3) for an envelope field. A quoted string
+ * holds only 7-bit chars other than CR and LF, so a value with CR, LF or any
+ * non-ASCII char is sent as a literal, `{n}` CRLF then the n octets. The
+ * response is written as UTF-8, so n is the value's UTF-8 length. NUL is
+ * allowed in neither form and is dropped.
+ */
 export function imapString(s: string | undefined): string {
 	if (s == null) return 'NIL';
-	return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+	const value = s.replaceAll('\0', '');
+	if (/[\r\n\u0080-\uffff]/.test(value)) {
+		return `{${Buffer.byteLength(value, 'utf8')}}\r\n${value}`;
+	}
+	return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
 export function imapAddrList(addrs: ReadonlyArray<{ name?: string; address: string }>): string {

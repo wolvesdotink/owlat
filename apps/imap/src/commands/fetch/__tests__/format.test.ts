@@ -34,14 +34,12 @@ function envelope(overrides: Partial<FetchEnvelope> = {}): FetchEnvelope {
 
 describe('formatFlags', () => {
 	it('emits the system flags that are set, in IMAP form', () => {
-		expect(formatFlags(envelope({ flagSeen: true, flagAnswered: true }))).toBe(
-			'\\Seen \\Answered',
-		);
+		expect(formatFlags(envelope({ flagSeen: true, flagAnswered: true }))).toBe('\\Seen \\Answered');
 	});
 
 	it('appends custom flags after system flags', () => {
 		expect(formatFlags(envelope({ flagFlagged: true, customFlags: ['$Forwarded'] }))).toBe(
-			'\\Flagged $Forwarded',
+			'\\Flagged $Forwarded'
 		);
 	});
 
@@ -63,8 +61,8 @@ describe('formatFlags', () => {
 					flagFlagged: true,
 					flagSeen: true,
 					customFlags: ['$Forwarded', 'NonJunk'],
-				}),
-			),
+				})
+			)
 		).toBe('\\Seen \\Flagged \\Answered \\Draft \\Deleted $Forwarded NonJunk');
 	});
 
@@ -92,7 +90,7 @@ describe('formatInternalDate', () => {
 
 	it('matches the strict dd-Mon-yyyy HH:MM:SS +0000 grammar', () => {
 		expect(formatInternalDate(Date.UTC(2026, 5, 9, 10, 30, 5))).toMatch(
-			/^\d{2}-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-\d{4} \d{2}:\d{2}:\d{2} \+0000$/,
+			/^\d{2}-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-\d{4} \d{2}:\d{2}:\d{2} \+0000$/
 		);
 	});
 });
@@ -105,12 +103,26 @@ describe('imapString', () => {
 	it('emits NIL for null/undefined', () => {
 		expect(imapString(undefined)).toBe('NIL');
 	});
+
+	it('sends a value with CR or LF as a literal', () => {
+		expect(imapString('hello\r\n* BYE x')).toBe('{14}\r\nhello\r\n* BYE x');
+		expect(imapString('a\nb')).toBe('{3}\r\na\nb');
+	});
+
+	it('sends a non-ASCII value as a literal counted in UTF-8 octets', () => {
+		expect(imapString('Grüße 😠')).toBe('{12}\r\nGrüße 😠');
+	});
+
+	it('drops NUL, which neither form may carry', () => {
+		expect(imapString('a\0b')).toBe('"ab"');
+		expect(imapString('ä\0')).toBe('{2}\r\nä');
+	});
 });
 
 describe('imapAddrList', () => {
 	it('splits mailbox and host', () => {
 		expect(imapAddrList([{ name: 'Jane', address: 'jane@example.com' }])).toBe(
-			'(("Jane" NIL "jane" "example.com"))',
+			'(("Jane" NIL "jane" "example.com"))'
 		);
 	});
 
@@ -122,7 +134,7 @@ describe('imapAddrList', () => {
 describe('formatEnvelope', () => {
 	it('produces the 10-field RFC 3501 envelope', () => {
 		const out = formatEnvelope(
-			envelope({ inReplyTo: 'parent@example.com', replyToAddress: 'reply@example.com' }),
+			envelope({ inReplyTo: 'parent@example.com', replyToAddress: 'reply@example.com' })
 		);
 		expect(out).toContain('"Hello"');
 		expect(out).toContain('(("Jane Doe" NIL "jane" "example.com"))');
@@ -143,7 +155,7 @@ describe('formatEnvelope', () => {
 	// A dropped/extra field shifts every subsequent field for the client.
 	it('produces exactly 10 top-level envelope fields in RFC 3501 order', () => {
 		const out = formatEnvelope(
-			envelope({ inReplyTo: 'parent@example.com', replyToAddress: 'reply@example.com' }),
+			envelope({ inReplyTo: 'parent@example.com', replyToAddress: 'reply@example.com' })
 		);
 		expect(out.startsWith('(')).toBe(true);
 		expect(out.endsWith(')')).toBe(true);
@@ -162,10 +174,23 @@ describe('formatEnvelope', () => {
 		expect(fields[4]).toBe('((NIL NIL "reply" "example.com"))');
 	});
 
-	it('keeps 10 fields even when every optional address slot is NIL', () => {
-		const out = formatEnvelope(
-			envelope({ toAddresses: [], ccAddresses: [], bccAddresses: [] }),
+	it('keeps a FETCH response framed when a subject or name carries CR/LF', () => {
+		const line = `* 1 FETCH (UID 7 ENVELOPE ${formatEnvelope(
+			envelope({ subject: 'hello\r\n* BYE x\r\n', fromName: 'Jäne\nDoe' })
+		)})`;
+		const { text, literals } = readLiterals(Buffer.from(line, 'utf8'));
+		// The subject, then the name in from, sender and reply-to (which fall back to from).
+		expect(literals).toEqual(['hello\r\n* BYE x\r\n', ...Array(3).fill('Jäne\nDoe')]);
+		// Outside the literals the response is one line of balanced parens.
+		expect(text).not.toMatch(/[\r\n]/);
+		expect(text.startsWith('* 1 FETCH (UID 7 ENVELOPE (')).toBe(true);
+		expect(splitEnvelopeFields(text.slice('* 1 FETCH (UID 7 ENVELOPE '.length, -1))).toHaveLength(
+			10
 		);
+	});
+
+	it('keeps 10 fields even when every optional address slot is NIL', () => {
+		const out = formatEnvelope(envelope({ toAddresses: [], ccAddresses: [], bccAddresses: [] }));
 		const fields = splitEnvelopeFields(out);
 		expect(fields).toHaveLength(10);
 		// to / cc / bcc collapse to NIL but the field still occupies its slot.
@@ -215,4 +240,30 @@ function splitEnvelopeFields(envelopeStr: string): string[] {
 	}
 	if (cur.length > 0) fields.push(cur);
 	return fields;
+}
+
+/**
+ * Read a response the way an IMAP client does: a `{n}` CRLF takes the next n
+ * octets as a literal, whatever they hold. Returns the response with each
+ * literal replaced by `L`, and the literals in order.
+ */
+function readLiterals(octets: Buffer): { text: string; literals: string[] } {
+	const literals: string[] = [];
+	let text = '';
+	let i = 0;
+	while (i < octets.length) {
+		const rest = octets.subarray(i).toString('latin1');
+		const open = /^\{(\d+)\}\r\n/.exec(rest);
+		if (open) {
+			const start = i + open[0].length;
+			const end = start + Number(open[1]);
+			literals.push(octets.subarray(start, end).toString('utf8'));
+			text += 'L';
+			i = end;
+			continue;
+		}
+		text += String.fromCharCode(octets[i]!);
+		i += 1;
+	}
+	return { text, literals };
 }
