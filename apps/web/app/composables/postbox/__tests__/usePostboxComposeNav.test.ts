@@ -324,10 +324,10 @@ describe('usePostboxComposeNav — helpers', () => {
 			mailboxId: mbx,
 			prefillSubject: 'Fwd',
 			forwardAttachmentsFromMessageId: 'f' as never,
-			attachPendingKey: 'p',
+			attachGenerated: { filename: 'reply.ics', contentType: 'text/calendar', content: 'ics' },
 		};
 		expect(withoutCreationKeys(seed)).toEqual({ mailboxId: mbx, prefillSubject: 'Fwd' });
 		expect(withoutCreationKeys(undefined)).toBeUndefined();
-		expect(seed.attachPendingKey).toBe('p');
+		expect(seed.attachGenerated?.content).toBe('ics');
 	});
 });

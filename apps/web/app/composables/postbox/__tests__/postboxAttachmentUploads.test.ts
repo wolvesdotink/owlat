@@ -46,7 +46,7 @@ function harness(overrides: Partial<AttachmentUploadsDeps> = {}) {
 		}),
 		attach: vi.fn(async () => true),
 		onCommitted: vi.fn((a: CommittedAttachment, thumb: string | null) =>
-			committed.push({ a, thumb }),
+			committed.push({ a, thumb })
 		),
 		createThumb: () => null,
 		revokeThumb: vi.fn(),
@@ -80,6 +80,7 @@ describe('createAttachmentUploads state machine', () => {
 
 		expect(deps.attach).toHaveBeenCalledWith(
 			expect.objectContaining({ storageId: 'storage_1', filename: 'report.pdf', size: 1000 }),
+			expect.any(String)
 		);
 		expect(committed).toHaveLength(1);
 		expect(committed[0]!.a.storageId).toBe('storage_1');
@@ -141,7 +142,7 @@ describe('createAttachmentUploads state machine', () => {
 						aborted = true;
 						reject(new DOMException('aborted', 'AbortError'));
 					});
-				}),
+				})
 		);
 		const { uploader, committed } = harness({ putFile });
 		uploader.addFiles([makeFile('big.zip', 999)]);
@@ -166,9 +167,9 @@ describe('createAttachmentUploads state machine', () => {
 				(_u, _f, _c, { signal }: UploadProgressCbs) =>
 					new Promise<string>((_, reject) => {
 						signal.addEventListener('abort', () =>
-							reject(new DOMException('aborted', 'AbortError')),
+							reject(new DOMException('aborted', 'AbortError'))
 						);
-					}),
+					})
 			),
 		});
 		uploader.addFiles([makeFile('pic.png', 500, 'image/png')]);
@@ -193,5 +194,25 @@ describe('createAttachmentUploads state machine', () => {
 		expect(committed[0]!.thumb).toBe('blob:keep');
 		// Ownership transferred to the parent; the uploader must NOT revoke it.
 		expect(revokeThumb).not.toHaveBeenCalled();
+	});
+
+	it('names each chip it starts, and reports a dismissed chip by that name', async () => {
+		const onDismissed = vi.fn();
+		const { uploader, deps, puts, committed } = harness({ onDismissed });
+		const ids = uploader.addFiles([makeFile('a.ics', 10), makeFile('b.ics', 20)]);
+		expect(ids).toEqual(uploader.uploads.value.map((c) => c.id));
+		await tick();
+
+		uploader.cancel(ids[0]!);
+		expect(onDismissed).toHaveBeenCalledExactlyOnceWith(ids[0]);
+		puts[1]!.deferred.resolve('storage_b');
+		await tick();
+		// The attach and the commit carry the chip's name too.
+		expect(deps.attach).toHaveBeenCalledWith(
+			expect.objectContaining({ storageId: 'storage_b' }),
+			ids[1]
+		);
+		expect(deps.onCommitted).toHaveBeenCalledWith(committed[0]!.a, null, ids[1]);
+		expect(onDismissed).toHaveBeenCalledOnce();
 	});
 });

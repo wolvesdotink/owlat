@@ -23,7 +23,6 @@ const props = defineProps<{
 const { t, locale } = useI18n();
 
 const composeNav = usePostboxComposeNav();
-const { stash } = usePostboxPendingAttachments();
 
 const event = ref<ICalEvent | null>(null);
 const method = ref<string | undefined>(undefined);
@@ -88,11 +87,6 @@ function rsvp(status: Partstat) {
 	const e = event.value;
 	if (!e?.organizer?.email || !props.ownEmail) return;
 	const reply = buildReplyICalendar(e, props.ownEmail, status, new Date());
-	const key = stash({
-		filename: 'reply.ics',
-		contentType: 'text/calendar; method=REPLY; charset=utf-8',
-		content: reply,
-	});
 	// One whole sentence per RSVP status — a translated verb dropped into a
 	// shared frame would not survive word order in other languages.
 	const suffix =
@@ -107,7 +101,13 @@ function rsvp(status: Partstat) {
 		prefillBodyHtml: `<p>${t(`components.postbox.postboxInviteCard.reply.body${suffix}`, {
 			summary: `<strong>${escapeHtml(e.summary ?? '')}</strong>`,
 		})}</p>`,
-		attachPendingKey: key,
+		// Plain text in the compose request, so a reload before the draft holds
+		// it attaches it all the same.
+		attachGenerated: {
+			filename: 'reply.ics',
+			contentType: 'text/calendar; method=REPLY; charset=utf-8',
+			content: reply,
+		},
 	});
 }
 </script>

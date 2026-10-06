@@ -63,11 +63,11 @@ beforeEach(() => {
 	uploaderAddFiles.mockClear();
 	showToast.mockClear();
 	vi.stubGlobal('useToast', () => ({ showToast }));
+	vi.stubGlobal('useState', (_key: string, init: () => unknown) => ref(init()));
 	// The composable resolves its copy through vue-i18n; install the real
 	// catalog behind the `useI18n` auto-import so toasts read as they ship.
 	vi.stubGlobal('useI18n', () => i18n.global);
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(async () => undefined) }));
-	vi.stubGlobal('usePostboxPendingAttachments', () => ({ take: () => null }));
 });
 
 async function loadComposable() {

@@ -101,8 +101,11 @@ const TEXT_KEYS = [
 	'prefillComposerMode',
 	'prefillFollowUpRemindAt',
 ] as const satisfies readonly (keyof ComposeSpec)[];
-/** Run once, when the row is created; never again on a remount. */
-const CREATION_KEYS = ['forwardAttachmentsFromMessageId', 'attachPendingKey'] as const;
+/**
+ * Acted on when the row is created; from then on the draft's expected
+ * attachments carry what they still owe (usePostboxExpectedAttachments).
+ */
+const CREATION_KEYS = ['forwardAttachmentsFromMessageId', 'attachGenerated'] as const;
 
 /** Whether a seed carries text the server may not hold yet. */
 export function seedCarriesText(seed: ComposeSpec | undefined): boolean {

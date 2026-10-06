@@ -52,15 +52,17 @@ export interface UploadTransport {
 		url: string,
 		file: File,
 		contentType: string,
-		cbs: UploadProgressCbs,
+		cbs: UploadProgressCbs
 	) => Promise<string>;
 	/** Attach the uploaded storageId to the draft; false = server refused. */
-	attach: (a: CommittedAttachment) => Promise<boolean>;
+	attach: (a: CommittedAttachment, chipId: string) => Promise<boolean>;
 }
 
 export interface AttachmentUploadsDeps extends UploadTransport {
 	/** Called when an upload fully commits; parent appends to `attachments`. */
-	onCommitted: (a: CommittedAttachment, thumbUrl: string | null) => void;
+	onCommitted: (a: CommittedAttachment, thumbUrl: string | null, chipId: string) => void;
+	/** Called when the person cancels or dismisses a chip (it will not be attached). */
+	onDismissed?: (chipId: string) => void;
 	/** Create an object URL for an image File (defaults to URL.createObjectURL). */
 	createThumb?: (file: File) => string | null;
 	/** Revoke an object URL (defaults to URL.revokeObjectURL). */
@@ -78,17 +80,14 @@ function isImage(type: string): boolean {
 }
 
 function isAbortError(err: unknown): boolean {
-	return (
-		err instanceof DOMException
-			? err.name === 'AbortError'
-			: !!err && typeof err === 'object' && (err as { name?: string }).name === 'AbortError'
-	);
+	return err instanceof DOMException
+		? err.name === 'AbortError'
+		: !!err && typeof err === 'object' && (err as { name?: string }).name === 'AbortError';
 }
 
 export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 	const createThumb =
-		deps.createThumb ??
-		((file: File) => (isImage(file.type) ? URL.createObjectURL(file) : null));
+		deps.createThumb ?? ((file: File) => (isImage(file.type) ? URL.createObjectURL(file) : null));
 	const revokeThumb = deps.revokeThumb ?? ((url: string) => URL.revokeObjectURL(url));
 
 	const uploads = ref<UploadChip[]>([]);
@@ -140,7 +139,7 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 				contentType,
 				size: file.size,
 			};
-			const ok = await deps.attach(attachment);
+			const ok = await deps.attach(attachment, id);
 			if (!ok) {
 				patch(id, { status: 'failed', indeterminate: false });
 				return;
@@ -152,7 +151,7 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 			uploads.value = uploads.value.filter((c) => c.id !== id);
 			files.delete(id);
 			controllers.delete(id);
-			deps.onCommitted(attachment, thumbUrl);
+			deps.onCommitted(attachment, thumbUrl, id);
 		} catch (err) {
 			if (isAbortError(err)) {
 				// Cancelled by the user: remove the chip entirely.
@@ -165,10 +164,12 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 		}
 	}
 
-	/** Begin uploading each file as its own chip. */
-	function addFiles(list: File[]) {
+	/** Begin uploading each file as its own chip; returns the chip ids, in order. */
+	function addFiles(list: File[]): string[] {
+		const ids: string[] = [];
 		for (const file of list) {
 			const id = nextChipId();
+			ids.push(id);
 			files.set(id, file);
 			uploads.value = [
 				...uploads.value,
@@ -185,6 +186,7 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 			];
 			void run(id);
 		}
+		return ids;
 	}
 
 	/** Cancel an in-flight upload (aborts the request) or dismiss a failed one. */
@@ -195,7 +197,10 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 			// ignores the signal: drop it here too.
 			controller.abort();
 		}
-		if (uploads.value.some((c) => c.id === id)) forget(id);
+		if (uploads.value.some((c) => c.id === id)) {
+			forget(id);
+			deps.onDismissed?.(id);
+		}
 	}
 
 	/** Retry a failed upload with the original File. */
@@ -228,7 +233,7 @@ export function xhrPutFile(
 	url: string,
 	file: File,
 	contentType: string,
-	{ onProgress, signal }: UploadProgressCbs,
+	{ onProgress, signal }: UploadProgressCbs
 ): Promise<string> {
 	return new Promise<string>((resolve, reject) => {
 		const xhr = new XMLHttpRequest();

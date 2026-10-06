@@ -30,6 +30,7 @@ import {
 	type ComposerAttachment,
 } from './usePostboxComposeAttachments';
 import { usePostboxComposeAutosave } from './usePostboxComposeAutosave';
+import type { GeneratedAttachment } from './usePostboxExpectedAttachments';
 import type { InitialHydrationState } from './usePostboxComposeHydration';
 import { usePostboxComposeMirror } from './usePostboxComposeMirror';
 import {
@@ -81,8 +82,8 @@ export interface ComposerSeed extends Omit<MailboxComposerTarget, 'kind'> {
 	prefillAttachments?: ComposerAttachment[];
 	/** Clone this message's attachments onto the new draft (Forward). */
 	forwardAttachmentsFromMessageId?: Id<'mailMessages'>;
-	/** Attach a transient generated file (key into usePostboxPendingAttachments). */
-	attachPendingKey?: string;
+	/** Attach a file the app generated (an RSVP reply); kept until it is on the row. */
+	attachGenerated?: GeneratedAttachment;
 	/** Full-mode blocks, the editor mode and the reminder, for a seed carrying a whole composition. */
 	prefillBodyBlocks?: EditorBlock[];
 	prefillComposerMode?: ComposerMode;
@@ -239,8 +240,7 @@ export function usePostboxCompose(seed: ComposerSeed, options: ComposeOptions = 
 		updateDraft,
 	});
 	const { ensureDraft, cancelAutosave } = autosave;
-	// Attachment upload/remove + pending-handoff + forward-clone live in a
-	// sibling composable; it drives the same draft via ensureDraft/draftId.
+	// Uploads, the generated file and forward copies: a sibling on the same draft.
 	const {
 		attachments,
 		uploads,
@@ -264,8 +264,10 @@ export function usePostboxCompose(seed: ComposerSeed, options: ComposeOptions = 
 		// recipient with no way to reach it.
 		bodyHtml,
 		bodyLocked: () => bodyPending.value,
-		attachPendingKey: seed.attachPendingKey,
+		attachGenerated: seed.attachGenerated,
 		forwardAttachmentsFromMessageId: seed.forwardAttachmentsFromMessageId,
+		onCreated: autosave.onCreated,
+		rowState: () => initialHydration.value,
 	});
 
 	// Reopening an offline-queued send (undo un-queued it) carries the payload's
@@ -394,10 +396,9 @@ export function usePostboxCompose(seed: ComposerSeed, options: ComposeOptions = 
 	});
 
 	const canSend = computed(() => {
-		// Never let a send fire while an attachment upload is still in flight: the
-		// draft's `attachments` array has not yet committed the pending file, so a
-		// mid-upload send would silently drop it from the outgoing message. Mirror
-		// the chat composer (ChatInput), which gates its Send on `!isUploading`.
+		// Never let a send fire while an attachment is still on its way to the row
+		// (an upload in flight, or a file the open expects that is not there yet):
+		// the send would silently drop it from the outgoing message.
 		if (isUploading.value) return false;
 		// A reopened draft that has not loaded would send (or queue) a snapshot
 		// of empty stand-ins; the draft notice says why Send is waiting.
