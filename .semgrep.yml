@@ -136,26 +136,29 @@ rules:
       verifier instead of reading the header here; if this file is a new
       verification module, add it to the allowlist after review.
     options:
-      # Otherwise `"..."` also matches a constant holding a string, and the
-      # name check would then run on the constant's identifier.
+      # Otherwise `"$NAME"` also matches a constant or a template literal
+      # whose value is known, which would widen the rule past plain
+      # string literals.
       constant_propagation: false
     patterns:
-      # Each read form twice: once to bind the name, once to require that
-      # it is a plain string literal.
+      # `"$NAME"` matches a plain string literal and binds $NAME to its
+      # content only, without the quotes or anything around the literal
+      # (comments, parentheses, `as` casts). `satisfies` and a non-null `!`
+      # stay in the tree, so they get their own forms.
       - pattern-either:
-          - patterns:
-              - pattern: $HEADERS.get($HEADER)
-              - pattern: $HEADERS.get("...")
-          - patterns:
-              - pattern: get($HEADER)
-              - pattern: get("...")
-          - patterns:
-              - pattern: $HEADERS[$HEADER]
-              - pattern: $HEADERS["..."]
-      # Not quote-aware on purpose: any literal whose text contains the
-      # word. metavariable-regex is anchored at the start, hence the prefix.
+          - pattern: $HEADERS.get("$NAME")
+          - pattern: get("$NAME")
+          - pattern: $HEADERS["$NAME"]
+          - pattern: $HEADERS.get("$NAME" satisfies $TYPE)
+          - pattern: get("$NAME" satisfies $TYPE)
+          - pattern: $HEADERS["$NAME" satisfies $TYPE]
+          - pattern: $HEADERS.get("$NAME"!)
+          - pattern: get("$NAME"!)
+          - pattern: $HEADERS["$NAME"!]
+      # Not quote-aware on purpose: any content that contains the word.
+      # metavariable-regex is anchored at the start, hence the prefix.
       - metavariable-regex:
-          metavariable: $HEADER
+          metavariable: $NAME
           regex: (?i)[\s\S]*signature
     paths:
       include:
