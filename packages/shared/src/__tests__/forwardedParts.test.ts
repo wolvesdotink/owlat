@@ -1,7 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync, globSync } from 'node:fs';
 import { join } from 'node:path';
-import { extractAttachments, forwardedParts } from '../mailMime';
+import { extractAttachments, locateForwardedParts } from '../mailMime';
+
+/** The forward's parts of a binary-string message, each decoded. */
+function forwardedParts(text: string) {
+	const { parts, truncated } = locateForwardedParts(
+		Uint8Array.from(text, (c) => c.charCodeAt(0) & 0xff)
+	);
+	return {
+		truncated,
+		parts: parts.map(({ partIndex, filename, decode }) => ({
+			partIndex,
+			part: { filename, bytes: decode() },
+		})),
+	};
+}
 
 function leaf(type: string, headers: string[], body: string): string {
 	return [`Content-Type: ${type}`, ...headers, '', body].join('\r\n');
@@ -23,7 +37,7 @@ function raw(leaves: string[]): string {
 	].join('\r\n');
 }
 
-describe('forwardedParts (#1257): what a forward carries, picked from the raw message', () => {
+describe('locateForwardedParts (#1257): what a forward carries, picked from the raw message', () => {
 	it('carries attachment-marked parts whatever Content-IDs the body uses, not inline ones', () => {
 		const { parts, truncated } = forwardedParts(
 			raw([

@@ -16,7 +16,7 @@
  *    attachments; nobody picks its parts before the server reads the message.
  *  - `fulfil` (draftExpectedAttachmentsFulfil.ts, any tab, any number of times)
  *    reads each forwarded message's raw MIME once, picks its parts with the
- *    shared `forwardedParts` (the disposition rule forwarding always used),
+ *    shared `locateForwardedParts` (the disposition rule forwarding always used),
  *    expands the debt into one entry per part keyed by the raw part index
  *    (`expandForward`, once), and copies each part's bytes from that same
  *    parse. Each copy is receipted as an unclaimed upload the moment it is
@@ -264,7 +264,7 @@ export const owedWork = internalQuery({
 });
 
 /**
- * Expand a forward's debt into one owed entry per part, as `forwardedParts`
+ * Expand a forward's debt into one owed entry per part, as `locateForwardedParts`
  * picked them from the raw message, once: a second expansion (another tab)
  * finds the debt gone and changes nothing. Removing the debt first removes the
  * whole forward. Returns the parts now owed for that message.

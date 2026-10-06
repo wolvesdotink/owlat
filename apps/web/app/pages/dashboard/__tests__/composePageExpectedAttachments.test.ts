@@ -27,7 +27,7 @@ import { usePostboxComposeNav, type ComposeSpec } from '~/composables/postbox/us
 import { usePostboxCompose } from '~/composables/postbox/usePostboxCompose';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import de from '~~/i18n/locales/de.json';
-import { forwardedParts } from '@owlat/shared/mailMime';
+import { locateForwardedParts } from '@owlat/shared/mailMime';
 
 vi.mock('@owlat/api', () => ({
 	api: {
@@ -252,12 +252,12 @@ const operations: Record<string, (args: never) => Promise<unknown>> = {
 				return [entry];
 			}
 			const messageId = entry.source.messageId;
-			return forwardedParts(raw).parts.map(({ partIndex, part }) => ({
-				key: `forward:${messageId}:${partIndex}`,
+			return locateForwardedParts(new TextEncoder().encode(raw)).parts.map((part) => ({
+				key: `forward:${messageId}:${part.partIndex}`,
 				filename: part.filename,
 				contentType: part.contentType,
-				size: part.bytes.byteLength,
-				source: { kind: 'forward', messageId, partIndex },
+				size: part.size,
+				source: { kind: 'forward', messageId, partIndex: part.partIndex },
 				state: 'owed',
 			}));
 		});

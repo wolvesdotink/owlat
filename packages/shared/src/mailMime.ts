@@ -179,31 +179,3 @@ export function locateForwardedParts(raw: Uint8Array): {
 	});
 	return { parts, truncated };
 }
-
-/** What a forward of a raw message carries, and whether the walk saw all of it. */
-export interface ForwardedParts {
-	parts: Array<{ partIndex: string; part: ExtractedAttachment }>;
-	truncated: boolean;
-}
-
-/**
- * {@link locateForwardedParts} over a binary string, every part decoded: for
- * callers that already hold the message as text (tests, small messages).
- */
-export function forwardedParts(rawEml: string): ForwardedParts {
-	const raw = Uint8Array.from(rawEml, (c) => c.charCodeAt(0) & 0xff);
-	const { parts, truncated } = locateForwardedParts(raw);
-	return {
-		parts: parts.map(({ partIndex, filename, contentType, contentId, decode }) => ({
-			partIndex,
-			part: {
-				filename,
-				contentType,
-				...(contentId ? { contentId } : {}),
-				disposition: 'attachment',
-				bytes: decode(),
-			},
-		})),
-		truncated,
-	};
-}

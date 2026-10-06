@@ -21,7 +21,7 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
-import { forwardedParts } from '@owlat/shared/mailMime';
+import { locateForwardedParts } from '@owlat/shared/mailMime';
 import { seedFolder, seedMailbox, seedMessage } from '../mail/__tests__/helpers.testlib';
 
 const session = vi.hoisted(() => ({
@@ -454,7 +454,9 @@ describe('a draft owes its expected attachments', () => {
 			{ filename: 'invoice.pdf', contentType: 'application/pdf', size: 6, partIndex: '2' },
 		];
 		const { messageId, draftId } = await forwardDraft(t, eml, metadata);
-		expect(forwardedParts(eml).parts.map((p) => p.partIndex)).toEqual(['0', '1']);
+		expect(
+			locateForwardedParts(new TextEncoder().encode(eml)).parts.map((p) => p.partIndex)
+		).toEqual(['0', '1']);
 		expect(await fulfil(t, draftId)).toEqual({ failed: [] });
 		expect((await row(t, draftId))?.expectedAttachments?.map((e) => e.key)).toEqual([
 			`forward:${messageId}:0`,
