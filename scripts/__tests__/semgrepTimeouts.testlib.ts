@@ -1,8 +1,9 @@
 /**
  * Shared fixtures for the Semgrep coverage check tests
  * (`scripts/check-semgrep-timeouts.sh`): reports shaped like Semgrep 1.178's
- * `--time --json-output`, a runner for the real script, and a stand-in
- * `semgrep` for `--scan` mode.
+ * `--time --json-output`, a runner for the real script, a stand-in
+ * `semgrep` for `--scan` mode, and a model of how the Actions runner reads
+ * workflow commands from a step's output.
  */
 
 import { execFile } from 'node:child_process';
@@ -81,6 +82,90 @@ export function report({
 	});
 }
 
+interface ParsedCommand {
+	name: string;
+	data: string;
+}
+
+/**
+ * The runner's two command parsers (actions/runner ActionCommand.cs):
+ * `::name props::data` after leading whitespace is trimmed, and the legacy
+ * `##[name props]data` anywhere in the line. Every command name counts here;
+ * the real runner only knows registered ones, so this is stricter.
+ */
+function parseCommand(line: string): ParsedCommand | null {
+	const trimmed = line.trimStart();
+	if (trimmed.startsWith('::')) {
+		const end = trimmed.indexOf('::', 2);
+		if (end >= 0) {
+			return { name: trimmed.slice(2, end).split(' ')[0] ?? '', data: trimmed.slice(end + 2) };
+		}
+	}
+	const prefix = line.indexOf('##[');
+	if (prefix >= 0) {
+		const close = line.indexOf(']', prefix);
+		if (close >= 0) {
+			return {
+				name: line.slice(prefix + 3, close).split(' ')[0] ?? '',
+				data: line.slice(close + 1),
+			};
+		}
+	}
+	return null;
+}
+
+/**
+ * The commands the runner would act on, in order, following
+ * ActionCommandManager.TryProcessCommand: after `stop-commands` only the
+ * matching resume token is processed. Stop and resume lines are left out.
+ */
+export function runnerCommands(stdout: string): string[] {
+	const acted: string[] = [];
+	let stopToken: string | null = null;
+	for (const line of stdout.split('\n')) {
+		const command = parseCommand(line);
+		if (command === null) continue;
+		if (stopToken !== null) {
+			if (command.name.toLowerCase() === stopToken.toLowerCase()) stopToken = null;
+			continue;
+		}
+		if (command.name === 'stop-commands') {
+			stopToken = command.data;
+			continue;
+		}
+		acted.push(line);
+	}
+	return acted;
+}
+
+/**
+ * Splits the output at the script's stop/resume pairs: `inside` holds the
+ * lines printed while commands were suspended, `outside` the rest, and
+ * `tokens` each pair's token. Throws on an unpaired or mismatched marker.
+ */
+export function suspendedBlocks(stdout: string): {
+	inside: string[];
+	outside: string[];
+	tokens: string[];
+} {
+	const inside: string[] = [];
+	const outside: string[] = [];
+	const tokens: string[] = [];
+	let token: string | null = null;
+	for (const line of stdout.split('\n')) {
+		if (token === null) {
+			const stop = /^::stop-commands::(.+)$/.exec(line);
+			if (stop) {
+				token = stop[1] ?? '';
+				tokens.push(token);
+			} else outside.push(line);
+		} else if (line === `::${token}::`) token = null;
+		else inside.push(line);
+	}
+	if (token !== null) throw new Error(`stop-commands ${token} was never resumed`);
+	return { inside, outside, tokens };
+}
+
 export interface Outcome {
 	code: number;
 	stdout: string;
@@ -121,6 +206,8 @@ export interface FakeRun {
 	/** Written to the --json-output path; `null` writes nothing. */
 	report: string | null;
 	exitCode?: number;
+	/** Printed to stdout, like Semgrep's text report. */
+	stdout?: string;
 }
 
 /**
@@ -132,6 +219,7 @@ export async function scan(runs: FakeRun[]): Promise<Outcome & { invocations: st
 	for (const [i, step] of runs.entries()) {
 		if (step.report !== null) await writeFile(join(root, `report.${i + 1}`), step.report, 'utf8');
 		await writeFile(join(root, `rc.${i + 1}`), String(step.exitCode ?? 0), 'utf8');
+		await writeFile(join(root, `out.${i + 1}`), step.stdout ?? '', 'utf8');
 	}
 	const fake = join(root, 'semgrep');
 	await writeFile(
@@ -145,6 +233,7 @@ export async function scan(runs: FakeRun[]): Promise<Outcome & { invocations: st
 			'out=""; prev=""',
 			'for a in "$@"; do [ "$prev" = --json-output ] && out=$a; prev=$a; done',
 			'if [ -f "$state/report.$n" ]; then cp "$state/report.$n" "$out"; fi',
+			'cat "$state/out.$n" 2>/dev/null || true',
 			'exit "$(cat "$state/rc.$n" 2>/dev/null || echo 0)"',
 			'',
 		].join('\n'),

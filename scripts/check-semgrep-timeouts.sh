@@ -44,14 +44,16 @@ set -euo pipefail
 # jq helpers. Every value is turned into a string with `tostring`, so a
 # report with unexpected types still yields one finished line per entry.
 #   display  one-line text for the log and the summary: whitespace runs
-#            collapse to a space, other control characters become `?`
+#            collapse to a space, other control characters become `?`, and
+#            `##[` (the runner's legacy command prefix, honoured anywhere in a
+#            line) becomes `##(`
 #   data     a workflow-command message (actions/toolkit command.ts)
 #   prop     a workflow-command property
 #   cell     a Markdown table cell: no pipes, no HTML (a `<!--` in a parse
 #            error message would hide the rest of the summary), no code
 #            spans (they would show the HTML escapes)
 JQ_DEFS='
-def display: tostring | gsub("\\s+"; " ") | sub("^ "; "") | sub(" $"; "") | explode | map(if . < 32 or . == 127 then 63 else . end) | implode;
+def display: tostring | gsub("\\s+"; " ") | sub("^ "; "") | sub(" $"; "") | explode | map(if . < 32 or . == 127 then 63 else . end) | implode | gsub("##\\["; "##(");
 def data: tostring | gsub("%"; "%25") | gsub("\r"; "%0D") | gsub("\n"; "%0A");
 def prop: data | gsub(":"; "%3A") | gsub(","; "%2C");
 def cell: display | gsub("&"; "&amp;") | gsub("<"; "&lt;") | gsub(">"; "&gt;") | gsub("\\|"; "\\|") | gsub("`"; "'"'"'");
@@ -68,16 +70,35 @@ def errors:
 	.errors[]
 	| {
 		level: ((.level? // "error") | tostring),
-		type: ((.type? // "?") | if type == "array" then (.[0] // "?") else . end | display),
-		where: ((.path? // .rule_id? // "-") | display),
-		message: ((.message? // "") | display | .[0:240])
+		type: ((.type? // "?") | if type == "array" then (.[0] // "?") else . end | tostring),
+		where: ((.path? // .rule_id? // "-") | tostring),
+		message: ((.message? // "") | tostring)
 	};
 '
 
 FAILED_CLOSED=2
 
+# Report text (paths, rule ids, messages, Semgrep's own output) is printed only
+# between `::stop-commands::<token>` and `::<token>::`, so the runner does not
+# act on a `::command::` or `##[command]` inside it. The token is random per
+# run, so a report cannot contain the resume line. On top of that, every such
+# line starts with `semgrep-coverage: ` and `display` rewrites `##[`, so the
+# text stays inert even outside a suspended block. Annotations are printed
+# after the resume, built from the raw values with the toolkit's escaping.
+TOKEN="semgrep-coverage-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+SUSPENDED=0
+suspend_commands() {
+	echo "::stop-commands::$TOKEN"
+	SUSPENDED=1
+}
+resume_commands() {
+	echo "::$TOKEN::"
+	SUSPENDED=0
+}
+
 # Prints a finding about the report itself and exits 2.
 fail_closed() {
+	if [ "$SUSPENDED" -eq 1 ]; then resume_commands; fi
 	echo "::error title=Semgrep report unusable::$(printf '%s' "$1" | sed -e 's/%/%25/g')"
 	if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 		printf '## Semgrep scan coverage\n\n**Report unusable:** %s\n' "$1" >>"$GITHUB_STEP_SUMMARY"
@@ -123,26 +144,35 @@ check_report() {
 	if [ "$n_timeouts" -gt 0 ]; then
 		echo
 		echo "Fixpoint timeouts (taint analysis stopped early; findings in these functions can be missing):"
-		query "$report" '
-			timeouts
-			| "  \(.path // "?" | display):\(.line // "?" | display)  \(.scope), rules: \(.n | display), first: \(.rule | display)",
-			  ("::\($level) "
-			   + ([(.path | select(. != null) | "file=\(prop)"),
-			       (.line | select(type == "number") | "line=\(.)"),
-			       "title=Semgrep fixpoint timeout"] | join(","))
-			   + "::"
-			   + ("Taint analysis of this \(.scope) timed out for \(.n) rule(s) (first: \(.rule)), so their findings here can be missing." | data))' \
-			--arg level "$level" || bad_report "$report"
+		suspend_commands
+		query "$report" 'timeouts
+			| "semgrep-coverage: \(.path // "?" | display):\(.line // "?" | display)  \(.scope), rules: \(.n | display), first: \(.rule | display)"' ||
+			bad_report "$report"
+		resume_commands
 	fi
 
 	if [ "$((n_errors + n_warnings))" -gt 0 ]; then
 		echo
 		echo "::group::Semgrep errors and warnings ($n_errors error(s), $n_warnings warning(s))"
-		query "$report" 'errors | "  [\(.level | display)] \(.type)  \(.where)  \(.message)"' || bad_report "$report"
-		echo "::endgroup::"
-		query "$report" 'errors | select(.level == "error") | "::warning title=Semgrep \(.type | prop)::\("\(.where): \(.message)" | data)"' ||
+		suspend_commands
+		query "$report" 'errors
+			| "semgrep-coverage: [\(.level | display)] \(.type | display)  \(.where | display)  \(.message | display | .[0:240])"' ||
 			bad_report "$report"
+		resume_commands
+		echo "::endgroup::"
 	fi
+
+	# Annotations, after every suspended block.
+	query "$report" '
+		(timeouts
+		 | "::\($level) "
+		   + ([(.path | select(. != null) | "file=\(prop)"),
+		       (.line | select(type == "number") | "line=\(.)"),
+		       "title=Semgrep fixpoint timeout"] | join(","))
+		   + "::"
+		   + ("Taint analysis of this \(.scope) timed out for \(.n) rule(s) (first: \(.rule)), so their findings here can be missing." | data)),
+		(errors | select(.level == "error") | "::warning title=Semgrep \(.type | prop)::\("\(.where): \(.message)" | data)")' \
+		--arg level "$level" || bad_report "$report"
 
 	if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 		local timeout_rows="" error_rows=""
@@ -151,7 +181,7 @@ check_report() {
 				bad_report "$report"
 		fi
 		if [ "$((n_errors + n_warnings))" -gt 0 ]; then
-			error_rows=$(query "$report" 'errors | "| \(.level | cell) | \(.type | cell) | \(.where | cell) | \(.message | cell) |"') ||
+			error_rows=$(query "$report" 'errors | "| \(.level | cell) | \(.type | cell) | \(.where | cell) | \(.message | .[0:240] | cell) |"') ||
 				bad_report "$report"
 		fi
 		{
@@ -191,10 +221,13 @@ check_report() {
 
 # scan <report> <command...>: runs the scan; returns its exit code.
 scan() {
-	local report=$1
+	local report=$1 rc=0
 	shift
 	rm -f "$report"
-	"$@" --time --json-output "$report"
+	suspend_commands
+	"$@" --time --json-output "$report" || rc=$?
+	resume_commands
+	return "$rc"
 }
 
 # A scan that failed (findings, or a crash): report what coverage there is,

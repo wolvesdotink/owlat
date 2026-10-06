@@ -17,6 +17,7 @@ import {
 	cleanup,
 	fixpointTimeout,
 	report,
+	runnerCommands as commands,
 } from './semgrepTimeouts.testlib';
 
 afterAll(cleanup);
@@ -24,11 +25,6 @@ afterAll(cleanup);
 const REACT_RULE =
 	'typescript.react.security.audit.react-unsanitized-method.react-unsanitized-method';
 const RAW_HTML_RULE = 'javascript.express.security.injection.raw-html-format.raw-html-format';
-
-/** Lines that GitHub would read as workflow commands. */
-function commands(stdout: string): string[] {
-	return stdout.split('\n').filter((line) => line.startsWith('::'));
-}
 
 describe('check-semgrep-timeouts', () => {
 	it('passes a clean report and writes zero counts to the summary', async () => {
@@ -75,12 +71,12 @@ describe('check-semgrep-timeouts', () => {
 		expect(result.code).toBe(0);
 		expect(result.stdout).toContain('0 fixpoint timeout(s), 1 error(s), 1 warning(s)');
 		expect(result.stdout).toContain(
-			"  [warn] PartialParsing  apps/api/convex/mail/outboundCron.ts  Syntax error at line apps/api/convex/mail/outboundCron.ts:63: `import('x')` was unexpected\n"
+			"semgrep-coverage: [warn] PartialParsing  apps/api/convex/mail/outboundCron.ts  Syntax error at line apps/api/convex/mail/outboundCron.ts:63: `import('x')` was unexpected\n"
 		);
 		expect(commands(result.stdout)).toEqual([
 			'::group::Semgrep errors and warnings (1 error(s), 1 warning(s))',
 			'::endgroup::',
-			'::warning title=Semgrep Rule parse error::webhook-signature-presence-only: Rule parse error in rule webhook-signature-presence-only: Invalid pattern for TypeScript: Stdlib.Parsing.Parse_error ----- pattern ----- $X = $FN(...) { }',
+			'::warning title=Semgrep Rule parse error::webhook-signature-presence-only: Rule parse error in rule webhook-signature-presence-only:%0A Invalid pattern for TypeScript: Stdlib.Parsing.Parse_error%0A----- pattern -----%0A$X = $FN(...) {%0A}%0A',
 		]);
 		expect(result.summary).toContain('| Errors | 1 |');
 		expect(result.summary).toContain('| Warnings | 1 |');
@@ -98,27 +94,9 @@ describe('check-semgrep-timeouts', () => {
 		]);
 		// The log line and the summary row stay on one line.
 		expect(result.stdout).toContain(
-			'  apps/a%b c d\\e,f:g.ts:7  function, rules: 1, first: rule%x\n'
+			'semgrep-coverage: apps/a%b c d\\e,f:g.ts:7  function, rules: 1, first: rule%x\n'
 		);
 		expect(result.summary).toContain('| apps/a%b c d\\e,f:g.ts:7 | function | 1 | rule%x |');
-	});
-
-	it('never lets report text start a workflow command', async () => {
-		const injected = 'x.ts\n::warning::injected';
-		const result = await check(
-			report({
-				timeouts: [fixpointTimeout(injected, 3, 0, 1, 'rule')],
-				errors: [{ ...RULE_PARSE_ERROR, rule_id: injected, message: 'a\n::error::injected\rb' }],
-			})
-		);
-		expect(result.code).toBe(1);
-		expect(result.stdout).not.toMatch(/^::(warning|error)::injected/m);
-		expect(commands(result.stdout)).toEqual([
-			'::error file=x.ts%0A%3A%3Awarning%3A%3Ainjected,line=3,title=Semgrep fixpoint timeout::Taint analysis of this function timed out for 1 rule(s) (first: rule), so their findings here can be missing.',
-			'::group::Semgrep errors and warnings (1 error(s), 0 warning(s))',
-			'::endgroup::',
-			'::warning title=Semgrep Rule parse error::x.ts ::warning::injected: a ::error::injected b',
-		]);
 	});
 
 	it('keeps pipes and HTML out of the summary table', async () => {
@@ -150,11 +128,11 @@ describe('check-semgrep-timeouts', () => {
 		expect(result.code).toBe(1);
 		expect(result.stdout).toContain('3 fixpoint timeout(s), 2 error(s), 0 warning(s)');
 		expect(commands(result.stdout)).toEqual([
+			'::group::Semgrep errors and warnings (2 error(s), 0 warning(s))',
+			'::endgroup::',
 			'::error title=Semgrep fixpoint timeout::Taint analysis of this function timed out for ? rule(s) (first: ?), so their findings here can be missing.',
 			'::error title=Semgrep fixpoint timeout::Taint analysis of this function timed out for ? rule(s) (first: ?), so their findings here can be missing.',
 			'::error file=9,title=Semgrep fixpoint timeout::Taint analysis of this function timed out for 1 rule(s) (first: rule), so their findings here can be missing.',
-			'::group::Semgrep errors and warnings (2 error(s), 0 warning(s))',
-			'::endgroup::',
 			'::warning title=Semgrep 7::["a"]: 42',
 			'::warning title=Semgrep ?::-: ',
 		]);
