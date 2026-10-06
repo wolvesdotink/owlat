@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
-	attributionDomain,
 	canonicalOption,
 	clarificationTrust,
 	localizedQuestionCopy,
 	localizedSummary,
+	type ClarificationProvenance,
 } from '../clarificationLocale';
 
 /**
@@ -66,69 +66,48 @@ describe('localizedSummary', () => {
 	});
 });
 
-describe('attributionDomain', () => {
-	it('reads the sender domain out of the server attribution line', () => {
-		expect(
-			attributionDomain(
-				'Generated from an email from acme.com — Owlat will never ask for your password.'
-			)
-		).toBe('acme.com');
-		expect(attributionDomain('Generated from an email from acme.com.')).toBe('acme.com');
-	});
-
-	it('is null when the line names no domain, or there is no line', () => {
-		expect(
-			attributionDomain('Generated from an email — Owlat will never ask for your password.')
-		).toBeNull();
-		expect(attributionDomain(undefined)).toBeNull();
-	});
-});
-
 describe('clarificationTrust', () => {
-	const legacy = (domain?: string) =>
-		`Generated from ${domain ? `an email from ${domain}` : 'an email'} — Owlat will never ask for your password.`;
+	const from = (senderDomain?: string) =>
+		senderDomain ? { kind: 'email' as const, senderDomain } : { kind: 'email' as const };
 
-	it('names the domain from the stored origin, not the English sentence', () => {
-		expect(
-			clarificationTrust([
-				{
-					attribution: legacy('stale.example'),
-					origin: { kind: 'email', senderDomain: 'acme.com' },
-				},
-			])
-		).toEqual({ domain: 'acme.com' });
+	it('names the domain from the stored origin', () => {
+		expect(clarificationTrust([{ origin: from('acme.com') }])).toEqual({ domain: 'acme.com' });
 	});
 
-	it('names no domain when the origin has none, even if the sentence does', () => {
-		expect(
-			clarificationTrust([{ attribution: legacy('acme.com'), origin: { kind: 'email' } }])
-		).toEqual({ domain: null });
+	it('names no domain when the origin has none', () => {
+		expect(clarificationTrust([{ origin: from() }])).toEqual({ domain: null });
 	});
 
-	it('reads the domain out of the legacy sentence for questions stored before origin', () => {
-		expect(clarificationTrust([{ attribution: legacy('acme.com') }])).toEqual({
-			domain: 'acme.com',
+	it('reads `origin` alone and ignores a legacy sentence (#1224)', () => {
+		// Before #1224 a question without `origin` fell back to the domain in
+		// its English `attribution` sentence. The schema no longer has the field.
+		const legacy: ClarificationProvenance & { attribution: string } = {
+			attribution:
+				'Generated from an email from acme.com — Owlat will never ask for your password.',
+		};
+		expect(clarificationTrust([legacy])).toBeNull();
+		expect(clarificationTrust([{ ...legacy, origin: from('other.example') }])).toEqual({
+			domain: 'other.example',
 		});
-		expect(clarificationTrust([{ attribution: legacy() }])).toEqual({ domain: null });
 	});
 
 	it('names one domain only when every question agrees', () => {
 		expect(
-			clarificationTrust([
-				{ origin: { kind: 'email', senderDomain: 'acme.com' } },
-				{ attribution: legacy('acme.com') },
-			])
+			clarificationTrust([{ origin: from('acme.com') }, { origin: from('acme.com') }])
 		).toEqual({ domain: 'acme.com' });
 		expect(
-			clarificationTrust([
-				{ origin: { kind: 'email', senderDomain: 'acme.com' } },
-				{ origin: { kind: 'email', senderDomain: 'other.example' } },
-			])
+			clarificationTrust([{ origin: from('acme.com') }, { origin: from('other.example') }])
 		).toEqual({ domain: null });
+		expect(clarificationTrust([{ origin: from('acme.com') }, { origin: from() }])).toEqual({
+			domain: null,
+		});
 	});
 
-	it('is null when no question says where it came from', () => {
-		expect(clarificationTrust([{}, { attribution: '' }])).toBeNull();
+	it('skips questions without an origin and is null when none has one', () => {
+		expect(clarificationTrust([{}, { origin: from('acme.com') }])).toEqual({
+			domain: 'acme.com',
+		});
+		expect(clarificationTrust([{}, {}])).toBeNull();
 		expect(clarificationTrust([])).toBeNull();
 	});
 });

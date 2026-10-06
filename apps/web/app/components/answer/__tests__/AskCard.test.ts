@@ -30,14 +30,14 @@ beforeAll(() => {
 	});
 });
 
-const why = 'Generated from an email from example.org — Owlat will never ask for your password.';
+const origin = { kind: 'email' as const, senderDomain: 'example.org' };
 const QUESTIONS = [
 	{
 		id: 'file_request',
 		slotType: 'attachment',
 		answerKind: 'file' as const,
 		text: 'They asked for the September invoice. I could not find it.',
-		attribution: why,
+		origin,
 		options: ["It isn't ready yet"],
 		fileCandidates: [
 			{
@@ -56,7 +56,7 @@ const QUESTIONS = [
 		slotType: 'decision',
 		answerKind: 'choice' as const,
 		text: 'Is PO BP-2231 already printed on the invoice?',
-		attribution: why,
+		origin,
 		options: ["Yes, it's on it", 'No, mention it in the email'],
 		answer: { value: "Yes, it's on it", at: 0, source: 'memory' as const },
 	},
@@ -65,7 +65,7 @@ const QUESTIONS = [
 		slotType: 'date_time',
 		answerKind: 'date' as const,
 		text: 'When can you send it?',
-		attribution: why,
+		origin,
 		options: ['Tomorrow', 'Friday'],
 	},
 	{
@@ -73,14 +73,14 @@ const QUESTIONS = [
 		slotType: 'price_number',
 		answerKind: 'number' as const,
 		text: 'What is the total?',
-		attribution: why,
+		origin,
 	},
 	{
 		id: 'note',
 		slotType: 'free_text',
 		answerKind: 'text' as const,
 		text: 'Anything else?',
-		attribution: why,
+		origin,
 	},
 ];
 
@@ -145,22 +145,33 @@ describe('AskCard', () => {
 
 	it('says where the questions came from without a domain when they do not agree', () => {
 		const questions = [
-			{ ...QUESTIONS[3]!, attribution: 'Generated from an email from a.example — x' },
-			{ ...QUESTIONS[4]!, attribution: 'Generated from an email from b.example — x' },
+			{ ...QUESTIONS[3]!, origin: { kind: 'email' as const, senderDomain: 'a.example' } },
+			{ ...QUESTIONS[4]!, origin: { kind: 'email' as const, senderDomain: 'b.example' } },
 		];
 		const w = mountCard({ questions });
 		expect(w.get('[data-testid="ask-trust"]').text()).toBe(
 			'Based on an email. Owlat never asks for your password.'
 		);
 		w.unmount();
-		const bare = mountCard({ questions: questions.map((q) => ({ ...q, attribution: undefined })) });
+		const bare = mountCard({ questions: questions.map((q) => ({ ...q, origin: undefined })) });
 		expect(bare.find('[data-testid="ask-trust"]').exists()).toBe(false);
 		bare.unmount();
+		// The line comes from `origin` alone; a legacy English sentence is no
+		// longer read (#1224).
+		const legacy = mountCard({
+			questions: questions.map((q) => ({
+				...q,
+				origin: undefined,
+				attribution: 'Generated from an email from a.example',
+			})),
+		});
+		expect(legacy.find('[data-testid="ask-trust"]').exists()).toBe(false);
+		legacy.unmount();
 	});
 
 	it('words the trust line from the stored origin', () => {
-		const origin = { kind: 'email' as const, senderDomain: 'acme.com' };
-		const w = mountCard({ questions: QUESTIONS.map((q) => ({ ...q, origin })) });
+		const acme = { kind: 'email' as const, senderDomain: 'acme.com' };
+		const w = mountCard({ questions: QUESTIONS.map((q) => ({ ...q, origin: acme })) });
 		expect(w.get('[data-testid="ask-trust"]').text()).toBe(
 			'Based on an email from acme.com. Owlat never asks for your password.'
 		);

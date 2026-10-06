@@ -65,52 +65,29 @@ export function localizedSummary(
 	return summary[locale.toLowerCase()] ?? summary['en'] ?? Object.values(summary)[0];
 }
 
-/**
- * The sender domain inside a clarification question's legacy attribution line.
- *
- * The server used to write that line in English ("Generated from an email
- * from acme.com — Owlat will never ask for your password."); it writes `origin`
- * instead now. Questions stored before `origin` existed carry only this line,
- * so the trust line reads the domain out of it. Null when the line names none.
- * The backend's migration 0066 converts them to `origin`, parsing the line the
- * same way (inbox/clarificationSlots.ts legacyAttributionOrigin); remove this
- * in the release that drops `attribution` from the schema.
- */
-export function attributionDomain(attribution: string | undefined): string | null {
-	const match = attribution?.match(/\ban email from (\S+)/i);
-	const domain = match?.[1]?.replace(/[.,;:]+$/, '');
-	return domain || null;
-}
-
 /** Where a question came from, as the server stores it (`origin`). */
 export interface ClarificationOrigin {
 	kind: 'email';
 	senderDomain?: string | undefined;
 }
 
-/** The provenance fields of a stored clarification question. */
+/** The provenance field of a stored clarification question. */
 export interface ClarificationProvenance {
-	/** Legacy English sentence; the only provenance on older questions. */
-	attribution?: string | undefined;
 	origin?: ClarificationOrigin | undefined;
 }
 
 /**
  * What the card's one trust line says: null when no question says where it
  * came from, else the sender domain they all share (null when they name none
- * or do not agree). `origin` wins; a question stored before it falls back to
- * the domain in its legacy attribution line.
+ * or do not agree). Read from `origin` alone: the English sentence questions
+ * carried before it is gone from the schema (#1224).
  */
 export function clarificationTrust(
 	questions: readonly ClarificationProvenance[]
 ): { domain: string | null } | null {
-	const sourced = questions.filter((q) => q.origin || q.attribution);
+	const sourced = questions.flatMap((q) => (q.origin ? [q.origin] : []));
 	if (sourced.length === 0) return null;
-	const domains = new Set(
-		sourced.map((q) =>
-			q.origin ? (q.origin.senderDomain ?? null) : attributionDomain(q.attribution)
-		)
-	);
+	const domains = new Set(sourced.map((origin) => origin.senderDomain ?? null));
 	const [domain] = domains;
 	return { domain: domains.size === 1 && domain ? domain : null };
 }

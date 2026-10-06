@@ -609,7 +609,7 @@ describe('draft-on-arrival with files the card still waits for', () => {
 								slotType: 'attachment',
 								answerKind: 'file',
 								text: 'Please provide the invoice PDFs for the four bookings',
-								attribution: 'Generated from an email from acme.test',
+								origin: { kind: 'email', senderDomain: 'acme.test' },
 							},
 						],
 					},

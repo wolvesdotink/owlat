@@ -1,4 +1,4 @@
-import { v, type Validator, type ValidatorJSON } from 'convex/values';
+import { v, type JSONValue, type Validator, type ValidatorJSON } from 'convex/values';
 import { describe, expect, it } from 'vitest';
 import schema from '../../schema';
 import { rowsForTable } from './rows';
@@ -27,6 +27,50 @@ import { schemaMismatch } from './validate';
  */
 const RETIRED_TABLES: ReadonlySet<string> = new Set();
 
+/**
+ * Fields the current release deliberately removed, per table, as paths into a
+ * row: `.` between fields, `[]` for every element of an array. Like a retired
+ * table, a field leaves the schema only in the contract step, after a shipped
+ * migration emptied it on every deployment; name it here in that same PR, with
+ * the migration. The check then reads the previous release's rows as that
+ * migration left them, without the field, and still checks the rest of each
+ * row. The deploy enforces the precondition: Convex rejects a schema that a
+ * stored row does not match, so a deployment where the migration has not
+ * completed keeps running its old release. An entry becomes inert once the
+ * snapshot no longer has the field; drop it at that refresh.
+ */
+const RETIRED_FIELDS: Readonly<Record<string, readonly string[]>> = {
+	// 0066_backfill_clarification_origin (0.6.10) moved every legacy sentence
+	// to `origin`; #1224 dropped the field.
+	answerAskSessions: ['questions[].attribution'],
+	mailThreads: ['needsReply.clarification.questions[].attribution'],
+};
+
+/** `row` without the field at `path` (see {@link RETIRED_FIELDS}). */
+function withoutField(row: JSONValue, path: readonly string[]): JSONValue {
+	const [segment, ...rest] = path;
+	if (segment === undefined || row === null || typeof row !== 'object' || Array.isArray(row)) {
+		return row;
+	}
+	const isArray = segment.endsWith('[]');
+	const name = isArray ? segment.slice(0, -2) : segment;
+	if (!(name in row)) return row;
+	if (rest.length === 0) {
+		const { [name]: _removed, ...kept } = row;
+		return kept;
+	}
+	const value = row[name] as JSONValue;
+	const next =
+		isArray && Array.isArray(value)
+			? value.map((item) => withoutField(item, rest))
+			: withoutField(value, rest);
+	return { ...row, [name]: next };
+}
+
+function withoutRetiredFields(row: JSONValue, paths: readonly string[] = []): JSONValue {
+	return paths.reduce((current, path) => withoutField(current, path.split('.')), row);
+}
+
 const currentTables = schema.tables as unknown as Record<
 	string,
 	{ validator: { json: ValidatorJSON } }
@@ -35,7 +79,8 @@ const currentTables = schema.tables as unknown as Record<
 function incompatibilities(
 	previous: Record<string, ValidatorJSON>,
 	current: Record<string, ValidatorJSON>,
-	retired: ReadonlySet<string> = new Set()
+	retired: ReadonlySet<string> = new Set(),
+	retiredFields: Readonly<Record<string, readonly string[]>> = {}
 ): string[] {
 	const problems: string[] = [];
 	for (const [table, validator] of Object.entries(previous)) {
@@ -45,7 +90,7 @@ function incompatibilities(
 			continue;
 		}
 		for (const [index, row] of rowsForTable(validator).entries()) {
-			const problem = schemaMismatch(next, row);
+			const problem = schemaMismatch(next, withoutRetiredFields(row, retiredFields[table]));
 			if (problem) problems.push(`${table} row ${index}: ${problem}`);
 		}
 	}
@@ -67,11 +112,29 @@ describe('previous-release rows still validate', () => {
 	});
 
 	it(`every row shape ${snapshot.release} could store validates against the current schema`, () => {
-		expect(incompatibilities(snapshot.tables, currentValidators(), RETIRED_TABLES)).toEqual([]);
+		expect(
+			incompatibilities(snapshot.tables, currentValidators(), RETIRED_TABLES, RETIRED_FIELDS)
+		).toEqual([]);
 	});
 
 	it('names no retired table that is still in the schema', () => {
 		expect([...RETIRED_TABLES].filter((table) => table in currentTables)).toEqual([]);
+	});
+
+	it('names no retired field that is still in the schema', () => {
+		// A row with every optional field present carries each field the schema
+		// has; removing a retired one from it must change nothing.
+		const current = currentValidators();
+		const stillThere = Object.entries(RETIRED_FIELDS).flatMap(([table, paths]) => {
+			const validator = current[table];
+			if (!validator) return [`${table}: table is no longer in the schema`];
+			return paths.filter((path) =>
+				rowsForTable(validator).some(
+					(row) => JSON.stringify(withoutRetiredFields(row, [path])) !== JSON.stringify(row)
+				)
+			);
+		});
+		expect(stillThere).toEqual([]);
 	});
 });
 
@@ -189,6 +252,27 @@ describe('the compatibility check itself', () => {
 		).toContain('sends row 1: sentAt: field is no longer in the schema');
 		expect(incompatibilities(previous, {})).toEqual(['sends: table is no longer in the schema']);
 		expect(incompatibilities(previous, {}, new Set(['sends']))).toEqual([]);
+	});
+
+	it('accepts a retired field and still checks the rest of the row', () => {
+		const nested = (fields: Parameters<typeof v.object>[0]) =>
+			table({ items: v.array(v.object(fields)), at: v.number() });
+		const before = { t: nested({ id: v.string(), legacy: v.string() }) };
+		const retired = { t: ['items[].legacy'] };
+		expect(incompatibilities(before, { t: nested({ id: v.string() }) })).toContain(
+			't row 0: items[0].legacy: field is no longer in the schema'
+		);
+		expect(
+			incompatibilities(before, { t: nested({ id: v.string() }) }, new Set(), retired)
+		).toEqual([]);
+		expect(
+			incompatibilities(
+				before,
+				{ t: table({ items: v.array(v.object({ id: v.number() })), at: v.number() }) },
+				new Set(),
+				retired
+			).join('\n')
+		).toContain('items[0].id: expected number');
 	});
 
 	it('rejects a nested optional field made required under an optional parent', () => {
