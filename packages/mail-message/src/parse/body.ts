@@ -15,6 +15,7 @@ import {
 	getRawParam,
 	decodeQpHexEscapes,
 	decodeEncodedWords,
+	headerBytesToText,
 	type MessageHeaders,
 } from './headers';
 import { type ContentType } from './contentType';
@@ -362,15 +363,20 @@ function rawDisposition(node: MimeNode): string {
 
 /**
  * Decoded filename of a part (Content-Disposition `filename`, else Content-Type
- * `name`), or `''`. Params are read with the whitespace-anchored scanner, so a
+ * `name`), or `''`. The header is read as text first, so a raw UTF-8 filename
+ * (RFC 6532) decodes. Params are read with the whitespace-anchored scanner, so a
  * no-semicolon `attachment filename="x"` still yields a name, and the value is
  * then RFC 2047-decoded.
  */
 export function partFilename(node: MimeNode): string {
 	const rawName =
-		getRawParam(node.headers.last('content-disposition'), 'filename') ??
-		getRawParam(node.headers.last('content-type'), 'name');
+		getRawParam(headerText(node.headers.last('content-disposition')), 'filename') ??
+		getRawParam(headerText(node.headers.last('content-type')), 'name');
 	return rawName ? decodeEncodedWords(rawName) : '';
+}
+
+function headerText(raw: string | undefined): string | undefined {
+	return raw === undefined ? undefined : headerBytesToText(raw);
 }
 
 /**

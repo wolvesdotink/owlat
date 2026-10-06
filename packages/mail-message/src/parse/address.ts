@@ -12,11 +12,14 @@
  * headers are an array).
  */
 
-import { decodeHeaderValue } from './headers';
+import { collapseControlChars, decodeHeaderValue } from './headers';
 
 /** One parsed mailbox, or (when `group` is set) a group container. */
 export interface EmailAddress {
-	/** Display name, decoded through RFC 2047. Empty string when absent. */
+	/**
+	 * Display name, decoded through RFC 2047, as one line: control characters
+	 * an encoded word carried become a space. Empty string when absent.
+	 */
 	name: string;
 	/** Mailbox address, lowercased. Empty string for a group container. */
 	address: string;
@@ -220,9 +223,18 @@ export function parseMailboxAddress(raw: string): EmailAddress | null {
 	const parsed = parseMailbox(raw);
 	if (!parsed) return null;
 	return {
-		name: parsed.name === undefined ? '' : decodeHeaderValue(parsed.name),
+		name: parsed.name === undefined ? '' : displayName(parsed.name),
 		address: parsed.address,
 	};
+}
+
+/**
+ * A display or group name as one line of text. An RFC 2047 encoded word can
+ * carry any byte, CR and LF included, so the decoded name has its control
+ * characters collapsed, as the subject has.
+ */
+function displayName(raw: string): string {
+	return collapseControlChars(decodeHeaderValue(raw));
 }
 
 /**
@@ -301,7 +313,7 @@ export function parseAddressList(input: string): EmailAddress[] {
 			continue;
 		}
 		if (ch === ':' && group === null && !buf.includes('@')) {
-			group = { name: decodeHeaderValue(buf.trim()), members: [] };
+			group = { name: displayName(buf.trim()), members: [] };
 			buf = '';
 			continue;
 		}

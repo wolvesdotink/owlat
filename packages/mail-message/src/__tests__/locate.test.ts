@@ -271,7 +271,10 @@ describe('locateMimeTree: the same leaves, verdicts and bytes as the string walk
 	it('hands the string walker the same 8-bit header and body bytes', () => {
 		const raw = bytes(BUILT['8-bit bytes in 0x80-0x9F in a header and a binary body']!);
 		const { leaves } = stringView(raw);
-		expect(leaves[0]?.filename).toBe('\u0080\u009f.bin');
+		const { root } = parseMimeTreeWithBounds(bytesToBinaryString(raw));
+		expect(root.children[0]?.headers.last('content-disposition')).toContain('\u0080\u009f.bin');
+		// The two bytes are not UTF-8, so the filename reads them as windows-1252.
+		expect(leaves[0]?.filename).toBe('€Ÿ.bin');
 		expect(leaves[0]?.bytes).toEqual([0x00, 0x41, 0x80, 0x99, 0x9f, 0xa0, 0xff]);
 	});
 

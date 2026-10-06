@@ -124,13 +124,13 @@ export function useTeamReplyAttachments(
 		new Intl.NumberFormat(locale.value).format(bytes / 1024 / 1024);
 
 	/** Upload `files`, refusing up front what the server would refuse. */
-	function addFiles(files: File[] | FileList) {
+	function addFiles(files: File[]) {
 		let count = attachments.value.length + uploader.uploads.value.length;
 		let total =
 			attachments.value.reduce((sum, a) => sum + a.size, 0) +
 			uploader.uploads.value.reduce((sum, c) => sum + c.size, 0);
 		const accepted: File[] = [];
-		for (const file of Array.from(files)) {
+		for (const file of files) {
 			if (file.size > MAX_ATTACHMENT_BYTES) {
 				showToast(
 					t('shared.postbox.usePostboxComposeAttachments.tooLarge', {

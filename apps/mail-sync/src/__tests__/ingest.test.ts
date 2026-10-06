@@ -367,6 +367,48 @@ describe('ingestMessage', () => {
 		expect(payload.textBodyInline).toContain("Café coûte 5£ aujourd'hui.");
 	});
 
+	it('decodes a raw UTF-8 subject, display name and filename (RFC 6532)', async () => {
+		const { client, lastPayload } = mockConvex();
+		const raw = [
+			'From: Jörg Müller <joerg@example.com>',
+			'Reply-To: Jörg Müller <joerg@example.com>',
+			'To: Bob <bob@example.com>',
+			'Subject: Grüße aus Köln, voilà',
+			'Message-ID: <utf8-1@example.com>',
+			'MIME-Version: 1.0',
+			'Content-Type: multipart/mixed; boundary="B"',
+			'',
+			'--B',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'Hallo',
+			'--B',
+			'Content-Type: application/pdf',
+			'Content-Disposition: attachment; filename="Rechnung März.pdf"',
+			'Content-Transfer-Encoding: base64',
+			'',
+			'JVBERi0=',
+			'--B--',
+			'',
+		].join('\r\n');
+
+		await ingestMessage(client, UPLOAD, {
+			accountId: 'a',
+			folderRole: 'inbox',
+			remoteName: 'INBOX',
+			remoteUid: 7,
+			remoteUidValidity: 2,
+			raw: Buffer.from(raw, 'utf-8'),
+			flags: new Set(),
+			origin: 'sync',
+		});
+
+		const payload = lastPayload();
+		expect(payload.subject).toBe('Grüße aus Köln, voilà');
+		expect(payload.replyTo).toBe('Jörg Müller <joerg@example.com>');
+		expect(payload.attachments[0]?.filename).toBe('Rechnung März.pdf');
+	});
+
 	// The attachment metadata mapping is a thin passthrough over
 	// `parseMessage`'s attachment leaves: partIndex is the document-order index
 	// (`String(i)`), and an unnamed part reports the parse layer's `attachment`

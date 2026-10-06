@@ -7,6 +7,7 @@
  */
 
 import { parseContentType, type ContentType } from './contentType';
+import { binaryStringToBytes } from './binaryString';
 
 /**
  * Collapse RFC 5322 folding whitespace: a CRLF (or bare LF) followed by at
@@ -82,6 +83,61 @@ export function decodeHeaderValue(raw: string): string {
 		'$1'
 	);
 	return decodeEncodedWords(joined);
+}
+
+/** Any char above U+007F: a byte of an 8-bit header value, or decoded text. */
+const NON_ASCII = /[\u0080-\uffff]/;
+
+/** A char above U+00FF, which no byte of a binary string can be. */
+const NOT_A_BYTE = /[\u0100-\uffff]/;
+
+/**
+ * A raw header value, held as a binary string (one char per byte), as text.
+ *
+ * RFC 6532 lets a header carry UTF-8 unencoded, and many mailers send it that
+ * way, so 8-bit bytes are read as UTF-8 when they are valid UTF-8. Bytes that
+ * are not are a legacy unencoded 8-bit header, read as windows-1252, as every
+ * other mail reader does. ASCII, and a string that already holds a char no byte
+ * can be (decoded text), come back unchanged. RFC 2047 encoded words are ASCII
+ * and are left for {@link decodeHeaderValue}, which must run on the result: the
+ * bytes are decoded first, so that unfolding, trimming and the encoded words
+ * all see characters rather than bytes.
+ *
+ * A byte-order mark means nothing in a header. It is never sniffed, so it
+ * cannot switch the encoding, and it is never dropped: a leading `EF BB BF`
+ * comes back as U+FEFF in valid UTF-8 and as `ï»¿` under windows-1252, and
+ * `FF FE` or `FE FF` as `ÿþ` or `þÿ`. (`String#trim`, which the subject, a
+ * display name and a filename param each meet later, removes a U+FEFF left at
+ * either end.)
+ *
+ * Never trim or `\s`-match the binary string before this: `String#trim`
+ * treats the byte 0xA0, the last byte of `à` or `Р`, as whitespace.
+ */
+export function headerBytesToText(value: string): string {
+	if (!NON_ASCII.test(value) || NOT_A_BYTE.test(value)) return value;
+	const bytes = binaryStringToBytes(value);
+	try {
+		return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+	} catch {
+		// Not UTF-8. A runtime without a windows-1252 decoder keeps the bytes
+		// as latin1, which the binary string already is.
+		try {
+			return new TextDecoder('windows-1252').decode(bytes);
+		} catch {
+			return value;
+		}
+	}
+}
+
+/**
+ * A raw header value (binary string) as one line of display text: its bytes
+ * read as text ({@link headerBytesToText}), unfolded, its encoded words decoded
+ * ({@link decodeHeaderValue}) and its control characters collapsed
+ * ({@link collapseControlChars}). This is how Subject and the other
+ * unstructured display headers are read.
+ */
+export function decodeRawHeaderValue(raw: string): string {
+	return collapseControlChars(decodeHeaderValue(headerBytesToText(raw)));
 }
 
 /**
@@ -167,6 +223,24 @@ export function getRawParam(headerValue: string | undefined, name: string): stri
 	return value ? decodeRfc2231(value.trim()) : undefined;
 }
 
+/** Whether `code` is ASCII whitespace: TAB, LF, VT, FF, CR or space. */
+function isAsciiWhitespace(code: number): boolean {
+	return code === 0x20 || (code >= 0x09 && code <= 0x0d);
+}
+
+/**
+ * `s` without leading and trailing ASCII whitespace. A header value is still a
+ * binary string here, and `String#trim` would also drop a trailing byte 0xA0,
+ * cutting the UTF-8 sequence of a final `à` or `Р` in half.
+ */
+function trimAsciiWhitespace(s: string): string {
+	let start = 0;
+	let end = s.length;
+	while (start < end && isAsciiWhitespace(s.charCodeAt(start))) start++;
+	while (end > start && isAsciiWhitespace(s.charCodeAt(end - 1))) end--;
+	return s.slice(start, end);
+}
+
 /**
  * Split a raw header block (everything before the blank line that separates
  * headers from body) into a case-insensitive multimap of UNFOLDED raw values,
@@ -179,7 +253,7 @@ export function splitHeaderLines(headerBlock: string): Map<string, string[]> {
 		if (idx < 0) continue;
 		const name = line.slice(0, idx).trim().toLowerCase();
 		if (!name) continue;
-		const value = line.slice(idx + 1).trim();
+		const value = trimAsciiWhitespace(line.slice(idx + 1));
 		const existing = map.get(name);
 		if (existing) existing.push(value);
 		else map.set(name, [value]);
@@ -292,21 +366,25 @@ export class MessageHeaders {
 		return this.map.get(name.toLowerCase()) ?? [];
 	}
 
-	/** First value decoded through RFC 2047 (for display headers like Subject). */
+	/**
+	 * First value as one line of display text (for display headers like
+	 * Subject): see {@link decodeRawHeaderValue}.
+	 */
 	getDecoded(name: string): string | undefined {
 		const raw = this.get(name);
-		return raw === undefined ? undefined : decodeHeaderValue(raw);
+		return raw === undefined ? undefined : decodeRawHeaderValue(raw);
 	}
 
 	/**
-	 * LAST value decoded through RFC 2047. mailparser treats `subject` (and the
-	 * other single-valued display headers) as `singleKeys` and collapses a
-	 * duplicated header to the LAST occurrence via `map.set`, so a header-shadowing
-	 * message must resolve to the same value on both sides.
+	 * LAST value as one line of display text ({@link decodeRawHeaderValue}).
+	 * mailparser treats `subject` (and the other single-valued display headers)
+	 * as `singleKeys` and collapses a duplicated header to the LAST occurrence via
+	 * `map.set`, so a header-shadowing message must resolve to the same value on
+	 * both sides.
 	 */
 	lastDecoded(name: string): string | undefined {
 		const raw = this.last(name);
-		return raw === undefined ? undefined : decodeHeaderValue(raw);
+		return raw === undefined ? undefined : decodeRawHeaderValue(raw);
 	}
 
 	has(name: string): boolean {

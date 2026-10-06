@@ -37,11 +37,24 @@ export function binaryStringToBytes(binary: string): Uint8Array<ArrayBuffer> {
 	const bytes = new Uint8Array(binary.length);
 	for (let i = 0; i < binary.length; i++) {
 		const code = binary.charCodeAt(i);
-		if (code > 0xff) {
-			const hex = code.toString(16).toUpperCase().padStart(4, '0');
-			throw new RangeError(`Not a binary string: U+${hex} at index ${i}`);
-		}
+		if (code > 0xff) throw notABinaryString(code, i);
 		bytes[i] = code;
 	}
 	return bytes;
+}
+
+/**
+ * Throws the {@link binaryStringToBytes} `RangeError` when `s` holds a char
+ * above U+00FF, without copying it. For a reader that takes a binary string
+ * and must not mistake decoded text for one: the text's chars would be read
+ * as bytes, and each non-ASCII char decoded a second time.
+ */
+export function assertBinaryString(s: string): void {
+	const match = /[\u0100-\uffff]/.exec(s);
+	if (match) throw notABinaryString(s.charCodeAt(match.index), match.index);
+}
+
+function notABinaryString(code: number, index: number): RangeError {
+	const hex = code.toString(16).toUpperCase().padStart(4, '0');
+	return new RangeError(`Not a binary string: U+${hex} at index ${index}`);
 }

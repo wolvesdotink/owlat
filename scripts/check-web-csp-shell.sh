@@ -16,6 +16,7 @@
 #   3. there IS at least one inline script (otherwise 1+2 pass vacuously)
 #   4. connect-src names the backend given at RUN time, not at build time
 #   5. the shell's runtime config reflects RUN-time env, not build-time env
+#   6. img-src, object-src and frame-src allow the page's own blob: URLs
 #
 # (5) is its own trap: nuxt.config.ts is evaluated at image build, and Nitro only
 # overlays env named NUXT_PUBLIC_*, so a key reading any other name is frozen in
@@ -114,6 +115,21 @@ case "$connect_src" in
 		exit 1
 		;;
 esac
+
+# The attachment lightbox, chip thumbnails and upload size probes load blob:
+# URLs the page creates itself; the PDF preview is an <object> Chrome also
+# checks against frame-src. Without blob: in these the browser refuses them and
+# nothing is thrown (#1292).
+for directive in img-src object-src frame-src; do
+	sources=$(printf '%s' "$csp" | tr ';' '\n' | grep -E "(^|[[:space:]])${directive} " || true)
+	case "$sources" in
+		*" blob:"*) ;;
+		*)
+			echo "::error::${directive} does not allow blob:, so the app's own object URLs (attachment previews, thumbnails) are refused. Got:${sources}"
+			exit 1
+			;;
+	esac
+done
 
 # The shell inlines runtime config as `window.__NUXT__.config` (devalue output:
 # unquoted keys, quoted string values).
