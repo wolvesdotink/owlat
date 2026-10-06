@@ -169,6 +169,70 @@ describe('team reply attachments: add, list, remove', () => {
 		).rejects.toThrow(/no attachment at that position/);
 	});
 
+	it('removes by id the entry a stale index no longer points at, once', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId } = await seedThread(t);
+		const first = await upload(t, 'terms');
+		const second = await upload(t, 'salary');
+		await t.mutation(api.inbox.replyAttachments.add, {
+			threadId,
+			storageId: first,
+			filename: 'terms.pdf',
+		});
+		const added = await t.mutation(api.inbox.replyAttachments.add, {
+			threadId,
+			storageId: second,
+			filename: 'salary.xlsx',
+		});
+		const salary = added[1]!;
+		// A teammate removes the earlier file, so index 1 is past the end now.
+		await t.mutation(api.inbox.replyAttachments.remove, { threadId, index: 0 });
+
+		const left = await t.mutation(api.inbox.replyAttachments.remove, {
+			threadId,
+			index: salary.index,
+			id: salary.id,
+		});
+		expect(left).toEqual([]);
+		expect(await blobText(t, second)).toBeNull();
+		// Already gone: nothing to remove, and no error.
+		expect(
+			await t.mutation(api.inbox.replyAttachments.remove, {
+				threadId,
+				index: salary.index,
+				id: salary.id,
+			})
+		).toEqual([]);
+	});
+
+	it('removes by id only that entry, leaving the one now at its old index', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId } = await seedThread(t);
+		const ids = [await upload(t, 'a'), await upload(t, 'b'), await upload(t, 'c')];
+		const lists = [];
+		for (const [i, storageId] of ids.entries()) {
+			lists.push(
+				await t.mutation(api.inbox.replyAttachments.add, {
+					threadId,
+					storageId,
+					filename: `f${i}.pdf`,
+				})
+			);
+		}
+		const target = lists[2]![1]!;
+		// f0 goes, so f1 moves to index 0 and f2 now sits at f1's old index.
+		await t.mutation(api.inbox.replyAttachments.remove, { threadId, index: 0 });
+
+		const left = await t.mutation(api.inbox.replyAttachments.remove, {
+			threadId,
+			index: target.index,
+			id: target.id,
+		});
+		expect(left.map((entry) => entry.filename)).toEqual(['f2.pdf']);
+		expect(await blobText(t, ids[1]!)).toBeNull();
+		expect(await blobText(t, ids[2]!)).toBe('c');
+	});
+
 	it("refuses someone else's upload and an untracked blob, leaving both in place", async () => {
 		const t = convexTest(schema, modules);
 		const { threadId } = await seedThread(t);

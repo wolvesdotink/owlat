@@ -71,6 +71,12 @@ export function useTeamReplyAttachments(
 		label: () => t('shared.postbox.usePostboxComposeAttachments.removeOperation'),
 	});
 
+	// The thread and list entry each upload was bound to, by storageId, so a
+	// cancelled upload whose `add` still went through can be taken off again.
+	const bound = new Map<
+		string,
+		{ threadId: Id<'conversationThreads'>; entry: { index: number; id: string } }
+	>();
 	const uploader = createAttachmentUploads({
 		generateUploadUrl: async () => {
 			const minted = await generateUploadUrl.run({});
@@ -86,11 +92,30 @@ export function useTeamReplyAttachments(
 				filename: a.filename,
 				contentType: a.contentType,
 			});
-			if (result.ok) written.value = result.result;
-			return result.ok;
+			if (!result.ok) return false;
+			written.value = result.result;
+			// `add` appends the upload, so it is the list's last entry.
+			const entry = result.result.at(-1);
+			if (entry) bound.set(a.storageId, { threadId: id, entry });
+			return true;
+		},
+		detach: async (a) => {
+			const binding = bound.get(a.storageId);
+			if (!binding) return false;
+			const result = await removeOp.run({
+				threadId: binding.threadId,
+				index: binding.entry.index,
+				id: binding.entry.id,
+			});
+			if (!result.ok) return false;
+			bound.delete(a.storageId);
+			if (threadId() === binding.threadId) written.value = result.result;
+			return true;
 		},
 		// The committed file arrives through the list; the thumbnail is not kept.
-		onCommitted: () => {},
+		onCommitted: (a) => {
+			bound.delete(a.storageId);
+		},
 		createThumb: () => null,
 	});
 	onBeforeUnmount(() => uploader.dispose());
@@ -171,10 +196,15 @@ export function useTeamReplyAttachments(
 		return result.ok;
 	}
 
+	/**
+	 * Remove the file shown at `index`. Its id goes along, so a teammate's edit
+	 * that shifts the list before this lands cannot make it take another file.
+	 */
 	async function remove(index: number) {
 		const thread = threadId();
 		if (!thread) return false;
-		const result = await removeOp.run({ threadId: thread, index });
+		const id = attachments.value[index]?.id;
+		const result = await removeOp.run({ threadId: thread, index, ...(id ? { id } : {}) });
 		if (result.ok) written.value = result.result;
 		return result.ok;
 	}
