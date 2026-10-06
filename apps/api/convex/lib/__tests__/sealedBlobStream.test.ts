@@ -19,14 +19,30 @@ function storage(bytes: Uint8Array | null) {
 
 const sample = (size: number) => Uint8Array.from({ length: size }, (_, i) => (i * 31 + 7) & 0xff);
 
+/**
+ * The index of the first byte where `a` and `b` differ (the shorter length
+ * when one is a prefix of the other), or -1 when they are the same bytes.
+ * `toEqual` walks a typed array element by element through its generic deep
+ * equality, about 3 µs a byte under coverage, so four 1 MB comparisons outran
+ * the 10 s test timeout on CI; `Buffer.equals` compares them natively.
+ */
+function firstDifference(a: Uint8Array, b: Uint8Array): number {
+	const view = (bytes: Uint8Array) => Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+	if (view(a).equals(view(b))) return -1;
+	const shorter = Math.min(a.length, b.length);
+	for (let i = 0; i < shorter; i++) if (a[i] !== b[i]) return i;
+	return shorter;
+}
+
 describe('readSealedBlobBytesStreaming', () => {
 	it('unseals a sealed blob to the bytes openBytesAtRest gives, across chunk sizes', async () => {
 		for (const size of [1, 15, 16, 17, 4096, 70_000, 1_000_003]) {
 			const plain = sample(size);
 			const sealed = await sealBytesAtRest(SECRET, plain);
 			const streamed = await readSealedBlobBytesStreaming(storage(sealed), ID, SECRET);
-			expect(streamed).toEqual(await openBytesAtRest(SECRET, sealed));
-			expect(streamed).toEqual(plain);
+			if (!streamed) throw new Error(`no bytes for a sealed ${size}-byte blob`);
+			expect(firstDifference(streamed, await openBytesAtRest(SECRET, sealed))).toBe(-1);
+			expect(firstDifference(streamed, plain)).toBe(-1);
 		}
 	});
 
