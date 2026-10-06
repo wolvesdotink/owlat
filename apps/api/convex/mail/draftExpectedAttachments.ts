@@ -24,8 +24,8 @@
  *    sweep; `bindExpected` settles one key exactly once by binding that
  *    receipt, and a second copy of a settled or removed key is dropped.
  *  - Taking a file out settles it as removed, on every path: `remove` here
- *    (which also takes out a copy that already landed, and on an unexpanded
- *    forward removes the whole forward), `drafts.removeAttachment` and
+ *    (which also takes out a copy that already landed; a forward's key covers
+ *    the whole forward, before or after it was expanded), `drafts.removeAttachment` and
  *    share-as-link (`withoutAttachment`). A copy still in flight then has
  *    nothing to come back to.
  *  - `drafts.send` refuses while anything is owed (`DRAFT_ATTACHMENTS_OWED`),
@@ -73,7 +73,16 @@ export const MAX_GENERATED_ATTACHMENT_BYTES = 64 * 1024;
 export const MAX_FORWARDED_PARTS = 1000;
 
 /** Why an owed file was not attached this time; it stays owed. */
-export type FulfilFailure = 'unreadable' | 'tooLarge' | 'tooMany' | 'totalTooLarge' | 'failed';
+export type FulfilFailure =
+	| 'unreadable'
+	| 'tooLarge'
+	| 'tooMany'
+	| 'totalTooLarge'
+	| 'failed'
+	/** A forwarded message too large to read within the action's memory. */
+	| 'messageTooLarge'
+	/** A forwarded message the MIME walker could not read to the end (parts, depth). */
+	| 'messageTooComplex';
 
 /** The key a forwarded part is owed under: the message and its raw part index. */
 export function forwardPartKey(messageId: Id<'mailMessages'>, partIndex: string): string {
@@ -186,6 +195,8 @@ export type OwedWork =
 			kind: 'forward';
 			messageId: Id<'mailMessages'>;
 			rawStorageId: Id<'_storage'>;
+			/** The raw message's size in bytes (the larger of the row's and the blob's). */
+			rawSize: number;
 			/** The message's unexpanded debt, when it still has one. */
 			debtKey?: string;
 			/** Parts already owed under their own keys. */
@@ -236,6 +247,10 @@ export const owedWork = internalQuery({
 					kind: 'forward',
 					messageId: message._id,
 					rawStorageId: message.rawStorageId,
+					rawSize: Math.max(
+						message.rawSize,
+						(await ctx.db.system.get(message.rawStorageId))?.size ?? 0
+					),
 					partIndexes: [],
 				};
 				forwards.set(message._id, job);
@@ -384,7 +399,10 @@ export const bindExpected = internalMutation({
 /**
  * The person takes an owed (or already attached) file out. Settles the key as
  * removed, so a copy still in flight is refused, and removes a copy that
- * already landed.
+ * already landed. A forward's key covers the whole forward: removed before it
+ * was expanded, expansion then finds nothing to do; removed after (another tab
+ * expanded it meanwhile), every part it expanded into is settled as removed,
+ * and the copies that landed are taken out with their blobs.
  */
 export const remove = postboxMutation({
 	args: { draftId: v.id('mailDrafts'), key: v.string() },
@@ -394,24 +412,22 @@ export const remove = postboxMutation({
 		if (!owned.ok) throwForbidden('Draft not accessible');
 		assertStateIs(draft, 'draft');
 		const entries = draft.expectedAttachments ?? [];
-		const entry = entries.find((e) => e.key === args.key);
-		if (!entry || entry.state === 'removed') return { ok: true };
-		const landed = entry.storageId;
-		if (landed) {
-			// It already landed: take it out the way the attachment chip does.
-			await ctx.db.patch(args.draftId, {
-				...withoutAttachment(draft, landed),
-				lastEditedAt: Date.now(),
-			});
-			if (draft.attachments.some((a) => a.storageId === landed)) {
-				await deleteOwnedUpload(ctx, landed, `mailDrafts:${args.draftId}`);
-			}
-			return { ok: true };
-		}
+		const covered = (key: string) =>
+			key === args.key || (args.key.startsWith('forward:') && key.startsWith(`${args.key}:`));
+		const taken = entries.filter((e) => covered(e.key) && e.state !== 'removed');
+		if (taken.length === 0) return { ok: true };
+		const landed = new Set(taken.flatMap((e) => (e.storageId ? [e.storageId] : [])));
+		const removing = draft.attachments.filter((a) => landed.has(a.storageId));
 		await ctx.db.patch(args.draftId, {
-			expectedAttachments: entries.map((e) => (e.key === args.key ? settled(e, 'removed') : e)),
+			attachments: draft.attachments.filter((a) => !landed.has(a.storageId)),
+			expectedAttachments: entries.map((e) =>
+				covered(e.key) && e.state !== 'removed' ? settled(e, 'removed') : e
+			),
 			lastEditedAt: Date.now(),
 		});
+		for (const attachment of removing) {
+			await deleteOwnedUpload(ctx, attachment.storageId, `mailDrafts:${args.draftId}`);
+		}
 		return { ok: true };
 	},
 });

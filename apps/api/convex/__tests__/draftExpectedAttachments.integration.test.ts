@@ -454,7 +454,7 @@ describe('a draft owes its expected attachments', () => {
 			{ filename: 'invoice.pdf', contentType: 'application/pdf', size: 6, partIndex: '2' },
 		];
 		const { messageId, draftId } = await forwardDraft(t, eml, metadata);
-		expect(forwardedParts(eml).map((p) => p.partIndex)).toEqual(['0', '1']);
+		expect(forwardedParts(eml).parts.map((p) => p.partIndex)).toEqual(['0', '1']);
 		expect(await fulfil(t, draftId)).toEqual({ failed: [] });
 		expect((await row(t, draftId))?.expectedAttachments?.map((e) => e.key)).toEqual([
 			`forward:${messageId}:0`,
@@ -550,5 +550,126 @@ describe('a draft owes its expected attachments', () => {
 			})
 		).resolves.toEqual({ outcome: 'tooMany', owed: [] });
 		expect((await row(t, other.draftId))?.expectedAttachments?.[0]?.state).toBe('owed');
+	});
+
+	it('releases Send for a forward of a message with no attachments: the debt expands to nothing', async () => {
+		const t = convexTest();
+		const eml = rawMessage('<p>Just text.</p><img src="cid:logo@x">', [
+			leaf('image/png', ['Content-ID: <logo@x>', 'Content-Disposition: inline'], 'logo'),
+		]);
+		const { draftId } = await forwardDraft(t, eml);
+		expect(await sendError(t, draftId)).toMatch(/still being added/);
+		expect(await fulfil(t, draftId)).toEqual({ failed: [] });
+		const draft = (await row(t, draftId))!;
+		expect(draft.expectedAttachments).toEqual([]);
+		expect(draft.attachments).toEqual([]);
+		expect(await sendError(t, draftId)).not.toMatch(/still being added/);
+	});
+
+	it('removing a forward before another tab expands it leaves nothing to expand', async () => {
+		const t = convexTest();
+		const { messageId, draftId } = await forwardDraft(t);
+		await t.mutation(api.mail.draftExpectedAttachments.remove, {
+			draftId,
+			key: `forward:${messageId}`,
+		});
+		expect(await fulfil(t, draftId)).toEqual({ failed: [] });
+		const draft = (await row(t, draftId))!;
+		expect(draft.attachments).toEqual([]);
+		expect(draft.expectedAttachments?.map((e) => [e.key, e.state])).toEqual([
+			[`forward:${messageId}`, 'removed'],
+		]);
+		expect(await sendError(t, draftId)).not.toMatch(/still being added/);
+	});
+
+	it('removing a forward that another tab already expanded removes every part, landed or not', async () => {
+		const t = convexTest();
+		// Expanded (parts owed, none copied yet), then removed by the person.
+		const pending = await forwardDraft(t);
+		await t.mutation(internal.mail.draftExpectedAttachments.expandForward, {
+			draftId: pending.draftId,
+			key: `forward:${pending.messageId}`,
+			parts: [
+				{ partIndex: '0', filename: 'invoice.pdf', contentType: 'application/pdf', size: 8 },
+				{ partIndex: '1', filename: 'photo.png', contentType: 'image/png', size: 5 },
+			],
+		});
+		await t.mutation(api.mail.draftExpectedAttachments.remove, {
+			draftId: pending.draftId,
+			key: `forward:${pending.messageId}`,
+		});
+		expect(await fulfil(t, pending.draftId)).toEqual({ failed: [] });
+		expect((await row(t, pending.draftId))!.attachments).toEqual([]);
+		expect((await row(t, pending.draftId))?.expectedAttachments?.map((e) => e.state)).toEqual([
+			'removed',
+			'removed',
+		]);
+
+		// Expanded and copied, then removed: the copies and their blobs go too.
+		const landed = await forwardDraft(t);
+		await fulfil(t, landed.draftId);
+		const blobs = (await row(t, landed.draftId))!.attachments.map((a) => a.storageId);
+		expect(blobs).toHaveLength(2);
+		await t.mutation(api.mail.draftExpectedAttachments.remove, {
+			draftId: landed.draftId,
+			key: `forward:${landed.messageId}`,
+		});
+		const draft = (await row(t, landed.draftId))!;
+		expect(draft.attachments).toEqual([]);
+		expect(draft.expectedAttachments?.map((e) => e.state)).toEqual(['removed', 'removed']);
+		for (const storageId of blobs) {
+			expect(await t.run(async (ctx) => (await ctx.storage.get(storageId)) !== null)).toBe(false);
+		}
+		expect(await sendError(t, landed.draftId)).not.toMatch(/still being added/);
+	});
+
+	it('keeps a forward owed when the MIME bounds cut its message short', async () => {
+		const t = convexTest();
+		// 1000 inline parts, then a PDF the walker never reaches.
+		const wide = rawMessage('<p>Wide.</p>', [
+			...Array.from({ length: 1000 }, (_, i) =>
+				leaf('image/png', [`Content-ID: <i${i}@x>`, 'Content-Disposition: inline'], 'x')
+			),
+			leaf('application/pdf', [attached('late.pdf')], 'pdf'),
+		]);
+		// A PDF nested deeper than the walker goes.
+		let deep = leaf('application/pdf', [attached('deep.pdf')], 'pdf');
+		for (let depth = 0; depth < 120; depth += 1) {
+			deep = [
+				`Content-Type: multipart/mixed; boundary="d${depth}"`,
+				'',
+				`--d${depth}`,
+				deep,
+				`--d${depth}--`,
+				'',
+			].join('\r\n');
+		}
+		for (const eml of [wide, ['MIME-Version: 1.0', deep].join('\r\n')]) {
+			const { messageId, draftId } = await forwardDraft(t, eml);
+			expect(await fulfil(t, draftId)).toEqual({
+				failed: [{ key: `forward:${messageId}`, filename: '', reason: 'messageTooComplex' }],
+			});
+			expect((await row(t, draftId))?.expectedAttachments?.map((e) => e.state)).toEqual(['owed']);
+			expect(await sendError(t, draftId)).toMatch(/still being added/);
+		}
+	});
+
+	it('does not read a forwarded message past the memory budget: it stays owed, visibly', async () => {
+		const t = convexTest();
+		const { messageId, draftId } = await forwardDraft(t);
+		await t.run((ctx) => ctx.db.patch(messageId, { rawSize: 65 * 1024 * 1024 }));
+		expect(await fulfil(t, draftId)).toEqual({
+			failed: [{ key: `forward:${messageId}`, filename: '', reason: 'messageTooLarge' }],
+		});
+		// A retry answers the same at once, without reading the message.
+		expect(await fulfil(t, draftId)).toEqual({
+			failed: [{ key: `forward:${messageId}`, filename: '', reason: 'messageTooLarge' }],
+		});
+		expect(await sendError(t, draftId)).toMatch(/still being added/);
+		await t.mutation(api.mail.draftExpectedAttachments.remove, {
+			draftId,
+			key: `forward:${messageId}`,
+		});
+		expect(await sendError(t, draftId)).not.toMatch(/still being added/);
 	});
 });

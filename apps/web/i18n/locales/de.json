@@ -14362,6 +14362,8 @@
 			},
 			"usePostboxComposeAttachments": {
 				"attachOperation": "Datei anhängen",
+				"forwardTooComplex": "Die weitergeleitete Nachricht ist zu verschachtelt, um ihre Anhänge zu übernehmen.",
+				"forwardTooLarge": "Die weitergeleitete Nachricht ist zu groß, um ihre Anhänge zu übernehmen.",
 				"forwardedAttachments": "Anhänge der weitergeleiteten Nachricht",
 				"prepareUploadOperation": "Upload vorbereiten",
 				"removeOperation": "Anhang entfernen",

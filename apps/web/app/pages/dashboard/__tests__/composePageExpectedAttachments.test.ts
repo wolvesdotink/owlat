@@ -243,12 +243,16 @@ const operations: Record<string, (args: never) => Promise<unknown>> = {
 		row!.expectedAttachments = (row!.expectedAttachments ?? []).flatMap((entry): Owed[] => {
 			if (entry.state !== 'owed' || entry.source.kind !== 'forwardMessage') return [entry];
 			const raw = RAW[entry.source.messageId];
+			if (entry.source.messageId === 'msg-big') {
+				failed.push({ key: entry.key, filename: '', reason: 'messageTooLarge' });
+				return [entry];
+			}
 			if (!forwardReadable || !raw) {
 				failed.push({ key: entry.key, filename: '', reason: 'unreadable' });
 				return [entry];
 			}
 			const messageId = entry.source.messageId;
-			return forwardedParts(raw).map(({ partIndex, part }) => ({
+			return forwardedParts(raw).parts.map(({ partIndex, part }) => ({
 				key: `forward:${messageId}:${partIndex}`,
 				filename: part.filename,
 				contentType: part.contentType,
@@ -591,6 +595,30 @@ describe('compose page — files the draft owes, across reloads and tabs (#1257)
 		await flushPromises();
 		expect(names(current().attachments.value)).toEqual(['numbers.pdf']);
 		expect(current().canSend.value).toBe(true);
+	});
+
+	it('says so when the forwarded message is too large to read, and keeps it owed', async () => {
+		open({
+			prefillTo: ['dave@example.com'],
+			prefillSubject: 'Fwd: big',
+			prefillBodyHtml: '<p>FYI</p>',
+			forwardAttachmentsFromMessageId: 'msg-big' as never,
+		});
+		mountPage();
+		await flushPromises();
+		expect(current().uploads.value.map((c) => [c.filename, c.status])).toEqual([
+			['Attachments of the forwarded message', 'failed'],
+		]);
+		expect(showToast).toHaveBeenCalledWith(
+			'The forwarded message is too large to copy its attachments.',
+			'error'
+		);
+		expect(current().canSend.value).toBe(false);
+		const copy = de.shared.postbox.usePostboxComposeAttachments;
+		expect([copy.forwardTooLarge, copy.forwardTooComplex]).toEqual([
+			'Die weitergeleitete Nachricht ist zu groß, um ihre Anhänge zu übernehmen.',
+			'Die weitergeleitete Nachricht ist zu verschachtelt, um ihre Anhänge zu übernehmen.',
+		]);
 	});
 
 	it('clears the whole forward when its one chip is removed before it is read', async () => {

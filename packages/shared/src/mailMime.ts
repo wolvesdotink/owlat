@@ -129,17 +129,34 @@ export function extractAttachmentAt(
 	return Number.isInteger(idx) && idx >= 0 && idx < all.length ? all[idx]! : null;
 }
 
+/** What a forward of a raw message carries, and whether the walk saw all of it. */
+export interface ForwardedParts {
+	/** The forwarded parts, each with its document-order index among the attachment leaves. */
+	parts: Array<{ partIndex: string; part: ExtractedAttachment }>;
+	/**
+	 * The walker's part or depth bound cut the message short: parts past it were
+	 * never seen, so `parts` cannot be taken as everything the message carries.
+	 */
+	truncated: boolean;
+}
+
 /**
  * The parts a forward of this raw message carries: the rule forwarding has
  * always used, Content-Disposition `attachment` (a leaf with a filename and no
  * disposition counts as one). Each keeps its document-order index among the
  * message's attachment leaves, which is its identity on the draft that owes
- * it; the bytes come from the same parse.
+ * it. Only those parts are decoded (an inline image is skipped, not decoded).
  */
-export function forwardedParts(
-	rawEml: string
-): Array<{ partIndex: string; part: ExtractedAttachment }> {
-	return extractAttachments(rawEml).flatMap((part, index) =>
-		part.disposition === 'attachment' ? [{ partIndex: String(index), part }] : []
-	);
+export function forwardedParts(rawEml: string): ForwardedParts {
+	const { root, truncated } = parseMimeTreeWithBounds(rawEml);
+	const parts: ForwardedParts['parts'] = [];
+	let index = 0;
+	walkLeaves(root, (leaf) => {
+		if (!isAttachmentPart(leaf)) return;
+		const partIndex = String(index++);
+		if (partDisposition(leaf) === 'attachment') {
+			parts.push({ partIndex, part: toExtracted(leaf, 'attachment') });
+		}
+	});
+	return { parts, truncated };
 }

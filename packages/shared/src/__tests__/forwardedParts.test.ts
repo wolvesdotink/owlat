@@ -23,7 +23,7 @@ function raw(leaves: string[]): string {
 
 describe('forwardedParts (#1257): what a forward carries, picked from the raw message', () => {
 	it('carries attachment-marked parts whatever Content-IDs the body uses, not inline ones', () => {
-		const parts = forwardedParts(
+		const { parts, truncated } = forwardedParts(
 			raw([
 				leaf(
 					'application/pdf',
@@ -44,6 +44,7 @@ describe('forwardedParts (#1257): what a forward carries, picked from the raw me
 				leaf('text/plain; name="notes.txt"', [], 'notes'),
 			])
 		);
+		expect(truncated).toBe(false);
 		expect(parts.map((p) => [p.partIndex, p.part.filename])).toEqual([
 			['0', 'invoice.pdf'],
 			['1', 'photo.png'],
@@ -52,7 +53,7 @@ describe('forwardedParts (#1257): what a forward carries, picked from the raw me
 	});
 
 	it('names parts by their raw position, so equal filenames stay apart', () => {
-		const parts = forwardedParts(
+		const { parts } = forwardedParts(
 			raw([
 				leaf(
 					'application/pdf',
@@ -70,5 +71,40 @@ describe('forwardedParts (#1257): what a forward carries, picked from the raw me
 			['0', 'first'],
 			['1', 'second'],
 		]);
+	});
+
+	it('says when the walk was cut short by the part bound, so nothing past it is dropped unseen', () => {
+		const inline = Array.from({ length: 1000 }, (_, i) =>
+			leaf('image/png', [`Content-ID: <i${i}@x>`, 'Content-Disposition: inline'], 'x')
+		);
+		const pdf = leaf(
+			'application/pdf',
+			['Content-Disposition: attachment; filename="late.pdf"'],
+			'pdf'
+		);
+		const read = forwardedParts(raw([...inline, pdf]));
+		expect(read.truncated).toBe(true);
+		expect(read.parts).toEqual([]);
+	});
+
+	it('says when the walk was cut short by the depth bound', () => {
+		let body = leaf(
+			'application/pdf',
+			['Content-Disposition: attachment; filename="deep.pdf"'],
+			'pdf'
+		);
+		for (let depth = 0; depth < 120; depth += 1) {
+			body = [
+				`Content-Type: multipart/mixed; boundary="d${depth}"`,
+				'',
+				`--d${depth}`,
+				body,
+				`--d${depth}--`,
+				'',
+			].join('\r\n');
+		}
+		const read = forwardedParts(['MIME-Version: 1.0', body].join('\r\n'));
+		expect(read.truncated).toBe(true);
+		expect(read.parts).toEqual([]);
 	});
 });

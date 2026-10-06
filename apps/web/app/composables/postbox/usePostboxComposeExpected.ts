@@ -68,7 +68,14 @@ interface RowView {
 	attachments?: Array<ComposerAttachment & { isInline?: boolean }>;
 	expectedAttachments?: OwedView[];
 }
-type Failure = 'unreadable' | 'tooLarge' | 'tooMany' | 'totalTooLarge' | 'failed';
+type Failure =
+	| 'unreadable'
+	| 'tooLarge'
+	| 'tooMany'
+	| 'totalTooLarge'
+	| 'failed'
+	| 'messageTooLarge'
+	| 'messageTooComplex';
 
 export function usePostboxComposeExpected(opts: {
 	draftId: Readonly<Ref<Id<'mailDrafts'> | null>>;
@@ -120,15 +127,17 @@ export function usePostboxComposeExpected(opts: {
 
 	function explain(filename: string, reason: Failure) {
 		const base = 'shared.postbox.usePostboxComposeAttachments';
-		const message =
-			reason === 'tooLarge'
-				? t(`${base}.tooLarge`, { filename, max: formatMb(MAX_ATTACHMENT_BYTES) })
-				: reason === 'tooMany'
-					? t(`${base}.tooManyFiles`, { count: ATTACHMENT_COMPOSE_LIMITS.maxCount })
-					: reason === 'totalTooLarge'
-						? t(`${base}.totalTooLarge`, { max: formatMb(ATTACHMENT_COMPOSE_LIMITS.maxTotalBytes) })
-						: t(`${base}.uploadFailed`, { filename });
-		showToast(message, 'error');
+		const messages: Record<Failure, () => string> = {
+			messageTooLarge: () => t(`${base}.forwardTooLarge`),
+			messageTooComplex: () => t(`${base}.forwardTooComplex`),
+			tooLarge: () => t(`${base}.tooLarge`, { filename, max: formatMb(MAX_ATTACHMENT_BYTES) }),
+			tooMany: () => t(`${base}.tooManyFiles`, { count: ATTACHMENT_COMPOSE_LIMITS.maxCount }),
+			totalTooLarge: () =>
+				t(`${base}.totalTooLarge`, { max: formatMb(ATTACHMENT_COMPOSE_LIMITS.maxTotalBytes) }),
+			unreadable: () => t(`${base}.uploadFailed`, { filename }),
+			failed: () => t(`${base}.uploadFailed`, { filename }),
+		};
+		showToast(messages[reason](), 'error');
 	}
 
 	async function fulfil() {
