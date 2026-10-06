@@ -1,7 +1,7 @@
 import type { ComponentPublicInstance } from 'vue';
 
 /** File drop and clipboard-paste wiring for the Postbox composer surface. */
-export function usePostboxComposerDropZone(addFiles: (files: File[] | FileList) => Promise<void>) {
+export function usePostboxComposerDropZone(addFiles: (files: File[]) => Promise<void>) {
 	const rootEl = ref<HTMLElement | null>(null);
 	const {
 		isDragOver: dragActive,
