@@ -17,9 +17,11 @@ vi.mock('@owlat/api', () => ({
 		storage: { generateUploadUrl: 'storage.generateUploadUrl' },
 		mail: {
 			drafts: {
+				get: 'drafts.get',
 				addAttachment: 'drafts.addAttachment',
 				removeAttachment: 'drafts.removeAttachment',
 			},
+			draftExpectedAttachments: { fulfil: 'expected.fulfil', remove: 'expected.remove' },
 			attachmentSharesActions: {
 				shareDraftAttachment: 'attachmentSharesActions.shareDraftAttachment',
 			},
@@ -63,6 +65,7 @@ beforeEach(() => {
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
 	vi.stubGlobal('useI18n', () => i18n.global);
 	vi.stubGlobal('usePostboxPendingAttachments', () => ({ take: () => null }));
+	vi.stubGlobal('useConvexQuery', () => ({ data: ref(undefined) }));
 });
 
 const flush = async () => {
