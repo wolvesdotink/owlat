@@ -99,7 +99,7 @@ export function signatureAsObjectKey(signature: string) {
 	return new Request('https://example.com', { headers: { 'x-owlat-signature': signature } });
 }
 
-// ── Known limit: header names that are not plain string literals ───────────
+// ── Known limit: names that are not plain string literals ───────────────
 // These are reads the rule does not see ("todoruleid"). A rule that learns
 // one shows up as a test change.
 
@@ -113,6 +113,12 @@ export function constantHeaderName(req: Request) {
 export function templateLiteralHeader(req: Request) {
 	// todoruleid: webhook-signature-read-outside-verifier
 	const signature = req.headers.get(`x-SIGNATURE`);
+	return signature;
+}
+
+export function templateSubstitutionHeader(req: Request, provider: string) {
+	// todoruleid: webhook-signature-read-outside-verifier
+	const signature = req.headers.get(`x-${provider}-signature`);
 	return signature;
 }
 

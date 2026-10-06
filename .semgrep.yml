@@ -105,7 +105,8 @@ rules:
   # place that touches a signature header is one a reviewer has checked.
   #
   # Reported: every read of a value whose name is a plain string literal
-  # containing "signature" (case-insensitive), in any of these forms:
+  # containing "signature" (case-insensitive), whatever other characters
+  # it holds, in any of these forms:
   # `$X.get('...')`, a detached `get('...')`, or `$X['...']`. Stored or
   # inline, verified or not: reading it outside the allowlist below is the
   # finding. That includes query parameters or form fields named like a
@@ -116,9 +117,9 @@ rules:
   # the same review of that file's verification; do not add one to
   # silence a finding.
   #
-  # Known limit (a `todoruleid` case in the test): a header name that is
-  # not a plain string literal (a constant, a template literal, a literal
-  # written with escapes) is not seen. mtaSignature.ts,
+  # Known limit (`todoruleid` cases in the test): a header name that is
+  # not a plain string literal (a constant, a template literal) or a
+  # literal that spells the word with escapes is not seen. mtaSignature.ts,
   # providerVerifierRegistry.ts and mtaRawRoute.ts read signature headers
   # through constants today for that reason.
   #
@@ -134,14 +135,28 @@ rules:
       (allowlist in .semgrep.yml). Route the request through the module's
       verifier instead of reading the header here; if this file is a new
       verification module, add it to the allowlist after review.
+    options:
+      # Otherwise `"..."` also matches a constant holding a string, and the
+      # name check would then run on the constant's identifier.
+      constant_propagation: false
     patterns:
+      # Each read form twice: once to bind the name, once to require that
+      # it is a plain string literal.
       - pattern-either:
-          - pattern: $HEADERS.get($HEADER)
-          - pattern: get($HEADER)
-          - pattern: $HEADERS[$HEADER]
+          - patterns:
+              - pattern: $HEADERS.get($HEADER)
+              - pattern: $HEADERS.get("...")
+          - patterns:
+              - pattern: get($HEADER)
+              - pattern: get("...")
+          - patterns:
+              - pattern: $HEADERS[$HEADER]
+              - pattern: $HEADERS["..."]
+      # Not quote-aware on purpose: any literal whose text contains the
+      # word. metavariable-regex is anchored at the start, hence the prefix.
       - metavariable-regex:
           metavariable: $HEADER
-          regex: (?i)^['"`][^'"`]*signature[^'"`]*['"`]$
+          regex: (?i)[\s\S]*signature
     paths:
       include:
         - "/apps/api/convex/**/*.ts"
