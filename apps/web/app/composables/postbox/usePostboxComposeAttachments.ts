@@ -211,6 +211,7 @@ export function usePostboxComposeAttachments(opts: {
 	// row (they render in the body). Tracked here by contentId so the editor can
 	// drop the pending part when the user deletes the image from the body.
 	const inlineParts = ref<Array<{ contentId: string; storageId: string }>>([]);
+	let tornDown = false;
 
 	function newContentId(): string {
 		const rand =
@@ -263,6 +264,9 @@ export function usePostboxComposeAttachments(opts: {
 				return null;
 			}
 			const { storageId } = (await res.json()) as { storageId: string };
+			// The composer closed meanwhile: bind nothing. The unbound upload
+			// expires and the abandoned-uploads sweep deletes it.
+			if (tornDown) return null;
 			const contentId = newContentId();
 			const result = await addAttachmentOp.run({
 				draftId: id,
@@ -380,6 +384,7 @@ export function usePostboxComposeAttachments(opts: {
 
 	// Release outstanding object URLs when the composer is torn down.
 	onUnmounted(() => {
+		tornDown = true;
 		uploader.dispose();
 		for (const url of thumbUrls.values()) URL.revokeObjectURL(url);
 		thumbUrls.clear();
