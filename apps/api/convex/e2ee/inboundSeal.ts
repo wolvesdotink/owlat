@@ -28,7 +28,7 @@ import {
 } from '@owlat/shared/mailMime';
 import { decodeCharset } from '@owlat/mail-message/parse/charset';
 import { decodeHeaderValue } from '@owlat/mail-message/parse/headers';
-import { findRawHeader, parseRawHeaderFields } from '@owlat/mail-canon/rawMessage';
+import { parseRawHeaderFields } from '@owlat/mail-canon/rawMessage';
 
 /**
  * The cipher-suite label recorded for an opened sealed message. PGP/MIME (RFC
@@ -140,7 +140,7 @@ export function parseInnerMessage(innerMime: Uint8Array): RestoredMessage {
 		return bytes.length > 0 ? { text: decodeUtf8(bytes) } : {};
 	}
 
-	const subject = findRawHeader(parseRawHeaderFields(headerBlock), 'subject');
+	const subject = rawHeaderValue(headerBlock, 'subject');
 	const textPart = extractFirstPartByType(binary, 'text/plain');
 	const htmlPart = extractFirstPartByType(binary, 'text/html');
 
@@ -161,12 +161,53 @@ function decodePartText(part: ExtractedAttachment): string {
 }
 
 /**
- * A protected header's value (a binary string) as text: raw 8-bit bytes are
- * UTF-8 (RFC 6532), then RFC 2047 encoded words are decoded under their own
- * charset.
+ * The raw value of the first header field named `name` (lower-case ASCII), as
+ * a binary string with its folds still in place. Nothing here trims with
+ * `String#trim`, which treats the byte 0xA0 (the last byte of `à`, `Р`, …) as
+ * whitespace and would cut a UTF-8 sequence; only ASCII blanks are dropped.
+ */
+function rawHeaderValue(headerBlock: string, name: string): string | undefined {
+	for (const field of parseRawHeaderFields(headerBlock)) {
+		const colon = field.raw.indexOf(':');
+		if (colon === -1) continue;
+		if (
+			field.raw
+				.slice(0, colon)
+				.replace(/[ \t]+$/, '')
+				.toLowerCase() !== name
+		)
+			continue;
+		return field.raw.slice(colon + 1);
+	}
+	return undefined;
+}
+
+/**
+ * A protected header's value as one line of text. The raw bytes are UTF-8
+ * (RFC 6532) and are decoded before anything else, so unfolding and trimming
+ * see characters, not bytes. RFC 2047 encoded words are then decoded under
+ * their own charset. An encoded word can carry any byte, CR and LF included,
+ * so control characters left after decoding become a single space: a header
+ * value is one line.
  */
 function decodeProtectedHeader(rawValue: string): string {
-	return decodeHeaderValue(decodeUtf8(binaryStringToBytes(rawValue)));
+	const text = decodeUtf8(binaryStringToBytes(rawValue))
+		.split('\r\n')
+		.map((line) => line.trim())
+		.join(' ');
+	return withoutControlChars(decodeHeaderValue(text));
+}
+
+/**
+ * A run of C0 controls other than TAB, or DEL, with the blanks around it. The
+ * run must start with one of those controls; TAB only joins a run.
+ */
+// eslint-disable-next-line no-control-regex -- matching control characters is the point
+const CONTROL_RUN = /[ \t]*[\u0000-\u0008\u000a-\u001f\u007f][\u0000-\u001f\u007f \t]*/g;
+
+/** Each {@link CONTROL_RUN} replaced by one space. */
+function withoutControlChars(text: string): string {
+	return text.replace(CONTROL_RUN, ' ').trim();
 }
 
 /**

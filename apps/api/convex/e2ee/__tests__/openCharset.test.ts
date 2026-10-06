@@ -267,6 +267,36 @@ describe('e2ee/open · protected headers decode (#1284)', () => {
 		expect(restored.text).toBe(PRICE);
 	});
 
+	it.each([
+		['à', 'Voilà'],
+		['Р', 'Привет, Р'],
+		['😠', 'Grr 😠'],
+	])('keeps a raw UTF-8 subject whose last character is %s', async (_last, subject) => {
+		// Each of these ends in the byte 0xA0, which String#trim takes for a
+		// no-break space when it runs on the bytes instead of the text.
+		const restored = await roundTrip(body(`Subject: ${subject}`));
+		expect(restored.subject).toBe(subject);
+	});
+
+	it('unfolds a folded raw UTF-8 subject', async () => {
+		const restored = await roundTrip(body('Subject: Grüße aus\r\n dem Café, voilà'));
+		expect(restored.subject).toBe('Grüße aus dem Café, voilà');
+	});
+
+	it.each([
+		['Q', '=?UTF-8?Q?hello=0D=0A*_BYE_x?='],
+		['B', `=?UTF-8?B?${Buffer.from('hello\r\n* BYE x', 'utf-8').toString('base64')}?=`],
+	])('turns CR/LF from a %s-encoded subject into a space', async (_enc, encoded) => {
+		const restored = await roundTrip(body(`Subject: ${encoded}`));
+		expect(restored.subject).toBe('hello * BYE x');
+		expect(restored.subject).not.toMatch(/[\r\n]/);
+	});
+
+	it('replaces other control characters from an encoded subject but keeps TAB', async () => {
+		const restored = await roundTrip(body('Subject: =?UTF-8?Q?a=00b=07_=1B_c=09d=7F?='));
+		expect(restored.subject).toBe('a b c\td');
+	});
+
 	it('still finds the headers behind a leading UTF-8 byte-order mark', async () => {
 		const restored = await roundTrip(
 			concat(Uint8Array.of(0xef, 0xbb, 0xbf), body('Subject: Preis — 5€'))
