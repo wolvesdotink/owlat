@@ -19,6 +19,7 @@ import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmObject } from '../../lib/llm/dispatch';
 import { interactiveLlmPolicy } from '../../lib/llm/retryPolicy';
 import { scheduleLlmSpend } from '../../analytics/llmUsage';
+import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
 import { THREAD_SUMMARY } from './transcript';
 import {
 	assembleCatchUpTranscript,
@@ -45,13 +46,18 @@ export async function generateCatchUp(
 	if (input.entries.length === 0) return null;
 	const { transcript, kept } = assembleCatchUpTranscript(input.entries, THREAD_SUMMARY.totalChars);
 	try {
-		const { object, tokenUsage, modelUsed } = await runLlmObject({
-			model: await resolveLanguageModel(ctx, 'summarize'),
-			schema: catchUpModelSchema,
-			prompt: buildCatchUpPrompt({ transcript, mode: input.mode, locale: input.locale }),
-			temperature: 0.2,
-			...interactiveLlmPolicy('reply'),
-		});
+		const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
+			ctx,
+			input.feature,
+			runLlmObject({
+				model: await resolveLanguageModel(ctx, 'summarize'),
+				schema: catchUpModelSchema,
+				prompt: buildCatchUpPrompt({ transcript, mode: input.mode, locale: input.locale }),
+				temperature: 0.2,
+				...interactiveLlmPolicy('reply'),
+			}),
+			scheduleLlmSpend
+		);
 		await scheduleLlmSpend(ctx, input.feature, tokenUsage, modelUsed);
 		return sanitizeCatchUp(object, kept, input.mode);
 	} catch {
@@ -74,13 +80,18 @@ export async function checkAskCoverage(
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
 			rateLimitBucket: 'answerCoveragePerUser',
 		});
-		const { object, tokenUsage, modelUsed } = await runLlmObject({
-			model: await resolveLanguageModel(ctx, 'summarize'),
-			schema: coverageModelSchema,
-			prompt: buildCoveragePrompt({ asks: input.asks, draftText: input.draftText }),
-			temperature: 0,
-			...interactiveLlmPolicy('reply'),
-		});
+		const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
+			ctx,
+			input.feature,
+			runLlmObject({
+				model: await resolveLanguageModel(ctx, 'summarize'),
+				schema: coverageModelSchema,
+				prompt: buildCoveragePrompt({ asks: input.asks, draftText: input.draftText }),
+				temperature: 0,
+				...interactiveLlmPolicy('reply'),
+			}),
+			scheduleLlmSpend
+		);
 		await scheduleLlmSpend(ctx, input.feature, tokenUsage, modelUsed);
 		return sanitizeCoverage(object, input.asks);
 	} catch {

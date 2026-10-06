@@ -33,6 +33,7 @@ import { z } from 'zod';
 import { logError, logInfo } from './lib/runtimeLog';
 import { runLlmObject } from './lib/llm/dispatch';
 import { recordLlmSpend } from './analytics/llmUsage';
+import { recordSpendOnFailure } from './analytics/failedLlmSpend';
 import { extractText as extractPdfText, getDocumentProxy } from 'unpdf';
 import { isContactScopeVisible } from './lib/contactScope';
 import { buildFileSearchableText } from './lib/fileSearchText';
@@ -152,21 +153,25 @@ export const processFile = internalAction({
 			title = title || file.filename;
 		} else if (textForAI.length > 50) {
 			try {
-				const result = await runLlmObject({
-					model: await resolveLanguageModel(ctx, 'summarize'),
-					schema: z.object({
-						title: z.string().describe('Short descriptive title for the file'),
-						summary: z.string().describe('2-3 sentence summary of the file content'),
-						tags: z.array(z.string()).describe('5-10 relevant tags for categorization'),
-					}),
-					prompt: `Analyze this file and provide a title, summary, and tags.
+				const result = await recordSpendOnFailure(
+					ctx,
+					'semantic_file',
+					runLlmObject({
+						model: await resolveLanguageModel(ctx, 'summarize'),
+						schema: z.object({
+							title: z.string().describe('Short descriptive title for the file'),
+							summary: z.string().describe('2-3 sentence summary of the file content'),
+							tags: z.array(z.string()).describe('5-10 relevant tags for categorization'),
+						}),
+						prompt: `Analyze this file and provide a title, summary, and tags.
 
 Filename: ${file.filename}
 MIME type: ${file.mimeType}${fileCtx.threadSubject ? `\nShared in conversation: "${fileCtx.threadSubject}"` : ''}${fileCtx.contactNames.length ? `\nRelated contacts: ${fileCtx.contactNames.join(', ')}` : ''}
 
 Content:
 ${textForAI}`,
-				});
+					})
+				);
 				logInfo('[semantic_file] llm call', {
 					tokenUsage: result.tokenUsage,
 					modelUsed: result.modelUsed,
