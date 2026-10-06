@@ -97,13 +97,38 @@ beforeEach(() => {
 	vi.stubEnv('MTA_API_KEY', '');
 });
 
-/** A message with BOTH parts too large for the row: two body blobs. */
+/**
+ * Let the background work a delivery scheduled (the agent pipeline, on real
+ * timers) run to completion. Left running, it raced whatever the test did
+ * next: a workspace deletion that began while a pipeline step was in flight
+ * put the write fence up under that step, and the step's next `agentActions`
+ * write was refused (#1269); and a redelivery's `storage.delete` issued while
+ * one of the pipeline's mutations was open ran inside that transaction (see
+ * `drainScheduled` in inboundIngest.test.ts). This waits on the in-flight
+ * promises themselves, so a slow step under load is waited for, not timed out.
+ */
+async function drainScheduled(t: TestConvex): Promise<void> {
+	for (let round = 0; round < 50; round++) {
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		await t.finishInProgressScheduledFunctions();
+		const functions = await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect());
+		const busy = functions.some(
+			(fn) => fn.state.kind === 'pending' || fn.state.kind === 'inProgress'
+		);
+		if (!busy) return;
+	}
+	throw new Error('scheduled functions did not settle');
+}
+
+/** A message with BOTH parts too large for the row: two body blobs, its pipeline settled. */
 async function ingestHuge(t: TestConvex, messageId: string) {
-	return await ingest(t, {
+	const result = await ingest(t, {
 		messageId,
 		textBody: 'Plain '.repeat(60_000),
 		htmlBody: htmlOfSize(1.5 * MIB),
 	});
+	await drainScheduled(t);
+	return result;
 }
 
 async function bodyBlobsExist(
