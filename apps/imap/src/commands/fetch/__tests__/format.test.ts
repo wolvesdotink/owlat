@@ -115,9 +115,13 @@ describe('imapString', () => {
 		expect(imapString('Grüße 😠')).toBe('{12}\r\nGrüße 😠');
 	});
 
-	it('drops NUL, which neither form may carry', () => {
-		expect(imapString('a\0b')).toBe('"ab"');
-		expect(imapString('ä\0')).toBe('{2}\r\nä');
+	it('sends NIL for a value with NUL, which neither form may carry, rather than altering it', () => {
+		expect(imapString('a\0b')).toBe('NIL');
+		expect(imapString('ä\0')).toBe('NIL');
+	});
+
+	it('keeps TAB in a quoted string', () => {
+		expect(imapString('a\tb')).toBe('"a\tb"');
 	});
 });
 
@@ -245,27 +249,80 @@ describe('formatEnvelope', () => {
 		['Message-ID', { rfc822MessageId: 'mid-1@example.com>\r\nBcc: extra@example.com\r\n\r\nrest' }],
 	])('keeps rebuilt headers intact when a stored %s holds CR/LF', (_field, overrides) => {
 		const fields = readEnvelope(formatEnvelope(envelope(overrides)));
+		// The invalid id is NIL, not a repaired one.
+		expect([fields[8], fields[9]]).toContain(null);
 		const parsed = parseMessage(rebuildHeaders(fields));
 		expect(parsed.headers.has('bcc')).toBe(false);
 		expect(parsed.subject).toBe('Hello');
 		expect(parsed.from).toMatchObject({ value: [{ address: 'jane@example.com' }] });
 		expect(parsed.to).toMatchObject({ value: [{ address: 'bob@example.com' }] });
 		expect(parsed.text).toBe('body');
-		expect(fields[8] ?? fields[9]).toMatch(/^[\x20-\x7e]+$/);
 	});
 
-	it('drops control characters from ids and address parts without encoding them', () => {
-		const out = formatEnvelope(
-			envelope({
-				rfc822MessageId: 'mid\t-1@example.com',
-				inReplyTo: 'par\u0000ent@example.com\u007f',
-				toAddresses: ['bo\r\nb@exa\u0001mple.com'],
-			})
+	it('keeps ids that differ only by a TAB distinct, and the TAB itself', () => {
+		const withTab = readEnvelope(
+			formatEnvelope(envelope({ rfc822MessageId: '"a\tb"@example.com' }))
 		);
-		const fields = readEnvelope(out);
-		expect(fields[5]).toEqual([[null, null, 'bob', 'example.com']]);
-		expect(fields[8]).toBe('<parent@example.com>');
-		expect(fields[9]).toBe('<mid-1@example.com>');
+		const without = readEnvelope(formatEnvelope(envelope({ rfc822MessageId: '"ab"@example.com' })));
+		expect(withTab[9]).toBe('<"a\tb"@example.com>');
+		expect(without[9]).toBe('<"ab"@example.com>');
+		expect(withTab[9]).not.toBe(without[9]);
+	});
+
+	it('keeps a TAB in a quoted local part', () => {
+		const fields = readEnvelope(formatEnvelope(envelope({ toAddresses: ['"a\tb"@example.com'] })));
+		expect(fields[5]).toEqual([[null, null, '"a\tb"', 'example.com']]);
+	});
+
+	it('takes the host after the last @, so a quoted local part with @ stays whole', () => {
+		const fields = readEnvelope(formatEnvelope(envelope({ toAddresses: ['"a@b"@example.com'] })));
+		expect(fields[5]).toEqual([[null, null, '"a@b"', 'example.com']]);
+	});
+
+	it('sends NIL for an id holding a control character, never a repaired id', () => {
+		const fields = readEnvelope(
+			formatEnvelope(
+				envelope({
+					rfc822MessageId: 'mid-1@example.com\r\n',
+					inReplyTo: 'par\u0000ent@example.com\u007f',
+				})
+			)
+		);
+		expect(fields[8]).toBeNull();
+		expect(fields[9]).toBeNull();
+	});
+
+	it('leaves out an address holding a control character and keeps the others', () => {
+		const fields = readEnvelope(
+			formatEnvelope(
+				envelope({
+					toAddresses: [
+						'ann@example.com',
+						'a@exam\u0001ple.com',
+						'bo\r\nb@example.com',
+						'cy@example.org',
+					],
+				})
+			)
+		);
+		expect(fields[5]).toEqual([
+			[null, null, 'ann', 'example.com'],
+			[null, null, 'cy', 'example.org'],
+		]);
+	});
+
+	it('sends NIL for a list whose only address is invalid, display name and all', () => {
+		const fields = readEnvelope(
+			formatEnvelope(
+				envelope({
+					fromName: 'Jane Doe',
+					fromAddress: 'jane@exam\u0001ple.com',
+					toAddresses: ['x@exa\u007fmple.com'],
+				})
+			)
+		);
+		// From, sender and reply-to (which falls back to from), then to.
+		expect(fields.slice(2, 6)).toEqual([null, null, null, null]);
 	});
 
 	it('sends a non-ASCII address part as a literal, never as an encoded word', () => {
@@ -409,14 +466,14 @@ function phrase(name: string): string {
 function rebuildHeaders(fields: ImapValue[]): string {
 	const [date, subject, from, , , to, , , inReplyTo, messageId] = fields;
 	const addresses = (list: ImapValue): string =>
-		(list as ImapValue[][])
+		((list ?? []) as ImapValue[][])
 			.map(([name, , user, host]) =>
 				name ? `${phrase(name as string)} <${user}@${host}>` : `${user}@${host}`
 			)
 			.join(', ');
 	return [
 		`Date: ${date}`,
-		`Message-ID: ${messageId}`,
+		...(messageId ? [`Message-ID: ${messageId}`] : []),
 		...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`] : []),
 		`Subject: ${subject}`,
 		`From: ${addresses(from!)}`,

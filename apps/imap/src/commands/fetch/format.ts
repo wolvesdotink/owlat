@@ -74,20 +74,20 @@ export function formatInternalDate(ts: number): string {
 
 /**
  * An IMAP `string` (RFC 3501 §4.3) for an envelope field. Fields go through
- * {@link imapHeaderText} or {@link imapToken} first, so a literal here is the
- * fallback for what those leave, such as a non-ASCII address. A quoted string
- * holds only 7-bit chars other than CR and LF, so a value with CR, LF or any
- * non-ASCII char is sent as a literal, `{n}` CRLF then the n octets. The
- * response is written as UTF-8, so n is the value's UTF-8 length. NUL is
- * allowed in neither form and is dropped.
+ * {@link imapHeaderText}, {@link imapId} or {@link imapAddrList} first, so a
+ * literal here is the fallback for what those leave, such as a non-ASCII
+ * address. A quoted string holds only 7-bit chars other than CR and LF, so a
+ * value with CR, LF or any non-ASCII char is sent as a literal, `{n}` CRLF
+ * then the n octets. The response is written as UTF-8, so n is the value's
+ * UTF-8 length. NUL is allowed in neither form, so a value holding one is
+ * `NIL`; nothing is deleted from it.
  */
 export function imapString(s: string | undefined): string {
-	if (s == null) return 'NIL';
-	const value = s.replaceAll('\0', '');
-	if (/[\r\n\u0080-\uffff]/.test(value)) {
-		return `{${Buffer.byteLength(value, 'utf8')}}\r\n${value}`;
+	if (s == null || s.includes('\0')) return 'NIL';
+	if (/[\r\n\u0080-\uffff]/.test(s)) {
+		return `{${Buffer.byteLength(s, 'utf8')}}\r\n${s}`;
 	}
-	return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+	return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
 /**
@@ -104,7 +104,7 @@ const ENCODED_WORD = /=\?[^?]+\?[bBqQ]\?[^?]*\?=/;
  * the ASCII result as a quoted string. ASCII text that itself reads as an
  * encoded word is encoded too, or a client would decode the stored, already
  * decoded text a second time. Address parts and message ids are not text and
- * go through {@link imapToken}.
+ * go through {@link imapAddrList} and {@link imapId}.
  */
 export function imapHeaderText(s: string | undefined): string {
 	if (s == null) return 'NIL';
@@ -113,27 +113,42 @@ export function imapHeaderText(s: string | undefined): string {
 	return imapString(encode ? encodeWords(line).join(' ') : line);
 }
 
+/**
+ * A control character no message id or address may hold: C0 other than TAB,
+ * and DEL. TAB and space are valid where the grammar allows them (a quoted
+ * local part, RFC 5322 §3.2.4) and go out as they are.
+ */
 // eslint-disable-next-line no-control-regex -- matching control characters is the point
-const CONTROL_CHAR = /[\u0000-\u001f\u007f]/g;
+const INVALID_IN_TOKEN = /[\u0000-\u0008\u000a-\u001f\u007f]/;
 
 /**
- * An ENVELOPE field that is not text: the date, an address's mailbox or host,
- * a message id. None of them can hold a control character, and a client
- * copies them into the headers it rebuilds, so any control character (TAB
- * included) is dropped. They are never RFC 2047 encoded; a non-ASCII address
- * part still falls back to a literal in {@link imapString}.
+ * A Message-ID or In-Reply-To, or `NIL` when there is none or it holds a
+ * character no message id can (see {@link INVALID_IN_TOKEN}). An invalid id
+ * is never repaired: a changed id could match an unrelated message's, and a
+ * client threads by it. Never RFC 2047 encoded.
  */
-export function imapToken(s: string | undefined): string {
-	return s == null ? 'NIL' : imapString(s.replace(CONTROL_CHAR, ''));
+export function imapId(id: string | undefined): string {
+	return id === undefined || INVALID_IN_TOKEN.test(id) ? 'NIL' : imapString(`<${id}>`);
 }
 
+/**
+ * An ENVELOPE address list. An address whose mailbox or host holds a
+ * character no address can (see {@link INVALID_IN_TOKEN}) is left out with
+ * its display name, never repaired, so a client cannot reply to a different
+ * address than the stored one; a list left empty is `NIL`. Mailbox and host
+ * are never RFC 2047 encoded; a non-ASCII one goes out as a literal.
+ */
 export function imapAddrList(addrs: ReadonlyArray<{ name?: string; address: string }>): string {
-	if (addrs.length === 0) return 'NIL';
-	const parts = addrs.map((a) => {
-		const [user, host] = a.address.split('@');
-		return `(${imapHeaderText(a.name)} NIL ${imapToken(user ?? a.address)} ${imapToken(host ?? '')})`;
-	});
-	return `(${parts.join(' ')})`;
+	const parts = addrs
+		.filter((a) => !INVALID_IN_TOKEN.test(a.address))
+		.map((a) => {
+			// The host follows the last `@`; a quoted local part may hold one too.
+			const at = a.address.lastIndexOf('@');
+			const user = at === -1 ? a.address : a.address.slice(0, at);
+			const host = at === -1 ? '' : a.address.slice(at + 1);
+			return `(${imapHeaderText(a.name)} NIL ${imapString(user)} ${imapString(host)})`;
+		});
+	return parts.length === 0 ? 'NIL' : `(${parts.join(' ')})`;
 }
 
 export function formatEnvelope(m: FetchEnvelope): string {
@@ -145,7 +160,7 @@ export function formatEnvelope(m: FetchEnvelope): string {
 	const to = imapAddrList(m.toAddresses.map((a) => ({ address: a })));
 	const cc = imapAddrList(m.ccAddresses.map((a) => ({ address: a })));
 	const bcc = imapAddrList(m.bccAddresses.map((a) => ({ address: a })));
-	const inReplyTo = m.inReplyTo ? imapToken(`<${m.inReplyTo}>`) : 'NIL';
-	const messageId = imapToken(`<${m.rfc822MessageId}>`);
-	return `(${imapToken(date)} ${subject} ${from} ${sender} ${replyTo} ${to} ${cc} ${bcc} ${inReplyTo} ${messageId})`;
+	const inReplyTo = imapId(m.inReplyTo || undefined);
+	const messageId = imapId(m.rfc822MessageId);
+	return `(${imapString(date)} ${subject} ${from} ${sender} ${replyTo} ${to} ${cc} ${bcc} ${inReplyTo} ${messageId})`;
 }
