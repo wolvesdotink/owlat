@@ -1,0 +1,298 @@
+// @vitest-environment happy-dom
+/**
+ * #1272: a reopened draft's own attachments, when the person attaches a file
+ * before `drafts.get` has answered.
+ *
+ * The merge of the first answer keeps a non-empty attachment list as it is, so
+ * a file added while the row loaded used to be the only chip: the row's own
+ * files stayed hidden, yet the send (built from the row) still carried them.
+ * The chips follow the row once it is merged (usePostboxComposeExpected), so
+ * the row's files join the one added meanwhile, and an upload that lands after
+ * the row already showed it is not added twice (`onCommitted`).
+ *
+ * These run the real composer, hydration, attachment and row-follow code
+ * against a small in-memory row; only the upload's XHR is replaced.
+ */
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { reactive, ref } from 'vue';
+import { withSetup } from '~/__tests__/withSetup';
+import { createTestI18n } from '~/__tests__/i18n';
+import { queryResult } from '~/__tests__/queryStubs';
+import type * as Uploads from '../postboxAttachmentUploads';
+import type { ComposerSeed } from '../usePostboxCompose';
+
+const i18n = createTestI18n();
+
+vi.mock('@owlat/api', () => ({
+	api: {
+		storage: { generateUploadUrl: 'storage.generateUploadUrl' },
+		mail: {
+			drafts: {
+				get: 'drafts.get',
+				create: 'drafts.create',
+				update: 'drafts.update',
+				setIdentity: 'drafts.setIdentity',
+				discard: 'drafts.discard',
+				send: 'drafts.send',
+				cancelPendingSend: 'drafts.cancelPendingSend',
+				cancelScheduledSend: 'drafts.cancelScheduledSend',
+				addAttachment: 'drafts.addAttachment',
+				removeAttachment: 'drafts.removeAttachment',
+			},
+			draftExpectedAttachments: { remove: 'expected.remove' },
+			draftExpectedAttachmentsFulfil: { fulfil: 'expected.fulfil' },
+			attachmentSharesActions: { shareDraftAttachment: 'shares.shareDraftAttachment' },
+			identities: { listSendAsIdentities: 'identities.listSendAs' },
+			signatures: { list: 'signatures.list' },
+			settings: { get: 'settings.get', update: 'settings.update' },
+		},
+	},
+}));
+
+// The real upload state machine; the bytes are stored at once under a name-derived id.
+vi.mock('../postboxAttachmentUploads', async (importActual) => ({
+	...(await importActual<typeof Uploads>()),
+	xhrPutFile: vi.fn(async (_url: string, file: File) => `storage_${file.name}`),
+}));
+
+vi.mock('../usePostboxUndoSend', () => ({ usePostboxUndoSend: () => ({ arm: () => {} }) }));
+vi.mock('../usePostboxComposeMirror', () => ({
+	usePostboxComposeMirror: () =>
+		reactive({ restorable: ref(null), restore: () => {}, dismiss: () => {}, retire: () => {} }),
+}));
+vi.mock('../usePostboxOfflineOutbox', () => ({
+	usePostboxOfflineOutbox: () => ({ isOffline: ref(false), queueSend: vi.fn() }),
+	isQueuedSendToken: () => false,
+	OFFLINE_QUEUE_UNDO_WINDOW_MS: 10_000,
+}));
+
+interface RowAttachment {
+	storageId: string;
+	filename: string;
+	contentType: string;
+	size: number;
+	isInline?: boolean;
+	contentId?: string;
+}
+
+const CONTRACT: RowAttachment = {
+	storageId: 'storage_contract.pdf',
+	filename: 'contract.pdf',
+	contentType: 'application/pdf',
+	size: 4_000,
+};
+const SCHEDULE: RowAttachment = {
+	storageId: 'storage_schedule.xlsx',
+	filename: 'schedule.xlsx',
+	contentType: 'application/vnd.ms-excel',
+	size: 2_000,
+};
+const LOGO: RowAttachment = {
+	storageId: 'storage_logo.png',
+	filename: 'logo.png',
+	contentType: 'image/png',
+	size: 500,
+	isInline: true,
+	contentId: 'logo@owlat.inline',
+};
+
+/** The stored draft as the server holds it. */
+let row: {
+	state: 'draft';
+	toAddresses: string[];
+	subject: string;
+	bodyHtml: string;
+	composerMode: 'simple';
+	lastEditedAt: number;
+	attachments: RowAttachment[];
+};
+let draftQuery: ReturnType<typeof queryResult<unknown>>;
+/** Whether `drafts.get` has answered yet; until then it stays undefined. */
+let rowAnswered: boolean;
+/** When set, `drafts.addAttachment` waits here until the test releases it. */
+let holdAttach: boolean;
+let releaseAttach: () => void;
+let removeAttachment: ReturnType<typeof vi.fn>;
+
+/** A Convex query update: the subscription sees the row before any mutation resolves. */
+function publish() {
+	if (rowAnswered) draftQuery.data.value = JSON.parse(JSON.stringify(row));
+}
+
+beforeEach(() => {
+	row = {
+		state: 'draft',
+		toAddresses: ['ada@example.com'],
+		subject: 'Signed contract',
+		bodyHtml: '<p>Attached.</p>',
+		composerMode: 'simple',
+		lastEditedAt: 100,
+		attachments: [CONTRACT, SCHEDULE],
+	};
+	rowAnswered = false;
+	holdAttach = false;
+	draftQuery = queryResult<unknown>(undefined);
+
+	const addAttachment = (args: RowAttachment) => {
+		const commit = () => {
+			row.attachments = [
+				...row.attachments,
+				{
+					storageId: args.storageId,
+					filename: args.filename,
+					contentType: args.contentType,
+					size: args.size,
+				},
+			];
+			publish();
+			return { ok: true, result: { ok: true } };
+		};
+		if (!holdAttach) return Promise.resolve(commit());
+		return new Promise((resolve) => {
+			releaseAttach = () => resolve(commit());
+		});
+	};
+	removeAttachment = vi.fn(async (args: { storageId: string }) => {
+		row.attachments = row.attachments.filter((a) => a.storageId !== args.storageId);
+		publish();
+		return { ok: true, result: { ok: true } };
+	});
+	const ops: Record<string, (args: never) => Promise<unknown>> = {
+		'storage.generateUploadUrl': async () => ({ ok: true, result: 'https://upload.example' }),
+		'drafts.addAttachment': addAttachment as never,
+		'drafts.removeAttachment': removeAttachment as never,
+		'drafts.update': async () => ({ ok: true, result: { savedAt: 200 } }),
+	};
+	vi.stubGlobal('useBackendOperation', (name: string) => ({
+		run: ops[name] ?? vi.fn(async () => ({ ok: true, result: {} })),
+		isLoading: ref(false),
+	}));
+	// Every `drafts.get` subscription in the composer shares the one answer.
+	vi.stubGlobal('useConvexQuery', (fn: unknown) =>
+		fn === 'drafts.get' ? draftQuery : queryResult(undefined)
+	);
+	vi.stubGlobal('useI18n', () => i18n.global);
+	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
+	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => false }));
+	vi.stubGlobal('useDesktopContext', () => ({ isDesktop: ref(false) }));
+	vi.stubGlobal('useConvex', () => null);
+});
+
+const flush = async () => {
+	for (let i = 0; i < 8; i += 1) await new Promise<void>((r) => setTimeout(r, 0));
+};
+
+async function reopen(seed: Partial<ComposerSeed> = {}) {
+	const { usePostboxCompose } = await import('../usePostboxCompose');
+	const composer = withSetup(() =>
+		usePostboxCompose({ mailboxId: 'mbx-1' as never, draftId: 'draft-1' as never, ...seed })
+	).result;
+	await flush();
+	return composer;
+}
+
+/** `drafts.get` answers with the row as it is now. */
+async function rowLoads() {
+	rowAnswered = true;
+	publish();
+	await flush();
+}
+
+const shown = (composer: Awaited<ReturnType<typeof reopen>>) =>
+	composer.attachments.value.map((a) => a.filename).sort();
+
+const notes = () => new File(['notes'], 'notes.txt', { type: 'text/plain' });
+
+describe('usePostboxCompose: a reopened draft shows its own attachments (#1272)', () => {
+	it('shows the row’s files beside one attached before the row loaded, each once', async () => {
+		const composer = await reopen();
+		expect(composer.draftNotice.value).toBe('loading');
+
+		await composer.addFiles([notes()]);
+		await flush();
+		// Committed to the row; the composer has not heard from the row yet.
+		expect(row.attachments.map((a) => a.filename)).toEqual([
+			'contract.pdf',
+			'schedule.xlsx',
+			'notes.txt',
+		]);
+		expect(shown(composer)).toEqual(['notes.txt']);
+
+		await rowLoads();
+
+		expect(composer.draftNotice.value).toBeNull();
+		expect(shown(composer)).toEqual(['contract.pdf', 'notes.txt', 'schedule.xlsx']);
+		expect(composer.uploads.value).toEqual([]);
+		// The meter and limits count what the send will carry.
+		expect(composer.attachmentSizeMeter.value.totalBytes).toBe(
+			CONTRACT.size + SCHEDULE.size + 'notes'.length
+		);
+	});
+
+	it('does the same when the first read failed and the person kept working before retrying', async () => {
+		const composer = await reopen();
+		draftQuery.error.value = new Error('offline') as never;
+		await flush();
+		expect(composer.draftNotice.value).toBe('load_failed');
+
+		await composer.addFiles([notes()]);
+		await flush();
+		expect(shown(composer)).toEqual(['notes.txt']);
+
+		// "Try again" answers.
+		draftQuery.error.value = null;
+		await rowLoads();
+
+		expect(composer.draftNotice.value).toBeNull();
+		expect(shown(composer)).toEqual(['contract.pdf', 'notes.txt', 'schedule.xlsx']);
+	});
+
+	it('lets the person remove the row’s own files, and they stay removed', async () => {
+		const composer = await reopen();
+		await composer.addFiles([notes()]);
+		await flush();
+		await rowLoads();
+
+		await composer.removeAttachment(CONTRACT.storageId);
+		await flush();
+		expect(removeAttachment).toHaveBeenCalledWith({
+			draftId: 'draft-1',
+			storageId: CONTRACT.storageId,
+		});
+		expect(shown(composer)).toEqual(['notes.txt', 'schedule.xlsx']);
+
+		await composer.removeAttachment(SCHEDULE.storageId);
+		await flush();
+		expect(shown(composer)).toEqual(['notes.txt']);
+		expect(row.attachments.map((a) => a.filename)).toEqual(['notes.txt']);
+	});
+
+	it('keeps an upload still attaching when the row loads, and shows it once it lands', async () => {
+		holdAttach = true;
+		const composer = await reopen();
+		await composer.addFiles([notes()]);
+		await flush();
+		expect(composer.uploads.value.map((c) => c.filename)).toEqual(['notes.txt']);
+
+		await rowLoads();
+		expect(shown(composer)).toEqual(['contract.pdf', 'schedule.xlsx']);
+		expect(composer.uploads.value.map((c) => c.filename)).toEqual(['notes.txt']);
+		expect(composer.isUploading.value).toBe(true);
+
+		releaseAttach();
+		await flush();
+		expect(shown(composer)).toEqual(['contract.pdf', 'notes.txt', 'schedule.xlsx']);
+		expect(composer.uploads.value).toEqual([]);
+		expect(composer.isUploading.value).toBe(false);
+	});
+
+	it('leaves an inline body image out of the chips when a file was attached meanwhile', async () => {
+		row.attachments = [CONTRACT, LOGO];
+		const composer = await reopen();
+		await composer.addFiles([notes()]);
+		await flush();
+		await rowLoads();
+
+		expect(shown(composer)).toEqual(['contract.pdf', 'notes.txt']);
+	});
+});
