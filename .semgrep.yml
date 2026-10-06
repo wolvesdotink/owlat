@@ -98,56 +98,35 @@ rules:
       - pattern-not: safeRedirect($X, $Y)
 
   # ────────────────────────────────────────────────────────────────────
-  # Webhook handlers that read a signature header and never pass it to a
-  # verifier. Catches future regressions of the C2 unverified-signature
-  # class.
+  # Webhook handlers that read a signature header, check that it is
+  # present, and never hand its value to anything that could verify it.
+  # Catches future regressions of the C2 unverified-signature class.
   #
-  # This is a syntactic guardrail, not a proof. It checks that the header
-  # value reaches a verifier call. It does not check how the verdict is
-  # used beyond three direct bad forms, and it cannot show that the
-  # verdict decides whether the request is accepted.
+  # Reported: a `$X.get('...')` or `$X['...']` read whose name is a plain
+  # string literal containing "signature" (case-insensitive), followed by
+  # an `if` or a ternary that tests the value (`if (!sig)`, `if (sig)`,
+  # `sig !== null ? ...`), when nowhere in the enclosing function is the
+  # value, or a value derived from it (`signature.slice(7)`):
+  #   - passed as an argument to any call or `new`, or
+  #   - an operand of `===` / `!==` / `==` / `!=` against something other
+  #     than null, undefined or an empty string,
+  # and no call in that function takes a signature-header read directly
+  # as an argument (a verifier that re-reads the header).
   #
-  # Reported: a `$X.get('...')` or `$X['...']` read whose quoted string
-  # literal name contains "signature" (case-insensitive), followed by an
-  # `if` or a ternary that tests it (`if (!sig)`, `if (sig)`,
-  # `sig !== null ? ...`), unless the enclosing function's own body passes
-  # the header value, or a value derived from it, to a verifier: a
-  # `verify*` function or method (verifyGithubSignature,
-  # verifyTwilioRequest, verifyMetaSignature, verifySvixHeaders,
-  # crypto.subtle.verify, ...) or a synchronous compare (constantTimeEqual,
-  # secretMatches, timingSafeEqual, Node's crypto.verify).
-  #
-  # A verifier call does not exempt the read in these direct forms only:
-  #   (a) its result is assigned straight to a `const` that nothing in
-  #       that block reads;
-  #   (b) a known-async verifier (the named webhook helpers and
-  #       crypto.subtle.verify), unawaited, is used directly as an `if`
-  #       condition, a ternary test, or a `!` / `&&` / `||` operand;
-  #   (c) it sits only in a function declared or bound to a `const` that
-  #       is never referenced.
-  # Every other use of the call counts as using the verdict.
-  #
-  # Known limits. Each is a `todoruleid` (missed) or `todook` (wrongly
-  # reported) case in the test file:
-  #   - How the verdict is used is not analysed beyond (a)-(c). Discarded
-  #     results (a bare statement, `void`, parenthesised, chained, a
-  #     comment between `await` and the call), transformed verdicts
-  #     (`!`, `Boolean()`, any wrapper) that are then unread, wrapped
-  #     conditions (`if (Boolean(verifyX(sig)))`), a verdict stored in a
-  #     `let`/`var` or a destructured `Promise.all` and never read, an
-  #     unawaited verifier stored and then tested, and a verifier only in
-  #     a callback that never runs, are not detected.
-  #   - What the verdict controls is not analysed: an `if` on it whose
-  #     body is empty or only logs, both branches accepting, a verdict
-  #     overwritten before it is read, a `try` whose `catch` swallows the
-  #     error, and a verification in only one branch are not detected.
-  #   - What is compared is not analysed: the signature compared with
-  #     itself or with a literal is not detected.
-  #   - Header names: only quoted string literals are recognised. A name
-  #     in a constant, a template literal, or a literal written with
-  #     escapes (`'x-\u0073ignature'`) is not detected.
-  #   - The rule looks at one function: a header value passed to another
-  #     function that verifies it is reported.
+  # This is a syntactic presence-only check, not a verification proof.
+  # Known limits, each with a `todoruleid` or `todook` case in the test:
+  #   - It does not check that a verifier's result is awaited, read or
+  #     acted on: discarded, transformed, unawaited, wrapped or
+  #     overwritten verdicts, and verifiers only in callbacks that never
+  #     run, all count as verification.
+  #   - It does not check what the value is compared against or passed
+  #     to: a self-compare, a public literal, a non-constant-time compare,
+  #     a length check or a logging call all count.
+  #   - Header names that are not plain string literals (constants,
+  #     template literals, escapes) are not recognised.
+  #   - Verification outside the function that reads the header is not
+  #     seen, so a handler that passes nothing on but verifies elsewhere
+  #     is reported.
   #
   # Tests: .semgrep/tests/webhook-signature-presence-only.ts, run with
   # `semgrep --test --config .semgrep.yml <that file>` (security.yml does).
@@ -156,26 +135,27 @@ rules:
     severity: ERROR
     languages: [typescript]
     message: |
-      This handler reads a signature header and tests it, but the header
-      value never reaches a verifier call (or only in a form whose result
-      is plainly unused). Pass it to one of the existing verification
-      helpers (webhooks/adapters/resend.ts verifySvixHeaders,
-      webhooks/adapters/twilio.ts verifyTwilioRequest,
+      This handler reads a signature header and checks that it is present,
+      but never passes its value to a verifier or compares it. Pass it to
+      one of the existing verification helpers (webhooks/adapters/resend.ts
+      verifySvixHeaders, webhooks/adapters/twilio.ts verifyTwilioRequest,
       webhooks/adapters/meta.ts verifyMetaSignature, or the constant-time
       compare in lib/crypto.ts, constantTimeEqual / secretMatches), await
-      it, and reject the request when it fails. This is a syntactic check:
-      it confirms a verifier is called on the header, not that its verdict
-      controls acceptance.
+      it, and reject the request when it fails.
+      Limits of this syntactic check: it does not check that a verifier's
+      result is awaited or acted on; it does not check what the value is
+      compared against or passed to; it only recognises header names
+      written as plain string literals; and it does not see verification
+      in another function.
     options:
       # `<... $SIG ...>` also matches a value derived from the header, e.g.
       # `const provided = signature.slice(7)`.
       symbolic_propagation: true
     patterns:
-      # Cheap gate first: a file that never says "signature" cannot hold a
-      # matching header read, and skipping it keeps the rule fast (the
-      # exemptions below scan every function body).
+      # Cheap gate first: only files that read a header whose literal name
+      # contains "signature" are evaluated at all.
       - pattern-inside:
-          pattern-regex: '(?i)\A(?=[\s\S]*signature)[\s\S]*\z'
+          pattern-regex: '(?i)\A(?=[\s\S]*(?:\.get\(\s*|\[\s*)[''"`][^''"`\n]*signature)[\s\S]*\z'
       - pattern-either:
           - pattern: |
               $SIG = $HEADERS.get($HEADER)
@@ -196,8 +176,7 @@ rules:
       - metavariable-regex:
           metavariable: $HEADER
           regex: (?i)^['"`][^'"`]*signature[^'"`]*['"`]$
-      # Exempt when the enclosing function's own body passes the header
-      # value to a verify* call, unless that call is in one of the bad forms.
+      # Exempt when the enclosing function hands the value on or compares it.
       - pattern-not-inside:
           patterns:
             - pattern-either:
@@ -216,152 +195,45 @@ rules:
                 (...) => {}
             - metavariable-pattern:
                 metavariable: $...BODY
-                patterns:
-                  # The innermost statement holding the call.
+                pattern-either:
+                  # The value goes into a call or a constructor.
                   - pattern: |
-                      <... $VERIFY(..., <... $SIG ...>, ...) ...>;
-                  - metavariable-regex:
-                      metavariable: $VERIFY
-                      regex: ^([\w$]+\.)*verify\w*$
-                  # (a) the verdict goes into a `const` that nothing in its
-                  # block reads, before or after.
-                  - pattern-not-inside:
-                      patterns:
-                        - pattern-either:
-                            - pattern: |
-                                const $VERDICT = $VERIFY(...);
-                            - pattern: |
-                                const $VERDICT = await $VERIFY(...);
-                        - pattern-not-inside: |
-                            const $VERDICT = $VALUE;
-                            ...
-                            <... $VERDICT ...>;
-                        - pattern-not-inside: |
-                            <... $VERDICT ...>;
-                            ...
-                            const $VERDICT = $VALUE;
-                  # (c) the call sits in a function that is declared or bound
-                  # to a `const` and never referenced.
-                  - pattern-not-inside:
-                      patterns:
-                        - pattern-either:
-                            - pattern: |
-                                const $UNUSED = (...) => $ARROWBODY;
-                            - pattern: |
-                                const $UNUSED = function (...) { ... };
-                            - pattern: |
-                                function $UNUSED(...) { ... }
-                        - pattern-not-inside: |
-                            const $UNUSED = $DEFINITION;
-                            ...
-                            <... $UNUSED ...>;
-                        - pattern-not-inside: |
-                            <... $UNUSED ...>;
-                            ...
-                            const $UNUSED = $DEFINITION;
-                        - pattern-not-inside: |
-                            function $UNUSED(...) { ... }
-                            ...
-                            <... $UNUSED ...>;
-                        - pattern-not-inside: |
-                            <... $UNUSED ...>;
-                            ...
-                            function $UNUSED(...) { ... }
-                  # (b) a known-async verifier, unawaited, used directly as a
-                  # truth value (a Promise is always truthy). Only the named
-                  # async helpers: the repo also has synchronous verify*
-                  # functions, for which this form is correct.
-                  - pattern-not-inside:
-                      patterns:
-                        - pattern-either:
-                            - pattern: |
-                                if ($VERIFY(...)) $BRANCH
-                            - pattern: |
-                                <... !$VERIFY(...) ...>;
-                            - pattern: |
-                                <... $VERIFY(...) && $RHS ...>;
-                            - pattern: |
-                                <... $LHS && $VERIFY(...) ...>;
-                            - pattern: |
-                                <... $VERIFY(...) || $RHS ...>;
-                            - pattern: |
-                                <... $LHS || $VERIFY(...) ...>;
-                            - pattern: |
-                                <... $VERIFY(...) ? $YES : $NO ...>;
-                        - metavariable-regex:
-                            metavariable: $VERIFY
-                            regex: ^(([\w$]+\.)*(verifyGithubSignature|verifyTwilioRequest|verifyMetaSignature|verifySvixHeaders|verifySvix|verifyTimestampHmac|verifyProviderFeedbackRequest|verifyMandrillSignature|verifyMandrillForm|verifyMtaSignedRequest|verifyPluginInboundSignature|verifyPluginReplayBoundSignature|verifyPluginSvixDelivery|verifyPluginWebhookDelivery|verifyHookResponseSignature|verifyTrackingSignature|verifySnsMessage|verifySignature)|crypto\.subtle\.verify)$
-      # Exempt when the enclosing function's own body passes the header
-      # value to a synchronous compare, unless that call is in one of the bad forms.
-      - pattern-not-inside:
-          patterns:
-            - pattern-either:
-                - pattern: |
-                    function $FN(...) { $...BODY }
-                - pattern: |
-                    function (...) { $...BODY }
-                - pattern: |
-                    (...) => { $...BODY }
-            # An empty body has no range for metavariable-pattern to scan.
-            - pattern-not: |
-                function $FN(...) {}
-            - pattern-not: |
-                function (...) {}
-            - pattern-not: |
-                (...) => {}
-            - metavariable-pattern:
-                metavariable: $...BODY
-                patterns:
-                  # The innermost statement holding the call.
+                      <... $CALLEE(..., <... $SIG ...>, ...) ...>;
                   - pattern: |
-                      <... $COMPARE(..., <... $SIG ...>, ...) ...>;
-                  - metavariable-regex:
-                      metavariable: $COMPARE
-                      regex: ^(([\w$]+\.)*(constantTimeEqual|secretMatches|timingSafeEqual)|crypto\.verify)$
-                  # (a) the verdict goes into a `const` that nothing in its
-                  # block reads, before or after.
-                  - pattern-not-inside:
-                      patterns:
-                        - pattern-either:
-                            - pattern: |
-                                const $VERDICT = $COMPARE(...);
-                            - pattern: |
-                                const $VERDICT = await $COMPARE(...);
-                        - pattern-not-inside: |
-                            const $VERDICT = $VALUE;
-                            ...
-                            <... $VERDICT ...>;
-                        - pattern-not-inside: |
-                            <... $VERDICT ...>;
-                            ...
-                            const $VERDICT = $VALUE;
-                  # (c) the call sits in a function that is declared or bound
-                  # to a `const` and never referenced.
-                  - pattern-not-inside:
-                      patterns:
-                        - pattern-either:
-                            - pattern: |
-                                const $UNUSED = (...) => $ARROWBODY;
-                            - pattern: |
-                                const $UNUSED = function (...) { ... };
-                            - pattern: |
-                                function $UNUSED(...) { ... }
-                        - pattern-not-inside: |
-                            const $UNUSED = $DEFINITION;
-                            ...
-                            <... $UNUSED ...>;
-                        - pattern-not-inside: |
-                            <... $UNUSED ...>;
-                            ...
-                            const $UNUSED = $DEFINITION;
-                        - pattern-not-inside: |
-                            function $UNUSED(...) { ... }
-                            ...
-                            <... $UNUSED ...>;
-                        - pattern-not-inside: |
-                            <... $UNUSED ...>;
-                            ...
-                            function $UNUSED(...) { ... }
+                      <... new $CLASS(..., <... $SIG ...>, ...) ...>;
+                  # The value is compared with something that is not an
+                  # absence check.
+                  - patterns:
+                      - pattern-either:
+                          - pattern: |
+                              <... <... $SIG ...> === $OTHER ...>;
+                          - pattern: |
+                              <... $OTHER === <... $SIG ...> ...>;
+                          - pattern: |
+                              <... <... $SIG ...> !== $OTHER ...>;
+                          - pattern: |
+                              <... $OTHER !== <... $SIG ...> ...>;
+                          - pattern: |
+                              <... <... $SIG ...> == $OTHER ...>;
+                          - pattern: |
+                              <... $OTHER == <... $SIG ...> ...>;
+                          - pattern: |
+                              <... <... $SIG ...> != $OTHER ...>;
+                          - pattern: |
+                              <... $OTHER != <... $SIG ...> ...>;
+                      - metavariable-regex:
+                          metavariable: $OTHER
+                          regex: ^(?!(null|undefined|void 0|''|""|``)$)
+                  # A call re-reads a signature header as an argument.
+                  - patterns:
+                      - pattern-either:
+                          - pattern: |
+                              <... $CALLEE(..., $REREAD.get($NAME), ...) ...>;
+                          - pattern: |
+                              <... $CALLEE(..., $REREAD[$NAME], ...) ...>;
+                      - metavariable-regex:
+                          metavariable: $NAME
+                          regex: (?i)^['"`][^'"`]*signature[^'"`]*['"`]$
     paths:
       include:
         - "/apps/api/convex/**/*.ts"
