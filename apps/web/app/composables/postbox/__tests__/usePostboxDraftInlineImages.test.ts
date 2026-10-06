@@ -4,7 +4,10 @@
  * confirmed and it has a draft row whose body holds inline images, hands the
  * editor a Content-ID → URL map, and renews the expiring `/sealed-blob` URLs
  * before they run out: timed from the lifetime the server reports, never from
- * the device clock, and at once when a slept tab wakes past its renewal time.
+ * the device clock, and once when a slept tab wakes past its renewal time.
+ *
+ * Every trigger goes through one entry point, so a timer, a wake and a focus
+ * landing together start one request, and backoff holds against all of them.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { effectScope, nextTick, ref } from 'vue';
@@ -30,6 +33,12 @@ const part = (n: number, cid = CID) => ({
 	url: `https://deploy.convex.site/sealed-blob?id=s${n}&ct=image%2Fpng&exp=${Date.now() + HOUR}&sig=x&c=1`,
 	expiresInMs: HOUR,
 });
+
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((r) => (resolve = r));
+	return { promise, resolve };
+}
 
 /** Let the auth wait and the mint promise settle. */
 const settle = async () => {
@@ -200,6 +209,130 @@ describe('usePostboxDraftInlineImages', () => {
 		window.dispatchEvent(new Event('focus'));
 		await settle();
 		expect(mint).toHaveBeenCalledTimes(2);
+	});
+
+	it('starts one request for a timer, a wake and a focus that land while one is in flight', async () => {
+		const pending = deferred<ReturnType<typeof part>[]>();
+		const mint = vi
+			.fn()
+			.mockResolvedValueOnce([part(1)])
+			.mockReturnValueOnce(pending.promise);
+		const { sources } = setup(DRAFT, IMAGE_BODY, mint);
+		await settle();
+
+		await vi.advanceTimersByTimeAsync(50 * MIN);
+		expect(mint).toHaveBeenCalledTimes(2);
+		vi.setSystemTime(Date.now() + 2 * HOUR);
+		document.dispatchEvent(new Event('visibilitychange'));
+		window.dispatchEvent(new Event('focus'));
+		await vi.advanceTimersByTimeAsync(10 * MIN);
+		expect(mint).toHaveBeenCalledTimes(2);
+
+		pending.resolve([part(2)]);
+		await settle();
+		expect(sources.value.get(CID)).toContain('id=s2&');
+		window.dispatchEvent(new Event('focus'));
+		await settle();
+		expect(mint).toHaveBeenCalledTimes(2);
+	});
+
+	it('asks once on an overdue wake, however many wake events follow', async () => {
+		const pending = deferred<ReturnType<typeof part>[]>();
+		const mint = vi
+			.fn()
+			.mockResolvedValueOnce([part(1)])
+			.mockReturnValueOnce(pending.promise);
+		setup(DRAFT, IMAGE_BODY, mint);
+		await settle();
+
+		vi.setSystemTime(Date.now() + 3 * HOUR);
+		document.dispatchEvent(new Event('visibilitychange'));
+		window.dispatchEvent(new Event('focus'));
+		document.dispatchEvent(new Event('visibilitychange'));
+		await settle();
+		expect(mint).toHaveBeenCalledTimes(2);
+		pending.resolve([part(2)]);
+		await settle();
+		window.dispatchEvent(new Event('focus'));
+		await settle();
+		expect(mint).toHaveBeenCalledTimes(2);
+	});
+
+	it('does not ask again on focus during backoff after a failed renewal', async () => {
+		const mint = vi
+			.fn()
+			.mockResolvedValueOnce([part(1)])
+			.mockRejectedValueOnce(new Error('offline'))
+			.mockResolvedValue([part(3)]);
+		setup(DRAFT, IMAGE_BODY, mint);
+		await settle();
+
+		// Woken long past the renewal time; the renewal fails.
+		vi.setSystemTime(Date.now() + 2 * HOUR);
+		document.dispatchEvent(new Event('visibilitychange'));
+		await settle();
+		expect(mint).toHaveBeenCalledTimes(2);
+
+		for (let i = 0; i < 5; i++) window.dispatchEvent(new Event('focus'));
+		await settle();
+		expect(mint).toHaveBeenCalledTimes(2);
+
+		await vi.advanceTimersByTimeAsync(15_000);
+		await settle();
+		expect(mint).toHaveBeenCalledTimes(3);
+	});
+
+	it('asks at once for an image added during backoff, but never alongside a request', async () => {
+		const pending = deferred<ReturnType<typeof part>[]>();
+		const mint = vi
+			.fn()
+			.mockResolvedValueOnce([])
+			.mockReturnValueOnce(pending.promise)
+			.mockResolvedValue([part(3), part(3, 'third@owlat.inline')]);
+		const { html } = setup(DRAFT, IMAGE_BODY, mint);
+		await settle();
+		expect(mint).toHaveBeenCalledTimes(1);
+
+		// In backoff (15 s): a new image asks now.
+		html.value += '<p><img data-inline-cid="second@owlat.inline"></p>';
+		await settle();
+		expect(mint).toHaveBeenCalledTimes(2);
+
+		// Another one while that request is out waits for it, then asks.
+		html.value += '<p><img data-inline-cid="third@owlat.inline"></p>';
+		await settle();
+		expect(mint).toHaveBeenCalledTimes(2);
+		pending.resolve([part(2), part(2, 'second@owlat.inline')]);
+		await settle();
+		expect(mint).toHaveBeenCalledTimes(3);
+	});
+
+	it("shows none of draft A's URLs on draft B, even when B's answer is empty", async () => {
+		const mint = vi.fn(async (id: string) => (id === DRAFT ? [part(1)] : []));
+		const { draft, sources } = setup(DRAFT, IMAGE_BODY, mint);
+		await settle();
+		expect(sources.value.get(CID)).toContain('id=s1&');
+
+		draft.value = 'draft_2' as Id<'mailDrafts'>;
+		// Cleared in the pre-render flush, before B's request has even started.
+		await nextTick();
+		expect(sources.value.has(CID)).toBe(false);
+		await settle();
+		expect(mint).toHaveBeenLastCalledWith('draft_2');
+		expect(sources.value.has(CID)).toBe(false);
+	});
+
+	it("drops draft A's answer when it arrives after the switch to B", async () => {
+		const forA = deferred<ReturnType<typeof part>[]>();
+		const mint = vi.fn((id: string) => (id === DRAFT ? forA.promise : Promise.resolve([])));
+		const { draft, sources } = setup(DRAFT, IMAGE_BODY, mint);
+		await settle();
+
+		draft.value = 'draft_2' as Id<'mailDrafts'>;
+		await settle();
+		forA.resolve([part(1)]);
+		await settle();
+		expect(sources.value.has(CID)).toBe(false);
 	});
 
 	it('does not renew a URL that carries no lifetime', async () => {

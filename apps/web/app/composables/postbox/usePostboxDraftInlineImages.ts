@@ -5,21 +5,31 @@
  * bytes as the inline part `X` on the draft row. The preview the paste showed
  * does not survive a reload or reach another device, so the editor shows each
  * image from a URL the server mints for its part (`mail.draftInlineImages.urls`,
- * gated like `drafts.get`).
+ * gated like `drafts.get`). Those are expiring `/sealed-blob` URLs, the same
+ * kind the reader loads a message part from, so they are renewed.
  *
- * Those are expiring `/sealed-blob` URLs, the same kind the reader loads a
- * message part from. They are asked for once Convex auth is confirmed, when the
- * draft or the set of images in its body changes, and again before they expire:
+ * One small state machine per draft does the asking. Every trigger (opening
+ * the draft, the timer, the tab becoming visible or focused, a new image in the
+ * body) calls `kick`, and `kick` starts at most one request:
  *
- *   - Renewal is timed from the lifetime the server reports (`expiresInMs`),
- *     counted from when the answer arrived, and never later than
- *     `MAX_RENEW_MS`. The device clock is never compared with the server's
- *     expiry, so a clock that is off cannot push renewal past it.
- *   - A tab that slept past its renewal time (timers fire late or not at all)
- *     renews as soon as it is visible or focused again.
- *   - An answer that leaves an image unresolved (an empty answer during a
- *     passing auth loss, a part not on the row yet) is asked again with
- *     backoff, from `RETRY_MS` up to `MAX_RETRY_MS`, while the URLs it has stay.
+ *   - never while one is in flight (a new image kicked meanwhile asks right
+ *     after it);
+ *   - otherwise only once `nextAttemptAt` has passed, except for the timer
+ *     (armed to exactly that time) and a new image, which ask at once.
+ *
+ * A complete answer sets `nextAttemptAt` from the lifetime the server reports
+ * (`expiresInMs`, counted from when the answer arrived: five minutes early and
+ * at most 50 minutes on), so the device clock is never compared with the
+ * server's. A failed answer, or one that leaves an image unresolved (an empty
+ * answer during a passing auth loss, say), backs off from `RETRY_MS` doubling
+ * to `MAX_RETRY_MS`, keeping the URLs already held. A tab that slept past
+ * `nextAttemptAt` asks once when it wakes. Wall-clock time is used for that on
+ * purpose: `performance.now()` can stand still while the machine sleeps, which
+ * would hide an overdue wake. Each request first waits for Convex auth, so it
+ * never asks as an anonymous caller.
+ *
+ * Opening another draft starts over: the URLs are cleared, and the answer of a
+ * request still in flight for the previous draft is dropped.
  */
 
 import { computed, onScopeDispose, shallowRef, watch, type Ref } from 'vue';
@@ -31,16 +41,17 @@ import { whenConvexAuthenticated } from '~/lib/convexAuthReady';
 const RENEW_MARGIN_MS = 5 * 60_000;
 /** Never wait longer than this between renewals, whatever the lifetime says. */
 const MAX_RENEW_MS = 50 * 60_000;
-/** The first retry after a failed or incomplete answer, and the shortest wait between asks. */
+/** The first retry after a failed or incomplete answer. */
 const RETRY_MS = 15_000;
 /** Retries back off up to this. */
 const MAX_RETRY_MS = 5 * 60_000;
-/** How long one ask waits for Convex auth before it counts as failed. */
+/** How long one request waits for Convex auth before it counts as failed. */
 const AUTH_WAIT_MS = 30_000;
 
 type InlineImageUrl = { contentId: string; url: string; expiresInMs?: number };
 type MintUrls = (draftId: Id<'mailDrafts'>) => Promise<InlineImageUrl[]>;
 type WhenAuthenticated = (timeoutMs: number, signal: AbortSignal) => Promise<boolean>;
+type KickReason = 'open' | 'timer' | 'resume' | 'new-image';
 
 const defaultMint: MintUrls = (draftId) =>
 	requireConvex().action(api.mail.draftInlineImages.urls, { draftId });
@@ -52,6 +63,11 @@ function inlineContentIds(html: string): string[] {
 	return [...ids].sort();
 }
 
+/** The wait after the `failures`-th failure in a row: 15 s, doubling, at most 5 min. */
+function backoff(failures: number): number {
+	return Math.min(RETRY_MS * 2 ** Math.max(0, failures - 1), MAX_RETRY_MS);
+}
+
 export function usePostboxDraftInlineImages(
 	draftId: Readonly<Ref<Id<'mailDrafts'> | null>>,
 	bodyHtml: Readonly<Ref<string>>,
@@ -61,101 +77,125 @@ export function usePostboxDraftInlineImages(
 	const whenAuthenticated = options.whenAuthenticated ?? whenConvexAuthenticated;
 	const now = options.now ?? Date.now;
 	const sources = shallowRef<ReadonlyMap<string, string>>(new Map());
-
 	const contentIds = computed(() => inlineContentIds(bodyHtml.value));
-	// Typing changes the body, not this key: only a new draft or image asks again.
-	const wanted = computed(() =>
-		draftId.value && contentIds.value.length > 0
-			? `${draftId.value}|${contentIds.value.join('|')}`
-			: ''
-	);
 
-	let timer: ReturnType<typeof setTimeout> | null = null;
-	/** Local time by which the URLs held must be renewed; null when they need none. */
-	let renewAt: number | null = null;
-	let retryMs = RETRY_MS;
-	let sequence = 0;
+	// The state of the current draft. `generation` changes with the draft (and
+	// on dispose); a request only touches the state of the generation it began in.
+	let generation = 0;
+	let inFlight = false;
+	let newImageWhileInFlight = false;
+	let nextAttemptAt = 0;
+	let failureCount = 0;
 	let abort = new AbortController();
+	let timer: ReturnType<typeof setTimeout> | null = null;
+	let disposed = false;
 
-	function schedule(delayMs: number) {
-		if (timer) clearTimeout(timer);
-		timer = setTimeout(() => void load(), Math.max(RETRY_MS, delayMs));
-	}
-	function cancel() {
+	function clearTimer() {
 		if (timer) clearTimeout(timer);
 		timer = null;
-		abort.abort();
-		abort = new AbortController();
 	}
-	/** Ask again after the current backoff (sooner if renewal is due first), then back off. */
-	function retryLater(renewIn: number | null = null) {
-		schedule(renewIn === null ? retryMs : Math.min(retryMs, renewIn));
-		retryMs = Math.min(retryMs * 2, MAX_RETRY_MS);
+	/** The one timer, always aimed at `nextAttemptAt`. */
+	function armTimer() {
+		clearTimer();
+		if (!Number.isFinite(nextAttemptAt)) return;
+		timer = setTimeout(() => kick('timer'), Math.max(0, nextAttemptAt - now()));
 	}
 
-	async function load() {
-		cancel();
-		const request = ++sequence;
+	/** The single way a request starts. */
+	function kick(reason: KickReason) {
 		const id = draftId.value;
-		if (!id || !wanted.value) {
-			sources.value = new Map();
-			renewAt = null;
+		if (disposed || !id || contentIds.value.length === 0) return;
+		if (inFlight) {
+			if (reason === 'new-image') newImageWhileInFlight = true;
 			return;
 		}
+		const due = reason === 'timer' || reason === 'new-image' || now() >= nextAttemptAt;
+		if (!due) return;
+		void request(id, generation);
+	}
+
+	async function request(id: Id<'mailDrafts'>, mine: number) {
+		inFlight = true;
+		newImageWhileInFlight = false;
+		clearTimer();
 		const { signal } = abort;
 		let answer: InlineImageUrl[] | null = null;
 		try {
 			// An anonymous ask answers [] and would leave every image unresolved.
-			if (await whenAuthenticated(AUTH_WAIT_MS, signal)) answer = await mint(id);
+			const authenticated = await whenAuthenticated(AUTH_WAIT_MS, signal);
+			if (authenticated && mine === generation && !signal.aborted) answer = await mint(id);
 		} catch {
 			answer = null;
 		}
-		if (request !== sequence) return;
-		if (!answer) {
-			retryLater();
-			return;
-		}
+		// Another draft (or none) since: this answer belongs to nobody.
+		if (mine !== generation) return;
+		inFlight = false;
 		const receivedAt = now();
-		const next = new Map(sources.value);
-		for (const part of answer) next.set(part.contentId, part.url);
-		sources.value = next;
-
-		const lifetimes = answer.flatMap((part) => part.expiresInMs ?? []);
-		const renewIn =
-			lifetimes.length > 0
-				? Math.min(Math.min(...lifetimes) - RENEW_MARGIN_MS, MAX_RENEW_MS)
-				: null;
-		renewAt = renewIn === null ? null : receivedAt + renewIn;
-		const resolved = new Set(answer.map((part) => part.contentId));
-		if (contentIds.value.some((cid) => !resolved.has(cid))) {
-			retryLater(renewIn);
-			return;
+		if (answer) {
+			const next = new Map(sources.value);
+			for (const part of answer) next.set(part.contentId, part.url);
+			sources.value = next;
 		}
-		retryMs = RETRY_MS;
-		if (renewIn !== null) schedule(renewIn);
+		const lifetimes = (answer ?? []).flatMap((part) => part.expiresInMs ?? []);
+		const renewAt =
+			lifetimes.length > 0
+				? receivedAt + Math.min(Math.min(...lifetimes) - RENEW_MARGIN_MS, MAX_RENEW_MS)
+				: Infinity;
+		const answered = new Set((answer ?? []).map((part) => part.contentId));
+		const complete = answer !== null && contentIds.value.every((cid) => answered.has(cid));
+		if (complete) {
+			failureCount = 0;
+			nextAttemptAt = renewAt;
+		} else {
+			failureCount += 1;
+			nextAttemptAt = Math.min(renewAt, receivedAt + backoff(failureCount));
+		}
+		armTimer();
+		// An image added while this was in flight was not part of what it asked.
+		if (newImageWhileInFlight) kick('new-image');
 	}
 
-	/** Back from sleep or a background tab: renew at once if the time has passed. */
+	/** Back from sleep or a background tab. */
 	function onResume() {
 		if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-		if (renewAt !== null && now() >= renewAt) void load();
+		kick('resume');
 	}
 	if (typeof window !== 'undefined') {
 		window.addEventListener('focus', onResume);
 		document.addEventListener('visibilitychange', onResume);
 	}
 
+	/** Start over for another draft: no URLs, no request, no backoff. */
+	function reset() {
+		generation += 1;
+		abort.abort();
+		abort = new AbortController();
+		clearTimer();
+		inFlight = false;
+		newImageWhileInFlight = false;
+		nextAttemptAt = 0;
+		failureCount = 0;
+		sources.value = new Map();
+	}
+
 	watch(
-		wanted,
+		draftId,
 		() => {
-			retryMs = RETRY_MS;
-			void load();
+			reset();
+			kick('open');
 		},
 		{ immediate: true }
 	);
+	watch(contentIds, (ids, previous) => {
+		const before = new Set(previous ?? []);
+		if (ids.some((cid) => !before.has(cid))) kick('new-image');
+	});
+
 	onScopeDispose(() => {
-		sequence += 1;
-		cancel();
+		disposed = true;
+		generation += 1;
+		abort.abort();
+		clearTimer();
 		if (typeof window !== 'undefined') {
 			window.removeEventListener('focus', onResume);
 			document.removeEventListener('visibilitychange', onResume);
