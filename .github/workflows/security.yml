@@ -72,12 +72,12 @@ jobs:
       - name: Validate local rules
         run: semgrep scan --validate --config .semgrep.yml
 
-      # One `--test` run per file: the webhook rule's file gate is per-file,
-      # so each read form in .semgrep/tests/gate/ needs a file of its own.
+      # One `--test` run per file: `--test` pairs one config file with one
+      # target file.
       - name: Test local rules
         run: |
           set -e
-          for f in .semgrep/tests/*.ts .semgrep/tests/gate/*.ts; do
+          for f in .semgrep/tests/*.ts .semgrep/tests/read-forms/*.ts; do
             echo "== $f"
             semgrep --test --config .semgrep.yml "$f"
           done
