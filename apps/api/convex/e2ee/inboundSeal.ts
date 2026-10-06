@@ -27,7 +27,7 @@ import {
 	type ExtractedAttachment,
 } from '@owlat/shared/mailMime';
 import { decodeCharset } from '@owlat/mail-message/parse/charset';
-import { decodeHeaderValue } from '@owlat/mail-message/parse/headers';
+import { collapseControlChars, decodeHeaderValue } from '@owlat/mail-message/parse/headers';
 import { parseRawHeaderFields } from '@owlat/mail-canon/rawMessage';
 
 /**
@@ -195,19 +195,7 @@ function decodeProtectedHeader(rawValue: string): string {
 		.split('\r\n')
 		.map((line) => line.trim())
 		.join(' ');
-	return withoutControlChars(decodeHeaderValue(text));
-}
-
-/**
- * A run of C0 controls other than TAB, or DEL, with the blanks around it. The
- * run must start with one of those controls; TAB only joins a run.
- */
-// eslint-disable-next-line no-control-regex -- matching control characters is the point
-const CONTROL_RUN = /[ \t]*[\u0000-\u0008\u000a-\u001f\u007f][\u0000-\u001f\u007f \t]*/g;
-
-/** Each {@link CONTROL_RUN} replaced by one space. */
-function withoutControlChars(text: string): string {
-	return text.replace(CONTROL_RUN, ' ').trim();
+	return collapseControlChars(decodeHeaderValue(text));
 }
 
 /**

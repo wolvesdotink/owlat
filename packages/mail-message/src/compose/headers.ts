@@ -166,9 +166,10 @@ export function encodeHeaderValue(
 /**
  * Build the list of RFC 2047 base64 encoded-words for a non-ASCII string, each
  * <=75 octets including delimiters. Returned un-folded so callers can join them
- * with whatever folding white space their header position requires.
+ * with whatever folding white space their header position requires (the IMAP
+ * ENVELOPE joins them with a single space).
  */
-function encodeWords(text: string): string[] {
+export function encodeWords(text: string): string[] {
 	const prefix = '=?UTF-8?B?';
 	const suffix = '?=';
 	// Octets available for base64 payload inside one <=75-octet encoded-word.
