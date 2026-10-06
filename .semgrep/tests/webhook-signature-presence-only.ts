@@ -105,8 +105,8 @@ export async function acceptsInTernary(request: Request) {
 	return signature != null ? accept() : unauthorized();
 }
 
-// ── A verifier is called, but not on the header, unawaited, unused, or only
-// in a nested callback ────────────────────────────────────────────────────
+// ── A verifier is called, but not on the header, unawaited in a condition,
+// into an unread const, or only in an unused function ──────────────────
 
 export const verifiesSomethingElse = httpAction(async (ctx, request) => {
 	// ruleid: webhook-signature-presence-only
@@ -153,23 +153,6 @@ export const unusedNestedVerifier = httpAction(async (ctx, request) => {
 	};
 	return new Response('OK', { status: 200 });
 });
-
-export const resultDiscarded = httpAction(async (ctx, request) => {
-	// ruleid: webhook-signature-presence-only
-	const signature = request.headers.get('x-hub-signature-256');
-	if (!signature) return unauthorized();
-	const rawBody = await request.text();
-	await verifyGithubSignature(rawBody, signature, secret);
-	return new Response('OK', { status: 200 });
-});
-
-export async function compareDiscarded(request: Request, expected: string) {
-	// ruleid: webhook-signature-presence-only
-	const signature = request.headers.get('x-hub-signature-256');
-	if (!signature) return unauthorized();
-	constantTimeEqual(expected, signature);
-	return new Response('OK', { status: 200 });
-}
 
 export async function resultNeverTested(request: Request, rawBody: string) {
 	// ruleid: webhook-signature-presence-only
@@ -361,6 +344,52 @@ export async function verdictIntoResponse(request: Request, rawBody: string) {
 	const signature = request.headers.get('x-twilio-signature');
 	if (!signature) return unauthorized();
 	return respondTo(await verifyTwilioRequest(request.url, rawBody, signature, authToken));
+}
+
+// The verdict reaches assert / rejectUnless through a .then chain.
+export async function chainedAssert(request: Request, rawBody: string) {
+	// ok: webhook-signature-presence-only
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return unauthorized();
+	await verifyGithubSignature(rawBody, signature, secret).then(assert);
+	return new Response('OK', { status: 200 });
+}
+
+export async function chainedRejectUnless(request: Request, rawBody: string) {
+	// ok: webhook-signature-presence-only
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return unauthorized();
+	await verifyMetaSignature(rawBody, signature, appSecret).then((valid) => rejectUnless(valid));
+	return new Response('OK', { status: 200 });
+}
+
+// A verifier inside a callback that is awaited, or a helper that is called.
+export async function verifiedThroughRetry(request: Request, rawBody: string) {
+	// ok: webhook-signature-presence-only
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return unauthorized();
+	if (!(await withRetry(() => verifyGithubSignature(rawBody, signature, secret)))) {
+		return unauthorized();
+	}
+	return new Response('OK', { status: 200 });
+}
+
+export async function verifiedThroughLocalHelper(request: Request, rawBody: string) {
+	// ok: webhook-signature-presence-only
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return unauthorized();
+	const check = async () => verifyGithubSignature(rawBody, signature, secret);
+	if (!(await check())) return unauthorized();
+	return new Response('OK', { status: 200 });
+}
+
+// A synchronous verify* helper used directly as a condition is correct.
+export function syncVerifyHelper(request: Request, secret: string) {
+	// ok: webhook-signature-presence-only
+	const signature = request.headers.get('x-owlat-signature');
+	if (!signature) return 401;
+	if (!verifyContactToken(signature, secret)) return 401;
+	return 200;
 }
 
 // ── Helper verification: the shape of the real handlers ─────────────────
@@ -583,7 +612,6 @@ export async function unawaitedVerdictStored(request: Request, rawBody: string) 
 	return new Response('OK', { status: 200 });
 }
 
-// (i) is a regex: a bare call after a block comment is not seen as bare.
 export async function discardedAfterBlockComment(request: Request, rawBody: string) {
 	// todoruleid: webhook-signature-presence-only
 	const signature = request.headers.get('x-hub-signature-256');
@@ -609,3 +637,124 @@ export const verifiedElsewhere = httpAction(async (ctx, request) => {
 	if (!signature) return unauthorized();
 	return await handleSignedDelivery(ctx, await request.text(), signature);
 });
+
+// Discarded results: a bare statement, `void`, parenthesised, chained, or a
+// comment between `await` and the call.
+export const resultDiscarded = httpAction(async (ctx, request) => {
+	// todoruleid: webhook-signature-presence-only
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return unauthorized();
+	const rawBody = await request.text();
+	await verifyGithubSignature(rawBody, signature, secret);
+	return new Response('OK', { status: 200 });
+});
+
+export async function compareDiscarded(request: Request, expected: string) {
+	// todoruleid: webhook-signature-presence-only
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return unauthorized();
+	constantTimeEqual(expected, signature);
+	return new Response('OK', { status: 200 });
+}
+
+export async function discardedWithVoid(request: Request, rawBody: string) {
+	// todoruleid: webhook-signature-presence-only
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return unauthorized();
+	void verifyGithubSignature(rawBody, signature, secret);
+	return new Response('OK', { status: 200 });
+}
+
+// prettier-ignore
+export async function discardedInParens(request: Request, rawBody: string) {
+	// todoruleid: webhook-signature-presence-only
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return unauthorized();
+	(await verifyGithubSignature(rawBody, signature, secret));
+	return new Response('OK', { status: 200 });
+}
+
+export async function discardedAfterComment(request: Request, rawBody: string) {
+	// todoruleid: webhook-signature-presence-only
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return unauthorized();
+	await /* checked */ verifyGithubSignature(rawBody, signature, secret);
+	return new Response('OK', { status: 200 });
+}
+
+export async function discardedChained(request: Request, rawBody: string) {
+	// todoruleid: webhook-signature-presence-only
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return unauthorized();
+	await verifyGithubSignature(rawBody, signature, secret).catch(() => false);
+	return new Response('OK', { status: 200 });
+}
+
+// Transformed verdicts that are then never read.
+export async function negatedVerdictUnread(request: Request, rawBody: string) {
+	// todoruleid: webhook-signature-presence-only
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return unauthorized();
+	const invalid = !(await verifyGithubSignature(rawBody, signature, secret));
+	return new Response('OK', { status: 200 });
+}
+
+export async function wrappedVerdictUnread(request: Request, rawBody: string) {
+	// todoruleid: webhook-signature-presence-only
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return unauthorized();
+	const valid = Boolean(await verifyGithubSignature(rawBody, signature, secret));
+	return new Response('OK', { status: 200 });
+}
+
+export function wrappedCompareUnread(request: Request, expected: string) {
+	// todoruleid: webhook-signature-presence-only
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return 401;
+	const valid = Boolean(constantTimeEqual(expected, signature));
+	return 200;
+}
+
+export async function letVerdictUnread(request: Request, rawBody: string) {
+	// todoruleid: webhook-signature-presence-only
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return unauthorized();
+	let valid = await verifyGithubSignature(rawBody, signature, secret);
+	return new Response('OK', { status: 200 });
+}
+
+// A wrapped unawaited condition: the Promise is truthy, so this accepts.
+export async function wrappedUnawaitedCondition(request: Request, rawBody: string) {
+	// todoruleid: webhook-signature-presence-only
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return unauthorized();
+	if (Boolean(verifyGithubSignature(rawBody, signature, secret))) return accept();
+	return unauthorized();
+}
+
+// A verifier only in a callback handed elsewhere that may never run.
+export async function verifiedOnlyInCallback(request: Request, rawBody: string) {
+	// todoruleid: webhook-signature-presence-only
+	const signature = request.headers.get('x-hub-signature-256');
+	if (!signature) return unauthorized();
+	onShutdown(async () => {
+		if (!(await verifyGithubSignature(rawBody, signature, secret))) logWarn('bad');
+	});
+	return new Response('OK', { status: 200 });
+}
+
+// Header names the literal check does not recognise.
+export async function templateLiteralHeader(request: Request) {
+	// todoruleid: webhook-signature-presence-only
+	const signature = request.headers.get(`x-SIGNATURE`);
+	if (!signature) return unauthorized();
+	return new Response('OK', { status: 200 });
+}
+
+// prettier-ignore
+export async function escapedHeaderName(request: Request) {
+	// todoruleid: webhook-signature-presence-only
+	const signature = request.headers.get('x-\x73ignature');
+	if (!signature) return unauthorized();
+	return new Response('OK', { status: 200 });
+}
