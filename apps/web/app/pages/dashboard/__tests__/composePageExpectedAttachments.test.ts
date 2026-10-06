@@ -24,6 +24,9 @@ import ComposePage from '../compose.vue';
 import { usePostboxComposeNav, type ComposeSpec } from '~/composables/postbox/usePostboxComposeNav';
 import { usePostboxCompose } from '~/composables/postbox/usePostboxCompose';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import type * as Uploads from '~/composables/postbox/postboxAttachmentUploads';
+
+type UploadsModule = typeof Uploads;
 
 vi.mock('@owlat/api', () => ({
 	api: {
@@ -67,7 +70,7 @@ function deferred<T>(): Deferred<T> {
 }
 const puts: { file: File; done: Deferred<string> }[] = [];
 vi.mock('~/composables/postbox/postboxAttachmentUploads', async (importOriginal) => ({
-	...(await importOriginal<typeof import('~/composables/postbox/postboxAttachmentUploads')>()),
+	...(await importOriginal<UploadsModule>()),
 	xhrPutFile: (_url: string, file: File) => {
 		const done = deferred<string>();
 		puts.push({ file, done });
