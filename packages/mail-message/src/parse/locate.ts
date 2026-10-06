@@ -304,7 +304,6 @@ function eachQuotedPrintable(
 	let s1Head = 0;
 	const s2: number[] = [];
 	let s2Head = 0;
-	let done1 = false;
 	let i = body.start;
 	const pull1 = (): boolean => {
 		while (i < body.end) {
@@ -314,11 +313,12 @@ function eachQuotedPrintable(
 			s1.push(c);
 			return true;
 		}
-		done1 = true;
 		return false;
 	};
 	const need1 = (k: number) => {
-		while (s1.length - s1Head < k && !done1) pull1();
+		while (s1.length - s1Head < k) {
+			if (!pull1()) break;
+		}
 		return s1.length - s1Head >= k;
 	};
 	const pull2 = (): boolean => {
