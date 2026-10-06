@@ -5,9 +5,10 @@
  * The body used to be saved with the paste's `blob:` preview as the image's
  * src. That URL dies with the tab, so a reload or another device showed a
  * broken image. Now the editor saves the image as `<img data-inline-cid="X">`
- * with no src, and fills one in from `inlineImageSources` (the row part's
- * storage URL) after every write of the body, including bodies an older client
- * saved with the dead `blob:` URL.
+ * with no src, and fills one in from `inlineImageSources` (an expiring URL
+ * for the row part) after every write of the body, including bodies an older client
+ * saved with the dead `blob:` URL. The composer renews those URLs before they
+ * expire (`usePostboxDraftInlineImages`), and the editor follows.
  */
 import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { nextTick, onBeforeMount, onBeforeUnmount } from 'vue';
@@ -34,7 +35,7 @@ vi.mock('@owlat/api', () => {
 const { default: PostboxBasicEditor } = await import('../PostboxBasicEditor.vue');
 
 const CID = 'chart@owlat.inline';
-const ROW_URL = 'https://storage.owlat.example/api/storage/chart';
+const ROW_URL = 'https://deploy.convex.site/sealed-blob?id=chart&ct=image%2Fpng&exp=1&sig=x';
 const DEAD_BLOB = 'blob:https://app.owlat.example/0b6f4d1e-7a1c-4a52-9a0e-3f1d2c5b8e77';
 /** What the editor saves since #1285. */
 const STORED = `<p>Chart:</p><p><img data-inline-cid="${CID}" style="max-width:100%;height:auto"></p>`;
@@ -97,6 +98,14 @@ describe('PostboxBasicEditor: inline images of a reopened draft', () => {
 
 		await w.setProps({ inlineImageSources: new Map([[CID, ROW_URL]]) });
 		expect(imageSrc(w)).toBe(ROW_URL);
+		w.unmount();
+	});
+
+	it('moves the image to a renewed URL before the old one expires', async () => {
+		const w = mountEditor({ modelValue: STORED, inlineImageSources: new Map([[CID, ROW_URL]]) });
+		const renewed = `${ROW_URL}?exp=2`;
+		await w.setProps({ inlineImageSources: new Map([[CID, renewed]]) });
+		expect(imageSrc(w)).toBe(renewed);
 		w.unmount();
 	});
 

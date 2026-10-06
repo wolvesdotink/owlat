@@ -5,7 +5,7 @@
  * body: it inserts `<img src="blob:…preview…" data-inline-cid="<id>">` at the
  * caret and uploads the (downscaled) bytes as an INLINE draft attachment keyed
  * by that same `contentId`. The display src is the editor's own business (a
- * session preview, or the part's storage URL on a reopen) and the draft is
+ * session preview, or a URL for the part on a reopen) and the draft is
  * saved with none; bodies saved before that still hold a dead `blob:` preview.
  * So the send path is the single place that rewrites each referenced `<img>` to
  * a `cid:` reference matching the MIME `Content-ID` of its inline part, with or

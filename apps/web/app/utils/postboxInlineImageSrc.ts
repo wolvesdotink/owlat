@@ -4,7 +4,7 @@
  * An inline image is `<img data-inline-cid="X">` in the body, with its bytes on
  * the draft row as the inline part with Content-ID `X`. What the editor shows it
  * from is a session matter: the `blob:` preview of a paste only lives as long as
- * the tab, and a reopened draft loads it from the row part's storage URL. So the
+ * the tab, and a reopened draft loads it from an expiring URL for the row part. So the
  * editor saves the body WITHOUT that `src` and fills it in after every write.
  * The send path does not need it either: it rewrites each marked image to
  * `cid:X` (`@owlat/shared/inlineImages`).

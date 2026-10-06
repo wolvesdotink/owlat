@@ -18,14 +18,14 @@ import type { AttachmentMeta } from '~/utils/attachmentMeta';
  */
 
 /** Stop reusing a URL this long before its token expires. */
-const EXPIRY_MARGIN_MS = 60_000;
+export const EXPIRY_MARGIN_MS = 60_000;
 /** How many minted part URLs are remembered. */
 const URL_CACHE_LIMIT = 50;
 
 type MintPartUrl = (messageId: string, att: AttachmentMeta) => Promise<string | null>;
 
 /** The `exp` a sealed-blob URL carries, or null for any other URL. */
-function tokenExpiry(url: string): number | null {
+export function tokenExpiry(url: string): number | null {
 	try {
 		const exp = Number(new URL(url).searchParams.get('exp'));
 		return Number.isFinite(exp) && exp > 0 ? exp : null;
