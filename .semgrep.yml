@@ -128,9 +128,11 @@ rules:
   # an `if` on the verdict whose body is empty or only logs; both branches
   # accepting; a verdict overwritten before it is read; the signature
   # compared with itself or with a literal; a verification inside a `try`
-  # whose `catch` swallows the error. Also not seen: a header name held in
-  # a constant, and a header value passed out of the function to be
-  # verified elsewhere.
+  # whose `catch` swallows the error; a verification in only one branch.
+  # Also not seen: a header name held in a constant, and a header value
+  # passed out of the function to be verified elsewhere. For a
+  # destructured `Promise.all`, reading any destructured name later counts
+  # as reading the verdict.
   #
   # Tests: .semgrep/tests/webhook-signature-presence-only.ts, run with
   # `semgrep --test --config .semgrep.yml <that file>` (security.yml does).
