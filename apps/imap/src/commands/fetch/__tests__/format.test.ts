@@ -7,6 +7,8 @@ import {
 	formatEnvelope,
 	type FetchEnvelope,
 } from '../format.js';
+import { parseMessage } from '@owlat/mail-message';
+import { decodeHeaderValue } from '@owlat/mail-message/parse/headers';
 
 function envelope(overrides: Partial<FetchEnvelope> = {}): FetchEnvelope {
 	return {
@@ -174,19 +176,62 @@ describe('formatEnvelope', () => {
 		expect(fields[4]).toBe('((NIL NIL "reply" "example.com"))');
 	});
 
-	it('keeps a FETCH response framed when a subject or name carries CR/LF', () => {
-		const line = `* 1 FETCH (UID 7 ENVELOPE ${formatEnvelope(
-			envelope({ subject: 'hello\r\n* BYE x\r\n', fromName: 'Jäne\nDoe' })
-		)})`;
-		const { text, literals } = readLiterals(Buffer.from(line, 'utf8'));
-		// The subject, then the name in from, sender and reply-to (which fall back to from).
-		expect(literals).toEqual(['hello\r\n* BYE x\r\n', ...Array(3).fill('Jäne\nDoe')]);
-		// Outside the literals the response is one line of balanced parens.
-		expect(text).not.toMatch(/[\r\n]/);
-		expect(text.startsWith('* 1 FETCH (UID 7 ENVELOPE (')).toBe(true);
-		expect(splitEnvelopeFields(text.slice('* 1 FETCH (UID 7 ENVELOPE '.length, -1))).toHaveLength(
-			10
+	it('keeps rebuilt headers intact when a stored subject or name holds CR/LF', () => {
+		// A client such as Thunderbird rebuilds a header block from the ENVELOPE.
+		const fields = readEnvelope(
+			formatEnvelope(envelope({ subject: 'hello\r\n\r\nx', fromName: 'Eve\r\n\r\nBcc: x\u0000' }))
 		);
+		expect(fields[1]).toBe('hello x');
+		const parsed = parseMessage(rebuildHeaders(fields));
+		expect(parsed.subject).toBe('hello x');
+		expect(parsed.from).toMatchObject({
+			value: [{ name: 'Eve Bcc: x', address: 'jane@example.com' }],
+		});
+		expect(parsed.to).toMatchObject({ value: [{ address: 'bob@example.com' }] });
+		expect(parsed.headers.has('bcc')).toBe(false);
+		expect(parsed.text).toBe('body');
+	});
+
+	it('sends a non-ASCII subject and display name as encoded words in quoted strings', () => {
+		// The subject is what an ISO-8859-1 protected subject decodes to.
+		const subject = 'Grüße aus dem Café';
+		const out = formatEnvelope(envelope({ subject, fromName: 'Jäne Dœ 😠' }));
+		expect(out).toMatch(/^[\x20-\x7e]*$/);
+		const fields = readEnvelope(out);
+		expect(fields[1]).toMatch(/^=\?UTF-8\?B\?[A-Za-z0-9+/=]+\?=$/);
+		expect(decodeHeaderValue(fields[1] as string)).toBe(subject);
+
+		const parsed = parseMessage(rebuildHeaders(fields));
+		expect(parsed.subject).toBe(subject);
+		expect(parsed.from).toMatchObject({
+			value: [{ name: 'Jäne Dœ 😠', address: 'jane@example.com' }],
+		});
+	});
+
+	it('splits a long non-ASCII subject into encoded words of at most 75 chars', () => {
+		const subject = 'Überweisung für die Quartalszahlen — bitte prüfen, ob alles stimmt. '
+			.repeat(3)
+			.trim();
+		const words = (readEnvelope(formatEnvelope(envelope({ subject })))[1] as string).split(' ');
+		expect(words.length).toBeGreaterThan(1);
+		for (const word of words) {
+			expect(word).toMatch(/^=\?UTF-8\?B\?[A-Za-z0-9+/=]+\?=$/);
+			expect(word.length).toBeLessThanOrEqual(75);
+		}
+		expect(decodeHeaderValue(words.join(' '))).toBe(subject);
+	});
+
+	it('leaves an ASCII subject and name as they were', () => {
+		const out = formatEnvelope(envelope({ subject: 'Re: say "hi" \\ =?not?= encoded' }));
+		expect(splitEnvelopeFields(out)[1]).toBe('"Re: say \\"hi\\" \\\\ =?not?= encoded"');
+		expect(splitEnvelopeFields(out)[2]).toBe('(("Jane Doe" NIL "jane" "example.com"))');
+	});
+
+	it('sends a non-ASCII address part as a literal, never as an encoded word', () => {
+		const out = formatEnvelope(envelope({ toAddresses: ['jürgen@example.com'] }));
+		expect(out).toContain('(NIL NIL {7}\r\njürgen "example.com")');
+		const fields = readEnvelope(out);
+		expect(fields[5]).toEqual([[null, null, 'jürgen', 'example.com']]);
 	});
 
 	it('keeps 10 fields even when every optional address slot is NIL', () => {
@@ -242,28 +287,80 @@ function splitEnvelopeFields(envelopeStr: string): string[] {
 	return fields;
 }
 
+type ImapValue = string | null | ImapValue[];
+
 /**
- * Read a response the way an IMAP client does: a `{n}` CRLF takes the next n
- * octets as a literal, whatever they hold. Returns the response with each
- * literal replaced by `L`, and the literals in order.
+ * Read one IMAP value the way a client does: `(` lists, quoted strings with
+ * their escapes, `{n}` CRLF literals taken by octet count, `NIL` and atoms.
+ * Fails on a CR or LF anywhere outside a literal, or on 8-bit in a quoted
+ * string.
  */
-function readLiterals(octets: Buffer): { text: string; literals: string[] } {
-	const literals: string[] = [];
-	let text = '';
+function readEnvelope(response: string): ImapValue[] {
+	const octets = Buffer.from(response, 'utf8');
 	let i = 0;
-	while (i < octets.length) {
-		const rest = octets.subarray(i).toString('latin1');
-		const open = /^\{(\d+)\}\r\n/.exec(rest);
-		if (open) {
-			const start = i + open[0].length;
-			const end = start + Number(open[1]);
-			literals.push(octets.subarray(start, end).toString('utf8'));
-			text += 'L';
-			i = end;
-			continue;
+	const read = (): ImapValue => {
+		const c = octets[i]!;
+		if (c === 0x28) {
+			i += 1;
+			const list: ImapValue[] = [];
+			while (octets[i] !== 0x29) {
+				if (octets[i] === 0x20) i += 1;
+				else list.push(read());
+			}
+			i += 1;
+			return list;
 		}
-		text += String.fromCharCode(octets[i]!);
-		i += 1;
-	}
-	return { text, literals };
+		if (c === 0x22) {
+			i += 1;
+			let out = '';
+			while (octets[i] !== 0x22) {
+				if (octets[i] === 0x5c) i += 1;
+				const byte = octets[i]!;
+				if (byte === 0x0d || byte === 0x0a || byte > 0x7f)
+					throw new Error(`bad quoted octet ${byte}`);
+				out += String.fromCharCode(byte);
+				i += 1;
+			}
+			i += 1;
+			return out;
+		}
+		if (c === 0x7b) {
+			const close = octets.indexOf(0x7d, i);
+			const n = Number(octets.subarray(i + 1, close).toString('ascii'));
+			if (octets.subarray(close + 1, close + 3).toString('ascii') !== '\r\n') {
+				throw new Error('literal without CRLF');
+			}
+			const start = close + 3;
+			i = start + n;
+			return octets.subarray(start, i).toString('utf8');
+		}
+		const start = i;
+		while (i < octets.length && ![0x20, 0x28, 0x29].includes(octets[i]!)) {
+			if (octets[i] === 0x0d || octets[i] === 0x0a) throw new Error('CR/LF outside a literal');
+			i += 1;
+		}
+		const atom = octets.subarray(start, i).toString('ascii');
+		return atom === 'NIL' ? null : atom;
+	};
+	const value = read();
+	expect(i).toBe(octets.length);
+	expect(Array.isArray(value) && value.length === 10).toBe(true);
+	return value as ImapValue[];
+}
+
+/** A header block built from ENVELOPE fields, the way a client rebuilds one. */
+function rebuildHeaders(fields: ImapValue[]): string {
+	const [date, subject, from, , , to] = fields;
+	const addresses = (list: ImapValue): string =>
+		(list as ImapValue[][])
+			.map(([name, , user, host]) => (name ? `"${name}" <${user}@${host}>` : `${user}@${host}`))
+			.join(', ');
+	return [
+		`Date: ${date}`,
+		`Subject: ${subject}`,
+		`From: ${addresses(from!)}`,
+		`To: ${addresses(to!)}`,
+		'',
+		'body',
+	].join('\r\n');
 }

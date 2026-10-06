@@ -8,6 +8,9 @@
  * pre-deepening handler did the same.
  */
 
+import { encodeWords } from '@owlat/mail-message/compose/headers';
+import { collapseControlChars } from '@owlat/mail-message/parse/headers';
+
 export interface FetchEnvelope {
 	readonly _id: string;
 	readonly uid: number;
@@ -70,7 +73,9 @@ export function formatInternalDate(ts: number): string {
 }
 
 /**
- * An IMAP `string` (RFC 3501 §4.3) for an envelope field. A quoted string
+ * An IMAP `string` (RFC 3501 §4.3) for an envelope field. Text fields go
+ * through {@link imapHeaderText} first, so a literal here is the fallback for
+ * values that are not text, such as a non-ASCII address. A quoted string
  * holds only 7-bit chars other than CR and LF, so a value with CR, LF or any
  * non-ASCII char is sent as a literal, `{n}` CRLF then the n octets. The
  * response is written as UTF-8, so n is the value's UTF-8 length. NUL is
@@ -85,18 +90,32 @@ export function imapString(s: string | undefined): string {
 	return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
+/**
+ * An ENVELOPE text field: the subject or a display name. Clients rebuild
+ * message headers from these, so control characters become a space; a stored
+ * value may hold any. Non-ASCII text goes out as RFC 2047 encoded words, which
+ * name their charset (a raw 8-bit string carries none, RFC 3501 §4.3.1), and
+ * the ASCII result as a quoted string. Address parts and message ids are not
+ * text and go through {@link imapString} as they are.
+ */
+export function imapHeaderText(s: string | undefined): string {
+	if (s == null) return 'NIL';
+	const line = collapseControlChars(s);
+	return imapString(/[\u0080-\uffff]/.test(line) ? encodeWords(line).join(' ') : line);
+}
+
 export function imapAddrList(addrs: ReadonlyArray<{ name?: string; address: string }>): string {
 	if (addrs.length === 0) return 'NIL';
 	const parts = addrs.map((a) => {
 		const [user, host] = a.address.split('@');
-		return `(${imapString(a.name)} NIL ${imapString(user ?? a.address)} ${imapString(host ?? '')})`;
+		return `(${imapHeaderText(a.name)} NIL ${imapString(user ?? a.address)} ${imapString(host ?? '')})`;
 	});
 	return `(${parts.join(' ')})`;
 }
 
 export function formatEnvelope(m: FetchEnvelope): string {
 	const date = new Date(m.internalDate).toUTCString();
-	const subject = imapString(m.subject);
+	const subject = imapHeaderText(m.subject);
 	const from = imapAddrList([{ name: m.fromName, address: m.fromAddress }]);
 	const sender = from;
 	const replyTo = m.replyToAddress ? imapAddrList([{ address: m.replyToAddress }]) : from;
