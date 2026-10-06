@@ -295,6 +295,10 @@ export const addAttachment = postboxMutation({
 		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) throwForbidden('Draft not accessible');
 		assertStateIs(draft, 'draft');
+		// The same upload sent again: a composer that reloaded while its first
+		// attach was in flight cannot tell whether it landed (#1257). It did, so
+		// nothing is added twice.
+		if (draft.attachments.some((a) => a.storageId === args.storageId)) return { ok: true };
 		// An upload answered on the Reply Queue is held by the thread until a
 		// draft of it takes it over; any other is the caller's fresh upload.
 		const isTakenFromThread = await claimThreadAnswerUpload(
