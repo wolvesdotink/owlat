@@ -49,6 +49,7 @@ describe('extractFirstPartByType', () => {
 		].join('\r\n');
 		const part = extractFirstPartByType(raw, 'text/plain');
 		expect(part?.contentType).toBe('text/plain');
+		expect(part?.charset).toBeUndefined();
 		expect(new TextDecoder().decode(part!.bytes)).toBe('untyped');
 	});
 });
@@ -172,6 +173,7 @@ describe('a raw message read from its bytes (#1279)', () => {
 
 	it('leaves an 8-bit UTF-8 text part decodable', () => {
 		const part = extractFirstPartByType(bytesToBinaryString(raw), 'text/plain');
+		expect(part!.charset).toBe('utf-8');
 		expect(decode(part!.bytes)).toBe('Price — “quoted” 5€');
 	});
 

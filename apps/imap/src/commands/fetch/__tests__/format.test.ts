@@ -5,8 +5,11 @@ import {
 	imapString,
 	imapAddrList,
 	formatEnvelope,
+	splitAddrSpec,
 	type FetchEnvelope,
 } from '../format.js';
+import { parseMessage } from '@owlat/mail-message';
+import { decodeHeaderValue } from '@owlat/mail-message/parse/headers';
 
 function envelope(overrides: Partial<FetchEnvelope> = {}): FetchEnvelope {
 	return {
@@ -34,14 +37,12 @@ function envelope(overrides: Partial<FetchEnvelope> = {}): FetchEnvelope {
 
 describe('formatFlags', () => {
 	it('emits the system flags that are set, in IMAP form', () => {
-		expect(formatFlags(envelope({ flagSeen: true, flagAnswered: true }))).toBe(
-			'\\Seen \\Answered',
-		);
+		expect(formatFlags(envelope({ flagSeen: true, flagAnswered: true }))).toBe('\\Seen \\Answered');
 	});
 
 	it('appends custom flags after system flags', () => {
 		expect(formatFlags(envelope({ flagFlagged: true, customFlags: ['$Forwarded'] }))).toBe(
-			'\\Flagged $Forwarded',
+			'\\Flagged $Forwarded'
 		);
 	});
 
@@ -63,8 +64,8 @@ describe('formatFlags', () => {
 					flagFlagged: true,
 					flagSeen: true,
 					customFlags: ['$Forwarded', 'NonJunk'],
-				}),
-			),
+				})
+			)
 		).toBe('\\Seen \\Flagged \\Answered \\Draft \\Deleted $Forwarded NonJunk');
 	});
 
@@ -92,7 +93,7 @@ describe('formatInternalDate', () => {
 
 	it('matches the strict dd-Mon-yyyy HH:MM:SS +0000 grammar', () => {
 		expect(formatInternalDate(Date.UTC(2026, 5, 9, 10, 30, 5))).toMatch(
-			/^\d{2}-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-\d{4} \d{2}:\d{2}:\d{2} \+0000$/,
+			/^\d{2}-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-\d{4} \d{2}:\d{2}:\d{2} \+0000$/
 		);
 	});
 });
@@ -105,12 +106,30 @@ describe('imapString', () => {
 	it('emits NIL for null/undefined', () => {
 		expect(imapString(undefined)).toBe('NIL');
 	});
+
+	it('sends a value with CR or LF as a literal', () => {
+		expect(imapString('hello\r\n* BYE x')).toBe('{14}\r\nhello\r\n* BYE x');
+		expect(imapString('a\nb')).toBe('{3}\r\na\nb');
+	});
+
+	it('sends a non-ASCII value as a literal counted in UTF-8 octets', () => {
+		expect(imapString('Grüße 😠')).toBe('{12}\r\nGrüße 😠');
+	});
+
+	it('sends NIL for a value with NUL, which neither form may carry, rather than altering it', () => {
+		expect(imapString('a\0b')).toBe('NIL');
+		expect(imapString('ä\0')).toBe('NIL');
+	});
+
+	it('keeps TAB in a quoted string', () => {
+		expect(imapString('a\tb')).toBe('"a\tb"');
+	});
 });
 
 describe('imapAddrList', () => {
 	it('splits mailbox and host', () => {
 		expect(imapAddrList([{ name: 'Jane', address: 'jane@example.com' }])).toBe(
-			'(("Jane" NIL "jane" "example.com"))',
+			'(("Jane" NIL "jane" "example.com"))'
 		);
 	});
 
@@ -122,7 +141,7 @@ describe('imapAddrList', () => {
 describe('formatEnvelope', () => {
 	it('produces the 10-field RFC 3501 envelope', () => {
 		const out = formatEnvelope(
-			envelope({ inReplyTo: 'parent@example.com', replyToAddress: 'reply@example.com' }),
+			envelope({ inReplyTo: 'parent@example.com', replyToAddress: 'reply@example.com' })
 		);
 		expect(out).toContain('"Hello"');
 		expect(out).toContain('(("Jane Doe" NIL "jane" "example.com"))');
@@ -143,7 +162,7 @@ describe('formatEnvelope', () => {
 	// A dropped/extra field shifts every subsequent field for the client.
 	it('produces exactly 10 top-level envelope fields in RFC 3501 order', () => {
 		const out = formatEnvelope(
-			envelope({ inReplyTo: 'parent@example.com', replyToAddress: 'reply@example.com' }),
+			envelope({ inReplyTo: 'parent@example.com', replyToAddress: 'reply@example.com' })
 		);
 		expect(out.startsWith('(')).toBe(true);
 		expect(out.endsWith(')')).toBe(true);
@@ -162,10 +181,168 @@ describe('formatEnvelope', () => {
 		expect(fields[4]).toBe('((NIL NIL "reply" "example.com"))');
 	});
 
-	it('keeps 10 fields even when every optional address slot is NIL', () => {
-		const out = formatEnvelope(
-			envelope({ toAddresses: [], ccAddresses: [], bccAddresses: [] }),
+	it('keeps rebuilt headers intact when a stored subject or name holds CR/LF', () => {
+		// A client such as Thunderbird rebuilds a header block from the ENVELOPE.
+		const fields = readEnvelope(
+			formatEnvelope(envelope({ subject: 'hello\r\n\r\nx', fromName: 'Eve\r\n\r\nBcc: x\u0000' }))
 		);
+		expect(fields[1]).toBe('hello x');
+		const parsed = parseMessage(rebuildHeaders(fields));
+		expect(parsed.subject).toBe('hello x');
+		expect(parsed.from).toMatchObject({
+			value: [{ name: 'Eve Bcc: x', address: 'jane@example.com' }],
+		});
+		expect(parsed.to).toMatchObject({ value: [{ address: 'bob@example.com' }] });
+		expect(parsed.headers.has('bcc')).toBe(false);
+		expect(parsed.text).toBe('body');
+	});
+
+	it('sends a non-ASCII subject and display name as encoded words in quoted strings', () => {
+		// The subject is what an ISO-8859-1 protected subject decodes to.
+		const subject = 'Grüße aus dem Café';
+		const out = formatEnvelope(envelope({ subject, fromName: 'Jäne Dœ 😠' }));
+		expect(out).toMatch(/^[\x20-\x7e]*$/);
+		const fields = readEnvelope(out);
+		expect(fields[1]).toMatch(/^=\?UTF-8\?B\?[A-Za-z0-9+/=]+\?=$/);
+		expect(decodeHeaderValue(fields[1] as string)).toBe(subject);
+
+		const parsed = parseMessage(rebuildHeaders(fields));
+		expect(parsed.subject).toBe(subject);
+		expect(parsed.from).toMatchObject({
+			value: [{ name: 'Jäne Dœ 😠', address: 'jane@example.com' }],
+		});
+	});
+
+	it('splits a long non-ASCII subject into encoded words of at most 75 chars', () => {
+		const subject = 'Überweisung für die Quartalszahlen — bitte prüfen, ob alles stimmt. '
+			.repeat(3)
+			.trim();
+		const words = (readEnvelope(formatEnvelope(envelope({ subject })))[1] as string).split(' ');
+		expect(words.length).toBeGreaterThan(1);
+		for (const word of words) {
+			expect(word).toMatch(/^=\?UTF-8\?B\?[A-Za-z0-9+/=]+\?=$/);
+			expect(word.length).toBeLessThanOrEqual(75);
+		}
+		expect(decodeHeaderValue(words.join(' '))).toBe(subject);
+	});
+
+	it('leaves an ASCII subject and name as they were', () => {
+		const out = formatEnvelope(envelope({ subject: 'Re: say "hi" \\ =?not?= encoded' }));
+		expect(splitEnvelopeFields(out)[1]).toBe('"Re: say \\"hi\\" \\\\ =?not?= encoded"');
+		expect(splitEnvelopeFields(out)[2]).toBe('(("Jane Doe" NIL "jane" "example.com"))');
+	});
+
+	it('encodes a subject and name whose own text reads as an encoded word', () => {
+		// The stored values are already decoded; a client must show them as they are.
+		const subject = '=?UTF-8?Q?Caf=C3=A9?=';
+		const fromName = 'Jane =?ISO-8859-1?B?SuRuZQ==?= "J" Doe';
+		const fields = readEnvelope(formatEnvelope(envelope({ subject, fromName })));
+		expect(fields[1]).not.toBe(subject);
+		expect(decodeHeaderValue(fields[1] as string)).toBe(subject);
+
+		const parsed = parseMessage(rebuildHeaders(fields));
+		expect(parsed.subject).toBe(subject);
+		expect(parsed.from).toMatchObject({ value: [{ name: fromName, address: 'jane@example.com' }] });
+	});
+
+	it.each([
+		['In-Reply-To', { inReplyTo: 'parent@example.com>\r\nBcc: extra@example.com\r\n\r\nrest' }],
+		['Message-ID', { rfc822MessageId: 'mid-1@example.com>\r\nBcc: extra@example.com\r\n\r\nrest' }],
+	])('keeps rebuilt headers intact when a stored %s holds CR/LF', (_field, overrides) => {
+		const fields = readEnvelope(formatEnvelope(envelope(overrides)));
+		// The invalid id is NIL, not a repaired one.
+		expect([fields[8], fields[9]]).toContain(null);
+		const parsed = parseMessage(rebuildHeaders(fields));
+		expect(parsed.headers.has('bcc')).toBe(false);
+		expect(parsed.subject).toBe('Hello');
+		expect(parsed.from).toMatchObject({ value: [{ address: 'jane@example.com' }] });
+		expect(parsed.to).toMatchObject({ value: [{ address: 'bob@example.com' }] });
+		expect(parsed.text).toBe('body');
+	});
+
+	it('keeps ids that differ only by a TAB distinct, and the TAB itself', () => {
+		const withTab = readEnvelope(
+			formatEnvelope(envelope({ rfc822MessageId: '"a\tb"@example.com' }))
+		);
+		const without = readEnvelope(formatEnvelope(envelope({ rfc822MessageId: '"ab"@example.com' })));
+		expect(withTab[9]).toBe('<"a\tb"@example.com>');
+		expect(without[9]).toBe('<"ab"@example.com>');
+		expect(withTab[9]).not.toBe(without[9]);
+	});
+
+	it('keeps a TAB in a quoted local part', () => {
+		const fields = readEnvelope(formatEnvelope(envelope({ toAddresses: ['"a\tb"@example.com'] })));
+		expect(fields[5]).toEqual([[null, null, '"a\tb"', 'example.com']]);
+	});
+
+	it.each([
+		['user@[tag:foo@bar]', 'user', '[tag:foo@bar]'],
+		['"a@b"@example.com', '"a@b"', 'example.com'],
+		['"a\\"@b"@example.com', '"a\\"@b"', 'example.com'],
+		['user@[IPv6:::1]', 'user', '[IPv6:::1]'],
+		['a@b@example.com', 'a@b', 'example.com'],
+		['no-at-sign', 'no-at-sign', ''],
+	])('splits %s at the @ outside quotes and domain literals', (address, mailbox, host) => {
+		expect(splitAddrSpec(address)).toEqual({ mailbox, host });
+		const fields = readEnvelope(formatEnvelope(envelope({ toAddresses: [address] })));
+		expect(fields[5]).toEqual([[null, null, mailbox, host]]);
+	});
+
+	it('sends NIL for an id holding a control character, never a repaired id', () => {
+		const fields = readEnvelope(
+			formatEnvelope(
+				envelope({
+					rfc822MessageId: 'mid-1@example.com\r\n',
+					inReplyTo: 'par\u0000ent@example.com\u007f',
+				})
+			)
+		);
+		expect(fields[8]).toBeNull();
+		expect(fields[9]).toBeNull();
+	});
+
+	it('leaves out an address holding a control character and keeps the others', () => {
+		const fields = readEnvelope(
+			formatEnvelope(
+				envelope({
+					toAddresses: [
+						'ann@example.com',
+						'a@exam\u0001ple.com',
+						'bo\r\nb@example.com',
+						'cy@example.org',
+					],
+				})
+			)
+		);
+		expect(fields[5]).toEqual([
+			[null, null, 'ann', 'example.com'],
+			[null, null, 'cy', 'example.org'],
+		]);
+	});
+
+	it('sends NIL for a list whose only address is invalid, display name and all', () => {
+		const fields = readEnvelope(
+			formatEnvelope(
+				envelope({
+					fromName: 'Jane Doe',
+					fromAddress: 'jane@exam\u0001ple.com',
+					toAddresses: ['x@exa\u007fmple.com'],
+				})
+			)
+		);
+		// From, sender and reply-to (which falls back to from), then to.
+		expect(fields.slice(2, 6)).toEqual([null, null, null, null]);
+	});
+
+	it('sends a non-ASCII address part as a literal, never as an encoded word', () => {
+		const out = formatEnvelope(envelope({ toAddresses: ['jürgen@example.com'] }));
+		expect(out).toContain('(NIL NIL {7}\r\njürgen "example.com")');
+		const fields = readEnvelope(out);
+		expect(fields[5]).toEqual([[null, null, 'jürgen', 'example.com']]);
+	});
+
+	it('keeps 10 fields even when every optional address slot is NIL', () => {
+		const out = formatEnvelope(envelope({ toAddresses: [], ccAddresses: [], bccAddresses: [] }));
 		const fields = splitEnvelopeFields(out);
 		expect(fields).toHaveLength(10);
 		// to / cc / bcc collapse to NIL but the field still occupies its slot.
@@ -215,4 +392,102 @@ function splitEnvelopeFields(envelopeStr: string): string[] {
 	}
 	if (cur.length > 0) fields.push(cur);
 	return fields;
+}
+
+type ImapValue = string | null | ImapValue[];
+
+/**
+ * Read one IMAP value the way a client does: `(` lists, quoted strings with
+ * their escapes, `{n}` CRLF literals taken by octet count, `NIL` and atoms.
+ * Fails on a CR or LF anywhere outside a literal, or on 8-bit in a quoted
+ * string.
+ */
+function readEnvelope(response: string): ImapValue[] {
+	const octets = Buffer.from(response, 'utf8');
+	let i = 0;
+	const read = (): ImapValue => {
+		const c = octets[i]!;
+		if (c === 0x28) {
+			i += 1;
+			const list: ImapValue[] = [];
+			while (octets[i] !== 0x29) {
+				if (octets[i] === 0x20) i += 1;
+				else list.push(read());
+			}
+			i += 1;
+			return list;
+		}
+		if (c === 0x22) {
+			i += 1;
+			let out = '';
+			while (octets[i] !== 0x22) {
+				if (octets[i] === 0x5c) i += 1;
+				const byte = octets[i]!;
+				if (byte === 0x0d || byte === 0x0a || byte > 0x7f)
+					throw new Error(`bad quoted octet ${byte}`);
+				out += String.fromCharCode(byte);
+				i += 1;
+			}
+			i += 1;
+			return out;
+		}
+		if (c === 0x7b) {
+			const close = octets.indexOf(0x7d, i);
+			const n = Number(octets.subarray(i + 1, close).toString('ascii'));
+			if (octets.subarray(close + 1, close + 3).toString('ascii') !== '\r\n') {
+				throw new Error('literal without CRLF');
+			}
+			const start = close + 3;
+			i = start + n;
+			return octets.subarray(start, i).toString('utf8');
+		}
+		const start = i;
+		while (i < octets.length && ![0x20, 0x28, 0x29].includes(octets[i]!)) {
+			if (octets[i] === 0x0d || octets[i] === 0x0a) throw new Error('CR/LF outside a literal');
+			i += 1;
+		}
+		const atom = octets.subarray(start, i).toString('ascii');
+		return atom === 'NIL' ? null : atom;
+	};
+	const value = read();
+	expect(i).toBe(octets.length);
+	expect(Array.isArray(value) && value.length === 10).toBe(true);
+	return value as ImapValue[];
+}
+
+/** A display name made only of RFC 2047 encoded words. */
+const ENCODED_PHRASE = /^=\?[^?\s]+\?[bBqQ]\?[^?\s]*\?=(?: =\?[^?\s]+\?[bBqQ]\?[^?\s]*\?=)*$/;
+
+/**
+ * A display name as an RFC 5322 phrase: encoded words stay an unquoted phrase
+ * (RFC 2047 §5 does not allow them inside a quoted string), anything else
+ * becomes a quoted string with `"` and `\` escaped.
+ */
+function phrase(name: string): string {
+	return ENCODED_PHRASE.test(name) ? name : `"${name.replace(/[\\"]/g, '\\$&')}"`;
+}
+
+/**
+ * A header block built from ENVELOPE fields, the way a client rebuilds one:
+ * the id headers first, so a value that broke out of its line would push
+ * From and To into the body.
+ */
+function rebuildHeaders(fields: ImapValue[]): string {
+	const [date, subject, from, , , to, , , inReplyTo, messageId] = fields;
+	const addresses = (list: ImapValue): string =>
+		((list ?? []) as ImapValue[][])
+			.map(([name, , user, host]) =>
+				name ? `${phrase(name as string)} <${user}@${host}>` : `${user}@${host}`
+			)
+			.join(', ');
+	return [
+		`Date: ${date}`,
+		...(messageId ? [`Message-ID: ${messageId}`] : []),
+		...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`] : []),
+		`Subject: ${subject}`,
+		`From: ${addresses(from!)}`,
+		`To: ${addresses(to!)}`,
+		'',
+		'body',
+	].join('\r\n');
 }

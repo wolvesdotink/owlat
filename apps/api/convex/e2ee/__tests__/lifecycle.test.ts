@@ -25,7 +25,7 @@ import { verifyManifest, type ManifestPayload } from '../manifest';
 import { openSealed } from '../open';
 import { openPrivateKey } from '../sealing';
 import { wkdHashForAddress } from '../wkd';
-import { modules, enableSealedMail } from './sealedMailTestHelpers';
+import { modules, enableSealedMail, utf8Text } from './sealedMailTestHelpers';
 import * as openpgp from 'openpgp';
 
 describe('e2ee/lifecycle rotation + revocation', () => {
@@ -156,14 +156,14 @@ describe('e2ee/lifecycle rotation + revocation', () => {
 		const oldOutcome = await openSealed({ raw: sealedToOld, recipientPrivateKeysArmored });
 		expect(oldOutcome.status).toBe('opened');
 		if (oldOutcome.status === 'opened') {
-			expect(oldOutcome.innerMime).toContain('sealed under the old key');
+			expect(utf8Text(oldOutcome.innerMime)).toContain('sealed under the old key');
 		}
 
 		// ...and the NEW-key fixture opens via the active key.
 		const newOutcome = await openSealed({ raw: sealedToNew, recipientPrivateKeysArmored });
 		expect(newOutcome.status).toBe('opened');
 		if (newOutcome.status === 'opened') {
-			expect(newOutcome.innerMime).toContain('sealed under the new key');
+			expect(utf8Text(newOutcome.innerMime)).toContain('sealed under the new key');
 		}
 	});
 
