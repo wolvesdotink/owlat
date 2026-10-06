@@ -18,7 +18,8 @@
  *     (snoozed unread messages are NOT counted; unsnooze mirrors the snooze
  *     decrement);
  *   - folder/label/filter create cross-mailbox-target rejection;
- *   - folder create/rename refusing a name with a control character.
+ *   - folder create/rename refusing a name with a control character, or
+ *     `INBOX` in any case.
  *
  * Session mocking: mail reads the session via `getBetterAuthSessionWithRole`
  * (inside `requireMailboxAccess`); the `authedMutation`/`authedQuery` wrappers floor
@@ -1012,6 +1013,39 @@ describe('mail.folders names', () => {
 			expect(folder?.name).toBe('Receipts');
 		}
 	);
+
+	// `INBOX` in any case is the inbox over IMAP (RFC 3501 §5.1).
+	it.each([['INBOX'], ['Inbox'], ['inbox'], ['iNbOx']])(
+		'create and rename refuse %j as a reserved name',
+		async (name) => {
+			const t = convexTest(schema, modules);
+			await enableFeatures(t, ['mail.external']);
+			const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
+
+			await expect(
+				t.mutation(api.mail.folders.create, { mailboxId: a.mailboxId, name })
+			).rejects.toThrow('Reserved system folder name');
+
+			const folderId = await t.mutation(api.mail.folders.create, {
+				mailboxId: a.mailboxId,
+				name: 'Receipts',
+			});
+			await expect(t.mutation(api.mail.folders.rename, { folderId, name })).rejects.toThrow(
+				'Reserved system folder name'
+			);
+		}
+	);
+
+	it('allows names that only contain or resemble inbox', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
+
+		for (const name of ['Inbox (2)', 'Old inbox', 'İnbox']) {
+			const folderId = await t.mutation(api.mail.folders.create, { mailboxId: a.mailboxId, name });
+			expect(folderId).toBeDefined();
+		}
+	});
 
 	it('accepts the quote, backslash, non-ASCII and emoji names IMAP has to encode', async () => {
 		const t = convexTest(schema, modules);

@@ -8,13 +8,41 @@
 import { fn, type ConvexClient, type FolderRow } from '../../convex.js';
 import { mailboxNameFromClient } from './mailboxName.js';
 
-/** Every folder of a mailbox (`mail/imap/session:listFolders`). */
+/**
+ * Every folder of a mailbox (`mail/imap/session:listFolders`), each under the
+ * name IMAP clients know it by (see {@link withImapNames}). LIST, STATUS and
+ * the name lookup all read these rows, so a client opens a folder under the
+ * name LIST gave it.
+ */
 export async function listFolders(convex: ConvexClient, mailboxId: string): Promise<FolderRow[]> {
-	return await convex.query(fn.listFolders, { mailboxId });
+	return withImapNames(await convex.query(fn.listFolders, { mailboxId }));
 }
 
 /** Fold A-Z only: no other char has a case a folder lookup may ignore. */
 const asciiLower = (s: string): string => s.replace(/[A-Z]/g, (c) => c.toLowerCase());
+
+/**
+ * The folders under their IMAP names: each its own name, except a folder
+ * other than the inbox whose name is `INBOX` in some case, such as an `Inbox`
+ * mirrored from a provider. `INBOX` in any case means the inbox (RFC 3501
+ * §5.1), so that folder could not be opened under its own name; it goes by
+ * `<name> (2)`, or the next number no folder holds, like the numbered
+ * variants mirrored folders get. The backend returns the folders in creation
+ * order, so every session numbers them alike. Postbox no longer lets anyone
+ * create or rename a folder to such a name (`mail/folders.ts`).
+ */
+export function withImapNames(folders: FolderRow[]): FolderRow[] {
+	if (!folders.some((f) => f.role === 'inbox')) return folders;
+	const taken = new Set(folders.map((f) => f.name));
+	return folders.map((f) => {
+		if (f.role === 'inbox' || asciiLower(f.name) !== 'inbox') return f;
+		let n = 2;
+		while (taken.has(`${f.name} (${n})`)) n += 1;
+		const name = `${f.name} (${n})`;
+		taken.add(name);
+		return { ...f, name };
+	});
+}
 
 const PURE_ASCII = /^[\x20-\x7e]*$/;
 
@@ -23,7 +51,8 @@ const PURE_ASCII = /^[\x20-\x7e]*$/;
  * (see `mailboxNameFromClient`). In order:
  *
  *   1. `INBOX` in any case is the folder with `role: 'inbox'` (RFC 3501
- *      §5.1).
+ *      §5.1). Another folder named so is listed under a numbered name
+ *      ({@link withImapNames}) and found by that.
  *   2. A folder whose name is exactly the decoded name. Folder names are
  *      only unique as written: `Übersicht` and `übersicht` are two folders,
  *      and an encoded run is case-sensitive (RFC 3501 §5.1.3), so the name a

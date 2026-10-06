@@ -68,6 +68,13 @@ const FOLDER_RELOCATE_BATCH = 256;
 const RESERVED_NAMES = new Set(['INBOX', 'Sent', 'Drafts', 'Trash', 'Spam', 'Archive']);
 
 /**
+ * `INBOX` in any case names the inbox over IMAP (RFC 3501 §5.1), so a folder
+ * called `Inbox` could never be opened there. ASCII case only: without the
+ * `u` flag no non-ASCII char matches `i`, so `İnbox` stays a free name.
+ */
+const INBOX_ANY_CASE = /^inbox$/i;
+
+/**
  * A folder name may not hold a C0 control character or DEL. IMAP clients see
  * the name (RFC 3501 §5.1.3), and many cannot address a folder whose name
  * holds a line break. The IMAP server still frames an existing such name
@@ -86,7 +93,9 @@ function validFolderName(name: string): string {
 	const trimmed = name.trim();
 	if (!trimmed) throwInvalidInput('Folder name required');
 	if (hasControlChar(trimmed)) throwInvalidInput('Folder name cannot contain control characters');
-	if (RESERVED_NAMES.has(trimmed)) throwInvalidInput('Reserved system folder name');
+	if (RESERVED_NAMES.has(trimmed) || INBOX_ANY_CASE.test(trimmed)) {
+		throwInvalidInput('Reserved system folder name');
+	}
 	return trimmed;
 }
 
