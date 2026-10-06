@@ -30,9 +30,12 @@ const LOGO = {
 	isInline: true,
 	contentId: 'logo@owlat.inline',
 };
-/** How the Simple editor stores an embedded image in the saved body. */
+/** How the Simple editor stored an embedded image before #1285: a session blob: src. */
 const LOGO_BODY =
 	'<p>Attached.</p><p><img src="blob:http://localhost/preview" data-inline-cid="logo@owlat.inline"></p>';
+/** How it stores one since #1285: the marker and no src at all. */
+const LOGO_BODY_NO_SRC =
+	'<p>Attached.</p><p><img data-inline-cid="logo@owlat.inline" style="max-width:100%;height:auto"></p>';
 
 function reopenedDraft(bodyHtml: string) {
 	const attachments = [CONTRACT, LOGO];
@@ -55,6 +58,20 @@ describe('bufferDraftAttachments: a reopened draft with an inline body image', (
 			{ filename: 'logo.png', isInline: true, contentId: 'logo@owlat.inline' },
 		]);
 		expect(inlinedHtml).toContain('src="cid:logo@owlat.inline"');
+	});
+
+	it('sends the inline image of a body saved without a src (#1285)', async () => {
+		const { ctx, draft } = reopenedDraft(LOGO_BODY_NO_SRC);
+		const { inlinedHtml, attachments } = await bufferDraftAttachments(ctx, draft);
+
+		expect(attachments.map((a) => [a.filename, a.isInline, a.contentId])).toEqual([
+			['contract.pdf', false, undefined],
+			['logo.png', true, 'logo@owlat.inline'],
+		]);
+		expect(inlinedHtml).toContain(
+			'<img src="cid:logo@owlat.inline" style="max-width:100%;height:auto">'
+		);
+		expect(inlinedHtml).not.toContain('data-inline-cid');
 	});
 
 	it('leaves the image out once the body no longer shows it, and keeps the file', async () => {

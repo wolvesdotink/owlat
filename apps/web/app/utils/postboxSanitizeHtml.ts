@@ -25,8 +25,9 @@ export function sanitizePostboxHtml(html: string): string {
  * The composer's variant of the shared allowlist, applied to every value the
  * Postbox editor writes into its `contenteditable` (mount and external model
  * writes such as draft hydration). On top of the shared policy it keeps the
- * markup the composer itself produces: the `data-inline-cid` marker and `blob:`
- * preview source of a pasted inline image, the `target` / `rel` pair the link
+ * markup the composer itself produces: the `data-inline-cid` marker of a pasted
+ * inline image and the `blob:` preview an older draft saved it with (the editor
+ * fills in a working src after the write), the `target` / `rel` pair the link
  * command sets, the `data-postbox-signature` marker the signature picker
  * swaps, and the quote bar and wrapping of a quoted reply.
  */

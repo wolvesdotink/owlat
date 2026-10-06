@@ -4,10 +4,12 @@
  * The Postbox Simple composer embeds pasted/dropped images directly in the
  * body: it inserts `<img src="blob:…preview…" data-inline-cid="<id>">` at the
  * caret and uploads the (downscaled) bytes as an INLINE draft attachment keyed
- * by that same `contentId`. The editor keeps the ephemeral blob/preview URL —
- * durable only for the session — so the send path is the single place that
- * rewrites each referenced `<img>` to a `cid:` reference matching the MIME
- * `Content-ID` of its inline part.
+ * by that same `contentId`. The display src is the editor's own business (a
+ * session preview, or a URL for the part on a reopen) and the draft is
+ * saved with none; bodies saved before that still hold a dead `blob:` preview.
+ * So the send path is the single place that rewrites each referenced `<img>` to
+ * a `cid:` reference matching the MIME `Content-ID` of its inline part, with or
+ * without a src to replace.
  *
  * This module is that one tested mapping: it takes the editor HTML and
  *   1. rewrites every `<img data-inline-cid="X">` to `src="cid:X"` (stripping
@@ -70,7 +72,7 @@ export function rewriteInlineImageCids(html: string): InlineCidRewriteResult {
  */
 export function isInlineImageReferenced(
 	referencedCids: readonly string[],
-	contentId: string | undefined,
+	contentId: string | undefined
 ): boolean {
 	return contentId != null && referencedCids.includes(contentId);
 }
