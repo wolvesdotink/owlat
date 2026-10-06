@@ -85,6 +85,24 @@ export function decodeHeaderValue(raw: string): string {
 }
 
 /**
+ * A run of C0 controls other than TAB, or DEL, with the blanks around it. The
+ * run must start with one of those controls; TAB only joins a run.
+ */
+// eslint-disable-next-line no-control-regex -- matching control characters is the point
+const CONTROL_RUN = /[ \t]*[\u0000-\u0008\u000a-\u001f\u007f][\u0000-\u001f\u007f \t]*/g;
+
+/**
+ * Decoded header text as one line: each run of control characters (C0 except
+ * TAB, and DEL, with the blanks around it) becomes a single space, and the ends
+ * are trimmed. An RFC 2047 encoded word can carry any byte, CR and LF included,
+ * so text decoded from one is not yet safe to place where a header line is
+ * rebuilt or framed.
+ */
+export function collapseControlChars(text: string): string {
+	return text.replace(CONTROL_RUN, ' ').trim();
+}
+
+/**
  * Decode an RFC 2231 extended parameter value (`charset'lang'pct-encoded`),
  * falling back to the raw value when there is no language/charset prefix or
  * the percent-decode fails.
