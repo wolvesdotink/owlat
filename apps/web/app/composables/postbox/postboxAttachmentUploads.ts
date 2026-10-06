@@ -6,9 +6,18 @@
  * the parent's `attachments` ref via the `onCommitted` callback, so hydration,
  * send and the forgot-attachment guard keep operating on the same shape.
  *
- * The transport is injected (generateUploadUrl / putFile / attach) so the state
- * machine is unit-testable with a mocked transport and never imports Convex or
- * Nuxt-toast context directly.
+ * A cancel drops the chip at once, but the upload behind it may already be past
+ * the point an abort reaches (the attach mutation takes no signal). The run
+ * then sees its aborted signal when that step returns: it never commits the
+ * file to the row, and an attach that went through anyway is undone with
+ * `detach`. A cancel made while the attach call is in flight keeps
+ * `isUploading` true until that settles, so Send waits rather than sending the
+ * file the person cancelled. An earlier cancel holds nothing: the run stops
+ * before attaching, however long the step it is waiting on takes.
+ *
+ * The transport is injected (generateUploadUrl / putFile / attach / detach) so
+ * the state machine is unit-testable with a mocked transport and never imports
+ * Convex or Nuxt-toast context directly.
  */
 
 /** A committed attachment, matching the parent composable's `attachments` shape. */
@@ -52,10 +61,15 @@ export interface UploadTransport {
 		url: string,
 		file: File,
 		contentType: string,
-		cbs: UploadProgressCbs,
+		cbs: UploadProgressCbs
 	) => Promise<string>;
 	/** Attach the uploaded storageId to the draft; false = server refused. */
 	attach: (a: CommittedAttachment) => Promise<boolean>;
+	/**
+	 * Take an attached file back off the draft: the attach of an upload the
+	 * person cancelled went through after all. False = it is still attached.
+	 */
+	detach: (a: CommittedAttachment) => Promise<boolean>;
 }
 
 export interface AttachmentUploadsDeps extends UploadTransport {
@@ -78,17 +92,14 @@ function isImage(type: string): boolean {
 }
 
 function isAbortError(err: unknown): boolean {
-	return (
-		err instanceof DOMException
-			? err.name === 'AbortError'
-			: !!err && typeof err === 'object' && (err as { name?: string }).name === 'AbortError'
-	);
+	return err instanceof DOMException
+		? err.name === 'AbortError'
+		: !!err && typeof err === 'object' && (err as { name?: string }).name === 'AbortError';
 }
 
 export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 	const createThumb =
-		deps.createThumb ??
-		((file: File) => (isImage(file.type) ? URL.createObjectURL(file) : null));
+		deps.createThumb ?? ((file: File) => (isImage(file.type) ? URL.createObjectURL(file) : null));
 	const revokeThumb = deps.revokeThumb ?? ((url: string) => URL.revokeObjectURL(url));
 
 	const uploads = ref<UploadChip[]>([]);
@@ -97,8 +108,17 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 	// doesn't churn the render.
 	const files = new Map<string, File>();
 	const controllers = new Map<string, AbortController>();
+	// Chips whose attach call is in flight. A cancel before that point needs no
+	// wait: the run stops before attaching, however long its earlier step hangs.
+	const attaching = new Set<string>();
+	// Cancelled chips whose attach was already in flight: it may still land, so
+	// the draft is not settled until each run has finished (and undone it).
+	const settling = new Set<string>();
+	const settlingCount = ref(0);
 
-	const isUploading = computed(() => uploads.value.some((c) => c.status === 'uploading'));
+	const isUploading = computed(
+		() => uploads.value.some((c) => c.status === 'uploading') || settlingCount.value > 0
+	);
 
 	function patch(id: string, next: Partial<UploadChip>) {
 		uploads.value = uploads.value.map((c) => (c.id === id ? { ...c, ...next } : c));
@@ -119,8 +139,10 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 		const controller = new AbortController();
 		controllers.set(id, controller);
 		patch(id, { status: 'uploading', progress: 0, indeterminate: true });
+		const cancelled = () => controller.signal.aborted;
 		try {
 			const url = await deps.generateUploadUrl();
+			if (cancelled()) return;
 			if (!url) {
 				patch(id, { status: 'failed', indeterminate: false });
 				return;
@@ -134,13 +156,22 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 					});
 				},
 			});
+			if (cancelled()) return;
 			const attachment: CommittedAttachment = {
 				storageId,
 				filename: file.name,
 				contentType,
 				size: file.size,
 			};
+			attaching.add(id);
 			const ok = await deps.attach(attachment);
+			if (cancelled()) {
+				// The chip is gone, so the file must not be on the draft either.
+				// If it cannot be taken off, show it: the row then matches what
+				// would be sent (its thumbnail went with the chip).
+				if (ok && !(await detachQuietly(attachment))) deps.onCommitted(attachment, null);
+				return;
+			}
 			if (!ok) {
 				patch(id, { status: 'failed', indeterminate: false });
 				return;
@@ -154,7 +185,7 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 			controllers.delete(id);
 			deps.onCommitted(attachment, thumbUrl);
 		} catch (err) {
-			if (isAbortError(err)) {
+			if (cancelled() || isAbortError(err)) {
 				// Cancelled by the user: remove the chip entirely.
 				forget(id);
 				return;
@@ -162,6 +193,16 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 			patch(id, { status: 'failed', indeterminate: false });
 		} finally {
 			controllers.delete(id);
+			attaching.delete(id);
+			if (settling.delete(id)) settlingCount.value = settling.size;
+		}
+	}
+
+	async function detachQuietly(a: CommittedAttachment): Promise<boolean> {
+		try {
+			return await deps.detach(a);
+		} catch {
+			return false;
 		}
 	}
 
@@ -190,9 +231,14 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 	/** Cancel an in-flight upload (aborts the request) or dismiss a failed one. */
 	function cancel(id: string) {
 		const controller = controllers.get(id);
-		if (controller) {
-			// Abort -> run()'s catch removes the chip. Guard in case the transport
-			// ignores the signal: drop it here too.
+		if (controller && !controller.signal.aborted) {
+			// Abort -> run() stops at its next step and undoes an attach that
+			// lands anyway. Guard in case the transport ignores the signal: drop
+			// the chip here too.
+			if (attaching.has(id)) {
+				settling.add(id);
+				settlingCount.value = settling.size;
+			}
 			controller.abort();
 		}
 		if (uploads.value.some((c) => c.id === id)) forget(id);
@@ -228,9 +274,15 @@ export function xhrPutFile(
 	url: string,
 	file: File,
 	contentType: string,
-	{ onProgress, signal }: UploadProgressCbs,
+	{ onProgress, signal }: UploadProgressCbs
 ): Promise<string> {
 	return new Promise<string>((resolve, reject) => {
+		// Cancelled before the request went out (e.g. while the upload URL was
+		// minted): an unsent XHR fires no abort event, so reject here.
+		if (signal.aborted) {
+			reject(new DOMException('Upload aborted', 'AbortError'));
+			return;
+		}
 		const xhr = new XMLHttpRequest();
 		xhr.open('POST', url, true);
 		xhr.setRequestHeader('Content-Type', contentType);
@@ -252,10 +304,6 @@ export function xhrPutFile(
 		};
 		xhr.onerror = () => reject(new Error('Upload network error'));
 		xhr.onabort = () => reject(new DOMException('Upload aborted', 'AbortError'));
-		if (signal.aborted) {
-			xhr.abort();
-			return;
-		}
 		signal.addEventListener('abort', () => xhr.abort(), { once: true });
 		xhr.send(file);
 	});

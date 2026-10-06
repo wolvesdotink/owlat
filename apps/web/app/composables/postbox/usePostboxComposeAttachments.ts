@@ -105,6 +105,16 @@ export function usePostboxComposeAttachments(opts: {
 			});
 			return result.ok && result.result.ok;
 		},
+		// A cancelled upload whose attach still committed comes off the draft.
+		detach: async (a) => {
+			const draftIdVal = opts.draftId.value;
+			if (!draftIdVal) return false;
+			const result = await removeAttachmentOp.run({
+				draftId: draftIdVal,
+				storageId: a.storageId as Id<'_storage'>,
+			});
+			return result.ok && !!result.result?.ok;
+		},
 		onCommitted: (a, thumbUrl) => {
 			if (thumbUrl) thumbUrls.set(a.storageId, thumbUrl);
 			// The row may have shown it already (usePostboxComposeExpected).
