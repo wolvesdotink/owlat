@@ -22,9 +22,11 @@ import { describe, expect, it } from 'vitest';
 
 const PROBE = join(import.meta.dirname, 'helpers/forwardMemoryProbe.ts');
 const PEAK_LIMIT_MIB = 320;
+const SECONDS_LIMIT = 10;
 
 interface ProbeResult {
 	read: boolean;
+	seconds: number;
 	peakMiB: number;
 	parts: number;
 	decodedMiB: number;
@@ -72,6 +74,9 @@ const SHAPES: Array<[string, Partial<ProbeResult>]> = [
 	['long-line-no-crlf', { read: true }],
 	['nested-depth-100', { read: true, truncated: false }],
 	['boundary-text-in-body', { read: true, truncated: false }],
+	// RFC 2231 indexes far past any real one, on every part: the walk stops at
+	// the part bound, never at an index.
+	['continuation-indexes', { read: true, truncated: true }],
 ];
 
 describe.skipIf(process.env['OWLAT_MEMORY_TESTS'] !== '1')('forward read memory', () => {
@@ -79,6 +84,8 @@ describe.skipIf(process.env['OWLAT_MEMORY_TESTS'] !== '1')('forward read memory'
 		const result = probe(input);
 		expect(result).toMatchObject(expected);
 		expect(result.peakMiB).toBeLessThan(PEAK_LIMIT_MIB);
+		// Node and tsx start-up included: the read itself is well under this.
+		expect(result.seconds).toBeLessThan(SECONDS_LIMIT);
 	});
 
 	it('reads a legacy plaintext blob within the same bound', () => {

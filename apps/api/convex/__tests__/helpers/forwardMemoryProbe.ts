@@ -91,6 +91,26 @@ function partsWithHeaders(headerLines: number) {
 		);
 }
 
+/** Many small parts whose headers carry RFC 2231 continuation indexes far past any real one. */
+function hugeContinuationIndexes() {
+	const part = crlf(
+		'--b',
+		'Content-Type: application/pdf; name*4294967294="n.pdf"; boundary*100000000="x"',
+		'Content-Disposition: attachment; filename*4294967294="a.txt"; filename*100000000="b.txt"',
+		'',
+		'body',
+		''
+	);
+	return (path: string) =>
+		writeRepeated(
+			path,
+			MAX_FORWARD_RAW_BYTES - 4096,
+			crlf('Content-Type: multipart/mixed; boundary="b"; boundary*4294967294="y"', '', ''),
+			part,
+			'--b--\r\n'
+		);
+}
+
 /** A part nested `depth` multiparts deep holding a large attachment. */
 function nestedAttachment(depth: number) {
 	return (path: string) => {
@@ -151,6 +171,7 @@ const INPUTS: Record<string, (path: string) => number> = {
 	// Lines and boundaries.
 	'long-line-no-crlf': attachment('7bit', 'a'),
 	'nested-depth-100': nestedAttachment(100),
+	'continuation-indexes': hugeContinuationIndexes(),
 	'boundary-text-in-body': attachment('7bit', '--bz not a delimiter\r\n--b-- \tx\r\nx--b\r\n'),
 };
 
