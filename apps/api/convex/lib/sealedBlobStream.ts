@@ -89,7 +89,10 @@ export async function readSealedBlobBytesStreaming(
 	const key = Buffer.from(
 		hkdfSync('sha256', secret, BLOB_HKDF_SALT, BLOB_HKDF_INFO, 32) as ArrayBuffer
 	);
-	const decipher = createDecipheriv('aes-256-gcm', key, iv);
+	// The tag is exactly GCM_TAG_BYTES, as Web Crypto's AES-GCM (128-bit tag)
+	// requires; anything shorter is a malformed envelope, never a weaker tag.
+	if (tag.length !== GCM_TAG_BYTES) throw new Error('Stored blob has a corrupt at-rest envelope');
+	const decipher = createDecipheriv('aes-256-gcm', key, iv, { authTagLength: GCM_TAG_BYTES });
 	decipher.setAuthTag(tag);
 	const out = new Uint8Array(size - HEADER_BYTES - GCM_TAG_BYTES);
 	let at = 0;

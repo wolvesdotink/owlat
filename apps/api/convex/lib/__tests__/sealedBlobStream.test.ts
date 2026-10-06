@@ -4,10 +4,11 @@
  * `openBytesAtRest`, for sealed, legacy-plaintext, corrupt and tampered blobs,
  * with and without a configured secret.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Id } from '../../_generated/dataModel';
 import { openBytesAtRest, sealBytesAtRest } from '../atRestBodies';
 import { readSealedBlobBytesStreaming } from '../sealedBlobStream';
+import { readSealedBlobBytes } from '../sealedBlob';
 
 const SECRET = 'test-instance-secret';
 const ID = 'kg_blob' as Id<'_storage'>;
@@ -47,5 +48,25 @@ describe('readSealedBlobBytesStreaming', () => {
 		await expect(readSealedBlobBytesStreaming(storage(tampered), ID, SECRET)).rejects.toThrow();
 		await expect(openBytesAtRest(SECRET, tampered)).rejects.toThrow();
 		expect(await readSealedBlobBytesStreaming(storage(null), ID, SECRET)).toBeNull();
+	});
+
+	it('refuses an envelope whose tag was cut short, as openBytesAtRest does', async () => {
+		const sealed = await sealBytesAtRest(SECRET, sample(3000));
+		for (const cut of [4, 12, 16]) {
+			const short = sealed.slice(0, sealed.length - cut);
+			await expect(readSealedBlobBytesStreaming(storage(short), ID, SECRET)).rejects.toThrow();
+			await expect(openBytesAtRest(SECRET, short)).rejects.toThrow();
+		}
+		// An envelope with room for no full tag at all is corrupt for both readers.
+		const header = sealed.slice(0, 19 + 12);
+		await expect(readSealedBlobBytesStreaming(storage(header), ID, SECRET)).rejects.toThrow(
+			/corrupt/
+		);
+		vi.stubEnv('INSTANCE_SECRET', SECRET);
+		try {
+			await expect(readSealedBlobBytes(storage(header), ID)).rejects.toThrow(/corrupt/);
+		} finally {
+			vi.unstubAllEnvs();
+		}
 	});
 });
