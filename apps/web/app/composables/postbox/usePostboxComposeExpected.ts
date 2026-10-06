@@ -177,16 +177,18 @@ export function usePostboxComposeExpected(opts: {
 	// The chips follow the row: a file the server attached or took out (for this
 	// tab, another tab, another member) shows the same everywhere, so no tab
 	// offers a file the send would not carry. Only once a reopened row has been
-	// merged, which fills the list from the row the first time.
+	// merged, which fills the list from the row the first time. An inline body
+	// image is on the row too but renders in the body, so it is never a chip.
 	watch(
 		[row, opts.rowState],
 		([current, state]) => {
 			if (!current?.attachments || state !== 'ready') return;
-			const onRow = new Set(current.attachments.map((a) => a.storageId));
+			const files = current.attachments.filter((a) => !a.isInline);
+			const onRow = new Set(files.map((a) => a.storageId));
 			const shown = new Set(opts.attachments.value.map((a) => a.storageId));
 			const kept = opts.attachments.value.filter((a) => onRow.has(a.storageId));
-			const added = current.attachments
-				.filter((a) => !a.isInline && !shown.has(a.storageId))
+			const added = files
+				.filter((a) => !shown.has(a.storageId))
 				.map(({ storageId, filename, contentType, size }) => ({
 					storageId,
 					filename,
