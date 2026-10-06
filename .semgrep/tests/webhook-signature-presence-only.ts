@@ -2,7 +2,7 @@
 // Never imported or compiled: `semgrep --test` reads the annotations below.
 // A "ruleid" annotation marks a line the rule must report, an "ok" annotation
 // a line it must not.
-// Run from the repo root:
+// Run from the repo root (security.yml runs every file in .semgrep/tests/):
 //
 //   semgrep --test --config .semgrep.yml .semgrep/tests/webhook-signature-presence-only.ts
 //
@@ -103,6 +103,52 @@ export async function acceptsInTernary(request: Request) {
 	// ruleid: webhook-signature-presence-only
 	const signature = request.headers.get('svix-signature');
 	return signature != null ? accept() : unauthorized();
+}
+
+// Inline presence tests, with no variable.
+export function inlineIf(req: Request) {
+	// ruleid: webhook-signature-presence-only
+	if (!req.headers.get('x-signature')) return 401;
+	return 200;
+}
+
+export function inlineTernary(req: Request) {
+	// ruleid: webhook-signature-presence-only
+	return req.headers.get('x-signature') ? 200 : 401;
+}
+
+// Every presence-test form, including parenthesised absence values.
+// prettier-ignore
+export function parenthesizedNull(req: Request) {
+	// ruleid: webhook-signature-presence-only
+	const sig = req.headers.get('x-signature');
+	if (sig === (null)) return 401;
+	return 200;
+}
+
+// prettier-ignore
+export function parenthesizedEmpty(req: Request) {
+	// ruleid: webhook-signature-presence-only
+	const sig = req.headers.get('x-signature');
+	if (sig === ('')) return 401;
+	return 200;
+}
+
+export function allPresenceForms(req: Request) {
+	// ruleid: webhook-signature-presence-only
+	const sig = req.headers.get('x-signature');
+	if (!!sig && Boolean(sig)) return 200;
+	if (sig == null || sig === undefined || sig === '' || null !== sig) return 401;
+	return sig ? 200 : 401;
+}
+
+// A detached get function.
+export function detachedGetFunction(req: Request) {
+	const get = req.headers.get.bind(req.headers);
+	// ruleid: webhook-signature-presence-only
+	const sig = get('x-signature');
+	if (!sig) return 401;
+	return 200;
 }
 
 // ── A call or a compare, but not with the header value ──────────────────
@@ -398,6 +444,36 @@ export const verifiedElsewhere = httpAction(async (ctx, request) => {
 	if (!signature) return unauthorized();
 	return await handleSignedDelivery(ctx, await request.text(), signature);
 });
+
+// Forwarded through an object, a destructuring, or a constructor that
+// re-reads the header.
+export async function passedObject(req: Request, body: string, secret: string) {
+	// ok: webhook-signature-presence-only
+	const sig = req.headers.get('x-signature');
+	if (!sig) return 401;
+	const delivery = { body, secret, signature: '' };
+	delivery.signature = sig;
+	if (!(await verifyDelivery(delivery))) return 401;
+	return 200;
+}
+
+export function secondReadConstructor(req: Request, body: string, secret: string) {
+	// ok: webhook-signature-presence-only
+	const sig = req.headers.get('x-signature');
+	if (!sig) return 401;
+	const verifier = new SignatureVerifier(req.headers.get('x-signature'), secret);
+	if (!verifier.verify(body)) return 401;
+	return 200;
+}
+
+export function destructuredValue(req: Request, expected: string) {
+	// ok: webhook-signature-presence-only
+	const sig = req.headers.get('x-signature');
+	if (!sig) return 401;
+	const { value } = { value: sig };
+	if (!constantTimeEqual(value, expected)) return 401;
+	return 200;
+}
 
 // ── Helper verification: the shape of the real handlers ─────────────────
 
@@ -812,6 +888,15 @@ export async function plainEqualityCompare(request: Request, rawBody: string) {
 	const expected = `sha256=${await hmacSha256Hex(secret, rawBody)}`;
 	if (signature !== expected) return unauthorized();
 	return new Response('OK', { status: 200 });
+}
+
+// Copied into another variable that is then only presence-tested.
+export function aliasPresenceOnly(req: Request) {
+	// todoruleid: webhook-signature-presence-only
+	const sig = req.headers.get('x-signature');
+	const present = sig;
+	if (!present) return 401;
+	return 200;
 }
 
 // ─ 3. Header names that are not plain string literals ────────────────────

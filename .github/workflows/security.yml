@@ -72,11 +72,15 @@ jobs:
       - name: Validate local rules
         run: semgrep scan --validate --config .semgrep.yml
 
+      # One `--test` run per file: the webhook rule's file gate is per-file,
+      # so each read form in .semgrep/tests/gate/ needs a file of its own.
       - name: Test local rules
-        run: >-
-          semgrep --test
-          --config .semgrep.yml
-          .semgrep/tests/webhook-signature-presence-only.ts
+        run: |
+          set -e
+          for f in .semgrep/tests/*.ts .semgrep/tests/gate/*.ts; do
+            echo "== $f"
+            semgrep --test --config .semgrep.yml "$f"
+          done
 
       # Bundled rulesets cover the OWASP top 10 classes most relevant to
       # this stack (XSS, SSRF, prototype-pollution, hardcoded-secrets).

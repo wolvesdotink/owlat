@@ -99,84 +99,118 @@ rules:
 
   # ────────────────────────────────────────────────────────────────────
   # Webhook handlers that read a signature header, check that it is
-  # present, and never hand its value to anything that could verify it.
-  # Catches future regressions of the C2 unverified-signature class.
+  # present, and do nothing else with it. Catches future regressions of
+  # the C2 unverified-signature class.
   #
-  # Reported: a `$X.get('...')` or `$X['...']` read whose name is a plain
-  # string literal containing "signature" (case-insensitive), followed by
-  # an `if` or a ternary that tests the value (`if (!sig)`, `if (sig)`,
-  # `sig !== null ? ...`), when nowhere in the enclosing function is the
-  # value, or a value derived from it (`signature.slice(7)`):
-  #   - passed as an argument to any call or `new`, or
-  #   - an operand of `===` / `!==` / `==` / `!=` against something other
-  #     than null, undefined or an empty string,
-  # and no call in that function takes a signature-header read directly
-  # as an argument (a verifier that re-reads the header).
+  # Reported: a signature-header read that the enclosing function only
+  # ever tests for presence. A read is `$X.get('...')`, `$X['...']` or a
+  # detached `get('...')` whose name is a plain string literal containing
+  # "signature" (case-insensitive). It is either stored in a variable that
+  # a later `if` or ternary tests, or tested inline in an `if` or a
+  # `return ... ? ... : ...` (not inside an object literal, where adapters
+  # declare presence predicates such as missingSignatureHeaders and verify
+  # in a sibling method).
+  #
+  # Exempt: the enclosing function uses the stored value anywhere other
+  # than in a presence test (passed to a call or `new`, compared with a
+  # non-absence value, assigned into an object or property, spread,
+  # destructured, returned: all count), or hands a direct
+  # signature-header read to a call or `new`. Presence tests are `!x`,
+  # `Boolean(x)`, `x` as an `if` condition, ternary test or left operand
+  # of `&&`, and `==` / `===` / `!=` / `!==` against null, undefined or
+  # '' (matched structurally, so parentheses do not matter). For a stored
+  # read only that variable's uses count; an inline read is exempt if any
+  # signature-header variable or read in the function is used.
   #
   # This is a syntactic presence-only check, not a verification proof.
-  # Known limits, each with a `todoruleid` or `todook` case in the test:
-  #   - It does not check that a verifier's result is awaited, read or
-  #     acted on: discarded, transformed, unawaited, wrapped or
-  #     overwritten verdicts, and verifiers only in callbacks that never
-  #     run, all count as verification.
-  #   - It does not check what the value is compared against or passed
-  #     to: a self-compare, a public literal, a non-constant-time compare,
-  #     a length check or a logging call all count.
-  #   - Header names that are not plain string literals (constants,
-  #     template literals, escapes) are not recognised.
-  #   - Verification outside the function that reads the header is not
-  #     seen, so a handler that passes nothing on but verifies elsewhere
-  #     is reported.
+  # Known limits, each with `todoruleid` / `todook` cases in the test:
+  #   1. It does not check whether a verifier's result is awaited, read,
+  #      or acted on: discarded, transformed, unawaited, wrapped or
+  #      overwritten verdicts, and verifiers only in callbacks that never
+  #      run, all count as a use.
+  #   2. It does not check what the value is compared against, passed to
+  #      or copied into: a self-compare, a public literal, a
+  #      non-constant-time compare, a length check, a logging call, or a
+  #      copy that is itself only presence-tested all count as a use.
+  #   3. Header names that are not plain string literals (constants,
+  #      template literals, escapes) are not recognised.
+  #   4. Verification outside the function that reads the header is not
+  #      seen: a handler that hands nothing on but has another function
+  #      verify the request is reported.
   #
-  # Tests: .semgrep/tests/webhook-signature-presence-only.ts, run with
-  # `semgrep --test --config .semgrep.yml <that file>` (security.yml does).
+  # Tests: .semgrep/tests/webhook-signature-presence-only.ts, and one file
+  # per read form under .semgrep/tests/gate/ (the file gate below is
+  # per-file). Run each with `semgrep --test --config .semgrep.yml <file>`
+  # (security.yml does).
   # ────────────────────────────────────────────────────────────────────
   - id: webhook-signature-presence-only
     severity: ERROR
     languages: [typescript]
     message: |
       This handler reads a signature header and checks that it is present,
-      but never passes its value to a verifier or compares it. Pass it to
-      one of the existing verification helpers (webhooks/adapters/resend.ts
-      verifySvixHeaders, webhooks/adapters/twilio.ts verifyTwilioRequest,
+      but does nothing else with it. Pass the value to one of the existing
+      verification helpers (webhooks/adapters/resend.ts verifySvixHeaders,
+      webhooks/adapters/twilio.ts verifyTwilioRequest,
       webhooks/adapters/meta.ts verifyMetaSignature, or the constant-time
       compare in lib/crypto.ts, constantTimeEqual / secretMatches), await
-      it, and reject the request when it fails.
-      Limits of this syntactic check: it does not check that a verifier's
-      result is awaited or acted on; it does not check what the value is
-      compared against or passed to; it only recognises header names
-      written as plain string literals; and it does not see verification
-      in another function.
-    options:
-      # `<... $SIG ...>` also matches a value derived from the header, e.g.
-      # `const provided = signature.slice(7)`.
-      symbolic_propagation: true
+      it, and reject the request when it fails. This check does not verify
+      whether a verifier's result is awaited, read, or acted on. It does
+      not check what the value is compared against or passed to. It only
+      recognises header names written as plain string literals. It does
+      not see verification that happens in another function.
     patterns:
-      # Cheap gate first: only files that read a header whose literal name
-      # contains "signature" are evaluated at all.
+      # Cheap gate first: only files with a string literal containing
+      # "signature" are evaluated at all.
       - pattern-inside:
-          pattern-regex: '(?i)\A(?=[\s\S]*(?:\.get\(\s*|\[\s*)[''"`][^''"`\n]*signature)[\s\S]*\z'
+          pattern-regex: '(?i)\A(?=[\s\S]*[''"`][^''"`\n]*signature)[\s\S]*\z'
       - pattern-either:
-          - pattern: |
-              $SIG = $HEADERS.get($HEADER)
-              ...
-              if (<... $SIG ...>) $THEN
-          - pattern: |
-              $SIG = $HEADERS.get($HEADER)
-              ...
-              <... <... $SIG ...> ? $YES : $NO ...>;
-          - pattern: |
-              $SIG = $HEADERS[$HEADER]
-              ...
-              if (<... $SIG ...>) $THEN
-          - pattern: |
-              $SIG = $HEADERS[$HEADER]
-              ...
-              <... <... $SIG ...> ? $YES : $NO ...>;
+          # A stored read that is later tested.
+          - patterns:
+              - pattern-either:
+                  - pattern: |
+                      $SIG = $HEADERS.get($HEADER)
+                      ...
+                      if (<... $SIG ...>) $THEN
+                  - pattern: |
+                      $SIG = $HEADERS.get($HEADER)
+                      ...
+                      <... <... $SIG ...> ? $YES : $NO ...>;
+                  - pattern: |
+                      $SIG = $HEADERS[$HEADER]
+                      ...
+                      if (<... $SIG ...>) $THEN
+                  - pattern: |
+                      $SIG = $HEADERS[$HEADER]
+                      ...
+                      <... <... $SIG ...> ? $YES : $NO ...>;
+                  - pattern: |
+                      $SIG = get($HEADER)
+                      ...
+                      if (<... $SIG ...>) $THEN
+                  - pattern: |
+                      $SIG = get($HEADER)
+                      ...
+                      <... <... $SIG ...> ? $YES : $NO ...>;
+          # A read tested inline. Not inside an object literal: adapters
+          # declare presence predicates there (missingSignatureHeaders) and
+          # verify in a sibling method.
+          - patterns:
+              - pattern-either:
+                  - pattern: |
+                      if (<... $HEADERS.get($HEADER) ...>) $THEN
+                  - pattern: |
+                      return <... $HEADERS.get($HEADER) ...> ? $YES : $NO;
+                  - pattern: |
+                      if (<... $HEADERS[$HEADER] ...>) $THEN
+                  - pattern: |
+                      return <... $HEADERS[$HEADER] ...> ? $YES : $NO;
+              - pattern-not-inside: |
+                  { ..., $KEY: $VALUE, ... }
       - metavariable-regex:
           metavariable: $HEADER
           regex: (?i)^['"`][^'"`]*signature[^'"`]*['"`]$
-      # Exempt when the enclosing function hands the value on or compares it.
+      # Exempt when the enclosing function uses the value, or a direct
+      # signature-header read, other than in a presence test.
       - pattern-not-inside:
           patterns:
             - pattern-either:
@@ -196,41 +230,100 @@ rules:
             - metavariable-pattern:
                 metavariable: $...BODY
                 pattern-either:
-                  # The value goes into a call or a constructor.
-                  - pattern: |
-                      <... $CALLEE(..., <... $SIG ...>, ...) ...>;
-                  - pattern: |
-                      <... new $CLASS(..., <... $SIG ...>, ...) ...>;
-                  # The value is compared with something that is not an
-                  # absence check.
+                  # A use of the stored value.
                   - patterns:
                       - pattern-either:
-                          - pattern: |
-                              <... <... $SIG ...> === $OTHER ...>;
-                          - pattern: |
-                              <... $OTHER === <... $SIG ...> ...>;
-                          - pattern: |
-                              <... <... $SIG ...> !== $OTHER ...>;
-                          - pattern: |
-                              <... $OTHER !== <... $SIG ...> ...>;
-                          - pattern: |
-                              <... <... $SIG ...> == $OTHER ...>;
-                          - pattern: |
-                              <... $OTHER == <... $SIG ...> ...>;
-                          - pattern: |
-                              <... <... $SIG ...> != $OTHER ...>;
-                          - pattern: |
-                              <... $OTHER != <... $SIG ...> ...>;
+                          - pattern-inside: |
+                              $SIG = $STORED.get($STOREDNAME)
+                              ...
+                          - pattern-inside: |
+                              $SIG = $STORED[$STOREDNAME]
+                              ...
+                          - pattern-inside: |
+                              $SIG = get($STOREDNAME)
+                              ...
                       - metavariable-regex:
-                          metavariable: $OTHER
-                          regex: ^(?!(null|undefined|void 0|''|""|``)$)
-                  # A call re-reads a signature header as an argument.
+                          metavariable: $STOREDNAME
+                          regex: (?i)^['"`][^'"`]*signature[^'"`]*['"`]$
+                      - pattern: $SIG
+                      # Not the variable's own declaration.
+                      - pattern-not-inside: $SIG = $INIT
+                      - pattern-not-inside: |
+                          !$SIG
+                      - pattern-not-inside: |
+                          Boolean($SIG)
+                      - pattern-not-inside: |
+                          $SIG == null
+                      - pattern-not-inside: |
+                          null == $SIG
+                      - pattern-not-inside: |
+                          $SIG == undefined
+                      - pattern-not-inside: |
+                          undefined == $SIG
+                      - pattern-not-inside: |
+                          $SIG == ''
+                      - pattern-not-inside: |
+                          '' == $SIG
+                      - pattern-not-inside: |
+                          $SIG === null
+                      - pattern-not-inside: |
+                          null === $SIG
+                      - pattern-not-inside: |
+                          $SIG === undefined
+                      - pattern-not-inside: |
+                          undefined === $SIG
+                      - pattern-not-inside: |
+                          $SIG === ''
+                      - pattern-not-inside: |
+                          '' === $SIG
+                      - pattern-not-inside: |
+                          $SIG != null
+                      - pattern-not-inside: |
+                          null != $SIG
+                      - pattern-not-inside: |
+                          $SIG != undefined
+                      - pattern-not-inside: |
+                          undefined != $SIG
+                      - pattern-not-inside: |
+                          $SIG != ''
+                      - pattern-not-inside: |
+                          '' != $SIG
+                      - pattern-not-inside: |
+                          $SIG !== null
+                      - pattern-not-inside: |
+                          null !== $SIG
+                      - pattern-not-inside: |
+                          $SIG !== undefined
+                      - pattern-not-inside: |
+                          undefined !== $SIG
+                      - pattern-not-inside: |
+                          $SIG !== ''
+                      - pattern-not-inside: |
+                          '' !== $SIG
+                      - pattern-not-inside:
+                          patterns:
+                            - pattern: if ($SIG) $PRESENT
+                            - focus-metavariable: $SIG
+                      - pattern-not-inside:
+                          patterns:
+                            - pattern: '$SIG ? $WHENSET : $WHENUNSET'
+                            - focus-metavariable: $SIG
+                      - pattern-not-inside:
+                          patterns:
+                            - pattern: $SIG && $ALSO
+                            - focus-metavariable: $SIG
+                  # A direct signature-header read handed to a call or
+                  # constructor (a verifier that re-reads the header).
                   - patterns:
                       - pattern-either:
                           - pattern: |
-                              <... $CALLEE(..., $REREAD.get($NAME), ...) ...>;
+                              <... $CALLEE(..., <... $REREAD.get($NAME) ...>, ...) ...>;
                           - pattern: |
-                              <... $CALLEE(..., $REREAD[$NAME], ...) ...>;
+                              <... new $CLASS(..., <... $REREAD.get($NAME) ...>, ...) ...>;
+                          - pattern: |
+                              <... $CALLEE(..., <... $REREAD[$NAME] ...>, ...) ...>;
+                          - pattern: |
+                              <... new $CLASS(..., <... $REREAD[$NAME] ...>, ...) ...>;
                       - metavariable-regex:
                           metavariable: $NAME
                           regex: (?i)^['"`][^'"`]*signature[^'"`]*['"`]$
