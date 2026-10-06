@@ -114,16 +114,28 @@ export const attachExisting = adminMutation({
 	},
 });
 
-/** Remove the attachment at `index` and delete its blob. */
+/**
+ * Remove the attachment at `index` and delete its blob. With `id`, remove the
+ * entry carrying that id wherever it now sits (a teammate's edit can move it),
+ * and do nothing when it is already gone.
+ */
 export const remove = adminMutation({
-	args: { threadId: v.id('conversationThreads'), index: v.number() },
+	args: {
+		threadId: v.id('conversationThreads'),
+		index: v.number(),
+		id: v.optional(v.string()),
+	},
 	handler: async (ctx, args) => {
 		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
 		const entries = [...(thread.replyAttachments ?? [])];
-		if (!Number.isInteger(args.index) || args.index < 0 || args.index >= entries.length) {
+		let at = args.index;
+		if (args.id !== undefined) {
+			at = entries.findIndex((entry) => entry.id === args.id);
+			if (at < 0) return await viewOf(ctx, entries);
+		} else if (!Number.isInteger(at) || at < 0 || at >= entries.length) {
 			throwInvalidInput('There is no attachment at that position');
 		}
-		const [removed] = entries.splice(args.index, 1);
+		const [removed] = entries.splice(at, 1);
 		await ctx.db.patch(args.threadId, {
 			replyAttachments: entries.length > 0 ? entries : undefined,
 		});
