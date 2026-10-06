@@ -278,6 +278,21 @@ describe('e2ee/open · protected headers decode (#1284)', () => {
 		expect(restored.subject).toBe(subject);
 	});
 
+	it('reads a raw 8-bit protected subject that is not UTF-8 as windows-1252', async () => {
+		const inner = Buffer.from(
+			[
+				'Subject: Gr\xfc\xdfe, 5\x80',
+				'MIME-Version: 1.0',
+				'Content-Type: text/plain; charset=utf-8',
+				'',
+				'x',
+			].join('\r\n'),
+			'latin1'
+		);
+		const restored = await roundTrip(new Uint8Array(inner));
+		expect(restored.subject).toBe('Grüße, 5€');
+	});
+
 	it('unfolds a folded raw UTF-8 subject', async () => {
 		const restored = await roundTrip(body('Subject: Grüße aus\r\n dem Café, voilà'));
 		expect(restored.subject).toBe('Grüße aus dem Café, voilà');

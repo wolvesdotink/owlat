@@ -21,13 +21,16 @@
 import { v } from 'convex/values';
 import { classifyRawSecureMessage, isEncryptedClass } from '@owlat/shared/secureMessage';
 import {
-	binaryStringToBytes,
 	bytesToBinaryString,
 	extractFirstPartByType,
 	type ExtractedAttachment,
 } from '@owlat/shared/mailMime';
 import { decodeCharset } from '@owlat/mail-message/parse/charset';
-import { collapseControlChars, decodeHeaderValue } from '@owlat/mail-message/parse/headers';
+import {
+	collapseControlChars,
+	decodeHeaderValue,
+	headerBytesToText,
+} from '@owlat/mail-message/parse/headers';
 import { parseRawHeaderFields } from '@owlat/mail-canon/rawMessage';
 
 /**
@@ -184,14 +187,14 @@ function rawHeaderValue(headerBlock: string, name: string): string | undefined {
 
 /**
  * A protected header's value as one line of text. The raw bytes are UTF-8
- * (RFC 6532) and are decoded before anything else, so unfolding and trimming
- * see characters, not bytes. RFC 2047 encoded words are then decoded under
- * their own charset. An encoded word can carry any byte, CR and LF included,
- * so control characters left after decoding become a single space: a header
- * value is one line.
+ * (RFC 6532), or windows-1252 when they are not valid UTF-8, and are decoded
+ * before anything else, so unfolding and trimming see characters, not bytes.
+ * RFC 2047 encoded words are then decoded under their own charset. An encoded
+ * word can carry any byte, CR and LF included, so control characters left
+ * after decoding become a single space: a header value is one line.
  */
 function decodeProtectedHeader(rawValue: string): string {
-	const text = decodeUtf8(binaryStringToBytes(rawValue))
+	const text = headerBytesToText(rawValue)
 		.split('\r\n')
 		.map((line) => line.trim())
 		.join(' ');
