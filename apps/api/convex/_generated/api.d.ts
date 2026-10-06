@@ -101,6 +101,7 @@ import type * as analytics_engagementActivity from '../analytics/engagementActiv
 import type * as analytics_engagementPercentile from '../analytics/engagementPercentile.js';
 import type * as analytics_engagementScore from '../analytics/engagementScore.js';
 import type * as analytics_engagementScoreSync from '../analytics/engagementScoreSync.js';
+import type * as analytics_failedLlmSpend from '../analytics/failedLlmSpend.js';
 import type * as analytics_sendTimeProfile from '../analytics/sendTimeProfile.js';
 import type * as analytics_sendTimeProfileSync from '../analytics/sendTimeProfileSync.js';
 import type * as analytics_llmUsage from '../analytics/llmUsage.js';
@@ -1587,6 +1588,7 @@ declare const fullApi: ApiFromModules<{
 	'analytics/engagementPercentile': typeof analytics_engagementPercentile;
 	'analytics/engagementScore': typeof analytics_engagementScore;
 	'analytics/engagementScoreSync': typeof analytics_engagementScoreSync;
+	'analytics/failedLlmSpend': typeof analytics_failedLlmSpend;
 	'analytics/sendTimeProfile': typeof analytics_sendTimeProfile;
 	'analytics/sendTimeProfileSync': typeof analytics_sendTimeProfileSync;
 	'analytics/llmUsage': typeof analytics_llmUsage;

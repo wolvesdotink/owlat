@@ -368,6 +368,8 @@ export const llmDecisionAdapter: DecisionProviderAdapter<'llm'> = {
 	async ask(_cfg: ProviderClientConfig, req: DecisionRequest): Promise<DecisionResult> {
 		const model = requireLanguageModel(req);
 		const signal = requestSignal(req);
+		// A call whose billed completions never fitted the schema throws an
+		// `LlmPartialUsageError`; the dispatch prices its failed row off that.
 		const dispatched = await runLlmObject({
 			model,
 			schema: renderDecisionSchema(req.questions),
@@ -375,10 +377,22 @@ export const llmDecisionAdapter: DecisionProviderAdapter<'llm'> = {
 			temperature: DECISION_TEMPERATURE,
 			...(signal ? { abortSignal: signal } : {}),
 		});
+		const usage = dispatched.tokenUsage ?? NO_USAGE;
+		const modelUsed = dispatched.modelUsed ?? languageModelId(model);
+		let answers: Record<string, DecisionAnswer>;
+		try {
+			answers = mapAnswers(req.questions, dispatched.object);
+		} catch (error) {
+			// A rejected answer was still billed, as in the native codec (wire.ts).
+			if (error instanceof DecisionWireError) {
+				throw new DecisionWireError(error.message, { usage, modelUsed });
+			}
+			throw error;
+		}
 		return {
-			answers: mapAnswers(req.questions, dispatched.object) as AnswersFor<QuestionSet>,
-			usage: dispatched.tokenUsage ?? NO_USAGE,
-			modelUsed: dispatched.modelUsed ?? languageModelId(model),
+			answers: answers as AnswersFor<QuestionSet>,
+			usage,
+			modelUsed,
 			provenance: 'llm-backed',
 			calibrated: false,
 		};
