@@ -211,7 +211,7 @@ export function usePostboxCompose(seed: ComposerSeed, options: ComposeOptions = 
 		followUpRemindAt,
 	});
 
-	const expectedAttachments = ref(expectedAttachmentRequests(seed));
+	const expectedAttachments = expectedAttachmentRequests(seed);
 	// Draft row creation + the 1.5s-debounced autosave live in a sibling
 	// composable. Everything below drives the SAME row through `ensureDraft`.
 	const autosave = usePostboxComposeAutosave({

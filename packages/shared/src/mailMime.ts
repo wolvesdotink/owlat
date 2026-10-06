@@ -130,12 +130,16 @@ export function extractAttachmentAt(
 }
 
 /**
- * The parts a forward of this raw message carries: those whose
- * Content-Disposition is `attachment`, named by their document-order index
- * (the `partIndex` a message row and {@link extractAttachmentAt} use).
+ * The parts a forward of this raw message carries: the rule forwarding has
+ * always used, Content-Disposition `attachment` (a leaf with a filename and no
+ * disposition counts as one). Each keeps its document-order index among the
+ * message's attachment leaves, which is its identity on the draft that owes
+ * it; the bytes come from the same parse.
  */
-export function forwardedParts(rawEml: string): Array<{ partIndex: string; filename: string }> {
+export function forwardedParts(
+	rawEml: string
+): Array<{ partIndex: string; part: ExtractedAttachment }> {
 	return extractAttachments(rawEml).flatMap((part, index) =>
-		part.disposition === 'attachment' ? [{ partIndex: String(index), filename: part.filename }] : []
+		part.disposition === 'attachment' ? [{ partIndex: String(index), part }] : []
 	);
 }

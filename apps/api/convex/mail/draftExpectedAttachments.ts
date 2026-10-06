@@ -12,36 +12,37 @@
  *
  *  - `drafts.create` writes the owed list in the mutation that creates the row,
  *    so no draft exists without it. A generated file is stored whole (it cannot
- *    be made again, so it is bounded); a forward names the message and each
- *    part (`forwardEntries`). A forwarded message that is already gone still
- *    owes its parts; they stay unreadable until removed.
- *  - `fulfil` (any tab, any number of times) copies each owed file onto the
- *    draft on the server. Each copy is receipted as an unclaimed upload the
- *    moment it is stored (`stageCopy`), so one that is never bound is deleted
- *    by the upload sweep. `bindExpected` settles one key exactly once by
- *    binding that receipt; a second copy of a settled or removed key is
- *    refused and dropped.
+ *    be made again, so it is bounded). A forward is one debt for the message's
+ *    attachments; nobody picks its parts before the server reads the message.
+ *  - `fulfil` (draftExpectedAttachmentsFulfil.ts, any tab, any number of times)
+ *    reads each forwarded message's raw MIME once, picks its parts with the
+ *    shared `forwardedParts` (the disposition rule forwarding always used),
+ *    expands the debt into one entry per part keyed by the raw part index
+ *    (`expandForward`, once), and copies each part's bytes from that same
+ *    parse. Each copy is receipted as an unclaimed upload the moment it is
+ *    stored (`stageCopy`), so one that is never bound is deleted by the upload
+ *    sweep; `bindExpected` settles one key exactly once by binding that
+ *    receipt, and a second copy of a settled or removed key is dropped.
  *  - Taking a file out settles it as removed, on every path: `remove` here
- *    (which also takes out a copy that already landed), `drafts.removeAttachment`
- *    and share-as-link (`withoutAttachment`). A copy still in flight then has
+ *    (which also takes out a copy that already landed, and on an unexpanded
+ *    forward removes the whole forward), `drafts.removeAttachment` and
+ *    share-as-link (`withoutAttachment`). A copy still in flight then has
  *    nothing to come back to.
- *  - `drafts.send` refuses while a file is owed (`DRAFT_ATTACHMENTS_OWED`).
+ *  - `drafts.send` refuses while anything is owed (`DRAFT_ATTACHMENTS_OWED`),
+ *    an unexpanded forward included.
  *
- * A file that cannot be copied (its message is gone or not readable by this
- * caller, a compose limit refuses it) stays owed: the composer shows it as a
- * failed chip with Retry and Remove.
+ * Whatever cannot be copied (a message gone or not readable by this caller,
+ * a compose limit) stays owed: the composer shows a failed chip with Retry and
+ * Remove.
  */
 
 import { v, type Infer } from 'convex/values';
-import { internalQuery, type ActionCtx, type MutationCtx } from '../_generated/server';
+import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
-import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
-import { authedAction } from '../lib/authedFunctions';
 import { postboxMutation } from './_helpers';
 import { requireMailboxAccess } from './permissions';
 import { assertStateIs } from './draftLifecycle/reducers';
-import { pickStoredPart } from './messageParts';
 import {
 	consumeUpload,
 	deleteOwnedUpload,
@@ -51,17 +52,7 @@ import {
 } from '../storage/uploads';
 import { getMutationContext } from '../lib/sessionOrganization';
 import { openMessageBody, sealBodyAtWrite } from '../lib/messageBody';
-import { openStoredInlineBody } from '../lib/messageBodyStore';
-import {
-	ATTACHMENT_COMPOSE_LIMITS,
-	MAX_ATTACHMENT_BYTES,
-	isForwardedPart,
-	inlineImageContentIds,
-} from '@owlat/shared/attachments';
-import {
-	type existingAttachmentBytesValidator,
-	readExistingAttachmentBytes,
-} from '../lib/existingAttachments';
+import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import type {
 	expectedAttachmentRequestValidator,
 	mailDraftExpectedAttachmentValidator,
@@ -70,86 +61,30 @@ import { getOrThrow, throwForbidden, throwInvalidInput, throwInvalidState } from
 
 type ExpectedAttachment = Infer<typeof mailDraftExpectedAttachmentValidator>;
 type ExpectedAttachmentRequest = Infer<typeof expectedAttachmentRequestValidator>;
-type ExistingAttachmentBytes = Infer<typeof existingAttachmentBytesValidator>;
 
 /** A generated file is kept whole on the row while it is owed (UTF-8 bytes). An RSVP is a few KB. */
 export const MAX_GENERATED_ATTACHMENT_BYTES = 64 * 1024;
 /**
- * Owed files one draft may list. The MIME parser keeps at most 1000 parts of a
- * message, and an entry is a few hundred bytes (its filename capped at 255), so
- * the list stays far below the row size limit. Past it the open is refused
- * whole, never cut short.
+ * Files one forward may expand into. The MIME walker keeps at most 1000 parts
+ * of a message and an entry is a few hundred bytes (its filename capped at
+ * 255), so the list stays far below the row size limit. Past it the forward is
+ * not expanded: it stays owed, as one failed chip, until removed.
  */
-const MAX_EXPECTED_ATTACHMENTS = 1000;
-/** The part key of a forward whose message was gone before its parts were known. */
-const WHOLE_MESSAGE_PART = '';
+export const MAX_FORWARDED_PARTS = 1000;
 
 /** Why an owed file was not attached this time; it stays owed. */
 export type FulfilFailure = 'unreadable' | 'tooLarge' | 'tooMany' | 'totalTooLarge' | 'failed';
 
-/** One forwarded part the draft owes. */
-function forwardEntry(
-	messageId: Id<'mailMessages'>,
-	part: { partIndex: string; filename: string; contentType?: string; size?: number }
-): ExpectedAttachment {
-	return {
-		key: `forward:${messageId}:${part.partIndex}`,
-		filename: part.filename.slice(0, 255),
-		contentType: part.contentType ?? 'application/octet-stream',
-		size: part.size ?? 0,
-		source: { kind: 'forward', messageId, partIndex: part.partIndex },
-		state: 'owed',
-	};
+/** The key a forwarded part is owed under: the message and its raw part index. */
+export function forwardPartKey(messageId: Id<'mailMessages'>, partIndex: string): string {
+	return `forward:${messageId}:${partIndex}`;
 }
 
 /**
- * The parts a forward owes.
- *
- *  - The composer names them: it parses the raw message and picks the parts
- *    whose Content-Disposition is `attachment`, as forwarding always did. Each
- *    named part is looked up on the message (by part index and filename, then
- *    filename, then index: the parser that recorded the row may number parts
- *    differently); one the message does not list is still owed, and copying it
- *    reports it unreadable, so nothing named is dropped without a word.
- *  - Unnamed (a composer that could not read the raw message), the row decides
- *    with `isForwardedPart`: everything but an image the inline body shows.
- *  - A message that is gone still owes what was asked for, as unreadable
- *    entries; with nothing named, one placeholder the composer labels.
+ * The owed list for a new draft. A forward is one debt for the message's
+ * attachments, which `fulfil` expands from the raw message; the caller must be
+ * able to read it (a message already gone still owes, as that debt).
  */
-async function forwardEntries(
-	ctx: MutationCtx,
-	request: Extract<ExpectedAttachmentRequest, { kind: 'forward' }>
-): Promise<ExpectedAttachment[]> {
-	const message = await ctx.db.get(request.messageId);
-	if (!message) {
-		if (request.parts) return request.parts.map((part) => forwardEntry(request.messageId, part));
-		return [
-			{
-				...forwardEntry(request.messageId, { partIndex: WHOLE_MESSAGE_PART, filename: '' }),
-				isPlaceholder: true,
-			},
-		];
-	}
-	const readable = await requireMailboxAccess(ctx, message.mailboxId);
-	if (!readable.ok) throwForbidden('Message not accessible');
-	if (request.parts) {
-		const listed = message.attachments;
-		return request.parts.map((asked) => {
-			const known =
-				listed.find((p) => p.partIndex === asked.partIndex && p.filename === asked.filename) ??
-				listed.find((p) => p.filename === asked.filename) ??
-				listed.find((p) => p.partIndex === asked.partIndex);
-			return forwardEntry(message._id, known ?? asked);
-		});
-	}
-	const { html } = await openStoredInlineBody(ctx.db, message);
-	const inlineImages = inlineImageContentIds(html ?? '');
-	return message.attachments
-		.filter((part) => isForwardedPart(part, inlineImages))
-		.map((part) => forwardEntry(message._id, part));
-}
-
-/** The owed list for a new draft; the caller must be able to read a forwarded message. */
 export async function expectedAttachmentsFor(
 	ctx: MutationCtx,
 	requests: readonly ExpectedAttachmentRequest[]
@@ -157,7 +92,19 @@ export async function expectedAttachmentsFor(
 	const owed: ExpectedAttachment[] = [];
 	for (const [index, request] of requests.entries()) {
 		if (request.kind === 'forward') {
-			owed.push(...(await forwardEntries(ctx, request)));
+			const message = await ctx.db.get(request.messageId);
+			if (message && !(await requireMailboxAccess(ctx, message.mailboxId)).ok) {
+				throwForbidden('Message not accessible');
+			}
+			owed.push({
+				key: `forward:${request.messageId}`,
+				filename: '',
+				contentType: 'application/octet-stream',
+				size: 0,
+				source: { kind: 'forwardMessage', messageId: request.messageId },
+				state: 'owed',
+				isPlaceholder: true,
+			});
 			continue;
 		}
 		const size = new TextEncoder().encode(request.content).byteLength;
@@ -173,9 +120,6 @@ export async function expectedAttachmentsFor(
 			source: { kind: 'generated', content: await sealBodyAtWrite(request.content) },
 			state: 'owed',
 		});
-	}
-	if (owed.length > MAX_EXPECTED_ATTACHMENTS) {
-		throwInvalidInput('This message has too many attachments to forward');
 	}
 	return owed;
 }
@@ -234,70 +178,130 @@ export function withoutAttachment(
 	};
 }
 
-type OwedFile =
+/** What `fulfil` has to do for a draft, as read by a caller who can write it. */
+export type OwedWork =
+	| { kind: 'unreadable'; key: string; filename: string }
+	| { kind: 'generated'; key: string; filename: string; contentType: string; content: string }
 	| {
-			key: string;
-			filename: string;
-			contentType: string;
-			bytes: { kind: 'text'; content: string } | ExistingAttachmentBytes;
-	  }
-	| { key: string; filename: string; unreadable: true };
+			kind: 'forward';
+			messageId: Id<'mailMessages'>;
+			rawStorageId: Id<'_storage'>;
+			/** The message's unexpanded debt, when it still has one. */
+			debtKey?: string;
+			/** Parts already owed under their own keys. */
+			partIndexes: string[];
+	  };
 
 /**
- * What the draft owes and where each file's bytes are, for a caller who can
- * write the draft. A forwarded part the caller cannot read is reported as such
- * (another member may be able to copy it).
+ * What the draft owes, for a caller who can write it. A forwarded message the
+ * caller cannot read (or that is gone) is reported unreadable: another member
+ * may be able to copy it.
  */
-export const owedFiles = internalQuery({
+export const owedWork = internalQuery({
 	args: { draftId: v.id('mailDrafts') },
-	handler: async (ctx, args): Promise<OwedFile[]> => {
+	handler: async (ctx, args): Promise<OwedWork[]> => {
 		const draft = await ctx.db.get(args.draftId);
 		if (!draft) return [];
 		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) throwForbidden('Draft not accessible');
 		if (draft.state !== 'draft') return [];
-		const files: OwedFile[] = [];
+		const work: OwedWork[] = [];
+		const forwards = new Map<string, Extract<OwedWork, { kind: 'forward' }>>();
 		for (const entry of draft.expectedAttachments ?? []) {
 			if (entry.state !== 'owed') continue;
 			const { key, filename, contentType, source } = entry;
 			if (source.kind === 'generated') {
-				if (source.content === undefined) files.push({ key, filename, unreadable: true });
-				else
-					files.push({
-						key,
-						filename,
-						contentType,
-						bytes: { kind: 'text', content: await openMessageBody(source.content) },
-					});
+				work.push(
+					source.content === undefined
+						? { kind: 'unreadable', key, filename }
+						: {
+								kind: 'generated',
+								key,
+								filename,
+								contentType,
+								content: await openMessageBody(source.content),
+							}
+				);
 				continue;
 			}
 			const message = await ctx.db.get(source.messageId);
 			const readable = message ? await requireMailboxAccess(ctx, message.mailboxId) : null;
 			if (!message || !readable?.ok) {
-				files.push({ key, filename, unreadable: true });
+				work.push({ kind: 'unreadable', key, filename });
 				continue;
 			}
-			const parts = await ctx.db
-				.query('mailMessageParts')
-				.withIndex('by_raw_storage', (q) => q.eq('rawStorageId', message.rawStorageId))
-				.first();
-			const part =
-				parts?.status === 'stored' ? pickStoredPart(parts.parts, source.partIndex, filename) : null;
-			files.push({
-				key,
-				filename,
-				contentType,
-				bytes: part
-					? { kind: 'sealedPart', storageId: part.storageId }
-					: {
-							kind: 'rawEml',
-							rawStorageId: message.rawStorageId,
-							partIndex: source.partIndex,
-							filename,
-						},
-			});
+			let job = forwards.get(message._id);
+			if (!job) {
+				job = {
+					kind: 'forward',
+					messageId: message._id,
+					rawStorageId: message.rawStorageId,
+					partIndexes: [],
+				};
+				forwards.set(message._id, job);
+				work.push(job);
+			}
+			if (source.kind === 'forwardMessage') job.debtKey = key;
+			else job.partIndexes.push(source.partIndex);
 		}
-		return files;
+		return work;
+	},
+});
+
+/**
+ * Expand a forward's debt into one owed entry per part, as `forwardedParts`
+ * picked them from the raw message, once: a second expansion (another tab)
+ * finds the debt gone and changes nothing. Removing the debt first removes the
+ * whole forward. Returns the parts now owed for that message.
+ */
+export const expandForward = internalMutation({
+	args: {
+		draftId: v.id('mailDrafts'),
+		key: v.string(),
+		parts: v.array(
+			v.object({
+				partIndex: v.string(),
+				filename: v.string(),
+				contentType: v.string(),
+				size: v.number(),
+			})
+		),
+	},
+	handler: async (
+		ctx,
+		args
+	): Promise<{ outcome: 'expanded' | 'taken' | 'tooMany'; owed: string[] }> => {
+		const draft = await getOrThrow(ctx, args.draftId, 'Draft');
+		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
+		if (!owned.ok) throwForbidden('Draft not accessible');
+		assertStateIs(draft, 'draft');
+		const entries = draft.expectedAttachments ?? [];
+		const debt = entries.find((e) => e.key === args.key);
+		const messageId = debt?.source.kind === 'forwardMessage' ? debt.source.messageId : null;
+		const owedParts = (list: typeof entries) =>
+			list.flatMap((e) =>
+				e.state === 'owed' && e.source.kind === 'forward' && e.key.startsWith(`${args.key}:`)
+					? [e.source.partIndex]
+					: []
+			);
+		if (!debt || debt.state !== 'owed' || !messageId) {
+			return { outcome: 'taken', owed: owedParts(entries) };
+		}
+		if (args.parts.length > MAX_FORWARDED_PARTS) return { outcome: 'tooMany', owed: [] };
+		const expanded = entries.flatMap((e): ExpectedAttachment[] =>
+			e.key !== args.key
+				? [e]
+				: args.parts.map((part) => ({
+						key: forwardPartKey(messageId, part.partIndex),
+						filename: part.filename.slice(0, 255),
+						contentType: part.contentType,
+						size: part.size,
+						source: { kind: 'forward', messageId, partIndex: part.partIndex },
+						state: 'owed',
+					}))
+		);
+		await ctx.db.patch(args.draftId, { expectedAttachments: expanded, lastEditedAt: Date.now() });
+		return { outcome: 'expanded', owed: owedParts(expanded) };
 	},
 });
 
@@ -375,79 +379,6 @@ export const bindExpected = internalMutation({
 		});
 		return { outcome: 'bound' };
 	},
-});
-
-/**
- * Copy every file the draft owes onto it. Safe to run from any number of tabs
- * at once: each key is bound once and a losing copy is deleted. Returns the
- * keys that stay owed and why.
- */
-export async function fulfilExpectedAttachments(
-	ctx: Pick<ActionCtx, 'runQuery' | 'runMutation' | 'storage'>,
-	args: { draftId: Id<'mailDrafts'> }
-): Promise<{ failed: Array<{ key: string; filename: string; reason: FulfilFailure }> }> {
-	const owed: OwedFile[] = await ctx.runQuery(
-		internal.mail.draftExpectedAttachments.owedFiles,
-		args
-	);
-	const failed: Array<{ key: string; filename: string; reason: FulfilFailure }> = [];
-	for (const file of owed) {
-		if ('unreadable' in file) {
-			failed.push({ key: file.key, filename: file.filename, reason: 'unreadable' });
-			continue;
-		}
-		const bytes =
-			file.bytes.kind === 'text'
-				? new TextEncoder().encode(file.bytes.content)
-				: await readExistingAttachmentBytes(ctx.storage, file.bytes).catch(() => null);
-		if (!bytes || bytes.byteLength === 0) {
-			failed.push({ key: file.key, filename: file.filename, reason: 'unreadable' });
-			continue;
-		}
-		if (bytes.byteLength > MAX_ATTACHMENT_BYTES) {
-			failed.push({ key: file.key, filename: file.filename, reason: 'tooLarge' });
-			continue;
-		}
-		const storageId = await ctx.storage.store(
-			new Blob([bytes as BlobPart], { type: file.contentType })
-		);
-		try {
-			await ctx.runMutation(internal.mail.draftExpectedAttachments.stageCopy, { storageId });
-		} catch {
-			// Not receipted, so nothing else would find it: delete it now.
-			await ctx.storage.delete(storageId);
-			failed.push({ key: file.key, filename: file.filename, reason: 'failed' });
-			continue;
-		}
-		let outcome: 'bound' | 'taken' | 'tooLarge' | 'tooMany' | 'totalTooLarge' | 'failed';
-		try {
-			({ outcome } = await ctx.runMutation(internal.mail.draftExpectedAttachments.bindExpected, {
-				draftId: args.draftId,
-				key: file.key,
-				storageId,
-			}));
-		} catch {
-			outcome = 'failed';
-		}
-		if (outcome === 'bound') continue;
-		// The receipt stays until this lands; failing that, the upload sweep takes it.
-		await ctx
-			.runMutation(internal.mail.draftExpectedAttachments.dropCopy, { storageId })
-			.catch(() => undefined);
-		if (outcome !== 'taken')
-			failed.push({ key: file.key, filename: file.filename, reason: outcome });
-	}
-	return { failed };
-}
-
-/**
- * Copy what the draft owes onto it (the composer runs this whenever a draft it
- * shows owes a file; another tab running it too is harmless).
- */
-// authz: owedFiles checks the caller can write the draft (and read each forwarded message); bindExpected re-checks the draft.
-export const fulfil = authedAction({
-	args: { draftId: v.id('mailDrafts') },
-	handler: async (ctx, args) => fulfilExpectedAttachments(ctx, args),
 });
 
 /**

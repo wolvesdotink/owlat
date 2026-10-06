@@ -9,7 +9,9 @@
  *    once, and deletes a losing copy's blob;
  *  - `remove` settles a key as removed, takes a landed copy back out, and a
  *    copy still in flight is refused;
- *  - a forwarded part that cannot be read (yet) stays owed;
+ *  - a forward is one debt the server expands from the raw message (the
+ *    disposition rule, raw part index as identity) and copies from that same
+ *    parse, once across tabs; one it cannot read stays owed;
  *  - a draft created without the argument (the previous web app) owes nothing.
  */
 import { convexTest as baseConvexTest, type TestConvex } from 'convex-test';
@@ -57,52 +59,6 @@ const RSVP = {
 	content: ICS,
 };
 
-/**
- * A received message as a client sends it: a PDF that is a real attachment but
- * also carries a Content-ID (linked from the body with `href="cid:"`), a photo
- * marked as an attachment though the body also shows it, and an inline logo.
- */
-const INVOICE_EML = [
-	'From: billing@example.com',
-	'Subject: Invoice',
-	'MIME-Version: 1.0',
-	'Content-Type: multipart/mixed; boundary="mix"',
-	'',
-	'--mix',
-	'Content-Type: multipart/related; boundary="rel"',
-	'',
-	'--rel',
-	'Content-Type: text/html; charset=utf-8',
-	'',
-	'<p>Your <a href="cid:invoice@example.com">invoice</a>.</p><img src="cid:photo@example.com"><img src="cid:logo@example.com">',
-	'--rel',
-	'Content-Type: application/pdf; name="invoice.pdf"',
-	'Content-ID: <invoice@example.com>',
-	'Content-Disposition: attachment; filename="invoice.pdf"',
-	'Content-Transfer-Encoding: base64',
-	'',
-	Buffer.from('%PDF-1.4').toString('base64'),
-	'--rel',
-	'Content-Type: image/png; name="photo.png"',
-	'Content-ID: <photo@example.com>',
-	'Content-Disposition: attachment; filename="photo.png"',
-	'Content-Transfer-Encoding: base64',
-	'',
-	Buffer.from('photo').toString('base64'),
-	'--rel',
-	'Content-Type: image/png; name="logo.png"',
-	'Content-ID: <logo@example.com>',
-	'Content-Disposition: inline; filename="logo.png"',
-	'Content-Transfer-Encoding: base64',
-	'',
-	Buffer.from('logo').toString('base64'),
-	'--rel--',
-	'--mix--',
-	'',
-].join('\r\n');
-const INVOICE_HTML =
-	'<p>Your <a href="cid:invoice@example.com">invoice</a>.</p><img src="cid:photo@example.com"><img src="cid:logo@example.com">';
-
 async function rsvpDraft(t: Harness) {
 	const mailboxId = await seedMailbox(t);
 	const { draftId } = await t.mutation(api.mail.drafts.create, {
@@ -125,42 +81,105 @@ async function sendError(t: Harness, draftId: Id<'mailDrafts'>): Promise<string 
 	}
 }
 
-/** A message in the mailbox carrying a file part (stored) and an inline image. */
-async function forwardSource(t: Harness, mailboxId: Id<'mailboxes'>, stored = true) {
+/** A raw MIME leaf. */
+function leaf(type: string, headers: string[], body: string): string {
+	return [
+		`Content-Type: ${type}`,
+		...headers,
+		'Content-Transfer-Encoding: base64',
+		'',
+		Buffer.from(body).toString('base64'),
+	].join('\r\n');
+}
+const attached = (name: string) => `Content-Disposition: attachment; filename="${name}"`;
+
+/** A raw message: an HTML body and `leaves`, as a client sends it. */
+function rawMessage(html: string, leaves: string[]): string {
+	return [
+		'From: billing@example.com',
+		'MIME-Version: 1.0',
+		'Content-Type: multipart/mixed; boundary="b"',
+		'',
+		'--b',
+		'Content-Type: text/html; charset=utf-8',
+		'',
+		html,
+		...leaves.flatMap((part) => ['--b', part]),
+		'--b--',
+		'',
+	].join('\r\n');
+}
+
+/**
+ * A PDF that is a real attachment but also has a Content-ID the body links
+ * (`href="cid:"`), a photo marked as an attachment that the body also shows
+ * (`<img src="cid:">`), and an inline logo.
+ */
+const INVOICE_EML = rawMessage(
+	'<p>Your <a href="cid:invoice@x">invoice</a>.</p><img src="cid:photo@x"><img src="cid:logo@x">',
+	[
+		leaf('application/pdf', ['Content-ID: <invoice@x>', attached('invoice.pdf')], '%PDF-1.4'),
+		leaf('image/png', ['Content-ID: <photo@x>', attached('photo.png')], 'photo'),
+		leaf(
+			'image/png',
+			['Content-ID: <logo@x>', 'Content-Disposition: inline; filename="logo.png"'],
+			'logo'
+		),
+	]
+);
+
+/**
+ * A message whose row lists `metadata` (what delivery recorded, possibly by
+ * another parser) and whose raw blob is `eml`.
+ */
+async function forwardSource(
+	t: Harness,
+	mailboxId: Id<'mailboxes'>,
+	eml = INVOICE_EML,
+	metadata: Array<{
+		filename: string;
+		contentType: string;
+		size: number;
+		partIndex: string;
+		contentId?: string;
+	}> = []
+) {
 	await seedFolder(t, mailboxId, 'inbox');
-	const messageId = await seedMessage(t, mailboxId, {
-		subject: 'Q3 numbers',
-		htmlBodyInline: '<p>Numbers attached.</p><img src="cid:logo@x">',
-		attachments: [
-			{ filename: 'numbers.pdf', contentType: 'application/pdf', size: 12, partIndex: '0' },
-			{
-				filename: 'logo.png',
-				contentType: 'image/png',
-				size: 4,
-				partIndex: '1',
-				contentId: 'logo@x',
-			},
-		],
+	const messageId = await seedMessage(t, mailboxId, { subject: 'Invoice', attachments: metadata });
+	await t.run(async (ctx) => {
+		const rawStorageId = await ctx.storage.store(new Blob([eml]));
+		await ctx.db.patch(messageId, { rawStorageId });
 	});
-	if (stored) await storeParts(t, messageId);
 	return messageId;
 }
 
-async function storeParts(t: Harness, messageId: Id<'mailMessages'>) {
-	await t.run(async (ctx) => {
-		const message = (await ctx.db.get(messageId))!;
-		const pdf = await ctx.storage.store(new Blob(['%PDF numbers'], { type: 'application/pdf' }));
-		const png = await ctx.storage.store(new Blob(['logo'], { type: 'image/png' }));
-		await ctx.db.insert('mailMessageParts', {
-			rawStorageId: message.rawStorageId,
-			status: 'stored',
-			parts: [
-				{ filename: 'numbers.pdf', contentType: 'application/pdf', size: 12, storageId: pdf },
-				{ filename: 'logo.png', contentType: 'image/png', size: 4, storageId: png },
-			],
-			createdAt: Date.now(),
-		});
+async function forwardDraft(
+	t: Harness,
+	eml?: string,
+	metadata?: Parameters<typeof forwardSource>[3]
+) {
+	const mailboxId = await seedMailbox(t);
+	const messageId = await forwardSource(t, mailboxId, eml, metadata);
+	const { draftId } = await t.mutation(api.mail.drafts.create, {
+		mailboxId,
+		expectedAttachments: [{ kind: 'forward', messageId }],
 	});
+	return { mailboxId, messageId, draftId };
+}
+
+const fulfil = (t: Harness, draftId: Id<'mailDrafts'>) =>
+	t.action(api.mail.draftExpectedAttachmentsFulfil.fulfil, { draftId });
+
+async function attachedText(t: Harness, draftId: Id<'mailDrafts'>) {
+	const draft = (await row(t, draftId))!;
+	return t.run(async (ctx) =>
+		Promise.all(
+			draft.attachments.map(async (a) => [
+				a.filename,
+				await (await ctx.storage.get(a.storageId))!.text(),
+			])
+		)
+	);
 }
 
 describe('a draft owes its expected attachments', () => {
@@ -187,11 +206,11 @@ describe('a draft owes its expected attachments', () => {
 		const { draftId } = await rsvpDraft(t);
 		const before = await blobCount(t);
 		const results = await Promise.all([
-			t.action(api.mail.draftExpectedAttachments.fulfil, { draftId }),
-			t.action(api.mail.draftExpectedAttachments.fulfil, { draftId }),
+			t.action(api.mail.draftExpectedAttachmentsFulfil.fulfil, { draftId }),
+			t.action(api.mail.draftExpectedAttachmentsFulfil.fulfil, { draftId }),
 		]);
 		expect(results).toEqual([{ failed: [] }, { failed: [] }]);
-		await t.action(api.mail.draftExpectedAttachments.fulfil, { draftId });
+		await t.action(api.mail.draftExpectedAttachmentsFulfil.fulfil, { draftId });
 		const draft = (await row(t, draftId))!;
 		expect(draft.attachments.map((a) => a.filename)).toEqual(['reply.ics']);
 		expect(draft.expectedAttachments?.[0]).toMatchObject({
@@ -216,7 +235,7 @@ describe('a draft owes its expected attachments', () => {
 			const stored = (await row(t, draftId))?.expectedAttachments?.[0]?.source;
 			expect(stored).toMatchObject({ kind: 'generated' });
 			expect(JSON.stringify(stored)).not.toContain('METHOD:REPLY');
-			await t.action(api.mail.draftExpectedAttachments.fulfil, { draftId });
+			await t.action(api.mail.draftExpectedAttachmentsFulfil.fulfil, { draftId });
 			const draft = (await row(t, draftId))!;
 			const text = await t.run(async (ctx) =>
 				(await ctx.storage.get(draft.attachments[0]!.storageId))!.text()
@@ -240,7 +259,7 @@ describe('a draft owes its expected attachments', () => {
 				storageId: late,
 			})
 		).resolves.toEqual({ outcome: 'taken' });
-		expect(await t.action(api.mail.draftExpectedAttachments.fulfil, { draftId })).toEqual({
+		expect(await t.action(api.mail.draftExpectedAttachmentsFulfil.fulfil, { draftId })).toEqual({
 			failed: [],
 		});
 		const draft = (await row(t, draftId))!;
@@ -255,133 +274,11 @@ describe('a draft owes its expected attachments', () => {
 	it('takes a copy that already landed back out when the file is removed', async () => {
 		const t = convexTest();
 		const { draftId } = await rsvpDraft(t);
-		await t.action(api.mail.draftExpectedAttachments.fulfil, { draftId });
+		await t.action(api.mail.draftExpectedAttachmentsFulfil.fulfil, { draftId });
 		const landed = (await row(t, draftId))!.attachments[0]!.storageId;
 		await t.mutation(api.mail.draftExpectedAttachments.remove, { draftId, key: 'generated:0' });
 		expect((await row(t, draftId))!.attachments).toEqual([]);
 		expect(await t.run(async (ctx) => (await ctx.storage.get(landed)) !== null)).toBe(false);
-	});
-
-	it('forwards a raw message the way the composer names it: files by disposition, Content-ID or not', async () => {
-		const t = convexTest();
-		const mailboxId = await seedMailbox(t);
-		await seedFolder(t, mailboxId, 'inbox');
-		// What delivery records for this raw message: no disposition, only Content-IDs.
-		const messageId = await seedMessage(t, mailboxId, {
-			htmlBodyInline: INVOICE_HTML,
-			attachments: [
-				{
-					filename: 'invoice.pdf',
-					contentType: 'application/pdf',
-					size: 9,
-					partIndex: '0',
-					contentId: '<invoice@example.com>',
-				},
-				{
-					filename: 'photo.png',
-					contentType: 'image/png',
-					size: 5,
-					partIndex: '1',
-					contentId: '<photo@example.com>',
-				},
-				{
-					filename: 'logo.png',
-					contentType: 'image/png',
-					size: 4,
-					partIndex: '2',
-					contentId: '<logo@example.com>',
-				},
-			],
-		});
-		await t.run(async (ctx) => {
-			const rawStorageId = await ctx.storage.store(new Blob([INVOICE_EML]));
-			await ctx.db.patch(messageId, { rawStorageId });
-		});
-		// The composer reads the raw message and names the parts marked as attachments.
-		const parts = forwardedParts(INVOICE_EML);
-		expect(parts).toEqual([
-			{ partIndex: '0', filename: 'invoice.pdf' },
-			{ partIndex: '1', filename: 'photo.png' },
-		]);
-		const { draftId } = await t.mutation(api.mail.drafts.create, {
-			mailboxId,
-			expectedAttachments: [{ kind: 'forward', messageId, parts }],
-		});
-		expect(await t.action(api.mail.draftExpectedAttachments.fulfil, { draftId })).toEqual({
-			failed: [],
-		});
-		const draft = (await row(t, draftId))!;
-		expect(draft.attachments.map((a) => a.filename)).toEqual(['invoice.pdf', 'photo.png']);
-		const pdf = await t.run(async (ctx) =>
-			(await ctx.storage.get(draft.attachments[0]!.storageId))!.text()
-		);
-		expect(pdf).toBe('%PDF-1.4');
-
-		// Without named parts the row decides: only the image the body shows stays out.
-		const derived = await t.mutation(api.mail.drafts.create, {
-			mailboxId,
-			expectedAttachments: [{ kind: 'forward', messageId }],
-		});
-		expect((await row(t, derived.draftId))?.expectedAttachments?.map((e) => e.filename)).toEqual([
-			'invoice.pdf',
-		]);
-	});
-
-	it('owes a placeholder for a deleted forward whose parts were never named', async () => {
-		const t = convexTest();
-		const mailboxId = await seedMailbox(t);
-		const messageId = await forwardSource(t, mailboxId);
-		await t.run((ctx) => ctx.db.delete(messageId));
-		const { draftId } = await t.mutation(api.mail.drafts.create, {
-			mailboxId,
-			expectedAttachments: [{ kind: 'forward', messageId }],
-		});
-		const entries = (await t.query(api.mail.drafts.get, { draftId }))?.expectedAttachments;
-		expect(entries).toEqual([
-			expect.objectContaining({ filename: '', isPlaceholder: true, state: 'owed' }),
-		]);
-		expect(await sendError(t, draftId)).toMatch(/still being added/);
-	});
-
-	it('owes a forward its file parts, not its inline images, and copies them on the server', async () => {
-		const t = convexTest();
-		const mailboxId = await seedMailbox(t);
-		const messageId = await forwardSource(t, mailboxId);
-		const { draftId } = await t.mutation(api.mail.drafts.create, {
-			mailboxId,
-			expectedAttachments: [{ kind: 'forward', messageId }],
-		});
-		expect((await row(t, draftId))?.expectedAttachments?.map((e) => e.key)).toEqual([
-			`forward:${messageId}:0`,
-		]);
-		await t.action(api.mail.draftExpectedAttachments.fulfil, { draftId });
-		const draft = (await row(t, draftId))!;
-		expect(draft.attachments.map((a) => a.filename)).toEqual(['numbers.pdf']);
-		const text = await t.run(async (ctx) =>
-			(await ctx.storage.get(draft.attachments[0]!.storageId))!.text()
-		);
-		expect(text).toBe('%PDF numbers');
-	});
-
-	it('keeps a forwarded part owed while it cannot be read, and attaches it on a retry', async () => {
-		const t = convexTest();
-		const mailboxId = await seedMailbox(t);
-		const messageId = await forwardSource(t, mailboxId, false);
-		const { draftId } = await t.mutation(api.mail.drafts.create, {
-			mailboxId,
-			expectedAttachments: [{ kind: 'forward', messageId }],
-		});
-		expect(await t.action(api.mail.draftExpectedAttachments.fulfil, { draftId })).toEqual({
-			failed: [{ key: `forward:${messageId}:0`, filename: 'numbers.pdf', reason: 'unreadable' }],
-		});
-		expect((await row(t, draftId))?.expectedAttachments?.[0]?.state).toBe('owed');
-		expect(await sendError(t, draftId)).toMatch(/still being added/);
-
-		await storeParts(t, messageId);
-		expect(await t.action(api.mail.draftExpectedAttachments.fulfil, { draftId })).toEqual({
-			failed: [],
-		});
-		expect((await row(t, draftId))!.attachments.map((a) => a.filename)).toEqual(['numbers.pdf']);
 	});
 
 	it('keeps a file owed when a compose limit refuses it', async () => {
@@ -401,100 +298,23 @@ describe('a draft owes its expected attachments', () => {
 				expectedAttachments: draft.expectedAttachments,
 			});
 		});
-		expect(await t.action(api.mail.draftExpectedAttachments.fulfil, { draftId })).toEqual({
+		expect(await t.action(api.mail.draftExpectedAttachmentsFulfil.fulfil, { draftId })).toEqual({
 			failed: [{ key: 'generated:0', filename: 'reply.ics', reason: 'tooMany' }],
 		});
 		expect((await row(t, draftId))?.expectedAttachments?.[0]?.state).toBe('owed');
 	});
 
-	it('still owes the files of a forwarded message that was deleted before the draft existed', async () => {
-		const t = convexTest();
-		const mailboxId = await seedMailbox(t);
-		const messageId = await forwardSource(t, mailboxId);
-		await t.run((ctx) => ctx.db.delete(messageId));
-		const { draftId } = await t.mutation(api.mail.drafts.create, {
-			mailboxId,
-			expectedAttachments: [
-				{ kind: 'forward', messageId, parts: [{ partIndex: '0', filename: 'numbers.pdf' }] },
-			],
-		});
-		expect(await t.action(api.mail.draftExpectedAttachments.fulfil, { draftId })).toEqual({
-			failed: [{ key: `forward:${messageId}:0`, filename: 'numbers.pdf', reason: 'unreadable' }],
-		});
-		expect(await sendError(t, draftId)).toMatch(/still being added/);
-		await t.mutation(api.mail.draftExpectedAttachments.remove, {
-			draftId,
-			key: `forward:${messageId}:0`,
-		});
-		expect(await sendError(t, draftId)).not.toMatch(/still being added/);
-	});
-
-	it('owes every forwarded part: what a compose limit refuses stays owed, never cut', async () => {
-		const t = convexTest();
-		const mailboxId = await seedMailbox(t);
-		await seedFolder(t, mailboxId, 'inbox');
-		const count = ATTACHMENT_COMPOSE_LIMITS.maxCount + 2;
-		const parts = Array.from({ length: count }, (_, i) => ({
-			filename: `part-${i}.txt`,
-			contentType: 'text/plain',
-			size: 2,
-			partIndex: String(i),
-		}));
-		const messageId = await seedMessage(t, mailboxId, { attachments: parts });
-		await t.run(async (ctx) => {
-			const message = (await ctx.db.get(messageId))!;
-			const stored = [];
-			for (const part of parts) {
-				const storageId = await ctx.storage.store(new Blob([`p${part.partIndex}`]));
-				stored.push({ ...part, storageId });
-			}
-			await ctx.db.insert('mailMessageParts', {
-				rawStorageId: message.rawStorageId,
-				status: 'stored',
-				parts: stored.map(({ partIndex: _p, ...rest }) => rest),
-				createdAt: Date.now(),
-			});
-		});
-		const { draftId } = await t.mutation(api.mail.drafts.create, {
-			mailboxId,
-			expectedAttachments: [{ kind: 'forward', messageId }],
-		});
-		expect((await row(t, draftId))?.expectedAttachments).toHaveLength(count);
-		const { failed } = await t.action(api.mail.draftExpectedAttachments.fulfil, { draftId });
-		expect(failed.map((f) => f.reason)).toEqual(['tooMany', 'tooMany']);
-		const draft = (await row(t, draftId))!;
-		expect(draft.attachments).toHaveLength(ATTACHMENT_COMPOSE_LIMITS.maxCount);
-		expect(draft.expectedAttachments?.filter((e) => e.state === 'owed')).toHaveLength(2);
-	});
-
-	it('refuses an open owing more parts than any message can hold, whole', async () => {
-		const t = convexTest();
-		const mailboxId = await seedMailbox(t);
-		await seedFolder(t, mailboxId, 'inbox');
-		const messageId = await seedMessage(t, mailboxId);
-		const parts = Array.from({ length: 1001 }, (_, i) => ({
-			partIndex: String(i),
-			filename: `p${i}`,
-		}));
-		await expect(
-			t.mutation(api.mail.drafts.create, {
-				mailboxId,
-				expectedAttachments: [{ kind: 'forward', messageId, parts }],
-			})
-		).rejects.toThrow(/too many attachments/);
-	});
-
 	it('settles an attached file as removed when its chip is removed like any attachment', async () => {
 		const t = convexTest();
 		const { draftId } = await rsvpDraft(t);
-		await t.action(api.mail.draftExpectedAttachments.fulfil, { draftId });
+		await t.action(api.mail.draftExpectedAttachmentsFulfil.fulfil, { draftId });
 		const landed = (await row(t, draftId))!.attachments[0]!.storageId;
 		await t.mutation(api.mail.drafts.removeAttachment, { draftId, storageId: landed });
 		const draft = (await row(t, draftId))!;
 		expect(draft.attachments).toEqual([]);
 		expect(draft.expectedAttachments?.[0]?.state).toBe('removed');
 		// Nothing brings it back.
-		await t.action(api.mail.draftExpectedAttachments.fulfil, { draftId });
+		await t.action(api.mail.draftExpectedAttachmentsFulfil.fulfil, { draftId });
 		expect((await row(t, draftId))!.attachments).toEqual([]);
 	});
 
@@ -507,7 +327,7 @@ describe('a draft owes its expected attachments', () => {
 			const orphan = await t.run((ctx) => ctx.storage.store(new Blob(['orphan'])));
 			await t.mutation(internal.mail.draftExpectedAttachments.stageCopy, { storageId: orphan });
 			// A normal fulfil binds its own copy through the same receipt.
-			await t.action(api.mail.draftExpectedAttachments.fulfil, { draftId });
+			await t.action(api.mail.draftExpectedAttachmentsFulfil.fulfil, { draftId });
 			const bound = (await row(t, draftId))!.attachments[0]!.storageId;
 			const receipt = (storageId: Id<'_storage'>) =>
 				t.run((ctx) =>
@@ -574,9 +394,161 @@ describe('a draft owes its expected attachments', () => {
 		const mailboxId = await seedMailbox(t);
 		const { draftId } = await t.mutation(api.mail.drafts.create, { mailboxId });
 		expect((await row(t, draftId))?.expectedAttachments).toBeUndefined();
-		expect(await t.action(api.mail.draftExpectedAttachments.fulfil, { draftId })).toEqual({
+		expect(await t.action(api.mail.draftExpectedAttachmentsFulfil.fulfil, { draftId })).toEqual({
 			failed: [],
 		});
 		expect(await sendError(t, draftId)).not.toMatch(/still being added/);
+	});
+	it('owes a forward as one debt and refuses Send until the server has expanded it', async () => {
+		const t = convexTest();
+		const { messageId, draftId } = await forwardDraft(t);
+		expect((await row(t, draftId))?.expectedAttachments).toEqual([
+			{
+				key: `forward:${messageId}`,
+				filename: '',
+				contentType: 'application/octet-stream',
+				size: 0,
+				source: { kind: 'forwardMessage', messageId },
+				state: 'owed',
+				isPlaceholder: true,
+			},
+		]);
+		expect(await sendError(t, draftId)).toMatch(/still being added/);
+	});
+
+	it('copies what the raw message marks as attachments, also an image the body shows', async () => {
+		// No client read at all (the row was made before anything named a part).
+		const t = convexTest();
+		const { messageId, draftId } = await forwardDraft(t);
+		expect(await fulfil(t, draftId)).toEqual({ failed: [] });
+		const draft = (await row(t, draftId))!;
+		expect(draft.expectedAttachments?.map((e) => [e.key, e.state])).toEqual([
+			[`forward:${messageId}:0`, 'attached'],
+			[`forward:${messageId}:1`, 'attached'],
+		]);
+		expect(await attachedText(t, draftId)).toEqual([
+			['invoice.pdf', '%PDF-1.4'],
+			['photo.png', 'photo'],
+		]);
+		expect(await sendError(t, draftId)).not.toMatch(/still being added/);
+	});
+
+	it('keys duplicate filenames by raw part, whatever the row recorded', async () => {
+		const t = convexTest();
+		// A legacy row (another parser) numbered an unnamed inline image as part 0
+		// and the two PDFs 1 and 2; the raw walker sees only the two PDFs, 0 and 1.
+		const eml = rawMessage('<p>Two invoices.</p><img src="cid:sig@x">', [
+			leaf('image/png', ['Content-ID: <sig@x>', 'Content-Disposition: inline'], 'sig'),
+			leaf('application/pdf', [attached('invoice.pdf')], 'first'),
+			leaf('application/pdf', [attached('invoice.pdf')], 'second'),
+		]);
+		const metadata = [
+			{
+				filename: 'attachment-0',
+				contentType: 'image/png',
+				size: 3,
+				partIndex: '0',
+				contentId: 'sig@x',
+			},
+			{ filename: 'invoice.pdf', contentType: 'application/pdf', size: 5, partIndex: '1' },
+			{ filename: 'invoice.pdf', contentType: 'application/pdf', size: 6, partIndex: '2' },
+		];
+		const { messageId, draftId } = await forwardDraft(t, eml, metadata);
+		expect(forwardedParts(eml).map((p) => p.partIndex)).toEqual(['0', '1']);
+		expect(await fulfil(t, draftId)).toEqual({ failed: [] });
+		expect((await row(t, draftId))?.expectedAttachments?.map((e) => e.key)).toEqual([
+			`forward:${messageId}:0`,
+			`forward:${messageId}:1`,
+		]);
+		expect(await attachedText(t, draftId)).toEqual([
+			['invoice.pdf', 'first'],
+			['invoice.pdf', 'second'],
+		]);
+	});
+
+	it('expands a forward once when two tabs fulfil it at the same time', async () => {
+		const t = convexTest();
+		const { draftId } = await forwardDraft(t);
+		const before = await blobCount(t);
+		await Promise.all([fulfil(t, draftId), fulfil(t, draftId)]);
+		const draft = (await row(t, draftId))!;
+		expect(draft.expectedAttachments).toHaveLength(2);
+		expect(draft.attachments.map((a) => a.filename)).toEqual(['invoice.pdf', 'photo.png']);
+		// Losing copies are dropped: one blob per attachment.
+		expect(await blobCount(t)).toBe(before + 2);
+	});
+
+	it('keeps an unreadable forward owed, and removing it clears the whole forward', async () => {
+		const t = convexTest();
+		const { messageId, draftId } = await forwardDraft(t);
+		await t.run(async (ctx) => {
+			const message = (await ctx.db.get(messageId))!;
+			await ctx.storage.delete(message.rawStorageId);
+		});
+		expect(await fulfil(t, draftId)).toEqual({
+			failed: [{ key: `forward:${messageId}`, filename: '', reason: 'unreadable' }],
+		});
+		expect((await row(t, draftId))?.expectedAttachments?.[0]?.state).toBe('owed');
+		expect(await sendError(t, draftId)).toMatch(/still being added/);
+
+		await t.mutation(api.mail.draftExpectedAttachments.remove, {
+			draftId,
+			key: `forward:${messageId}`,
+		});
+		expect(await fulfil(t, draftId)).toEqual({ failed: [] });
+		expect((await row(t, draftId))!.attachments).toEqual([]);
+		expect(await sendError(t, draftId)).not.toMatch(/still being added/);
+	});
+
+	it('owes a deleted forward as the placeholder debt, never as nothing', async () => {
+		const t = convexTest();
+		const mailboxId = await seedMailbox(t);
+		const messageId = await forwardSource(t, mailboxId);
+		await t.run((ctx) => ctx.db.delete(messageId));
+		const { draftId } = await t.mutation(api.mail.drafts.create, {
+			mailboxId,
+			expectedAttachments: [{ kind: 'forward', messageId }],
+		});
+		const entries = (await t.query(api.mail.drafts.get, { draftId }))?.expectedAttachments;
+		expect(entries).toEqual([
+			expect.objectContaining({ filename: '', isPlaceholder: true, state: 'owed' }),
+		]);
+		expect(await fulfil(t, draftId)).toEqual({
+			failed: [{ key: `forward:${messageId}`, filename: '', reason: 'unreadable' }],
+		});
+		expect(await sendError(t, draftId)).toMatch(/still being added/);
+	});
+
+	it('keeps parts over a compose limit owed, and refuses to expand past 1000 parts', async () => {
+		const t = convexTest();
+		const count = ATTACHMENT_COMPOSE_LIMITS.maxCount + 2;
+		const eml = rawMessage(
+			'<p>Many.</p>',
+			Array.from({ length: count }, (_, i) =>
+				leaf('text/plain', [attached(`part-${i}.txt`)], `p${i}`)
+			)
+		);
+		const { draftId } = await forwardDraft(t, eml);
+		const { failed } = await fulfil(t, draftId);
+		expect(failed.map((f) => f.reason)).toEqual(['tooMany', 'tooMany']);
+		const draft = (await row(t, draftId))!;
+		expect(draft.attachments).toHaveLength(ATTACHMENT_COMPOSE_LIMITS.maxCount);
+		expect(draft.expectedAttachments?.filter((e) => e.state === 'owed')).toHaveLength(2);
+
+		const other = await forwardDraft(t);
+		const tooMany = Array.from({ length: 1001 }, (_, i) => ({
+			partIndex: String(i),
+			filename: `p${i}`,
+			contentType: 'text/plain',
+			size: 1,
+		}));
+		await expect(
+			t.mutation(internal.mail.draftExpectedAttachments.expandForward, {
+				draftId: other.draftId,
+				key: `forward:${other.messageId}`,
+				parts: tooMany,
+			})
+		).resolves.toEqual({ outcome: 'tooMany', owed: [] });
+		expect((await row(t, other.draftId))?.expectedAttachments?.[0]?.state).toBe('owed');
 	});
 });

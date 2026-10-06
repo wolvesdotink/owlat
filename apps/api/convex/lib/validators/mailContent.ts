@@ -108,12 +108,14 @@ export const mailDraftExpectedAttachmentValidator = v.object({
 			kind: v.literal('forward'),
 			messageId: v.id('mailMessages'),
 			partIndex: v.string(),
-		})
+		}),
+		// A forward not yet expanded into its parts: owes the message's attachments.
+		v.object({ kind: v.literal('forwardMessage'), messageId: v.id('mailMessages') })
 	),
 	state: v.union(v.literal('owed'), v.literal('attached'), v.literal('removed')),
 	storageId: v.optional(v.id('_storage')),
-	// Stands for a forwarded message's files whose names were never known (the
-	// message was gone first): no filename, the composer shows its own label.
+	// Stands for a forwarded message's files before they are known (an
+	// unexpanded forward): no filename, the composer shows its own label.
 	isPlaceholder: v.optional(v.boolean()),
 });
 
@@ -125,14 +127,7 @@ export const expectedAttachmentRequestValidator = v.union(
 		contentType: v.string(),
 		content: v.string(),
 	}),
-	v.object({
-		kind: v.literal('forward'),
-		messageId: v.id('mailMessages'),
-		// The parts to carry, as the composer picked them from the raw message
-		// (Content-Disposition `attachment`); named so a message deleted meanwhile
-		// still owes them. Absent: the server picks from the message row.
-		parts: v.optional(v.array(v.object({ partIndex: v.string(), filename: v.string() }))),
-	})
+	v.object({ kind: v.literal('forward'), messageId: v.id('mailMessages') })
 );
 
 /**

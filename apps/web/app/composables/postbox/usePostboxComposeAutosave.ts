@@ -82,7 +82,7 @@ interface AutosaveOptions {
 	/** The compose request's creation nonce, when the host has one. */
 	requestNonce?: string;
 	/** Files the new row owes until they are attached (usePostboxComposeExpected). */
-	expectedAttachments?: Readonly<Ref<ExpectedAttachmentRequest[]>>;
+	expectedAttachments?: ExpectedAttachmentRequest[];
 	/**
 	 * The nonce named an existing row: reopen it (the composer merges it like
 	 * any saved draft) before the id is published, so nothing writes first.
@@ -151,8 +151,8 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 				mailboxId: opts.mailboxId,
 				inReplyToMessageId: opts.inReplyToMessageId,
 				...(opts.requestNonce ? { requestNonce: opts.requestNonce } : {}),
-				...(opts.expectedAttachments?.value.length
-					? { expectedAttachments: opts.expectedAttachments.value }
+				...(opts.expectedAttachments?.length
+					? { expectedAttachments: opts.expectedAttachments }
 					: {}),
 			});
 			if (!result.ok) return null;

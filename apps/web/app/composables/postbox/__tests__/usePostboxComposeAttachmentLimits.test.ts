@@ -24,7 +24,8 @@ vi.mock('@owlat/api', () => ({
 				addAttachment: 'drafts.addAttachment',
 				removeAttachment: 'drafts.removeAttachment',
 			},
-			draftExpectedAttachments: { fulfil: 'expected.fulfil', remove: 'expected.remove' },
+			draftExpectedAttachments: { remove: 'expected.remove' },
+			draftExpectedAttachmentsFulfil: { fulfil: 'expected.fulfil' },
 			attachmentSharesActions: {
 				shareDraftAttachment: 'attachmentSharesActions.shareDraftAttachment',
 			},

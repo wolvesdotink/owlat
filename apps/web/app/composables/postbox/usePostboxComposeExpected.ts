@@ -5,9 +5,9 @@
  * the draft agrees on what is still owed:
  *
  *  - an open that carries such files creates the row at once, asking it to owe
- *    them (`drafts.create`'s `expectedAttachments`); a forward first reads its
- *    raw message and names the parts whose disposition is `attachment`, as
- *    forwarding always picked them (no parts, no row);
+ *    them (`drafts.create`'s `expectedAttachments`). A forward is one debt
+ *    ("Attachments of the forwarded message") until the server has read the
+ *    message and expanded it into a chip per file;
  *  - whenever the row owes a file this mount has not tried yet (a reload, a
  *    second tab, another member's open), the server is asked to copy it on
  *    (`fulfil`). Any number of tabs may ask at once: each file lands once;
@@ -24,7 +24,6 @@ import type { FunctionArgs } from 'convex/server';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
-import { forwardedParts } from '@owlat/shared/mailMime';
 import type { ComposerAttachment } from './usePostboxComposeAttachments';
 import type { InitialHydrationState } from './usePostboxComposeHydration';
 import type { UploadChip } from './postboxAttachmentUploads';
@@ -56,21 +55,6 @@ export function expectedAttachmentRequests(seed: {
 	];
 }
 
-type ForwardParts = Array<{ partIndex: string; filename: string }>;
-
-/**
- * The parts a forward of `messageId` carries, picked from its raw message by
- * Content-Disposition as forwarding always did; null when it cannot be read.
- */
-async function readForwardParts(messageId: Id<'mailMessages'>): Promise<ForwardParts | null> {
-	try {
-		const raw = await loadRawEml(messageId);
-		return raw ? forwardedParts(raw) : null;
-	} catch {
-		return null;
-	}
-}
-
 interface OwedView {
 	key: string;
 	filename: string;
@@ -88,14 +72,8 @@ type Failure = 'unreadable' | 'tooLarge' | 'tooMany' | 'totalTooLarge' | 'failed
 
 export function usePostboxComposeExpected(opts: {
 	draftId: Readonly<Ref<Id<'mailDrafts'> | null>>;
-	/**
-	 * What the open asks the new row to owe. A forward's parts are named here
-	 * once its raw message is read; a row made before that leaves the pick to
-	 * the server.
-	 */
-	requests: Ref<ExpectedAttachmentRequest[]>;
-	/** A forward's parts from its raw message (tests replace the download). */
-	readForwardParts?: (messageId: Id<'mailMessages'>) => Promise<ForwardParts | null>;
+	/** What the open asks the new row to owe. */
+	requests: ExpectedAttachmentRequest[];
 	ensureDraft: () => Promise<Id<'mailDrafts'> | null>;
 	/** Whether a reopened row has been merged into the composer. */
 	rowState: () => InitialHydrationState;
@@ -112,7 +90,7 @@ export function usePostboxComposeExpected(opts: {
 		(row.value?.expectedAttachments ?? []).filter((entry) => entry.state === 'owed')
 	);
 
-	const fulfilOp = useBackendOperation(api.mail.draftExpectedAttachments.fulfil, {
+	const fulfilOp = useBackendOperation(api.mail.draftExpectedAttachmentsFulfil.fulfil, {
 		label: () => t('shared.postbox.usePostboxComposeAttachments.attachOperation'),
 		type: 'action',
 		announce: false,
@@ -129,7 +107,7 @@ export function usePostboxComposeExpected(opts: {
 	const pending = computed(
 		() =>
 			owed.value.length > 0 ||
-			(opts.requests.value.length > 0 && (!opts.draftId.value || row.value === undefined))
+			(opts.requests.length > 0 && (!opts.draftId.value || row.value === undefined))
 	);
 
 	const formatMb = (bytes: number) =>
@@ -214,26 +192,9 @@ export function usePostboxComposeExpected(opts: {
 	);
 
 	// An open that carries files makes its row now, so the server owes them.
-	// A forward first names its parts from the raw message (or, unreadable,
-	// leaves the pick to the server); nothing named means nothing to carry.
-	async function nameForwardParts() {
-		const read = opts.readForwardParts ?? readForwardParts;
-		const next: ExpectedAttachmentRequest[] = [];
-		for (const request of opts.requests.value) {
-			if (request.kind !== 'forward' || request.parts) {
-				next.push(request);
-				continue;
-			}
-			const parts = await read(request.messageId);
-			if (parts === null) next.push(request);
-			else if (parts.length > 0) next.push({ ...request, parts });
-		}
-		opts.requests.value = next;
-	}
-	onMounted(async () => {
-		if (opts.requests.value.length === 0 || opts.draftId.value) return;
-		await nameForwardParts();
-		if (opts.requests.value.length > 0 && !opts.draftId.value) void opts.ensureDraft();
+	// An open that carries files makes its row now, so the server owes them.
+	onMounted(() => {
+		if (opts.requests.length > 0 && !opts.draftId.value) void opts.ensureDraft();
 	});
 
 	const chips = computed<UploadChip[]>(() =>

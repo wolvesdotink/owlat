@@ -27,6 +27,7 @@ import { usePostboxComposeNav, type ComposeSpec } from '~/composables/postbox/us
 import { usePostboxCompose } from '~/composables/postbox/usePostboxCompose';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import de from '~~/i18n/locales/de.json';
+import { forwardedParts } from '@owlat/shared/mailMime';
 
 vi.mock('@owlat/api', () => ({
 	api: {
@@ -44,7 +45,8 @@ vi.mock('@owlat/api', () => ({
 				addAttachment: 'drafts.addAttachment',
 				removeAttachment: 'drafts.removeAttachment',
 			},
-			draftExpectedAttachments: { fulfil: 'expected.fulfil', remove: 'expected.remove' },
+			draftExpectedAttachments: { remove: 'expected.remove' },
+			draftExpectedAttachmentsFulfil: { fulfil: 'expected.fulfil' },
 			attachmentSharesActions: { shareDraftAttachment: 'shares.shareDraftAttachment' },
 			identities: {
 				listForOwnedMailbox: 'identities.list',
@@ -76,7 +78,10 @@ interface Owed {
 	filename: string;
 	contentType: string;
 	size: number;
-	source: { kind: 'generated'; content?: string } | { kind: 'forward'; messageId: string };
+	source:
+		| { kind: 'generated'; content?: string }
+		| { kind: 'forward'; messageId: string; partIndex: string }
+		| { kind: 'forwardMessage'; messageId: string };
 	state: 'owed' | 'attached' | 'removed';
 	storageId?: string;
 	isPlaceholder?: boolean;
@@ -92,22 +97,6 @@ interface Row {
 	expectedAttachments?: Owed[];
 }
 const DRAFT = 'draft-1';
-/** The parts delivery recorded per message (no disposition, as on a real row). */
-const FORWARDED: Record<
-	string,
-	Array<{ filename: string; contentType: string; size: number; contentId?: string }>
-> = {
-	'msg-7': [
-		{ filename: 'numbers.pdf', contentType: 'application/pdf', size: 12 },
-		{ filename: 'logo.png', contentType: 'image/png', size: 4, contentId: 'logo@x' },
-	],
-	'msg-invoice': [
-		{ filename: 'invoice.pdf', contentType: 'application/pdf', size: 8, contentId: 'invoice@x' },
-		{ filename: 'photo.png', contentType: 'image/png', size: 5, contentId: 'photo@x' },
-		{ filename: 'logo.png', contentType: 'image/png', size: 4, contentId: 'logo@x' },
-	],
-};
-
 /** A raw MIME leaf. */
 function leaf(type: string, headers: string[], body: string): string {
 	return [`Content-Type: ${type}`, ...headers, '', body].join('\r\n');
@@ -124,7 +113,7 @@ function rawMessage(html: string, leaves: string[]): string {
 		'',
 	].join('\r\n');
 }
-/** The raw messages the composer reads to pick a forward's parts (null: unreadable). */
+/** The raw messages the server reads to expand a forward (null: gone). */
 const RAW: Record<string, string | null> = {
 	'msg-7': rawMessage('<p>Numbers.</p><img src="cid:logo@x">', [
 		leaf('application/pdf', ['Content-Disposition: attachment; filename="numbers.pdf"'], 'pdf'),
@@ -199,35 +188,19 @@ function owedFor(requests: Array<Record<string, unknown>>): Owed[] {
 				},
 			];
 		}
+		// A forward is one debt until the server reads the message.
 		const messageId = request['messageId'] as string;
-		const named = request['parts'] as { partIndex: string }[] | undefined;
-		if (!FORWARDED[messageId]) {
-			// Gone before the draft existed, nothing named: one placeholder.
-			return [
-				{
-					key: `forward:${messageId}:`,
-					filename: '',
-					contentType: 'application/octet-stream',
-					size: 0,
-					source: { kind: 'forward', messageId },
-					state: 'owed',
-					isPlaceholder: true,
-				},
-			];
-		}
-		const parts = FORWARDED[messageId].map((part, i) => ({ ...part, partIndex: String(i) }));
-		return parts
-			.filter((part) =>
-				named ? named.some((n) => n.partIndex === part.partIndex) : !('contentId' in part)
-			)
-			.map((part) => ({
-				key: `forward:${messageId}:${part.partIndex}`,
-				filename: part.filename,
-				contentType: part.contentType,
-				size: part.size,
-				source: { kind: 'forward', messageId },
+		return [
+			{
+				key: `forward:${messageId}`,
+				filename: '',
+				contentType: 'application/octet-stream',
+				size: 0,
+				source: { kind: 'forwardMessage', messageId },
 				state: 'owed',
-			}));
+				isPlaceholder: true,
+			},
+		];
 	});
 }
 
@@ -266,16 +239,27 @@ const operations: Record<string, (args: never) => Promise<unknown>> = {
 		const gate = holdFulfil.shift();
 		if (gate) await gate.promise;
 		const failed = [];
-		for (const entry of row!.expectedAttachments ?? []) {
-			// Settled meanwhile (another tab, a removal): this copy is dropped.
-			if (entry.state !== 'owed') continue;
-			if (
-				entry.source.kind === 'forward' &&
-				(!forwardReadable || !FORWARDED[entry.source.messageId])
-			) {
-				failed.push({ key: entry.key, filename: entry.filename, reason: 'unreadable' });
-				continue;
+		// Expand each forward from its raw message, as the server does.
+		row!.expectedAttachments = (row!.expectedAttachments ?? []).flatMap((entry): Owed[] => {
+			if (entry.state !== 'owed' || entry.source.kind !== 'forwardMessage') return [entry];
+			const raw = RAW[entry.source.messageId];
+			if (!forwardReadable || !raw) {
+				failed.push({ key: entry.key, filename: '', reason: 'unreadable' });
+				return [entry];
 			}
+			const messageId = entry.source.messageId;
+			return forwardedParts(raw).map(({ partIndex, part }) => ({
+				key: `forward:${messageId}:${partIndex}`,
+				filename: part.filename,
+				contentType: part.contentType,
+				size: part.bytes.byteLength,
+				source: { kind: 'forward', messageId, partIndex },
+				state: 'owed',
+			}));
+		});
+		for (const entry of row!.expectedAttachments) {
+			// Settled meanwhile (another tab, a removal): this copy is dropped.
+			if (entry.state !== 'owed' || entry.source.kind === 'forwardMessage') continue;
 			blobs += 1;
 			const storageId = `blob-${blobs}`;
 			const { filename, contentType, size } = entry;
@@ -401,7 +385,6 @@ beforeEach(() => {
 	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => false }));
 	vi.stubGlobal('useToast', () => ({ showToast }));
 	vi.stubGlobal('useConvex', () => null);
-	vi.stubGlobal('loadRawEml', async (id: string) => RAW[id] ?? null);
 	createdWith = undefined;
 });
 
@@ -549,7 +532,34 @@ describe('compose page — files the draft owes, across reloads and tabs (#1257)
 		expect(fulfils).toBe(1);
 	});
 
-	it('keeps a forwarded file owed while it cannot be read, with Retry', async () => {
+	it('shows one chip for a forward until the server has read it, then a chip per file', async () => {
+		const held = deferred();
+		holdFulfil.push(held);
+		open({
+			prefillTo: ['dave@example.com'],
+			prefillSubject: 'Fwd: Invoice',
+			prefillBodyHtml: '<p>FYI</p>',
+			forwardAttachmentsFromMessageId: 'msg-invoice' as never,
+		});
+		mountPage();
+		await flushPromises();
+		// The composer names no parts: the row owes the forward as one debt.
+		expect(createdWith).toEqual([{ kind: 'forward', messageId: 'msg-invoice' }]);
+		expect(current().uploads.value.map((c) => [c.filename, c.status])).toEqual([
+			['Attachments of the forwarded message', 'uploading'],
+		]);
+		expect(current().canSend.value).toBe(false);
+
+		held.resolve();
+		await flushPromises();
+		// Expanded from the raw message by disposition: the linked PDF and the
+		// photo the body shows, not the inline logo.
+		expect(names(current().attachments.value)).toEqual(['invoice.pdf', 'photo.png']);
+		expect(current().uploads.value).toEqual([]);
+		expect(current().canSend.value).toBe(true);
+	});
+
+	it('keeps an unreadable forward owed under its label, across a reload, until Retry', async () => {
 		forwardReadable = false;
 		open({
 			prefillTo: ['dave@example.com'],
@@ -559,15 +569,18 @@ describe('compose page — files the draft owes, across reloads and tabs (#1257)
 		});
 		const page = mountPage();
 		await flushPromises();
-		// Only the file part is owed, not the inline logo.
-		expect(row!.expectedAttachments?.map((e) => e.filename)).toEqual(['numbers.pdf']);
 		expect(current().uploads.value.map((c) => [c.filename, c.status])).toEqual([
-			['numbers.pdf', 'failed'],
+			['Attachments of the forwarded message', 'failed'],
 		]);
-		expect(showToast).toHaveBeenCalledWith(expect.stringContaining('numbers.pdf'), 'error');
+		expect(showToast).toHaveBeenCalledWith(
+			"Couldn't upload Attachments of the forwarded message.",
+			'error'
+		);
 		expect(current().canSend.value).toBe(false);
+		expect(de.shared.postbox.usePostboxComposeAttachments.forwardedAttachments).toBe(
+			'Anhänge der weitergeleiteten Nachricht'
+		);
 
-		// A reload while it is still unreadable keeps it owed.
 		reload(page);
 		await flushPromises();
 		expect(current().uploads.value.map((c) => c.status)).toEqual(['failed']);
@@ -580,31 +593,7 @@ describe('compose page — files the draft owes, across reloads and tabs (#1257)
 		expect(current().canSend.value).toBe(true);
 	});
 
-	it('forwards what the raw message marks as attachments, whatever Content-IDs the body links', async () => {
-		open({
-			prefillTo: ['dave@example.com'],
-			prefillSubject: 'Fwd: Invoice',
-			prefillBodyHtml: '<p>FYI</p>',
-			forwardAttachmentsFromMessageId: 'msg-invoice' as never,
-		});
-		mountPage();
-		await flushPromises();
-		// The composer named the parts by disposition; the row owes exactly those.
-		expect(createdWith).toEqual([
-			{
-				kind: 'forward',
-				messageId: 'msg-invoice',
-				parts: [
-					{ partIndex: '0', filename: 'invoice.pdf' },
-					{ partIndex: '1', filename: 'photo.png' },
-				],
-			},
-		]);
-		expect(names(current().attachments.value)).toEqual(['invoice.pdf', 'photo.png']);
-		expect(current().canSend.value).toBe(true);
-	});
-
-	it('labels the files of a forwarded message that was gone before its parts were known', async () => {
+	it('clears the whole forward when its one chip is removed before it is read', async () => {
 		open({
 			prefillTo: ['dave@example.com'],
 			prefillSubject: 'Fwd: gone',
@@ -613,19 +602,12 @@ describe('compose page — files the draft owes, across reloads and tabs (#1257)
 		});
 		mountPage();
 		await flushPromises();
-		// The raw message could not be read: the server picks, and finds the message gone.
-		expect(createdWith).toEqual([{ kind: 'forward', messageId: 'msg-gone' }]);
-		expect(current().uploads.value.map((c) => [c.filename, c.status])).toEqual([
-			['Attachments of the forwarded message', 'failed'],
-		]);
-		expect(showToast).toHaveBeenCalledWith(
-			"Couldn't upload Attachments of the forwarded message.",
-			'error'
-		);
-		expect(current().canSend.value).toBe(false);
-		expect(de.shared.postbox.usePostboxComposeAttachments.forwardedAttachments).toBe(
-			'Anhänge der weitergeleiteten Nachricht'
-		);
+		expect(current().uploads.value.map((c) => c.status)).toEqual(['failed']);
+		current().cancelUpload(current().uploads.value[0]!.id);
+		await flushPromises();
+		expect(row!.expectedAttachments?.[0]?.state).toBe('removed');
+		expect(current().uploads.value).toEqual([]);
+		expect(current().canSend.value).toBe(true);
 	});
 
 	it('keeps a file out once its chip is removed, even when its copy was in flight', async () => {
