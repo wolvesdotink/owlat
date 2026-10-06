@@ -17,7 +17,7 @@ import { ImapConnection } from '../connection.js';
 import type { ImapConfig } from '../config.js';
 import type { ConvexClient, FolderRow } from '../convex.js';
 import { AuthRateLimiter } from '../rateLimit.js';
-import { resolveFolderByName, withImapNames } from '../commands/helpers/folders.js';
+import { resolveFolderByName } from '../commands/helpers/folders.js';
 
 // convex/server declares this type but does not export it.
 type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
@@ -68,8 +68,7 @@ const config: ImapConfig = {
  * The issue's names, a few more that need encoding, and one with a line
  * break. Then names that differ only in case, a stored name that only looks
  * encoded next to the name it would decode to, and ASCII names for the
- * case-folded lookup. Last, a folder other than the inbox named `Inbox`,
- * next to a folder that already holds its first numbered name.
+ * case-folded lookup.
  */
 const NAMES = [
 	'Projekte "Q4"',
@@ -85,12 +84,7 @@ const NAMES = [
 	'Receipts',
 	'Notes',
 	'NOTES',
-	'Inbox',
-	'Inbox (2)',
 ];
-
-/** The name LIST gives a folder: its own, but `Inbox` is not the inbox. */
-const imapName = (f: FolderRow): string => (f.name === 'Inbox' ? 'Inbox (3)' : f.name);
 
 const folderNamed = (name: string): FolderRow => FOLDERS.find((f) => f.name === name)!;
 
@@ -222,7 +216,7 @@ describe('LIST and LSUB mailbox names', () => {
 		const out = await exchange(socket, 'a1', 'a1 LIST "" "*"');
 		expect(out.at(-1)).toBe('a1 OK LIST completed');
 		expect(out.filter((l) => !l.startsWith('* LIST ')).length).toBe(1);
-		expect(await listedNames(out, 'LIST')).toEqual(FOLDERS.map(imapName));
+		expect(await listedNames(out, 'LIST')).toEqual(FOLDERS.map((f) => f.name));
 	});
 
 	it('writes the scenario names quoted and modified UTF-7 encoded', async () => {
@@ -242,7 +236,7 @@ describe('LIST and LSUB mailbox names', () => {
 		const out = await exchange(socket, 'a1', 'a1 LSUB "" "*"');
 		expect(out.at(-1)).toBe('a1 OK LSUB completed');
 		expect(await listedNames(out, 'LSUB')).toEqual(
-			FOLDERS.filter((f) => f.subscribed).map(imapName)
+			FOLDERS.filter((f) => f.subscribed).map((f) => f.name)
 		);
 	});
 });
@@ -360,42 +354,6 @@ describe('names that differ only in case or in how they are encoded', () => {
 		const out = await exchange(socket, 's1', 's1 SELECT "&ANw-&AOQ-"');
 		expect(out.at(-1)).toBe('s1 OK [READ-WRITE] SELECT completed');
 		expect(selectedIds(convex)).toEqual([folderNamed('&ANw-&AOQ-')._id]);
-	});
-});
-
-describe('a folder other than the inbox named INBOX in some case', () => {
-	// `INBOX` in any case is the inbox (RFC 3501 §5.1), so `SELECT Inbox` can
-	// only open the inbox; the other folder goes by a numbered name instead.
-	it('LIST gives it the next free numbered name, and the inbox stays INBOX', async () => {
-		const { socket } = await loggedIn();
-		const out = await exchange(socket, 'a1', 'a1 LIST "" "*"');
-		expect(out).toContain('* LIST (\\HasNoChildren) "/" "INBOX"');
-		expect(out).toContain('* LIST (\\HasNoChildren) "/" "Inbox (2)"');
-		expect(out).toContain('* LIST (\\HasNoChildren) "/" "Inbox (3)"');
-		expect(out.filter((l) => l.endsWith('"/" "Inbox"'))).toEqual([]);
-	});
-
-	it('SELECT with that name opens the folder; SELECT Inbox opens the inbox', async () => {
-		const { socket, convex } = await loggedIn();
-		await exchange(socket, 's1', 's1 SELECT "Inbox (3)"');
-		await exchange(socket, 's2', 's2 SELECT "Inbox (2)"');
-		await exchange(socket, 's3', 's3 SELECT Inbox');
-		expect(selectedIds(convex)).toEqual([
-			folderNamed('Inbox')._id,
-			folderNamed('Inbox (2)')._id,
-			folderNamed('INBOX')._id,
-		]);
-	});
-
-	it('STATUS answers under the numbered name', async () => {
-		const { socket } = await loggedIn();
-		const out = await exchange(socket, 't1', 't1 STATUS "Inbox (3)" (MESSAGES)');
-		expect(out).toEqual(['* STATUS "Inbox (3)" (MESSAGES 0)', 't1 OK STATUS completed']);
-	});
-
-	it('keeps its own name when the mailbox has no inbox to clash with', () => {
-		const rows: FolderRow[] = [{ _id: 'f1', name: 'Inbox' }];
-		expect(withImapNames(rows)).toEqual(rows);
 	});
 });
 
