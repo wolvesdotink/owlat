@@ -415,6 +415,49 @@ describe('answer', () => {
 	});
 });
 
+describe('a 0.6.10 caller (N-1 shim, #1224)', () => {
+	const LEGACY =
+		'Generated from an email from example.org — Owlat will never ask for your password.';
+
+	it('stores the questions it sends back without the legacy attribution sentence', async () => {
+		const t = await makeT();
+		llm.slots = [slot('date_time', 'When will payment arrive?')];
+		const { target } = await replyDraft(t);
+		const asked = await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+		const stored = await t.run(async (ctx) => (await ctx.db.get(asked.sessionId))!.questions);
+		// A 0.6.10 `answer` action that read the session before 0066 converted it
+		// claims the session, then writes back the questions it holds, sentence
+		// and all, after this release is deployed.
+		const held = stored.map((q) => ({ ...q, attribution: LEGACY }));
+		await t.mutation(internal.mail.ai.composeDraftStore.updateSession, {
+			sessionId: asked.sessionId,
+			status: 'drafting',
+			expectStatus: 'asking',
+		});
+
+		const updated = await t.mutation(internal.mail.ai.composeDraftStore.updateSession, {
+			sessionId: asked.sessionId,
+			status: 'asking',
+			expectStatus: 'drafting',
+			questions: held,
+		});
+
+		expect(updated.status).toBe('asking');
+		expect(updated.questions).toEqual(stored);
+		const replaced = await t.mutation(internal.mail.ai.composeDraftStore.replaceSession, {
+			target,
+			locale: 'en',
+			status: 'asking',
+			questions: held,
+			attachedFiles: [],
+		});
+		expect(replaced.questions).toEqual(stored);
+		for (const q of [...updated.questions, ...replaced.questions]) {
+			expect(q).not.toHaveProperty('attribution');
+		}
+	});
+});
+
 describe('privacy', () => {
 	it('a session belongs to the person who started it', async () => {
 		const t = await makeT();

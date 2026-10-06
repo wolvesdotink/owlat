@@ -179,7 +179,8 @@ export const needsReplyClarificationQuestionValidator = v.object({
  *
  * The single source of truth for both the `mailThreads.needsReply` schema
  * field (schema/mailThreads.ts) and the `mail.needsReply.applyResult`
- * argument, so the two can no longer drift apart.
+ * argument (through {@link needsReplyClarificationArgValidator}), so the two
+ * can no longer drift apart.
  */
 export const needsReplyClarificationValidator = v.object({
 	// True while at least one question is still awaiting an answer.
@@ -193,3 +194,57 @@ export const needsReplyClarificationValidator = v.object({
 	// answered. Its presence flips the card to "Draft ready".
 	draft: v.optional(v.string()),
 });
+
+/**
+ * N-1 SHIM (#1224), remove in 0.6.12. The argument shape of a question for the
+ * internal mutations a 0.6.10 action calls with questions it read earlier:
+ * `mail.needsReply.applyResult`, and `replaceSession` / `updateSession` in
+ * `mail/ai/composeDraftStore.ts`. A 0.6.10 action that read a question before
+ * migration 0066 converted it still holds the `attribution` sentence and sends
+ * it back after this release is deployed; a strict argument would throw outside
+ * the action's recovery and leave its session stuck in `drafting`. So the
+ * argument accepts the field and the mutation drops it with
+ * {@link withoutLegacyAttribution} before writing. Nothing reads it, and the
+ * stored validator above stays strict, so the deploy still refuses a stored
+ * question that has it. From 0.6.12 the N-1 release is 0.6.11, which never
+ * sends the field: delete these and use the stored validators again.
+ */
+export const needsReplyClarificationQuestionArgValidator = v.object({
+	...needsReplyClarificationQuestionValidator.fields,
+	attribution: v.optional(v.string()),
+});
+
+/** {@link needsReplyClarificationValidator} as an argument (N-1 shim, #1224). */
+export const needsReplyClarificationArgValidator = v.object({
+	...needsReplyClarificationValidator.fields,
+	questions: v.array(needsReplyClarificationQuestionArgValidator),
+});
+
+/**
+ * A question as stored: the argument shape without the legacy `attribution`
+ * (N-1 shim, #1224, remove in 0.6.12 with the argument validators above).
+ */
+export function withoutLegacyAttribution<Q extends { attribution?: string }>(
+	question: Q
+): Omit<Q, 'attribution'> {
+	const { attribution: _legacy, ...stored } = question;
+	return stored;
+}
+
+/**
+ * An optional clarification as stored: {@link withoutLegacyAttribution} on each
+ * question (N-1 shim, #1224, remove in 0.6.12).
+ */
+export function withoutLegacyClarificationAttribution<
+	R extends { clarification?: { questions: Array<{ attribution?: string }> } },
+>(result: R) {
+	const { clarification, ...rest } = result;
+	if (clarification === undefined) return rest;
+	return {
+		...rest,
+		clarification: {
+			...clarification,
+			questions: clarification.questions.map(withoutLegacyAttribution),
+		},
+	};
+}
