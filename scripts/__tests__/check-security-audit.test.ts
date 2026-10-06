@@ -73,6 +73,10 @@ describe('security audit parser', () => {
 			'GHSA-5P2G-FCMC-QVQQ': expect.stringContaining('patches/image-size@2.0.2.patch'),
 			'GHSA-86W9-CPQP-85RV': expect.stringContaining('listhen'),
 			'GHSA-VFJ7-8CJW-P6XM': expect.stringContaining('micromatch@4.0.8 at build time'),
+			'GHSA-X6JW-M9V5-85VH': expect.stringContaining('@nuxt/devtools@3.4.1'),
+			'GHSA-G4WM-2VF7-VFGR': expect.stringContaining('@nuxt/devtools@3.4.1'),
+			'GHSA-858H-WHJF-MVG5': expect.stringContaining('@nuxt/devtools@3.4.1'),
+			'GHSA-V5RQ-49VH-5V5C': expect.stringContaining('@nuxt/devtools@3.4.1'),
 		});
 	});
 });
