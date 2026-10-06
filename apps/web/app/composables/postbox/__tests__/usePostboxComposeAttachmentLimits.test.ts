@@ -24,6 +24,8 @@ vi.mock('@owlat/api', () => ({
 				addAttachment: 'drafts.addAttachment',
 				removeAttachment: 'drafts.removeAttachment',
 			},
+			draftExpectedAttachments: { remove: 'expected.remove' },
+			draftExpectedAttachmentsFulfil: { fulfil: 'expected.fulfil' },
 			attachmentSharesActions: {
 				shareDraftAttachment: 'attachmentSharesActions.shareDraftAttachment',
 			},
@@ -67,7 +69,7 @@ beforeEach(() => {
 	// catalog behind the `useI18n` auto-import so toasts read as they ship.
 	vi.stubGlobal('useI18n', () => i18n.global);
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(async () => undefined) }));
-	vi.stubGlobal('usePostboxPendingAttachments', () => ({ take: () => null }));
+	vi.stubGlobal('useConvexQuery', () => ({ data: ref(undefined) }));
 });
 
 async function loadComposable() {

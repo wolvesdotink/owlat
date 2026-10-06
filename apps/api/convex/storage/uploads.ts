@@ -174,6 +174,40 @@ export async function transferOwnedUpload(
 	return true;
 }
 
+/**
+ * Receipt a blob the server stored itself (a file copied onto a draft) the way
+ * a finished browser upload is: unclaimed until a resource binds it with
+ * {@link consumeUpload}, and deleted by `cleanup` when nothing ever does (the
+ * action died before binding, or deleting a copy that lost failed).
+ */
+export async function stageServerUpload(
+	ctx: MutationCtx,
+	storageId: Id<'_storage'>,
+	session: UploadSession
+): Promise<void> {
+	await ctx.db.insert('storageUploads', {
+		userId: session.userId,
+		organizationId: session.activeOrganizationId,
+		status: 'uploaded',
+		storageId,
+		expiresAt: Date.now() + UPLOAD_TTL_MS,
+	});
+}
+
+/** Delete an unclaimed blob and its receipt now. A bound blob is left alone. */
+export async function dropUnclaimedUpload(
+	ctx: MutationCtx,
+	storageId: Id<'_storage'>
+): Promise<void> {
+	const receipt = await ctx.db
+		.query('storageUploads')
+		.withIndex('by_storage', (q) => q.eq('storageId', storageId))
+		.unique();
+	if (!receipt || receipt.status !== 'uploaded') return;
+	await ctx.storage.delete(storageId);
+	await ctx.db.delete(receipt._id);
+}
+
 /** Expiring abandoned tickets and unclaimed blobs never removes a bound resource. */
 export const cleanup = internalMutation({
 	args: {},

@@ -171,12 +171,12 @@ export async function openAtRest(secret: string, stored: string): Promise<string
 // prefix does for inline bodies.
 
 /** HKDF info label for the BLOB key — domain-separated from the inline body key. */
-const BLOB_HKDF_INFO = 'owlat:at-rest:blobs:v1';
+export const BLOB_HKDF_INFO = 'owlat:at-rest:blobs:v1';
 /** HKDF salt for the blob key — pinned alongside the info label. */
-const BLOB_HKDF_SALT = 'owlat:at-rest:blobs:salt:v1';
+export const BLOB_HKDF_SALT = 'owlat:at-rest:blobs:salt:v1';
 /** Magic header bytes: ASCII "ARBLB1" (At-Rest BLoB, format 1). */
-const BLOB_MAGIC = new Uint8Array([0x41, 0x52, 0x42, 0x4c, 0x42, 0x31]); // "ARBLB1"
-const BLOB_VERSION = 1;
+export const BLOB_MAGIC = new Uint8Array([0x41, 0x52, 0x42, 0x4c, 0x42, 0x31]); // "ARBLB1"
+export const BLOB_VERSION = 1;
 const BLOB_HEADER_BYTES = BLOB_MAGIC.length + 1 + IV_BYTES; // magic + version + iv
 
 /** The BLOB box: the instance secret under the pinned, distinct blob context. */

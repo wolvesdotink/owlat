@@ -20,6 +20,15 @@ export const ATTACHMENT_COMPOSE_LIMITS = {
 export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
 /**
+ * Largest raw message the server reads to copy a forward's attachments onto a
+ * draft: the IMAP APPEND literal limit, the largest message any path stores.
+ * The forward read holds a few copies of the message at once (the stored blob,
+ * its bytes, the unsealed copy), so this bounds its memory; a larger message
+ * is not read and its forward stays owed.
+ */
+export const MAX_FORWARD_RAW_BYTES = 50 * 1024 * 1024;
+
+/**
  * Hard cap on a WHOLE inbound message, in bytes: what the port-25 MX listener
  * advertises via EHLO SIZE and enforces on its DATA loop
  * (`apps/mta/src/bounce/server.ts`), which is the only way mail reaches either

@@ -296,7 +296,7 @@ describe('pure helpers', () => {
 			mailboxId: MBX,
 			prefillSubject: 'Fwd: Q3',
 			forwardAttachmentsFromMessageId: 'msg-1' as never,
-			attachPendingKey: 'p',
+			attachGenerated: { filename: 'reply.ics', contentType: 'text/calendar', content: 'ics' },
 		};
 		expect(composerSeedOf(request({ seed }))).toEqual({ ...seed, requestNonce: 'nonce-1' });
 		expect(composerSeedOf(request({ seed, draftId: D1 }))).toEqual({

@@ -22,6 +22,7 @@ import { canSendWithSealState } from './sealPolicy';
 import { mailboxHasSendTransport } from './draftQueries';
 import { openMailDraftBody } from '../lib/messageBody';
 import { assertNoAnswerGaps } from './ai/composeDraftStore';
+import { assertNothingOwed } from './draftExpectedAttachments';
 
 /**
  * Initiate send: mark draft as pending_send with an undo window, schedule
@@ -40,6 +41,8 @@ export async function sendHandler(
 	const draft = await getOrThrow(ctx, args.draftId, 'Draft');
 	const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 	if (!owned.ok) throwForbidden('Draft not accessible');
+	// A file the draft was opened to carry is not on it yet (an RSVP's `.ics`).
+	assertNothingOwed(draft);
 
 	// Answer mode gap placeholders block the send (mail/ai/composeDraftStore.ts).
 	await assertNoAnswerGaps(ctx, { kind: 'mailDraft', draftId: args.draftId }, async () => {

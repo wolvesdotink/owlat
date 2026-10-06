@@ -91,6 +91,46 @@ export const mailDraftAttachmentValidator = v.object({
 });
 
 /**
+ * A file a draft was opened to carry that the draft owes until it is attached
+ * (mail/draftExpectedAttachments.ts, #1257): an RSVP's generated `.ics`, or one
+ * attachment of a forwarded message. `owed` holds Send; `attached` names the
+ * blob that settled it; `removed` is the person taking it out. A generated
+ * file's text is kept only while it is owed.
+ */
+export const mailDraftExpectedAttachmentValidator = v.object({
+	key: v.string(),
+	filename: v.string(),
+	contentType: v.string(),
+	size: v.number(),
+	source: v.union(
+		v.object({ kind: v.literal('generated'), content: v.optional(v.string()) }),
+		v.object({
+			kind: v.literal('forward'),
+			messageId: v.id('mailMessages'),
+			partIndex: v.string(),
+		}),
+		// A forward not yet expanded into its parts: owes the message's attachments.
+		v.object({ kind: v.literal('forwardMessage'), messageId: v.id('mailMessages') })
+	),
+	state: v.union(v.literal('owed'), v.literal('attached'), v.literal('removed')),
+	storageId: v.optional(v.id('_storage')),
+	// Stands for a forwarded message's files before they are known (an
+	// unexpanded forward): no filename, the composer shows its own label.
+	isPlaceholder: v.optional(v.boolean()),
+});
+
+/** What `drafts.create` is asked to owe: a generated file, or a message's attachments. */
+export const expectedAttachmentRequestValidator = v.union(
+	v.object({
+		kind: v.literal('generated'),
+		filename: v.string(),
+		contentType: v.string(),
+		content: v.string(),
+	}),
+	v.object({ kind: v.literal('forward'), messageId: v.id('mailMessages') })
+);
+
+/**
  * Who may fetch an attachment share link's bytes (`mailAttachmentShares.scope`
  * and the mutation arg that narrows it).
  *

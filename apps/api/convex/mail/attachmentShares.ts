@@ -47,6 +47,7 @@ import {
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { getOptional } from '../lib/env';
 import { logError } from '../lib/runtimeLog';
+import { withoutAttachment } from './draftExpectedAttachments';
 import { personalMailEnabled, requireMailboxAccess } from './permissions';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
@@ -298,7 +299,7 @@ export const createShare = internalMutation({
 		const now = Date.now();
 		const expiresAt = attachmentShareExpiryAt(now, args.expiryDays);
 		await ctx.db.patch(args.draftId, {
-			attachments: draft.attachments.filter((a) => a.storageId !== args.storageId),
+			...withoutAttachment(draft, args.storageId),
 			lastEditedAt: now,
 		});
 		const shareId = await ctx.db.insert('mailAttachmentShares', {

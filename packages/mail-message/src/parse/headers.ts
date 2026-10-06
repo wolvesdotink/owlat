@@ -100,6 +100,14 @@ export function decodeRfc2231(v: string): string {
 }
 
 /**
+ * Highest RFC 2231 continuation index (`name*N`) a parameter is assembled
+ * from. The RFC sets no bound, but a real value runs to a few dozen segments;
+ * the index is attacker-chosen, so a segment past this is ignored, as one
+ * past the largest array index always was.
+ */
+export const MAX_CONTINUATION_INDEX = 999;
+
+/**
  * Extract a structured-header param by name from a RAW header value.
  *
  * The `(?:^|[;\s])` anchor matches a param introduced after ANY whitespace, not
@@ -115,16 +123,26 @@ export function decodeRfc2231(v: string): string {
  */
 export function getRawParam(headerValue: string | undefined, name: string): string | undefined {
 	if (!headerValue) return undefined;
-	const continued: string[] = [];
+	// Only the segments present, by index (a later duplicate wins), joined in
+	// index order: never an array sized by an attacker-chosen index.
+	const continued = new Map<number, string>();
 	const contRe = new RegExp(
 		`(?:^|[;\\s])${name}\\*(\\d+)\\*?\\s*=\\s*("([^"]*)"|([^;\\r\\n]+))`,
 		'gi'
 	);
 	let cm: RegExpExecArray | null;
 	while ((cm = contRe.exec(headerValue))) {
-		continued[Number.parseInt(cm[1]!, 10)] = (cm[3] ?? cm[4] ?? '').trim();
+		const index = Number.parseInt(cm[1]!, 10);
+		if (index > MAX_CONTINUATION_INDEX) continue;
+		continued.set(index, (cm[3] ?? cm[4] ?? '').trim());
 	}
-	if (continued.length > 0) return decodeRfc2231(continued.join(''));
+	if (continued.size > 0) {
+		const joined = [...continued.keys()]
+			.sort((a, b) => a - b)
+			.map((index) => continued.get(index))
+			.join('');
+		return decodeRfc2231(joined);
+	}
 	const re = new RegExp(`(?:^|[;\\s])${name}\\*?\\s*=\\s*("([^"]*)"|([^;\\r\\n]+))`, 'i');
 	const m = headerValue.match(re);
 	const value = m ? (m[2] ?? m[3] ?? '') : undefined;
@@ -191,6 +209,7 @@ export function parseStructuredHeader(raw: string | undefined): StructuredHeader
 		const extended = m[4] !== undefined;
 		if (hasIndex) {
 			const idx = Number.parseInt(m[3]!, 10);
+			if (idx > MAX_CONTINUATION_INDEX) continue;
 			let byIdx = segments.get(rawName);
 			if (!byIdx) {
 				byIdx = new Map();

@@ -29,6 +29,7 @@ import {
 	transferDecode,
 	type MimeNode,
 } from '@owlat/mail-message/parse/body';
+import { decodeLocated, decodedLength, locateMimeTree } from '@owlat/mail-message/parse/locate';
 
 export { decodeEncodedWords };
 
@@ -127,4 +128,54 @@ export function extractAttachmentAt(
 		if (byName) return byName;
 	}
 	return Number.isInteger(idx) && idx >= 0 && idx < all.length ? all[idx]! : null;
+}
+
+/** One part a forward carries, located but not decoded. */
+export interface LocatedForwardedPart {
+	/** Document-order index among the message's attachment leaves. */
+	partIndex: string;
+	filename: string;
+	contentType: string;
+	contentId?: string;
+	/** Decoded size in bytes, counted without decoding. */
+	size: number;
+	/** Decode it now, into an array of exactly `size` bytes. */
+	decode: () => Uint8Array<ArrayBuffer>;
+}
+
+/**
+ * The parts a forward of this raw message carries, over its BYTES: the rule
+ * forwarding has always used, Content-Disposition `attachment` (a leaf with a
+ * filename and no disposition counts as one), each keeping its document-order
+ * index among the message's attachment leaves, which is its identity on the
+ * draft that owes it. Nothing is decoded until `decode` is called, one part at
+ * a time, and the message is never turned into a string
+ * (`@owlat/mail-message/parse/locate`). `truncated`: the walker's part or depth
+ * bound cut the message short, so parts past it were never seen.
+ */
+export function locateForwardedParts(raw: Uint8Array): {
+	parts: LocatedForwardedPart[];
+	truncated: boolean;
+} {
+	const { root, bodies, truncated } = locateMimeTree(raw);
+	const parts: LocatedForwardedPart[] = [];
+	let index = 0;
+	walkLeaves(root, (leaf) => {
+		if (!isAttachmentPart(leaf)) return;
+		const partIndex = String(index++);
+		if (partDisposition(leaf) !== 'attachment') return;
+		const body = bodies.get(leaf);
+		if (!body) return;
+		const encoding = leaf.headers.last('content-transfer-encoding');
+		const size = decodedLength(raw, body, encoding);
+		parts.push({
+			partIndex,
+			filename: partFilename(leaf) || 'attachment',
+			contentType: leaf.contentType.value,
+			contentId: stripBrackets(leaf.headers.last('content-id')),
+			size,
+			decode: () => decodeLocated(raw, body, encoding, size),
+		});
+	});
+	return { parts, truncated };
 }

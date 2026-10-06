@@ -14362,6 +14362,9 @@
 			},
 			"usePostboxComposeAttachments": {
 				"attachOperation": "Attach file",
+				"forwardTooComplex": "The forwarded message has too many nested parts to copy its attachments.",
+				"forwardTooLarge": "The forwarded message is too large to copy its attachments.",
+				"forwardedAttachments": "Attachments of the forwarded message",
 				"prepareUploadOperation": "Prepare upload",
 				"removeOperation": "Remove attachment",
 				"shareBlockHeading": "Shared file",

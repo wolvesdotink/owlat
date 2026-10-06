@@ -54,6 +54,7 @@ import { answerDraftHasContent } from '~/utils/answerMode';
 import type { ComposerMode } from './usePostboxCompose';
 import type { InitialHydrationState } from './usePostboxComposeHydration';
 import type { ComposeTouched } from './usePostboxComposeTouched';
+import type { ExpectedAttachmentRequest } from './usePostboxComposeExpected';
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 /** Writes `settlePendingSave` makes before giving up on fields that keep changing. */
@@ -80,6 +81,8 @@ interface AutosaveOptions {
 	touched: ComposeTouched;
 	/** The compose request's creation nonce, when the host has one. */
 	requestNonce?: string;
+	/** Files the new row owes until they are attached (usePostboxComposeExpected). */
+	expectedAttachments?: ExpectedAttachmentRequest[];
 	/**
 	 * The nonce named an existing row: reopen it (the composer merges it like
 	 * any saved draft) before the id is published, so nothing writes first.
@@ -148,6 +151,9 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 				mailboxId: opts.mailboxId,
 				inReplyToMessageId: opts.inReplyToMessageId,
 				...(opts.requestNonce ? { requestNonce: opts.requestNonce } : {}),
+				...(opts.expectedAttachments?.length
+					? { expectedAttachments: opts.expectedAttachments }
+					: {}),
 			});
 			if (!result.ok) return null;
 			const created = result.result;

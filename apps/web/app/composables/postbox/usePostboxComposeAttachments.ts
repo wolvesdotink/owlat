@@ -1,8 +1,9 @@
 /**
- * Attachment machinery for the compose draft: upload/remove, the transient
- * pending-attachment handoff (e.g. iCalendar RSVP replies) and forward-cloning
- * the original message's attachments. Split out of usePostboxCompose so each
- * file stays a readable size; it operates on the same draft via the parent's
+ * Attachment machinery for the compose draft: upload/remove, and the files the
+ * draft owes (an iCalendar RSVP reply, a forward's attachments), which the
+ * server copies on and which show as chips beside the uploads
+ * (usePostboxComposeExpected). Split out of usePostboxCompose so each file
+ * stays a readable size; it operates on the same draft via the parent's
  * ensureDraft/draftId.
  */
 
@@ -10,10 +11,14 @@ import type { Ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
-import { extractAttachments } from '@owlat/shared/mailMime';
 import { downscaleImageFile } from './postboxInlineImage';
 import { attachmentMeter } from './postboxAttachmentMeter';
 import { createAttachmentUploads, xhrPutFile } from './postboxAttachmentUploads';
+import type { InitialHydrationState } from './usePostboxComposeHydration';
+import {
+	usePostboxComposeExpected,
+	type ExpectedAttachmentRequest,
+} from './usePostboxComposeExpected';
 import { appendShareLinkBlock, shareLinkBlockHtml } from '~/utils/postboxShareLink';
 
 // Per-file attachment ceiling for user-facing copy, derived from the shared cap
@@ -46,10 +51,10 @@ export function usePostboxComposeAttachments(opts: {
 	 * leave a link-only body that replaces the saved one.
 	 */
 	bodyLocked?: () => boolean;
-	/** Attach a transient generated file handed off via usePostboxPendingAttachments. */
-	attachPendingKey?: string;
-	/** Forward: clone the original message's attachments onto this draft. */
-	forwardAttachmentsFromMessageId?: Id<'mailMessages'>;
+	/** What the open asked the new row to owe (a generated file, a forward's files). */
+	expectedAttachments?: ExpectedAttachmentRequest[];
+	/** Whether a reopened row has been merged (its attachments are shown then). */
+	rowState?: () => InitialHydrationState;
 }) {
 	const { t, locale } = useI18n();
 	const generateUploadUrl = useBackendOperation(api.storage.generateUploadUrl, {
@@ -112,16 +117,31 @@ export function usePostboxComposeAttachments(opts: {
 		},
 		onCommitted: (a, thumbUrl) => {
 			if (thumbUrl) thumbUrls.set(a.storageId, thumbUrl);
-			attachments.value = [...attachments.value, a];
+			// The row may have shown it already (usePostboxComposeExpected).
+			if (!attachments.value.some((shown) => shown.storageId === a.storageId)) {
+				attachments.value = [...attachments.value, a];
+			}
 		},
 	});
 
-	const isUploading = computed(() => uploader.isUploading.value || uploadingCount.value > 0);
+	// The files the draft owes show as chips beside the uploads, and hold Send.
+	const expected = usePostboxComposeExpected({
+		draftId: opts.draftId,
+		requests: opts.expectedAttachments ?? [],
+		ensureDraft: opts.ensureDraft,
+		rowState: opts.rowState ?? (() => 'ready'),
+		attachments,
+	});
+	const uploads = computed(() => [...uploader.uploads.value, ...expected.chips.value]);
+
+	const isUploading = computed(
+		() => uploader.isUploading.value || uploadingCount.value > 0 || expected.pending.value
+	);
 
 	// Total-size meter across committed + in-flight attachments.
 	const attachmentSizeMeter = computed(() => {
 		const committed = attachments.value.reduce((sum, a) => sum + a.size, 0);
-		const inflight = uploader.uploads.value.reduce((sum, c) => sum + c.size, 0);
+		const inflight = uploads.value.reduce((sum, c) => sum + c.size, 0);
 		return attachmentMeter(committed + inflight);
 	});
 
@@ -144,10 +164,10 @@ export function usePostboxComposeAttachments(opts: {
 		const id = await opts.ensureDraft();
 		if (!id) return;
 		// Existing footprint: committed attachments + still-uploading chips.
-		let currentCount = attachments.value.length + uploader.uploads.value.length;
+		let currentCount = attachments.value.length + uploads.value.length;
 		let currentBytes =
 			attachments.value.reduce((sum, a) => sum + a.size, 0) +
-			uploader.uploads.value.reduce((sum, c) => sum + c.size, 0);
+			uploads.value.reduce((sum, c) => sum + c.size, 0);
 		const accepted: File[] = [];
 		for (const file of Array.from(files)) {
 			if (file.size > MAX_ATTACHMENT_BYTES) {
@@ -358,34 +378,6 @@ export function usePostboxComposeAttachments(opts: {
 		}
 	}
 
-	// Attach a transient generated file (e.g. an iCalendar RSVP REPLY) handed off
-	// via usePostboxPendingAttachments.
-	const { take: takePendingAttachment } = usePostboxPendingAttachments();
-	onMounted(async () => {
-		if (!opts.attachPendingKey) return;
-		const pending = takePendingAttachment(opts.attachPendingKey);
-		if (!pending) return;
-		const file = new File([pending.content], pending.filename, { type: pending.contentType });
-		await addFiles([file]);
-	});
-
-	// Forward: clone the original message's attachments onto this draft by
-	// fetching its raw .eml, extracting the parts client-side, and re-uploading
-	// them through the normal attachment path.
-	onMounted(async () => {
-		if (!opts.forwardAttachmentsFromMessageId) return;
-		try {
-			const bin = await loadRawEml(opts.forwardAttachmentsFromMessageId);
-			if (!bin) return;
-			const files = extractAttachments(bin)
-				.filter((a) => a.disposition === 'attachment')
-				.map((a) => new File([a.bytes as BlobPart], a.filename, { type: a.contentType }));
-			if (files.length > 0) await addFiles(files);
-		} catch {
-			// Forward still works without the attachments.
-		}
-	});
-
 	// Release outstanding object URLs when the composer is torn down.
 	onUnmounted(() => {
 		uploader.dispose();
@@ -395,7 +387,7 @@ export function usePostboxComposeAttachments(opts: {
 
 	return {
 		attachments,
-		uploads: uploader.uploads,
+		uploads,
 		isUploading,
 		attachmentSizeMeter,
 		thumbUrlFor,
@@ -403,8 +395,12 @@ export function usePostboxComposeAttachments(opts: {
 		removeAttachment,
 		shareAsLink,
 		isSharing: shareAttachmentOp.isLoading,
-		cancelUpload: uploader.cancel,
-		retryUpload: uploader.retry,
+		cancelUpload: (id: string) => {
+			if (!expected.remove(id)) uploader.cancel(id);
+		},
+		retryUpload: (id: string) => {
+			if (!expected.retry(id)) uploader.retry(id);
+		},
 		addInlineImage,
 		removeInlineImage,
 	};

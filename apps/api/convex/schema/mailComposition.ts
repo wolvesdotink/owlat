@@ -5,6 +5,7 @@ import {
 	mailAttachmentShareScanValidator,
 	mailAttachmentShareScopeValidator,
 	mailDraftAttachmentValidator,
+	mailDraftExpectedAttachmentValidator,
 	mailSnippetVariableValidator,
 } from '../lib/validators/mailContent';
 
@@ -84,6 +85,10 @@ export const mailCompositionTables = {
 		bodyBlocksVersion: v.optional(v.number()),
 
 		attachments: v.array(mailDraftAttachmentValidator),
+		// Files the draft was opened to carry and owes until they are attached
+		// (an RSVP's `.ics`, a forward's attachments). Send refuses while one is
+		// owed. Absent on drafts that never owed one.
+		expectedAttachments: v.optional(v.array(mailDraftExpectedAttachmentValidator)),
 
 		// "Remind me if no reply by…" — carried onto the sent message's thread as
 		// a follow-up watch by the sent-effects reducer (see mail/followUps.ts).
