@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # Reports what a Semgrep scan left unanalysed, from the JSON that
-# `semgrep scan --time --json-output <file>` writes. Used by the SAST job in
-# .github/workflows/security.yml.
+# `semgrep scan --time --json-output <file>` writes. The SAST job in
+# .github/workflows/security.yml runs the scan through this script.
 #
 #   fixpoint timeouts  `time.fixpoint_timeouts`. Taint analysis of one function
 #                      (or of a file's top level) stopped before it finished,
@@ -12,140 +12,240 @@
 #                      not parse fully, a rule that timed out on a file.
 #
 # Both go to stdout and, when GITHUB_STEP_SUMMARY is set, to the job summary.
-# Each fixpoint timeout is also an `::error` annotation on its function; each
-# error-level entry in `errors` is a `::warning` annotation.
+# Each fixpoint timeout is also an annotation on its function; each
+# error-level entry in `errors` is a `::warning` annotation. Errors never fail
+# the check; a fixpoint timeout does.
 #
-# Why a timeout fails the job: Semgrep's taint fixpoint budget is a fixed
-# 0.2 s of *process* CPU time per function (Limits_semgrep.taint_FIXPOINT_TIMEOUT,
-# measured with Sys.time). No CLI option changes it. With several jobs every
-# parallel domain spends that same budget, so the count depended on the job
-# count and the run. The CI scan runs with `--jobs 1`, where the budget is the
-# function's own analysis time and the scan of this repo has no timeouts. A
-# timeout under `--jobs 1` is therefore a real regression: a function too
-# complex for the analysis to finish.
+# The budget: Semgrep stops a function's taint fixpoint after 0.2 s of
+# *process* CPU time (Limits_semgrep.taint_FIXPOINT_TIMEOUT, measured with
+# Sys.time). No CLI option changes it. With several jobs every parallel
+# domain spends that same budget, so the count depended on the job count and
+# the run. The CI scan runs with `--jobs 1`, where the budget is the
+# function's own analysis time and the scan of this repo has no timeouts.
+# A timeout can still happen there without a code change: GC pressure or a
+# slower runner can push a function that sits near the budget over it
+# (Semgrep's own source says as much). So --scan re-runs a scan that was
+# clean except for fixpoint timeouts once, and passes only if the second
+# complete scan has none. Findings fail at once and are never re-run.
 #
-# Usage: check-semgrep-timeouts.sh <semgrep.json>
-# Exit:  0 no fixpoint timeouts, 1 fixpoint timeouts, 2 unusable input.
+# Usage:
+#   check-semgrep-timeouts.sh <semgrep.json>
+#       Check one report.
+#   check-semgrep-timeouts.sh --scan <dir> -- <semgrep scan command...>
+#       Run the command with `--time --json-output <dir>/semgrep.json`
+#       appended, check the report, and re-run once into
+#       <dir>/semgrep-retry.json if fixpoint timeouts were the only problem.
+# Exit:
+#   0 no fixpoint timeouts; 1 fixpoint timeouts; 2 unusable report;
+#   with --scan, a failing scan's own exit code (findings: 1).
 
 set -euo pipefail
 
-if [ "$#" -ne 1 ]; then
-	echo "usage: $0 <semgrep.json>" >&2
-	exit 2
-fi
-report=$1
+# jq helpers. Every value is turned into a string with `tostring`, so a
+# report with unexpected types still yields one finished line per entry.
+#   display  one-line text for the log and the summary: whitespace runs
+#            collapse to a space, other control characters become `?`
+#   data     a workflow-command message (actions/toolkit command.ts)
+#   prop     a workflow-command property
+#   cell     a Markdown table cell: no pipes, no HTML (a `<!--` in a parse
+#            error message would hide the rest of the summary), no code
+#            spans (they would show the HTML escapes)
+JQ_DEFS='
+def display: tostring | gsub("\\s+"; " ") | sub("^ "; "") | sub(" $"; "") | explode | map(if . < 32 or . == 127 then 63 else . end) | implode;
+def data: tostring | gsub("%"; "%25") | gsub("\r"; "%0D") | gsub("\n"; "%0A");
+def prop: data | gsub(":"; "%3A") | gsub(","; "%2C");
+def cell: display | gsub("&"; "&amp;") | gsub("<"; "&lt;") | gsub(">"; "&gt;") | gsub("\\|"; "\\|") | gsub("`"; "'"'"'");
+def timeouts:
+	.time.fixpoint_timeouts[]
+	| ((.message? // "") | tostring) as $m
+	| (($m | capture("\\[rules: (?<n>[0-9]+), first: (?<rule>[^]]+)\\]")) // {n: "?", rule: "?"})
+	+ {
+		path: (.location?.path? // null),
+		line: (.location?.start?.line? // null),
+		scope: (if ($m | test(":1:0 \\[")) then "top-level code" else "function" end)
+	};
+def errors:
+	.errors[]
+	| {
+		level: ((.level? // "error") | tostring),
+		type: ((.type? // "?") | if type == "array" then (.[0] // "?") else . end | display),
+		where: ((.path? // .rule_id? // "-") | display),
+		message: ((.message? // "") | display | .[0:240])
+	};
+'
 
+FAILED_CLOSED=2
+
+# Prints a finding about the report itself and exits 2.
 fail_closed() {
-	echo "::error title=Semgrep report unusable::$1"
+	echo "::error title=Semgrep report unusable::$(printf '%s' "$1" | sed -e 's/%/%25/g')"
 	if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 		printf '## Semgrep scan coverage\n\n**Report unusable:** %s\n' "$1" >>"$GITHUB_STEP_SUMMARY"
 	fi
-	exit 2
+	exit "$FAILED_CLOSED"
 }
 
-[ -s "$report" ] || fail_closed "$report is missing or empty, so the scan's timeouts and errors cannot be checked."
-jq -e 'type == "object"' "$report" >/dev/null 2>&1 ||
-	fail_closed "$report is not a JSON object."
-# Fixpoint timeouts are only reported under `time`, which needs --time. A
-# report without it would read as "no timeouts".
-jq -e '(.time.fixpoint_timeouts | type) == "array" and (.errors | type) == "array"' "$report" >/dev/null ||
-	fail_closed "$report has no time.fixpoint_timeouts or errors array. Run semgrep with --time --json-output."
+# query <report> <program> [jq options...]: runs one jq program (with the
+# helpers above) against the report. Callers route a failure to bad_report.
+query() {
+	local report=$1 program=$2
+	shift 2
+	jq -r "$@" "$JQ_DEFS $program" "$report" 2>/dev/null
+}
 
-# One row per fixpoint timeout: path, line, scope, rule count, first rule.
-# The message reads "... at <path>:<line>:<col> [rules: <n>, first: <rule id>]";
-# position 1:0 is the file's top-level code rather than a function.
-timeouts=$(jq -r '
-	.time.fixpoint_timeouts[]
-	| (.message // "") as $m
-	| ($m | capture("\\[rules: (?<n>[0-9]+), first: (?<rule>[^]]+)\\]") // {n: "?", rule: "?"}) as $r
-	| [(.location.path // "?"),
-	   (.location.start.line // 1 | tostring),
-	   (if ($m | test(":1:0 \\[")) then "top-level code" else "function" end),
-	   $r.n, $r.rule]
-	| @tsv' "$report")
+bad_report() {
+	fail_closed "$1 could not be read as a Semgrep report (jq failed on it)."
+}
 
-# One row per error: level, type, where, message on one line (capped).
-errors=$(jq -r '
-	.errors[]
-	| [(.level // "error"),
-	   (.type | if type == "array" then .[0] else . end | tostring),
-	   (.path // .rule_id // "-"),
-	   ((.message // "") | gsub("\\s+"; " ") | .[0:240])]
-	| @tsv' "$report")
+# check_report <report> <label> <timeout annotation level>
+# Prints the report's coverage; returns 0 without and 1 with fixpoint timeouts.
+check_report() {
+	local report=$1 label=$2 level=$3 heading="## Semgrep scan coverage"
+	if [ -n "$label" ]; then heading="$heading ($label)"; fi
 
-count_lines() { if [ -z "$1" ]; then echo 0; else printf '%s\n' "$1" | wc -l | tr -d ' '; fi; }
-n_timeouts=$(count_lines "$timeouts")
-n_errors=$(count_lines "$(printf '%s\n' "$errors" | awk -F'\t' '$1 == "error"')")
-n_warnings=$(($(count_lines "$errors") - n_errors))
+	[ -s "$report" ] || fail_closed "$report is missing or empty, so the scan's timeouts and errors cannot be checked."
+	# Exactly one JSON object: concatenated documents or invalid JSON fail here.
+	[ "$(jq -s 'length == 1 and (.[0] | type) == "object"' "$report" 2>/dev/null)" = true ] ||
+		fail_closed "$report is not a single JSON object."
+	# Fixpoint timeouts are only reported under `time`, which needs --time. A
+	# report without it would read as "no timeouts".
+	[ "$(query "$report" '(.time.fixpoint_timeouts | type) == "array" and (.errors | type) == "array"')" = true ] ||
+		fail_closed "$report has no time.fixpoint_timeouts or errors array. Run semgrep with --time --json-output."
 
-# Workflow-command values must escape %, CR and LF; properties also , and :.
-escape_data() { printf '%s' "$1" | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | awk 'NR > 1 { printf "%%0A" } { printf "%s", $0 }'; }
-escape_prop() { escape_data "$1" | sed -e 's/:/%3A/g' -e 's/,/%2C/g'; }
-# Markdown table cells: no pipes, no newlines.
-cell() { printf '%s' "$1" | sed -e 's/|/\\|/g'; }
+	local counts n_timeouts n_errors n_warnings
+	counts=$(query "$report" '[([timeouts] | length), ([errors | select(.level == "error")] | length), ([errors] | length)] | @tsv') ||
+		bad_report "$report"
+	IFS=$'\t' read -r n_timeouts n_errors n_warnings <<<"$counts"
+	n_warnings=$((n_warnings - n_errors))
 
-echo "Semgrep scan coverage: $n_timeouts fixpoint timeout(s), $n_errors error(s), $n_warnings warning(s)."
+	echo "Semgrep scan coverage${label:+ ($label)}: $n_timeouts fixpoint timeout(s), $n_errors error(s), $n_warnings warning(s)."
 
-if [ "$n_timeouts" -gt 0 ]; then
-	echo
-	echo "Fixpoint timeouts (taint analysis stopped early; findings in these functions can be missing):"
-	while IFS=$'\t' read -r path line scope n rule; do
-		echo "  $path:$line  $scope, rules: $n, first: $rule"
-		echo "::error file=$(escape_prop "$path"),line=$(escape_prop "$line"),title=Semgrep fixpoint timeout::$(escape_data "Taint analysis of this $scope timed out for $n rule(s) (first: $rule), so their findings here can be missing.")"
-	done <<<"$timeouts"
-fi
-
-if [ -n "$errors" ]; then
-	echo
-	echo "::group::Semgrep errors and warnings ($n_errors error(s), $n_warnings warning(s))"
-	while IFS=$'\t' read -r level type where message; do
-		echo "  [$level] $type  $where  $message"
-	done <<<"$errors"
-	echo "::endgroup::"
-	while IFS=$'\t' read -r level type where message; do
-		[ "$level" = error ] || continue
-		echo "::warning title=Semgrep $(escape_prop "$type")::$(escape_data "$where: $message")"
-	done <<<"$errors"
-fi
-
-if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-	{
-		echo "## Semgrep scan coverage"
+	if [ "$n_timeouts" -gt 0 ]; then
 		echo
-		echo "| | Count |"
-		echo "| --- | --- |"
-		echo "| Fixpoint timeouts | $n_timeouts |"
-		echo "| Errors | $n_errors |"
-		echo "| Warnings | $n_warnings |"
+		echo "Fixpoint timeouts (taint analysis stopped early; findings in these functions can be missing):"
+		query "$report" '
+			timeouts
+			| "  \(.path // "?" | display):\(.line // "?" | display)  \(.scope), rules: \(.n | display), first: \(.rule | display)",
+			  ("::\($level) "
+			   + ([(.path | select(. != null) | "file=\(prop)"),
+			       (.line | select(type == "number") | "line=\(.)"),
+			       "title=Semgrep fixpoint timeout"] | join(","))
+			   + "::"
+			   + ("Taint analysis of this \(.scope) timed out for \(.n) rule(s) (first: \(.rule)), so their findings here can be missing." | data))' \
+			--arg level "$level" || bad_report "$report"
+	fi
+
+	if [ "$((n_errors + n_warnings))" -gt 0 ]; then
+		echo
+		echo "::group::Semgrep errors and warnings ($n_errors error(s), $n_warnings warning(s))"
+		query "$report" 'errors | "  [\(.level | display)] \(.type)  \(.where)  \(.message)"' || bad_report "$report"
+		echo "::endgroup::"
+		query "$report" 'errors | select(.level == "error") | "::warning title=Semgrep \(.type | prop)::\("\(.where): \(.message)" | data)"' ||
+			bad_report "$report"
+	fi
+
+	if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+		local timeout_rows="" error_rows=""
 		if [ "$n_timeouts" -gt 0 ]; then
-			echo
-			echo "### Fixpoint timeouts"
-			echo
-			echo "Taint analysis of these functions stopped before it finished, so taint findings in them can be missing."
-			echo
-			echo "| Location | Scope | Rules | First rule |"
-			echo "| --- | --- | --- | --- |"
-			while IFS=$'\t' read -r path line scope n rule; do
-				echo "| \`$(cell "$path"):$line\` | $scope | $n | \`$(cell "$rule")\` |"
-			done <<<"$timeouts"
+			timeout_rows=$(query "$report" 'timeouts | "| \(.path // "?" | cell):\(.line // "?" | cell) | \(.scope) | \(.n | cell) | \(.rule | cell) |"') ||
+				bad_report "$report"
 		fi
-		if [ -n "$errors" ]; then
-			echo
-			echo "<details><summary>Errors and warnings ($n_errors error(s), $n_warnings warning(s))</summary>"
-			echo
-			echo "| Level | Type | Where | Message |"
-			echo "| --- | --- | --- | --- |"
-			while IFS=$'\t' read -r level type where message; do
-				echo "| $level | $(cell "$type") | \`$(cell "$where")\` | $(cell "$message") |"
-			done <<<"$errors"
-			echo
-			echo "</details>"
+		if [ "$((n_errors + n_warnings))" -gt 0 ]; then
+			error_rows=$(query "$report" 'errors | "| \(.level | cell) | \(.type | cell) | \(.where | cell) | \(.message | cell) |"') ||
+				bad_report "$report"
 		fi
-	} >>"$GITHUB_STEP_SUMMARY"
+		{
+			echo "$heading"
+			echo
+			echo "| | Count |"
+			echo "| --- | --- |"
+			echo "| Fixpoint timeouts | $n_timeouts |"
+			echo "| Errors | $n_errors |"
+			echo "| Warnings | $n_warnings |"
+			if [ -n "$timeout_rows" ]; then
+				echo
+				echo "### Fixpoint timeouts"
+				echo
+				echo "Taint analysis of these functions stopped before it finished, so taint findings in them can be missing."
+				echo
+				echo "| Location | Scope | Rules | First rule |"
+				echo "| --- | --- | --- | --- |"
+				echo "$timeout_rows"
+			fi
+			if [ -n "$error_rows" ]; then
+				echo
+				echo "<details><summary>Errors and warnings ($n_errors error(s), $n_warnings warning(s))</summary>"
+				echo
+				echo "| Level | Type | Where | Message |"
+				echo "| --- | --- | --- | --- |"
+				echo "$error_rows"
+				echo
+				echo "</details>"
+			fi
+			echo
+		} >>"$GITHUB_STEP_SUMMARY"
+	fi
+
+	[ "$n_timeouts" -eq 0 ]
+}
+
+# scan <report> <command...>: runs the scan; returns its exit code.
+scan() {
+	local report=$1
+	shift
+	rm -f "$report"
+	"$@" --time --json-output "$report"
+}
+
+# A scan that failed (findings, or a crash): report what coverage there is,
+# without letting an unusable report replace the scan's own exit code.
+fail_with_scan() {
+	local rc=$1 report=$2 label=$3
+	echo
+	echo "Semgrep exited $rc (findings or a scan failure). Not re-running."
+	if [ -s "$report" ]; then (check_report "$report" "$label" error) || true; fi
+	exit "$rc"
+}
+
+if [ "${1:-}" = --scan ]; then
+	if [ "$#" -lt 4 ] || [ "$3" != -- ]; then
+		echo "usage: $0 --scan <dir> -- <semgrep scan command...>" >&2
+		exit 2
+	fi
+	dir=$2
+	shift 3
+	first="$dir/semgrep.json"
+	retry="$dir/semgrep-retry.json"
+
+	rc=0
+	scan "$first" "$@" || rc=$?
+	[ "$rc" -eq 0 ] || fail_with_scan "$rc" "$first" "first scan"
+	rc=0
+	check_report "$first" "first scan" warning || rc=$?
+	[ "$rc" -eq 0 ] && exit 0
+
+	echo
+	echo "Fixpoint timeouts were the only problem. Re-running the scan once; it passes only without any."
+	rc=0
+	scan "$retry" "$@" || rc=$?
+	[ "$rc" -eq 0 ] || fail_with_scan "$rc" "$retry" "re-run"
+	rc=0
+	check_report "$retry" "re-run" error || rc=$?
+	if [ "$rc" -ne 0 ]; then
+		echo
+		echo "Failing: fixpoint timeouts in two complete scans. See the header of $0."
+	fi
+	exit "$rc"
 fi
 
-if [ "$n_timeouts" -gt 0 ]; then
-	echo
-	echo "Failing: the scan runs with --jobs 1, where this repository has no fixpoint timeouts. See the header of $0."
-	exit 1
+if [ "$#" -ne 1 ]; then
+	echo "usage: $0 <semgrep.json> | --scan <dir> -- <semgrep scan command...>" >&2
+	exit 2
 fi
+rc=0
+check_report "$1" "" error || rc=$?
+if [ "$rc" -ne 0 ]; then
+	echo
+	echo "Failing: fixpoint timeouts. See the header of $0."
+fi
+exit "$rc"

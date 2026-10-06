@@ -1,101 +1,33 @@
 /**
- * Conformance for the Semgrep coverage check (`scripts/check-semgrep-timeouts.sh`).
+ * Conformance for the Semgrep coverage check (`scripts/check-semgrep-timeouts.sh`)
+ * on a single report.
  *
  * The cases run the REAL script against Semgrep `--time --json-output`
  * reports shaped like Semgrep 1.178's and pin what it prints, what it writes
  * to the job summary and how it exits: 1 on a fixpoint timeout, 2 when the
- * report cannot be checked, 0 otherwise. The last case pins the workflow
- * wiring the script's verdict depends on.
+ * report cannot be checked, 0 otherwise. `--scan` mode is covered in
+ * check-semgrep-timeouts.scan.test.ts.
  */
 
-import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
+import {
+	PARTIAL_PARSING,
+	RULE_PARSE_ERROR,
+	check,
+	cleanup,
+	fixpointTimeout,
+	report,
+} from './semgrepTimeouts.testlib';
 
-const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
-const SCRIPT = join(REPOSITORY_ROOT, 'scripts/check-semgrep-timeouts.sh');
-const run = promisify(execFile);
+afterAll(cleanup);
 
-const roots: string[] = [];
+const REACT_RULE =
+	'typescript.react.security.audit.react-unsanitized-method.react-unsanitized-method';
+const RAW_HTML_RULE = 'javascript.express.security.injection.raw-html-format.raw-html-format';
 
-afterAll(async () => {
-	await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
-	roots.length = 0;
-});
-
-function fixpointTimeout(path: string, line: number, col: number, rules: number, first: string) {
-	return {
-		error_type: 'Fixpoint timeout',
-		severity: 'warn',
-		message: `Fixpoint timeout while performing taint analysis at ${path}:${line}:${col} [rules: ${rules}, first: ${first}]`,
-		location: {
-			path,
-			start: { line, col: col + 1, offset: 0 },
-			end: { line, col: col + 1, offset: 0 },
-		},
-	};
-}
-
-const RULE_PARSE_ERROR = {
-	code: 2,
-	level: 'error',
-	type: 'Rule parse error',
-	rule_id: 'webhook-signature-presence-only',
-	message:
-		'Rule parse error in rule webhook-signature-presence-only:\n Invalid pattern for TypeScript: Stdlib.Parsing.Parse_error\n----- pattern -----\n$X = $FN(...) {\n}\n',
-};
-
-const PARTIAL_PARSING = {
-	code: 3,
-	level: 'warn',
-	type: [
-		'PartialParsing',
-		[{ path: 'apps/api/convex/mail/outboundCron.ts', start: { line: 63, col: 1, offset: 0 } }],
-	],
-	message:
-		"Syntax error at line apps/api/convex/mail/outboundCron.ts:63:\n `import('x')` was unexpected",
-	path: 'apps/api/convex/mail/outboundCron.ts',
-};
-
-function report({
-	timeouts = [] as unknown[],
-	errors = [] as unknown[],
-}: { timeouts?: unknown[]; errors?: unknown[] } = {}) {
-	return JSON.stringify({
-		results: [],
-		errors,
-		paths: { scanned: [] },
-		time: { fixpoint_timeouts: timeouts, targets: [], total_bytes: 0, max_memory_bytes: 0 },
-	});
-}
-
-async function check(
-	contents: string | null,
-	{ summary = true }: { summary?: boolean } = {}
-): Promise<{ code: number; stdout: string; summary: string }> {
-	const root = await mkdtemp(join(tmpdir(), 'owlat-semgrep-check-'));
-	roots.push(root);
-	const reportPath = join(root, 'semgrep.json');
-	if (contents !== null) await writeFile(reportPath, contents, 'utf8');
-	const summaryPath = join(root, 'summary.md');
-	const env: NodeJS.ProcessEnv = { ...process.env };
-	delete env['GITHUB_STEP_SUMMARY'];
-	if (summary) env['GITHUB_STEP_SUMMARY'] = summaryPath;
-	let code = 0;
-	let stdout: string;
-	try {
-		({ stdout } = await run('bash', [SCRIPT, reportPath], { env }));
-	} catch (error) {
-		const failed = error as { code: number; stdout: string };
-		code = failed.code;
-		stdout = failed.stdout;
-	}
-	const written = await readFile(summaryPath, 'utf8').catch(() => '');
-	return { code, stdout, summary: written };
+/** Lines that GitHub would read as workflow commands. */
+function commands(stdout: string): string[] {
+	return stdout.split('\n').filter((line) => line.startsWith('::'));
 }
 
 describe('check-semgrep-timeouts', () => {
@@ -103,7 +35,7 @@ describe('check-semgrep-timeouts', () => {
 		const result = await check(report());
 		expect(result.code).toBe(0);
 		expect(result.stdout).toContain('0 fixpoint timeout(s), 0 error(s), 0 warning(s)');
-		expect(result.stdout).not.toContain('::error');
+		expect(commands(result.stdout)).toEqual([]);
 		expect(result.summary).toContain('| Fixpoint timeouts | 0 |');
 		expect(result.summary).not.toContain('### Fixpoint timeouts');
 	});
@@ -117,32 +49,24 @@ describe('check-semgrep-timeouts', () => {
 						91,
 						22,
 						1,
-						'typescript.react.security.audit.react-unsanitized-method.react-unsanitized-method'
+						REACT_RULE
 					),
-					fixpointTimeout(
-						'apps/api/convex/contacts/import.ts',
-						1,
-						0,
-						2,
-						'javascript.express.security.injection.raw-html-format.raw-html-format'
-					),
+					fixpointTimeout('apps/api/convex/contacts/import.ts', 1, 0, 2, RAW_HTML_RULE),
 				],
 			})
 		);
 		expect(result.code).toBe(1);
 		expect(result.stdout).toContain('2 fixpoint timeout(s)');
-		expect(result.stdout).toContain(
-			'::error file=apps/api/convex/agent/steps/context_retrieval/index.ts,line=91,title=Semgrep fixpoint timeout::Taint analysis of this function timed out for 1 rule(s) (first: typescript.react.security.audit.react-unsanitized-method.react-unsanitized-method)'
-		);
-		expect(result.stdout).toContain(
-			'::error file=apps/api/convex/contacts/import.ts,line=1,title=Semgrep fixpoint timeout::Taint analysis of this top-level code timed out for 2 rule(s)'
-		);
+		expect(commands(result.stdout)).toEqual([
+			`::error file=apps/api/convex/agent/steps/context_retrieval/index.ts,line=91,title=Semgrep fixpoint timeout::Taint analysis of this function timed out for 1 rule(s) (first: ${REACT_RULE}), so their findings here can be missing.`,
+			`::error file=apps/api/convex/contacts/import.ts,line=1,title=Semgrep fixpoint timeout::Taint analysis of this top-level code timed out for 2 rule(s) (first: ${RAW_HTML_RULE}), so their findings here can be missing.`,
+		]);
 		expect(result.summary).toContain('| Fixpoint timeouts | 2 |');
 		expect(result.summary).toContain(
-			'| `apps/api/convex/agent/steps/context_retrieval/index.ts:91` | function | 1 | `typescript.react.security.audit.react-unsanitized-method.react-unsanitized-method` |'
+			`| apps/api/convex/agent/steps/context_retrieval/index.ts:91 | function | 1 | ${REACT_RULE} |`
 		);
 		expect(result.summary).toContain(
-			'| `apps/api/convex/contacts/import.ts:1` | top-level code | 2 | `javascript.express.security.injection.raw-html-format.raw-html-format` |'
+			`| apps/api/convex/contacts/import.ts:1 | top-level code | 2 | ${RAW_HTML_RULE} |`
 		);
 	});
 
@@ -151,48 +75,90 @@ describe('check-semgrep-timeouts', () => {
 		expect(result.code).toBe(0);
 		expect(result.stdout).toContain('0 fixpoint timeout(s), 1 error(s), 1 warning(s)');
 		expect(result.stdout).toContain(
-			'::warning title=Semgrep Rule parse error::webhook-signature-presence-only: Rule parse error in rule webhook-signature-presence-only: Invalid pattern for TypeScript'
+			"  [warn] PartialParsing  apps/api/convex/mail/outboundCron.ts  Syntax error at line apps/api/convex/mail/outboundCron.ts:63: `import('x')` was unexpected\n"
 		);
-		expect(result.stdout).toContain(
-			'[warn] PartialParsing  apps/api/convex/mail/outboundCron.ts  Syntax error at line'
-		);
-		expect(result.stdout.match(/::warning/g)).toHaveLength(1);
+		expect(commands(result.stdout)).toEqual([
+			'::group::Semgrep errors and warnings (1 error(s), 1 warning(s))',
+			'::endgroup::',
+			'::warning title=Semgrep Rule parse error::webhook-signature-presence-only: Rule parse error in rule webhook-signature-presence-only: Invalid pattern for TypeScript: Stdlib.Parsing.Parse_error ----- pattern ----- $X = $FN(...) { }',
+		]);
 		expect(result.summary).toContain('| Errors | 1 |');
 		expect(result.summary).toContain('| Warnings | 1 |');
 		expect(result.summary).toContain(
-			'| warn | PartialParsing | `apps/api/convex/mail/outboundCron.ts` |'
+			"| warn | PartialParsing | apps/api/convex/mail/outboundCron.ts | Syntax error at line apps/api/convex/mail/outboundCron.ts:63: 'import('x')' was unexpected |"
 		);
 	});
 
-	it('escapes workflow-command and table metacharacters', async () => {
+	it('escapes annotation properties from the raw path: %, CR, LF, comma, colon; tab and backslash stay', async () => {
+		const path = 'apps/a%b\r\nc\td\\e,f:g.ts';
+		const result = await check(report({ timeouts: [fixpointTimeout(path, 7, 2, 1, 'rule%x')] }));
+		expect(result.code).toBe(1);
+		expect(commands(result.stdout)).toEqual([
+			'::error file=apps/a%25b%0D%0Ac\td\\e%2Cf%3Ag.ts,line=7,title=Semgrep fixpoint timeout::Taint analysis of this function timed out for 1 rule(s) (first: rule%25x), so their findings here can be missing.',
+		]);
+		// The log line and the summary row stay on one line.
+		expect(result.stdout).toContain(
+			'  apps/a%b c d\\e,f:g.ts:7  function, rules: 1, first: rule%x\n'
+		);
+		expect(result.summary).toContain('| apps/a%b c d\\e,f:g.ts:7 | function | 1 | rule%x |');
+	});
+
+	it('never lets report text start a workflow command', async () => {
+		const injected = 'x.ts\n::warning::injected';
 		const result = await check(
 			report({
-				timeouts: [fixpointTimeout('apps/a,b:c.ts', 7, 2, 1, 'rule.with|pipe')],
-				errors: [{ ...RULE_PARSE_ERROR, message: '100% broken | twice' }],
+				timeouts: [fixpointTimeout(injected, 3, 0, 1, 'rule')],
+				errors: [{ ...RULE_PARSE_ERROR, rule_id: injected, message: 'a\n::error::injected\rb' }],
 			})
 		);
 		expect(result.code).toBe(1);
-		expect(result.stdout).toContain('::error file=apps/a%2Cb%3Ac.ts,line=7,');
-		expect(result.stdout).toContain('webhook-signature-presence-only: 100%25 broken | twice');
-		expect(result.summary).toContain('| `apps/a,b:c.ts:7` | function | 1 | `rule.with\\|pipe` |');
-		expect(result.summary).toContain('100% broken \\| twice');
+		expect(result.stdout).not.toMatch(/^::(warning|error)::injected/m);
+		expect(commands(result.stdout)).toEqual([
+			'::error file=x.ts%0A%3A%3Awarning%3A%3Ainjected,line=3,title=Semgrep fixpoint timeout::Taint analysis of this function timed out for 1 rule(s) (first: rule), so their findings here can be missing.',
+			'::group::Semgrep errors and warnings (1 error(s), 0 warning(s))',
+			'::endgroup::',
+			'::warning title=Semgrep Rule parse error::x.ts ::warning::injected: a ::error::injected b',
+		]);
 	});
 
-	it('still reports a timeout whose message it cannot parse', async () => {
+	it('keeps pipes and HTML out of the summary table', async () => {
+		const result = await check(
+			report({
+				timeouts: [fixpointTimeout('apps/a|b.ts', 7, 2, 1, 'rule.with|pipe')],
+				errors: [{ ...PARTIAL_PARSING, message: 'Syntax error: `/<!--|<(script)/g` & more' }],
+			})
+		);
+		expect(result.summary).toContain('| apps/a\\|b.ts:7 | function | 1 | rule.with\\|pipe |');
+		expect(result.summary).toContain("Syntax error: '/&lt;!--\\|&lt;(script)/g' &amp; more |");
+		expect(result.summary).not.toContain('<!--');
+	});
+
+	it('handles entries with unexpected types instead of failing on them', async () => {
 		const result = await check(
 			report({
 				timeouts: [
+					{ message: 42, location: 'nowhere' },
+					42,
 					{
-						error_type: 'Fixpoint timeout',
-						severity: 'warn',
-						message: 'Fixpoint timeout while performing svalue-propagation',
-						location: { path: 'apps/x.ts', start: { line: 3, col: 1, offset: 0 } },
+						...fixpointTimeout('apps/x.ts', 3, 0, 1, 'rule'),
+						location: { path: 9, start: { line: '3' } },
 					},
 				],
+				errors: [{ level: 'error', type: 7, message: 42, path: ['a'] }, 'oops'],
 			})
 		);
 		expect(result.code).toBe(1);
-		expect(result.stdout).toContain('apps/x.ts:3  function, rules: ?, first: ?');
+		expect(result.stdout).toContain('3 fixpoint timeout(s), 2 error(s), 0 warning(s)');
+		expect(commands(result.stdout)).toEqual([
+			'::error title=Semgrep fixpoint timeout::Taint analysis of this function timed out for ? rule(s) (first: ?), so their findings here can be missing.',
+			'::error title=Semgrep fixpoint timeout::Taint analysis of this function timed out for ? rule(s) (first: ?), so their findings here can be missing.',
+			'::error file=9,title=Semgrep fixpoint timeout::Taint analysis of this function timed out for 1 rule(s) (first: rule), so their findings here can be missing.',
+			'::group::Semgrep errors and warnings (2 error(s), 0 warning(s))',
+			'::endgroup::',
+			'::warning title=Semgrep 7::["a"]: 42',
+			'::warning title=Semgrep ?::-: ',
+		]);
+		expect(result.summary).toContain('| Fixpoint timeouts | 3 |');
 	});
 
 	it('works without a job summary', async () => {
@@ -204,7 +170,9 @@ describe('check-semgrep-timeouts', () => {
 	it.each([
 		['a missing report', null, 'is missing or empty'],
 		['an empty report', '', 'is missing or empty'],
-		['invalid JSON', '{"errors": [', 'is not a JSON object'],
+		['invalid JSON', '{"errors": [', 'is not a single JSON object'],
+		['two concatenated reports', report() + report(), 'is not a single JSON object'],
+		['a JSON array', '[]', 'is not a single JSON object'],
 		[
 			'a report without --time',
 			JSON.stringify({ results: [], errors: [] }),
@@ -215,28 +183,14 @@ describe('check-semgrep-timeouts', () => {
 			JSON.stringify({ time: { fixpoint_timeouts: [] } }),
 			'Run semgrep with --time',
 		],
+		['a non-object time', JSON.stringify({ time: 'x', errors: [] }), 'Run semgrep with --time'],
 	])('fails closed on %s', async (_label, contents, message) => {
 		const result = await check(contents);
 		expect(result.code).toBe(2);
-		expect(result.stdout).toContain('::error title=Semgrep report unusable::');
+		expect(commands(result.stdout)).toEqual([
+			expect.stringMatching(/^::error title=Semgrep report unusable::/),
+		]);
 		expect(result.stdout).toContain(message);
 		expect(result.summary).toContain('**Report unusable:**');
-	});
-
-	it('is wired to a single-job scan that writes the report it reads', async () => {
-		const workflow = await readFile(
-			join(REPOSITORY_ROOT, '.github/workflows/security.yml'),
-			'utf8'
-		);
-		const scan = workflow.slice(workflow.indexOf('- name: Semgrep scan'));
-		const scanStep = scan.slice(0, scan.indexOf('- name:', 1));
-		expect(scanStep).toMatch(/^\s+--jobs 1$/m);
-		expect(scanStep).toMatch(/^\s+--time --json-output "\$RUNNER_TEMP\/semgrep\.json"$/m);
-		const checkStep = scan.slice(scan.indexOf('- name: Check Semgrep coverage'));
-		expect(scanStep).toMatch(/^\s+id: scan$/m);
-		expect(checkStep).toContain("if: ${{ !cancelled() && steps.scan.outcome != 'skipped' }}");
-		expect(checkStep).toContain(
-			'run: bash scripts/check-semgrep-timeouts.sh "$RUNNER_TEMP/semgrep.json"'
-		);
 	});
 });

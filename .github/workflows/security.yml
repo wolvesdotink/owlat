@@ -78,14 +78,16 @@ jobs:
       # process CPU time (not configurable). With parallel jobs every worker's
       # CPU time counts against that budget, so functions timed out at random
       # and their findings went missing. One job gives each function the full
-      # budget. `--time --json-output` keeps the text report in the log and
-      # writes the timeouts for the next step.
+      # budget. The scan runs through check-semgrep-timeouts.sh, which adds
+      # `--time --json-output`, reports fixpoint timeouts and scan errors in
+      # the log and the job summary (Semgrep's exit code ignores both), and
+      # fails on fixpoint timeouts. A scan whose only problem is fixpoint
+      # timeouts is re-run once; findings fail at once.
       - name: Semgrep scan
-        id: scan
         run: >-
+          bash scripts/check-semgrep-timeouts.sh --scan "$RUNNER_TEMP" --
           semgrep scan --error
           --jobs 1
-          --time --json-output "$RUNNER_TEMP/semgrep.json"
           --config p/javascript
           --config p/typescript
           --config p/nodejs
@@ -93,13 +95,6 @@ jobs:
           --config p/security-audit
           --config p/secrets
           --config .semgrep.yml
-
-      # Fixpoint timeouts and scan errors do not change Semgrep's exit code.
-      # Report them in the log and the job summary; fail on a fixpoint timeout.
-      # Runs after a scan that failed on findings too, not after a skipped one.
-      - name: Check Semgrep coverage
-        if: ${{ !cancelled() && steps.scan.outcome != 'skipped' }}
-        run: bash scripts/check-semgrep-timeouts.sh "$RUNNER_TEMP/semgrep.json"
 
   secrets:
     name: Secret scan (gitleaks)
