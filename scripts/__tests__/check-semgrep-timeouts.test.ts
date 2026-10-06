@@ -233,7 +233,8 @@ describe('check-semgrep-timeouts', () => {
 		expect(scanStep).toMatch(/^\s+--jobs 1$/m);
 		expect(scanStep).toMatch(/^\s+--time --json-output "\$RUNNER_TEMP\/semgrep\.json"$/m);
 		const checkStep = scan.slice(scan.indexOf('- name: Check Semgrep coverage'));
-		expect(checkStep).toContain('if: ${{ !cancelled() }}');
+		expect(scanStep).toMatch(/^\s+id: scan$/m);
+		expect(checkStep).toContain("if: ${{ !cancelled() && steps.scan.outcome != 'skipped' }}");
 		expect(checkStep).toContain(
 			'run: bash scripts/check-semgrep-timeouts.sh "$RUNNER_TEMP/semgrep.json"'
 		);

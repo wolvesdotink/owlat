@@ -81,6 +81,7 @@ jobs:
       # budget. `--time --json-output` keeps the text report in the log and
       # writes the timeouts for the next step.
       - name: Semgrep scan
+        id: scan
         run: >-
           semgrep scan --error
           --jobs 1
@@ -95,8 +96,9 @@ jobs:
 
       # Fixpoint timeouts and scan errors do not change Semgrep's exit code.
       # Report them in the log and the job summary; fail on a fixpoint timeout.
+      # Runs after a scan that failed on findings too, not after a skipped one.
       - name: Check Semgrep coverage
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.scan.outcome != 'skipped' }}
         run: bash scripts/check-semgrep-timeouts.sh "$RUNNER_TEMP/semgrep.json"
 
   secrets:
