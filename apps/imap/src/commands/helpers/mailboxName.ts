@@ -49,31 +49,24 @@ export function encodeMailboxName(name: string): string {
 
 const MODIFIED_BASE64 = /^[A-Za-z0-9+,]+$/;
 
-/**
- * The text a modified base64 run stands for, or null when the run is not
- * one an encoder writes: it must hold whole UTF-16 code units with zero
- * padding bits (re-encoding gives the same run back), and none of them may
- * be printable ASCII, which RFC 3501 §5.1.3 requires to stand for itself.
- */
+/** The UTF-16 code units a modified base64 run holds, or null when it holds no whole ones. */
 function decodeUnits(run: string): string | null {
 	if (!MODIFIED_BASE64.test(run)) return null;
 	const bytes = Buffer.from(run.replace(/,/g, '/'), 'base64');
 	if (bytes.length < 2 || bytes.length % 2 !== 0) return null;
-	const units: number[] = [];
 	let text = '';
-	for (let i = 0; i < bytes.length; i += 2) {
-		const unit = bytes.readUInt16BE(i);
-		if (isPrintableAscii(unit)) return null;
-		units.push(unit);
-		text += String.fromCharCode(unit);
-	}
-	return encodeUnits(units) === run ? text : null;
+	for (let i = 0; i < bytes.length; i += 2) text += String.fromCharCode(bytes.readUInt16BE(i));
+	return text;
 }
 
 /**
- * Decode a mailbox name from a client command, or null when it is not valid
- * modified UTF-7: a char outside printable ASCII, an `&` with no closing `-`,
- * or a base64 run {@link decodeUnits} refuses.
+ * Decode a mailbox name from a client command, or null when it is not
+ * modified UTF-7 exactly as {@link encodeMailboxName} writes it. That is the
+ * only form RFC 3501 §5.1.3 allows: printable ASCII never inside a base64
+ * run, no two runs side by side, zero padding bits. Re-encoding the decoded
+ * name must give the input back, so every name has one encoded form and a
+ * stored name that only looks encoded, such as `&ANw-&AOQ-`, is never read as
+ * a different one.
  */
 export function decodeMailboxName(wire: string): string | null {
 	let out = '';
@@ -94,7 +87,7 @@ export function decodeMailboxName(wire: string): string | null {
 		out += text;
 		i = end + 1;
 	}
-	return out;
+	return encodeMailboxName(out) === wire ? out : null;
 }
 
 /**

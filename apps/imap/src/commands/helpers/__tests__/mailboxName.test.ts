@@ -50,14 +50,15 @@ describe('encodeMailboxName (RFC 3501 §5.1.3)', () => {
 });
 
 describe('decodeMailboxName', () => {
-	it('reads `&-` as `&` and adjacent base64 runs one after the other', () => {
+	it('reads `&-` as `&`, also right after a base64 run', () => {
 		expect(decodeMailboxName('&-')).toBe('&');
-		expect(decodeMailboxName('&ANw-&AOQ-')).toBe('Üä');
+		expect(decodeMailboxName('&ANw-&-')).toBe('Ü&');
 	});
 
 	it.each([
 		['an `&` with no closing `-`', 'AT&T'],
 		['a run that encodes printable ASCII', '&AGE-'],
+		['two base64 runs side by side', '&ANw-&AOQ-'],
 		['non-zero padding bits', '&ANx-'],
 		['a run too short for one code unit', '&AN-'],
 		['a run with a stray sextet', '&ANwA-'],
@@ -77,6 +78,9 @@ describe('mailboxNameFromClient', () => {
 	it('takes a name that is not modified UTF-7 as sent', () => {
 		expect(mailboxNameFromClient('AT&T')).toBe('AT&T');
 		expect(mailboxNameFromClient('Übersicht')).toBe('Übersicht');
+		// Not the encoder's form of `Üä` (that is `&ANwA5A-`), so it is a name.
+		expect(mailboxNameFromClient('&ANw-&AOQ-')).toBe('&ANw-&AOQ-');
+		expect(mailboxNameFromClient('&ANwA5A-')).toBe('Üä');
 	});
 });
 

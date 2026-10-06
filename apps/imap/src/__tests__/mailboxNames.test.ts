@@ -64,7 +64,12 @@ const config: ImapConfig = {
 	authRateLimit: { failuresPerWindow: 5, windowMs: 60_000, tarpitMs: 900_000 },
 };
 
-/** The issue's names, a few more that need encoding, and one with a line break. */
+/**
+ * The issue's names, a few more that need encoding, and one with a line
+ * break. Then names that differ only in case, a stored name that only looks
+ * encoded next to the name it would decode to, and ASCII names for the
+ * case-folded lookup.
+ */
 const NAMES = [
 	'Projekte "Q4"',
 	'Ablage\\2026',
@@ -73,7 +78,15 @@ const NAMES = [
 	'R&D',
 	'Ablage/Übersicht',
 	'Alt\r\nName',
+	'übersicht',
+	'&ANw-&AOQ-',
+	'Üä',
+	'Receipts',
+	'Notes',
+	'NOTES',
 ];
+
+const folderNamed = (name: string): FolderRow => FOLDERS.find((f) => f.name === name)!;
 
 const FOLDERS: FolderRow[] = [
 	{ _id: 'f-inbox', name: 'INBOX', role: 'inbox', subscribed: true },
@@ -96,13 +109,30 @@ function makeConvex() {
 				const folder = FOLDERS.find((f) => f._id === args['folderId']);
 				return folder ? { folder } : null;
 			}
+			// INBOX holds one message, UID 1, for COPY and MOVE to take.
 			case 'mail/imap/fetch:listFolderUidsPage':
-				return { uids: [], nextUid: null };
+				return {
+					uids: args['folderId'] === 'f-inbox' && !args['afterUid'] ? [1] : [],
+					nextUid: null,
+				};
+			case 'mail/imap/fetch:resolveMessageIdsByUid':
+				return {
+					rows: args['folderId'] === 'f-inbox' ? [{ _id: 'm1', uid: 1, modseq: 1 }] : [],
+					nextUid: null,
+				};
 			default:
 				return null;
 		}
 	});
-	const mutation = vi.fn(async () => undefined);
+	const mutation = vi.fn(async (ref: AnyFunctionReference) => {
+		switch (getFunctionName(ref)) {
+			case 'mail/imap/move:copyMessages':
+			case 'mail/imap/move:moveMessages':
+				return { uidValidity: 1, pairs: [{ sourceUid: 1, targetUid: 1 }] };
+			default:
+				return undefined;
+		}
+	});
 	const action = vi.fn(async () => ({ mailboxId: 'mb1', appPasswordId: 'ap1', userId: 'u1' }));
 	return { query, mutation, action };
 }
@@ -271,18 +301,93 @@ describe('STATUS mailbox names', () => {
 	});
 });
 
+/** The target folder of each COPY or MOVE, by mutation call. */
+function targetIds(convex: ReturnType<typeof makeConvex>, verb: 'copy' | 'move'): unknown[] {
+	return convex.mutation.mock.calls
+		.filter(([ref]) => getFunctionName(ref) === `mail/imap/move:${verb}Messages`)
+		.map((call) => (call as unknown as [unknown, Record<string, unknown>])[1]['targetFolderId']);
+}
+
+describe('names that differ only in case or in how they are encoded', () => {
+	/** Each pair: the name LIST writes, and the stored name it must reach. */
+	const PAIRS: Array<[string, string]> = [
+		['"&ANw-bersicht"', 'Übersicht'],
+		['"&APw-bersicht"', 'übersicht'],
+		['"&-ANw-&-AOQ-"', '&ANw-&AOQ-'],
+		['"&ANwA5A-"', 'Üä'],
+	];
+
+	it('LIST writes each of them in a form of its own', async () => {
+		const { socket } = await loggedIn();
+		const out = await exchange(socket, 'a1', 'a1 LIST "" "*"');
+		for (const [wire] of PAIRS) {
+			expect(out.filter((l) => l.endsWith(` "/" ${wire}`))).toHaveLength(1);
+		}
+	});
+
+	it('SELECT with each listed name opens its own folder', async () => {
+		const { socket, convex } = await loggedIn();
+		for (const [i, [wire]] of PAIRS.entries()) {
+			const out = await exchange(socket, `s${i}`, `s${i} SELECT ${wire}`);
+			expect(out.at(-1)).toBe(`s${i} OK [READ-WRITE] SELECT completed`);
+		}
+		expect(selectedIds(convex)).toEqual(PAIRS.map(([, name]) => folderNamed(name)._id));
+	});
+
+	it.each(['COPY', 'MOVE'] as const)(
+		'%s with each listed name lands in its own folder',
+		async (verb) => {
+			const targets: unknown[] = [];
+			for (const [wire] of PAIRS) {
+				const { socket, convex } = await loggedIn();
+				await exchange(socket, 's1', 's1 SELECT INBOX');
+				const out = await exchange(socket, 'c1', `c1 ${verb} 1 ${wire}`);
+				expect(out.at(-1)).toMatch(new RegExp(`^c1 OK .*${verb} completed$`));
+				targets.push(...targetIds(convex, verb === 'COPY' ? 'copy' : 'move'));
+			}
+			expect(targets).toEqual(PAIRS.map(([, name]) => folderNamed(name)._id));
+		}
+	);
+
+	it('a stored name that only looks encoded is reached by its raw form too', async () => {
+		const { socket, convex } = await loggedIn();
+		const out = await exchange(socket, 's1', 's1 SELECT "&ANw-&AOQ-"');
+		expect(out.at(-1)).toBe('s1 OK [READ-WRITE] SELECT completed');
+		expect(selectedIds(convex)).toEqual([folderNamed('&ANw-&AOQ-')._id]);
+	});
+});
+
 describe('resolveFolderByName (SELECT, EXAMINE, STATUS, APPEND, COPY, MOVE)', () => {
 	const convex = { query: async () => FOLDERS } as unknown as ConvexClient;
 
 	it.each([
 		['&ANw-bersicht', 'Übersicht'],
-		['&ANw-BERSICHT', 'Übersicht'],
+		['&APw-bersicht', 'übersicht'],
 		['Ablage/&ANw-bersicht', 'Ablage/Übersicht'],
 		['R&-D', 'R&D'],
 		['&2D3cwQ- Mail', '📁 Mail'],
+		['&ANwA5A-', 'Üä'],
+		['&ANw-&AOQ-', '&ANw-&AOQ-'],
+		['&-ANw-&-AOQ-', '&ANw-&AOQ-'],
 		['inbox', 'INBOX'],
+		['InBox', 'INBOX'],
+		// ASCII names still match with A-Z folded, when one folder matches.
+		['receipts', 'Receipts'],
+		['NOTES', 'NOTES'],
+		['Notes', 'Notes'],
 	])('%j → %j', async (wire, name) => {
 		const folder = await resolveFolderByName(convex, 'mb1', wire);
 		expect(folder?.name).toBe(name);
+	});
+
+	it.each([
+		// An encoded run is case-sensitive; ÜBERSICHT is no folder.
+		['&ANw-BERSICHT'],
+		// A non-ASCII name is matched as written, never case-folded.
+		['ÜBERSICHT'],
+		// Two folders fold to `notes`: no fold picks between them.
+		['notes'],
+	])('%j → no folder', async (wire) => {
+		expect(await resolveFolderByName(convex, 'mb1', wire)).toBeNull();
 	});
 });
