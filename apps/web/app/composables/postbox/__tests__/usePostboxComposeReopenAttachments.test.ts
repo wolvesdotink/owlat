@@ -10,6 +10,11 @@
  * the row's files join the one added meanwhile, and an upload that lands after
  * the row already showed it is not added twice (`onCommitted`).
  *
+ * An inline body image is on the row too, but it renders in the body: neither
+ * hydration nor the row-follow shows it as a file chip, so a reopen no longer
+ * offers a chip whose removal would break the body. It stays on the row, and
+ * the send (built from the row) still carries it.
+ *
  * These run the real composer, hydration, attachment and row-follow code
  * against a small in-memory row; only the upload's XHR is replaced.
  */
@@ -113,6 +118,8 @@ let rowAnswered: boolean;
 let holdAttach: boolean;
 let releaseAttach: () => void;
 let removeAttachment: ReturnType<typeof vi.fn>;
+/** The row's attachments when `drafts.send` was called: what the message carries. */
+let sentWith: RowAttachment[] | null;
 
 /** A Convex query update: the subscription sees the row before any mutation resolves. */
 function publish() {
@@ -131,6 +138,7 @@ beforeEach(() => {
 	};
 	rowAnswered = false;
 	holdAttach = false;
+	sentWith = null;
 	draftQuery = queryResult<unknown>(undefined);
 
 	const addAttachment = (args: RowAttachment) => {
@@ -162,6 +170,10 @@ beforeEach(() => {
 		'drafts.addAttachment': addAttachment as never,
 		'drafts.removeAttachment': removeAttachment as never,
 		'drafts.update': async () => ({ ok: true, result: { savedAt: 200 } }),
+		'drafts.send': async () => {
+			sentWith = row.attachments.map((a) => ({ ...a }));
+			return { ok: true, result: { undoToken: 'tok', sendAt: 1 } };
+		},
 	};
 	vi.stubGlobal('useBackendOperation', (name: string) => ({
 		run: ops[name] ?? vi.fn(async () => ({ ok: true, result: {} })),
@@ -294,5 +306,94 @@ describe('usePostboxCompose: a reopened draft shows its own attachments (#1272)'
 		await rowLoads();
 
 		expect(shown(composer)).toEqual(['contract.pdf', 'notes.txt']);
+	});
+});
+
+describe('usePostboxCompose: a reopened draft never shows an inline body image as a chip', () => {
+	it('shows no chip for a draft whose only part is an inline image', async () => {
+		row.attachments = [LOGO];
+		const composer = await reopen();
+		await rowLoads();
+
+		expect(composer.draftNotice.value).toBeNull();
+		expect(composer.attachments.value).toEqual([]);
+		expect(composer.attachmentSizeMeter.value.totalBytes).toBe(0);
+	});
+
+	it('shows the files beside an inline image, and removing one leaves the image alone', async () => {
+		row.attachments = [CONTRACT, LOGO, SCHEDULE];
+		const composer = await reopen();
+		await rowLoads();
+		expect(shown(composer)).toEqual(['contract.pdf', 'schedule.xlsx']);
+
+		await composer.removeAttachment(CONTRACT.storageId);
+		await flush();
+
+		expect(removeAttachment).toHaveBeenCalledOnce();
+		expect(removeAttachment).toHaveBeenCalledWith({
+			draftId: 'draft-1',
+			storageId: CONTRACT.storageId,
+		});
+		expect(shown(composer)).toEqual(['schedule.xlsx']);
+		expect(row.attachments).toEqual([LOGO, SCHEDULE]);
+	});
+
+	it('still sends the inline image: it stays on the row the send is built from', async () => {
+		row.attachments = [CONTRACT, LOGO];
+		const composer = await reopen();
+		await rowLoads();
+		expect(shown(composer)).toEqual(['contract.pdf']);
+
+		await composer.send();
+
+		expect(sentWith).toEqual([CONTRACT, LOGO]);
+	});
+
+	it('leaves the inline image out of the list hydration fills, before the chips follow the row', async () => {
+		const { usePostboxComposeHydration } = await import('../usePostboxComposeHydration');
+		const attachments = ref<Array<{ storageId: string }>>([]);
+		const field = <T>(value: T) => ref(value) as never;
+		withSetup(() =>
+			usePostboxComposeHydration(
+				ref('draft-1' as never),
+				{
+					toAddresses: field([]),
+					ccAddresses: field([]),
+					bccAddresses: field([]),
+					subject: field(''),
+					bodyHtml: field(''),
+					bodyBlocks: field([]),
+					fromAddress: field(''),
+					composerMode: field('simple'),
+					draftState: field('draft'),
+					scheduledSendAt: field(null),
+					followUpRemindAt: field(null),
+					attachments: attachments as never,
+					lastSavedAt: field(null),
+					isGapGuarded: field(false),
+				},
+				{
+					state: ref('loading'),
+					touched: { isTouched: () => false, applying: (fn: () => void) => fn() } as never,
+					shouldMerge: () => true,
+					latestRow: ref({ status: 'unknown' }),
+				}
+			)
+		);
+		row.attachments = [CONTRACT, LOGO];
+		await rowLoads();
+
+		expect(attachments.value.map((a) => a.storageId)).toEqual([CONTRACT.storageId]);
+	});
+
+	it('drops an inline image an earlier offline-queued send carried as a chip', async () => {
+		// A payload queued before inline parts were left out of the chips.
+		const { isInline: _isInline, contentId: _contentId, ...logoChip } = LOGO;
+		row.attachments = [CONTRACT, LOGO];
+		const composer = await reopen({ prefillAttachments: [CONTRACT, logoChip] });
+		await rowLoads();
+
+		expect(shown(composer)).toEqual(['contract.pdf']);
+		expect(row.attachments).toEqual([CONTRACT, LOGO]);
 	});
 });
