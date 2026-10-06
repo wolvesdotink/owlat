@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	classifySecureMessage,
 	classifyRawSecureMessage,
+	clearsignedBody,
 	extractArmoredCiphertext,
 	extractClearsignedBlock,
 	extractClearsignedText,
@@ -245,6 +246,58 @@ describe('raw-message gates — isSignedPgpMime / isClearsigned', () => {
 	it('detects an inline clearsigned body', () => {
 		expect(isClearsigned(clearsignedRaw)).toBe(true);
 		expect(isSignedPgpMime(clearsignedRaw)).toBe(false);
+	});
+
+	/** `clearsignedRaw` with its body sent under `encoding`, a binary string. */
+	function encodedClearsigned(encoding: 'base64' | 'quoted-printable', body: string): string {
+		const encoded =
+			encoding === 'base64'
+				? Buffer.from(body, 'latin1').toString('base64')
+				: body.replace(/[=\x80-\xff]/g, (c) => `=${c.charCodeAt(0).toString(16).toUpperCase()}`);
+		return [
+			'From: alice@sender.test',
+			'Subject: clearsigned',
+			'Content-Type: text/plain; charset=iso-8859-1',
+			`Content-Transfer-Encoding: ${encoding}`,
+			'',
+			encoded,
+			'',
+		].join('\r\n');
+	}
+	const LATIN1_BLOCK = CLEARSIGNED_BODY.replace('Hello there', 'Gr\xfc\xdfe')
+		.replace('iQEcBAEBCgAGBQJ...', 'iQEcBAEBCgAGBQJ==\n=AbCd')
+		.replace(/\n/g, '\r\n');
+
+	it('detects a clearsigned body hidden by base64, and hands back its decoded octets (#1300)', () => {
+		const raw = encodedClearsigned('base64', LATIN1_BLOCK);
+		expect(classifyRawSecureMessage(raw)).toBe('none');
+		expect(isClearsigned(raw)).toBe(true);
+		expect(clearsignedBody(raw)).toBe(LATIN1_BLOCK);
+	});
+
+	it('reads a quoted-printable clearsigned body from its decoded octets, not its escaped armor', () => {
+		const raw = encodedClearsigned('quoted-printable', LATIN1_BLOCK);
+		expect(raw).toContain('=3D');
+		expect(isClearsigned(raw)).toBe(true);
+		expect(clearsignedBody(raw)).toBe(`${LATIN1_BLOCK}\r\n`);
+	});
+
+	it('falls back to the raw text when the text part holds no block (a bare body)', () => {
+		expect(clearsignedBody(CLEARSIGNED_BODY)).toBe(CLEARSIGNED_BODY);
+		expect(clearsignedBody(clearsignedRaw)).toContain('-----BEGIN PGP SIGNED MESSAGE-----');
+	});
+
+	it('a base64 body that only QUOTES a clearsigned block is not clearsigned', () => {
+		const raw = encodedClearsigned('base64', `Thanks.\r\n${quoted(CLEARSIGNED_BODY)}`);
+		expect(isClearsigned(raw)).toBe(false);
+		expect(clearsignedBody(raw)).toBeNull();
+	});
+
+	it('PGP/MIME wins over a clearsigned text part, as it does over a raw one', () => {
+		const signedWithBlock = signedRaw.replace('Signed content.', CLEARSIGNED_BODY);
+		expect(isSignedPgpMime(signedWithBlock)).toBe(true);
+		expect(isClearsigned(signedWithBlock)).toBe(false);
+		expect(clearsignedBody(encryptedRaw.replace('Version: 1', CLEARSIGNED_BODY))).toBeNull();
 	});
 
 	it('an ENCRYPTED message is neither signed-plaintext nor clearsigned (sealed path wins)', () => {
