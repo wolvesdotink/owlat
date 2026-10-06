@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { extractAttachments, extractAttachmentAt, extractFirstPartByType } from '../mailMime';
+import {
+	binaryStringToBytes,
+	bytesToBinaryString,
+	extractAttachments,
+	extractAttachmentAt,
+	extractFirstPartByType,
+} from '../mailMime';
 
 const decode = (b: Uint8Array) => new TextDecoder('utf-8').decode(b);
 
@@ -131,6 +137,49 @@ describe('extractAttachmentAt', () => {
 
 	it('returns null when nothing matches', () => {
 		expect(extractAttachmentAt(RAW, '9', 'missing.pdf')).toBeNull();
+	});
+});
+
+describe('a raw message read from its bytes (#1279)', () => {
+	const BINARY_PART = [0x00, 0x41, 0x80, 0x99, 0x9f, 0xa0, 0xff];
+	const raw = (() => {
+		const encoder = new TextEncoder();
+		const head = encoder.encode(
+			[
+				'Content-Type: multipart/mixed; boundary="b"',
+				'',
+				'--b',
+				'Content-Type: text/plain; charset=utf-8',
+				'Content-Transfer-Encoding: 8bit',
+				'',
+				'Price — “quoted” 5€',
+				'--b',
+				'Content-Type: application/octet-stream; name="blob.bin"',
+				'Content-Disposition: attachment; filename="blob.bin"',
+				'Content-Transfer-Encoding: binary',
+				'',
+				'',
+			].join('\r\n')
+		);
+		return Uint8Array.from([...head, ...BINARY_PART, ...encoder.encode('\r\n--b--\r\n')]);
+	})();
+
+	it('extracts a binary attachment byte for byte', () => {
+		const text = bytesToBinaryString(raw);
+		expect([...extractAttachments(text)[0]!.bytes]).toEqual(BINARY_PART);
+		expect([...extractAttachmentAt(text, '0', 'blob.bin')!.bytes]).toEqual(BINARY_PART);
+	});
+
+	it('leaves an 8-bit UTF-8 text part decodable', () => {
+		const part = extractFirstPartByType(bytesToBinaryString(raw), 'text/plain');
+		expect(decode(part!.bytes)).toBe('Price — “quoted” 5€');
+	});
+
+	it('is not what a windows-1252 decode gives', () => {
+		// `TextDecoder('latin1')` is windows-1252: the bug these callers had.
+		const wrong = extractAttachments(new TextDecoder('latin1').decode(raw))[0]!;
+		expect([...wrong.bytes]).not.toEqual(BINARY_PART);
+		expect([...binaryStringToBytes(bytesToBinaryString(raw))]).toEqual([...raw]);
 	});
 });
 

@@ -8,7 +8,7 @@ import { createRawEmlLoader } from '~/composables/rawEmlLoader';
  * mail stored before parts were (`loadMessagePart`, plan 3.5) — the reader's
  * attachment download and the invite card (ICS).
  *
- * The fetch, the latin1 decode and the bounded per-message cache are
+ * The fetch, the byte-exact decode and the bounded per-message cache are
  * `createRawEmlLoader`, shared with the team-inbox loader; only the minting
  * action differs.
  */

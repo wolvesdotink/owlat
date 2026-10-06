@@ -22,6 +22,10 @@
 			"types": "./src/parse/body.ts",
 			"import": "./src/parse/body.ts"
 		},
+		"./parse/binaryString": {
+			"types": "./src/parse/binaryString.ts",
+			"import": "./src/parse/binaryString.ts"
+		},
 		"./parse/locate": {
 			"types": "./src/parse/locate.ts",
 			"import": "./src/parse/locate.ts"

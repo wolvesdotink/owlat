@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { binaryStringToBytes } from '@owlat/shared/mailMime';
 import { extractClearsignedText, type SecureMessageClass } from '@owlat/shared/secureMessage';
 import { computeSecureMessageRecovery } from '~/composables/postbox/useSecureMessageRecovery';
 import { deriveSealedBadge, type InboundEncryptionInfo } from '~/utils/sealedMessage';
@@ -198,9 +199,7 @@ async function downloadRawEml() {
 	try {
 		const bin = await loadRawEml(props.message._id);
 		if (bin) {
-			const bytes = new Uint8Array(bin.length);
-			for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i) & 0xff;
-			saveBlob(bytes, 'message.eml');
+			saveBlob(binaryStringToBytes(bin), 'message.eml');
 		} else {
 			saveBlob(armoredCiphertext.value ?? '', 'message.asc');
 		}
@@ -301,9 +300,7 @@ function saveBlob(data: string | Uint8Array, filename: string) {
 					class="w-3.5 h-3.5 text-text-tertiary"
 				/>
 				{{
-					copied
-						? t('common.copied')
-						: t('components.postbox.postboxSecurityBadge.copyCiphertext')
+					copied ? t('common.copied') : t('components.postbox.postboxSecurityBadge.copyCiphertext')
 				}}
 			</button>
 			<button

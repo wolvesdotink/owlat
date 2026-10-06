@@ -33,6 +33,24 @@ export const MBOX_DOWNLOAD_KIND: IncrementalDownloadKind = {
 	extension: '.mbox',
 };
 
+/** A destination for raw bytes, written as they are (the mbox mail archive). */
+export interface ByteChunkSink {
+	write(chunk: Uint8Array<ArrayBuffer>): Promise<void>;
+	close(): Promise<void>;
+	abort(reason?: unknown): Promise<void>;
+}
+
+/**
+ * What a streamed download's destination takes: text, which the file stream
+ * writes as UTF-8 (the JSON export), or bytes, written unchanged (the mbox
+ * archive, whose messages are bytes and not text).
+ */
+interface DownloadSink {
+	write(chunk: string | Uint8Array<ArrayBuffer>): Promise<void>;
+	close(): Promise<void>;
+	abort(reason?: unknown): Promise<void>;
+}
+
 const OPFS_STALE_EXPORT_AGE_MS = 24 * 60 * 60 * 1000;
 const OPFS_STALE_SCAN_LIMIT = 64;
 const OPFS_STALE_REMOVE_LIMIT = 16;
@@ -151,7 +169,7 @@ function downloadFile(file: File, filename: string): void {
 async function openPickerSink(
 	filename: string,
 	kind: IncrementalDownloadKind
-): Promise<TextChunkSink | null> {
+): Promise<DownloadSink | null> {
 	const pickerWindow = window as SaveFilePickerWindow;
 	if (!pickerWindow.showSaveFilePicker) return null;
 	let handle: FileSystemFileHandle;
@@ -219,7 +237,7 @@ async function removeStaleOriginPrivateFileSystemExports(
 async function openOriginPrivateFileSystemSink(
 	filename: string,
 	kind: IncrementalDownloadKind
-): Promise<TextChunkSink | null> {
+): Promise<DownloadSink | null> {
 	const storage = navigator.storage;
 	if (typeof storage?.getDirectory !== 'function') return null;
 
@@ -278,7 +296,7 @@ async function openOriginPrivateFileSystemSink(
 export async function openIncrementalDownload(
 	filename: string,
 	kind: IncrementalDownloadKind
-): Promise<TextChunkSink> {
+): Promise<DownloadSink> {
 	const pickerSink = await openPickerSink(filename, kind);
 	if (pickerSink) return pickerSink;
 

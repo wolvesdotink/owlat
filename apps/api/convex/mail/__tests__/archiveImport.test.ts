@@ -17,6 +17,8 @@ import { api } from '../../_generated/api';
 import { MAX_ARCHIVE_BYTES } from '../archiveImport';
 import { modules, seedMailbox, seedFolder } from './helpers.testlib';
 import { readMailboxUsage } from '../mailboxUsage';
+import { readSealedBlobBytes } from '../../lib/sealedBlob';
+import { openStoredInlineBody } from '../../lib/messageBodyStore';
 
 const sessionMocks = vi.hoisted(() => ({
 	userId: 'user-A',
@@ -82,10 +84,13 @@ function takeoutMessage(options: {
 	].join('\n');
 }
 
-async function storeArchive(t: TestConvex<typeof schema>, text: string): Promise<Id<'_storage'>> {
+async function storeArchive(
+	t: TestConvex<typeof schema>,
+	archive: string | Uint8Array<ArrayBuffer>
+): Promise<Id<'_storage'>> {
 	let storageId!: Id<'_storage'>;
 	await t.run(async (ctx) => {
-		storageId = await ctx.storage.store(new Blob([text], { type: 'application/mbox' }));
+		storageId = await ctx.storage.store(new Blob([archive], { type: 'application/mbox' }));
 		await recordUploadedBlob(ctx, storageId, sessionMocks.userId);
 	});
 	return storageId;
@@ -102,16 +107,16 @@ async function seedMailboxWithFolders(t: TestConvex<typeof schema>): Promise<Id<
 async function importArchive(
 	t: TestConvex<typeof schema>,
 	mailboxId: Id<'mailboxes'>,
-	text: string,
+	archive: string | Uint8Array<ArrayBuffer>,
 	format: 'mbox' | 'eml' = 'mbox'
 ) {
-	const storageId = await storeArchive(t, text);
+	const storageId = await storeArchive(t, archive);
 	const started = await t.mutation(api.mail.archiveImport.start, {
 		mailboxId,
 		storageId,
 		filename: `archive.${format}`,
 		format,
-		totalBytes: text.length,
+		totalBytes: typeof archive === 'string' ? archive.length : archive.byteLength,
 	});
 	await drainScheduler(t);
 	return started;
@@ -282,6 +287,60 @@ describe('archive import', () => {
 		expect(messages).toHaveLength(1);
 		expect(messages[0]?.subject).toBe('Saved message');
 		expect(messages[0]?.folderRole).toBe('archive');
+	});
+
+	it('keeps an 8-bit message byte for byte: stored raw, body and attachment (#1279)', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailboxWithFolders(t);
+		const encoder = new TextEncoder();
+		const binaryPart = [0x00, 0x41, 0x80, 0x99, 0x9f, 0xa0, 0xff];
+		const message = Uint8Array.from([
+			...encoder.encode(
+				[
+					'From: sender@isp.example',
+					'To: me@owlat.test',
+					'Subject: Price list',
+					'Message-ID: <eight-bit@x>',
+					'Date: Mon, 1 Jan 2018 00:00:00 +0000',
+					'MIME-Version: 1.0',
+					'Content-Type: multipart/mixed; boundary="b"',
+					'',
+					'--b',
+					'Content-Type: text/plain; charset=utf-8',
+					'Content-Transfer-Encoding: 8bit',
+					'',
+					'Price — “quoted” 5€',
+					'--b',
+					'Content-Type: application/octet-stream; name="blob.bin"',
+					'Content-Disposition: attachment; filename="blob.bin"',
+					'Content-Transfer-Encoding: binary',
+					'',
+					'',
+				].join('\n')
+			),
+			...binaryPart,
+			...encoder.encode('\n--b--\n'),
+		]);
+		const archive = Uint8Array.from([
+			...encoder.encode('From nobody@example.com Mon Jan 01 00:00:00 +0000 2018\n'),
+			...message,
+			...encoder.encode('\n'),
+		]);
+
+		await importArchive(t, mailboxId, archive);
+
+		await t.run(async (ctx) => {
+			const row = await ctx.db
+				.query('mailMessages')
+				.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', mailboxId))
+				.first();
+			const body = await openStoredInlineBody(ctx.db, row!);
+			expect(body.text).toBe('Price — “quoted” 5€');
+			expect(row?.attachments.map((a) => [a.filename, a.size])).toEqual([['blob.bin', 7]]);
+			expect(row?.rawSize).toBe(message.length);
+			const stored = await readSealedBlobBytes(ctx.storage, row!.rawStorageId);
+			expect([...(stored ?? [])]).toEqual([...message]);
+		});
 	});
 
 	it('deletes the uploaded archive once the job is terminal', async () => {

@@ -1,15 +1,25 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import type { ConvexClient } from 'convex/browser';
 import type { Id } from '@owlat/api/dataModel';
-import type { TextChunkSink } from '../incrementalJsonSerializer';
+import { binaryStringToBytes, bytesToBinaryString } from '@owlat/shared/mailMime';
+import {
+	MBOX_DOWNLOAD_KIND,
+	openIncrementalDownload,
+	type ByteChunkSink,
+} from '../incrementalJsonDownload';
 import { mboxExportFilename, writeMailboxMboxExport } from '../mboxExport';
 
 const MAILBOX_ID = 'mailbox_1' as Id<'mailboxes'>;
 
+/** The archive as bytes, read back one char per byte. */
+function joined(chunks: Uint8Array[]): string {
+	return chunks.map((chunk) => bytesToBinaryString(chunk)).join('');
+}
+
 function recordingSink() {
-	const chunks: string[] = [];
+	const chunks: Uint8Array[] = [];
 	const state = { closed: false, abortedWith: undefined as unknown };
-	const sink: TextChunkSink = {
+	const sink: ByteChunkSink = {
 		write: async (chunk) => {
 			chunks.push(chunk);
 		},
@@ -39,11 +49,12 @@ function clientOverPages(
 	return { action, client: { action } as unknown as ConvexClient };
 }
 
-function stubFetch(bodies: Record<string, string>) {
+/** Serve each URL's body; a string body is a binary string (one char per byte). */
+function stubFetch(bodies: Record<string, string | Uint8Array>) {
 	const fetchMock = vi.fn(async (url: string) => {
 		const body = bodies[url];
 		if (body === undefined) return { ok: false } as unknown as Response;
-		const bytes = Uint8Array.from(body, (char) => char.charCodeAt(0) & 0xff);
+		const bytes = typeof body === 'string' ? binaryStringToBytes(body) : body.slice();
 		return {
 			ok: true,
 			arrayBuffer: async () => bytes.buffer,
@@ -91,7 +102,7 @@ describe('writeMailboxMboxExport', () => {
 
 		expect(await writeMailboxMboxExport(client, MAILBOX_ID, sink)).toBe(3);
 
-		const archive = chunks.join('');
+		const archive = joined(chunks);
 		expect(archive.startsWith('From a@example.com Fri Jan  1 00:00:00 2021\n')).toBe(true);
 		expect(archive).toContain('From b@example.com Sat Jan  2 00:00:00 2021\n');
 		expect(archive).toContain('Subject: Three\n');
@@ -132,7 +143,7 @@ describe('writeMailboxMboxExport', () => {
 
 		await writeMailboxMboxExport(client, MAILBOX_ID, sink);
 
-		expect(chunks.join('')).toContain('\n>From Monday we ship.\n');
+		expect(joined(chunks)).toContain('\n>From Monday we ship.\n');
 	});
 
 	it('aborts the destination when a message cannot be downloaded', async () => {
@@ -167,7 +178,7 @@ describe('writeMailboxMboxExport', () => {
 		);
 	});
 
-	it('preserves the message bytes rather than re-encoding them as UTF-8', async () => {
+	it('writes 8-bit message bytes to the file unchanged, not as UTF-8 text (#1280)', async () => {
 		const { client } = clientOverPages([
 			{
 				messages: [{ url: 'https://x/1', fromAddress: 'a@example.com', receivedAt: 0 }],
@@ -175,14 +186,42 @@ describe('writeMailboxMboxExport', () => {
 				isDone: true,
 			},
 		]);
-		// A latin1 byte that is not valid UTF-8 on its own: a lossy decode would
-		// replace it and the archive would no longer be the original message.
-		const raw = 'Subject: Café\n\nbody\n';
-		stubFetch({ 'https://x/1': raw });
-		const { chunks, sink } = recordingSink();
+		// An 8-bit UTF-8 body (é, an em dash, curly quotes, €) and a binary part
+		// with bytes 0x80-0x9F: written as a string, the file stream would encode
+		// every byte at or above 0x80 as two or three.
+		const encoder = new TextEncoder();
+		const message = Uint8Array.from([
+			...encoder.encode('Subject: Café\nContent-Transfer-Encoding: 8bit\n\n'),
+			...encoder.encode('Price — “quoted” 5€\n'),
+			0x00,
+			0x41,
+			0x80,
+			0x99,
+			0x9f,
+			0xa0,
+			0xff,
+			0x0a,
+		]);
+		stubFetch({ 'https://x/1': message });
+		// The real destination: the save picker's file stream, which writes a
+		// string chunk as UTF-8 and a byte chunk as it is.
+		const file: number[] = [];
+		vi.stubGlobal('window', {
+			showSaveFilePicker: vi.fn(async () => ({
+				createWritable: vi.fn(async () => ({
+					write: vi.fn(async (chunk: string | Uint8Array) => {
+						file.push(...(typeof chunk === 'string' ? encoder.encode(chunk) : chunk));
+					}),
+					close: vi.fn(async () => undefined),
+					abort: vi.fn(async () => undefined),
+				})),
+			})),
+		});
+		const sink = await openIncrementalDownload('mail.mbox', MBOX_DOWNLOAD_KIND);
 
 		await writeMailboxMboxExport(client, MAILBOX_ID, sink);
 
-		expect(chunks.join('')).toContain(raw);
+		const fromLine = encoder.encode('From a@example.com Thu Jan  1 00:00:00 1970\n');
+		expect(file).toEqual([...fromLine, ...message, 0x0a]);
 	});
 });

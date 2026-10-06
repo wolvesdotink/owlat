@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { binaryStringToBytes, bytesToBinaryString } from '../mailMime';
 import { MboxSplitter, serializeMboxEntry, type MboxEntry } from '../mboxArchive';
+
+/** {@link serializeMboxEntry} over binary strings, so the cases below read as text. */
+function serialize(raw: string, options: { address?: string; receivedAt: number }): string {
+	return bytesToBinaryString(serializeMboxEntry(binaryStringToBytes(raw), options));
+}
 
 const MESSAGE_ONE = 'From: a@example.com\nSubject: One\n\nBody one.\n';
 const MESSAGE_TWO = 'From: b@example.com\nSubject: Two\n\nBody two.\n';
@@ -7,7 +13,7 @@ const MESSAGE_TWO = 'From: b@example.com\nSubject: Two\n\nBody two.\n';
 function archiveOf(
 	...entries: Array<{ raw: string; address?: string; receivedAt: number }>
 ): string {
-	return entries.map((entry) => serializeMboxEntry(entry.raw, entry)).join('');
+	return entries.map((entry) => serialize(entry.raw, entry)).join('');
 }
 
 /** Whole-archive split, the way a caller with the bytes in hand would do it. */
@@ -18,7 +24,7 @@ function splitAll(archive: string, startOffset = 0): MboxEntry[] {
 
 describe('serializeMboxEntry', () => {
 	it('emits a From_ line, the quoted message and a trailing blank line', () => {
-		const entry = serializeMboxEntry('Subject: Hi\n\nFrom a friend\n', {
+		const entry = serialize('Subject: Hi\n\nFrom a friend\n', {
 			address: '<who@example.com>',
 			receivedAt: Date.UTC(2021, 0, 1),
 		});
@@ -28,28 +34,24 @@ describe('serializeMboxEntry', () => {
 	});
 
 	it('writes the timestamp in UTC, not in the exporting user zone', () => {
-		expect(serializeMboxEntry('x\n', { receivedAt: Date.UTC(2024, 11, 25, 13, 5, 9) })).toContain(
+		expect(serialize('x\n', { receivedAt: Date.UTC(2024, 11, 25, 13, 5, 9) })).toContain(
 			'Wed Dec 25 13:05:09 2024\n'
 		);
 	});
 
 	it('keeps the From_ sender a single bracket-free token', () => {
-		expect(serializeMboxEntry('x\n', { address: 'Some One <one@x.io>', receivedAt: 0 })).toContain(
+		expect(serialize('x\n', { address: 'Some One <one@x.io>', receivedAt: 0 })).toContain(
 			'From Some '
 		);
-		expect(serializeMboxEntry('x\n', { address: '<one@x.io>', receivedAt: 0 })).toContain(
-			'From one@x.io '
-		);
+		expect(serialize('x\n', { address: '<one@x.io>', receivedAt: 0 })).toContain('From one@x.io ');
 	});
 
 	it('falls back to MAILER-DAEMON when there is no usable address', () => {
-		expect(serializeMboxEntry('x\n', { address: '  ', receivedAt: 0 })).toContain(
-			'From MAILER-DAEMON '
-		);
+		expect(serialize('x\n', { address: '  ', receivedAt: 0 })).toContain('From MAILER-DAEMON ');
 	});
 
 	it('terminates a message that has no trailing newline', () => {
-		const entry = serializeMboxEntry('Subject: Hi\n\nno newline', { receivedAt: 0 });
+		const entry = serialize('Subject: Hi\n\nno newline', { receivedAt: 0 });
 		expect(entry.endsWith('no newline\n\n')).toBe(true);
 	});
 });
@@ -57,7 +59,7 @@ describe('serializeMboxEntry', () => {
 describe('mboxrd quoting round-trip', () => {
 	it('escapes every From-like body line and unescapes exactly one level back', () => {
 		const raw = 'Header: v\n\nFrom the top\n>From quoted\n>>From double\nnot From here\n';
-		const written = serializeMboxEntry(raw, { receivedAt: 0 });
+		const written = serialize(raw, { receivedAt: 0 });
 		expect(written).toContain('\n>From the top\n');
 		expect(written).toContain('\n>>From quoted\n');
 		expect(written).toContain('\n>>>From double\n');
@@ -99,7 +101,7 @@ describe('MboxSplitter', () => {
 	});
 
 	it('ignores a preamble before the first separator', () => {
-		const entries = splitAll(`garbage\n${serializeMboxEntry(MESSAGE_ONE, { receivedAt: 0 })}`);
+		const entries = splitAll(`garbage\n${serialize(MESSAGE_ONE, { receivedAt: 0 })}`);
 		expect(entries).toHaveLength(1);
 		expect(entries[0]?.raw).toBe(MESSAGE_ONE);
 	});
@@ -158,5 +160,46 @@ describe('MboxSplitter byte offsets', () => {
 		expect(splitter.pendingOffset).toBe(0);
 		splitter.push(archive.slice(secondStart + 5, secondStart + 60));
 		expect(splitter.pendingOffset).toBe(secondStart);
+	});
+});
+
+describe('8-bit messages through the archive, as bytes', () => {
+	/** An 8-bit UTF-8 body and a binary part: bytes 0x80-0x9F included (#1279, #1280). */
+	const message = (() => {
+		const encoder = new TextEncoder();
+		const head = encoder.encode(
+			'Subject: Price\nContent-Type: multipart/mixed; boundary="b"\n\n--b\n' +
+				'Content-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n' +
+				'Price — “quoted” 5€\nFrom here on, é\n--b\n' +
+				'Content-Type: application/octet-stream\nContent-Transfer-Encoding: binary\n\n'
+		);
+		const binary = [0x00, 0x41, 0x80, 0x99, 0x9f, 0xa0, 0xff];
+		const tail = encoder.encode('\n--b--\n');
+		return Uint8Array.from([...head, ...binary, ...tail]);
+	})();
+
+	it('writes the message bytes unchanged, apart from the mboxrd quote', () => {
+		const entry = serializeMboxEntry(message, { address: 'a@example.com', receivedAt: 0 });
+		const fromLine = new TextEncoder().encode('From a@example.com Thu Jan  1 00:00:00 1970\n');
+		expect([...entry.subarray(0, fromLine.length)]).toEqual([...fromLine]);
+		// One `>` for the `From here on` line, one blank line after the message.
+		expect(entry.length).toBe(fromLine.length + message.length + 1 + 1);
+		const quoted = bytesToBinaryString(message).replace('\nFrom here', '\n>From here');
+		expect([...entry.subarray(fromLine.length, -1)]).toEqual([...binaryStringToBytes(quoted)]);
+	});
+
+	it('splits back into exactly the bytes that were written', () => {
+		const entry = serializeMboxEntry(message, { receivedAt: 0 });
+		const entries = splitAll(bytesToBinaryString(entry));
+		expect(entries).toHaveLength(1);
+		expect([...binaryStringToBytes(entries[0]!.raw)]).toEqual([...message]);
+	});
+
+	it('writes a non-ASCII envelope sender as UTF-8', () => {
+		const entry = serializeMboxEntry(binaryStringToBytes('x\n'), {
+			address: 'jörg@example.com',
+			receivedAt: 0,
+		});
+		expect(new TextDecoder().decode(entry)).toContain('From jörg@example.com ');
 	});
 });
