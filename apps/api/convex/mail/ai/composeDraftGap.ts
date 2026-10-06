@@ -30,6 +30,7 @@ import { isAppLocale } from '@owlat/shared/appLocales';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmObject, runLlmText } from '../../lib/llm/dispatch';
 import { recordLlmSpend } from '../../analytics/llmUsage';
+import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
 import {
 	DIVERGENCE_SAMPLES,
 	MIN_SAMPLES_FOR_JUDGMENT,
@@ -116,12 +117,16 @@ async function findOpenSlots(
 	// Files owed survive a failed divergence stage: they were never judged by it.
 	let owed: ReplySlot[] = [];
 	try {
-		const extracted = await runLlmObject({
-			model: await resolveLanguageModel(ctx, 'summarize'),
-			schema: replySlotsSchema,
-			prompt: buildSlotPrompt(context),
-			temperature: 0.2,
-		});
+		const extracted = await recordSpendOnFailure(
+			ctx,
+			'postbox_answer_slots',
+			runLlmObject({
+				model: await resolveLanguageModel(ctx, 'summarize'),
+				schema: replySlotsSchema,
+				prompt: buildSlotPrompt(context),
+				temperature: 0.2,
+			})
+		);
 		await recordLlmSpend(ctx, 'postbox_answer_slots', extracted.tokenUsage, extracted.modelUsed);
 		const split = splitCandidateSlots(extracted.object.slots);
 		owed = split.owed;
@@ -148,12 +153,16 @@ async function findOpenSlots(
 			}
 		}
 		if (samples.length < MIN_SAMPLES_FOR_JUDGMENT) return owed;
-		const judged = await runLlmObject({
-			model: await resolveLanguageModel(ctx, 'draft'),
-			schema: divergenceSchema,
-			prompt: buildDivergencePrompt(candidates, samples),
-			temperature: 0.1,
-		});
+		const judged = await recordSpendOnFailure(
+			ctx,
+			'postbox_answer_diverge',
+			runLlmObject({
+				model: await resolveLanguageModel(ctx, 'draft'),
+				schema: divergenceSchema,
+				prompt: buildDivergencePrompt(candidates, samples),
+				temperature: 0.1,
+			})
+		);
 		await recordLlmSpend(ctx, 'postbox_answer_diverge', judged.tokenUsage, judged.modelUsed);
 		const divergent = new Set(judged.object.divergentSlotIndexes);
 		return [...owed, ...candidates.filter((_, index) => divergent.has(index))];

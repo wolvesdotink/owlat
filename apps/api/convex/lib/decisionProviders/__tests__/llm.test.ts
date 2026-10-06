@@ -24,6 +24,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { LanguageModel } from 'ai';
 import { choice, noul, score } from '../../decision/questions';
 import { DecisionWireError } from '../wire';
+import { LlmPartialUsageError, partialUsageOf } from '../../llm/partialUsage';
 
 // Hoisted by vitest above the adapter import, so the module under test binds to
 // the stub rather than the real (Node-only) AI SDK dispatch.
@@ -253,6 +254,34 @@ describe('llmDecisionAdapter.ask()', () => {
 	it('rejects a response that disagrees with the question set', async () => {
 		runLlmObjectMock.mockResolvedValueOnce({ object: { ...modelObject, category: 'robot' } });
 		await expect(llmDecisionAdapter.ask({}, request())).rejects.toThrow(DecisionWireError);
+	});
+
+	it('carries the billed usage on a rejected answer, so the failed row is priced', async () => {
+		runLlmObjectMock.mockResolvedValueOnce({
+			object: { ...modelObject, category: 'robot' },
+			tokenUsage: { promptTokens: 120, completionTokens: 8, totalTokens: 128 },
+			modelUsed: 'fake-model-id',
+		});
+		const error = await llmDecisionAdapter.ask({}, request()).catch((e: unknown) => e);
+		expect(error).toBeInstanceOf(DecisionWireError);
+		expect(error).toMatchObject({
+			usage: { promptTokens: 120, completionTokens: 8, totalTokens: 128 },
+			modelUsed: 'fake-model-id',
+		});
+	});
+
+	it('passes on the billed usage of a call that never fitted the schema (#1260)', async () => {
+		const billed = new LlmPartialUsageError(
+			new Error('No object generated: response did not match schema.'),
+			{ promptTokens: 360, completionTokens: 24, totalTokens: 384 },
+			'fake-model-id'
+		);
+		runLlmObjectMock.mockRejectedValueOnce(billed);
+		const error = await llmDecisionAdapter.ask({}, request()).catch((e: unknown) => e);
+		expect(partialUsageOf(error)).toEqual({
+			tokenUsage: { promptTokens: 360, completionTokens: 24, totalTokens: 384 },
+			modelUsed: 'fake-model-id',
+		});
 	});
 
 	it('needs the resolved language model on the request', async () => {

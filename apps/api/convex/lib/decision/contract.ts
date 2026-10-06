@@ -69,7 +69,7 @@ export interface DecisionAttemptRecord {
 	readonly fallback: boolean;
 	readonly outcome: 'answered' | 'failed';
 	readonly durationMs: number;
-	/** Present on answered calls and billed responses rejected by the codec. */
+	/** Present on answered calls and on failed ones the provider billed. */
 	readonly usage?: TokenUsage;
 	readonly modelUsed?: string;
 	readonly provenance?: DecisionEndpointProvenance;

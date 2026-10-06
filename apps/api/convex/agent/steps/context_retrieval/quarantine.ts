@@ -23,6 +23,7 @@ import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../../../_generated/server';
 import { resolveLanguageModel } from '../../../lib/llmProvider';
 import { runLlmObject } from '../../../lib/llm/dispatch';
+import { meterAgentCall } from '../../shared/agentSpend';
 import { stripHiddenContent } from '../security_scan/patterns';
 
 /** Cap on how much of the body the extractor reads (keeps the call bounded). */
@@ -115,12 +116,16 @@ export async function runQuarantinedExtraction(
 	if (!sample) return null;
 	try {
 		const model = await resolveLanguageModel(ctx, 'guard');
-		const { object } = await runLlmObject({
-			model,
-			schema: structuredExtractionSchema,
-			prompt: buildExtractionPrompt(sample),
-			temperature: 0,
-		});
+		// The call is billed whether or not its object is usable, so its usage
+		// goes to the ledger here; the action returns only the rendered string.
+		const { object } = await meterAgentCall(ctx, 'agent_context_retrieval', () =>
+			runLlmObject({
+				model,
+				schema: structuredExtractionSchema,
+				prompt: buildExtractionPrompt(sample),
+				temperature: 0,
+			})
+		);
 		return renderStructuredExtraction(object);
 	} catch {
 		// Fail soft — caller falls back to the hidden-stripped raw body.

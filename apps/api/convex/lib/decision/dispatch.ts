@@ -58,11 +58,13 @@
 
 import { randomUUID } from 'node:crypto';
 import type { LanguageModel } from 'ai';
+import type { TokenUsage } from '../../agent/steps/types';
 import { decisionProviderFor } from '../decisionProviders';
 import type { DecisionRequest, DecisionResult } from '../decisionProviders/types';
 export { DEFAULT_LANGUAGE_DECISION_DEADLINE_MS } from '../decisionProviders/llm';
 import { DecisionWireError } from '../decisionProviders/wire';
 import { errorStatus, isRetriableLlmError } from '../llm/dispatch';
+import { partialUsageOf } from '../llm/partialUsage';
 import { MAX_LLM_ATTEMPTS } from '../llm/retryPolicy';
 import { DecisionAccountingFailure, DecisionRateLimitRefusal } from './contract';
 import type {
@@ -238,6 +240,18 @@ interface AttemptContext<Q extends QuestionSet> {
 }
 
 /**
+ * What a failed attempt was billed for: a response the codec rejected
+ * (`DecisionWireError`), or a language call whose billed completions never
+ * fitted the schema (`LlmPartialUsageError`, #1260). Anything else bills
+ * nothing we can see.
+ */
+function billedUsage(error: unknown): { usage?: TokenUsage; modelUsed?: string } {
+	if (error instanceof DecisionWireError) return { usage: error.usage, modelUsed: error.modelUsed };
+	const partial = partialUsageOf(error);
+	return partial ? { usage: partial.tokenUsage, modelUsed: partial.modelUsed } : {};
+}
+
+/**
  * One round trip, with its accounting. Success and failure both record exactly
  * once, and the success row is awaited BEFORE the answer is handed back so the
  * ceiling sees the spend before the caller acts on it.
@@ -287,9 +301,7 @@ async function askOnce<Q extends QuestionSet>(
 				outcome: 'failed',
 				durationMs: elapsed(),
 				error,
-				...(error instanceof DecisionWireError
-					? { usage: error.usage, modelUsed: error.modelUsed }
-					: {}),
+				...billedUsage(error),
 			});
 		} catch {
 			// Swallowed: a failing recorder must not replace the vendor's error,

@@ -27,6 +27,7 @@ import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
 import { runLlmObject } from '../../../lib/llm/dispatch';
+import { meterAgentCall } from '../../shared/agentSpend';
 import { APP_LOCALES, type AppLocale } from '../../../lib/convexValidators';
 import { SYSTEM_GUARD } from '../../../mail/ai/promptGuards';
 import { interfaceRegisterRules } from '../../../mail/ai/interfaceLanguage';
@@ -223,12 +224,16 @@ export const classifyStep: AgentStepModule<'classify', ClassifyInput, ClassifyOu
 	async execute(ctx, input) {
 		const model = await resolveLanguageModel(ctx, 'classify');
 
-		const { object, tokenUsage, modelUsed } = await runLlmObject({
-			model,
-			schema: classificationSchema,
-			prompt: buildClassifyPrompt(input.context, APP_LOCALES),
-			temperature: 0.2,
-		});
+		// The usage also rides back to the walker for the step's agentActions
+		// row, which is a reporting view; the ledger row is the one that counts.
+		const { object, tokenUsage, modelUsed } = await meterAgentCall(ctx, 'agent_classify', () =>
+			runLlmObject({
+				model,
+				schema: classificationSchema,
+				prompt: buildClassifyPrompt(input.context, APP_LOCALES),
+				temperature: 0.2,
+			})
+		);
 
 		// Everything the model wrote that reaches a user or another prompt is
 		// bounded here, once. The enum fields are re-checked by the draft step's

@@ -930,7 +930,13 @@ the current schema rejects any of them: a field made required, a type changed, a
 union narrowed, a field or table dropped. Refresh the snapshot at each release
 (`release:cut` puts the refreshed snapshot in the release commit; see
 `docs/RELEASING.md`), never to make a failure go away. A deliberately retired
-table goes in the test's `RETIRED_TABLES` in the contract PR. The guard covers
+table goes in the test's `RETIRED_TABLES` in the contract PR, and a retired
+field in `RETIRED_FIELDS` (a path such as `questions[].attribution`), with the
+migration that emptied it. The guard then checks the previous release's rows
+without that field. The deploy is what enforces the precondition: Convex
+validates every stored row against the new schema and refuses one that a row
+does not match, so a deployment whose migration has not completed keeps its
+old release. The guard covers
 the schema half of the contract only. It does not check function arguments,
 JSON stored in strings or what values mean, and it is no substitute for
 upgrading a real previous-release dataset. The release E2E does not do that

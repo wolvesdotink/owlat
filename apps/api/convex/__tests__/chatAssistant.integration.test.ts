@@ -6,6 +6,7 @@ import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
 import { runLlmStream } from '../lib/llm/dispatch';
+import { LlmPartialUsageError } from '../lib/llm/partialUsage';
 import { ASSISTANT_AUTHOR_ID } from '../chat/_helpers';
 
 /**
@@ -232,6 +233,38 @@ describe('chat @assistant — runner reply (mocked LLM)', () => {
 		const assistant = after.messages.find((m) => m._id === assistantId);
 		expect(assistant?.aiStatus).toBe('error');
 		expect(assistant?.text).toContain('could not complete');
+	});
+
+	it('records the finished steps of a failed reply under chat_assistant', async () => {
+		const t = makeT();
+		await enableFeatures(t, ['chat', 'ai.assistant']);
+		const roomId = await seedRoom(t);
+		await t.mutation(api.chat.messages.sendMessage, { roomId, text: '@assistant look it up' });
+		const before = await t.query(api.chat.messages.listMessages, { roomId });
+		const assistantId = before.messages.find((m) => m.isAssistant)!._id as Id<'chatMessages'>;
+		const promptId = before.messages.find((m) => !m.isAssistant)!._id as Id<'chatMessages'>;
+
+		vi.mocked(runLlmStream).mockImplementation(async (opts) => {
+			await opts.onToolCall?.({ toolCallId: 'tc1', toolName: 'searchKnowledge', input: {} });
+			await opts.onToolResult?.({ toolCallId: 'tc1', toolName: 'searchKnowledge', output: {} });
+			throw new LlmPartialUsageError(
+				new Error('stream reset'),
+				{ promptTokens: 21, completionTokens: 4, totalTokens: 25 },
+				'test-model'
+			);
+		});
+
+		await t.action(internal.assistant.runner.runForChat, {
+			roomId,
+			assistantMessageId: assistantId,
+			promptMessageId: promptId,
+		});
+
+		const after = await t.query(api.chat.messages.listMessages, { roomId });
+		expect(after.messages.find((m) => m._id === assistantId)?.aiStatus).toBe('error');
+		const spend = await t.run(async (ctx) => ctx.db.query('llmUsageEvents').collect());
+		expect(spend).toHaveLength(1);
+		expect(spend[0]).toMatchObject({ feature: 'chat_assistant', totalTokens: 25 });
 	});
 });
 

@@ -40,6 +40,7 @@ import { buildReplyLanguageInstruction } from './replyLanguage';
 
 export { buildReplyLanguageInstruction } from './replyLanguage';
 import { recordLlmSpend } from '../../analytics/llmUsage';
+import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
 import { logError } from '../../lib/runtimeLog';
 import { detectInjection, INJECTION_CONFIDENCE_THRESHOLD } from '../steps/security_scan/patterns';
 import type { ActionCtx } from '../../_generated/server';
@@ -125,12 +126,16 @@ export async function runDraftSelfCheck(
 ): Promise<DraftQuality | null> {
 	try {
 		const model = await resolveLanguageModel(ctx, 'classify'); // cheap / fast tier
-		const { object, tokenUsage, modelUsed } = await runLlmObject({
-			model,
-			schema: draftQualitySchema,
-			prompt: buildSelfCheckPrompt({ context: args.context, draft: args.draft }),
-			temperature: 0.1,
-		});
+		const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
+			ctx,
+			args.spendLabel,
+			runLlmObject({
+				model,
+				schema: draftQualitySchema,
+				prompt: buildSelfCheckPrompt({ context: args.context, draft: args.draft }),
+				temperature: 0.1,
+			})
+		);
 		try {
 			await recordLlmSpend(ctx, args.spendLabel, tokenUsage, modelUsed);
 		} catch {
@@ -315,16 +320,6 @@ export type SharedDraftParams = Readonly<{
 	 */
 	spendLabels: Readonly<{ draft: string; selfCheck: string }>;
 	/**
-	 * Who records a SUCCESSFUL primary generation. `'ledger'`: this service
-	 * writes it to the usage ledger under `spendLabels.draft` (Postbox surfaces,
-	 * whose only spend record that is). `'caller'`: it is only returned; the
-	 * Team Inbox step hands it to the walker, which stores it on the step's
-	 * `agentActions` row for the cost-by-step view and keeps it out of the
-	 * ledger, as before. A run that throws after paid calls has no result to
-	 * return, so its spend is always recorded here, under `spendLabels.draft`.
-	 */
-	successfulDraftSpend: 'ledger' | 'caller';
-	/**
 	 * ISO 639-1 code of the inbound's language (the classifier's `language`,
 	 * already allowlisted by the caller). The reply is always written in the
 	 * sender's language; naming it here makes the instruction explicit. Omit
@@ -372,10 +367,14 @@ export async function runSharedDraft(
 		);
 	}
 
-	// Every paid primary generation is recorded exactly once, on every outcome:
-	// a throw carrying the usage of finished tool steps (lib/llm/partialUsage.ts),
-	// the rejected attempts of the markup gate (./draftMarkup.ts), or the
-	// successful draft when this service owns its spend.
+	// Every paid primary generation is recorded in the ledger exactly once, on
+	// every outcome: a throw carrying the usage of finished tool steps
+	// (lib/llm/partialUsage.ts), the rejected attempts of the markup gate
+	// (./draftMarkup.ts), or the successful draft. The successful draft's usage
+	// is also returned; the Team Inbox walker keeps it on the step's
+	// agentActions row, a reporting view the spend ceiling does not read (#1259).
+	// It is written before the caller persists anything, so a write that fails
+	// after the generation cannot lose it.
 	const recordDraftSpend = (attempts: ReadonlyArray<Omit<PrimaryDraft, 'draftBody'>>) =>
 		recordAdvisorySpend(ctx, params.spendLabels.draft, attempts);
 	let selected: PrimaryDraft;
@@ -405,7 +404,7 @@ export async function runSharedDraft(
 		() => runDefaultDraftStrategy(params, false),
 		recordDraftSpend
 	);
-	if (params.successfulDraftSpend === 'ledger') await recordDraftSpend([primary]);
+	await recordDraftSpend([primary]);
 	// A reviewer note the model wrote anyway becomes a placeholder the send
 	// guard counts (agent/shared/draftGaps.ts).
 	const draftBody = markReviewerNotes(primary.draftBody);

@@ -57,6 +57,7 @@ import type * as agent_pluginStepRuntime from '../agent/pluginStepRuntime.js';
 import type * as agent_referenceMonitor from '../agent/referenceMonitor.js';
 import type * as agent_shadowScorecard from '../agent/shadowScorecard.js';
 import type * as agent_shadowSimilarity from '../agent/shadowSimilarity.js';
+import type * as agent_shared_agentSpend from '../agent/shared/agentSpend.js';
 import type * as agent_shared_draftGaps from '../agent/shared/draftGaps.js';
 import type * as agent_shared_draftMarkup from '../agent/shared/draftMarkup.js';
 import type * as agent_shared_draftService from '../agent/shared/draftService.js';
@@ -101,6 +102,7 @@ import type * as analytics_engagementActivity from '../analytics/engagementActiv
 import type * as analytics_engagementPercentile from '../analytics/engagementPercentile.js';
 import type * as analytics_engagementScore from '../analytics/engagementScore.js';
 import type * as analytics_engagementScoreSync from '../analytics/engagementScoreSync.js';
+import type * as analytics_failedLlmSpend from '../analytics/failedLlmSpend.js';
 import type * as analytics_sendTimeProfile from '../analytics/sendTimeProfile.js';
 import type * as analytics_sendTimeProfileSync from '../analytics/sendTimeProfileSync.js';
 import type * as analytics_llmUsage from '../analytics/llmUsage.js';
@@ -1543,6 +1545,7 @@ declare const fullApi: ApiFromModules<{
 	'agent/referenceMonitor': typeof agent_referenceMonitor;
 	'agent/shadowScorecard': typeof agent_shadowScorecard;
 	'agent/shadowSimilarity': typeof agent_shadowSimilarity;
+	'agent/shared/agentSpend': typeof agent_shared_agentSpend;
 	'agent/shared/draftGaps': typeof agent_shared_draftGaps;
 	'agent/shared/draftMarkup': typeof agent_shared_draftMarkup;
 	'agent/shared/draftService': typeof agent_shared_draftService;
@@ -1587,6 +1590,7 @@ declare const fullApi: ApiFromModules<{
 	'analytics/engagementPercentile': typeof analytics_engagementPercentile;
 	'analytics/engagementScore': typeof analytics_engagementScore;
 	'analytics/engagementScoreSync': typeof analytics_engagementScoreSync;
+	'analytics/failedLlmSpend': typeof analytics_failedLlmSpend;
 	'analytics/sendTimeProfile': typeof analytics_sendTimeProfile;
 	'analytics/sendTimeProfileSync': typeof analytics_sendTimeProfileSync;
 	'analytics/llmUsage': typeof analytics_llmUsage;

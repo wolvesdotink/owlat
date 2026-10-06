@@ -33,6 +33,7 @@ import { internal } from '../../_generated/api';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmObject, runLlmText } from '../../lib/llm/dispatch';
 import { recordLlmSpend } from '../../analytics/llmUsage';
+import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
 import {
 	evaluateNeedsReplyCandidate,
 	isPublishingAddress,
@@ -147,18 +148,22 @@ export const classifyThread = internalAction({
 
 			const transcript = context.transcript; // side-labelled, built in getThreadContext
 
-			const { object, tokenUsage, modelUsed } = await runLlmObject({
-				// High-volume background classification → cheap "summarize" tier.
-				model: await resolveLanguageModel(ctx, 'summarize'),
-				schema: refinementSchema,
-				prompt: buildReplyIntentPrompt({
-					systemGuard: SYSTEM_GUARD,
-					ownerAddress: context.ownerAddress,
-					transcript,
-					senderLooksAutomated: isPublishingAddress(latestInbound.fromAddress),
-				}),
-				temperature: 0,
-			});
+			const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
+				ctx,
+				'postbox_needs_reply',
+				runLlmObject({
+					// High-volume background classification → cheap "summarize" tier.
+					model: await resolveLanguageModel(ctx, 'summarize'),
+					schema: refinementSchema,
+					prompt: buildReplyIntentPrompt({
+						systemGuard: SYSTEM_GUARD,
+						ownerAddress: context.ownerAddress,
+						transcript,
+						senderLooksAutomated: isPublishingAddress(latestInbound.fromAddress),
+					}),
+					temperature: 0,
+				})
+			);
 			await recordLlmSpend(ctx, 'postbox_needs_reply', tokenUsage, modelUsed);
 
 			// The queue verdict: the model's intent AND its boolean AND a sender who
@@ -292,12 +297,16 @@ export async function refineClarification(
 ): Promise<ClarificationFlag | undefined> {
 	try {
 		// Stage 1 — cheap-tier reply-slot extraction (shared prompt module).
-		const slotsResult = await runLlmObject({
-			model: await resolveLanguageModel(ctx, 'summarize'),
-			schema: replySlotsSchema,
-			prompt: buildSlotPrompt(opts.transcript),
-			temperature: 0.2,
-		});
+		const slotsResult = await recordSpendOnFailure(
+			ctx,
+			'postbox_clarify_slots',
+			runLlmObject({
+				model: await resolveLanguageModel(ctx, 'summarize'),
+				schema: replySlotsSchema,
+				prompt: buildSlotPrompt(opts.transcript),
+				temperature: 0.2,
+			})
+		);
 		await recordLlmSpend(
 			ctx,
 			'postbox_clarify_slots',
@@ -374,12 +383,16 @@ async function divergentSlots(
 		}
 		if (drafts.length < MIN_SAMPLES_FOR_JUDGMENT) return [];
 
-		const divergenceResult = await runLlmObject({
-			model: await resolveLanguageModel(ctx, 'draft'),
-			schema: divergenceSchema,
-			prompt: buildDivergencePrompt([...candidates], drafts),
-			temperature: 0.1,
-		});
+		const divergenceResult = await recordSpendOnFailure(
+			ctx,
+			'postbox_clarify_diverge',
+			runLlmObject({
+				model: await resolveLanguageModel(ctx, 'draft'),
+				schema: divergenceSchema,
+				prompt: buildDivergencePrompt([...candidates], drafts),
+				temperature: 0.1,
+			})
+		);
 		await recordLlmSpend(
 			ctx,
 			'postbox_clarify_diverge',

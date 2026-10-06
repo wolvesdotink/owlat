@@ -34,7 +34,8 @@ import {
 } from '../../lib/validators/answerAsk';
 import {
 	clarificationFileRefValidator,
-	needsReplyClarificationQuestionValidator,
+	needsReplyClarificationQuestionArgValidator,
+	withoutLegacyAttribution,
 } from '../../lib/validators/clarification';
 import { authoredDraftHasGaps, type DraftBody } from '../../agent/shared/draftGaps';
 import { throwForbidden, throwInvalidState, throwNotFound } from '../../_utils/errors';
@@ -298,7 +299,8 @@ const sessionFields = {
 	instruction: v.optional(v.string()),
 	locale: v.string(),
 	status: answerAskStatusValidator,
-	questions: v.array(needsReplyClarificationQuestionValidator),
+	// N-1 shim (#1224): accepts a 0.6.10 caller's `attribution`, dropped on write.
+	questions: v.array(needsReplyClarificationQuestionArgValidator),
 	attachedFiles: v.array(clarificationFileRefValidator),
 	contactId: v.optional(v.id('contacts')),
 	counterpartAddress: v.optional(v.string()),
@@ -319,7 +321,7 @@ export const replaceSession = internalMutation({
 		const previous = await findOwnSession(ctx, args.target, session.userId);
 		if (previous) await deleteSessionRow(ctx, previous);
 		const now = Date.now();
-		const { target, ...fields } = args;
+		const { target, questions, ...fields } = args;
 		const id = await ctx.db.insert('answerAskSessions', {
 			ownerId: session.userId,
 			organizationId: session.activeOrganizationId,
@@ -327,6 +329,7 @@ export const replaceSession = internalMutation({
 			targetKey: answerAskTargetKey(target),
 			round: 1,
 			...fields,
+			questions: questions.map(withoutLegacyAttribution),
 			createdAt: now,
 			updatedAt: now,
 		});
@@ -345,7 +348,8 @@ export const updateSession = internalMutation({
 		status: answerAskStatusValidator,
 		expectStatus: v.optional(answerAskStatusValidator),
 		round: v.optional(v.number()),
-		questions: v.optional(v.array(needsReplyClarificationQuestionValidator)),
+		// N-1 shim (#1224): accepts a 0.6.10 caller's `attribution`, dropped on write.
+		questions: v.optional(v.array(needsReplyClarificationQuestionArgValidator)),
 		attachedFiles: v.optional(v.array(clarificationFileRefValidator)),
 		followUpAt: v.optional(v.number()),
 		timeZone: v.optional(v.string()),
@@ -353,10 +357,11 @@ export const updateSession = internalMutation({
 	},
 	handler: async (ctx, args): Promise<Doc<'answerAskSessions'>> => {
 		const row = await requireOwnSession(ctx, args.sessionId);
-		const { sessionId, expectStatus, ...patch } = args;
+		const { sessionId, expectStatus, questions, ...patch } = args;
 		if (expectStatus !== undefined && row.status !== expectStatus) throwAskSessionClaimed();
 		await ctx.db.patch(sessionId, {
 			...patch,
+			...(questions !== undefined ? { questions: questions.map(withoutLegacyAttribution) } : {}),
 			...(args.status !== 'error' ? { errorMessage: undefined } : {}),
 			updatedAt: Date.now(),
 		});

@@ -11,7 +11,8 @@
  * subscription renders tokens + tool-call cards as they arrive. Natural finish
  * records spend + marks complete; a user Stop / deletion (detected via the patch
  * mutation's `stop` signal) aborts and leaves the partial text terminal; any
- * error leaves the partial text errored.
+ * error leaves the partial text errored and records the spend of the steps that
+ * finished before it (#1261).
  *
  *   run         → personal assistant   (aiConversations / aiMessages)
  *   runForChat  → @assistant in a room (chatMessages)
@@ -26,6 +27,9 @@ import { internal } from '../_generated/api';
 import { runLlmStream, DEFAULT_MAX_TOOL_STEPS } from '../lib/llm/dispatch';
 import { resolveLanguageModelForUserText } from '../lib/llmProvider';
 import { recordLlmSpend } from '../analytics/llmUsage';
+import { partialUsageOf } from '../lib/llm/partialUsage';
+import { logWarn } from '../lib/runtimeLog';
+import type { TokenUsage } from '../agent/steps/types';
 import { createThrottledStreamFlusher } from '../lib/llm/streamFlusher';
 import { buildAssistantTools } from './tools';
 import type { AssistantAudience } from './toolRegistry';
@@ -59,6 +63,23 @@ function toModelMessage(m: { role: 'user' | 'assistant'; text: string }): ModelM
 	return m.role === 'user'
 		? { role: 'user', content: m.text }
 		: { role: 'assistant', content: m.text };
+}
+
+/**
+ * Write a turn's spend to the ledger without letting a failed write decide the
+ * turn's status: the answer stands (or the original error does) either way.
+ */
+async function recordTurnSpend(
+	ctx: ActionCtx,
+	feature: string,
+	tokenUsage: TokenUsage | undefined,
+	modelUsed: string | undefined
+): Promise<void> {
+	try {
+		await recordLlmSpend(ctx, feature, tokenUsage, modelUsed);
+	} catch (error) {
+		logWarn('[assistant] spend not recorded:', feature, error);
+	}
 }
 
 interface FinalizeArgs {
@@ -134,7 +155,7 @@ async function streamAssistantTurn(
 			},
 		});
 
-		await recordLlmSpend(ctx, opts.feature, result.tokenUsage, result.modelUsed);
+		await recordTurnSpend(ctx, opts.feature, result.tokenUsage, result.modelUsed);
 		await opts.finalize({
 			text: result.text || stream.text,
 			status: stream.stopRequested || result.aborted ? 'stopped' : 'complete',
@@ -143,6 +164,10 @@ async function streamAssistantTurn(
 			toolCalls: toolCalls.length ? toolCalls : undefined,
 		});
 	} catch (error) {
+		// Steps that finished before the failure were billed. Only the stream's
+		// own error carries them, so a finalize failure above never records twice.
+		const partial = partialUsageOf(error);
+		if (partial) await recordTurnSpend(ctx, opts.feature, partial.tokenUsage, partial.modelUsed);
 		await opts.finalize({
 			text: stream.text,
 			status: 'error',

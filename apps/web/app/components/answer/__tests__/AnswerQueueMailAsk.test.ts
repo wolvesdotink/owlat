@@ -62,7 +62,7 @@ beforeEach(() => {
 				slotType: 'decision',
 				answerKind: 'choice',
 				text: 'Is the PO on the invoice?',
-				attribution: 'From example.org',
+				origin: { kind: 'email', senderDomain: 'example.org' },
 				options: ['Yes', 'No'],
 				answer: { value: 'Yes', at: 1, source: 'memory' },
 			},
@@ -71,7 +71,7 @@ beforeEach(() => {
 				slotType: 'free_text',
 				answerKind: 'text',
 				text: 'Anything else?',
-				attribution: 'From example.org',
+				origin: { kind: 'email', senderDomain: 'example.org' },
 			},
 		],
 	};
@@ -156,7 +156,7 @@ describe('AnswerQueueMailAsk', () => {
 						slotType: 'attachment',
 						answerKind: 'file',
 						text: 'Please provide the invoice PDFs for the four bookings',
-						attribution: 'From example.org',
+						origin: { kind: 'email', senderDomain: 'example.org' },
 						fileCandidates: [
 							{
 								source: 'mailAttachment',

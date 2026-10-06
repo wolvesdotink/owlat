@@ -3996,17 +3996,19 @@ dispatch + token-usage extraction surface. Two entry points:
 Callers: the **Agent walker** (for the two LLM-based **Agent step
 (module)** kinds — `classify` and `draft`), `translate.ts`,
 `knowledge/extraction.ts`, `semanticFileProcessing.ts`, and
-`visualizationAgent.ts`. The walker writes `tokenUsage` and
-`modelUsed` onto the lifecycle's **Agent action** row; non-agent
-callers log them via `lib/runtimeLog.ts` so operators see AI cost in
-runtime logs without a new persistence surface.
+`visualizationAgent.ts`. Each caller records every billed call as one
+row of the `llmUsageEvents` ledger (`analytics/llmUsage.ts`), the one
+store the spend ceiling reads; agent steps do it under `agent_*`
+features. The walker also writes a step's `tokenUsage` and `modelUsed`
+onto the lifecycle's **Agent action** row, a per-step reporting view
+that is never summed against the ceiling (#1259).
 
 The module does _not_ own: model resolution (lives behind
 `lib/llmProviders/` — one seam picks the model, this seam issues the
 call), retry policy, parse-failure fallback, embedding (`embed()`
 stays open-coded at its two callers — knowledge extraction and
 semantic file processing — to honor "minimal lift"), persistence of
-usage to a dedicated table (deferred until a metering need lands),
+usage (callers write the ledger through `analytics/llmUsage.ts`),
 or prompt construction (each caller still composes its prompt next
 to its model call — preserving the locality principle ADR-0014
 chose deliberately).

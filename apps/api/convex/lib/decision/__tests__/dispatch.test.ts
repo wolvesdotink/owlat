@@ -45,7 +45,9 @@ import {
 } from '../dispatch';
 import { DEFAULT_DECISION_DEADLINE_MS } from '../../decisionProviders/typesafe';
 import { DecisionWireError } from '../../decisionProviders/wire';
+import { LlmPartialUsageError } from '../../llm/partialUsage';
 import type { DecisionRequest, DecisionResult } from '../../decisionProviders/types';
+import { errorStatus } from '../../llm/retryPolicy';
 
 // The registry, mocked: the dispatch's whole job is what it does AROUND `ask`,
 // and both real adapters are covered by their own suites.
@@ -700,6 +702,39 @@ describe('accounting', () => {
 			usage: NATIVE_ANSWER.usage,
 			modelUsed: NATIVE_ANSWER.modelUsed,
 		});
+	});
+
+	it('records the billed attempts of a language call that never fitted the schema (#1260)', async () => {
+		const h = harness();
+		const schemaFailure = new Error('No object generated: response did not match schema.');
+		const error = new LlmPartialUsageError(
+			schemaFailure,
+			LANGUAGE_ANSWER.usage,
+			LANGUAGE_ANSWER.modelUsed
+		);
+		adapters.llm.mockRejectedValue(error);
+
+		await expect(run(h, { provider: fallbackTo })).rejects.toBe(error);
+		expect(h.records).toHaveLength(1);
+		expect(h.records[0]).toMatchObject({
+			provider: 'llm',
+			outcome: 'failed',
+			usage: LANGUAGE_ANSWER.usage,
+			modelUsed: LANGUAGE_ANSWER.modelUsed,
+		});
+	});
+
+	it('keeps a provider status readable behind billed language usage', async () => {
+		const h = harness();
+		const throttled = httpError(429);
+		adapters.llm.mockRejectedValue(
+			new LlmPartialUsageError(throttled, LANGUAGE_ANSWER.usage, LANGUAGE_ANSWER.modelUsed)
+		);
+
+		await expect(run(h, { provider: fallbackTo })).rejects.toThrow('HTTP 429');
+		expect(h.records[0]).toMatchObject({ usage: LANGUAGE_ANSWER.usage });
+		// The ledger's throttle tag reads the status through the shared reader.
+		expect(errorStatus(h.records[0]?.error)).toBe(429);
 	});
 
 	it('keeps the vendor error when a failed attempt cannot be recorded', async () => {

@@ -111,7 +111,6 @@ export async function generateDraftOnArrival(
 			// service records it under its own label, next to the self-check's,
 			// on success and on a throw.
 			spendLabels: { draft: 'postbox_draft', selfCheck: 'postbox_draft_selfcheck' },
-			successfulDraftSpend: 'ledger',
 			strategyScope: { mailboxId: loaded.mailboxId, classification: 'other' },
 		});
 

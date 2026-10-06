@@ -25,6 +25,7 @@ import {
 	openGapPlaceholders,
 	rankFoundFiles,
 	scoreFileName,
+	type AskProvenance,
 	type AskQuestion,
 } from '../ai/composeDraftPolicy';
 import { normalizeTimeZone, resolveFollowUpAt } from '../ai/composeDraftDates';
@@ -163,23 +164,28 @@ describe('round 2', () => {
 		expect(q).not.toHaveProperty('attribution');
 	});
 
-	it('reads the origin of a file question stored before `origin` from its sentence', () => {
-		const legacy = {
+	it("copies the stored file question's origin onto the follow-up", () => {
+		const q = buildFollowUpQuestion(
+			'invoice',
+			{ origin: { kind: 'email', senderDomain: 'acme.com' } },
+			WED_2026_09_30
+		);
+		expect(q.origin).toEqual({ kind: 'email', senderDomain: 'acme.com' });
+		expect(
+			buildFollowUpQuestion('invoice', { origin: { kind: 'email' } }, WED_2026_09_30).origin
+		).toEqual({ kind: 'email' });
+	});
+
+	it('reads provenance from `origin` only, never a legacy sentence', () => {
+		// The schema no longer has `attribution` (#1224); a stray one is ignored
+		// rather than parsed into an origin.
+		const stray: AskProvenance & { attribution?: string } = {
 			attribution:
 				'Generated from an email from acme.com — Owlat will never ask for your password.',
 		};
-		const q = buildFollowUpQuestion('invoice', legacy, WED_2026_09_30);
-		expect(q.origin).toEqual({ kind: 'email', senderDomain: 'acme.com' });
+		const q = buildFollowUpQuestion('invoice', stray, WED_2026_09_30);
+		expect(q).not.toHaveProperty('origin');
 		expect(q).not.toHaveProperty('attribution');
-	});
-
-	it('keeps a stored origin over the legacy sentence', () => {
-		const q = buildFollowUpQuestion(
-			'invoice',
-			{ attribution: 'Generated from an email from stale.example', origin: { kind: 'email' } },
-			WED_2026_09_30
-		);
-		expect(q.origin).toEqual({ kind: 'email' });
 	});
 
 	it('invents no provenance for a question that has none', () => {
@@ -233,7 +239,6 @@ describe('round 2', () => {
 			id: FILE_QUESTION_ID,
 			slotType: 'attachment',
 			text: 'They asked for "invoice".',
-			attribution: 'a',
 			answerKind: 'file',
 			options: [NOT_READY_OPTION],
 			translations: [
@@ -253,14 +258,12 @@ describe('gaps and the trusted block', () => {
 			id: FILE_QUESTION_ID,
 			slotType: 'attachment',
 			text: 'They asked for "september invoice".',
-			attribution: 'a',
 			answerKind: 'file',
 		},
 		{
 			id: 'clarify_0',
 			slotType: 'decision',
 			text: 'Is PO BP-2231 already printed on the invoice?',
-			attribution: 'a',
 			answerKind: 'choice',
 			options: ['Yes', 'No'],
 			answer: { value: 'Yes', at: 1, source: 'memory' },
@@ -269,7 +272,6 @@ describe('gaps and the trusted block', () => {
 			id: 'clarify_1',
 			slotType: 'date_time',
 			text: 'When does the renewal start?',
-			attribution: 'a',
 			answerKind: 'date',
 		},
 	];

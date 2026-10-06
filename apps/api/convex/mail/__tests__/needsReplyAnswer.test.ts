@@ -81,14 +81,13 @@ type SeedQuestion = {
 	id: string;
 	slotType: string;
 	text: string;
-	attribution: string;
+	origin: { kind: 'email'; senderDomain?: string };
 	options?: string[];
 	answerKind?: 'choice' | 'text' | 'date' | 'number' | 'file';
 	answer?: { value: string; at: number; source?: 'user' | 'memory' };
 };
 
-const ATTRIBUTION =
-	'Generated from an email from acme.com — Owlat will never ask for your password.';
+const ORIGIN = { kind: 'email', senderDomain: 'acme.com' } as const;
 
 async function seedThreadWithClarification(
 	t: ReturnType<typeof convexTest>,
@@ -98,7 +97,7 @@ async function seedThreadWithClarification(
 			id: 'clarify_0',
 			slotType: 'decision',
 			text: 'Should we approve the refund?',
-			attribution: ATTRIBUTION,
+			origin: ORIGIN,
 			options: ['Yes', 'No'],
 		},
 	]
@@ -299,7 +298,7 @@ describe('mail.needsReplyClarify.answerClarification — Answer mode', () => {
 		slotType: 'factual_lookup',
 		answerKind: 'text',
 		text: 'Is the PO number printed on the invoice?',
-		attribution: ATTRIBUTION,
+		origin: ORIGIN,
 		answer: { value: 'Yes, it is on it', at: 1, source: 'memory' },
 	};
 	const fileQuestion: SeedQuestion = {
@@ -307,7 +306,7 @@ describe('mail.needsReplyClarify.answerClarification — Answer mode', () => {
 		slotType: 'attachment',
 		answerKind: 'file',
 		text: 'Which invoice should I attach?',
-		attribution: ATTRIBUTION,
+		origin: ORIGIN,
 	};
 
 	it('confirms a card whose every question memory pre-picked, as it stands', async () => {
@@ -334,7 +333,7 @@ describe('mail.needsReplyClarify.answerClarification — Answer mode', () => {
 			id: 'clarify_2',
 			slotType: 'decision',
 			text: 'Should we invoice monthly?',
-			attribution: ATTRIBUTION,
+			origin: ORIGIN,
 		};
 		const threadId = await seedThreadWithClarification(t, 'user-A', [
 			memoryQuestion,
@@ -471,7 +470,7 @@ describe('mail.needsReplyClarify.answerClarification — Answer mode', () => {
 		await enableFeatures(t, ['mail.external']);
 		const threadId = await seedThreadWithClarification(t, 'user-A', [
 			fileQuestion,
-			{ id: 'clarify_2', slotType: 'decision', text: 'Invoice monthly?', attribution: ATTRIBUTION },
+			{ id: 'clarify_2', slotType: 'decision', text: 'Invoice monthly?', origin: ORIGIN },
 		]);
 
 		await t.mutation(api.mail.ai.needsReplyClarify.answerClarification, {

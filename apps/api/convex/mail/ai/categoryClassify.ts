@@ -27,6 +27,7 @@ import { internal } from '../../_generated/api';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmObject } from '../../lib/llm/dispatch';
 import { recordLlmSpend } from '../../analytics/llmUsage';
+import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
 import { classifyMailCategory, resolveCategory, type MailCategory } from '../category';
 
 const SYSTEM_GUARD =
@@ -108,22 +109,26 @@ export const classifyThread = internalAction({
 			// rate limit. Throws when disabled/limited → the `other` baseline stays.
 			await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 
-			const { object, tokenUsage, modelUsed } = await runLlmObject({
-				// High-volume background classification → cheap "summarize" tier.
-				model: await resolveLanguageModel(ctx, 'summarize'),
-				schema: refinementSchema,
-				prompt:
-					`${SYSTEM_GUARD}\n\nClassify this personal email into exactly one category:\n` +
-					`- person: a real human writing personally to the reader\n` +
-					`- newsletter: a subscription, digest, or marketing broadcast\n` +
-					`- notification: an automated app/service alert or update\n` +
-					`- receipt: an order confirmation, invoice, payment, or shipping notice\n` +
-					`- promotion: an unsolicited advert, sale, discount or cold sales pitch the reader never subscribed to\n` +
-					`- spam: unsolicited bulk mail, scams, phishing, or fake offers with no legitimate relationship to the reader\n` +
-					`- other: none of the above\n\n` +
-					`Be conservative with spam: a legitimate promotion or newsletter is not spam.\n\nEmail:\n\n${context.transcript}`,
-				temperature: 0,
-			});
+			const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
+				ctx,
+				'postbox_category',
+				runLlmObject({
+					// High-volume background classification → cheap "summarize" tier.
+					model: await resolveLanguageModel(ctx, 'summarize'),
+					schema: refinementSchema,
+					prompt:
+						`${SYSTEM_GUARD}\n\nClassify this personal email into exactly one category:\n` +
+						`- person: a real human writing personally to the reader\n` +
+						`- newsletter: a subscription, digest, or marketing broadcast\n` +
+						`- notification: an automated app/service alert or update\n` +
+						`- receipt: an order confirmation, invoice, payment, or shipping notice\n` +
+						`- promotion: an unsolicited advert, sale, discount or cold sales pitch the reader never subscribed to\n` +
+						`- spam: unsolicited bulk mail, scams, phishing, or fake offers with no legitimate relationship to the reader\n` +
+						`- other: none of the above\n\n` +
+						`Be conservative with spam: a legitimate promotion or newsletter is not spam.\n\nEmail:\n\n${context.transcript}`,
+					temperature: 0,
+				})
+			);
 			await recordLlmSpend(ctx, 'postbox_category', tokenUsage, modelUsed);
 
 			const llm: MailCategory = object.category;

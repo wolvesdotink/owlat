@@ -47,7 +47,11 @@ import { type NeedsReplyHeaders } from './needsReplyHeuristic';
 import { mailboxOwnAddresses } from './identities';
 import { normalizeEmail } from '@owlat/shared';
 import { needsReplyResultFields } from '../schema/mailThreads';
-import type { needsReplyClarificationValidator } from '../lib/validators/clarification';
+import {
+	needsReplyClarificationArgValidator,
+	withoutLegacyClarificationAttribution,
+	type needsReplyClarificationValidator,
+} from '../lib/validators/clarification';
 
 /** True when an attachment is a calendar invite (.ics / text/calendar). */
 export function isCalendarAttachment(att: { filename: string; contentType: string }): boolean {
@@ -210,7 +214,14 @@ export const getThreadContext = internalQuery({
  * draft-on-arrival). Built from the schema's own field record, so the argument
  * and the table can never drift; `null` clears the flag.
  */
-const needsReplyResultValidator = v.union(v.null(), v.object(needsReplyResultFields));
+const needsReplyResultValidator = v.union(
+	v.null(),
+	v.object({
+		...needsReplyResultFields,
+		// N-1 shim (#1224): accepts a 0.6.10 caller's `attribution`, dropped on write.
+		clarification: v.optional(needsReplyClarificationArgValidator),
+	})
+);
 
 /**
  * Persist a classification result and clear the pending marker, unless the
@@ -247,7 +258,8 @@ export const applyResult = internalMutation({
 			return; // stale — a newer ingest re-enqueued its own check
 		}
 
-		let resolved = args.needsReply;
+		let resolved =
+			args.needsReply === null ? null : withoutLegacyClarificationAttribution(args.needsReply);
 		const message = resolved === null ? null : await ctx.db.get(resolved.messageId);
 		// Answered while the classifier ran. A normal reply moves latestMessageId
 		// (caught above), but a teammate replying from their personal address

@@ -2,11 +2,14 @@
  * Deployment-wide LLM usage + estimated spend.
  *
  * Every feature that calls an LLM (Postbox AI, the knowledge assistant,
- * translate, knowledge extraction, semantic-file processing, visualization)
- * records one row here, so spend can be reported per feature — complementing the
- * inbound-agent step view in `agentHealth.getCostByStep` (which reads
- * agentActions). `recordLlmSpend` is the helper action callers invoke after each
- * LLM call.
+ * translate, knowledge extraction, semantic-file processing, visualization, and
+ * each step of the Team Inbox agent under an `agent_*` feature) records one row
+ * per billed call here, so spend can be reported per feature. This ledger is the
+ * one store the enforced spend ceiling reads (`analytics/spendBudget.ts`). The
+ * inbound-agent step view in `agentHealth.getCostByStep` reads the usage the
+ * walker also keeps on `agentActions`; that is a per-step reporting view of
+ * calls already counted here, not a second money store (#1259).
+ * `recordLlmSpend` is the helper action callers invoke after each LLM call.
  *
  * The ledger spans all three planes. A row's `plane` tag is optional and absent
  * means `language`, which is what every row written before the decision plane

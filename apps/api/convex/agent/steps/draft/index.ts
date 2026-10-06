@@ -196,12 +196,10 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 			// model can act on what it fetched, then still produce the final draft.
 			tools: { recallKnowledge },
 			maxSteps: MAX_RECALL_CALLS + 2,
+			// The service writes every generation to the ledger under these labels,
+			// the one store the spend ceiling reads (#1259). The usage it returns
+			// goes onto the step's agentActions row, the cost-by-step view only.
 			spendLabels: { draft: 'agent_draft', selfCheck: 'agent_draft_selfcheck' },
-			// A successful draft's usage goes back through the step result onto its
-			// agentActions row (the cost-by-step view), not the ledger. A draft that
-			// throws fails the step with no usage, so the service records that
-			// spend in the ledger under `agent_draft` instead.
-			successfulDraftSpend: 'caller',
 			replyLanguage,
 			strategyScope: {
 				...(message?.contactId ? { contactId: message.contactId } : {}),

@@ -33,6 +33,7 @@ import { z } from 'zod';
 import { resolveLanguageModel } from '../lib/llmProvider';
 import { runLlmObject } from '../lib/llm/dispatch';
 import { recordLlmSpend } from '../analytics/llmUsage';
+import { recordSpendOnFailure } from '../analytics/failedLlmSpend';
 import { logInfo } from '../lib/runtimeLog';
 import { RELATION_TYPES } from '../schema/knowledge';
 import { tagForInferredConfidence } from '../lib/knowledgeEdges';
@@ -172,10 +173,13 @@ export const inferRelations = internalAction({
 				.join('\n');
 
 			const model = await resolveLanguageModel(ctx, 'extract');
-			const { object, tokenUsage, modelUsed } = await runLlmObject({
-				model,
-				schema: inferenceSchema,
-				prompt: `You are building a knowledge graph. Below is a numbered list of knowledge entries. Identify meaningful TYPED relations between them, referencing each entry by its [index].
+			const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
+				ctx,
+				'knowledge_autolink',
+				runLlmObject({
+					model,
+					schema: inferenceSchema,
+					prompt: `You are building a knowledge graph. Below is a numbered list of knowledge entries. Identify meaningful TYPED relations between them, referencing each entry by its [index].
 
 Relation types (direction matters — "from" relates TO "to"):
 - supersedes: the "from" entry replaces/updates an older "to" entry
@@ -189,8 +193,9 @@ Only propose a relation you are confident actually holds. Skip pairs that are me
 
 Entries:
 ${numbered}`,
-				temperature: 0.1,
-			});
+					temperature: 0.1,
+				})
+			);
 			logInfo('[knowledge.autolink] llm call', { tokenUsage, modelUsed, nodeCount: nodes.length });
 			await recordLlmSpend(ctx, 'knowledge_autolink', tokenUsage, modelUsed);
 

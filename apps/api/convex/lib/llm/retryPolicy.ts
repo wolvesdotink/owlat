@@ -5,6 +5,8 @@
  * {@link MAX_LLM_ATTEMPTS} too.
  */
 
+import { LlmPartialUsageError } from './partialUsage';
+
 /** Shared one-shot dispatch ceiling; runtime-neutral for V8 budget accounting. */
 export const MAX_LLM_ATTEMPTS = 3;
 
@@ -49,6 +51,16 @@ const LLM_BACKOFF_BASE_MS = 500;
 const MAX_RETRY_AFTER_MS = 10_000;
 
 /**
+ * The provider's own error behind a dispatch failure. A failure after billed
+ * work is rethrown as an `LlmPartialUsageError` (./partialUsage.ts) that keeps
+ * the message but not the status or headers, so the readers below look at the
+ * error it wraps.
+ */
+function providerError(error: unknown): unknown {
+	return error instanceof LlmPartialUsageError ? error.cause : error;
+}
+
+/**
  * The wait a provider asked for on a 429/503, read off the AI SDK's
  * `APICallError.responseHeaders`. The SDK's own retry honoured these headers;
  * with that retry switched off the dispatcher honours them instead, so a rate
@@ -56,8 +68,9 @@ const MAX_RETRY_AFTER_MS = 10_000;
  * signal still cuts the wait short.
  */
 export function retryAfterMs(error: unknown, now = Date.now()): number | undefined {
-	const headers = (error as { responseHeaders?: Record<string, string | undefined> } | null)
-		?.responseHeaders;
+	const headers = (
+		providerError(error) as { responseHeaders?: Record<string, string | undefined> } | null
+	)?.responseHeaders;
 	if (!headers || typeof headers !== 'object') return undefined;
 	const clamp = (ms: number) => Math.min(Math.max(ms, 0), MAX_RETRY_AFTER_MS);
 	const msHeader = headers['retry-after-ms'];
@@ -78,7 +91,7 @@ export function retryAfterMs(error: unknown, now = Date.now()): number | undefin
  * produce a fallback hop).
  */
 export function errorStatus(error: unknown): number | undefined {
-	const e = error as {
+	const e = providerError(error) as {
 		statusCode?: number;
 		status?: number;
 		response?: { status?: number };

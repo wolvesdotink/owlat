@@ -49,6 +49,7 @@ import { internal } from '../../../_generated/api';
 import { resolveLanguageModel } from '../../../lib/llmProvider';
 import { runLlmObject, runLlmText } from '../../../lib/llm/dispatch';
 import { addTokenUsage } from '../../../lib/llm/tokenUsage';
+import { meterAgentCall } from '../../shared/agentSpend';
 import type { Id } from '../../../_generated/dataModel';
 import type { Infer } from 'convex/values';
 import type { clarificationQuestionValidator } from '../../../lib/validators/clarification';
@@ -271,16 +272,21 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 			}
 
 			const model = await resolveLanguageModel(ctx, 'classify'); // cheap / fast tier
+			// Each call below writes its own ledger row as it returns or throws
+			// (meterAgentCall), so the fail-soft returns lose no spend. The sum
+			// kept here is only the step's agentActions reporting figure.
 			let tokenUsage: TokenUsage | undefined;
 			let modelUsed: string | undefined;
 
 			// Stage 1 — extract typed reply slots.
-			const slotsResult = await runLlmObject({
-				model,
-				schema: replySlotsSchema,
-				prompt: buildSlotPrompt(input.context),
-				temperature: 0.2,
-			});
+			const slotsResult = await meterAgentCall(ctx, 'agent_clarify', () =>
+				runLlmObject({
+					model,
+					schema: replySlotsSchema,
+					prompt: buildSlotPrompt(input.context),
+					temperature: 0.2,
+				})
+			);
 			tokenUsage = addTokenUsage(tokenUsage, slotsResult.tokenUsage);
 			modelUsed = slotsResult.modelUsed;
 
@@ -307,13 +313,15 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 			const drafts: string[] = [];
 			for (let i = 0; i < DIVERGENCE_SAMPLES; i++) {
 				try {
-					const draft = await runLlmText({
-						model,
-						prompt: buildCandidatePrompt(input.context),
-						// High temperature so independent samples actually diverge where
-						// the answer is genuinely open.
-						temperature: 0.9,
-					});
+					const draft = await meterAgentCall(ctx, 'agent_clarify', () =>
+						runLlmText({
+							model,
+							prompt: buildCandidatePrompt(input.context),
+							// High temperature so independent samples actually diverge where
+							// the answer is genuinely open.
+							temperature: 0.9,
+						})
+					);
 					if (draft.text.trim().length > 0) {
 						drafts.push(draft.text);
 						tokenUsage = addTokenUsage(tokenUsage, draft.tokenUsage);
@@ -332,12 +340,14 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 				};
 			}
 
-			const divergenceResult = await runLlmObject({
-				model,
-				schema: divergenceSchema,
-				prompt: buildDivergencePrompt(candidateSlots, drafts),
-				temperature: 0.1,
-			});
+			const divergenceResult = await meterAgentCall(ctx, 'agent_clarify', () =>
+				runLlmObject({
+					model,
+					schema: divergenceSchema,
+					prompt: buildDivergencePrompt(candidateSlots, drafts),
+					temperature: 0.1,
+				})
+			);
 			tokenUsage = addTokenUsage(tokenUsage, divergenceResult.tokenUsage);
 
 			const candidateQuestions = selectQuestions(
@@ -389,7 +399,9 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 			// we ACTUALLY ask (never the memory-filled ones) into every other
 			// interface locale. One cheap call; fail-soft to the English copy.
 			if (questions.length > 0) {
-				const localized = await localizeQuestions(model, questions);
+				const localized = await meterAgentCall(ctx, 'agent_clarify', () =>
+					localizeQuestions(model, questions)
+				);
 				questions = localized.questions;
 				tokenUsage = addTokenUsage(tokenUsage, localized.tokenUsage);
 			}

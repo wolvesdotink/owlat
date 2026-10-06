@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const mocks = vi.hoisted(() => ({ runLlmObject: vi.fn() }));
 vi.mock('../../lib/llm/dispatch', () => ({ runLlmObject: mocks.runLlmObject }));
 
+import { LlmPartialUsageError } from '../../lib/llm/partialUsage';
 import {
 	buildLocalizePrompt,
 	mergeTranslations,
@@ -261,6 +262,36 @@ describe('localizeQuestions', () => {
 		const result = await localizeQuestions({} as never, questions, ['en', 'de']);
 		expect(mocks.runLlmObject).toHaveBeenCalledTimes(1);
 		expect(result.questions).toEqual(questions);
+	});
+
+	it('reports the billed usage of a first call that failed the schema (#1260)', async () => {
+		const billed = { promptTokens: 30, completionTokens: 15, totalTokens: 45 };
+		mocks.runLlmObject.mockRejectedValueOnce(
+			new LlmPartialUsageError(new Error('did not match schema'), billed, 'mock-model')
+		);
+		const result = await localizeQuestions({} as never, questions, ['en', 'de']);
+		expect(result.questions).toEqual(questions);
+		expect(result.tokenUsage).toEqual(billed);
+		expect(result.modelUsed).toBe('mock-model');
+	});
+
+	it('adds the billed usage of a retry that failed the schema to the first pass', async () => {
+		mocks.runLlmObject
+			.mockResolvedValueOnce(
+				objectResult([
+					{ questionId: 'q0', locale: 'de', text: '45 Tage gewähren?', options: ['Ja', 'Nein'] },
+				])
+			)
+			.mockRejectedValueOnce(
+				new LlmPartialUsageError(
+					new Error('did not match schema'),
+					{ promptTokens: 2, completionTokens: 2, totalTokens: 4 },
+					'mock-model'
+				)
+			);
+		const result = await localizeQuestions({} as never, questions, ['en', 'de']);
+		expect(result.questions[1]?.translations).toBeUndefined();
+		expect(result.tokenUsage?.totalTokens).toBe(14);
 	});
 
 	it('returns the questions unchanged when there is nothing to translate into', async () => {
