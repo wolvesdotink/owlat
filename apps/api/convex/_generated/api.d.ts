@@ -57,6 +57,7 @@ import type * as agent_pluginStepRuntime from '../agent/pluginStepRuntime.js';
 import type * as agent_referenceMonitor from '../agent/referenceMonitor.js';
 import type * as agent_shadowScorecard from '../agent/shadowScorecard.js';
 import type * as agent_shadowSimilarity from '../agent/shadowSimilarity.js';
+import type * as agent_shared_agentSpend from '../agent/shared/agentSpend.js';
 import type * as agent_shared_draftGaps from '../agent/shared/draftGaps.js';
 import type * as agent_shared_draftMarkup from '../agent/shared/draftMarkup.js';
 import type * as agent_shared_draftService from '../agent/shared/draftService.js';
@@ -1543,6 +1544,7 @@ declare const fullApi: ApiFromModules<{
 	'agent/referenceMonitor': typeof agent_referenceMonitor;
 	'agent/shadowScorecard': typeof agent_shadowScorecard;
 	'agent/shadowSimilarity': typeof agent_shadowSimilarity;
+	'agent/shared/agentSpend': typeof agent_shared_agentSpend;
 	'agent/shared/draftGaps': typeof agent_shared_draftGaps;
 	'agent/shared/draftMarkup': typeof agent_shared_draftMarkup;
 	'agent/shared/draftService': typeof agent_shared_draftService;

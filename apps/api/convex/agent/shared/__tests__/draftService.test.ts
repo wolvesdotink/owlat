@@ -82,7 +82,6 @@ function baseParams(overrides: Partial<SharedDraftParams> = {}): SharedDraftPara
 		signatureInstruction: '',
 		voiceSection: '',
 		spendLabels: { draft: 'dr', selfCheck: 'sc' },
-		successfulDraftSpend: 'caller',
 		...overrides,
 	};
 }
@@ -473,22 +472,6 @@ describe('runSharedDraft — unfinished markup and the spend of rejected drafts'
 		await expect(runSharedDraft(fakeCtx, tooled())).rejects.toThrow('provider down');
 		expect(draftSpend()).toEqual([[fakeCtx, 'dr', usage(10), 'model-a']]);
 	});
-
-	it('leaves the spend of a successful run to the caller', async () => {
-		runLlmTextWithToolsMock.mockResolvedValueOnce({
-			text: 'Hi,\n<tool_call>{}</tool_call>',
-			tokenUsage: usage(10) as never,
-			modelUsed: 'model-a',
-		});
-		runLlmTextMock.mockResolvedValueOnce({
-			text: REPLY,
-			tokenUsage: usage(4) as never,
-			modelUsed: 'model-b',
-		});
-		const out = await runSharedDraft(fakeCtx, tooled());
-		expect(out.tokenUsage).toEqual(usage(14));
-		expect(draftSpend()).toEqual([]);
-	});
 });
 
 describe('runSharedDraft — an inline tool-call block (second review)', () => {
@@ -512,38 +495,34 @@ describe('runSharedDraft — an inline tool-call block (second review)', () => {
 describe('runSharedDraft — the spend of every outcome, recorded once (#1256)', () => {
 	const REPLY = 'Hi John,\n\nThanks for getting in touch.\n\nBest,\nAda';
 	const usage = (n: number) => ({ promptTokens: n, completionTokens: n, totalTokens: 2 * n });
-	const tooled = (successfulDraftSpend: 'ledger' | 'caller') =>
-		baseParams({ tools: { recallKnowledge: {} as never }, successfulDraftSpend });
+	const tooled = () => baseParams({ tools: { recallKnowledge: {} as never } });
 	const draftSpend = () =>
 		vi.mocked(recordLlmSpend).mock.calls.filter(([, label]) => label === 'dr');
 	/** A tool loop that paid for a step, then the provider failed. */
 	const failedAfterToolStep = () =>
 		new LlmPartialUsageError(new Error('provider down'), usage(6) as never, 'model-a');
 
-	it.each(['ledger', 'caller'] as const)(
-		'records the paid steps of a tool loop that throws, once (%s)',
-		async (mode) => {
-			const error = failedAfterToolStep();
-			runLlmTextWithToolsMock.mockRejectedValueOnce(error);
-			await expect(runSharedDraft(fakeCtx, tooled(mode))).rejects.toBe(error);
-			expect(draftSpend()).toEqual([[fakeCtx, 'dr', usage(6), 'model-a']]);
-			expect(runLlmObjectMock).not.toHaveBeenCalled();
-		}
-	);
+	it('records the paid steps of a tool loop that throws, once', async () => {
+		const error = failedAfterToolStep();
+		runLlmTextWithToolsMock.mockRejectedValueOnce(error);
+		await expect(runSharedDraft(fakeCtx, tooled())).rejects.toBe(error);
+		expect(draftSpend()).toEqual([[fakeCtx, 'dr', usage(6), 'model-a']]);
+		expect(runLlmObjectMock).not.toHaveBeenCalled();
+	});
 
 	it('records nothing for a failure that carries no usage', async () => {
 		runLlmTextWithToolsMock.mockRejectedValueOnce(new Error('401 unauthorized'));
-		await expect(runSharedDraft(fakeCtx, tooled('ledger'))).rejects.toThrow('401');
+		await expect(runSharedDraft(fakeCtx, tooled())).rejects.toThrow('401');
 		expect(draftSpend()).toEqual([]);
 	});
 
-	it('records a successful draft once when the service owns its spend', async () => {
+	it('records a successful draft once, and still returns its usage', async () => {
 		runLlmTextWithToolsMock.mockResolvedValueOnce({
 			text: REPLY,
 			tokenUsage: usage(9) as never,
 			modelUsed: 'model-a',
 		});
-		const out = await runSharedDraft(fakeCtx, tooled('ledger'));
+		const out = await runSharedDraft(fakeCtx, tooled());
 		expect(out.tokenUsage).toEqual(usage(9));
 		expect(draftSpend()).toEqual([[fakeCtx, 'dr', usage(9), 'model-a']]);
 	});
@@ -559,7 +538,7 @@ describe('runSharedDraft — the spend of every outcome, recorded once (#1256)',
 			tokenUsage: usage(4) as never,
 			modelUsed: 'model-b',
 		});
-		await runSharedDraft(fakeCtx, tooled('ledger'));
+		await runSharedDraft(fakeCtx, tooled());
 		expect(draftSpend()).toEqual([[fakeCtx, 'dr', usage(14), 'model-b']]);
 	});
 
@@ -574,7 +553,7 @@ describe('runSharedDraft — the spend of every outcome, recorded once (#1256)',
 			tokenUsage: usage(4) as never,
 			modelUsed: 'model-b',
 		});
-		await expect(runSharedDraft(fakeCtx, tooled('ledger'))).rejects.toThrow(/tool-call markup/);
+		await expect(runSharedDraft(fakeCtx, tooled())).rejects.toThrow(/tool-call markup/);
 		expect(draftSpend()).toEqual([
 			[fakeCtx, 'dr', usage(10), 'model-a'],
 			[fakeCtx, 'dr', usage(4), 'model-b'],
@@ -588,7 +567,7 @@ describe('runSharedDraft — the spend of every outcome, recorded once (#1256)',
 			tokenUsage: usage(9) as never,
 			modelUsed: 'model-a',
 		});
-		const out = await runSharedDraft(fakeCtx, tooled('ledger'));
+		const out = await runSharedDraft(fakeCtx, tooled());
 		expect(out.draftBody).toBe(REPLY);
 	});
 });

@@ -1,10 +1,11 @@
 /**
- * Where the Team Inbox draft step's spend lands (#1256). A successful draft
- * returns its usage in the step result, which the walker stores on the step's
- * `agentActions` row (the cost-by-step view); it writes no `agent_draft` ledger
- * row, so the two stores never hold the same call. A draft that throws after
- * a paid tool step fails the step, and the walker's failed transition carries
- * no usage, so that spend goes to the ledger under `agent_draft`, once.
+ * Where the Team Inbox draft step's spend lands (#1256, #1259). Every
+ * generation writes one `agent_draft` row to the usage ledger, the store the
+ * spend ceiling reads: a successful draft, a draft that throws after a paid
+ * tool step, and a draft whose output fails to persist afterwards. A successful
+ * draft also returns its usage in the step result, which the walker keeps on
+ * the step's `agentActions` row as the cost-by-step view; the walker writes no
+ * ledger row of its own, so nothing is counted twice.
  *
  * The LLM dispatch seam and the provider factory are mocked; the spend helper
  * is real, so the ledger write is the `analytics/llmUsage:record` mutation.
@@ -49,7 +50,7 @@ const input: DraftInput = {
 const DRAFT_USAGE = { promptTokens: 40, completionTokens: 20, totalTokens: 60 };
 const CHECK_USAGE = { promptTokens: 4, completionTokens: 2, totalTokens: 6 };
 
-function makeCtx() {
+function makeCtx(recordDraftOutput: () => unknown = () => undefined) {
 	const ledger: Array<{ feature: string; tokenUsage: unknown; modelUsed: unknown }> = [];
 	const ctx = makeStepCtx<Parameters<typeof draftStep.execute>[0]>({
 		queries: {
@@ -58,7 +59,7 @@ function makeCtx() {
 			evaluateForMessage: { stances: [] },
 		},
 		mutations: {
-			recordDraftOutput: undefined,
+			recordDraftOutput,
 			llmUsage: (args) => {
 				ledger.push(args as (typeof ledger)[number]);
 				return undefined;
@@ -80,7 +81,7 @@ beforeEach(() => {
 });
 
 describe('draftStep.execute — draft spend (#1256)', () => {
-	it('returns a successful draft’s usage for agentActions and writes no agent_draft row', async () => {
+	it('writes a successful draft to the ledger once and returns its usage for agentActions', async () => {
 		mocks.runLlmTextWithTools.mockResolvedValueOnce({
 			text: 'Your order shipped yesterday.',
 			tokenUsage: DRAFT_USAGE,
@@ -92,7 +93,27 @@ describe('draftStep.execute — draft spend (#1256)', () => {
 
 		expect(result.tokenUsage).toEqual(DRAFT_USAGE);
 		expect(result.modelUsed).toBe('draft-model');
-		expect(ledger.map((row) => row.feature)).toEqual(['agent_draft_selfcheck']);
+		expect(ledger).toEqual([
+			{ feature: 'agent_draft', tokenUsage: DRAFT_USAGE, modelUsed: 'draft-model' },
+			{ feature: 'agent_draft_selfcheck', tokenUsage: CHECK_USAGE, modelUsed: 'check-model' },
+		]);
+	});
+
+	it('keeps the generation in the ledger when persisting the draft fails afterwards', async () => {
+		mocks.runLlmTextWithTools.mockResolvedValueOnce({
+			text: 'Your order shipped yesterday.',
+			tokenUsage: DRAFT_USAGE,
+			modelUsed: 'draft-model',
+		});
+		const { ctx, ledger } = makeCtx(() => {
+			throw new Error('write conflict');
+		});
+
+		// The step fails with no result, so the walker stores no usage on
+		// agentActions; the ledger already holds the paid calls.
+		await expect(draftStep.execute(ctx, input)).rejects.toThrow('write conflict');
+		expect(ledger.map((row) => row.feature)).toEqual(['agent_draft', 'agent_draft_selfcheck']);
+		expect(ledger[0]!.tokenUsage).toEqual(DRAFT_USAGE);
 	});
 
 	it('records the paid tool steps of a draft that throws in the ledger, once', async () => {
