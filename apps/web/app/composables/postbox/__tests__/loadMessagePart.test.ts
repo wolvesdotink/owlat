@@ -101,12 +101,12 @@ describe('createMessagePartLoader', () => {
 		expect(mints).toHaveLength(2);
 	});
 
-	it('does not reuse an expired URL on a device clock running behind the server', async () => {
+	it('stops reusing a URL 50 device minutes after it arrived, on a clock running behind', async () => {
 		serverSkew = 10 * 60_000;
 		const load = loader();
 		await load('msg_1', pdf);
-		// 52 device minutes on: the token's `exp` is still ahead on the device's
-		// clock, but 62 minutes have passed on the server's and it has expired.
+		// The token's `exp` is 70 minutes ahead on this device's clock, so
+		// comparing with it would reuse the URL; the reuse cap mints anew.
 		clock += 52 * 60_000;
 		const blob = await load('msg_1', pdf);
 
@@ -114,6 +114,29 @@ describe('createMessagePartLoader', () => {
 		expect(mints).toHaveLength(2);
 		expect(fetched).toHaveLength(2);
 		expect(fetched[1]).not.toBe(fetched[0]);
+	});
+
+	it('re-mints once when a reused token has expired by the server clock', async () => {
+		serverSkew = 10 * 60_000;
+		const load = loader();
+		await load('msg_1', pdf);
+		// 45 minutes on the device, still inside the reuse cap and well before
+		// the token's `exp` by this (10 minutes slow) clock. The device clock was
+		// set back 20 minutes on the way, so 65 minutes passed on the server's
+		// and the token it signed for an hour has expired.
+		clock += 45 * 60_000;
+		serverSkew += 20 * 60_000;
+		const exp = Number(new URL(fetched[0]!).searchParams.get('exp'));
+		expect(exp).toBeGreaterThan(clock);
+		expect(exp).toBeLessThan(clock + serverSkew);
+
+		const blob = await load('msg_1', pdf);
+		expect(await blob!.text()).toBe('pdf bytes');
+		// The held URL was tried and refused, then exactly one fresh one.
+		expect(fetched).toHaveLength(3);
+		expect(fetched[1]).toBe(fetched[0]);
+		expect(fetched[2]).not.toBe(fetched[0]);
+		expect(mints).toHaveLength(2);
 	});
 
 	it('keeps reusing URLs on a device clock running more than an hour ahead', async () => {
