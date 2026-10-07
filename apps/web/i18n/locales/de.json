@@ -6421,6 +6421,90 @@
 				"gitSha": "Git-SHA"
 			}
 		},
+		"team": {
+			"answer": {
+				"view": {
+					"recent": "Neueste",
+					"full": "Ganzer Verlauf"
+				}
+			},
+			"composer": {
+				"continue": "Im Antwortmodus weiterschreiben",
+				"hint": "{'@'} erwähnt jemanden · # verknüpft eine Aufgabe",
+				"modeLabel": "Interne Notiz oder Antwort",
+				"note": "Interne Notiz",
+				"notePlaceholder": "Schreib eine interne Notiz ans Team… (geht nie an {name})",
+				"notePlaceholderNoName": "Schreib eine interne Notiz ans Team…",
+				"post": "Notiz hinzufügen",
+				"privacy": "Nur dein Team sieht das. Es geht nie an den Kunden.",
+				"replyHint": "Die Antwort schreibst und sendest du im Antwortmodus.",
+				"replyPlaceholder": "Fang deine Antwort an {name} an…",
+				"replyTo": "Antworten an {name}",
+				"unlink": "Verknüpfung mit dieser Aufgabe entfernen"
+			},
+			"items": {
+				"askedBy": "von {name} am {date} gefragt",
+				"assignTo": "Zuweisen an",
+				"claim": "Übernehmen",
+				"claimed": "Jetzt bist du dran.",
+				"empty": "Fürs Team ist nichts offen.",
+				"formerTeammate": "Ehemaliges Teammitglied",
+				"me": "Mir",
+				"notes": "{count} Notiz | {count} Notizen",
+				"openCount": "{count} offen | {count} offen",
+				"operation": "Aufgabe aktualisieren",
+				"phoneSummary": "{count} offen fürs Team | {count} offen fürs Team",
+				"title": "Offen fürs Team",
+				"unassign": "Zuweisung aufheben",
+				"unassigned": "Nicht zugewiesen",
+				"unclearOwner": "unklar, wer das übernimmt",
+				"unclearTitle": "Unklar, wer zuständig ist",
+				"waitingTitle": "Ausstehend beim Kunden"
+			},
+			"note": {
+				"addReaction": "Reaktion hinzufügen",
+				"ariaLabel": "Interne Notiz von {name}",
+				"delete": "Notiz löschen",
+				"deleted": "Notiz gelöscht",
+				"edit": "Notiz bearbeiten",
+				"edited": "(bearbeitet)",
+				"formerTeammate": "Ehemaliges Teammitglied",
+				"internal": "Intern",
+				"on": "zu",
+				"operation": "Notiz speichern",
+				"reactWith": "Mit {emoji} reagieren",
+				"removedItem": "einer Aufgabe, die es nicht mehr gibt"
+			},
+			"reply": {
+				"email": "E-Mail",
+				"label": "Antwort von {name}",
+				"status": {
+					"cancelled": "Abgebrochen",
+					"failed": "Nicht zugestellt",
+					"held": "Zurückgehalten",
+					"queued": "Wird gesendet",
+					"sent": "Gesendet"
+				}
+			},
+			"stream": {
+				"earlier": "Frühere anzeigen",
+				"markSeenOperation": "Merken, wo du aufgehört hast",
+				"new": "Neu",
+				"system": {
+					"item_changed": "„{item}“ hat sich geändert",
+					"item_closed": "„{item}“ erledigt",
+					"item_closed_declined": "„{item}“ abgelehnt",
+					"item_closed_superseded": "„{item}“ ersetzt",
+					"item_closed_untracked": "„{item}“ nicht mehr nachverfolgt",
+					"item_corrected": "„{item}“ korrigiert",
+					"item_opened": "Neue Aufgabe fürs Team: „{item}“",
+					"item_reopened": "„{item}“ wieder geöffnet",
+					"item_replaced": "„{item}“ wurde durch eine neuere Bitte ersetzt",
+					"openedMany": "{count} neue Aufgabe fürs Team | {count} neue Aufgaben fürs Team",
+					"proposal_confirmed": "„{item}“ bestätigt"
+				}
+			}
+		},
 		"transactional": {
 			"recentSendsModal": {
 				"hasMore": "Es werden die 25 neuesten Sendungen angezeigt.",

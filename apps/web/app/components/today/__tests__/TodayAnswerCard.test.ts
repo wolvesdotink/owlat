@@ -7,7 +7,7 @@
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { inject } from 'vue';
+import { inject, ref } from 'vue';
 import TodayAnswerCard from '../TodayAnswerCard.vue';
 import TodaySourceLink from '../TodaySourceLink.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
@@ -20,11 +20,13 @@ import {
 
 const { t } = createTestI18n().global;
 
+const teamTops = ref<unknown[]>([]);
 beforeAll(() => {
 	Object.assign(globalThis, {
 		useI18n: i18nStubs.useI18n,
 		formatCompactRelativeTime: () => '1m',
 		inject,
+		useConvexQuery: () => ({ data: teamTops }),
 	});
 });
 const say = (parts: { key: string; count: number }[]) =>
@@ -148,6 +150,45 @@ describe('TodayAnswerCard', () => {
 		expect(line).toContain('Contract renewal');
 		expect(line).toContain('Inès Weber');
 		expect(line).not.toContain('=?utf-8?');
+	});
+
+	it('leads a team row with its top open action, then the sender and the raw preview', () => {
+		teamTops.value = [{ threadId: 't1', text: 'Refund €129.00 for order #4471', count: 2 }];
+		const team = {
+			id: 'team:m1',
+			source: 'team',
+			at: Date.now(),
+			entry: {
+				thread: { _id: 't1', lastPreview: 'The replacement arrived broken too.' },
+				message: {
+					_id: 'm1',
+					subject: 'Order #4471 arrived damaged',
+					from: 'Ana <ana@example.com>',
+				},
+			},
+		} as never;
+		const w = mount(TodayAnswerCard, {
+			props: {
+				items: [team],
+				counts: { mail: 0, team: 1, mention: 0, drafts: 0 },
+				isLoading: false,
+			},
+			global: {
+				plugins: [createTestI18n()],
+				stubs: {
+					UiButton: { template: '<a><slot /></a>' },
+					UiSkeleton: true,
+					Icon: true,
+					InboxChip: true,
+					NuxtLink: { template: '<a><slot /></a>' },
+				},
+			},
+		});
+		const line = w.find('[data-today-line]').text();
+		expect(line).toContain('Refund €129.00 for order #4471');
+		expect(line).toContain('+1 more');
+		expect(line).toContain('Ana · “The replacement arrived broken too.”');
+		teamTops.value = [];
 	});
 });
 

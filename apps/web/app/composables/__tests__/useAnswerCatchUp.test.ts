@@ -30,10 +30,6 @@ vi.mock('@owlat/api', () => ({
 				catchUp: { ensure: 'mail.ensure', coverage: 'mail.coverage' },
 			},
 		},
-		inbox: {
-			catchUpStore: { get: 'team.get' },
-			catchUp: { ensure: 'team.ensure', coverage: 'team.coverage' },
-		},
 	},
 }));
 
@@ -56,9 +52,7 @@ const action = vi.fn();
 beforeEach(() => {
 	aiOn = true;
 	stored['mail.get'] = ref(undefined);
-	stored['team.get'] = ref(undefined);
 	queryArgs['mail.get'] = [];
-	queryArgs['team.get'] = [];
 	action.mockReset();
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: (flag: string) => flag === 'ai' && aiOn }));
@@ -111,15 +105,15 @@ describe('useAnswerCatchUp: the card', () => {
 		expect(api().catchUp.value?.asks).toHaveLength(1);
 	});
 
-	it('runs again for another thread, and uses the team functions for a team thread', async () => {
+	it('runs again for another thread', async () => {
 		action.mockResolvedValue(null);
 		const target = ref<AnswerCatchUpTarget | null>(mail());
 		host(target, ref(''));
 		await flushPromises();
-		target.value = { kind: 'team', threadId: 't1' as never };
+		target.value = mail('m2');
 		await flushPromises();
-		expect(action.mock.calls.map((c) => c[0])).toEqual(['mail.ensure', 'team.ensure']);
-		expect(action).toHaveBeenLastCalledWith('team.ensure', { threadId: 't1', locale: 'en' });
+		expect(action.mock.calls.map((c) => c[0])).toEqual(['mail.ensure', 'mail.ensure']);
+		expect(action).toHaveBeenLastCalledWith('mail.ensure', { messageId: 'm2', locale: 'en' });
 	});
 
 	it('asks nothing with AI off', async () => {

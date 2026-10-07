@@ -1,7 +1,7 @@
 /**
  * Answer mode's catch-up card: the prompt, the model output shape and the
- * clean-up, shared by Postbox threads (mail/ai/catchUp.ts) and team threads
- * (inbox/catchUp.ts). Pure (no Convex context, no model), so the framing and the
+ * clean-up for Postbox threads (mail/ai/catchUp.ts; team threads have none since
+ * the team stream, SPEC §7). Pure (no Convex context, no model), so the framing and the
  * validation are unit-testable and the non-node stores can import the
  * visibility rule.
  *
@@ -231,18 +231,6 @@ export function visibleCatchUp(row: CatchUp & { mode: CatchUpMode }): CatchUp | 
 		locale: row.locale,
 		generatedAt: row.generatedAt,
 	};
-}
-
-/**
- * The team thread's message count as the catch-up counts it: every inbound
- * message plus every reply the team sent (a sent reply lives on the inbound row
- * it answers and does not bump `conversationThreads.messageCount`, but it can
- * answer an ask, so it has to invalidate the card).
- */
-export function teamCatchUpMessageCount(
-	rows: Array<{ processingStatus: string; draftResponse?: string }>
-): number {
-	return rows.length + rows.filter((r) => r.processingStatus === 'sent' && r.draftResponse).length;
 }
 
 /** What the coverage check returns. */
