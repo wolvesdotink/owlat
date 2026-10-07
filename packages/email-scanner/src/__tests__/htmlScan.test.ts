@@ -6,6 +6,7 @@ import {
 	capContentScanInput,
 	removeSpans,
 	replaceTags,
+	scanAnchors,
 } from '../content/htmlScan.js';
 
 describe('extractUrls attribute handling', () => {
@@ -97,13 +98,13 @@ describe('markup helpers', () => {
 describe('content scan helpers run in linear time on adversarial input', () => {
 	const FIVE_MB = 5 * 1024 * 1024;
 	const repeatTo = (unit: string, size = FIVE_MB) => unit.repeat(Math.ceil(size / unit.length));
-	const BUDGET_MS = 1000;
 
-	const timed = (fn: () => unknown): number => {
-		const start = performance.now();
-		fn();
-		return performance.now() - start;
-	};
+	// The link scan is checked by counting the characters it reads (#1315), not
+	// by timing it on a CI runner of unknown speed. It reads each character
+	// once, plus at most one search to the end for each quote character a value
+	// never closes, and the text of each anchor once more to drop its tags: at
+	// most 4 per character. A scan that rereads the input reads thousands.
+	const READS_PER_CHAR = 4;
 
 	const shapes: Array<[string, string]> = [
 		['unclosed anchors with href', '<a href="x" '],
@@ -116,15 +117,39 @@ describe('content scan helpers run in linear time on adversarial input', () => {
 		['unclosed comments', '<!--'],
 	];
 
+	/** Run the scan behind `extractUrls` and check what it read. */
+	const expectLinearAnchorScan = (input: string) => {
+		const meter = { chars: 0 };
+		scanAnchors(input, meter);
+		expect(meter.chars).toBeLessThanOrEqual(READS_PER_CHAR * input.length);
+	};
+
+	it('counts the characters the link scan reads', () => {
+		const meter = { chars: 0 };
+		scanAnchors('<a href="https://x.example"><b>x</b></a>', meter);
+		expect(meter.chars).toBeGreaterThan(0);
+	});
+
 	it.each(shapes)('extractUrls on 5 MB of %s', (_label, unit) => {
-		const input = repeatTo(unit);
-		expect(timed(() => extractUrls(input))).toBeLessThan(BUDGET_MS);
+		expectLinearAnchorScan(repeatTo(unit));
 	});
 
 	it('extractUrls on 5 MB of tag openers inside one anchor', () => {
-		const input = `<a href="https://x.example">${repeatTo('<b ')}</a>`;
-		expect(timed(() => extractUrls(input))).toBeLessThan(BUDGET_MS);
+		expectLinearAnchorScan(`<a href="https://x.example">${repeatTo('<b ')}</a>`);
 	});
+
+	// scanContent also runs every content rule, and those spend their time in
+	// regular expressions, whose steps no meter can count. So it keeps a time
+	// budget, over 100 times what it takes on a developer machine (10-40 ms): a
+	// CI runner meets it with room to spare, while a scan that rereads 5 MB
+	// takes minutes.
+	const BUDGET_MS = 5000;
+
+	const timed = (fn: () => unknown): number => {
+		const start = performance.now();
+		fn();
+		return performance.now() - start;
+	};
 
 	it.each(shapes)('scanContent on 5 MB of %s', (_label, unit) => {
 		const input = repeatTo(unit);

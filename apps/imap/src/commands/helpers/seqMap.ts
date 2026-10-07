@@ -123,8 +123,14 @@ function lowerBound(uids: readonly number[], target: number): number {
  * The ranges are clamped to the folder and coalesced before the walk, so
  * the cost is O(n + r log r) for n messages and r set parts: the numbers
  * in the request and repeated or overlapping parts cannot multiply it.
+ * `meter`, when given, counts the positions the walk visits.
  */
-export function resolveSet(map: SeqMap, spec: string, byUid: boolean): ResolvedMessage[] {
+export function resolveSet(
+	map: SeqMap,
+	spec: string,
+	byUid: boolean,
+	meter?: { steps: number }
+): ResolvedMessage[] {
 	const { uids } = map;
 	if (uids.length === 0) return [];
 	const out: ResolvedMessage[] = [];
@@ -134,11 +140,14 @@ export function resolveSet(map: SeqMap, spec: string, byUid: boolean): ResolvedM
 		// Ranges are ascending and disjoint, so each binary search starts a
 		// walk that never revisits a UID an earlier range already emitted.
 		for (const [low, high] of ranges) {
-			for (let i = lowerBound(uids, low); i < uids.length; i += 1) {
+			const first = lowerBound(uids, low);
+			let i = first;
+			for (; i < uids.length; i += 1) {
 				const uid = uids[i] ?? 0;
 				if (uid > high) break;
 				out.push({ uid, seq: i + 1 });
 			}
+			if (meter) meter.steps += i - first + 1;
 		}
 		return out;
 	}
@@ -147,6 +156,7 @@ export function resolveSet(map: SeqMap, spec: string, byUid: boolean): ResolvedM
 	// also keeps `FETCH 1:2000000000` from spinning a two-billion-step loop.
 	const ranges = coalesceRanges(parseUidSet(spec, maxSeq(map)), 1, maxSeq(map));
 	for (const [low, high] of ranges) {
+		if (meter) meter.steps += high - low + 1;
 		for (let seq = low; seq <= high; seq += 1) {
 			out.push({ uid: uids[seq - 1] ?? 0, seq });
 		}

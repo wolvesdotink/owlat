@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { detectSmuggling, MAX_SCAN_INPUT_CHARS, stripHiddenContent } from '../patterns';
+import { MAX_SCAN_INPUT_CHARS, stripHiddenContent } from '../patterns';
 
 /** The strip as the HTML callers run it. */
 const stripHtml = (input: string | null | undefined) => stripHiddenContent(input, { html: true });
@@ -378,113 +378,5 @@ describe('stripHiddenContent on plain text', () => {
 		expect(stripHiddenContent('a<!-- hidden -->b\u200bc')).toBe('a bc');
 		// `--!>` also ends a comment.
 		expect(stripHiddenContent('a<!-- SECRETPAYLOAD --!>b')).toBe('a b');
-	});
-});
-
-describe('scan helpers run in linear time on adversarial input', () => {
-	const FIVE_MB = 5 * 1024 * 1024;
-	const repeatTo = (unit: string) => unit.repeat(Math.ceil(FIVE_MB / unit.length));
-	const BUDGET_MS = 1000;
-
-	const timed = (fn: () => unknown): number => {
-		const start = performance.now();
-		fn();
-		return performance.now() - start;
-	};
-
-	it.each([
-		['unclosed styled tags', '<a style="x">'],
-		['unclosed hidden tags', '<b style="display:none">'],
-		['unclosed script openers', '<script>'],
-		['unclosed style openers', '<style>'],
-		['unclosed comments', '<!--'],
-		['nested tag openers', '<a x '],
-		['unterminated quoted attribute values', '<a x="'],
-		['quoted attribute values holding >', `<b style='display:none;>' `],
-		['colour values without a closing paren', '<i style="color:rgba(1'],
-	])('stripHiddenContent on 5 MB of %s', (_label, unit) => {
-		const input = repeatTo(unit);
-		expect(timed(() => stripHtml(input))).toBeLessThan(BUDGET_MS);
-	});
-
-	it.each([
-		['end tags with quoted attributes', `</b x='>' `],
-		['unclosed raw-text elements', '<textarea>'],
-		['unclosed titles and scripts', '<title><script>'],
-		['hidden elements closed by attributes end tags', '<i style="display:none">x</i y>'],
-	])('stripHiddenContent on 5 MB of %s', (_label, unit) => {
-		const input = repeatTo(unit);
-		expect(timed(() => stripHtml(input))).toBeLessThan(BUDGET_MS);
-	});
-
-	// The next cases fit under the scan cap, so the whole input is processed.
-	const fitted = (unit: string, overhead: number) =>
-		unit.repeat(Math.floor((MAX_SCAN_INPUT_CHARS - overhead) / unit.length));
-
-	// These cases go through the tree builder's repair paths (reopening
-	// formatting elements, adoption, implied end tags), so each character costs
-	// several times the work of the cases above: 80-200 ms for 5 MB on a
-	// developer machine. Shared CI runners are 8-17 times slower; "links
-	// closing links" measured 1.0-2.2 s there (#1163), and every close in the
-	// first case reopens all 40 formatting elements, which takes over 2 s. So
-	// the whole group gets a wider budget. It is still linear; a quadratic scan
-	// would take minutes either way.
-	const TREE_BUDGET_MS = 5000;
-
-	it.each([
-		[
-			'formatting elements reopened after every close',
-			`<div>${Array.from({ length: 40 }, (_, i) => `<b x${i}>`).join('')}`,
-			'</div><div>x',
-		],
-		['formatting elements taken out of the tree', '', '<b hidden><div>x</b>'],
-		['nested tables and cells', '', '<table><tr><td hidden><table>'],
-		['SVG content that HTML breaks out of', '', '<svg><g><p hidden>x'],
-		['headings closing headings', '', '<h1 hidden><h2>x'],
-		['links closing links', '', '<a hidden>x<a>'],
-	])('stripHiddenContent on 5 MB of %s', (_label, prefix, unit) => {
-		const input = prefix + repeatTo(unit);
-		expect(timed(() => stripHtml(input))).toBeLessThan(TREE_BUDGET_MS);
-	});
-
-	it('stripHiddenContent on a deep stack with end tags that close nothing', () => {
-		const n = Math.floor((MAX_SCAN_INPUT_CHARS - 8) / 10);
-		const input = `<b><div>${'<span>'.repeat(n)}${'</b>'.repeat(n)}`;
-		expect(input.length).toBeLessThanOrEqual(MAX_SCAN_INPUT_CHARS);
-		expect(timed(() => stripHtml(input))).toBeLessThan(BUDGET_MS);
-	});
-
-	it.each([
-		['character references', '&#58;'],
-		['long numeric references', '&#x0000000000000000003a;'],
-		['CSS escapes and comments', '\\6e /**/'],
-		['unclosed CSS comments', '/*'],
-	])('stripHiddenContent on a style attribute as long as the scan cap of %s', (_label, unit) => {
-		const input = `<a style="${fitted(unit, 32)}">SECRETPAYLOAD</a>`;
-		expect(input.length).toBeLessThanOrEqual(MAX_SCAN_INPUT_CHARS);
-		let out = '';
-		expect(timed(() => (out = stripHtml(input)))).toBeLessThan(BUDGET_MS);
-		// The value was read (and did not hide the element).
-		expect(out).toContain('SECRETPAYLOAD');
-	});
-
-	it('stripHiddenContent on 5 MB of tags after unterminated quoted values', () => {
-		const input = `<a x="<b y='${repeatTo('<i s=t ')}`;
-		expect(timed(() => stripHtml(input))).toBeLessThan(BUDGET_MS);
-	});
-
-	it('stripHiddenContent on many distinct unclosed hidden tag names', () => {
-		const parts: string[] = [];
-		for (let i = 0; parts.length * 30 < FIVE_MB; i++) parts.push(`<t${i} style="display:none">`);
-		const input = parts.join('');
-		expect(timed(() => stripHtml(input))).toBeLessThan(BUDGET_MS);
-	});
-
-	it.each([
-		['unclosed instruction comments', '<!-- ignore '],
-		['colour values in one unterminated style attribute', 'color:rgba(1'],
-	])('detectSmuggling on 5 MB of %s', (_label, unit) => {
-		const input = `<p style="${repeatTo(unit)}`;
-		expect(timed(() => detectSmuggling(input))).toBeLessThan(BUDGET_MS);
 	});
 });

@@ -23,9 +23,10 @@ const isTagSpace = (c: string | undefined): boolean =>
 /**
  * Replace every `<...>` run (at least one character between the brackets, up
  * to the first `>`) with `replacement`. Same result as
- * `input.replace(/<[^>]+>/g, replacement)`.
+ * `input.replace(/<[^>]+>/g, replacement)`. `meter`, when given, counts the
+ * characters read inside tags.
  */
-export function replaceTags(input: string, replacement: string): string {
+export function replaceTags(input: string, replacement: string, meter?: { chars: number }): string {
 	let out = '';
 	let pos = 0;
 	let lt = input.indexOf('<');
@@ -35,6 +36,7 @@ export function replaceTags(input: string, replacement: string): string {
 			continue;
 		}
 		const gt = input.indexOf('>', lt + 1);
+		if (meter) meter.chars += (gt === -1 ? input.length : gt) - lt;
 		if (gt === -1) break;
 		out += input.slice(pos, lt) + replacement;
 		pos = gt + 1;
@@ -136,16 +138,22 @@ const ANCHOR_CLOSE = /<\/a>/gi;
  * single-quoted or unquoted, as HTML5 allows) and its text with tags removed.
  * Anchors without an `href` are skipped (anything inside them is still read);
  * an anchor with no `</a>` after it ends the scan, since no later anchor can be
- * closed either.
+ * closed either. `meter`, when given, counts the characters read (a search that
+ * finds nothing counts up to the end), for the linear-time tests.
  */
-export function scanAnchors(html: string): Array<{ href: string; text: string }> {
+export function scanAnchors(
+	html: string,
+	meter?: { chars: number }
+): Array<{ href: string; text: string }> {
 	const anchors: Array<{ href: string; text: string }> = [];
 	let pos = 0;
 	for (;;) {
 		ANCHOR_OPEN.lastIndex = pos;
 		const open = ANCHOR_OPEN.exec(html);
+		if (meter) meter.chars += (open ? open.index : html.length) - pos;
 		if (!open) break;
 		const tag = readAnchorTag(html, open.index + 2);
+		if (meter) meter.chars += (tag.end ?? html.length) - open.index;
 		if (tag.end === null) {
 			pos = tag.resume;
 			continue;
@@ -156,8 +164,9 @@ export function scanAnchors(html: string): Array<{ href: string; text: string }>
 		}
 		ANCHOR_CLOSE.lastIndex = tag.end + 1;
 		const close = ANCHOR_CLOSE.exec(html);
+		if (meter) meter.chars += (close ? close.index : html.length) - tag.end;
 		if (!close) break;
-		const text = replaceTags(html.slice(tag.end + 1, close.index), '').trim();
+		const text = replaceTags(html.slice(tag.end + 1, close.index), '', meter).trim();
 		anchors.push({ href: tag.href, text });
 		pos = close.index + close[0].length;
 	}
