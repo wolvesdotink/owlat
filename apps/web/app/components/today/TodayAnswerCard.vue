@@ -3,7 +3,7 @@ import type { AnswerItem } from '~/composables/useAnswerQueue';
 import { replyQueueHeadline } from '~/utils/postboxReplyQueue';
 import { useLocalized } from '~/composables/useLocalized';
 import { parseFromHeader } from '~/utils/todayDigest';
-import { briefRowLatest } from '~/utils/briefRowLine';
+import { briefMoreChip, briefRowLatest } from '~/utils/briefRowLine';
 import { briefDueDate } from '~/utils/threadBriefContext';
 import {
 	answerEffortParts,
@@ -83,11 +83,13 @@ function rowDetail(item: AnswerItem): string {
 	}
 	return '';
 }
-/** "+3 more": the other open items of the thread behind the title. */
-function rowMore(item: AnswerItem): number {
-	if (item.source !== 'mail') return 0;
+/** "+3 more" (or "1999+ more" past the count cap): the thread's other open items. */
+function rowMore(item: AnswerItem): string {
+	if (item.source !== 'mail') return '';
 	const top = item.row.briefTop;
-	return top?.top && top.top.responsibility !== 'them' ? Math.max(0, top.forYou - 1) : 0;
+	if (!top?.top || top.top.responsibility === 'them') return '';
+	const chip = briefMoreChip(top.forYou, top.isCapped === true);
+	return chip ? t(chip.key, { count: chip.count }) : '';
 }
 function rowDue(item: AnswerItem): string | null {
 	const at = item.source === 'mail' ? item.row.briefTop?.top?.dueAt : undefined;
@@ -205,9 +207,9 @@ const effortLine = computed(() => say(answerEffortParts(props.counts, props.item
 									rowTitle(item)
 								}}</span>
 								<span
-									v-if="rowMore(item) > 0"
+									v-if="rowMore(item)"
 									class="shrink-0 rounded-full bg-brand-soft px-1.5 text-2xs font-medium text-brand"
-									>{{ t('components.brief.more', { count: rowMore(item) }) }}</span
+									>{{ rowMore(item) }}</span
 								>
 							</span>
 							<span v-if="rowDetail(item)" class="block truncate text-xs text-text-tertiary">{{

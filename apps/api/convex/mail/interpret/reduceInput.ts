@@ -43,8 +43,10 @@ export const reduceEvidenceValidator = v.object({
 	start: v.number(),
 	end: v.number(),
 	quote: v.string(),
-	// Which occurrence of the (normalized) quote in the canonical text this is.
+	// Which occurrence of the (normalized) quote in the canonical text this is,
+	// and how many there are in all.
 	occurrence: v.optional(v.number()),
+	occurrenceCount: v.optional(v.number()),
 });
 
 /** Brief mode: keep this message's original open beside the brief, and why. */

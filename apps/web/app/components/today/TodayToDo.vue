@@ -13,6 +13,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { briefDueDate } from '~/utils/threadBriefContext';
+import { briefMoreChip } from '~/utils/briefRowLine';
 
 const props = defineProps<{ mailboxId: string }>();
 
@@ -33,6 +34,10 @@ function title(row: Row): string {
 function detail(row: Row): string {
 	return [row.fromName || row.fromAddress, row.subject].filter(Boolean).join(' · ');
 }
+function more(row: Row): string {
+	const chip = briefMoreChip(row.count, row.isCountCapped === true);
+	return chip ? t(chip.key, { count: chip.count }) : '';
+}
 function href(row: Row): string {
 	const target = row.messageId ?? '';
 	return `/dashboard/postbox/inbox/${target}?mailbox=${props.mailboxId}&view=overview`;
@@ -40,14 +45,23 @@ function href(row: Row): string {
 </script>
 
 <template>
-	<section v-if="rows.length > 0" aria-labelledby="today-todo" data-testid="today-todo">
+	<section
+		v-if="rows.length > 0 || isTruncated"
+		aria-labelledby="today-todo"
+		data-testid="today-todo"
+	>
 		<h3
 			id="today-todo"
 			class="mb-2 mt-8 flex items-center text-2xs font-medium uppercase tracking-wider text-text-tertiary"
 		>
-			{{ t('components.today.todo.title', { count: rows.length }) }}
+			{{
+				rows.length > 0
+					? t('components.today.todo.title', { count: rows.length })
+					: t('components.today.todo.titlePlain')
+			}}
 		</h3>
 		<ul
+			v-if="rows.length > 0"
 			class="divide-y divide-border-subtle overflow-hidden rounded-xl border border-border-subtle bg-bg-elevated"
 		>
 			<li v-for="row in rows" :key="row.threadId">
@@ -60,13 +74,9 @@ function href(row: Row): string {
 						<span class="flex min-w-0 items-center gap-1.5">
 							<span class="truncate text-sm font-medium text-text-primary">{{ title(row) }}</span>
 							<span
-								v-if="row.count > 1"
+								v-if="more(row)"
 								class="shrink-0 rounded-full bg-bg-surface px-1.5 text-2xs font-medium text-text-secondary"
-								>{{
-									t('components.brief.more', {
-										count: row.isCountCapped ? `${row.count - 1}+` : row.count - 1,
-									})
-								}}</span
+								>{{ more(row) }}</span
 							>
 						</span>
 						<span class="block truncate text-xs text-text-tertiary">{{ detail(row) }}</span>

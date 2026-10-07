@@ -97,6 +97,8 @@ export interface ResolvedCite {
 	quote: string | null;
 	/** Which occurrence of the quote's words in the message it is (0 = the first). */
 	occurrence?: number;
+	/** How many matches of the words the interpreted (visible) text holds. */
+	occurrenceCount?: number;
 	/** The cited line's own text, for "Showing the source of …". */
 	label: string;
 }
@@ -127,6 +129,9 @@ export function resolveCite(brief: BriefModeView, cite: CiteParam): ResolvedCite
 		messageId: source.id,
 		quote: evidence.quote ?? null,
 		...(evidence.occurrence !== undefined ? { occurrence: evidence.occurrence } : {}),
+		...(evidence.occurrenceCount !== undefined
+			? { occurrenceCount: evidence.occurrenceCount }
+			: {}),
 		label,
 	};
 }

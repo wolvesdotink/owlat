@@ -101,6 +101,7 @@ function plainEvidence(
 		end: e.end,
 		quote: e.quote,
 		...(e.occurrence !== undefined ? { occurrence: e.occurrence } : {}),
+		...(e.occurrenceCount !== undefined ? { occurrenceCount: e.occurrenceCount } : {}),
 		isPlain: true,
 	}));
 }

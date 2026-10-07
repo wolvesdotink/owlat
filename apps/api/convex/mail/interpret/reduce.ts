@@ -188,6 +188,14 @@ export const applyInterpretation = internalMutation({
 			...(args.sourceManifest ? { sourceManifest: args.sourceManifest } : {}),
 			...(args.coverage ? { coverage: args.coverage } : {}),
 			...(errorCode ? { errorCode } : {}),
+			...(args.result?.exactWording
+				? {
+						isExactWordingRequired: true,
+						...(args.result.exactWording.reason
+							? { exactWordingReason: args.result.exactWording.reason }
+							: {}),
+					}
+				: {}),
 			...(args.result
 				? {
 						payload: await sealBodyAtWrite(JSON.stringify(args.result)),

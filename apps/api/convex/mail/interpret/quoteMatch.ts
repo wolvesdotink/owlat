@@ -174,22 +174,29 @@ export function matchQuote(
 let occurrenceCache: { text: string; hay: NormalizedText } | null = null;
 
 /**
- * Which occurrence (0 = the first) of the normalized words at
- * `canonicalText[start, end)` the span at `start` is, counting every match in
- * the whole canonical text. The reader marks that occurrence in the rendered
- * body, so repeated wording never highlights an earlier statement.
+ * Where the span `canonicalText[start, end)` sits among the matches of its own
+ * normalized words in the whole canonical text: `occurrence` is its index
+ * (0 = the first) and `total` how many there are. The canonical text is the
+ * scanner-stripped text the model read, so hidden copies are not counted. The
+ * reader marks the `occurrence`-th match of its VISIBLE text, and only when it
+ * sees exactly `total` matches; otherwise it says it could not locate it.
  */
-export function quoteOccurrence(canonicalText: string, start: number, end: number): number {
+export function quoteOccurrences(
+	canonicalText: string,
+	start: number,
+	end: number
+): { occurrence: number; total: number } {
 	const needle = normalizeForQuote(canonicalText.slice(start, end));
-	if (!needle) return 0;
+	if (!needle) return { occurrence: 0, total: 0 };
 	if (occurrenceCache?.text !== canonicalText) {
 		occurrenceCache = { text: canonicalText, hay: normalizeWithMap(canonicalText) };
 	}
 	const { normalized, from } = occurrenceCache.hay;
-	let count = 0;
+	let occurrence = 0;
+	let total = 0;
 	for (let at = normalized.indexOf(needle); at >= 0; at = normalized.indexOf(needle, at + 1)) {
-		if ((from[at] as number) >= start) break;
-		count++;
+		if ((from[at] as number) < start) occurrence++;
+		total++;
 	}
-	return count;
+	return { occurrence, total };
 }

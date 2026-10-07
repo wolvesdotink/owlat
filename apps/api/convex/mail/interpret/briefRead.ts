@@ -352,6 +352,7 @@ export async function readLatest(
 				contentRevision: row.contentRevision,
 				quote: e.quote,
 				...(e.occurrence !== undefined ? { occurrence: e.occurrence } : {}),
+				...(e.occurrenceCount !== undefined ? { occurrenceCount: e.occurrenceCount } : {}),
 			})),
 		})),
 	};
@@ -437,25 +438,45 @@ export async function readMessageLatest(
 	return out;
 }
 
+/** Flagged sources a brief lists at most ("Read the exact wording"). */
+const EXACT_WORDING_READ = 100;
+
 /**
- * The messages whose newest extraction asked for the exact wording to stay in
- * view (legal notices, changed terms, payment details), newest first.
+ * The messages of a mail thread whose newest extraction asked for the exact
+ * wording to stay in view (legal notices, changed terms, payment details).
+ * Read off `by_mail_thread_exact_wording`, so it does not depend on how many
+ * other messages the thread has; a flagged row only counts while it is still
+ * the newest extraction of its source.
  */
 export async function readExactWording(
-	rows: readonly Doc<'messageInterpretations'>[]
+	ctx: Pick<QueryCtx, 'db'>,
+	mailThreadId: Id<'mailThreads'>
 ): Promise<{ messageId: string; reason?: ExactWordingReason }[]> {
-	const newest = new Map<string, Doc<'messageInterpretations'>>();
-	for (const row of rows) {
-		if (row.mode !== 'brief' || row.source.kind !== 'mail') continue;
-		const seen = newest.get(row.sourceKey);
-		if (!seen || row.updatedAt > seen.updatedAt) newest.set(row.sourceKey, row);
-	}
+	const flagged = await ctx.db
+		.query('messageInterpretations')
+		.withIndex('by_mail_thread_exact_wording', (q) =>
+			q.eq('mailThreadId', mailThreadId).eq('isExactWordingRequired', true)
+		)
+		.take(EXACT_WORDING_READ);
 	const out: { messageId: string; reason?: ExactWordingReason }[] = [];
-	for (const row of [...newest.values()].slice(0, MESSAGE_LATEST_READ)) {
+	const seen = new Set<string>();
+	for (const row of flagged) {
+		if (row.mode !== 'brief' || row.source.kind !== 'mail' || seen.has(row.sourceKey)) continue;
 		if (row.status !== 'complete' && row.status !== 'partial') continue;
-		const exact = (await readResult(row))?.exactWording;
-		if (exact)
-			out.push({ messageId: row.source.id, ...(exact.reason ? { reason: exact.reason } : {}) });
+		const versions = await ctx.db
+			.query('messageInterpretations')
+			.withIndex('by_source_revision', (q) => q.eq('sourceKey', row.sourceKey))
+			.collect();
+		// A newer extraction that read the message again decides; a failed re-run does not.
+		const newest = versions
+			.filter((v) => v.status === 'complete' || v.status === 'partial')
+			.reduce((a, b) => (b.updatedAt > a.updatedAt ? b : a), row);
+		if (newest._id !== row._id) continue;
+		seen.add(row.sourceKey);
+		out.push({
+			messageId: row.source.id,
+			...(row.exactWordingReason ? { reason: row.exactWordingReason } : {}),
+		});
 	}
 	return out;
 }

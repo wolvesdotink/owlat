@@ -55,8 +55,10 @@ export const evidenceViewValidator = v.object({
 	contentRevision: v.string(),
 	// The quoted words, for the marker's tooltip.
 	quote: v.optional(v.string()),
-	// Which occurrence of the normalized quote in the message this is (0 = first).
+	// Which occurrence of the normalized quote in the message this is (0 = first),
+	// and how many matches the interpreted (visible) text holds in all.
 	occurrence: v.optional(v.number()),
+	occurrenceCount: v.optional(v.number()),
 });
 
 /** One item as the brief shows it. */
