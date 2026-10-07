@@ -6,7 +6,7 @@
  */
 
 import { fn, type ConvexClient, type FolderRow } from '../../convex.js';
-import { buildFolderTree, type ImapFolder } from './folderTree.js';
+import { buildFolderTree, DELIMITER, type ImapFolder } from './folderTree.js';
 import { asciiLower, pathFromClient } from './mailboxPattern.js';
 
 /** Every folder of a mailbox (`mail/imap/session:listFolders`). */
@@ -35,11 +35,14 @@ export async function listImapFolders(
  *      encoded run is case-sensitive (RFC 3501 §5.1.3), so the name a client
  *      read from LIST always opens that folder. No two folders share a path
  *      (`folderTree.ts`), so this is that folder or none.
- *   3. For a name of printable ASCII only, the one folder whose path it
- *      matches with A-Z folded, so a hand-typed `receipts` still finds
- *      `Receipts`. Before names were decoded every name was matched with its
- *      case folded; that now holds for ASCII names only, and only when one
- *      folder matches, so no fold picks between two folders.
+ *   3. The one folder whose path matches level by level, each level of
+ *      printable ASCII with A-Z folded and every other level exactly, so a
+ *      hand-typed `receipts` still finds `Receipts`, and `Übersicht/receipts`
+ *      finds `Übersicht/Receipts`. Before names were decoded every name was
+ *      matched with its case folded; that now holds for ASCII levels only, and
+ *      only when one folder matches, so no fold picks between two folders. A
+ *      first level of `INBOX` stays the inbox here too, never a folder whose
+ *      own name only folds to it.
  *
  * Returns null when nothing matches.
  */
@@ -56,8 +59,21 @@ export async function resolveFolderByName(
 	}
 	const exact = folders.find((f) => f.path === wanted);
 	if (exact) return exact;
-	if (!PURE_ASCII.test(wanted)) return null;
-	const folded = asciiLower(wanted);
-	const matches = folders.filter((f) => asciiLower(f.path) === folded);
+
+	const levels = wanted.split(DELIMITER);
+	const folds = levels.map((level, i) =>
+		PURE_ASCII.test(level) && !(i === 0 && level === 'INBOX') ? asciiLower(level) : null
+	);
+	if (!folds.some((fold) => fold !== null)) return null;
+	const matches = folders.filter((f) => {
+		const own = f.path.split(DELIMITER);
+		return (
+			own.length === levels.length &&
+			own.every((level, i) => {
+				const fold = folds[i];
+				return fold === null ? level === levels[i] : asciiLower(level) === fold;
+			})
+		);
+	});
 	return matches.length === 1 ? matches[0]! : null;
 }

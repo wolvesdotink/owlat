@@ -45,7 +45,9 @@ const NAME_ESCAPE = '\u29f5';
  * Every other char stands for itself. No code word is a prefix of another
  * (`⧵` alone is none, and each two-char one starts with `⧵`), so the result
  * reads back one way only and two names never meet. It holds no `/` and no
- * wildcard `*` or `%` the name did not have.
+ * wildcard `*` or `%` the name did not have. Introducing it changed, once, the
+ * IMAP name of a folder already holding `∕` or `⧵` (see "IMAP folder names and
+ * hierarchy" in the self-hosting maintenance docs).
  */
 export function levelName(folder: FolderRow): string {
 	if (folder.role === 'inbox') return 'INBOX';

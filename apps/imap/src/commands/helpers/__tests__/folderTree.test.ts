@@ -234,7 +234,54 @@ describe('resolveFolderByName with paths', () => {
 		expect((await resolveFolderByName(convex, 'mb', 'R&D/&ANw-bersicht'))?._id).toBe('b');
 	});
 
-	it('folds ASCII case over the whole path only when one folder matches', async () => {
+	describe('folds ASCII case level by level', () => {
+		// Names are unique as written, so `Work` and `WORK` can both exist, and
+		// `Notes` under one with `notes` under the other.
+		const convex = convexFor([
+			folder('inbox', 'INBOX', { role: 'inbox' }),
+			folder('work', 'Work'),
+			folder('WORK', 'WORK'),
+			folder('w-notes', 'Notes', { parentId: 'work' }),
+			folder('W-notes', 'notes', { parentId: 'WORK' }),
+			folder('w-ueber', 'Übersicht', { parentId: 'work' }),
+			folder('ueber', 'Übersicht2'),
+			folder('u-receipts', 'Receipts', { parentId: 'ueber' }),
+			folder('i-receipts', 'Receipts2', { parentId: 'inbox' }),
+			folder('fake-inbox', 'Inbox'),
+			folder('f-receipts', 'Receipts2b', { parentId: 'fake-inbox' }),
+		]);
+		const resolve = async (wire: string) => (await resolveFolderByName(convex, 'mb', wire))?._id;
+
+		it.each([
+			// An ASCII level folds next to a non-ASCII one, which must match exactly.
+			['&ANw-bersicht2/receipts', 'u-receipts'],
+			['work/&ANw-bersicht', 'w-ueber'],
+			['WoRk/&ANw-bersicht', 'w-ueber'],
+			// The exact path wins before any fold.
+			['Work/Notes', 'w-notes'],
+			['WORK/notes', 'W-notes'],
+			// INBOX in any case is the inbox, and its children fold below it.
+			['inbox/receipts2', 'i-receipts'],
+			['Inbox/RECEIPTS2', 'i-receipts'],
+		])('%j → %j', async (wire, id) => {
+			expect(await resolve(wire)).toBe(id);
+		});
+
+		it.each([
+			// Two folders fold to work/notes: no fold picks between them.
+			['work/notes'],
+			['Work/notes'],
+			// A non-ASCII level is never folded.
+			['work/&APw-bersicht'],
+			['&ANw-BERSICHT2/receipts'],
+			// The first level INBOX is the inbox, never the folder named Inbox.
+			['inbox/receipts2b'],
+		])('%j → no folder', async (wire) => {
+			expect(await resolve(wire)).toBeUndefined();
+		});
+	});
+
+	it('folds an all-ASCII path only when one folder matches', async () => {
 		const convex = convexFor([
 			folder('a', 'Work'),
 			folder('b', 'Notes', { parentId: 'a' }),
