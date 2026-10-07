@@ -46,6 +46,7 @@ import {
 	readItems,
 	readLatest,
 	readMailPeopleAndFiles,
+	readExactWording,
 	readMessageLatest,
 	readViewerState,
 	sinceLastSeenOf,
@@ -126,7 +127,10 @@ export const get = publicQuery({
 			...(viewer ? { sinceLastSeen: sinceLastSeenOf(tail, viewer.seenActivitySeq) } : {}),
 			...(viewer?.viewOverride ? { viewOverride: viewer.viewOverride } : {}),
 			...(mode === 'brief'
-				? { messageLatest: await readMessageLatest(interpretations, locale) }
+				? {
+						messageLatest: await readMessageLatest(interpretations, locale),
+						exactWording: await readExactWording(interpretations),
+					}
 				: {}),
 			gap: gapOf(interpretations, {
 				totalMessages,

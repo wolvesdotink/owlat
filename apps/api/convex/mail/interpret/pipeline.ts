@@ -20,6 +20,7 @@ import { factKeyString, type InterpretMode } from '@owlat/shared/threadBrief';
 import { isConsequential } from '@owlat/shared/threadBriefRules';
 import type { ParticipantRef } from '../../lib/validators/threadBrief';
 import type { GroundedClaim, GroundingResult } from './ground';
+import { quoteOccurrence } from './quoteMatch';
 import {
 	INTERPRET_TEXT_LIMITS,
 	type InterpretFactProposal,
@@ -282,6 +283,7 @@ function evidenceOf(claim: GroundedClaim<unknown>, canonicalText: string): Reduc
 		start: e.start,
 		end: e.end,
 		quote: canonicalText.slice(e.start, e.end),
+		occurrence: quoteOccurrence(canonicalText, e.start, e.end),
 	}));
 }
 
@@ -386,6 +388,10 @@ export function toReduceResult(
 	};
 
 	if (opts.mode === 'brief' && output.mode === 'brief') {
+		if (output.exactWording?.isRequired) {
+			const reason = output.exactWording.reason;
+			result.exactWording = reason ? { reason } : {};
+		}
 		if (opts.latestSuppressed) {
 			result.latestSuppressed = opts.latestSuppressed;
 		} else {

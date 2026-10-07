@@ -158,6 +158,20 @@ describe('ThreadBrief', () => {
 		expect(w.emitted('react')?.[0]?.[1]).toBe('markDone');
 	});
 
+	it('lets a phone confirm a proposal from the ⋯ menu', async () => {
+		const brief = briefView({
+			forYou: [item({ id: 'p', text: 'Cover shipping costs', verify: 'proposal' })],
+		});
+		const w = mountBrief({ brief, compact: true });
+		const proposal = w.get('[data-testid="brief-item"]');
+		expect(proposal.find('[data-testid="brief-item-primary"]').exists()).toBe(false);
+		const actions = proposal.findAll('[data-action]').map((b) => b.attributes('data-action'));
+		expect(actions).toEqual(['confirmProposal', 'notARequest']);
+		expect(proposal.get('[data-action="confirmProposal"]').text()).toBe('Track');
+		await proposal.get('[data-action="confirmProposal"]').trigger('click');
+		expect(w.emitted('react')?.[0]?.[1]).toBe('confirmProposal');
+	});
+
 	it('says when it is incomplete, and never that there is nothing to do', async () => {
 		const w = mountBrief({
 			brief: briefView({

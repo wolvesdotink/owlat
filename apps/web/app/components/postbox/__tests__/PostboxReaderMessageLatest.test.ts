@@ -32,7 +32,7 @@ const marker = (name: string, props: string[] = []) =>
 		setup: (p) => () =>
 			h('div', {
 				'data-testid': name,
-				'data-quote': (p as Record<string, unknown>)['highlightQuote'],
+				'data-quote': JSON.stringify((p as Record<string, unknown>)['highlightQuote'] ?? null),
 			}),
 	});
 const passThrough = (name: string) =>
@@ -124,11 +124,22 @@ describe('PostboxReaderMessage · latest line and cite', () => {
 		expect(w.text()).not.toContain('Pay invoice 4471.');
 	});
 
-	it('a cited message is marked and hands its quote to the body', () => {
-		const w = mountCard({ expanded: true, citeQuote: 'approve that by Friday' });
+	it('a cited message is marked and hands its quote and occurrence to the body', () => {
+		const cite = { quote: 'approve that by Friday', occurrence: 1 };
+		const w = mountCard({ expanded: true, citeQuote: cite });
 		expect(w.get('section').classes()).toContain('ring-brand');
-		expect(w.get('[data-testid="PostboxMessageBody"]').attributes('data-quote')).toBe(
-			'approve that by Friday'
+		expect(
+			JSON.parse(w.get('[data-testid="PostboxMessageBody"]').attributes('data-quote')!)
+		).toEqual(cite);
+		expect(w.find('[data-testid="cite-not-located"]').exists()).toBe(false);
+	});
+
+	it('says so when the body cannot locate the exact passage', async () => {
+		const w = mountCard({ expanded: true, citeQuote: { quote: 'approve', occurrence: 3 } });
+		w.findComponent({ name: 'PostboxMessageBody' }).vm.$emit('cite-located', false);
+		await w.vm.$nextTick();
+		expect(w.get('[data-testid="cite-not-located"]').text()).toBe(
+			"Couldn't locate the exact passage in this message."
 		);
 	});
 });

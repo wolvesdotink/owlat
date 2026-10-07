@@ -13,7 +13,7 @@ import BriefItem from './BriefItem.vue';
 import BriefSection from './BriefSection.vue';
 
 const props = defineProps<{
-	kind: 'forYou' | 'waiting' | 'unclear';
+	kind: 'forYou' | 'forTeam' | 'waiting' | 'unclear';
 	items: readonly BriefItemView[];
 	/** Show the empty state (For you only); `incomplete` picks its wording. */
 	showEmpty?: boolean;
@@ -36,7 +36,7 @@ const { t } = useI18n();
 const title = computed(() => t(`components.brief.items.${props.kind}`));
 const openCount = computed(() => props.items.filter((i) => i.status === 'open').length);
 const note = computed(() =>
-	props.kind === 'forYou'
+	props.kind === 'forYou' || props.kind === 'forTeam'
 		? t('components.brief.items.openCount', { count: openCount.value }, openCount.value)
 		: openCount.value > 0
 			? String(openCount.value)
@@ -66,7 +66,13 @@ const note = computed(() =>
 			/>
 		</ul>
 		<p v-else class="text-sm text-text-secondary" :data-testid="`brief-items-${kind}-empty`">
-			{{ incomplete ? t('components.brief.items.emptyIncomplete') : t('components.brief.items.empty') }}
+			{{
+				incomplete
+					? t('components.brief.items.emptyIncomplete')
+					: kind === 'forTeam'
+						? t('components.brief.items.emptyTeam')
+						: t('components.brief.items.empty')
+			}}
 		</p>
 	</BriefSection>
 </template>

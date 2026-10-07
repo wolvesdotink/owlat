@@ -135,6 +135,7 @@ function itemRules(): string {
 function briefRules(locales: readonly string[]): string {
 	return [
 		`- latest: per language code (${locales.join(', ')}), at most ${MAX_LATEST_LINES} short lines saying what THIS message newly says, in that language. Not a summary of the thread.`,
+		'- exactWording: isRequired true when the reader must see this message as written, not only a summary, with the reason: legal (a legal notice, a claim, a deadline to object), terms (changed terms or conditions, a contract clause), payment_details (bank details, amounts to transfer), security (a login code, a password reset, a sign-in alert). Otherwise isRequired false and reason null.',
 		`- facts: at most ${MAX_INTERPRET_FACTS} informational claims worth keeping (a date, an amount, a reference number, an address, a decision taken), each keyed by entity, attribute and context ("invoice 2041", "amount", null). matchFactId when it restates one of the CURRENT FACTS; supersedes when it replaces one (a new date); conflictsWith when it contradicts one without replacing it; reportedBy who said it.`,
 	].join('\n');
 }

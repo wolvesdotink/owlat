@@ -186,6 +186,11 @@ describe('briefRowLine', () => {
 		expect(briefRowLine({ ...top, mode: 'actions' }, 'en', T0)?.keepsSnippet).toBe(true);
 	});
 
+	it('shows a capped count as a floor', () => {
+		expect(briefRowLine({ ...top, isCapped: true }, 'en', T0)?.countText).toBe('4+');
+		expect(briefRowLine(top, 'en', T0)?.countText).toBe('4');
+	});
+
 	it('keeps the snippet when there is no open item', () => {
 		expect(briefRowLine(undefined, 'en')).toBeNull();
 		expect(briefRowLine({ ...top, forYou: 0, waiting: 0, top: undefined }, 'en')).toBeNull();
