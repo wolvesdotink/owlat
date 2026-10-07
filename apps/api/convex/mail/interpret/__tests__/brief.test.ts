@@ -13,6 +13,7 @@ import { resolveThreadDefaultView } from '../preferences';
 import { gapOf, sinceLastSeenOf } from '../briefRead';
 import { MAX_PROMPT_ITEMS } from '../schema';
 import { captureInterpretSource } from '../sources';
+import { openBriefTop } from '../briefTop';
 import {
 	addMessageToThread,
 	modules,
@@ -135,6 +136,29 @@ describe('brief.get', () => {
 		const thread = await t.run(async (ctx) => ctx.db.get(threadId));
 		expect(thread?.briefTop).toMatchObject({ mode: 'brief', forYou: 1, waiting: 1, revision: 1 });
 		expect(thread?.briefTop?.latest).toBeDefined();
+	});
+
+	it('reads the mode from the mailbox scope at read time: a just-converted team inbox shows no personal brief (review F8)', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId, mailboxId } = await seedMailThread(t);
+		await interpretMail(t, messageId, threadId);
+		// The mailbox flips to shared; the cached brief row and briefTop are still personal.
+		await t.run(async (ctx) => ctx.db.patch(mailboxId, { scope: 'shared' }));
+		const view = await t.query(api.mail.interpret.brief.get, {
+			threadRef: { kind: 'mail', id: threadId },
+			locale: 'en',
+		});
+		expect(view?.mode).toBe('actions');
+		expect(view && 'latest' in view).toBe(false);
+		expect(view && 'standing' in view).toBe(false);
+		expect(view && 'messageLatest' in view).toBe(false);
+		const row = await t.run(async (ctx) => {
+			const thread = await ctx.db.get(threadId);
+			return thread ? openBriefTop(thread, 'actions') : undefined;
+		});
+		expect(row?.mode).toBe('actions');
+		expect(row?.latest).toBeUndefined();
+		expect(row?.top).toBeDefined();
 	});
 
 	it('says completeness none before any interpretation, never an empty "nothing to do"', async () => {

@@ -33,6 +33,7 @@ import {
 	itemResponsibilityValidator,
 	itemRevisionRefValidator,
 	itemStatusValidator,
+	itemConfirmedFromValidator,
 	itemCorrectionKindValidator,
 	itemListBucketValidator,
 	itemVerifyValidator,
@@ -195,7 +196,11 @@ export const threadBriefTables = {
 		updatedAt: v.number(),
 	})
 		// "Where things stand": a thread's current facts.
-		.index('by_mail_thread_and_status', ['mailThreadId', 'status']),
+		.index('by_mail_thread_and_status', ['mailThreadId', 'status'])
+		// Erasure (purgeDrain.ts): facts in creation order, and those pointing at a deleted one.
+		.index('by_mail_thread', ['mailThreadId'])
+		.index('by_supersedes', ['supersedesId'])
+		.index('by_conflicts_with', ['conflictsWithId']),
 
 	// One obligation each. Status (the work) and disposition (what we told the
 	// other side) are separate; see @owlat/shared/threadBrief LEGAL_STATUS_EDGES.
@@ -248,6 +253,9 @@ export const threadBriefTables = {
 		commitmentId: v.optional(v.id('mailCommitments')),
 		// Normalized counterparty address for cross-thread items (P4).
 		counterpartyKey: v.optional(v.string()),
+		// What the standing `confirmed` correction changed, for an exact undo
+		// (mail/interpret/reactionRules.ts). Cleared when the confirmation is undone.
+		confirmedFrom: v.optional(itemConfirmedFromValidator),
 		// `<sourceKey>#<index>`: the proposal that created it, so an ordered
 		// replay keeps the item's id.
 		// An unconfirmed claim's changes to this (tracked) item, held apart until
@@ -287,8 +295,13 @@ export const threadBriefTables = {
 		.index('by_mail_thread_bucket_sort', ['mailThreadId', 'listBucket', 'sortKey'])
 		.index('by_mailbox_responsibility_due', ['mailboxId', 'responsibility', 'status', 'due.at'])
 		.index('by_counterparty', ['counterpartyKey'])
-		// Member erasure: the items assigned to an erased member fall back to Unassigned.
-		.index('by_assignee', ['assigneeUserId']),
+		// Erasure: an erased member's assignments; items in creation order and
+		// those pointing at a deleted one (mail/interpret/purgeDrain.ts).
+		.index('by_assignee', ['assigneeUserId'])
+		.index('by_mail_thread', ['mailThreadId'])
+		.index('by_conversation_thread', ['conversationThreadId'])
+		.index('by_replaced_by', ['replacedById'])
+		.index('by_duplicate_of', ['possibleDuplicateOfId']),
 
 	// Append-only per-thread log.
 	threadActivity: defineTable({
@@ -318,8 +331,7 @@ export const threadBriefTables = {
 		.index('by_mail_thread_and_event', ['mailThreadId', 'eventAt'])
 		.index('by_conversation_thread_and_event', ['conversationThreadId', 'eventAt'])
 		.index('by_idempotency_key', ['idempotencyKey'])
-		// Erasure (mail/interpret/purge.ts): an item's rows go with the item, and
-		// a row whose operation names a purged message goes with the message.
+		// Erasure: an item's rows, and rows whose operation names a purged message.
 		.index('by_item', ['itemId'])
 		.index('by_op_ref', ['opRef.id']),
 
@@ -448,7 +460,6 @@ export const threadBriefTables = {
 	})
 		.index('by_mail_thread', ['mailThreadId'])
 		.index('by_conversation_thread', ['conversationThreadId'])
-		// Erasure: a deleted item's corrections go with it; an erased member's are anonymized.
 		.index('by_item', ['itemId'])
 		.index('by_user', ['userId']),
 
@@ -471,8 +482,7 @@ export const threadBriefTables = {
 		.index('by_chat_message', ['chatMessageId', 'userId', 'emoji'])
 		.index('by_mail_thread', ['mailThreadId'])
 		.index('by_conversation_thread', ['conversationThreadId'])
-		// Member erasure: an erased member's reactions go.
-		.index('by_user', ['userId']),
+		.index('by_user', ['userId']), // member erasure
 
 	// Per draft: the stances, coverage and claims of its self-check, bound to
 	// the draft hash and the item revisions it was built against.

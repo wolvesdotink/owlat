@@ -16687,7 +16687,9 @@
 			"topics": "Topics",
 			"transactionalEmails": "Transactional emails",
 			"webhooks": "Webhooks",
-			"pushSubscriptions": "Notification devices"
+			"pushSubscriptions": "Notification devices",
+			"threadBriefs": "Thread overviews",
+			"threadViewerState": "Thread view choices"
 		},
 		"archiveImport": {
 			"refused": {

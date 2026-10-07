@@ -1,29 +1,13 @@
 /**
  * Thread brief erasure, the row level (SPEC §5 "Erasure"): the per-thread
- * readers of the seven tables and the one way to delete a row of them, shared
- * by every purge path:
- *
- *  - `purgeThread.ts` (a Postbox thread that lost its last message, an
- *    external account's teardown) drains them inline, then by a scheduled
- *    continuation;
- *  - the member and contact erasure walkers drain them within their budget
- *    (`auth/erasure/mailboxPhases.ts eraseThreads`,
- *    `contacts/erasure/contentPhases.ts eraseConversationThreads`);
- *  - `purge.ts` deletes single items and facts whose last evidence was a
- *    purged message.
- *
- * The note reactions in a thread's range are those on its Team Inbox notes
- * and Postbox discussion messages; the notes themselves are the team's and
- * are deleted (or kept) by their own owners.
- *
- * Deleting an item takes its links with it: the activity rows about it go,
- * and the commitment, team note and Postbox discussion message that point at
- * it lose the pointer (the rows are the user's or the team's and stay).
+ * readers of the thread brief tables, the deletion epoch bump, the extraction
+ * delete that keeps the source counters, and the completeness recompute. The
+ * resumable walks over them are the purge jobs (`purgeDrain.ts`).
  *
  * Isolate-safe helpers, no Convex functions.
  */
 
-import type { Doc, Id } from '../../_generated/dataModel';
+import type { Doc } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import type { ThreadBriefTable } from '../../schema/threadBrief';
 import { threadRefFromFields, threadRefKey, type ThreadRef } from '../../lib/validators/threadRef';
@@ -36,15 +20,7 @@ import {
 	type SourceBucket,
 } from './counters';
 
-/** Charges the documents a purge reads to a caller's budget (the erasure walkers). */
-export type PurgeMeter = (doc: unknown) => void;
-
-export const NO_METER: PurgeMeter = () => {};
-
-/** Links read per deleted item and table. An item has a handful of each. */
-const ITEM_LINK_LIMIT = 256;
-
-type BriefRow = Doc<ThreadBriefTable>;
+export type BriefRow = Doc<ThreadBriefTable>;
 
 /** One bounded read of a per-thread range: up to `limit` rows. */
 export type BriefRangeReader = (limit: number) => Promise<BriefRow[]>;
@@ -171,86 +147,16 @@ export function threadBriefRanges(ctx: MutationCtx, ref: ThreadRef): BriefRangeR
  */
 export async function bumpDeletionEpoch(
 	ctx: MutationCtx,
-	ref: ThreadRef,
-	meter: PurgeMeter = NO_METER
+	ref: ThreadRef
 ): Promise<Doc<'threadBriefs'> | null> {
 	const brief = await loadBriefRow(ctx, ref);
 	if (!brief) return null;
-	meter(brief);
 	await ctx.db.patch(brief._id, {
 		deletionEpoch: brief.deletionEpoch + 1,
 		overview: undefined,
 		updatedAt: Date.now(),
 	});
 	return brief;
-}
-
-/**
- * Take a deleted item's links out of the rows outside the thread brief tables
- * (the commitment, team note and discussion message stay, without the
- * pointer) and delete the activity rows and corrections about it. Call before the item row
- * goes. Bounded per table by {@link ITEM_LINK_LIMIT}.
- */
-export async function unlinkDeletedItem(
-	ctx: MutationCtx,
-	itemId: Id<'threadItems'>,
-	meter: PurgeMeter = NO_METER
-): Promise<void> {
-	const activity = await ctx.db
-		.query('threadActivity')
-		.withIndex('by_item', (q) => q.eq('itemId', itemId))
-		.take(ITEM_LINK_LIMIT);
-	for (const row of activity) {
-		meter(row);
-		await ctx.db.delete(row._id);
-	}
-	const corrections = await ctx.db
-		.query('threadItemCorrections')
-		.withIndex('by_item', (q) => q.eq('itemId', itemId))
-		.take(ITEM_LINK_LIMIT);
-	for (const row of corrections) {
-		meter(row);
-		await ctx.db.delete(row._id);
-	}
-	const commitments = await ctx.db
-		.query('mailCommitments')
-		.withIndex('by_thread_item', (q) => q.eq('threadItemId', itemId))
-		.take(ITEM_LINK_LIMIT);
-	for (const row of commitments) {
-		meter(row);
-		await ctx.db.patch(row._id, { threadItemId: undefined });
-	}
-	const notes = await ctx.db
-		.query('threadNotes')
-		.withIndex('by_thread_item', (q) => q.eq('threadItemId', itemId))
-		.take(ITEM_LINK_LIMIT);
-	for (const row of notes) {
-		meter(row);
-		await ctx.db.patch(row._id, { threadItemId: undefined });
-	}
-	const messages = await ctx.db
-		.query('chatMessages')
-		.withIndex('by_thread_item', (q) => q.eq('threadItemId', itemId))
-		.take(ITEM_LINK_LIMIT);
-	for (const row of messages) {
-		meter(row);
-		await ctx.db.patch(row._id, { threadItemId: undefined });
-	}
-}
-
-/** Delete one row read from {@link threadBriefRanges}; an item takes its links with it. */
-export async function deleteThreadBriefRow(
-	ctx: MutationCtx,
-	row: BriefRow,
-	meter: PurgeMeter = NO_METER
-): Promise<void> {
-	if (isItemRow(row)) await unlinkDeletedItem(ctx, row._id, meter);
-	await ctx.db.delete(row._id);
-}
-
-/** A `threadItems` row: the only brief table with both evidence and a disposition. */
-function isItemRow(row: BriefRow): row is Doc<'threadItems'> {
-	return 'disposition' in row && 'evidence' in row;
 }
 
 /**
@@ -261,12 +167,10 @@ function isItemRow(row: BriefRow): row is Doc<'threadItems'> {
  */
 export async function deleteExtractions(
 	ctx: MutationCtx,
-	rows: readonly Doc<'messageInterpretations'>[],
-	meter: PurgeMeter = NO_METER
+	rows: readonly Doc<'messageInterpretations'>[]
 ): Promise<void> {
 	const shifts = new Map<string, { ref: ThreadRef; buckets: SourceBucket[] }>();
 	for (const row of rows) {
-		meter(row);
 		await ctx.db.delete(row._id);
 		if (row.isCounted !== true) continue;
 		const ref = threadRefFromFields(row);

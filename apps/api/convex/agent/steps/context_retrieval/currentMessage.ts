@@ -118,7 +118,7 @@ async function structuredActions(
 			});
 		}
 		if (read.interpretation?.status !== 'complete') return null;
-		return renderBriefingActions(read.items);
+		return renderBriefingActions(read.selection);
 	} catch {
 		// Fail soft — keep the hidden-stripped raw body.
 		return null;

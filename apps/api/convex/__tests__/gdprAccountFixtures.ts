@@ -252,9 +252,11 @@ export async function exportAllUserData(
 	const mailboxes = (await loadPages('mailboxes')) as Array<ExportRow & { _id: Id<'mailboxes'> }>;
 	const mailMessages: ExportRow[] = [];
 	const mailDrafts: ExportRow[] = [];
+	const threadBriefs: ExportRow[] = [];
 	for (const mailbox of mailboxes) {
 		mailMessages.push(...(await loadPages('mailMessages', { mailboxId: mailbox._id })));
 		mailDrafts.push(...(await loadPages('mailDrafts', { mailboxId: mailbox._id })));
+		threadBriefs.push(...(await loadPages('threadBriefs', { mailboxId: mailbox._id })));
 	}
 	return {
 		...manifest,
@@ -270,6 +272,8 @@ export async function exportAllUserData(
 			bookingPages: await loadPages('bookingPages'),
 			bookings: await loadPages('bookings'),
 			savedReplies: await loadPages('savedReplies'),
+			threadBriefs,
+			threadViewerState: await loadPages('threadViewerState'),
 		},
 	};
 }

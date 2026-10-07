@@ -187,7 +187,8 @@ export const applyCommitment = internalMutation({
 			});
 		}
 		// The thread brief item for the same promise or deadline, when the
-		// interpretation already landed (else applyInterpretation links it when its items land).
+		// interpretation already landed (else the reducer links it through
+		// commitmentLink.onItemsCreated when its items land).
 		await linkCommitmentsForMessage(ctx, args.messageId);
 	},
 });

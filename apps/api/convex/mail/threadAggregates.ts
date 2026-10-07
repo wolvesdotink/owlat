@@ -14,7 +14,7 @@ import type { MutationCtx } from '../_generated/server';
 import { batchGet } from '../_utils/batchLoader';
 import { deleteMailThreadCatchUps } from './ai/catchUpStore';
 import { deleteResourceUploads, mailThreadUploadKey } from '../storage/uploads';
-import { purgeThreadBrief } from './interpret/purgeThread';
+import { purgeThreadBrief } from './interpret/purgeRun';
 
 /**
  * Most addresses a thread's `participants` array holds. Every message adds its

@@ -25,6 +25,8 @@ import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
 import { throwInvalidInput } from '../../_utils/errors';
 import { isSharedInboxReader } from '../../inbox/access';
 import { loadReadableMailbox } from '../permissions';
+import { mailboxScope } from '../mailbox/shared';
+import type { InterpretMode } from '@owlat/shared/threadBrief';
 import { threadBriefMutation } from '../_helpers';
 import { threadViewValidator, streamPositionValidator } from '../../lib/validators/threadBrief';
 import {
@@ -33,7 +35,7 @@ import {
 	type ThreadRef,
 } from '../../lib/validators/threadRef';
 import { threadBriefViewValidator, type ThreadBriefView } from './briefShape';
-import { loadBriefRow, resolveThreadMode } from './briefRow';
+import { loadBriefRow } from './briefRow';
 import { projectBrief } from './briefProject';
 import { readResult } from './load';
 import {
@@ -72,6 +74,12 @@ export const get = publicQuery({
 		if (!session) return null;
 
 		let totalMessages: number;
+		// The mode is read from its source of truth at READ time (the mailbox's
+		// scope; a team thread is always actions), never from the cached brief
+		// row: a mailbox converted to a team inbox shows no personal overview,
+		// latest line or facts from the moment it flips, whatever the async
+		// scope-change cleanup has done yet (review F8).
+		let mode: InterpretMode;
 		let people: Awaited<ReturnType<typeof readMailPeopleAndFiles>> = {
 			participants: [],
 			files: [],
@@ -83,16 +91,16 @@ export const get = publicQuery({
 			if (!mailbox) return null;
 			totalMessages = thread.messageCount;
 			people = await readMailPeopleAndFiles(ctx, thread, mailbox);
+			mode = mailboxScope(mailbox) === 'shared' ? 'actions' : 'brief';
 		} else {
 			if (!isSharedInboxReader(session)) return null;
 			const thread = await ctx.db.get(ref.id);
 			if (!thread) return null;
 			totalMessages = thread.messageCount;
+			mode = 'actions';
 		}
 
 		const brief = await loadBriefRow(ctx, ref);
-		const mode = brief?.mode ?? (await resolveThreadMode(ctx, ref));
-		if (!mode) return null;
 
 		const [itemsPage, tail, interpretations, viewer] = await Promise.all([
 			readItemsPage(ctx, ref, locale, args.cursor ?? null, Date.now()),

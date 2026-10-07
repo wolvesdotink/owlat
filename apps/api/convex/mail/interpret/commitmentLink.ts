@@ -4,10 +4,10 @@
  *
  * Both are derived from one message, independently and in either order: the
  * commitment extraction runs from the sweep, the interpretation from ingest
- * or the send. So both writers call {@link linkCommitmentsForMessage} after
- * they write (`commitments.applyCommitment`, and `reduce.applyInterpretation`
- * after it inserts items for a mail source), and whichever lands second
- * makes the link:
+ * or the send. So both writers link after they write, and whichever lands
+ * second makes the link: `commitments.applyCommitment` calls
+ * {@link linkCommitmentsForMessage}, and the reducer calls
+ * {@link onItemsCreated} once it has inserted the items of a message:
  *   - `mailCommitments.threadItemId` → the item;
  *   - `threadItems.commitmentId` → the commitment (when the item has none).
  *
@@ -27,6 +27,7 @@
 
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
+import type { InterpretationSource } from '../../lib/validators/threadBrief';
 
 /** Items of one thread read per status when matching (a thread has a handful). */
 const ITEM_READ_LIMIT = 100;
@@ -89,4 +90,19 @@ export async function linkCommitmentsForMessage(
 			await ctx.db.patch(item._id, { commitmentId: commitment._id });
 		}
 	}
+}
+
+/**
+ * The reducer's hook: after `applyInterpretation` inserted `createdItemIds`
+ * from `source`, link the Daily Brief commitments of that message (the
+ * commitment-first arrival order). Only Postbox messages carry commitments.
+ */
+export async function onItemsCreated(
+	ctx: MutationCtx,
+	source: InterpretationSource,
+	createdItemIds: readonly Id<'threadItems'>[]
+): Promise<void> {
+	if (createdItemIds.length === 0) return;
+	if (source.kind !== 'mail' && source.kind !== 'outboundMail') return;
+	await linkCommitmentsForMessage(ctx, source.id);
 }

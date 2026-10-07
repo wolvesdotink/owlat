@@ -42,7 +42,7 @@ const ALLOWED = new Set([
 	// purged, and declares those relations (never reads a note body).
 	'auth/erasure/threadBriefRelations.ts',
 	'contacts/erasure/threadBriefRelations.ts',
-	'mail/interpret/purgeRows.ts',
+	'mail/interpret/purgeLinks.ts',
 ]);
 
 const ROOT = join(__dirname, '..', '..');

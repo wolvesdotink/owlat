@@ -1,44 +1,28 @@
 /**
- * The scheduled continuations of the thread brief erasure and the scope
- * change: thin internal mutations over the helpers that schedule them (in
- * their own module, so every one has a caller outside it):
+ * The scheduled side of the thread brief purge jobs (`purgeRun.ts`):
  *
- *  - `sweepSourcesPage`: a message purge in a thread with more items or facts
- *    than one pass scans (`purge.ts`);
- *  - `drainThreadBrief`: the rows of a deleted thread that did not fit inline
- *    (`purgeThread.ts`);
- *  - `invalidateMailboxThreads` / `invalidateThreadScope`: a mailbox that
- *    became a team inbox, a page of threads (or one large thread) at a time
- *    (`scopeChange.ts`).
+ *  - `continueJob`: one slice of a purge or scope-change job, then itself
+ *    again until every range of the job is exhausted;
+ *  - `invalidateMailboxThreads`: a mailbox scope change, a page of threads
+ *    at a time.
  */
 
 import { v } from 'convex/values';
+import { internal } from '../../_generated/api';
 import { internalMutation } from '../../lib/writeFence';
-import {
-	interpretationSourceValidator,
-	interpretModeValidator,
-} from '../../lib/validators/threadBrief';
-import { threadRefValidator } from '../../lib/validators/threadRef';
-import { sweepSourcesPage as sweepSources } from './purge';
-import { drainThreadBrief as drainThread } from './purgeThread';
-import {
-	invalidateMailboxThreads as invalidateMailbox,
-	invalidateThreadScope as invalidateThread,
-} from './scopeChange';
+import { interpretModeValidator } from '../../lib/validators/threadBrief';
+import { unitBudget } from './purgeDrain';
+import { CONTINUATION_UNITS, invalidateMailboxThreadsPage, runPurgeJob } from './purgeRun';
 
-export const sweepSourcesPage = internalMutation({
-	args: {
-		threadRef: threadRefValidator,
-		sources: v.array(interpretationSourceValidator),
-		table: v.union(v.literal('threadItems'), v.literal('threadFacts')),
-		cursor: v.union(v.string(), v.null()),
+export const continueJob = internalMutation({
+	args: { jobId: v.id('threadPurgeJobs') },
+	handler: async (ctx, args): Promise<{ isDone: boolean }> => {
+		const isDone = await runPurgeJob(ctx, args.jobId, unitBudget(CONTINUATION_UNITS));
+		if (!isDone) {
+			await ctx.scheduler.runAfter(0, internal.mail.interpret.purgeJobs.continueJob, args);
+		}
+		return { isDone };
 	},
-	handler: (ctx, args): Promise<{ isDone: boolean }> => sweepSources(ctx, args),
-});
-
-export const drainThreadBrief = internalMutation({
-	args: { threadRef: threadRefValidator },
-	handler: (ctx, args): Promise<{ isDone: boolean }> => drainThread(ctx, args),
 });
 
 export const invalidateMailboxThreads = internalMutation({
@@ -48,10 +32,5 @@ export const invalidateMailboxThreads = internalMutation({
 		cursor: v.union(v.string(), v.null()),
 	},
 	handler: (ctx, args): Promise<{ isDone: boolean; threads: number }> =>
-		invalidateMailbox(ctx, args),
-});
-
-export const invalidateThreadScope = internalMutation({
-	args: { threadId: v.id('mailThreads'), mode: interpretModeValidator },
-	handler: (ctx, args): Promise<{ isDone: boolean }> => invalidateThread(ctx, args),
+		invalidateMailboxThreadsPage(ctx, args),
 });

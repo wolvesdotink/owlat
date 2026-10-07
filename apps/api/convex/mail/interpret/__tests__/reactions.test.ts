@@ -173,6 +173,9 @@ describe('lifecycle reactions on a Postbox thread', () => {
 			correction: { by: 'user-A', kind: 'markedDone' },
 		});
 		expect(item.updatedAt).toBeGreaterThanOrEqual(us.updatedAt);
+		// The person set this status: a purge of a message never resets it.
+		expect(item.statusSource).toMatchObject({ sourceKey: 'user:user-A' });
+		expect(item.lastTransitionAt).toBe(item.statusSource?.at);
 
 		const [row] = await activityFor(t, us._id);
 		expect(row).toMatchObject({
@@ -197,6 +200,7 @@ describe('lifecycle reactions on a Postbox thread', () => {
 		expect(item.completion).toBeUndefined();
 		expect(item.correction).toBeUndefined();
 		expect(item.revision).toBe(3);
+		expect(item.statusSource).toMatchObject({ sourceKey: 'user:user-A' });
 		expect((await activityFor(t, us._id)).map((a) => a.type)).toEqual([
 			'item_closed',
 			'item_reopened',
@@ -605,5 +609,101 @@ describe('planReaction', () => {
 				actor
 			)
 		).toMatchObject({ ok: true, patch: { correction: { kind: 'notARequest' } } });
+	});
+});
+
+describe('undoing a confirmation (review round 1, F10)', () => {
+	const EUR = (value: number) => ({ value, currency: 'EUR' });
+
+	/** A tracked €100 item whose next message claims €1,000, unverified: held as a pending update. */
+	async function heldThousand(t: Test) {
+		const { us, messageId } = await mailSetup(t);
+		const quote = {
+			source: { kind: 'mail' as const, id: messageId },
+			segmentId: 's9',
+			start: 0,
+			end: 9,
+			contentRevision: 'rev-2',
+		};
+		await t.run(async (ctx) => {
+			await ctx.db.patch(us._id, {
+				amount: EUR(100),
+				pendingUpdate: { evidence: [quote], amount: EUR(1000) },
+			});
+		});
+		return { us: await get(t, us._id), quote };
+	}
+
+	it('puts a confirmed held change back exactly: €100, verified, €1,000 pending again', async () => {
+		const t = harness();
+		const { us } = await heldThousand(t);
+		const before = us.evidence.length;
+
+		await t.mutation(api.mail.interpret.reactions.confirmProposal, { itemId: us._id });
+		const confirmed = await get(t, us._id);
+		expect(confirmed).toMatchObject({
+			amount: EUR(1000),
+			verify: 'passed',
+			correction: { kind: 'confirmed' },
+			confirmedFrom: { kind: 'heldChange', verify: 'passed', amount: EUR(100) },
+		});
+		expect(confirmed.pendingUpdate).toBeUndefined();
+		expect(confirmed.evidence).toHaveLength(before + 1);
+
+		await t.mutation(api.mail.interpret.reactions.undo, { itemId: us._id });
+		const undone = await get(t, us._id);
+		expect(undone).toMatchObject({
+			amount: EUR(100),
+			verify: 'passed',
+			pendingUpdate: { amount: EUR(1000) },
+			status: 'open',
+		});
+		expect(undone.pendingUpdate?.evidence).toHaveLength(1);
+		expect(undone.evidence).toHaveLength(before);
+		expect(undone.correction).toBeUndefined();
+		expect(undone.confirmedFrom).toBeUndefined();
+		expect((await activityFor(t, us._id)).map((a) => a.type)).toEqual([
+			'proposal_confirmed',
+			'item_corrected',
+		]);
+	});
+
+	it('puts a confirmed proposal back to "Check this" with its values', async () => {
+		const t = harness();
+		const { messageId, threadId } = await seedMailThread(t);
+		const ref = { kind: 'mail' as const, id: threadId };
+		await interpret(t, { kind: 'mail', id: messageId }, ref, {
+			result: reduceResult({ items: [reduceItem({ verify: 'proposal', amount: EUR(100) })] }),
+		});
+		const [item] = await itemsOf(t, ref);
+		await t.mutation(api.mail.interpret.reactions.confirmProposal, { itemId: item!._id });
+		expect((await get(t, item!._id)).confirmedFrom?.kind).toBe('proposal');
+		await t.mutation(api.mail.interpret.reactions.undo, { itemId: item!._id });
+		const undone = await get(t, item!._id);
+		expect(undone).toMatchObject({ verify: 'proposal', amount: EUR(100) });
+		expect(undone.correction).toBeUndefined();
+		expect(undone.confirmedFrom).toBeUndefined();
+		expect((await t.run(async (ctx) => ctx.db.get(threadId)))?.briefTop?.forYou).toBe(0);
+	});
+
+	it('keeps the confirmation when a later Mark done is undone', async () => {
+		const t = harness();
+		const { us } = await heldThousand(t);
+		await t.mutation(api.mail.interpret.reactions.confirmProposal, { itemId: us._id });
+		await t.mutation(api.mail.interpret.reactions.markDone, { itemId: us._id });
+		await t.mutation(api.mail.interpret.reactions.undo, { itemId: us._id });
+		const item = await get(t, us._id);
+		expect(item).toMatchObject({
+			status: 'open',
+			amount: EUR(1000),
+			correction: { kind: 'confirmed' },
+			confirmedFrom: { kind: 'heldChange', amount: EUR(100) },
+		});
+		// …and the confirmation itself can still be undone afterwards.
+		await t.mutation(api.mail.interpret.reactions.undo, { itemId: us._id });
+		expect(await get(t, us._id)).toMatchObject({
+			amount: EUR(100),
+			pendingUpdate: { amount: EUR(1000) },
+		});
 	});
 });

@@ -32,7 +32,12 @@ import type * as mail_interpret_pipeline from '../mail/interpret/pipeline.js';
 import type * as mail_interpret_preferences from '../mail/interpret/preferences.js';
 import type * as mail_interpret_prompt from '../mail/interpret/prompt.js';
 import type * as mail_interpret_purge from '../mail/interpret/purge.js';
+import type * as mail_interpret_purgeClaims from '../mail/interpret/purgeClaims.js';
+import type * as mail_interpret_purgeDrain from '../mail/interpret/purgeDrain.js';
 import type * as mail_interpret_purgeJobs from '../mail/interpret/purgeJobs.js';
+import type * as mail_interpret_purgeLinks from '../mail/interpret/purgeLinks.js';
+import type * as mail_interpret_purgeQuestions from '../mail/interpret/purgeQuestions.js';
+import type * as mail_interpret_purgeRun from '../mail/interpret/purgeRun.js';
 import type * as mail_interpret_purgeThread from '../mail/interpret/purgeThread.js';
 import type * as mail_interpret_reactionRules from '../mail/interpret/reactionRules.js';
 import type * as mail_interpret_reactions from '../mail/interpret/reactions.js';
@@ -185,6 +190,7 @@ import type * as auth_accountExportArtifacts from '../auth/accountExportArtifact
 import type * as auth_accountExportBookingQueries from '../auth/accountExportBookingQueries.js';
 import type * as auth_accountExportPushQueries from '../auth/accountExportPushQueries.js';
 import type * as auth_accountExportQueries from '../auth/accountExportQueries.js';
+import type * as auth_accountExportThreadBriefQueries from '../auth/accountExportThreadBriefQueries.js';
 import type * as auth_accountManagement from '../auth/accountManagement.js';
 import type * as apiV1Http from '../apiV1Http.js';
 import type * as auth_apiAuth from '../auth/apiAuth.js';
@@ -1413,6 +1419,7 @@ import type * as schema_smtpResponseCategories from '../schema/smtpResponseCateg
 import type * as schema_snds from '../schema/snds.js';
 import type * as schema_templates from '../schema/templates.js';
 import type * as schema_threadBrief from '../schema/threadBrief.js';
+import type * as schema_threadPurgeJobs from '../schema/threadPurgeJobs.js';
 import type * as schema_emailCoediting from '../schema/emailCoediting.js';
 import type * as schema_today from '../schema/today.js';
 import type * as schema_topics from '../schema/topics.js';
@@ -1605,7 +1612,12 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/preferences': typeof mail_interpret_preferences;
 	'mail/interpret/prompt': typeof mail_interpret_prompt;
 	'mail/interpret/purge': typeof mail_interpret_purge;
+	'mail/interpret/purgeClaims': typeof mail_interpret_purgeClaims;
+	'mail/interpret/purgeDrain': typeof mail_interpret_purgeDrain;
 	'mail/interpret/purgeJobs': typeof mail_interpret_purgeJobs;
+	'mail/interpret/purgeLinks': typeof mail_interpret_purgeLinks;
+	'mail/interpret/purgeQuestions': typeof mail_interpret_purgeQuestions;
+	'mail/interpret/purgeRun': typeof mail_interpret_purgeRun;
 	'mail/interpret/purgeThread': typeof mail_interpret_purgeThread;
 	'mail/interpret/reactionRules': typeof mail_interpret_reactionRules;
 	'mail/interpret/reactions': typeof mail_interpret_reactions;
@@ -1748,6 +1760,7 @@ declare const fullApi: ApiFromModules<{
 	'auth/accountExportBookingQueries': typeof auth_accountExportBookingQueries;
 	'auth/accountExportPushQueries': typeof auth_accountExportPushQueries;
 	'auth/accountExportQueries': typeof auth_accountExportQueries;
+	'auth/accountExportThreadBriefQueries': typeof auth_accountExportThreadBriefQueries;
 	'auth/accountManagement': typeof auth_accountManagement;
 	apiV1Http: typeof apiV1Http;
 	'auth/apiAuth': typeof auth_apiAuth;
@@ -2976,6 +2989,7 @@ declare const fullApi: ApiFromModules<{
 	'schema/snds': typeof schema_snds;
 	'schema/templates': typeof schema_templates;
 	'schema/threadBrief': typeof schema_threadBrief;
+	'schema/threadPurgeJobs': typeof schema_threadPurgeJobs;
 	'schema/emailCoediting': typeof schema_emailCoediting;
 	'schema/today': typeof schema_today;
 	'schema/topics': typeof schema_topics;

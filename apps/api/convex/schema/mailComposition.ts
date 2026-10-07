@@ -136,6 +136,9 @@ export const mailCompositionTables = {
 		lastEditedAt: v.number(),
 		createdAt: v.number(),
 	})
+		// Erasure (mail/interpret/purgeLinks.ts): the drafts of a thread whose ask
+		// sessions may name a deleted thread brief item.
+		.index('by_thread', ['threadId'])
 		.index('by_mailbox', ['mailboxId'])
 		.index('by_mailbox_and_edited', ['mailboxId', 'lastEditedAt'])
 		.index('by_state_and_scheduled', ['state', 'scheduledSendAt'])
