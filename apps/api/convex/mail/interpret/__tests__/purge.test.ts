@@ -17,6 +17,7 @@ import type { InterpretationSource } from '../../../lib/validators/threadBrief';
 import { purgeMessageRow, purgeThreadBriefsOf, type PurgedMessages } from '../../messagePurge';
 import { rebuildThreadAggregates } from '../../threadAggregates';
 import { purgeSourcesFromThread } from '../purge';
+import { listBucketOf, recordItemChange } from '../counters';
 import { purgeThreadBrief } from '../purgeThread';
 import { seedFolder } from '../../__tests__/helpers.testlib';
 import {
@@ -46,7 +47,7 @@ async function insertItem(
 	sources: InterpretationSource[],
 	extra: Partial<Doc<'threadItems'>> = {}
 ): Promise<Id<'threadItems'>> {
-	return ctx.db.insert('threadItems', {
+	const row = {
 		...threadRefToFields(ref),
 		revision: 1,
 		intent: 'request',
@@ -64,7 +65,11 @@ async function insertItem(
 		createdAt: SENT,
 		updatedAt: SENT,
 		...extra,
-	});
+	} as const;
+	// As the reducer: the list bucket and the brief's item counters move with the insert.
+	const id = await ctx.db.insert('threadItems', { ...row, listBucket: listBucketOf(row) });
+	await recordItemChange(ctx, ref, null, row);
+	return id;
 }
 
 async function insertFact(
@@ -312,6 +317,8 @@ describe('message purge', () => {
 			interpretationRevision: 2,
 			completeness: 'none',
 			sourceCounts: { complete: 0, partial: 0, failed: 0, unreadable: 0, skipped: 0 },
+			// The deleted items left the counters, the reopened one came back to `us`.
+			itemCounts: expect.objectContaining({ us: 2, closed: 0 }),
 		});
 		await t.run(async (ctx) => {
 			expect(await ctx.db.query('interpretSources').collect()).toHaveLength(0);

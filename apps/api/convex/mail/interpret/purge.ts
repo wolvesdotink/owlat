@@ -16,7 +16,7 @@
  *    surviving evidence": an item or fact left without evidence is deleted
  *    (with its links, `purgeRows.ts`, and out of the item counters); one
  *    replaced or superseded by a deleted claim comes back (`open` /
- *    `current`, through `itemWrite.ts`); pointers to deleted claims are
+ *    `current`, through `counters.ts writeItemChange`); pointers to deleted claims are
  *    cleared on the survivors;
  *  - response plans lose their references to deleted items and go `stale`;
  *  - the Postbox clarification questions lose their item links;
@@ -56,8 +56,7 @@ import {
 	unlinkDeletedItem,
 	type PurgeMeter,
 } from './purgeRows';
-import { recordItemChange } from './counters';
-import { writeItemChange } from './itemWrite';
+import { recordItemChange, writeItemChange } from './counters';
 
 /** Items or facts scanned inline per thread. */
 export const CLAIM_SCAN_LIMIT = 1000;
@@ -270,14 +269,12 @@ async function stripClaims(
 		if (!patch) continue;
 		const stamp = { revision: row.revision + 1, updatedAt: now };
 		if (table === 'threadItems') {
-			// A reopened item moves counter buckets; the list projection is refreshed once, at the end.
+			// A reopened item moves its list bucket and counters; briefTop is refreshed at the end.
 			const itemPatch: Partial<Doc<'threadItems'>> = {
 				...(patch as Partial<Doc<'threadItems'>>),
 				...stamp,
 			};
-			await writeItemChange(ctx, ref, row as Doc<'threadItems'>, itemPatch, {
-				isTopRefreshed: false,
-			});
+			await writeItemChange(ctx, ref, row as Doc<'threadItems'>, itemPatch);
 		} else {
 			const factPatch: Partial<Doc<'threadFacts'>> = {
 				...(patch as Partial<Doc<'threadFacts'>>),
