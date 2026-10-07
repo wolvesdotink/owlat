@@ -3,6 +3,7 @@ import type { InboundSignatureInfo } from '~/utils/signatureBadge';
 import {
 	resolveSignedBodyView,
 	signedBodyScopeOf,
+	type SignedBodyText,
 	type SignedBodyView,
 } from '~/utils/postboxSignedBody';
 import { loadPostboxTextBody } from './postboxBodyResolver';
@@ -30,13 +31,17 @@ export function usePostboxSignedBody(source: {
 	hideBody: () => boolean;
 	active: () => boolean;
 }) {
-	const fetched = ref<{ text: string | null; hasHtmlBlob: boolean } | null>(null);
+	// The stored text body once its load settled: a failed load is not "no text".
+	const fetched = ref<
+		{ state: 'failed' } | { state: 'loaded'; text: string | null; hasHtmlBlob: boolean } | null
+	>(null);
 
 	const inlineText = computed(() => source.message().textBodyInline || undefined);
 	const scope = computed(() => signedBodyScopeOf(source.message().inboundSignatureInfo));
 	const hasHtml = computed(() => {
 		const m = source.message();
-		return !!(m.htmlBodyInline || m.htmlBodyStorageId || fetched.value?.hasHtmlBlob);
+		const blob = fetched.value?.state === 'loaded' && fetched.value.hasHtmlBlob;
+		return !!(m.htmlBodyInline || m.htmlBodyStorageId || blob);
 	});
 
 	// The verdict needs the text and none is inline: it lives in storage (or the
@@ -49,7 +54,7 @@ export function usePostboxSignedBody(source: {
 			resolveSignedBodyView({
 				secureClass: source.secureClass(),
 				scope: scope.value,
-				text: undefined,
+				text: { state: 'loading' },
 				hasHtml: false,
 			}).kind === 'loading'
 	);
@@ -61,28 +66,32 @@ export function usePostboxSignedBody(source: {
 			const sequence = ++requestSequence;
 			fetched.value = null;
 			if (!shouldFetch) return;
-			let result: { text: string | null; hasHtmlBlob: boolean };
+			let result: NonNullable<typeof fetched.value>;
 			try {
-				result = await loadPostboxTextBody(requireConvex(), messageId);
+				result = { state: 'loaded', ...(await loadPostboxTextBody(requireConvex(), messageId)) };
 			} catch {
-				// Unreadable is treated as no text: nothing can be shown as signed.
-				result = { text: null, hasHtmlBlob: false };
+				result = { state: 'failed' };
 			}
 			if (sequence === requestSequence) fetched.value = result;
 		},
 		{ immediate: true }
 	);
 
-	const view = computed<SignedBodyView>(() => {
-		const m = source.message();
-		const text = inlineText.value ?? (m.bodyPending ? undefined : fetched.value?.text);
-		return resolveSignedBodyView({
+	const text = computed<SignedBodyText>(() => {
+		if (inlineText.value) return { state: 'loaded', text: inlineText.value };
+		const settled = fetched.value;
+		if (source.message().bodyPending || !settled) return { state: 'loading' };
+		return settled.state === 'failed' ? settled : { state: 'loaded', text: settled.text };
+	});
+
+	const view = computed<SignedBodyView>(() =>
+		resolveSignedBodyView({
 			secureClass: source.secureClass(),
 			scope: scope.value,
-			text,
+			text: text.value,
 			hasHtml: hasHtml.value,
-		});
-	});
+		})
+	);
 
 	const kind = computed(() => view.value.kind);
 	return {
@@ -106,7 +115,10 @@ export function usePostboxSignedBody(source: {
 		badgeMessage: computed(() => {
 			const m = source.message();
 			return kind.value === 'signed'
-				? { _id: m._id, textBodyInline: inlineText.value ?? fetched.value?.text ?? '' }
+				? {
+						_id: m._id,
+						textBodyInline: text.value.state === 'loaded' ? (text.value.text ?? '') : '',
+					}
 				: m;
 		}),
 	};

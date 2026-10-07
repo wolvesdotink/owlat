@@ -361,39 +361,54 @@ describe('PostboxReaderMessage · the verdict scope, not the attachment list, de
 		expect(chip(w).attributes('data-signature')).toBe('present');
 	});
 
-	it('an older row whose .asc attachment disagrees with its text withholds the verdict', async () => {
-		storeBodies(SIGNED_BLOCK);
-		const w = mountCard(
-			{
-				htmlBodyInline: '<p>UNSIGNED HTML</p>',
-				textBodyStorageId: 'blob_t',
-				attachments: [ASC_ATTACHMENT],
-				hasAttachments: true,
-				inboundSignatureInfo: LEGACY,
-			},
-			{ secureClass: 'pgp-signed' }
-		);
-		await flushPromises();
+	it('an older row with a .asc attachment withholds the verdict, block or not', async () => {
+		for (const text of [SIGNED_BLOCK, 'Ordinary signed text.\n'.repeat(4000)]) {
+			storeBodies(text);
+			const w = mountCard(
+				{
+					htmlBodyInline: '<p>UNSIGNED HTML</p>',
+					textBodyStorageId: 'blob_t',
+					attachments: [ASC_ATTACHMENT],
+					hasAttachments: true,
+					inboundSignatureInfo: LEGACY,
+				},
+				{ secureClass: 'pgp-signed' }
+			);
+			await flushPromises();
 
-		expect(has(w, 'PostboxMessageBody')).toBe(true);
-		expect(chip(w).attributes('data-signature')).toBe('absent');
+			// Nothing proves what an older PGP/MIME verdict covered.
+			expect(has(w, 'PostboxMessageBody')).toBe(true);
+			expect(chip(w).attributes('data-signature')).toBe('absent');
+		}
+		expect(action).not.toHaveBeenCalled();
 	});
 
-	it('an older PGP/MIME row keeps its verdict once its text shows no clearsigned block', async () => {
-		storeBodies('Ordinary signed text.\n'.repeat(4000));
-		const w = mountCard(
-			{
-				textBodyStorageId: 'blob_t',
-				attachments: [ASC_ATTACHMENT],
-				hasAttachments: true,
-				inboundSignatureInfo: LEGACY,
-			},
-			{ secureClass: 'pgp-signed' }
-		);
-		await flushPromises();
+	it('withholds the verdict when the stored text fails to load', async () => {
+		const asc = { attachments: [ASC_ATTACHMENT], hasAttachments: true };
+		const cases = [
+			{ info: VERIFIED, extra: {}, secureClass: 'none' },
+			{ info: LEGACY, extra: {}, secureClass: 'none' },
+			// Sol's repro: a failed load once read as "no block", so PGP/MIME.
+			{ info: LEGACY, extra: asc, secureClass: 'pgp-signed' },
+		];
+		for (const { info, extra, secureClass } of cases) {
+			action.mockRejectedValue(new Error('offline'));
+			const w = mountCard(
+				{
+					htmlBodyInline: '<p>UNSIGNED HTML</p>',
+					textBodyStorageId: 'blob_t',
+					inboundSignatureInfo: info,
+					...extra,
+				},
+				{ secureClass }
+			);
+			await flushPromises();
 
-		expect(has(w, 'PostboxMessageBody')).toBe(true);
-		expect(chip(w).attributes('data-signature')).toBe('present');
+			expect(has(w, 'signed-body-loading')).toBe(false);
+			expect(has(w, 'PostboxMessageBody')).toBe(true);
+			expect(has(w, 'signature-badge')).toBe(false);
+			expect(chip(w).attributes('data-signature')).toBe('absent');
+		}
 	});
 
 	it('an older clearsigned row without a scope still shows only its block', async () => {
