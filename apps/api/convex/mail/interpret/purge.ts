@@ -237,9 +237,13 @@ async function stripClaims(
 	const deleted = table === 'threadItems' ? outcome.deletedItemIds : outcome.deletedFactIds;
 	const survivors: ClaimRow[] = [];
 	const doomed: ClaimRow[] = [];
+	const names = (evidence: readonly { source: { id: string } }[]) =>
+		evidence.some((e) => ids.has(e.source.id));
 	for (const row of rows) {
 		meter(row);
-		if (!row.evidence.some((e) => ids.has(e.source.id))) {
+		const pending = 'pendingUpdate' in row ? row.pendingUpdate : undefined;
+		const isPendingNamed = pending !== undefined && names(pending.evidence);
+		if (!names(row.evidence) && !isPendingNamed) {
 			survivors.push(row);
 			continue;
 		}
@@ -249,8 +253,17 @@ async function stripClaims(
 			deleted.add(row._id);
 			continue;
 		}
-		await ctx.db.patch(row._id, { evidence, revision: row.revision + 1, updatedAt: now });
-		survivors.push({ ...row, evidence, revision: row.revision + 1 });
+		// An unconfirmed update loses the purged evidence too, and goes when none is left.
+		const pendingEvidence = pending?.evidence.filter((e) => !ids.has(e.source.id)) ?? [];
+		const pendingPatch = isPendingNamed
+			? {
+					pendingUpdate:
+						pendingEvidence.length > 0 ? { ...pending!, evidence: pendingEvidence } : undefined,
+				}
+			: {};
+		const revision = row.revision + 1;
+		await ctx.db.patch(row._id, { evidence, ...pendingPatch, revision, updatedAt: now });
+		survivors.push({ ...row, evidence, ...pendingPatch, revision } as ClaimRow);
 		outcome.changed += 1;
 	}
 	for (const row of doomed) {

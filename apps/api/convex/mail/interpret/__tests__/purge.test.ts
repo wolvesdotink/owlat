@@ -240,7 +240,9 @@ describe('message purge', () => {
 				.query('threadItems')
 				.withIndex('by_mail_thread_and_status', (q) => q.eq('mailThreadId', threadId))
 				.first())!._id;
-			const both = await insertItem(ctx, ref, [srcA, srcB]);
+			const both = await insertItem(ctx, ref, [srcA, srcB], {
+				pendingUpdate: { evidence: [evidence(srcA)] },
+			});
 			const replacement = await insertItem(ctx, ref, [srcA]);
 			const replaced = await insertItem(ctx, ref, [srcB], {
 				status: 'superseded',
@@ -300,6 +302,8 @@ describe('message purge', () => {
 		const both = after.items.find((i) => i._id === seeded.both)!;
 		expect(both.evidence.map((e) => e.source.id)).toEqual([b]);
 		expect(both.revision).toBe(2);
+		// The unconfirmed update held only the purged message's evidence.
+		expect(both.pendingUpdate).toBeUndefined();
 		const replaced = after.items.find((i) => i._id === seeded.replaced)!;
 		expect(replaced).toMatchObject({ status: 'open' });
 		expect(replaced.replacedById).toBeUndefined();

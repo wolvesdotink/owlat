@@ -254,8 +254,10 @@ function isItemRow(row: BriefRow): row is Doc<'threadItems'> {
 }
 
 /**
- * Delete extraction rows and take each CURRENT one out of its brief's source
- * counters (`counters.ts`), so completeness stays right without a scan.
+ * Delete extraction rows and take each COUNTED one (the newest attempt of its
+ * source, `isCounted`) out of its brief's source counters (`counters.ts`), so
+ * completeness stays right without a scan. A message purge deletes every row
+ * of the source, so no current or counted mark is left to re-assign.
  */
 export async function deleteExtractions(
 	ctx: MutationCtx,
@@ -266,7 +268,7 @@ export async function deleteExtractions(
 	for (const row of rows) {
 		meter(row);
 		await ctx.db.delete(row._id);
-		if (row.isCurrent !== true) continue;
+		if (row.isCounted !== true) continue;
 		const ref = threadRefFromFields(row);
 		const key = threadRefKey(ref);
 		const entry = shifts.get(key) ?? { ref, buckets: [] };
