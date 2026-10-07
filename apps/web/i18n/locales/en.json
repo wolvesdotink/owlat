@@ -1074,6 +1074,7 @@
 				"noReplyNeeded": "no reply needed"
 			},
 			"more": "+{count} more",
+			"moreAtLeast": "{count}+ more",
 			"toast": {
 				"markedDone": "Marked done. You can undo it.",
 				"reminder": "You'll be reminded tomorrow morning."
@@ -6724,6 +6725,7 @@
 			},
 			"todo": {
 				"title": "To do, no reply needed · {count}",
+				"titlePlain": "To do, no reply needed",
 				"due": "by {date}",
 				"more": "There is more to do in this inbox.",
 				"openInbox": "Open the inbox"

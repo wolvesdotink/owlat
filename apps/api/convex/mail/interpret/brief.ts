@@ -41,7 +41,7 @@ import {
 	readActivityTail,
 	readFacts,
 	readInterpretations,
-	readItems,
+	readItemsPage,
 	readLatest,
 	readMailPeopleAndFiles,
 	readExactWording,
@@ -58,7 +58,12 @@ import { requireThreadReader } from './threadAccess';
 // public: soft-auth — returns null for anonymous callers and for anyone the
 // thread's reader rule refuses (mailbox access, or the shared-inbox reader gate).
 export const get = publicQuery({
-	args: { threadRef: threadRefValidator, locale: v.string() },
+	args: {
+		threadRef: threadRefValidator,
+		locale: v.string(),
+		// Next page of open items (`page.cursor` of the previous answer).
+		cursor: v.optional(v.union(v.string(), v.null())),
+	},
 	returns: v.union(threadBriefViewValidator, v.null()),
 	handler: async (ctx, args): Promise<ThreadBriefView | null> => {
 		const ref = args.threadRef;
@@ -89,8 +94,8 @@ export const get = publicQuery({
 		const mode = brief?.mode ?? (await resolveThreadMode(ctx, ref));
 		if (!mode) return null;
 
-		const [items, tail, interpretations, viewer] = await Promise.all([
-			readItems(ctx, ref, locale),
+		const [itemsPage, tail, interpretations, viewer] = await Promise.all([
+			readItemsPage(ctx, ref, locale, args.cursor ?? null, Date.now()),
 			readActivityTail(ctx, ref),
 			readInterpretations(ctx, ref),
 			readViewerState(ctx, ref, session.userId),
@@ -115,7 +120,9 @@ export const get = publicQuery({
 			mode,
 			interpretationRevision: brief?.interpretationRevision ?? 0,
 			completeness: brief?.completeness ?? 'none',
-			items,
+			items: itemsPage.items,
+			page: itemsPage.page,
+			...(brief?.itemCounts ? { itemCounts: brief.itemCounts } : {}),
 			facts,
 			...(overview ? { overview: await openMessageBody(overview) } : {}),
 			...(latest.lines ? { latest: latest.lines } : {}),
@@ -127,12 +134,13 @@ export const get = publicQuery({
 			...(mode === 'brief'
 				? {
 						messageLatest: await readMessageLatest(interpretations, locale),
-						exactWording: await readExactWording(interpretations),
+						...(ref.kind === 'mail' ? { exactWording: await readExactWording(ctx, ref.id) } : {}),
 					}
 				: {}),
 			gap: gapOf(interpretations, {
 				totalMessages,
 				isPending: brief?.completeness === 'pending',
+				...(brief?.sourceCounts ? { sourceCounts: brief.sourceCounts } : {}),
 				suppressed: latest.suppressed,
 			}),
 			isNoReplyNeeded: checkpointResult

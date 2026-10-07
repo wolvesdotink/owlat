@@ -76,9 +76,9 @@ import { localizeQuestions } from '../../inbox/clarificationLocalize';
  * skipped or vanished run has none: the heuristic baseline then stands.
  */
 function usableProjection(run: InterpretRunResult): NeedsReplyProjection | undefined {
-	if (run.status !== 'complete' && run.status !== 'partial' && run.status !== 'replayed') {
-		return undefined;
-	}
+	// A reused extraction reports its stored status (`isReplayed`), so the
+	// same rule covers it.
+	if (run.status !== 'complete' && run.status !== 'partial') return undefined;
 	return run.projection;
 }
 
@@ -102,20 +102,11 @@ export const classifyThread = internalAction({
 		});
 		if (!context) return;
 
-		// Classify only ever runs for live delivery (ingest, or the sweep of a
-		// live delivery's pending marker); the ingest-only headers belong to the
-		// delivered message.
+		// Eligibility (live delivery, the ingest-only headers) was snapshotted
+		// when delivery enqueued the message (`interpret/enqueue.ts`); a message
+		// without a snapshot is skipped by the run and the baseline stands.
 		const interpret = (messageId: Id<'mailMessages'>) =>
-			runInterpretation(ctx, {
-				source: { kind: 'mail', id: messageId },
-				isLive: true,
-				...(messageId === args.interpretMessageId || !args.interpretMessageId
-					? {
-							...(args.precedence ? { precedence: args.precedence } : {}),
-							...(args.listId ? { listId: args.listId } : {}),
-						}
-					: {}),
-			});
+			runInterpretation(ctx, { source: { kind: 'mail', id: messageId } });
 		const interpretDelivered = async (alreadyInterpreted?: Id<'mailMessages'>) => {
 			if (args.interpretMessageId && args.interpretMessageId !== alreadyInterpreted) {
 				await interpret(args.interpretMessageId);

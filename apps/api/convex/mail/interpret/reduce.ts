@@ -2,94 +2,78 @@
  * `applyInterpretation` (SPEC §4 `reduce.ts`): fold one message's grounded,
  * verified interpretation into its thread, in ONE transaction:
  *
- *   1. recheck that the source still exists in this thread and that no purge
- *      ran since the run loaded (`deletionEpoch`); otherwise drop the write;
- *   2. compare-and-set on `threadBriefs.interpretationRevision`: a run that
- *      loaded an older revision gets `stale` back and retries against the new
- *      state (the extraction is reused, the model is not called again);
- *   3. store the extraction (`messageInterpretations`, sealed payload; one row
- *      per source + content revision + extractor version, replays are no-ops);
- *   4. apply the plan of `reducePlan.ts`: new items (ids allocated here),
- *      evidence merges, status and disposition edges, fact upserts;
- *   5. append `threadActivity` for every change, through `appendActivity`;
- *   6. bump the brief row: revision, checkpoint, completeness.
- *
- * Every derived string (assertion, display, quotes, fact text) is sealed with
- * the body seal before it is written.
+ *   1. recheck, against the database as it is now, everything the run assumed:
+ *      the source still sits in this thread; the thread's mode (a mailbox
+ *      converted to shared runs in actions mode; the cached brief mode is
+ *      reconciled); no purge ran (`deletionEpoch`); the body the run read is
+ *      the body stored now (`sourceVersion`). A mismatch writes nothing of the
+ *      run and tells it to start over (`modeChanged`, `sourceChanged`);
+ *   2. compare-and-set on `threadBriefs.interpretationRevision` (`stale` →
+ *      the run re-applies the same extraction against the new state);
+ *   3. store the extraction (one row per source, content revision and
+ *      extractor version; the newest applied one per source is `isCurrent`)
+ *      and move the source counters;
+ *   4. fold it in: incrementally when it is the newest message and the first
+ *      extraction of its source; otherwise (a late message, a repair, an
+ *      edited body) by REPLAYING the thread's extractions in message order
+ *      and re-applying human and recorded changes (`replay.ts`). A replay over
+ *      budget falls back to the incremental rule and marks the run partial;
+ *   5. write the difference with activity and item counters (`reduceWrite.ts`);
+ *   6. bump the brief row (revision, checkpoint, completeness from the
+ *      counters) and refresh the list-row projection.
  */
 
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { internalMutation } from '../../lib/writeFence';
-import type { BriefCompleteness } from '@owlat/shared/threadBrief';
-import {
-	interpretationSourceKey,
-	type Evidence,
-	type InterpretationSource,
-} from '../../lib/validators/threadBrief';
-import {
-	rowMatchesThreadRef,
-	threadRefToFields,
-	type ThreadRef,
-} from '../../lib/validators/threadRef';
+import type { BriefCompleteness, InterpretationStatus } from '@owlat/shared/threadBrief';
+import { interpretationSourceKey } from '../../lib/validators/threadBrief';
+import { rowMatchesThreadRef, threadRefToFields } from '../../lib/validators/threadRef';
 import { sealBodyAtWrite } from '../../lib/messageBody';
 import { INTERPRET_PAYLOAD_VERSION } from './schema';
-import { ensureBriefRow } from './briefRow';
+import { ensureBriefRow, resolveThreadMode } from './briefRow';
 import { appendActivity } from './activity';
-import {
-	applyInterpretationArgs,
-	type ReduceEvidence,
-	type ReduceFact,
-	type ReduceItem,
-} from './reduceInput';
-import { counterpartyKeyOf, planReduction, responsibilityOf } from './reducePlan';
+import { applyInterpretationArgs } from './reduceInput';
 import {
 	briefTopLatestOf,
-	completenessOf,
-	loadPlanState,
+	loadIncrementalState,
+	loadReplayState,
 	sourceStillInThread,
-	threadInterpretations,
 } from './reduceState';
+import { applyHumanOps, foldEntry, replayThread } from './replay';
+import { writeState } from './reduceWrite';
+import { EMPTY_SOURCE_COUNTS, completenessOfCounts, shiftCount, sourceBucketOf } from './counters';
+import { nextRetryAtOf } from './retry';
+import { sourceVersionOf } from './sourceVersion';
 import { refreshBriefTop } from './briefTop';
 
 export type ApplyOutcome =
 	| {
 			outcome: 'applied' | 'replayed';
+			/** The stored extraction's status (a replay returns the stored one). */
+			status: InterpretationStatus;
 			interpretationId: Id<'messageInterpretations'>;
 			interpretationRevision: number;
 			createdItemIds: Id<'threadItems'>[];
 			completeness: BriefCompleteness;
+			/** When an incomplete extraction will be retried, if it will. */
+			nextRetryAt?: number;
 	  }
 	| { outcome: 'stale'; interpretationRevision: number }
-	| { outcome: 'erased' | 'gone' };
+	| { outcome: 'erased' | 'gone' | 'modeChanged' | 'sourceChanged' };
 
-/** Seal one quote list into stored evidence. */
-async function sealEvidence(
-	evidence: readonly ReduceEvidence[],
-	source: InterpretationSource,
-	contentRevision: string
-): Promise<Evidence[]> {
-	return Promise.all(
-		evidence.map(async (e) => ({
-			source,
-			segmentId: e.segmentId,
-			start: e.start,
-			end: e.end,
-			contentRevision,
-			quote: await sealBodyAtWrite(e.quote),
-			...(e.occurrence !== undefined ? { occurrence: e.occurrence } : {}),
-		}))
-	);
-}
+/** Rows read per source to find its current extraction. */
+const SOURCE_ROWS_SCAN = 50;
 
-async function sealDisplay(display: { en: string; de: string }) {
-	return { en: await sealBodyAtWrite(display.en), de: await sealBodyAtWrite(display.de) };
-}
-
-async function sealFactValue(value: ReduceFact['value']): Promise<Doc<'threadFacts'>['value']> {
-	if (!value) return undefined;
-	if (value.kind === 'date' || value.kind === 'money') return value;
-	return { kind: value.kind, text: await sealBodyAtWrite(value.text) };
+async function currentRowOf(
+	ctx: MutationCtx,
+	sourceKey: string
+): Promise<Doc<'messageInterpretations'> | null> {
+	const rows = await ctx.db
+		.query('messageInterpretations')
+		.withIndex('by_source_revision', (q) => q.eq('sourceKey', sourceKey))
+		.take(SOURCE_ROWS_SCAN);
+	return rows.find((r) => r.isCurrent === true) ?? null;
 }
 
 export const applyInterpretation = internalMutation({
@@ -97,11 +81,25 @@ export const applyInterpretation = internalMutation({
 	handler: async (ctx, args): Promise<ApplyOutcome> => {
 		const ref = args.threadRef;
 		if (!(await sourceStillInThread(ctx, args.source, ref))) return { outcome: 'gone' };
-		const brief = await ensureBriefRow(ctx, ref, args.mode);
+		const mode = await resolveThreadMode(ctx, ref);
+		if (!mode) return { outcome: 'gone' };
+		const brief = await ensureBriefRow(ctx, ref, mode);
 		if (!brief) return { outcome: 'gone' };
+		if (brief.mode !== mode) {
+			// The mailbox changed scope: the cached brief follows (no overview in actions mode).
+			await ctx.db.patch(brief._id, { mode, overview: undefined, updatedAt: Date.now() });
+		}
+		if (mode !== args.mode) return { outcome: 'modeChanged' };
 		if (brief.deletionEpoch !== args.deletionEpoch) return { outcome: 'erased' };
+		if (
+			args.sourceVersion !== undefined &&
+			(await sourceVersionOf(ctx, args.source)) !== args.sourceVersion
+		) {
+			return { outcome: 'sourceChanged' };
+		}
 
 		const sourceKey = interpretationSourceKey(args.source);
+		const now = Date.now();
 		const existing = await ctx.db
 			.query('messageInterpretations')
 			.withIndex('by_source_revision', (q) =>
@@ -114,40 +112,100 @@ export const applyInterpretation = internalMutation({
 		if (existing?.appliedAt !== undefined && !rowMatchesThreadRef(existing, ref)) {
 			return { outcome: 'gone' };
 		}
-		if (existing?.appliedAt !== undefined && existing.status === args.status) {
-			return {
-				outcome: 'replayed',
-				interpretationId: existing._id,
-				interpretationRevision: brief.interpretationRevision,
-				createdItemIds: [],
-				completeness: brief.completeness,
-			};
+		const replayed = (row: Doc<'messageInterpretations'>): ApplyOutcome => ({
+			outcome: 'replayed',
+			status: row.status,
+			interpretationId: row._id,
+			interpretationRevision: brief.interpretationRevision,
+			createdItemIds: [],
+			completeness: brief.completeness,
+			...(row.nextRetryAt !== undefined ? { nextRetryAt: row.nextRetryAt } : {}),
+		});
+		if (existing?.appliedAt !== undefined) {
+			if (args.retryCount === undefined && existing.status === args.status)
+				return replayed(existing);
+			// A repair that read nothing never replaces what the earlier attempt read.
+			if (!args.result && existing.payload !== undefined) {
+				const retryRow = {
+					...existing,
+					retryCount: args.retryCount,
+					errorCode: args.errorCode ?? existing.errorCode,
+				};
+				const nextRetryAt = nextRetryAtOf(retryRow, now);
+				await ctx.db.patch(existing._id, {
+					retryCount: args.retryCount,
+					nextRetryAt,
+					updatedAt: now,
+				});
+				return replayed({ ...existing, nextRetryAt });
+			}
 		}
 		if (brief.interpretationRevision !== args.expectedRevision) {
 			return { outcome: 'stale', interpretationRevision: brief.interpretationRevision };
 		}
 
-		const now = Date.now();
 		const isOutOfOrder = !!brief.checkpoint && args.sourceAt < brief.checkpoint.sourceAt;
+		const previous = await currentRowOf(ctx, sourceKey);
+		const isReapply = previous?.appliedAt !== undefined;
+		let status: InterpretationStatus = args.status;
+		let errorCode = args.errorCode;
+
+		// Fold first, so a replay over budget can still mark this run partial.
+		let isRebuild = isOutOfOrder || isReapply;
+		let fold: Parameters<typeof writeState>[1] | null = null;
+		const writeBase = {
+			ref,
+			mode,
+			briefId: brief._id,
+			keyBase: `interp:${sourceKey}:${args.contentRevision}:${args.extractorVersion}:${args.retryCount ?? 0}`,
+			eventAt: args.sourceAt,
+			...(ref.kind === 'mail' ? { mailboxId: (await ctx.db.get(ref.id))?.mailboxId } : {}),
+			...(args.threadAssigneeUserId ? { assigneeUserId: args.threadAssigneeUserId } : {}),
+			now,
+		};
+		const entry = args.result
+			? {
+					source: args.source,
+					sourceKey,
+					contentRevision: args.contentRevision,
+					sourceAt: args.sourceAt,
+					appliedAt: now,
+					result: args.result,
+				}
+			: null;
+
+		// Store the extraction (the replay reads it back as current).
 		const record = {
 			...threadRefToFields(ref),
 			source: args.source,
 			sourceKey,
 			contentRevision: args.contentRevision,
 			extractorVersion: args.extractorVersion,
-			mode: args.mode,
-			status: args.status,
+			mode,
+			status,
 			...(args.skipReason ? { skipReason: args.skipReason } : {}),
 			...(args.eligibility ? { eligibility: args.eligibility } : {}),
 			...(args.sourceManifest ? { sourceManifest: args.sourceManifest } : {}),
 			...(args.coverage ? { coverage: args.coverage } : {}),
-			...(args.errorCode ? { errorCode: args.errorCode } : {}),
+			...(errorCode ? { errorCode } : {}),
+			...(args.result?.exactWording
+				? {
+						isExactWordingRequired: true,
+						...(args.result.exactWording.reason
+							? { exactWordingReason: args.result.exactWording.reason }
+							: {}),
+					}
+				: {}),
 			...(args.result
 				? {
 						payload: await sealBodyAtWrite(JSON.stringify(args.result)),
 						payloadVersion: INTERPRET_PAYLOAD_VERSION,
 					}
 				: {}),
+			...(args.sourceVersion ? { sourceVersion: args.sourceVersion } : {}),
+			...(args.retryCount !== undefined ? { retryCount: args.retryCount } : {}),
+			sourceAt: args.sourceAt,
+			isCurrent: true,
 			deletionEpoch: brief.deletionEpoch,
 			appliedAt: now,
 			updatedAt: now,
@@ -162,15 +220,65 @@ export const applyInterpretation = internalMutation({
 				createdAt: now,
 			});
 		}
+		if (previous && previous._id !== interpretationId) {
+			await ctx.db.patch(previous._id, { isCurrent: false });
+		}
 
-		const createdItemIds: Id<'threadItems'>[] = [];
-		const actor = { kind: 'system' as const };
-		const activityBase = { threadRef: ref, mode: args.mode, eventAt: args.sourceAt };
-		const keyBase = `interp:${sourceKey}:${args.contentRevision}:${args.extractorVersion}`;
+		if (isRebuild && (entry || isReapply)) {
+			const replay = await loadReplayState(ctx, ref, mode);
+			if (replay.isOverBudget) {
+				// Too long to replay within one transaction: fold incrementally (a late
+				// message then moves no status) and say the brief is incomplete.
+				isRebuild = false;
+				status = 'partial';
+				errorCode = 'replay_budget';
+			} else {
+				const after = replayThread(replay.entries, replay.base, replay.seed, {
+					mode,
+					threadKind: ref.kind,
+				});
+				applyHumanOps(after, replay.ops);
+				fold = {
+					...writeBase,
+					after,
+					rows: replay.rows,
+					factRows: replay.factRows,
+					isRebuild: true,
+				};
+			}
+		}
+		if (!fold && entry) {
+			const inc = await loadIncrementalState(ctx, ref, mode, now);
+			foldEntry(inc.state, entry, { mode, threadKind: ref.kind, isOutOfOrder });
+			fold = {
+				...writeBase,
+				after: inc.state,
+				rows: inc.rows,
+				factRows: inc.factRows,
+				isRebuild: false,
+			};
+		}
+
+		const nextRetryAt = nextRetryAtOf({ status, errorCode, retryCount: args.retryCount }, now);
+		if (status !== args.status || errorCode !== args.errorCode || nextRetryAt !== undefined) {
+			await ctx.db.patch(interpretationId, {
+				status,
+				...(errorCode ? { errorCode } : {}),
+				...(nextRetryAt !== undefined ? { nextRetryAt } : {}),
+			});
+		}
+		const stored = { status, skipReason: args.skipReason };
+		const sourceCounts = shiftCount(
+			brief.sourceCounts ?? EMPTY_SOURCE_COUNTS,
+			previous ? sourceBucketOf(previous) : null,
+			sourceBucketOf(stored)
+		);
 
 		if (args.direction === 'inbound') {
 			await appendActivity(ctx, {
-				...activityBase,
+				threadRef: ref,
+				mode,
+				eventAt: args.sourceAt,
 				idempotencyKey: `received:${sourceKey}`,
 				type: 'message_received',
 				actor: { kind: 'sender' },
@@ -178,154 +286,27 @@ export const applyInterpretation = internalMutation({
 				payload: { source: sourceKey },
 			});
 		}
-
-		if (args.result) {
-			const state = await loadPlanState(ctx, ref, args.mode);
-			const plan = planReduction(state, args.result, args.contentRevision, {
-				mode: args.mode,
-				threadKind: ref.kind,
-				isOutOfOrder,
-			});
-
-			const mailboxId = ref.kind === 'mail' ? (await ctx.db.get(ref.id))?.mailboxId : undefined;
-			for (const [index, insert] of plan.inserts.entries()) {
-				const id = await insertItem(ctx, {
-					ref,
-					item: insert.item,
-					possibleDuplicateOfId: insert.possibleDuplicateOfId,
-					source: args.source,
-					contentRevision: args.contentRevision,
-					sourceAt: args.sourceAt,
-					mailboxId,
-					assigneeUserId: ref.kind === 'team' ? args.threadAssigneeUserId : undefined,
-					now,
-				});
-				createdItemIds.push(id);
-				await appendActivity(ctx, {
-					...activityBase,
-					idempotencyKey: `${keyBase}:item:${index}`,
-					type: 'item_opened',
-					actor,
-					provenance: 'reported',
-					itemId: id,
-					itemRevision: 1,
-				});
-			}
-
-			const itemsById = new Map(state.items.map((item) => [item._id as string, item]));
-			for (const p of plan.patches) {
-				const item = itemsById.get(p.itemId);
-				if (!item) continue;
-				const hasChange =
-					p.status !== undefined ||
-					p.disposition !== undefined ||
-					(p.addEvidence?.length ?? 0) > 0 ||
-					p.fill !== undefined ||
-					p.verify !== undefined ||
-					(p.isReviewNeeded === true && item.isReviewNeeded !== true);
-				if (!hasChange) continue;
-				const revision = item.revision + 1;
-				await ctx.db.patch(p.itemId, {
-					revision,
-					...(p.status !== undefined ? { status: p.status, completion: p.completion } : {}),
-					...(p.disposition !== undefined ? { disposition: p.disposition } : {}),
-					...(p.addEvidence?.length
-						? {
-								evidence: [
-									...item.evidence,
-									...(await sealEvidence(p.addEvidence, args.source, args.contentRevision)),
-								],
-							}
-						: {}),
-					...p.fill,
-					...(p.verify ? { verify: p.verify } : {}),
-					...(p.isReviewNeeded ? { isReviewNeeded: true } : {}),
-					updatedAt: now,
-				});
-				if (p.activity) {
-					await appendActivity(ctx, {
-						...activityBase,
-						idempotencyKey: `${keyBase}:patch:${p.itemId}`,
-						type: p.activity.type,
-						actor,
-						provenance: 'reported',
-						itemId: p.itemId,
-						itemRevision: revision,
-						...(p.activity.delta ? { delta: p.activity.delta } : {}),
-					});
-				}
-			}
-
-			for (const [index, op] of plan.facts.entries()) {
-				if (ref.kind !== 'mail') break;
-				if (op.kind === 'supersede') {
-					const fact = await ctx.db.get(op.factId);
-					if (fact) {
-						await ctx.db.patch(op.factId, {
-							status: 'superseded',
-							revision: fact.revision + 1,
-							updatedAt: now,
-						});
-					}
-				} else if (op.kind === 'evidence') {
-					const fact = await ctx.db.get(op.factId);
-					if (fact) {
-						await ctx.db.patch(op.factId, {
-							evidence: [
-								...fact.evidence,
-								...(await sealEvidence(op.addEvidence, args.source, args.contentRevision)),
-							],
-							revision: fact.revision + 1,
-							updatedAt: now,
-						});
-					}
-				} else {
-					const factId = await ctx.db.insert('threadFacts', {
-						...threadRefToFields(ref),
-						factKey: op.fact.key,
-						assertion: await sealBodyAtWrite(op.fact.assertion),
-						display: await sealDisplay(op.fact.display),
-						...(op.fact.value ? { value: await sealFactValue(op.fact.value) } : {}),
-						evidence: await sealEvidence(op.fact.evidence, args.source, args.contentRevision),
-						provenance: 'reported',
-						...(op.supersedesId ? { supersedesId: op.supersedesId } : {}),
-						...(op.conflictsWithId ? { conflictsWithId: op.conflictsWithId } : {}),
-						status: 'current',
-						revision: 1,
-						createdAt: now,
-						updatedAt: now,
-					});
-					if (op.supersedesId || op.conflictsWithId) {
-						await appendActivity(ctx, {
-							...activityBase,
-							idempotencyKey: `${keyBase}:fact:${index}`,
-							type: 'fact_changed',
-							actor,
-							provenance: 'reported',
-							delta: { factId },
-						});
-					}
-				}
-			}
-		}
-
-		if (args.status === 'partial' || args.status === 'failed') {
+		const createdItemIds = fold ? await writeState(ctx, fold) : [];
+		if (status === 'partial' || status === 'failed') {
 			await appendActivity(ctx, {
-				...activityBase,
-				idempotencyKey: `${keyBase}:incomplete:${args.status}`,
+				threadRef: ref,
+				mode,
+				eventAt: args.sourceAt,
+				idempotencyKey: `${writeBase.keyBase}:incomplete:${status}`,
 				type: 'interpretation_incomplete',
-				actor,
+				actor: { kind: 'system' },
 				provenance: 'recorded',
-				payload: { status: args.status, ...(args.errorCode ? { code: args.errorCode } : {}) },
+				payload: { status, ...(errorCode ? { code: errorCode } : {}) },
 			});
 		}
 
-		const completeness = completenessOf(await threadInterpretations(ctx, ref));
+		const completeness = completenessOfCounts(sourceCounts);
 		const fresh = (await ctx.db.get(brief._id)) ?? brief;
 		const revision = brief.interpretationRevision + 1;
 		await ctx.db.patch(brief._id, {
 			interpretationRevision: revision,
 			sourceRevision: fresh.sourceRevision + 1,
+			sourceCounts,
 			completeness,
 			...(!isOutOfOrder
 				? { checkpoint: { sourceKey, sourceAt: args.sourceAt, interpretationId } }
@@ -335,61 +316,17 @@ export const applyInterpretation = internalMutation({
 		// The list rows, the Answer queue and the Workbench read this projection.
 		if (ref.kind === 'mail') {
 			await refreshBriefTop(ctx, ref.id, {
-				latest: briefTopLatestOf(args.result, { mode: args.mode, isOutOfOrder }),
+				latest: briefTopLatestOf(args.result, { mode, isOutOfOrder }),
 			});
 		}
 		return {
 			outcome: 'applied',
+			status,
 			interpretationId,
 			interpretationRevision: revision,
 			createdItemIds,
 			completeness,
+			...(nextRetryAt !== undefined ? { nextRetryAt } : {}),
 		};
 	},
 });
-
-async function insertItem(
-	ctx: MutationCtx,
-	args: {
-		ref: ThreadRef;
-		item: ReduceItem;
-		possibleDuplicateOfId?: Id<'threadItems'>;
-		source: InterpretationSource;
-		contentRevision: string;
-		sourceAt: number;
-		mailboxId?: Id<'mailboxes'>;
-		assigneeUserId?: string;
-		now: number;
-	}
-): Promise<Id<'threadItems'>> {
-	const { item } = args;
-	const counterpartyKey = counterpartyKeyOf(item);
-	return ctx.db.insert('threadItems', {
-		...threadRefToFields(args.ref),
-		...(args.mailboxId ? { mailboxId: args.mailboxId } : {}),
-		revision: 1,
-		intent: item.intent,
-		facets: item.facets,
-		...(item.consequences ? { consequences: item.consequences } : {}),
-		assertion: await sealBodyAtWrite(item.assertion),
-		display: await sealDisplay(item.display),
-		requester: item.requester,
-		responsible: item.responsible,
-		...(item.beneficiary ? { beneficiary: item.beneficiary } : {}),
-		responsibility: responsibilityOf(item.responsible),
-		...(args.assigneeUserId ? { assigneeUserId: args.assigneeUserId } : {}),
-		status: 'open',
-		disposition: 'unanswered',
-		...(item.due ? { due: item.due } : {}),
-		...(item.amount ? { amount: item.amount } : {}),
-		...(item.options ? { options: item.options } : {}),
-		evidence: await sealEvidence(item.evidence, args.source, args.contentRevision),
-		...(args.possibleDuplicateOfId ? { possibleDuplicateOfId: args.possibleDuplicateOfId } : {}),
-		verify: item.verify,
-		...(item.isReviewNeeded ? { isReviewNeeded: true } : {}),
-		...(counterpartyKey ? { counterpartyKey } : {}),
-		askedAt: args.sourceAt,
-		createdAt: args.now,
-		updatedAt: args.now,
-	});
-}

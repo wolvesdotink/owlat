@@ -1074,6 +1074,7 @@
 				"noReplyNeeded": "keine Antwort nötig"
 			},
 			"more": "+{count} weitere",
+			"moreAtLeast": "{count}+ weitere",
 			"toast": {
 				"markedDone": "Als erledigt markiert. Du kannst es rückgängig machen.",
 				"reminder": "Du wirst morgen früh erinnert."
@@ -6724,6 +6725,7 @@
 			},
 			"todo": {
 				"title": "Zu erledigen, keine Antwort nötig · {count}",
+				"titlePlain": "Zu erledigen, keine Antwort nötig",
 				"due": "bis {date}",
 				"more": "In diesem Postfach ist noch mehr zu erledigen.",
 				"openInbox": "Postfach öffnen"

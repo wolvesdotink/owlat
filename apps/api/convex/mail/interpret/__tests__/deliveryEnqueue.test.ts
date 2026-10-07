@@ -120,13 +120,16 @@ describe('delivery → interpretation', () => {
 		const { jobs, brief } = await outcome(t, message.threadId);
 		expect(jobs.some((job) => job.name.includes('needsReplyClassify'))).toBe(false);
 		expect(interpretJobs(jobs).map((job) => job.args)).toEqual([
-			{
-				source: { kind: 'mail', id: message._id },
-				isLive: true,
-				precedence: 'bulk',
-				listId: '<news.acme.test>',
-			},
+			{ source: { kind: 'mail', id: message._id } },
 		]);
+		// The ingest headers live on in the eligibility snapshot taken here.
+		const snapshot = await t.run(async (ctx) =>
+			ctx.db
+				.query('interpretSources')
+				.withIndex('by_source_key', (q) => q.eq('sourceKey', `mail:${message._id}`))
+				.first()
+		);
+		expect(snapshot?.eligibility).toMatchObject({ isLive: true, isBulkHeaderPresent: true });
 		expect(brief?.completeness).toBe('pending');
 	});
 

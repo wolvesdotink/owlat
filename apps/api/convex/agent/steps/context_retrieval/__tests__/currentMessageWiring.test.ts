@@ -31,12 +31,15 @@ const ITEM: BriefingItem = {
 };
 
 type Read = {
-	interpretation: { status: 'complete' | 'partial' | 'failed' | 'skipped' } | null;
+	interpretation: {
+		status: 'complete' | 'partial' | 'failed' | 'skipped';
+		isRerunDue?: boolean;
+	} | null;
 	items: BriefingItem[];
 };
 
 /** ctx serving one contact-less/thread-less inbound; retrieval legs empty. */
-function makeCtx(reads: Array<Read | 'throw'>) {
+function makeCtx(reads: Array<Read | 'throw'>, opts: { canRun?: boolean } = {}) {
 	const message = {
 		_id: messageId,
 		from: 'sender@example.com',
@@ -46,6 +49,7 @@ function makeCtx(reads: Array<Read | 'throw'>) {
 		receivedAt: Date.now(),
 	};
 	const runs: unknown[] = [];
+	const captures: unknown[] = [];
 	let readIndex = 0;
 	const ctx = makeStepCtx<Parameters<typeof contextRetrievalStep.execute>[0]>({
 		queries: {
@@ -69,9 +73,15 @@ function makeCtx(reads: Array<Read | 'throw'>) {
 			knowledge: [],
 			semanticFileProcessing: [],
 		},
-		mutations: { recordContextTier: null },
+		mutations: {
+			recordContextTier: null,
+			captureInbound: () => {
+				captures.push(messageId);
+				return opts.canRun ?? true;
+			},
+		},
 	});
-	return { ctx, runs };
+	return { ctx, runs, captures };
 }
 
 describe('contextRetrievalStep.execute — structured current message', () => {
@@ -87,14 +97,33 @@ describe('contextRetrievalStep.execute — structured current message', () => {
 	});
 
 	it('runs interpretation in the team thread once when nothing is stored', async () => {
-		const { ctx, runs } = makeCtx([
+		const { ctx, runs, captures } = makeCtx([
 			{ interpretation: null, items: [] },
 			{ interpretation: { status: 'complete' }, items: [ITEM] },
 		]);
 		const { output } = await contextRetrievalStep.execute(ctx, input);
+		// The eligibility snapshot is taken before the first run.
+		expect(captures).toEqual([messageId]);
 		expect(runs).toEqual([{ source: { kind: 'inbound', id: messageId } }]);
 		expect(output.context).toContain('Tell the customer where order 4821 is.');
 		expect(output.context).not.toContain('RAWBODYSENTINEL');
+	});
+
+	it('runs again when the stored extraction is due for a repair', async () => {
+		const { ctx, runs } = makeCtx([
+			{ interpretation: { status: 'failed', isRerunDue: true }, items: [] },
+			{ interpretation: { status: 'complete' }, items: [ITEM] },
+		]);
+		const { output } = await contextRetrievalStep.execute(ctx, input);
+		expect(runs).toHaveLength(1);
+		expect(output.context).toContain('Tell the customer where order 4821 is.');
+	});
+
+	it('does not run without a source snapshot, and falls back to the raw body', async () => {
+		const { ctx, runs } = makeCtx([{ interpretation: null, items: [] }], { canRun: false });
+		const { output } = await contextRetrievalStep.execute(ctx, input);
+		expect(runs).toEqual([]);
+		expect(output.context).toContain('RAWBODYSENTINEL');
 	});
 
 	it.each(['failed', 'partial'] as const)(

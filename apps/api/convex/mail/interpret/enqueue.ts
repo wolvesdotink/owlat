@@ -10,7 +10,7 @@
  *     nothing more is scheduled here and the model never reads it twice.
  *     Otherwise live mail that could be eligible is scheduled on its own. The
  *     pre-check is cheap and conservative (folder, mute); the run decides on
- *     the full, persisted signals (`eligibility.ts`).
+ *     the full signals, snapshotted here (`sources.captureInterpretSource`).
  *   - {@link enqueueSentInterpretation}: a send we made reached its recipient
  *     (Postbox transport `sent`, team Send finalized). Once per send: the
  *     caller only enqueues when its `reply_sent` activity was new.
@@ -25,6 +25,7 @@ import { internal } from '../../_generated/api';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { isInterpretationEligible } from './eligibility';
 import { markBriefPending } from './briefRow';
+import { captureInterpretSource } from './sources';
 import type { OutboundSource } from './sendFailure';
 
 /**
@@ -63,14 +64,19 @@ export async function enqueueDeliveredInterpretation(
 ): Promise<boolean> {
 	if (!opts.isLive) return false;
 	const ref: ThreadRef = { kind: 'mail', id: message.threadId };
+	const source = { kind: 'mail' as const, id: message._id };
+	if (!opts.isInterpretedByClassify && !(await couldBeEligible(ctx, message))) return false;
+	// The eligibility snapshot every run and retry decides on (`sources.ts`);
+	// the ingest-only headers are known here and nowhere later.
+	const captured = await captureInterpretSource(ctx, {
+		source,
+		isLive: true,
+		...(opts.precedence ? { precedence: opts.precedence } : {}),
+		...(opts.listId ? { listId: opts.listId } : {}),
+	});
+	if (!captured) return false;
 	if (!opts.isInterpretedByClassify) {
-		if (!(await couldBeEligible(ctx, message))) return false;
-		await ctx.scheduler.runAfter(0, internal.mail.interpret.run.interpretMessage, {
-			source: { kind: 'mail', id: message._id },
-			isLive: true,
-			...(opts.precedence ? { precedence: opts.precedence } : {}),
-			...(opts.listId ? { listId: opts.listId } : {}),
-		});
+		await ctx.scheduler.runAfter(0, internal.mail.interpret.run.interpretMessage, { source });
 	}
 	await markBriefPending(ctx, ref);
 	return true;
@@ -82,6 +88,10 @@ export async function enqueueSentInterpretation(
 	source: OutboundSource,
 	ref: ThreadRef
 ): Promise<void> {
+	// A team reply's snapshot (its text as queued) was taken at intake
+	// (`inbox/replyAttachments.intakeAgentReply`); a Postbox sent message is
+	// snapshotted here, as live.
+	if (source.kind === 'outboundMail') await captureInterpretSource(ctx, { source, isLive: true });
 	await ctx.scheduler.runAfter(0, internal.mail.interpret.outboundRun.interpretSent, { source });
 	await markBriefPending(ctx, ref);
 }

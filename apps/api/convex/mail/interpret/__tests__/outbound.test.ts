@@ -312,14 +312,18 @@ describe('Postbox outbound lifecycle → thread brief', () => {
 		await transition(t, outboundId, 0, { to: 'bounced', at: REPLIED });
 		// The model read the reply after the bounce: it still marks the item answered.
 		await applyReply(t, outboundId, threadId, [first!._id]);
-		expect((await state(t, threadId)).items[0]?.disposition).toBe('answered');
+		expect((await state(t, threadId)).items.find((i) => i._id === first!._id)?.disposition).toBe(
+			'answered'
+		);
 
 		const changed = await t.mutation(internal.mail.interpret.sendFailure.reconcile, {
 			source: { kind: 'outboundMail', id: outboundId },
 		});
 
 		expect(changed).toBe(1);
-		expect((await state(t, threadId)).items[0]?.disposition).toBe('failed');
+		expect((await state(t, threadId)).items.find((i) => i._id === first!._id)?.disposition).toBe(
+			'failed'
+		);
 	});
 
 	it('a send that never failed takes nothing back', async () => {
@@ -335,7 +339,9 @@ describe('Postbox outbound lifecycle → thread brief', () => {
 		);
 
 		expect(changed).toEqual([]);
-		expect((await state(t, threadId)).items[0]?.disposition).toBe('answered');
+		expect((await state(t, threadId)).items.find((i) => i._id === first!._id)?.disposition).toBe(
+			'answered'
+		);
 	});
 });
 

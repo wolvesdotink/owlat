@@ -8,7 +8,10 @@
  *     folding, whitespace collapse) in the segment it names; one failed quote
  *     rejects the claim it supports and marks coverage incomplete;
  *   - a claim with no quote is dropped (counted as unsupported);
- *   - an item is TRACKED only when a quote comes from the sender's fresh text.
+ *   - an item is TRACKED only when its quotes come from the sender's fresh text.
+ *     Fresh quotes beside forwarded, quoted, signature or disclaimer quotes
+ *     make it MIXED (`isMixed`): a proposal unless the fresh quotes alone
+ *     verify (`pipeline.ts`), so a fresh "FYI." cannot carry a forwarded ask.
  *     An item that rests only on forwarded text is never authorized by text
  *     analysis: it is kept as a proposal (`proposal.reason: 'forwarded'`, the
  *     reducer stores `verify: 'proposal'`, shown as "Check this" until the
@@ -20,8 +23,8 @@
  *     proposal too (`'signature'` / `'disclaimer'`). Asks only in quoted history
  *     are rejected (`not_fresh`): their own message carries them;
  *   - transitions need fresh text to apply; one that rests only on forwarded
- *     text is kept as a proposal (the pipeline marks it unverified, so it
- *     cannot close anything). Latest lines need fresh or forwarded text;
+ *     text, or a mixed one whose fresh quotes do not verify, is a proposal:
+ *     the pipeline leaves it out of the reducer input altogether. Latest lines need fresh or forwarded text;
  *     facts may come from anything but a disclaimer;
  *   - every derived string (assertion, display text, options, latest lines,
  *     fact values) is screened with `detectInjection` and
@@ -112,7 +115,13 @@ export interface GroundedClaim<T> {
 	 * Not to be tracked on this evidence: shown as a proposal ("Check this")
 	 * that the user confirms. Set for items and transitions only.
 	 */
-	proposal?: { reason: 'forwarded' | 'signature' | 'disclaimer' };
+	proposal?: { reason: 'forwarded' | 'signature' | 'disclaimer' | 'quoted' };
+	/**
+	 * The claim quotes the fresh text AND another kind of segment. It is a
+	 * proposal unless the fresh quotes ALONE support it (`freshEvidence`):
+	 * the pipeline sends just those to the verifier.
+	 */
+	isMixed?: true;
 	/** Context only: the fresh text asked us to handle the forward this rests on. */
 	viaDelegation?: true;
 	/** The fresh handover phrase that delegated it, when one span holds it. */
@@ -166,7 +175,8 @@ export interface GroundOptions {
 /** Whether a claim's evidence may carry it, as tracked or as a proposal, and its context. */
 interface Carry {
 	verdict: 'yes' | 'no';
-	proposal?: 'forwarded' | 'signature' | 'disclaimer';
+	proposal?: 'forwarded' | 'signature' | 'disclaimer' | 'quoted';
+	isMixed?: true;
 	delegated?: true;
 	by?: Delegation['evidence'];
 }
@@ -263,6 +273,7 @@ export function groundProposals<O extends GroundableOutput>(
 			flags,
 			needsReview: flags.length > 0,
 			...(carried.proposal ? { proposal: { reason: carried.proposal } } : {}),
+			...(carried.isMixed ? { isMixed: true as const } : {}),
 			...(carried.delegated ? { viaDelegation: true as const } : {}),
 			...(carried.by ? { delegatedBy: carried.by } : {}),
 		};
@@ -283,15 +294,27 @@ export function groundProposals<O extends GroundableOutput>(
 			...(delegated?.evidence ? { by: delegated.evidence } : {}),
 		};
 	};
+	/**
+	 * Fresh evidence beside forwarded, quoted, signature or disclaimer evidence:
+	 * a fresh "FYI." must not carry a forwarded request. A proposal until the
+	 * fresh quotes alone are verified to support the claim.
+	 */
+	const mixedCarry = (evidence: GroundedEvidence[]): Carry | null => {
+		const other = evidence.find((e) => e.segmentKind !== 'fresh');
+		if (!other) return null;
+		const reason = other.segmentKind as NonNullable<Carry['proposal']>;
+		const base: Carry = reason === 'forwarded' ? forwardedProposal(evidence) : { verdict: 'yes' };
+		return { ...base, proposal: reason, isMixed: true };
+	};
 	const itemCarrier = (evidence: GroundedEvidence[]): Carry => {
-		if (has(evidence, 'fresh')) return { verdict: 'yes' };
+		if (has(evidence, 'fresh')) return mixedCarry(evidence) ?? { verdict: 'yes' };
 		if (has(evidence, 'forwarded')) return forwardedProposal(evidence);
 		if (has(evidence, 'signature')) return { verdict: 'yes', proposal: 'signature' };
 		if (has(evidence, 'disclaimer')) return { verdict: 'yes', proposal: 'disclaimer' };
 		return { verdict: 'no' };
 	};
 	const transitionCarrier = (evidence: GroundedEvidence[]): Carry => {
-		if (has(evidence, 'fresh')) return { verdict: 'yes' };
+		if (has(evidence, 'fresh')) return mixedCarry(evidence) ?? { verdict: 'yes' };
 		if (has(evidence, 'forwarded')) return forwardedProposal(evidence);
 		return { verdict: 'no' };
 	};
@@ -343,14 +366,16 @@ export function groundProposals<O extends GroundableOutput>(
 	};
 }
 
-/** Whether the model says it skipped a fresh or forwarded segment. */
+/** Whether the model says it skipped a segment that can carry an ask. */
 function unreadSegments(
 	read: readonly string[] | number | undefined,
 	segmented: GroundSegmentation
 ): boolean {
 	if (read === undefined) return false;
-	const required = segmented.segments.filter((s) => s.kind === 'fresh' || s.kind === 'forwarded');
-	if (typeof read === 'number') return read < segmented.segments.length;
+	// Every segment that can carry an ask, signatures and disclaimers included
+	// (their asks become proposals); only quoted history may go unread.
+	const required = segmented.segments.filter((s) => s.kind !== 'quoted');
+	if (typeof read === 'number') return read < required.length;
 	const seen = new Set(read);
 	return required.some((s) => !seen.has(s.id));
 }

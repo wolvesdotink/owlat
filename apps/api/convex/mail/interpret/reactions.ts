@@ -47,7 +47,7 @@ import {
 import { threadRefToFields, type ThreadRef } from '../../lib/validators/threadRef';
 import type { MutationSessionContext } from '../../lib/sessionOrganization';
 import { appendActivity } from './activity';
-import { refreshBriefTop } from './briefTop';
+import { writeItemChange } from './itemWrite';
 import { resolveThreadMode } from './briefRow';
 import { canUserReadThread, requireItemReader } from './threadAccess';
 import { planReaction, toDbPatch, type LifecycleReaction } from './reactionRules';
@@ -78,7 +78,6 @@ type ItemChange = {
 async function recordChange(ctx: MutationCtx, change: ItemChange): Promise<ReactionResult> {
 	const { item, ref } = change;
 	const revision = item.revision + 1;
-	await ctx.db.patch(item._id, { ...change.patch, revision, updatedAt: Date.now() });
 	await appendActivity(ctx, {
 		threadRef: ref,
 		idempotencyKey: `react:${item._id}:${revision}`,
@@ -90,7 +89,7 @@ async function recordChange(ctx: MutationCtx, change: ItemChange): Promise<React
 		...(change.delta ? { delta: change.delta } : {}),
 		...(change.payload ? { payload: change.payload } : {}),
 	});
-	if (ref.kind === 'mail') await refreshBriefTop(ctx, ref.id);
+	await writeItemChange(ctx, ref, item, { ...change.patch, revision, updatedAt: Date.now() });
 	return { itemId: item._id, revision };
 }
 

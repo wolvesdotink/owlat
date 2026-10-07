@@ -4,18 +4,16 @@
  *   - the model schema requires `exactWording` (nullable reason); the parse
  *     schema tolerates payloads stored before it existed;
  *   - the reducer input carries it only when the model asked for it;
- *   - the brief lists the messages that asked for it;
  *   - every evidence span knows which occurrence of its words it is.
  */
 
 import { describe, expect, it } from 'vitest';
 import { segmentMessage } from '@owlat/shared/mailSegments';
 import { groundProposals } from '../ground';
-import { clampOutput, toReduceResult } from '../pipeline';
-import { quoteOccurrence } from '../quoteMatch';
+import { toReduceResult } from '../pipeline';
+import { clampOutput } from '../clamp';
+import { quoteOccurrences } from '../quoteMatch';
 import { briefModelSchema, briefOutputSchema, type InterpretBriefOutput } from '../schema';
-import { readExactWording } from '../briefRead';
-import type { Doc } from '../../../_generated/dataModel';
 
 const segmented = segmentMessage({
 	text: 'please confirm. We changed the terms.\n\nAgain: please confirm by Friday, or the terms apply.',
@@ -61,6 +59,7 @@ const opts = {
 	participants: [],
 	ownAddresses: new Set<string>(),
 	timezone: 'UTC',
+	sentAt: 0,
 	verdicts: new Map(),
 	checked: new Set<string>(),
 };
@@ -87,46 +86,18 @@ describe('exactWording', () => {
 			undefined
 		);
 	});
-
-	it('lists the messages whose newest extraction asked for it', async () => {
-		const row = (id: string, at: number, exact?: { reason?: 'legal' }) =>
-			({
-				_id: `r_${id}_${at}`,
-				mode: 'brief',
-				source: { kind: 'mail', id },
-				sourceKey: `mail:${id}`,
-				status: 'complete',
-				updatedAt: at,
-				payload: JSON.stringify({
-					items: [],
-					transitions: [],
-					replyIntent: 'informational',
-					urgency: 'low',
-					dropped: { grounding: 0, verify: 0 },
-					...(exact ? { exactWording: exact } : {}),
-				}),
-				payloadVersion: 1,
-			}) as unknown as Doc<'messageInterpretations'>;
-		const out = await readExactWording([
-			row('m1', 1, { reason: 'legal' }),
-			row('m2', 1, { reason: 'legal' }),
-			// A newer extraction of m2 no longer asks for it.
-			row('m2', 2),
-		]);
-		expect(out).toEqual([{ messageId: 'm1', reason: 'legal' }]);
-	});
 });
 
-describe('quoteOccurrence', () => {
+describe('quoteOccurrences', () => {
 	it('counts earlier occurrences of the same words', () => {
 		const text = segmented.canonicalText;
 		const first = text.indexOf('please confirm');
 		const second = text.indexOf('please confirm', first + 1);
-		expect(quoteOccurrence(text, first, first + 14)).toBe(0);
-		expect(quoteOccurrence(text, second, second + 14)).toBe(1);
+		expect(quoteOccurrences(text, first, first + 14)).toEqual({ occurrence: 0, total: 2 });
+		expect(quoteOccurrences(text, second, second + 14)).toEqual({ occurrence: 1, total: 2 });
 		// The whole quote is unique: the first (and only) occurrence.
 		const quote = text.indexOf('please confirm by Friday');
-		expect(quoteOccurrence(text, quote, quote + 24)).toBe(0);
+		expect(quoteOccurrences(text, quote, quote + 24)).toEqual({ occurrence: 0, total: 1 });
 	});
 
 	it('stamps every evidence span with its occurrence', () => {
@@ -135,6 +106,7 @@ describe('quoteOccurrence', () => {
 		expect(result.items[0]?.evidence[0]).toMatchObject({
 			quote: 'please confirm by Friday',
 			occurrence: 0,
+			occurrenceCount: 1,
 		});
 	});
 });

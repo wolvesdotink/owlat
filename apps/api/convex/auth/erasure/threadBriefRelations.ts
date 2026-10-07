@@ -42,6 +42,13 @@ export const THREAD_BRIEF_MEMBER_DESCENDANTS: readonly DescendantRelation[] = [
 	),
 	descendant('mailboxes', 'threadItems', 'mailboxId', 'delete', WITH_THREAD),
 	descendant('mailMessages', 'messageInterpretations', 'source.id', 'delete', WITH_THREAD),
+	descendant(
+		'mailMessages',
+		'interpretSources',
+		'source.id',
+		'delete',
+		'The message’s eligibility signals (and a sent reply’s snapshot); deleted with it.'
+	),
 	descendant('mailMessages', 'threadFacts', 'evidence[].source.id', 'delete', WITH_THREAD),
 	descendant('mailMessages', 'threadItems', 'evidence[].source.id', 'delete', WITH_THREAD),
 	descendant(

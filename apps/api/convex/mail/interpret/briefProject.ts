@@ -56,6 +56,10 @@ export interface ProjectionInput {
 	isNoReplyNeeded?: boolean;
 	/** The viewer's per-thread Overview / Conversation choice (brief mode). */
 	viewOverride?: 'overview' | 'conversation';
+	/** The brief's maintained item counters (accurate past one page). */
+	itemCounts?: { us: number; them: number; unclear: number; closed: number; hidden: number };
+	/** Paging of the item lists. */
+	page?: { cursor: string | null; isDone: boolean; isClosedTruncated: boolean };
 	/** Each interpreted message's own first "Latest update" line (brief mode). */
 	messageLatest?: { messageId: string; text: string }[];
 	/** Messages whose original stays open beside the brief (brief mode). */
@@ -100,14 +104,24 @@ export function projectBrief(input: ProjectionInput): ThreadBriefView {
 	const waitingOnOthers = listFor('them');
 	const unclear = listFor('unclear');
 	const openCount = (list: BriefItemView[]) => list.filter((i) => i.status === 'open').length;
-	const counts = {
-		forYou: input.mode === 'brief' ? openCount(us) : 0,
-		forTeam: input.mode === 'actions' ? openCount(us) : 0,
-		waitingOnOthers: openCount(waitingOnOthers),
-		unclear: openCount(unclear),
-		closed: input.items.filter((i) => CLOSED.has(i.status)).length,
-		hidden: input.items.filter((i) => i.status === 'untracked').length,
-	};
+	const c = input.itemCounts;
+	const counts = c
+		? {
+				forYou: input.mode === 'brief' ? c.us : 0,
+				forTeam: input.mode === 'actions' ? c.us : 0,
+				waitingOnOthers: c.them,
+				unclear: c.unclear,
+				closed: c.closed,
+				hidden: c.hidden,
+			}
+		: {
+				forYou: input.mode === 'brief' ? openCount(us) : 0,
+				forTeam: input.mode === 'actions' ? openCount(us) : 0,
+				waitingOnOthers: openCount(waitingOnOthers),
+				unclear: openCount(unclear),
+				closed: input.items.filter((i) => CLOSED.has(i.status)).length,
+				hidden: input.items.filter((i) => i.status === 'untracked').length,
+			};
 
 	const showGap = input.completeness !== 'complete' || input.gap.reason !== undefined;
 	const shared = {
@@ -119,6 +133,7 @@ export function projectBrief(input: ProjectionInput): ThreadBriefView {
 		unclear,
 		activity: input.activity,
 		counts,
+		...(input.page ? { page: input.page } : {}),
 	};
 
 	if (input.mode === 'actions') return { mode: 'actions', ...shared, forTeam: us };

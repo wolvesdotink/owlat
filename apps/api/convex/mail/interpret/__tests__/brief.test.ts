@@ -12,7 +12,9 @@ import { selectPromptItems } from '../load';
 import { resolveThreadDefaultView } from '../preferences';
 import { gapOf, sinceLastSeenOf } from '../briefRead';
 import { MAX_PROMPT_ITEMS } from '../schema';
+import { captureInterpretSource } from '../sources';
 import {
+	addMessageToThread,
 	modules,
 	reduceItem,
 	reduceResult,
@@ -221,15 +223,19 @@ describe('brief.get', () => {
 describe('viewer state', () => {
 	it('marks the brief seen and reports what changed since', async () => {
 		const t = convexTest(schema, modules);
-		const { messageId, threadId } = await seedMailThread(t);
+		const { messageId, threadId, mailboxId } = await seedMailThread(t);
 		const ref = { kind: 'mail' as const, id: threadId };
 		await interpretMail(t, messageId, threadId);
 		await t.mutation(api.mail.interpret.brief.markSeen, { threadRef: ref });
 		let view = await t.query(api.mail.interpret.brief.get, { threadRef: ref, locale: 'en' });
 		expect(view).toMatchObject({ sinceLastSeen: { newItemIds: [], newActivityCount: 0 } });
 
-		await interpretMail(t, messageId, threadId, {
-			contentRevision: 'rev-2',
+		const later = await addMessageToThread(
+			t,
+			{ mailboxId, threadId },
+			{ text: 'room?', receivedAt: SENT + 1 }
+		);
+		await interpretMail(t, later, threadId, {
 			expectedRevision: 1,
 			sourceAt: SENT + 1,
 			result: reduceResult({
@@ -342,6 +348,9 @@ describe('state load', () => {
 		const t = convexTest(schema, modules);
 		const { messageId, threadId, mailboxId } = await seedMailThread(t);
 		await interpretMail(t, messageId, threadId);
+		await t.run(async (ctx) =>
+			captureInterpretSource(ctx, { source: { kind: 'mail', id: messageId }, isLive: true })
+		);
 		const loaded = await t.query(internal.mail.interpret.load.loadForInterpretation, {
 			source: { kind: 'mail', id: messageId },
 		});

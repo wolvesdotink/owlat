@@ -69,6 +69,13 @@ export const THREAD_BRIEF_CONTACT_DESCENDANTS: readonly DescendantRelation[] = [
 	),
 	relation(
 		'inboundMessages',
+		'interpretSources',
+		'source.id',
+		'delete',
+		'The message’s eligibility signals, kept for interpretation retries; deleted with it.'
+	),
+	relation(
+		'inboundMessages',
 		'threadItems',
 		'evidence[].source.id',
 		'unlink',

@@ -150,6 +150,7 @@ export function usePostboxReaderBrief(opts: {
 		return {
 			quote: c.quote ?? '',
 			...(c.occurrence !== undefined ? { occurrence: c.occurrence } : {}),
+			...(c.occurrenceCount !== undefined ? { occurrenceCount: c.occurrenceCount } : {}),
 		};
 	}
 

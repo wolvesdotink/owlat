@@ -181,6 +181,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	threadFacts: makeSweepStep('threadFacts'),
 	threadItems: makeSweepStep('threadItems'),
 	messageInterpretations: makeSweepStep('messageInterpretations'),
+	interpretSources: makeSweepStep('interpretSources'),
 	threadBriefs: makeSweepStep('threadBriefs'),
 	threadItemCorrections: makeSweepStep('threadItemCorrections'),
 	noteReactions: makeSweepStep('noteReactions'),
