@@ -33,6 +33,8 @@ export const EVAL_SLICES = [
 	'team_notes',
 ] as const;
 
+// TODO(contract): take INTENTS / FACETS from `@owlat/shared/threadBrief` (ITEM_INTENTS,
+// ITEM_FACETS) once the contract lane merges; these mirror SPEC §0.
 const SEGMENT_KINDS = ['fresh', 'quoted', 'forwarded', 'signature', 'disclaimer'] as const;
 const INTENTS = ['question', 'request', 'decision', 'promise'] as const;
 const FACETS = [
