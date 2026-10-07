@@ -149,6 +149,9 @@ const CHROME = [
 	'PostboxThreadDiscussionToggle',
 	'PostboxThreadHeader',
 	'PostboxTriageSuggestion',
+	'PostboxTeamComposer',
+	'PostboxTeamInterlude',
+	'TeamPinnedItems',
 	'PostboxTrustChip',
 	'PostboxUnsubscribeChip',
 ];
