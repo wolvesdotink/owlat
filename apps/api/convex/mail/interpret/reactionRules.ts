@@ -18,6 +18,10 @@
  *     wrong to make an item of it; `reactions.ts` also logs it for the eval).
  *     On an item already untracked only the correction changes.
  *   - confirmProposal: `verify: proposal` → `passed`, correction `confirmed`.
+ *     An unconfirmed claim's held changes to a tracked item
+ *     (`pendingUpdate`: quotes, deadline, amount, options) are applied and
+ *     cleared, on a proposal item or on a tracked one ("Check this change");
+ *     confirming only a held change records no correction.
  *     The item is tracked from now on; its status does not change.
  *   - undo reverses the item's standing correction and clears it, so the item
  *     is as it was before the statement and the model may move it again:
@@ -37,6 +41,7 @@
 import type { Doc } from '../../_generated/dataModel';
 import type { ActivityType, ItemStatus } from '@owlat/shared/threadBrief';
 import { isLegalStatusEdge } from '@owlat/shared/threadBriefRules';
+import { evidenceKey } from './reducePlan';
 
 /** The lifecycle reactions this module plans. */
 export type LifecycleReaction =
@@ -50,7 +55,13 @@ export type LifecycleReaction =
 /** The item fields a plan reads. */
 export type ReactionItem = Pick<
 	Doc<'threadItems'>,
-	'status' | 'completion' | 'correction' | 'verify' | 'responsibility'
+	| 'status'
+	| 'completion'
+	| 'correction'
+	| 'verify'
+	| 'responsibility'
+	| 'evidence'
+	| 'pendingUpdate'
 >;
 
 type Correction = NonNullable<Doc<'threadItems'>['correction']>;
@@ -65,6 +76,11 @@ export interface ReactionPatch {
 	completion?: Doc<'threadItems'>['completion'];
 	correction?: Correction;
 	verify?: Doc<'threadItems'>['verify'];
+	evidence?: Doc<'threadItems'>['evidence'];
+	due?: Doc<'threadItems'>['due'];
+	amount?: Doc<'threadItems'>['amount'];
+	options?: Doc<'threadItems'>['options'];
+	pendingUpdate?: Doc<'threadItems'>['pendingUpdate'];
 }
 
 export type ReactionPlan =
@@ -72,7 +88,7 @@ export type ReactionPlan =
 			ok: true;
 			patch: ReactionPatch;
 			/** Keys of `patch` that clear their field. */
-			clears: Array<'completion' | 'correction'>;
+			clears: Array<'completion' | 'correction' | 'pendingUpdate'>;
 			activity: ActivityType;
 			statusFrom?: ItemStatus;
 			statusTo?: ItemStatus;
@@ -147,17 +163,40 @@ export function planReaction(
 				};
 			}
 			return close(item, 'untracked', correction('notARequest'), 'item_corrected');
-		case 'confirmProposal':
-			if (item.verify !== 'proposal') return refuse('This item is not waiting to be confirmed');
+		case 'confirmProposal': {
+			const held = heldChanges(item);
+			if (item.verify === 'proposal') {
+				return {
+					ok: true,
+					patch: { verify: 'passed', correction: correction('confirmed'), ...held },
+					clears: item.pendingUpdate ? ['pendingUpdate'] : [],
+					activity: 'proposal_confirmed',
+				};
+			}
+			if (!item.pendingUpdate) return refuse('This item is not waiting to be confirmed');
 			return {
 				ok: true,
-				patch: { verify: 'passed', correction: correction('confirmed') },
-				clears: [],
+				patch: held,
+				clears: ['pendingUpdate'],
 				activity: 'proposal_confirmed',
 			};
+		}
 		case 'undo':
 			return planUndo(item, correction('reopened'));
 	}
+}
+
+/** A held update folded into the item: new quotes appended, fields replaced. Pure. */
+export function heldChanges(item: Pick<ReactionItem, 'evidence' | 'pendingUpdate'>): ReactionPatch {
+	const held = item.pendingUpdate;
+	if (!held) return {};
+	const seen = new Set(item.evidence.map(evidenceKey));
+	return {
+		evidence: [...item.evidence, ...held.evidence.filter((e) => !seen.has(evidenceKey(e)))],
+		...(held.due ? { due: held.due } : {}),
+		...(held.amount ? { amount: held.amount } : {}),
+		...(held.options ? { options: held.options } : {}),
+	};
 }
 
 function planUndo(item: ReactionItem, reopened: Correction): ReactionPlan {

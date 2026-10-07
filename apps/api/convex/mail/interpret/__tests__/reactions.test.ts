@@ -518,7 +518,58 @@ describe('planReaction', () => {
 		status: 'open' as const,
 		verify: 'passed' as const,
 		responsibility: 'us' as const,
+		evidence: [] as Doc<'threadItems'>['evidence'],
 	};
+	const ev = (segmentId: string) => ({
+		source: { kind: 'mail' as const, id: 'm1' as Id<'mailMessages'> },
+		segmentId,
+		start: 0,
+		end: 4,
+		contentRevision: 'r1',
+	});
+
+	it('applies a held update to a tracked item and clears it, with no correction', () => {
+		const plan = planReaction(
+			{
+				...open,
+				evidence: [ev('s0')],
+				pendingUpdate: {
+					evidence: [ev('s0'), ev('s3')],
+					due: { phrase: 'by Friday', isAmbiguous: false, at: 9 },
+				},
+			},
+			'confirmProposal',
+			actor
+		);
+		expect(plan).toMatchObject({
+			ok: true,
+			patch: { evidence: [ev('s0'), ev('s3')], due: { phrase: 'by Friday', at: 9 } },
+			clears: ['pendingUpdate'],
+			activity: 'proposal_confirmed',
+		});
+		expect(plan.ok && 'correction' in plan.patch).toBe(false);
+	});
+
+	it('confirms a proposal item together with its held update', () => {
+		const plan = planReaction(
+			{
+				...open,
+				verify: 'proposal',
+				pendingUpdate: { evidence: [], amount: { value: 40, currency: 'EUR' } },
+			},
+			'confirmProposal',
+			actor
+		);
+		expect(plan).toMatchObject({
+			ok: true,
+			patch: { verify: 'passed', correction: { kind: 'confirmed' }, amount: { value: 40 } },
+			clears: ['pendingUpdate'],
+		});
+	});
+
+	it('refuses to confirm a tracked item with nothing held', () => {
+		expect(planReaction(open, 'confirmProposal', actor).ok).toBe(false);
+	});
 
 	it('reopens an item the model closed and locks it with a reopened correction', () => {
 		const plan = planReaction({ ...open, status: 'done', completion: 'reported' }, 'undo', actor);
